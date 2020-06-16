@@ -34,11 +34,11 @@ DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 class CancelRPC : public google::protobuf::Closure {
 public:
     explicit CancelRPC(brpc::CallId rpc_id) : _rpc_id(rpc_id) {}
-    
+
     void Run() {
         brpc::StartCancel(_rpc_id);
     }
-    
+
 private:
     brpc::CallId _rpc_id;
 };
@@ -46,12 +46,12 @@ private:
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    
-    // A Channel represents a communication line to a Server. Notice that 
+
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
 
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
 
         request1.set_message("hello1");
         request2.set_message("hello2");
-        
+
         cntl1.set_log_id(log_id ++);  // set by user
         cntl2.set_log_id(log_id ++);
 
@@ -87,17 +87,17 @@ int main(int argc, char* argv[]) {
         const brpc::CallId id2 = cntl2.call_id();
         CancelRPC done1(id2);
         CancelRPC done2(id1);
-        
+
         butil::Timer tm;
         tm.start();
         // Send 2 async calls and join them. They will cancel each other in
         // their done which is run before the RPC being Join()-ed. Canceling
-        // a finished RPC has no effect. 
+        // a finished RPC has no effect.
         // For example:
         //  Time       RPC1                      RPC2
-        //   1     response1 comes back. 
+        //   1     response1 comes back.
         //   2     running done1.
-        //   3     cancel RPC2   
+        //   3     cancel RPC2
         //   4                              running done2 (NOTE: done also runs)
         //   5                              cancel RPC1 (no effect)
         stub.Echo(&cntl1, &request1, &response1, &done1);

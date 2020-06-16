@@ -31,24 +31,24 @@ class NsheadMessage : public ::google::protobuf::Message {
 public:
     nshead_t head;
     butil::IOBuf body;
-    
+
 public:
     NsheadMessage();
     virtual ~NsheadMessage();
-  
+
     NsheadMessage(const NsheadMessage& from);
-  
+
     inline NsheadMessage& operator=(const NsheadMessage& from) {
         CopyFrom(from);
         return *this;
     }
-  
+
     static const ::google::protobuf::Descriptor* descriptor();
-  
+
     void Swap(NsheadMessage* other);
-  
+
     // implements Message ----------------------------------------------
-  
+
     NsheadMessage* New() const;
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
@@ -56,7 +56,7 @@ public:
     void MergeFrom(const NsheadMessage& from);
     void Clear();
     bool IsInitialized() const;
-  
+
     int ByteSize() const;
     bool MergePartialFromCodedStream(
         ::google::protobuf::io::CodedInputStream* input);

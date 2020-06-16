@@ -30,7 +30,7 @@ namespace brpc {
 namespace policy {
 
 // TODO: or 160?
-DEFINE_int32(chash_num_replicas, 100, 
+DEFINE_int32(chash_num_replicas, 100,
              "default number of replicas per server in chash");
 
 // Defined in hasher.cpp.
@@ -40,7 +40,7 @@ class ReplicaPolicy {
 public:
     virtual ~ReplicaPolicy() = default;
 
-    virtual bool Build(ServerId server, 
+    virtual bool Build(ServerId server,
                        size_t num_replicas,
                        std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const = 0;
     virtual const char* name() const = 0;
@@ -149,7 +149,7 @@ ConsistentHashingLoadBalancer::ConsistentHashingLoadBalancer(
 }
 
 size_t ConsistentHashingLoadBalancer::AddBatch(
-        std::vector<Node> &bg, const std::vector<Node> &fg, 
+        std::vector<Node> &bg, const std::vector<Node> &fg,
         const std::vector<Node> &servers, bool *executed) {
     if (*executed) {
         // Hack DBD
@@ -157,7 +157,7 @@ size_t ConsistentHashingLoadBalancer::AddBatch(
     }
     *executed = true;
     bg.resize(fg.size() + servers.size());
-    bg.resize(std::set_union(fg.begin(), fg.end(), 
+    bg.resize(std::set_union(fg.begin(), fg.end(),
                              servers.begin(), servers.end(), bg.begin())
               - bg.begin());
     return bg.size() - fg.size();
@@ -189,9 +189,9 @@ size_t ConsistentHashingLoadBalancer::RemoveBatch(
     CHECK(use_set) << "Fail to construct id_set, " << berror();
     bg.clear();
     for (size_t i = 0; i < fg.size(); ++i) {
-        const bool removed = 
+        const bool removed =
             use_set ? (id_set.seek(fg[i].server_sock) != NULL)
-                    : (std::find(servers.begin(), servers.end(), 
+                    : (std::find(servers.begin(), servers.end(),
                                 fg[i].server_sock) != servers.end());
         if (!removed) {
             bg.push_back(fg[i]);
@@ -273,7 +273,7 @@ size_t ConsistentHashingLoadBalancer::RemoveServersInBatch(
 }
 
 LoadBalancer *ConsistentHashingLoadBalancer::New(const butil::StringPiece& params) const {
-    ConsistentHashingLoadBalancer* lb = 
+    ConsistentHashingLoadBalancer* lb =
         new (std::nothrow) ConsistentHashingLoadBalancer(_type);
     if (lb && !lb->SetParameters(params)) {
         delete lb;
@@ -311,7 +311,7 @@ int ConsistentHashingLoadBalancer::SelectServer(
     for (size_t i = 0; i < s->size(); ++i) {
         if (((i + 1) == s->size() // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
-            && Socket::Address(choice->server_sock.id, out->ptr) == 0 
+            && Socket::Address(choice->server_sock.id, out->ptr) == 0
             && (*out->ptr)->IsAvailable()) {
             return 0;
         } else {
@@ -339,7 +339,7 @@ void ConsistentHashingLoadBalancer::Describe(
     double expected_load_per_server = 1.0 / load_map.size();
     double load_sum = 0;
     double load_sqr_sum = 0;
-    for (std::map<butil::EndPoint, double>::iterator 
+    for (std::map<butil::EndPoint, double>::iterator
             it = load_map.begin(); it!= load_map.end(); ++it) {
         os << "    " << it->first << ": " << it->second << '\n';
         double normalized_load = it->second / expected_load_per_server;
@@ -347,8 +347,8 @@ void ConsistentHashingLoadBalancer::Describe(
         load_sqr_sum += normalized_load * normalized_load;
     }
     os << "  }\n";
-    os << "deviation: "  
-       << sqrt(load_sqr_sum * load_map.size() - load_sum * load_sum) 
+    os << "deviation: "
+       << sqrt(load_sqr_sum * load_map.size() - load_sum * load_sum)
           / load_map.size();
     os << "}\n";
 }
@@ -365,14 +365,14 @@ void ConsistentHashingLoadBalancer::GetLoads(
         if (s->empty()) {
             break;
         }
-        count_map[s->begin()->server_addr] += 
+        count_map[s->begin()->server_addr] +=
                 s->begin()->hash + (UINT_MAX - (s->end() - 1)->hash);
         for (size_t i = 1; i < s->size(); ++i) {
             count_map[(*s.get())[i].server_addr] +=
                     (*s.get())[i].hash - (*s.get())[i - 1].hash;
         }
     } while (0);
-    for (std::map<butil::EndPoint, uint32_t>::iterator 
+    for (std::map<butil::EndPoint, uint32_t>::iterator
             it = count_map.begin(); it!= count_map.end(); ++it) {
         (*load_map)[it->first] = (double)it->second / UINT_MAX;
     }

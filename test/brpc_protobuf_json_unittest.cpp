@@ -61,17 +61,17 @@ TEST_F(ProtobufJsonTest, json_to_pb_normal_case) {
                             "\"uid\":\"someone\"},{\"distance\":10,\"unknown_member\":20,"
                             "\"ext\":{\"age\":1666666660, \"databyte\":\"d2VsY29tZQ==\","
                             "\"enumtype\":2},\"uid\":\"someone0\"}], \"judge\":false,"
-                            "\"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
-        std::string error; 
-  
+                            "\"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";
+        std::string error;
+
         JsonContextBody data;
         const int64_t tm1 = gettimeofday_us();
         const bool ret = json2pb::JsonToProtoMessage(info3, &data, &error);
         const int64_t tm2 = gettimeofday_us();
         total_tm += tm2 - tm1;
         ASSERT_TRUE(ret);
-    
-        std::string info4;  
+
+        std::string info4;
         std::string error1;
         const int64_t tm3 = gettimeofday_us();
         bool ret2 = json2pb::ProtoMessageToJson(data, &info4, &error1);
@@ -83,14 +83,14 @@ TEST_F(ProtobufJsonTest, json_to_pb_normal_case) {
                      "\"judge\":false,\"spur\":2.0,\"content\":[{\"uid\":\"someone\","
                      "\"distance\":1.0,\"ext\":{\"age\":1666666666,\"databyte\":\"d2VsY29tZQ==\","
                      "\"enumtype\":\"HOME\"}},\{\"uid\":\"someone0\",\"distance\":10.0,\"ext\":"
-                     "{\"age\":1666666660,\"databyte\":\"d2VsY29tZQ==\",\"enumtype\":\"WORK\"}}]}", 
+                     "{\"age\":1666666660,\"databyte\":\"d2VsY29tZQ==\",\"enumtype\":\"WORK\"}}]}",
                       info4.data());
 #else
         ASSERT_STREQ("{\"data\":[1,2,3,4,5,6,7,8,9,10],"
                      "\"judge\":false,\"spur\":2,\"content\":[{\"uid\":\"someone\","
                      "\"distance\":1,\"ext\":{\"age\":1666666666,\"databyte\":\"d2VsY29tZQ==\","
                      "\"enumtype\":\"HOME\"}},\{\"uid\":\"someone0\",\"distance\":10,\"ext\":"
-                     "{\"age\":1666666660,\"databyte\":\"d2VsY29tZQ==\",\"enumtype\":\"WORK\"}}]}", 
+                     "{\"age\":1666666660,\"databyte\":\"d2VsY29tZQ==\",\"enumtype\":\"WORK\"}}]}",
                      info4.data());
 #endif
     }
@@ -105,8 +105,8 @@ TEST_F(ProtobufJsonTest, json_base64_string_to_pb_types_case) {
                         "\"uid\":\"someone\"},{\"distance\":10,\"unknown_member\":20,"
                         "\"ext\":{\"age\":1666666660, \"databyte\":\"d2VsY29tZTA=\","
                         "\"enumtype\":2},\"uid\":\"someone0\"}], \"judge\":false,"
-                        "\"spur\":2}";  
-    std::string error; 
+                        "\"spur\":2}";
+    std::string error;
 
     JsonContextBody data;
     json2pb::Json2PbOptions options_j2pb;
@@ -117,7 +117,7 @@ TEST_F(ProtobufJsonTest, json_base64_string_to_pb_types_case) {
     ASSERT_EQ(data.content(0).ext().databyte(), "welcome");
     ASSERT_EQ(data.content(1).ext().databyte(), "welcome0");
 
-    std::string info4;  
+    std::string info4;
     std::string error1;
     json2pb::Pb2JsonOptions options_pb2j;
     options_pb2j.bytes_to_base64 = true;
@@ -127,13 +127,13 @@ TEST_F(ProtobufJsonTest, json_base64_string_to_pb_types_case) {
     ASSERT_STREQ("{\"judge\":false,\"spur\":2.0,\"content\":[{\"uid\":\"someone\","
                  "\"distance\":1.0,\"ext\":{\"age\":1666666666,\"databyte\":\"d2VsY29tZQ==\","
                  "\"enumtype\":\"HOME\"}},\{\"uid\":\"someone0\",\"distance\":10.0,\"ext\":"
-                 "{\"age\":1666666660,\"databyte\":\"d2VsY29tZTA=\",\"enumtype\":\"WORK\"}}]}", 
+                 "{\"age\":1666666660,\"databyte\":\"d2VsY29tZTA=\",\"enumtype\":\"WORK\"}}]}",
                   info4.data());
 #else
     ASSERT_STREQ("{\"judge\":false,\"spur\":2,\"content\":[{\"uid\":\"someone\","
                  "\"distance\":1,\"ext\":{\"age\":1666666666,\"databyte\":\"d2VsY29tZQ==\","
                  "\"enumtype\":\"HOME\"}},\{\"uid\":\"someone0\",\"distance\":10,\"ext\":"
-                 "{\"age\":1666666660,\"databyte\":\"d2VsY29tZTA=\",\"enumtype\":\"WORK\"}}]}", 
+                 "{\"age\":1666666660,\"databyte\":\"d2VsY29tZTA=\",\"enumtype\":\"WORK\"}}]}",
                  info4.data());
 #endif
 }
@@ -156,7 +156,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_map_case) {
     ASSERT_EQ(123456, ab2.numbers(0).value());
     ASSERT_EQ("cell", ab2.numbers(1).key());
     ASSERT_EQ(654321, ab2.numbers(1).value());
-    
+
     AddressStringMap ab3;
     ASSERT_TRUE(json2pb::JsonToProtoMessage(json, &ab3, &error));
     ASSERT_EQ("baidu.com", ab3.addr());
@@ -188,13 +188,13 @@ TEST_F(ProtobufJsonTest, json_to_pb_encode_decode) {
     std::string info3 = "{\"@Content_Test%@\":[{\"Distance_info_\":1,\
                          \"_ext%T_\":{\"Aa_ge(\":1666666666, \"databyte(std::string)\":\
                          \"d2VsY29tZQ==\", \"enum--type\":\"HOME\"},\"uid*\":\"welcome\"}], \
-                         \"judge\":false, \"spur\":2, \"data:array\":[]}";  
+                         \"judge\":false, \"spur\":2, \"data:array\":[]}";
     printf("----------test json to pb------------\n\n");
-    std::string error; 
-    JsonContextBodyEncDec data; 
+    std::string error;
+    JsonContextBodyEncDec data;
     ASSERT_TRUE(json2pb::JsonToProtoMessage(info3, &data, &error));
 
-    std::string info4;  
+    std::string info4;
     std::string error1;
     ASSERT_TRUE(json2pb::ProtoMessageToJson(data, &info4, &error1));
 #ifndef RAPIDJSON_VERSION_0_1
@@ -214,9 +214,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_unicode_case) {
     AddressBook address_book;
 
     Person* person = address_book.add_person();
- 
+
     person->set_id(100);
-    
+
     char name[255 * 1024];
     for (int j = 0; j < 255; j++) {
         for (int i = 0; i < 1024; i++) {
@@ -259,10 +259,10 @@ TEST_F(ProtobufJsonTest, json_to_pb_unicode_case) {
     ASSERT_TRUE(ret);
     ASSERT_TRUE(!info1.compare(info2));
     butil::IOBuf buf;
-    butil::IOBufAsZeroCopyOutputStream stream(&buf); 
+    butil::IOBufAsZeroCopyOutputStream stream(&buf);
     bool res = json2pb::ProtoMessageToJson(address_book, &stream, NULL);
     ASSERT_TRUE(res);
-    butil::IOBufAsZeroCopyInputStream stream2(buf); 
+    butil::IOBufAsZeroCopyInputStream stream2(buf);
     AddressBook address_book_test3;
     ret = json2pb::JsonToProtoMessage(&stream2, &address_book_test3, &error);
     ASSERT_TRUE(ret);
@@ -273,103 +273,103 @@ TEST_F(ProtobufJsonTest, json_to_pb_unicode_case) {
 }
 
 TEST_F(ProtobufJsonTest, json_to_pb_edge_case) {
-    std::string info3 = "{\"judge\":false, \"spur\":2.0e1}"; 
-    
-    std::string error; 
+    std::string info3 = "{\"judge\":false, \"spur\":2.0e1}";
+
+    std::string error;
     JsonContextBody data;
     bool ret = json2pb::JsonToProtoMessage(info3, &data, &error);
     ASSERT_TRUE(ret);
 
-    std::string info4;  
+    std::string info4;
     std::string error1;
     ret = json2pb::ProtoMessageToJson(data, &info4, &error1);
     ASSERT_TRUE(ret);
-    
-    info3 = "{\"judge\":false, \"spur\":-2, \"data\":[], \"info\":[],\"content\":[]}"; 
-    error.clear(); 
+
+    info3 = "{\"judge\":false, \"spur\":-2, \"data\":[], \"info\":[],\"content\":[]}";
+    error.clear();
 
     JsonContextBody data1;
     ret = json2pb::JsonToProtoMessage(info3, &data1, &error);
     ASSERT_TRUE(ret);
-   
-    info4.clear();  
+
+    info4.clear();
     error1.clear();
     ret = json2pb::ProtoMessageToJson(data1, &info4, &error1);
     ASSERT_TRUE(ret);
 
-    info3 = "{\"judge\":false, \"spur\":\"NaN\"}"; 
-    error.clear(); 
+    info3 = "{\"judge\":false, \"spur\":\"NaN\"}";
+    error.clear();
 
     JsonContextBody data2;
     ret = json2pb::JsonToProtoMessage(info3, &data2, &error);
     ASSERT_TRUE(ret);
-   
-    info4.clear();  
+
+    info4.clear();
     error1.clear();
     ret = json2pb::ProtoMessageToJson(data2, &info4, &error1);
     ASSERT_TRUE(ret);
 
-    info3 = "{\"judge\":false, \"spur\":\"Infinity\"}"; 
-    error.clear(); 
+    info3 = "{\"judge\":false, \"spur\":\"Infinity\"}";
+    error.clear();
 
     JsonContextBody data3;
     ret = json2pb::JsonToProtoMessage(info3, &data3, &error);
     ASSERT_TRUE(ret);
-   
-    info4.clear();  
+
+    info4.clear();
     error1.clear();
     ret = json2pb::ProtoMessageToJson(data3, &info4, &error1);
     ASSERT_TRUE(ret);
 
-    info3 = "{\"judge\":false, \"spur\":\"-inFiNITY\"}"; 
-    error.clear(); 
+    info3 = "{\"judge\":false, \"spur\":\"-inFiNITY\"}";
+    error.clear();
 
     JsonContextBody data4;
     ret = json2pb::JsonToProtoMessage(info3, &data4, &error);
     ASSERT_TRUE(ret);
-   
-    info4.clear();  
+
+    info4.clear();
     error1.clear();
     ret = json2pb::ProtoMessageToJson(data4, &info4, &error1);
     ASSERT_TRUE(ret);
 
     info3 = "{\"judge\":false, \"spur\":2.0, \"content\":[{\"distance\":2.5, "
-            "\"ext\":{\"databyte\":\"d2VsY29tZQ==\", \"enumtype\":\"MOBILE\"}}]}"; 
-    error.clear(); 
+            "\"ext\":{\"databyte\":\"d2VsY29tZQ==\", \"enumtype\":\"MOBILE\"}}]}";
+    error.clear();
 
     JsonContextBody data5;
     ret = json2pb::JsonToProtoMessage(info3, &data5, &error);
     ASSERT_TRUE(ret);
-   
-    info4.clear();  
+
+    info4.clear();
     error1.clear();
     ret = json2pb::ProtoMessageToJson(data5, &info4, &error1);
     ASSERT_TRUE(ret);
-    
+
     info3 = "{\"content\":[{\"distance\":1,\"unknown_member\":2,\
               \"ext\":{\"age\":1666666666, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":1},\
               \"uid\":\"someone\"},{\"distance\":2.3,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":\"Test\"},\
               \"uid\":\"someone0\"}], \"judge\":false, \
-              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
-    error.clear(); 
+              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";
+    error.clear();
 
     JsonContextBody data9;
     ret = json2pb::JsonToProtoMessage(info3, &data9, &error);
-    ASSERT_TRUE(ret); 
+    ASSERT_TRUE(ret);
     ASSERT_STREQ("Invalid value `\"Test\"' for optional field `Ext.enumtype' which SHOULD be enum", error.data());
-    
+
     info3 = "{\"content\":[{\"distance\":1,\"unknown_member\":2,\
               \"ext\":{\"age\":1666666666, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":1},\
               \"uid\":\"someone\"},{\"distance\":5,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":15},\
               \"uid\":\"someone0\"}], \"judge\":false, \
-              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
-    error.clear(); 
+              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";
+    error.clear();
 
     JsonContextBody data10;
     ret = json2pb::JsonToProtoMessage(info3, &data10, &error);
-    ASSERT_TRUE(ret); 
+    ASSERT_TRUE(ret);
     ASSERT_STREQ("Invalid value `15' for optional field `Ext.enumtype' which SHOULD be enum", error.data());
 
     info3 = "{\"content\":[{\"distance\":1,\"unknown_member\":2,\
@@ -377,13 +377,13 @@ TEST_F(ProtobufJsonTest, json_to_pb_edge_case) {
               \"uid\":\"someone\"},{\"distance\":5,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":15},\
               \"uid\":\"someone0\"}], \"judge\":false, \
-              \"spur\":2, \"type\":[\"123\"]}";  
-    error.clear(); 
+              \"spur\":2, \"type\":[\"123\"]}";
+    error.clear();
 
     JsonContextBody data11;
     ret = json2pb::JsonToProtoMessage(info3, &data11, &error);
-    ASSERT_TRUE(ret);   
-    ASSERT_STREQ("Invalid value `array' for optional field `JsonContextBody.type' which SHOULD be INT64, Invalid value `15' for optional field `Ext.enumtype' which SHOULD be enum", 
+    ASSERT_TRUE(ret);
+    ASSERT_STREQ("Invalid value `array' for optional field `JsonContextBody.type' which SHOULD be INT64, Invalid value `15' for optional field `Ext.enumtype' which SHOULD be enum",
                  error.data());
 }
 
@@ -392,21 +392,21 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
                           \"databyte\":\"welcome\", \"enumtype\":1},\"uid\":\"someone\"},\
                           {\"unknown_member\":20,\"ext\":{\"age\":1666666660, \"databyte\":\
                           \"welcome0\", \"enumtype\":2},\"uid\":\"someone0\"}], \
-                          \"judge\":false, \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
-    std::string error; 
+                          \"judge\":false, \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";
+    std::string error;
 
     JsonContextBody data;
     bool ret = json2pb::JsonToProtoMessage(info3, &data, &error);
     ASSERT_FALSE(ret);
     ASSERT_STREQ("Missing required field: Content.distance", error.data());
-    
+
     info3 = "{\"content\":[{\"distance\":1,\"unknown_member\":2,\"ext\":{\"age\":1666666666, \
               \"enumtype\":1},\"uid\":\"someone\"},{\"distance\":10,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":2},\
               \"uid\":\"someone0\"}], \"judge\":false, \
-              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
-    error.clear(); 
-  
+              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";
+    error.clear();
+
     JsonContextBody data2;
     ret = json2pb::JsonToProtoMessage(info3, &data2, &error);
     ASSERT_FALSE(ret);
@@ -416,8 +416,8 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
               \"ext\":{\"age\":1666666666, \"databyte\":\"welcome\", \"enumtype\":1},\
               \"uid\":\"someone\"},{\"distance\":10,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":2},\
-              \"uid\":\"someone0\"}], \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
-    error.clear(); 
+              \"uid\":\"someone0\"}], \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";
+    error.clear();
 
     JsonContextBody data3;
     ret = json2pb::JsonToProtoMessage(info3, &data, &error);
@@ -429,9 +429,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
               \"uid\":\"someone\"},{\"distance\":10,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":2},\
               \"uid\":\"someone0\"}], \"judge\":\"false\", \
-              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
-    error.clear(); 
-  
+              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";
+    error.clear();
+
     JsonContextBody data4;
     ret = json2pb::JsonToProtoMessage(info3, &data4, &error);
     ASSERT_FALSE(ret);
@@ -442,8 +442,8 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
               \"uid\":\"someone\"},{\"distance\":10,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":2},\
               \"uid\":\"someone0\"}], \"judge\":false, \
-              \"spur\":2, \"data\":[\"1\",\"2\",\"3\",\"4\"]}";  
-    error.clear(); 
+              \"spur\":2, \"data\":[\"1\",\"2\",\"3\",\"4\"]}";
+    error.clear();
 
     JsonContextBody data5;
     ret = json2pb::JsonToProtoMessage(info3, &data5, &error);
@@ -455,39 +455,39 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
               \"uid\":\"someone\"},{\"distance\":10,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":2},\
               \"uid\":\"someone0\"}], \"judge\":false, \
-              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10], \"info\":2}";  
-    error.clear(); 
+              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10], \"info\":2}";
+    error.clear();
 
     JsonContextBody data6;
     ret = json2pb::JsonToProtoMessage(info3, &data6, &error);
-    ASSERT_FALSE(ret); 
+    ASSERT_FALSE(ret);
     ASSERT_STREQ("Invalid value for repeated field: JsonContextBody.info", error.data());
- 
-    info3 = "{\"judge\":false, \"spur\":\"NaNa\"}"; 
-    error.clear(); 
+
+    info3 = "{\"judge\":false, \"spur\":\"NaNa\"}";
+    error.clear();
 
     JsonContextBody data7;
     ret = json2pb::JsonToProtoMessage(info3, &data7, &error);
     ASSERT_FALSE(ret);
-    ASSERT_STREQ("Invalid value `\"NaNa\"' for field `JsonContextBody.spur' which SHOULD be d", 
+    ASSERT_STREQ("Invalid value `\"NaNa\"' for field `JsonContextBody.spur' which SHOULD be d",
                  error.data());
 
-    info3 = "{\"judge\":false, \"spur\":\"Infinty\"}"; 
-    error.clear(); 
+    info3 = "{\"judge\":false, \"spur\":\"Infinty\"}";
+    error.clear();
 
     JsonContextBody data8;
     ret = json2pb::JsonToProtoMessage(info3, &data8, &error);
     ASSERT_FALSE(ret);
-    ASSERT_STREQ("Invalid value `\"Infinty\"' for field `JsonContextBody.spur' which SHOULD be d", 
+    ASSERT_STREQ("Invalid value `\"Infinty\"' for field `JsonContextBody.spur' which SHOULD be d",
                  error.data());
-    
+
     info3 = "{\"content\":[{\"distance\":1,\"unknown_member\":2,\"ext\":{\"age\":1666666666, \
               \"enumtype\":1},\"uid\":23},{\"distance\":10,\"unknown_member\":20,\
               \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":2},\
               \"uid\":\"someone0\"}], \"judge\":false, \
-              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
-    error.clear(); 
-  
+              \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";
+    error.clear();
+
     JsonContextBody data9;
     ret = json2pb::JsonToProtoMessage(info3, &data9, &error);
     ASSERT_FALSE(ret);
@@ -495,22 +495,22 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
 }
 
 TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {
-    
+
     std::string info3 = "{\"content\":[{\"distance\":1.0,\
                           \"ext\":{\"age\":1666666666, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":1},\
-                          \"uid\":\"welcome\"}], \"judge\":false, \"spur\":2.0, \"data\":[]}";  
+                          \"uid\":\"welcome\"}], \"judge\":false, \"spur\":2.0, \"data\":[]}";
 
     printf("----------test json to pb performance------------\n\n");
 
-    std::string error; 
-  
+    std::string error;
+
     ProfilerStart("json_to_pb_perf.prof");
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     float avg_time2 = 0;
     const int times = 100000;
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         JsonContextBody data;
         timer.start();
         res = json2pb::JsonToProtoMessage(info3, &data, &error);
@@ -518,7 +518,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {
         avg_time1 += timer.u_elapsed();
         ASSERT_TRUE(res);
 
-        std::string info4;  
+        std::string info4;
         std::string error1;
         timer.start();
         res = json2pb::ProtoMessageToJson(data, &info4, &error1);
@@ -537,25 +537,25 @@ TEST_F(ProtobufJsonTest, json_to_pb_encode_decode_perf_case) {
     std::string info3 = "{\"@Content_Test%@\":[{\"Distance_info_\":1,\
                           \"_ext%T_\":{\"Aa_ge(\":1666666666, \"databyte(std::string)\":\
                           \"welcome\", \"enum--type\":1},\"uid*\":\"welcome\"}], \
-                          \"judge\":false, \"spur\":2, \"data:array\":[]}";  
+                          \"judge\":false, \"spur\":2, \"data:array\":[]}";
     printf("----------test json to pb encode/decode performance------------\n\n");
-    std::string error; 
-    
+    std::string error;
+
     ProfilerStart("json_to_pb_encode_decode_perf.prof");
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     float avg_time2 = 0;
     const int times = 100000;
-    for (int i = 0; i < times; i++) { 
-        JsonContextBody data; 
+    for (int i = 0; i < times; i++) {
+        JsonContextBody data;
         timer.start();
         res = json2pb::JsonToProtoMessage(info3, &data, &error);
         timer.stop();
         avg_time1 += timer.u_elapsed();
         ASSERT_TRUE(res);
 
-        std::string info4;  
+        std::string info4;
         std::string error1;
         timer.start();
         res = json2pb::ProtoMessageToJson(data, &info4, &error1);
@@ -580,8 +580,8 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
 
     printf("----------test json to pb performance------------\n\n");
 
-    std::string error; 
-  
+    std::string error;
+
     butil::Timer timer;
 
     bool res;
@@ -590,9 +590,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
     json2pb::Json2PbOptions options;
     options.base64_to_bytes = false;
     ProfilerStart("json_to_pb_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         gss::message::gss_us_res_t data;
-        butil::IOBufAsZeroCopyInputStream stream(buf); 
+        butil::IOBufAsZeroCopyInputStream stream(buf);
         timer.start();
         res = json2pb::JsonToProtoMessage(&stream, &data, options, &error);
         timer.stop();
@@ -613,8 +613,8 @@ TEST_F(ProtobufJsonTest, json_to_pb_to_string_complex_perf_case) {
 
     printf("----------test json to pb performance------------\n\n");
 
-    std::string error; 
-  
+    std::string error;
+
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
@@ -622,7 +622,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_to_string_complex_perf_case) {
     json2pb::Json2PbOptions options;
     options.base64_to_bytes = false;
     ProfilerStart("json_to_pb_to_string_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         gss::message::gss_us_res_t data;
         timer.start();
         res = json2pb::JsonToProtoMessage(info3, &data, options, &error);
@@ -639,15 +639,15 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
     AddressBook address_book;
 
     Person* person = address_book.add_person();
- 
+
     person->set_id(100);
     person->set_name("baidu");
-    person->set_email("welcome@baidu.com");  
+    person->set_email("welcome@baidu.com");
 
     Person::PhoneNumber* phone_number = person->add_phone();
     phone_number->set_number("number123");
     phone_number->set_type(Person::HOME);
- 
+
     person->set_data(-240000000);
     person->set_data32(6);
     person->set_data64(-1820000000);
@@ -685,7 +685,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
                  "\"databool\":false,\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
-                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
+                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}",
                  info1.data());
 #else
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu\",\"id\":100,\"email\":\"welcome@baidu.com\","
@@ -712,7 +712,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
                  "\"databool\":false,\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
-                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
+                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}",
                  info1.data());
 #else
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu\",\"id\":100,\"email\":\"welcome@baidu.com\","
@@ -723,7 +723,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"datasfix32\":120,\"datasfix64\":-802,\"datafloat_scientific\":123456792,"
                  "\"datadouble_scientific\":123456789}]}", info1.data());
 #endif
-    
+
     info1.clear();
     {
         json2pb::Pb2JsonOptions option;
@@ -740,7 +740,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
                  "\"databool\":false,\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
-                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
+                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}",
                  info1.data());
 #else
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu\",\"id\":100,\"email\":\"welcome@baidu.com\","
@@ -763,11 +763,11 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
         AddressBook data1;
         std::string error1;
         const int64_t tm1 = gettimeofday_us();
-        bool ret1 = json2pb::JsonToProtoMessage(info1, &data1, &error1); 
+        bool ret1 = json2pb::JsonToProtoMessage(info1, &data1, &error1);
         const int64_t tm2 = gettimeofday_us();
         total_tm += tm2 - tm1;
         ASSERT_TRUE(ret1);
-        
+
         std::string error2;
         const int64_t tm3 = gettimeofday_us();
         ret1 = json2pb::ProtoMessageToJson(data1, &info3, &error2);
@@ -781,7 +781,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
                  "\"databool\":false,\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
-                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
+                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}",
                  info3.data());
 #else
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu\",\"id\":100,\"email\":\"welcome@baidu.com\","
@@ -818,7 +818,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_map_case) {
     ASSERT_TRUE(output.find("\"addr\":\"baidu.com\"") != std::string::npos);
     ASSERT_TRUE(output.find("\"tel\":123456") != std::string::npos);
     ASSERT_TRUE(output.find("\"cell\":654321") != std::string::npos);
-    
+
     output.clear();
     AddressStringMap ab3;
     ASSERT_TRUE(json2pb::JsonToProtoMessage(json, &ab3, &error));
@@ -845,14 +845,14 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode) {
     json_data.add_info("this is a test");
     json_data.set_judge(true);
     json_data.set_spur(3.45);
-    
+
     ContentEncDec * content = json_data.add__z064_content_test_z037__z064_();
     content->set_uid_z042_("content info");
     content->set_distance_info_(1234.56);
-    
-    ExtEncDec* ext = content->mutable__ext_z037_t_(); 
+
+    ExtEncDec* ext = content->mutable__ext_z037_t_();
     ext->set_aa_ge_z040_(160000);
-    ext->set_databyte_z040_std_z058__z058_string_z041_("databyte"); 
+    ext->set_databyte_z040_std_z058__z058_string_z041_("databyte");
     ext->set_enum_z045__z045_type(ExtEncDec_PhoneTypeEncDec_WORK);
 
     std::string info1;
@@ -872,35 +872,35 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode) {
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
                  "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
+                 "\"enum--type\":\"WORK\"}}]}",
                  info1.data());
 #else
     ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
                  "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
+                 "\"enum--type\":\"WORK\"}}]}",
                  info1.data());
 #endif
     printf("----------test json to pb------------\n\n");
-    
+
     std::string info3;
     JsonContextBody data1;
-    json2pb::JsonToProtoMessage(info1, &data1, NULL); 
+    json2pb::JsonToProtoMessage(info1, &data1, NULL);
     json2pb::ProtoMessageToJson(data1, &info3, NULL);
 #ifndef RAPIDJSON_VERSION_0_1
     ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
                  "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
+                 "\"enum--type\":\"WORK\"}}]}",
                  info1.data());
 #else
     ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
                  "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
+                 "\"enum--type\":\"WORK\"}}]}",
                  info1.data());
 #endif
 }
@@ -909,7 +909,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
     AddressBook address_book;
 
     Person* person = address_book.add_person();
- 
+
     person->set_id(100);
     char ch = 0x01;
     char* name = new char[17];
@@ -924,12 +924,12 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
     name[16] = '\0';
     person->set_name(name);
     printf("name is %s\n", name);
-    person->set_email("welcome@baidu.com");  
+    person->set_email("welcome@baidu.com");
 
     Person::PhoneNumber* phone_number = person->add_phone();
     phone_number->set_number("number123");
     phone_number->set_type(Person::HOME);
- 
+
     person->set_data(-240000000);
     person->set_data32(6);
     person->set_data64(-1820000000);
@@ -971,7 +971,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
                  "\"databool\":false,\"databyte\":\"welcome to china\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
-                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
+                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}",
                  info1.data());
 #else
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu \\u0001test\\b\\u001Aend\",\"id\":100,\"email\":"
@@ -1000,7 +1000,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
                  "\"databool\":false,\"databyte\":\"d2VsY29tZSB0byBjaGluYQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
-                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
+                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}",
                  info1.data());
 #else
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu \\u0001test\\b\\u001Aend\",\"id\":100,\"email\":"
@@ -1012,7 +1012,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
                  "\"datasfix32\":120,\"datasfix64\":-802,\"datafloat_scientific\":123456792,"
                  "\"datadouble_scientific\":123456789}]}", info1.data());
 #endif
-    
+
     info1.clear();
     {
         json2pb::Pb2JsonOptions option;
@@ -1030,7 +1030,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
                  "\"databool\":false,\"databyte\":\"welcome to china\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
-                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
+                 "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}",
                  info1.data());
 #else
     std::cout << info1.data() << std::endl;
@@ -1041,7 +1041,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
                  "\"datafloat\":8.612299919,\"datau32\":60,\"datau64\":960,"
                  "\"databool\":false,\"databyte\":\"welcome to china\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
-                 "\"datafloat_scientific\":123456792,\"datadouble_scientific\":123456789}]}", 
+                 "\"datafloat_scientific\":123456792,\"datadouble_scientific\":123456789}]}",
                  info1.data());
 #endif
 }
@@ -1050,9 +1050,9 @@ TEST_F(ProtobufJsonTest, pb_to_json_unicode_case) {
     AddressBook address_book;
 
     Person* person = address_book.add_person();
- 
+
     person->set_id(100);
-    
+
     char name[255*1024];
     for (int j = 0; j < 1024; j++) {
         for (int i = 0; i < 255; i++) {
@@ -1088,23 +1088,23 @@ TEST_F(ProtobufJsonTest, pb_to_json_unicode_case) {
     bool ret = json2pb::ProtoMessageToJson(address_book, &info1, &error);
     ASSERT_TRUE(ret);
     butil::IOBuf buf;
-    butil::IOBufAsZeroCopyOutputStream stream(&buf); 
+    butil::IOBufAsZeroCopyOutputStream stream(&buf);
     bool res = json2pb::ProtoMessageToJson(address_book, &stream, NULL);
     ASSERT_TRUE(res);
     ASSERT_TRUE(!info1.compare(buf.to_string()));
 }
-                 
+
 TEST_F(ProtobufJsonTest, pb_to_json_edge_case) {
     AddressBook address_book;
-    
+
     std::string info1;
     std::string error;
     bool ret = json2pb::ProtoMessageToJson(address_book, &info1, &error);
     ASSERT_TRUE(ret);
-   
+
     info1.clear();
     Person* person = address_book.add_person();
-      
+
     person->set_id(100);
     person->set_name("baidu");
 
@@ -1122,7 +1122,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_edge_case) {
     std::string info3;
     AddressBook data1;
     std::string error1;
-    bool ret1 = json2pb::JsonToProtoMessage(info1, &data1, &error1); 
+    bool ret1 = json2pb::JsonToProtoMessage(info1, &data1, &error1);
     ASSERT_TRUE(ret1);
     ASSERT_TRUE(error1.empty());
 
@@ -1134,53 +1134,53 @@ TEST_F(ProtobufJsonTest, pb_to_json_edge_case) {
 
 TEST_F(ProtobufJsonTest, pb_to_json_expected_failed_case) {
     AddressBook address_book;
-    std::string info1; 
+    std::string info1;
     std::string error;
 
     Person* person = address_book.add_person();
- 
+
     person->set_name("baidu");
-    person->set_email("welcome@baidu.com");  
-    
+    person->set_email("welcome@baidu.com");
+
     bool ret = json2pb::ProtoMessageToJson(address_book, &info1, &error);
     ASSERT_FALSE(ret);
-    ASSERT_STREQ("Missing required field: addressbook.Person.id", error.data()); 
-     
+    ASSERT_STREQ("Missing required field: addressbook.Person.id", error.data());
+
     address_book.clear_person();
     person = address_book.add_person();
 
     person->set_id(2);
-    person->set_email("welcome@baidu.com");  
-    
+    person->set_email("welcome@baidu.com");
+
     ret = json2pb::ProtoMessageToJson(address_book, &info1, &error);
     ASSERT_FALSE(ret);
-    ASSERT_STREQ("Missing required field: addressbook.Person.name", error.data()); 
+    ASSERT_STREQ("Missing required field: addressbook.Person.name", error.data());
 
     address_book.clear_person();
     person = address_book.add_person();
 
     person->set_id(2);
     person->set_name("name");
-    person->set_email("welcome@baidu.com");  
-    
+    person->set_email("welcome@baidu.com");
+
     ret = json2pb::ProtoMessageToJson(address_book, &info1, &error);
     ASSERT_FALSE(ret);
-    ASSERT_STREQ("Missing required field: addressbook.Person.datadouble", error.data()); 
+    ASSERT_STREQ("Missing required field: addressbook.Person.datadouble", error.data());
 }
 
 TEST_F(ProtobufJsonTest, pb_to_json_perf_case) {
     AddressBook address_book;
 
     Person* person = address_book.add_person();
- 
+
     person->set_id(100);
     person->set_name("baidu");
-    person->set_email("welcome@baidu.com");  
+    person->set_email("welcome@baidu.com");
 
     Person::PhoneNumber* phone_number = person->add_phone();
     phone_number->set_number("number123");
     phone_number->set_type(Person::HOME);
- 
+
     person->set_data(-240000000);
 
     person->set_data32(6);
@@ -1227,15 +1227,15 @@ TEST_F(ProtobufJsonTest, pb_to_json_perf_case) {
     float avg_time2 = 0;
     const int times = 100000;
     ASSERT_TRUE(json2pb::ProtoMessageToJson(address_book, &info1, NULL));
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         std::string info3;
         AddressBook data1;
         timer.start();
-        res = json2pb::JsonToProtoMessage(info1, &data1, NULL); 
+        res = json2pb::JsonToProtoMessage(info1, &data1, NULL);
         timer.stop();
         avg_time1 += timer.u_elapsed();
         ASSERT_TRUE(res);
-        
+
         timer.start();
         res = json2pb::ProtoMessageToJson(data1, &info3, NULL);
         timer.stop();
@@ -1258,14 +1258,14 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode_perf_case) {
     json_data.add_info("this is a test");
     json_data.set_judge(true);
     json_data.set_spur(3.45);
-    
+
     ContentEncDec * content = json_data.add__z064_content_test_z037__z064_();
     content->set_uid_z042_("content info");
     content->set_distance_info_(1234.56);
-    
-    ExtEncDec* ext = content->mutable__ext_z037_t_(); 
+
+    ExtEncDec* ext = content->mutable__ext_z037_t_();
     ext->set_aa_ge_z040_(160000);
-    ext->set_databyte_z040_std_z058__z058_string_z041_("databyte"); 
+    ext->set_databyte_z040_std_z058__z058_string_z041_("databyte");
     ext->set_enum_z045__z045_type(ExtEncDec_PhoneTypeEncDec_WORK);
 
     std::string info1;
@@ -1275,7 +1275,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode_perf_case) {
     printer.PrintToString(json_data, &text);
 
     printf("text:%s\n", text.data());
-    
+
     ASSERT_TRUE(json2pb::ProtoMessageToJson(json_data, &info1, NULL));
 
     printf("----------test pb to json encode decode performance------------\n\n");
@@ -1285,15 +1285,15 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode_perf_case) {
     float avg_time1 = 0;
     float avg_time2 = 0;
     const int times = 100000;
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         std::string info3;
         JsonContextBody json_body;
         timer.start();
-        res = json2pb::JsonToProtoMessage(info1, &json_body, NULL); 
+        res = json2pb::JsonToProtoMessage(info1, &json_body, NULL);
         timer.stop();
         avg_time1 += timer.u_elapsed();
         ASSERT_TRUE(res);
-        
+
         timer.start();
         res = json2pb::ProtoMessageToJson(json_body, &info3, NULL);
         timer.stop();
@@ -1308,7 +1308,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode_perf_case) {
 }
 
 TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
-    
+
     std::ifstream in("jsonout", std::ios::in);
     std::ostringstream tmp;
     tmp << in.rdbuf();
@@ -1317,8 +1317,8 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
 
     printf("----------test pb to json performance------------\n\n");
 
-    std::string error; 
-  
+    std::string error;
+
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
@@ -1333,11 +1333,11 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
     avg_time1 += timer.u_elapsed();
     ASSERT_TRUE(res);
     ProfilerStart("pb_to_json_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         std::string error1;
         timer.start();
         butil::IOBuf buf;
-        butil::IOBufAsZeroCopyOutputStream stream(&buf); 
+        butil::IOBufAsZeroCopyOutputStream stream(&buf);
         res = json2pb::ProtoMessageToJson(data, &stream, &error1);
         timer.stop();
         avg_time2 += timer.u_elapsed();
@@ -1357,8 +1357,8 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
 
     printf("----------test pb to json performance------------\n\n");
 
-    std::string error; 
-  
+    std::string error;
+
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
@@ -1373,8 +1373,8 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
     avg_time1 += timer.u_elapsed();
     ASSERT_TRUE(res);
     ProfilerStart("pb_to_json_to_string_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
-        std::string info4;  
+    for (int i = 0; i < times; i++) {
+        std::string info4;
         std::string error1;
         timer.start();
         std::string inf4;
@@ -1389,15 +1389,15 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
 }
 
 TEST_F(ProtobufJsonTest, encode_decode_case) {
-      
+
     std::string json_key = "abcdek123lske_slkejfl_l1kdle";
     std::string field_name;
     ASSERT_FALSE(json2pb::encode_name(json_key, field_name));
     ASSERT_TRUE(field_name.empty());
-    std::string json_key_decode; 
+    std::string json_key_decode;
     ASSERT_FALSE(json2pb::decode_name(field_name, json_key_decode));
     ASSERT_TRUE(json_key_decode.empty());
-    
+
     json_key = "_Afledk2e*_+%leGi___hE_Z278_t#";
     field_name.clear();
     json2pb::encode_name(json_key, field_name);
@@ -1406,7 +1406,7 @@ TEST_F(ProtobufJsonTest, encode_decode_case) {
     json_key_decode.clear();
     json2pb::decode_name(field_name, json_key_decode);
     ASSERT_TRUE(strcmp(json_key_decode.data(), json_key.data()) == 0);
-    
+
     json_key = "_ext%T_";
     field_name.clear();
     json2pb::encode_name(json_key, field_name);
@@ -1423,7 +1423,7 @@ TEST_F(ProtobufJsonTest, encode_decode_case) {
     ASSERT_FALSE(json2pb::decode_name(empty_result, empty_key));
     ASSERT_TRUE(empty_key.empty() == true);
 }
-                 
+
 TEST_F(ProtobufJsonTest, json_to_zero_copy_stream_normal_case) {
     Person person;
     person.set_name("hello");

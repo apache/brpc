@@ -84,7 +84,7 @@ inline size_t bit_array_first1(const uint64_t* array, size_t begin, size_t end)
         }
         ++off1;
     }
-    
+
     const size_t off2 = (end >> 6);
     for (size_t i = off1; i < off2; ++i) {
         if (array[i]) {

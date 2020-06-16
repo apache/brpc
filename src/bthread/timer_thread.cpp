@@ -80,7 +80,7 @@ public:
         TimerThread::TaskId task_id;
         bool earlier;
     };
-    
+
     // Schedule a task into this bucket.
     // Returns the TaskId and if it has the nearest run time.
     ScheduleResult schedule(void (*fn)(void*), void* arg,
@@ -155,7 +155,7 @@ int TimerThread::start(const TimerThreadOptions* options_in) {
     if (NULL == _buckets) {
         LOG(ERROR) << "Fail to new _buckets";
         return ENOMEM;
-    }        
+    }
     const int ret = pthread_create(&_thread, NULL, TimerThread::run_this, this);
     if (ret) {
         return ret;
@@ -221,7 +221,7 @@ TimerThread::TaskId TimerThread::schedule(
         return INVALID_TASK_ID;
     }
     // Hashing by pthread id is better for cache locality.
-    const Bucket::ScheduleResult result = 
+    const Bucket::ScheduleResult result =
         _buckets[butil::fmix64(pthread_numeric_id()) % _options.num_buckets]
         .schedule(fn, arg, abstime);
     if (result.earlier) {
@@ -338,7 +338,7 @@ void TimerThread::run() {
         ntriggered_second.expose_as(_options.bvar_prefix, "triggered_second");
         busy_seconds_second.expose_as(_options.bvar_prefix, "usage");
     }
-    
+
     while (!_stop.load(butil::memory_order_relaxed)) {
         // Clear _nearest_run_time before consuming tasks from buckets.
         // This helps us to be aware of earliest task of the new tasks before we
@@ -347,7 +347,7 @@ void TimerThread::run() {
             BAIDU_SCOPED_LOCK(_mutex);
             _nearest_run_time = std::numeric_limits<int64_t>::max();
         }
-        
+
         // Pull tasks from buckets.
         for (size_t i = 0; i < _options.num_buckets; ++i) {
             Bucket& bucket = _buckets[i];
@@ -375,7 +375,7 @@ void TimerThread::run() {
             if (butil::gettimeofday_us() < task1->run_time) {  // not ready yet.
                 break;
             }
-            // Each time before we run the earliest task (that we think), 
+            // Each time before we run the earliest task (that we think),
             // check the globally shared _nearest_run_time. If a task earlier
             // than task1 was scheduled during pulling from buckets, we'll
             // know. In RPC scenarios, _nearest_run_time is not often changed by
@@ -413,7 +413,7 @@ void TimerThread::run() {
         }
         // Similarly with the situation before running tasks, we check
         // _nearest_run_time to prevent us from waiting on a non-earliest
-        // task. We also use the _nsignal to make sure that if new task 
+        // task. We also use the _nsignal to make sure that if new task
         // is earlier that the realtime that we wait for, we'll wake up.
         int expected_nsignals = 0;
         {

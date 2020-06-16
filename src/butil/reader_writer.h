@@ -43,7 +43,7 @@ public:
 
     // Semantics of parameters and return value are same as writev(2) except that
     // there's no `fd'.
-    // WriteV is required to submit data gathered by multiple appends in one 
+    // WriteV is required to submit data gathered by multiple appends in one
     // run and enable the possibility of atomic writes.
     virtual ssize_t WriteV(const iovec* iov, int iovcnt) = 0;
 };

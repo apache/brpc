@@ -37,7 +37,7 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
     ClosureGuard done_guard(done);
     Controller *cntl = static_cast<Controller*>(cntl_base);
     std::string open_path;
-    
+
     const std::string& path_str =
         cntl->http_request().unresolved_path();
     if (!path_str.empty()) {
@@ -87,7 +87,7 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
 
         std::vector<std::string> files;
         files.reserve(32);
-        // readdir_r is marked as deprecated since glibc 2.24. 
+        // readdir_r is marked as deprecated since glibc 2.24.
 #if defined(__GLIBC__) && \
         (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 24))
         for (struct dirent* p = NULL; (p = readdir(dir)) != NULL; ) {
@@ -98,7 +98,7 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
             files.push_back(p->d_name);
         }
         CHECK_EQ(0, closedir(dir));
-        
+
         std::sort(files.begin(), files.end());
         butil::IOBufBuilder os;
         if (use_html) {

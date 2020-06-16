@@ -207,7 +207,7 @@ TEST_F(StatusTest, copy) {
     oss.str("");
     oss << st2;
     ASSERT_EQ(NO_MEMORY_STR, oss.str());
-    
+
     ASSERT_EQ(0, st1.set_error(EINVAL, "%s%s", NO_MEMORY_STR, NO_CPU_STR));
     ASSERT_FALSE(st1.ok());
     ASSERT_EQ(EINVAL, st1.error_code());

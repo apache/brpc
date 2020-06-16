@@ -170,20 +170,20 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     // Note: Making a Socket re-addessable is hard. An alternative is
     // creating another Socket with selected internal fields to replace
     // failed Socket. Although it avoids concurrent issues with in-place
-    // revive, it changes SocketId: many code need to watch SocketId 
+    // revive, it changes SocketId: many code need to watch SocketId
     // and update on change, which is impractical. Another issue with
-    // this method is that it has to move "selected internal fields" 
+    // this method is that it has to move "selected internal fields"
     // which may be accessed in parallel, not trivial to be moved.
     // Finally we choose a simple-enough solution: wait until the
     // reference count hits `expected_nref', which basically means no
-    // one is addressing the Socket(except here). Because the Socket 
-    // is not addressable, the reference count will not increase 
+    // one is addressing the Socket(except here). Because the Socket
+    // is not addressable, the reference count will not increase
     // again. This solution is not perfect because the `expected_nref'
-    // is implementation specific. In our case, one reference comes 
-    // from SocketMapInsert(socket_map.cpp), one reference is here. 
+    // is implementation specific. In our case, one reference comes
+    // from SocketMapInsert(socket_map.cpp), one reference is here.
     // Although WaitAndReset() could hang when someone is addressing
-    // the failed Socket forever (also indicating bug), this is not an 
-    // issue in current code. 
+    // the failed Socket forever (also indicating bug), this is not an
+    // issue in current code.
     if (_first_time) {  // Only check at first time.
         _first_time = false;
         if (ptr->WaitAndReset(2/*note*/) != 0) {

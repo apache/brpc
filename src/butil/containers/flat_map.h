@@ -137,7 +137,7 @@ public:
         _Sparse, SparseFlatMapIterator<FlatMap, value_type>,
         FlatMapIterator<FlatMap, value_type> >::type iterator;
     typedef typename conditional<
-        _Sparse, SparseFlatMapIterator<FlatMap, const value_type>, 
+        _Sparse, SparseFlatMapIterator<FlatMap, const value_type>,
         FlatMapIterator<FlatMap, const value_type> >::type const_iterator;
     typedef _Hash hasher;
     typedef _Equal key_equal;
@@ -147,22 +147,22 @@ public:
         bool at_entry;
         key_type key;
     };
-    
+
     FlatMap(const hasher& hashfn = hasher(), const key_equal& eql = key_equal());
     ~FlatMap();
-    FlatMap(const FlatMap& rhs);    
+    FlatMap(const FlatMap& rhs);
     void operator=(const FlatMap& rhs);
     void swap(FlatMap & rhs);
 
     // Must be called to initialize this map, otherwise insert/operator[]
     // crashes, and seek/erase fails.
-    // `nbucket' is the initial number of buckets. `load_factor' is the 
+    // `nbucket' is the initial number of buckets. `load_factor' is the
     // maximum value of size()*100/nbucket, if the value is reached, nbucket
     // will be doubled and all items stored will be rehashed which is costly.
     // Choosing proper values for these 2 parameters reduces costs.
     int init(size_t nbucket, u_int load_factor = 80);
-    
-    // Insert a pair of |key| and |value|. If size()*100/bucket_count() is 
+
+    // Insert a pair of |key| and |value|. If size()*100/bucket_count() is
     // more than load_factor(), a resize() will be done.
     // Returns address of the inserted value, NULL on error.
     mapped_type* insert(const key_type& key, const mapped_type& value);
@@ -177,7 +177,7 @@ public:
 
     // Remove all items and return all allocated spaces to system.
     void clear_and_reset_pool();
-        
+
     // Search for the value associated with |key|
     // Returns: address of the value
     template <typename K2> mapped_type* seek(const K2& key) const;
@@ -192,7 +192,7 @@ public:
     // insert() or operator[] if there're too many items.
     // Returns successful or not.
     bool resize(size_t nbucket);
-    
+
     // Iterators
     iterator begin();
     iterator end();
@@ -266,7 +266,7 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     // True if buckets need to be resized before holding `size' elements.
     inline bool is_too_crowded(size_t size) const
     { return size * 100 >= _nbucket * _load_factor; }
-        
+
     size_t _size;
     size_t _nbucket;
     Bucket* _buckets;
@@ -291,7 +291,7 @@ public:
     typedef typename Map::const_iterator const_iterator;
     typedef typename Map::hasher hasher;
     typedef typename Map::key_equal key_equal;
-    
+
     FlatSet(const hasher& hashfn = hasher(), const key_equal& eql = key_equal())
         : _map(hashfn, eql) {}
     void swap(FlatSet & rhs) { _map.swap(rhs._map); }
@@ -312,7 +312,7 @@ public:
     const void* seek(const K2& key) const { return _map.seek(key); }
 
     bool resize(size_t nbucket) { return _map.resize(nbucket); }
-    
+
     iterator begin() { return _map.begin(); }
     iterator end() { return _map.end(); }
     const_iterator begin() const { return _map.begin(); }
@@ -410,7 +410,7 @@ struct DefaultHasher<std::string> {
         for (std::string::const_iterator i = s.begin(); i != s.end(); ++i) {
             result = result * 101 + *i;
         }
-        return result;        
+        return result;
     }
 };
 

@@ -146,8 +146,8 @@ extern int bthread_getconcurrency(void);
 // NOTE: currently concurrency cannot be reduced after any bthread created.
 extern int bthread_setconcurrency(int num);
 
-// Yield processor to another bthread. 
-// Notice that current implementation is not fair, which means that 
+// Yield processor to another bthread.
+// Notice that current implementation is not fair, which means that
 // even if bthread_yield() is called, suspended threads may still starve.
 extern int bthread_yield(void);
 
@@ -285,8 +285,8 @@ extern int bthread_barrier_destroy(bthread_barrier_t* barrier);
 extern int bthread_barrier_wait(bthread_barrier_t* barrier);
 
 // ---------------------------------------------------------------------
-// Functions for handling thread-specific data. 
-// Notice that they can be used in pthread: get pthread-specific data in 
+// Functions for handling thread-specific data.
+// Notice that they can be used in pthread: get pthread-specific data in
 // pthreads and get bthread-specific data in bthreads.
 // ---------------------------------------------------------------------
 
@@ -313,7 +313,7 @@ extern int bthread_key_delete(bthread_key_t key);
 // PTHREAD_DESTRUCTOR_ITERATIONS times to clear the slots.
 // NOTE: If the thread is not created by brpc server and lifetime is
 // very short(doing a little thing and exit), avoid using bthread-local. The
-// reason is that bthread-local always allocate keytable on first call to 
+// reason is that bthread-local always allocate keytable on first call to
 // bthread_setspecific, the overhead is negligible in long-lived threads,
 // but noticeable in shortly-lived threads. Threads in brpc server
 // are special since they reuse keytables from a bthread_keytable_pool_t

@@ -93,7 +93,7 @@ public:
         _last_context_remained = cb;
         _last_context_remained_arg = arg;
     }
-    
+
     // Suspend caller for at least |timeout_us| microseconds.
     // If |timeout_us| is 0, this function does nothing.
     // If |group| is NULL or current thread is non-bthread, call usleep(3)
@@ -226,7 +226,7 @@ friend class TaskControl;
 #endif
 
     TaskMeta* _cur_meta;
-    
+
     // the control that this group belongs to
     TaskControl* _control;
     int _num_nosignal;

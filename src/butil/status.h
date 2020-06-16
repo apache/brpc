@@ -57,7 +57,7 @@ public:
 
     // Create a failed status.
     // error_text is formatted from `fmt' and following arguments.
-    Status(int code, const char* fmt, ...) 
+    Status(int code, const char* fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)))
         : _state(NULL) {
         va_list ap;
@@ -75,7 +75,7 @@ public:
 
     // Reset this status to be OK.
     void reset();
-    
+
     // Reset this status to be failed.
     // Returns 0 on success, -1 otherwise and internal fields are not changed.
     int set_error(int code, const char* error_format, ...)
@@ -100,14 +100,14 @@ public:
         return (_state == NULL ? "OK" : _state->message);
     }
     butil::StringPiece error_data() const {
-        return (_state == NULL ? butil::StringPiece("OK", 2) 
+        return (_state == NULL ? butil::StringPiece("OK", 2)
                 : butil::StringPiece(_state->message, _state->size));
     }
     std::string error_str() const;
 
     void swap(butil::Status& other) { std::swap(_state, other._state); }
 
-private:    
+private:
     // OK status has a NULL _state.  Otherwise, _state is a State object
     // converted from malloc().
     State* _state;

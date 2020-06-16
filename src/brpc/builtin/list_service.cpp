@@ -26,7 +26,7 @@
 
 namespace brpc {
 
-void ListService::default_method(::google::protobuf::RpcController*, 
+void ListService::default_method(::google::protobuf::RpcController*,
                                  const ::brpc::ListRequest*,
                                  ::brpc::ListResponse* response,
                                  ::google::protobuf::Closure* done) {

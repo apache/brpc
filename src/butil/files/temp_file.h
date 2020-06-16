@@ -24,16 +24,16 @@
 
 namespace butil {
 
-// Create a temporary file in current directory, which will be deleted when 
+// Create a temporary file in current directory, which will be deleted when
 // corresponding TempFile object destructs, typically for unit testing.
-// 
+//
 // Usage:
-//   { 
+//   {
 //      TempFile tmpfile;           // A temporay file shall be created
 //      tmpfile.save("some text");  // Write into the temporary file
 //   }
 //   // The temporary file shall be removed due to destruction of tmpfile
- 
+
 class TempFile {
 public:
     // Create a temporary file in current directory. If |ext| is given,
@@ -57,16 +57,16 @@ public:
     // Save binary data |buf| (|count| bytes) to file, overwriting existing file.
     // Returns 0 when successful, -1 otherwise.
     int save_bin(const void *buf, size_t count);
-    
+
     // Get name of the temporary file.
     const char *fname() const { return _fname; }
 
 private:
     // TempFile is associated with file, copying makes no sense.
     DISALLOW_COPY_AND_ASSIGN(TempFile);
-    
+
     int _reopen_if_necessary();
-    
+
     int _fd;                // file descriptor
     int _ever_opened;
     char _fname[24];        // name of the file

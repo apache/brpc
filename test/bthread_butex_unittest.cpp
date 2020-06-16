@@ -101,7 +101,7 @@ TEST(ButexTest, join) {
     for (size_t i = 0; i < M; ++i) {
         ASSERT_EQ(0, pthread_create(&pth[i], NULL, joiner, th));
     }
-    
+
     for (size_t i = 0; i < M; ++i) {
         ASSERT_EQ(0, bthread_join(jth[i], NULL))
             << "i=" << i << " error=" << berror();
@@ -142,7 +142,7 @@ TEST(ButexTest, sanity) {
         bthread::butex_create_checked<butil::atomic<int> >();
     ASSERT_TRUE(b1);
     bthread::butex_destroy(b1);
-    
+
     b1 = bthread::butex_create_checked<butil::atomic<int> >();
     *b1 = 1;
     ASSERT_EQ(0, bthread::butex_wake(b1));
@@ -167,13 +167,13 @@ TEST(ButexTest, sanity) {
             args[i].expected_result = ETIMEDOUT;
             args[i].ptimeout = &abstime;
         }
-        if (i < 2*N) { 
+        if (i < 2*N) {
             pthread_create(&t1, NULL, waiter, &args[i]);
         } else {
             ASSERT_EQ(0, bthread_start_urgent(&th, NULL, waiter, &args[i]));
         }
     }
-    
+
     sleep(2);
     for (size_t i = 0; i < 2*N; ++i) {
         ASSERT_EQ(1, bthread::butex_wake(b1));
@@ -215,12 +215,12 @@ TEST(ButexTest, wait_without_stop) {
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
         ButexWaitArg arg = { butex, *butex, WAIT_MSEC, ETIMEDOUT };
         bthread_t th;
-        
+
         tm.start();
         ASSERT_EQ(0, bthread_start_urgent(&th, &attr, wait_butex, &arg));
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
-        
+
         ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 250);
     }
     bthread::butex_destroy(butex);
@@ -249,7 +249,7 @@ TEST(ButexTest, stop_after_running) {
         // ASSERT_TRUE(bthread::get_task_control()->
         //             timer_thread()._idset.empty());
         ASSERT_EQ(EINVAL, bthread_stop(th));
-    }    
+    }
     bthread::butex_destroy(butex);
 }
 
@@ -264,14 +264,14 @@ TEST(ButexTest, stop_before_running) {
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
         bthread_t th;
         ButexWaitArg arg = { butex, *butex, WAIT_MSEC, EINTR };
-        
+
         tm.start();
         ASSERT_EQ(0, bthread_start_background(&th, &attr, wait_butex, &arg));
         ASSERT_EQ(0, bthread_stop(th));
         bthread_flush();
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
-        
+
         ASSERT_LT(tm.m_elapsed(), 5);
         // ASSERT_TRUE(bthread::get_task_control()->
         //             timer_thread()._idset.empty());
@@ -319,7 +319,7 @@ TEST(ButexTest, stop_after_slept) {
     butil::Timer tm;
     const long SLEEP_MSEC = 100;
     const long WAIT_MSEC = 10;
-    
+
     for (int i = 0; i < 2; ++i) {
         const bthread_attr_t attr =
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
@@ -345,7 +345,7 @@ TEST(ButexTest, stop_after_slept) {
 TEST(ButexTest, stop_just_when_sleeping) {
     butil::Timer tm;
     const long SLEEP_MSEC = 100;
-    
+
     for (int i = 0; i < 2; ++i) {
         const bthread_attr_t attr =
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
@@ -375,7 +375,7 @@ TEST(ButexTest, stop_before_sleeping) {
         bthread_t th;
         const bthread_attr_t attr =
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
-        
+
         tm.start();
         ASSERT_EQ(0, bthread_start_background(&th, &attr, sleeper,
                                               (void*)(SLEEP_MSEC*1000L)));

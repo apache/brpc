@@ -146,7 +146,7 @@ int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         CHECK_EQ(0, total_weight);
         total_weight = 0;
     } while (1);
-    
+
     if (nptr == 1) {
         out->ptr->reset(ptrs[0].first.release());
         return 0;

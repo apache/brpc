@@ -60,7 +60,7 @@ public:
         futex_wait_private(&_pending_signal, expected_state.val, NULL);
     }
 
-    // Wakeup suspended wait() and make them unwaitable ever. 
+    // Wakeup suspended wait() and make them unwaitable ever.
     void stop() {
         _pending_signal.fetch_or(1);
         futex_wake_private(&_pending_signal, 10000);

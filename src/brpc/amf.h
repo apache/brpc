@@ -58,7 +58,7 @@ public:
 
     // Returns false if error occurred in other consuming functions.
     bool good() const { return _good; }
-    
+
     // If the error prevents parsing from going on, call this method.
     // This method is also called in other functions in this class.
     void set_bad() { _good = false; }
@@ -66,7 +66,7 @@ public:
     // Return true if the stream is empty. Notice that this function
     // may update _data and _size.
     bool check_emptiness();
-    
+
 private:
     bool _good;
     int _size;
@@ -106,7 +106,7 @@ public:
 
     // Optionally called to backup buffered bytes to zero-copy stream.
     void done();
-    
+
 private:
     bool _good;
     int _size;
@@ -157,7 +157,7 @@ public:
     void Clear() { if (_type != AMF_MARKER_UNDEFINED) { SlowerClear(); } }
 
     AMFMarker type() const { return (AMFMarker)_type; }
-    
+
     bool IsString() const
     { return _type == AMF_MARKER_STRING || _type == AMF_MARKER_LONG_STRING; }
     bool IsBool() const { return _type == AMF_MARKER_BOOLEAN; }
@@ -165,7 +165,7 @@ public:
     bool IsObject() const
     { return _type == AMF_MARKER_OBJECT || _type == AMF_MARKER_ECMA_ARRAY; }
     bool IsArray() const { return _type == AMF_MARKER_STRICT_ARRAY; }
-    
+
     butil::StringPiece AsString() const
     { return butil::StringPiece((_is_shortstr ? _shortstr : _str), _strsize); }
     bool AsBool() const { return _b; }
@@ -181,7 +181,7 @@ public:
     void SetUnsupported();
     AMFObject* MutableObject();
     AMFArray* MutableArray();
-        
+
 private:
     void SlowerClear();
 
@@ -208,7 +208,7 @@ public:
     const AMFField* Find(const char* name) const;
     void Remove(const std::string& name) { _fields.erase(name); }
     void Clear() { _fields.clear(); }
-    
+
     void SetString(const std::string& name, const butil::StringPiece& val);
     void SetBool(const std::string& name, bool val);
     void SetNumber(const std::string& name, double val);
@@ -253,7 +253,7 @@ public:
 private:
     AMFField* AddField();
     void RemoveLastField();
-    
+
     uint32_t _size;
     AMFField _fields[4];
     std::deque<AMFField> _morefields;

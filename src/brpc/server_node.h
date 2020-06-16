@@ -26,7 +26,7 @@ namespace brpc {
 // Representing a server inside a NamingService.
 struct ServerNode {
     ServerNode() {}
-    
+
     explicit ServerNode(const butil::EndPoint& pt) : addr(pt) {}
 
     ServerNode(butil::ip_t ip, int port, const std::string& tag2)

@@ -46,8 +46,8 @@ public:
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
 
-        LOG(INFO) << "Received request[log_id=" << cntl->log_id() 
-                  << "] from " << cntl->remote_side() 
+        LOG(INFO) << "Received request[log_id=" << cntl->log_id()
+                  << "] from " << cntl->remote_side()
                   << " to " << cntl->local_side()
                   << ": " << request->DebugString();
 
@@ -67,8 +67,8 @@ public:
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
 
-        LOG(INFO) << "Received request[log_id=" << cntl->log_id() 
-                  << "] from " << cntl->remote_side() 
+        LOG(INFO) << "Received request[log_id=" << cntl->log_id()
+                  << "] from " << cntl->remote_side()
                   << " to " << cntl->local_side()
                   << ": req1=" << request->req1().message()
                   << " req2=" << request->req2().message();
@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
     // Add the service into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
     // use brpc::SERVER_OWNS_SERVICE.
-    if (server.AddService(&echo_service_impl, 
+    if (server.AddService(&echo_service_impl,
                           brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
         LOG(ERROR) << "Fail to add service";
         return -1;

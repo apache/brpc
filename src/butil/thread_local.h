@@ -22,7 +22,7 @@
 
 #include <new>                      // std::nothrow
 #include <cstddef>                  // NULL
-#include "butil/macros.h"            
+#include "butil/macros.h"
 
 #ifdef _MSC_VER
 #define BAIDU_THREAD_LOCAL __declspec(thread)
@@ -37,9 +37,9 @@ namespace butil {
 // exits.
 template <typename T> inline T* get_thread_local();
 
-// |fn| or |fn(arg)| will be called at caller's exit. If caller is not a 
+// |fn| or |fn(arg)| will be called at caller's exit. If caller is not a
 // thread, fn will be called at program termination. Calling sequence is LIFO:
-// last registered function will be called first. Duplication of functions 
+// last registered function will be called first. Duplication of functions
 // are not checked. This function is often used for releasing thread-local
 // resources declared with __thread which is much faster than
 // pthread_getspecific or boost::thread_specific_ptr.

@@ -28,9 +28,9 @@ namespace butil {
 // use protobuf.
 // -------------------------------------------------------------------------
 
-// This utility class packs 32-bit and 64-bit integers into binary data 
-// that can be unpacked by RawUnpacker. Notice that the packed data is 
-// schemaless and user must match pack..() methods with same-width 
+// This utility class packs 32-bit and 64-bit integers into binary data
+// that can be unpacked by RawUnpacker. Notice that the packed data is
+// schemaless and user must match pack..() methods with same-width
 // unpack..() methods to get the integers back.
 // Example:
 //   char buf[16];  // 4 + 8 + 4 bytes.

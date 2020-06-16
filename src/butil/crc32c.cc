@@ -436,7 +436,7 @@ static bool isSSE42() {
 typedef uint32_t (*Function)(uint32_t, const char*, size_t);
 
 static inline Function Choose_Extend() {
-  return isSSE42() ? (Function)ExtendImpl<FastCRC32Functor> : 
+  return isSSE42() ? (Function)ExtendImpl<FastCRC32Functor> :
                     (Function)ExtendImpl<SlowCRC32Functor>;
 }
 

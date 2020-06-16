@@ -60,7 +60,7 @@ public:
         }
         return NULL;
     }
-    
+
 private:
     std::vector<brpc::Channel*> _chans;
 };
@@ -108,7 +108,7 @@ ChannelGroup::~ChannelGroup() {
 
 static void handle_response(brpc::Controller* cntl, int64_t start_time,
                             bool sleep_on_error/*note*/) {
-    // TODO(gejun): some bthreads are starved when new bthreads are created 
+    // TODO(gejun): some bthreads are starved when new bthreads are created
     // continuously, which happens when server is down and RPC keeps failing.
     // Sleep a while on error to avoid that now.
     const int64_t end_time = butil::gettimeofday_us();
@@ -155,10 +155,10 @@ static void* replay_thread(void* arg) {
                            << sample->meta.protocol_type();
                 continue;
             }
-            
+
             brpc::Controller* cntl = new brpc::Controller;
             req.Clear();
-            
+
             cntl->reset_sampled_request(sample_guard.release());
             if (sample->meta.attachment_size() > 0) {
                 sample->request.cutn(
@@ -213,7 +213,7 @@ int main(int argc, char* argv[]) {
     if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
-    
+
     ChannelGroup chan_group;
     if (chan_group.Init() != 0) {
         LOG(ERROR) << "Fail to init ChannelGroup";
@@ -259,7 +259,7 @@ int main(int argc, char* argv[]) {
     info_thr_opt.latency_recorder = &g_latency_recorder;
     info_thr_opt.error_count = &g_error_count;
     info_thr_opt.sent_count = &g_sent_count;
-    
+
     if (!info_thr.start(info_thr_opt)) {
         LOG(ERROR) << "Fail to create info_thread";
         return -1;

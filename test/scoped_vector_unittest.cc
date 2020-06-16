@@ -270,7 +270,7 @@ TEST(ScopedVectorTest, Passed) {
   butil::ScopedVector<DeleteCounter> deleter_vector;
   deleter_vector.push_back(new DeleteCounter(&deletes));
   EXPECT_EQ(0, deletes);
-  
+
   EXPECT_EQ(0, deletes);
   butil::ScopedVector<DeleteCounter> result = deleter_vector.Pass();
   EXPECT_EQ(0, deletes);

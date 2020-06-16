@@ -35,7 +35,7 @@ void SocketsService::default_method(::google::protobuf::RpcController* cntl_base
     cntl->http_response().set_content_type("text/plain");
     butil::IOBufBuilder os;
     const std::string& constraint = cntl->http_request().unresolved_path();
-    
+
     if (constraint.empty()) {
         os << "# Use /sockets/<SocketId>\n"
            << butil::describe_resources<Socket>() << '\n';

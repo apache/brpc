@@ -29,7 +29,7 @@ namespace mcpack2pb {
 
 enum FieldType {
     // NOTE: All names end with 0 and all name_size count 0.
-    
+
     // Group of fields.
     // | FieldLongHead | Name | ItemsHead | Item1 | Item2 | ...
     FIELD_OBJECT = 0x10,
@@ -68,7 +68,7 @@ enum FieldType {
     FIELD_BOOL = 0x31,
     FIELD_FLOAT = 0x44,
     FIELD_DOUBLE = 0x48,
-    
+
     // TODO(gejun): Don't know what this is. Seems to be timestamp, but grep nothing
     // from public/idlcompiler and public/mcpack
     FIELD_DATE = 0x58,

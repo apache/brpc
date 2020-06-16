@@ -68,13 +68,13 @@ public:
         const T& operator*() const { return *_data; }
         const T* operator->() const { return _data; }
         TLS& tls() { return _w->user_tls(); }
-        
+
     private:
         DISALLOW_COPY_AND_ASSIGN(ScopedPtr);
         const T* _data;
         Wrapper* _w;
     };
-    
+
     DoublyBufferedData();
     ~DoublyBufferedData();
 
@@ -101,7 +101,7 @@ public:
     size_t ModifyWithForeground(Fn& fn, const Arg1&);
     template <typename Fn, typename Arg1, typename Arg2>
     size_t ModifyWithForeground(Fn& fn, const Arg1&, const Arg2&);
-    
+
 private:
     template <typename Fn>
     struct WithFG0 {
@@ -209,7 +209,7 @@ public:
     explicit Wrapper(DoublyBufferedData* c) : _control(c) {
         pthread_mutex_init(&_mutex, NULL);
     }
-    
+
     ~Wrapper() {
         if (_control != NULL) {
             _control->RemoveWrapper(this);
@@ -231,7 +231,7 @@ public:
     inline void WaitReadDone() {
         BAIDU_SCOPED_LOCK(_mutex);
     }
-    
+
 private:
     DoublyBufferedData* _control;
     pthread_mutex_t _mutex;
@@ -302,7 +302,7 @@ DoublyBufferedData<T, TLS>::~DoublyBufferedData() {
     if (_created_key) {
         pthread_key_delete(_wrapper_key);
     }
-    
+
     {
         BAIDU_SCOPED_LOCK(_wrappers_mutex);
         for (size_t i = 0; i < _wrappers.size(); ++i) {
@@ -363,7 +363,7 @@ size_t DoublyBufferedData<T, TLS>::Modify(Fn& fn) {
     // all changes made in fn.
     _index.store(bg_index, butil::memory_order_release);
     bg_index = !bg_index;
-    
+
     // Wait until all threads finishes current reading. When they begin next
     // read, they should see updated _index.
     {

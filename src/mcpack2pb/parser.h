@@ -71,11 +71,11 @@ public:
 
     // Returns false if error occurred in other consuming functions.
     bool good() const { return _good; }
-    
+
     // If the error prevents parsing from going on, call this method.
     // This method is also called in other functions in this class.
     void set_bad() { _good = false; }
-    
+
 private:
     bool _good;
     int _size;
@@ -99,7 +99,7 @@ struct UnparsedValue {
         _stream = stream;
         _size = size;
     }
-    
+
     FieldType type() const { return _type; }
     InputStream* stream() { return _stream; }
     const InputStream* stream() const { return _stream; }
@@ -122,12 +122,12 @@ struct UnparsedValue {
     std::string as_string(const char* var);
     void as_binary(std::string* out, const char* var);
     std::string as_binary(const char* var);
-        
+
 private:
 friend class ObjectIterator;
 friend class ArrayIterator;
     void set_end() { _type = FIELD_UNKNOWN; }
-    
+
     FieldType _type;
     InputStream* _stream;
     size_t _size;
@@ -161,7 +161,7 @@ public:
     Field& operator*() { return _current_field; }
     void operator++();
     operator void*() const { return (void*)_current_field.value.type(); }
-    
+
     // Number of fields in the object.
     uint32_t field_count() const { return _field_count; }
 
@@ -174,7 +174,7 @@ private:
     void set_end() { _current_field.value._type = FIELD_UNKNOWN; }
     size_t left_size() const
     { return _expected_popped_end - _expected_popped_bytes; }
-    
+
     Field _current_field;
     uint32_t _field_count;
     std::string _name_backup_string;
@@ -204,7 +204,7 @@ public:
 
     // Number of items in the array.
     uint32_t item_count() const { return _item_count; }
-    
+
 private:
     void init(InputStream* stream, size_t n);
     void set_bad() {
@@ -214,7 +214,7 @@ private:
     void set_end() { _current_field._type = FIELD_UNKNOWN; }
     size_t left_size() const
     { return _expected_popped_end - _expected_popped_bytes; }
-    
+
     Field _current_field;
     uint32_t _item_count;
     InputStream* _stream;

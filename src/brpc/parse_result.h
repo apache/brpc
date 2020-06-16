@@ -57,7 +57,7 @@ public:
     // Create a successful parsing result.
     explicit ParseResult(InputMessageBase* msg)
         : _msg(msg), _err(PARSE_OK), _user_desc(NULL) {}
-    
+
     // Return PARSE_OK when the result is successful.
     ParseError error() const { return _err; }
     const char* error_str() const
@@ -66,7 +66,7 @@ public:
 
     // definitely NULL when result is failed.
     InputMessageBase* message() const { return _msg; }
- 
+
 private:
     InputMessageBase* _msg;
     ParseError _err;

@@ -34,7 +34,7 @@ public:
              const ::brpc::HotspotsRequest* request,
              ::brpc::HotspotsResponse* response,
              ::google::protobuf::Closure* done);
-    
+
     void heap(::google::protobuf::RpcController* cntl_base,
               const ::brpc::HotspotsRequest* request,
               ::brpc::HotspotsResponse* response,
@@ -59,7 +59,7 @@ public:
                             const ::brpc::HotspotsRequest* request,
                             ::brpc::HotspotsResponse* response,
                             ::google::protobuf::Closure* done);
-    
+
     void growth_non_responsive(::google::protobuf::RpcController* cntl_base,
                                const ::brpc::HotspotsRequest* request,
                                ::brpc::HotspotsResponse* response,

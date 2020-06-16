@@ -28,19 +28,19 @@
 #include "bvar/latency_recorder.h" // LatencyRecorder
 
 // Monitor the time for acquiring a lock.
-// We provide some wrappers of mutex which can also be maintained by 
-// std::lock_guard and std::unique_lock to record the time it takes to wait for 
+// We provide some wrappers of mutex which can also be maintained by
+// std::lock_guard and std::unique_lock to record the time it takes to wait for
 // the acquisition of the very mutex (in microsecond) except for the contention
 // caused by condition variables which unlock the mutex before waiting and lock
 // the same mutex after waking up.
 //
-// About Performance: 
+// About Performance:
 // The utilities are designed and implemented to be suitable to measure the
-// mutex from all the common scenarios. Saying that you can use them freely 
-// without concerning about the overhead. Except that the mutex is very 
+// mutex from all the common scenarios. Saying that you can use them freely
+// without concerning about the overhead. Except that the mutex is very
 // frequently acquired (>1M/s) with very little contention, in which case, the
 // overhead of timers and bvars is noticable.
-// 
+//
 // There are two kinds of special Mutex:
 //  - MutexWithRecorder: Create a mutex along with a shared IntRecorder which
 //                       only records the average latency from intialization
@@ -70,13 +70,13 @@
 //     std::lock_guard<my_mutex_t> guard(mutex);
 //     // ^^^
 //     // Or you can use BAIDU_SCOPED_LOCK(mutex) to make it simple
-//     ... 
+//     ...
 //     doing something inside the critical section
 //     ...
-//     // and |mutex| is auto unlocked and this contention is recorded out of 
+//     // and |mutex| is auto unlocked and this contention is recorded out of
 //     // the scope
 // }
-// 
+//
 // // Use it with unique_lock
 // void  critical_routine_with_unique_lock() {
 //     std::unique_lock<my_mutex_t> lck(mutex);
@@ -117,7 +117,7 @@ struct MutexDestructor {
 // Specialize for pthread_mutex_t
 template <>
 struct MutexConstructor<pthread_mutex_t> {
-    bool operator()(pthread_mutex_t* mutex) const { 
+    bool operator()(pthread_mutex_t* mutex) const {
 #ifndef NDEBUG
         const int rc = pthread_mutex_init(mutex, NULL);
         CHECK_EQ(0, rc) << "Fail to init pthread_mutex, " << berror(rc);
@@ -130,7 +130,7 @@ struct MutexConstructor<pthread_mutex_t> {
 
 template <>
 struct MutexDestructor<pthread_mutex_t> {
-    bool operator()(pthread_mutex_t* mutex) const { 
+    bool operator()(pthread_mutex_t* mutex) const {
 #ifndef NDEBUG
         const int rc = pthread_mutex_destroy(mutex);
         CHECK_EQ(0, rc) << "Fail to destroy pthread_mutex, " << berror(rc);
@@ -188,7 +188,7 @@ private:
     recorder_type       *_recorder;
 };
 
-template <typename Mutex> 
+template <typename Mutex>
 class LockGuardBase {
     DISALLOW_COPY_AND_ASSIGN(LockGuardBase);
 public:
@@ -218,13 +218,13 @@ class UniqueLockBase {
     DISALLOW_COPY_AND_ASSIGN(UniqueLockBase);
 public:
     typedef Mutex                   mutex_type;
-    explicit UniqueLockBase(mutex_type& mutex) 
+    explicit UniqueLockBase(mutex_type& mutex)
         : _timer(butil::Timer::STARTED), _lock(mutex.mutex()),
           _mutex(&mutex) {
         _timer.stop();
     }
 
-    UniqueLockBase(mutex_type& mutex, std::defer_lock_t defer_lock) 
+    UniqueLockBase(mutex_type& mutex, std::defer_lock_t defer_lock)
         : _timer(), _lock(mutex.mutex(), defer_lock), _mutex(&mutex) {
     }
 
@@ -232,7 +232,7 @@ public:
         : _timer(butil::Timer::STARTED)
         , _lock(mutex.mutex(), try_to_lock)
         , _mutex(&mutex) {
-    
+
         _timer.stop();
         if (!owns_lock()) {
             *_mutex << _timer.u_elapsed();
@@ -252,9 +252,9 @@ public:
         _timer.stop();
     }
 
-    bool try_lock() { 
+    bool try_lock() {
         _timer.start();
-        const bool rc = _lock.try_lock(); 
+        const bool rc = _lock.try_lock();
         _timer.stop();
         if (!rc) {
             _mutex->recorder() << _timer.u_elapsed();
@@ -262,8 +262,8 @@ public:
         return rc;
     }
 
-    void unlock() { 
-        _lock.unlock(); 
+    void unlock() {
+        _lock.unlock();
         // Recorde the time out of the critical section
         *_mutex << _timer.u_elapsed();
     }
@@ -321,9 +321,9 @@ private:
 
 }  // namespace detail
 
-// Wappers of Mutex along with a shared LatencyRecorder 
+// Wappers of Mutex along with a shared LatencyRecorder
 template <typename Mutex>
-struct MutexWithRecorder 
+struct MutexWithRecorder
     : public detail::MutexWithRecorderBase<
             Mutex, IntRecorder,
             MutexConstructor<Mutex>, MutexDestructor<Mutex> > {
@@ -341,7 +341,7 @@ struct MutexWithRecorder
 
 // Wappers of Mutex along with a shared LatencyRecorder
 template <typename Mutex>
-struct MutexWithLatencyRecorder 
+struct MutexWithLatencyRecorder
     : public detail::MutexWithRecorderBase<
             Mutex, LatencyRecorder,
             MutexConstructor<Mutex>, MutexDestructor<Mutex> > {
@@ -367,7 +367,7 @@ class lock_guard<bvar::MutexWithRecorder<Mutex> >
 public:
     typedef ::bvar::detail::
             LockGuardBase<bvar::MutexWithRecorder<Mutex> > Base;
-    explicit lock_guard(::bvar::MutexWithRecorder<Mutex> &mutex) 
+    explicit lock_guard(::bvar::MutexWithRecorder<Mutex> &mutex)
         : Base(mutex)
     {}
 };
@@ -379,13 +379,13 @@ class lock_guard<bvar::MutexWithLatencyRecorder<Mutex> >
 public:
     typedef ::bvar::detail::
             LockGuardBase<bvar::MutexWithLatencyRecorder<Mutex> > Base;
-    explicit lock_guard(::bvar::MutexWithLatencyRecorder<Mutex> &mutex) 
+    explicit lock_guard(::bvar::MutexWithLatencyRecorder<Mutex> &mutex)
         : Base(mutex)
     {}
 };
 
 template <typename Mutex>
-class unique_lock<bvar::MutexWithRecorder<Mutex> > 
+class unique_lock<bvar::MutexWithRecorder<Mutex> >
     : public ::bvar::detail::
             UniqueLockBase< ::bvar::MutexWithRecorder<Mutex> > {
 public:
@@ -393,11 +393,11 @@ public:
             UniqueLockBase< ::bvar::MutexWithRecorder<Mutex> > Base;
     typedef typename Base::mutex_type                              mutex_type;
 
-    explicit unique_lock(mutex_type& mutex) 
+    explicit unique_lock(mutex_type& mutex)
         : Base(mutex)
     {}
 
-    unique_lock(mutex_type& mutex, std::defer_lock_t defer_lock) 
+    unique_lock(mutex_type& mutex, std::defer_lock_t defer_lock)
         : Base(mutex, defer_lock)
     {}
 
@@ -407,7 +407,7 @@ public:
 };
 
 template <typename Mutex>
-class unique_lock<bvar::MutexWithLatencyRecorder<Mutex> > 
+class unique_lock<bvar::MutexWithLatencyRecorder<Mutex> >
     : public ::bvar::detail::
             UniqueLockBase< ::bvar::MutexWithLatencyRecorder<Mutex> > {
 public:
@@ -415,11 +415,11 @@ public:
             UniqueLockBase< ::bvar::MutexWithLatencyRecorder<Mutex> > Base;
     typedef typename Base::mutex_type                              mutex_type;
 
-    explicit unique_lock(mutex_type& mutex) 
+    explicit unique_lock(mutex_type& mutex)
         : Base(mutex)
     {}
 
-    unique_lock(mutex_type& mutex, std::defer_lock_t defer_lock) 
+    unique_lock(mutex_type& mutex, std::defer_lock_t defer_lock)
         : Base(mutex, defer_lock)
     {}
 

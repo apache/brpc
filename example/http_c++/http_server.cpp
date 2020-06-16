@@ -47,7 +47,7 @@ public:
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
-        
+
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
         // Fill response.
@@ -98,7 +98,7 @@ public:
         if (filename == "largefile") {
             // Send the "largefile" with ProgressiveAttachment.
             bthread_t th;
-            bthread_start_background(&th, NULL, SendLargeFile, 
+            bthread_start_background(&th, NULL, SendLargeFile,
                     cntl->CreateProgressiveAttachment());
         } else {
             cntl->response_attachment().append("Getting file: ");
@@ -161,7 +161,7 @@ int main(int argc, char* argv[]) {
     example::HttpServiceImpl http_svc;
     example::FileServiceImpl file_svc;
     example::QueueServiceImpl queue_svc;
-    
+
     // Add services into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
     // use brpc::SERVER_OWNS_SERVICE.

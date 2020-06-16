@@ -65,7 +65,7 @@ TEST_F(FDGuardTest, reset_closes_previous_fd) {
     ASSERT_EQ(-1L, write(fd2, &dummy, 1));
     ASSERT_EQ(EBADF, errno);
 }
-    
+
 TEST_F(FDGuardTest, release) {
     butil::fd_guard guard(open(".tmp1",  O_WRONLY|O_CREAT, 0600));
     ASSERT_GT(guard, 0);

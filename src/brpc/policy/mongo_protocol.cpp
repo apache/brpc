@@ -18,7 +18,7 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
-#include "butil/time.h" 
+#include "butil/time.h"
 #include "butil/iobuf.h"                         // butil::IOBuf
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
@@ -70,7 +70,7 @@ void SendMongoResponse::Run() {
         socket->SetFailed();
         return;
     }
-    
+
     const MongoServiceAdaptor* adaptor =
             server->options().mongo_service_adaptor;
     butil::IOBuf res_buf;
@@ -253,12 +253,12 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
                 break;
             }
         }
-        
+
         if (!MongoOp_IsValid(header->op_code)) {
             mongo_done->cntl.SetFailed(EREQUEST, "Unknown op_code:%d", header->op_code);
             break;
         }
-        
+
         mongo_done->cntl.set_log_id(header->request_id);
         const std::string &body_str = msg->payload.to_string();
         mongo_done->req.set_message(body_str.c_str(), body_str.size());
@@ -273,7 +273,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         google::protobuf::Service* svc = mp->service;
         const google::protobuf::MethodDescriptor* method = mp->method;
         accessor.set_method(method);
-        
+
         if (!FLAGS_usercode_in_pthread) {
             return svc->CallMethod(
                 method, &(mongo_done->cntl), &(mongo_done->req),

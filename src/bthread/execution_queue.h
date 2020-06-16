@@ -28,7 +28,7 @@
 namespace bthread {
 
 // ExecutionQueue is a special wait-free MPSC queue of which the consumer thread
-// is auto started by the execute operation and auto quits if there are no more 
+// is auto started by the execute operation and auto quits if there are no more
 // tasks, in another word there isn't a daemon bthread waiting to consume tasks.
 
 template <typename T> struct ExecutionQueueId;
@@ -41,7 +41,7 @@ DISALLOW_COPY_AND_ASSIGN(TaskIteratorBase);
 friend class ExecutionQueueBase;
 public:
     // Returns true when the ExecutionQueue is stopped and there will never be
-    // more tasks and you can safely release all the related resources ever 
+    // more tasks and you can safely release all the related resources ever
     // after.
     bool is_queue_stopped() const { return _is_stopped; }
     operator bool() const;
@@ -73,7 +73,7 @@ private:
 };
 
 // Iterate over the given tasks
-// 
+//
 // Examples:
 // int demo_execute(void* meta, TaskIterator<T>& iter) {
 //     if (iter.is_queue_stopped()) {
@@ -109,15 +109,15 @@ struct TaskOptions {
     TaskOptions();
     TaskOptions(bool high_priority, bool in_place_if_possible);
 
-    // Executor would execute high-priority tasks in the FIFO order but before 
+    // Executor would execute high-priority tasks in the FIFO order but before
     // all pending normal-priority tasks.
     // NOTE: We don't guarantee any kind of real-time as there might be tasks still
     // in process which are uninterruptible.
     //
-    // Default: false 
+    // Default: false
     bool high_priority;
 
-    // If |in_place_if_possible| is true, execution_queue_execute would call 
+    // If |in_place_if_possible| is true, execution_queue_execute would call
     // execute immediately instead of starting a bthread if possible
     //
     // Note: Running callbacks in place might cause the dead lock issue, you
@@ -152,12 +152,12 @@ struct ExecutionQueueOptions {
 };
 
 // Start a ExecutionQueue. If |options| is NULL, the queue will be created with
-// the default options. 
+// the default options.
 // Returns 0 on success, errno otherwise
 // NOTE: type |T| can be non-POD but must be copy-constructible
 template <typename T>
 int execution_queue_start(
-        ExecutionQueueId<T>* id, 
+        ExecutionQueueId<T>* id,
         const ExecutionQueueOptions* options,
         int (*execute)(void* meta, TaskIterator<T>& iter),
         void* meta);
@@ -165,7 +165,7 @@ int execution_queue_start(
 // Stop the ExecutionQueue.
 // After this function is called:
 //  - All the following calls to execution_queue_execute would fail immediately.
-//  - The executor will call |execute| with TaskIterator::is_queue_stopped() being 
+//  - The executor will call |execute| with TaskIterator::is_queue_stopped() being
 //    true exactly once when all the pending tasks have been executed, and after
 //    this point it's ok to release the resource referenced by |meta|.
 // Returns 0 on success, errno othrwise
@@ -180,7 +180,7 @@ int execution_queue_join(ExecutionQueueId<T> id);
 // Thread-safe and Wait-free.
 // Execute a task with defaut TaskOptions (normal task);
 template <typename T>
-int execution_queue_execute(ExecutionQueueId<T> id, 
+int execution_queue_execute(ExecutionQueueId<T> id,
                             typename butil::add_const_reference<T>::type task);
 
 // Thread-safe and Wait-free.
@@ -189,11 +189,11 @@ int execution_queue_execute(ExecutionQueueId<T> id,
 // If |options| is NULL, we will use default options (normal task)
 // If |handle| is not NULL, we will assign it with the hanlder of this task.
 template <typename T>
-int execution_queue_execute(ExecutionQueueId<T> id, 
+int execution_queue_execute(ExecutionQueueId<T> id,
                             typename butil::add_const_reference<T>::type task,
                             const TaskOptions* options);
 template <typename T>
-int execution_queue_execute(ExecutionQueueId<T> id, 
+int execution_queue_execute(ExecutionQueueId<T> id,
                             typename butil::add_const_reference<T>::type task,
                             const TaskOptions* options,
                             TaskHandle* handle);
@@ -202,18 +202,18 @@ int execution_queue_execute(ExecutionQueueId<T> id,
 // Returns:
 //  -1: The task was executed or h is an invalid handle
 //  0: Success
-//  1: The task is executing 
+//  1: The task is executing
 int execution_queue_cancel(const TaskHandle& h);
 
 // Thread-safe and Wait-free
-// Address a reference of ExecutionQueue if |id| references to a valid 
+// Address a reference of ExecutionQueue if |id| references to a valid
 // ExecutionQueue
 //
 // |execution_queue_execute| internally fetches a reference of ExecutionQueue at
 // the begining and releases it at the end, which makes 2 additional cache
 // updates. In some critical situation where the overhead of
-// execution_queue_execute matters, you can avoid this by addressing the 
-// reference at the begining of every producer, and execute tasks execatly 
+// execution_queue_execute matters, you can avoid this by addressing the
+// reference at the begining of every producer, and execute tasks execatly
 // through the reference instead of id.
 //
 // Note: It makes |execution_queue_stop| a little complicated in the user level,
@@ -222,7 +222,7 @@ int execution_queue_cancel(const TaskHandle& h);
 // the reference of the very ExecutionQueue in the destructor) and don't that
 // care the overhead of ExecutionQueue, DON'T use this function
 template <typename T>
-typename ExecutionQueue<T>::scoped_ptr_t 
+typename ExecutionQueue<T>::scoped_ptr_t
 execution_queue_address(ExecutionQueueId<T> id);
 
 }  // namespace bthread

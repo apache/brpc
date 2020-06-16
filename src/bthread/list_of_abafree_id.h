@@ -30,12 +30,12 @@ namespace bthread {
 // A container for storing identifiers that may be invalidated.
 
 // [Basic Idea]
-// identifiers are remembered for error notifications. While insertions are 
-// easy, removals are hard to be done in O(1) time. More importantly, 
+// identifiers are remembered for error notifications. While insertions are
+// easy, removals are hard to be done in O(1) time. More importantly,
 // insertions are often done in one thread, while removals come from many
-// threads simultaneously. Think about the usage in brpc::Socket, most 
+// threads simultaneously. Think about the usage in brpc::Socket, most
 // bthread_id_t are inserted by one thread (the thread calling non-contended
-// Write or the KeepWrite thread), but removals are from many threads 
+// Write or the KeepWrite thread), but removals are from many threads
 // processing responses simultaneously.
 
 // [The approach]
@@ -59,18 +59,18 @@ namespace bthread {
 
 // This container is NOT thread-safe right now, and shouldn't be
 // an issue in current usages throughout brpc.
-template <typename Id, typename IdTraits> 
+template <typename Id, typename IdTraits>
 class ListOfABAFreeId {
 public:
     ListOfABAFreeId();
     ~ListOfABAFreeId();
-    
+
     // Add an identifier into the list.
     int add(Id id);
-    
+
     // Apply fn(id) to all identifiers.
     template <typename Fn> void apply(const Fn& fn);
-    
+
     // Put #entries of each level into `counts'
     // Returns #levels.
     size_t get_sizes(size_t* counts, size_t n);
@@ -90,7 +90,7 @@ private:
 
 // [impl.]
 
-template <typename Id, typename IdTraits> 
+template <typename Id, typename IdTraits>
 ListOfABAFreeId<Id, IdTraits>::ListOfABAFreeId()
     : _cur_block(&_head_block)
     , _cur_index(0)
@@ -101,7 +101,7 @@ ListOfABAFreeId<Id, IdTraits>::ListOfABAFreeId()
     _head_block.next = NULL;
 }
 
-template <typename Id, typename IdTraits> 
+template <typename Id, typename IdTraits>
 ListOfABAFreeId<Id, IdTraits>::~ListOfABAFreeId() {
     _cur_block = NULL;
     _cur_index = 0;
@@ -114,7 +114,7 @@ ListOfABAFreeId<Id, IdTraits>::~ListOfABAFreeId() {
     _head_block.next = NULL;
 }
 
-template <typename Id, typename IdTraits> 
+template <typename Id, typename IdTraits>
 inline void ListOfABAFreeId<Id, IdTraits>::forward_index() {
     if (++_cur_index >= IdTraits::BLOCK_SIZE) {
         _cur_index = 0;
@@ -126,7 +126,7 @@ inline void ListOfABAFreeId<Id, IdTraits>::forward_index() {
     }
 }
 
-template <typename Id, typename IdTraits> 
+template <typename Id, typename IdTraits>
 int ListOfABAFreeId<Id, IdTraits>::add(Id id) {
     // Scan for at most 4 positions, if any of them is empty, use the position.
     Id* saved_pos[4];

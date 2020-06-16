@@ -32,7 +32,7 @@ namespace brpc {
 // Different signature means that the Channel needs separate sockets.
 struct ChannelSignature {
     uint64_t data[2];
-    
+
     ChannelSignature() { Reset(); }
     void Reset() { data[0] = data[1] = 0; }
 };
@@ -111,7 +111,7 @@ public:
 struct SocketMapOptions {
     // Constructed with default options.
     SocketMapOptions();
-    
+
     // For creating sockets by need. Owned and deleted by SocketMap.
     // Default: NULL (must be set by user).
     SocketCreator* socket_creator;
@@ -119,7 +119,7 @@ struct SocketMapOptions {
     // Initial size of the map (proper size reduces number of resizes)
     // Default: 1024
     size_t suggested_map_size;
-    
+
     // Pooled connections without data transmission for so many seconds will
     // be closed. No effect for non-positive values.
     // If idle_timeout_second_dynamic is not NULL, use the dereferenced value

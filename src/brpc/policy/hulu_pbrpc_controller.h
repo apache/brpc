@@ -48,7 +48,7 @@ public:
     // These calls shall be made from the client side only.  Their results
     // are undefined on the server side (may crash).
     // ------------------------------------------------------------------
-   
+
     // Send the address that the client listens as a server to the remote
     // side.
     int64_t request_source_addr() const { return _request_source_addr; }
@@ -66,7 +66,7 @@ public:
     // These calls shall be made from the server side only. Their results are
     // undefined on the client side (may crash).
     // ------------------------------------------------------------------------
-    
+
     // Send the address that the server listens to the remote side.
     int64_t response_source_addr() const { return _response_source_addr; }
     void set_response_source_addr(int64_t response_source_addr)
@@ -77,7 +77,7 @@ public:
     const std::string& response_user_data() const { return _response_user_data; }
     void set_response_user_data(const std::string& response_user_data)
     { _response_user_data = response_user_data; }
-    
+
 
 private:
     int64_t _request_source_addr;

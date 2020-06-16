@@ -71,7 +71,7 @@ void MemcacheRequest::Clear() {
 bool MemcacheRequest::MergePartialFromCodedStream(
     ::google::protobuf::io::CodedInputStream* input) {
     LOG(WARNING) << "You're not supposed to parse a MemcacheRequest";
-    
+
     // simple approach just making it work.
     butil::IOBuf tmp;
     const void* data = NULL;
@@ -227,7 +227,7 @@ bool MemcacheResponse::MergePartialFromCodedStream(
 void MemcacheResponse::SerializeWithCachedSizes(
     ::google::protobuf::io::CodedOutputStream* output) const {
     LOG(WARNING) << "You're not supposed to serialize a MemcacheResponse";
-    
+
     // simple approach just making it work.
     butil::IOBufAsZeroCopyInputStream wrapper(_buf);
     const void* data = NULL;
@@ -605,7 +605,7 @@ bool MemcacheRequest::Replace(
     uint32_t flags, uint32_t exptime, uint64_t cas_value) {
     return Store(policy::MC_BINARY_REPLACE, key, value, flags, exptime, cas_value);
 }
-    
+
 bool MemcacheRequest::Append(
     const butil::StringPiece& key, const butil::StringPiece& value,
     uint32_t flags, uint32_t exptime, uint64_t cas_value) {
@@ -873,5 +873,5 @@ bool MemcacheResponse::PopVersion(std::string* version) {
     _err.clear();
     return true;
 }
- 
+
 } // namespace brpc

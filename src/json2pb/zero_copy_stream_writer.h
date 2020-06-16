@@ -42,7 +42,7 @@ class ZeroCopyStreamWriter {
 public:
     typedef char Ch;
     ZeroCopyStreamWriter(google::protobuf::io::ZeroCopyOutputStream *stream)
-        : _stream(stream), _data(NULL), 
+        : _stream(stream), _data(NULL),
           _cursor(NULL), _data_size(0) {
     }
     ~ZeroCopyStreamWriter() {
@@ -94,7 +94,7 @@ private:
         if (_data == NULL || _cursor == _data + _data_size) {
             if (!_stream->Next((void **)&_data, &_data_size)) {
                 return false;
-            } 
+            }
             _cursor = _data;
         }
         return true;

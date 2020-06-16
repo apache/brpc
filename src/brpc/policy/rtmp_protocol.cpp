@@ -57,7 +57,7 @@ DEFINE_bool(rtmp_client_use_simple_handshake, true,
             "Use simple handshaking(the one in RTMP spec) to create client "
             "connections, false to use adobe proprietary handshake which "
             "consumes more CPU");
-DEFINE_string(user_defined_data_message, "", 
+DEFINE_string(user_defined_data_message, "",
             "extra name that user can specify in Data Message of RTMP, handled by OnMetaData");
 
 namespace policy {
@@ -189,7 +189,7 @@ static const uint8_t GenuineFMSKey[] = {
     0x6e, 0xec, 0x5d, 0x2d, 0x29, 0x80, 0x6f, 0xab,
     0x93, 0xb8, 0xe6, 0x36, 0xcf, 0xeb, 0x31, 0xae
 }; // 68
-    
+
 // 62bytes FlashPlayer key for signing the client packets.
 static const uint8_t GenuineFPKey[] = {
     0x47, 0x65, 0x6E, 0x75, 0x69, 0x6E, 0x65, 0x20,
@@ -271,7 +271,7 @@ public:
     KeyBlock key_blk;
     DigestBlock digest_blk;
 };
-    
+
 class C1 : public C1S1Base {
 public:
     bool Generate(C1S1Schema schema);
@@ -735,7 +735,7 @@ RtmpContext::RtmpContext(const RtmpClientOptions* copt, const Server* server)
     CHECK_EQ(0, _trans_map.init(1024, 70));
     memset(_cstream_ctx, 0, sizeof(_cstream_ctx));
 }
-    
+
 RtmpContext::~RtmpContext() {
     if (!_mstream_map.empty()) {
         size_t ncstream = 0;
@@ -753,7 +753,7 @@ RtmpContext::~RtmpContext() {
             " before all streams(" << ncstream << " client, " << nsstream
                    << "server) on the connection quit";
     }
-    
+
     // cancel incomplete transactions
     for (butil::FlatMap<uint32_t, RtmpTransactionHandler*>::iterator
              it = _trans_map.begin(); it != _trans_map.end(); ++it) {
@@ -979,7 +979,7 @@ bool RtmpContext::RemoveMessageStream(RtmpStreamBase* stream) {
         return false;
     }
     // for deref the stream outside _stream_mutex.
-    butil::intrusive_ptr<RtmpStreamBase> deref_ptr; 
+    butil::intrusive_ptr<RtmpStreamBase> deref_ptr;
     {
         std::unique_lock<butil::Mutex> mu(_stream_mutex);
         MessageStreamInfo* info = _mstream_map.seek(stream_id);
@@ -1144,7 +1144,7 @@ int RtmpContext::SendConnectRequest(const butil::EndPoint& remote_side, int fd, 
         }
         _chunk_size_out = _client_options->chunk_size;
     }
-    
+
     return WriteAll(fd, &msg_buf);
 }
 
@@ -1232,7 +1232,7 @@ ParseResult RtmpContext::WaitForC0C1orSimpleRtmp(butil::IOBuf* source, Socket* s
         WriteBigEndian4Bytes(&q, 0); // s1.zero
         tmp.append(buf, sizeof(buf));
         tmp.append(GetRtmpHandshakeServerRandom());
-    
+
         char* const s2 = c0c1_buf + RTMP_HANDSHAKE_SIZE0;
         q = s2 + 4;
         const uint32_t s2_time2 = GetRtmpTimestamp();
@@ -1245,7 +1245,7 @@ ParseResult RtmpContext::WaitForC0C1orSimpleRtmp(butil::IOBuf* source, Socket* s
     }
     return WaitForC2(source, socket);
 }
-    
+
 ParseResult RtmpContext::WaitForC2(butil::IOBuf* source, Socket* socket) {
     if (source->length() < RTMP_HANDSHAKE_SIZE2) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
@@ -1306,7 +1306,7 @@ ParseResult RtmpContext::WaitForS0S1(butil::IOBuf* source, Socket* socket) {
     }
     return WaitForS2(source, socket);
 }
-    
+
 ParseResult RtmpContext::WaitForS2(butil::IOBuf* source, Socket* socket) {
     if (source->length() < RTMP_HANDSHAKE_SIZE2) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
@@ -1384,14 +1384,14 @@ RtmpChunkStream::RtmpChunkStream(RtmpContext* conn_ctx, uint32_t cs_id)
     , _cs_id(cs_id) {
 }
 
-RtmpChunkStream::ReadParams::ReadParams() 
+RtmpChunkStream::ReadParams::ReadParams()
     : last_has_extended_ts(false)
     , first_chunk_of_message(true)
     , last_timestamp_delta(0)
     , left_message_length(0) {
 }
 
-RtmpChunkStream::WriteParams::WriteParams() 
+RtmpChunkStream::WriteParams::WriteParams()
     : last_has_extended_ts(false)
     , last_timestamp_delta(0) {
 }
@@ -1429,7 +1429,7 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
     uint32_t cur_chunk_size = 0;
     RtmpContext* ctx = connection_context();
     const uint32_t chunk_size_in = ctx->_chunk_size_in;
-        
+
     switch (bh.fmt) {
     case RTMP_CHUNK_TYPE0: {
         // Type 0 chunk headers are 11 bytes long. This type MUST be
@@ -1463,7 +1463,7 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
         }
         _r.left_message_length -= cur_chunk_size;
         mh.message_type = p[6];
-            
+
         // NOTE: stream_id is little endian.
         char* pmsid = (char*)&mh.stream_id;
         pmsid[0] = p[7];
@@ -1611,7 +1611,7 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
     _r.last_has_extended_ts = has_extended_ts;
     _r.last_timestamp_delta = timestamp_delta;
     _r.last_msg_header = mh;
-    
+
     AddChunk();
 
     if (_r.left_message_length == 0) {
@@ -1711,7 +1711,7 @@ int RtmpChunkStream::SerializeMessage(butil::IOBuf* buf,
         WriteBasicHeader(&dummy_ptr, chunk_type, _cs_id);
         buf->append(header_buf, p - header_buf);
         body->cutn(buf, cur_chunk_size);
-        
+
         _w.last_has_extended_ts = has_extended_ts;
         _w.last_timestamp_delta = timestamp_delta;
         _w.last_msg_header = mh;
@@ -1794,7 +1794,7 @@ bool RtmpChunkStream::OnMessage(const RtmpBasicHeader& bh,
     // Make sure msg_body is consistent with the header. Previous code
     // forgot to clear msg_body before appending new message.
     CHECK_EQ((size_t)mh.message_length, msg_body->size());
-    
+
     if (mh.message_type >= 1 && mh.message_type <= 6) {
         // protocol/user control messages MUST/SHOULD have message stream ID 0
         // (known as the control stream) and be sent in chunk stream ID 2.
@@ -2353,7 +2353,7 @@ bool RtmpChunkStream::OnConnect(const RtmpMessageHeader& mh,
     WriteBigEndian4Bytes(&p, FLAGS_rtmp_server_window_ack_size);
     msgs.push().reset(MakeUnsentControlMessage(
                           RTMP_MESSAGE_WINDOW_ACK_SIZE, wasbuf, sizeof(wasbuf)));
-    
+
     // SetPeerBandwidth
     char spbbuf[5];
     p = spbbuf;
@@ -2376,13 +2376,13 @@ bool RtmpChunkStream::OnConnect(const RtmpMessageHeader& mh,
         RTMP_MESSAGE_SET_CHUNK_SIZE, csbuf, sizeof(csbuf));
     scs_msg->new_chunk_size = FLAGS_rtmp_server_chunk_size;
     msgs.push().reset(scs_msg);
-    
+
     // _result
     butil::IOBuf req_buf;
     RtmpInfo info;
     RtmpConnectResponse response;
     // TODO: Set this field.
-    std::string error_text; 
+    std::string error_text;
     {
         butil::IOBufAsZeroCopyOutputStream zc_stream(&req_buf);
         AMFOutputStream ostream(&zc_stream);
@@ -2477,7 +2477,7 @@ bool RtmpChunkStream::OnResult(const RtmpMessageHeader& mh,
                 return false;
             }
             if (!_conn_ctx->_simplified_rtmp) {
-                // In simplified rtmp case, connection_context()->_create_stream_with_play_or_publish 
+                // In simplified rtmp case, connection_context()->_create_stream_with_play_or_publish
                 // is set and OnConnected is called in RtmpConnect::StartConnect, so we don't need
                 // to do these operations again here.
                 if (connect_res.create_stream_with_play_or_publish()) {
@@ -2749,7 +2749,7 @@ bool RtmpChunkStream::OnPlay(const RtmpMessageHeader& mh,
         return false;
     }
     // ffmpeg send non-zero transaction_id for play.
-    
+
     if (!ReadAMFNull(istream)) {
         RTMP_ERROR(socket, mh) << "Fail to read play.CommandObject";
         return false;
@@ -2788,7 +2788,7 @@ bool RtmpChunkStream::OnPlay(const RtmpMessageHeader& mh,
 
     butil::IOBuf req_buf;
     TemporaryArrayBuilder<SocketMessagePtr<RtmpUnsentMessage>, 5> msgs;
-    
+
     // TODO(gejun): RTMP spec sends StreamIsRecorded before StreamBegin
     // however SRS does not.
     // StreamBegin
@@ -2803,7 +2803,7 @@ bool RtmpChunkStream::OnPlay(const RtmpMessageHeader& mh,
     // Play.Reset
     if (play_opt.reset) {
         // According to RTMP spec: NetStream.Play.Reset is sent only if the
-        // play command sent by the client has set the reset flag. 
+        // play command sent by the client has set the reset flag.
         req_buf.clear();
         {
             butil::IOBufAsZeroCopyOutputStream zc_stream(&req_buf);
@@ -2825,7 +2825,7 @@ bool RtmpChunkStream::OnPlay(const RtmpMessageHeader& mh,
         msg->body = req_buf;
         msgs.push().reset(msg);
     }
-    
+
     // Play.Start
     req_buf.clear();
     {
@@ -3391,7 +3391,7 @@ bool RtmpChunkStream::OnPause(const RtmpMessageHeader& mh,
     RtmpUnsentMessage* msg2 = MakeUnsentControlMessage(
         RTMP_MESSAGE_USER_CONTROL, cntl_buf, sizeof(cntl_buf));
     msg1->next.reset(msg2);
-    
+
     if (WriteWithoutOvercrowded(socket, msg1) != 0) {
         PLOG(WARNING) << socket->remote_side() << '[' << mh.stream_id
                       << "] Fail to respond " << (pause_or_unpause ? "pause" : "unpause");
@@ -3496,7 +3496,7 @@ void OnServerStreamCreated::Run(bool error,
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     const int saved_error = cntl->ErrorCode();
     do {

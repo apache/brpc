@@ -272,4 +272,4 @@ TEST_F(GrpcTest, GrpcTimeOut) {
     }
 }
 
-} // namespace 
+} // namespace

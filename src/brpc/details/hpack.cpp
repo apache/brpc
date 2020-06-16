@@ -705,7 +705,7 @@ void HPacker::Encode(butil::IOBufAppender* out, const Header& header,
             return EncodeInteger(out, 0x80, 7, index);
         }
     } // The header can't be indexed or the header wasn't in the index table
-    
+
     const int name_index = FindNameFromIndexTable(header.name);
     if (options.index_policy == HPACK_INDEX_HEADER) {
         // TODO: Add Options that indexes name independently

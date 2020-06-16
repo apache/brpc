@@ -879,7 +879,7 @@ bool ReadAMFArray(AMFArray* arr, AMFInputStream* stream) {
 AMFArray::AMFArray() : _size(0) {
 }
 
-AMFArray::AMFArray(const AMFArray& rhs) 
+AMFArray::AMFArray(const AMFArray& rhs)
     : _size(rhs._size) {
     const size_t inline_size = std::min((size_t)_size, arraysize(_fields));
     for (size_t i = 0; i < inline_size; ++i) {
@@ -1097,7 +1097,7 @@ static void WriteAMFField(const AMFField& field, AMFOutputStream* stream) {
         stream->put_u8(AMF_MARKER_UNSUPPORTED);
         break;
     case AMF_MARKER_MOVIECLIP:
-    case AMF_MARKER_REFERENCE:        
+    case AMF_MARKER_REFERENCE:
     case AMF_MARKER_DATE:
     case AMF_MARKER_RECORDSET:
     case AMF_MARKER_XML_DOCUMENT:
@@ -1184,7 +1184,7 @@ std::ostream& operator<<(std::ostream& os, const AMFObject& obj) {
             os << ' ';
         } else {
             first = false;
-        }        
+        }
         os << it->first << '=' << it->second;
     }
     return os << '}';
@@ -1202,7 +1202,7 @@ std::ostream& operator<<(std::ostream& os, const AMFArray& arr) {
             os << ' ';
         } else {
             first = false;
-        }        
+        }
         os << arr[i];
     }
     return os << ']';

@@ -128,7 +128,7 @@ struct ProfilingWaiter {
 // Information of the client doing profiling.
 struct ProfilingClient {
     ProfilingClient() : end_us(0), seconds(0), id(0) {}
-    
+
     int64_t end_us;
     int seconds;
     int64_t id;
@@ -137,7 +137,7 @@ struct ProfilingClient {
 
 struct ProfilingResult {
     ProfilingResult() : id(0), status_code(HTTP_STATUS_OK) {}
-    
+
     int64_t id;
     int status_code;
     butil::IOBuf result;
@@ -314,7 +314,7 @@ static int MakeProfName(ProfilingType type, char* buf, size_t buf_len) {
     }
     buf += nr;
     buf_len -= nr;
-    
+
     time_t rawtime;
     time(&rawtime);
     struct tm* timeinfo = localtime(&rawtime);
@@ -468,7 +468,7 @@ static void DisplayResult(Controller* cntl,
             return;
         }
     }
-    
+
     std::ostringstream cmd_builder;
 
     std::string pprof_tool{GeneratePerlScriptPath(PPROF_FILENAME)};
@@ -485,7 +485,7 @@ static void DisplayResult(Controller* cntl,
     cmd_builder << GetProgramName() << " " << prof_name;
 
     if (display_type == DisplayType::kFlameGraph) {
-        // For flamegraph, we don't care about pprof error msg, 
+        // For flamegraph, we don't care about pprof error msg,
         // which will cause confusing messages in the final result.
         cmd_builder << " 2>/dev/null " << " | " << "perl " << flamegraph_tool;
     }
@@ -543,7 +543,7 @@ static void DisplayResult(Controller* cntl,
                     HTTP_STATUS_INTERNAL_SERVER_ERROR);
                 return;
             }
-            // cmd returns non zero, quit normally 
+            // cmd returns non zero, quit normally
         }
         pprof_output.move_to(prof_result);
         // Cache result in file.
@@ -582,7 +582,7 @@ static void DisplayResult(Controller* cntl,
             tmp.append(prof_result);
             tmp.swap(prof_result);
         }
-        
+
         if (!WriteSmallFile(result_name, prof_result)) {
             LOG(ERROR) << "Fail to write " << result_name;
             CHECK(butil::DeleteFile(butil::FilePath(result_name), false));
@@ -824,7 +824,7 @@ static void DoProfiling(ProfilingType type,
     std::vector<ProfilingWaiter> waiters;
     // NOTE: Must be called before DisplayResult which calls done->Run() and
     // deletes cntl.
-    ConsumeWaiters(type, cntl, &waiters);    
+    ConsumeWaiters(type, cntl, &waiters);
     DisplayResult(cntl, done_guard.release(), prof_name, os.buf());
 
     for (size_t i = 0; i < waiters.size(); ++i) {
@@ -863,7 +863,7 @@ static void StartProfiling(ProfilingType type,
         extra_desc = "(no GOOGLE_PPROF_BINARY_PATH in env)";
     }
 #endif
-    
+
     if (!use_html) {
         if (!enabled) {
             os << "Error: " << type_str << " profiler is not enabled."
@@ -901,7 +901,7 @@ static void StartProfiling(ProfilingType type,
             nwaiters = (env.waiters ? env.waiters->size() : 0);
         }
     }
-    
+
     cntl->http_response().set_content_type("text/html");
     os << "<!DOCTYPE html><html><head>\n"
         "<script language=\"javascript\" type=\"text/javascript\""
@@ -1092,7 +1092,7 @@ static void StartProfiling(ProfilingType type,
         os << '>' << GetBaseName(&past_profs[i]);
     }
     os << "</select></div>";
-    
+
     if (!enabled && view == NULL) {
         os << "<p><span style='color:red'>Error:</span> "
            << type_str << " profiler is not enabled." << extra_desc << "</p>"

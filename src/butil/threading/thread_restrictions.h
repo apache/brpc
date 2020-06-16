@@ -226,7 +226,7 @@ class BUTIL_EXPORT ThreadRestrictions {
 #else
   static bool SetWaitAllowed(bool) { return true; }
 #endif
-  
+
   // FIXME(gejun): ScopedAllowWait can't be accessed by SequencedWorkerPool::Inner
   // in gcc 3.4 (SequencedWorkerPool is a friend class)
 #if __GNUC__ == 3

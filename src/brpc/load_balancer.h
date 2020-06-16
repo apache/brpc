@@ -71,7 +71,7 @@ public:
     //  Take a look at policy/round_robin_load_balancer.cpp to see how to
     //  make SelectServer() low contended by using DoublyBufferedData<>
     // =====================================================================
-    
+
     // Add `server' into this balancer.
     // Returns true on added.
     virtual bool AddServer(const ServerId& server) = 0;
@@ -87,7 +87,7 @@ public:
     // Remove a list of `servers' from this balancer.
     // Returns number of servers removed.
     virtual size_t RemoveServersInBatch(const std::vector<ServerId>& servers) = 0;
-    
+
     // Select a server and address it into `out->ptr'.
     // If Feedback() should be called when the RPC is done, set
     // out->need_feedback to true.
@@ -126,7 +126,7 @@ public:
     }
 
     void Feedback(const LoadBalancer::CallInfo& info) { _lb->Feedback(info); }
-    
+
     bool AddServer(const ServerId& server) {
         if (_lb->AddServer(server)) {
             _weight_sum.fetch_add(1, butil::memory_order_relaxed);
@@ -141,7 +141,7 @@ public:
         }
         return false;
     }
-    
+
     size_t AddServersInBatch(const std::vector<ServerId>& servers) {
         size_t n = _lb->AddServersInBatch(servers);
         if (n) {

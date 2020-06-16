@@ -91,7 +91,7 @@ TEST_F(VariableTest, status) {
     ASSERT_EQ(0, st1.expose("var1"));
     ASSERT_EQ(1UL, bvar::Variable::count_exposed());
     ASSERT_EQ("9", bvar::Variable::describe_exposed("var1"));
-    
+
     ASSERT_EQ(0, st2.expose("var2"));
     ASSERT_EQ(2UL, bvar::Variable::count_exposed());
     ASSERT_EQ("9", bvar::Variable::describe_exposed("var1"));
@@ -115,7 +115,7 @@ TEST_F(VariableTest, status) {
     ASSERT_EQ(2UL, vars.size());
     ASSERT_EQ("var1", vars[0]);
     ASSERT_EQ("var2_again", vars[1]);
-    ASSERT_EQ(2UL, bvar::Variable::count_exposed());        
+    ASSERT_EQ(2UL, bvar::Variable::count_exposed());
 
     bvar::Status<int> st3("var3", 11);
     ASSERT_EQ("var3", st3.name());
@@ -185,7 +185,7 @@ TEST_F(VariableTest, expose) {
     ASSERT_EQ(0, c1.expose_as("foo-bar-HELLO", "c1"));
     ASSERT_EQ("foo_bar_hello_c1", c1.name());
     ASSERT_EQ(1UL, bvar::Variable::count_exposed());
-    
+
     ASSERT_EQ(0, c1.expose("c1"));
     ASSERT_EQ("c1", c1.name());
     ASSERT_EQ(1UL, bvar::Variable::count_exposed());
@@ -223,7 +223,7 @@ TEST_F(VariableTest, dump) {
     v4 << 4;
     bvar::BasicPassiveStatus<int> v5(
         "foo::bar::Car_Rot", "var5", print_int, NULL);
-    
+
     ASSERT_EQ(5, bvar::Variable::dump_exposed(&d, NULL));
     ASSERT_EQ(5UL, d._list.size());
     int i = 0;
@@ -319,7 +319,7 @@ TEST_F(VariableTest, latency_recorder) {
     ASSERT_EQ(-1, rec.expose("latency"));
     ASSERT_EQ(-1, rec.expose("Latency"));
 
-    
+
     ASSERT_EQ(0, rec.expose("FooBar__latency"));
     std::vector<std::string> names;
     bvar::Variable::list_exposed(&names);

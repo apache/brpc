@@ -441,7 +441,7 @@ void ProcessUbrpcResponse(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     Socket* socket = msg->socket();
-    
+
     // Fetch correlation id that we saved before in `PackUbrpcRequest'
     const bthread_id_t cid = { static_cast<uint64_t>(socket->correlation_id()) };
     Controller* cntl = NULL;
@@ -451,7 +451,7 @@ void ProcessUbrpcResponse(InputMessageBase* msg_base) {
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -462,12 +462,12 @@ void ProcessUbrpcResponse(InputMessageBase* msg_base) {
     }
     const int saved_error = cntl->ErrorCode();
     ParseResponse(cntl, msg->payload, cntl->response());
-    
+
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
     msg.reset();  // optional, just release resourse ASAP
     accessor.OnResponse(cid, saved_error);
-} 
+}
 
 static void SerializeUbrpcRequest(butil::IOBuf* buf, Controller* cntl,
                                   const google::protobuf::Message* request,
@@ -550,7 +550,7 @@ void PackUbrpcRequest(butil::IOBuf* buf,
     // Store `correlation_id' into Socket since ubrpc protocol doesn't
     // contain this field
     accessor.get_sending_socket()->set_correlation_id(correlation_id);
-        
+
     nshead_t nshead;
     memset(&nshead, 0, sizeof(nshead_t));
     nshead.log_id = controller->log_id();

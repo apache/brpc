@@ -32,14 +32,14 @@ private:
 
     // We don't need a dedicated bthread to run this static NS.
     bool RunNamingServiceReturnsQuickly() override { return true; }
-    
+
     int GetServers(const char *service_name,
                    std::vector<ServerNode>* servers);
 
     void Describe(std::ostream& os, const DescribeOptions& options) const override;
 
     NamingService* New() const override;
-    
+
     void Destroy() override;
 };
 

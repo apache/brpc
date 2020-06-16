@@ -36,7 +36,7 @@ TEST_F(BaiduStringPrintfTest, sanity) {
     std::string sth;
     ASSERT_EQ(0, butil::string_printf(&sth, "boolean %d", 1));
     ASSERT_EQ("boolean 1", sth);
-    
+
     ASSERT_EQ(0, butil::string_appendf(&sth, "too simple"));
     ASSERT_EQ("boolean 1too simple", sth);
 }

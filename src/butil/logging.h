@@ -43,12 +43,12 @@
 #    define DCHECK_IS_ON() 1
 #  endif  // NDEBUG
 # endif // DCHECK_IS_ON
-# if DCHECK_IS_ON() 
+# if DCHECK_IS_ON()
 #  define DPLOG(...) PLOG(__VA_ARGS__)
 #  define DPLOG_IF(...) PLOG_IF(__VA_ARGS__)
 #  define DPCHECK(...) PCHECK(__VA_ARGS__)
 #  define DVPLOG(...) VLOG(__VA_ARGS__)
-# else 
+# else
 #  define DPLOG(...) DLOG(__VA_ARGS__)
 #  define DPLOG_IF(...) DLOG_IF(__VA_ARGS__)
 #  define DPCHECK(...) DCHECK(__VA_ARGS__)
@@ -259,7 +259,7 @@ struct BUTIL_EXPORT LoggingSettings {
     OldFileDeletionState delete_old;
 };
 
-// Implementation of the InitLogging() method declared below. 
+// Implementation of the InitLogging() method declared below.
 BUTIL_EXPORT bool BaseInitLoggingImpl(const LoggingSettings& settings);
 
 // Sets the log file name and other global logging state. Calling this function

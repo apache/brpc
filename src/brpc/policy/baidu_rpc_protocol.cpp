@@ -134,7 +134,7 @@ ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
 
 // Used by UT, can't be static.
 void SendRpcResponse(int64_t correlation_id,
-                     Controller* cntl, 
+                     Controller* cntl,
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
                      const Server* server,
@@ -150,7 +150,7 @@ void SendRpcResponse(int64_t correlation_id,
     ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-    
+
     StreamId response_stream_id = accessor.response_stream();
 
     if (cntl->IsCloseConnection()) {
@@ -167,7 +167,7 @@ void SendRpcResponse(int64_t correlation_id,
     if (res != NULL && !cntl->Failed()) {
         if (!res->IsInitialized()) {
             cntl->SetFailed(
-                ERESPONSE, "Missing required fields in response: %s", 
+                ERESPONSE, "Missing required fields in response: %s",
                 res->InitializationErrorString().c_str());
         } else if (!SerializeAsCompressedData(*res, &res_body, type)) {
             cntl->SetFailed(ERESPONSE, "Fail to serialize response, "
@@ -211,7 +211,7 @@ void SendRpcResponse(int64_t correlation_id,
             s->FillSettings(meta.mutable_stream_settings());
             s->SetHostSocket(sock);
         } else {
-            LOG(WARNING) << "Stream=" << response_stream_id 
+            LOG(WARNING) << "Stream=" << response_stream_id
                          << " was closed before sending response";
         }
     }
@@ -389,7 +389,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                             butil::endpoint2str(socket->remote_side()).c_str());
             break;
         }
-        
+
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
@@ -469,18 +469,18 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         req.reset(svc->GetRequestPrototype(method).New());
         if (!ParseFromCompressedData(*req_buf_ptr, req.get(), req_cmp_type)) {
             cntl->SetFailed(EREQUEST, "Fail to parse request message, "
-                            "CompressType=%s, request_size=%d", 
+                            "CompressType=%s, request_size=%d",
                             CompressTypeToCStr(req_cmp_type), reqsize);
             break;
         }
-        
+
         res.reset(svc->GetResponsePrototype(method).New());
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
             MethodStatus*, int64_t>(
-                &SendRpcResponse, meta.correlation_id(), cntl.get(), 
+                &SendRpcResponse, meta.correlation_id(), cntl.get(),
                 req.get(), res.get(), server,
                 method_status, msg->received_us());
 
@@ -493,11 +493,11 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             span->AsParent();
         }
         if (!FLAGS_usercode_in_pthread) {
-            return svc->CallMethod(method, cntl.release(), 
+            return svc->CallMethod(method, cntl.release(),
                                    req.release(), res.release(), done);
         }
         if (BeginRunningUserCode()) {
-            svc->CallMethod(method, cntl.release(), 
+            svc->CallMethod(method, cntl.release(),
                             req.release(), res.release(), done);
             return EndRunningUserCodeInPlace();
         } else {
@@ -506,10 +506,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 req.release(), res.release(), done);
         }
     } while (false);
-    
+
     // `cntl', `req' and `res' will be deleted inside `SendRpcResponse'
     // `socket' will be held until response has been sent
-    SendRpcResponse(meta.correlation_id(), cntl.release(), 
+    SendRpcResponse(meta.correlation_id(), cntl.release(),
                     req.release(), res.release(), server,
                     method_status, msg->received_us());
 }
@@ -519,7 +519,7 @@ bool VerifyRpcRequest(const InputMessageBase* msg_base) {
         static_cast<const MostCommonMessage*>(msg_base);
     const Server* server = static_cast<const Server*>(msg->arg());
     Socket* socket = msg->socket();
-    
+
     RpcMeta meta;
     if (!ParsePbFromIOBuf(&meta, msg->meta)) {
         LOG(WARNING) << "Fail to parse RpcRequestMeta";
@@ -529,9 +529,9 @@ bool VerifyRpcRequest(const InputMessageBase* msg_base) {
     if (NULL == auth) {
         // Fast pass (no authentication)
         return true;
-    }    
+    }
     if (auth->VerifyCredential(
-                meta.authentication_data(), socket->remote_side(), 
+                meta.authentication_data(), socket->remote_side(),
                 socket->mutable_auth_context()) != 0) {
         return false;
     }
@@ -558,7 +558,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         }
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     if (meta.has_stream_settings()) {
         accessor.set_remote_stream_settings(
@@ -576,10 +576,10 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
     do {
         if (response_meta.error_code() != 0) {
             // If error_code is unset, default is 0 = success.
-            cntl->SetFailed(response_meta.error_code(), 
+            cntl->SetFailed(response_meta.error_code(),
                                   "%s", response_meta.error_text().c_str());
             break;
-        } 
+        }
         // Parse response message iff error code from meta is 0
         butil::IOBuf res_buf;
         const int res_size = msg->payload.length();
@@ -605,10 +605,10 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                     *res_buf_ptr, cntl->response(), res_cmp_type)) {
                 cntl->SetFailed(
                     ERESPONSE, "Fail to parse response message, "
-                    "CompressType=%s, response_size=%d", 
+                    "CompressType=%s, response_size=%d",
                     CompressTypeToCStr(res_cmp_type), res_size);
             }
-        } // else silently ignore the response.        
+        } // else silently ignore the response.
     } while (0);
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
@@ -653,7 +653,7 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     if (request_stream_id != INVALID_STREAM_ID) {
         SocketUniquePtr ptr;
         if (Socket::Address(request_stream_id, &ptr) != 0) {
-            return cntl->SetFailed(EREQUEST, "Stream=%" PRIu64 " was closed", 
+            return cntl->SetFailed(EREQUEST, "Stream=%" PRIu64 " was closed",
                                    request_stream_id);
         }
         Stream *s = (Stream*)ptr->conn();
@@ -661,7 +661,7 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     }
 
     // Don't use res->ByteSize() since it may be compressed
-    const size_t req_size = request_body.length(); 
+    const size_t req_size = request_body.length();
     const size_t attached_size = cntl->request_attachment().length();
     if (attached_size) {
         meta.set_attachment_size(attached_size);

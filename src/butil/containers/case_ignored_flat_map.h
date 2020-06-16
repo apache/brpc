@@ -33,14 +33,14 @@ inline char ascii_tolower(char c) {
 
 struct CaseIgnoredHasher {
     size_t operator()(const std::string& s) const {
-        std::size_t result = 0;                                               
+        std::size_t result = 0;
         for (std::string::const_iterator i = s.begin(); i != s.end(); ++i) {
             result = result * 101 + ascii_tolower(*i);
         }
         return result;
     }
     size_t operator()(const char* s) const {
-        std::size_t result = 0;                                               
+        std::size_t result = 0;
         for (; *s; ++s) {
             result = result * 101 + ascii_tolower(*s);
         }

@@ -35,7 +35,7 @@ struct Stat {
     Stat(int64_t sum2, int64_t num2) : sum(sum2), num(num2) {}
     int64_t sum;
     int64_t num;
-        
+
     int64_t get_average_int() const {
         //num can be changed by sampling thread, use tmp_num
         int64_t tmp_num = num;
@@ -89,7 +89,7 @@ public:
     const static size_t SUM_BIT_WIDTH=44;
     const static uint64_t MAX_SUM_PER_THREAD = (1ul << SUM_BIT_WIDTH) - 1;
     const static uint64_t MAX_NUM_PER_THREAD = (1ul << (64ul - SUM_BIT_WIDTH)) - 1;
-    BAIDU_CASSERT(SUM_BIT_WIDTH > 32 && SUM_BIT_WIDTH < 64, 
+    BAIDU_CASSERT(SUM_BIT_WIDTH > 32 && SUM_BIT_WIDTH < 64,
                   SUM_BIT_WIDTH_must_be_between_33_and_63);
 
     struct AddStat {
@@ -97,21 +97,21 @@ public:
     };
     struct MinusStat {
         void operator()(Stat& s1, const Stat& s2) const { s1 -= s2; }
-    };    
+    };
 
     typedef Stat value_type;
     typedef detail::ReducerSampler<IntRecorder, Stat,
                                    AddStat, MinusStat> sampler_type;
 
     typedef Stat SampleSet;
-    
+
     struct AddToStat {
         void operator()(Stat& lhs, uint64_t rhs) const {
             lhs.sum += _extend_sign_bit(_get_sum(rhs));
             lhs.num += _get_num(rhs);
         }
     };
-    
+
     typedef detail::AgentCombiner<Stat, uint64_t, AddToStat> combiner_type;
     typedef combiner_type::Agent agent_type;
 
@@ -148,20 +148,20 @@ public:
     Stat get_value() const {
         return _combiner.combine_agents();
     }
-    
+
     Stat reset() {
         return _combiner.reset_all_agents();
     }
 
     AddStat op() const { return AddStat(); }
     MinusStat inv_op() const { return MinusStat(); }
-    
+
     void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
     }
 
     bool valid() const { return _combiner.valid(); }
-    
+
     sampler_type* get_sampler() {
         if (NULL == _sampler) {
             _sampler = new sampler_type(this);
@@ -175,7 +175,7 @@ public:
     void set_debug_name(const butil::StringPiece& name) {
         _debug_name.assign(name.data(), name.size());
     }
-    
+
 private:
     // TODO: The following numeric functions should be independent utils
     static uint64_t _get_sum(const uint64_t n) {
@@ -186,12 +186,12 @@ private:
         return n >> SUM_BIT_WIDTH;
     }
 
-    // Fill all the first (64 - SUM_BIT_WIDTH + 1) bits with 1 if the sign bit is 1 
+    // Fill all the first (64 - SUM_BIT_WIDTH + 1) bits with 1 if the sign bit is 1
     // to represent a complete 64-bit negative number
     // Check out http://en.wikipedia.org/wiki/Signed_number_representations if
     // you are confused
     static int64_t _extend_sign_bit(const uint64_t sum) {
-        return (((1ul << (64ul - SUM_BIT_WIDTH + 1)) - 1) 
+        return (((1ul << (64ul - SUM_BIT_WIDTH + 1)) - 1)
                * ((1ul << (SUM_BIT_WIDTH - 1) & sum)))
                | (int64_t)sum;
     }
@@ -202,30 +202,30 @@ private:
     }
 
     static uint64_t _compress(const uint64_t num, const uint64_t sum) {
-        return (num << SUM_BIT_WIDTH) 
+        return (num << SUM_BIT_WIDTH)
                // There is a redundant '1' in the front of sum which was
-               // combined with two negative number, so truncation has to be 
+               // combined with two negative number, so truncation has to be
                // done here
                | (sum & MAX_SUM_PER_THREAD)
                ;
     }
 
     // Check whether the sum of the two integer overflows the range of signed
-    // integer with the width of SUM_BIT_WIDTH, which is 
+    // integer with the width of SUM_BIT_WIDTH, which is
     // [-2^(SUM_BIT_WIDTH -1), 2^(SUM_BIT_WIDTH -1) - 1) (eg. [-128, 127) for
     // signed 8-bit integer)
     static bool _will_overflow(const int64_t lhs, const int rhs) {
-        return 
+        return
             // Both integers are positive and the sum is larger than the largest
             // number
-            ((lhs > 0) && (rhs > 0) 
+            ((lhs > 0) && (rhs > 0)
                 && (lhs + rhs > ((int64_t)MAX_SUM_PER_THREAD >> 1)))
             // Or both integers are negative and the sum is less than the lowest
             // number
-            || ((lhs < 0) && (rhs < 0) 
+            || ((lhs < 0) && (rhs < 0)
                     && (lhs + rhs < (-((int64_t)MAX_SUM_PER_THREAD >> 1)) - 1))
             // otherwise the sum cannot overflow iff lhs does not overflow
-            // because |sum| < |lhs| 
+            // because |sum| < |lhs|
             ;
     }
 
@@ -273,7 +273,7 @@ inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
         sum = _get_sum(n);
         if (BAIDU_UNLIKELY((num + 1 > MAX_NUM_PER_THREAD) ||
                            _will_overflow(_extend_sign_bit(sum), sample))) {
-            // Although agent->element might have been cleared at this 
+            // Although agent->element might have been cleared at this
             // point, it is just OK because the very value is 0 in
             // this case
             agent->combiner->commit_and_clear(agent);

@@ -30,7 +30,7 @@
 //   fw.init("to_be_watched_file");
 //   ....
 //   if (fw.check_and_consume() > 0) {
-//       // the file is created or updated 
+//       // the file is created or updated
 //       ......
 //   }
 
@@ -45,7 +45,7 @@ public:
     };
 
     typedef int64_t Timestamp;
-    
+
     FileWatcher();
 
     // Watch file at `file_path', must be called before calling other methods.
@@ -61,7 +61,7 @@ public:
     //   UPDATED   the file is modified since last call.
     //   UNCHANGED the file has no change since last call.
     //   DELETED   the file was deleted since last call.
-    // Note: If the file is updated too frequently, this method may return 
+    // Note: If the file is updated too frequently, this method may return
     // UNCHANGED due to precision of stat(2) and the file system. If the file
     // is created and deleted too frequently, the event may not be detected.
     Change check_and_consume(Timestamp* last_timestamp = NULL);
@@ -69,7 +69,7 @@ public:
     // Set internal timestamp. User can use this method to make
     // check_and_consume() replay the change.
     void restore(Timestamp timestamp);
-    
+
     // Get path of watched file
     const char* filepath() const { return _file_path.c_str(); }
 
@@ -77,7 +77,7 @@ private:
     Change check(Timestamp* new_timestamp) const;
 
     std::string _file_path;
-    Timestamp _last_ts;    
+    Timestamp _last_ts;
 };
 }  // namespace butil
 

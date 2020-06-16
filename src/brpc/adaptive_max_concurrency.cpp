@@ -102,7 +102,7 @@ const std::string& AdaptiveMaxConcurrency::CONSTANT() {
 
 bool operator==(const AdaptiveMaxConcurrency& adaptive_concurrency,
                 const butil::StringPiece& concurrency) {
-    return CompareStringPieceWithoutCase(concurrency, 
+    return CompareStringPieceWithoutCase(concurrency,
                                          adaptive_concurrency.value().c_str());
 }
 

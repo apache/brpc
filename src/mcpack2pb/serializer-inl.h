@@ -26,7 +26,7 @@ void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
 
 namespace mcpack2pb {
 
-inline OutputStream::Area::Area(const Area& rhs) 
+inline OutputStream::Area::Area(const Area& rhs)
     : _addr1(rhs._addr1)
     , _addr2(rhs._addr2)
     , _size1(rhs._size1)

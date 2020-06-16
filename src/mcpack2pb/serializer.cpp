@@ -129,7 +129,7 @@ void Serializer::GroupInfo::print(std::ostream& os) const {
     if (type == FIELD_ARRAY) {
         os << '[' << type2str(item_type) << ']';
     }
-    
+
     // os << type2str(type) << '=';
     // const uint8_t first_byte = *head_buf;
     // butil::StringPiece name;
@@ -157,7 +157,7 @@ std::ostream& operator<<(std::ostream& os, const Serializer::GroupInfo& gi) {
     gi.print(os);
     return os;
 }
-    
+
 Serializer::Serializer(OutputStream* stream)
     : _stream(stream)
     , _ndepth(0)
@@ -220,7 +220,7 @@ inline bool array_add_item(OutputStream* stream,
         CHECK(false) << "Different item_type=" << type2str(item_type)
                      << " from " << group_info;
         return false;
-    }        
+    }
     if (group_info.output_offset == 0) {
         // Enable anynomous object at first level.
         group_info.item_count += n;
@@ -439,7 +439,7 @@ inline void add_binary_internal(OutputStream* stream,
     }
     if (!object_add_item(group_info, name)) {
         return stream->set_bad();
-    }    
+    }
     if (value.size() <= 255) {
         FieldShortHead shead;
         shead.set_type(type | FIELD_SHORT_MASK);

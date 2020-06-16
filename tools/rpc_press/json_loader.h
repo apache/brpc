@@ -30,20 +30,20 @@ namespace brpc {
 // This utility loads pb messages in json format from a file or string.
 class JsonLoader {
 public:
-    JsonLoader(google::protobuf::compiler::Importer* importer, 
+    JsonLoader(google::protobuf::compiler::Importer* importer,
                google::protobuf::DynamicMessageFactory* factory,
                const std::string& service_name,
                const std::string& method_name);
     ~JsonLoader() {}
 
     // TODO(gejun): messages should be lazily loaded.
-    
+
     // Load jsons from fd or string, convert them into pb messages, then insert
     // them into `out_msgs'.
     void load_messages(int fd, std::deque<google::protobuf::Message*>* out_msgs);
     void load_messages(const std::string& jsons,
                        std::deque<google::protobuf::Message*>* out_msgs);
-    
+
 private:
     class Reader;
 

@@ -71,7 +71,7 @@ public:
     void set_content_type(const std::string& type) { _content_type = type; }
     void set_content_type(const char* type) { _content_type = type; }
     std::string& mutable_content_type() { return _content_type; }
-    
+
     // Get value of a header which is case-insensitive according to:
     //   https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
     // Namely, GetHeader("log-id"), GetHeader("Log-Id"), GetHeader("LOG-ID")
@@ -96,7 +96,7 @@ public:
     // old value and new value with comma(,) according to:
     //   https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
     void AppendHeader(const std::string& key, const butil::StringPiece& value);
-    
+
     // Get header iterators which are invalidated after calling AppendHeader()
     HeaderIterator HeaderBegin() const { return _headers.begin(); }
     HeaderIterator HeaderEnd() const { return _headers.end(); }

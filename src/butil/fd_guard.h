@@ -40,7 +40,7 @@ class fd_guard {
 public:
     fd_guard() : _fd(-1) {}
     explicit fd_guard(int fd) : _fd(fd) {}
-    
+
     ~fd_guard() {
         if (_fd >= 0) {
             ::close(_fd);
@@ -63,14 +63,14 @@ public:
         _fd = -1;
         return prev_fd;
     }
-    
+
     operator int() const { return _fd; }
-    
+
 private:
     // Copying this makes no sense.
     fd_guard(const fd_guard&);
     void operator=(const fd_guard&);
-    
+
     int _fd;
 };
 

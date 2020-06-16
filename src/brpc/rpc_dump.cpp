@@ -70,11 +70,11 @@ public:
     void SaveFlags();
 
     void SetRound(size_t round);
-    
+
     void Dump(size_t round, SampledRequest*);
-    
+
     static bool Serialize(butil::IOBuf& buf, SampledRequest* sample);
-    
+
     RpcDumpContext()
         : _cur_req_count(0)
         , _cur_fd(-1)
@@ -87,7 +87,7 @@ public:
         _command_name = bvar::read_command_name();
         SaveFlags();
         // Clean the directory at fist time.
-        butil::DeleteFile(_dir, true); 
+        butil::DeleteFile(_dir, true);
     }
     ~RpcDumpContext() {
         if (_cur_fd >= 0) {
@@ -95,7 +95,7 @@ public:
             _cur_fd = -1;
         }
     }
-    
+
 private:
     std::string _command_name;
     int _cur_req_count; // written #req in current file
@@ -121,7 +121,7 @@ static RpcDumpContext* g_rpc_dump_ctx = NULL;
 void SampledRequest::dump_and_destroy(size_t round) {
     static bvar::DisplaySamplingRatio sampling_ratio_var(
         "rpc_dump_sampling_ratio", &g_rpc_dump_sl);
-    
+
     // Safe to modify g_rpc_dump_ctx w/o locking.
     RpcDumpContext* rpc_dump_ctx = g_rpc_dump_ctx;
     if (rpc_dump_ctx == NULL) {
@@ -140,7 +140,7 @@ void SampledRequest::destroy() {
 void RpcDumpContext::SaveFlags() {
     std::string dir;
     CHECK(GFLAGS_NS::GetCommandLineOption("rpc_dump_dir", &dir));
-    
+
     const size_t pos = dir.find("<app>");
     if (pos != std::string::npos) {
         dir.replace(pos, 5/*<app>*/, _command_name);
@@ -238,7 +238,7 @@ bool RpcDumpContext::Serialize(butil::IOBuf& buf, SampledRequest* sample) {
     // Use the header of baidu_std.
     char rpc_header[12];
     butil::IOBuf::Area header_area = buf.reserve(sizeof(rpc_header));
-    
+
     const size_t starting_size = buf.size();
     butil::IOBufAsZeroCopyOutputStream buf_stream(&buf);
     if (!sample->meta.SerializeToZeroCopyStream(&buf_stream)) {
@@ -306,7 +306,7 @@ SampledRequest* SampleIterator::Next() {
             ::close(_cur_fd);
             _cur_fd = -1;
         }
-        
+
         if (_enum == NULL) {
             _enum = new butil::FileEnumerator(
                 _dir, false, butil::FileEnumerator::FILES);

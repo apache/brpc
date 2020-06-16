@@ -612,7 +612,7 @@ class SandboxSymbolizeHelper {
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 02000000
 #endif
-    
+
   // Opens all object files and caches their file descriptors.
   void OpenSymbolFiles() {
     // Pre-opening and caching the file descriptors of all loaded modules is

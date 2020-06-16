@@ -85,7 +85,7 @@ struct EndPoint {
     EndPoint(ip_t ip2, int port2) : ip(ip2), port(port2) {}
     explicit EndPoint(const sockaddr_in& in)
         : ip(in.sin_addr), port(ntohs(in.sin_port)) {}
-    
+
     ip_t ip;
     int port;
 };
@@ -95,8 +95,8 @@ struct EndPointStr {
     char _buf[INET_ADDRSTRLEN + 16];
 };
 
-// Convert EndPoint to c-style string. Notice that you can serialize 
-// EndPoint to std::ostream directly. Use this function when you don't 
+// Convert EndPoint to c-style string. Notice that you can serialize
+// EndPoint to std::ostream directly. Use this function when you don't
 // have streaming log.
 // Example: printf("point=%s\n", endpoint2str(point).c_str());
 EndPointStr endpoint2str(const EndPoint&);
@@ -147,7 +147,7 @@ inline bool operator>=(butil::ip_t lhs, butil::ip_t rhs) {
     return !(lhs < rhs);
 }
 inline bool operator<=(butil::ip_t lhs, butil::ip_t rhs) {
-    return !(rhs < lhs); 
+    return !(rhs < lhs);
 }
 inline bool operator==(butil::ip_t lhs, butil::ip_t rhs) {
     return butil::ip2int(lhs) == butil::ip2int(rhs);
@@ -171,11 +171,11 @@ inline bool operator<(EndPoint p1, EndPoint p2) {
 inline bool operator>(EndPoint p1, EndPoint p2) {
     return p2 < p1;
 }
-inline bool operator<=(EndPoint p1, EndPoint p2) { 
-    return !(p2 < p1); 
+inline bool operator<=(EndPoint p1, EndPoint p2) {
+    return !(p2 < p1);
 }
-inline bool operator>=(EndPoint p1, EndPoint p2) { 
-    return !(p1 < p2); 
+inline bool operator>=(EndPoint p1, EndPoint p2) {
+    return !(p1 < p2);
 }
 inline bool operator==(EndPoint p1, EndPoint p2) {
     return p1.ip == p2.ip && p1.port == p2.port;

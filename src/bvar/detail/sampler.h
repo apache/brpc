@@ -38,14 +38,14 @@ struct Sample {
     int64_t time_us;
 
     Sample() : data(), time_us(0) {}
-    Sample(const T& data2, int64_t time2) : data(data2), time_us(time2) {}  
+    Sample(const T& data2, int64_t time2) : data(data2), time_us(time2) {}
 };
 
 // The base class for all samplers whose take_sample() are called periodically.
 class Sampler : public butil::LinkNode<Sampler> {
 public:
     Sampler();
-        
+
     // This function will be called every second(approximately) in a
     // dedicated thread if schedule() is called.
     virtual void take_sample() = 0;
@@ -57,10 +57,10 @@ public:
     // Call this function instead of delete to destroy the sampler. Deletion
     // of the sampler may be delayed for seconds.
     void destroy();
-        
+
 protected:
     virtual ~Sampler();
-    
+
 friend class SamplerCollector;
     bool _used;
     // Sync destroy() and take_sample().
@@ -92,7 +92,7 @@ public:
     explicit ReducerSampler(R* reducer)
         : _reducer(reducer)
         , _window_size(1) {
-        
+
         // Invoked take_sample at begining so the value of the first second
         // would not be ignored
         take_sample();

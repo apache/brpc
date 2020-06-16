@@ -31,7 +31,7 @@ DECLARE_bool(log_hostname);
 
 struct ComlogLayoutOptions {
     ComlogLayoutOptions() : shorter_log_level(true) {}
-    
+
     bool shorter_log_level;
 };
 
@@ -147,7 +147,7 @@ ComlogSinkOptions::ComlogSinkOptions()
     , enable_wf_device(false) {
 }
 
-ComlogSink::ComlogSink() 
+ComlogSink::ComlogSink()
     : _init(false), _dev(NULL) {
 }
 
@@ -198,7 +198,7 @@ int ComlogSink::SetupDevice(com_device_t* dev, const char* type, const char* fil
         //snprintf(dev->file, COM_MAXFILENAME, "%s.wf", file);
         snprintf(dev->file, sizeof(dev->file), "%s.wf", path.BaseName().value().c_str());
     }
-    
+
     snprintf(dev->type, COM_MAXAPPENDERNAME, "%s", type);
     dev->splite_type = static_cast<int>(_options.split_type);
     dev->log_size = _options.cut_size_megabytes; // SIZECUT precision in MB
@@ -343,7 +343,7 @@ int ComlogSink::Setup(const ComlogSinkOptions* options) {
     _init = true;
     return 0;
 }
-        
+
 void ComlogSink::Unload() {
     if (_init) {
         com_closelog(0);

@@ -44,7 +44,7 @@ public:
 
     // [Optional] Set the full method name. If unset, use name of the service.
     void SetMethodName(const std::string& full_method_name);
-    
+
     // The space required by subclass at NsheadServiceOptions. subclass may
     // utilizes this feature to save the cost of allocating closure separately.
     // If subclass does not require space, this return value is NULL.
@@ -115,7 +115,7 @@ friend class Server;
 
 private:
     void Expose(const butil::StringPiece& prefix);
-    
+
     // Tracking status of non NsheadPbService
     MethodStatus* _status;
     size_t _additional_space;

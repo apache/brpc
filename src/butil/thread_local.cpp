@@ -14,7 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
- 
+
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
 #include <errno.h>                       // errno
@@ -31,7 +31,7 @@ class ThreadExitHelper {
 public:
     typedef void (*Fn)(void*);
     typedef std::pair<Fn, void*> Pair;
-    
+
     ~ThreadExitHelper() {
         // Call function reversely.
         while (!_fns.empty()) {
@@ -78,7 +78,7 @@ static void delete_thread_exit_helper(void* arg) {
 }
 
 static void helper_exit_global() {
-    detail::ThreadExitHelper* h = 
+    detail::ThreadExitHelper* h =
         (detail::ThreadExitHelper*)pthread_getspecific(detail::thread_atexit_key);
     if (h) {
         pthread_setspecific(detail::thread_atexit_key, NULL);

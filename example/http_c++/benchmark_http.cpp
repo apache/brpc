@@ -31,7 +31,7 @@ DEFINE_string(connection_type, "", "Connection type. Available values: single, p
 DEFINE_string(url, "0.0.0.0:8010/HttpService/Echo", "url of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 DEFINE_string(protocol, "http", "Client-side protocol");
@@ -64,7 +64,7 @@ static void* sender(void* arg) {
                 << "error=" << cntl.ErrorText() << " latency=" << cntl.latency_us();
             // We can't connect to the server, sleep a while. Notice that this
             // is a specific sleeping to prevent this thread from spinning too
-            // fast. You should continue the business logic in a production 
+            // fast. You should continue the business logic in a production
             // server rather than sleeping.
             bthread_usleep(100000);
         }
@@ -76,14 +76,14 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
-    
-    // Initialize the channel, NULL means using default options. 
+
+    // Initialize the channel, NULL means using default options.
     // options, see `brpc/channel.h'.
     if (channel.Init(FLAGS_url.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
 
     while (!brpc::IsAskedToQuit()) {
         sleep(1);
-        LOG(INFO) << "Sending " << FLAGS_protocol << " requests at qps=" 
+        LOG(INFO) << "Sending " << FLAGS_protocol << " requests at qps="
                   << g_latency_recorder.qps(1)
                   << " latency=" << g_latency_recorder.latency(1);
     }

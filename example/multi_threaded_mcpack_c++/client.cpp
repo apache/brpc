@@ -32,7 +32,7 @@ DEFINE_int32(request_size, 16, "Bytes of each request");
 DEFINE_string(server, "0.0.0.0:8002", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 
@@ -61,7 +61,7 @@ static void* sender(void* arg) {
         request.set_message(g_request);
         cntl.set_log_id(log_id++);  // set by user
         if (!g_attachment.empty()) {
-            // Set attachment which is wired to network directly instead of 
+            // Set attachment which is wired to network directly instead of
             // being serialized into protobuf messages.
             cntl.request_attachment().append(g_attachment);
         }
@@ -72,12 +72,12 @@ static void* sender(void* arg) {
         if (!cntl.Failed()) {
             g_latency_recorder << cntl.latency_us();
         } else {
-            g_error_count << 1; 
+            g_error_count << 1;
             CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)
                 << "error=" << cntl.ErrorText() << " latency=" << cntl.latency_us();
             // We can't connect to the server, sleep a while. Notice that this
             // is a specific sleeping to prevent this thread from spinning too
-            // fast. You should continue the business logic in a production 
+            // fast. You should continue the business logic in a production
             // server rather than sleeping.
             bthread_usleep(50000);
         }
@@ -89,10 +89,10 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
+
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = "nshead_mcpack";

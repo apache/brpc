@@ -31,7 +31,7 @@
 #include "brpc/describable.h"
 #include "brpc/socket.h"
 #include "butil/strings/string_number_conversions.h"
-#include "brpc/excluded_servers.h" 
+#include "brpc/excluded_servers.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
@@ -210,7 +210,7 @@ TEST_F(LoadBalancerTest, la_sanity) {
         std::cout << "Removed " << before_removal - cur_count << std::endl;
         ValidateLALB(lalb, cur_count);
     }
-    
+
     for (size_t i = 0; i < ids.size(); ++i) {
         ASSERT_EQ(0, brpc::Socket::SetFailed(ids[i].id));
     }
@@ -351,13 +351,13 @@ TEST_F(LoadBalancerTest, update_while_selection) {
         }
         global_stop = true;
         LOG(INFO) << "Stop all...";
-        
+
         void* retval[ARRAY_SIZE(th)];
         for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
             ASSERT_EQ(0, pthread_join(th[i], &retval[i]));
         }
         tm.stop();
-        
+
         CountMap total_count;
         for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
             CountMap* selected_count = (CountMap*)retval[i];
@@ -384,7 +384,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
             std::cout << i << "=" << total_count[ids[i].id] << " ";
         }
         std::cout << std::endl;
-        
+
         for (size_t i = 0; i < id_num; ++i) {
             ASSERT_EQ(0, brpc::Socket::SetFailed(ids[i].id));
         }
@@ -419,7 +419,7 @@ TEST_F(LoadBalancerTest, fairness) {
             sa.hash = brpc::policy::MurmurHash32;
         }
         sa.lb = lb;
-        
+
         std::string lb_name = butil::class_name_str(*lb);
         // Remove namespace
         size_t ns_pos = lb_name.find_last_of(':');
@@ -441,7 +441,7 @@ TEST_F(LoadBalancerTest, fairness) {
                 id.tag = "100";
             } else if (4 == round) {
                 if ( i % 50 == 0) {
-                    id.tag = std::to_string(i*2 + butil::fast_rand_less_than(40) + 80); 
+                    id.tag = std::to_string(i*2 + butil::fast_rand_less_than(40) + 80);
                 } else {
                     id.tag = std::to_string(butil::fast_rand_less_than(40) + 80);
                 }
@@ -463,7 +463,7 @@ TEST_F(LoadBalancerTest, fairness) {
         ProfilerStop();
 
         global_stop = true;
-        
+
         CountMap total_count;
         for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
             void* retval;
@@ -490,18 +490,18 @@ TEST_F(LoadBalancerTest, fairness) {
         size_t count_squared_sum = 0;
         std::cout << lb_name << ':' << '\n';
 
-        if (round != 3 && round !=4) { 
+        if (round != 3 && round !=4) {
             for (size_t i = 0; i < ids.size(); ++i) {
                 size_t count = total_count[ids[i].id];
                 ASSERT_NE(0ul, count) << "i=" << i;
                 std::cout << i << '=' << count << ' ';
                 count_sum += count;
                 count_squared_sum += count * count;
-            }  
- 
+            }
+
             std::cout << '\n'
                       << ": average=" << count_sum/ids.size()
-                      << " deviation=" << sqrt(count_squared_sum * ids.size() 
+                      << " deviation=" << sqrt(count_squared_sum * ids.size()
                           - count_sum * count_sum) / ids.size() << std::endl;
         } else { // for weighted round robin load balancer
             std::cout << "configured weight: " << std::endl;
@@ -521,7 +521,7 @@ TEST_F(LoadBalancerTest, fairness) {
             }
             std::cout << '\n'
                       << ": scaling average=" << scaling_count_sum/ids.size()
-                      << " scaling deviation=" << sqrt(scaling_count_squared_sum * ids.size() 
+                      << " scaling deviation=" << sqrt(scaling_count_squared_sum * ids.size()
                           - scaling_count_sum * scaling_count_sum) / ids.size() << std::endl;
         }
         for (size_t i = 0; i < ids.size(); ++i) {
@@ -537,7 +537,7 @@ TEST_F(LoadBalancerTest, fairness) {
 
 TEST_F(LoadBalancerTest, consistent_hashing) {
     ::brpc::policy::HashFunc hashs[::brpc::policy::CONS_HASH_LB_LAST] = {
-            ::brpc::policy::MurmurHash32, 
+            ::brpc::policy::MurmurHash32,
             ::brpc::policy::MD5Hash32,
             ::brpc::policy::MD5Hash32
             // ::brpc::policy::CRCHash32 crc is a bad hash function in test
@@ -549,18 +549,18 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         ::brpc::policy::CONS_HASH_LB_KETAMA
     };
 
-    const char* servers[] = { 
-            "10.92.115.19:8833", 
-            "10.42.108.25:8833", 
-            "10.36.150.32:8833", 
-            "10.92.149.48:8833", 
+    const char* servers[] = {
+            "10.92.115.19:8833",
+            "10.42.108.25:8833",
+            "10.36.150.32:8833",
+            "10.92.149.48:8833",
             "10.42.122.201:8833",
     };
     for (size_t round = 0; round < ARRAY_SIZE(hashs); ++round) {
         brpc::policy::ConsistentHashingLoadBalancer chlb(hash_type[round]);
         std::vector<brpc::ServerId> ids;
         std::vector<butil::EndPoint> addrs;
-        for (int j = 0;j < 5; ++j) 
+        for (int j = 0;j < 5; ++j)
         for (int i = 0; i < 5; ++i) {
             const char *addr = servers[i];
             //snprintf(addr, sizeof(addr), "192.168.1.%d:8080", i);
@@ -599,7 +599,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         double load_sum = 0;;
         double load_sqr_sum = 0;
         for (size_t i = 0; i < addrs.size(); ++i) {
-            double normalized_load = 
+            double normalized_load =
                     (double)times[addrs[i]] / SELECT_TIMES / load_map[addrs[i]];
             std::cout << i << '=' << normalized_load << ' ';
             load_sum += normalized_load;
@@ -607,7 +607,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         }
         std::cout << '\n';
         std::cout << "average_normalized_load=" << load_sum / addrs.size()
-                  << " deviation=" 
+                  << " deviation="
                   << sqrt(load_sqr_sum * addrs.size() - load_sum * load_sum) / addrs.size()
                   << '\n';
         for (size_t i = 0; i < ids.size(); ++i) {
@@ -617,12 +617,12 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
 }
 
 TEST_F(LoadBalancerTest, weighted_round_robin) {
-    const char* servers[] = { 
-            "10.92.115.19:8831", 
-            "10.42.108.25:8832", 
-            "10.36.150.32:8833", 
-            "10.36.150.32:8899", 
-            "10.92.149.48:8834", 
+    const char* servers[] = {
+            "10.92.115.19:8831",
+            "10.42.108.25:8832",
+            "10.36.150.32:8833",
+            "10.36.150.32:8899",
+            "10.92.149.48:8834",
             "10.42.122.201:8835",
             "10.42.122.202:8836"
     };
@@ -658,7 +658,7 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
 
     // Select the best server according to weight configured.
     // There are 3 valid servers with weight 3, 2 and 7 respectively.
-    // We run SelectServer for 12 times. The result number of each server seleted should be 
+    // We run SelectServer for 12 times. The result number of each server seleted should be
     // consistent with weight configured.
     std::map<butil::EndPoint, size_t> select_result;
     brpc::SocketUniquePtr ptr;
@@ -671,25 +671,25 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
         select_servers.emplace_back(ptr->remote_side());
         ++select_result[ptr->remote_side()];
     }
-    
+
     for (const auto& s : select_servers) {
         std::cout << "1=" << s << ", ";
-    } 
-    std::cout << std::endl;   
+    }
+    std::cout << std::endl;
     // Check whether slected result is consistent with expected.
     EXPECT_EQ((size_t)3, select_result.size());
     for (const auto& result : select_result) {
-        std::cout << result.first << " result=" << result.second 
+        std::cout << result.first << " result=" << result.second
                   << " configured=" << configed_weight[result.first] << std::endl;
         EXPECT_EQ(result.second, (size_t)configed_weight[result.first]);
     }
 }
 
 TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
-    const char* servers[] = { 
-            "10.92.115.19:8831", 
-            "10.42.108.25:8832", 
-            "10.36.150.32:8833" 
+    const char* servers[] = {
+            "10.92.115.19:8831",
+            "10.42.108.25:8832",
+            "10.36.150.32:8833"
     };
     std::string weight[] = {"200000000", "2", "600000"};
     std::map<butil::EndPoint, int> configed_weight;
@@ -717,8 +717,8 @@ TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
             ptr->SetLogOff();
         }
     }
-    // The first socket is excluded. The second socket is logfoff. 
-    // The third socket is invalid. 
+    // The first socket is excluded. The second socket is logfoff.
+    // The third socket is invalid.
     brpc::SocketUniquePtr ptr;
     brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, exclude };
     brpc::LoadBalancer::SelectOut out(&ptr);
@@ -727,8 +727,8 @@ TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
 }
 
 TEST_F(LoadBalancerTest, health_check_no_valid_server) {
-    const char* servers[] = { 
-            "10.92.115.19:8832", 
+    const char* servers[] = {
+            "10.92.115.19:8832",
             "10.42.122.201:8833",
     };
     std::vector<brpc::LoadBalancer*> lbs;
@@ -787,7 +787,7 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
         ptr->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
         // After reset health check state, the lb should work fine
         bool get_server1 = false;
-        bool get_server2 = false; 
+        bool get_server2 = false;
         for (int i = 0; i < 20; ++i) {
             brpc::SocketUniquePtr ptr;
             brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
@@ -976,7 +976,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     EchoServiceImpl service2;
     ASSERT_EQ(0, server2.AddService(&service2, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server2.Start(point2, NULL));
-    
+
     int64_t start_ms = butil::gettimeofday_ms();
     while ((butil::gettimeofday_ms() - start_ms) < 3500) {
         Done* done = new Done;

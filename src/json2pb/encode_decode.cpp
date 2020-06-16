@@ -22,7 +22,7 @@
 namespace json2pb {
 
 inline int match_pattern(const std::string& str, int index) {
-    //pattern: _Zxxx_  
+    //pattern: _Zxxx_
     const char digit = '0';
     const int pattern_length = 6;
 
@@ -32,10 +32,10 @@ inline int match_pattern(const std::string& str, int index) {
     }
     if (str[index] != '_' ||
         str[index + 1] != 'Z' ||
-        str[index + 5] != '_' || 
+        str[index + 5] != '_' ||
         !isdigit(str[index + 2]) ||
         !isdigit(str[index + 3]) ||
-        !isdigit(str[index + 4])) { 
+        !isdigit(str[index + 4])) {
         return -1;
     }
     int sum = (str[index + 2] - digit) * 100 + (str[index + 3] - digit) * 10 + (str[index + 4] - digit);
@@ -45,12 +45,12 @@ inline int match_pattern(const std::string& str, int index) {
 bool encode_name(const std::string& content, std::string& encoded_content) {
     int index = 0;
     size_t begin = 0;
-    bool convert = false; 
+    bool convert = false;
     for (std::string::const_iterator it = content.begin(); it != content.end(); ++it, ++index) {
-        if ((!isalnum(*it) && 
+        if ((!isalnum(*it) &&
             (*it != '_')) ||
             (it == content.begin() &&
-            isdigit(*it))) { 
+            isdigit(*it))) {
             if (!convert) {
                 encoded_content.clear();
                 encoded_content.reserve(2*content.size());
@@ -58,7 +58,7 @@ bool encode_name(const std::string& content, std::string& encoded_content) {
             }
             encoded_content.append(content, begin, index - begin);
             begin = index + 1;
-            
+
             char pattern[6];
             pattern[0] = '_';
             pattern[1] = 'Z';
@@ -84,13 +84,13 @@ bool decode_name(const std::string& content, std::string& decoded_content) {
     const int pattern_length = 6;
     int begin = 0;
     int second = 0;
-    bool convert = false; 
+    bool convert = false;
     for (std::string::const_iterator it = content.begin(); it < content.end(); ++it, ++second) {
         if (*it != '_') {
             continue;
         }
         int val = match_pattern(content, second);
-        if (val != -1) { 
+        if (val != -1) {
             if (!convert) {
                 decoded_content.clear();
                 decoded_content.reserve(content.size());
@@ -102,13 +102,13 @@ bool decode_name(const std::string& content, std::string& decoded_content) {
             begin = second + 1;
             it += pattern_length - 1;
         }
-    } 
+    }
     if (!convert) {
         return false;
     } else {
         decoded_content.append(content, begin, second - begin);
-        return true; 
+        return true;
     }
-} 
+}
 
 } // namespace json2pb

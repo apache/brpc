@@ -86,7 +86,7 @@ public:
 
 private:
     int CheckHealth();
-    
+
     Channel _chan;
 };
 

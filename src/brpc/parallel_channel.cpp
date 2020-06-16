@@ -77,7 +77,7 @@ public:
                 delete ap.response;
             }
         }
- 
+
         void Run() {
             shared_data->OnSubDoneRun(this);
         }
@@ -87,7 +87,7 @@ public:
         SubCall ap;
         Controller cntl;
     };
-    
+
     static ParallelChannelDone* Create(
         int fail_limit, int ndone, const SubCall* aps, int nchan,
         Controller* cntl, google::protobuf::Closure* user_done) {
@@ -215,7 +215,7 @@ public:
         }
         return pthread_self() == _callmethod_pthread;
     }
-    
+
     void OnSubDoneRun(SubDone* fin) {
         if (fin != NULL) {
             // [ called from SubDone::Run() ]
@@ -253,7 +253,7 @@ public:
             }
         } else {
             // [ Called from this->Run() ]
-            
+
             // We may cancel sub calls even if all sub calls finish because
             // of reading the value relaxly (and CPU cache is not sync yet).
             // It's OK and we have to, because sub_done can't be accessed
@@ -404,7 +404,7 @@ public:
     int sub_done_map(int i) const {
         return reinterpret_cast<const int*>((_sub_done + _ndone))[i];
     }
-    
+
     int sub_channel_size() const { return _nchan; }
     // Different from sub_done(), sub_channel_controller returns NULL for
     // invalid accesses and never crashes.
@@ -500,7 +500,7 @@ void ParallelChannel::Reset() {
         _chans[i].call_mapper.reset();
         _chans[i].merger.reset();
     }
-    
+
     // Remove not own-ed channels.
     for (size_t i = 0; i < _chans.size();) {
         if (_chans[i].ownership != OWNS_CHANNEL) {
@@ -635,7 +635,7 @@ void ParallelChannel::CallMethod(
             fail_limit = ndone;
         }
     }
-    
+
     d = ParallelChannelDone::Create(fail_limit, ndone, aps, nchan,
                                     cntl, done);
     if (NULL == d) {
@@ -676,7 +676,7 @@ void ParallelChannel::CallMethod(
     d->SaveThreadInfoOfCallsite();
     CHECK_EQ(0, bthread_id_unlock(cid));
     // Don't touch `cntl' and `d' again (for async RPC)
-    
+
     for (int i = 0, j = 0; i < nchan; ++i) {
         if (!aps[i].is_skip()) {
             ParallelChannelDone::SubDone* sd = d->sub_done(j++);

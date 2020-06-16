@@ -160,7 +160,7 @@ TEST_F(ExecutionQueueTest, performance) {
     ProfilerStop();
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
     ASSERT_EQ(pa.expected_value.load(), result);
-    LOG(INFO) << "With addressed execq, each execution_queue_execute takes " 
+    LOG(INFO) << "With addressed execq, each execution_queue_execute takes "
               << pa.total_time.load() / pa.total_num.load()
               << " total_num=" << pa.total_num
               << " ns with " << ARRAY_SIZE(threads) << " threads";
@@ -186,7 +186,7 @@ TEST_F(ExecutionQueueTest, performance) {
     ProfilerStop();
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
     ASSERT_EQ(pa.expected_value.load(), result);
-    LOG(INFO) << "With id explicitly, execution_queue_execute takes " 
+    LOG(INFO) << "With id explicitly, execution_queue_execute takes "
               << pa.total_time.load() / pa.total_num.load()
               << " total_num=" << pa.total_num
               << " ns with " << ARRAY_SIZE(threads) << " threads";
@@ -362,7 +362,7 @@ TEST_F(ExecutionQueueTest, in_place_task) {
     bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
-                                                check_running_thread, 
+                                                check_running_thread,
                                                 (void*)thread_id));
     ASSERT_EQ(0, bthread::execution_queue_execute(
                 queue_id, 0, &bthread::TASK_OPTIONS_INPLACE));
@@ -380,7 +380,7 @@ void *run_first_tasks(void* arg) {
     InPlaceTask task;
     task.first_task = true;
     task.thread_id = pthread_self();
-    EXPECT_EQ(0, bthread::execution_queue_execute(queue_id, task, 
+    EXPECT_EQ(0, bthread::execution_queue_execute(queue_id, task,
                                                   &bthread::TASK_OPTIONS_INPLACE));
     return NULL;
 }
@@ -413,7 +413,7 @@ TEST_F(ExecutionQueueTest, should_start_new_thread_on_more_tasks) {
     bthread::ExecutionQueueOptions options;
     butil::atomic<int> futex(0);
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
-                                                stuck_and_check_running_thread, 
+                                                stuck_and_check_running_thread,
                                                 (void*)&futex));
     pthread_t thread;
     ASSERT_EQ(0, pthread_create(&thread, NULL, run_first_tasks, (void*)queue_id.value));
@@ -424,7 +424,7 @@ TEST_F(ExecutionQueueTest, should_start_new_thread_on_more_tasks) {
         InPlaceTask task;
         task.first_task = false;
         task.thread_id = pthread_self();
-        ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, task, 
+        ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, task,
                                                       &bthread::TASK_OPTIONS_INPLACE));
     }
     futex.store(2);
@@ -613,7 +613,7 @@ TEST_F(ExecutionQueueTest, random_cancel) {
             t.cancel_task = true;
             t.cancel_value = i;
             t.handle = h;
-            ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, t, 
+            ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, t,
                                     &bthread::TASK_OPTIONS_URGENT));
         } else {
             // do nothing;
@@ -695,9 +695,9 @@ TEST_F(ExecutionQueueTest, cancel_unexecuted_high_priority_task) {
     ASSERT_EQ(0, bthread::execution_queue_execute(
                         queue_id, -100, &bthread::TASK_OPTIONS_URGENT, &h));
     ASSERT_EQ(0, bthread::execution_queue_cancel(h));
-    
+
     // Resume executor
-    g_suspending = false;  
+    g_suspending = false;
 
     // Push a normal task
     ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, 12345));

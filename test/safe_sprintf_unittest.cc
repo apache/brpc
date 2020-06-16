@@ -732,7 +732,7 @@ TEST(SafeSPrintfTest, EmitNULL) {
   EXPECT_EQ(6, SafeSPrintf(buf, "%s", NULL));
   EXPECT_EQ("<NULL>", std::string(buf));
 #endif
-  
+
 #if defined(__GNUC__) && __GNUC__ >= 4
 #pragma GCC diagnostic pop
 #endif

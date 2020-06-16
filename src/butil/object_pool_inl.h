@@ -47,13 +47,13 @@ template <typename T, size_t NITEM>
 struct ObjectPoolFreeChunk {
     size_t nfree;
     T* ptrs[NITEM];
-}; 
+};
 // for gcc 3.4.5
 template <typename T>
 struct ObjectPoolFreeChunk<T, 0> {
     size_t nfree;
     T* ptrs[0];
-}; 
+};
 
 struct ObjectPoolInfo {
     size_t local_pool_num;
@@ -180,7 +180,7 @@ public:
             return obj;                                                 \
         }                                                               \
         return NULL;                                                    \
- 
+
 
         inline T* get() {
             BAIDU_OBJECT_POOL_GET();
@@ -405,9 +405,9 @@ private:
         }
 
         // Can't delete global even if all threads(called ObjectPool
-        // functions) quit because the memory may still be referenced by 
+        // functions) quit because the memory may still be referenced by
         // other threads. But we need to validate that all memory can
-        // be deallocated correctly in tests, so wrap the function with 
+        // be deallocated correctly in tests, so wrap the function with
         // a macro which is only defined in unittests.
 #ifdef BAIDU_CLEAR_OBJECT_POOL_AFTER_ALL_THREADS_QUIT
         BAIDU_SCOPED_LOCK(_change_thread_mutex);  // including acquire fence.
@@ -483,7 +483,7 @@ private:
         pthread_mutex_unlock(&_free_chunks_mutex);
         return true;
     }
-    
+
     static butil::static_atomic<ObjectPool*> _singleton;
     static pthread_mutex_t _singleton_mutex;
     static BAIDU_THREAD_LOCAL LocalPool* _local_pool;

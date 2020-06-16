@@ -92,7 +92,7 @@ struct YellObj {
 TEST_F(ObjectPoolTest, change_config) {
     int a[2];
     printf("%lu\n", ARRAY_SIZE(a));
-    
+
     ObjectPoolInfo info = describe_objects<MyObject>();
     ObjectPoolInfo zero_info = { 0, 0, 0, 0, 3, 3, 0 };
     ASSERT_EQ(0, memcmp(&info, &zero_info, sizeof(info)));
@@ -116,15 +116,15 @@ TEST_F(ObjectPoolTest, sanity) {
     ASSERT_EQ(10, p1->_value);
     NonDefaultCtorObject* p2 = get_object<NonDefaultCtorObject>(100, 30);
     ASSERT_EQ(130, p2->_value);
-    
+
     printf("BLOCK_NITEM=%lu\n", ObjectPool<YellObj>::BLOCK_NITEM);
-    
+
     nc = 0;
     nd = 0;
      {
         YellObj* o1 = get_object<YellObj>();
         ASSERT_TRUE(o1);
-        
+
         ASSERT_EQ(1, nc);
         ASSERT_EQ(0, nd);
 
@@ -133,7 +133,7 @@ TEST_F(ObjectPoolTest, sanity) {
 
         ASSERT_EQ(2, nc);
         ASSERT_EQ(0, nd);
-        
+
         return_object(o1);
         ASSERT_EQ(2, nc);
         ASSERT_EQ(0, nd);
@@ -165,10 +165,10 @@ TEST_F(ObjectPoolTest, validator) {
 
 TEST_F(ObjectPoolTest, get_int) {
     clear_objects<int>();
-    
+
     // Perf of this test is affected by previous case.
     const size_t N = 100000;
-    
+
     butil::Timer tm;
 
     // warm up
@@ -176,18 +176,18 @@ TEST_F(ObjectPoolTest, get_int) {
     *p = 0;
     return_object(p);
     delete (new int);
-    
+
     tm.start();
     for (size_t i = 0; i < N; ++i) {
         *get_object<int>() = i;
     }
     tm.stop();
     printf("get a int takes %.1fns\n", tm.n_elapsed()/(double)N);
-    
+
     tm.start();
     for (size_t i = 0; i < N; ++i) {
         *(new int) = i;
-    }    
+    }
     tm.stop();
     printf("new a int takes %" PRId64 "ns\n", tm.n_elapsed()/N);
 
@@ -205,7 +205,7 @@ TEST_F(ObjectPoolTest, get_perf) {
     const size_t N = 10000;
     std::vector<SilentObj*> new_list;
     new_list.reserve(N);
-    
+
     butil::Timer tm1, tm2;
 
     // warm up
@@ -222,11 +222,11 @@ TEST_F(ObjectPoolTest, get_perf) {
         tm1.stop();
         printf("get a SilentObj takes %" PRId64 "ns\n", tm1.n_elapsed()/N);
         //clear_objects<SilentObj>(); // free all blocks
-        
+
         tm2.start();
         for (size_t i = 0; i < N; ++i) {
             new_list.push_back(new SilentObj);
-        }    
+        }
         tm2.stop();
         printf("new a SilentObj takes %" PRId64 "ns\n", tm2.n_elapsed()/N);
         for (size_t i = 0; i < new_list.size(); ++i) {
@@ -259,7 +259,7 @@ void* get_and_return_int(void*) {
     for (int j = 0; j < 5; ++j) {
         v.clear();
         sr = 0;
-        
+
         tm1.start();
         for (size_t i = 0; i < N; ++i) {
             D* p = get_object<D>();
@@ -279,7 +279,7 @@ void* get_and_return_int(void*) {
         if (0 != sr) {
             printf("%d return_object failed\n", sr);
         }
-        
+
         printf("[%lu:%d] get<D>=%.1f return<D>=%.1f\n",
                  (size_t)pthread_self(), j, tm1.n_elapsed()/(double)N,
                  tm2.n_elapsed()/(double)N);
@@ -296,7 +296,7 @@ void* new_and_delete_int(void*) {
 
     for (int j = 0; j < 3; ++j) {
         v2.clear();
-        
+
         // warm up
         delete (new D);
 
@@ -315,12 +315,12 @@ void* new_and_delete_int(void*) {
             delete v2[i];
         }
         tm2.stop();
-        
+
         printf("[%lu:%d] new<D>=%.1f delete<D>=%.1f\n",
                  (size_t)pthread_self(), j, tm1.n_elapsed()/(double)N,
                  tm2.n_elapsed()/(double)N);
     }
-    
+
     return NULL;
 }
 
@@ -357,7 +357,7 @@ TEST_F(ObjectPoolTest, get_and_return_int_multiple_threads) {
 TEST_F(ObjectPoolTest, verify_get) {
     clear_objects<int>();
     std::cout << describe_objects<int>() << std::endl;
-                              
+
     std::vector<int*> v;
     v.reserve(100000);
     for (int i = 0; (size_t)i < v.capacity(); ++i)  {

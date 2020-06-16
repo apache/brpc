@@ -93,7 +93,7 @@ void* process_thread(void* arg) {
                 return NULL;
             }
         } while (1);
-        
+
         if (m->req.exchange(0, butil::memory_order_release) == 1) {
             // no events during reading.
             break;
@@ -106,7 +106,7 @@ void* process_thread(void* arg) {
     return NULL;
 }
 
-void* epoll_thread(void* arg) {    
+void* epoll_thread(void* arg) {
     EpollMeta* em = (EpollMeta*)arg;
     em->nthread = 0;
     em->nfold = 0;
@@ -227,7 +227,7 @@ TEST(DispatcherTest, dispatch_tasks) {
 #endif
         ASSERT_GT(epfd[i], 0);
     }
-    
+
     for (size_t i = 0; i < NCLIENT; ++i) {
         ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds + 2 * i));
         SocketMeta* m = new SocketMeta;
@@ -256,7 +256,7 @@ TEST(DispatcherTest, dispatch_tasks) {
         cm[i]->bytes = 0;
         ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i]));
     }
-    
+
     ProfilerStart("dispatcher.prof");
     butil::Timer tm;
     tm.start();

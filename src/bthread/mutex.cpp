@@ -111,7 +111,7 @@ public:
 
     explicit ContentionProfiler(const char* name);
     ~ContentionProfiler();
-    
+
     void dump_and_destroy(SampledContention* c);
 
     // Write buffered data into resulting file. If `ending' is true, append
@@ -150,7 +150,7 @@ void ContentionProfiler::init_if_needed() {
         _init = true;
     }
 }
-    
+
 void ContentionProfiler::dump_and_destroy(SampledContention* c) {
     init_if_needed();
     // Categorize the contention.
@@ -172,7 +172,7 @@ void ContentionProfiler::dump_and_destroy(SampledContention* c) {
 
 void ContentionProfiler::flush_to_disk(bool ending) {
     BT_VLOG << "flush_to_disk(ending=" << ending << ")";
-    
+
     // Serialize contentions in _dedup_map into _disk_buf.
     if (!_dedup_map.empty()) {
         BT_VLOG << "dedup_map=" << _dedup_map.size();
@@ -319,7 +319,7 @@ bool ContentionProfilerStart(const char* filename) {
         ("contention_profiler_conflict_hash", get_nconflicthash, NULL);
     static bvar::DisplaySamplingRatio g_sampling_ratio_var(
         "contention_profiler_sampling_ratio", &g_cp_sl);
-    
+
     // Optimistic locking. A not-used ContentionProfiler does not write file.
     std::unique_ptr<ContentionProfiler> ctx(new ContentionProfiler(filename));
     {
@@ -573,7 +573,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
     // Don't change behavior of unlock when profiler is off.
     if (!g_cp || tls_inside_lock) {
         // This branch brings an issue that an entry created by
-        // add_pthread_contention_site may not be cleared. Thus we add a 
+        // add_pthread_contention_site may not be cleared. Thus we add a
         // 16-bit rolling version in the entry to find out such entry.
         return sys_pthread_mutex_unlock(mutex);
     }

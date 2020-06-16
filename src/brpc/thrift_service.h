@@ -64,7 +64,7 @@ friend class Server;
 
 private:
     void Expose(const butil::StringPiece& prefix);
-    
+
     MethodStatus* _status;
 };
 

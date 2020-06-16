@@ -79,7 +79,7 @@ int MakeProfName(ProfilingType type, char* buf, size_t buf_len) {
     }
     buf += nr;
     buf_len -= nr;
-    
+
     time_t rawtime;
     time(&rawtime);
     struct tm* timeinfo = localtime(&rawtime);
@@ -105,7 +105,7 @@ void PProfService::profile(
                         "docs/cn/cpu_profiler.md",
                         berror(ENOMETHOD));
         return;
-    }    
+    }
     int sleep_sec = ReadSeconds(cntl);
     if (sleep_sec <= 0) {
         if (!cntl->Failed()) {
@@ -237,7 +237,7 @@ void PProfService::heap(
     std::string obj;
     malloc_ext->GetHeapSample(&obj);
     cntl->http_response().set_content_type("text/plain");
-    cntl->response_attachment().append(obj);    
+    cntl->response_attachment().append(obj);
 }
 
 void PProfService::growth(
@@ -267,7 +267,7 @@ void PProfService::growth(
     std::string obj;
     malloc_ext->GetHeapGrowthStacks(&obj);
     cntl->http_response().set_content_type("text/plain");
-    cntl->response_attachment().append(obj);    
+    cntl->response_attachment().append(obj);
 }
 
 typedef std::map<uintptr_t, std::string> SymbolMap;
@@ -327,7 +327,7 @@ static int ExtractSymbolsFromBinary(
             continue;
         }
         //const char c = *sp.field();
-        
+
         ++sp;
         if (sp == NULL) {
             continue;
@@ -341,7 +341,7 @@ static int ExtractSymbolsFromBinary(
             addr_map[addr] = std::string();
             continue;
         }
-        
+
         const char* name_end = sp.field();
         bool stop = false;
         char last_char = '\0';
@@ -429,7 +429,7 @@ static void LoadSymbols() {
         size_t offset = strtoull(sp.field(), &endptr, 16);
         if (*endptr != ' ') {
             continue;
-        }        
+        }
         //skip $4~$5
         for (int i = 0; i < 3; ++i) {
             ++sp;

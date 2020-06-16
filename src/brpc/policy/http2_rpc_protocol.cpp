@@ -213,7 +213,7 @@ bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it, size_t n) {
 
 // Maximum value that may be returned by SerializeH2Settings
 static const size_t H2_SETTINGS_MAX_BYTE_SIZE = 36;
-    
+
 // Serialize to `out' which is at least ByteSize() bytes long.
 // Returns bytes written.
 size_t SerializeH2Settings(const H2Settings& in, void* out) {
@@ -267,7 +267,7 @@ static size_t SerializeH2SettingsFrameAndWU(const H2Settings& in, void* out) {
 
 inline bool AddWindowSize(butil::atomic<int64_t>* window_size, int64_t diff) {
     // A sender MUST NOT allow a flow-control window to exceed 2^31 - 1.
-    // If a sender receives a WINDOW_UPDATE that causes a flow-control window 
+    // If a sender receives a WINDOW_UPDATE that causes a flow-control window
     // to exceed this maximum, it MUST terminate either the stream or the connection,
     // as appropriate.
     int64_t before_add = window_size->fetch_add(diff, butil::memory_order_relaxed);
@@ -752,7 +752,7 @@ H2ParseResult H2StreamContext::OnData(
         // Rarely happen for small messages.
         const int64_t stream_wu =
             _deferred_window_update.exchange(0, butil::memory_order_relaxed);
-        
+
         if (stream_wu > 0) {
             char winbuf[(FRAME_HEAD_SIZE + 4) * 2];
             char* p = winbuf;
@@ -938,7 +938,7 @@ H2ParseResult H2Context::OnPing(
     if (frame_head.flags & H2_FLAGS_ACK) {
         return MakeH2Message(NULL);
     }
-    
+
     char pongbuf[FRAME_HEAD_SIZE + 8];
     SerializeFrameHead(pongbuf, 8, H2_FRAME_PING, H2_FLAGS_ACK, 0);
     it.copy_and_forward(pongbuf + FRAME_HEAD_SIZE, 8);
@@ -1002,7 +1002,7 @@ H2ParseResult H2Context::OnGoAway(
         return MakeH2Message(NULL);
     }
 }
-                          
+
 H2ParseResult H2Context::OnWindowUpdate(
     butil::IOBufBytesIterator& it, const H2FrameHead& frame_head) {
     if (frame_head.payload_size != 4) {
@@ -1516,11 +1516,11 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
             return butil::Status(EINTERNAL, "Fail to init H2Context");
         }
         socket->initialize_parsing_context(&ctx);
-        
+
         // Append client connection preface
         out->append(H2_CONNECTION_PREFACE_PREFIX,
                     H2_CONNECTION_PREFACE_PREFIX_SIZE);
-        
+
         char settingsbuf[FRAME_HEAD_SIZE + H2_SETTINGS_MAX_BYTE_SIZE +
                          FRAME_HEAD_SIZE + 4/*for WU*/];
         const size_t nb = SerializeH2SettingsFrameAndWU(
@@ -1785,7 +1785,7 @@ void PackH2Request(butil::IOBuf*,
                    const butil::IOBuf&,
                    const Authenticator* auth) {
     ControllerPrivateAccessor accessor(cntl);
-    
+
     HttpHeader* header = &cntl->http_request();
     if (auth != NULL && header->GetHeader("Authorization") == NULL) {
         std::string auth_data;
@@ -1800,7 +1800,7 @@ void PackH2Request(butil::IOBuf*,
     h2_req->AddRefManually();   // add ref for AppendAndDestroySelf
     h2_req->_sctx->set_correlation_id(correlation_id);
     *user_message = h2_req;
-    
+
     if (FLAGS_http_verbose) {
         LOG(INFO) << '\n' << *h2_req;
     }

@@ -30,7 +30,7 @@ void DHWrapper::clear() {
         _pdh = NULL;
     }
 }
-    
+
 int DHWrapper::initialize(bool ensure_128bytes_public_key) {
     for (;;) {
         if (do_initialize() != 0) {
@@ -50,7 +50,7 @@ int DHWrapper::initialize(bool ensure_128bytes_public_key) {
     }
     return 0;
 }
-    
+
 int DHWrapper::copy_public_key(char* pkey, int* pkey_size) const {
     const BIGNUM* pub_key = NULL;
     DH_get0_key(_pdh, &pub_key, NULL);
@@ -58,20 +58,20 @@ int DHWrapper::copy_public_key(char* pkey, int* pkey_size) const {
     // sometimes, the key_size is 127, seems ok.
     int key_size = BN_num_bytes(pub_key);
     CHECK_GT(key_size, 0);
-        
+
     // maybe the key_size is 127, but dh will write all 128bytes pkey,
     // no need to set/initialize the pkey.
     // @see https://github.com/ossrs/srs/issues/165
     key_size = BN_bn2bin(pub_key, (unsigned char*)pkey);
     CHECK_GT(key_size, 0);
-        
+
     // output the size of public key.
     // @see https://github.com/ossrs/srs/issues/165
     CHECK_LE(key_size, *pkey_size);
     *pkey_size = key_size;
     return 0;
 }
-    
+
 int DHWrapper::copy_shared_key(const void* ppkey, int ppkey_size,
                            void* skey, int* skey_size) const {
     BIGNUM* ppk = BN_bin2bn((const unsigned char*)ppkey, ppkey_size, 0);
@@ -89,7 +89,7 @@ int DHWrapper::copy_shared_key(const void* ppkey, int ppkey_size,
     *skey_size = key_size;
     return 0;
 }
-    
+
 int DHWrapper::do_initialize() {
     BIGNUM* p = get_rfc2409_prime_1024(NULL);
     if (!p) {
@@ -110,7 +110,7 @@ int DHWrapper::do_initialize() {
         return -1;
     }
     DH_set0_pqg(_pdh, p, NULL, g);
-    
+
     // Generate private and public key
     if (!DH_generate_key(_pdh)) {
         LOG(ERROR) << "Fail to DH_generate_key";

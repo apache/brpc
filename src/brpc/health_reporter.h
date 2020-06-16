@@ -29,7 +29,7 @@ namespace brpc {
 class HealthReporter {
 public:
     virtual ~HealthReporter() {}
-    
+
     // Get the http request from cntl->http_request() / cntl->request_attachment()
     // and put the response in cntl->http_response() / cntl->response_attachment()
     // Don't forget to call done->Run() at the end.

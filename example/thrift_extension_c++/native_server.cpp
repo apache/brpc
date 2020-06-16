@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     google::ParseCommandLineFlags(&argc, &argv, true);
 
-    THRIFT_STDCXX::shared_ptr<EchoServiceHandler> handler(new EchoServiceHandler());  
+    THRIFT_STDCXX::shared_ptr<EchoServiceHandler> handler(new EchoServiceHandler());
     THRIFT_STDCXX::shared_ptr<apache::thrift::concurrency::PosixThreadFactory> thread_factory(
         new apache::thrift::concurrency::PosixThreadFactory(
             apache::thrift::concurrency::PosixThreadFactory::ROUND_ROBIN,
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     thread_mgr->start();
 
 #if defined(_THRIFT_STDCXX_H_)
-    THRIFT_STDCXX::shared_ptr<apache::thrift::transport::TNonblockingServerSocket> server_transport = 
+    THRIFT_STDCXX::shared_ptr<apache::thrift::transport::TNonblockingServerSocket> server_transport =
         THRIFT_STDCXX::make_shared<apache::thrift::transport::TNonblockingServerSocket>(FLAGS_port);
 
     apache::thrift::server::TNonblockingServer server(processor,
@@ -91,6 +91,6 @@ int main(int argc, char *argv[]) {
         transport_factory, transport_factory, protocol_factory,
         protocol_factory, FLAGS_port);
 #endif
-    server.serve();  
+    server.serve();
     return 0;
 }

@@ -86,7 +86,7 @@ class LinkNode {
  public:
   // LinkNode are self-referential as default.
   LinkNode() : previous_(this), next_(this) {}
-    
+
   LinkNode(LinkNode<T>* previous, LinkNode<T>* next)
       : previous_(previous), next_(next) {}
 
@@ -106,7 +106,7 @@ class LinkNode {
     e->previous_->next_ = this;
     e->previous_ = prev;
   }
-    
+
   // Insert |this| into the linked list, after |e|.
   void InsertAfter(LinkNode<T>* e) {
     this->next_ = e->next_;

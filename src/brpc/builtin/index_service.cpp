@@ -104,14 +104,14 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
             " (Use $ instead of ? to match single character)" << NL << SP
            << "/flags/NAME?setvalue=VALUE : Change a gflag, validator will be called."
             " User is responsible for thread-safety and consistency issues." << NL
-            
+
            << Path("/vars", html_addr) << " : List all exposed bvars" << NL
            << SP << Path("/vars/rpc_num_sockets", html_addr)
            << " : List the bvar" << NL
            << SP << Path("/vars/rpc_server*_count;iobuf_blo$k_*", html_addr)
            <<  " : List multiple bvars with glob patterns"
             " (Use $ instead of ? to match single character)" << NL
-            
+
            << Path("/rpcz", html_addr) << " : Recent RPC calls"
            << (!FLAGS_enable_rpcz ? "(disabled)" : "") << NL
            << SP << Path("/rpcz/stats", html_addr) << " : Statistics of rpcz" << NL;
@@ -130,7 +130,7 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
            << " : N RPC calls at most before the time" << NL << SP
            << "Other filters: " << MIN_LATENCY_STR << ", " << MIN_REQUEST_SIZE_STR
            << ", " << MIN_RESPONSE_SIZE_STR << ", " << LOG_ID_STR
-           << ", " << ERROR_CODE_STR << NL 
+           << ", " << ERROR_CODE_STR << NL
            << SP << "/rpcz?" << TRACE_ID_STR
            << "=N : Recent RPC calls whose trace_id is N" << NL
            << SP << "/rpcz?" << TRACE_ID_STR << "=N&" << SPAN_ID_STR
@@ -146,7 +146,7 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
     }
     os << "curl -H 'Content-Type: application/json' -d 'JSON' " << my_addr
        << "/ServiceName/MethodName : Call method by http+json" << NL
-    
+
        << Path("/version", html_addr)
        << " : Version of this server, set by Server::set_version()" << NL
        << Path("/health", html_addr) << " : Test healthy" << NL

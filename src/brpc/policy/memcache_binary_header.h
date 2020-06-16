@@ -77,7 +77,7 @@ enum MemcacheBinaryCommand {
     MC_BINARY_SASL_LIST_MECHS = 0x20,
     MC_BINARY_SASL_AUTH = 0x21,
     MC_BINARY_SASL_STEP = 0x22,
-    
+
     // These commands are used for range operations and exist within
     // this header for use in other projects.  Range operations are
     // not expected to be implemented in the memcached server itself.
@@ -118,7 +118,7 @@ struct MemcacheRequestHeader {
 
     // Length in bytes of extra + key + value
     uint32_t total_body_length;
-    
+
     // Will be copied back to you in the response
     uint32_t opaque;
 
@@ -147,7 +147,7 @@ struct MemcacheResponseHeader {
 
     // Length in bytes of extra + key + value
     uint32_t total_body_length;
-    
+
     // Will be copied back to you in the response
     uint32_t opaque;
 

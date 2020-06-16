@@ -32,23 +32,23 @@ BUTIL_RAPIDJSON_NAMESPACE_BEGIN
  *  is the same method, WriteString could improve 65% effciency compare with
  *  writer class in rapidjson.
  *  */
-template<typename OutputStream, typename SourceEncoding = UTF8<>, 
+template<typename OutputStream, typename SourceEncoding = UTF8<>,
          typename TargetEncoding = UTF8<>, typename StackAllocator = CrtAllocator>
-class OptimizedWriter : 
+class OptimizedWriter :
     public Writer<OutputStream, SourceEncoding, TargetEncoding, StackAllocator> {
 public:
-    typedef Writer<OutputStream, SourceEncoding, TargetEncoding, StackAllocator> Base; 
+    typedef Writer<OutputStream, SourceEncoding, TargetEncoding, StackAllocator> Base;
     typedef typename SourceEncoding::Ch Ch;
     explicit
-    OptimizedWriter(OutputStream& os, StackAllocator* stackAllocator = 0, 
-                   size_t levelDepth = Base::kDefaultLevelDepth) : 
-        Base(os, stackAllocator, levelDepth) {} 
-    
-    explicit
-    OptimizedWriter(StackAllocator* allocator = 0, 
+    OptimizedWriter(OutputStream& os, StackAllocator* stackAllocator = 0,
                    size_t levelDepth = Base::kDefaultLevelDepth) :
-        Base(allocator, levelDepth) {} 
-    
+        Base(os, stackAllocator, levelDepth) {}
+
+    explicit
+    OptimizedWriter(StackAllocator* allocator = 0,
+                   size_t levelDepth = Base::kDefaultLevelDepth) :
+        Base(allocator, levelDepth) {}
+
     bool String(const Ch* str, SizeType length, bool copy = false) {
         (void)copy;
         Base::Prefix(kStringType);
@@ -57,11 +57,11 @@ public:
 
 protected:
     bool WriteString(const Ch* str, SizeType length)  {
-        //if TargetEncoding support Unicode 
-        //and SourceEncoding and TargetEncoding are the same type 
+        //if TargetEncoding support Unicode
+        //and SourceEncoding and TargetEncoding are the same type
         //just use memcpy to improve efficiency
         if (TargetEncoding::supportUnicode && is_same<SourceEncoding, TargetEncoding>::value) {
-            static const char hexDigits[16] = { '0', '1', '2', '3', '4', '5', '6', '7', 
+            static const char hexDigits[16] = { '0', '1', '2', '3', '4', '5', '6', '7',
                                                 '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
             static const char escape[256] = {
 #define ESCAPE_ZERO_16 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -71,7 +71,7 @@ protected:
                   0,   0, '"',   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 20
                 ESCAPE_ZERO_16, ESCAPE_ZERO_16,                                                 // 30~4F
                   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, '\\',   0,   0,  0, // 50
-                ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16, 
+                ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16,
                 ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16, ESCAPE_ZERO_16  // 60~FF
 #undef ESCAPE_ZERO_16
             };
@@ -99,7 +99,7 @@ protected:
             }
             Base::os_->Put('\"');
             return true;
-        } else { 
+        } else {
             return Base::WriteString(str, length);
         }
     }

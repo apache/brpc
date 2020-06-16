@@ -220,7 +220,7 @@ namespace BUTIL_HASH_NAMESPACE {
 // Implement methods for hashing a pair of integers, so they can be used as
 // keys in STL containers.
 
-// NOTE(gejun): Specialize ptr as well which is supposed to work with 
+// NOTE(gejun): Specialize ptr as well which is supposed to work with
 // containers by default
 
 #if defined(COMPILER_MSVC)

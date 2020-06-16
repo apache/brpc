@@ -171,7 +171,7 @@ inline bool operator==(const IOBuf::BlockRef& r1, const IOBuf::BlockRef& r2) {
     return r1.offset == r2.offset && r1.length == r2.length &&
         r1.block == r2.block;
 }
-        
+
 inline bool operator!=(const IOBuf::BlockRef& r1, const IOBuf::BlockRef& r2) {
     return !(r1 == r2);
 }
@@ -336,7 +336,7 @@ inline void IOBufAppender::shrink() {
 }
 
 inline IOBufBytesIterator::IOBufBytesIterator(const butil::IOBuf& buf)
-    : _block_begin(NULL), _block_end(NULL), _block_count(0), 
+    : _block_begin(NULL), _block_end(NULL), _block_count(0),
       _bytes_left(buf.length()), _buf(&buf) {
     try_next_block();
 }

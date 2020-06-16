@@ -45,8 +45,8 @@ class EchoServiceImpl : public example::EchoService {
 public:
     EchoServiceImpl() : _index(0) {}
     virtual ~EchoServiceImpl() {};
-    void set_index(size_t index, int64_t sleep_us) { 
-        _index = index; 
+    void set_index(size_t index, int64_t sleep_us) {
+        _index = index;
         _sleep_us = sleep_us;
     }
     virtual void Echo(google::protobuf::RpcController* cntl_base,
@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
         // will be shown on /version page
         servers[i].set_version(butil::string_printf(
                     "example/selective_echo_c++[%d]", i));
-        if (servers[i].AddService(&echo_service_impls[i], 
+        if (servers[i].AddService(&echo_service_impls[i],
                                   brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
             LOG(ERROR) << "Fail to add service";
             return -1;

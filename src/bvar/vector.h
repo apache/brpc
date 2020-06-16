@@ -38,19 +38,19 @@ public:
             _data[i] = T();
         }
     }
-    
+
     Vector(const T& initial_value) {
         for (size_t i = 0; i < N; ++i) {
             _data[i] = initial_value;
         }
     }
-    
+
     void operator+=(const Vector& rhs) {
         for (size_t i = 0; i < N; ++i) {
             _data[i] += rhs._data[i];
         }
     }
-    
+
     void operator-=(const Vector& rhs) {
         for (size_t i = 0; i < N; ++i) {
             _data[i] -= rhs._data[i];
@@ -83,7 +83,7 @@ public:
     bool operator!=(const Vector& rhs) const {
         return !operator==(rhs);
     }
-    
+
     T& operator[](int index) { return _data[index]; }
     const T& operator[](int index) const { return _data[index]; }
 

@@ -30,12 +30,12 @@
 
 namespace brpc {
 
-DEFINE_int32(health_check_interval, 3, 
+DEFINE_int32(health_check_interval, 3,
              "seconds between consecutive health-checkings");
 // NOTE: Must be limited to positive to guarantee correctness of SocketMapRemove.
 BRPC_VALIDATE_GFLAG(health_check_interval, PositiveInteger);
 
-DEFINE_int32(idle_timeout_second, 10, 
+DEFINE_int32(idle_timeout_second, 10,
              "Pooled connections without data transmission for so many "
              "seconds will be closed. No effect for non-positive values");
 BRPC_VALIDATE_GFLAG(idle_timeout_second, PassValidate);
@@ -89,7 +89,7 @@ SocketMap* get_or_new_client_side_socket_map() {
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx);
-}    
+}
 
 int SocketMapFind(const SocketMapKey& key, SocketId* id) {
     SocketMap* m = get_client_side_socket_map();
@@ -284,7 +284,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
             *_options.defer_close_second_dynamic
             : _options.defer_close_second;
         if (!remove_orphan && defer_close_second > 0) {
-            // Start count down on this Socket 
+            // Start count down on this Socket
             sc->no_ref_us = butil::cpuwide_time_us();
         } else {
             Socket* const s = sc->socket;

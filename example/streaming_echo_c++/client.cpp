@@ -27,17 +27,17 @@ DEFINE_bool(send_attachment, true, "Carry attachment along with requests");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "0.0.0.0:8001", "IP Address of server");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-        
-    // Initialize the channel, NULL means using default options. 
+
+    // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_BAIDU_STD;
     options.connection_type = FLAGS_connection_type;
@@ -66,7 +66,7 @@ int main(int argc, char* argv[]) {
         LOG(ERROR) << "Fail to connect stream, " << cntl.ErrorText();
         return -1;
     }
-    
+
     while (!brpc::IsAskedToQuit()) {
         butil::IOBuf msg1;
         msg1.append("abcdefghijklmnopqrstuvwxyz");

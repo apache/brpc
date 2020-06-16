@@ -131,7 +131,7 @@ private:
                 memset(_array, 0, sizeof(_array));
             }
         }
-        
+
         T& second(int index) { return _array[index]; }
         const T& second(int index) const { return _array[index]; }
 

@@ -102,9 +102,9 @@ void MurmurHash3_x86_32 ( const void * key, int len,
     k1 *= c1;
     k1 = ROTL32(k1,15);
     k1 *= c2;
-    
+
     h1 ^= k1;
-    h1 = ROTL32(h1,13); 
+    h1 = ROTL32(h1,13);
     h1 = h1*5+0xe6546b64;
   }
 
@@ -131,7 +131,7 @@ void MurmurHash3_x86_32 ( const void * key, int len,
   h1 = fmix32(h1);
 
   *(uint32_t*)out = h1;
-} 
+}
 
 //-----------------------------------------------------------------------------
 
@@ -145,9 +145,9 @@ void MurmurHash3_x86_128 ( const void * key, const int len,
   uint32_t h3 = seed;
   uint32_t h4 = seed;
 
-  const uint32_t c1 = 0x239b961b; 
+  const uint32_t c1 = 0x239b961b;
   const uint32_t c2 = 0xab0e9789;
-  const uint32_t c3 = 0x38b34ae5; 
+  const uint32_t c3 = 0x38b34ae5;
   const uint32_t c4 = 0xa1e38b93;
 
   //----------
@@ -339,9 +339,9 @@ void MurmurHash3_x86_128_Update(
     uint32_t h3 = ctx->h3;
     uint32_t h4 = ctx->h4;
 
-    const uint32_t c1 = 0x239b961b; 
+    const uint32_t c1 = 0x239b961b;
     const uint32_t c2 = 0xab0e9789;
-    const uint32_t c3 = 0x38b34ae5; 
+    const uint32_t c3 = 0x38b34ae5;
     const uint32_t c4 = 0xa1e38b93;
 
     if (ctx->tail_len > 0) {
@@ -433,9 +433,9 @@ void MurmurHash3_x86_128_Final(void * out, const MurmurHash3_x86_128_Context* ct
 
     const uint8_t * tail = ctx->tail;
 
-    const uint32_t c1 = 0x239b961b; 
+    const uint32_t c1 = 0x239b961b;
     const uint32_t c2 = 0xab0e9789;
-    const uint32_t c3 = 0x38b34ae5; 
+    const uint32_t c3 = 0x38b34ae5;
     const uint32_t c4 = 0xa1e38b93;
 
     uint32_t k1 = 0;
@@ -630,7 +630,7 @@ void MurmurHash3_x86_32_Init(MurmurHash3_x86_32_Context* ctx, uint32_t seed) {
 }
 
 void MurmurHash3_x86_32_Update(MurmurHash3_x86_32_Context* ctx, const void* key, int len) {
-    
+
     uint32_t h1 = ctx->h1;
     const uint32_t c1 = 0xcc9e2d51;
     const uint32_t c2 = 0x1b873593;
@@ -650,7 +650,7 @@ void MurmurHash3_x86_32_Update(MurmurHash3_x86_32_Context* ctx, const void* key,
             k1 *= c2;
 
             h1 ^= k1;
-            h1 = ROTL32(h1,13); 
+            h1 = ROTL32(h1,13);
             h1 = h1*5+0xe6546b64;
             ctx->tail_len = 0;
         }
@@ -672,7 +672,7 @@ void MurmurHash3_x86_32_Update(MurmurHash3_x86_32_Context* ctx, const void* key,
         k1 *= c2;
 
         h1 ^= k1;
-        h1 = ROTL32(h1,13); 
+        h1 = ROTL32(h1,13);
         h1 = h1*5+0xe6546b64;
     }
 
@@ -697,7 +697,7 @@ void MurmurHash3_x86_32_Final(void * out, const MurmurHash3_x86_32_Context* ctx)
     uint32_t h1 = ctx->h1;
 
     uint32_t k1 = 0;
-    const uint8_t* tail = ctx->tail; 
+    const uint8_t* tail = ctx->tail;
     switch (ctx->tail_len)
     {
     case 3: k1 ^= tail[2] << 16;

@@ -30,7 +30,7 @@ class Server;
 class VersionService : public version {
 public:
     explicit VersionService(Server* server) : _server(server) {}
-    
+
     void default_method(::google::protobuf::RpcController* cntl_base,
                         const ::brpc::VersionRequest* request,
                         ::brpc::VersionResponse* response,

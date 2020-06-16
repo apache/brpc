@@ -63,7 +63,7 @@ inline uint64_t fast_rand_impl(uint64_t range, FastRandSeed* seed) {
     // last one, the probability of taking any value inside [0, range-1] is
     // same. If the value falls into last interval, we retry the process until
     // the value falls into other intervals. If min/max are limited to 32-bits,
-    // the retrying is rare. The amortized retrying count at maximum is 1 when 
+    // the retrying is rare. The amortized retrying count at maximum is 1 when
     // range equals 2^32. A corner case is that even if the range is power of
     // 2(e.g. min=0 max=65535) in which case the retrying can be avoided, we
     // still retry currently. The reason is just to keep the code simpler

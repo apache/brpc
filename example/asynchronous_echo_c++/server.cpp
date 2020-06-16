@@ -41,14 +41,14 @@ public:
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
-        
+
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
 
         // The purpose of following logs is to help you to understand
-        // how clients interact with servers more intuitively. You should 
+        // how clients interact with servers more intuitively. You should
         // remove these logs in performance-sensitive servers.
-        LOG(INFO) << "Received request[log_id=" << cntl->log_id() 
+        LOG(INFO) << "Received request[log_id=" << cntl->log_id()
                   << "] from " << cntl->remote_side()
                   << ": " << request->message()
                   << " (attached=" << cntl->request_attachment() << ")";
@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
     // Add the service into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
     // use brpc::SERVER_OWNS_SERVICE.
-    if (server.AddService(&echo_service_impl, 
+    if (server.AddService(&echo_service_impl,
                           brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
         LOG(ERROR) << "Fail to add service";
         return -1;

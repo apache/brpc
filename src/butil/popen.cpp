@@ -74,7 +74,7 @@ int read_command_output_through_clone(std::ostream& os, const char* cmd) {
         rc = -1;
         goto END;
     }
-    child_stack = child_stack_mem + CHILD_STACK_SIZE;  
+    child_stack = child_stack_mem + CHILD_STACK_SIZE;
                                // ^ Assume stack grows downward
     cpid = clone(launch_child_process, child_stack,
                  __WCLONE | CLONE_VM | SIGCHLD | CLONE_UNTRACED, &args);

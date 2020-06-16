@@ -35,7 +35,7 @@ enum HttpParserStage {
     HTTP_ON_MESSAGE_BEGIN,
     HTTP_ON_URL,
     HTTP_ON_STATUS,
-    HTTP_ON_HEADER_FIELD, 
+    HTTP_ON_HEADER_FIELD,
     HTTP_ON_HEADER_VALUE,
     HTTP_ON_HEADERS_COMPLELE,
     HTTP_ON_BODY,
@@ -55,7 +55,7 @@ public:
     // Parse from array, length=0 is treated as EOF.
     // Returns bytes parsed, -1 on failure.
     ssize_t ParseFromArray(const char *data, const size_t length);
-    
+
     // Parse from butil::IOBuf.
     // Emtpy `buf' is sliently ignored, which is different from ParseFromArray.
     // Returns bytes parsed, -1 on failure.
@@ -67,7 +67,7 @@ public:
     HttpHeader &header() { return _header; }
     const HttpHeader &header() const { return _header; }
     size_t parsed_length() const { return _parsed_length; }
-    
+
     // Http parser callback functions
     static int on_message_begin(http_parser *);
     static int on_url(http_parser *, const char *, const size_t);
@@ -91,7 +91,7 @@ protected:
     int OnBody(const char* data, size_t size);
     int OnMessageComplete();
     size_t _parsed_length;
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(HttpMessage);
     int UnlockAndFlushToBodyReader(std::unique_lock<butil::Mutex>& locked);
@@ -130,7 +130,7 @@ void MakeRawHttpRequest(butil::IOBuf* request,
 
 // Serialize a http response.
 // header: may be modified in some cases
-// content: cleared after usage. could be NULL. 
+// content: cleared after usage. could be NULL.
 void MakeRawHttpResponse(butil::IOBuf* response,
                          HttpHeader* header,
                          butil::IOBuf* content);

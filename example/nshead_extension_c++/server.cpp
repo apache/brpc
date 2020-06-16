@@ -27,13 +27,13 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 
-// Adapt your own nshead-based protocol to use brpc 
+// Adapt your own nshead-based protocol to use brpc
 class MyNsheadProtocol : public brpc::NsheadService {
 public:
     void ProcessNsheadRequest(const brpc::Server&,
                               brpc::Controller* cntl,
                               const brpc::NsheadMessage& request,
-                              brpc::NsheadMessage* response, 
+                              brpc::NsheadMessage* response,
                               brpc::NsheadClosure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().

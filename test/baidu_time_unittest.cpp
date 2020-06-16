@@ -54,7 +54,7 @@ const char* clock_desc[] = {
 
 TEST(BaiduTimeTest, cost_of_timer) {
     printf("sizeof(time_t)=%lu\n", sizeof(time_t));
-    
+
     butil::Timer t1, t2;
     timespec ts;
     const size_t N = 200000;

@@ -55,7 +55,7 @@ enum HttpMethod {
 const char *HttpMethod2Str(HttpMethod http_method);
 
 // Convert case-insensitive `method_str' to enum HttpMethod.
-// Returns true on success. 
+// Returns true on success.
 bool Str2HttpMethod(const char* method_str, HttpMethod* method);
 
 } // namespace brpc

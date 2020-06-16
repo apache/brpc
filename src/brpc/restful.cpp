@@ -60,7 +60,7 @@ std::string RestfulMethodPath::to_string() const {
         s.append(tmp.data(), tmp.size());
     } else {
         butil::StringPiece tmp = remove_last_char(prefix);
-        s.append(tmp.data(), tmp.size());        
+        s.append(tmp.data(), tmp.size());
     }
     return s;
 }
@@ -164,7 +164,7 @@ bool ParseRestfulPath(butil::StringPiece path,
         path_out->prefix.push_back('/');
         path_out->prefix.append(first_part.data(), first_part.size());
     }
-    
+
     // Normalize second_part as postfix:
     //     /        -  "A* => M" or  "A => M"
     //    B/        -  "A*B => M"
@@ -428,7 +428,7 @@ RestfulMap::FindMethodProperty(const butil::StringPiece& method_path,
         if (it != _sorted_paths.begin()) {
             --it;
         }
-        
+
         bool matched = false;
         bool remove_heading_slash_from_unresolved = false;
         butil::StringPiece left;
@@ -442,7 +442,7 @@ RestfulMap::FindMethodProperty(const butil::StringPiece& method_path,
                 // NOTE: We can stop trying patterns before *it because pattern
                 // "/A*B => M" is disabled which makes prefixes of all restful
                 // paths end with /. If `full_path' matches with a prefix, the
-                // prefix must be a sub path of the full_path, which makes 
+                // prefix must be a sub path of the full_path, which makes
                 // prefix matching runs at most #components-of-path times.
                 // Otherwise we have to match all "/A*B" patterns before *it,
                 // which is more complicated but rarely needed by users.
@@ -488,7 +488,7 @@ RestfulMap::FindMethodProperty(const butil::StringPiece& method_path,
             --it;
         } while (true);
         last_find_pos = it;
-        
+
         if (!matched) {
             continue;
         }

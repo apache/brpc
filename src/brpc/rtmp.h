@@ -89,7 +89,7 @@ enum FlvSoundRate {
 const char* FlvSoundRate2Str(FlvSoundRate);
 
 // Only pertains to uncompressed formats. Compressed formats always decode
-// to 16 bits internally. 
+// to 16 bits internally.
 enum FlvSoundBits {
     FLV_SOUND_8BIT                      = 0,
     FLV_SOUND_16BIT                     = 1,
@@ -165,15 +165,15 @@ struct AudioSpecificConfig {
 // ======= Video =======
 
 enum RtmpVideoCodec {
-    RTMP_VIDEO_UNUSED    =  0x0001, // Obsolete value 
-    RTMP_VIDEO_JPEG      =  0x0002, // Obsolete value 
-    RTMP_VIDEO_SORENSON  =  0x0004, // Sorenson Flash video 
-    RTMP_VIDEO_HOMEBREW  =  0x0008, // V1 screen sharing 
-    RTMP_VIDEO_VP6       =  0x0010, // On2 video (Flash 8+) 
-    RTMP_VIDEO_VP6ALPHA  =  0x0020, // On2 video with alpha 
-    RTMP_VIDEO_HOMEBREWV =  0x0040, // Screen sharing version 2 (Flash 8+) 
-    RTMP_VIDEO_H264      =  0x0080, // H264 video 
-    RTMP_VIDEO_ALL       =  0x00FF, // All RTMP-supported video 
+    RTMP_VIDEO_UNUSED    =  0x0001, // Obsolete value
+    RTMP_VIDEO_JPEG      =  0x0002, // Obsolete value
+    RTMP_VIDEO_SORENSON  =  0x0004, // Sorenson Flash video
+    RTMP_VIDEO_HOMEBREW  =  0x0008, // V1 screen sharing
+    RTMP_VIDEO_VP6       =  0x0010, // On2 video (Flash 8+)
+    RTMP_VIDEO_VP6ALPHA  =  0x0020, // On2 video with alpha
+    RTMP_VIDEO_HOMEBREWV =  0x0040, // Screen sharing version 2 (Flash 8+)
+    RTMP_VIDEO_H264      =  0x0080, // H264 video
+    RTMP_VIDEO_ALL       =  0x00FF, // All RTMP-supported video
 };
 static const RtmpVideoCodec RTMP_VIDEO_UNKNOWN = (RtmpVideoCodec)0;
 
@@ -217,7 +217,7 @@ struct RtmpVideoMessage {
 
     // True iff this message is a sequence header of HEVC(H.265) codec.
     bool IsHEVCSequenceHeader() const;
-    
+
     // Size of serialized message
     size_t size() const { return data.size() + 1; }
 };
@@ -312,14 +312,14 @@ enum AVCNaluType {
 
 struct AVCDecoderConfigurationRecord {
     AVCDecoderConfigurationRecord();
-    
+
     butil::Status Create(const butil::IOBuf& buf);
     butil::Status Create(const void* data, size_t len);
 
     int             width;
     int             height;
-    AVCProfile      avc_profile; 
-    AVCLevel        avc_level; 
+    AVCProfile      avc_profile;
+    AVCLevel        avc_level;
     int8_t          length_size_minus1;
     std::vector<std::string> sps_list;
     std::vector<std::string> pps_list;
@@ -363,7 +363,7 @@ private:
 enum RtmpObjectEncoding {
     RTMP_AMF0 = 0, // AMF0 object encoding supported by Flash 6 and later
     RTMP_AMF3 = 3, // AMF3 encoding from Flash 9 (AS3)
-}; 
+};
 const char* RtmpObjectEncoding2Str(RtmpObjectEncoding);
 
 struct RtmpMetaData {
@@ -390,7 +390,7 @@ class FlvWriter {
 public:
     // Start appending FLV tags into the buffer
     explicit FlvWriter(butil::IOBuf* buf);
-    
+
     // Append a video/audio/metadata/cuepoint message into the output buffer.
     butil::Status Write(const RtmpVideoMessage&);
     butil::Status Write(const RtmpAudioMessage&);
@@ -407,21 +407,21 @@ private:
 
 class FlvReader {
 public:
-    // Start reading FLV tags from the buffer. The data read by the following 
+    // Start reading FLV tags from the buffer. The data read by the following
     // Read functions would be removed from *buf.
     explicit FlvReader(butil::IOBuf* buf);
 
     // Get the next message type.
-    // If it is a valid flv tag, butil::Status::OK() is returned and the 
+    // If it is a valid flv tag, butil::Status::OK() is returned and the
     // type is written to *type. Otherwise an error would be returned,
     // leaving *type unchanged.
-    // Note: If error_code of the return value is EAGAIN, the caller 
+    // Note: If error_code of the return value is EAGAIN, the caller
     // should wait more data and try call PeekMessageType again.
     butil::Status PeekMessageType(FlvTagType* type);
 
     // Read a video/audio/metadata message from the input buffer.
     // Caller should use the result of function PeekMessageType to select an
-    // appropriate function, e.g., if *type is set to FLV_TAG_AUDIO in 
+    // appropriate function, e.g., if *type is set to FLV_TAG_AUDIO in
     // PeekMessageType, caller should call Read(RtmpAudioMessage*) subsequently.
     butil::Status Read(RtmpVideoMessage* msg);
     butil::Status Read(RtmpAudioMessage* msg);
@@ -456,7 +456,7 @@ struct RtmpPlayOptions {
     //   is played beginning from the time specified by this field. If no
     //   recorded stream is found, the next item in the playlist is played.
     double start;
-    
+
     // Specifies the duration of playback in seconds.
     // * The default value -1 means a live stream is played until it is no
     //   longer available or a recorded stream is played until it ends.
@@ -470,7 +470,7 @@ struct RtmpPlayOptions {
     //   the time specified by `duration', playback ends when the stream ends.
     double duration;
 
-    // Specifies whether to flush any previous playlist. 
+    // Specifies whether to flush any previous playlist.
     bool reset;
 
     RtmpPlayOptions();
@@ -487,7 +487,7 @@ enum RtmpPublishType {
     // is found, it is created.
     RTMP_PUBLISH_APPEND,
 
-    // Live data is published without recording it in a file. 
+    // Live data is published without recording it in a file.
     RTMP_PUBLISH_LIVE,
 };
 const char* RtmpPublishType2Str(RtmpPublishType);
@@ -501,14 +501,14 @@ enum RtmpLimitType {
 };
 
 // The common part of RtmpClientStream and RtmpServerStream.
-class RtmpStreamBase : public SharedObject 
+class RtmpStreamBase : public SharedObject
                      , public Destroyable {
 public:
     explicit RtmpStreamBase(bool is_client);
 
     // @Destroyable
-    // For ClientStream, this function must be called to end this stream no matter 
-    // Init() is called or not. Use DestroyingPtr<> which is a specialized unique_ptr 
+    // For ClientStream, this function must be called to end this stream no matter
+    // Init() is called or not. Use DestroyingPtr<> which is a specialized unique_ptr
     // to call Destroy() automatically.
     // If this stream is enclosed in intrusive_ptr<>, this method can be called
     // before/during Init(), or multiple times, because the stream is not
@@ -535,7 +535,7 @@ public:
     // connection is broken. This method and above methods(OnXXX) on the
     // same stream are never called simultaneously.
     virtual void OnStop();
-    
+
     // Send media messages to the peer.
     // Returns 0 on success, -1 otherwise.
     virtual int SendCuePoint(const RtmpCuePoint&);
@@ -581,7 +581,7 @@ public:
 
     // When this stream is created, got from butil::gettimeofday_us().
     int64_t create_realtime_us() const { return _create_realtime_us; }
-    
+
     bool is_paused() const { return _paused; }
 
     // True if OnMetaData/OnCuePoint/OnXXXMessage() was ever called.
@@ -599,16 +599,16 @@ public:
 
     // Explicitly notify error to current stream
     virtual void SignalError();
-    
+
 protected:
 friend class policy::RtmpContext;
 friend class policy::RtmpChunkStream;
 friend class policy::OnServerStreamCreated;
-    
+
     virtual ~RtmpStreamBase();
 
     int SendMessage(uint32_t timestamp, uint8_t message_type,
-                    const butil::IOBuf& body); 
+                    const butil::IOBuf& body);
     int SendControlMessage(uint8_t message_type, const void* body, size_t);
 
     // OnStop is mutually exclusive with OnXXXMessage, following methods
@@ -639,21 +639,21 @@ friend class policy::OnServerStreamCreated;
 struct RtmpClientOptions {
     // Constructed with default options.
     RtmpClientOptions();
-    
+
     // The Server application name the client is connected to.
     std::string app;
-    
+
     // Flash Player version. It is the same string as returned by the
     // ApplicationScript getversion () function.
     std::string flashVer;
 
-    // URL of the source SWF file making the connection. 
+    // URL of the source SWF file making the connection.
     std::string swfUrl;
 
     // URL of the Server. It has the following format:
-    //   protocol://servername:port/appName/appInstance 
+    //   protocol://servername:port/appName/appInstance
     std::string tcUrl;
-  
+
     // True if proxy is being used.
     bool fpad;
 
@@ -675,7 +675,7 @@ struct RtmpClientOptions {
     // Timeout(in milliseconds) for creating a stream.
     // Default: 1000
     int32_t timeout_ms;
-    
+
     // Timeout(in milliseconds) for creating a stream.
     // Default: 500
     int32_t connect_timeout_ms;
@@ -693,11 +693,11 @@ struct RtmpClientOptions {
     uint32_t window_ack_size;
 
     // Indicates whether to use simplified rtmp protocol or not.
-    // The process of handshaking and connection will be reduced to 0 
+    // The process of handshaking and connection will be reduced to 0
     // RTT by client directly sending a magic number, Connect command
-    // and CreateStream command to server. Server receiving this magic 
-    // number should recognize it as the beginning of simplified rtmp 
-    // protocol, skip regular handshaking process and change its state 
+    // and CreateStream command to server. Server receiving this magic
+    // number should recognize it as the beginning of simplified rtmp
+    // protocol, skip regular handshaking process and change its state
     // as if the handshaking has already completed.
     // Default: false;
     bool simplified_rtmp;
@@ -720,7 +720,7 @@ public:
              const RtmpClientOptions& options);
     int Init(const char* server_addr, int port,
              const RtmpClientOptions& options);
-    int Init(const char* naming_service_url, 
+    int Init(const char* naming_service_url,
              const char* load_balancer_name,
              const RtmpClientOptions& options);
 
@@ -833,7 +833,7 @@ friend class RtmpRetryingClientStream;
                                bool end_of_rpc) override;
 
     void OnFailedToCreateStream();
-    
+
     static int RunOnFailed(bthread_id_t id, void* data, int);
     void OnStopInternal();
 
@@ -930,7 +930,7 @@ public:
     // Note: message_handler is OWNED by this creator and deleted by the creator.
     virtual void NewSubStream(RtmpMessageHandler* message_handler,
                               butil::intrusive_ptr<RtmpStreamBase>* sub_stream) = 0;
-    
+
     // Do the Initialization of sub_stream. If an error happens, sub_stream->Destroy()
     // would be called.
     // Note: sub_stream is not OWNED by the creator.
@@ -989,7 +989,7 @@ friend class RetryingClientMessageHandler;
     static void OnRecreateTimer(void* arg);
     void Recreate();
     void CallOnStopIfNeeded();
-    
+
     butil::intrusive_ptr<RtmpStreamBase> _using_sub_stream;
     butil::intrusive_ptr<RtmpRetryingClientStream> _self_ref;
     mutable butil::Mutex _stream_mutex;
@@ -1049,7 +1049,7 @@ public:
 
     // Called to create a server-side stream.
     virtual RtmpServerStream* NewStream(const RtmpConnectRequest&) = 0;
-    
+
 private:
 friend class StatusService;
 friend class policy::RtmpChunkStream;
@@ -1068,7 +1068,7 @@ public:
     virtual void OnPlay(const RtmpPlayOptions&,
                         butil::Status* status,
                         google::protobuf::Closure* done);
-    
+
     // Called when receiving a publish request.
     // Call status->set_error() when the publish request is rejected.
     // Call done->Run() when the publish request is processed (either accepted
@@ -1077,18 +1077,18 @@ public:
                            RtmpPublishType publish_type,
                            butil::Status* status,
                            google::protobuf::Closure* done);
-    
+
     // Called when receiving a play2 request.
     virtual void OnPlay2(const RtmpPlay2Options&);
 
     // Called when receiving a seek request.
     // Returns 0 on success, -1 otherwise.
     virtual int OnSeek(double offset_ms);
-    
+
     // Called when receiving a pause/unpause request.
     // Returns 0 on success, -1 otherwise.
     virtual int OnPause(bool pause_or_unpause, double offset_ms);
-    
+
     // Called when receiving information from Rtmp client on buffer size (in
     // milliseconds) that is used to buffer any data coming over a stream.
     // This event is sent before the server starts processing the stream.

@@ -50,11 +50,11 @@ static unsigned char s_favicon_array[] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 59
 };
 
-static pthread_once_t s_favicon_buf_once = PTHREAD_ONCE_INIT; 
+static pthread_once_t s_favicon_buf_once = PTHREAD_ONCE_INIT;
 static butil::IOBuf* s_favicon_buf = NULL;
 static void InitFavIcon() {
     s_favicon_buf = new butil::IOBuf;
-    s_favicon_buf->append((const void *)s_favicon_array, 
+    s_favicon_buf->append((const void *)s_favicon_array,
                           arraysize(s_favicon_array));
 }
 static const butil::IOBuf& GetFavIcon() {

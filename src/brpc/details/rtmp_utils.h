@@ -30,7 +30,7 @@ public:
     BitStream(const void* data, size_t len)
         : _data(data), _data_end((const char*)data + len), _shift(7) {}
     ~BitStream() {}
-    
+
     // True if no bits any more.
     bool empty() { return _data == _data_end; }
 

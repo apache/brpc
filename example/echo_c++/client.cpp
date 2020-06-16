@@ -29,17 +29,17 @@ DEFINE_string(connection_type, "", "Connection type. Available values: single, p
 DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    
-    // A Channel represents a communication line to a Server. Notice that 
+
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
+
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;
@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
         request.set_message("hello world");
 
         cntl.set_log_id(log_id ++);  // set by user
-        // Set attachment which is wired to network directly instead of 
+        // Set attachment which is wired to network directly instead of
         // being serialized into protobuf messages.
         cntl.request_attachment().append(FLAGS_attachment);
 

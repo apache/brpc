@@ -118,7 +118,7 @@ int PartitionChannelBase::Init(int num_partition_kinds,
     _parser = partition_parser;
     return 0;
 }
-    
+
 void PartitionChannelBase::PartitionServersIntoTemps(
     const std::vector<ServerId>& servers) {
     for (int i = 0; i < partition_count(); ++i) {
@@ -159,7 +159,7 @@ size_t PartitionChannelBase::AddServersInBatch(
     }
     return ntotal;
 }
-    
+
 size_t PartitionChannelBase::RemoveServersInBatch(
     const std::vector<ServerId>& servers) {
     PartitionServersIntoTemps(servers);
@@ -210,7 +210,7 @@ PartitionChannel::~PartitionChannel() {
 
 int PartitionChannel::Init(int num_partition_kinds,
                            PartitionParser* partition_parser,
-                           const char* ns_url, 
+                           const char* ns_url,
                            const char* load_balancer_name,
                            const PartitionChannelOptions* options_in) {
     // Force naming services to register.
@@ -334,7 +334,7 @@ public:
                 pchan = *ppchan;
                 CHECK_EQ(part.num_partition_kinds, pchan->partition_count());
             }
-            
+
             if (pchan->tmp.capacity() == 0) {
                 pchan->tmp.reserve(16);
             }
@@ -354,7 +354,7 @@ public:
             }
         }
     }
-    
+
     void OnRemovedServers(const std::vector<ServerId>& servers) {
         PartitionServersIntoTemps(servers);
         std::vector<int> erased_parts;
@@ -389,7 +389,7 @@ public:
     ~Partitioner() {
         // Do nothing. _schan deletes all sub channels.
     }
-    
+
     int Init(SelectiveChannel* schan,
              PartitionParser* parser,
              const char* load_balancer_name,
@@ -415,7 +415,7 @@ private:
         std::vector<ServerId> tmp;
     };
     typedef butil::FlatMap<int, SubPartitionChannel*> PartChanMap;
-    
+
     PartChanMap _part_chan_map;
     SelectiveChannel* _schan;
     PartitionParser* _parser;
@@ -443,7 +443,7 @@ DynamicPartitionChannel::~DynamicPartitionChannel() {
 
 int DynamicPartitionChannel::Init(
     PartitionParser* partition_parser,
-    const char* ns_url, 
+    const char* ns_url,
     const char* load_balancer_name,
     const PartitionChannelOptions* options_in) {
     GlobalInitializeOrDie();

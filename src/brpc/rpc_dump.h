@@ -93,7 +93,7 @@ private:
     // Parse on request from the buf. Set `format_error' to true when
     // the buf does not match the format.
     static SampledRequest* Pop(butil::IOBuf& buf, bool* format_error);
-    
+
     butil::IOPortal _cur_buf;
     int _cur_fd;
     butil::FileEnumerator* _enum;

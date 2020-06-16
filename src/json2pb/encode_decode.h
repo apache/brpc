@@ -21,8 +21,8 @@ namespace json2pb {
 
 //pattern: _Zxxx_
 //rules: keep original lower-case characters, upper-case characters,
-//digital charactors and '_' in the original position, 
-//change other special characters to '_Zxxx_', 
+//digital charactors and '_' in the original position,
+//change other special characters to '_Zxxx_',
 //xxx is the character's decimal digit
 //fg: 'abc123_ABC-' convert to 'abc123_ABC_Z045_'
 
@@ -30,7 +30,7 @@ namespace json2pb {
 //params: encoded_content: content encoded
 //return value: false: no need to encode, true: need to encode.
 //note: when return value is false, no change in encoded_content.
-bool encode_name(const std::string& content, std::string & encoded_content); 
+bool encode_name(const std::string& content, std::string & encoded_content);
 
 //params: content: content need to decode
 //params: decoded_content: content decoded

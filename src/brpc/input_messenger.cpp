@@ -88,7 +88,7 @@ ParseResult InputMessenger::CutInputMessage(
             (ProtocolType)preferred != PROTOCOL_BAIDU_STD) {
             // The protocol is fixed at client-side, no need to try others.
             LOG(ERROR) << "Fail to parse response from " << m->remote_side()
-                       << " by " << _handlers[preferred].name 
+                       << " by " << _handlers[preferred].name
                        << " at client-side";
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
@@ -150,7 +150,7 @@ static void QueueMessage(InputMessageBase* to_run_msg,
     }
     // Create bthread for last_msg. The bthread is not scheduled
     // until bthread_flush() is called (in the worse case).
-                
+
     // TODO(gejun): Join threads.
     bthread_t th;
     bthread_attr_t tmp = (FLAGS_usercode_in_pthread ?
@@ -205,7 +205,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 // (implied by m->_read_buf.empty), which may produce a new
                 // `InputMessageBase' under some protocols such as HTTP
                 LOG_IF(WARNING, FLAGS_log_connection_close) << *m << " was closed by remote side";
-                read_eof = true;                
+                read_eof = true;
             } else if (errno != EAGAIN) {
                 if (errno == EINTR) {
                     continue;  // just retry
@@ -221,12 +221,12 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 continue;
             }
         }
-        
+
         m->AddInputBytes(nr);
 
         // Avoid this socket to be closed due to idle_timeout_s
         m->_last_readtime_us.store(received_us, butil::memory_order_relaxed);
-        
+
         size_t last_size = m->_read_buf.length();
         int num_bthread_created = 0;
         while (1) {
@@ -274,13 +274,13 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 m->_avg_msg_size = m->_last_msg_size;
             }
             m->_last_msg_size = 0;
-            
+
             if (pr.message() == NULL) { // the Process() step can be skipped.
                 continue;
             }
             pr.message()->_received_us = received_us;
             pr.message()->_base_real_us = base_realtime;
-                        
+
             // This unique_ptr prevents msg to be lost before transfering
             // ownership to last_msg
             DestroyingPtr<InputMessageBase> msg(pr.message());
@@ -294,7 +294,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
             m->PostponeEOF();
             msg->_process = handlers[index].process;
             msg->_arg = handlers[index].arg;
-            
+
             if (handlers[index].verify != NULL) {
                 int auth_error = 0;
                 if (0 == m->FightAuthentication(&auth_error)) {
@@ -343,13 +343,13 @@ InputMessenger::InputMessenger(size_t capacity)
 
 InputMessenger::~InputMessenger() {
     delete[] _handlers;
-    _handlers = NULL;        
+    _handlers = NULL;
     _max_index.store(-1, butil::memory_order_relaxed);
     _capacity = 0;
 }
 
 int InputMessenger::AddHandler(const InputMessageHandler& handler) {
-    if (handler.parse == NULL || handler.process == NULL 
+    if (handler.parse == NULL || handler.process == NULL
             || handler.name == NULL) {
         CHECK(false) << "Invalid argument";
         return -1;
@@ -381,7 +381,7 @@ int InputMessenger::AddHandler(const InputMessageHandler& handler) {
     if (_handlers[index].parse == NULL) {
         // The same protocol might be added more than twice
         _handlers[index] = handler;
-    } else if (_handlers[index].parse != handler.parse 
+    } else if (_handlers[index].parse != handler.parse
                || _handlers[index].process != handler.process) {
         CHECK(_handlers[index].parse == handler.parse);
         CHECK(_handlers[index].process == handler.process);
@@ -394,7 +394,7 @@ int InputMessenger::AddHandler(const InputMessageHandler& handler) {
 }
 
 int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
-    if (handler.parse == NULL || handler.process == NULL 
+    if (handler.parse == NULL || handler.process == NULL
             || handler.name == NULL) {
         CHECK(false) << "Invalid argument";
         return -1;
@@ -438,7 +438,7 @@ int InputMessenger::Create(SocketOptions options, SocketId* id) {
 
 int InputMessenger::FindProtocolIndex(const char* name) const {
     for (size_t i = 0; i < _capacity; ++i) {
-        if (_handlers[i].parse != NULL 
+        if (_handlers[i].parse != NULL
                 && strcmp(name, _handlers[i].name) == 0) {
             return i;
         }
@@ -467,11 +467,11 @@ static ProtocolType FindProtocolOfHandler(const InputMessageHandler& h) {
     ListProtocols(&vec);
     for (size_t i = 0; i < vec.size(); ++i) {
         if (vec[i].second.parse == h.parse &&
-                ((vec[i].second.process_request == h.process)  
+                ((vec[i].second.process_request == h.process)
                                         //      ^^ server side
                  || (vec[i].second.process_response == h.process))
                                                  // ^^ client side
-                && strcmp(vec[i].second.name, h.name) == 0) { 
+                && strcmp(vec[i].second.name, h.name) == 0) {
             return vec[i].first;
         }
     }

@@ -141,10 +141,10 @@ bool RedisRequest::AddCommand(const butil::StringPiece& command) {
         CHECK(st.ok()) << st;
         _has_error = true;
         return false;
-    }    
+    }
 }
 
-bool RedisRequest::AddCommandByComponents(const butil::StringPiece* components, 
+bool RedisRequest::AddCommandByComponents(const butil::StringPiece* components,
                                          size_t n) {
     if (_has_error) {
         return false;
@@ -157,7 +157,7 @@ bool RedisRequest::AddCommandByComponents(const butil::StringPiece* components,
         CHECK(st.ok()) << st;
         _has_error = true;
         return false;
-    }        
+    }
 }
 
 bool RedisRequest::AddCommandWithArgs(const char* fmt, ...) {
@@ -446,7 +446,7 @@ bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandle
     _command_map[lcname] = handler;
     return true;
 }
- 
+
 RedisCommandHandler* RedisService::FindCommandHandler(const butil::StringPiece& name) const {
     auto it = _command_map.find(name.as_string());
     if (it != _command_map.end()) {

@@ -81,7 +81,7 @@ public:
     // method, bitmap and ThreadBlock* are in one cacheline.
     struct BAIDU_CACHELINE_ALIGNMENT ThreadBlock {
         inline Agent* at(size_t offset) { return _agents + offset; };
-        
+
     private:
         Agent _agents[ELEMENTS_PER_BLOCK];
     };
@@ -140,7 +140,7 @@ public:
             }
             butil::thread_atexit(_destroy_tls_blocks);
         }
-        const size_t block_id = (size_t)id / ELEMENTS_PER_BLOCK; 
+        const size_t block_id = (size_t)id / ELEMENTS_PER_BLOCK;
         if (block_id >= _s_tls_blocks->size()) {
             // The 32ul avoid pointless small resizes.
             _s_tls_blocks->resize(std::max(block_id + 1, 32ul));

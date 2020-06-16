@@ -84,19 +84,19 @@ class MyEchoService : public ::test::EchoService {
         res->set_message(EXP_RESPONSE);
     }
 };
-    
+
 class PublicPbrpcTest : public ::testing::Test{
 protected:
     PublicPbrpcTest() {
         EXPECT_EQ(0, _server.AddService(
             &_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        // Hack: Regard `_server' as running 
+        // Hack: Regard `_server' as running
         _server._status = brpc::Server::RUNNING;
         _server._options.nshead_service =
             new brpc::policy::PublicPbrpcServiceAdaptor;
         // public_pbrpc doesn't support authentication
         // _server._options.auth = &_auth;
-        
+
         EXPECT_EQ(0, pipe(_pipe_fds));
 
         brpc::SocketId id;
@@ -130,7 +130,7 @@ protected:
         }
         (*process)(msg);
     }
-    
+
     brpc::policy::MostCommonMessage* MakeRequestMessage(
         brpc::policy::PublicPbrpcRequest* meta) {
         brpc::policy::MostCommonMessage* msg =

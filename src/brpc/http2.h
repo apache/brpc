@@ -102,7 +102,7 @@ enum H2Error {
     H2_PROTOCOL_ERROR      = 0x1, // Protocol error detected
     H2_INTERNAL_ERROR      = 0x2, // Implementation fault
     H2_FLOW_CONTROL_ERROR  = 0x3, // Flow-control limits exceeded
-    H2_SETTINGS_TIMEOUT    = 0x4, // Settings not acknowledged  
+    H2_SETTINGS_TIMEOUT    = 0x4, // Settings not acknowledged
     H2_STREAM_CLOSED_ERROR = 0x5, // Frame received for closed stream
     H2_FRAME_SIZE_ERROR    = 0x6, // Frame size incorrect
     H2_REFUSED_STREAM      = 0x7, // Stream not processed
@@ -111,7 +111,7 @@ enum H2Error {
     H2_CONNECT_ERROR       = 0xa, // TCP connection error for CONNECT method
     H2_ENHANCE_YOUR_CALM   = 0xb, // Processing capacity exceeded
     H2_INADEQUATE_SECURITY = 0xc, // Negotiated TLS parameters not acceptable
-    H2_HTTP_1_1_REQUIRED   = 0xd, // Use HTTP/1.1 for the request   
+    H2_HTTP_1_1_REQUIRED   = 0xd, // Use HTTP/1.1 for the request
 };
 
 // Get description of the error.

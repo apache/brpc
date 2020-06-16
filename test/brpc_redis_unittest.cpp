@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
 namespace {
 static pthread_once_t download_redis_server_once = PTHREAD_ONCE_INIT;
 
-static pid_t g_redis_pid = -1; 
+static pid_t g_redis_pid = -1;
 
 static void RemoveRedisServer() {
     if (g_redis_pid > 0) {
@@ -202,7 +202,7 @@ TEST_F(RedisTest, sanity) {
     ASSERT_EQ(1, response.reply_size());
     ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
     ASSERT_EQ("OK", response.reply(0).data());
-    
+
     cntl.Reset();
     request.Clear();
     response.Clear();
@@ -244,7 +244,7 @@ TEST_F(RedisTest, keys_with_spaces) {
     brpc::RedisRequest request;
     brpc::RedisResponse response;
     brpc::Controller cntl;
-    
+
     cntl.Reset();
     request.Clear();
     response.Clear();
@@ -472,7 +472,7 @@ TEST_F(RedisTest, cmd_format) {
     brpc::RedisRequest request;
     // set empty string
     request.AddCommand("set a ''");
-    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$0\r\n\r\n", 
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$0\r\n\r\n",
 		request._buf.to_string().c_str());
     request.Clear();
 
@@ -482,7 +482,7 @@ TEST_F(RedisTest, cmd_format) {
     request.Clear();
     // set non-empty string
     request.AddCommand("set a 123");
-    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$3\r\n123\r\n", 
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$3\r\n123\r\n",
 		request._buf.to_string().c_str());
     request.Clear();
 
@@ -502,7 +502,7 @@ TEST_F(RedisTest, cmd_format) {
     request.AddCommand("get 'ext'key   value  ");  // == get ext key value
     ASSERT_STREQ("*4\r\n$3\r\nget\r\n$3\r\next\r\n$3\r\nkey\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
     request.Clear();
-    
+
     request.AddCommand("  get   key'ext'   value  ");  // == get key ext value
     ASSERT_STREQ("*4\r\n$3\r\nget\r\n$3\r\nkey\r\n$3\r\next\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
     request.Clear();
@@ -675,7 +675,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         ASSERT_TRUE(r.SerializeTo(&appender));
         appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "$-1\r\n");
-        
+
         brpc::RedisReply r2(&arena);
         brpc::ParseError err = r2.ConsumePartialIOBuf(buf);
         ASSERT_EQ(err, brpc::PARSE_OK);
@@ -698,7 +698,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "$86\r\nverylongstring verylongstring verylongstring verylongstring int:123 str:foobar fp:3.21\r\n");
         ASSERT_STREQ("verylongstring verylongstring verylongstring verylongstring int:123 str:foobar fp:3.21", r.c_str());
-        
+
         brpc::RedisReply r3(&arena);
         err = r3.ConsumePartialIOBuf(buf);
         ASSERT_EQ(err, brpc::PARSE_OK);
@@ -994,7 +994,7 @@ TEST_F(RedisTest, server_sanity) {
     ASSERT_EQ(brpc::REDIS_REPLY_ERROR, response.reply(6).type());
     ASSERT_TRUE(butil::StringPiece(response.reply(6).error_message()).starts_with("ERR unknown command"));
 
-    cntl.Reset(); 
+    cntl.Reset();
     request.Clear();
     response.Clear();
     std::string value3("value3");

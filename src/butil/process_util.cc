@@ -21,7 +21,7 @@
 
 #include <fcntl.h>                      // open
 #include <stdio.h>                      // snprintf
-#include <sys/types.h>  
+#include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>                     // read, gitpid
 #include <sstream>                      // std::ostringstream

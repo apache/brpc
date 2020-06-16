@@ -48,7 +48,7 @@ CDF::CDF(PercentileWindow* w) : _w(w) {}
 CDF::~CDF() {
     hide();
 }
-    
+
 void CDF::describe(std::ostream& os, bool) const {
     os << "\"click to view\"";
 }

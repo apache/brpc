@@ -340,9 +340,9 @@ static int get_fd_count(int limit) {
     for (; dr.Next() && count <= limit + 3; ++count) {}
     return count - 3 /* skipped ., .. and the fd in dr*/;
 #elif defined(OS_MACOSX)
-    // TODO(zhujiashun): following code will cause core dump with some 
+    // TODO(zhujiashun): following code will cause core dump with some
     // probability under mac when program exits. Fix it.
-    /* 
+    /*
     static pid_t pid = getpid();
     std::ostringstream oss;
     char cmdbuf[128];
@@ -383,7 +383,7 @@ public:
         if (count < 0) {
             return false;
         }
-        if (count == MAX_FD_SCAN_COUNT - 2 
+        if (count == MAX_FD_SCAN_COUNT - 2
                 && s_ever_reached_fd_scan_limit.exchange(
                         true, butil::memory_order_relaxed) == false) {
             // Rename the bvar to notify user.
@@ -455,7 +455,7 @@ static bool read_proc_io(ProcIO* s) {
     s->read_bytes = rusage.ri_diskio_bytesread;
     s->write_bytes = rusage.ri_diskio_byteswritten;
     return true;
-#else 
+#else
     return false;
 #endif
 }
@@ -481,7 +481,7 @@ public:
 // Refs:
 //   https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
 //   https://www.kernel.org/doc/Documentation/iostats.txt
-// 
+//
 // The /proc/diskstats file displays the I/O statistics of block devices.
 // Each line contains the following 14 fields:
 struct DiskStat {
@@ -491,13 +491,13 @@ struct DiskStat {
 
     // The total number of reads completed successfully.
     long long reads_completed; // wMB/s wKB/s
-    
+
     // Reads and writes which are adjacent to each other may be merged for
     // efficiency.  Thus two 4K reads may become one 8K read before it is
     // ultimately handed to the disk, and so it will be counted (and queued)
     // as only one I/O.  This field lets you know how often this was done.
     long long reads_merged;     // rrqm/s
-    
+
     // The total number of sectors read successfully.
     long long sectors_read;     // rsec/s
 
@@ -651,7 +651,7 @@ public:
     PassiveStatus<BVAR_MEMBER_TYPE(&rusage::field)> g_##field(          \
         RUsageReader::get_field<BVAR_MEMBER_TYPE(&rusage::field),       \
         offsetof(rusage, field)>, NULL);                                \
-    
+
 #define BVAR_DEFINE_RUSAGE_FIELD2(field, name)                          \
     PassiveStatus<BVAR_MEMBER_TYPE(&rusage::field)> g_##field(          \
         name,                                                           \
@@ -782,9 +782,9 @@ Window<PassiveStatus<TimePercent>, SERIES_IN_SECOND> g_utime_percent_second(
 // Unsupported fields in linux:
 //   ru_ixrss
 //   ru_idrss
-//   ru_isrss 
-//   ru_nswap 
-//   ru_nsignals 
+//   ru_isrss
+//   ru_nswap
+//   ru_nsignals
 BVAR_DEFINE_RUSAGE_FIELD(ru_inblock);
 BVAR_DEFINE_RUSAGE_FIELD(ru_oublock);
 BVAR_DEFINE_RUSAGE_FIELD(ru_nvcsw);
@@ -809,7 +809,7 @@ void gen_gcc_version() {
 
 #if defined(__GNUC__)
     const int gcc_major = __GNUC__;
-#else 
+#else
     const int gcc_major = -1;
 #endif
 

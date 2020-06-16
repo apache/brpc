@@ -45,7 +45,7 @@ inline size_t InputStream::popn(size_t n) {
     _popped_bytes += saved_n - n;
     return saved_n - n;
 }
-    
+
 inline size_t InputStream::cutn(void* out, size_t n) {
     const size_t saved_n = n;
     do {
@@ -93,7 +93,7 @@ inline T InputStream::cut_packed_pod() {
     cutn(&packed_pod, sizeof(T));
     return packed_pod;
 }
-    
+
 inline butil::StringPiece InputStream::ref_cut(std::string* aux, size_t n) {
     if (_size >= (int64_t)n) {
         butil::StringPiece ret((const char*)_data, n);

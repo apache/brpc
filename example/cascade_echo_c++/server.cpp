@@ -22,7 +22,7 @@
 #include "echo.pb.h"
 
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 
 DEFINE_bool(echo_attachment, true, "Echo attachment as well");
 DEFINE_int32(port, 8000, "TCP Port of this server");
@@ -75,7 +75,7 @@ public:
             TRACEPRINTF("I'm the last call");
             response->set_message(request->message());
         }
-        
+
         if (FLAGS_echo_attachment && !FLAGS_use_http) {
             // Set attachment which is wired to network directly instead of
             // being serialized into protobuf messages.
@@ -90,14 +90,14 @@ int main(int argc, char* argv[]) {
     GFLAGS_NS::SetUsageMessage("A server that may call itself");
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::ChannelOptions coption;
     if (FLAGS_use_http) {
         coption.protocol = brpc::PROTOCOL_HTTP;
     }
-    
-    // Initialize the channel, NULL means using default options. 
+
+    // Initialize the channel, NULL means using default options.
     // options, see `brpc/channel.h'.
     if (FLAGS_server.empty()) {
         if (channel.Init("localhost", FLAGS_port, &coption) != 0) {
@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
     // Add the service into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
     // use brpc::SERVER_OWNS_SERVICE.
-    if (server.AddService(&echo_service_impl, 
+    if (server.AddService(&echo_service_impl,
                           brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
         LOG(ERROR) << "Fail to add service";
         return -1;
@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;
     }
-    
+
     // Wait until Ctrl-C is pressed, then Stop() and Join() the server.
     server.RunUntilAskedToQuit();
     return 0;

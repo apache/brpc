@@ -27,7 +27,7 @@ DEFINE_bool(disable_coredump, false, "Never core dump");
 int main(int argc, char** argv) {
     butil::AtExitManager at_exit;
     testing::InitGoogleTest(&argc, argv);
-    
+
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     if (FLAGS_disable_coredump) {
         rlimit core_limit;

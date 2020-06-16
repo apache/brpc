@@ -25,20 +25,20 @@
 
 namespace pbrpcframework {
 const google::protobuf::MethodDescriptor* find_method_by_name(
-        const std::string& service_name, 
-        const std::string& method_name, 
-        google::protobuf::compiler::Importer* importer); 
+        const std::string& service_name,
+        const std::string& method_name,
+        google::protobuf::compiler::Importer* importer);
 
 const google::protobuf::Message* get_prototype_by_method_descriptor(
-        const google::protobuf::MethodDescriptor* descripter, 
+        const google::protobuf::MethodDescriptor* descripter,
         bool is_input,
         google::protobuf::DynamicMessageFactory* factory);
 
 const google::protobuf::Message* get_prototype_by_name(
-        const std::string& service_name, 
-        const std::string& method_name, 
-        bool is_input, 
-        google::protobuf::compiler::Importer* importer, 
+        const std::string& service_name,
+        const std::string& method_name,
+        bool is_input,
+        google::protobuf::compiler::Importer* importer,
         google::protobuf::DynamicMessageFactory* factory);
 }
 #endif //UTIL_PB_UTIL_H

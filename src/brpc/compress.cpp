@@ -26,7 +26,7 @@ namespace brpc {
 static const int MAX_HANDLER_SIZE = 1024;
 static CompressHandler s_handler_map[MAX_HANDLER_SIZE] = { { NULL, NULL, NULL } };
 
-int RegisterCompressHandler(CompressType type, 
+int RegisterCompressHandler(CompressType type,
                             CompressHandler handler) {
     if (NULL == handler.Compress || NULL == handler.Decompress) {
         LOG(FATAL) << "Invalid parameter: handler function is NULL";
@@ -76,7 +76,7 @@ void ListCompressHandler(std::vector<CompressHandler>* vec) {
     }
 }
 
-bool ParseFromCompressedData(const butil::IOBuf& data, 
+bool ParseFromCompressedData(const butil::IOBuf& data,
                              google::protobuf::Message* msg,
                              CompressType compress_type) {
     if (compress_type == COMPRESS_TYPE_NONE) {

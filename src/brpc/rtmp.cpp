@@ -311,7 +311,7 @@ const char* FlvVideoFrameType2Str(FlvVideoFrameType t) {
     case FLV_VIDEO_FRAME_DISPOSABLE_INTERFRAME: return "disposable interframe";
     case FLV_VIDEO_FRAME_GENERATED_KEYFRAME:    return "generated keyframe";
     case FLV_VIDEO_FRAME_INFOFRAME:             return "info/command frame";
-    } 
+    }
     return "Unknown FlvVideoFrameType";
 }
 
@@ -576,7 +576,7 @@ butil::Status AVCDecoderConfigurationRecord::Create(const void* data, size_t len
     avc_profile = (AVCProfile)buf[1];
     // skip profile_compatibility at buf[2]
     avc_level = (AVCLevel)buf[3];
-    
+
     // 5.3.4.2.1 Syntax, H.264-AVC-ISO_IEC_14496-15.pdf, page 16
     // 5.2.4.1 AVC decoder configuration record
     // 5.2.4.1.2 Semantics
@@ -665,7 +665,7 @@ butil::Status AVCDecoderConfigurationRecord::ParseSPS(
     // Extract the rbsp from sps.
     DEFINE_SMALL_ARRAY(char, rbsp, sps_length - 1, 64);
     buf.copy(rbsp, sps_length - 1, 1);
-    size_t rbsp_len = 0;    
+    size_t rbsp_len = 0;
     for (size_t i = 1; i < sps_length; ++i) {
         // XX 00 00 03 XX, the 03 byte should be dropped.
         if (!(i >= 3 && buf[i - 2] == 0 && buf[i - 1] == 0 && buf[i] == 3)) {
@@ -847,7 +847,7 @@ static void find_avc_annexb_nalu_stop_code(const butil::IOBuf& buf,
                     *stop_code_length = consecutive_zero_count + 1;
                 }
                 return;
-            } 
+            }
             ++nalu_length;
             consecutive_zero_count = 0;
         }
@@ -999,10 +999,10 @@ public:
              const RtmpClientOptions& options);
     int Init(const char* server_addr, int port,
              const RtmpClientOptions& options);
-    int Init(const char* naming_service_url, 
+    int Init(const char* naming_service_url,
              const char* load_balancer_name,
              const RtmpClientOptions& options);
-    
+
     const RtmpClientOptions& options() const { return _connect_options; }
     SocketMap& socket_map() { return _socket_map; }
 
@@ -1011,7 +1011,7 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(RtmpClientImpl);
     int CommonInit(const RtmpClientOptions& options);
-    
+
     Channel _chan;
     RtmpClientOptions _connect_options;
     SocketMap _socket_map;
@@ -1048,7 +1048,7 @@ void RtmpConnect::StartConnect(
 
     // Save to callback to call when RTMP connect is done.
     ctx->SetConnectCallback(done, data);
-        
+
     // Initiate the rtmp handshake.
     bool is_simple_handshake = false;
     if (policy::SendC0C1(s->fd(), &is_simple_handshake) != 0) {
@@ -1082,7 +1082,7 @@ public:
         sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, NULL);
         return get_client_side_messenger()->Create(sock_opt, id);
     }
-    
+
 private:
     RtmpClientOptions _connect_options;
 };
@@ -1139,7 +1139,7 @@ int RtmpClientImpl::Init(const char* server_addr, int port,
     copts.protocol = PROTOCOL_RTMP;
     return _chan.Init(server_addr, port, &copts);
 }
-int RtmpClientImpl::Init(const char* naming_service_url, 
+int RtmpClientImpl::Init(const char* naming_service_url,
                          const char* load_balancer_name,
                          const RtmpClientOptions& options) {
     if (CommonInit(options) != 0) {
@@ -1212,7 +1212,7 @@ int RtmpClient::Init(const char* server_addr, int port,
     return 0;
 }
 
-int RtmpClient::Init(const char* naming_service_url, 
+int RtmpClient::Init(const char* naming_service_url,
                      const char* load_balancer_name,
                      const RtmpClientOptions& options) {
     butil::intrusive_ptr<RtmpClientImpl> tmp(new (std::nothrow) RtmpClientImpl);
@@ -1383,7 +1383,7 @@ int RtmpStreamBase::SendAACMessage(const RtmpAACMessage& msg) {
 
 int RtmpStreamBase::SendUserMessage(void*) {
     CHECK(false) << "You should implement your own SendUserMessage";
-    return 0; 
+    return 0;
 }
 
 int RtmpStreamBase::SendVideoMessage(const RtmpVideoMessage& msg) {
@@ -1591,7 +1591,7 @@ void RtmpStreamBase::CallOnStop() {
     }
     OnStop();
 }
- 
+
 butil::EndPoint RtmpStreamBase::remote_side() const
 { return _rtmpsock ? _rtmpsock->remote_side() : butil::EndPoint(); }
 
@@ -1619,13 +1619,13 @@ void RtmpClientStream::Destroy() {
     bthread_id_t onfail_id = INVALID_BTHREAD_ID;
     CallId create_stream_rpc_id = INVALID_BTHREAD_ID;
     butil::intrusive_ptr<RtmpClientStream> self_ref;
-    
+
     std::unique_lock<butil::Mutex> mu(_state_mutex);
     switch (_state) {
     case STATE_UNINITIALIZED:
         _state = STATE_DESTROYING;
         mu.unlock();
-        OnStopInternal(); 
+        OnStopInternal();
         _self_ref.swap(self_ref);
         return;
     case STATE_CREATING:
@@ -1660,7 +1660,7 @@ void RtmpClientStream::SignalError() {
     case STATE_UNINITIALIZED:
         _state = STATE_ERROR;
         mu.unlock();
-        OnStopInternal(); 
+        OnStopInternal();
         return;
     case STATE_CREATING:
         _state = STATE_ERROR;
@@ -1854,7 +1854,7 @@ void RtmpClientStream::OnStopInternal() {
         msg1->header.stream_id = _message_stream_id;
         msg1->chunk_stream_id = _chunk_stream_id;
         msg1->body = req_buf1;
-    
+
         // Send deleteStream over the control stream.
         butil::IOBuf req_buf2;
         {
@@ -2030,7 +2030,7 @@ int RtmpClientStream::Seek(double offset_ms) {
         WriteAMFNumber(offset_ms, &ostream);
         CHECK(ostream.good());
     }
-    return SendMessage(0, policy::RTMP_MESSAGE_COMMAND_AMF0, req_buf);    
+    return SendMessage(0, policy::RTMP_MESSAGE_COMMAND_AMF0, req_buf);
 }
 
 int RtmpClientStream::Pause(bool pause_or_unpause, double offset_ms) {
@@ -2058,7 +2058,7 @@ void RtmpClientStream::OnStatus(const RtmpInfo& info) {
              info.code() == RTMP_STATUS_CODE_PLAY_START) ||
             (!_options.publish_name.empty() &&
              info.code() == RTMP_STATUS_CODE_PUBLISH_START)) {
-            // the memory fence makes sure that if _is_server_accepted is true, 
+            // the memory fence makes sure that if _is_server_accepted is true,
             // publish request must be sent (so that SendXXX functions can
             // be enabled)
             _is_server_accepted.store(true, butil::memory_order_release);
@@ -2077,7 +2077,7 @@ class OnClientStreamCreated : public google::protobuf::Closure {
 public:
     void Run();  // @Closure
     void CancelBeforeCallMethod() { delete this; }
-    
+
 public:
     Controller cntl;
     // Hold a reference of stream to prevent it from destructing during an
@@ -2230,7 +2230,7 @@ void RtmpRetryingClientStream::CallOnStopIfNeeded() {
         !_called_on_stop.exchange(true, butil::memory_order_relaxed)) {
         CallOnStop();
     }
-}        
+}
 
 void RtmpRetryingClientStream::Destroy() {
     if (_destroying.exchange(true, butil::memory_order_relaxed)) {
@@ -2254,7 +2254,7 @@ void RtmpRetryingClientStream::Destroy() {
     if (old_sub_stream) {
         old_sub_stream->Destroy();
     }
-    
+
     if (_has_timer_ever) {
         if (bthread_timer_del(_create_timer_id) == 0) {
             // The callback is not run yet. Remove the additional ref added
@@ -2327,9 +2327,9 @@ void RtmpRetryingClientStream::Recreate() {
     bool destroying = false;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
-        // Need to check _destroying to avoid setting the new sub_stream to a 
-        // destroying retrying stream. 
-        // Note: the load of _destroying and the setting of _using_sub_stream 
+        // Need to check _destroying to avoid setting the new sub_stream to a
+        // destroying retrying stream.
+        // Note: the load of _destroying and the setting of _using_sub_stream
         // must be in the same lock, otherwise current bthread may be scheduled
         // and Destroy() may be called, making new sub_stream leaked.
         destroying = _destroying.load(butil::memory_order_relaxed);
@@ -2350,7 +2350,7 @@ void RtmpRetryingClientStream::Recreate() {
     // If Init() of sub_stream is called before setting _using_sub_stream,
     // OnStop() may happen before _using_sub_stream is set and the stopped
     // stream is wrongly left in the variable.
-     
+
     _sub_stream_creator->LaunchSubStream(sub_stream.get(), &_options);
 }
 
@@ -2364,7 +2364,7 @@ void RtmpRetryingClientStream::OnRecreateTimer(void* arg) {
 void RtmpRetryingClientStream::OnSubStreamStop(RtmpStreamBase* sub_stream) {
     // Make sure the sub_stream is destroyed after this function.
     DestroyingPtr<RtmpStreamBase> sub_stream_guard(sub_stream);
-    
+
     butil::intrusive_ptr<RtmpStreamBase> removed_sub_stream;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
@@ -2381,7 +2381,7 @@ void RtmpRetryingClientStream::OnSubStreamStop(RtmpStreamBase* sub_stream) {
     if (sub_stream->is_server_accepted()) {
         _is_server_accepted_ever = true;
     }
-    
+
     if (_options.max_retry_duration_ms == 0) {
         return CallOnStopIfNeeded();
     }
@@ -2659,7 +2659,7 @@ int RtmpServerStream::SendStopMessage(const butil::StringPiece& error_desc) {
     msg->header.stream_id = _message_stream_id;
     msg->chunk_stream_id = _chunk_stream_id;
     msg->body = req_buf;
-    
+
     if (policy::WriteWithoutOvercrowded(_rtmpsock.get(), msg) != 0) {
         PLOG_IF(WARNING, errno != EFAILEDSOCKET)
             << _rtmpsock->remote_side() << '[' << _message_stream_id
@@ -2781,7 +2781,7 @@ static void SplitVHostFromApp(const butil::StringPiece& app_and_vhost,
         }
         return;
     }
-    
+
     if (app) {
         *app = app_and_vhost.substr(0, q_pos);
     }

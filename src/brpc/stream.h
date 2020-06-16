@@ -40,11 +40,11 @@ typedef butil::ScopedGeneric<StreamId, detail::StreamIdTraits> ScopedStream;
 class StreamInputHandler {
 public:
     virtual ~StreamInputHandler() = default;
-    virtual int on_received_messages(StreamId id, 
-                                     butil::IOBuf *const messages[], 
+    virtual int on_received_messages(StreamId id,
+                                     butil::IOBuf *const messages[],
                                      size_t size) = 0;
     virtual void on_idle_timeout(StreamId id) = 0;
-    virtual void on_closed(StreamId id) = 0; 
+    virtual void on_closed(StreamId id) = 0;
 };
 
 struct StreamOptions {
@@ -55,17 +55,17 @@ struct StreamOptions {
         , handler(NULL)
     {}
 
-    // The max size of unconsumed data allowed at remote side. 
+    // The max size of unconsumed data allowed at remote side.
     // If |max_buf_size| <= 0, there's no limit of buf size
     // default: 2097152 (2M)
     int max_buf_size;
 
     // Notify user when there's no data for at least |idle_timeout_ms|
-    // milliseconds since the last time that HandleIdleTimeout or HandleInput 
+    // milliseconds since the last time that HandleIdleTimeout or HandleInput
     // finished.
     // default: -1
     long idle_timeout_ms;
-    
+
     // Maximum messages in batch passed to handler->on_received_messages
     // default: 128
     size_t messages_in_batch;
@@ -85,13 +85,13 @@ int StreamCreate(StreamId* request_stream, Controller &cntl,
                  const StreamOptions* options);
 
 // [Called at the server side]
-// Accept the stream. If client didn't create a stream with the request 
+// Accept the stream. If client didn't create a stream with the request
 // (cntl.has_remote_stream() returns false), this method would fail.
 // Return 0 on success, -1 otherwise.
 int StreamAccept(StreamId* response_stream, Controller &cntl,
                  const StreamOptions* options);
 
-// Write |message| into |stream_id|. The remote-side handler will received the 
+// Write |message| into |stream_id|. The remote-side handler will received the
 // message by the written order
 // Returns 0 on success, errno otherwise
 // Errno:
@@ -110,12 +110,12 @@ int StreamWait(StreamId stream_id, const timespec* due_time);
 
 // Async wait
 void StreamWait(StreamId stream_id, const timespec *due_time,
-                void (*on_writable)(StreamId stream_id, void* arg, 
+                void (*on_writable)(StreamId stream_id, void* arg,
                                     int error_code),
                 void *arg);
 
 // Close |stream_id|, after this function is called:
-//  - All the following |StreamWrite| would fail 
+//  - All the following |StreamWrite| would fail
 //  - |StreamWait| wakes up immediately.
 //  - Both sides |on_closed| would be notifed after all the pending buffers have
 //    been received

@@ -51,7 +51,7 @@ struct ExecutionQueueVars {
     bvar::Adder<int64_t> running_task_count;
     bvar::Adder<int64_t> execq_count;
     bvar::Adder<int64_t> execq_active_count;
-    
+
     ExecutionQueueVars();
 };
 
@@ -71,9 +71,9 @@ void ExecutionQueueBase::start_execute(TaskNode* node) {
     node->iterated = false;
     if (node->high_priority) {
         // Add _high_priority_tasks before pushing this task into queue to
-        // make sure that _execute_tasks sees the newest number when this 
-        // task is in the queue. Althouth there might be some useless for 
-        // loops in _execute_tasks if this thread is scheduled out at this 
+        // make sure that _execute_tasks sees the newest number when this
+        // task is in the queue. Althouth there might be some useless for
+        // loops in _execute_tasks if this thread is scheduled out at this
         // point, we think it's just fine.
         _high_priority_tasks.fetch_add(1, butil::memory_order_relaxed);
     }
@@ -160,7 +160,7 @@ void* ExecutionQueueBase::_execute_tasks(void* arg) {
             m->return_task_node(saved_head);
         }
         if (cur_tail == NULL) {
-            for (cur_tail = head; cur_tail->next != NULL; 
+            for (cur_tail = head; cur_tail->next != NULL;
                     cur_tail = cur_tail->next) {}
         }
         // break when no more tasks and head has been executed
@@ -177,7 +177,7 @@ void* ExecutionQueueBase::_execute_tasks(void* arg) {
         // Add _join_butex by 2 to make it equal to the next version of the
         // ExecutionQueue from the same slot so that join with old id would
         // return immediatly.
-        // 
+        //
         // 1: release fence to make join sees the newst changes when it sees
         //    the newst _join_butex
         m->_join_butex->fetch_add(2, butil::memory_order_release/*1*/);
@@ -272,8 +272,8 @@ int ExecutionQueueBase::_execute(TaskNode* head, bool high_priority, int* nitera
         _execute_func(_meta, _type_specific_function, iter);
     }
     // We must assign |niterated| with num_iterated even if we couldn't peek
-    // any task to execute at the begining, in which case all the iterated 
-    // tasks have been cancelled at this point. And we must return the 
+    // any task to execute at the begining, in which case all the iterated
+    // tasks have been cancelled at this point. And we must return the
     // correct num_iterated() to the caller to update the counter correctly.
     if (niterated) {
         *niterated = iter.num_iterated();
@@ -357,7 +357,7 @@ int ExecutionQueueBase::create(uint64_t* id, const ExecutionQueueOptions* option
         CHECK_EQ(0, m->_high_priority_tasks.load(butil::memory_order_relaxed));
         ExecutionQueueOptions opt;
         if (options != NULL) {
-            opt = *options;   
+            opt = *options;
         }
         m->_options = opt;
         m->_stopped.store(false, butil::memory_order_relaxed);
@@ -372,7 +372,7 @@ int ExecutionQueueBase::create(uint64_t* id, const ExecutionQueueOptions* option
 }
 
 inline bool TaskIteratorBase::should_break_for_high_priority_tasks() {
-    if (!_high_priority && 
+    if (!_high_priority &&
             _q->_high_priority_tasks.load(butil::memory_order_relaxed) > 0) {
         _should_break = true;
         return true;
@@ -419,7 +419,7 @@ TaskIteratorBase::~TaskIteratorBase() {
         }
         _head = _head->next;
     }
-    if (_should_break && _cur_node != NULL 
+    if (_should_break && _cur_node != NULL
             && _cur_node->high_priority == _high_priority && _cur_node->iterated) {
         _cur_node->set_executed();
     }

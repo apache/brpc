@@ -218,7 +218,7 @@ public:
                 butex = expected;
             }
         }
-        
+
         while (butex == CLOSING_GUARD) {  // bthread_close() is running.
             if (sched_yield() < 0) {
                 return -1;

@@ -258,7 +258,7 @@ const char* TabsHead() {
         "    background-color: #606060;\n"
         "    border:none;\n"
         "    overflow: hidden;\n"
-        "    box-shadow: 0px 1px 2px #909090;\n"  
+        "    box-shadow: 0px 1px 2px #909090;\n"
         "    z-index: 5;\n"
         "}\n"
         ".tabs-menu li {\n"

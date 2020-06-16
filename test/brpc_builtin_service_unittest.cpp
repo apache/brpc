@@ -94,11 +94,11 @@ class ClosureChecker : public google::protobuf::Closure {
 public:
     ClosureChecker() : _count(1) {}
     ~ClosureChecker() { EXPECT_EQ(0, _count); }
-    
+
     void Run() {
         --_count;
     }
-    
+
 private:
     int _count;
 };
@@ -195,7 +195,7 @@ protected:
         EXPECT_EQ(expect_type, cntl.http_response().content_type());
         ASSERT_EQ(0, _server.RemoveService(&echo_svc));
     }
-    
+
     void TestVLog(bool use_html) {
 #if !BRPC_WITH_GLOG
         std::string expect_type = (use_html ? "text/html" : "text/plain");
@@ -212,7 +212,7 @@ protected:
         CheckContent(cntl, "brpc_builtin_service_unittest");
 #endif
     }
-    
+
     void TestConnections(bool use_html) {
         std::string expect_type = (use_html ? "text/html" : "text/plain");
         brpc::ConnectionsService service;
@@ -230,7 +230,7 @@ protected:
         char buf[64];
         snprintf(buf, sizeof(buf), "127.0.0.1:%d", self_port);
         usleep(100000);
-        
+
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(expect_type, cntl.http_response().content_type());
@@ -240,7 +240,7 @@ protected:
         close(cfd);
         StopAndJoin();
     }
-    
+
     void TestBadMethod(bool use_html) {
         std::string expect_type = (use_html ? "text/html" : "text/plain");
         brpc::BadMethodService service;
@@ -370,7 +370,7 @@ protected:
             EXPECT_FALSE(cntl.Failed());
             EXPECT_FALSE(brpc::FLAGS_rpcz_hex_log_id);
         }
-        
+
         ASSERT_EQ(0, _server.AddService(new EchoServiceImpl(),
                                         brpc::SERVER_OWNS_SERVICE));
         butil::EndPoint ep;
@@ -486,10 +486,10 @@ protected:
             // CheckContent(cntl, "rpcz.id_db");
             // CheckContent(cntl, "rpcz.time_db");
         }
-        
+
         StopAndJoin();
     }
-    
+
 private:
     brpc::Server _server;
 };
@@ -612,7 +612,7 @@ TEST_F(BuiltinServiceTest, bad_method) {
 }
 
 TEST_F(BuiltinServiceTest, vars) {
-    // Start server to show bvars inside 
+    // Start server to show bvars inside
     ASSERT_EQ(0, _server.Start("127.0.0.1:9798", NULL));
     brpc::VarsService service;
     brpc::VarsRequest req;
@@ -728,7 +728,7 @@ TEST_F(BuiltinServiceTest, dir) {
         CheckErrorText(cntl, "Cannot open");
     }
 }
-    
+
 TEST_F(BuiltinServiceTest, ids) {
     brpc::IdsService service;
     brpc::IdsRequest req;
@@ -739,7 +739,7 @@ TEST_F(BuiltinServiceTest, ids) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "Use /ids/<call_id>");
-    }    
+    }
     {
         ClosureChecker done;
         brpc::Controller cntl;
@@ -747,7 +747,7 @@ TEST_F(BuiltinServiceTest, ids) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_TRUE(cntl.Failed());
         CheckErrorText(cntl, "is not a bthread_id");
-    }    
+    }
     {
         bthread_id_t id;
         EXPECT_EQ(0, bthread_id_create(&id, NULL, NULL));
@@ -759,7 +759,7 @@ TEST_F(BuiltinServiceTest, ids) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "Status: UNLOCKED");
-    }    
+    }
 }
 
 void* dummy_bthread(void*) {
@@ -777,7 +777,7 @@ TEST_F(BuiltinServiceTest, bthreads) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "Use /bthreads/<bthread_id>");
-    }    
+    }
     {
         ClosureChecker done;
         brpc::Controller cntl;
@@ -785,7 +785,7 @@ TEST_F(BuiltinServiceTest, bthreads) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_TRUE(cntl.Failed());
         CheckErrorText(cntl, "is not a bthread id");
-    }    
+    }
     {
         bthread_t th;
         EXPECT_EQ(0, bthread_start_background(&th, NULL, dummy_bthread, NULL));
@@ -797,7 +797,7 @@ TEST_F(BuiltinServiceTest, bthreads) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "stop=0");
-    }    
+    }
 }
 
 TEST_F(BuiltinServiceTest, sockets) {
@@ -810,7 +810,7 @@ TEST_F(BuiltinServiceTest, sockets) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "Use /sockets/<SocketId>");
-    }    
+    }
     {
         ClosureChecker done;
         brpc::Controller cntl;
@@ -818,7 +818,7 @@ TEST_F(BuiltinServiceTest, sockets) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_TRUE(cntl.Failed());
         CheckErrorText(cntl, "is not a SocketId");
-    }    
+    }
     {
         brpc::SocketId id;
         brpc::SocketOptions options;
@@ -831,5 +831,5 @@ TEST_F(BuiltinServiceTest, sockets) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "fd=-1");
-    }    
+    }
 }

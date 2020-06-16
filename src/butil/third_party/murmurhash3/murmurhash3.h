@@ -90,7 +90,7 @@ struct MurmurHash3_x86_128_Context {
     // Notice: may overflow, but fine.
     int total_len;
     int tail_len;
-    uint8_t tail[16];   
+    uint8_t tail[16];
 };
 void MurmurHash3_x86_128_Init(MurmurHash3_x86_128_Context* ctx, uint32_t seed);
 void MurmurHash3_x86_128_Update(MurmurHash3_x86_128_Context* ctx, const void* key, int len);
@@ -102,10 +102,10 @@ struct MurmurHash3_x64_128_Context {
     // Notice:
     //   different from MurmurHash3_x86_128_Context where total_len is int.
     //   When total_len >= 2^31, this is also (slightly) different from
-    //   MurmurHash3_x64_128() because len in the function is int. 
+    //   MurmurHash3_x64_128() because len in the function is int.
     uint64_t total_len;
     int tail_len;
-    uint8_t tail[16];   
+    uint8_t tail[16];
 };
 void MurmurHash3_x64_128_Init(MurmurHash3_x64_128_Context* ctx, uint32_t seed);
 void MurmurHash3_x64_128_Update(MurmurHash3_x64_128_Context* ctx, const void* key, int len);

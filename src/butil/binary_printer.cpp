@@ -70,7 +70,7 @@ void BinaryCharPrinter<Appender>::PushChar(unsigned char c) {
         case '\t': _buf[_n++] = 't'; break;
         case '\n': _buf[_n++] = 'n'; break;
         case '\r': _buf[_n++] = 'r'; break;
-        default: 
+        default:
             _buf[_n++] = s_binary_char_map[c >> 4];
             _buf[_n++] = s_binary_char_map[c & 0xF];
             break;

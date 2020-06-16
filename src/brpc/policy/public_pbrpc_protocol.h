@@ -20,7 +20,7 @@
 #define BRPC_POLICY_PUBLIC_PBRPC_PROTOCOL_H
 
 #include "brpc/nshead_pb_service_adaptor.h"
-#include "brpc/policy/nshead_protocol.h"             
+#include "brpc/policy/nshead_protocol.h"
 
 
 namespace brpc {

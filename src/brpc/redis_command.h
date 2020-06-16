@@ -48,7 +48,7 @@ public:
     RedisCommandParser();
 
     // Parse raw message from `buf'. Return PARSE_OK and set the parsed command
-    // to `args' and length to `len' if successful. Memory of args are allocated 
+    // to `args' and length to `len' if successful. Memory of args are allocated
     // in `arena'.
     ParseError Consume(butil::IOBuf& buf, std::vector<butil::StringPiece>* args,
                        butil::Arena* arena);

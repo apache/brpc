@@ -67,28 +67,28 @@ public:
     //   butil::StringPiece components[] = { "set", "key", "value" };
     //   request.AddCommandByComponents(components, arraysize(components));
     bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
-    
+
     // Add a command with variadic args to this request.
     // The reason that adding so many overloads rather than using ... is that
     // it's the only way to dispatch the AddCommand w/o args differently.
     bool AddCommand(const butil::StringPiece& command);
-    
+
     template <typename A1>
     bool AddCommand(const char* format, A1 a1)
     { return AddCommandWithArgs(format, a1); }
-    
+
     template <typename A1, typename A2>
     bool AddCommand(const char* format, A1 a1, A2 a2)
     { return AddCommandWithArgs(format, a1, a2); }
-    
+
     template <typename A1, typename A2, typename A3>
     bool AddCommand(const char* format, A1 a1, A2 a2, A3 a3)
     { return AddCommandWithArgs(format, a1, a2, a3); }
-    
+
     template <typename A1, typename A2, typename A3, typename A4>
     bool AddCommand(const char* format, A1 a1, A2 a2, A3 a3, A4 a4)
     { return AddCommandWithArgs(format, a1, a2, a3, a4); }
-    
+
     template <typename A1, typename A2, typename A3, typename A4, typename A5>
     bool AddCommand(const char* format, A1 a1, A2 a2, A3 a3, A4 a4, A5 a5)
     { return AddCommandWithArgs(format, a1, a2, a3, a4, a5); }
@@ -114,7 +114,7 @@ public:
     void MergeFrom(const RedisRequest& from);
     void Clear();
     bool IsInitialized() const;
-  
+
     int ByteSize() const;
     bool MergePartialFromCodedStream(
         ::google::protobuf::io::CodedInputStream* input);
@@ -124,7 +124,7 @@ public:
     int GetCachedSize() const { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
-    
+
     void Print(std::ostream&) const;
 
 protected:
@@ -174,9 +174,9 @@ public:
     // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse.
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing failed.
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count);
-    
+
     // implements Message ----------------------------------------------
-  
+
     RedisResponse* New() const;
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
@@ -184,7 +184,7 @@ public:
     void MergeFrom(const RedisResponse& from);
     void Clear();
     bool IsInitialized() const;
-  
+
     int ByteSize() const;
     bool MergePartialFromCodedStream(
         ::google::protobuf::io::CodedInputStream* input);
@@ -216,11 +216,11 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 class RedisCommandHandler;
 
 // Container of CommandHandlers.
-// Assign an instance to ServerOption.redis_service to enable redis support. 
+// Assign an instance to ServerOption.redis_service to enable redis support.
 class RedisService {
 public:
     virtual ~RedisService() {}
-    
+
     // Call this function to register `handler` that can handle command `name`.
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 

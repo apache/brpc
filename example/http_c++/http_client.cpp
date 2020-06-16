@@ -29,7 +29,7 @@
 DEFINE_string(d, "", "POST this data to the http server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 1000, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_string(protocol, "http", "Client-side protocol");
 
 namespace brpc {
@@ -45,8 +45,8 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     char* url = argv[1];
-    
-    // A Channel represents a communication line to a Server. Notice that 
+
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
 
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, NULL means using default options.
     // options, see `brpc/channel.h'.
     if (channel.Init(url, FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";

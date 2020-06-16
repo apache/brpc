@@ -23,7 +23,7 @@
 
 #include <vector>                     // std::vector
 #include <pthread.h>                  // pthread_*
-#include "butil/atomicops.h" 
+#include "butil/atomicops.h"
 #include "butil/time.h"                // time utilities
 #include "bthread/mutex.h"
 
@@ -31,7 +31,7 @@ namespace bthread {
 
 struct TimerThreadOptions {
     // Scheduling requests are hashed into different bucket to improve
-    // scalability. However bigger num_buckets may NOT result in more scalable 
+    // scalability. However bigger num_buckets may NOT result in more scalable
     // schedule() because bigger values also make each buckets more sparse
     // and more likely to lock the global mutex. You better not change
     // this value, just leave it to us.
@@ -84,7 +84,7 @@ public:
     // Get identifier of internal pthread.
     // Returns (pthread_t)0 if start() is not called yet.
     pthread_t thread_id() const { return _thread; }
-    
+
 private:
     // the timer thread will run this method.
     void run();

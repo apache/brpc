@@ -42,7 +42,7 @@ public:
     void describe(std::ostream& os, bool quote_string) const override;
     int describe_series(std::ostream& os, const SeriesOptions& options) const override;
 private:
-    PercentileWindow* _w; 
+    PercentileWindow* _w;
 };
 
 // For mimic constructor inheritance.
@@ -98,7 +98,7 @@ public:
 
     // Record the latency.
     LatencyRecorder& operator<<(int64_t latency);
-        
+
     // Expose all internal variables using `prefix' as prefix.
     // Returns 0 on success, -1 otherwise.
     // Example:
@@ -116,7 +116,7 @@ public:
     }
     int expose(const butil::StringPiece& prefix1,
                const butil::StringPiece& prefix2);
-    
+
     // Hide all internal variables, called in dtor as well.
     void hide();
 

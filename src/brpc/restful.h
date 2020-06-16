@@ -85,7 +85,7 @@ public:
 
     // Called after by Server at starting moment, to refresh _sorted_paths
     void PrepareForFinding();
-    
+
     // Find the method by path.
     // Time complexity in worst-case is #slashes-in-input * log(#paths-stored)
     const Server::MethodProperty*
@@ -96,12 +96,12 @@ public:
 
     // Number of methods in this map. Only for UT right now.
     size_t size() const { return _dedup_map.size(); }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(RestfulMap);
-    
+
     std::string _service_name;
-    // refreshed each time 
+    // refreshed each time
     PathList _sorted_paths;
     DedupMap _dedup_map;
 };

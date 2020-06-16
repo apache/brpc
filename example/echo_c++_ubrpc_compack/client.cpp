@@ -35,12 +35,12 @@ DEFINE_bool(multi_args, false,
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    
-    // A Channel represents a communication line to a Server. Notice that 
+
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
-    // Initialize the channel, NULL means using default options. 
+
+    // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = "ubrpc_compack";
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
@@ -56,13 +56,13 @@ int main(int argc, char* argv[]) {
     example::MultiRequests multi_requests;
     example::MultiResponses multi_responses;
     brpc::Controller cntl;
-    
+
     // Send a request and wait for the response every 1 second.
     int log_id = 0;
     while (!brpc::IsAskedToQuit()) {
         // Reset before reuse.
         cntl.Reset();
-        
+
         if (!FLAGS_multi_args) {
             request.Clear();
             response.Clear();
@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
             // [idl] void Echo(EchoRequest req, out EchoResponse res);
             stub.Echo(&cntl, &request, &response, NULL);
         } else {
-            // [idl] uint32_t EchoWithMultiArgs(EchoRequest req1, EchoRequest req2, 
+            // [idl] uint32_t EchoWithMultiArgs(EchoRequest req1, EchoRequest req2,
             //                                     out EchoResponse res1, out EchoResponse res2);
             stub.EchoWithMultiArgs(&cntl, &multi_requests, &multi_responses, NULL);
         }

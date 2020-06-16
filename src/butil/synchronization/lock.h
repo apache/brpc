@@ -31,7 +31,7 @@
 
 namespace butil {
 
-// A convenient wrapper for an OS specific critical section.  
+// A convenient wrapper for an OS specific critical section.
 class BUTIL_EXPORT Mutex {
     DISALLOW_COPY_AND_ASSIGN(Mutex);
 public:
@@ -51,7 +51,7 @@ public:
         pthread_mutex_init(&_native_handle, NULL);
 #endif
     }
-    
+
     ~Mutex() {
 #if defined(OS_WIN)
         ::DeleteCriticalSection(&_native_handle);
@@ -79,7 +79,7 @@ public:
         pthread_mutex_unlock(&_native_handle);
 #endif
     }
-    
+
     // Tries to lock the mutex. Returns immediately.
     // On successful lock acquisition returns true, otherwise returns false.
     bool try_lock() {

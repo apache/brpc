@@ -49,7 +49,7 @@ TEST(SchedYieldTest, sched_yield_when_all_core_busy) {
     ASSERT_TRUE(kNumCores > 0);
     pthread_t th0;
     pthread_create(&th0, NULL, yielder, NULL);
-    
+
     pthread_t th[kNumCores];
     for (int i = 0; i < kNumCores; ++i) {
         pthread_create(&th[i], NULL, spinner, NULL);

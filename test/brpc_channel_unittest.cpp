@@ -49,7 +49,7 @@ DECLARE_int32(max_connection_pool_size);
 class Server;
 class MethodStatus;
 namespace policy {
-void SendRpcResponse(int64_t correlation_id, Controller* cntl, 
+void SendRpcResponse(int64_t correlation_id, Controller* cntl,
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
                      const Server* server_raw, MethodStatus *, int64_t);
@@ -112,10 +112,10 @@ public:
 };
 
 static bool VerifyMyRequest(const brpc::InputMessageBase* msg_base) {
-    const brpc::policy::MostCommonMessage* msg = 
+    const brpc::policy::MostCommonMessage* msg =
         static_cast<const brpc::policy::MostCommonMessage*>(msg_base);
     brpc::Socket* ptr = msg->socket();
-    
+
     brpc::policy::RpcMeta meta;
     butil::IOBufAsZeroCopyInputStream wrapper(msg->meta);
     EXPECT_TRUE(meta.ParseFromZeroCopyStream(&wrapper));
@@ -165,17 +165,17 @@ pthread_once_t register_mock_protocol = PTHREAD_ONCE_INIT;
 
 class ChannelTest : public ::testing::Test{
 protected:
-    ChannelTest() 
+    ChannelTest()
         : _ep(butil::IP_ANY, 8787)
         , _close_fd_once(false) {
         pthread_once(&register_mock_protocol, register_protocol);
         const brpc::InputMessageHandler pairs[] = {
-            { brpc::policy::ParseRpcMessage, 
+            { brpc::policy::ParseRpcMessage,
               ProcessRpcRequest, VerifyMyRequest, this, "baidu_std" }
         };
         EXPECT_EQ(0, _messenger.AddHandler(pairs[0]));
 
-        EXPECT_EQ(0, _server_list.save(butil::endpoint2str(_ep).c_str()));           
+        EXPECT_EQ(0, _server_list.save(butil::endpoint2str(_ep).c_str()));
         _naming_url = std::string("File://") + _server_list.fname();
     };
 
@@ -187,9 +187,9 @@ protected:
     };
 
     static void register_protocol() {
-        brpc::Protocol dummy_protocol = 
+        brpc::Protocol dummy_protocol =
                                  { brpc::policy::ParseRpcMessage,
-                                   brpc::SerializeRequestDefault, 
+                                   brpc::SerializeRequestDefault,
                                    brpc::policy::PackRpcRequest,
                                    NULL, ProcessRpcRequest,
                                    VerifyMyRequest, NULL, NULL,
@@ -215,7 +215,7 @@ protected:
             ptr->SetFailed();
             return;
         }
-        
+
         brpc::policy::RpcMeta meta;
         butil::IOBufAsZeroCopyInputStream wrapper(msg->meta);
         EXPECT_TRUE(meta.ParseFromZeroCopyStream(&wrapper));
@@ -274,7 +274,7 @@ protected:
         _messenger.Join();
     }
 
-    void SetUpChannel(brpc::Channel* channel, 
+    void SetUpChannel(brpc::Channel* channel,
                       bool single_server,
                       bool short_connection,
                       const brpc::Authenticator* auth = NULL,
@@ -287,17 +287,17 @@ protected:
         opt.max_retry = 0;
         opt.connection_group = connection_group;
         if (single_server) {
-            EXPECT_EQ(0, channel->Init(_ep, &opt)); 
-        } else {                                                 
+            EXPECT_EQ(0, channel->Init(_ep, &opt));
+        } else {
             EXPECT_EQ(0, channel->Init(_naming_url.c_str(), "rR", &opt));
-        }                                         
+        }
     }
-    
-    void CallMethod(brpc::ChannelBase* channel, 
+
+    void CallMethod(brpc::ChannelBase* channel,
                     brpc::Controller* cntl,
                     test::EchoRequest* req, test::EchoResponse* res,
                     bool async, bool destroy = false) {
-        google::protobuf::Closure* done = NULL;                     
+        google::protobuf::Closure* done = NULL;
         brpc::CallId sync_id = { 0 };
         if (async) {
             sync_id = cntl->call_id();
@@ -313,7 +313,7 @@ protected:
         }
     }
 
-    void CallMethod(brpc::ChannelBase* channel, 
+    void CallMethod(brpc::ChannelBase* channel,
                     brpc::Controller* cntl,
                     test::ComboRequest* req, test::ComboResponse* res,
                     bool async, bool destroy = false) {
@@ -333,7 +333,7 @@ protected:
         }
     }
 
-    void TestConnectionFailed(bool single_server, bool async, 
+    void TestConnectionFailed(bool single_server, bool async,
                               bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -347,11 +347,11 @@ protected:
         test::EchoResponse res;
         req.set_message(__FUNCTION__);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_EQ(ECONNREFUSED, cntl.ErrorCode()) << cntl.ErrorText();
     }
-    
-    void TestConnectionFailedParallel(bool single_server, bool async, 
+
+    void TestConnectionFailedParallel(bool single_server, bool async,
                                       bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -372,13 +372,13 @@ protected:
         test::EchoResponse res;
         req.set_message(__FUNCTION__);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_TRUE(brpc::ETOOMANYFAILS == cntl.ErrorCode() ||
                     ECONNREFUSED == cntl.ErrorCode()) << cntl.ErrorText();
         LOG(INFO) << cntl.ErrorText();
     }
 
-    void TestConnectionFailedSelective(bool single_server, bool async, 
+    void TestConnectionFailedSelective(bool single_server, bool async,
                                        bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -400,14 +400,14 @@ protected:
         test::EchoResponse res;
         req.set_message(__FUNCTION__);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_EQ(ECONNREFUSED, cntl.ErrorCode()) << cntl.ErrorText();
         ASSERT_EQ(1, cntl.sub_count());
         EXPECT_EQ(ECONNREFUSED, cntl.sub(0)->ErrorCode())
             << cntl.sub(0)->ErrorText();
         LOG(INFO) << cntl.ErrorText();
     }
-    
+
     void TestSuccess(bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -416,14 +416,14 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
         req.set_message(__FUNCTION__);
         CallMethod(&channel, &cntl, &req, &res, async);
 
-        EXPECT_EQ(0, cntl.ErrorCode()) 
+        EXPECT_EQ(0, cntl.ErrorCode())
             << single_server << ", " << async << ", " << short_connection;
         const uint64_t receiving_socket_id = res.receiving_socket_id();
         EXPECT_EQ(0, cntl.sub_count());
@@ -637,7 +637,7 @@ protected:
         }
         StopAndJoin();
     }
-    
+
     void TestSuccessSelective(bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -668,7 +668,7 @@ protected:
         ASSERT_EQ(1, res.code_list_size());
         ASSERT_EQ(req.code(), res.code_list(0));
         ASSERT_EQ(_ep, cntl.remote_side());
-        
+
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
             const int64_t start_time = butil::gettimeofday_us();
@@ -791,7 +791,7 @@ protected:
         }
         StopAndJoin();
     }
-    
+
     struct CancelerArg {
         int64_t sleep_before_cancel_us;
         brpc::CallId cid;
@@ -817,7 +817,7 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -847,7 +847,7 @@ protected:
                           &subchans[i], brpc::DOESNT_OWN_CHANNEL,
                           NULL, NULL));
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -879,7 +879,7 @@ protected:
             SetUpChannel(subchan, single_server, short_connection);
             ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -901,7 +901,7 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -924,7 +924,7 @@ protected:
         EXPECT_TRUE(NULL == cntl.sub(0));
         StopAndJoin();
     }
-    
+
     void CancelDuringCallMethodParallel(
         bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
@@ -942,7 +942,7 @@ protected:
                           &subchans[i], brpc::DOESNT_OWN_CHANNEL,
                           NULL, NULL));
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -984,7 +984,7 @@ protected:
             SetUpChannel(subchan, single_server, short_connection);
             ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1006,7 +1006,7 @@ protected:
         EXPECT_EQ(ECANCELED, cntl.sub(0)->ErrorCode());
         StopAndJoin();
     }
-    
+
     void CancelAfterCallMethod(
         bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
@@ -1016,7 +1016,7 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1047,7 +1047,7 @@ protected:
                           &subchans[i], brpc::DOESNT_OWN_CHANNEL,
                           NULL, NULL));
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1068,14 +1068,14 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, true, short_connection);
-                
+
         brpc::Controller cntl;
         cntl.request_attachment().append("attachment");
         test::EchoRequest req;
         test::EchoResponse res;
         req.set_message(__FUNCTION__);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_EQ(0, cntl.ErrorCode())  << short_connection;
         EXPECT_FALSE(cntl.request_attachment().empty())
             << ", " << async << ", " << short_connection;
@@ -1089,7 +1089,7 @@ protected:
             }
         } else {
             EXPECT_GE(1ul, _messenger.ConnectionCount());
-        }            
+        }
         StopAndJoin();
     }
 
@@ -1101,7 +1101,7 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1126,7 +1126,7 @@ protected:
                           &subchans[i], brpc::DOESNT_OWN_CHANNEL,
                           NULL, NULL));
         }
-        
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1151,7 +1151,7 @@ protected:
             SetUpChannel(subchan, single_server, short_connection);
             ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
         }
-        
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1162,7 +1162,7 @@ protected:
         ASSERT_EQ(brpc::EREQUEST, cntl.sub(0)->ErrorCode());
         StopAndJoin();
     }
-    
+
     void TestRPCTimeout(bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -1170,7 +1170,7 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1192,7 +1192,7 @@ protected:
                   << " async=" << async
                   << " short=" << short_connection << std::endl;
         ASSERT_EQ(0, StartAccept(_ep));
-        
+
         const size_t NCHANS = 8;
         brpc::Channel subchans[NCHANS];
         brpc::ParallelChannel channel;
@@ -1202,7 +1202,7 @@ protected:
                           &subchans[i], brpc::DOESNT_OWN_CHANNEL,
                           NULL, NULL));
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1242,7 +1242,7 @@ protected:
                   << " async=" << async
                   << " short=" << short_connection << std::endl;
         ASSERT_EQ(0, StartAccept(_ep));
-        
+
         const size_t NCHANS = 8;
         brpc::Channel subchans[NCHANS];
         brpc::ParallelChannel channel;
@@ -1252,7 +1252,7 @@ protected:
                           &subchans[i], brpc::DOESNT_OWN_CHANNEL,
                           ((i % 2) ? new MakeTheRequestTimeout : NULL), NULL));
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1290,7 +1290,7 @@ protected:
             SetUpChannel(subchan, single_server, short_connection);
             ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1307,7 +1307,7 @@ protected:
         EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
-    
+
     void TestCloseFD(bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -1316,14 +1316,14 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
         req.set_message(__FUNCTION__);
         req.set_close_fd(true);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_EQ(brpc::EEOF, cntl.ErrorCode()) << cntl.ErrorText();
         StopAndJoin();
     }
@@ -1351,7 +1351,7 @@ protected:
         req.set_message(__FUNCTION__);
         req.set_close_fd(true);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_TRUE(brpc::EEOF == cntl.ErrorCode() ||
                     brpc::ETOOMANYFAILS == cntl.ErrorCode() ||
                     ECONNRESET == cntl.ErrorCode()) << cntl.ErrorText();
@@ -1382,14 +1382,14 @@ protected:
         req.set_message(__FUNCTION__);
         req.set_close_fd(true);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_EQ(brpc::EEOF, cntl.ErrorCode()) << cntl.ErrorText();
         ASSERT_EQ(1, cntl.sub_count());
         ASSERT_EQ(brpc::EEOF, cntl.sub(0)->ErrorCode());
 
         StopAndJoin();
     }
-    
+
     void TestServerFail(bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -1398,14 +1398,14 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
         req.set_message(__FUNCTION__);
         req.set_server_fail(brpc::EINTERNAL);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_EQ(brpc::EINTERNAL, cntl.ErrorCode()) << cntl.ErrorText();
         StopAndJoin();
     }
@@ -1433,7 +1433,7 @@ protected:
         req.set_message(__FUNCTION__);
         req.set_server_fail(brpc::EINTERNAL);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_EQ(brpc::EINTERNAL, cntl.ErrorCode()) << cntl.ErrorText();
         LOG(INFO) << cntl.ErrorText();
         StopAndJoin();
@@ -1461,7 +1461,7 @@ protected:
         req.set_message(__FUNCTION__);
         req.set_server_fail(brpc::EINTERNAL);
         CallMethod(&channel, &cntl, &req, &res, async);
-        
+
         EXPECT_EQ(brpc::EINTERNAL, cntl.ErrorCode()) << cntl.ErrorText();
         ASSERT_EQ(1, cntl.sub_count());
         ASSERT_EQ(brpc::EINTERNAL, cntl.sub(0)->ErrorCode());
@@ -1469,7 +1469,7 @@ protected:
         LOG(INFO) << cntl.ErrorText();
         StopAndJoin();
     }
-    
+
     void TestDestroyChannel(bool single_server, bool short_connection) {
         std::cout << "*** single=" << single_server
                   << ", short=" << short_connection << std::endl;
@@ -1477,7 +1477,7 @@ protected:
         ASSERT_EQ(0, StartAccept(_ep));
         brpc::Channel* channel = new brpc::Channel();
         SetUpChannel(channel, single_server, short_connection);
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1496,7 +1496,7 @@ protected:
 
         StopAndJoin();
     }
-    
+
     void TestDestroyChannelParallel(bool single_server, bool short_connection) {
         std::cout << "*** single=" << single_server
                   << ", short=" << short_connection << std::endl;
@@ -1510,14 +1510,14 @@ protected:
             ASSERT_EQ(0, channel->AddChannel(
                           subchan, brpc::OWNS_CHANNEL, NULL, NULL));
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
         req.set_sleep_us(10000);
         req.set_message(__FUNCTION__);
         CallMethod(channel, &cntl, &req, &res, true, true/*destroy*/);
-        
+
         EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         // Sleep to let `_messenger' detect `Socket' being `SetFailed'
@@ -1542,14 +1542,14 @@ protected:
             SetUpChannel(subchan, single_server, short_connection);
             ASSERT_EQ(0, channel->AddChannel(subchan, NULL));
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
         req.set_sleep_us(10000);
         req.set_message(__FUNCTION__);
         CallMethod(channel, &cntl, &req, &res, true, true/*destroy*/);
-        
+
         EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         ASSERT_EQ(_ep, cntl.remote_side());
@@ -1564,7 +1564,7 @@ protected:
         }
         StopAndJoin();
     }
-    
+
     void RPCThread(brpc::ChannelBase* channel, bool async) {
         brpc::Controller cntl;
         test::EchoRequest req;
@@ -1583,7 +1583,7 @@ protected:
             test::EchoResponse res;
             req.set_message(__FUNCTION__);
             CallMethod(channel, &cntl, &req, &res, async);
-            
+
             ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
             ASSERT_EQ("received " + std::string(__FUNCTION__), res.message());
             cntl.Reset();
@@ -1607,7 +1607,7 @@ protected:
         }
     }
 
-    void TestAuthentication(bool single_server, 
+    void TestAuthentication(bool single_server,
                             bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -1621,7 +1621,7 @@ protected:
         const int NUM = 10;
         pthread_t tids[NUM];
         for (int i = 0; i < NUM; ++i) {
-            google::protobuf::Closure* thrd_func = 
+            google::protobuf::Closure* thrd_func =
                 brpc::NewCallback(
                     this, &ChannelTest::RPCThread, (brpc::ChannelBase*)&channel, async);
             EXPECT_EQ(0, pthread_create(&tids[i], NULL,
@@ -1630,7 +1630,7 @@ protected:
         for (int i = 0; i < NUM; ++i) {
             pthread_join(tids[i], NULL);
         }
-        
+
         if (short_connection) {
             EXPECT_EQ(NUM, auth.count.load());
         } else {
@@ -1639,7 +1639,7 @@ protected:
         StopAndJoin();
     }
 
-    void TestAuthenticationParallel(bool single_server, 
+    void TestAuthenticationParallel(bool single_server,
                                     bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -1657,11 +1657,11 @@ protected:
                           &subchans[i], brpc::DOESNT_OWN_CHANNEL,
                           NULL, NULL));
         }
-        
+
         const int NUM = 10;
         pthread_t tids[NUM];
         for (int i = 0; i < NUM; ++i) {
-            google::protobuf::Closure* thrd_func = 
+            google::protobuf::Closure* thrd_func =
                 brpc::NewCallback(
                     this, &ChannelTest::RPCThread, (brpc::ChannelBase*)&channel, async);
             EXPECT_EQ(0, pthread_create(&tids[i], NULL,
@@ -1670,7 +1670,7 @@ protected:
         for (int i = 0; i < NUM; ++i) {
             pthread_join(tids[i], NULL);
         }
-        
+
         if (short_connection) {
             EXPECT_EQ(NUM * NCHANS, auth.count.load());
         } else {
@@ -1679,7 +1679,7 @@ protected:
         StopAndJoin();
     }
 
-    void TestAuthenticationSelective(bool single_server, 
+    void TestAuthenticationSelective(bool single_server,
                                     bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -1696,11 +1696,11 @@ protected:
             SetUpChannel(subchan, single_server, short_connection, &auth);
             ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
         }
-        
+
         const int NUM = 10;
         pthread_t tids[NUM];
         for (int i = 0; i < NUM; ++i) {
-            google::protobuf::Closure* thrd_func = 
+            google::protobuf::Closure* thrd_func =
                 brpc::NewCallback(
                     this, &ChannelTest::RPCThread, (brpc::ChannelBase*)&channel, async);
             EXPECT_EQ(0, pthread_create(&tids[i], NULL,
@@ -1709,7 +1709,7 @@ protected:
         for (int i = 0; i < NUM; ++i) {
             pthread_join(tids[i], NULL);
         }
-        
+
         if (short_connection) {
             EXPECT_EQ(NUM, auth.count.load());
         } else {
@@ -1717,7 +1717,7 @@ protected:
         }
         StopAndJoin();
     }
-    
+
     void TestRetry(bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
                   << " async=" << async
@@ -1767,10 +1767,10 @@ protected:
             } else {
                 EXPECT_TRUE(cntl.retried_count() > 0);
             }
-        }   
+        }
         StopAndJoin();
         bthread_usleep(100000);  // wait for stop
-        
+
         // Retry when connection failed
         cntl.Reset();
         cntl.set_max_retry(RETRY_NUM);
@@ -1787,14 +1787,14 @@ protected:
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
-        butil::TempFile server_list;                                        
+        butil::TempFile server_list;
         EXPECT_EQ(0, server_list.save_format(
                       "127.0.0.1:100\n"
                       "127.0.0.1:200\n"
                       "%s", endpoint2str(_ep).c_str()));
         std::string naming_url = std::string("fIle://")
             + server_list.fname();
-        EXPECT_EQ(0, channel.Init(naming_url.c_str(), "RR", &opt)); 
+        EXPECT_EQ(0, channel.Init(naming_url.c_str(), "RR", &opt));
 
         const int RETRY_NUM = 3;
         test::EchoRequest req;
@@ -1809,16 +1809,16 @@ protected:
     }
 
     butil::EndPoint _ep;
-    butil::TempFile _server_list;                                        
+    butil::TempFile _server_list;
     std::string _naming_url;
-    
+
     brpc::Acceptor _messenger;
     // Dummy server for `Server::AddError'
     brpc::Server _dummy;
     std::string _mock_fail_str;
 
     bool _close_fd_once;
-    
+
     MyEchoService _svc;
 };
 
@@ -1857,7 +1857,7 @@ TEST_F(ChannelTest, init_as_single_server) {
     {
         brpc::Channel channel;
         ASSERT_EQ(-1, channel.Init("127.0.0.1:12345:asdf", NULL));
-        ASSERT_EQ(-1, channel.Init("127.0.0.1:99999", NULL)); 
+        ASSERT_EQ(-1, channel.Init("127.0.0.1:99999", NULL));
         ASSERT_EQ(0, channel.Init("127.0.0.1:8888", NULL));
     }
     {
@@ -1918,7 +1918,7 @@ TEST_F(ChannelTest, init_using_empty_lns) {
     brpc::Channel channel;
     ASSERT_EQ(-1, channel.Init("list:// ", "rr", &opt));
     ASSERT_EQ(-1, channel.Init("list://", "rr", &opt));
-    ASSERT_EQ(-1, channel.Init("list://blahblah", "rr", &opt)); 
+    ASSERT_EQ(-1, channel.Init("list://blahblah", "rr", &opt));
 }
 
 TEST_F(ChannelTest, init_using_naming_service) {
@@ -1959,7 +1959,7 @@ TEST_F(ChannelTest, init_using_naming_service) {
 }
 
 TEST_F(ChannelTest, connection_failed) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestConnectionFailed(i, j, k);
@@ -2009,7 +2009,7 @@ TEST_F(ChannelTest, returns_bad_parallel) {
         ASSERT_EQ(0, channel.AddChannel(
                       subchan, brpc::OWNS_CHANNEL, new BadCall, NULL));
     }
-                
+
     brpc::Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
@@ -2036,13 +2036,13 @@ TEST_F(ChannelTest, skip_all_channels) {
         ASSERT_EQ(0, channel.AddChannel(
                       subchan, brpc::OWNS_CHANNEL, new SkipCall, NULL));
     }
-                
+
     brpc::Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
     req.set_message(__FUNCTION__);
     CallMethod(&channel, &cntl, &req, &res, false);
-        
+
     EXPECT_EQ(ECANCELED, cntl.ErrorCode()) << cntl.ErrorText();
     EXPECT_EQ((int)NCHANS, cntl.sub_count());
     for (int i = 0; i < cntl.sub_count(); ++i) {
@@ -2051,7 +2051,7 @@ TEST_F(ChannelTest, skip_all_channels) {
 }
 
 TEST_F(ChannelTest, connection_failed_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestConnectionFailedParallel(i, j, k);
@@ -2061,7 +2061,7 @@ TEST_F(ChannelTest, connection_failed_parallel) {
 }
 
 TEST_F(ChannelTest, connection_failed_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestConnectionFailedSelective(i, j, k);
@@ -2071,7 +2071,7 @@ TEST_F(ChannelTest, connection_failed_selective) {
 }
 
 TEST_F(ChannelTest, success) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSuccess(i, j, k);
@@ -2081,7 +2081,7 @@ TEST_F(ChannelTest, success) {
 }
 
 TEST_F(ChannelTest, success_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSuccessParallel(i, j, k);
@@ -2091,7 +2091,7 @@ TEST_F(ChannelTest, success_parallel) {
 }
 
 TEST_F(ChannelTest, success_duplicated_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSuccessDuplicatedParallel(i, j, k);
@@ -2101,7 +2101,7 @@ TEST_F(ChannelTest, success_duplicated_parallel) {
 }
 
 TEST_F(ChannelTest, success_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSuccessSelective(i, j, k);
@@ -2111,7 +2111,7 @@ TEST_F(ChannelTest, success_selective) {
 }
 
 TEST_F(ChannelTest, skip_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSkipParallel(i, j, k);
@@ -2121,7 +2121,7 @@ TEST_F(ChannelTest, skip_parallel) {
 }
 
 TEST_F(ChannelTest, success_parallel2) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSuccessParallel2(i, j, k);
@@ -2131,7 +2131,7 @@ TEST_F(ChannelTest, success_parallel2) {
 }
 
 TEST_F(ChannelTest, cancel_before_callmethod) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 CancelBeforeCallMethod(i, j, k);
@@ -2141,7 +2141,7 @@ TEST_F(ChannelTest, cancel_before_callmethod) {
 }
 
 TEST_F(ChannelTest, cancel_before_callmethod_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 CancelBeforeCallMethodParallel(i, j, k);
@@ -2151,7 +2151,7 @@ TEST_F(ChannelTest, cancel_before_callmethod_parallel) {
 }
 
 TEST_F(ChannelTest, cancel_before_callmethod_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 CancelBeforeCallMethodSelective(i, j, k);
@@ -2161,7 +2161,7 @@ TEST_F(ChannelTest, cancel_before_callmethod_selective) {
 }
 
 TEST_F(ChannelTest, cancel_during_callmethod) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 CancelDuringCallMethod(i, j, k);
@@ -2171,7 +2171,7 @@ TEST_F(ChannelTest, cancel_during_callmethod) {
 }
 
 TEST_F(ChannelTest, cancel_during_callmethod_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 CancelDuringCallMethodParallel(i, j, k);
@@ -2181,7 +2181,7 @@ TEST_F(ChannelTest, cancel_during_callmethod_parallel) {
 }
 
 TEST_F(ChannelTest, cancel_during_callmethod_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 CancelDuringCallMethodSelective(i, j, k);
@@ -2191,7 +2191,7 @@ TEST_F(ChannelTest, cancel_during_callmethod_selective) {
 }
 
 TEST_F(ChannelTest, cancel_after_callmethod) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 CancelAfterCallMethod(i, j, k);
@@ -2201,7 +2201,7 @@ TEST_F(ChannelTest, cancel_after_callmethod) {
 }
 
 TEST_F(ChannelTest, cancel_after_callmethod_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 CancelAfterCallMethodParallel(i, j, k);
@@ -2211,7 +2211,7 @@ TEST_F(ChannelTest, cancel_after_callmethod_parallel) {
 }
 
 TEST_F(ChannelTest, request_not_init) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRequestNotInit(i, j, k);
@@ -2221,7 +2221,7 @@ TEST_F(ChannelTest, request_not_init) {
 }
 
 TEST_F(ChannelTest, request_not_init_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRequestNotInitParallel(i, j, k);
@@ -2231,7 +2231,7 @@ TEST_F(ChannelTest, request_not_init_parallel) {
 }
 
 TEST_F(ChannelTest, request_not_init_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRequestNotInitSelective(i, j, k);
@@ -2241,7 +2241,7 @@ TEST_F(ChannelTest, request_not_init_selective) {
 }
 
 TEST_F(ChannelTest, timeout) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRPCTimeout(i, j, k);
@@ -2251,7 +2251,7 @@ TEST_F(ChannelTest, timeout) {
 }
 
 TEST_F(ChannelTest, timeout_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRPCTimeoutParallel(i, j, k);
@@ -2261,7 +2261,7 @@ TEST_F(ChannelTest, timeout_parallel) {
 }
 
 TEST_F(ChannelTest, timeout_still_checks_sub_channels_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TimeoutStillChecksSubChannelsParallel(i, j, k);
@@ -2271,7 +2271,7 @@ TEST_F(ChannelTest, timeout_still_checks_sub_channels_parallel) {
 }
 
 TEST_F(ChannelTest, timeout_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRPCTimeoutSelective(i, j, k);
@@ -2281,7 +2281,7 @@ TEST_F(ChannelTest, timeout_selective) {
 }
 
 TEST_F(ChannelTest, close_fd) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestCloseFD(i, j, k);
@@ -2291,7 +2291,7 @@ TEST_F(ChannelTest, close_fd) {
 }
 
 TEST_F(ChannelTest, close_fd_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestCloseFDParallel(i, j, k);
@@ -2301,7 +2301,7 @@ TEST_F(ChannelTest, close_fd_parallel) {
 }
 
 TEST_F(ChannelTest, close_fd_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestCloseFDSelective(i, j, k);
@@ -2311,7 +2311,7 @@ TEST_F(ChannelTest, close_fd_selective) {
 }
 
 TEST_F(ChannelTest, server_fail) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestServerFail(i, j, k);
@@ -2321,7 +2321,7 @@ TEST_F(ChannelTest, server_fail) {
 }
 
 TEST_F(ChannelTest, server_fail_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestServerFailParallel(i, j, k);
@@ -2331,7 +2331,7 @@ TEST_F(ChannelTest, server_fail_parallel) {
 }
 
 TEST_F(ChannelTest, server_fail_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestServerFailSelective(i, j, k);
@@ -2341,7 +2341,7 @@ TEST_F(ChannelTest, server_fail_selective) {
 }
 
 TEST_F(ChannelTest, authentication) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestAuthentication(i, j, k);
@@ -2351,7 +2351,7 @@ TEST_F(ChannelTest, authentication) {
 }
 
 TEST_F(ChannelTest, authentication_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestAuthenticationParallel(i, j, k);
@@ -2361,7 +2361,7 @@ TEST_F(ChannelTest, authentication_parallel) {
 }
 
 TEST_F(ChannelTest, authentication_selective) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestAuthenticationSelective(i, j, k);
@@ -2371,7 +2371,7 @@ TEST_F(ChannelTest, authentication_selective) {
 }
 
 TEST_F(ChannelTest, retry) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRetry(i, j, k);
@@ -2406,12 +2406,12 @@ TEST_F(ChannelTest, multiple_threads_single_channel) {
                           << " auth=" << need_auth
                           << " async=" << async << std::endl;
                 brpc::Channel channel;
-                SetUpChannel(&channel, single_server, 
+                SetUpChannel(&channel, single_server,
                              short_connection, (need_auth ? &auth : NULL));
                 for (int i = 0; i < NUM; ++i) {
-                    google::protobuf::Closure* thrd_func = 
+                    google::protobuf::Closure* thrd_func =
                         brpc::NewCallback(
-                            this, &ChannelTest::RPCThread, 
+                            this, &ChannelTest::RPCThread,
                             (brpc::ChannelBase*)&channel,
                             (bool)async, COUNT);
                     EXPECT_EQ(0, pthread_create(&tids[i], NULL,
@@ -2444,7 +2444,7 @@ TEST_F(ChannelTest, multiple_threads_multiple_channels) {
                           << " auth=" << need_auth
                           << " async=" << async << std::endl;
                 for (int i = 0; i < NUM; ++i) {
-                    google::protobuf::Closure* thrd_func = 
+                    google::protobuf::Closure* thrd_func =
                         brpc::NewCallback<
                         ChannelTest, ChannelTest*,
                         bool, bool, bool, const brpc::Authenticator*, int>
@@ -2543,7 +2543,7 @@ TEST_F(ChannelTest, adaptive_connection_type) {
     ctype = "shorT";
     ASSERT_EQ(brpc::CONNECTION_TYPE_SHORT, ctype);
     ASSERT_STREQ("short", ctype.name());
-    
+
     ctype = "PooLed";
     ASSERT_EQ(brpc::CONNECTION_TYPE_POOLED, ctype);
     ASSERT_STREQ("pooled", ctype.name());
@@ -2588,7 +2588,7 @@ TEST_F(ChannelTest, adaptive_protocol_type) {
     ASSERT_STREQ("hulu_pbrpc", ptype.name());
     ASSERT_FALSE(ptype.has_param());
     ASSERT_EQ("", ptype.param());
-    
+
     ptype = "blah";
     ASSERT_EQ(brpc::PROTOCOL_UNKNOWN, ptype);
     ASSERT_STREQ("blah", ptype.name());

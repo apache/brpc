@@ -68,7 +68,7 @@ static BugInfo* g_bug_info = NULL;
 static int64_t g_trackme_last_time = 0;
 
 // version of RPC.
-// Since the code for getting BRPC_REVISION often fails, 
+// Since the code for getting BRPC_REVISION often fails,
 // BRPC_REVISION must be defined to string and be converted to number
 // within our code.
 // The code running before main() may see g_rpc_version=0, should be OK.
@@ -214,7 +214,7 @@ static void TrackMeNow(std::unique_lock<pthread_mutex_t>& mu) {
     TrackMeResponse* res = new TrackMeResponse;
     Controller* cntl = new Controller;
     cntl->set_request_code(policy::MurmurHash32(g_trackme_addr->data(), g_trackme_addr->size()));
-    google::protobuf::Closure* done = 
+    google::protobuf::Closure* done =
         ::brpc::NewCallback(&HandleTrackMeResponse, cntl, res);
     stub.TrackMe(cntl, &req, res, done);
 }
@@ -228,7 +228,7 @@ void TrackMe() {
     int64_t now = butil::gettimeofday_us();
     std::unique_lock<pthread_mutex_t> mu(g_trackme_mutex);
     if (g_trackme_last_time == 0) {
-        // Delay the first ping randomly within s_trackme_interval. This 
+        // Delay the first ping randomly within s_trackme_interval. This
         // protects trackme_server from ping storms.
         g_trackme_last_time =
             now + butil::fast_rand_less_than(s_trackme_interval) * 1000000L;

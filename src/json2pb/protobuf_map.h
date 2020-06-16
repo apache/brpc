@@ -35,7 +35,7 @@ const int VALUE_INDEX = 1;
 //     required string value = 2;         // MUST be the second
 // }
 // repeated MapFieldEntry my_map = N;
-// 
+//
 // Natually, when converting this map to json, it should be like:
 // { "my_map": {"key1": value1, "key2": value2 } }
 // instead of:

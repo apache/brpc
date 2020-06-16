@@ -219,7 +219,7 @@ PathString GetDefaultLogFile() {
     return log_file;
 #elif defined(OS_LINUX)
     return GetProcessName() + ".log";
-#elif defined(OS_POSIX)    
+#elif defined(OS_POSIX)
     // On other platforms we just use the current directory.
     return PathString("debug.log");
 #endif
@@ -609,7 +609,7 @@ void DisplayDebugMessageInDialog(const std::string& str) {
 #endif  // !defined(NDEBUG)
 
 
-bool StringSink::OnLogMessage(int severity, const char* file, int line, 
+bool StringSink::OnLogMessage(int severity, const char* file, int line,
                               const butil::StringPiece& content) {
     std::ostringstream prefix_os;
     print_log_prefix(prefix_os, severity, file, line);
@@ -776,7 +776,7 @@ public:
         os.write(content.data(), content.size());
         os << '\n';
         std::string log = os.str();
-        
+
         if ((logging_destination & LOG_TO_SYSTEM_DEBUG_LOG) != 0) {
             fwrite(log.data(), log.size(), 1, stderr);
             fflush(stderr);
@@ -852,7 +852,7 @@ void LogStream::FlushWithoutReset() {
     // End the data with zero because sink is likely to assume this.
     *this << std::ends;
     // Move back one step because we don't want to count the zero.
-    pbump(-1); 
+    pbump(-1);
 
     // Give any logsink first dibs on the message.
 #ifdef BAIDU_INTERNAL
@@ -1124,20 +1124,20 @@ struct VLogSite {
 
     const std::string& module() const { return _module; }
     const std::string& full_module() const { return _full_module; }
-    
+
 private:
     // Next site in the list. NULL means no next.
     butil::subtle::AtomicWord _next;
 
     // --vmodule > --v
     int _v;
-    
+
     // vlog is on iff _v >= _required_v
     int _required_v;
 
     // line nubmer of the vlog.
     int _line_no;
-    
+
     // Lowered, dirname & extname removed.
     std::string _module;
     // Lowered, extname removed. Empty when it equals to _module.
@@ -1186,21 +1186,21 @@ struct VModuleList {
     int init(const char* vmodules) {
         _exact_names.clear();
         _wild_names.clear();
-                           
+
         for (butil::StringSplitter sp(vmodules, ','); sp; ++sp) {
             int verbose_level = std::numeric_limits<int>::max();
             size_t off = 0;
             for (; off < sp.length() && sp.field()[off] != '='; ++off) {}
             if (off + 1 < sp.length()) {
                 verbose_level = strtol(sp.field() + off + 1, NULL, 10);
-                
+
             }
             const char* name_begin = sp.field();
             const char* name_end = sp.field() + off - 1;
             for (; isspace(*name_begin) && name_begin < sp.field() + off;
                  ++name_begin) {}
             for (; isspace(*name_end) && name_end >= sp.field(); --name_end) {}
-            
+
             if (name_begin > name_end) {  // only has spaces
                 continue;
             }
@@ -1268,7 +1268,7 @@ private:
     std::vector<std::pair<std::string, int> > _wild_names;
 };
 
-// [ The idea ] 
+// [ The idea ]
 // Each callsite creates a VLogSite and inserts the site into singly-linked
 // vlog_site_list. To keep the critical area small, we use optimistic
 // locking : Assign local site w/o locking, then insert the site into
@@ -1336,7 +1336,7 @@ void print_vlog_sites(VLogSitePrinter* printer) {
 static int on_reset_vmodule(const char* vmodule) {
     // resetting must be serialized.
     BAIDU_SCOPED_LOCK(reset_vmodule_and_v_mutex);
-    
+
     VModuleList* module_list = new (std::nothrow) VModuleList;
     if (NULL == module_list) {
         LOG(FATAL) << "Fail to new VModuleList";
@@ -1347,7 +1347,7 @@ static int on_reset_vmodule(const char* vmodule) {
         LOG(FATAL) << "Fail to init VModuleList";
         return -1;
     }
-    
+
     VModuleList* old_module_list = NULL;
     VLogSite* old_vlog_site_list = NULL;
     {
@@ -1363,7 +1363,7 @@ static int on_reset_vmodule(const char* vmodule) {
                 p->module(), p->full_module(), &p->v());
         }
     }
-    
+
     if (old_module_list) {
         //delay the deletion.
         if (NULL == deleting_vmodule_list) {

@@ -32,8 +32,8 @@ DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
 
 class StreamReceiver : public brpc::StreamInputHandler {
 public:
-    virtual int on_received_messages(brpc::StreamId id, 
-                                     butil::IOBuf *const messages[], 
+    virtual int on_received_messages(brpc::StreamId id,
+                                     butil::IOBuf *const messages[],
                                      size_t size) {
         std::ostringstream os;
         for (size_t i = 0; i < size; ++i) {
@@ -95,13 +95,13 @@ int main(int argc, char* argv[]) {
     // Add the service into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
     // use brpc::SERVER_OWNS_SERVICE.
-    if (server.AddService(&echo_service_impl, 
+    if (server.AddService(&echo_service_impl,
                           brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
         LOG(ERROR) << "Fail to add service";
         return -1;
     }
 
-    // Start the server. 
+    // Start the server.
     brpc::ServerOptions options;
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     if (server.Start(FLAGS_port, &options) != 0) {

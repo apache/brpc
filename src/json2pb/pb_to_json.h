@@ -58,7 +58,7 @@ struct Pb2JsonOptions {
     // to a empty array of json when this option is turned on.
     // Default: false
     bool jsonify_empty_array;
-    
+
     // Whether to always print primitive fields. By default proto3 primitive
     // fields with default values will be omitted in JSON output. For example, an
     // int32 field set to 0 will be omitted. Set this flag to true will override

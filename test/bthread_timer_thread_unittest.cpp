@@ -84,7 +84,7 @@ public:
         long diff = timespec_diff_us(_run_times[0], expect_run_time);
         EXPECT_LE(labs(diff), 50000);
     }
-    
+
     void expect_not_run() {
         EXPECT_TRUE(_run_times.empty());
     }
@@ -114,7 +114,7 @@ TEST(TimerThreadTest, RunTasks) {
 
     TimeKeeper keeper2(_2s_later, "keeper2");  // same time with keeper1
     keeper2.schedule(&timer_thread);
-    
+
     timespec _1s_later = butil::seconds_from_now(1);
     TimeKeeper keeper3(_1s_later, "keeper3");
     keeper3.schedule(&timer_thread);
@@ -125,7 +125,7 @@ TEST(TimerThreadTest, RunTasks) {
 
     TimeKeeper keeper5(_10s_later, "keeper5");
     keeper5.schedule(&timer_thread);
-    
+
     // sleep 1 second, and unschedule task2
     LOG(INFO) << "Sleep 1s";
     sleep(1);
@@ -182,7 +182,7 @@ public:
         , _keeper2(keeper2)
         , _expected_unschedule_result(expected_unschedule_result) {
     }
-            
+
     void run()
     {
         clock_gettime(CLOCK_REALTIME, &_running_time);
@@ -238,7 +238,7 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
 
     // unscheduling (running) keeper5 should have no effect and returns 1
     ASSERT_EQ(1, timer_thread.unschedule(keeper5._task_id));
-    
+
     // wake up keeper5 to let test_task1/2 run.
     keeper5.wakeup();
     sleep(1);

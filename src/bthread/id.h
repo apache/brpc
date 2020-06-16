@@ -75,7 +75,7 @@ int bthread_id_cancel(bthread_id_t id);
 #define bthread_id_error(id, err)                                        \
     bthread_id_error_verbose(id, err, __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__))
 
-int bthread_id_error_verbose(bthread_id_t id, int error_code, 
+int bthread_id_error_verbose(bthread_id_t id, int error_code,
                              const char *location);
 
 // Make other bthread_id_lock/bthread_id_trylock on the id fail, the id must
@@ -97,17 +97,17 @@ int bthread_id_trylock(bthread_id_t id, void** pdata);
 // bthread_id_create[_ranged], error code otherwise.
 #define bthread_id_lock(id, pdata)                                      \
     bthread_id_lock_verbose(id, pdata, __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__))
-int bthread_id_lock_verbose(bthread_id_t id, void** pdata, 
+int bthread_id_lock_verbose(bthread_id_t id, void** pdata,
                             const char *location);
 
-// Lock `id' (for using the data exclusively) and reset the range. If `id' is 
+// Lock `id' (for using the data exclusively) and reset the range. If `id' is
 // locked by others, wait until `id' is unlocked or destroyed. if `range' is
 // smaller than the original range of this id, nothing happens about the range
 #define bthread_id_lock_and_reset_range(id, pdata, range)               \
     bthread_id_lock_and_reset_range_verbose(id, pdata, range,           \
                                __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__))
 int bthread_id_lock_and_reset_range_verbose(
-    bthread_id_t id, void **pdata, 
+    bthread_id_t id, void **pdata,
     int range, const char *location);
 
 // Unlock `id'. Must be called after a successful call to bthread_id_trylock()
@@ -138,7 +138,7 @@ void bthread_id_list_destroy(bthread_id_list_t* list);
 int bthread_id_list_add(bthread_id_list_t* list, bthread_id_t id);
 
 // Swap internal fields of two lists.
-void bthread_id_list_swap(bthread_id_list_t* dest, 
+void bthread_id_list_swap(bthread_id_list_t* dest,
                           bthread_id_list_t* src);
 
 // Issue error_code to all bthread_id_t inside `list' and clear `list'.

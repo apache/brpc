@@ -94,7 +94,7 @@ static pthread_once_t s_var_maps_once = PTHREAD_ONCE_INIT;
 static VarMapWithLock* s_var_maps = NULL;
 
 static void init_var_maps() {
-    // It's probably slow to initialize all sub maps, but rpc often expose 
+    // It's probably slow to initialize all sub maps, but rpc often expose
     // variables before user. So this should not be an issue to users.
     s_var_maps = new VarMapWithLock[SUB_MAP_COUNT];
 }
@@ -153,7 +153,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         }
     }
     to_underscored_name(&_name, name);
-    
+
     VarMapWithLock& m = get_var_map(_name);
     {
         BAIDU_SCOPED_LOCK(m.mutex);
@@ -174,7 +174,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         // abort the program if needed.
         s_bvar_may_abort = true;
     }
-        
+
     LOG(ERROR) << "Already exposed `" << _name << "' whose value is `"
                << describe_exposed(_name) << '\'';
     _name.clear();
@@ -425,7 +425,7 @@ public:
             }
         }
     }
-    
+
     bool match(const std::string& name) const {
         if (!_exact.empty()) {
             if (_exact.find(name) != _exact.end()) {
@@ -553,7 +553,7 @@ std::string read_command_name() {
         butil::back_char(command_name) == ')') {
         // remove parenthesis.
         to_underscored_name(&s,
-                            butil::StringPiece(command_name.data() + 1, 
+                            butil::StringPiece(command_name.data() + 1,
                                               command_name.size() - 2UL));
     } else {
         to_underscored_name(&s, command_name);
@@ -621,7 +621,7 @@ private:
 
 class FileDumperGroup : public Dumper {
 public:
-    FileDumperGroup(std::string tabs, std::string filename, 
+    FileDumperGroup(std::string tabs, std::string filename,
                      butil::StringPiece s/*prefix*/) {
         butil::FilePath path(filename);
         if (path.FinalExtension() == ".data") {
@@ -638,7 +638,7 @@ public:
             dumpers.push_back(std::make_pair(f, m));
         }
         dumpers.push_back(std::make_pair(
-                    new FileDumper(path.AddExtension("data").value(), s), 
+                    new FileDumper(path.AddExtension("data").value(), s),
                     (WildcardMatcher *)NULL));
     }
     ~FileDumperGroup() {
@@ -727,8 +727,8 @@ static void* dumping_thread(void*) {
 
         if (FLAGS_bvar_dump && !filename.empty()) {
             // Replace first <app> in filename with program name. We can't use
-            // pid because a same binary should write the data to the same 
-            // place, otherwise restarting of app may confuse noah with a lot 
+            // pid because a same binary should write the data to the same
+            // place, otherwise restarting of app may confuse noah with a lot
             // of *.data. noah takes 1.5 days to figure out that some data is
             // outdated and to be removed.
             const size_t pos = filename.find("<app>");
@@ -743,7 +743,7 @@ static void* dumping_thread(void*) {
             const size_t pos2 = prefix.find("<app>");
             if (pos2 != std::string::npos) {
                 prefix.replace(pos2, 5/*<app>*/, command_name);
-            }            
+            }
             FileDumperGroup dumper(tabs, filename, prefix);
             int nline = Variable::dump_exposed(&dumper, &options);
             if (nline < 0) {
@@ -784,7 +784,7 @@ static void launch_dumping_thread() {
 // Start dumping_thread for only once.
 static bool enable_dumping_thread() {
     pthread_once(&dumping_thread_once, launch_dumping_thread);
-    return created_dumping_thread; 
+    return created_dumping_thread;
 }
 
 static bool validate_bvar_dump(const char*, bool enabled) {
@@ -798,7 +798,7 @@ const bool ALLOW_UNUSED dummy_bvar_dump = ::GFLAGS_NS::RegisterFlagValidator(
 
 // validators (to make these gflags reloadable in brpc)
 static bool validate_bvar_dump_interval(const char*, int32_t v) {
-    // FIXME: -bvar_dump_interval is actually unreloadable but we need to 
+    // FIXME: -bvar_dump_interval is actually unreloadable but we need to
     // check validity of it, so we still add this validator. In practice
     // this is just fine since people rarely have the intention of modifying
     // this flag at runtime.

@@ -51,7 +51,7 @@ public:
     bool Convert(const google::protobuf::Message& message, Handler& handler);
 
     const std::string& ErrorText() const { return _error; }
-    
+
 private:
     template <typename Handler>
     bool _PbFieldToJson(const google::protobuf::Message& message,
@@ -67,7 +67,7 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
     handler.StartObject();
     const google::protobuf::Reflection* reflection = message.GetReflection();
     const google::protobuf::Descriptor* descriptor = message.GetDescriptor();
-    
+
     int ext_range_count = descriptor->extension_range_count();
     int field_count = descriptor->field_count();
     std::vector<const google::protobuf::FieldDescriptor*> fields;
@@ -116,7 +116,7 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
         }
 
         const std::string& orig_name = field->name();
-        bool decoded = decode_name(orig_name, field_name_str); 
+        bool decoded = decode_name(orig_name, field_name_str);
         const std::string& name = decoded ? field_name_str : orig_name;
         handler.Key(name.data(), name.size(), false);
         if (!_PbFieldToJson(message, field, handler)) {
@@ -186,7 +186,7 @@ bool PbToJsonConverter::_PbFieldToJson(
         }                                                               \
         break;                                                          \
     }
-        
+
     CASE_FIELD_TYPE(BOOL,   Bool,   bool,         Bool);
     CASE_FIELD_TYPE(INT32,  Int32,  int,          AddInt);
     CASE_FIELD_TYPE(UINT32, UInt32, unsigned int, AddUint);
@@ -214,7 +214,7 @@ bool PbToJsonConverter::_PbFieldToJson(
                 }
             }
             handler.EndArray(field_size);
-            
+
         } else {
             value = reflection->GetStringReference(message, field, &value);
             if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES
@@ -234,19 +234,19 @@ bool PbToJsonConverter::_PbFieldToJson(
             int field_size = reflection->FieldSize(message, field);
             handler.StartArray();
             if (_option.enum_option == OUTPUT_ENUM_BY_NAME) {
-                for (int index = 0; index < field_size; ++index) { 
+                for (int index = 0; index < field_size; ++index) {
                     const std::string& enum_name = reflection->GetRepeatedEnum(
                         message, field, index)->name();
                     handler.String(enum_name.data(), enum_name.size(), false);
                 }
             } else {
-                for (int index = 0; index < field_size; ++index) { 
+                for (int index = 0; index < field_size; ++index) {
                     handler.AddInt(reflection->GetRepeatedEnum(
                         message, field, index)->number());
                 }
             }
             handler.EndArray();
-            
+
         } else {
             if (_option.enum_option == OUTPUT_ENUM_BY_NAME) {
                 const std::string& enum_name =
@@ -270,7 +270,7 @@ bool PbToJsonConverter::_PbFieldToJson(
                 }
             }
             handler.EndArray(field_size);
-            
+
         } else {
             if (!Convert(reflection->GetMessage(message, field), handler)) {
                 return false;
@@ -288,12 +288,12 @@ bool ProtoMessageToJsonStream(const google::protobuf::Message& message,
                               OutputStream& os, std::string* error) {
     PbToJsonConverter converter(options);
     bool succ = false;
-    if (options.pretty_json) {    
+    if (options.pretty_json) {
         BUTIL_RAPIDJSON_NAMESPACE::PrettyWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer); 
+        succ = converter.Convert(message, writer);
     } else {
         BUTIL_RAPIDJSON_NAMESPACE::OptimizedWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer); 
+        succ = converter.Convert(message, writer);
     }
     if (!succ && error) {
         error->clear();

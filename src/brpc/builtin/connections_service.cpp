@@ -167,7 +167,7 @@ void ConnectionsService::PrintConnections(
                 }
                 failed = true;
             }
-        }            
+        }
 
         if (use_html) {
             os << "<tr><td>";
@@ -397,7 +397,7 @@ void ConnectionsService::default_method(
     if (use_html) {
         os << "</body></html>\n";
     }
-    
+
     os.move_to(cntl->response_attachment());
     cntl->set_response_compress_type(COMPRESS_TYPE_GZIP);
 }

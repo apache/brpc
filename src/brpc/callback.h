@@ -36,7 +36,7 @@
 // in protobuf-2.4, mainly for creating closures. We need to separate
 // the code because protobuf 3.0 moves NewCallback into internal namespace.
 // Another reason is that we add more overloads to the function which is
-// probably widely used throughout baidu. When user's callback creation 
+// probably widely used throughout baidu. When user's callback creation
 // code breaks in protobuf 3.0, they can simply replace
 // google::protobuf::NewCallback with brpc::NewCallback.
 

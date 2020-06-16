@@ -48,7 +48,7 @@ int HttpMessage::on_message_begin(http_parser *parser) {
 }
 
 // For request
-int HttpMessage::on_url(http_parser *parser, 
+int HttpMessage::on_url(http_parser *parser,
                         const char *at, const size_t length) {
     HttpMessage *http_message = (HttpMessage *)parser->data;
     http_message->_stage = HTTP_ON_URL;
@@ -74,7 +74,7 @@ int HttpMessage::on_status(http_parser *parser, const char *, const size_t) {
 // field-value to the first, each separated by a comma. The order in which
 // header fields with the same field-name are received is therefore significant
 // to the interpretation of the combined field value, and thus a proxy MUST NOT
-// change the order of these field values when a message is forwarded. 
+// change the order of these field values when a message is forwarded.
 int HttpMessage::on_header_field(http_parser *parser,
                                  const char *at, const size_t length) {
     HttpMessage *http_message = (HttpMessage *)parser->data;
@@ -433,7 +433,7 @@ ssize_t HttpMessage::ParseFromArray(const char *data, const size_t length) {
         RPC_VLOG << "Fail to parse http message, parser=" << _parser
                  << ", buf=`" << butil::StringPiece(data, length) << '\'';
         return -1;
-    } 
+    }
     _parsed_length += nprocessed;
     return nprocessed;
 }
@@ -558,7 +558,7 @@ void MakeRawHttpRequest(butil::IOBuf* request,
     //the target URI, then a client MUST send a Host header field with an
     //empty field-value.
     //rfc 7231#sec4.3:
-    //the request-target consists of only the host name and port number of 
+    //the request-target consists of only the host name and port number of
     //the tunnel destination, seperated by a colon. For example,
     //Host: server.example.com:80
     if (h->GetHeader("host") == NULL) {

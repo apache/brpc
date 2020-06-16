@@ -195,7 +195,7 @@ public:
     }
 
     void SendData();
-    
+
 private:
     static void* RunSendData(void* arg) {
         ((PlayingDummyStream*)arg)->SendData();
@@ -409,17 +409,17 @@ RtmpSubStreamCreator::RtmpSubStreamCreator(const brpc::RtmpClient* client)
     : _client(client) {}
 
 RtmpSubStreamCreator::~RtmpSubStreamCreator() {}
- 
+
 void RtmpSubStreamCreator::NewSubStream(brpc::RtmpMessageHandler* message_handler,
                                         butil::intrusive_ptr<brpc::RtmpStreamBase>* sub_stream) {
-    if (sub_stream) { 
+    if (sub_stream) {
         (*sub_stream).reset(new RtmpSubStream(message_handler));
     }
     return;
 }
 
 void RtmpSubStreamCreator::LaunchSubStream(
-    brpc::RtmpStreamBase* sub_stream, 
+    brpc::RtmpStreamBase* sub_stream,
     brpc::RtmpRetryingClientStreamOptions* options) {
     brpc::RtmpClientStreamOptions client_options = *options;
     dynamic_cast<RtmpSubStream*>(sub_stream)->Init(_client, client_options);
@@ -620,7 +620,7 @@ TEST(RtmpTest, successfully_publish_streams) {
         for (int j = 0; j < NSTREAM; j += 2) {
             ASSERT_EQ(0, cstreams[j]->SendVideoMessage(vmsg));
         }
-        
+
         brpc::RtmpAudioMessage amsg;
         amsg.timestamp = 1000 + i * 20;
         amsg.codec = brpc::FLV_AUDIO_AAC;
@@ -631,7 +631,7 @@ TEST(RtmpTest, successfully_publish_streams) {
         for (int j = 1; j < NSTREAM; j += 2) {
             ASSERT_EQ(0, cstreams[j]->SendAudioMessage(amsg));
         }
-        
+
         bthread_usleep(500000);
     }
     std::vector<butil::intrusive_ptr<PublishStream> > created_streams;

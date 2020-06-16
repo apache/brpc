@@ -438,28 +438,28 @@ operator!=(const unique_ptr<T1, D1>& x, const unique_ptr<T2, D2>& y) {
     return !(x == y);
 }
 
-template<class T1, class D1, class T2, class D2> 
+template<class T1, class D1, class T2, class D2>
 inline
 bool
 operator<(const unique_ptr<T1, D1>& x, const unique_ptr<T2, D2>& y) {
     return x.get() < y.get();
 }
 
-template<class T1, class D1, class T2, class D2> 
+template<class T1, class D1, class T2, class D2>
 inline
 bool
 operator<=(const unique_ptr<T1, D1>& x, const unique_ptr<T2, D2>& y) {
     return !(y < x);
 }
 
-template<class T1, class D1, class T2, class D2> 
+template<class T1, class D1, class T2, class D2>
 inline
 bool
 operator>(const unique_ptr<T1, D1>& x, const unique_ptr<T2, D2>& y) {
     return y < x;
 }
 
-template<class T1, class D1, class T2, class D2> 
+template<class T1, class D1, class T2, class D2>
 inline
 bool
 operator>=(const unique_ptr<T1, D1>& x, const unique_ptr<T2, D2>& y) {

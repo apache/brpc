@@ -34,12 +34,12 @@ public:
 
 class MyServiceWithStream : public test::EchoService {
 public:
-    MyServiceWithStream(const brpc::StreamOptions& options) 
+    MyServiceWithStream(const brpc::StreamOptions& options)
         : _options(options)
         , _after_accept_stream(NULL)
     {}
     MyServiceWithStream(const brpc::StreamOptions& options,
-                        AfterAcceptStream* after_accept_stream) 
+                        AfterAcceptStream* after_accept_stream)
         : _options(options)
         , _after_accept_stream(after_accept_stream)
     {}
@@ -96,7 +96,7 @@ TEST_F(StreamingRpcTest, sanity) {
 }
 
 struct HandlerControl {
-    HandlerControl() 
+    HandlerControl()
         : block(false)
     {}
     bool block;
@@ -216,7 +216,7 @@ TEST_F(StreamingRpcTest, block) {
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     test::EchoService_Stub stub(&channel);
     stub.Echo(&cntl, &request, &response, NULL);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" 
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream="
                                 << request_stream;
     for (int i = 0; i < N; ++i) {
         int network = htonl(i);

@@ -37,7 +37,7 @@ namespace bvar {
 //
 //   bvar::Status<int> foo_count2;
 //   foo_count2.set_value(17);
-//   
+//
 //   bvar::Status<int> foo_count3("my_value", 17);
 template <typename T, typename Enabler = void>
 class Status : public Variable {
@@ -57,7 +57,7 @@ public:
     void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
     }
-    
+
 #ifdef BAIDU_INTERNAL
     void get_value(boost::any* value) const override {
         butil::AutoLock guard(_lock);
@@ -126,17 +126,17 @@ public:
     void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
     }
-    
+
 #ifdef BAIDU_INTERNAL
     void get_value(boost::any* value) const override {
         *value = get_value();
     }
 #endif
-    
+
     T get_value() const {
         return _value.load(butil::memory_order_relaxed);
     }
-    
+
     void set_value(const T& value) {
         _value.store(value, butil::memory_order_relaxed);
     }
@@ -215,7 +215,7 @@ public:
         *value = get_value();
     }
 #endif
-    
+
     void set_value(const char* fmt, ...) {
         va_list ap;
         va_start(ap, fmt);

@@ -132,7 +132,7 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
 
         if (invariant_tsc) {
             char* flags_pos = static_cast<char*>(memmem(buf, n, "flags", 5));
-            *invariant_tsc = 
+            *invariant_tsc =
                 (flags_pos &&
                  memmem(flags_pos, buf + n - flags_pos, "constant_tsc", 12) &&
                  memmem(flags_pos, buf + n - flags_pos, "nonstop_tsc", 11));

@@ -93,16 +93,16 @@ class MyEchoService : public ::test::EchoService {
         res->set_message(EXP_RESPONSE);
     }
 };
-    
+
 class HuluTest : public ::testing::Test{
 protected:
     HuluTest() {
         EXPECT_EQ(0, _server.AddService(
             &_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        // Hack: Regard `_server' as running 
+        // Hack: Regard `_server' as running
         _server._status = brpc::Server::RUNNING;
         _server._options.auth = &_auth;
-        
+
         EXPECT_EQ(0, pipe(_pipe_fds));
 
         brpc::SocketId id;

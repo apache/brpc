@@ -20,7 +20,7 @@
 #define BRPC_POLICY_SOFA_PBRPC_PROTOCOL_H
 
 #include "brpc/policy/sofa_pbrpc_meta.pb.h"
-#include "brpc/protocol.h"             
+#include "brpc/protocol.h"
 
 
 namespace brpc {

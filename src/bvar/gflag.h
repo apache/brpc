@@ -29,10 +29,10 @@ namespace bvar {
 class GFlag : public Variable {
 public:
     GFlag(const butil::StringPiece& gflag_name);
-    
+
     GFlag(const butil::StringPiece& prefix,
           const butil::StringPiece& gflag_name);
-    
+
     // Calling hide() in dtor manually is a MUST required by Variable.
     ~GFlag() { hide(); }
 
@@ -55,7 +55,7 @@ public:
     const std::string& gflag_name() const {
         return _gflag_name.empty() ? name() : _gflag_name;
     }
-    
+
 private:
     std::string _gflag_name;
 };

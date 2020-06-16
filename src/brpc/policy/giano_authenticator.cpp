@@ -37,7 +37,7 @@ GianoAuthenticator::GianoAuthenticator(const baas::CredentialGenerator* gen,
         CHECK(_verifier);
     } else {
         _verifier = NULL;
-    }        
+    }
 }
 
 GianoAuthenticator::~GianoAuthenticator() {
@@ -54,8 +54,8 @@ int GianoAuthenticator::GenerateCredential(std::string* auth_str) const {
         return -1;
     }
 
-    return (baas::sdk::BAAS_OK == 
-            _generator->GenerateCredential(auth_str) ? 0 : -1);            
+    return (baas::sdk::BAAS_OK ==
+            _generator->GenerateCredential(auth_str) ? 0 : -1);
 }
 
 int GianoAuthenticator::VerifyCredential(
@@ -73,7 +73,7 @@ int GianoAuthenticator::VerifyCredential(
     if (rc != baas::sdk::BAAS_OK) {
         LOG(WARNING) << "Giano fails to verify credentical, "
                      << baas::sdk::GetReturnCodeMessage(rc);
-        return -1;        
+        return -1;
     }
     if (out_ctx != NULL) {
         out_ctx->set_user(ctx.user());

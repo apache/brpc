@@ -96,7 +96,7 @@ public:
 
     // Go back for n bytes.
     void backup(int n);
-    
+
     // Returns bytes pushed and cut since creation of this stream.
     size_t pushed_bytes() const { return _pushed_bytes; }
 
@@ -107,7 +107,7 @@ public:
 
     // Optionally called to backup buffered bytes to zero-copy stream.
     void done();
-    
+
 private:
     bool _good;
     int _fullsize;

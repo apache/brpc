@@ -38,9 +38,9 @@ void EmptyProcessHuluRequest(brpc::InputMessageBase* msg_base) {
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    brpc::Protocol dummy_protocol = 
+    brpc::Protocol dummy_protocol =
                              { brpc::policy::ParseHuluMessage,
-                               brpc::SerializeRequestDefault, 
+                               brpc::SerializeRequestDefault,
                                brpc::policy::PackHuluRequest,
                                EmptyProcessHuluRequest, EmptyProcessHuluRequest,
                                NULL, NULL, NULL,
@@ -148,17 +148,17 @@ void* client_thread(void* arg) {
 
 TEST_F(MessengerTest, dispatch_tasks) {
     client_stop = false;
-    
+
     brpc::Acceptor messenger[NEPOLL];
     pthread_t cth[NCLIENT];
     ClientMeta* cm[NCLIENT];
 
     const brpc::InputMessageHandler pairs[] = {
-        { brpc::policy::ParseHuluMessage, 
+        { brpc::policy::ParseHuluMessage,
           EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu" }
     };
 
-    for (size_t i = 0; i < NEPOLL; ++i) {        
+    for (size_t i = 0; i < NEPOLL; ++i) {
 #ifdef USE_UNIX_DOMAIN_SOCKET
         char buf[64];
         snprintf(buf, sizeof(buf), "input_messenger.socket%lu", i);
@@ -171,7 +171,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
         ASSERT_EQ(0, messenger[i].AddHandler(pairs[0]));
         ASSERT_EQ(0, messenger[i].StartAccept(listening_fd, -1, NULL));
     }
-    
+
     for (size_t i = 0; i < NCLIENT; ++i) {
         cm[i] = new ClientMeta;
         cm[i]->times = 0;
@@ -180,7 +180,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
     }
 
     sleep(1);
-    
+
     LOG(INFO) << "Begin to profile... (5 seconds)";
     ProfilerStart("input_messenger.prof");
 
@@ -190,9 +190,9 @@ TEST_F(MessengerTest, dispatch_tasks) {
     }
     butil::Timer tm;
     tm.start();
-    
+
     sleep(5);
-    
+
     tm.stop();
     ProfilerStop();
     LOG(INFO) << "End profiling";

@@ -76,7 +76,7 @@ static int AssertFail() {
 
 #define SAFE_ASSERT(expr) ((expr) ? 0 : AssertFail())
 
-// NOTE(gejun): Mark as weak symbol to avoid conflict with same functions in 
+// NOTE(gejun): Mark as weak symbol to avoid conflict with same functions in
 // glog, same reason applies to other functions marked weak in this file.
 static SymbolizeCallback g_symbolize_callback = NULL;
 void BAIDU_WEAK InstallSymbolizeCallback(SymbolizeCallback callback) {

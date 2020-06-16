@@ -109,7 +109,7 @@ void ProcessNovaResponse(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     Socket* socket = msg->socket();
-    
+
     // Fetch correlation id that we saved before in `PackNovaRequest'
     const bthread_id_t cid = { static_cast<uint64_t>(socket->correlation_id()) };
     Controller* cntl = NULL;
@@ -119,7 +119,7 @@ void ProcessNovaResponse(InputMessageBase* msg_base) {
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -140,7 +140,7 @@ void ProcessNovaResponse(InputMessageBase* msg_base) {
     const nshead_t *nshead = (const nshead_t *)p;
     CompressType type = (nshead->version & NOVA_SNAPPY_COMPRESS_FLAG ?
                          COMPRESS_TYPE_SNAPPY : COMPRESS_TYPE_NONE);
-    if (!ParseFromCompressedData(msg->payload, cntl->response(), type)) { 
+    if (!ParseFromCompressedData(msg->payload, cntl->response(), type)) {
         cntl->SetFailed(ERESPONSE, "Fail to parse response message");
     } else {
         cntl->set_response_compress_type(type);
@@ -149,7 +149,7 @@ void ProcessNovaResponse(InputMessageBase* msg_base) {
     // error code if it version check of `cid' fails
     msg.reset();  // optional, just release resourse ASAP
     accessor.OnResponse(cid, saved_error);
-} 
+}
 
 void SerializeNovaRequest(butil::IOBuf* buf, Controller* cntl,
                           const google::protobuf::Message* request) {
@@ -177,7 +177,7 @@ void PackNovaRequest(butil::IOBuf* buf,
     // Store `correlation_id' into Socket since nova_pbrpc protocol
     // doesn't contain this field
     accessor.get_sending_socket()->set_correlation_id(correlation_id);
-        
+
     nshead_t nshead;
     memset(&nshead, 0, sizeof(nshead_t));
     nshead.log_id = controller->log_id();

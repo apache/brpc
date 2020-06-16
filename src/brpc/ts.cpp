@@ -191,23 +191,23 @@ public:
     // whether this message with pcr(program_clock_reference)
     // generally, the video IDR(keyframe) carries the pcr info.
     bool write_pcr;
-    
+
     // whether got discontinuity ts, for example, sequence header changed.
     // TODO: always false right now.
     bool is_discontinuity;
-    
+
     // the timestamp in 90khz
     int64_t dts;
     int64_t pts;
-    
+
     // the id of pes stream to indicate the payload codec.
     TsPESStreamId sid;
-    
+
     // size of payload, 0 indicates the length() of payload.
     uint16_t PES_packet_length;
-    
+
     uint8_t continuity_counter;
-    
+
     butil::IOBuf payload;
 };
 
@@ -325,7 +325,7 @@ int TsPacket::Encode(void* data) const {
     }
     ccv |= (af_control << 4) & 0x30;
     policy::Write1Byte(&p, ccv);
-    
+
     if (_adaptation_field) {
         if (_adaptation_field->Encode(p, af_control) != 0) {
             LOG(ERROR) << "Fail to encode _adaptation_field";
@@ -333,7 +333,7 @@ int TsPacket::Encode(void* data) const {
         }
         p += _adaptation_field->ByteSize();
     }
-    
+
     if (_payload) {
         if (_payload->Encode(p) != 0) {
             LOG(ERROR) << "Fail to encode _payload";
@@ -364,7 +364,7 @@ void TsPacket::CreateAsPAT(int16_t pmt_number, TsPid pmt_pid) {
     _pid = TS_PID_PAT;
     _payload_unit_start_indicator = 1;
     _adaptation_field_control = TS_AF_PAYLOAD_ONLY;
-    
+
     TsPayloadPAT* pat = new TsPayloadPAT(this);
     pat->pointer_field = 0;
     pat->table_id = TS_PSI_ID_PAS;
@@ -420,7 +420,7 @@ int TsPacket::CreateAsPMT(int16_t pmt_number, TsPid pmt_pid,
 }
 
 void TsPacket::CreateAsPESFirst(TsPid pid, TsPESStreamId sid,
-                                uint8_t continuity_counter, bool discontinuity, 
+                                uint8_t continuity_counter, bool discontinuity,
                                 int64_t pcr, int64_t dts, int64_t pts, int size) {
     if (_modified) {
         Reset();
@@ -447,7 +447,7 @@ void TsPacket::CreateAsPESFirst(TsPid pid, TsPESStreamId sid,
     pes->pts = pts;
     pes->dts = dts;
     _payload = pes;
-    
+
     if (pcr >= 0) {
         TsAdaptationField* af = mutable_adaptation_field();
         af->discontinuity_indicator = discontinuity;
@@ -556,7 +556,7 @@ int TsAdaptationField::Encode(
     tmpv |= (splicing_point_flag << 2) & 0x04;
     tmpv |= (transport_private_data_flag << 1) & 0x02;
     policy::Write1Byte(&p, tmpv);
-    
+
     if (PCR_flag) {
         // @remark, use pcr base and ignore the extension
         // @see https://github.com/ossrs/srs/issues/250#issuecomment-71349370
@@ -627,7 +627,7 @@ TsPayloadPES::~TsPayloadPES() {
 
 size_t TsPayloadPES::ByteSize() const {
     size_t sz = 0;
-    
+
     _PES_header_data_length = 0;
     const TsPESStreamId sid = stream_id;
 
@@ -645,7 +645,7 @@ size_t TsPayloadPES::ByteSize() const {
 
         if (PTS_DTS_flags == 0x2) { sz += 5; }
         else if (PTS_DTS_flags == 0x3) { sz += 10; }
-        
+
         if (ESCR_flag) { sz += 6; }
         if (ES_rate_flag) { sz += 3; }
         if (DSM_trick_mode_flag) { sz += 1; }
@@ -700,7 +700,7 @@ int TsPayloadPES::Encode(void* data) const {
         pplv = (pplv > 0xFFFF)? 0 : pplv;
     }
     policy::WriteBigEndian2Bytes(&p, pplv);
-    
+
     int8_t oocv = original_or_copy & 0x01;
     oocv |= (const2bits << 6) & 0xC0;
     oocv |= (PES_scrambling_control << 4) & 0x30;
@@ -708,7 +708,7 @@ int TsPayloadPES::Encode(void* data) const {
     oocv |= (data_alignment_indicator << 2) & 0x04;
     oocv |= (copyright << 1) & 0x02;
     policy::Write1Byte(&p, oocv);
-    
+
     int8_t pefv = PES_extension_flag & 0x01;
     pefv |= (PTS_DTS_flags << 6) & 0xC0;
     pefv |= (ESCR_flag << 5) & 0x20;
@@ -718,7 +718,7 @@ int TsPayloadPES::Encode(void* data) const {
     pefv |= (PES_CRC_flag << 1) & 0x02;
     policy::Write1Byte(&p, pefv);
     policy::Write1Byte(&p, _PES_header_data_length);
-    
+
     if (PTS_DTS_flags == 0x2) { // 5B
         encode_33bits_dts_pts(&p, 0x02, pts);
     } else if (PTS_DTS_flags == 0x3) { // 10B
@@ -760,11 +760,11 @@ void TsPayloadPES::encode_33bits_dts_pts(
     char* p = *data;
     int32_t val = (fb << 4) | (((v >> 30) & 0x07) << 1) | 1;
     *p++ = val;
-    
+
     val = (((v >> 15) & 0x7fff) << 1) | 1;
     *p++ = (val >> 8);
     *p++ = val;
-    
+
     val = (((v) & 0x7fff) << 1) | 1;
     *p++ = (val >> 8);
     *p++ = val;
@@ -861,12 +861,12 @@ int TsPayloadPAT::PsiEncode(void* data) const {
     char*  p = (char*)data;
 
     policy::WriteBigEndian2Bytes(&p, transport_stream_id);
-    
+
     int8_t cniv = current_next_indicator & 0x01;
     cniv |= (version_number << 1) & 0x3E;
     cniv |= (const1_value << 6) & 0xC0;
     policy::Write1Byte(&p, cniv);
-    
+
     policy::Write1Byte(&p, section_number);
     policy::Write1Byte(&p, last_section_number);
 
@@ -908,7 +908,7 @@ int TsPayloadPMTESInfo::Encode(void* data) const {
     int16_t epv = elementary_PID & 0x1FFF;
     epv |= (const1_value0 << 13) & 0xE000;
     policy::WriteBigEndian2Bytes(&p, epv);
-    
+
     int16_t eilv = ES_info_length & 0x0FFF;
     eilv |= (const1_value1 << 12) & 0xF000;
     policy::WriteBigEndian2Bytes(&p, eilv);
@@ -949,19 +949,19 @@ int TsPayloadPMT::PsiEncode(void* data) const {
     char* p = (char*)data;
 
     policy::WriteBigEndian2Bytes(&p, program_number);
-    
+
     int8_t cniv = current_next_indicator & 0x01;
     cniv |= (const1_value0 << 6) & 0xC0;
     cniv |= (version_number << 1) & 0xFE;
     policy::Write1Byte(&p, cniv);
-    
+
     policy::Write1Byte(&p, section_number);
     policy::Write1Byte(&p, last_section_number);
 
     int16_t ppv = PCR_PID & 0x1FFF;
     ppv |= (const1_value1 << 13) & 0xE000;
     policy::WriteBigEndian2Bytes(&p, ppv);
-    
+
     int16_t pilv = program_info_length & 0xFFF;
     pilv |= (const1_value2 << 12) & 0xF000;
     policy::WriteBigEndian2Bytes(&p, pilv);
@@ -1009,7 +1009,7 @@ TsStream FlvVideoCodec2TsStream(FlvVideoCodec codec, TsPid* pid) {
         if (pid) {
             *pid = TS_PID_VIDEO_AVC;
         }
-        return TS_STREAM_VIDEO_H264; 
+        return TS_STREAM_VIDEO_H264;
     case FLV_VIDEO_JPEG:
     case FLV_VIDEO_SORENSON_H263:
     case FLV_VIDEO_SCREEN_VIDEO:
@@ -1028,12 +1028,12 @@ TsStream FlvAudioCodec2TsStream(FlvAudioCodec codec, TsPid* pid) {
         if (pid) {
             *pid = TS_PID_AUDIO_AAC;
         }
-        return TS_STREAM_AUDIO_AAC; 
+        return TS_STREAM_AUDIO_AAC;
     case FLV_AUDIO_MP3:
         if (pid) {
             *pid = TS_PID_AUDIO_MP3;
-        }  
-        return TS_STREAM_AUDIO_MP3; 
+        }
+        return TS_STREAM_AUDIO_MP3;
     case FLV_AUDIO_LINEAR_PCM_PLATFORM_ENDIAN:
     case FLV_AUDIO_ADPCM:
     case FLV_AUDIO_LINEAR_PCM_LITTLE_ENDIAN:
@@ -1117,10 +1117,10 @@ butil::Status TsWriter::Write(const RtmpAudioMessage& msg) {
             return butil::Status(EINVAL, "Invalid AAC data_size=%" PRIu64,
                                 (uint64_t)aac_msg.data.size());
         }
-        
+
         // the frame length is the AAC raw data plus the adts header size.
         const int32_t frame_length = aac_msg.data.size() + 7;
-        
+
         // AAC-ADTS
         // 6.2 Audio Data Transport Stream, ADTS
         // in aac-iso-13818-7.pdf, page 26.
@@ -1204,7 +1204,7 @@ butil::Status TsWriter::Write(const RtmpAudioMessage& msg) {
 //      annexb 3B header, 406B nalu(nal_unit_type:1)
 static const uint8_t fresh_nalu_header[] = { 0x00, 0x00, 0x00, 0x01 };
 static const uint8_t cont_nalu_header[] = { 0x00, 0x00, 0x01 };
-    
+
 // the aud(access unit delimiter) before each frame.
 // 7.3.2.4 Access unit delimiter RBSP syntax
 // H.264-AVC-ISO_IEC_14496-10-2012.pdf, page 66.
@@ -1294,12 +1294,12 @@ butil::Status TsWriter::Write(const RtmpVideoMessage& msg) {
         default:
             break;
         }
-        
+
         // append cont nalu header before NAL units.
         nalus.append(cont_nalu_header, 3);
         nalus.append(*it);
     }
-    
+
     // when ts message(samples) contains IDR, insert sps+pps.
     if (has_idr) {
         bool first = true;
@@ -1338,7 +1338,7 @@ butil::Status TsWriter::Write(const RtmpVideoMessage& msg) {
 butil::Status
 TsWriter::EncodePATPMT(TsStream vs, TsPid vpid, TsStream as, TsPid apid) {
     char buf[TS_PACKET_SIZE];
-    
+
     TsPacket pat(&_tschan_group);
     pat.CreateAsPAT(TS_PMT_NUMBER, TS_PID_PMT);
     // set the left bytes with 0xFF.
@@ -1349,7 +1349,7 @@ TsWriter::EncodePATPMT(TsStream vs, TsPid vpid, TsStream as, TsPid apid) {
         return butil::Status(EINVAL, "Fail to encode PAT");
     }
     _outbuf->append(buf, TS_PACKET_SIZE);
-    
+
     TsPacket pmt(&_tschan_group);
     if (pmt.CreateAsPMT(TS_PMT_NUMBER, TS_PID_PMT, vpid, vs, apid, as) != 0) {
         return butil::Status(EINVAL, "Fail to CreateAsPMT");
@@ -1432,7 +1432,7 @@ butil::Status TsWriter::EncodePES(TsMessage* msg, TsStream sid, TsPid pid,
 
             // it's ok to set pcr equals to dts,
             int64_t pcr = write_pcr ? msg->dts : -1;
-            
+
             // TODO: FIXME: figure out why use discontinuity of msg
             pkt.CreateAsPESFirst(pid, msg->sid, channel->continuity_counter++,
                                msg->is_discontinuity, pcr, msg->dts,

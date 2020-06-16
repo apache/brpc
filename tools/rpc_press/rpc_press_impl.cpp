@@ -130,7 +130,7 @@ int RpcPress::init(const PressOptions* options) {
         LOG(ERROR) << "Fail to import " << proto_file;
         return -1;
     }
-    
+
     _pbrpc_client = new PressClient(&_options, _importer, &_factory);
 
     if (!_options.output.empty()) {
@@ -156,7 +156,7 @@ int RpcPress::init(const PressOptions* options) {
         LOG(ERROR) << "-input is empty";
         return -1;
     }
-    brpc::JsonLoader json_util(_importer, &_factory, 
+    brpc::JsonLoader json_util(_importer, &_factory,
                                      _options.service, _options.method);
     if (butil::PathExists(butil::FilePath(_options.input))) {
         int fd = open(_options.input.c_str(), O_RDONLY);
@@ -183,9 +183,9 @@ void* RpcPress::sync_call_thread(void* arg) {
     return NULL;
 }
 
-void RpcPress::handle_response(brpc::Controller* cntl, 
+void RpcPress::handle_response(brpc::Controller* cntl,
                                Message* request,
-                               Message* response, 
+                               Message* response,
                                int64_t start_time){
     if (!cntl->Failed()){
         int64_t rpc_call_time_us = butil::gettimeofday_us() - start_time;
@@ -234,17 +234,17 @@ void RpcPress::sync_client() {
         Message* response = _pbrpc_client->get_output_message();
         const int64_t start_time = butil::gettimeofday_us();
         google::protobuf::Closure* done = brpc::NewCallback<
-            RpcPress, 
-            RpcPress*, 
-            brpc::Controller*, 
-            Message*, 
+            RpcPress,
+            RpcPress*,
+            brpc::Controller*,
+            Message*,
             Message*, int64_t>
             (this, &RpcPress::handle_response, cntl, request, response, start_time);
         const brpc::CallId cid1 = cntl->call_id();
         _pbrpc_client->call_method(cntl, request, response, done);
         _sent_count << 1;
 
-        if (_options.test_req_rate <= 0) { 
+        if (_options.test_req_rate <= 0) {
             brpc::Join(cid1);
         } else {
             int64_t end_time = butil::gettimeofday_us();

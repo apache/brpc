@@ -30,7 +30,7 @@ namespace brpc {
 // memory and should be reused as much as possible, thus unlike the
 // multi-threaded allocator caching objects thread-locally, we just
 // put everything in a global list to maximize sharing. It's currently
-// used by Server to reuse session-local data. 
+// used by Server to reuse session-local data.
 class SimpleDataPool {
 public:
     struct Stat {
@@ -45,7 +45,7 @@ public:
     void* Borrow();
     void Return(void*);
     Stat stat() const;
-    
+
 private:
     butil::Mutex _mutex;
     unsigned _capacity;

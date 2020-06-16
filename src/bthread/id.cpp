@@ -34,7 +34,7 @@ template <typename T, int N>
 class SmallQueue {
 public:
     SmallQueue() : _begin(0), _size(0), _full(NULL) {}
-    
+
     void push(const T& val) {
         if (_full != NULL && !_full->empty()) {
             _full->push_back(val);
@@ -88,10 +88,10 @@ public:
         delete _full;
         _full = NULL;
     }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(SmallQueue);
-    
+
     int _begin;
     int _size;
     T _c[N];
@@ -122,7 +122,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Id {
     uint32_t* butex;
     uint32_t* join_butex;
     SmallQueue<PendingError, 2> pending_q;
-    
+
     Id() {
         // Although value of the butex(as version part of bthread_id_t)
         // does not matter, we set it to 0 to make program more deterministic.
@@ -143,7 +143,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Id {
     inline uint32_t contended_ver() const { return locked_ver + 1; }
     inline uint32_t unlockable_ver() const { return locked_ver + 2; }
     inline uint32_t last_ver() const { return unlockable_ver(); }
-    
+
     // also the next "first_ver"
     inline uint32_t end_ver() const { return last_ver() + 1; }
 };
@@ -212,7 +212,7 @@ void id_status(bthread_id_t id, std::ostream &os) {
     SmallQueue<PendingError, 2> pending_q;
     uint32_t butex_value = 0;
 
-    meta->mutex.lock();    
+    meta->mutex.lock();
     if (meta->has_version(id_ver)) {
         data = meta->data;
         on_error = meta->on_error;
@@ -354,7 +354,7 @@ static int id_create_ranged_impl(
     int range) {
     if (range < 1 || range > ID_MAX_RANGE) {
         LOG_IF(FATAL, range < 1) << "range must be positive, actually " << range;
-        LOG_IF(FATAL, range > ID_MAX_RANGE ) << "max of range is " 
+        LOG_IF(FATAL, range > ID_MAX_RANGE ) << "max of range is "
                 << ID_MAX_RANGE << ", actually " << range;
         return EINVAL;
     }
@@ -396,7 +396,7 @@ int bthread_id_create_ranged(bthread_id_t* id, void* data,
                              int (*on_error)(bthread_id_t, void*, int),
                              int range) {
     return bthread::id_create_ranged_impl(
-        id, data, 
+        id, data,
         (on_error ? on_error : bthread::default_bthread_id_on_error),
         NULL, range);
 }
@@ -453,7 +453,7 @@ int bthread_id_lock_and_reset_range_verbose(
     return EINVAL;
 }
 
-int bthread_id_error_verbose(bthread_id_t id, int error_code, 
+int bthread_id_error_verbose(bthread_id_t id, int error_code,
                              const char *location) {
     return bthread_id_error2_verbose(id, error_code, std::string(), location);
 }
@@ -500,7 +500,7 @@ int bthread_id_cancel(bthread_id_t id) {
     if (*butex != meta->first_ver) {
         meta->mutex.unlock();
         return EPERM;
-    }       
+    }
     *butex = meta->end_ver();
     meta->first_ver = *butex;
     meta->locked_ver = *butex;
@@ -601,7 +601,7 @@ int bthread_id_unlock(bthread_id_t id) {
             // We may wake up already-reused id, but that's OK.
             bthread::butex_wake(butex);
         }
-        return 0; 
+        return 0;
     }
 }
 
@@ -669,7 +669,7 @@ int bthread_id_list_reset(bthread_id_list_t* list, int error_code) {
     return bthread_id_list_reset2(list, error_code, std::string());
 }
 
-void bthread_id_list_swap(bthread_id_list_t* list1, 
+void bthread_id_list_swap(bthread_id_list_t* list1,
                           bthread_id_list_t* list2) {
     std::swap(list1->impl, list2->impl);
 }

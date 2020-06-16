@@ -57,7 +57,7 @@ private:
         int64_t latency_sum;         // microseconds
         int64_t end_time_us;
     };
-    
+
     class Servers;
     class Weight {
     friend class Servers;
@@ -111,7 +111,7 @@ private:
         butil::atomic<int64_t>* left;
         Weight* weight;
     };
-    
+
     class Servers {
     public:
         std::vector<ServerInfo> weight_tree;
@@ -132,7 +132,7 @@ private:
     static size_t BatchAdd(Servers& bg, const Servers& fg,
                          const std::vector<SocketId>& servers,
                          LocalityAwareLoadBalancer*);
-    static size_t BatchRemove(Servers& bg, 
+    static size_t BatchRemove(Servers& bg,
                               const std::vector<SocketId>& servers,
                               LocalityAwareLoadBalancer*);
     static bool RemoveAll(Servers& bg, const Servers& fg);

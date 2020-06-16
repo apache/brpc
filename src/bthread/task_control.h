@@ -47,7 +47,7 @@ public:
 
     // Must be called before using. `nconcurrency' is # of worker pthreads.
     int init(int nconcurrency);
-    
+
     // Create a TaskGroup in this control.
     TaskGroup* create_group();
 
@@ -59,9 +59,9 @@ public:
 
     // Stop and join worker threads in TaskControl.
     void stop_and_join();
-    
+
     // Get # of worker threads.
-    int concurrency() const 
+    int concurrency() const
     { return _concurrency.load(butil::memory_order_acquire); }
 
     void print_rq_sizes(std::ostream& os);

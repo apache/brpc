@@ -28,7 +28,7 @@
 
 namespace brpc {
 
-DEFINE_int32(channel_check_interval, 1, 
+DEFINE_int32(channel_check_interval, 1,
              "seconds between consecutive health-checking of unaccessible"
              " sub channels inside SelectiveChannel");
 
@@ -75,11 +75,11 @@ public:
         ChannelBase* channel() {
             return static_cast<SubChannel*>(fake_sock->user())->chan;
         }
-        
+
         SocketUniquePtr fake_sock;
         bool need_feedback;
     };
-    
+
     ChannelBalancer() {}
     ~ChannelBalancer();
     int Init(const char* lb_name);
@@ -101,7 +101,7 @@ class Sender;
 
 struct Resource {
     Resource() : response(NULL), sub_done(NULL) {}
-        
+
     google::protobuf::Message* response;
     SubDone* sub_done;
 };
@@ -189,7 +189,7 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     SocketOptions options;
     options.user = sub_chan;
     options.health_check_interval_s = FLAGS_channel_check_interval;
-            
+
     if (Socket::Create(options, &sock_id) != 0) {
         delete sub_chan;
         LOG(ERROR) << "Fail to create fake socket for sub channel";
@@ -327,7 +327,7 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
     sub_cntl->set_request_code(_main_cntl->request_code());
     // Forward request attachment to the subcall
     sub_cntl->request_attachment().append(_main_cntl->request_attachment());
-    
+
     sel_out.channel()->CallMethod(_main_cntl->_method,
                                   &r.sub_done->_cntl,
                                   _request,
@@ -349,7 +349,7 @@ void SubDone::Run() {
     // NOTE: Copying gettable-but-settable fields which are generally set
     // during the RPC to reflect details.
     main_cntl->_remote_side = _cntl._remote_side;
-    // connection_type may be changed during CallMethod. 
+    // connection_type may be changed during CallMethod.
     main_cntl->set_connection_type(_cntl.connection_type());
     Resource r;
     r.response = _cntl._response;
@@ -358,7 +358,7 @@ void SubDone::Run() {
         return;
     }
     const int saved_error = main_cntl->ErrorCode();
-    
+
     if (_cntl.Failed()) {
         if (_cntl.ErrorCode() == ENODATA || _cntl.ErrorCode() == EHOSTDOWN) {
             // LB could not find a server.

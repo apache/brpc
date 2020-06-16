@@ -37,7 +37,7 @@ private:
     void Describe(std::ostream& os, const DescribeOptions&) const override;
 
     NamingService* New() const override;
-    
+
     void Destroy() override;
 
 private:

@@ -54,7 +54,7 @@ void* waiter(void* void_arg) {
     bthread_mutex_lock(&a->m);
     while (!stop) {
         bthread_cond_wait(&a->c, &a->m);
-        
+
         BAIDU_SCOPED_LOCK(wake_mutex);
         wake_tid.push_back(bthread_self());
         wake_time.push_back(butil::gettimeofday_us());
@@ -75,13 +75,13 @@ TEST(CondTest, sanity) {
     wake_tid.clear();
     wake_time.resize(1024);
     wake_time.clear();
-    
+
     bthread_t wth[8];
     const size_t NW = ARRAY_SIZE(wth);
     for (size_t i = 0; i < NW; ++i) {
         ASSERT_EQ(0, bthread_start_urgent(&wth[i], NULL, waiter, &a));
     }
-    
+
     bthread_t sth;
     ASSERT_EQ(0, bthread_start_urgent(&sth, NULL, signaler, &a));
 
@@ -90,12 +90,12 @@ TEST(CondTest, sanity) {
     pthread_mutex_lock(&wake_mutex);
     const size_t nbeforestop = wake_time.size();
     pthread_mutex_unlock(&wake_mutex);
-    
+
     stop = true;
     for (size_t i = 0; i < NW; ++i) {
         bthread_cond_signal(&a.c);
     }
-    
+
     bthread_join(sth, NULL);
     for (size_t i = 0; i < NW; ++i) {
         bthread_join(wth[i], NULL);

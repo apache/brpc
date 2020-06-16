@@ -24,7 +24,7 @@
 
 namespace brpc {
 DECLARE_int32(idle_timeout_second);
-} 
+}
 
 int main(int argc, char* argv[]) {
     brpc::FLAGS_idle_timeout_second = 0;

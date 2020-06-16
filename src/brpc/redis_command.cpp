@@ -220,7 +220,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                     }
                     goto fmt_invalid;
                 }
-                
+
             fmt_invalid:
                 va_end(_cpy);
                 return butil::Status(EINVAL, "Invalid format");
@@ -243,7 +243,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 break;
             }  // end default
             }  // end switch
-            
+
             ++c;
         }
     }
@@ -255,7 +255,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
         return butil::Status(EINVAL, "Unmatched quote: ...%.*s... (offset=%lu)",
                              (int)ctx_size, ctx_begin, quote_pos - fmt);
     }
-    
+
     if (!compbuf.empty()) {
         FlushComponent(&nocount_buf, &compbuf, &ncomponent);
     }
@@ -263,7 +263,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
     LOG_IF(ERROR, nargs == 0) << "You must call RedisCommandNoFormat() "
         "to replace RedisCommandFormatV without any args (to avoid potential "
         "formatting of conversion specifiers)";
-    
+
     AppendHeader(*outbuf, '*', ncomponent);
     outbuf->append(nocount_buf);
     return butil::Status::OK();
@@ -331,7 +331,7 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
         return butil::Status(EINVAL, "Unmatched quote: ...%.*s... (offset=%lu)",
                              (int)ctx_size, ctx_begin, quote_pos - cmd.data());
     }
-    
+
     if (!compbuf.empty()) {
         FlushComponent(&nocount_buf, &compbuf, &ncomponent);
     }

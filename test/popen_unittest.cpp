@@ -122,7 +122,7 @@ TEST(PopenTest, does_vfork_suspend_all_threads) {
     ASSERT_EQ(0, pthread_create(&tid, NULL, counter_thread, &ca));
     usleep(100 * 1000);
     char* child_stack_mem = (char*)malloc(CHILD_STACK_SIZE);
-    void* child_stack = child_stack_mem + CHILD_STACK_SIZE;  
+    void* child_stack = child_stack_mem + CHILD_STACK_SIZE;
     const int64_t counter_before_fork = ca.counter;
     pid_t cpid = clone(fork_thread, child_stack, CLONE_VFORK, NULL);
     const int64_t counter_after_fork = ca.counter;

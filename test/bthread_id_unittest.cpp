@@ -202,7 +202,7 @@ TEST(BthreadIdTest, many_error) {
         EXPECT_EQ(i, result[i]);
     }
     result.clear();
-    
+
     ASSERT_EQ(0, bthread_id_trylock(id1, NULL));
     ASSERT_EQ(get_version(id1) + 1, bthread::id_value(id1));
     for (int i = 0; i < N; ++i) {

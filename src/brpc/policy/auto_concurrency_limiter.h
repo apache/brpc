@@ -30,7 +30,7 @@ public:
     AutoConcurrencyLimiter();
 
     bool OnRequested(int current_concurrency) override;
-    
+
     void OnResponded(int error_code, int64_t latency_us) override;
 
     int MaxConcurrency() override;
@@ -39,7 +39,7 @@ public:
 
 private:
     struct SampleWindow {
-        SampleWindow() 
+        SampleWindow()
             : start_time_us(0)
             , succ_count(0)
             , failed_count(0)
@@ -55,7 +55,7 @@ private:
     bool AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
     int64_t NextResetTime(int64_t sampling_time_us);
 
-    // The following methods are not thread safe and can only be called 
+    // The following methods are not thread safe and can only be called
     // in AppSample()
     void UpdateMaxConcurrency(int64_t sampling_time_us);
     void ResetSampleWindow(int64_t sampling_time_us);
@@ -68,10 +68,10 @@ private:
     int _max_concurrency;
     int64_t _remeasure_start_us;
     int64_t _reset_latency_us;
-    int64_t _min_latency_us; 
+    int64_t _min_latency_us;
     double _ema_max_qps;
     double _explore_ratio;
-  
+
     // modified per sample.
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
     butil::Mutex _sw_mutex;

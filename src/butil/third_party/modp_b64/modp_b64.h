@@ -41,7 +41,7 @@ extern "C" {
  *    i.e.  the result will be equal to strlen(dest) + 1
  *
  * Example
- * 
+ *
  * \code
  * char* src = ...;
  * int srclen = ...; //the length of number of bytes in src

@@ -53,7 +53,7 @@ struct MessageHandler {
     bool (*parse_body)(::google::protobuf::Message* msg,
                        ::google::protobuf::io::ZeroCopyInputStream* input,
                        size_t size);
-    
+
     // Serialize `msg' as a mcpack_v2 or compack object into `output'.
     // The serialization format is decided by `format'.
     // Returns true on success.

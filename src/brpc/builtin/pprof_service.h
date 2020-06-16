@@ -34,7 +34,7 @@ public:
                     const ::brpc::ProfileRequest* request,
                     ::brpc::ProfileResponse* response,
                     ::google::protobuf::Closure* done);
-    
+
     void heap(::google::protobuf::RpcController* controller,
               const ::brpc::ProfileRequest* request,
               ::brpc::ProfileResponse* response,

@@ -19,7 +19,7 @@
 #ifndef BRPC_TRACKME_H
 #define BRPC_TRACKME_H
 
-// [Internal] RPC users are not supposed to call functions below. 
+// [Internal] RPC users are not supposed to call functions below.
 
 #include "butil/endpoint.h"
 

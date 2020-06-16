@@ -41,7 +41,7 @@ std::vector<std::pair<int, int> > result;
 class FooObserver : public FooEvent::Observer {
 public:
     FooObserver() : another_ob(NULL) {}
-    
+
     void on_event(int x, int* p) {
         ++*p;
         result.push_back(std::make_pair(x, *p));

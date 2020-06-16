@@ -84,7 +84,7 @@ public:
         , _series_sampler(NULL) {
         expose(name);
     }
-    
+
     PassiveStatus(const butil::StringPiece& prefix,
                   const butil::StringPiece& name,
                   Tp (*getfn)(void*), void* arg)
@@ -94,8 +94,8 @@ public:
         , _series_sampler(NULL) {
         expose_as(prefix, name);
     }
-    
-    PassiveStatus(Tp (*getfn)(void*), void* arg) 
+
+    PassiveStatus(Tp (*getfn)(void*), void* arg)
         : _getfn(getfn)
         , _arg(arg)
         , _sampler(NULL)
@@ -113,7 +113,7 @@ public:
             _series_sampler = NULL;
         }
     }
-    
+
     int set_vector_names(const std::string& names) {
         if (_series_sampler) {
             _series_sampler->set_vector_names(names);
@@ -135,11 +135,11 @@ public:
         }
     }
 #endif
-    
+
     Tp get_value() const {
         return (_getfn ? _getfn(_arg) : Tp());
     }
-    
+
     sampler_type* get_sampler() {
         if (NULL == _sampler) {
             _sampler = new sampler_type(this);
@@ -188,7 +188,7 @@ private:
     SeriesSampler* _series_sampler;
 };
 
-// ccover g++ may complain about ADDITIVE is undefined unless it's 
+// ccover g++ may complain about ADDITIVE is undefined unless it's
 // explicitly declared here.
 template <typename Tp> const bool PassiveStatus<Tp>::ADDITIVE;
 
@@ -212,7 +212,7 @@ public:
         expose_as(prefix, name);
     }
 
-    PassiveStatus(void (*print)(std::ostream&, void*), void* arg) 
+    PassiveStatus(void (*print)(std::ostream&, void*), void* arg)
         : _print(print), _arg(arg) {}
 
     ~PassiveStatus() {
@@ -248,7 +248,7 @@ public:
     BasicPassiveStatus(const butil::StringPiece& name,
                        Tp (*getfn)(void*), void* arg)
         : PassiveStatus<Tp>(name, getfn, arg) {}
-    
+
     BasicPassiveStatus(const butil::StringPiece& prefix,
                        const butil::StringPiece& name,
                        Tp (*getfn)(void*), void* arg)
@@ -264,7 +264,7 @@ public:
     BasicPassiveStatus(const butil::StringPiece& name,
                        void (*print)(std::ostream&, void*), void* arg)
         : PassiveStatus<std::string>(name, print, arg) {}
-    
+
     BasicPassiveStatus(const butil::StringPiece& prefix,
                        const butil::StringPiece& name,
                        void (*print)(std::ostream&, void*), void* arg)

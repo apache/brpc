@@ -23,7 +23,7 @@
 
 namespace brpc {
 
-URI::URI() 
+URI::URI()
     : _port(-1)
     , _query_was_modified(false)
     , _initialized_query_map(false)
@@ -141,7 +141,7 @@ static const char* const g_url_parsing_fast_action_map =
 // ignoring of scheme("http://")
 int URI::SetHttpURL(const char* url) {
     Clear();
-    
+
     const char* p = url;
     // skip heading blanks
     if (*p == ' ') {
@@ -292,7 +292,7 @@ void URI::Print(std::ostream& os) const {
     }
     PrintWithoutHost(os);
 }
-    
+
 void URI::PrintWithoutHost(std::ostream& os) const {
     if (_path.empty()) {
         // According to rfc2616#section-5.1.2, the absolute path

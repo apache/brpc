@@ -49,7 +49,7 @@ public:
     // this attachment is destructed. In another word, the callback will
     // always be run.
     void NotifyOnStopped(google::protobuf::Closure* callback);
-    
+
 protected:
     // Transfer-Encoding is added since HTTP/1.1. If the protocol of the
     // response is before_http_1_1, we will write the data directly to the
@@ -62,7 +62,7 @@ protected:
 
     // Called by controller only.
     void MarkRPCAsDone(bool rpc_failed);
-    
+
     bool _before_http_1_1;
     bool _pause_from_mark_rpc_as_done;
     butil::atomic<int> _rpc_state;

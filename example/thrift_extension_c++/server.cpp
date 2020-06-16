@@ -28,7 +28,7 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 
-// Adapt your own thrift-based protocol to use brpc 
+// Adapt your own thrift-based protocol to use brpc
 class EchoServiceImpl : public brpc::ThriftService {
 public:
     void ProcessThriftFramedRequest(brpc::Controller* cntl,

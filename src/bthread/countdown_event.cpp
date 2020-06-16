@@ -56,7 +56,7 @@ void CountdownEvent::signal(int sig) {
 int CountdownEvent::wait() {
     _wait_was_invoked = true;
     for (;;) {
-        const int seen_counter = 
+        const int seen_counter =
             ((butil::atomic<int>*)_butex)->load(butil::memory_order_acquire);
         if (seen_counter <= 0) {
             return 0;
@@ -73,7 +73,7 @@ void CountdownEvent::add_count(int v) {
         LOG_IF(ERROR, v < 0) << "Invalid count=" << v;
         return;
     }
-    LOG_IF(ERROR, _wait_was_invoked) 
+    LOG_IF(ERROR, _wait_was_invoked)
             << "Invoking add_count() after wait() was invoked";
     ((butil::atomic<int>*)_butex)->fetch_add(v, butil::memory_order_release);
 }
@@ -94,7 +94,7 @@ void CountdownEvent::reset(int v) {
 int CountdownEvent::timed_wait(const timespec& duetime) {
     _wait_was_invoked = true;
     for (;;) {
-        const int seen_counter = 
+        const int seen_counter =
             ((butil::atomic<int>*)_butex)->load(butil::memory_order_acquire);
         if (seen_counter <= 0) {
             return 0;

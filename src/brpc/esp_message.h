@@ -25,7 +25,7 @@
 #include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
 
 #include "brpc/esp_head.h"
-#include "butil/iobuf.h"       
+#include "butil/iobuf.h"
 #include "brpc/proto_base.pb.h"
 
 namespace brpc {

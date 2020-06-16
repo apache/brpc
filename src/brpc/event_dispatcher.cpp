@@ -37,7 +37,7 @@ namespace brpc {
 
 DEFINE_int32(event_dispatcher_num, 1, "Number of event dispatcher");
 
-DEFINE_bool(usercode_in_pthread, false, 
+DEFINE_bool(usercode_in_pthread, false,
             "Call user's callback in pthreads, use bthreads otherwise");
 
 EventDispatcher::EventDispatcher()
@@ -93,9 +93,9 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
 #endif
         return -1;
     }
-    
+
     if (_tid != 0) {
-        LOG(FATAL) << "Already started this dispatcher(" << this 
+        LOG(FATAL) << "Already started this dispatcher(" << this
                    << ") in bthread=" << _tid;
         return -1;
     }
@@ -190,7 +190,7 @@ int EventDispatcher::AddEpollOut(SocketId socket_id, int fd, bool pollin) {
     return 0;
 }
 
-int EventDispatcher::RemoveEpollOut(SocketId socket_id, 
+int EventDispatcher::RemoveEpollOut(SocketId socket_id,
                                     int fd, bool pollin) {
 #if defined(OS_LINUX)
     if (pollin) {

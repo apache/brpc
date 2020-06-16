@@ -177,7 +177,7 @@ Atomic64 Release_Load(volatile const Atomic64* ptr);
 
 # include <atomic>
 
-#else 
+#else
 
 # if __GNUC__ * 10000 + __GNUC_MINOR__ * 100 >= 40500
 // gcc 4.5 renames cstdatomic to atomic
@@ -236,7 +236,7 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(atomic);
     // Make sure memory layout of std::atomic<T> and boost::atomic<T>
-    // are same so that different compilation units seeing different 
+    // are same so that different compilation units seeing different
     // definitions(enable C++11 or not) should be compatible.
     BAIDU_CASSERT(sizeof(T) == sizeof(::std::atomic<T>), size_must_match);
 };
@@ -264,7 +264,7 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(atomic);
     // Make sure memory layout of std::atomic<T> and boost::atomic<T>
-    // are same so that different compilation units seeing different 
+    // are same so that different compilation units seeing different
     // definitions(enable C++11 or not) should be compatible.
     BAIDU_CASSERT(sizeof(T) == sizeof(::boost::atomic<T>), size_must_match);
 };

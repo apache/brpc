@@ -19,7 +19,7 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
-#include "butil/time.h" 
+#include "butil/time.h"
 #include "butil/iobuf.h"                         // butil::IOBuf
 #include "brpc/log.h"
 #include "brpc/controller.h"               // Controller
@@ -202,21 +202,21 @@ static void EndRunningCallMethodInPool(NsheadService* service,
 };
 
 void ProcessNsheadRequest(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = butil::cpuwide_time_us();   
+    const int64_t start_parse_us = butil::cpuwide_time_us();
 
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     SocketUniquePtr socket_guard(msg->ReleaseSocket());
     Socket* socket = socket_guard.get();
     const Server* server = static_cast<const Server*>(msg_base->arg());
     ScopedNonServiceError non_service_error(server);
-    
+
     char buf[sizeof(nshead_t)];
     const char *p = (const char *)msg->meta.fetch(buf, sizeof(buf));
     const nshead_t *req_head = (const nshead_t *)p;
 
     NsheadService* service = server->options().nshead_service;
     if (service == NULL) {
-        LOG_EVERY_SECOND(WARNING) 
+        LOG_EVERY_SECOND(WARNING)
             << "Received nshead request however the server does not set"
             " ServerOptions.nshead_service, close the connection.";
         socket->SetFailed();
@@ -235,7 +235,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     if (method_status) {
         CHECK(method_status->OnRequested());
     }
-    
+
     void* sub_space = NULL;
     if (service->_additional_space) {
         sub_space = (char*)space + sizeof(NsheadClosure);
@@ -249,7 +249,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     msg->payload.swap(req->body);
     nshead_done->_received_us = msg->received_us();
     nshead_done->_server = server;
-    
+
     ServerPrivateAccessor server_accessor(server);
     ControllerPrivateAccessor accessor(cntl);
     const bool security_mode = server->options().security_mode() &&
@@ -328,7 +328,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
 void ProcessNsheadResponse(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    
+
     // Fetch correlation id that we saved before in `PackNsheadRequest'
     const CallId cid = { static_cast<uint64_t>(msg->socket()->correlation_id()) };
     Controller* cntl = NULL;

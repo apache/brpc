@@ -118,7 +118,7 @@ TEST(WSQTest, sanity) {
 
     std::sort(values.begin(), values.end());
     values.resize(std::unique(values.begin(), values.end()) - values.begin());
-    
+
     ASSERT_EQ(N, values.size());
     for (size_t i = 0; i < N; ++i) {
         ASSERT_EQ(i, values[i]);

@@ -30,11 +30,11 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 
-// Adapt your own thrift-based protocol to use brpc 
+// Adapt your own thrift-based protocol to use brpc
 class EchoServiceImpl : public brpc::ThriftService {
 public:
     EchoServiceImpl() {
-        // Initialize the channel, NULL means using default options. 
+        // Initialize the channel, NULL means using default options.
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_THRIFT;
         if (_channel.Init("0.0.0.0", FLAGS_port , &options) != 0) {
@@ -48,7 +48,7 @@ public:
                                     google::protobuf::Closure* done) override {
         // Dispatch calls to different methods
         if (cntl->thrift_method_name() == "Echo") {
-            // Proxy request/response to RealEcho, note that as a proxy we 
+            // Proxy request/response to RealEcho, note that as a proxy we
             // don't need to Cast the messages to native types.
             brpc::Controller cntl;
             brpc::ThriftStub stub(&_channel);
@@ -60,7 +60,7 @@ public:
         } else if (cntl->thrift_method_name() == "RealEcho") {
             return RealEcho(cntl, req->Cast<example::EchoRequest>(),
                         res->Cast<example::EchoResponse>(), done);
-        } else {    
+        } else {
             cntl->SetFailed(brpc::ENOMETHOD, "Fail to find method=%s",
                     cntl->thrift_method_name().c_str());
             done->Run();
@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
 
     brpc::Server server;
     brpc::ServerOptions options;
-    
+
     options.thrift_service = new EchoServiceImpl;
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     options.max_concurrency = FLAGS_max_concurrency;

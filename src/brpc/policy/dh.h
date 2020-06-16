@@ -30,7 +30,7 @@ class DHWrapper {
 public:
     DHWrapper() : _pdh(NULL) {}
     ~DHWrapper() { clear(); }
-    
+
     // initialize dh, generate the public and private key.
     // set `ensure_128bytes_public_key' to true to ensure public key is 128bytes
     int initialize(bool ensure_128bytes_public_key = false);
@@ -51,11 +51,11 @@ public:
     // user should never ignore this size.
     int copy_shared_key(const void* ppkey, int ppkey_size,
                         void* skey, int* skey_size) const;
-    
+
 private:
     int do_initialize();
     void clear();
-    
+
 private:
     DH* _pdh;
 };

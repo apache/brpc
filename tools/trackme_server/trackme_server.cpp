@@ -72,11 +72,11 @@ public:
         // Check if the version is affected by bugs if client set it.
         if (request->has_rpc_version()) {
             _bugs->find(request->rpc_version(), response);
-        } 
+        }
         response->set_new_interval(FLAGS_reporting_interval);
         butil::EndPoint server_addr;
         CHECK_EQ(0, butil::str2endpoint(request->server_addr().c_str(), &server_addr));
-        // NOTE(gejun): The ip reported is inaccessible in many cases, use 
+        // NOTE(gejun): The ip reported is inaccessible in many cases, use
         // remote_side instead right now.
         server_addr.ip = cntl->remote_side().ip;
         LOG(INFO) << "Pinged by " << server_addr << " (r"
@@ -89,7 +89,7 @@ private:
 
 int main(int argc, char* argv[]) {
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    
+
     brpc::Server server;
     server.set_version("trackme_server");
     BugsLoader bugs;
@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     TrackMeServiceImpl echo_service_impl(&bugs);
-    if (server.AddService(&echo_service_impl, 
+    if (server.AddService(&echo_service_impl,
                           brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
         LOG(ERROR) << "Fail to add service";
         return -1;
@@ -185,7 +185,7 @@ void BugsLoader::load_bugs() {
         if (line[nr - 1] == '\n') { // remove ending newline
             --nr;
         }
-        // line format: 
+        // line format:
         //   min_rev <sp> max_rev <sp> severity <sp> description
         butil::StringMultiSplitter sp(line, line + nr, " \t");
         if (!sp) {
@@ -227,7 +227,7 @@ void BugsLoader::load_bugs() {
             LOG(WARNING) << "[line" << nline << "] Fail to parse column4 as string";
             continue;
         }
-        // Treat everything until end of the line as description. So don't add 
+        // Treat everything until end of the line as description. So don't add
         // comments starting with # or //, they are not recognized.
         butil::StringPiece description(sp.field(), line + nr - sp.field());
         RevisionInfo info;

@@ -60,9 +60,9 @@ void EchoProcessHuluRequest(brpc::InputMessageBase* msg_base);
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    brpc::Protocol dummy_protocol = 
+    brpc::Protocol dummy_protocol =
                              { brpc::policy::ParseHuluMessage,
-                               brpc::SerializeRequestDefault, 
+                               brpc::SerializeRequestDefault,
                                brpc::policy::PackHuluRequest,
                                EchoProcessHuluRequest, EchoProcessHuluRequest,
                                NULL, NULL, NULL,
@@ -149,7 +149,7 @@ void* auth_fighter(void* arg) {
         winner_count.fetch_add(1);
         s->SetAuthentication(AUTH_ERR);
     } else {
-        EXPECT_EQ(AUTH_ERR, auth_error);        
+        EXPECT_EQ(AUTH_ERR, auth_error);
     }
     return NULL;
 }
@@ -160,7 +160,7 @@ TEST_F(SocketTest, authentication) {
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
     brpc::SocketUniquePtr s;
     ASSERT_EQ(0, brpc::Socket::Address(id, &s));
-    
+
     bthread_t th[64];
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         ASSERT_EQ(0, bthread_start_urgent(&th[i], NULL, auth_fighter, s.get()));
@@ -317,14 +317,14 @@ public:
 private:
     void (*_done)(int err, void* data);
     void* _data;
-    bool _called_start_connect; 
+    bool _called_start_connect;
 };
 
 TEST_F(SocketTest, single_threaded_connect_and_write) {
     // FIXME(gejun): Messenger has to be new otherwise quitting may crash.
     brpc::Acceptor* messenger = new brpc::Acceptor;
     const brpc::InputMessageHandler pairs[] = {
-        { brpc::policy::ParseHuluMessage, 
+        { brpc::policy::ParseHuluMessage,
           EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
     };
 
@@ -599,7 +599,7 @@ TEST_F(SocketTest, app_level_health_check) {
     // should trigger next round of hc
     close(listening_fd);
     bthread_usleep(2000000);
-   
+
     brpc::Server server;
     HealthCheckTestServiceImpl hc_service;
     ASSERT_EQ(0, server.AddService(&hc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
@@ -645,7 +645,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
     brpc::SocketUniquePtr s;
     ASSERT_EQ(0, brpc::Socket::Address(id, &s));
-    
+
     global_sock = s.get();
     ASSERT_TRUE(s.get());
     ASSERT_EQ(-1, s->fd());
@@ -711,7 +711,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(1, brpc::Socket::Status(id));
 
     const brpc::InputMessageHandler pairs[] = {
-        { brpc::policy::ParseHuluMessage, 
+        { brpc::policy::ParseHuluMessage,
           EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
     };
 
@@ -825,7 +825,7 @@ TEST_F(SocketTest, multi_threaded_write) {
         options.user = new CheckRecycle;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr s;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &s));    
+        ASSERT_EQ(0, brpc::Socket::Address(id, &s));
         s->_ssl_state = brpc::SSL_OFF;
         global_sock = s.get();
         ASSERT_TRUE(s.get());
@@ -845,7 +845,7 @@ TEST_F(SocketTest, multi_threaded_write) {
             printf("sleep 100ms to block writers\n");
             bthread_usleep(100000);
         }
-        
+
         butil::IOPortal dest;
         const int64_t start_time = butil::gettimeofday_us();
         for (;;) {
@@ -882,7 +882,7 @@ TEST_F(SocketTest, multi_threaded_write) {
         bthread::g_task_control->print_rq_sizes(std::cout);
         std::cout << std::endl;
 
-        ASSERT_EQ(REP * ARRAY_SIZE(th), result.size()) 
+        ASSERT_EQ(REP * ARRAY_SIZE(th), result.size())
             << "write_head=" << s->_write_head;
         std::sort(result.begin(), result.end());
         result.resize(std::unique(result.begin(),
@@ -1001,7 +1001,7 @@ TEST_F(SocketTest, multi_threaded_write_perf) {
     ProfilerStop();
 
     printf("tp=%" PRIu64 "M/s\n", (new_nread - old_nread) / tm.u_elapsed());
-    
+
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         args[i].times = 0;
     }

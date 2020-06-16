@@ -102,7 +102,7 @@ public:
     //                               \   c2 -> s2, s5  (rr)
     int Init(int num_partition_kinds,
              PartitionParser* partition_parser,
-             const char* naming_service_url, 
+             const char* naming_service_url,
              const char* load_balancer_name,
              const PartitionChannelOptions* options);
 
@@ -126,11 +126,11 @@ private:
 };
 
 // As the name implies, this combo channel discovers differently partitioned
-// servers and builds sub PartitionChannels on-the-fly for different groups 
-// of servers. When multiple partitioning methods co-exist, traffic is 
-// splitted based on capacities, namely # of servers in groups. The main 
-// purpose of this channel is to transit from one partitioning method to 
-// another smoothly. For example, with proper deployment, servers can be 
+// servers and builds sub PartitionChannels on-the-fly for different groups
+// of servers. When multiple partitioning methods co-exist, traffic is
+// splitted based on capacities, namely # of servers in groups. The main
+// purpose of this channel is to transit from one partitioning method to
+// another smoothly. For example, with proper deployment, servers can be
 // changed from M-partitions to N-partitions losslessly without changing the
 // client code.
 class DynamicPartitionChannel : public ChannelBase {
@@ -138,14 +138,14 @@ public:
     DynamicPartitionChannel();
     ~DynamicPartitionChannel();
 
-    // Unlike PartitionChannel, DynamicPartitionChannel does not need 
-    // `num_partition_kinds'. It discovers and groups differently partitioned 
+    // Unlike PartitionChannel, DynamicPartitionChannel does not need
+    // `num_partition_kinds'. It discovers and groups differently partitioned
     // servers automatically.
     int Init(PartitionParser* partition_parser,
-             const char* naming_service_url, 
+             const char* naming_service_url,
              const char* load_balancer_name,
              const PartitionChannelOptions* options);
-    
+
     // Access partitions according to their capacities.
     void CallMethod(const google::protobuf::MethodDescriptor* method,
                     google::protobuf::RpcController* controller,

@@ -39,7 +39,7 @@ public:
             com_closelog_r();
         }
     }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(ComlogInitializer);
 };

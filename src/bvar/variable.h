@@ -39,7 +39,7 @@ namespace bvar {
 
 DECLARE_bool(save_series);
 
-// Bitwise masks of displayable targets 
+// Bitwise masks of displayable targets
 enum DisplayFilter {
     DISPLAY_ON_HTML = 1,
     DISPLAY_ON_PLAIN_TEXT = 2,
@@ -79,7 +79,7 @@ struct DumpOptions {
 
 struct SeriesOptions {
     SeriesOptions() : fixed_length(true), test_only(false) {}
-    
+
     bool fixed_length; // useless now
     bool test_only;
 };
@@ -131,7 +131,7 @@ public:
                DisplayFilter display_filter = DISPLAY_ON_ALL) {
         return expose_impl(butil::StringPiece(), name, display_filter);
     }
- 
+
     // Expose this variable with a prefix.
     // Example:
     //   namespace foo {
@@ -163,7 +163,7 @@ public:
     const std::string& name() const { return _name; }
 
     // ====================================================================
-    
+
     // Put names of all exposed variables into `names'.
     // If you want to print all variables, you have to go through `names'
     // and call `describe_exposed' on each name. This prevents an iteration

@@ -57,7 +57,7 @@ public:
 class Collected : public butil::LinkNode<Collected> {
 public:
     virtual ~Collected() {}
-    
+
     // Sumbit the sample for later dumping, a sample can only be submitted once.
     // submit() is implemented as writing a value to bvar::Reducer which does
     // not compete globally. This function generally does not alter the

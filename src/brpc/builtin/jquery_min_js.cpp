@@ -24,7 +24,7 @@
 
 namespace brpc {
 
-static pthread_once_t s_jquery_min_buf_once = PTHREAD_ONCE_INIT; 
+static pthread_once_t s_jquery_min_buf_once = PTHREAD_ONCE_INIT;
 static butil::IOBuf* s_jquery_min_buf = NULL;
 static butil::IOBuf* s_jquery_min_buf_gzip = NULL;
 static void InitJQueryMinBuf() {

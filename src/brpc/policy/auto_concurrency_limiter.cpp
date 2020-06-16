@@ -39,11 +39,11 @@ DEFINE_int32(auto_cl_max_sample_count, 200,
              "requests collected is greater than this value, even if the "
              "duration of the window has not ended, the max_concurrency will "
              "be updated and a new sampling window will be started.");
-DEFINE_double(auto_cl_sampling_interval_ms, 0.1, 
+DEFINE_double(auto_cl_sampling_interval_ms, 0.1,
              "Interval for sampling request in auto concurrency limiter");
 DEFINE_int32(auto_cl_initial_max_concurrency, 40,
              "Initial max concurrency for gradient concurrency limiter");
-DEFINE_int32(auto_cl_noload_latency_remeasure_interval_ms, 50000, 
+DEFINE_int32(auto_cl_noload_latency_remeasure_interval_ms, 50000,
              "Interval for remeasurement of noload_latency. In the period of "
              "remeasurement of noload_latency will halve max_concurrency.");
 DEFINE_double(auto_cl_alpha_factor_for_ema, 0.1,
@@ -55,7 +55,7 @@ DEFINE_bool(auto_cl_enable_error_punish, true,
 DEFINE_double(auto_cl_fail_punish_ratio, 1.0,
               "Use the failed requests to punish normal requests. The larger "
               "the configuration item, the more aggressive the penalty strategy.");
-DEFINE_double(auto_cl_max_explore_ratio, 0.3, 
+DEFINE_double(auto_cl_max_explore_ratio, 0.3,
               "The larger the value, the higher the tolerance of the server to "
               "the fluctuation of latency at low load, and the the greater the "
               "maximum growth rate of qps. Correspondingly, the server will have "
@@ -65,11 +65,11 @@ DEFINE_double(auto_cl_min_explore_ratio, 0.06,
               "this parameter when judging the load situation of the server. "
               "It should be a positive value close to 0, the larger it is, "
               "the higher the latency of the server at full load.");
-DEFINE_double(auto_cl_change_rate_of_explore_ratio, 0.02, 
+DEFINE_double(auto_cl_change_rate_of_explore_ratio, 0.02,
               "The speed of change of auto_cl_max_explore_ratio when the "
               "load situation of the server changes, The value range is "
               "(0 - `max_explore_ratio')");
-DEFINE_double(auto_cl_reduce_ratio_while_remeasure, 0.9, 
+DEFINE_double(auto_cl_reduce_ratio_while_remeasure, 0.9,
               "This value affects the reduction ratio to mc during retesting "
               "noload_latency. The value range is (0-1)");
 DEFINE_int32(auto_cl_latency_fluctuation_correction_factor, 1,
@@ -105,23 +105,23 @@ void AutoConcurrencyLimiter::OnResponded(int error_code, int64_t latency_us) {
     }
 
     const int64_t now_time_us = butil::gettimeofday_us();
-    int64_t last_sampling_time_us = 
+    int64_t last_sampling_time_us =
         _last_sampling_time_us.load(butil::memory_order_relaxed);
 
-    if (last_sampling_time_us == 0 || 
-        now_time_us - last_sampling_time_us >= 
+    if (last_sampling_time_us == 0 ||
+        now_time_us - last_sampling_time_us >=
             FLAGS_auto_cl_sampling_interval_ms * 1000) {
         bool sample_this_call = _last_sampling_time_us.compare_exchange_strong(
             last_sampling_time_us, now_time_us, butil::memory_order_relaxed);
         if (sample_this_call) {
-            bool sample_window_submitted = AddSample(error_code, latency_us, 
+            bool sample_window_submitted = AddSample(error_code, latency_us,
                                                      now_time_us);
             if (sample_window_submitted) {
-                // The following log prints has data-race in extreme cases, 
+                // The following log prints has data-race in extreme cases,
                 // unless you are in debug, you should not open it.
                 VLOG(1)
                     << "Sample window submitted, current max_concurrency:"
-                    << _max_concurrency 
+                    << _max_concurrency
                     << ", min_latency_us:" << _min_latency_us
                     << ", ema_max_qps:" << _ema_max_qps
                     << ", explore_ratio:" << _explore_ratio;
@@ -135,14 +135,14 @@ int AutoConcurrencyLimiter::MaxConcurrency() {
 }
 
 int64_t AutoConcurrencyLimiter::NextResetTime(int64_t sampling_time_us) {
-    int64_t reset_start_us = sampling_time_us + 
-        (FLAGS_auto_cl_noload_latency_remeasure_interval_ms / 2 + 
+    int64_t reset_start_us = sampling_time_us +
+        (FLAGS_auto_cl_noload_latency_remeasure_interval_ms / 2 +
         butil::fast_rand_less_than(FLAGS_auto_cl_noload_latency_remeasure_interval_ms / 2)) * 1000;
     return reset_start_us;
 }
 
-bool AutoConcurrencyLimiter::AddSample(int error_code, 
-                                       int64_t latency_us, 
+bool AutoConcurrencyLimiter::AddSample(int error_code,
+                                       int64_t latency_us,
                                        int64_t sampling_time_us) {
     std::unique_lock<butil::Mutex> lock_guard(_sw_mutex);
     if (_reset_latency_us != 0) {
@@ -171,15 +171,15 @@ bool AutoConcurrencyLimiter::AddSample(int error_code,
     }
 
     if (_sw.succ_count + _sw.failed_count < FLAGS_auto_cl_min_sample_count) {
-        if (sampling_time_us - _sw.start_time_us >= 
+        if (sampling_time_us - _sw.start_time_us >=
             FLAGS_auto_cl_sample_window_size_ms * 1000) {
-            // If the sample size is insufficient at the end of the sampling 
+            // If the sample size is insufficient at the end of the sampling
             // window, discard the entire sampling window
             ResetSampleWindow(sampling_time_us);
         }
         return false;
-    } 
-    if (sampling_time_us - _sw.start_time_us < 
+    }
+    if (sampling_time_us - _sw.start_time_us <
         FLAGS_auto_cl_sample_window_size_ms * 1000 &&
         _sw.succ_count + _sw.failed_count < FLAGS_auto_cl_max_sample_count) {
         return false;
@@ -232,7 +232,7 @@ void AutoConcurrencyLimiter::AdjustMaxConcurrency(int next_max_concurrency) {
 void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     int32_t total_succ_req = _total_succ_req.load(butil::memory_order_relaxed);
     double failed_punish = _sw.total_failed_us * FLAGS_auto_cl_fail_punish_ratio;
-    int64_t avg_latency = 
+    int64_t avg_latency =
         std::ceil((failed_punish + _sw.total_succ_us) / _sw.succ_count);
     double qps = 1000000.0 * total_succ_req / (sampling_time_us - _sw.start_time_us);
     UpdateMinLatency(avg_latency);
@@ -243,20 +243,20 @@ void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     if (_remeasure_start_us <= sampling_time_us) {
         const double reduce_ratio = FLAGS_auto_cl_reduce_ratio_while_remeasure;
         _reset_latency_us = sampling_time_us + avg_latency * 2;
-        next_max_concurrency = 
+        next_max_concurrency =
             std::ceil(_ema_max_qps * _min_latency_us / 1000000 * reduce_ratio);
     } else {
         const double change_step = FLAGS_auto_cl_change_rate_of_explore_ratio;
         const double max_explore_ratio = FLAGS_auto_cl_max_explore_ratio;
         const double min_explore_ratio = FLAGS_auto_cl_min_explore_ratio;
         const double correction_factor = FLAGS_auto_cl_latency_fluctuation_correction_factor;
-        if (avg_latency <= _min_latency_us * (1.0 + min_explore_ratio * correction_factor) || 
+        if (avg_latency <= _min_latency_us * (1.0 + min_explore_ratio * correction_factor) ||
             qps <= _ema_max_qps / (1.0 + min_explore_ratio)) {
-            _explore_ratio  = std::min(max_explore_ratio, _explore_ratio + change_step); 
+            _explore_ratio  = std::min(max_explore_ratio, _explore_ratio + change_step);
         } else {
             _explore_ratio = std::max(min_explore_ratio, _explore_ratio - change_step);
         }
-        next_max_concurrency = 
+        next_max_concurrency =
             _min_latency_us * _ema_max_qps / 1000000 *  (1 + _explore_ratio);
     }
 

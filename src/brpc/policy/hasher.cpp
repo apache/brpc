@@ -35,8 +35,8 @@ void MD5HashSignature(const void* key, size_t len, unsigned char* results) {
 uint32_t MD5Hash32(const void* key, size_t len) {
     unsigned char results[16];
     MD5HashSignature(key, len, results);
-    return ((uint32_t) (results[3] & 0xFF) << 24) 
-            | ((uint32_t) (results[2] & 0xFF) << 16) 
+    return ((uint32_t) (results[3] & 0xFF) << 24)
+            | ((uint32_t) (results[2] & 0xFF) << 16)
             | ((uint32_t) (results[1] & 0xFF) << 8)
             | (results[0] & 0xFF);
 }
@@ -50,8 +50,8 @@ uint32_t MD5Hash32V(const butil::StringPiece* keys, size_t num_keys) {
     }
     unsigned char results[16];
     MD5_Final(results, &ctx);
-    return ((uint32_t) (results[3] & 0xFF) << 24) 
-            | ((uint32_t) (results[2] & 0xFF) << 16) 
+    return ((uint32_t) (results[3] & 0xFF) << 24)
+            | ((uint32_t) (results[2] & 0xFF) << 16)
             | ((uint32_t) (results[1] & 0xFF) << 8)
             | (results[0] & 0xFF);
 }

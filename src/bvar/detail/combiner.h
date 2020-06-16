@@ -113,7 +113,7 @@ class ElementContainer<
     T, typename butil::enable_if<is_atomical<T>::value>::type> {
 public:
     // We don't need any memory fencing here, every op is relaxed.
-    
+
     inline void load(T* out) {
         *out = _value.load(butil::memory_order_relaxed);
     }
@@ -159,7 +159,7 @@ public:
     typedef ElementTp element_type;
     typedef AgentCombiner<ResultTp, ElementTp, BinaryOp> self_type;
 friend class GlobalValue<self_type>;
-    
+
     struct Agent : public butil::LinkNode<Agent> {
         Agent() : combiner(NULL) {}
 
@@ -169,7 +169,7 @@ friend class GlobalValue<self_type>;
                 combiner = NULL;
             }
         }
-        
+
         void reset(const ElementTp& val, self_type* c) {
             combiner = c;
             element.store(val);
@@ -181,11 +181,11 @@ friend class GlobalValue<self_type>;
         //       void operator()(GlobalValue<Combiner> & global_value,
         //                       ElementTp & local_value) const {
         //           if (test_for_merging(local_value)) {
-        // 
+        //
         //               // Unlock tls element and lock combiner. Obviously
         //               // tls element can be changed during lock().
         //               ResultTp* g = global_value.lock();
-        // 
+        //
         //               // *g and local_value are not changed provided
         //               // merge_global is called from the thread owning
         //               // the agent.
@@ -200,7 +200,7 @@ friend class GlobalValue<self_type>;
         //           ...
         //       }
         //   };
-        // 
+        //
         // NOTE: Only available to non-atomic types.
         template <typename Op>
         void merge_global(const Op &op) {
@@ -231,7 +231,7 @@ friend class GlobalValue<self_type>;
             _id = -1;
         }
     }
-    
+
     // [Threadsafe] May be called from anywhere
     ResultTp combine_agents() const {
         ElementTp tls_value;
@@ -245,9 +245,9 @@ friend class GlobalValue<self_type>;
         return ret;
     }
 
-    typename butil::add_cr_non_integral<ElementTp>::type element_identity() const 
+    typename butil::add_cr_non_integral<ElementTp>::type element_identity() const
     { return _element_identity; }
-    typename butil::add_cr_non_integral<ResultTp>::type result_identity() const 
+    typename butil::add_cr_non_integral<ResultTp>::type result_identity() const
     { return _result_identity; }
 
     // [Threadsafe] May be called from anywhere.
@@ -317,7 +317,7 @@ friend class GlobalValue<self_type>;
         // reseting agents is must because the agent object may be reused.
         // Set element to be default-constructed so that if it's non-pod,
         // internal allocations should be released.
-        for (butil::LinkNode<Agent>* 
+        for (butil::LinkNode<Agent>*
                 node = _agents.head(); node != _agents.end();) {
             node->value()->reset(ElementTp(), NULL);
             butil::LinkNode<Agent>* const saved_next =  node->next();

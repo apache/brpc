@@ -40,7 +40,7 @@ TEST_F(ReducerTest, atomicity) {
     ASSERT_EQ(sizeof(double), sizeof(bvar::detail::ElementContainer<double>));
 }
 
-TEST_F(ReducerTest, adder) {    
+TEST_F(ReducerTest, adder) {
     bvar::Adder<uint32_t> reducer1;
     ASSERT_TRUE(reducer1.valid());
     reducer1 << 2 << 4;
@@ -94,7 +94,7 @@ static long start_perf_test_with_atomic(size_t num_thread) {
     }
     long totol_time = 0;
     for (size_t i = 0; i < num_thread; ++i) {
-        void *ret; 
+        void *ret;
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }
@@ -112,7 +112,7 @@ static long start_perf_test_with_adder(size_t num_thread) {
     }
     long totol_time = 0;
     for (size_t i = 0; i < num_thread; ++i) {
-        void *ret = NULL; 
+        void *ret = NULL;
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }

@@ -38,7 +38,7 @@ public:
 
     PtrContainer(const PtrContainer& rhs)
         : _ptr(rhs._ptr ? new T(*rhs._ptr) : NULL) {}
-    
+
     void operator=(const PtrContainer& rhs) {
         if (rhs._ptr) {
             if (_ptr) {
@@ -60,7 +60,7 @@ public:
     }
 
     operator void*() const { return _ptr; }
-    
+
 private:
     T* _ptr;
 };

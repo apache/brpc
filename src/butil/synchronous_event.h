@@ -61,12 +61,12 @@ class SynchronousEvent {
 public:
     typedef detail::EventObserver<_A1, _A2, _A3> Observer;
     typedef std::vector<Observer*> ObserverSet;
-    
+
     SynchronousEvent() : _n(0) {}
 
     // Add an observer, callable inside on_event() and added observers
     // will be called with the same event in the same run.
-    // Returns 0 when successful, -1 when the obsever is NULL or already added. 
+    // Returns 0 when successful, -1 when the obsever is NULL or already added.
     int subscribe(Observer* ob) {
         if (NULL == ob) {
             LOG(ERROR) << "Observer is NULL";
@@ -162,7 +162,7 @@ public:
         _shrink();
         errno = saved_errno;
     }
-        
+
 private:
     void _shrink() {
         if (_n == _obs.size()) {
@@ -177,7 +177,7 @@ private:
         }
         _obs.resize(_n);
     }
-    
+
     size_t _n;
     ObserverSet _obs;
 };

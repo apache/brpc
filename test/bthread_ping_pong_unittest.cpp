@@ -146,7 +146,7 @@ TEST(PingPongTest, ping_pong) {
         arg1->counter = 0;
         arg1->wakeup = 0;
         args[i] = arg1;
-    
+
         PlayerArg* arg2 = new PlayerArg;
         if (!FLAGS_use_futex && !FLAGS_use_butex) {
             arg2->read_fd = pipe2[0];

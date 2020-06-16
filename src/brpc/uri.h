@@ -63,7 +63,7 @@ public:
     void Swap(URI &rhs);
 
     // Reset internal fields as if they're just default-constructed.
-    void Clear(); 
+    void Clear();
 
     // Decompose `url' and set into corresponding fields.
     // heading and trailing spaces are allowed and skipped.
@@ -102,7 +102,7 @@ public:
     // Set path/query/fragment with the input in form of "path?query#fragment"
     void SetH2Path(const char* h2_path);
     void SetH2Path(const std::string& path) { SetH2Path(path.c_str()); }
-    
+
     // Get the value of a CASE-SENSITIVE key.
     // Returns pointer to the value, NULL when the key does not exist.
     const std::string* GetQuery(const char* key) const
@@ -213,7 +213,7 @@ public:
     {}
 };
 
-// A class to remove some specific keys in a query string, 
+// A class to remove some specific keys in a query string,
 // when removal is over, call modified_query() to get modified
 // query.
 class QueryRemover {
@@ -233,7 +233,7 @@ public:
     // After this function is called, current query will be removed from
     // modified_query(), calling this function more than once has no effect.
     void remove_current_key_and_value();
- 
+
     // Return the modified query string
     std::string modified_query();
 

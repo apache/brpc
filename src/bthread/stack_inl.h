@@ -66,11 +66,11 @@ template <typename StackClass> struct StackFactory {
             }
         }
     };
-    
+
     static ContextualStack* get_stack(void (*entry)(intptr_t)) {
         return butil::get_object<Wrapper>(entry);
     }
-    
+
     static void return_stack(ContextualStack* sc) {
         butil::return_object(static_cast<Wrapper*>(sc));
     }
@@ -87,7 +87,7 @@ template <> struct StackFactory<MainStackClass> {
         s->storage.zeroize();
         return s;
     }
-    
+
     static void return_stack(ContextualStack* s) {
         delete s;
     }
@@ -192,7 +192,7 @@ template <> struct ObjectPoolValidator<
         return w->context != NULL;
     }
 };
-    
+
 }  // namespace butil
 
 #endif  // BTHREAD_ALLOCATE_STACK_INL_H

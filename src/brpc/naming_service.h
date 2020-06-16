@@ -43,7 +43,7 @@ public:
 
 // Mapping a name to ServerNodes.
 class NamingService : public Describable, public Destroyable {
-public:    
+public:
     // Implement this method to get servers associated with `service_name'
     // in periodic or event-driven manner, call methods of `actions' to
     // tell RPC system about server changes. This method will be run in

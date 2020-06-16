@@ -41,11 +41,11 @@ public:
     bool OnRequested(int* rejected_cc = NULL);
 
     // Call this when the method just finished.
-    // `error_code' : The error code obtained from the controller. Equal to 
+    // `error_code' : The error code obtained from the controller. Equal to
     // 0 when the call is successful.
     // `latency_us' : microseconds taken by a successful call. Latency can
     // be measured in this utility class as well, but the callsite often
-    // did the time keeping and the cost is better saved. 
+    // did the time keeping and the cost is better saved.
     void OnResponded(int error_code, int64_t latency_us);
 
     // Expose internal vars.
@@ -62,8 +62,8 @@ private:
 friend class Server;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
 
-    // Note: SetConcurrencyLimiter() is not thread safe and can only be called 
-    // before the server is started. 
+    // Note: SetConcurrencyLimiter() is not thread safe and can only be called
+    // before the server is started.
     void SetConcurrencyLimiter(ConcurrencyLimiter* cl);
 
     std::unique_ptr<ConcurrencyLimiter> _cl;
@@ -78,7 +78,7 @@ friend class Server;
 class ConcurrencyRemover {
 public:
     ConcurrencyRemover(MethodStatus* status, Controller* c, int64_t received_us)
-        : _status(status) 
+        : _status(status)
         , _c(c)
         , _received_us(received_us) {}
     ~ConcurrencyRemover();
@@ -93,7 +93,7 @@ inline bool MethodStatus::OnRequested(int* rejected_cc) {
     const int cc = _nconcurrency.fetch_add(1, butil::memory_order_relaxed) + 1;
     if (NULL == _cl || _cl->OnRequested(cc)) {
         return true;
-    } 
+    }
     if (rejected_cc) {
         *rejected_cc = cc;
     }

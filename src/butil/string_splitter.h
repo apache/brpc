@@ -41,9 +41,9 @@
 // Usage:
 //     const char* the_string_to_split = ...;
 //     for (StringSplitter s(the_string_to_split, '\t'); s; ++s) {
-//         printf("%*s\n", s.length(), s.field());    
+//         printf("%*s\n", s.length(), s.field());
 //     }
-// 
+//
 // "s" behaves as an iterator and evaluates to true before ending.
 // "s.field()" and "s.length()" are address and length of current field
 // respectively. Notice that "s.field()" may not end with '\0' because
@@ -99,11 +99,11 @@ public:
     inline int to_ulonglong(unsigned long long *pv) const;
     inline int to_float(float *pv) const;
     inline int to_double(double *pv) const;
-    
+
 private:
     inline bool not_end(const char* p) const;
     inline void init();
-    
+
     const char* _head;
     const char* _tail;
     const char* _str_tail;
@@ -159,7 +159,7 @@ private:
     inline bool is_sep(char c) const;
     inline bool not_end(const char* p) const;
     inline void init();
-    
+
     const char* _head;
     const char* _tail;
     const char* _str_tail;

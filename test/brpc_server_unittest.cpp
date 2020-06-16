@@ -108,7 +108,7 @@ public:
         response->set_message(EXP_RESPONSE);
         if (request->sleep_us() > 0) {
             LOG(INFO) << "Sleep " << request->sleep_us() << " us, protocol="
-                      << cntl->request_protocol(); 
+                      << cntl->request_protocol();
             bthread_usleep(request->sleep_us());
         } else {
             LOG(INFO) << "No sleep, protocol=" << cntl->request_protocol();
@@ -171,7 +171,7 @@ TEST_F(ServerTest, sanity) {
     {
         brpc::Server server;
         ASSERT_EQ(-1, server.Start("127.0.0.1:12345:asdf", NULL));
-        ASSERT_EQ(-1, server.Start("127.0.0.1:99999", NULL)); 
+        ASSERT_EQ(-1, server.Start("127.0.0.1:99999", NULL));
         ASSERT_EQ(0, server.Start("127.0.0.1:8613", NULL));
     }
     {
@@ -291,7 +291,7 @@ public:
         response->set_message(request->message() + "_v1_Echo5");
         ncalled_echo5.fetch_add(1);
     }
-    
+
     butil::atomic<int> ncalled;
     butil::atomic<int> ncalled_echo2;
     butil::atomic<int> ncalled_echo3;
@@ -375,7 +375,7 @@ TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     stub.Echo(&cntl, &req, &res, NULL);
     ASSERT_TRUE(cntl.Failed());
     ASSERT_TRUE(cntl.ErrorText().find("Got EOF of ") != std::string::npos);
-    
+
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
 }
@@ -408,7 +408,7 @@ TEST_F(ServerTest, services_in_different_ns) {
     server1.Stop(0);
     server1.Join();
     // NOTICE: stopping server now does not trigger HC of the client because
-    // the main socket is only SetFailed in RPC route, however the RPC already 
+    // the main socket is only SetFailed in RPC route, however the RPC already
     // ends at this point.
     EchoServiceV2 service_v2;
 #ifndef ALLOW_SAME_NAMED_SERVICE_IN_DIFFERENT_NAMESPACE
@@ -453,7 +453,7 @@ TEST_F(ServerTest, various_forms_of_uri_paths) {
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << cntl.response_attachment();
     ASSERT_EQ(1, service_v1.ncalled.load());
-    
+
     cntl.Reset();
     cntl.http_request().uri() = "/EchoService///Echo//";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
@@ -480,7 +480,7 @@ TEST_F(ServerTest, various_forms_of_uri_paths) {
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(3, service_v1.ncalled.load());
-    
+
     //Stop the server.
     server1.Stop(0);
     server1.Join();
@@ -561,7 +561,7 @@ TEST_F(ServerTest, restful_mapping) {
     const int port = 9200;
     EchoServiceV1 service_v1;
     EchoServiceV2 service_v2;
-    
+
     brpc::Server server1;
     ASSERT_EQ(0u, server1.service_count());
     ASSERT_EQ(0, server1.AddService(
@@ -572,7 +572,7 @@ TEST_F(ServerTest, restful_mapping) {
                   // Map another path to the same method is ok.
                   "/v3/echo => Echo,"
 
-                  // end with wildcard 
+                  // end with wildcard
                   "/v2/echo/* => Echo,"
 
                   // single-component path should be OK
@@ -601,7 +601,7 @@ TEST_F(ServerTest, restful_mapping) {
                   "/v1/echo => Echo,"
                   "/v1/echo => Echo"));
     ASSERT_EQ(0u, server2.service_count());
-    
+
     // NOTE: PATH/* and PATH cannot coexist in previous versions, now it's OK.
     brpc::Server server3;
     ASSERT_EQ(0, server3.AddService(
@@ -610,7 +610,7 @@ TEST_F(ServerTest, restful_mapping) {
                   "/v1/echo/* => Echo,"
                   "/v1/echo   => Echo"));
     ASSERT_EQ(1u, server3.service_count());
-    
+
     // Same named services can't be added even with restful mapping
     brpc::Server server4;
     ASSERT_EQ(0, server4.AddService(
@@ -668,7 +668,7 @@ TEST_F(ServerTest, restful_mapping) {
                   brpc::SERVER_DOESNT_OWN_SERVICE,
                   " /v1/*/* => Echo"));
     ASSERT_EQ(0u, server9.service_count());
-    
+
     // Access services
     ASSERT_EQ(0, server1.Start(port, NULL));
     brpc::Channel http_channel;
@@ -735,7 +735,7 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(4, service_v1.ncalled.load());
     ASSERT_EQ("{\"message\":\"hehe_v1\"}", cntl.response_attachment());
-    
+
     // Access v1.Echo via /v2/echo/anything
     cntl.Reset();
     cntl.http_request().uri() = "/v2/echo/anything";
@@ -772,7 +772,7 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(8, service_v1.ncalled.load());
     ASSERT_EQ("{\"message\":\"xyz_v1\"}", cntl.response_attachment());
-    
+
     cntl.Reset();
     cntl.http_request().uri() = "/v6/echo/test";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
@@ -808,7 +808,7 @@ TEST_F(ServerTest, restful_mapping) {
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
     ASSERT_EQ(2, service_v1.ncalled_echo3.load());
-    
+
     cntl.Reset();
     cntl.http_request().uri() = "/v6/echo/1.flv";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
@@ -854,7 +854,7 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ("{\"message\":\"f.flv_v1\"}", cntl.response_attachment());
     ASSERT_EQ(11, service_v1.ncalled.load());
-    
+
     // matched nothing
     cntl.Reset();
     cntl.http_request().uri() = "/v6/ech/1.ts";
@@ -877,7 +877,7 @@ TEST_F(ServerTest, restful_mapping) {
 TEST_F(ServerTest, conflict_name_between_restful_mapping_and_builtin) {
     const int port = 9200;
     EchoServiceV1 service_v1;
-    
+
     brpc::Server server1;
     ASSERT_EQ(0u, server1.service_count());
     ASSERT_EQ(0, server1.AddService(
@@ -893,7 +893,7 @@ TEST_F(ServerTest, conflict_name_between_restful_mapping_and_builtin) {
 TEST_F(ServerTest, restful_mapping_is_tried_after_others) {
     const int port = 9200;
     EchoServiceV1 service_v1;
-    
+
     brpc::Server server1;
     ASSERT_EQ(0u, server1.service_count());
     ASSERT_EQ(0, server1.AddService(
@@ -905,7 +905,7 @@ TEST_F(ServerTest, restful_mapping_is_tried_after_others) {
     ASSERT_EQ(1UL, server1._global_restful_map->size());
 
     ASSERT_EQ(0, server1.Start(port, NULL));
-    
+
     brpc::Channel http_channel;
     brpc::ChannelOptions chan_options;
     chan_options.protocol = "http";
@@ -978,7 +978,7 @@ TEST_F(ServerTest, add_remove_service) {
     ASSERT_EQ(-1, server.AddService(
         &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(-1, server.RemoveService(&echo_svc));
-    
+
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
 
@@ -1043,13 +1043,13 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
     ASSERT_EQ(0, server.AddService(&echo_svc,
                                    brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, str2endpoint("127.0.0.1:9876", &ep));
-    
+
     // Server::Stop(-1)
     {
         ASSERT_EQ(0, server.Start(ep, NULL));
         bthread_t tid;
         const int64_t old_count = echo_svc.count.load(butil::memory_order_relaxed);
-        google::protobuf::Closure* thrd_func = 
+        google::protobuf::Closure* thrd_func =
             brpc::NewCallback(SendSleepRPC, ep, 100, true);
         EXPECT_EQ(0, bthread_start_background(&tid, NULL, RunClosure, thrd_func));
         while (echo_svc.count.load(butil::memory_order_relaxed) == old_count) {
@@ -1069,13 +1069,13 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ASSERT_EQ(0, server.Start(ep, NULL));
         bthread_t tid;
         const int64_t old_count = echo_svc.count.load(butil::memory_order_relaxed);
-        google::protobuf::Closure* thrd_func = 
+        google::protobuf::Closure* thrd_func =
             brpc::NewCallback(SendSleepRPC, ep, 100, true);
         EXPECT_EQ(0, bthread_start_background(&tid, NULL, RunClosure, thrd_func));
         while (echo_svc.count.load(butil::memory_order_relaxed) == old_count) {
             bthread_usleep(1000);
         }
-        
+
         timer.start();
         ASSERT_EQ(0, server.Stop(0));
         ASSERT_EQ(0, server.Join());
@@ -1092,7 +1092,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ASSERT_EQ(0, server.Start(ep, NULL));
         bthread_t tid;
         const int64_t old_count = echo_svc.count.load(butil::memory_order_relaxed);
-        google::protobuf::Closure* thrd_func = 
+        google::protobuf::Closure* thrd_func =
             brpc::NewCallback(SendSleepRPC, ep, 100, true);
         EXPECT_EQ(0, bthread_start_background(&tid, NULL, RunClosure, thrd_func));
         while (echo_svc.count.load(butil::memory_order_relaxed) == old_count) {
@@ -1108,14 +1108,14 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         // EXPECT_TRUE(labs(timer.m_elapsed() - 50) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
-    
+
     // Server::Stop(timeout) where timeout > g_sleep_ms
     {
         ++ep.port;
         ASSERT_EQ(0, server.Start(ep, NULL));
         bthread_t tid;
         const int64_t old_count = echo_svc.count.load(butil::memory_order_relaxed);
-        google::protobuf::Closure* thrd_func = 
+        google::protobuf::Closure* thrd_func =
             brpc::NewCallback(SendSleepRPC, ep, 100, true);
         EXPECT_EQ(0, bthread_start_background(&tid, NULL, RunClosure, thrd_func));
         while (echo_svc.count.load(butil::memory_order_relaxed) == old_count) {
@@ -1141,11 +1141,11 @@ void SendMultipleRPC(butil::EndPoint ep, int count) {
         req.set_message(EXP_REQUEST);
         test::EchoService_Stub stub(&channel);
         stub.Echo(&cntl, &req, &res, NULL);
- 
+
         EXPECT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
     }
 }
-              
+
 TEST_F(ServerTest, serving_requests) {
     EchoServiceImpl echo_svc;
     brpc::Server server;
@@ -1159,7 +1159,7 @@ TEST_F(ServerTest, serving_requests) {
     const int COUNT = 1;
     pthread_t tids[NUM];
     for (int i = 0; i < NUM; ++i) {
-        google::protobuf::Closure* thrd_func = 
+        google::protobuf::Closure* thrd_func =
                 brpc::NewCallback(SendMultipleRPC, ep, COUNT);
         EXPECT_EQ(0, pthread_create(&tids[i], NULL, RunClosure, thrd_func));
     }
@@ -1199,7 +1199,7 @@ TEST_F(ServerTest, range_start) {
 
     brpc::Server server;
     EXPECT_EQ(-1, server.Start("0.0.0.0", brpc::PortRange(START_PORT, END_PORT - 1), NULL));
-    // note: add an extra port after END_PORT to detect the bug that the 
+    // note: add an extra port after END_PORT to detect the bug that the
     // probing does not stop at the first valid port(END_PORT).
     EXPECT_EQ(0, server.Start("0.0.0.0", brpc::PortRange(START_PORT, END_PORT + 1/*note*/), NULL));
     EXPECT_EQ(END_PORT, server.listen_address().port);
@@ -1307,14 +1307,14 @@ TEST_F(ServerTest, max_concurrency) {
     server1.MaxConcurrencyOf("test.EchoService.Echo") = 1;
     ASSERT_EQ(1, server1.MaxConcurrencyOf("test.EchoService.Echo"));
     server1.MaxConcurrencyOf(&service1, "Echo") = 2;
-    ASSERT_EQ(2, server1.MaxConcurrencyOf(&service1, "Echo")); 
+    ASSERT_EQ(2, server1.MaxConcurrencyOf(&service1, "Echo"));
 
     ASSERT_EQ(0, server1.Start(port, NULL));
     brpc::Channel http_channel;
     brpc::ChannelOptions chan_options;
     chan_options.protocol = "http";
     ASSERT_EQ(0, http_channel.Init("0.0.0.0", port, &chan_options));
-    
+
     brpc::Channel normal_channel;
     ASSERT_EQ(0, normal_channel.Init("0.0.0.0", port, NULL));
     test::EchoService_Stub stub(&normal_channel);
@@ -1334,7 +1334,7 @@ TEST_F(ServerTest, max_concurrency) {
 
     bthread_usleep(20000);
     LOG(INFO) << "Send other requests";
-    
+
     brpc::Controller cntl3;
     cntl3.http_request().uri() = "/EchoService/Echo";
     cntl3.http_request().set_method(brpc::HTTP_METHOD_POST);
@@ -1349,7 +1349,7 @@ TEST_F(ServerTest, max_concurrency) {
     stub.Echo(&cntl4, &req, NULL, NULL);
     ASSERT_TRUE(cntl4.Failed());
     ASSERT_EQ(brpc::ELIMIT, cntl4.ErrorCode());
-    
+
     brpc::Join(cntl1.call_id());
     brpc::Join(cntl2.call_id());
     ASSERT_FALSE(cntl1.Failed()) << cntl1.ErrorText();

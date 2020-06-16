@@ -135,7 +135,7 @@ TEST_F(BaiduThreadLocalTest, sanity) {
     processed[NTHREAD] = false;
     deleted[NTHREAD] = false;
     proc_dummy(&processed[NTHREAD]);
-    
+
     pthread_t th[NTHREAD];
     for (size_t i = 0; i < NTHREAD; ++i) {
         processed[i] = false;

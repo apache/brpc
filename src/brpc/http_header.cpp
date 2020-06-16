@@ -22,7 +22,7 @@
 
 namespace brpc {
 
-HttpHeader::HttpHeader() 
+HttpHeader::HttpHeader()
     : _status_code(HTTP_STATUS_OK)
     , _method(HTTP_METHOD_GET)
     , _version(1, 1) {
@@ -64,7 +64,7 @@ void HttpHeader::Clear() {
 const char* HttpHeader::reason_phrase() const {
     return HttpReasonPhrase(_status_code);
 }
-    
+
 void HttpHeader::set_status_code(int status_code) {
     _status_code = status_code;
 }

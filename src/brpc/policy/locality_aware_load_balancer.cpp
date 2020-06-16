@@ -64,7 +64,7 @@ bool LocalityAwareLoadBalancer::Add(Servers& bg, const Servers& fg,
         // Both fg and bg do not have the id. We create and insert a new Weight
         // structure. Later when we modify the other buffer(current fg), just
         // copy the pointer.
-        
+
         const size_t index = bg.weight_tree.size();
         // If there exists node, set initial weight to be average of existing
         // weights, set to WEIGHT_SCALE otherwise. If we insert from empty
@@ -75,7 +75,7 @@ bool LocalityAwareLoadBalancer::Add(Servers& bg, const Servers& fg,
             initial_weight = lb->_total.load(butil::memory_order_relaxed)
                 / bg.weight_tree.size();
         }
-        
+
         // Maintain the mapping from id to offset in weight_tree. This mapping
         // is just for fast testing of existence of id.
         bg.server_map[id] = index;
@@ -113,7 +113,7 @@ bool LocalityAwareLoadBalancer::Remove(
     // Save the index and remove mapping from id to the index.
     const size_t index = *pindex;
     bg.server_map.erase(id);
-    
+
     Weight* w = bg.weight_tree[index].weight;
     // Set the weight to 0. Before we change weight of the parent nodes,
     // SelectServer may still go to the node, but when it sees a zero weight,
@@ -142,7 +142,7 @@ bool LocalityAwareLoadBalancer::Remove(
         bg.weight_tree[index].weight = bg.weight_tree.back().weight;
         bg.server_map[bg.weight_tree[index].server_id] = index;
         bg.weight_tree.pop_back();
-        
+
         Weight* w2 = bg.weight_tree[index].weight;  // previously back()
         if (rm_weight) {
             // First buffer.
@@ -285,7 +285,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
             LOG(FATAL) << "A selection runs too long!";
             return EHOSTDOWN;
         }
-        
+
         // Locate a weight range in the tree. This is obviously not atomic and
         // left-weights / total / weight-of-the-node may not be consistent. But
         // this is what we have to pay to gain more parallelism.
@@ -349,7 +349,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
     return EHOSTDOWN;
 }
 
-void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {        
+void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {
     butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         return;
@@ -415,7 +415,7 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
         const int64_t err_latency =
             (nleft * (int64_t)(latency * FLAGS_punish_error_ratio)
              + ndone * ci.controller->timeout_ms() * 1000L) / (ndone + nleft);
-        
+
         if (!_time_q.empty()) {
             TimeInfo* ti = _time_q.bottom();
             ti->latency_sum += err_latency;
@@ -430,16 +430,16 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
             _time_q.push(tm_info);
         }
     }
-        
+
     const int64_t top_time_us = _time_q.top()->end_time_us;
     const size_t n = _time_q.size();
     int64_t scaled_qps = DEFAULT_QPS * WEIGHT_SCALE;
-    if (end_time_us > top_time_us) {        
+    if (end_time_us > top_time_us) {
         // Only calculate scaled_qps when the queue is full or the elapse
         // between bottom and top is reasonably large(so that error of the
         // calculated QPS is probably smaller).
         if (n == _time_q.capacity() ||
-            end_time_us >= top_time_us + 1000000L/*1s*/) { 
+            end_time_us >= top_time_us + 1000000L/*1s*/) {
             // will not overflow.
             scaled_qps = (n - 1) * 1000000L * WEIGHT_SCALE / (end_time_us - top_time_us);
             if (scaled_qps < WEIGHT_SCALE) {
@@ -570,7 +570,7 @@ int64_t LocalityAwareLoadBalancer::Weight::MarkOld(size_t index) {
     _old_index = index;
     return saved;
 }
-        
+
 std::pair<int64_t, int64_t> LocalityAwareLoadBalancer::Weight::ClearOld() {
     BAIDU_SCOPED_LOCK(_mutex);
     const int64_t old_weight = _old_weight;

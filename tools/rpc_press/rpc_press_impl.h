@@ -56,7 +56,7 @@ struct PressOptions {
     std::string lb_policy; // "rr", "Policy of load balance rr ||random"
     std::string proto_file;
     std::string proto_includes;
-    
+
     PressOptions() :
         server_type(0),
         test_req_rate(0),
@@ -75,7 +75,7 @@ class PressClient {
 public:
     PressClient(const PressOptions* options,
                      google::protobuf::compiler::Importer* importer,
-                     google::protobuf::DynamicMessageFactory* factory) { 
+                     google::protobuf::DynamicMessageFactory* factory) {
         _method_descriptor = NULL;
         _response_prototype = NULL;
         _options = options;
@@ -90,8 +90,8 @@ public:
 
     int init();
     void call_method(brpc::Controller* cntl,
-                     google::protobuf::Message* request, 
-                     google::protobuf::Message* response, 
+                     google::protobuf::Message* request,
+                     google::protobuf::Message* response,
                      google::protobuf::Closure* done);
 public:
     brpc::Channel _rpc_client;
@@ -111,10 +111,10 @@ public:
     int start();
     int stop();
     const PressOptions* options() { return &_options; }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(RpcPress);
-    
+
     bool new_pbrpc_press_client_by_client_type(int client_type);
     void sync_client();
     void handle_response(brpc::Controller* cntl,

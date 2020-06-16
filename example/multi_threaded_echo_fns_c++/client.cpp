@@ -37,7 +37,7 @@ DEFINE_string(server, "file://server_list", "Addresses of servers");
 DEFINE_string(load_balancer, "rr", "Name of load balancer");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(backup_timeout_ms, -1, "backup timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 
@@ -64,7 +64,7 @@ static void* sender(void* arg) {
         const int input = ((thread_index & 0xFFF) << 20) | (log_id & 0xFFFFF);
         request.set_value(input);
         cntl.set_log_id(log_id ++);  // set by user
-        // Set attachment which is wired to network directly instead of 
+        // Set attachment which is wired to network directly instead of
         // being serialized into protobuf messages.
         cntl.request_attachment().append(g_attachment);
 
@@ -76,12 +76,12 @@ static void* sender(void* arg) {
             g_latency_recorder << cntl.latency_us();
         } else {
             g_error_count << 1;
-            CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)        
-                << "input=(" << thread_index << "," << (input & 0xFFFFF)        
+            CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)
+                << "input=(" << thread_index << "," << (input & 0xFFFFF)
                 << ") error=" << cntl.ErrorText() << " latency=" << cntl.latency_us();
             // We can't connect to the server, sleep a while. Notice that this
             // is a specific sleeping to prevent this thread from spinning too
-            // fast. You should continue the business logic in a production 
+            // fast. You should continue the business logic in a production
             // server rather than sleeping.
             bthread_usleep(50000);
         }
@@ -93,10 +93,10 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
+
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.backup_request_ms = FLAGS_backup_timeout_ms;

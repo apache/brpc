@@ -110,7 +110,7 @@ struct YellObj {
 TEST_F(ResourcePoolTest, change_config) {
     int a[2];
     printf("%lu\n", ARRAY_SIZE(a));
-    
+
     ResourcePoolInfo info = describe_resources<MyObject>();
     ResourcePoolInfo zero_info = { 0, 0, 0, 0, 3, 3, 0 };
     ASSERT_EQ(0, memcmp(&info, &zero_info, sizeof(info)));
@@ -136,9 +136,9 @@ TEST_F(ResourcePoolTest, sanity) {
     ASSERT_EQ(10, address_resource(id0)->_value);
     get_resource<NonDefaultCtorObject>(&id0, 100, 30);
     ASSERT_EQ(130, address_resource(id0)->_value);
-    
+
     printf("BLOCK_NITEM=%lu\n", ResourcePool<YellObj>::BLOCK_NITEM);
-    
+
     nc = 0;
     nd = 0;
      {
@@ -146,7 +146,7 @@ TEST_F(ResourcePoolTest, sanity) {
         YellObj* o1 = get_resource(&id1);
         ASSERT_TRUE(o1);
         ASSERT_EQ(o1, address_resource(id1));
-        
+
         ASSERT_EQ(1, nc);
         ASSERT_EQ(0, nd);
 
@@ -157,7 +157,7 @@ TEST_F(ResourcePoolTest, sanity) {
 
         ASSERT_EQ(2, nc);
         ASSERT_EQ(0, nd);
-        
+
         return_resource(id1);
         ASSERT_EQ(2, nc);
         ASSERT_EQ(0, nd);
@@ -190,10 +190,10 @@ TEST_F(ResourcePoolTest, validator) {
 
 TEST_F(ResourcePoolTest, get_int) {
     clear_resources<int>();
-    
+
     // Perf of this test is affected by previous case.
     const size_t N = 100000;
-    
+
     butil::Timer tm;
     ResourceId<int> id;
 
@@ -203,18 +203,18 @@ TEST_F(ResourcePoolTest, get_int) {
     }
     ASSERT_EQ(0UL, id);
     delete (new int);
-    
+
     tm.start();
     for (size_t i = 0; i < N; ++i) {
         *get_resource(&id) = i;
     }
     tm.stop();
     printf("get a int takes %.1fns\n", tm.n_elapsed()/(double)N);
-    
+
     tm.start();
     for (size_t i = 0; i < N; ++i) {
         *(new int) = i;
-    }    
+    }
     tm.stop();
     printf("new a int takes %luns\n", tm.n_elapsed()/N);
 
@@ -225,7 +225,7 @@ TEST_F(ResourcePoolTest, get_int) {
     }
     tm.stop();
     printf("unsafe_address a int takes %.1fns\n", tm.n_elapsed()/(double)N);
-    
+
     tm.start();
     for (size_t i = 0; i < N; ++i) {
         id.value = i;
@@ -249,7 +249,7 @@ TEST_F(ResourcePoolTest, get_perf) {
     std::vector<SilentObj*> new_list;
     new_list.reserve(N);
     ResourceId<SilentObj> id;
-    
+
     butil::Timer tm1, tm2;
 
     // warm up
@@ -268,11 +268,11 @@ TEST_F(ResourcePoolTest, get_perf) {
         tm1.stop();
         printf("get a SilentObj takes %luns\n", tm1.n_elapsed()/N);
         //clear_resources<SilentObj>(); // free all blocks
-        
+
         tm2.start();
         for (size_t i = 0; i < N; ++i) {
             new_list.push_back(new SilentObj);
-        }    
+        }
         tm2.stop();
         printf("new a SilentObj takes %luns\n", tm2.n_elapsed()/N);
         for (size_t i = 0; i < new_list.size(); ++i) {
@@ -308,7 +308,7 @@ void* get_and_return_int(void*) {
     for (int j = 0; j < 5; ++j) {
         v.clear();
         sr = 0;
-        
+
         tm1.start();
         for (size_t i = 0; i < N; ++i) {
             *get_resource(&id) = tmp;
@@ -327,7 +327,7 @@ void* get_and_return_int(void*) {
         if (0 != sr) {
             printf("%d return_resource failed\n", sr);
         }
-        
+
         printf("[%lu:%d] get<D>=%.1f return<D>=%.1f\n",
                pthread_self(), j, tm1.n_elapsed()/(double)N, tm2.n_elapsed()/(double)N);
     }
@@ -343,7 +343,7 @@ void* new_and_delete_int(void*) {
 
     for (int j = 0; j < 3; ++j) {
         v2.clear();
-        
+
         // warm up
         delete (new D);
 
@@ -362,11 +362,11 @@ void* new_and_delete_int(void*) {
             delete v2[i];
         }
         tm2.stop();
-        
+
         printf("[%lu:%d] new<D>=%.1f delete<D>=%.1f\n",
                pthread_self(), j, tm1.n_elapsed()/(double)N, tm2.n_elapsed()/(double)N);
     }
-    
+
     return NULL;
 }
 
@@ -404,7 +404,7 @@ TEST_F(ResourcePoolTest, get_and_return_int_multiple_threads) {
 TEST_F(ResourcePoolTest, verify_get) {
     clear_resources<int>();
     std::cout << describe_resources<int>() << std::endl;
-                              
+
     std::vector<std::pair<int*, ResourceId<int> > > v;
     v.reserve(100000);
     ResourceId<int> id = { 0 };

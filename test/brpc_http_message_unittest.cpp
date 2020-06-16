@@ -67,7 +67,7 @@ TEST(HttpMessageTest, http_method) {
 
 TEST(HttpMessageTest, eof) {
     GFLAGS_NS::SetCommandLineOption("verbose", "100");
-    const char* http_request = 
+    const char* http_request =
         "GET /CloudApiControl/HttpServer/telematics/v3/weather?location=%E6%B5%B7%E5%8D%97%E7%9C%81%E7%9B%B4%E8%BE%96%E5%8E%BF%E7%BA%A7%E8%A1%8C%E6%94%BF%E5%8D%95%E4%BD%8D&output=json&ak=0l3FSP6qA0WbOzGRaafbmczS HTTP/1.1\r\n"
         "X-Host: api.map.baidu.com\r\n"
         "X-Forwarded-Proto: http\r\n"
@@ -101,7 +101,7 @@ TEST(HttpMessageTest, eof) {
 
 
 TEST(HttpMessageTest, request_sanity) {
-    const char *http_request = 
+    const char *http_request =
         "POST /path/file.html?sdfsdf=sdfs&sldf1=sdf HTTP/12.34\r\n"
         "From: someuser@jmarshall.com\r\n"
         "User-Agent: HTTPTool/1.0  \r\n"  // intended ending spaces
@@ -116,7 +116,7 @@ TEST(HttpMessageTest, request_sanity) {
         "Message Body sdfsdf\r\n"
     ;
     brpc::HttpMessage http_message;
-    ASSERT_EQ((ssize_t)strlen(http_request), 
+    ASSERT_EQ((ssize_t)strlen(http_request),
               http_message.ParseFromArray(http_request, strlen(http_request)));
     const brpc::HttpHeader& header = http_message.header();
     // Check all keys
@@ -131,7 +131,7 @@ TEST(HttpMessageTest, request_sanity) {
     ASSERT_EQ("myhost", *header.GetHeader("Host"));
     ASSERT_TRUE(header.GetHeader("Accept"));
     ASSERT_EQ("*/*", *header.GetHeader("Accept"));
-    
+
     ASSERT_EQ(1, header.major_version());
     ASSERT_EQ(34, header.minor_version());
     ASSERT_EQ(brpc::HTTP_METHOD_POST, header.method());
@@ -145,7 +145,7 @@ TEST(HttpMessageTest, request_sanity) {
 }
 
 TEST(HttpMessageTest, response_sanity) {
-    const char *http_response = 
+    const char *http_response =
         "HTTP/12.34 410 GoneBlah\r\n"
         "From: someuser@jmarshall.com\r\n"
         "User-Agent: HTTPTool/1.0  \r\n"  // intended ending spaces
@@ -160,7 +160,7 @@ TEST(HttpMessageTest, response_sanity) {
         "Message Body sdfsdf\r\n"
     ;
     brpc::HttpMessage http_message;
-    ASSERT_EQ((ssize_t)strlen(http_response), 
+    ASSERT_EQ((ssize_t)strlen(http_response),
               http_message.ParseFromArray(http_response, strlen(http_response)));
     // Check all keys
     const brpc::HttpHeader& header = http_message.header();
@@ -175,7 +175,7 @@ TEST(HttpMessageTest, response_sanity) {
     ASSERT_EQ("myhost", *header.GetHeader("Host"));
     ASSERT_TRUE(header.GetHeader("Accept"));
     ASSERT_EQ("*/*", *header.GetHeader("Accept"));
-    
+
     ASSERT_EQ(1, header.major_version());
     ASSERT_EQ(34, header.minor_version());
     // method is undefined for response, in our case, it's set to 0.
@@ -183,7 +183,7 @@ TEST(HttpMessageTest, response_sanity) {
     ASSERT_EQ(brpc::HTTP_STATUS_GONE, header.status_code());
     ASSERT_STREQ(brpc::HttpReasonPhrase(header.status_code()), /*not GoneBlah*/
                  header.reason_phrase());
-    
+
     ASSERT_TRUE(header.GetHeader("log-id"));
     ASSERT_EQ("456", *header.GetHeader("log-id"));
     ASSERT_TRUE(header.GetHeader("Authorization"));
@@ -233,7 +233,7 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     ASSERT_EQ(0, server.Start(9237, NULL));
     std::string unknown_method;
     brpc::Server::MethodProperty* mp = NULL;
-              
+
     mp = FindMethodPropertyByURI("", &server, NULL);
     ASSERT_TRUE(mp);
     ASSERT_EQ("index", mp->method->service()->name());
@@ -249,17 +249,17 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     mp = FindMethodPropertyByURI("flags", &server, &unknown_method);
     ASSERT_TRUE(mp);
     ASSERT_EQ("flags", mp->method->service()->name());
-    
+
     mp = FindMethodPropertyByURI("/flags/port", &server, &unknown_method);
     ASSERT_TRUE(mp);
     ASSERT_EQ("flags", mp->method->service()->name());
     ASSERT_EQ("port", unknown_method);
-    
+
     mp = FindMethodPropertyByURI("/flags/foo/bar", &server, &unknown_method);
     ASSERT_TRUE(mp);
     ASSERT_EQ("flags", mp->method->service()->name());
     ASSERT_EQ("foo/bar", unknown_method);
-    
+
     mp = FindMethodPropertyByURI("/brpc.flags/$*",
                                  &server, &unknown_method);
     ASSERT_TRUE(mp);
@@ -269,17 +269,17 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     mp = FindMethodPropertyByURI("EchoService/Echo", &server, &unknown_method);
     ASSERT_TRUE(mp);
     ASSERT_EQ("test.EchoService.Echo", mp->method->full_name());
-    
+
     mp = FindMethodPropertyByURI("/EchoService/Echo",
                                  &server, &unknown_method);
     ASSERT_TRUE(mp);
     ASSERT_EQ("test.EchoService.Echo", mp->method->full_name());
-    
+
     mp = FindMethodPropertyByURI("/test.EchoService/Echo",
                                  &server, &unknown_method);
     ASSERT_TRUE(mp);
     ASSERT_EQ("test.EchoService.Echo", mp->method->full_name());
-    
+
     mp = FindMethodPropertyByURI("/test.EchoService/no_such_method",
                                  &server, &unknown_method);
     ASSERT_FALSE(mp);
@@ -287,7 +287,7 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
 
 TEST(HttpMessageTest, http_header) {
     brpc::HttpHeader header;
-    
+
     header.set_version(10, 100);
     ASSERT_EQ(10, header.major_version());
     ASSERT_EQ(100, header.minor_version());
@@ -299,7 +299,7 @@ TEST(HttpMessageTest, http_header) {
     header.set_content_type("application/json");
     ASSERT_EQ("application/json", header.content_type());
     ASSERT_FALSE(header.GetHeader("content-type"));
-    
+
     ASSERT_FALSE(header.GetHeader("key1"));
     header.AppendHeader("key1", "value1");
     const std::string* value = header.GetHeader("key1");
@@ -324,7 +324,7 @@ TEST(HttpMessageTest, http_header) {
     ASSERT_EQ(brpc::HTTP_STATUS_CONTINUE, header.status_code());
     ASSERT_STREQ(brpc::HttpReasonPhrase(header.status_code()),
                  header.reason_phrase());
-    
+
     header.set_status_code(brpc::HTTP_STATUS_GONE);
     ASSERT_EQ(brpc::HTTP_STATUS_GONE, header.status_code());
     ASSERT_STREQ(brpc::HttpReasonPhrase(header.status_code()),

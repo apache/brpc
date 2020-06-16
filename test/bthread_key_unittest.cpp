@@ -85,11 +85,11 @@ static void worker1_impl(Counters* cs) {
         cs->ncreate.fetch_add(1, butil::memory_order_relaxed);
         ASSERT_EQ(0, bthread_setspecific(k[i], ws[i]))
             << "i=" << i << " is_bthread=" << !!bthread_self();
-            
+
     }
     // Sleep a while to make some context switches. TLS should be unchanged.
     bthread_usleep(10000);
-    
+
     for (size_t i = 0; i < arraysize(k); ++i) {
         ASSERT_EQ(ws[i], bthread_getspecific(k[i])) << "i=" << i;
     }
@@ -263,7 +263,7 @@ TEST(KeyTest, set_in_dtor) {
     SidData pth_data = { key, 0, 3 };
     SidData bth_data = { key, 0, 3 };
     SidData bth2_data = { key, 0, 3 };
-    
+
     pthread_t pth;
     bthread_t bth;
     bthread_t bth2;
@@ -275,7 +275,7 @@ TEST(KeyTest, set_in_dtor) {
     ASSERT_EQ(0, pthread_join(pth, NULL));
     ASSERT_EQ(0, bthread_join(bth, NULL));
     ASSERT_EQ(0, bthread_join(bth2, NULL));
-        
+
     ASSERT_EQ(0, bthread_key_delete(key));
 
     EXPECT_EQ(pth_data.end_seq, pth_data.seq);
@@ -291,7 +291,7 @@ struct SBAData {
 
 struct SBATLS {
     int* ndestroy;
-    
+
     static void deleter(void* d) {
         SBATLS* tls = (SBATLS*)d;
         ++*tls->ndestroy;
@@ -394,9 +394,9 @@ TEST(KeyTest, using_pool) {
     ASSERT_EQ(0, bthread_join(bth2, NULL));
     ASSERT_EQ(0, bth2_data.seq);
     ASSERT_EQ(1, bthread_keytable_pool_size(&pool));
-        
+
     ASSERT_EQ(0, bthread_keytable_pool_destroy(&pool));
-    
+
     EXPECT_EQ(bth_data.end_seq, bth_data.seq);
     EXPECT_EQ(0, bth2_data.seq);
 

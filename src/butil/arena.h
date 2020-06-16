@@ -50,7 +50,7 @@ private:
 
     struct Block {
         uint32_t left_space() const { return size - alloc_size; }
-        
+
         Block* next;
         uint32_t alloc_size;
         uint32_t size;
@@ -64,7 +64,7 @@ private:
         head = head->next;
         return saved_head;
     }
-    
+
     Block* _cur_block;
     Block* _isolated_blocks;
     size_t _block_size;

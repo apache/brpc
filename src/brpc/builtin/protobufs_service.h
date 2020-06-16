@@ -34,14 +34,14 @@ class Server;
 class ProtobufsService : public protobufs {
 public:
     explicit ProtobufsService(Server* server);
-    
+
     void default_method(::google::protobuf::RpcController* cntl_base,
                         const ::brpc::ProtobufsRequest* request,
                         ::brpc::ProtobufsResponse* response,
                         ::google::protobuf::Closure* done);
 private:
     int Init();
-    
+
     Server* _server;
     typedef std::map<std::string, std::string> Map;
     Map _map;

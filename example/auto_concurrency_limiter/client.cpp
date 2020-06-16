@@ -33,16 +33,16 @@ DEFINE_string(connection_type, "", "Connection type. Available values: single, p
 DEFINE_string(cntl_server, "0.0.0.0:9000", "IP Address of server");
 DEFINE_string(echo_server, "0.0.0.0:9001", "IP Address of server");
 DEFINE_int32(timeout_ms, 3000, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 0, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 0, "Max retries(not including the first RPC)");
 DEFINE_int32(case_interval, 20, "Intervals for different test cases");
-DEFINE_int32(client_qps_change_interval_us, 50000, 
+DEFINE_int32(client_qps_change_interval_us, 50000,
              "The interval for client changes the sending speed");
 DEFINE_string(case_file, "", "File path for test_cases");
 
 void DisplayStage(const test::Stage& stage) {
     std::string type;
     switch(stage.type()) {
-        case test::FLUCTUATE: 
+        case test::FLUCTUATE:
             type = "Fluctuate";
             break;
         case test::SMOOTH:
@@ -52,8 +52,8 @@ void DisplayStage(const test::Stage& stage) {
             type = "Unknown";
     }
     std::stringstream ss;
-    ss 
-        << "Stage:[" << stage.lower_bound() << ':' 
+    ss
+        << "Stage:[" << stage.lower_bound() << ':'
         << stage.upper_bound() <<  "]"
         << " , Type:" << type;
     LOG(INFO) << ss.str();
@@ -72,15 +72,15 @@ bvar::PassiveStatus<uint32_t> g_succ_bvar(cast_func, &g_succ);
 bvar::LatencyRecorder g_latency_rec;
 
 void LoadCaseSet(test::TestCaseSet* case_set, const std::string& file_path) {
-    std::ifstream ifs(file_path.c_str(), std::ios::in);  
+    std::ifstream ifs(file_path.c_str(), std::ios::in);
     if (!ifs) {
         LOG(FATAL) << "Fail to open case set file: " << file_path;
     }
-    std::string case_set_json((std::istreambuf_iterator<char>(ifs)),  
-                              std::istreambuf_iterator<char>()); 
+    std::string case_set_json((std::istreambuf_iterator<char>(ifs)),
+                              std::istreambuf_iterator<char>());
     std::string err;
     if (!json2pb::JsonToProtoMessage(case_set_json, case_set, &err)) {
-        LOG(FATAL) 
+        LOG(FATAL)
             << "Fail to trans case_set from json to protobuf message: "
             << err;
     }
@@ -114,11 +114,11 @@ void Expose() {
 }
 
 struct TestCaseContext {
-    TestCaseContext(const test::TestCase& tc) 
+    TestCaseContext(const test::TestCase& tc)
         : running(true)
         , stage_index(0)
         , test_case(tc)
-        , next_stage_sec(test_case.qps_stage_list(0).duration_sec() + 
+        , next_stage_sec(test_case.qps_stage_list(0).duration_sec() +
                          butil::gettimeofday_s()) {
         DisplayStage(test_case.qps_stage_list(stage_index));
         Update();
@@ -128,7 +128,7 @@ struct TestCaseContext {
         if (butil::gettimeofday_s() >= next_stage_sec) {
             ++stage_index;
             if (stage_index < test_case.qps_stage_list_size()) {
-                next_stage_sec += test_case.qps_stage_list(stage_index).duration_sec(); 
+                next_stage_sec += test_case.qps_stage_list(stage_index).duration_sec();
                 DisplayStage(test_case.qps_stage_list(stage_index));
             } else {
                 return false;
@@ -142,7 +142,7 @@ struct TestCaseContext {
         if (qps_stage.type() == test::FLUCTUATE) {
             qps = butil::fast_rand_less_than(upper_bound - lower_bound) + lower_bound;
         } else if (qps_stage.type() == test::SMOOTH) {
-            qps = lower_bound + (upper_bound - lower_bound) / 
+            qps = lower_bound + (upper_bound - lower_bound) /
                 double(qps_stage.duration_sec()) * (qps_stage.duration_sec() - next_stage_sec
                 + butil::gettimeofday_s());
         }
@@ -161,14 +161,14 @@ void RunUpdateTask(void* data) {
     TestCaseContext* context = (TestCaseContext*)data;
     bool should_continue = context->Update();
     if (should_continue) {
-        bthread::get_global_timer_thread()->schedule(RunUpdateTask, data, 
+        bthread::get_global_timer_thread()->schedule(RunUpdateTask, data,
             butil::microseconds_from_now(FLAGS_client_qps_change_interval_us));
     } else {
         context->running.store(false, butil::memory_order_release);
     }
 }
 
-void RunCase(test::ControlService_Stub &cntl_stub, 
+void RunCase(test::ControlService_Stub &cntl_stub,
              const test::TestCase& test_case) {
     LOG(INFO) << "Running case:`" << test_case.case_name() << '\'';
     brpc::Channel channel;
@@ -190,7 +190,7 @@ void RunCase(test::ControlService_Stub &cntl_stub,
     CHECK(!cntl.Failed()) << "control failed";
 
     TestCaseContext context(test_case);
-    bthread::get_global_timer_thread()->schedule(RunUpdateTask, &context, 
+    bthread::get_global_timer_thread()->schedule(RunUpdateTask, &context,
         butil::microseconds_from_now(FLAGS_client_qps_change_interval_us));
 
     while (context.running.load(butil::memory_order_acquire)) {

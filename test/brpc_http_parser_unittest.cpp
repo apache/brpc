@@ -83,7 +83,7 @@ int on_body(http_parser *, const char *at, const size_t length) {
 }
 
 TEST_F(HttpParserTest, http_example) {
-    const char *http_request = 
+    const char *http_request =
         "GET /path/file.html?sdfsdf=sdfs HTTP/1.0\r\n"
         "From: someuser@jmarshall.com\r\n"
         "User-Agent: HTTPTool/1.0\r\n"
@@ -124,7 +124,7 @@ TEST_F(HttpParserTest, append_filename) {
     dir = "/home/someone/./..";
     brpc::AppendFileName(&dir, "..");
     ASSERT_EQ("/", dir);
-    
+
     dir = "/home/someone/./../";
     brpc::AppendFileName(&dir, "..");
     ASSERT_EQ("/", dir);
@@ -160,7 +160,7 @@ TEST_F(HttpParserTest, append_filename) {
     dir = "foo/../";
     brpc::AppendFileName(&dir, "..");
     ASSERT_EQ("..", dir);
-    
+
     dir = "/foo";
     brpc::AppendFileName(&dir, "..");
     ASSERT_EQ("/", dir);

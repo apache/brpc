@@ -41,7 +41,7 @@ public:
         : _msg(NULL), _err(err), _stream_id(stream_id) {}
     explicit H2ParseResult(H2StreamContext* msg)
         : _msg(msg), _err(H2_NO_ERROR), _stream_id(0) {}
-    
+
     // Return H2_NO_ERROR when the result is successful.
     H2Error error() const { return _err; }
     const char* error_str() const { return H2ErrorToString(_err); }
@@ -50,7 +50,7 @@ public:
 
     // definitely NULL when result is failed.
     H2StreamContext* message() const { return _msg; }
- 
+
 private:
     H2StreamContext* _msg;
     H2Error _err;
@@ -161,7 +161,7 @@ public:
 private:
     std::string& push(const std::string& name)
     { return (new (&_list[_size++]) HPacker::Header(name))->value; }
-    
+
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
@@ -201,11 +201,11 @@ public:
     // @SocketMessage
     butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*) override;
     size_t EstimatedByteSize() override;
-    
+
 private:
     std::string& push(const std::string& name)
     { return (new (&_list[_size++]) HPacker::Header(name))->value; }
-    
+
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
@@ -244,10 +244,10 @@ public:
                           uint32_t frag_size, uint8_t pad_length);
     H2ParseResult OnContinuation(butil::IOBufBytesIterator&, const H2FrameHead&);
     H2ParseResult OnResetStream(H2Error h2_error, const H2FrameHead&);
-    
+
     uint64_t correlation_id() const { return _correlation_id; }
     void set_correlation_id(uint64_t cid) { _correlation_id = cid; }
-    
+
     size_t parsed_length() const { return this->_parsed_length; }
     int stream_id() const { return _stream_id; }
 

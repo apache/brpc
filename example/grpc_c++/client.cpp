@@ -27,7 +27,7 @@ DEFINE_string(protocol, "h2:grpc", "Protocol type. Defined in src/brpc/options.p
 DEFINE_string(server, "0.0.0.0:50051", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
 DEFINE_bool(gzip, false, "compress body using gzip");
 
@@ -37,11 +37,11 @@ int main(int argc, char* argv[]) {
     if (FLAGS_gzip) {
         GFLAGS_NS::SetCommandLineOption("http_body_compress_threshold", 0);
     }
-    
-    // A Channel represents a communication line to a Server. Notice that 
+
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
+
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;

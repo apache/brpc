@@ -34,7 +34,7 @@ DEFINE_string(bucket_name, "", "Couchbase bucktet name");
 DEFINE_string(bucket_password, "", "Couchbase bucket password");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(exptime, 0, "The to-be-got data will be expired after so many seconds");
 DEFINE_string(key, "hello", "The key to be get");
@@ -46,7 +46,7 @@ bvar::Adder<int> g_error_count("client_error_count");
 butil::static_atomic<int> g_sender_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
-    google::protobuf::RpcChannel* channel = 
+    google::protobuf::RpcChannel* channel =
         static_cast<google::protobuf::RpcChannel*>(arg);
     const int base_index = g_sender_count.fetch_add(1, butil::memory_order_relaxed);
 
@@ -86,12 +86,12 @@ static void* sender(void* arg) {
                     << "base=" << base_index << " i=" << i << " value=" << value;
             }
         } else {
-            g_error_count << 1; 
+            g_error_count << 1;
             CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)
                 << "error=" << cntl.ErrorText() << " latency=" << elp;
             // We can't connect to the server, sleep a while. Notice that this
             // is a specific sleeping to prevent this thread from spinning too
-            // fast. You should continue the business logic in a production 
+            // fast. You should continue the business logic in a production
             // server rather than sleeping.
             bthread_usleep(50000);
         }
@@ -106,11 +106,11 @@ int main(int argc, char* argv[]) {
         FLAGS_exptime = 0;
     }
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
-    // Initialize the channel, NULL means using default options. 
+
+    // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MEMCACHE;
     options.connection_type = FLAGS_connection_type;
@@ -154,13 +154,13 @@ int main(int argc, char* argv[]) {
         }
     }
     if (FLAGS_exptime > 0) {
-        LOG(INFO) << "Set " << FLAGS_batch * FLAGS_thread_num 
+        LOG(INFO) << "Set " << FLAGS_batch * FLAGS_thread_num
                   << " values, expired after " << FLAGS_exptime << " seconds";
     } else {
-        LOG(INFO) << "Set " << FLAGS_batch * FLAGS_thread_num 
+        LOG(INFO) << "Set " << FLAGS_batch * FLAGS_thread_num
                   << " values, never expired";
     }
-    
+
     std::vector<bthread_t> bids;
     std::vector<pthread_t> pids;
     if (!FLAGS_use_bthread) {

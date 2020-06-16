@@ -142,7 +142,7 @@ enum GrpcStatus {
     GRPC_UNAUTHENTICATED,
 
     GRPC_MAX,
-}; 
+};
 
 // Get description of the error.
 const char* GrpcStatusToString(GrpcStatus);

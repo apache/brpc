@@ -78,7 +78,7 @@ public:
     //           information into `nshead_res'.
     //   nshead_res: the nshead response that will be sent back to client.
     virtual void SerializeResponseToIOBuf(const NsheadMeta& meta,
-                                          Controller* controller, 
+                                          Controller* controller,
                                           const google::protobuf::Message* pb_res,
                                           NsheadMessage* nshead_res) const = 0;
 

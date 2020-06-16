@@ -114,7 +114,7 @@ void UserCodeBackupPool::UserCodeRunningLoop() {
 #ifdef BAIDU_INTERNAL
     logging::ComlogInitializer comlog_initializer;
 #endif
-    
+
     int64_t last_time = butil::cpuwide_time_us();
     while (true) {
         bool blocked = false;
@@ -158,7 +158,7 @@ void InitUserCodeBackupPoolOnceOrDie() {
 
 void EndRunningUserCodeInPool(void (*fn)(void*), void* arg) {
     InitUserCodeBackupPoolOnceOrDie();
-    
+
     g_usercode_inplace.fetch_sub(1, butil::memory_order_relaxed);
 
     // Not enough idle workers, run the code in backup threads to prevent

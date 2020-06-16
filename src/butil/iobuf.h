@@ -93,7 +93,7 @@ public:
 
         const BlockRef& ref_at(uint32_t i) const
         { return refs[(start + i) & cap_mask]; }
-        
+
         BlockRef& ref_at(uint32_t i)
         { return refs[(start + i) & cap_mask]; }
 
@@ -168,7 +168,7 @@ public:
     // not affect pwrite(). However, on Linux, if |fd| is open with O_APPEND,
     // pwrite() appends data to the end of the file, regardless of the value
     // of |offset|.
-    ssize_t pcut_into_file_descriptor(int fd, off_t offset /*NOTE*/, 
+    ssize_t pcut_into_file_descriptor(int fd, off_t offset /*NOTE*/,
                                       size_t size_hint = 1024*1024);
 
     // Cut into SSL channel `ssl'. Returns what `SSL_write' returns
@@ -212,11 +212,11 @@ public:
     // a lot of push_back/append to do, you should use IOBufAppender or
     // IOBufBuilder instead, which reduce overhead by owning IOBuf::Block.
     // ===================================================================
-    
+
     // Append a character to back side. (with copying)
     // Returns 0 on success, -1 otherwise.
     int push_back(char c);
-    
+
     // Append `data' with `count' bytes to back side. (with copying)
     // Returns 0 on success(include count == 0), -1 otherwise.
     int append(void const* data, size_t count);
@@ -336,7 +336,7 @@ public:
     // Number of bytes
     size_t length() const;
     size_t size() const { return length(); }
-    
+
     // Get number of Blocks in use. block_memory = block_count * BLOCK_SIZE
     static size_t block_count();
     static size_t block_memory();
@@ -411,7 +411,7 @@ protected:
     // If i is out-of-range, NULL is returned.
     const BlockRef* _pref_at(size_t i) const;
 
-private:    
+private:
     union {
         BigView _bv;
         SmallView _sv;
@@ -438,17 +438,17 @@ inline bool operator!=(const butil::IOBuf& b1, const butil::IOBuf& b2)
 class IOPortal : public IOBuf {
 public:
     IOPortal() : _block(NULL) { }
-    IOPortal(const IOPortal& rhs) : IOBuf(rhs), _block(NULL) { } 
+    IOPortal(const IOPortal& rhs) : IOBuf(rhs), _block(NULL) { }
     ~IOPortal();
     IOPortal& operator=(const IOPortal& rhs);
-        
+
     // Read at most `max_count' bytes from the reader and append to self.
     ssize_t append_from_reader(IReader* reader, size_t max_count);
 
     // Read at most `max_count' bytes from file descriptor `fd' and
     // append to self.
     ssize_t append_from_file_descriptor(int fd, size_t max_count);
- 
+
     // Read at most `max_count' bytes from file descriptor `fd' at a given
     // offset and append to self. The file offset is not changed.
     // If `offset' is negative, does exactly what append_from_file_descriptor does.
@@ -551,9 +551,9 @@ private:
 };
 
 // Serialize protobuf message into IOBuf. This wrapper does not clear source
-// IOBuf before appending. You can change the source IOBuf when stream is 
-// not used(append sth. to the IOBuf, serialize a protobuf message, append 
-// sth. again, serialize messages again...). This is different from 
+// IOBuf before appending. You can change the source IOBuf when stream is
+// not used(append sth. to the IOBuf, serialize a protobuf message, append
+// sth. again, serialize messages again...). This is different from
 // IOBufAsZeroCopyInputStream which needs the source IOBuf to be unchanged.
 // Example:
 //     IOBufAsZeroCopyOutputStream wrapper(&the_iobuf_to_put_data_in);
@@ -561,7 +561,7 @@ private:
 //
 // NOTE: Blocks are by default shared among all the ZeroCopyOutputStream in one
 // thread. If there are many manuplated streams at one time, there may be many
-// fragments. You can create a ZeroCopyOutputStream which has its own block by 
+// fragments. You can create a ZeroCopyOutputStream which has its own block by
 // passing a positive `block_size' argument to avoid this problem.
 class IOBufAsZeroCopyOutputStream
     : public google::protobuf::io::ZeroCopyOutputStream {
@@ -594,12 +594,12 @@ public:
     size_t Available() const override;
 
     // Peek at the next flat region of the source.
-    const char* Peek(size_t* len) override; 
+    const char* Peek(size_t* len) override;
 
     // Skip the next n bytes.  Invalidates any buffer returned by
     // a previous call to Peek().
     void Skip(size_t n) override;
-    
+
 private:
     const butil::IOBuf* _buf;
     butil::IOBufAsZeroCopyInputStream _stream;
@@ -613,10 +613,10 @@ public:
 
     // Append "bytes[0,n-1]" to this.
     void Append(const char* bytes, size_t n) override;
-    
+
     // Returns a writable buffer of the specified length for appending.
     char* GetAppendBuffer(size_t length, char* scratch) override;
-    
+
 private:
     char* _cur_buf;
     int _cur_len;
@@ -632,7 +632,7 @@ private:
 //   target_iobuf.append(builder.buf()); // builder.buf() was not changed
 //   OR
 //   builder.move_to(target_iobuf);      // builder.buf() was clear()-ed.
-class IOBufBuilder : 
+class IOBufBuilder :
         // Have to use private inheritance to arrange initialization order.
         virtual private IOBuf,
         virtual private IOBufAsZeroCopyOutputStream,
@@ -661,7 +661,7 @@ public:
 class IOBufAppender {
 public:
     IOBufAppender();
-    
+
     // Append `n' bytes starting from `data' to back side of the internal buffer
     // Costs 2/3 time of IOBuf.append for short data/strings on Intel(R) Xeon(R)
     // CPU E5-2620 @ 2.00GHz. Longer data/strings make differences smaller.
@@ -673,13 +673,13 @@ public:
     // than snprintf(..., "%lu", d).
     // Returns 0 on success, -1 otherwise.
     int append_decimal(long d);
-    
+
     // Push the character to back side of the internal buffer.
     // Costs ~3ns while IOBuf.push_back costs ~13ns on Intel(R) Xeon(R) CPU
     // E5-2620 @ 2.00GHz
     // Returns 0 on success, -1 otherwise.
     int push_back(char c);
-    
+
     IOBuf& buf() {
         shrink();
         return _buf;
@@ -687,7 +687,7 @@ public:
     void move_to(IOBuf& target) {
         target = IOBuf::Movable(buf());
     }
-    
+
 private:
     void shrink();
     int add_block();

@@ -66,7 +66,7 @@ struct SubCall {
     // True if this object is constructed by Skip().
     // true is_skip() implies true is_bad().
     bool is_skip() const { return flags & SKIP_SUB_CHANNEL; }
-            
+
     const google::protobuf::MethodDescriptor* method;
     const google::protobuf::Message* request;
     google::protobuf::Message* response;
@@ -116,7 +116,7 @@ public:
     enum Result {
         // the response was merged successfully
         MERGED,
-        
+
         // the sub_response was not merged and will be counted as one failure.
         // e.g. 10 sub channels & fail_limit=4, 3 failed before merging, 1
         // failed after merging, the rpc call will be treated as 4 sub
@@ -138,7 +138,7 @@ protected:
 struct ParallelChannelOptions {
     // [NOTE] timeout of sub channels are disabled in ParallelChannel. Control
     // deadlines of RPC by this timeout_ms or Controller.set_timeout_ms()
-    // 
+    //
     // Max duration of RPC over this Channel. -1 means wait indefinitely.
     // Overridable by Controller.set_timeout_ms().
     // Default: 500 (milliseconds)
@@ -205,7 +205,7 @@ public:
                    CallMapper* call_mapper,
                    ResponseMerger* response_merger);
 
-    // Call `method' of the remote service with `request' as input, and 
+    // Call `method' of the remote service with `request' as input, and
     // `response' as output. `controller' contains options and extra data.
     // If `done' is not NULL, this method returns after request was sent
     // and `done->Run()' will be called when the call finishes, otherwise
@@ -218,7 +218,7 @@ public:
 
     // Number of sub channels.
     size_t channel_count() const { return _chans.size(); }
-    
+
     // Reset to the state that this channel was just constructed.
     // NOTE: fail_limit is kept.
     void Reset();

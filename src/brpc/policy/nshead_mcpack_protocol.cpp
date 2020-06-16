@@ -80,7 +80,7 @@ void NsheadMcpackAdaptor::SerializeResponseToIOBuf(
         LOG(WARNING) << "nshead_mcpack protocol doesn't support compression";
         type = COMPRESS_TYPE_NONE;
     }
-    
+
     if (pb_res == NULL) {
         cntl->CloseConnection("response was not created yet");
         return;
@@ -99,7 +99,7 @@ void ProcessNsheadMcpackResponse(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     const Socket* socket = msg->socket();
-    
+
     // Fetch correlation id that we saved before in `PackNsheadMcpackRequest'
     const bthread_id_t cid = { static_cast<uint64_t>(socket->correlation_id()) };
     Controller* cntl = NULL;
@@ -109,7 +109,7 @@ void ProcessNsheadMcpackResponse(InputMessageBase* msg_base) {
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -133,7 +133,7 @@ void ProcessNsheadMcpackResponse(InputMessageBase* msg_base) {
     // error code if it version check of `cid' fails
     msg.reset();  // optional, just release resourse ASAP
     accessor.OnResponse(cid, saved_error);
-} 
+}
 
 void SerializeNsheadMcpackRequest(butil::IOBuf* buf, Controller* cntl,
                           const google::protobuf::Message* pb_req) {
@@ -166,7 +166,7 @@ void PackNsheadMcpackRequest(butil::IOBuf* buf,
     // Store `correlation_id' into Socket since nshead_mcpack protocol
     // doesn't contain this field
     accessor.get_sending_socket()->set_correlation_id(correlation_id);
-        
+
     nshead_t nshead;
     memset(&nshead, 0, sizeof(nshead_t));
     nshead.log_id = controller->log_id();

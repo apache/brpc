@@ -64,7 +64,7 @@ public:
                 // "smoother" plot may hide peaks.
                 _series.append(_owner->get_value(1));
             } else {
-                // Get the value inside the full window. "get_value(1)" is 
+                // Get the value inside the full window. "get_value(1)" is
                 // incorrect when users intend to see aggregated values of
                 // the full window in the plot.
                 _series.append(_owner->get_value());
@@ -75,7 +75,7 @@ public:
         WindowBase* _owner;
         detail::Series<value_type, Op> _series;
     };
-    
+
     WindowBase(R* var, time_t window_size)
         : _var(var)
         , _window_size(window_size > 0 ? window_size : FLAGS_bvar_dump_interval)
@@ -83,7 +83,7 @@ public:
         , _series_sampler(NULL) {
         CHECK_EQ(0, _sampler->set_window_size(_window_size));
     }
-    
+
     ~WindowBase() {
         hide();
         if (_series_sampler) {
@@ -109,7 +109,7 @@ public:
     }
 
     value_type get_value() const { return get_value(_window_size); }
-    
+
     void describe(std::ostream& os, bool quote_string) const override {
         if (butil::is_same<value_type, std::string>::value && quote_string) {
             os << '"' << get_value() << '"';
@@ -117,7 +117,7 @@ public:
             os << get_value();
         }
     }
-    
+
 #ifdef BAIDU_INTERNAL
     void get_value(boost::any* value) const override { *value = get_value(); }
 #endif

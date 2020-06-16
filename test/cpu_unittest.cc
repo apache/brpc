@@ -91,7 +91,7 @@ TEST(CPU, RunExtendedInstructions) {
     __asm__ __volatile__("crc32 %%eax, %%eax\n" : : : "eax");
   }
 #endif
-  
+
 #endif
 #endif
 }

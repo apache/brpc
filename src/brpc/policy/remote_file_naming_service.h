@@ -36,9 +36,9 @@ private:
     void Describe(std::ostream& os, const DescribeOptions&) const override;
 
     NamingService* New() const override;
-    
+
     void Destroy() override;
-    
+
 private:
     std::unique_ptr<Channel> _channel;
     std::string _server_addr;

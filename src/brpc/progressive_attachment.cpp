@@ -98,7 +98,7 @@ inline void AppendAsChunk(butil::IOBuf* chunk_buf, const butil::IOBuf& data,
     if (!before_http_1_1) {
         AppendChunkHead(chunk_buf, data.size());
         chunk_buf->append(data);
-        chunk_buf->append("\r\n", 2);   
+        chunk_buf->append("\r\n", 2);
     } else {
         chunk_buf->append(data);
     }
@@ -109,7 +109,7 @@ inline void AppendAsChunk(butil::IOBuf* chunk_buf, const void* data,
     if (!before_http_1_1) {
         AppendChunkHead(chunk_buf, length);
         chunk_buf->append(data, length);
-        chunk_buf->append("\r\n", 2);   
+        chunk_buf->append("\r\n", 2);
     } else {
         chunk_buf->append(data, length);
     }
@@ -257,5 +257,5 @@ void ProgressiveAttachment::NotifyOnStopped(google::protobuf::Closure* done) {
     }
     _httpsock->NotifyOnFailed(_notify_id);
 }
-    
+
 } // namespace brpc

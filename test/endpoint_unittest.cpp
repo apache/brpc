@@ -39,7 +39,7 @@ TEST(EndPointTest, comparisons) {
 
 TEST(EndPointTest, ip_t) {
     LOG(INFO) << "INET_ADDRSTRLEN = " << INET_ADDRSTRLEN;
-    
+
     butil::ip_t ip0;
     ASSERT_EQ(0, butil::str2ip("1.1.1.1", &ip0));
     ASSERT_STREQ("1.1.1.1", butil::ip2str(ip0).c_str());
@@ -72,7 +72,7 @@ TEST(EndPointTest, endpoint) {
     butil::EndPoint p1;
     ASSERT_EQ(butil::IP_ANY, p1.ip);
     ASSERT_EQ(0, p1.port);
-    
+
     butil::EndPoint p2(butil::IP_NONE, -1);
     ASSERT_EQ(butil::IP_NONE, p2.ip);
     ASSERT_EQ(-1, p2.port);
@@ -87,7 +87,7 @@ TEST(EndPointTest, endpoint) {
     ASSERT_EQ(0, butil::str2endpoint(" 127.0.0.1: 289 ", &p4));
     ASSERT_STREQ("127.0.0.1", butil::ip2str(p4.ip).c_str());
     ASSERT_EQ(289, p4.port);
-    
+
     butil::EndPoint p5;
     ASSERT_EQ(-1, hostname2endpoint("localhost:-1", &p5));
     ASSERT_EQ(-1, hostname2endpoint("localhost:65536", &p5));

@@ -83,8 +83,8 @@ private:
     static void OnNewConnections(Socket* m);
 
     static void* CloseIdleConnections(void* arg);
-    
-    // Initialize internal structure. 
+
+    // Initialize internal structure.
     int Initialize();
 
     // Remove the accepted socket `sock' from inside
@@ -101,7 +101,7 @@ private:
 
     butil::Mutex _map_mutex;
     butil::ConditionVariable _empty_cond;
-    
+
     // The map containing all the accepted sockets
     SocketMap _socket_map;
 

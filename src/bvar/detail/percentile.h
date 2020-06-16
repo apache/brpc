@@ -89,9 +89,9 @@ public:
         // the probability of each sample in |rhs| is a1/b1.
         // We are going to randomly pick some samples from |this| and |rhs| to
         // satisfy the constraint that each sample stands for the probability
-        // of 
+        // of
         //     * 1 (SAMPLE_SIZE >= |b0 + b1|), which indicates that no sample
-        //       has been dropped 
+        //       has been dropped
         //     * SAMPLE_SIZE / |b0 + b1| (SAMPLE_SIZE < |b0 + b1|)
         // So we should keep |b0*SAMPLE_SIZE/(b0+b1)| from |this|
         // |b1*SAMPLE_SIZE/(b0+b1)| from |rhs|.
@@ -104,7 +104,7 @@ public:
                 << " rhs._num_samples=" << rhs._num_samples
                 << " SAMPLE_SIZE=" << SAMPLE_SIZE
                 << " size2=" << size2;
-            memcpy(_samples + _num_samples, rhs._samples, 
+            memcpy(_samples + _num_samples, rhs._samples,
                    sizeof(_samples[0]) * rhs._num_samples);
             _num_samples += rhs._num_samples;
         } else {
@@ -242,7 +242,7 @@ public:
 friend class AddLatency;
 
     static const size_t SAMPLE_SIZE = SAMPLE_SIZE_IN;
-    
+
     PercentileSamples() {
         memset(this, 0, sizeof(*this));
     }
@@ -280,7 +280,7 @@ friend class AddLatency;
             }
         }
     }
-    
+
     // Get the `ratio'-ile value. E.g. 0.99 means 99%-ile value.
     // Since we store samples in different intervals internally. We first
     // address the interval by multiplying ratio with _num_added, then
@@ -376,7 +376,7 @@ friend class AddLatency;
                             invl, invl.sample_count());
                     continue;
                 }
-                // Each 
+                // Each
                 const size_t b = invl.added_count();
                 const size_t remain = std::min(
                         round_of_expectation(b * SAMPLE_SIZE, total),
@@ -449,14 +449,14 @@ class Percentile {
 public:
     struct AddPercentileSamples {
         template <size_t size1, size_t size2>
-        void operator()(PercentileSamples<size1> &b1, 
+        void operator()(PercentileSamples<size1> &b1,
                         const PercentileSamples<size2> &b2) const {
             b1.merge(b2);
         }
     };
 
     typedef GlobalPercentileSamples                         value_type;
-    typedef ReducerSampler<Percentile, 
+    typedef ReducerSampler<Percentile,
                            GlobalPercentileSamples,
                            AddPercentileSamples, VoidOp>    sampler_type;
     typedef AgentCombiner <GlobalPercentileSamples,
@@ -477,15 +477,15 @@ public:
         }
         return _sampler;
     }
-    
+
     value_type reset();
-    
+
     value_type get_value() const;
-    
+
     Percentile& operator<<(int64_t latency);
 
     bool valid() const { return _combiner != NULL && _combiner->valid(); }
-    
+
     // This name is useful for warning negative latencies in operator<<
     void set_debug_name(const butil::StringPiece& name) {
         _debug_name.assign(name.data(), name.size());

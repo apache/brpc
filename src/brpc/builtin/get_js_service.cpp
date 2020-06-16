@@ -68,7 +68,7 @@ void GetJsService::jquery_min(
         return;
     }
     cntl->http_response().SetHeader("Last-Modified", g_last_modified);
-    
+
     if (SupportGzip(cntl)) {
         cntl->http_response().SetHeader("Content-Encoding", "gzip");
         cntl->response_attachment().append(jquery_min_js_iobuf_gzip());
@@ -94,7 +94,7 @@ void GetJsService::flot_min(
         return;
     }
     cntl->http_response().SetHeader("Last-Modified", g_last_modified);
-    
+
     if (SupportGzip(cntl)) {
         cntl->http_response().SetHeader("Content-Encoding", "gzip");
         cntl->response_attachment().append(flot_min_js_iobuf_gzip());
@@ -120,7 +120,7 @@ void GetJsService::viz_min(
         return;
     }
     cntl->http_response().SetHeader("Last-Modified", g_last_modified);
-    
+
     if (SupportGzip(cntl)) {
         cntl->http_response().SetHeader("Content-Encoding", "gzip");
         cntl->response_attachment().append(viz_min_js_iobuf_gzip());

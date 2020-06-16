@@ -63,7 +63,7 @@ TEST(RWLockTest, rdlock_performance) {
         ASSERT_EQ(0, pthread_create(&rth[i], NULL, read_thread, &lock1));
     }
     ASSERT_EQ(0, pthread_create(&wth, NULL, write_thread, &lock1));
-    
+
     for (size_t i = 0; i < ARRAY_SIZE(rth); ++i) {
         long* res = NULL;
         pthread_join(rth[i], (void**)&res);

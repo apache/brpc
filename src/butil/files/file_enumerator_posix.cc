@@ -130,7 +130,7 @@ bool FileEnumerator::ReadDirectory(std::vector<FileInfo>* entries,
 #endif
 
   struct dirent* dent;
-  // readdir_r is marked as deprecated since glibc 2.24. 
+  // readdir_r is marked as deprecated since glibc 2.24.
   // Using readdir on _different_ DIR* object is already thread-safe in
   // most modern libc implementations.
 #if defined(__GLIBC__) &&  \

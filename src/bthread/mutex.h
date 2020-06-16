@@ -64,7 +64,7 @@ public:
     // TODO(chenzhangyi01): Complement interfaces for C++11
 private:
     DISALLOW_COPY_AND_ASSIGN(Mutex);
-    bthread_mutex_t _mutex;   
+    bthread_mutex_t _mutex;
 };
 
 namespace internal {
@@ -133,10 +133,10 @@ public:
     unique_lock(mutex_type& mutex, defer_lock_t)
         : _mutex(&mutex), _owns_lock(false)
     {}
-    unique_lock(mutex_type& mutex, try_to_lock_t) 
+    unique_lock(mutex_type& mutex, try_to_lock_t)
         : _mutex(&mutex), _owns_lock(bthread_mutex_trylock(&mutex) == 0)
     {}
-    unique_lock(mutex_type& mutex, adopt_lock_t) 
+    unique_lock(mutex_type& mutex, adopt_lock_t)
         : _mutex(&mutex), _owns_lock(true)
     {}
 
@@ -152,7 +152,7 @@ public:
             return;
         }
         if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
+            CHECK(false) << "Detected deadlock issue";
             return;
         }
         bthread_mutex_lock(_mutex);
@@ -165,7 +165,7 @@ public:
             return false;
         }
         if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
+            CHECK(false) << "Detected deadlock issue";
             return false;
         }
         _owns_lock = !bthread_mutex_trylock(_mutex);
@@ -210,14 +210,14 @@ namespace bvar {
 
 template <>
 struct MutexConstructor<bthread_mutex_t> {
-    bool operator()(bthread_mutex_t* mutex) const { 
+    bool operator()(bthread_mutex_t* mutex) const {
         return bthread_mutex_init(mutex, NULL) == 0;
     }
 };
 
 template <>
 struct MutexDestructor<bthread_mutex_t> {
-    bool operator()(bthread_mutex_t* mutex) const { 
+    bool operator()(bthread_mutex_t* mutex) const {
         return bthread_mutex_destroy(mutex) == 0;
     }
 };

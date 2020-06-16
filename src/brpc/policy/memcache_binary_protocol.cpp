@@ -79,7 +79,7 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
         const uint8_t* p_mcmagic = (const uint8_t*)source->fetch1();
         if (NULL == p_mcmagic) {
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
-        }            
+        }
         if (*p_mcmagic != (uint8_t)MC_MAGIC_RESPONSE) {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
@@ -99,7 +99,7 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
             source->pop_front(sizeof(*header) + total_body_length);
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
-        
+
         PipelinedInfo pi;
         if (!socket->PopPipelinedInfo(&pi)) {
             LOG(WARNING) << "No corresponding PipelinedInfo in socket, drop";
@@ -131,7 +131,7 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
         if (header->command == MC_BINARY_SASL_AUTH) {
             if (header->status != 0) {
                 LOG(ERROR) << "Failed to authenticate the couchbase bucket.";
-                return MakeParseError(PARSE_ERROR_NO_RESOURCE, 
+                return MakeParseError(PARSE_ERROR_NO_RESOURCE,
                                       "Fail to authenticate with the couchbase bucket");
             }
             DestroyingPtr<MostCommonMessage> auth_msg(
@@ -146,7 +146,7 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
             } else {
                 socket->GivebackPipelinedInfo(pi);
             }
-        }    
+        }
     }
 }
 
@@ -162,7 +162,7 @@ void ProcessMemcacheResponse(InputMessageBase* msg_base) {
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {

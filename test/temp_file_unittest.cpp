@@ -119,7 +119,7 @@ TEST_F(TempFileTest, should_save_with_format_in_long_string)
 
     char buf2[2048];
     char *act = fgets(buf2, 2048, fp);
-    fclose(fp);    
+    fclose(fp);
     EXPECT_STREQ(buf, act);
 }
 
@@ -147,13 +147,13 @@ TEST_F(TempFileTest, save_binary_twice)
     // save twice
     test_t data2 = { 89, 1000, {'E', 'C', 'A', 'Z'}};
     ASSERT_EQ(0, tmp.save_bin(&data2, sizeof(data2)));
-    
+
     fp = fopen(tmp.fname(), "r");
     ASSERT_NE((void*)0, fp);
     bzero(&act_data, sizeof(act_data));
     ASSERT_EQ((size_t)1, fread(&act_data, sizeof(act_data), 1, fp));
     fclose(fp);
-    
+
     ASSERT_EQ(0, memcmp(&data2, &act_data, sizeof(data2)));
 
 }

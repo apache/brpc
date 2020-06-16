@@ -88,7 +88,7 @@ template <typename K, typename V, size_t BLOCK_SIZE = 512,
           typename C = std::less<K> >
 class PooledMap
     : public std::map<K, V, C, details::PooledAllocator<std::pair<const K, V>, BLOCK_SIZE> > {
-    
+
 };
 
 namespace details {
@@ -117,7 +117,7 @@ public:
     template <class U1> struct rebind {
         typedef PooledAllocator<U1, BLOCK_SIZE> other;
     };
-    
+
 public:
     PooledAllocator() {}
     PooledAllocator(const PooledAllocator&) {}

@@ -47,7 +47,7 @@ struct ChannelOptions {
     // Default: 200 (milliseconds)
     // Maximum: 0x7fffffff (roughly 30 days)
     int32_t connect_timeout_ms;
-    
+
     // Max duration of RPC over this Channel. -1 means wait indefinitely.
     // Overridable by Controller.set_timeout_ms().
     // Default: 500 (milliseconds)
@@ -69,9 +69,9 @@ struct ChannelOptions {
     // Default: 3
     // Maximum: INT_MAX
     int max_retry;
-    
-    // When the error rate of a server node is too high, isolate the node. 
-    // Note that this isolation is GLOBAL, the node will become unavailable 
+
+    // When the error rate of a server node is too high, isolate the node.
+    // Note that this isolation is GLOBAL, the node will become unavailable
     // for all channels running in this process during the isolation.
     // Default: false
     bool enable_circuit_breaker;
@@ -88,7 +88,7 @@ struct ChannelOptions {
     // Possible values: "single", "pooled", "short".
     AdaptiveConnectionType connection_type;
 
-    // Channel.Init() succeeds even if there's no server in the NamingService. 
+    // Channel.Init() succeeds even if there's no server in the NamingService.
     // E.g. the BNS directory is empty. All RPC over the channel will fail before
     // new nodes being added to the NamingService.
     // Default: true (false before r32470)
@@ -159,7 +159,7 @@ public:
 
     // Connect this channel to a group of servers whose addresses can be
     // accessed via `naming_service_url' according to its protocol. Use the
-    // method specified by `load_balancer_name' to distribute traffic to 
+    // method specified by `load_balancer_name' to distribute traffic to
     // servers. Use default options if `options' is NULL.
     // Supported naming service("protocol://service_name"):
     //   bns://<node-name>            # Baidu Naming Service
@@ -174,11 +174,11 @@ public:
     //   "" or NULL                   # treat `naming_service_url' as `server_addr_and_port'
     //                                # Init(xxx, "", options) and Init(xxx, NULL, options)
     //                                # are exactly same with Init(xxx, options)
-    int Init(const char* naming_service_url, 
+    int Init(const char* naming_service_url,
              const char* load_balancer_name,
              const ChannelOptions* options);
 
-    // Call `method' of the remote service with `request' as input, and 
+    // Call `method' of the remote service with `request' as input, and
     // `response' as output. `controller' contains options and extra data.
     // If `done' is not NULL, this method returns after request was sent
     // and `done->Run()' will be called when the call finishes, otherwise
@@ -202,7 +202,7 @@ protected:
 
     bool SingleServer() const { return _lb.get() == NULL; }
 
-    // Pick a server using `lb' and then send RPC. Wait for response when 
+    // Pick a server using `lb' and then send RPC. Wait for response when
     // sending synchronous RPC.
     // NOTE: DO NOT directly use `controller' after this call when
     // sending asynchronous RPC (controller->_done != NULL) since

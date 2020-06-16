@@ -179,7 +179,7 @@ public:
     butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*);
 };
 
-// Notice that we can't directly pack CreateStream command in PackRtmpRequest, because 
+// Notice that we can't directly pack CreateStream command in PackRtmpRequest, because
 // we need to pack an AMFObject according to ctx->can_stream_be_created_with_play_or_publish(),
 // which is in the response of Connect command(sent in RtmpConnect::StartConnect).
 struct RtmpCreateStreamMessage : public SocketMessage {
@@ -219,7 +219,7 @@ void WriteBigEndian3Bytes(char** buf, uint32_t val);
 void WriteBigEndian4Bytes(char** buf, uint32_t val);
 void WriteLittleEndian4Bytes(char** buf, uint32_t val);
 
-// Append the control message into `msg_buf' which is writable to Socket. 
+// Append the control message into `msg_buf' which is writable to Socket.
 RtmpUnsentMessage* MakeUnsentControlMessage(
     uint8_t message_type, const void* body, size_t size);
 RtmpUnsentMessage* MakeUnsentControlMessage(
@@ -277,7 +277,7 @@ public:
 
     // XXXMessageStream may be called from multiple threads(currently not),
     // so they're protected by _stream_mutex
-    
+
     // Find the stream by its id and reference the stream with intrusive_ptr.
     // Returns true on success.
     bool FindMessageStream(uint32_t stream_id,
@@ -373,11 +373,11 @@ private:
     void* _on_connect_arg;
     bool _only_check_simple_s0s1;
     bool _create_stream_with_play_or_publish;
-    
+
     // Server and service.
     const Server* _server;
     RtmpService* _service;
-    
+
     // Mapping message_stream_id to message streams.
     butil::Mutex _stream_mutex;
     struct MessageStreamInfo {
@@ -414,7 +414,7 @@ public:
 
 public:
     RtmpChunkStream(RtmpContext* conn_ctx, uint32_t cs_id);
-    
+
     ParseResult Feed(const RtmpBasicHeader& bh,
                      butil::IOBuf* source, Socket* socket);
 
@@ -424,7 +424,7 @@ public:
 
     int SerializeMessage(butil::IOBuf* buf, const RtmpMessageHeader& mh,
                          butil::IOBuf* body);
-    
+
     bool OnMessage(
         const RtmpBasicHeader& bh, const RtmpMessageHeader& mh,
         butil::IOBuf* msg_body, Socket* socket);
@@ -455,12 +455,12 @@ public:
                        const butil::StringPiece& event_data, Socket* socket);
     bool OnBufferReady(const RtmpMessageHeader&,
                        const butil::StringPiece& event_data, Socket* socket);
-    
+
     bool OnWindowAckSize(const RtmpMessageHeader& mh,
                          butil::IOBuf* msg_body, Socket* socket);
     bool OnSetPeerBandwidth(const RtmpMessageHeader& mh,
                             butil::IOBuf* msg_body, Socket* socket);
-    
+
     bool OnAudioMessage(const RtmpMessageHeader& mh,
                         butil::IOBuf* msg_body, Socket* socket);
     bool OnVideoMessage(const RtmpMessageHeader& mh,
@@ -505,7 +505,7 @@ public:
     bool OnReleaseStream(const RtmpMessageHeader& mh, AMFInputStream* istream,
                          Socket* socket);
     bool OnFCPublish(const RtmpMessageHeader& mh, AMFInputStream* istream,
-                     Socket* socket); 
+                     Socket* socket);
     bool OnFCUnpublish(const RtmpMessageHeader& mh, AMFInputStream* istream,
                        Socket* socket);
     bool OnGetStreamLength(const RtmpMessageHeader& mh, AMFInputStream* istream,
@@ -516,7 +516,7 @@ public:
                 Socket* socket);
     bool OnPause(const RtmpMessageHeader& mh, AMFInputStream* istream,
                  Socket* socket);
-    
+
 private:
     struct ReadParams {
         ReadParams();

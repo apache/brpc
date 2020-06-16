@@ -41,7 +41,7 @@ public:
     void run();
     bool start(const InfoThreadOptions&);
     void stop();
-    
+
 private:
     bool _stop;
     InfoThreadOptions _options;

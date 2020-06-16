@@ -183,7 +183,7 @@ void SamplerCollector::run() {
         }
         if (slept) {
             consecutive_nosleep = 0;
-        } else {            
+        } else {
             if (++consecutive_nosleep >= WARN_NOSLEEP_THRESHOLD) {
                 consecutive_nosleep = 0;
                 LOG(WARNING) << "bvar is busy at sampling for "

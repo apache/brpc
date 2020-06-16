@@ -82,7 +82,7 @@ public:
     void Annotate(const std::string& info);
     // When length <= 0, use strlen instead.
     void AnnotateCStr(const char* cstr, size_t length);
-    
+
     // #child spans, Not O(1)
     size_t CountClientSpans() const;
 
@@ -98,7 +98,7 @@ public:
     void set_request_size(int size) { _request_size = size; }
     void set_response_size(int size) { _response_size = size; }
     void set_async(bool async) { _async = async; }
-    
+
     void set_base_real_us(int64_t tm) { _base_real_us = tm; }
     void set_received_us(int64_t tm)
     { _received_real_us = tm + _base_real_us; }
@@ -136,7 +136,7 @@ public:
     bool async() const { return _async; }
     const std::string& full_method_name() const { return _full_method_name; }
     const std::string& info() const { return _info; }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(Span);
 
@@ -171,7 +171,7 @@ private:
     int64_t _start_send_real_us;
     int64_t _sent_real_us;
     std::string _full_method_name;
-    // Format: 
+    // Format:
     //   time1_us \s annotation1 <SEP>
     //   time2_us \s annotation2 <SEP>
     //   ...
@@ -204,7 +204,7 @@ public:
 };
 
 class SpanDB;
-    
+
 // Find a span by its trace_id and span_id, serialize it into `span'.
 int FindSpan(uint64_t trace_id, uint64_t span_id, RpczSpan* span);
 

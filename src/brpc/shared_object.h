@@ -36,7 +36,7 @@ friend void intrusive_ptr_release(SharedObject*);
 public:
     SharedObject() : _nref(0) { }
     int ref_count() const { return _nref.load(butil::memory_order_relaxed); }
-    
+
     // Add ref and returns the ref_count seen before added.
     // The effect is basically same as butil::intrusive_ptr<T>(obj).detach()
     // except that the latter one does not return the seen ref_count which is

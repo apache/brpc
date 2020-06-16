@@ -295,7 +295,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         ParseContentType(res_header->content_type(), &is_grpc_ct);
     const bool is_grpc = (is_http2 && is_grpc_ct);
     bool grpc_compressed = false;  // only valid when is_grpc is true.
-    
+
     do {
         if (!is_http2) {
             // If header has "Connection: close", close the connection.
@@ -361,7 +361,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             }
             break;
         }
-        
+
         // Fail RPC if status code is an error in http sense.
         // ErrorCode of RPC is unified to EHTTP.
         const int sc = res_header->status_code();
@@ -511,7 +511,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
-            
+
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -706,7 +706,7 @@ HttpResponseSender::~HttpResponseSender() {
     ConcurrencyRemover concurrency_remover(_method_status, cntl, _received_us);
     Socket* socket = accessor.get_sending_socket();
     const google::protobuf::Message* res = _res.get();
-    
+
     if (cntl->IsCloseConnection()) {
         socket->SetFailed();
         return;
@@ -741,7 +741,7 @@ HttpResponseSender::~HttpResponseSender() {
         // ^ a pb service
         !cntl->Failed()) {
         // ^ pb response in failed RPC is undefined, no need to convert.
-        
+
         butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
         if (content_type == HTTP_CONTENT_PROTO) {
             if (!res->SerializeToZeroCopyStream(&wrapper)) {
@@ -797,7 +797,7 @@ HttpResponseSender::~HttpResponseSender() {
         // status code is always 200 according to grpc protocol
         res_header->set_status_code(HTTP_STATUS_OK);
     }
-    
+
     bool grpc_compressed = false;
     if (cntl->Failed()) {
         cntl->response_attachment().clear();
@@ -948,7 +948,7 @@ FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
     butil::StringPiece service_name(splitter.field(), splitter.length());
     const bool full_service_name =
         (service_name.find('.') != butil::StringPiece::npos);
-    const Server::ServiceProperty* const sp = 
+    const Server::ServiceProperty* const sp =
         (full_service_name ?
          wrapper.FindServicePropertyByFullName(service_name) :
          wrapper.FindServicePropertyByName(service_name));
@@ -986,7 +986,7 @@ FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
             return mp;
         }
     }
-    
+
     // Try [service_name]/default_method
     mp = wrapper.FindMethodPropertyByFullName(service_name, common->DEFAULT_METHOD);
     if (mp) {
@@ -1031,7 +1031,7 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
 
 ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
                              bool read_eof, const void* /*arg*/) {
-    HttpContext* http_imsg = 
+    HttpContext* http_imsg =
         static_cast<HttpContext*>(socket->parsing_context());
     if (http_imsg == NULL) {
         if (read_eof || source->empty()) {
@@ -1159,7 +1159,7 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
 bool VerifyHttpRequest(const InputMessageBase* msg) {
     Server* server = (Server*)msg->arg();
     Socket* socket = msg->socket();
-    
+
     HttpContext* http_request = (HttpContext*)msg;
     const Authenticator* auth = server->options().auth;
     if (NULL == auth) {
@@ -1177,7 +1177,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
         return true;
     }
 
-    const std::string *authorization 
+    const std::string *authorization
         = http_request->header().GetHeader("Authorization");
     if (authorization == NULL) {
         return false;
@@ -1243,7 +1243,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         .set_request_protocol(PROTOCOL_HTTP)
         .set_begin_time_us(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
-    
+
     // Read log-id. errno may be set when input to strtoull overflows.
     // atoi/atol/atoll don't support 64-bit integer and can't be used.
     const std::string* log_id_str = req_header.GetHeader(common->LOG_ID);
@@ -1252,7 +1252,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         errno = 0;
         uint64_t logid = strtoull(log_id_str->c_str(), &logid_end, 10);
         if (*logid_end || errno) {
-            LOG(ERROR) << "Invalid " << common->LOG_ID << '=' 
+            LOG(ERROR) << "Invalid " << common->LOG_ID << '='
                        << *log_id_str << " in http request";
         } else {
             cntl->set_log_id(logid);
@@ -1294,7 +1294,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         span->set_protocol(is_http2 ? PROTOCOL_H2 : PROTOCOL_HTTP);
         span->set_request_size(imsg_guard->parsed_length());
     }
-    
+
     if (!server->IsRunning()) {
         cntl->SetFailed(ELOGOFF, "Server is stopping");
         return;
@@ -1320,7 +1320,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         // `cntl', `req' and `res' will be deleted inside `done'
         return svc->CallMethod(md, cntl, NULL, NULL, done);
     }
-    
+
     const Server::MethodProperty* const sp =
         FindMethodPropertyByURI(path, server, &req_header._unresolved_path);
     if (NULL == sp) {
@@ -1352,7 +1352,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             return;
         }
     }
-    
+
     if (span) {
         span->ResetServerSpanName(sp->method->full_name());
     }

@@ -38,7 +38,7 @@ DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options
 DEFINE_string(server, "0.0.0.0:8002", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 
@@ -63,7 +63,7 @@ static void* sender(void* arg) {
 
         request.set_value(log_id++);
         if (!g_attachment.empty()) {
-            // Set attachment which is wired to network directly instead of 
+            // Set attachment which is wired to network directly instead of
             // being serialized into protobuf messages.
             cntl.request_attachment().append(g_attachment);
         }
@@ -84,7 +84,7 @@ static void* sender(void* arg) {
                 << "error=" << cntl.ErrorText() << " latency=" << cntl.latency_us();
             // We can't connect to the server, sleep a while. Notice that this
             // is a specific sleeping to prevent this thread from spinning too
-            // fast. You should continue the business logic in a production 
+            // fast. You should continue the business logic in a production
             // server rather than sleeping.
             bthread_usleep(50000);
         }
@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::ParallelChannel channel;
     brpc::ParallelChannelOptions pchan_options;
@@ -110,14 +110,14 @@ int main(int argc, char* argv[]) {
     sub_options.protocol = FLAGS_protocol;
     sub_options.connection_type = FLAGS_connection_type;
     sub_options.max_retry = FLAGS_max_retry;
-    // Setting sub_options.timeout_ms does not work because timeout of sub 
+    // Setting sub_options.timeout_ms does not work because timeout of sub
     // channels are disabled in ParallelChannel.
 
     if (FLAGS_same_channel) {
         // For brpc >= 1.0.155.31351, a sub channel can be added into
         // a ParallelChannel more than once.
         brpc::Channel* sub_channel = new brpc::Channel;
-        // Initialize the channel, NULL means using default options. 
+        // Initialize the channel, NULL means using default options.
         // options, see `brpc/channel.h'.
         if (sub_channel->Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &sub_options) != 0) {
             LOG(ERROR) << "Fail to initialize sub_channel";
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
     } else {
         for (int i = 0; i < FLAGS_channel_num; ++i) {
             brpc::Channel* sub_channel = new brpc::Channel;
-            // Initialize the channel, NULL means using default options. 
+            // Initialize the channel, NULL means using default options.
             // options, see `brpc/channel.h'.
             if (sub_channel->Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &sub_options) != 0) {
                 LOG(ERROR) << "Fail to initialize sub_channel[" << i << "]";
@@ -194,13 +194,13 @@ int main(int argc, char* argv[]) {
         LOG(INFO) << "Sending EchoRequest at qps=" << g_latency_recorder.qps(1)
                   << " latency=" << g_latency_recorder.latency(1) << noflush;
         for (int i = 0; i < FLAGS_channel_num; ++i) {
-            LOG(INFO) << " latency_" << i << "=" 
+            LOG(INFO) << " latency_" << i << "="
                       << g_sub_channel_latency[i].latency(1)
                       << noflush;
         }
         LOG(INFO);
     }
-    
+
     LOG(INFO) << "EchoClient is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {

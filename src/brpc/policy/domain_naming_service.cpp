@@ -49,7 +49,7 @@ int DomainNamingService::GetServers(const char* dns_name,
         LOG(ERROR) << "dns_name=`" << dns_name << "' is too long";
         return -1;
     }
-    
+
     buf[i] = '\0';
     int port = 80;  // default port of HTTP
     if (dns_name[i] == ':') {

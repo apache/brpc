@@ -49,7 +49,7 @@ public:
 
     // Type of the reply.
     RedisReplyType type() const { return _type; }
-    
+
     bool is_nil() const;     // True if the reply is a (redis) nil.
     bool is_integer() const; // True if the reply is an integer.
     bool is_error() const;   // True if the reply is an error.
@@ -96,7 +96,7 @@ public:
     // string containing \0 is not printed fully, use data() instead.
     const char* c_str() const;
     // Convert the reply to a StringPiece. If the reply is not a string,
-    // call stacks are logged and "" is returned. 
+    // call stacks are logged and "" is returned.
     // If you need a std::string, call .data().as_string() (which allocates mem)
     butil::StringPiece data() const;
 
@@ -148,7 +148,7 @@ private:
 
     void FormatStringImpl(const char* fmt, va_list args, RedisReplyType type);
     void SetStringImpl(const butil::StringPiece& str, RedisReplyType type);
-    
+
     RedisReplyType _type;
     int _length;  // length of short_str/long_str, count of replies
     union {

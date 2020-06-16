@@ -35,7 +35,7 @@ int ProtobufsService::Init() {
     Server::ServiceMap &services = _server->_fullname_service_map;
     std::vector<const google::protobuf::Descriptor*> stack;
     stack.reserve(services.size() * 3);
-    for (Server::ServiceMap::iterator 
+    for (Server::ServiceMap::iterator
             iter = services.begin(); iter != services.end(); ++iter) {
         if (!iter->second.is_user_service()) {
             continue;
@@ -82,7 +82,7 @@ void ProtobufsService::default_method(::google::protobuf::RpcController* cntl_ba
             use_html ? "text/html" : "text/plain");
         if (use_html) {
             os << "<!DOCTYPE html><html><head></head><body>\n";
-        }    
+        }
         // list all structures.
         for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
             if (use_html) {

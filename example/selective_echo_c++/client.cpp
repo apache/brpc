@@ -34,7 +34,7 @@ DEFINE_string(starting_server, "0.0.0.0:8114", "IP Address of the first server, 
 DEFINE_string(load_balancer, "rr", "Name of load balancer");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(backup_ms, -1, "backup timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 
 std::string g_request;
@@ -60,7 +60,7 @@ static void* sender(void* arg) {
         cntl.set_log_id(log_id++);  // set by user
 
         if (!g_attachment.empty()) {
-            // Set attachment which is wired to network directly instead of 
+            // Set attachment which is wired to network directly instead of
             // being serialized into protobuf messages.
             cntl.request_attachment().append(g_attachment);
         }
@@ -72,11 +72,11 @@ static void* sender(void* arg) {
         if (!cntl.Failed()) {
             g_latency_recorder << cntl.latency_us();
         } else {
-            g_error_count << 1; 
+            g_error_count << 1;
             CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)
                 << "error=" << cntl.ErrorText() << " latency=" << elp;
             // We can't connect to the server, sleep a while. Notice that this
-            // is a specific sleeping to prevent this thread from spinning too // fast. You should continue the business logic in a production 
+            // is a specific sleeping to prevent this thread from spinning too // fast. You should continue the business logic in a production
             // server rather than sleeping.
             bthread_usleep(50000);
         }
@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::SelectiveChannel channel;
     brpc::ChannelOptions schan_options;
@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
     // Add sub channels.
     // ================
     std::vector<brpc::ChannelBase*> sub_channels;
-    
+
     // Add an ordinary channel.
     brpc::Channel* sub_channel1 = new brpc::Channel;
     butil::EndPoint pt;

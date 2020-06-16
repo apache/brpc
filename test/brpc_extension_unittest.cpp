@@ -49,7 +49,7 @@ inline brpc::Extension<int>* IntExtension() {
 
 const int g_foo = 10;
 const int g_bar = 20;
-    
+
 TEST_F(ExtensionTest, basic) {
     ConstIntExtension()->Register("foo", NULL);
     ConstIntExtension()->Register("foo", &g_foo);

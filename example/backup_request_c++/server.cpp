@@ -51,17 +51,17 @@ public:
             static_cast<brpc::Controller*>(cntl_base);
 
         // The purpose of following logs is to help you to understand
-        // how clients interact with servers more intuitively. You should 
+        // how clients interact with servers more intuitively. You should
         // remove these logs in performance-sensitive servers.
         // The noflush prevents the log from being flushed immediately.
         LOG(INFO) << "Received request[index=" << request->index()
-                  << "] from " << cntl->remote_side() 
+                  << "] from " << cntl->remote_side()
                   << " to " << cntl->local_side() << noflush;
         // Sleep a while for 0th, 2nd, 4th, 6th ... requests to trigger backup request
         // at client-side.
         bool do_sleep = (_count.fetch_add(1, butil::memory_order_relaxed) % 2 == 0);
         if (do_sleep) {
-            LOG(INFO) << ", sleep " << FLAGS_sleep_ms 
+            LOG(INFO) << ", sleep " << FLAGS_sleep_ms
                       << " ms to trigger backup request" << noflush;
         }
         LOG(INFO);
@@ -91,7 +91,7 @@ int main(int argc, char* argv[]) {
     // Add the service into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
     // use brpc::SERVER_OWNS_SERVICE.
-    if (server.AddService(&echo_service_impl, 
+    if (server.AddService(&echo_service_impl,
                           brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
         LOG(ERROR) << "Fail to add service";
         return -1;

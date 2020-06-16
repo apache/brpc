@@ -138,7 +138,7 @@ TEST_F(LockTimerTest, signal_lock_time) {
     MutexWithRecorder<pthread_mutex_t> m0(r0);
     pthread_t threads[4];
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, 
+        ASSERT_EQ(0, pthread_create(&threads[i], NULL,
             signal_lock_thread<MutexWithRecorder<pthread_mutex_t> >, &m0));
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
@@ -149,7 +149,7 @@ TEST_F(LockTimerTest, signal_lock_time) {
     LatencyRecorder r1;
     MutexWithLatencyRecorder<pthread_mutex_t> m1(r1);
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, 
+        ASSERT_EQ(0, pthread_create(&threads[i], NULL,
             signal_lock_thread<MutexWithLatencyRecorder<pthread_mutex_t> >, &m1));
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
@@ -187,7 +187,7 @@ TEST_F(LockTimerTest, double_lock_time) {
     arg.m1.set_recorder(r1);
     pthread_t threads[4];
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, 
+        ASSERT_EQ(0, pthread_create(&threads[i], NULL,
             double_lock_thread<M0, M1>, &arg));
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
@@ -203,7 +203,7 @@ TEST_F(LockTimerTest, double_lock_time) {
     arg1.m0.set_recorder(r1);
     arg1.m1.set_recorder(r0);
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, 
+        ASSERT_EQ(0, pthread_create(&threads[i], NULL,
             double_lock_thread<M1, M0>, &arg1));
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
@@ -220,7 +220,7 @@ TEST_F(LockTimerTest, overhead) {
     MutexWithLatencyRecorder<DummyMutex> m0(r0);
     butil::Timer timer;
     const size_t N = 1000 * 1000 * 10;
-    
+
     ProfilerStart("mutex_with_latency_recorder.prof");
     timer.start();
     for (size_t i = 0; i < N; ++i) {

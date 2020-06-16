@@ -32,7 +32,7 @@ public:
     // |--------------------------------------------------|
     // |----------- Implement SocketConnection -----------|
     // |--------------------------------------------------|
-   
+
     int Connect(Socket* ptr, const timespec* due_time,
                 int (*on_connect)(int, int, void *), void *data);
     ssize_t CutMessageIntoFileDescriptor(int, butil::IOBuf **data_list,
@@ -72,7 +72,7 @@ friend class MessageBatcher;
     int Init(const StreamOptions options);
     void SetRemoteConsumed(size_t _remote_consumed);
     void TriggerOnConnectIfNeed();
-    void Wait(void (*on_writable)(StreamId, void*, int), void* arg, 
+    void Wait(void (*on_writable)(StreamId, void*, int), void* arg,
               const timespec* due_time, bool new_thread, bthread_id_t *join_id);
     void SendFeedback();
     void StartIdleTimer();
@@ -110,14 +110,14 @@ friend class MessageBatcher;
     ConnectMeta         _connect_meta;
     bool                _connected;
     bool                _closed;
-    
+
     bthread_mutex_t _congestion_control_mutex;
     size_t _produced;
     size_t _remote_consumed;
     bthread_id_list_t _writable_wait_list;
 
     int64_t _local_consumed;
-    StreamSettings _remote_settings;   
+    StreamSettings _remote_settings;
 
     bool _parse_rpc_response;
     bthread::ExecutionQueueId<butil::IOBuf*> _consumer_queue;

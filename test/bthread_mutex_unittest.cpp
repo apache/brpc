@@ -37,7 +37,7 @@ int c = 0;
 void* locker(void* arg) {
     bthread_mutex_t* m = (bthread_mutex_t*)arg;
     bthread_mutex_lock(m);
-    printf("[%" PRIu64 "] I'm here, %d, %" PRId64 "ms\n", 
+    printf("[%" PRIu64 "] I'm here, %d, %" PRId64 "ms\n",
            pthread_numeric_id(), ++c, butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_mutex_unlock(m);
@@ -200,7 +200,7 @@ void PerfTest(Mutex* mutex,
     }
     g_started = true;
     char prof_name[32];
-    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter); 
+    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter);
     ProfilerStart(prof_name);
     usleep(500 * 1000);
     ProfilerStop();

@@ -46,7 +46,7 @@ class UbrpcAdaptor : public NsheadPbServiceAdaptor {
 public:
     explicit UbrpcAdaptor(mcpack2pb::SerializationFormat format)
         : _format(format) {}
-    
+
     void ParseNsheadMeta(const Server& svr,
                         const NsheadMessage& request,
                         Controller*,

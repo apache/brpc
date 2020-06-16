@@ -1,5 +1,5 @@
 // Tencent is pleased to support the open source community by making RapidJSON available.
-// 
+//
 // Copyright (C) 2015 THL A29 Limited, a Tencent company, and Milo Yip. All rights reserved.
 //
 // Licensed under the MIT License (the "License"); you may not use this file except
@@ -7,9 +7,9 @@
 //
 // http://opensource.org/licenses/MIT
 //
-// Unless required by applicable law or agreed to in writing, software distributed 
-// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR 
-// CONDITIONS OF ANY KIND, either express or implied. See the License for the 
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
 #ifndef RAPIDJSON_READER_H_
@@ -117,14 +117,14 @@ RAPIDJSON_DIAG_OFF(effc++)
 
 BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
-template<class T, class U> 
+template<class T, class U>
 struct is_same {
     static const bool value = false;
 };
 
 template<class T>
 struct is_same<T, T> {
-    static const bool value = true; 
+    static const bool value = true;
 };
 
 // BullseyeCoverage Compile C++ 8.9.39 Linux-x64 requires this.
@@ -134,7 +134,7 @@ template<class T> const bool is_same<T, T>::value;
 ///////////////////////////////////////////////////////////////////////////////
 // ParseFlag
 
-/*! \def RAPIDJSON_PARSE_DEFAULT_FLAGS 
+/*! \def RAPIDJSON_PARSE_DEFAULT_FLAGS
     \ingroup RAPIDJSON_CONFIG
     \brief User-defined kParseDefaultFlags definition.
 
@@ -162,7 +162,7 @@ enum ParseFlag {
 
 /*! \class rapidjson::Handler
     \brief Concept for receiving events from GenericReader upon parsing.
-    The functions return true if no error occurs. If they return false, 
+    The functions return true if no error occurs. If they return false,
     the event publisher should terminate the process.
 \code
 concept Handler {
@@ -355,7 +355,7 @@ inline const char *SkipWhitespace_SIMD(const char* p) {
 
 #ifdef RAPIDJSON_SIMD
 //! Template function specialization for InsituStringStream
-template<> inline void SkipWhitespace(InsituStringStream& is) { 
+template<> inline void SkipWhitespace(InsituStringStream& is) {
     is.src_ = const_cast<char*>(SkipWhitespace_SIMD(is.src_));
 }
 
@@ -369,17 +369,17 @@ template<> inline void SkipWhitespace(StringStream& is) {
 // GenericReader
 
 //! SAX-style JSON parser. Use \ref Reader for UTF8 encoding and default allocator.
-/*! GenericReader parses JSON text from a stream, and send events synchronously to an 
+/*! GenericReader parses JSON text from a stream, and send events synchronously to an
     object implementing Handler concept.
 
-    It needs to allocate a stack for storing a single decoded string during 
+    It needs to allocate a stack for storing a single decoded string during
     non-destructive parsing.
 
-    For in-situ parsing, the decoded string is directly written to the source 
+    For in-situ parsing, the decoded string is directly written to the source
     text string, no temporary buffer is required.
 
     A GenericReader object can be reused for parsing multiple JSON text.
-    
+
     \tparam SourceEncoding Encoding of the input stream.
     \tparam TargetEncoding Encoding of the parse output.
     \tparam StackAllocator Allocator type for stack.
@@ -393,7 +393,7 @@ public:
     /*! \param stackAllocator Optional allocator for allocating stack memory. (Only use for non-destructive parsing)
         \param stackCapacity stack capacity in bytes for storing a single decoded string.  (Only use for non-destructive parsing)
     */
-    GenericReader(StackAllocator* stackAllocator = 0, size_t stackCapacity = kDefaultStackCapacity) 
+    GenericReader(StackAllocator* stackAllocator = 0, size_t stackCapacity = kDefaultStackCapacity)
         : stack_(stackAllocator, stackCapacity), parseResult_() {}
 
     //! Parse JSON text.
@@ -450,7 +450,7 @@ public:
 
     //! Whether a parse error has occured in the last parsing.
     bool HasParseError() const { return parseResult_.IsError(); }
-    
+
     //! Get the \ref ParseErrorCode of last parsing.
     ParseErrorCode GetParseErrorCode() const { return parseResult_.Code(); }
 
@@ -482,7 +482,7 @@ private:
     void ParseObject(InputStream& is, Handler& handler) {
         RAPIDJSON_ASSERT(is.Peek() == '{');
         is.Take();  // Skip '{'
-        
+
         if (!handler.StartObject())
             RAPIDJSON_PARSE_ERROR(kParseErrorTermination, is.Tell());
 
@@ -518,7 +518,7 @@ private:
 
             switch (is.Take()) {
                 case ',': SkipWhitespace(is); break;
-                case '}': 
+                case '}':
                     if (!handler.EndObject(memberCount))
                         RAPIDJSON_PARSE_ERROR(kParseErrorTermination, is.Tell());
                     return;
@@ -532,10 +532,10 @@ private:
     void ParseArray(InputStream& is, Handler& handler) {
         RAPIDJSON_ASSERT(is.Peek() == '[');
         is.Take();  // Skip '['
-        
+
         if (!handler.StartArray())
             RAPIDJSON_PARSE_ERROR(kParseErrorTermination, is.Tell());
-        
+
         SkipWhitespace(is);
 
         if (is.Peek() == ']') {
@@ -554,7 +554,7 @@ private:
 
             switch (is.Take()) {
                 case ',': SkipWhitespace(is); break;
-                case ']': 
+                case ']':
                     if (!handler.EndArray(elementCount))
                         RAPIDJSON_PARSE_ERROR(kParseErrorTermination, is.Tell());
                     return;
@@ -659,7 +659,7 @@ private:
         InputStream& s(copy.s);
 
         bool success = false;
-        if (parseFlags == kParseDefaultFlags && is_same<SourceEncoding, TargetEncoding>::value) { 
+        if (parseFlags == kParseDefaultFlags && is_same<SourceEncoding, TargetEncoding>::value) {
             StackStream<typename SourceEncoding::Ch> stackStream(stack_);
             ParseStringToStream<SourceEncoding>(s, stackStream);
             RAPIDJSON_PARSE_ERROR_EARLY_RETURN_VOID;
@@ -675,7 +675,7 @@ private:
             RAPIDJSON_ASSERT(length <= 0xFFFFFFFF);
             const typename TargetEncoding::Ch* const str = (typename TargetEncoding::Ch*)head;
             success = (isKey ? handler.Key(str, SizeType(length), false) : handler.String(str, SizeType(length), false));
-        } 
+        }
         else {
             StackStream<typename TargetEncoding::Ch> stackStream(stack_);
             ParseStringToStream<parseFlags, SourceEncoding, TargetEncoding>(s, stackStream);
@@ -687,7 +687,7 @@ private:
         if (!success)
             RAPIDJSON_PARSE_ERROR(kParseErrorTermination, s.Tell());
     }
-   
+
     template<typename OutputStream>
     inline void PushContentToStream(OutputStream& os, Ch*& start, size_t& length) {
         if (length > 0) {
@@ -696,8 +696,8 @@ private:
             length = 0;
         }
     }
-    
-    // When parseFlags is kParseDefaultFlags and SourceEncoding equals TargetEncoding 
+
+    // When parseFlags is kParseDefaultFlags and SourceEncoding equals TargetEncoding
     // will use this optimized ParseStringToStream to improve efficiency.
     // Compare with not optimized ParseStringToStream it will improve by 30%.
     // Parse string to an output is
@@ -707,23 +707,23 @@ private:
 //!@cond RAPIDJSON_HIDDEN_FROM_DOXYGEN
 #define Z16 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
         static const char escape[256] = {
-            Z16, Z16, 0, 0,'\"', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,'/', 
-            Z16, Z16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,'\\', 0, 0, 0, 
-            0, 0,'\b', 0, 0, 0,'\f', 0, 0, 0, 0, 0, 0, 0,'\n', 0, 
-            0, 0,'\r', 0,'\t', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+            Z16, Z16, 0, 0,'\"', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,'/',
+            Z16, Z16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,'\\', 0, 0, 0,
+            0, 0,'\b', 0, 0, 0,'\f', 0, 0, 0, 0, 0, 0, 0,'\n', 0,
+            0, 0,'\r', 0,'\t', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             Z16, Z16, Z16, Z16, Z16, Z16, Z16, Z16
         };
 #undef Z16
 //!@endcond
         RAPIDJSON_ASSERT(is.Peek() == '\"');
         is.Take();  // Skip '\"'
-        Ch* start = NULL; 
+        Ch* start = NULL;
         size_t length = 0;
         for (;;) {
             Ch* pos = const_cast<Ch*>(is.TakeWithAddr());
             if (pos == NULL) {
                 RAPIDJSON_PARSE_ERROR(kParseErrorParseStringToStreamInvalidContent, is.Tell());
-                return; 
+                return;
             }
             Ch c = *pos;
             if (c == '\\') {    // Escape
@@ -780,10 +780,10 @@ private:
 //!@cond RAPIDJSON_HIDDEN_FROM_DOXYGEN
 #define Z16 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
         static const char escape[256] = {
-            Z16, Z16, 0, 0,'\"', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,'/', 
-            Z16, Z16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,'\\', 0, 0, 0, 
-            0, 0,'\b', 0, 0, 0,'\f', 0, 0, 0, 0, 0, 0, 0,'\n', 0, 
-            0, 0,'\r', 0,'\t', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+            Z16, Z16, 0, 0,'\"', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,'/',
+            Z16, Z16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,'\\', 0, 0, 0,
+            0, 0,'\b', 0, 0, 0,'\f', 0, 0, 0, 0, 0, 0, 0,'\n', 0,
+            0, 0,'\r', 0,'\t', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             Z16, Z16, Z16, Z16, Z16, Z16, Z16, Z16
         };
 #undef Z16
@@ -828,8 +828,8 @@ private:
             else if ((unsigned)c < 0x20) // RFC 4627: unescaped = %x20-21 / %x23-5B / %x5D-10FFFF
                 RAPIDJSON_PARSE_ERROR(kParseErrorStringEscapeInvalid, is.Tell() - 1);
             else {
-                if (parseFlags & kParseValidateEncodingFlag ? 
-                    !Transcoder<SEncoding, TEncoding>::Validate(is, os) : 
+                if (parseFlags & kParseValidateEncodingFlag ?
+                    !Transcoder<SEncoding, TEncoding>::Validate(is, os) :
                     !Transcoder<SEncoding, TEncoding>::Transcode(is, os))
                     RAPIDJSON_PARSE_ERROR(kParseErrorStringInvalidEncoding, is.Tell());
             }
@@ -937,8 +937,8 @@ private:
         bool useDouble = false;
         double d = 0.0;
         if (use64bit) {
-            if (minus) 
-                while (s.Peek() >= '0' && s.Peek() <= '9') {                    
+            if (minus)
+                while (s.Peek() >= '0' && s.Peek() <= '9') {
                      if (i64 >= RAPIDJSON_UINT64_C2(0x0CCCCCCC, 0xCCCCCCCC)) // 2^63 = 9223372036854775808
                         if (i64 != RAPIDJSON_UINT64_C2(0x0CCCCCCC, 0xCCCCCCCC) || s.Peek() > '8') {
                             d = i64;
@@ -949,7 +949,7 @@ private:
                     significandDigit++;
                 }
             else
-                while (s.Peek() >= '0' && s.Peek() <= '9') {                    
+                while (s.Peek() >= '0' && s.Peek() <= '9') {
                     if (i64 >= RAPIDJSON_UINT64_C2(0x19999999, 0x99999999)) // 2^64 - 1 = 18446744073709551615
                         if (i64 != RAPIDJSON_UINT64_C2(0x19999999, 0x99999999) || s.Peek() > '5') {
                             d = i64;
@@ -985,7 +985,7 @@ private:
                 // Use i64 to store significand in 64-bit architecture
                 if (!use64bit)
                     i64 = i;
-        
+
                 while (s.Peek() >= '0' && s.Peek() <= '9') {
                     if (i64 > RAPIDJSON_UINT64_C2(0x1FFFFF, 0xFFFFFFFF)) // 2^53 - 1 for fast path
                         break;
@@ -1177,7 +1177,7 @@ private:
 #undef N
 #undef N16
 //!@endcond
-        
+
         if (sizeof(Ch) == 1 || unsigned(c) < 256)
             return (Token)tokenMap[(unsigned char)c];
         else
@@ -1498,7 +1498,7 @@ private:
             // Error flag has been set.
             return;
         }
-        
+
         switch (src) {
         case IterativeParsingStartState:            RAPIDJSON_PARSE_ERROR(kParseErrorDocumentEmpty, is.Tell()); return;
         case IterativeParsingFinishState:           RAPIDJSON_PARSE_ERROR(kParseErrorDocumentRootNotSingular, is.Tell()); return;
@@ -1508,7 +1508,7 @@ private:
         case IterativeParsingMemberValueState:      RAPIDJSON_PARSE_ERROR(kParseErrorObjectMissCommaOrCurlyBracket, is.Tell()); return;
         case IterativeParsingElementState:          RAPIDJSON_PARSE_ERROR(kParseErrorArrayMissCommaOrSquareBracket, is.Tell()); return;
         default:                                    RAPIDJSON_PARSE_ERROR(kParseErrorUnspecificSyntaxError, is.Tell());
-        }       
+        }
     }
 
     template <unsigned parseFlags, typename InputStream, typename Handler>

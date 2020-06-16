@@ -29,7 +29,7 @@ public:
             : _data(NULL), _data_size(0), _nread(0), _stream(stream) {
     }
     //Take a charactor and return its address.
-    const char* PeekAddr() { 
+    const char* PeekAddr() {
         if (!ReadBlockTail()) {
             return _data;
         }
@@ -59,7 +59,7 @@ public:
         }
         return '\0';
     }
-    
+
     char Peek() {
         const char* c = PeekAddr();
         return (c ? *c : '\0');

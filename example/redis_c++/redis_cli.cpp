@@ -29,7 +29,7 @@
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "127.0.0.1:6379", "IP Address of server");
 DEFINE_int32(timeout_ms, 1000, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 
 namespace brpc {
 const char* logo();
@@ -79,10 +79,10 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
+
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
         // We need this dummy signal hander to interrupt getc (and returning
         // EINTR), SIG_IGN did not work.
         signal(SIGINT, dummy_handler);
-        
+
         // Hook getc of readline.
         rl_getc_function = cli_getc;
 

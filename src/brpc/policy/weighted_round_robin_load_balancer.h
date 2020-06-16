@@ -19,7 +19,7 @@
 #ifndef BRPC_POLICY_WEIGHTED_ROUND_ROBIN_LOAD_BALANCER_H
 #define BRPC_POLICY_WEIGHTED_ROUND_ROBIN_LOAD_BALANCER_H
 
-#include <map>                              
+#include <map>
 #include <vector>
 #include <unordered_set>
 #include "butil/containers/doubly_buffered_data.h"
@@ -59,9 +59,9 @@ private:
         uint64_t stride = 0;
         Server remain_server;
         // If server list changed, we need caculate a new stride.
-        bool IsNeededCaculateNewStride(const uint64_t curr_weight_sum, 
+        bool IsNeededCaculateNewStride(const uint64_t curr_weight_sum,
                                        const size_t curr_servers_num) {
-            if (curr_weight_sum != weight_sum 
+            if (curr_weight_sum != weight_sum
                 || curr_servers_num != servers_num) {
                 weight_sum = curr_weight_sum;
                 servers_num = curr_servers_num;

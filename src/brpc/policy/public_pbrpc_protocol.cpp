@@ -152,7 +152,7 @@ void PublicPbrpcServiceAdaptor::SerializeResponseToIOBuf(
 void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    
+
     PublicPbrpcResponse pbres;
     if (!ParsePbFromIOBuf(&pbres, msg->payload)) {
         LOG(WARNING) << "Fail to parse from PublicPbrpcResponse";
@@ -172,7 +172,7 @@ void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -200,7 +200,7 @@ void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
         }
         if (!parse_result) {
             cntl->SetFailed(ERESPONSE, "Fail to parse response message, "
-                                  "CompressType=%s, response_size=%" PRIu64, 
+                                  "CompressType=%s, response_size=%" PRIu64,
                                   CompressTypeToCStr(type),
                                   (uint64_t)res_data.length());
         } else {
@@ -223,7 +223,7 @@ void SerializePublicPbrpcRequest(butil::IOBuf* buf, Controller* cntl,
     }
     return SerializeRequestDefault(buf, cntl, request);
 }
-       
+
 void PackPublicPbrpcRequest(butil::IOBuf* buf,
                             SocketMessage**,
                             uint64_t correlation_id,
@@ -255,7 +255,7 @@ void PackPublicPbrpcRequest(butil::IOBuf* buf,
     body->set_version(VERSION);
     body->set_charset(CHARSET);
     body->set_service(method->service()->name());
-    body->set_method_id(method->index());    
+    body->set_method_id(method->index());
     body->set_id(correlation_id);
     std::string* request_str = body->mutable_serialized_request();
     request.copy_to(request_str);

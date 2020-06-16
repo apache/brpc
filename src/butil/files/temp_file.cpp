@@ -21,7 +21,7 @@
 #include <unistd.h>                                 // close
 #include <stdio.h>                                  // snprintf, vdprintf
 #include <stdlib.h>                                 // mkstemp
-#include <string.h>                                 // strlen 
+#include <string.h>                                 // strlen
 #include <stdarg.h>                                 // va_list
 #include <errno.h>                                  // errno
 #include <new>                                      // placement new
@@ -41,7 +41,7 @@ TempFile::TempFile() : _ever_opened(0) {
     } else {
         *_fname = '\0';
     }
-        
+
 }
 
 TempFile::TempFile(const char* ext) {
@@ -53,17 +53,17 @@ TempFile::TempFile(const char* ext) {
     *_fname = '\0';
     _fd = -1;
     _ever_opened = 0;
-    
+
     // Make a temp file to occupy the filename without ext.
     char temp_name[] = BASE_FILES_TEMP_FILE_PATTERN;
     const int tmp_fd = mkstemp(temp_name);
     if (tmp_fd < 0) {
         return;
     }
-        
+
     // Open the temp_file_XXXXXX.ext
     snprintf(_fname, sizeof(_fname), "%s.%s", temp_name, ext);
-        
+
     _fd = open(_fname, O_CREAT | O_WRONLY | O_TRUNC | O_EXCL, 0600);
     if (_fd < 0) {
         *_fname = '\0';
@@ -94,7 +94,7 @@ TempFile::~TempFile() {
         unlink(_fname);
     }
 }
-    
+
 int TempFile::save(const char *content) {
     return save_bin(content, strlen(content));
 }
@@ -139,7 +139,7 @@ int TempFile::save_bin(const void *buf, size_t count) {
     }
 
     const ssize_t len = temp_file_write_all(_fd, buf, count);
-    
+
     close(_fd);
     _fd = -1;
     if (len < 0) {
@@ -148,7 +148,7 @@ int TempFile::save_bin(const void *buf, size_t count) {
         errno = ENOSPC;
         return -1;
     }
-    return 0;        
+    return 0;
 }
 
 } // namespace butil

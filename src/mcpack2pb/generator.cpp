@@ -214,7 +214,7 @@ bool generate_declarations(const std::set<std::string>& ref_msgs,
     "{\n"                                                               \
     "  static_cast<$msg$*>(msg_base)->set_$lcfield$(value.as_"#fntype"(\"$field$\"));\n" \
     "  return value.stream()->good();\n"                                \
-    "}\n"                                                               
+    "}\n"
 
 #define TEMPLATE_OF_ADD_FUNC_SIGNATURE()                                \
     "bool set_$vmsg$_$lcfield$(::google::protobuf::Message* msg_base,\n"     \
@@ -302,13 +302,13 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                            , "msg", cpp_name
                            , "field", f->full_name()
                            , "lcfield", f->lowercase_name());
-                break;                
+                break;
             case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
                 impl.Print(TEMPLATE_OF_ADD_FUNC_BODY(uint64, uint64)
                            , "msg", cpp_name
                            , "field", f->full_name()
                            , "lcfield", f->lowercase_name());
-                break;                
+                break;
             case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
                 impl.Print(TEMPLATE_OF_ADD_FUNC_BODY(bool, bool)
                            , "msg", cpp_name
@@ -321,21 +321,21 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "  $msg$* const msg = static_cast<$msg$*>(msg_base);\n"
                     "  if (value.type() == ::mcpack2pb::FIELD_ISOARRAY) {\n"
                     "    ::mcpack2pb::ISOArrayIterator it(value);\n"
-                    "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n" 
+                    "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n"
                     "    for (; it != NULL; ++it) {\n"
                     "      msg->add_$lcfield$(($enum$)it.as_int32());\n"
                     "    }\n"
                     "    return value.stream()->good();\n"
-                    "  } else if (value.type() == ::mcpack2pb::FIELD_ARRAY) {\n"            
+                    "  } else if (value.type() == ::mcpack2pb::FIELD_ARRAY) {\n"
                     "    ::mcpack2pb::ArrayIterator it(value);\n"
                     "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n"
                     "    for (; it != NULL; ++it) {\n"
                     "      msg->add_$lcfield$(($enum$)it->as_int32(\"$enum$\"));\n"
                     "    }\n"
                     "    return value.stream()->good();\n"
-                    "  }\n"                                                             
+                    "  }\n"
                     "  LOG(ERROR) << \"Can't set \" << value << \" to repeated $enum$\";\n"
-                    "  return false;\n"                                                 
+                    "  return false;\n"
                     "}\n"
                     , "msg", cpp_name
                     , "enum", to_cpp_name(f->enum_type()->full_name())
@@ -367,13 +367,13 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "        it->as_binary(msg->add_$lcfield$(), \"$field$\");\n"
                     "      } else {\n"
                     "        LOG(ERROR) << \"Can't add \" << *it << \" to $field$ (repeated string)\";\n"
-                    "        return false;\n"    
+                    "        return false;\n"
                     "      }\n"
                     "    }\n"
                     "    return value.stream()->good();\n"
-                    "  }\n"                                                             
+                    "  }\n"
                     "  LOG(ERROR) << \"Can't set \" << value << \" to $field$ (repeated string)\";\n"
-                    "  return false;\n"    
+                    "  return false;\n"
                     "}\n"
                     , "msg", cpp_name
                     , "field", f->full_name()
@@ -403,7 +403,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                         "    return value.stream()->good();\n"
                         "  }\n"
                         "  LOG(ERROR) << \"Can't set \" << value << \" to $field$ (repeated $msg2$)\";\n"
-                        "  return false;\n"    
+                        "  return false;\n"
                         "}\n"
                         , "vmsg2", var_name2
                         , "msg2", f->message_type()->full_name()
@@ -463,7 +463,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "        }\n"
                     "      } else {\n"
                     "        LOG(ERROR) << \"Can't add \" << *it << \" to repeated $msg$\";\n"
-                    "        return false;\n"    
+                    "        return false;\n"
                     "      }\n"
                     "    }\n"
                     "    return value.stream()->good();\n"
@@ -473,7 +473,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     , "lcfield", f->lowercase_name());
                 impl.Print(
                     "  LOG(ERROR) << \"Can't set \" << value << \" to $field$ (repeated $msg2$)\";\n"
-                    "  return false;\n"    
+                    "  return false;\n"
                     "}\n"
                     , "msg2", f->message_type()->full_name()
                     , "field", f->full_name());
@@ -512,13 +512,13 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                            , "msg", cpp_name
                            , "field", f->full_name()
                            , "lcfield", f->lowercase_name());
-                break;                
+                break;
             case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
                 impl.Print(TEMPLATE_OF_SET_FUNC_BODY(uint64)
                            , "msg", cpp_name
                            , "field", f->full_name()
                            , "lcfield", f->lowercase_name());
-                break;                
+                break;
             case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
                 impl.Print(TEMPLATE_OF_SET_FUNC_BODY(bool)
                            , "msg", cpp_name
@@ -722,7 +722,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
     TEMPLATE_SERIALIZE_REPEATED(cit, printer, field, ((cit) == IDL_AUTO || (strict_cond)), \
                                 is_integral_type(cit))
 
-    
+
 #define TEMPLATE_SERIALIZE(cit, printer, field, cond)                   \
     if (!(cond)) {                                                      \
         if ((field)->type() == google::protobuf::FieldDescriptor::TYPE_ENUM) { \
@@ -749,7 +749,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
             "  serializer.add_empty_array(\"$field$\");\n"              \
             "}\n"                                                       \
             , "field", get_idl_name(field));                            \
-        } 
+        }
 
 #define TEMPLATE_SERIALIZE_INTEGRAL(cit, printer, field)                \
     TEMPLATE_SERIALIZE(cit, printer, field,                             \
@@ -827,7 +827,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
     TEMPLATE_INNER_SERIALIZE_REPEATED(msg, cit, printer, field, ((cit) == IDL_AUTO || (strict_cond)), \
                                       is_integral_type(cit))
 
-    
+
 #define TEMPLATE_INNER_SERIALIZE(msg, cit, printer, field, cond)        \
     if (!(cond)) {                                                      \
         if ((field)->type() == google::protobuf::FieldDescriptor::TYPE_ENUM) { \
@@ -848,7 +848,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "}\n"                                               \
                     , "msg", msg                                        \
                     , "type", to_mcpack_typestr(cit, (field))           \
-                    , "lcfield", (field)->lowercase_name())            
+                    , "lcfield", (field)->lowercase_name())
 
 #define TEMPLATE_INNER_SERIALIZE_INTEGRAL(msg, cit, printer, field)     \
     TEMPLATE_INNER_SERIALIZE(msg, cit, printer, field,                  \
@@ -1316,7 +1316,7 @@ static bool generate_registration(
             "g_$vmsg$_fields = new ::mcpack2pb::FieldMap;\n"
             "CHECK_EQ(0, g_$vmsg$_fields->init(std::max($field_count$, 1), 30));\n"
             , "vmsg", var_name
-            , "field_count", ::butil::string_printf("%d", d->field_count())); 
+            , "field_count", ::butil::string_printf("%d", d->field_count()));
         for (int i = 0; i < d->field_count(); ++i) {
             const google::protobuf::FieldDescriptor* f = d->field(i);
             impl.Print("(*g_$vmsg$_fields)[\"$field$\"] = ::set_$vmsg$_$lcfield$;\n"
@@ -1359,7 +1359,7 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
         // skip the file.
         return true;
     }
-    
+
     std::string cpp_name = file->name();
     const size_t pos = cpp_name.find_last_of('.');
     if (pos == std::string::npos) {
@@ -1368,7 +1368,7 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
     }
     cpp_name.resize(pos);
     cpp_name.append(".pb.cc");
-    
+
     google::protobuf::io::Printer inc_printer(
         ctx->OpenForInsert(cpp_name, "includes"), '$');
     inc_printer.Print("#include <butil/logging.h>\n"
@@ -1409,7 +1409,7 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
         ::butil::string_printf(
             error, "Fail to generate declarations for %s",
             cpp_name.c_str());
-        return false;        
+        return false;
     }
     if (!generate_registration(file, gimpl_printer)) {
         ::butil::string_printf(

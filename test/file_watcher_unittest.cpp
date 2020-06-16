@@ -29,14 +29,14 @@ protected:
     virtual void TearDown() {
     };
 };
- 
+
 //! gejun: check basic functions of butil::FileWatcher
 TEST_F(FileWatcherTest, random_op) {
     srand (time(0));
-    
+
     butil::FileWatcher fw;
     EXPECT_EQ (0, fw.init("dummy_file"));
-    
+
     for (int i=0; i<30; ++i) {
         if (rand() % 2) {
             const butil::FileWatcher::Change ret = fw.check_and_consume();
@@ -55,7 +55,7 @@ TEST_F(FileWatcherTest, random_op) {
                 break;
             }
         }
-        
+
         switch (rand() % 2) {
         case 0:
             ASSERT_EQ(0, system("touch dummy_file"));
@@ -69,7 +69,7 @@ TEST_F(FileWatcherTest, random_op) {
             LOG(INFO) << "action: (nothing)";
             break;
         }
-        
+
         usleep (10000);
     }
     ASSERT_EQ(0, system("rm -f dummy_file"));

@@ -80,7 +80,7 @@ public:
         _cntl->_local_side = pt;
         return *this;
     }
- 
+
     ControllerPrivateAccessor &set_auth_context(const AuthContext* ctx) {
         _cntl->set_auth_context(ctx);
         return *this;
@@ -90,12 +90,12 @@ public:
         _cntl->_span = span;
         return *this;
     }
-    
+
     ControllerPrivateAccessor &set_request_protocol(ProtocolType protocol) {
         _cntl->_request_protocol = protocol;
         return *this;
     }
-    
+
     Span* span() const { return _cntl->_span; }
 
     uint32_t pipelined_count() const { return _cntl->_pipelined_count; }
@@ -118,7 +118,7 @@ public:
     StreamId request_stream() { return _cntl->_request_stream; }
     StreamId response_stream() { return _cntl->_response_stream; }
 
-    void set_method(const google::protobuf::MethodDescriptor* method) 
+    void set_method(const google::protobuf::MethodDescriptor* method)
     { _cntl->_method = method; }
 
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)

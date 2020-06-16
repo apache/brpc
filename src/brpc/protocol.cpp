@@ -54,7 +54,7 @@ const size_t MAX_PROTOCOL_SIZE = 128;
 struct ProtocolEntry {
     butil::atomic<bool> valid;
     Protocol protocol;
-    
+
     ProtocolEntry() : valid(false) {}
 };
 struct ProtocolMap {
@@ -187,7 +187,7 @@ ProtocolType StringToProtocolType(const butil::StringPiece& name,
 const char* ProtocolTypeToString(ProtocolType type) {
     // Force init of s_protocol_name.
     GlobalInitializeOrDie();
-    
+
     const Protocol* p = FindProtocol(type);
     if (p != NULL) {
         return p->name;
@@ -199,7 +199,7 @@ BUTIL_FORCE_INLINE bool ParsePbFromZeroCopyStreamInlined(
     google::protobuf::Message* msg,
     google::protobuf::io::ZeroCopyInputStream* input) {
     google::protobuf::io::CodedInputStream decoder(input);
-    // Remove the limit inside pb so that it never conflicts with -max_body_size 
+    // Remove the limit inside pb so that it never conflicts with -max_body_size
     // According to source code of pb, SetTotalBytesLimit is not a simple set,
     // avoid calling the function when the limit is definitely unreached.
     if (PB_TOTAL_BYETS_LIMITS < FLAGS_max_body_size) {

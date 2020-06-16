@@ -19,7 +19,7 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 
-#include "butil/time.h" 
+#include "butil/time.h"
 #include "butil/iobuf.h"                         // butil::IOBuf
 
 #include "brpc/controller.h"               // Controller
@@ -80,7 +80,7 @@ void SendNsheadPbResponse::Run() {
     this->~SendNsheadPbResponse();
 
     // NOTE: *this was destructed, don't touch anything.
-    
+
     // FIXME(gejun): We can't put this after saved_done->Run() where the
     // service containing saved_status may be destructed (upon server's
     // quiting). Thus the latency does not include the time of sending
@@ -116,7 +116,7 @@ void NsheadPbServiceAdaptor::ProcessNsheadRequest(
             .FindMethodPropertyByFullName(meta->full_method_name());
         if (NULL == sp ||
             sp->service->GetDescriptor() == BadMethodService::descriptor()) {
-            controller->SetFailed(ENOMETHOD, "Fail to find method=%s", 
+            controller->SetFailed(ENOMETHOD, "Fail to find method=%s",
                                   meta->full_method_name().c_str());
             break;
         }
@@ -141,6 +141,6 @@ void NsheadPbServiceAdaptor::ProcessNsheadRequest(
     } while (false);
 
     pbdone->Run();
-} 
+}
 
 } // namespace brpc

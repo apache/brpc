@@ -28,7 +28,7 @@ namespace brpc {
 class RetryPolicy {
 public:
     virtual ~RetryPolicy();
-    
+
     // Returns true if the RPC represented by `controller' should be retried.
     // [Example]
     // By default, HTTP errors are not retried, but you need to retry
@@ -49,7 +49,7 @@ public:
     //       return brpc::DefaultRetryPolicy()->DoRetry(cntl);
     //     }
     //   };
-    // 
+    //
     // You can retry unqualified responses even if the RPC was successful
     //   class MyRetryPolicy : public brpc::RetryPolicy {
     //   public:

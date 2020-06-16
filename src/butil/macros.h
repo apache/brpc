@@ -80,7 +80,7 @@
 
 // This template function declaration is used in defining arraysize.
 // Note that the function doesn't need an implementation, as we only
-// use its type.    
+// use its type.
 namespace butil {
 template <typename T, size_t N>
 char (&ArraySizeHelper(T (&array)[N]))[N];
@@ -184,12 +184,12 @@ inline To implicit_cast(From const &f) {
 //
 // when an asssertion like "BAIDU_CASSERT(false, you_should_not_be_here)"
 // breaks, a compilation error is printed:
-//   
+//
 //   foo.cpp:401: error: enumerator value for `you_should_not_be_here___19' not
 //   integer constant
 //
 // You can call BAIDU_CASSERT at global scope, inside a class or a function
-// 
+//
 //   BAIDU_CASSERT(false, you_should_not_be_here);
 //   int main () { ... }
 //
@@ -413,7 +413,7 @@ private:
 #endif // defined(__cplusplus)
 
 // Put following code somewhere global to run it before main():
-// 
+//
 //   BAIDU_GLOBAL_INIT()
 //   {
 //       ... your code ...
@@ -423,7 +423,7 @@ private:
 //   * Write any code and access global variables.
 //   * Use ASSERT_*.
 //   * Have multiple BAIDU_GLOBAL_INIT() in one scope.
-// 
+//
 // Since the code run in global scope, quit with exit() or similar functions.
 
 #if defined(__cplusplus)
@@ -434,7 +434,7 @@ namespace {  /*anonymous namespace */                           \
         void init();                                            \
     } BAIDU_CONCAT(baidu_global_init_dummy_, __LINE__);         \
 }  /* anonymous namespace */                                    \
-    void BAIDU_CONCAT(BaiduGlobalInit, __LINE__)::init              
+    void BAIDU_CONCAT(BaiduGlobalInit, __LINE__)::init
 #else
 # define BAIDU_GLOBAL_INIT                      \
     static void __attribute__((constructor))    \

@@ -42,7 +42,7 @@
 #endif
 
 namespace butil {
-    
+
 template <typename T>
 struct ResourceId {
     uint64_t value;
@@ -58,13 +58,13 @@ struct ResourceId {
     }
 };
 
-template <typename T, size_t NITEM> 
+template <typename T, size_t NITEM>
 struct ResourcePoolFreeChunk {
     size_t nfree;
     ResourceId<T> ids[NITEM];
 };
 // for gcc 3.4.5
-template <typename T> 
+template <typename T>
 struct ResourcePoolFreeChunk<T, 0> {
     size_t nfree;
     ResourceId<T> ids[0];
@@ -204,7 +204,7 @@ public:
             return p;                                                   \
         }                                                               \
         return NULL;                                                    \
- 
+
 
         inline T* get(ResourceId<T>* id) {
             BAIDU_RESOURCE_POOL_GET();
@@ -324,7 +324,7 @@ public:
         const size_t n = ResourcePoolFreeChunkMaxItem<T>::value();
         return n < FREE_CHUNK_NITEM ? n : FREE_CHUNK_NITEM;
     }
-    
+
     // Number of all allocated objects, including being used and free.
     ResourcePoolInfo describe_resources() const {
         ResourcePoolInfo info;
@@ -367,7 +367,7 @@ public:
         if (!p) {
             p = new ResourcePool();
             _singleton.store(p, butil::memory_order_release);
-        } 
+        }
         pthread_mutex_unlock(&_singleton_mutex);
         return p;
     }
@@ -460,9 +460,9 @@ private:
         }
 
         // Can't delete global even if all threads(called ResourcePool
-        // functions) quit because the memory may still be referenced by 
+        // functions) quit because the memory may still be referenced by
         // other threads. But we need to validate that all memory can
-        // be deallocated correctly in tests, so wrap the function with 
+        // be deallocated correctly in tests, so wrap the function with
         // a macro which is only defined in unittests.
 #ifdef BAIDU_CLEAR_RESOURCE_POOL_AFTER_ALL_THREADS_QUIT
         BAIDU_SCOPED_LOCK(_change_thread_mutex);  // including acquire fence.
@@ -538,7 +538,7 @@ private:
         pthread_mutex_unlock(&_free_chunks_mutex);
         return true;
     }
-    
+
     static butil::static_atomic<ResourcePool*> _singleton;
     static pthread_mutex_t _singleton_mutex;
     static BAIDU_THREAD_LOCAL LocalPool* _local_pool;

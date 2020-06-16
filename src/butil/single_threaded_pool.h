@@ -53,7 +53,7 @@ public:
     static const size_t BLOCK_SIZE = sizeof(Block);
     static const size_t NITEM = Block::NITEM;
     static const size_t ITEM_SIZE = ITEM_SIZE_IN;
-    
+
     SingleThreadedPool() : _free_nodes(NULL), _blocks(NULL) {}
     ~SingleThreadedPool() { reset(); }
 
@@ -81,7 +81,7 @@ public:
         }
         return _blocks->nodes[_blocks->nalloc++].spaces;
     }
-    
+
     // Return a space allocated by get() before.
     // Do nothing for NULL.
     void back(void* p) {

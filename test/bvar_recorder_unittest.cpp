@@ -197,13 +197,13 @@ TEST(RecorderTest, perf) {
     }
     long totol_time = 0;
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        void *ret; 
+        void *ret;
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }
     ASSERT_EQ(((int64_t)OPS_PER_THREAD - 1) / 2, recorder.average());
-    LOG(INFO) << "Recorder takes " << totol_time / (OPS_PER_THREAD * ARRAY_SIZE(threads)) 
-              << "ns per sample with " << ARRAY_SIZE(threads) 
+    LOG(INFO) << "Recorder takes " << totol_time / (OPS_PER_THREAD * ARRAY_SIZE(threads))
+              << "ns per sample with " << ARRAY_SIZE(threads)
               << " threads";
 }
 } // namespace

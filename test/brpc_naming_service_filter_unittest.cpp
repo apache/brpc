@@ -29,7 +29,7 @@ class NamingServiceFilterTest : public testing::Test {
 protected:
     void SetUp() {}
     void TearDown() {}
-}; 
+};
 
 class MyNSFilter: public brpc::NamingServiceFilter {
 public:

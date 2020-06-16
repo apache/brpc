@@ -188,7 +188,7 @@ static void PrintAnnotations(
     SpanInfoExtractor** extractors, int num_extr) {
     int64_t anno_time;
     std::string a;
-    // TODO: Going through all extractors is not strictly correct because 
+    // TODO: Going through all extractors is not strictly correct because
     // later extractors may have earlier annotations.
     for (int i = 0; i < num_extr; ++i) {
         while (extractors[i]->PopAnnotation(cur_time, &anno_time, &a)) {
@@ -364,7 +364,7 @@ static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
             os << " Responding" << std::endl;
         }
     }
-    
+
     if (PrintAnnotationsAndRealTimeSpan(
             os, span.sent_real_us(),
             &last_time, extr, ARRAY_SIZE(extr))) {
@@ -406,7 +406,7 @@ public:
         _check_error_code = true;
         _error_code = error_code;
     }
-    
+
     bool Keep(const BriefSpan& span) {
         return span.latency_us() >= _min_latency &&
             span.request_size() >= _min_request_size &&
@@ -439,7 +439,7 @@ static int64_t ParseDateTime(const std::string& time_str) {
         if (endptr == NULL) {
             return -1;
         }
-    } 
+    }
     if (*endptr == '.') {
         char* endptr2;
         microseconds = strtol(endptr + 1, &endptr2, 10);
@@ -507,7 +507,7 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
     }
     butil::EndPoint my_addr(butil::my_ip(),
                            cntl->server()->listen_address().port);
-    
+
     const std::string* trace_id_str =
         cntl->http_request().uri().GetQuery(TRACE_ID_STR);
     if (trace_id_str) {
@@ -589,19 +589,19 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
 
         // Set up SpanFilter.
         RpczSpanFilter filter;
-        const std::string* min_latency_str = 
+        const std::string* min_latency_str =
             cntl->http_request().uri().GetQuery(MIN_LATENCY_STR);
         if (min_latency_str) {
             char* endptr;
             filter.CheckLatency(strtoll(min_latency_str->c_str(), &endptr, 10));
         }
-        const std::string* min_reqsize_str = 
+        const std::string* min_reqsize_str =
             cntl->http_request().uri().GetQuery(MIN_REQUEST_SIZE_STR);
         if (min_reqsize_str) {
             char* endptr;
             filter.CheckRequest(strtol(min_reqsize_str->c_str(), &endptr, 10));
         }
-        const std::string* min_respsize_str = 
+        const std::string* min_respsize_str =
             cntl->http_request().uri().GetQuery(MIN_RESPONSE_SIZE_STR);
         if (min_respsize_str) {
             char* endptr;
@@ -618,7 +618,7 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
             char* endptr;
             filter.CheckErrorCode(strtol(error_code_str->c_str(), &endptr, 10));
         }
-        
+
         max_count = std::max(std::min(max_count, 10000), 1);
         std::deque<BriefSpan> spans;
         ListSpans(start_tm, max_count, &spans, &filter);
@@ -651,7 +651,7 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
 
             os << ' ' << SPAN_ID_STR << '=';
             if (use_html) {
-                os << "<a href=\"/rpcz?" << TRACE_ID_STR << '=' 
+                os << "<a href=\"/rpcz?" << TRACE_ID_STR << '='
                    << Hex(span.trace_id())
                    << '&' << SPAN_ID_STR << '=' << Hex(span.span_id()) << "\">";
             }
@@ -667,7 +667,7 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
             }
             os << ' ' << span.full_method_name() << '(' << span.request_size()
                << ")=" << span.response_size();
-            
+
             if (span.error_code() == 0) {
                 os << " [OK]";
             } else {

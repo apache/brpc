@@ -34,7 +34,7 @@ DEFINE_string(connection_type, "", "Connection type. Available values: single, p
 DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_int32(depth, 0, "number of loop calls");
 // Don't send too frequently in this example
@@ -64,7 +64,7 @@ void* sender(void* arg) {
         }
 
         cntl.set_log_id(log_id ++);  // set by user
-        // Set attachment which is wired to network directly instead of 
+        // Set attachment which is wired to network directly instead of
         // being serialized into protobuf messages.
         cntl.request_attachment().append(FLAGS_attachment);
 
@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
     GFLAGS_NS::SetUsageMessage("Send EchoRequest to server every second");
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -96,8 +96,8 @@ int main(int argc, char* argv[]) {
     options.connection_type = FLAGS_connection_type;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
-    
-    // Initialize the channel, NULL means using default options. 
+
+    // Initialize the channel, NULL means using default options.
     // options, see `brpc/channel.h'.
     if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";

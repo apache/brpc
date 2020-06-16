@@ -52,9 +52,9 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
         : version(0)
         , status(UNEXECUTED)
         , stop_task(false)
-        , iterated(false) 
+        , iterated(false)
         , high_priority(false)
-        , in_place(false) 
+        , in_place(false)
         , next(UNCONNECTED)
         , q(NULL)
     {}
@@ -108,7 +108,7 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
         status = UNEXECUTED;
         lck.unlock();
         CHECK_NE(saved_status, UNEXECUTED);
-        LOG_IF(WARNING, saved_status == EXECUTING) 
+        LOG_IF(WARNING, saved_status == EXECUTING)
                 << "Return a executing node, did you return before "
                    "iterator reached the end?";
     }
@@ -221,7 +221,7 @@ private:
         return (((uint64_t)version) << 32) | (uint32_t/*1*/)ref;
     }
 
-    // Don't change the order of _head, _versioned_ref and _stopped unless you 
+    // Don't change the order of _head, _versioned_ref and _stopped unless you
     // see improvement of performance in test
     butil::atomic<TaskNode*> BAIDU_CACHELINE_ALIGNMENT _head;
     butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT _versioned_ref;
@@ -273,7 +273,7 @@ public:
 
     inline static int create(id_t* id, const ExecutionQueueOptions* options,
                              execute_func_t execute_func, void* meta) {
-        return Base::create(&id->value, options, execute_task, 
+        return Base::create(&id->value, options, execute_task,
                             clear_task_mem, meta, (void*)execute_func);
     }
 
@@ -325,7 +325,7 @@ inline ExecutionQueueOptions::ExecutionQueueOptions()
 
 template <typename T>
 inline int execution_queue_start(
-        ExecutionQueueId<T>* id, 
+        ExecutionQueueId<T>* id,
         const ExecutionQueueOptions* options,
         int (*execute)(void* meta, TaskIterator<T>&),
         void* meta) {
@@ -333,30 +333,30 @@ inline int execution_queue_start(
 }
 
 template <typename T>
-typename ExecutionQueue<T>::scoped_ptr_t 
+typename ExecutionQueue<T>::scoped_ptr_t
 execution_queue_address(ExecutionQueueId<T> id) {
     return ExecutionQueue<T>::address(id);
 }
 
 template <typename T>
-inline int execution_queue_execute(ExecutionQueueId<T> id, 
+inline int execution_queue_execute(ExecutionQueueId<T> id,
                        typename butil::add_const_reference<T>::type task) {
     return execution_queue_execute(id, task, NULL);
 }
 
 template <typename T>
-inline int execution_queue_execute(ExecutionQueueId<T> id, 
+inline int execution_queue_execute(ExecutionQueueId<T> id,
                        typename butil::add_const_reference<T>::type task,
                        const TaskOptions* options) {
     return execution_queue_execute(id, task, options, NULL);
 }
 
 template <typename T>
-inline int execution_queue_execute(ExecutionQueueId<T> id, 
+inline int execution_queue_execute(ExecutionQueueId<T> id,
                        typename butil::add_const_reference<T>::type task,
                        const TaskOptions* options,
                        TaskHandle* handle) {
-    typename ExecutionQueue<T>::scoped_ptr_t 
+    typename ExecutionQueue<T>::scoped_ptr_t
         ptr = ExecutionQueue<T>::address(id);
     if (ptr != NULL) {
         return ptr->execute(task, options, handle);
@@ -367,7 +367,7 @@ inline int execution_queue_execute(ExecutionQueueId<T> id,
 
 template <typename T>
 inline int execution_queue_stop(ExecutionQueueId<T> id) {
-    typename ExecutionQueue<T>::scoped_ptr_t 
+    typename ExecutionQueue<T>::scoped_ptr_t
         ptr = ExecutionQueue<T>::address(id);
     if (ptr != NULL) {
         return ptr->stop();
@@ -394,7 +394,7 @@ inline TaskOptions::TaskOptions(bool high_priority, bool in_place_if_possible)
 //--------------------- TaskIterator ------------------------
 
 inline TaskIteratorBase::operator bool() const {
-    return !_is_stopped && !_should_break && _cur_node != NULL 
+    return !_is_stopped && !_should_break && _cur_node != NULL
            && !_cur_node->stop_task;
 }
 
@@ -430,7 +430,7 @@ inline int execution_queue_cancel(const TaskHandle& h) {
 
 // ---------------------ExecutionQueueBase--------------------
 inline bool ExecutionQueueBase::_more_tasks(
-        TaskNode* old_head, TaskNode** new_tail, 
+        TaskNode* old_head, TaskNode** new_tail,
         bool has_uniterated) {
 
     CHECK(old_head->next == NULL);

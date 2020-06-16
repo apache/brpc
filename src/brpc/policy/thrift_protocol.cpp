@@ -20,7 +20,7 @@
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
 
-#include "butil/time.h" 
+#include "butil/time.h"
 #include "butil/iobuf.h"                        // butil::IOBuf
 #include "brpc/log.h"
 #include "brpc/controller.h"                    // Controller
@@ -239,7 +239,7 @@ void ThriftClosure::DoRun() {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    MethodStatus* method_status = (server->options().thrift_service ? 
+    MethodStatus* method_status = (server->options().thrift_service ?
         server->options().thrift_service->_status : NULL);
     ConcurrencyRemover concurrency_remover(method_status, &_controller, _received_us);
     if (!method_status) {
@@ -335,7 +335,7 @@ void ThriftClosure::DoRun() {
         write_buf.append(buf, sizeof(buf));
         write_buf.append(_response.body.movable());
     }
-    
+
     if (span) {
         span->set_response_size(write_buf.size());
     }
@@ -442,7 +442,7 @@ static void EndRunningCallMethodInPool(ThriftService* service,
 };
 
 void ProcessThriftRequest(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = butil::cpuwide_time_us();   
+    const int64_t start_parse_us = butil::cpuwide_time_us();
 
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     SocketUniquePtr socket_guard(msg->ReleaseSocket());
@@ -558,7 +558,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
 void ProcessThriftResponse(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    
+
     // Fetch correlation id that we saved before in `PacThriftRequest'
     const CallId cid = { static_cast<uint64_t>(msg->socket()->correlation_id()) };
     Controller* cntl = NULL;
@@ -584,7 +584,7 @@ void ProcessThriftResponse(InputMessageBase* msg_base) {
         std::string fname;
         ::apache::thrift::protocol::TMessageType mtype;
         uint32_t seq_id = 0; // unchecked
-        
+
         butil::Status st = ReadThriftMessageBegin(&msg->payload, &fname, &mtype, &seq_id);
         if (!st.ok()) {
             cntl->SetFailed(ERESPONSE, "%s", st.error_cstr());
@@ -609,7 +609,7 @@ void ProcessThriftResponse(InputMessageBase* msg_base) {
         }
 
         // Read presult
-        
+
         // MUST be ThriftFramedMessage (checked in SerializeThriftRequest)
         ThriftFramedMessage* response = (ThriftFramedMessage*)cntl->response();
         if (response) {
@@ -691,7 +691,7 @@ void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
 
         // request's write
         xfer += req->raw_instance()->Write(&oprot);
-        
+
         xfer += oprot.writeFieldEnd();
         xfer += oprot.writeFieldStop();
         xfer += oprot.writeStructEnd();

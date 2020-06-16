@@ -38,7 +38,7 @@ DECLARE_bool(usercode_in_pthread);
 
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
-Stream::Stream() 
+Stream::Stream()
     : _host_socket(NULL)
     , _fake_socket_weak_ref(NULL)
     , _connected(false)
@@ -63,7 +63,7 @@ Stream::~Stream() {
     bthread_id_list_destroy(&_writable_wait_list);
 }
 
-int Stream::Create(const StreamOptions &options, 
+int Stream::Create(const StreamOptions &options,
                    const StreamSettings *remote_settings,
                    StreamId *id) {
     Stream* s = new Stream();
@@ -83,7 +83,7 @@ int Stream::Create(const StreamOptions &options,
         return -1;
     }
     bthread::ExecutionQueueOptions q_opt;
-    q_opt.bthread_attr 
+    q_opt.bthread_attr
         = FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
     if (bthread::execution_queue_start(&s->_consumer_queue, &q_opt, Consume, s) != 0) {
         LOG(FATAL) << "Fail to create ExecutionQueue";
@@ -119,13 +119,13 @@ void Stream::BeforeRecycle(Socket *) {
     if (_host_socket) {
         _host_socket->RemoveStream(id());
     }
-    
+
     // The instance is to be deleted in the consumer thread
     bthread::execution_queue_stop(_consumer_queue);
 }
 
-ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/, 
-                                             butil::IOBuf **data_list, 
+ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/,
+                                             butil::IOBuf **data_list,
                                              size_t size) {
     if (_host_socket == NULL) {
         CHECK(false) << "Not connected";
@@ -133,7 +133,7 @@ ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/,
         return -1;
     }
     if (!_remote_settings.writable()) {
-        LOG(WARNING) << "The remote side of Stream=" << id() 
+        LOG(WARNING) << "The remote side of Stream=" << id()
                      << "->" << _remote_settings.stream_id()
                      << "@" << _host_socket->remote_side()
                      << " doesn't have a handler";
@@ -229,7 +229,7 @@ void Stream::SetConnected(const StreamSettings* remote_settings) {
         CHECK(_remote_settings.IsInitialized());
     }
     CHECK(_host_socket != NULL);
-    RPC_VLOG << "stream=" << id() << " is connected to stream_id=" 
+    RPC_VLOG << "stream=" << id() << " is connected to stream_id="
              << _remote_settings.stream_id() << " at host_socket=" << *_host_socket;
     _connected = true;
     _connect_meta.ec = 0;
@@ -266,7 +266,7 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data) {
             const size_t saved_produced = _produced;
             const size_t saved_remote_consumed = _remote_consumed;
             lck.unlock();
-            RPC_VLOG << "Stream=" << _id << " is full" 
+            RPC_VLOG << "Stream=" << _id << " is full"
                      << "_produced=" << saved_produced
                      << " _remote_consumed=" << saved_remote_consumed
                      << " gap=" << saved_produced - saved_remote_consumed
@@ -318,13 +318,13 @@ void* Stream::RunOnWritable(void* arg) {
 
 int Stream::TriggerOnWritable(bthread_id_t id, void *data, int error_code) {
     WritableMeta *wm = (WritableMeta*)data;
-    
+
     if (wm->has_timer) {
         bthread_timer_del(wm->timer);
     }
     wm->error_code = error_code;
     if (wm->new_thread) {
-        const bthread_attr_t* attr = 
+        const bthread_attr_t* attr =
             FLAGS_usercode_in_pthread ? &BTHREAD_ATTR_PTHREAD
             : &BTHREAD_ATTR_NORMAL;
         bthread_t tid;
@@ -343,7 +343,7 @@ void OnTimedOut(void *arg) {
     bthread_id_error(id, ETIMEDOUT);
 }
 
-void Stream::Wait(void (*on_writable)(StreamId, void*, int), void* arg, 
+void Stream::Wait(void (*on_writable)(StreamId, void*, int), void* arg,
                   const timespec* due_time, bool new_thread, bthread_id_t *join_id) {
     WritableMeta *wm = new WritableMeta;
     wm->on_writable = on_writable;
@@ -366,7 +366,7 @@ void Stream::Wait(void (*on_writable)(StreamId, void*, int), void* arg,
     if (due_time != NULL) {
         wm->has_timer = true;
         const int rc = bthread_timer_add(&wm->timer, *due_time,
-                                         OnTimedOut, 
+                                         OnTimedOut,
                                          reinterpret_cast<void*>(wait_id.value));
         if (rc != 0) {
             LOG(ERROR) << "Fail to add timer, " << berror(rc);
@@ -374,7 +374,7 @@ void Stream::Wait(void (*on_writable)(StreamId, void*, int), void* arg,
         }
     }
     bthread_mutex_lock(&_congestion_control_mutex);
-    if (_options.max_buf_size <= 0 
+    if (_options.max_buf_size <= 0
             || _produced < _remote_consumed + (size_t)_options.max_buf_size) {
         bthread_mutex_unlock(&_congestion_control_mutex);
         CHECK_EQ(0, TriggerOnWritable(wait_id, wm, 0));
@@ -452,7 +452,7 @@ int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* soc
 
 class MessageBatcher {
 public:
-    MessageBatcher(butil::IOBuf* storage[], size_t cap, Stream* s) 
+    MessageBatcher(butil::IOBuf* storage[], size_t cap, Stream* s)
         : _storage(storage)
         , _cap(cap)
         , _size(0)
@@ -636,7 +636,7 @@ void Stream::HandleRpcResponse(butil::IOBuf* response_buffer) {
     }
     _host_socket->PostponeEOF();
     _host_socket->ReAddress(&msg->_socket);
-    msg->_received_us = butil::gettimeofday_us(); 
+    msg->_received_us = butil::gettimeofday_us();
     msg->_base_real_us = butil::gettimeofday_us();
     msg->_arg = NULL; // ProcessRpcResponse() don't need arg
     policy::ProcessRpcResponse(msg);
@@ -665,7 +665,7 @@ void StreamWait(StreamId stream_id, const timespec *due_time,
         wm->has_timer = false;
         wm->on_writable = on_writable;
         wm->error_code = EINVAL;
-        const bthread_attr_t* attr = 
+        const bthread_attr_t* attr =
             FLAGS_usercode_in_pthread ? &BTHREAD_ATTR_PTHREAD
             : &BTHREAD_ATTR_NORMAL;
         bthread_t tid;

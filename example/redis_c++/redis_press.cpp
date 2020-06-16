@@ -31,7 +31,7 @@ DEFINE_bool(use_bthread, false, "Use bthread to send requests");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "0.0.0.0:6379", "IP Address of server");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_string(key, "hello", "The key to be get");
 DEFINE_string(value, "world", "The value associated with the key");
@@ -87,7 +87,7 @@ static void* sender(void* void_args) {
                 << "error=" << cntl.ErrorText() << " latency=" << elp;
             // We can't connect to the server, sleep a while. Notice that this
             // is a specific sleeping to prevent this thread from spinning too
-            // fast. You should continue the business logic in a production 
+            // fast. You should continue the business logic in a production
             // server rather than sleeping.
             bthread_usleep(50000);
         }
@@ -99,11 +99,11 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
-    // Initialize the channel, NULL means using default options. 
+
+    // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
     options.connection_type = FLAGS_connection_type;
@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
     brpc::RedisResponse response;
     brpc::Controller cntl;
     for (int i = 0; i < FLAGS_batch * FLAGS_thread_num; ++i) {
-        if (!request.AddCommand("SET %s_%04d %s_%04d", 
+        if (!request.AddCommand("SET %s_%04d %s_%04d",
                     FLAGS_key.c_str(), i,
                     FLAGS_value.c_str(), i)) {
             LOG(ERROR) << "Fail to SET " << i << "th request";
@@ -171,7 +171,7 @@ int main(int argc, char* argv[]) {
 
     while (!brpc::IsAskedToQuit()) {
         sleep(1);
-        
+
         LOG(INFO) << "Accessing redis-server at qps=" << g_latency_recorder.qps(1)
                   << " latency=" << g_latency_recorder.latency(1);
     }

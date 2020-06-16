@@ -79,7 +79,7 @@ class IndexTable;
 //      characters that are compared in a case-insensitive fashion.  However,
 //      header field names *MUST* be converted to lowercase prior to their
 //      encoding in HTTP/2.  A request or response containing uppercase
-//      header field names MUST be treated as malformed 
+//      header field names MUST be treated as malformed
 // Not supported methods:
 //  - Resize dynamic table.
 class HPacker : public Describable {
@@ -121,7 +121,7 @@ public:
     ssize_t Decode(butil::IOBufBytesIterator& source, Header* h);
 
     void Describe(std::ostream& os, const DescribeOptions&) const;
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(HPacker);
     int FindHeaderFromIndexTable(const Header& h) const;

@@ -46,7 +46,7 @@ static bool IsPemString(const std::string& input) {
     for (const char* s = input.c_str(); *s != '\0'; ++s) {
         if (*s != '\n') {
             return strncmp(s, PEM_START, strlen(PEM_START)) == 0;
-        } 
+        }
     }
     return false;
 }
@@ -106,7 +106,7 @@ std::ostream& operator<<(std::ostream& os, const CertInfo& cert) {
         os << cert.certificate.substr(pos, 16) << "...";
     } else {
         os << cert.certificate;
-    } 
+    }
 
     os << "] private-key[";
     if (IsPemString(cert.private_key)) {
@@ -152,7 +152,7 @@ static void SSLMessageCallback(int write_p, int version, int content_type,
     if ((content_type == TLS1_RT_HEARTBEAT) && (write_p == 0)) {
         const unsigned char* p = (const unsigned char*)buf;
 
-        // Check if this is a CVE-2014-0160 exploitation attempt. 
+        // Check if this is a CVE-2014-0160 exploitation attempt.
         if (*p != TLS1_HB_REQUEST) {
             return;
         }
@@ -164,7 +164,7 @@ static void SSLMessageCallback(int write_p, int version, int content_type,
                 return;               // OK no problem
             }
         }
-        
+
         // We have a clear heartbleed attack (CVE-2014-0160), the
         // advertised payload is larger than the advertised packet
         // length, so we have garbage in the buffer between the
@@ -226,14 +226,14 @@ void ExtractHostnames(X509* x, std::vector<std::string>* hostnames) {
         }
         sk_GENERAL_NAME_pop_free(names, GENERAL_NAME_free);
     }
-#endif // SSL_CTRL_SET_TLSEXT_HOSTNAME 
+#endif // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
     int i = -1;
     X509_NAME* xname = X509_get_subject_name(x);
     while ((i = X509_NAME_get_index_by_NID(xname, NID_commonName, i)) != -1) {
         char* str = NULL;
         X509_NAME_ENTRY* entry = X509_NAME_get_entry(xname, i);
-        const int len = ASN1_STRING_to_UTF8((unsigned char**)&str, 
+        const int len = ASN1_STRING_to_UTF8((unsigned char**)&str,
                                             X509_NAME_ENTRY_get_data(entry));
         if (len >= 0) {
             std::string hostname(str, len);
@@ -319,7 +319,7 @@ static int LoadCertificate(SSL_CTX* ctx,
                    << SSLError(ERR_get_error());
         return -1;
     }
-    
+
     // Load the main certficate
     if (SSL_CTX_use_certificate(ctx, x.get()) != 1) {
         LOG(ERROR) << "Fail to load " << certificate << ": "
@@ -355,7 +355,7 @@ static int LoadCertificate(SSL_CTX* ctx,
     }
     ERR_clear_error();
 
-    // Validate certificate and private key 
+    // Validate certificate and private key
     if (SSL_CTX_check_private_key(ctx) != 1) {
         LOG(ERROR) << "Fail to verify " << private_key << ": "
                    << SSLError(ERR_get_error());
@@ -595,7 +595,7 @@ SSLState DetectSSLState(int fd, int* error_code) {
         }
         return SSL_UNKNOWN;
     }
-    
+
     if ((header[0] == 0x16 && header[5] == 0x01) // SSLv3 or TLSv1.0, 1.1, 1.2
         || ((header[0] & 0x80) == 0x80 && header[2] == 0x01)) {  // SSLv2
         return SSL_CONNECTING;
@@ -649,7 +649,7 @@ int SSLThreadInit() {
 # else
     CRYPTO_set_id_callback(SSLGetThreadId);
 # endif  // CRYPTO_LOCK_ECDH
-#endif // OPENSSL_VERSION_NUMBER < 0x10100000L 
+#endif // OPENSSL_VERSION_NUMBER < 0x10100000L
     return 0;
 }
 

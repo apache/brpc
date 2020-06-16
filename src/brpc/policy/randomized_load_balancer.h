@@ -41,7 +41,7 @@ public:
     RandomizedLoadBalancer* New(const butil::StringPiece&) const;
     void Destroy();
     void Describe(std::ostream& os, const DescribeOptions&);
-    
+
 private:
     struct Servers {
         std::vector<ServerId> server_list;

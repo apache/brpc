@@ -33,7 +33,7 @@ typedef bool (*Compress)(const google::protobuf::Message&, butil::IOBuf*);
 typedef bool (*Decompress)(const butil::IOBuf&, google::protobuf::Message*);
 
 inline void CompressMessage(const char* method_name,
-                            int num, snappy_message::SnappyMessageProto& msg, 
+                            int num, snappy_message::SnappyMessageProto& msg,
                             int len, Compress compress, Decompress decompress) {
     butil::Timer timer;
     size_t compression_length = 0;
@@ -53,8 +53,8 @@ inline void CompressMessage(const char* method_name,
         total_decompress_time += timer.n_elapsed();
     }
     float compression_ratio = compression_length / (((double)num) * len);
-    printf("%20s%20d%20f%20f%30f%30f%29f%%\n", method_name, len, 
-            total_compress_time/1000.0/num, total_decompress_time/1000.0/num, 
+    printf("%20s%20d%20f%20f%30f%30f%29f%%\n", method_name, len,
+            total_compress_time/1000.0/num, total_decompress_time/1000.0/num,
             1000000000.0/1024/1024*num*len/total_compress_time,
             1000000000.0/1024/1024*num*len/total_decompress_time,
             compression_ratio*100.0);
@@ -95,17 +95,17 @@ TEST_F(test_compress_method, snappy) {
 }
 
 TEST_F(test_compress_method, snappy_iobuf) {
-    butil::IOBuf buf, output_buf, check_buf; 
+    butil::IOBuf buf, output_buf, check_buf;
     const char* test = "this is a test";
     buf.append(test, strlen(test));
-    ASSERT_TRUE(brpc::policy::SnappyCompress(buf, &output_buf)); 
+    ASSERT_TRUE(brpc::policy::SnappyCompress(buf, &output_buf));
     ASSERT_TRUE(brpc::policy::SnappyDecompress(output_buf, &check_buf));
     ASSERT_STREQ(check_buf.to_string().c_str(), test);
 }
 
 TEST_F(test_compress_method, mass_snappy) {
     snappy_message::SnappyMessageProto old_msg;
-    int len = 12435; 
+    int len = 12435;
     char* text = new char[len + 1];
     for (int j = 0; j < len;) {
         for (int i = 0; i < 26 && j < len; i++) {
@@ -165,11 +165,11 @@ TEST_F(test_compress_method, snappy_test) {
 
 TEST_F(test_compress_method, throughput_compare) {
     int len = 0;
-    int len_subs[] = {128, 1024, 16*1024, 32*1024, 512*1024}; 
+    int len_subs[] = {128, 1024, 16*1024, 32*1024, 512*1024};
     butil::Timer timer;
-    printf("%20s%20s%20s%20s%30s%30s%30s\n", "Compress method", "Compress size(B)", 
-           "Compress time(us)", "Decompress time(us)", "Compress throughput(MB/s)", 
-           "Decompress throughput(MB/s)", "Compress ratio");    
+    printf("%20s%20s%20s%20s%30s%30s%30s\n", "Compress method", "Compress size(B)",
+           "Compress time(us)", "Decompress time(us)", "Compress throughput(MB/s)",
+           "Decompress throughput(MB/s)", "Compress ratio");
     for (size_t num = 0; num < ARRAY_SIZE(len_subs); ++num) {
         len = len_subs[num];
         snappy_message::SnappyMessageProto old_msg;
@@ -185,14 +185,14 @@ TEST_F(test_compress_method, throughput_compare) {
         text[len] = '\0';
         old_msg.set_text(text);
         int k = std::min(32*1024*1024/len, 5000);
-        CompressMessage("Snappy", k, old_msg, len, 
-                         brpc::policy::SnappyCompress, 
+        CompressMessage("Snappy", k, old_msg, len,
+                         brpc::policy::SnappyCompress,
                          brpc::policy::SnappyDecompress);
-        CompressMessage("Gzip", k, old_msg, len, 
-                         brpc::policy::GzipCompress, 
+        CompressMessage("Gzip", k, old_msg, len,
+                         brpc::policy::GzipCompress,
                          brpc::policy::GzipDecompress);
-        CompressMessage("Zlib", k, old_msg, len, 
-                         brpc::policy::ZlibCompress, 
+        CompressMessage("Zlib", k, old_msg, len,
+                         brpc::policy::ZlibCompress,
                          brpc::policy::ZlibDecompress);
         printf("\n");
         delete [] text;
@@ -203,10 +203,10 @@ TEST_F(test_compress_method, throughput_compare_complete_random) {
     char str_table[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     int rand_num = 0;
     int len = 0;
-    int len_subs[] = {128, 1024, 16*1024, 32*1024, 512 * 1024}; 
+    int len_subs[] = {128, 1024, 16*1024, 32*1024, 512 * 1024};
     butil::Timer timer;
-    printf("%20s%20s%20s%20s%30s%30s%30s\n", "Compress method", "Compress size(B)", 
-           "Compress time(us)", "Decompress time(us)", "Compress throughput(MB/s)", 
+    printf("%20s%20s%20s%20s%30s%30s%30s\n", "Compress method", "Compress size(B)",
+           "Compress time(us)", "Decompress time(us)", "Compress throughput(MB/s)",
            "Decompress throughput(MB/s)", "Compress ratio");
     for (size_t num = 0; num < ARRAY_SIZE(len_subs); ++num) {
         len = len_subs[num];
@@ -219,14 +219,14 @@ TEST_F(test_compress_method, throughput_compare_complete_random) {
         text[len] = '\0';
         old_msg.set_text(text);
         int k = std::min(32*1024*1024/len, 5000);
-        CompressMessage("Snappy", k, old_msg, len, 
-                         brpc::policy::SnappyCompress, 
+        CompressMessage("Snappy", k, old_msg, len,
+                         brpc::policy::SnappyCompress,
                          brpc::policy::SnappyDecompress);
-        CompressMessage("Gzip", k, old_msg, len, 
-                         brpc::policy::GzipCompress, 
+        CompressMessage("Gzip", k, old_msg, len,
+                         brpc::policy::GzipCompress,
                          brpc::policy::GzipDecompress);
-        CompressMessage("Zlib", k, old_msg, len, 
-                         brpc::policy::ZlibCompress, 
+        CompressMessage("Zlib", k, old_msg, len,
+                         brpc::policy::ZlibCompress,
                          brpc::policy::ZlibDecompress);
         printf("\n");
         delete [] text;
@@ -234,7 +234,7 @@ TEST_F(test_compress_method, throughput_compare_complete_random) {
 }
 
 TEST_F(test_compress_method, mass_snappy_iobuf) {
-    butil::IOBuf buf; 
+    butil::IOBuf buf;
     int len = 782;
     char* text = new char[len + 1];
     for (int j = 0; j < len;) {
@@ -245,7 +245,7 @@ TEST_F(test_compress_method, mass_snappy_iobuf) {
     text[len] = '\0';
     buf.append(text, strlen(text));
     butil::IOBuf output_buf, check_buf;
-    ASSERT_TRUE(brpc::policy::SnappyCompress(buf, &output_buf)); 
+    ASSERT_TRUE(brpc::policy::SnappyCompress(buf, &output_buf));
     const std::string output_str = output_buf.to_string();
     len = output_str.size();
     ASSERT_TRUE(SnappyDecompressIOBuf(const_cast<char*>(output_str.data()), len, &check_buf));

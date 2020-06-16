@@ -31,7 +31,7 @@ protected:
     };
 };
 
-TEST_F(ScopedLockTest, mutex) {    
+TEST_F(ScopedLockTest, mutex) {
     pthread_mutex_t m1 = PTHREAD_MUTEX_INITIALIZER;
     {
         BAIDU_SCOPED_LOCK(m1);
@@ -41,7 +41,7 @@ TEST_F(ScopedLockTest, mutex) {
     pthread_mutex_unlock(&m1);
 }
 
-TEST_F(ScopedLockTest, spinlock) {    
+TEST_F(ScopedLockTest, spinlock) {
     pthread_spinlock_t s1;
     pthread_spin_init(&s1, 0);
     {

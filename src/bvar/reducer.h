@@ -36,7 +36,7 @@ namespace bvar {
 // `Op' shall satisfy:
 //   - associative:     a Op (b Op c) == (a Op b) Op c
 //   - commutative:     a Op b == b Op a;
-//   - no side effects: a Op b never changes if a and b are fixed. 
+//   - no side effects: a Op b never changes if a and b are fixed.
 // otherwise the result is undefined.
 //
 // For performance issues, we don't let Op return value, instead it shall
@@ -134,7 +134,7 @@ public:
             os << get_value();
         }
     }
-    
+
 #ifdef BAIDU_INTERNAL
     void get_value(boost::any* value) const override { *value = get_value(); }
 #endif
@@ -145,7 +145,7 @@ public:
     // Get instance of Op.
     const Op& op() const { return _combiner.op(); }
     const InvOp& inv_op() const { return _inv_op; }
-    
+
     sampler_type* get_sampler() {
         if (NULL == _sampler) {
             _sampler = new sampler_type(this);
@@ -163,7 +163,7 @@ public:
         }
         return 0;
     }
-    
+
 protected:
     int expose_impl(const butil::StringPiece& prefix,
                     const butil::StringPiece& name,
@@ -209,13 +209,13 @@ inline Reducer<T, Op, InvOp>& Reducer<T, Op, InvOp>::operator<<(
 namespace detail {
 template <typename Tp>
 struct AddTo {
-    void operator()(Tp & lhs, 
+    void operator()(Tp & lhs,
                     typename butil::add_cr_non_integral<Tp>::type rhs) const
     { lhs += rhs; }
 };
 template <typename Tp>
 struct MinusFrom {
-    void operator()(Tp & lhs, 
+    void operator()(Tp & lhs,
                     typename butil::add_cr_non_integral<Tp>::type rhs) const
     { lhs -= rhs; }
 };
@@ -242,9 +242,9 @@ public:
 // max_value << 1 << 2 << 3 << 4;
 // LOG(INFO) << max_value.get_value(); // 4
 namespace detail {
-template <typename Tp> 
+template <typename Tp>
 struct MaxTo {
-    void operator()(Tp & lhs, 
+    void operator()(Tp & lhs,
                     typename butil::add_cr_non_integral<Tp>::type rhs) const {
         // Use operator< as well.
         if (lhs < rhs) {
@@ -278,7 +278,7 @@ private:
     explicit Maxer(T default_value) : Base(default_value) {
     }
     Maxer(T default_value, const butil::StringPiece& prefix,
-          const butil::StringPiece& name) 
+          const butil::StringPiece& name)
         : Base(default_value) {
         this->expose_as(prefix, name);
     }
@@ -292,9 +292,9 @@ private:
 // LOG(INFO) << min_value.get_value(); // 1
 namespace detail {
 
-template <typename Tp> 
+template <typename Tp>
 struct MinTo {
-    void operator()(Tp & lhs, 
+    void operator()(Tp & lhs,
                     typename butil::add_cr_non_integral<Tp>::type rhs) const {
         if (rhs < lhs) {
             lhs = rhs;

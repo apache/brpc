@@ -34,7 +34,7 @@ public:
 
     const std::string& user() const { return _user; }
     void set_user(const std::string& user) { _user = user; }
-    
+
     const std::string& group() const { return _group; }
     void set_group(const std::string& group) { _group = group; }
 
@@ -52,7 +52,7 @@ private:
     std::string _user;
     std::string _group;
     std::string _roles;
-    std::string _starter;    
+    std::string _starter;
 };
 
 class Authenticator {

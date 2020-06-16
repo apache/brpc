@@ -29,7 +29,7 @@ namespace brpc {
 class SocketMessage {
 public:
     virtual ~SocketMessage() {}
-    
+
     // Called once and only once *sequentially* to generate the buffer to
     // write. This object should destroy itself at the end of this method.
     // AppendAndDestroySelf() to the same Socket are called one by one in the

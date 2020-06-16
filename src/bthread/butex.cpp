@@ -70,7 +70,7 @@ inline bvar::Adder<int64_t>& butex_waiter_count() {
 // If a thread would suspend for less than so many microseconds, return
 // ETIMEDOUT directly.
 // Use 1: sleeping for less than 2 microsecond is inefficient and useless.
-static const int64_t MIN_SLEEP_US = 2; 
+static const int64_t MIN_SLEEP_US = 2;
 
 enum WaiterState {
     WAITER_STATE_NONE,
@@ -214,12 +214,12 @@ inline int unsleep_if_necessary(ButexBthreadWaiter* w,
 //     pass_to_thread2(&event);  --->  event.signal();
 //     event.wait();
 //   } <-- event destroyed
-//   
+//
 // Summary: Thread1 passes a stateful condition to Thread2 and waits until
 // the condition being signalled, which basically means the associated
 // job is done and Thread1 can release related resources including the mutex
 // and condition. The scenario is fine and the code is correct.
-// The race needs a closer look. The unlock at /*1*/ may have different 
+// The race needs a closer look. The unlock at /*1*/ may have different
 // implementations, but in which the last step is probably an atomic store
 // and butex_wake(), like this:
 //
@@ -234,9 +234,9 @@ inline int unsleep_if_necessary(ButexBthreadWaiter* w,
 // To solve this issue, one method is to add reference before store and
 // release the reference after butex_wake. However reference countings need
 // to be added in nearly every user scenario of butex_wake(), which is very
-// error-prone. Another method is never freeing butex, with the side effect 
+// error-prone. Another method is never freeing butex, with the side effect
 // that butex_wake() may wake up an unrelated butex(the one reuses the memory)
-// and cause spurious wakeups. According to our observations, the race is 
+// and cause spurious wakeups. According to our observations, the race is
 // infrequent, even rare. The extra spurious wakeups should be acceptable.
 
 void* butex_create() {
@@ -519,7 +519,7 @@ static void wait_for_butex(void* arg) {
             return;
         }
     }
-    
+
     // b->container is NULL which makes erase_from_butex_and_wakeup() and
     // TaskGroup::interrupt() no-op, there's no race between following code and
     // the two functions. The on-stack ButexBthreadWaiter is safe to use and
@@ -527,7 +527,7 @@ static void wait_for_butex(void* arg) {
     unsleep_if_necessary(bw, get_global_timer_thread());
     tls_task_group->ready_to_run(bw->tid);
     // FIXME: jump back to original thread is buggy.
-    
+
     // // Value unmatched or waiter is already woken up by TimerThread, jump
     // // back to original bthread.
     // TaskGroup* g = tls_task_group;
@@ -560,7 +560,7 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
     pw.tid = 0;
     pw.sig.store(PTHREAD_NOT_SIGNALLED, butil::memory_order_relaxed);
     int rc = 0;
-    
+
     if (g) {
         task = g->current_task();
         task->current_waiter.store(&pw, butil::memory_order_release);
@@ -662,7 +662,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
     // running and using bbw. The chance is small, just spin until it's done.
     BT_LOOP_WHEN(unsleep_if_necessary(&bbw, get_global_timer_thread()) < 0,
                  30/*nops before sched_yield*/);
-    
+
     // If current_waiter is NULL, TaskGroup::interrupt() is running and using bbw.
     // Spin until current_waiter != NULL.
     BT_LOOP_WHEN(bbw.task_meta->current_waiter.exchange(

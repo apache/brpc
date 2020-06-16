@@ -41,8 +41,8 @@ int BaiduNamingService::GetServers(const char *service_name,
             // NOTE: output is valid for this error, just print a warning.
             LOG(WARNING) << webfoot::error_to_string(rc);
         }
-    } 
-    const int instance_number = output.instance_size(); 
+    }
+    const int instance_number = output.instance_size();
     if (instance_number == 0) {
         LOG(WARNING) << "No server attached to `" << service_name << "'";
         return 0;

@@ -92,7 +92,7 @@ void NamingServiceThread::Actions::RemoveServers(
 void NamingServiceThread::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
     _servers.assign(servers.begin(), servers.end());
-    
+
     // Diff servers with _last_servers by comparing sorted vectors.
     // Notice that _last_servers is always sorted.
     std::sort(_servers.begin(), _servers.end());
@@ -104,14 +104,14 @@ void NamingServiceThread::Actions::ResetServers(
         _servers.resize(dedup_size);
     }
     _added.resize(_servers.size());
-    std::vector<ServerNode>::iterator _added_end = 
+    std::vector<ServerNode>::iterator _added_end =
         std::set_difference(_servers.begin(), _servers.end(),
                             _last_servers.begin(), _last_servers.end(),
                             _added.begin());
     _added.resize(_added_end - _added.begin());
 
     _removed.resize(_last_servers.size());
-    std::vector<ServerNode>::iterator _removed_end = 
+    std::vector<ServerNode>::iterator _removed_end =
         std::set_difference(_last_servers.begin(), _last_servers.end(),
                             _servers.begin(), _servers.end(),
                             _removed.begin());
@@ -191,7 +191,7 @@ void NamingServiceThread::Actions::ResetServers(
 
     if (!_removed.empty() || !_added.empty()) {
         std::ostringstream info;
-        info << butil::class_name_str(*_owner->_ns) << "(\"" 
+        info << butil::class_name_str(*_owner->_ns) << "(\""
              << _owner->_service_name << "\"):";
         if (!_added.empty()) {
             info << " added "<< _added.size();
@@ -347,7 +347,7 @@ int NamingServiceThread::AddWatcher(NamingServiceWatcher* watcher,
     }
     return -1;
 }
-    
+
 int NamingServiceThread::RemoveWatcher(NamingServiceWatcher* watcher) {
     if (watcher == NULL) {
         LOG(ERROR) << "Param[watcher] is NULL";

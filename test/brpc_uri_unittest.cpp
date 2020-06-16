@@ -78,7 +78,7 @@ TEST(URITest, only_host) {
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
     ASSERT_EQ(0u, uri.QueryCount());
-    
+
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu4.com "));
     ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
@@ -227,7 +227,7 @@ TEST(URITest, generate_h2_path) {
     ASSERT_EQ(2u, uri.QueryCount());
     ASSERT_EQ("key2&key3=value3.3", uri.query());
     uri.GenerateH2Path(&path1);
-    ASSERT_EQ("/dir?key2&key3=value3.3", path1);    
+    ASSERT_EQ("/dir?key2&key3=value3.3", path1);
 
     const std::string ref2 = "/dir2?key1=&&key2&&=&key3=value3#frag2";
     uri.SetH2Path(ref2);

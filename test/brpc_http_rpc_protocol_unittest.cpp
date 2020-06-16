@@ -106,10 +106,10 @@ protected:
         EXPECT_EQ(0, _server.AddBuiltinServices());
         EXPECT_EQ(0, _server.AddService(
             &_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        // Hack: Regard `_server' as running 
+        // Hack: Regard `_server' as running
         _server._status = brpc::Server::RUNNING;
         _server._options.auth = &_auth;
-        
+
         EXPECT_EQ(0, pipe(_pipe_fds));
 
         brpc::SocketId id;
@@ -175,7 +175,7 @@ protected:
         brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().set_status_code(code);
         msg->header().set_content_type("application/json");
-        
+
         test::EchoResponse res;
         res.set_message(EXP_RESPONSE);
         butil::IOBufAsZeroCopyOutputStream res_stream(&msg->body());
@@ -488,7 +488,7 @@ public:
         , _nwritten(0)
         , _ever_full(false)
         , _last_errno(0) {}
-    
+
     void Download(::google::protobuf::RpcController* cntl_base,
                   const ::test::HttpRequest*,
                   ::test::HttpResponse*,
@@ -497,7 +497,7 @@ public:
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
         cntl->http_response().set_content_type("text/plain");
-        brpc::StopStyle stop_style = (_nrep == std::numeric_limits<size_t>::max() 
+        brpc::StopStyle stop_style = (_nrep == std::numeric_limits<size_t>::max()
                 ? brpc::FORCE_STOP : brpc::WAIT_FOR_STOP);
         butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
                 cntl->CreateProgressiveAttachment(stop_style));
@@ -545,7 +545,7 @@ public:
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
         cntl->http_response().set_content_type("text/plain");
-        brpc::StopStyle stop_style = (_nrep == std::numeric_limits<size_t>::max() 
+        brpc::StopStyle stop_style = (_nrep == std::numeric_limits<size_t>::max()
                 ? brpc::FORCE_STOP : brpc::WAIT_FOR_STOP);
         butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
                 cntl->CreateProgressiveAttachment(stop_style));
@@ -571,18 +571,18 @@ public:
         // progressive attachment when the controller failed.
         cntl->SetFailed("Intentionally set controller failed");
         done_guard.reset(NULL);
-        
+
         // Return value of Write after controller has failed should
         // be less than zero.
         CHECK_LT(pa->Write(buf, sizeof(buf)), 0);
         CHECK_EQ(errno, ECANCELED);
     }
-    
+
     void set_done_place(DonePlace done_place) { _done_place = done_place; }
     size_t written_bytes() const { return _nwritten; }
     bool ever_full() const { return _ever_full; }
     int last_errno() const { return _last_errno; }
-    
+
 private:
     DonePlace _done_place;
     size_t _nrep;
@@ -590,7 +590,7 @@ private:
     bool _ever_full;
     int _last_errno;
 };
-    
+
 TEST_F(HttpTest, read_chunked_response_normally) {
     const int port = 8923;
     brpc::Server server;
@@ -649,7 +649,7 @@ public:
         , _destroyed(false) {
         butil::intrusive_ptr<ReadBody>(this).detach(); // ref
     }
-                
+
     butil::Status OnReadOnePart(const void* data, size_t length) {
         _nread += length;
         while (length > 0) {
@@ -946,7 +946,7 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
                             std::numeric_limits<size_t>::max());
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     EXPECT_EQ(0, server.Start(port, NULL));
-        
+
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
@@ -976,7 +976,7 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
     LOG(INFO) << "Stopping the server";
     server.Stop(0);
     server.Join();
-        
+
     // Wait for error reporting from the socket.
     usleep(GENERAL_DELAY_US);
     ASSERT_TRUE(reader->destroyed());

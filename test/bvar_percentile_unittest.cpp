@@ -142,7 +142,7 @@ TEST_F(PercentileTest, combine_of) {
     const int num_samplers = 10;
     // Define a base time to make all samples are in the same interval
     const uint32_t base = (1 << 30) + 1;
-    
+
     const int  N = 1000;
     size_t belongs[num_samplers] = {0};
     size_t total = 0;
@@ -177,12 +177,12 @@ TEST_F(PercentileTest, combine_of) {
         }
     }
     for (int i = 0; i < num_samplers; ++i) {
-        double expect_ratio = (double)(i + 1) * 2 / 
+        double expect_ratio = (double)(i + 1) * 2 /
                                 (num_samplers * (num_samplers + 1));
         double actual_ratio = (double)(belongs[i]) / total;
         EXPECT_LT(fabs(expect_ratio / actual_ratio) - 1, 0.2)
                 << "expect_ratio=" << expect_ratio
                 << " actual_ratio=" << actual_ratio;
-                  
+
     }
 }

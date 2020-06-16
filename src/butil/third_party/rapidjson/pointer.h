@@ -1,5 +1,5 @@
 // Tencent is pleased to support the open source community by making RapidJSON available.
-// 
+//
 // Copyright (C) 2015 THL A29 Limited, a Tencent company, and Milo Yip. All rights reserved.
 //
 // Licensed under the MIT License (the "License"); you may not use this file except
@@ -7,9 +7,9 @@
 //
 // http://opensource.org/licenses/MIT
 //
-// Unless required by applicable law or agreed to in writing, software distributed 
-// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR 
-// CONDITIONS OF ANY KIND, either express or implied. See the License for the 
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
 #ifndef RAPIDJSON_POINTER_H_
@@ -40,16 +40,16 @@ enum PointerParseErrorCode {
 
 //! Represents a JSON Pointer. Use Pointer for UTF8 encoding and default allocator.
 /*!
-    This class implements RFC 6901 "JavaScript Object Notation (JSON) Pointer" 
+    This class implements RFC 6901 "JavaScript Object Notation (JSON) Pointer"
     (https://tools.ietf.org/html/rfc6901).
 
     A JSON pointer is for identifying a specific value in a JSON document
     (GenericDocument). It can simplify coding of DOM tree manipulation, because it
     can access multiple-level depth of DOM tree with single API call.
 
-    After it parses a string representation (e.g. "/foo/0" or URI fragment 
+    After it parses a string representation (e.g. "/foo/0" or URI fragment
     representation (e.g. "#/foo/0") into its internal representation (tokens),
-    it can be used to resolve a specific value in multiple documents, or sub-tree 
+    it can be used to resolve a specific value in multiple documents, or sub-tree
     of documents.
 
     Contrary to GenericValue, Pointer can be copy constructed and copy assigned.
@@ -60,10 +60,10 @@ enum PointerParseErrorCode {
     supplied tokens eliminates these.
 
     GenericPointer depends on GenericDocument and GenericValue.
-    
+
     \tparam ValueType The value type of the DOM tree. E.g. GenericValue<UTF8<> >
     \tparam Allocator The allocator type for allocating memory for internal representation.
-    
+
     \note GenericPointer uses same encoding of ValueType.
     However, Allocator of GenericPointer is independent of Allocator of Value.
 */
@@ -75,7 +75,7 @@ public:
 
     //! A token is the basic units of internal representation.
     /*!
-        A JSON pointer string representation "/foo/123" is parsed to two tokens: 
+        A JSON pointer string representation "/foo/123" is parsed to two tokens:
         "foo" and 123. 123 will be represented in both numeric form and string form.
         They are resolved according to the actual value type (object or array).
 
@@ -83,7 +83,7 @@ public:
         (greater than limits of SizeType), they are only treated as string form
         (i.e. the token's index will be equal to kPointerInvalidIndex).
 
-        This struct is public so that user can create a Pointer without parsing and 
+        This struct is public so that user can create a Pointer without parsing and
         allocation, using a special constructor.
     */
     struct Token {
@@ -323,7 +323,7 @@ public:
 
         for (size_t i = 0; i < tokenCount_; i++) {
             if (tokens_[i].index != rhs.tokens_[i].index ||
-                tokens_[i].length != rhs.tokens_[i].length || 
+                tokens_[i].length != rhs.tokens_[i].length ||
                 (tokens_[i].length != 0 && std::memcmp(tokens_[i].name, rhs.tokens_[i].name, sizeof(Ch)* tokens_[i].length) != 0))
             {
                 return false;
@@ -374,9 +374,9 @@ public:
         If the value is not exist, it creates all parent values and a JSON Null value.
         So it always succeed and return the newly created or existing value.
 
-        Remind that it may change types of parents according to tokens, so it 
-        potentially removes previously stored values. For example, if a document 
-        was an array, and "/foo" is used to create a value, then the document 
+        Remind that it may change types of parents according to tokens, so it
+        potentially removes previously stored values. For example, if a document
+        was an array, and "/foo" is used to create a value, then the document
         will be changed to an object, and all existing array elements are lost.
 
         \param root Root value of a DOM subtree to be resolved. It can be any value other than document root.
@@ -544,7 +544,7 @@ public:
     ValueType& GetWithDefault(GenericDocument<EncodingType, typename ValueType::AllocatorType, stackAllocator>& document, const Ch* defaultValue) const {
         return GetWithDefault(document, defaultValue, document.GetAllocator());
     }
-    
+
 #if RAPIDJSON_HAS_STDSTRING
     //! Query a value in a document with default std::basic_string.
     template <typename stackAllocator>
@@ -775,7 +775,7 @@ private:
 
         // Count number of '/' as tokenCount
         tokenCount_ = 0;
-        for (const Ch* s = source; s != source + length; s++) 
+        for (const Ch* s = source; s != source + length; s++)
             if (*s == '/')
                 tokenCount_++;
 
@@ -832,7 +832,7 @@ private:
                 }
 
                 i++;
-                
+
                 // Escaping "~0" -> '~', "~1" -> '/'
                 if (c == '~') {
                     if (i < length) {
@@ -921,7 +921,7 @@ private:
                     os.Put('~');
                     os.Put('1');
                 }
-                else if (uriFragment && NeedPercentEncode(c)) { 
+                else if (uriFragment && NeedPercentEncode(c)) {
                     // Transcode to UTF8 sequence
                     GenericStringStream<typename ValueType::EncodingType> source(&t->name[j]);
                     PercentEncodeStream<OutputStream> target(os);
@@ -939,7 +939,7 @@ private:
     //! A helper stream for decoding a percent-encoded sequence into code unit.
     /*!
         This stream decodes %XY triplet into code unit (0-255).
-        If it encounters invalid characters, it sets output code unit as 0 and 
+        If it encounters invalid characters, it sets output code unit as 0 and
         mark invalid, and to be checked by IsValid().
     */
     class PercentDecodeStream {

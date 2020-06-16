@@ -33,7 +33,7 @@ public:
                    const GetJsRequest* request,
                    GetJsResponse* response,
                    ::google::protobuf::Closure* done);
-    
+
     void jquery_min(::google::protobuf::RpcController* controller,
                     const GetJsRequest* request,
                     GetJsResponse* response,

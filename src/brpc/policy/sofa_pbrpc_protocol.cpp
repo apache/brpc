@@ -109,7 +109,7 @@ private:
 
 class SofaRawUnpacker {
 public:
-    explicit SofaRawUnpacker(const void* stream) 
+    explicit SofaRawUnpacker(const void* stream)
         : _stream((const char*)stream) {}
 
     SofaRawUnpacker& unpack32(uint32_t & hostvalue) {
@@ -205,7 +205,7 @@ ParseResult ParseSofaMessage(butil::IOBuf* source, Socket* socket,
 // Assemble response packet using `correlation_id', `controller',
 // `res', and then write this packet to `sock'
 static void SendSofaResponse(int64_t correlation_id,
-                             Controller* cntl, 
+                             Controller* cntl,
                              const google::protobuf::Message* req,
                              const google::protobuf::Message* res,
                              const Server* server,
@@ -240,7 +240,7 @@ static void SendSofaResponse(int64_t correlation_id,
     if (res != NULL && !cntl->Failed()) {
         if (!res->IsInitialized()) {
             cntl->SetFailed(
-                ERESPONSE, "Missing required fields in response: %s", 
+                ERESPONSE, "Missing required fields in response: %s",
                 res->InitializationErrorString().c_str());
         } else if (!SerializeAsCompressedData(*res, &res_body, type)) {
             cntl->SetFailed(ERESPONSE, "Fail to serialize response, "
@@ -255,7 +255,7 @@ static void SendSofaResponse(int64_t correlation_id,
     if (append_body) {
         res_size = res_body.length();
     }
-    
+
     SofaRpcMeta meta;
     meta.set_type(SofaRpcMeta::RESPONSE);
     // sofa-pbrpc client needs `failed' to be set currently(1.0.1.28195).
@@ -398,11 +398,11 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
                             " -usercode_in_pthread is on");
             break;
         }
-        
+
         const Server::MethodProperty *sp =
             server_accessor.FindMethodPropertyByFullName(meta.method());
         if (NULL == sp) {
-            cntl->SetFailed(ENOMETHOD, "Fail to find method=%s", 
+            cntl->SetFailed(ENOMETHOD, "Fail to find method=%s",
                             meta.method().c_str());
             break;
         }
@@ -426,7 +426,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         req.reset(svc->GetRequestPrototype(method).New());
         if (!ParseFromCompressedData(msg->payload, req.get(), req_cmp_type)) {
             cntl->SetFailed(EREQUEST, "Fail to parse request message, "
-                            "CompressType=%d, size=%d", 
+                            "CompressType=%d, size=%d",
                             req_cmp_type, (int)msg->payload.size());
             break;
         }
@@ -449,11 +449,11 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             span->AsParent();
         }
         if (!FLAGS_usercode_in_pthread) {
-            return svc->CallMethod(method, cntl.release(), 
+            return svc->CallMethod(method, cntl.release(),
                                    req.release(), res.release(), done);
         }
         if (BeginRunningUserCode()) {
-            svc->CallMethod(method, cntl.release(), 
+            svc->CallMethod(method, cntl.release(),
                             req.release(), res.release(), done);
             return EndRunningUserCodeInPlace();
         } else {
@@ -496,7 +496,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -508,7 +508,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
     const int saved_error = cntl->ErrorCode();
     if (meta.error_code() != 0) {
         // If error_code is unset, default is 0 = success.
-        cntl->SetFailed(meta.error_code(), 
+        cntl->SetFailed(meta.error_code(),
                               "%s", meta.reason().c_str());
     } else if (cntl->response()) {
         // Parse response message iff error code from meta is 0
@@ -517,7 +517,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
                 msg->payload, cntl->response(), res_cmp_type)) {
             cntl->SetFailed(
                 ERESPONSE, "Fail to parse response message, "
-                "CompressType=%d, response_size=%" PRIu64, 
+                "CompressType=%d, response_size=%" PRIu64,
                 res_cmp_type, (uint64_t)msg->payload.length());
         } else {
             cntl->set_response_compress_type(res_cmp_type);

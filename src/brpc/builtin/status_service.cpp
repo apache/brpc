@@ -48,7 +48,7 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
     Controller *cntl = static_cast<Controller*>(cntl_base);
     const Server* server = cntl->server();
     const bool use_html = UseHTML(cntl->http_request());
-    
+
     // NOTE: the plain output also fits format of public/configure so that user
     // can load values more easily.
     cntl->http_response().set_content_type(
@@ -80,7 +80,7 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
            << "\" class=\"flot-placeholder\"></div></div>";
     }
     os << '\n';
-    
+
     // connection_count
     if (use_html) {
         os << "<p class=\"variable\">";
@@ -109,14 +109,14 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
         os << mc;
     }
     os << '\n';
-    
+
     const Server::ServiceMap &services = server->_fullname_service_map;
     std::ostringstream desc;
     DescribeOptions desc_options;
     desc_options.verbose = true;
     desc_options.use_html = use_html;
 
-    for (Server::ServiceMap::const_iterator 
+    for (Server::ServiceMap::const_iterator
             iter = services.begin(); iter != services.end(); ++iter) {
         const Server::ServiceProperty& sp = iter->second;
         if (!sp.is_user_service()) {
@@ -133,7 +133,7 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
         os << (use_html ? "<h3>" : "[") << d->full_name()
            << (use_html ? "</h3>" : "]")
            << '\n';
-        
+
         // Output customized status if the service implements Describable
         Describable* obj = dynamic_cast<Describable*>(sp.service);
         if (obj) {

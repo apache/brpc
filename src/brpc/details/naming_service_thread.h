@@ -45,7 +45,7 @@ struct GetNamingServiceThreadOptions {
     GetNamingServiceThreadOptions()
         : succeed_without_server(false)
         , log_succeed_without_server(true) {}
-    
+
     bool succeed_without_server;
     bool log_succeed_without_server;
     ChannelSignature channel_signature;
@@ -86,7 +86,7 @@ class NamingServiceThread : public SharedObject, public Describable {
         std::vector<ServerNodeWithId> _removed_sockets;
     };
 
-public:    
+public:
     NamingServiceThread();
     ~NamingServiceThread();
 

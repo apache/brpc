@@ -1517,7 +1517,7 @@ TEST_F(FileUtilTest, CopyFileACL) {
 // to be a testing::Test.
 typedef testing::Test ReadOnlyFileUtilTest;
 
-#if defined(FixedContentsEqual) 
+#if defined(FixedContentsEqual)
 TEST_F(ReadOnlyFileUtilTest, ContentsEqual) {
   FilePath data_dir;
   ASSERT_TRUE(PathService::Get(DIR_TEST_DATA, &data_dir));

@@ -592,9 +592,9 @@ bool CreateDirectoryAndGetError(const FilePath& full_path,
     // NOTE(gejun): permission bits of dir are different from file's
     // -The write bit allows the affected user to create, rename, or delete
     //  files within the directory, and modify the directory's attributes
-    // -The read bit allows the affected user to list the files within the 
+    // -The read bit allows the affected user to list the files within the
     //  directory
-    // -The execute bit allows the affected user to enter the directory, and 
+    // -The execute bit allows the affected user to enter the directory, and
     //  access files and directories inside
     // -The sticky bit states that files and directories within that directory
     //  may only be deleted or renamed by their owner (or root)

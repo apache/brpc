@@ -40,7 +40,7 @@ static bool IsPemString(const std::string& input) {
     for (const char* s = input.c_str(); *s != '\0'; ++s) {
         if (*s != '\n') {
             return strncmp(s, PEM_START, strlen(PEM_START)) == 0;
-        } 
+        }
     }
     return false;
 }
@@ -98,7 +98,7 @@ std::ostream& operator<<(std::ostream& os, const CertInfo& cert) {
         os << cert.certificate.substr(pos, 16) << "...";
     } else {
         os << cert.certificate;
-    } 
+    }
 
     os << "] private-key[";
     if (IsPemString(cert.private_key)) {
@@ -207,7 +207,7 @@ static int LoadCertificate(SSL_CTX* ctx,
                    << SSLError(ERR_get_error());
         return -1;
     }
-    
+
     // Load the main certficate
     if (SSL_CTX_use_certificate(ctx, x.get()) != 1) {
         LOG(ERROR) << "Fail to load " << certificate << ": "
@@ -228,7 +228,7 @@ static int LoadCertificate(SSL_CTX* ctx,
     }
     ERR_clear_error();
 
-    // Validate certificate and private key 
+    // Validate certificate and private key
     if (SSL_CTX_check_private_key(ctx) != 1) {
         LOG(ERROR) << "Fail to verify " << private_key << ": "
                    << SSLError(ERR_get_error());
@@ -375,7 +375,7 @@ SSLState DetectSSLState(int fd, int* error_code) {
         }
         return SSL_UNKNOWN;
     }
-    
+
     if ((header[0] == 0x16 && header[5] == 0x01) // SSLv3 or TLSv1.0, 1.1, 1.2
         || ((header[0] & 0x80) == 0x80 && header[2] == 0x01)) {  // SSLv2
         return SSL_CONNECTING;

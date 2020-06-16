@@ -70,7 +70,7 @@ TEST_F(StatusTest, status) {
     ASSERT_EQ(1UL, bvar::Variable::count_exposed());
     ASSERT_EQ("hello 9",
               bvar::Variable::describe_exposed("var1"));
-    
+
     ASSERT_EQ(0, st2.expose("var2"));
     ASSERT_EQ(2UL, bvar::Variable::count_exposed());
     ASSERT_EQ("hello 9", bvar::Variable::describe_exposed("var1"));
@@ -93,7 +93,7 @@ TEST_F(StatusTest, status) {
     ASSERT_EQ(2UL, vars.size());
     ASSERT_EQ("var1", vars[0]);
     ASSERT_EQ("var2_again", vars[1]);
-    ASSERT_EQ(2UL, bvar::Variable::count_exposed());        
+    ASSERT_EQ(2UL, bvar::Variable::count_exposed());
 
     bvar::Status<std::string> st3("var3", "foobar");
     ASSERT_EQ("var3", st3.name());

@@ -41,11 +41,11 @@ inline bool is_mongo_opcode(int32_t op_code) {
     switch (op_code) {
     case MONGO_OPCODE_REPLY:         return true;
     case MONGO_OPCODE_MSG:           return true;
-    case MONGO_OPCODE_UPDATE:        return true; 
-    case MONGO_OPCODE_INSERT:        return true; 
-    case MONGO_OPCODE_QUERY:         return true; 
-    case MONGO_OPCODE_GET_MORE:      return true; 
-    case MONGO_OPCODE_DELETE:        return true; 
+    case MONGO_OPCODE_UPDATE:        return true;
+    case MONGO_OPCODE_INSERT:        return true;
+    case MONGO_OPCODE_QUERY:         return true;
+    case MONGO_OPCODE_GET_MORE:      return true;
+    case MONGO_OPCODE_DELETE:        return true;
     case MONGO_OPCODE_KILL_CURSORS : return true;
     }
     return false;

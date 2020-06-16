@@ -106,7 +106,7 @@ static int ListDiscoveryNodes(const char* discovery_api_addr, std::string* serve
 
 static void NewDiscoveryChannel() {
     // NOTE: Newly added discovery server is NOT detected until this server
-    // is restarted. The reasons for this design is that NS cluster rarely 
+    // is restarted. The reasons for this design is that NS cluster rarely
     // changes. Although we could detect new discovery servers by implmenenting
     // a NamingService, however which is too heavy for solving such a rare case.
     std::string discovery_servers;

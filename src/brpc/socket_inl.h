@@ -216,7 +216,7 @@ inline int Socket::AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr) {
             CHECK(false) << "Over dereferenced SocketId=" << id;
         }
     }
-    return -1;    
+    return -1;
 }
 
 inline bool Socket::Failed() const {

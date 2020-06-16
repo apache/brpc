@@ -119,7 +119,7 @@ bool JsonLoader::Reader::get_next_json(butil::IOBuf* json1) {
                         ++_brace_depth;
                     } else {
                         VLOG(1) << "Quoted left brace";
-                    }                        
+                    }
                     break;
                 case '}':
                     if (!_quoted) {
@@ -178,7 +178,7 @@ bool JsonLoader::Reader::get_next_json(butil::IOBuf* json1) {
     return false;
 }
 
-JsonLoader::JsonLoader(google::protobuf::compiler::Importer* importer, 
+JsonLoader::JsonLoader(google::protobuf::compiler::Importer* importer,
            google::protobuf::DynamicMessageFactory* factory,
            const std::string& service_name,
            const std::string& method_name)

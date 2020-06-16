@@ -51,7 +51,7 @@ static const uint32_t KEY_2NDLEVEL_SIZE = 32;
 static const uint32_t KEY_1STLEVEL_SIZE = 31;
 
 // Max tls in one thread, currently the value is 992 which should be enough
-// for most projects throughout baidu. 
+// for most projects throughout baidu.
 static const uint32_t KEYS_MAX = KEY_2NDLEVEL_SIZE * KEY_1STLEVEL_SIZE;
 
 // destructors/version of TLS.
@@ -93,7 +93,7 @@ public:
                 // Set the position to NULL before calling dtor which may set
                 // the position again.
                 _data[i].ptr = NULL;
-                
+
                 KeyInfo info = bthread::s_key_info[offset + i];
                 if (info.dtor && _data[i].version == info.version) {
                     info.dtor(p, info.dtor_args);
@@ -421,10 +421,10 @@ int bthread_key_delete(bthread_key_t key) {
                 ++bthread::s_key_info[key.index].version;
             }
             bthread::s_key_info[key.index].dtor = NULL;
-            bthread::s_key_info[key.index].dtor_args = NULL;        
+            bthread::s_key_info[key.index].dtor_args = NULL;
             bthread::s_free_keys[bthread::nfreekey++] = key.index;
             return 0;
-        } 
+        }
     }
     CHECK(false) << "bthread_key_delete is called on invalid " << key;
     return EINVAL;

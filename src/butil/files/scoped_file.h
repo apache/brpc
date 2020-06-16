@@ -94,11 +94,11 @@ public:
         _fp = NULL;
         return prev_fp;
     }
-    
+
     operator FILE*() const { return _fp; }
 
     FILE* get() { return _fp; }
-    
+
 private:
     FILE* _fp;
 };

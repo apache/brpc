@@ -293,10 +293,10 @@ template <> struct add_reference<void volatile> { typedef void volatile type; };
 template <> struct add_reference<void const volatile> { typedef void const volatile type; };
 
 // Shortcut for adding/removing const&
-template <typename T> struct add_const_reference { 
+template <typename T> struct add_const_reference {
     typedef typename add_reference<typename add_const<T>::type>::type type;
 };
-template <typename T> struct remove_const_reference { 
+template <typename T> struct remove_const_reference {
     typedef typename remove_const<typename remove_reference<T>::type>::type type;
 };
 
@@ -304,7 +304,7 @@ template <typename T> struct remove_const_reference {
 // add_cr_non_integral<int>::type      -> int
 // add_cr_non_integral<FooClass>::type -> const FooClass&
 template <typename T> struct add_cr_non_integral {
-    typedef typename conditional<is_integral<T>::value, T, 
+    typedef typename conditional<is_integral<T>::value, T,
             typename add_reference<typename add_const<T>::type>::type>::type type;
 };
 
@@ -314,7 +314,7 @@ template <typename T> struct remove_pointer<T*> { typedef T type; };
 template <typename T> struct remove_pointer<T* const> { typedef T type; };
 template <typename T> struct remove_pointer<T* volatile> { typedef T type; };
 template <typename T> struct remove_pointer<T* const volatile> {
-    typedef T type; 
+    typedef T type;
 };
 
 // is_reference is false except for reference types.

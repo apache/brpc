@@ -88,7 +88,7 @@ struct AsyncJob {
     google::protobuf::Closure* done;
 
     void run();
-    
+
     void run_and_delete() {
         run();
         delete this;
@@ -132,7 +132,7 @@ public:
         sd->x = expected_value;
 
         // Get the thread-local data which is created by ServerOptions.thread_local_data_factory
-        // and reused between different threads. All thread-local data are 
+        // and reused between different threads. All thread-local data are
         // destroyed upon server destruction.
         // "tls" is short for "thread local storage".
         MyThreadLocalData* tls =
@@ -151,14 +151,14 @@ public:
         //   pthread_key_delete  -> bthread_key_delete
         //   pthread_getspecific -> bthread_getspecific
         //   pthread_setspecific -> bthread_setspecific
-        MyThreadLocalData* tls2 = 
+        MyThreadLocalData* tls2 =
             static_cast<MyThreadLocalData*>(bthread_getspecific(_tls2_key));
         if (tls2 == NULL) {
             tls2 = new MyThreadLocalData;
             CHECK_EQ(0, bthread_setspecific(_tls2_key, tls2));
         }
         tls2->y = expected_value + 1;
-        
+
         // sleep awhile to force context switching.
         bthread_usleep(10000);
 
@@ -182,7 +182,7 @@ public:
 
         // We don't want to call done->Run() here, release the guard.
         done_guard.release();
-        
+
         LOG_EVERY_SECOND(INFO) << "ntls=" << ntls.load(butil::memory_order_relaxed)
                                << " nsd=" << nsd.load(butil::memory_order_relaxed);
     }
@@ -195,7 +195,7 @@ void AsyncJob::run() {
     brpc::ClosureGuard done_guard(done);
 
     // Sleep some time to make sure that Echo() exits.
-    bthread_usleep(10000);    
+    bthread_usleep(10000);
 
     // Still the session-local data that we saw in Echo().
     // This is the major difference between session-local data and thread-local
@@ -209,7 +209,7 @@ void AsyncJob::run() {
     if (FLAGS_echo_attachment) {
         cntl->response_attachment().append(cntl->request_attachment());
     }
-}    
+}
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
@@ -235,13 +235,13 @@ int main(int argc, char* argv[]) {
     // Add the service into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
     // use brpc::SERVER_OWNS_SERVICE.
-    if (server.AddService(&echo_service_impl, 
+    if (server.AddService(&echo_service_impl,
                           brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
         LOG(ERROR) << "Fail to add service";
         return -1;
     }
 
-    // Start the server. 
+    // Start the server.
     if (server.Start(FLAGS_port, &options) != 0) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;

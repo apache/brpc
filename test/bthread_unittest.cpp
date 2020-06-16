@@ -236,7 +236,7 @@ void* join_self(void*) {
 TEST_F(BthreadTest, bthread_join) {
     // Invalid tid
     ASSERT_EQ(EINVAL, bthread_join(0, NULL));
-    
+
     // Unexisting tid
     ASSERT_EQ(EINVAL, bthread_join((bthread_t)-1, NULL));
 
@@ -313,7 +313,7 @@ TEST_F(BthreadTest, small_threads) {
             LOG(INFO) << "[Round " << j + 1 << "] bthread_start_urgent takes "
                       << tm.n_elapsed()/N << "ns, sum=" << s;
             ASSERT_EQ(N * (j + 1), (size_t)s);
-        
+
             // Check uniqueness of th
             std::sort(th.begin(), th.end());
             ASSERT_EQ(th.end(), std::unique(th.begin(), th.end()));
@@ -496,12 +496,12 @@ TEST_F(BthreadTest, bthread_usleep) {
     // NOTE: May fail because worker threads may still be stealing tasks
     // after previous cases.
     usleep(10000);
-    
+
     bthread_t th1;
     ASSERT_EQ(0, bthread_start_urgent(&th1, &BTHREAD_ATTR_PTHREAD,
                                       check_sleep, (void*)1));
     ASSERT_EQ(0, bthread_join(th1, NULL));
-    
+
     bthread_t th2;
     ASSERT_EQ(0, bthread_start_urgent(&th2, NULL,
                                       check_sleep, (void*)0));

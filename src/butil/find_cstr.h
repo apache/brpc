@@ -87,7 +87,7 @@ struct StringMapThreadLocalTemp {
         std::transform(tmp->begin(), tmp->end(), tmp->begin(), ::tolower);
         return tmp;
     }
-    
+
     inline std::string* get_lowered_string(const char* key, size_t length) {
         std::string* tmp = get_string(key, length);
         std::transform(tmp->begin(), tmp->end(), tmp->begin(), ::tolower);

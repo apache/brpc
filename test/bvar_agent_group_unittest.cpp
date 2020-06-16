@@ -61,10 +61,10 @@ protected:
             uint64_t new_value;
             do {
                 new_value = old_value + 2;
-            } while (__builtin_expect(!element->compare_exchange_weak(old_value, new_value, 
+            } while (__builtin_expect(!element->compare_exchange_weak(old_value, new_value,
                                                      butil::memory_order_relaxed,
                                                      butil::memory_order_relaxed), 0));
-            //element->store(element->load(butil::memory_order_relaxed) + 2, 
+            //element->store(element->load(butil::memory_order_relaxed) + 2,
             //               butil::memory_order_relaxed);
             //element->fetch_add(2, butil::memory_order_relaxed);
         }
@@ -128,11 +128,11 @@ TEST_F(AgentGroupTest, test_all_perf) {
     }
     long totol_time = 0;
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        void *ret; 
+        void *ret;
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }
-    LOG(INFO) << "ThreadAgent takes " 
+    LOG(INFO) << "ThreadAgent takes "
               << totol_time / (OPS_PER_THREAD * ARRAY_SIZE(threads));
     totol_time = 0;
     g_counter.store(0, butil::memory_order_relaxed);
@@ -140,11 +140,11 @@ TEST_F(AgentGroupTest, test_all_perf) {
         pthread_create(&threads[i], NULL, global_add, (void *)id);
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        void *ret; 
+        void *ret;
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }
-    LOG(INFO) << "Global Atomic takes " 
+    LOG(INFO) << "Global Atomic takes "
               << totol_time / (OPS_PER_THREAD * ARRAY_SIZE(threads));
     AgentGroup<agent_type>::destroy_agent(id);
     //sleep(1000);

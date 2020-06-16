@@ -70,7 +70,7 @@ public:
     }
 
     size_t capacity() const { return _tasks.capacity(); }
-    
+
 private:
 friend class TaskGroup;
     DISALLOW_COPY_AND_ASSIGN(RemoteTaskQueue);

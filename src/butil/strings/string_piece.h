@@ -231,7 +231,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
     nsp = 0;
     for (; nsp < size() && isspace(ptr_[size()-1-nsp]); ++nsp) {}
     remove_suffix(nsp);
-  }       
+  }
 
   int compare(const BasicStringPiece<STRING_TYPE>& x) const {
     int r = wordmemcmp(

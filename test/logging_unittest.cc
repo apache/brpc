@@ -153,7 +153,7 @@ TEST_F(LoggingTest, streaming_log_sanity) {
     LOG(WARNING) << " orange" << noflush;
     ASSERT_EQ("11.12apple orange", LOG_STREAM(WARNING).content_str());
     ASSERT_EQ("", LOG_STREAM(WARNING).content_str());
-    
+
     LOG(FATAL) << 1 << 1.1f << 2l << "apple" << noflush;
     LOG(FATAL) << " orange" << noflush;
     ASSERT_EQ("11.12apple orange", LOG_STREAM(FATAL).content_str());
@@ -163,7 +163,7 @@ TEST_F(LoggingTest, streaming_log_sanity) {
     LOG(TRACE) << " orange" << noflush;
     ASSERT_EQ("11.12apple orange", LOG_STREAM(TRACE).content_str());
     ASSERT_EQ("", LOG_STREAM(TRACE).content_str());
-    
+
     LOG(NOTICE) << 1 << 1.1f << 2l << "apple" << noflush;
     LOG(DEBUG) << 1 << 1.1f << 2l << "apple" << noflush;
 
@@ -179,7 +179,7 @@ TEST_F(LoggingTest, streaming_log_sanity) {
     errno = EINVAL;
     PLOG(FATAL) << "Error occurred" << noflush;
     ASSERT_EQ("Error occurred: Invalid argument", PLOG_STREAM(FATAL).content_str());
-    
+
     errno = 0;
     PLOG(FATAL) << "Error occurred" << noflush;
 #if defined(OS_LINUX)
@@ -213,7 +213,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     ::logging::FLAGS_crash_on_fatal_log = false;
 
     EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("v", "1").empty());
-    
+
     EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
                                                "logging_unittest=1").empty());
     EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
@@ -224,7 +224,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     }
     EXPECT_EQ("vlog 1vlog 2", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
-    
+
     VLOG_NE(-1) << "nothing";
     EXPECT_EQ("", LOG_STREAM(VERBOSE).content_str());
 
@@ -326,7 +326,7 @@ TEST_F(LoggingTest, check) {
     CHECK_NE(2, 1);
     CHECK_NE(1, 2) << "blah0";
     CHECK_NE(2, 2) << "blah1";
-    
+
     CHECK_LT(2, 3);
     CHECK_LT(3, 2) << "blah2";
     CHECK_LT(3, 3) << "blah3";
@@ -354,7 +354,7 @@ TEST_F(LoggingTest, debug_level) {
     int run_foo = 0;
     LOG(DEBUG) << foo(&run_foo) << noflush;
     LOG(DEBUG) << foo(&run_foo);
-    
+
     DLOG(FATAL) << foo(&run_foo);
     DLOG(WARNING) << foo(&run_foo);
     DLOG(TRACE) << foo(&run_foo);
@@ -370,7 +370,7 @@ TEST_F(LoggingTest, debug_level) {
     ASSERT_EQ(0, run_foo);
 #else
     ASSERT_EQ(9, run_foo);
-#endif    
+#endif
 }
 
 static void need_ostream(std::ostream& os, const char* s) {

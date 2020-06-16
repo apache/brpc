@@ -56,11 +56,11 @@ void run_worker_startfn() {
 }
 
 void* TaskControl::worker_thread(void* arg) {
-    run_worker_startfn();    
+    run_worker_startfn();
 #ifdef BAIDU_INTERNAL
     logging::ComlogInitializer comlog_initializer;
 #endif
-    
+
     TaskControl* c = static_cast<TaskControl*>(arg);
     TaskGroup* g = c->create_group();
     TaskStatistics stat;
@@ -159,8 +159,8 @@ int TaskControl::init(int concurrency) {
         LOG(ERROR) << "Fail to get global_timer_thread";
         return -1;
     }
-    
-    _workers.resize(_concurrency);   
+
+    _workers.resize(_concurrency);
     for (int i = 0; i < _concurrency; ++i) {
         const int rc = pthread_create(&_workers[i], NULL, worker_thread, this);
         if (rc) {
@@ -230,7 +230,7 @@ void TaskControl::stop_and_join() {
     {
         BAIDU_SCOPED_LOCK(_modify_group_mutex);
         _stop = true;
-        _ngroup.exchange(0, butil::memory_order_relaxed); 
+        _ngroup.exchange(0, butil::memory_order_relaxed);
     }
     for (int i = 0; i < PARKING_LOT_NUM; ++i) {
         _pl[i].stop();
@@ -253,7 +253,7 @@ TaskControl::~TaskControl() {
     _switch_per_second.hide();
     _signal_per_second.hide();
     _status.hide();
-    
+
     stop_and_join();
 
     free(_groups);
@@ -306,7 +306,7 @@ int TaskControl::_destroy_group(TaskGroup* g) {
                 //  - If steal_task sees the newest _ngroup, it would not touch
                 //    _groups[ngroup -1]
                 //  - If steal_task sees old _ngroup and is still iterating on
-                //    _groups, it would not miss _groups[ngroup - 1] which was 
+                //    _groups, it would not miss _groups[ngroup - 1] which was
                 //    swapped to _groups[i]. Although adding new group would
                 //    overwrite it, since we do signal_task in _add_group(),
                 //    we think the pending tasks of _groups[ngroup - 1] would

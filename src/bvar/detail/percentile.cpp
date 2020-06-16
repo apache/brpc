@@ -62,7 +62,7 @@ inline size_t get_interval_index(int64_t &x) {
 class AddLatency {
 public:
     AddLatency(int64_t latency) : _latency(latency) {}
-    
+
     void operator()(GlobalValue<Percentile::combiner_type>& global_value,
                     ThreadLocalPercentileSamples& local_value) const {
         // Copy to latency since get_interval_index may change input.

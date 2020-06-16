@@ -49,7 +49,7 @@ public:
     // This method will be called once and only once. No other methods will
     // be called after. User can release the memory of this object inside.
     virtual void OnEndOfMessage(const butil::Status& status) = 0;
-    
+
 protected:
     virtual ~ProgressiveReader() {}
 };

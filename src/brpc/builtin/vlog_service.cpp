@@ -30,7 +30,7 @@ class VLogPrinter : public VLogSitePrinter {
 public:
     VLogPrinter(bool use_html, std::ostream& os)
         : _use_html(use_html), _os(&os) { }
-    
+
     void print(const VLogSitePrinter::Site& site) {
         const char* const bar = (_use_html ? "</td><td>" : " | ");
         if (_use_html) {
@@ -54,7 +54,7 @@ public:
         }
         *_os << '\n';
     }
-    
+
 private:
     bool _use_html;
     std::ostream* _os;
@@ -86,7 +86,7 @@ void VLogService::default_method(::google::protobuf::RpcController* cntl_base,
     if (use_html) {
         os << "</table>\n";
     }
-        
+
     if (use_html) {
         os << "</body></html>\n";
     }

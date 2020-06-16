@@ -122,7 +122,7 @@ private:
 
 class HuluRawUnpacker {
 public:
-    explicit HuluRawUnpacker(const void* stream) 
+    explicit HuluRawUnpacker(const void* stream)
         : _stream((const char*)stream) {}
 
     HuluRawUnpacker& unpack32(uint32_t & hostvalue) {
@@ -220,7 +220,7 @@ ParseResult ParseHuluMessage(butil::IOBuf* source, Socket* socket,
 // Assemble response packet using `correlation_id', `controller',
 // `res', and then write this packet to `sock'
 static void SendHuluResponse(int64_t correlation_id,
-                             HuluController* cntl, 
+                             HuluController* cntl,
                              const google::protobuf::Message* req,
                              const google::protobuf::Message* res,
                              const Server* server,
@@ -241,7 +241,7 @@ static void SendHuluResponse(int64_t correlation_id,
         sock->SetFailed();
         return;
     }
-    
+
     bool append_body = false;
     butil::IOBuf res_body_buf;
     // `res' can be NULL here, in which case we don't serialize it
@@ -301,7 +301,7 @@ static void SendHuluResponse(int64_t correlation_id,
     if (span) {
         span->set_response_size(res_buf.size());
     }
-    
+
     // Have the risk of unlimited pending responses, in which case, tell
     // users to set max_concurrency.
     Socket::WriteOptions wopt;
@@ -394,7 +394,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
     if (meta.has_user_defined_source_addr()) {
         cntl->set_request_source_addr(meta.user_defined_source_addr());
     }
-    
+
 
     // Tag the bthread with this server's key for thread_local_data().
     if (server->thread_local_options().thread_local_data_factory) {
@@ -438,7 +438,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
                             " -usercode_in_pthread is on");
             break;
         }
-        
+
         const Server::MethodProperty *sp =
             server_accessor.FindMethodPropertyByNameAndIndex(
                 meta.service_name(), meta.method_index());
@@ -465,7 +465,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
                 break;
             }
         }
-        
+
         google::protobuf::Service* svc = sp->service;
         const google::protobuf::MethodDescriptor* method = sp->method;
         accessor.set_method(method);
@@ -484,7 +484,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         req.reset(svc->GetRequestPrototype(method).New());
         if (!ParseFromCompressedData(*req_buf_ptr, req.get(), req_cmp_type)) {
             cntl->SetFailed(EREQUEST, "Fail to parse request message, "
-                            "CompressType=%s, request_size=%d", 
+                            "CompressType=%s, request_size=%d",
                             CompressTypeToCStr(req_cmp_type), reqsize);
             break;
         }
@@ -508,11 +508,11 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             span->AsParent();
         }
         if (!FLAGS_usercode_in_pthread) {
-            return svc->CallMethod(method, cntl.release(), 
+            return svc->CallMethod(method, cntl.release(),
                                    req.release(), res.release(), done);
         }
         if (BeginRunningUserCode()) {
-            svc->CallMethod(method, cntl.release(), 
+            svc->CallMethod(method, cntl.release(),
                             req.release(), res.release(), done);
             return EndRunningUserCodeInPlace();
         } else {
@@ -544,9 +544,9 @@ bool VerifyHuluRequest(const InputMessageBase* msg_base) {
     if (NULL == auth) {
         // Fast pass (no authentication)
         return true;
-    }    
+    }
     if (auth->VerifyCredential(
-                meta.credential_data(), socket->remote_side(), 
+                meta.credential_data(), socket->remote_side(),
                 socket->mutable_auth_context()) != 0) {
         return false;
     }
@@ -570,7 +570,7 @@ void ProcessHuluResponse(InputMessageBase* msg_base) {
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -582,7 +582,7 @@ void ProcessHuluResponse(InputMessageBase* msg_base) {
     const int saved_error = cntl->ErrorCode();
     if (meta.error_code() != 0) {
         // If error_code is unset, default is 0 = success.
-        cntl->SetFailed(meta.error_code(), 
+        cntl->SetFailed(meta.error_code(),
                               "%s", meta.error_text().c_str());
     } else {
         // Parse response message iff error code from meta is 0
@@ -601,7 +601,7 @@ void ProcessHuluResponse(InputMessageBase* msg_base) {
                     *res_buf_ptr, cntl->response(), res_cmp_type)) {
                 cntl->SetFailed(
                     ERESPONSE, "Fail to parse response message, "
-                    "CompressType=%s, response_size=%" PRIu64, 
+                    "CompressType=%s, response_size=%" PRIu64,
                     CompressTypeToCStr(res_cmp_type),
                     (uint64_t)msg->payload.length());
             }
@@ -661,7 +661,7 @@ void PackHuluRequest(butil::IOBuf* req_buf,
             meta.set_user_data(hulu_controller->request_user_data());
         }
     }
-    
+
     meta.set_correlation_id(correlation_id);
     if (cntl->has_log_id()) {
         meta.set_log_id(cntl->log_id());
@@ -681,7 +681,7 @@ void PackHuluRequest(butil::IOBuf* req_buf,
         meta.set_span_id(span->span_id());
         meta.set_parent_span_id(span->parent_span_id());
     }
-    
+
     SerializeHuluHeaderAndMeta(req_buf, meta, req_size + attached_size);
     req_buf->append(req_body);
     if (attached_size) {

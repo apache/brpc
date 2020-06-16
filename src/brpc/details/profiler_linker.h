@@ -37,7 +37,7 @@ struct ProfilerLinker {
     // linking of ProfilerStart()/ProfilerStop()
     // etc when corresponding macros are defined.
     inline ProfilerLinker() {
-        
+
 #if defined(BRPC_ENABLE_CPU_PROFILER) || defined(BAIDU_RPC_ENABLE_CPU_PROFILER)
         cpu_profiler_enabled = true;
         // compiler has no way to tell if PROFILER_LINKER_DUMMY is 0 or not,

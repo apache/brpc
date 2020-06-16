@@ -180,9 +180,9 @@ void* epoll_thread(void* arg) {
             process_thread(e[i].data.ptr);
 # elif defined(OS_MACOSX)
             process_thread(e[i].udata);
-# endif 
+# endif
         }
-#endif        
+#endif
     }
     return NULL;
 }
@@ -257,7 +257,7 @@ TEST(FDTest, ping_pong) {
 #endif
         ASSERT_GT(epfd[i], 0);
     }
-    
+
     for (size_t i = 0; i < NCLIENT; ++i) {
         ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds + 2 * i));
         //printf("Created fd=%d,%d i=%lu\n", fds[2*i], fds[2*i+1], i);
@@ -356,7 +356,7 @@ TEST(FDTest, mod_closed_fd) {
     //   If fd is inside epoll and valid, MOD returns 0
     //   If fd is closed and not-reused, MOD returns EBADF
     //   If fd is closed and reused, MOD returns ENOENT again
-    
+
     const int epfd = epoll_create(1024);
     int new_fd[2];
     int fd[2];
@@ -380,11 +380,11 @@ TEST(FDTest, mod_closed_fd) {
     ASSERT_EQ(0, pipe(new_fd));
     ASSERT_EQ(fd[0], new_fd[0]);
     ASSERT_EQ(fd[1], new_fd[1]);
-    
+
     errno = 0;
     ASSERT_EQ(-1, epoll_ctl(epfd, EPOLL_CTL_MOD, fd[0], &e));
     ASSERT_EQ(ENOENT, errno) << berror();
-    
+
     ASSERT_EQ(0, close(epfd));
 #endif
 }

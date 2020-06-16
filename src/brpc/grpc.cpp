@@ -161,7 +161,7 @@ void PercentDecode(const std::string& str, std::string* str_out) {
             unescaped << (char)(i1 * 16 + i2);
         } else {
             unescaped << c;
-        } 
+        }
     }
     if (str_out) {
         *str_out = unescaped.str();

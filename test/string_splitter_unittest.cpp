@@ -82,7 +82,7 @@ TEST_F(StringSplitterTest, sanity) {
     ASSERT_TRUE(ss2);
     ASSERT_EQ(0ul, ss2.length());
     ASSERT_EQ(ss2.field(), str+14);
-    
+
     // "man"
     ++ss2;
     ASSERT_TRUE(ss2);
@@ -135,7 +135,7 @@ TEST_F(StringSplitterTest, starting_with_separator) {
     ASSERT_TRUE(ss2);
     ASSERT_EQ(0ul, ss2.length());
     ASSERT_EQ(ss2.field(), str+1);
-    
+
     // "apple"
     ++ss2;
     ASSERT_TRUE(ss2);
@@ -256,7 +256,7 @@ TEST_F(StringSplitterTest, cast_type) {
     unsigned long long ull = 0;
     float f = 0.0;
     double d = 0.0;
-    
+
     butil::StringSplitter ss(str, '\t');
     ASSERT_TRUE(ss);
 

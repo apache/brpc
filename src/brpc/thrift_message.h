@@ -59,7 +59,7 @@ friend class ThriftStub;
 public:
     butil::IOBuf body; // ~= "{ raw_instance }"
     int16_t field_id;  // must be set when body is set.
-    
+
 private:
     bool _own_raw_instance;
     ThriftMessageBase* _raw_instance;
@@ -68,21 +68,21 @@ public:
     ThriftMessageBase* raw_instance() const { return _raw_instance; }
 
     template <typename T> T* Cast();
-    
+
     ThriftFramedMessage();
 
     virtual ~ThriftFramedMessage();
-  
+
     ThriftFramedMessage(const ThriftFramedMessage& from) = delete;
-  
+
     ThriftFramedMessage& operator=(const ThriftFramedMessage& from) = delete;
-  
+
     static const ::google::protobuf::Descriptor* descriptor();
-  
+
     void Swap(ThriftFramedMessage* other);
-  
+
     // implements Message ----------------------------------------------
-  
+
     ThriftFramedMessage* New() const;
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
@@ -90,7 +90,7 @@ public:
     void MergeFrom(const ThriftFramedMessage& from);
     void Clear();
     bool IsInitialized() const;
-  
+
     int ByteSize() const;
     bool MergePartialFromCodedStream(
         ::google::protobuf::io::CodedInputStream* input);

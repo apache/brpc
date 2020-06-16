@@ -33,11 +33,11 @@ public:
     //                                                 ^^^^^
     int GetServers(const char *service_name,
                    std::vector<ServerNode>* servers);
-    
+
     void Describe(std::ostream& os, const DescribeOptions&) const;
-    
+
     NamingService* New() const;
-    
+
     void Destroy();
 };
 

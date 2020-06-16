@@ -32,7 +32,7 @@ public:
 
     // Constructed with a closure which will be Run() inside dtor.
     explicit ClosureGuard(google::protobuf::Closure* done) : _done(done) {}
-    
+
     // Run internal closure if it's not NULL.
     ~ClosureGuard() {
         if (_done) {
@@ -60,11 +60,11 @@ public:
 
     // Exchange closure with another guard.
     void swap(ClosureGuard& other) { std::swap(_done, other._done); }
-    
+
 private:
     // Copying this object makes no sense.
     DISALLOW_COPY_AND_ASSIGN(ClosureGuard);
-    
+
     google::protobuf::Closure* _done;
 };
 

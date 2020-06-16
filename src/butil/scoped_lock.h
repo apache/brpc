@@ -56,11 +56,11 @@ namespace std {
 struct defer_lock_t {};
 static const defer_lock_t defer_lock = {};
 
-// Try to acquire ownership of the mutex without blocking 
+// Try to acquire ownership of the mutex without blocking
 struct try_to_lock_t {};
 static const try_to_lock_t try_to_lock = {};
 
-// Assume the calling thread already has ownership of the mutex 
+// Assume the calling thread already has ownership of the mutex
 struct adopt_lock_t {};
 static const adopt_lock_t adopt_lock = {};
 
@@ -85,10 +85,10 @@ public:
     unique_lock(mutex_type& mutex, defer_lock_t)
         : _mutex(&mutex), _owns_lock(false)
     {}
-    unique_lock(mutex_type& mutex, try_to_lock_t) 
+    unique_lock(mutex_type& mutex, try_to_lock_t)
         : _mutex(&mutex), _owns_lock(mutex.try_lock())
     {}
-    unique_lock(mutex_type& mutex, adopt_lock_t) 
+    unique_lock(mutex_type& mutex, adopt_lock_t)
         : _mutex(&mutex), _owns_lock(true)
     {}
 
@@ -100,7 +100,7 @@ public:
 
     void lock() {
         if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
+            CHECK(false) << "Detected deadlock issue";
             return;
         }
         _owns_lock = true;
@@ -109,7 +109,7 @@ public:
 
     bool try_lock() {
         if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
+            CHECK(false) << "Detected deadlock issue";
             return false;
         }
         _owns_lock = _mutex->try_lock();
@@ -163,7 +163,7 @@ public:
         pthread_mutex_lock(_pmutex);
 #endif  // NDEBUG
     }
-    
+
     ~lock_guard() {
 #ifndef NDEBUG
         if (_pmutex) {
@@ -173,7 +173,7 @@ public:
         pthread_mutex_unlock(_pmutex);
 #endif
     }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(lock_guard);
     pthread_mutex_t* _pmutex;
@@ -192,7 +192,7 @@ public:
         pthread_spin_lock(_pspin);
 #endif  // NDEBUG
     }
-    
+
     ~lock_guard() {
 #ifndef NDEBUG
         if (_pspin) {
@@ -202,7 +202,7 @@ public:
         pthread_spin_unlock(_pspin);
 #endif
     }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(lock_guard);
     pthread_spinlock_t* _pspin;
@@ -220,10 +220,10 @@ public:
     unique_lock(mutex_type& mutex, defer_lock_t)
         : _mutex(&mutex), _owns_lock(false)
     {}
-    unique_lock(mutex_type& mutex, try_to_lock_t) 
+    unique_lock(mutex_type& mutex, try_to_lock_t)
         : _mutex(&mutex), _owns_lock(pthread_mutex_trylock(&mutex) == 0)
     {}
-    unique_lock(mutex_type& mutex, adopt_lock_t) 
+    unique_lock(mutex_type& mutex, adopt_lock_t)
         : _mutex(&mutex), _owns_lock(true)
     {}
 
@@ -235,7 +235,7 @@ public:
 
     void lock() {
         if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
+            CHECK(false) << "Detected deadlock issue";
             return;
         }
 #if !defined(NDEBUG)
@@ -253,7 +253,7 @@ public:
 
     bool try_lock() {
         if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
+            CHECK(false) << "Detected deadlock issue";
             return false;
         }
         _owns_lock = !pthread_mutex_trylock(_mutex);
@@ -308,16 +308,16 @@ public:
     unique_lock(mutex_type& mutex, defer_lock_t)
         : _mutex(&mutex), _owns_lock(false)
     {}
-    unique_lock(mutex_type& mutex, try_to_lock_t) 
+    unique_lock(mutex_type& mutex, try_to_lock_t)
         : _mutex(&mutex), _owns_lock(pthread_spin_trylock(&mutex) == 0)
     {}
-    unique_lock(mutex_type& mutex, adopt_lock_t) 
+    unique_lock(mutex_type& mutex, adopt_lock_t)
         : _mutex(&mutex), _owns_lock(true)
     {}
 
     void lock() {
         if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
+            CHECK(false) << "Detected deadlock issue";
             return;
         }
 #if !defined(NDEBUG)
@@ -335,7 +335,7 @@ public:
 
     bool try_lock() {
         if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
+            CHECK(false) << "Detected deadlock issue";
             return false;
         }
         _owns_lock = !pthread_spin_trylock(_mutex);

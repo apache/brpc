@@ -46,7 +46,7 @@ struct StackStorage {
         valgrind_stack_id = 0;
     }
 };
- 
+
 // Allocate a piece of stack.
 int allocate_stack_storage(StackStorage* s, int stacksize, int guardsize);
 // Deallocate a piece of stack. Parameters MUST be returned or set by the

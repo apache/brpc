@@ -47,7 +47,7 @@ public:
     // Add `value' into this counter at timestamp `now_ms'
     // Returns true when old value is popped and set into *popped.
     bool Add(int64_t now_ms, const T& value, T* popped);
-    
+
     // Try to pop value before one minute.
     // Returns true when old value is popped and set into *popped.
     bool TryPop(int64_t now_ms, T* popped);

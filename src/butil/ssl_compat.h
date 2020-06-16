@@ -112,7 +112,7 @@ BRPC_INLINE int RSA_set0_crt_params(RSA *r, BIGNUM *dmp1, BIGNUM *dmq1, BIGNUM *
     return 1;
 }
 
-BRPC_INLINE void RSA_get0_key(const RSA *r, 
+BRPC_INLINE void RSA_get0_key(const RSA *r,
         const BIGNUM **n, const BIGNUM **e, const BIGNUM **d) {
     if (n != NULL)
         *n = r->n;

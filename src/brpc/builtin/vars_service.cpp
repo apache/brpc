@@ -78,7 +78,7 @@ void PutVarsHeading(std::ostream& os, bool expand_all) {
         "  line-height: 1.2em;\n"
         "}\n"
         "</style>\n"
-        
+
         "<script type=\"text/javascript\">\n"
         // Mark if a bvar was ever clicked.
         "var everEnabled = {}\n"
@@ -151,7 +151,7 @@ void PutVarsHeading(std::ostream& os, bool expand_all) {
          // E.g. latency and qps in /status page are expanded by default.
         "  $(\".default_expand\").click();\n") <<
         "}\n"
-        
+
         // options for ploting.
         "var trendOptions = {\n"
         "  colors: ['#F0D06E','#F0B06E','#F0A06E','#F0906E','#F0806E'],\n"
@@ -262,7 +262,7 @@ class VarsDumper : public bvar::Dumper {
 public:
     explicit VarsDumper(butil::IOBufBuilder& os, bool use_html)
         : _os(os), _use_html(use_html) {}
-    
+
     bool dump(const std::string& name, const butil::StringPiece& desc) {
         bool plot = false;
         if (_use_html) {
@@ -297,10 +297,10 @@ public:
     void move_to(butil::IOBuf& buf) {
         _os.move_to(buf);
     }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(VarsDumper);
-    
+
     butil::IOBufBuilder & _os;
     bool _use_html;
 };
@@ -310,7 +310,7 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
                                  ::brpc::VarsResponse*,
                                  ::google::protobuf::Closure* done) {
     ClosureGuard done_guard(done);
-    Controller *cntl = static_cast<Controller*>(cntl_base);    
+    Controller *cntl = static_cast<Controller*>(cntl_base);
     if (cntl->http_request().uri().GetQuery("series") != NULL) {
         butil::IOBufBuilder os;
         bvar::SeriesOptions series_options;
@@ -406,11 +406,11 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
         os << "<p>Search : <input id='searchbox' type='text'"
             " onkeyup='onQueryChanged()'></p>"
             "<div id=\"layer1\">\n";
-    }    
+    }
     VarsDumper dumper(os, use_html);
     bvar::DumpOptions options;
     options.question_mark = '$';
-    options.display_filter = 
+    options.display_filter =
         (use_html ? bvar::DISPLAY_ON_HTML : bvar::DISPLAY_ON_PLAIN_TEXT);
     options.white_wildcards = cntl->http_request().unresolved_path();
     const int ndump = bvar::Variable::dump_exposed(&dumper, &options);

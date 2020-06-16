@@ -30,11 +30,11 @@ class InputMessageBase : public Destroyable {
 protected:
     // Implement this method to customize deletion of this message.
     virtual void DestroyImpl() = 0;
-    
+
 public:
     // Called to release the memory of this message instead of "delete"
     void Destroy();
-    
+
     // Own the socket where this message is from.
     Socket* ReleaseSocket();
 
