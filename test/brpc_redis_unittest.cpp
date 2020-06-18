@@ -846,6 +846,7 @@ public:
             brpc::Waitable* wait = NULL;
             if (_batch_size % 2 == 0) {
                 wait = new brpc::ConditionWaitable;
+                _waitables.push_back(wait);
             } else {
                 DoNothingClosure* done = new DoNothingClosure;
                 test::EchoRequest req;
@@ -856,7 +857,6 @@ public:
             }
             result.state = brpc::REDIS_CMD_WAIT;
             result.waitobj = wait;
-            _waitables.push_back(wait);
             _batch_size++;
         } else {
             for (auto wait: _waitables) {

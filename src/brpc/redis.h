@@ -281,6 +281,10 @@ enum RedisCommandHandlerState {
     REDIS_CMD_WAIT = 2,
 };
 
+// The result return by RedisCommandHandler.
+// if the return state is REDIS_CMD_HANDLED or REDIS_CMD_CONTINUE, waitobj should be null.
+// if the return state is REDIS_CMD_WAIT, waitobj should be set correspondingly and brpc
+// would would own the waitobj.
 struct RedisCommandHandlerResult {
     RedisCommandHandlerResult()
         : state(REDIS_CMD_HANDLED)
@@ -315,8 +319,9 @@ public:
     //          ...
     //          RedisCommandHandlerResult result;
     //          result.state = REDIS_CMD_WAIT;
-    //          // Remember to call waitable->Notify() when the processing is done.
     //          brpc::ConditionWaitable* waitable = new brpc::ConditionWaitable;
+    //          // start execution...
+    //          // Remember to call waitable->Notify() when the execution is done.
     //          result.waitobj = waitable;
     //          return result;
     //      }
