@@ -20,6 +20,7 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
+#include <queue>
 #include "butil/logging.h"                       // LOG()
 #include "butil/time.h"
 #include "butil/iobuf.h"                         // butil::IOBuf
@@ -57,8 +58,7 @@ struct InputResponse : public InputMessageBase {
 class RedisConnContext : public Destroyable  {
 public:
     explicit RedisConnContext(const RedisService* rs)
-        : redis_service(rs)
-        , batched_size(0) {}
+        : redis_service(rs) {}
 
     ~RedisConnContext();
     // @Destroyable
@@ -68,8 +68,6 @@ public:
     // If user starts a transaction, transaction_handler indicates the
     // handler pointer that runs the transaction command.
     std::unique_ptr<RedisCommandHandler> transaction_handler;
-    // >0 if command handler is run in batched mode.
-    int batched_size;
 
     RedisCommandParser parser;
     butil::Arena arena;
@@ -77,16 +75,15 @@ public:
 
 int ConsumeCommand(RedisConnContext* ctx,
                    const std::vector<butil::StringPiece>& args,
-                   bool flush_batched,
-                   butil::IOBufAppender* appender) {
-    RedisReply output(&ctx->arena);
-    RedisCommandHandlerResult result = REDIS_CMD_HANDLED;
+                   bool last_of_batch,
+                   RedisReply* output,
+                   RedisCommandHandlerResult* result) {
     if (ctx->transaction_handler) {
-        result = ctx->transaction_handler->Run(args, &output, flush_batched);
-        if (result == REDIS_CMD_HANDLED) {
+        *result = ctx->transaction_handler->Run(args, output, last_of_batch);
+        if (result->state == REDIS_CMD_HANDLED) {
             ctx->transaction_handler.reset(NULL);
-        } else if (result == REDIS_CMD_BATCHED) {
-            LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
+        } else if (result->state == REDIS_CMD_WAIT) {
+            LOG(ERROR) << "REDIS_CMD_WAIT should not be returned by a transaction handler.";
             return -1;
         }
     } else {
@@ -94,41 +91,21 @@ int ConsumeCommand(RedisConnContext* ctx,
         if (!ch) {
             char buf[64];
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", args[0].as_string().c_str());
-            output.SetError(buf);
+            output->SetError(buf);
         } else {
-            result = ch->Run(args, &output, flush_batched);
-            if (result == REDIS_CMD_CONTINUE) {
-                if (ctx->batched_size != 0) {
-                    LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
+            *result = ch->Run(args, output, last_of_batch);
+            switch (result->state) {
+                case REDIS_CMD_CONTINUE:
+                    ctx->transaction_handler.reset(ch->NewTransactionHandler());
+                    break;
+                case REDIS_CMD_HANDLED:
+                    // fall through
+                case REDIS_CMD_WAIT:
+                    break;
+                default:
                     return -1;
-                }
-                ctx->transaction_handler.reset(ch->NewTransactionHandler());
-            } else if (result == REDIS_CMD_BATCHED) {
-                ctx->batched_size++;
             }
         }
-    }
-    if (result == REDIS_CMD_HANDLED) {
-        if (ctx->batched_size) {
-            if ((int)output.size() != (ctx->batched_size + 1)) {
-                LOG(ERROR) << "reply array size can't be matched with batched size, "
-                    << " expected=" << ctx->batched_size + 1 << " actual=" << output.size();
-                return -1;
-            }
-            for (int i = 0; i < (int)output.size(); ++i) {
-                output[i].SerializeTo(appender);
-            }
-            ctx->batched_size = 0;
-        } else {
-            output.SerializeTo(appender);
-        }
-    } else if (result == REDIS_CMD_CONTINUE) {
-        output.SerializeTo(appender);
-    } else if (result == REDIS_CMD_BATCHED) {
-        // just do nothing and wait handler to return OK.
-    } else {
-        LOG(ERROR) << "unknown status=" << result;
-        return -1;
     }
     return 0;
 }
@@ -162,6 +139,8 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         std::vector<butil::StringPiece> current_args;
         butil::IOBufAppender appender;
         ParseError err = PARSE_OK;
+        std::queue<RedisCommandHandlerResult> result_queue;
+        std::queue<RedisReply> reply_queue;
 
         err = ctx->parser.Consume(*source, &current_args, &ctx->arena);
         if (err != PARSE_OK) {
@@ -173,15 +152,43 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             if (err != PARSE_OK) {
                 break;
             }
-            if (ConsumeCommand(ctx, current_args, false, &appender) != 0) {
+            result_queue.emplace();
+            reply_queue.emplace(&ctx->arena);
+            if (ConsumeCommand(ctx, current_args, false,
+                        &reply_queue.back(), &result_queue.back()) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_args.swap(next_args);
         }
+        result_queue.emplace();
+        reply_queue.emplace(&ctx->arena);
         if (ConsumeCommand(ctx, current_args,
-                    true /*must be the last message*/, &appender) != 0) {
+                    true /*must be the last message*/,
+                    &reply_queue.back(), &result_queue.back()) != 0) {
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
+        while (!result_queue.empty()) {
+            RedisCommandHandlerResult& result = result_queue.front();
+            RedisReply& output = reply_queue.front();
+            switch (result.state) {
+                case REDIS_CMD_HANDLED:
+                    // fall through
+                case REDIS_CMD_CONTINUE:
+                    break;
+                case REDIS_CMD_WAIT:
+                    result.waitobj->Wait();
+                    break;
+                default:
+                    return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+            }
+            output.SerializeTo(&appender);
+            if (result.waitobj) {
+                delete result.waitobj;
+            }
+            result_queue.pop();
+            reply_queue.pop();
+        }
+        CHECK(reply_queue.empty());
         butil::IOBuf sendbuf;
         appender.move_to(sendbuf);
         CHECK(!sendbuf.empty());

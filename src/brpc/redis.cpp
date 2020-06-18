@@ -20,6 +20,7 @@
 #include <gflags/gflags.h>
 #include "butil/status.h"
 #include "butil/strings/string_util.h"          // StringToLowerASCII
+#include "bthread/condition_variable.h"
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
 
@@ -458,6 +459,45 @@ RedisCommandHandler* RedisService::FindCommandHandler(const butil::StringPiece& 
 RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
     LOG(ERROR) << "NewTransactionHandler is not implemented";
     return NULL;
+}
+
+ConditionWaitable::ConditionWaitable()
+    : notified(false) {
+    bthread_cond_init(&cond, NULL);
+    bthread_mutex_init(&mutex, NULL);
+}
+
+ConditionWaitable::~ConditionWaitable() {
+    bthread_cond_destroy(&cond);
+    bthread_mutex_destroy(&mutex);
+}
+
+void ConditionWaitable::Notify() {
+    std::unique_lock<bthread_mutex_t> mu(mutex);
+    notified = true;
+    bthread_cond_signal(&cond);
+}
+
+void ConditionWaitable::Wait() {
+    std::unique_lock<bthread_mutex_t> mu(mutex);
+    while (!notified) {
+        bthread_cond_wait(&cond, &mutex);
+    }
+}
+
+RPCWaitable::RPCWaitable(CallId call_id)
+    : _call_id(call_id) {}
+
+RPCWaitable::~RPCWaitable() {}
+
+void RPCWaitable::Notify() {
+    // There is no need to implement Notify() here because once rpc is done,
+    // call_id is automatically joinable.
+    LOG(WARNING) << "You don't have to call RPCWaitable::Notify";
+}
+
+void RPCWaitable::Wait() {
+    Join(_call_id);
 }
 
 } // namespace brpc
