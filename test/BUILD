@@ -54,8 +54,7 @@ LINKOPTS = [
 ] + select({
     ":darwin": [],
     "//conditions:default": [
-      "-lrt",
-
+        "-lrt",
     ],
 })
 
@@ -157,38 +156,39 @@ TEST_BUTIL_SOURCES = [
     "bounded_queue_unittest.cc",
     "butil_unittest_main.cpp",
 ] + select({
-        "@bazel_tools//tools/osx:darwin": [],
-        "//conditions:default": [
-           "test_file_util_linux.cc",
-           "proc_maps_linux_unittest.cc",
-        ],
+    "@bazel_tools//tools/osx:darwin": [],
+    "//conditions:default": [
+        "test_file_util_linux.cc",
+        "proc_maps_linux_unittest.cc",
+    ],
 })
 
 proto_library(
     name = "test_proto",
-    srcs = glob([
-        "*.proto",
-      ],
-      exclude = [
-          "echo.proto",
-      ]
+    srcs = glob(
+        [
+            "*.proto",
+        ],
+        exclude = [
+            "echo.proto",
+        ],
     ),
     visibility = ["//visibility:public"],
 )
 
 cc_proto_library(
     name = "cc_test_proto",
+    visibility = ["//visibility:public"],
     deps = [
         ":test_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "sstream_workaround",
     hdrs = [
         "sstream_workaround.h",
-    ]
+    ],
 )
 
 cc_test(
@@ -198,53 +198,56 @@ cc_test(
         "multiprocess_func_list.h",
         "test_switches.h",
     ],
+    copts = COPTS,
     deps = [
-        ":sstream_workaround",
         ":cc_test_proto",
+        ":sstream_workaround",
         "//:brpc",
         "@com_google_googletest//:gtest",
     ],
-    copts = COPTS,
 )
 
 cc_test(
     name = "bvar_test",
-    srcs = glob([
-        "bvar_*_unittest.cpp",
-    ],
-    exclude = [
-        "bvar_lock_timer_unittest.cpp",
-        "bvar_recorder_unittest.cpp",
-    ]),
+    srcs = glob(
+        [
+            "bvar_*_unittest.cpp",
+        ],
+        exclude = [
+            "bvar_lock_timer_unittest.cpp",
+            "bvar_recorder_unittest.cpp",
+        ],
+    ),
+    copts = COPTS,
     deps = [
         ":sstream_workaround",
         "//:bvar",
         "@com_google_googletest//:gtest",
     ],
-    copts = COPTS,
 )
 
 cc_test(
     name = "bthread_test",
-    srcs = glob([
-        "bthread_*_unittest.cpp",
-    ],
-    exclude = [
-        "bthread_cond_unittest.cpp",
-        "bthread_execution_queue_unittest.cpp",
-        "bthread_dispatcher_unittest.cpp",
-        "bthread_fd_unittest.cpp",
-        "bthread_mutex_unittest.cpp",
-        "bthread_setconcurrency_unittest.cpp",
-        # glog CHECK die with a fatal error
-        "bthread_key_unittest.cpp"
-    ]),
+    srcs = glob(
+        [
+            "bthread_*_unittest.cpp",
+        ],
+        exclude = [
+            "bthread_cond_unittest.cpp",
+            "bthread_execution_queue_unittest.cpp",
+            "bthread_dispatcher_unittest.cpp",
+            "bthread_fd_unittest.cpp",
+            "bthread_mutex_unittest.cpp",
+            "bthread_setconcurrency_unittest.cpp",
+            # glog CHECK die with a fatal error
+            "bthread_key_unittest.cpp",
+        ],
+    ),
+    copts = COPTS,
     deps = [
         ":sstream_workaround",
         "//:brpc",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
-    copts = COPTS,
 )
-

@@ -50,6 +50,7 @@ cc_binary(
     srcs = [
         "echo_c++/server.cpp",
     ],
+    copts = COPTS,
     includes = [
         "echo_c++",
     ],
@@ -57,7 +58,6 @@ cc_binary(
         ":cc_echo_c++_proto",
         "//:brpc",
     ],
-    copts = COPTS,
 )
 
 cc_binary(
@@ -65,6 +65,7 @@ cc_binary(
     srcs = [
         "echo_c++/client.cpp",
     ],
+    copts = COPTS,
     includes = [
         "echo_c++",
     ],
@@ -72,5 +73,4 @@ cc_binary(
         ":cc_echo_c++_proto",
         "//:brpc",
     ],
-    copts = COPTS,
 )

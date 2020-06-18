@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "objc_library")
+load(":bazel/brpc.bzl", "brpc_proto_library")
+
 licenses(["notice"])  # Apache v2
 
 exports_files(["LICENSE"])
-
-load(":bazel/brpc.bzl", "brpc_proto_library")
 
 config_setting(
     name = "with_glog",
@@ -95,7 +96,7 @@ LINKOPTS = [
         "-Wl,-U,_RegisterThriftProtocol",
     ],
     "//conditions:default": [
-      "-lrt",
+        "-lrt",
     ],
 }) + select({
     ":with_mesalink": [
@@ -106,7 +107,8 @@ LINKOPTS = [
     ":with_thrift": [
         "-lthriftnb",
         "-levent",
-        "-lthrift"],
+        "-lthrift",
+    ],
     "//conditions:default": [],
 })
 
@@ -124,13 +126,13 @@ genrule(
 #undef BRPC_WITH_GLOG
 #endif
 #define BRPC_WITH_GLOG """ + select({
-    ":with_glog": "1",
-    "//conditions:default": "0",
-}) +
-"""
+              ":with_glog": "1",
+              "//conditions:default": "0",
+          }) +
+          """
 #endif  // BUTIL_CONFIG_H
 EOF
-    """
+    """,
 )
 
 BUTIL_SRCS = [
@@ -247,20 +249,20 @@ BUTIL_SRCS = [
     "src/butil/recordio.cc",
     "src/butil/popen.cpp",
 ] + select({
-        ":darwin": [
-            "src/butil/time/time_mac.cc",
-            "src/butil/mac/scoped_mach_port.cc",
-        ],
-        "//conditions:default": [
-            "src/butil/file_util_linux.cc",
-            "src/butil/threading/platform_thread_linux.cc",
-            "src/butil/strings/sys_string_conversions_posix.cc",
-        ],
+    ":darwin": [
+        "src/butil/time/time_mac.cc",
+        "src/butil/mac/scoped_mach_port.cc",
+    ],
+    "//conditions:default": [
+        "src/butil/file_util_linux.cc",
+        "src/butil/threading/platform_thread_linux.cc",
+        "src/butil/strings/sys_string_conversions_posix.cc",
+    ],
 })
 
 objc_library(
     name = "macos_lib",
-    hdrs = [":config_h",
+    hdrs = [
         "src/butil/atomicops.h",
         "src/butil/atomicops_internals_atomicword_compat.h",
         "src/butil/atomicops_internals_mac.h",
@@ -272,10 +274,10 @@ objc_library(
         "src/butil/containers/hash_tables.h",
         "src/butil/debug/debugger.h",
         "src/butil/debug/leak_annotations.h",
-        "src/butil/file_util.h",
         "src/butil/file_descriptor_posix.h",
-        "src/butil/files/file_path.h",
+        "src/butil/file_util.h",
         "src/butil/files/file.h",
+        "src/butil/files/file_path.h",
         "src/butil/files/scoped_file.h",
         "src/butil/lazy_instance.h",
         "src/butil/logging.h",
@@ -297,14 +299,17 @@ objc_library(
         "src/butil/strings/string_util_posix.h",
         "src/butil/strings/sys_string_conversions.h",
         "src/butil/synchronization/lock.h",
-        "src/butil/time/time.h",
-        "src/butil/time.h",
         "src/butil/third_party/dynamic_annotations/dynamic_annotations.h",
         "src/butil/threading/platform_thread.h",
-        "src/butil/threading/thread_restrictions.h",
         "src/butil/threading/thread_id_name_manager.h",
+        "src/butil/threading/thread_restrictions.h",
+        "src/butil/time.h",
+        "src/butil/time/time.h",
         "src/butil/type_traits.h",
+        ":config_h",
     ],
+    enable_modules = True,
+    includes = ["src/"],
     non_arc_srcs = [
         "src/butil/mac/bundle_locations.mm",
         "src/butil/mac/foundation_util.mm",
@@ -312,15 +317,13 @@ objc_library(
         "src/butil/threading/platform_thread_mac.mm",
         "src/butil/strings/sys_string_conversions_mac.mm",
     ],
+    tags = ["manual"],
     deps = [
         "@com_github_gflags_gflags//:gflags",
     ] + select({
         ":with_glog": ["@com_github_google_glog//:glog"],
         "//conditions:default": [],
     }),
-    includes = ["src/"],
-    enable_modules = True,
-    tags = ["manual"],
 )
 
 cc_library(
@@ -337,6 +340,18 @@ cc_library(
         "src/butil/**/**/**/*.hpp",
         "src/butil/third_party/dmg_fp/dtoa.cc",
     ]) + [":config_h"],
+    copts = COPTS + select({
+        ":unittest": [
+            "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
+            "-DUNIT_TEST",
+        ],
+        "//conditions:default": [],
+    }),
+    includes = [
+        "src/",
+    ],
+    linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_protobuf//:protobuf",
         "@com_github_gflags_gflags//:gflags",
@@ -345,29 +360,19 @@ cc_library(
         ":darwin": [":macos_lib"],
         "//conditions:default": [],
     }),
-    includes = [
-        "src/",
-    ],
-    copts = COPTS + select({
-        ":unittest": [
-            "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
-            "-DUNIT_TEST",
-        ],
-        "//conditions:default": [],
-    }),
-    linkopts = LINKOPTS,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "bvar",
-    srcs = glob([
-        "src/bvar/*.cpp",
-        "src/bvar/detail/*.cpp",
-    ],
-    exclude = [
-        "src/bvar/default_variables.cpp",
-    ]) + select({
+    srcs = glob(
+        [
+            "src/bvar/*.cpp",
+            "src/bvar/detail/*.cpp",
+        ],
+        exclude = [
+            "src/bvar/default_variables.cpp",
+        ],
+    ) + select({
         ":unittest": [],
         "//conditions:default": ["src/bvar/default_variables.cpp"],
     }),
@@ -376,12 +381,6 @@ cc_library(
         "src/bvar/utils/*.h",
         "src/bvar/detail/*.h",
     ]),
-    includes = [
-        "src/",
-    ],
-    deps = [
-        ":butil",
-    ],
     copts = COPTS + select({
         ":unittest": [
             "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
@@ -389,8 +388,14 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+    includes = [
+        "src/",
+    ],
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
+    deps = [
+        ":butil",
+    ],
 )
 
 cc_library(
@@ -402,16 +407,16 @@ cc_library(
         "src/bthread/*.h",
         "src/bthread/*.list",
     ]),
+    copts = COPTS,
     includes = [
-        "src/"
+        "src/",
     ],
+    linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
     deps = [
         ":butil",
         ":bvar",
     ],
-    copts = COPTS,
-    linkopts = LINKOPTS,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -422,15 +427,15 @@ cc_library(
     hdrs = glob([
         "src/json2pb/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src/",
     ],
+    linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
     deps = [
         ":butil",
     ],
-    copts = COPTS,
-    linkopts = LINKOPTS,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -444,17 +449,17 @@ cc_library(
     hdrs = glob([
         "src/mcpack2pb/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src/",
     ],
+    linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
     deps = [
         ":butil",
         ":cc_brpc_idl_options_proto",
         "@com_google_protobuf//:protoc_lib",
     ],
-    copts = COPTS,
-    linkopts = LINKOPTS,
-    visibility = ["//visibility:public"],
 )
 
 brpc_proto_library(
@@ -462,10 +467,10 @@ brpc_proto_library(
     srcs = [
         "src/idl_options.proto",
     ],
-    deps = [
-        "@com_google_protobuf//:cc_wkt_protos"
-    ],
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_protobuf//:cc_wkt_protos",
+    ],
 )
 
 brpc_proto_library(
@@ -475,48 +480,51 @@ brpc_proto_library(
         "src/brpc/policy/*.proto",
     ]),
     include = "src/",
+    visibility = ["//visibility:public"],
     deps = [
         ":cc_brpc_idl_options_proto",
-        "@com_google_protobuf//:cc_wkt_protos"
+        "@com_google_protobuf//:cc_wkt_protos",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "brpc",
-    srcs = glob([
-        "src/brpc/*.cpp",
-        "src/brpc/**/*.cpp",
-    ],
-    exclude = [
-        "src/brpc/thrift_service.cpp",
-        "src/brpc/thrift_message.cpp",
-        "src/brpc/policy/thrift_protocol.cpp",
-    ]) + select({
-        ":with_thrift" : glob([
+    srcs = glob(
+        [
+            "src/brpc/*.cpp",
+            "src/brpc/**/*.cpp",
+        ],
+        exclude = [
+            "src/brpc/thrift_service.cpp",
+            "src/brpc/thrift_message.cpp",
+            "src/brpc/policy/thrift_protocol.cpp",
+        ],
+    ) + select({
+        ":with_thrift": glob([
             "src/brpc/thrift*.cpp",
-            "src/brpc/**/thrift*.cpp"]),
-        "//conditions:default" : [],
+            "src/brpc/**/thrift*.cpp",
+        ]),
+        "//conditions:default": [],
     }),
     hdrs = glob([
         "src/brpc/*.h",
-        "src/brpc/**/*.h"
+        "src/brpc/**/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src/",
     ],
-    deps = [
-        ":butil",
-        ":bthread",
-        ":bvar",
-        ":json2pb",
-        ":mcpack2pb",
-        ":cc_brpc_internal_proto",
-        "@com_github_google_leveldb//:leveldb",
-    ],
-    copts = COPTS,
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
+    deps = [
+        ":bthread",
+        ":butil",
+        ":bvar",
+        ":cc_brpc_internal_proto",
+        ":json2pb",
+        ":mcpack2pb",
+        "@com_github_google_leveldb//:leveldb",
+    ],
 )
 
 cc_binary(
@@ -524,12 +532,11 @@ cc_binary(
     srcs = [
         "src/mcpack2pb/generator.cpp",
     ],
-    deps = [
-        ":cc_brpc_idl_options_proto",
-        ":brpc",
-    ],
     copts = COPTS,
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
+    deps = [
+        ":brpc",
+        ":cc_brpc_idl_options_proto",
+    ],
 )
-
