@@ -1,0 +1,29 @@
+diff --git a/BUILD b/BUILD
+index dbae719f..5a62fcdd 100644
+--- a/BUILD
++++ b/BUILD
+@@ -23,7 +23,7 @@ config_setting(
+ # ZLIB configuration
+ ################################################################################
+ 
+-ZLIB_DEPS = ["@zlib//:zlib"]
++ZLIB_DEPS = ["@com_github_madler_zlib//:zlib"]
+ 
+ ################################################################################
+ # Protobuf Runtime Library
+diff --git a/protobuf_deps.bzl b/protobuf_deps.bzl
+index 57509ee2..97e113e9 100644
+--- a/protobuf_deps.bzl
++++ b/protobuf_deps.bzl
+@@ -5,9 +5,9 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+ def protobuf_deps():
+     """Loads common dependencies needed to compile the protobuf library."""
+ 
+-    if not native.existing_rule("zlib"):
++    if not native.existing_rule("com_github_madler_zlib"):
+         http_archive(
+-            name = "zlib",
++            name = "com_github_madler_zlib",
+             build_file = "@com_google_protobuf//:third_party/zlib.BUILD",
+             sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
+             strip_prefix = "zlib-1.2.11",
