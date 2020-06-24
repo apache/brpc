@@ -932,9 +932,6 @@ void Controller::DoneInBackupThread() {
 void Controller::SubmitSpan() {
     const int64_t now = butil::cpuwide_time_us();
     _span->set_start_callback_us(now);
-    if (_span->local_parent()) {
-        _span->local_parent()->AsParent();
-    }
     Span::Submit(_span);
     _span = NULL;
 }
