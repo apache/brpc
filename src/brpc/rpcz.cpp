@@ -1,11 +1,11 @@
 // Copyright (c) 2015 Baidu, Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -64,7 +64,7 @@ private:
         std::swap(db1.time_db, db2.time_db);
         std::swap(db1.time_db_name, db2.time_db_name);
     }
-    
+
     ~SpanDB() {
         if (id_db == NULL && time_db == NULL) {
             return;
@@ -186,7 +186,7 @@ leveldb::Status SpanDB::Index(const TracingSpan* span, std::string* value_buf) {
     options.sync = false;
 
     leveldb::Status st;
-    
+
     // NOTE: Writing into time_db before id_db so that if the second write
     // fails, the entry in time_db will be finally removed when it's out
     // of time window.
@@ -227,7 +227,7 @@ leveldb::Status SpanDB::Index(const TracingSpan* span, std::string* value_buf) {
     if (!st.ok()) {
         return st;
     }
-    
+
     uint32_t key_data[4];
     ToBigEndian(span->trace_id(), key_data);
     ToBigEndian(span->span_id(), key_data + 2);
@@ -257,7 +257,7 @@ leveldb::Status SpanDB::RemoveSpansBefore(int64_t tm) {
             LOG(ERROR) << "Invalid key size: " << it->key().size();
             continue;
         }
-        const int64_t realtime = 
+        const int64_t realtime =
             ToLittleEndian((const uint32_t*)it->key().data());
         if (realtime >= tm) {  // removal is done.
             break;
@@ -474,7 +474,7 @@ void DescribeSpanDB(std::ostream& os) {
     if (GetSpanDB(&db) != 0) {
         return;
     }
-    
+
     if (db->id_db != NULL) {
         std::string val;
         if (db->id_db->GetProperty(leveldb::Slice("leveldb.stats"), &val)) {

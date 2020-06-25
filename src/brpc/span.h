@@ -210,16 +210,12 @@ private:
 bool CanAnnotateSpan();
 void AnnotateSpan(const char* fmt, ...);
 
-inline bool IsTraceEnabled() {
-    return FLAGS_enable_rpcz || FLAGS_enable_trace;
-}
-
 // Check this function first before creating a span.
 // If rpcz of upstream is enabled, local rpcz is enabled automatically.
 inline bool IsTraceable(bool is_upstream_traced) {
     extern bvar::CollectorSpeedLimit g_span_sl;
     return is_upstream_traced ||
-        (IsTraceEnabled() && bvar::is_collectable(&g_span_sl));
+        (FLAGS_enable_rpcz && bvar::is_collectable(&g_span_sl));
 }
 
 } // namespace brpc

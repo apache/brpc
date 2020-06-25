@@ -42,9 +42,6 @@ namespace brpc {
 // BRPC_VALIDATE_GFLAG(rpcz_max_span_per_second,
 //                          validate_rpcz_max_span_per_second);
 
-DEFINE_bool(enable_trace, false, "Turn on to start generating spans.");
-BRPC_VALIDATE_GFLAG(enable_trace, PassValidate);
-
 struct IdGen {
     bool init;
     uint16_t seq;
@@ -216,8 +213,7 @@ void Span::Annotate(const char* fmt, ...) {
 
 void Span::Annotate(const char* fmt, va_list args) {
     const int64_t anno_time = butil::cpuwide_time_us() + _base_real_us;
-    std::string anno_content;
-    butil::string_vappendf(&anno_content, fmt, args);
+    std::string anno_content = butil::string_printf(fmt, args);
     _annotation_list.emplace_back(anno_time, std::move(anno_content));
 }
 
@@ -230,9 +226,9 @@ void Span::AnnotateCStr(const char* info, size_t length) {
     const int64_t anno_time = butil::cpuwide_time_us() + _base_real_us;
     std::string anno_content;
     if (length > 0) {
-        anno_content = std::string(info, length);
+        anno_content.assign(info, length);
     } else {
-        anno_content = std::string(info);
+        anno_content = info;
     }
     _annotation_list.emplace_back(anno_time, std::move(anno_content));
 }
@@ -278,10 +274,10 @@ void Span::Copy2TracingSpan(TracingSpan* out) const {
         dest->set_sent_real_us(src->sent_real_us());
         dest->set_span_name(src->full_method_name());
         size_t anno_count = src->_annotation_list.size();
-        for (size_t i = 0; i < anno_count; ++i) {
+        for (size_t j = 0; j < anno_count; ++j) {
             dest->add_annotations();
-            dest->mutable_annotations(i)->set_realtime_us(src->_annotation_list[i].realtime_us);
-            dest->mutable_annotations(i)->set_content(src->_annotation_list[i].content);
+            dest->mutable_annotations(j)->set_realtime_us(src->_annotation_list[j].realtime_us);
+            dest->mutable_annotations(j)->set_content(src->_annotation_list[j].content);
         }
     }
 }
@@ -316,14 +312,22 @@ public:
         std::sort(list.begin(), list.end(), SpanEarlier());
     }
 };
-static SpanPreprocessor g_span_prep;
+
+static SpanPreprocessor* g_span_prep;
+static pthread_once_t init_span_prep_once = PTHREAD_ONCE_INIT;
+static void InitSpanPrep() {
+    g_span_prep = new SpanPreprocessor();
+}
 
 bvar::CollectorSpeedLimit* Span::speed_limit() {
     return &g_span_sl;
 }
 
 bvar::CollectorPreprocessor* Span::preprocessor() {
-    return &g_span_prep;
+    if (pthread_once(&init_span_prep_once, InitSpanPrep) != 0) {
+        return nullptr;
+    }
+    return g_span_prep;
 }
 
 void Span::Submit(Span* span) {
