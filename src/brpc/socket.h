@@ -460,6 +460,9 @@ public:
     // main_socket's pool.
     int ReturnToPool();
 
+    // Discard this socket. Do not reuse this socket any more.
+    int DiscardFromPool();
+
     // True if this socket has SocketPool
     bool HasSocketPool() const;
 
@@ -471,6 +474,9 @@ public:
 
     // Create a socket connecting to the same place as this socket.
     int GetShortSocket(SocketUniquePtr* short_socket);
+
+    // Return the reference number of the shared object.
+    bool GetSharedPartRefNum(int* num);
 
     // Get and persist a socket connecting to the same place as this socket.
     // If an agent socket was already created and persisted, it's returned

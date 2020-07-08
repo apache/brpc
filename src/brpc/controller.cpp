@@ -734,19 +734,24 @@ void Controller::Call::OnComplete(
         // Otherwise in-flight responses may come back in future and break the
         // assumption that one pooled connection cannot have more than one
         // message at the same time.
-        if (sending_sock != NULL && (error_code == 0 || responded)) {
-            if (!sending_sock->is_read_progressive()) {
-                // Normally-read socket which will not be used after RPC ends,
-                // safe to return. Notice that Socket::is_read_progressive may
-                // differ from Controller::is_response_read_progressively()
-                // because RPC possibly ends before setting up the socket.
-                sending_sock->ReturnToPool();
-            } else {
-                // Progressively-read socket. Should be returned when the read
-                // ends. The method handles the details.
-                sending_sock->OnProgressiveReadCompleted();
-            }
-            break;
+        if (sending_sock != NULL) {
+	    if(error_code == 0 || responded) {
+                if (!sending_sock->is_read_progressive()) {
+                    // Normally-read socket which will not be used after RPC ends,
+                    // safe to return. Notice that Socket::is_read_progressive may
+                    // differ from Controller::is_response_read_progressively()
+                    // because RPC possibly ends before setting up the socket.
+                    sending_sock->ReturnToPool();
+                } else {
+                    // Progressively-read socket. Should be returned when the read
+                    // ends. The method handles the details.
+                    sending_sock->OnProgressiveReadCompleted();
+                }
+                break;
+	    } else {
+		// Do not return to connection pool to reuse and just discard directly.
+		sending_sock->DiscardFromPool();
+	    }
         }
         // fall through
     case CONNECTION_TYPE_SHORT:

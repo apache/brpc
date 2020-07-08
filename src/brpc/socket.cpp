@@ -118,7 +118,10 @@ public:
     // Return a socket (which was returned by GetSocket) back to the pool,
     // if the pool is full, setfail the socket directly.
     void ReturnSocket(Socket* sock);
-    
+
+    // Discard a socket 
+    void DiscardSocket();
+
     // Get all pooled sockets inside.
     void ListSockets(std::vector<SocketId>* list, size_t max_count);
     
@@ -2349,6 +2352,10 @@ inline void SocketPool::ReturnSocket(Socket* sock) {
     _numinflight.fetch_sub(1, butil::memory_order_relaxed);
 }
 
+void SocketPool::DiscardSocket() {
+    _numinflight.fetch_sub(1, butil::memory_order_relaxed);
+}
+
 inline void SocketPool::ListSockets(std::vector<SocketId>* out, size_t max_count) {
     out->clear();
     // NOTE: size() of vector is thread-unsafe and may return a very 
@@ -2476,6 +2483,25 @@ bool Socket::HasSocketPool() const {
     return false;
 }
 
+int Socket::DiscardFromPool() {
+    SharedPart* sp = _shared_part.exchange(NULL, butil::memory_order_acquire);
+    if (sp == NULL) {
+        LOG(ERROR) << "_shared_part is NULL";
+        SetFailed(EINVAL, "_shared_part is NULL");
+        return -1;
+    }
+    SocketPool* pool = sp->socket_pool.load(butil::memory_order_consume);
+    if (pool == NULL) {
+        LOG(ERROR) << "_shared_part->socket_pool is NULL";
+        SetFailed(EINVAL, "_shared_part->socket_pool is NULL");
+        sp->RemoveRefManually();
+        return -1;
+    }
+    pool->DiscardSocket();
+    sp->RemoveRefManually();
+    return 0;
+}
+
 void Socket::ListPooledSockets(std::vector<SocketId>* out, size_t max_count) {
     out->clear();
     SharedPart* sp = GetSharedPart();
@@ -2501,6 +2527,15 @@ bool Socket::GetPooledSocketStats(int* numfree, int* numinflight) {
     *numfree = pool->_numfree.load(butil::memory_order_relaxed);
     *numinflight = pool->_numinflight.load(butil::memory_order_relaxed);
     return true;
+}
+
+bool Socket::GetSharedPartRefNum(int* num) {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        *num = sp->ref_count();
+        return true;
+    }
+    return false;
 }
     
 int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
