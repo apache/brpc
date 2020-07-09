@@ -358,7 +358,7 @@ void remove_tls_block_chain() {
 
 // Get a (non-full) block from TLS.
 // Notice that the block is not removed from TLS.
-inline IOBuf::Block* share_tls_block() {
+IOBuf::Block* share_tls_block() {
     TLSData& tls_data = g_tls_data;
     IOBuf::Block* const b = tls_data.block_head;
     if (b != NULL && !b->full()) {

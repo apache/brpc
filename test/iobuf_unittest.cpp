@@ -47,6 +47,7 @@ extern IOBuf::Block* get_tls_block_head();
 extern int get_tls_block_count();
 extern void remove_tls_block_chain();
 extern IOBuf::Block* acquire_tls_block();
+extern IOBuf::Block* share_tls_block();
 extern void release_tls_block_chain(IOBuf::Block* b);
 extern uint32_t block_cap(IOBuf::Block const* b);
 extern uint32_t block_size(IOBuf::Block const* b);
@@ -1654,6 +1655,31 @@ TEST_F(IOBufTest, append_user_data_and_share) {
         }
     }
     ASSERT_EQ(data, my_free_params);
+}
+
+TEST_F(IOBufTest, share_tls_block) {
+    butil::iobuf::remove_tls_block_chain();
+    butil::IOBuf::Block* b = butil::iobuf::acquire_tls_block();
+    ASSERT_EQ(0, butil::iobuf::block_size(b));
+
+    butil::IOBuf::Block* b2 = butil::iobuf::share_tls_block();
+    butil::IOBuf buf;
+    for (size_t i = 0; i < butil::iobuf::block_cap(b2); i++) {
+        buf.push_back('x');
+    }
+    // after pushing to b2, b2 is full but it is still head of tls block.
+    ASSERT_NE(b, b2);
+    butil::iobuf::release_tls_block_chain(b);
+    ASSERT_EQ(b, butil::iobuf::share_tls_block());
+    // After releasing b, now tls block is b(not full) -> b2(full) -> NULL
+    for (size_t i = 0; i < butil::iobuf::block_cap(b); i++) {
+        buf.push_back('x');
+    }
+    // now tls block is b(full) -> b2(full) -> NULL
+    butil::IOBuf::Block* head_block = butil::iobuf::share_tls_block();
+    ASSERT_EQ(0, butil::iobuf::block_size(head_block));
+    ASSERT_NE(b, head_block);
+    ASSERT_NE(b2, head_block);
 }
 
 TEST_F(IOBufTest, acquire_tls_block) {
