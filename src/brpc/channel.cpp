@@ -464,6 +464,8 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     // Share the lb with controller.
     cntl->_lb = _lb;
 
+    // serialize_request must be done before pack_request
+    _serialize_request(&cntl->_request_buf, cntl, request);
     if (FLAGS_usercode_in_pthread &&
         done != NULL &&
         TooManyUserCode()) {
@@ -476,7 +478,6 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // parameters in `cntl' are set.
         return cntl->HandleSendFailed();
     }
-    _serialize_request(&cntl->_request_buf, cntl, request);
     if (cntl->FailedInline()) {
         return cntl->HandleSendFailed();
     }
