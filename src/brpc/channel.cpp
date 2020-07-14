@@ -464,7 +464,9 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     // Share the lb with controller.
     cntl->_lb = _lb;
 
-    // serialize_request must be done before pack_request
+    // Ensure that serialize_request is done before pack_request in all
+    // possible executions, including:
+    //   HandleSendFailed => OnVersionedRPCReturned => IssueRPC(pack_request)
     _serialize_request(&cntl->_request_buf, cntl, request);
     if (FLAGS_usercode_in_pthread &&
         done != NULL &&
