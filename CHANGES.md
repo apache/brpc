@@ -20,6 +20,11 @@
 # Table of Contents
 
 - [0.9.8-rc01](#0.9.8-rc01)
+- [0.9.7](#0.9.7)
+- [0.9.6](#0.9.6)
+- [0.9.5](#0.9.5)
+- [0.9.0](#0.9.0)
+
 
 ## 0.9.8-rc01
 
@@ -45,3 +50,39 @@ https://github.com/apache/incubator-brpc/commit/f8c188a7a5186c2d43a20735ad175a32
 https://github.com/apache/incubator-brpc/pull/1005
 * limit minimum value of max_concurrency for auto_cl
 https://github.com/apache/incubator-brpc/pull/1003
+
+## 0.9.7
+* Add DISCLAIMER-WIP as license issues are not all resolved
+* Fix many license related issues
+* Ignore flow control in h2 when sending first request
+* Add flame graph view for profiling builtin service
+* Fix bug that _avg_latency maybe zero in lalb
+* Fix bug that logging namespace conflicts with others
+* Add gdb_bthread_stack.py to read bthread stack
+* Adapt to Arm64
+* Support redis server protocol
+* Enable circuit breaker for backup request
+* Support zone for bilibili discovery naming service when fetching server nodes
+* Add brpc revision in release version
+
+## 0.9.6
+* Health (of a connection) can be checked at rpc-level
+* Fix SSL-related compilation issues on Mac
+* Support SSL-replacement lib MesaLink
+* Support consistent hashing with ketama algo.
+* bvar variables can be exported for prometheus services
+* String[Multi]Splitter supports '\0' as separator
+* Support for bilibili discovery service
+* Improved CircuitBreaker
+* grpc impl. supports timeout
+
+## 0.9.5
+* h2c/grpc are supported now, h2(encrypted) is not included.
+* thrift support.
+* Mac build support
+* Extend ConcurrencyLimiter to control max-concurrency dynamically and an "auto" CL is supported by default
+* CircuitBreaker support to isolate abnormal servers more effectively
+
+## 0.9.0
+* Contains major features of brpc, OK for production usages.
+* No h2/h2c/rdma support, Mac/Windows ports are not ready yet.
