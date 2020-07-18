@@ -18,6 +18,7 @@ struct ArenaObjDeleter {
 
     void operator()(T *ptr) const {
         if (_own_obj) {
+            VLOG(199) << "delete!";
             delete ptr;
         }
     }
@@ -99,25 +100,18 @@ public:
 
     std::unique_ptr<Def, ArenaObjDeleter<Def>>
     CreateMessage(const Def &proto_type) {
+        // If cc_enable_arenas option equals to false, msg is owned by arena
+        // inside New, but msg->GetArena will return NULL.
         Def *msg = proto_type.New(_arena);
-        if (_arena && !(msg->GetArena())) {
-            // When cc_enable_arenas option equals to false
-            VLOG(199) << __FUNCTION__;
-            _arena->Own(msg);
-        } else {
-            VLOG(199) << __FUNCTION__;
-        }
+        VLOG(199) << __FUNCTION__;
         return std::unique_ptr<Def, ArenaObjDeleter<Def>>
                 (msg, ArenaObjDeleter<Def>(!_arena));
     }
 
     template<class T>
     std::unique_ptr<T, ArenaObjDeleter<T>> CreateMessage() {
+        // Compile error if cc_enable_arenas option equals to false
         T *msg = ArenaType::template CreateMessage<T>(_arena);
-        if (_arena && !(msg->GetArena())) {
-            // When cc_enable_arenas option equals to false
-            _arena->Own(msg);
-        }
         return std::unique_ptr<T, ArenaObjDeleter<T>>
                 (msg, ArenaObjDeleter<T>(!_arena));
     }
@@ -130,7 +124,7 @@ public:
                 (obj, ArenaObjDeleter<T>(!_arena));
     }
 
-    bool OwnObject() { return true; }
+    bool OwnObject() { return _arena; }
 
 private:
     ArenaTypePtr _arena;
