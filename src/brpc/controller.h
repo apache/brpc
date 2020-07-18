@@ -518,9 +518,8 @@ public:
         return _arena;
     }
     void share_memory_arena(Controller *cntl) {
-        if (cntl->_arena) {
-            _arena = cntl->_arena;
-        }
+        CHECK(cntl->_arena);
+        _arena = cntl->_arena;
     }
 
 private:

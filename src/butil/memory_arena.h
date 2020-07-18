@@ -2,27 +2,28 @@
 #ifndef BUTIL_MEMORY_ARENA_H
 #define BUTIL_MEMORY_ARENA_H
 
+#include <memory>
 #include "google/protobuf/message.h"
+#include "butil/logging.h"
 
 namespace butil {
 
 template<class T>
-class ArenaObjPtr {
-public:
-    explicit ArenaObjPtr(T *p, bool own) noexcept
-        : _ptr(p), _own_ptr(own) {
+struct ArenaObjDeleter {
+    constexpr ArenaObjDeleter() noexcept = default;
+
+    ArenaObjDeleter(bool own) noexcept
+        : _own_obj(own) {
     }
 
-    ~ArenaObjPtr() {
-        if (_ptr && _own_ptr) {
-            delete _ptr;
-            _ptr = nullptr;
+    void operator()(T *ptr) const {
+        if (_own_obj) {
+            delete ptr;
         }
     }
-    
+
 private:
-    T *_ptr;
-    bool _own_ptr;
+    bool _own_obj;
 };
 
 namespace internal {
@@ -41,23 +42,34 @@ struct ArenaCheck {
 template<class Def, class Enable = void>
 class MemoryArena {
 public:
-    ArenaObjPtr<google::protobuf::Message> CreateMessage(
-            const google::protobuf::Message &proto_type) {
+    std::unique_ptr<
+        google::protobuf::Message, 
+        ArenaObjDeleter<google::protobuf::Message>
+    > 
+    CreateMessage(const google::protobuf::Message &proto_type) {
         google::protobuf::Message *msg = proto_type.New();
-        return ArenaObjPtr<google::protobuf::Message>(msg, true);
+        VLOG(199) << __FUNCTION__;
+        return std::unique_ptr<
+                    google::protobuf::Message, 
+                    ArenaObjDeleter<google::protobuf::Message>
+               >(msg, ArenaObjDeleter<google::protobuf::Message>(true));
     }
 
     template<class T>
-    ArenaObjPtr<T> CreateMessage() {
+    std::unique_ptr<T, ArenaObjDeleter<T>> CreateMessage() {
         T *msg = new T;
-        return ArenaObjPtr<T>(msg, true);
+        return std::unique_ptr<T, ArenaObjDeleter<T>>
+                (msg, ArenaObjDeleter<T>(true));
     }
 
     template<class T, class... Args>
-    ArenaObjPtr<T> Create(Args&&... args) {
+    std::unique_ptr<T, ArenaObjDeleter<T>> Create(Args&&... args) {
         T *obj = new T(std::forward<Args>(args)...);
-        return ArenaObjPtr<T>(obj, true);
+        return std::unique_ptr<T, ArenaObjDeleter<T>>
+                (obj, ArenaObjDeleter<T>(true));
     }
+
+    bool OwnObject() { return false; }
 };
 
 // Protobuf arena is encapsulated.
@@ -85,31 +97,40 @@ public:
         }
     }
 
-    ArenaObjPtr<Def> CreateMessage(const Def &proto_type) {
+    std::unique_ptr<Def, ArenaObjDeleter<Def>>
+    CreateMessage(const Def &proto_type) {
         Def *msg = proto_type.New(_arena);
         if (_arena && !(msg->GetArena())) {
             // When cc_enable_arenas option equals to false
+            VLOG(199) << __FUNCTION__;
             _arena->Own(msg);
+        } else {
+            VLOG(199) << __FUNCTION__;
         }
-        return ArenaObjPtr<Def>(msg, !_arena);
+        return std::unique_ptr<Def, ArenaObjDeleter<Def>>
+                (msg, ArenaObjDeleter<Def>(!_arena));
     }
 
     template<class T>
-    ArenaObjPtr<T> CreateMessage() {
+    std::unique_ptr<T, ArenaObjDeleter<T>> CreateMessage() {
         T *msg = ArenaType::template CreateMessage<T>(_arena);
         if (_arena && !(msg->GetArena())) {
             // When cc_enable_arenas option equals to false
             _arena->Own(msg);
         }
-        return ArenaObjPtr<T>(msg, !_arena);
+        return std::unique_ptr<T, ArenaObjDeleter<T>>
+                (msg, ArenaObjDeleter<T>(!_arena));
     }
 
     template<class T, class... Args>
-    ArenaObjPtr<T> Create(Args&&... args) {
+    std::unique_ptr<T, ArenaObjDeleter<T>> Create(Args&&... args) {
         T *obj = ArenaType::template Create<T>(_arena, 
                                                std::forward<Args>(args)...);
-        return ArenaObjPtr<T>(obj, !_arena);
+        return std::unique_ptr<T, ArenaObjDeleter<T>>
+                (obj, ArenaObjDeleter<T>(!_arena));
     }
+
+    bool OwnObject() { return true; }
 
 private:
     ArenaTypePtr _arena;

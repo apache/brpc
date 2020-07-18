@@ -148,8 +148,14 @@ void SendRpcResponse(int64_t correlation_id,
     Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
-    std::unique_ptr<const google::protobuf::Message> recycle_req(req);
-    std::unique_ptr<const google::protobuf::Message> recycle_res(res);
+    butil::ArenaObjDeleter<const google::protobuf::Message> 
+            del(!cntl->get_memory_arena()->OwnObject());
+    std::unique_ptr<const google::protobuf::Message, 
+                    butil::ArenaObjDeleter<const google::protobuf::Message>
+    > recycle_req(req, del);
+    std::unique_ptr<const google::protobuf::Message, 
+                    butil::ArenaObjDeleter<const google::protobuf::Message>
+    > recycle_res(res, del);
     
     StreamId response_stream_id = accessor.response_stream();
 
@@ -333,8 +339,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         LOG(WARNING) << "Fail to new Controller";
         return;
     }
-    std::unique_ptr<google::protobuf::Message> req;
-    std::unique_ptr<google::protobuf::Message> res;
+    std::unique_ptr<google::protobuf::Message, 
+            butil::ArenaObjDeleter<google::protobuf::Message>> req;
+    std::unique_ptr<google::protobuf::Message, 
+            butil::ArenaObjDeleter<google::protobuf::Message>> res;
 
     ServerPrivateAccessor server_accessor(server);
     ControllerPrivateAccessor accessor(cntl.get());
@@ -466,7 +474,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         }
 
         CompressType req_cmp_type = (CompressType)meta.compress_type();
-        req.reset(svc->GetRequestPrototype(method).New());
+        req = cntl->get_memory_arena()->CreateMessage(
+                svc->GetRequestPrototype(method));
         if (!ParseFromCompressedData(*req_buf_ptr, req.get(), req_cmp_type)) {
             cntl->SetFailed(EREQUEST, "Fail to parse request message, "
                             "CompressType=%s, request_size=%d", 
@@ -474,7 +483,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             break;
         }
         
-        res.reset(svc->GetResponsePrototype(method).New());
+        res = cntl->get_memory_arena()->CreateMessage(
+                svc->GetResponsePrototype(method));
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, const google::protobuf::Message*,
