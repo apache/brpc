@@ -464,20 +464,20 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     // Share the lb with controller.
     cntl->_lb = _lb;
 
+    // Ensure that serialize_request is done before pack_request in all
+    // possible executions, including:
+    //   HandleSendFailed => OnVersionedRPCReturned => IssueRPC(pack_request)
+    _serialize_request(&cntl->_request_buf, cntl, request);
+    if (cntl->FailedInline()) {
+        // Handle failures caused by serialize_request, and these error_codes
+        // should be excluded from the retry_policy.
+        return cntl->HandleSendFailed();
+    }
     if (FLAGS_usercode_in_pthread &&
         done != NULL &&
         TooManyUserCode()) {
         cntl->SetFailed(ELIMIT, "Too many user code to run when "
                         "-usercode_in_pthread is on");
-        return cntl->HandleSendFailed();
-    }
-    if (cntl->FailedInline()) {
-        // probably failed before RPC, not called until all necessary
-        // parameters in `cntl' are set.
-        return cntl->HandleSendFailed();
-    }
-    _serialize_request(&cntl->_request_buf, cntl, request);
-    if (cntl->FailedInline()) {
         return cntl->HandleSendFailed();
     }
 
