@@ -380,8 +380,9 @@ public:
     // If `stop_style' is FORCE_STOP, the underlying socket will be failed
     // immediately when the socket becomes idle or server is stopped.
     // Default value of `stop_style' is WAIT_FOR_STOP.
-    ProgressiveAttachment*
+    butil::intrusive_ptr<ProgressiveAttachment>
     CreateProgressiveAttachment(StopStyle stop_style = WAIT_FOR_STOP);
+
     bool has_progressive_writer() const { return _wpa != NULL; }
 
     // Set compression method for response.

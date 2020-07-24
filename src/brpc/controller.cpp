@@ -1345,7 +1345,7 @@ void Controller::set_stream_creator(StreamCreator* sc) {
     _stream_creator = sc;
 }
 
-ProgressiveAttachment*
+butil::intrusive_ptr<ProgressiveAttachment>
 Controller::CreateProgressiveAttachment(StopStyle stop_style) {
     if (has_progressive_writer()) {
         LOG(ERROR) << "One controller can only have one ProgressiveAttachment";
@@ -1365,10 +1365,9 @@ Controller::CreateProgressiveAttachment(StopStyle stop_style) {
     if (stop_style == FORCE_STOP) {
         httpsock->fail_me_at_server_stop();
     }
-    ProgressiveAttachment* pb = new ProgressiveAttachment(
-        httpsock, http_request().before_http_1_1());
-    _wpa.reset(pb);
-    return pb;
+    _wpa.reset(new ProgressiveAttachment(
+                   httpsock, http_request().before_http_1_1()));
+    return _wpa;
 }
 
 void Controller::ReadProgressiveAttachmentBy(ProgressiveReader* r) {

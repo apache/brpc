@@ -69,17 +69,20 @@ public:
     FileServiceImpl() {};
     virtual ~FileServiceImpl() {};
 
-    static void* SendLargeFile(void* arg) {
-        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
-                (brpc::ProgressiveAttachment*)arg);
-        if (pa == NULL) {
+    struct Args {
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa;
+    };
+
+    static void* SendLargeFile(void* raw_args) {
+        std::unique_ptr<Args> args(static_cast<Args*>(raw_args));
+        if (args->pa == NULL) {
             LOG(ERROR) << "ProgressiveAttachment is NULL";
             return NULL;
         }
         for (int i = 0; i < 100; ++i) {
             char buf[16];
             int len = snprintf(buf, sizeof(buf), "part_%d ", i);
-            pa->Write(buf, len);
+            args->pa->Write(buf, len);
 
             // sleep a while to send another part.
             bthread_usleep(10000);
@@ -97,9 +100,10 @@ public:
         const std::string& filename = cntl->http_request().unresolved_path();
         if (filename == "largefile") {
             // Send the "largefile" with ProgressiveAttachment.
+            std::unique_ptr<Args> args(new Args);
+            args->pa = cntl->CreateProgressiveAttachment();
             bthread_t th;
-            bthread_start_background(&th, NULL, SendLargeFile, 
-                    cntl->CreateProgressiveAttachment());
+            bthread_start_background(&th, NULL, SendLargeFile, args.release());
         } else {
             cntl->response_attachment().append("Getting file: ");
             cntl->response_attachment().append(filename);
