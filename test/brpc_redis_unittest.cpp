@@ -361,6 +361,13 @@ TEST_F(RedisTest, auth) {
         puts("Skipped due to absence of redis-server");
         return;
     }
+    // generate a random password
+    char PASSWORD[12];
+    for (size_t i = 0; i < arraysize(PASSWORD) - 1; ++i) {
+        PASSWORD[i] = butil::fast_rand_in('a', 'z');
+    }
+    PASSWORD[arraysize(PASSWORD)-1] = '\0';
+    LOG(INFO) << "Generated password=" << PASSWORD;
     // config auth
     {
         brpc::ChannelOptions options;
@@ -371,15 +378,10 @@ TEST_F(RedisTest, auth) {
         brpc::RedisResponse response;
         brpc::Controller cntl;
 
-        butil::StringPiece comp1[] = { "set", "passwd", "my_redis" };
-        butil::StringPiece comp2[] = { "config", "set", "requirepass", "my_redis" };
-        butil::StringPiece comp3[] = { "auth", "my_redis" };
-        butil::StringPiece comp4[] = { "get", "passwd" };
-
-        request.AddCommandByComponents(comp1, arraysize(comp1));
-        request.AddCommandByComponents(comp2, arraysize(comp2));
-        request.AddCommandByComponents(comp3, arraysize(comp3));
-        request.AddCommandByComponents(comp4, arraysize(comp4));
+        request.AddCommand("set passwd %s", PASSWORD);
+        request.AddCommand("config set requirepass %s", PASSWORD);
+        request.AddCommand("auth %s", PASSWORD);
+        request.AddCommand("get passwd");
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -391,7 +393,7 @@ TEST_F(RedisTest, auth) {
         ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(2).type());
         ASSERT_STREQ("OK", response.reply(2).c_str());
         ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
-        ASSERT_STREQ("my_redis", response.reply(3).c_str());
+        ASSERT_STREQ(PASSWORD, response.reply(3).c_str());
     }
 
     // Auth failed
@@ -404,10 +406,7 @@ TEST_F(RedisTest, auth) {
         brpc::RedisResponse response;
         brpc::Controller cntl;
 
-        butil::StringPiece comp1[] = { "get", "passwd" };
-
-        request.AddCommandByComponents(comp1, arraysize(comp1));
-
+        request.AddCommand("get passwd");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
@@ -420,24 +419,21 @@ TEST_F(RedisTest, auth) {
         options.protocol = brpc::PROTOCOL_REDIS;
         brpc::Channel channel;
         brpc::policy::RedisAuthenticator* auth =
-          new brpc::policy::RedisAuthenticator("my_redis");
+          new brpc::policy::RedisAuthenticator(PASSWORD);
         options.auth = auth;
         ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
         brpc::RedisRequest request;
         brpc::RedisResponse response;
         brpc::Controller cntl;
 
-        butil::StringPiece comp1[] = { "get", "passwd" };
-        butil::StringPiece comp2[] = { "config", "set", "requirepass", "" };
-
-        request.AddCommandByComponents(comp1, arraysize(comp1));
-        request.AddCommandByComponents(comp2, arraysize(comp2));
+        request.AddCommand("get passwd");
+        request.AddCommand("config set requirepass ''");
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(2, response.reply_size());
         ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
-        ASSERT_STREQ("my_redis", response.reply(0).c_str());
+        ASSERT_STREQ(PASSWORD, response.reply(0).c_str());
         ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
         ASSERT_STREQ("OK", response.reply(1).c_str());
     }
@@ -452,15 +448,12 @@ TEST_F(RedisTest, auth) {
         brpc::RedisResponse response;
         brpc::Controller cntl;
 
-        butil::StringPiece comp1[] = { "get", "passwd" };
-
-        request.AddCommandByComponents(comp1, arraysize(comp1));
-
+        request.AddCommand("get passwd");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
-        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
-        ASSERT_STREQ("my_redis", response.reply(0).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type()) << response.reply(0);
+        ASSERT_STREQ(PASSWORD, response.reply(0).c_str());
     }
 }
 
