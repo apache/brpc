@@ -367,11 +367,6 @@ void TimerThread::run() {
         bool pull_again = false;
         while (!tasks.empty()) {
             Task* task1 = tasks[0];  // the about-to-run task
-            if (task1->try_delete()) { // already unscheduled
-                std::pop_heap(tasks.begin(), tasks.end(), task_greater);
-                tasks.pop_back();
-                continue;
-            }
             if (butil::gettimeofday_us() < task1->run_time) {  // not ready yet.
                 break;
             }
