@@ -356,18 +356,25 @@ TEST_F(RedisTest, by_components) {
     AssertResponseEqual(response2, response, 2);
 }
 
+static std::string GeneratePassword() {
+    std::string result;
+    result.reserve(12);
+    for (size_t i = 0; i < result.capacity(); ++i) {
+        result.push_back(butil::fast_rand_in('a', 'z'));
+    }
+    return result;
+}
+
 TEST_F(RedisTest, auth) {
     if (g_redis_pid < 0) {
         puts("Skipped due to absence of redis-server");
         return;
     }
     // generate a random password
-    char PASSWORD[12];
-    for (size_t i = 0; i < arraysize(PASSWORD) - 1; ++i) {
-        PASSWORD[i] = butil::fast_rand_in('a', 'z');
-    }
-    PASSWORD[arraysize(PASSWORD)-1] = '\0';
-    LOG(INFO) << "Generated password=" << PASSWORD;
+    const std::string passwd1 = GeneratePassword();
+    const std::string passwd2 = GeneratePassword();
+    LOG(INFO) << "Generated passwd1=" << passwd1 << " passwd2=" << passwd2;
+
     // config auth
     {
         brpc::ChannelOptions options;
@@ -378,10 +385,10 @@ TEST_F(RedisTest, auth) {
         brpc::RedisResponse response;
         brpc::Controller cntl;
 
-        request.AddCommand("set passwd %s", PASSWORD);
-        request.AddCommand("config set requirepass %s", PASSWORD);
-        request.AddCommand("auth %s", PASSWORD);
-        request.AddCommand("get passwd");
+        request.AddCommand("set mykey %s", passwd1.c_str());
+        request.AddCommand("config set requirepass %s", passwd1.c_str());
+        request.AddCommand("auth %s", passwd1.c_str());
+        request.AddCommand("get mykey");
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -393,7 +400,7 @@ TEST_F(RedisTest, auth) {
         ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(2).type());
         ASSERT_STREQ("OK", response.reply(2).c_str());
         ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
-        ASSERT_STREQ(PASSWORD, response.reply(3).c_str());
+        ASSERT_STREQ(passwd1.c_str(), response.reply(3).c_str());
     }
 
     // Auth failed
@@ -406,54 +413,58 @@ TEST_F(RedisTest, auth) {
         brpc::RedisResponse response;
         brpc::Controller cntl;
 
-        request.AddCommand("get passwd");
+        request.AddCommand("get mykey");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
         ASSERT_EQ(brpc::REDIS_REPLY_ERROR, response.reply(0).type());
     }
 
-    // Auth with RedisAuthenticator && clear auth
+    // Auth with RedisAuthenticator and change to passwd2 (setting to empty
+    // pass does not work on redis 6.0.6)
     {
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_REDIS;
         brpc::Channel channel;
         brpc::policy::RedisAuthenticator* auth =
-          new brpc::policy::RedisAuthenticator(PASSWORD);
+          new brpc::policy::RedisAuthenticator(passwd1.c_str());
         options.auth = auth;
         ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
         brpc::RedisRequest request;
         brpc::RedisResponse response;
         brpc::Controller cntl;
 
-        request.AddCommand("get passwd");
-        request.AddCommand("config set requirepass ''");
+        request.AddCommand("get mykey");
+        request.AddCommand("config set requirepass %s", passwd2.c_str());
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(2, response.reply_size());
         ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
-        ASSERT_STREQ(PASSWORD, response.reply(0).c_str());
+        ASSERT_STREQ(passwd1.c_str(), response.reply(0).c_str());
         ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
         ASSERT_STREQ("OK", response.reply(1).c_str());
     }
 
-    // check noauth.
+    // Auth with passwd2
     {
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::policy::RedisAuthenticator* auth =
+          new brpc::policy::RedisAuthenticator(passwd2.c_str());
+        options.auth = auth;
         brpc::Channel channel;
         ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
         brpc::RedisRequest request;
         brpc::RedisResponse response;
         brpc::Controller cntl;
 
-        request.AddCommand("get passwd");
+        request.AddCommand("get mykey");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
         ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type()) << response.reply(0);
-        ASSERT_STREQ(PASSWORD, response.reply(0).c_str());
+        ASSERT_STREQ(passwd1.c_str(), response.reply(0).c_str());
     }
 }
 
