@@ -573,6 +573,7 @@ private:
         ConnectionType connection_type;         
         CompressType request_compress_type;
         uint64_t log_id;
+        bool has_log_id;
         bool has_request_code;
         int64_t request_code;
     };
