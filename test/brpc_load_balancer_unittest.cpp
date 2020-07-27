@@ -851,7 +851,8 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
     // After one server is revived, the reject rate should be 50%
     int num_ereject = 0;
     int num_ok = 0;
-    for (int i = 0; i < 100; ++i) {
+    int num_trial = 10000;
+    for (int i = 0; i < num_trial; ++i) {
         int rc = lb->SelectServer(in, &out);
         if (rc == brpc::EREJECT) {
             num_ereject++;
@@ -861,7 +862,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
             ASSERT_TRUE(false);
         }
     }
-    ASSERT_TRUE(abs(num_ereject - num_ok) < 30);
+    ASSERT_TRUE(abs(num_ereject - num_ok) < (num_trial * 0.2));
     bthread_usleep((2000 /* hold_seconds */ + 10) * 1000);
 
     // After enough waiting time, traffic should be sent to all available servers.
