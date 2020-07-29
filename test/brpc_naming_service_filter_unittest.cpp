@@ -45,7 +45,7 @@ TEST_F(NamingServiceFilterTest, sanity) {
         "10.128.0.1:1234 enable",
         "10.129.0.1:1234",
         "localhost:1234",
-        "brpc.baidu.com:1234"
+        "baidu.com:1234"
     };
     butil::TempFile tmp_file;
     {
