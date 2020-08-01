@@ -94,7 +94,7 @@ private:
     // The attribute of bthreads calling user callbacks.
     bthread_attr_t _consumer_thread_attr;
 
-    // The attribute of bthreads calling user callbacks.
+    // The attribute of bthread epoll_wait.
     bthread_attr_t _epoll_thread_attr;
 
     // Pipe fds to wakeup EventDispatcher from `epoll_wait' in order to quit
