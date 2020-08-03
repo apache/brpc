@@ -60,6 +60,13 @@ public:
     // method from blocking the caller.
     virtual bool RunNamingServiceReturnsQuickly() { return false; }
 
+    // If this method returns true, a backup file recording the latest servers
+    // will be created when naming service is running. On the other hand, if
+    // naming service is unable to be reached, then the backup file will be
+    // used. Notice that the backup file will be expired if it is not modified
+    // in FLAGS_backup_file_expire_time_s seconds.
+    virtual bool SupportBackup() const { return false; }
+
     // Create/destroy an instance.
     // Caller is responsible for Destroy() the instance after usage.
     virtual NamingService* New() const = 0;

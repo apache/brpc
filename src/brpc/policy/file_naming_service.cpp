@@ -25,7 +25,6 @@
 #include "brpc/log.h"
 #include "brpc/policy/file_naming_service.h"
 
-
 namespace brpc {
 namespace policy {
 
@@ -66,8 +65,8 @@ bool SplitIntoServerAndTag(const butil::StringPiece& line,
     return true;
 }
 
-int FileNamingService::GetServers(const char *service_name,
-                                  std::vector<ServerNode>* servers) {
+int GetServersFromFile(const char *service_name,
+                       std::vector<ServerNode>* servers) {
     servers->clear();
     char* line = NULL;
     size_t line_len = 0;
@@ -112,6 +111,12 @@ int FileNamingService::GetServers(const char *service_name,
              << (servers->size() > 1 ? " servers" : " server");
     free(line);
     return 0;
+}
+
+
+int FileNamingService::GetServers(const char *service_name,
+                                  std::vector<ServerNode>* servers) {
+    return GetServersFromFile(service_name, servers);
 }
 
 int FileNamingService::RunNamingService(const char* service_name,

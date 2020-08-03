@@ -18,6 +18,7 @@
 
 #include <gflags/gflags.h>
 #include "butil/logging.h"
+#include "butil/file_util.h"
 #include "bthread/bthread.h"
 #include "brpc/log.h"
 #include "brpc/reloadable_flags.h"

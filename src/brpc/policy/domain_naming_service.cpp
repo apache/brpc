@@ -16,17 +16,20 @@
 // under the License.
 
 
-#include "butil/build_config.h"                       // OS_MACOSX
 #include <netdb.h>                                    // gethostbyname_r
 #include <stdlib.h>                                   // strtol
 #include <string>                                     // std::string
+#include <gflags/gflags.h>
 #include "bthread/bthread.h"
 #include "brpc/log.h"
 #include "brpc/policy/domain_naming_service.h"
+#include "butil/build_config.h"                       // OS_MACOSX
 
 
 namespace brpc {
 namespace policy {
+
+DEFINE_bool(dns_support_backup_file, false, "whether dns supports backup file or not");
 
 DomainNamingService::DomainNamingService() : _aux_buf_len(0) {}
 
@@ -147,6 +150,10 @@ NamingService* DomainNamingService::New() const {
 
 void DomainNamingService::Destroy() {
     delete this;
+}
+
+bool DomainNamingService::SupportBackup() const {
+    return FLAGS_dns_support_backup_file;
 }
 
 }  // namespace policy

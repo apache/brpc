@@ -217,11 +217,11 @@ int main(int argc, char* argv[]) {
 
 dump功能由如下gflags控制：
 
-| 名称                 | 默认值                     | 作用                                       |
+| 名称               | 默认值                  | 作用                                     |
 | ------------------ | ----------------------- | ---------------------------------------- |
 | bvar_dump          | false                   | Create a background thread dumping all bvar periodically, all bvar_dump_* flags are not effective when this flag is off |
 | bvar_dump_exclude  | ""                      | Dump bvar excluded from these wildcards(separated by comma), empty means no exclusion |
-| bvar_dump_file     | monitor/bvar.<app>.data | Dump bvar into this file                 |
+| bvar_dump_file     | monitor/bvar.&lt;app&gt;.data | Dump bvar into this file           |
 | bvar_dump_include  | ""                      | Dump bvar matching these wildcards(separated by comma), empty means including all |
 | bvar_dump_interval | 10                      | Seconds between consecutive dump         |
 | bvar_dump_prefix   | \<app\>                 | Every dumped name starts with this prefix |

@@ -22,12 +22,23 @@
 #include "bthread/butex.h"
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
+#include "butil/file_util.h"
+#include "butil/fd_utility.h"
 #include "brpc/log.h"
 #include "brpc/socket_map.h"
 #include "brpc/details/naming_service_thread.h"
 
-
 namespace brpc {
+namespace policy {
+// Defined in file_naming_service.cpp
+int GetServersFromFile(const char *service_name,
+                       std::vector<ServerNode>* servers);
+}
+
+DEFINE_string(ns_backup_dir, "", "When the first GetServers fails, ns will search"
+        " this directory for backup files");
+DEFINE_int64(backup_file_expire_time_s, 7200, "The backup file would be regarded"
+        " as invalid if it is not modified in such seconds");
 
 struct NSKey {
     std::string protocol;
@@ -63,7 +74,8 @@ NamingServiceThread::Actions::Actions(NamingServiceThread* owner)
     : _owner(owner)
     , _wait_id(INVALID_BTHREAD_ID)
     , _has_wait_error(false)
-    , _wait_error(0) {
+    , _wait_error(0)
+    , _reset_ever(false) {
     CHECK_EQ(0, bthread_id_create(&_wait_id, NULL, NULL));
 }
 
@@ -89,9 +101,66 @@ void NamingServiceThread::Actions::RemoveServers(
     abort();
 }
 
+void GetUnexpiredServersFromFile(const std::string& file_path,
+                                 std::vector<ServerNode>* servers) {
+    struct stat st;
+    const int ret = stat(file_path.c_str(), &st);
+    if (ret < 0) {
+        LOG(ERROR) << "Fail to stat `" << file_path << "'";
+        return;
+    }
+    int64_t last_modified_time_s = st.st_mtim.tv_sec;
+    int64_t now_s = butil::gettimeofday_s();
+    if ((now_s - last_modified_time_s) >= FLAGS_backup_file_expire_time_s) {
+        LOG(ERROR) << "Expired backup ns file: " << file_path;
+        return;
+    }
+    policy::GetServersFromFile(file_path.c_str(), servers);
+}
+
+void SaveServersToFile(const std::string& file_path,
+                       const std::vector<ServerNode>& servers) {
+    butil::CreateDirectoryAndGetError(butil::FilePath(file_path).DirName(), NULL, true);
+    // use a tmp file to achieve atmoic write to `file_path'
+    std::string file_path_tmp;
+    file_path_tmp.append(file_path);
+    file_path_tmp.append(".tmp");
+    FILE *fp = fopen(file_path_tmp.c_str(), "w");
+    if (!fp) {
+        LOG(ERROR) << "Fail to open `" << file_path_tmp << "' to save naming service results";
+        return;
+    }
+    butil::make_close_on_exec(fileno(fp));
+
+    butil::EndPointStr epstr;
+    for (int i = 0; i < (int)servers.size(); ++i) {
+        epstr = butil::endpoint2str(servers[i].addr);
+        fprintf(fp, "%s %s\n", epstr.c_str(), servers[i].tag.c_str());
+    }
+    fclose(fp);
+    if (::rename(file_path_tmp.c_str(), file_path.c_str()) != 0) {
+        LOG(ERROR) << "Fail to rename `" << file_path_tmp << "' to `" << file_path << "'";
+        return;
+    }
+}
+
 void NamingServiceThread::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
+    std::string file_path;
+    bool backup_file_enabled =
+        !FLAGS_ns_backup_dir.empty() && _owner->_ns->SupportBackup();
+    bool load_enabled = !_reset_ever && servers.empty();
     _servers.assign(servers.begin(), servers.end());
+    if (backup_file_enabled) {
+        file_path = butil::string_printf("%s/%s/%s", FLAGS_ns_backup_dir.c_str(),
+                _owner->_protocol.c_str(), _owner->_service_name.c_str());
+        if (load_enabled) {
+            std::vector<ServerNode> servers_from_file;
+            GetUnexpiredServersFromFile(file_path, &servers_from_file);
+            _servers.assign(servers_from_file.begin(), servers_from_file.end());
+        }
+    }
+    bool has_data = !_servers.empty();
     
     // Diff servers with _last_servers by comparing sorted vectors.
     // Notice that _last_servers is always sorted.
@@ -200,9 +269,12 @@ void NamingServiceThread::Actions::ResetServers(
             info << " removed " << _removed.size();
         }
         LOG(INFO) << info.str();
+        if (backup_file_enabled && !load_enabled) {
+            SaveServersToFile(file_path, servers);
+        }
     }
-
-    EndWait(servers.empty() ? ENODATA : 0);
+    _reset_ever = true;
+    EndWait(has_data? 0 : ENODATA);
 }
 
 void NamingServiceThread::Actions::EndWait(int error_code) {

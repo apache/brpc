@@ -40,6 +40,7 @@ private:
     
     void Destroy() override;
 
+    bool SupportBackup() const override;
 private:
     std::unique_ptr<char[]> _aux_buf;
     size_t _aux_buf_len;

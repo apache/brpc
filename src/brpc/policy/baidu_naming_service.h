@@ -34,11 +34,13 @@ public:
     int GetServers(const char *service_name,
                    std::vector<ServerNode>* servers);
     
-    void Describe(std::ostream& os, const DescribeOptions&) const;
+    void Describe(std::ostream& os, const DescribeOptions&) const override;
     
-    NamingService* New() const;
+    NamingService* New() const override;
     
-    void Destroy();
+    void Destroy() override;
+
+    bool SupportBackup() const override;
 };
 
 }  // namespace policy

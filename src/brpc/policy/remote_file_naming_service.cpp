@@ -35,6 +35,8 @@ DEFINE_int32(remote_file_connect_timeout_ms, -1,
              " set to remote_file_timeout_ms/3 by default (-1)");
 DEFINE_int32(remote_file_timeout_ms, 1000,
              "Timeout for fetching remote server lists");
+DEFINE_bool(remote_file_support_backup_file, false,
+            "whether remote file ns supports backup file or not");
 
 // Defined in file_naming_service.cpp
 bool SplitIntoServerAndTag(const butil::StringPiece& line,
@@ -157,6 +159,10 @@ NamingService* RemoteFileNamingService::New() const {
 
 void RemoteFileNamingService::Destroy() {
     delete this;
+}
+
+bool RemoteFileNamingService::SupportBackup() const {
+    return FLAGS_remote_file_support_backup_file;
 }
 
 }  // namespace policy

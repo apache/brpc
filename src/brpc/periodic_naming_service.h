@@ -30,7 +30,7 @@ protected:
                            std::vector<ServerNode>* servers) = 0;
     
     int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
+                         NamingServiceActions* actions) override;
 };
 
 } // namespace brpc

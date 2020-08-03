@@ -44,6 +44,8 @@ DEFINE_string(discovery_zone, "", "Zone of services");
 DEFINE_int32(discovery_renew_interval_s, 30, "The interval between two consecutive renews");
 DEFINE_int32(discovery_reregister_threshold, 3, "The renew error threshold beyond"
         " which Register would be called again");
+DEFINE_bool(discovery_support_backup_file, false,
+            "whether discovery ns supports backup file or not");
 
 static pthread_once_t s_init_discovery_channel_once = PTHREAD_ONCE_INIT;
 static Channel* s_discovery_channel = NULL;
@@ -345,6 +347,7 @@ int DiscoveryNamingService::GetServers(const char* service_name,
     Channel* chan = GetOrNewDiscoveryChannel();
     if (NULL == chan) {
         LOG(ERROR) << "Fail to create discovery channel";
+        return -1;
     }
     servers->clear();
     Controller cntl;
@@ -454,6 +457,9 @@ void DiscoveryNamingService::Destroy() {
     delete this;
 }
 
+bool DiscoveryNamingService::SupportBackup() const {
+    return FLAGS_discovery_support_backup_file;
+}
 
 } // namespace policy
 } // namespace brpc
