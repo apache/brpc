@@ -37,8 +37,8 @@ bthreads = []
 status = False
 
 def get_bthread_num():
-    root_agent = gdb.parse_and_eval("&(((((*bthread::g_task_control)._nbthreads)._combiner)._agents).root_)")
-    global_res = int(gdb.parse_and_eval("((*bthread::g_task_control)._nbthreads)._combiner._global_result"))
+    root_agent = gdb.parse_and_eval("&(((((*'bthread::g_task_control')._nbthreads)._combiner)._agents).root_)")
+    global_res = int(gdb.parse_and_eval("((*'bthread::g_task_control')._nbthreads)._combiner._global_result"))
     get_agent = "(*(('bvar::detail::AgentCombiner<long, long, bvar::detail::AddTo<long> >::Agent' *){}))"
     last_node = root_agent
     while True:
