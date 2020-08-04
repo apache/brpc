@@ -607,6 +607,8 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
             VersionOfVRef(m->_versioned_ref.fetch_add(
                     1, butil::memory_order_release)), slot);
     if (options.remote_side == butil::EndPoint()) {
+        // Make sure that remote_side is different from each other by default,
+        // which is helpful in fake socket. 
         m->_remote_side.ip = { static_cast<uint32_t>(m->_this_id >> 32) };
         m->_remote_side.port = m->_this_id & 0x0000ffff;
     }
