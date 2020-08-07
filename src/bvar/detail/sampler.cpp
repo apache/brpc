@@ -117,7 +117,7 @@ private:
 
 private:
     bool _created;
-    bool _stop;
+    butil::atomic<bool> _stop;
     int64_t _cumulated_time_us;
     pthread_t _tid;
 };
@@ -147,31 +147,28 @@ void SamplerCollector::run() {
 
     butil::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
-    while (!_stop) {
+    while (!_stop.load(butil::memory_order_relaxed)) {
         int64_t abstime = butil::gettimeofday_us();
         Sampler* s = this->reset();
         if (s) {
             s->InsertBeforeAsList(&root);
         }
-        int nremoved = 0;
-        int nsampled = 0;
+
         for (butil::LinkNode<Sampler>* p = root.next(); p != &root;) {
             // We may remove p from the list, save next first.
             butil::LinkNode<Sampler>* saved_next = p->next();
             Sampler* s = p->value();
-            s->_mutex.lock();
-            if (!s->_used) {
-                s->_mutex.unlock();
+            if (s->_used.load(butil::memory_order_acquire)) {
+                BAIDU_SCOPED_LOCK(s->_mutex);
+                // s->_used may be false, but only the SamplerCollector can delete it, it's safe
+                s->take_sample();
+            } else {
                 p->RemoveFromList();
                 delete s;
-                ++nremoved;
-            } else {
-                s->take_sample();
-                s->_mutex.unlock();
-                ++nsampled;
             }
             p = saved_next;
         }
+
         bool slept = false;
         int64_t now = butil::gettimeofday_us();
         _cumulated_time_us += now - abstime;
@@ -202,9 +199,7 @@ void Sampler::schedule() {
 }
 
 void Sampler::destroy() {
-    _mutex.lock();
-    _used = false;
-    _mutex.unlock();
+    _used.store(false, butil::memory_order_release);
 }
 
 }  // namespace detail
