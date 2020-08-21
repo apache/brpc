@@ -24,7 +24,6 @@
 #include "butil/iobuf.h"
 #include "brpc/destroyable.h"
 #include "brpc/protocol.h"
-#include "brpc/policy/mysql_meta.pb.h"
 #include "butil/sys_byteorder.h"
 
 

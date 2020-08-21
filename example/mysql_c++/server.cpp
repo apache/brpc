@@ -21,6 +21,7 @@
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <brpc/server.h>
+#include <brpc/policy/mysql_meta.pb.h>
 #include <brpc/policy/mysql_protocol.h>
 
 DEFINE_bool(echo_attachment, true, "Mysql attachment as well");
