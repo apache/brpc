@@ -409,6 +409,7 @@ set(PROTO_FILES idl_options.proto
                 brpc/policy/public_pbrpc_meta.proto
                 brpc/policy/sofa_pbrpc_meta.proto
                 brpc/policy/mongo.proto
+                brpc/policy/mysql_meta.proto
                 brpc/trackme.proto
                 brpc/streaming_rpc_meta.proto
                 brpc/proto_base.proto)
