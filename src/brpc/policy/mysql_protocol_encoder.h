@@ -32,7 +32,6 @@
 #include "butil/iobuf.h"
 #include "brpc/policy/mysql_constants.h"
 #include "brpc/policy/mysql_protocol_common.h"
-#include "brpc/policy/mysql_meta.pb.h"
 
 namespace brpc { namespace policy {
 

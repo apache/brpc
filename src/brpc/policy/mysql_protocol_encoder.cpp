@@ -22,6 +22,7 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include "brpc/policy/mysql_meta.pb.h"
 #include "brpc/policy/mysql_protocol.h"
 #include "brpc/policy/mysql_protocol_encoder.h"
 
