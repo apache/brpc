@@ -1305,6 +1305,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                 }
                 if (mp->http_url == NULL) {
                     mp->http_url = new std::string(mappings[i].path.to_string());
+                    mp->restful_mapped_only = svc_opt.restful_mapped_only;
                 } else {
                     if (!mp->http_url->empty()) {
                         mp->http_url->append(" @");
@@ -1345,6 +1346,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             }
             if (mp->http_url == NULL) {
                 mp->http_url = new std::string(mappings[i].path.to_string());
+                mp->restful_mapped_only = svc_opt.restful_mapped_only;
             } else {
                 if (!mp->http_url->empty()) {
                     mp->http_url->append(" @");
@@ -1384,6 +1386,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
 
 ServiceOptions::ServiceOptions()
     : ownership(SERVER_DOESNT_OWN_SERVICE)
+    , restful_mapped_only(true)
     , allow_http_body_to_pb(true)
 #ifdef BAIDU_INTERNAL
     , pb_bytes_to_base64(false)
@@ -1401,11 +1404,13 @@ int Server::AddService(google::protobuf::Service* service,
 
 int Server::AddService(google::protobuf::Service* service,
                        ServiceOwnership ownership,
-                       const butil::StringPiece& restful_mappings) {
+                       const butil::StringPiece& restful_mappings,
+                       bool restful_mapped_only) {
     ServiceOptions options;
     options.ownership = ownership;
     // TODO: This is weird
     options.restful_mappings = restful_mappings.as_string();
+    options.restful_mapped_only = restful_mapped_only;
     return AddServiceInternal(service, false, options);
 }
 
