@@ -97,7 +97,7 @@ extern int bthread_key_create2(bthread_key_t* key,
                                void (*destructor)(void* data, const void* dtor_arg),
                                const void* dtor_arg);
 
-// CAUTION: functions marked with [PRC INTERNAL] are NOT supposed to be called
+// CAUTION: functions marked with [RPC INTERNAL] are NOT supposed to be called
 // by RPC users.
 
 // [RPC INTERNAL]
