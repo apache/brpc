@@ -98,7 +98,7 @@ enum GrpcStatus {
     //
     // See litmus test above for deciding between FAILEDPRECONDITION,
     // Aborted, and Unavailable.
-    GPRC_ABORTED,
+    GRPC_ABORTED,
 
     // OUTOFRANGE means operation was attempted past the valid range.
     // E.g., seeking or reading past end of file.
