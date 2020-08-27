@@ -333,7 +333,7 @@ public:
 
     // Mark this Socket or the Socket associated with `id' as failed.
     // Any later Address() of the identifier shall return NULL unless the
-    // Socket was revivied by HealthCheckThread. The Socket is NOT recycled
+    // Socket was revivied by StartHealthCheck. The Socket is NOT recycled
     // after calling this function, instead it will be recycled when no one
     // references it. Internal fields of the Socket are still accessible
     // after calling this function. Calling SetFailed() of a Socket more
