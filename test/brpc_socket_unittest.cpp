@@ -536,7 +536,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         ASSERT_TRUE(src.empty());
         ASSERT_EQ(-1, s->fd());
     }
-    // HealthCheckThread is possibly still running. Spin until global_sock
+    // StartHealthCheck is possibly still running. Spin until global_sock
     // is NULL(set in CheckRecycle::BeforeRecycle). Notice that you should
     // not spin until Socket::Status(id) becomes -1 and assert global_sock
     // to be NULL because invalidating id happens before calling BeforeRecycle.
@@ -757,7 +757,7 @@ TEST_F(SocketTest, health_check) {
 
     s.release()->Dereference();
 
-    // Must stop messenger before SetFailed the id otherwise HealthCheckThread
+    // Must stop messenger before SetFailed the id otherwise StartHealthCheck
     // still has chance to get reconnected and revive the id.
     messenger->StopAccept(0);
     ASSERT_EQ(-1, messenger->listened_fd());
@@ -765,7 +765,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(EBADF, errno);
 
     ASSERT_EQ(0, brpc::Socket::SetFailed(id));
-    // HealthCheckThread is possibly still addressing the Socket.
+    // StartHealthCheck is possibly still addressing the Socket.
     start_time = butil::gettimeofday_us();
     while (global_sock != NULL) {
         bthread_usleep(1000);
