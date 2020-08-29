@@ -38,7 +38,7 @@ DEFINE_bool(show_full_sql, false, "Show the full sql in query");
 namespace example {
 class MysqlServiceImpl : public ::brpc::policy::MysqlService {
 public:
-    static const size_t SqlShowLengthLimit = 1024;
+    static const size_t SqlShowLengthLimit;// = 1024;
     MysqlServiceImpl() {};
     virtual ~MysqlServiceImpl() {};
     void Query(google::protobuf::RpcController* cntl_base,
@@ -162,6 +162,7 @@ public:
                         request->command_id());
     }
 };
+const size_t MysqlServiceImpl::SqlShowLengthLimit = 1024;
 }  // namespace example
 
 int main(int argc, char* argv[]) {
