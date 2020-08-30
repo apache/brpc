@@ -191,6 +191,7 @@ int main(int argc, char* argv[]) {
     // and cannot coexist with other protocols.
     // The mysql protocol should be the only one enabled.
     options.enabled_protocols = "mysql";
+    options.disabled_protocols = "http h2";
     // We should order the brpc framework to call a specified function
     // to send the mysql initial handshake packet on new client connection established.
     options.on_new_connection_server_send_initial_packet = brpc::policy::ServerSendInitialPacketDemo;

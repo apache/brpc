@@ -547,14 +547,20 @@ bool is_http_protocol(const char* name) {
     return strcmp(name, "http") == 0 || strcmp(name, "h2") == 0;
 }
 
-Acceptor* Server::BuildAcceptor() {
-    std::set<std::string> whitelist;
-    for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
-         sp; ++sp) {
+static std::set<std::string> SplitProtocols(const std::string& protocols) {
+    std::set<std::string> list;
+    for (butil::StringSplitter sp(protocols.c_str(), ' '); sp; ++sp) {
         std::string protocol(sp.field(), sp.length());
-        whitelist.insert(protocol);
+        list.insert(protocol);
     }
+    return list;
+}
+
+Acceptor* Server::BuildAcceptor() {
+    std::set<std::string> whitelist = SplitProtocols(_options.enabled_protocols);
     const bool has_whitelist = !whitelist.empty();
+    std::set<std::string> blacklist = SplitProtocols(_options.disabled_protocols);
+    const bool has_blacklist = !blacklist.empty();
     Acceptor* acceptor = new (std::nothrow) Acceptor(this, _keytable_pool);
     if (NULL == acceptor) {
         LOG(ERROR) << "Fail to new Acceptor";
@@ -569,9 +575,16 @@ Acceptor* Server::BuildAcceptor() {
             continue;
         }
         if (has_whitelist &&
+            !is_http_protocol(protocols[i].name) &&
             !whitelist.erase(protocols[i].name)) {
             // the protocol is not allowed to serve.
             RPC_VLOG << "Skip protocol=" << protocols[i].name;
+            continue;
+        }
+        if (has_blacklist &&
+            blacklist.count(protocols[i].name) != 0) {
+            // the protocol is disabled.
+            RPC_VLOG << "Skip disabled protocol=" << protocols[i].name;
             continue;
         }
         // `process_request' is required at server side

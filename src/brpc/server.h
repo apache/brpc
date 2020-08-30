@@ -229,6 +229,12 @@ struct ServerOptions {
     // Default: NULL (rtmp support disabled)
     RtmpService* rtmp_service;
 
+    // Disable these protocols, separated by spaces.
+    // Why we need this option? Some protocols are enabled by default, such as http.
+    // We need this option to force disable some protocols explicitly.
+    // Default: empty (no protocol)
+    std::string disabled_protocols;
+
     // Only enable these protocols, separated by spaces.
     // All names inside must be valid, check protocols name in global.cpp
     // Default: empty (all protocols)
