@@ -1011,7 +1011,7 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
     const Server::MethodProperty* mp =
         FindMethodPropertyByURIImpl(uri_path, server, unresolved_path);
     if (mp != NULL) {
-        if (mp->http_url != NULL && mp->restful_mapped_only) {
+        if (mp->http_url != NULL && !mp->params.allow_default_url) {
             // the restful method is accessed from its
             // default url (SERVICE/METHOD) which should be rejected.
             return NULL;

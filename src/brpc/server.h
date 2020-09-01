@@ -277,10 +277,10 @@ struct ServiceOptions {
     // Default: empty
     std::string restful_mappings;
 
-    // Work with restful_mappings, if this flag is true, reject methods accessed
+    // Work with restful_mappings, if this flag is false, reject methods accessed
     // from default urls (SERVICE/METHOD).
-    // Default: true
-    bool restful_mapped_only;
+    // Default: false
+    bool allow_default_url;
 
     // [ Not recommended to change this option ]
     // If this flag is true, the service will convert http body to protobuf
@@ -339,11 +339,11 @@ public:
     struct MethodProperty {
         bool is_builtin_service;
         bool own_method_status;
-        bool restful_mapped_only;
         // Parameters which have nothing to do with management of services, but
         // will be used when the service is queried.
         struct OpaqueParams {
             bool is_tabbed;
+            bool allow_default_url;
             bool allow_http_body_to_pb;
             bool pb_bytes_to_base64;
             OpaqueParams();
@@ -421,7 +421,7 @@ public:
     int AddService(google::protobuf::Service* service,
                    ServiceOwnership ownership,
                    const butil::StringPiece& restful_mappings,
-                   bool restful_mapped_only = true);
+                   bool allow_default_url = false);
     int AddService(google::protobuf::Service* service,
                    const ServiceOptions& options);
 
