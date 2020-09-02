@@ -155,6 +155,7 @@ ServerSSLOptions* ServerOptions::mutable_ssl_options() {
 
 Server::MethodProperty::OpaqueParams::OpaqueParams()
     : is_tabbed(false)
+    , allow_default_url(false)
     , allow_http_body_to_pb(true)
     , pb_bytes_to_base64(false) {
 }
@@ -1207,6 +1208,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         mp.is_builtin_service = is_builtin_service;
         mp.own_method_status = true;
         mp.params.is_tabbed = !!tabbed;
+        mp.params.allow_default_url = svc_opt.allow_default_url;
         mp.params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
         mp.params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
         mp.service = service;
@@ -1293,6 +1295,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                 }
                 MethodProperty::OpaqueParams params;
                 params.is_tabbed = !!tabbed;
+                params.allow_default_url = svc_opt.allow_default_url;
                 params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
                 params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
                 if (!_global_restful_map->AddMethod(
@@ -1330,6 +1333,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             }
             MethodProperty::OpaqueParams params;
             params.is_tabbed = !!tabbed;
+            params.allow_default_url = svc_opt.allow_default_url;
             params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
             params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
             if (!m->AddMethod(mappings[i].path, service, params,
@@ -1384,6 +1388,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
 
 ServiceOptions::ServiceOptions()
     : ownership(SERVER_DOESNT_OWN_SERVICE)
+    , allow_default_url(false)
     , allow_http_body_to_pb(true)
 #ifdef BAIDU_INTERNAL
     , pb_bytes_to_base64(false)
@@ -1401,11 +1406,13 @@ int Server::AddService(google::protobuf::Service* service,
 
 int Server::AddService(google::protobuf::Service* service,
                        ServiceOwnership ownership,
-                       const butil::StringPiece& restful_mappings) {
+                       const butil::StringPiece& restful_mappings,
+                       bool allow_default_url) {
     ServiceOptions options;
     options.ownership = ownership;
     // TODO: This is weird
     options.restful_mappings = restful_mappings.as_string();
+    options.allow_default_url = allow_default_url;
     return AddServiceInternal(service, false, options);
 }
 
