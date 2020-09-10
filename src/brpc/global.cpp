@@ -115,7 +115,9 @@ const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
 struct GlobalExtensions {
     GlobalExtensions()
-        : ch_mh_lb(CONS_HASH_LB_MURMUR3)
+        : dns(80)
+        , dns_with_ssl(443)
+        , ch_mh_lb(CONS_HASH_LB_MURMUR3)
         , ch_md5_lb(CONS_HASH_LB_MD5)
         , ch_ketama_lb(CONS_HASH_LB_KETAMA)
         , constant_cl(0) {
@@ -127,6 +129,7 @@ struct GlobalExtensions {
     FileNamingService fns;
     ListNamingService lns;
     DomainNamingService dns;
+    DomainNamingService dns_with_ssl;
     RemoteFileNamingService rfns;
     ConsulNamingService cns;
     DiscoveryNamingService dcns;
@@ -346,7 +349,7 @@ static void GlobalInitializeOrDieImpl() {
     NamingServiceExtension()->RegisterOrDie("file", &g_ext->fns);
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
     NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
-    NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns);
+    NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns_with_ssl);
     NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("remotefile", &g_ext->rfns);
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);

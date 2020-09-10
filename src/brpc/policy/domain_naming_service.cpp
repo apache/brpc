@@ -28,7 +28,9 @@
 namespace brpc {
 namespace policy {
 
-DomainNamingService::DomainNamingService() : _aux_buf_len(0) {}
+DomainNamingService::DomainNamingService(int default_port)
+    : _aux_buf_len(0)
+    , _default_port(default_port) {}
 
 int DomainNamingService::GetServers(const char* dns_name,
                                     std::vector<ServerNode>* servers) {
@@ -51,7 +53,7 @@ int DomainNamingService::GetServers(const char* dns_name,
     }
     
     buf[i] = '\0';
-    int port = 80;  // default port of HTTP
+    int port = _default_port;
     if (dns_name[i] == ':') {
         ++i;
         char* end = NULL;
@@ -142,7 +144,7 @@ void DomainNamingService::Describe(
 }
 
 NamingService* DomainNamingService::New() const {
-    return new DomainNamingService;
+    return new DomainNamingService(_default_port);
 }
 
 void DomainNamingService::Destroy() {
