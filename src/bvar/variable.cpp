@@ -536,28 +536,14 @@ int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
 // ============= export to files ==============
 
 std::string read_command_name() {
-    std::ifstream fin("/proc/self/stat");
-    if (!fin.is_open()) {
+    butil::FilePath symlink_path("/proc/self/exe");
+    butil::FilePath target_path;
+    if (!butil::ReadSymbolicLink(symlink_path, &target_path)) {
         return std::string();
     }
-    int pid = 0;
-    std::string command_name;
-    fin >> pid >> command_name;
-    if (!fin.good()) {
-        return std::string();
-    }
-    // Although the man page says the command name is in parenthesis, for
-    // safety we normalize the name.
+    std::string command_name = target_path.BaseName().value();
     std::string s;
-    if (command_name.size() >= 2UL && command_name[0] == '(' &&
-        butil::back_char(command_name) == ')') {
-        // remove parenthesis.
-        to_underscored_name(&s,
-                            butil::StringPiece(command_name.data() + 1, 
-                                              command_name.size() - 2UL));
-    } else {
-        to_underscored_name(&s, command_name);
-    }
+    to_underscored_name(&s, command_name);
     return s;
 }
 
