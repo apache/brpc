@@ -560,13 +560,12 @@ void PProfService::cmdline(::google::protobuf::RpcController* controller_base,
     ClosureGuard done_guard(done);
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->http_response().set_content_type("text/plain" /*FIXME*/);
-    char buf[1024];  // should be enough?
-    const ssize_t nr = butil::ReadCommandLine(buf, sizeof(buf), true);
-    if (nr < 0) {
+    std::string cmdline = butil::ReadCommandLine(true);
+    if (cmdline.empty()) {
         cntl->SetFailed(ENOENT, "Fail to read cmdline");
         return;
     }
-    cntl->response_attachment().append(buf, nr);
+    cntl->response_attachment().append(cmdline);
 }
 
 } // namespace brpc

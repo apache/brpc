@@ -22,15 +22,19 @@
 #ifndef BUTIL_PROCESS_UTIL_H
 #define BUTIL_PROCESS_UTIL_H
 
+#include <string>
 #include <sys/types.h>
 
 namespace butil {
 
 // Read command line of this program. If `with_args' is true, args are
 // included and separated with spaces.
-// Returns length of the command line on sucess, -1 otherwise.
-// NOTE: `buf' does not end with zero.
-ssize_t ReadCommandLine(char* buf, size_t len, bool with_args);
+// Returns the command line on sucess, empty otherwise.
+std::string ReadCommandLine(bool with_args);
+
+// Read command name of this program.
+// Returns the command name on sucess, empty otherwise
+std::string ReadCommandName();
 
 } // namespace butil
 

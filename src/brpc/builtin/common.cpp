@@ -331,13 +331,10 @@ int FileChecksum(const char* file_path, unsigned char* checksum) {
 
 static pthread_once_t create_program_name_once = PTHREAD_ONCE_INIT;
 static const char* s_program_name = "unknown";
-static char s_cmdline[256];
+static std::string s_command_line;
 static void CreateProgramName() {
-    const ssize_t nr = butil::ReadCommandLine(s_cmdline, sizeof(s_cmdline) - 1, false);
-    if (nr > 0) {
-        s_cmdline[nr] = '\0';
-        s_program_name = s_cmdline;
-    }
+    s_command_line = butil::ReadCommandLine(false);
+    s_program_name = s_command_line.c_str();
 }
 const char* GetProgramName() {
     pthread_once(&create_program_name_once, CreateProgramName);
