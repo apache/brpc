@@ -23,6 +23,7 @@
 #include <stdio.h>                      // snprintf
 #include <sys/types.h>  
 #include <sys/uio.h>
+#include <limits.h>
 #include <unistd.h>                     // read, gitpid
 #include <sstream>                      // std::ostringstream
 #include "butil/fd_guard.h"             // butil::fd_guard
@@ -32,17 +33,22 @@
 
 namespace butil {
 
-ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+std::string ReadCommandLine(bool with_args) {
+    char buf[PATH_MAX];
 #if defined(OS_LINUX)
     butil::fd_guard fd(open("/proc/self/cmdline", O_RDONLY));
     if (fd < 0) {
         LOG(ERROR) << "Fail to open /proc/self/cmdline";
-        return -1;
+        return std::string();
     }
-    ssize_t nr = read(fd, buf, len);
+    ssize_t nr = read(fd, buf, PATH_MAX);
     if (nr <= 0) {
         LOG(ERROR) << "Fail to read /proc/self/cmdline";
-        return -1;
+        return std::string();
     }
 #elif defined(OS_MACOSX)
     static pid_t pid = getpid();
@@ -51,38 +57,48 @@ ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
     snprintf(cmdbuf, sizeof(cmdbuf), "ps -p %ld -o command=", (long)pid);
     if (butil::read_command_output(oss, cmdbuf) != 0) {
         LOG(ERROR) << "Fail to read cmdline";
-        return -1;
+        return std::string();
     }
     const std::string& result = oss.str();
-    ssize_t nr = std::min(result.size(), len);
+    ssize_t nr = std::min(result.size(), PATH_MAX);
     memcpy(buf, result.data(), nr);
 #else
     #error Not Implemented
 #endif
 
     if (with_args) {
-        if ((size_t)nr == len) {
-            return len;
+        if ((size_t)nr == PATH_MAX) {
+            return std::string(buf, nr);
         }
         for (ssize_t i = 0; i < nr; ++i) {
             if (buf[i] == '\0') {
                 buf[i] = '\n';
             }
         }
-        return nr;
+        return std::string(buf, nr);
     } else {
         for (ssize_t i = 0; i < nr; ++i) {
             // The command in macos is separated with space and ended with '\n'
             if (buf[i] == '\0' || buf[i] == '\n' || buf[i] == ' ') {
-                return i;
+                return std::string(buf, i);
             }
         }
-        if ((size_t)nr == len) {
-            LOG(ERROR) << "buf is not big enough";
-            return -1;
-        }
-        return nr;
+        return std::string(buf, nr);
     }
+}
+
+std::string ReadCommandName() {
+    std::string command_line = ReadCommandLine(false);
+    if (command_line.empty()) {
+        return command_line;
+    }
+
+    std::size_t pos = command_line.find_last_of('/');
+    if (pos == std::string::npos) {
+        return command_line;
+    }
+
+    return command_line.substr(pos + 1);
 }
 
 } // namespace butil

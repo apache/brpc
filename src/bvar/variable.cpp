@@ -29,6 +29,7 @@
 #include "butil/errno.h"                         // berror
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
+#include "butil/process_util.h"                  // butil::ReadCommandName
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 
@@ -536,14 +537,8 @@ int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
 // ============= export to files ==============
 
 std::string read_command_name() {
-    butil::FilePath symlink_path("/proc/self/exe");
-    butil::FilePath target_path;
-    if (!butil::ReadSymbolicLink(symlink_path, &target_path)) {
-        return std::string();
-    }
-    std::string command_name = target_path.BaseName().value();
     std::string s;
-    to_underscored_name(&s, command_name);
+    to_underscored_name(&s, butil::ReadCommandName());
     return s;
 }
 
