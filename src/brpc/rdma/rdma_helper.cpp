@@ -109,6 +109,7 @@ DEFINE_string(rdma_cluster, "0.0.0.0/0",
               "The ip address prefix of current cluster which supports RDMA");
 DEFINE_string(rdma_device, "", "The name of the HCA device used "
                                "(Empty means using the first active device)");
+DEFINE_string(network_name, "", "If bonding mode, must specify network name");
 
 struct RdmaCluster {
     uint32_t ip;
@@ -480,7 +481,6 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     // Map ibdev (e.g. mlx5_0) to netdev (e.g. eth0), must compare sysfs file
-    // TODO: this method cannot handle bonding mode, see more in ibdev2netdev
     ifaddrs* ifap = NULL;
     ifaddrs* ifaptr = NULL;
     bool found = false;
@@ -492,10 +492,9 @@ static void GlobalRdmaInitializeOrDieImpl() {
                         "/sys/class/net/%s/device/resource", ifaptr->ifa_name);
                 char net_resource[SYSFS_SIZE];
                 ssize_t len = ReadFile(net_resource_path, net_resource);
-                if (len < 0) {
-                    continue;
-                }
-                if (memcmp(net_resource, dev_resource, len) == 0) {
+                std::string ifa_name = butil::string_printf("%s", ifaptr->ifa_name);
+                if ((memcmp(net_resource, dev_resource, len) == 0) ||
+                    (ifa_name == FLAGS_network_name)) {
                     g_rdma_ip = ptr->sin_addr;
                     found = true;
                     break;
@@ -506,7 +505,9 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
     if (!found) {
         LOG(WARNING) << "Fail to find address of rdma device. "
-                        "Do not use 0.0.0.0/127.0.0.1 to do local RDMA connection.";
+                        "Do not use 0.0.0.0/127.0.0.1 to do local RDMA connection. "
+                     << "if bonding mode, must specify network name, "
+                        "for example: --network_name=bond0.";
     }
     if (FLAGS_rdma_disable_local_connection) {
         LOG(INFO) << "Now local connection only uses TCP. "
