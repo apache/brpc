@@ -76,10 +76,10 @@ int main(int argc, char* argv[]) {
         stub.Echo(&cntl, &request, &response, NULL);
         if (!cntl.Failed()) {
             LOG(INFO) << "Received response from " << cntl.remote_side()
-                << " to " << cntl.local_side()
-                << ": " << response.message() << " (attached="
-                << cntl.response_attachment() << ")"
-                << " latency=" << cntl.latency_us() << "us";
+                      << " to " << cntl.local_side()
+                      << ": " << response.message() << " (attached="
+                      << cntl.response_attachment() << ")"
+                      << " latency=" << cntl.latency_us() << "us";
         } else {
             LOG(WARNING) << cntl.ErrorText();
         }
