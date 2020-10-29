@@ -592,8 +592,7 @@ public:
 struct ReadSelfCmdline {
     std::string content;
     ReadSelfCmdline() {
-        std::string cmdline= butil::ReadCommandLine(true);
-        content.append(cmdline);
+        content = butil::ReadCommandLine(true);
     }
 };
 static void get_cmdline(std::ostream& os, void*) {
