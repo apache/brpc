@@ -37,17 +37,17 @@ class UIFont;
 #if __has_extension(cxx_strong_enums) && \
     (defined(OS_IOS) || (defined(MAC_OS_X_VERSION_10_8) && \
                          MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_8))
-#define CR_FORWARD_ENUM(_type, _name) enum _name : _type _name
+#define CR_FORWARD_ENUM(_type, _name) enum _name : _type
 #else
-#define CR_FORWARD_ENUM(_type, _name) _type _name
+#define CR_FORWARD_ENUM(_type, _name) typedef _type _name
 #endif
 
 // Adapted from NSPathUtilities.h and NSObjCRuntime.h.
 #if __LP64__ || NS_BUILD_32_LIKE_64
-typedef CR_FORWARD_ENUM(unsigned long, NSSearchPathDirectory);
+CR_FORWARD_ENUM(unsigned long, NSSearchPathDirectory);
 typedef unsigned long NSSearchPathDomainMask;
 #else
-typedef CR_FORWARD_ENUM(unsigned int, NSSearchPathDirectory);
+CR_FORWARD_ENUM(unsigned int, NSSearchPathDirectory);
 typedef unsigned int NSSearchPathDomainMask;
 #endif
 

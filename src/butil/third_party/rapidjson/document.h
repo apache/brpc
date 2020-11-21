@@ -315,6 +315,10 @@ struct GenericStringRef {
     GenericStringRef(const CharType* str, SizeType len)
         : s(str), length(len) { RAPIDJSON_ASSERT(s != NULL); }
 
+    // Required by clang++ 11 on MacOS catalina
+    GenericStringRef(const GenericStringRef& other)
+        : s(other.s), length(other.length) { RAPIDJSON_ASSERT(s != NULL); }
+
     //! implicit conversion to plain CharType pointer
     operator const Ch *() const { return s; }
 
@@ -322,11 +326,11 @@ struct GenericStringRef {
     const SizeType length; //!< length of the string (excluding the trailing NULL terminator)
 
 private:
-    //! Disallow copy-assignment
-    GenericStringRef operator=(const GenericStringRef&);
+    //! Disallow copy-ctor&assignment
+    GenericStringRef operator=(const GenericStringRef&) = delete;
     //! Disallow construction from non-const array
     template<SizeType N>
-    GenericStringRef(CharType (&str)[N]) /* = delete */;
+    GenericStringRef(CharType (&str)[N]) = delete;
 };
 
 //! Mark a character pointer as constant string
