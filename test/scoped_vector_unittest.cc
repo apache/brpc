@@ -203,6 +203,17 @@ TEST(ScopedVectorTest, Scope) {
   EXPECT_EQ(LC_DESTROYED, watcher.life_cycle_state());
 }
 
+TEST(ScopedVectorTest, Scope2) {
+  LifeCycleWatcher watcher;
+  EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());
+  {
+    butil::ScopedVector<LifeCycleObject> scoped_vector{ watcher.NewLifeCycleObject() };
+    EXPECT_EQ(LC_CONSTRUCTED, watcher.life_cycle_state());
+    EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
+  }
+  EXPECT_EQ(LC_DESTROYED, watcher.life_cycle_state());
+}
+
 TEST(ScopedVectorTest, MoveConstruct) {
   LifeCycleWatcher watcher;
   EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());

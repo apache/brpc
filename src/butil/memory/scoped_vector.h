@@ -6,6 +6,9 @@
 #define BUTIL_MEMORY_SCOPED_VECTOR_H_
 
 #include <vector>
+#if __cplusplus >= 201103L  // >= C++11
+#include <initializer_list>
+#endif
 
 #include "butil/basictypes.h"
 #include "butil/logging.h"
@@ -38,6 +41,9 @@ class ScopedVector {
   ScopedVector() {}
   ~ScopedVector() { clear(); }
   ScopedVector(RValue other) { swap(*other.object); }
+#if __cplusplus >= 201103L  // < C++11
+  ScopedVector(std::initializer_list<value_type> il) : v_(il) {}
+#endif  // __cplusplus < 201103L
 
   ScopedVector& operator=(RValue rhs) {
     swap(*rhs.object);
