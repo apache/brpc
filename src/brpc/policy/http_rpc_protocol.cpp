@@ -21,6 +21,7 @@
 #include <json2pb/pb_to_json.h>                    // ProtoMessageToJson
 #include <json2pb/json_to_pb.h>                    // JsonToProtoMessage
 
+#include "brpc/policy/http_rpc_protocol.h"
 #include "butil/unique_ptr.h"                       // std::unique_ptr
 #include "butil/string_splitter.h"                  // StringMultiSplitter
 #include "butil/string_printf.h"
@@ -110,6 +111,7 @@ CommonStrings::CommonStrings()
     , CONTENT_TYPE_TEXT("text/plain")
     , CONTENT_TYPE_JSON("application/json")
     , CONTENT_TYPE_PROTO("application/proto")
+    , CONTENT_TYPE_SPRING_PROTO("application/x-protobuf")
     , ERROR_CODE("x-bd-error-code")
     , AUTHORIZATION("authorization")
     , ACCEPT_ENCODING("accept-encoding")
@@ -189,6 +191,9 @@ HttpContentType ParseContentType(butil::StringPiece ct, bool* is_grpc_ct) {
     } else if (ct.starts_with("proto")) {
         type = HTTP_CONTENT_PROTO;
         ct.remove_prefix(5);
+    } else if (ct.starts_with("x-protobuf")) {
+        type = HTTP_CONTENT_PROTO;
+        ct.remove_prefix(10);
     } else {
         return HTTP_CONTENT_OTHERS;
     }
@@ -511,7 +516,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
-            
+
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);

@@ -1443,4 +1443,41 @@ TEST_F(HttpTest, http2_handle_goaway_streams) {
         brpc::Join(ids[i]);
     }
 }
+
+TEST_F(HttpTest, spring_protobuf_content_type) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_content_type("application/x-protobuf");
+    cntl.request_attachment().append(req.SerializeAsString());
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ("application/x-protobuf", cntl.http_response().content_type());
+    ASSERT_TRUE(res.ParseFromString(cntl.response_attachment().to_string()));
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+
+    brpc::Controller cntl2;
+    test::EchoService_Stub stub(&channel);
+    req.set_message(EXP_REQUEST);
+    res.Clear();
+    cntl2.http_request().set_content_type("application/x-protobuf");
+    stub.Echo(&cntl2, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+    ASSERT_EQ("application/x-protobuf", cntl.http_response().content_type());
+}
+
 } //namespace
