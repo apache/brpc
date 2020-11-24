@@ -386,57 +386,63 @@ int DiscoveryNamingService::GetServers(const char* service_name,
         LOG(ERROR) << "Fail to find instances";
         return -1;
     }
+
     const BUTIL_RAPIDJSON_NAMESPACE::Value& instances = itr_instances->value;
-    if (!instances.IsArray()) {
-        LOG(ERROR) << "Fail to parse instances as an array";
-        return -1;
-    }
-
-    for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < instances.Size(); ++i) {
-        std::string metadata;
-        // convert metadata in object to string
-        auto itr_metadata = instances[i].FindMember("metadata");
-        if (itr_metadata != instances[i].MemberEnd()) {
-            BUTIL_RAPIDJSON_NAMESPACE::MemoryBuffer buffer;
-            BUTIL_RAPIDJSON_NAMESPACE::Writer<BUTIL_RAPIDJSON_NAMESPACE::MemoryBuffer> writer(buffer);
-            itr_metadata->value.Accept(writer);
-            metadata.assign(buffer.GetBuffer(), buffer.GetSize());
-        }
-
-        auto itr = instances[i].FindMember("addrs");
-        if (itr == instances[i].MemberEnd() || !itr->value.IsArray()) {
-            LOG(ERROR) << "Fail to find addrs or addrs is not an array";
+    for (auto itr_zone = instances.MemberBegin(); itr_zone != instances.MemberEnd(); ++itr_zone) {
+        const BUTIL_RAPIDJSON_NAMESPACE::Value& nodes = itr_zone->value;
+        if (!nodes.IsArray()) {
+            LOG(ERROR) << "Fail to parse zone nodes as an array";
             return -1;
         }
-        const BUTIL_RAPIDJSON_NAMESPACE::Value& addrs = itr->value;
-        for (BUTIL_RAPIDJSON_NAMESPACE::SizeType j = 0; j < addrs.Size(); ++j) {
-            if (!addrs[j].IsString()) {
-                continue;
+
+        for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < nodes.Size(); ++i) {
+            std::string metadata;
+            // convert metadata in object to string
+            auto itr_metadata = nodes[i].FindMember("metadata");
+            if (itr_metadata != nodes[i].MemberEnd()) {
+                BUTIL_RAPIDJSON_NAMESPACE::MemoryBuffer buffer;
+                BUTIL_RAPIDJSON_NAMESPACE::Writer<BUTIL_RAPIDJSON_NAMESPACE::MemoryBuffer> writer(buffer);
+                itr_metadata->value.Accept(writer);
+                metadata.assign(buffer.GetBuffer(), buffer.GetSize());
             }
-            // The result returned by discovery include protocol prefix, such as
-            // http://172.22.35.68:6686, which should be removed.
-            butil::StringPiece addr(addrs[j].GetString(), addrs[j].GetStringLength());
-            butil::StringPiece::size_type pos = addr.find("://");
-            if (pos != butil::StringPiece::npos) {
-                if (pos != 4 /* sizeof("grpc") */ ||
-                        strncmp("grpc", addr.data(), 4) != 0) {
-                    // Skip server that has prefix but not start with "grpc"
+
+            auto itr = nodes[i].FindMember("addrs");
+            if (itr == nodes[i].MemberEnd() || !itr->value.IsArray()) {
+                LOG(ERROR) << "Fail to find addrs or addrs is not an array";
+                return -1;
+            }
+            const BUTIL_RAPIDJSON_NAMESPACE::Value& addrs = itr->value;
+            for (BUTIL_RAPIDJSON_NAMESPACE::SizeType j = 0; j < addrs.Size(); ++j) {
+                if (!addrs[j].IsString()) {
                     continue;
                 }
-                addr.remove_prefix(pos + 3);
+                // The result returned by discovery include protocol prefix, such as
+                // http://172.22.35.68:6686, which should be removed.
+                butil::StringPiece addr(addrs[j].GetString(), addrs[j].GetStringLength());
+                butil::StringPiece::size_type pos = addr.find("://");
+                if (pos != butil::StringPiece::npos) {
+                    if (pos != 4 /* sizeof("grpc") */ ||
+                            strncmp("grpc", addr.data(), 4) != 0) {
+                        // Skip server that has prefix but not start with "grpc"
+                        continue;
+                    }
+                    addr.remove_prefix(pos + 3);
+                }
+                ServerNode node;
+                node.tag = metadata;
+                // Variable addr contains data from addrs[j].GetString(), it is a
+                // null-terminated string, so it is safe to pass addr.data() as the
+                // first parameter to str2endpoint.
+                if (str2endpoint(addr.data(), &node.addr) != 0) {
+                    LOG(ERROR) << "Invalid address=`" << addr << '\'';
+                    continue;
+                }
+                servers->push_back(node);
             }
-            ServerNode node;
-            node.tag = metadata;
-            // Variable addr contains data from addrs[j].GetString(), it is a
-            // null-terminated string, so it is safe to pass addr.data() as the
-            // first parameter to str2endpoint.
-            if (str2endpoint(addr.data(), &node.addr) != 0) {
-                LOG(ERROR) << "Invalid address=`" << addr << '\'';
-                continue;
-            }
-            servers->push_back(node);
         }
+
     }
+
     return 0;
 }
 
