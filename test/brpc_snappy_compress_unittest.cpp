@@ -28,6 +28,7 @@
 #include "snappy_message.pb.h"
 #include "brpc/policy/snappy_compress.h"
 #include "brpc/policy/gzip_compress.h"
+#include "brpc/policy/lz4_compress.h"
 
 typedef bool (*Compress)(const google::protobuf::Message&, butil::IOBuf*);
 typedef bool (*Decompress)(const butil::IOBuf&, google::protobuf::Message*);
@@ -194,6 +195,9 @@ TEST_F(test_compress_method, throughput_compare) {
         CompressMessage("Zlib", k, old_msg, len, 
                          brpc::policy::ZlibCompress, 
                          brpc::policy::ZlibDecompress);
+        CompressMessage("Lz4", k, old_msg, len, 
+                         brpc::policy::LZ4Compress, 
+                         brpc::policy::LZ4Decompress);
         printf("\n");
         delete [] text;
     }
@@ -228,6 +232,9 @@ TEST_F(test_compress_method, throughput_compare_complete_random) {
         CompressMessage("Zlib", k, old_msg, len, 
                          brpc::policy::ZlibCompress, 
                          brpc::policy::ZlibDecompress);
+        CompressMessage("Lz4", k, old_msg, len, 
+                         brpc::policy::LZ4Compress, 
+                         brpc::policy::LZ4Decompress);
         printf("\n");
         delete [] text;
     }
