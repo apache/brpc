@@ -43,6 +43,7 @@
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
 #include "brpc/grpc.h"
+#include "brpc/excluded_servers.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -494,6 +495,12 @@ public:
     //                       request_name      response_name
     void set_idl_names(const IdlNames& names) { _idl_names = names; }
     IdlNames idl_names() const { return _idl_names; }
+    inline void set_excluded_servers(ExcludedServers* accessed) {
+        if (_accessed != NULL) {
+            ExcludedServers::Destroy(_accessed);
+        }
+        _accessed = accessed;
+    }
 
     // Get/set idl result. The type is limited to be integral.
     // int32_t Echo(EchoRequest req, EchoResponse res);
