@@ -486,6 +486,9 @@ public:
     // Get the object to write key/value which will be flushed into
     // LOG(INFO) when this controller is deleted.
     KVMap& SessionKV();
+    
+    // Flush SessionKV() into `os'
+    void FlushSessionKV(std::ostream& os);
 
     // Contextual prefixes for LOGD/LOGI/LOGW/LOGE/LOGF macros
     struct LogPostfixDummy {
@@ -673,9 +676,6 @@ private:
 
     std::string& protocol_param() { return _thrift_method_name; }
     const std::string& protocol_param() const { return _thrift_method_name; }
-
-    // Flush this->SessionKV() into `os'
-    void FlushSessionKV(std::ostream& os);
 
 private:
     // NOTE: align and group fields to make Controller as compact as possible.

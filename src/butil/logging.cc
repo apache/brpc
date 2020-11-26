@@ -19,6 +19,9 @@
 
 #include "butil/logging.h"
 
+#include <gflags/gflags.h>
+DEFINE_bool(log_as_json, false, "Print log as a valid JSON");
+
 #if !BRPC_WITH_GLOG
 
 #if defined(OS_WIN)
@@ -87,7 +90,6 @@ typedef pthread_mutex_t* MutexHandle;
 #include <vector>
 #include <deque>
 #include <limits>
-#include <gflags/gflags.h>
 #include "butil/atomicops.h"
 #include "butil/thread_local.h"
 #include "butil/scoped_lock.h"                        // BAIDU_SCOPED_LOCK
@@ -138,8 +140,6 @@ DEFINE_bool(log_hostname, false, "Add host after pid in each log so"
             " like ELK.");
 
 DEFINE_bool(log_year, false, "Log year in datetime part in each log");
-
-DEFINE_bool(log_as_json, false, "Print log as a valid JSON");
 
 namespace {
 

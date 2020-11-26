@@ -409,7 +409,6 @@ const LogSeverity BLOG_0 = BLOG_ERROR;
 #define VLOG_IS_ON(verbose_level) BAIDU_VLOG_IS_ON(verbose_level, __FILE__)
 
 DECLARE_int32(v);
-DECLARE_bool(log_as_json);
 
 extern const int VLOG_UNINITIALIZED;
 

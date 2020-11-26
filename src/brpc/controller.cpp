@@ -77,6 +77,8 @@ BAIDU_REGISTER_ERRNO(brpc::ECLOSE, "Close socket initiatively");
 BAIDU_REGISTER_ERRNO(brpc::EITP, "Bad Itp response");
 
 
+DECLARE_bool(log_as_json);
+
 namespace brpc {
 
 DEFINE_bool(graceful_quit_on_sigterm, false,
@@ -128,9 +130,19 @@ Controller::Controller() {
     ResetPods();
 }
 
+struct SessionKVFlusher {
+    Controller* cntl;
+};
+static std::ostream& operator<<(std::ostream& os, const SessionKVFlusher& f) {
+    f.cntl->FlushSessionKV(os);
+    return os;
+}
+
 Controller::~Controller() {
     *g_ncontroller << -1;
-    FlushSessionKV(LOG_STREAM(INFO));
+    if (_session_kv != nullptr && _session_kv->Count() != 0) {
+        LOG(INFO) << SessionKVFlusher{ this };
+    }
     ResetNonPods();
 }
 
@@ -1509,7 +1521,7 @@ void Controller::FlushSessionKV(std::ostream& os) {
         pRID = _http_request->GetHeader(FLAGS_request_id_header);
     }
 
-    if (::logging::FLAGS_log_as_json) {
+    if (FLAGS_log_as_json) {
         os << "\"M\":\"" BRPC_SESSION_END_MSG "\"";
         if (pRID) {
             os << ",\"" BRPC_REQ_ID "\":\"" << *pRID << '"';
@@ -1534,7 +1546,7 @@ Controller::LogPostfixDummy::~LogPostfixDummy() {
 
 std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p) {
     const_cast<brpc::Controller::LogPostfixDummy&>(p).osptr = &os;
-    if (::logging::FLAGS_log_as_json) {
+    if (FLAGS_log_as_json) {
         os << "\"M\":\"";
     }
     return os;
@@ -1544,14 +1556,14 @@ std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p)
 Controller::LogPostfixDummy Controller::LogPostfix() const {
     Controller::LogPostfixDummy result;
     std::string& p = result.postfix;
-    if (::logging::FLAGS_log_as_json) {
+    if (FLAGS_log_as_json) {
         p.push_back('"');
     }
     const std::string* pRID = nullptr;
     if (_http_request) {
         pRID = _http_request->GetHeader(FLAGS_request_id_header);
         if (pRID) {
-            if (::logging::FLAGS_log_as_json) {
+            if (FLAGS_log_as_json) {
                 p.append(",\"" BRPC_REQ_ID "\":\"");
                 p.append(*pRID);
                 p.push_back('"');

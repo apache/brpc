@@ -74,15 +74,7 @@ TEST_F(ControllerTest, notify_on_destruction) {
     ASSERT_TRUE(cancel);
 }
 
-/*
-class MyFormatter : public brpc::SessionLog::Formatter {
-    void Print(std::ostream& os, const brpc::SessionLog& log) override {
-        for (auto it = log.Begin(); it != log.End(); ++it) {
-            os << '"' << it->first << "\":\"" << it->second << "\",";
-        }
-    }
-};
-*/
+#if ! BRPC_WITH_GLOG
 
 static bool endsWith(const std::string& s1, const butil::StringPiece& s2)  {
     if (s1.size() < s2.size()) {
@@ -97,8 +89,10 @@ static bool startsWith(const std::string& s1, const butil::StringPiece& s2)  {
     return memcmp(s1.data(), s2.data(), s2.size()) == 0;
 }
 
+DECLARE_bool(log_as_json);
+
 TEST_F(ControllerTest, SessionKV) {
-    logging::FLAGS_log_as_json = false;
+    FLAGS_log_as_json = false;
     logging::StringSink sink1;
     auto oldSink = logging::SetLogSink(&sink1);
     //brpc::SetGlobalSessionLogFormatter(new MyFormatter);
@@ -120,10 +114,11 @@ TEST_F(ControllerTest, SessionKV) {
         ASSERT_TRUE(startsWith(sink1, "E")) << sink1;
         sink1.clear();
 
-        logging::FLAGS_log_as_json = true;
+        FLAGS_log_as_json = true;
     }
     ASSERT_TRUE(endsWith(sink1, R"(,"M":"Session ends","@rid":"abcdEFG-456","Baidu":"22","Cisco":"33.300000","Apple":"1"})")) << sink1;
     ASSERT_TRUE(startsWith(sink1, R"({"L":"I",)")) << sink1;
 
     logging::SetLogSink(oldSink);
 }
+#endif
