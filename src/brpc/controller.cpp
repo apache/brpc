@@ -1509,7 +1509,7 @@ void Controller::FlushSessionKV(std::ostream& os) {
         pRID = _http_request->GetHeader(FLAGS_request_id_header);
     }
 
-    if (logging::FLAGS_log_as_json) {
+    if (::logging::FLAGS_log_as_json) {
         os << "\"M\":\"" BRPC_SESSION_END_MSG "\"";
         if (pRID) {
             os << ",\"" BRPC_REQ_ID "\":\"" << *pRID << '"';
@@ -1534,7 +1534,7 @@ Controller::LogPostfixDummy::~LogPostfixDummy() {
 
 std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p) {
     const_cast<brpc::Controller::LogPostfixDummy&>(p).osptr = &os;
-    if (logging::FLAGS_log_as_json) {
+    if (::logging::FLAGS_log_as_json) {
         os << "\"M\":\"";
     }
     return os;
@@ -1544,14 +1544,14 @@ std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p)
 Controller::LogPostfixDummy Controller::LogPostfix() const {
     Controller::LogPostfixDummy result;
     std::string& p = result.postfix;
-    if (logging::FLAGS_log_as_json) {
+    if (::logging::FLAGS_log_as_json) {
         p.push_back('"');
     }
     const std::string* pRID = nullptr;
     if (_http_request) {
         pRID = _http_request->GetHeader(FLAGS_request_id_header);
         if (pRID) {
-            if (logging::FLAGS_log_as_json) {
+            if (::logging::FLAGS_log_as_json) {
                 p.append(",\"" BRPC_REQ_ID "\":\"");
                 p.append(*pRID);
                 p.push_back('"');
