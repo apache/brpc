@@ -1541,7 +1541,9 @@ void Controller::FlushSessionKV(std::ostream& os) {
 }
 
 Controller::LogPostfixDummy::~LogPostfixDummy() {
-    *osptr << postfix;
+    if (osptr != nullptr) {
+        *osptr << postfix;
+    }
 }
 
 std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p) {
