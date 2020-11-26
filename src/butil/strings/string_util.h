@@ -254,7 +254,6 @@ BUTIL_EXPORT bool ContainsOnlyChars(const StringPiece16& input,
 // to have the maximum 'discriminating' power from other encodings. If
 // there's a use case for just checking the structural validity, we have to
 // add a new function for that.
-BUTIL_EXPORT bool IsStringUTF8(const std::string& str);
 BUTIL_EXPORT bool IsStringUTF8(const StringPiece& str);
 BUTIL_EXPORT bool IsStringASCII(const StringPiece& str);
 BUTIL_EXPORT bool IsStringASCII(const string16& str);

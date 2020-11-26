@@ -373,10 +373,6 @@ bool IsStringUTF8(const StringPiece& str) {
   return true;
 }
 
-bool IsStringUTF8(const std::string& str) {
-  return IsStringUTF8(StringPiece(str));
-}
-
 }  // namespace butil
 
 template<typename Iter>
