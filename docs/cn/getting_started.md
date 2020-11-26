@@ -265,10 +265,11 @@ If you need to enable cpu/heap profilers in examples:
 brew install gperftools
 ```
 
-If you need to run tests, install and compile googletest (which is not compiled yet):
+If you need to run tests, download and compile googletest (which is not compiled yet):
 ```shell
-git clone https://github.com/google/googletest && cd googletest/googletest && mkdir bld && cd bld && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make && sudo mv libgtest* /usr/lib/ && cd -
+git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir bld && cd bld && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make
 ```
+After the compilation, copy include/ and lib/ into /usr/local/include and /usr/local/lib respectively to expose gtest to all apps
 
 ### Compile brpc with config_brpc.sh
 git clone brpc, cd into the repo and run
