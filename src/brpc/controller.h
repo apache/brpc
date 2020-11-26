@@ -810,7 +810,8 @@ std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p)
 
 } // namespace brpc
 
-// Print contextual logs
+// Print logs appended with @rid which is got from "x-request-id"(set 
+// -request_id_header to change) in http header by default
 #define LOGD(cntl) LOG(DEBUG) << (cntl)->LogPostfix()
 #define LOGI(cntl) LOG(INFO) << (cntl)->LogPostfix()
 #define LOGW(cntl) LOG(WARNING) << (cntl)->LogPostfix()
