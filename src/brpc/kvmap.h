@@ -15,28 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_SESSION_LOG_H
-#define BRPC_SESSION_LOG_H
+#ifndef BRPC_KVMAP_H
+#define BRPC_KVMAP_H
 
 #include "butil/containers/flat_map.h"
 
 namespace brpc {
     
-class SessionLog {
+// Remember Key/Values in string
+class KVMap {
 public:
-    class Formatter {
-    public:
-        virtual ~Formatter() {}
-        virtual void Print(std::ostream&, const SessionLog&) = 0;
-    };
-
     typedef butil::FlatMap<std::string, std::string> Map;
     typedef Map::const_iterator Iterator;
 
-    SessionLog() {}
+    KVMap() {}
 
-    // Exchange internal fields with another SessionLog.
-    void Swap(SessionLog &rhs) { _entries.swap(rhs._entries); }
+    // Exchange internal fields with another KVMap.
+    void Swap(KVMap &rhs) { _entries.swap(rhs._entries); }
 
     // Reset internal fields as if they're just default-constructed.
     void Clear() { _entries.clear(); }
@@ -77,4 +72,4 @@ private:
 
 } // namespace brpc
 
-#endif // BRPC_SESSION_LOG_H
+#endif // BRPC_KVMAP_H

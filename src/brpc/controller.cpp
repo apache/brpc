@@ -79,7 +79,9 @@ BAIDU_REGISTER_ERRNO(brpc::EITP, "Bad Itp response");
 
 namespace brpc {
 
-DEFINE_bool(graceful_quit_on_sigterm, false, "Register SIGTERM handle func to quit graceful");
+DEFINE_bool(graceful_quit_on_sigterm, false,
+            "Register SIGTERM handle func to quit graceful");
+DEFINE_string(request_id_header, "x-request-id", "The http header to mark a session");
 
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
@@ -128,6 +130,7 @@ Controller::Controller() {
 
 Controller::~Controller() {
     *g_ncontroller << -1;
+    FlushSessionKV(LOG_STREAM(INFO));
     ResetNonPods();
 }
 
@@ -1483,6 +1486,84 @@ class DoNothingClosure : public google::protobuf::Closure {
 };
 google::protobuf::Closure* DoNothing() {
     return butil::get_leaky_singleton<DoNothingClosure>();
+}
+
+KVMap& Controller::SessionKV() {
+    if (_session_kv == nullptr) {
+        _session_kv.reset(new KVMap);
+    }
+    return *_session_kv.get();
+}
+
+#define BRPC_SESSION_END_MSG "Session ends"
+#define BRPC_REQ_ID "@rid"
+#define BRPC_KV_SEP ":"
+
+void Controller::FlushSessionKV(std::ostream& os) {
+    if (_session_kv == nullptr || _session_kv->Count() == 0) {
+        return;
+    }
+
+    const std::string* pRID = nullptr;
+    if (_http_request) {
+        pRID = _http_request->GetHeader(FLAGS_request_id_header);
+    }
+
+    if (logging::FLAGS_log_as_json) {
+        os << "\"M\":\"" BRPC_SESSION_END_MSG "\"";
+        if (pRID) {
+            os << ",\"" BRPC_REQ_ID "\":\"" << *pRID << '"';
+        }
+        for (auto it = _session_kv->Begin(); it != _session_kv->End(); ++it) {
+            os << ",\"" << it->first << "\":\"" << it->second << '"';
+        }
+    } else {
+        os << BRPC_SESSION_END_MSG;
+        if (pRID) {
+            os << " " BRPC_REQ_ID BRPC_KV_SEP << *pRID;
+        }
+        for (auto it = _session_kv->Begin(); it != _session_kv->End(); ++it) {
+            os << ' ' << it->first << BRPC_KV_SEP << it->second;
+        }
+    }
+}
+
+Controller::LogPostfixDummy::~LogPostfixDummy() {
+    *osptr << postfix;
+}
+
+std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p) {
+    const_cast<brpc::Controller::LogPostfixDummy&>(p).osptr = &os;
+    if (logging::FLAGS_log_as_json) {
+        os << "\"M\":\"";
+    }
+    return os;
+}
+
+
+Controller::LogPostfixDummy Controller::LogPostfix() const {
+    Controller::LogPostfixDummy result;
+    std::string& p = result.postfix;
+    if (logging::FLAGS_log_as_json) {
+        p.push_back('"');
+    }
+    const std::string* pRID = nullptr;
+    if (_http_request) {
+        pRID = _http_request->GetHeader(FLAGS_request_id_header);
+        if (pRID) {
+            if (logging::FLAGS_log_as_json) {
+                p.append(",\"" BRPC_REQ_ID "\":\"");
+                p.append(*pRID);
+                p.push_back('"');
+            } else {
+                p.reserve(5 + pRID->size());
+                p.append(" " BRPC_REQ_ID BRPC_KV_SEP);
+                p.append(*pRID);
+            }
+
+        }
+    }
+    return result;
 }
 
 } // namespace brpc

@@ -43,6 +43,7 @@
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
 #include "brpc/grpc.h"
+#include "brpc/kvmap.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -482,6 +483,19 @@ public:
     const butil::IOBuf& request_attachment() const { return _request_attachment; }
     const butil::IOBuf& response_attachment() const { return _response_attachment; }
 
+    // Get the object to write key/value which will be flushed into
+    // LOG(INFO) when this controller is deleted.
+    KVMap& SessionKV();
+
+    // Contextual prefixes for LOGD/LOGI/LOGW/LOGE/LOGF macros
+    struct LogPostfixDummy {
+        LogPostfixDummy() : osptr(nullptr) {}
+        ~LogPostfixDummy();
+        std::string postfix;
+        std::ostream* osptr;
+    };
+    LogPostfixDummy LogPostfix() const;
+
     // Return true if the remote side creates a stream.
     bool has_remote_stream() { return _remote_stream_settings != NULL; }
 
@@ -660,6 +674,9 @@ private:
     std::string& protocol_param() { return _thrift_method_name; }
     const std::string& protocol_param() const { return _thrift_method_name; }
 
+    // Flush this->SessionKV() into `os'
+    void FlushSessionKV(std::ostream& os);
+
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
@@ -739,6 +756,8 @@ private:
     HttpHeader* _http_request;
     HttpHeader* _http_response;
 
+    std::unique_ptr<KVMap> _session_kv;
+
     // Fields with large size but low access frequency 
     butil::IOBuf _request_attachment;
     butil::IOBuf _response_attachment;
@@ -787,7 +806,15 @@ bool IsAskedToQuit();
 // Send Ctrl-C to current process.
 void AskToQuit();
 
+std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p);
+
 } // namespace brpc
 
+// Print contextual logs
+#define LOGD(cntl) LOG(DEBUG) << (cntl)->LogPostfix()
+#define LOGI(cntl) LOG(INFO) << (cntl)->LogPostfix()
+#define LOGW(cntl) LOG(WARNING) << (cntl)->LogPostfix()
+#define LOGE(cntl) LOG(ERROR) << (cntl)->LogPostfix()
+#define LOGF(cntl) LOG(FATAL) << (cntl)->LogPostfix()
 
 #endif  // BRPC_CONTROLLER_H
