@@ -1507,7 +1507,7 @@ KVMap& Controller::SessionKV() {
     return *_session_kv.get();
 }
 
-#define BRPC_SESSION_END_MSG "Session ends"
+#define BRPC_SESSION_END_MSG "Session ends."
 #define BRPC_REQ_ID "@rid"
 #define BRPC_KV_SEP ":"
 
@@ -1522,62 +1522,43 @@ void Controller::FlushSessionKV(std::ostream& os) {
     }
 
     if (FLAGS_log_as_json) {
-        os << "\"M\":\"" BRPC_SESSION_END_MSG "\"";
         if (pRID) {
-            os << ",\"" BRPC_REQ_ID "\":\"" << *pRID << '"';
+            os << "\"" BRPC_REQ_ID "\":\"" << *pRID << "\",";
         }
+        os << "\"M\":\"" BRPC_SESSION_END_MSG "\"";
         for (auto it = _session_kv->Begin(); it != _session_kv->End(); ++it) {
             os << ",\"" << it->first << "\":\"" << it->second << '"';
         }
     } else {
-        os << BRPC_SESSION_END_MSG;
         if (pRID) {
-            os << " " BRPC_REQ_ID BRPC_KV_SEP << *pRID;
+            os << BRPC_REQ_ID BRPC_KV_SEP << *pRID << " ";
         }
+        os << BRPC_SESSION_END_MSG;
         for (auto it = _session_kv->Begin(); it != _session_kv->End(); ++it) {
             os << ' ' << it->first << BRPC_KV_SEP << it->second;
         }
     }
 }
 
-Controller::LogPostfixDummy::~LogPostfixDummy() {
-    if (osptr != nullptr) {
-        *osptr << postfix;
-    }
-}
-
-std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p) {
-    const_cast<brpc::Controller::LogPostfixDummy&>(p).osptr = &os;
-    if (FLAGS_log_as_json) {
-        os << "\"M\":\"";
-    }
+std::ostream& operator<<(std::ostream& os, const Controller::LogPrefixDummy& p) {
+    p.DoPrintLogPrefix(os);
     return os;
 }
-
-
-Controller::LogPostfixDummy Controller::LogPostfix() const {
-    Controller::LogPostfixDummy result;
-    std::string& p = result.postfix;
-    if (FLAGS_log_as_json) {
-        p.push_back('"');
-    }
+void Controller::DoPrintLogPrefix(std::ostream& os) const {
     const std::string* pRID = nullptr;
     if (_http_request) {
         pRID = _http_request->GetHeader(FLAGS_request_id_header);
         if (pRID) {
             if (FLAGS_log_as_json) {
-                p.append(",\"" BRPC_REQ_ID "\":\"");
-                p.append(*pRID);
-                p.push_back('"');
+                os << BRPC_REQ_ID "\":\"" << *pRID << "\",";
             } else {
-                p.reserve(5 + pRID->size());
-                p.append(" " BRPC_REQ_ID BRPC_KV_SEP);
-                p.append(*pRID);
+                os << BRPC_REQ_ID BRPC_KV_SEP << *pRID << " ";
             }
-
         }
     }
-    return result;
+    if (FLAGS_log_as_json) {
+        os << "\"M\":\"";
+    }
 }
 
 } // namespace brpc

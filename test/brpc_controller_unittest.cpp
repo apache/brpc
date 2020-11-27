@@ -95,13 +95,27 @@ TEST_F(ControllerTest, SessionKV) {
     FLAGS_log_as_json = false;
     logging::StringSink sink1;
     auto oldSink = logging::SetLogSink(&sink1);
-    //brpc::SetGlobalSessionLogFormatter(new MyFormatter);
     {
         brpc::Controller cntl;
         cntl.set_log_id(123); // not working now
-        cntl.SessionKV().Set("Apple", 1);    
-        cntl.SessionKV().Set("Baidu", "22");
-        cntl.SessionKV().Set("Cisco", 33.3);
+        // set
+        cntl.SessionKV().Set("Apple", 1234567);    
+        cntl.SessionKV().Set("Baidu", "Building");
+        // get
+        auto v1 = cntl.SessionKV().Get("Apple");
+        ASSERT_TRUE(v1);
+        ASSERT_EQ("1234567", *v1);
+        auto v2 = cntl.SessionKV().Get("Baidu");
+        ASSERT_TRUE(v2);
+        ASSERT_EQ("Building", *v2);
+
+        // override
+        cntl.SessionKV().Set("Baidu", "NewStuff");
+        v2 = cntl.SessionKV().Get("Baidu");
+        ASSERT_TRUE(v2);
+        ASSERT_EQ("NewStuff", *v2);
+
+        cntl.SessionKV().Set("Cisco", 33.33);
 
         LOGW(&cntl) << "My WARNING Log";
         ASSERT_TRUE(endsWith(sink1, "] My WARNING Log")) << sink1;
@@ -110,13 +124,13 @@ TEST_F(ControllerTest, SessionKV) {
 
         cntl.http_request().SetHeader("x-request-id", "abcdEFG-456");
         LOGE(&cntl) << "My ERROR Log";
-        ASSERT_TRUE(endsWith(sink1, "] My ERROR Log @rid:abcdEFG-456")) << sink1;
+        ASSERT_TRUE(endsWith(sink1, "] @rid:abcdEFG-456 My ERROR Log")) << sink1;
         ASSERT_TRUE(startsWith(sink1, "E")) << sink1;
         sink1.clear();
 
         FLAGS_log_as_json = true;
     }
-    ASSERT_TRUE(endsWith(sink1, R"(,"M":"Session ends","@rid":"abcdEFG-456","Baidu":"22","Cisco":"33.300000","Apple":"1"})")) << sink1;
+    ASSERT_TRUE(endsWith(sink1, R"(,"@rid":"abcdEFG-456","M":"Session ends.","Baidu":"NewStuff","Cisco":"33.330000","Apple":"1234567"})")) << sink1;
     ASSERT_TRUE(startsWith(sink1, R"({"L":"I",)")) << sink1;
 
     logging::SetLogSink(oldSink);

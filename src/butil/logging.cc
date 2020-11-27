@@ -565,6 +565,33 @@ static void PrintLogPrefixAsJSON(
     os << "\"C\":\"" << file << ':' << line << "\"";
 }
 
+static void PrintLog(std::ostream& os,
+                     int severity, const char* file, int line,
+                     const butil::StringPiece& content) {
+    if (!FLAGS_log_as_json) {
+        PrintLogPrefix(os, severity, file, line);
+        os.write(content.data(), content.size());
+    } else {
+        os << '{';
+        PrintLogPrefixAsJSON(os, severity, file, line);
+        bool pair_quote = false;
+        if (content.empty() || content[0] != '"') {
+            // not a json, add a 'M' field
+            os << ",\"M\":\"";
+            pair_quote = true;
+        } else {
+            os << ',';
+        }
+        os.write(content.data(), content.size());
+        if (pair_quote) {
+            os << '"';
+        } else if (!content.empty() && content[content.size()-1] != '"') {
+            // Controller may write `"M":"...` which misses the last quote
+            os << '"';
+        }
+        os << '}';
+    }
+}
 
 // A log message handler that gets notified of every log message we process.
 class DoublyBufferedLogSink : public butil::DoublyBufferedData<LogSink*> {
@@ -669,33 +696,12 @@ void DisplayDebugMessageInDialog(const std::string& str) {
 
 bool StringSink::OnLogMessage(int severity, const char* file, int line, 
                               const butil::StringPiece& content) {
-    std::ostringstream prefix_os;
-    bool pair_quote = false;
-    if (FLAGS_log_as_json) {
-        prefix_os << '{';
-        PrintLogPrefixAsJSON(prefix_os, severity, file, line);
-        if (content.empty() || content[0] != '"') {
-            // not a json, add 'M' field
-            prefix_os << ",\"M\":\"";
-            pair_quote = true;
-        } else {
-            prefix_os << ',';
-        }
-    } else {
-        PrintLogPrefix(prefix_os, severity, file, line);
-    }
-    const std::string prefix = prefix_os.str();
+    std::ostringstream os;
+    PrintLog(os, severity, file, line, content);
+    const std::string msg = os.str();
     {
         butil::AutoLock lock_guard(_lock);
-        reserve(size() + prefix.size() + content.size());
-        append(prefix);
-        append(content.data(), content.size());
-        if (FLAGS_log_as_json) {
-            if (pair_quote) {
-                push_back('"');
-            }
-            push_back('}');
-        }
+        append(msg);
     }
     return true;
 }
@@ -849,27 +855,8 @@ public:
         // A LogSink focused on performance should also be able to handle
         // non-continuous inputs which is a must to maximize performance.
         std::ostringstream os;
-        if (!FLAGS_log_as_json) {
-            PrintLogPrefix(os, severity, file, line);
-            os.write(content.data(), content.size());
-            os << '\n';
-        } else {
-            os << '{';
-            PrintLogPrefixAsJSON(os, severity, file, line);
-            bool pair_quote = false;
-            if (content.empty() || content[0] != '"') {
-                // not a json, add a 'M' field
-                os << ",\"M\":\"";
-                pair_quote = true;
-            } else {
-                os << ',';
-            }
-            os.write(content.data(), content.size());
-            if (pair_quote) {
-                os << '"';
-            }
-            os << "}\n";
-        }
+        PrintLog(os, severity, file, line, content);
+        os << '\n';
         std::string log = os.str();
         
         if ((logging_destination & LOG_TO_SYSTEM_DEBUG_LOG) != 0) {

@@ -491,13 +491,15 @@ public:
     void FlushSessionKV(std::ostream& os);
 
     // Contextual prefixes for LOGD/LOGI/LOGW/LOGE/LOGF macros
-    struct LogPostfixDummy {
-        LogPostfixDummy() : osptr(nullptr) {}
-        ~LogPostfixDummy();
-        std::string postfix;
-        std::ostream* osptr;
+    class LogPrefixDummy {
+    public:
+        LogPrefixDummy(const Controller* cntl) : _cntl(cntl) {}
+        void DoPrintLogPrefix(std::ostream& os) const { _cntl->DoPrintLogPrefix(os); }
+    private:
+        const Controller* _cntl;
     };
-    LogPostfixDummy LogPostfix() const;
+    friend class LogPrefixDummy;
+    LogPrefixDummy LogPrefix() const { return LogPrefixDummy(this); }
 
     // Return true if the remote side creates a stream.
     bool has_remote_stream() { return _remote_stream_settings != NULL; }
@@ -677,6 +679,8 @@ private:
     std::string& protocol_param() { return _thrift_method_name; }
     const std::string& protocol_param() const { return _thrift_method_name; }
 
+    void DoPrintLogPrefix(std::ostream& os) const;
+
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
@@ -806,16 +810,16 @@ bool IsAskedToQuit();
 // Send Ctrl-C to current process.
 void AskToQuit();
 
-std::ostream& operator<<(std::ostream& os, const Controller::LogPostfixDummy& p);
+std::ostream& operator<<(std::ostream& os, const Controller::LogPrefixDummy& p);
 
 } // namespace brpc
 
 // Print logs appended with @rid which is got from "x-request-id"(set 
 // -request_id_header to change) in http header by default
-#define LOGD(cntl) LOG(DEBUG) << (cntl)->LogPostfix()
-#define LOGI(cntl) LOG(INFO) << (cntl)->LogPostfix()
-#define LOGW(cntl) LOG(WARNING) << (cntl)->LogPostfix()
-#define LOGE(cntl) LOG(ERROR) << (cntl)->LogPostfix()
-#define LOGF(cntl) LOG(FATAL) << (cntl)->LogPostfix()
+#define LOGD(cntl) LOG(DEBUG) << (cntl)->LogPrefix()
+#define LOGI(cntl) LOG(INFO) << (cntl)->LogPrefix()
+#define LOGW(cntl) LOG(WARNING) << (cntl)->LogPrefix()
+#define LOGE(cntl) LOG(ERROR) << (cntl)->LogPrefix()
+#define LOGF(cntl) LOG(FATAL) << (cntl)->LogPrefix()
 
 #endif  // BRPC_CONTROLLER_H
