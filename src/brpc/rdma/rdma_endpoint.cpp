@@ -161,7 +161,7 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     , _window_size(_sq_size)
     , _new_rq_wrs(0)
     , _remote_sid(0)
-    , _completion_queue(_sq_size + _rq_size + 32)
+    , _completion_queue()
     , _ncompletions(0)
 {
     _pipefd[0] = -1;
@@ -209,6 +209,7 @@ void RdmaEndpoint::Reset() {
     _remote_sid = 0;
     _sq_sent = 0;
     _rq_received = 0;
+    _completion_queue.reset();
     _ncompletions.store(0, butil::memory_order_relaxed);
 }
 
@@ -241,6 +242,10 @@ void RdmaEndpoint::Reset() {
 // currently.
 
 ssize_t RdmaEndpoint::Handshake() {
+    // This ReAddress is very important to avoid Reset during Handshake
+    SocketUniquePtr s;
+    _socket->ReAddress(&s);
+
     // First we try to read from TCP fd
     // Then we try to read from rdmcm fd
     // At last we try to read from pipe fd
@@ -309,6 +314,10 @@ static int InitPipe(int pipefd[]) {
 }
 
 int RdmaEndpoint::HandshakeAtServer(RdmaCMEvent event) {
+#ifndef BRPC_RDMA
+    CHECK(false) << "This should not happen";
+    return -1;
+#else
     bool direct_pass = false;
     switch(_status) {
     case UNINITIALIZED: {
@@ -400,6 +409,7 @@ int RdmaEndpoint::HandshakeAtServer(RdmaCMEvent event) {
         }
         _status = ESTABLISHED;
         _socket->_rdma_state = Socket::RDMA_ON;
+        LOG_IF(INFO, FLAGS_rdma_trace_verbose) << "RDMA connection accepted";
         break;
     }
     case ESTABLISHED: {
@@ -417,6 +427,7 @@ int RdmaEndpoint::HandshakeAtServer(RdmaCMEvent event) {
 
     errno = EINTR;  // retry to read from TCP fd and rdmacm fd
     return -1;
+#endif
 }
 
 int RdmaEndpoint::StartHandshake() {
@@ -1066,6 +1077,9 @@ int RdmaEndpoint::AllocateResources() {
 
     if (RdmaCompletionQueue::IsShared()) {
         _rcq = RdmaCompletionQueue::GetOne();
+        if (_completion_queue.init(_sq_size + _rq_size) < 0) {
+            return -1;
+        }
     } else {
         // The capacity size of CQ is not easy to estimate.
         // Empirically, we use twice the sum of SQ+RQ size.

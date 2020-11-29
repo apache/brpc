@@ -65,23 +65,23 @@ TEST(NamingServiceTest, sanity) {
 #endif
 
     brpc::policy::DomainNamingService dns;
-    ASSERT_EQ(0, dns.GetServers("brpc.baidu.com:1234", &servers));
-    ASSERT_EQ(1u, servers.size());
+    ASSERT_EQ(0, dns.GetServers("baidu.com:1234", &servers));
+    ASSERT_EQ(2u, servers.size());
     ASSERT_EQ(1234, servers[0].addr.port);
     const butil::ip_t expected_ip = servers[0].addr.ip;
 
-    ASSERT_EQ(0, dns.GetServers("brpc.baidu.com", &servers));
-    ASSERT_EQ(1u, servers.size());
+    ASSERT_EQ(0, dns.GetServers("baidu.com", &servers));
+    ASSERT_EQ(2u, servers.size());
     ASSERT_EQ(expected_ip, servers[0].addr.ip);
     ASSERT_EQ(80, servers[0].addr.port);
 
-    ASSERT_EQ(0, dns.GetServers("brpc.baidu.com:1234/useless1/useless2", &servers));
-    ASSERT_EQ(1u, servers.size());
+    ASSERT_EQ(0, dns.GetServers("baidu.com:1234/useless1/useless2", &servers));
+    ASSERT_EQ(2u, servers.size());
     ASSERT_EQ(expected_ip, servers[0].addr.ip);
     ASSERT_EQ(1234, servers[0].addr.port);
 
-    ASSERT_EQ(0, dns.GetServers("brpc.baidu.com/useless1/useless2", &servers));
-    ASSERT_EQ(1u, servers.size());
+    ASSERT_EQ(0, dns.GetServers("baidu.com/useless1/useless2", &servers));
+    ASSERT_EQ(2u, servers.size());
     ASSERT_EQ(expected_ip, servers[0].addr.ip);
     ASSERT_EQ(80, servers[0].addr.port);
 
@@ -90,7 +90,7 @@ TEST(NamingServiceTest, sanity) {
         "10.128.0.1:1234",
         "10.129.0.1:1234",
         "localhost:1234",
-        "brpc.baidu.com:1234"
+        "baidu.com:1234"
     };
     butil::TempFile tmp_file;
     {
@@ -132,9 +132,9 @@ TEST(NamingServiceTest, invalid_port) {
 #endif
 
     brpc::policy::DomainNamingService dns;
-    ASSERT_EQ(-1, dns.GetServers("brpc.baidu.com:", &servers));
-    ASSERT_EQ(-1, dns.GetServers("brpc.baidu.com:123a", &servers));
-    ASSERT_EQ(-1, dns.GetServers("brpc.baidu.com:99999", &servers));
+    ASSERT_EQ(-1, dns.GetServers("baidu.com:", &servers));
+    ASSERT_EQ(-1, dns.GetServers("baidu.com:123a", &servers));
+    ASSERT_EQ(-1, dns.GetServers("baidu.com:99999", &servers));
 }
 
 TEST(NamingServiceTest, wrong_name) {
@@ -152,7 +152,7 @@ TEST(NamingServiceTest, wrong_name) {
         "10.128.0.1:",
         "10.128.0.1",
         "localhost:1234",
-        "brpc.baidu.com:1234",
+        "baidu.com:1234",
         "LOCAL:1234"
     };
     butil::TempFile tmp_file;
