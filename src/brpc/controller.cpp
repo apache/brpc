@@ -83,7 +83,6 @@ namespace brpc {
 
 DEFINE_bool(graceful_quit_on_sigterm, false,
             "Register SIGTERM handle func to quit graceful");
-DEFINE_string(request_id_header, "x-request-id", "The http header to mark a session");
 
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
@@ -128,6 +127,13 @@ Controller::Controller() {
     CHECK_EQ(0, pthread_once(&s_create_vars_once, CreateVars));
     *g_ncontroller << 1;
     ResetPods();
+}
+
+Controller::Controller(const Inheritable& parent_ctx) {
+    CHECK_EQ(0, pthread_once(&s_create_vars_once, CreateVars));
+    *g_ncontroller << 1;
+    ResetPods();
+    _inheritable = parent_ctx;
 }
 
 struct SessionKVFlusher {
@@ -247,7 +253,7 @@ void Controller::ResetPods() {
     _response_compress_type = COMPRESS_TYPE_NONE;
     _fail_limit = UNSET_MAGIC_NUM;
     _pipelined_count = 0;
-    _log_id = 0;
+    _inheritable.Reset();
     _pchan_sub_count = 0;
     _response = NULL;
     _done = NULL;
@@ -330,7 +336,7 @@ void Controller::set_max_retry(int max_retry) {
 
 void Controller::set_log_id(uint64_t log_id) {
     add_flag(FLAGS_LOG_ID);
-    _log_id = log_id;
+    _inheritable.log_id = log_id;
 }
 
 
@@ -1249,7 +1255,7 @@ void Controller::SaveClientSettings(ClientSettings* s) const {
     s->tos = _tos;
     s->connection_type = _connection_type;
     s->request_compress_type = _request_compress_type;
-    s->log_id = _log_id;
+    s->log_id = log_id();
     s->has_request_code = has_request_code();
     s->request_code = _request_code;
 }
@@ -1517,8 +1523,8 @@ void Controller::FlushSessionKV(std::ostream& os) {
     }
 
     const std::string* pRID = nullptr;
-    if (_http_request) {
-        pRID = _http_request->GetHeader(FLAGS_request_id_header);
+    if (!request_id().empty()) {
+        pRID = &request_id();
     }
 
     if (FLAGS_log_as_json) {
@@ -1544,10 +1550,11 @@ std::ostream& operator<<(std::ostream& os, const Controller::LogPrefixDummy& p) 
     p.DoPrintLogPrefix(os);
     return os;
 }
+
 void Controller::DoPrintLogPrefix(std::ostream& os) const {
     const std::string* pRID = nullptr;
-    if (_http_request) {
-        pRID = _http_request->GetHeader(FLAGS_request_id_header);
+    if (!request_id().empty()) {
+        pRID = &request_id();
         if (pRID) {
             if (FLAGS_log_as_json) {
                 os << BRPC_REQ_ID "\":\"" << *pRID << "\",";

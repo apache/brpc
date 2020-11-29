@@ -122,7 +122,7 @@ TEST_F(ControllerTest, SessionKV) {
         ASSERT_TRUE(startsWith(sink1, "W")) << sink1;
         sink1.clear();
 
-        cntl.http_request().SetHeader("x-request-id", "abcdEFG-456");
+        cntl.set_request_id("abcdEFG-456");
         CLOGE(&cntl) << "My ERROR Log";
         ASSERT_TRUE(endsWith(sink1, "] @rid=abcdEFG-456 My ERROR Log")) << sink1;
         ASSERT_TRUE(startsWith(sink1, "E")) << sink1;

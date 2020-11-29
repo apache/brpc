@@ -67,9 +67,12 @@ DEFINE_string(http_header_of_user_ip, "", "http requests sent by proxies may "
               "brpc will read ip:port from the specified header for "
               "authorization and set Controller::remote_side()");
 
-DEFINE_bool(pb_enum_as_number, false, "[Not recommended] Convert enums in "
+DEFINE_bool(pb_enum_as_number, false,
+            "[Not recommended] Convert enums in "
             "protobuf to json as numbers, affecting both client-side and "
             "server-side");
+
+DEFINE_string(request_id_header, "x-request-id", "The http header to mark a session");
 
 // Read user address from the header specified by -http_header_of_user_ip
 static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
@@ -566,8 +569,10 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
     // Fill log-id if user set it.
     if (cntl->has_log_id()) {
         hreq.SetHeader(common->LOG_ID,
-                          butil::string_printf(
-                              "%llu", (unsigned long long)cntl->log_id()));
+                       butil::string_printf("%llu", (unsigned long long)cntl->log_id()));
+    }
+    if (!cntl->request_id().empty()) {
+        hreq.SetHeader(FLAGS_request_id_header, cntl->request_id());
     }
 
     if (!is_http2) {
@@ -1262,6 +1267,11 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         } else {
             cntl->set_log_id(logid);
         }
+    }
+
+    const std::string* request_id = req_header.GetHeader(FLAGS_request_id_header);
+    if (request_id) {
+        cntl->set_request_id(*request_id);
     }
 
     // Tag the bthread with this server's key for
