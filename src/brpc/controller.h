@@ -814,12 +814,13 @@ std::ostream& operator<<(std::ostream& os, const Controller::LogPrefixDummy& p);
 
 } // namespace brpc
 
-// Print logs appended with @rid which is got from "x-request-id"(set 
-// -request_id_header to change) in http header by default
-#define LOGD(cntl) LOG(DEBUG) << (cntl)->LogPrefix()
-#define LOGI(cntl) LOG(INFO) << (cntl)->LogPrefix()
-#define LOGW(cntl) LOG(WARNING) << (cntl)->LogPrefix()
-#define LOGE(cntl) LOG(ERROR) << (cntl)->LogPrefix()
-#define LOGF(cntl) LOG(FATAL) << (cntl)->LogPrefix()
+// Print contextual logs with @rid which is got from "x-request-id"(changable
+// by -request_id_header) in http header by default
+#define CLOGD(cntl) LOG(DEBUG) << (cntl)->LogPrefix()
+#define CLOGI(cntl) LOG(INFO) << (cntl)->LogPrefix()
+#define CLOGW(cntl) LOG(WARNING) << (cntl)->LogPrefix()
+#define CLOGE(cntl) LOG(ERROR) << (cntl)->LogPrefix()
+#define CLOGF(cntl) LOG(FATAL) << (cntl)->LogPrefix()
+#define CVLOG(v, cntl) VLOG(v) << (cntl)->LogPrefix()
 
 #endif  // BRPC_CONTROLLER_H

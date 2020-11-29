@@ -117,14 +117,14 @@ TEST_F(ControllerTest, SessionKV) {
 
         cntl.SessionKV().Set("Cisco", 33.33);
 
-        LOGW(&cntl) << "My WARNING Log";
+        CLOGW(&cntl) << "My WARNING Log";
         ASSERT_TRUE(endsWith(sink1, "] My WARNING Log")) << sink1;
         ASSERT_TRUE(startsWith(sink1, "W")) << sink1;
         sink1.clear();
 
         cntl.http_request().SetHeader("x-request-id", "abcdEFG-456");
-        LOGE(&cntl) << "My ERROR Log";
-        ASSERT_TRUE(endsWith(sink1, "] @rid:abcdEFG-456 My ERROR Log")) << sink1;
+        CLOGE(&cntl) << "My ERROR Log";
+        ASSERT_TRUE(endsWith(sink1, "] @rid=abcdEFG-456 My ERROR Log")) << sink1;
         ASSERT_TRUE(startsWith(sink1, "E")) << sink1;
         sink1.clear();
 

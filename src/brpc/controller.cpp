@@ -1509,7 +1509,7 @@ KVMap& Controller::SessionKV() {
 
 #define BRPC_SESSION_END_MSG "Session ends."
 #define BRPC_REQ_ID "@rid"
-#define BRPC_KV_SEP ":"
+#define BRPC_KV_SEP "="
 
 void Controller::FlushSessionKV(std::ostream& os) {
     if (_session_kv == nullptr || _session_kv->Count() == 0) {
