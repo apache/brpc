@@ -87,3 +87,9 @@ bind(
     name = "ssl_macos",
     actual = "@openssl_macos//:ssl"
 )
+
+new_local_repository(
+    name = "zlib",
+    build_file = "//:zlib.BUILD",
+    path = "/usr",
+)

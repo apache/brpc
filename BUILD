@@ -78,9 +78,6 @@ COPTS = [
 LINKOPTS = [
     "-lpthread",
     "-ldl",
-    "-lz",
-    # "-lssl",
-    # "-lcrypto",
 ] + select({
     ":darwin": [
         "-framework CoreFoundation",
@@ -340,6 +337,7 @@ cc_library(
     deps = [
         "@com_google_protobuf//:protobuf",
         "@com_github_gflags_gflags//:gflags",
+        "@zlib//:zlib",
     ] + select({
         ":with_glog": ["@com_github_google_glog//:glog"],
         "//conditions:default": [],

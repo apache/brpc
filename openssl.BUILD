@@ -26,7 +26,7 @@ cc_library(
     name = "ssl",
     hdrs = select({
         ":macos": glob(["include/openssl/*.h"]),
-        "//conditions:default": ["lib/libssl.so"]
+        "//conditions:default": []
     }),
     srcs = select ({
         ":macos": ["lib/libssl.dylib"],
