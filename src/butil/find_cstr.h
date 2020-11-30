@@ -95,7 +95,7 @@ struct StringMapThreadLocalTemp {
     }
 };
 
-extern __thread StringMapThreadLocalTemp tls_stringmap_temp;
+extern thread_local StringMapThreadLocalTemp tls_stringmap_temp;
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::const_iterator

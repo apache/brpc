@@ -2131,12 +2131,12 @@ TEST_F(FileUtilTest, TouchFile) {
   // 784915200000000 represents the timestamp of "Wed, 16 Nov 1994, 00:00:00".
   // This timestamp is divisible by one day (in local timezone), to make it work
   // on FAT too.
-  Time access_time(784915200000000);
+  auto access_time = Time::FromUTCExploded({1994, 11, 4, 16, 0, 0, 0, 0});
 
   // 784903526000000 represents the timestamp of "Tue, 15 Nov 1994, 12:45:26 GMT".
   // Note that this timestamp is divisible by two (seconds) - FAT stores
   // modification times with 2s resolution.
-  Time modification_time(784903526000000);
+  auto modification_time = Time::FromUTCExploded({1994, 11, 3, 15, 12, 45, 26, 0});
 
   ASSERT_TRUE(TouchFile(foobar, access_time, modification_time));
   File::Info file_info;

@@ -34,7 +34,7 @@
 #include "brpc/span.pb.h"
 
 namespace bthread {
-extern __thread bthread::LocalStorage tls_bls;
+extern thread_local bthread::LocalStorage tls_bls;
 }
 
 
