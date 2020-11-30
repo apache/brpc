@@ -202,15 +202,24 @@ enum TrimPositions {
 BUTIL_EXPORT TrimPositions TrimWhitespace(const string16& input,
                                          TrimPositions positions,
                                          butil::string16* output);
+BUTIL_EXPORT TrimPositions TrimWhitespace(const butil::StringPiece16& input,
+                                         TrimPositions positions,
+                                         butil::StringPiece16* output);
 BUTIL_EXPORT TrimPositions TrimWhitespaceASCII(const std::string& input,
                                               TrimPositions positions,
                                               std::string* output);
+BUTIL_EXPORT TrimPositions TrimWhitespaceASCII(const butil::StringPiece& input,
+                                              TrimPositions positions,
+                                              butil::StringPiece* output);
 
 // Deprecated. This function is only for backward compatibility and calls
 // TrimWhitespaceASCII().
 BUTIL_EXPORT TrimPositions TrimWhitespace(const std::string& input,
                                          TrimPositions positions,
                                          std::string* output);
+BUTIL_EXPORT TrimPositions TrimWhitespace(const butil::StringPiece& input,
+                                         TrimPositions positions,
+                                         butil::StringPiece* output);
 
 // Searches  for CR or LF characters.  Removes all contiguous whitespace
 // strings that contain them.  This is useful when trying to deal with text
@@ -245,7 +254,7 @@ BUTIL_EXPORT bool ContainsOnlyChars(const StringPiece16& input,
 // to have the maximum 'discriminating' power from other encodings. If
 // there's a use case for just checking the structural validity, we have to
 // add a new function for that.
-BUTIL_EXPORT bool IsStringUTF8(const std::string& str);
+BUTIL_EXPORT bool IsStringUTF8(const StringPiece& str);
 BUTIL_EXPORT bool IsStringASCII(const StringPiece& str);
 BUTIL_EXPORT bool IsStringASCII(const string16& str);
 
