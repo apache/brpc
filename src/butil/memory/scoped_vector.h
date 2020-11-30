@@ -6,9 +6,6 @@
 #define BUTIL_MEMORY_SCOPED_VECTOR_H_
 
 #include <vector>
-#if __cplusplus >= 201103L  // >= C++11
-#include <initializer_list>
-#endif
 
 #include "butil/basictypes.h"
 #include "butil/logging.h"
