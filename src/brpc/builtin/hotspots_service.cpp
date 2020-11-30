@@ -376,6 +376,7 @@ static void NotifyWaiters(ProfilingType type, const Controller* cur_cntl,
 }
 
 #if defined(OS_MACOSX)
+static const char* s_pprof_binary_path = nullptr;
 static bool check_GOOGLE_PPROF_BINARY_PATH() {
     char* str = getenv("GOOGLE_PPROF_BINARY_PATH");
     if (str == NULL) {
@@ -385,6 +386,7 @@ static bool check_GOOGLE_PPROF_BINARY_PATH() {
     if (fd < 0) {
         return false;
     }
+    s_pprof_binary_path = strdup(str);
     return true;
 }
 
@@ -491,13 +493,13 @@ static void DisplayResult(Controller* cntl,
     }
     cmd_builder << " 2>&1 ";
 #elif defined(OS_MACOSX)
-    cmd_builder << getenv("GOOGLE_PPROF_BINARY_PATH") << " "
+    cmd_builder << s_pprof_binary_path << " "
                 << DisplayTypeToPProfArgument(display_type)
                 << (show_ccount ? " -contentions " : "");
     if (base_name) {
         cmd_builder << "-base " << *base_name << ' ';
     }
-    cmd_builder << prof_name << " 2>&1 ";
+    cmd_builder << GetProgramName() << " " << prof_name << " 2>&1 ";
 #endif
 
     const std::string cmd = cmd_builder.str();
@@ -517,6 +519,7 @@ static void DisplayResult(Controller* cntl,
         errno = 0; // read_command_output may not set errno, clear it to make sure if
                    // we see non-zero errno, it's real error.
         butil::IOBufBuilder pprof_output;
+        RPC_VLOG << "Running cmd=" << cmd;
         const int rc = butil::read_command_output(pprof_output, cmd.c_str());
         if (rc != 0) {
             butil::FilePath pprof_path(pprof_tool);
