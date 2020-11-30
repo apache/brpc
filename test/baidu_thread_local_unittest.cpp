@@ -174,7 +174,9 @@ void fun4(void* arg) {
 }
 
 static void check_result() {
-    ASSERT_EQ("fun4(0)\nfun3(0x2)\nfun2\n", get_oss().str());
+  // Don't use gtest function since this function might be invoked when the main
+  // thread quits, instances required by gtest functions are likely destroyed.
+  assert (get_oss().str() == "fun4(0)\nfun3(0x2)\nfun2\n");
 }
 
 TEST_F(BaiduThreadLocalTest, call_order_and_cancel) {

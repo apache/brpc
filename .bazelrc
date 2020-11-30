@@ -17,5 +17,8 @@ build --copt -DHAVE_ZLIB=1
 # bazel build with glog
 # build --define=with_glog=true
 build -c opt
+build --incompatible_disable_deprecated_attr_params=false
+build --incompatible_new_actions_api=false
 # unittest 
 test --define=unittest=true
+test --copt=-g
