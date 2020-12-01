@@ -813,19 +813,27 @@ int Server::StartInternal(const butil::ip_t& ip,
         BthreadInitArgs* init_args
             = new BthreadInitArgs[_options.bthread_init_count];
         size_t ncreated = 0;
-        for (size_t i = 0; i < _options.bthread_init_count; ++i, ++ncreated) {
-            init_args[i].bthread_init_fn = _options.bthread_init_fn;
-            init_args[i].bthread_init_args = _options.bthread_init_args;
-            init_args[i].result = false;
-            init_args[i].done = false;
-            init_args[i].stop = false;
+        for (; ncreated < _options.bthread_init_count; ++ncreated) {
+            init_args[ncreated].bthread_init_fn = _options.bthread_init_fn;
+            init_args[ncreated].bthread_init_args = _options.bthread_init_args;
+            init_args[ncreated].result = false;
+            init_args[ncreated].done = false;
+            init_args[ncreated].stop = false;
             bthread_attr_t tmp = BTHREAD_ATTR_NORMAL;
             tmp.keytable_pool = _keytable_pool;
             if (bthread_start_background(
-                    &init_args[i].th, &tmp, BthreadInitEntry, &init_args[i]) != 0) {
+                    &init_args[ncreated].th, &tmp, BthreadInitEntry, &init_args[ncreated]) != 0) {
                 break;
             }
         }
+
+        if (ncreated != _options.bthread_init_count) {
+            LOG(ERROR) << "Fail to create "
+                       << _options.bthread_init_count - ncreated << " bthreads";
+            delete [] init_args;
+            return -1;
+        }
+
         // Wait until all created bthreads finish the init function.
         for (size_t i = 0; i < ncreated; ++i) {
             while (!init_args[i].done) {
@@ -846,11 +854,6 @@ int Server::StartInternal(const butil::ip_t& ip,
             }
         }
         delete [] init_args;
-        if (ncreated != _options.bthread_init_count) {
-            LOG(ERROR) << "Fail to create "
-                       << _options.bthread_init_count - ncreated << " bthreads";
-            return -1;
-        }
         if (num_failed_result != 0) {
             LOG(ERROR) << num_failed_result << " bthread_init_fn failed";
             return -1;
