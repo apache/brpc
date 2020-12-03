@@ -438,27 +438,6 @@ TEST_F(RedisTest, auth) {
         ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
         ASSERT_STREQ("OK", response.reply(1).c_str());
     }
-
-    // check noauth.
-    {
-        brpc::ChannelOptions options;
-        options.protocol = brpc::PROTOCOL_REDIS;
-        brpc::Channel channel;
-        ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
-        brpc::RedisRequest request;
-        brpc::RedisResponse response;
-        brpc::Controller cntl;
-
-        butil::StringPiece comp1[] = { "get", "passwd" };
-
-        request.AddCommandByComponents(comp1, arraysize(comp1));
-
-        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
-        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
-        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
-        ASSERT_STREQ("my_redis", response.reply(0).c_str());
-    }
 }
 
 TEST_F(RedisTest, cmd_format) {

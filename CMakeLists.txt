@@ -161,13 +161,6 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
-if(WITH_RDMA)
-    find_path(BOOST_INCLUDE_PATH NAMES boost/lockfree/spsc_queue.hpp)
-    if(NOT BOOST_INCLUDE_PATH)
-        message(FATAL_ERROR "Fail to find boost spsc_queue")
-    endif()
-endif()
-
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(OPENSSL_ROOT_DIR
         "/usr/local/opt/openssl"    # Homebrew installed OpenSSL

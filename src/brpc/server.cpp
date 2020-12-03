@@ -1054,15 +1054,6 @@ int Server::StartInternal(const butil::ip_t& ip,
                 " against the purpose of \"being internal\".";
             return -1;
         }
-        std::unique_ptr<rdma::RdmaCommunicationManager> rh;
-        if (_options.use_rdma) {
-            rh.reset(rdma::RdmaCommunicationManager::Listen(_listen_addr));
-            if (rh == NULL) {
-                LOG(ERROR) << "Fail to listen " << _options.internal_port
-                           << " (internal)";
-                return -1;
-            }
-        }
         butil::EndPoint internal_point = _listen_addr;
         internal_point.port = _options.internal_port;
         butil::fd_guard sockfd(tcp_listen(internal_point));
@@ -1078,13 +1069,12 @@ int Server::StartInternal(const butil::ip_t& ip,
             }
         }
         // Pass ownership of `sockfd' to `_internal_am'
-        if (_internal_am->StartAccept(sockfd, rh.get(), _options.idle_timeout_sec,
+        if (_internal_am->StartAccept(sockfd, NULL, _options.idle_timeout_sec,
                                       _default_ssl_ctx) != 0) {
             LOG(ERROR) << "Fail to start internal_acceptor";
             return -1;
         }
         sockfd.release();
-        rh.release();
     }
 
     PutPidFileIfNeeded();

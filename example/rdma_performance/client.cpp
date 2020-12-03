@@ -245,10 +245,10 @@ void Test(int thread_num, int attachment_size) {
     uint64_t end_time = butil::gettimeofday_us();
     double throughput = g_total_bytes / 1.048576 / (end_time - start_time);
     if (FLAGS_test_iterations == 0) {
-        std::cout << " Avg-Latency: " << g_latency_recorder.latency(10)
-            << ", 90th-Latency: " << g_latency_recorder.latency_percentile(0.9)
-            << ", 99th-Latency: " << g_latency_recorder.latency_percentile(0.99)
-            << ", 99.9th-Latency: " << g_latency_recorder.latency_percentile(0.999)
+        std::cout << " Avg-Latency: " << g_latency_recorder.latency(10) << "us"
+            << ", 90th-Latency: " << g_latency_recorder.latency_percentile(0.9) << "us"
+            << ", 99th-Latency: " << g_latency_recorder.latency_percentile(0.99) << "us"
+            << ", 99.9th-Latency: " << g_latency_recorder.latency_percentile(0.999) << "us"
             << ", Throughput: " << throughput << "MB/s"
             << ", QPS: " << g_total_cnt.load(butil::memory_order_relaxed) * 1000 / (end_time - start_time) << "k"
             << ", Server CPU-utilization: " << g_server_cpu_recorder.latency(10) << "\%"

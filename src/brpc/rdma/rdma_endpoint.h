@@ -21,7 +21,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <boost/lockfree/spsc_queue.hpp>
 #include "butil/atomicops.h"         // butil::atomic
 #include "butil/iobuf.h"             // butil::IOBuf
 #include "butil/macros.h"
@@ -29,6 +28,7 @@
 #include "brpc/socket.h"
 #include "brpc/rdma/rdma_communication_manager.h"
 #include "brpc/rdma/rdma_completion_queue.h"
+#include <brpc/rdma/spsc_queue.h>
 
 namespace brpc {
 namespace rdma {
@@ -44,6 +44,12 @@ const size_t HELLO_LENGTH = MAGIC_LENGTH + RANDOM_LENGTH;
 struct RdmaWrId {
     uint64_t sid;
     uint32_t version;
+};
+
+struct SPSCQueue {
+private:
+    void *_head;
+    void *_tail;
 };
 
 class BAIDU_CACHELINE_ALIGNMENT RdmaEndpoint {
@@ -216,7 +222,7 @@ private:
     uint64_t _remote_sid;
 
     // Only used when shared CQ is enabled
-    boost::lockfree::spsc_queue<RdmaCompletion*> _completion_queue;
+    SpscQueue<RdmaCompletion*> _completion_queue;
     // Number of completions received
     butil::atomic<int> _ncompletions;
 

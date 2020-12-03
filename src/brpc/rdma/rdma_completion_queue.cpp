@@ -57,12 +57,15 @@ DEFINE_bool(rdma_bind_cpu, false, "Bind polling thread to CPU core.");
 DEFINE_string(rdma_cq_assign_policy, "rr", "The policy to assign a CQ");
 DEFINE_int32(rdma_cq_num, 0, "The number of CQs used in shared CQ mode");
 DEFINE_string(rdma_cq_cpu_set, "", "The set of CPU cores bound with CQs");
+DEFINE_string(rdma_cq_queue_mask, "", "The mask of RNIC queues bound with CQs");
 DEFINE_int32(rdma_cqe_poll_once, 32, "The maximum of cqe number polled onece.");
 
 static bool g_use_polling = false;
 static bool g_bind_cpu = false;
 static int g_cq_enabled_core_array[1024];
 static int g_cq_enabled_cores = 0;
+static int g_cq_enabled_queue_array[1024];
+static int g_cq_enabled_queues = 0;
 #endif
 
 static const int MAX_CQ_EVENTS = 128;
@@ -80,7 +83,7 @@ RdmaCompletionQueue::RdmaCompletionQueue()
     , _cq_channel(NULL)
     , _cq_size(0)
     , _cq_events(0)
-    , _cpu_index(0)
+    , _queue_index(0)
     , _tid(0)
     , _sid(0)
     , _ep_sid(0)
@@ -119,7 +122,7 @@ RdmaCompletionQueue* RdmaCompletionQueue::NewOne(Socket* s, int cq_size) {
     rcq->_cq_size = FLAGS_rdma_cq_size < cq_size ?
                     FLAGS_rdma_cq_size : cq_size;
     rcq->_keytable_pool = s->_keytable_pool;
-    if (rcq->Init(g_cq_enabled_core_array[g_cq_policy->Assign()]) < 0) {
+    if (rcq->Init(g_cq_enabled_queue_array[g_cq_policy->Assign()]) < 0) {
         PLOG(ERROR) << "Fail to intialize RdmaCompletionQueue";
         delete rcq;
         return NULL;
@@ -138,12 +141,12 @@ RdmaCompletionQueue* RdmaCompletionQueue::GetOne() {
     return &g_cqs[g_cq_policy->Assign()];
 }
 
-int RdmaCompletionQueue::Init(int cpu) {
+int RdmaCompletionQueue::Init(int queue) {
 #ifndef BRPC_RDMA
     CHECK(false) << "This should not happen";
     return -1;
 #else
-    _cpu_index = cpu;
+    _queue_index = queue;
 
     ibv_context* ctx = (ibv_context*)GetRdmaContext();
     ibv_comp_channel* cq_channel = NULL;
@@ -159,8 +162,9 @@ int RdmaCompletionQueue::Init(int cpu) {
         _cq_size = FLAGS_rdma_cq_size;
     }
 
-    ibv_cq* cq = IbvCreateCq(ctx, _cq_size, this, cq_channel, _cpu_index);
+    ibv_cq* cq = IbvCreateCq(ctx, _cq_size, this, cq_channel, _queue_index);
     if (!cq) {
+        PLOG(ERROR) << "Fail to create cq on queue " << _queue_index;
         return -1;
     }
     _cq = cq;
@@ -213,15 +217,21 @@ void RdmaCompletionQueue::CleanUp() {
     ibv_cq* cq = (ibv_cq*)_cq;
 
     if (IsRdmaAvailable()) {
-        if (cq_channel && cq) {
-            IbvAckCqEvents(cq, _cq_events);
-            IbvDestroyCompChannel(cq_channel);
-            _cq_channel = NULL;
-        }
         if (cq) {
-            IbvDestroyCq(cq);
+			if (cq_channel) {
+				IbvAckCqEvents(cq, _cq_events);
+			}
+            if (IbvDestroyCq(cq) < 0) {
+                PLOG(WARNING) << "Fail to destroy rdma cq";
+            }
             _cq = NULL;
-        }
+			if (cq_channel) {
+                if (IbvDestroyCompChannel(cq_channel) < 0) {
+                    PLOG(WARNING) << "Fail to destroy rdma cq channel";
+                }
+				_cq_channel = NULL;
+			}
+		}
     }
     _cq_events = 0;
     if (_sid > 0) {
@@ -238,7 +248,7 @@ void RdmaCompletionQueue::CleanUp() {
 }
 
 void RdmaCompletionQueue::Release() {
-    g_cq_policy->Return(_cpu_index);
+    g_cq_policy->Return(_queue_index);
     if (g_active_conn_num.fetch_sub(1, butil::memory_order_relaxed) == 1 &&
         !IsRdmaAvailable()) {
         // Do not waste CPU on unavailable RDMA
@@ -319,7 +329,7 @@ void RdmaCompletionQueue::PollCQ(Socket* m) {
         if (g_bind_cpu) {
             cpu_set_t mask;
             CPU_ZERO(&mask);
-            CPU_SET(rcq->_cpu_index, &mask);
+            CPU_SET(g_cq_enabled_core_array[rcq->_queue_index % g_cq_enabled_cores], &mask);
             pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask);
         }
     }
@@ -648,6 +658,44 @@ static void ParseCpuMask(std::string& cpu_str) {
     }
     g_cq_enabled_cores = cores;
 }
+
+static void ParseQueueMask(std::string& mask_str) {
+    int max_queues = ((ibv_context*)GetRdmaContext())->num_comp_vectors;
+    if (mask_str == "") {
+        for (int i = 0; i < max_queues; ++i) {
+            g_cq_enabled_queue_array[i] = i;
+        }
+        g_cq_enabled_queues = max_queues;
+        return;
+    }
+    int queues = 0;
+    for (butil::StringSplitter s(mask_str.c_str(), ','); s; ++s) {
+        int num = 0;
+        unsigned int last_queue = -1;
+        for (butil::StringSplitter ss(s.field(), s.field() + s.length(), '-'); ss; ++ss) {
+            if (++num > 2) {
+                return;
+            }
+            unsigned int queue = 0;
+            if (ss.to_uint(&queue) < 0 || (int)queue >= max_queues) {
+                return;
+            }
+            if (num == 1) {
+                last_queue = queue;
+                g_cq_enabled_queue_array[queues++] = queue;
+                continue;
+            }
+            if (last_queue > queue) {
+                return;
+            }
+            for (unsigned int i = last_queue + 1; i <= queue; ++i) {
+                g_cq_enabled_queue_array[queues++] = i;
+            }
+        }
+    }
+    g_cq_enabled_queues = queues;
+}
+
 #endif
 
 int GlobalCQInit() {
@@ -655,6 +703,11 @@ int GlobalCQInit() {
     CHECK(false) << "This should not happen";
     return -1;
 #else
+    ParseQueueMask(FLAGS_rdma_cq_queue_mask);
+    if (g_cq_enabled_queues == 0) {
+        LOG(ERROR) << "Incorrect rdma_cq_queue_mask, use it like taskset -c";
+        return -1;
+    }
     ParseCpuMask(FLAGS_rdma_cq_cpu_set);
     if (g_cq_enabled_cores == 0) {
         LOG(ERROR) << "Incorrect rdma_cq_cpu_set, use it like taskset -c";
@@ -679,7 +732,7 @@ int GlobalCQInit() {
             return -1;
         }
         for (int i = 0; i < g_cq_num; ++i) {
-            if (g_cqs[i].Init(g_cq_enabled_core_array[i]) < 0) {
+            if (g_cqs[i].Init(g_cq_enabled_queue_array[i]) < 0) {
                 PLOG(WARNING) << "Fail to initialize RdmaCompletionQueue";
                 return -1;
             }
@@ -688,13 +741,13 @@ int GlobalCQInit() {
 
     if (FLAGS_rdma_cq_assign_policy.compare("random") == 0) {
         g_cq_policy = new (std::nothrow)
-            RandomRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_cores : g_cq_num);
+            RandomRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_queues : g_cq_num);
     } else if (FLAGS_rdma_cq_assign_policy.compare("rr") == 0) {
         g_cq_policy = new (std::nothrow)
-            RoundRobinRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_cores : g_cq_num);
+            RoundRobinRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_queues : g_cq_num);
     } else if (FLAGS_rdma_cq_assign_policy.compare("least_used") == 0) {
         g_cq_policy = new (std::nothrow)
-            LeastUtilizedRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_cores : g_cq_num);
+            LeastUtilizedRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_queues : g_cq_num);
     } else {
         LOG(WARNING) << "Incorrect RdmaCQAssignPolicy. Possible value:"
                         " rr, random, least_used";

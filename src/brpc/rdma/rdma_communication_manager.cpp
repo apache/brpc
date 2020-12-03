@@ -45,8 +45,8 @@ extern int (*RdmaCreateQp)(rdma_cm_id*, ibv_pd*, ibv_qp_init_attr*);
 extern int (*IbvDestroyQp)(ibv_qp*);
 
 DEFINE_int32(rdma_backlog, 1024, "The backlog for rdma connection.");
-DEFINE_int32(rdma_conn_timeout_ms, 5000, "The timeout (ms) for RDMA connection"
-                                         "establishment.");
+DEFINE_int32(rdma_conn_timeout_ms, 30000,
+            "The timeout (ms) for RDMA connection establishment.");
 #endif
 
 static const int FLOW_CONTROL = 1;          // for creating QP
@@ -325,7 +325,10 @@ void RdmaCommunicationManager::ReleaseQP() {
         if (cm_id->qp) {
             // Do not use rdma_destroy_qp, which will release CQ as well
             if (IsRdmaAvailable()) {
-                IbvDestroyQp(cm_id->qp);
+                if (IbvDestroyQp(cm_id->qp) < 0) {
+                    // Maybe the rdma_cm has been disconnected by the peer
+                    PLOG(WARNING) << "Fail to destroy rdma qp";
+                }
             }
             cm_id->qp = NULL;
         }

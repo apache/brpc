@@ -1599,9 +1599,13 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
         butil::IOBuf* data_arr[1] = { &req->data };
         nw = _conn->CutMessageIntoFileDescriptor(fd(), data_arr, 1);
     } else {
-        if (_rdma_ep && _rdma_state == RDMA_ON) {
-            butil::IOBuf* data_arr[1] = { &req->data };
-            nw = _rdma_ep->CutFromIOBufList(data_arr, 1);
+        if (_rdma_ep) {
+            if (_rdma_state == RDMA_ON) {
+                butil::IOBuf* data_arr[1] = { &req->data };
+                nw = _rdma_ep->CutFromIOBufList(data_arr, 1);
+            } else if (_rdma_state == RDMA_UNKNOWN) {
+                goto KEEPWRITE_IN_BACKGROUND;
+            }
         } else {
             nw = req->data.cut_into_file_descriptor(fd());
         }
@@ -1659,6 +1663,10 @@ void* Socket::KeepWrite(void* void_arg) {
 
 #ifdef BRPC_RDMA
     if (s->_rdma_state == RDMA_UNKNOWN) {
+        if (s->Failed()) {
+            s->ReleaseAllFailedWriteRequests(req);
+            return NULL;
+        }
         rdma::RdmaEndpoint* ep = s->_rdma_ep;
         if (!ep) {
             s->_rdma_state = RDMA_OFF;

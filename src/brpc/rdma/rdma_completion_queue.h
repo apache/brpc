@@ -58,9 +58,9 @@ public:
     // Get a shared CQ
     static RdmaCompletionQueue* GetOne();
 
-    // Initialize the CQ on the given cpu core id.
+    // Initialize the CQ on the given queue id.
     // Return 0 if success, -1 if failed.
-    int Init(int cpu);
+    int Init(int queue);
 
     // Destroy the non-shared CQ or dereference the shared CQ
     void Release();
@@ -106,8 +106,8 @@ private:
     // The number of cq events unacked
     int _cq_events;
 
-    // The cpu index of this completion queue
-    int _cpu_index;
+    // The queue index of this completion queue
+    int _queue_index;
 
     // PollCQ thread, only used for shared CQ in polling mode
     bthread_t _tid;
