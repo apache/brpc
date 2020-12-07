@@ -40,7 +40,8 @@ public:
     // Overwrite this method to reset the data before reuse. Nothing done by default.
     // Returns
     //   true:  the data can be kept for future reuse
-    //   false: the data was already destroyed and should NOT be reused.
+    //   false: the data is improper to be reused and should be sent to 
+    //          DestoryData() immediately after calling this method
     virtual bool ResetData(void*) const { return true; }
 };
 

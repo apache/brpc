@@ -108,7 +108,7 @@ void SimpleDataPool::Return(void* data) {
         return;
     }
     if (!_factory->ResetData(data)) {
-        return;
+        return _factory->DestroyData(data); 
     }
     std::unique_lock<butil::Mutex> mu(_mutex);
     if (_capacity == _size) {
