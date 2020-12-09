@@ -253,7 +253,7 @@ int RecordReader::CutRecord(Record* rec) {
                    << ", offset=" << offset();
         return -1;
     }
-    if (_cutter.remaining_bytes() < data_size) {
+    if (_cutter.remaining_bytes() < data_size + sizeof(headbuf)) {
         return 0;
     }
     rec->Clear();
