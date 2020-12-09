@@ -287,8 +287,11 @@ int RecordReader::CutRecord(Record* rec) {
         _ncut += meta_size;
         consumed_bytes += 5 + name_size + meta_size;
     }
-    _cutter.cutn(rec->MutablePayload(), data_size - consumed_bytes);
-    _ncut += data_size - consumed_bytes;
+    const size_t cut_bytes = _cutter.cutn(rec->MutablePayload(), data_size - consumed_bytes); 
+    if (cut_bytes != data_size - consumed_bytes) {
+        LOG(ERROR) << "cut_bytes=" << cut_bytes << " does not match input=" << data_size - consumed_bytes;
+    }
+    _ncut += cut_bytes;
     return 1;
 }
 
