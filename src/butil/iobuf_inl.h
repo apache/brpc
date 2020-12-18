@@ -238,11 +238,9 @@ inline size_t IOBufCutter::pop_front(size_t n) {
             _data = (char*)_data + n;
             return saved_n;
         }
-        if (size != 0) {
-            n -= size;
-        }
+        n -= size;
         if (!load_next_ref()) {
-            return saved_n;
+            return saved_n - n;
         }
     } while (true);
 }
