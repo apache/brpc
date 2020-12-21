@@ -340,7 +340,7 @@ public:
     // and controller.cpp to know more.
     void allow_done_to_run_in_place()
     { add_flag(FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE); }
-    // True iff above method was called.
+    // True if above method was called.
     bool is_done_allowed_to_run_in_place() const
     { return has_flag(FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE); }
 
@@ -481,7 +481,7 @@ public:
     // NOTE: ErrorText() != berror(ErrorCode()). 
     std::string ErrorText() const override;
 
-    // Last error code. Equals 0 iff Failed() is false.
+    // Last error code. Equals 0 if Failed() is false.
     // If there's retry, latter code overwrites former one.
     int ErrorCode() const { return _error_code; }
 
