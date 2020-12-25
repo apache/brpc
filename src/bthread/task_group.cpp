@@ -318,8 +318,16 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         KeyTable* kt = tls_bls.keytable;
         if (kt != NULL) {
             return_keytable(m->attr.keytable_pool, kt);
+            // return_keytable(m->attr.keytable_pool, kt); --->  delete kt; ---> delete _subs[i]; -->  ~KeyTable() 
+            // -->  _subs[i]->clear(i * KEY_2NDLEVEL_SIZE); --->  info.dtor(p, info.dtor_args);
+            // inside info.dtor function, group is probably changed (bthread change)
+            g = tls_task_group; // must need
+			
             // After deletion: tls may be set during deletion.
-            tls_bls.keytable = NULL;
+            // tls_bls.keytable = NULL;
+            // if set tls_bls.keytable null before return_keytable, bthread change may continue use tls_bls.keytable in return_keytable;
+            // if set tls_bls.keytable null after return_keytable, tls_bls may change after return_keytable, and modifying data across threads is dangerous; 
+            // since get next_meta will reset tls_bls(cur_meta/_main_meta --> next_meta), just not set.
             m->local_storage.keytable = NULL; // optional
         }
         
@@ -586,6 +594,9 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     ++ g->_nswitch;
     // Switch to the task
     if (__builtin_expect(next_meta != cur_meta, 1)) {
+        if(g != tls_task_group) // check
+        { abort(); }
+		
         g->_cur_meta = next_meta;
         // Switch tls_bls
         cur_meta->local_storage = tls_bls;
