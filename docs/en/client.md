@@ -93,10 +93,10 @@ Servers are put in the file specified by `path`. For example, in "file://conf/ma
  * brpc reloads the file when it's updated.
 ```
 # This line is ignored
-10.24.234.17 tag1  # a comment
-10.24.234.17 tag2  # an instance different from the instance on last line
-10.24.234.18
-10.24.234.19
+10.24.234.17:8080 tag1  # a comment
+10.24.234.17:8090 tag2  # an instance different from the instance on last line
+10.24.234.18:8080
+10.24.234.19:8080
 ```
 
 Pros: easy to modify, convenient for unittests.

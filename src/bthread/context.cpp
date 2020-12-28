@@ -294,6 +294,7 @@ __asm (
 "    jmp  *%edx\n"
 ".size bthread_jump_fcontext,.-bthread_jump_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
@@ -328,6 +329,7 @@ __asm (
 "    hlt\n"
 ".size bthread_make_fcontext,.-bthread_make_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
@@ -371,6 +373,7 @@ __asm (
 "    jmp  *%r8\n"
 ".size bthread_jump_fcontext,.-bthread_jump_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
@@ -397,6 +400,7 @@ __asm (
 "    hlt\n"
 ".size bthread_make_fcontext,.-bthread_make_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif

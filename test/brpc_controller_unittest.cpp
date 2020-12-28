@@ -21,6 +21,7 @@
 
 #include <gtest/gtest.h>
 #include <google/protobuf/stubs/common.h>
+#include "butil/logging.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "brpc/socket.h"
@@ -72,3 +73,66 @@ TEST_F(ControllerTest, notify_on_destruction) {
     delete cntl;
     ASSERT_TRUE(cancel);
 }
+
+#if ! BRPC_WITH_GLOG
+
+static bool endsWith(const std::string& s1, const butil::StringPiece& s2)  {
+    if (s1.size() < s2.size()) {
+        return false;
+    }
+    return memcmp(s1.data() + s1.size() - s2.size(), s2.data(), s2.size()) == 0;
+}
+static bool startsWith(const std::string& s1, const butil::StringPiece& s2)  {
+    if (s1.size() < s2.size()) {
+        return false;
+    }
+    return memcmp(s1.data(), s2.data(), s2.size()) == 0;
+}
+
+DECLARE_bool(log_as_json);
+
+TEST_F(ControllerTest, SessionKV) {
+    FLAGS_log_as_json = false;
+    logging::StringSink sink1;
+    auto oldSink = logging::SetLogSink(&sink1);
+    {
+        brpc::Controller cntl;
+        cntl.set_log_id(123); // not working now
+        // set
+        cntl.SessionKV().Set("Apple", 1234567);    
+        cntl.SessionKV().Set("Baidu", "Building");
+        // get
+        auto v1 = cntl.SessionKV().Get("Apple");
+        ASSERT_TRUE(v1);
+        ASSERT_EQ("1234567", *v1);
+        auto v2 = cntl.SessionKV().Get("Baidu");
+        ASSERT_TRUE(v2);
+        ASSERT_EQ("Building", *v2);
+
+        // override
+        cntl.SessionKV().Set("Baidu", "NewStuff");
+        v2 = cntl.SessionKV().Get("Baidu");
+        ASSERT_TRUE(v2);
+        ASSERT_EQ("NewStuff", *v2);
+
+        cntl.SessionKV().Set("Cisco", 33.33);
+
+        CLOGW(&cntl) << "My WARNING Log";
+        ASSERT_TRUE(endsWith(sink1, "] My WARNING Log")) << sink1;
+        ASSERT_TRUE(startsWith(sink1, "W")) << sink1;
+        sink1.clear();
+
+        cntl.set_request_id("abcdEFG-456");
+        CLOGE(&cntl) << "My ERROR Log";
+        ASSERT_TRUE(endsWith(sink1, "] @rid=abcdEFG-456 My ERROR Log")) << sink1;
+        ASSERT_TRUE(startsWith(sink1, "E")) << sink1;
+        sink1.clear();
+
+        FLAGS_log_as_json = true;
+    }
+    ASSERT_TRUE(endsWith(sink1, R"(,"@rid":"abcdEFG-456","M":"Session ends.","Baidu":"NewStuff","Cisco":"33.330000","Apple":"1234567"})")) << sink1;
+    ASSERT_TRUE(startsWith(sink1, R"({"L":"I",)")) << sink1;
+
+    logging::SetLogSink(oldSink);
+}
+#endif

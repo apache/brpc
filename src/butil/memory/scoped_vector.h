@@ -38,6 +38,9 @@ class ScopedVector {
   ScopedVector() {}
   ~ScopedVector() { clear(); }
   ScopedVector(RValue other) { swap(*other.object); }
+#if __cplusplus >= 201103L  // >= C++11
+  ScopedVector(std::initializer_list<value_type> il) : v_(il) {}
+#endif
 
   ScopedVector& operator=(RValue rhs) {
     swap(*rhs.object);

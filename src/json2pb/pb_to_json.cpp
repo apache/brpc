@@ -51,7 +51,7 @@ public:
     bool Convert(const google::protobuf::Message& message, Handler& handler);
 
     const std::string& ErrorText() const { return _error; }
-    
+
 private:
     template <typename Handler>
     bool _PbFieldToJson(const google::protobuf::Message& message,

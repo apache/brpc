@@ -37,6 +37,7 @@ struct CommonStrings {
     std::string CONTENT_TYPE_TEXT;
     std::string CONTENT_TYPE_JSON;
     std::string CONTENT_TYPE_PROTO;
+    std::string CONTENT_TYPE_SPRING_PROTO;
     std::string ERROR_CODE;
     std::string AUTHORIZATION;
     std::string ACCEPT_ENCODING;

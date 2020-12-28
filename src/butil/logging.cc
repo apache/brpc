@@ -19,6 +19,9 @@
 
 #include "butil/logging.h"
 
+#include <gflags/gflags.h>
+DEFINE_bool(log_as_json, false, "Print log as a valid JSON");
+
 #if !BRPC_WITH_GLOG
 
 #if defined(OS_WIN)
@@ -87,7 +90,6 @@ typedef pthread_mutex_t* MutexHandle;
 #include <vector>
 #include <deque>
 #include <limits>
-#include <gflags/gflags.h>
 #include "butil/atomicops.h"
 #include "butil/thread_local.h"
 #include "butil/scoped_lock.h"                        // BAIDU_SCOPED_LOCK
@@ -127,7 +129,7 @@ DEFINE_string(vmodule, "", "per-module verbose level."
               " (that is, name ignoring .cpp/.h)."
               " LOG_LEVEL overrides any value given by --v.");
 
-DEFINE_bool(log_process_id, false, "Log process id");
+DEFINE_bool(log_pid, false, "Log process id");
 
 DEFINE_int32(minloglevel, 0, "Any log at or above this level will be "
              "displayed. Anything below this level will be silently ignored. "
@@ -453,7 +455,7 @@ void SetLogAssertHandler(LogAssertHandler handler) {
 const char* const log_severity_names[LOG_NUM_SEVERITIES] = {
     "INFO", "NOTICE", "WARNING", "ERROR", "FATAL" };
 
-inline void log_severity_name(std::ostream& os, int severity) {
+static void PrintLogSeverity(std::ostream& os, int severity) {
     if (severity < 0) {
         // Add extra space to separate from following datetime.
         os << 'V' << -severity << ' ';
@@ -464,9 +466,9 @@ inline void log_severity_name(std::ostream& os, int severity) {
     }
 }
 
-void print_log_prefix(std::ostream& os,
-                      int severity, const char* file, int line) {
-    log_severity_name(os, severity);
+static void PrintLogPrefix(
+    std::ostream& os, int severity, const char* file, int line) {
+    PrintLogSeverity(os, severity);
 #if defined(OS_LINUX)
     timeval tv;
     gettimeofday(&tv, NULL);
@@ -492,7 +494,7 @@ void print_log_prefix(std::ostream& os,
 #if defined(OS_LINUX)
     os << '.' << std::setw(6) << tv.tv_usec;
 #endif
-    if (FLAGS_log_process_id) {
+    if (FLAGS_log_pid) {
         os << ' ' << std::setfill(' ') << std::setw(5) << CurrentProcessId();
     }
     os << ' ' << std::setfill(' ') << std::setw(5)
@@ -506,6 +508,89 @@ void print_log_prefix(std::ostream& os,
     }
     os << ' ' << file << ':' << line << "] ";
     os.fill(prev_fill);
+}
+
+static void PrintLogPrefixAsJSON(
+    std::ostream& os, int severity, const char* file, int line) {
+    // severity
+    os << "\"L\":\"";
+    if (severity < 0) {
+        os << 'V' << -severity;
+    } else if (severity < LOG_NUM_SEVERITIES) {
+        os << log_severity_names[severity][0];
+    } else {
+        os << 'U';
+    }
+    // time
+    os << "\",\"T\":\"";
+#if defined(OS_LINUX)
+    timeval tv;
+    gettimeofday(&tv, NULL);
+    time_t t = tv.tv_sec;
+#else
+    time_t t = time(NULL);
+#endif
+    struct tm local_tm = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL};
+#if _MSC_VER >= 1400
+    localtime_s(&local_tm, &t);
+#else
+    localtime_r(&t, &local_tm);
+#endif
+    const char prev_fill = os.fill('0');
+    if (FLAGS_log_year) {
+        os << std::setw(4) << local_tm.tm_year + 1900;
+    }
+    os << std::setw(2) << local_tm.tm_mon + 1
+       << std::setw(2) << local_tm.tm_mday << ' '
+       << std::setw(2) << local_tm.tm_hour << ':'
+       << std::setw(2) << local_tm.tm_min << ':'
+       << std::setw(2) << local_tm.tm_sec;
+#if defined(OS_LINUX)
+    os << '.' << std::setw(6) << tv.tv_usec;
+#endif
+    os << "\",";
+    os.fill(prev_fill);
+
+    if (FLAGS_log_pid) {
+        os << "\"pid\":\"" << CurrentProcessId() << "\",";
+    }
+    os << "\"tid\":\"" << butil::PlatformThread::CurrentId() << "\",";
+    if (FLAGS_log_hostname) {
+        butil::StringPiece hostname(butil::my_hostname());
+        if (hostname.ends_with(".baidu.com")) { // make it shorter
+            hostname.remove_suffix(10);
+        }
+        os << "\"host\":\"" << hostname << "\",";
+    }
+    os << "\"C\":\"" << file << ':' << line << "\"";
+}
+
+static void PrintLog(std::ostream& os,
+                     int severity, const char* file, int line,
+                     const butil::StringPiece& content) {
+    if (!FLAGS_log_as_json) {
+        PrintLogPrefix(os, severity, file, line);
+        os.write(content.data(), content.size());
+    } else {
+        os << '{';
+        PrintLogPrefixAsJSON(os, severity, file, line);
+        bool pair_quote = false;
+        if (content.empty() || content[0] != '"') {
+            // not a json, add a 'M' field
+            os << ",\"M\":\"";
+            pair_quote = true;
+        } else {
+            os << ',';
+        }
+        os.write(content.data(), content.size());
+        if (pair_quote) {
+            os << '"';
+        } else if (!content.empty() && content[content.size()-1] != '"') {
+            // Controller may write `"M":"...` which misses the last quote
+            os << '"';
+        }
+        os << '}';
+    }
 }
 
 // A log message handler that gets notified of every log message we process.
@@ -611,14 +696,12 @@ void DisplayDebugMessageInDialog(const std::string& str) {
 
 bool StringSink::OnLogMessage(int severity, const char* file, int line, 
                               const butil::StringPiece& content) {
-    std::ostringstream prefix_os;
-    print_log_prefix(prefix_os, severity, file, line);
-    const std::string prefix = prefix_os.str();
+    std::ostringstream os;
+    PrintLog(os, severity, file, line, content);
+    const std::string msg = os.str();
     {
         butil::AutoLock lock_guard(_lock);
-        reserve(size() + prefix.size() + content.size());
-        append(prefix);
-        append(content.data(), content.size());
+        append(msg);
     }
     return true;
 }
@@ -772,8 +855,7 @@ public:
         // A LogSink focused on performance should also be able to handle
         // non-continuous inputs which is a must to maximize performance.
         std::ostringstream os;
-        print_log_prefix(os, severity, file, line);
-        os.write(content.data(), content.size());
+        PrintLog(os, severity, file, line, content);
         os << '\n';
         std::string log = os.str();
         

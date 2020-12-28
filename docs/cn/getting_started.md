@@ -73,28 +73,32 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 ```shell
-mkdir bld && cd bld && cmake .. && make
+cmake -B build && cmake --build build -j6
 ```
-To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
+To help VSCode or Emacs(LSP) to understand code correctly, add `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` to generate `compile_commands.json`
 
-To not link debugging symbols, use `rm -f CMakeCache.txt && cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+To change compiler to clang, overwrite environment variable `CC` and `CXX` to `clang` and `clang++` respectively.
 
-To use brpc with glog, add `-DWITH_GLOG=ON`.
+To not link debugging symbols, remove `build/CMakeCache.txt` and cmake with `-DWITH_DEBUG_SYMBOLS=OFF`
 
-To enable [thrift support](../en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
+To use brpc with glog, cmake with `-DWITH_GLOG=ON`.
+
+To enable [thrift support](../en/thrift.md), install thrift first and cmake with `-DWITH_THRIFT=ON`.
 
 **Run example with cmake**
+
 ```shell
 $ cd example/echo_c++
-$ mkdir bld && cd bld && cmake .. && make
+$ cmake -B build && cmake --build build -j4
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link the shared version, use `rm -f CMakeCache.txt && cmake -DLINK_SO=ON ..`
+Examples link brpc statically, if you need to link the shared version, remove `CMakeCache.txt` and cmake with `-DLINK_SO=ON`
 
 **Run tests**
+
 ```shell
-$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
+$ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
 ## Fedora/CentOS
@@ -161,31 +165,7 @@ $ sh run_tests.sh
 ```
 
 ### Compile brpc with cmake
-```shell
-mkdir bld && cd bld && cmake .. && make
-```
-To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
-
-To not link debugging symbols, use `rm -f CMakeCache.txt && cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
-
-To use brpc with glog, add `-DWITH_GLOG=ON`.
-
-To enable [thrift support](../en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
-
-**Run example**
-
-```shell
-$ cd example/echo_c++
-$ mkdir bld && cd bld && cmake .. && make
-$ ./echo_server &
-$ ./echo_client
-```
-Examples link brpc statically, if you need to link the shared version, use `rm -f CMakeCache.txt && cmake -DLINK_SO=ON ..`
-
-**Run tests**
-```shell
-$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
-```
+Same with [here](#compile-brpc-with-cmake)
 
 ## Linux with self-built deps
 
@@ -229,20 +209,7 @@ $ make
 ```
 
 ### Compile brpc with cmake
-
-git clone brpc. cd into the repo and run
-
-```shell
-mkdir bld && cd bld && cmake -DCMAKE_INCLUDE_PATH="/path/to/dep1/include;/path/to/dep2/include" -DCMAKE_LIBRARY_PATH="/path/to/dep1/lib;/path/to/dep2/lib" .. && make
-```
-
-To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
-
-To not link debugging symbols, use `rm -f CMakeCache.txt && cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
-
-To use brpc with glog, add `-DWITH_GLOG=ON`.
-
-To enable [thrift support](../en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
+Same with [here](#compile-brpc-with-cmake)
 
 ## MacOS
 
@@ -265,10 +232,11 @@ If you need to enable cpu/heap profilers in examples:
 brew install gperftools
 ```
 
-If you need to run tests, install and compile googletest (which is not compiled yet):
+If you need to run tests, download and compile googletest (which is not compiled yet):
 ```shell
-git clone https://github.com/google/googletest && cd googletest/googletest && mkdir bld && cd bld && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make && sudo mv libgtest* /usr/lib/ && cd -
+git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make
 ```
+After the compilation, copy include/ and lib/ into /usr/local/include and /usr/local/lib respectively to expose gtest to all apps
 
 ### Compile brpc with config_brpc.sh
 git clone brpc, cd into the repo and run
@@ -301,29 +269,7 @@ $ sh run_tests.sh
 ```
 
 ### Compile brpc with cmake
-```shell
-mkdir bld && cd bld && cmake .. && make
-```
-
-To not link debugging symbols, use `rm -f CMakeCache.txt && cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
-
-To use brpc with glog, add `-DWITH_GLOG=ON`.
-
-To enable [thrift support](../en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
-
-**Run example with cmake**
-```shell
-$ cd example/echo_c++
-$ mkdir bld && cd bld && cmake .. && make
-$ ./echo_server &
-$ ./echo_client
-```
-Examples link brpc statically, if you need to link the shared version, use `rm -f CMakeCache.txt && cmake -DLINK_SO=ON ..`
-
-**Run tests**
-```shell
-$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
-```
+Same with [here](#compile-brpc-with-cmake)
 
 # Supported deps
 
