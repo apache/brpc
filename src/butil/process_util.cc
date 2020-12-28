@@ -32,7 +32,7 @@
 
 namespace butil {
 
-static size_t ReadCommandLine(char* buf, size_t len, bool with_args) {
+static size_t ReadCommandLineImpl(char* buf, size_t len, bool with_args) {
 #if defined(OS_LINUX)
     butil::fd_guard fd(open("/proc/self/cmdline", O_RDONLY));
     if (fd < 0) {
@@ -87,7 +87,7 @@ static size_t ReadCommandLine(char* buf, size_t len, bool with_args) {
 
 std::string ReadCommandLine(bool with_args) {
     char buf[4096];
-    const ssize_t nr = ReadCommandLine(buf, sizeof(buf), with_args);
+    const ssize_t nr = ReadCommandLineImpl(buf, sizeof(buf), with_args);
     if (nr < 0) {
         return std::string();
     }
