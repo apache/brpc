@@ -277,7 +277,9 @@ int DiscoveryClient::DoRegister() {
     std::vector<butil::StringPiece> addrs;
     butil::SplitString(_params.addrs, ',', &addrs);
     for (size_t i = 0; i < addrs.size(); ++i) {
-        os << "&addrs=" << addrs[i];
+        if (!addrs[i].empty()) {
+            os << "&addrs=" << addrs[i];
+        }
     }
 
     os << "&env=" << _params.env
