@@ -579,6 +579,12 @@ public:
                  google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        auto body = cntl->request_attachment().to_string();
+        for (brpc::QuerySplitter sp(body); sp; ++sp) {
+            if (sp.key() == "addrs") {
+                _addrs.insert(sp.value().as_string());
+            }
+        }
         cntl->response_attachment().append(R"({
             "code": 0,
             "message": "0"
@@ -611,15 +617,23 @@ public:
             "message": "0"
         })");
         _cancel_count++;
+        _addrs.clear();
         return;
     }
 
     int RenewCount() const { return _renew_count; }
     int CancelCount() const { return _cancel_count; }
 
+    bool HasAddr(const std::string& addr) const {
+        return _addrs.find(addr) != _addrs.end();
+    }
+    int AddrCount() const { return _addrs.size(); }
+
 private:
     int _renew_count;
     int _cancel_count;
+
+    std::set<std::string> _addrs;
 };
 
 TEST(NamingServiceTest, discovery_sanity) {
@@ -662,9 +676,25 @@ TEST(NamingServiceTest, discovery_sanity) {
         ASSERT_EQ(0, dc.Register(dparam));
         ASSERT_EQ(0, dc.Register(dparam));
         bthread_usleep(100000);
+        ASSERT_TRUE(svc.HasAddr("grpc://10.0.0.1:8000"));
+        ASSERT_FALSE(svc.HasAddr("http://10.0.0.1:8000"));
     }
     ASSERT_EQ(svc.RenewCount(), 1);
     ASSERT_EQ(svc.CancelCount(), 1);
+
+    ASSERT_FALSE(svc.HasAddr("grpc://10.0.0.1:8000"));
+    ASSERT_FALSE(svc.HasAddr("http://10.0.0.1:8000"));
+
+    // addrs splitted by `,'
+    dparam.addrs = ",grpc://10.0.0.1:8000,,http://10.0.0.1:8000,";
+    {
+        brpc::policy::DiscoveryClient dc;
+        ASSERT_EQ(0, dc.Register(dparam));
+        ASSERT_TRUE(svc.HasAddr("grpc://10.0.0.1:8000"));
+        ASSERT_TRUE(svc.HasAddr("http://10.0.0.1:8000"));
+        ASSERT_FALSE(svc.HasAddr(std::string()));
+        ASSERT_EQ(2, svc.AddrCount());
+    }
 }
 
 } //namespace
