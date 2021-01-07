@@ -581,10 +581,8 @@ public:
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
         auto body = cntl->request_attachment().to_string();
         for (brpc::QuerySplitter sp(body); sp; ++sp) {
-            if (!sp.key().empty()) {
-                if (sp.key() == "addrs") {
-                    _addrs.insert(sp.value().as_string());
-                }
+            if (sp.key() == "addrs") {
+                _addrs.insert(sp.value().as_string());
             }
         }
         cntl->response_attachment().append(R"({
