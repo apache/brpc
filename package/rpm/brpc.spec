@@ -18,6 +18,7 @@ Source0:	incubator-brpc-%{version}.tar.gz
 
 %if 0%{?use_devtoolset}
 BuildRequires: devtoolset-8-gcc-c++
+%define __strip /opt/rh/devtoolset-8/root/usr/bin/strip
 %endif
 
 BuildRequires:	gflags-devel >= 2.1
