@@ -20,14 +20,10 @@ Source0:	incubator-brpc-%{version}.tar.gz
 BuildRequires: devtoolset-8-gcc-c++
 %endif
 
-BuildRequires:	gflags-devel
-BuildRequires:	protobuf-devel
+BuildRequires:	gflags-devel >= 2.1
+BuildRequires:	protobuf-devel >= 2.4
 BuildRequires:	leveldb-devel
 BuildRequires:	openssl-devel
-Requires:	gflags
-Requires:	protobuf
-Requires:	leveldb
-Requires:	openssl-libs
 
 %description
 An industrial-grade RPC framework used throughout Baidu, with 1,000,000+ instances(not counting clients) and thousands kinds of services.
