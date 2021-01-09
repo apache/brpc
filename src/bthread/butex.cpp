@@ -241,10 +241,8 @@ inline int unsleep_if_necessary(ButexBthreadWaiter* w,
 
 void* butex_create() {
     Butex* b = butil::get_object<Butex>();
-    if (b) {
-        return &b->value;
-    }
-    return NULL;
+    CHECK(b != nullptr) << "cannot allocate butex";
+    return &b->value;
 }
 
 void butex_destroy(void* butex) {
