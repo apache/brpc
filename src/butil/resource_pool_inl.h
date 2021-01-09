@@ -22,14 +22,15 @@
 #ifndef BUTIL_RESOURCE_POOL_INL_H
 #define BUTIL_RESOURCE_POOL_INL_H
 
-#include <iostream>                      // std::ostream
 #include <pthread.h>                     // pthread_mutex_t
 #include <algorithm>                     // std::max, std::min
+#include <iostream>                      // std::ostream
+#include <limits>
+#include <vector>
 #include "butil/atomicops.h"              // butil::atomic
 #include "butil/macros.h"                 // BAIDU_CACHELINE_ALIGNMENT
 #include "butil/scoped_lock.h"            // BAIDU_SCOPED_LOCK
 #include "butil/thread_local.h"           // thread_atexit
-#include <vector>
 
 #ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
 #define BAIDU_RESOURCE_POOL_FREE_ITEM_NUM_ADD1                \
@@ -87,6 +88,7 @@ static const size_t RP_MAX_BLOCK_NGROUP = 65536;
 static const size_t RP_GROUP_NBLOCK_NBIT = 16;
 static const size_t RP_GROUP_NBLOCK = (1UL << RP_GROUP_NBLOCK_NBIT);
 static const size_t RP_INITIAL_FREE_LIST_SIZE = 1024;
+static const size_t RP_MAX_ITEMS = std::numeric_limits<uint32_t>::max();
 
 template <typename T>
 class ResourcePoolBlockItemNum {
@@ -182,7 +184,11 @@ public:
         }                                                               \
         /* Fetch memory from local block */                             \
         if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {            \
-            id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
+            uint64_t new_id = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
+            if (new_id >= RP_MAX_ITEMS) {                               \
+                return NULL;                                            \
+            }                                                           \
+            id->value = new_id;                                         \
             T* p = new ((T*)_cur_block->items + _cur_block->nitem) T CTOR_ARGS; \
             if (!ResourcePoolValidator<T>::validate(p)) {               \
                 p->~T();                                                \
@@ -194,7 +200,11 @@ public:
         /* Fetch a Block from global */                                 \
         _cur_block = add_block(&_cur_block_index);                      \
         if (_cur_block != NULL) {                                       \
-            id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
+            uint64_t new_id = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
+            if (new_id >= RP_MAX_ITEMS) {                               \
+                return NULL;                                            \
+            }                                                           \
+            id->value = new_id;                                         \
             T* p = new ((T*)_cur_block->items + _cur_block->nitem) T CTOR_ARGS; \
             if (!ResourcePoolValidator<T>::validate(p)) {               \
                 p->~T();                                                \
