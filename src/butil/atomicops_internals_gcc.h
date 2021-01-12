@@ -99,6 +99,38 @@ inline Atomic32 Release_Load(volatile const Atomic32* ptr) {
   return *ptr;
 }
 
+#ifdef ARCH_CPU_64_BITS
+
+inline void Release_Store(volatile Atomic64* ptr, Atomic64 value) {
+  __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
+}
+
+inline Atomic64 Acquire_Load(volatile const Atomic64* ptr) {
+  return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
+}
+
+inline Atomic64 NoBarrier_Load(volatile const Atomic64* ptr) {
+  return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
+}
+
+inline Atomic64 Acquire_CompareAndSwap(volatile Atomic64* ptr,
+                                       Atomic64 old_value,
+                                       Atomic64 new_value) {
+  __atomic_compare_exchange_n(ptr, &old_value, new_value, true,
+                              __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE);
+  return old_value;
+}
+
+inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr,
+                                         Atomic64 old_value,
+                                         Atomic64 new_value) {
+  __atomic_compare_exchange_n(ptr, &old_value, new_value, true,
+                            __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+  return old_value;
+}
+
+#endif // defined(ARCH_CPU_64_BITS)
+
 }  // namespace butil::subtle
 }  // namespace butil
 
