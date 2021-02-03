@@ -8,6 +8,8 @@ License:	Apache2
 URL:		https://github.com/apache/incubator-brpc
 Source0:	incubator-brpc-%{version}.tar.gz
 
+# https://access.redhat.com/solutions/519993
+%global  _filter_GLIBC_PRIVATE 1
 %global __filter_GLIBC_PRIVATE 1
 
 %if 0%{?fedora} >= 15 || 0%{?rhel} >= 7
