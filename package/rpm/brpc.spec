@@ -6,8 +6,10 @@ Summary:	An industrial-grade RPC framework used throughout Baidu, with 1,000,000
 Group:		Development
 License:	Apache2
 URL:		https://github.com/apache/incubator-brpc
-Source0:	incubator-brpc-%{name}.tar.gz
+Source0:	incubator-brpc-%{version}.tar.gz
 
+# https://access.redhat.com/solutions/519993
+%global  _filter_GLIBC_PRIVATE 1
 %global __filter_GLIBC_PRIVATE 1
 
 %if 0%{?fedora} >= 15 || 0%{?rhel} >= 7
@@ -18,16 +20,13 @@ Source0:	incubator-brpc-%{name}.tar.gz
 
 %if 0%{?use_devtoolset}
 BuildRequires: devtoolset-8-gcc-c++
+%define __strip /opt/rh/devtoolset-8/root/usr/bin/strip
 %endif
 
-BuildRequires:	gflags-devel
-BuildRequires:	protobuf-devel
+BuildRequires:	gflags-devel >= 2.1
+BuildRequires:	protobuf-devel >= 2.4
 BuildRequires:	leveldb-devel
 BuildRequires:	openssl-devel
-Requires:	gflags
-Requires:	protobuf
-Requires:	leveldb
-Requires:	openssl-libs
 
 %description
 An industrial-grade RPC framework used throughout Baidu, with 1,000,000+ instances(not counting clients) and thousands kinds of services.
