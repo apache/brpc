@@ -99,9 +99,7 @@ ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
     } else {
-        if (memcmp(header_buf, "PRPC", n) != 0) {
-            return MakeParseError(PARSE_ERROR_TRY_OTHERS);
-        }
+        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
     if (n < sizeof(header_buf)) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
