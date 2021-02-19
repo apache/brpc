@@ -39,6 +39,7 @@
 #include "brpc/policy/consul_naming_service.h"
 #include "brpc/policy/discovery_naming_service.h"
 #include "brpc/policy/nacos_naming_service.h"
+#include "brpc/policy/mongo_naming_service.h"
 
 // Load Balancers
 #include "brpc/policy/round_robin_load_balancer.h"
@@ -125,7 +126,7 @@ struct GlobalExtensions {
         , ch_ketama_lb(CONS_HASH_LB_KETAMA)
         , constant_cl(0) {
     }
-    
+
 #ifdef BAIDU_INTERNAL
     BaiduNamingService bns;
 #endif
@@ -138,6 +139,7 @@ struct GlobalExtensions {
     ConsulNamingService cns;
     DiscoveryNamingService dcns;
     NacosNamingService nns;
+    MongoNamingService mns;
 
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
@@ -363,6 +365,7 @@ static void GlobalInitializeOrDieImpl() {
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
     NamingServiceExtension()->RegisterOrDie("discovery", &g_ext->dcns);
     NamingServiceExtension()->RegisterOrDie("nacos", &g_ext->nns);
+    NamingServiceExtension()->RegisterOrDie("mongo", &g_ext->mns);
 
     // Load Balancers
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
@@ -509,8 +512,10 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     Protocol mongo_protocol = { ParseMongoMessage,
-                                NULL, NULL,
-                                ProcessMongoRequest, NULL,
+                                SerializeMongoRequest,
+                                PackMongoRequest,
+                                ProcessMongoRequest,
+                                ProcessMongoResponse,
                                 NULL, NULL, NULL,
                                 CONNECTION_TYPE_POOLED, "mongo" };
     if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol) != 0) {

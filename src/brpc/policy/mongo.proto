@@ -26,15 +26,16 @@ option java_outer_classname="MongoProto";
 
 enum MongoOp {
     OPREPLY = 1;
-    DBMSG = 1000;
+    // DBMSG = 1000;
     DB_UPDATE = 2001;
     DB_INSERT = 2002;
     DB_QUERY = 2004;
     DB_GETMORE = 2005;
     DB_DELETE = 2006;
     DB_KILLCURSORS = 2007;
-    DB_COMMAND = 2008;
-    DB_COMMANDREPLY = 2009;
+    // DB_COMMAND = 2008;
+    // DB_COMMANDREPLY = 2009;
+    DB_OP_MSG = 2013;
 }
 
 message MongoHeader {
@@ -49,6 +50,34 @@ message MongoRequest {
     required string message = 2;
 }
 
+message Document {
+    optional string document = 1;
+}
+
+message QueryRequest {
+    required string database = 1;
+    required string collection = 2;
+    optional int32 skip = 3;
+    optional int32 limit = 4;
+    optional Document query = 5;  // 替换成bson_t
+    repeated string fields = 6;
+//   optional bool TailableCursor = 1;
+//   optional bool SlaveOk = 2;
+//   optional bool OplogReplay = 3;
+//   optional bool NoCursorTimeout = 4;
+//   optional bool AwaitData = 5;
+//   optional bool Exhaust = 6;
+//   optional bool Partial = 7;
+}
+
+message QueryResponse {
+    optional int64 cursorid = 1;
+    optional int32 starting_from = 2;
+    optional int32 number_returned = 3;
+    repeated Document documents = 4;  // 替换成bson_t
+}
+
+
 message MongoResponse {
     required MongoHeader header = 1;
     required int32 response_flags = 2;
@@ -57,7 +86,9 @@ message MongoResponse {
     required int32 number_returned = 5;
     required string message = 6;
 }
-
 service MongoService {
-    rpc default_method(MongoRequest) returns (MongoResponse);
+    // rpc default_method(MongoRequest) returns (MongoResponse);
+    rpc query(QueryRequest) returns (QueryResponse);
+    // rpc mongo_operation(MongoDBRequest) returns (MongoDBResponse);
+    // rpc test(TestRequest) returns (TestResponse);
 }

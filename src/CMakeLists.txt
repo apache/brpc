@@ -23,6 +23,7 @@ endif()
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
+
 add_library(BUTIL_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_LIB OBJECT ${SOURCES})
 add_dependencies(SOURCES_LIB PROTO_LIB)
@@ -34,6 +35,8 @@ set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB>
                                $<TARGET_OBJECTS:SOURCES_LIB>
                                $<TARGET_OBJECTS:PROTO_LIB>)
+
+target_link_libraries(brpc-static mongo::bson_static)
 
 if(BRPC_WITH_THRIFT)
    target_link_libraries(brpc-static thrift)
@@ -55,6 +58,7 @@ if(BUILD_SHARED_LIBS)
                                    $<TARGET_OBJECTS:SOURCES_LIB>
                                    $<TARGET_OBJECTS:PROTO_LIB>)
     target_link_libraries(brpc-shared ${DYNAMIC_LIB})
+    target_link_libraries(brpc-shared mongo::bson_shared)
     if(BRPC_WITH_GLOG)
         target_link_libraries(brpc-shared ${GLOG_LIB})
     endif()
