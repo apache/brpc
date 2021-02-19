@@ -18,6 +18,8 @@
 #ifndef BRPC_MONGO_HEAD_H
 #define BRPC_MONGO_HEAD_H
 
+#include <string>
+#include <vector>
 #include "butil/sys_byteorder.h"
 
 
@@ -28,25 +30,27 @@ namespace brpc {
 //   https://docs.mongodb.org/manual/reference/mongodb-wire-protocol/#request-opcodes
 enum MongoOpCode {
     MONGO_OPCODE_REPLY         = 1,
-    MONGO_OPCODE_MSG           = 1000,
+    // MONGO_OPCODE_MSG           = 1000,
     MONGO_OPCODE_UPDATE        = 2001,
     MONGO_OPCODE_INSERT        = 2002,
     MONGO_OPCODE_QUERY         = 2004,
     MONGO_OPCODE_GET_MORE      = 2005,
     MONGO_OPCODE_DELETE        = 2006,
     MONGO_OPCODE_KILL_CURSORS  = 2007,
+    MONGO_OPCODE_MSG           = 2013,
 };
 
 inline bool is_mongo_opcode(int32_t op_code) {
     switch (op_code) {
     case MONGO_OPCODE_REPLY:         return true;
-    case MONGO_OPCODE_MSG:           return true;
+    // case MONGO_OPCODE_MSG:           return true;
     case MONGO_OPCODE_UPDATE:        return true; 
     case MONGO_OPCODE_INSERT:        return true; 
     case MONGO_OPCODE_QUERY:         return true; 
     case MONGO_OPCODE_GET_MORE:      return true; 
     case MONGO_OPCODE_DELETE:        return true; 
     case MONGO_OPCODE_KILL_CURSORS : return true;
+    case MONGO_OPCODE_MSG:           return true;
     }
     return false;
 }
@@ -71,6 +75,16 @@ struct mongo_head_t {
     }
 };
 #pragma pack()
+
+struct mongo_section_t {
+    uint8_t type;
+    std::string data;
+};
+
+struct mongo_msg_t {
+    uint32_t flag_bits;
+    std::vector<mongo_section_t> sections;
+};
 
 } // namespace brpc
 

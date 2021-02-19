@@ -15,15 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <bson/bson.h>
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
+#include "butil/atomicops.h"
 #include "butil/time.h" 
 #include "butil/iobuf.h"                         // butil::IOBuf
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
 #include "brpc/server.h"                   // Server
 #include "brpc/span.h"
+#include "brpc/mongo.h"
 #include "brpc/mongo_head.h"
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/details/controller_private_accessor.h"
@@ -106,6 +109,8 @@ void SendMongoResponse::Run() {
         }
     }
 }
+
+butil::atomic<unsigned int> global_request_id(0);
 
 ParseResult ParseMongoMessage(butil::IOBuf* source,
                               Socket* socket, bool /*read_eof*/, const void *arg) {
@@ -294,5 +299,93 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
     mongo_done->Run();
 }
 
+// Actions to a server response in mongo format
+void ProcessMongoResponse(InputMessageBase *msg_base) {}
+
+// Serialize request into request_buf
+void SerializeMongoRequest(butil::IOBuf* request_buf,
+                           Controller* cntl,
+                           const google::protobuf::Message* request) {
+    if (request == nullptr) {
+        return cntl->SetFailed(EREQUEST, "request is null");
+    }
+    if (request->GetDescriptor() != MongoDBRequest::descriptor()) {
+        return cntl->SetFailed(EREQUEST, "The request is not a MongoDBRequest");
+    }
+    const MongoDBRequest* mongo_request = static_cast<const MongoDBRequest*>(request);
+    // TODO(zhangke) 全局自增的request id
+    unsigned int request_id = ++global_request_id;
+    mongo_head_t request_head;
+    request_head.request_id = request_id;
+    request_head.response_to = 0;
+    request_head.op_code = DB_OP_MSG;
+    MongoOp mongo_op_type = mongo_request->op();
+    if (mongo_op_type == DB_INSERT) {
+        // 转换成insert格式
+    } else if (mongo_op_type == DB_QUERY) {
+        if (!mongo_request->has_query()) {
+            return cntl->SetFailed(EREQUEST, "QueryRequest not have query body");
+        }
+        auto const &query_request = mongo_request->query();
+        // 转换成query格式
+        bson_t *query_element = bson_new();
+        // collection
+        const std::string &collection = query_request.collection();
+        // bson_append_utf8(query_element, "find", strlen("find"), collection.c_str(), collection.size());
+        BSON_APPEND_UTF8(query_element, "find", collection.c_str());
+        // selector
+        bson_t *selector = nullptr;
+        if (query_request.has_query()) {
+            const std::string &selector_str = query_request.query().doc();
+            selector = bson_new_from_data(reinterpret_cast<const uint8_t*>(selector_str.c_str()), selector_str.size());
+        } else {
+            selector = bson_new(); 
+        }
+        BSON_APPEND_DOCUMENT(query_element, "filter", selector);
+        // database
+        const std::string &database = query_request.database();
+        // bson_append_utf8(query_element, "$db", strlen("$db"), database.c_str(), database.size());
+        BSON_APPEND_UTF8(query_element, "$db", database.c_str());
+        mongo_msg_t msg_body;
+        msg_body.flag_bits = 0;
+        mongo_section_t section;
+        section.type = 0; // Body
+        // bson_writer_t *writer = nullptr;
+        // uint8_t *buf = nullptr;
+        // size_t buflen = 0;
+        // writer = bson_writer_new(&buf, &buflen, 0, bson_realloc_ctx, nullptr);
+        // bson_writer_begin(writer, &query_element);
+        // bson_writer_end(writer);
+        section.data = std::string(reinterpret_cast<const char *>(bson_get_data(query_element)), query_element->len);
+        // bson_writer_destroy(writer);
+        // bson_free(buf);
+        msg_body.sections.push_back(std::move(section));
+        std::string msg_str;
+        SerializeMongoMsg(&msg_body, &msg_str);
+        request_head.message_length = sizeof(request_head) + msg_str.size();
+        request_buf->append(&request_head, sizeof(request_head));
+        request_buf->append(msg_str);
+    } else if (mongo_op_type == DB_UPDATE) {
+
+    } else if (mongo_op_type == DB_DELETE) {
+
+    } else {
+        return cntl->SetFailed(EREQUEST, "Unsupport mongo request op");
+    }
+    LOG(INFO) << request->DebugString();
+}
+
+// Pack request_buf into msg, call after serialize
+void PackMongoRequest(butil::IOBuf* msg,
+                      SocketMessage** user_message_out,
+                      uint64_t correlation_id,
+                      const google::protobuf::MethodDescriptor* method,
+                      Controller* controller,
+                      const butil::IOBuf& request_buf,
+                      const Authenticator* auth) {
+                          msg->append(request_buf);
+                          msg->append(request_buf);
+                      }
+
 }  // namespace policy
-} // namespace brpc
+}  // namespace brpc
