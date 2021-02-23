@@ -42,7 +42,6 @@ bool ContentionProfilerStart(const char* filename);
 void ContentionProfilerStop();
 }
 
-
 namespace brpc {
 enum class DisplayType{
     kUnknown,
@@ -116,7 +115,6 @@ DEFINE_int32(max_profiles_kept, 32,
 BRPC_VALIDATE_GFLAG(max_profiles_kept, PassValidate);
 
 static const char* const PPROF_FILENAME = "pprof.pl";
-static const char* const FLAMEGRAPH_FILENAME = "flamegraph.pl";
 static int DEFAULT_PROFILING_SECONDS = 10;
 static size_t CONCURRENT_PROFILING_LIMIT = 256;
 
@@ -412,11 +410,17 @@ static void DisplayResult(Controller* cntl,
     const bool show_ccount = cntl->http_request().uri().GetQuery("ccount");
     const std::string* base_name = cntl->http_request().uri().GetQuery("base");
     const std::string* display_type_query = cntl->http_request().uri().GetQuery("display_type");
+    const char* flamegraph_tool = getenv("FLAMEGRAPH_PL_PATH");
     DisplayType display_type = DisplayType::kDot;
     if (display_type_query) {
         display_type = StringToDisplayType(*display_type_query);
         if (display_type == DisplayType::kUnknown) {
             return cntl->SetFailed(EINVAL, "Invalid display_type=%s", display_type_query->c_str());
+        }
+        if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
+            return cntl->SetFailed(EINVAL, "Failed to find environment variable "
+                "FLAMEGRAPH_PL_PATH, read cpu_profiler doc"
+                "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
     }
     if (base_name != NULL) {
@@ -474,7 +478,6 @@ static void DisplayResult(Controller* cntl,
     std::ostringstream cmd_builder;
 
     std::string pprof_tool{GeneratePerlScriptPath(PPROF_FILENAME)};
-    std::string flamegraph_tool{GeneratePerlScriptPath(FLAMEGRAPH_FILENAME)};
 
 #if defined(OS_LINUX)
     cmd_builder << "perl " << pprof_tool
@@ -505,8 +508,7 @@ static void DisplayResult(Controller* cntl,
     const std::string cmd = cmd_builder.str();
     for (int ntry = 0; ntry < 2; ++ntry) {
         if (!g_written_pprof_perl) {
-            if (!WriteSmallFile(pprof_tool.c_str(), pprof_perl()) ||
-                !WriteSmallFile(flamegraph_tool.c_str(), flamegraph_perl())) {
+            if (!WriteSmallFile(pprof_tool.c_str(), pprof_perl())) {
                 os << "Fail to write " << pprof_tool
                    << (use_html ? "</body></html>" : "\n");
                 os.move_to(resp);
@@ -528,14 +530,6 @@ static void DisplayResult(Controller* cntl,
                 g_written_pprof_perl = false;
                 // tell user.
                 os << pprof_path.value() << " was removed, recreate ...\n\n";
-                continue;
-            }
-            butil::FilePath flamegraph_path(flamegraph_tool);
-            if (!butil::PathExists(flamegraph_path)) {
-                // Write the script again.
-                g_written_pprof_perl = false;
-                // tell user.
-                os << flamegraph_path.value() << " was removed, recreate ...\n\n";
                 continue;
             }
             if (rc < 0) {
@@ -891,6 +885,11 @@ static void StartProfiling(ProfilingType type,
         display_type = StringToDisplayType(*display_type_query);
         if (display_type == DisplayType::kUnknown) {
             return cntl->SetFailed(EINVAL, "Invalid display_type=%s", display_type_query->c_str());
+        }
+        if (display_type == DisplayType::kFlameGraph && !getenv("FLAMEGRAPH_PL_PATH")) {
+            return cntl->SetFailed(EINVAL, "Failed to find environment variable "
+                "FLAMEGRAPH_PL_PATH, read cpu_profiler docs"
+                "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
     }
 
