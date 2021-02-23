@@ -419,7 +419,7 @@ static void DisplayResult(Controller* cntl,
         }
         if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
-                "FLAMEGRAPH_PL_PATH, read cpu_profiler doc"
+                "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
                 "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
     }
@@ -888,7 +888,7 @@ static void StartProfiling(ProfilingType type,
         }
         if (display_type == DisplayType::kFlameGraph && !getenv("FLAMEGRAPH_PL_PATH")) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
-                "FLAMEGRAPH_PL_PATH, read cpu_profiler docs"
+                "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
                 "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
     }
