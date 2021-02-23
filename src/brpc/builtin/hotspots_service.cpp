@@ -28,7 +28,6 @@
 #include "brpc/server.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/builtin/pprof_perl.h"
-#include "brpc/builtin/flamegraph_perl.h"
 #include "brpc/builtin/hotspots_service.h"
 #include "brpc/details/tcmalloc_extension.h"
 
