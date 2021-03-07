@@ -33,7 +33,7 @@ DEFINE_int32(port, 27017, "Port of server");
 DEFINE_string(user, "brpcuser", "user name");
 DEFINE_string(password, "12345678", "password");
 DEFINE_string(database, "test", "database");
-DEFINE_string(collection, "test", "collection");
+DEFINE_string(collection, "people", "collection");
 // DEFINE_string(data, "ABCDEF", "data");
 DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(connect_timeout_ms, 5000, "RPC timeout in milliseconds");
@@ -41,7 +41,7 @@ DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_int32(thread_num, 1, "Number of threads to send requests");
 DEFINE_bool(use_bthread, true, "Use bthread to send requests");
 DEFINE_int32(dummy_port, -1, "port of dummy server(for monitoring)");
-DEFINE_int32(op_type, 0, "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE");
+DEFINE_int32(op_type, 1, "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 
 bvar::LatencyRecorder g_latency_recorder("client");
@@ -56,41 +56,64 @@ struct SenderArgs {
 static void* sender(void* void_args) {
     SenderArgs* args = (SenderArgs*)void_args;
 
-    brpc::policy::MongoDBRequest request;
+    google::protobuf::Message *request = nullptr;
     if (FLAGS_op_type == 0) {
         // insert
-        request = brpc::MakeMongoInsertRequest();
-        request.mutable_insert()->set_collection(FLAGS_database);
-        request.mutable_insert()->set_database(FLAGS_collection);
+        // request = brpc::MakeMongoInsertRequest();
+        // request.mutable_insert()->set_collection(FLAGS_database);
+        // request.mutable_insert()->set_database(FLAGS_collection);
 
-        bson_t *doc = bson_new();
-        BSON_APPEND_UTF8(doc, "name", "zhangke");
-        size_t length = 0;
-        char *insert_data = bson_as_canonical_extended_json(doc, &length);
-        request.mutable_insert()->add_documents()->set_doc(insert_data, length);
+        // bson_t *doc = bson_new();
+        // BSON_APPEND_UTF8(doc, "name", "zhangke");
+        // size_t length = 0;
+        // char *insert_data = bson_as_canonical_extended_json(doc, &length);
+        // request.mutable_insert()->add_documents()->set_doc(insert_data, length);
     } else if (FLAGS_op_type == 1) {
         // query
-        request = brpc::MakeMongoQueryRequest();
-        brpc::policy::QueryRequest *query_request = request.mutable_query();
+        brpc::MongoQueryRequest *query_request = new brpc::MongoQueryRequest();
         query_request->set_database(FLAGS_database);
         query_request->set_collection(FLAGS_collection);
-        // query_request->
+        // query_request->set_limit(10);
+        request = query_request;
+    } else if (FLAGS_op_type == 2) {
+        // update
+
     }
-    
 
-    LOG(INFO) << request.DebugString();
     while (!brpc::IsAskedToQuit()) {
-        brpc::Controller cntl;
-        brpc::policy::MongoService_Stub stub(args->mongo_channel);
-        brpc::policy::MongoDBResponse response;
-        stub.mongo_operation(&cntl, &request, &response, nullptr);
-        if (!cntl.Failed()) {
+        google::protobuf::Message *response = nullptr;
+        if (FLAGS_op_type == 0) {
+            // response = new brpc::Mongo
+        } else if (FLAGS_op_type == 1) {
+            response = new brpc::MongoQueryResponse();
+        } else if (FLAGS_op_type == 2) {
 
-        } else {
-            LOG(WARNING) << cntl.ErrorText();
         }
-        LOG(INFO) << "insert finish";
-        bthread_usleep(1000 * 1000);
+        brpc::Controller cntl;
+        args->mongo_channel->CallMethod(NULL, &cntl, request, response, NULL);
+        const int64_t elp = cntl.latency_us();
+        if (!cntl.Failed()) {
+            g_latency_recorder << elp;
+            // CHECK_EQ(response.reply_size(), FLAGS_batch);
+            // for (int i = 0; i < FLAGS_batch; ++i) {
+            //     CHECK_EQ(kvs[i].second.c_str(), response.reply(i).data())
+            //         << "base=" << args->base_index << " i=" << i;
+            // }
+            brpc::MongoQueryResponse *query_response = dynamic_cast<brpc::MongoQueryResponse*>(response);
+            assert(query_response);
+            LOG(INFO) << "query return num:" << query_response->number_returned();
+            LOG_IF(INFO, query_response->has_cursorid()) << "cursorid:" << query_response->cursorid();
+        } else {
+            g_error_count << 1;
+            CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)
+                << "error=" << cntl.ErrorText() << " latency=" << elp;
+            // We can't connect to the server, sleep a while. Notice that this
+            // is a specific sleeping to prevent this thread from spinning too
+            // fast. You should continue the business logic in a production 
+            // server rather than sleeping.
+        }
+        bthread_usleep(2 * 1000 * 1000);
+        // bthread_usleep(50000);
     }
     return NULL;
 }

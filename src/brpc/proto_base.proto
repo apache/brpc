@@ -32,3 +32,6 @@ message NsheadMessageBase {}
 message SerializedRequestBase {}
 
 message ThriftFramedMessageBase {}
+
+message MongoQueryRequestBase {}
+message MongoQueryResponseBase {}

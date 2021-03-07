@@ -73,6 +73,16 @@ struct mongo_head_t {
             op_code = butil::ByteSwap((uint32_t)op_code);
         }
     }
+
+    void make_network_endian() {
+        // 大端需要转换成小端
+        if (!ARCH_CPU_LITTLE_ENDIAN) {
+            message_length = butil::ByteSwap((uint32_t)message_length);
+            request_id = butil::ByteSwap((uint32_t)request_id);
+            response_to = butil::ByteSwap((uint32_t)response_to);
+            op_code = butil::ByteSwap((uint32_t)op_code);
+        }
+    }
 };
 #pragma pack()
 

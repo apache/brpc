@@ -51,85 +51,32 @@ message MongoRequest {
 }
 
 message Document {
-    required string doc = 1;
-}
-
-message MongoDBRequest {
-    required MongoOp op = 1;
-    optional UpdateRequest update = 2;
-    optional InsertRequest insert = 3;
-    optional QueryRequest query = 4;
-    optional DeleteRequest delete = 5;
-}
-
-message MongoDBResponse {
-
-}
-
-message UpdateRequest {
-    required string collection = 1;  // "dbname.collectionname"
-    optional bool upsert = 2;
-    optional bool multi = 3;
-    optional Document selector = 4;  // missing => {}
-    required Document update = 5;
-}
-
-message InsertRequest {
-    optional bool continueOnError = 1;
-    required string database = 2;
-    required string collection = 3;  // "dbname.collectionname"
-    repeated Document documents = 4;
+    optional string document = 1;
 }
 
 message QueryRequest {
-    optional bool TailableCursor = 1;
-    optional bool SlaveOk = 2;
-    optional bool OplogReplay = 3;
-    optional bool NoCursorTimeout = 4;
-    optional bool AwaitData = 5;
-    optional bool Exhaust = 6;
-    optional bool Partial = 7;
-    required string database = 8;
-    required string collection = 9;
-    optional int32 numberToSkip = 10;
-    optional int32 numberToReturn = 11;
-    optional Document query = 12;  // missing => {}
-    repeated string returnFieldsSelector = 13;
+    required string database = 1;
+    required string collection = 2;
+    optional int32 skip = 3;
+    optional int32 limit = 4;
+    optional Document query = 5;  // 替换成bson_t
+    repeated string fields = 6;
+//   optional bool TailableCursor = 1;
+//   optional bool SlaveOk = 2;
+//   optional bool OplogReplay = 3;
+//   optional bool NoCursorTimeout = 4;
+//   optional bool AwaitData = 5;
+//   optional bool Exhaust = 6;
+//   optional bool Partial = 7;
 }
 
-message GetMoreRequest {
-    required string collection = 1;
-    optional int32 numberToReturn = 2;
-    required int64 cursorID = 3;
+message QueryResponse {
+    optional int64 cursorid = 1;
+    optional int32 starting_from = 2;
+    optional int32 number_returned = 3;
+    repeated Document documents = 4;  // 替换成bson_t
 }
 
-message DeleteRequest {
-    required string collection = 1;
-    optional Document selector = 2;
-    optional bool singleRemove = 3;
-}
-
-message KillCursorsRequest {
-    repeated int64 cursorIDs = 1;
-}
-
-message DocumentSequence {
-    required int32 size = 1;
-    required string identifier = 2;
-    repeated Document objects = 3;
-}
-
-message Sections {
-    // oneof, Kind Byte; 0 => Body; Kind 1 => DocumentSequence
-    optional Document Body = 1;
-    optional DocumentSequence documentSequence = 2;
-}
-
-message MongoOpMsg {
-    required uint32 flagBits = 1;
-    repeated Sections sections = 2;
-    optional uint32 checksum = 3;
-}
 
 message MongoResponse {
     required MongoHeader header = 1;
@@ -139,8 +86,9 @@ message MongoResponse {
     required int32 number_returned = 5;
     required string message = 6;
 }
-
 service MongoService {
-    rpc default_method(MongoRequest) returns (MongoResponse);
-    rpc mongo_operation(MongoDBRequest) returns (MongoDBResponse);
+    // rpc default_method(MongoRequest) returns (MongoResponse);
+    rpc query(QueryRequest) returns (QueryResponse);
+    // rpc mongo_operation(MongoDBRequest) returns (MongoDBResponse);
+    // rpc test(TestRequest) returns (TestResponse);
 }
