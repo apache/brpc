@@ -247,7 +247,7 @@ public:
         { new (element_spaces) Element(other.element()); }
         bool is_valid() const { return next != (const Bucket*)-1UL; }
         void set_invalid() { next = (Bucket*)-1UL; }
-        // NOTE: Only be called when in_valid() is true.
+        // NOTE: Only be called when is_valid() is true.
         Element& element() {
             void* spaces = element_spaces; // Suppress strict-aliasing
             return *reinterpret_cast<Element*>(spaces);
