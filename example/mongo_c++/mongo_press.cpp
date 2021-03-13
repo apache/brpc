@@ -52,6 +52,22 @@ struct SenderArgs {
     brpc::Channel* mongo_channel;
 };
 
+std::pair<bool, brpc::MongoQueryResponse> get_more(brpc::Channel *channel, int64_t cursorid) {
+    brpc::MongoGetMoreRequest getMore_request;
+    getMore_request.set_database(FLAGS_database);
+    getMore_request.set_collection(FLAGS_collection);
+    getMore_request.set_cursorid(cursorid);
+    getMore_request.set_batch_size(100);
+    brpc::Controller cntl;
+    brpc::MongoQueryResponse query_response;
+    channel->CallMethod(NULL, &cntl, &getMore_request, &query_response, NULL);
+    if (!cntl.Failed()) {
+        return std::make_pair(true, query_response);
+    } else {
+        LOG(ERROR) << "error=" << cntl.ErrorText();
+        return std::make_pair(false, query_response);
+    }
+}
 // Send `command' to mongo-server via `channel'
 static void* sender(void* void_args) {
     SenderArgs* args = (SenderArgs*)void_args;
@@ -82,6 +98,7 @@ static void* sender(void* void_args) {
 
     while (!brpc::IsAskedToQuit()) {
         google::protobuf::Message *response = nullptr;
+        brpc::Controller cntl;
         if (FLAGS_op_type == 0) {
             // response = new brpc::Mongo
         } else if (FLAGS_op_type == 1) {
@@ -89,20 +106,42 @@ static void* sender(void* void_args) {
         } else if (FLAGS_op_type == 2) {
 
         }
-        brpc::Controller cntl;
-        args->mongo_channel->CallMethod(NULL, &cntl, request, response, NULL);
+        
         const int64_t elp = cntl.latency_us();
+        args->mongo_channel->CallMethod(NULL, &cntl, request, response, NULL);
         if (!cntl.Failed()) {
-            g_latency_recorder << elp;
-            // CHECK_EQ(response.reply_size(), FLAGS_batch);
-            // for (int i = 0; i < FLAGS_batch; ++i) {
-            //     CHECK_EQ(kvs[i].second.c_str(), response.reply(i).data())
-            //         << "base=" << args->base_index << " i=" << i;
-            // }
-            brpc::MongoQueryResponse *query_response = dynamic_cast<brpc::MongoQueryResponse*>(response);
-            assert(query_response);
-            LOG(INFO) << "query return num:" << query_response->number_returned();
-            LOG_IF(INFO, query_response->has_cursorid()) << "cursorid:" << query_response->cursorid();
+            if (FLAGS_op_type == 0) {
+
+            } else if (FLAGS_op_type == 1) {
+                brpc::MongoQueryResponse *query_response = dynamic_cast<brpc::MongoQueryResponse*>(response);
+                assert(query_response);
+                LOG(INFO) << "query return num:" << query_response->number_returned();
+                LOG(INFO) << "query return document num:" << query_response->documents().size();
+                LOG_IF(INFO, query_response->has_cursorid()) << "cursorid:" << query_response->cursorid();
+                int64_t cursor_id = 0;
+                if (query_response->has_cursorid()) {
+                    cursor_id = query_response->cursorid();
+                }
+                while (cursor_id) {
+                    std::pair<bool, brpc::MongoQueryResponse> getMore_result = get_more(args->mongo_channel, cursor_id);
+                    if (getMore_result.first) {
+                        auto &getMore_response = getMore_result.second;
+                        // 返回成功
+                        LOG(INFO) << "query return num:" << getMore_response.number_returned();
+                        LOG(INFO) << "query return document num:" << getMore_response.documents().size();
+                        LOG_IF(INFO, getMore_response.has_cursorid()) << "cursorid:" << getMore_response.cursorid();
+                        if (getMore_response.has_cursorid()) {
+                            cursor_id = getMore_response.cursorid();
+                        } else {
+                            cursor_id = 0;
+                        }
+                    } else {
+                        cursor_id = 0;
+                    }
+                }
+            } else if (FLAGS_op_type == 2) {
+
+            }
         } else {
             g_error_count << 1;
             CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)
@@ -113,7 +152,6 @@ static void* sender(void* void_args) {
             // server rather than sleeping.
         }
         bthread_usleep(2 * 1000 * 1000);
-        // bthread_usleep(50000);
     }
     return NULL;
 }

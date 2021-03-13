@@ -54,14 +54,12 @@ struct MongoMsg {
 
   void make_host_endian() {
     if (!ARCH_CPU_LITTLE_ENDIAN) {
-        flagbits = butil::ByteSwap(flagbits);
-        checksum = butil::ByteSwap(checksum);
+      flagbits = butil::ByteSwap(flagbits);
+      checksum = butil::ByteSwap(checksum);
     }
   }
 
-  bool checksumPresent() {
-    return flagbits & 0x00000001;
-  }
+  bool checksumPresent() { return flagbits & 0x00000001; }
 };
 
 struct MongoInputResponse : public InputMessageBase {
@@ -70,9 +68,7 @@ struct MongoInputResponse : public InputMessageBase {
   MongoMsg msg;
 
   // @InputMessageBase
-  void DestroyImpl() {
-      delete this;
-  }
+  void DestroyImpl() { delete this; }
 };
 
 // Parse binary format of mongo
@@ -89,6 +85,10 @@ void ProcessMongoResponse(InputMessageBase* msg_base);
 void SerializeMongoQueryRequest(butil::IOBuf* request_buf, Controller* cntl,
                                 const MongoQueryRequest* request);
 
+// Serialize getMore request
+void SerializeMongoGetMoreRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                  const MongoGetMoreRequest* request);
+
 // Serialize request into request_buf
 void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
                            const google::protobuf::Message* request);
@@ -101,7 +101,7 @@ void PackMongoRequest(butil::IOBuf* msg, SocketMessage** user_message_out,
                       const Authenticator* auth);
 
 // Parse Mongo Sections
-bool ParseMongoSection(butil::IOBuf* source, Section *section);
+bool ParseMongoSection(butil::IOBuf* source, Section* section);
 
 }  // namespace policy
 }  // namespace brpc

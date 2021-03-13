@@ -19,20 +19,17 @@
 #define BRPC_MONGO_H
 
 #include <bson/bson.h>
-
-#include <string>
-
-#include "brpc/mongo_head.h"
-#include "brpc/policy/mongo.pb.h"
-
 #include <google/protobuf/message.h>
 
 #include <list>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 #include "brpc/callback.h"
+#include "brpc/mongo_head.h"
 #include "brpc/parse_result.h"
+#include "brpc/policy/mongo.pb.h"
 #include "brpc/proto_base.pb.h"
 #include "brpc/socket.h"
 #include "butil/arena.h"
@@ -489,9 +486,7 @@ inline const std::vector<BsonPtr>& MongoQueryResponse::documents() const {
   return documents_;
 }
 
-inline std::string MongoQueryResponse::ns() const {
-  return ns_;
-}
+inline std::string MongoQueryResponse::ns() const { return ns_; }
 
 inline bool MongoQueryResponse::has_ns() const {
   return _has_bits_[0] & 0x00000010u;
@@ -507,9 +502,7 @@ inline void MongoQueryResponse::set_ns(std::string value) {
   set_has_ns();
 }
 
-inline void MongoQueryResponse::set_has_ns() {
-  _has_bits_[0] |= 0x00000010u;
-}
+inline void MongoQueryResponse::set_has_ns() { _has_bits_[0] |= 0x00000010u; }
 
 inline void MongoQueryResponse::clear_has_ns() {
   _has_bits_[0] &= ~0x00000010u;
@@ -517,6 +510,261 @@ inline void MongoQueryResponse::clear_has_ns() {
 
 inline void MongoQueryResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
+}
+
+class MongoGetMoreRequest : public ::google::protobuf::Message {
+ public:
+  MongoGetMoreRequest();
+  virtual ~MongoGetMoreRequest();
+  MongoGetMoreRequest(const MongoGetMoreRequest& from);
+  inline MongoGetMoreRequest& operator=(const MongoGetMoreRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  void Swap(MongoGetMoreRequest* other);
+
+  // database
+  const std::string& database() const;
+  bool has_database() const;
+  void clear_database();
+  void set_database(std::string database);
+  static const int kDatabaseFieldNumber = 1;
+
+  // collection
+  const std::string& collection() const;
+  bool has_collection() const;
+  void clear_collection();
+  void set_collection(std::string collection);
+  static const int kCollectionFieldNumber = 2;
+
+  // cursor_id
+  int64_t cursorid() const;
+  bool has_cursorid() const;
+  void clear_cursorid();
+  void set_cursorid(int64_t cursorid);
+  static const int kCursorIdFieldNumber = 3;
+
+  // batch_size
+  int32_t batch_size() const;
+  bool has_batch_size() const;
+  void clear_batch_size();
+  void set_batch_size(int32_t batch_size);
+  static const int kBatchSizeFieldNumber = 4;
+
+  // maxTimeMS
+  int32_t max_time_ms() const;
+  bool has_max_time_ms() const;
+  void clear_max_time_ms();
+  void set_max_time_ms(int32_t max_time_ms);
+  static const int kMaxTimeMSFieldNumber = 5;
+
+  // comment
+  BsonPtr comment() const;
+  bool has_comment() const;
+  void clear_comment();
+  void set_comment(BsonPtr comment);
+  static const int kCommentFieldNumber = 6;
+
+  bool SerializeTo(butil::IOBuf* buf) const;
+
+  MongoGetMoreRequest* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoGetMoreRequest& from);
+  void MergeFrom(const MongoGetMoreRequest& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+
+  static const ::google::protobuf::Descriptor* descriptor();
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  void set_has_database();
+  void clear_has_database();
+
+  void set_has_collection();
+  void clear_has_collection();
+
+  void set_has_cursorid();
+  void clear_has_cursorid();
+
+  void set_has_batch_size();
+  void clear_has_batch_size();
+
+  void set_has_max_time_ms();
+  void clear_has_max_time_ms();
+
+  void set_has_comment();
+  void clear_has_comment();
+
+  std::string database_;
+  std::string collection_;
+  int64_t cursorid_;
+  int32_t batch_size_;
+  int32_t max_time_ms_;
+  BsonPtr comment_;
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
+inline const std::string& MongoGetMoreRequest::database() const {
+  return database_;
+}
+
+inline bool MongoGetMoreRequest::has_database() const {
+  return _has_bits_[0] & 0x00000001u;
+}
+
+inline void MongoGetMoreRequest::clear_database() {
+  clear_has_database();
+  database_.clear();
+}
+
+inline void MongoGetMoreRequest::set_database(std::string database) {
+  database_ = database;
+  set_has_database();
+}
+
+inline void MongoGetMoreRequest::set_has_database() {
+  _has_bits_[0] |= 0x00000001u;
+}
+
+inline void MongoGetMoreRequest::clear_has_database() {
+  _has_bits_[0] &= ~0x00000001u;
+}
+
+inline const std::string& MongoGetMoreRequest::collection() const {
+  return collection_;
+}
+
+inline bool MongoGetMoreRequest::has_collection() const {
+  return _has_bits_[0] & 0x00000002u;
+}
+
+inline void MongoGetMoreRequest::clear_collection() {
+  clear_has_collection();
+  collection_.clear();
+}
+inline void MongoGetMoreRequest::set_collection(std::string collection) {
+  collection_ = collection;
+  set_has_collection();
+}
+
+inline void MongoGetMoreRequest::set_has_collection() {
+  _has_bits_[0] |= 0x00000002u;
+}
+
+inline void MongoGetMoreRequest::clear_has_collection() {
+  _has_bits_[0] &= ~0x00000002u;
+}
+
+inline int64_t MongoGetMoreRequest::cursorid() const { return cursorid_; }
+
+inline bool MongoGetMoreRequest::has_cursorid() const {
+  return _has_bits_[0] & 0x00000004u;
+}
+
+inline void MongoGetMoreRequest::clear_cursorid() {
+  clear_has_cursorid();
+  cursorid_ = 0;
+}
+
+inline void MongoGetMoreRequest::set_cursorid(int64_t cursorid) {
+  cursorid_ = cursorid;
+  set_has_cursorid();
+}
+
+inline void MongoGetMoreRequest::set_has_cursorid() {
+  _has_bits_[0] |= 0x00000004u;
+}
+
+inline void MongoGetMoreRequest::clear_has_cursorid() {
+  _has_bits_[0] &= ~0x00000004u;
+}
+
+inline int32_t MongoGetMoreRequest::batch_size() const { return batch_size_; }
+
+inline bool MongoGetMoreRequest::has_batch_size() const {
+  return _has_bits_[0] & 0x00000008u;
+}
+
+inline void MongoGetMoreRequest::clear_batch_size() {
+  batch_size_ = 0;
+  clear_has_batch_size();
+}
+
+inline void MongoGetMoreRequest::set_batch_size(int32_t batch_size) {
+  batch_size_ = batch_size;
+  set_has_batch_size();
+}
+
+inline void MongoGetMoreRequest::set_has_batch_size() {
+  _has_bits_[0] |= 0x00000008u;
+}
+
+inline void MongoGetMoreRequest::clear_has_batch_size() {
+  _has_bits_[0] &= ~0x00000008u;
+}
+
+inline int32_t MongoGetMoreRequest::max_time_ms() const { return max_time_ms_; }
+
+inline bool MongoGetMoreRequest::has_max_time_ms() const {
+  return _has_bits_[0] & 0x00000010u;
+}
+
+inline void MongoGetMoreRequest::clear_max_time_ms() {
+  max_time_ms_ = 0;
+  clear_has_max_time_ms();
+}
+
+inline void MongoGetMoreRequest::set_max_time_ms(int32_t max_time_ms) {
+  max_time_ms_ = max_time_ms;
+  set_has_max_time_ms();
+}
+
+inline void MongoGetMoreRequest::set_has_max_time_ms() {
+  _has_bits_[0] |= 0x00000010u;
+}
+
+inline void MongoGetMoreRequest::clear_has_max_time_ms() {
+  _has_bits_[0] &= ~0x00000010u;
+}
+
+inline BsonPtr MongoGetMoreRequest::comment() const { return comment_; }
+
+inline bool MongoGetMoreRequest::has_comment() const {
+  return _has_bits_[0] & 0x00000020u;
+}
+
+inline void MongoGetMoreRequest::clear_comment() {
+  clear_has_comment();
+  comment_.reset();
+}
+
+inline void MongoGetMoreRequest::set_comment(BsonPtr comment) {
+  comment_ = comment;
+  set_has_comment();
+}
+
+inline void MongoGetMoreRequest::set_has_comment() {
+  _has_bits_[0] |= 0x00000020u;
+}
+
+inline void MongoGetMoreRequest::clear_has_comment() {
+  _has_bits_[0] &= ~0x00000020u;
 }
 
 }  // namespace brpc

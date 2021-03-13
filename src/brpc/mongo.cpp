@@ -2,6 +2,8 @@
 
 #include <google/protobuf/reflection_ops.h>  // ReflectionOps::Merge
 
+#include "butil/bson_util.h"
+
 namespace brpc {
 
 MongoQueryRequest::MongoQueryRequest() : ::google::protobuf::Message() {
@@ -29,7 +31,8 @@ bool MongoQueryRequest::SerializeTo(butil::IOBuf* buf) const {
     LOG(WARNING) << "MongoQueryRequest not initialize";
     return false;
   }
-  bson_t* query_element = bson_new();
+  BsonPtr query_element_ptr = butil::bson::new_bson();
+  bson_t* query_element = query_element_ptr.get();
   // collection
   BSON_APPEND_UTF8(query_element, "find", collection().c_str());
   // query_filter
@@ -55,7 +58,7 @@ bool MongoQueryRequest::SerializeTo(butil::IOBuf* buf) const {
   // database
   BSON_APPEND_UTF8(query_element, "$db", database().c_str());
   // Message Flags 4bytes
-  // Section[]  Kind(1byte): Body(0); BodyDucument(Bson)
+  // Section[]  Kind(1byte): Body(0); BodyDocument(Bson)
   uint32_t flag_bits = 0;
   buf->append(static_cast<void*>(&flag_bits), 4);
   uint8_t kind = 0;  // Body kind
@@ -255,6 +258,151 @@ const ::google::protobuf::Descriptor* MongoQueryResponse::descriptor() {
 }
 
 ::google::protobuf::Metadata MongoQueryResponse::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+MongoGetMoreRequest::MongoGetMoreRequest() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoGetMoreRequest::~MongoGetMoreRequest() { SharedDtor(); }
+
+MongoGetMoreRequest::MongoGetMoreRequest(const MongoGetMoreRequest& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+void MongoGetMoreRequest::Swap(MongoGetMoreRequest* other) {}
+
+bool MongoGetMoreRequest::SerializeTo(butil::IOBuf* buf) const {
+  if (!IsInitialized()) {
+    LOG(WARNING) << "MongoGetMoreRequest not initialize";
+    return false;
+  }
+  BsonPtr get_more_element_ptr = butil::bson::new_bson();
+  bson_t* get_more_element = get_more_element_ptr.get();
+  // getMore
+  BSON_APPEND_INT64(get_more_element, "getMore", cursorid());
+  // collection
+  BSON_APPEND_UTF8(get_more_element, "collection", collection().c_str());
+  // batch_size
+  if (has_batch_size()) {
+    BSON_APPEND_DOUBLE(get_more_element, "batchSize",
+                       static_cast<double>(batch_size()));
+  }
+  // $db
+  BSON_APPEND_UTF8(get_more_element, "$db", database().c_str());
+  // Message Flags 4bytes
+  // Section[]  Kind(1byte): Body(0); BodyDocument(Bson)
+  uint32_t flag_bits = 0;
+  buf->append(static_cast<void*>(&flag_bits), 4);
+  uint8_t kind = 0;  // Body kind
+  buf->append(static_cast<void*>(&kind), 1);
+  buf->append(static_cast<const void*>(bson_get_data(get_more_element)),
+              get_more_element->len);
+  return true;
+}
+
+MongoGetMoreRequest* MongoGetMoreRequest::New() const {
+  return new MongoGetMoreRequest;
+}
+
+void MongoGetMoreRequest::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoGetMoreRequest::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoGetMoreRequest* source =
+      dynamic_cast<const MongoGetMoreRequest*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoGetMoreRequest::CopyFrom(const MongoGetMoreRequest& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoGetMoreRequest::MergeFrom(const MongoGetMoreRequest& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  if (from.has_database()) {
+    set_database(from.database());
+  }
+  if (from.has_collection()) {
+    set_collection(from.collection());
+  }
+  if (from.has_cursorid()) {
+    set_cursorid(from.cursorid());
+  }
+  if (from.has_batch_size()) {
+    set_batch_size(from.batch_size());
+  }
+  if (from.has_max_time_ms()) {
+    set_max_time_ms(from.max_time_ms());
+  }
+  if (from.has_comment()) {
+    set_comment(from.comment());
+  }
+}
+
+void MongoGetMoreRequest::Clear() {
+  clear_database();
+  clear_collection();
+  clear_cursorid();
+  clear_batch_size();
+  clear_max_time_ms();
+  clear_comment();
+}
+
+bool MongoGetMoreRequest::IsInitialized() const {
+  return has_database() && has_collection() && has_cursorid();
+}
+
+bool MongoGetMoreRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoGetMoreRequest";
+  return true;
+}
+
+void MongoGetMoreRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoGetMoreRequest";
+}
+
+::google::protobuf::uint8* MongoGetMoreRequest::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoGetMoreRequest::descriptor() {
+  return MongoGetMoreRequestBase::descriptor();
+}
+
+void MongoGetMoreRequest::SharedCtor() {
+  cursorid_ = 0;
+  batch_size_ = 0;
+  max_time_ms_ = 0;
+  _cached_size_ = 0;
+}
+
+void MongoGetMoreRequest::SharedDtor() {}
+
+void MongoGetMoreRequest::SetCachedSize(int size) const {
+  _cached_size_ = size;
+}
+
+::google::protobuf::Metadata MongoGetMoreRequest::GetMetadata() const {
   ::google::protobuf::Metadata metadata;
   metadata.descriptor = descriptor();
   metadata.reflection = NULL;

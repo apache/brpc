@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include "brpc/policy/mongo_protocol.h"
+
 #include <bson/bson.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>  // MethodDescriptor
@@ -28,16 +30,15 @@
 #include "brpc/mongo_head.h"
 #include "brpc/mongo_service_adaptor.h"
 #include "brpc/policy/mongo.pb.h"
-#include "brpc/policy/mongo_protocol.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/policy/nshead_protocol.h"
 #include "brpc/server.h"  // Server
 #include "brpc/socket.h"  // Socket
 #include "brpc/span.h"
 #include "butil/atomicops.h"
+#include "butil/bson_util.h"
 #include "butil/iobuf.h"  // butil::IOBuf
 #include "butil/time.h"
-#include "butil/bson_util.h"
 
 extern "C" {
 void bthread_assign_data(void* data);
@@ -108,7 +109,7 @@ void SendMongoResponse::Run() {
 
 ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket,
                               bool /*read_eof*/, const void* arg) {
-  const MongoServiceAdaptor *adaptor = nullptr;
+  const MongoServiceAdaptor* adaptor = nullptr;
   if (arg) {
     // server side
     const Server* server = static_cast<const Server*>(arg);
@@ -165,7 +166,7 @@ ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket,
     }
     return MakeMessage(msg);
   } else {
-    MongoInputResponse *response_msg = new MongoInputResponse;
+    MongoInputResponse* response_msg = new MongoInputResponse;
     // client side
     // 前面已经读取了mongo_head
     source->pop_front(sizeof(buf));
@@ -174,7 +175,7 @@ ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket,
       // TODO(zhangke)
     } else if (header.op_code == MONGO_OPCODE_MSG) {
       response_msg->opcode = MONGO_OPCODE_MSG;
-      MongoMsg &mongo_msg = response_msg->msg;
+      MongoMsg& mongo_msg = response_msg->msg;
       butil::IOBuf msg_buf;
       size_t act_body_len = source->cutn(&msg_buf, body_len - sizeof(buf));
       if (act_body_len != body_len - sizeof(buf)) {
@@ -198,7 +199,8 @@ ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket,
       }
       return MakeMessage(response_msg);
     } else {
-      LOG(WARNING) << "ParseMongoMessage not support op_code:" << header.op_code;
+      LOG(WARNING) << "ParseMongoMessage not support op_code:"
+                   << header.op_code;
       return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
   }
@@ -341,36 +343,38 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
 // Actions to a server response in mongo format
 void ProcessMongoResponse(InputMessageBase* msg_base) {
   const int64_t start_parse_us = butil::cpuwide_time_us();
-  DestroyingPtr<MongoInputResponse> msg(static_cast<MongoInputResponse*>(msg_base));
+  DestroyingPtr<MongoInputResponse> msg(
+      static_cast<MongoInputResponse*>(msg_base));
 
-  const CallId cid = { static_cast<uint64_t>(msg->socket()->correlation_id()) };
+  const CallId cid = {static_cast<uint64_t>(msg->socket()->correlation_id())};
   Controller* cntl = NULL;
   LOG(DEBUG) << "process mongo response, cid:" << cid.value;
   const int rc = bthread_id_lock(cid, (void**)&cntl);
   if (rc != 0) {
-      LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
-          << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
-      return;
+    LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
+        << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
+    return;
   }
 
   ControllerPrivateAccessor accessor(cntl);
   Span* span = accessor.span();
   if (span) {
-      span->set_base_real_us(msg->base_real_us());
-      span->set_received_us(msg->received_us());
-      // span->set_response_size(msg->response.ByteSize());
-      span->set_start_parse_us(start_parse_us);
+    span->set_base_real_us(msg->base_real_us());
+    span->set_received_us(msg->received_us());
+    // span->set_response_size(msg->response.ByteSize());
+    span->set_start_parse_us(start_parse_us);
   }
   const int saved_error = cntl->ErrorCode();
-  if (cntl->request_id() == "query") {
+  if (cntl->request_id() == "query" || cntl->request_id() == "query_getMore") {
+    bool next_batch = cntl->request_id() == "query_getMore";
     if (msg->opcode == MONGO_OPCODE_MSG) {
-      MongoMsg &reply_msg = msg->msg;
+      MongoMsg& reply_msg = msg->msg;
       if (reply_msg.sections.size() != 1 || reply_msg.sections[0].type != 0) {
         cntl->SetFailed(ERESPONSE, "error query response");
         accessor.OnResponse(cid, cntl->ErrorCode());
         return;
       }
-      Section &section = reply_msg.sections[0];
+      Section& section = reply_msg.sections[0];
       assert(section.body_document);
       BsonPtr document = section.body_document;
       // response if ok
@@ -386,13 +390,18 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
       if (ok_value != 1) {
         LOG(DEBUG) << "query reponse error";
         int32_t error_code = 0;
-        bool has_error_code = butil::bson::bson_get_int32(document, "code", &error_code);
+        bool has_error_code =
+            butil::bson::bson_get_int32(document, "code", &error_code);
         std::string code_name, errmsg;
-        bool has_code_name = butil::bson::bson_get_str(document, "codeName", &code_name);
-        bool has_errmsg = butil::bson::bson_get_str(document, "errmsg", &errmsg);
+        bool has_code_name =
+            butil::bson::bson_get_str(document, "codeName", &code_name);
+        bool has_errmsg =
+            butil::bson::bson_get_str(document, "errmsg", &errmsg);
         if (has_error_code && has_code_name && has_errmsg) {
-          LOG(DEBUG) << "error_code:" << error_code << " code_name:" << code_name << " errmsg:" << errmsg;
-          cntl->SetFailed(error_code, "%s, %s", code_name.c_str(), errmsg.c_str());
+          LOG(DEBUG) << "error_code:" << error_code
+                     << " code_name:" << code_name << " errmsg:" << errmsg;
+          cntl->SetFailed(error_code, "%s, %s", code_name.c_str(),
+                          errmsg.c_str());
         } else {
           cntl->SetFailed(ERESPONSE, "query response failed");
         }
@@ -401,7 +410,8 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
       }
       // query success
       BsonPtr cursor_doc;
-      bool has_cursor_doc = butil::bson::bson_get_doc(document, "cursor", &cursor_doc);
+      bool has_cursor_doc =
+          butil::bson::bson_get_doc(document, "cursor", &cursor_doc);
       if (!has_cursor_doc) {
         LOG(DEBUG) << "query response not has cursor document";
         cntl->SetFailed(ERESPONSE, "query response no cursor");
@@ -409,15 +419,21 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
         return;
       }
       std::vector<BsonPtr> first_batch;
-      bool has_firstbatch = butil::bson::bson_get_array(cursor_doc, "firstBatch", &first_batch);
-      if (!has_firstbatch) {
+      const char* batch_element = "firstBatch";
+      if (next_batch) {
+        batch_element = "nextBatch";
+      }
+      bool has_batch =
+          butil::bson::bson_get_array(cursor_doc, batch_element, &first_batch);
+      if (!has_batch) {
         LOG(DEBUG) << "query cursor document not has firstBatch array";
         cntl->SetFailed(ERESPONSE, "query response return null");
         accessor.OnResponse(cid, cntl->ErrorCode());
         return;
       }
       int64_t cursor_id = 0;
-      bool has_cursor_id = butil::bson::bson_get_int64(cursor_doc, "id", &cursor_id);
+      bool has_cursor_id =
+          butil::bson::bson_get_int64(cursor_doc, "id", &cursor_id);
       if (!has_cursor_id) {
         LOG(DEBUG) << "query cursor document not has cursorid";
         cntl->SetFailed(ERESPONSE, "query response no cursor id");
@@ -433,7 +449,8 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
         return;
       }
       // build response
-      MongoQueryResponse *response = static_cast<MongoQueryResponse*>(cntl->response());
+      MongoQueryResponse* response =
+          static_cast<MongoQueryResponse*>(cntl->response());
       if (cursor_id) {
         response->set_cursorid(cursor_id);
       }
@@ -464,8 +481,20 @@ void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
     }
     SerializeMongoQueryRequest(request_buf, cntl, query_request);
     cntl->set_request_id("query");
-    LOG(DEBUG) << "serialize mongo query request, length:" << request_buf->length();
+    LOG(DEBUG) << "serialize mongo query request, length:"
+               << request_buf->length();
     return;
+  } else if (request->GetDescriptor() ==
+             brpc::MongoGetMoreRequest::descriptor()) {
+    const MongoGetMoreRequest* getMore_request =
+        dynamic_cast<const MongoGetMoreRequest*>(request);
+    if (!getMore_request) {
+      return cntl->SetFailed(EREQUEST, "Fail to parse request");
+    }
+    SerializeMongoGetMoreRequest(request_buf, cntl, getMore_request);
+    cntl->set_request_id("query_getMore");
+    LOG(DEBUG) << "serialize mongo getMore request, length:"
+               << request_buf->length();
   }
 }
 
@@ -481,7 +510,8 @@ void PackMongoRequest(butil::IOBuf* msg, SocketMessage** user_message_out,
   request_head.request_id = static_cast<int32_t>(correlation_id);
   request_head.response_to = 0;
   request_head.op_code = DB_OP_MSG;
-  LOG(DEBUG) << "mongo head message_length:" << request_head.message_length << ", request_id:" << request_head.request_id;
+  LOG(DEBUG) << "mongo head message_length:" << request_head.message_length
+             << ", request_id:" << request_head.request_id;
   request_head.make_network_endian();
   msg->append(static_cast<void*>(&request_head), sizeof(request_head));
   msg->append(request_buf);
@@ -498,7 +528,15 @@ void SerializeMongoQueryRequest(butil::IOBuf* request_buf, Controller* cntl,
   }
 }
 
-bool ParseMongoSection(butil::IOBuf* source, Section *section) {
+void SerializeMongoGetMoreRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                  const MongoGetMoreRequest* request) {
+  if (!request->SerializeTo(request_buf)) {
+    cntl->SetFailed(EREQUEST, "GetMoreRequest not initialize");
+    return;
+  }
+}
+
+bool ParseMongoSection(butil::IOBuf* source, Section* section) {
   if (!source || !section) {
     return false;
   }
@@ -513,7 +551,7 @@ bool ParseMongoSection(butil::IOBuf* source, Section *section) {
     // Body
     // cut 4byte as bson size
     uint32_t bson_size = 0;
-    const void *bson_size_fetch = source->fetch(&bson_size, 4);
+    const void* bson_size_fetch = source->fetch(&bson_size, 4);
     if (!bson_size_fetch) {
       return false;
     }
@@ -522,7 +560,8 @@ bool ParseMongoSection(butil::IOBuf* source, Section *section) {
     if (!ARCH_CPU_LITTLE_ENDIAN) {
       bson_size = butil::ByteSwap(bson_size);
     }
-    LOG(DEBUG) << "get bson size:" << bson_size << " iobuf size:" << source->length();
+    LOG(DEBUG) << "get bson size:" << bson_size
+               << " iobuf size:" << source->length();
     if (source->length() < bson_size) {
       return false;
     }
@@ -532,7 +571,8 @@ bool ParseMongoSection(butil::IOBuf* source, Section *section) {
       return false;
     }
     std::string bson_str = bson_buf.to_string();
-    bson_t *document_ptr = bson_new_from_data(reinterpret_cast<const uint8_t*>(bson_str.c_str()), bson_str.length());
+    bson_t* document_ptr = bson_new_from_data(
+        reinterpret_cast<const uint8_t*>(bson_str.c_str()), bson_str.length());
     if (!document_ptr) {
       LOG(WARNING) << "bson init failed";
       return false;

@@ -35,3 +35,14 @@ message ThriftFramedMessageBase {}
 
 message MongoQueryRequestBase {}
 message MongoQueryResponseBase {}
+
+message MongoGetMoreRequestBase {}
+
+message MongoInsertRequestBase {}
+message MongoInsertResponseBase {}
+
+message MongoUpdateRequestBase {}
+message MongoUpdateResponseBase {}
+
+message MongoDeleteRequestBase {}
+message MongoDeleteResponseBase {}
