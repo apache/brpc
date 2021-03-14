@@ -46,3 +46,6 @@ message MongoUpdateResponseBase {}
 
 message MongoDeleteRequestBase {}
 message MongoDeleteResponseBase {}
+
+message MongoCountRequestBase {}
+message MongoCountResponseBase {}

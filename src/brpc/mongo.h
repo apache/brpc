@@ -767,6 +767,201 @@ inline void MongoGetMoreRequest::clear_has_comment() {
   _has_bits_[0] &= ~0x00000020u;
 }
 
+class MongoCountRequest : public ::google::protobuf::Message {
+ public:
+  MongoCountRequest();
+  virtual ~MongoCountRequest();
+  MongoCountRequest(const MongoCountRequest& from);
+  MongoCountRequest& operator=(const MongoCountRequest& from);
+  void Swap(MongoCountRequest* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoCountRequest* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoCountRequest& from);
+  void MergeFrom(const MongoCountRequest& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+  // database
+ public:
+  static const int kdatabaseFieldNumber = 1;
+  const std::string& database() const { return database_; }
+  bool has_database() const { return _has_bits_[0] & 0x1u; }
+  void clear_database() {
+    clear_has_database();
+    database_.clear();
+  }
+  void set_database(std::string value) {
+    database_ = value;
+    set_has_database();
+  }
+
+ private:
+  void set_has_database() { _has_bits_[0] |= 0x1u; }
+  void clear_has_database() { _has_bits_[0] &= ~0x1u; }
+
+  std::string database_;
+
+  // collection
+ public:
+  static const int kcollectionFieldNumber = 2;
+  const std::string& collection() const { return collection_; }
+  bool has_collection() const { return _has_bits_[0] & 0x2u; }
+  void clear_collection() {
+    clear_has_collection();
+    collection_.clear();
+  }
+  void set_collection(std::string value) {
+    collection_ = value;
+    set_has_collection();
+  }
+
+ private:
+  void set_has_collection() { _has_bits_[0] |= 0x2u; }
+  void clear_has_collection() { _has_bits_[0] &= ~0x2u; }
+
+  std::string collection_;
+
+  // query
+ public:
+  static const int kqueryFieldNumber = 3;
+  const BsonPtr& query() const { return query_; }
+  bool has_query() const { return _has_bits_[0] & 0x4u; }
+  void clear_query() {
+    clear_has_query();
+    query_.reset();
+  }
+  void set_query(BsonPtr value) {
+    query_ = value;
+    set_has_query();
+  }
+
+ private:
+  void set_has_query() { _has_bits_[0] |= 0x4u; }
+  void clear_has_query() { _has_bits_[0] &= ~0x4u; }
+
+  BsonPtr query_;
+
+  // skip
+ public:
+  static const int kskipFieldNumber = 4;
+  int64_t skip() const { return skip_; }
+  bool has_skip() const { return _has_bits_[0] & 0x8u; }
+  void clear_skip() {
+    clear_has_skip();
+    skip_ = 0;
+  }
+  void set_skip(int64_t value) {
+    skip_ = value;
+    set_has_skip();
+  }
+
+ private:
+  void set_has_skip() { _has_bits_[0] |= 0x8u; }
+  void clear_has_skip() { _has_bits_[0] &= ~0x8u; }
+
+  int64_t skip_;
+
+  // limit
+ public:
+  static const int klimitFieldNumber = 5;
+  int64_t limit() const { return limit_; }
+  bool has_limit() const { return _has_bits_[0] & 0x10u; }
+  void clear_limit() {
+    clear_has_limit();
+    limit_ = 0;
+  }
+  void set_limit(int64_t value) {
+    limit_ = value;
+    set_has_limit();
+  }
+
+ private:
+  void set_has_limit() { _has_bits_[0] |= 0x10u; }
+  void clear_has_limit() { _has_bits_[0] &= ~0x10u; }
+
+  int64_t limit_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
+
+class MongoCountResponse : public ::google::protobuf::Message {
+ public:
+  MongoCountResponse();
+  virtual ~MongoCountResponse();
+  MongoCountResponse(const MongoCountResponse& from);
+  MongoCountResponse& operator=(const MongoCountResponse& from);
+  void Swap(MongoCountResponse* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoCountResponse* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoCountResponse& from);
+  void MergeFrom(const MongoCountResponse& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+  // number
+ public:
+  static const int knumberFieldNumber = 1;
+  int32_t number() const { return number_; }
+  bool has_number() const { return _has_bits_[0] & 0x1u; }
+  void clear_number() {
+    clear_has_number();
+    number_ = 0;
+  }
+  void set_number(int32_t value) {
+    number_ = value;
+    set_has_number();
+  }
+
+ private:
+  void set_has_number() { _has_bits_[0] |= 0x1u; }
+  void clear_has_number() { _has_bits_[0] &= ~0x1u; }
+
+  int32_t number_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
 }  // namespace brpc
 
 #endif  // BRPC_MONGO_H

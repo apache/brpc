@@ -461,6 +461,67 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
       response->set_ns(ns);
       accessor.OnResponse(cid, cntl->ErrorCode());
     }
+  } else if (cntl->request_id() == "count") {
+    if (msg->opcode == MONGO_OPCODE_MSG) {
+      MongoMsg& reply_msg = msg->msg;
+      if (reply_msg.sections.size() != 1 || reply_msg.sections[0].type != 0) {
+        cntl->SetFailed(ERESPONSE, "error count response");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      Section& section = reply_msg.sections[0];
+      assert(section.body_document);
+      BsonPtr document = section.body_document;
+      // response if ok
+      double ok_value = 0.0;
+      bool has_ok = butil::bson::bson_get_double(document, "ok", &ok_value);
+      if (!has_ok) {
+        LOG(DEBUG) << "count response not has ok field";
+        cntl->SetFailed(ERESPONSE, "count response no ok field");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // count failed
+      if (ok_value != 1) {
+        LOG(DEBUG) << "count reponse error";
+        int32_t error_code = 0;
+        bool has_error_code =
+            butil::bson::bson_get_int32(document, "code", &error_code);
+        std::string code_name, errmsg;
+        bool has_code_name =
+            butil::bson::bson_get_str(document, "codeName", &code_name);
+        bool has_errmsg =
+            butil::bson::bson_get_str(document, "errmsg", &errmsg);
+        if (has_error_code && has_code_name && has_errmsg) {
+          LOG(DEBUG) << "error_code:" << error_code
+                     << " code_name:" << code_name << " errmsg:" << errmsg;
+          cntl->SetFailed(error_code, "%s, %s", code_name.c_str(),
+                          errmsg.c_str());
+        } else {
+          cntl->SetFailed(ERESPONSE, "count response failed");
+        }
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // count success
+      int32_t count = 0;
+      bool has_count = butil::bson::bson_get_int32(document, "n", &count);
+      if (!has_count) {
+        LOG(DEBUG) << "count response not has n element";
+        cntl->SetFailed(ERESPONSE, "count response no n");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // build response
+      MongoCountResponse* response =
+          static_cast<MongoCountResponse*>(cntl->response());
+      response->set_number(count);
+      accessor.OnResponse(cid, cntl->ErrorCode());
+    } else {
+      cntl->SetFailed(ERESPONSE, "msg not msg type");
+      accessor.OnResponse(cid, cntl->ErrorCode());
+      return;
+    }
   } else if (false) {
     LOG(DEBUG) << "not imple other response";
     accessor.OnResponse(cid, cntl->ErrorCode());
@@ -495,6 +556,19 @@ void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
     cntl->set_request_id("query_getMore");
     LOG(DEBUG) << "serialize mongo getMore request, length:"
                << request_buf->length();
+    return;
+  } else if (request->GetDescriptor() ==
+             brpc::MongoCountRequest::descriptor()) {
+    const MongoCountRequest* count_request =
+        dynamic_cast<const MongoCountRequest*>(request);
+    if (!count_request) {
+      return cntl->SetFailed(EREQUEST, "Fail to parse request");
+    }
+    SerializeMongoCountRequest(request_buf, cntl, count_request);
+    cntl->set_request_id("count");
+    LOG(DEBUG) << "serialize mongo count request, length:"
+               << request_buf->length();
+    return;
   }
 }
 
@@ -532,6 +606,14 @@ void SerializeMongoGetMoreRequest(butil::IOBuf* request_buf, Controller* cntl,
                                   const MongoGetMoreRequest* request) {
   if (!request->SerializeTo(request_buf)) {
     cntl->SetFailed(EREQUEST, "GetMoreRequest not initialize");
+    return;
+  }
+}
+
+void SerializeMongoCountRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                const MongoCountRequest* request) {
+  if (!request->SerializeTo(request_buf)) {
+    cntl->SetFailed(EREQUEST, "CountRequest not initialize");
     return;
   }
 }

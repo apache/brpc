@@ -409,4 +409,259 @@ void MongoGetMoreRequest::SetCachedSize(int size) const {
   return metadata;
 }
 
+MongoCountRequest::MongoCountRequest() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoCountRequest::~MongoCountRequest() { SharedDtor(); }
+
+MongoCountRequest::MongoCountRequest(const MongoCountRequest& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoCountRequest& MongoCountRequest::operator=(const MongoCountRequest& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoCountRequest::SharedCtor() {
+  _cached_size_ = 0;
+  skip_ = 0;
+  limit_ = 0;
+}
+
+void MongoCountRequest::SharedDtor() {}
+
+bool MongoCountRequest::SerializeTo(butil::IOBuf* buf) const {
+  if (!IsInitialized()) {
+    LOG(WARNING) << "MongoCountRequest not initialize";
+    return false;
+  }
+  BsonPtr count_element_ptr = butil::bson::new_bson();
+  bson_t* count_element = count_element_ptr.get();
+  // count
+  BSON_APPEND_UTF8(count_element, "count", collection().c_str());
+  // query
+  auto query_filter = query();
+  if (!query_filter) {
+    query_filter.reset(bson_new(), bson_free);
+  }
+  BSON_APPEND_DOCUMENT(count_element, "query", query_filter.get());
+  // limit
+  if (has_limit()) {
+    BSON_APPEND_INT64(count_element, "limit", limit());
+  }
+  // skip
+  if (has_skip()) {
+    BSON_APPEND_INT64(count_element, "skip", skip());
+  }
+  // $db
+  BSON_APPEND_UTF8(count_element, "$db", database().c_str());
+  // Message Flags 4bytes
+  // Section[]  Kind(1byte): Body(0); BodyDocument(Bson)
+  uint32_t flag_bits = 0;
+  buf->append(static_cast<void*>(&flag_bits), 4);
+  uint8_t kind = 0;  // Body kind
+  buf->append(static_cast<void*>(&kind), 1);
+  buf->append(static_cast<const void*>(bson_get_data(count_element)),
+              count_element->len);
+  return true;
+}
+
+void MongoCountRequest::Swap(MongoCountRequest* other) {}
+
+MongoCountRequest* MongoCountRequest::New() const {
+  return new MongoCountRequest();
+}
+
+void MongoCountRequest::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoCountRequest::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoCountRequest* source =
+      dynamic_cast<const MongoCountRequest*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoCountRequest::CopyFrom(const MongoCountRequest& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoCountRequest::MergeFrom(const MongoCountRequest& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_database()) {
+    set_database(from.database());
+  }
+
+  if (from.has_collection()) {
+    set_collection(from.collection());
+  }
+
+  if (from.has_query()) {
+    set_query(from.query());
+  }
+
+  if (from.has_skip()) {
+    set_skip(from.skip());
+  }
+
+  if (from.has_limit()) {
+    set_limit(from.limit());
+  }
+}
+
+void MongoCountRequest::Clear() {
+  clear_database();
+  clear_collection();
+  clear_query();
+  clear_skip();
+  clear_limit();
+}
+
+bool MongoCountRequest::IsInitialized() const {
+  return has_database() && has_collection();
+}
+
+bool MongoCountRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoCountRequest";
+  return true;
+}
+
+void MongoCountRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoCountRequest";
+}
+
+::google::protobuf::uint8* MongoCountRequest::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoCountRequest::descriptor() {
+  return MongoCountRequestBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoCountRequest::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoCountRequest::SetCachedSize(int size) const { _cached_size_ = size; }
+
+
+MongoCountResponse::MongoCountResponse() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoCountResponse::~MongoCountResponse() { SharedDtor(); }
+
+MongoCountResponse::MongoCountResponse(const MongoCountResponse& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoCountResponse& MongoCountResponse::operator=(
+    const MongoCountResponse& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoCountResponse::SharedCtor() {
+  _cached_size_ = 0;
+  number_ = 0;
+}
+
+void MongoCountResponse::SharedDtor() {}
+
+bool MongoCountResponse::SerializeTo(butil::IOBuf* buf) const {
+  // TODO custom definetion
+}
+
+void MongoCountResponse::Swap(MongoCountResponse* other) {}
+
+MongoCountResponse* MongoCountResponse::New() const {
+  return new MongoCountResponse();
+}
+
+void MongoCountResponse::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoCountResponse::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoCountResponse* source =
+      dynamic_cast<const MongoCountResponse*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoCountResponse::CopyFrom(const MongoCountResponse& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoCountResponse::MergeFrom(const MongoCountResponse& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_number()) {
+    set_number(from.number());
+  }
+}
+
+void MongoCountResponse::Clear() { clear_number(); }
+
+bool MongoCountResponse::IsInitialized() const { return true; }
+
+bool MongoCountResponse::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoCountResponse";
+  return true;
+}
+
+void MongoCountResponse::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoCountResponse";
+}
+
+::google::protobuf::uint8* MongoCountResponse::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoCountResponse::descriptor() {
+  return MongoCountResponseBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoCountResponse::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoCountResponse::SetCachedSize(int size) const { _cached_size_ = size; }
+
 }  // namespace brpc

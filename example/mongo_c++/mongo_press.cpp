@@ -41,7 +41,7 @@ DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_int32(thread_num, 1, "Number of threads to send requests");
 DEFINE_bool(use_bthread, true, "Use bthread to send requests");
 DEFINE_int32(dummy_port, -1, "port of dummy server(for monitoring)");
-DEFINE_int32(op_type, 1, "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE");
+DEFINE_int32(op_type, 1, "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE, 3:COUNT");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 
 bvar::LatencyRecorder g_latency_recorder("client");
@@ -94,6 +94,12 @@ static void* sender(void* void_args) {
     } else if (FLAGS_op_type == 2) {
         // update
 
+    } else if (FLAGS_op_type == 3) {
+        // count
+        brpc::MongoCountRequest *count_request = new brpc::MongoCountRequest();
+        count_request->set_database(FLAGS_database);
+        count_request->set_collection(FLAGS_collection);
+        request = count_request;
     }
 
     while (!brpc::IsAskedToQuit()) {
@@ -105,6 +111,8 @@ static void* sender(void* void_args) {
             response = new brpc::MongoQueryResponse();
         } else if (FLAGS_op_type == 2) {
 
+        } else if (FLAGS_op_type == 3) {
+            response = new brpc::MongoCountResponse();
         }
         
         const int64_t elp = cntl.latency_us();
@@ -141,6 +149,10 @@ static void* sender(void* void_args) {
                 }
             } else if (FLAGS_op_type == 2) {
 
+            } else if (FLAGS_op_type == 3) {
+                brpc::MongoCountResponse *count_response = dynamic_cast<brpc::MongoCountResponse*>(response);
+                assert(count_response);
+                LOG(INFO) << "count return num:" << count_response->number();
             }
         } else {
             g_error_count << 1;

@@ -89,6 +89,10 @@ void SerializeMongoQueryRequest(butil::IOBuf* request_buf, Controller* cntl,
 void SerializeMongoGetMoreRequest(butil::IOBuf* request_buf, Controller* cntl,
                                   const MongoGetMoreRequest* request);
 
+// Serialize count request
+void SerializeMongoCountRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                const MongoCountRequest* request);
+
 // Serialize request into request_buf
 void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
                            const google::protobuf::Message* request);
