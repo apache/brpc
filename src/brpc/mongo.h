@@ -40,6 +40,45 @@ namespace brpc {
 
 typedef std::shared_ptr<bson_t> BsonPtr;
 
+struct MongoReply {
+  int32_t response_flags;
+  int64_t cursorid;
+  int32_t straring_from;
+  int32_t number_returned;
+  std::vector<BsonPtr> documents;
+};
+
+struct DocumentSequence {
+  mutable int32_t size;
+  std::string identifier;
+  std::vector<BsonPtr> documents;
+  bool SerializeTo(butil::IOBuf* buf) const;
+};
+
+typedef std::shared_ptr<DocumentSequence> DocumentSequencePtr;
+
+struct Section {
+  uint8_t type;
+  BsonPtr body_document;
+  DocumentSequencePtr document_sequence;
+  bool SeralizeTo(butil::IOBuf* buf) const;
+};
+
+struct MongoMsg {
+  uint32_t flagbits;
+  std::vector<Section> sections;
+  uint32_t checksum;
+
+  void make_host_endian() {
+    if (!ARCH_CPU_LITTLE_ENDIAN) {
+      flagbits = butil::ByteSwap(flagbits);
+      checksum = butil::ByteSwap(checksum);
+    }
+  }
+
+  bool checksumPresent() { return flagbits & 0x00000001; }
+};
+
 class MongoQueryRequest : public ::google::protobuf::Message {
  public:
   MongoQueryRequest();
@@ -904,7 +943,6 @@ class MongoCountRequest : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-
 class MongoCountResponse : public ::google::protobuf::Message {
  public:
   MongoCountResponse();
@@ -949,6 +987,198 @@ class MongoCountResponse : public ::google::protobuf::Message {
   void clear_has_number() { _has_bits_[0] &= ~0x1u; }
 
   int32_t number_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
+class MongoInsertRequest : public ::google::protobuf::Message {
+ public:
+  MongoInsertRequest();
+  virtual ~MongoInsertRequest();
+  MongoInsertRequest(const MongoInsertRequest& from);
+  MongoInsertRequest& operator=(const MongoInsertRequest& from);
+  void Swap(MongoInsertRequest* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoInsertRequest* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoInsertRequest& from);
+  void MergeFrom(const MongoInsertRequest& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+
+  // database
+ public:
+  static const int kdatabaseFieldNumber = 1;
+  const std::string& database() const { return database_; }
+  bool has_database() const { return _has_bits_[0] & 0x1u; }
+  void clear_database() {
+    clear_has_database();
+    database_.clear();
+  }
+  void set_database(std::string value) {
+    database_ = value;
+    set_has_database();
+  }
+
+ private:
+  void set_has_database() { _has_bits_[0] |= 0x1u; }
+  void clear_has_database() { _has_bits_[0] &= ~0x1u; }
+
+  std::string database_;
+
+  // collection
+ public:
+  static const int kcollectionFieldNumber = 2;
+  const std::string& collection() const { return collection_; }
+  bool has_collection() const { return _has_bits_[0] & 0x2u; }
+  void clear_collection() {
+    clear_has_collection();
+    collection_.clear();
+  }
+  void set_collection(std::string value) {
+    collection_ = value;
+    set_has_collection();
+  }
+
+ private:
+  void set_has_collection() { _has_bits_[0] |= 0x2u; }
+  void clear_has_collection() { _has_bits_[0] &= ~0x2u; }
+
+  std::string collection_;
+
+  // ordered
+ public:
+  static const int korderedFieldNumber = 3;
+  bool ordered() const { return ordered_; }
+  bool has_ordered() const { return _has_bits_[0] & 0x4u; }
+  void clear_ordered() {
+    clear_has_ordered();
+    ordered_ = 0;
+  }
+  void set_ordered(bool value) {
+    ordered_ = value;
+    set_has_ordered();
+  }
+
+ private:
+  void set_has_ordered() { _has_bits_[0] |= 0x4u; }
+  void clear_has_ordered() { _has_bits_[0] &= ~0x4u; }
+
+  bool ordered_;
+
+  // documents
+ public:
+  static const int kdocumentsFieldNumber = 4;
+  const std::vector<BsonPtr>& documents() const { return documents_; }
+  int documents_size() const { return documents_.size(); }
+  void clear_documents() { documents_.clear(); }
+  const BsonPtr& documents(int index) const { return documents_[index]; }
+  BsonPtr* mutable_documents(int index) { return &documents_[index]; }
+  void add_documents(BsonPtr value) { documents_.push_back(std::move(value)); }
+
+ private:
+  std::vector<BsonPtr> documents_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
+struct WriteError {
+  int32_t index;
+  int32_t code;
+  std::string errmsg;
+};
+
+class MongoInsertResponse : public ::google::protobuf::Message {
+ public:
+  MongoInsertResponse();
+  virtual ~MongoInsertResponse();
+  MongoInsertResponse(const MongoInsertResponse& from);
+  MongoInsertResponse& operator=(const MongoInsertResponse& from);
+  void Swap(MongoInsertResponse* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoInsertResponse* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoInsertResponse& from);
+  void MergeFrom(const MongoInsertResponse& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+
+  // number
+ public:
+  static const int knumberFieldNumber = 1;
+  int32_t number() const { return number_; }
+  bool has_number() const { return _has_bits_[0] & 0x1u; }
+  void clear_number() {
+    clear_has_number();
+    number_ = 0;
+  }
+  void set_number(int32_t value) {
+    number_ = value;
+    set_has_number();
+  }
+
+ private:
+  void set_has_number() { _has_bits_[0] |= 0x1u; }
+  void clear_has_number() { _has_bits_[0] &= ~0x1u; }
+
+  int32_t number_;
+
+  // write_errors
+ public:
+  static const int kwrite_errorsFieldNumber = 2;
+  const std::vector<WriteError>& write_errors() const { return write_errors_; }
+  int write_errors_size() const { return write_errors_.size(); }
+  void clear_write_errors() { write_errors_.clear(); }
+  const WriteError& write_errors(int index) const {
+    return write_errors_[index];
+  }
+  WriteError* mutable_write_errors(int index) { return &write_errors_[index]; }
+  void add_write_errors(WriteError value) {
+    write_errors_.push_back(std::move(value));
+  }
+
+ private:
+  std::vector<WriteError> write_errors_;
 
  protected:
   ::google::protobuf::Metadata GetMetadata() const override;

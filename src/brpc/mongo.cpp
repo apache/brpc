@@ -6,6 +6,61 @@
 
 namespace brpc {
 
+bool DocumentSequence::SerializeTo(butil::IOBuf* buf) const {
+  if (identifier.empty()) {
+    return false;
+  }
+  // 计算size
+  int32_t total_size = 4;  // int32_t size
+  total_size += (identifier.size() + 1);
+  for (auto& document : documents) {
+    if (!document) {
+      return false;
+    }
+    total_size += document.get()->len;
+  }
+  size = total_size;
+  buf->append(static_cast<void*>(&size), 4);
+  buf->append(identifier);
+  buf->push_back(0);
+  for (auto& document : documents) {
+    buf->append(static_cast<const void*>(bson_get_data(document.get())),
+                document.get()->len);
+  }
+  assert(buf->length() == size);
+  return true;
+}
+
+bool Section::SeralizeTo(butil::IOBuf* buf) const {
+  if (type == 0) {
+    // Body
+    if (!body_document) {
+      return false;
+    }
+    uint8_t kind = 0;
+    buf->append(static_cast<void*>(&kind), 1);
+    buf->append(static_cast<const void*>(bson_get_data(body_document.get())),
+                body_document.get()->len);
+    return true;
+  } else if (type == 1) {
+    // Document Sequence
+    if (!document_sequence) {
+      return false;
+    }
+    uint8_t kind = 1;
+    butil::IOBuf buf2;
+    bool ret = document_sequence->SerializeTo(&buf2);
+    if (!ret) {
+      return false;
+    }
+    buf->append(static_cast<void*>(&kind), 1);
+    buf->append(buf2);
+    return true;
+  } else {
+    return false;
+  }
+}
+
 MongoQueryRequest::MongoQueryRequest() : ::google::protobuf::Message() {
   SharedCtor();
 }
@@ -564,7 +619,6 @@ const ::google::protobuf::Descriptor* MongoCountRequest::descriptor() {
 
 void MongoCountRequest::SetCachedSize(int size) const { _cached_size_ = size; }
 
-
 MongoCountResponse::MongoCountResponse() : ::google::protobuf::Message() {
   SharedCtor();
 }
@@ -663,5 +717,282 @@ const ::google::protobuf::Descriptor* MongoCountResponse::descriptor() {
 }
 
 void MongoCountResponse::SetCachedSize(int size) const { _cached_size_ = size; }
+
+MongoInsertRequest::MongoInsertRequest() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoInsertRequest::~MongoInsertRequest() { SharedDtor(); }
+
+MongoInsertRequest::MongoInsertRequest(const MongoInsertRequest& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoInsertRequest& MongoInsertRequest::operator=(
+    const MongoInsertRequest& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoInsertRequest::SharedCtor() {
+  _cached_size_ = 0;
+  ordered_ = true;
+}
+
+void MongoInsertRequest::SharedDtor() {}
+
+bool MongoInsertRequest::SerializeTo(butil::IOBuf* buf) const {
+  if (!IsInitialized()) {
+    LOG(WARNING) << "MongoInsertRequest not initialize";
+    return false;
+  }
+  if (documents().size() == 0) {
+    LOG(WARNING) << "To insert document null";
+    return false;
+  }
+  // Message Flags 4bytes
+  uint32_t flag_bits = 0;
+  buf->append(static_cast<void*>(&flag_bits), 4);
+
+  BsonPtr insert_body_element_ptr = butil::bson::new_bson();
+  bson_t* insert_body_element = insert_body_element_ptr.get();
+  // insert
+  BSON_APPEND_UTF8(insert_body_element, "insert", collection().c_str());
+  // ordered
+  BSON_APPEND_BOOL(insert_body_element, "ordered", ordered());
+  // $db
+  BSON_APPEND_UTF8(insert_body_element, "$db", database().c_str());
+
+  // Section[]  Kind(1byte): Body(0); BodyDocument(Bson)
+  Section section1;
+  section1.type = 0;
+  section1.body_document = insert_body_element_ptr;
+  butil::IOBuf buf1;
+  bool ret = section1.SeralizeTo(&buf1);
+  if (!ret) {
+    return false;
+  }
+  buf->append(buf1);
+  // Section Kind(1byte): Document Sequence(1); SeqID: documents
+  // 添加object_id
+  for (auto document : documents()) {
+    bson_t* doc = document.get();
+    if (!butil::bson::bson_has_oid(document)) {
+      bson_oid_t oid;
+      bson_oid_init(&oid, nullptr);
+      BSON_APPEND_OID(doc, "_id", &oid);
+    }
+  }
+  Section section2;
+  section2.type = 1;
+  DocumentSequencePtr document_sequence = std::make_shared<DocumentSequence>();
+  document_sequence->identifier = "documents";
+  document_sequence->documents = documents();
+  section2.document_sequence = document_sequence;
+  butil::IOBuf buf2;
+  ret = section2.SeralizeTo(&buf2);
+  if (!ret) {
+    return false;
+  }
+  buf->append(buf2);
+  return true;
+}
+
+void MongoInsertRequest::Swap(MongoInsertRequest* other) {}
+
+MongoInsertRequest* MongoInsertRequest::New() const {
+  return new MongoInsertRequest();
+}
+
+void MongoInsertRequest::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoInsertRequest::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoInsertRequest* source =
+      dynamic_cast<const MongoInsertRequest*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoInsertRequest::CopyFrom(const MongoInsertRequest& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoInsertRequest::MergeFrom(const MongoInsertRequest& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_database()) {
+    set_database(from.database());
+  }
+
+  if (from.has_collection()) {
+    set_collection(from.collection());
+  }
+
+  if (from.has_ordered()) {
+    set_ordered(from.ordered());
+  }
+
+  documents_.insert(documents_.end(), from.documents().cbegin(),
+                    from.documents().cend());
+}
+
+void MongoInsertRequest::Clear() {
+  clear_database();
+  clear_collection();
+  clear_ordered();
+  clear_documents();
+}
+
+bool MongoInsertRequest::IsInitialized() const {
+  return has_database() && has_collection();
+}
+
+bool MongoInsertRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoInsertRequest";
+  return true;
+}
+
+void MongoInsertRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoInsertRequest";
+}
+
+::google::protobuf::uint8* MongoInsertRequest::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoInsertRequest::descriptor() {
+  return MongoInsertRequestBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoInsertRequest::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoInsertRequest::SetCachedSize(int size) const { _cached_size_ = size; }
+
+MongoInsertResponse::MongoInsertResponse() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoInsertResponse::~MongoInsertResponse() { SharedDtor(); }
+
+MongoInsertResponse::MongoInsertResponse(const MongoInsertResponse& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoInsertResponse& MongoInsertResponse::operator=(
+    const MongoInsertResponse& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoInsertResponse::SharedCtor() {
+  _cached_size_ = 0;
+  number_ = 0;
+}
+
+void MongoInsertResponse::SharedDtor() {}
+
+bool MongoInsertResponse::SerializeTo(butil::IOBuf* buf) const {
+  // TODO custom definetion
+}
+
+void MongoInsertResponse::Swap(MongoInsertResponse* other) {}
+
+MongoInsertResponse* MongoInsertResponse::New() const {
+  return new MongoInsertResponse();
+}
+
+void MongoInsertResponse::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoInsertResponse::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoInsertResponse* source =
+      dynamic_cast<const MongoInsertResponse*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoInsertResponse::CopyFrom(const MongoInsertResponse& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoInsertResponse::MergeFrom(const MongoInsertResponse& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_number()) {
+    set_number(from.number());
+  }
+
+  write_errors_.insert(write_errors_.end(), from.write_errors().cbegin(),
+                       from.write_errors().cend());
+}
+
+void MongoInsertResponse::Clear() {
+  clear_number();
+  clear_write_errors();
+}
+
+bool MongoInsertResponse::IsInitialized() const { return true; }
+
+bool MongoInsertResponse::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoInsertResponse";
+  return true;
+}
+
+void MongoInsertResponse::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoInsertResponse";
+}
+
+::google::protobuf::uint8* MongoInsertResponse::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoInsertResponse::descriptor() {
+  return MongoInsertResponseBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoInsertResponse::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoInsertResponse::SetCachedSize(int size) const {
+  _cached_size_ = size;
+}
 
 }  // namespace brpc

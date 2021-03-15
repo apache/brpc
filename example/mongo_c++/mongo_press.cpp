@@ -26,6 +26,7 @@
 #include <brpc/server.h>
 
 #include <bson/bson.h>
+#include <butil/bson_util.h>
 
 DEFINE_string(connection_type, "pooled", "Connection type. Available values: pooled, short");
 DEFINE_string(server, "127.0.0.1", "IP Address of server");
@@ -75,15 +76,14 @@ static void* sender(void* void_args) {
     google::protobuf::Message *request = nullptr;
     if (FLAGS_op_type == 0) {
         // insert
-        // request = brpc::MakeMongoInsertRequest();
-        // request.mutable_insert()->set_collection(FLAGS_database);
-        // request.mutable_insert()->set_database(FLAGS_collection);
-
-        // bson_t *doc = bson_new();
-        // BSON_APPEND_UTF8(doc, "name", "zhangke");
-        // size_t length = 0;
-        // char *insert_data = bson_as_canonical_extended_json(doc, &length);
-        // request.mutable_insert()->add_documents()->set_doc(insert_data, length);
+        // brpc::MongoInsertRequest *insert_request = new brpc::MongoInsertRequest();
+        // insert_request->set_database(FLAGS_database);
+        // insert_request->set_collection(FLAGS_collection);
+        // butil::bson::BsonPtr doc1 = butil::bson::new_bson();
+        // BSON_APPEND_UTF8(doc1.get(), "name", "test2");
+        // BSON_APPEND_UTF8(doc1.get(), "comment", "insert2");
+        // insert_request->add_documents(doc1);
+        // request = insert_request;
     } else if (FLAGS_op_type == 1) {
         // query
         brpc::MongoQueryRequest *query_request = new brpc::MongoQueryRequest();
@@ -106,7 +106,19 @@ static void* sender(void* void_args) {
         google::protobuf::Message *response = nullptr;
         brpc::Controller cntl;
         if (FLAGS_op_type == 0) {
-            // response = new brpc::Mongo
+            brpc::MongoInsertRequest *insert_request = new brpc::MongoInsertRequest();
+            insert_request->set_database(FLAGS_database);
+            insert_request->set_collection(FLAGS_collection);
+            butil::bson::BsonPtr doc1 = butil::bson::new_bson();
+            BSON_APPEND_UTF8(doc1.get(), "name", "test1");
+            BSON_APPEND_UTF8(doc1.get(), "comment", "insert1");
+            butil::bson::BsonPtr doc2 = butil::bson::new_bson();
+            BSON_APPEND_UTF8(doc2.get(), "name", "test2");
+            BSON_APPEND_UTF8(doc2.get(), "comment", "insert2");
+            insert_request->add_documents(doc1);
+            insert_request->add_documents(doc2);
+            request = insert_request;
+            response = new brpc::MongoInsertResponse();
         } else if (FLAGS_op_type == 1) {
             response = new brpc::MongoQueryResponse();
         } else if (FLAGS_op_type == 2) {
@@ -119,7 +131,12 @@ static void* sender(void* void_args) {
         args->mongo_channel->CallMethod(NULL, &cntl, request, response, NULL);
         if (!cntl.Failed()) {
             if (FLAGS_op_type == 0) {
-
+                brpc::MongoInsertResponse *insert_response = dynamic_cast<brpc::MongoInsertResponse*>(response);
+                LOG(INFO) << "insert return num:" << insert_response->number() << " write_errors num:" << insert_response->write_errors().size();
+                for (size_t i = 0; i < insert_response->write_errors().size(); ++i) {
+                    brpc::WriteError write_error = insert_response->write_errors(i);
+                    LOG(INFO) << "index:" << write_error.index << " code:" << write_error.code << " errmsg:" << write_error.errmsg;
+                }
             } else if (FLAGS_op_type == 1) {
                 brpc::MongoQueryResponse *query_response = dynamic_cast<brpc::MongoQueryResponse*>(response);
                 assert(query_response);

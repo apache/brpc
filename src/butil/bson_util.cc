@@ -1,7 +1,8 @@
 #include "butil/bson_util.h"
-#include "butil/logging.h"
 
 #include <cassert>
+
+#include "butil/logging.h"
 
 namespace butil {
 namespace bson {
@@ -19,11 +20,10 @@ bool bson_get_double(BsonPtr doc, const char *key, double *value) {
   assert(value);
   bson_iter_t iter;
   bson_t *doc_ptr = doc.get();
-  if (!bson_iter_init(&iter, doc_ptr)
-      || !bson_iter_find(&iter, key)
-      || !BSON_ITER_HOLDS_DOUBLE(&iter)) {
-        return false;
-      }
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, key) ||
+      !BSON_ITER_HOLDS_DOUBLE(&iter)) {
+    return false;
+  }
   *value = bson_iter_double(&iter);
   return true;
 }
@@ -34,26 +34,24 @@ bool bson_get_int32(BsonPtr doc, const char *key, int32_t *value) {
   assert(value);
   bson_iter_t iter;
   bson_t *doc_ptr = doc.get();
-  if (!bson_iter_init(&iter, doc_ptr)
-      || !bson_iter_find(&iter, key)
-      || !BSON_ITER_HOLDS_INT32(&iter)) {
-        return false;
-      }
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, key) ||
+      !BSON_ITER_HOLDS_INT32(&iter)) {
+    return false;
+  }
   *value = bson_iter_int32(&iter);
   return true;
 }
 
-bool bson_get_int64(BsonPtr doc, const char *key, int64_t *value){
+bool bson_get_int64(BsonPtr doc, const char *key, int64_t *value) {
   assert(doc);
   assert(key);
   assert(value);
   bson_iter_t iter;
   bson_t *doc_ptr = doc.get();
-  if (!bson_iter_init(&iter, doc_ptr)
-      || !bson_iter_find(&iter, key)
-      || !BSON_ITER_HOLDS_INT64(&iter)) {
-        return false;
-      }
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, key) ||
+      !BSON_ITER_HOLDS_INT64(&iter)) {
+    return false;
+  }
   *value = bson_iter_int64(&iter);
   return true;
 }
@@ -64,11 +62,10 @@ bool bson_get_str(BsonPtr doc, const char *key, std::string *value) {
   assert(value);
   bson_iter_t iter;
   bson_t *doc_ptr = doc.get();
-  if (!bson_iter_init(&iter, doc_ptr)
-      || !bson_iter_find(&iter, key)
-      || !BSON_ITER_HOLDS_UTF8(&iter)) {
-        return false;
-      }
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, key) ||
+      !BSON_ITER_HOLDS_UTF8(&iter)) {
+    return false;
+  }
   uint32_t length = 0;
   const char *str = bson_iter_utf8(&iter, &length);
   if (!str) {
@@ -85,11 +82,10 @@ bool bson_get_doc(BsonPtr doc, const char *key, BsonPtr *value) {
   assert(value);
   bson_iter_t iter;
   bson_t *doc_ptr = doc.get();
-  if (!bson_iter_init(&iter, doc_ptr)
-      || !bson_iter_find(&iter, key)
-      || !BSON_ITER_HOLDS_DOCUMENT(&iter)) {
-        return false;
-      }
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, key) ||
+      !BSON_ITER_HOLDS_DOCUMENT(&iter)) {
+    return false;
+  }
   uint32_t length = 0;
   const uint8_t *document_str = nullptr;
   bson_iter_document(&iter, &length, &document_str);
@@ -107,11 +103,10 @@ bool bson_get_array(BsonPtr doc, const char *key, std::vector<BsonPtr> *value) {
   assert(value);
   bson_iter_t iter;
   bson_t *doc_ptr = doc.get();
-  if (!bson_iter_init(&iter, doc_ptr)
-      || !bson_iter_find(&iter, key)
-      || !BSON_ITER_HOLDS_ARRAY(&iter)) {
-        return false;
-      }
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, key) ||
+      !BSON_ITER_HOLDS_ARRAY(&iter)) {
+    return false;
+  }
   uint32_t length = 0;
   const uint8_t *array_str = nullptr;
   bson_iter_array(&iter, &length, &array_str);
@@ -141,6 +136,17 @@ bool bson_get_array(BsonPtr doc, const char *key, std::vector<BsonPtr> *value) {
   return true;
 }
 
+bool bson_has_oid(BsonPtr doc) {
+  assert(doc);
+  bson_iter_t iter;
+  bson_t *doc_ptr = doc.get();
+  const char *oid = "_id";
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, oid) ||
+      !BSON_ITER_HOLDS_OID(&iter)) {
+    return false;
+  }
+  return true;
+}
 
 }  // namespace bson
 }  // namespace butil

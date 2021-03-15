@@ -25,43 +25,6 @@
 namespace brpc {
 namespace policy {
 
-struct MongoReply {
-  int32_t response_flags;
-  int64_t cursorid;
-  int32_t straring_from;
-  int32_t number_returned;
-  std::vector<BsonPtr> documents;
-};
-
-struct DocumentSequence {
-  int32_t size;
-  std::string identifier;
-  std::vector<BsonPtr> documents;
-};
-
-typedef std::shared_ptr<DocumentSequence> DocumentSequencePtr;
-
-struct Section {
-  uint8_t type;
-  BsonPtr body_document;
-  DocumentSequencePtr document_sequence;
-};
-
-struct MongoMsg {
-  uint32_t flagbits;
-  std::vector<Section> sections;
-  uint32_t checksum;
-
-  void make_host_endian() {
-    if (!ARCH_CPU_LITTLE_ENDIAN) {
-      flagbits = butil::ByteSwap(flagbits);
-      checksum = butil::ByteSwap(checksum);
-    }
-  }
-
-  bool checksumPresent() { return flagbits & 0x00000001; }
-};
-
 struct MongoInputResponse : public InputMessageBase {
   int32_t opcode;
   MongoReply reply;
@@ -92,6 +55,10 @@ void SerializeMongoGetMoreRequest(butil::IOBuf* request_buf, Controller* cntl,
 // Serialize count request
 void SerializeMongoCountRequest(butil::IOBuf* request_buf, Controller* cntl,
                                 const MongoCountRequest* request);
+
+// Serialize insert request
+void SerializeMongoInsertRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                 const MongoInsertRequest* request);
 
 // Serialize request into request_buf
 void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,

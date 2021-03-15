@@ -3,6 +3,7 @@
 
 #include <bson/bson.h>
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@ bool bson_get_doc(BsonPtr doc, const char *key, BsonPtr *value);
 
 bool bson_get_array(BsonPtr doc, const char *key, std::vector<BsonPtr> *value);
 
+bool bson_has_oid(BsonPtr doc);
 }  // namespace bson
 }  // namespace butil
 

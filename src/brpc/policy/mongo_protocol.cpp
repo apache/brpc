@@ -522,6 +522,110 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
       accessor.OnResponse(cid, cntl->ErrorCode());
       return;
     }
+  } else if (cntl->request_id() == "insert") {
+    if (msg->opcode == MONGO_OPCODE_MSG) {
+      MongoMsg& reply_msg = msg->msg;
+      if (reply_msg.sections.size() != 1 || reply_msg.sections[0].type != 0) {
+        cntl->SetFailed(ERESPONSE, "error insert response");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      Section& section = reply_msg.sections[0];
+      assert(section.body_document);
+      BsonPtr document = section.body_document;
+      // response if ok
+      double ok_value = 0.0;
+      bool has_ok = butil::bson::bson_get_double(document, "ok", &ok_value);
+      if (!has_ok) {
+        LOG(DEBUG) << "count response not has ok field";
+        cntl->SetFailed(ERESPONSE, "insert response no ok field");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // insert failed
+      if (ok_value != 1) {
+        LOG(DEBUG) << "insert reponse error";
+        int32_t error_code = 0;
+        bool has_error_code =
+            butil::bson::bson_get_int32(document, "code", &error_code);
+        std::string code_name, errmsg;
+        bool has_code_name =
+            butil::bson::bson_get_str(document, "codeName", &code_name);
+        bool has_errmsg =
+            butil::bson::bson_get_str(document, "errmsg", &errmsg);
+        if (has_error_code && has_code_name && has_errmsg) {
+          LOG(DEBUG) << "error_code:" << error_code
+                     << " code_name:" << code_name << " errmsg:" << errmsg;
+          cntl->SetFailed(error_code, "%s, %s", code_name.c_str(),
+                          errmsg.c_str());
+        } else {
+          cntl->SetFailed(ERESPONSE, "insert response failed");
+        }
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // insert success
+      int32_t insert_number = 0;
+      bool has_number =
+          butil::bson::bson_get_int32(document, "n", &insert_number);
+      if (!has_number) {
+        LOG(DEBUG) << "insert response not has n element";
+        cntl->SetFailed(ERESPONSE, "insert response no n");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // build response number
+      MongoInsertResponse* response =
+          static_cast<MongoInsertResponse*>(cntl->response());
+      response->set_number(insert_number);
+      // writeErrors array
+      std::vector<BsonPtr> write_errors;
+      const char* write_errors_element = "writeErrors";
+      bool has_write_errors = butil::bson::bson_get_array(
+          document, write_errors_element, &write_errors);
+      if (has_write_errors) {
+        // build response write_errors
+        for (BsonPtr write_error_ptr : write_errors) {
+          WriteError write_error_record;
+          int32_t index = 0;
+          int32_t code = 0;
+          std::string errmsg;
+          bool has_index =
+              butil::bson::bson_get_int32(write_error_ptr, "index", &index);
+          if (!has_index) {
+            LOG(WARNING) << "unrecognize insert write_error:"
+                         << bson_as_canonical_extended_json(
+                                write_error_ptr.get(), nullptr);
+            continue;
+          }
+          write_error_record.index = index;
+          bool has_code =
+              butil::bson::bson_get_int32(write_error_ptr, "code", &code);
+          if (!has_code) {
+            LOG(WARNING) << "unrecognize insert write_error:"
+                         << bson_as_canonical_extended_json(
+                                write_error_ptr.get(), nullptr);
+            continue;
+          }
+          write_error_record.code = code;
+          bool has_errmsg =
+              butil::bson::bson_get_str(write_error_ptr, "errmsg", &errmsg);
+          if (!has_errmsg) {
+            LOG(WARNING) << "unrecognize insert write_error:"
+                         << bson_as_canonical_extended_json(
+                                write_error_ptr.get(), nullptr);
+            continue;
+          }
+          write_error_record.errmsg = errmsg;
+          response->add_write_errors(write_error_record);
+        }
+      }
+      accessor.OnResponse(cid, cntl->ErrorCode());
+    } else {
+      cntl->SetFailed(ERESPONSE, "msg not msg type");
+      accessor.OnResponse(cid, cntl->ErrorCode());
+      return;
+    }
   } else if (false) {
     LOG(DEBUG) << "not imple other response";
     accessor.OnResponse(cid, cntl->ErrorCode());
@@ -569,6 +673,18 @@ void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
     LOG(DEBUG) << "serialize mongo count request, length:"
                << request_buf->length();
     return;
+  } else if (request->GetDescriptor() ==
+             brpc::MongoInsertRequest::descriptor()) {
+    const MongoInsertRequest* insert_request =
+        dynamic_cast<const MongoInsertRequest*>(request);
+    if (!insert_request) {
+      return cntl->SetFailed(EREQUEST, "Fail to parse request");
+    }
+    SerializeMongoInsertRequest(request_buf, cntl, insert_request);
+    cntl->set_request_id("insert");
+    LOG(DEBUG) << "serialize mongo insert request, length:"
+               << request_buf->length();
+    return;
   }
 }
 
@@ -614,6 +730,14 @@ void SerializeMongoCountRequest(butil::IOBuf* request_buf, Controller* cntl,
                                 const MongoCountRequest* request) {
   if (!request->SerializeTo(request_buf)) {
     cntl->SetFailed(EREQUEST, "CountRequest not initialize");
+    return;
+  }
+}
+
+void SerializeMongoInsertRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                 const MongoInsertRequest* request) {
+  if (!request->SerializeTo(request_buf)) {
+    cntl->SetFailed(EREQUEST, "InsertRequest not initialize");
     return;
   }
 }
