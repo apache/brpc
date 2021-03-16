@@ -89,10 +89,7 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         //   brpc)
         flush_nosignal_tasks();
         LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << _rq.capacity();
-        // TODO(gejun): May cause deadlock when all workers are spinning here.
-        // A better solution is to pop and run existing bthreads, however which
-        // make set_remained()-callbacks do context switches and need extensive
-        // reviews on related code.
+        // Yield and run existing bthreads when runqueue is full.
         TaskGroup* g = this;
         TaskGroup::yield(&g);
     }
