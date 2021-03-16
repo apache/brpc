@@ -93,7 +93,8 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         // A better solution is to pop and run existing bthreads, however which
         // make set_remained()-callbacks do context switches and need extensive
         // reviews on related code.
-        ::usleep(1000);
+        TaskGroup* g = this;
+        TaskGroup::yield(&g);
     }
 }
 
