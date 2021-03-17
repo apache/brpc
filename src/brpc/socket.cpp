@@ -1358,6 +1358,7 @@ int Socket::KeepWriteIfConnected(int fd, int err, void* data) {
                                             RunClosure, thrd_func)) == 0) {
             return 0;
         } else {
+            delete thrd_func;  // release memory
             PLOG(ERROR) << "Fail to start bthread";
             // Fall through with non zero `err'
         }
