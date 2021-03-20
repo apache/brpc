@@ -1388,6 +1388,305 @@ class MongoDeleteResponse : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
+class MongoUpdateRequest : public ::google::protobuf::Message {
+ public:
+  MongoUpdateRequest();
+  virtual ~MongoUpdateRequest();
+  MongoUpdateRequest(const MongoUpdateRequest& from);
+  MongoUpdateRequest& operator=(const MongoUpdateRequest& from);
+  void Swap(MongoUpdateRequest* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoUpdateRequest* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoUpdateRequest& from);
+  void MergeFrom(const MongoUpdateRequest& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+
+  // database
+ public:
+  static const int kdatabaseFieldNumber = 1;
+  const std::string& database() const { return database_; }
+  bool has_database() const { return _has_bits_[0] & 0x1u; }
+  void clear_database() {
+    clear_has_database();
+    database_.clear();
+  }
+  void set_database(std::string value) {
+    database_ = value;
+    set_has_database();
+  }
+
+ private:
+  void set_has_database() { _has_bits_[0] |= 0x1u; }
+  void clear_has_database() { _has_bits_[0] &= ~0x1u; }
+
+  std::string database_;
+
+  // collection
+ public:
+  static const int kcollectionFieldNumber = 2;
+  const std::string& collection() const { return collection_; }
+  bool has_collection() const { return _has_bits_[0] & 0x2u; }
+  void clear_collection() {
+    clear_has_collection();
+    collection_.clear();
+  }
+  void set_collection(std::string value) {
+    collection_ = value;
+    set_has_collection();
+  }
+
+ private:
+  void set_has_collection() { _has_bits_[0] |= 0x2u; }
+  void clear_has_collection() { _has_bits_[0] &= ~0x2u; }
+
+  std::string collection_;
+
+  // selector
+ public:
+  static const int kselectorFieldNumber = 3;
+  const BsonPtr& selector() const { return selector_; }
+  bool has_selector() const { return _has_bits_[0] & 0x4u; }
+  void clear_selector() {
+    clear_has_selector();
+    selector_.reset();
+  }
+  void set_selector(BsonPtr value) {
+    selector_ = value;
+    set_has_selector();
+  }
+
+ private:
+  void set_has_selector() { _has_bits_[0] |= 0x4u; }
+  void clear_has_selector() { _has_bits_[0] &= ~0x4u; }
+
+  BsonPtr selector_;
+
+  // update
+ public:
+  static const int kupdateFieldNumber = 4;
+  const BsonPtr& update() const { return update_; }
+  bool has_update() const { return _has_bits_[0] & 0x8u; }
+  void clear_update() {
+    clear_has_update();
+    update_.reset();
+  }
+  void set_update(BsonPtr value) {
+    update_ = value;
+    set_has_update();
+  }
+
+ private:
+  void set_has_update() { _has_bits_[0] |= 0x8u; }
+  void clear_has_update() { _has_bits_[0] &= ~0x8u; }
+
+  BsonPtr update_;
+
+  // ordered
+ public:
+  static const int korderedFieldNumber = 5;
+  bool ordered() const { return ordered_; }
+  bool has_ordered() const { return _has_bits_[0] & 0x10u; }
+  void clear_ordered() {
+    clear_has_ordered();
+    ordered_ = false;
+  }
+  void set_ordered(bool value) {
+    ordered_ = value;
+    set_has_ordered();
+  }
+
+ private:
+  void set_has_ordered() { _has_bits_[0] |= 0x10u; }
+  void clear_has_ordered() { _has_bits_[0] &= ~0x10u; }
+
+  bool ordered_;
+
+  // upsert
+ public:
+  static const int kupsertFieldNumber = 6;
+  bool upsert() const { return upsert_; }
+  bool has_upsert() const { return _has_bits_[0] & 0x20u; }
+  void clear_upsert() {
+    clear_has_upsert();
+    upsert_ = false;
+  }
+  void set_upsert(bool value) {
+    upsert_ = value;
+    set_has_upsert();
+  }
+
+ private:
+  void set_has_upsert() { _has_bits_[0] |= 0x20u; }
+  void clear_has_upsert() { _has_bits_[0] &= ~0x20u; }
+
+  bool upsert_;
+
+  // multi
+ public:
+  static const int kmultiFieldNumber = 7;
+  bool multi() const { return multi_; }
+  bool has_multi() const { return _has_bits_[0] & 0x40u; }
+  void clear_multi() {
+    clear_has_multi();
+    multi_ = false;
+  }
+  void set_multi(bool value) {
+    multi_ = value;
+    set_has_multi();
+  }
+
+ private:
+  void set_has_multi() { _has_bits_[0] |= 0x40u; }
+  void clear_has_multi() { _has_bits_[0] &= ~0x40u; }
+
+  bool multi_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
+struct UpsertedDoc {
+  int32_t index;
+  bson_oid_t _id;
+};
+
+class MongoUpdateResponse : public ::google::protobuf::Message {
+ public:
+  MongoUpdateResponse();
+  virtual ~MongoUpdateResponse();
+  MongoUpdateResponse(const MongoUpdateResponse& from);
+  MongoUpdateResponse& operator=(const MongoUpdateResponse& from);
+  void Swap(MongoUpdateResponse* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoUpdateResponse* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoUpdateResponse& from);
+  void MergeFrom(const MongoUpdateResponse& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+
+  // matched_number
+ public:
+  static const int kmatched_numberFieldNumber = 1;
+  int32_t matched_number() const { return matched_number_; }
+  bool has_matched_number() const { return _has_bits_[0] & 0x1u; }
+  void clear_matched_number() {
+    clear_has_matched_number();
+    matched_number_ = 0;
+  }
+  void set_matched_number(int32_t value) {
+    matched_number_ = value;
+    set_has_matched_number();
+  }
+
+ private:
+  void set_has_matched_number() { _has_bits_[0] |= 0x1u; }
+  void clear_has_matched_number() { _has_bits_[0] &= ~0x1u; }
+
+  int32_t matched_number_;
+
+  // modified_number
+ public:
+  static const int kmodified_numberFieldNumber = 2;
+  int32_t modified_number() const { return modified_number_; }
+  bool has_modified_number() const { return _has_bits_[0] & 0x2u; }
+  void clear_modified_number() {
+    clear_has_modified_number();
+    modified_number_ = 0;
+  }
+  void set_modified_number(int32_t value) {
+    modified_number_ = value;
+    set_has_modified_number();
+  }
+
+ private:
+  void set_has_modified_number() { _has_bits_[0] |= 0x2u; }
+  void clear_has_modified_number() { _has_bits_[0] &= ~0x2u; }
+
+  int32_t modified_number_;
+
+  // upserted_docs
+ public:
+  static const int kupserted_docsFieldNumber = 3;
+  const std::vector<UpsertedDoc>& upserted_docs() const {
+    return upserted_docs_;
+  }
+  int upserted_docs_size() const { return upserted_docs_.size(); }
+  void clear_upserted_docs() { upserted_docs_.clear(); }
+  const UpsertedDoc& upserted_docs(int index) const {
+    return upserted_docs_[index];
+  }
+  UpsertedDoc* mutable_upserted_docs(int index) {
+    return &upserted_docs_[index];
+  }
+  void add_upserted_docs(UpsertedDoc value) {
+    upserted_docs_.push_back(std::move(value));
+  }
+
+ private:
+  std::vector<UpsertedDoc> upserted_docs_;
+
+  // write_errors
+ public:
+  static const int kwrite_errorsFieldNumber = 4;
+  const std::vector<WriteError>& write_errors() const { return write_errors_; }
+  int write_errors_size() const { return write_errors_.size(); }
+  void clear_write_errors() { write_errors_.clear(); }
+  const WriteError& write_errors(int index) const {
+    return write_errors_[index];
+  }
+  WriteError* mutable_write_errors(int index) { return &write_errors_[index]; }
+  void add_write_errors(WriteError value) {
+    write_errors_.push_back(std::move(value));
+  }
+
+ private:
+  std::vector<WriteError> write_errors_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
 }  // namespace brpc
 
 #endif  // BRPC_MONGO_H

@@ -688,6 +688,154 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
       accessor.OnResponse(cid, cntl->ErrorCode());
       return;
     }
+  } else if (cntl->request_id() == "update") {
+    if (msg->opcode == MONGO_OPCODE_MSG) {
+      MongoMsg& reply_msg = msg->msg;
+      if (reply_msg.sections.size() != 1 || reply_msg.sections[0].type != 0) {
+        cntl->SetFailed(ERESPONSE, "error update response");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      Section& section = reply_msg.sections[0];
+      assert(section.body_document);
+      BsonPtr document = section.body_document;
+      // response if ok
+      double ok_value = 0.0;
+      bool has_ok = butil::bson::bson_get_double(document, "ok", &ok_value);
+      if (!has_ok) {
+        LOG(DEBUG) << "update response not has ok field";
+        cntl->SetFailed(ERESPONSE, "update response no ok field");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // update failed
+      if (ok_value != 1) {
+        LOG(DEBUG) << "update reponse error";
+        int32_t error_code = 0;
+        bool has_error_code =
+            butil::bson::bson_get_int32(document, "code", &error_code);
+        std::string code_name, errmsg;
+        bool has_code_name =
+            butil::bson::bson_get_str(document, "codeName", &code_name);
+        bool has_errmsg =
+            butil::bson::bson_get_str(document, "errmsg", &errmsg);
+        if (has_error_code && has_code_name && has_errmsg) {
+          LOG(DEBUG) << "error_code:" << error_code
+                     << " code_name:" << code_name << " errmsg:" << errmsg;
+          cntl->SetFailed(error_code, "%s, %s", code_name.c_str(),
+                          errmsg.c_str());
+        } else {
+          cntl->SetFailed(ERESPONSE, "update response failed");
+        }
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // update success
+      // n
+      int32_t matched_number = 0;
+      bool has_matched_numberr =
+          butil::bson::bson_get_int32(document, "n", &matched_number);
+      if (!has_matched_numberr) {
+        LOG(DEBUG) << "update response not has n element";
+        cntl->SetFailed(ERESPONSE, "update response no n");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // nModified
+      int32_t modified_number = 0;
+      bool has_modified_numberr =
+          butil::bson::bson_get_int32(document, "nModified", &modified_number);
+      if (!has_modified_numberr) {
+        LOG(DEBUG) << "update response not has nModified element";
+        cntl->SetFailed(ERESPONSE, "update response no nModified");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // build response number
+      MongoUpdateResponse* response =
+          static_cast<MongoUpdateResponse*>(cntl->response());
+      response->set_matched_number(matched_number);
+      response->set_modified_number(modified_number);
+      // writeErrors array
+      std::vector<BsonPtr> write_errors;
+      const char* write_errors_element = "writeErrors";
+      bool has_write_errors = butil::bson::bson_get_array(
+          document, write_errors_element, &write_errors);
+      if (has_write_errors) {
+        // build response write_errors
+        for (BsonPtr write_error_ptr : write_errors) {
+          WriteError write_error_record;
+          int32_t index = 0;
+          int32_t code = 0;
+          std::string errmsg;
+          bool has_index =
+              butil::bson::bson_get_int32(write_error_ptr, "index", &index);
+          if (!has_index) {
+            LOG(WARNING) << "unrecognize update write_error:"
+                         << bson_as_canonical_extended_json(
+                                write_error_ptr.get(), nullptr);
+            continue;
+          }
+          write_error_record.index = index;
+          bool has_code =
+              butil::bson::bson_get_int32(write_error_ptr, "code", &code);
+          if (!has_code) {
+            LOG(WARNING) << "unrecognize update write_error:"
+                         << bson_as_canonical_extended_json(
+                                write_error_ptr.get(), nullptr);
+            continue;
+          }
+          write_error_record.code = code;
+          bool has_errmsg =
+              butil::bson::bson_get_str(write_error_ptr, "errmsg", &errmsg);
+          if (!has_errmsg) {
+            LOG(WARNING) << "unrecognize update write_error:"
+                         << bson_as_canonical_extended_json(
+                                write_error_ptr.get(), nullptr);
+            continue;
+          }
+          write_error_record.errmsg = errmsg;
+          response->add_write_errors(write_error_record);
+        }
+      }
+      // upserted array
+      std::vector<BsonPtr> upserted_docs;
+      const char* upserted_docs_element = "upserted";
+      bool has_upserted = butil::bson::bson_get_array(
+          document, upserted_docs_element, &upserted_docs);
+      if (has_upserted) {
+        // build response upserted_docs
+        for (BsonPtr upserted_doc_ptr : upserted_docs) {
+          UpsertedDoc upserted_doc;
+          int32_t index = 0;
+          bson_oid_t id;
+          bool has_index =
+              butil::bson::bson_get_int32(upserted_doc_ptr, "index", &index);
+          if (!has_index) {
+            LOG(WARNING) << "unrecognize update upserted:"
+                         << bson_as_canonical_extended_json(
+                                upserted_doc_ptr.get(), nullptr);
+            continue;
+          }
+          upserted_doc.index = index;
+          bool has_oid =
+              butil::bson::bson_get_oid(upserted_doc_ptr, "_id", &id);
+          if (!has_oid) {
+            LOG(WARNING) << "unrecognize update upserted:"
+                         << bson_as_canonical_extended_json(
+                                upserted_doc_ptr.get(), nullptr);
+            continue;
+          }
+          upserted_doc._id = id;
+          response->add_upserted_docs(upserted_doc);
+        }
+      }
+      accessor.OnResponse(cid, cntl->ErrorCode());
+    } else {
+      cntl->SetFailed(ERESPONSE, "msg not msg type");
+      accessor.OnResponse(cid, cntl->ErrorCode());
+      return;
+    }
   } else if (false) {
     LOG(DEBUG) << "not imple other response";
     accessor.OnResponse(cid, cntl->ErrorCode());
@@ -759,6 +907,18 @@ void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
     LOG(DEBUG) << "serialize mongo delete request, length:"
                << request_buf->length();
     return;
+  } else if (request->GetDescriptor() ==
+             brpc::MongoUpdateRequest::descriptor()) {
+    const MongoUpdateRequest* update_request =
+        dynamic_cast<const MongoUpdateRequest*>(request);
+    if (!update_request) {
+      return cntl->SetFailed(EREQUEST, "Fail to parse request");
+    }
+    SerializeMongoUpdateRequest(request_buf, cntl, update_request);
+    cntl->set_request_id("update");
+    LOG(DEBUG) << "serialize mongo update request, length:"
+               << request_buf->length();
+    return;
   }
 }
 
@@ -820,6 +980,14 @@ void SerializeMongoDeleteRequest(butil::IOBuf* request_buf, Controller* cntl,
                                  const MongoDeleteRequest* request) {
   if (!request->SerializeTo(request_buf)) {
     cntl->SetFailed(EREQUEST, "DeleteRequest not initialize");
+    return;
+  }
+}
+
+void SerializeMongoUpdateRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                 const MongoUpdateRequest* request) {
+  if (!request->SerializeTo(request_buf)) {
+    cntl->SetFailed(EREQUEST, "UpdateRequest not initialize");
     return;
   }
 }

@@ -28,6 +28,8 @@ bool bson_get_doc(BsonPtr doc, const char *key, BsonPtr *value);
 bool bson_get_array(BsonPtr doc, const char *key, std::vector<BsonPtr> *value);
 
 bool bson_has_oid(BsonPtr doc);
+
+bool bson_get_oid(BsonPtr doc, const char *key, bson_oid_t *value);
 }  // namespace bson
 }  // namespace butil
 

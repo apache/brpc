@@ -1273,4 +1273,317 @@ void MongoDeleteResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
+MongoUpdateRequest::MongoUpdateRequest() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoUpdateRequest::~MongoUpdateRequest() { SharedDtor(); }
+
+MongoUpdateRequest::MongoUpdateRequest(const MongoUpdateRequest& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoUpdateRequest& MongoUpdateRequest::operator=(
+    const MongoUpdateRequest& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoUpdateRequest::SharedCtor() {
+  _cached_size_ = 0;
+  ordered_ = true;
+  upsert_ = false;
+  multi_ = false;
+}
+
+void MongoUpdateRequest::SharedDtor() {}
+
+bool MongoUpdateRequest::SerializeTo(butil::IOBuf* buf) const {
+  if (!IsInitialized()) {
+    LOG(WARNING) << "MongoUpdateRequest not initialize";
+    return false;
+  }
+  // $ operators
+  bson_iter_t iter;
+  if (!bson_iter_init(&iter, update().get())) {
+    LOG(ERROR) << "update document is corrupt";
+    return false;
+  }
+  while (bson_iter_next(&iter)) {
+    const char* key = bson_iter_key(&iter);
+    if (key[0] != '$') {
+      LOG(ERROR) << "update only works with $ operators";
+      return false;
+    }
+  }
+
+  // Message Flags 4bytes
+  uint32_t flag_bits = 0;
+  buf->append(static_cast<void*>(&flag_bits), 4);
+
+  BsonPtr update_body_element_ptr = butil::bson::new_bson();
+  bson_t* update_body_element = update_body_element_ptr.get();
+  // update
+  BSON_APPEND_UTF8(update_body_element, "update", collection().c_str());
+  // ordered
+  BSON_APPEND_BOOL(update_body_element, "ordered", ordered());
+  // $db
+  BSON_APPEND_UTF8(update_body_element, "$db", database().c_str());
+
+  // Section[]  Kind(1byte): Body(0); BodyDocument(Bson)
+  Section section1;
+  section1.type = 0;
+  section1.body_document = update_body_element_ptr;
+  butil::IOBuf buf1;
+  bool ret = section1.SeralizeTo(&buf1);
+  if (!ret) {
+    return false;
+  }
+  buf->append(buf1);
+  // Section Kind(1byte): Document Sequence(1); SeqID: updates
+  Section section2;
+  section2.type = 1;
+  DocumentSequencePtr document_sequence = std::make_shared<DocumentSequence>();
+  document_sequence->identifier = "updates";
+  // 更新记录的查询条件
+  BsonPtr update_selector_element_ptr = butil::bson::new_bson();
+  BSON_APPEND_DOCUMENT(update_selector_element_ptr.get(), "q",
+                       selector().get());
+  BSON_APPEND_DOCUMENT(update_selector_element_ptr.get(), "u", update().get());
+  BSON_APPEND_BOOL(update_selector_element_ptr.get(), "upsert", upsert());
+  BSON_APPEND_BOOL(update_selector_element_ptr.get(), "multi", multi());
+  document_sequence->documents.push_back(update_selector_element_ptr);
+  section2.document_sequence = document_sequence;
+  butil::IOBuf buf2;
+  ret = section2.SeralizeTo(&buf2);
+  if (!ret) {
+    return false;
+  }
+  buf->append(buf2);
+  return true;
+}
+
+void MongoUpdateRequest::Swap(MongoUpdateRequest* other) {}
+
+MongoUpdateRequest* MongoUpdateRequest::New() const {
+  return new MongoUpdateRequest();
+}
+
+void MongoUpdateRequest::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoUpdateRequest::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoUpdateRequest* source =
+      dynamic_cast<const MongoUpdateRequest*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoUpdateRequest::CopyFrom(const MongoUpdateRequest& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoUpdateRequest::MergeFrom(const MongoUpdateRequest& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_database()) {
+    set_database(from.database());
+  }
+
+  if (from.has_collection()) {
+    set_collection(from.collection());
+  }
+
+  if (from.has_selector()) {
+    set_selector(from.selector());
+  }
+
+  if (from.has_update()) {
+    set_update(from.update());
+  }
+
+  if (from.has_ordered()) {
+    set_ordered(from.ordered());
+  }
+
+  if (from.has_upsert()) {
+    set_upsert(from.upsert());
+  }
+
+  if (from.has_multi()) {
+    set_multi(from.multi());
+  }
+}
+
+void MongoUpdateRequest::Clear() {
+  clear_database();
+  clear_collection();
+  clear_selector();
+  clear_update();
+  clear_ordered();
+  clear_upsert();
+  clear_multi();
+}
+
+bool MongoUpdateRequest::IsInitialized() const {
+  return has_database() && has_collection() && has_selector() && has_update();
+}
+
+bool MongoUpdateRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoUpdateRequest";
+  return true;
+}
+
+void MongoUpdateRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoUpdateRequest";
+}
+
+::google::protobuf::uint8* MongoUpdateRequest::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoUpdateRequest::descriptor() {
+  return MongoUpdateRequestBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoUpdateRequest::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoUpdateRequest::SetCachedSize(int size) const { _cached_size_ = size; }
+
+MongoUpdateResponse::MongoUpdateResponse() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoUpdateResponse::~MongoUpdateResponse() { SharedDtor(); }
+
+MongoUpdateResponse::MongoUpdateResponse(const MongoUpdateResponse& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoUpdateResponse& MongoUpdateResponse::operator=(
+    const MongoUpdateResponse& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoUpdateResponse::SharedCtor() {
+  _cached_size_ = 0;
+  matched_number_ = 0;
+  modified_number_ = 0;
+}
+
+void MongoUpdateResponse::SharedDtor() {}
+
+bool MongoUpdateResponse::SerializeTo(butil::IOBuf* buf) const {
+  // TODO custom definetion
+}
+
+void MongoUpdateResponse::Swap(MongoUpdateResponse* other) {}
+
+MongoUpdateResponse* MongoUpdateResponse::New() const {
+  return new MongoUpdateResponse();
+}
+
+void MongoUpdateResponse::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoUpdateResponse::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoUpdateResponse* source =
+      dynamic_cast<const MongoUpdateResponse*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoUpdateResponse::CopyFrom(const MongoUpdateResponse& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoUpdateResponse::MergeFrom(const MongoUpdateResponse& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_matched_number()) {
+    set_matched_number(from.matched_number());
+  }
+
+  if (from.has_modified_number()) {
+    set_modified_number(from.modified_number());
+  }
+
+  upserted_docs_.insert(upserted_docs_.end(), from.upserted_docs().cbegin(),
+                        from.upserted_docs().cend());
+
+  write_errors_.insert(write_errors_.end(), from.write_errors().cbegin(),
+                       from.write_errors().cend());
+}
+
+void MongoUpdateResponse::Clear() {
+  clear_matched_number();
+  clear_modified_number();
+  clear_upserted_docs();
+  clear_write_errors();
+}
+
+bool MongoUpdateResponse::IsInitialized() const { return true; }
+
+bool MongoUpdateResponse::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoUpdateResponse";
+  return true;
+}
+
+void MongoUpdateResponse::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoUpdateResponse";
+}
+
+::google::protobuf::uint8* MongoUpdateResponse::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoUpdateResponse::descriptor() {
+  return MongoUpdateResponseBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoUpdateResponse::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoUpdateResponse::SetCachedSize(int size) const {
+  _cached_size_ = size;
+}
+
 }  // namespace brpc
