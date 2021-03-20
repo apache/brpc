@@ -42,7 +42,7 @@ DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_int32(thread_num, 1, "Number of threads to send requests");
 DEFINE_bool(use_bthread, true, "Use bthread to send requests");
 DEFINE_int32(dummy_port, -1, "port of dummy server(for monitoring)");
-DEFINE_int32(op_type, 1, "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE, 3:COUNT");
+DEFINE_int32(op_type, 1, "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE, 3:COUNT, 4:DELETE");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 
 bvar::LatencyRecorder g_latency_recorder("client");
@@ -67,6 +67,69 @@ std::pair<bool, brpc::MongoQueryResponse> get_more(brpc::Channel *channel, int64
     } else {
         LOG(ERROR) << "error=" << cntl.ErrorText();
         return std::make_pair(false, query_response);
+    }
+}
+
+static void* delete_test(void* void_args) {
+    SenderArgs* args = (SenderArgs*)void_args;
+    brpc::Channel* mongo_channel = args->mongo_channel;
+
+    // insert then delete
+    brpc::MongoInsertRequest insert_request;
+    brpc::MongoDeleteRequest delete_request;
+    while (!brpc::IsAskedToQuit()) {
+        // insert random number records
+        insert_request.Clear();
+        insert_request.set_database(FLAGS_database);
+        insert_request.set_collection(FLAGS_collection);
+        size_t number = random() % 10 + 1;
+        for (size_t i = 0; i < number; ++i) {
+            butil::bson::BsonPtr doc = butil::bson::new_bson();
+            std::string name = "test_" + std::to_string(i);
+            BSON_APPEND_UTF8(doc.get(), "name", name.c_str());
+            BSON_APPEND_UTF8(doc.get(), "comment", "delete_test");
+            insert_request.add_documents(doc);
+        }
+        brpc::Controller insert_cntl;
+        brpc::MongoInsertResponse insert_response;
+        mongo_channel->CallMethod(nullptr, &insert_cntl, &insert_request, &insert_response, nullptr);
+        if (!insert_cntl.Failed()) {
+            if (insert_response.number() != number) {
+                std::stringstream ss;
+                for (size_t i = 0; i < insert_response.write_errors_size(); ++i) {
+                    ss << insert_response.write_errors(i).errmsg;
+                }
+                LOG(INFO) << "insert failed, errmsg:" << ss.str();
+                break;
+            } else {
+                LOG(INFO) << "insert succ, number:" << number;
+            }
+        } else {
+            LOG(INFO) << "insert failed, error=" << insert_cntl.ErrorText();
+            break;
+        }
+        // delete records
+        delete_request.Clear();
+        delete_request.set_database(FLAGS_database);
+        delete_request.set_collection(FLAGS_collection);
+        delete_request.set_delete_many(true);
+        butil::bson::BsonPtr delete_filter = butil::bson::new_bson();
+        BSON_APPEND_UTF8(delete_filter.get(), "comment", "delete_test");
+        delete_request.set_query(delete_filter);
+        brpc::Controller delete_cntl;
+        brpc::MongoDeleteResponse delete_response;
+        mongo_channel->CallMethod(nullptr, &delete_cntl, &delete_request, &delete_response, nullptr);
+        if (!delete_cntl.Failed()){
+            if (delete_response.number() != number) {
+                LOG(INFO) << "delete failed, expect:" << number << " actual:" << delete_response.number();
+                break;
+            } else {
+                LOG(INFO) << "delete succ, number:" << number;
+            }
+        } else {
+            LOG(INFO) << "delete failed, error=" << delete_cntl.ErrorText();
+            break;
+        }
     }
 }
 // Send `command' to mongo-server via `channel'
@@ -219,16 +282,20 @@ int main(int argc, char* argv[]) {
     pids.resize(FLAGS_thread_num);
     std::vector<SenderArgs> args;
     args.resize(FLAGS_thread_num);
+    decltype(sender) *test_func = sender;
+    if (FLAGS_op_type == 4) {
+        test_func = delete_test;
+    }
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         args[i].base_index = i;
         args[i].mongo_channel = &channel;
         if (!FLAGS_use_bthread) {
-            if (pthread_create(&pids[i], NULL, sender, &args[i]) != 0) {
+            if (pthread_create(&pids[i], NULL, test_func, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
         } else {
-            if (bthread_start_background(&bids[i], NULL, sender, &args[i]) != 0) {
+            if (bthread_start_background(&bids[i], NULL, test_func, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }

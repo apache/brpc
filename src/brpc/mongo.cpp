@@ -995,4 +995,282 @@ void MongoInsertResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
+MongoDeleteRequest::MongoDeleteRequest() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoDeleteRequest::~MongoDeleteRequest() { SharedDtor(); }
+
+MongoDeleteRequest::MongoDeleteRequest(const MongoDeleteRequest& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoDeleteRequest& MongoDeleteRequest::operator=(
+    const MongoDeleteRequest& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoDeleteRequest::SharedCtor() {
+  _cached_size_ = 0;
+  ordered_ = false;
+  delete_many_ = false;
+}
+
+void MongoDeleteRequest::SharedDtor() {}
+
+bool MongoDeleteRequest::SerializeTo(butil::IOBuf* buf) const {
+  if (!IsInitialized()) {
+    LOG(WARNING) << "MongoDeleteRequest not initialize";
+    return false;
+  }
+  // Message Flags 4bytes
+  uint32_t flag_bits = 0;
+  buf->append(static_cast<void*>(&flag_bits), 4);
+
+  BsonPtr delete_body_element_ptr = butil::bson::new_bson();
+  bson_t* delete_body_element = delete_body_element_ptr.get();
+  // delete
+  BSON_APPEND_UTF8(delete_body_element, "delete", collection().c_str());
+  // ordered
+  BSON_APPEND_BOOL(delete_body_element, "ordered", ordered());
+  // $db
+  BSON_APPEND_UTF8(delete_body_element, "$db", database().c_str());
+
+  // Section[]  Kind(1byte): Body(0); BodyDocument(Bson)
+  Section section1;
+  section1.type = 0;
+  section1.body_document = delete_body_element_ptr;
+  butil::IOBuf buf1;
+  bool ret = section1.SeralizeTo(&buf1);
+  if (!ret) {
+    return false;
+  }
+  buf->append(buf1);
+  // Section Kind(1byte): Document Sequence(1); SeqID: deletes
+  Section section2;
+  section2.type = 1;
+  DocumentSequencePtr document_sequence = std::make_shared<DocumentSequence>();
+  document_sequence->identifier = "deletes";
+  // 删除记录的查询条件
+  BsonPtr delete_filter_element_ptr = butil::bson::new_bson();
+  BsonPtr empty_query_ptr;
+  if (query()) {
+    BSON_APPEND_DOCUMENT(delete_filter_element_ptr.get(), "q", query().get());
+  } else {
+    empty_query_ptr = butil::bson::new_bson();
+    BSON_APPEND_DOCUMENT(delete_filter_element_ptr.get(), "q",
+                         empty_query_ptr.get());
+  }
+  document_sequence->documents.push_back(delete_filter_element_ptr);
+  // 限制删除的数目, 0不限制, 1只删除一条
+  BSON_APPEND_INT32(delete_filter_element_ptr.get(), "limit",
+                    (delete_many() ? 0 : 1));
+  section2.document_sequence = document_sequence;
+  butil::IOBuf buf2;
+  ret = section2.SeralizeTo(&buf2);
+  if (!ret) {
+    return false;
+  }
+  buf->append(buf2);
+  return true;
+}
+
+void MongoDeleteRequest::Swap(MongoDeleteRequest* other) {}
+
+MongoDeleteRequest* MongoDeleteRequest::New() const {
+  return new MongoDeleteRequest();
+}
+
+void MongoDeleteRequest::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoDeleteRequest::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoDeleteRequest* source =
+      dynamic_cast<const MongoDeleteRequest*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoDeleteRequest::CopyFrom(const MongoDeleteRequest& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoDeleteRequest::MergeFrom(const MongoDeleteRequest& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_database()) {
+    set_database(from.database());
+  }
+
+  if (from.has_collection()) {
+    set_collection(from.collection());
+  }
+
+  if (from.has_ordered()) {
+    set_ordered(from.ordered());
+  }
+
+  if (from.has_query()) {
+    set_query(from.query());
+  }
+
+  if (from.has_delete_many()) {
+    set_delete_many(from.delete_many());
+  }
+}
+
+void MongoDeleteRequest::Clear() {
+  clear_database();
+  clear_collection();
+  clear_ordered();
+  clear_query();
+  clear_delete_many();
+}
+
+bool MongoDeleteRequest::IsInitialized() const {
+  return has_database() && has_collection();
+}
+
+bool MongoDeleteRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoDeleteRequest";
+  return true;
+}
+
+void MongoDeleteRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoDeleteRequest";
+}
+
+::google::protobuf::uint8* MongoDeleteRequest::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoDeleteRequest::descriptor() {
+  return MongoDeleteRequestBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoDeleteRequest::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoDeleteRequest::SetCachedSize(int size) const { _cached_size_ = size; }
+
+MongoDeleteResponse::MongoDeleteResponse() : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoDeleteResponse::~MongoDeleteResponse() { SharedDtor(); }
+
+MongoDeleteResponse::MongoDeleteResponse(const MongoDeleteResponse& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoDeleteResponse& MongoDeleteResponse::operator=(
+    const MongoDeleteResponse& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoDeleteResponse::SharedCtor() {
+  _cached_size_ = 0;
+  number_ = 0;
+}
+
+void MongoDeleteResponse::SharedDtor() {}
+
+bool MongoDeleteResponse::SerializeTo(butil::IOBuf* buf) const {
+  // TODO custom definetion
+}
+
+void MongoDeleteResponse::Swap(MongoDeleteResponse* other) {}
+
+MongoDeleteResponse* MongoDeleteResponse::New() const {
+  return new MongoDeleteResponse();
+}
+
+void MongoDeleteResponse::CopyFrom(const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoDeleteResponse::MergeFrom(const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoDeleteResponse* source =
+      dynamic_cast<const MongoDeleteResponse*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoDeleteResponse::CopyFrom(const MongoDeleteResponse& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoDeleteResponse::MergeFrom(const MongoDeleteResponse& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_number()) {
+    set_number(from.number());
+  }
+}
+
+void MongoDeleteResponse::Clear() { clear_number(); }
+
+bool MongoDeleteResponse::IsInitialized() const { return true; }
+
+bool MongoDeleteResponse::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoDeleteResponse";
+  return true;
+}
+
+void MongoDeleteResponse::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING) << "You're not supposed to serialize a MongoDeleteResponse";
+}
+
+::google::protobuf::uint8* MongoDeleteResponse::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoDeleteResponse::descriptor() {
+  return MongoDeleteResponseBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoDeleteResponse::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoDeleteResponse::SetCachedSize(int size) const {
+  _cached_size_ = size;
+}
+
 }  // namespace brpc

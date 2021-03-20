@@ -60,6 +60,10 @@ void SerializeMongoCountRequest(butil::IOBuf* request_buf, Controller* cntl,
 void SerializeMongoInsertRequest(butil::IOBuf* request_buf, Controller* cntl,
                                  const MongoInsertRequest* request);
 
+// Serialize delete request
+void SerializeMongoDeleteRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                 const MongoDeleteRequest* request);
+
 // Serialize request into request_buf
 void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
                            const google::protobuf::Message* request);
