@@ -1605,4 +1605,345 @@ void MongoUpdateResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
+MongoFindAndModifyRequest::MongoFindAndModifyRequest()
+    : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoFindAndModifyRequest::~MongoFindAndModifyRequest() { SharedDtor(); }
+
+MongoFindAndModifyRequest::MongoFindAndModifyRequest(
+    const MongoFindAndModifyRequest& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoFindAndModifyRequest& MongoFindAndModifyRequest::operator=(
+    const MongoFindAndModifyRequest& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoFindAndModifyRequest::SharedCtor() {
+  _cached_size_ = 0;
+  upsert_ = false;
+  remove_ = false;
+  return_new_ = false;
+}
+
+void MongoFindAndModifyRequest::SharedDtor() {}
+
+bool MongoFindAndModifyRequest::SerializeTo(butil::IOBuf* buf) const {
+  if (!IsInitialized()) {
+    LOG(WARNING) << "MongoFindAndModifyRequest not initialize";
+    return false;
+  }
+  if (has_remove() && remove()) {
+    if (has_update()) {
+      LOG(ERROR) << "MongoFindAndModifyRequest cannot specify both update and "
+                    "remove=true";
+      return false;
+    }
+    if (has_upsert() && upsert()) {
+      LOG(ERROR) << "MongoFindAndModifyRequest cannot specify both upsert=true "
+                    "and remove=true";
+      return false;
+    }
+    if (has_return_new() && return_new()) {
+      LOG(ERROR) << "MongoFindAndModifyRequest cannot specify both new=true "
+                    "and remove=true";
+      return false;
+    }
+  }
+  if (has_update()) {
+    // $ operators
+    bson_iter_t iter;
+    if (!bson_iter_init(&iter, update().get())) {
+      LOG(ERROR) << "update document is corrupt";
+      return false;
+    }
+    while (bson_iter_next(&iter)) {
+      const char* key = bson_iter_key(&iter);
+      if (key[0] != '$') {
+        LOG(ERROR) << "update only works with $ operators";
+        return false;
+      }
+    }
+  }
+
+  // Message Flags 4bytes
+  uint32_t flag_bits = 0;
+  buf->append(static_cast<void*>(&flag_bits), 4);
+
+  BsonPtr find_and_modify_element_ptr = butil::bson::new_bson();
+  bson_t* find_and_modify_element = find_and_modify_element_ptr.get();
+  // findAndModify
+  BSON_APPEND_UTF8(find_and_modify_element, "findAndModify",
+                   collection().c_str());
+  // query
+  BSON_APPEND_DOCUMENT(find_and_modify_element, "query", query().get());
+  // update
+  if (has_update()) {
+    BSON_APPEND_DOCUMENT(find_and_modify_element, "update", update().get());
+  }
+  // upsert
+  BSON_APPEND_BOOL(find_and_modify_element, "upsert", upsert());
+  // new
+  BSON_APPEND_BOOL(find_and_modify_element, "new", return_new());
+  // remove
+  BSON_APPEND_BOOL(find_and_modify_element, "remove", remove());
+  // $db
+  BSON_APPEND_UTF8(find_and_modify_element, "$db", database().c_str());
+
+  // Section[]  Kind(1byte): Body(0); BodyDocument(Bson)
+  Section section1;
+  section1.type = 0;
+  section1.body_document = find_and_modify_element_ptr;
+  butil::IOBuf buf1;
+  bool ret = section1.SeralizeTo(&buf1);
+  if (!ret) {
+    return false;
+  }
+  buf->append(buf1);
+  return true;
+}
+
+void MongoFindAndModifyRequest::Swap(MongoFindAndModifyRequest* other) {}
+
+MongoFindAndModifyRequest* MongoFindAndModifyRequest::New() const {
+  return new MongoFindAndModifyRequest();
+}
+
+void MongoFindAndModifyRequest::CopyFrom(
+    const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoFindAndModifyRequest::MergeFrom(
+    const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoFindAndModifyRequest* source =
+      dynamic_cast<const MongoFindAndModifyRequest*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoFindAndModifyRequest::CopyFrom(
+    const MongoFindAndModifyRequest& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoFindAndModifyRequest::MergeFrom(
+    const MongoFindAndModifyRequest& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_database()) {
+    set_database(from.database());
+  }
+
+  if (from.has_collection()) {
+    set_collection(from.collection());
+  }
+
+  if (from.has_query()) {
+    set_query(from.query());
+  }
+
+  if (from.has_sort()) {
+    set_sort(from.sort());
+  }
+
+  if (from.has_update()) {
+    set_update(from.update());
+  }
+
+  if (from.has_upsert()) {
+    set_upsert(from.upsert());
+  }
+
+  if (from.has_remove()) {
+    set_remove(from.remove());
+  }
+
+  if (from.has_return_new()) {
+    set_return_new(from.return_new());
+  }
+
+  fields_.insert(fields_.end(), from.fields().cbegin(), from.fields().cend());
+}
+
+void MongoFindAndModifyRequest::Clear() {
+  clear_database();
+  clear_collection();
+  clear_query();
+  clear_sort();
+  clear_update();
+  clear_upsert();
+  clear_remove();
+  clear_return_new();
+  clear_fields();
+}
+
+bool MongoFindAndModifyRequest::IsInitialized() const {
+  return has_database() && has_collection() && has_query() &&
+         (has_update() || has_remove());
+}
+
+bool MongoFindAndModifyRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoFindAndModifyRequest";
+  return true;
+}
+
+void MongoFindAndModifyRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING)
+      << "You're not supposed to serialize a MongoFindAndModifyRequest";
+}
+
+::google::protobuf::uint8*
+MongoFindAndModifyRequest::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoFindAndModifyRequest::descriptor() {
+  return MongoFindAndModifyRequestBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoFindAndModifyRequest::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoFindAndModifyRequest::SetCachedSize(int size) const {
+  _cached_size_ = size;
+}
+
+MongoFindAndModifyResponse::MongoFindAndModifyResponse()
+    : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoFindAndModifyResponse::~MongoFindAndModifyResponse() { SharedDtor(); }
+
+MongoFindAndModifyResponse::MongoFindAndModifyResponse(
+    const MongoFindAndModifyResponse& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoFindAndModifyResponse& MongoFindAndModifyResponse::operator=(
+    const MongoFindAndModifyResponse& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoFindAndModifyResponse::SharedCtor() {
+  _cached_size_ = 0;
+  memset(&upserted_, 0, sizeof(upserted_));
+}
+
+void MongoFindAndModifyResponse::SharedDtor() {}
+
+bool MongoFindAndModifyResponse::SerializeTo(butil::IOBuf* buf) const {
+  // TODO custom definetion
+}
+
+void MongoFindAndModifyResponse::Swap(MongoFindAndModifyResponse* other) {}
+
+MongoFindAndModifyResponse* MongoFindAndModifyResponse::New() const {
+  return new MongoFindAndModifyResponse();
+}
+
+void MongoFindAndModifyResponse::CopyFrom(
+    const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoFindAndModifyResponse::MergeFrom(
+    const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoFindAndModifyResponse* source =
+      dynamic_cast<const MongoFindAndModifyResponse*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoFindAndModifyResponse::CopyFrom(
+    const MongoFindAndModifyResponse& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoFindAndModifyResponse::MergeFrom(
+    const MongoFindAndModifyResponse& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_value()) {
+    set_value(from.value());
+  }
+
+  if (from.has_upserted()) {
+    set_upserted(from.upserted());
+  }
+}
+
+void MongoFindAndModifyResponse::Clear() {
+  clear_value();
+  clear_upserted();
+}
+
+bool MongoFindAndModifyResponse::IsInitialized() const { return true; }
+
+bool MongoFindAndModifyResponse::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoFindAndModifyResponse";
+  return true;
+}
+
+void MongoFindAndModifyResponse::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING)
+      << "You're not supposed to serialize a MongoFindAndModifyResponse";
+}
+
+::google::protobuf::uint8*
+MongoFindAndModifyResponse::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor* MongoFindAndModifyResponse::descriptor() {
+  return MongoFindAndModifyResponseBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoFindAndModifyResponse::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoFindAndModifyResponse::SetCachedSize(int size) const {
+  _cached_size_ = size;
+}
+
 }  // namespace brpc

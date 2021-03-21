@@ -158,13 +158,38 @@ bool bson_get_oid(BsonPtr doc, const char *key, bson_oid_t *value) {
       !BSON_ITER_HOLDS_OID(&iter)) {
     return false;
   }
-  uint32_t length = 0;
   const bson_oid_t *oid = bson_iter_oid(&iter);
   if (!oid) {
     return false;
   } else {
     *value = *oid;
     return true;
+  }
+}
+
+bool bson_get_bool(BsonPtr doc, const char *key, bool *value) {
+  assert(doc);
+  assert(key);
+  assert(value);
+  bson_iter_t iter;
+  bson_t *doc_ptr = doc.get();
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, key) ||
+      !BSON_ITER_HOLDS_BOOL(&iter)) {
+    return false;
+  }
+  *value = bson_iter_bool(&iter);
+  return true;
+}
+
+std::pair<bool, bson_type_t> bson_get_type(BsonPtr doc, const char *key) {
+  assert(doc);
+  assert(key);
+  bson_iter_t iter;
+  bson_t *doc_ptr = doc.get();
+  if (!bson_iter_init(&iter, doc_ptr) || !bson_iter_find(&iter, key)) {
+    return std::make_pair(false, BSON_TYPE_EOD);
+  } else {
+    return std::make_pair(true, bson_iter_type(&iter));
   }
 }
 

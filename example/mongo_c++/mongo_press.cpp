@@ -45,7 +45,8 @@ DEFINE_int32(thread_num, 1, "Number of threads to send requests");
 DEFINE_bool(use_bthread, true, "Use bthread to send requests");
 DEFINE_int32(dummy_port, -1, "port of dummy server(for monitoring)");
 DEFINE_int32(op_type, 1,
-             "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE, 3:COUNT, 4:DELETE");
+             "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE, 3:COUNT, 4:DELETE, "
+             "5:findAndModify");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 
 bvar::LatencyRecorder g_latency_recorder("client");
@@ -249,6 +250,80 @@ static void* update_test(void* void_args) {
   }
 }
 
+static void* find_and_modify_test(void* void_args) {
+  SenderArgs* args = (SenderArgs*)void_args;
+  brpc::Channel* mongo_channel = args->mongo_channel;
+
+  // insert then delete
+  brpc::MongoFindAndModifyRequest find_and_modify_request;
+  while (!brpc::IsAskedToQuit()) {
+    find_and_modify_request.Clear();
+    find_and_modify_request.set_database(FLAGS_database);
+    find_and_modify_request.set_collection(FLAGS_collection);
+    // query
+    brpc::BsonPtr query = butil::bson::new_bson();
+    BSON_APPEND_UTF8(query.get(), "counter", "id");
+    find_and_modify_request.set_query(query);
+    // update
+    brpc::BsonPtr update = butil::bson::new_bson();
+    // inc value
+    brpc::BsonPtr inc_value = butil::bson::new_bson();
+    BSON_APPEND_INT32(inc_value.get(), "value", 1);
+    BSON_APPEND_DOCUMENT(update.get(), "$inc", inc_value.get());
+    find_and_modify_request.set_update(update);
+
+    find_and_modify_request.set_upsert(true);
+    find_and_modify_request.set_return_new(true);
+    brpc::Controller cntl;
+    brpc::MongoFindAndModifyResponse find_and_modify_response;
+    mongo_channel->CallMethod(nullptr, &cntl, &find_and_modify_request,
+                              &find_and_modify_response, nullptr);
+    if (!cntl.Failed()) {
+      if (find_and_modify_response.has_upserted()) {
+        char oid_str[25];
+        bson_oid_to_string(&(find_and_modify_response.upserted()), oid_str);
+        LOG(INFO) << "upserted oid:" << oid_str;
+      }
+      if (find_and_modify_response.has_value()) {
+        const char* str = bson_as_canonical_extended_json(
+            find_and_modify_response.value().get(), nullptr);
+        LOG(INFO) << "value:" << str;
+      }
+    } else {
+      LOG(INFO) << "find_and_modify failed, error=" << cntl.ErrorText();
+      break;
+    }
+  }
+  // 通过find_and_modify remove
+  find_and_modify_request.Clear();
+  find_and_modify_request.set_database(FLAGS_database);
+  find_and_modify_request.set_collection(FLAGS_collection);
+  // query
+  brpc::BsonPtr query = butil::bson::new_bson();
+  BSON_APPEND_UTF8(query.get(), "counter", "id");
+  find_and_modify_request.set_query(query);
+  // remove
+  find_and_modify_request.set_remove(true);
+  brpc::Controller cntl;
+  brpc::MongoFindAndModifyResponse find_and_modify_response;
+  mongo_channel->CallMethod(nullptr, &cntl, &find_and_modify_request,
+                            &find_and_modify_response, nullptr);
+  if (!cntl.Failed()) {
+    if (find_and_modify_response.has_upserted()) {
+      char oid_str[25];
+      bson_oid_to_string(&(find_and_modify_response.upserted()), oid_str);
+      LOG(INFO) << "remove upserted oid:" << oid_str;
+    }
+    if (find_and_modify_response.has_value()) {
+      const char* str = bson_as_canonical_extended_json(
+          find_and_modify_response.value().get(), nullptr);
+      LOG(INFO) << "remove value:" << str;
+    }
+  } else {
+    LOG(INFO) << "find_and_modify failed, error=" << cntl.ErrorText();
+  }
+}
+
 // Send `command' to mongo-server via `channel'
 static void* sender(void* void_args) {
   SenderArgs* args = (SenderArgs*)void_args;
@@ -419,6 +494,8 @@ int main(int argc, char* argv[]) {
     test_func = delete_test;
   } else if (FLAGS_op_type == 2) {
     test_func = update_test;
+  } else if (FLAGS_op_type == 5) {
+    test_func = find_and_modify_test;
   }
   for (int i = 0; i < FLAGS_thread_num; ++i) {
     args[i].base_index = i;

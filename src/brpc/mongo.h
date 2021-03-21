@@ -1609,6 +1609,295 @@ class MongoUpdateResponse : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
+class MongoFindAndModifyRequest : public ::google::protobuf::Message {
+ public:
+  MongoFindAndModifyRequest();
+  virtual ~MongoFindAndModifyRequest();
+  MongoFindAndModifyRequest(const MongoFindAndModifyRequest& from);
+  MongoFindAndModifyRequest& operator=(const MongoFindAndModifyRequest& from);
+  void Swap(MongoFindAndModifyRequest* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoFindAndModifyRequest* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoFindAndModifyRequest& from);
+  void MergeFrom(const MongoFindAndModifyRequest& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+
+  // database
+ public:
+  static const int kdatabaseFieldNumber = 1;
+  const std::string& database() const { return database_; }
+  bool has_database() const { return _has_bits_[0] & 0x1u; }
+  void clear_database() {
+    clear_has_database();
+    database_.clear();
+  }
+  void set_database(std::string value) {
+    database_ = value;
+    set_has_database();
+  }
+
+ private:
+  void set_has_database() { _has_bits_[0] |= 0x1u; }
+  void clear_has_database() { _has_bits_[0] &= ~0x1u; }
+
+  std::string database_;
+
+  // collection
+ public:
+  static const int kcollectionFieldNumber = 2;
+  const std::string& collection() const { return collection_; }
+  bool has_collection() const { return _has_bits_[0] & 0x2u; }
+  void clear_collection() {
+    clear_has_collection();
+    collection_.clear();
+  }
+  void set_collection(std::string value) {
+    collection_ = value;
+    set_has_collection();
+  }
+
+ private:
+  void set_has_collection() { _has_bits_[0] |= 0x2u; }
+  void clear_has_collection() { _has_bits_[0] &= ~0x2u; }
+
+  std::string collection_;
+
+  // query
+ public:
+  static const int kqueryFieldNumber = 3;
+  const BsonPtr& query() const { return query_; }
+  bool has_query() const { return _has_bits_[0] & 0x4u; }
+  void clear_query() {
+    clear_has_query();
+    query_.reset();
+  }
+  void set_query(BsonPtr value) {
+    query_ = value;
+    set_has_query();
+  }
+
+ private:
+  void set_has_query() { _has_bits_[0] |= 0x4u; }
+  void clear_has_query() { _has_bits_[0] &= ~0x4u; }
+
+  BsonPtr query_;
+
+  // sort
+ public:
+  static const int ksortFieldNumber = 4;
+  const BsonPtr& sort() const { return sort_; }
+  bool has_sort() const { return _has_bits_[0] & 0x8u; }
+  void clear_sort() {
+    clear_has_sort();
+    sort_.reset();
+  }
+  void set_sort(BsonPtr value) {
+    sort_ = value;
+    set_has_sort();
+  }
+
+ private:
+  void set_has_sort() { _has_bits_[0] |= 0x8u; }
+  void clear_has_sort() { _has_bits_[0] &= ~0x8u; }
+
+  BsonPtr sort_;
+
+  // update
+ public:
+  static const int kupdateFieldNumber = 5;
+  const BsonPtr& update() const { return update_; }
+  bool has_update() const { return _has_bits_[0] & 0x10u; }
+  void clear_update() {
+    clear_has_update();
+    update_.reset();
+  }
+  void set_update(BsonPtr value) {
+    update_ = value;
+    set_has_update();
+  }
+
+ private:
+  void set_has_update() { _has_bits_[0] |= 0x10u; }
+  void clear_has_update() { _has_bits_[0] &= ~0x10u; }
+
+  BsonPtr update_;
+
+  // upsert
+ public:
+  static const int kupsertFieldNumber = 6;
+  bool upsert() const { return upsert_; }
+  bool has_upsert() const { return _has_bits_[0] & 0x20u; }
+  void clear_upsert() {
+    clear_has_upsert();
+    upsert_ = false;
+  }
+  void set_upsert(bool value) {
+    upsert_ = value;
+    set_has_upsert();
+  }
+
+ private:
+  void set_has_upsert() { _has_bits_[0] |= 0x20u; }
+  void clear_has_upsert() { _has_bits_[0] &= ~0x20u; }
+
+  bool upsert_;
+
+  // remove
+ public:
+  static const int kremoveFieldNumber = 7;
+  bool remove() const { return remove_; }
+  bool has_remove() const { return _has_bits_[0] & 0x40u; }
+  void clear_remove() {
+    clear_has_remove();
+    remove_ = false;
+  }
+  void set_remove(bool value) {
+    remove_ = value;
+    set_has_remove();
+  }
+
+ private:
+  void set_has_remove() { _has_bits_[0] |= 0x40u; }
+  void clear_has_remove() { _has_bits_[0] &= ~0x40u; }
+
+  bool remove_;
+
+  // return_new
+ public:
+  static const int kreturn_newFieldNumber = 8;
+  bool return_new() const { return return_new_; }
+  bool has_return_new() const { return _has_bits_[0] & 0x80u; }
+  void clear_return_new() {
+    clear_has_return_new();
+    return_new_ = false;
+  }
+  void set_return_new(bool value) {
+    return_new_ = value;
+    set_has_return_new();
+  }
+
+ private:
+  void set_has_return_new() { _has_bits_[0] |= 0x80u; }
+  void clear_has_return_new() { _has_bits_[0] &= ~0x80u; }
+
+  bool return_new_;
+
+  // fields
+ public:
+  static const int kfieldsFieldNumber = 9;
+  const std::vector<std::string>& fields() const { return fields_; }
+  int fields_size() const { return fields_.size(); }
+  void clear_fields() { fields_.clear(); }
+  const std::string& fields(int index) const { return fields_[index]; }
+  std::string* mutable_fields(int index) { return &fields_[index]; }
+  void add_fields(std::string value) { fields_.push_back(std::move(value)); }
+
+ private:
+  std::vector<std::string> fields_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
+class MongoFindAndModifyResponse : public ::google::protobuf::Message {
+ public:
+  MongoFindAndModifyResponse();
+  virtual ~MongoFindAndModifyResponse();
+  MongoFindAndModifyResponse(const MongoFindAndModifyResponse& from);
+  MongoFindAndModifyResponse& operator=(const MongoFindAndModifyResponse& from);
+  void Swap(MongoFindAndModifyResponse* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoFindAndModifyResponse* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoFindAndModifyResponse& from);
+  void MergeFrom(const MongoFindAndModifyResponse& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+
+  // value
+ public:
+  static const int kvalueFieldNumber = 1;
+  const BsonPtr& value() const { return value_; }
+  bool has_value() const { return _has_bits_[0] & 0x1u; }
+  void clear_value() {
+    clear_has_value();
+    value_.reset();
+  }
+  void set_value(BsonPtr value) {
+    value_ = value;
+    set_has_value();
+  }
+
+ private:
+  void set_has_value() { _has_bits_[0] |= 0x1u; }
+  void clear_has_value() { _has_bits_[0] &= ~0x1u; }
+
+  BsonPtr value_;
+
+  // upserted
+ public:
+  static const int kupsertedFieldNumber = 2;
+  const bson_oid_t& upserted() const { return upserted_; }
+  bool has_upserted() const { return _has_bits_[0] & 0x2u; }
+  void clear_upserted() {
+    clear_has_upserted();
+    memset(&upserted_, 0, sizeof(upserted_));
+  }
+  void set_upserted(bson_oid_t value) {
+    upserted_ = value;
+    set_has_upserted();
+  }
+
+ private:
+  void set_has_upserted() { _has_bits_[0] |= 0x2u; }
+  void clear_has_upserted() { _has_bits_[0] &= ~0x2u; }
+
+  bson_oid_t upserted_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
 }  // namespace brpc
 
 #endif  // BRPC_MONGO_H

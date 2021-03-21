@@ -836,6 +836,113 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
       accessor.OnResponse(cid, cntl->ErrorCode());
       return;
     }
+  } else if (cntl->request_id() == "find_and_modify") {
+    if (msg->opcode == MONGO_OPCODE_MSG) {
+      MongoMsg& reply_msg = msg->msg;
+      if (reply_msg.sections.size() != 1 || reply_msg.sections[0].type != 0) {
+        cntl->SetFailed(ERESPONSE, "error find_and_modify response");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      Section& section = reply_msg.sections[0];
+      assert(section.body_document);
+      BsonPtr document = section.body_document;
+      // response if ok
+      double ok_value = 0.0;
+      bool has_ok = butil::bson::bson_get_double(document, "ok", &ok_value);
+      if (!has_ok) {
+        LOG(DEBUG) << "find_and_modify response not has ok field";
+        cntl->SetFailed(ERESPONSE, "find_and_modify response no ok field");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // find_and_modify failed
+      if (ok_value != 1) {
+        LOG(DEBUG) << "find_and_modify reponse error";
+        int32_t error_code = 0;
+        bool has_error_code =
+            butil::bson::bson_get_int32(document, "code", &error_code);
+        std::string code_name, errmsg;
+        bool has_code_name =
+            butil::bson::bson_get_str(document, "codeName", &code_name);
+        bool has_errmsg =
+            butil::bson::bson_get_str(document, "errmsg", &errmsg);
+        if (has_error_code && has_code_name && has_errmsg) {
+          LOG(DEBUG) << "error_code:" << error_code
+                     << " code_name:" << code_name << " errmsg:" << errmsg;
+          cntl->SetFailed(error_code, "%s, %s", code_name.c_str(),
+                          errmsg.c_str());
+        } else {
+          cntl->SetFailed(ERESPONSE, "find_and_modify response failed");
+        }
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // find_and_modify success
+      // lastErrorObject
+      BsonPtr last_error_object_ptr;
+      bool has_last_error_object = butil::bson::bson_get_doc(
+          document, "lastErrorObject", &last_error_object_ptr);
+      if (!has_last_error_object) {
+        LOG(DEBUG)
+            << "find_and_modify response not has lastErrorObject element";
+        cntl->SetFailed(ERESPONSE,
+                        "find_and_modify response no lastErrorObject");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // updatedExisting
+      bool update_existing = false;
+      butil::bson::bson_get_bool(last_error_object_ptr, "updatedExisting",
+                                 &update_existing);
+      // upserted
+      bson_oid_t upserted_oid;
+      bool has_upserted = butil::bson::bson_get_oid(last_error_object_ptr,
+                                                    "upserted", &upserted_oid);
+      // value
+      std::pair<bool, bson_type_t> value_type_result =
+          butil::bson::bson_get_type(document, "value");
+      if (!value_type_result.first) {
+        LOG(DEBUG) << "find_and_modify response not has value element";
+        cntl->SetFailed(ERESPONSE, "find_and_modify response no value");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      BsonPtr value;
+      if (value_type_result.second == BSON_TYPE_DOCUMENT) {
+        bool has_value = butil::bson::bson_get_doc(document, "value", &value);
+        if (!has_value) {
+          LOG(DEBUG) << "find_and_modify response not has value element";
+          cntl->SetFailed(ERESPONSE, "find_and_modify response no value");
+          accessor.OnResponse(cid, cntl->ErrorCode());
+          return;
+        }
+      } else if (!update_existing &&
+                 value_type_result.second == BSON_TYPE_NULL) {
+      } else {
+        LOG(DEBUG) << "find_and_modify response with updateExisting=true but "
+                      "wrong value";
+        cntl->SetFailed(ERESPONSE,
+                        "find_and_modify response with updateExisting=true but "
+                        "wrong value");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // build response
+      MongoFindAndModifyResponse* response =
+          static_cast<MongoFindAndModifyResponse*>(cntl->response());
+      if (value) {
+        response->set_value(value);
+      }
+      if (has_upserted) {
+        response->set_upserted(upserted_oid);
+      }
+      accessor.OnResponse(cid, cntl->ErrorCode());
+    } else {
+      cntl->SetFailed(ERESPONSE, "msg not msg type");
+      accessor.OnResponse(cid, cntl->ErrorCode());
+      return;
+    }
   } else if (false) {
     LOG(DEBUG) << "not imple other response";
     accessor.OnResponse(cid, cntl->ErrorCode());
@@ -919,6 +1026,19 @@ void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
     LOG(DEBUG) << "serialize mongo update request, length:"
                << request_buf->length();
     return;
+  } else if (request->GetDescriptor() ==
+             brpc::MongoFindAndModifyRequest::descriptor()) {
+    const MongoFindAndModifyRequest* find_and_modify_request =
+        dynamic_cast<const MongoFindAndModifyRequest*>(request);
+    if (!find_and_modify_request) {
+      return cntl->SetFailed(EREQUEST, "Fail to parse request");
+    }
+    SerializeMongoFindAndModifyRequest(request_buf, cntl,
+                                       find_and_modify_request);
+    cntl->set_request_id("find_and_modify");
+    LOG(DEBUG) << "serialize mongo find_and_modify request, length:"
+               << request_buf->length();
+    return;
   }
 }
 
@@ -988,6 +1108,15 @@ void SerializeMongoUpdateRequest(butil::IOBuf* request_buf, Controller* cntl,
                                  const MongoUpdateRequest* request) {
   if (!request->SerializeTo(request_buf)) {
     cntl->SetFailed(EREQUEST, "UpdateRequest not initialize");
+    return;
+  }
+}
+
+void SerializeMongoFindAndModifyRequest(
+    butil::IOBuf* request_buf, Controller* cntl,
+    const MongoFindAndModifyRequest* request) {
+  if (!request->SerializeTo(request_buf)) {
+    cntl->SetFailed(EREQUEST, "FindAndModifyRequest not initialize");
     return;
   }
 }

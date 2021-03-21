@@ -68,6 +68,11 @@ void SerializeMongoDeleteRequest(butil::IOBuf* request_buf, Controller* cntl,
 void SerializeMongoUpdateRequest(butil::IOBuf* request_buf, Controller* cntl,
                                  const MongoUpdateRequest* request);
 
+// Serialize find_and_modify request
+void SerializeMongoFindAndModifyRequest(
+    butil::IOBuf* request_buf, Controller* cntl,
+    const MongoFindAndModifyRequest* request);
+
 // Serialize request into request_buf
 void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
                            const google::protobuf::Message* request);
