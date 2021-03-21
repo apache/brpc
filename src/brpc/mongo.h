@@ -84,52 +84,9 @@ class MongoQueryRequest : public ::google::protobuf::Message {
   MongoQueryRequest();
   virtual ~MongoQueryRequest();
   MongoQueryRequest(const MongoQueryRequest& from);
-  inline MongoQueryRequest& operator=(const MongoQueryRequest& from) {
-    CopyFrom(from);
-    return *this;
-  }
+  MongoQueryRequest& operator=(const MongoQueryRequest& from);
   void Swap(MongoQueryRequest* other);
-
-  const std::string& database() const;
-  bool has_database() const;
-  void clear_database();
-  void set_database(std::string database);
-  static const int kDatabaseFieldNumber = 1;
-
-  const std::string& collection() const;
-  bool has_collection() const;
-  void clear_collection();
-  void set_collection(std::string collection);
-  static const int kCollectionFieldNumber = 2;
-
-  int32_t skip() const;
-  bool has_skip() const;
-  void clear_skip();
-  void set_skip(int32_t skip);
-  static const int kSkipFieldNumber = 3;
-
-  int32_t limit() const;
-  bool has_limit() const;
-  void clear_limit();
-  void set_limit(int32_t limit);
-  static const int kLimitFieldNumber = 4;
-
-  const BsonPtr query() const;
-  bool has_query() const;
-  void clear_query();
-  void set_query(BsonPtr value);
-  static const int kQueryFieldNumber = 5;
-
-  const std::vector<std::string>& fields() const;
-  int fields_size() const;
-  void clear_fields();
-  const std::string& fields(int index) const;
-  std::string* mutable_fields(int index);
-  void add_fields(std::string value);
-  static const int kFieldsFieldNumber = 6;
-
   bool SerializeTo(butil::IOBuf* buf) const;
-
   MongoQueryRequest* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -137,7 +94,6 @@ class MongoQueryRequest : public ::google::protobuf::Message {
   void MergeFrom(const MongoQueryRequest& from);
   void Clear();
   bool IsInitialized() const;
-  // int ByteSize() const;
   bool MergePartialFromCodedStream(
       ::google::protobuf::io::CodedInputStream* input);
   void SerializeWithCachedSizes(
@@ -145,10 +101,142 @@ class MongoQueryRequest : public ::google::protobuf::Message {
   ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
       ::google::protobuf::uint8* output) const;
   int GetCachedSize() const { return _cached_size_; }
-
   static const ::google::protobuf::Descriptor* descriptor();
 
-  // void Print(std::ostream&) const;
+  // fields
+
+  // database
+ public:
+  static const int kdatabaseFieldNumber = 1;
+  const std::string& database() const { return database_; }
+  bool has_database() const { return _has_bits_[0] & 0x1u; }
+  void clear_database() {
+    clear_has_database();
+    database_.clear();
+  }
+  void set_database(std::string value) {
+    database_ = value;
+    set_has_database();
+  }
+
+ private:
+  void set_has_database() { _has_bits_[0] |= 0x1u; }
+  void clear_has_database() { _has_bits_[0] &= ~0x1u; }
+
+  std::string database_;
+
+  // collection
+ public:
+  static const int kcollectionFieldNumber = 2;
+  const std::string& collection() const { return collection_; }
+  bool has_collection() const { return _has_bits_[0] & 0x2u; }
+  void clear_collection() {
+    clear_has_collection();
+    collection_.clear();
+  }
+  void set_collection(std::string value) {
+    collection_ = value;
+    set_has_collection();
+  }
+
+ private:
+  void set_has_collection() { _has_bits_[0] |= 0x2u; }
+  void clear_has_collection() { _has_bits_[0] &= ~0x2u; }
+
+  std::string collection_;
+
+  // query
+ public:
+  static const int kqueryFieldNumber = 3;
+  const BsonPtr& query() const { return query_; }
+  bool has_query() const { return _has_bits_[0] & 0x4u; }
+  void clear_query() {
+    clear_has_query();
+    query_.reset();
+  }
+  void set_query(BsonPtr value) {
+    query_ = value;
+    set_has_query();
+  }
+
+ private:
+  void set_has_query() { _has_bits_[0] |= 0x4u; }
+  void clear_has_query() { _has_bits_[0] &= ~0x4u; }
+
+  BsonPtr query_;
+
+  // sort
+ public:
+  static const int ksortFieldNumber = 4;
+  const BsonPtr& sort() const { return sort_; }
+  bool has_sort() const { return _has_bits_[0] & 0x8u; }
+  void clear_sort() {
+    clear_has_sort();
+    sort_.reset();
+  }
+  void set_sort(BsonPtr value) {
+    sort_ = value;
+    set_has_sort();
+  }
+
+ private:
+  void set_has_sort() { _has_bits_[0] |= 0x8u; }
+  void clear_has_sort() { _has_bits_[0] &= ~0x8u; }
+
+  BsonPtr sort_;
+
+  // skip
+ public:
+  static const int kskipFieldNumber = 5;
+  int32_t skip() const { return skip_; }
+  bool has_skip() const { return _has_bits_[0] & 0x10u; }
+  void clear_skip() {
+    clear_has_skip();
+    skip_ = 0;
+  }
+  void set_skip(int32_t value) {
+    skip_ = value;
+    set_has_skip();
+  }
+
+ private:
+  void set_has_skip() { _has_bits_[0] |= 0x10u; }
+  void clear_has_skip() { _has_bits_[0] &= ~0x10u; }
+
+  int32_t skip_;
+
+  // limit
+ public:
+  static const int klimitFieldNumber = 6;
+  int32_t limit() const { return limit_; }
+  bool has_limit() const { return _has_bits_[0] & 0x20u; }
+  void clear_limit() {
+    clear_has_limit();
+    limit_ = 0;
+  }
+  void set_limit(int32_t value) {
+    limit_ = value;
+    set_has_limit();
+  }
+
+ private:
+  void set_has_limit() { _has_bits_[0] |= 0x20u; }
+  void clear_has_limit() { _has_bits_[0] &= ~0x20u; }
+
+  int32_t limit_;
+
+  // fields
+ public:
+  static const int kfieldsFieldNumber = 7;
+  const std::vector<std::string>& fields() const { return fields_; }
+  int fields_size() const { return fields_.size(); }
+  void clear_fields() { fields_.clear(); }
+  const std::string& fields(int index) const { return fields_[index]; }
+  std::string* mutable_fields(int index) { return &fields_[index]; }
+  void add_fields(std::string value) { fields_.push_back(std::move(value)); }
+
+ private:
+  std::vector<std::string> fields_;
 
  protected:
   ::google::protobuf::Metadata GetMetadata() const override;
@@ -158,175 +246,9 @@ class MongoQueryRequest : public ::google::protobuf::Message {
   void SharedDtor();
   void SetCachedSize(int size) const;
 
-  void set_has_database();
-  void clear_has_database();
-
-  void set_has_collection();
-  void clear_has_collection();
-
-  void set_has_skip();
-  void clear_has_skip();
-
-  void set_has_query();
-  void clear_has_query();
-
-  void set_has_limit();
-  void clear_has_limit();
-
-  std::string database_;
-  std::string collection_;
-  int32_t skip_;
-  int32_t limit_;
-  BsonPtr query_;
-  std::vector<std::string> fields_;
   ::google::protobuf::internal::HasBits<1> _has_bits_;
   mutable int _cached_size_;
 };
-
-inline const std::string& MongoQueryRequest::database() const {
-  return database_;
-}
-
-inline void MongoQueryRequest::set_database(std::string database) {
-  set_has_database();
-  database_ = database;
-}
-
-inline bool MongoQueryRequest::has_database() const {
-  return (_has_bits_[0] & 0x00000001u);
-}
-
-inline void MongoQueryRequest::clear_database() {
-  database_.clear();
-  clear_has_database();
-}
-
-inline void MongoQueryRequest::set_has_database() {
-  _has_bits_[0] |= 0x00000001u;
-}
-
-inline void MongoQueryRequest::clear_has_database() {
-  _has_bits_[0] &= ~0x00000001u;
-}
-
-inline const std::string& MongoQueryRequest::collection() const {
-  return collection_;
-}
-
-inline void MongoQueryRequest::set_collection(std::string collection) {
-  set_has_collection();
-  collection_ = collection;
-}
-
-inline bool MongoQueryRequest::has_collection() const {
-  return _has_bits_[0] & 0x00000002u;
-}
-
-inline void MongoQueryRequest::clear_collection() {
-  collection_.clear();
-  clear_has_collection();
-}
-
-inline void MongoQueryRequest::set_has_collection() {
-  _has_bits_[0] |= 0x00000002u;
-}
-
-inline void MongoQueryRequest::clear_has_collection() {
-  _has_bits_[0] &= ~0x00000002u;
-}
-
-inline int32_t MongoQueryRequest::skip() const { return skip_; }
-
-inline bool MongoQueryRequest::has_skip() const {
-  return _has_bits_[0] & 0x00000004u;
-}
-
-inline void MongoQueryRequest::clear_skip() {
-  clear_has_skip();
-  skip_ = 0;
-}
-
-inline void MongoQueryRequest::set_skip(int32_t skip) {
-  skip_ = skip;
-  set_has_skip();
-}
-
-inline void MongoQueryRequest::set_has_skip() { _has_bits_[0] |= 0x00000004u; }
-
-inline void MongoQueryRequest::clear_has_skip() {
-  _has_bits_[0] &= ~0x00000004u;
-}
-
-inline int32_t MongoQueryRequest::limit() const { return limit_; }
-
-inline bool MongoQueryRequest::has_limit() const {
-  return _has_bits_[0] & 0x00000008u;
-}
-
-inline void MongoQueryRequest::clear_limit() {
-  clear_has_limit();
-  limit_ = 0;
-}
-
-inline void MongoQueryRequest::set_limit(int32_t limit) {
-  limit_ = limit;
-  set_has_limit();
-}
-
-inline void MongoQueryRequest::set_has_limit() { _has_bits_[0] |= 0x00000008u; }
-
-inline void MongoQueryRequest::clear_has_limit() {
-  _has_bits_[0] &= ~0x00000008u;
-}
-
-inline const BsonPtr MongoQueryRequest::query() const { return query_; }
-
-inline bool MongoQueryRequest::has_query() const {
-  return _has_bits_[0] & 0x00000010u;
-}
-
-inline void MongoQueryRequest::clear_query() {
-  clear_has_query();
-  query_.reset();
-  query_ = nullptr;
-}
-
-inline void MongoQueryRequest::set_query(BsonPtr value) {
-  query_ = value;
-  set_has_query();
-}
-
-inline void MongoQueryRequest::set_has_query() { _has_bits_[0] |= 0x00000010u; }
-
-inline void MongoQueryRequest::clear_has_query() {
-  _has_bits_[0] &= ~0x00000010u;
-}
-
-inline const std::vector<std::string>& MongoQueryRequest::fields() const {
-  return fields_;
-}
-
-inline int MongoQueryRequest::fields_size() const { return fields_.size(); }
-
-inline void MongoQueryRequest::clear_fields() { fields_.clear(); }
-
-inline const std::string& MongoQueryRequest::fields(int index) const {
-  // TODO(zhangke) 判断是否越界
-  return fields_[index];
-}
-
-inline std::string* MongoQueryRequest::mutable_fields(int index) {
-  // TODO(zhangke) 判断是否越界
-  return &fields_[index];
-}
-
-inline void MongoQueryRequest::add_fields(std::string value) {
-  fields_.push_back(std::move(value));
-}
-
-inline void MongoQueryRequest::SetCachedSize(int size) const {
-  _cached_size_ = size;
-}
 
 class MongoQueryResponse : public ::google::protobuf::Message {
  public:

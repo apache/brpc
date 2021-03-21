@@ -65,19 +65,24 @@ MongoQueryRequest::MongoQueryRequest() : ::google::protobuf::Message() {
   SharedCtor();
 }
 
+MongoQueryRequest::~MongoQueryRequest() { SharedDtor(); }
+
 MongoQueryRequest::MongoQueryRequest(const MongoQueryRequest& from)
     : ::google::protobuf::Message() {
   SharedCtor();
   MergeFrom(from);
 }
 
-void MongoQueryRequest::SharedCtor() {
-  skip_ = 0;
-  limit_ = 0;
-  _cached_size_ = 0;
+MongoQueryRequest& MongoQueryRequest::operator=(const MongoQueryRequest& from) {
+  CopyFrom(from);
+  return *this;
 }
 
-MongoQueryRequest::~MongoQueryRequest() { SharedDtor(); }
+void MongoQueryRequest::SharedCtor() {
+  _cached_size_ = 0;
+  skip_ = 0;
+  limit_ = 0;
+}
 
 void MongoQueryRequest::SharedDtor() {}
 
@@ -96,13 +101,17 @@ bool MongoQueryRequest::SerializeTo(butil::IOBuf* buf) const {
     query_filter.reset(bson_new(), bson_free);
   }
   BSON_APPEND_DOCUMENT(query_element, "filter", query_filter.get());
+  // query sort
+  if (sort()) {
+    BSON_APPEND_DOCUMENT(query_element, "sort", sort().get());
+  }
   if (!fields().empty()) {
     // 是否需要bson_free
-    bson_t* field_doc = bson_new();
+    BsonPtr field_doc_ptr = butil::bson::new_bson();
     for (auto& field : fields()) {
-      BSON_APPEND_INT32(field_doc, field.c_str(), 1);
+      BSON_APPEND_INT32(field_doc_ptr.get(), field.c_str(), 1);
     }
-    BSON_APPEND_DOCUMENT(query_element, "projection", field_doc);
+    BSON_APPEND_DOCUMENT(query_element, "projection", field_doc_ptr.get());
   }
   if (has_skip()) {
     BSON_APPEND_INT64(query_element, "skip", skip());
@@ -123,8 +132,10 @@ bool MongoQueryRequest::SerializeTo(butil::IOBuf* buf) const {
   return true;
 }
 
+void MongoQueryRequest::Swap(MongoQueryRequest* other) {}
+
 MongoQueryRequest* MongoQueryRequest::New() const {
-  return new MongoQueryRequest;
+  return new MongoQueryRequest();
 }
 
 void MongoQueryRequest::CopyFrom(const ::google::protobuf::Message& from) {
@@ -152,20 +163,29 @@ void MongoQueryRequest::CopyFrom(const MongoQueryRequest& from) {
 
 void MongoQueryRequest::MergeFrom(const MongoQueryRequest& from) {
   GOOGLE_CHECK_NE(&from, this);
+
   if (from.has_database()) {
     set_database(from.database());
   }
+
   if (from.has_collection()) {
     set_collection(from.collection());
   }
+
+  if (from.has_query()) {
+    set_query(from.query());
+  }
+
+  if (from.has_sort()) {
+    set_sort(from.sort());
+  }
+
   if (from.has_skip()) {
     set_skip(from.skip());
   }
+
   if (from.has_limit()) {
     set_limit(from.limit());
-  }
-  if (from.has_query()) {
-    set_query(from.query_);
   }
 
   fields_.insert(fields_.end(), from.fields().cbegin(), from.fields().cend());
@@ -174,9 +194,10 @@ void MongoQueryRequest::MergeFrom(const MongoQueryRequest& from) {
 void MongoQueryRequest::Clear() {
   clear_database();
   clear_collection();
+  clear_query();
+  clear_sort();
   clear_skip();
   clear_limit();
-  clear_query();
   clear_fields();
 }
 
@@ -184,19 +205,17 @@ bool MongoQueryRequest::IsInitialized() const {
   return has_database() && has_collection();
 }
 
-// int MongoQueryRequest::ByteSize() const {
-
-// }
-
 bool MongoQueryRequest::MergePartialFromCodedStream(
     ::google::protobuf::io::CodedInputStream* input) {
   LOG(WARNING) << "You're not supposed to parse a MongoQueryRequest";
   return true;
 }
+
 void MongoQueryRequest::SerializeWithCachedSizes(
     ::google::protobuf::io::CodedOutputStream* output) const {
   LOG(WARNING) << "You're not supposed to serialize a MongoQueryRequest";
 }
+
 ::google::protobuf::uint8* MongoQueryRequest::SerializeWithCachedSizesToArray(
     ::google::protobuf::uint8* output) const {
   return output;
@@ -206,14 +225,14 @@ const ::google::protobuf::Descriptor* MongoQueryRequest::descriptor() {
   return MongoQueryRequestBase::descriptor();
 }
 
-// void MongoQueryRequest::Print(std::ostream&) const;
-
 ::google::protobuf::Metadata MongoQueryRequest::GetMetadata() const {
   ::google::protobuf::Metadata metadata;
   metadata.descriptor = descriptor();
   metadata.reflection = NULL;
   return metadata;
 }
+
+void MongoQueryRequest::SetCachedSize(int size) const { _cached_size_ = size; }
 
 MongoQueryResponse::MongoQueryResponse() : ::google::protobuf::Message() {
   SharedCtor();

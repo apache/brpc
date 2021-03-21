@@ -269,7 +269,10 @@ static void* sender(void* void_args) {
     brpc::MongoQueryRequest* query_request = new brpc::MongoQueryRequest();
     query_request->set_database(FLAGS_database);
     query_request->set_collection(FLAGS_collection);
-    // query_request->set_limit(10);
+    brpc::BsonPtr sort_doc = butil::bson::new_bson();
+    BSON_APPEND_INT32(sort_doc.get(), "name", -1);
+    query_request->set_sort(sort_doc);
+    query_request->set_limit(1);
     request = query_request;
   } else if (FLAGS_op_type == 2) {
     // update
@@ -414,7 +417,7 @@ int main(int argc, char* argv[]) {
   decltype(sender)* test_func = sender;
   if (FLAGS_op_type == 4) {
     test_func = delete_test;
-  } else if (FLAGS_op_type = 2) {
+  } else if (FLAGS_op_type == 2) {
     test_func = update_test;
   }
   for (int i = 0; i < FLAGS_thread_num; ++i) {
