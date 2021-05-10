@@ -49,9 +49,9 @@ DEFINE_int32(rdma_conn_timeout_ms, 30000,
             "The timeout (ms) for RDMA connection establishment.");
 #endif
 
-static const int FLOW_CONTROL = 1;          // for creating QP
-static const int RETRY_COUNT = 1;           // for creating QP
-static const int RNR_RETRY_COUNT = 0;       // for creating QP
+static const uint8_t FLOW_CONTROL = 1;          // for creating QP
+static const uint8_t RETRY_COUNT = 1;           // for creating QP
+static const uint8_t RNR_RETRY_COUNT = 0;       // for creating QP
 
 RdmaCommunicationManager::RdmaCommunicationManager(void* cm_id)
     : _cm_id(cm_id)
