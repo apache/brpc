@@ -21,8 +21,6 @@ namespace brpc {
 namespace rdma {
 
 extern bool g_rdma_traffic_enabled;
-extern std::vector<brpc::SocketId> g_disabled_conns;
-extern butil::atomic<bool> g_written;
 
 void RdmaTrafficControlServiceImpl::TurnOn(
         google::protobuf::RpcController* cntl_base,
