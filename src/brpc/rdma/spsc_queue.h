@@ -17,7 +17,7 @@
 #ifndef BRPC_RDMA_SPSC_QUEUE_H
 #define BRPC_RDMA_SPSC_QUEUE_H
 
-#include <butil/atomicops.h>
+#include "butil/atomicops.h"
 
 namespace brpc {
 namespace rdma {

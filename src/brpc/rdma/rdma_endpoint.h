@@ -28,7 +28,7 @@
 #include "brpc/socket.h"
 #include "brpc/rdma/rdma_communication_manager.h"
 #include "brpc/rdma/rdma_completion_queue.h"
-#include <brpc/rdma/spsc_queue.h>
+#include "brpc/rdma/spsc_queue.h"
 
 namespace brpc {
 namespace rdma {
