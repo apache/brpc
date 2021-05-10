@@ -218,20 +218,20 @@ void RdmaCompletionQueue::CleanUp() {
 
     if (IsRdmaAvailable()) {
         if (cq) {
-			if (cq_channel) {
-				IbvAckCqEvents(cq, _cq_events);
-			}
+            if (cq_channel) {
+                IbvAckCqEvents(cq, _cq_events);
+            }
             if (IbvDestroyCq(cq) < 0) {
                 PLOG(WARNING) << "Fail to destroy rdma cq";
             }
             _cq = NULL;
-			if (cq_channel) {
+            if (cq_channel) {
                 if (IbvDestroyCompChannel(cq_channel) < 0) {
                     PLOG(WARNING) << "Fail to destroy rdma cq channel";
                 }
-				_cq_channel = NULL;
-			}
-		}
+                _cq_channel = NULL;
+            }
+        }
     }
     _cq_events = 0;
     if (_sid > 0) {
