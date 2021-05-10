@@ -1,4 +1,16 @@
-# Using RDMA
+## Compile brpc with RDMA support
+
+To use brpc with RDMA, please make sure you have built brpc with WITH_RDMA option first.
+
+```bash
+
+$ cmake -DWITH_RDMA=on . # in project's directory
+
+$ make -j
+
+```
+
+## Using RDMA
 
 To use rdma, please set the ChannelOptions and ServerOptions like this:
 
