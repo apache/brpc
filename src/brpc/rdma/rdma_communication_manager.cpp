@@ -204,6 +204,20 @@ int RdmaCommunicationManager::Connect(char* data, size_t len) {
 #endif
 }
 
+int RdmaCommunicationManager::BindLocalAddress() {
+    sockaddr_in client_sockaddr;
+    bzero(&client_sockaddr, sizeof(client_sockaddr));
+    client_sockaddr.sin_family = AF_INET;
+    client_sockaddr.sin_port = htons(INADDR_ANY);
+    client_sockaddr.sin_addr = GetRdmaIP();
+    int ret = RdmaBindAddr((rdma_cm_id*)_cm_id, (sockaddr *)&client_sockaddr);
+    if (ret != 0) {
+        PLOG(WARNING) << "Failed to bind local address";
+        return -1;
+    }
+    return 0; 
+}
+
 int RdmaCommunicationManager::ResolveAddr(butil::EndPoint& remote_ep) {
 #ifndef BRPC_RDMA
     CHECK(false) << "This should not happen";

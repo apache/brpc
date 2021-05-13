@@ -542,6 +542,11 @@ int RdmaEndpoint::HandshakeAtClient(RdmaCMEvent event) {
         if (!_rcm) {
             return -1;
         }
+        // If the client side have multi rdma device
+        // We should bind the cm_id to specified rdma device
+        if (_rcm->BindLocalAddress() < 0) {
+            return -1;
+        }
 
         // Add rdmacm fd to event dispatcher
         if (GetGlobalEventDispatcher(_rcm->GetFD()).

@@ -82,6 +82,18 @@ public:
     //     -1:  failed, errno set
     int Connect(char* data, size_t len);
 
+    // Bind rdma_cm_id to local address
+    // the rdma_cm_id will be bound to a specified local RDMA device
+    // For client side if we only have one RDMA device or we just want to use the first RDMA device.
+    // We don't not need call this method.
+    // But if we have multi RDMA device, and want to use special device. We need to call this method 
+    // to bind the local address, this funciton will use the --rdma_device GFLAGS specified device ip
+    // address to bind. So you don't need to specified ip address param.
+    // Return:
+    //     0:   success
+    //     -1:  failed, errno set
+    int BindLocalAddress();
+
     // Resolve address
     // Arguments:
     //     remote_ep: the remote endpoint to connect
