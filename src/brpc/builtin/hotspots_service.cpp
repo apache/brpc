@@ -416,11 +416,13 @@ static void DisplayResult(Controller* cntl,
         if (display_type == DisplayType::kUnknown) {
             return cntl->SetFailed(EINVAL, "Invalid display_type=%s", display_type_query->c_str());
         }
+#if defined(OS_LINUX)
         if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
                 "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
                 "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
+#endif
     }
     if (base_name != NULL) {
         if (!ValidProfilePath(*base_name)) {
@@ -885,11 +887,13 @@ static void StartProfiling(ProfilingType type,
         if (display_type == DisplayType::kUnknown) {
             return cntl->SetFailed(EINVAL, "Invalid display_type=%s", display_type_query->c_str());
         }
+#if defined(OS_LINUX)
         if (display_type == DisplayType::kFlameGraph && !getenv("FLAMEGRAPH_PL_PATH")) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
                 "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
                 "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
+#endif
     }
 
     ProfilingClient profiling_client;
