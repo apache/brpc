@@ -26,7 +26,7 @@
 class MyService : public XXXService, public brpc::Describable {
 public:
     ...
-    void DescribeStatus(std::ostream& os, const brpc::DescribeOptions& options) const {
+    void Describe(std::ostream& os, const brpc::DescribeOptions& options) const {
         os << "my_status: blahblah";
     }
 };
