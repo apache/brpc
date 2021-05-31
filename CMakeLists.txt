@@ -9,6 +9,7 @@ option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(WITH_RDMA "With RDMA supported" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
+option(LINK_GFLAGS "Whether link gflags in brpc.so" ON)
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
 if(POLICY CMP0042)
