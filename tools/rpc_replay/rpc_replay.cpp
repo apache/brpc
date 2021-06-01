@@ -159,12 +159,26 @@ static void* replay_thread(void* arg) {
             brpc::Controller* cntl = new brpc::Controller;
             req.Clear();
             
+            brpc::SerializedRequest* req_ptr = &req;
             cntl->reset_sampled_request(sample_guard.release());
-            if (sample->meta.attachment_size() > 0) {
+            if (sample->meta.protocol_type() == brpc::PROTOCOL_HTTP) {
+                std::stringstream uri_ss;
+                uri_ss << "/" << sample->meta.service_name() 
+                       << "/" << sample->meta.method_name();
+
+                cntl->http_request().uri() = uri_ss.str();
+                cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
+                cntl->http_request().set_content_type("application/json");
+                cntl->request_attachment() = sample->request.movable();
+
+                req_ptr = NULL;
+
+            } else if (sample->meta.attachment_size() > 0) {
                 sample->request.cutn(
                     &req.serialized_data(),
                     sample->request.size() - sample->meta.attachment_size());
                 cntl->request_attachment() = sample->request.movable();
+
             } else {
                 req.serialized_data() = sample->request.movable();
             }
@@ -172,13 +186,13 @@ static void* replay_thread(void* arg) {
             const int64_t start_time = butil::gettimeofday_us();
             if (FLAGS_qps <= 0) {
                 chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
-                        cntl, &req, NULL/*ignore response*/, NULL);
+                        cntl, req_ptr, NULL/*ignore response*/, NULL);
                 handle_response(cntl, start_time, true);
             } else {
                 google::protobuf::Closure* done =
                     brpc::NewCallback(handle_response, cntl, start_time, false);
                 chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
-                        cntl, &req, NULL/*ignore response*/, done);
+                        cntl, req_ptr, NULL/*ignore response*/, done);
                 const int64_t end_time = butil::gettimeofday_us();
                 int64_t expected_elp = 0;
                 int64_t actual_elp = 0;
