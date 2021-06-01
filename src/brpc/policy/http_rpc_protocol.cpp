@@ -34,6 +34,7 @@
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/span.h"
 #include "brpc/socket.h"                       // Socket
+#include "brpc/rpc_dump.h"                     // SampledRequest
 #include "brpc/http_status_code.h"             // HTTP_STATUS_*
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/builtin/index_service.h"        // IndexService
@@ -1484,6 +1485,16 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             }
         }
     } else {
+        SampledRequest* sample = AskToBeSampled();
+        if (sample) {
+            sample->meta.set_service_name(svc->GetDescriptor()->name());
+            sample->meta.set_method_name(method->name());
+            sample->meta.set_compress_type(COMPRESS_TYPE_NONE);
+            sample->meta.set_protocol_type(PROTOCOL_HTTP);
+            sample->meta.set_attachment_size(req_body.size());
+            sample->request = req_body;
+            sample->submit(start_parse_us);
+        }
         // A http server, just keep content as it is.
         cntl->request_attachment().swap(req_body);
     }
