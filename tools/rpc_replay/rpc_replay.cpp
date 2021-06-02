@@ -172,13 +172,11 @@ static void* replay_thread(void* arg) {
                 cntl->request_attachment() = sample->request.movable();
 
                 req_ptr = NULL;
-
             } else if (sample->meta.attachment_size() > 0) {
                 sample->request.cutn(
                     &req.serialized_data(),
                     sample->request.size() - sample->meta.attachment_size());
                 cntl->request_attachment() = sample->request.movable();
-
             } else {
                 req.serialized_data() = sample->request.movable();
             }
