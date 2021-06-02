@@ -1484,7 +1484,6 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 }
             }
         }
-    } else {
         SampledRequest* sample = AskToBeSampled();
         if (sample) {
             sample->meta.set_service_name(svc->GetDescriptor()->name());
@@ -1495,6 +1494,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             sample->request = req_body;
             sample->submit(start_parse_us);
         }
+    } else {
         // A http server, just keep content as it is.
         cntl->request_attachment().swap(req_body);
     }
