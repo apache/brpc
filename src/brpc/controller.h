@@ -444,13 +444,13 @@ public:
     // Client-side: successful or last server called. Accessible from 
     // PackXXXRequest() in protocols.
     // Server-side: returns the client sending the request
-    butil::EndPoint remote_side() const { return _remote_side; }
+    const butil::EndPoint& remote_side() const { return _remote_side; }
     
     // Client-side: the local address for talking with server, undefined until
     // this RPC succeeds (because the connection may not be established 
     // before RPC).
     // Server-side: the address that clients access.
-    butil::EndPoint local_side() const { return _local_side; }
+    const butil::EndPoint& local_side() const { return _local_side; }
 
     // Protocol of the request sent by client or received by server.
     ProtocolType request_protocol() const { return _request_protocol; }
