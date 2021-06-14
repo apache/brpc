@@ -21,6 +21,7 @@
 #include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/restful.h>
+#include <json2pb/pb_to_json.h>
 #include "http.pb.h"
 
 DEFINE_int32(port, 8010, "TCP Port of this server");
@@ -60,6 +61,19 @@ public:
         }
         os << "\nbody: " << cntl->request_attachment() << '\n';
         os.move_to(cntl->response_attachment());
+
+        // You can set a callback function after server response to client
+        cntl->set_after_resp_fn([](const brpc::Controller* cntl,
+                                   const google::protobuf::Message* req,
+                                   const google::protobuf::Message* res) {
+            std::string req_str;
+            //json2pb::ProtoMessageToJson(*req, &req_str, NULL);
+            std::string res_str;
+            //json2pb::ProtoMessageToJson(*res, &res_str, NULL);
+            LOG(INFO) << "req:" << req_str
+                      << " res:" << res_str
+                      << " att:" << cntl->request_attachment();
+        });
     }
 };
 
@@ -190,10 +204,12 @@ int main(int argc, char* argv[]) {
 
     // Start the server.
     brpc::ServerOptions options;
+    /*
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     options.mutable_ssl_options()->default_cert.certificate = FLAGS_certificate;
     options.mutable_ssl_options()->default_cert.private_key = FLAGS_private_key;
     options.mutable_ssl_options()->ciphers = FLAGS_ciphers;
+    */
     if (server.Start(FLAGS_port, &options) != 0) {
         LOG(ERROR) << "Fail to start HttpServer";
         return -1;

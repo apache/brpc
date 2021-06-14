@@ -549,7 +549,9 @@ public:
     // -1 means no deadline.
     int64_t deadline_us() const { return _deadline_us; }
 
-    using after_resp_fn_t = std::function<void(const google::protobuf::Message* req, const google::protobuf::Message* res)>;
+    using after_resp_fn_t = std::function<void(const Controller* cntl,
+                                               const google::protobuf::Message* req,
+                                               const google::protobuf::Message* res)>;
 
     void set_after_resp_fn(after_resp_fn_t&& after_resp_fn) { _after_resp_fn = after_resp_fn; }
 

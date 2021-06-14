@@ -1572,7 +1572,7 @@ void Controller::DoPrintLogPrefix(std::ostream& os) const {
 
 void Controller::after_resp_fn(const google::protobuf::Message* req, const google::protobuf::Message* res) {
     if (_after_resp_fn) {
-        _after_resp_fn(req, res);
+        _after_resp_fn(this, req, res);
         _after_resp_fn = nullptr;
     }
 }
