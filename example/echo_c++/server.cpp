@@ -78,15 +78,13 @@ public:
             std::string req_str;
             std::string res_str;
             json2pb::ProtoMessageToJson(*req, &req_str, NULL);
-            //json2pb::ProtoMessageToJson(*res, &res_str, NULL);
-            if (res) {
+            json2pb::ProtoMessageToJson(*res, &res_str, NULL);
+            /*if (res) {
                 auto response = (EchoResponse*)res;
                 LOG(INFO) << "res:" << response->message();
-            }
-                                       /*
+            }*/
             LOG(INFO) << "req:" << req_str
                       << " res:" << res_str;
-                      */
         });
     }
 };
