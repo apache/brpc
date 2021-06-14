@@ -66,13 +66,7 @@ public:
         cntl->set_after_resp_fn([](const brpc::Controller* cntl,
                                    const google::protobuf::Message* req,
                                    const google::protobuf::Message* res) {
-            std::string req_str;
-            //json2pb::ProtoMessageToJson(*req, &req_str, NULL);
-            std::string res_str;
-            //json2pb::ProtoMessageToJson(*res, &res_str, NULL);
-            LOG(INFO) << "req:" << req_str
-                      << " res:" << res_str
-                      << " att:" << cntl->request_attachment();
+            LOG(INFO) << "attached:" << cntl->request_attachment();
         });
     }
 };
