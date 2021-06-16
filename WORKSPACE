@@ -19,26 +19,27 @@ workspace(name = "com_github_brpc_brpc")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-skylib_version = "0.8.0"
 http_archive(
-    name = "bazel_skylib",
-    type = "tar.gz",
-    url = "https://github.com/bazelbuild/bazel-skylib/releases/download/{}/bazel-skylib.{}.tar.gz".format (skylib_version, skylib_version),
-    sha256 = "2ef429f5d7ce7111263289644d233707dba35e39696377ebab8b0bc701f7818e",
+    name = "rules_proto",
+    sha256 = "602e7161d9195e50246177e7c55b2f39950a9cf7366f74ed5f22fd45750cd208",
+    strip_prefix = "rules_proto-97d8af4dc474595af3900dd85cb3a29ad28cc313",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_proto/archive/97d8af4dc474595af3900dd85cb3a29ad28cc313.tar.gz",
+        "https://github.com/bazelbuild/rules_proto/archive/97d8af4dc474595af3900dd85cb3a29ad28cc313.tar.gz",
+    ],
 )
-
-http_archive(
-  name = "com_google_protobuf",
-  strip_prefix = "protobuf-3.6.1.3",
-  sha256 = "9510dd2afc29e7245e9e884336f848c8a6600a14ae726adb6befdb4f786f0be2",
-  type = "zip",
-  url = "https://github.com/protocolbuffers/protobuf/archive/v3.6.1.3.zip",
-)
+load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
+rules_proto_dependencies()
+rules_proto_toolchains()
 
 http_archive(
     name = "com_github_gflags_gflags",
-    strip_prefix = "gflags-46f73f88b18aee341538c0dfc22b1710a6abedef",
-    url = "https://github.com/gflags/gflags/archive/46f73f88b18aee341538c0dfc22b1710a6abedef.tar.gz",
+    sha256 = "34af2f15cf7367513b352bdcd2493ab14ce43692d2dcd9dfc499492966c64dcf",
+    strip_prefix = "gflags-2.2.2",
+    urls = [
+        "https://mirror.bazel.build/github.com/gflags/gflags/archive/v2.2.2.tar.gz",
+        "https://github.com/gflags/gflags/archive/v2.2.2.tar.gz",
+    ],
 )
 
 bind(
@@ -54,16 +55,22 @@ http_archive(
 )
 
 http_archive(
-    name = "com_github_google_glog",
-    build_file = "//:glog.BUILD",
-    strip_prefix = "glog-a6a166db069520dbbd653c97c2e5b12e08a8bb26",
-    url = "https://github.com/google/glog/archive/a6a166db069520dbbd653c97c2e5b12e08a8bb26.tar.gz"
+   name = "com_github_google_glog",
+   sha256 = 'eede71f28371bf39aa69b45de23b329d37214016e2055269b3b5e7cfd40b59f5',
+   strip_prefix = 'glog-0.5.0',
+   urls = [
+       "https://github.com/google/glog/archive/v0.5.0.tar.gz",
+   ]
 )
 
 http_archive(
     name = "com_google_googletest",
-    strip_prefix = "googletest-0fe96607d85cf3a25ac40da369db62bbee2939a5",
-    url = "https://github.com/google/googletest/archive/0fe96607d85cf3a25ac40da369db62bbee2939a5.tar.gz",
+    sha256 = "9dc9157a9a1551ec7a7e43daea9a694a0bb5fb8bec81235d8a1e6ef64c716dcb",
+    strip_prefix = "googletest-release-1.10.0",
+    urls = [
+        "https://mirror.bazel.build/github.com/google/googletest/archive/release-1.10.0.tar.gz",
+        "https://github.com/google/googletest/archive/release-1.10.0.tar.gz",
+    ],
 )
 
 new_local_repository(
@@ -88,8 +95,3 @@ bind(
     actual = "@openssl_macos//:ssl"
 )
 
-new_local_repository(
-    name = "zlib",
-    build_file = "//:zlib.BUILD",
-    path = "/usr",
-)

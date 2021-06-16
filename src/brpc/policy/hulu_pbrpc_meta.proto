@@ -16,7 +16,7 @@
 // under the License.
 
 syntax="proto2";
-import "brpc/options.proto";                // For TalkType
+import "src/brpc/options.proto";                // For TalkType
 
 package brpc.policy;
 option java_package="com.brpc.policy";

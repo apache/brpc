@@ -17,7 +17,8 @@ licenses(["notice"])  # Apache v2
 
 exports_files(["LICENSE"])
 
-load(":bazel/brpc.bzl", "brpc_proto_library")
+#load(":bazel/brpc.bzl", "brpc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
 
 config_setting(
     name = "with_glog",
@@ -452,7 +453,7 @@ cc_library(
     ],
     deps = [
         ":butil",
-        ":cc_brpc_idl_options_proto",
+        ":brpc_proto",
         "@com_google_protobuf//:protoc_lib",
     ],
     copts = COPTS,
@@ -460,30 +461,82 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-brpc_proto_library(
+proto_library(
     name = "cc_brpc_idl_options_proto",
     srcs = [
         "src/idl_options.proto",
     ],
     deps = [
-        "@com_google_protobuf//:cc_wkt_protos"
+      "@com_google_protobuf//:descriptor_proto",
     ],
     visibility = ["//visibility:public"],
 )
 
-brpc_proto_library(
+
+proto_library(
     name = "cc_brpc_internal_proto",
     srcs = glob([
         "src/brpc/*.proto",
         "src/brpc/policy/*.proto",
     ]),
-    include = "src/",
     deps = [
-        ":cc_brpc_idl_options_proto",
-        "@com_google_protobuf//:cc_wkt_protos"
+      "@com_google_protobuf//:descriptor_proto",
     ],
     visibility = ["//visibility:public"],
 )
+
+cc_proto_library(
+  name = 'brpc_proto_options',
+  deps = [
+    ":cc_brpc_idl_options_proto",
+  ],
+  visibility = ["//visibility:public"],
+)
+cc_proto_library(
+  name = 'brpc_proto_internal',
+  deps = [
+    ":cc_brpc_internal_proto",
+  ],
+  visibility = ["//visibility:public"],
+)
+
+cc_library(
+  name = 'brpc_proto',
+  includes = [
+    'src/',
+  ],
+  deps = [
+    ":brpc_proto_internal",
+    ":brpc_proto_options",
+  ]
+)
+  
+
+#brpc_proto_library(
+#    name = "cc_brpc_idl_options_proto",
+#    srcs = [
+#        "src/idl_options.proto",
+#    ],
+#    deps = [
+#        "@com_google_protobuf//:cc_wkt_protos"
+#    ],
+#    visibility = ["//visibility:public"],
+#)
+#
+#brpc_proto_library(
+#    name = "cc_brpc_internal_proto",
+#    srcs = glob([
+#        "src/brpc/*.proto",
+#        "src/brpc/policy/*.proto",
+#    ]),
+#    include = "src/",
+#    deps = [
+#        ":cc_brpc_idl_options_proto",
+#        "@com_google_protobuf//:cc_wkt_protos"
+#    ],
+#    visibility = ["//visibility:public"],
+#)
+
 
 cc_library(
     name = "brpc",
@@ -514,7 +567,7 @@ cc_library(
         ":bvar",
         ":json2pb",
         ":mcpack2pb",
-        ":cc_brpc_internal_proto",
+        ":brpc_proto",
         "@com_github_google_leveldb//:leveldb",
     ],
     copts = COPTS,
@@ -522,16 +575,18 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+
 cc_binary(
     name = "protoc-gen-mcpack",
     srcs = [
         "src/mcpack2pb/generator.cpp",
     ],
     deps = [
-        ":cc_brpc_idl_options_proto",
+        ":brpc_proto",
         ":brpc",
     ],
     copts = COPTS,
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
 )
+

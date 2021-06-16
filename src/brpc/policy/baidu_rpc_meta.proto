@@ -16,8 +16,8 @@
 // under the License.
 
 syntax="proto2";
-import "brpc/options.proto";
-import "brpc/streaming_rpc_meta.proto";
+import "src/brpc/options.proto";
+import "src/brpc/streaming_rpc_meta.proto";
 
 package brpc.policy;
 option java_package="com.brpc.policy";
