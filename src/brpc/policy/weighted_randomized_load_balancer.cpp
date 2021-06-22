@@ -57,7 +57,7 @@ bool WeightedRandomizedLoadBalancer::Remove(Servers& bg, const ServerId& id) {
     if (iter != bg.server_map.end()) {
         size_t index = iter->second;
         Server remove_server = bg.server_list[index];
-        uint32_t weight_diff = bg.server_list.back().weight - remove_server.weight;
+        int32_t weight_diff = bg.server_list.back().weight - remove_server.weight;
         bg.weight_sum -= remove_server.weight;
         bg.server_list[index] = bg.server_list.back();
         bg.server_list[index].current_weight_sum = remove_server.current_weight_sum + weight_diff;
