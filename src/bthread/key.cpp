@@ -34,7 +34,7 @@ class KeyTable;
 
 // defined in task_group.cpp
 extern __thread TaskGroup* tls_task_group;
-extern __thread LocalStorage tls_bls;
+extern thread_local LocalStorage tls_bls;
 static __thread bool tls_ever_created_keytable = false;
 
 // We keep thread specific data in a two-level array. The top-level array

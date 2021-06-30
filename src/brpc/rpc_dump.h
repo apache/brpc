@@ -75,7 +75,7 @@ inline SampledRequest* AskToBeSampled() {
 // Read samples from dumped files in a directory.
 // Example:
 //   SampleIterator it("./rpc_dump_echo_server");
-//   for (SampleRequest* req = it->Next(); req != NULL; req = it->Next()) {
+//   for (SampledRequest* req = it->Next(); req != NULL; req = it->Next()) {
 //     ...
 //   }
 class SampleIterator {

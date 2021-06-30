@@ -343,6 +343,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     if (request_meta.has_log_id()) {
         cntl->set_log_id(request_meta.log_id());
     }
+    if (request_meta.has_request_id()) {
+        cntl->set_request_id(request_meta.request_id());
+    }
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     accessor.set_server(server)
         .set_security_mode(security_mode)
@@ -647,6 +650,9 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     }
     if (cntl->has_log_id()) {
         request_meta->set_log_id(cntl->log_id());
+    }
+    if (!cntl->request_id().empty()) {
+        request_meta->set_request_id(cntl->request_id());
     }
     meta.set_correlation_id(correlation_id);
     StreamId request_stream_id = accessor.request_stream();

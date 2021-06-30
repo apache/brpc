@@ -21,6 +21,7 @@
 #include "butil/third_party/rapidjson/memorybuffer.h"
 #include "butil/third_party/rapidjson/writer.h"
 #include "butil/string_printf.h"
+#include "butil/strings/string_split.h"
 #include "butil/fast_rand.h"
 #include "bthread/bthread.h"
 #include "brpc/channel.h"
@@ -271,9 +272,17 @@ int DiscoveryClient::DoRegister() {
     cntl.http_request().set_content_type("application/x-www-form-urlencoded");
     butil::IOBufBuilder os;
     os << "appid=" << _params.appid
-        << "&hostname=" << _params.hostname
-        << "&addrs=" << _params.addrs
-        << "&env=" << _params.env
+        << "&hostname=" << _params.hostname;
+
+    std::vector<butil::StringPiece> addrs;
+    butil::SplitString(_params.addrs, ',', &addrs);
+    for (size_t i = 0; i < addrs.size(); ++i) {
+        if (!addrs[i].empty()) {
+            os << "&addrs=" << addrs[i];
+        }
+    }
+
+    os << "&env=" << _params.env
         << "&zone=" << _params.zone
         << "&region=" << _params.region
         << "&status=" << _params.status

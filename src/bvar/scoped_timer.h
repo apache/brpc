@@ -51,7 +51,7 @@ public:
 
 private:
     DISALLOW_COPY_AND_ASSIGN(ScopedTimer);
-    const int64_t _start_time;
+    int64_t _start_time;
     T* _bvar;
 };
 } // namespace bvar

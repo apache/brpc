@@ -1794,13 +1794,13 @@ size_t IOBufCutter::cutn(butil::IOBuf* out, size_t n) {
                                     _block };
         out->_push_back_ref(r);
         _data = (char*)_data + n;
-        return n;
+        return n; 
     } else if (size != 0) {
         const IOBuf::BlockRef r = { (uint32_t)((char*)_data - _block->data),
                                     (uint32_t)size,
                                     _block };
-        out->_move_back_ref(r);
-        _buf->_moveout_front_ref();
+        out->_push_back_ref(r);
+        _buf->_pop_front_ref();
         _data = NULL;
         _data_end = NULL;
         _block = NULL;

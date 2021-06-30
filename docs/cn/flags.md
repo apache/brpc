@@ -113,7 +113,7 @@ r31658之后支持可视化地修改，在浏览器上访问时将看到(R)下�
 
 ```c++
 DEFINE_bool(hex_log_id, false, "Show log_id in hexadecimal");
-BAIDU_RPC_VALIDATE_GFLAG(hex_log_id, brpc::PassValidate/*always true*/);
+BRPC_VALIDATE_GFLAG(hex_log_id, brpc::PassValidate/*always true*/);
 ```
 
 这个flag是单纯的开关，修改后不需要更新其他数据（没有处理逻辑），代码中前面看到true后面看到false也不会产生什么后果（不需要线程同步），所以我们让其默认可重载。
@@ -122,7 +122,7 @@ BAIDU_RPC_VALIDATE_GFLAG(hex_log_id, brpc::PassValidate/*always true*/);
 
 ```c++
 DEFINE_int32(health_check_interval, 3, "seconds between consecutive health-checkings");
-BAIDU_RPC_VALIDATE_GFLAG(health_check_interval, brpc::PositiveInteger);
+BRPC_VALIDATE_GFLAG(health_check_interval, brpc::PositiveInteger);
 ```
 
 以上操作都可以在命令行中进行：

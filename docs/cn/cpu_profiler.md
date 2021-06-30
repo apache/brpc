@@ -98,3 +98,7 @@ Total: 2954 samples
 
 1. 安装[standalone pprof](https://github.com/google/pprof)，并把下载的pprof二进制文件路径写入环境变量GOOGLE_PPROF_BINARY_PATH中
 2. 安装llvm-symbolizer（将函数符号转化为函数名），直接用brew安装即可：`brew install llvm`
+
+# 火焰图
+
+若需要结果以火焰图的方式展示，请下载并安装[FlameGraph](https://github.com/brendangregg/FlameGraph)工具，将环境变量FLAMEGRAPH_PL_PATH正确设置到本地的/path/to/flamegraph.pl后启动server即可。

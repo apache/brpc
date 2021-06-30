@@ -246,10 +246,23 @@ TrimPositions TrimWhitespace(const string16& input,
                      output);
 }
 
+TrimPositions TrimWhitespace(const butil::StringPiece16& input,
+                             TrimPositions positions,
+                             butil::StringPiece16* output) {
+  return TrimStringT(input, butil::StringPiece16(kWhitespaceUTF16), positions,
+                     output);
+}
+
 TrimPositions TrimWhitespaceASCII(const std::string& input,
                                   TrimPositions positions,
                                   std::string* output) {
   return TrimStringT(input, std::string(kWhitespaceASCII), positions, output);
+}
+
+TrimPositions TrimWhitespaceASCII(const butil::StringPiece& input,
+                                  TrimPositions positions,
+                                  butil::StringPiece* output) {
+  return TrimStringT(input, butil::StringPiece(kWhitespaceASCII), positions, output);
 }
 
 // This function is only for backward-compatibility.
@@ -257,6 +270,12 @@ TrimPositions TrimWhitespaceASCII(const std::string& input,
 TrimPositions TrimWhitespace(const std::string& input,
                              TrimPositions positions,
                              std::string* output) {
+  return TrimWhitespaceASCII(input, positions, output);
+}
+
+TrimPositions TrimWhitespace(const butil::StringPiece& input,
+                             TrimPositions positions,
+                             butil::StringPiece* output) {
   return TrimWhitespaceASCII(input, positions, output);
 }
 
@@ -340,7 +359,7 @@ bool IsStringASCII(const string16& str) {
   return DoIsStringASCII(str);
 }
 
-bool IsStringUTF8(const std::string& str) {
+bool IsStringUTF8(const StringPiece& str) {
   const char *src = str.data();
   int32_t src_len = static_cast<int32_t>(str.length());
   int32_t char_index = 0;
