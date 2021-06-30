@@ -462,8 +462,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                      meta.attachment_size(), reqsize);
                 break;
             }
-            int att_size = reqsize - meta.attachment_size();
-            msg->payload.cutn(&req_buf, att_size);
+            int body_without_attachment_size = reqsize - meta.attachment_size();
+            msg->payload.cutn(&req_buf, body_without_attachment_size);
             req_buf_ptr = &req_buf;
             cntl->request_attachment().swap(msg->payload);
         }
@@ -595,8 +595,8 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                     meta.attachment_size(), res_size);
                 break;
             }
-            int att_size = res_size - meta.attachment_size();
-            msg->payload.cutn(&res_buf, att_size);
+            int body_without_attachment_size = res_size - meta.attachment_size();
+            msg->payload.cutn(&res_buf, body_without_attachment_size);
             res_buf_ptr = &res_buf;
             cntl->response_attachment().swap(msg->payload);
         }
