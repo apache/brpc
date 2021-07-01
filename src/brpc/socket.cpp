@@ -712,6 +712,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     _read_buf.clear();
     _ninprocess.store(1, butil::memory_order_relaxed);
     _auth_flag_error.store(0, butil::memory_order_relaxed);
+    bthread_id_error(_auth_id, 0);
     const int rc = bthread_id_create(&_auth_id, NULL, NULL);
     if (rc != 0) {
         LOG(FATAL) << "Fail to create _auth_id, " << berror(rc);
