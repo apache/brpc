@@ -197,12 +197,12 @@ int main(int argc, char* argv[]) {
 
     // Start the server.
     brpc::ServerOptions options;
-    /*
+
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     options.mutable_ssl_options()->default_cert.certificate = FLAGS_certificate;
     options.mutable_ssl_options()->default_cert.private_key = FLAGS_private_key;
     options.mutable_ssl_options()->ciphers = FLAGS_ciphers;
-    */
+
     if (server.Start(FLAGS_port, &options) != 0) {
         LOG(ERROR) << "Fail to start HttpServer";
         return -1;
