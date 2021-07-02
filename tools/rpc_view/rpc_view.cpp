@@ -24,6 +24,7 @@
 
 DEFINE_int32(port, 8888, "TCP Port of this server");
 DEFINE_string(target, "", "The server to view");
+DEFINE_int32(timeout_ms, 5000, "Timeout for calling the server to view");
 
 // handle HTTP response of accessing builtin services of the target server.
 static void handle_response(brpc::Controller* client_cntl,
@@ -135,7 +136,7 @@ public:
         // query "seconds", we set the timeout to be longer than "seconds".
         const std::string* seconds =
             server_cntl->http_request().uri().GetQuery("seconds");
-        int64_t timeout_ms = 5000;
+        int64_t timeout_ms = FLAGS_timeout_ms;
         if (seconds) {
             timeout_ms += atoll(seconds->c_str()) * 1000;
         }
