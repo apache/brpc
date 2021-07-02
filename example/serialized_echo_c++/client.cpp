@@ -81,7 +81,6 @@ int main(int argc, char* argv[]) {
         sampled_request->meta.set_service_name("EchoService");
         sampled_request->meta.set_method_name("Echo");
         sampled_request->meta.set_compress_type(cntl.request_compress_type());
-
         cntl.reset_sampled_request(sampled_request);
 
         cntl.set_log_id(log_id++);  // set by user
