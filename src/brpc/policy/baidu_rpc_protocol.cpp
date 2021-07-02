@@ -31,6 +31,7 @@
 #include "brpc/compress.h"                      // ParseFromCompressedData
 #include "brpc/stream_impl.h"
 #include "brpc/rpc_dump.h"                      // SampledRequest
+#include "brpc/serialized_response.h"           // SerializedResponse
 #include "brpc/policy/baidu_rpc_meta.pb.h"      // RpcRequestMeta
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
@@ -601,7 +602,10 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         const CompressType res_cmp_type = (CompressType)meta.compress_type();
         cntl->set_response_compress_type(res_cmp_type);
         if (cntl->response()) {
-            if (!ParseFromCompressedData(
+            if (cntl->response()->GetDescriptor() == SerializedResponse::descriptor()) {
+                butil::IOBuf& response_serialized_data = ((SerializedResponse*)cntl->response())->serialized_data();
+                response_serialized_data.append(*res_buf_ptr);
+            } else if (!ParseFromCompressedData(
                     *res_buf_ptr, cntl->response(), res_cmp_type)) {
                 cntl->SetFailed(
                     ERESPONSE, "Fail to parse response message, "
