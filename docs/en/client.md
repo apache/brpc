@@ -220,6 +220,10 @@ which is weighted round robin. Choose the next server according to the configure
 
 Randomly choose one server from the list, no other settings. Similarly with round robin, the algorithm assumes that servers to access are similar.
 
+### wr
+
+which is weighted random. Choose the next server according to the configured weight. The chances a server is selected is consistent with its weight.
+
 ### la
 
 which is locality-aware. Perfer servers with lower latencies, until the latency is higher than others, no other settings. Check out [Locality-aware load balancing](lalb.md) for more details.
