@@ -16,20 +16,18 @@
 // under the License.
 
 syntax="proto2";
+package example;
 
-package brpc;
+option cc_generic_services = true;
 
-message RedisRequestBase {}
-message RedisResponseBase {}
+message EchoRequest {
+      required string message = 1;
+};
 
-message EspMessageBase {}
+message EchoResponse {
+      required string message = 1;
+};
 
-message MemcacheRequestBase {}
-message MemcacheResponseBase {}
-
-message NsheadMessageBase {}
-
-message SerializedRequestBase {}
-message SerializedResponseBase {}
-
-message ThriftFramedMessageBase {}
+service EchoService {
+      rpc Echo(EchoRequest) returns (EchoResponse);
+};
