@@ -75,5 +75,4 @@ private:
 
 } // namespace brpc
 
-
 #endif  // BRPC_SERIALIZED_RESPONSE_H
