@@ -29,6 +29,7 @@
 #include "brpc/server.h"
 #include "brpc/errno.pb.h"
 #include "brpc/span.h"
+#include "brpc/rpcz.h"
 #include "brpc/builtin/rpcz_service.h"
 
 

@@ -80,6 +80,7 @@
 #include "brpc/policy/auto_concurrency_limiter.h"
 #include "brpc/policy/constant_concurrency_limiter.h"
 
+#include "brpc/rpcz.h"
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
 #include "brpc/server.h"
@@ -597,6 +598,9 @@ static void GlobalInitializeOrDieImpl() {
     ConcurrencyLimiterExtension()->RegisterOrDie("auto", &g_ext->auto_cl);
     ConcurrencyLimiterExtension()->RegisterOrDie("constant", &g_ext->constant_cl);
     
+    // SpanExporter for rpcz
+    RegisterRpczSpanExporterOnce();
+
     if (FLAGS_usercode_in_pthread) {
         // Optional. If channel/server are initialized before main(), this
         // flag may be false at here even if it will be set to true after

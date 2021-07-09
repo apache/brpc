@@ -171,7 +171,7 @@ static void CreateIgnoreAllRead() { s_ignore_all_read = new IgnoreAllRead; }
 // they'll be set uniformly after this method is called.
 void Controller::ResetNonPods() {
     if (_span) {
-        Span::Submit(_span, butil::cpuwide_time_us());
+        Span::Submit(_span);
     }
     _error_text.clear();
     _remote_side = butil::EndPoint();
@@ -951,10 +951,7 @@ void Controller::DoneInBackupThread() {
 void Controller::SubmitSpan() {
     const int64_t now = butil::cpuwide_time_us();
     _span->set_start_callback_us(now);
-    if (_span->local_parent()) {
-        _span->local_parent()->AsParent();
-    }
-    Span::Submit(_span, now);
+    Span::Submit(_span);
     _span = NULL;
 }
 

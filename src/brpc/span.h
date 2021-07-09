@@ -21,13 +21,9 @@
 #ifndef BRPC_SPAN_H
 #define BRPC_SPAN_H
 
-#include <stdint.h>
 #include <string>
-#include <deque>
-#include <ostream>
 #include "butil/macros.h"
 #include "butil/endpoint.h"
-#include "butil/string_splitter.h"
 #include "bvar/collector.h"
 #include "bthread/task_meta.h"
 #include "brpc/options.pb.h"                 // ProtocolType
@@ -41,11 +37,27 @@ extern thread_local bthread::LocalStorage tls_bls;
 namespace brpc {
 
 DECLARE_bool(enable_rpcz);
+DECLARE_bool(enable_trace);
+
+template<typename T>
+constexpr int64_t GetStartRealTimeUs(const T* span) {
+    return span->type() == SPAN_TYPE_SERVER ?
+    span->received_real_us() : span->start_send_real_us();
+}
+
+template<typename T>
+constexpr int64_t GetEndRealTimeUs(const T* span) {
+    return std::max<int64_t>({span->received_real_us(),
+                              span->start_parse_real_us(),
+                              span->start_callback_real_us(),
+                              span->start_send_real_us(),
+                              span->sent_real_us()});
+}
 
 // Collect information required by /rpcz and tracing system whose idea is
 // described in http://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36356.pdf
+class Trace;
 class Span : public bvar::Collected {
-friend class SpanDB;
     struct Forbidden {};
 public:
     // Call CreateServerSpan/CreateClientSpan instead.
@@ -69,7 +81,7 @@ public:
     static Span* CreateClientSpan(const std::string& full_method_name,
                                   int64_t base_real_us);
 
-    static void Submit(Span* span, int64_t cpuwide_time_us);
+    static void Submit(Span* span);
 
     // Set tls parent.
     void AsParent() {
@@ -82,12 +94,11 @@ public:
     void Annotate(const std::string& info);
     // When length <= 0, use strlen instead.
     void AnnotateCStr(const char* cstr, size_t length);
-    
+
     // #child spans, Not O(1)
     size_t CountClientSpans() const;
 
-    int64_t GetStartRealTimeUs() const;
-    int64_t GetEndRealTimeUs() const;
+    void Copy2TracingSpan(TracingSpan* out) const;
 
     void set_log_id(uint64_t cid) { _log_id = cid; }
     void set_base_cid(bthread_id_t id) { _base_cid = id; }
@@ -98,7 +109,7 @@ public:
     void set_request_size(int size) { _request_size = size; }
     void set_response_size(int size) { _response_size = size; }
     void set_async(bool async) { _async = async; }
-    
+
     void set_base_real_us(int64_t tm) { _base_real_us = tm; }
     void set_received_us(int64_t tm)
     { _received_real_us = tm + _base_real_us; }
@@ -135,10 +146,20 @@ public:
     int64_t sent_real_us() const { return _sent_real_us; }
     bool async() const { return _async; }
     const std::string& full_method_name() const { return _full_method_name; }
-    const std::string& info() const { return _info; }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(Span);
+
+    struct Annotation {
+        Annotation(int64_t timestamp, const std::string& info)
+            : realtime_us(timestamp)
+            , content(info) {}
+        Annotation(int64_t timestamp, std::string&& info)
+            : realtime_us(timestamp)
+            , content(std::move(info)) {}
+        int64_t realtime_us;
+        std::string content;
+    };
 
     void dump_and_destroy(size_t round_index);
     void destroy();
@@ -171,59 +192,22 @@ private:
     int64_t _start_send_real_us;
     int64_t _sent_real_us;
     std::string _full_method_name;
-    // Format: 
+    // Format:
     //   time1_us \s annotation1 <SEP>
     //   time2_us \s annotation2 <SEP>
     //   ...
-    std::string _info;
+    std::vector<Annotation> _annotation_list;
 
+    std::shared_ptr<Trace> _trace;
     Span* _local_parent;
     Span* _next_client;
     Span* _tls_next;
-};
-
-// Extract name and annotations from Span::info()
-class SpanInfoExtractor {
-public:
-    SpanInfoExtractor(const char* info);
-    bool PopAnnotation(int64_t before_this_time,
-                       int64_t* time, std::string* annotation);
-private:
-    butil::StringSplitter _sp;
 };
 
 // These two functions can be used for composing TRACEPRINT as well as hiding
 // span implementations.
 bool CanAnnotateSpan();
 void AnnotateSpan(const char* fmt, ...);
-
-
-class SpanFilter {
-public:
-    virtual bool Keep(const BriefSpan&) = 0;
-};
-
-class SpanDB;
-    
-// Find a span by its trace_id and span_id, serialize it into `span'.
-int FindSpan(uint64_t trace_id, uint64_t span_id, RpczSpan* span);
-
-// Find spans by their trace_id, serialize them into `out'
-void FindSpans(uint64_t trace_id, std::deque<RpczSpan>* out);
-
-// Put at most `max_scan' spans before `before_this_time' into `out'.
-// If filter is not NULL, only push spans that make SpanFilter::Keep()
-// true.
-void ListSpans(int64_t before_this_time, size_t max_scan,
-               std::deque<BriefSpan>* out, SpanFilter* filter);
-
-void DescribeSpanDB(std::ostream& os);
-
-SpanDB* LoadSpanDBFromFile(const char* filepath);
-int FindSpan(SpanDB* db, uint64_t trace_id, uint64_t span_id, RpczSpan* span);
-void FindSpans(SpanDB* db, uint64_t trace_id, std::deque<RpczSpan>* out);
-void ListSpans(SpanDB* db, int64_t before_this_time, size_t max_scan,
-               std::deque<BriefSpan>* out, SpanFilter* filter);
 
 // Check this function first before creating a span.
 // If rpcz of upstream is enabled, local rpcz is enabled automatically.
