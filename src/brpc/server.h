@@ -241,6 +241,10 @@ struct ServerOptions {
     // Default: NULL (disabled)
     RedisService* redis_service;
 
+    // Customize listen function to get listen socket fd
+    // Default: butil::tcp_listen
+    int (*listen_sockfd)(butil::EndPoint point);
+
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ServerOptions from being bloated in most cases.

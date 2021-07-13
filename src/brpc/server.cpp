@@ -140,7 +140,8 @@ ServerOptions::ServerOptions()
     , http_master_service(NULL)
     , health_reporter(NULL)
     , rtmp_service(NULL)
-    , redis_service(NULL) {
+    , redis_service(NULL)
+    , listen_sockfd(butil::tcp_listen){
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -943,7 +944,7 @@ int Server::StartInternal(const butil::ip_t& ip,
     _listen_addr.ip = ip;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
         _listen_addr.port = port;
-        butil::fd_guard sockfd(tcp_listen(_listen_addr));
+        butil::fd_guard sockfd(_options.listen_sockfd(_listen_addr));
         if (sockfd < 0) {
             if (port != port_range.max_port) { // not the last port, try next
                 continue;
