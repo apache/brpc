@@ -43,6 +43,9 @@ DEFINE_bool(quote_vector, true,
 
 DEFINE_bool(bvar_abort_on_same_name, false,
             "Abort when names of bvar are same");
+            
+name_normalization_func g_name_normalization = to_underscored_name;
+            
 // Remember abort request before bvar_abort_on_same_name is initialized.
 static bool s_bvar_may_abort = false;
 static bool validate_bvar_abort_on_same_name(const char*, bool v) {
@@ -147,12 +150,12 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
     _name.clear();
     _name.reserve((prefix.size() + name.size()) * 5 / 4);
     if (!prefix.empty()) {
-        to_underscored_name(&_name, prefix);
+        g_name_normalization(&_name, prefix);
         if (!_name.empty() && butil::back_char(_name) != '_') {
             _name.push_back('_');
         }
     }
-    to_underscored_name(&_name, name);
+    g_name_normalization(&_name, name);
     
     VarMapWithLock& m = get_var_map(_name);
     {
@@ -572,7 +575,7 @@ public:
         s.remove_suffix(s.data() + s.size() - p);
         // normalize it.
         if (!s.empty()) {
-            to_underscored_name(&_prefix, s);
+            g_name_normalization(&_prefix, s);
             if (butil::back_char(_prefix) != '_') {
                 _prefix.push_back('_');
             }
@@ -832,6 +835,14 @@ const bool ALLOW_UNUSED dummy_bvar_dump_prefix = ::GFLAGS_NS::RegisterFlagValida
     &FLAGS_bvar_dump_prefix, wakeup_dumping_thread);
 const bool ALLOW_UNUSED dummy_bvar_dump_tabs = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_dump_tabs, wakeup_dumping_thread);
+            
+void set_name_normalization_func(name_normalization_func func_name) {
+    g_name_normalization = func_name;
+}
+            
+void no_name_normalization(std::string* name, const base::StringPiece& src) {
+    src.AppendToString(name);
+}
 
 void to_underscored_name(std::string* name, const butil::StringPiece& src) {
     name->reserve(name->size() + src.size() + 8/*just guess*/);
