@@ -4,7 +4,29 @@ FlatMap - Maybe the fastest hashmap, with tradeoff of space.
 
 # EXAMPLE
 
-`#include <butil/containers/flat_map.h>`
+```c++
+#include <string>
+#include <butil/containers/flat_map.h>
+
+butil::FlatMap<int, std::string> map;
+// bucket_count: initial count of buckets, big enough to avoid resize.
+// load_factor: element_count * 100 / bucket_count, 80 as default.
+int bucket_count = 1000;
+int load_factor = 80;
+map.init(bucket_count, load_factor);
+map.insert(10, "hello");
+map[20] = "world";
+std::string* value = map.seek(20);
+if (value != NULL) {
+    LOG(TRACE) << "Got the value=" << *value;
+} else {
+    LOG(FATAL) << "Impossible, we've just put the value in";
+}
+LOG(TRACE) << "All elements of the map: ";
+for (butil::FlatMap<int, std::string>::const_iterator it = map.begin(); it != map.end(); ++it) {
+    LOG(TRACE) << it->first << " : " << it->second;
+}
+```
 
 # DESCRIPTION
 
