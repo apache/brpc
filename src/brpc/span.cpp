@@ -81,7 +81,7 @@ inline uint64_t UpdateTLSRandom64(IdGen* g) {
 
 inline uint64_t GenerateSpanId() {
     // 0 is an invalid Id
-    IdGen* g = &tls_trace_id_gen;
+    IdGen* g = &tls_span_id_gen;
     if (g->seq == 0) {
         UpdateTLSRandom64(g);
         g->seq = 1;
@@ -91,7 +91,7 @@ inline uint64_t GenerateSpanId() {
 
 inline uint64_t GenerateTraceId() {
     // 0 is an invalid Id
-    IdGen* g = &tls_span_id_gen;
+    IdGen* g = &tls_trace_id_gen;
     if (g->seq == 0) {
         UpdateTLSRandom64(g);
         g->seq = 1;
@@ -294,7 +294,7 @@ bool SpanInfoExtractor::PopAnnotation(
 bool CanAnnotateSpan() {
     return bthread::tls_bls.rpcz_parent_span;
 }
-    
+
 void AnnotateSpan(const char* fmt, ...) {
     Span* span = (Span*)bthread::tls_bls.rpcz_parent_span;
     va_list ap;
@@ -322,7 +322,7 @@ private:
         std::swap(db1.time_db, db2.time_db);
         std::swap(db1.time_db_name, db2.time_db_name);
     }
-    
+
     ~SpanDB() {
         if (id_db == NULL && time_db == NULL) {
             return;
@@ -363,7 +363,7 @@ public:
     void process(std::vector<bvar::Collected*> & list) {
         // Sort spans by their starting time so that the code on making
         // time monotonic in Span::Index works better.
-        std::sort(list.begin(), list.end(), SpanEarlier()); 
+        std::sort(list.begin(), list.end(), SpanEarlier());
     }
 };
 static SpanPreprocessor* g_span_prep = NULL;
@@ -514,7 +514,7 @@ leveldb::Status SpanDB::Index(const Span* span, std::string* value_buf) {
     options.sync = false;
 
     leveldb::Status st;
-    
+
     // NOTE: Writing into time_db before id_db so that if the second write
     // fails, the entry in time_db will be finally removed when it's out
     // of time window.
@@ -564,7 +564,7 @@ leveldb::Status SpanDB::Index(const Span* span, std::string* value_buf) {
     if (!st.ok()) {
         return st;
     }
-    
+
     uint32_t key_data[4];
     ToBigEndian(span->trace_id(), key_data);
     ToBigEndian(span->span_id(), key_data + 2);
@@ -603,7 +603,7 @@ leveldb::Status SpanDB::RemoveSpansBefore(int64_t tm) {
             LOG(ERROR) << "Invalid key size: " << it->key().size();
             continue;
         }
-        const int64_t realtime = 
+        const int64_t realtime =
             ToLittleEndian((const uint32_t*)it->key().data());
         if (realtime >= tm) {  // removal is done.
             break;
@@ -635,7 +635,7 @@ leveldb::Status SpanDB::RemoveSpansBefore(int64_t tm) {
 // Write span into leveldb.
 void Span::dump_and_destroy(size_t /*round*/) {
     StartIndexingIfNeeded();
-    
+
     std::string value_buf;
 
     butil::intrusive_ptr<SpanDB> db;
@@ -776,7 +776,7 @@ void DescribeSpanDB(std::ostream& os) {
     if (GetSpanDB(&db) != 0) {
         return;
     }
-    
+
     if (db->id_db != NULL) {
         std::string val;
         if (db->id_db->GetProperty(leveldb::Slice("leveldb.stats"), &val)) {
