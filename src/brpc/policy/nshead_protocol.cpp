@@ -26,6 +26,7 @@
 #include "brpc/socket.h"                   // Socket
 #include "brpc/server.h"                   // Server
 #include "brpc/span.h"
+#include "brpc/rpc_dump.h"
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/nshead_service.h"
@@ -227,6 +228,15 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         LOG(FATAL) << "Fail to new NsheadClosure";
         socket->SetFailed();
         return;
+    }
+
+    // for nshead sample request
+    SampledRequest* sample = AskToBeSampled();
+    if (sample) {
+        sample->meta.set_protocol_type(PROTOCOL_NSHEAD);
+        sample->meta.set_nshead(p, sizeof(nshead_t)); // nshead
+        sample->request = msg->payload;
+        sample->submit(start_parse_us);
     }
 
     // Switch to service-specific error.

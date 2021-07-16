@@ -27,6 +27,7 @@
 #include <brpc/server.h>
 #include <brpc/rpc_dump.h>
 #include <brpc/serialized_request.h>
+#include <brpc/nshead_message.h>
 #include "info_thread.h"
 
 DEFINE_string(dir, "", "The directory of dumped requests");
@@ -131,6 +132,7 @@ static void* replay_thread(void* arg) {
     const int thread_offset = g_thread_offset.fetch_add(1, butil::memory_order_relaxed);
     double req_rate = FLAGS_qps / (double)FLAGS_thread_num;
     brpc::SerializedRequest req;
+    brpc::NsheadMessage nshead_req;
     std::deque<int64_t> timeq;
     size_t MAX_QUEUE_SIZE = (size_t)req_rate;
     if (MAX_QUEUE_SIZE < 100) {
@@ -157,28 +159,40 @@ static void* replay_thread(void* arg) {
             }
             
             brpc::Controller* cntl = new brpc::Controller;
-            req.Clear();
-            
             cntl->reset_sampled_request(sample_guard.release());
-            if (sample->meta.attachment_size() > 0) {
-                sample->request.cutn(
-                    &req.serialized_data(),
-                    sample->request.size() - sample->meta.attachment_size());
-                cntl->request_attachment() = sample->request.movable();
+
+            if (sample->meta.protocol_type() == brpc::PROTOCOL_NSHEAD) {
+                nshead_req.Clear();
+                memcpy(&nshead_req.head, sample->meta.nshead().c_str(), sample->meta.nshead().length());
+                nshead_req.body = sample->request;
             } else {
-                req.serialized_data() = sample->request.movable();
+                req.Clear();
+                if (sample->meta.attachment_size() > 0) {
+                    sample->request.cutn(
+                        &req.serialized_data(),
+                        sample->request.size() - sample->meta.attachment_size());
+                    cntl->request_attachment() = sample->request.movable();
+                } else {
+                    req.serialized_data() = sample->request.movable();
+                }                
             }
+
             g_sent_count << 1;
             const int64_t start_time = butil::gettimeofday_us();
+            google::protobuf::Message* r_req = &req;
+            if (sample->meta.protocol_type() == brpc::PROTOCOL_NSHEAD) {
+                // use nshead req;
+                r_req = &nshead_req;
+            }
             if (FLAGS_qps <= 0) {
                 chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
-                        cntl, &req, NULL/*ignore response*/, NULL);
+                        cntl, r_req, NULL/*ignore response*/, NULL);
                 handle_response(cntl, start_time, true);
             } else {
                 google::protobuf::Closure* done =
                     brpc::NewCallback(handle_response, cntl, start_time, false);
                 chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
-                        cntl, &req, NULL/*ignore response*/, done);
+                        cntl, r_req, NULL/*ignore response*/, done);
                 const int64_t end_time = butil::gettimeofday_us();
                 int64_t expected_elp = 0;
                 int64_t actual_elp = 0;
