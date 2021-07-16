@@ -25,7 +25,7 @@ void flatmap_example(
     CHECK_EQ(0UL, map.erase(30));
     CHECK_EQ(1UL, map.erase(10));
 
-    LOG(TRACE) << "All elements of the map:";
+    LOG(INFO) << "All elements of the map:";
     for (butil::FlatMap<int, std::string>::const_iterator it = map.begin(); it != map.end(); ++it) {
         LOG(INFO) << it->first << " : " << it->second;
     }
