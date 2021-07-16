@@ -6,25 +6,31 @@ FlatMap - Maybe the fastest hashmap, with tradeoff of space.
 
 ```c++
 #include <string>
+#include <butil/logging.h>
 #include <butil/containers/flat_map.h>
 
-butil::FlatMap<int, std::string> map;
-// bucket_count: initial count of buckets, big enough to avoid resize.
-// load_factor: element_count * 100 / bucket_count, 80 as default.
-int bucket_count = 1000;
-int load_factor = 80;
-map.init(bucket_count, load_factor);
-map.insert(10, "hello");
-map[20] = "world";
-std::string* value = map.seek(20);
-if (value != NULL) {
-    LOG(TRACE) << "Got the value=" << *value;
-} else {
-    LOG(FATAL) << "Impossible, we've just put the value in";
-}
-LOG(TRACE) << "All elements of the map: ";
-for (butil::FlatMap<int, std::string>::const_iterator it = map.begin(); it != map.end(); ++it) {
-    LOG(TRACE) << it->first << " : " << it->second;
+void flatmap_example(
+    butil::FlatMap<int, std::string> map;
+    // bucket_count: initial count of buckets, big enough to avoid resize.
+    // load_factor: element_count * 100 / bucket_count, 80 as default.
+    int bucket_count = 1000;
+    int load_factor = 80;
+    map.init(bucket_count, load_factor);
+    map.insert(10, "hello");
+    map[20] = "world";
+    std::string* value = map.seek(20);
+    CHECK_EQ(true, value != NULL);
+
+    CHECK_EQ(2UL, map.size());
+    CHECK_EQ(0UL, map.erase(30));
+    CHECK_EQ(1UL, map.erase(10));
+
+    LOG(TRACE) << "All elements of the map:";
+    for (butil::FlatMap<int, std::string>::const_iterator it = map.begin(); it != map.end(); ++it) {
+        LOG(INFO) << it->first << " : " << it->second;
+    }
+    map.clear();
+    CHECK_EQ(0UL, map.size());
 }
 ```
 
