@@ -20,7 +20,9 @@
 #ifndef BUTIL_FAST_RAND_H
 #define BUTIL_FAST_RAND_H
 
+#include <cstddef>
 #include <stdint.h>
+#include <string>
 
 namespace butil {
 
@@ -66,7 +68,10 @@ template <typename T> T fast_rand_in(T min, T max) {
 double fast_rand_double();
 
 // Fills |output_length| bytes of |output| with random data.
-void fast_rand_bytes(void* output, size_t output_length, uint8_t min);
+void fast_rand_bytes(void *output, size_t output_length);
+
+// Generate a random printable string of |length| bytes
+std::string fast_rand_printable(size_t length);
 
 }
 

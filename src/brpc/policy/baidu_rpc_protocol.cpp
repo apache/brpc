@@ -343,6 +343,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     if (request_meta.has_log_id()) {
         cntl->set_log_id(request_meta.log_id());
     }
+    if (request_meta.has_request_id()) {
+        cntl->set_request_id(request_meta.request_id());
+    }
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     accessor.set_server(server)
         .set_security_mode(security_mode)
@@ -449,18 +452,18 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (span) {
             span->ResetServerSpanName(method->full_name());
         }
-        const int reqsize = static_cast<int>(msg->payload.size());
+        const int req_size = static_cast<int>(msg->payload.size());
         butil::IOBuf req_buf;
         butil::IOBuf* req_buf_ptr = &msg->payload;
         if (meta.has_attachment_size()) {
-            if (reqsize < meta.attachment_size()) {
+            if (req_size < meta.attachment_size()) {
                 cntl->SetFailed(EREQUEST,
                     "attachment_size=%d is larger than request_size=%d",
-                     meta.attachment_size(), reqsize);
+                     meta.attachment_size(), req_size);
                 break;
             }
-            int att_size = reqsize - meta.attachment_size();
-            msg->payload.cutn(&req_buf, att_size);
+            int body_without_attachment_size = req_size - meta.attachment_size();
+            msg->payload.cutn(&req_buf, body_without_attachment_size);
             req_buf_ptr = &req_buf;
             cntl->request_attachment().swap(msg->payload);
         }
@@ -470,7 +473,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (!ParseFromCompressedData(*req_buf_ptr, req.get(), req_cmp_type)) {
             cntl->SetFailed(EREQUEST, "Fail to parse request message, "
                             "CompressType=%s, request_size=%d", 
-                            CompressTypeToCStr(req_cmp_type), reqsize);
+                            CompressTypeToCStr(req_cmp_type), req_size);
             break;
         }
         
@@ -592,8 +595,8 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                     meta.attachment_size(), res_size);
                 break;
             }
-            int att_size = res_size - meta.attachment_size();
-            msg->payload.cutn(&res_buf, att_size);
+            int body_without_attachment_size = res_size - meta.attachment_size();
+            msg->payload.cutn(&res_buf, body_without_attachment_size);
             res_buf_ptr = &res_buf;
             cntl->response_attachment().swap(msg->payload);
         }
@@ -647,6 +650,9 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     }
     if (cntl->has_log_id()) {
         request_meta->set_log_id(cntl->log_id());
+    }
+    if (!cntl->request_id().empty()) {
+        request_meta->set_request_id(cntl->request_id());
     }
     meta.set_correlation_id(correlation_id);
     StreamId request_stream_id = accessor.request_stream();

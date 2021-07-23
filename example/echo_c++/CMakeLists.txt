@@ -107,11 +107,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
         )
 endif()
-include_directories(${OPENSSL_INCLUDE_DIR})
-find_package(OpenSSL)
 
-add_executable(echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
-add_executable(echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
+find_package(OpenSSL)
+include_directories(${OPENSSL_INCLUDE_DIR})
 
 set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
@@ -138,6 +136,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_ProfilerStart"
         "-Wl,-U,_ProfilerStop")
 endif()
+
+add_executable(echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
+add_executable(echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
 target_link_libraries(echo_client ${BRPC_LIB} ${DYNAMIC_LIB})
 target_link_libraries(echo_server ${BRPC_LIB} ${DYNAMIC_LIB})

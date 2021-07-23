@@ -49,7 +49,7 @@ class LazyArray {
 
 public:
     LazyArray() {
-        memset(_blocks, 0, sizeof(butil::atomic<Block*>) * NBLOCK);
+        memset(static_cast<void*>(_blocks), 0, sizeof(butil::atomic<Block*>) * NBLOCK);
     }
 
     butil::atomic<T>* get_or_new(size_t index) {

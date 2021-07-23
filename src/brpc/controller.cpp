@@ -77,9 +77,12 @@ BAIDU_REGISTER_ERRNO(brpc::ECLOSE, "Close socket initiatively");
 BAIDU_REGISTER_ERRNO(brpc::EITP, "Bad Itp response");
 
 
+DECLARE_bool(log_as_json);
+
 namespace brpc {
 
-DEFINE_bool(graceful_quit_on_sigterm, false, "Register SIGTERM handle func to quit graceful");
+DEFINE_bool(graceful_quit_on_sigterm, false,
+            "Register SIGTERM handle func to quit graceful");
 
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
@@ -126,8 +129,26 @@ Controller::Controller() {
     ResetPods();
 }
 
+Controller::Controller(const Inheritable& parent_ctx) {
+    CHECK_EQ(0, pthread_once(&s_create_vars_once, CreateVars));
+    *g_ncontroller << 1;
+    ResetPods();
+    _inheritable = parent_ctx;
+}
+
+struct SessionKVFlusher {
+    Controller* cntl;
+};
+static std::ostream& operator<<(std::ostream& os, const SessionKVFlusher& f) {
+    f.cntl->FlushSessionKV(os);
+    return os;
+}
+
 Controller::~Controller() {
     *g_ncontroller << -1;
+    if (_session_kv != nullptr && _session_kv->Count() != 0) {
+        LOG(INFO) << SessionKVFlusher{ this };
+    }
     ResetNonPods();
 }
 
@@ -232,7 +253,7 @@ void Controller::ResetPods() {
     _response_compress_type = COMPRESS_TYPE_NONE;
     _fail_limit = UNSET_MAGIC_NUM;
     _pipelined_count = 0;
-    _log_id = 0;
+    _inheritable.Reset();
     _pchan_sub_count = 0;
     _response = NULL;
     _done = NULL;
@@ -315,7 +336,7 @@ void Controller::set_max_retry(int max_retry) {
 
 void Controller::set_log_id(uint64_t log_id) {
     add_flag(FLAGS_LOG_ID);
-    _log_id = log_id;
+    _inheritable.log_id = log_id;
 }
 
 
@@ -1234,7 +1255,7 @@ void Controller::SaveClientSettings(ClientSettings* s) const {
     s->tos = _tos;
     s->connection_type = _connection_type;
     s->request_compress_type = _request_compress_type;
-    s->log_id = _log_id;
+    s->log_id = log_id();
     s->has_request_code = has_request_code();
     s->request_code = _request_code;
 }
@@ -1483,6 +1504,68 @@ class DoNothingClosure : public google::protobuf::Closure {
 };
 google::protobuf::Closure* DoNothing() {
     return butil::get_leaky_singleton<DoNothingClosure>();
+}
+
+KVMap& Controller::SessionKV() {
+    if (_session_kv == nullptr) {
+        _session_kv.reset(new KVMap);
+    }
+    return *_session_kv.get();
+}
+
+#define BRPC_SESSION_END_MSG "Session ends."
+#define BRPC_REQ_ID "@rid"
+#define BRPC_KV_SEP "="
+
+void Controller::FlushSessionKV(std::ostream& os) {
+    if (_session_kv == nullptr || _session_kv->Count() == 0) {
+        return;
+    }
+
+    const std::string* pRID = nullptr;
+    if (!request_id().empty()) {
+        pRID = &request_id();
+    }
+
+    if (FLAGS_log_as_json) {
+        if (pRID) {
+            os << "\"" BRPC_REQ_ID "\":\"" << *pRID << "\",";
+        }
+        os << "\"M\":\"" BRPC_SESSION_END_MSG "\"";
+        for (auto it = _session_kv->Begin(); it != _session_kv->End(); ++it) {
+            os << ",\"" << it->first << "\":\"" << it->second << '"';
+        }
+    } else {
+        if (pRID) {
+            os << BRPC_REQ_ID BRPC_KV_SEP << *pRID << " ";
+        }
+        os << BRPC_SESSION_END_MSG;
+        for (auto it = _session_kv->Begin(); it != _session_kv->End(); ++it) {
+            os << ' ' << it->first << BRPC_KV_SEP << it->second;
+        }
+    }
+}
+
+std::ostream& operator<<(std::ostream& os, const Controller::LogPrefixDummy& p) {
+    p.DoPrintLogPrefix(os);
+    return os;
+}
+
+void Controller::DoPrintLogPrefix(std::ostream& os) const {
+    const std::string* pRID = nullptr;
+    if (!request_id().empty()) {
+        pRID = &request_id();
+        if (pRID) {
+            if (FLAGS_log_as_json) {
+                os << BRPC_REQ_ID "\":\"" << *pRID << "\",";
+            } else {
+                os << BRPC_REQ_ID BRPC_KV_SEP << *pRID << " ";
+            }
+        }
+    }
+    if (FLAGS_log_as_json) {
+        os << "\"M\":\"";
+    }
 }
 
 } // namespace brpc

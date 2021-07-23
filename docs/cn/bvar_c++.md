@@ -14,7 +14,7 @@ bvar::Window<bvar::Adder<int> > g_read_error_minute("foo_bar", "read_error", &g_
 //                                                    前缀       监控项名称                  60秒,忽略则为10秒
 
 // bvar::LatencyRecorder是一个复合变量，可以统计：总量、qps、平均延时，延时分位值，最大延时。
-bvar::LatencyRecorder g_write_latency(“foo_bar", "write”);
+bvar::LatencyRecorder g_write_latency("foo_bar", "write");
 //                                      ^          ^
 //                                     前缀       监控项，别加latency！LatencyRecorder包含多个bvar，它们会加上各自的后缀，比如write_qps, write_latency等等。
 

@@ -1,6 +1,6 @@
 [中文版](README_cn.md)
 
-[![Build Status](https://travis-ci.org/apache/incubator-brpc.svg?branch=master)](https://travis-ci.org/apache/incubator-brpc)
+[![Build Status](https://api.travis-ci.com/apache/incubator-brpc.svg?branch=master)](https://travis-ci.com/github/apache/incubator-brpc)
 
 # ![brpc](docs/images/logo.png)
 

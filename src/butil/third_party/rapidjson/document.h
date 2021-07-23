@@ -315,6 +315,10 @@ struct GenericStringRef {
     GenericStringRef(const CharType* str, SizeType len)
         : s(str), length(len) { RAPIDJSON_ASSERT(s != NULL); }
 
+    // Required by clang++ 11 on MacOS catalina
+    GenericStringRef(const GenericStringRef& other)
+        : s(other.s), length(other.length) { RAPIDJSON_ASSERT(s != NULL); }
+
     //! implicit conversion to plain CharType pointer
     operator const Ch *() const { return s; }
 
@@ -322,11 +326,11 @@ struct GenericStringRef {
     const SizeType length; //!< length of the string (excluding the trailing NULL terminator)
 
 private:
-    //! Disallow copy-assignment
-    GenericStringRef operator=(const GenericStringRef&);
+    //! Disallow copy-ctor&assignment
+    GenericStringRef operator=(const GenericStringRef&) = delete;
     //! Disallow construction from non-const array
     template<SizeType N>
-    GenericStringRef(CharType (&str)[N]) /* = delete */;
+    GenericStringRef(CharType (&str)[N]) = delete;
 };
 
 //! Mark a character pointer as constant string
@@ -1657,7 +1661,7 @@ private:
         flags_ = kArrayFlag;
         if (count) {
             data_.a.elements = (GenericValue*)allocator.Malloc(count * sizeof(GenericValue));
-            std::memcpy(data_.a.elements, values, count * sizeof(GenericValue));
+            std::memcpy(static_cast<void*>(data_.a.elements), values, count * sizeof(GenericValue));
         }
         else
             data_.a.elements = NULL;
@@ -1669,7 +1673,7 @@ private:
         flags_ = kObjectFlag;
         if (count) {
             data_.o.members = (Member*)allocator.Malloc(count * sizeof(Member));
-            std::memcpy(data_.o.members, members, count * sizeof(Member));
+            std::memcpy(static_cast<void*>(data_.o.members), members, count * sizeof(Member));
         }
         else
             data_.o.members = NULL;

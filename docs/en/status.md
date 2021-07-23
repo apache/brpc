@@ -13,7 +13,7 @@ Meanings of the fields above:
 - **count**: Number of requests that are succesfully processed.
 - **error**: Number of requests that are failed to process.
 - **latency**: average latency in recent *60s/60m/24h/30d* from *right to left* on html, average latency in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
-- **latency_percentiles**: 50%, 90%, 99%, 99.9% percentiles of latency in 10 seconds(specified by[-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)). Curves with historical values are shown on html.
+- **latency_percentiles**: 80%, 90%, 99%, 99.9% percentiles of latency in 10 seconds(specified by[-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)). Curves with historical values are shown on html.
 - **latency_cdf**: shows percentiles as [CDF](https://en.wikipedia.org/wiki/Cumulative_distribution_function), only available on html.
 - **max_latency**: max latency in recent *60s/60m/24h/30d* from *right to left* on html, max latency in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
 - **qps**: QPS(Queries Per Second) in recent *60s/60m/24h/30d* from *right to left* on html. QPS in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
@@ -26,7 +26,7 @@ Users may customize descriptions on /status by letting the service implement [br
 class MyService : public XXXService, public brpc::Describable {
 public:
     ...
-    void DescribeStatus(std::ostream& os, const brpc::DescribeOptions& options) const {
+    void Describe(std::ostream& os, const brpc::DescribeOptions& options) const {
         os << "my_status: blahblah";
     }
 };
