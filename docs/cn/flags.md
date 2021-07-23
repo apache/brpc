@@ -6,7 +6,7 @@ brpc使用gflags管理配置。如果你的程序也使用gflags，那么你应�
 
 # Usage of gflags
 
-gflags一般定义在需要它的源文件中。#include <gflags/gflags.h>后在全局scope加入DEFINE_*<type>*(*<name>*, *<default-value>*, *<description>*); 比如：
+gflags一般定义在需要它的源文件中。#include <gflags/gflags.h>后在全局scope加入DEFINE_*\<type\>*(*\<name\>*, *\<default-value\>*, *\<description\>*); 比如：
 
 ```c++
 #include <gflags/gflags.h>
@@ -43,9 +43,9 @@ conf/gflags.conf: No such file or directory
 
 # flagfile
 
-在命令行中参数和值之间可不加等号，而在flagfile中一定要加。比如`./myapp -param 7`是ok的，但在`./myapp -flagfile=./gflags.conf`对应的gflags.conf中一定要写成**-param=7**或**--param=7**，否则就不正确且不会报错。
+在命令行中参数和值之间可不加等号，而在flagfile中一定要加。比如`./myapp -param 7`是ok的，但在`./myapp -flagfile=./gflags.conf`对应的gflags.conf中一定要写成 **-param=7** 或 **--param=7**，否则就不正确且不会报错。
 
-在命令行中字符串可用单引号或双引号包围，而在flagfile中不能加。比如`./myapp -name="tom"`或`./myapp -name='tom'`都是ok的，但在`./myapp -flagfile=./gflags.conf`对应的gflags.conf中一定要写成**-name=tom**或**--name=tom**，如果写成-name="tom"的话，引号也会作为值的一部分。配置文件中的值可以有空格，比如gflags.conf中写成-name=value with spaces是ok的，参数name的值就是value with spaces，而在命令行中要用引号括起来。
+在命令行中字符串可用单引号或双引号包围，而在flagfile中不能加。比如`./myapp -name="tom"`或`./myapp -name='tom'`都是ok的，但在`./myapp -flagfile=./gflags.conf`对应的gflags.conf中一定要写成 **-name=tom** 或 **--name=tom**，如果写成-name="tom"的话，引号也会作为值的一部分。配置文件中的值可以有空格，比如gflags.conf中写成-name=value with spaces是ok的，参数name的值就是value with spaces，而在命令行中要用引号括起来。
 
 flagfile中参数可由单横线(如-foo)或双横线(如--foo)打头，但不能以三横线或更多横线打头，否则的话是无效参数且不会报错!
 
