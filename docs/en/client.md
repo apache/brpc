@@ -757,7 +757,7 @@ set_request_compress_type() sets compress-type of the request, no compression by
 
 NOTE: Attachment is not compressed by brpc.
 
-Check out [compress request body](http_client#压缩request-body) to compress http/h2 body.
+Check out [compress request body](http_client.md#compress-request-body) to compress http/h2 body.
 
 Supported compressions:
 
