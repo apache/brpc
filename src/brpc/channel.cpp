@@ -562,7 +562,7 @@ int Channel::CheckHealth() {
         return -1;
     } else {
         SocketUniquePtr tmp_sock;
-        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
+        LoadBalancer::SelectIn sel_in = { 0, false, true, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         return _lb->SelectServer(sel_in, &sel_out);
     }
