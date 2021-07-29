@@ -337,7 +337,7 @@ int NamingServiceThread::AddWatcher(NamingServiceWatcher* watcher,
         return -1;
     }
     BAIDU_SCOPED_LOCK(_mutex);
-    if (_watchers.insert(std::make_pair(watcher, filter)).second) {
+    if (_watchers.emplace(watcher, filter).second) {
         if (!_last_sockets.empty()) {
             std::vector<ServerId> added_ids;
             ServerNodeWithId2ServerId(_last_sockets, &added_ids, filter);

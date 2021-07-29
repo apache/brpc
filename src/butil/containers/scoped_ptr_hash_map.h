@@ -47,13 +47,13 @@ class ScopedPtrHashMap {
       return it;
     }
 
-    return data_.insert(std::make_pair(key, data.release())).first;
+    return data_.emplace(key, data.release()).first;
   }
 
   // Does nothing if key is already present
   std::pair<iterator, bool> add(const Key& key, scoped_ptr<Value> data) {
     std::pair<iterator, bool> result =
-        data_.insert(std::make_pair(key, data.get()));
+        data_.emplace(key, data.get());
     if (result.second)
       ignore_result(data.release());
     return result;
