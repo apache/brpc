@@ -218,6 +218,10 @@ int main() {
 
 随机从列表中选择一台服务器，无需其他设置。和round robin类似，这个算法的前提也是服务器都是类似的。
 
+### wr
+
+即weighted random, 根据服务器列表配置的权重值来选择服务器，服务器被选到的机会正比于其权重值。
+
 ### la
 
 locality-aware，优先选择延时低的下游，直到其延时高于其他机器，无需其他设置。实现原理请查看[Locality-aware load balancing](lalb.md)。
@@ -747,7 +751,7 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。
 
 注意：附件不会被压缩。
 
-http/h2 body的压缩方法见[client压缩request body](http_client#压缩request-body)。
+http/h2 body的压缩方法见[client压缩request body](http_client.md#压缩request-body)。
 
 支持的压缩方法有：
 

@@ -316,7 +316,10 @@ int bthread_setconcurrency(int num) {
 int bthread_about_to_quit() {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g != NULL) {
-        g->current_task()->about_to_quit = true;
+        bthread::TaskMeta* current_task = g->current_task();
+        if(!(current_task->attr.flags & BTHREAD_NEVER_QUIT)) {
+            current_task->about_to_quit = true;
+        }
         return 0;
     }
     return EPERM;
