@@ -101,7 +101,7 @@ class MRUCacheBase {
     }
 
     ordering_.push_front(value_type(key, payload));
-    index_.emplace(key, ordering_.begin());
+    index_.insert(std::make_pair(key, ordering_.begin()));
     return ordering_.begin();
   }
 
