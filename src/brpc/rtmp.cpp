@@ -74,7 +74,7 @@ butil::Status FlvWriter::Write(const RtmpVideoMessage& msg) {
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        p = _header;
+        memcpy(p, _header, sizeof(_header));
         p += sizeof(_header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
@@ -100,7 +100,7 @@ butil::Status FlvWriter::Write(const RtmpAudioMessage& msg) {
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        p = _header;
+        memcpy(p, _header, sizeof(_header));
         p += sizeof(_header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
@@ -129,7 +129,7 @@ butil::Status FlvWriter::WriteScriptData(const butil::IOBuf& req_buf, uint32_t t
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        p = _header;
+        memcpy(p, _header, sizeof(_header));
         p += sizeof(_header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
