@@ -63,15 +63,19 @@ FlvWriter::FlvWriter(butil::IOBuf* buf)
     : _write_header(false), _buf(buf) {
 }
 
-static char g_flv_header[9] = { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 };
+FlvWriter::FlvWriter(butil::IOBuf* buf, const FlvWriterOptions& options)
+    : _write_header(false), _buf(buf) {
+    const int flags_bit_index = 4;
+    _header[flags_bit_index] = static_cast<uint8_t>(options.flv_content_type);
+}
 
 butil::Status FlvWriter::Write(const RtmpVideoMessage& msg) {
     char buf[32];
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, g_flv_header, sizeof(g_flv_header));
-        p += sizeof(g_flv_header);
+        p = _header;
+        p += sizeof(_header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag
@@ -96,8 +100,8 @@ butil::Status FlvWriter::Write(const RtmpAudioMessage& msg) {
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, g_flv_header, sizeof(g_flv_header));
-        p += sizeof(g_flv_header);
+        p = _header;
+        p += sizeof(_header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag
@@ -125,8 +129,8 @@ butil::Status FlvWriter::WriteScriptData(const butil::IOBuf& req_buf, uint32_t t
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, g_flv_header, sizeof(g_flv_header));
-        p += sizeof(g_flv_header);
+        p = _header;
+        p += sizeof(_header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag
@@ -176,6 +180,8 @@ butil::Status FlvWriter::Write(const RtmpMetaData& metadata) {
 FlvReader::FlvReader(butil::IOBuf* buf)
     : _read_header(false), _buf(buf) {
 }
+
+static char g_flv_header[9] = { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 };
 
 butil::Status FlvReader::ReadHeader() {
     if (!_read_header) {
