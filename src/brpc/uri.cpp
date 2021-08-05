@@ -110,7 +110,7 @@ inline const char* SplitHostAndPort(const char* host_begin,
 static bool is_valid_char(const char* p) {
     static const std::unordered_set<char> other_valid_char = {
         ':', '/', '?', '#', '[', ']', '@', '!', '$', '&',
-        '\'', '(', ')'/ '*', '+', ',', ';', '='/ '-', '.',
+        '\'', '(', ')', '*', '+', ',', ';', '=', '-', '.',
         '_', '~', '%', ' '
     };
 
