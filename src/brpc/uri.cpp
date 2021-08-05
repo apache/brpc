@@ -16,6 +16,10 @@
 // under the License.
 
 
+#include <ctype.h>                         // isalnum
+
+#include <unordered_set>
+
 #include "brpc/log.h"
 #include "brpc/details/http_parser.h"      // http_parser_parse_url
 #include "brpc/uri.h"                      // URI
@@ -98,8 +102,18 @@ inline const char* SplitHostAndPort(const char* host_begin,
     return host_end;
 }
 
-static bool is_printable(const char* p) {
-    return (*p > 31 && *p < 127);
+// valid characters in URL
+// https://datatracker.ietf.org/doc/html/rfc3986#section-2.1
+// https://datatracker.ietf.org/doc/html/rfc3986#section-2.3
+// https://datatracker.ietf.org/doc/html/rfc3986#section-2.4
+static bool is_valid_char(const char* p) {
+    static const std::unordered_set<char> other_valid_char = {
+        ':', '/', '?', '#', '[', ']', '@', '!', '$', '&',
+        '\'', '(', ')'/ '*', '+', ',', ';', '='/ '-', '.',
+        '_', '~', '%'
+    };
+
+    return (isalnum(*p) || other_valid_char.find(*p) != other_valid_char.end());
 }
 
 static bool is_all_spaces(const char* p) {
@@ -163,8 +177,8 @@ int URI::SetHttpURL(const char* url) {
         if (action == URI_PARSE_BREAK) {
             break;
         }
-        if (!is_printable(p)) {
-            _st.set_error(EINVAL, "Not printable character in url");
+        if (!is_valid_char(p)) {
+            _st.set_error(EINVAL, "invalid character in url");
             return -1;
         } else if (*p == ':') {
             if (p[1] == '/' && p[2] == '/' && need_scheme) {
