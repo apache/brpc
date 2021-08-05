@@ -488,3 +488,7 @@ TEST(URITest, query_remover_key_value_not_changed_after_modified_query) {
     ASSERT_EQ(qr.value(), "value2");
 }
 
+TEST(URITest, valid_character) {
+    brpc::URI uri;
+    ASSERT_EQ(0, uri.SetHttpURL("www.baidu2.com':/?#[]@!$&()*+,;=-._~%"));
+}
