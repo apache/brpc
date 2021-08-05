@@ -60,13 +60,11 @@ int WriteWithoutOvercrowded(Socket*, SocketMessagePtr<>& msg);
 }
 
 FlvWriter::FlvWriter(butil::IOBuf* buf)
-    : _write_header(false), _buf(buf) {
+    : _write_header(false), _buf(buf), _options() {
 }
 
 FlvWriter::FlvWriter(butil::IOBuf* buf, const FlvWriterOptions& options)
-    : _write_header(false), _buf(buf) {
-    const int flags_bit_index = 4;
-    _header[flags_bit_index] = static_cast<uint8_t>(options.flv_content_type);
+    : _write_header(false), _buf(buf), _options(options) {
 }
 
 butil::Status FlvWriter::Write(const RtmpVideoMessage& msg) {
@@ -74,8 +72,10 @@ butil::Status FlvWriter::Write(const RtmpVideoMessage& msg) {
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, _header, sizeof(_header));
-        p += sizeof(_header);
+        const char flags_bit = static_cast<char>(_options.flv_content_type);
+        const char header[9] = { 'F', 'L', 'V', 0x01, flags_bit, 0, 0, 0, 0x09 };
+        memcpy(p, header, sizeof(header));
+        p += sizeof(header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag
@@ -100,8 +100,10 @@ butil::Status FlvWriter::Write(const RtmpAudioMessage& msg) {
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, _header, sizeof(_header));
-        p += sizeof(_header);
+        const char flags_bit = static_cast<char>(_options.flv_content_type);
+        const char header[9] = { 'F', 'L', 'V', 0x01, flags_bit, 0, 0, 0, 0x09 };
+        memcpy(p, header, sizeof(header));
+        p += sizeof(header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag
@@ -129,8 +131,10 @@ butil::Status FlvWriter::WriteScriptData(const butil::IOBuf& req_buf, uint32_t t
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, _header, sizeof(_header));
-        p += sizeof(_header);
+        const char flags_bit = static_cast<char>(_options.flv_content_type);
+        const char header[9] = { 'F', 'L', 'V', 0x01, flags_bit, 0, 0, 0, 0x09 };
+        memcpy(p, header, sizeof(header));
+        p += sizeof(header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag

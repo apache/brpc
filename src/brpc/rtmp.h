@@ -415,8 +415,8 @@ private:
 
 private:
     bool _write_header;
-    char _header[9] = { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 };
     butil::IOBuf* _buf;
+    FlvWriterOptions _options;
 };
 
 class FlvReader {
