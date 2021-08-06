@@ -107,14 +107,14 @@ inline const char* SplitHostAndPort(const char* host_begin,
 // https://datatracker.ietf.org/doc/html/rfc3986#section-2.3
 // https://datatracker.ietf.org/doc/html/rfc3986#section-2.4
 // space is not allowed by rfc3986, but allowed by brpc
-static bool is_valid_char(char p) {
+static bool is_valid_char(char c) {
     static const std::unordered_set<char> other_valid_char = {
         ':', '/', '?', '#', '[', ']', '@', '!', '$', '&',
         '\'', '(', ')', '*', '+', ',', ';', '=', '-', '.',
         '_', '~', '%', ' '
     };
 
-    return (isalnum(p) || other_valid_char.count(p));
+    return (isalnum(c) || other_valid_char.count(c));
 }
 
 static bool is_all_spaces(const char* p) {
