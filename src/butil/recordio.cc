@@ -253,7 +253,7 @@ int RecordReader::CutRecord(Record* rec) {
                    << ", offset=" << offset();
         return -1;
     }
-    if (_cutter.remaining_bytes() < data_size) {
+    if (_cutter.remaining_bytes() < data_size + sizeof(headbuf)) {
         return 0;
     }
     rec->Clear();
@@ -287,8 +287,16 @@ int RecordReader::CutRecord(Record* rec) {
         _ncut += meta_size;
         consumed_bytes += 5 + name_size + meta_size;
     }
-    _cutter.cutn(rec->MutablePayload(), data_size - consumed_bytes);
-    _ncut += data_size - consumed_bytes;
+    const size_t previous_payload_size = rec->Payload().size();
+    const size_t cut_bytes = _cutter.cutn(rec->MutablePayload(), data_size - consumed_bytes);
+    const size_t after_payload_size = rec->Payload().size();
+    if (cut_bytes != after_payload_size) {
+        LOG(ERROR) << "cut_bytes=" << cut_bytes << " does not match after_payload_size=" << after_payload_size << " previous_size=" << previous_payload_size << " data_size=" << data_size << " consumed_bytes=" << consumed_bytes;
+    }
+    if (cut_bytes != data_size - consumed_bytes) {
+        LOG(ERROR) << "cut_bytes=" << cut_bytes << " does not match input=" << data_size - consumed_bytes;
+    }
+    _ncut += cut_bytes;
     return 1;
 }
 

@@ -669,6 +669,16 @@ TEST_F(ServerTest, restful_mapping) {
                   " /v1/*/* => Echo"));
     ASSERT_EQ(0u, server9.service_count());
     
+    // default url access
+    brpc::Server server10;
+    ASSERT_EQ(0, server10.AddService(
+                  &service_v1,
+                  brpc::SERVER_DOESNT_OWN_SERVICE,
+                  "/v1/echo => Echo",
+                  true));
+    ASSERT_EQ(1u, server10.service_count());
+    ASSERT_FALSE(server10._global_restful_map);
+
     // Access services
     ASSERT_EQ(0, server1.Start(port, NULL));
     brpc::Channel http_channel;
@@ -866,6 +876,31 @@ TEST_F(ServerTest, restful_mapping) {
     //Stop the server.
     server1.Stop(0);
     server1.Join();
+
+    ASSERT_EQ(0, server10.Start(port, NULL));
+
+    // access v1.Echo via /v1/echo.
+    cntl.Reset();
+    cntl.http_request().uri() = "/v1/echo";
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.request_attachment().append("{\"message\":\"foo\"}");
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(12, service_v1.ncalled.load());
+    ASSERT_EQ("{\"message\":\"foo_v1\"}", cntl.response_attachment());
+
+    // access v1.Echo via default url
+    cntl.Reset();
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.request_attachment().append("{\"message\":\"foo\"}");
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(13, service_v1.ncalled.load());
+    ASSERT_EQ("{\"message\":\"foo_v1\"}", cntl.response_attachment());
+
+    server10.Stop(0);
+    server10.Join();
 
     // Removing the service should update _global_restful_map.
     ASSERT_EQ(0, server1.RemoveService(&service_v1));

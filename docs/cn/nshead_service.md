@@ -134,7 +134,7 @@ struct NsheadMessage {
     butil::IOBuf body;
 };
  
-// 实现这个类并复制给ServerOptions.nshead_service来让brpc处理nshead请求。
+// 实现这个类并赋值给ServerOptions.nshead_service来让brpc处理nshead请求。
 class NsheadService : public Describable {
 public:
     NsheadService();

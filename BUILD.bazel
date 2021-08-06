@@ -78,9 +78,6 @@ COPTS = [
 LINKOPTS = [
     "-lpthread",
     "-ldl",
-    "-lz",
-    "-lssl",
-    "-lcrypto",
 ] + select({
     ":darwin": [
         "-framework CoreFoundation",
@@ -304,6 +301,7 @@ objc_library(
         "src/butil/threading/thread_restrictions.h",
         "src/butil/threading/thread_id_name_manager.h",
         "src/butil/type_traits.h",
+        "src/butil/third_party/murmurhash3/murmurhash3.h",
     ],
     non_arc_srcs = [
         "src/butil/mac/bundle_locations.mm",
@@ -332,18 +330,23 @@ cc_library(
         "src/butil/**/*.h",
         "src/butil/**/*.hpp",
         "src/butil/**/**/*.h",
-        "src/butil/**/**/*.hpp",
-        "src/butil/**/**/**/*.h",
+        "src/butil/**/**/*.hpp", "src/butil/**/**/**/*.h",
         "src/butil/**/**/**/*.hpp",
         "src/butil/third_party/dmg_fp/dtoa.cc",
     ]) + [":config_h"],
     deps = [
         "@com_google_protobuf//:protobuf",
         "@com_github_gflags_gflags//:gflags",
+        "@zlib//:zlib",
     ] + select({
         ":with_glog": ["@com_github_google_glog//:glog"],
+        "//conditions:default": [],
+    }) + select({
         ":darwin": [":macos_lib"],
         "//conditions:default": [],
+    }) + select({
+        ":darwin": ["//external:ssl_macos"],
+        "//conditions:default": ["//external:ssl"],
     }),
     includes = [
         "src/",
@@ -532,4 +535,3 @@ cc_binary(
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
 )
-

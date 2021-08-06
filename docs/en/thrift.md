@@ -18,7 +18,7 @@ brpc does not enable thrift support or depend on the thrift lib by default. If t
 Install thrift under Linux
 Read [Official wiki](https://thrift.apache.org/docs/install/debian) to install depended libs and tools, then download thrift source code from [official site](https://thrift.apache.org/download), uncompress and compile。
 ```bash
-wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
+wget http://www.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
 tar -xf thrift-0.11.0.tar.gz
 cd thrift-0.11.0/
 ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no
@@ -33,7 +33,7 @@ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
 # Fedora/CentOS
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64 --with-thrift
 # Or use cmake
-mkdir bld && cd bld && cmake ../ -DWITH_THRIFT=ON
+mkdir build && cd build && cmake ../ -DWITH_THRIFT=ON
 ```
 Read [Getting Started](../cn/getting_started.md) for more compilation options.
 

@@ -155,7 +155,7 @@ BUTIL_EXPORT StringPiece16 substr(const StringPiece16& self,
 
 // Defines the types, methods, operators, and data members common to both
 // StringPiece and StringPiece16. Do not refer to this class directly, but
-// rather to BasicStringPiece, StringPiece, or StringPiece16.
+// rather to StringPiece, or StringPiece16.
 //
 // This is templatized by string class type rather than character type, so
 // BasicStringPiece<std::string> or BasicStringPiece<butil::string16>.
@@ -185,6 +185,8 @@ template <typename STRING_TYPE> class BasicStringPiece {
       : ptr_(str.data()), length_(str.size()) {}
   BasicStringPiece(const value_type* offset, size_type len)
       : ptr_(offset), length_(len) {}
+  BasicStringPiece(const BasicStringPiece& str, size_type pos, size_type len = npos)
+      : ptr_(str.data() + pos), length_(std::min(len, str.length() - pos)) {}
   BasicStringPiece(const typename STRING_TYPE::const_iterator& begin,
                     const typename STRING_TYPE::const_iterator& end)
       : ptr_((end > begin) ? &(*begin) : NULL),
@@ -202,6 +204,11 @@ template <typename STRING_TYPE> class BasicStringPiece {
   void clear() {
     ptr_ = NULL;
     length_ = 0;
+  }
+  BasicStringPiece& assign(const BasicStringPiece& str, size_type pos, size_type len = npos) {
+    ptr_ = str.data() + pos;
+    length_ = std::min(len, str.length() - pos);
+    return *this;
   }
   void set(const value_type* data, size_type len) {
     ptr_ = data;

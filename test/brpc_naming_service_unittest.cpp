@@ -50,6 +50,19 @@ DECLARE_int32(discovery_renew_interval_s);
 } // brpc
 
 namespace {
+
+bool IsIPListEqual(const std::set<butil::ip_t>& s1, const std::set<butil::ip_t>& s2) {
+    if (s1.size() != s2.size()) {
+        return false;
+    }
+    for (auto it1 = s1.begin(), it2 = s2.begin(); it1 != s1.end(); ++it1, ++it2) {
+        if (*it1 != *it2) {
+            return false;
+        }
+    }
+    return true;
+}
+
 TEST(NamingServiceTest, sanity) {
     std::vector<brpc::ServerNode> servers;
 
@@ -59,32 +72,39 @@ TEST(NamingServiceTest, sanity) {
 #endif
 
     brpc::policy::DomainNamingService dns;
-    ASSERT_EQ(0, dns.GetServers("brpc.baidu.com:1234", &servers));
-    ASSERT_EQ(1u, servers.size());
+    ASSERT_EQ(0, dns.GetServers("baidu.com:1234", &servers));
+    ASSERT_EQ(2u, servers.size());
     ASSERT_EQ(1234, servers[0].addr.port);
-    const butil::ip_t expected_ip = servers[0].addr.ip;
+    ASSERT_EQ(1234, servers[1].addr.port);
+    const std::set<butil::ip_t> expected_ips{servers[0].addr.ip, servers[1].addr.ip};
 
-    ASSERT_EQ(0, dns.GetServers("brpc.baidu.com", &servers));
-    ASSERT_EQ(1u, servers.size());
-    ASSERT_EQ(expected_ip, servers[0].addr.ip);
+    ASSERT_EQ(0, dns.GetServers("baidu.com", &servers));
+    ASSERT_EQ(2u, servers.size());
+    const std::set<butil::ip_t> ip_list1{servers[0].addr.ip, servers[1].addr.ip};
+    ASSERT_TRUE(IsIPListEqual(expected_ips, ip_list1));
     ASSERT_EQ(80, servers[0].addr.port);
+    ASSERT_EQ(80, servers[1].addr.port);
 
-    ASSERT_EQ(0, dns.GetServers("brpc.baidu.com:1234/useless1/useless2", &servers));
-    ASSERT_EQ(1u, servers.size());
-    ASSERT_EQ(expected_ip, servers[0].addr.ip);
+    ASSERT_EQ(0, dns.GetServers("baidu.com:1234/useless1/useless2", &servers));
+    ASSERT_EQ(2u, servers.size());
+    const std::set<butil::ip_t> ip_list2{servers[0].addr.ip, servers[1].addr.ip};
+    ASSERT_TRUE(IsIPListEqual(expected_ips, ip_list2));
     ASSERT_EQ(1234, servers[0].addr.port);
+    ASSERT_EQ(1234, servers[1].addr.port);
 
-    ASSERT_EQ(0, dns.GetServers("brpc.baidu.com/useless1/useless2", &servers));
-    ASSERT_EQ(1u, servers.size());
-    ASSERT_EQ(expected_ip, servers[0].addr.ip);
+    ASSERT_EQ(0, dns.GetServers("baidu.com/useless1/useless2", &servers));
+    ASSERT_EQ(2u, servers.size());
+    const std::set<butil::ip_t> ip_list3{servers[0].addr.ip, servers[1].addr.ip};
+    ASSERT_TRUE(IsIPListEqual(expected_ips, ip_list3));
     ASSERT_EQ(80, servers[0].addr.port);
+    ASSERT_EQ(80, servers[1].addr.port);
 
     const char *address_list[] =  {
         "10.127.0.1:1234",
         "10.128.0.1:1234",
         "10.129.0.1:1234",
         "localhost:1234",
-        "brpc.baidu.com:1234"
+        "baidu.com:1234"
     };
     butil::TempFile tmp_file;
     {
@@ -126,9 +146,9 @@ TEST(NamingServiceTest, invalid_port) {
 #endif
 
     brpc::policy::DomainNamingService dns;
-    ASSERT_EQ(-1, dns.GetServers("brpc.baidu.com:", &servers));
-    ASSERT_EQ(-1, dns.GetServers("brpc.baidu.com:123a", &servers));
-    ASSERT_EQ(-1, dns.GetServers("brpc.baidu.com:99999", &servers));
+    ASSERT_EQ(-1, dns.GetServers("baidu.com:", &servers));
+    ASSERT_EQ(-1, dns.GetServers("baidu.com:123a", &servers));
+    ASSERT_EQ(-1, dns.GetServers("baidu.com:99999", &servers));
 }
 
 TEST(NamingServiceTest, wrong_name) {
@@ -146,7 +166,7 @@ TEST(NamingServiceTest, wrong_name) {
         "10.128.0.1:",
         "10.128.0.1",
         "localhost:1234",
-        "brpc.baidu.com:1234",
+        "baidu.com:1234",
         "LOCAL:1234"
     };
     butil::TempFile tmp_file;
@@ -559,6 +579,12 @@ public:
                  google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        auto body = cntl->request_attachment().to_string();
+        for (brpc::QuerySplitter sp(body); sp; ++sp) {
+            if (sp.key() == "addrs") {
+                _addrs.insert(sp.value().as_string());
+            }
+        }
         cntl->response_attachment().append(R"({
             "code": 0,
             "message": "0"
@@ -591,15 +617,23 @@ public:
             "message": "0"
         })");
         _cancel_count++;
+        _addrs.clear();
         return;
     }
 
     int RenewCount() const { return _renew_count; }
     int CancelCount() const { return _cancel_count; }
 
+    bool HasAddr(const std::string& addr) const {
+        return _addrs.find(addr) != _addrs.end();
+    }
+    int AddrCount() const { return _addrs.size(); }
+
 private:
     int _renew_count;
     int _cancel_count;
+
+    std::set<std::string> _addrs;
 };
 
 TEST(NamingServiceTest, discovery_sanity) {
@@ -642,9 +676,25 @@ TEST(NamingServiceTest, discovery_sanity) {
         ASSERT_EQ(0, dc.Register(dparam));
         ASSERT_EQ(0, dc.Register(dparam));
         bthread_usleep(100000);
+        ASSERT_TRUE(svc.HasAddr("grpc://10.0.0.1:8000"));
+        ASSERT_FALSE(svc.HasAddr("http://10.0.0.1:8000"));
     }
     ASSERT_EQ(svc.RenewCount(), 1);
     ASSERT_EQ(svc.CancelCount(), 1);
+
+    ASSERT_FALSE(svc.HasAddr("grpc://10.0.0.1:8000"));
+    ASSERT_FALSE(svc.HasAddr("http://10.0.0.1:8000"));
+
+    // addrs splitted by `,'
+    dparam.addrs = ",grpc://10.0.0.1:8000,,http://10.0.0.1:8000,";
+    {
+        brpc::policy::DiscoveryClient dc;
+        ASSERT_EQ(0, dc.Register(dparam));
+        ASSERT_TRUE(svc.HasAddr("grpc://10.0.0.1:8000"));
+        ASSERT_TRUE(svc.HasAddr("http://10.0.0.1:8000"));
+        ASSERT_FALSE(svc.HasAddr(std::string()));
+        ASSERT_EQ(2, svc.AddrCount());
+    }
 }
 
 } //namespace

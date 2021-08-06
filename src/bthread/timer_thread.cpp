@@ -244,11 +244,11 @@ TimerThread::TaskId TimerThread::schedule(
 
 // Notice that we don't recycle the Task in this function, let TimerThread::run
 // do it. The side effect is that we may allocated many unscheduled tasks before
-// TimerThread wakes up. The number is approximiately qps * timeout_s. Under the
+// TimerThread wakes up. The number is approximately qps * timeout_s. Under the
 // precondition that ResourcePool<Task> caches 128K for each thread, with some
 // further calculations, we can conclude that in a RPC scenario:
 //   when timeout / latency < 2730 (128K / sizeof(Task))
-// unscheduled tasks do not occupy addititonal memory. 2730 is a large ratio
+// unscheduled tasks do not occupy additional memory. 2730 is a large ratio
 // between timeout and latency in most RPC scenarios, this is why we don't
 // try to reuse tasks right now inside unschedule() with more complicated code.
 int TimerThread::unschedule(TaskId task_id) {
@@ -367,11 +367,6 @@ void TimerThread::run() {
         bool pull_again = false;
         while (!tasks.empty()) {
             Task* task1 = tasks[0];  // the about-to-run task
-            if (task1->try_delete()) { // already unscheduled
-                std::pop_heap(tasks.begin(), tasks.end(), task_greater);
-                tasks.pop_back();
-                continue;
-            }
             if (butil::gettimeofday_us() < task1->run_time) {  // not ready yet.
                 break;
             }
@@ -406,9 +401,7 @@ void TimerThread::run() {
 
         // The realtime to wait for.
         int64_t next_run_time = std::numeric_limits<int64_t>::max();
-        if (tasks.empty()) {
-            next_run_time = std::numeric_limits<int64_t>::max();
-        } else {
+        if (!tasks.empty()) {
             next_run_time = tasks[0]->run_time;
         }
         // Similarly with the situation before running tasks, we check

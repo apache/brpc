@@ -128,7 +128,7 @@ private:
             // is_pod does not work for gcc 3.4
             if (butil::is_integral<T>::value ||
                 butil::is_floating_point<T>::value) {
-                memset(_array, 0, sizeof(_array));
+                memset(static_cast<void*>(_array), 0, sizeof(_array));
             }
         }
         

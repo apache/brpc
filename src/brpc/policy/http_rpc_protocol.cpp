@@ -21,6 +21,7 @@
 #include <json2pb/pb_to_json.h>                    // ProtoMessageToJson
 #include <json2pb/json_to_pb.h>                    // JsonToProtoMessage
 
+#include "brpc/policy/http_rpc_protocol.h"
 #include "butil/unique_ptr.h"                       // std::unique_ptr
 #include "butil/string_splitter.h"                  // StringMultiSplitter
 #include "butil/string_printf.h"
@@ -66,9 +67,12 @@ DEFINE_string(http_header_of_user_ip, "", "http requests sent by proxies may "
               "brpc will read ip:port from the specified header for "
               "authorization and set Controller::remote_side()");
 
-DEFINE_bool(pb_enum_as_number, false, "[Not recommended] Convert enums in "
+DEFINE_bool(pb_enum_as_number, false,
+            "[Not recommended] Convert enums in "
             "protobuf to json as numbers, affecting both client-side and "
             "server-side");
+
+DEFINE_string(request_id_header, "x-request-id", "The http header to mark a session");
 
 // Read user address from the header specified by -http_header_of_user_ip
 static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
@@ -110,6 +114,7 @@ CommonStrings::CommonStrings()
     , CONTENT_TYPE_TEXT("text/plain")
     , CONTENT_TYPE_JSON("application/json")
     , CONTENT_TYPE_PROTO("application/proto")
+    , CONTENT_TYPE_SPRING_PROTO("application/x-protobuf")
     , ERROR_CODE("x-bd-error-code")
     , AUTHORIZATION("authorization")
     , ACCEPT_ENCODING("accept-encoding")
@@ -189,6 +194,9 @@ HttpContentType ParseContentType(butil::StringPiece ct, bool* is_grpc_ct) {
     } else if (ct.starts_with("proto")) {
         type = HTTP_CONTENT_PROTO;
         ct.remove_prefix(5);
+    } else if (ct.starts_with("x-protobuf")) {
+        type = HTTP_CONTENT_PROTO;
+        ct.remove_prefix(10);
     } else {
         return HTTP_CONTENT_OTHERS;
     }
@@ -511,7 +519,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
-            
+
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -561,8 +569,10 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
     // Fill log-id if user set it.
     if (cntl->has_log_id()) {
         hreq.SetHeader(common->LOG_ID,
-                          butil::string_printf(
-                              "%llu", (unsigned long long)cntl->log_id()));
+                       butil::string_printf("%llu", (unsigned long long)cntl->log_id()));
+    }
+    if (!cntl->request_id().empty()) {
+        hreq.SetHeader(FLAGS_request_id_header, cntl->request_id());
     }
 
     if (!is_http2) {
@@ -1011,7 +1021,7 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
     const Server::MethodProperty* mp =
         FindMethodPropertyByURIImpl(uri_path, server, unresolved_path);
     if (mp != NULL) {
-        if (mp->http_url != NULL) {
+        if (mp->http_url != NULL && !mp->params.allow_default_url) {
             // the restful method is accessed from its
             // default url (SERVICE/METHOD) which should be rejected.
             return NULL;
@@ -1099,7 +1109,7 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             }
             return result;
         } else if (socket->is_read_progressive() &&
-                   http_imsg->stage() >= HTTP_ON_HEADERS_COMPLELE) {
+                   http_imsg->stage() >= HTTP_ON_HEADERS_COMPLETE) {
             // header part of a progressively-read http message is complete,
             // go on to ProcessHttpXXX w/o waiting for full body.
             http_imsg->AddOneRefForStage2(); // released when body is fully read
@@ -1257,6 +1267,11 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         } else {
             cntl->set_log_id(logid);
         }
+    }
+
+    const std::string* request_id = req_header.GetHeader(FLAGS_request_id_header);
+    if (request_id) {
+        cntl->set_request_id(*request_id);
     }
 
     // Tag the bthread with this server's key for

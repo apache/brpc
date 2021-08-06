@@ -1,0 +1,5 @@
+github:
+  description: Industrial-grade RPC framework used throughout Baidu, with 1,000,000+ instances and thousands kinds of services. "brpc" means "better RPC".
+  labels:
+    - rpc
+  homepage: https://brpc.apache.org

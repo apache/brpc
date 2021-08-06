@@ -338,7 +338,7 @@ brpc server is capable of sending large or infinite sized body, in following ste
   ```c++
   #include <brpc/progressive_attachment.h>
   ...
-  butil::intrusive_ptr<brpc::ProgressiveAttachment> pa (cntl->CreateProgressiveAttachment());
+  butil::intrusive_ptr<brpc::ProgressiveAttachment> pa = cntl->CreateProgressiveAttachment();
   ```
 
 2. Call `ProgressiveAttachment::Write()` to send the data.

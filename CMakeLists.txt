@@ -378,7 +378,7 @@ file(GLOB_RECURSE BRPC_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/*.cpp")
 file(GLOB_RECURSE THRIFT_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/thrift*.cpp")
 
 if(WITH_THRIFT)
-    message("brpc compile with thrift proctol")
+    message("brpc compile with thrift protocol")
 else()
     # Remove thrift sources
     foreach(v ${THRIFT_SOURCES})

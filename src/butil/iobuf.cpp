@@ -358,7 +358,7 @@ void remove_tls_block_chain() {
 
 // Get a (non-full) block from TLS.
 // Notice that the block is not removed from TLS.
-inline IOBuf::Block* share_tls_block() {
+IOBuf::Block* share_tls_block() {
     TLSData& tls_data = g_tls_data;
     IOBuf::Block* const b = tls_data.block_head;
     if (b != NULL && !b->full()) {
@@ -366,9 +366,13 @@ inline IOBuf::Block* share_tls_block() {
     }
     IOBuf::Block* new_block = NULL;
     if (b) {
-        new_block = b->portal_next;
-        b->dec_ref();
-        --tls_data.num_blocks;
+        new_block = b;
+        while (new_block && new_block->full()) {
+            IOBuf::Block* const saved_next = new_block->portal_next;
+            new_block->dec_ref();
+            --tls_data.num_blocks;
+            new_block = saved_next;
+        }
     } else if (!tls_data.registered) {
         tls_data.registered = true;
         // Only register atexit at the first time
@@ -1790,13 +1794,13 @@ size_t IOBufCutter::cutn(butil::IOBuf* out, size_t n) {
                                     _block };
         out->_push_back_ref(r);
         _data = (char*)_data + n;
-        return n;
+        return n; 
     } else if (size != 0) {
         const IOBuf::BlockRef r = { (uint32_t)((char*)_data - _block->data),
                                     (uint32_t)size,
                                     _block };
-        out->_move_back_ref(r);
-        _buf->_moveout_front_ref();
+        out->_push_back_ref(r);
+        _buf->_pop_front_ref();
         _data = NULL;
         _data_end = NULL;
         _block = NULL;

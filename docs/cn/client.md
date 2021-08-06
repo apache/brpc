@@ -93,10 +93,10 @@ BNS是百度内常用的命名服务，比如bns://rdev.matrix.all，其中"bns"
  * 当文件更新时, brpc会重新加载。
 ```
 # 此行会被忽略
-10.24.234.17 tag1  # 这是注释，会被忽略
-10.24.234.17 tag2  # 此行和上一行被认为是不同的实例
-10.24.234.18
-10.24.234.19
+10.24.234.17:8080 tag1  # 这是注释，会被忽略
+10.24.234.17:8090 tag2  # 此行和上一行被认为是不同的实例
+10.24.234.18:8080
+10.24.234.19:8080
 ```
 
 优点: 易于修改，方便单测。
@@ -217,6 +217,10 @@ int main() {
 ### random
 
 随机从列表中选择一台服务器，无需其他设置。和round robin类似，这个算法的前提也是服务器都是类似的。
+
+### wr
+
+即weighted random, 根据服务器列表配置的权重值来选择服务器，服务器被选到的机会正比于其权重值。
 
 ### la
 
@@ -747,7 +751,7 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。
 
 注意：附件不会被压缩。
 
-http/h2 body的压缩方法见[client压缩request body](http_client#压缩request-body)。
+http/h2 body的压缩方法见[client压缩request body](http_client.md#压缩request-body)。
 
 支持的压缩方法有：
 

@@ -337,7 +337,7 @@ brpc server支持发送超大或无限长的body。方法如下:
   ```c++
   #include <brpc/progressive_attachment.h>
   ...
-  butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(cntl->CreateProgressiveAttachment());
+  butil::intrusive_ptr<brpc::ProgressiveAttachment> pa = cntl->CreateProgressiveAttachment();
   ```
 
 2. 调用ProgressiveAttachment::Write()发送数据。

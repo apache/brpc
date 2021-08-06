@@ -77,7 +77,7 @@ int ChannelGroup::Init() {
         max_protocol_size = std::max(max_protocol_size,
                                      (size_t)protocols[i].first);
     }
-    _chans.resize(max_protocol_size);
+    _chans.resize(max_protocol_size + 1);
     for (size_t i = 0; i < protocols.size(); ++i) {
         if (protocols[i].second.support_client() &&
             protocols[i].second.support_server()) {

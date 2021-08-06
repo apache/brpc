@@ -34,6 +34,7 @@
 #include "brpc/excluded_servers.h" 
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/round_robin_load_balancer.h"
+#include "brpc/policy/weighted_randomized_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
@@ -724,6 +725,83 @@ TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
     brpc::LoadBalancer::SelectOut out(&ptr);
     EXPECT_EQ(EHOSTDOWN, wrrlb.SelectServer(in, &out));
     brpc::ExcludedServers::Destroy(exclude);
+}
+
+TEST_F(LoadBalancerTest, weighted_randomized) {
+    const char* servers[] = {
+        "10.92.115.19:8831",
+        "10.42.108.25:8832",
+        "10.36.150.31:8833",
+        "10.36.150.32:8899",
+        "10.92.149.48:8834",
+        "10.42.122.201:8835",
+        "10.42.122.202:8836"
+    };
+    std::string weight[] = {"3", "2", "5", "10", "1ab", "-1", "0"};
+    std::map<butil::EndPoint, int> configed_weight;
+    uint64_t configed_weight_sum = 0;
+    brpc::policy::WeightedRandomizedLoadBalancer wrlb;
+    size_t valid_weight_num = 4;
+
+    // Add server to selected list. The server with invalid weight will be skipped.
+    for (size_t i = 0;  i < ARRAY_SIZE(servers); ++i) {
+        const char *addr = servers[i];
+        butil::EndPoint dummy;
+        ASSERT_EQ(0, str2endpoint(addr, &dummy));
+        brpc::ServerId id(8888);
+        brpc::SocketOptions options;
+        options.remote_side = dummy;
+        options.user = new SaveRecycle;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
+        id.tag = weight[i];
+        if (i < valid_weight_num) {
+            int weight_num = 0;
+            ASSERT_TRUE(butil::StringToInt(weight[i], &weight_num));
+            configed_weight[dummy] = weight_num;
+            configed_weight_sum += weight_num;
+            EXPECT_TRUE(wrlb.AddServer(id));
+        } else {
+            EXPECT_FALSE(wrlb.AddServer(id));
+        }
+    }
+
+    // Select the best server according to weight configured.
+    // There are 4 valid servers with weight 3, 2, 5 and 10 respectively.
+    // We run SelectServer for multiple times. The result number of each server seleted should be
+    // weight randomized with weight configured.
+    std::map<butil::EndPoint, size_t> select_result;
+    brpc::SocketUniquePtr ptr;
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
+    brpc::LoadBalancer::SelectOut out(&ptr);
+    int run_times = configed_weight_sum * 10;
+    std::vector<butil::EndPoint> select_servers;
+    for (int i = 0; i < run_times; ++i) {
+        EXPECT_EQ(0, wrlb.SelectServer(in, &out));
+        select_servers.emplace_back(ptr->remote_side());
+        ++select_result[ptr->remote_side()];
+    }
+
+    for (const auto& server : select_servers) {
+        std::cout << "weight randomized=" << server << ", ";
+    }
+    std::cout << std::endl;
+
+    // Check whether selected result is weight with expected.
+    EXPECT_EQ(valid_weight_num, select_result.size());
+    std::cout << "configed_weight_sum=" << configed_weight_sum << " run_times=" << run_times << std::endl;
+    for (const auto& result : select_result) {
+        double actual_rate = result.second * 1.0 / run_times;
+        double expect_rate = configed_weight[result.first] * 1.0 / configed_weight_sum;
+        std::cout << result.first << " weight=" << configed_weight[result.first]
+            << " select_times=" << result.second
+            << " actual_rate=" << actual_rate << " expect_rate=" << expect_rate
+            << " expect_rate/2=" << expect_rate/2 << " expect_rate*2=" << expect_rate*2
+            << std::endl;
+        // actual_rate >= expect_rate / 2
+        ASSERT_GE(actual_rate, expect_rate / 2);
+        // actual_rate <= expect_rate * 2
+        ASSERT_LE(actual_rate, expect_rate * 2);
+    }
 }
 
 TEST_F(LoadBalancerTest, health_check_no_valid_server) {

@@ -43,6 +43,7 @@
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
+#include "brpc/policy/weighted_randomized_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
@@ -115,7 +116,9 @@ const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
 struct GlobalExtensions {
     GlobalExtensions()
-        : ch_mh_lb(CONS_HASH_LB_MURMUR3)
+        : dns(80)
+        , dns_with_ssl(443)
+        , ch_mh_lb(CONS_HASH_LB_MURMUR3)
         , ch_md5_lb(CONS_HASH_LB_MD5)
         , ch_ketama_lb(CONS_HASH_LB_KETAMA)
         , constant_cl(0) {
@@ -126,7 +129,9 @@ struct GlobalExtensions {
 #endif
     FileNamingService fns;
     ListNamingService lns;
+    DomainListNamingService dlns;
     DomainNamingService dns;
+    DomainNamingService dns_with_ssl;
     RemoteFileNamingService rfns;
     ConsulNamingService cns;
     DiscoveryNamingService dcns;
@@ -134,6 +139,7 @@ struct GlobalExtensions {
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
     RandomizedLoadBalancer randomized_lb;
+    WeightedRandomizedLoadBalancer wr_lb;
     LocalityAwareLoadBalancer la_lb;
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
@@ -345,8 +351,9 @@ static void GlobalInitializeOrDieImpl() {
 #endif
     NamingServiceExtension()->RegisterOrDie("file", &g_ext->fns);
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
+    NamingServiceExtension()->RegisterOrDie("dlist", &g_ext->dlns);
     NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
-    NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns);
+    NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns_with_ssl);
     NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("remotefile", &g_ext->rfns);
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
@@ -356,6 +363,7 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
     LoadBalancerExtension()->RegisterOrDie("wrr", &g_ext->wrr_lb);
     LoadBalancerExtension()->RegisterOrDie("random", &g_ext->randomized_lb);
+    LoadBalancerExtension()->RegisterOrDie("wr", &g_ext->wr_lb);
     LoadBalancerExtension()->RegisterOrDie("la", &g_ext->la_lb);
     LoadBalancerExtension()->RegisterOrDie("c_murmurhash", &g_ext->ch_mh_lb);
     LoadBalancerExtension()->RegisterOrDie("c_md5", &g_ext->ch_md5_lb);

@@ -93,10 +93,10 @@ Servers are put in the file specified by `path`. For example, in "file://conf/ma
  * brpc reloads the file when it's updated.
 ```
 # This line is ignored
-10.24.234.17 tag1  # a comment
-10.24.234.17 tag2  # an instance different from the instance on last line
-10.24.234.18
-10.24.234.19
+10.24.234.17:8080 tag1  # a comment
+10.24.234.17:8090 tag2  # an instance different from the instance on last line
+10.24.234.18:8080
+10.24.234.19:8080
 ```
 
 Pros: easy to modify, convenient for unittests.
@@ -219,6 +219,10 @@ which is weighted round robin. Choose the next server according to the configure
 ### random
 
 Randomly choose one server from the list, no other settings. Similarly with round robin, the algorithm assumes that servers to access are similar.
+
+### wr
+
+which is weighted random. Choose the next server according to the configured weight. The chances a server is selected is consistent with its weight.
 
 ### la
 
@@ -753,7 +757,7 @@ set_request_compress_type() sets compress-type of the request, no compression by
 
 NOTE: Attachment is not compressed by brpc.
 
-Check out [compress request body](http_client#压缩request-body) to compress http/h2 body.
+Check out [compress request body](http_client.md#compress-request-body) to compress http/h2 body.
 
 Supported compressions:
 
