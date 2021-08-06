@@ -185,16 +185,17 @@ FlvReader::FlvReader(butil::IOBuf* buf)
     : _read_header(false), _buf(buf) {
 }
 
-static char g_flv_header[9] = { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 };
-
 butil::Status FlvReader::ReadHeader() {
     if (!_read_header) {
-        char header_buf[sizeof(g_flv_header) + 4/* PreviousTagSize0 */];
+        // 9 is the size of FlvHeader, which is usually composed of
+        // { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 }.
+        char header_buf[9 + 4/* PreviousTagSize0 */];
         const char* p = (const char*)_buf->fetch(header_buf, sizeof(header_buf));
         if (p == NULL) {
             return butil::Status(EAGAIN, "Fail to read, not enough data");
         }
-        if (memcmp(p, g_flv_header, 3) != 0) {
+        const char flv_header_signature[3] = { 'F', 'L', 'V' };
+        if (memcmp(p, flv_header_signature, sizeof(flv_header_signature)) != 0) {
             LOG(FATAL) << "Fail to parse FLV header";
             return butil::Status(EINVAL, "Fail to parse FLV header");
         }
