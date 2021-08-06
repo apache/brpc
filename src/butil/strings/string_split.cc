@@ -185,7 +185,7 @@ bool SplitStringIntoKeyValuePairsT(const STR& line,
       // value or key; just record that the split failed.
       success = false;
     }
-    key_value_pairs->push_back(std::make_pair(key, value));
+    key_value_pairs->emplace_back(key, value);
   }
   return success;
 }
