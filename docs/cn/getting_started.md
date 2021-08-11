@@ -1,3 +1,5 @@
+[English version](../en/getting_started.md)
+
 # 构建
 
 brpc鼓励静态链接依赖，以便于每个运行brpc服务的机器不必再安装依赖。

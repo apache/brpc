@@ -1,3 +1,5 @@
+[中文版](../cn/getting_started.md)
+
 # BUILD
 
 brpc prefers static linkages of deps, so that they don't have to be installed on every machine running the app.
