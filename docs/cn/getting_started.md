@@ -341,4 +341,4 @@ brpc会自动检测valgrind（然后注册bthread的栈）。不支持老版本�
 
 # 实例追踪
 
-我们提供了一个程序去帮助你追踪和监控所有brpc实例。 只需要现在某处运行 [trackme_server](https://github.com/brpc/brpc/tree/master/tools/trackme_server/) 然后再带着 -trackme_server=SERVER参数启动需要被追踪的实例。trackme_server将从实例周期性地收到ping消息然后打印日志。您可以从日志中聚合实例地址，并调用实例的内置服务以获取更多信息。
+我们提供了一个程序去帮助你追踪和监控所有brpc实例。 只需要在某处运行 [trackme_server](https://github.com/brpc/brpc/tree/master/tools/trackme_server/) 然后再带着 -trackme_server=SERVER参数启动需要被追踪的实例。trackme_server将从实例周期性地收到ping消息然后打印日志。您可以从日志中聚合实例地址，并调用实例的内置服务以获取更多信息。
