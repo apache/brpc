@@ -138,7 +138,7 @@ sudo yum install gtest-devel
 git克隆brpc，进入项目目录然后执行：
 
 ```shell
-$ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64
+$ sh config_brpc.sh --headers="/usr/include" --libs="/usr/lib64 /usr/bin"
 $ make
 ```
 修改编译器为clang，添加选项`--cxx=clang++ --cc=clang`。

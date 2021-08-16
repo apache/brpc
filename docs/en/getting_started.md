@@ -137,7 +137,7 @@ sudo yum install gtest-devel
 git clone brpc, cd into the repo and run
 
 ```shell
-$ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64
+$ sh config_brpc.sh --headers="/usr/include" --libs="/usr/lib64 /usr/bin"
 $ make
 ```
 To change compiler to clang, add `--cxx=clang++ --cc=clang`.
