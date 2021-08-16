@@ -210,6 +210,15 @@ int Channel::Init(const char* server_addr_and_port,
         LOG(ERROR) << "Channel does not support the protocol";
         return -1;
     }
+    if (ptype == brpc::PROTOCOL_HTTP) {
+        std::string host;
+        if (ParseURL(server_addr_and_port, NULL, &host, NULL) == 0) {
+            butil::ip_t ip;
+            if (butil::hostname2ip(host.c_str(), &ip) == 0) {
+                _hostname.swap(host);
+            }
+        }
+    }
     if (protocol->parse_server_address != NULL) {
         if (!protocol->parse_server_address(&point, server_addr_and_port)) {
             LOG(ERROR) << "Fail to parse address=`" << server_addr_and_port << '\'';
@@ -242,6 +251,15 @@ int Channel::Init(const char* server_addr, int port,
     if (protocol == NULL || !protocol->support_client()) {
         LOG(ERROR) << "Channel does not support the protocol";
         return -1;
+    }
+    if (ptype == brpc::PROTOCOL_HTTP) {
+        std::string host;
+        if (ParseURL(server_addr, NULL, &host, NULL) == 0) {
+            butil::ip_t ip;
+            if (butil::hostname2ip(host.c_str(), &ip) == 0) {
+                _hostname.swap(host);
+            }
+        }
     }
     if (protocol->parse_server_address != NULL) {
         if (!protocol->parse_server_address(&point, server_addr)) {
@@ -332,6 +350,15 @@ int Channel::Init(const char* ns_url,
                      NULL, &_options.mutable_ssl_options()->sni_name, NULL);
         }
     }
+    if (_options.protocol == brpc::PROTOCOL_HTTP) {
+        std::string host;
+        if (ParseURL(ns_url, NULL, &host, NULL) == 0) {
+            butil::ip_t ip;
+            if (butil::hostname2ip(host.c_str(), &ip) == 0) {
+                _hostname.swap(host);
+            }
+        }
+    }
     LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
     if (NULL == lb) {
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
@@ -385,6 +412,12 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     if (_options.protocol.has_param()) {
         CHECK(cntl->protocol_param().empty());
         cntl->protocol_param() = _options.protocol.param();
+    }
+    if (_options.protocol == brpc::PROTOCOL_HTTP) {
+        const URI& uri = cntl->http_request().uri();
+        if (uri.host().empty() && !_hostname.empty()) {
+            const_cast<URI&>(uri).set_host(_hostname);
+        }
     }
     cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;

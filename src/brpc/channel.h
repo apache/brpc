@@ -215,6 +215,7 @@ protected:
                    const char* raw_server_address,
                    const ChannelOptions* options);
 
+    std::string _hostname;
     butil::EndPoint _server_address;
     SocketId _server_id;
     Protocol::SerializeRequest _serialize_request;
