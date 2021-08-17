@@ -376,6 +376,18 @@ struct RtmpCuePoint {
     AMFObject data;
 };
 
+enum class FlvHeaderFlags : uint8_t {
+    VIDEO = 0x01,
+    AUDIO = 0x04,
+    AUDIO_AND_VIDEO = 0x05,
+};
+
+struct FlvWriterOptions {
+    FlvWriterOptions() = default;
+
+    FlvHeaderFlags flv_content_type = FlvHeaderFlags::AUDIO_AND_VIDEO;
+};
+
 struct RtmpSharedObjectMessage {
     // Not implemented yet.
 };
@@ -390,6 +402,7 @@ class FlvWriter {
 public:
     // Start appending FLV tags into the buffer
     explicit FlvWriter(butil::IOBuf* buf);
+    explicit FlvWriter(butil::IOBuf* buf, const FlvWriterOptions& options);
     
     // Append a video/audio/metadata/cuepoint message into the output buffer.
     butil::Status Write(const RtmpVideoMessage&);
@@ -403,6 +416,7 @@ private:
 private:
     bool _write_header;
     butil::IOBuf* _buf;
+    FlvWriterOptions _options;
 };
 
 class FlvReader {
