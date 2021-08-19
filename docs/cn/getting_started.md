@@ -123,11 +123,6 @@ sudo yum install git gcc-c++ make openssl-devel
 sudo yum install gflags-devel protobuf-devel protobuf-compiler leveldb-devel
 ```
 
-如果你要在样例中启用cpu/heap的profiler：
-```shell
-sudo yum install gperftools-devel
-```
-
 如果你要运行测试，那么要安装ligtest-dev:
 ```shell
 sudo yum install gtest-devel
@@ -228,11 +223,6 @@ brew install openssl git gnu-getopt coreutils
 安装[gflags](https://github.com/gflags/gflags)，[protobuf](https://github.com/google/protobuf)，[ [leveldb](https://github.com/google/leveldb)：
 ```shell
 brew install gflags protobuf leveldb
-```
-
-如果你要在样例中启用cpu/heap的profiler：
-```shell
-brew install gperftools
 ```
 
 如果你要运行测试，那么要安装并编译googletest（它没有被默认编译）：

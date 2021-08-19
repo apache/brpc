@@ -122,11 +122,6 @@ Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.co
 sudo yum install gflags-devel protobuf-devel protobuf-compiler leveldb-devel
 ```
 
-If you need to enable cpu/heap profilers in examples:
-```shell
-sudo yum install gperftools-devel
-```
-
 If you need to run tests, install and compile gtest-devel (which is not compiled yet):
 ```shell
 sudo yum install gtest-devel
@@ -227,11 +222,6 @@ brew install openssl git gnu-getopt coreutils
 Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
 ```shell
 brew install gflags protobuf leveldb
-```
-
-If you need to enable cpu/heap profilers in examples:
-```shell
-brew install gperftools
 ```
 
 If you need to run tests, download and compile googletest (which is not compiled yet):
