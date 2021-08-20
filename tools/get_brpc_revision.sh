@@ -16,10 +16,12 @@
 # limitations under the License.
 
 output=$(cat $1/RELEASE_VERSION)
-version=$(git log -1 --format="%h\\|%cI" 2> /dev/null)
+abbr_commit_hash=$(git log -1 --format="%h" 2> /dev/null)
+committer_date=($(git log -1 --format="%ci" 2> /dev/null))
+committer_date="${committer_date[0]}T${committer_date[1]}${committer_date[2]:0:3}:${committer_date[2]:3:2}"
 branch=$(git rev-parse --abbrev-ref HEAD 2> /dev/null)
 if [ $? -eq 0 ]
 then
-    output=$output"\\|"$branch"\\|"$version
+    output=$output"\\|"$branch"\\|"$abbr_commit_hash"\\|"$committer_date
 fi
 echo $output
