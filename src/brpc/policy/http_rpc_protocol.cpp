@@ -1490,10 +1490,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             sample->meta.set_protocol_type(PROTOCOL_HTTP);
             sample->meta.set_attachment_size(req_body.size());
 
-            butil::IOBuf sample_request;
             butil::EndPoint ep;
-            MakeRawHttpRequest(&sample_request, &req_header, ep, &req_body);
-            sample->request = sample_request;
+            MakeRawHttpRequest(&sample->request, &req_header, ep, &req_body);
             sample->submit(start_parse_us);
         }
     } else {
