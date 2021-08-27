@@ -476,7 +476,7 @@ src/butil/third_party/valgrind/valgrind.h: licensed under the following terms:
 
 --------------------------------------------------------------------------------
 
-src/butil/crc32c.h, src/butil/crc32c.cc: licensed under the following terms:
+src/butil/crc32c.h, src/butil/crc32c.cc, test/crc32c_unittest.cc: licensed under the following terms:
 
   Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
   This source code is licensed under the BSD-style license found in the
@@ -663,7 +663,7 @@ src/brpc/ts.cpp: licensed under the following terms:
 
 --------------------------------------------------------------------------------
 
-src/brpc/builtin/pprof_perl.cpp: licensed under the following terms:
+src/brpc/builtin/pprof_perl.cpp, tools/pprof: licensed under the following terms:
 
  Copyright (c) 1998-2007, Google Inc.
  All rights reserved.

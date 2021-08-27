@@ -1291,7 +1291,7 @@ struct VModuleList {
             if (name.find_first_of("*?") == std::string::npos) {
                 _exact_names[name] = verbose_level;
             } else {
-                _wild_names.push_back(std::make_pair(name, verbose_level));
+                _wild_names.emplace_back(name, verbose_level);
             }
         }
         // Reverse _wild_names so that latter wild cards override former ones.

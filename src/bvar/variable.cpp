@@ -635,11 +635,11 @@ public:
             FileDumper *f = new FileDumper(
                     path.AddExtension(key).AddExtension("data").value(), s);
             WildcardMatcher *m = new WildcardMatcher(value, '?', true);
-            dumpers.push_back(std::make_pair(f, m));
+            dumpers.emplace_back(f, m);
         }
-        dumpers.push_back(std::make_pair(
+        dumpers.emplace_back(
                     new FileDumper(path.AddExtension("data").value(), s), 
-                    (WildcardMatcher *)NULL));
+                    (WildcardMatcher *)NULL);
     }
     ~FileDumperGroup() {
         for (size_t i = 0; i < dumpers.size(); ++i) {

@@ -32,8 +32,8 @@ bool SplitIntoServerAndTag(const butil::StringPiece& line,
                            butil::StringPiece* server_addr,
                            butil::StringPiece* tag);
 
-int ListNamingService::GetServers(const char *service_name,
-                                  std::vector<ServerNode>* servers) {
+int ParseServerList(const char* service_name,
+                    std::vector<ServerNode>* servers) {
     servers->clear();
     // Sort/unique the inserted vector is faster, but may have a different order
     // of addresses from the file. To make assertions in tests easier, we use
@@ -73,6 +73,11 @@ int ListNamingService::GetServers(const char *service_name,
     return 0;
 }
 
+int ListNamingService::GetServers(const char *service_name,
+                                  std::vector<ServerNode>* servers) {
+    return ParseServerList(service_name, servers);
+}
+
 int ListNamingService::RunNamingService(const char* service_name,
                                         NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
@@ -97,6 +102,23 @@ NamingService* ListNamingService::New() const {
 void ListNamingService::Destroy() {
     delete this;
 }
+
+int DomainListNamingService::GetServers(const char* service_name,
+                                        std::vector<ServerNode>* servers) {
+    return ParseServerList(service_name, servers);
+}
+
+void DomainListNamingService::Describe(std::ostream& os,
+                                       const DescribeOptions&) const {
+    os << "dlist";
+    return;
+}
+
+NamingService* DomainListNamingService::New() const {
+    return new DomainListNamingService;
+}
+
+void DomainListNamingService::Destroy() { delete this; }
 
 }  // namespace policy
 } // namespace brpc
