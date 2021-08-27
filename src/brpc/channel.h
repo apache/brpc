@@ -200,6 +200,8 @@ public:
 protected:
     int CheckHealth();
 
+    int ParseHostname(const char* server_addr);
+
     bool SingleServer() const { return _lb.get() == NULL; }
 
     // Pick a server using `lb' and then send RPC. Wait for response when 
