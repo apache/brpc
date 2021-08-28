@@ -295,7 +295,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                      NULL, &_options.mutable_ssl_options()->sni_name, NULL);
         }
     }
-    ParseServiceName(raw_server_address);
+    ParseURL(raw_server_address, NULL, &_service_name, NULL);
     const int port = server_addr_and_port.port;
     if (port < 0 || port > 65535) {
         LOG(ERROR) << "Invalid port=" << port;
@@ -333,7 +333,7 @@ int Channel::Init(const char* ns_url,
                      NULL, &_options.mutable_ssl_options()->sni_name, NULL);
         }
     }
-    ParseServiceName(ns_url);
+    ParseURL(ns_url, NULL, &_service_name, NULL);
     LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
     if (NULL == lb) {
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
@@ -573,12 +573,6 @@ int Channel::CheckHealth() {
         LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         return _lb->SelectServer(sel_in, &sel_out);
-    }
-}
-
-void Channel::ParseServiceName(const char* server_addr) {
-    if (ParseURL(server_addr, NULL, &_service_name, NULL) != 0) {
-        _service_name.clear();
     }
 }
 
