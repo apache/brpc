@@ -28,12 +28,13 @@
 
 ## 5. 值周记录如下
 
-|  时间   | 值周人  | 值周report|
+|  时间(月/日/年）   | 值周人  | 值周report|
 |  ----  | ----  | --- |
 |   | 朱佳顺 |
-|  21/06/2021 to 27/06/2021 | 李磊 | https://lists.apache.org/thread.html/rc9eb911bc6465c16bd8bb14f9d1f7c9548e13759101f43cf0300908a%40%3Cdev.brpc.apache.org%3E
-|  28/06/2021 to 04/07/2021 | 蔡道进 | https://lists.apache.org/thread.html/r23992a4f958bea5b28b9b87a09c60790dae8d5d28f2c49aded3f1760%40%3Cdev.brpc.apache.org%3E
-| 05/07/2021 - 12/07/2021  | 何磊 | https://lists.apache.org/thread.html/r3f67bc42ecdc07b25c39aedaf30aeae79039aa1cc3e6ad99364c8178%40%3Cdev.brpc.apache.org%3E
+|  06/21/2021 to 06/27/2021 | 李磊 | https://lists.apache.org/thread.html/rc9eb911bc6465c16bd8bb14f9d1f7c9548e13759101f43cf0300908a%40%3Cdev.brpc.apache.org%3E
+|  06/28/2021 to 07/04/2021 | 蔡道进 | https://lists.apache.org/thread.html/r23992a4f958bea5b28b9b87a09c60790dae8d5d28f2c49aded3f1760%40%3Cdev.brpc.apache.org%3E
+| 07/05/2021 - 07/12/2021  | 何磊 | https://lists.apache.org/thread.html/r3f67bc42ecdc07b25c39aedaf30aeae79039aa1cc3e6ad99364c8178%40%3Cdev.brpc.apache.org%3E
+| 08/16/2021 - 08/20/2021  | 朱佳顺 | https://lists.apache.org/thread.html/rc03364574b40e4e9bb8112eae0500589d632011f535a4f0747c4ce5f%40%3Cdev.brpc.apache.org%3E
 
 
 
