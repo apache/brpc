@@ -567,6 +567,8 @@ void MakeRawHttpRequest(butil::IOBuf* request,
             os << uri.host();
             if (uri.port() >= 0) {
                 os << ':' << uri.port();
+            } else if (remote_side.port != 0) {
+                os << ':' << remote_side.port;
             }
         } else if (remote_side.port != 0) {
             os << remote_side;
