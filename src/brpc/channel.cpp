@@ -295,7 +295,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                      NULL, &_options.mutable_ssl_options()->sni_name, NULL);
         }
     }
-    ParseHostname(raw_server_address);
+    ParseServiceName(raw_server_address);
     const int port = server_addr_and_port.port;
     if (port < 0 || port > 65535) {
         LOG(ERROR) << "Invalid port=" << port;
@@ -333,9 +333,7 @@ int Channel::Init(const char* ns_url,
                      NULL, &_options.mutable_ssl_options()->sni_name, NULL);
         }
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP) {
-        ParseHostname(ns_url);
-    }
+    ParseServiceName(ns_url);
     LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
     if (NULL == lb) {
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
@@ -392,8 +390,8 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     }
     if (_options.protocol == brpc::PROTOCOL_HTTP) {
         URI& uri = cntl->http_request().uri();
-        if (uri.host().empty() && !_hostname.empty()) {
-            uri.set_host(_hostname);
+        if (uri.host().empty() && !_service_name.empty()) {
+            uri.set_host(_service_name);
         }
     }
     cntl->_preferred_index = _preferred_index;
@@ -578,13 +576,9 @@ int Channel::CheckHealth() {
     }
 }
 
-void Channel::ParseHostname(const char* server_addr) {
-    std::string host;
-    if (ParseURL(server_addr, NULL, &host, NULL) == 0) {
-        butil::ip_t ip;
-        if (butil::hostname2ip(host.c_str(), &ip) == 0) {
-            _hostname.swap(host);
-        }
+void Channel::ParseServiceName(const char* server_addr) {
+    if (ParseURL(server_addr, NULL, &_service_name, NULL) != 0) {
+        _service_name.clear();
     }
 }
 

@@ -200,7 +200,7 @@ public:
 protected:
     int CheckHealth();
 
-    void ParseHostname(const char* server_addr);
+    void ParseServiceName(const char* server_addr);
 
     bool SingleServer() const { return _lb.get() == NULL; }
 
@@ -217,7 +217,8 @@ protected:
                    const char* raw_server_address,
                    const ChannelOptions* options);
 
-    std::string _hostname;
+    // May be ip, hostname or name_service
+    std::string _service_name;
     butil::EndPoint _server_address;
     SocketId _server_id;
     Protocol::SerializeRequest _serialize_request;

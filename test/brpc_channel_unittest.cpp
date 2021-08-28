@@ -1964,34 +1964,54 @@ TEST_F(ChannelTest, parse_hostname) {
     brpc::Channel channel;
 
     ASSERT_EQ(-1, channel.Init("", 8888, &opt));
-    ASSERT_EQ("", channel._hostname);
+    ASSERT_EQ("", channel._service_name);
     ASSERT_EQ(-1, channel.Init("", &opt));
-    ASSERT_EQ("", channel._hostname);
+    ASSERT_EQ("", channel._service_name);
 
     ASSERT_EQ(0, channel.Init("127.0.0.1", 8888, &opt));
-    ASSERT_EQ("127.0.0.1", channel._hostname);
+    ASSERT_EQ("127.0.0.1", channel._service_name);
     ASSERT_EQ(0, channel.Init("127.0.0.1:8888", &opt));
-    ASSERT_EQ("127.0.0.1", channel._hostname);
+    ASSERT_EQ("127.0.0.1", channel._service_name);
 
     ASSERT_EQ(0, channel.Init("localhost", 8888, &opt));
-    ASSERT_EQ("localhost", channel._hostname);
+    ASSERT_EQ("localhost", channel._service_name);
     ASSERT_EQ(0, channel.Init("localhost:8888", &opt));
-    ASSERT_EQ("localhost", channel._hostname);
+    ASSERT_EQ("localhost", channel._service_name);
 
     opt.protocol = brpc::PROTOCOL_HTTP;
     ASSERT_EQ(0, channel.Init("http://baidu.com", &opt));
-    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ("baidu.com", channel._service_name);
     ASSERT_EQ(0, channel.Init("http://baidu.com", 80, &opt));
-    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ("baidu.com", channel._service_name);
     ASSERT_EQ(0, channel.Init("https://baidu.com", &opt));
-    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ("baidu.com", channel._service_name);
     ASSERT_EQ(0, channel.Init("https://baidu.com", 443, &opt));
-    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ("baidu.com", channel._service_name);
 
     ASSERT_EQ(0, channel.Init("http://baidu.com", "rr", &opt));
-    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ("baidu.com", channel._service_name);
     ASSERT_EQ(0, channel.Init("https://baidu.com", "rr", &opt));
-    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ("baidu.com", channel._service_name);
+
+    const char *address_list[] =  {
+        "10.127.0.1:1234",
+        "10.128.0.1:1234 enable",
+        "10.129.0.1:1234",
+        "localhost:1234",
+        "baidu.com:1234"
+    };
+    butil::TempFile tmp_file;
+    {
+        FILE* fp = fopen(tmp_file.fname(), "w");
+        for (size_t i = 0; i < ARRAY_SIZE(address_list); ++i) {
+            ASSERT_TRUE(fprintf(fp, "%s\n", address_list[i]));
+        }
+        fclose(fp);
+    }
+    brpc::Channel ns_channel;
+    std::string ns = std::string("file://") + tmp_file.fname();
+    ASSERT_EQ(0, ns_channel.Init(ns.c_str(), "rr", &opt));
+    ASSERT_EQ(tmp_file.fname(), ns_channel._service_name);
 }
 
 TEST_F(ChannelTest, connection_failed) {
