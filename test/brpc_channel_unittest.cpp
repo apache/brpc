@@ -1958,6 +1958,42 @@ TEST_F(ChannelTest, init_using_naming_service) {
     // `lb' should be destroyed after
 }
 
+TEST_F(ChannelTest, parse_hostname) {
+    brpc::ChannelOptions opt;
+    opt.succeed_without_server = false;
+    brpc::Channel channel;
+
+    ASSERT_EQ(-1, channel.Init("", 8888, &opt));
+    ASSERT_EQ("", channel._hostname);
+    ASSERT_EQ(-1, channel.Init("", &opt));
+    ASSERT_EQ("", channel._hostname);
+
+    ASSERT_EQ(0, channel.Init("127.0.0.1", 8888, &opt));
+    ASSERT_EQ("127.0.0.1", channel._hostname);
+    ASSERT_EQ(0, channel.Init("127.0.0.1:8888", &opt));
+    ASSERT_EQ("127.0.0.1", channel._hostname);
+
+    ASSERT_EQ(0, channel.Init("localhost", 8888, &opt));
+    ASSERT_EQ("localhost", channel._hostname);
+    ASSERT_EQ(0, channel.Init("localhost:8888", &opt));
+    ASSERT_EQ("localhost", channel._hostname);
+
+    opt.protocol = brpc::PROTOCOL_HTTP;
+    ASSERT_EQ(0, channel.Init("http://baidu.com", &opt));
+    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ(0, channel.Init("http://baidu.com", 80, &opt));
+    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ(0, channel.Init("https://baidu.com", &opt));
+    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ(0, channel.Init("https://baidu.com", 443, &opt));
+    ASSERT_EQ("baidu.com", channel._hostname);
+
+    ASSERT_EQ(0, channel.Init("http://baidu.com", "rr", &opt));
+    ASSERT_EQ("baidu.com", channel._hostname);
+    ASSERT_EQ(0, channel.Init("https://baidu.com", "rr", &opt));
+    ASSERT_EQ("baidu.com", channel._hostname);
+}
+
 TEST_F(ChannelTest, connection_failed) {
     for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous

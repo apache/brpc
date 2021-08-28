@@ -333,7 +333,9 @@ int Channel::Init(const char* ns_url,
                      NULL, &_options.mutable_ssl_options()->sni_name, NULL);
         }
     }
-    ParseHostname(ns_url);
+    if (_options.protocol == brpc::PROTOCOL_HTTP) {
+        ParseHostname(ns_url);
+    }
     LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
     if (NULL == lb) {
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
@@ -576,16 +578,14 @@ int Channel::CheckHealth() {
     }
 }
 
-int Channel::ParseHostname(const char* server_addr) {
+void Channel::ParseHostname(const char* server_addr) {
     std::string host;
     if (ParseURL(server_addr, NULL, &host, NULL) == 0) {
         butil::ip_t ip;
         if (butil::hostname2ip(host.c_str(), &ip) == 0) {
             _hostname.swap(host);
-            return 0;
         }
     }
-    return -1;
 }
 
 } // namespace brpc
