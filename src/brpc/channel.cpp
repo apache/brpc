@@ -288,14 +288,13 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP &&
-        ::strncmp(raw_server_address, "https://", 8) == 0) {
+    std::string scheme;
+    ParseURL(raw_server_address, &scheme, &_service_name, NULL);
+    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
-            ParseURL(raw_server_address,
-                     NULL, &_options.mutable_ssl_options()->sni_name, NULL);
+            _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
-    ParseURL(raw_server_address, NULL, &_service_name, NULL);
     const int port = server_addr_and_port.port;
     if (port < 0 || port > 65535) {
         LOG(ERROR) << "Invalid port=" << port;
@@ -326,14 +325,13 @@ int Channel::Init(const char* ns_url,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP &&
-        ::strncmp(ns_url, "https://", 8) == 0) {
+    std::string scheme;
+    ParseURL(ns_url, &scheme, &_service_name, NULL);
+    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
-            ParseURL(ns_url,
-                     NULL, &_options.mutable_ssl_options()->sni_name, NULL);
+            _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
-    ParseURL(ns_url, NULL, &_service_name, NULL);
     LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
     if (NULL == lb) {
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
