@@ -213,9 +213,9 @@ protected:
     int InitChannelOptions(const ChannelOptions* options);
     int InitSingle(const butil::EndPoint& server_addr_and_port,
                    const char* raw_server_address,
-                   const ChannelOptions* options);
+                   const ChannelOptions* options,
+                   int raw_port = -1);
 
-    // May be ip, hostname or name_service
     std::string _service_name;
     butil::EndPoint _server_address;
     SocketId _server_id;

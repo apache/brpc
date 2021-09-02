@@ -1961,6 +1961,7 @@ TEST_F(ChannelTest, init_using_naming_service) {
 TEST_F(ChannelTest, parse_hostname) {
     brpc::ChannelOptions opt;
     opt.succeed_without_server = false;
+    opt.protocol = brpc::PROTOCOL_HTTP;
     brpc::Channel channel;
 
     ASSERT_EQ(-1, channel.Init("", 8888, &opt));
@@ -1968,30 +1969,49 @@ TEST_F(ChannelTest, parse_hostname) {
     ASSERT_EQ(-1, channel.Init("", &opt));
     ASSERT_EQ("", channel._service_name);
 
-    ASSERT_EQ(0, channel.Init("127.0.0.1", 8888, &opt));
-    ASSERT_EQ("127.0.0.1", channel._service_name);
-    ASSERT_EQ(0, channel.Init("127.0.0.1:8888", &opt));
-    ASSERT_EQ("127.0.0.1", channel._service_name);
+    ASSERT_EQ(0, channel.Init("http://127.0.0.1", 8888, &opt));
+    ASSERT_EQ("127.0.0.1:8888", channel._service_name);
+    ASSERT_EQ(0, channel.Init("http://127.0.0.1:8888", &opt));
+    ASSERT_EQ("127.0.0.1:8888", channel._service_name);
 
     ASSERT_EQ(0, channel.Init("localhost", 8888, &opt));
-    ASSERT_EQ("localhost", channel._service_name);
+    ASSERT_EQ("localhost:8888", channel._service_name);
     ASSERT_EQ(0, channel.Init("localhost:8888", &opt));
-    ASSERT_EQ("localhost", channel._service_name);
+    ASSERT_EQ("localhost:8888", channel._service_name);
 
-    opt.protocol = brpc::PROTOCOL_HTTP;
     ASSERT_EQ(0, channel.Init("http://baidu.com", &opt));
     ASSERT_EQ("baidu.com", channel._service_name);
+    ASSERT_EQ(0, channel.Init("http://baidu.com:80", &opt));
+    ASSERT_EQ("baidu.com:80", channel._service_name);
     ASSERT_EQ(0, channel.Init("http://baidu.com", 80, &opt));
-    ASSERT_EQ("baidu.com", channel._service_name);
-    ASSERT_EQ(0, channel.Init("https://baidu.com", &opt));
-    ASSERT_EQ("baidu.com", channel._service_name);
-    ASSERT_EQ(0, channel.Init("https://baidu.com", 443, &opt));
-    ASSERT_EQ("baidu.com", channel._service_name);
-
+    ASSERT_EQ("baidu.com:80", channel._service_name);
+    ASSERT_EQ(0, channel.Init("http://baidu.com:8888", &opt));
+    ASSERT_EQ("baidu.com:8888", channel._service_name);
+    ASSERT_EQ(0, channel.Init("http://baidu.com", 8888, &opt));
+    ASSERT_EQ("baidu.com:8888", channel._service_name);
     ASSERT_EQ(0, channel.Init("http://baidu.com", "rr", &opt));
     ASSERT_EQ("baidu.com", channel._service_name);
+    ASSERT_EQ(0, channel.Init("http://baidu.com:80", "rr", &opt));
+    ASSERT_EQ("baidu.com:80", channel._service_name);
+    ASSERT_EQ(0, channel.Init("http://baidu.com:8888", "rr", &opt));
+    ASSERT_EQ("baidu.com:8888", channel._service_name);
+
+    ASSERT_EQ(0, channel.Init("https://baidu.com", &opt));
+    ASSERT_EQ("baidu.com", channel._service_name);
+    ASSERT_EQ(0, channel.Init("https://baidu.com:443", &opt));
+    ASSERT_EQ("baidu.com:443", channel._service_name);
+    ASSERT_EQ(0, channel.Init("https://baidu.com", 443, &opt));
+    ASSERT_EQ("baidu.com:443", channel._service_name);
+    ASSERT_EQ(0, channel.Init("https://baidu.com:1443", &opt));
+    ASSERT_EQ("baidu.com:1443", channel._service_name);
+    ASSERT_EQ(0, channel.Init("https://baidu.com", 1443, &opt));
+    ASSERT_EQ("baidu.com:1443", channel._service_name);
     ASSERT_EQ(0, channel.Init("https://baidu.com", "rr", &opt));
     ASSERT_EQ("baidu.com", channel._service_name);
+    ASSERT_EQ(0, channel.Init("https://baidu.com:443", "rr", &opt));
+    ASSERT_EQ("baidu.com:443", channel._service_name);
+    ASSERT_EQ(0, channel.Init("https://baidu.com:1443", "rr", &opt));
+    ASSERT_EQ("baidu.com:1443", channel._service_name);
 
     const char *address_list[] =  {
         "10.127.0.1:1234",

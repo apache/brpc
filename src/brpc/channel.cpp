@@ -256,7 +256,7 @@ int Channel::Init(const char* server_addr, int port,
             return -1;
         }
     }
-    return InitSingle(point, server_addr, options);
+    return InitSingle(point, server_addr, options, port);
 }
 
 static int CreateSocketSSLContext(const ChannelOptions& options,
@@ -283,13 +283,18 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
 
 int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                         const char* raw_server_address,
-                        const ChannelOptions* options) {
+                        const ChannelOptions* options,
+                        int raw_port) {
     GlobalInitializeOrDie();
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
     std::string scheme;
-    ParseURL(raw_server_address, &scheme, &_service_name, NULL);
+    int* port_out = raw_port == -1 ? &raw_port: NULL;
+    ParseURL(raw_server_address, &scheme, &_service_name, port_out);
+    if (raw_port != -1) {
+        _service_name.append(":").append(std::to_string(raw_port));
+    }
     if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
@@ -326,7 +331,11 @@ int Channel::Init(const char* ns_url,
         return -1;
     }
     std::string scheme;
-    ParseURL(ns_url, &scheme, &_service_name, NULL);
+    int raw_port = -1;
+    ParseURL(ns_url, &scheme, &_service_name, &raw_port);
+    if (raw_port != -1) {
+        _service_name.append(":").append(std::to_string(raw_port));
+    }
     if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
@@ -389,7 +398,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     if (_options.protocol == brpc::PROTOCOL_HTTP) {
         URI& uri = cntl->http_request().uri();
         if (uri.host().empty() && !_service_name.empty()) {
-            uri.set_host(_service_name);
+            uri.SetHostAndPort(_service_name);
         }
     }
     cntl->_preferred_index = _preferred_index;
