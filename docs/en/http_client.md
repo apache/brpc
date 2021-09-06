@@ -115,7 +115,9 @@ If user already sets `Host` header(case insensitive), framework makes no change.
 
 If user does not set `Host` header and the URL has host, for example http://www.foo.com/path, the http request contains "Host: www.foo.com".
 
-If user does not set host header and the URL does not have host as well,  for example "/index.html?name=value", framework sets `Host` header with IP and port of the target server. A http server at 10.46.188.39:8989 should see `Host: 10.46.188.39:8989`.
+If user does not set host header and the URL does not have host as well, for example "/index.html?name=value", but if the address initialized by the channel contains domain name. framework sets `Host` header with domain name of the target server. if this address is "http://www.foo.com", this http server should see `Host: www.foo.com`, if this address is "http://www.foo.com:8989", this http server should be see `Host: www.foo.com:8989`.
+
+If user does not set host header and the URL does not have host as well, for example "/index.html?name=value", and the address initialized by the channel doesn't contain domain name. framework sets `Host` header with IP and port of the target server. A http server at 10.46.188.39:8989 should see `Host: 10.46.188.39:8989`.
 
 The header is named ":authority" in h2.
 
