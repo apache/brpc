@@ -556,25 +556,28 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
             "10.36.150.32:8833", 
             "10.92.149.48:8833", 
             "10.42.122.201:8833",
+            "[2408:871a:2100:3:0:ff:b025:348d]:8833",
+            "unix:test.sock",
     };
     for (size_t round = 0; round < ARRAY_SIZE(hashs); ++round) {
         brpc::policy::ConsistentHashingLoadBalancer chlb(hash_type[round]);
         std::vector<brpc::ServerId> ids;
         std::vector<butil::EndPoint> addrs;
-        for (int j = 0;j < 5; ++j) 
-        for (int i = 0; i < 5; ++i) {
-            const char *addr = servers[i];
-            //snprintf(addr, sizeof(addr), "192.168.1.%d:8080", i);
-            butil::EndPoint dummy;
-            ASSERT_EQ(0, str2endpoint(addr, &dummy));
-            brpc::ServerId id(8888);
-            brpc::SocketOptions options;
-            options.remote_side = dummy;
-            options.user = new SaveRecycle;
-            ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
-            ids.push_back(id);
-            addrs.push_back(dummy);
-            chlb.AddServer(id);
+        for (int j = 0;j < 5; ++j) {
+            for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
+                const char *addr = servers[i];
+                //snprintf(addr, sizeof(addr), "192.168.1.%d:8080", i);
+                butil::EndPoint dummy;
+                ASSERT_EQ(0, str2endpoint(addr, &dummy));
+                brpc::ServerId id(8888);
+                brpc::SocketOptions options;
+                options.remote_side = dummy;
+                options.user = new SaveRecycle;
+                ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
+                ids.push_back(id);
+                addrs.push_back(dummy);
+                chlb.AddServer(id);
+            }
         }
         std::cout << chlb;
         for (int i = 0; i < 5; ++i) {
