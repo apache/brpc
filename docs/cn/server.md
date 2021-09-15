@@ -225,6 +225,10 @@ server.Start(..., &options);
 
 一个server只能监听一个端口（不考虑ServerOptions.internal_port），需要监听N个端口就起N个Server。
 
+## 多进程监听一个端口
+
+启动时开启`reuse_port`这个flag，就可以多进程共同监听一个端口（底层是SO_REUSEPORT）。
+
 # 停止
 
 ```c++
@@ -647,6 +651,8 @@ server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 
 对于这些情况，brpc提供了pthread模式，开启**-usercode_in_pthread**后，用户代码均会在pthread中运行，原先阻塞bthread的函数转而阻塞pthread。
 
+注意：开启-usercode_in_pthread后，brpc::thread_local_data()不保证能获取到值。
+
 打开pthread模式后在性能上的注意点：
 
 - 同步RPC都会阻塞worker pthread，server端一般需要设置更多的工作线程(ServerOptions.num_threads)，调度效率会略微降低。
@@ -683,6 +689,10 @@ pthread模式可以让一些老代码快速尝试brpc，但我们仍然建议逐
 ```shell
 curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service | awk '{if($3=="false"){++falsecnt}else if($3=="Value"){isrpc=1}}END{if(isrpc!=1||falsecnt==2){print "SAFE"}else{print "NOT SAFE"}}'
 ```
+### 完全禁用内置服务
+
+设置ServerOptions.has_builtin_services = false，可以完全禁用内置服务。
+
 ### 转义外部可控的URL
 
 可调用brpc::WebEscape()对url进行转义，防止恶意URI注入攻击。
@@ -768,15 +778,16 @@ public:
         delete static_cast<MySessionLocalData*>(d);
     }  
 };
- 
+
+MySessionLocalDataFactory g_session_local_data_factory;
+
 int main(int argc, char* argv[]) {
     ...
-    MySessionLocalDataFactory session_local_data_factory;
  
     brpc::Server server;
     brpc::ServerOptions options;
     ...
-    options.session_local_data_factory = &session_local_data_factory;
+    options.session_local_data_factory = &g_session_local_data_factory;
     ...
 ```
 
@@ -859,14 +870,15 @@ public:
     }  
 };
  
+MyThreadLocalDataFactory g_thread_local_data_factory;
+
 int main(int argc, char* argv[]) {
     ...
-    MyThreadLocalDataFactory thread_local_data_factory;
  
     brpc::Server server;
     brpc::ServerOptions options;
     ...
-    options.thread_local_data_factory  = &thread_local_data_factory;
+    options.thread_local_data_factory  = &g_thread_local_data_factory;
     ...
 ```
 
