@@ -301,7 +301,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
         }
     }
     const int port = server_addr_and_port.port;
-    if (port < 0 || port > 65535) {
+    if (port < 0) {
         LOG(ERROR) << "Invalid port=" << port;
         return -1;
     }
