@@ -210,7 +210,13 @@ int Start(int port, const ServerOptions* opt);
 int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt);  // r32009后增加
 ```
 
-"localhost:9000", "cq01-cos-dev00.cq01:8000", “127.0.0.1:7000"都是合法的`ip_and_port_str`。
+合法的`ip_and_port_str`：
+
+- 127.0.0.1:80    # IPV4
+- [::1]:8080      # IPV6
+- unix:path.sock  # Unix domain socket
+
+关于IPV6和Unix domain socket的使用，详见 [EndPoint](endpoint.md)。
 
 `options`为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 
