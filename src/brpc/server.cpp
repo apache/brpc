@@ -1046,11 +1046,9 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 
     // Print tips to server launcher.
     if (butil::is_endpoint_extended(_listen_addr)) {
-        LOG(INFO) << "Server[" << version() << "] is serving on " << _listen_addr << noflush;
-        if (_options.has_builtin_services) {
-            LOG(INFO) << " with builtin service" << noflush;
-        }
-        LOG(INFO) << '.';
+        const char* builtin_msg = _options.has_builtin_services ? " with builtin service" : "";
+        LOG(INFO) << "Server[" << version() << "] is serving on " << _listen_addr
+                  << builtin_msg << '.';
         //TODO add TrackMe support
     } else {
         int http_port = _listen_addr.port;
