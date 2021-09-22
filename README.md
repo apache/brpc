@@ -104,3 +104,6 @@ Please refer to [here](CONTRIBUTING.md).
 # Feedback and Getting involved
 * Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/apache/incubator-brpc/issues)
 * Subscribe mailing list(dev-subscribe@brpc.apache.org) to get updated with the project
+
+# Code of Conduct
+We follow the code of conduct from Apache Software Foundation, please refer it here [Link](https://www.apache.org/foundation/policies/conduct)
