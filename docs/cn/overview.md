@@ -66,7 +66,7 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 * 访问服务? 包含[brpc/channel.h](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h)并参考注释或[示例](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp).
 * 调整参数? 看看[brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h). 注意这个类是Server和Channel共用的，分成了三段，分别标记为Client-side, Server-side和Both-side methods。
 
-我们尝试让事情变得更加简单，以命名服务为例，在其他RPC实现中，你也许需要复制一长段晦涩的代码才可使用，而在brpc中访问BNS可以这么写"bns://node-name"，DNS是`Init("http://domain-name", ...)`，本地文件列表是"file:///home/work/server.list"，相信不用解释，你也能明白这些代表什么。
+我们尝试让事情变得更加简单，以命名服务为例，在其他RPC实现中，你也许需要复制一长段晦涩的代码才可使用，而在brpc中访问BNS可以这么写`"bns://node-name"`，DNS是`"http://domain-name"`，本地文件列表是`"file:///home/work/server.list"`，相信不用解释，你也能明白这些代表什么。
 
 ### 使服务更加可靠
 

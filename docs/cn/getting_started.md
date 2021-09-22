@@ -8,7 +8,7 @@ brpc有如下依赖：
 
 * [gflags](https://github.com/gflags/gflags): Extensively used to define global options.
 * [protobuf](https://github.com/google/protobuf): Serializations of messages, interfaces of services.
-* [leveldb](https://github.com/google/leveldb): Required by [/rpcz](rpcz.md) to record RPCs for tracing.
+* [leveldb](https://github.com/google/leveldb): Required by [rpcz](rpcz.md) to record RPCs for tracing.
 
 # 支持的环境
 
@@ -225,7 +225,7 @@ $ make
 brew install openssl git gnu-getopt coreutils
 ```
 
-安装[gflags](https://github.com/gflags/gflags)，[protobuf](https://github.com/google/protobuf)，[ [leveldb](https://github.com/google/leveldb)：
+安装[gflags](https://github.com/gflags/gflags)，[protobuf](https://github.com/google/protobuf)，[leveldb](https://github.com/google/leveldb)：
 ```shell
 brew install gflags protobuf leveldb
 ```
