@@ -30,6 +30,9 @@
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/describable.h"
 #include "brpc/socket.h"
+#include "brpc/socket_map.h"
+#include "brpc/global.h"
+#include "brpc/details/load_balancer_with_naming.h"
 #include "butil/strings/string_number_conversions.h"
 #include "brpc/excluded_servers.h" 
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
@@ -1079,6 +1082,22 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     }
     bthread_usleep(500000 /* sleep longer than timeout of channel */);
     ASSERT_EQ(0, num_failed.load(butil::memory_order_relaxed));
+}
+
+TEST_F(LoadBalancerTest, la_selection_too_long) {
+    brpc::GlobalInitializeOrDie();
+    brpc::LoadBalancerWithNaming lb;
+    CHECK_EQ(0, lb.Init("list://127.0.0.1:8888", "la", nullptr, nullptr)); 
+    char addr[] = "127.0.0.1:8888";
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint(addr, &ep));
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::SocketMapFind(brpc::SocketMapKey(ep), &id));
+    ASSERT_EQ(0, brpc::Socket::SetFailed(id));
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, nullptr };
+    brpc::SocketUniquePtr ptr;
+    brpc::LoadBalancer::SelectOut out(&ptr);
+    ASSERT_EQ(EHOSTDOWN, lb.SelectServer(in, &out));
 }
 
 } //namespace
