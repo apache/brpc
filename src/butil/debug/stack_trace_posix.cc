@@ -644,7 +644,7 @@ class SandboxSymbolizeHelper {
         if (modules_.find(region.path) == modules_.end()) {
           int fd = open(region.path.c_str(), O_RDONLY | O_CLOEXEC);
           if (fd >= 0) {
-            modules_.insert(std::make_pair(region.path, fd));
+            modules_.emplace(region.path, fd);
           } else {
             LOG(WARNING) << "Failed to open file: " << region.path
                          << "\n  Error: " << strerror(errno);

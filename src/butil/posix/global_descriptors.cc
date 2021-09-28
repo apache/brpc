@@ -46,7 +46,7 @@ void GlobalDescriptors::Set(Key key, int fd) {
     }
   }
 
-  descriptors_.push_back(std::make_pair(key, fd));
+  descriptors_.emplace_back(key, fd);
 }
 
 void GlobalDescriptors::Reset(const Mapping& mapping) {

@@ -129,6 +129,7 @@ struct GlobalExtensions {
 #endif
     FileNamingService fns;
     ListNamingService lns;
+    DomainListNamingService dlns;
     DomainNamingService dns;
     DomainNamingService dns_with_ssl;
     RemoteFileNamingService rfns;
@@ -350,6 +351,7 @@ static void GlobalInitializeOrDieImpl() {
 #endif
     NamingServiceExtension()->RegisterOrDie("file", &g_ext->fns);
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
+    NamingServiceExtension()->RegisterOrDie("dlist", &g_ext->dlns);
     NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns_with_ssl);
     NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);

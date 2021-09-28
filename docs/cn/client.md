@@ -751,7 +751,7 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。
 
 注意：附件不会被压缩。
 
-http/h2 body的压缩方法见[client压缩request body](http_client#压缩request-body)。
+http/h2 body的压缩方法见[client压缩request body](http_client.md#压缩request-body)。
 
 支持的压缩方法有：
 

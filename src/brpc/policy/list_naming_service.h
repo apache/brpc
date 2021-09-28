@@ -20,6 +20,7 @@
 #define  BRPC_POLICY_LIST_NAMING_SERVICE
 
 #include "brpc/naming_service.h"
+#include "brpc/periodic_naming_service.h"
 
 
 namespace brpc {
@@ -40,6 +41,18 @@ private:
 
     NamingService* New() const override;
     
+    void Destroy() override;
+};
+
+class DomainListNamingService : public PeriodicNamingService {
+private:
+    int GetServers(const char* service_name,
+                   std::vector<ServerNode>* servers) override;
+    void Describe(std::ostream& os,
+                  const DescribeOptions& options) const override;
+
+    NamingService* New() const override;
+
     void Destroy() override;
 };
 
