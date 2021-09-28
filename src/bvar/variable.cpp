@@ -840,7 +840,7 @@ void set_name_normalization_func(name_normalization_func func_name) {
     g_name_normalization = func_name;
 }
             
-void no_name_normalization(std::string* name, const base::StringPiece& src) {
+void no_name_normalization(std::string* name, const butil::StringPiece& src) {
     src.AppendToString(name);
 }
 

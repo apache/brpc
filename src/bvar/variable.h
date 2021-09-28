@@ -229,9 +229,9 @@ private:
 //   HELLO           -> hello
 void to_underscored_name(std::string* out, const butil::StringPiece& name);
 // no normalization
-void no_name_normalization(std::string* out, const base::StringPiece& name);
+void no_name_normalization(std::string* out, const butil::StringPiece& name);
 // function pointer for user to customize other bvar name normalization functions
-typedef void (*name_normalization_func)(std::string* name, const base::StringPiece& src);
+typedef void (*name_normalization_func)(std::string* name, const butil::StringPiece& src);
 void set_name_normalization_func(name_normalization_func func_name);
 
 }  // namespace bvar
