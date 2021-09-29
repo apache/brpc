@@ -837,10 +837,12 @@ const bool ALLOW_UNUSED dummy_bvar_dump_tabs = ::GFLAGS_NS::RegisterFlagValidato
     &FLAGS_bvar_dump_tabs, wakeup_dumping_thread);
             
 void set_name_normalization_func(name_normalization_func func_name) {
-    g_name_normalization = func_name;
+    if (NULL != func_name) {
+        g_name_normalization = func_name;
+    }
 }
             
-void no_name_normalization(std::string* name, const butil::StringPiece& src) {
+void keep_the_original_name(std::string* name, const butil::StringPiece& src) {
     src.AppendToString(name);
 }
 
