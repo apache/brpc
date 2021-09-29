@@ -43,7 +43,10 @@ DEFINE_bool(quote_vector, true,
 
 DEFINE_bool(bvar_abort_on_same_name, false,
             "Abort when names of bvar are same");
-            
+
+// If you don't want to normalize your bvar name by this default function, we also 
+// provide a keep_the_original_name function, which you should set manually by:
+// set_name_normalization_func(keep_the_original_name);
 name_normalization_func g_name_normalization = to_underscored_name;
             
 // Remember abort request before bvar_abort_on_same_name is initialized.
