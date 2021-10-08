@@ -1485,7 +1485,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             }
         }
         SampledRequest* sample = AskToBeSampled();
-        if (sample) {
+        if (sample && !is_http2) {
             sample->meta.set_compress_type(COMPRESS_TYPE_NONE);
             sample->meta.set_protocol_type(PROTOCOL_HTTP);
             sample->meta.set_attachment_size(req_body.size());
