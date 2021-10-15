@@ -108,7 +108,7 @@ protected:
 };
 
 DECLARE_bool(show_lb_in_vars);
-DECLARE_bool(wlb_policy_degradation);
+DECLARE_int32(default_weight_of_wlb);
 
 // A intrusively shareable load balancer created from name.
 class SharedLoadBalancer : public SharedObject, public NonConstDescribable {

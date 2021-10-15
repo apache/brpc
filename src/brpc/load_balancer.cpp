@@ -24,7 +24,7 @@
 namespace brpc {
 
 DEFINE_bool(show_lb_in_vars, false, "Describe LoadBalancers in vars");
-DEFINE_bool(wlb_policy_degradation, false, "Weighted LoadBalancers policy degradation");
+DEFINE_int32(default_weight_of_wlb, 0, "Default weight of Weighted LoadBalancer");
 BRPC_VALIDATE_GFLAG(show_lb_in_vars, PassValidate);
 
 // For assigning unique names for lb.

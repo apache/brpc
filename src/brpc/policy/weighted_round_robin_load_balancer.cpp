@@ -79,10 +79,10 @@ bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
     }
     uint32_t weight = 0;
     if (!butil::StringToUint(id.tag, &weight) || weight <= 0) {
-        if (FLAGS_wlb_policy_degradation) {
+        if (FLAGS_default_weight_of_wlb > 0) {
             LOG(WARNING) << "Invalid weight is set: " << id.tag
                          << ". Now, 'weight' has been set to 1 by default.";
-            weight = 1;
+            weight = FLAGS_default_weight_of_wlb;
         } else {
             LOG(ERROR) << "Invalid weight is set: " << id.tag;
             return false;
