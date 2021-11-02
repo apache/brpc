@@ -37,7 +37,7 @@ sudo apt-get install -y libgoogle-perftools-dev
 
 If you need to run tests, install and compile libgtest-dev (which is not compiled yet):
 ```shell
-sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo env "PATH=$PATH" cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 ```
 The directory of gtest source code may be changed, try `/usr/src/googletest/googletest` if `/usr/src/gtest` is not there.
 
