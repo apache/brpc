@@ -885,24 +885,10 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode) {
     printf("----------test json to pb------------\n\n");
     
     std::string info3;
-    JsonContextBody data1;
-    json2pb::JsonToProtoMessage(info1, &data1, NULL); 
+    JsonContextBodyEncDec data1;
+    json2pb::JsonToProtoMessage(info1, &data1, NULL);
     json2pb::ProtoMessageToJson(data1, &info3, NULL);
-#ifndef RAPIDJSON_VERSION_0_1
-    ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
-                 "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
-                 "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
-                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
-                 info1.data());
-#else
-    ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
-                 "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
-                 "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
-                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
-                 info1.data());
-#endif
+    ASSERT_STREQ(info1.data(), info3.data());
 }
 
 TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
