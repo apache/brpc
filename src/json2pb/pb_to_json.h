@@ -64,6 +64,10 @@ struct Pb2JsonOptions {
     // int32 field set to 0 will be omitted. Set this flag to true will override
     // the default behavior and print primitive fields regardless of their values.
     bool always_print_primitive_fields;
+
+    // Convert the single repeated field to a json array when this option is turned on.
+    // Default: false.
+    bool single_repeated_to_array;
 };
 
 // Convert protobuf `messge' to `json' according to `options'.
