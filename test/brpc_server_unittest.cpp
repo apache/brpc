@@ -115,6 +115,16 @@ public:
         }
     }
 
+    virtual void ComboEcho(google::protobuf::RpcController*,
+                           const test::ComboRequest* request,
+                           test::ComboResponse* response,
+                           google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        for (int i = 0; i < request->requests_size(); ++i) {
+            response->add_responses()->set_message(request->requests(i).message());
+        }
+    }
+
     virtual void BytesEcho1(google::protobuf::RpcController*,
                             const test::BytesRequest* request,
                             test::BytesResponse* response,
@@ -1294,6 +1304,48 @@ TEST_F(ServerTest, base64_to_string) {
         chan.CallMethod(NULL, &cntl, &req, &res, NULL);
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(EXP_REQUEST, res.databytes());
+        server.Stop(0);
+        server.Join();
+    }
+}
+
+TEST_F(ServerTest, single_repeated_to_array) {
+    for (int i = 0; i < 2; ++i) {
+        brpc::Server server;
+        EchoServiceImpl echo_svc;
+        brpc::ServiceOptions service_opt;
+        service_opt.pb_single_repeated_to_array = (i == 0);
+
+        ASSERT_EQ(0, server.AddService(&echo_svc, service_opt));
+        ASSERT_EQ(0, server.Start(8613, NULL));
+
+        for (int j = 0; j < 2; ++j) {
+            brpc::Channel chan;
+            brpc::ChannelOptions opt;
+            opt.protocol = brpc::PROTOCOL_HTTP;
+            ASSERT_EQ(0, chan.Init("localhost:8613", &opt));
+            brpc::Controller cntl;
+            cntl.http_request().uri() = "/EchoService/ComboEcho";
+            cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+            cntl.http_request().set_content_type("application/json");
+            cntl.set_pb_single_repeated_to_array(j == 0);
+            test::ComboRequest req;
+            req.add_requests()->set_message("foo");
+            req.add_requests()->set_message("bar");
+
+            test::ComboResponse res;
+            chan.CallMethod(NULL, &cntl, &req, &res, NULL);
+            if (i == j) {
+                EXPECT_FALSE(cntl.Failed());
+                EXPECT_EQ(res.responses_size(), req.requests_size());
+                for (int k = 0; k < req.requests_size(); ++k) {
+                    EXPECT_EQ(req.requests(k).message(), res.responses(k).message());
+                }
+            } else {
+                EXPECT_TRUE(cntl.Failed());
+            }
+        }
+
         server.Stop(0);
         server.Join();
     }
