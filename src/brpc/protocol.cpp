@@ -139,7 +139,7 @@ void SerializeRequestDefault(butil::IOBuf* buf,
     }
     if (!SerializeAsCompressedData(*request, buf, cntl->request_compress_type())) {
         return cntl->SetFailed(
-            EREQUEST, "Fail to compress request, compress_tpye=%d",
+            EREQUEST, "Fail to compress request, compress_type=%d",
             (int)cntl->request_compress_type());
     }
 }
