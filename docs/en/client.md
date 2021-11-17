@@ -313,11 +313,11 @@ Because end of CallMethod does not mean completion of RPC, response/controller m
 
 You can new these objects individually and create done by [NewCallback](#use-newcallback), or make response/controller be member of done and [new them together](#Inherit-google::protobuf::Closure). Former one is recommended.
 
-The Request can be destroyed immediately after an asynchronous request is initiated. (SelectiveChannel is an exception, in the case of SelectiveChannel, the request object must be released after rpc finish)
+Request can be destroyed immediately after asynchronous CallMethod. (SelectiveChannel is an exception, in the case of SelectiveChannel, the request object must be released after rpc finish)
 
-After initiating an asynchronous request (after CallMethod), it is not recommended to destroy the Channel immediately. (Due to [a bug](https://github.com/apache/incubator-brpc/issues/658) in current brpc implementation, there is a small probability of crash if the Channel destruct before the asynchronous request finish.)
+Channel can be destroyed immediately after asynchronous CallMethod.
 
-In the process of initiating an asynchronous request (in the CallMethod process), the Channel cannot be destroyed, and deleting the Channel that is being used by another thread is an undefined behavior (it is likely to crash).
+Note that "immediately" means destruction of Request/Channel can happen **after** CallMethod, not during CallMethod. Deleting a Channel just being used by another thread results in undefined behavior (crash at best).
 
 ### Use NewCallback
 ```c++

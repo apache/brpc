@@ -313,9 +313,9 @@ if (cntl->Failed()) {
 
 发起异步请求后Request可以立刻析构。(SelectiveChannel是个例外，SelectiveChannel情况下必须在请求处理完成后再释放request对象）
 
-发起异步请求后(CallMethod之后），不建议立即析构Channel。（由于brpc当前实现的[一个bug](https://github.com/apache/incubator-brpc/issues/658)，在异步请求结束前析构Channel有小概率crash）
+发起异步请求后Channel可以立刻析构。
 
-发起异步请求过程中（CallMethod过程中），不能析构Channel，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
+注意:这是说Request/Channel的析构可以立刻发生在CallMethod**之后**，并不是说析构可以和CallMethod同时发生，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
 
 ### 使用NewCallback
 ```c++
