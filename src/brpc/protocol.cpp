@@ -116,7 +116,7 @@ void ListProtocols(std::vector<std::pair<ProtocolType, Protocol> >* vec) {
     ProtocolEntry* const protocol_map = get_protocol_map();
     for (size_t i = 0; i < MAX_PROTOCOL_SIZE; ++i) {
         if (protocol_map[i].valid.load(butil::memory_order_acquire)) {
-            vec->push_back(std::make_pair((ProtocolType)i, protocol_map[i].protocol));
+            vec->emplace_back((ProtocolType)i, protocol_map[i].protocol);
         }
     }
 }
@@ -139,7 +139,7 @@ void SerializeRequestDefault(butil::IOBuf* buf,
     }
     if (!SerializeAsCompressedData(*request, buf, cntl->request_compress_type())) {
         return cntl->SetFailed(
-            EREQUEST, "Fail to compress request, compress_tpye=%d",
+            EREQUEST, "Fail to compress request, compress_type=%d",
             (int)cntl->request_compress_type());
     }
 }

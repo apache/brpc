@@ -1660,7 +1660,7 @@ TEST_F(IOBufTest, append_user_data_and_share) {
 TEST_F(IOBufTest, share_tls_block) {
     butil::iobuf::remove_tls_block_chain();
     butil::IOBuf::Block* b = butil::iobuf::acquire_tls_block();
-    ASSERT_EQ(0, butil::iobuf::block_size(b));
+    ASSERT_EQ(0u, butil::iobuf::block_size(b));
 
     butil::IOBuf::Block* b2 = butil::iobuf::share_tls_block();
     butil::IOBuf buf;
@@ -1677,7 +1677,7 @@ TEST_F(IOBufTest, share_tls_block) {
     }
     // now tls block is b(full) -> b2(full) -> NULL
     butil::IOBuf::Block* head_block = butil::iobuf::share_tls_block();
-    ASSERT_EQ(0, butil::iobuf::block_size(head_block));
+    ASSERT_EQ(0u, butil::iobuf::block_size(head_block));
     ASSERT_NE(b, head_block);
     ASSERT_NE(b2, head_block);
 }

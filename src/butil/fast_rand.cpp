@@ -178,4 +178,19 @@ void fast_rand_bytes(void* output, size_t output_length) {
     }
 }
 
+std::string fast_rand_printable(size_t length) {
+    std::string result(length, 0);
+    const size_t halflen = length/2;
+    fast_rand_bytes(&result[0], halflen);
+    for (size_t i = 0; i < halflen; ++i) {
+        const uint8_t b = result[halflen - 1 - i];
+        result[length - 1 - 2*i] = 'A' + (b & 0xF);
+        result[length - 2 - 2*i] = 'A' + (b >> 4);
+    }
+    if (halflen * 2 != length) {
+        result[0] = 'A' + (fast_rand() % 16);
+    }
+    return result;
+}
+
 }  // namespace butil

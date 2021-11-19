@@ -107,23 +107,23 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 include_directories(${LEVELDB_INCLUDE_PATH})
 
-find_library(SSL_LIB NAMES ssl)
-if (NOT SSL_LIB)
-    message(FATAL_ERROR "Fail to find ssl")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(OPENSSL_ROOT_DIR
+        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
+        )
 endif()
 
-find_library(CRYPTO_LIB NAMES crypto)
-if (NOT CRYPTO_LIB)
-    message(FATAL_ERROR "Fail to find crypto")
-endif()
+find_package(OpenSSL)
+include_directories(${OPENSSL_INCLUDE_DIR})
+
 
 set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB}
-    ${SSL_LIB}
-    ${CRYPTO_LIB}
+    ${OPENSSL_CRYPTO_LIBRARY}
+    ${OPENSSL_SSL_LIBRARY}
     ${THRIFT_LIB}
     ${THRIFTNB_LIB}
     dl
@@ -143,8 +143,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_ProfilerStop")
 endif()
 
-add_executable(multi_threaded_echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
-add_executable(multi_threaded_echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
+add_executable(echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
+add_executable(echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
-target_link_libraries(multi_threaded_echo_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-target_link_libraries(multi_threaded_echo_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+target_link_libraries(echo_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+target_link_libraries(echo_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+
+file(COPY ${PROJECT_SOURCE_DIR}/key.pem
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${PROJECT_SOURCE_DIR}/cert.pem
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

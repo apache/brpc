@@ -135,6 +135,7 @@ TEST(FutexTest, futex_wake_many_waiters_perf) {
     printf("N=%lu, futex_wake a thread = %" PRId64 "ns\n", N, tm.n_elapsed() / N);
     ASSERT_EQ(N, (size_t)nwakeup);
 
+    sleep(2);
     const size_t REP = 10000;
     nwakeup = 0;
     tm.start();

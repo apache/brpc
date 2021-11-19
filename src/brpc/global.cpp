@@ -43,6 +43,7 @@
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
+#include "brpc/policy/weighted_randomized_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
@@ -128,6 +129,7 @@ struct GlobalExtensions {
 #endif
     FileNamingService fns;
     ListNamingService lns;
+    DomainListNamingService dlns;
     DomainNamingService dns;
     DomainNamingService dns_with_ssl;
     RemoteFileNamingService rfns;
@@ -137,6 +139,7 @@ struct GlobalExtensions {
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
     RandomizedLoadBalancer randomized_lb;
+    WeightedRandomizedLoadBalancer wr_lb;
     LocalityAwareLoadBalancer la_lb;
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
@@ -348,6 +351,7 @@ static void GlobalInitializeOrDieImpl() {
 #endif
     NamingServiceExtension()->RegisterOrDie("file", &g_ext->fns);
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
+    NamingServiceExtension()->RegisterOrDie("dlist", &g_ext->dlns);
     NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns_with_ssl);
     NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
@@ -359,6 +363,7 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
     LoadBalancerExtension()->RegisterOrDie("wrr", &g_ext->wrr_lb);
     LoadBalancerExtension()->RegisterOrDie("random", &g_ext->randomized_lb);
+    LoadBalancerExtension()->RegisterOrDie("wr", &g_ext->wr_lb);
     LoadBalancerExtension()->RegisterOrDie("la", &g_ext->la_lb);
     LoadBalancerExtension()->RegisterOrDie("c_murmurhash", &g_ext->ch_mh_lb);
     LoadBalancerExtension()->RegisterOrDie("c_md5", &g_ext->ch_md5_lb);

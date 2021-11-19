@@ -282,7 +282,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
         // falls into infinite loop. This branch should never be entered in
         // production servers. If it does, there must be a bug.
         if (++nloop > 10000) {
-            LOG(FATAL) << "A selection runs too long!";
+            LOG(ERROR) << "A selection runs too long!";
             return EHOSTDOWN;
         }
         

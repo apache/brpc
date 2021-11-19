@@ -164,7 +164,7 @@ struct PipelinedInfo {
 struct SocketSSLContext {
     SocketSSLContext();
     ~SocketSSLContext();
-    
+
     SSL_CTX* raw_ctx;           // owned
     std::string sni_name;       // useful for clients
 };
@@ -174,7 +174,7 @@ struct SocketOptions {
     SocketOptions();
 
     // If `fd' is non-negative, set `fd' to be non-blocking and take the
-    // ownership. Socket will close the fd(if needed) and call 
+    // ownership. Socket will close the fd(if needed) and call
     // user->BeforeRecycle() before recycling.
     int fd;
     butil::EndPoint remote_side;
@@ -230,7 +230,7 @@ public:
     // message is written once directly in the calling thread. If the message
     // is not completely written, a KeepWrite thread is created to continue
     // the writing. When other threads want to write simultaneously (thread
-    // contention), they append WriteRequests to the KeepWrite thread in a 
+    // contention), they append WriteRequests to the KeepWrite thread in a
     // wait-free manner rather than writing to the file descriptor directly.
     // KeepWrite will not quit until all WriteRequests are complete.
     // Key properties:
@@ -247,7 +247,7 @@ public:
         // remote_side() regarding deadline `abstime'. NULL means no timeout.
         // Default: NULL
         const timespec* abstime;
-        
+
         // Will be queued to implement positional correspondence with responses
         // Default: 0
         uint32_t pipelined_count;
@@ -257,7 +257,7 @@ public:
         // responded by the server and processed specially when dealing
         // with the response.
         bool with_auth;
-        
+
         // Do not return EOVERCROWDED
         // Default: false
         bool ignore_eovercrowded;
@@ -268,7 +268,7 @@ public:
             , ignore_eovercrowded(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
-    
+
     // Write an user-defined message. `msg' is released when Write() is
     // successful and *may* remain unchanged otherwise.
     int Write(SocketMessagePtr<>& msg, const WriteOptions* options = NULL);
@@ -319,7 +319,7 @@ public:
     // Place the Socket associated with identifier `id' into unique_ptr `ptr',
     // which will be released automatically when out of scope (w/o explicit
     // std::move). User can still access `ptr' after calling ptr->SetFailed()
-    // before release of `ptr'. 
+    // before release of `ptr'.
     // This function is wait-free.
     // Returns 0 on success, -1 when the Socket was SetFailed().
     static int Address(SocketId id, SocketUniquePtr* ptr);
@@ -419,7 +419,7 @@ public:
 
     void set_preferred_index(int index) { _preferred_index = index; }
     int preferred_index() const { return _preferred_index; }
-    
+
     void set_type_of_service(int tos) { _tos = tos; }
 
     // Call this method every second (roughly)
@@ -435,11 +435,11 @@ public:
     // Postpone EOF event until `CheckEOF' has been called
     void PostponeEOF();
     void CheckEOF();
-    
+
     SSLState ssl_state() const { return _ssl_state; }
     bool is_ssl() const { return ssl_state() == SSL_CONNECTED; }
     X509* GetPeerCertificate() const;
-    
+
     // Print debugging inforamtion of `id' into the ostream.
     static void DebugSocket(std::ostream&, SocketId id);
 
@@ -550,7 +550,7 @@ friend void DereferenceSocket(Socket*);
     // SSLState is SSL_UNKNOWN, try to detect at first), read data
     // using the corresponding method into `_read_buf'. Returns read
     // bytes on success, 0 on EOF, -1 otherwise and errno is set
-    ssize_t DoRead(size_t size_hint);  
+    ssize_t DoRead(size_t size_hint);
 
     // Based upon whether the underlying channel is using SSL, write
     // `req' using the corresponding method. Returns written bytes on
@@ -583,7 +583,7 @@ friend void DereferenceSocket(Socket*);
     //   1  - Trying to establish connection
     //   -1 - Failed to connect to remote side
     int ConnectIfNot(const timespec* abstime, WriteRequest* req);
-    
+
     int ResetFileDescriptor(int fd);
 
     // Wait until nref hits `expected_nref' and reset some internal resources.
@@ -649,7 +649,7 @@ friend void DereferenceSocket(Socket*);
     SharedPart* GetOrNewSharedPartSlower();
 
     void CheckEOFInternal();
-    
+
     // _error_code is set after a socket becomes failed, during the time
     // gap, _error_code is 0. The race condition is by-design and acceptable.
     // To always get a non-zero error_code, readers should call this method
@@ -680,15 +680,14 @@ private:
 
     // [ Set in dispatcher ]
     // To keep the callback in at most one bthread at any time. Read comments
-    // of EventDispatcher::ProcessEvent in event_dispatcher.cpp to
-    // understand the tricks.
+    // about ProcessEvent in socket.cpp to understand the tricks.
     butil::atomic<int> _nevent;
 
     // May be set by Acceptor to share keytables between reading threads
     // on sockets created by the Acceptor.
     bthread_keytable_pool_t* _keytable_pool;
-    
-    // [ Set in ResetFileDescriptor ] 
+
+    // [ Set in ResetFileDescriptor ]
     butil::atomic<int> _fd;  // -1 when not connected.
     int _tos;                // Type of service which is actually only 8bits.
     int64_t _reset_fd_real_us; // When _fd was reset, in microseconds.
@@ -698,7 +697,7 @@ private:
 
     // Address of self. Initialized in ResetFileDescriptor().
     butil::EndPoint _local_side;
-        
+
     // Called when edge-triggered events happened on `_fd'. Read comments
     // of EventDispatcher::AddConsumer (event_dispatcher.h)
     // carefully before implementing the callback.
@@ -717,7 +716,7 @@ private:
 
     // Identifier of this Socket in ResourcePool
     SocketId _this_id;
-    
+
     // last chosen index of the protocol as a heuristic value to avoid
     // iterating all protocol handlers each time.
     int _preferred_index;
@@ -754,8 +753,8 @@ private:
     // 1-bit flag to ensure `SetEOF' to be called only once
     // 31-bit counter of requests that are currently being processed
     butil::atomic<uint32_t> _ninprocess;
-    
-    // +---32 bit---+---32 bit---+ 
+
+    // +---32 bit---+---32 bit---+
     // |  auth flag | auth error |
     // +------------+------------+
     // Meanings of `auth flag':
@@ -808,7 +807,7 @@ private:
     butil::atomic<int64_t> _last_writetime_us;
     // Queued but written
     butil::atomic<int64_t> _unwritten_bytes;
-    
+
     // Butex to wait for EPOLLOUT event
     butil::atomic<int>* _epollout_butex;
 

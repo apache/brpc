@@ -26,8 +26,9 @@
 #include <brpc/server.h>
 #include "echo.pb.h"
 #include <bvar/bvar.h>
+#include <butil/fast_rand.h>
 
-DEFINE_int32(thread_num, 4, "Number of threads to send requests");
+DEFINE_int32(thread_num, 2, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");
 DEFINE_string(attachment, "foo", "Carry this along with requests");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
@@ -38,7 +39,7 @@ DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_int32(depth, 0, "number of loop calls");
 // Don't send too frequently in this example
-DEFINE_int32(sleep_ms, 100, "milliseconds to sleep after each RPC");
+DEFINE_int32(sleep_ms, 1000, "milliseconds to sleep after each RPC");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 
 bvar::LatencyRecorder g_latency_recorder("client");
@@ -50,7 +51,6 @@ void* sender(void* arg) {
     example::EchoService_Stub stub(chan);
 
     // Send a request and wait for the response every 1 second.
-    int log_id = 0;
     while (!brpc::IsAskedToQuit()) {
         // We will receive response synchronously, safe to put variables
         // on stack.
@@ -63,7 +63,9 @@ void* sender(void* arg) {
             request.set_depth(FLAGS_depth);
         }
 
-        cntl.set_log_id(log_id ++);  // set by user
+        // Set request_id to be a random string
+        cntl.set_request_id(butil::fast_rand_printable(9));
+
         // Set attachment which is wired to network directly instead of 
         // being serialized into protobuf messages.
         cntl.request_attachment().append(FLAGS_attachment);

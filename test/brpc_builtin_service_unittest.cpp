@@ -663,15 +663,15 @@ TEST_F(BuiltinServiceTest, pprof) {
         ClosureChecker done;
         brpc::Controller cntl;
         service.heap(&cntl, NULL, NULL, &done);
-        const int rc = getenv("TCMALLOC_SAMPLE_PARAMETER") ? 0 : brpc::ENOMETHOD;
-        EXPECT_EQ(rc, cntl.ErrorCode());
+        const int rc = getenv("TCMALLOC_SAMPLE_PARAMETER") != nullptr ? 0 : brpc::ENOMETHOD;
+        EXPECT_EQ(rc, cntl.ErrorCode()) << cntl.ErrorText();
     }
     {
         ClosureChecker done;
         brpc::Controller cntl;
         service.growth(&cntl, NULL, NULL, &done);
         // linked tcmalloc in UT
-        EXPECT_EQ(0, cntl.ErrorCode());
+        EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
     }
     {
         ClosureChecker done;

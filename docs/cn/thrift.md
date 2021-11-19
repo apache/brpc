@@ -18,7 +18,7 @@ brpc默认不启用thrift支持也不需要thrift依赖。但如果需用thrift�
 Linux下安装thrift依赖
 先参考[官方wiki](https://thrift.apache.org/docs/install/debian)安装好必备的依赖和工具，然后从[官网](https://thrift.apache.org/download)下载thrift源代码，解压编译。
 ```bash
-wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
+wget http://www.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
 tar -xf thrift-0.11.0.tar.gz
 cd thrift-0.11.0/
 ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no
@@ -33,7 +33,7 @@ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
 # Fedora/CentOS
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64 --with-thrift
 # Or use cmake
-mkdir bld && cd bld && cmake ../ -DWITH_THRIFT=1
+mkdir build && cd build && cmake ../ -DWITH_THRIFT=1
 ```
 更多编译选项请阅读[Getting Started](../cn/getting_started.md)。
 

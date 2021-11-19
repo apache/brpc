@@ -239,6 +239,70 @@ TEST(StringUtilTest, SplitString) {
   r.clear();
 }
 
+TEST(StringUtilTest, SplitStringStringPiece) {
+  std::vector<butil::StringPiece> r;
+
+  SplitString(butil::StringPiece(), ',', &r);
+  EXPECT_EQ(0U, r.size());
+  r.clear();
+
+  SplitString(butil::StringPiece("a,b,c"), ',', &r);
+  ASSERT_EQ(3U, r.size());
+  EXPECT_EQ(r[0], "a");
+  EXPECT_EQ(r[1], "b");
+  EXPECT_EQ(r[2], "c");
+  r.clear();
+
+  SplitString(butil::StringPiece("a, b, c"), ',', &r);
+  ASSERT_EQ(3U, r.size());
+  EXPECT_EQ(r[0], "a");
+  EXPECT_EQ(r[1], "b");
+  EXPECT_EQ(r[2], "c");
+  r.clear();
+
+  SplitString(butil::StringPiece("a,,c"), ',', &r);
+  ASSERT_EQ(3U, r.size());
+  EXPECT_EQ(r[0], "a");
+  EXPECT_EQ(r[1], "");
+  EXPECT_EQ(r[2], "c");
+  r.clear();
+
+  SplitString(butil::StringPiece("   "), '*', &r);
+  EXPECT_EQ(0U, r.size());
+  r.clear();
+
+  SplitString(butil::StringPiece("foo"), '*', &r);
+  ASSERT_EQ(1U, r.size());
+  EXPECT_EQ(r[0], "foo");
+  r.clear();
+
+  SplitString(butil::StringPiece("foo ,"), ',', &r);
+  ASSERT_EQ(2U, r.size());
+  EXPECT_EQ(r[0], "foo");
+  EXPECT_EQ(r[1], "");
+  r.clear();
+
+  SplitString(butil::StringPiece(","), ',', &r);
+  ASSERT_EQ(2U, r.size());
+  EXPECT_EQ(r[0], "");
+  EXPECT_EQ(r[1], "");
+  r.clear();
+
+  SplitString(butil::StringPiece("\t\ta\t"), '\t', &r);
+  ASSERT_EQ(4U, r.size());
+  EXPECT_EQ(r[0], "");
+  EXPECT_EQ(r[1], "");
+  EXPECT_EQ(r[2], "a");
+  EXPECT_EQ(r[3], "");
+  r.clear();
+
+  SplitString(butil::StringPiece("\ta\t\nb\tcc"), '\n', &r);
+  ASSERT_EQ(2U, r.size());
+  EXPECT_EQ(r[0], "a");
+  EXPECT_EQ(r[1], "b\tcc");
+  r.clear();
+}
+
 TEST(SplitStringUsingSubstrTest, StringWithNoDelimiter) {
   std::vector<std::string> results;
   SplitStringUsingSubstr("alongwordwithnodelimiter", "DELIMITER", &results);

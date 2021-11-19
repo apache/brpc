@@ -23,6 +23,7 @@
 // on internal structures, use opaque pointers instead.
 
 #include <gflags/gflags.h>                     // Users often need gflags
+#include <string>
 #include "butil/intrusive_ptr.hpp"             // butil::intrusive_ptr
 #include "bthread/errno.h"                     // Redefine errno
 #include "butil/endpoint.h"                    // butil::EndPoint
@@ -43,6 +44,7 @@
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
 #include "brpc/grpc.h"
+#include "brpc/kvmap.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -141,9 +143,22 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_ENABLED_CIRCUIT_BREAKER = (1 << 17);
     static const uint32_t FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS = (1 << 18);
     static const uint32_t FLAGS_HEALTH_CHECK_CALL = (1 << 19);
-    
+
+public:
+    struct Inheritable {
+        Inheritable() : log_id(0) {}
+        void Reset() {
+            log_id = 0;
+            request_id.clear();
+        }
+
+        uint64_t log_id;
+        std::string request_id;
+    };
+
 public:
     Controller();
+    Controller(const Inheritable& parent_ctx);
     ~Controller();
     
     // ------------------------------------------------------------------
@@ -198,6 +213,8 @@ public:
     // throughout baidu's servers to tag a searching session (a series of
     // queries following the topology of servers) with a same log_id.
     void set_log_id(uint64_t log_id);
+
+    void set_request_id(std::string request_id) { _inheritable.request_id = request_id; }
 
     // Set type of service: http://en.wikipedia.org/wiki/Type_of_service
     // Current implementation has limits: If the connection is already
@@ -469,8 +486,10 @@ public:
     int ErrorCode() const { return _error_code; }
 
     // Getters:
+    const Inheritable& inheritable() { return _inheritable; }
     bool has_log_id() const { return has_flag(FLAGS_LOG_ID); }
-    uint64_t log_id() const { return _log_id; }
+    uint64_t log_id() const { return _inheritable.log_id; }
+    const std::string& request_id() const { return _inheritable.request_id; }
     CompressType request_compress_type() const { return _request_compress_type; }
     CompressType response_compress_type() const { return _response_compress_type; }
     const HttpHeader& http_request() const 
@@ -481,6 +500,24 @@ public:
 
     const butil::IOBuf& request_attachment() const { return _request_attachment; }
     const butil::IOBuf& response_attachment() const { return _response_attachment; }
+
+    // Get the object to write key/value which will be flushed into
+    // LOG(INFO) when this controller is deleted.
+    KVMap& SessionKV();
+    
+    // Flush SessionKV() into `os'
+    void FlushSessionKV(std::ostream& os);
+
+    // Contextual prefixes for LOGD/LOGI/LOGW/LOGE/LOGF macros
+    class LogPrefixDummy {
+    public:
+        LogPrefixDummy(const Controller* cntl) : _cntl(cntl) {}
+        void DoPrintLogPrefix(std::ostream& os) const { _cntl->DoPrintLogPrefix(os); }
+    private:
+        const Controller* _cntl;
+    };
+    friend class LogPrefixDummy;
+    LogPrefixDummy LogPrefix() const { return LogPrefixDummy(this); }
 
     // Return true if the remote side creates a stream.
     bool has_remote_stream() { return _remote_stream_settings != NULL; }
@@ -660,6 +697,8 @@ private:
     std::string& protocol_param() { return _thrift_method_name; }
     const std::string& protocol_param() const { return _thrift_method_name; }
 
+    void DoPrintLogPrefix(std::ostream& os) const;
+
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
@@ -710,7 +749,7 @@ private:
     int _preferred_index;
     CompressType _request_compress_type;
     CompressType _response_compress_type;
-    uint64_t _log_id;
+    Inheritable _inheritable;
     int _pchan_sub_count;
     google::protobuf::Message* _response;
     google::protobuf::Closure* _done;
@@ -738,6 +777,8 @@ private:
 
     HttpHeader* _http_request;
     HttpHeader* _http_response;
+
+    std::unique_ptr<KVMap> _session_kv;
 
     // Fields with large size but low access frequency 
     butil::IOBuf _request_attachment;
@@ -787,7 +828,28 @@ bool IsAskedToQuit();
 // Send Ctrl-C to current process.
 void AskToQuit();
 
+std::ostream& operator<<(std::ostream& os, const Controller::LogPrefixDummy& p);
+
 } // namespace brpc
 
+// Print contextual logs prefixed with "@rid=REQUEST_ID" which marks a session
+// and eases debugging. The REQUEST_ID is carried in http/rpc request or 
+// inherited from another controller.
+// As a server:
+//   Call CLOG*(cntl) << ... to log instead of LOG(*) << ..
+// As a client:
+//   Inside a service:
+//     Use Controller(service_cntl->inheritable()) to create controllers which 
+//     inherit session info from the service's requests
+//   Standalone brpc client:
+//     Set cntl->set_request_id(REQUEST_ID);
+//   Standalone http client:
+//     Set header 'X-REQUEST-ID'
+#define CLOGD(cntl) LOG(DEBUG) << (cntl)->LogPrefix()
+#define CLOGI(cntl) LOG(INFO) << (cntl)->LogPrefix()
+#define CLOGW(cntl) LOG(WARNING) << (cntl)->LogPrefix()
+#define CLOGE(cntl) LOG(ERROR) << (cntl)->LogPrefix()
+#define CLOGF(cntl) LOG(FATAL) << (cntl)->LogPrefix()
+#define CVLOG(v, cntl) VLOG(v) << (cntl)->LogPrefix()
 
 #endif  // BRPC_CONTROLLER_H

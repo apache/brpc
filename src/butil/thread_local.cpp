@@ -47,7 +47,7 @@ public:
             if (_fns.capacity() < 16) {
                 _fns.reserve(16);
             }
-            _fns.push_back(std::make_pair(fn, arg));
+            _fns.emplace_back(fn, arg);
         } catch (...) {
             errno = ENOMEM;
             return -1;

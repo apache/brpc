@@ -55,7 +55,7 @@ iobuf_newbigview_second : 10
 ```
 
 # 监控bvar
-打开bvar的[dump功能](bvar_c++.md#export-all-variables)以导出所有的bvar到文件，格式就入上文一样，每行是一对"名字:值"。打开dump功能后应检查monitor/目录下是否有数据，比如：
+打开bvar的[dump功能](bvar_c++.md#export-all-variables)以导出所有的bvar到文件，格式就如上文一样，每行是一对"名字:值"。打开dump功能后应检查monitor/目录下是否有数据，比如：
 
 ```
 $ ls monitor/

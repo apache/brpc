@@ -476,7 +476,7 @@ src/butil/third_party/valgrind/valgrind.h: licensed under the following terms:
 
 --------------------------------------------------------------------------------
 
-src/butil/crc32c.h, src/butil/crc32c.cc: licensed under the following terms:
+src/butil/crc32c.h, src/butil/crc32c.cc, test/crc32c_unittest.cc: licensed under the following terms:
 
   Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
   This source code is licensed under the BSD-style license found in the
@@ -663,7 +663,7 @@ src/brpc/ts.cpp: licensed under the following terms:
 
 --------------------------------------------------------------------------------
 
-src/brpc/builtin/pprof_perl.cpp: licensed under the following terms:
+src/brpc/builtin/pprof_perl.cpp, tools/pprof: licensed under the following terms:
 
  Copyright (c) 1998-2007, Google Inc.
  All rights reserved.
@@ -720,33 +720,6 @@ src/brpc/builtin/pprof_perl.cpp: licensed under the following terms:
  The views and conclusions contained in the software and documentation are those of the
  authors and should not be interpreted as representing official policies, either expressed
  or implied, of Andrea Leofreddi.
-
---------------------------------------------------------------------------------
-
-src/brpc/builtin/flamegraph_perl.cpp: licensed under the following terms:
-
- Copyright 2016 Netflix, Inc.
- Copyright 2011 Joyent, Inc.  All rights reserved.
- Copyright 2011 Brendan Gregg.  All rights reserved.
-
- CDDL HEADER START
-
- The contents of this file are subject to the terms of the
- Common Development and Distribution License (the "License").
- You may not use this file except in compliance with the License.
-
- You can obtain a copy of the license at docs/cddl1.txt or
- http://opensource.org/licenses/CDDL-1.0.
- See the License for the specific language governing permissions
- and limitations under the License.
-
- When distributing Covered Code, include this CDDL HEADER in each
- file and include the License file at docs/cddl1.txt.
- If applicable, add the following below this CDDL HEADER, with the
- fields enclosed by brackets "[]" replaced with your own identifying
- information: Portions Copyright [yyyy] [name of copyright owner]
-
- CDDL HEADER END
 
 --------------------------------------------------------------------------------
 

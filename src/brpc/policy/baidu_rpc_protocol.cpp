@@ -228,10 +228,12 @@ void SendRpcResponse(int64_t correlation_id,
     if (span) {
         span->set_response_size(res_buf.size());
     }
-    if (stream_ptr) {
-        CHECK(accessor.remote_stream_settings() != NULL);
+    // Send rpc response over stream even if server side failed to create
+    // stream for some reasons.
+    if(cntl->has_remote_stream()){
         // Send the response over stream to notify that this stream connection
         // is successfully built.
+        // Response_stream can be INVALID_STREAM_ID when error occurs.
         if (SendStreamData(sock, &res_buf,
                            accessor.remote_stream_settings()->stream_id(),
                            accessor.response_stream()) != 0) {
@@ -239,13 +241,18 @@ void SendRpcResponse(int64_t correlation_id,
             PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
             cntl->SetFailed(errcode, "Fail to write into %s",
                             sock->description().c_str());
-            ((Stream*)stream_ptr->conn())->Close();
+            if(stream_ptr) {
+                ((Stream*)stream_ptr->conn())->Close();
+            }
             return;
         }
-        // Now it's ok the mark this server-side stream as connectted as all the
-        // written user data would follower the RPC response.
-        ((Stream*)stream_ptr->conn())->SetConnected();
-    } else {
+
+        if(stream_ptr) {
+            // Now it's ok the mark this server-side stream as connectted as all the
+            // written user data would follower the RPC response.
+            ((Stream*)stream_ptr->conn())->SetConnected();
+        }
+    } else{
         // Have the risk of unlimited pending responses, in which case, tell
         // users to set max_concurrency.
         Socket::WriteOptions wopt;
@@ -342,6 +349,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                                socket->user() == server_accessor.acceptor();
     if (request_meta.has_log_id()) {
         cntl->set_log_id(request_meta.log_id());
+    }
+    if (request_meta.has_request_id()) {
+        cntl->set_request_id(request_meta.request_id());
     }
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     accessor.set_server(server)
@@ -449,18 +459,18 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (span) {
             span->ResetServerSpanName(method->full_name());
         }
-        const int reqsize = static_cast<int>(msg->payload.size());
+        const int req_size = static_cast<int>(msg->payload.size());
         butil::IOBuf req_buf;
         butil::IOBuf* req_buf_ptr = &msg->payload;
         if (meta.has_attachment_size()) {
-            if (reqsize < meta.attachment_size()) {
+            if (req_size < meta.attachment_size()) {
                 cntl->SetFailed(EREQUEST,
                     "attachment_size=%d is larger than request_size=%d",
-                     meta.attachment_size(), reqsize);
+                     meta.attachment_size(), req_size);
                 break;
             }
-            int att_size = reqsize - meta.attachment_size();
-            msg->payload.cutn(&req_buf, att_size);
+            int body_without_attachment_size = req_size - meta.attachment_size();
+            msg->payload.cutn(&req_buf, body_without_attachment_size);
             req_buf_ptr = &req_buf;
             cntl->request_attachment().swap(msg->payload);
         }
@@ -470,7 +480,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (!ParseFromCompressedData(*req_buf_ptr, req.get(), req_cmp_type)) {
             cntl->SetFailed(EREQUEST, "Fail to parse request message, "
                             "CompressType=%s, request_size=%d", 
-                            CompressTypeToCStr(req_cmp_type), reqsize);
+                            CompressTypeToCStr(req_cmp_type), req_size);
             break;
         }
         
@@ -549,18 +559,21 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
 
     const bthread_id_t cid = { static_cast<uint64_t>(meta.correlation_id()) };
     Controller* cntl = NULL;
+
+    StreamId remote_stream_id = meta.has_stream_settings() ? meta.stream_settings().stream_id(): INVALID_STREAM_ID;
+
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
-        if (meta.has_stream_settings()) {
+        if (remote_stream_id != INVALID_STREAM_ID) {
             SendStreamRst(msg->socket(), meta.stream_settings().stream_id());
         }
         return;
     }
     
     ControllerPrivateAccessor accessor(cntl);
-    if (meta.has_stream_settings()) {
+    if (remote_stream_id != INVALID_STREAM_ID) {
         accessor.set_remote_stream_settings(
                 new StreamSettings(meta.stream_settings()));
     }
@@ -592,8 +605,8 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                     meta.attachment_size(), res_size);
                 break;
             }
-            int att_size = res_size - meta.attachment_size();
-            msg->payload.cutn(&res_buf, att_size);
+            int body_without_attachment_size = res_size - meta.attachment_size();
+            msg->payload.cutn(&res_buf, body_without_attachment_size);
             res_buf_ptr = &res_buf;
             cntl->response_attachment().swap(msg->payload);
         }
@@ -647,6 +660,9 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     }
     if (cntl->has_log_id()) {
         request_meta->set_log_id(cntl->log_id());
+    }
+    if (!cntl->request_id().empty()) {
+        request_meta->set_request_id(cntl->request_id());
     }
     meta.set_correlation_id(correlation_id);
     StreamId request_stream_id = accessor.request_stream();
