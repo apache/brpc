@@ -45,16 +45,20 @@ foo::bar::g_task_pushed << 1;
 注意Window<>和PerSecond<>都是衍生变量，会自动更新，你不用给它们推值。你当然也可以把bvar作为成员变量或局部变量。
 
 常用的bvar有：
-
-- `bvar::Adder<T>` : 计数器，默认0，varname << N相当于varname += N。
-- `bvar::Maxer<T>` : 求最大值，默认std::numeric_limits<T>::min()，varname << N相当于varname = max(varname, N)。
-- `bvar::Miner<T>` : 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N)。
-- `bvar::IntRecorder` : 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值。
-- `bvar::Window<VAR>` : 获得某个bvar在一段时间内的累加值。Window衍生于已存在的bvar，会自动更新。
-- `bvar::PerSecond<VAR>` : 获得某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量。
-- `bvar::WindowEx<T>` : 获得某个bvar在一段时间内的累加值。不依赖其他的bvar，需要给它发送数据。
-- `bvar::PerSecondEx<T>` : 获得某个bvar在一段时间内平均每秒的累加值。不依赖其他的bvar，需要给它发送数据。
-- `bvar::LatencyRecorder` : 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。
+| 类型 | 说明 |
+|-----------------|-----------------------------------------------------------------------------------------|
+| bvar::Adder\<T\>| 计数器，默认0，varname << N相当于varname += N |
+| bvar::Maxer\<T\> | 求最大值，默认std::numeric_limits<T>::min()，varname << N相当于varname = max(varname, N) |
+| bvar::Miner\<T\>| 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N) |
+| bvar::IntRecorder| 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值      |
+| bvar::Window\<VAR\>| 获得某个bvar在一段时间内的累加值。Window衍生于已存在的bvar，会自动更新 |
+| bvar::PerSecond\<VAR\>| 获得某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量 |
+| bvar::WindowEx\<T\> | 获得某个bvar在一段时间内的累加值。不依赖其他的bvar，需要给它发送数据 |
+| bvar::PerSecondEx\<T\>|  获得某个bvar在一段时间内平均每秒的累加值。不依赖其他的bvar，需要给它发送数据 |
+| bvar::LatencyRecorder| 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了 |
+| bvar::Status\<T\> | 记录和显示一个值，拥有额外的set_value函数 |
+| bvar::PassiveStatus | 按需显示值。在一些场合中，我们无法set_value或不知道以何种频率set_value，更适合的方式也许是当需要显示时才打印。用户传入打印回调函数实现这个目的 |
+| bvar::GFlag | 将重要的gflags公开为bvar，以便监控它们 |
 
 **确认变量名是全局唯一的！** 否则会曝光失败，如果-bvar_abort_on_same_name为true，程序会直接abort。
 
@@ -499,6 +503,7 @@ double avg_double = avg_stat.get_average_double();
 ```
 
 ## bvar::WindowEx和bvar::Window的区别
+
 bvar::Window 不能独立存在，必须依赖于一个已有的计数器。Window会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
 
 bvar::WindowEx 是独立存在的，不依赖其他的计数器，需要给它发送数据。使用起来比较方便；window_size是通过模板参数传递的，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
@@ -532,6 +537,7 @@ public:
 ```
 
 ## 如何使用
+
 ```c++
 const int window_size = 60;
  
@@ -551,8 +557,8 @@ bvar::PerSecondEx 是独立存在的，不依赖其他的计数器，需要给�
 # bvar::Status
 
 记录和显示一个值，拥有额外的set_value函数。
-```c++
 
+```c++
 // Display a rarely or periodically updated value.
 // Usage:
 //   bvar::Status<int> foo_count1(17);
@@ -590,7 +596,6 @@ class PassiveStatus : public Variable;
 ```
 虽然很简单，但PassiveStatus是最有用的bvar之一，因为很多统计量已经存在，我们不需要再次存储它们，而只要按需获取。比如下面的代码声明了一个在linux下显示进程用户名的bvar：
 ```c++
-
 static void get_username(std::ostream& os, void*) {
     char buf[32];
     if (getlogin_r(buf, sizeof(buf)) == 0) {
@@ -604,12 +609,11 @@ PassiveStatus<std::string> g_username("process_username", get_username, NULL);
 ```
 
 # bvar::GFlag
-
 Expose important gflags as bvar so that they're monitored (in noah).
 ```c++
 DEFINE_int32(my_flag_that_matters, 8, "...");
 
-// Expose the gflag as *same-named* bvar so that it's monitored (in noah).
+// Expose the gflag as *same-named* bvar so that it's monitored.
 static bvar::GFlag s_gflag_my_flag_that_matters("my_flag_that_matters");
 //                                                ^
 //                                            the gflag name
