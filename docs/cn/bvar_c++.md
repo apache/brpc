@@ -504,9 +504,9 @@ double avg_double = avg_stat.get_average_double();
 
 ## bvar::WindowEx和bvar::Window的区别
 
-bvar::Window 不能独立存在，必须依赖于一个已有的计数器。Window会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
+- bvar::Window 不能独立存在，必须依赖于一个已有的计数器。Window会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
 
-bvar::WindowEx 是独立存在的，不依赖其他的计数器，需要给它发送数据。使用起来比较方便；window_size是通过模板参数传递的，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+- bvar::WindowEx 是独立存在的，不依赖其他的计数器，需要给它发送数据。使用起来比较方便；window_size是通过模板参数传递的，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
 
 # bvar::PerSecondEx
 获得之前一段时间内平均每秒的统计值。它和WindowEx基本相同，除了返回值会除以时间窗口之外。
@@ -547,12 +547,11 @@ sum_per_second << 1 << 2 << 3;
 ```
 
 ## bvar::PerSecondEx和bvar::WindowEx的区别
-获得之前一段时间内平均每秒的统计值。它和WindowEx基本相同，除了返回值会除以时间窗口之外。
+- 获得之前一段时间内平均每秒的统计值。它和WindowEx基本相同，除了返回值会除以时间窗口之外。
 
 ## bvar::PerSecondEx和bvar::PerSecond的区别
-bvar::PerSecond 不能独立存在，必须依赖于一个已有的计数器。PerSecond会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
-
-bvar::PerSecondEx 是独立存在的，不依赖其他的计数器，需要给它发送数据。使用起来比较方便；window_size是通过模板参数传递的，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+- bvar::PerSecond 不能独立存在，必须依赖于一个已有的计数器。PerSecond会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
+- bvar::PerSecondEx 是独立存在的，不依赖其他的计数器，需要给它发送数据。使用起来比较方便；window_size是通过模板参数传递的，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
 
 # bvar::Status
 
@@ -609,7 +608,7 @@ PassiveStatus<std::string> g_username("process_username", get_username, NULL);
 ```
 
 # bvar::GFlag
-Expose important gflags as bvar so that they're monitored (in noah).
+Expose important gflags as bvar so that they're monitored.
 ```c++
 DEFINE_int32(my_flag_that_matters, 8, "...");
 
