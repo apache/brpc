@@ -263,6 +263,7 @@ if (google::SetCommandLineOption("bvar_dump_include", "*service*").empty()) {
 }
 LOG(INFO) << "Successfully set bvar_dump_include to *service*";
 ```
+
 请勿直接设置FLAGS_bvar_dump_file / FLAGS_bvar_dump_include / FLAGS_bvar_dump_exclude。
 一方面这些gflag类型都是std::string，直接覆盖是线程不安全的；另一方面不会触发validator（检查正确性的回调），所以也不会启动后台导出线程。
 
@@ -547,6 +548,7 @@ sum_per_second << 1 << 2 << 3;
 ```
 
 ## bvar::PerSecondEx和bvar::WindowEx的区别
+
 - 获得之前一段时间内平均每秒的统计值。它和WindowEx基本相同，除了返回值会除以时间窗口之外。
 
 ## bvar::PerSecondEx和bvar::PerSecond的区别
