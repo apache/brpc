@@ -32,7 +32,7 @@ bool Lz4Compress(const google::protobuf::Message& res, butil::IOBuf* buf) {
     if (res.SerializeToZeroCopyStream(&wrapper)) {
         return Lz4Compress(serialized_pb, buf);
     }
-    LOG(WARNING) << "Fail to serialize input pb=" << &res;
+    LOG(WARNING) << "Fail to serialize input pb";
     return false;
 }
 
@@ -123,6 +123,7 @@ bool Lz4Decompress(const butil::IOBuf& in, butil::IOBuf* out) {
                        << dst_block_size << " decompress_size=" << dcp_size;
             delete[] out_buf;
             delete[] in_scratch;
+            LZ4_freeStreamDecode(lz4_stream_decode);
             return false;
         }
         out->append_user_data(out_buf, dst_block_size, [](void *d) {
