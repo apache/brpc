@@ -35,7 +35,7 @@ sudo apt-get install -y libsnappy-dev
 sudo apt-get install -y libgoogle-perftools-dev
 ```
 
-如果你要运行测试，那么要安装并编译ligtest-dev（它没有被默认编译）：
+如果你要运行测试，那么要安装并编译libgtest-dev（它没有被默认编译）：
 ```shell
 sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 ```
