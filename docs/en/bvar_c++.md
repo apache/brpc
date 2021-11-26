@@ -9,7 +9,7 @@ The basic usage of bvar is simple:
 namespace foo {
 namespace bar {
 
-// bvar::Adder<T> used for ruuning sum，we define a Adder for read_error as below
+// bvar::Adder<T> used for running sum, we define a Adder for read_error as below
 bvar::Adder<int> g_read_error;
 
 // put another bvar inside window so that we can get the value over this period of time
@@ -17,10 +17,10 @@ bvar::Window<bvar::Adder<int> > g_read_error_minute("foo_bar", "read_error", &g_
 //                                                     ^          ^                         ^
 //                                                    prefix1     monitor name             time window, 10 by default
 
-// bvar::LatencyRecorder is a compound varibale，can be used for troughput、qps、avg latency，latency percentile，max latency。
+// bvar::LatencyRecorder is a compound varibale, can be used for troughput、qps、avg latency, latency percentile, max latency。
 bvar::LatencyRecorder g_write_latency("foo_bar", "write");
 //                                      ^          ^
-//                                     prefix1      monitor entry, LatencyRecorder includes different bvar，and expose() will add the suffix for them by default，such as write_qps, write_latency etc
+//                                     prefix1      monitor entry, LatencyRecorder includes different bvar, and expose() will add the suffix for them by default, such as write_qps, write_latency etc
 
 // define a varible for the # of 'been-pushed task'
 bvar::Adder<int> g_task_pushed("foo_bar", "task_pushed");
@@ -45,14 +45,13 @@ foo::bar::g_write_latency << 23;
 foo::bar::g_task_pushed << 1;
 ```
 Remember Window<> and PerSecond<> are derived variables, we don't have to push value to them and they will auto-update.
-
 Obviously, we can take bvar as local or member variables.
 
 There are essentially 7 commonly used bvar classes, they all extend from the base class bvar:Variable.
 
 -   `bvar::Adder<T>`  : counter, 0 by default, varname << N equals to varname += N。
--   `bvar::Maxer<T>`  : get the maximum value，std::numeric_limits::min() by default，varname << N equals to varname = max(varname, N)。
--   `bvar::Miner<T>`  : get the minimum value, std::numeric_limits::max() by default，varname << N equals to varname = min(varname, N)。
+-   `bvar::Maxer<T>`  : get the maximum value, std::numeric_limits::min() by default, varname << N equals to varname = max(varname, N)。
+-   `bvar::Miner<T>`  : get the minimum value, std::numeric_limits::max() by default, varname << N equals to varname = min(varname, N)。
 -   `bvar::IntRecorder`  : get the mean value since it was in use, notice here we don't use “over a period of time”, since this bvar always comes with Window<> to calculate the mean value within the predefined time window.
 -   `bvar::Window<VAR>`  : get the running sum over a time window. Window derives from other existing bvar and will auto-update
 -   `bvar::PerSecond<VAR>`  : get the value per second during a predefined amount of time. PerSecond will also auto-update and derives from other bvar
@@ -60,10 +59,9 @@ There are essentially 7 commonly used bvar classes, they all extend from the bas
 
 **caveat: make sure the name of bvar is globally unique, otherwise, the expose() will fail. When the option -bvar_abort_on_same_name is true(false by default), program will abort.**
 
-### Best Practice for Naming:  
-There are different bvar from different module, to avoid duplicating name, we'd better follow the rule as `module_class_indicator`
-
--   a module usually refers to the program name, can be the acronym of product line, like inf_ds，ecom_retrbs etc.
+### Best Practice for Naming:
+There are different bvar from different module, to avoid duplicating name, we'd better follow the rule as `module_class_indicator
+-   a module usually refers to the program name, can be the acronym of product line, like inf_ds, ecom_retrbs etc.
 -   a class usually refers to the class name/ function name, like storage_manager, file_transfer, rank_stage1.
 -   an indicator usually refers to qps, count, latency etc.
 
@@ -79,13 +77,13 @@ rpc_socket_count : 6                            # module=rpc     class=socket   
 ```
 bvar will normalize the variable name, no matter whether we type foo::BarNum, foo.bar.num, foo bar num , foo-bar-num, they all go to foo_bar_num in the end.
 
-  
+
 
 **Things about indicators:**
 
--   use '_count' as suffix for number, like request_count, error_count
--   use '_second' as suffix for number per second is clear enough, no need to use '_count_second' or '_per_second', like request_second, process_inblocks_second
--   '_minute' as suffix for number per minute like request_minute, process_inblocks_minute
+-   use `_count` as suffix for number, like request_count, error_count
+-   use `_second` as suffix for number per second is clear enough, no need to use '_count_second' or '_per_second', like request_second, process_inblocks_second
+-   `_minute` as suffix for number per minute like request_minute, process_inblocks_minute
 
 if we need to use a counter defined in another file, we have to declare that variable in header file
 ```
@@ -98,14 +96,14 @@ extern bvar::Adder<int> g_task_pushed;
 }  // bar
 }  // foo
 ```
-**Don't define golabel Window<> and PerSecond<> across files. The order for the initialization of global variables in different compile units is undefined.** foo.cpp defines `Adder<int> foo_count`，then defining `PerSecond<Adder<int> > foo_qps(&foo_count);` in foo_qps.cpp is illegal
+**Don't define golabel Window<> and PerSecond<> across files. The order for the initialization of global variables in different compile units is undefined.** foo.cpp defines `Adder<int> foo_count`, then defining `PerSecond<Adder<int> > foo_qps(&foo_count);` in foo_qps.cpp is illegal
 
 **Things about thread-safety**:
 
--   bvar is thread-compatible. We can manipulate a bvar in different threads, such as we can expose or hide different bvar in multiple threads simultaneously，they will safely do some job on global shared variables.
+-   bvar is thread-compatible. We can manipulate a bvar in different threads, such as we can expose or hide different bvar in multiple threads simultaneously, they will safely do some job on global shared variables.
 -   **Excpet read and write API,** any other functions of bvar are not thread-safe：u can not expose or hide a same bvar in different threads, this may cause the program crash. Generally speaking, we don't have to call any other API concurrently except read and write.
 
-we can butil::Timer for timer, API is as below:
+we can use butil::Timer for timer, API is as below:
 ```C++
 #include <butil/time.h>
 namespace butil {
@@ -132,7 +130,7 @@ public:
 };
 }  // namespace butil
 ```
-  
+
 
 # bvar::Variable:
 
@@ -158,7 +156,7 @@ bvar::Adder<int> count2("count2");  // exposed in constructor directly
 CHECK_EQ("0", bvar::Variable::describe_exposed("count2"));  // default value of Adder<int> is 0
 
 bvar::Status<std::string> status1("count2", "hello");  // the name conflicts. if -bvar_abort_on_same_name is true,
-                                                       // program aborts, otherwise a fatal log is printed.
+                                                      // program aborts, otherwise a fatal log is printed.
 ```
 To avoid duplicate name, we should have prefix for bvar, we recommend the name as `<namespace>_<module>_<name>`
 
@@ -182,7 +180,7 @@ int expose_as(const butil::StringPiece& prefix, const butil::StringPiece& name);
 ```
 # Export All Variables
 
-Common requirements for exporting are querying by HTTP API and writing into local file, the former is provided by brpc [/vars](https://github.com/apache/incubator-brpc/blob/master/docs/cn/vars.md) service，the latter has been implemented in bvar, and it's turned off by default. A couple of methods can activate this function：
+Common needs for exporting are querying by HTTP API and writing into local file, the former is provided by brpc [/vars](https://github.com/apache/incubator-brpc/blob/master/docs/cn/vars.md) service, the latter has been implemented in bvar, and it's turned off by default. A couple of methods can activate this function：
 
 -   Using [gflags](https://github.com/apache/incubator-brpc/blob/master/docs/cn/flags.md) to parse the input params. We can add `-bvar_dump` during the starup of program or we can dynamically change the params thru brpc [/flags](https://github.com/apache/incubator-brpc/blob/master/docs/cn/flags.md) service after starup. gflags parsing is as below
     ```C++
@@ -195,8 +193,8 @@ Common requirements for exporting are querying by HTTP API and writing into loca
         ...
     }
     ```
-      
-    
+
+
 -   If u dont want to use gflags and expect them opened by default in program
     ```C++
     #include <gflags/gflags.h>
@@ -209,7 +207,7 @@ Common requirements for exporting are querying by HTTP API and writing into loca
     }
     
       ```
-    
+
 -   dump function is controlled by following gflags
     | Name                 | Default Value                     | Effect                                       |
     | ------------------ | ----------------------- | ---------------------------------------- |
@@ -221,8 +219,8 @@ Common requirements for exporting are querying by HTTP API and writing into loca
     | bvar_dump_prefix   | \<app\>                 | Every dumped name starts with this prefix |
     | bvar_dump_tabs     | \<check the code\>      | Dump bvar into different tabs according to the filters (seperated by semicolon), format: *(tab_name=wildcards) |
 
-    
-    when the bvar_dump_file is not empty，a background thread will be started to update `bvar_dump_file` for the specified interval called `bvar_dump_interval` , including all the bvar which is matched by `bvar_dump_include` while not matched by `bvar_dump_exclude`
+
+    when the bvar_dump_file is not empty, a background thread will be started to update `bvar_dump_file` for the specified time interval called `bvar_dump_interval` , including all the bvar which is matched by `bvar_dump_include` while not matched by `bvar_dump_exclude`
     
     such like we modify the gflags as below：
     
@@ -238,7 +236,7 @@ Common requirements for exporting are querying by HTTP API and writing into loca
     rpc_server_8002_start_time : 2015/07/24-21:08:03
     rpc_server_8002_uptime_ms : 14740954
     ```
-    `iobuf_block_count : 8`is filtered out by bvar_dump_include，`rpc_server_8002_error : 0`is ruled out by bvar_dump_exclude。
+    `iobuf_block_count : 8` is filtered out by bvar_dump_include, `rpc_server_8002_error : 0` is ruled out by bvar_dump_exclude.
     
     if you didn't use brpc in your program, u also need to dynamically change gflags（normally no need), we can call google::SetCommandLineOption(), as below
     ```c++
@@ -288,8 +286,8 @@ Common requirements for exporting are querying by HTTP API and writing into loca
         static int dump_exposed(Dumper* dumper, const DumpOptions* options);
     };
     ```
-      
-    
+
+
 
 # bvar::Reducer
 
@@ -319,9 +317,9 @@ bvar::Adder<double> fp_value;  // may have warning
 fp_value << 1.0 << 2.0 << 3.0 << -4.0;
 CHECK_DOUBLE_EQ(2.0, fp_value.get_value());
 ```
-  
 
-Adder<> can be applied to the non-primitive type, which at least overrides `T operator+(T, T)`，an existing example is `std::string`, the code below will concatenate strings：
+
+Adder<> can be applied to the non-primitive type, which at least overrides `T operator+(T, T)`, an existing example is `std::string`, the code below will concatenate strings：
 ```c++
 // This is just proof-of-concept, don't use it for production code because it makes a
 // bunch of temporary strings which is not efficient, use std::ostringstream instead.
@@ -379,7 +377,7 @@ write_latency << the_latency_of_write;
 
 # bvar::Window
 
-Get data within a time window. Window cannot exist alone, it depends on a counter. Window will auto-update, we don't have to send data to it. For the sake of performance, the data comes from every-second sampling over the original counter, in the worst case，Window has one-second latency
+Get data within a time window. Window cannot exist alone, it relies on a counter. Window will auto-update, we don't have to send data to it. For the sake of performance, the data comes from every-second sampling over the original counter, in the worst case, Window has one-second latency
 ```c++
 // Get data within a time window.
 // The time unit is 1 second fixed.
@@ -390,7 +388,7 @@ Get data within a time window. Window cannot exist alone, it depends on a counte
 template <typename R>
 class Window : public Variable;
 ```
-  
+
 
 # bvar::PerSecond
 
@@ -401,7 +399,7 @@ bvar::Adder<int> sum;
 // sum_per_second.get_value()is summing every-second value over the last 60 seconds, if we omit the time window, it's set to 'bvar_dump_interval' by default
 bvar::PerSecond<bvar::Adder<int> > sum_per_second(&sum, 60);
 ```
-**PerSecond is not always meaningful**
+**PerSecond does not always make sense**
 
 There is no Maxer in the above code, since the max value over a period of time divided by the time window is meaningless.
 ```c++
@@ -413,19 +411,19 @@ bvar::PerSecond<bvar::Maxer<int> > max_value_per_second_wrong(&max_value);
 // CORRECT. It's the right way to set the time window to 1s so that we can get the max value for every second
 bvar::Window<bvar::Maxer<int> > max_value_per_second(&max_value, 1);
 ```
-  
+
 
 ## Difference between Window and PerSecond
 
-Suppose we want the memory change since last minute, if we use Window<>, the meaning for the returning value is "the memory increase over the last minute is 18M" if we use PerSecond<>, the meaning for return value will be "the average memory increase per second over the last minute is 0.3M”。
+Suppose we want the memory change since last minute, if we use Window<>, the meaning for the returning value is "the memory increase over the last minute is 18M" if we use PerSecond<>, the meaning for return value will be "the average memory increase per second over the last minute is 0.3M”.
 
-Pros of Window is precise, it fits in some small numbers, like “the number of error produced over last minute“, if we use PerSecond, we might get something like "the average error rate per second over the last minute is 0.0167", which is very unclear as opposed to "one error produced over last minute". Some other non-time-related variables also fit in Window<>，such like calculating the CPU ratio over the last minute is using a Adder by summing CPU time and real time, then we use Window<> on top of the Adder to get the last-mintue CPU time and real time, dividing these two value then we get the CPU ratio for the last minute, which is not time-related. It will get wrong when use PerSeond
+Pros of Window is preciseness, it fits in some small-number cases, like “the number of error produced over last minute“, if we use PerSecond, we might get something like "the average error rate per second over the last minute is 0.0167", which is very unclear as opposed to "one error produced over last minute". Some other non-time-related variables also fit in Window<>, such like calculating the CPU ratio over the last minute is using a Adder by summing CPU time and real time, then we use Window<> on top of the Adder to get the last-mintue CPU time and real time, dividing these two value then we get the CPU ratio for the last minute, which is not time-related. It will get wrong when use PerSeond
 
-  
+
 
 # bvar::Status
 
-Recod and display one value, has additional set_value() function
+Record and display one value, has additional set_value() function
 ```c++
 // Display a rarely or periodically updated value.
 // Usage:
@@ -441,11 +439,11 @@ Recod and display one value, has additional set_value() function
 template <typename Tp>
 class Status : public Variable;
 ```
-  
+
 
 # bvar::PassiveStatus
 
-Display the value according to our needs. In some cases, we are not able to set_value nor set_value in a certain time interval. We'd better print it out when needed, user can pass in the print-out callback function to achieve this.
+Display the value when needed. In some cases, we are not able to actively set_value nor set_value in a certain time interval. We'd better print it out when needed, user can pass in the print-out callback function to achieve this.
 ```c++
 // Display a updated-by-need value. This is done by passing in an user callback
 // which is called to produce the value.
@@ -463,7 +461,7 @@ Display the value according to our needs. In some cases, we are not able to set_
 template <typename Tp>
 class PassiveStatus : public Variable;
 
-even tho it's simple, PassiveStatus is one of the most useful bvar, since most of the statistic value already exsited, we dont have to store it again, just fetch the data by our need. Declare a bvar which can display user process name as below：
+even though it looks simple, PassiveStatus is one of the most useful bvar, since most of the statistic values have already existed, we don't have to store it again, just fetch the data according to our need. Declare a bvar which can display user process name as below：
 
 static void get_username(std::ostream& os, void*) {
     char buf[32];
@@ -476,7 +474,7 @@ static void get_username(std::ostream& os, void*) {
 }
 PassiveStatus<std::string> g_username("process_username", get_username, NULL);
 ```
-  
+
 
 # bvar::GFlag
 
