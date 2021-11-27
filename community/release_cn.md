@@ -241,7 +241,7 @@ gpg --import KEYS
 
 设置信任该用户的签名，执行以下命令，填写发布人的用户名
 ```bash
-gpg --edit-key gpg --edit-key lorinlee
+gpg --edit-key lorinlee
 ```
 
 输出为
