@@ -204,7 +204,6 @@ bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it, size_t n) {
         default:
             // An endpoint that receives a SETTINGS frame with any unknown or
             // unsupported identifier MUST ignore that setting (section 6.5.2)
-            LOG(WARNING) << "Unknown setting, id=" << id << " value=" << value;
             break;
         }
     }
