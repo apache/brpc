@@ -46,16 +46,16 @@ bool Lz4Decompress(const butil::IOBuf& data, google::protobuf::Message* req) {
 }
 
 bool Lz4Compress(const butil::IOBuf& in, butil::IOBuf* out) {
-    size_t ref_cnt = in.backing_block_num(); 
+    int32_t ref_cnt = in.backing_block_num(); 
     LZ4_stream_t* lz4_stream = LZ4_createStream();
     butil::IOBuf block_buf;
-    std::vector<size_t> block_metas;
-    for (size_t i = 0; i < ref_cnt; ++i) {
+    std::vector<int32_t> block_metas;
+    for (int32_t i = 0; i < ref_cnt; ++i) {
         butil::StringPiece block_view = in.backing_block(i);
-        size_t src_block_size = block_view.size();
-        size_t dst_block_bound = LZ4_compressBound(src_block_size);
+        int32_t src_block_size = block_view.size();
+        int32_t dst_block_bound = LZ4_compressBound(src_block_size);
         char* dst = new char[dst_block_bound];
-        size_t dst_block_size =
+        int32_t dst_block_size =
             LZ4_compress_fast_continue(lz4_stream, block_view.data(), dst,
                                        src_block_size, dst_block_bound, 1);
         block_buf.append_user_data(reinterpret_cast<void *>(dst), dst_block_size,
@@ -66,9 +66,9 @@ bool Lz4Compress(const butil::IOBuf& in, butil::IOBuf* out) {
         block_metas.emplace_back(dst_block_size);
         block_metas.emplace_back(src_block_size);
     }
-    size_t nblocks = block_metas.size() / 2;
-    out->append(&nblocks, sizeof(size_t));
-    out->append(block_metas.data(), sizeof(size_t) * block_metas.size());
+    int32_t nblocks = block_metas.size() / 2;
+    out->append(&nblocks, sizeof(int32_t));
+    out->append(block_metas.data(), sizeof(int32_t) * block_metas.size());
     out->append(block_buf);
     LZ4_freeStream(lz4_stream);
     return true;
@@ -77,29 +77,29 @@ bool Lz4Compress(const butil::IOBuf& in, butil::IOBuf* out) {
 bool Lz4Decompress(const butil::IOBuf& in, butil::IOBuf* out) {
     butil::IOBufBytesIterator buf_iter(in);
     // nblocks 
-    size_t in_size = in.size();
-    if (buf_iter.bytes_left() < sizeof(size_t)) {
+    int32_t in_size = in.size();
+    if (buf_iter.bytes_left() < sizeof(int32_t)) {
         LOG(ERROR) << "Invalid lz4 decompress buf, size=" << in_size;
         return false;
     }
-    size_t nblocks = 0;
-    buf_iter.copy_and_forward(&nblocks, sizeof(size_t));
+    int32_t nblocks = 0;
+    buf_iter.copy_and_forward(&nblocks, sizeof(int32_t));
     if (nblocks <= 0) {
         LOG(ERROR) << "Invalid nblocks=" << nblocks;
         return false;
     }
 
     // block_metas
-    if (buf_iter.bytes_left() < nblocks * 2 * sizeof(size_t)) {
+    if (buf_iter.bytes_left() < nblocks * 2 * sizeof(int32_t)) {
         LOG(ERROR) << "Invalid nblocks=" << nblocks
                    << " bytes_left=" << buf_iter.bytes_left();
         return false;
     }
-    std::vector<size_t> block_metas(nblocks * 2, 0);
-    buf_iter.copy_and_forward(block_metas.data(), nblocks * 2 * sizeof(size_t));
-    size_t block_nbytes = 0;
-    size_t max_block = 0; 
-    for (size_t i = 0; i < nblocks; ++i) {
+    std::vector<int32_t> block_metas(nblocks * 2, 0);
+    buf_iter.copy_and_forward(block_metas.data(), nblocks * 2 * sizeof(int32_t));
+    int32_t block_nbytes = 0;
+    int32_t max_block = 0; 
+    for (int32_t i = 0; i < nblocks; ++i) {
         block_nbytes += block_metas[2 * i];
         max_block = std::max(max_block, block_metas[2 * i]);
     }
@@ -112,12 +112,12 @@ bool Lz4Decompress(const butil::IOBuf& in, butil::IOBuf* out) {
     }
     LZ4_streamDecode_t* lz4_stream_decode = LZ4_createStreamDecode();
     char* in_scratch = new char[max_block];
-    for (size_t i = 0; i < nblocks; ++i) {
-        size_t src_block_size = block_metas[i * 2];
-        size_t dst_block_size = block_metas[i * 2 + 1];
+    for (int32_t i = 0; i < nblocks; ++i) {
+        int32_t src_block_size = block_metas[i * 2];
+        int32_t dst_block_size = block_metas[i * 2 + 1];
         char* out_buf = new char[dst_block_size];
         buf_iter.copy_and_forward(in_scratch, src_block_size);
-        size_t dcp_size = LZ4_decompress_safe_continue(lz4_stream_decode, in_scratch, out_buf, src_block_size, dst_block_size);
+        int32_t dcp_size = LZ4_decompress_safe_continue(lz4_stream_decode, in_scratch, out_buf, src_block_size, dst_block_size);
         if (dcp_size != dst_block_size) {
             LOG(ERROR) << "Fail to lz4 decompress block, dst_block_size="
                        << dst_block_size << " decompress_size=" << dcp_size;

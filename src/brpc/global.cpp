@@ -388,7 +388,7 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
     const CompressHandler lz4_compress =
-        { Lz4Compress, Lz4Decompress, "lz4" };
+        { Lz4Compress, Lz4Decompress, "lz4s" };
     if (RegisterCompressHandler(COMPRESS_TYPE_LZ4, lz4_compress) != 0) {
         exit(1);
     }
