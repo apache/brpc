@@ -1146,13 +1146,13 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
                 return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
             }
             // Send 400 back.
-            butil::IOBuf bad_resp;
+            butil::IOBuf resp;
             HttpHeader header;
             header.set_status_code(HTTP_STATUS_BAD_REQUEST);
-            MakeRawHttpResponse(&bad_resp, &header, NULL);
+            MakeRawHttpResponse(&resp, &header, NULL);
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
-            socket->Write(&bad_resp, &wopt);
+            socket->Write(&resp, &wopt);
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         } else {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
