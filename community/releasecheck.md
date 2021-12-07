@@ -1,4 +1,4 @@
-# brpc 发布时候的check list
+# brpc 发版时候的Check List
 
 ## 文档背景：
 当Release Manager在dev邮件群中发起发布投票的时候，需要PMC成员对发版相关信息进行检查，如果检查通过则在邮件群中回复通过并附上检查结果。本文档就是各个检查项。
@@ -40,5 +40,7 @@ https://training.apache.org/topics/ApacheWay/NavigatingASFIncubator/index.html
     - All ASF  files have ASF headers
     - no unexpected binary files
 
-
+## 注意：
+1. 不要回复简单的+1，需要加上执行的几个检查项和检查结果
+2. 给出-1的时候，同样需要给出明确的理由
 
