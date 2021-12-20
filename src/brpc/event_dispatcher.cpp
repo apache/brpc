@@ -101,7 +101,7 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
     }
 
     // Set _consumer_thread_attr before creating epoll/kqueue thread to make sure
-    // everyting seems sane to the thread.
+    // everyting seems same to the thread.
     _consumer_thread_attr = (consumer_thread_attr  ?
                              *consumer_thread_attr : BTHREAD_ATTR_NORMAL);
 

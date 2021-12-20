@@ -77,7 +77,7 @@ public:
     virtual bool AddServer(const ServerId& server) = 0;
 
     // Remove `server' from this balancer.
-    // Returns true iff the server was removed.
+    // Returns true if the server was removed.
     virtual bool RemoveServer(const ServerId& server) = 0;
 
     // Add a list of `servers' into this balancer.
