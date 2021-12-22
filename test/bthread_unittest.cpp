@@ -294,7 +294,7 @@ TEST_F(BthreadTest, small_threads) {
         for (size_t j = 0; j < 3; ++j) {
             th.clear();
             if (j == 1) {
-                ProfilerStart(prof_name);
+                // ProfilerStart(prof_name);
             }
             tm.start();
             for (size_t i = 0; i < N; ++i) {
@@ -305,7 +305,7 @@ TEST_F(BthreadTest, small_threads) {
             }
             tm.stop();
             if (j == 1) {
-                ProfilerStop();
+                // ProfilerStop();
             }
             for (size_t i = 0; i < N; ++i) {
                 bthread_join(th[i], NULL);
