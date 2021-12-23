@@ -1,16 +1,18 @@
-ub是百度内广泛使用的老RPC框架，在迁移ub服务时不可避免地需要[访问ub-server](ub_client.md)或被ub-client访问。ub使用的协议种类很多，但都以nshead作为二进制包的头部，这类服务在brpc中统称为**“nshead service”**。
+#ubprpc service
 
-nshead后大都使用mcpack/compack作为序列化格式，注意这不是“协议”。"协议"除了序列化格式，还涉及到各种特殊字段的定义，一种序列化格式可能会衍生出很多协议。ub没有定义标准协议，所以即使都使用mcpack或compack，产品线的通信协议也是五花八门，无法互通。鉴于此，我们提供了一套接口，让用户能够灵活的处理自己产品线的协议，同时享受brpc提供的builtin services等一系列框架福利。
+ub is an old RPC framework widely used in Baidu. It is inevitable that [Access ub-server](ub_client.md) or be accessed by ub-client is required when migrating ub services. There are many types of protocols used by ub, but they all use nshead as the header of the binary package. Such services are collectively referred to as **"nshead service"** in brpc.
 
-# 使用ubrpc的服务
+After nshead, most of them use mcpack/compack as the serialization format. Note that this is not a "protocol". In addition to the serialization format, the "protocol" also involves the definition of various special fields. A serialization format may derive many protocols. ub does not define a standard protocol, so even if both mcpack or compack are used, the communication protocols of the product line are varied and cannot be interoperable. In view of this, we provide a set of interfaces that allow users to flexibly handle their product line agreements while enjoying a series of framework benefits such as builtin services provided by brpc.
 
-ubrpc协议的基本形式是nshead+compack或mcpack2，但compack或mcpack2中包含一些RPC过程需要的特殊字段。
+# Use ubrpc's service
 
-在brpc r31687之后，用protobuf写的服务可以通过mcpack2pb被ubrpc client访问，步骤如下：
+The basic form of the ubrpc protocol is nshead+compack or mcpack2, but compack or mcpack2 contains some special fields required by the RPC process.
 
-## 把idl文件转化为proto文件
+After brpc r31687, services written in protobuf can be accessed by ubrpc client through mcpack2pb, the steps are as follows:
 
-使用脚本[idl2proto](https://github.com/brpc/brpc/blob/master/tools/idl2proto)把idl文件自动转化为proto文件，下面是转化后的proto文件。
+## Convert idl files to proto files
+
+Use the script [idl2proto](https://github.com/brpc/brpc/blob/master/tools/idl2proto) to automatically convert idl files into proto files. Below is the converted proto file.
 
 ```protobuf
 // Converted from echo.idl by brpc/tools/idl2proto
@@ -18,13 +20,13 @@ import "idl_options.proto";
 option (idl_support) = true;
 option cc_generic_services = true;
 message EchoRequest {
-  required string message = 1;
+  required string message = 1; 
 }
 message EchoResponse {
-  required string message = 1;
+  required string message = 1; 
 }
-
-// 对于有多个参数的idl方法，需要定义一个包含所有request或response的消息，作为对应方法的参数。
+ 
+// For idl methods with multiple parameters, a message containing all request or response needs to be defined as the parameter of the corresponding method.
 message MultiRequests {
   required EchoRequest req1 = 1;
   required EchoRequest req2 = 2;
@@ -33,157 +35,157 @@ message MultiResponses {
   required EchoRequest res1 = 1;
   required EchoRequest res2 = 2;
 }
-
+ 
 service EchoService {
-  // 对应idl中的void Echo(EchoRequest req, out EchoResponse res);
+  // Corresponding to void Echo(EchoRequest req, out EchoResponse res) in idl;
   rpc Echo(EchoRequest) returns (EchoResponse);
-
-  // 对应idl中的EchoWithMultiArgs(EchoRequest req1, EchoRequest req2, out EchoResponse res1, out EchoResponse res2);
+ 
+  // Corresponding to EchoWithMultiArgs(EchoRequest req1, EchoRequest req2, out EchoResponse res1, out EchoResponse res2) in idl;
   rpc EchoWithMultiArgs(MultiRequests) returns (MultiResponses);
 }
 ```
 
-原先的echo.idl文件如下：
+The original echo.idl file is as follows:
 
 ```protobuf
 struct EchoRequest {
-string message;
-    };
-
-    struct EchoResponse {
-string message;
-    };
-
+    string message;
+};
+ 
+struct EchoResponse {
+    string message;
+};
+ 
 service EchoService {
     void Echo(EchoRequest req, out EchoResponse res);
     uint32_t EchoWithMultiArgs(EchoRequest req1, EchoRequest req2, out EchoResponse res1, out EchoResponse res2);
 };
 ```
 
-## 以插件方式运行protoc
+## Run protoc as a plug-in
 
-BRPC_PATH代表brpc产出的路径（包含bin include等目录），PROTOBUF_INCLUDE_PATH代表protobuf的包含路径。注意--mcpack_out要和--cpp_out一致。
+BRPC_PATH represents the path produced by brpc (including bin include and other directories), and PROTOBUF_INCLUDE_PATH represents the include path of protobuf. Note that --mcpack_out should be consistent with --cpp_out.
 
 ```shell
 protoc --plugin=protoc-gen-mcpack=$BRPC_PATH/bin/protoc-gen-mcpack --cpp_out=. --mcpack_out=. --proto_path=$BRPC_PATH/include --proto_path=PROTOBUF_INCLUDE_PATH
 ```
 
-## 实现生成的Service基类
+## Implement the generated Service base class
 
-```c++
-class EchoServiceImpl : public EchoService {
+```c ++
+class EchoServiceImpl: public EchoService {
 public:
  
     ...
-    // 对应idl中的void Echo(EchoRequest req, out EchoResponse res);
-    virtual void Echo(google::protobuf::RpcController* cntl_base,
+    // Corresponding to void Echo(EchoRequest req, out EchoResponse res) in idl;
+    virtual void Echo (google :: protobuf :: RpcController * cntl_base,
                       const EchoRequest* request,
                       EchoResponse* response,
                       google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
  
-        // 填充response。
+        // Fill in the response.
         response->set_message(request->message());
  
-        // 对应的idl方法没有返回值，不需要像下面方法中那样set_idl_result()。
-        // 可以看到这个方法和其他protobuf服务没有差别，所以这个服务也可以被ubrpc之外的协议访问。
+        // The corresponding idl method has no return value, so set_idl_result() is not required as in the following method.
+        // You can see that this method is no different from other protobuf services, so this service can also be accessed by protocols other than ubrpc.
     }
  
-    virtual void EchoWithMultiArgs(google::protobuf::RpcController* cntl_base,
+    virtual void EchoWithMultiArgs (google :: protobuf :: RpcController * cntl_base,
                                    const MultiRequests* request,
                                    MultiResponses* response,
                                    google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
  
-        // 填充response。response是我们定义的包含所有idl response的消息。
+        // Fill in the response. Response is a message that we define that contains all idl responses.
         response->mutable_res1()->set_message(request->req1().message());
         response->mutable_res2()->set_message(request->req2().message());
  
-        // 告诉RPC有多个request和response。
+        // Tell RPC that there are multiple requests and responses.
         cntl->set_idl_names(brpc::idl_multi_req_multi_res);
  
-        // 对应idl方法的返回值。
+        // Corresponds to the return value of the idl method.
         cntl->set_idl_result(17);
     }
 };
 ```
 
-## 设置ServerOptions.nshead_service
+## Set ServerOptions.nshead_service
 
-```c++
+``` c ++
 #include <brpc/ubrpc2pb_protocol.h>
 ...
-brpc::ServerOptions option;
+brpc :: ServerOptions option;
 option.nshead_service = new brpc::policy::UbrpcCompackAdaptor; // mcpack2用UbrpcMcpack2Adaptor
 ```
 
-例子见[example/echo_c++_ubrpc_compack](https://github.com/brpc/brpc/blob/master/example/echo_c++_ubrpc_compack/)。
+For example, see [example/echo_c++_ubrpc_compack](https://github.com/brpc/brpc/blob/master/example/echo_c++_ubrpc_compack/).
 
-# 使用nshead+blob的服务
+# Use nshead+blob service
 
-[NsheadService](https://github.com/brpc/brpc/blob/master/src/brpc/nshead_service.h)是brpc中所有处理nshead打头协议的基类，实现好的NsheadService实例得赋值给ServerOptions.nshead_service才能发挥作用。不赋值的话，默认是NULL，代表不支持任何nshead开头的协议，这个server被nshead开头的数据包访问时会报错。明显地，**一个Server只能处理一种以nshead开头的协议。**
+[NsheadService](https://github.com/brpc/brpc/blob/master/src/brpc/nshead_service.h) is the base class for all processing nshead header protocols in brpc, and the implemented NsheadService instance must be assigned to ServerOptions. nshead_service can work. If it is not assigned, the default is NULL, which means that any protocol starting with nshead is not supported. This server will report an error when accessed by a packet starting with nshead. Obviously, a Server can only handle a protocol beginning with nshead. **
 
-NsheadService的接口如下，基本上用户只需要实现`ProcessNsheadRequest`这个函数。
+The interface of NsheadService is as follows, basically users only need to implement the function `ProcessNsheadRequest`.
 
-```c++
-// 代表一个nshead请求或回复。
+``` c ++
+// Represents an nshead request or reply.
 struct NsheadMessage {
-nshead_t head;
-butil::IOBuf body;
+    nshead_t head;
+    butyl :: IOBuf body;
 };
-
-// 实现这个类并赋值给ServerOptions.nshead_service来让brpc处理nshead请求。
+ 
+// Implement this class and assign it to ServerOptions.nshead_service to let brpc handle nshead requests.
 class NsheadService : public Describable {
 public:
-NsheadService();
-NsheadService(const NsheadServiceOptions&);
-virtual ~NsheadService();
-
-// 实现这个方法来处理nshead请求。注意这个方法可能在调用时controller->Failed()已经为true了。
-// 原因可能是Server.Stop()被调用正在退出(错误码是brpc::ELOGOFF)
-// 或触发了ServerOptions.max_concurrency(错误码是brpc::ELIMIT)
-// 在这种情况下，这个方法应该通过返回一个代表错误的response让客户端知道这些错误。
-// Parameters:
-//   server      The server receiving the request.
-//   controller  Contexts of the request.
-//   request     The nshead request received.
-//   response    The nshead response that you should fill in.
-//   done        You must call done->Run() to end the processing, brpc::ClosureGuard is preferred.
-virtual void ProcessNsheadRequest(const Server& server,
-Controller* controller,
-const NsheadMessage& request,
-NsheadMessage* response,
-NsheadClosure* done) = 0;
+    NsheadService();
+    NsheadService(const NsheadServiceOptions&);
+    virtual ~NsheadService();
+ 
+    // Implement this method to handle nshead requests. Note that this method may already be true when controller->Failed() is called.
+    // The reason may be that Server.Stop() is called and is exiting (the error code is brpc::ELOGOFF)
+    // Or ServerOptions.max_concurrency is triggered (the error code is brpc::ELIMIT)
+    // In this case, this method should let the client know about these errors by returning a response representing the error.
+    // Parameters:
+    //   server      The server receiving the request.
+    //   controller  Contexts of the request.
+    //   request     The nshead request received.
+    //   response    The nshead response that you should fill in.
+    //   done        You must call done->Run() to end the processing, brpc::ClosureGuard is preferred.
+    virtual void ProcessNsheadRequest(const Server& server,
+                                      Controller * controller,
+                                      const NsheadMessage& request,
+                                      NsheadMessage* response,
+                                      NsheadClosure* done) = 0;
 };
 ```
 
-完整的example在[example/nshead_extension_c++](https://github.com/brpc/brpc/tree/master/example/nshead_extension_c++/)。
+The complete example is in [example/nshead_extension_c++](https://github.com/brpc/brpc/tree/master/example/nshead_extension_c++/).
 
-# 使用nshead+mcpack/compack/idl的服务
+# Use the service of nshead+mcpack/compack/idl
 
-idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可以生成一些C++结构体，这些结构体可以打包为mcpack/compack。如果你的服务仍在大量地使用idl生成的结构体，且短期内难以修改，同时想要使用brpc提升性能和开发效率的话，可以实现[NsheadService](https://github.com/brpc/brpc/blob/master/src/brpc/nshead_service.h)，其接口接受nshead + 二进制包为request，用户填写自己的处理逻辑，最后的response也是nshead+二进制包。流程与protobuf方法保持一致，但过程中不涉及任何protobuf的序列化和反序列化，用户可以自由地理解nshead后的二进制包，包括用idl加载mcpack/compack数据包。
+idl is the front end of mcpack/compack. Users only need to describe the schema in the idl file to generate some C++ structures. These structures can be packaged as mcpack/compack. If your service is still using a large number of structures generated by idl, and it is difficult to modify in the short term, and you want to use brpc to improve performance and development efficiency, you can achieve [NsheadService](https://github.com/brpc/brpc /blob/master/src/brpc/nshead_service.h), its interface accepts nshead + binary package as request, users fill in their own processing logic, and the final response is also nshead + binary package. The process is consistent with the protobuf method, but the process does not involve any protobuf serialization and deserialization. Users can freely understand the binary package after nshead, including loading mcpack/compack data packets with idl.
 
-不过，你应当充分意识到这么改造的坏处：
+However, you should be fully aware of the disadvantages of such a transformation:
 
-> **这个服务在继续使用mcpack/compack作为序列化格式，相比protobuf占用成倍的带宽和打包时间。**
+> **This service continues to use mcpack/compack as the serialization format, which occupies twice the bandwidth and packaging time compared to protobuf. **
 
-为了解决这个问题，我们提供了[mcpack2pb](mcpack2pb.md)，允许把protobuf作为mcpack/compack的前端。你只要写一份proto文件，就可以同时解析mcpack/compack和protobuf格式的请求。使用这个方法，使用idl描述的服务的可以平滑地改造为使用proto文件描述，而不用修改上游client（仍然使用mcpack/compack）。你产品线的服务可以逐个地从mcpack/compack/idl切换为protobuf，从而享受到性能提升，带宽节省，全新开发体验等好处。你可以自行在NsheadService使用src/mcpack2pb，也可以联系我们，提供更高质量的协议支持。
+To solve this problem, we provide [mcpack2pb](mcpack2pb.md), which allows protobuf to be used as the front end of mcpack/compack. As long as you write a proto file, you can parse requests in mcpack/compack and protobuf formats at the same time. Using this method, the service described by idl can be smoothly transformed to use the proto file description without modifying the upstream client (still using mcpack/compack). The services of your product line can be switched from mcpack/compack/idl to protobuf one by one, so as to enjoy the benefits of performance improvement, bandwidth saving, and new development experience. You can use src/mcpack2pb in NsheadService by yourself, or you can contact us to provide higher quality protocol support.
 
-# 使用nshead+protobuf的服务
+# Use the service of nshead+protobuf
 
-如果你的协议已经使用了nshead + protobuf，或者你想把你的协议适配为protobuf格式，那可以使用另一种模式：实现[NsheadPbServiceAdaptor](https://github.com/brpc/brpc/blob/master/src/brpc/nshead_pb_service_adaptor.h)（NsheadService的子类）。
+If your protocol already uses nshead + protobuf, or you want to adapt your protocol to the protobuf format, you can use another mode: implement [NsheadPbServiceAdaptor](https://github.com/brpc/brpc/blob /master/src/brpc/nshead_pb_service_adaptor.h) (subclass of NsheadService).
 
-工作步骤：
+Work steps:
 
 - Call ParseNsheadMeta() to understand the nshead header, user must tell RPC which pb method to call in the callback.
 - Call ParseRequestFromIOBuf() to convert the body after nshead header to pb request, then call the pb method.
 - When user calls server's done to end the RPC, SerializeResponseToIOBuf() is called to convert pb response to binary data that will be appended after nshead header and sent back to client.
 
-这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如baidu_std，hulu_pbrpc，sofa_pbrpc协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](https://github.com/brpc/brpc/tree/master/example/nshead_pb_extension_c++/)。
+The advantage of this is that this service can also be accessed by other protocols that use protobuf, such as baidu_std, hulu_pbrpc, sofa_pbrpc, and so on. The main interface of NsheadPbServiceAdaptor is as follows. The complete example is [here](https://github.com/brpc/brpc/tree/master/example/nshead_pb_extension_c++/).
 
-```c++
+``` c ++
 class NsheadPbServiceAdaptor : public NsheadService {
 public:
     NsheadPbServiceAdaptor() : NsheadService(
@@ -200,7 +202,7 @@ public:
     // FIXME: server is not needed anymore, controller->server() is same
     virtual void ParseNsheadMeta(const Server& server,
                                  const NsheadMessage& nshead_req,
-                                 Controller* controller,
+                                 Controller * controller,
                                  NsheadMeta* meta) const = 0;
     // Transform `nshead_req' to `pb_req'.
     // Params:
@@ -211,8 +213,8 @@ public:
     //   pb_req: the pb request should be set by your implementation.
     virtual void ParseRequestFromIOBuf(const NsheadMeta& meta,
                                        const NsheadMessage& nshead_req,
-                                       Controller* controller,
-                                       google::protobuf::Message* pb_req) const = 0;
+                                       Controller * controller,
+                                       google :: protobuf :: Message * pb_req) const = 0;
     // Transform `pb_res' (and controller) to `nshead_res'.
     // Params:
     //   meta: was set by ParseNsheadMeta()
@@ -223,8 +225,8 @@ public:
     //           information into `nshead_res'.
     //   nshead_res: the nshead response that will be sent back to client.
     virtual void SerializeResponseToIOBuf(const NsheadMeta& meta,
-                                          Controller* controller,
-                                          const google::protobuf::Message* pb_res,
+                                          Controller * controller,
+                                          const google :: protobuf :: Message * pb_res,
                                           NsheadMessage* nshead_res) const = 0;
 };
 ```
