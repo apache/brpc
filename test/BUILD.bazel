@@ -13,13 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//:bazel/brpc.bzl", "brpc_proto_library")
-
-config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
-)
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_proto_library", "cc_test")
+load("@com_grail_bazel_compdb//:defs.bzl", "compilation_database")
+load("@com_grail_bazel_output_base_util//:defs.bzl", "OUTPUT_BASE")
 
 COPTS = [
     "-D__STDC_FORMAT_MACROS",
@@ -41,22 +38,8 @@ COPTS = [
     "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
     "-DUNIT_TEST",
 ] + select({
-    "//:with_glog": ["-DBRPC_WITH_GLOG=1"],
+    "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
-})
-
-LINKOPTS = [
-    "-lpthread",
-    "-lssl",
-    "-lcrypto",
-    "-ldl",
-    "-lz",
-] + select({
-    ":darwin": [],
-    "//conditions:default": [
-      "-lrt",
-
-    ],
 })
 
 TEST_BUTIL_SOURCES = [
@@ -157,38 +140,39 @@ TEST_BUTIL_SOURCES = [
     "bounded_queue_unittest.cc",
     "butil_unittest_main.cpp",
 ] + select({
-        "@bazel_tools//tools/osx:darwin": [],
-        "//conditions:default": [
-           "test_file_util_linux.cc",
-           "proc_maps_linux_unittest.cc",
-        ],
+    "@bazel_tools//tools/osx:darwin": [],
+    "//conditions:default": [
+        "test_file_util_linux.cc",
+        "proc_maps_linux_unittest.cc",
+    ],
 })
 
 proto_library(
     name = "test_proto",
-    srcs = glob([
-        "*.proto",
-      ],
-      exclude = [
-          "echo.proto",
-      ]
+    srcs = glob(
+        [
+            "*.proto",
+        ],
+        exclude = [
+            "echo.proto",
+        ],
     ),
     visibility = ["//visibility:public"],
 )
 
 cc_proto_library(
     name = "cc_test_proto",
+    visibility = ["//visibility:public"],
     deps = [
         ":test_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "sstream_workaround",
     hdrs = [
         "sstream_workaround.h",
-    ]
+    ],
 )
 
 cc_test(
@@ -198,53 +182,74 @@ cc_test(
         "multiprocess_func_list.h",
         "test_switches.h",
     ],
+    copts = COPTS,
     deps = [
-        ":sstream_workaround",
         ":cc_test_proto",
+        ":sstream_workaround",
         "//:brpc",
         "@com_google_googletest//:gtest",
     ],
-    copts = COPTS,
 )
 
 cc_test(
     name = "bvar_test",
-    srcs = glob([
-        "bvar_*_unittest.cpp",
-    ],
-    exclude = [
-        "bvar_lock_timer_unittest.cpp",
-        "bvar_recorder_unittest.cpp",
-    ]),
+    srcs = glob(
+        [
+            "bvar_*_unittest.cpp",
+        ],
+        exclude = [
+            "bvar_lock_timer_unittest.cpp",
+            "bvar_recorder_unittest.cpp",
+        ],
+    ),
+    copts = COPTS,
     deps = [
         ":sstream_workaround",
         "//:bvar",
         "@com_google_googletest//:gtest",
     ],
-    copts = COPTS,
 )
 
 cc_test(
     name = "bthread_test",
-    srcs = glob([
-        "bthread_*_unittest.cpp",
-    ],
-    exclude = [
-        "bthread_cond_unittest.cpp",
-        "bthread_execution_queue_unittest.cpp",
-        "bthread_dispatcher_unittest.cpp",
-        "bthread_fd_unittest.cpp",
-        "bthread_mutex_unittest.cpp",
-        "bthread_setconcurrency_unittest.cpp",
-        # glog CHECK die with a fatal error
-        "bthread_key_unittest.cpp"
-    ]),
+    srcs = glob(
+        [
+            "bthread_*_unittest.cpp",
+        ],
+        exclude = [
+            "bthread_cond_unittest.cpp",
+            "bthread_execution_queue_unittest.cpp",
+            "bthread_dispatcher_unittest.cpp",
+            "bthread_fd_unittest.cpp",
+            "bthread_mutex_unittest.cpp",
+            "bthread_setconcurrency_unittest.cpp",
+            # glog CHECK die with a fatal error
+            "bthread_key_unittest.cpp",
+        ],
+    ),
+    copts = COPTS,
     deps = [
         ":sstream_workaround",
         "//:brpc",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
-    copts = COPTS,
 )
 
+compilation_database(
+    name = "brpc_test_compdb",
+    # Use test profile
+    testonly = True,
+    # OUTPUT_BASE is a dynamic value that will vary for each user workspace.
+    # If you would like your build outputs to be the same across users, then
+    # skip supplying this value, and substitute the default constant value
+    # "__OUTPUT_BASE__" through an external tool like `sed` or `jq` (see
+    # below shell commands for usage).
+    output_base = OUTPUT_BASE,
+    targets = [
+        "//:brpc",
+        ":bvar_test",
+        ":bthread_test",
+        ":butil_test",
+    ],
+)

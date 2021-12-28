@@ -13,37 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-COPTS = [
-    "-D__STDC_FORMAT_MACROS",
-    "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
-    "-D__const__=__unused__",
-    "-D_GNU_SOURCE",
-    "-DUSE_SYMBOLIZE",
-    "-DNO_TCMALLOC",
-    "-D__STDC_LIMIT_MACROS",
-    "-D__STDC_CONSTANT_MACROS",
-    "-fPIC",
-    "-Wno-unused-parameter",
-    "-fno-omit-frame-pointer",
-    "-DGFLAGS_NS=google",
-] + select({
-    "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
-    "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
-})
-
-cc_binary(
-    name = "rpc_replay",
-    srcs = [
-        "rpc_replay/info_thread.h",
-        "rpc_replay/rpc_replay.cpp",
-        "rpc_replay/info_thread.cpp",
-    ],
-    includes = [
-        "rpc_replay",
-    ],
-    deps = [
-        "//:brpc",
-    ],
-    copts = COPTS,
-)
-
+build --incompatible_disable_deprecated_attr_params=false

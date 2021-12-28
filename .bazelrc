@@ -13,12 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-build --copt -DHAVE_ZLIB=1
-# bazel build with glog
-# build --define=with_glog=true
-build -c opt
-build --incompatible_disable_deprecated_attr_params=false
-build --incompatible_new_actions_api=false
-# unittest 
-test --define=unittest=true
-test --copt=-g
+#
+# Default build options. These are applied first and unconditionally.
+#
+
+build --cxxopt="-std=c++11"
+# Use gnu11 for asm keyword.
+build --conlyopt="-std=gnu11"
+
+# Enable position independent code (this is the default on macOS and Windows)
+# (Workaround for https://github.com/bazelbuild/rules_foreign_cc/issues/421)
+build --copt=-fPIC
+build --fission=dbg,opt
+build --features=per_object_debug_info
+
+# We already have absl in the build, define absl=1 to tell googletest to use absl for backtrace.
+build --define absl=1
+
+# For brpc.
+build --define=BRPC_WITH_GLOG=true
+test --define=BRPC_BUILD_FOR_UNITTEST=true
+
+# Pass PATH, CC, CXX and LLVM_CONFIG variables from the environment.
+build --action_env=CC
+build --action_env=CXX
+build --action_env=LLVM_CONFIG
+build --action_env=PATH
