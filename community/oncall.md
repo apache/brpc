@@ -33,3 +33,4 @@
 | 09/06/2021 - 09/12/2021  | 何磊 | https://lists.apache.org/thread.html/ra10e10abca213e0e5e797a74af8a9c8810e54fd1543c108bf03a56e5%40%3Cdev.brpc.apache.org%3E
 | 09/20/2021 - 09/26/2021  | 李磊 | https://lists.apache.org/thread.html/r19c08874ad681edbc82526a09b34d3ccabe7cf168ed91935575ff557%40%3Cdev.brpc.apache.org%3E
 | 09/27/2021 - 10/03/2021  | 蔡道进 | https://lists.apache.org/thread.html/re3391d87f2e2aba55986b96b18ca375f07840bac67249fced2f851f5%40%3Cdev.brpc.apache.org%3E
+| 13/12/2021 - 19/12/2021  | 蔡道进 | https://lists.apache.org/thread/mvclsy79859mrbdso1xzm6y7yz3lg6w0
