@@ -53,6 +53,13 @@ SerializedRequest* SerializedRequest::New() const {
     return new SerializedRequest;
 }
 
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+SerializedRequest*
+SerializedRequest::New(::google::protobuf::Arena* arena) const {
+    return CreateMaybeMessage<SerializedRequest>(arena);
+}
+#endif
+
 void SerializedRequest::Clear() {
     _serialized.clear();
 }
