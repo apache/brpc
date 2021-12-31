@@ -50,6 +50,6 @@
 
 下面是一些和linux下时间管理相关的知识：
 
-- epoll_wait的超时精度是毫秒，较差。pthread_cond_timedwait的超时使用timespec，精度到纳秒，一般是60微秒左右的延时。
+- [epoll_wait](https://man7.org/linux/man-pages/man2/epoll_pwait.2.html)的超时精度是毫秒，较差。[pthread_cond_timedwait](https://pubs.opengroup.org/onlinepubs/009696899/functions/pthread_cond_timedwait.html)的超时使用timespec，精度到纳秒，一般是60微秒左右的延时。
 - 出于性能考虑，TimerThread使用wall-time，而不是单调时间，可能受到系统时间调整的影响。具体来说，如果在测试中把系统时间往前或往后调一个小时，程序行为将完全undefined。未来可能会让用户选择单调时间。
 - 在cpu支持nonstop_tsc和constant_tsc的机器上，brpc和bthread会优先使用基于rdtsc的cpuwide_time_us。那两个flag表示rdtsc可作为wall-time使用，不支持的机器上会转而使用较慢的内核时间。我们的机器（Intel Xeon系列）大都有那两个flag。rdtsc作为wall-time使用时是否会受到系统调整时间的影响，未测试不清楚。
