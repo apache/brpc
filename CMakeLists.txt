@@ -26,6 +26,7 @@ option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 option(BUILD_TOOLS "Whether to build tools" ON)
+option(WITH_SHARED_LIB "With dynamic lib" ON)
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
 if(POLICY CMP0042)
