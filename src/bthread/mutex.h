@@ -48,7 +48,7 @@ public:
     Mutex() {
         int ec = bthread_mutex_init(&_mutex, NULL);
         if (ec != 0) {
-            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex constructor failed");
+            CHECK(false) << "Mutex constructor failed";
         }
     }
     ~Mutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
@@ -56,7 +56,7 @@ public:
     void lock() {
         int ec = bthread_mutex_lock(&_mutex);
         if (ec != 0) {
-            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex lock failed");
+            CHECK(false) << "Mutex lock failed";
         }
     }
     void unlock() { bthread_mutex_unlock(&_mutex); }
