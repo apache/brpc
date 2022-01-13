@@ -835,7 +835,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
                          << info.id << " current_cid=" << current_id()
                          << " initial_cid=" << _correlation_id
                          << " stream_user_data=" << _current_call.stream_user_data
-                         << " sending_sock=" << *_current_call.sending_sock;
+                         << " sending_sock=" << _current_call.sending_sock.get();
         }
         _current_call.OnComplete(this, ECANCELED, false, false);
         if (_unfinished_call != NULL) {
