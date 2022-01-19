@@ -203,7 +203,7 @@ BUTIL_FORCE_INLINE bool ParsePbFromZeroCopyStreamInlined(
     // According to source code of pb, SetTotalBytesLimit is not a simple set,
     // avoid calling the function when the limit is definitely unreached.
     if (PB_TOTAL_BYETS_LIMITS < FLAGS_max_body_size) {
-#if GOOGLE_PROTOBUF_VERSION <= 3010000
+#if GOOGLE_PROTOBUF_VERSION < 3018000
         decoder.SetTotalBytesLimit(INT_MAX, -1);
 #else
         decoder.SetTotalBytesLimit(INT_MAX);
