@@ -59,6 +59,12 @@ RedisRequest* RedisRequest::New() const {
     return new RedisRequest;
 }
 
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+RedisRequest* RedisRequest::New(::google::protobuf::Arena* arena) const {
+    return CreateMaybeMessage<RedisRequest>(arena);
+}
+#endif
+
 void RedisRequest::Clear() {
     _ncommand = 0;
     _has_error = false;
@@ -270,6 +276,12 @@ void RedisResponse::SetCachedSize(int size) const {
 RedisResponse* RedisResponse::New() const {
     return new RedisResponse;
 }
+
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+RedisResponse* RedisResponse::New(::google::protobuf::Arena* arena) const {
+    return CreateMaybeMessage<RedisResponse>(arena);
+}
+#endif
 
 void RedisResponse::Clear() {
     _first_reply.Reset();
