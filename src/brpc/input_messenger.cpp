@@ -67,31 +67,42 @@ ParseResult InputMessenger::CutInputMessage(
     // selection or by client.
     if (preferred >= 0 && preferred <= max_index
             && _handlers[preferred].parse != NULL) {
-        ParseResult result =
-            _handlers[preferred].parse(&m->_read_buf, m, read_eof, _handlers[preferred].arg);
-        if (result.is_ok() ||
-            result.error() == PARSE_ERROR_NOT_ENOUGH_DATA) {
-            *index = preferred;
-            return result;
-        } else if (result.error() != PARSE_ERROR_TRY_OTHERS) {
-            // Critical error, return directly.
-            LOG_IF(ERROR, result.error() == PARSE_ERROR_TOO_BIG_DATA)
-                << "A message from " << m->remote_side()
-                << "(protocol=" << _handlers[preferred].name
-                << ") is bigger than " << FLAGS_max_body_size
-                << " bytes, the connection will be closed."
-                " Set max_body_size to allow bigger messages";
-            return result;
-        }
-        if (m->CreatedByConnect() &&
-            // baidu_std may fall to streaming_rpc
-            (ProtocolType)preferred != PROTOCOL_BAIDU_STD) {
-            // The protocol is fixed at client-side, no need to try others.
-            LOG(ERROR) << "Fail to parse response from " << m->remote_side()
-                       << " by " << _handlers[preferred].name 
-                       << " at client-side";
-            return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
-        }
+        int cur_index = preferred;
+        do {
+            ParseResult result =
+                _handlers[cur_index].parse(&m->_read_buf, m, read_eof, _handlers[cur_index].arg);
+            if (result.is_ok() ||
+                result.error() == PARSE_ERROR_NOT_ENOUGH_DATA) {
+                *index = cur_index;
+                return result;
+            } else if (result.error() != PARSE_ERROR_TRY_OTHERS) {
+                // Critical error, return directly.
+                LOG_IF(ERROR, result.error() == PARSE_ERROR_TOO_BIG_DATA)
+                    << "A message from " << m->remote_side()
+                    << "(protocol=" << _handlers[cur_index].name
+                    << ") is bigger than " << FLAGS_max_body_size
+                    << " bytes, the connection will be closed."
+                    " Set max_body_size to allow bigger messages";
+                return result;
+            }
+
+            if (m->CreatedByConnect()) {
+                if((ProtocolType)cur_index == PROTOCOL_BAIDU_STD) {
+                    // baidu_std may fall to streaming_rpc.
+                    cur_index = (int)PROTOCOL_STREAMING_RPC;
+                    continue;
+                } else {
+                    // The protocol is fixed at client-side, no need to try others.
+                    LOG(ERROR) << "Fail to parse response from " << m->remote_side()
+                        << " by " << _handlers[preferred].name 
+                        << " at client-side";
+                    return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+                }
+            } else {
+                // Try other protocols.
+                break;
+            }
+        } while (1);
         // Clear context before trying next protocol which probably has
         // an incompatible context with the current one.
         if (m->parsing_context()) {
