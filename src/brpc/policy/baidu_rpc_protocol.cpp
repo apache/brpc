@@ -69,7 +69,7 @@ inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
 
 static void SerializeRpcHeaderAndMeta(
     butil::IOBuf* out, const RpcMeta& meta, int payload_size) {
-    const int meta_size = meta.ByteSize();
+    const int meta_size = meta.ByteSizeLong();
     if (meta_size <= 244) { // most common cases
         char header_and_meta[12 + meta_size];
         PackRpcHeader(header_and_meta, meta_size, payload_size);
