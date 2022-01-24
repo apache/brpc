@@ -16,6 +16,7 @@
 ## 4. 值周顺序如下
   * 朱佳顺 @zyearn
   * 李磊 @lorinlee
+  * 王伟冰 @wwbmmm
   * 蔡道进 @cdjingit
   * 何磊 @TousakaRin
 
