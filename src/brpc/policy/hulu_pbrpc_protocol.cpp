@@ -142,7 +142,7 @@ private:
     const char* _stream;
 };
 
-inline void PackHuluHeader(char* hulu_header, int meta_size, int body_size) {
+inline void PackHuluHeader(char* hulu_header, uint32_t meta_size, int body_size) {
     uint32_t* dummy = reinterpret_cast<uint32_t*>(hulu_header); // suppress strict-alias warning
     *dummy = *reinterpret_cast<const uint32_t*>("HULU");
     HuluRawPacker rp(hulu_header + 4);
@@ -152,7 +152,11 @@ inline void PackHuluHeader(char* hulu_header, int meta_size, int body_size) {
 template <typename Meta>
 static void SerializeHuluHeaderAndMeta(
     butil::IOBuf* out, const Meta& meta, int payload_size) {
+    #if GOOGLE_PROTOBUF_VERSION >= 3010000
+    const uint32_t meta_size = meta.ByteSizeLong();
+    #else
     const int meta_size = meta.ByteSize();
+    #endif
     if (meta_size <= 244) { // most common cases
         char header_and_meta[12 + meta_size];
         PackHuluHeader(header_and_meta, meta_size, payload_size);

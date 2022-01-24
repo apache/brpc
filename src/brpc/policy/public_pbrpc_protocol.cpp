@@ -266,7 +266,11 @@ void PackPublicPbrpcRequest(butil::IOBuf* buf,
     nshead.magic_num = NSHEAD_MAGICNUM;
     snprintf(nshead.provider, sizeof(nshead.provider), "%s", PROVIDER);
     nshead.version = NSHEAD_VERSION;
+    #if GOOGLE_PROTOBUF_VERSION >= 3010000
+    nshead.body_len = pbreq.ByteSizeLong();
+    #else
     nshead.body_len = pbreq.ByteSize();
+    #endif
     buf->append(&nshead, sizeof(nshead));
 
     Span* span = ControllerPrivateAccessor(controller).span();

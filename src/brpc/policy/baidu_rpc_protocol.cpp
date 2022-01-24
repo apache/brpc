@@ -59,7 +59,7 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
 // 5. Not supported: chunk_info
 
 // Pack header into `buf'
-inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
+inline void PackRpcHeader(char* rpc_header, uint32_t meta_size, int payload_size) {
     uint32_t* dummy = (uint32_t*)rpc_header;  // suppress strict-alias warning
     *dummy = *(uint32_t*)"PRPC";
     butil::RawPacker(rpc_header + 4)
@@ -69,7 +69,11 @@ inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
 
 static void SerializeRpcHeaderAndMeta(
     butil::IOBuf* out, const RpcMeta& meta, int payload_size) {
+    #if GOOGLE_PROTOBUF_VERSION >= 3010000
+    const uint32_t meta_size = meta.ByteSizeLong();
+    #else
     const int meta_size = meta.ByteSize();
+    #endif
     if (meta_size <= 244) { // most common cases
         char header_and_meta[12 + meta_size];
         PackRpcHeader(header_and_meta, meta_size, payload_size);
