@@ -75,6 +75,7 @@ brpc在[tools/rpc_replay](https://github.com/brpc/brpc/tree/master/tools/rpc_rep
 - -thread_num：发送线程数，为0时会根据qps自动调节，默认为0。一般不用设置。
 - -timeout_ms：超时
 - -use_bthread：使用bthread发送，默认是。
+- -http_host：指定回放HTTP请求时的Host字段，如果非标准端口，请补全，比如：www.abc.com:8888，不指定该参数时将使用采样的原始Host字段。
 
 rpc_replay会默认启动一个仅监控用的dummy server。打开后可查看回放的状况。其中rpc_replay_error是回放失败的次数。
 
