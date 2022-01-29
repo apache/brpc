@@ -27,6 +27,7 @@ const uint64_t PB_TOTAL_BYETS_LIMITS =
 #undef private
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
+#include <google/protobuf/text_format.h>
 #include <gflags/gflags.h>
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
@@ -212,10 +213,21 @@ BUTIL_FORCE_INLINE bool ParsePbFromZeroCopyStreamInlined(
     return msg->ParseFromCodedStream(&decoder) && decoder.ConsumedEntireMessage();
 }
 
+BUTIL_FORCE_INLINE bool ParsePbTextFromZeroCopyStreamInlined(
+    google::protobuf::Message* msg,
+    google::protobuf::io::ZeroCopyInputStream* input) {
+    return google::protobuf::TextFormat::Parse(input, msg);
+}
+
 bool ParsePbFromZeroCopyStream(
     google::protobuf::Message* msg,
     google::protobuf::io::ZeroCopyInputStream* input) {
     return ParsePbFromZeroCopyStreamInlined(msg, input);
+}
+
+bool ParsePbTextFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf) {
+    butil::IOBufAsZeroCopyInputStream stream(buf);
+    return ParsePbTextFromZeroCopyStreamInlined(msg, &stream);
 }
 
 bool ParsePbFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf) {
