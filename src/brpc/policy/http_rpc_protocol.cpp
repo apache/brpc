@@ -525,7 +525,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
             if (!google::protobuf::TextFormat::Print(*pbreq, &wrapper)) {
                 cntl->request_attachment().clear();
-                return cntl->SetFailed(EREQUEST, "Fail to print %s",
+                return cntl->SetFailed(EREQUEST, "Fail to print %s as proto-text",
                                        pbreq->GetTypeName().c_str());
             }
         } else if (content_type == HTTP_CONTENT_JSON) {
@@ -774,7 +774,7 @@ HttpResponseSender::~HttpResponseSender() {
             }
         } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
             if (!google::protobuf::TextFormat::Print(*res, &wrapper)) {
-                cntl->SetFailed(ERESPONSE, "Fail to print %s", res->GetTypeName().c_str());
+                cntl->SetFailed(ERESPONSE, "Fail to print %s as proto-text", res->GetTypeName().c_str());
             }
         } else {
             std::string err;
@@ -1491,7 +1491,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 }
             } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
                 if (!ParsePbTextFromIOBuf(req, req_body)) {
-                    cntl->SetFailed(EREQUEST, "Fail to parse http body as %s",
+                    cntl->SetFailed(EREQUEST, "Fail to parse http proto-text body as %s",
                                     req->GetDescriptor()->full_name().c_str());
                     return;
                 }
