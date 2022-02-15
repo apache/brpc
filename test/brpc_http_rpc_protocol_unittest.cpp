@@ -1501,4 +1501,31 @@ TEST_F(HttpTest, spring_protobuf_content_type) {
     ASSERT_EQ("application/x-protobuf", cntl.http_response().content_type());
 }
 
+TEST_F(HttpTest, spring_protobuf_text_content_type) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_content_type("application/proto-text");
+    cntl.request_attachment().append(req.Utf8DebugString());
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ("application/proto-text", cntl.http_response().content_type());
+    ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+            cntl.response_attachment().to_string(), &res));
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+}
+
 } //namespace
