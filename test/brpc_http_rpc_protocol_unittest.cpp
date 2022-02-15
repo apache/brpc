@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/text_format.h>
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/files/scoped_file.h"
@@ -160,6 +161,20 @@ protected:
         req.set_message(EXP_REQUEST);
         butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
         EXPECT_TRUE(json2pb::ProtoMessageToJson(req, &req_stream, NULL));
+        return msg;
+    }
+
+    brpc::policy::HttpContext* MakePostProtoTextRequestMessage(
+        const std::string& path) {
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
+        msg->header().uri().set_path(path);
+        msg->header().set_content_type("application/proto-text");
+        msg->header().set_method(brpc::HTTP_METHOD_POST);
+
+        test::EchoRequest req;
+        req.set_message(EXP_REQUEST);
+        butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
+        EXPECT_TRUE(google::protobuf::TextFormat::Print(req, &req_stream));
         return msg;
     }
 
@@ -307,6 +322,12 @@ TEST_F(HttpTest, verify_request) {
         brpc::policy::HttpContext* msg =
                 MakePostRequestMessage("/EchoService/Echo");
         _socket->SetFailed();
+        VerifyMessage(msg, false);
+        msg->Destroy();
+    }
+    {
+        brpc::policy::HttpContext* msg =
+                MakePostProtoTextRequestMessage("/EchoService/Echo");
         VerifyMessage(msg, false);
         msg->Destroy();
     }
