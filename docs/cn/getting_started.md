@@ -176,7 +176,7 @@ $ sh run_tests.sh
 
 brpc默认会构建出静态库和共享库，因此它也需要依赖有静态库和共享库两个版本。
 
-以[gflags](https://github.com/gflags/gflags)为例，它默认不够尖共享库，你需要给`cmake`指定选项去改变这一行为：
+以[gflags](https://github.com/gflags/gflags)为例，它默认不构建共享库，你需要给`cmake`指定选项去改变这一行为：
 ```shell
 $ cmake . -DBUILD_SHARED_LIBS=1 -DBUILD_STATIC_LIBS=1
 $ make
