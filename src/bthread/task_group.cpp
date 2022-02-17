@@ -297,9 +297,6 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             thread_return = e.value();
         }
 
-        // Group is probably changed
-        g = tls_task_group;
-
         // TODO: Save thread_return
         (void)thread_return;
 
@@ -314,13 +311,16 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // Clean tls variables, must be done before changing version_butex
         // otherwise another thread just joined this thread may not see side
         // effects of destructing tls variables.
-        KeyTable* kt = tls_bls.keytable;
+        KeyTable* kt = m->local_storage.keytable;
         if (kt != NULL) {
             return_keytable(m->attr.keytable_pool, kt);
             // After deletion: tls may be set during deletion.
             tls_bls.keytable = NULL;
             m->local_storage.keytable = NULL; // optional
         }
+        
+        // Group is probably changed
+        g = tls_task_group;
 
         // Increase the version and wake up all joiners, if resulting version
         // is 0, change it to 1 to make bthread_t never be 0. Any access
