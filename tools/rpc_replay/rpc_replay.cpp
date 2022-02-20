@@ -27,6 +27,7 @@
 #include <brpc/server.h>
 #include <brpc/rpc_dump.h>
 #include <brpc/serialized_request.h>
+#include <brpc/details/http_message.h>
 #include "info_thread.h"
 
 DEFINE_string(dir, "", "The directory of dumped requests");
@@ -41,6 +42,7 @@ DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Maximum retry times");
 DEFINE_int32(dummy_port, 8899, "Port of dummy server(to monitor replaying)");
+DEFINE_string(http_host, "", "Host field for http protocol");
 
 bvar::LatencyRecorder g_latency_recorder("rpc_replay");
 bvar::Adder<int64_t> g_error_count("rpc_replay_error_count");
@@ -162,15 +164,14 @@ static void* replay_thread(void* arg) {
             brpc::SerializedRequest* req_ptr = &req;
             cntl->reset_sampled_request(sample_guard.release());
             if (sample->meta.protocol_type() == brpc::PROTOCOL_HTTP) {
-                std::stringstream uri_ss;
-                uri_ss << "/" << sample->meta.service_name() 
-                       << "/" << sample->meta.method_name();
-
-                cntl->http_request().uri() = uri_ss.str();
-                cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
-                cntl->http_request().set_content_type("application/json");
-                cntl->request_attachment() = sample->request.movable();
-
+                brpc::HttpMessage http_message;
+                http_message.ParseFromIOBuf(sample->request);
+                cntl->http_request().Swap(http_message.header());
+                if (!FLAGS_http_host.empty()) {
+                    // reset Host in header
+                    cntl->http_request().SetHeader("Host", FLAGS_http_host);
+                }
+                cntl->request_attachment() = http_message.body().movable();
                 req_ptr = NULL;
             } else if (sample->meta.attachment_size() > 0) {
                 sample->request.cutn(
