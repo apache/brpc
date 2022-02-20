@@ -60,18 +60,22 @@ int WriteWithoutOvercrowded(Socket*, SocketMessagePtr<>& msg);
 }
 
 FlvWriter::FlvWriter(butil::IOBuf* buf)
-    : _write_header(false), _buf(buf) {
+    : _write_header(false), _buf(buf), _options() {
 }
 
-static char g_flv_header[9] = { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 };
+FlvWriter::FlvWriter(butil::IOBuf* buf, const FlvWriterOptions& options)
+    : _write_header(false), _buf(buf), _options(options) {
+}
 
 butil::Status FlvWriter::Write(const RtmpVideoMessage& msg) {
     char buf[32];
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, g_flv_header, sizeof(g_flv_header));
-        p += sizeof(g_flv_header);
+        const char flags_bit = static_cast<char>(_options.flv_content_type);
+        const char header[9] = { 'F', 'L', 'V', 0x01, flags_bit, 0, 0, 0, 0x09 };
+        memcpy(p, header, sizeof(header));
+        p += sizeof(header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag
@@ -96,8 +100,10 @@ butil::Status FlvWriter::Write(const RtmpAudioMessage& msg) {
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, g_flv_header, sizeof(g_flv_header));
-        p += sizeof(g_flv_header);
+        const char flags_bit = static_cast<char>(_options.flv_content_type);
+        const char header[9] = { 'F', 'L', 'V', 0x01, flags_bit, 0, 0, 0, 0x09 };
+        memcpy(p, header, sizeof(header));
+        p += sizeof(header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag
@@ -125,8 +131,10 @@ butil::Status FlvWriter::WriteScriptData(const butil::IOBuf& req_buf, uint32_t t
     char* p = buf;
     if (!_write_header) {
         _write_header = true;
-        memcpy(p, g_flv_header, sizeof(g_flv_header));
-        p += sizeof(g_flv_header);
+        const char flags_bit = static_cast<char>(_options.flv_content_type);
+        const char header[9] = { 'F', 'L', 'V', 0x01, flags_bit, 0, 0, 0, 0x09 };
+        memcpy(p, header, sizeof(header));
+        p += sizeof(header);
         policy::WriteBigEndian4Bytes(&p, 0); // PreviousTagSize0
     }
     // FLV tag
@@ -179,12 +187,15 @@ FlvReader::FlvReader(butil::IOBuf* buf)
 
 butil::Status FlvReader::ReadHeader() {
     if (!_read_header) {
-        char header_buf[sizeof(g_flv_header) + 4/* PreviousTagSize0 */];
+        // 9 is the size of FlvHeader, which is usually composed of
+        // { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 }.
+        char header_buf[9 + 4/* PreviousTagSize0 */];
         const char* p = (const char*)_buf->fetch(header_buf, sizeof(header_buf));
         if (p == NULL) {
             return butil::Status(EAGAIN, "Fail to read, not enough data");
         }
-        if (memcmp(p, g_flv_header, 3) != 0) {
+        const char flv_header_signature[3] = { 'F', 'L', 'V' };
+        if (memcmp(p, flv_header_signature, sizeof(flv_header_signature)) != 0) {
             LOG(FATAL) << "Fail to parse FLV header";
             return butil::Status(EINVAL, "Fail to parse FLV header");
         }

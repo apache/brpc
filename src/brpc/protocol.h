@@ -193,6 +193,7 @@ void SerializeRequestDefault(butil::IOBuf* buf,
 bool ParsePbFromZeroCopyStream(google::protobuf::Message* msg,
                                google::protobuf::io::ZeroCopyInputStream* input);
 bool ParsePbFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf);
+bool ParsePbTextFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf);
 bool ParsePbFromArray(google::protobuf::Message* msg, const void* data, size_t size);
 bool ParsePbFromString(google::protobuf::Message* msg, const std::string& str);
 

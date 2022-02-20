@@ -23,6 +23,21 @@ FATAL: 12-26 10:01:25:   * 0 [src/brpc/policy/giano_authenticator.cpp:65][429496
 WARNING: 12-26 10:01:25:   * 0 [src/brpc/input_messenger.cpp:132][4294969345] Authentication failed, remote side(127.0.0.1:22989) of sockfd=5, close it
 ```
 
+# 查看方法
+
+1. 通过builtin service的 /hotspots/cpu 页面查看
+1. 通过pprof 工具查看，如 tools/pprof --text localhost:9002/pprof/profile
+
+# 控制采样频率
+
+启动前设置环境变量：export CPUPROFILE_FREQUENCY=xxx
+
+默认值为: 100
+
+# 控制采样时间
+
+url加上?seconds=秒数，如/hotspots/cpu?seconds=5
+
 # 图示
 
 下图是一次运行cpu profiler后的结果：

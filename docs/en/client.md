@@ -216,6 +216,8 @@ which is round robin. Always choose next server inside the list, next of the las
 
 which is weighted round robin. Choose the next server according to the configured weight. The chances a server is selected is consistent with its weight, and the algorithm can make each server selection scattered.
 
+The instance tag must be an int32 number representing the weight, eg. tag="50".
+
 ### random
 
 Randomly choose one server from the list, no other settings. Similarly with round robin, the algorithm assumes that servers to access are similar.
@@ -223,6 +225,8 @@ Randomly choose one server from the list, no other settings. Similarly with roun
 ### wr
 
 which is weighted random. Choose the next server according to the configured weight. The chances a server is selected is consistent with its weight.
+
+Requirements of instance tag is the same as wrr.
 
 ### la
 
@@ -239,6 +243,8 @@ Need to set Controller.set_request_code() before RPC otherwise the RPC will fail
 Do distinguish "key" and "attributes" of the request. Don't compute request_code by full content of the request just for quick. Minor change in attributes may result in totally different hash code and change destination dramatically. Another cause is padding, for example: `struct Foo { int32_t a; int64_t b; }` has a 4-byte undefined gap between `a` and `b` on 64-bit machines, result of `hash(&foo, sizeof(foo))` is undefined. Fields need to be packed or serialized before hashing.
 
 Check out [Consistent Hashing](consistent_hashing.md) for more details.
+
+Other kind of lb does not need to set Controller.set_request_code(). If request code is set, it will not be used by lb. For example, lb=rr, and call Controller.set_request_code(), even if request_code is the same for every request, lb will balance the requests using the rr policy.
 
 ### Client-side throttling for recovery from cluster downtime
 
@@ -293,6 +299,12 @@ if (cntl.Failed()) {
 }
 ```
 
+> WARNING: Do NOT use synchronous call when you are holding a pthread lock! Otherwise it is easy to cause deadlock.
+> 
+> Solution (choose one of the two):
+> 1. Replace pthread lock with bthread lock (bthread_mutex_t)
+> 1. Release the lock before CallMethod
+
 ## Asynchronous call
 
 Pass a callback `done` to CallMethod, which resumes after sending request, rather than completion of RPC. When the response from server is received  or error occurred(including timedout), done->Run() is called. Post-processing code of the RPC should be put in done->Run() instead of after CallMethod.
@@ -301,7 +313,11 @@ Because end of CallMethod does not mean completion of RPC, response/controller m
 
 You can new these objects individually and create done by [NewCallback](#use-newcallback), or make response/controller be member of done and [new them together](#Inherit-google::protobuf::Closure). Former one is recommended.
 
-**Request and Channel can be destroyed immediately after asynchronous CallMethod**, which is different from response/controller. Note that "immediately" means destruction of request/Channel can happen **after** CallMethod, not during CallMethod. Deleting a Channel just being used by another thread results in undefined behavior (crash at best).
+Request can be destroyed immediately after asynchronous CallMethod. (SelectiveChannel is an exception, in the case of SelectiveChannel, the request object must be released after rpc finish)
+
+Channel can be destroyed immediately after asynchronous CallMethod.
+
+Note that "immediately" means destruction of Request/Channel can happen **after** CallMethod, not during CallMethod. Deleting a Channel just being used by another thread results in undefined behavior (crash at best).
 
 ### Use NewCallback
 ```c++
@@ -324,7 +340,7 @@ MyService_Stub stub(&channel);
 MyRequest request;  // you don't have to new request, even in an asynchronous call.
 request.set_foo(...);
 cntl->set_timeout_ms(...);
-stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
+stub.some_method(cntl, &request, response, brpc::NewCallback(OnRPCDone, response, cntl));
 ```
 Since protobuf 3 changes NewCallback to private, brpc puts NewCallback in [src/brpc/callback.h](https://github.com/brpc/brpc/blob/master/src/brpc/callback.h) after r32035 (and adds more overloads). If your program has compilation issues with NewCallback, replace google::protobuf::NewCallback with brpc::NewCallback.
 
@@ -523,7 +539,7 @@ NOTE2: error code of RPC timeout is **ERPCTIMEDOUT (1008) **, ETIMEDOUT is conne
 
 ## Retry
 
-ChannelOptions.max_retry is maximum retrying count for all RPC via the channel, Controller.set_max_retry() overrides value for one RPC. Default value is 3. 0 means no retries.
+ChannelOptions.max_retry is maximum retrying count for all RPC via the channel, Default value is 3, 0 means no retries. Controller.set_max_retry() overrides value for one RPC.
 
 Controller.retried_count() returns number of retries.
 

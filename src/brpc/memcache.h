@@ -90,6 +90,9 @@ public:
 
     // Protobuf methods.
     MemcacheRequest* New() const;
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+    MemcacheRequest* New(::google::protobuf::Arena* arena) const override;
+#endif
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
     void CopyFrom(const MemcacheRequest& from);
@@ -200,6 +203,9 @@ public:
     // implements Message ----------------------------------------------
   
     MemcacheResponse* New() const;
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+    MemcacheResponse* New(::google::protobuf::Arena* arena) const override;
+#endif
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
     void CopyFrom(const MemcacheResponse& from);

@@ -161,7 +161,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     // This keeps ad-hoc creation of channels reuse previous connections.
-    GFLAGS_NS::SetCommandLineOption("defer_close_seconds", "10");
+    GFLAGS_NS::SetCommandLineOption("defer_close_second", "10");
 
     brpc::Server server;
     server.set_version("rpc_view_server");

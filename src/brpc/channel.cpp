@@ -256,7 +256,7 @@ int Channel::Init(const char* server_addr, int port,
             return -1;
         }
     }
-    return InitSingle(point, server_addr, options);
+    return InitSingle(point, server_addr, options, port);
 }
 
 static int CreateSocketSSLContext(const ChannelOptions& options,
@@ -283,16 +283,21 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
 
 int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                         const char* raw_server_address,
-                        const ChannelOptions* options) {
+                        const ChannelOptions* options,
+                        int raw_port) {
     GlobalInitializeOrDie();
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP &&
-        ::strncmp(raw_server_address, "https://", 8) == 0) {
+    std::string scheme;
+    int* port_out = raw_port == -1 ? &raw_port: NULL;
+    ParseURL(raw_server_address, &scheme, &_service_name, port_out);
+    if (raw_port != -1) {
+        _service_name.append(":").append(std::to_string(raw_port));
+    }
+    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
-            ParseURL(raw_server_address,
-                     NULL, &_options.mutable_ssl_options()->sni_name, NULL);
+            _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
     const int port = server_addr_and_port.port;
@@ -325,11 +330,15 @@ int Channel::Init(const char* ns_url,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP &&
-        ::strncmp(ns_url, "https://", 8) == 0) {
+    std::string scheme;
+    int raw_port = -1;
+    ParseURL(ns_url, &scheme, &_service_name, &raw_port);
+    if (raw_port != -1) {
+        _service_name.append(":").append(std::to_string(raw_port));
+    }
+    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
-            ParseURL(ns_url,
-                     NULL, &_options.mutable_ssl_options()->sni_name, NULL);
+            _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
     LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
@@ -385,6 +394,12 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     if (_options.protocol.has_param()) {
         CHECK(cntl->protocol_param().empty());
         cntl->protocol_param() = _options.protocol.param();
+    }
+    if (_options.protocol == brpc::PROTOCOL_HTTP) {
+        URI& uri = cntl->http_request().uri();
+        if (uri.host().empty() && !_service_name.empty()) {
+            uri.SetHostAndPort(_service_name);
+        }
     }
     cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;

@@ -108,6 +108,9 @@ public:
 
     // Protobuf methods.
     RedisRequest* New() const;
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+    RedisRequest* New(::google::protobuf::Arena* arena) const override;
+#endif
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
     void CopyFrom(const RedisRequest& from);
@@ -178,6 +181,9 @@ public:
     // implements Message ----------------------------------------------
   
     RedisResponse* New() const;
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+    RedisResponse* New(::google::protobuf::Arena* arena) const override;
+#endif
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
     void CopyFrom(const RedisResponse& from);

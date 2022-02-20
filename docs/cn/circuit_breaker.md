@@ -22,11 +22,11 @@ option.enable_circuit_breaker = true;
 可选的熔断由CircuitBreaker实现，在开启了熔断之后，CircuitBreaker会记录每一个请求的处理结果，并维护一个累计出错时长，记为acc_error_cost，当acc_error_cost > max_error_cost时，熔断该节点。
 
 **每次请求返回成功之后，更新max_error_cost:**
-1. 首先需要更新latency的EMA值，记为ema_latency:  ema_latency = ema_latency * alpha + (1 - alpha) * latency。
+1. 首先需要更新latency的[EMA](https://en.wikipedia.org/wiki/Moving_average)值，记为ema_latency:  ema_latency = ema_latency * alpha + (1 - alpha) * latency。
 2. 之后根据ema_latency更新max_error_cost: max_error_cost = window_size * max_error_rate * ema_latency。
 
 
-上面的window_size和max_error_rate均为gflag所指定的常量, alpha则是一个略小于1的常量，其值由window_size和下面提到的circuit_breaker_epsilon_value决定。latency则指该次请求所的耗时。
+上面的window_size和max_error_rate均为gflag所指定的常量, alpha则是一个略小于1的常量，其值由window_size和下面提到的circuit_breaker_epsilon_value决定。latency则指该次请求的耗时。
 
 **每次请求返回之后，都会更新acc_error_cost：**
 1. 如果请求处理成功，则令 acc_error_cost = alpha * acc_error_cost 
@@ -40,7 +40,7 @@ option.enable_circuit_breaker = true;
 
 为了允许某个节点在短时间内抖动，同时又能够剔除长期错误率较高的节点，CircuitBreaker同时维护了长短两个窗口，长窗口阈值较低，短窗口阈值较高。长窗口的主要作用是剔除那些长期错误率较高的服务。我们可以根据实际的qps及对于错误的容忍程度来调整circuit_breaker_long_window_size及circuit_breaker_long_window_error_percent。
 
-短窗口则允许我们更加精细的控制熔断的灵敏度，在一些对抖动很敏感的场景，可以通过调整circuit_breaker_short_window_size和circuit_breaker_long_window_short_percent来缩短短窗口的长度、降低短窗口对于错误的容忍程度，使得出现抖动时能够快速对故障节点进行熔断。
+短窗口则允许我们更加精细的控制熔断的灵敏度，在一些对抖动很敏感的场景，可以通过调整circuit_breaker_short_window_size和circuit_breaker_short_window_error_percent来缩短短窗口的长度、降低短窗口对于错误的容忍程度，使得出现抖动时能够快速对故障节点进行熔断。
 
 此外，circuit_breaker_epsilon_value可以调整窗口对于**连续抖动的容忍程度**，circuit_breaker_epsilon_value的值越低，计算公式中的alpha越小，acc_error_cost下降的速度就越快，当circuit_breaker_epsilon_value的值达到0.001时，若一整个窗口的请求都没有出错，那么正好可以把acc_error_cost降低到0。
 
