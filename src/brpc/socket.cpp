@@ -1977,7 +1977,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
                         append_from_file_descriptor(fd(), size_hint);
                 if (_read_buf.size() >= rdma::HELLO_LENGTH) {
                     char tmp[rdma::MAGIC_LENGTH];
-                    _read_buf.copy_to(tmp, rdma::HELLO_LENGTH);
+                    _read_buf.copy_to(tmp, rdma::MAGIC_LENGTH);
                     _rdma_state = RDMA_OFF;
                     if (strncmp(tmp, rdma::MAGIC_STR,
                                 rdma::MAGIC_LENGTH) == 0) {
