@@ -679,6 +679,7 @@ friend class Controller;
 
     // mutable is required for `ServerPrivateAccessor' to change this bvar
     mutable bvar::Adder<int64_t> _nerror_bvar;
+    mutable bvar::PerSecond<bvar::Adder<int64_t> > _eps_bvar;
     mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
 
 };
