@@ -22,12 +22,14 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
-#include <vector>                                  // std::vector
-#include <stdint.h>                                // uint64_t
-#include <gflags/gflags_declare.h>                 // DECLARE_xxx
-#include "butil/endpoint.h"                         // butil::EndPoint
+#include <vector>                             // std::vector
+#include <map>
+#include <stdint.h>                           // uint64_t
+#include <gflags/gflags_declare.h>            // DECLARE_xxx
+#include "butil/endpoint.h"                   // butil::EndPoint
 #include "butil/iobuf.h"
 #include "butil/logging.h"
+#include "butil/containers/hash_tables.h"     // hash
 #include "brpc/options.pb.h"                  // ProtocolType
 #include "brpc/socket_id.h"                   // SocketId
 #include "brpc/parse_result.h"                // ParseResult
@@ -151,6 +153,9 @@ struct Protocol {
     // Name of this protocol, must be string constant.
     const char* name;
 
+    // Type of this protocol which is defined in options.proto
+    ProtocolType type;
+
     // True if this protocol is supported at client-side.
     bool support_client() const {
         return serialize_request && pack_request && process_response;
@@ -168,10 +173,33 @@ const ConnectionType CONNECTION_TYPE_ALL =
                      (int)CONNECTION_TYPE_POOLED |
                      (int)CONNECTION_TYPE_SHORT);
 
+typedef std::map<ProtocolType, int> ProtocolOrderMap;
 // [thread-safe] 
-// Register `protocol' using key=`type'. 
+// Register `protocol'.
+// `order` is the parsing order of `protocol'.
+// For the built-in protocol, the order map is as following:
+// { PROTOCOL_BAIDU_STD, 100 },
+// { PROTOCOL_HTTP, 200 },
+// { PROTOCOL_H2, 300 },
+// { PROTOCOL_THRIFT, 400 },
+// { PROTOCOL_HULU_PBRPC, 500 },
+// { PROTOCOL_NOVA_PBRPC, 600 },
+// { PROTOCOL_PUBLIC_PBRPC, 700 },
+// { PROTOCOL_STREAMING_RPC, 800 },
+// { PROTOCOL_SOFA_PBRPC, 900 },
+// { PROTOCOL_UBRPC_COMPACK, 1000 },
+// { PROTOCOL_UBRPC_MCPACK2, 1100 },
+// { PROTOCOL_REDIS, 1200 },
+// { PROTOCOL_MEMCACHE, 1300 },
+// { PROTOCOL_MONGO, 1400 },
+// { PROTOCOL_RTMP, 1500 },
+// { PROTOCOL_ESP, 1600 },
+// { PROTOCOL_NSHEAD, 1700 },
+// { PROTOCOL_NSHEAD_MCPACK, 1800 }
+// If user want to register their own protocols, a user-defined protocol order
+// should be passed to this function.
 // Returns 0 on success, -1 otherwise
-int RegisterProtocol(ProtocolType type, const Protocol& protocol);
+int RegisterProtocol(const Protocol& protocol, int order);
 
 // [thread-safe]
 // Find the protocol registered with key=`type'.
@@ -181,6 +209,7 @@ const Protocol* FindProtocol(ProtocolType type);
 // [thread-safe]
 // List all registered protocols into `vec'.
 void ListProtocols(std::vector<Protocol>* vec);
+void ListProtocols(std::vector<std::pair<int, Protocol> >* vec);
 void ListProtocols(std::vector<std::pair<ProtocolType, Protocol> >* vec);
 
 // The common serialize_request implementation used by many protocols.

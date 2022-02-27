@@ -44,8 +44,15 @@ int main(int argc, char* argv[]) {
                                brpc::policy::PackHuluRequest,
                                EmptyProcessHuluRequest, EmptyProcessHuluRequest,
                                NULL, NULL, NULL,
-                               brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+                               brpc::CONNECTION_TYPE_ALL, "dummy_hulu", (brpc::ProtocolType)30 };
+    // ProtocolType with 31 should be parsed first, then 32, and finally 30
+    EXPECT_EQ(0,  RegisterProtocol(dummy_protocol, 5));
+    dummy_protocol.name = "dummy_hulu2";
+    dummy_protocol.type = (brpc::ProtocolType)31;
+    EXPECT_EQ(0,  RegisterProtocol(dummy_protocol, 4));
+    dummy_protocol.name = "dummy_hulu3";
+    dummy_protocol.type = (brpc::ProtocolType)32;
+    EXPECT_EQ(0,  RegisterProtocol(dummy_protocol, 6));
     return RUN_ALL_TESTS();
 }
 
@@ -59,6 +66,26 @@ protected:
     virtual void TearDown() {
     };
 };
+
+TEST_F(MessengerTest, parsing_order) {
+    brpc::Acceptor messenger;
+    const brpc::InputMessageHandler pairs[] = {
+        { brpc::policy::ParseHuluMessage,
+          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu", (brpc::ProtocolType)30},
+        { brpc::policy::ParseHuluMessage,
+          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu2", (brpc::ProtocolType)31},
+        { brpc::policy::ParseHuluMessage,
+          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu3", (brpc::ProtocolType)32}
+    };
+    for (int i = 0; i < 3; ++i) {
+        ASSERT_EQ(0, messenger.AddHandler(pairs[i]));
+    }
+    ASSERT_EQ(0, messenger.AddHandlerDone());
+    ASSERT_EQ(2, messenger._max_index.load(butil::memory_order_relaxed));
+    ASSERT_STREQ("dummy_hulu2", messenger._handlers[0].name);
+    ASSERT_STREQ("dummy_hulu", messenger._handlers[1].name);
+    ASSERT_STREQ("dummy_hulu3", messenger._handlers[2].name);
+}
 
 #define USE_UNIX_DOMAIN_SOCKET 1
 
@@ -155,7 +182,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
 
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage, 
-          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu" }
+          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu", (brpc::ProtocolType)30 }
     };
 
     for (size_t i = 0; i < NEPOLL; ++i) {        
@@ -169,6 +196,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
         ASSERT_TRUE(listening_fd > 0);
         butil::make_non_blocking(listening_fd);
         ASSERT_EQ(0, messenger[i].AddHandler(pairs[0]));
+        ASSERT_EQ(0, messenger[i].AddHandlerDone());
         ASSERT_EQ(0, messenger[i].StartAccept(listening_fd, -1, NULL));
     }
     

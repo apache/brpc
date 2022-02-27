@@ -171,9 +171,10 @@ protected:
         pthread_once(&register_mock_protocol, register_protocol);
         const brpc::InputMessageHandler pairs[] = {
             { brpc::policy::ParseRpcMessage, 
-              ProcessRpcRequest, VerifyMyRequest, this, "baidu_std" }
+              ProcessRpcRequest, VerifyMyRequest, this, "baidu_std" , (brpc::ProtocolType)30 }
         };
         EXPECT_EQ(0, _messenger.AddHandler(pairs[0]));
+        EXPECT_EQ(0, _messenger.AddHandlerDone());
 
         EXPECT_EQ(0, _server_list.save(butil::endpoint2str(_ep).c_str()));           
         _naming_url = std::string("File://") + _server_list.fname();
@@ -191,10 +192,10 @@ protected:
                                  { brpc::policy::ParseRpcMessage,
                                    brpc::SerializeRequestDefault, 
                                    brpc::policy::PackRpcRequest,
-                                   NULL, ProcessRpcRequest,
+                                   ProcessRpcRequest, NULL,
                                    VerifyMyRequest, NULL, NULL,
-                                   brpc::CONNECTION_TYPE_ALL, "baidu_std" };
-        ASSERT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+                                   brpc::CONNECTION_TYPE_ALL, "baidu_std" , (brpc::ProtocolType)30 };
+        ASSERT_EQ(0,  RegisterProtocol(dummy_protocol, 1));
     }
 
     static void ProcessRpcRequest(brpc::InputMessageBase* msg_base) {

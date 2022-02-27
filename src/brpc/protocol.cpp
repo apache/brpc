@@ -55,8 +55,9 @@ const size_t MAX_PROTOCOL_SIZE = 128;
 struct ProtocolEntry {
     butil::atomic<bool> valid;
     Protocol protocol;
-    
-    ProtocolEntry() : valid(false) {}
+    int order;
+
+    ProtocolEntry() : valid(false), order(0) {}
 };
 struct ProtocolMap {
     ProtocolEntry entries[MAX_PROTOCOL_SIZE];
@@ -66,24 +67,29 @@ inline ProtocolEntry* get_protocol_map() {
 }
 static pthread_mutex_t s_protocol_map_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int RegisterProtocol(ProtocolType type, const Protocol& protocol) {
-    const size_t index = type;
+int RegisterProtocol(const Protocol& protocol, int order) {
+    const size_t index = protocol.type;
     if (index >= MAX_PROTOCOL_SIZE) {
-        LOG(ERROR) << "ProtocolType=" << type << " is out of range";
+        LOG(ERROR) << "ProtocolType=" << protocol.type << " is out of range";
+        return -1;
+    }
+    if (order <= 0) {
+        LOG(ERROR) << "Invalid order=" << order << " for type=" << protocol.type;
         return -1;
     }
     if (!protocol.support_client() && !protocol.support_server()) {
-        LOG(ERROR) << "ProtocolType=" << type
+        LOG(ERROR) << "ProtocolType=" << protocol.type
                    << " neither supports client nor server";
         return -1;
     }
     ProtocolEntry* const protocol_map = get_protocol_map();
     BAIDU_SCOPED_LOCK(s_protocol_map_mutex);
     if (protocol_map[index].valid.load(butil::memory_order_relaxed)) {
-        LOG(ERROR) << "ProtocolType=" << type << " was registered";
+        LOG(ERROR) << "ProtocolType=" << protocol.type << " was registered";
         return -1;
     }
     protocol_map[index].protocol = protocol;
+    protocol_map[index].order = order;
     protocol_map[index].valid.store(true, butil::memory_order_release);
     return 0;
 }
@@ -108,6 +114,17 @@ void ListProtocols(std::vector<Protocol>* vec) {
     for (size_t i = 0; i < MAX_PROTOCOL_SIZE; ++i) {
         if (protocol_map[i].valid.load(butil::memory_order_acquire)) {
             vec->push_back(protocol_map[i].protocol);
+        }
+    }
+}
+
+void ListProtocols(std::vector<std::pair<int, Protocol> >* vec) {
+    vec->clear();
+    ProtocolEntry* const protocol_map = get_protocol_map();
+    for (size_t i = 0; i < MAX_PROTOCOL_SIZE; ++i) {
+        if (protocol_map[i].valid.load(butil::memory_order_acquire)) {
+            vec->push_back(
+                    std::make_pair(protocol_map[i].order, protocol_map[i].protocol));
         }
     }
 }

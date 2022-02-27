@@ -65,6 +65,9 @@ struct InputMessageHandler {
 
     // Name of this handler, must be string constant.
     const char* name;
+
+    // Type of this handler, which is defined in options.proto
+    ProtocolType protocol_type;
 };
 
 // Process messages from connections.
@@ -79,6 +82,11 @@ public:
     // process messages from connections.
     // Returns 0 on success, -1 otherwise.
     int AddHandler(const InputMessageHandler& handler);
+
+    // [thread-safe] Must be called at least once after AddHandler()
+    // or AddNonProtocolHandler().
+    // Returns 0 on success, -1 otherwise.
+    int AddHandlerDone();
 
     // [thread-safe] Create a socket to process input messages.
     int Create(const butil::EndPoint& remote_side,
@@ -96,6 +104,9 @@ public:
     // Get name of the n-th handler
     const char* NameOfProtocol(int n) const;
 
+    // Get type of the n-th handler
+    ProtocolType TypeOfProtocol(int n) const;
+
     // Add a handler which doesn't belong to any registered protocol.
     // Note: Invoking this method indicates that you are using Socket without
     // Channel nor Server. 
@@ -112,8 +123,9 @@ private:
     ParseResult CutInputMessage(Socket* m, size_t* index, bool read_eof);
 
     // User-supplied scissors and handlers.
-    // the index of handler is exactly the same as the protocol
+    // _handlers array is sorted by parsing order defined in global.cpp
     InputMessageHandler* _handlers;
+    std::map<int, InputMessageHandler>* _ordered_handlers;
     // Max added protocol type
     butil::atomic<int> _max_index;
     bool _non_protocol;
