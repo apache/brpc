@@ -20,6 +20,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
+#include "bthread/processor.h"
 #include "bthread/work_stealing_queue.h"
 
 namespace {
@@ -39,7 +40,7 @@ void* steal_thread(void* arg) {
         if (q->steal(&val)) {
             stolen->push_back(val);
         } else {
-            asm volatile("pause\n": : :"memory");
+            cpu_relax();
         }
     }
     return stolen;

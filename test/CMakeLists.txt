@@ -58,8 +58,11 @@ use_cxx11()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     #required by butil/crc32.cc to boost performance for 10x
-    if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
+    if((CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)") AND NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
+    elseif((CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64"))
+        # segmentation fault in libcontext
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gcse -fsigned-char")
     endif()
     if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
