@@ -212,7 +212,7 @@ TEST(RecorderTest, latency_recorder_qps_accuracy) {
     bvar::LatencyRecorder lr2(2);
     bvar::LatencyRecorder lr3(2);
     bvar::LatencyRecorder lr4(2);
-    usleep(2000000); // wait sampler to sample 2 times
+    usleep(3000000); // wait sampler to sample 3 times
 
     auto write = [](bvar::LatencyRecorder& lr, int times) {   
         for (int i = 0; i < times; ++i) {
