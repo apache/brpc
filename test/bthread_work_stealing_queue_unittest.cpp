@@ -40,7 +40,7 @@ void* steal_thread(void* arg) {
             stolen->push_back(val);
         } else {
 #if defined(ARCH_CPU_ARM_FAMILY)
-            asm volatile("yield\n": : :"memory")
+            asm volatile("yield\n": : :"memory");
 #else
             asm volatile("pause\n": : :"memory");
 #endif
