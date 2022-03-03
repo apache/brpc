@@ -189,7 +189,7 @@ clean_bins:
 libbrpc.dbg.$(SOEXT):FORCE
 	$(MAKE) -C.. test/libbrpc.dbg.$(SOEXT)
 
-libbvar.dbg.a:FORCE
+libbvar.dbg.a:libbrpc.dbg.$(SOEXT) FORCE
 	$(MAKE) -C.. test/libbvar.dbg.a
 
 FORCE:
