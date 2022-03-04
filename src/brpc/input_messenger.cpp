@@ -73,6 +73,7 @@ ParseResult InputMessenger::CutInputMessage(
                 _handlers[cur_index].parse(&m->_read_buf, m, read_eof, _handlers[cur_index].arg);
             if (result.is_ok() ||
                 result.error() == PARSE_ERROR_NOT_ENOUGH_DATA) {
+                m->set_preferred_index(cur_index);
                 *index = cur_index;
                 return result;
             } else if (result.error() != PARSE_ERROR_TRY_OTHERS) {
@@ -102,7 +103,7 @@ ParseResult InputMessenger::CutInputMessage(
                 // Try other protocols.
                 break;
             }
-        } while (1);
+        } while (true);
         // Clear context before trying next protocol which probably has
         // an incompatible context with the current one.
         if (m->parsing_context()) {
