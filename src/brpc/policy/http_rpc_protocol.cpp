@@ -1514,7 +1514,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     }
 
     google::protobuf::Closure* done = new HttpResponseSenderAsDone(&resp_sender);
-    imsg_guard.reset();  // optional, just release resourse ASAP
+    imsg_guard.reset();  // optional, just release resource ASAP
 
     if (span) {
         span->set_start_callback_us(butil::cpuwide_time_us());
