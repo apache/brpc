@@ -172,8 +172,8 @@ void STLDeleteValues(T* container) {
 template<class T>
 class STLElementDeleter {
  public:
-  STLElementDeleter<T>(T* container) : container_(container) {}
-  ~STLElementDeleter<T>() { STLDeleteElements(container_); }
+  STLElementDeleter(T* container) : container_(container) {}
+  ~STLElementDeleter() { STLDeleteElements(container_); }
 
  private:
   T* container_;
@@ -184,8 +184,8 @@ class STLElementDeleter {
 template<class T>
 class STLValueDeleter {
  public:
-  STLValueDeleter<T>(T* container) : container_(container) {}
-  ~STLValueDeleter<T>() { STLDeleteValues(container_); }
+  STLValueDeleter(T* container) : container_(container) {}
+  ~STLValueDeleter() { STLDeleteValues(container_); }
 
  private:
   T* container_;
