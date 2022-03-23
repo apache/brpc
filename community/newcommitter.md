@@ -17,3 +17,11 @@ https://id.apache.org/
 
 3. 让他访问该网址，获得github的权限
 https://gitbox.apache.org/setup/
+
+
+##  apache 官网new committer相关的文档
+
+https://community.apache.org/newcommitter.html
+
+https://infra.apache.org/new-committers-guide.html
+
