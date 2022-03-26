@@ -17,6 +17,7 @@
 
 
 #include <google/protobuf/descriptor.h>             // MethodDescriptor
+#include <google/protobuf/text_format.h>
 #include <gflags/gflags.h>
 #include <json2pb/pb_to_json.h>                    // ProtoMessageToJson
 #include <json2pb/json_to_pb.h>                    // JsonToProtoMessage
@@ -191,6 +192,9 @@ HttpContentType ParseContentType(butil::StringPiece ct, bool* is_grpc_ct) {
     if (ct.starts_with("json")) {
         type = HTTP_CONTENT_JSON;
         ct.remove_prefix(4);
+    } else if (ct.starts_with("proto-text")) {
+        type = HTTP_CONTENT_PROTO_TEXT;
+        ct.remove_prefix(10);
     } else if (ct.starts_with("proto")) {
         type = HTTP_CONTENT_PROTO;
         ct.remove_prefix(5);
@@ -434,6 +438,11 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content");
                 break;
             }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!ParsePbTextFromIOBuf(cntl->response(), res_body)) {
+                cntl->SetFailed(ERESPONSE, "Fail to parse proto-text content");
+                break;
+            }
         } else if (content_type == HTTP_CONTENT_JSON) {
             // message body is json
             butil::IOBufAsZeroCopyInputStream wrapper(res_body);
@@ -511,6 +520,12 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             if (!pbreq->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->request_attachment().clear();
                 return cntl->SetFailed(EREQUEST, "Fail to serialize %s",
+                                       pbreq->GetTypeName().c_str());
+            }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!google::protobuf::TextFormat::Print(*pbreq, &wrapper)) {
+                cntl->request_attachment().clear();
+                return cntl->SetFailed(EREQUEST, "Fail to print %s as proto-text",
                                        pbreq->GetTypeName().c_str());
             }
         } else if (content_type == HTTP_CONTENT_JSON) {
@@ -756,6 +771,10 @@ HttpResponseSender::~HttpResponseSender() {
         if (content_type == HTTP_CONTENT_PROTO) {
             if (!res->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->SetFailed(ERESPONSE, "Fail to serialize %s", res->GetTypeName().c_str());
+            }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!google::protobuf::TextFormat::Print(*res, &wrapper)) {
+                cntl->SetFailed(ERESPONSE, "Fail to print %s as proto-text", res->GetTypeName().c_str());
             }
         } else {
             std::string err;
@@ -1146,13 +1165,13 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
                 return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
             }
             // Send 400 back.
-            butil::IOBuf bad_req;
+            butil::IOBuf resp;
             HttpHeader header;
             header.set_status_code(HTTP_STATUS_BAD_REQUEST);
-            MakeRawHttpRequest(&bad_req, &header, socket->remote_side(), NULL);
+            MakeRawHttpResponse(&resp, &header, NULL);
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
-            socket->Write(&bad_req, &wopt);
+            socket->Write(&resp, &wopt);
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         } else {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
@@ -1470,6 +1489,12 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                                     req->GetDescriptor()->full_name().c_str());
                     return;
                 }
+            } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+                if (!ParsePbTextFromIOBuf(req, req_body)) {
+                    cntl->SetFailed(EREQUEST, "Fail to parse http proto-text body as %s",
+                                    req->GetDescriptor()->full_name().c_str());
+                    return;
+                }
             } else {
                 butil::IOBufAsZeroCopyInputStream wrapper(req_body);
                 std::string err;
@@ -1489,7 +1514,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     }
 
     google::protobuf::Closure* done = new HttpResponseSenderAsDone(&resp_sender);
-    imsg_guard.reset();  // optional, just release resourse ASAP
+    imsg_guard.reset();  // optional, just release resource ASAP
 
     if (span) {
         span->set_start_callback_us(butil::cpuwide_time_us());

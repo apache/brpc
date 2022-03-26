@@ -206,4 +206,46 @@ TEST(RecorderTest, perf) {
               << "ns per sample with " << ARRAY_SIZE(threads) 
               << " threads";
 }
+
+TEST(RecorderTest, latency_recorder_qps_accuracy) {
+    bvar::LatencyRecorder lr1(2); // set windows size to 2s
+    bvar::LatencyRecorder lr2(2);
+    bvar::LatencyRecorder lr3(2);
+    bvar::LatencyRecorder lr4(2);
+    usleep(3000000); // wait sampler to sample 3 times
+
+    auto write = [](bvar::LatencyRecorder& lr, int times) {   
+        for (int i = 0; i < times; ++i) {
+            lr << 1;
+        }
+    };
+    write(lr1, 100);
+    write(lr2, 101);
+    write(lr3, 3);
+    write(lr4, 1);
+    usleep(1000000); // wait sampler to sample 1 time
+
+    auto read = [](bvar::LatencyRecorder& lr, double exp_qps, int window_size = 0) {
+        int64_t qps_sum = 0;
+        int64_t exp_qps_int = (int64_t)exp_qps;
+        for (int i = 0; i < 1000; ++i) {
+            int64_t qps = window_size ? lr.qps(window_size): lr.qps();
+            EXPECT_GE(qps, exp_qps_int - 1);
+            EXPECT_LE(qps, exp_qps_int + 1);
+            qps_sum += qps;
+        }
+        double err = fabs(qps_sum / 1000.0 - exp_qps);
+        return err;
+    };
+    ASSERT_GT(0.1, read(lr1, 100/2.0));
+    ASSERT_GT(0.1, read(lr2, 101/2.0));
+    ASSERT_GT(0.1, read(lr3, 3/2.0));
+    ASSERT_GT(0.1, read(lr4, 1/2.0));
+
+    ASSERT_GT(0.1, read(lr1, 100/3.0, 3));
+    ASSERT_GT(0.1, read(lr2, 101/3.0, 3));
+    ASSERT_GT(0.1, read(lr3, 3/3.0, 3));
+    ASSERT_GT(0.1, read(lr4, 1/3.0, 3));
+}
+
 } // namespace

@@ -283,6 +283,8 @@ void* Server::UpdateDerivedVars(void* arg) {
 
     server->_nerror_bvar.expose_as(prefix, "error");
 
+    server->_eps_bvar.expose_as(prefix, "eps");
+
     bvar::PassiveStatus<timeval> uptime_st(
         prefix, "uptime", GetUptime, (void*)(intptr_t)start_us);
 
@@ -391,6 +393,7 @@ Server::Server(ProfilerLinker)
     , _last_start_time(0)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
+    , _eps_bvar(&_nerror_bvar)
     , _concurrency(0) {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
@@ -1090,6 +1093,10 @@ int Server::Start(const char* ip_str, PortRange port_range,
         return -1;
     }
     return StartInternal(ip, port_range, opt);
+}
+
+int Server::Start(PortRange port_range, const ServerOptions* opt) {
+    return StartInternal(butil::IP_ANY, port_range, opt);
 }
 
 int Server::Stop(int timeout_ms) {

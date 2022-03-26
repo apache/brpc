@@ -214,6 +214,8 @@ int main() {
 
 即weighted round robin, 根据服务器列表配置的权重值来选择服务器。服务器被选到的机会正比于其权重值，并且该算法能保证同一服务器被选到的结果较均衡的散开。
 
+实例的tag需要是表示权值的int32数字，如tag="50"。
+
 ### random
 
 随机从列表中选择一台服务器，无需其他设置。和round robin类似，这个算法的前提也是服务器都是类似的。
@@ -221,6 +223,8 @@ int main() {
 ### wr
 
 即weighted random, 根据服务器列表配置的权重值来选择服务器，服务器被选到的机会正比于其权重值。
+
+实例tag的要求同wrr。
 
 ### la
 
@@ -237,6 +241,8 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
 实现原理请查看[Consistent Hashing](consistent_hashing.md)。
+
+其他lb不需要设置Controller.set_request_code()，如果调用了request_code也不会被lb使用，例如：lb=rr调用了Controller.set_request_code()，即使所有RPC的request_code都相同，也依然是rr。
 
 ### 从集群宕机后恢复时的客户端限流
 
@@ -291,6 +297,12 @@ if (cntl->Failed()) {
 }
 ```
 
+> 警告: 请勿在持有pthread锁的情况下，调用brpc的同步CallMethod！否则很容易导致死锁。
+> 
+> 解决方案（二选一）：
+> 1. 将pthread锁换成bthread锁(bthread_mutex_t）
+> 1. 在CallMethod之前将锁释放
+
 ## 异步访问
 
 指的是：给CallMethod传递一个额外的回调对象done，CallMethod在发出request后就结束了，而不是在RPC结束后。当server端返回response或发生错误（包括超时）时，done->Run()会被调用。对RPC的后续处理应该写在done->Run()里，而不是CallMethod后。
@@ -299,7 +311,11 @@ if (cntl->Failed()) {
 
 你可以独立地创建这些对象，并使用[NewCallback](#使用NewCallback)生成done，也可以把Response和Controller作为done的成员变量，[一起new出来](#继承google::protobuf::Closure)，一般使用前一种方法。
 
-**发起异步请求后Request和Channel也可以立刻析构**。这两样和response/controller是不同的。注意:这是说Channel的析构可以立刻发生在CallMethod**之后**，并不是说析构可以和CallMethod同时发生，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
+发起异步请求后Request可以立刻析构。(SelectiveChannel是个例外，SelectiveChannel情况下必须在请求处理完成后再释放request对象）
+
+发起异步请求后Channel可以立刻析构。
+
+注意:这是说Request/Channel的析构可以立刻发生在CallMethod**之后**，并不是说析构可以和CallMethod同时发生，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
 
 ### 使用NewCallback
 ```c++
@@ -322,7 +338,7 @@ MyService_Stub stub(&channel);
 MyRequest request;  // 你不用new request,即使在异步访问中.
 request.set_foo(...);
 cntl->set_timeout_ms(...);
-stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
+stub.some_method(cntl, &request, response, brpc::NewCallback(OnRPCDone, response, cntl));
 ```
 由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](https://github.com/brpc/brpc/blob/master/src/brpc/callback.h)（并增加了一些重载）。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
 
@@ -505,7 +521,7 @@ Controller的特点：
 
 ## 线程数
 
-和大部分的RPC框架不同，brpc中并没有独立的Client线程池。所有Channel和Server通过[bthread](http://wiki.baidu.com/display/RPC/bthread)共享相同的线程池. 如果你的程序同样使用了brpc的server, 仅仅需要设置Server的线程数。 或者可以通过[gflags](http://wiki.baidu.com/display/RPC/flags)设置[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency)来设置全局的线程数.
+和大部分的RPC框架不同，brpc中并没有独立的Client线程池。所有Channel和Server通过[bthread](bthread.md)共享相同的线程池. 如果你的程序同样使用了brpc的server, 仅仅需要设置Server的线程数。 或者可以通过[gflags](flags.md)设置[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency)来设置全局的线程数.
 
 ## 超时
 
@@ -519,7 +535,7 @@ Controller的特点：
 
 ## 重试
 
-ChannelOptions.max_retry是该Channel上所有RPC的默认最大重试次数，Controller.set_max_retry()可修改某次RPC的值，默认值3，0表示不重试。
+ChannelOptions.max_retry是该Channel上所有RPC的默认最大重试次数，默认值3，0表示不重试。Controller.set_max_retry()可修改某次RPC的值。
 
 r32111后Controller.retried_count()返回重试次数。
 
@@ -755,7 +771,7 @@ http/h2 body的压缩方法见[client压缩request body](http_client.md#压缩re
 
 支持的压缩方法有：
 
-- brpc::CompressTypeSnappy : [snanpy压缩](http://google.github.io/snappy/)，压缩和解压显著快于其他压缩方法，但压缩率最低。
+- brpc::CompressTypeSnappy : [snappy压缩](http://google.github.io/snappy/)，压缩和解压显著快于其他压缩方法，但压缩率最低。
 - brpc::CompressTypeGzip : [gzip压缩](http://en.wikipedia.org/wiki/Gzip)，显著慢于snappy，但压缩率高
 - brpc::CompressTypeZlib : [zlib压缩](http://en.wikipedia.org/wiki/Zlib)，比gzip快10%~20%，压缩率略好于gzip，但速度仍明显慢于snappy。
 

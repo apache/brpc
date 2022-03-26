@@ -27,6 +27,7 @@ const uint64_t PB_TOTAL_BYETS_LIMITS =
 #undef private
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
+#include <google/protobuf/text_format.h>
 #include <gflags/gflags.h>
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
@@ -139,7 +140,7 @@ void SerializeRequestDefault(butil::IOBuf* buf,
     }
     if (!SerializeAsCompressedData(*request, buf, cntl->request_compress_type())) {
         return cntl->SetFailed(
-            EREQUEST, "Fail to compress request, compress_tpye=%d",
+            EREQUEST, "Fail to compress request, compress_type=%d",
             (int)cntl->request_compress_type());
     }
 }
@@ -203,15 +204,30 @@ BUTIL_FORCE_INLINE bool ParsePbFromZeroCopyStreamInlined(
     // According to source code of pb, SetTotalBytesLimit is not a simple set,
     // avoid calling the function when the limit is definitely unreached.
     if (PB_TOTAL_BYETS_LIMITS < FLAGS_max_body_size) {
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+        decoder.SetTotalBytesLimit(INT_MAX);
+#else
         decoder.SetTotalBytesLimit(INT_MAX, -1);
+#endif
     }
     return msg->ParseFromCodedStream(&decoder) && decoder.ConsumedEntireMessage();
+}
+
+BUTIL_FORCE_INLINE bool ParsePbTextFromZeroCopyStreamInlined(
+    google::protobuf::Message* msg,
+    google::protobuf::io::ZeroCopyInputStream* input) {
+    return google::protobuf::TextFormat::Parse(input, msg);
 }
 
 bool ParsePbFromZeroCopyStream(
     google::protobuf::Message* msg,
     google::protobuf::io::ZeroCopyInputStream* input) {
     return ParsePbFromZeroCopyStreamInlined(msg, input);
+}
+
+bool ParsePbTextFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf) {
+    butil::IOBufAsZeroCopyInputStream stream(buf);
+    return ParsePbTextFromZeroCopyStreamInlined(msg, &stream);
 }
 
 bool ParsePbFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf) {

@@ -6,7 +6,7 @@
 
 上图中字段的含义分别是：
 
-- **non_service_error**: 在service处理过程之外的错误个数。比如client断开连接导致server无法成功写回response算*non_service_error*，此时service处理已结束。作为对比，服务过程中对后端服务的访问错误不是*non_service_error*。即使写出的response代表错误，此error也被记入对应的service，而不是*non_service_error*。
+- **non_service_error**: 在service处理过程之外的错误个数。当获取到合法的service，之后发生的错误就算*service_error*，否则算*non_service_error*（比如请求解析失败，service名称不存在，请求并发度超限被拒绝等）。作为对比，服务过程中对后端服务的访问错误不是*non_service_error*。即使写出的response代表错误，此error也被记入对应的service，而不是*non_service_error*。
 - **connection_count**: 向该server发起请求的连接个数。不包含记录在/vars/rpc_channel_connection_count的对外连接的个数。
 - **example.EchoService**: 服务的完整名称，包含proto中的包名。
 - **Echo (EchoRequest) returns (EchoResponse)**: 方法签名，一个服务可包含多个方法，点击request/response上的链接可查看对应的protobuf结构体。

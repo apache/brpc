@@ -15,7 +15,7 @@ rpc_view可以转发端口被限的server的内置服务。像百度内如果一
 ```
 $ ./rpc_view 10.46.130.53:9970
 TRACE: 02-14 12:12:20:   * 0 src/brpc/server.cpp:762] Server[rpc_view_server] is serving on port=8888.
-TRACE: 02-14 12:12:20:   * 0 src/brpc/server.cpp:771] Check out http://db-rpc-dev00.db01.baidu.com:8888 in web browser.
+TRACE: 02-14 12:12:20:   * 0 src/brpc/server.cpp:771] Check out http://XXX.com:8888 in web browser.
 ```
 
 打开rpc_view在8888端口提供的页面（在secureCRT中按住ctrl点url）：

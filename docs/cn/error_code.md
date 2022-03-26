@@ -26,8 +26,9 @@ brpc中常见错误的打印内容列表如下：
 | 错误码            | 数值   | 重试   | 说明                                       | 日志                                       |
 | -------------- | ---- | ---- | ---------------------------------------- | ---------------------------------------- |
 | EAGAIN         | 11   | 是    | 同时发送的请求过多。软限，很少出现。                       | Resource temporarily unavailable         |
+| ENODATA        | 61   | 是    | 1. Naming Service返回的server列表为空 2. Naming Service某次变更时，所有实例都发生了修改，Naming Service更新LB的逻辑是先Remove再Add，会存在很短时间内LB实例列表为空的情况 | Fail to select server from xxx |
 | ETIMEDOUT      | 110  | 是    | 连接超时。                                    | Connection timed out                     |
-| EHOSTDOWN      | 112  | 是    | 找不到可用的server。server可能停止服务了，也可能正在退出中(返回了ELOGOFF)。 | "Fail to select server from …"  "Not connected to … yet" |
+| EHOSTDOWN      | 112  | 是    | 可能原因：一、Naming Server返回的列表不为空，但LB选不出可用的server，LB返回了EHOSTDOWN错误。具体可能原因：a.Server正在退出中(返回了ELOGOFF) b. Server因为之前的某种失败而被封禁，封禁的具体逻辑：1. 对于单连接，唯一的连接socket被SetFail即封禁，SetFail在代码里出现非常多，有很多种可能性触发 2. 对于连接池/短连接，只有错误号满足does_error_affect_main_socket时（ECONNREFUSED，ENETUNREACH，EHOSTUNREACH或EINVAL）才会封禁 3. 封禁之后，有CheckHealth线程健康检查，就是尝试去连接一下，检查间隔由SocketOptions的health_check_interval_s控制，检查正常会解封。二、使用SingleServer方式初始化Channel（没有LB），唯一的一个连接为LOGOFF或者封禁状态（同上） | "Fail to select server from …"  "Not connected to … yet" |
 | ENOSERVICE     | 1001 | 否    | 找不到服务，不太出现，一般会返回ENOMETHOD。               |                                          |
 | ENOMETHOD      | 1002 | 否    | 找不到方法。                                   | 形式广泛，常见如"Fail to find method=..."        |
 | EREQUEST       | 1003 | 否    | request序列化错误，client端和server端都可能设置        | 形式广泛："Missing required fields in request: …" "Fail to parse request message, …"  "Bad request" |

@@ -22,11 +22,11 @@ option.enable_circuit_breaker = true;
 可选的熔断由CircuitBreaker实现，在开启了熔断之后，CircuitBreaker会记录每一个请求的处理结果，并维护一个累计出错时长，记为acc_error_cost，当acc_error_cost > max_error_cost时，熔断该节点。
 
 **每次请求返回成功之后，更新max_error_cost:**
-1. 首先需要更新latency的EMA值，记为ema_latency:  ema_latency = ema_latency * alpha + (1 - alpha) * latency。
+1. 首先需要更新latency的[EMA](https://en.wikipedia.org/wiki/Moving_average)值，记为ema_latency:  ema_latency = ema_latency * alpha + (1 - alpha) * latency。
 2. 之后根据ema_latency更新max_error_cost: max_error_cost = window_size * max_error_rate * ema_latency。
 
 
-上面的window_size和max_error_rate均为gflag所指定的常量, alpha则是一个略小于1的常量，其值由window_size和下面提到的circuit_breaker_epsilon_value决定。latency则指该次请求所的耗时。
+上面的window_size和max_error_rate均为gflag所指定的常量, alpha则是一个略小于1的常量，其值由window_size和下面提到的circuit_breaker_epsilon_value决定。latency则指该次请求的耗时。
 
 **每次请求返回之后，都会更新acc_error_cost：**
 1. 如果请求处理成功，则令 acc_error_cost = alpha * acc_error_cost 

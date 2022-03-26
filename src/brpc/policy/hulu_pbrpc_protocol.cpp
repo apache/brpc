@@ -499,7 +499,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
                 req.get(), res.get(), server,
                 method_status, msg->received_us());
 
-        // optional, just release resourse ASAP
+        // optional, just release resource ASAP
         msg.reset();
         req_buf.clear();
 
@@ -619,7 +619,7 @@ void ProcessHuluResponse(InputMessageBase* msg_base) {
     }
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 

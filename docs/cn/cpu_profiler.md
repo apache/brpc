@@ -5,7 +5,7 @@ brpc可以分析程序中的热点函数。
 1. 链接`libtcmalloc_and_profiler.a`
    1. 这么写也开启了tcmalloc，不建议单独链接cpu profiler而不链接tcmalloc，可能越界访问导致[crash](https://github.com/gperftools/gperftools/blob/master/README#L226).可能由于tcmalloc不及时归还内存，越界访问不会crash。
    2. 如果tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
-2. 定义宏BRPC_ENABLE_CPU_PROFILER, 一般加入编译参数-DBRPC_ENABLE_CPU_PROFILER。
+2. 定义宏BRPC_ENABLE_CPU_PROFILER, 一般加入编译参数-DBRPC_ENABLE_CPU_PROFILER。注意：BRPC_ENABLE_CPU_PROFILER宏需要定义在引用到brpc头文件(channel.h或server.h)的代码里。比如A模块引用B模块，B模块在实现中引用brpc头文件，必须在B模块的编译参数加上BRPC_ENABLE_CPU_PROFILER宏，在A模块加是没用的。
 3. 如果只是brpc client或没有使用brpc，看[这里](dummy_server.md)。 
 
  注意要关闭Server端的认证，否则可能会看到这个：
@@ -22,6 +22,21 @@ server端可能会有这样的日志：
 FATAL: 12-26 10:01:25:   * 0 [src/brpc/policy/giano_authenticator.cpp:65][4294969345] Giano fails to verify credentical, 70003
 WARNING: 12-26 10:01:25:   * 0 [src/brpc/input_messenger.cpp:132][4294969345] Authentication failed, remote side(127.0.0.1:22989) of sockfd=5, close it
 ```
+
+# 查看方法
+
+1. 通过builtin service的 /hotspots/cpu 页面查看
+1. 通过pprof 工具查看，如 tools/pprof --text localhost:9002/pprof/profile
+
+# 控制采样频率
+
+启动前设置环境变量：export CPUPROFILE_FREQUENCY=xxx
+
+默认值为: 100
+
+# 控制采样时间
+
+url加上?seconds=秒数，如/hotspots/cpu?seconds=5
 
 # 图示
 

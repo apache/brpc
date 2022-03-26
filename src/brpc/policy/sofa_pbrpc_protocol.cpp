@@ -441,7 +441,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
                     req.get(), res.get(), server,
                     method_status, msg->received_us());
 
-        msg.reset();  // optional, just release resourse ASAP
+        msg.reset();  // optional, just release resource ASAP
 
         // `cntl', `req' and `res' will be deleted inside `done'
         if (span) {
@@ -526,7 +526,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
 
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 
