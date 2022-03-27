@@ -150,6 +150,7 @@ BUTIL_SOURCES = \
     src/butil/status.cpp \
     src/butil/string_printf.cpp \
     src/butil/thread_local.cpp \
+    src/butil/thread_guard.cpp \
     src/butil/unix_socket.cpp \
     src/butil/endpoint.cpp \
     src/butil/fd_utility.cpp \
@@ -183,15 +184,15 @@ BUTIL_OBJS = $(addsuffix .o, $(basename $(BUTIL_SOURCES)))
 
 BVAR_DIRS = src/bvar src/bvar/detail
 BVAR_SOURCES = $(foreach d,$(BVAR_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
-BVAR_OBJS = $(addsuffix .o, $(basename $(BVAR_SOURCES))) 
+BVAR_OBJS = $(addsuffix .o, $(basename $(BVAR_SOURCES)))
 
 BTHREAD_DIRS = src/bthread
 BTHREAD_SOURCES = $(foreach d,$(BTHREAD_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
-BTHREAD_OBJS = $(addsuffix .o, $(basename $(BTHREAD_SOURCES))) 
+BTHREAD_OBJS = $(addsuffix .o, $(basename $(BTHREAD_SOURCES)))
 
 JSON2PB_DIRS = src/json2pb
 JSON2PB_SOURCES = $(foreach d,$(JSON2PB_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
-JSON2PB_OBJS = $(addsuffix .o, $(basename $(JSON2PB_SOURCES))) 
+JSON2PB_OBJS = $(addsuffix .o, $(basename $(JSON2PB_SOURCES)))
 
 BRPC_DIRS = src/brpc src/brpc/details src/brpc/builtin src/brpc/policy
 THRIFT_SOURCES = $(foreach d,$(BRPC_DIRS),$(wildcard $(addprefix $(d)/thrift*,$(SRCEXTS))))

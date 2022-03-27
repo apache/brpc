@@ -19,6 +19,7 @@
 
 #include "butil/time.h"
 #include "butil/memory/singleton_on_pthread_once.h"
+#include "butil/thread_guard.h"
 #include "bvar/reducer.h"
 #include "bvar/detail/sampler.h"
 #include "bvar/passive_status.h"
@@ -62,14 +63,11 @@ class SamplerCollector : public bvar::Reducer<Sampler*, CombineSampler> {
 public:
     SamplerCollector()
         : _created(false)
-        , _stop(false)
         , _cumulated_time_us(0) {
         create_sampling_thread();
     }
     ~SamplerCollector() {
         if (_created) {
-            _stop = true;
-            pthread_join(_tid, NULL);
             _created = false;
         }
     }
@@ -87,11 +85,15 @@ private:
     }
 
     void create_sampling_thread() {
-        const int rc = pthread_create(&_tid, NULL, sampling_thread, this);
+        butil::ThreadGuard* thread = new butil::ThreadGuard();
+        _thread = thread;
+        const int rc = pthread_create(&thread->thread_id, NULL, sampling_thread, this);
         if (rc != 0) {
             LOG(FATAL) << "Fail to create sampling_thread, " << berror(rc);
+            delete thread;
         } else {
             _created = true;
+            butil::thread_atexit(butil::auto_thread_stop_and_join, thread);
             if (!registered_atfork) {
                 registered_atfork = true;
                 pthread_atfork(NULL, NULL, child_callback_atfork);
@@ -117,9 +119,8 @@ private:
 
 private:
     bool _created;
-    bool _stop;
     int64_t _cumulated_time_us;
-    pthread_t _tid;
+    butil::ThreadGuard* _thread;
 };
 
 #ifndef UNIT_TEST
@@ -147,7 +148,7 @@ void SamplerCollector::run() {
 
     butil::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
-    while (!_stop) {
+    while (!_thread->stop.load()) {
         int64_t abstime = butil::gettimeofday_us();
         Sampler* s = this->reset();
         if (s) {
@@ -177,13 +178,13 @@ void SamplerCollector::run() {
         _cumulated_time_us += now - abstime;
         abstime += 1000000L;
         while (abstime > now) {
-            ::usleep(abstime - now);
+            _thread->Wait(butil::microseconds_to_timespec(abstime));
             slept = true;
             now = butil::gettimeofday_us();
         }
         if (slept) {
             consecutive_nosleep = 0;
-        } else {            
+        } else {
             if (++consecutive_nosleep >= WARN_NOSLEEP_THRESHOLD) {
                 consecutive_nosleep = 0;
                 LOG(WARNING) << "bvar is busy at sampling for "

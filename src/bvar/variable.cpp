@@ -29,6 +29,7 @@
 #include "butil/errno.h"                         // berror
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
+#include "butil/thread_guard.h"                  // butil::ThreadGuard
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 
@@ -94,7 +95,7 @@ static pthread_once_t s_var_maps_once = PTHREAD_ONCE_INIT;
 static VarMapWithLock* s_var_maps = NULL;
 
 static void init_var_maps() {
-    // It's probably slow to initialize all sub maps, but rpc often expose 
+    // It's probably slow to initialize all sub maps, but rpc often expose
     // variables before user. So this should not be an issue to users.
     s_var_maps = new VarMapWithLock[SUB_MAP_COUNT];
 }
@@ -153,7 +154,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         }
     }
     to_underscored_name(&_name, name);
-    
+
     VarMapWithLock& m = get_var_map(_name);
     {
         BAIDU_SCOPED_LOCK(m.mutex);
@@ -174,7 +175,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         // abort the program if needed.
         s_bvar_may_abort = true;
     }
-        
+
     LOG(ERROR) << "Already exposed `" << _name << "' whose value is `"
                << describe_exposed(_name) << '\'';
     _name.clear();
@@ -425,7 +426,7 @@ public:
             }
         }
     }
-    
+
     bool match(const std::string& name) const {
         if (!_exact.empty()) {
             if (_exact.find(name) != _exact.end()) {
@@ -553,7 +554,7 @@ std::string read_command_name() {
         butil::back_char(command_name) == ')') {
         // remove parenthesis.
         to_underscored_name(&s,
-                            butil::StringPiece(command_name.data() + 1, 
+                            butil::StringPiece(command_name.data() + 1,
                                               command_name.size() - 2UL));
     } else {
         to_underscored_name(&s, command_name);
@@ -621,7 +622,7 @@ private:
 
 class FileDumperGroup : public Dumper {
 public:
-    FileDumperGroup(std::string tabs, std::string filename, 
+    FileDumperGroup(std::string tabs, std::string filename,
                      butil::StringPiece s/*prefix*/) {
         butil::FilePath path(filename);
         if (path.FinalExtension() == ".data") {
@@ -638,7 +639,7 @@ public:
             dumpers.emplace_back(f, m);
         }
         dumpers.emplace_back(
-                    new FileDumper(path.AddExtension("data").value(), s), 
+                    new FileDumper(path.AddExtension("data").value(), s),
                     (WildcardMatcher *)NULL);
     }
     ~FileDumperGroup() {
@@ -664,8 +665,8 @@ private:
 
 static pthread_once_t dumping_thread_once = PTHREAD_ONCE_INIT;
 static bool created_dumping_thread = false;
-static pthread_mutex_t dump_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t dump_cond = PTHREAD_COND_INITIALIZER;
+
+butil::ThreadGuard* s_dumping_thread_guard = nullptr;
 
 DEFINE_bool(bvar_dump, false,
             "Create a background thread dumping all bvar periodically, "
@@ -696,7 +697,7 @@ static void* dumping_thread(void*) {
     // destructed when program exits and caused coredumps.
     const std::string command_name = read_command_name();
     std::string last_filename;
-    while (1) {
+    while (!(s_dumping_thread_guard->stop.load())) {
         // We can't access string flags directly because it's thread-unsafe.
         std::string filename;
         DumpOptions options;
@@ -727,8 +728,8 @@ static void* dumping_thread(void*) {
 
         if (FLAGS_bvar_dump && !filename.empty()) {
             // Replace first <app> in filename with program name. We can't use
-            // pid because a same binary should write the data to the same 
-            // place, otherwise restarting of app may confuse noah with a lot 
+            // pid because a same binary should write the data to the same
+            // place, otherwise restarting of app may confuse noah with a lot
             // of *.data. noah takes 1.5 days to figure out that some data is
             // outdated and to be removed.
             const size_t pos = filename.find("<app>");
@@ -743,7 +744,7 @@ static void* dumping_thread(void*) {
             const size_t pos2 = prefix.find("<app>");
             if (pos2 != std::string::npos) {
                 prefix.replace(pos2, 5/*<app>*/, command_name);
-            }            
+            }
             FileDumperGroup dumper(tabs, filename, prefix);
             int nline = Variable::dump_exposed(&dumper, &options);
             if (nline < 0) {
@@ -762,29 +763,29 @@ static void* dumping_thread(void*) {
             cond_sleep_ms = 10000;
         }
         timespec deadline = butil::milliseconds_from_now(cond_sleep_ms);
-        pthread_mutex_lock(&dump_mutex);
-        pthread_cond_timedwait(&dump_cond, &dump_mutex, &deadline);
-        pthread_mutex_unlock(&dump_mutex);
+        s_dumping_thread_guard->Wait(deadline);
         usleep(post_sleep_ms * 1000);
     }
+    return NULL;
 }
 
 static void launch_dumping_thread() {
-    pthread_t thread_id;
-    int rc = pthread_create(&thread_id, NULL, dumping_thread, NULL);
+    butil::ThreadGuard* thread = new butil::ThreadGuard();
+    s_dumping_thread_guard = thread;
+    int rc = pthread_create(&thread->thread_id, NULL, dumping_thread, NULL);
     if (rc != 0) {
         LOG(FATAL) << "Fail to launch dumping thread: " << berror(rc);
+        delete thread;
         return;
     }
-    // Detach the thread because no one would join it.
-    CHECK_EQ(0, pthread_detach(thread_id));
+    butil::thread_atexit(butil::auto_thread_stop_and_join, thread);
     created_dumping_thread = true;
 }
 
 // Start dumping_thread for only once.
 static bool enable_dumping_thread() {
     pthread_once(&dumping_thread_once, launch_dumping_thread);
-    return created_dumping_thread; 
+    return created_dumping_thread;
 }
 
 static bool validate_bvar_dump(const char*, bool enabled) {
@@ -798,7 +799,7 @@ const bool ALLOW_UNUSED dummy_bvar_dump = ::GFLAGS_NS::RegisterFlagValidator(
 
 // validators (to make these gflags reloadable in brpc)
 static bool validate_bvar_dump_interval(const char*, int32_t v) {
-    // FIXME: -bvar_dump_interval is actually unreloadable but we need to 
+    // FIXME: -bvar_dump_interval is actually unreloadable but we need to
     // check validity of it, so we still add this validator. In practice
     // this is just fine since people rarely have the intention of modifying
     // this flag at runtime.
@@ -818,7 +819,9 @@ const bool ALLOW_UNUSED dummy_bvar_log_dumpped = ::GFLAGS_NS::RegisterFlagValida
 static bool wakeup_dumping_thread(const char*, const std::string&) {
     // We're modifying a flag, wake up dumping_thread to generate
     // a new file soon.
-    pthread_cond_signal(&dump_cond);
+    if (s_dumping_thread_guard) {
+        s_dumping_thread_guard->Signal();
+    }
     return true;
 }
 
