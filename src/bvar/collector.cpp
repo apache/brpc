@@ -92,7 +92,7 @@ private:
     }
 
 private:
-    // periodically modified by liushuai06
+    // periodically modified by grab_thread, accessed by every submit.
     // Make sure that this cacheline does not include frequently modified field.
     int64_t _last_active_cpuwide_us;
 
