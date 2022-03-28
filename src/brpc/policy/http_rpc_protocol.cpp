@@ -66,7 +66,8 @@ DEFINE_int32(http_body_compress_threshold, 512, "Not compress http body when "
 DEFINE_string(http_header_of_user_ip, "", "http requests sent by proxies may "
               "set the client ip in http headers. When this flag is non-empty, "
               "brpc will read ip:port from the specified header for "
-              "authorization and set Controller::remote_side()");
+              "authorization and set Controller::remote_side(). Currently, "
+              "support IPv4 address only.");
 
 DEFINE_bool(pb_enum_as_number, false,
             "[Not recommended] Convert enums in "
@@ -83,6 +84,7 @@ static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
     if (user_addr_str == NULL) {
         return false;
     }
+    //TODO add protocols other than IPv4 supports.
     if (user_addr_str->find(':') == std::string::npos) {
         if (butil::str2ip(user_addr_str->c_str(), &user_addr->ip) != 0) {
             LOG(WARNING) << "Fail to parse ip from " << *user_addr_str;

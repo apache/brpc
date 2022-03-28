@@ -561,7 +561,7 @@ friend class Controller;
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();
 
-    int StartInternal(const butil::ip_t& ip,
+    int StartInternal(const butil::EndPoint& endpoint,
                       const PortRange& port_range,
                       const ServerOptions *opt);
 
