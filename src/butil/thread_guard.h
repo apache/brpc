@@ -26,13 +26,14 @@
 
 namespace butil {
 
-class ThreadGuard {
+struct ThreadGuard {
 public:
     ThreadGuard();
     ~ThreadGuard();
 
     void Signal();
     void Wait(const timespec& abstimespec);
+
 public:
     pthread_t thread_id;
     butil::atomic<bool> stop;
