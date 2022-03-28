@@ -23,29 +23,29 @@
 namespace butil {
 
 ThreadGuard::ThreadGuard() {
-    stop.store(false);
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&cond, NULL);
+    _stop.store(false);
+    pthread_mutex_init(&_mutex, NULL);
+    pthread_cond_init(&_cond, NULL);
 }
 
 ThreadGuard::~ThreadGuard() {
-    if (thread_id != 0) {
-        stop.store(true);
+    if (_thread_id != 0) {
+        _stop.store(true);
         Signal();
-        pthread_join(thread_id, NULL);
+        pthread_join(_thread_id, NULL);
     }
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&cond);
+    pthread_mutex_destroy(&_mutex);
+    pthread_cond_destroy(&_cond);
 }
 
 void ThreadGuard::Signal() {
-    BAIDU_SCOPED_LOCK(mutex);
-    pthread_cond_signal(&cond);
+    BAIDU_SCOPED_LOCK(_mutex);
+    pthread_cond_signal(&_cond);
 }
 
 void ThreadGuard::Wait(const timespec& abstimespec) {
-    BAIDU_SCOPED_LOCK(mutex);
-    pthread_cond_timedwait(&cond, &mutex, &abstimespec);
+    BAIDU_SCOPED_LOCK(_mutex);
+    pthread_cond_timedwait(&_cond, &_mutex, &abstimespec);
 }
 
 void auto_thread_stop_and_join(void* arg) {

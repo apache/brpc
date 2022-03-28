@@ -113,7 +113,7 @@ Collector::Collector()
     , _dump_thread(NULL) {
     butil::ThreadGuard* thread = new butil::ThreadGuard();
      _grab_thread = thread;
-    int rc = pthread_create(&thread->thread_id, NULL, run_grab_thread, this);
+    int rc = pthread_create(&thread->thread_id(), NULL, run_grab_thread, this);
     if (rc != 0) {
         LOG(ERROR) << "Fail to create Collector, " << berror(rc);
     } else {
@@ -146,7 +146,7 @@ void Collector::grab_thread() {
     // called inside the separate _dump_thread to prevent a slow callback
     // (caused by busy disk generally) from blocking collecting code too long
     // that pending requests may explode memory.
-    CHECK_EQ(0, pthread_create(&thread->thread_id, NULL, run_dump_thread, this));
+    CHECK_EQ(0, pthread_create(&thread->thread_id(), NULL, run_dump_thread, this));
 
     // vars
     bvar::PassiveStatus<int64_t> pending_sampled_data(
@@ -170,7 +170,7 @@ void Collector::grab_thread() {
     PreprocessorMap prep_map;
 
     // The main loop.
-    while (!_grab_thread->stop.load()) {
+    while (!_grab_thread->IsStopped()) {
         const int64_t abstime = _last_active_cpuwide_us + COLLECTOR_GRAB_INTERVAL_US;
 
         // Clear and reuse vectors in prep_map, don't clear prep_map directly.
@@ -231,9 +231,9 @@ void Collector::grab_thread() {
             if (root.next() != &root) {  // non empty
                 butil::LinkNode<Collected>* head2 = root.next();
                 root.RemoveFromList();
-                BAIDU_SCOPED_LOCK(_dump_thread->mutex);
+                BAIDU_SCOPED_LOCK(_dump_thread->mutex());
                 head2->InsertBeforeAsList(&_dump_root);
-                pthread_cond_signal(&_dump_thread->cond);
+                pthread_cond_signal(&_dump_thread->cond());
             }
         }
         int64_t now = butil::cpuwide_time_us();
@@ -251,7 +251,7 @@ void Collector::grab_thread() {
         _last_active_cpuwide_us = now;
 
         // sleep for the next round.
-        if (!_grab_thread->stop.load() && abstime > now) {
+        if (!_grab_thread->IsStopped() && abstime > now) {
             timespec abstimespec = butil::microseconds_from_now(abstime - now);
             _grab_thread->Wait(abstimespec);
         }
@@ -355,19 +355,19 @@ void Collector::dump_thread() {
     size_t round = 0;
 
     // The main loop
-    while (!_dump_thread->stop.load()) {
+    while (!_dump_thread->IsStopped()) {
         ++round;
         // Get new samples set by grab_thread.
         butil::LinkNode<Collected>* newhead = NULL;
         {
-            BAIDU_SCOPED_LOCK(_dump_thread->mutex);
-            while (!_dump_thread->stop.load() && _dump_root.next() == &_dump_root) {
+            BAIDU_SCOPED_LOCK(_dump_thread->mutex());
+            while (!_dump_thread->IsStopped() && _dump_root.next() == &_dump_root) {
                 const int64_t now_ns = butil::cpuwide_time_ns();
                 busy_seconds += (now_ns - last_ns) / 1000000000.0;
-                pthread_cond_wait(&_dump_thread->cond, &_dump_thread->mutex);
+                pthread_cond_wait(&_dump_thread->cond(), &_dump_thread->mutex());
                 last_ns = butil::cpuwide_time_ns();
             }
-            if (_dump_thread->stop.load()) {
+            if (_dump_thread->IsStopped()) {
                 break;
             }
             newhead = _dump_root.next();
@@ -377,7 +377,7 @@ void Collector::dump_thread() {
         newhead->InsertBeforeAsList(&root);
 
         // Call callbacks.
-        for (butil::LinkNode<Collected>* p = root.next(); !_dump_thread->stop.load() && p != &root;) {
+        for (butil::LinkNode<Collected>* p = root.next(); !_dump_thread->IsStopped() && p != &root;) {
             // We remove p from the list, save next first.
             butil::LinkNode<Collected>* saved_next = p->next();
             p->RemoveFromList();

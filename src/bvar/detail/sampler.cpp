@@ -87,7 +87,7 @@ private:
     void create_sampling_thread() {
         butil::ThreadGuard* thread = new butil::ThreadGuard();
         _thread = thread;
-        const int rc = pthread_create(&thread->thread_id, NULL, sampling_thread, this);
+        const int rc = pthread_create(&thread->thread_id(), NULL, sampling_thread, this);
         if (rc != 0) {
             LOG(FATAL) << "Fail to create sampling_thread, " << berror(rc);
             delete thread;
@@ -148,7 +148,7 @@ void SamplerCollector::run() {
 
     butil::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
-    while (!_thread->stop.load()) {
+    while (!_thread->IsStopped()) {
         int64_t abstime = butil::gettimeofday_us();
         Sampler* s = this->reset();
         if (s) {

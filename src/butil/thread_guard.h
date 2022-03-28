@@ -26,19 +26,36 @@
 
 namespace butil {
 
-struct ThreadGuard {
+class ThreadGuard {
 public:
     ThreadGuard();
     ~ThreadGuard();
 
+    pthread_t& thread_id() {
+        return _thread_id;
+    }
+
+    pthread_mutex_t& mutex() {
+        return _mutex;
+    }
+
+    pthread_cond_t& cond() {
+        return _cond;
+    }
+
+    bool IsStopped() {
+        return _stop.load();
+    }
+
     void Signal();
+
     void Wait(const timespec& abstimespec);
 
 public:
-    pthread_t thread_id;
-    butil::atomic<bool> stop;
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
+    pthread_t _thread_id;
+    butil::atomic<bool> _stop;
+    pthread_mutex_t _mutex;
+    pthread_cond_t _cond;
 };
 
 void auto_thread_stop_and_join(void*);
