@@ -49,8 +49,7 @@ public:
     explicit PbToJsonConverter(const Pb2JsonOptions& opt) : _option(opt) {}
 
     template <typename Handler>
-    bool Convert(const google::protobuf::Message& message, Handler& handler,
-                 const Pb2JsonOptions* options = nullptr);
+    bool Convert(const google::protobuf::Message& message, Handler& handler, bool root_msg = false);
 
     const std::string& ErrorText() const { return _error; }
 
@@ -65,12 +64,10 @@ private:
 };
 
 template <typename Handler>
-bool PbToJsonConverter::Convert(
-    const google::protobuf::Message& message, Handler& handler,
-    const Pb2JsonOptions* options) {
+bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handler& handler, bool root_msg) {
     const google::protobuf::Reflection* reflection = message.GetReflection();
     const google::protobuf::Descriptor* descriptor = message.GetDescriptor();
-    
+
     int ext_range_count = descriptor->extension_range_count();
     int field_count = descriptor->field_count();
     std::vector<const google::protobuf::FieldDescriptor*> fields;
@@ -97,7 +94,7 @@ bool PbToJsonConverter::Convert(
         }
     }
 
-    if (options && options->single_repeated_to_array) {
+    if (root_msg && _option.single_repeated_to_array) {
         if (map_fields.empty() && fields.size() == 1 && fields.front()->is_repeated()) {
             return _PbFieldToJson(message, fields.front(), handler);
         }
@@ -301,10 +298,10 @@ bool ProtoMessageToJsonStream(const google::protobuf::Message& message,
     bool succ = false;
     if (options.pretty_json) {
         BUTIL_RAPIDJSON_NAMESPACE::PrettyWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer, &options);
+        succ = converter.Convert(message, writer, true);
     } else {
         BUTIL_RAPIDJSON_NAMESPACE::OptimizedWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer, &options);
+        succ = converter.Convert(message, writer, true);
     }
     if (!succ && error) {
         error->clear();
