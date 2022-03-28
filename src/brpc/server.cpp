@@ -1113,7 +1113,7 @@ int Server::Start(const char* ip_str, PortRange port_range,
 }
 
 int Server::Start(PortRange port_range, const ServerOptions* opt) {
-    return StartInternal(butil::IP_ANY, port_range, opt);
+    return StartInternal(butil::EndPoint(butil::IP_ANY, 0), port_range, opt);
 }
 
 int Server::Stop(int timeout_ms) {
