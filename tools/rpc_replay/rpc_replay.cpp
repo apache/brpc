@@ -27,6 +27,7 @@
 #include <brpc/server.h>
 #include <brpc/rpc_dump.h>
 #include <brpc/serialized_request.h>
+#include <brpc/nshead_message.h>
 #include <brpc/details/http_message.h>
 #include "info_thread.h"
 
@@ -133,6 +134,7 @@ static void* replay_thread(void* arg) {
     const int thread_offset = g_thread_offset.fetch_add(1, butil::memory_order_relaxed);
     double req_rate = FLAGS_qps / (double)FLAGS_thread_num;
     brpc::SerializedRequest req;
+    brpc::NsheadMessage nshead_req;
     std::deque<int64_t> timeq;
     size_t MAX_QUEUE_SIZE = (size_t)req_rate;
     if (MAX_QUEUE_SIZE < 100) {
@@ -161,7 +163,7 @@ static void* replay_thread(void* arg) {
             brpc::Controller* cntl = new brpc::Controller;
             req.Clear();
             
-            brpc::SerializedRequest* req_ptr = &req;
+            google::protobuf::Message* req_ptr = &req;
             cntl->reset_sampled_request(sample_guard.release());
             if (sample->meta.protocol_type() == brpc::PROTOCOL_HTTP) {
                 brpc::HttpMessage http_message;
@@ -173,6 +175,11 @@ static void* replay_thread(void* arg) {
                 }
                 cntl->request_attachment() = http_message.body().movable();
                 req_ptr = NULL;
+            } else if (sample->meta.protocol_type() == brpc::PROTOCOL_NSHEAD) {
+                nshead_req.Clear();
+                memcpy(&nshead_req.head, sample->meta.nshead().c_str(), sample->meta.nshead().length());
+                nshead_req.body = sample->request;
+                req_ptr = &nshead_req;
             } else if (sample->meta.attachment_size() > 0) {
                 sample->request.cutn(
                     &req.serialized_data(),
