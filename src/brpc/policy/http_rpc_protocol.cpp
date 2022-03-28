@@ -35,6 +35,7 @@
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/span.h"
 #include "brpc/socket.h"                       // Socket
+#include "brpc/rpc_dump.h"                     // SampledRequest
 #include "brpc/http_status_code.h"             // HTTP_STATUS_*
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/builtin/index_service.h"        // IndexService
@@ -1509,6 +1510,16 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                     return;
                 }
             }
+        }
+        SampledRequest* sample = AskToBeSampled();
+        if (sample && !is_http2) {
+            sample->meta.set_compress_type(COMPRESS_TYPE_NONE);
+            sample->meta.set_protocol_type(PROTOCOL_HTTP);
+            sample->meta.set_attachment_size(req_body.size());
+
+            butil::EndPoint ep;
+            MakeRawHttpRequest(&sample->request, &req_header, ep, &req_body);
+            sample->submit(start_parse_us);
         }
     } else {
         // A http server, just keep content as it is.
