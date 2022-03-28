@@ -163,7 +163,7 @@ static void* replay_thread(void* arg) {
             brpc::Controller* cntl = new brpc::Controller;
             req.Clear();
             
-            brpc::SerializedRequest* req_ptr = &req;
+            google::protobuf::Message* req_ptr = &req;
             cntl->reset_sampled_request(sample_guard.release());
             if (sample->meta.protocol_type() == brpc::PROTOCOL_HTTP) {
                 brpc::HttpMessage http_message;
@@ -186,17 +186,8 @@ static void* replay_thread(void* arg) {
                     sample->request.size() - sample->meta.attachment_size());
                 cntl->request_attachment() = sample->request.movable();
             } else {
-                req.Clear();
-                if (sample->meta.attachment_size() > 0) {
-                    sample->request.cutn(
-                        &req.serialized_data(),
-                        sample->request.size() - sample->meta.attachment_size());
-                    cntl->request_attachment() = sample->request.movable();
-                } else {
-                    req.serialized_data() = sample->request.movable();
-                }                
+                req.serialized_data() = sample->request.movable();
             }
-
             g_sent_count << 1;
             const int64_t start_time = butil::gettimeofday_us();
             if (FLAGS_qps <= 0) {
