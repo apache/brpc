@@ -24,6 +24,8 @@
 
 DEFINE_bool(echo_attachment, true, "Echo attachment as well");
 DEFINE_int32(port, 8000, "TCP Port of this server");
+DEFINE_string(listen_addr, "", "Server listen address, may be IPV4/IPV6/UDS."
+            " If this is set, the flag port will be ignored");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
@@ -92,10 +94,19 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    butil::EndPoint point;
+    if (!FLAGS_listen_addr.empty()) {
+        if (butil::str2endpoint(FLAGS_listen_addr.c_str(), &point) < 0) {
+            LOG(ERROR) << "Invalid listen address:" << FLAGS_listen_addr;
+            return -1;
+        }
+    } else {
+        point = butil::EndPoint(butil::IP_ANY, FLAGS_port);
+    }
     // Start the server.
     brpc::ServerOptions options;
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
-    if (server.Start(FLAGS_port, &options) != 0) {
+    if (server.Start(point, &options) != 0) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;
     }

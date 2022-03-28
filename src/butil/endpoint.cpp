@@ -25,6 +25,7 @@
 #include <string.h>                            // strcpy
 #include <stdio.h>                             // snprintf
 #include <stdlib.h>                            // strtol
+#include <sys/un.h>                            // sockaddr_un
 #include <gflags/gflags.h>
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
@@ -38,6 +39,8 @@ DEFINE_bool(reuse_port, false, "Enable SO_REUSEPORT for all listened sockets");
 
 DEFINE_bool(reuse_addr, true, "Enable SO_REUSEADDR for all listened sockets");
 
+DEFINE_bool(reuse_uds_path, false, "remove unix domain socket file before listen to it");
+
 __BEGIN_DECLS
 int BAIDU_WEAK bthread_connect(
     int sockfd, const struct sockaddr *serv_addr, socklen_t addrlen) {
@@ -45,7 +48,58 @@ int BAIDU_WEAK bthread_connect(
 }
 __END_DECLS
 
+#include "details/extended_endpoint.hpp"
+
 namespace butil {
+
+using details::ExtendedEndPoint;
+
+static void set_endpoint(EndPoint* ep, ip_t ip, int port) {
+    ep->ip = ip;
+    ep->port = port;
+    if (ExtendedEndPoint::is_extended(*ep)) {
+        ExtendedEndPoint* eep = ExtendedEndPoint::address(*ep);
+        if (eep) {
+            eep->inc_ref();
+        } else {
+            ep->ip = IP_ANY;
+            ep->port = 0;
+        }
+    }
+}
+
+void EndPoint::reset(void) {
+    if (ExtendedEndPoint::is_extended(*this)) {
+        ExtendedEndPoint* eep = ExtendedEndPoint::address(*this);
+        if (eep) {
+            eep->dec_ref();
+        }
+    }
+    ip = IP_ANY;
+    port = 0;
+}
+
+EndPoint::EndPoint(ip_t ip2, int port2) : ip(ip2), port(port2) {
+    // Should never construct an extended endpoint by this way
+    if (ExtendedEndPoint::is_extended(*this)) {
+        CHECK(0) << "EndPoint construct with value that points to an extended EndPoint";
+        ip = IP_ANY;
+        port = 0;
+    }
+}
+
+EndPoint::EndPoint(const EndPoint& rhs) {
+    set_endpoint(this, rhs.ip, rhs.port);
+}
+
+EndPoint::~EndPoint() {
+    reset();
+}
+
+void EndPoint::operator=(const EndPoint& rhs) {
+    reset();
+    set_endpoint(this, rhs.ip, rhs.port);
+}
 
 int str2ip(const char* ip_str, ip_t* ip) {
     // ip_str can be NULL when called by EndPoint(0, ...)
@@ -100,6 +154,15 @@ int ip2hostname(ip_t ip, std::string* host) {
 
 EndPointStr endpoint2str(const EndPoint& point) {
     EndPointStr str;
+    if (ExtendedEndPoint::is_extended(point)) {
+        ExtendedEndPoint* eep = ExtendedEndPoint::address(point);
+        if (eep) {
+            eep->to(&str);
+        } else {
+            str._buf[0] = '\0';
+        }
+        return str;
+    }
     if (inet_ntop(AF_INET, &point.ip, str._buf, INET_ADDRSTRLEN) == NULL) {
         return endpoint2str(EndPoint(IP_NONE, 0));
     }
@@ -173,6 +236,10 @@ const char* my_hostname() {
 }
 
 int str2endpoint(const char* str, EndPoint* point) {
+    if (ExtendedEndPoint::create(str, point)) {
+        return 0;
+    }
+
     // Should be enough to hold ip address
     char buf[64];
     size_t i = 0;
@@ -204,6 +271,10 @@ int str2endpoint(const char* str, EndPoint* point) {
 }
 
 int str2endpoint(const char* ip_str, int port, EndPoint* point) {
+    if (ExtendedEndPoint::create(ip_str, port, point)) {
+        return 0;
+    }
+
     if (str2ip(ip_str, &point->ip) != 0) {
         return -1;
     }
@@ -260,6 +331,14 @@ int hostname2endpoint(const char* name_str, int port, EndPoint* point) {
 }
 
 int endpoint2hostname(const EndPoint& point, char* host, size_t host_len) {
+    if (ExtendedEndPoint::is_extended(point)) {
+        ExtendedEndPoint* eep = ExtendedEndPoint::address(point);
+        if (eep) {
+            return eep->to_hostname(host, host_len);
+        }
+        return -1;
+    }
+
     if (ip2hostname(point.ip, host, host_len) == 0) {
         size_t len = strlen(host);
         if (len + 1 < host_len) {
@@ -271,7 +350,7 @@ int endpoint2hostname(const EndPoint& point, char* host, size_t host_len) {
 }
 
 int endpoint2hostname(const EndPoint& point, std::string* host) {
-    char buf[128];
+    char buf[256];
     if (endpoint2hostname(point, buf, sizeof(buf)) == 0) {
         host->assign(buf);
         return 0;
@@ -280,21 +359,20 @@ int endpoint2hostname(const EndPoint& point, std::string* host) {
 }
 
 int tcp_connect(EndPoint point, int* self_port) {
-    fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    struct sockaddr_storage serv_addr;
+    socklen_t serv_addr_size = 0;
+    if (endpoint2sockaddr(point, &serv_addr, &serv_addr_size) != 0) {
+        return -1;
+    }
+    fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
     if (sockfd < 0) {
         return -1;
     }
-    struct sockaddr_in serv_addr;
-    bzero((char*)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr = point.ip;
-    serv_addr.sin_port = htons(point.port);
     int rc = 0;
     if (bthread_connect != NULL) {
-        rc = bthread_connect(sockfd, (struct sockaddr*)&serv_addr,
-                             sizeof(serv_addr));
+        rc = bthread_connect(sockfd, (struct sockaddr*) &serv_addr, serv_addr_size);
     } else {
-        rc = ::connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+        rc = ::connect(sockfd, (struct sockaddr*) &serv_addr, serv_addr_size);
     }
     if (rc < 0) {
         return -1;
@@ -311,7 +389,12 @@ int tcp_connect(EndPoint point, int* self_port) {
 }
 
 int tcp_listen(EndPoint point) {
-    fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    struct sockaddr_storage serv_addr;
+    socklen_t serv_addr_size = 0;
+    if (endpoint2sockaddr(point, &serv_addr, &serv_addr_size) != 0) {
+        return -1;
+    }
+    fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
     if (sockfd < 0) {
         return -1;
     }
@@ -342,12 +425,11 @@ int tcp_listen(EndPoint point) {
 #endif
     }
 
-    struct sockaddr_in serv_addr;
-    bzero((char*)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr = point.ip;
-    serv_addr.sin_port = htons(point.port);
-    if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) != 0) {
+    if (FLAGS_reuse_uds_path && serv_addr.ss_family == AF_UNIX) {
+        ::unlink(((sockaddr_un*) &serv_addr)->sun_path);
+    }
+
+    if (bind(sockfd, (struct sockaddr*)& serv_addr, serv_addr_size) != 0) {
         return -1;
     }
     if (listen(sockfd, 65535) != 0) {
@@ -360,29 +442,82 @@ int tcp_listen(EndPoint point) {
 }
 
 int get_local_side(int fd, EndPoint *out) {
-    struct sockaddr addr;
+    struct sockaddr_storage addr;
     socklen_t socklen = sizeof(addr);
-    const int rc = getsockname(fd, &addr, &socklen);
+    const int rc = getsockname(fd, (struct sockaddr*)&addr, &socklen);
     if (rc != 0) {
         return rc;
     }
     if (out) {
-        *out = butil::EndPoint(*(sockaddr_in*)&addr);
+        return sockaddr2endpoint(&addr, socklen, out);
     }
     return 0;
 }
 
 int get_remote_side(int fd, EndPoint *out) {
-    struct sockaddr addr;
+    struct sockaddr_storage addr;
+    bzero(&addr, sizeof(addr));
     socklen_t socklen = sizeof(addr);
-    const int rc = getpeername(fd, &addr, &socklen);
+    const int rc = getpeername(fd, (struct sockaddr*)&addr, &socklen);
     if (rc != 0) {
         return rc;
     }
     if (out) {
-        *out = butil::EndPoint(*(sockaddr_in*)&addr);
+        return sockaddr2endpoint(&addr, socklen, out);
     }
     return 0;
+}
+
+int endpoint2sockaddr(const EndPoint& point, struct sockaddr_storage* ss, socklen_t* size) {
+    bzero(ss, sizeof(*ss));
+    if (ExtendedEndPoint::is_extended(point)) {
+        ExtendedEndPoint* eep = ExtendedEndPoint::address(point);
+        if (!eep) {
+            return -1;
+        }
+        int ret = eep->to(ss);
+        if (ret < 0) {
+            return -1;
+        }
+        if (size) {
+            *size = static_cast<socklen_t>(ret);
+        }
+        return 0;
+    }
+    struct sockaddr_in* in4 = (struct sockaddr_in*) ss;
+    in4->sin_family = AF_INET;
+    in4->sin_addr = point.ip;
+    in4->sin_port = htons(point.port);
+    if (size) {
+        *size = sizeof(*in4);
+    }
+    return 0;
+}
+
+int sockaddr2endpoint(struct sockaddr_storage* ss, socklen_t size, EndPoint* point) {
+    if (ss->ss_family == AF_INET) {
+        *point = EndPoint(*(sockaddr_in*)ss);
+        return 0;
+    }
+    if (ExtendedEndPoint::create(ss, size, point)) {
+        return 0;
+    }
+    return -1;
+}
+
+sa_family_t get_endpoint_type(const EndPoint& point) {
+    if (ExtendedEndPoint::is_extended(point)) {
+        ExtendedEndPoint* eep = ExtendedEndPoint::address(point);
+        if (eep) {
+            return eep->family();
+        }
+        return AF_UNSPEC;
+    }
+    return AF_INET;
+}
+
+bool is_endpoint_extended(const EndPoint& point) {
+    return ExtendedEndPoint::is_extended(point);
 }
 
 }  // namespace butil

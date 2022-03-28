@@ -63,6 +63,12 @@ MemcacheRequest* MemcacheRequest::New() const {
     return new MemcacheRequest;
 }
 
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+MemcacheRequest* MemcacheRequest::New(::google::protobuf::Arena* arena) const {
+    return CreateMaybeMessage<MemcacheRequest>(arena);
+}
+#endif
+
 void MemcacheRequest::Clear() {
     _buf.clear();
     _pipelined_count = 0;
@@ -206,6 +212,13 @@ const ::google::protobuf::Descriptor* MemcacheResponse::descriptor() {
 MemcacheResponse* MemcacheResponse::New() const {
     return new MemcacheResponse;
 }
+
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+MemcacheResponse*
+MemcacheResponse::New(::google::protobuf::Arena* arena) const {
+    return CreateMaybeMessage<MemcacheResponse>(arena);
+}
+#endif
 
 void MemcacheResponse::Clear() {
 }

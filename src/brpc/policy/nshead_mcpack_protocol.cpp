@@ -131,7 +131,7 @@ void ProcessNsheadMcpackResponse(InputMessageBase* msg_base) {
     }
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 } 
 

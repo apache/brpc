@@ -27,6 +27,7 @@
 #include "butil/synchronization/lock.h"
 #include "bvar/detail/is_atomical.h"
 #include "bvar/variable.h"
+#include "bvar/reducer.h"
 
 namespace bvar {
 

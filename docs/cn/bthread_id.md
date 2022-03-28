@@ -23,5 +23,14 @@ bthread_id的接口不太简洁，有不少API：
 
 这么多接口是为了满足不同的使用流程。
 
-- 发送request的流程：create -> lock -> ... register timer and send RPC ... -> unlock
-- 接收response的流程：lock -> ..process response -> call done
+- 发送request的流程：bthread_id_create -> bthread_id_lock -> ... register timer and send RPC ... -> bthread_id_unlock
+- 接收response的流程：bthread_id_lock -> ..process response -> bthread_id_unlock_and_destroy
+- 异常处理流程：timeout/socket fail -> bthread_id_error -> 执行on_error回调(这里会加锁)，分两种情况
+   - 请求重试/backup request： 重新register timer and send RPC -> bthread_id_unlock
+   - 无法重试，最终失败：bthread_id_unlock_and_destroy
+- 同步等待RPC结束：bthread_id_join
+
+为了减少等待，bthread_id做了一些优化的机制：
+
+- error发生的时候，如果bthread_id已经被锁住，会把error信息放到一个pending queue中，bthread_id_error函数立即返回。当bthread_id_unlock的时候，如果pending queue里面有任务就取出来执行。
+- RPC结束的时候，如果存在用户回调，先执行一个bthread_id_about_to_destroy，让正在等待的bthread_id_lock操作立即失败，再执行用户回调（这个可能耗时较长，不可控），最后再执行bthread_id_unlock_and_destroy

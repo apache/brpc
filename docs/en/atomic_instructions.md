@@ -39,7 +39,7 @@ For example: the first variable plays the role of switch, controlling accesses t
 
 ```c++
 // Thread 1
-// ready was initialized to false
+// bool ready was initialized to false
 p.init();
 ready = true;
 ```
@@ -72,7 +72,7 @@ Above example can be modified as follows:
 
 ```c++
 // Thread1
-// ready was initialized to false
+// std::atomic<bool> ready was initialized to false
 p.init();
 ready.store(true, std::memory_order_release);
 ```

@@ -17,6 +17,7 @@
 
 
 #include <google/protobuf/descriptor.h>             // MethodDescriptor
+#include <google/protobuf/text_format.h>
 #include <gflags/gflags.h>
 #include <json2pb/pb_to_json.h>                    // ProtoMessageToJson
 #include <json2pb/json_to_pb.h>                    // JsonToProtoMessage
@@ -34,6 +35,7 @@
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/span.h"
 #include "brpc/socket.h"                       // Socket
+#include "brpc/rpc_dump.h"                     // SampledRequest
 #include "brpc/http_status_code.h"             // HTTP_STATUS_*
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/builtin/index_service.h"        // IndexService
@@ -65,7 +67,8 @@ DEFINE_int32(http_body_compress_threshold, 512, "Not compress http body when "
 DEFINE_string(http_header_of_user_ip, "", "http requests sent by proxies may "
               "set the client ip in http headers. When this flag is non-empty, "
               "brpc will read ip:port from the specified header for "
-              "authorization and set Controller::remote_side()");
+              "authorization and set Controller::remote_side(). Currently, "
+              "support IPv4 address only.");
 
 DEFINE_bool(pb_enum_as_number, false,
             "[Not recommended] Convert enums in "
@@ -82,6 +85,7 @@ static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
     if (user_addr_str == NULL) {
         return false;
     }
+    //TODO add protocols other than IPv4 supports.
     if (user_addr_str->find(':') == std::string::npos) {
         if (butil::str2ip(user_addr_str->c_str(), &user_addr->ip) != 0) {
             LOG(WARNING) << "Fail to parse ip from " << *user_addr_str;
@@ -191,6 +195,9 @@ HttpContentType ParseContentType(butil::StringPiece ct, bool* is_grpc_ct) {
     if (ct.starts_with("json")) {
         type = HTTP_CONTENT_JSON;
         ct.remove_prefix(4);
+    } else if (ct.starts_with("proto-text")) {
+        type = HTTP_CONTENT_PROTO_TEXT;
+        ct.remove_prefix(10);
     } else if (ct.starts_with("proto")) {
         type = HTTP_CONTENT_PROTO;
         ct.remove_prefix(5);
@@ -434,6 +441,11 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content");
                 break;
             }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!ParsePbTextFromIOBuf(cntl->response(), res_body)) {
+                cntl->SetFailed(ERESPONSE, "Fail to parse proto-text content");
+                break;
+            }
         } else if (content_type == HTTP_CONTENT_JSON) {
             // message body is json
             butil::IOBufAsZeroCopyInputStream wrapper(res_body);
@@ -511,6 +523,12 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             if (!pbreq->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->request_attachment().clear();
                 return cntl->SetFailed(EREQUEST, "Fail to serialize %s",
+                                       pbreq->GetTypeName().c_str());
+            }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!google::protobuf::TextFormat::Print(*pbreq, &wrapper)) {
+                cntl->request_attachment().clear();
+                return cntl->SetFailed(EREQUEST, "Fail to print %s as proto-text",
                                        pbreq->GetTypeName().c_str());
             }
         } else if (content_type == HTTP_CONTENT_JSON) {
@@ -756,6 +774,10 @@ HttpResponseSender::~HttpResponseSender() {
         if (content_type == HTTP_CONTENT_PROTO) {
             if (!res->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->SetFailed(ERESPONSE, "Fail to serialize %s", res->GetTypeName().c_str());
+            }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!google::protobuf::TextFormat::Print(*res, &wrapper)) {
+                cntl->SetFailed(ERESPONSE, "Fail to print %s as proto-text", res->GetTypeName().c_str());
             }
         } else {
             std::string err;
@@ -1146,13 +1168,13 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
                 return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
             }
             // Send 400 back.
-            butil::IOBuf bad_req;
+            butil::IOBuf resp;
             HttpHeader header;
             header.set_status_code(HTTP_STATUS_BAD_REQUEST);
-            MakeRawHttpRequest(&bad_req, &header, socket->remote_side(), NULL);
+            MakeRawHttpResponse(&resp, &header, NULL);
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
-            socket->Write(&bad_req, &wopt);
+            socket->Write(&resp, &wopt);
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         } else {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
@@ -1470,6 +1492,12 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                                     req->GetDescriptor()->full_name().c_str());
                     return;
                 }
+            } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+                if (!ParsePbTextFromIOBuf(req, req_body)) {
+                    cntl->SetFailed(EREQUEST, "Fail to parse http proto-text body as %s",
+                                    req->GetDescriptor()->full_name().c_str());
+                    return;
+                }
             } else {
                 butil::IOBufAsZeroCopyInputStream wrapper(req_body);
                 std::string err;
@@ -1483,13 +1511,23 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 }
             }
         }
+        SampledRequest* sample = AskToBeSampled();
+        if (sample && !is_http2) {
+            sample->meta.set_compress_type(COMPRESS_TYPE_NONE);
+            sample->meta.set_protocol_type(PROTOCOL_HTTP);
+            sample->meta.set_attachment_size(req_body.size());
+
+            butil::EndPoint ep;
+            MakeRawHttpRequest(&sample->request, &req_header, ep, &req_body);
+            sample->submit(start_parse_us);
+        }
     } else {
         // A http server, just keep content as it is.
         cntl->request_attachment().swap(req_body);
     }
 
     google::protobuf::Closure* done = new HttpResponseSenderAsDone(&resp_sender);
-    imsg_guard.reset();  // optional, just release resourse ASAP
+    imsg_guard.reset();  // optional, just release resource ASAP
 
     if (span) {
         span->set_start_callback_us(butil::cpuwide_time_us());

@@ -112,7 +112,7 @@ template <typename T>
 int execution_queue_join(ExecutionQueueId<T> id);
 ```
 
-stop和join都可以多次调用， 都会又合理的行为。stop可以随时调用而不用当心线程安全性问题。
+stop和join都可以多次调用， 都会有合理的行为。stop可以随时调用而不用当心线程安全性问题。
 
 和fd的close类似，如果stop不被调用, 相应的资源会永久泄露。
 
