@@ -139,11 +139,7 @@ inline void PackSofaHeader(char* sofa_header, uint32_t meta_size, int body_size)
 
 static void SerializeSofaHeaderAndMeta(
     butil::IOBuf* out, const SofaRpcMeta& meta, int payload_size) {
-    #if GOOGLE_PROTOBUF_VERSION >= 3010000
-    const uint32_t meta_size = meta.ByteSizeLong();
-    #else
-    const int meta_size = meta.ByteSize();
-    #endif
+    const uint32_t meta_size = PROTOBUF_BYTE_SIZE(meta);
     if (meta_size <= 232) { // most common cases
         char header_and_meta[24 + meta_size];
         PackSofaHeader(header_and_meta, meta_size, payload_size);
