@@ -195,7 +195,7 @@ cd ~/brpc_svn/dev/brpc
 仅第一次部署的账号需要添加，只要KEYS中包含已经部署过的账户的公钥即可。
 
 ```
-gpg -a --export lorinlee >> KEYS
+(gpg --list-sigs lorinlee && gpg -a --export lorinlee) >> KEYS
 ```
 
 ## 3. 将待发布的代码包添加至SVN目录
