@@ -20,7 +20,7 @@
 #ifndef BUTIL_THREAD_GUARD_H
 #define BUTIL_THREAD_GUARD_H
 
-#include <memory>
+#include <vector>
 #include <pthread.h>
 #include "butil/atomicops.h"
 
@@ -31,34 +31,34 @@ public:
     ThreadGuard();
     ~ThreadGuard();
 
-    pthread_t& thread_id() {
-        return _thread_id;
-    }
+    void Signal();
 
-    pthread_mutex_t& mutex() {
-        return _mutex;
-    }
-
-    pthread_cond_t& cond() {
-        return _cond;
-    }
+    void Wait(const timespec& abstimespec);
 
     bool IsStopped() {
         return _stop.load();
     }
 
-    void Signal();
+    pthread_t* thread_id() {
+        return &_thread_id;
+    }
 
-    void Wait(const timespec& abstimespec);
+    pthread_mutex_t* mutex() {
+        return &_mutex;
+    }
 
-public:
+    pthread_cond_t* cond() {
+        return &_cond;
+    }
+
+private:
     pthread_t _thread_id;
     butil::atomic<bool> _stop;
     pthread_mutex_t _mutex;
     pthread_cond_t _cond;
 };
 
-void auto_thread_stop_and_join(void*);
+void register_thread_guard(ThreadGuard* thread);
 
 }  // namespace butil
 

@@ -20,7 +20,7 @@
 #include <map>
 #include <gflags/gflags.h>
 #include "butil/memory/singleton_on_pthread_once.h"
-#include "butil/thread_guard.h"
+#include "butil/thread_guard.h"                  // butil::ThreadGuard
 #include "bvar/bvar.h"
 #include "bvar/collector.h"
 
@@ -96,6 +96,7 @@ private:
     // Make sure that this cacheline does not include frequently modified field.
     int64_t _last_active_cpuwide_us;
 
+    bool _created;      // Mark validness of _grab_thread.
     int64_t _ngrab BAIDU_CACHELINE_ALIGNMENT;
     int64_t _ndrop;
     int64_t _ndump;
@@ -106,25 +107,25 @@ private:
 
 Collector::Collector()
     : _last_active_cpuwide_us(butil::cpuwide_time_us())
+    , _created(false)
     , _ngrab(0)
     , _ndrop(0)
     , _ndump(0)
     , _grab_thread(NULL)
     , _dump_thread(NULL) {
-    butil::ThreadGuard* thread = new butil::ThreadGuard();
-     _grab_thread = thread;
-    int rc = pthread_create(&thread->thread_id(), NULL, run_grab_thread, this);
+    _grab_thread = new butil::ThreadGuard();
+    butil::register_thread_guard(_grab_thread);
+    int rc = pthread_create(_grab_thread->thread_id(), NULL, run_grab_thread, this);
     if (rc != 0) {
         LOG(ERROR) << "Fail to create Collector, " << berror(rc);
     } else {
-        butil::thread_atexit(butil::auto_thread_stop_and_join, _grab_thread);
+        _created = true;
     }
 }
 
 Collector::~Collector() {
-    if (_dump_thread) {
-        delete _dump_thread;
-        _dump_thread = NULL;
+    if (_created) {
+        _created = false;
     }
 }
 
@@ -140,13 +141,12 @@ void Collector::grab_thread() {
     _last_active_cpuwide_us = butil::cpuwide_time_us();
     int64_t last_before_update_sl = _last_active_cpuwide_us;
 
-    butil::ThreadGuard* thread = new butil::ThreadGuard();
-     _dump_thread = thread;
     // This is the thread for collecting TLS submissions. User's callbacks are
     // called inside the separate _dump_thread to prevent a slow callback
     // (caused by busy disk generally) from blocking collecting code too long
     // that pending requests may explode memory.
-    CHECK_EQ(0, pthread_create(&thread->thread_id(), NULL, run_dump_thread, this));
+    _dump_thread = new butil::ThreadGuard();
+    CHECK_EQ(0, pthread_create(_dump_thread->thread_id(), NULL, run_dump_thread, this));
 
     // vars
     bvar::PassiveStatus<int64_t> pending_sampled_data(
@@ -231,9 +231,9 @@ void Collector::grab_thread() {
             if (root.next() != &root) {  // non empty
                 butil::LinkNode<Collected>* head2 = root.next();
                 root.RemoveFromList();
-                BAIDU_SCOPED_LOCK(_dump_thread->mutex());
+                BAIDU_SCOPED_LOCK(*_dump_thread->mutex());
                 head2->InsertBeforeAsList(&_dump_root);
-                pthread_cond_signal(&_dump_thread->cond());
+                pthread_cond_signal(_dump_thread->cond());
             }
         }
         int64_t now = butil::cpuwide_time_us();
@@ -257,9 +257,12 @@ void Collector::grab_thread() {
         }
         _last_active_cpuwide_us = butil::cpuwide_time_us();
     }
+
     // make sure _stop is true, we may have other reasons to quit above loop
-    delete _dump_thread;
-    _dump_thread = NULL;
+    if (_dump_thread) {
+        delete _dump_thread;
+        _dump_thread = NULL;
+    }
 }
 
 void Collector::wakeup_grab_thread() {
@@ -360,11 +363,11 @@ void Collector::dump_thread() {
         // Get new samples set by grab_thread.
         butil::LinkNode<Collected>* newhead = NULL;
         {
-            BAIDU_SCOPED_LOCK(_dump_thread->mutex());
+            BAIDU_SCOPED_LOCK(*_dump_thread->mutex());
             while (!_dump_thread->IsStopped() && _dump_root.next() == &_dump_root) {
                 const int64_t now_ns = butil::cpuwide_time_ns();
                 busy_seconds += (now_ns - last_ns) / 1000000000.0;
-                pthread_cond_wait(&_dump_thread->cond(), &_dump_thread->mutex());
+                pthread_cond_wait(_dump_thread->cond(), _dump_thread->mutex());
                 last_ns = butil::cpuwide_time_ns();
             }
             if (_dump_thread->IsStopped()) {

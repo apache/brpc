@@ -19,7 +19,7 @@
 
 #include "butil/time.h"
 #include "butil/memory/singleton_on_pthread_once.h"
-#include "butil/thread_guard.h"
+#include "butil/thread_guard.h"                  // butil::ThreadGuard
 #include "bvar/reducer.h"
 #include "bvar/detail/sampler.h"
 #include "bvar/passive_status.h"
@@ -64,6 +64,8 @@ public:
     SamplerCollector()
         : _created(false)
         , _cumulated_time_us(0) {
+        _thread = new butil::ThreadGuard();
+        butil::register_thread_guard(_thread);
         create_sampling_thread();
     }
     ~SamplerCollector() {
@@ -85,15 +87,11 @@ private:
     }
 
     void create_sampling_thread() {
-        butil::ThreadGuard* thread = new butil::ThreadGuard();
-        _thread = thread;
-        const int rc = pthread_create(&thread->thread_id(), NULL, sampling_thread, this);
+        const int rc = pthread_create(_thread->thread_id(), NULL, sampling_thread, this);
         if (rc != 0) {
             LOG(FATAL) << "Fail to create sampling_thread, " << berror(rc);
-            delete thread;
         } else {
             _created = true;
-            butil::thread_atexit(butil::auto_thread_stop_and_join, thread);
             if (!registered_atfork) {
                 registered_atfork = true;
                 pthread_atfork(NULL, NULL, child_callback_atfork);

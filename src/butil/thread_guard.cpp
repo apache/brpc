@@ -18,11 +18,13 @@
 // Date: Mon. Mar 27 17:17:28 CST 2022
 
 #include "butil/scoped_lock.h"
+#include "butil/thread_local.h"
 #include "butil/thread_guard.h"
 
 namespace butil {
 
-ThreadGuard::ThreadGuard() {
+ThreadGuard::ThreadGuard()
+    : _thread_id(0) {
     _stop.store(false);
     pthread_mutex_init(&_mutex, NULL);
     pthread_cond_init(&_cond, NULL);
@@ -48,7 +50,7 @@ void ThreadGuard::Wait(const timespec& abstimespec) {
     pthread_cond_timedwait(&_cond, &_mutex, &abstimespec);
 }
 
-void auto_thread_stop_and_join(void* arg) {
+static void auto_thread_stop_and_join(void* arg) {
     if (!arg) {
         return;
     }
@@ -56,6 +58,10 @@ void auto_thread_stop_and_join(void* arg) {
     ThreadGuard* thread = static_cast<ThreadGuard*>(arg);
     delete thread;
     thread = NULL;
+}
+
+void register_thread_guard(ThreadGuard* thread) {
+    butil::thread_atexit(auto_thread_stop_and_join, thread);
 }
 
 }  // namespace butil

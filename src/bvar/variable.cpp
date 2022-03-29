@@ -697,7 +697,7 @@ static void* dumping_thread(void*) {
     // destructed when program exits and caused coredumps.
     const std::string command_name = read_command_name();
     std::string last_filename;
-    while (!s_dumping_thread_guard->IsStopped()) {
+    while (!(s_dumping_thread_guard->IsStopped())) {
         // We can't access string flags directly because it's thread-unsafe.
         std::string filename;
         DumpOptions options;
@@ -772,13 +772,13 @@ static void* dumping_thread(void*) {
 static void launch_dumping_thread() {
     butil::ThreadGuard* thread = new butil::ThreadGuard();
     s_dumping_thread_guard = thread;
-    int rc = pthread_create(&thread->thread_id(), NULL, dumping_thread, NULL);
+    int rc = pthread_create(thread->thread_id(), NULL, dumping_thread, NULL);
     if (rc != 0) {
         LOG(FATAL) << "Fail to launch dumping thread: " << berror(rc);
         delete thread;
         return;
     }
-    butil::thread_atexit(butil::auto_thread_stop_and_join, thread);
+    butil::register_thread_guard(thread);
     created_dumping_thread = true;
 }
 
