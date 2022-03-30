@@ -34,6 +34,24 @@ repeated int32 numbers = 1;
 {"numbers" : [12, 17, 1, 24] }
 ```
 
+特别的，针对仅有一个 `repeated` 类型成员的 `message`，序列化为 `json` 时支持直接序列化为数组，以简化包体。
+
+```protobuf
+// protobuf
+message Foo {
+    required int32 numbers = 1;
+}
+
+// rapidjson
+[12, 17, 1, 24]
+```
+
+该特性默认为关闭状态，客户端在发送请求时，或服务端在发送回复时，可手动开启：
+```c++
+brpc::Controller cntl;
+cntl.set_pb_single_repeated_to_array(true);
+```
+
 ## map
 
 满足如下条件的repeated MSG被视作json map :

@@ -157,7 +157,8 @@ Server::MethodProperty::OpaqueParams::OpaqueParams()
     : is_tabbed(false)
     , allow_default_url(false)
     , allow_http_body_to_pb(true)
-    , pb_bytes_to_base64(false) {
+    , pb_bytes_to_base64(false)
+    , pb_single_repeated_to_array(false) {
 }
 
 Server::MethodProperty::MethodProperty()
@@ -1235,6 +1236,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         mp.params.allow_default_url = svc_opt.allow_default_url;
         mp.params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
         mp.params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
+        mp.params.pb_single_repeated_to_array = svc_opt.pb_single_repeated_to_array;
         mp.service = service;
         mp.method = md;
         mp.status = new MethodStatus;
@@ -1322,6 +1324,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                 params.allow_default_url = svc_opt.allow_default_url;
                 params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
                 params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
+                params.pb_single_repeated_to_array = svc_opt.pb_single_repeated_to_array;
                 if (!_global_restful_map->AddMethod(
                         mappings[i].path, service, params,
                         mappings[i].method_name, mp->status)) {
@@ -1360,6 +1363,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             params.allow_default_url = svc_opt.allow_default_url;
             params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
             params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
+            params.pb_single_repeated_to_array = svc_opt.pb_single_repeated_to_array;
             if (!m->AddMethod(mappings[i].path, service, params,
                               mappings[i].method_name, mp->status)) {
                 LOG(ERROR) << "Fail to map `" << mappings[i].path << "' to `"
@@ -1419,6 +1423,7 @@ ServiceOptions::ServiceOptions()
 #else
     , pb_bytes_to_base64(true)
 #endif
+    , pb_single_repeated_to_array(false)
     {}
 
 int Server::AddService(google::protobuf::Service* service,

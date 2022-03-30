@@ -297,6 +297,10 @@ struct ServiceOptions {
     // option is turned on.
     // Default: false if BAIDU_INTERNAL is defined, otherwise true
     bool pb_bytes_to_base64;
+
+    // decode json array to protobuf message which contains a single repeated field.
+    // Default: false.
+    bool pb_single_repeated_to_array;
 };
 
 // Represent ports inside [min_port, max_port]
@@ -346,6 +350,7 @@ public:
             bool allow_default_url;
             bool allow_http_body_to_pb;
             bool pb_bytes_to_base64;
+            bool pb_single_repeated_to_array;
             OpaqueParams();
         };
         OpaqueParams params;        

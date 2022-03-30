@@ -32,6 +32,10 @@ struct Json2PbOptions {
     // corresponding field is bytes when this option is turned on.
     // Default: false for baidu-interal, true otherwise.
     bool base64_to_bytes;
+
+    // Allow decoding json array iff there is only one repeated field.
+    // Default: false.
+    bool array_to_single_repeated;
 };
 
 // Convert `json' to protobuf `message'.

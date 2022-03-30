@@ -452,6 +452,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             std::string err;
             json2pb::Json2PbOptions options;
             options.base64_to_bytes = cntl->has_pb_bytes_to_base64();
+            options.array_to_single_repeated = cntl->has_pb_single_repeated_to_array();
             if (!json2pb::JsonToProtoMessage(&wrapper, cntl->response(), options, &err)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content, %s", err.c_str());
                 break;
@@ -537,6 +538,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
+            opt.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
 
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
@@ -785,6 +787,7 @@ HttpResponseSender::~HttpResponseSender() {
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
+            opt.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -1503,7 +1506,9 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 std::string err;
                 json2pb::Json2PbOptions options;
                 options.base64_to_bytes = sp->params.pb_bytes_to_base64;
+                options.array_to_single_repeated = sp->params.pb_single_repeated_to_array;
                 cntl->set_pb_bytes_to_base64(sp->params.pb_bytes_to_base64);
+                cntl->set_pb_single_repeated_to_array(sp->params.pb_single_repeated_to_array);
                 if (!json2pb::JsonToProtoMessage(&wrapper, req, options, &err)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
                                     req->GetDescriptor()->full_name().c_str(), err.c_str());
