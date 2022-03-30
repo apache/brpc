@@ -266,7 +266,7 @@ void PackPublicPbrpcRequest(butil::IOBuf* buf,
     nshead.magic_num = NSHEAD_MAGICNUM;
     snprintf(nshead.provider, sizeof(nshead.provider), "%s", PROVIDER);
     nshead.version = NSHEAD_VERSION;
-    nshead.body_len = PROTOBUF_BYTE_SIZE(pbreq);
+    nshead.body_len = get_protobuf_byte_size(pbreq);
     buf->append(&nshead, sizeof(nshead));
 
     Span* span = ControllerPrivateAccessor(controller).span();

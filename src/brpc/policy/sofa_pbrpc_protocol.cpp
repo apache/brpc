@@ -139,7 +139,7 @@ inline void PackSofaHeader(char* sofa_header, uint32_t meta_size, int body_size)
 
 static void SerializeSofaHeaderAndMeta(
     butil::IOBuf* out, const SofaRpcMeta& meta, int payload_size) {
-    const uint32_t meta_size = PROTOBUF_BYTE_SIZE(meta);
+    const uint32_t meta_size = get_protobuf_byte_size(meta);
     if (meta_size <= 232) { // most common cases
         char header_and_meta[24 + meta_size];
         PackSofaHeader(header_and_meta, meta_size, payload_size);

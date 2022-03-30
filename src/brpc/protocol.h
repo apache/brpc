@@ -58,12 +58,15 @@ DECLARE_bool(log_error_text);
 
 // Get the serialized byte size of the protobuf message, 
 // different versions of protobuf have different methods
-
+// use template to avoid include `google/protobuf/message.h`
+template<typename T>
+inline uint32_t get_protobuf_byte_size(const T& message) {
 #if GOOGLE_PROTOBUF_VERSION >= 3010000
-#define PROTOBUF_BYTE_SIZE(message) ((message).ByteSizeLong())
+    return message.ByteSizeLong();
 #else
-#define PROTOBUF_BYTE_SIZE(message) (static_cast<uint32_t>((message).ByteSize()))
+    return static_cast<uint32_t>((message).ByteSize());
 #endif
+}
 
 // 3 steps to add a new Protocol:
 // Step1: Add a new ProtocolType in src/brpc/options.proto
