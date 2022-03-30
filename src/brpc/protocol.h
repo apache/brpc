@@ -60,11 +60,11 @@ DECLARE_bool(log_error_text);
 // different versions of protobuf have different methods
 // use template to avoid include `google/protobuf/message.h`
 template<typename T>
-inline uint32_t get_protobuf_byte_size(const T& message) {
+inline uint32_t GetProtobufByteSize(const T& message) {
 #if GOOGLE_PROTOBUF_VERSION >= 3010000
     return message.ByteSizeLong();
 #else
-    return static_cast<uint32_t>((message).ByteSize());
+    return static_cast<uint32_t>(message.ByteSize());
 #endif
 }
 

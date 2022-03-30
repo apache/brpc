@@ -152,7 +152,7 @@ inline void PackHuluHeader(char* hulu_header, uint32_t meta_size, int body_size)
 template <typename Meta>
 static void SerializeHuluHeaderAndMeta(
     butil::IOBuf* out, const Meta& meta, int payload_size) {
-    const uint32_t meta_size = get_protobuf_byte_size(meta);
+    const uint32_t meta_size = GetProtobufByteSize(meta);
     if (meta_size <= 244) { // most common cases
         char header_and_meta[12 + meta_size];
         PackHuluHeader(header_and_meta, meta_size, payload_size);
