@@ -433,6 +433,17 @@ brpc community vote thread: xxx
 
 Vote result thread: xxx
 
+**Vote Results**:
+No 0 or -1 votes.
+
+1 (+1) Binding Vote:
+* xxx
+
+3 (+1) Non Binding:
+* yyy
+* zzz
+* aaa
+
 The release candidate:
 https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0/
 
