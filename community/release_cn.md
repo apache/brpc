@@ -402,12 +402,22 @@ LorinLee
 
 # 在Apache Incubator社区发起投票
 
-## 1. 投票阶段
+## 1. 更新GPG签名
+
+```
+svn delete https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "delete KEYS"
+
+svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "update brpc KEYS"
+```
+
+提交完svn后，访问 <https://downloads.apache.org/incubator/brpc/KEYS>，检查内容有没有更新，可能需要等几分钟时间，等内容更新了，再继续下一步。
+
+## 2. 投票阶段
 
 1. Incubator社区投票，发起投票邮件到general@incubator.apache.org。IPMC会进行投票。经过至少72小时并统计到3个+1 IPMC member票后，即可进入下一阶段。
 2. 宣布投票结果，发起投票结果邮件到general@incubator.apache.org。
 
-## 2. 投票邮件模板
+## 3. 投票邮件模板
 
 1. Apache Incubator 社区投票邮件模板
 
@@ -448,7 +458,7 @@ The release candidate:
 https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0/
 
 This release has been signed with a PGP available here:
-https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS
+https://downloads.apache.org/incubator/brpc/KEYS
 
 Git tag for the release:
 https://github.com/apache/incubator-brpc/releases/tag/1.0.0
@@ -510,10 +520,6 @@ Apache brpc (Incubating)
 
 ```
 svn mv https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0 https://dist.apache.org/repos/dist/release/incubator/brpc/1.0.0 -m "release brpc 1.0.0"
-
-svn delete https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "delete KEYS"
-
-svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "update brpc KEYS"
 ```
 
 ## 2. Github版本发布
