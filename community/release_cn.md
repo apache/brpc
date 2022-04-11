@@ -530,11 +530,11 @@ svn mv https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0 https://dist.
 ## 3. 更新下载页面
 
 等待并确认新的发布版本同步至 Apache 镜像后，更新如下页面：
-`https://brpc.apache.org/download/`，更新方式在 `https://github.com/apache/incubator-brpc-website/` 仓库中。
+`https://brpc.apache.org/docs/downloadbrpc/`，更新方式在 `https://github.com/apache/incubator-brpc-website/` 仓库中，注意中英文都要更新。
 
 GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：https://downloads.apache.org/incubator/brpc/
 
-代码包的下载链接应该使用这个前缀：https://www.apache.org/dyn/closer.lua/incubator/brpc/
+代码包的下载链接应该使用这个前缀：https://dlcdn.apache.org/incubator/brpc/
 
 ## 4. 发送邮件通知发布完成
 
