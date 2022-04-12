@@ -538,11 +538,15 @@ GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：ht
 
 ## 4. 发送邮件通知发布完成
 
-发送邮件到dev@brpc.apache.org和announce@apache.org通知完成版本发布，通知邮件模板如下：
+发送邮件到dev@brpc.apache.org和announce@apache.org通知完成版本发布。
+
+注意：发邮件账号必须使用apache邮箱，且邮件内容必须是纯文本格式（可在gmail选择“纯文本模式”）。announce@apache.org 邮件组需要经过人工审核才能送达，发出邮件后请耐心等待，一般会在一天之内通过。
+
+通知邮件模板如下：
 
 标题：
 ```
-[ANNOUNCE] Apache brpc 1.0.0
+[ANNOUNCE] Apache brpc 1.0.0 release
 ```
 
 正文
@@ -564,7 +568,7 @@ More details regarding Apache brpc can be found at:
 http://brpc.apache.org/
 
 The release artifacts can be downloaded here:
-https://brpc.apache.org/download/
+https://brpc.apache.org/docs/downloadbrpc/
 
 The release notes can be found here:
 https://github.com/apache/incubator-brpc/releases/tag/1.0.0
