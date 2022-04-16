@@ -37,3 +37,4 @@
 | 09/27/2021 - 10/03/2021  | 蔡道进 | https://lists.apache.org/thread.html/re3391d87f2e2aba55986b96b18ca375f07840bac67249fced2f851f5%40%3Cdev.brpc.apache.org%3E
 | 13/12/2021 - 19/12/2021  | 蔡道进 | https://lists.apache.org/thread/mvclsy79859mrbdso1xzm6y7yz3lg6w0
 | 01/24/2022 - 02/06/2022  | 王伟冰 | https://lists.apache.org/thread/ttgqnw4hfw0qnb7swvnn2kxb5b9hkdbo
+| 04/10/2022 - 04/16/2022  | 刘帅 | https://lists.apache.org/thread/0l67lqnw0l6rgfwkvhrc168prwr7fp60
