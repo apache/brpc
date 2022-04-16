@@ -48,10 +48,14 @@ int Init(const char* server_addr, int port, const ChannelOptions* options);
 - 127.0.0.1:80
 - www.foo.com:8765
 - localhost:9000
+- [::1]:8080      # IPV6
+- unix:path.sock  # Unix domain socket
 
 不合法的"server_addr_and_port"：
 - 127.0.0.1:90000     # 端口过大
 - 10.39.2.300:8000   # 非法的ip
+
+关于IPV6和Unix domain socket的使用，详见 [EndPoint](endpoint.md)。
 
 # 连接服务集群
 
@@ -813,7 +817,7 @@ http/h2 body的压缩方法见[client压缩request body](http_client.md#压缩re
 
 ### Q: brpc能用unix domain socket吗
 
-不能。同机TCP socket并不走网络，相比unix domain socket性能只会略微下降。一些不能用TCP socket的特殊场景可能会需要，以后可能会扩展支持。
+支持，参考 [EndPoint](endpoint.md).
 
 ### Q: Fail to connect to xx.xx.xx.xx:xxxx, Connection refused
 

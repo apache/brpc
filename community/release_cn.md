@@ -402,12 +402,22 @@ LorinLee
 
 # 在Apache Incubator社区发起投票
 
-## 1. 投票阶段
+## 1. 更新GPG签名
+
+```
+svn delete https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "delete KEYS"
+
+svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "update brpc KEYS"
+```
+
+提交完svn后，访问 <https://downloads.apache.org/incubator/brpc/KEYS>，检查内容有没有更新，可能需要等几分钟时间，等内容更新了，再继续下一步。
+
+## 2. 投票阶段
 
 1. Incubator社区投票，发起投票邮件到general@incubator.apache.org。IPMC会进行投票。经过至少72小时并统计到3个+1 IPMC member票后，即可进入下一阶段。
 2. 宣布投票结果，发起投票结果邮件到general@incubator.apache.org。
 
-## 2. 投票邮件模板
+## 3. 投票邮件模板
 
 1. Apache Incubator 社区投票邮件模板
 
@@ -433,11 +443,22 @@ brpc community vote thread: xxx
 
 Vote result thread: xxx
 
+**Vote Results**:
+No 0 or -1 votes.
+
+1 (+1) Binding Vote:
+* xxx
+
+3 (+1) Non Binding:
+* yyy
+* zzz
+* aaa
+
 The release candidate:
 https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0/
 
 This release has been signed with a PGP available here:
-https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS
+https://downloads.apache.org/incubator/brpc/KEYS
 
 Git tag for the release:
 https://github.com/apache/incubator-brpc/releases/tag/1.0.0
@@ -499,10 +520,6 @@ Apache brpc (Incubating)
 
 ```
 svn mv https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0 https://dist.apache.org/repos/dist/release/incubator/brpc/1.0.0 -m "release brpc 1.0.0"
-
-svn delete https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "delete KEYS"
-
-svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "update brpc KEYS"
 ```
 
 ## 2. Github版本发布
@@ -513,19 +530,23 @@ svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.a
 ## 3. 更新下载页面
 
 等待并确认新的发布版本同步至 Apache 镜像后，更新如下页面：
-`https://brpc.apache.org/download/`，更新方式在 `https://github.com/apache/incubator-brpc-website/` 仓库中。
+`https://brpc.apache.org/docs/downloadbrpc/`，更新方式在 `https://github.com/apache/incubator-brpc-website/` 仓库中，注意中英文都要更新。
 
 GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：https://downloads.apache.org/incubator/brpc/
 
-代码包的下载链接应该使用这个前缀：https://www.apache.org/dyn/closer.lua/incubator/brpc/
+代码包的下载链接应该使用这个前缀：https://dlcdn.apache.org/incubator/brpc/
 
 ## 4. 发送邮件通知发布完成
 
-发送邮件到dev@brpc.apache.org和announce@apache.org通知完成版本发布，通知邮件模板如下：
+发送邮件到dev@brpc.apache.org和announce@apache.org通知完成版本发布。
+
+注意：发邮件账号必须使用apache邮箱，且邮件内容必须是纯文本格式（可在gmail选择“纯文本模式”）。announce@apache.org 邮件组需要经过人工审核才能送达，发出邮件后请耐心等待，一般会在一天之内通过。
+
+通知邮件模板如下：
 
 标题：
 ```
-[ANNOUNCE] Apache brpc 1.0.0
+[ANNOUNCE] Apache brpc 1.0.0 release
 ```
 
 正文
@@ -547,7 +568,7 @@ More details regarding Apache brpc can be found at:
 http://brpc.apache.org/
 
 The release artifacts can be downloaded here:
-https://brpc.apache.org/download/
+https://brpc.apache.org/docs/downloadbrpc/
 
 The release notes can be found here:
 https://github.com/apache/incubator-brpc/releases/tag/1.0.0

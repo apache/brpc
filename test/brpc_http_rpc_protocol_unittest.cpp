@@ -30,6 +30,7 @@
 #include "butil/macros.h"
 #include "butil/files/scoped_file.h"
 #include "butil/fd_guard.h"
+#include "butil/file_util.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -42,6 +43,15 @@
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
 #include "brpc/details/method_status.h"
+#include "brpc/rpc_dump.h"
+#include "bvar/collector.h"
+
+namespace brpc {
+DECLARE_bool(rpc_dump);
+DECLARE_string(rpc_dump_dir);
+DECLARE_int32(rpc_dump_max_requests_in_one_file);
+extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
+}
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -1499,6 +1509,90 @@ TEST_F(HttpTest, spring_protobuf_content_type) {
     ASSERT_FALSE(cntl.Failed());
     ASSERT_EQ(EXP_RESPONSE, res.message());
     ASSERT_EQ("application/x-protobuf", cntl.http_response().content_type());
+}
+
+TEST_F(HttpTest, dump_http_request) {
+    // save origin value of gflag
+    auto rpc_dump_dir = brpc::FLAGS_rpc_dump_dir;
+    auto rpc_dump_max_requests_in_one_file = brpc::FLAGS_rpc_dump_max_requests_in_one_file;
+
+    // set gflag and global variable in order to be sure to dump request
+    brpc::FLAGS_rpc_dump = true;
+    brpc::FLAGS_rpc_dump_dir = "dump_http_request";
+    brpc::FLAGS_rpc_dump_max_requests_in_one_file = 1;
+    brpc::g_rpc_dump_sl.ever_grabbed = true;
+    brpc::g_rpc_dump_sl.sampling_range = bvar::COLLECTOR_SAMPLING_BASE;
+
+    // init channel
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    // send request and dump it to file
+    {
+        test::EchoRequest req;
+        req.set_message(EXP_REQUEST);
+        std::string req_json;
+        ASSERT_TRUE(json2pb::ProtoMessageToJson(req, &req_json));
+
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/EchoService/Echo";
+        cntl.http_request().set_content_type("application/json");
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment() = req_json;
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed());
+
+        // sleep 1s, because rpc_dump doesn't run immediately
+        sleep(1);
+    }
+
+    // replay request from dump file
+    {
+        brpc::SampleIterator it(brpc::FLAGS_rpc_dump_dir);
+        brpc::SampledRequest* sample = it.Next();
+        ASSERT_NE(nullptr, sample);
+
+        std::unique_ptr<brpc::SampledRequest> sample_guard(sample);
+
+        // the logic of next code is same as that in rpc_replay.cpp
+        ASSERT_EQ(sample->meta.protocol_type(), brpc::PROTOCOL_HTTP);
+        brpc::Controller cntl;
+        cntl.reset_sampled_request(sample_guard.release());
+        brpc::HttpMessage http_message;
+        http_message.ParseFromIOBuf(sample->request);
+        cntl.http_request().Swap(http_message.header());
+        // clear origin Host in header
+        cntl.http_request().RemoveHeader("Host");
+        cntl.http_request().uri().set_host("");
+        cntl.request_attachment() = http_message.body().movable();
+
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_EQ("application/json", cntl.http_response().content_type());
+
+        std::string res_json = cntl.response_attachment().to_string();
+        test::EchoResponse res;
+        json2pb::Json2PbOptions options;
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(res_json, &res, options));
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+    }
+
+    // delete dump directory
+    butil::DeleteFile(butil::FilePath(brpc::FLAGS_rpc_dump_dir), true);
+
+    // restore gflag and global variable
+    brpc::FLAGS_rpc_dump = false;
+    brpc::FLAGS_rpc_dump_dir = rpc_dump_dir;
+    brpc::FLAGS_rpc_dump_max_requests_in_one_file = rpc_dump_max_requests_in_one_file;
+    brpc::g_rpc_dump_sl.ever_grabbed = false;
+    brpc::g_rpc_dump_sl.sampling_range = 0;
 }
 
 TEST_F(HttpTest, spring_protobuf_text_content_type) {

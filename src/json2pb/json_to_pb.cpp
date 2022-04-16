@@ -45,10 +45,11 @@ namespace json2pb {
 
 Json2PbOptions::Json2PbOptions()
 #ifdef BAIDU_INTERNAL
-    : base64_to_bytes(false) {
+    : base64_to_bytes(false)
 #else
-    : base64_to_bytes(true) {
+    : base64_to_bytes(true)
 #endif
+    , array_to_single_repeated(false) {
 }
 
 enum MatchType { 
@@ -507,7 +508,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
                              const Json2PbOptions& options,
                              std::string* err) {
     const google::protobuf::Descriptor* descriptor = message->GetDescriptor();
-    if (!json_value.IsObject()) {
+    if (!json_value.IsObject() && !(json_value.IsArray() && options.array_to_single_repeated)) {
         J2PERROR(err, "`json_value' is not a json object. %s", descriptor->name().c_str());
         return false;
     }
@@ -530,6 +531,15 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
     }
     for (int i = 0; i < descriptor->field_count(); ++i) {
         fields.push_back(descriptor->field(i));
+    }
+
+    if (json_value.IsArray()) {
+        if (fields.size() == 1 && fields.front()->is_repeated()) {
+            return JsonValueToProtoField(json_value, fields.front(), message, options, err);
+        }
+
+        J2PERROR(err, "`json_value' of type array is not allowed here.");
+        return false;
     }
 
     std::string field_name_str_temp; 

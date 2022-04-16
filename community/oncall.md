@@ -19,6 +19,7 @@
   * 王伟冰 @wwbmmm
   * 蔡道进 @cdjingit
   * 何磊 @TousakaRin
+  * 刘帅 @serverglen
 
 ## 5. 值周记录如下
 

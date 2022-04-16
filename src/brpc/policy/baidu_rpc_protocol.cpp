@@ -51,6 +51,9 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
             "If this flag is true, baidu_std puts service.full_name in requests"
             ", otherwise puts service.name (required by jprotobuf).");
 
+DEFINE_bool(baidu_std_protocol_deliver_timeout_ms, false,
+            "If this flag is true, baidu_std puts timeout_ms in requests.");
+
 // Notes:
 // 1. 12-byte header [PRPC][body_size][meta_size]
 // 2. body_size and meta_size are in network byte order
@@ -59,7 +62,7 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
 // 5. Not supported: chunk_info
 
 // Pack header into `buf'
-inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
+inline void PackRpcHeader(char* rpc_header, uint32_t meta_size, int payload_size) {
     uint32_t* dummy = (uint32_t*)rpc_header;  // suppress strict-alias warning
     *dummy = *(uint32_t*)"PRPC";
     butil::RawPacker(rpc_header + 4)
@@ -69,7 +72,7 @@ inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
 
 static void SerializeRpcHeaderAndMeta(
     butil::IOBuf* out, const RpcMeta& meta, int payload_size) {
-    const int meta_size = meta.ByteSize();
+    const uint32_t meta_size = GetProtobufByteSize(meta);
     if (meta_size <= 244) { // most common cases
         char header_and_meta[12 + meta_size];
         PackRpcHeader(header_and_meta, meta_size, payload_size);
@@ -352,6 +355,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     }
     if (request_meta.has_request_id()) {
         cntl->set_request_id(request_meta.request_id());
+    }
+    if (request_meta.has_timeout_ms()) {
+        cntl->set_timeout_ms(request_meta.timeout_ms());
     }
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     accessor.set_server(server)
@@ -682,6 +688,13 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     if (attached_size) {
         meta.set_attachment_size(attached_size);
     }
+
+    if (FLAGS_baidu_std_protocol_deliver_timeout_ms) {
+        if (accessor.real_timeout_ms() > 0) {
+            request_meta->set_timeout_ms(accessor.real_timeout_ms());
+        }
+    }
+
     Span* span = accessor.span();
     if (span) {
         request_meta->set_trace_id(span->trace_id());

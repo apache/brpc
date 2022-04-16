@@ -174,10 +174,10 @@ public:
 
     // Remove |key| and the associated value
     // Returns: 1 on erased, 0 otherwise.
-    // Remove all items. Allocated spaces are NOT returned by system.
     template <typename K2>
     size_t erase(const K2& key, mapped_type* old_value = NULL);
 
+    // Remove all items. Allocated spaces are NOT returned by system.
     void clear();
 
     // Remove all items and return all allocated spaces to system.

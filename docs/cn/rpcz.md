@@ -55,3 +55,14 @@ TRACEPRINTF("Hello rpcz %d", 123);
 ```
 
 这条annotation会按其发生时间插入到对应请求的rpcz中。从这个角度看，rpcz是请求级的日志。如果你用TRACEPRINTF打印了沿路的上下文，便可看到请求在每个阶段停留的时间，牵涉到的数据集和参数。这是个很有用的功能。
+
+## 跨bthread传递trace上下文
+
+有的业务在处理server请求的时候，会创建子bthread，在子bthread中发起rpc调用。默认情况下，子bthread中的rpc调用跟原来的请求无法建立关联，trace就会断掉。这种情况下，可以在创建子bthread时，指定BTHREAD_INHERIT_SPAN标志，来显式地建立trace上文关联，如：
+
+```c++
+bthread_attr_t attr = { BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, NULL };
+bthread_start_urgent(&tid, &attr, thread_proc, arg);
+```
+
+注意：使用这种方式创建子bthread来发送rpc，请确保rpc在server返回response之前完成，否则可能导致使用被释放的Span对象而出core。

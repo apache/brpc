@@ -135,6 +135,8 @@ TRACE: ... Items: item1 item2 item3
 
 noflush支持bthread，可以实现类似于UB的pushnotice的效果，即检索线程一路打印都暂不刷出（加上noflush），直到最后检索结束时再一次性刷出。注意，如果检索过程是异步的，就不应该使用noflush，因为异步显然会跨越bthread，使noflush仍然失效。
 
+> 注意：如果编译时开启了glog选项，则不支持noflush。
+
 ## LOG_IF
 
 `LOG_IF(log_level, condition)`只有当condition成立时才会打印，相当于if (condition) { LOG() << ...; }，但更加简短。比如：

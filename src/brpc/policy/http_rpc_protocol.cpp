@@ -35,6 +35,7 @@
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/span.h"
 #include "brpc/socket.h"                       // Socket
+#include "brpc/rpc_dump.h"                     // SampledRequest
 #include "brpc/http_status_code.h"             // HTTP_STATUS_*
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/builtin/index_service.h"        // IndexService
@@ -66,7 +67,8 @@ DEFINE_int32(http_body_compress_threshold, 512, "Not compress http body when "
 DEFINE_string(http_header_of_user_ip, "", "http requests sent by proxies may "
               "set the client ip in http headers. When this flag is non-empty, "
               "brpc will read ip:port from the specified header for "
-              "authorization and set Controller::remote_side()");
+              "authorization and set Controller::remote_side(). Currently, "
+              "support IPv4 address only.");
 
 DEFINE_bool(pb_enum_as_number, false,
             "[Not recommended] Convert enums in "
@@ -83,6 +85,7 @@ static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
     if (user_addr_str == NULL) {
         return false;
     }
+    //TODO add protocols other than IPv4 supports.
     if (user_addr_str->find(':') == std::string::npos) {
         if (butil::str2ip(user_addr_str->c_str(), &user_addr->ip) != 0) {
             LOG(WARNING) << "Fail to parse ip from " << *user_addr_str;
@@ -449,6 +452,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             std::string err;
             json2pb::Json2PbOptions options;
             options.base64_to_bytes = cntl->has_pb_bytes_to_base64();
+            options.array_to_single_repeated = cntl->has_pb_single_repeated_to_array();
             if (!json2pb::JsonToProtoMessage(&wrapper, cntl->response(), options, &err)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content, %s", err.c_str());
                 break;
@@ -534,6 +538,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
+            opt.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
 
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
@@ -782,6 +787,7 @@ HttpResponseSender::~HttpResponseSender() {
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
+            opt.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -1500,13 +1506,25 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 std::string err;
                 json2pb::Json2PbOptions options;
                 options.base64_to_bytes = sp->params.pb_bytes_to_base64;
+                options.array_to_single_repeated = sp->params.pb_single_repeated_to_array;
                 cntl->set_pb_bytes_to_base64(sp->params.pb_bytes_to_base64);
+                cntl->set_pb_single_repeated_to_array(sp->params.pb_single_repeated_to_array);
                 if (!json2pb::JsonToProtoMessage(&wrapper, req, options, &err)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
                                     req->GetDescriptor()->full_name().c_str(), err.c_str());
                     return;
                 }
             }
+        }
+        SampledRequest* sample = AskToBeSampled();
+        if (sample && !is_http2) {
+            sample->meta.set_compress_type(COMPRESS_TYPE_NONE);
+            sample->meta.set_protocol_type(PROTOCOL_HTTP);
+            sample->meta.set_attachment_size(req_body.size());
+
+            butil::EndPoint ep;
+            MakeRawHttpRequest(&sample->request, &req_header, ep, &req_body);
+            sample->submit(start_parse_us);
         }
     } else {
         // A http server, just keep content as it is.
