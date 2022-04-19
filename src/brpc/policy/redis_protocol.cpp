@@ -306,9 +306,9 @@ void SerializeRedisRequest(butil::IOBuf* buf,
     }
     const RedisRequest* rr = (const RedisRequest*)request;
     // If redis byte size is zero, brpc call will fail with E22. Continuous E22 may cause E112 in the end.
-    // So print warning log here as a notice
+    // So set failed and return useful error message
     if(rr->ByteSize() == 0) {
-        LOG(WARNING) << "redis request is empty, please check the redis request content";
+        return cntl->SetFailed(EREQUEST, "request byte size is empty");
     }
     // We work around SerializeTo of pb which is just a placeholder.
     if (!rr->SerializeTo(buf)) {
