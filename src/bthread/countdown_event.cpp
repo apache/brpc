@@ -39,7 +39,7 @@ CountdownEvent::~CountdownEvent() {
     butex_destroy(_butex);
 }
 
-void CountdownEvent::signal(int sig) {
+void CountdownEvent::signal(int sig, bool flush) {
     // Have to save _butex, *this is probably defreferenced by the wait thread
     // which sees fetch_sub
     void* const saved_butex = _butex;
@@ -50,7 +50,7 @@ void CountdownEvent::signal(int sig) {
         return;
     }
     LOG_IF(ERROR, prev < sig) << "Counter is over decreased";
-    butex_wake_all(saved_butex);
+    butex_wake_all(saved_butex, flush);
 }
 
 int CountdownEvent::wait() {

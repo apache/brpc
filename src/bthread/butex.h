@@ -46,11 +46,11 @@ void butex_destroy(void* butex);
 
 // Wake up at most 1 thread waiting on |butex|.
 // Returns # of threads woken up.
-int butex_wake(void* butex);
+int butex_wake(void* butex, bool nosignal = false);
 
 // Wake up all threads waiting on |butex|.
 // Returns # of threads woken up.
-int butex_wake_all(void* butex);
+int butex_wake_all(void* butex, bool nosignal = false);
 
 // Wake up all threads waiting on |butex| except a bthread whose identifier
 // is |excluded_bthread|. This function does not yield.
