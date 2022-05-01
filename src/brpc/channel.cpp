@@ -295,7 +295,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
@@ -336,7 +336,7 @@ int Channel::Init(const char* ns_url,
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
