@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <thread>
 #include <bthread/bthread.h>
 #include <butil/file_util.h>                     // butil::FilePath
 #include <butil/time.h>
@@ -219,8 +220,8 @@ void RpcPress::sync_client() {
     }
     const int thread_index = g_thread_count.fetch_add(1, butil::memory_order_relaxed);
     int msg_index = thread_index;
-    int64_t last_expected_time = butil::gettimeofday_us();
-    const int64_t interval = (int64_t) (1000000 / req_rate);
+    int64_t last_expected_time = butil::monotonic_time_ns();
+    const int64_t interval = (int64_t) (1000000000L / req_rate);
     while (!_stop) {
         brpc::Controller* cntl = new brpc::Controller;
         msg_index = (msg_index + _options.test_thread_num) % _msgs.size();
@@ -241,10 +242,10 @@ void RpcPress::sync_client() {
         if (_options.test_req_rate <= 0) { 
             brpc::Join(cid1);
         } else {
-            int64_t end_time = butil::gettimeofday_us();
+            int64_t end_time = butil::monotonic_time_ns();
             int64_t expected_time = last_expected_time + interval;
             if (end_time < expected_time) {
-                usleep(expected_time - end_time);
+                std::this_thread::sleep_for(std::chrono::nanoseconds(expected_time - end_time));
             }
             last_expected_time = expected_time;
         }
