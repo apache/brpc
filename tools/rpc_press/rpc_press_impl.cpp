@@ -22,7 +22,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <thread>
 #include <bthread/bthread.h>
 #include <butil/file_util.h>                     // butil::FilePath
 #include <butil/time.h>
@@ -245,7 +244,7 @@ void RpcPress::sync_client() {
             int64_t end_time = butil::monotonic_time_ns();
             int64_t expected_time = last_expected_time + interval;
             if (end_time < expected_time) {
-                std::this_thread::sleep_for(std::chrono::nanoseconds(expected_time - end_time));
+                usleep((expected_time - end_time)/1000);
             }
             last_expected_time = expected_time;
         }
