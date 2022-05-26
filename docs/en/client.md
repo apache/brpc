@@ -42,7 +42,7 @@ int Init(EndPoint server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr, int port, const ChannelOptions* options);
 ```
-The server connected by these Init() has fixed address genrally. The creation does not need NamingService or LoadBalancer, being relatively light-weight.  The address could be a hostname, but don't frequently create Channels connecting to a hostname, which requires a DNS lookup taking at most 10 seconds. (default timeout of DNS lookup). Reuse them.
+The server connected by these Init() has fixed address generally. The creation does not need NamingService or LoadBalancer, being relatively light-weight.  The address could be a hostname, but don't frequently create Channels connecting to a hostname, which requires a DNS lookup taking at most 10 seconds. (default timeout of DNS lookup). Reuse them.
 
 Valid "server_addr_and_port":
 - 127.0.0.1:80
