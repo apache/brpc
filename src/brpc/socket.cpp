@@ -751,6 +751,8 @@ void Socket::Revive() {
             LOG(WARNING) << *this << " was abandoned during revival";
             return;
         }
+
+        std::unique_lock<butil::Mutex> recycle_lock(_recycle_mutex);
         // +1 is the additional ref added in Create(). TODO(gejun): we should
         // remove this additional nref someday.
         if (_versioned_ref.compare_exchange_weak(
@@ -759,6 +761,7 @@ void Socket::Revive() {
                 butil::memory_order_relaxed)) {
             // Set this flag to true since we add additional ref again
             _recycle_flag.store(false, butil::memory_order_relaxed);
+            recycle_lock.unlock();
             if (_user) {
                 _user->AfterRevived(this);
             } else {
@@ -771,11 +774,14 @@ void Socket::Revive() {
 
 int Socket::ReleaseAdditionalReference() {
     bool expect = false;
+
+    std::unique_lock<butil::Mutex> recycle_lock(_recycle_mutex);
     // Use `relaxed' fence here since `Dereference' has `released' fence
     if (_recycle_flag.compare_exchange_strong(
             expect, true,
             butil::memory_order_relaxed,
             butil::memory_order_relaxed)) {
+        recycle_lock.unlock();
         return Dereference();
     }
     return -1;

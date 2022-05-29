@@ -787,6 +787,7 @@ private:
     // Flag used to mark whether additional reference has been decreased
     // by either `SetFailed' or `SetRecycle'
     butil::atomic<bool> _recycle_flag;
+    butil::Mutex _recycle_mutex;
 
     // Concrete error information from SetFailed()
     // Accesses to these 2 fields(especially _error_text) must be protected
