@@ -295,13 +295,13 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
     const int port = server_addr_and_port.port;
-    if (port < 0 || port > 65535) {
+    if (port < 0) {
         LOG(ERROR) << "Invalid port=" << port;
         return -1;
     }
@@ -336,7 +336,7 @@ int Channel::Init(const char* ns_url,
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https://") {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
@@ -577,7 +577,7 @@ int Channel::CheckHealth() {
         return -1;
     } else {
         SocketUniquePtr tmp_sock;
-        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
+        LoadBalancer::SelectIn sel_in = { 0, false, true, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         return _lb->SelectServer(sel_in, &sel_out);
     }

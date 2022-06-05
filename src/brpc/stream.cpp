@@ -435,11 +435,11 @@ int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* soc
         }
         break;
     case FRAME_TYPE_RST:
-        RPC_VLOG << "stream=" << id() << " recevied rst frame";
+        RPC_VLOG << "stream=" << id() << " received rst frame";
         Close();
         break;
     case FRAME_TYPE_CLOSE:
-        RPC_VLOG << "stream=" << id() << " recevied close frame";
+        RPC_VLOG << "stream=" << id() << " received close frame";
         // TODO:: See the comments in Consume
         Close();
         break;

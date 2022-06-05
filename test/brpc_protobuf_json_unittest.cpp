@@ -885,24 +885,93 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode) {
     printf("----------test json to pb------------\n\n");
     
     std::string info3;
-    JsonContextBody data1;
-    json2pb::JsonToProtoMessage(info1, &data1, NULL); 
+    JsonContextBodyEncDec data1;
+    json2pb::JsonToProtoMessage(info1, &data1, NULL);
     json2pb::ProtoMessageToJson(data1, &info3, NULL);
+    ASSERT_STREQ(info1.data(), info3.data());
+
+    printf("----------test single repeated pb to json array------------\n\n");
+
+    AddressBookEncDec single_repeated_json_data;
+
+    auto person = single_repeated_json_data.add_person();
+    person->set_id(1);
+    person->set_name("foo");
+    *person->mutable_json_body() = json_data;
+    option.bytes_to_base64 = true;
+
+    std::string text1;
+    printer.PrintToString(single_repeated_json_data, &text1);
+
+    printf("text1:\n\n%s\n", text1.data());
+
+    std::string info4;
+    option.single_repeated_to_array = false;
+    ASSERT_TRUE(ProtoMessageToJson(single_repeated_json_data, &info4, option, NULL));
 #ifndef RAPIDJSON_VERSION_0_1
-    ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
+    ASSERT_STREQ("{\"person\":["
+                 "{\"name\":\"foo\",\"id\":1,\"json_body\":"
+                 "{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
                  "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
-                 info1.data());
+                 "\"enum--type\":\"WORK\"}}]}}]}",
+                 info4.data());
 #else
-    ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
+    ASSERT_STREQ("{\"person\":["
+                 "{\"name\":\"foo\",\"id\":1,\"json_body\":"
+                 "{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
                  "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
-                 info1.data());
+                 "\"enum--type\":\"WORK\"}}]}}]}",
+                 info4.data());
 #endif
+
+    std::string info5;
+    option.single_repeated_to_array = true;
+    ASSERT_TRUE(ProtoMessageToJson(single_repeated_json_data, &info5, option, NULL));
+#ifndef RAPIDJSON_VERSION_0_1
+    ASSERT_STREQ("[{\"name\":\"foo\",\"id\":1,\"json_body\":"
+                 "{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
+                 "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
+                 "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
+                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
+                 "\"enum--type\":\"WORK\"}}]}}]",
+                 info5.data());
+#else
+    ASSERT_STREQ("[{\"name\":\"foo\",\"id\":1,\"json_body\":"
+                 "{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
+                 "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
+                 "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
+                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
+                 "\"enum--type\":\"WORK\"}}]}}]",
+                 info5.data());
+#endif
+
+    printf("----------test json array to single repeated pb------------\n\n");
+
+    std::string info6;
+    AddressBookEncDec data2;
+    // object -> pb
+    json2pb::JsonToProtoMessage(info4, &data2, NULL);
+    json2pb::ProtoMessageToJson(data2, &info6, option, NULL);
+
+    ASSERT_STREQ(info6.data(), info5.data());
+
+    std::string info7;
+    AddressBookEncDec data3;
+    json2pb::Json2PbOptions option2;
+    option2.array_to_single_repeated = true;
+    // array -> pb
+    json2pb::JsonToProtoMessage(info5, &data3, option2, NULL);
+    json2pb::ProtoMessageToJson(data3, &info7, option, NULL);
+    ASSERT_STREQ(info7.data(), info5.data());
+
+    std::string info8;
+    option.single_repeated_to_array = false;
+    json2pb::ProtoMessageToJson(data3, &info8, option, NULL);
+    ASSERT_STREQ(info8.data(), info4.data());
 }
 
 TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {

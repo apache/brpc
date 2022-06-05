@@ -56,6 +56,18 @@ class InputMessageBase;
 DECLARE_uint64(max_body_size);
 DECLARE_bool(log_error_text);
 
+// Get the serialized byte size of the protobuf message, 
+// different versions of protobuf have different methods
+// use template to avoid include `google/protobuf/message.h`
+template<typename T>
+inline uint32_t GetProtobufByteSize(const T& message) {
+#if GOOGLE_PROTOBUF_VERSION >= 3010000
+    return message.ByteSizeLong();
+#else
+    return static_cast<uint32_t>(message.ByteSize());
+#endif
+}
+
 // 3 steps to add a new Protocol:
 // Step1: Add a new ProtocolType in src/brpc/options.proto
 //        as identifier of the Protocol.
@@ -193,6 +205,7 @@ void SerializeRequestDefault(butil::IOBuf* buf,
 bool ParsePbFromZeroCopyStream(google::protobuf::Message* msg,
                                google::protobuf::io::ZeroCopyInputStream* input);
 bool ParsePbFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf);
+bool ParsePbTextFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf);
 bool ParsePbFromArray(google::protobuf::Message* msg, const void* data, size_t size);
 bool ParsePbFromString(google::protobuf::Message* msg, const std::string& str);
 

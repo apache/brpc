@@ -106,7 +106,7 @@ class ThreadLocalPointer {
 
   SlotType slot_;
 
-  DISALLOW_COPY_AND_ASSIGN(ThreadLocalPointer<Type>);
+  DISALLOW_COPY_AND_ASSIGN(ThreadLocalPointer);
 };
 
 class ThreadLocalBoolean {

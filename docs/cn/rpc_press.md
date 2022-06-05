@@ -62,7 +62,7 @@ rpc_press启动后会默认在8888端口启动一个dummy server，用于观察r
 ```
 ./rpc_press -proto=echo.proto -service=example.EchoService -method=Echo -server=0.0.0.0:8002 -input=./input.json -duration=0 -qps=100
 TRACE: 01-30 16:10:04:   * 0 src/brpc/server.cpp:733] Server[dummy_servers] is serving on port=8888.
-TRACE: 01-30 16:10:04:   * 0 src/brpc/server.cpp:742] Check out http://db-rpc-dev00.db01.baidu.com:8888 in your web browser.</code>
+TRACE: 01-30 16:10:04:   * 0 src/brpc/server.cpp:742] Check out http://xxx.com:8888 in your web browser.</code>
 ```
 
 dummy_server启动时会在终端打印日志，一般按住ctrl点击那个链接可以直接打开对应的内置服务页面，就像这样：

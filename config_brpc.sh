@@ -161,7 +161,7 @@ else
     OPENSSL_LIB=$(find_dir_of_lib ssl)
     # Inconvenient to check these headers in baidu-internal
     #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
-    OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
+    OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h mesalink/openssl/ssl.h)
 fi
 
 if [ $WITH_MESALINK != 0 ]; then

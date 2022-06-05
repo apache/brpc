@@ -26,6 +26,10 @@
 #include "bthread/unstable.h"
 #include "bthread/task_meta.h"
 
+namespace bthread {
+    extern __thread bthread::LocalStorage tls_bls;
+}
+
 namespace {
 class BthreadTest : public ::testing::Test{
 protected:
@@ -506,6 +510,38 @@ TEST_F(BthreadTest, bthread_usleep) {
     ASSERT_EQ(0, bthread_start_urgent(&th2, NULL,
                                       check_sleep, (void*)0));
     ASSERT_EQ(0, bthread_join(th2, NULL));
+}
+
+static const bthread_attr_t BTHREAD_ATTR_NORMAL_WITH_SPAN =
+{ BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, NULL };
+
+void* test_parent_span(void* p) {
+    uint64_t *q = (uint64_t *)p;
+    *q = (uint64_t)(bthread::tls_bls.rpcz_parent_span);
+    LOG(INFO) << "span id in thread is " << *q;
+    return NULL;
+}
+
+TEST_F(BthreadTest, test_span) {
+    uint64_t p1 = 0;
+    uint64_t p2 = 0;
+
+    uint64_t target = 0xBADBEAFUL;
+    LOG(INFO) << "target span id is " << target;
+
+    bthread::tls_bls.rpcz_parent_span = (void*)target;
+    bthread_t th1;
+    ASSERT_EQ(0, bthread_start_urgent(&th1, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
+                                      test_parent_span, &p1));
+    ASSERT_EQ(0, bthread_join(th1, NULL));
+
+    bthread_t th2;
+    ASSERT_EQ(0, bthread_start_background(&th2, NULL,
+                                      test_parent_span, &p2));
+    ASSERT_EQ(0, bthread_join(th2, NULL));
+
+    ASSERT_EQ(p1, target);
+    ASSERT_NE(p2, target);
 }
 
 void* dummy_thread(void*) {

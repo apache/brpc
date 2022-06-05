@@ -46,6 +46,7 @@ static const bthread_attrflags_t BTHREAD_LOG_START_AND_FINISH = 8;
 static const bthread_attrflags_t BTHREAD_LOG_CONTEXT_SWITCH = 16;
 static const bthread_attrflags_t BTHREAD_NOSIGNAL = 32;
 static const bthread_attrflags_t BTHREAD_NEVER_QUIT = 64;
+static const bthread_attrflags_t BTHREAD_INHERIT_SPAN = 128;
 
 // Key of thread-local data, created by bthread_key_create.
 typedef struct {
