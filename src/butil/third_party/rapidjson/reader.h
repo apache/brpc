@@ -430,6 +430,11 @@ public:
                     RAPIDJSON_PARSE_ERROR_NORETURN(kParseErrorDocumentRootNotSingular, is.Tell());
                     RAPIDJSON_PARSE_ERROR_EARLY_RETURN(parseResult_);
                 }
+            } else {
+                // jge: Update parseResult_.Offset() when kParseStopwhendoneflag
+                // is set which means the user needs to know where to resume
+                // parsing in next calls to JsonToProtoMessage()
+                SetParseError(kParseErrorNone, is.Tell());
             }
         }
 
