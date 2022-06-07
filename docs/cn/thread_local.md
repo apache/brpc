@@ -57,9 +57,8 @@ Use *p ...                   -  still the errno of original pthread, undefined b
 
 严格地说这个问题不是gcc4导致的，而是glibc给__errno_location的签名不够准确，一个返回thread-local指针的函数依赖于段寄存器（TLS的一般实现方式），这怎么能算const呢？由于我们还未找到覆盖__errno_location的方法，所以这个问题目前实际的解决方法是：
 
-**务必在直接或间接使用bthread的项目的gcc编译选项中添加`-D__const__=`，即把`__const__`定义为空，避免gcc4做相关优化。**
+**务必在直接或间接使用bthread的项目的gcc编译选项中添加`-D__const__=__unused__`，即把`__const__`定义为一个无副作用的属性，避免gcc4做相关优化。**
 
-把`__const__`定义为空对程序其他部分的影响几乎为0。另外如果你没有**直接**使用errno（即你的项目中没有出现errno），或使用的是gcc
-3.4，即使没有定义`-D__const__=`，程序的正确性也不会受影响，但为了防止未来可能的问题，我们强烈建议加上。
+把`__const__`定义为`__unused__`对程序其他部分的影响几乎为0。另外如果你没有**直接**使用errno（即你的项目中没有出现errno），或使用的是gcc 3.4，即使没有定义`-D__const__=__unused__`，程序的正确性也不会受影响，但为了防止未来可能的问题，我们强烈建议加上。
 
-需要说明的是，和errno类似，pthread_self也有类似的问题，不过一般pthread_self除了打日志没有其他用途，影响面较小，在`-D__const__=`后pthread_self也会正常。
+需要说明的是，和errno类似，pthread_self也有类似的问题，不过一般pthread_self除了打日志没有其他用途，影响面较小，在`-D__const__=__unused__`后pthread_self也会正常。

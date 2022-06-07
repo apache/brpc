@@ -315,6 +315,10 @@ append_to_output "STATIC_LINKINGS=$STATIC_LINKINGS"
 append_to_output "DYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
 CPPFLAGS="-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS"
 
+# Avoid over-optimizations of TLS variables by GCC>=4.8
+# See: https://github.com/apache/incubator-brpc/issues/1693
+CPPFLAGS="${CPPFLAGS} -D__const__=__unused__"
+
 if [ ! -z "$DEBUGSYMBOLS" ]; then
     CPPFLAGS="${CPPFLAGS} $DEBUGSYMBOLS"
 fi
