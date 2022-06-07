@@ -554,10 +554,6 @@ public:
     // -1 means no deadline.
     int64_t deadline_us() const { return _deadline_us; }
 
-    void add_auth_flags(uint32_t auth_flags) { _auth_flags = auth_flags; }
-
-    void clear_auth_flags() { _auth_flags = 0; }
-
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request

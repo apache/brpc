@@ -128,12 +128,12 @@ public:
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)
     { _cntl->_rpa.reset(s); }
 
-    void add_auth_flags(uint32_t auth_flags) {
-        _cntl->add_auth_flags(auth_flags);
+    void set_auth_flags(uint32_t auth_flags) {
+        _cntl->_auth_flags = auth_flags;
     }
 
     void clear_auth_flags() {
-        _cntl->clear_auth_flags();
+        _cntl->_auth_flags = 0;
     }
 
     std::string& protocol_param() { return _cntl->protocol_param(); }

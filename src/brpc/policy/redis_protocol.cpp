@@ -340,7 +340,7 @@ void PackRedisRequest(butil::IOBuf* buf,
         if (redis_auth == NULL) {
             return cntl->SetFailed(EREQUEST, "Fail to generate credential");
         }
-        ControllerPrivateAccessor(cntl).add_auth_flags(redis_auth->GetAuthFlags());
+        ControllerPrivateAccessor(cntl).set_auth_flags(redis_auth->GetAuthFlags());
     } else {
         ControllerPrivateAccessor(cntl).clear_auth_flags();
     }
