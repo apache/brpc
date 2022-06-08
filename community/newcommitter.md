@@ -1,13 +1,13 @@
-# 这里记录new committer相关的流程和网站
+## 1. 这里记录new committer相关的流程和网站
 
 
-## 成为committer的路程
+### 成为committer的路程
 1. 在private邮件中发起讨论和投票
 2. 投票通过即OK
 3. 让他填写CLA并发给secretary@apache.org
 
 
-## 如何赋予committer在github上的权限
+### 如何赋予committer在github上的权限
 
 1. 加为committer
 https://whimsy.apache.org/roster/ppmc/brpc
@@ -19,13 +19,13 @@ https://id.apache.org/
 https://gitbox.apache.org/setup/
 
 
-##  apache 官网new committer相关的文档
+###  apache 官网new committer相关的文档
 
 https://community.apache.org/newcommitter.html
 
 https://infra.apache.org/new-committers-guide.html
 
-## Suggested steps from secretary@apache.org
+### Suggested steps from secretary@apache.org
 Please do these things:
 
 1. Hold the discussion and vote on your private@ list. This avoids any issues related to personnel, which should remain private.
@@ -33,4 +33,20 @@ Please do these things:
 3. Only if the candidate accepts committership, announce the new committer on your dev@ list.
 
 Doing these things will make everyone's job easier.
+
+
+
+## 2. 如何把committer变成为PPMC
+
+### 流程参考：Apache官网文档
+https://incubator.apache.org/guides/ppmc.html#voting_in_a_new_ppmc_member
+https://cwiki.apache.org/confluence/display/JAKARTA/Adding+To+The+PMC
+https://community.apache.org/newcommitter.html
+
+### 实际流程
+1. 在private邮件组中发起讨论，如果没有反对，则继续
+2. 在private邮件组中发起投票
+3. 在private邮件组中发邮件，结束投票
+4. 在private邮件组中announce new PPMC
+5. 操作https://whimsy.apache.org/roster/ppmc/brpc，设定他为PPMC
 
