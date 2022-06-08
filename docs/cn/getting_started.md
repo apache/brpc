@@ -213,6 +213,10 @@ $ make
 
 注意：在相同硬件条件下，MacOS版brpc的性能可能明显差于Linux版。如果你的服务是性能敏感的，请不要使用MacOS作为你的生产环境。
 
+### Apple Silicon
+
+master HEAD已支持M1系列芯片，M2未测试过。欢迎通过issues向我们报告遗留的warning/error。
+
 ### 依赖准备
 
 安装依赖：
@@ -225,22 +229,17 @@ brew install openssl git gnu-getopt coreutils gflags protobuf leveldb
 brew install gperftools
 ```
 
-如果你要运行测试，那么要安装并编译googletest（它没有被默认编译）：
+如果你要运行测试，需安装gtest。先运行`brew install googletest`看看homebrew是否支持（老版本没有），没有的话请下载和编译googletest：
 ```shell
 git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make
 ```
-在编译完成后，复制include/和lib/目录到/usr/local/include和/usr/local/lib目录中，以便于让所有应用都能使用gtest。
+在编译完成后，复制`include/`和`lib/`目录到`/usr/local/include`和`/usr/local/lib`目录中，以便于让所有应用都能使用gtest。
 
-### Monterey
-Monterey中openssl的安装位置可能不再位于`/usr/local/opt/openssl`，很可能会在`/opt/homebrew/Cellar`目录下，如果编译时报告找不到openssl，可考虑设置软链如下：
-```shell
-sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl
-```
-请注意上述命令中openssl的目录可能随环境变化而变化，你可以通过`brew info openssl`查看。
+### OpenSSL
+Monterey中openssl的安装位置可能不再位于`/usr/local/opt/openssl`，很可能会在`/opt/homebrew/Cellar`目录下，如果编译时报告找不到openssl：
 
-### Apple Silicon
-
-master HEAD已支持M1系列芯片，M2未测试过。欢迎通过issues向我们报告遗留的warning/error。
+* 先运行`brew link openssl --force`看看`/user/local/opt/openssl`是否出现了
+* 没有的话可以自行设置软链：`sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`。请注意此命令中openssl的目录可能随环境变化而变化，可通过`brew info openssl`查看。
 
 ### 使用config_brpc.sh编译brpc
 git克隆brpc，进入到项目目录然后运行：
@@ -248,6 +247,13 @@ git克隆brpc，进入到项目目录然后运行：
 $ sh config_brpc.sh --headers=/usr/local/include --libs=/usr/local/lib --cc=clang --cxx=clang++
 $ make
 ```
+MacOS Monterey下的brew安装路径可能改变，如有路径相关的错误，可考虑设置如下：
+
+```shell
+$ sh config_brpc.sh --headers=/opt/homebrew/include --libs=/opt/homebrew/lib --cc=clang --cxx=clang++
+$ make
+```
+
 不想链接调试符号，添加选项`--nodebugsymbols`，然后编译将会得到更轻量的二进制文件。
 
 使用glog版的brpc，添加选项`--with-glog`。
