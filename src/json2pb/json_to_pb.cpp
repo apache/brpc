@@ -25,6 +25,8 @@
 #include <limits> 
 #include <google/protobuf/descriptor.h>
 #include "butil/strings/string_number_conversions.h"
+#include "butil/third_party/rapidjson/error/error.h"
+#include "butil/third_party/rapidjson/rapidjson.h"
 #include "json_to_pb.h"
 #include "zero_copy_stream_reader.h"       // ZeroCopyStreamReader
 #include "encode_decode.h"
@@ -33,12 +35,19 @@
 #include "protobuf_map.h"
 #include "rapidjson.h"
 
-#define J2PERROR(perr, fmt, ...)                                        \
+
+#define J2PERROR(perr, fmt, ...)                                    \
+    J2PERROR_WITH_PB((::google::protobuf::Message*)nullptr, perr, fmt, ##__VA_ARGS__)
+
+#define J2PERROR_WITH_PB(pb, perr, fmt, ...)                            \
     if (perr) {                                                         \
         if (!perr->empty()) {                                           \
             perr->append(", ", 2);                                      \
         }                                                               \
-        butil::string_appendf(perr, fmt, ##__VA_ARGS__);                 \
+        butil::string_appendf(perr, fmt, ##__VA_ARGS__);                \
+        if ((pb) != nullptr) {                                            \
+            butil::string_appendf(perr, " [%s]", (pb)->GetDescriptor()->name().c_str());  \
+        }                                                               \
     } else { }
 
 namespace json2pb {
@@ -49,7 +58,8 @@ Json2PbOptions::Json2PbOptions()
 #else
     : base64_to_bytes(true)
 #endif
-    , array_to_single_repeated(false) {
+    , array_to_single_repeated(false)
+    , allow_remaining_bytes_after_parsing(false) {
 }
 
 enum MatchType { 
@@ -412,7 +422,7 @@ static bool JsonValueToProtoField(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
                         options.base64_to_bytes) {
                         std::string str_decoded;
                         if (!butil::Base64Decode(str, &str_decoded)) {
-                            J2PERROR(err, "Fail to decode base64 string=%s", str.c_str());
+                            J2PERROR_WITH_PB(message, err, "Fail to decode base64 string=%s", str.c_str());
                             return false;
                         }
                         str = str_decoded;
@@ -426,7 +436,7 @@ static bool JsonValueToProtoField(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
                 options.base64_to_bytes) {
                 std::string str_decoded;
                 if (!butil::Base64Decode(str, &str_decoded)) {
-                    J2PERROR(err, "Fail to decode base64 string=%s", str.c_str());
+                    J2PERROR_WITH_PB(message, err, "Fail to decode base64 string=%s", str.c_str());
                     return false;
                 }
                 str = str_decoded;
@@ -509,7 +519,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
                              std::string* err) {
     const google::protobuf::Descriptor* descriptor = message->GetDescriptor();
     if (!json_value.IsObject() && !(json_value.IsArray() && options.array_to_single_repeated)) {
-        J2PERROR(err, "`json_value' is not a json object. %s", descriptor->name().c_str());
+        J2PERROR_WITH_PB(message, err, "The input is not a json object");
         return false;
     }
 
@@ -538,7 +548,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
             return JsonValueToProtoField(json_value, fields.front(), message, options, err);
         }
 
-        J2PERROR(err, "`json_value' of type array is not allowed here.");
+        J2PERROR_WITH_PB(message, err, "the input json can't be array here");
         return false;
     }
 
@@ -589,55 +599,89 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
     return true;
 }
 
-bool ZeroCopyStreamToJson(BUTIL_RAPIDJSON_NAMESPACE::Document *dest, 
-                          google::protobuf::io::ZeroCopyInputStream *stream) {
-    ZeroCopyStreamReader stream_reader(stream);
-    dest->ParseStream<0, BUTIL_RAPIDJSON_NAMESPACE::UTF8<> >(stream_reader);
-    return !dest->HasParseError();
-}
-
 inline bool JsonToProtoMessageInline(const std::string& json_string, 
                         google::protobuf::Message* message,
                         const Json2PbOptions& options,
-                        std::string* error) {
+                        std::string* error,
+                        size_t* parsed_offset) {
     if (error) {
         error->clear();
     }
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    d.Parse<0>(json_string.c_str());
+    if (options.allow_remaining_bytes_after_parsing) {
+        d.Parse<BUTIL_RAPIDJSON_NAMESPACE::kParseStopWhenDoneFlag>(json_string.c_str());
+        if (parsed_offset != nullptr) {
+            *parsed_offset = d.GetErrorOffset();
+        }
+    } else {
+        d.Parse<0>(json_string.c_str());
+    }
     if (d.HasParseError()) {
-        J2PERROR(error, "Invalid json format");
+        if (options.allow_remaining_bytes_after_parsing) {
+            if (d.GetParseError() == BUTIL_RAPIDJSON_NAMESPACE::kParseErrorDocumentEmpty) {
+                // This is usual when parsing multiple jsons, don't waste time
+                // on setting the `empty error'
+                return false;
+            }
+        }
+        J2PERROR_WITH_PB(message, error, "Invalid json: %s", BUTIL_RAPIDJSON_NAMESPACE::GetParseError_En(d.GetParseError()));
         return false;
     }
-    return json2pb::JsonValueToProtoMessage(d, message, options, error);
+    return JsonValueToProtoMessage(d, message, options, error);
 }
 
 bool JsonToProtoMessage(const std::string& json_string,
                         google::protobuf::Message* message,
                         const Json2PbOptions& options,
-                        std::string* error) {
-    return JsonToProtoMessageInline(json_string, message, options, error);
+                        std::string* error,
+                        size_t* parsed_offset) {
+    return JsonToProtoMessageInline(json_string, message, options, error, parsed_offset);
 }
 
 bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* stream,
                         google::protobuf::Message* message,
                         const Json2PbOptions& options,
-                        std::string* error) {
+                        std::string* error,
+                        size_t* parsed_offset) {
+    ZeroCopyStreamReader reader(stream);
+    return JsonToProtoMessage(&reader, message, options, error, parsed_offset);
+}
+
+bool JsonToProtoMessage(ZeroCopyStreamReader* reader,
+                        google::protobuf::Message* message,
+                        const Json2PbOptions& options,
+                        std::string* error,
+                        size_t* parsed_offset) {
     if (error) {
         error->clear();
     }
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    if (!json2pb::ZeroCopyStreamToJson(&d, stream)) {
-        J2PERROR(error, "Invalid json format");
+    if (options.allow_remaining_bytes_after_parsing) {
+        d.ParseStream<BUTIL_RAPIDJSON_NAMESPACE::kParseStopWhenDoneFlag, BUTIL_RAPIDJSON_NAMESPACE::UTF8<>>(*reader);
+        if (parsed_offset != nullptr) {
+            *parsed_offset = d.GetErrorOffset();
+        }
+    } else {
+        d.ParseStream<0, BUTIL_RAPIDJSON_NAMESPACE::UTF8<>>(*reader);
+    }
+    if (d.HasParseError()) {
+        if (options.allow_remaining_bytes_after_parsing) {
+            if (d.GetParseError() == BUTIL_RAPIDJSON_NAMESPACE::kParseErrorDocumentEmpty) {
+                // This is usual when parsing multiple jsons, don't waste time
+                // on setting the `empty error'
+                return false;
+            }
+        }
+        J2PERROR_WITH_PB(message, error, "Invalid json: %s", BUTIL_RAPIDJSON_NAMESPACE::GetParseError_En(d.GetParseError()));
         return false;
     }
-    return json2pb::JsonValueToProtoMessage(d, message, options, error);
+    return JsonValueToProtoMessage(d, message, options, error);
 }
 
 bool JsonToProtoMessage(const std::string& json_string, 
                         google::protobuf::Message* message,
                         std::string* error) {
-    return JsonToProtoMessageInline(json_string, message, Json2PbOptions(), error);
+    return JsonToProtoMessageInline(json_string, message, Json2PbOptions(), error, nullptr);
 }
 
 // For ABI compatibility with 1.0.0.0
@@ -647,21 +691,13 @@ bool JsonToProtoMessage(const std::string& json_string,
 bool JsonToProtoMessage(std::string json_string, 
                         google::protobuf::Message* message,
                         std::string* error) {
-    return JsonToProtoMessageInline(json_string, message, Json2PbOptions(), error);
+    return JsonToProtoMessageInline(json_string, message, Json2PbOptions(), error, nullptr);
 }
 
 bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream *stream,
                         google::protobuf::Message* message,
                         std::string* error) {
-    if (error) {
-        error->clear();
-    }
-    BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    if (!json2pb::ZeroCopyStreamToJson(&d, stream)) {
-        J2PERROR(error, "Invalid json format");
-        return false;
-    }
-    return json2pb::JsonValueToProtoMessage(d, message, Json2PbOptions(), error);
+    return JsonToProtoMessage(stream, message, Json2PbOptions(), error, nullptr);
 }
 } //namespace json2pb
 

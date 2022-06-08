@@ -215,18 +215,13 @@ Same with [here](#compile-brpc-with-cmake)
 
 ## MacOS
 
-Note: In the same running environment, the performance of the current Mac version is about 2.5 times worse than the Linux version. If your service is performance-critical, do not use MacOS as your production environment.
+Note: With same environment, the performance of the MacOS version is worse than the Linux version. If your service is performance-critical, do not use MacOS as your production environment.
 
 ### Prepare deps
 
-Install common deps:
+Install dependencies:
 ```shell
-brew install openssl git gnu-getopt coreutils
-```
-
-Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
-```shell
-brew install gflags protobuf leveldb
+brew install openssl git gnu-getopt coreutils gflags protobuf leveldb
 ```
 
 If you need to enable cpu/heap profilers in examples:
@@ -239,6 +234,20 @@ If you need to run tests, download and compile googletest (which is not compiled
 git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make
 ```
 After the compilation, copy include/ and lib/ into /usr/local/include and /usr/local/lib respectively to expose gtest to all apps
+
+### Monterey
+
+openssl installed in Monterey may not be found at `/usr/local/opt/openssl`, instead it's probably put under `/opt/homebrew/Cellar`. If the compiler cannot find openssl, consider making a soft link like below:
+
+```shell
+sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl
+```
+
+Please note that the directory of installed openssl in above command may be different in different environments, you could check it  out by running `brew info openssl`.
+
+### Apple Silicon
+
+The code at master HEAD already supports M1 series chips. M2 series are not tested yet. Please feel free to report remaining warnings/errors to us by issues.
 
 ### Compile brpc with config_brpc.sh
 git clone brpc, cd into the repo and run

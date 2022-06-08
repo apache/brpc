@@ -44,7 +44,7 @@ message Person {
 
     required double datadouble = 8;
 
-    required float  datafloat = 9; 
+    optional float  datafloat = 9; 
   
     optional uint32 datau32 = 10;
   
