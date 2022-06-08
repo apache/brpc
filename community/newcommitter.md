@@ -1,10 +1,13 @@
-## 1. 这里记录new committer相关的流程和参考网站信息
+# 这里记录发展Committer 和 PPMC成员的流程和参考网站信息
+
+## 1. 如何发展committer
 
 
 ### 成为committer的路程
-1. 在private邮件中发起讨论和投票
-2. 投票通过即OK
+1. 在private@brpc中发起讨论和投票，投票通过即OK
+2. 发送close vote邮件给private@brpc和private@incubator ,标题可以为subject [RESULT][VOTE]
 3. 让他填写CLA并发给secretary@apache.org
+4. 发送announce邮件到dev@brpc
 
 
 ### 如何赋予committer在github上的权限
@@ -40,15 +43,13 @@ Doing these things will make everyone's job easier.
 
 ### 流程参考：Apache官网文档
 https://incubator.apache.org/guides/ppmc.html#voting_in_a_new_ppmc_member
-https://cwiki.apache.org/confluence/display/JAKARTA/Adding+To+The+PMC
 https://community.apache.org/newcommitter.html
 https://incubator.apache.org/guides/ppmc.html#podling_project_management_committee_ppmc
 
 ### 实际流程
-1. 在private邮件组中发起讨论，如果没有反对，则继续
-2. 在private邮件组中发起投票
-3. 在private邮件组中发邮件，结束投票
-4. 在private邮件组中announce new PPMC
-5. 在private@incubator.apache.org邮件中announce这个结果
-6. 设定他的权限，通过访问https://whimsy.apache.org/roster/ppmc/brpc
+1. 在private@brpc中发起讨论，如果没有反对，则继续
+2. 在private@brpc中发起投票
+3. 在private@brpc中发邮件，结束投票，并通知private@incubator.apache.org
+4. 在private@brpc中和dev中announce new PPMC
+5. 设定他的权限，通过访问https://whimsy.apache.org/roster/ppmc/brpc
 
