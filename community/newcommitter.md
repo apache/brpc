@@ -1,4 +1,4 @@
-## 1. 这里记录new committer相关的流程和网站
+## 1. 这里记录new committer相关的流程和参考网站信息
 
 
 ### 成为committer的路程
@@ -48,5 +48,5 @@ https://community.apache.org/newcommitter.html
 2. 在private邮件组中发起投票
 3. 在private邮件组中发邮件，结束投票
 4. 在private邮件组中announce new PPMC
-5. 操作https://whimsy.apache.org/roster/ppmc/brpc，设定他为PPMC
+5. 设定他的权限，通过访问https://whimsy.apache.org/roster/ppmc/brpc
 
