@@ -41,13 +41,15 @@ endif
 
 #required by butil/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
-	CXXFLAGS+=-msse4 -msse4.2
+  ifeq ($(shell uname -p),i386)  #note: i386 is processor family type, not the 32-bit x86 arch
+    CXXFLAGS+=-msse4 -msse4.2
+  endif
 endif
 #not solved yet
 ifeq ($(CC),gcc)
- ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
-	CXXFLAGS+=-Wno-aligned-new
- endif
+  ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
+    CXXFLAGS+=-Wno-aligned-new
+  endif
 endif
 
 BUTIL_SOURCES = \
