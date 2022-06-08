@@ -42,11 +42,13 @@ Doing these things will make everyone's job easier.
 https://incubator.apache.org/guides/ppmc.html#voting_in_a_new_ppmc_member
 https://cwiki.apache.org/confluence/display/JAKARTA/Adding+To+The+PMC
 https://community.apache.org/newcommitter.html
+https://incubator.apache.org/guides/ppmc.html#podling_project_management_committee_ppmc
 
 ### 实际流程
 1. 在private邮件组中发起讨论，如果没有反对，则继续
 2. 在private邮件组中发起投票
 3. 在private邮件组中发邮件，结束投票
 4. 在private邮件组中announce new PPMC
-5. 设定他的权限，通过访问https://whimsy.apache.org/roster/ppmc/brpc
+5. 在private@incubator.apache.org邮件中announce这个结果
+6. 设定他的权限，通过访问https://whimsy.apache.org/roster/ppmc/brpc
 
