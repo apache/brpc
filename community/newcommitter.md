@@ -24,9 +24,9 @@ https://gitbox.apache.org/setup/
 
 ###  apache 官网new committer相关的文档
 
-https://community.apache.org/newcommitter.html
+* https://community.apache.org/newcommitter.html
 
-https://infra.apache.org/new-committers-guide.html
+* https://infra.apache.org/new-committers-guide.html
 
 ### Suggested steps from secretary@apache.org
 Please do these things:
@@ -42,9 +42,9 @@ Doing these things will make everyone's job easier.
 ## 2. 如何把committer变成为PPMC
 
 ### 流程参考：Apache官网文档
-https://incubator.apache.org/guides/ppmc.html#voting_in_a_new_ppmc_member
-https://community.apache.org/newcommitter.html
-https://incubator.apache.org/guides/ppmc.html#podling_project_management_committee_ppmc
+* https://incubator.apache.org/guides/ppmc.html#voting_in_a_new_ppmc_member
+* https://community.apache.org/newcommitter.html
+* https://incubator.apache.org/guides/ppmc.html#podling_project_management_committee_ppmc
 
 ### 实际流程
 1. 在private@brpc中发起讨论，如果没有反对，则继续
