@@ -371,7 +371,6 @@ friend void InitFrameHandlers();
     H2ParseResult OnContinuation(butil::IOBufBytesIterator&, const H2FrameHead&);
 
     H2StreamContext* RemoveStreamAndDeferWU(int stream_id);
-    H2StreamContext* RemoveStream(int stream_id);
     void RemoveGoAwayStreams(int goaway_stream_id, std::vector<H2StreamContext*>* out_streams);
 
     H2StreamContext* FindStream(int stream_id);

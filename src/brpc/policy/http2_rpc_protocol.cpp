@@ -372,7 +372,7 @@ int H2Context::Init() {
     return 0;
 }
 
-H2StreamContext* H2Context::RemoveStream(int stream_id) {
+H2StreamContext* H2Context::RemoveStreamAndDeferWU(int stream_id) {
     H2StreamContext* sctx = NULL;
     {
         std::unique_lock<butil::Mutex> mu(_stream_mutex);
@@ -380,17 +380,10 @@ H2StreamContext* H2Context::RemoveStream(int stream_id) {
             return NULL;
         }
     }
-    return sctx;
-}
-
-H2StreamContext* H2Context::RemoveStreamAndDeferWU(int stream_id) {
-    H2StreamContext* sctx = RemoveStream(stream_id);
     // The remote stream will not send any more data, sending back the
     // stream-level WINDOW_UPDATE is pointless, just move the value into
     // the connection.
-    if (sctx) {
-        DeferWindowUpdate(sctx->ReleaseDeferredWindowUpdate());
-    }
+    DeferWindowUpdate(sctx->ReleaseDeferredWindowUpdate());
     return sctx;
 }
 
@@ -1152,7 +1145,7 @@ inline void H2Context::ClearAbandonedStreams() {
         const uint32_t stream_id = _abandoned_streams.back();
         _abandoned_streams.pop_back();
         mu.unlock();
-        H2StreamContext* sctx = RemoveStream(stream_id);
+        H2StreamContext* sctx = RemoveStreamAndDeferWU(stream_id);
         if (sctx != NULL) {
             delete sctx;
         }
