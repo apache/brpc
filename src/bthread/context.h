@@ -23,9 +23,9 @@
 
 #if defined(__GNUC__) || defined(__APPLE__)
 
-    #define BTHREAD_CONTEXT_COMPILER_gcc
+  #define BTHREAD_CONTEXT_COMPILER_gcc
 
-    #if defined(__linux__)
+  #if defined(__linux__)
 	#ifdef __x86_64__
 	    #define BTHREAD_CONTEXT_PLATFORM_linux_x86_64
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
@@ -41,27 +41,30 @@
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
 	#endif
 
-    #elif defined(__MINGW32__) || defined (__MINGW64__)
+  #elif defined(__MINGW32__) || defined (__MINGW64__)
 	#if defined(__x86_64__)
 	    #define BTHREAD_CONTEXT_COMPILER_gcc
     	    #define BTHREAD_CONTEXT_PLATFORM_windows_x86_64
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
-	#endif
-
-	#if defined(__i386__)
+	#elif defined(__i386__)
 	    #define BTHREAD_CONTEXT_COMPILER_gcc
 	    #define BTHREAD_CONTEXT_PLATFORM_windows_i386
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION __cdecl
 	#endif
-    #elif defined(__APPLE__) && defined(__MACH__)
+
+  #elif defined(__APPLE__) && defined(__MACH__)
 	#if defined (__i386__)
 	    #define BTHREAD_CONTEXT_PLATFORM_apple_i386
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
 	#elif defined (__x86_64__)
 	    #define BTHREAD_CONTEXT_PLATFORM_apple_x86_64
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
-	#endif
+	#elif defined (__aarch64__)
+	    #define BTHREAD_CONTEXT_PLATFORM_apple_arm64
+	    #define BTHREAD_CONTEXT_CALL_CONVENTION
     #endif
+  #endif
+
 #endif
 
 #if defined(_WIN32_WCE)
