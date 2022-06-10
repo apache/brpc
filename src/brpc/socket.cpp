@@ -651,6 +651,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     // just after calling ResetFileDescriptor.
     if (m->ResetFileDescriptor(options.fd) != 0) {
         const int saved_errno = errno;
+        m->_user = NULL; // Avoid calling user->BeforeRecycle() which may cause dead lock
         PLOG(ERROR) << "Fail to ResetFileDescriptor";
         m->SetFailed(saved_errno, "Fail to ResetFileDescriptor: %s", 
                      berror(saved_errno));
