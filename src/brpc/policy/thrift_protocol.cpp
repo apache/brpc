@@ -162,9 +162,9 @@ bool ReadThriftStruct(const butil::IOBuf& body,
         xfer += iprot.readStructEnd();
         iprot.getTransport()->readEnd();
     } catch (std::exception& e) {
-        LOG(WARNING) << "In read thrift struct, catched exception:" << e.what();
+        LOG(WARNING) << "Catched thrift exception: " << e.what();
     } catch (...) {
-        LOG(WARNING) << "In read thrift struct, catched unknown exception";
+        LOG(WARNING) << "Catched unknown thrift exception";
     }
     return success;
 }
