@@ -586,6 +586,9 @@ friend void DereferenceSocket(Socket*);
 
     int ResetFileDescriptor(int fd);
 
+    // Handle failure on Socket::Create
+    int SetFailedOnCreate(int error_code, const char* error_text);
+
     // Wait until nref hits `expected_nref' and reset some internal resources.
     int WaitAndReset(int32_t expected_nref);
 
