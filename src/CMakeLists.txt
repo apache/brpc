@@ -58,15 +58,18 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/output/bin)
 set(protoc_gen_mcpack_SOURCES
     ${PROJECT_SOURCE_DIR}/src/mcpack2pb/generator.cpp
  )
-add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
-target_link_libraries(protoc-gen-mcpack brpc-shared)
     
 #install directory
-install(TARGETS brpc-shared
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
+if(BUILD_SHARED_LIBS)
+    add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
+    target_link_libraries(protoc-gen-mcpack brpc-shared)
+
+    install(TARGETS brpc-shared
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            )
+endif()
 
 install(TARGETS brpc-static
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
