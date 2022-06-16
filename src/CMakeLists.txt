@@ -71,7 +71,7 @@ if(BUILD_SHARED_LIBS)
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             )
 else()
-    target_link_libraries(protoc-gen-mcpack brpc-static ${BRPC_PRIVATE_LIBS})
+    target_link_libraries(protoc-gen-mcpack brpc-static ${BRPC_PRIVATE_LIBS} pthread ldl)
 endif()
 
 
