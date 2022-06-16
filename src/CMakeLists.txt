@@ -63,7 +63,7 @@ if(BUILD_SHARED_LIBS)
     endif()
     SET_TARGET_PROPERTIES(brpc-shared PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
 
-    target_link_libraries(protoc-gen-mcpack brpc-shared ${DYNAMIC_LIB} pthread ldl)
+    target_link_libraries(protoc-gen-mcpack brpc-shared ${DYNAMIC_LIB} pthread)
 
     install(TARGETS brpc-shared
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
