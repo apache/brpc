@@ -462,8 +462,12 @@ public:
     ~MessageBatcher() { flush(); }
     void flush() {
         if (_size > 0 && _s->_options.handler != NULL) {
-            _s->_options.handler->on_received_messages(
+            int ret = _s->_options.handler->on_received_messages(
                     _s->id(), _storage, _size);
+            if (BAIDU_UNLIKELY(ret != 0)) {
+                LOG(WARNING) << "Fail to receive message for stream: " << _s->id();
+                _s->_options.handler->on_failure(_s->id());
+            }
         }
         for (size_t i = 0; i < _size; ++i) {
             delete _storage[i];

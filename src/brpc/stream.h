@@ -45,6 +45,7 @@ public:
                                      size_t size) = 0;
     virtual void on_idle_timeout(StreamId id) = 0;
     virtual void on_closed(StreamId id) = 0; 
+    virtual void on_failure(StreamId id) {}
 };
 
 struct StreamOptions {
