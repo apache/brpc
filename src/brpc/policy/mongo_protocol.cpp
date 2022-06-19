@@ -340,6 +340,45 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
   mongo_done->Run();
 }
 
+bool ParseReplicaSetMember(BsonPtr member_ptr, ReplicaSetMember* member) {
+  // _id
+  bool has_id = butil::bson::bson_get_int32(member_ptr, "_id", &(member->id));
+  if (!has_id) {
+    LOG(DEBUG) << "not has _id";
+    return false;
+  }
+  // name/addr
+  bool has_name =
+      butil::bson::bson_get_str(member_ptr, "name", &(member->addr));
+  if (!has_name) {
+    LOG(DEBUG) << "not has name";
+    return false;
+  }
+  // health
+  double health;
+  bool has_health = butil::bson::bson_get_double(member_ptr, "health", &health);
+  if (!has_health) {
+    LOG(DEBUG) << "not has health";
+    return false;
+  }
+  member->health = (health == 1.0);
+  // state
+  bool has_state =
+      butil::bson::bson_get_int32(member_ptr, "state", &(member->state));
+  if (!has_state) {
+    LOG(DEBUG) << "not has state";
+    return false;
+  }
+  // stateStr
+  bool has_stateStr =
+      butil::bson::bson_get_str(member_ptr, "stateStr", &(member->state_str));
+  if (!has_stateStr) {
+    LOG(DEBUG) << "not has stateStr";
+    return false;
+  }
+  return true;
+}
+
 // Actions to a server response in mongo format
 void ProcessMongoResponse(InputMessageBase* msg_base) {
   const int64_t start_parse_us = butil::cpuwide_time_us();
@@ -943,6 +982,106 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
       accessor.OnResponse(cid, cntl->ErrorCode());
       return;
     }
+  } else if (cntl->request_id() == "get_repl_set_status") {
+    if (msg->opcode == MONGO_OPCODE_MSG) {
+      MongoMsg& reply_msg = msg->msg;
+      if (reply_msg.sections.size() != 1 || reply_msg.sections[0].type != 0) {
+        cntl->SetFailed(ERESPONSE, "error get_repl_set_status response");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      Section& section = reply_msg.sections[0];
+      assert(section.body_document);
+      BsonPtr document = section.body_document;
+      // response if ok
+      double ok_value = 0.0;
+      bool has_ok = butil::bson::bson_get_double(document, "ok", &ok_value);
+      if (!has_ok) {
+        LOG(DEBUG) << "get_repl_set_status response not has ok field";
+        cntl->SetFailed(ERESPONSE, "get_repl_set_status response no ok field");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // get_repl_set_status failed
+      if (ok_value != 1) {
+        LOG(DEBUG) << "get_repl_set_status reponse error";
+        int32_t error_code = 0;
+        bool has_error_code =
+            butil::bson::bson_get_int32(document, "code", &error_code);
+        std::string code_name, errmsg;
+        bool has_code_name =
+            butil::bson::bson_get_str(document, "codeName", &code_name);
+        bool has_errmsg =
+            butil::bson::bson_get_str(document, "errmsg", &errmsg);
+        if (has_error_code && has_code_name && has_errmsg) {
+          LOG(DEBUG) << "error_code:" << error_code
+                     << " code_name:" << code_name << " errmsg:" << errmsg;
+          cntl->SetFailed(error_code, "%s, %s", code_name.c_str(),
+                          errmsg.c_str());
+        } else {
+          cntl->SetFailed(ERESPONSE, "get_repl_set_status response failed");
+        }
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // get_repl_set_status success
+      // set
+      std::string set;
+      bool has_set = butil::bson::bson_get_str(document, "set", &set);
+      if (!has_set) {
+        LOG(DEBUG) << "get_repl_set_status response not has set element";
+        cntl->SetFailed(ERESPONSE, "get_repl_set_status response no set");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // myState
+      int32_t myState;
+      bool has_myState =
+          butil::bson::bson_get_int32(document, "myState", &myState);
+      if (!has_myState) {
+        LOG(DEBUG) << "get_repl_set_status response not has myState element";
+        cntl->SetFailed(ERESPONSE, "get_repl_set_status response no myState");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // members
+      std::vector<BsonPtr> members_ptr;
+      bool has_members =
+          butil::bson::bson_get_array(document, "members", &members_ptr);
+      if (!has_members) {
+        LOG(DEBUG) << "get_repl_set_status response not has members element";
+        cntl->SetFailed(ERESPONSE, "get_repl_set_status response no members");
+        accessor.OnResponse(cid, cntl->ErrorCode());
+        return;
+      }
+      // parse member
+      std::vector<ReplicaSetMember> members(members_ptr.size());
+      for (size_t i = 0; i < members_ptr.size(); ++i) {
+        bool parse_member_ret =
+            ParseReplicaSetMember(members_ptr[i], &(members[i]));
+        if (!parse_member_ret) {
+          LOG(DEBUG) << "parse replica_set_member failed";
+          cntl->SetFailed(ERESPONSE,
+                          "parse get_repl_set_status response member fail");
+          accessor.OnResponse(cid, cntl->ErrorCode());
+          return;
+        }
+      }
+      // build response
+      brpc::MongoGetReplSetStatusResponse* response =
+          static_cast<brpc::MongoGetReplSetStatusResponse*>(cntl->response());
+      response->set_ok(true);
+      response->set_set(set);
+      response->set_myState(myState);
+      for (ReplicaSetMember member : members) {
+        response->add_members(member);
+      }
+      accessor.OnResponse(cid, cntl->ErrorCode());
+    } else {
+      cntl->SetFailed(ERESPONSE, "msg not msg type");
+      accessor.OnResponse(cid, cntl->ErrorCode());
+      return;
+    }
   } else if (false) {
     LOG(DEBUG) << "not imple other response";
     accessor.OnResponse(cid, cntl->ErrorCode());
@@ -1039,6 +1178,18 @@ void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
     LOG(DEBUG) << "serialize mongo find_and_modify request, length:"
                << request_buf->length();
     return;
+  } else if (request->GetDescriptor() ==
+             brpc::MongoGetReplSetStatusRequest::descriptor()) {
+    const MongoGetReplSetStatusRequest* get_repl_set_status_request =
+        dynamic_cast<const MongoGetReplSetStatusRequest*>(request);
+    if (!get_repl_set_status_request) {
+      return cntl->SetFailed(EREQUEST, "Fail to parse request");
+    }
+    SerializeMongoGetReplSetStatusRequest(request_buf, cntl,
+                                          get_repl_set_status_request);
+    cntl->set_request_id("get_repl_set_status");
+    LOG(DEBUG) << "serialize mongo get_repl_set_status request, length:"
+               << request_buf->length();
   }
 }
 
@@ -1117,6 +1268,15 @@ void SerializeMongoFindAndModifyRequest(
     const MongoFindAndModifyRequest* request) {
   if (!request->SerializeTo(request_buf)) {
     cntl->SetFailed(EREQUEST, "FindAndModifyRequest not initialize");
+    return;
+  }
+}
+
+void SerializeMongoGetReplSetStatusRequest(
+    butil::IOBuf* request_buf, Controller* cntl,
+    const brpc::MongoGetReplSetStatusRequest* request) {
+  if (!request->SerializeTo(request_buf)) {
+    cntl->SetFailed(EREQUEST, "GetReplSetStatusRequest not initialize");
     return;
   }
 }

@@ -52,3 +52,6 @@ message MongoCountResponseBase {}
 
 message MongoFindAndModifyRequestBase {}
 message MongoFindAndModifyResponseBase {}
+
+message MongoGetReplSetStatusRequestBase {}
+message MongoGetReplSetStatusResponseBase {}

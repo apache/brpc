@@ -79,6 +79,14 @@ struct MongoMsg {
   bool checksumPresent() { return flagbits & 0x00000001; }
 };
 
+struct ReplicaSetMember {
+  int32_t id;
+  std::string addr;
+  bool health;
+  int32_t state;
+  std::string state_str;
+};
+
 class MongoQueryRequest : public ::google::protobuf::Message {
  public:
   MongoQueryRequest();
@@ -1885,6 +1893,159 @@ class MongoFindAndModifyResponse : public ::google::protobuf::Message {
   void clear_has_upserted() { _has_bits_[0] &= ~0x2u; }
 
   bson_oid_t upserted_;
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
+class MongoGetReplSetStatusRequest : public ::google::protobuf::Message {
+ public:
+  MongoGetReplSetStatusRequest();
+  virtual ~MongoGetReplSetStatusRequest();
+  MongoGetReplSetStatusRequest(const MongoGetReplSetStatusRequest& from);
+  MongoGetReplSetStatusRequest& operator=(
+      const MongoGetReplSetStatusRequest& from);
+  void Swap(MongoGetReplSetStatusRequest* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoGetReplSetStatusRequest* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoGetReplSetStatusRequest& from);
+  void MergeFrom(const MongoGetReplSetStatusRequest& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+
+ protected:
+  ::google::protobuf::Metadata GetMetadata() const override;
+
+ private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+
+  ::google::protobuf::internal::HasBits<1> _has_bits_;
+  mutable int _cached_size_;
+};
+
+class MongoGetReplSetStatusResponse : public ::google::protobuf::Message {
+ public:
+  MongoGetReplSetStatusResponse();
+  virtual ~MongoGetReplSetStatusResponse();
+  MongoGetReplSetStatusResponse(const MongoGetReplSetStatusResponse& from);
+  MongoGetReplSetStatusResponse& operator=(
+      const MongoGetReplSetStatusResponse& from);
+  void Swap(MongoGetReplSetStatusResponse* other);
+  bool SerializeTo(butil::IOBuf* buf) const;
+  MongoGetReplSetStatusResponse* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const MongoGetReplSetStatusResponse& from);
+  void MergeFrom(const MongoGetReplSetStatusResponse& from);
+  void Clear();
+  bool IsInitialized() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+      ::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  static const ::google::protobuf::Descriptor* descriptor();
+
+  // fields
+
+  // ok
+ public:
+  static const int kokFieldNumber = 1;
+  bool ok() const { return ok_; }
+  bool has_ok() const { return _has_bits_[0] & 0x1u; }
+  void clear_ok() {
+    clear_has_ok();
+    ok_ = false;
+  }
+  void set_ok(bool value) {
+    ok_ = value;
+    set_has_ok();
+  }
+
+ private:
+  void set_has_ok() { _has_bits_[0] |= 0x1u; }
+  void clear_has_ok() { _has_bits_[0] &= ~0x1u; }
+
+  bool ok_;
+
+  // set
+ public:
+  static const int ksetFieldNumber = 2;
+  const std::string& set() const { return set_; }
+  bool has_set() const { return _has_bits_[0] & 0x2u; }
+  void clear_set() {
+    clear_has_set();
+    set_.clear();
+  }
+  void set_set(std::string value) {
+    set_ = value;
+    set_has_set();
+  }
+
+ private:
+  void set_has_set() { _has_bits_[0] |= 0x2u; }
+  void clear_has_set() { _has_bits_[0] &= ~0x2u; }
+
+  std::string set_;
+
+  // myState
+ public:
+  static const int kmyStateFieldNumber = 3;
+  int32_t myState() const { return myState_; }
+  bool has_myState() const { return _has_bits_[0] & 0x4u; }
+  void clear_myState() {
+    clear_has_myState();
+    myState_ = 0;
+  }
+  void set_myState(int32_t value) {
+    myState_ = value;
+    set_has_myState();
+  }
+
+ private:
+  void set_has_myState() { _has_bits_[0] |= 0x4u; }
+  void clear_has_myState() { _has_bits_[0] &= ~0x4u; }
+
+  int32_t myState_;
+
+  // members
+ public:
+  static const int kmembersFieldNumber = 4;
+  const std::vector<ReplicaSetMember>& members() const { return members_; }
+  int members_size() const { return members_.size(); }
+  void clear_members() { members_.clear(); }
+  const ReplicaSetMember& members(int index) const { return members_[index]; }
+  ReplicaSetMember* mutable_members(int index) { return &members_[index]; }
+  void add_members(ReplicaSetMember value) {
+    members_.push_back(std::move(value));
+  }
+
+ private:
+  std::vector<ReplicaSetMember> members_;
 
  protected:
   ::google::protobuf::Metadata GetMetadata() const override;

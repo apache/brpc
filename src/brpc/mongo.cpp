@@ -665,6 +665,7 @@ void MongoCountResponse::SharedDtor() {}
 
 bool MongoCountResponse::SerializeTo(butil::IOBuf* buf) const {
   // TODO custom definetion
+  return true;
 }
 
 void MongoCountResponse::Swap(MongoCountResponse* other) {}
@@ -934,6 +935,7 @@ void MongoInsertResponse::SharedDtor() {}
 
 bool MongoInsertResponse::SerializeTo(butil::IOBuf* buf) const {
   // TODO custom definetion
+  return true;
 }
 
 void MongoInsertResponse::Swap(MongoInsertResponse* other) {}
@@ -1218,6 +1220,7 @@ void MongoDeleteResponse::SharedDtor() {}
 
 bool MongoDeleteResponse::SerializeTo(butil::IOBuf* buf) const {
   // TODO custom definetion
+  return true;
 }
 
 void MongoDeleteResponse::Swap(MongoDeleteResponse* other) {}
@@ -1516,6 +1519,7 @@ void MongoUpdateResponse::SharedDtor() {}
 
 bool MongoUpdateResponse::SerializeTo(butil::IOBuf* buf) const {
   // TODO custom definetion
+  return true;
 }
 
 void MongoUpdateResponse::Swap(MongoUpdateResponse* other) {}
@@ -1859,6 +1863,7 @@ void MongoFindAndModifyResponse::SharedDtor() {}
 
 bool MongoFindAndModifyResponse::SerializeTo(butil::IOBuf* buf) const {
   // TODO custom definetion
+  return true;
 }
 
 void MongoFindAndModifyResponse::Swap(MongoFindAndModifyResponse* other) {}
@@ -1943,6 +1948,268 @@ const ::google::protobuf::Descriptor* MongoFindAndModifyResponse::descriptor() {
 }
 
 void MongoFindAndModifyResponse::SetCachedSize(int size) const {
+  _cached_size_ = size;
+}
+
+MongoGetReplSetStatusRequest::MongoGetReplSetStatusRequest()
+    : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoGetReplSetStatusRequest::~MongoGetReplSetStatusRequest() { SharedDtor(); }
+
+MongoGetReplSetStatusRequest::MongoGetReplSetStatusRequest(
+    const MongoGetReplSetStatusRequest& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoGetReplSetStatusRequest& MongoGetReplSetStatusRequest::operator=(
+    const MongoGetReplSetStatusRequest& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoGetReplSetStatusRequest::SharedCtor() { _cached_size_ = 0; }
+
+void MongoGetReplSetStatusRequest::SharedDtor() {}
+
+bool MongoGetReplSetStatusRequest::SerializeTo(butil::IOBuf* buf) const {
+  // TODO custom definetion
+  if (!IsInitialized()) {
+    LOG(WARNING) << "MongoGetReplSetStatusRequest not initialize";
+    return false;
+  }
+
+  // Message Flags 4bytes
+  uint32_t flag_bits = 0;
+  buf->append(static_cast<void*>(&flag_bits), 4);
+
+  BsonPtr get_repl_set_status_element_ptr = butil::bson::new_bson();
+  bson_t* get_repl_set_status_element = get_repl_set_status_element_ptr.get();
+  // replSetGetStatus
+  BSON_APPEND_DOUBLE(get_repl_set_status_element, "replSetGetStatus", 1.0);
+  // $db
+  BSON_APPEND_UTF8(get_repl_set_status_element, "$db", "admin");
+
+  // Section[]  Kind(1byte): Body(0); BodyDocument(Bson)
+  Section section1;
+  section1.type = 0;
+  section1.body_document = get_repl_set_status_element_ptr;
+  butil::IOBuf buf1;
+  bool ret = section1.SeralizeTo(&buf1);
+  if (!ret) {
+    return false;
+  }
+  buf->append(buf1);
+  return true;
+}
+
+void MongoGetReplSetStatusRequest::Swap(MongoGetReplSetStatusRequest* other) {}
+
+MongoGetReplSetStatusRequest* MongoGetReplSetStatusRequest::New() const {
+  return new MongoGetReplSetStatusRequest();
+}
+
+void MongoGetReplSetStatusRequest::CopyFrom(
+    const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoGetReplSetStatusRequest::MergeFrom(
+    const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoGetReplSetStatusRequest* source =
+      dynamic_cast<const MongoGetReplSetStatusRequest*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoGetReplSetStatusRequest::CopyFrom(
+    const MongoGetReplSetStatusRequest& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoGetReplSetStatusRequest::MergeFrom(
+    const MongoGetReplSetStatusRequest& from) {
+  GOOGLE_CHECK_NE(&from, this);
+}
+
+void MongoGetReplSetStatusRequest::Clear() {}
+
+bool MongoGetReplSetStatusRequest::IsInitialized() const { return true; }
+
+bool MongoGetReplSetStatusRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING) << "You're not supposed to parse a MongoGetReplSetStatusRequest";
+  return true;
+}
+
+void MongoGetReplSetStatusRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING)
+      << "You're not supposed to serialize a MongoGetReplSetStatusRequest";
+}
+
+::google::protobuf::uint8*
+MongoGetReplSetStatusRequest::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor*
+MongoGetReplSetStatusRequest::descriptor() {
+  return MongoGetReplSetStatusRequestBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoGetReplSetStatusRequest::GetMetadata() const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoGetReplSetStatusRequest::SetCachedSize(int size) const {
+  _cached_size_ = size;
+}
+
+MongoGetReplSetStatusResponse::MongoGetReplSetStatusResponse()
+    : ::google::protobuf::Message() {
+  SharedCtor();
+}
+
+MongoGetReplSetStatusResponse::~MongoGetReplSetStatusResponse() {
+  SharedDtor();
+}
+
+MongoGetReplSetStatusResponse::MongoGetReplSetStatusResponse(
+    const MongoGetReplSetStatusResponse& from)
+    : ::google::protobuf::Message() {
+  SharedCtor();
+  MergeFrom(from);
+}
+
+MongoGetReplSetStatusResponse& MongoGetReplSetStatusResponse::operator=(
+    const MongoGetReplSetStatusResponse& from) {
+  CopyFrom(from);
+  return *this;
+}
+
+void MongoGetReplSetStatusResponse::SharedCtor() {
+  _cached_size_ = 0;
+  ok_ = false;
+  myState_ = 0;
+}
+
+void MongoGetReplSetStatusResponse::SharedDtor() {}
+
+bool MongoGetReplSetStatusResponse::SerializeTo(butil::IOBuf* buf) const {
+  // TODO custom definetion
+  return true;
+}
+
+void MongoGetReplSetStatusResponse::Swap(MongoGetReplSetStatusResponse* other) {
+}
+
+MongoGetReplSetStatusResponse* MongoGetReplSetStatusResponse::New() const {
+  return new MongoGetReplSetStatusResponse();
+}
+
+void MongoGetReplSetStatusResponse::CopyFrom(
+    const ::google::protobuf::Message& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoGetReplSetStatusResponse::MergeFrom(
+    const ::google::protobuf::Message& from) {
+  GOOGLE_CHECK_NE(&from, this);
+  const MongoGetReplSetStatusResponse* source =
+      dynamic_cast<const MongoGetReplSetStatusResponse*>(&from);
+  if (source == NULL) {
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+    MergeFrom(*source);
+  }
+}
+
+void MongoGetReplSetStatusResponse::CopyFrom(
+    const MongoGetReplSetStatusResponse& from) {
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void MongoGetReplSetStatusResponse::MergeFrom(
+    const MongoGetReplSetStatusResponse& from) {
+  GOOGLE_CHECK_NE(&from, this);
+
+  if (from.has_ok()) {
+    set_ok(from.ok());
+  }
+
+  if (from.has_set()) {
+    set_set(from.set());
+  }
+
+  if (from.has_myState()) {
+    set_myState(from.myState());
+  }
+
+  members_.insert(members_.end(), from.members_.cbegin(), from.members_.cend());
+}
+
+void MongoGetReplSetStatusResponse::Clear() {
+  clear_ok();
+  clear_set();
+  clear_myState();
+  clear_members();
+}
+
+bool MongoGetReplSetStatusResponse::IsInitialized() const { return has_ok(); }
+
+bool MongoGetReplSetStatusResponse::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+  LOG(WARNING)
+      << "You're not supposed to parse a MongoGetReplSetStatusResponse";
+  return true;
+}
+
+void MongoGetReplSetStatusResponse::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  LOG(WARNING)
+      << "You're not supposed to serialize a MongoGetReplSetStatusResponse";
+}
+
+::google::protobuf::uint8*
+MongoGetReplSetStatusResponse::SerializeWithCachedSizesToArray(
+    ::google::protobuf::uint8* output) const {
+  return output;
+}
+
+const ::google::protobuf::Descriptor*
+MongoGetReplSetStatusResponse::descriptor() {
+  return MongoGetReplSetStatusResponseBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoGetReplSetStatusResponse::GetMetadata()
+    const {
+  ::google::protobuf::Metadata metadata;
+  metadata.descriptor = descriptor();
+  metadata.reflection = NULL;
+  return metadata;
+}
+
+void MongoGetReplSetStatusResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 

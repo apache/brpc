@@ -73,6 +73,11 @@ void SerializeMongoFindAndModifyRequest(
     butil::IOBuf* request_buf, Controller* cntl,
     const MongoFindAndModifyRequest* request);
 
+// Serialize get_repl_set_status request
+void SerializeMongoGetReplSetStatusRequest(
+    butil::IOBuf* request_buf, Controller* cntl,
+    const brpc::MongoGetReplSetStatusRequest* request);
+
 // Serialize request into request_buf
 void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
                            const google::protobuf::Message* request);
