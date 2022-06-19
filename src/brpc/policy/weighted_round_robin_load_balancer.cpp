@@ -78,17 +78,22 @@ bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
         bg.server_list.reserve(128);
     }
     uint32_t weight = 0;
-    if (butil::StringToUint(id.tag, &weight) &&
-        weight > 0) {
-        bool insert_server =
-                 bg.server_map.emplace(id.id, bg.server_list.size()).second;
-        if (insert_server) {
-            bg.server_list.emplace_back(id.id, weight);
-            bg.weight_sum += weight;
-            return true;
+    if (!butil::StringToUint(id.tag, &weight) || weight <= 0) {
+        if (FLAGS_default_weight_of_wlb > 0) {
+            LOG(WARNING) << "Invalid weight is set: " << id.tag
+                         << ". Now, 'weight' has been set to 'FLAGS_default_weight_of_wlb' by default.";
+            weight = FLAGS_default_weight_of_wlb;
+        } else {
+            LOG(ERROR) << "Invalid weight is set: " << id.tag;
+            return false;
         }
-    } else {
-        LOG(ERROR) << "Invalid weight is set: " << id.tag;
+    }
+    bool insert_server =
+             bg.server_map.emplace(id.id, bg.server_list.size()).second;
+    if (insert_server) {
+        bg.server_list.emplace_back(id.id, weight);
+        bg.weight_sum += weight;
+        return true;
     }
     return false;
 }

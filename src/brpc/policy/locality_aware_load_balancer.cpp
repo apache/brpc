@@ -341,6 +341,10 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
             if (++ntry >= n) {
                 break;
             }
+        } else {
+            if (++ntry >= n) {
+                break;
+            } 
         }
         total = _total.load(butil::memory_order_relaxed);
         dice = butil::fast_rand_less_than(total);

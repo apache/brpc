@@ -61,7 +61,7 @@ __thread TaskGroup* tls_task_group = NULL;
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
 // groundtruth.
-thread_local LocalStorage tls_bls = BTHREAD_LOCAL_STORAGE_INITIALIZER;
+__thread LocalStorage tls_bls = BTHREAD_LOCAL_STORAGE_INITIALIZER;
 
 // defined in bthread/key.cpp
 extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
@@ -379,6 +379,9 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     CHECK(m->stack == NULL);
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
+    if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
+        m->local_storage.rpcz_parent_span = tls_bls.rpcz_parent_span;
+    }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
@@ -434,6 +437,9 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     CHECK(m->stack == NULL);
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
+    if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
+        m->local_storage.rpcz_parent_span = tls_bls.rpcz_parent_span;
+    }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);

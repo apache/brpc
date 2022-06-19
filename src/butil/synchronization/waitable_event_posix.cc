@@ -235,7 +235,7 @@ size_t WaitableEvent::WaitMany(WaitableEvent** raw_waitables,
   std::vector<std::pair<WaitableEvent*, size_t> > waitables;
   waitables.reserve(count);
   for (size_t i = 0; i < count; ++i)
-    waitables.push_back(std::make_pair(raw_waitables[i], i));
+    waitables.emplace_back(raw_waitables[i], i);
 
   DCHECK_EQ(count, waitables.size());
 

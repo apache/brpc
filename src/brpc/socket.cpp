@@ -712,6 +712,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     _read_buf.clear();
     _ninprocess.store(1, butil::memory_order_relaxed);
     _auth_flag_error.store(0, butil::memory_order_relaxed);
+    bthread_id_error(_auth_id, 0);
     const int rc = bthread_id_create(&_auth_id, NULL, NULL);
     if (rc != 0) {
         LOG(FATAL) << "Fail to create _auth_id, " << berror(rc);
@@ -1114,7 +1115,13 @@ int Socket::Connect(const timespec* abstime,
     } else {
         _ssl_state = SSL_OFF;
     }
-    butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    struct sockaddr_storage serv_addr;
+    socklen_t addr_size = 0;
+    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &addr_size) != 0) {
+        PLOG(ERROR) << "Fail to get sockaddr";
+        return -1;
+    }
+    butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
     if (sockfd < 0) {
         PLOG(ERROR) << "Fail to create socket";
         return -1;
@@ -1123,13 +1130,8 @@ int Socket::Connect(const timespec* abstime,
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
     
-    struct sockaddr_in serv_addr;
-    bzero((char*)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr = remote_side().ip;
-    serv_addr.sin_port = htons(remote_side().port);
     const int rc = ::connect(
-        sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+        sockfd, (struct sockaddr*)&serv_addr, addr_size);
     if (rc != 0 && errno != EINPROGRESS) {
         PLOG(WARNING) << "Fail to connect to " << remote_side();
         return -1;
@@ -1216,13 +1218,12 @@ int Socket::CheckConnected(int sockfd) {
         return -1;
     }
 
-    struct sockaddr_in client;
-    socklen_t size = sizeof(client);
-    CHECK_EQ(0, getsockname(sockfd, (struct sockaddr*) &client, &size));
+    butil::EndPoint local_point;
+    CHECK_EQ(0, butil::get_local_side(sockfd, &local_point));
     LOG_IF(INFO, FLAGS_log_connected)
             << "Connected to " << remote_side()
             << " via fd=" << (int)sockfd << " SocketId=" << id()
-            << " local_port=" << ntohs(client.sin_port);
+            << " local_side=" << local_point;
     if (CreatedByConnect()) {
         g_vars->channel_conn << 1;
     }

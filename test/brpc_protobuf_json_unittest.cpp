@@ -22,12 +22,15 @@
 #include <string>
 #include <google/protobuf/text_format.h>
 #include "butil/iobuf.h"
+#include "butil/string_printf.h"
+#include "butil/strings/string_util.h"
 #include "butil/third_party/rapidjson/rapidjson.h"
 #include "butil/time.h"
 #include "butil/gperftools_profiler.h"
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
 #include "json2pb/encode_decode.h"
+#include "json2pb/zero_copy_stream_reader.h"
 #include "message.pb.h"
 #include "addressbook1.pb.h"
 #include "addressbook.pb.h"
@@ -885,24 +888,93 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode) {
     printf("----------test json to pb------------\n\n");
     
     std::string info3;
-    JsonContextBody data1;
-    json2pb::JsonToProtoMessage(info1, &data1, NULL); 
+    JsonContextBodyEncDec data1;
+    json2pb::JsonToProtoMessage(info1, &data1, NULL);
     json2pb::ProtoMessageToJson(data1, &info3, NULL);
+    ASSERT_STREQ(info1.data(), info3.data());
+
+    printf("----------test single repeated pb to json array------------\n\n");
+
+    AddressBookEncDec single_repeated_json_data;
+
+    auto person = single_repeated_json_data.add_person();
+    person->set_id(1);
+    person->set_name("foo");
+    *person->mutable_json_body() = json_data;
+    option.bytes_to_base64 = true;
+
+    std::string text1;
+    printer.PrintToString(single_repeated_json_data, &text1);
+
+    printf("text1:\n\n%s\n", text1.data());
+
+    std::string info4;
+    option.single_repeated_to_array = false;
+    ASSERT_TRUE(ProtoMessageToJson(single_repeated_json_data, &info4, option, NULL));
 #ifndef RAPIDJSON_VERSION_0_1
-    ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
+    ASSERT_STREQ("{\"person\":["
+                 "{\"name\":\"foo\",\"id\":1,\"json_body\":"
+                 "{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
                  "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
-                 info1.data());
+                 "\"enum--type\":\"WORK\"}}]}}]}",
+                 info4.data());
 #else
-    ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
+    ASSERT_STREQ("{\"person\":["
+                 "{\"name\":\"foo\",\"id\":1,\"json_body\":"
+                 "{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
                  "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
-                 "\"enum--type\":\"WORK\"}}]}", 
-                 info1.data());
+                 "\"enum--type\":\"WORK\"}}]}}]}",
+                 info4.data());
 #endif
+
+    std::string info5;
+    option.single_repeated_to_array = true;
+    ASSERT_TRUE(ProtoMessageToJson(single_repeated_json_data, &info5, option, NULL));
+#ifndef RAPIDJSON_VERSION_0_1
+    ASSERT_STREQ("[{\"name\":\"foo\",\"id\":1,\"json_body\":"
+                 "{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
+                 "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
+                 "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
+                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
+                 "\"enum--type\":\"WORK\"}}]}}]",
+                 info5.data());
+#else
+    ASSERT_STREQ("[{\"name\":\"foo\",\"id\":1,\"json_body\":"
+                 "{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
+                 "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
+                 "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
+                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
+                 "\"enum--type\":\"WORK\"}}]}}]",
+                 info5.data());
+#endif
+
+    printf("----------test json array to single repeated pb------------\n\n");
+
+    std::string info6;
+    AddressBookEncDec data2;
+    // object -> pb
+    json2pb::JsonToProtoMessage(info4, &data2, NULL);
+    json2pb::ProtoMessageToJson(data2, &info6, option, NULL);
+
+    ASSERT_STREQ(info6.data(), info5.data());
+
+    std::string info7;
+    AddressBookEncDec data3;
+    json2pb::Json2PbOptions option2;
+    option2.array_to_single_repeated = true;
+    // array -> pb
+    json2pb::JsonToProtoMessage(info5, &data3, option2, NULL);
+    json2pb::ProtoMessageToJson(data3, &info7, option, NULL);
+    ASSERT_STREQ(info7.data(), info5.data());
+
+    std::string info8;
+    option.single_repeated_to_array = false;
+    json2pb::ProtoMessageToJson(data3, &info8, option, NULL);
+    ASSERT_STREQ(info8.data(), info4.data());
 }
 
 TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
@@ -1471,4 +1543,107 @@ TEST_F(ProtobufJsonTest, string_to_int64) {
     ASSERT_EQ(person.data(), 1234567);
 }
 
+TEST_F(ProtobufJsonTest, parse_multiple_json) {
+    const int COUNT = 4;
+    std::vector<std::string> expectedNames = { "tom", "bob", "jerry", "lucy" };
+    std::vector<int> expectedIds = { 33, 12, 2432, 435 };
+    std::vector<double> expectedData = { 1.0, 2.0, 3.0, 4.0 };
+    std::string jsonStr;
+    butil::IOBuf jsonBuf;
+    for (int i = 0; i < COUNT; ++i) {
+        const std::string d =
+            butil::string_printf(R"( { "name":"%s", "id":%d, "datadouble":%f } )",
+                              expectedNames[i].c_str(),
+                              expectedIds[i],
+                              expectedData[i]);
+        jsonStr.append(d);
+        jsonBuf.append(d);
+    }
+    
+    Person req;
+    json2pb::Json2PbOptions copt;
+    copt.allow_remaining_bytes_after_parsing = true;
+    std::string err;
+    
+    for (int i = 0; true; ++i) {
+        req.Clear();
+        size_t offset;
+        if (json2pb::JsonToProtoMessage(jsonStr, &req, copt, &err, &offset)) {
+            jsonStr = jsonStr.substr(offset);
+            ASSERT_EQ(expectedNames[i], req.name());
+            ASSERT_EQ(expectedIds[i], req.id());
+            ASSERT_EQ(expectedData[i], req.datadouble());
+            
+            std::cout << "parsed=" << req.ShortDebugString() << " after_offset=" << jsonStr << std::endl;
+        } else {
+            if (err.empty()) {
+                // document is empty
+                break;
+            }
+            std::cerr << "error=" << err << " offset=" << offset << std::endl;
+            ASSERT_FALSE(true);
+        }
+    }
+
+    butil::IOBufAsZeroCopyInputStream stream(jsonBuf);
+    json2pb::ZeroCopyStreamReader reader(&stream);
+
+    for (int i = 0; true; ++i) {
+        req.Clear();
+        size_t offset;
+        auto res = json2pb::JsonToProtoMessage(&reader, &req, copt, &err, &offset);
+        if (res) {
+            ASSERT_EQ(expectedNames[i], req.name());
+            ASSERT_EQ(expectedIds[i], req.id());
+            ASSERT_EQ(expectedData[i], req.datadouble());
+            std::string afterOffset;
+            jsonBuf.copy_to(&afterOffset, (size_t)-1L, offset);
+            std::cout << "parsed=" << req.ShortDebugString() << " after_offset=" << afterOffset << std::endl;
+        } else {
+            if (err.empty()) {
+                // document is empty
+                break;
+            }
+            std::cerr << "error=" << err << " offset=" << offset << std::endl;
+            ASSERT_FALSE(true) << i;
+        }
+    }
 }
+
+TEST_F(ProtobufJsonTest, parse_multiple_json_error) {
+    std::string jsonStr = R"( { "name":"tom", "id":323, "datadouble":3.2 }  abc )";
+    butil::IOBuf jsonBuf;
+    jsonBuf.append(jsonStr);
+    
+    Person req;
+    json2pb::Json2PbOptions copt;
+    copt.allow_remaining_bytes_after_parsing = true;
+    std::string err;
+    size_t offset;
+    
+    ASSERT_TRUE(json2pb::JsonToProtoMessage(jsonStr, &req, copt, &err, &offset));
+    jsonStr = jsonStr.substr(offset);
+    ASSERT_STREQ("tom", req.name().c_str());
+    ASSERT_EQ(323, req.id());
+    ASSERT_EQ(3.2, req.datadouble());
+
+    req.Clear();
+    ASSERT_FALSE(json2pb::JsonToProtoMessage(jsonStr, &req, copt, &err, &offset));
+    ASSERT_STREQ("Invalid json: Invalid value. [Person]", err.c_str());
+    ASSERT_EQ(2ul, offset);
+
+    butil::IOBufAsZeroCopyInputStream stream(jsonBuf);
+    json2pb::ZeroCopyStreamReader reader(&stream);
+    req.Clear();
+    ASSERT_TRUE(json2pb::JsonToProtoMessage(&reader, &req, copt, &err, &offset));
+    ASSERT_STREQ("tom", req.name().c_str());
+    ASSERT_EQ(323, req.id());
+    ASSERT_EQ(3.2, req.datadouble());
+
+    req.Clear();
+    ASSERT_FALSE(json2pb::JsonToProtoMessage(&reader, &req, copt, &err, &offset));
+    ASSERT_STREQ("Invalid json: Invalid value. [Person]", err.c_str());
+    ASSERT_EQ(47ul, offset);
+}
+
+} // namespace

@@ -51,6 +51,9 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
             "If this flag is true, baidu_std puts service.full_name in requests"
             ", otherwise puts service.name (required by jprotobuf).");
 
+DEFINE_bool(baidu_std_protocol_deliver_timeout_ms, false,
+            "If this flag is true, baidu_std puts timeout_ms in requests.");
+
 // Notes:
 // 1. 12-byte header [PRPC][body_size][meta_size]
 // 2. body_size and meta_size are in network byte order
@@ -59,7 +62,7 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
 // 5. Not supported: chunk_info
 
 // Pack header into `buf'
-inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
+inline void PackRpcHeader(char* rpc_header, uint32_t meta_size, int payload_size) {
     uint32_t* dummy = (uint32_t*)rpc_header;  // suppress strict-alias warning
     *dummy = *(uint32_t*)"PRPC";
     butil::RawPacker(rpc_header + 4)
@@ -69,7 +72,7 @@ inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
 
 static void SerializeRpcHeaderAndMeta(
     butil::IOBuf* out, const RpcMeta& meta, int payload_size) {
-    const int meta_size = meta.ByteSize();
+    const uint32_t meta_size = GetProtobufByteSize(meta);
     if (meta_size <= 244) { // most common cases
         char header_and_meta[12 + meta_size];
         PackRpcHeader(header_and_meta, meta_size, payload_size);
@@ -228,10 +231,12 @@ void SendRpcResponse(int64_t correlation_id,
     if (span) {
         span->set_response_size(res_buf.size());
     }
-    if (stream_ptr) {
-        CHECK(accessor.remote_stream_settings() != NULL);
+    // Send rpc response over stream even if server side failed to create
+    // stream for some reasons.
+    if(cntl->has_remote_stream()){
         // Send the response over stream to notify that this stream connection
         // is successfully built.
+        // Response_stream can be INVALID_STREAM_ID when error occurs.
         if (SendStreamData(sock, &res_buf,
                            accessor.remote_stream_settings()->stream_id(),
                            accessor.response_stream()) != 0) {
@@ -239,13 +244,18 @@ void SendRpcResponse(int64_t correlation_id,
             PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
             cntl->SetFailed(errcode, "Fail to write into %s",
                             sock->description().c_str());
-            ((Stream*)stream_ptr->conn())->Close();
+            if(stream_ptr) {
+                ((Stream*)stream_ptr->conn())->Close();
+            }
             return;
         }
-        // Now it's ok the mark this server-side stream as connectted as all the
-        // written user data would follower the RPC response.
-        ((Stream*)stream_ptr->conn())->SetConnected();
-    } else {
+
+        if(stream_ptr) {
+            // Now it's ok the mark this server-side stream as connectted as all the
+            // written user data would follower the RPC response.
+            ((Stream*)stream_ptr->conn())->SetConnected();
+        }
+    } else{
         // Have the risk of unlimited pending responses, in which case, tell
         // users to set max_concurrency.
         Socket::WriteOptions wopt;
@@ -347,6 +357,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     }
     if (request_meta.has_request_id()) {
         cntl->set_request_id(request_meta.request_id());
+    }
+    if (request_meta.has_timeout_ms()) {
+        cntl->set_timeout_ms(request_meta.timeout_ms());
     }
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     accessor.set_server(server)
@@ -454,18 +467,18 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (span) {
             span->ResetServerSpanName(method->full_name());
         }
-        const int reqsize = static_cast<int>(msg->payload.size());
+        const int req_size = static_cast<int>(msg->payload.size());
         butil::IOBuf req_buf;
         butil::IOBuf* req_buf_ptr = &msg->payload;
         if (meta.has_attachment_size()) {
-            if (reqsize < meta.attachment_size()) {
+            if (req_size < meta.attachment_size()) {
                 cntl->SetFailed(EREQUEST,
                     "attachment_size=%d is larger than request_size=%d",
-                     meta.attachment_size(), reqsize);
+                     meta.attachment_size(), req_size);
                 break;
             }
-            int att_size = reqsize - meta.attachment_size();
-            msg->payload.cutn(&req_buf, att_size);
+            int body_without_attachment_size = req_size - meta.attachment_size();
+            msg->payload.cutn(&req_buf, body_without_attachment_size);
             req_buf_ptr = &req_buf;
             cntl->request_attachment().swap(msg->payload);
         }
@@ -475,7 +488,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (!ParseFromCompressedData(*req_buf_ptr, req.get(), req_cmp_type)) {
             cntl->SetFailed(EREQUEST, "Fail to parse request message, "
                             "CompressType=%s, request_size=%d", 
-                            CompressTypeToCStr(req_cmp_type), reqsize);
+                            CompressTypeToCStr(req_cmp_type), req_size);
             break;
         }
         
@@ -489,7 +502,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 req.get(), res.get(), server,
                 method_status, msg->received_us());
 
-        // optional, just release resourse ASAP
+        // optional, just release resource ASAP
         msg.reset();
         req_buf.clear();
 
@@ -554,18 +567,21 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
 
     const bthread_id_t cid = { static_cast<uint64_t>(meta.correlation_id()) };
     Controller* cntl = NULL;
+
+    StreamId remote_stream_id = meta.has_stream_settings() ? meta.stream_settings().stream_id(): INVALID_STREAM_ID;
+
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
-        if (meta.has_stream_settings()) {
+        if (remote_stream_id != INVALID_STREAM_ID) {
             SendStreamRst(msg->socket(), meta.stream_settings().stream_id());
         }
         return;
     }
     
     ControllerPrivateAccessor accessor(cntl);
-    if (meta.has_stream_settings()) {
+    if (remote_stream_id != INVALID_STREAM_ID) {
         accessor.set_remote_stream_settings(
                 new StreamSettings(meta.stream_settings()));
     }
@@ -597,8 +613,8 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                     meta.attachment_size(), res_size);
                 break;
             }
-            int att_size = res_size - meta.attachment_size();
-            msg->payload.cutn(&res_buf, att_size);
+            int body_without_attachment_size = res_size - meta.attachment_size();
+            msg->payload.cutn(&res_buf, body_without_attachment_size);
             res_buf_ptr = &res_buf;
             cntl->response_attachment().swap(msg->payload);
         }
@@ -617,7 +633,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
     } while (0);
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 
@@ -674,6 +690,13 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     if (attached_size) {
         meta.set_attachment_size(attached_size);
     }
+
+    if (FLAGS_baidu_std_protocol_deliver_timeout_ms) {
+        if (accessor.real_timeout_ms() > 0) {
+            request_meta->set_timeout_ms(accessor.real_timeout_ms());
+        }
+    }
+
     Span* span = accessor.span();
     if (span) {
         request_meta->set_trace_id(span->trace_id());

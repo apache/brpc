@@ -157,7 +157,8 @@ Server::MethodProperty::OpaqueParams::OpaqueParams()
     : is_tabbed(false)
     , allow_default_url(false)
     , allow_http_body_to_pb(true)
-    , pb_bytes_to_base64(false) {
+    , pb_bytes_to_base64(false)
+    , pb_single_repeated_to_array(false) {
 }
 
 Server::MethodProperty::MethodProperty()
@@ -283,6 +284,8 @@ void* Server::UpdateDerivedVars(void* arg) {
 
     server->_nerror_bvar.expose_as(prefix, "error");
 
+    server->_eps_bvar.expose_as(prefix, "eps");
+
     bvar::PassiveStatus<timeval> uptime_st(
         prefix, "uptime", GetUptime, (void*)(intptr_t)start_us);
 
@@ -391,6 +394,7 @@ Server::Server(ProfilerLinker)
     , _last_start_time(0)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
+    , _eps_bvar(&_nerror_bvar)
     , _concurrency(0) {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
@@ -699,7 +703,7 @@ static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
 
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 
-int Server::StartInternal(const butil::ip_t& ip,
+int Server::StartInternal(const butil::EndPoint& endpoint,
                           const PortRange& port_range,
                           const ServerOptions *opt) {
     std::unique_ptr<Server, RevertServerStatus> revert_server(this);
@@ -940,7 +944,12 @@ int Server::StartInternal(const butil::ip_t& ip,
                    << port_range.max_port << ']';
         return -1;
     }
-    _listen_addr.ip = ip;
+    if (butil::is_endpoint_extended(endpoint) &&
+            (port_range.min_port != endpoint.port || port_range.max_port != endpoint.port)) {
+        LOG(ERROR) << "Only IPv4 address supports port range feature";
+        return -1;
+    }
+    _listen_addr = endpoint;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
         _listen_addr.port = port;
         butil::fd_guard sockfd(tcp_listen(_listen_addr));
@@ -949,7 +958,7 @@ int Server::StartInternal(const butil::ip_t& ip,
                 continue;
             }
             if (port_range.min_port != port_range.max_port) {
-                LOG(ERROR) << "Fail to listen " << ip
+                LOG(ERROR) << "Fail to listen " << _listen_addr.ip
                            << ":[" << port_range.min_port << '-'
                            << port_range.max_port << ']';
             } else {
@@ -1001,6 +1010,11 @@ int Server::StartInternal(const butil::ip_t& ip,
                 " against the purpose of \"being internal\".";
             return -1;
         }
+        if (butil::is_endpoint_extended(endpoint)) {
+            LOG(ERROR) << "internal_port is available in IPv4 address only";
+            return -1;
+        }
+
         butil::EndPoint internal_point = _listen_addr;
         internal_point.port = _options.internal_port;
         butil::fd_guard sockfd(tcp_listen(internal_point));
@@ -1035,32 +1049,39 @@ int Server::StartInternal(const butil::ip_t& ip,
     }
 
     // Print tips to server launcher.
-    int http_port = _listen_addr.port;
-    std::ostringstream server_info;
-    server_info << "Server[" << version() << "] is serving on port="
-                << _listen_addr.port;
-    if (_options.internal_port >= 0 && _options.has_builtin_services) {
-        http_port = _options.internal_port;
-        server_info << " and internal_port=" << _options.internal_port;
-    }
-    LOG(INFO) << server_info.str() << '.';
-
-    if (_options.has_builtin_services) {
-        LOG(INFO) << "Check out http://" << butil::my_hostname() << ':'
-                  << http_port << " in web browser.";
+    if (butil::is_endpoint_extended(_listen_addr)) {
+        const char* builtin_msg = _options.has_builtin_services ? " with builtin service" : "";
+        LOG(INFO) << "Server[" << version() << "] is serving on " << _listen_addr
+                  << builtin_msg << '.';
+        //TODO add TrackMe support
     } else {
-        LOG(WARNING) << "Builtin services are disabled according to "
-            "ServerOptions.has_builtin_services";
+        int http_port = _listen_addr.port;
+        std::ostringstream server_info;
+        server_info << "Server[" << version() << "] is serving on port="
+                    << _listen_addr.port;
+        if (_options.internal_port >= 0 && _options.has_builtin_services) {
+            http_port = _options.internal_port;
+            server_info << " and internal_port=" << _options.internal_port;
+        }
+        LOG(INFO) << server_info.str() << '.';
+
+        if (_options.has_builtin_services) {
+            LOG(INFO) << "Check out http://" << butil::my_hostname() << ':'
+                    << http_port << " in web browser.";
+        } else {
+            LOG(WARNING) << "Builtin services are disabled according to "
+                "ServerOptions.has_builtin_services";
+        }
+        // For trackme reporting
+        SetTrackMeAddress(butil::EndPoint(butil::my_ip(), http_port));
     }
-    // For trackme reporting
-    SetTrackMeAddress(butil::EndPoint(butil::my_ip(), http_port));
     revert_server.release();
     return 0;
 }
 
 int Server::Start(const butil::EndPoint& endpoint, const ServerOptions* opt) {
     return StartInternal(
-        endpoint.ip, PortRange(endpoint.port, endpoint.port), opt);
+        endpoint, PortRange(endpoint.port, endpoint.port), opt);
 }
 
 int Server::Start(const char* ip_port_str, const ServerOptions* opt) {
@@ -1089,7 +1110,11 @@ int Server::Start(const char* ip_str, PortRange port_range,
         LOG(ERROR) << "Invalid address=`" << ip_str << '\'';
         return -1;
     }
-    return StartInternal(ip, port_range, opt);
+    return StartInternal(butil::EndPoint(ip, 0), port_range, opt);
+}
+
+int Server::Start(PortRange port_range, const ServerOptions* opt) {
+    return StartInternal(butil::EndPoint(butil::IP_ANY, 0), port_range, opt);
 }
 
 int Server::Stop(int timeout_ms) {
@@ -1211,6 +1236,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         mp.params.allow_default_url = svc_opt.allow_default_url;
         mp.params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
         mp.params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
+        mp.params.pb_single_repeated_to_array = svc_opt.pb_single_repeated_to_array;
         mp.service = service;
         mp.method = md;
         mp.status = new MethodStatus;
@@ -1298,6 +1324,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                 params.allow_default_url = svc_opt.allow_default_url;
                 params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
                 params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
+                params.pb_single_repeated_to_array = svc_opt.pb_single_repeated_to_array;
                 if (!_global_restful_map->AddMethod(
                         mappings[i].path, service, params,
                         mappings[i].method_name, mp->status)) {
@@ -1336,6 +1363,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             params.allow_default_url = svc_opt.allow_default_url;
             params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
             params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
+            params.pb_single_repeated_to_array = svc_opt.pb_single_repeated_to_array;
             if (!m->AddMethod(mappings[i].path, service, params,
                               mappings[i].method_name, mp->status)) {
                 LOG(ERROR) << "Fail to map `" << mappings[i].path << "' to `"
@@ -1395,6 +1423,7 @@ ServiceOptions::ServiceOptions()
 #else
     , pb_bytes_to_base64(true)
 #endif
+    , pb_single_repeated_to_array(false)
     {}
 
 int Server::AddService(google::protobuf::Service* service,

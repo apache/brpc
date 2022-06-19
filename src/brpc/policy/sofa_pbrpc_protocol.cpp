@@ -129,7 +129,7 @@ private:
     const char* _stream;
 };
 
-inline void PackSofaHeader(char* sofa_header, int meta_size, int body_size) {
+inline void PackSofaHeader(char* sofa_header, uint32_t meta_size, int body_size) {
     uint32_t* dummy = reinterpret_cast<uint32_t*>(sofa_header); // suppress strict-alias warning
     *dummy = *reinterpret_cast<const uint32_t*>("SOFA");
 
@@ -139,7 +139,7 @@ inline void PackSofaHeader(char* sofa_header, int meta_size, int body_size) {
 
 static void SerializeSofaHeaderAndMeta(
     butil::IOBuf* out, const SofaRpcMeta& meta, int payload_size) {
-    const int meta_size = meta.ByteSize();
+    const uint32_t meta_size = GetProtobufByteSize(meta);
     if (meta_size <= 232) { // most common cases
         char header_and_meta[24 + meta_size];
         PackSofaHeader(header_and_meta, meta_size, payload_size);
@@ -441,7 +441,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
                     req.get(), res.get(), server,
                     method_status, msg->received_us());
 
-        msg.reset();  // optional, just release resourse ASAP
+        msg.reset();  // optional, just release resource ASAP
 
         // `cntl', `req' and `res' will be deleted inside `done'
         if (span) {
@@ -526,7 +526,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
 
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 

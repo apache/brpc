@@ -6,7 +6,7 @@ server push指的是server端发生某事件后立刻向client端发送消息，
 
 # 远程事件
 
-和本地事件类似，分为两步：注册和通知。client发送一个代表**事件注册**的异步RPC至server，处理事件的代码写在对应的RPC回调中。此RPC同时也在等待通知，server收到请求后不直接回复，而是等到对应的本地事件触发时才调用done->Run()**通知**client发生了事件。可以看到server也是异步的。这个过程中如果连接断开，client端的RPC一般会很快失败，client可选择重试或结束。server端应通过Controller.NotifyOnFailed()及时获知连接断开的消息，并删除无用的done。
+和本地事件类似，分为两步：注册和通知。client发送一个代表**事件注册**的异步RPC至server，处理事件的代码写在对应的RPC回调中。此RPC同时也在等待通知，server收到请求后不直接回复，而是等到对应的本地事件触发时才调用done->Run()**通知**client发生了事件。可以看到server也是异步的。这个过程中如果连接断开，client端的RPC一般会很快失败，client可选择重试或结束。server端应通过Controller.NotifyOnCancel()及时获知连接断开的消息，并删除无用的done。
 
 这个模式在原理上类似[long polling](https://en.wikipedia.org/wiki/Push_technology#Long_polling)，听上去挺古老，但可能仍是最有效的推送方式。“server push“乍看是server访问client，与常见的client访问server方向相反，挺特殊的，但server发回client的response不也和“client访问server”方向相反么？为了理解response和push的区别，我们假定“client随时可能收到server推来的消息“，并推敲其中的细节：
 

@@ -6,7 +6,7 @@
 
 Meanings of the fields above:
 
-- **non_service_error**: number of errors raised outside processing code of the service. For example, the error that server can't write response back due to a broken connection which had been closed by the client, is a *non_service_error* because the service processing already ends. As a contrast, failing to access back-end servers during the processing is an error of the service, not a *non_service_error*. Even if the response written out successfully stands for failure, the error is counted into the service rather than *non_service_error*.
+- **non_service_error**: number of errors raised outside processing code of the service. When a valid service is obtained, the subsequent error is regarded as *service_error*, otherwise it is regarded as *non_service_error* (such as request parsing failed, service name does not exist, request concurrency exceeding limit, etc.). As a contrast, failing to access back-end servers during the processing is an error of the service, not a *non_service_error*. Even if the response written out successfully stands for failure, the error is counted into the service rather than *non_service_error*.
 - **connection_count**: number of connections to the server from clients, not including number of outward connections which are displayed at /vars/rpc_channel_connection_count.
 - **example.EchoService**: Full name of the service, including the package name defined in proto.
 - **Echo (EchoRequest) returns (EchoResponse)**: Signature of the method. A service can have multiple methods. Click links on request/response to see schemes of the protobuf messages.

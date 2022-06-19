@@ -54,7 +54,7 @@ foo::bar::g_task_pushed << 1;
 - `bvar::PerSecond<VAR>` : 获得某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量。
 - `bvar::LatencyRecorder` : 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。
 
-**确认变量名是全局唯一的！**否则会曝光失败，如果-bvar_abort_on_same_name为true，程序会直接abort。
+**确认变量名是全局唯一的！** 否则会曝光失败，如果-bvar_abort_on_same_name为true，程序会直接abort。
 
 程序中有来自各种模块不同的bvar，为避免重名，建议如此命名：**模块_类名_指标**
 
@@ -87,7 +87,7 @@ rpc_socket_count : 6                            # 模块=rpc     类名=socket  
 ```c++
 namespace foo {
 namespace bar {
-// 注意g_read_error_minute和g_task_pushed_per_second都是衍生的bvar，会自动更新，不要声明。
+// 注意g_read_error_minute和g_task_pushed_second都是衍生的bvar，会自动更新，不要声明。
 extern bvar::Adder<int> g_read_error;
 extern bvar::LatencyRecorder g_write_latency;
 extern bvar::Adder<int> g_task_pushed;
@@ -148,7 +148,7 @@ int expose_as(const butil::StringPiece& prefix, const butil::StringPiece& name);
 ```
 全局曝光后的bvar名字便为name或prefix + name，可通过以_exposed为后缀的static函数查询。比如Variable::describe_exposed(name)会返回名为name的bvar的描述。
 
-当相同名字的bvar已存在时，expose会打印FATAL日志并返回-1。如果选项**--bvar_abort_on_same_name**设为true (默认是false)，程序会直接abort。
+当相同名字的bvar已存在时，expose会打印FATAL日志并返回-1。如果选项 **-bvar_abort_on_same_name**设为true (默认是false)，程序会直接abort。
 
 下面是一些曝光bvar的例子：
 ```c++
@@ -221,7 +221,7 @@ dump功能由如下gflags控制：
 | ------------------ | ----------------------- | ---------------------------------------- |
 | bvar_dump          | false                   | Create a background thread dumping all bvar periodically, all bvar_dump_* flags are not effective when this flag is off |
 | bvar_dump_exclude  | ""                      | Dump bvar excluded from these wildcards(separated by comma), empty means no exclusion |
-| bvar_dump_file     | monitor/bvar.<app>.data | Dump bvar into this file                 |
+| bvar_dump_file     | monitor/bvar.\<app\>.data | Dump bvar into this file                 |
 | bvar_dump_include  | ""                      | Dump bvar matching these wildcards(separated by comma), empty means including all |
 | bvar_dump_interval | 10                      | Seconds between consecutive dump         |
 | bvar_dump_prefix   | \<app\>                 | Every dumped name starts with this prefix |

@@ -297,6 +297,10 @@ struct ServiceOptions {
     // option is turned on.
     // Default: false if BAIDU_INTERNAL is defined, otherwise true
     bool pb_bytes_to_base64;
+
+    // decode json array to protobuf message which contains a single repeated field.
+    // Default: false.
+    bool pb_single_repeated_to_array;
 };
 
 // Represent ports inside [min_port, max_port]
@@ -346,6 +350,7 @@ public:
             bool allow_default_url;
             bool allow_http_body_to_pb;
             bool pb_bytes_to_base64;
+            bool pb_single_repeated_to_array;
             OpaqueParams();
         };
         OpaqueParams params;        
@@ -389,6 +394,8 @@ public:
     int Start(int port, const ServerOptions* opt);
     // Start on `ip_str' + any useable port in `range'
     int Start(const char* ip_str, PortRange range, const ServerOptions *opt);
+    // Start on IP_ANY + first useable port in `range'
+    int Start(PortRange range, const ServerOptions* opt);
 
     // NOTE: Stop() is paired with Join() to stop a server without losing
     // requests. The point of separating them is that you can Stop() multiple
@@ -559,7 +566,7 @@ friend class Controller;
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();
 
-    int StartInternal(const butil::ip_t& ip,
+    int StartInternal(const butil::EndPoint& endpoint,
                       const PortRange& port_range,
                       const ServerOptions *opt);
 
@@ -679,6 +686,7 @@ friend class Controller;
 
     // mutable is required for `ServerPrivateAccessor' to change this bvar
     mutable bvar::Adder<int64_t> _nerror_bvar;
+    mutable bvar::PerSecond<bvar::Adder<int64_t> > _eps_bvar;
     mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
 
 };

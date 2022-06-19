@@ -46,7 +46,7 @@ extern int bthread_about_to_quit();
 // Run `on_timer(arg)' at or after real-time `abstime'. Put identifier of the
 // timer into *id.
 // Return 0 on success, errno otherwise.
-extern int bthread_timer_add(bthread_timer_t* id, timespec abstime,
+extern int bthread_timer_add(bthread_timer_t* id, struct timespec abstime,
                              void (*on_timer)(void*), void* arg);
 
 // Unschedule the timer associated with `id'.
@@ -65,7 +65,7 @@ extern int bthread_fd_wait(int fd, unsigned events);
 // or CLOCK_REALTIME reached `abstime' if abstime is not NULL.
 // Returns 0 on success, -1 otherwise and errno is set.
 extern int bthread_fd_timedwait(int fd, unsigned epoll_events,
-                                const timespec* abstime);
+                                const struct timespec* abstime);
 
 // Close file descriptor `fd' and wake up all threads waiting on it.
 // User should call this function instead of close(2) if bthread_fd_wait,
@@ -76,7 +76,7 @@ extern int bthread_fd_timedwait(int fd, unsigned epoll_events,
 extern int bthread_close(int fd);
 
 // Replacement of connect(2) in bthreads.
-extern int bthread_connect(int sockfd, const sockaddr* serv_addr,
+extern int bthread_connect(int sockfd, const struct sockaddr* serv_addr,
                            socklen_t addrlen);
 
 // Add a startup function that each pthread worker will run at the beginning

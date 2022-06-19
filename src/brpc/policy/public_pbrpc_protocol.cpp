@@ -209,7 +209,7 @@ void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
     }
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 
@@ -266,7 +266,7 @@ void PackPublicPbrpcRequest(butil::IOBuf* buf,
     nshead.magic_num = NSHEAD_MAGICNUM;
     snprintf(nshead.provider, sizeof(nshead.provider), "%s", PROVIDER);
     nshead.version = NSHEAD_VERSION;
-    nshead.body_len = pbreq.ByteSize();
+    nshead.body_len = GetProtobufByteSize(pbreq);
     buf->append(&nshead, sizeof(nshead));
 
     Span* span = ControllerPrivateAccessor(controller).span();
