@@ -279,6 +279,7 @@ static void* find_and_modify_test(void* void_args) {
     mongo_channel->CallMethod(nullptr, &cntl, &find_and_modify_request,
                               &find_and_modify_response, nullptr);
     if (!cntl.Failed()) {
+      g_latency_recorder << cntl.latency_us();
       if (find_and_modify_response.has_upserted()) {
         char oid_str[25];
         bson_oid_to_string(&(find_and_modify_response.upserted()), oid_str);
@@ -387,12 +388,14 @@ static void* sender(void* void_args) {
     const int64_t elp = cntl.latency_us();
     args->mongo_channel->CallMethod(NULL, &cntl, request, response, NULL);
     if (!cntl.Failed()) {
+      const int64_t elp = cntl.latency_us();
+      g_latency_recorder << elp;
       if (FLAGS_op_type == 0) {
         brpc::MongoInsertResponse* insert_response =
             dynamic_cast<brpc::MongoInsertResponse*>(response);
-        LOG(INFO) << "insert return num:" << insert_response->number()
-                  << " write_errors num:"
-                  << insert_response->write_errors().size();
+        // LOG(INFO) << "insert return num:" << insert_response->number()
+        //           << " write_errors num:"
+        //           << insert_response->write_errors().size();
         for (size_t i = 0; i < insert_response->write_errors().size(); ++i) {
           brpc::WriteError write_error = insert_response->write_errors(i);
           LOG(INFO) << "index:" << write_error.index
@@ -449,7 +452,7 @@ static void* sender(void* void_args) {
       // fast. You should continue the business logic in a production
       // server rather than sleeping.
     }
-    bthread_usleep(2 * 1000 * 1000);
+    // bthread_usleep(2 * 1000 * 1000);
   }
   return NULL;
 }
@@ -473,9 +476,16 @@ int main(int argc, char* argv[]) {
   // options.auth = new brpc::policy::MysqlAuthenticator(
   //     FLAGS_user, FLAGS_password, FLAGS_schema, FLAGS_params,
   //     FLAGS_collation);
-  if (channel.Init(FLAGS_server.c_str(), FLAGS_port, &options) != 0) {
-    LOG(ERROR) << "Fail to initialize channel";
-    return -1;
+  if (FLAGS_server.find("mongo://") != std::string::npos) {
+    if (channel.Init(FLAGS_server.c_str(), "random", &options) != 0) {
+      LOG(ERROR) << "Fail to initialize mongo channel";
+      return -1;
+    }
+  } else {
+    if (channel.Init(FLAGS_server.c_str(), FLAGS_port, &options) != 0) {
+      LOG(ERROR) << "Fail to initialize channel";
+      return -1;
+    }
   }
 
   if (FLAGS_dummy_port >= 0) {
@@ -516,11 +526,11 @@ int main(int argc, char* argv[]) {
   while (!brpc::IsAskedToQuit()) {
     sleep(1);
 
-    LOG(INFO) << "Accessing mysql-server at qps=" << g_latency_recorder.qps(1)
+    LOG(INFO) << "Accessing mongo-server at qps=" << g_latency_recorder.qps(1)
               << " latency=" << g_latency_recorder.latency(1);
   }
 
-  LOG(INFO) << "mysql_client is going to quit";
+  LOG(INFO) << "mongo_client is going to quit";
   for (int i = 0; i < FLAGS_thread_num; ++i) {
     if (!FLAGS_use_bthread) {
       pthread_join(pids[i], NULL);
