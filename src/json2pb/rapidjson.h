@@ -39,6 +39,7 @@
 #include "butil/third_party/rapidjson/stringbuffer.h"
 #include "butil/third_party/rapidjson/writer.h"
 #include "butil/third_party/rapidjson/optimized_writer.h"
+#include "butil/third_party/rapidjson/error/en.h"  // GetErrorCode_En
 
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)
 #pragma GCC diagnostic pop

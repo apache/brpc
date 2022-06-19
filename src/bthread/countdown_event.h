@@ -39,7 +39,8 @@ public:
     void reset(int v = 1);
 
     // Decrease the counter by |sig|
-    void signal(int sig = 1);
+    // when flush is true, after signal we need to call bthread_flush
+    void signal(int sig = 1, bool flush = false);
 
     // Block current thread until the counter reaches 0.
     // Returns 0 on success, error code otherwise.

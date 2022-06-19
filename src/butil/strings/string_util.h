@@ -377,6 +377,10 @@ inline bool IsWhitespace(wchar_t c) {
   return wcschr(butil::kWhitespaceWide, c) != NULL;
 }
 
+inline bool IsBlankString(const butil::StringPiece &s) {
+    return butil::ContainsOnlyChars(s, " \r\n\t");
+}
+
 // Return a byte string in human-readable format with a unit suffix. Not
 // appropriate for use in any UI; use of FormatBytes and friends in ui/base is
 // highly recommended instead. TODO(avi): Figure out how to get callers to use
