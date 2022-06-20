@@ -80,11 +80,11 @@ static void SerializeRpcHeaderAndMeta(
         ::google::protobuf::io::CodedOutputStream coded_out(&arr_out);
         meta.SerializeWithCachedSizes(&coded_out); // not calling ByteSize again
         CHECK(!coded_out.HadError());
-        out->append(header_and_meta, sizeof(header_and_meta));
+        CHECK_EQ(0, out->append(header_and_meta, sizeof(header_and_meta)));
     } else {
         char header[12];
         PackRpcHeader(header, meta_size, payload_size);
-        out->append(header, sizeof(header));
+        CHECK_EQ(0, out->append(header, sizeof(header)));
         butil::IOBufAsZeroCopyOutputStream buf_stream(out);
         ::google::protobuf::io::CodedOutputStream coded_out(&buf_stream);
         meta.SerializeWithCachedSizes(&coded_out);
