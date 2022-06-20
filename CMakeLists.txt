@@ -154,12 +154,7 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 
 if(WITH_SNAPPY)
-    find_path(SNAPPY_INCLUDE_PATH NAMES snappy.h)
-    find_library(SNAPPY_LIB NAMES snappy)
-    if ((NOT SNAPPY_INCLUDE_PATH) OR (NOT SNAPPY_LIB))
-        message(FATAL_ERROR "Fail to find snappy")
-    endif()
-    include_directories(${SNAPPY_INCLUDE_PATH})
+    find_package(Snappy REQUIRED)
 endif()
 
 if(WITH_GLOG)
@@ -228,7 +223,7 @@ if(WITH_GLOG)
 endif()
 
 if(WITH_SNAPPY)
-    set(DYNAMIC_LIB ${DYNAMIC_LIB} ${SNAPPY_LIB})
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} Snappy::snappy)
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lsnappy")
 endif()
 
