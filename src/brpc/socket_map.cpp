@@ -301,6 +301,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
                 _this_map_bvar = new bvar::PassiveStatus<std::string>(
                     butil::StringPiece(namebuf, len), PrintSocketMap, this);
             }
+            s->StopHealthCheck(); // stop health check
             s->ReleaseAdditionalReference(); // release extra ref
             SocketUniquePtr ptr(s);  // Dereference
         }
