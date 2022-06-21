@@ -129,6 +129,10 @@ struct ChannelOptions {
     // Default: ""
     std::string connection_group;
 
+    // Pass to SocketOptions.health_check_path, taking precedence over Flags_health_check_path
+    // Default: ""
+    std::string health_check_path;
+
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ChannelOptions from being bloated in most cases.

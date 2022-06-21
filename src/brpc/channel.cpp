@@ -38,6 +38,7 @@ namespace brpc {
 
 DECLARE_bool(enable_rpcz);
 DECLARE_bool(usercode_in_pthread);
+DECLARE_string(health_check_path);
 
 ChannelOptions::ChannelOptions()
     : connect_timeout_ms(200)
@@ -64,7 +65,8 @@ ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
 static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
     if (opt.auth == NULL &&
         !opt.has_ssl_options() &&
-        opt.connection_group.empty()) {
+        opt.connection_group.empty() &&
+        opt.health_check_path.empty()) {
         // Returning zeroized result by default is more intuitive for users.
         return ChannelSignature();
     }
@@ -84,6 +86,11 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
             buf.append("|auth=");
             buf.append((char*)&opt.auth, sizeof(opt.auth));
         }
+        if (!opt.health_check_path.empty()){
+            buf.append("|health_check_path=");
+            buf.append(opt.health_check_path);
+        }
+
         if (opt.has_ssl_options()) {
             const ChannelSSLOptions& ssl = opt.ssl_options();
             buf.push_back('|');
@@ -311,8 +318,10 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (CreateSocketSSLContext(_options, &ssl_ctx) != 0) {
         return -1;
     }
+    const std::string& hc_path = options->health_check_path.empty() ?
+                FLAGS_health_check_path : options->health_check_path;
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
-                        &_server_id, ssl_ctx) != 0) {
+                        &_server_id, ssl_ctx, hc_path) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -346,10 +355,13 @@ int Channel::Init(const char* ns_url,
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
         return -1;        
     }
+    const std::string& hc_path = _options.health_check_path.empty() ?
+                                 FLAGS_health_check_path : _options.health_check_path;
     GetNamingServiceThreadOptions ns_opt;
     ns_opt.succeed_without_server = _options.succeed_without_server;
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
+    ns_opt.health_check_path = hc_path;
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
         return -1;
     }

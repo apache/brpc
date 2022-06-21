@@ -572,11 +572,12 @@ public:
 
 TEST_F(SocketTest, app_level_health_check) {
     int old_health_check_interval = brpc::FLAGS_health_check_interval;
-    GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
+    GFLAGS_NS::SetCommandLineOption("health_check_path", "/xxxHealthCheckTestService/abcde");
     GFLAGS_NS::SetCommandLineOption("health_check_interval", "1");
 
     butil::EndPoint point(butil::IP_ANY, 7777);
     brpc::ChannelOptions options;
+    options.health_check_path = "/HealthCheckTestService";
     options.protocol = "http";
     options.max_retry = 0;
     brpc::Channel channel;

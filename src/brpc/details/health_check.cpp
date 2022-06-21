@@ -65,15 +65,16 @@ public:
     SocketId id;
     int64_t interval_s;
     int64_t last_check_time_ms;
+    std::string health_check_path;
 };
 
 class HealthCheckManager {
 public:
-    static void StartCheck(SocketId id, int64_t check_interval_s);
+    static void StartCheck(SocketId id, int64_t check_interval_s, const std::string& app_hc_path);
     static void* AppCheck(void* arg);
 };
 
-void HealthCheckManager::StartCheck(SocketId id, int64_t check_interval_s) {
+void HealthCheckManager::StartCheck(SocketId id, int64_t check_interval_s, const std::string& app_hc_path) {
     SocketUniquePtr ptr;
     const int rc = Socket::AddressFailedAsWell(id, &ptr);
     if (rc < 0) {
@@ -81,10 +82,11 @@ void HealthCheckManager::StartCheck(SocketId id, int64_t check_interval_s) {
                  << " was abandoned during health checking";
         return;
     }
-    LOG(INFO) << "Checking path=" << ptr->remote_side() << FLAGS_health_check_path;
+    LOG(INFO) << "Checking path=" << ptr->remote_side() << app_hc_path;
     OnAppHealthCheckDone* done = new OnAppHealthCheckDone;
     done->id = id;
     done->interval_s = check_interval_s;
+    done->health_check_path = app_hc_path;
     brpc::ChannelOptions options;
     options.protocol = PROTOCOL_HTTP;
     options.max_retry = 0;
@@ -103,7 +105,7 @@ void HealthCheckManager::StartCheck(SocketId id, int64_t check_interval_s) {
 void* HealthCheckManager::AppCheck(void* arg) {
     OnAppHealthCheckDone* done = static_cast<OnAppHealthCheckDone*>(arg);
     done->cntl.Reset();
-    done->cntl.http_request().uri() = FLAGS_health_check_path;
+    done->cntl.http_request().uri() = done->health_check_path;
     ControllerPrivateAccessor(&done->cntl).set_health_check_call();
     done->last_check_time_ms = butil::gettimeofday_ms();
     done->channel.CallMethod(NULL, &done->cntl, NULL, NULL, done);
@@ -119,16 +121,17 @@ void OnAppHealthCheckDone::Run() {
                 << " was abandoned during health checking";
         return;
     }
+    const std::string& hc_path = this->health_check_path;
     if (!cntl.Failed() || ptr->Failed()) {
         LOG_IF(INFO, !cntl.Failed()) << "Succeeded to call "
-            << ptr->remote_side() << FLAGS_health_check_path;
+            << ptr->remote_side() << hc_path;
         // if ptr->Failed(), previous SetFailed would trigger next round
         // of hc, just return here.
         ptr->_ninflight_app_health_check.fetch_sub(
                     1, butil::memory_order_relaxed);
         return;
     }
-    RPC_VLOG << "Fail to check path=" << FLAGS_health_check_path
+    RPC_VLOG << "Fail to check path=" << hc_path
         << ", " << cntl.ErrorText();
 
     int64_t sleep_time_ms =
@@ -207,14 +210,14 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         if (ptr->CreatedByConnect()) {
             g_vars->channel_conn << -1;
         }
-        if (!FLAGS_health_check_path.empty()) {
+        if (!ptr->_health_check_path.empty()) {
             ptr->_ninflight_app_health_check.fetch_add(
                     1, butil::memory_order_relaxed);
         }
         ptr->Revive();
         ptr->_hc_count = 0;
-        if (!FLAGS_health_check_path.empty()) {
-            HealthCheckManager::StartCheck(_id, ptr->_health_check_interval_s);
+        if (!ptr->_health_check_path.empty()) {
+            HealthCheckManager::StartCheck(_id, ptr->_health_check_interval_s, ptr->_health_check_path);
         }
         return false;
     } else if (hc == ESTOP) {

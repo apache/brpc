@@ -83,7 +83,13 @@ public:
     // [thread-safe] Create a socket to process input messages.
     int Create(const butil::EndPoint& remote_side,
                time_t health_check_interval_s,
+               const std::string& health_check_path,
                SocketId* id);
+    int Create(const butil::EndPoint& remote_side,
+               time_t health_check_interval_s,
+               SocketId* id){
+        return Create(remote_side, health_check_interval_s, "", id);
+    }
     // Overwrite necessary fields in `base_options' and create a socket with
     // the modified options.
     int Create(SocketOptions base_options, SocketId* id);

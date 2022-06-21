@@ -385,7 +385,7 @@ TEST(EndPointTest, endpoint_sockaddr_conv_ipv6) {
     bzero(&expect_in6_addr, sizeof(expect_in6_addr));
     expect_in6_addr.__in6_u.__u6_addr8[15] = 1;
     // jge: mac monterey上应该这样，但准确判定条件不明
-    //expect_in6_addr.__u6_addr.__u6_addr8[15] = 1;
+    // expect_in6_addr.__u6_addr.__u6_addr8[15] = 1;
 
     sockaddr_storage ss;
     const sockaddr_in6* sa6 = (sockaddr_in6*) &ss;

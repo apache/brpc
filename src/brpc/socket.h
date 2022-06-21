@@ -187,6 +187,13 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
+
+    // Http path of health check call.
+    // By default health check succeeds if the server is connectable.
+    // If this health_check_path is not empty, health check is not completed until a http
+    // call to the path succeeds within health_check_interval_s(to make
+    // sure the server functions well).
+    std::string health_check_path;
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
@@ -285,6 +292,9 @@ public:
     // Positive value enables health checking.
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
+
+    // Initialized by SocketOptions.health_check_path.
+    const std::string& health_check_path() const { return _health_check_path; }
 
     // The unique identifier.
     SocketId id() const { return _this_id; }
@@ -746,6 +756,9 @@ private:
 
     // Non-zero when health-checking is on.
     int _health_check_interval_s;
+
+    // app health_check_path
+    std::string _health_check_path;
 
     // +-1 bit-+---31 bit---+
     // |  flag |   counter  |

@@ -433,12 +433,14 @@ int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
 
 int InputMessenger::Create(const butil::EndPoint& remote_side,
                            time_t health_check_interval_s,
+                           const std::string& health_check_path,
                            SocketId* id) {
     SocketOptions options;
     options.remote_side = remote_side;
     options.user = this;
     options.on_edge_triggered_events = OnNewMessages;
     options.health_check_interval_s = health_check_interval_s;
+    options.health_check_path = health_check_path;
     return Socket::Create(options, id);
 }
 

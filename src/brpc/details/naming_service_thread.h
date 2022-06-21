@@ -49,6 +49,7 @@ struct GetNamingServiceThreadOptions {
     bool succeed_without_server;
     bool log_succeed_without_server;
     ChannelSignature channel_signature;
+    std::string health_check_path;
     std::shared_ptr<SocketSSLContext> ssl_ctx;
 };
 
