@@ -446,7 +446,7 @@ Socket::Socket(Forbidden)
     , _overcrowded(false)
     , _fail_me_at_server_stop(false)
     , _logoff_flag(false)
-    , _recycle_flag(false)
+    , _additional_ref_status(REF_USING)
     , _error_code(0)
     , _pipeline_q(NULL)
     , _last_writetime_us(0)
@@ -634,7 +634,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     // May be non-zero for RTMP connections.
     m->_fail_me_at_server_stop = false;
     m->_logoff_flag.store(false, butil::memory_order_relaxed);
-    m->_recycle_flag.store(false, butil::memory_order_relaxed);
+    m->_additional_ref_status.store(REF_USING, butil::memory_order_relaxed);
     m->_error_code = 0;
     m->_error_text.clear();
     m->_agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
@@ -752,11 +752,14 @@ int Socket::WaitAndReset(int32_t expected_nref) {
 void Socket::Revive() {
     const uint32_t id_ver = VersionOfSocketId(_this_id);
     uint64_t vref = _versioned_ref.load(butil::memory_order_relaxed);
+    _additional_ref_status.store(REF_REVIVING, butil::memory_order_relaxed);
     while (1) {
         CHECK_EQ(id_ver + 1, VersionOfVRef(vref));
         
         int32_t nref = NRefOfVRef(vref);
         if (nref <= 1) {
+            // Set status to REF_RECYLED since no one uses this socket
+            _additional_ref_status.store(REF_RECYLED, butil::memory_order_relaxed);
             CHECK_EQ(1, nref);
             LOG(WARNING) << *this << " was abandoned during revival";
             return;
@@ -767,8 +770,8 @@ void Socket::Revive() {
                 vref, MakeVRef(id_ver, nref + 1/*note*/),
                 butil::memory_order_release,
                 butil::memory_order_relaxed)) {
-            // Set this flag to true since we add additional ref again
-            _recycle_flag.store(false, butil::memory_order_relaxed);
+            // Set status to REF_USING since we add additional ref again
+            _additional_ref_status.store(REF_USING, butil::memory_order_relaxed);
             if (_user) {
                 _user->AfterRevived(this);
             } else {
@@ -780,12 +783,16 @@ void Socket::Revive() {
 }
 
 int Socket::ReleaseAdditionalReference() {
-    bool expect = false;
-    // Use `relaxed' fence here since `Dereference' has `released' fence
-    if (_recycle_flag.compare_exchange_strong(
-            expect, true,
-            butil::memory_order_relaxed,
-            butil::memory_order_relaxed)) {
+    // wait until status is not REF_REVIVING
+    while (_additional_ref_status.load(butil::memory_order_relaxed) == REF_REVIVING) {
+        bthread_yield();
+    }
+
+    AdditionalRefStatus expect = REF_USING;
+    if (_additional_ref_status.compare_exchange_strong(expect,
+        REF_RECYLED,
+        butil::memory_order_relaxed,
+        butil::memory_order_relaxed)) {
         return Dereference();
     }
     return -1;
@@ -2124,7 +2131,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nauth_id=" << ptr->_auth_id.value
        << "\nauth_context=" << ptr->_auth_context
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
-       << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
+       << "\n_additional_ref_status=" << ptr->_additional_ref_status.load(butil::memory_order_relaxed)
        << "\nninflight_app_health_check="
        << ptr->_ninflight_app_health_check.load(butil::memory_order_relaxed)
        << "\nagent_socket_id=";
