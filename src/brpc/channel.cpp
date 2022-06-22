@@ -318,8 +318,8 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (CreateSocketSSLContext(_options, &ssl_ctx) != 0) {
         return -1;
     }
-    const std::string& hc_path = options->health_check_path.empty() ?
-                FLAGS_health_check_path : options->health_check_path;
+    const std::string& hc_path = _options.health_check_path.empty() ?
+                FLAGS_health_check_path : _options.health_check_path;
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
                         &_server_id, ssl_ctx, hc_path) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
