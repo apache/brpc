@@ -363,8 +363,9 @@ public:
 
     bool Failed() const;
 
-    bool DidReleaseAdditionalRereference() const
-    { return _recycle_flag.load(butil::memory_order_relaxed); }
+    bool DidReleaseAdditionalRereference() const {
+        return _additional_ref_status.load(butil::memory_order_relaxed) == REF_RECYLED;
+    }
 
     // Notify `id' object (by calling bthread_id_error) when this Socket
     // has been `SetFailed'. If it already has, notify `id' immediately
@@ -797,9 +798,17 @@ private:
     // Set by SetLogOff
     butil::atomic<bool> _logoff_flag;
 
-    // Flag used to mark whether additional reference has been decreased
-    // by either `SetFailed' or `SetRecycle'
-    butil::atomic<bool> _recycle_flag;
+    enum AdditionalRefStatus {
+        REF_USING,        // additional ref is using normally
+        REF_REVIVING,     // additional ref is reviving
+        REF_RECYLED       // additional ref has benn recyled
+    };
+
+    // additional ref status:
+    // Socket()、Create(): REF_USING
+    // SetFailed(): REF_USING -> REF_RECYLED
+    // Revive(): REF_RECYLED -> REF_REVIVING -> REF_USING
+    butil::atomic<AdditionalRefStatus> _additional_ref_status;
 
     // Concrete error information from SetFailed()
     // Accesses to these 2 fields(especially _error_text) must be protected
