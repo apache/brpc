@@ -32,7 +32,6 @@
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
-#include "brpc/log.h"
 #include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
 #include <memory>
 
@@ -211,17 +210,8 @@ int hostname2ip(const char* hostname, ip_t* ip) {
         }
         aux_buf_len *= 2;
         aux_buf.reset(new char[aux_buf_len]);
-        RPC_VLOG << "Resized aux_buf to " << aux_buf_len
-                 << ", hostname=" << hostname;
     } while (1);
-    if (ret != 0) {
-        // `hstrerror' is thread safe under linux
-        LOG(WARNING) << "Can't resolve `" << hostname << "', return=`" << berror(ret)
-                     << "' herror=`" << hstrerror(error) << '\'';
-        return -1;
-    }
-    if (result == NULL) {
-        LOG(WARNING) << "result of gethostbyname_r is NULL";
+    if (ret != 0 || result == NULL) {
         return -1;
     }
 #endif // defined(OS_MACOSX)
