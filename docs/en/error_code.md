@@ -36,7 +36,7 @@ Following table shows common error codes and their descriptions:
 | ERPCTIMEDOUT   | 1008  | No    | RPC timeout.                             | "reached timeout=%dms"                   |
 | EFAILEDSOCKET  | 1009  | Yes   | The connection is broken during RPC      | "The socket was SetFailed"               |
 | EHTTP          | 1010  | No    | HTTP responses with non 2xx status code are treated as failure and set with this code. No retry by default, changeable by customizing RetryPolicy. | Bad http call                            |
-| EOVERCROWDED   | 1011  | Yes   | Too many messages to buffer at the sender side. Usually caused by lots of concurrent asynchronous requests. Modifiable by `-socket_max_unwritten_bytes`, 8MB by default. | The server is overcrowded                |
+| EOVERCROWDED   | 1011  | Yes   | Too many messages to buffer at the sender side. Usually caused by lots of concurrent asynchronous requests. Modifiable by `-socket_max_unwritten_bytes`, 64MB by default. | The server is overcrowded                |
 | EINTERNAL      | 2001  | No    | The default error for `Controller::SetFailed` without specifying a one. | Internal Server Error                    |
 | ERESPONSE      | 2002  | No    | fail to serialize the response, may be set on either client-side or server-side | Misc forms: "Missing required fields in response: …" "Fail to parse response message, " "Bad response" |
 | ELOGOFF        | 2003  | Yes   | Server has been stopped                  | "Server is going to quit"                |
