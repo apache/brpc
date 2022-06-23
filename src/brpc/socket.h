@@ -287,7 +287,7 @@ public:
     int health_check_interval() const { return _health_check_interval_s; }
 
     // only for SocketMap
-    void StopHealthCheck() { _stop_health_check.store(true, butil::memory_order_relaxed); }
+    void StopHealthCheck() { _stop_health_check; }
 
     // The unique identifier.
     SocketId id() const { return _this_id; }
@@ -750,8 +750,9 @@ private:
     // Non-zero when health-checking is on.
     int _health_check_interval_s;
 
-    // true when client SocketMap has removed socket
-    butil::atomic<bool> _stop_health_check;
+    // True when client SocketMap has removed socket.
+    // It can be synchronized via _versioned_ref atomic variable
+    bool _stop_health_check;
 
     // +-1 bit-+---31 bit---+
     // |  flag |   counter  |
