@@ -783,19 +783,22 @@ void Socket::Revive() {
 }
 
 int Socket::ReleaseAdditionalReference() {
-    // wait until status is not REF_REVIVING
-    while (_additional_ref_status.load(butil::memory_order_relaxed) == REF_REVIVING) {
-        bthread_yield();
-    }
+    do {
+        AdditionalRefStatus expect = REF_USING;
+        if (_additional_ref_status.compare_exchange_strong(
+            expect,
+            REF_RECYLED,
+            butil::memory_order_relaxed,
+            butil::memory_order_relaxed)) {
+            return Dereference();
+        }
 
-    AdditionalRefStatus expect = REF_USING;
-    if (_additional_ref_status.compare_exchange_strong(expect,
-        REF_RECYLED,
-        butil::memory_order_relaxed,
-        butil::memory_order_relaxed)) {
-        return Dereference();
-    }
-    return -1;
+        if (expect == REF_REVIVING) { // sched_yield to wait until status is not REF_REVIVING
+            sched_yield();
+        } else {
+            return -1; // REF_RECYLED
+        }
+    } while (1);
 }
 
 void Socket::AddRecentError() {
@@ -2131,7 +2134,8 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nauth_id=" << ptr->_auth_id.value
        << "\nauth_context=" << ptr->_auth_context
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
-       << "\n_additional_ref_status=" << ptr->_additional_ref_status.load(butil::memory_order_relaxed)
+       << "\n_additional_ref_status="
+       << ptr->_additional_ref_status.load(butil::memory_order_relaxed)
        << "\nninflight_app_health_check="
        << ptr->_ninflight_app_health_check.load(butil::memory_order_relaxed)
        << "\nagent_socket_id=";
