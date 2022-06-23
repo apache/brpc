@@ -32,7 +32,9 @@
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
+#include "brpc/log.h"
 #include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
+#include <memory>
 
 //supported since Linux 3.9.
 DEFINE_bool(reuse_port, false, "Enable SO_REUSEPORT for all listened sockets");
@@ -193,12 +195,33 @@ int hostname2ip(const char* hostname, ip_t* ip) {
         return -1;
     }
 #else
-    char aux_buf[1024];
+    int aux_buf_len = 1024;
+    std::unique_ptr<char[]> aux_buf(new char[aux_buf_len]);
+    int ret = 0;
     int error = 0;
     struct hostent ent;
     struct hostent* result = NULL;
-    if (gethostbyname_r(hostname, &ent, aux_buf, sizeof(aux_buf),
-                        &result, &error) != 0 || result == NULL) {
+    do {
+        result = NULL;
+        error = 0;
+        ret = gethostbyname_r(hostname, &ent, aux_buf.get(), aux_buf_len,
+            &result, &error);
+        if (ret != ERANGE) { // aux_buf is not long enough
+            break;
+        }
+        aux_buf_len *= 2;
+        aux_buf.reset(new char[aux_buf_len]);
+        RPC_VLOG << "Resized aux_buf to " << aux_buf_len
+                 << ", hostname=" << hostname;
+    } while (1);
+    if (ret != 0) {
+        // `hstrerror' is thread safe under linux
+        LOG(WARNING) << "Can't resolve `" << hostname << "', return=`" << berror(ret)
+                     << "' herror=`" << hstrerror(error) << '\'';
+        return -1;
+    }
+    if (result == NULL) {
+        LOG(WARNING) << "result of gethostbyname_r is NULL";
         return -1;
     }
 #endif // defined(OS_MACOSX)
