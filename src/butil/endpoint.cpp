@@ -203,8 +203,12 @@ int hostname2ip(const char* hostname, ip_t* ip) {
     do {
         result = NULL;
         error = 0;
-        ret = gethostbyname_r(hostname, &ent, aux_buf.get(), aux_buf_len,
-            &result, &error);
+        ret = gethostbyname_r(hostname,
+                              &ent,
+                              aux_buf.get(),
+                              aux_buf_len,
+                              &result,
+                              &error);
         if (ret != ERANGE) { // aux_buf is not long enough
             break;
         }
