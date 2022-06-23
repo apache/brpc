@@ -287,7 +287,7 @@ public:
     int health_check_interval() const { return _health_check_interval_s; }
 
     // only for SocketMap
-    void StopHealthCheck() { _stop_health_check; }
+    void StopHealthCheck() { _stop_health_check = true; }
 
     // The unique identifier.
     SocketId id() const { return _this_id; }
