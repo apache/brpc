@@ -33,12 +33,13 @@
 #include "brpc/proto_base.pb.h"
 #include "brpc/socket.h"
 #include "butil/arena.h"
+#include "butil/bson_util.h"
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 
 namespace brpc {
 
-typedef std::shared_ptr<bson_t> BsonPtr;
+using butil::bson::BsonPtr;
 
 struct MongoReply {
   int32_t response_flags;

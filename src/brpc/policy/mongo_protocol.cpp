@@ -172,7 +172,7 @@ ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket,
     source->pop_front(sizeof(buf));
     if (header.op_code == MONGO_OPCODE_REPLY) {
       LOG(WARNING) << "ParseMongoMessage not support op_code: REPLY";
-      // TODO(zhangke)
+      return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     } else if (header.op_code == MONGO_OPCODE_MSG) {
       response_msg->opcode = MONGO_OPCODE_MSG;
       MongoMsg& mongo_msg = response_msg->msg;
@@ -403,7 +403,6 @@ void ProcessMongoResponse(InputMessageBase* msg_base) {
     // span->set_response_size(msg->response.ByteSize());
     span->set_start_parse_us(start_parse_us);
   }
-  const int saved_error = cntl->ErrorCode();
   if (cntl->request_id() == "query" || cntl->request_id() == "query_getMore") {
     bool next_batch = cntl->request_id() == "query_getMore";
     if (msg->opcode == MONGO_OPCODE_MSG) {
