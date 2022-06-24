@@ -17,7 +17,6 @@
 
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#include "butil/build_config.h"                // OS_MACOSX
 #include <arpa/inet.h>                         // inet_pton, inet_ntop
 #include <netdb.h>                             // gethostbyname_r
 #include <unistd.h>                            // gethostname
@@ -26,14 +25,15 @@
 #include <stdio.h>                             // snprintf
 #include <stdlib.h>                            // strtol
 #include <sys/un.h>                            // sockaddr_un
+#include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
+#include <memory>
 #include <gflags/gflags.h>
+#include "butil/build_config.h"                // OS_MACOSX
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
-#include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
-#include <memory>
 
 //supported since Linux 3.9.
 DEFINE_bool(reuse_port, false, "Enable SO_REUSEPORT for all listened sockets");
