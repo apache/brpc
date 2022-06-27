@@ -26,7 +26,7 @@
 #include <stdlib.h>                            // strtol
 #include <sys/un.h>                            // sockaddr_un
 #include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
-#include <memory>
+#include <memory>                              // unique_ptr
 #include <gflags/gflags.h>
 #include "butil/build_config.h"                // OS_MACOSX
 #include "butil/fd_guard.h"                    // fd_guard
