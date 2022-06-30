@@ -434,7 +434,7 @@ Socket::Socket(Forbidden)
     , _parsing_context(NULL)
     , _correlation_id(0)
     , _health_check_interval_s(-1)
-    , _stop_health_check(false)
+    , _enalbe_health_check(true)
     , _ninprocess(1)
     , _auth_flag_error(0)
     , _auth_id(INVALID_BTHREAD_ID)
@@ -615,7 +615,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->reset_parsing_context(options.initial_parsing_context);
     m->_correlation_id = 0;
     m->_health_check_interval_s = options.health_check_interval_s;
-    m->_stop_health_check = false;
+    m->_enalbe_health_check = true;
     m->_ninprocess.store(1, butil::memory_order_relaxed);
     m->_auth_flag_error.store(0, butil::memory_order_relaxed);
     const int rc2 = bthread_id_create(&m->_auth_id, NULL, NULL);
@@ -688,7 +688,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
         }
     }
 
-    if (_stop_health_check) {
+    if (!_enalbe_health_check) {
         LOG(WARNING) << "stop health check thread";
         return -1;
     }
@@ -845,7 +845,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // by Channel to revive never-connected socket when server side
             // comes online.
             if (_health_check_interval_s > 0 &&
-                !_stop_health_check) {
+                _enalbe_health_check) {
                 GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
                 StartHealthCheck(id(),
                         GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
