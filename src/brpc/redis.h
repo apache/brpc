@@ -31,6 +31,7 @@
 #include "brpc/parse_result.h"
 #include "brpc/callback.h"
 #include "brpc/socket.h"
+#include "brpc/controller.h"
 
 namespace brpc {
 
@@ -227,7 +228,8 @@ class RedisService {
 public:
     virtual ~RedisService() {}
     
-    // Call this function to register `handler` that can handle command `name`.
+    // Call this function to register `handler' that can handle command `name'.
+    // `name' is case insensitive.
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 
     // This function should not be touched by user and used by brpc deverloper only.
@@ -238,10 +240,64 @@ private:
     CommandMap _command_map;
 };
 
-enum RedisCommandHandlerResult {
+// The base class of waitable object returned by RedisCommandHandler if user want to
+// implement asynchronous processing.
+class Waitable {
+public:
+    virtual ~Waitable() {}
+
+    // Wait() would be blocked until Notify() is called.
+    virtual void Notify() = 0;
+    virtual void Wait() = 0;
+};
+
+// A Waitable implementation by condition variable.
+class ConditionWaitable : public Waitable {
+public:
+    ConditionWaitable();
+    ~ConditionWaitable();
+
+    void Notify() override;
+    void Wait() override;
+
+private:
+    bthread_cond_t cond;
+    bthread_mutex_t mutex;
+    bool notified;
+};
+
+// A Waitable implementation by joining call id of rpc.
+class RPCWaitable: public Waitable {
+public:
+    RPCWaitable(CallId call_id);
+    ~RPCWaitable();
+
+    // Note that Notify() could not be called after rpc is done since call_id is
+    // automatically joinable.
+    void Notify() override;
+    void Wait() override;
+
+private:
+    CallId _call_id;
+};
+
+enum RedisCommandHandlerState {
     REDIS_CMD_HANDLED = 0,
     REDIS_CMD_CONTINUE = 1,
-    REDIS_CMD_BATCHED = 2,
+    REDIS_CMD_WAIT = 2,
+};
+
+// The result return by RedisCommandHandler.
+// if the return state is REDIS_CMD_HANDLED or REDIS_CMD_CONTINUE, waitobj should be null.
+// if the return state is REDIS_CMD_WAIT, waitobj should be set correspondingly and brpc
+// would would own the waitobj.
+struct RedisCommandHandlerResult {
+    RedisCommandHandlerResult()
+        : state(REDIS_CMD_HANDLED)
+        , waitobj(NULL) {}
+
+    RedisCommandHandlerState state;
+    Waitable* waitobj;
 };
 
 // The Command handler for a redis request. User should impletement Run().
@@ -256,20 +312,51 @@ public:
     // corresponds to args[0]=="set", args[1]=="somekey" and args[2]=="somevalue".
     // `output', which should be filled by user, is the content that sent to client side.
     // Read brpc/src/redis_reply.h for more usage.
-    // `flush_batched' indicates whether the user should flush all the results of
-    // batched commands. If user want to do some batch processing, user should buffer
-    // the commands and return REDIS_CMD_BATCHED. Once `flush_batched' is true,
-    // run all the commands, set `output' to be an array in which every element is the
-    // result of batched commands and return REDIS_CMD_HANDLED.
     //
-    // The return value should be REDIS_CMD_HANDLED for normal cases. If you want
-    // to implement transaction, return REDIS_CMD_CONTINUE once server receives
-    // an start marker and brpc will call MultiTransactionHandler() to new a transaction
-    // handler that all the following commands are sent to this tranction handler until
-    // it returns REDIS_CMD_HANDLED. Read the comment below.
+    // `last_of_batch' indicates whether it is the last message of current batch. If
+    // user want to do some asynchronous processing during the batch, user should start
+    // the execution and return REDIS_CMD_WAIT along with a brpc::Waitable object.
+    // The framework provides two options: ConditionWaitable and RPCWaitable(read more
+    // at the definition of these classes).
+    // Usage example:
+    //
+    // RedisCommandHandlerResult Run(args, output, last_of_batch) {
+    //      if (!last_of_batch) {
+    //          ...
+    //          RedisCommandHandlerResult result;
+    //          result.state = REDIS_CMD_WAIT;
+    //          brpc::ConditionWaitable* waitable = new brpc::ConditionWaitable;
+    //          // start execution...
+    //          // Remember to call waitable->Notify() when the execution is done.
+    //          result.waitobj = waitable;
+    //          return result;
+    //      }
+    //      ...
+    // }
+    // or 
+    // RedisCommandHandlerResult Run(args, output, last_of_batch) {
+    //      if (!last_of_batch) {
+    //          ...
+    //          RedisCommandHandlerResult result;
+    //          result.state = REDIS_CMD_WAIT;
+    //          // Set output in done->Run().
+    //          Service_Stub.Method(&cntl, &request, &response, done);
+    //          // You don't need to call waitobj->Notify() in this situation since
+    //          // call_id is automatically joinable.
+    //          result.waitobj = new brpc::RPCWaitable(cntl.call_id());
+    //          return result;
+    //      }
+    //      ...
+    // }
+    //
+    // The return value should be { REDIS_CMD_HANDLED, NULL } for normal cases. If you
+    // want to implement transaction, return { REDIS_CMD_CONTINUE, NULL } once server
+    // receives an start marker and brpc will call MultiTransactionHandler() to new a
+    // transaction handler that all the following commands are sent to this tranction
+    // handler until it returns { REDIS_CMD_HANDLED, NULL}. Read the comment below.
     virtual RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
                                           brpc::RedisReply* output,
-                                          bool flush_batched) = 0;
+                                          bool last_of_batch) = 0;
 
     // The Run() returns CONTINUE for "multi", which makes brpc call this method to
     // create a transaction_handler to process following commands until transaction_handler
