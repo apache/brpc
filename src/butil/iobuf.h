@@ -560,7 +560,7 @@ private:
 //     some_pb_message.SerializeToZeroCopyStream(&wrapper);
 //
 // NOTE: Blocks are by default shared among all the ZeroCopyOutputStream in one
-// thread. If there are many manuplated streams at one time, there may be many
+// thread. If there are many manipulated streams at one time, there may be many
 // fragments. You can create a ZeroCopyOutputStream which has its own block by 
 // passing a positive `block_size' argument to avoid this problem.
 class IOBufAsZeroCopyOutputStream
