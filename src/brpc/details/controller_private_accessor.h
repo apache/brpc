@@ -132,9 +132,7 @@ public:
         _cntl->_auth_flags = auth_flags;
     }
 
-    void clear_auth_flags() {
-        _cntl->_auth_flags = 0;
-    }
+    void clear_auth_flags() { _cntl->_auth_flags = 0; }
 
     std::string& protocol_param() { return _cntl->protocol_param(); }
     const std::string& protocol_param() const { return _cntl->protocol_param(); }

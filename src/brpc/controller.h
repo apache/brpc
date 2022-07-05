@@ -22,7 +22,6 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
-#include <cstdint>
 #include <gflags/gflags.h>                     // Users often need gflags
 #include <string>
 #include "butil/intrusive_ptr.hpp"             // butil::intrusive_ptr

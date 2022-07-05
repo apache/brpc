@@ -322,7 +322,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     }
     void set_pipelined_count_and_user_message(
         uint32_t pc, SocketMessage* msg, uint32_t auth_flags) {
-        if(auth_flags) {
+        if (auth_flags) {
             pc |= (auth_flags & 0x03) << 14;
         }
         _pc_and_udmsg = ((uint64_t)pc << 48) | (uint64_t)(uintptr_t)msg;

@@ -38,10 +38,10 @@ public:
 
     uint32_t GetAuthFlags() const {
         uint32_t n = 0;
-        if(!passwd_.empty()) {
+        if (!passwd_.empty()) {
             ++n;
         }
-        if(db_ >= 0) {
+        if (db_ >= 0) {
             ++n;
         }
         return n;
@@ -49,6 +49,7 @@ public:
 
 private:
     const std::string passwd_;
+
     int db_;
 };
 

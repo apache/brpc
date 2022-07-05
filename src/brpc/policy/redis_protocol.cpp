@@ -224,13 +224,14 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             }
 
             if (pi.auth_flags) {
-                for(int i = 0; i < (int)pi.auth_flags; ++i) {
+                for (int i = 0; i < (int)pi.auth_flags; ++i) {
                     if (i >= msg->response.reply_size() ||
-                        !(msg->response.reply(i).type() == brpc::REDIS_REPLY_STATUS &&
+                        !(msg->response.reply(i).type() ==
+                              brpc::REDIS_REPLY_STATUS &&
                           msg->response.reply(i).data().compare("OK") == 0)) {
                         LOG(ERROR) << "Redis Auth failed: " << msg->response;
                         return MakeParseError(PARSE_ERROR_NO_RESOURCE,
-                                          "Fail to authenticate with Redis");
+                            "Fail to authenticate with Redis");
                     }
                 }
 
@@ -336,11 +337,13 @@ void PackRedisRequest(butil::IOBuf* buf,
             return cntl->SetFailed(EREQUEST, "Fail to generate credential");
         }
         buf->append(auth_str);
-        const RedisAuthenticator * redis_auth = dynamic_cast<const RedisAuthenticator *>(auth);
+        const RedisAuthenticator* redis_auth =
+            dynamic_cast<const RedisAuthenticator*>(auth);
         if (redis_auth == NULL) {
             return cntl->SetFailed(EREQUEST, "Fail to generate credential");
         }
-        ControllerPrivateAccessor(cntl).set_auth_flags(redis_auth->GetAuthFlags());
+        ControllerPrivateAccessor(cntl).set_auth_flags(
+            redis_auth->GetAuthFlags());
     } else {
         ControllerPrivateAccessor(cntl).clear_auth_flags();
     }
