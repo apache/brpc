@@ -28,6 +28,8 @@ https://gitbox.apache.org/setup/
 
 * https://infra.apache.org/new-committers-guide.html
 
+* https://juejin.cn/post/6844903788982042632
+
 ### Suggested steps from secretary@apache.org
 Please do these things:
 
