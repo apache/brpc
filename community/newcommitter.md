@@ -6,12 +6,12 @@
 ### 成为committer的路程
 1. 提名者在private@brpc中发起讨论和投票，投票通过即OK （最少3+1， +1 > -1)，投票邮件模版https://community.apache.org/newcommitter.html#committer-vote-template
 2. 提名者发送close vote邮件给private@brpc和private@incubator ,标题可以为subject [RESULT][VOTE]，close邮件模版https://community.apache.org/newcommitter.html#close-vote
-4. 被提名者填写[CLA](https://www.apache.org/licenses/contributor-agreements.html), 个人贡献者需要下载[ICLA](https://www.apache.org/licenses/icla.pdf)填写个人信息并签名，发送电子版给 secretary@apache.org。个人信息填写项（除签名外）可以使用 PDF 阅读器或浏览器填写，填写后保存进行签名。签名方式支持：
+3. 被提名者填写[CLA](https://www.apache.org/licenses/contributor-agreements.html), 个人贡献者需要下载[ICLA](https://www.apache.org/licenses/icla.pdf)填写个人信息并签名，发送电子版给 secretary@apache.org。个人信息填写项（除签名外）可以使用 PDF 阅读器或浏览器填写，填写后保存进行签名。签名方式支持：
    - 打印 pdf 文件，手写签名后扫描为电子版；
    - 使用支持手写的设备进行电子签名；
-   - 使用 gpg 进行电子签名，即对填写好个人基本信息的 pdf 文件进行操作（需要提前生成与登记邮箱匹配的公钥/密钥对）：`gpg --armor --detach-sign icla.pdf`；
+   - 使用 `gpg` 进行电子签名，即对填写好个人基本信息的 pdf 文件进行操作（需要提前生成与登记邮箱匹配的公钥/密钥对）：`gpg --armor --detach-sign icla.pdf`；
    - 使用 `DocuSign` 进行签名；
-6. 提名者发送announce邮件到dev@brpc.apache.org 
+4. 提名者发送announce邮件到dev@brpc.apache.org 
 
 
 ### 如何赋予committer在github上的权限
