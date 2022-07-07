@@ -4,10 +4,10 @@
 
 
 ### 成为committer的路程
-1. 在private@brpc中发起讨论和投票，投票通过即OK
-2. 发送close vote邮件给private@brpc和private@incubator ,标题可以为subject [RESULT][VOTE]
-3. 让他填写CLA并发给secretary@apache.org
-4. 发送announce邮件到dev@brpc
+1. 提名者在private@brpc中发起讨论和投票，投票通过即OK （最少3+1， +1 > -1)
+2. 提名者发送close vote邮件给private@brpc和private@incubator ,标题可以为subject [RESULT][VOTE]
+3. 被提名者填写CLA并发给secretary@apache.org
+4. 提名者发送announce邮件到dev@brpc
 
 
 ### 如何赋予committer在github上的权限
