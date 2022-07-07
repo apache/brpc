@@ -6,8 +6,8 @@
 ### 成为committer的路程
 1. 提名者在private@brpc中发起讨论和投票，投票通过即OK （最少3+1， +1 > -1)，投票邮件模版https://community.apache.org/newcommitter.html#committer-vote-template
 2. 提名者发送close vote邮件给private@brpc和private@incubator ,标题可以为subject [RESULT][VOTE]，close邮件模版https://community.apache.org/newcommitter.html#close-vote
-4. 被提名者填写CLA并发给secretary@apache.org
-5. 提名者发送announce邮件到dev@brpc
+4. 被提名者填写[CLA](https://www.apache.org/licenses/contributor-agreements.html#clas)（下载打印[ICLA](https://www.apache.org/licenses/icla.pdf)文件填写后扫描）并发给secretary@apache.org
+5. 提名者发送announce邮件到dev@brpc.apache.org 
 
 
 ### 如何赋予committer在github上的权限
