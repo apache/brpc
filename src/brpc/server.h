@@ -206,7 +206,11 @@ struct ServerOptions {
     bool has_ssl_options() const { return _ssl_options != NULL; }
     const ServerSSLOptions& ssl_options() const { return *_ssl_options.get(); }
     ServerSSLOptions* mutable_ssl_options();
-    
+
+    // Whether the server uses rdma or not
+    // Default: false
+    bool use_rdma;
+
     // [CAUTION] This option is for implementing specialized http proxies,
     // most users don't need it. Don't change this option unless you fully
     // understand the description below.

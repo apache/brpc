@@ -21,6 +21,7 @@
 #include "butil/fd_guard.h"                 // fd_guard 
 #include "butil/fd_utility.h"               // make_close_on_exec
 #include "butil/time.h"                     // gettimeofday_us
+#include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/acceptor.h"
 
 
@@ -37,7 +38,8 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _listened_fd(-1)
     , _acception_id(0)
     , _empty_cond(&_map_mutex)
-    , _ssl_ctx(NULL) {
+    , _ssl_ctx(NULL) 
+    , _use_rdma(false) {
 }
 
 Acceptor::~Acceptor() {
@@ -272,8 +274,17 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.fd = in_fd;
         butil::sockaddr2endpoint(&in_addr, in_len, &options.remote_side);
         options.user = acception->user();
-        options.on_edge_triggered_events = InputMessenger::OnNewMessages;
         options.initial_ssl_ctx = am->_ssl_ctx;
+#if BRPC_WITH_RDMA
+        if (am->_use_rdma) {
+            options.on_edge_triggered_events = rdma::RdmaEndpoint::OnNewDataFromTcp;
+        } else {
+#else
+        {
+#endif
+            options.on_edge_triggered_events = InputMessenger::OnNewMessages;
+        }
+        options.use_rdma = am->_use_rdma;
         if (Socket::Create(options, &socket_id) != 0) {
             LOG(ERROR) << "Fail to create Socket";
             continue;

@@ -75,6 +75,7 @@
 #include "brpc/rtmp.h"
 #include "brpc/builtin/common.h"               // GetProgramName
 #include "brpc/details/tcmalloc_extension.h"
+#include "brpc/rdma/rdma_helper.h"
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -137,6 +138,7 @@ ServerOptions::ServerOptions()
     , bthread_init_count(0)
     , internal_port(-1)
     , has_builtin_services(true)
+    , use_rdma(false)
     , http_master_service(NULL)
     , health_reporter(NULL)
     , rtmp_service(NULL)
@@ -701,6 +703,28 @@ static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
     return true;
 }
 
+#if BRPC_WITH_RDMA
+static bool OptionsAvailableOverRdma(const ServerOptions* opt) {
+    if (opt->rtmp_service) {
+        LOG(WARNING) << "RTMP is not supported by RDMA";
+        return false;
+    }
+    if (opt->has_ssl_options()) {
+        LOG(WARNING) << "SSL is not supported by RDMA";
+        return false;
+    }
+    if (opt->nshead_service) {
+        LOG(WARNING) << "NSHEAD is not supported by RDMA";
+        return false;
+    }
+    if (opt->mongo_service_adaptor) {
+        LOG(WARNING) << "MONGO is not supported by RDMA";
+        return false;
+    }
+    return true;
+}
+#endif
+
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 
 int Server::StartInternal(const butil::EndPoint& endpoint,
@@ -740,6 +764,15 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         LOG(ERROR) << "Invalid h2_settings";
         return -1;
     }
+
+#if BRPC_WITH_RDMA
+    if (_options.use_rdma) {
+        if (!OptionsAvailableOverRdma(&_options)) {
+            return -1;
+        }
+        rdma::GlobalRdmaInitializeOrDie();
+    }
+#endif
 
     if (_options.http_master_service) {
         // Check requirements for http_master_service:
@@ -981,6 +1014,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 LOG(ERROR) << "Fail to build acceptor";
                 return -1;
             }
+            _am->_use_rdma = _options.use_rdma;
         }
         // Set `_status' to RUNNING before accepting connections
         // to prevent requests being rejected as ELOGOFF

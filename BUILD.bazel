@@ -38,6 +38,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_rdma",
+    define_values = {"with_rdma": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "unittest",
     define_values = {"unittest": "true"},
 )
@@ -73,6 +79,9 @@ COPTS = [
 }) + select({
     ":with_thrift": ["-DENABLE_THRIFT_FRAMED_PROTOCOL=1"],
     "//conditions:default": [""],
+}) + select({
+    ":with_rdma": ["-DBRPC_WITH_RDMA=1"],
+    "//conditions:default": [""],
 })
 
 LINKOPTS = [
@@ -104,6 +113,11 @@ LINKOPTS = [
         "-lthriftnb",
         "-levent",
         "-lthrift"],
+    "//conditions:default": [],
+}) + select({
+    ":with_rdma": [
+        "-libverbs",
+    ],
     "//conditions:default": [],
 })
 

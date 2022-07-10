@@ -102,6 +102,10 @@ struct ChannelOptions {
     const ChannelSSLOptions& ssl_options() const { return *_ssl_options.get(); }
     ChannelSSLOptions* mutable_ssl_options();
 
+    // Let this channel use rdma rather than tcp.
+    // Default: false
+    bool use_rdma;
+
     // Turn on authentication for this channel if `auth' is not NULL.
     // Note `auth' will not be deleted by channel and must remain valid when
     // the channel is being used.

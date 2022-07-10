@@ -1,0 +1,16 @@
+syntax="proto2";
+option cc_generic_services = true;
+
+package test;
+
+message PerfTestRequest {
+      required bool echo_attachment = 1;
+};
+
+message PerfTestResponse {
+      required string cpu_usage = 1;
+};
+
+service PerfTestService {
+      rpc Test(PerfTestRequest) returns (PerfTestResponse);
+};

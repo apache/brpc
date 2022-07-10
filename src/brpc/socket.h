@@ -48,6 +48,10 @@ class H2GlobalStreamCreator;
 namespace schan {
 class ChannelBalancer;
 }
+namespace rdma {
+class RdmaEndpoint;
+class RdmaConnect;
+}
 
 class Socket;
 class AuthContext;
@@ -188,6 +192,7 @@ struct SocketOptions {
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
+    bool use_rdma;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
     std::shared_ptr<AppConnect> app_connect;
@@ -208,6 +213,8 @@ friend class Controller;
 friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
+friend class rdma::RdmaEndpoint;
+friend class rdma::RdmaConnect;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
@@ -531,6 +538,13 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
 
+    // The on/off state of RDMA
+    enum RdmaState {
+        RDMA_ON,
+        RDMA_OFF,
+        RDMA_UNKNOWN
+    };
+
     int ConductError(bthread_id_t);
     int StartWrite(WriteRequest*, const WriteOptions&);
 
@@ -605,6 +619,9 @@ friend void DereferenceSocket(Socket*);
     WriteRequest* ReleaseWriteRequestsExceptLast(
         WriteRequest*, int error_code, const std::string& error_text);
     void ReleaseAllFailedWriteRequests(WriteRequest*);
+
+    // Try to wake socket just like epollout has arrived
+    void WakeAsEpollOut();
 
     // Generic callback for Socket to handle epollout event
     static int HandleEpollOut(SocketId socket_id);
@@ -771,6 +788,11 @@ private:
     SSLState _ssl_state;
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
+
+    // The RdmaEndpoint
+    rdma::RdmaEndpoint* _rdma_ep;
+    // Should use RDMA or not
+    RdmaState _rdma_state;
 
     // Pass from controller, for progressive reading.
     ConnectionType _connection_type_for_progressive_read;
