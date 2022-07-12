@@ -58,4 +58,5 @@ Doing these things will make everyone's job easier.
 3. 在private@brpc中发邮件，结束投票，并通知private@incubator.apache.org
 4. 在private@brpc中和dev中announce new PPMC
 5. 设定他的权限，通过访问https://whimsy.apache.org/roster/ppmc/brpc
+6. 帮他订阅private邮件组，参见https://whimsy.apache.org/committers/moderationhelper.cgi
 
