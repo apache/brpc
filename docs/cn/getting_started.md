@@ -74,6 +74,11 @@ $ sh run_tests.sh
 ```
 
 ### 使用cmake编译brpc
+
+```shell
+mkdir build && cd build && cmake .. && cmake --build . -j6
+```
+对于 cmake 3.13+ 也可以使用如下命令进行编译:
 ```shell
 cmake -B build && cmake --build build -j6
 ```
