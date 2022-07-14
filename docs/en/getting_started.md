@@ -75,6 +75,10 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 ```shell
+mkdir build && cd build && cmake .. && cmake --build . -j6
+```
+With CMake 3.13+, we can also use the following commands to build the project:
+```shell
 cmake -B build && cmake --build build -j6
 ```
 To help VSCode or Emacs(LSP) to understand code correctly, add `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` to generate `compile_commands.json`
