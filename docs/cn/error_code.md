@@ -38,7 +38,7 @@ brpc中常见错误的打印内容列表如下：
 | ERPCTIMEDOUT   | 1008 | 否    | RPC超时                                    | "reached timeout=%dms"                   |
 | EFAILEDSOCKET  | 1009 | 是    | RPC进行过程中TCP连接出现问题                        | "The socket was SetFailed"               |
 | EHTTP          | 1010 | 否    | 非2xx状态码的HTTP访问结果均认为失败并被设置为这个错误码。默认不重试，可通过RetryPolicy定制 | Bad http call                            |
-| EOVERCROWDED   | 1011 | 是    | 连接上有过多的未发送数据，常由同时发起了过多的异步访问导致。可通过参数-socket_max_unwritten_bytes控制，默认8MB。 | The server is overcrowded                |
+| EOVERCROWDED   | 1011 | 是    | 连接上有过多的未发送数据，常由同时发起了过多的异步访问导致。可通过参数-socket_max_unwritten_bytes控制，默认64MB。 | The server is overcrowded                |
 | EINTERNAL      | 2001 | 否    | Server端Controller.SetFailed没有指定错误码时使用的默认错误码。 | "Internal Server Error"                  |
 | ERESPONSE      | 2002 | 否    | response解析错误，client端和server端都可能设置        | 形式广泛"Missing required fields in response: ...""Fail to parse response message, ""Bad response" |
 | ELOGOFF        | 2003 | 是    | Server已经被Stop了                           | "Server is going to quit"                |
