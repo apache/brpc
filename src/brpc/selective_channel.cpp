@@ -189,6 +189,7 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     SocketOptions options;
     options.user = sub_chan;
     options.health_check_interval_s = FLAGS_channel_check_interval;
+    options.is_in_socket_map = true;
             
     if (Socket::Create(options, &sock_id) != 0) {
         delete sub_chan;
@@ -223,6 +224,7 @@ void ChannelBalancer::RemoveAndDestroyChannel(SelectiveChannel::ChannelHandle ha
             CHECK_EQ(1UL, _chan_map.erase(sub->chan));
         }
         {
+            ptr->SetRemovedFromSocketMap(); // set removed status
             SocketUniquePtr ptr2(ptr.get()); // Dereference.
         }
         if (rc == 0) {

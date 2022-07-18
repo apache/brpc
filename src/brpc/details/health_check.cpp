@@ -180,10 +180,10 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     // is not addressable, the reference count will not increase 
     // again. This solution is not perfect because the `expected_nref'
     // is implementation specific. In our case, one reference comes 
-    // from SocketMapInsert(socket_map.cpp), one reference is here. 
-    // Although WaitAndReset() could hang when someone is addressing
-    // the failed Socket forever (also indicating bug), this is not an 
-    // issue in current code. 
+    // from SocketMapInsert(socket_map.cpp) or ChannelBalancer::AddChannel
+    // (selective_channel.cpp), one reference is here. Although WaitAndReset()
+    // could hang when someone is addressing the failed Socket forever
+    // (also indicating bug), this is not an issue in current code.
     if (_first_time) {  // Only check at first time.
         _first_time = false;
         if (ptr->WaitAndReset(2/*note*/) != 0) {

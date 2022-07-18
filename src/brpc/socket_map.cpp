@@ -58,6 +58,7 @@ public:
     int CreateSocket(const SocketOptions& opt, SocketId* id) {
         SocketOptions sock_opt = opt;
         sock_opt.health_check_interval_s = FLAGS_health_check_interval;
+        sock_opt.is_in_socket_map = true;
         return get_client_side_messenger()->Create(sock_opt, id);
     }
 };
@@ -301,7 +302,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
                 _this_map_bvar = new bvar::PassiveStatus<std::string>(
                     butil::StringPiece(namebuf, len), PrintSocketMap, this);
             }
-            s->DisableHealthCheck(); // disable health check
+            s->SetRemovedFromSocketMap(); // set removed status
             s->ReleaseAdditionalReference(); // release extra ref
             SocketUniquePtr ptr(s);  // Dereference
         }
