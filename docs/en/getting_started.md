@@ -293,7 +293,7 @@ Same with [here](#compile-brpc-with-cmake)
 
 # Supported deps
 
-## GCC: 4.8-7.1
+## GCC: 4.8-11.2
 
 c++11 is turned on by default to remove dependencies on boost (atomic).
 
