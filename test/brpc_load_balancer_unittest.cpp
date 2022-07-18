@@ -97,16 +97,14 @@ bool AddN(Foo& f, int n) {
 }
 
 TEST_F(LoadBalancerTest, doubly_buffered_data) {
-    const size_t old_TLS_ctor = TLS_ctor;
-    const size_t old_TLS_dtor = TLS_dtor;
+    // test doubly_buffered_data TLS limits
     {
-        butil::DoublyBufferedData<Foo, TLS> d2;
-        butil::DoublyBufferedData<Foo, TLS>::ScopedPtr ptr;
-        d2.Read(&ptr);
-        ASSERT_EQ(old_TLS_ctor + 1, TLS_ctor);
+        std::cout << "current PTHREAD_KEYS_MAX: " << PTHREAD_KEYS_MAX << std::endl;
+        butil::DoublyBufferedData<Foo> data[PTHREAD_KEYS_MAX + 1];
+        butil::DoublyBufferedData<Foo>::ScopedPtr ptr;
+        ASSERT_EQ(0, data[PTHREAD_KEYS_MAX].Read(&ptr));
+        ASSERT_EQ(0, ptr->x);
     }
-    ASSERT_EQ(old_TLS_ctor + 1, TLS_ctor);
-    ASSERT_EQ(old_TLS_dtor + 1, TLS_dtor);
 
     butil::DoublyBufferedData<Foo> d;
     {
