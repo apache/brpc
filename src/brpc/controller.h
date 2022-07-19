@@ -28,6 +28,7 @@
 #include "bthread/errno.h"                     // Redefine errno
 #include "butil/endpoint.h"                    // butil::EndPoint
 #include "butil/iobuf.h"                       // butil::IOBuf
+#include "butil/memory_arena.h"
 #include "bthread/types.h"                     // bthread_id_t
 #include "brpc/options.pb.h"                   // CompressType
 #include "brpc/errno.pb.h"                     // error code
@@ -554,6 +555,17 @@ public:
     // -1 means no deadline.
     int64_t deadline_us() const { return _deadline_us; }
 
+    std::shared_ptr<butil::MemoryArenaDefault> get_memory_arena() {
+        if (!_arena) {
+            _arena.reset(new butil::MemoryArenaDefault);
+        }
+        return _arena;
+    }
+    void share_memory_arena(Controller *cntl) {
+        CHECK(cntl->_arena);
+        _arena = cntl->_arena;
+    }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -807,6 +819,8 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
+
+    std::shared_ptr<butil::MemoryArenaDefault> _arena;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be
