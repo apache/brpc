@@ -494,11 +494,11 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
     options.remote_side = point;
     options.user = new CheckRecycle;
     options.health_check_interval_s = 1/*s*/;
-    options.is_in_socket_map = true;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
     {
         brpc::SocketUniquePtr s;
         ASSERT_EQ(0, brpc::Socket::Address(id, &s));
+        s->SetInsertedIntoSocketMap();
         global_sock = s.get();
         ASSERT_TRUE(s.get());
         ASSERT_EQ(-1, s->fd());
@@ -643,11 +643,11 @@ TEST_F(SocketTest, health_check) {
     options.remote_side = point;
     options.user = new CheckRecycle;
     options.health_check_interval_s = kCheckInteval/*s*/;
-    options.is_in_socket_map = true;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
     brpc::SocketUniquePtr s;
     ASSERT_EQ(0, brpc::Socket::Address(id, &s));
-    
+
+    s->SetInsertedIntoSocketMap();
     global_sock = s.get();
     ASSERT_TRUE(s.get());
     ASSERT_EQ(-1, s->fd());

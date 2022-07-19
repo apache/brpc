@@ -187,8 +187,6 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
-    // When socket is inserted into socket map, it needs to be set to true.
-    bool is_in_socket_map;
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
@@ -289,8 +287,12 @@ public:
     int health_check_interval() const { return _health_check_interval_s; }
 
     // Only for SocketMap and ChannelBalancer.
-    // When socket is removed from SocketMap, set _is_in_socket_map to false.
+    // When socket is removed from socket map, set _is_in_socket_map to false.
     void SetRemovedFromSocketMap() { _is_in_socket_map = false; }
+    // Only for SocketMap and ChannelBalancer.
+    // When socket is inserted into socket map, set _is_in_socket_map to true.
+    void SetInsertedIntoSocketMap() { _is_in_socket_map = true; }
+    bool IsInSocketMap() const { return _is_in_socket_map; }
 
     // The unique identifier.
     SocketId id() const { return _this_id; }

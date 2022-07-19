@@ -615,7 +615,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->reset_parsing_context(options.initial_parsing_context);
     m->_correlation_id = 0;
     m->_health_check_interval_s = options.health_check_interval_s;
-    m->_is_in_socket_map = options.is_in_socket_map;
+    m->_is_in_socket_map = false;
     m->_ninprocess.store(1, butil::memory_order_relaxed);
     m->_auth_flag_error.store(0, butil::memory_order_relaxed);
     const int rc2 = bthread_id_create(&m->_auth_id, NULL, NULL);

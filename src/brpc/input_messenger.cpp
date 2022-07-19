@@ -439,7 +439,6 @@ int InputMessenger::Create(const butil::EndPoint& remote_side,
     options.user = this;
     options.on_edge_triggered_events = OnNewMessages;
     options.health_check_interval_s = health_check_interval_s;
-    options.is_in_socket_map = true;
     return Socket::Create(options, id);
 }
 

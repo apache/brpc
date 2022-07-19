@@ -58,7 +58,6 @@ public:
     int CreateSocket(const SocketOptions& opt, SocketId* id) {
         SocketOptions sock_opt = opt;
         sock_opt.health_check_interval_s = FLAGS_health_check_interval;
-        sock_opt.is_in_socket_map = true;
         return get_client_side_messenger()->Create(sock_opt, id);
     }
 };
@@ -245,6 +244,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
         LOG(FATAL) << "Fail to address SocketId=" << tmp_id;
         return -1;
     }
+    ptr->SetInsertedIntoSocketMap(); // set inserted status
     SingleConnection new_sc = { 1, ptr.release(), 0 };
     _map[key] = new_sc;
     *id = tmp_id;
