@@ -66,13 +66,14 @@ namespace rdma {
 // must call initialization of the block_pool. Otherwise the behavior is
 // undefined.
 
+typedef uint32_t (*RegisterCallback)(void*, size_t);
 
 // Initialize the block pool
 // The argument is a callback called when the pool is enlarged with a new
 // region. It should be the memory registration in brpc. However,
 // in block_pool, we just abstract it into a function to get region id.
 // Return the first region's address, NULL if failed and errno is set.
-void* InitBlockPool(uint32_t(*)(void*, size_t));
+void* InitBlockPool(RegisterCallback cb);
 
 // Allocate a buf with length at least @a size (require: size>0)
 // Return the address allocated, NULL if failed and errno is set.

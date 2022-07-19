@@ -163,7 +163,7 @@ private:
     int ReadFromFd(void* data, size_t len);
 
 
-    // Wrute at most len bytes from data to fd in _socket
+    // Write at most len bytes from data to fd in _socket
     // wait for _epollout_butex if encounter EAGAIN
     // return -1 if encounter other errno
     int WriteToFd(void* data, size_t len);

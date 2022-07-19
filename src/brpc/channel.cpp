@@ -170,14 +170,17 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
         return -1;
     }
 
-#if BRPC_WITH_RDMA
     if (_options.use_rdma) {
+#if BRPC_WITH_RDMA
         if (!OptionsAvailableForRdma(&_options)) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
-    }
+#else
+        LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
+        return -1;
 #endif
+    }
 
     _serialize_request = protocol->serialize_request;
     _pack_request = protocol->pack_request;

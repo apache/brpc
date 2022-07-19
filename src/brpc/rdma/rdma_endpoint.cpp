@@ -98,7 +98,7 @@ static butil::Mutex* g_rdma_resource_mutex = NULL;
 static RdmaResource* g_rdma_resource_list = NULL;
 
 struct HelloMessage {
-    void Serialize(void* data);
+    void Serialize(void* data) const;
     void Deserialize(void* data);
 
     uint16_t msg_len;
@@ -112,10 +112,8 @@ struct HelloMessage {
     uint32_t qp_num;
 };
 
-void HelloMessage::Serialize(void* data) {
-    // Note serialization does include magic str
-    memcpy(data, MAGIC_STR, 4);
-    uint16_t* current_pos = (uint16_t*)((char*)data + 4);
+void HelloMessage::Serialize(void* data) const {
+    uint16_t* current_pos = (uint16_t*)data;
     *(current_pos++) = butil::HostToNet16(msg_len);
     *(current_pos++) = butil::HostToNet16(hello_ver);
     *(current_pos++) = butil::HostToNet16(impl_ver);
@@ -129,7 +127,6 @@ void HelloMessage::Serialize(void* data) {
 }
 
 void HelloMessage::Deserialize(void* data) {
-    // Note deserialization does not include magic str
     uint16_t* current_pos = (uint16_t*)data;
     msg_len = butil::NetToHost16(*current_pos++);
     hello_ver = butil::NetToHost16(*current_pos++);
@@ -326,7 +323,7 @@ void RdmaEndpoint::OnNewDataFromTcp(Socket* m) {
     }
 }
 
-bool HelloNegotiationValid(HelloMessage msg) {
+bool HelloNegotiationValid(HelloMessage& msg) {
     if (msg.hello_ver == g_rdma_hello_version &&
         msg.impl_ver == g_rdma_impl_version &&
         msg.block_size >= MIN_BLOCK_SIZE &&
@@ -446,7 +443,8 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         // Only happens in UT
         local_msg.qp_num = 0;
     }
-    local_msg.Serialize(data);
+    memcpy(data, MAGIC_STR, 4);
+    local_msg.Serialize((char*)data + 4);
     if (ep->WriteToFd(data, g_rdma_hello_msg_len) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to send hello message to server:" << s->description();
@@ -663,7 +661,8 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
             local_msg.qp_num = 0;
         }
     }
-    local_msg.Serialize(data);
+    memcpy(data, MAGIC_STR, 4);
+    local_msg.Serialize((char*)data + 4);
     if (ep->WriteToFd(data, g_rdma_hello_msg_len) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to send Hello Message to client:" << s->description();

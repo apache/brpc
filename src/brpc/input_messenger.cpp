@@ -59,6 +59,7 @@ DECLARE_uint64(max_body_size);
 const size_t MSG_SIZE_WINDOW = 10;  // Take last so many message into stat.
 const size_t MIN_ONCE_READ = 4096;
 const size_t MAX_ONCE_READ = 524288;
+const size_t PROTO_DUMMY_LEN = 4;
 
 ParseResult InputMessenger::CutInputMessage(
         Socket* m, size_t* index, bool read_eof) {
@@ -88,13 +89,14 @@ ParseResult InputMessenger::CutInputMessage(
                 return result;
             } else {
                 if (m->_read_buf.size() >= 4) {
-                char data[4];
-                m->_read_buf.copy_to_cstr(data, 4);
-                if (strncmp(data, "RDMA", 4) == 0 && m->_rdma_state == Socket::RDMA_OFF) {
-                    // To avoid timeout when client using RDMA accesses server using TCP
-                    return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+                    char data[PROTO_DUMMY_LEN];
+                    m->_read_buf.copy_to_cstr(data, PROTO_DUMMY_LEN);
+                    if (strncmp(data, "RDMA", PROTO_DUMMY_LEN) == 0 &&
+                        m->_rdma_state == Socket::RDMA_OFF) {
+                        // To avoid timeout when client uses RDMA but server uses TCP
+                        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+                    }
                 }
-            }
             }
 
             if (m->CreatedByConnect()) {

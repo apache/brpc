@@ -631,6 +631,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_ssl_session = NULL;
     m->_ssl_ctx = options.initial_ssl_ctx;
 #if BRPC_WITH_RDMA
+    CHECK(m->_rdma_ep == NULL);
     if (options.use_rdma) {
         m->_rdma_ep = new (std::nothrow)rdma::RdmaEndpoint(m);
         if (!m->_rdma_ep) {
@@ -642,8 +643,6 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         }
         m->_rdma_state = RDMA_UNKNOWN;
     } else {
-        delete m->_rdma_ep;
-        m->_rdma_ep = NULL;
         m->_rdma_state = RDMA_OFF;
     }
 #endif
@@ -2508,6 +2507,7 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
         opt.initial_ssl_ctx = _ssl_ctx;
         opt.keytable_pool = _keytable_pool;
         opt.app_connect = _app_connect;
+        opt.use_rdma =  (_rdma_ep) ? true : false;
         socket_pool = new SocketPool(opt);
         SocketPool* expected = NULL;
         if (!main_sp->socket_pool.compare_exchange_strong(
@@ -2604,6 +2604,7 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     opt.initial_ssl_ctx = _ssl_ctx;
     opt.keytable_pool = _keytable_pool;
     opt.app_connect = _app_connect;
+    opt.use_rdma =  (_rdma_ep) ? true : false;
     if (get_client_side_messenger()->Create(opt, &id) != 0 ||
         Socket::Address(id, short_socket) != 0) {
         return -1;

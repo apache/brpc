@@ -40,10 +40,7 @@ DEFINE_int32(rdma_memory_pool_max_regions, 4, "Max number of regions");
 DEFINE_int32(rdma_memory_pool_buckets, 4, "Number of buckets to reduce race");
 DEFINE_int32(rdma_memory_pool_tls_cache_num, 128, "Number of cached block in tls");
 
-// This callback is used when extending a new region
-// Generally, it is a memory region register call
-typedef uint32_t (*Callback)(void*, size_t);
-static Callback g_cb = NULL;
+static RegisterCallback g_cb = NULL;
 
 // Number of bytes in 1MB
 static const size_t BYTES_IN_MB = 1048576;
@@ -189,7 +186,7 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
     return region_base;
 }
 
-void* InitBlockPool(Callback cb) {
+void* InitBlockPool(RegisterCallback cb) {
     if (!cb) {
         errno = EINVAL;
         return NULL;

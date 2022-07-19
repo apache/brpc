@@ -54,7 +54,7 @@ DEFINE_bool(rdma_test_enable, false, "Enable tests requring rdma runtime.");
 namespace rdma {
 
 struct HelloMessage {
-    void Serialize(void* data);
+    void Serialize(void* data) const;
     void Deserialize(void* data);
 
     uint16_t msg_len;
@@ -379,7 +379,8 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     msg.sq_size = 10;
     msg.rq_size = 16;
     msg.block_size = 8192;
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
     ASSERT_EQ(0, connect(sockfd1, (sockaddr*)&addr, sizeof(sockaddr)));
@@ -398,7 +399,8 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     msg.sq_size = 16;
     msg.rq_size = 10;
     msg.block_size = 8192;
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd2 >= 0);
     ASSERT_EQ(0, connect(sockfd2, (sockaddr*)&addr, sizeof(sockaddr)));
@@ -417,7 +419,8 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     msg.sq_size = 16;
     msg.rq_size = 16;
     msg.block_size = 1000;
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
     butil::fd_guard sockfd3(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd3 >= 0);
     ASSERT_EQ(0, connect(sockfd3, (sockaddr*)&addr, sizeof(sockaddr)));
@@ -453,7 +456,8 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
     msg.block_size = 8192;
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -489,7 +493,8 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
     msg.block_size = 8192;
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -529,7 +534,8 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     msg.block_size = 8192;
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -586,7 +592,8 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     msg.block_size = 8192;
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -996,7 +1003,8 @@ TEST_F(RdmaTest, server_hello_invalid_sq_rq_size) {
     msg.block_size = 8192;
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
     ASSERT_EQ(38, write(acc_fd, data, 38));
 
     usleep(100000);
@@ -1046,7 +1054,8 @@ TEST_F(RdmaTest, server_miss_after_ack) {
     msg.block_size = 8192;
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
     ASSERT_EQ(38, write(acc_fd, data, 38));
 
     usleep(100000);
@@ -1096,7 +1105,8 @@ TEST_F(RdmaTest, server_close_after_ack) {
     msg.block_size = 8192;
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
     ASSERT_EQ(38, write(acc_fd, data, 38));
 
     usleep(100000);
@@ -1147,7 +1157,8 @@ TEST_F(RdmaTest, server_send_data_on_tcp_after_ack) {
     msg.block_size = 8192;
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
-    msg.Serialize(data);
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
     ASSERT_EQ(38, write(acc_fd, data, 38));
 
     usleep(100000);

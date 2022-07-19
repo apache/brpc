@@ -765,14 +765,17 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         return -1;
     }
 
-#if BRPC_WITH_RDMA
     if (_options.use_rdma) {
+#if BRPC_WITH_RDMA
         if (!OptionsAvailableOverRdma(&_options)) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
-    }
+#else
+        LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
+        return -1;
 #endif
+    }
 
     if (_options.http_master_service) {
         // Check requirements for http_master_service:

@@ -113,7 +113,7 @@ min_latency是最近一段时间测量到的latency较小值的ema，是noload_l
 为了减少个别窗口的抖动对限流算法的影响，同时尽量降低计算开销，计算min_latency时会通过使用[EMA](https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average)来进行平滑处理：
 
 ```
-if latency > min_latency:
+if latency < min_latency:
     min_latency = latency * ema_alpha  + (1 - ema_alpha) * min_latency
 else:
     do_nothing

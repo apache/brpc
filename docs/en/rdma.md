@@ -4,7 +4,7 @@ Since RDMA requires driver and hardware support, only the build on linux is veri
 
 With config_brpc：
 ```bash
-sh config_brpc.sh --with-rdma
+sh config_brpc.sh --with-rdma --headers="/usr/include" --libs="/usr/lib64 /usr/bin"
 make
 
 cd example/rdma_performance  # example for rdma
@@ -23,9 +23,19 @@ make
 
 # Basic Implementation
 
-brpc uses RDMA RC mode. Every Socket has its own QP. Before establishing RDMA connection, a TCP connection is necessary to exchange some information such as GID and QPN. The TCP connection will keep in EST state but not be used for data transmission after RDMA connection is established. Once the TCP connection is closed, the corresponding RDMA connection will be set error.
+RDMA does not use socket API like TCP. However, the brpc::Socket class is still used. If a user sets ChannelOptions.use_rdma or ServerOptions.use_rdma to true, the Socket class created has RdmaEndpoint (see src/brpc/rdma/rdma_endpoint.cpp). When RDMA is enabled, the data which need to transmit will be posted to RDMA QP with verbs API, not written to TCP fd. For data receiving, RdmaEndpoint will get completions from RDMA CQ with verbs API (the event will be generated from a dedicated fd and be added into EventDispatcher, the handling function is RdmaEndpoint::PollCq) before parsing RPC messages with InputMessenger.
 
-All the memory used for data transmission in RDMA must be registered, which is very inefficient. Generally, a memory pool is employed to avoid frequent memory registration. In fact, brpc uses IOBuf for data transmission. In order to realize total zerocopy and compatibility with IOBuf, the memory used by IOBuf is taken over by the RDMA memory pool. Since IOBuf buffer cannot be controlled by user directly, the total memory consumption in IOBuf should be carefully managed. It is suggested that the application registers enough memory at one time according to its requirement.
+brpc uses RDMA RC mode. Every RdmaEndpoint has its own QP. Before establishing RDMA connection, a TCP connection is necessary to exchange some information such as GID and QPN. We call this procedure handshake. Since handshake needs TCP connection, the TCP fd in the corresponding Socket is still valid. The handshake procedure is completed in the AppConnect way in brpc. The TCP connection will keep in EST state but not be used for data transmission after RDMA connection is established. Once the TCP connection is closed, the corresponding RDMA connection will be set error.
+
+The first key feature in RdmaEndpoint data transmission is zero copy. All data which need to transmit is in the Blocks of IOBuf. Thus all the Blocks need to be released after the remote side completes the receiving. The reference of these Blocks are stored in RdmaEndpoint::_sbuf. In order to realize receiving zero copy, the receive side must post receive buffers in Blocks of IOBuf, which are stored in RdmaEndpoint::_rbuf. Note that all the Blocks posted in the receive side has a fixed size (recv_block_size). The transmit side can only send message smaller than that. Otherwise the receive side cannot receive data successfully.
+
+The second key feature in RdmaEndpoint data transmission is sliding window flow control. The flow control is to avoid fast transmit side overwhelming slow receive side. TCP has similar mechanism in kernel TCP stack. RdmaEndpoint implements this mechanism with explicit ACKs from receive side. to reduce the overhead of ACKs, the ACK number can be piggybacked in ordinary data message as immediate data.
+
+The third key feature in RdmaEndpoint data transmission is event suppression. The size of every message is limited to recv_block_size (defaulty 8KB). If every message will generate an event, the performance will be very poor, even worse than TCP (TCP has GSO/GRO). Therefore, RdmaEndpoint set solicited flag for every message according to data size, window and ACKS. The flag can control whether to generate an event in remove side or not.
+
+All the memory used for data transmission in RDMA must be registered, which is very inefficient. Generally, a memory pool is employed to avoid frequent memory registration. In fact, brpc uses IOBuf for data transmission. In order to realize total zerocopy and compatibility with IOBuf, the memory used by IOBuf is taken over by the RDMA memory pool (see src/brpc/rdma/block_pool.cpp). Since IOBuf buffer cannot be controlled by user directly, the total memory consumption in IOBuf should be carefully managed. It is suggested that the application registers enough memory at one time according to its requirement.
+
+RDMA is hardware-related. It has some different concepts such as device, port, GID, LID, MaxSge and so on. These parameters can be read from NICs at initialization, and brpc will make the default choice (see src/brpc/rdma/rdma_helper.cpp). Sometimes the default choice is not the expectation, then it can be changed in the flag way.
 
 # Parameters
 
