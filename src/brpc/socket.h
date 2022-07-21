@@ -286,6 +286,14 @@ public:
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
 
+    // When someone holds a health-checking-related reference,
+    // this function need to be called to make health checking run normally.
+    void SetHCRelatedRefHeld() { _is_hc_related_ref_held = true; }
+    // When someone releases the health-checking-related reference,
+    // this function need to be called to cancel health checking.
+    void SetHCRelatedRefReleased() { _is_hc_related_ref_held = false; }
+    bool IsHCRelatedRefHeld() const { return _is_hc_related_ref_held; }
+
     // The unique identifier.
     SocketId id() const { return _this_id; }
 
@@ -746,6 +754,11 @@ private:
 
     // Non-zero when health-checking is on.
     int _health_check_interval_s;
+
+    // The variable indicates whether the reference related
+    // to the health checking is held by someone. It can be
+    // synchronized via _versioned_ref atomic variable.
+    bool _is_hc_related_ref_held;
 
     // +-1 bit-+---31 bit---+
     // |  flag |   counter  |
