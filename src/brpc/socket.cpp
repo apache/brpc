@@ -687,7 +687,8 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             // nobody holds a health-checking-related reference,
             // so no need to do health checking.
             if (!_is_hc_related_ref_held) {
-                LOG(WARNING) << "nobody holds a health-checking-related reference";
+                RPC_VLOG << "Nobody holds a health-checking-related reference"
+                         << " for SocketId=" << _this_id;
                 return -1;
             }
 
