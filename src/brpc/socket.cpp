@@ -434,7 +434,7 @@ Socket::Socket(Forbidden)
     , _parsing_context(NULL)
     , _correlation_id(0)
     , _health_check_interval_s(-1)
-    , _is_in_socket_map(false)
+    , _is_hc_related_ref_held(false)
     , _ninprocess(1)
     , _auth_flag_error(0)
     , _auth_id(INVALID_BTHREAD_ID)
@@ -615,7 +615,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->reset_parsing_context(options.initial_parsing_context);
     m->_correlation_id = 0;
     m->_health_check_interval_s = options.health_check_interval_s;
-    m->_is_in_socket_map = false;
+    m->_is_hc_related_ref_held = false;
     m->_ninprocess.store(1, butil::memory_order_relaxed);
     m->_auth_flag_error.store(0, butil::memory_order_relaxed);
     const int rc2 = bthread_id_create(&m->_auth_id, NULL, NULL);
@@ -684,13 +684,10 @@ int Socket::WaitAndReset(int32_t expected_nref) {
                      << " was abandoned during health checking";
             return -1;
         } else {
-            // The health checking expects two references, one reference is here
-            // and another reference comes from SocketMapInsert(socket_map.cpp)
-            // or ChannelBalancer::AddChannel(selective_channel.cpp). However,
-            // when socket has been remove from SocketMap, another reference is
-            // not from SocketMap or ChannelBalancer, so no need to do health checking.
-            if (!_is_in_socket_map) {
-                LOG(WARNING) << "socket has been removed from SocketMap before health check task";
+            // nobody holds a health-checking-related reference,
+            // so no need to do health checking.
+            if (!_is_hc_related_ref_held) {
+                LOG(WARNING) << "nobody holds a health-checking-related reference";
                 return -1;
             }
 

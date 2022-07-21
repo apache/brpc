@@ -93,7 +93,7 @@ public:
 private:
     butil::Mutex _mutex;
     // Find out duplicated sub channels.
-    ChannelToIdMap _chan_socket_map;
+    ChannelToIdMap _chan_map;
 };
 
 class SubDone;
@@ -157,11 +157,11 @@ private:
 
 ChannelBalancer::~ChannelBalancer() {
     for (ChannelToIdMap::iterator
-             it = _chan_socket_map.begin(); it != _chan_socket_map.end(); ++it) {
+             it = _chan_map.begin(); it != _chan_map.end(); ++it) {
         SocketUniquePtr ptr(it->second); // Dereference
         it->second->ReleaseAdditionalReference();
     }
-    _chan_socket_map.clear();
+    _chan_map.clear();
 }
 
 int ChannelBalancer::Init(const char* lb_name) {
@@ -175,7 +175,7 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
         return -1;
     }
     BAIDU_SCOPED_LOCK(_mutex);
-    if (_chan_socket_map.find(sub_channel) != _chan_socket_map.end()) {
+    if (_chan_map.find(sub_channel) != _chan_map.end()) {
         LOG(ERROR) << "Duplicated sub_channel=" << sub_channel;
         return -1;
     }
@@ -203,8 +203,8 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
         ptr->SetFailed();
         return -1;
     }
-    ptr->SetInsertedIntoSocketMap(); // set inserted status
-    _chan_socket_map[sub_channel]= ptr.release();  // Add reference.
+    ptr->SetHCRelatedRefHeld(); // set held status
+    _chan_map[sub_channel]= ptr.release();  // Add reference.
     if (handle) {
         *handle = sock_id;
     }
@@ -221,10 +221,10 @@ void ChannelBalancer::RemoveAndDestroyChannel(SelectiveChannel::ChannelHandle ha
         SubChannel* sub = static_cast<SubChannel*>(ptr->user());
         {
             BAIDU_SCOPED_LOCK(_mutex);
-            CHECK_EQ(1UL, _chan_socket_map.erase(sub->chan));
-            ptr->SetRemovedFromSocketMap(); // set removed status
+            CHECK_EQ(1UL, _chan_map.erase(sub->chan));
         }
         {
+            ptr->SetHCRelatedRefReleased(); // set released status to cancel health checking
             SocketUniquePtr ptr2(ptr.get()); // Dereference.
         }
         if (rc == 0) {
@@ -246,8 +246,8 @@ inline int ChannelBalancer::SelectChannel(const LoadBalancer::SelectIn& in,
 
 int ChannelBalancer::CheckHealth() {
     BAIDU_SCOPED_LOCK(_mutex);
-    for (ChannelToIdMap::const_iterator it = _chan_socket_map.begin();
-         it != _chan_socket_map.end(); ++it) {
+    for (ChannelToIdMap::const_iterator it = _chan_map.begin();
+         it != _chan_map.end(); ++it) {
         if (!it->second->Failed() &&
             it->first->CheckHealth() == 0) {
             return 0;
@@ -260,12 +260,12 @@ void ChannelBalancer::Describe(std::ostream& os,
                                const DescribeOptions& options) {
     BAIDU_SCOPED_LOCK(_mutex);
     if (!options.verbose) {
-        os << _chan_socket_map.size();
+        os << _chan_map.size();
         return;
     }
-    for (ChannelToIdMap::const_iterator it = _chan_socket_map.begin();
-         it != _chan_socket_map.end(); ++it) {
-        if (it != _chan_socket_map.begin()) {
+    for (ChannelToIdMap::const_iterator it = _chan_map.begin();
+         it != _chan_map.end(); ++it) {
+        if (it != _chan_map.begin()) {
             os << ' ';
         }
         it->first->Describe(os, options);

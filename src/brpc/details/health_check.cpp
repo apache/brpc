@@ -179,8 +179,9 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     // one is addressing the Socket(except here). Because the Socket 
     // is not addressable, the reference count will not increase 
     // again. This solution is not perfect because the `expected_nref'
-    // is implementation specific. In our case, one reference comes 
-    // from SocketMapInsert(socket_map.cpp) or ChannelBalancer::AddChannel
+    // is implementation specific. In our case, one reference comes
+    // from someone who holds a reference related to health checking,
+    // e.g. SocketMapInsert(socket_map.cpp) or ChannelBalancer::AddChannel
     // (selective_channel.cpp), one reference is here. Although WaitAndReset()
     // could hang when someone is addressing the failed Socket forever
     // (also indicating bug), this is not an issue in current code.
