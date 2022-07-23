@@ -435,6 +435,7 @@ Socket::Socket(Forbidden)
     , _correlation_id(0)
     , _health_check_interval_s(-1)
     , _is_hc_related_ref_held(false)
+    , _hc_started(false)
     , _ninprocess(1)
     , _auth_flag_error(0)
     , _auth_id(INVALID_BTHREAD_ID)
@@ -616,6 +617,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_correlation_id = 0;
     m->_health_check_interval_s = options.health_check_interval_s;
     m->_is_hc_related_ref_held = false;
+    m->_hc_started.store(false, butil::memory_order_relaxed);
     m->_ninprocess.store(1, butil::memory_order_relaxed);
     m->_auth_flag_error.store(0, butil::memory_order_relaxed);
     const int rc2 = bthread_id_create(&m->_auth_id, NULL, NULL);
@@ -759,7 +761,7 @@ void Socket::Revive() {
         int32_t nref = NRefOfVRef(vref);
         if (nref <= 1) {
             // Set status to REF_RECYLED since no one uses this socket
-            _additional_ref_status.store(REF_RECYLED, butil::memory_order_relaxed);
+            _additional_ref_status.store(REF_RECYCLED, butil::memory_order_relaxed);
             CHECK_EQ(1, nref);
             LOG(WARNING) << *this << " was abandoned during revival";
             return;
@@ -787,7 +789,7 @@ int Socket::ReleaseAdditionalReference() {
         AdditionalRefStatus expect = REF_USING;
         if (_additional_ref_status.compare_exchange_strong(
             expect,
-            REF_RECYLED,
+            REF_RECYCLED,
             butil::memory_order_relaxed,
             butil::memory_order_relaxed)) {
             return Dereference();
@@ -796,7 +798,7 @@ int Socket::ReleaseAdditionalReference() {
         if (expect == REF_REVIVING) { // sched_yield to wait until status is not REF_REVIVING
             sched_yield();
         } else {
-            return -1; // REF_RECYLED
+            return -1; // REF_RECYCLED
         }
     } while (1);
 }
@@ -858,9 +860,19 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // by Channel to revive never-connected socket when server side
             // comes online.
             if (_health_check_interval_s > 0) {
-                GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
-                StartHealthCheck(id(),
+                bool expect = false;
+                if (_hc_started.compare_exchange_strong(expect,
+                                                        true,
+                                                        butil::memory_order_relaxed,
+                                                        butil::memory_order_relaxed)) {
+                    GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
+                    StartHealthCheck(id(),
                         GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
+                } else {
+                    // No need to run 2 health checking at the same time.
+                    RPC_VLOG << "There is already a health checking running "
+                                "for SocketId" << _this_id;
+                }
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);

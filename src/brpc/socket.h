@@ -294,6 +294,9 @@ public:
     void SetHCRelatedRefReleased() { _is_hc_related_ref_held = false; }
     bool IsHCRelatedRefHeld() const { return _is_hc_related_ref_held; }
 
+    // After health checking is complete, set _hc_started to false.
+    void AfterHCCompleted() { _hc_started.store(false, butil::memory_order_relaxed); }
+
     // The unique identifier.
     SocketId id() const { return _this_id; }
 
@@ -364,7 +367,7 @@ public:
     bool Failed() const;
 
     bool DidReleaseAdditionalRereference() const {
-        return _additional_ref_status.load(butil::memory_order_relaxed) == REF_RECYLED;
+        return _additional_ref_status.load(butil::memory_order_relaxed) == REF_RECYCLED;
     }
 
     // Notify `id' object (by calling bthread_id_error) when this Socket
@@ -761,6 +764,10 @@ private:
     // synchronized via _versioned_ref atomic variable.
     bool _is_hc_related_ref_held;
 
+    // Default: false.
+    // true, if health checking is started.
+    butil::atomic<bool> _hc_started;
+
     // +-1 bit-+---31 bit---+
     // |  flag |   counter  |
     // +-------+------------+
@@ -799,15 +806,15 @@ private:
     butil::atomic<bool> _logoff_flag;
 
     enum AdditionalRefStatus {
-        REF_USING,        // additional ref is using normally
-        REF_REVIVING,     // additional ref is reviving
-        REF_RECYLED       // additional ref has benn recyled
+        REF_USING,        // socket is normal
+        REF_REVIVING,     // socket is reviving
+        REF_RECYCLED      // socket has been recycled
     };
 
     // additional ref status:
     // Socket()、Create(): REF_USING
-    // SetFailed(): REF_USING -> REF_RECYLED
-    // Revive(): REF_RECYLED -> REF_REVIVING -> REF_USING
+    // SetFailed(): REF_USING -> REF_RECYCLED
+    // Revive(): REF_RECYCLED -> REF_REVIVING -> REF_USING
     butil::atomic<AdditionalRefStatus> _additional_ref_status;
 
     // Concrete error information from SetFailed()
