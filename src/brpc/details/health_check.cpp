@@ -217,9 +217,11 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         if (!FLAGS_health_check_path.empty()) {
             HealthCheckManager::StartCheck(_id, ptr->_health_check_interval_s);
         }
+        ptr->AfterHCCompleted();
         return false;
     } else if (hc == ESTOP) {
         LOG(INFO) << "Cancel checking " << *ptr;
+        ptr->AfterHCCompleted();
         return false;
     }
     ++ ptr->_hc_count;
