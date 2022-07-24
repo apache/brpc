@@ -241,6 +241,10 @@ struct ServerOptions {
     // Default: NULL (disabled)
     RedisService* redis_service;
 
+    // Optional info name for composing server bvar prefix. Read ServerPrefix() method for details;
+    // Default: ""
+    std::string server_info_name;
+
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ServerOptions from being bloated in most cases.
