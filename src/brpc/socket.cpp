@@ -2141,6 +2141,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     const SSLState ssl_state = ptr->ssl_state();
     os << "\npipeline_q=" << npipelined
        << "\nhc_interval_s=" << ptr->_health_check_interval_s
+       << "\nis_hc_related_ref_held=" << ptr->_is_hc_related_ref_held
        << "\nninprocess=" << ptr->_ninprocess.load(butil::memory_order_relaxed)
        << "\nauth_flag_error=" << ptr->_auth_flag_error.load(butil::memory_order_relaxed)
        << "\nauth_id=" << ptr->_auth_id.value
