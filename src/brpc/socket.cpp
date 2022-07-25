@@ -871,7 +871,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
                 } else {
                     // No need to run 2 health checking at the same time.
                     RPC_VLOG << "There is already a health checking running "
-                                "for SocketId" << _this_id;
+                                "for SocketId=" << _this_id;
                 }
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
