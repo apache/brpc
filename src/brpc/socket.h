@@ -805,16 +805,19 @@ private:
     // Set by SetLogOff
     butil::atomic<bool> _logoff_flag;
 
+    // Status flag used to mark that
     enum AdditionalRefStatus {
-        REF_USING,        // socket is normal
-        REF_REVIVING,     // socket is reviving
-        REF_RECYCLED      // socket has been recycled
+        REF_USING,        // additional reference has been increased
+        REF_REVIVING,     // additional reference is increasing
+        REF_RECYCLED      // additional reference has been decreased
     };
 
+    // Indicates whether additional reference has increased,
+    // decreased, or is increasing.
     // additional ref status:
-    // Socket()、Create(): REF_USING
-    // SetFailed(): REF_USING -> REF_RECYCLED
-    // Revive(): REF_RECYCLED -> REF_REVIVING -> REF_USING
+    // `Socket'、`Create': REF_USING
+    // `SetFailed': REF_USING -> REF_RECYCLED
+    // `Revive' REF_RECYCLED -> REF_REVIVING -> REF_USING
     butil::atomic<AdditionalRefStatus> _additional_ref_status;
 
     // Concrete error information from SetFailed()
