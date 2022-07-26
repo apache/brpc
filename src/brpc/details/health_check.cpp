@@ -167,7 +167,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
                  << " was abandoned before health checking";
         return false;
     }
-    // Note: Making a Socket re-addessable is hard. An alternative is
+    // Note: Making a Socket re-addressable is hard. An alternative is
     // creating another Socket with selected internal fields to replace
     // failed Socket. Although it avoids concurrent issues with in-place
     // revive, it changes SocketId: many code need to watch SocketId 
@@ -189,6 +189,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         _first_time = false;
         if (ptr->WaitAndReset(2/*note*/) != 0) {
             LOG(INFO) << "Cancel checking " << *ptr;
+            ptr->AfterHCCompleted();
             return false;
         }
     }
