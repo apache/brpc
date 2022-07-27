@@ -430,7 +430,7 @@ svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.a
 
 正文：
 ```
-Hello Incubator Community,
+Hi Incubator Community,
 
 This is a call for a vote to release Apache brpc(Incubating) version
 1.0.0.
@@ -483,7 +483,7 @@ Apache brpc (Incubating) community
 
 正文：
 ```
-Hello Incubator Community,
+Hi Incubator Community,
 
 Thanks to everyone that participated. The vote to release Apache
 brpc (Incubating) version 1.0.0 in general@incuabator is now closed.
