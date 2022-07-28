@@ -17,7 +17,6 @@
 
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#include "butil/build_config.h"                // OS_MACOSX
 #include <arpa/inet.h>                         // inet_pton, inet_ntop
 #include <netdb.h>                             // gethostbyname_r
 #include <unistd.h>                            // gethostname
@@ -26,13 +25,15 @@
 #include <stdio.h>                             // snprintf
 #include <stdlib.h>                            // strtol
 #include <sys/un.h>                            // sockaddr_un
+#include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
+#include <memory>
 #include <gflags/gflags.h>
+#include "butil/build_config.h"                // OS_MACOSX
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
-#include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
 
 //supported since Linux 3.9.
 DEFINE_bool(reuse_port, false, "Enable SO_REUSEPORT for all listened sockets");
@@ -193,12 +194,28 @@ int hostname2ip(const char* hostname, ip_t* ip) {
         return -1;
     }
 #else
-    char aux_buf[1024];
+    int aux_buf_len = 1024;
+    std::unique_ptr<char[]> aux_buf(new char[aux_buf_len]);
+    int ret = 0;
     int error = 0;
     struct hostent ent;
     struct hostent* result = NULL;
-    if (gethostbyname_r(hostname, &ent, aux_buf, sizeof(aux_buf),
-                        &result, &error) != 0 || result == NULL) {
+    do {
+        result = NULL;
+        error = 0;
+        ret = gethostbyname_r(hostname,
+                              &ent,
+                              aux_buf.get(),
+                              aux_buf_len,
+                              &result,
+                              &error);
+        if (ret != ERANGE) { // aux_buf is not long enough
+            break;
+        }
+        aux_buf_len *= 2;
+        aux_buf.reset(new char[aux_buf_len]);
+    } while (1);
+    if (ret != 0 || result == NULL) {
         return -1;
     }
 #endif // defined(OS_MACOSX)

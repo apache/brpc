@@ -72,6 +72,9 @@ max_qps是最近一段时间测量到的qps的极大值。
 
 min_latency是最近一段时间测量到的latency较小值的ema，是noload_latency的估算值。
 
+注意：当计算出来的 max_concurrency 和当前的 max_concurrency 的值不同时，每次对 max_concurrency 的调整的比例有一个上限，让 max_concurrency
+的[变化更为平滑](https://github.com/apache/incubator-brpc/blob/master/src/brpc/policy/auto_concurrency_limiter.cpp#L249)。
+
 当服务处于低负载时，min_latency约等于noload_latency，此时计算出来的max_concurrency会高于concurrency，但低于best_max_concurrency，给流量上涨留探索空间。而当服务过载时，服务的qps约等于max_qps，同时latency开始明显超过min_latency，此时max_concurrency则会接近concurrency，并通过定期衰减避免远离best_max_concurrency，保证服务不会过载。
 
 
@@ -110,7 +113,7 @@ min_latency是最近一段时间测量到的latency较小值的ema，是noload_l
 为了减少个别窗口的抖动对限流算法的影响，同时尽量降低计算开销，计算min_latency时会通过使用[EMA](https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average)来进行平滑处理：
 
 ```
-if latency > min_latency:
+if latency < min_latency:
     min_latency = latency * ema_alpha  + (1 - ema_alpha) * min_latency
 else:
     do_nothing

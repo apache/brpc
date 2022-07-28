@@ -24,6 +24,11 @@
 namespace brpc {
 
 DEFINE_bool(show_lb_in_vars, false, "Describe LoadBalancers in vars");
+DEFINE_int32(default_weight_of_wlb, 0, "Default weight value of Weighted LoadBalancer(wlb). "
+             "wlb policy degradation is enabled when default_weight_of_wlb > 0 to avoid some "
+             "problems when user is using wlb but forgot to set the weights of some of their "
+             "downstream instances. Then these instances will be set default_weight_of_wlb as "
+             "their weights. wlb policy degradation is not enabled by default.");
 BRPC_VALIDATE_GFLAG(show_lb_in_vars, PassValidate);
 
 // For assigning unique names for lb.
