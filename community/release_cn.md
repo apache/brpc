@@ -536,9 +536,9 @@ GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：ht
 
 ## 4. 发送邮件通知发布完成
 
-发送邮件到dev@brpc.apache.org和announce@apache.org通知完成版本发布。
+发送邮件到dev@brpc.apache.org、general@incubator.apache.org、和announce@apache.org通知完成版本发布。
 
-注意：发邮件账号必须使用apache邮箱，且邮件内容必须是纯文本格式（可在gmail选择“纯文本模式”）。announce@apache.org 邮件组需要经过人工审核才能送达，发出邮件后请耐心等待，一般会在一天之内通过。
+注意：发邮件账号必须使用**个人apache邮箱**，且邮件内容必须是**纯文本格式**（可在gmail选择"纯文本模式"），announce@apache.org 邮件组需要经过人工审核才能送达，发出邮件后请耐心等待，一般会在一天之内通过。
 
 通知邮件模板如下：
 
@@ -551,8 +551,8 @@ GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：ht
 ```
 Hi all,
 
-The Apache brpc (Incubating) community is pleased to announce that Apache
-brpc (Incubating) 1.0.0 has been released!
+The Apache brpc (Incubating) community is glad to announce the new release
+of Apache brpc (Incubating) 1.0.0.
 
 brpc is an industrial-grade RPC framework with extremely high performance,
 and it supports multiple protocols, full rpc features, and has many
@@ -566,18 +566,23 @@ Brief notes of this release:
 More details regarding Apache brpc can be found at:
 http://brpc.apache.org/
 
-The release artifacts can be downloaded here:
+The release is available for download at:
 https://brpc.apache.org/docs/downloadbrpc/
 
 The release notes can be found here:
 https://github.com/apache/incubator-brpc/releases/tag/1.0.0
 
-brpc(Incubating) Resources:
-- GitHub: https://github.com/apache/incubator-brpc
-- Issue: https://github.com/apache/incubator-brpc/issues
-- Mailing list: dev@brpc.apache.org
+Website: http://brpc.apache.org/
 
-Thanks,
-Lorin Lee
+brpc(Incubating) Resources:
+- Issue: https://github.com/apache/incubator-brpc/issues/
+- Mailing list: dev@brpc.apache.org
+- Documents: https://brpc.apache.org/docs/
+
+We would like to thank all contributors of the Apache brpc community and
+Incubating community who made this release possible!
+
+
+Best Regards,
 Apache brpc (Incubating) community
 ```
