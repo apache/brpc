@@ -544,7 +544,7 @@ GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：ht
 
 标题：
 ```
-[ANNOUNCE] Apache brpc 1.0.0 release
+[ANNOUNCE] Apache brpc 1.0.0 available
 ```
 
 正文
