@@ -4,8 +4,8 @@ brpc 发布apache release 版本流程step by step
 1. 事前准备：包括生成签名需要的key，github上打标签，修改version文件等
 2. 发布软件包：包括制作source tarball，签名，上传到制定地点并验证
 3. 第一次投票：在dev@brpc邮件群里投票
-4. 第二次投票：在general@brpc邮件群里投票
-5. 发版通告：包括发邮件，更新brpc网站
+4. 第二次投票：在general@incubator.apache.org邮件群里投票
+5. 发版通告：包括更新brpc网站，发邮件
 
 
 # 签名准备
