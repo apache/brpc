@@ -322,7 +322,7 @@ diff -r brpc-1.0.0 apache-brpc-1.0.0-incubating-src
 
 正文：
 ```
-Hello Apache brpc (Incubating) Community,
+Hi Apache brpc (Incubating) Community,
 
 This is a call for vote to release Apache brpc (Incubating) version
 1.0.0
@@ -486,7 +486,8 @@ Apache brpc (Incubating) community
 Hi Incubator Community,
 
 Thanks to everyone that participated. The vote to release Apache
-brpc (Incubating) version 1.0.0 in general@incuabator is now closed.
+brpc (Incubating) version 1.0.0 in general@incubator.apache.org
+is now closed.
 
 Vote thread: xxx
 
@@ -544,7 +545,7 @@ GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：ht
 
 标题：
 ```
-[ANNOUNCE] Apache brpc 1.0.0 available
+[ANNOUNCE] Apache brpc (Incubating) 1.0.0 released
 ```
 
 正文
