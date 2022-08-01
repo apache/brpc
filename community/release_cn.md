@@ -4,8 +4,8 @@ brpc 发布apache release 版本流程step by step
 1. 事前准备：包括生成签名需要的key，github上打标签，修改version文件等
 2. 发布软件包：包括制作source tarball，签名，上传到制定地点并验证
 3. 第一次投票：在dev@brpc邮件群里投票
-4. 第二次投票：在general@brpc邮件群里投票
-5. 发版通告：包括发邮件，更新brpc网站
+4. 第二次投票：在general@incubator.apache.org邮件群里投票
+5. 发版通告：包括更新brpc网站，发邮件
 
 
 # 签名准备
@@ -133,10 +133,18 @@ sub   rsa4096 2021-10-17 [E]
 
 ## 1. 编辑 RELEASE_VERSION 文件
 
+### 更新RELEASE_VERSION文件
 编辑项目根目录下`RELEASE_VERSION`文件，更新版本号，并提交至代码仓库，本文以`1.0.0`版本为例，文件内容为：
 
 ```
 1.0.0
+```
+
+### 更新CMakeLists.txt文件
+编辑项目根目录下`CMakeLists.txt`文件，更新版本号，并提交至代码仓库，本文以`1.0.0`版本为例，修改BRPC_VERSION为：
+
+```
+set(BRPC_VERSION 1.0.0)
 ```
 
 ## 2. 创建发布 tag
@@ -322,13 +330,13 @@ diff -r brpc-1.0.0 apache-brpc-1.0.0-incubating-src
 
 正文：
 ```
-Hello Apache brpc (Incubating) Community,
+Hi Apache brpc (Incubating) Community,
 
 This is a call for vote to release Apache brpc (Incubating) version
 1.0.0
 
 [Release Note]
-	- xxx
+- xxx
 
 The release candidates:
 https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0/
@@ -378,15 +386,17 @@ Hi all,
 
 The vote to release Apache brpc (Incubating) 1.0.0 has passed.
 
-The vote PASSED with 3 binding +1, 1 non binding +1 and 0 -1 votes:
+The vote PASSED with 3 binding +1, 3 non binding +1 and no -1 votes:
 
 Binding votes:
-	- xxx
-	- yyy 
-	- zzz 
+- xxx
+- yyy 
+- zzz 
 
 Non-binding votes:
-	- aaa 
+- aaa
+- bbb
+- ccc
 
 Vote thread: xxx (vote email link in https://lists.apache.org/)
 
@@ -428,31 +438,24 @@ svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.a
 
 正文：
 ```
-Hello IPMC,
+Hi Incubator Community,
+
+This is a call for a vote to release Apache brpc(Incubating) version
+1.0.0.
 
 The Apache brpc community has voted and approved the release of Apache
-brpc (Incubating) 1.0.0. We now kindly request the IPMC members
-review and vote for this release.
+brpc (Incubating) 1.0.0.
+
+We now kindly request the Incubator PMC members review and vote on this
+incubator release.
 
 brpc is an industrial-grade RPC framework with extremely high performance,
 and it supports multiple protocols, full rpc features, and has many
-convenient tools. The current release provides the first official and
-stable package, resolves all of the license issues, and fixes many bugs.
+convenient tools.
 
 brpc community vote thread: xxx
 
 Vote result thread: xxx
-
-**Vote Results**:
-No 0 or -1 votes.
-
-1 (+1) Binding Vote:
-* xxx
-
-3 (+1) Non Binding:
-* yyy
-* zzz
-* aaa
 
 The release candidate:
 https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0/
@@ -464,19 +467,19 @@ Git tag for the release:
 https://github.com/apache/incubator-brpc/releases/tag/1.0.0
 
 Build guide and get started instructions can be found at:
-https://github.com/apache/incubator-brpc/blob/master/docs/en/getting_started.md
+https://brpc.apache.org/docs/getting_started
 
 The vote will be open for at least 72 hours or until the necessary number
 of votes is reached.
 
 Please vote accordingly:
-[ ] +1 Approve the release of Apache brpc (Incubating) 1.0.0
-[ ] +0
-[ ] -1 Do not approve (please specify the reason)
+[ ] +1 approve
+[ ] +0 no opinion
+[ ] -1 disapprove with the reason
 
 Regards,
 Lorin Lee
-Apache brpc (Incubating)
+Apache brpc (Incubating) community
 ```
 
 2. Apache Incubator 社区宣布结果邮件模板
@@ -488,30 +491,34 @@ Apache brpc (Incubating)
 
 正文：
 ```
-Hello Incubator Community,
+Hi Incubator Community,
 
 Thanks to everyone that participated. The vote to release Apache
-brpc (Incubating) version 1.0.0 in general@incuabator
+brpc (Incubating) version 1.0.0 in general@incubator.apache.org
 is now closed.
 
-Vote thread: xxx (vote email link in https://lists.apache.org/)
+Vote thread: xxx
 
-The vote PASSED with 3 binding +1, 1 non binding +1 and 0 -1 votes:
+The vote PASSED with 3 binding +1, 3 non binding +1 and no -1 votes:
 
 Binding votes:
-	- xxx 
-	- yyy 
-	- zzz 
+- xxx 
+- yyy 
+- zzz 
 
 Non-binding votes:
-	- aaa
+- aaa
+- bbb
+- ccc
 
-I will be working on publishing the artifacts of Apache brpc
-(Incubating) 1.0.0 and post an announcement. Thanks!
+Many thanks for all our mentors helping us with the release procedure,
+and all IPMC helped us to review and vote for Apache brpc(Incubating)
+release. We will proceed with publishing the approved artifacts and
+sending out the announcement soon.
 
 Regards,
 Lorin Lee
-Apache brpc (Incubating)
+Apache brpc (Incubating) community
 ```
 
 # 完成发布
@@ -538,42 +545,53 @@ GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：ht
 
 ## 4. 发送邮件通知发布完成
 
-发送邮件到dev@brpc.apache.org和announce@apache.org通知完成版本发布。
+发送邮件到dev@brpc.apache.org、general@incubator.apache.org、和announce@apache.org通知完成版本发布。
 
-注意：发邮件账号必须使用apache邮箱，且邮件内容必须是纯文本格式（可在gmail选择“纯文本模式”）。announce@apache.org 邮件组需要经过人工审核才能送达，发出邮件后请耐心等待，一般会在一天之内通过。
+注意：发邮件账号必须使用**个人apache邮箱**，且邮件内容必须是**纯文本格式**（可在gmail选择"纯文本模式"），announce@apache.org 邮件组需要经过人工审核才能送达，发出邮件后请耐心等待，一般会在一天之内通过。
 
 通知邮件模板如下：
 
 标题：
 ```
-[ANNOUNCE] Apache brpc 1.0.0 release
+[ANNOUNCE] Apache brpc (Incubating) 1.0.0 released
 ```
 
 正文
 ```
 Hi all,
 
-The Apache brpc (incubating) community is pleased to announce that Apache
-brpc (incubating) 1.0.0 has been released!
+The Apache brpc (Incubating) community is glad to announce the new release
+of Apache brpc (Incubating) 1.0.0.
 
 brpc is an industrial-grade RPC framework with extremely high performance,
 and it supports multiple protocols, full rpc features, and has many
 convenient tools. 
 
 Brief notes of this release:
-  - xxx
-  - yyy 
+- xxx
+- yyy
+- zzz
 
 More details regarding Apache brpc can be found at:
 http://brpc.apache.org/
 
-The release artifacts can be downloaded here:
+The release is available for download at:
 https://brpc.apache.org/docs/downloadbrpc/
 
 The release notes can be found here:
 https://github.com/apache/incubator-brpc/releases/tag/1.0.0
 
-Thanks,
-Lorin Lee
-Apache brpc (Incubating)
+Website: http://brpc.apache.org/
+
+brpc(Incubating) Resources:
+- Issue: https://github.com/apache/incubator-brpc/issues/
+- Mailing list: dev@brpc.apache.org
+- Documents: https://brpc.apache.org/docs/
+
+We would like to thank all contributors of the Apache brpc community and
+Incubating community who made this release possible!
+
+
+Best Regards,
+Apache brpc (Incubating) community
 ```
