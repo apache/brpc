@@ -133,10 +133,18 @@ sub   rsa4096 2021-10-17 [E]
 
 ## 1. 编辑 RELEASE_VERSION 文件
 
+### 更新RELEASE_VERSION文件
 编辑项目根目录下`RELEASE_VERSION`文件，更新版本号，并提交至代码仓库，本文以`1.0.0`版本为例，文件内容为：
 
 ```
 1.0.0
+```
+
+### 更新CMakeLists.txt文件
+编辑项目根目录下`CMakeLists.txt`文件，更新版本号，并提交至代码仓库，本文以`1.0.0`版本为例，修改BRPC_VERSION为：
+
+```
+set(BRPC_VERSION 1.0.0)
 ```
 
 ## 2. 创建发布 tag
