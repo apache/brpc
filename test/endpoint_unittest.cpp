@@ -156,9 +156,6 @@ void* server_proc(void* arg) {
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
     int fd = accept(listen_fd, (sockaddr*)&ss, &len);
-    if (fd > 0) {
-        close(fd);
-    }
     return (void*)(int64_t)fd;
 }
 
@@ -190,7 +187,9 @@ static void test_listen_connect(const std::string& server_addr, const std::strin
 
     void* ret = nullptr;
     pthread_join(pid, &ret);
-    ASSERT_GT((int64_t)ret, 0);
+    int server_fd = (int)(int64_t)ret;
+    ASSERT_GT(server_fd, 0);
+    close(server_fd);
     close(listen_fd);
 }
 
@@ -238,12 +237,12 @@ TEST(EndPointTest, unix_socket) {
     ASSERT_EQ(0, butil::str2endpoint("unix://a.sock", 123, &point));
     ASSERT_EQ(std::string("unix://a.sock"), butil::endpoint2str(point).c_str());
 
-    ASSERT_EQ(-1, butil::str2endpoint("unix:tooloooooooooooooooooooooooooooooooooooooooooooooooooo"
-        "ooooooooooooooooooooooooooooooooooooooooooooooong.sock", &point));
-    ASSERT_EQ(0, butil::str2endpoint(" unix:loooooooooooooooooooooooooooooooooooooooooooooooooooo"
-        "ooooooooooooooooooooooooooooooooooooooooooooooong.sock", &point));
-    ASSERT_EQ(std::string("unix:loooooooooooooooooooooooooooooooooooooooooooooooooooo"
-        "ooooooooooooooooooooooooooooooooooooooooooooooong.sock"), butil::endpoint2str(point).c_str());
+    std::string long_path = "unix:";
+    long_path.append(sizeof(sockaddr_un::sun_path) - 1, 'a');
+    ASSERT_EQ(0, butil::str2endpoint(long_path.c_str(), &point));
+    ASSERT_EQ(long_path, butil::endpoint2str(point).c_str());
+    long_path.push_back('a');
+    ASSERT_EQ(-1, butil::str2endpoint(long_path.c_str(), &point));
     char buf[128] = {0}; // braft use this size of buffer
     size_t ret = snprintf(buf, sizeof(buf), "%s:%d", butil::endpoint2str(point).c_str(), INT_MAX);
     ASSERT_LT(ret, sizeof(buf) - 1);
@@ -383,9 +382,7 @@ TEST(EndPointTest, endpoint_sockaddr_conv_ipv6) {
 
     in6_addr expect_in6_addr;
     bzero(&expect_in6_addr, sizeof(expect_in6_addr));
-    expect_in6_addr.__in6_u.__u6_addr8[15] = 1;
-    // jge: mac monterey上应该这样，但准确判定条件不明
-    //expect_in6_addr.__u6_addr.__u6_addr8[15] = 1;
+    expect_in6_addr.s6_addr[15] = 1;
 
     sockaddr_storage ss;
     const sockaddr_in6* sa6 = (sockaddr_in6*) &ss;

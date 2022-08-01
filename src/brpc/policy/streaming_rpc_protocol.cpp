@@ -108,7 +108,9 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
                             && fm.frame_type() != FRAME_TYPE_CLOSE
                             && fm.frame_type() != FRAME_TYPE_FEEDBACK)
                    << "Fail to find stream=" << fm.stream_id();
-            if (fm.has_source_stream_id()) {
+            // It's normal that the stream is closed before receiving feedback frames from peer.
+            // In this case, RST frame should not be sent to peer, otherwise on-fly data can be lost.
+            if (fm.has_source_stream_id() && fm.frame_type() != FRAME_TYPE_FEEDBACK) {
                 SendStreamRst(socket, fm.source_stream_id());
             }
             break;
