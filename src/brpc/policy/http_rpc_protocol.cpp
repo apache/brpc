@@ -1275,7 +1275,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         .set_remote_side(user_addr)
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
-        .set_request_protocol(PROTOCOL_HTTP)
+        .set_request_protocol(is_http2 ? PROTOCOL_H2 : PROTOCOL_HTTP)
         .set_begin_time_us(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
     
