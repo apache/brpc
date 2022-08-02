@@ -23,4 +23,4 @@ Description: An industrial-grade RPC framework used throughout Baidu, with 1,000
 Version: @BRPC_VERSION@
 Cflags: -I${includedir}
 Libs: -L${libdir}/ -lbrpc
-Libs.private: @DYNAMIC_LIB@
+Libs.private: @BRPC_PRIVATE_LIBS@

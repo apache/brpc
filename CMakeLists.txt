@@ -220,17 +220,21 @@ else()
     list(APPEND DYNAMIC_LIB ${OPENSSL_SSL_LIBRARY})
 endif()
 
+set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
 if(WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
 endif()
 
 if(WITH_SNAPPY)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${SNAPPY_LIB})
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lsnappy")
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(DYNAMIC_LIB ${DYNAMIC_LIB} rt)
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lrt")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(DYNAMIC_LIB ${DYNAMIC_LIB}
         pthread
