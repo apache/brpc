@@ -4,7 +4,9 @@
 
 # ![brpc](docs/images/logo.png)
 
-An industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with 1,000,000+ instances(not counting clients) and thousands kinds of services. "brpc" means "better RPC".
+brpc is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning etc.
+
+### "brpc" means "better RPC". 
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
