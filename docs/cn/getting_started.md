@@ -287,7 +287,7 @@ $ sh run_tests.sh
 
 # 支持的依赖
 
-## GCC: 4.8-7.1
+## GCC: 4.8-11.2
 
 c++11被默认启用，以去除去boost的依赖（比如atomic）。
 
@@ -295,7 +295,7 @@ GCC7中over-aligned的问题暂时被禁止。
 
 使用其他版本的gcc可能会产生编译警告，请联系我们予以修复。
 
-请在makefile中给cxxflags增加`-D__const__=`选项以避免[gcc4+中的errno问题](thread_local.md).
+请在makefile中给cxxflags增加`-D__const__=__unused__`选项以避免[gcc4+中的errno问题](thread_local.md).
 
 ## Clang: 3.5-4.0
 

@@ -274,6 +274,7 @@ void Controller::ResetPods() {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
+    _auth_flags = 0;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -1162,7 +1163,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     wopt.id_wait = cid;
     wopt.abstime = pabstime;
     wopt.pipelined_count = _pipelined_count;
-    wopt.with_auth = has_flag(FLAGS_REQUEST_WITH_AUTH);
+    wopt.auth_flags = _auth_flags;
     wopt.ignore_eovercrowded = has_flag(FLAGS_IGNORE_EOVERCROWDED);
     int rc;
     size_t packet_size = 0;

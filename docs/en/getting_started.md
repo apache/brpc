@@ -293,7 +293,7 @@ Same with [here](#compile-brpc-with-cmake)
 
 # Supported deps
 
-## GCC: 4.8-7.1
+## GCC: 4.8-11.2
 
 c++11 is turned on by default to remove dependencies on boost (atomic).
 
@@ -301,7 +301,7 @@ The over-aligned issues in GCC7 is suppressed temporarily now.
 
 Using other versions of gcc may generate warnings, contact us to fix.
 
-Adding `-D__const__=` to cxxflags in your makefiles is a must to avoid [errno issue in gcc4+](thread_local.md).
+Adding `-D__const__=__unused__` to cxxflags in your makefiles is a must to avoid [errno issue in gcc4+](thread_local.md).
 
 ## Clang: 3.5-4.0
 
