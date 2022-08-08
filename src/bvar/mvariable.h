@@ -109,7 +109,7 @@ public:
 
 protected:
     int expose_impl(const butil::StringPiece& prefix,
-                            const butil::StringPiece& name);
+                    const butil::StringPiece& name);
 
 protected:
     std::string _name;

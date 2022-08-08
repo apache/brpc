@@ -175,7 +175,7 @@ int MVariable::expose_impl(const butil::StringPiece& prefix,
         s_bvar_may_abort = true;
     }
 
-    LOG(FATAL) << "Already exposed `" << _name << "' whose describe is`"
+    LOG(WARNING) << "Already exposed `" << _name << "' whose describe is`"
                << get_description() << "'";
     _name.clear();
     return 0;

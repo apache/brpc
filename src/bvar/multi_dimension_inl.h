@@ -95,7 +95,7 @@ void MultiDimension<T>::delete_stats(const key_type& labels_value) {
         // Because there are two copies(foreground and background) in DBD, we need to use an empty tmp_metric,
         // get the deleted value of second copy into tmp_metric, which can prevent the bvar object from being deleted twice.
         op_value_type tmp_metric = NULL;
-        auto fn = [&labels_value, &tmp_metric](MetricMap& bg) {
+        auto erase_fn = [&labels_value, &tmp_metric](MetricMap& bg) {
             auto it = bg.seek(labels_value);
             if (it != NULL) {
                 tmp_metric = *it;
@@ -104,7 +104,7 @@ void MultiDimension<T>::delete_stats(const key_type& labels_value) {
             }
             return 0;
         };
-        _metric_map.Modify(fn);
+        _metric_map.Modify(erase_fn);
         if (tmp_metric) {
             delete tmp_metric;
         }
@@ -120,14 +120,14 @@ void MultiDimension<T>::delete_stats() {
     // then traversal tmp_map and delete bvar object,
     // which can prevent the bvar object from being deleted twice.
     MetricMap tmp_map;
-    auto fn = [&tmp_map](MetricMap& map) {
+    auto clear_fn = [&tmp_map](MetricMap& map) {
         if (!tmp_map.empty()) {
             tmp_map.clear();
         }
         tmp_map.swap(map);
         return (size_t)1;
     };
-    int ret = _metric_map.Modify(fn);
+    int ret = _metric_map.Modify(clear_fn);
     CHECK_EQ(1, ret);
     for (auto &kv : tmp_map) {
         delete kv.second;
@@ -148,7 +148,7 @@ void MultiDimension<T>::list_stats(std::vector<key_type>* names) {
     }
     names->reserve(metric_map_ptr->size());
     for (auto it = metric_map_ptr->begin(); it != metric_map_ptr->end(); ++it) {
-        names->push_back(it->first);
+        names->emplace_back(it->first);
     }
 }
 
@@ -182,27 +182,20 @@ T* MultiDimension<T>::get_stats_impl(const key_type& labels_value, STATS_OP stat
     // In order to avoid new duplicate bvar object, need use cache_metric to cache the new bvar object,
     // In this way, when modifying the second copy, can directly use the cache_metric bvar object.
     op_value_type cache_metric = NULL;
-    auto fn = [&labels_value, &cache_metric, &do_write](MetricMap& bg) {
-        auto bg_metric = bg.seek(labels_value);
-        if (NULL != bg_metric) {
-            cache_metric = *bg_metric;
-            return 0;
-        }
+    auto insert_fn = [&labels_value, &cache_metric, &do_write](MetricMap& bg) {
         if (do_write) {
             *do_write = true;
         }
         if (NULL != cache_metric) {
-            bg[labels_value] = cache_metric;
-            // bg.insert({labels_value, cache_metric});
+            bg.insert(labels_value, cache_metric);
         } else {
             T* add_metric = new T();
-            bg[labels_value] = add_metric;
-            // bg.insert({labels_value, add_metric});
+            bg.insert(labels_value, add_metric);
             cache_metric = add_metric;
         }
         return 1;
     };
-    _metric_map.Modify(fn);
+    _metric_map.Modify(insert_fn);
     return cache_metric;
 }
 
