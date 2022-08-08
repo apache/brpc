@@ -4,7 +4,9 @@
 
 # ![brpc](docs/images/logo.png)
 
-百度内最常使用的工业级RPC框架, 有1,000,000+个实例(不包含client)和上千种多种服务。"brpc"的含义是"better RPC"。
+brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机器学习、广告、推荐等高性能系统。
+
+### "brpc"的含义是"better RPC"
 
 你可以使用它：
 
