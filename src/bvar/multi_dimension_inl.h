@@ -183,6 +183,11 @@ T* MultiDimension<T>::get_stats_impl(const key_type& labels_value, STATS_OP stat
     // In this way, when modifying the second copy, can directly use the cache_metric bvar object.
     op_value_type cache_metric = NULL;
     auto insert_fn = [&labels_value, &cache_metric, &do_write](MetricMap& bg) {
+        auto bg_metric = bg.seek(labels_value);
+        if (NULL != bg_metric) {
+            cache_metric = *bg_metric;
+            return 0;
+        }
         if (do_write) {
             *do_write = true;
         }
