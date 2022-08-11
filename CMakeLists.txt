@@ -224,7 +224,7 @@ set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ld
 
 if(WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
-    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
+    set(BRPC_PRIVATE_LIBS "-lglog ${BRPC_PRIVATE_LIBS}")
 endif()
 
 if(WITH_SNAPPY)
