@@ -1,4 +1,20 @@
-# bvar quick introduction
+- [bvar Introduction](#bvar-introduction)
+- [bvar::Variable](#bvarvariable)
+- [Export all variables](#export-all-variables)
+- [bvar::Reducer](#bvarreducer)
+  - [bvar::Adder](#bvaradder)
+  - [bvar::Maxer](#bvarmaxer)
+  - [bvar::Miner](#bvarminer)
+- [bvar::IntRecorder](#bvarintrecorder)
+- [bvar::LatencyRecorder](#bvarlatencyrecorder)
+- [bvar::Window](#bvarwindow)
+- [bvar::PerSecond](#bvarpersecond)
+  - [和Window的差别](#和window的差别)
+- [bvar::Status](#bvarstatus)
+- [bvar::PassiveStatus](#bvarpassivestatus)
+- [bvar::GFlag](#bvargflag)
+
+# bvar Introduction
 
 单维度bvar使用文档，多维度mbvar请[移步](mbvar_c++.md)。
 
