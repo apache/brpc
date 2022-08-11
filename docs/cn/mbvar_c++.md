@@ -1,4 +1,4 @@
-- [Introduction](#introduction)
+- [mbvar Introduction](#mbvar-introduction)
 - [bvar::MVariables](#bvarmvariables)
   - [expose](#expose)
     - [expose](#expose-1)
@@ -25,9 +25,9 @@
     - [bvar::LatencyRecorder](#bvarlatencyrecorder)
     - [bvar::Status](#bvarstatus)
 
-# Introduction
+# mbvar Introduction
 
-bvar多维度统计使用文档
+多维度mbvar使用文档
 
 mbvar中有两个类，分别是MVariable和MultiDimension，MVariable是多维度统计的基类，MultiDimension是派生模板类，目前支持如下几种类型：
 
