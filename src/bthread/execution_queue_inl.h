@@ -520,7 +520,7 @@ inline int ExecutionQueueBase::dereference() {
                 _on_recycle();
                 // We don't return m immediatly when the reference count
                 // reaches 0 as there might be in processing tasks. Instead
-                // _on_recycle would push a `stop_task' after which is excuted
+                // _on_recycle would push a `stop_task' after which is executed
                 // m would be finally returned and reset
                 return 1;
             }

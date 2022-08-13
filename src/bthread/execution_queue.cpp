@@ -72,7 +72,7 @@ void ExecutionQueueBase::start_execute(TaskNode* node) {
     if (node->high_priority) {
         // Add _high_priority_tasks before pushing this task into queue to
         // make sure that _execute_tasks sees the newest number when this 
-        // task is in the queue. Althouth there might be some useless for 
+        // task is in the queue. Although there might be some useless for 
         // loops in _execute_tasks if this thread is scheduled out at this 
         // point, we think it's just fine.
         _high_priority_tasks.fetch_add(1, butil::memory_order_relaxed);
@@ -321,7 +321,7 @@ ExecutionQueueBase::scoped_ptr_t ExecutionQueueBase::address(uint64_t id) {
                         // We don't return m immediatly when the reference count
                         // reaches 0 as there might be in processing tasks. Instead
                         // _on_recycle would push a `stop_task', after which
-                        // is excuted m would be finally reset and returned
+                        // is executed m would be finally reset and returned
                     }
                 } else {
                     CHECK(false) << "ref-version=" << ver1

@@ -4,7 +4,9 @@
 
 # ![brpc](docs/images/logo.png)
 
-An industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with 1,000,000+ instances(not counting clients) and thousands kinds of services. "brpc" means "better RPC".
+brpc is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
+
+### "brpc" means "better RPC". 
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
@@ -104,3 +106,6 @@ Please refer to [here](CONTRIBUTING.md).
 # Feedback and Getting involved
 * Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/apache/incubator-brpc/issues)
 * Subscribe mailing list(dev-subscribe@brpc.apache.org) to get updated with the project
+
+# Code of Conduct
+We follow the code of conduct from Apache Software Foundation, please refer it here [Link](https://www.apache.org/foundation/policies/conduct)
