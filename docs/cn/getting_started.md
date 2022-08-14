@@ -243,7 +243,7 @@ git clone https://github.com/google/googletest -b release-1.10.0 && cd googletes
 ### OpenSSL
 Monterey中openssl的安装位置可能不再位于`/usr/local/opt/openssl`，很可能会在`/opt/homebrew/Cellar`目录下，如果编译时报告找不到openssl：
 
-* 先运行`brew link openssl --force`看看`/user/local/opt/openssl`是否出现了
+* 先运行`brew link openssl --force`看看`/usr/local/opt/openssl`是否出现了
 * 没有的话可以自行设置软链：`sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`。请注意此命令中openssl的目录可能随环境变化而变化，可通过`brew info openssl`查看。
 
 ### 使用config_brpc.sh编译brpc

@@ -247,7 +247,7 @@ After the compilation, copy `include/` and `lib/` into `/usr/local/include` and 
 
 openssl installed in Monterey may not be found at `/usr/local/opt/openssl`, instead it's probably put under `/opt/homebrew/Cellar`. If the compiler cannot find openssl：
 
-* Run `brew link openssl --force` first and check if `/user/local/opt/openssl` appears.
+* Run `brew link openssl --force` first and check if `/usr/local/opt/openssl` appears.
 * If above command does not work, consider making a soft link using `sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`. Note that the installed openssl in above command may be put in different places in different environments, which could be revealed by running `brew info openssl`.
 
 ### Compile brpc with config_brpc.sh
