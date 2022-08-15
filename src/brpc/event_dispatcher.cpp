@@ -65,9 +65,9 @@ EventDispatcher& GetGlobalEventDispatcher(int fd) {
 } // namespace brpc
 
 #if defined(OS_LINUX)
-    #include "event_dispatcher_epoll.cxx"
+    #include "brpc/event_dispatcher_epoll.cxx"
 #elif defined(OS_MACOSX)
-    #include "event_dispatcher_kqueue.cxx"
+    #include "brpc/event_dispatcher_kqueue.cxx"
 #else
     #error Not implemented
 #endif

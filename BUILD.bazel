@@ -503,7 +503,8 @@ cc_library(
     }),
     hdrs = glob([
         "src/brpc/*.h",
-        "src/brpc/**/*.h"
+        "src/brpc/**/*.h",
+        "src/brpc/*.cxx",
     ]),
     includes = [
         "src/",
