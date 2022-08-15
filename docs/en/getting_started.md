@@ -75,6 +75,10 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 ```shell
+mkdir build && cd build && cmake .. && cmake --build . -j6
+```
+With CMake 3.13+, we can also use the following commands to build the project:
+```shell
 cmake -B build && cmake --build build -j6
 ```
 To help VSCode or Emacs(LSP) to understand code correctly, add `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` to generate `compile_commands.json`
@@ -215,18 +219,17 @@ Same with [here](#compile-brpc-with-cmake)
 
 ## MacOS
 
-Note: In the same running environment, the performance of the current Mac version is about 2.5 times worse than the Linux version. If your service is performance-critical, do not use MacOS as your production environment.
+Note: With same environment, the performance of the MacOS version is worse than the Linux version. If your service is performance-critical, do not use MacOS as your production environment.
+
+### Apple Silicon
+
+The code at master HEAD already supports M1 series chips. M2 series are not tested yet. Please feel free to report remaining warnings/errors to us by issues.
 
 ### Prepare deps
 
-Install common deps:
+Install dependencies:
 ```shell
-brew install openssl git gnu-getopt coreutils
-```
-
-Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
-```shell
-brew install gflags protobuf leveldb
+brew install openssl git gnu-getopt coreutils gflags protobuf leveldb
 ```
 
 If you need to enable cpu/heap profilers in examples:
@@ -234,11 +237,18 @@ If you need to enable cpu/heap profilers in examples:
 brew install gperftools
 ```
 
-If you need to run tests, download and compile googletest (which is not compiled yet):
+If you need to run tests, googletest is required. Run `brew install googletest` first to see if it works. If not (old homebrew does not have googletest), you can download and compile googletest by your own:
 ```shell
 git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make
 ```
-After the compilation, copy include/ and lib/ into /usr/local/include and /usr/local/lib respectively to expose gtest to all apps
+After the compilation, copy `include/` and `lib/` into `/usr/local/include` and `/usr/local/lib` respectively to expose gtest to all apps
+
+### OpenSSL
+
+openssl installed in Monterey may not be found at `/usr/local/opt/openssl`, instead it's probably put under `/opt/homebrew/Cellar`. If the compiler cannot find openssl：
+
+* Run `brew link openssl --force` first and check if `/usr/local/opt/openssl` appears.
+* If above command does not work, consider making a soft link using `sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`. Note that the installed openssl in above command may be put in different places in different environments, which could be revealed by running `brew info openssl`.
 
 ### Compile brpc with config_brpc.sh
 git clone brpc, cd into the repo and run
@@ -246,6 +256,14 @@ git clone brpc, cd into the repo and run
 $ sh config_brpc.sh --headers=/usr/local/include --libs=/usr/local/lib --cc=clang --cxx=clang++
 $ make
 ```
+
+The homebrew in Monterey may install software at different directories from before. If path related errors are reported, try setting headers/libs like below:
+
+```shell
+$ sh config_brpc.sh --headers=/opt/homebrew/include --libs=/opt/homebrew/lib --cc=clang --cxx=clang++
+$ make
+```
+
 To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
 
 To use brpc with glog, add `--with-glog`.
@@ -275,7 +293,7 @@ Same with [here](#compile-brpc-with-cmake)
 
 # Supported deps
 
-## GCC: 4.8-7.1
+## GCC: 4.8-11.2
 
 c++11 is turned on by default to remove dependencies on boost (atomic).
 
@@ -283,7 +301,7 @@ The over-aligned issues in GCC7 is suppressed temporarily now.
 
 Using other versions of gcc may generate warnings, contact us to fix.
 
-Adding `-D__const__=` to cxxflags in your makefiles is a must to avoid [errno issue in gcc4+](thread_local.md).
+Adding `-D__const__=__unused__` to cxxflags in your makefiles is a must to avoid [errno issue in gcc4+](thread_local.md).
 
 ## Clang: 3.5-4.0
 

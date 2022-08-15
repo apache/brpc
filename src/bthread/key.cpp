@@ -34,7 +34,7 @@ class KeyTable;
 
 // defined in task_group.cpp
 extern __thread TaskGroup* tls_task_group;
-extern thread_local LocalStorage tls_bls;
+extern __thread LocalStorage tls_bls;
 static __thread bool tls_ever_created_keytable = false;
 
 // We keep thread specific data in a two-level array. The top-level array
@@ -446,10 +446,14 @@ int bthread_setspecific(bthread_key_t key, void* data) {
         bthread::TaskGroup* const g = bthread::tls_task_group;
         if (g) {
             g->current_task()->local_storage.keytable = kt;
-        }
-        if (!bthread::tls_ever_created_keytable) {
-            bthread::tls_ever_created_keytable = true;
-            CHECK_EQ(0, butil::thread_atexit(bthread::cleanup_pthread, kt));
+        } else {
+            // Only cleanup keytable created by pthread.
+            // keytable created by bthread will be deleted
+            // in `return_keytable' or `bthread_keytable_pool_destroy'.
+            if (!bthread::tls_ever_created_keytable) {
+                bthread::tls_ever_created_keytable = true;
+                CHECK_EQ(0, butil::thread_atexit(bthread::cleanup_pthread, kt));
+            }
         }
     }
     return kt->set_data(key, data);

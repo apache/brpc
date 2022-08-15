@@ -27,8 +27,8 @@ namespace brpc {
 
 // Inherit this class to be intrusively shared. Comparing to shared_ptr,
 // intrusive_ptr saves one malloc (for shared_count) and gets better cache
-// locality when the ref/deref are frequent, in the cost of inability of
-// weak_ptr and worse interfacing.
+// locality when the ref/deref are frequent, in the cost of lack of weak_ptr
+// and worse interface.
 class SharedObject {
 friend void intrusive_ptr_add_ref(SharedObject*);
 friend void intrusive_ptr_release(SharedObject*);

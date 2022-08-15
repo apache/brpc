@@ -56,7 +56,7 @@ config_setting(
 
 COPTS = [
     "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
-    "-D__const__=",
+    "-D__const__=__unused__",
     "-D_GNU_SOURCE",
     "-DUSE_SYMBOLIZE",
     "-DNO_TCMALLOC",

@@ -22,7 +22,12 @@
 #ifndef BUTIL_BAIDU_ERRNO_H
 #define BUTIL_BAIDU_ERRNO_H
 
-#define __const__
+#ifndef __const__
+// Avoid over-optimizations of TLS variables by GCC>=4.8
+// See: https://github.com/apache/incubator-brpc/issues/1693
+#define __const__ __unused__
+#endif
+
 #include <errno.h>                           // errno
 #include "butil/macros.h"                     // BAIDU_CONCAT
 

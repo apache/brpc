@@ -50,6 +50,9 @@ public:
     // implements Message ----------------------------------------------
   
     NsheadMessage* New() const;
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+    NsheadMessage* New(::google::protobuf::Arena* arena) const override;
+#endif
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
     void CopyFrom(const NsheadMessage& from);

@@ -354,6 +354,7 @@ int DiscoveryNamingService::GetServers(const char* service_name,
     Channel* chan = GetOrNewDiscoveryChannel();
     if (NULL == chan) {
         LOG(ERROR) << "Fail to create discovery channel";
+        return -1;
     }
     servers->clear();
     Controller cntl;

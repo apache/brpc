@@ -166,6 +166,7 @@ int wait_pthread(ButexPthreadWaiter& pw, timespec* ptimeout) {
 }
 
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
+extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group_nosignal;
 
 // Returns 0 when no need to unschedule or successfully unscheduled,
 // -1 otherwise.
@@ -256,12 +257,29 @@ void butex_destroy(void* butex) {
     butil::return_object(b);
 }
 
-inline TaskGroup* get_task_group(TaskControl* c) {
-    TaskGroup* g = tls_task_group;
-    return g ? g : c->choose_one_group();
+inline TaskGroup* get_task_group(TaskControl* c, bool nosignal = false) {
+    TaskGroup* g;
+    if (nosignal) {
+        g = tls_task_group_nosignal;
+        if (NULL == g) {
+            g = c->choose_one_group();
+            tls_task_group_nosignal = g;
+        }
+    } else {
+        g = tls_task_group ? tls_task_group : c->choose_one_group();
+    }
+    return g;
 }
 
-int butex_wake(void* arg) {
+inline void run_in_local_task_group(TaskGroup* g, bthread_t tid, bool nosignal) {
+    if (!nosignal) {
+        TaskGroup::exchange(&g, tid);
+    } else {
+        g->ready_to_run(tid, nosignal);
+    }
+}
+
+int butex_wake(void* arg, bool nosignal) {
     Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
     ButexWaiter* front = NULL;
     {
@@ -279,16 +297,16 @@ int butex_wake(void* arg) {
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    TaskGroup* g = tls_task_group;
-    if (g) {
-        TaskGroup::exchange(&g, bbw->tid);
+    TaskGroup* g = get_task_group(bbw->control, nosignal);
+    if (g == tls_task_group) {
+        run_in_local_task_group(g, bbw->tid, nosignal);
     } else {
-        bbw->control->choose_one_group()->ready_to_run_remote(bbw->tid);
+        g->ready_to_run_remote(bbw->tid, nosignal);
     }
     return 1;
 }
 
-int butex_wake_all(void* arg) {
+int butex_wake_all(void* arg, bool nosignal) {
     Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
 
     ButexWaiterList bthread_waiters;
@@ -324,7 +342,7 @@ int butex_wake_all(void* arg) {
     next->RemoveFromList();
     unsleep_if_necessary(next, get_global_timer_thread());
     ++nwakeup;
-    TaskGroup* g = get_task_group(next->control);
+    TaskGroup* g = get_task_group(next->control, nosignal);
     const int saved_nwakeup = nwakeup;
     while (!bthread_waiters.empty()) {
         // pop reversely
@@ -335,13 +353,13 @@ int butex_wake_all(void* arg) {
         g->ready_to_run_general(w->tid, true);
         ++nwakeup;
     }
-    if (saved_nwakeup != nwakeup) {
+    if (!nosignal && saved_nwakeup != nwakeup) {
         g->flush_nosignal_tasks_general();
     }
     if (g == tls_task_group) {
-        TaskGroup::exchange(&g, next->tid);
+        run_in_local_task_group(g, next->tid, nosignal);
     } else {
-        g->ready_to_run_remote(next->tid);
+        g->ready_to_run_remote(next->tid, nosignal);
     }
     return nwakeup;
 }

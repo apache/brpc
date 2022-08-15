@@ -20,7 +20,7 @@ brpc有如下依赖：
 ## Ubuntu/LinuxMint/WSL
 ### 依赖准备
 
-安装通用依赖，[gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
+安装依赖：
 ```shell
 sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
 ```
@@ -35,7 +35,7 @@ sudo apt-get install -y libsnappy-dev
 sudo apt-get install -y libgoogle-perftools-dev
 ```
 
-如果你要运行测试，那么要安装并编译ligtest-dev（它没有被默认编译）：
+如果你要运行测试，那么要安装并编译libgtest-dev（它没有被默认编译）：
 ```shell
 sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 ```
@@ -74,6 +74,11 @@ $ sh run_tests.sh
 ```
 
 ### 使用cmake编译brpc
+
+```shell
+mkdir build && cd build && cmake .. && cmake --build . -j6
+```
+对于 cmake 3.13+ 也可以使用如下命令进行编译:
 ```shell
 cmake -B build && cmake --build build -j6
 ```
@@ -113,14 +118,9 @@ CentOS一般需要安装EPEL，否则很多包都默认不可用。
 sudo yum install epel-release
 ```
 
-安装通用依赖：
+安装依赖：
 ```shell
-sudo yum install git gcc-c++ make openssl-devel
-```
-
-安装 [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
-```shell
-sudo yum install gflags-devel protobuf-devel protobuf-compiler leveldb-devel
+sudo yum install git gcc-c++ make openssl-devel gflags-devel protobuf-devel protobuf-compiler leveldb-devel
 ```
 
 如果你要在样例中启用cpu/heap的profiler：
@@ -176,7 +176,7 @@ $ sh run_tests.sh
 
 brpc默认会构建出静态库和共享库，因此它也需要依赖有静态库和共享库两个版本。
 
-以[gflags](https://github.com/gflags/gflags)为例，它默认不够尖共享库，你需要给`cmake`指定选项去改变这一行为：
+以[gflags](https://github.com/gflags/gflags)为例，它默认不构建共享库，你需要给`cmake`指定选项去改变这一行为：
 ```shell
 $ cmake . -DBUILD_SHARED_LIBS=1 -DBUILD_STATIC_LIBS=1
 $ make
@@ -216,18 +216,17 @@ $ make
 
 ## MacOS
 
-注意：在相同运行环境下，当前Mac版brpc的性能比Linux版差2.5倍。如果你的服务是性能敏感的，请不要使用MacOs作为你的生产环境。
+注意：在相同硬件条件下，MacOS版brpc的性能可能明显差于Linux版。如果你的服务是性能敏感的，请不要使用MacOS作为你的生产环境。
+
+### Apple Silicon
+
+master HEAD已支持M1系列芯片，M2未测试过。欢迎通过issues向我们报告遗留的warning/error。
 
 ### 依赖准备
 
-安装通用依赖：
+安装依赖：
 ```shell
-brew install openssl git gnu-getopt coreutils
-```
-
-安装[gflags](https://github.com/gflags/gflags)，[protobuf](https://github.com/google/protobuf)，[leveldb](https://github.com/google/leveldb)：
-```shell
-brew install gflags protobuf leveldb
+brew install openssl git gnu-getopt coreutils gflags protobuf leveldb
 ```
 
 如果你要在样例中启用cpu/heap的profiler：
@@ -235,11 +234,17 @@ brew install gflags protobuf leveldb
 brew install gperftools
 ```
 
-如果你要运行测试，那么要安装并编译googletest（它没有被默认编译）：
+如果你要运行测试，需安装gtest。先运行`brew install googletest`看看homebrew是否支持（老版本没有），没有的话请下载和编译googletest：
 ```shell
 git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make
 ```
-在编译完成后，复制include/和lib/目录到/usr/local/include和/usr/local/lib目录中，以便于让所有应用都能使用gtest。
+在编译完成后，复制`include/`和`lib/`目录到`/usr/local/include`和`/usr/local/lib`目录中，以便于让所有应用都能使用gtest。
+
+### OpenSSL
+Monterey中openssl的安装位置可能不再位于`/usr/local/opt/openssl`，很可能会在`/opt/homebrew/Cellar`目录下，如果编译时报告找不到openssl：
+
+* 先运行`brew link openssl --force`看看`/usr/local/opt/openssl`是否出现了
+* 没有的话可以自行设置软链：`sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`。请注意此命令中openssl的目录可能随环境变化而变化，可通过`brew info openssl`查看。
 
 ### 使用config_brpc.sh编译brpc
 git克隆brpc，进入到项目目录然后运行：
@@ -247,6 +252,13 @@ git克隆brpc，进入到项目目录然后运行：
 $ sh config_brpc.sh --headers=/usr/local/include --libs=/usr/local/lib --cc=clang --cxx=clang++
 $ make
 ```
+MacOS Monterey下的brew安装路径可能改变，如有路径相关的错误，可考虑设置如下：
+
+```shell
+$ sh config_brpc.sh --headers=/opt/homebrew/include --libs=/opt/homebrew/lib --cc=clang --cxx=clang++
+$ make
+```
+
 不想链接调试符号，添加选项`--nodebugsymbols`，然后编译将会得到更轻量的二进制文件。
 
 使用glog版的brpc，添加选项`--with-glog`。
@@ -275,7 +287,7 @@ $ sh run_tests.sh
 
 # 支持的依赖
 
-## GCC: 4.8-7.1
+## GCC: 4.8-11.2
 
 c++11被默认启用，以去除去boost的依赖（比如atomic）。
 
@@ -283,7 +295,7 @@ GCC7中over-aligned的问题暂时被禁止。
 
 使用其他版本的gcc可能会产生编译警告，请联系我们予以修复。
 
-请在makefile中给cxxflags增加`-D__const__=`选项以避免[gcc4+中的errno问题](thread_local.md).
+请在makefile中给cxxflags增加`-D__const__=__unused__`选项以避免[gcc4+中的errno问题](thread_local.md).
 
 ## Clang: 3.5-4.0
 

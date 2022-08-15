@@ -28,7 +28,12 @@ namespace policy {
 
 int RedisAuthenticator::GenerateCredential(std::string* auth_str) const {
     butil::IOBuf buf;
-    brpc::RedisCommandFormat(&buf, "AUTH %s", passwd_.c_str());
+    if (!passwd_.empty()) {
+        brpc::RedisCommandFormat(&buf, "AUTH %s", passwd_.c_str());
+    }
+    if (db_ >= 0) {
+        brpc::RedisCommandFormat(&buf, "SELECT %d", db_);
+    }
     *auth_str = buf.to_string();
     return 0;
 }

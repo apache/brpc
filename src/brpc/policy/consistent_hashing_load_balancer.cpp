@@ -69,7 +69,7 @@ bool DefaultReplicaPolicy::Build(ServerId server,
     }
     replicas->clear();
     for (size_t i = 0; i < num_replicas; ++i) {
-        char host[32];
+        char host[256];
         int len = snprintf(host, sizeof(host), "%s-%lu",
                            endpoint2str(ptr->remote_side()).c_str(), i);
         ConsistentHashingLoadBalancer::Node node;

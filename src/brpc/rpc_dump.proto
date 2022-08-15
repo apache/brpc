@@ -42,4 +42,7 @@ message RpcDumpMeta {
 
   // hulu_pbrpc
   optional bytes user_data = 8;
+    
+  // nshead
+  optional bytes nshead = 9;
 }

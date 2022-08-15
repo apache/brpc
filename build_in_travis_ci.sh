@@ -56,11 +56,11 @@ elif [ "$PURPOSE" = "compile-with-cmake" ]; then
 elif [ "$PURPOSE" = "compile-with-bazel" ]; then
     bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //...
 elif [ "$PURPOSE" = "compile-with-make-all-options" ]; then
-    init_make_config "--with-thrift --with-glog --with-mesalink" && make -j4
+    init_make_config "--with-thrift --with-glog" && make -j4
 elif [ "$PURPOSE" = "compile-with-cmake-all-options" ]; then
-    rm -rf bld && mkdir bld && cd bld && cmake -DWITH_MESALINK=ON -DWITH_GLOG=ON -DWITH_THRIFT=ON .. && make -j4
+    rm -rf bld && mkdir bld && cd bld && cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON .. && make -j4
 elif [ "$PURPOSE" = "compile-with-bazel-all-options" ]; then
-    bazel build -j 12 -c opt --define with_mesalink=true --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
+    bazel build -j 12 -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
 else
     echo "Unknown purpose=\"$PURPOSE\""
 fi

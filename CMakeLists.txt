@@ -23,7 +23,9 @@ option(WITH_MESALINK "With MesaLink" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
+option(WITH_SNAPPY "With snappy" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
+option(BUILD_BRPC_TOOLS "Whether to build brpc tools" ON)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
@@ -31,7 +33,7 @@ if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW)
 endif()
 
-set(BRPC_VERSION 0.9.0)
+set(BRPC_VERSION 1.2.0)
 
 SET(CPACK_GENERATOR "DEB")
 SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "brpc authors")
@@ -108,7 +110,7 @@ set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG
 if(WITH_MESALINK)
     set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DUSE_MESALINK")
 endif()
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
+set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__=__unused__ -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL} ${THRIFT_CPP_FLAG}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
@@ -149,6 +151,15 @@ find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
 if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
     message(FATAL_ERROR "Fail to find leveldb")
+endif()
+
+if(WITH_SNAPPY)
+    find_path(SNAPPY_INCLUDE_PATH NAMES snappy.h)
+    find_library(SNAPPY_LIB NAMES snappy)
+    if ((NOT SNAPPY_INCLUDE_PATH) OR (NOT SNAPPY_LIB))
+        message(FATAL_ERROR "Fail to find snappy")
+    endif()
+    include_directories(${SNAPPY_INCLUDE_PATH})
 endif()
 
 if(WITH_GLOG)
@@ -214,6 +225,11 @@ set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ld
 if(WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
+endif()
+
+if(WITH_SNAPPY)
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} ${SNAPPY_LIB})
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lsnappy")
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -434,7 +450,10 @@ if(BUILD_UNIT_TESTS)
     enable_testing()
     add_subdirectory(test)
 endif()
-add_subdirectory(tools)
+
+if(BUILD_BRPC_TOOLS)
+    add_subdirectory(tools)
+endif()
 
 file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/

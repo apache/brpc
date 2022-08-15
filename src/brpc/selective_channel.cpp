@@ -189,7 +189,7 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     SocketOptions options;
     options.user = sub_chan;
     options.health_check_interval_s = FLAGS_channel_check_interval;
-            
+
     if (Socket::Create(options, &sock_id) != 0) {
         delete sub_chan;
         LOG(ERROR) << "Fail to create fake socket for sub channel";
@@ -203,6 +203,7 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
         ptr->SetFailed();
         return -1;
     }
+    ptr->SetHCRelatedRefHeld(); // set held status
     _chan_map[sub_channel]= ptr.release();  // Add reference.
     if (handle) {
         *handle = sock_id;
@@ -223,6 +224,7 @@ void ChannelBalancer::RemoveAndDestroyChannel(SelectiveChannel::ChannelHandle ha
             CHECK_EQ(1UL, _chan_map.erase(sub->chan));
         }
         {
+            ptr->SetHCRelatedRefReleased(); // set released status to cancel health checking
             SocketUniquePtr ptr2(ptr.get()); // Dereference.
         }
         if (rc == 0) {
@@ -317,6 +319,7 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
     // No need to count timeout. We already managed timeout in schan. If
     // timeout occurs, sub calls are canceled with ERPCTIMEDOUT.
     sub_cntl->_timeout_ms = -1;
+    sub_cntl->_real_timeout_ms = _main_cntl->timeout_ms();
 
     // Inherit following fields of _main_cntl.
     // TODO(gejun): figure out a better way to maintain these fields.

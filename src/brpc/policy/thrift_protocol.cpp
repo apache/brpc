@@ -132,35 +132,40 @@ bool ReadThriftStruct(const butil::IOBuf& body,
             ::apache::thrift::transport::TMemoryBuffer::TAKE_OWNERSHIP);
     apache::thrift::protocol::TBinaryProtocolT<apache::thrift::transport::TMemoryBuffer> iprot(in_buffer);
 
-    // The following code was taken from thrift auto generate code
-    std::string fname;
-
-    uint32_t xfer = 0;
-    ::apache::thrift::protocol::TType ftype;
-    int16_t fid;
-
-    xfer += iprot.readStructBegin(fname);
     bool success = false;
-    while (true) {
-        xfer += iprot.readFieldBegin(fname, ftype, fid);
-        if (ftype == ::apache::thrift::protocol::T_STOP) {
-            break;
-        }
-        if (fid == expected_fid) {
-            if (ftype == ::apache::thrift::protocol::T_STRUCT) {
-                xfer += raw_msg->Read(&iprot);
-                success = true;
+    try {
+        // The following code was taken from thrift auto generate code
+        std::string fname;
+
+        uint32_t xfer = 0;
+        ::apache::thrift::protocol::TType ftype;
+        int16_t fid;
+        xfer += iprot.readStructBegin(fname);
+        while (true) {
+            xfer += iprot.readFieldBegin(fname, ftype, fid);
+            if (ftype == ::apache::thrift::protocol::T_STOP) {
+                break;
+            }
+            if (fid == expected_fid) {
+                if (ftype == ::apache::thrift::protocol::T_STRUCT) {
+                    xfer += raw_msg->Read(&iprot);
+                    success = true;
+                } else {
+                    xfer += iprot.skip(ftype);
+                }
             } else {
                 xfer += iprot.skip(ftype);
             }
-        } else {
-            xfer += iprot.skip(ftype);
+            xfer += iprot.readFieldEnd();
         }
-        xfer += iprot.readFieldEnd();
-    }
 
-    xfer += iprot.readStructEnd();
-    iprot.getTransport()->readEnd();
+        xfer += iprot.readStructEnd();
+        iprot.getTransport()->readEnd();
+    } catch (std::exception& e) {
+        LOG(WARNING) << "Catched thrift exception: " << e.what();
+    } catch (...) {
+        LOG(WARNING) << "Catched unknown thrift exception";
+    }
     return success;
 }
 
@@ -533,7 +538,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
                 " -usercode_in_pthread is on");
     }
 
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
 
     if (span) {
         span->ResetServerSpanName(cntl->thrift_method_name());
@@ -628,7 +633,7 @@ void ProcessThriftResponse(InputMessageBase* msg_base) {
 
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 

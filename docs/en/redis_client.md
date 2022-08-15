@@ -104,6 +104,17 @@ CHECK_EQ(10, response.reply(2).integer());
 CHECK_EQ(-10, response.reply(3).integer());
 ```
 
+# Request redis with authenticator
+
+Create a RedisAuthenticator, and set to ChannelOptions.
+
+```c++
+brpc::ChannelOptions options;
+brpc::policy::RedisAuthenticator* auth = new brpc::policy::RedisAuthenticator("my_password");
+options.auth = auth;
+```
+
+
 # RedisRequest
 
 A [RedisRequest](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h) may contain multiple commands by calling `AddCommand*`, which returns true on success and false otherwise. **The callsite backtrace is also printed on error**.

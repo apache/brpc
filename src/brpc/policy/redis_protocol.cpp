@@ -20,6 +20,7 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
+#include "brpc/policy/redis_authenticator.h"
 #include "butil/logging.h"                       // LOG()
 #include "butil/time.h"
 #include "butil/iobuf.h"                         // butil::IOBuf
@@ -214,7 +215,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                 socket->reset_parsing_context(msg);
             }
 
-            const int consume_count = (pi.with_auth ? 1 : pi.count);
+            const int consume_count = (pi.auth_flags ? pi.auth_flags : pi.count);
 
             ParseError err = msg->response.ConsumePartialIOBuf(*source, consume_count);
             if (err != PARSE_OK) {
@@ -222,18 +223,21 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                 return MakeParseError(err);
             }
 
-            if (pi.with_auth) {
-                if (msg->response.reply_size() != 1 ||
-                    !(msg->response.reply(0).type() == brpc::REDIS_REPLY_STATUS &&
-                      msg->response.reply(0).data().compare("OK") == 0)) {
-                    LOG(ERROR) << "Redis Auth failed: " << msg->response;
-                    return MakeParseError(PARSE_ERROR_NO_RESOURCE,
-                                          "Fail to authenticate with Redis");
+            if (pi.auth_flags) {
+                for (int i = 0; i < (int)pi.auth_flags; ++i) {
+                    if (i >= msg->response.reply_size() ||
+                        !(msg->response.reply(i).type() ==
+                              brpc::REDIS_REPLY_STATUS &&
+                          msg->response.reply(i).data().compare("OK") == 0)) {
+                        LOG(ERROR) << "Redis Auth failed: " << msg->response;
+                        return MakeParseError(PARSE_ERROR_NO_RESOURCE,
+                            "Fail to authenticate with Redis");
+                    }
                 }
 
                 DestroyingPtr<InputResponse> auth_msg(
                      static_cast<InputResponse*>(socket->release_parsing_context()));
-                pi.with_auth = false;
+                pi.auth_flags = 0;
                 continue;
             }
 
@@ -289,7 +293,7 @@ void ProcessRedisResponse(InputMessageBase* msg_base) {
 
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 
@@ -305,6 +309,11 @@ void SerializeRedisRequest(butil::IOBuf* buf,
         return cntl->SetFailed(EREQUEST, "The request is not a RedisRequest");
     }
     const RedisRequest* rr = (const RedisRequest*)request;
+    // If redis byte size is zero, brpc call will fail with E22. Continuous E22 may cause E112 in the end.
+    // So set failed and return useful error message
+    if (rr->ByteSize() == 0) {
+        return cntl->SetFailed(EREQUEST, "request byte size is empty");
+    }
     // We work around SerializeTo of pb which is just a placeholder.
     if (!rr->SerializeTo(buf)) {
         return cntl->SetFailed(EREQUEST, "Fail to serialize RedisRequest");
@@ -328,9 +337,15 @@ void PackRedisRequest(butil::IOBuf* buf,
             return cntl->SetFailed(EREQUEST, "Fail to generate credential");
         }
         buf->append(auth_str);
-        ControllerPrivateAccessor(cntl).add_with_auth();
+        const RedisAuthenticator* redis_auth =
+            dynamic_cast<const RedisAuthenticator*>(auth);
+        if (redis_auth == NULL) {
+            return cntl->SetFailed(EREQUEST, "Fail to generate credential");
+        }
+        ControllerPrivateAccessor(cntl).set_auth_flags(
+            redis_auth->GetAuthFlags());
     } else {
-        ControllerPrivateAccessor(cntl).clear_with_auth();
+        ControllerPrivateAccessor(cntl).clear_auth_flags();
     }
 
     buf->append(request);

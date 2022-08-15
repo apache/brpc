@@ -154,15 +154,20 @@ find_dir_of_header_or_die() {
 }
 
 if [ "$SYSTEM" = "Darwin" ]; then
-    OPENSSL_LIB="/usr/local/opt/openssl/lib"
-    OPENSSL_HDR="/usr/local/opt/openssl/include"
-else
-    # User specified path of openssl, if not given it's empty
-    OPENSSL_LIB=$(find_dir_of_lib ssl)
-    # Inconvenient to check these headers in baidu-internal
-    #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
-    OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
+    if [ -d "/usr/local/opt/openssl" ]; then
+        LIBS_IN="/usr/local/opt/openssl/lib $LIBS_IN"
+        HDRS_IN="/usr/local/opt/openssl/include $HDRS_IN"
+    elif [ -d "/opt/homebrew/Cellar" ]; then
+        LIBS_IN="/opt/homebrew/Cellar $LIBS_IN"
+        HDRS_IN="/opt/homebrew/Cellar $HDRS_IN"
+    fi
 fi
+
+# User specified path of openssl, if not given it's empty
+OPENSSL_LIB=$(find_dir_of_lib ssl)
+# Inconvenient to check these headers in baidu-internal
+#PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
+OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h mesalink/openssl/ssl.h)
 
 if [ $WITH_MESALINK != 0 ]; then
     MESALINK_HDR=$(find_dir_of_header_or_die mesalink/openssl/ssl.h)
@@ -314,6 +319,10 @@ append_to_output "GCC_VERSION=$GCC_VERSION"
 append_to_output "STATIC_LINKINGS=$STATIC_LINKINGS"
 append_to_output "DYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
 CPPFLAGS="-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS"
+
+# Avoid over-optimizations of TLS variables by GCC>=4.8
+# See: https://github.com/apache/incubator-brpc/issues/1693
+CPPFLAGS="${CPPFLAGS} -D__const__=__unused__"
 
 if [ ! -z "$DEBUGSYMBOLS" ]; then
     CPPFLAGS="${CPPFLAGS} $DEBUGSYMBOLS"

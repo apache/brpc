@@ -243,6 +243,7 @@ void Controller::ResetPods() {
     _timeout_ms = UNSET_MAGIC_NUM;
     _backup_request_ms = UNSET_MAGIC_NUM;
     _connect_timeout_ms = UNSET_MAGIC_NUM;
+    _real_timeout_ms = UNSET_MAGIC_NUM;
     _deadline_us = -1;
     _timeout_id = 0;
     _begin_time_us = 0;
@@ -273,6 +274,7 @@ void Controller::ResetPods() {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
+    _auth_flags = 0;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -308,6 +310,7 @@ void Controller::Call::Reset() {
 void Controller::set_timeout_ms(int64_t timeout_ms) {
     if (timeout_ms <= 0x7fffffff) {
         _timeout_ms = timeout_ms;
+        _real_timeout_ms = timeout_ms;
     } else {
         _timeout_ms = 0x7fffffff;
         LOG(WARNING) << "timeout_ms is limited to 0x7fffffff (roughly 24 days)";
@@ -977,6 +980,12 @@ void Controller::HandleSendFailed() {
 
 void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.begin_time_us = start_realtime_us;
+    
+    // If has retry/backup request，we will recalculate the timeout,
+    if (_real_timeout_ms > 0) {
+        _real_timeout_ms -= (start_realtime_us - _begin_time_us) / 1000;
+    }
+
     // Clear last error, Don't clear _error_text because we append to it.
     _error_code = 0;
 
@@ -1154,7 +1163,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     wopt.id_wait = cid;
     wopt.abstime = pabstime;
     wopt.pipelined_count = _pipelined_count;
-    wopt.with_auth = has_flag(FLAGS_REQUEST_WITH_AUTH);
+    wopt.auth_flags = _auth_flags;
     wopt.ignore_eovercrowded = has_flag(FLAGS_IGNORE_EOVERCROWDED);
     int rc;
     size_t packet_size = 0;

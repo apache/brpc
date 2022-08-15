@@ -34,11 +34,11 @@ int LoadBalancerWithNaming::Init(const char* ns_url, const char* lb_name,
         return -1;
     }
     if (GetNamingServiceThread(&_nsthread_ptr, ns_url, options) != 0) {
-        LOG(FATAL) << "Fail to get NamingServiceThread";
+        LOG(ERROR) << "Fail to get NamingServiceThread";
         return -1;
     }
     if (_nsthread_ptr->AddWatcher(this, filter) != 0) {
-        LOG(FATAL) << "Fail to add watcher into _server_list";
+        LOG(ERROR) << "Fail to add watcher into _server_list";
         return -1;
     }
     return 0;

@@ -20,10 +20,9 @@ include config.mk
 
 # Notes on the flags:
 # 1. Added -fno-omit-frame-pointer: perf/tcmalloc-profiler use frame pointers by default
-# 2. Added -D__const__= : Avoid over-optimizations of TLS variables by GCC>=4.8
-# 3. Removed -Werror: Not block compilation for non-vital warnings, especially when the
+# 2. Removed -Werror: Not block compilation for non-vital warnings, especially when the
 #    code is tested on newer systems. If the code is used in production, add -Werror back
-CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DNDEBUG -DBRPC_REVISION=\"$(shell ./tools/get_brpc_revision.sh .)\"
+CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DNDEBUG -DBRPC_REVISION=\"$(shell ./tools/get_brpc_revision.sh .)\"
 CXXFLAGS=$(CPPFLAGS) -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 CFLAGS=$(CPPFLAGS) -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
 DEBUG_CXXFLAGS = $(filter-out -DNDEBUG,$(CXXFLAGS)) -DUNIT_TEST -DBVAR_NOT_LINK_DEFAULT_VARIABLES
@@ -41,13 +40,15 @@ endif
 
 #required by butil/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
-	CXXFLAGS+=-msse4 -msse4.2
+  ifeq ($(shell uname -p),i386)  #note: i386 is processor family type, not the 32-bit x86 arch
+    CXXFLAGS+=-msse4 -msse4.2
+  endif
 endif
 #not solved yet
 ifeq ($(CC),gcc)
- ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
-	CXXFLAGS+=-Wno-aligned-new
- endif
+  ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
+    CXXFLAGS+=-Wno-aligned-new
+  endif
 endif
 
 BUTIL_SOURCES = \
@@ -239,9 +240,9 @@ clean_debug:
 protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o libbrpc.a
 	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -std=c++0x -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(CXXFLAGS) $(HDRPATHS) $(LIBPATHS) -std=c++0x -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -std=c++0x $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(CXXFLAGS) $(HDRPATHS) $(LIBPATHS) -std=c++0x $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
 
 # force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc

@@ -43,7 +43,7 @@ void PackStreamMessage(butil::IOBuf* out,
                        const StreamFrameMeta &fm,
                        const butil::IOBuf *data) {
     const uint32_t data_length = data ? data->length() : 0;
-    const uint32_t meta_length = fm.ByteSize();
+    const uint32_t meta_length = GetProtobufByteSize(fm);
     char head[12];
     uint32_t* dummy = (uint32_t*)head;  // suppresses strict-alias warning
     *(uint32_t*)dummy = *(const uint32_t*)"STRM";
@@ -108,7 +108,9 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
                             && fm.frame_type() != FRAME_TYPE_CLOSE
                             && fm.frame_type() != FRAME_TYPE_FEEDBACK)
                    << "Fail to find stream=" << fm.stream_id();
-            if (fm.has_source_stream_id()) {
+            // It's normal that the stream is closed before receiving feedback frames from peer.
+            // In this case, RST frame should not be sent to peer, otherwise on-fly data can be lost.
+            if (fm.has_source_stream_id() && fm.frame_type() != FRAME_TYPE_FEEDBACK) {
                 SendStreamRst(socket, fm.source_stream_id());
             }
             break;

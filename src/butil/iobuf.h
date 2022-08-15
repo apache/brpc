@@ -296,9 +296,9 @@ public:
     // Returns bytes copied.
     size_t copy_to(void* buf, size_t n = (size_t)-1L, size_t pos = 0) const;
 
-    // NOTE: first parameter is not std::string& because user may passes
-    // a pointer of std::string by mistake, in which case, compiler would
-    // call the void* version which crashes definitely.
+    // NOTE: first parameter is not std::string& because user may pass in
+    // a pointer of std::string by mistake, in which case, the void* overload
+    // would be wrongly called.
     size_t copy_to(std::string* s, size_t n = (size_t)-1L, size_t pos = 0) const;
     size_t append_to(std::string* s, size_t n = (size_t)-1L, size_t pos = 0) const;
 
@@ -560,7 +560,7 @@ private:
 //     some_pb_message.SerializeToZeroCopyStream(&wrapper);
 //
 // NOTE: Blocks are by default shared among all the ZeroCopyOutputStream in one
-// thread. If there are many manuplated streams at one time, there may be many
+// thread. If there are many manipulated streams at one time, there may be many
 // fragments. You can create a ZeroCopyOutputStream which has its own block by 
 // passing a positive `block_size' argument to avoid this problem.
 class IOBufAsZeroCopyOutputStream
