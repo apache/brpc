@@ -1,16 +1,16 @@
 [English version](../en/vars.md)
 
-[bvar](https://github.com/brpc/brpc/tree/master/src/bvar/)是多线程环境下的计数器类库，方便记录和查看用户程序中的各类数值，它利用了thread local存储减少了cache bouncing，相比UbMonitor(百度内的老计数器库)几乎不会给程序增加性能开销，也快于竞争频繁的原子操作。brpc集成了bvar，[/vars](http://brpc.baidu.com:8765/vars)可查看所有曝光的bvar，[/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)可查阅某个bvar，增加计数器的方法请查看[bvar](bvar.md)。brpc大量使用了bvar提供统计数值，当你需要在多线程环境中计数并展现时，应该第一时间想到bvar。但bvar不能代替所有的计数器，它的本质是把写时的竞争转移到了读：读得合并所有写过的线程中的数据，而不可避免地变慢了。当你读写都很频繁或得基于最新值做一些逻辑判断时，你不应该用bvar。
+[bvar](../../src/bvar)是多线程环境下的计数器类库，支持[单维度bvar](bvar_c++.md)和[多维度mbvar](mbvar_c++.md)，方便记录和查看用户程序中的各类数值，它利用了thread local存储减少了cache bouncing，相比UbMonitor(百度内的老计数器库)几乎不会给程序增加性能开销，也快于竞争频繁的原子操作。brpc集成了bvar，[/vars](vars.md)可查看所有曝光的bvar，[/vars/VARNAME](vars.md)可查阅某个bvar，增加计数器的方法请查看[单维度bvar](bvar_c++.md)和[多维度mbvar](mbvar_c++.md)。brpc大量使用了bvar提供统计数值，当你需要在多线程环境中计数并展现时，应该第一时间想到bvar。但bvar不能代替所有的计数器，它的本质是把写时的竞争转移到了读：读得合并所有写过的线程中的数据，而不可避免地变慢了。当你读写都很频繁或得基于最新值做一些逻辑判断时，你不应该用bvar。
 
 ## 查询方法
 
-[/vars](http://brpc.baidu.com:8765/vars) : 列出所有曝光的bvar
+[/vars](vars.md) : 列出所有曝光的bvar
 
-[/vars/NAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)：查询名字为NAME的bvar
+[/vars/NAME](vars.md)：查询名字为NAME的bvar
 
-[/vars/NAME1,NAME2,NAME3](http://brpc.baidu.com:8765/vars/pid;process_cpu_usage;rpc_controller_count)：查询名字为NAME1或NAME2或NAME3的bvar
+[/vars/NAME1,NAME2,NAME3](vars.md)：查询名字为NAME1或NAME2或NAME3的bvar
 
-[/vars/foo*,b$r](http://brpc.baidu.com:8765/vars/rpc_server*_count;iobuf_blo$k_*)：查询名字与某一统配符匹配的bvar，注意用$代替?匹配单个字符，因为?是URL的保留字符。
+[/vars/foo*,b$r](vars.md)：查询名字与某一统配符匹配的bvar，注意用$代替?匹配单个字符，因为?是URL的保留字符。
 
 以下动画演示了如何使用过滤功能。你可以把包含过滤表达式的url复制粘贴给他人，他们点开后将看到相同的计数器条目。(数值可能随运行变化)
 

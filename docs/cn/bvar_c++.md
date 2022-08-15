@@ -1,5 +1,34 @@
-# Quick introduction
+- [bvar Introduction](#bvar-introduction)
+- [bvar::Variable](#bvarvariable)
+- [Export all variables](#export-all-variables)
+- [bvar::Reducer](#bvarreducer)
+  - [bvar::Adder](#bvaradder)
+  - [bvar::Maxer](#bvarmaxer)
+  - [bvar::Miner](#bvarminer)
+- [bvar::IntRecorder](#bvarintrecorder)
+- [bvar::LatencyRecorder](#bvarlatencyrecorder)
+- [bvar::Window](#bvarwindow)
+- [bvar::PerSecond](#bvarpersecond)
+  - [和Window的差别](#和window的差别)
+- [bvar::Status](#bvarstatus)
+- [bvar::PassiveStatus](#bvarpassivestatus)
+- [bvar::GFlag](#bvargflag)
 
+# bvar Introduction
+
+单维度bvar使用文档，多维度mbvar请[移步](mbvar_c++.md)。
+
+bvar分为多个具体的类，常用的有：
+
+- `bvar::Adder<T>` : 计数器，默认0，varname << N相当于varname += N。
+- `bvar::Maxer<T>` : 求最大值，默认std::numeric_limits<T>::min()，varname << N相当于varname = max(varname, N)。
+- `bvar::Miner<T>` : 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N)。
+- `bvar::IntRecorder` : 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值。
+- `bvar::Window<VAR>` : 获得某个bvar在一段时间内的累加值。Window衍生于已存在的bvar，会自动更新。
+- `bvar::PerSecond<VAR>` : 获得某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量。
+- `bvar::LatencyRecorder` : 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。
+
+例子：
 ```c++
 #include <bvar/bvar.h>
 
@@ -43,16 +72,6 @@ foo::bar::g_task_pushed << 1;
 ```
 
 注意Window<>和PerSecond<>都是衍生变量，会自动更新，你不用给它们推值。你当然也可以把bvar作为成员变量或局部变量。
-
-常用的bvar有：
-
-- `bvar::Adder<T>` : 计数器，默认0，varname << N相当于varname += N。
-- `bvar::Maxer<T>` : 求最大值，默认std::numeric_limits<T>::min()，varname << N相当于varname = max(varname, N)。
-- `bvar::Miner<T>` : 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N)。
-- `bvar::IntRecorder` : 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值。
-- `bvar::Window<VAR>` : 获得某个bvar在一段时间内的累加值。Window衍生于已存在的bvar，会自动更新。
-- `bvar::PerSecond<VAR>` : 获得某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量。
-- `bvar::LatencyRecorder` : 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。
 
 **确认变量名是全局唯一的！** 否则会曝光失败，如果-bvar_abort_on_same_name为true，程序会直接abort。
 
