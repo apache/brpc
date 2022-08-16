@@ -505,7 +505,9 @@ cc_library(
     }),
     hdrs = glob([
         "src/brpc/*.h",
-        "src/brpc/**/*.h"
+        "src/brpc/**/*.h",
+        "src/brpc/event_dispatcher_epoll.cpp",
+        "src/brpc/event_dispatcher_kqueue.cpp",
     ]),
     includes = [
         "src/",
