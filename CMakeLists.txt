@@ -392,6 +392,7 @@ file(GLOB_RECURSE BTHREAD_SOURCES "${PROJECT_SOURCE_DIR}/src/bthread/*.cpp")
 file(GLOB_RECURSE JSON2PB_SOURCES "${PROJECT_SOURCE_DIR}/src/json2pb/*.cpp")
 file(GLOB_RECURSE BRPC_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/*.cpp")
 file(GLOB_RECURSE THRIFT_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/thrift*.cpp")
+file(GLOB_RECURSE EXCLUDE_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/event_dispatcher_*.cpp")
 
 if(WITH_THRIFT)
     message("brpc compile with thrift protocol")
@@ -402,6 +403,10 @@ else()
     endforeach()
     set(THRIFT_SOURCES "")
 endif()
+
+foreach(v ${EXCLUDE_SOURCES})
+    list(REMOVE_ITEM BRPC_SOURCES ${v})
+endforeach()
 
 set(MCPACK2PB_SOURCES
     ${PROJECT_SOURCE_DIR}/src/mcpack2pb/field_type.cpp

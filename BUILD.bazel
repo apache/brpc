@@ -495,6 +495,8 @@ cc_library(
         "src/brpc/thrift_service.cpp",
         "src/brpc/thrift_message.cpp",
         "src/brpc/policy/thrift_protocol.cpp",
+        "src/brpc/event_dispatcher_epoll.cpp",
+        "src/brpc/event_dispatcher_kqueue.cpp",
     ]) + select({
         ":with_thrift" : glob([
             "src/brpc/thrift*.cpp",
@@ -503,7 +505,9 @@ cc_library(
     }),
     hdrs = glob([
         "src/brpc/*.h",
-        "src/brpc/**/*.h"
+        "src/brpc/**/*.h",
+        "src/brpc/event_dispatcher_epoll.cpp",
+        "src/brpc/event_dispatcher_kqueue.cpp",
     ]),
     includes = [
         "src/",
