@@ -68,14 +68,14 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
         return -1;
     }
 
-    // Set _consumer_thread_attr before creating epoll/kqueue thread to make sure
+    // Set _consumer_thread_attr before creating kqueue thread to make sure
     // everyting seems sane to the thread.
     _consumer_thread_attr = (consumer_thread_attr  ?
                              *consumer_thread_attr : BTHREAD_ATTR_NORMAL);
 
     //_consumer_thread_attr is used in StartInputEvent(), assign flag NEVER_QUIT to it will cause new bthread
-    // that created by epoll_wait() never to quit.
-    _epoll_thread_attr = _consumer_thread_attr | BTHREAD_NEVER_QUIT;
+    // that created by kevent() never to quit.
+    bthread_attr_t kqueue_thread_attr = _consumer_thread_attr | BTHREAD_NEVER_QUIT;
 
     // Polling thread uses the same attr for consumer threads (NORMAL right
     // now). Previously, we used small stack (32KB) which may be overflowed
@@ -83,9 +83,9 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
     // is also a potential issue for consumer threads, using the same attr
     // should be a reasonable solution.
     int rc = bthread_start_background(
-        &_tid, &_epoll_thread_attr, RunThis, this);
+        &_tid, &kqueue_thread_attr, RunThis, this);
     if (rc) {
-        LOG(FATAL) << "Fail to create epoll/kqueue thread: " << berror(rc);
+        LOG(FATAL) << "Fail to create kqueue thread: " << berror(rc);
         return -1;
     }
     return 0;
@@ -169,9 +169,9 @@ int EventDispatcher::RemoveConsumer(int fd) {
     // Removing the consumer from dispatcher before closing the fd because
     // if process was forked and the fd is not marked as close-on-exec,
     // closing does not set reference count of the fd to 0, thus does not
-    // remove the fd from epoll. More badly, the fd will not be removable
-    // from epoll again! If the fd was level-triggered and there's data left,
-    // epoll_wait will keep returning events of the fd continuously, making
+    // remove the fd from kqueue More badly, the fd will not be removable
+    // from kqueue again! If the fd was level-triggered and there's data left,
+    // kevent will keep returning events of the fd continuously, making
     // program abnormal.
     struct kevent evt;
     EV_SET(&evt, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);

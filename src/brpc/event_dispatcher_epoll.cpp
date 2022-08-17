@@ -68,14 +68,14 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
         return -1;
     }
 
-    // Set _consumer_thread_attr before creating epoll/kqueue thread to make sure
+    // Set _consumer_thread_attr before creating epoll thread to make sure
     // everyting seems sane to the thread.
     _consumer_thread_attr = (consumer_thread_attr  ?
                              *consumer_thread_attr : BTHREAD_ATTR_NORMAL);
 
     //_consumer_thread_attr is used in StartInputEvent(), assign flag NEVER_QUIT to it will cause new bthread
     // that created by epoll_wait() never to quit.
-    _epoll_thread_attr = _consumer_thread_attr | BTHREAD_NEVER_QUIT;
+    bthread_attr_t epoll_thread_attr = _consumer_thread_attr | BTHREAD_NEVER_QUIT;
 
     // Polling thread uses the same attr for consumer threads (NORMAL right
     // now). Previously, we used small stack (32KB) which may be overflowed
@@ -83,9 +83,9 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
     // is also a potential issue for consumer threads, using the same attr
     // should be a reasonable solution.
     int rc = bthread_start_background(
-        &_tid, &_epoll_thread_attr, RunThis, this);
+        &_tid, &epoll_thread_attr, RunThis, this);
     if (rc) {
-        LOG(FATAL) << "Fail to create epoll/kqueue thread: " << berror(rc);
+        LOG(FATAL) << "Fail to create epoll thread: " << berror(rc);
         return -1;
     }
     return 0;
