@@ -191,9 +191,9 @@ void EventDispatcher::Run() {
         struct kevent e[32];
         int n = kevent(_epfd, NULL, 0, e, ARRAY_SIZE(e), NULL);
         if (_stop) {
-            // epoll_ctl/epoll_wait should have some sort of memory fencing
-            // guaranteeing that we(after epoll_wait) see _stop set before
-            // epoll_ctl.
+            // EV_SET/kevent should have some sort of memory fencing
+            // guaranteeing that we(after kevent) see _stop set before
+            // EV_SET
             break;
         }
         if (n < 0) {
