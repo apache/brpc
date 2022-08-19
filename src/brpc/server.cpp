@@ -271,7 +271,11 @@ static bvar::Vector<unsigned, 2> GetSessionLocalDataCount(void* arg) {
 }
 
 std::string Server::ServerPrefix() const {
-    return butil::string_printf("%s_%d", g_server_info_prefix, listen_address().port);
+    if(_options.server_info_name.empty()) {
+        return butil::string_printf("%s_%d", g_server_info_prefix, listen_address().port);
+    } else {
+        return std::string(g_server_info_prefix) + "_" + _options.server_info_name;
+    }
 }
 
 void* Server::UpdateDerivedVars(void* arg) {
