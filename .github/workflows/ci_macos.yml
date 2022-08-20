@@ -16,7 +16,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     
-    - name: intall dependences
+    - name: install dependences
       run: |
            brew install openssl gnu-getopt coreutils gflags protobuf leveldb
 
@@ -36,7 +36,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     
-    - name: intall dependences
+    - name: install dependences
       run: |
            brew install openssl gnu-getopt coreutils gflags protobuf leveldb
 
@@ -57,7 +57,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     
-    - name: intall dependences
+    - name: install dependences
       run: |
            brew install openssl gnu-getopt coreutils gflags protobuf leveldb
 
@@ -71,7 +71,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     
-    - name: intall dependences
+    - name: install dependences
       run: |
            brew install openssl gnu-getopt coreutils gflags protobuf leveldb googletest
 
