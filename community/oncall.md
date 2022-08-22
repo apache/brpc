@@ -44,4 +44,5 @@
 | 06/06/2022 - 06/12/2022  | 何磊 | https://lists.apache.org/thread/s19p7ygnsj0bknfjvrh0wlf1mbgstxbk
 | 06/13/2022 - 06/19/2022  | 刘帅 | https://lists.apache.org/thread/tvqjyz6rh7jb1zcclx0lh6zrcsf9ykxr
 | 07/25/2022 - 07/31/2022  | 王伟冰 | https://lists.apache.org/thread/83scwkkfxrp6kkkoltbrn1fthfy3w0qz
-| 08/08/2022 - 14/08/2022  | 何磊 | https://lists.apache.org/thread/jj16rzfh34yrt6o0xqfdz9wtdtzxzswq
+| 08/08/2022 - 08/14/2022  | 何磊 | https://lists.apache.org/thread/jj16rzfh34yrt6o0xqfdz9wtdtzxzswq
+| 08/15/2022 - 08/21/2022  | 刘帅 | https://lists.apache.org/thread/jp69sm7c8fs3dkdd828qk0fsojqwwz6h
