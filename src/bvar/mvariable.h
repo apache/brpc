@@ -30,7 +30,7 @@
 namespace bvar {
 
 class Dumper;
-class DumpOptions;
+struct DumpOptions;
 
 class MVariable {
 public:
