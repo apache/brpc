@@ -116,7 +116,8 @@ inline int rwlock_wlock(bthread_rwlock_t* rwlock) {
         if(r != 0) {
             if(bthread::butex_wait(whole, r, NULL) < 0 && 
                 errno != EWOULDBLOCK && errno != EINTR) {
-                whole->fetch_sub(1);
+                w_wait_count->fetch_sub(1);
+                bthread::butex_wake_all(w_wait_count);
                 return errno;
             }
             continue;
