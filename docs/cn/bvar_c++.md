@@ -2,14 +2,22 @@
 - [bvar::Variable](#bvarvariable)
 - [Export all variables](#export-all-variables)
 - [bvar::Reducer](#bvarreducer)
-  - [bvar::Adder](#bvaradder)
-  - [bvar::Maxer](#bvarmaxer)
-  - [bvar::Miner](#bvarminer)
+    - [bvar::Adder](#bvaradder)
+    - [bvar::Maxer](#bvarmaxer)
+    - [bvar::Miner](#bvarminer)
 - [bvar::IntRecorder](#bvarintrecorder)
 - [bvar::LatencyRecorder](#bvarlatencyrecorder)
 - [bvar::Window](#bvarwindow)
+    - [How to use bvar::Window](#how-to-use-bvarwindow)
 - [bvar::PerSecond](#bvarpersecond)
-  - [和Window的差别](#和window的差别)
+    - [Difference with Window](#difference-with-window)
+- [bvar::WindowEx](#bvarwindowex)
+    - [How to use bvar::WindowEx](#how-to-use-bvarwindowex)
+    - [Difference between bvar::WindowEx and bvar::Window](#difference-between-bvarwindowex-and-bvarwindow)
+- [bvar::PerSecondEx](#bvarpersecondex)
+    - [How to use bvar::PerSecondEx](#how-to-use-bvarpersecondex)
+    - [Difference between bvar::PerSecondEx and bvar::WindowEx](#difference-between-bvarpersecondex-and-bvarwindowex)
+    - [Difference between bvar::PerSecondEx and bvar::PerSecond](#difference-between-bvarpersecondex-and-bvarpersecond)
 - [bvar::Status](#bvarstatus)
 - [bvar::PassiveStatus](#bvarpassivestatus)
 - [bvar::GFlag](#bvargflag)
@@ -423,7 +431,7 @@ template <typename R>
 class Window : public Variable;
 ```
 
-## 如何使用
+## How to use bvar::Window
 ```c++
 bvar::Adder<int> sum;
 bvar::Maxer<int> max_value;
@@ -461,7 +469,7 @@ bvar::PerSecond<bvar::Maxer<int> > max_value_per_second_wrong(&max_value);
 bvar::Window<bvar::Maxer<int> > max_value_per_second(&max_value, 1);
 ```
 
-## 和Window的差别
+## Difference with Window
 
 比如要统计内存在上一分钟内的变化，用Window<>的话，返回值的含义是”上一分钟内存增加了18M”，用PerSecond<>的话，返回值的含义是“上一分钟平均每秒增加了0.3M”。
 
@@ -496,7 +504,7 @@ public:
 };
 ```
 
-## 如何使用
+## How to use bvar::WindowEx
 ```c++
 const int window_size = 60;
  
@@ -523,7 +531,7 @@ int64_t avg_int = avg_stat.get_average_int();
 double avg_double = avg_stat.get_average_double();
 ```
 
-## bvar::WindowEx和bvar::Window的区别
+## Difference between bvar::WindowEx and bvar::Window
 
 - bvar::Window 不能独立存在，必须依赖于一个已有的计数器。Window会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
 
@@ -557,7 +565,7 @@ public:
 };
 ```
 
-## 如何使用
+## How to use bvar::PerSecondEx
 
 ```c++
 const int window_size = 60;
@@ -567,11 +575,11 @@ bvar::PerSecondEx<bvar::Adder<int>, window_size> sum_per_second("sum_per_second"
 sum_per_second << 1 << 2 << 3;
 ```
 
-## bvar::PerSecondEx和bvar::WindowEx的区别
+## Difference between bvar::PerSecondEx and bvar::WindowEx
 
-- 获得之前一段时间内平均每秒的统计值。它和WindowEx基本相同，除了返回值会除以时间窗口之外。
+- bvar::PerSecondEx 获得之前一段时间内平均每秒的统计值。它和WindowEx基本相同，除了返回值会除以时间窗口之外。
 
-## bvar::PerSecondEx和bvar::PerSecond的区别
+## Difference between bvar::PerSecondEx and bvar::PerSecond
 - bvar::PerSecond 不能独立存在，必须依赖于一个已有的计数器。PerSecond会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
 - bvar::PerSecondEx 是独立存在的，不依赖其他的计数器，需要给它发送数据。使用起来比较方便；window_size是通过模板参数传递的，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
 
