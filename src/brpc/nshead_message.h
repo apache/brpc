@@ -49,24 +49,24 @@ public:
   
     // implements Message ----------------------------------------------
   
-    NsheadMessage* New() const;
+    NsheadMessage* New() const override;
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     NsheadMessage* New(::google::protobuf::Arena* arena) const override;
 #endif
-    void CopyFrom(const ::google::protobuf::Message& from);
-    void MergeFrom(const ::google::protobuf::Message& from);
+    void CopyFrom(const ::google::protobuf::Message& from) override;
+    void MergeFrom(const ::google::protobuf::Message& from) override;
     void CopyFrom(const NsheadMessage& from);
     void MergeFrom(const NsheadMessage& from);
-    void Clear();
-    bool IsInitialized() const;
+    void Clear() override;
+    bool IsInitialized() const override;
   
     int ByteSize() const;
     bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input);
+        ::google::protobuf::io::CodedInputStream* input) override;
     void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
-    int GetCachedSize() const { return ByteSize(); }
+        ::google::protobuf::io::CodedOutputStream* output) const override;
+    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const override;
+    int GetCachedSize() const override { return ByteSize(); }
 
 protected:
     ::google::protobuf::Metadata GetMetadata() const override;
