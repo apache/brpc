@@ -747,7 +747,7 @@ TEST_F(SocketTest, health_check) {
     start_time = butil::gettimeofday_us();
     while (brpc::Socket::Status(id) != 0) {
         bthread_usleep(1000);
-        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
+        ASSERT_LT(butil::gettimeofday_us(), start_time + 1200000L);
     }
     ASSERT_TRUE(global_sock);
 
