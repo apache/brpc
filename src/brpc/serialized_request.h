@@ -22,6 +22,7 @@
 #include <google/protobuf/message.h>
 #include "butil/iobuf.h"
 #include "brpc/proto_base.pb.h"
+#include "brpc/pb_compat.h"
 
 namespace brpc {
 
@@ -43,7 +44,7 @@ public:
   
     // implements Message ----------------------------------------------
   
-    SerializedRequest* New() const override;
+    SerializedRequest* New() const PB_319_OVERRIDE;
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     SerializedRequest* New(::google::protobuf::Arena* arena) const override;
 #endif
@@ -61,11 +62,11 @@ protected:
     
 private:
     bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input) override;
+        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const override;
+        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
-        ::google::protobuf::uint8* output) const override;
+        ::google::protobuf::uint8* output) const PB_310_OVERRIDE;
     void MergeFrom(const ::google::protobuf::Message& from) override;
     void MergeFrom(const SerializedRequest& from);
     void SharedCtor();

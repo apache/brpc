@@ -25,6 +25,7 @@
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "brpc/proto_base.pb.h"
+#include "brpc/pb_compat.h"
 
 namespace brpc {
 
@@ -89,7 +90,7 @@ public:
     const butil::IOBuf& raw_buffer() const { return _buf; }
 
     // Protobuf methods.
-    MemcacheRequest* New() const override;
+    MemcacheRequest* New() const PB_319_OVERRIDE;
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     MemcacheRequest* New(::google::protobuf::Arena* arena) const override;
 #endif
@@ -102,10 +103,10 @@ public:
   
     int ByteSize() const;
     bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input) override;
+        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const override;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const override;
+        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
+    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
     int GetCachedSize() const override { return _cached_size_; }
     
     static const ::google::protobuf::Descriptor* descriptor();
@@ -202,7 +203,7 @@ public:
       
     // implements Message ----------------------------------------------
   
-    MemcacheResponse* New() const override;
+    MemcacheResponse* New() const PB_319_OVERRIDE;
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     MemcacheResponse* New(::google::protobuf::Arena* arena) const override;
 #endif
@@ -215,10 +216,10 @@ public:
   
     int ByteSize() const;
     bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input) override;
+        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const override;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const override;
+        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
+    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
     int GetCachedSize() const override { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
