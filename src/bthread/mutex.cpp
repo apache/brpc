@@ -253,7 +253,7 @@ void ContentionProfiler::flush_to_disk(bool ending) {
 
 // If contention profiler is on, this variable will be set with a valid
 // instance. NULL otherwise.
-static ContentionProfiler* BAIDU_CACHELINE_ALIGNMENT g_cp = NULL;
+BAIDU_CACHELINE_ALIGNMENT static ContentionProfiler* g_cp = NULL;
 // Need this version to solve an issue that non-empty entries left by
 // previous contention profilers should be detected and overwritten.
 static uint64_t g_cp_version = 0;

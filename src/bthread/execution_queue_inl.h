@@ -223,9 +223,9 @@ private:
 
     // Don't change the order of _head, _versioned_ref and _stopped unless you 
     // see improvement of performance in test
-    butil::atomic<TaskNode*> BAIDU_CACHELINE_ALIGNMENT _head;
-    butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT _versioned_ref;
-    butil::atomic<bool> BAIDU_CACHELINE_ALIGNMENT _stopped;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<TaskNode*> _head;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<uint64_t> _versioned_ref;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<bool> _stopped;
     butil::atomic<int64_t> _high_priority_tasks;
     uint64_t _this_id;
     void* _meta;

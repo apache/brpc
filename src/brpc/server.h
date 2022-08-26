@@ -691,8 +691,7 @@ friend class Controller;
     // mutable is required for `ServerPrivateAccessor' to change this bvar
     mutable bvar::Adder<int64_t> _nerror_bvar;
     mutable bvar::PerSecond<bvar::Adder<int64_t> > _eps_bvar;
-    mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
-
+    BAIDU_CACHELINE_ALIGNMENT mutable int32_t _concurrency;
 };
 
 // Get the data attached to current searching thread. The data is created by
