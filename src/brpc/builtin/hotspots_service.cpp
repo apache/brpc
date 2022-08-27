@@ -410,13 +410,15 @@ static void DisplayResult(Controller* cntl,
     const std::string* base_name = cntl->http_request().uri().GetQuery("base");
     const std::string* display_type_query = cntl->http_request().uri().GetQuery("display_type");
     DisplayType display_type = DisplayType::kDot;
+#if defined(OS_LINUX)
+    const char* flamegraph_tool = getenv("FLAMEGRAPH_PL_PATH");
+#endif
     if (display_type_query) {
         display_type = StringToDisplayType(*display_type_query);
         if (display_type == DisplayType::kUnknown) {
             return cntl->SetFailed(EINVAL, "Invalid display_type=%s", display_type_query->c_str());
         }
 #if defined(OS_LINUX)
-        const char* flamegraph_tool = getenv("FLAMEGRAPH_PL_PATH");
         if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
                 "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
