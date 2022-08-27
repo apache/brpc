@@ -124,14 +124,10 @@
 // Use like:
 //   class ALIGNAS(16) MyClass { ... }
 //   ALIGNAS(16) int array[4];
-#if defined(BUTIL_CXX11_ENABLED)
-# define ALIGNAS(byte_alignment) alignas(byte_alignment)
-#else
-# if defined(COMPILER_MSVC)
-#  define ALIGNAS(byte_alignment) __declspec(align(byte_alignment))
-# elif defined(COMPILER_GCC)
-#  define ALIGNAS(byte_alignment) __attribute__((aligned(byte_alignment)))
-# endif
+#if defined(COMPILER_MSVC)
+# define ALIGNAS(byte_alignment) __declspec(align(byte_alignment))
+#elif defined(COMPILER_GCC)
+# define ALIGNAS(byte_alignment) __attribute__((aligned(byte_alignment)))
 #endif
 
 // Return the byte alignment of the given type (available at compile time).  Use
@@ -139,14 +135,10 @@
 // http://goo.gl/isH0C
 // Use like:
 //   ALIGNOF(int32_t)  // this would be 4
-#if defined(BUTIL_CXX11_ENABLED)
-# define ALIGNOF(type) alignof(type)
-#else
-# if defined(COMPILER_MSVC)
-#  define ALIGNOF(type) (sizeof(type) - sizeof(type) + __alignof(type))
-# elif defined(COMPILER_GCC)
-#  define ALIGNOF(type) __alignof__(type)
-# endif
+#if defined(COMPILER_MSVC)
+# define ALIGNOF(type) (sizeof(type) - sizeof(type) + __alignof(type))
+#elif defined(COMPILER_GCC)
+# define ALIGNOF(type) __alignof__(type)
 #endif
 
 // Annotate a virtual method indicating it must be overriding a virtual

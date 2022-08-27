@@ -1393,16 +1393,12 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
 
     butil::Timer timer;
     bool res;
-    float avg_time1 = 0;
     float avg_time2 = 0;
     const int times = 10000;
     gss::message::gss_us_res_t data;
     json2pb::Json2PbOptions option;
     option.base64_to_bytes = false;
-    timer.start();
     res = JsonToProtoMessage(info3, &data, option, &error);
-    timer.stop();
-    avg_time1 += timer.u_elapsed();
     ASSERT_TRUE(res) << error;
     ProfilerStart("pb_to_json_complex_perf.prof");
     for (int i = 0; i < times; i++) { 
@@ -1433,16 +1429,12 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
   
     butil::Timer timer;
     bool res;
-    float avg_time1 = 0;
     float avg_time2 = 0;
     const int times = 10000;
     gss::message::gss_us_res_t data;
     json2pb::Json2PbOptions option;
     option.base64_to_bytes = false;
-    timer.start();
     res = JsonToProtoMessage(info3, &data, option, &error);
-    timer.stop();
-    avg_time1 += timer.u_elapsed();
     ASSERT_TRUE(res);
     ProfilerStart("pb_to_json_to_string_complex_perf.prof");
     for (int i = 0; i < times; i++) { 

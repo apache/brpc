@@ -237,7 +237,7 @@ TEST_F(FlatMapTest, __builtin_ctzl_perf) {
         s += __builtin_ctzl(i);
     }
     tm1.stop();
-    LOG(INFO) << "__builtin_ctzl takes " << tm1.n_elapsed()/(double)N << "ns";
+    LOG(INFO) << "__builtin_ctzl takes " << tm1.n_elapsed()/(double)N << "ns s=" << s;
 }
 
 TEST_F(FlatMapTest, case_ignored_map) {
@@ -408,7 +408,7 @@ TEST_F(FlatMapTest, flat_map_of_string) {
 
     LOG(INFO) << "finding c_strings takes " << tm1.n_elapsed()/N
               << " " << tm2.n_elapsed()/N << " " << tm3.n_elapsed()/N
-              << " " << tm1_2.n_elapsed()/N;
+              << " " << tm1_2.n_elapsed()/N << " sum=" << sum;
     
     for (size_t i = 0; i < N; ++i) {
         ASSERT_EQ(i, m1[keys[i]]) << "i=" << i;
@@ -796,7 +796,7 @@ TEST_F(FlatMapTest, perf_cmp_with_map_storing_pointers) {
         sum += (m3.find(r[i]) != m3.end());
     }
     tm.stop();
-    LOG(INFO) << "std::set takes " << tm.n_elapsed()/r.size();
+    LOG(INFO) << "std::set takes " << tm.n_elapsed()/r.size() << " sum=" << sum;
 
     for (size_t i = 0; i < ARRAY_SIZE(ptr); ++i) {
         delete ptr[i];
@@ -1265,7 +1265,8 @@ template <typename T> void perf_seek(const T& value) {
                   << id_tm.n_elapsed() / keys.size()
                   << "/" << std_tm.n_elapsed() / keys.size()
                   << "/" << pooled_tm.n_elapsed() / keys.size()
-                  << "/" << hash_tm.n_elapsed() / keys.size();
+                  << "/" << hash_tm.n_elapsed() / keys.size()
+                  << " sum=" << sum;
     }
 }
 
