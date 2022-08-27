@@ -318,6 +318,8 @@ append_to_output "CXX=$CXX"
 append_to_output "GCC_VERSION=$GCC_VERSION"
 append_to_output "STATIC_LINKINGS=$STATIC_LINKINGS"
 append_to_output "DYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
+
+# CPP means C PreProcessing, not C PlusPlus
 CPPFLAGS="-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS"
 
 # Avoid over-optimizations of TLS variables by GCC>=4.8
@@ -355,6 +357,13 @@ if [ $WITH_MESALINK != 0 ]; then
 fi
 
 append_to_output "CPPFLAGS=${CPPFLAGS}"
+append_to_output "# without the flag, linux+arm64 may crash due to folding on TLS.
+ifeq (\$(CC),gcc)
+  ifeq (\$(shell uname -p),aarch64) 
+    CPPFLAGS+=-fno-gcse
+  endif
+endif
+"
 
 append_to_output "ifeq (\$(NEED_LIBPROTOC), 1)"
 PROTOC_LIB=$(find $PROTOBUF_LIB -name "libprotoc.*" | head -n1)

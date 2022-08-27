@@ -24,11 +24,12 @@
 
 namespace butil {
 
-// NOTE: Using ascii_tolower instead of ::tolower shortens 150ns in
+// Using ascii_tolower instead of ::tolower shortens 150ns in
 // FlatMapTest.perf_small_string_map (with -O2 added, -O0 by default)
-inline char ascii_tolower(char c) {
+// note: using char caused crashes on ubuntu 20.04 aarch64 (VM on apple M1)
+inline char ascii_tolower(int/*note*/ c) {
     extern const signed char* const g_tolower_map;
-    return g_tolower_map[(int)c];
+    return g_tolower_map[c];
 }
 
 struct CaseIgnoredHasher {

@@ -836,6 +836,7 @@ struct Key {
     Key() : x_(0) { ++n_con_key; }
     Key(int x) : x_(x) { ++ n_con_key; }
     Key(const Key& rhs) : x_(rhs.x_) { ++ n_cp_con_key; }
+    void operator=(const Key& rhs) { x_ = rhs.x_; }
     ~Key() { ++ n_des_key; }
     int x_;
 };
