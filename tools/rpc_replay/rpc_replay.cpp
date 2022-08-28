@@ -245,7 +245,7 @@ int main(int argc, char* argv[]) {
     }
 
     const int rate_limit_per_thread = 1000000;
-    double req_rate_per_thread = FLAGS_qps / FLAGS_thread_num;
+    int req_rate_per_thread = FLAGS_qps / FLAGS_thread_num;
     if (req_rate_per_thread > rate_limit_per_thread) {
         LOG(ERROR) << "req_rate: " << (int64_t) req_rate_per_thread << " is too large in one thread. The rate limit is " 
                 <<  rate_limit_per_thread << " in one thread";
