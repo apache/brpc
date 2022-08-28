@@ -112,7 +112,7 @@ public:
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     RedisRequest* New(::google::protobuf::Arena* arena) const override;
 #endif
-    void CopyFrom(const ::google::protobuf::Message& from) override;
+    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
     void MergeFrom(const ::google::protobuf::Message& from) override;
     void CopyFrom(const RedisRequest& from);
     void MergeFrom(const RedisRequest& from);
@@ -185,7 +185,7 @@ public:
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     RedisResponse* New(::google::protobuf::Arena* arena) const override;
 #endif
-    void CopyFrom(const ::google::protobuf::Message& from) override;
+    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
     void MergeFrom(const ::google::protobuf::Message& from) override;
     void CopyFrom(const RedisResponse& from);
     void MergeFrom(const RedisResponse& from);

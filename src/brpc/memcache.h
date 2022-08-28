@@ -94,7 +94,7 @@ public:
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     MemcacheRequest* New(::google::protobuf::Arena* arena) const override;
 #endif
-    void CopyFrom(const ::google::protobuf::Message& from) override;
+    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
     void MergeFrom(const ::google::protobuf::Message& from) override;
     void CopyFrom(const MemcacheRequest& from);
     void MergeFrom(const MemcacheRequest& from);
@@ -207,7 +207,7 @@ public:
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     MemcacheResponse* New(::google::protobuf::Arena* arena) const override;
 #endif
-    void CopyFrom(const ::google::protobuf::Message& from) override;
+    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
     void MergeFrom(const ::google::protobuf::Message& from) override;
     void CopyFrom(const MemcacheResponse& from);
     void MergeFrom(const MemcacheResponse& from);
