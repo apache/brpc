@@ -19,6 +19,12 @@
 #ifndef BRPC_PB_COMPAT_H
 #define BRPC_PB_COMPAT_H
 
+#if GOOGLE_PROTOBUF_VERSION < 3021000
+# define PB_321_OVERRIDE override
+#else
+# define PB_321_OVERRIDE
+#endif
+
 #if GOOGLE_PROTOBUF_VERSION < 3019000
 # define PB_319_OVERRIDE override
 #else

@@ -48,7 +48,7 @@ public:
 #if GOOGLE_PROTOBUF_VERSION >= 3006000
     SerializedRequest* New(::google::protobuf::Arena* arena) const override;
 #endif
-    void CopyFrom(const ::google::protobuf::Message& from) override;
+    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
     void CopyFrom(const SerializedRequest& from);
     void Clear() override;
     bool IsInitialized() const override;
