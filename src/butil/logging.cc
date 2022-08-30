@@ -466,7 +466,7 @@ static void PrintLogSeverity(std::ostream& os, int severity) {
     }
 }
 
-static void PrintLogPrefix(
+void PrintLogPrefix(
     std::ostream& os, int severity, const char* file, int line) {
     PrintLogSeverity(os, severity);
 #if defined(OS_LINUX)
@@ -565,9 +565,9 @@ static void PrintLogPrefixAsJSON(
     os << "\"C\":\"" << file << ':' << line << "\"";
 }
 
-static void PrintLog(std::ostream& os,
-                     int severity, const char* file, int line,
-                     const butil::StringPiece& content) {
+void PrintLog(std::ostream& os,
+              int severity, const char* file, int line,
+              const butil::StringPiece& content) {
     if (!FLAGS_log_as_json) {
         PrintLogPrefix(os, severity, file, line);
         os.write(content.data(), content.size());

@@ -319,6 +319,11 @@ private:
 // Returns previous sink.
 BUTIL_EXPORT LogSink* SetLogSink(LogSink* sink);
 
+// Print |content| with other info into |os|.
+void PrintLog(std::ostream& os,
+              int severity, const char* file, int line,
+              const butil::StringPiece& content);
+
 // The LogSink mainly for unit-testing. Logs will be appended to it.
 class StringSink : public LogSink, public std::string {
 public:
