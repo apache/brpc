@@ -13,37 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-COPTS = [
-    "-D__STDC_FORMAT_MACROS",
-    "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
-    "-D__const__=__unused__",
-    "-D_GNU_SOURCE",
-    "-DUSE_SYMBOLIZE",
-    "-DNO_TCMALLOC",
-    "-D__STDC_LIMIT_MACROS",
-    "-D__STDC_CONSTANT_MACROS",
-    "-fPIC",
-    "-Wno-unused-parameter",
-    "-fno-omit-frame-pointer",
-    "-DGFLAGS_NS=google",
-] + select({
-    "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
-    "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
-})
+load("@com_grail_bazel_compdb//:defs.bzl", "compilation_database")
+load("@com_grail_bazel_output_base_util//:defs.bzl", "OUTPUT_BASE")
 
-cc_binary(
-    name = "rpc_replay",
-    srcs = [
-        "rpc_replay/info_thread.h",
-        "rpc_replay/rpc_replay.cpp",
-        "rpc_replay/info_thread.cpp",
-    ],
-    includes = [
-        "rpc_replay",
-    ],
-    deps = [
+compilation_database(
+    name = "brpc_compdb",
+    # OUTPUT_BASE is a dynamic value that will vary for each user workspace.
+    # If you would like your build outputs to be the same across users, then
+    # skip supplying this value, and substitute the default constant value
+    # "__OUTPUT_BASE__" through an external tool like `sed` or `jq` (see
+    # below shell commands for usage).
+    output_base = OUTPUT_BASE,
+    targets = [
         "//:brpc",
     ],
-    copts = COPTS,
 )
-

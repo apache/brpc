@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_proto_library")
+
 COPTS = [
     "-D__STDC_FORMAT_MACROS",
     "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
@@ -27,7 +30,7 @@ COPTS = [
     "-fno-omit-frame-pointer",
     "-DGFLAGS_NS=google",
 ] + select({
-    "//:with_glog": ["-DBRPC_WITH_GLOG=1"],
+    "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
 })
 
@@ -50,6 +53,7 @@ cc_binary(
     srcs = [
         "echo_c++/server.cpp",
     ],
+    copts = COPTS,
     includes = [
         "echo_c++",
     ],
@@ -57,7 +61,6 @@ cc_binary(
         ":cc_echo_c++_proto",
         "//:brpc",
     ],
-    copts = COPTS,
 )
 
 cc_binary(
@@ -65,6 +68,7 @@ cc_binary(
     srcs = [
         "echo_c++/client.cpp",
     ],
+    copts = COPTS,
     includes = [
         "echo_c++",
     ],
@@ -72,5 +76,4 @@ cc_binary(
         ":cc_echo_c++_proto",
         "//:brpc",
     ],
-    copts = COPTS,
 )
