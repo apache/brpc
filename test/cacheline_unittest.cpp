@@ -34,7 +34,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Bar {
 struct Foo {
     char dummy1[0];
     int z;
-    int BAIDU_CACHELINE_ALIGNMENT x[0];
+    BAIDU_CACHELINE_ALIGNMENT int x[0];
     int y;
     int m;
     Bar bar;

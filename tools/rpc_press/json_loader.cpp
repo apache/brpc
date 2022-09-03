@@ -76,9 +76,7 @@ bool JsonLoader::Reader::read_some() {
 static bool possibly_valid_json(const butil::IOBuf& json) {
     butil::IOBufAsZeroCopyInputStream it(json);
     const void* data = NULL;
-    int size = 0;
-    int total_size = 0;
-    for (; it.Next(&data, &size); total_size += size) {
+    for (int size = 0; it.Next(&data, &size); ) {
         for (int i = 0; i < size; ++i) {
             char c = ((const char*)data)[i];
             if (!isspace(c) && c != '\n') {

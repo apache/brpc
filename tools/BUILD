@@ -27,7 +27,7 @@ COPTS = [
     "-fno-omit-frame-pointer",
     "-DGFLAGS_NS=google",
 ] + select({
-    "//:with_glog": ["-DBRPC_WITH_GLOG=1"],
+    "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
 })
 

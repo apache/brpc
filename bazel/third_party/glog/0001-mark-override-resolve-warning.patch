@@ -1,0 +1,36 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+diff --git a/src/glog/logging.h.in b/src/glog/logging.h.in
+index 421f1e0..a363141 100755
+--- a/src/glog/logging.h.in
++++ b/src/glog/logging.h.in
+@@ -1334,7 +1334,7 @@ class GOOGLE_GLOG_DLL_DECL LogStreamBuf : public std::streambuf {
+   }
+ 
+   // This effectively ignores overflow.
+-  int_type overflow(int_type ch) {
++  int_type overflow(int_type ch) override {
+     return ch;
+   }
+ 
+@@ -1862,7 +1862,7 @@ class GOOGLE_GLOG_DLL_DECL NullStreamFatal : public NullStream {
+   NullStreamFatal() { }
+   NullStreamFatal(const char* file, int line, const CheckOpString& result) :
+       NullStream(file, line, result) { }
+-  @ac_cv___attribute___noreturn@ ~NullStreamFatal() throw () { _exit(1); }
++  @ac_cv___attribute___noreturn@ ~NullStreamFatal() throw () override { _exit(1); }
+ };
+ 
+ // Install a signal handler that will dump signal information and a stack

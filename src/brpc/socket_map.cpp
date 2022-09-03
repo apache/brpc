@@ -217,12 +217,14 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     SingleConnection* sc = _map.seek(key);
     if (sc) {
         if (!sc->socket->Failed() ||
-            sc->socket->health_check_interval() > 0/*HC enabled*/) {
+            (sc->socket->health_check_interval() > 0 &&
+             sc->socket->IsHCRelatedRefHeld())/*HC enabled*/) {
             ++sc->ref_count;
             *id = sc->socket->id();
             return 0;
         }
         // A socket w/o HC is failed (permanently), replace it.
+        sc->socket->SetHCRelatedRefReleased(); // set released status to cancel health checking
         SocketUniquePtr ptr(sc->socket);  // Remove the ref added at insertion.
         _map.erase(key); // in principle, we can override the entry in map w/o
         // removing and inserting it again. But this would make error branches
@@ -247,6 +249,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
         LOG(FATAL) << "Fail to address SocketId=" << tmp_id;
         return -1;
     }
+    ptr->SetHCRelatedRefHeld(); // set held status
     SingleConnection new_sc = { 1, ptr.release(), 0 };
     _map[key] = new_sc;
     *id = tmp_id;
@@ -305,6 +308,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
                     butil::StringPiece(namebuf, len), PrintSocketMap, this);
             }
             s->ReleaseAdditionalReference(); // release extra ref
+            s->SetHCRelatedRefReleased(); // set released status to cancel health checking
             SocketUniquePtr ptr(s);  // Dereference
         }
     }

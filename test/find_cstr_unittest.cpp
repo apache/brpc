@@ -91,7 +91,7 @@ TEST_F(FindCstrTest, perf) {
     tm.stop();
     int64_t elp2 = tm.n_elapsed();
 
-    LOG(INFO) << "elp1=" << elp1 / N << " elp2=" << elp2 / N;
+    LOG(INFO) << "elp1=" << elp1 / N << " elp2=" << elp2 / N << " sum=" << sum;
 }
 
 }

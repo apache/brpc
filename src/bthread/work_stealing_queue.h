@@ -149,7 +149,7 @@ private:
     butil::atomic<size_t> _bottom;
     size_t _capacity;
     T* _buffer;
-    butil::atomic<size_t> BAIDU_CACHELINE_ALIGNMENT _top;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<size_t> _top;
 };
 
 }  // namespace bthread

@@ -100,14 +100,14 @@ static ssize_t sys_pwritev(int fd, const struct iovec *vector,
 }
 
 inline iov_function get_preadv_func() {
+#if defined(OS_MACOSX)
+    return user_preadv;
+#endif
     butil::fd_guard fd(open("/dev/zero", O_RDONLY));
     if (fd < 0) {
         PLOG(WARNING) << "Fail to open /dev/zero";
         return user_preadv;
     }
-#if defined(OS_MACOSX)
-    return user_preadv;
-#endif
     char dummy[1];
     iovec vec = { dummy, sizeof(dummy) };
     const int rc = syscall(SYS_preadv, (int)fd, &vec, 1, 0);
@@ -141,8 +141,7 @@ inline iov_function get_pwritev_func() {
 
 #else   // ARCH_CPU_X86_64
 
-#warning "We don't check whether the kernel supports SYS_preadv or SYS_pwritev " \
-         "when the arch is not X86_64, use user space preadv/pwritev directly"
+#warning "We don't check if the kernel supports SYS_preadv or SYS_pwritev on non-X86_64, use impl. on pread/pwrite directly"
 
 inline iov_function get_preadv_func() {
     return user_preadv;

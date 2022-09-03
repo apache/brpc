@@ -157,11 +157,11 @@ struct PipelinedInfo {
     PipelinedInfo() { reset(); }
     void reset() {
         count = 0;
-        with_auth = false;
+        auth_flags = 0;
         id_wait = INVALID_BTHREAD_ID;
     }
     uint32_t count;
-    bool with_auth;
+    uint32_t auth_flags;
     bthread_id_t id_wait;
 };
 
@@ -263,7 +263,7 @@ public:
         // The request contains authenticating information which will be
         // responded by the server and processed specially when dealing
         // with the response.
-        bool with_auth;
+        uint32_t auth_flags;
 
         // Do not return EOVERCROWDED
         // Default: false
@@ -271,7 +271,7 @@ public:
 
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
-            , pipelined_count(0), with_auth(false)
+            , pipelined_count(0), auth_flags(0)
             , ignore_eovercrowded(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
@@ -292,6 +292,17 @@ public:
     // Positive value enables health checking.
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
+
+    // When someone holds a health-checking-related reference,
+    // this function need to be called to make health checking run normally.
+    void SetHCRelatedRefHeld() { _is_hc_related_ref_held = true; }
+    // When someone releases the health-checking-related reference,
+    // this function need to be called to cancel health checking.
+    void SetHCRelatedRefReleased() { _is_hc_related_ref_held = false; }
+    bool IsHCRelatedRefHeld() const { return _is_hc_related_ref_held; }
+
+    // After health checking is complete, set _hc_started to false.
+    void AfterHCCompleted() { _hc_started.store(false, butil::memory_order_relaxed); }
 
     // The unique identifier.
     SocketId id() const { return _this_id; }
@@ -362,8 +373,9 @@ public:
 
     bool Failed() const;
 
-    bool DidReleaseAdditionalRereference() const
-    { return _recycle_flag.load(butil::memory_order_relaxed); }
+    bool DidReleaseAdditionalRereference() const {
+        return _additional_ref_status.load(butil::memory_order_relaxed) == REF_RECYCLED;
+    }
 
     // Notify `id' object (by calling bthread_id_error) when this Socket
     // has been `SetFailed'. If it already has, notify `id' immediately
@@ -764,6 +776,15 @@ private:
     // Non-zero when health-checking is on.
     int _health_check_interval_s;
 
+    // The variable indicates whether the reference related
+    // to the health checking is held by someone. It can be
+    // synchronized via _versioned_ref atomic variable.
+    bool _is_hc_related_ref_held;
+
+    // Default: false.
+    // true, if health checking is started.
+    butil::atomic<bool> _hc_started;
+
     // +-1 bit-+---31 bit---+
     // |  flag |   counter  |
     // +-------+------------+
@@ -806,9 +827,20 @@ private:
     // Set by SetLogOff
     butil::atomic<bool> _logoff_flag;
 
-    // Flag used to mark whether additional reference has been decreased
-    // by either `SetFailed' or `SetRecycle'
-    butil::atomic<bool> _recycle_flag;
+    // Status flag used to mark that
+    enum AdditionalRefStatus {
+        REF_USING,        // additional reference has been increased
+        REF_REVIVING,     // additional reference is increasing
+        REF_RECYCLED      // additional reference has been decreased
+    };
+
+    // Indicates whether additional reference has increased,
+    // decreased, or is increasing.
+    // additional ref status:
+    // `Socket'、`Create': REF_USING
+    // `SetFailed': REF_USING -> REF_RECYCLED
+    // `Revive' REF_RECYCLED -> REF_REVIVING -> REF_USING
+    butil::atomic<AdditionalRefStatus> _additional_ref_status;
 
     // Concrete error information from SetFailed()
     // Accesses to these 2 fields(especially _error_text) must be protected
