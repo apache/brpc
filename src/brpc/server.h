@@ -245,6 +245,10 @@ struct ServerOptions {
     // Default: NULL (disabled)
     RedisService* redis_service;
 
+    // Optional info name for composing server bvar prefix. Read ServerPrefix() method for details;
+    // Default: ""
+    std::string server_info_name;
+
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ServerOptions from being bloated in most cases.
@@ -691,8 +695,7 @@ friend class Controller;
     // mutable is required for `ServerPrivateAccessor' to change this bvar
     mutable bvar::Adder<int64_t> _nerror_bvar;
     mutable bvar::PerSecond<bvar::Adder<int64_t> > _eps_bvar;
-    mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
-
+    BAIDU_CACHELINE_ALIGNMENT mutable int32_t _concurrency;
 };
 
 // Get the data attached to current searching thread. The data is created by

@@ -53,6 +53,9 @@ public:
     virtual ~Dumper() { }
     virtual bool dump(const std::string& name,
                       const butil::StringPiece& description) = 0;
+    virtual bool dump_comment(const std::string&, const std::string& /*type*/) {
+        return true;
+    }
 };
 
 // Options for Variable::dump_exposed().

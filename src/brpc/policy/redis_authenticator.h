@@ -26,8 +26,8 @@ namespace policy {
 // Request to redis for authentication.
 class RedisAuthenticator : public Authenticator {
 public:
-    RedisAuthenticator(const std::string& passwd)
-        : passwd_(passwd) {}
+    RedisAuthenticator(const std::string& passwd, int db = -1)
+        : passwd_(passwd), db_(db) {}
 
     int GenerateCredential(std::string* auth_str) const;
 
@@ -36,8 +36,21 @@ public:
         return 0;
     }
 
+    uint32_t GetAuthFlags() const {
+        uint32_t n = 0;
+        if (!passwd_.empty()) {
+            ++n;
+        }
+        if (db_ >= 0) {
+            ++n;
+        }
+        return n;
+    }
+
 private:
     const std::string passwd_;
+
+    int db_;
 };
 
 }  // namespace policy

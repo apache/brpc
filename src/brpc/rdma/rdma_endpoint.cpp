@@ -407,15 +407,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
         << "Start handshake on " << s->_local_side;
 
-    void* data = malloc(g_rdma_hello_msg_len);
-    if (!data) {
-        const int saved_errno = errno;
-        PLOG(WARNING) << "Fail to send hello message to server:" << s->description();
-        s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
-                s->description().c_str(), berror(saved_errno));
-        ep->_state = FAILED;
-        return NULL;
-    }
+    uint8_t data[g_rdma_hello_msg_len];
 
     // First initialize CQ and QP resources
     ep->_state = C_ALLOC_QPCQ;
@@ -556,15 +548,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
         << "Start handshake on " << s->description();
 
-    void* data = malloc(g_rdma_hello_msg_len);
-    if (!data) {
-        const int saved_errno = errno;
-        PLOG(WARNING) << "Fail to recv hello message from client:" << s->description();
-        s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
-                s->description().c_str(), berror(saved_errno));
-        ep->_state = FAILED;
-        return NULL;
-    }
+    uint8_t data[g_rdma_hello_msg_len];
 
     ep->_state = S_HELLO_WAIT;
     if (ep->ReadFromFd(data, MAGIC_STR_LEN) < 0) {

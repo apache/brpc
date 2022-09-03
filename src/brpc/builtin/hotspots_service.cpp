@@ -409,8 +409,10 @@ static void DisplayResult(Controller* cntl,
     const bool show_ccount = cntl->http_request().uri().GetQuery("ccount");
     const std::string* base_name = cntl->http_request().uri().GetQuery("base");
     const std::string* display_type_query = cntl->http_request().uri().GetQuery("display_type");
-    const char* flamegraph_tool = getenv("FLAMEGRAPH_PL_PATH");
     DisplayType display_type = DisplayType::kDot;
+#if defined(OS_LINUX)
+    const char* flamegraph_tool = getenv("FLAMEGRAPH_PL_PATH");
+#endif
     if (display_type_query) {
         display_type = StringToDisplayType(*display_type_query);
         if (display_type == DisplayType::kUnknown) {
@@ -587,7 +589,6 @@ static void DisplayResult(Controller* cntl,
         }
         break;
     }
-    CHECK(!use_html);
     // NOTE: not send prof_result to os first which does copying.
     os.move_to(resp);
     if (use_html) {
@@ -888,7 +889,8 @@ static void StartProfiling(ProfilingType type,
             return cntl->SetFailed(EINVAL, "Invalid display_type=%s", display_type_query->c_str());
         }
 #if defined(OS_LINUX)
-        if (display_type == DisplayType::kFlameGraph && !getenv("FLAMEGRAPH_PL_PATH")) {
+        const char* flamegraph_tool = getenv("FLAMEGRAPH_PL_PATH");
+        if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
                 "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
                 "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");

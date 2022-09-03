@@ -1,5 +1,49 @@
-# Quick introduction
+- [bvar Introduction](#bvar-introduction)
+- [bvar::Variable](#bvarvariable)
+- [Export all variables](#export-all-variables)
+- [bvar::Reducer](#bvarreducer)
+    - [bvar::Adder](#bvaradder)
+    - [bvar::Maxer](#bvarmaxer)
+    - [bvar::Miner](#bvarminer)
+- [bvar::IntRecorder](#bvarintrecorder)
+- [bvar::LatencyRecorder](#bvarlatencyrecorder)
+- [bvar::Window](#bvarwindow)
+    - [How to use bvar::Window](#how-to-use-bvarwindow)
+- [bvar::PerSecond](#bvarpersecond)
+    - [Difference with Window](#difference-with-window)
+- [bvar::WindowEx](#bvarwindowex)
+    - [How to use bvar::WindowEx](#how-to-use-bvarwindowex)
+    - [Difference between bvar::WindowEx and bvar::Window](#difference-between-bvarwindowex-and-bvarwindow)
+- [bvar::PerSecondEx](#bvarpersecondex)
+    - [How to use bvar::PerSecondEx](#how-to-use-bvarpersecondex)
+    - [Difference between bvar::PerSecondEx and bvar::WindowEx](#difference-between-bvarpersecondex-and-bvarwindowex)
+    - [Difference between bvar::PerSecondEx and bvar::PerSecond](#difference-between-bvarpersecondex-and-bvarpersecond)
+- [bvar::Status](#bvarstatus)
+- [bvar::PassiveStatus](#bvarpassivestatus)
+- [bvar::GFlag](#bvargflag)
 
+# bvar Introduction
+
+单维度bvar使用文档，多维度mbvar请[移步](mbvar_c++.md)。
+
+bvar分为多个具体的类，常用的有：
+
+| 类型 | 说明 |
+|-----------------|-----------------------------------------------------------------------------------------|
+| bvar::Adder\<T\>| 计数器，默认0，varname << N相当于varname += N |
+| bvar::Maxer\<T\> | 求最大值，默认std::numeric_limits<T>::min()，varname << N相当于varname = max(varname, N) |
+| bvar::Miner\<T\>| 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N) |
+| bvar::IntRecorder| 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值      |
+| bvar::Window\<VAR\>| 获得某个bvar在一段时间内的累加值。Window衍生于已存在的bvar，会自动更新 |
+| bvar::PerSecond\<VAR\>| 获得某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量 |
+| bvar::WindowEx\<T\> | 获得某个bvar在一段时间内的累加值。不依赖其他的bvar，需要给它发送数据 |
+| bvar::PerSecondEx\<T\>|  获得某个bvar在一段时间内平均每秒的累加值。不依赖其他的bvar，需要给它发送数据 |
+| bvar::LatencyRecorder| 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了 |
+| bvar::Status\<T\> | 记录和显示一个值，拥有额外的set_value函数 |
+| bvar::PassiveStatus | 按需显示值。在一些场合中，我们无法set_value或不知道以何种频率set_value，更适合的方式也许是当需要显示时才打印。用户传入打印回调函数实现这个目的 |
+| bvar::GFlag | 将重要的gflags公开为bvar，以便监控它们 |
+
+例子：
 ```c++
 #include <bvar/bvar.h>
 
@@ -43,16 +87,6 @@ foo::bar::g_task_pushed << 1;
 ```
 
 注意Window<>和PerSecond<>都是衍生变量，会自动更新，你不用给它们推值。你当然也可以把bvar作为成员变量或局部变量。
-
-常用的bvar有：
-
-- `bvar::Adder<T>` : 计数器，默认0，varname << N相当于varname += N。
-- `bvar::Maxer<T>` : 求最大值，默认std::numeric_limits<T>::min()，varname << N相当于varname = max(varname, N)。
-- `bvar::Miner<T>` : 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N)。
-- `bvar::IntRecorder` : 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值。
-- `bvar::Window<VAR>` : 获得某个bvar在一段时间内的累加值。Window衍生于已存在的bvar，会自动更新。
-- `bvar::PerSecond<VAR>` : 获得某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量。
-- `bvar::LatencyRecorder` : 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。
 
 **确认变量名是全局唯一的！** 否则会曝光失败，如果-bvar_abort_on_same_name为true，程序会直接abort。
 
@@ -257,6 +291,7 @@ if (google::SetCommandLineOption("bvar_dump_include", "*service*").empty()) {
 }
 LOG(INFO) << "Successfully set bvar_dump_include to *service*";
 ```
+
 请勿直接设置FLAGS_bvar_dump_file / FLAGS_bvar_dump_include / FLAGS_bvar_dump_exclude。
 一方面这些gflag类型都是std::string，直接覆盖是线程不安全的；另一方面不会触发validator（检查正确性的回调），所以也不会启动后台导出线程。
 
@@ -396,6 +431,22 @@ template <typename R>
 class Window : public Variable;
 ```
 
+## How to use bvar::Window
+```c++
+bvar::Adder<int> sum;
+bvar::Maxer<int> max_value;
+bvar::IntRecorder avg_value;
+  
+// sum_minute.get_value()是sum在之前60秒内的累加值。
+bvar::Window<bvar::Adder<int> > sum_minute(&sum, 60);
+  
+// max_value_minute.get_value()是max_value在之前60秒内的最大值。
+bvar::Window<bvar::Maxer<int> > max_value_minute(&max_value, 60);
+ 
+// avg_value_minute.get_value()是avg_value在之前60秒内的平均值。
+bvar::Window<IntRecorder> avg_value_minute(&avg_value, 60);
+```
+
 # bvar::PerSecond
 
 获得之前一段时间内平均每秒的统计值。它和Window基本相同，除了返回值会除以时间窗口之外。
@@ -418,17 +469,125 @@ bvar::PerSecond<bvar::Maxer<int> > max_value_per_second_wrong(&max_value);
 bvar::Window<bvar::Maxer<int> > max_value_per_second(&max_value, 1);
 ```
 
-## 和Window的差别
+## Difference with Window
 
 比如要统计内存在上一分钟内的变化，用Window<>的话，返回值的含义是”上一分钟内存增加了18M”，用PerSecond<>的话，返回值的含义是“上一分钟平均每秒增加了0.3M”。
 
 Window的优点是精确值，适合一些比较小的量，比如“上一分钟的错误数“，如果这用PerSecond的话，得到可能是”上一分钟平均每秒产生了0.0167个错误"，这相比于”上一分钟有1个错误“显然不够清晰。另外一些和时间无关的量也要用Window，比如统计上一分钟cpu占用率的方法是用一个Adder同时累加cpu时间和真实时间，然后用Window获得上一分钟的cpu时间和真实时间，两者相除就得到了上一分钟的cpu占用率，这和时间无关，用PerSecond会产生错误的结果。
 
+# bvar::WindowEx
+
+获得之前一段时间内的统计值。WindowEx是独立存在的，不依赖其他的计数器，需要给它发送数据。出于性能考虑，WindowEx每秒对数据做一次统计，在最差情况下，WindowEx的返回值有1秒的延时。
+```c++
+// Get data within a time window.
+// The time unit is 1 second fixed.
+// Window not relies on other bvar.
+ 
+// R must:
+// - window_size must be a constant
+template <typename R, time_t window_size = 0>
+class WindowEx : public adapter::WindowExAdapter<R, adapter::WindowExType<R> > {
+public:
+    typedef adapter::WindowExAdapter<R, adapter::WindowExType<R> > Base;
+ 
+    WindowEx() : Base(window_size) {}
+ 
+    WindowEx(const base::StringPiece& name) : Base(window_size) {
+        this->expose(name);
+    }
+ 
+    WindowEx(const base::StringPiece& prefix,
+             const base::StringPiece& name)
+        : Base(window_size) {
+        this->expose_as(prefix, name);
+    }
+};
+```
+
+## How to use bvar::WindowEx
+```c++
+const int window_size = 60;
+ 
+// sum_minute.get_value()是60秒内的累加值，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+bvar::WindowEx<bvar::Adder<int>, window_size> sum_minute("sum_minute");
+sum_minute << 1 << 2 << 3;
+ 
+// max_minute.get_value()是60秒内的最大值，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+bvar::WindowEx<bvar::Maxer<int>, window_size> max_minute("max_minute");
+max_minute << 1 << 2 << 3;
+ 
+// min_minute.get_value()是60秒内的最小值，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+bvar::WindowEx<bvar::Miner<int>, window_size> min_minute("min_minute");
+min_minute << 1 << 2 << 3;
+ 
+// avg_minute.get_value是60秒内的平均值(返回值是bvar::Stat)，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+bvar::WindowEx<bvar::IntRecorder, window_size> avg_minute("avg_minute");
+avg_minute << 1 << 2 << 3;
+// 获得avg_minuter 60秒内的平均值stat
+bvar::Stat avg_stat = avg_minute.get_value();
+// 获得整型平均值
+int64_t avg_int = avg_stat.get_average_int();
+// 获得double类型平均值
+double avg_double = avg_stat.get_average_double();
+```
+
+## Difference between bvar::WindowEx and bvar::Window
+
+- bvar::Window 不能独立存在，必须依赖于一个已有的计数器。Window会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
+
+- bvar::WindowEx 是独立存在的，不依赖其他的计数器，需要给它发送数据。使用起来比较方便；window_size是通过模板参数传递的，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+
+# bvar::PerSecondEx
+获得之前一段时间内平均每秒的统计值。它和WindowEx基本相同，除了返回值会除以时间窗口之外。
+```c++
+// Get data per second within a time window.
+// The only difference between PerSecondEx and WindowEx is that PerSecondEx divides
+// the data by time duration.
+ 
+// R must:
+// - window_size must be a constant
+template <typename R, time_t window_size = 0>
+class PerSecondEx : public adapter::WindowExAdapter<R, adapter::PerSecondExType<R> > {
+public:
+    typedef adapter::WindowExAdapter<R, adapter::PerSecondExType<R> > Base;
+ 
+    PerSecondEx() : Base(window_size) {}
+ 
+    PerSecondEx(const base::StringPiece& name) : Base(window_size) {
+        this->expose(name);
+    }
+ 
+    PerSecondEx(const base::StringPiece& prefix,
+                const base::StringPiece& name)
+        : Base(window_size) {
+        this->expose_as(prefix, name);
+    }
+};
+```
+
+## How to use bvar::PerSecondEx
+
+```c++
+const int window_size = 60;
+ 
+// sum_per_second.get_value()是60秒内*平均每秒*的累加值，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+bvar::PerSecondEx<bvar::Adder<int>, window_size> sum_per_second("sum_per_second");
+sum_per_second << 1 << 2 << 3;
+```
+
+## Difference between bvar::PerSecondEx and bvar::WindowEx
+
+- bvar::PerSecondEx 获得之前一段时间内平均每秒的统计值。它和WindowEx基本相同，除了返回值会除以时间窗口之外。
+
+## Difference between bvar::PerSecondEx and bvar::PerSecond
+- bvar::PerSecond 不能独立存在，必须依赖于一个已有的计数器。PerSecond会自动更新，不用给它发送数据；window_size是通过构造函数参数传递的。
+- bvar::PerSecondEx 是独立存在的，不依赖其他的计数器，需要给它发送数据。使用起来比较方便；window_size是通过模板参数传递的，省略最后一个window_size(时间窗口)的话默认为bvar_dump_interval。
+
 # bvar::Status
 
 记录和显示一个值，拥有额外的set_value函数。
-```c++
 
+```c++
 // Display a rarely or periodically updated value.
 // Usage:
 //   bvar::Status<int> foo_count1(17);
@@ -466,7 +625,6 @@ class PassiveStatus : public Variable;
 ```
 虽然很简单，但PassiveStatus是最有用的bvar之一，因为很多统计量已经存在，我们不需要再次存储它们，而只要按需获取。比如下面的代码声明了一个在linux下显示进程用户名的bvar：
 ```c++
-
 static void get_username(std::ostream& os, void*) {
     char buf[32];
     if (getlogin_r(buf, sizeof(buf)) == 0) {
@@ -480,12 +638,11 @@ PassiveStatus<std::string> g_username("process_username", get_username, NULL);
 ```
 
 # bvar::GFlag
-
-Expose important gflags as bvar so that they're monitored (in noah).
+Expose important gflags as bvar so that they're monitored.
 ```c++
 DEFINE_int32(my_flag_that_matters, 8, "...");
 
-// Expose the gflag as *same-named* bvar so that it's monitored (in noah).
+// Expose the gflag as *same-named* bvar so that it's monitored.
 static bvar::GFlag s_gflag_my_flag_that_matters("my_flag_that_matters");
 //                                                ^
 //                                            the gflag name

@@ -209,7 +209,7 @@ TEST(RandUtilTest, fast_rand_perf) {
     }
     tm.stop();
     LOG(INFO) << "Each fast_rand_less_than took " << tm.n_elapsed() / kTestIterations
-              << " ns, "
+              << " ns, s=" << s
 #if !defined(NDEBUG)
               << " (debugging version)";
 #else
