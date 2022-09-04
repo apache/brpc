@@ -100,6 +100,7 @@ struct ButexBthreadWaiter : public ButexWaiter {
     int expected_value;
     Butex* initial_butex;
     TaskControl* control;
+    const timespec* abstime;
 };
 
 // pthread_task or main_task allocates this structure on stack and queue it
@@ -534,6 +535,14 @@ static void wait_for_butex(void* arg) {
                    !bw->task_meta->interrupted) {
             b->waiters.Append(bw);
             bw->container.store(b, butil::memory_order_relaxed);
+            if (bw->abstime != NULL) {
+                bw->sleep_id = get_global_timer_thread()->schedule(
+                    erase_from_butex_and_wakeup, bw, *bw->abstime);
+                if (!bw->sleep_id) {  // TimerThread stopped.
+                    errno = ESTOP;
+                    erase_from_butex_and_wakeup(bw);
+                }
+            }
             return;
         }
     }
@@ -542,7 +551,7 @@ static void wait_for_butex(void* arg) {
     // TaskGroup::interrupt() no-op, there's no race between following code and
     // the two functions. The on-stack ButexBthreadWaiter is safe to use and
     // bw->waiter_state will not change again.
-    unsleep_if_necessary(bw, get_global_timer_thread());
+    // unsleep_if_necessary(bw, get_global_timer_thread());
     tls_task_group->ready_to_run(bw->tid);
     // FIXME: jump back to original thread is buggy.
     
@@ -648,6 +657,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
     bbw.expected_value = expected_value;
     bbw.initial_butex = b;
     bbw.control = g->control();
+    bbw.abstime = abstime;
 
     if (abstime != NULL) {
         // Schedule timer before queueing. If the timer is triggered before
@@ -656,12 +666,6 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
             (butil::gettimeofday_us() + MIN_SLEEP_US)) {
             // Already timed out.
             errno = ETIMEDOUT;
-            return -1;
-        }
-        bbw.sleep_id = get_global_timer_thread()->schedule(
-            erase_from_butex_and_wakeup, &bbw, *abstime);
-        if (!bbw.sleep_id) {  // TimerThread stopped.
-            errno = ESTOP;
             return -1;
         }
     }
