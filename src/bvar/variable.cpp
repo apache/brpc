@@ -705,9 +705,9 @@ DEFINE_string(bvar_dump_exclude, "", "Dump bvar excluded from these wildcards, "
               "separated by semicolon(;), empty means no exclusion");
 DEFINE_string(bvar_dump_prefix, "<app>", "Every dumped name starts with this prefix");
 DEFINE_string(bvar_dump_tabs, "latency=*_latency*"
-                              "; qps=*_qps*"
-                              "; error=*_error*"
-                              "; system=*process_*,*malloc_*,*kernel_*",
+                              ";qps=*_qps*"
+                              ";error=*_error*"
+                              ";system=*process_*,*malloc_*,*kernel_*",
               "Dump bvar into different tabs according to the filters (seperated by semicolon), "
               "format: *(tab_name=wildcards;)");
 
