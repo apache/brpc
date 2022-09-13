@@ -18,21 +18,81 @@
 #ifndef BRPC_POLICY_MONGO_PROTOCOL_H
 #define BRPC_POLICY_MONGO_PROTOCOL_H
 
-#include "brpc/protocol.h"
 #include "brpc/input_messenger.h"
-
+#include "brpc/mongo.h"
+#include "brpc/protocol.h"
 
 namespace brpc {
 namespace policy {
 
+struct MongoInputResponse : public InputMessageBase {
+  int32_t opcode;
+  MongoReply reply;
+  MongoMsg msg;
+
+  // @InputMessageBase
+  void DestroyImpl() { delete this; }
+};
+
 // Parse binary format of mongo
-ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket, bool read_eof, const void *arg);
+ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket,
+                              bool read_eof, const void* arg);
 
 // Actions to a (client) request in mongo format
 void ProcessMongoRequest(InputMessageBase* msg);
 
-} // namespace policy
-} // namespace brpc
+// Actions to a server response in mongo format
+void ProcessMongoResponse(InputMessageBase* msg_base);
 
+// Serialize query request
+void SerializeMongoQueryRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                const MongoQueryRequest* request);
 
-#endif // BRPC_POLICY_MONGO_PROTOCOL_H
+// Serialize getMore request
+void SerializeMongoGetMoreRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                  const MongoGetMoreRequest* request);
+
+// Serialize count request
+void SerializeMongoCountRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                const MongoCountRequest* request);
+
+// Serialize insert request
+void SerializeMongoInsertRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                 const MongoInsertRequest* request);
+
+// Serialize delete request
+void SerializeMongoDeleteRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                 const MongoDeleteRequest* request);
+
+// Serialize update request
+void SerializeMongoUpdateRequest(butil::IOBuf* request_buf, Controller* cntl,
+                                 const MongoUpdateRequest* request);
+
+// Serialize find_and_modify request
+void SerializeMongoFindAndModifyRequest(
+    butil::IOBuf* request_buf, Controller* cntl,
+    const MongoFindAndModifyRequest* request);
+
+// Serialize get_repl_set_status request
+void SerializeMongoGetReplSetStatusRequest(
+    butil::IOBuf* request_buf, Controller* cntl,
+    const brpc::MongoGetReplSetStatusRequest* request);
+
+// Serialize request into request_buf
+void SerializeMongoRequest(butil::IOBuf* request_buf, Controller* cntl,
+                           const google::protobuf::Message* request);
+
+// Pack request_buf into msg, call after serialize
+void PackMongoRequest(butil::IOBuf* msg, SocketMessage** user_message_out,
+                      uint64_t correlation_id,
+                      const google::protobuf::MethodDescriptor* method,
+                      Controller* controller, const butil::IOBuf& request_buf,
+                      const Authenticator* auth);
+
+// Parse Mongo Sections
+bool ParseMongoSection(butil::IOBuf* source, Section* section);
+
+}  // namespace policy
+}  // namespace brpc
+
+#endif  // BRPC_POLICY_MONGO_PROTOCOL_H
