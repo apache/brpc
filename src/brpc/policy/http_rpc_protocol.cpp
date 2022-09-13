@@ -1457,7 +1457,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 if (is_grpc_ct) {
                     bool grpc_compressed = false;
                     if (!RemoveGrpcPrefix(&req_body, &grpc_compressed)) {
-                        cntl->SetFailed(ERESPONSE, "Invalid gRPC response");
+                        cntl->SetFailed(ERESPONSE, "Invalid gRPC request");
                         return;
                     }
                     if (grpc_compressed) {
