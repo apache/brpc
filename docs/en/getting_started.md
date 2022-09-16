@@ -107,6 +107,18 @@ Examples link brpc statically, if you need to link the shared version, remove `C
 $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
+### Compile brpc with vcpkg
+
+[vcpkg](https://github.com/microsoft/vcpkg) is a package manager that supports all platforms,
+you can use vcpkg to build llvm with the following step:
+
+```shell
+$ git clone https://github.com/microsoft/vcpkg.git
+$ ./bootstrap-vcpkg.bat # for powershell
+$ ./bootstrap-vcpkg.sh # for bash
+$ ./vcpkg install brpc
+```
+
 ## Fedora/CentOS
 
 ### Prepare deps
