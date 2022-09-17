@@ -520,7 +520,7 @@ TEST_F(ServerTest, missing_required_fields) {
     cntl.http_request().uri() = "/EchoService/Echo";
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
-    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::EREQUEST, cntl.ErrorCode());
     LOG(INFO) << cntl.ErrorText();
     ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
     ASSERT_EQ(0, service_v1.ncalled.load());
@@ -530,7 +530,7 @@ TEST_F(ServerTest, missing_required_fields) {
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
-    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::EREQUEST, cntl.ErrorCode());
     ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
     ASSERT_EQ(0, service_v1.ncalled.load());
 
@@ -540,7 +540,7 @@ TEST_F(ServerTest, missing_required_fields) {
     cntl.request_attachment().append("{\"message2\":\"foo\"}");
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
-    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::EREQUEST, cntl.ErrorCode());
     ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
     ASSERT_EQ(0, service_v1.ncalled.load());
 }
@@ -562,7 +562,7 @@ TEST_F(ServerTest, disallow_http_body_to_pb) {
     cntl.http_request().uri() = "/access_echo1";
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
-    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::ERESPONSE, cntl.ErrorCode());
     ASSERT_EQ(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR,
               cntl.http_response().status_code());
     ASSERT_EQ(1, service_v1.ncalled.load());
@@ -752,7 +752,7 @@ TEST_F(ServerTest, restful_mapping) {
     cntl.request_attachment().append("{\"message\":\"foo\"}");
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
-    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::ENOMETHOD, cntl.ErrorCode());
     LOG(INFO) << "Expected error: " << cntl.ErrorText();
     ASSERT_EQ(3, service_v1.ncalled.load());
 
@@ -1438,7 +1438,7 @@ TEST_F(ServerTest, max_concurrency) {
     cntl3.request_attachment().append("{\"message\":\"hello\"}");
     http_channel.CallMethod(NULL, &cntl3, NULL, NULL, NULL);
     ASSERT_TRUE(cntl3.Failed());
-    ASSERT_EQ(brpc::EHTTP, cntl3.ErrorCode());
+    ASSERT_EQ(brpc::ELIMIT, cntl3.ErrorCode());
     ASSERT_EQ(brpc::HTTP_STATUS_SERVICE_UNAVAILABLE, cntl3.http_response().status_code());
 
     brpc::Controller cntl4;
