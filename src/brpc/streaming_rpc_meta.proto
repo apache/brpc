@@ -45,4 +45,5 @@ message StreamFrameMeta {
 
 message Feedback {
     optional int64 consumed_size = 1;
+    optional int64 remain_buffer_size = 2;
 }

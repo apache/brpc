@@ -35,6 +35,7 @@
 namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
+DECLARE_int64(socket_max_streams_unconsumed_bytes);
 
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
@@ -45,7 +46,9 @@ Stream::Stream()
     , _closed(false)
     , _produced(0)
     , _remote_consumed(0)
+    , _cur_max_buf_size(0)
     , _local_consumed(0)
+    , _on_consumer_queue_size(0)
     , _parse_rpc_response(false)
     , _pending_buf(NULL)
     , _start_idle_timer_us(0)
@@ -72,6 +75,11 @@ int Stream::Create(const StreamOptions &options,
     s->_connected = false;
     s->_options = options;
     s->_closed = false;
+    s->_cur_max_buf_size = options.max_buf_size;
+    if (FLAGS_socket_max_streams_unconsumed_bytes > 0 && options.min_buf_size > 0) {
+
+        s->_cur_max_buf_size = options.min_buf_size;
+    }
     if (remote_settings != NULL) {
         s->_remote_settings.MergeFrom(*remote_settings);
         s->_parse_rpc_response = false;
@@ -260,9 +268,9 @@ void Stream::TriggerOnConnectIfNeed() {
 }
 
 int Stream::AppendIfNotFull(const butil::IOBuf &data) {
-    if (_options.max_buf_size > 0) {
+    if (_cur_max_buf_size > 0) {
         std::unique_lock<bthread_mutex_t> lck(_congestion_control_mutex);
-        if (_produced >= _remote_consumed + (size_t)_options.max_buf_size) {
+        if (_produced >= _remote_consumed + (size_t)_cur_max_buf_size) {
             const size_t saved_produced = _produced;
             const size_t saved_remote_consumed = _remote_consumed;
             lck.unlock();
@@ -270,7 +278,7 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data) {
                      << "_produced=" << saved_produced
                      << " _remote_consumed=" << saved_remote_consumed
                      << " gap=" << saved_produced - saved_remote_consumed
-                     << " max_buf_size=" << _options.max_buf_size;
+                     << " max_buf_size=" << _cur_max_buf_size;
             return 1;
         }
         _produced += data.length();
@@ -287,8 +295,8 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data) {
     return 0;
 }
 
-void Stream::SetRemoteConsumed(size_t new_remote_consumed) {
-    CHECK(_options.max_buf_size > 0);
+void Stream::SetRemoteConsumed(size_t new_remote_consumed, int64_t remote_stream_buffer_remain) {
+    CHECK(_cur_max_buf_size > 0);
     bthread_id_list_t tmplist;
     bthread_id_list_init(&tmplist, 0, 0);
     bthread_mutex_lock(&_congestion_control_mutex);
@@ -296,9 +304,27 @@ void Stream::SetRemoteConsumed(size_t new_remote_consumed) {
         bthread_mutex_unlock(&_congestion_control_mutex);
         return;
     }
-    const bool was_full = _produced >= _remote_consumed + (size_t)_options.max_buf_size;
+    const bool was_full = _produced >= _remote_consumed + (size_t)_cur_max_buf_size;
+
+    if (FLAGS_socket_max_streams_unconsumed_bytes > 0) {
+        if (remote_stream_buffer_remain <= 0) {
+            if (_options.min_buf_size > 0) {
+                _cur_max_buf_size = _options.min_buf_size;
+            } else {
+                _cur_max_buf_size /= 2;
+            }
+            LOG(INFO) << "stream consumers on socket " << _host_socket->id() << " is crowded, " <<  "cut stream " << id() << " buffer to " << _cur_max_buf_size;
+        } else if (_produced >= new_remote_consumed + _cur_max_buf_size && (_options.max_buf_size == 0 || _cur_max_buf_size < _options.max_buf_size)) {
+            if (_options.max_buf_size > 0 && _cur_max_buf_size * 2 > _options.max_buf_size) {
+                _cur_max_buf_size = _options.max_buf_size;
+            } else {
+                _cur_max_buf_size *= 2;
+            }
+        }
+    }
+
     _remote_consumed = new_remote_consumed;
-    const bool is_full = _produced >= _remote_consumed + (size_t)_options.max_buf_size;
+    const bool is_full = _produced >= _remote_consumed + (size_t)_cur_max_buf_size;
     if (was_full && !is_full) {
         bthread_id_list_swap(&tmplist, &_writable_wait_list);
     }
@@ -374,8 +400,8 @@ void Stream::Wait(void (*on_writable)(StreamId, void*, int), void* arg,
         }
     }
     bthread_mutex_lock(&_congestion_control_mutex);
-    if (_options.max_buf_size <= 0 
-            || _produced < _remote_consumed + (size_t)_options.max_buf_size) {
+    if (_cur_max_buf_size <= 0 
+            || _produced < _remote_consumed + (size_t)_cur_max_buf_size) {
         bthread_mutex_unlock(&_congestion_control_mutex);
         CHECK_EQ(0, TriggerOnWritable(wait_id, wm, 0));
         return;
@@ -413,7 +439,7 @@ int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* soc
     }
     switch (fm.frame_type()) {
     case FRAME_TYPE_FEEDBACK:
-        SetRemoteConsumed(fm.feedback().consumed_size());
+        SetRemoteConsumed(fm.feedback().consumed_size(), fm.feedback().remain_buffer_size());
         CHECK(buf->empty());
         break;
     case FRAME_TYPE_DATA:
@@ -426,6 +452,8 @@ int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* soc
         }
         if (!fm.has_continuation()) {
             butil::IOBuf *tmp = _pending_buf;
+            _host_socket->_total_streams_buffer_size.fetch_add(tmp->length(), butil::memory_order_relaxed);
+            _on_consumer_queue_size += tmp->length();
             _pending_buf = NULL;
             if (bthread::execution_queue_execute(_consumer_queue, tmp) != 0) {
                 CHECK(false) << "Fail to push into channel";
@@ -492,6 +520,9 @@ int Stream::Consume(void *meta, bthread::TaskIterator<butil::IOBuf*>& iter) {
     s->StopIdleTimer();
     if (iter.is_queue_stopped()) {
         // indicating the queue was closed
+        if (s->_on_consumer_queue_size > 0) {
+            s->_host_socket->_total_streams_buffer_size.fetch_sub(s->_on_consumer_queue_size, butil::memory_order_relaxed);
+        }
         if (s->_host_socket) {
             DereferenceSocket(s->_host_socket);
             s->_host_socket = NULL;
@@ -524,6 +555,11 @@ int Stream::Consume(void *meta, bthread::TaskIterator<butil::IOBuf*>& iter) {
         }
     }
     mb.flush();
+
+    if (mb.total_length() > 0) {
+        s->_host_socket->_total_streams_buffer_size.fetch_sub(mb.total_length(), butil::memory_order_relaxed);
+        s->_on_consumer_queue_size -= mb.total_length();
+    }
     if (s->_remote_settings.need_feedback() && mb.total_length() > 0) {
         s->_local_consumed += mb.total_length();
         s->SendFeedback();
@@ -538,6 +574,11 @@ void Stream::SendFeedback() {
     fm.set_stream_id(_remote_settings.stream_id());
     fm.set_source_stream_id(id());
     fm.mutable_feedback()->set_consumed_size(_local_consumed);
+    int64_t remain_buffer_size = 0;
+    if (FLAGS_socket_max_streams_unconsumed_bytes > 0) {
+        remain_buffer_size = FLAGS_socket_max_streams_unconsumed_bytes - _host_socket->_total_streams_buffer_size;
+    }
+    fm.mutable_feedback()->set_remain_buffer_size(remain_buffer_size);
     butil::IOBuf out;
     policy::PackStreamMessage(&out, fm, NULL);
     WriteToHostSocket(&out);
@@ -560,7 +601,7 @@ int Stream::SetHostSocket(Socket *host_socket) {
 
 void Stream::FillSettings(StreamSettings *settings) {
     settings->set_stream_id(id());
-    settings->set_need_feedback(_options.max_buf_size > 0);
+    settings->set_need_feedback(_cur_max_buf_size > 0);
     settings->set_writable(_options.handler != NULL);
 }
 

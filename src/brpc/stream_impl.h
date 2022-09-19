@@ -71,6 +71,7 @@ friend class MessageBatcher;
     ~Stream();
     int Init(const StreamOptions options);
     void SetRemoteConsumed(size_t _remote_consumed);
+    void SetRemoteConsumed(size_t _remote_consumed, int64_t remote_stream_buffer_remain);
     void TriggerOnConnectIfNeed();
     void Wait(void (*on_writable)(StreamId, void*, int), void* arg, 
               const timespec* due_time, bool new_thread, bthread_id_t *join_id);
@@ -114,9 +115,11 @@ friend class MessageBatcher;
     bthread_mutex_t _congestion_control_mutex;
     size_t _produced;
     size_t _remote_consumed;
+    size_t _cur_max_buf_size;
     bthread_id_list_t _writable_wait_list;
 
     int64_t _local_consumed;
+    butil::atomic<int64_t> _on_consumer_queue_size;
     StreamSettings _remote_settings;   
 
     bool _parse_rpc_response;
