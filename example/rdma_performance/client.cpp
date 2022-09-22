@@ -43,6 +43,7 @@ DEFINE_bool(use_rdma, true, "Use RDMA or not");
 DEFINE_int32(rpc_timeout_ms, 2000, "RPC call timeout");
 DEFINE_int32(test_seconds, 20, "Test running time");
 DEFINE_int32(test_iterations, 0, "Test iterations");
+DEFINE_int32(dummy_port, 8001, "Dummy server port number");
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::LatencyRecorder g_server_cpu_recorder("server_cpu");
@@ -276,7 +277,7 @@ int main(int argc, char* argv[]) {
         brpc::rdma::GlobalRdmaInitializeOrDie();
     }
 
-    brpc::StartDummyServerAt(8001);
+    brpc::StartDummyServerAt(FLAGS_dummy_port);
 
     std::string::size_type pos1 = 0;
     std::string::size_type pos2 = FLAGS_servers.find('+');

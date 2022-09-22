@@ -60,9 +60,8 @@ int DescribeCustomizedErrno(
         if (desc && strncmp(desc, "Unknown error", 13) != 0)
 #endif
         {
-            fprintf(stderr, "Fail to define %s(%d) which is already defined as `%s', abort.",
+            fprintf(stderr, "WARNING: Fail to define %s(%d) which is already defined as `%s'",
                     error_name, error_code, desc);
-            _exit(1);
         }
     }
     errno_desc[error_code - ERRNO_BEGIN] = description;

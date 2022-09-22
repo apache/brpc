@@ -170,6 +170,17 @@ $ sh run_tests.sh
 ### 使用cmake编译brpc
 参考[这里](#使用cmake编译brpc)
 
+### 使用vcpkg编译brpc
+
+[vcpkg](https://github.com/microsoft/vcpkg) 是一个全平台支持的包管理器，你可以使用以下步骤vcpkg轻松编译brpc:
+
+```shell
+$ git clone https://github.com/microsoft/vcpkg.git
+$ ./bootstrap-vcpkg.bat # 使用 powershell
+$ ./bootstrap-vcpkg.sh # 使用 bash
+$ ./vcpkg install brpc
+```
+
 ## 自己构建依赖的Linux
 
 ### 依赖准备

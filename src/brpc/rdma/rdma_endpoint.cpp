@@ -960,7 +960,10 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
         return wc.byte_len;
     }
     default:
-        CHECK(false) << "This should not happen";
+        // Some driver bugs may lead to unexpected completion opcode.
+        // If this happens, please update your driver.
+        CHECK(false) << "This should not happen. Got a completion with opcode="
+                     << wc.opcode;
         return -1;
     }
     return 0;

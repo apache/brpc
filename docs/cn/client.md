@@ -141,6 +141,32 @@ BNS是百度内常用的命名服务，比如bns://rdev.matrix.all，其中"bns"
 
 如果consul不可访问，服务可自动降级到file naming service获取服务列表。此功能默认关闭，可通过设置-consul\_enable\_degrade\_to\_file\_naming\_service来打开。服务列表文件目录通过-consul \_file\_naming\_service\_dir来设置，使用service-name作为文件名。该文件可通过consul-template生成，里面会保存consul不可用之前最新的下游服务节点。当consul恢复时可自动恢复到consul naming service。
 
+
+### nacos://\<service-name\>
+
+NacosNamingService使用[Open-Api](https://nacos.io/zh-cn/docs/open-api.html)定时从nacos获取服务列表。
+NacosNamingService支持[简单鉴权](https://nacos.io/zh-cn/docs/auth.html)。
+
+`<service-name>`是一个http uri query，具体参数参见`/nacos/v1/ns/instance/list`文档。
+注意：`<service-name>`需要urlencode。
+```
+nacos://serviceName=test&groupName=g&namespaceId=n&clusters=c&healthyOnly=true
+```
+
+NacosNamingService拉取列表的时间间隔为`/nacos/v1/ns/instance/list`api返回的`cacheMillis`。
+NacosNamingService只支持整形的权重值。
+
+| GFlags                             | 描述                       | 默认值                       |
+| ---------------------------------- | -------------------------- | ---------------------------- |
+| nacos_address                      | nacos http url             | ""                           |
+| nacos_service_discovery_path       | nacos服务发现路径          | "/nacos/v1/ns/instance/list" |
+| nacos_service_auth_path            | nacos登陆路径              | "/nacos/v1/auth/login"       |
+| nacos_service_timeout_ms           | 连接nacos超时时间（毫秒）  | 200                          |
+| nacos_username                     | 用户名（urlencode编码）    | ""                           |
+| nacos_password                     | 密码（urlencode编码）      | ""                           |
+| nacos_load_balancer                | nacos集群的负载均衡        | "rr"                         |
+
+
 ### 更多命名服务
 用户可以通过实现brpc::NamingService来对接更多命名服务，具体见[这里](https://github.com/brpc/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1)
 
