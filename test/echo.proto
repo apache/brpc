@@ -78,6 +78,11 @@ service DiscoveryNamingService {
     rpc Cancel(HttpRequest) returns (HttpResponse);
 };
 
+service NacosNamingService {
+    rpc Login(HttpRequest) returns (HttpResponse);
+    rpc List(HttpRequest) returns (HttpResponse);
+};
+
 enum State0 {
     STATE0_NUM_0 = 0;
     STATE0_NUM_1 = 1;

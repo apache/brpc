@@ -19,8 +19,10 @@
 #include <gtest/gtest.h>
 #include <vector>
 #include "butil/string_printf.h"
+#include "butil/strings/string_split.h"
 #include "butil/files/temp_file.h"
 #include "bthread/bthread.h"
+#include "brpc/http_status_code.h"
 #ifdef BAIDU_INTERNAL
 #include "brpc/policy/baidu_naming_service.h"
 #endif
@@ -30,6 +32,7 @@
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
 #include "brpc/policy/discovery_naming_service.h"
+#include "brpc/policy/nacos_naming_service.h"
 #include "echo.pb.h"
 #include "brpc/server.h"
 
@@ -45,6 +48,9 @@ DECLARE_string(consul_service_discovery_url);
 DECLARE_string(discovery_api_addr);
 DECLARE_string(discovery_env);
 DECLARE_int32(discovery_renew_interval_s);
+DECLARE_string(nacos_address);
+DECLARE_string(nacos_username);
+DECLARE_string(nacos_password);
 
 } // policy
 } // brpc
@@ -694,6 +700,141 @@ TEST(NamingServiceTest, discovery_sanity) {
         ASSERT_TRUE(svc.HasAddr("http://10.0.0.1:8000"));
         ASSERT_FALSE(svc.HasAddr(std::string()));
         ASSERT_EQ(2, svc.AddrCount());
+    }
+}
+
+class NacosNamingServiceImpl : public test::NacosNamingService {
+public:
+    void Login(google::protobuf::RpcController* cntl_base,
+               const test::HttpRequest*, test::HttpResponse*,
+               google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+
+        butil::StringPairs user;
+        butil::SplitStringIntoKeyValuePairs(
+            cntl->request_attachment().to_string(), '=', '&', &user);
+
+        const auto expected_user =
+            butil::StringPairs{{"username", "nacos"}, {"password", "nacos"}};
+
+        if (user == expected_user) {
+            cntl->http_response().set_content_type("application/json");
+            cntl->response_attachment().append(
+R"({
+     "accessToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJuYWNvcyIsImV4cCI6MTY2MzAwODMzNn0.YKJJwzHT4v9cpC7kVqWroeJK1WioOYe0JZy4KX8nExs",
+     "tokenTtl": 18000,
+     "globalAdmin": true,
+     "username": "nacos"
+   })");
+        } else {
+            cntl->http_response().set_status_code(brpc::HTTP_STATUS_FORBIDDEN);
+            cntl->response_attachment().append("unknow user!");
+        }
+    }
+
+    void List(google::protobuf::RpcController* cntl_base,
+              const test::HttpRequest*, test::HttpResponse*,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = (brpc::Controller*)cntl_base;
+
+        auto token = cntl->http_request().uri().GetQuery("accessToken");
+        if (token == nullptr ||
+            *token !=
+                "eyJhbGciOiJIUzI1NiJ9."
+                "eyJzdWIiOiJuYWNvcyIsImV4cCI6MTY2MzAwODMzNn0."
+                "YKJJwzHT4v9cpC7kVqWroeJK1WioOYe0JZy4KX8nExs") {
+            cntl->http_response().set_status_code(brpc::HTTP_STATUS_FORBIDDEN);
+            cntl->response_attachment().append(
+R"({
+     "timestamp": "2022-09-12T22:56:02.730+08:00",
+     "status": 403,
+     "error": "Forbidden",
+     "path": "/nacos/v1/ns/instance/list"
+   })");
+            return;
+        }
+
+        auto service_name = cntl->http_request().uri().GetQuery("serviceName");
+        auto group_name = cntl->http_request().uri().GetQuery("groupName");
+        auto namespace_id = cntl->http_request().uri().GetQuery("namespaceId");
+        auto clusters = cntl->http_request().uri().GetQuery("clusters");
+        if (service_name == nullptr || *service_name != "test" ||
+            group_name == nullptr || *group_name != "g1" ||
+            namespace_id == nullptr || *namespace_id != "n1" ||
+            clusters == nullptr || *clusters != "wx") {
+            cntl->http_response().set_status_code(brpc::HTTP_STATUS_NOT_FOUND);
+            return;
+        }
+
+        cntl->http_response().set_content_type("application/json");
+        cntl->response_attachment().append(
+R"({
+     "name": "g1@@test",
+     "groupName": "g1",
+     "clusters": "wx",
+     "cacheMillis": 10000,
+     "hosts":
+       [
+         {
+           "instanceId": "127.0.0.1#8888#wx#g1@@test",
+           "ip": "127.0.0.1",
+           "port": 8888,
+           "weight": 10.0,
+           "healthy": true,
+           "enabled": true,
+           "ephemeral": true,
+           "clusterName": "wx",
+           "serviceName": "g1@@test",
+           "metadata": {},
+           "instanceHeartBeatInterval": 5000,
+           "instanceHeartBeatTimeOut": 15000,
+           "ipDeleteTimeout": 30000,
+           "instanceIdGenerator": "simple"
+         }
+       ],
+     "lastRefTime": 1662990336712,
+     "checksum": "",
+     "allIPs": false,
+     "reachProtectionThreshold": false,
+     "valid": true
+   })");
+    }
+};
+
+TEST(NamingServiceTest, nacos) {
+    brpc::Server server;
+    NacosNamingServiceImpl svc;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                                   "/nacos/v1/auth/login => Login, "
+                                   "/nacos/v1/ns/instance/list => List"));
+    ASSERT_EQ(0, server.Start("localhost:8848", nullptr));
+
+    bthread_usleep(5000000);
+
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:8888", &ep));
+    const auto expected_node = brpc::ServerNode(ep, "10");
+
+    const char* service_name =
+        "serviceName=test&groupName=g1&namespaceId=n1&clusters=wx";
+    brpc::policy::FLAGS_nacos_address = "http://localhost:8848";
+    brpc::policy::FLAGS_nacos_username = "nacos";
+    brpc::policy::FLAGS_nacos_password = "nacos";
+
+    {
+        brpc::policy::NacosNamingService nns;
+        std::vector<brpc::ServerNode> nodes;
+        ASSERT_EQ(0, nns.GetServers(service_name, &nodes));
+        ASSERT_EQ(nodes.size(), 1);
+        ASSERT_EQ(expected_node, nodes[0]);
+    }
+    {
+        brpc::policy::FLAGS_nacos_password = "invalid_password";
+        brpc::policy::NacosNamingService nns;
+        std::vector<brpc::ServerNode> nodes;
+        ASSERT_NE(0, nns.GetServers(service_name, &nodes));
     }
 }
 

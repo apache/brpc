@@ -61,3 +61,9 @@
 * 落地项目： 推荐、直播
 * 使用版本： 基于社区版本定制
 * 信息提供者：chenBright
+
+## brpc 在 Apache Doris 中的应用
+* 落地项目：Apache Doris
+* 使用版本：1.2.0
+* 使用情况：Apache Doris 作为一款 MPP 分析型数据库，其内部节点间使用 Apache Brpc 作为主要 RPC 框架。Brpc 为 Doris 提供了稳定易用的高性能通信机制。并且 BRPC 提供的 bthread，bvar 等基础库，以及各种性能调试工具，也极大的方便了 Doris 的开发和调试工作。
+* 信息提供者：morningman

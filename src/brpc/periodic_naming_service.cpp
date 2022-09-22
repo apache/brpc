@@ -29,6 +29,10 @@ DEFINE_int32(ns_access_interval, 5,
              "Wait so many seconds before next access to naming service");
 BRPC_VALIDATE_GFLAG(ns_access_interval, PositiveInteger);
 
+int PeriodicNamingService::GetNamingServiceAccessIntervalMs() const {
+    return std::max(FLAGS_ns_access_interval, 1) * 1000;
+}
+
 int PeriodicNamingService::RunNamingService(
     const char* service_name, NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
@@ -47,7 +51,7 @@ int PeriodicNamingService::RunNamingService(
             actions->ResetServers(servers);
         }
 
-        if (bthread_usleep(std::max(FLAGS_ns_access_interval, 1) * 1000000L) < 0) {
+        if (bthread_usleep(GetNamingServiceAccessIntervalMs() * 1000UL) < 0) {
             if (errno == ESTOP) {
                 RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
                 return 0;
