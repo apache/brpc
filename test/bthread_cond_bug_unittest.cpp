@@ -56,10 +56,10 @@ void* print_func(void* arg) {
                 LOG(ERROR) << "producer thread:" << i << " stopped";
                 return nullptr;
             }
-            LOG(NOTICE) << "producer stat idx:" << i
-                        << " wait:" << g_stat[i].wait_count
-                        << " wait_timeout:" << g_stat[i].wait_timeout_count
-                        << " wait_success:" << g_stat[i].wait_success_count;
+            LOG(INFO) << "producer stat idx:" << i
+                      << " wait:" << g_stat[i].wait_count
+                      << " wait_timeout:" << g_stat[i].wait_timeout_count
+                      << " wait_success:" << g_stat[i].wait_success_count;
             g_stat[i].loop_count = g_stat[i].loop_count.load();
         }
     }
@@ -68,7 +68,7 @@ void* print_func(void* arg) {
 
 void* produce_func(void* arg) {
     const int64_t wait_us = FLAGS_wait_us;
-    LOG(NOTICE) << "wait us:" << wait_us;
+    LOG(INFO) << "wait us:" << wait_us;
     int64_t idx = (int64_t)(arg);
     int32_t i = 0;
     while (!bthread_stopped(bthread_self())) {
@@ -93,7 +93,7 @@ void* produce_func(void* arg) {
         usleep(rand() % 20 + 5);
         g_stat[idx].loop_count.fetch_add(1);
     }
-    LOG(NOTICE) << "producer func return, idx:" << idx;
+    LOG(INFO) << "producer func return, idx:" << idx;
     return nullptr;
 }
 
@@ -116,7 +116,7 @@ void* consume_func(void* arg) {
             //LOG(WARNING) << "notify";
         }
     }
-    LOG(NOTICE) << "consumer func return";
+    LOG(INFO) << "consumer func return";
     return nullptr;
 }
 
