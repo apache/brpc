@@ -37,7 +37,7 @@ typedef bthread::ConditionVariable Condition;
 bthread::Mutex      g_mutex;
 Condition           g_cond;
 std::deque<int32_t> g_que;
-const size_t        g_capacity = 5000;
+const size_t        g_capacity = 2000;
 const int PRODUCER_NUM = 5;
 struct ProducerStat {
     std::atomic<int> loop_count;
