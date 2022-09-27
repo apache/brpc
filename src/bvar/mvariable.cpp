@@ -45,7 +45,7 @@ static bool validator_bvar_max_multi_dimension_metric_number(const char*, int32_
     return true;
 }
 
-const bool ALLOW_UNUSED dummp_bvar_max_multi_dimension_metric_number = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummp_bvar_max_multi_dimension_metric_number = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_max_multi_dimension_metric_number, validator_bvar_max_multi_dimension_metric_number);
 
 class MVarEntry {
