@@ -72,23 +72,23 @@ void* produce_func(void* arg) {
     int64_t idx = (int64_t)(arg);
     int32_t i = 0;
     while (!bthread_stopped(bthread_self())) {
-        LOG(DEBUG) << "come to a new round " << idx << "round[" << i << "]";
+        LOG(INFO) << "come to a new round " << idx << "round[" << i << "]";
         {
             Lock lock(g_mutex); 
             while (g_que.size() >= g_capacity && !bthread_stopped(bthread_self())) {
                 g_stat[idx].wait_count << 1;
-                //LOG(DEBUG) << "wait begin " << idx;
+                //LOG(INFO) << "wait begin " << idx;
                 int ret = g_cond.wait_for(lock, wait_us);
                 if (ret == ETIMEDOUT) {
                     g_stat[idx].wait_timeout_count << 1;
-                    //LOG_EVERY_SECOND(NOTICE) << "wait timeout " << idx;
+                    //LOG_EVERY_SECOND(INFO) << "wait timeout " << idx;
                 } else {
                     g_stat[idx].wait_success_count << 1;
-                    //LOG_EVERY_SECOND(NOTICE) << "wait early " << idx;
+                    //LOG_EVERY_SECOND(INFO) << "wait early " << idx;
                 }
             }
             g_que.push_back(++i);
-            LOG(DEBUG) << "push back " << idx << " data[" << i << "]";
+            LOG(INFO) << "push back " << idx << " data[" << i << "]";
         }
         usleep(rand() % 20 + 5);
         g_stat[idx].loop_count.fetch_add(1);
@@ -105,9 +105,9 @@ void* consume_func(void* arg) {
             need_notify = (g_que.size() == g_capacity);
             if (!g_que.empty()) {
                 g_que.pop_front();
-                LOG_EVERY_SECOND(NOTICE) << "pop a data";
+                LOG_EVERY_SECOND(INFO) << "pop a data";
             } else {
-                LOG_EVERY_SECOND(NOTICE) << "que is empty";
+                LOG_EVERY_SECOND(INFO) << "que is empty";
             }
         }
         usleep(rand() % 300 + 500);
