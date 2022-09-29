@@ -93,8 +93,8 @@ int ChannelGroup::Init() {
             options.max_retry = FLAGS_max_retry;
             if (chan->Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(),
                         &options) != 0) {
-                LOG(ERROR) << "Fail to initialize channel";
-                return -1;
+                LOG(WARNING) << "Fail to initialize channel";
+                continue;
             }
             _chans[prot] = chan;
         }
