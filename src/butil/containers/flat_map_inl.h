@@ -567,10 +567,12 @@ void FlatMap<_K, _T, _H, _E, _S>::save_iterator(
 template <typename _K, typename _T, typename _H, typename _E, bool _S>
 typename FlatMap<_K, _T, _H, _E, _S>::const_iterator
 FlatMap<_K, _T, _H, _E, _S>::restore_iterator(const PositionHint& hint) const {
-    if (hint.nbucket != _nbucket/*resized*/ ||
-        hint.offset >= _nbucket/*invalid hint*/) {
-        return begin();  // restart
-    }
+    if (hint.nbucket != _nbucket)  // resized
+        return begin(); // restart
+
+    if (hint.offset >= _nbucket) // invalid hint, stop the iteration
+        return end();
+
     Bucket& first_node = _buckets[hint.offset];
     if (hint.at_entry) {
         return const_iterator(this, hint.offset);
@@ -604,6 +606,10 @@ bool FlatMap<_K, _T, _H, _E, _S>::resize(size_t nbucket2) {
     }
 
     FlatMap new_map;
+    // NOTE: following functors must be kept after resizing otherwise the 
+    // internal state is lost.
+    new_map._hashfn = _hashfn; 
+    new_map._eql = _eql;
     if (new_map.init(nbucket2, _load_factor) != 0) {
         LOG(ERROR) << "Fail to init new_map, nbucket=" << nbucket2;
         return false;
