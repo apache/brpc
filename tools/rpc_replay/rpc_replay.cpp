@@ -83,7 +83,9 @@ int ChannelGroup::Init() {
     _chans.resize(max_protocol_size + 1);
     for (size_t i = 0; i < protocols.size(); ++i) {
         if (protocols[i].second.support_client() &&
-            protocols[i].second.support_server()) {
+            protocols[i].second.support_server() &&
+            (brpc::StringToConnectionType(FLAGS_connection_type) &
+             protocols[i].second.supported_connection_type)) {
             const brpc::ProtocolType prot = protocols[i].first;
             brpc::Channel* chan = new brpc::Channel;
             brpc::ChannelOptions options;
@@ -93,8 +95,8 @@ int ChannelGroup::Init() {
             options.max_retry = FLAGS_max_retry;
             if (chan->Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(),
                         &options) != 0) {
-                LOG(WARNING) << "Fail to initialize channel";
-                continue;
+                LOG(ERROR) << "Fail to initialize channel";
+                return -1;
             }
             _chans[prot] = chan;
         }
