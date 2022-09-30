@@ -29,6 +29,9 @@
 #include <brpc/serialized_request.h>
 #include <brpc/nshead_message.h>
 #include <brpc/details/http_message.h>
+#include "brpc/adaptive_connection_type.h"
+#include "brpc/adaptive_protocol_type.h"
+#include "brpc/options.pb.h"
 #include "info_thread.h"
 
 DEFINE_string(dir, "", "The directory of dumped requests");
@@ -83,16 +86,21 @@ int ChannelGroup::Init() {
     _chans.resize(max_protocol_size + 1);
     for (size_t i = 0; i < protocols.size(); ++i) {
         if (protocols[i].second.support_client() &&
-            protocols[i].second.support_server() &&
-            (brpc::StringToConnectionType(FLAGS_connection_type) &
-             protocols[i].second.supported_connection_type)) {
+            protocols[i].second.support_server()) {
             const brpc::ProtocolType prot = protocols[i].first;
-            brpc::Channel* chan = new brpc::Channel;
             brpc::ChannelOptions options;
             options.protocol = prot;
             options.connection_type = FLAGS_connection_type;
             options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
             options.max_retry = FLAGS_max_retry;
+            if (options.connection_type != brpc::CONNECTION_TYPE_UNKNOWN &&
+                !(options.connection_type &
+                 protocols[i].second.supported_connection_type)) {
+              // If protoctol does not support user specified connection type,
+              // skip to init channel.
+              continue;
+            }
+            brpc::Channel* chan = new brpc::Channel;
             if (chan->Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(),
                         &options) != 0) {
                 LOG(ERROR) << "Fail to initialize channel";
