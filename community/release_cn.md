@@ -131,6 +131,14 @@ sub   rsa4096 2021-10-17 [E]
 
 # 发布包准备
 
+## 0. 拉出发版分支
+
+如果是发布新的2位版本，如`1.0.0`，则需要从master拉出新的分支`release-1.0`。
+
+如果是在已有的2位版本上发布新的3位版本，如`1.0.1`版本，则只需要在已有的`release-1.0`分支上修改加上要发布的内容。
+
+发版过程中的操作都在release分支（如`release-1.0`）上操作，如果发版过程发现代码有问题需要修改，也在该分支上进行修改。发版完成后，将该分支合回master分支。
+
 ## 1. 编辑 RELEASE_VERSION 文件
 
 ### 更新RELEASE_VERSION文件
@@ -150,7 +158,7 @@ set(BRPC_VERSION 1.0.0)
 ## 2. 创建发布 tag
 拉取发布分支，并推送tag
 ```bash
-git clone -b ${branch} git@github.com:apache/incubator-brpc.git ~/incubator-brpc
+git clone -b release-1.0 git@github.com:apache/incubator-brpc.git ~/incubator-brpc
 
 cd ~/incubator-brpc
 
