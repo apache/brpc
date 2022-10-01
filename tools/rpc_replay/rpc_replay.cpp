@@ -85,28 +85,24 @@ int ChannelGroup::Init() {
     }
     _chans.resize(max_protocol_size + 1);
     for (size_t i = 0; i < protocols.size(); ++i) {
-        if (protocols[i].second.support_client() &&
-            protocols[i].second.support_server()) {
-            const brpc::ProtocolType prot = protocols[i].first;
-            brpc::ChannelOptions options;
-            options.protocol = prot;
-            options.connection_type = FLAGS_connection_type;
-            options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
-            options.max_retry = FLAGS_max_retry;
-            if (options.connection_type != brpc::CONNECTION_TYPE_UNKNOWN &&
-                !(options.connection_type &
-                 protocols[i].second.supported_connection_type)) {
-              // If protoctol does not support user specified connection type,
-              // skip to init channel.
-              continue;
-            }
-            brpc::Channel* chan = new brpc::Channel;
-            if (chan->Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(),
-                        &options) != 0) {
-                LOG(ERROR) << "Fail to initialize channel";
-                return -1;
-            }
-            _chans[prot] = chan;
+        const brpc::ProtocolType protocol_type = protocols[i].first;
+        const brpc::Protocol protocol = protocols[i].second;
+        brpc::ChannelOptions options;
+        options.protocol = protocol_type;;
+        options.connection_type = FLAGS_connection_type;
+        options.timeout_ms = FLAGS_timeout_ms /*milliseconds*/;
+        options.max_retry = FLAGS_max_retry;
+        if ((options.connection_type == brpc::CONNECTION_TYPE_UNKNOWN ||
+             (options.connection_type & protocol.supported_connection_type)) &&
+            protocol.support_client() && protocol.support_server()) {
+          brpc::Channel *chan = new brpc::Channel;
+          if (chan->Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(),
+                         &options) != 0) {
+            LOG(ERROR) << "Fail to initialize channel";
+            delete chan;
+            return -1;
+          }
+          _chans[protocol_type] = chan;
         }
     }
     return 0;
@@ -259,7 +255,7 @@ int main(int argc, char* argv[]) {
     if (req_rate_per_thread > rate_limit_per_thread) {
         LOG(ERROR) << "req_rate: " << (int64_t) req_rate_per_thread << " is too large in one thread. The rate limit is " 
                 <<  rate_limit_per_thread << " in one thread";
-        return false;  
+        return -1;  
     }    
 
     std::vector<bthread_t> bids;
