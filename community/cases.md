@@ -67,3 +67,9 @@
 * 使用版本：1.2.0
 * 使用情况：Apache Doris 作为一款 MPP 分析型数据库，其内部节点间使用 Apache Brpc 作为主要 RPC 框架。Brpc 为 Doris 提供了稳定易用的高性能通信机制。并且 BRPC 提供的 bthread，bvar 等基础库，以及各种性能调试工具，也极大的方便了 Doris 的开发和调试工作。
 * 信息提供者：morningman
+
+## brpc在BaikalDB中的应用
+* 落地项目：BaikalDB
+* 使用版本：社区版0.9.7&百度内部stable
+* 使用情况：BaikalDB是一款面向OLTP场景为主的NewSQL数据库，其内部节点均采用brpc框架通信，实现数据处理和复制以及集群管理，brpc的高性能对OLTP场景的低延迟至关重要，同时brpc集成的性能调优工具对SQL性能优化提效显著。
+* 信息提供者：tullyliu
