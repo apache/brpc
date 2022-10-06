@@ -199,8 +199,12 @@ struct ServerOptions {
     // Default: true
     bool has_builtin_services;
 
+    // only allows accessing builtin services from localhost
+    // Default: false
+    bool builtin_services_only_local;
+
     // Enable more secured code which protects internal information from exposure.
-    bool security_mode() const { return internal_port >= 0 || !has_builtin_services; }
+    bool security_mode() const { return internal_port >= 0 || !has_builtin_services || builtin_services_only_local; }
 
     // SSL related options. Refer to `ServerSSLOptions' for details
     bool has_ssl_options() const { return _ssl_options != NULL; }
