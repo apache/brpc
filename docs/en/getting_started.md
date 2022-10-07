@@ -110,7 +110,7 @@ $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ### Compile brpc with vcpkg
 
 [vcpkg](https://github.com/microsoft/vcpkg) is a package manager that supports all platforms,
-you can use vcpkg to build llvm with the following step:
+you can use vcpkg to build brpc with the following step:
 
 ```shell
 $ git clone https://github.com/microsoft/vcpkg.git
