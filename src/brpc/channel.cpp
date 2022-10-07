@@ -163,6 +163,8 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
             _options.connection_type = CONNECTION_TYPE_SINGLE;
         } else if (protocol->supported_connection_type & CONNECTION_TYPE_POOLED) {
             _options.connection_type = CONNECTION_TYPE_POOLED;
+        } else if (protocol->supported_connection_type & CONNECTION_TYPE_MULTI) {
+            _options.connection_type = CONNECTION_TYPE_MULTI;     
         } else {
             _options.connection_type = CONNECTION_TYPE_SHORT;
         }

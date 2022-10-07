@@ -38,6 +38,8 @@ ConnectionType StringToConnectionType(const butil::StringPiece& type,
         return CONNECTION_TYPE_POOLED;
     } else if (CompareStringPieceWithoutCase(type, "short")) {
         return CONNECTION_TYPE_SHORT;
+    } else if (CompareStringPieceWithoutCase(type, "multi")) {
+        return CONNECTION_TYPE_MULTI;
     }
     LOG_IF(ERROR, print_log_on_unknown && !type.empty())
         << "Unknown connection_type `" << type
@@ -55,6 +57,8 @@ const char* ConnectionTypeToString(ConnectionType type) {
         return "pooled";
     case CONNECTION_TYPE_SHORT:
         return "short";
+    case CONNECTION_TYPE_MULTI:
+        return "multi";
     }
     return "unknown";
 }

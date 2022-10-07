@@ -740,6 +740,14 @@ void Controller::Call::OnComplete(
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
         break;
+    case CONNECTION_TYPE_MULTI:
+        if (sending_sock) {
+            sending_sock->ReturnToGroup();
+        }
+        if (does_error_affect_main_socket(error_code)) {
+            Socket::SetFailed(peer_id);
+        }
+        break;
     case CONNECTION_TYPE_SINGLE:
         // Set main socket to be failed for connection refusal of streams.
         // "single" streams are often maintained in a separate SocketMap and
@@ -751,24 +759,30 @@ void Controller::Call::OnComplete(
         }
         break;
     case CONNECTION_TYPE_POOLED:
-        // NOTE: Not reuse pooled connection if this call fails and no response
-        // has been received through this connection
-        // Otherwise in-flight responses may come back in future and break the
-        // assumption that one pooled connection cannot have more than one
-        // message at the same time.
-        if (sending_sock != NULL && (error_code == 0 || responded)) {
-            if (!sending_sock->is_read_progressive()) {
-                // Normally-read socket which will not be used after RPC ends,
-                // safe to return. Notice that Socket::is_read_progressive may
-                // differ from Controller::is_response_read_progressively()
-                // because RPC possibly ends before setting up the socket.
-                sending_sock->ReturnToPool();
+        if (sending_sock != NULL) {
+            // NOTE: Not reuse pooled connection if this call fails and no response
+            // has been received through this connection
+            // Otherwise in-flight responses may come back in future and break the
+            // assumption that one pooled connection cannot have more than one
+            // message at the same time.
+            if (error_code == 0 || responded) {
+                if (!sending_sock->is_read_progressive()) {
+                    // Normally-read socket which will not be used after RPC ends,
+                    // safe to return. Notice that Socket::is_read_progressive may
+                    // differ from Controller::is_response_read_progressively()
+                    // because RPC possibly ends before setting up the socket.
+                    sending_sock->ReturnToGroup();
+                } else {
+                    // Progressively-read socket. Should be returned when the read
+                    // ends. The method handles the details.
+                    sending_sock->OnProgressiveReadCompleted();
+                }
+                break;
             } else {
-                // Progressively-read socket. Should be returned when the read
-                // ends. The method handles the details.
-                sending_sock->OnProgressiveReadCompleted();
+                // Do not return to connection pool to reuse and just discard directly.
+                sending_sock->DiscardFromGroup(); 
+                // We don't break here because SetFailed on "sending_sock" should be called.
             }
-            break;
         }
         // fall through
     case CONNECTION_TYPE_SHORT:
@@ -1079,8 +1093,9 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
     } else {
         int rc = 0;
-        if (_connection_type == CONNECTION_TYPE_POOLED) {
-            rc = tmp_sock->GetPooledSocket(&_current_call.sending_sock);
+        if (_connection_type & CONNECTION_TYPE_POOLED_AND_MULTI) {
+            rc = tmp_sock->GetSocketFromGroup(&_current_call.sending_sock, 
+                                              _connection_type);
         } else if (_connection_type == CONNECTION_TYPE_SHORT) {
             rc = tmp_sock->GetShortSocket(&_current_call.sending_sock);
         } else {

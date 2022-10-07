@@ -87,6 +87,14 @@ DEFINE_int32(max_connection_pool_size, 100,
              "Max number of pooled connections to a single endpoint");
 BRPC_VALIDATE_GFLAG(max_connection_pool_size, PassValidate);
 
+DEFINE_int32(max_connection_multi_size, 10,
+             "The number of multi connections to a single endpoint");
+
+DEFINE_int32(threshold_for_switch_multi_connection, 5,
+             "Pending rpc count gap of multi connections reach the "
+             "threshold will trigger sending request on the socket with lower load.");
+BRPC_VALIDATE_GFLAG(threshold_for_switch_multi_connection, PassValidate);
+
 DEFINE_int32(connect_timeout_as_unreachable, 3,
              "If the socket failed to connect due to ETIMEDOUT for so many "
              "times *continuously*, the error is changed to ENETUNREACH which "
@@ -102,31 +110,136 @@ BRPC_VALIDATE_GFLAG(connect_timeout_as_unreachable,
 
 const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
 
-class BAIDU_CACHELINE_ALIGNMENT SocketPool {
+class BAIDU_CACHELINE_ALIGNMENT SocketGroup {
+friend class Socket;
+public:
+    SocketGroup(const SocketOptions& opts) 
+        : _options(opts), _remote_side(opts.remote_side) {}
+    virtual ~SocketGroup() = default;
+
+    // Get an address-able socket from sockets group.
+    // Returns 0 on success.
+    virtual int GetSocket(SocketUniquePtr* ptr) = 0;
+    
+    // Return a socket back to the group.
+    virtual void ReturnSocket(Socket* sock) { return; };
+
+    // Discard this socket. Do not reuse this socket any more. 
+    // It is only effective in case of pooled.
+    virtual void DiscardSocket(Socket* sock) {}    
+
+    // Get all sockets inside.
+    virtual void ListSockets(std::vector<SocketId>* list, size_t max_count) = 0;
+    
+    virtual void GetSocketCount(int* num) const = 0;
+ 
+    virtual ConnectionType connection_type() const = 0;
+
+    virtual void Describe(std::ostream& os) = 0;
+
+protected:
+    // options used to create this instance
+    SocketOptions _options;
+    butil::EndPoint _remote_side;
+};
+
+class BAIDU_CACHELINE_ALIGNMENT SocketPool : public SocketGroup {
 friend class Socket;
 public:
     explicit SocketPool(const SocketOptions& opt);
-    ~SocketPool();
+    virtual ~SocketPool();
 
     // Get an address-able socket. If the pool is empty, create one.
     // Returns 0 on success.
-    int GetSocket(SocketUniquePtr* ptr);
+    virtual int GetSocket(SocketUniquePtr* ptr);
     
     // Return a socket (which was returned by GetSocket) back to the pool,
     // if the pool is full, setfail the socket directly.
-    void ReturnSocket(Socket* sock);
+    virtual void ReturnSocket(Socket* sock);
+
+    virtual void DiscardSocket(Socket* sock); 
     
     // Get all pooled sockets inside.
-    void ListSockets(std::vector<SocketId>* list, size_t max_count);
-    
+    virtual void ListSockets(std::vector<SocketId>* list, size_t max_count);
+  
+    virtual void GetSocketCount(int* num) const {      
+        *num = _numfree.load(butil::memory_order_relaxed)
+             + _numinflight.load(butil::memory_order_relaxed);
+    }
+
+    virtual ConnectionType connection_type() const { 
+        return CONNECTION_TYPE_POOLED; 
+    }
+
+    virtual void Describe(std::ostream& os);
+
 private:
-    // options used to create this instance
-    SocketOptions _options;
     butil::Mutex _mutex;
     std::vector<SocketId> _pool;
-    butil::EndPoint _remote_side;
     butil::atomic<int> _numfree; // #free sockets in all sub pools.
     butil::atomic<int> _numinflight; // #inflight sockets in all sub pools.
+};
+
+class BAIDU_CACHELINE_ALIGNMENT SocketMulti : public SocketGroup {
+friend class Socket;
+public:
+    explicit SocketMulti(const SocketOptions& opt, Socket::SharedPart* sp);
+    virtual ~SocketMulti();
+
+    // Get an address-able socket which load is about most lightest.
+    // Returns 0 on success.
+    virtual int GetSocket(SocketUniquePtr* ptr);
+    
+    // Return a socket (which was returned by GetSocket) back to group.
+    virtual void ReturnSocket(Socket* sock);
+
+    virtual void GetSocketCount(int* num) const { 
+        *num = _num_created.load(butil::memory_order_relaxed); 
+    }
+    
+    // Get all multi sockets inside.
+    virtual void ListSockets(std::vector<SocketId>* list, size_t max_count);
+    
+    virtual ConnectionType connection_type() const { 
+        return CONNECTION_TYPE_MULTI; 
+    }
+
+    virtual void Describe(std::ostream& os);
+
+private:
+    static uint64_t BuildLightest(uint32_t sid_index, uint32_t load) {
+        return (((uint64_t)sid_index) << 32) | load;
+    }
+
+    static uint32_t LoadOfLightest(uint64_t lsid) {
+        return (uint32_t)(lsid & 0x00000000FFFFFFFF);
+    }
+
+    SocketId SidOfLightest(uint64_t lsid) {
+        uint32_t i = (uint32_t)(lsid >> 32);
+        return reinterpret_cast<butil::atomic<SocketId>*>(&_multi[i])->load(
+            butil::memory_order_consume);
+    }
+       
+    int InitSocket(const size_t index, SocketId* sid);
+
+    // If the rpc count of 's' less than (lightest - threshold), update '_lightest' by 's'.
+    inline void UpdateLightestSocketIfNeeded(const uint64_t s);
+
+    // Each newly created multi socket need reference to sharedpart whatever there is 
+    // rpc request or not.
+    inline void ShareStatsForNewSocket(Socket* socket);
+
+    // Sharedpart this group belonged to.
+    Socket::SharedPart* _sp;
+    // The total pending rpc count on multi sockets. 
+    butil::atomic<uint32_t> _load;
+    butil::atomic<size_t> _num_created;
+    // * High unsigned 32-bit: the lightest socket index of '_multi'.
+    // * Low unsigned 32-bit: the rpc count when the socket was selected 
+    //                        as the lightest socket. 
+    butil::atomic<uint64_t> _lightest;
+    std::vector<SocketId> _multi;
 };
 
 // NOTE: sizeof of this class is 1200 bytes. If we have 10K sockets, total
@@ -165,7 +278,7 @@ public:
     // Before rev <= r32136, the pool is managed globally in socket_map.cpp
     // which has the disadvantage that accesses to different pools contend
     // with each other.
-    butil::atomic<SocketPool*> socket_pool;
+    butil::atomic<SocketGroup*> socket_group;
     
     // The socket newing this object.
     SocketId creator_socket_id;
@@ -195,7 +308,7 @@ public:
 };
 
 Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
-    : socket_pool(NULL)
+    : socket_group(NULL)
     , creator_socket_id(creator_socket_id2)
     , num_continuous_connect_timeouts(0)
     , in_size(0)
@@ -209,7 +322,7 @@ Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
 Socket::SharedPart::~SharedPart() {
     delete extended_stat;
     extended_stat = NULL;
-    delete socket_pool.exchange(NULL, butil::memory_order_relaxed);
+    delete socket_group.exchange(NULL, butil::memory_order_relaxed);
 }
 
 void Socket::SharedPart::UpdateStatsEverySecond(int64_t now_ms) {
@@ -456,6 +569,7 @@ Socket::Socket(Forbidden)
     , _write_head(NULL)
     , _stream_set(NULL)
     , _ninflight_app_health_check(0)
+    , _rpc_count(0)
 {
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, NULL);
@@ -2065,22 +2179,10 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     os << "version=" << VersionOfVRef(vref);
     if (sp) {
         os << "\nshared_part={\n  ref_count=" << sp->ref_count()
-           << "\n  socket_pool=";
-        SocketPool* pool = sp->socket_pool.load(butil::memory_order_consume);
-        if (pool) {
-            os << '[';
-            std::vector<SocketId> pooled_sockets;
-            pool->ListSockets(&pooled_sockets, 0);
-            for (size_t i = 0; i < pooled_sockets.size(); ++i) {
-                if (i) {
-                    os << ' ';
-                }
-                os << pooled_sockets[i];
-            }
-            os << "]\n  numfree="
-               << pool->_numfree.load(butil::memory_order_relaxed)
-               << "\n  numinflight="
-               << pool->_numinflight.load(butil::memory_order_relaxed);
+           << "\n  socket_group=";
+        SocketGroup* group = sp->socket_group.load(butil::memory_order_consume);
+        if (group) {
+            group->Describe(os);
         } else {
             os << "null";
         }
@@ -2298,14 +2400,13 @@ void SocketUser::AfterRevived(Socket* ptr) {
 
 ////////// SocketPool //////////////
 
-inline SocketPool::SocketPool(const SocketOptions& opt)
-    : _options(opt)
-    , _remote_side(opt.remote_side)
+SocketPool::SocketPool(const SocketOptions& opt)
+    : SocketGroup(opt)
     , _numfree(0)
     , _numinflight(0) {
 }
 
-inline SocketPool::~SocketPool() {
+SocketPool::~SocketPool() {
     for (std::vector<SocketId>::iterator it = _pool.begin();
          it != _pool.end(); ++it) {
         SocketUniquePtr ptr;
@@ -2315,7 +2416,7 @@ inline SocketPool::~SocketPool() {
     }
 }
 
-inline int SocketPool::GetSocket(SocketUniquePtr* ptr) {
+int SocketPool::GetSocket(SocketUniquePtr* ptr) {
     const int connection_pool_size = FLAGS_max_connection_pool_size;
 
     // In prev rev, SocketPool could be sharded into multiple SubSocketPools to
@@ -2363,7 +2464,7 @@ inline int SocketPool::GetSocket(SocketUniquePtr* ptr) {
     return -1;
 }
 
-inline void SocketPool::ReturnSocket(Socket* sock) {
+void SocketPool::ReturnSocket(Socket* sock) {
     // NOTE: save the gflag which may be reloaded at any time.
     const int connection_pool_size = FLAGS_max_connection_pool_size;
 
@@ -2381,7 +2482,12 @@ inline void SocketPool::ReturnSocket(Socket* sock) {
     _numinflight.fetch_sub(1, butil::memory_order_relaxed);
 }
 
-inline void SocketPool::ListSockets(std::vector<SocketId>* out, size_t max_count) {
+void SocketPool::DiscardSocket(Socket* sock) {
+    sock->_shared_part.store(NULL, butil::memory_order_relaxed);
+    _numinflight.fetch_sub(1, butil::memory_order_relaxed);
+}
+
+void SocketPool::ListSockets(std::vector<SocketId>* out, size_t max_count) {
     out->clear();
     // NOTE: size() of vector is thread-unsafe and may return a very 
     // large value during resizing.
@@ -2403,6 +2509,272 @@ inline void SocketPool::ListSockets(std::vector<SocketId>* out, size_t max_count
         }
     }
     _mutex.unlock();
+}
+
+void SocketPool::Describe(std::ostream& os) {
+    os << '[';
+    std::vector<SocketId> sockets;
+    ListSockets(&sockets, 0);
+    for (size_t i = 0; i < sockets.size(); ++i) {
+        if (i) {
+            os << ' ';
+        }
+        os << sockets[i];
+    }
+    os << "]\n";
+    os << "  type=" << "pooled";
+    os << "\n  numfree=" << _numfree.load(butil::memory_order_relaxed)
+       << "\n  numinflight=" << _numinflight.load(butil::memory_order_relaxed);
+}
+
+// ScoketMulti
+SocketMulti::SocketMulti(const SocketOptions& opt, Socket::SharedPart* sp)
+    : SocketGroup(opt)
+    , _sp(sp)
+    , _load(0)
+    , _num_created(0)
+    , _lightest(0)
+    , _multi(FLAGS_max_connection_multi_size, INVALID_SOCKET_ID) {
+}
+
+SocketMulti::~SocketMulti() {
+    butil::atomic<SocketId>* p;
+    for (size_t i = 0; i < _multi.size() && i < _num_created; ++i) {
+        p = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[i]);
+        SocketUniquePtr ptr;
+        if (Socket::Address(p->load(), &ptr) == 0) {
+            ptr->ReleaseAdditionalReference();
+        }
+    }
+}
+
+int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
+    const uint32_t threshold = FLAGS_threshold_for_switch_multi_connection;
+    // Keep lightest socket if its rpc count is less than threshold or does not
+    // increase more than threshold.
+    SocketUniquePtr lptr;
+    uint64_t lsid = _lightest.load(butil::memory_order_acquire);
+    if (Socket::Address(SidOfLightest(lsid), &lptr) == 0) {
+        uint32_t load = lptr->_rpc_count.load(butil::memory_order_relaxed);
+        if (load <= threshold || (load - LoadOfLightest(lsid)) <= threshold) {
+            lptr->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
+            ptr_out->reset(lptr.release());
+            _load.fetch_add(1, butil::memory_order_relaxed);
+            return 0;
+        }
+    }
+    // Select a socket which rpc count is lowest.
+    butil::atomic<SocketId>* psid;
+    SocketId sid;
+    uint32_t min_index = _multi.size();
+    uint32_t min_load = (uint32_t)-1;
+    const SocketId init_fail = INVALID_SOCKET_ID - 1;
+    for (size_t i = 0; i != _multi.size(); ++i) {
+        psid = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[i]);
+        sid = psid->load(butil::memory_order_acquire);
+        SocketUniquePtr ptr;
+        int addressed = -2;
+        if (sid != INVALID_SOCKET_ID && sid != init_fail) {
+            addressed = Socket::AddressFailedAsWell(sid, &ptr);
+        }
+        if (addressed == 0) {
+            uint32_t load = ptr->_rpc_count.load(butil::memory_order_relaxed);
+            if (load == 0) {
+                uint64_t lsid = BuildLightest(i, 0);
+                _lightest.store(lsid, butil::memory_order_relaxed); 
+                ptr->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
+                ptr_out->reset(ptr.release());
+                _load.fetch_add(1, butil::memory_order_relaxed);
+                return 0;
+            }
+            if (load < min_load) {
+                min_load = load;
+                min_index = i;
+            }
+            continue;
+        }
+        // If the socket is not initialize, create one.  
+        if (sid == INVALID_SOCKET_ID) {
+            SocketId new_id;
+            int init = InitSocket(i, &new_id);
+            if (init >= 0 && Socket::Address(new_id, ptr_out) == 0) {
+                (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
+                if (init == 0) {
+                    _lightest.store(BuildLightest(i, 0), butil::memory_order_relaxed);
+                }
+                _load.fetch_add(1, butil::memory_order_relaxed);
+                return 0;
+            }
+            continue;
+        }
+        // If this socket is created failure or recycled, replace with new one. 
+        if (sid == init_fail || addressed == -1) {
+            SocketId new_id;
+            SocketOptions opt = _options;
+            if (get_client_side_messenger()->Create(opt, &new_id) == 0 &&
+                Socket::Address(new_id, &ptr) == 0) {
+                ptr->_multi_index = i;
+                if (psid->compare_exchange_strong(
+                        sid, new_id, butil::memory_order_relaxed)) {
+                    ptr->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
+                    _lightest.store(BuildLightest(i, 0), butil::memory_order_relaxed);
+                    ptr_out->reset(ptr.release());
+                    _load.fetch_add(1, butil::memory_order_relaxed);
+                    return 0;
+                } else {
+                    ptr->SetFailed(EUNUSED, "Close unused multi socket");
+                    if (Socket::Address(sid, ptr_out) == 0) {
+                        (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
+                        _load.fetch_add(1, butil::memory_order_relaxed);
+                        return 0;
+                    } 
+                }
+            } 
+        }
+    }
+    if (min_index < _multi.size()) {
+        SocketId sid = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[min_index])->load(
+            butil::memory_order_relaxed);
+        if (Socket::Address(sid, ptr_out) == 0) {
+            uint64_t s = BuildLightest(
+                min_index, (*ptr_out)->_rpc_count.load(butil::memory_order_acquire));
+            (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
+            UpdateLightestSocketIfNeeded(s);
+            _load.fetch_add(1, butil::memory_order_relaxed);
+            return 0; 
+        }
+    } 
+    
+    return -1;
+}
+
+void SocketMulti::ReturnSocket(Socket* sock) {
+    _load.fetch_sub(1, butil::memory_order_relaxed);
+    sock->_rpc_count.fetch_sub(1, butil::memory_order_acquire);
+    CHECK_EQ(sock->id(), _multi[sock->_multi_index])
+        << "Socket is not consistent with " << sock->_multi_index
+        << "th multi connection.";
+    if (sock->Failed()) {
+        return;
+    }
+    uint64_t lsid = _lightest.load(butil::memory_order_relaxed);
+    uint32_t load = sock->_rpc_count.load(butil::memory_order_relaxed);
+    uint64_t s = BuildLightest(sock->_multi_index, load);
+    if (sock->id() == SidOfLightest(lsid)) {
+        if (load < LoadOfLightest(lsid)) {
+            _lightest.compare_exchange_strong(lsid, s, butil::memory_order_relaxed);
+        } 
+    } else {
+        UpdateLightestSocketIfNeeded(s);
+    }
+}
+
+int SocketMulti::InitSocket(const size_t index, SocketId* sid) {
+    SocketUniquePtr ptr;
+    SocketId new_id;
+    if (get_client_side_messenger()->Create(_options, &new_id) == 0) {
+        Socket::Address(new_id, &ptr);
+    }
+    SocketId dummy = INVALID_SOCKET_ID; 
+    butil::atomic<SocketId>* psid = nullptr;
+    uint32_t final_pos = 0;
+    const size_t count = _num_created.fetch_add(1, butil::memory_order_acquire);
+    if (count < _multi.size()) {
+        final_pos = count;
+        if (!ptr) {
+            psid = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[final_pos]);
+            psid->store(INVALID_SOCKET_ID - 1, butil::memory_order_relaxed);
+            return -1;
+        } 
+    } else {
+        _num_created.fetch_sub(1, butil::memory_order_relaxed);
+        final_pos = index;
+    }
+    if (ptr) {
+        psid = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[final_pos]);
+        ptr->_multi_index = final_pos;
+        if (psid->compare_exchange_strong(dummy, new_id, 
+                                          butil::memory_order_relaxed)) {
+            *sid = new_id;
+            ShareStatsForNewSocket(ptr.get());
+            return 0;
+        } else {
+            ptr->SetFailed(EUNUSED, "Close unused multi socket");
+            *sid = dummy;
+            return 1;
+        } 
+    }
+    return -1;
+}
+
+inline void SocketMulti::UpdateLightestSocketIfNeeded(const uint64_t s) {
+    uint64_t lsid = _lightest.load(butil::memory_order_acquire);
+    SocketId new_sid = SidOfLightest(s);
+    uint32_t new_load = LoadOfLightest(s);
+    do {
+        SocketUniquePtr ptr;
+        SocketId id = SidOfLightest(lsid);
+        if (Socket::Address(id, &ptr) == 0) { 
+            if (id == new_sid || 
+                new_load + FLAGS_threshold_for_switch_multi_connection >= 
+                    ptr->_rpc_count.load(butil::memory_order_relaxed)) {
+                break;
+            }
+        }
+    } while (!_lightest.compare_exchange_strong(
+                 lsid, s, butil::memory_order_relaxed));
+}
+
+inline void SocketMulti::ShareStatsForNewSocket(Socket* socket) {
+    _sp->AddRefManually();
+    Socket::SharedPart* sp = socket->_shared_part.exchange(_sp, butil::memory_order_relaxed);
+    CHECK(sp == nullptr || sp == _sp) << "Sharedpart of new multi socket is unexpected("
+        << sp << " != " << " nullptr or " << _sp << ')';
+}
+
+void SocketMulti::ListSockets(std::vector<SocketId>* out, size_t max_count) {
+    out->clear();
+    uint32_t n = _num_created.load(butil::memory_order_acquire);
+    if (max_count == 0 || max_count > n) {
+        max_count = n;
+    }
+    butil::atomic<SocketId>* p; 
+    SocketId sid = INVALID_SOCKET_ID;
+    for (size_t i = 0; i != _multi.size() && i < max_count; ++i) {
+        p = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[i]);
+        sid = p->load(butil::memory_order_relaxed);
+        SocketUniquePtr ptr;
+        if (Socket::Address(sid, &ptr) == 0) {
+            out->emplace_back(sid);
+        }
+    }
+}
+
+void SocketMulti::Describe(std::ostream& os) {
+    os << '[';
+    std::vector<SocketId> sockets;
+    ListSockets(&sockets, 0);
+    for (size_t i = 0; i < sockets.size(); ++i) {
+        if (i) {
+            os << ' ';
+        }
+        os << sockets[i];
+    }
+    os << "]\n";
+    SocketUniquePtr ptr;
+    uint32_t load = (uint32_t)-1;
+    uint32_t selected_load = (uint32_t)-1;
+    uint64_t lsid = _lightest.load(butil::memory_order_relaxed);
+    SocketId sid = SidOfLightest(lsid);
+    if (Socket::Address(sid, &ptr) == 0) {
+        load = ptr->_rpc_count.load(butil::memory_order_relaxed);
+        selected_load = LoadOfLightest(lsid);
+    }
+    os << "  type=" << "multi"
+       << "\n  total_rpc_count=" << _load.load(butil::memory_order_relaxed)
+       << "\n  num_active=" << sockets.size()
+       << "\n  num_created=" << _num_created.load(butil::memory_order_relaxed)
+       << "\n  lightest_id=" << sid << " current_load=" << load << " selected_load=" << selected_load;
 }
 
 Socket::SharedPart* Socket::GetOrNewSharedPartSlower() {
@@ -2427,14 +2799,14 @@ void Socket::ShareStats(Socket* main_socket) {
     main_sp->AddRefManually();
     SharedPart* my_sp =
         _shared_part.exchange(main_sp, butil::memory_order_acq_rel);
-    if (my_sp) {
+    if (my_sp && my_sp != main_sp) {
         my_sp->RemoveRefManually();
     }
 }
 
-int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
-    if (pooled_socket == NULL) {
-        LOG(ERROR) << "pooled_socket is NULL";
+int Socket::GetSocketFromGroup(SocketUniquePtr* socket_out, const ConnectionType type) {
+    if (socket_out == NULL) {
+        LOG(ERROR) << "sub_socket is NULL";
         return -1;
     }
     SharedPart* main_sp = GetOrNewSharedPart();
@@ -2442,9 +2814,9 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
         LOG(ERROR) << "_shared_part is NULL";
         return -1;
     }
-    // Create socket_pool optimistically.
-    SocketPool* socket_pool = main_sp->socket_pool.load(butil::memory_order_consume);
-    if (socket_pool == NULL) {
+    // Create socket_group optimistically.
+    SocketGroup* socket_group = main_sp->socket_group.load(butil::memory_order_consume);
+    if (socket_group == NULL) {
         SocketOptions opt;
         opt.remote_side = remote_side();
         opt.user = user();
@@ -2452,89 +2824,130 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
         opt.initial_ssl_ctx = _ssl_ctx;
         opt.keytable_pool = _keytable_pool;
         opt.app_connect = _app_connect;
-        socket_pool = new SocketPool(opt);
-        SocketPool* expected = NULL;
-        if (!main_sp->socket_pool.compare_exchange_strong(
-                expected, socket_pool, butil::memory_order_acq_rel)) {
-            delete socket_pool;
+        opt.health_check_interval_s = _health_check_interval_s;
+        if (type == CONNECTION_TYPE_POOLED) {
+            socket_group = new SocketPool(opt);
+        } else if (type == CONNECTION_TYPE_MULTI) {
+            socket_group = new SocketMulti(opt, main_sp);
+        } else {
+            CHECK(false) << "Unsupport this type of connection: " << type;
+        }
+        SocketGroup* expected = NULL;
+        if (!main_sp->socket_group.compare_exchange_strong(
+                expected, socket_group, butil::memory_order_acq_rel)) {
+            delete socket_group;
             CHECK(expected);
-            socket_pool = expected;
+            socket_group = expected;
         }
     }
-    if (socket_pool->GetSocket(pooled_socket) != 0) {
+    if (socket_group->GetSocket(socket_out) != 0) {
         return -1;
     }
-    (*pooled_socket)->ShareStats(this);
-    CHECK((*pooled_socket)->parsing_context() == NULL)
-        << "context=" << (*pooled_socket)->parsing_context()
-        << " is not NULL when " << *(*pooled_socket) << " is got from"
-        " SocketPool, the protocol implementation is buggy";
+    (*socket_out)->ShareStats(this);
+    if (socket_group->connection_type() == CONNECTION_TYPE_POOLED) {
+        CHECK((*socket_out)->parsing_context() == NULL)
+            << "context=" << (*socket_out)->parsing_context()
+            << " is not NULL when " << *(*socket_out) << " is got from"
+            " SocketGroup, the protocol implementation is buggy";
+    }
     return 0;
 }
 
-int Socket::ReturnToPool() {
-    SharedPart* sp = _shared_part.exchange(NULL, butil::memory_order_acquire);
+int Socket::ReturnToGroup() {
+    SharedPart* sp = _shared_part.load(butil::memory_order_acquire);
     if (sp == NULL) {
         LOG(ERROR) << "_shared_part is NULL";
         SetFailed(EINVAL, "_shared_part is NULL");
         return -1;
     }
-    SocketPool* pool = sp->socket_pool.load(butil::memory_order_consume);
-    if (pool == NULL) {
-        LOG(ERROR) << "_shared_part->socket_pool is NULL";
-        SetFailed(EINVAL, "_shared_part->socket_pool is NULL");
+    SocketGroup* group = sp->socket_group.load(butil::memory_order_consume);
+    if (group == NULL) {
+        LOG(ERROR) << "_shared_part->socket_group is NULL";
+        SetFailed(EINVAL, "_shared_part->socket_group is NULL");
         sp->RemoveRefManually();
         return -1;
     }
-    CHECK(parsing_context() == NULL)
-        << "context=" << parsing_context() << " is not released when "
-        << *this << " is returned to SocketPool, the protocol "
-        "implementation is buggy";
+    if (group->connection_type() == CONNECTION_TYPE_POOLED) {
+        _shared_part.store(NULL, butil::memory_order_seq_cst);
+        CHECK(parsing_context() == NULL)
+            << "context=" << parsing_context() << " is not released when "
+            << *this << " is returned to SocketPool, the protocol "
+            "implementation is buggy";
+    }
     // NOTE: be careful with the sequence.
     // - related fields must be reset before returning to pool
     // - sp must be released after returning to pool because it owns pool
     _connection_type_for_progressive_read = CONNECTION_TYPE_UNKNOWN;
     _controller_released_socket.store(false, butil::memory_order_relaxed);
-    pool->ReturnSocket(this);
+    group->ReturnSocket(this);
     sp->RemoveRefManually();
     return 0;
 }
 
-bool Socket::HasSocketPool() const {
+bool Socket::HasSocketGroup() const {
     SharedPart* sp = GetSharedPart();
     if (sp != NULL) {
-        return sp->socket_pool.load(butil::memory_order_consume) != NULL;
+        return sp->socket_group.load(butil::memory_order_consume) != NULL;
     }
     return false;
 }
 
-void Socket::ListPooledSockets(std::vector<SocketId>* out, size_t max_count) {
+int Socket::DiscardFromGroup() {
+    SharedPart* sp = _shared_part.load(butil::memory_order_acquire);
+    if (sp == NULL) {
+        LOG(ERROR) << "_shared_part is NULL";
+        SetFailed(EINVAL, "_shared_part is NULL");
+        return -1;
+    }
+    int ret = 0;
+    SocketGroup* group = sp->socket_group.load(butil::memory_order_consume);
+    if (group == NULL) {
+        LOG(ERROR) << "_shared_part->socket_group is NULL";
+        SetFailed(EINVAL, "_shared_part->socket_group is NULL");
+        ret = -1;
+    }
+    CHECK_EQ(group->connection_type(), CONNECTION_TYPE_POOLED) 
+        << "Now only pooled socket need be discarded";
+    group->DiscardSocket(this); 
+    sp->RemoveRefManually();
+    return ret;
+}
+
+void Socket::ListSocketsOfGroup(std::vector<SocketId>* out, size_t max_count) {
     out->clear();
     SharedPart* sp = GetSharedPart();
     if (sp == NULL) {
         return;
     }
-    SocketPool* pool = sp->socket_pool.load(butil::memory_order_consume);
-    if (pool == NULL) {
+    SocketGroup* group = sp->socket_group.load(butil::memory_order_consume);
+    if (group == NULL) {
         return;
     }
-    pool->ListSockets(out, max_count);
+    group->ListSockets(out, max_count);
 }
 
-bool Socket::GetPooledSocketStats(int* numfree, int* numinflight) {
+bool Socket::GetSocketGroupSize(int* num) {
     SharedPart* sp = GetSharedPart();
-    if (sp == NULL) {
+    if (sp == nullptr) {
         return false;
     }
-    SocketPool* pool = sp->socket_pool.load(butil::memory_order_consume);
-    if (pool == NULL) {
+    SocketGroup* group = sp->socket_group.load(butil::memory_order_consume);
+    if (group == nullptr) {
         return false;
     }
-    *numfree = pool->_numfree.load(butil::memory_order_relaxed);
-    *numinflight = pool->_numinflight.load(butil::memory_order_relaxed);
+    group->GetSocketCount(num);
     return true;
 }
-    
+
+bool Socket::GetSharedPartRefNum(int* num) {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        *num = sp->ref_count();
+        return true;
+    }
+    return false;
+}
+
 int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     if (short_socket == NULL) {
         LOG(ERROR) << "short_socket is NULL";
@@ -2645,7 +3058,7 @@ void Socket::OnProgressiveReadCompleted() {
          _controller_released_socket.exchange(
              true, butil::memory_order_relaxed))) {
         if (_connection_type_for_progressive_read == CONNECTION_TYPE_POOLED) {
-            ReturnToPool();
+            ReturnToGroup();
         } else if (_connection_type_for_progressive_read == CONNECTION_TYPE_SHORT) {
             SetFailed(EUNUSED, "[%s]Close short connection", __FUNCTION__);
         }
