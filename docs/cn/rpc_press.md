@@ -5,6 +5,7 @@ rpc_press无需写代码就压测各种rpc server，目前支持的协议有：
 - sofa-pbrpc
 - public_pbrpc
 - nova_pbrpc
+- google_grpc
 
 # 获取工具
 
