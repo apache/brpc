@@ -18,7 +18,7 @@
 #
 
 Name:		brpc
-Version:	1.2.0
+Version:	1.3.0
 Release:	1%{?dist}
 Summary:	An industrial-grade RPC framework used throughout Baidu, with 1,000,000+ instances(not counting clients) and thousands kinds of services.
 
