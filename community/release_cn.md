@@ -127,7 +127,7 @@ uid           [ultimate] LorinLee (lorinlee's key) <lorinlee@apache.org>
 sub   rsa4096 2021-10-17 [E]
 ```
 
-将上面的 fingerprint 粘贴到⾃己的⽤户信息中: https://id.apache.org
+将上面的 fingerprint `C30F 211F 0718 9425 8497  F463 92E1 8A11 B658 5834` 粘贴到⾃己Apache⽤户信息 https://id.apache.org 的`OpenPGP Public Key Primary Fingerprint:`字段中。
 
 # 发布包准备
 
