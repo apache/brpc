@@ -35,7 +35,8 @@
 namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
-
+DEFINE_uint64(max_trans_unit_size, 64 * 1024 * 1024,
+                  "Maximum size of a transmission unit that we used to cut the message.");
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
 Stream::Stream() 
@@ -140,20 +141,30 @@ ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/,
         errno = EBADF;
         return -1;
     }
-    butil::IOBuf out;
     ssize_t len = 0;
     for (size_t i = 0; i < size; ++i) {
+      butil::IOBuf *data = data_list[i];
+      size_t length = data->length();
+      uint64_t trans_unit = FLAGS_max_trans_unit_size;
+      int packet_num = ceil((double)length / (double)trans_unit);
+
+      butil::IOBuf split_data;
+      for (int j = 0; j < packet_num; j++) {
+        butil::IOBuf out;
+        data->cutn(&split_data, trans_unit);
+        bool has_continuation = (j != packet_num - 1);
         StreamFrameMeta fm;
         fm.set_stream_id(_remote_settings.stream_id());
         fm.set_source_stream_id(id());
         fm.set_frame_type(FRAME_TYPE_DATA);
-        // TODO: split large data
-        fm.set_has_continuation(false);
-        policy::PackStreamMessage(&out, fm, data_list[i]);
-        len += data_list[i]->length();
-        data_list[i]->clear();
+        fm.set_has_continuation(has_continuation);
+        policy::PackStreamMessage(&out, fm, &split_data);
+        WriteToHostSocket(&out);
+        len += (ssize_t)split_data.length();
+        split_data.clear();
+      }
+      data->clear();
     }
-    WriteToHostSocket(&out);
     return len;
 }
 
