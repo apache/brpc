@@ -230,9 +230,11 @@ cp ~/incubator-brpc/apache-brpc-1.0.0-incubating-src.tar.gz.sha512 ~/brpc_svn/de
 
 ## 4. 提交SVN
 
-使用Apache LDAP账号提交SVN
+退回到上级目录，使用Apache LDAP账号提交SVN
 
 ```bash
+cd ~/brpc_svn/dev/brpc
+
 svn add *
 
 svn --username=lorinlee commit -m "release 1.0.0"
