@@ -155,6 +155,13 @@ sub   rsa4096 2021-10-17 [E]
 set(BRPC_VERSION 1.0.0)
 ```
 
+### 更新/package/rpm/brpc.spec文件
+编辑项目根目录下`/package/rpm/brpc.spec`文件，更新版本号，并提交至代码仓库，本文以`1.0.0`版本为例，修改Version为：
+
+```
+Version:	1.0.0
+```
+
 ## 2. 创建发布 tag
 拉取发布分支，并推送tag
 ```bash
