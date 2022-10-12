@@ -16,7 +16,7 @@ Streaming RPC ensures/provides:
 - Full duplex
 - Flow control
 - Notification on timeout
-- support segment large messages automaticall
+- support segment large messages automatically
 
 For examples please refer to [example/streaming_echo_c++](https://github.com/brpc/brpc/tree/master/example/streaming_echo_c++/).
 

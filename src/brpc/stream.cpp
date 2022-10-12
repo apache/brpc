@@ -35,7 +35,7 @@
 namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
-DEFINE_uint64(max_trans_unit_size, 64 * 1024 * 1024,
+DEFINE_uint64(max_stream_data_frame_size, 64 * 1024 * 1024,
                   "Maximum size of a transmission unit that we used to cut the message.");
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
@@ -145,7 +145,9 @@ ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/,
     for (size_t i = 0; i < size; ++i) {
       butil::IOBuf *data = data_list[i];
       size_t length = data->length();
-      uint64_t trans_unit = FLAGS_max_trans_unit_size;
+      uint64_t trans_unit = FLAGS_max_stream_data_frame_size == 0
+                                ? length
+                                : FLAGS_max_stream_data_frame_size;
       int packet_num = ceil((double)length / (double)trans_unit);
 
       butil::IOBuf split_data;
