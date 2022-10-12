@@ -26,7 +26,7 @@ gpg --version
 gpg --full-gen-key
 ```
 
-根据提示完成创建key，注意邮箱要使用Apache邮件地址：
+根据提示完成创建key，注意邮箱要使用Apache邮件地址，`Real Name`使用姓名Pinyin、Apache ID或GitHub ID等均可：
 ```
 gpg (GnuPG) 2.3.1; Copyright (C) 2021 Free Software Foundation, Inc.
 This is free software: you are free to change and redistribute it.
