@@ -30,7 +30,7 @@ namespace butil {
 
 std::string demangle(const char* name);
 
-namespace detail {
+namespace {
 template <typename T> struct ClassNameHelper { static std::string name; };
 template <typename T> std::string ClassNameHelper<T>::name = demangle(typeid(T).name());
 }
@@ -39,7 +39,7 @@ template <typename T> std::string ClassNameHelper<T>::name = demangle(typeid(T).
 template <typename T> const std::string& class_name_str() {
     // We don't use static-variable-inside-function because before C++11
     // local static variable is not guaranteed to be thread-safe.
-    return detail::ClassNameHelper<T>::name;
+    return ClassNameHelper<T>::name;
 }
 
 // Get name of class |T|, in const char*.
