@@ -248,6 +248,9 @@ int TaskGroup::init(size_t runqueue_capacity) {
     return 0;
 }
 
+#if defined(__linux__) && defined(__aarch64__) && defined(__clang__)
+    __attribute__((optnone))
+#endif
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
     //       different groups.
@@ -567,6 +570,9 @@ void TaskGroup::sched(TaskGroup** pg) {
     sched_to(pg, next_tid);
 }
 
+#if defined(__linux__) && defined(__aarch64__) && defined(__clang__)
+    __attribute__((optnone))
+#endif
 void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     TaskGroup* g = *pg;
 #ifndef NDEBUG
