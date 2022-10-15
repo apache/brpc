@@ -17,7 +17,7 @@ brpc中http和h2的编程接口基本没有区别。除非特殊说明，所有�
 
 ## 前缀为/ServiceName/MethodName
 
-定义一个service名为ServiceName(不包含package名), method名为MethodName的pb服务，且让request和reponse定义为空，则该服务默认在/ServiceName/MethodName上提供http/h2服务。
+定义一个service名为ServiceName(不包含package名), method名为MethodName的pb服务，且让request和response定义为空，则该服务默认在/ServiceName/MethodName上提供http/h2服务。
 
 request和response可为空是因为数据都在Controller中：
 

@@ -222,7 +222,7 @@ brpc client支持在读取完body前就结束RPC，让用户在RPC结束后再�
    class ProgressiveReader {
    public:
        // Called when one part was read.
-       // Error returned is treated as *permenant* and the socket where the
+       // Error returned is treated as *permanent* and the socket where the
        // data was read will be closed.
        // A temporary error may be handled by blocking this function, which
        // may block the HTTP parsing on the socket.
