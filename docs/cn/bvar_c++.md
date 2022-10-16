@@ -259,7 +259,7 @@ dump功能由如下gflags控制：
 | bvar_dump_include  | ""                      | Dump bvar matching these wildcards(separated by comma), empty means including all |
 | bvar_dump_interval | 10                      | Seconds between consecutive dump         |
 | bvar_dump_prefix   | \<app\>                 | Every dumped name starts with this prefix |
-| bvar_dump_tabs     | \<check the code\>      | Dump bvar into different tabs according to the filters (seperated by semicolon), format: *(tab_name=wildcards) |
+| bvar_dump_tabs     | \<check the code\>      | Dump bvar into different tabs according to the filters (separated by semicolon), format: *(tab_name=wildcards) |
 
 当bvar_dump_file不为空时，程序会启动一个后台导出线程以bvar_dump_interval指定的间隔更新bvar_dump_file，其中包含了被bvar_dump_include匹配且不被bvar_dump_exclude匹配的所有bvar。
 

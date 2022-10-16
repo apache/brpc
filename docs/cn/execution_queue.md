@@ -157,7 +157,7 @@ int execution_queue_execute(ExecutionQueueId<T> id,
 // Execute a task with options. e.g
 // bthread::execution_queue_execute(queue, task, &bthread::TASK_OPTIONS_URGENT)
 // If |options| is NULL, we will use default options (normal task)
-// If |handle| is not NULL, we will assign it with the hanlder of this task.
+// If |handle| is not NULL, we will assign it with the handler of this task.
 template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id,
                             typename butil::add_const_reference<T>::type task,
