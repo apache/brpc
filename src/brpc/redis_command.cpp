@@ -361,6 +361,10 @@ RedisCommandParser::RedisCommandParser()
     , _length(0)
     , _index(0) {}
 
+size_t RedisCommandParser::ParsedArgsSize() {
+    return _args.size();
+}
+
 ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
                                        std::vector<butil::StringPiece>* args,
                                        butil::Arena* arena) {
