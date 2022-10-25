@@ -6,6 +6,7 @@ brpc 发布apache release 版本流程step by step
 3. 第一次投票：在dev@brpc邮件群里投票
 4. 第二次投票：在general@incubator.apache.org邮件群里投票
 5. 发版通告：包括更新brpc网站，发邮件
+6. 最后要将release分支合并到master分支
 
 
 # 签名准备
@@ -574,16 +575,17 @@ GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：ht
 [ANNOUNCE] Apache brpc (Incubating) 1.0.0 released
 ```
 
-正文
+正文：  
+注：`Brief notes of this release`仅需简要列出本次发版的主要变更，且无需指出对应的贡献人和PR编号，建议参考下之前的Announce邮件。
 ```
 Hi all,
 
 The Apache brpc (Incubating) community is glad to announce the new release
 of Apache brpc (Incubating) 1.0.0.
 
-brpc is an industrial-grade RPC framework with extremely high performance,
-and it supports multiple protocols, full rpc features, and has many
-convenient tools. 
+brpc is an Industrial-grade RPC framework using C++ Language, which is
+often used in high performance systems such as Search, Storage,
+Machine learning, Advertisement, Recommendation etc.
 
 Brief notes of this release:
 - xxx
