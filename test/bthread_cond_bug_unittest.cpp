@@ -72,7 +72,7 @@ void* produce_func(void* arg) {
     int64_t idx = (int64_t)(arg);
     int32_t i = 0;
     while (!bthread_stopped(bthread_self())) {
-        LOG(INFO) << "come to a new round " << idx << "round[" << i << "]";
+        //LOG(INFO) << "come to a new round " << idx << "round[" << i << "]";
         {
             Lock lock(g_mutex); 
             while (g_que.size() >= g_capacity && !bthread_stopped(bthread_self())) {
@@ -88,7 +88,7 @@ void* produce_func(void* arg) {
                 }
             }
             g_que.push_back(++i);
-            LOG(INFO) << "push back " << idx << " data[" << i << "]";
+            //LOG(INFO) << "push back " << idx << " data[" << i << "]";
         }
         usleep(rand() % 20 + 5);
         g_stat[idx].loop_count.fetch_add(1);
