@@ -34,6 +34,7 @@ typedef struct in_addr ip_t;
 
 static const ip_t IP_ANY = { INADDR_ANY };
 static const ip_t IP_NONE = { INADDR_NONE };
+static const int MAX_DOMAIN_LENGTH = 253;
 
 // Convert |ip| to an integral
 inline in_addr_t ip2int(ip_t ip) { return ip.s_addr; }
