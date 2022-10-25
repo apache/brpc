@@ -311,7 +311,7 @@ tar xvzf tag-1.0.0.tar.gz
 
 tar xvzf apache-brpc-1.0.0-incubating-src.tar.gz
 
-diff -r brpc-1.0.0 apache-brpc-1.0.0-incubating-src
+diff -r incubator-brpc-1.0.0 apache-brpc-1.0.0-incubating-src
 ```
 
 ### 2. 检查源码包的文件内容
@@ -345,7 +345,8 @@ diff -r brpc-1.0.0 apache-brpc-1.0.0-incubating-src
 [VOTE] Release Apache brpc (Incubating) 1.0.0
 ```
 
-正文：
+正文：  
+注：`Release Commit ID`填写当前release发版分支最后一个commit的commit id。
 ```
 Hi Apache brpc (Incubating) Community,
 
@@ -367,7 +368,7 @@ https://github.com/apache/incubator-brpc/commit/xxx
 Keys to verify the Release Candidate:
 https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS
 
-The vote will be open for at least 72 hours or until necessary number of
+The vote will be open for at least 72 hours or until the necessary number of
 votes are reached.
 
 Please vote accordingly:
@@ -375,7 +376,7 @@ Please vote accordingly:
 [ ] +0 no opinion
 [ ] -1 disapprove with the reason
 
-PMC vote is +1 binding, all others is +1 non-binding.
+PMC vote is +1 binding, all others are +1 non-binding.
 
 Checklist for reference:
 [ ] Download links are valid.
@@ -548,7 +549,7 @@ svn mv https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0 https://dist.
 
 ## 2. Github版本发布
 
-在 GitHub Releases 页面的对应版本上点击 Edit
+在 [GitHub Releases 页面](https://github.com/apache/incubator-brpc/tags)的对应版本上点击，创建新的Release页面
 编辑版本号及版本说明，并点击 Publish release
 
 ## 3. 更新下载页面
