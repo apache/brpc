@@ -576,7 +576,7 @@ GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：ht
 ```
 
 正文：  
-注：`Brief notes of this release`仅需简要列出本次发版的主要变更，且无需指出对应的贡献人和PR编号，建议参考下之前的Announce邮件。
+注：`Brief notes of this release`仅需列出本次发版的主要变更，且无需指出对应贡献人和PR编号，建议参考下之前的Announce邮件。
 ```
 Hi all,
 
