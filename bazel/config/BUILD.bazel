@@ -97,3 +97,9 @@ config_setting(
     values = {"cpu": "darwin"},
     visibility = ["//:__subpkgs__"],
 )
+
+config_setting(
+    name = "brpc_with_rdma",
+    define_values = {"BRPC_WITH_RDMA": "true"},
+    visibility = ["//visibility:public"],
+)

@@ -30,6 +30,7 @@ namespace brpc {
 // running in separate bthreads.
 class EventDispatcher {
 friend class Socket;
+friend class rdma::RdmaEndpoint;
 public:
     EventDispatcher();
     

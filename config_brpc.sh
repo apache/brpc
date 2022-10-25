@@ -38,9 +38,10 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-mesalink,nodebugsymbols -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-mesalink,nodebugsymbols -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
+WITH_RDMA=0
 WITH_MESALINK=0
 DEBUGSYMBOLS=-g
 
@@ -64,6 +65,7 @@ while true; do
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;
         --with-thrift) WITH_THRIFT=1; shift 1 ;;
+        --with-rdma) WITH_RDMA=1; shift 1 ;;
         --with-mesalink) WITH_MESALINK=1; shift 1 ;;
         --nodebugsymbols ) DEBUGSYMBOLS=; shift 1 ;;
         -- ) shift; break ;;
@@ -350,6 +352,18 @@ if [ $WITH_THRIFT != 0 ]; then
     else
         append_to_output "STATIC_LINKINGS+=-lthriftnb"
     fi
+fi
+
+if [ $WITH_RDMA != 0 ]; then
+    RDMA_LIB=$(find_dir_of_lib_or_die ibverbs)
+    RDMA_HDR=$(find_dir_of_header_or_die infiniband/verbs.h)
+    append_to_output_libs "$RDMA_LIB"
+    append_to_output_headers "$RDMA_HDR"
+
+    CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_RDMA"
+
+    append_to_output "DYNAMIC_LINKINGS+=-libverbs"
+    append_to_output "WITH_RDMA=1"
 fi
 
 if [ $WITH_MESALINK != 0 ]; then

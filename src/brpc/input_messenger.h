@@ -26,6 +26,9 @@
 
 
 namespace brpc {
+namespace rdma {
+class RdmaEndpoint;
+}
 
 struct InputMessageHandler {
     // The callback to cut a message from `source'.
@@ -70,6 +73,7 @@ struct InputMessageHandler {
 // Process messages from connections.
 // `Message' corresponds to a client's request or a server's response.
 class InputMessenger : public SocketUser {
+friend class rdma::RdmaEndpoint;
 public:
     explicit InputMessenger(size_t capacity = 128);
     ~InputMessenger();
@@ -107,9 +111,33 @@ protected:
     static void OnNewMessages(Socket* m);
     
 private:
+    class InputMessageClosure {
+    public:
+        InputMessageClosure() : _msg(NULL) { }
+        ~InputMessageClosure();
+
+        InputMessageBase* release() {
+            InputMessageBase* m = _msg;
+            _msg = NULL;
+            return m;
+        }
+
+        void reset(InputMessageBase* m);
+
+    private:
+        InputMessageBase* _msg;
+    };
+
     // Find a valid scissor from `handlers' to cut off `header' and `payload'
     // from m->read_buf, save index of the scissor into `index'.
     ParseResult CutInputMessage(Socket* m, size_t* index, bool read_eof);
+
+    // Process a new message just received in OnNewMessages
+    // Return value >= 0 means success
+    int ProcessNewMessage(
+            Socket* m, ssize_t bytes, bool read_eof,
+            const uint64_t received_us, const uint64_t base_realtime,
+            InputMessageClosure& last_msg);
 
     // User-supplied scissors and handlers.
     // the index of handler is exactly the same as the protocol
