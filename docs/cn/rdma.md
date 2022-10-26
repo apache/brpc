@@ -23,7 +23,7 @@ make
 
 # 基本实现
 
-RDMA与TCP不同，不使用socket接口进行通信。但是在实现上仍然复用了brpc中原本的Socket类。当用户选择ChannelOptions或ServerOptions中的use_rdma为true时，创建出的Socket类中则有对应的RdmaEndpoint（参见src/brpc/rdma/rdma_endpoint.cpp）。当RDMA被使能时，写入Socket的数据会通过RdmaEndpoint提交给RDMA QP（通过verbs API），而非拷贝到fd。对于数据读取，RdmaEndpoint中则调用verbs API从RDMA CQ中获取对应完成信息（事件获取有独立的fd，复用EventDispatcher，处理函数采用RdmaEndpoint::PollCq），最后复用InputMessenger完成RPC消息解析。
+RDMA与TCP不同，不使用socket接口进行通信。但是在实现上仍然复用了brpc中原本的Socket类。当用户选择ChannelOptions或ServerOptions中的use_rdma为true时，创建出的Socket类中则有对应的RdmaEndpoint（参见src/brpc/rdma/rdma_endpoint.cpp）。当RDMA被使用时，写入Socket的数据会通过RdmaEndpoint提交给RDMA QP（通过verbs API），而非拷贝到fd。对于数据读取，RdmaEndpoint中则调用verbs API从RDMA CQ中获取对应完成信息（事件获取有独立的fd，复用EventDispatcher，处理函数采用RdmaEndpoint::PollCq），最后复用InputMessenger完成RPC消息解析。
 
 brpc内部使用RDMA RC模式，每个RdmaEndpoint对应一个QP。RDMA连接建立依赖于前置TCP建连，TCP建连后双方交换必要参数，如GID、QPN等，再发起RDMA连接并实现数据传输。这个过程我们称为握手（参见RdmaEndpoint）。因为握手需要TCP连接，因此RdmaEndpoint所在的Socket类中，原本的TCP fd仍然有效。握手过程采用了brpc中已有的AppConnect逻辑。注意，握手用的TCP连接在后续数据传输阶段并不会收发数据，但仍保持为EST状态。一旦TCP连接中断，其上对应的RDMA连接同样会置错。
 
