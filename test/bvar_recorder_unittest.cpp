@@ -243,7 +243,7 @@ TEST(RecorderTest, latency_recorder_qps_accuracy) {
     ASSERT_GT(0.1, read(lr4, 1/2.0));
 
     ASSERT_GT(0.1, read(lr1, 10/3.0, 3));
-    ASSERT_GT(0.1, read(lr2, 11/3.0, 3));
+    ASSERT_GT(0.2, read(lr2, 11/3.0, 3));
     ASSERT_GT(0.1, read(lr3, 3/3.0, 3));
     ASSERT_GT(0.1, read(lr4, 1/3.0, 3));
 }
