@@ -633,4 +633,19 @@ bool SupportedByRdma(std::string protocol) {
 }  // namespace rdma
 }  // namespace brpc
 
+#else
+
+#include <stdlib.h>
+#include "butil/logging.h"
+
+namespace brpc {
+namespace rdma {
+void GlobalRdmaInitializeOrDie() {
+    LOG(ERROR) << "brpc is not compiled with rdma. To enable it, please refer to "
+               << "https://github.com/apache/incubator-brpc/blob/master/docs/en/rdma.md";
+    exit(1);
+}
+}
+}
+
 #endif  // if BRPC_WITH_RDMA
