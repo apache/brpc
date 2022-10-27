@@ -12,6 +12,8 @@
    - 使用支持手写的设备进行电子签名；
    - 使用 `gpg` 进行电子签名，即对填写好个人基本信息的 pdf 文件进行操作（需要提前生成与登记邮箱匹配的公钥/密钥对）：`gpg --armor --detach-sign icla.pdf`；
    - 使用 `DocuSign` 进行签名；
+
+注意：ICLA需要填写信息完全，包括邮寄地址和签名。
 5. 提名者发送announce邮件到dev@brpc.apache.org 
 
 
