@@ -36,6 +36,8 @@ DECLARE_bool(bvar_abort_on_same_name);
 extern bool s_bvar_may_abort;
 
 DEFINE_int32(bvar_max_multi_dimension_metric_number, 1024, "Max number of multi dimension");
+DEFINE_int32(bvar_max_dump_multi_dimension_metric_number, 0,
+    "Max number of multi dimension metric number to dump by prometheus rpc service");
 
 static bool validator_bvar_max_multi_dimension_metric_number(const char*, int32_t v) {
     if (v < 1) {
@@ -246,6 +248,13 @@ size_t MVariable::dump_exposed(Dumper* dumper, const DumpOptions* options) {
         if (entry) {
             n += entry->var->dump(dumper, &opt);
         }
+	if (n > static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number)) {
+            LOG(WARNING) << "truncated because of \
+		            exceed max dump multi dimension label number["
+			 << FLAGS_bvar_max_dump_multi_dimension_metric_number
+			 << "]";
+            break;
+	}
     }
     return n;
 }
