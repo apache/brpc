@@ -50,29 +50,3 @@ jobs:
       run: |
            cd build
            make -j ${{env.proc_num}}
-
-  unittest:
-    runs-on: macos-latest
-
-    steps:
-    - uses: actions/checkout@v2
-    
-    - name: install dependences
-      run: |
-           brew install openssl gnu-getopt coreutils gflags protobuf leveldb googletest
-
-    - name: config_brpc
-      run: |
-           GETOPT_PATH=$(find "/usr/local/Cellar/" -name "getopt" -type f -perm +111 -exec dirname {} \;)
-           export PATH=$GETOPT_PATH:$PATH
-           ./config_brpc.sh --header="/usr/local/include" --libs="/usr/local/lib"
-
-    - name: compile
-      run: |
-           cd test
-           make -j ${{env.proc_num}}
-
-    - name: test
-      run: |
-           cd test
-           sh run_tests.sh
