@@ -1,32 +1,33 @@
-brpc 发布apache release 版本流程step by step
+brpc apache release guide step by step
 ===
 
-概述：分为如下几个步骤
+Overview: divided into the following steps
 
-1. 事前准备：包括生成签名需要的key，github拉取发布分支、打tag，修改version文件等
-2. 发布软件包：包括制作source tarball，签名，上传到制定地点并验证
-3. 投票：包括在dev@brpc邮件群里投票，以及在general@incubator.apache.org邮件群里投票
-4. 发版通告：包括更新brpc网站，发邮件，发微信公众号公告，合并发布分支到master分支
+1. Preparation: including generating the key required for signature, creating github release branch and tag, modifying the version file, etc
+2. Publish software package: including making source tarball, signing, uploading to the designated location and verifying
+3. Vote: including voting in mail group `dev@brpc.apache.org` and `general@incubator.apache.org`
+4. Release announcement: including updating brpc website, sending announcement emails, posting WeChat official account announcements, merging the release branche into the master branch
 
-# 签名准备
+# Prepare key
 
-## 1. 安装 GPG
-在[GnuPG官网](https://www.gnupg.org/download/index.html)下载安装包。 GnuPG的1.x版本和2.x版本的命令有细微差别，下列说明以`GnuPG-2.3.1`版本（OSX）为例。
+## 1. Install GPG
+Download the installation package from [GnuPG official website](https://www.gnupg.org/download/index.html). The commands of GnuPG version 1.x and version 2.x are slightly different. The following instructions take the `GnuPG-2.3.1` version (OSX) as an example.
 
-安装完成后，执行以下命令查看版本号。
+After the installation is complete, execute the following command to check the version number.
 ```bash
 gpg --version
 ```
 
-## 2. 创建 key
+## 2. Create key
 
-安装完成后，执行以下命令创建key。
+After the installation is complete, execute the following command to create a key.
 
 ```bash
 gpg --full-gen-key
 ```
 
-根据提示完成创建key，注意邮箱要使用Apache邮件地址，`Real Name`使用姓名Pinyin、Apache ID或GitHub ID等均可：
+Complete the key creation according to the prompts. Note that the mailbox should use the Apache email address, and the `Real Name` can use Apache ID or GitHub ID:
+
 ```
 gpg (GnuPG) 2.3.1; Copyright (C) 2021 Free Software Foundation, Inc.
 This is free software: you are free to change and redistribute it.
@@ -63,7 +64,7 @@ You selected this USER-ID:
     "LorinLee (lorinlee's key) <lorinlee@apache.org>"
 
 Change (N)ame, (C)omment, (E)mail or (O)kay/(Q)uit? O
-You need a Passphrase to protect your secret key. # 输入密码
+You need a Passphrase to protect your secret key. # Input password
 
 We need to generate a lot of random bytes. It is a good idea to perform
 some other action (type on the keyboard, move the mouse, utilize the
@@ -79,13 +80,13 @@ uid                      LorinLee (lorinlee's key) <lorinlee@apache.org>
 sub   rsa4096 2021-10-17 [E]
 ```
 
-## 3. 查看生成的key
+## 3. Check the generated key
 
 ```bash
 gpg --list-keys
 ```
 
-执行结果：
+output:
 
 ```
 gpg: checking the trustdb
@@ -99,25 +100,26 @@ uid           [ultimate] LorinLee (lorinlee's key) <lorinlee@apache.org>
 sub   rsa4096 2021-10-17 [E]
 ```
 
-其中 `C30F211F071894258497F46392E18A11B6585834` 为公钥ID。
+Note that `C30F211F071894258497F46392E18A11B6585834` is the public key.
 
-## 4. 将公钥公布到服务器
+## 4. Publish the public key to server
 
-命令如下：
+Execute the following command:
 
 ```bash
 gpg --keyserver hkp://pgp.mit.edu --send-key C30F211F071894258497F46392E18A11B6585834
 ```
 
-## 5. 生成 fingerprint 并上传到 apache 用户信息中
-由于公钥服务器没有检查机制，任何人都可以用你的名义上传公钥，所以没有办法保证服务器上的公钥的可靠性。通常，你可以在⽹站上公布一个公钥指纹，让其他⼈核对下载到的公钥是否为真。fingerprint参数生成公钥指纹。   
+## 5. Generate fingerprint and upload to apache user profile
 
-执行如下命令查看 fingerprint：
+Since the public key server has no verifying mechanism, anyone can upload the public key in your name, so there is no way to guarantee the reliability of the public key on the server. Usually, you can publish a public key fingerprint on your website and let others check the downloaded public key.
+
+Execute the following command to view the fingerprint.
 ```
-gpg --fingerprint lorinlee（用户ID）
+gpg --fingerprint lorinlee # user id
 ```
 
-输出如下：
+output: 
 ```
 /Users/lilei/.gnupg/pubring.kbx
 ----------------------------------
@@ -127,43 +129,46 @@ uid           [ultimate] LorinLee (lorinlee's key) <lorinlee@apache.org>
 sub   rsa4096 2021-10-17 [E]
 ```
 
-将上面的 fingerprint `C30F 211F 0718 9425 8497  F463 92E1 8A11 B658 5834` 粘贴到⾃己Apache⽤户信息 https://id.apache.org 的`OpenPGP Public Key Primary Fingerprint:`字段中。
+Paste the above fingerprint `C30F 211F 0718 9425 8497 F463 92E1 8A11 B658 5834` into the `OpenPGP Public Key Primary Fingerprint:` field of your Apache user information on https://id.apache.org.
 
-# 发布包准备
+# Prepare release package
 
-## 1. 拉出发版分支
+## 1. Create release branch
 
-如果是发布新的2位版本，如`1.0.0`，则需要从master拉出新的分支`release-1.0`。
+If you are releasing a new MINOR version, like `1.0.0`, you need to create a new branch `release-1.0` from master.
 
-如果是在已有的2位版本上发布新的3位版本，如`1.0.1`版本，则只需要在已有的`release-1.0`分支上修改加上要发布的内容。
+If you are releasing a new PATCH version from existing MINOR version, like `1.0.1`, you only need to modify the existing `release-1.0` branch and add the content to be released.
 
-发版过程中的操作都在release分支（如`release-1.0`）上操作，如果发版过程发现代码有问题需要修改，也在该分支上进行修改。发版完成后，将该分支合回master分支。
+The code modification during the release process are performed on the release branch (such as `release-1.0`). After the release is complete, please merge the release branch back into the master branch.
 
-## 2. 编辑 RELEASE_VERSION 文件
+## 2. Update version in source code
 
-### 更新RELEASE_VERSION文件
-编辑项目根目录下`RELEASE_VERSION`文件，更新版本号，并提交至代码仓库，本文以`1.0.0`版本为例，文件内容为：
+### Update RELEASE_VERSION file
+
+Edit the `RELEASE_VERSION` file in the project root directory, update the version number, and submit it to the code repository. For example, the `1.0.0` version of the file is:
 
 ```
 1.0.0
 ```
 
-### 更新CMakeLists.txt文件
-编辑项目根目录下`CMakeLists.txt`文件，更新版本号，并提交至代码仓库，本文以`1.0.0`版本为例，修改BRPC_VERSION为：
+### Update CMakeLists.txt file
+Edit the `CMakeLists.txt` file in the project root directory, update the version number, and submit it to the code repository. For example: 
 
 ```
 set(BRPC_VERSION 1.0.0)
 ```
 
-### 更新/package/rpm/brpc.spec文件
-编辑项目根目录下`/package/rpm/brpc.spec`文件，更新版本号，并提交至代码仓库，本文以`1.0.0`版本为例，修改Version为：
+### Update /package/rpm/brpc.spec file
+Edit the `/package/rpm/brpc.spec` file in the project root directory, update the version number, and submit it to the code repository. For example: 
 
 ```
 Version:	1.0.0
 ```
 
-## 3. 创建发布 tag
-拉取发布分支，并推送tag
+## 3. Create releasing tag
+
+push the release branch to tag, For example:
+
 ```bash
 git clone -b release-1.0 git@github.com:apache/incubator-brpc.git ~/incubator-brpc
 
@@ -174,13 +179,13 @@ git tag -a 1.0.0 -m "release 1.0.0"
 git push origin --tags
 ```
 
-## 4. 打包发布包
+## 4. Create releasing package
 
 ```bash
 git archive --format=tar 1.0.0 --prefix=apache-brpc-1.0.0-incubating-src/ | gzip > apache-brpc-1.0.0-incubating-src.tar.gz
 ```
 
-## 5. 生成签名文件
+## 5. Generate GPG signature
 
 ```bash
 gpg -u lorinlee@apache.org --armor --output apache-brpc-1.0.0-incubating-src.tar.gz.asc --detach-sign apache-brpc-1.0.0-incubating-src.tar.gz
@@ -189,7 +194,7 @@ gpg --verify apache-brpc-1.0.0-incubating-src.tar.gz.asc apache-brpc-1.0.0-incub
 
 ```
 
-## 6. 生成哈希文件
+## 6. Generate SHA512 sum
 
 ```bash
 sha512sum apache-brpc-1.0.0-incubating-src.tar.gz > apache-brpc-1.0.0-incubating-src.tar.gz.sha512
@@ -197,11 +202,11 @@ sha512sum apache-brpc-1.0.0-incubating-src.tar.gz > apache-brpc-1.0.0-incubating
 sha512sum --check apache-brpc-1.0.0-incubating-src.tar.gz.sha512
 ```
 
-# 发布至Apache SVN仓库
+# Publish to Apache SVN repository
 
-## 1. 检出 dist/dev 下的 brpc 仓库目录
+## 1. checkout dist/dev/brpc directory
 
-如无本地工作目录，则先创建本地工作目录。将Apache SVN仓库克隆下来，username需要使用自己的Apache LDAP用户名
+If there is no local working directory, create a local working directory first. Clone the Apache SVN repository, username needs to use your own Apache LDAP username:
 
 ```bash
 mkdir -p ~/brpc_svn/dev/
@@ -213,15 +218,15 @@ svn --username=lorinlee co https://dist.apache.org/repos/dist/dev/incubator/brpc
 cd ~/brpc_svn/dev/brpc
 ```
 
-## 2. 添加GPG公钥
+## 2. Add GPG public key
 
-仅第一次部署的账号需要添加，只要KEYS中包含已经部署过的账户的公钥即可。
+A new release manager must add the key into KEYS file for the first time.
 
 ```
 (gpg --list-sigs lorinlee && gpg -a --export lorinlee) >> KEYS
 ```
 
-## 3. 将待发布的代码包添加至SVN目录
+## 3. Add the releasing package to SVN directory
 
 ```bash
 mkdir -p ~/brpc_svn/dev/brpc/1.0.0
@@ -235,9 +240,9 @@ cp ~/incubator-brpc/apache-brpc-1.0.0-incubating-src.tar.gz.asc ~/brpc_svn/dev/b
 cp ~/incubator-brpc/apache-brpc-1.0.0-incubating-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
 ```
 
-## 4. 提交SVN
+## 4. Submit SVN
 
-退回到上级目录，使用Apache LDAP账号提交SVN
+Return to the parent directory and use the Apache LDAP account to submit SVN
 
 ```bash
 cd ~/brpc_svn/dev/brpc
@@ -247,16 +252,17 @@ svn add *
 svn --username=lorinlee commit -m "release 1.0.0"
 ```
 
-# 检查发布结果
+# Verify release
 
-## 1. 检查sha512哈希
+## 1. Verify SHA512 sum
 
 ```bash
 sha512sum --check apache-brpc-1.0.0-incubating-src.tar.gz.sha512
 ```
 
-## 2. 检查GPG签名
-首先导入发布人公钥。从svn仓库导入KEYS到本地环境。（发布版本的人不需要再导入，帮助做验证的人需要导入，用户名填发版人的即可）
+## 2. Verify GPG signature
+
+First import the publisher's public key. Import KEYS from the svn repository to the local. (The person who releases the version does not need to import it again. The person who verify needs to import it.)
 
 ```bash
 curl https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS >> KEYS
@@ -264,12 +270,13 @@ curl https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS >> KEYS
 gpg --import KEYS
 ```
 
-设置信任该用户的签名，执行以下命令，填写发布人的用户名
+Trust the signature of publisher, execute the following command using the publisher's user name
+
 ```bash
 gpg --edit-key lorinlee
 ```
 
-输出为
+output:
 ```
 gpg (GnuPG) 2.3.1; Copyright (C) 2021 Free Software Foundation, Inc.
 This is free software: you are free to change and redistribute it.
@@ -295,14 +302,14 @@ Do you really want to set this key to ultimate trust? (y/N) y
 gpg> save
 ```
 
-然后进行gpg签名检查。
+Then verify the GPG signature:
 ```
 gpg --verify apache-brpc-1.0.0-incubating-src.tar.gz.asc apache-brpc-1.0.0-incubating-src.tar.gz
 ```
 
-## 3. 检查发布内容
+## 3. Check release content
 
-### 1. 对比源码包与github上的tag内容差异
+### 1. Compare the difference of between the source code package and github tag
 
 ```bash
 curl -Lo tag-1.0.0.tar.gz https://github.com/apache/incubator-brpc/archive/refs/tags/1.0.0.tar.gz
@@ -314,40 +321,43 @@ tar xvzf apache-brpc-1.0.0-incubating-src.tar.gz
 diff -r incubator-brpc-1.0.0 apache-brpc-1.0.0-incubating-src
 ```
 
-### 2. 检查源码包的文件内容
+### 2. Check file content
 
-- 检查源码包是否包含由于包含不必要文件，致使tarball过于庞大
-- 存在LICENSE和NOTICE文件
-- NOTICE文件中的年份正确
-- 只存在文本文件，不存在二进制文件
-- 所有文件的开头都有ASF许可证
-- 能够正确编译，单元测试可以通过
-- 检查是否有多余文件或文件夹，例如空文件夹等
-- 检查第三方依赖许可证：
-  - 第三方依赖的许可证兼容
-  - 所有第三方依赖的许可证都在LICENSE文件中声名
-  - 依赖许可证的完整版全部在license目录
-  - 如果依赖的是Apache许可证并且存在NOTICE文件，那么这些NOTICE文件也需要加入到版本的NOTICE文件中
+- Check whether the source code package contains unnecessary files, which makes the tarball too large
+- LICENSE and NOTICE files exist
+- The year in the NOTICE file is correct
+- Only text files exist, no binary files exist
+- All files have an ASF license at the beginning
+- Source code can be compiled correctly, and the unit test can pass
+- Check whether there are redundant files or folders, such as empty folders
+- Check for third-party dependency licenses:
+   - Third party dependency license compatibility
+   - All licenses of third-party dependency are declared in the LICENSE file
+   - The complete version of the dependency license is in the license directory
+   - If third-party dependency have the Apache license and have NOTICE files, these NOTICE files also need to be added to the releasing NOTICE file
 
-# 在Apache brpc社区发起投票
+# Vote in Apache brpc community
 
-## 1. 投票阶段
+## 1. Vote stage
 
-1. 发起投票邮件到dev@brpc.apache.org。PPMC需要先按文档检查版本的正确性，然后再进行投票。经过至少72小时并统计到3个+1 PPMC member票后，即可进入下一阶段。
-2. 宣布投票结果，发起投票结果邮件到dev@brpc.apache.org。
+1. Send a voting email to `dev@brpc.apache.org`. PPMC needs to check the correctness of the version according to the document before voting. After at least 72 hours and 3 +1 PPMC member votes, you can move to the next stage.
 
-## 2. 投票邮件模板
+2. Announce the voting results and send the voting results to dev@brpc.apache.org 。
 
-1. Apache brpc 社区投票邮件模板
+## 2. Vote email template
 
-标题：
+1. Apache brpc community vote email template
+
+Title:
 ```
 [VOTE] Release Apache brpc (Incubating) 1.0.0
 ```
 
-正文：  
-注：`Release Commit ID`填写当前release发版分支最后一个commit的commit id。
-```
+Content:
+
+Note: 'Release Commit ID' fills in the commit ID of the last commit of the current release branch.
+
+``
 Hi Apache brpc (Incubating) Community,
 
 This is a call for vote to release Apache brpc (Incubating) version
@@ -391,14 +401,14 @@ Regards,
 LorinLee
 ```
 
-2. Apache brpc 社区宣布结果邮件模板
+2. Apache brpc community announcement of vote result template
 
-标题：
+Title:
 ```
 [Result] [VOTE] Release Apache brpc (Incubating) 1.0.0
 ```
 
-正文：
+Content:
 ```
 Hi all,
 
@@ -424,13 +434,13 @@ Regards,
 LorinLee
 ```
 
-## 3. 投票未通过
+## 3. Vote not passed
 
-若社区投票未通过，则在release分支对代码仓库进行修改，重新打包，发起投票。
+If the community vote is not passed, please modify the code of the release branch, package and vote again.
 
-# 在Apache Incubator社区发起投票
+# Vote in Apache incubator community
 
-## 1. 更新GPG签名
+## 1. Update GPG Signature
 
 ```
 svn delete https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "delete KEYS"
@@ -438,23 +448,23 @@ svn delete https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "de
 svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "update brpc KEYS"
 ```
 
-提交完svn后，访问 <https://downloads.apache.org/incubator/brpc/KEYS>，检查内容有没有更新，可能需要等几分钟时间，等内容更新了，再继续下一步。
+After commit the svn, access <https://downloads.apache.org/incubator/brpc/KEYS>, check whether the content is updated. It may take several minutes to wait for the content to be updated before continuing.
 
-## 2. 投票阶段
+## 2. Vote stage
 
-1. 发起投票邮件到general@incubator.apache.org。IPMC会进行投票。经过至少72小时并统计到3个+1 IPMC member票后，即可进入下一阶段。
-2. 宣布投票结果，发起投票结果邮件到general@incubator.apache.org。
+1. Send voting email to `general@incubator.apache.org`. IPMC will vote. After at least 72 hours and 3 +1 IPMC member tickets are counted, you can move to the next stage.
+2. Announce the voting results by sending the voting results to `general@incubator.apache.org`.
 
-## 3. 投票邮件模板
+## 3. Vote email template
 
-1. Apache Incubator 社区投票邮件模板
+1. Apache Incubator community vote email template
 
-标题：
+Title:
 ```
 [VOTE] Release Apache brpc (Incubating) 1.0.0
 ```
 
-正文：
+Content:
 ```
 Hi Incubator Community,
 
@@ -500,14 +510,14 @@ Lorin Lee
 Apache brpc (Incubating) community
 ```
 
-2. Apache Incubator 社区宣布结果邮件模板
+2. Apache Incubator community announcement of vote result template
 
-标题：
+Title:
 ```
 [Result] [VOTE] Release Apache brpc (Incubating) 1.0.0
 ```
 
-正文：
+Content:
 ```
 Hi Incubator Community,
 
@@ -539,42 +549,44 @@ Lorin Lee
 Apache brpc (Incubating) community
 ```
 
-# 完成发布
+# Finish the release
 
-## 1. 将发布包从Apache SVN仓库 dist/dev 移动至 dist/release
+## 1. Move the release package from Apache SVN directory dist/dev to dist/release
 
 ```
 svn mv https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0 https://dist.apache.org/repos/dist/release/incubator/brpc/1.0.0 -m "release brpc 1.0.0"
 ```
 
-## 2. Github版本发布
+## 2. Create github release
 
-在 [GitHub Releases 页面](https://github.com/apache/incubator-brpc/tags)的对应版本上点击，创建新的Release页面
-编辑版本号及版本说明，并点击 Publish release
+1. On the [GitHub Releases page](https://github.com/apache/incubator-brpc/tags) Click the corresponding version of to create a new Release
+2. Edit the version number and version description, and click `Publish release`
 
-## 3. 更新下载页面
+## 3. Update download page
 
-等待并确认新的发布版本同步至 Apache 镜像后，更新如下页面：<https://brpc.apache.org/docs/downloadbrpc/>, 更新方式在 <https://github.com/apache/incubator-brpc-website/> 仓库中，注意中英文都要更新。
+After waiting and confirming that the new release is synchronized to the Apache image, update the following page: <https://brpc.apache.org/docs/downloadbrpc/> by change the code in <https://github.com/apache/incubator-brpc-website/>. Please update both Chinese and English.
 
-GPG签名文件和哈希校验文件的下载链接应该使用这个前缀：https://downloads.apache.org/incubator/brpc/
+The download links of GPG signature files and hash check files should use this prefix: `https://downloads.apache.org/incubator/brpc/`
 
-代码包的下载链接应该使用这个前缀：https://dlcdn.apache.org/incubator/brpc/
+The download link of the code package should use this prefix: `https://dlcdn.apache.org/incubator/brpc/`
 
-## 4. 发送邮件通知发布完成
+## 4. Send email to announce release finished
 
-发送邮件到dev@brpc.apache.org、general@incubator.apache.org、和announce@apache.org通知完成版本发布。
+Send mail to `dev@brpc.apache.org`, `general@incubator.apache.org`, and `announce@apache.org` to announce the completion of release.
 
-注意：发邮件账号必须使用**个人apache邮箱**，且邮件内容必须是**纯文本格式**（可在gmail选择"纯文本模式"）。announce@apache.org 邮件组需要经过人工审核才能送达，发出邮件后请耐心等待，一般会在一天之内通过。
+Note: The email account must use **personal apache email**, and the email content must be **plain text format** ("plain text mode" can be selected in gmail). And email to `announce@apache.org` mail group will be delivered after manual review. Please wait patiently after sending the email, and it will be passed within one day.
 
-通知邮件模板如下：
+The announcement email template:
 
-标题：
+Title:
 ```
 [ANNOUNCE] Apache brpc (Incubating) 1.0.0 released
 ```
 
-正文：  
-注：`Brief notes of this release`仅需列出本次发版的主要变更，且无需指出对应贡献人和PR编号，建议参考下之前的Announce邮件。
+Content:
+
+Note: 'Brief notes of this release' It is only necessary to list the main changes of this release, without corresponding contributors and PR numbers. It is recommended to refer to the previous announcement email.
+
 ```
 Hi all,
 
@@ -609,15 +621,14 @@ brpc(Incubating) Resources:
 We would like to thank all contributors of the Apache brpc community and
 Incubating community who made this release possible!
 
-
 Best Regards,
 Apache brpc (Incubating) community
 ```
 
-## 发布微信公众号公告
+## 5. Publish WeChat official account announcement
 
-参考 <https://mp.weixin.qq.com/s/DeFhpAV_AYsn_Xd1ylPTSg>.
+Reference <https://mp.weixin.qq.com/s/DeFhpAV_AYsn_Xd1ylPTSg>.
 
-## 更新master分支
+## 6. Update master branch
 
-发版完成后，将release分支合并到master分支.
+After the release is completed, merge the release branch into the master branch
