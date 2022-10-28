@@ -221,6 +221,7 @@ protected:
                    int raw_port = -1);
 
     std::string _service_name;
+    std::string _scheme;
     butil::EndPoint _server_address;
     SocketId _server_id;
     Protocol::SerializeRequest _serialize_request;
