@@ -241,7 +241,7 @@ size_t MVariable::dump_exposed(Dumper* dumper, const DumpOptions* options) {
     std::vector<std::string> mvars;
     list_exposed(&mvars);
     size_t n = 0;
-    for (auto mvar : mvars) {
+    for (auto& mvar : mvars) {
         MVarMapWithLock& m = get_mvar_map();
         BAIDU_SCOPED_LOCK(m.mutex);
         MVarEntry* entry = m.seek(mvar);
