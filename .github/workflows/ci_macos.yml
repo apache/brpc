@@ -1,0 +1,52 @@
+name: Build and Test on Macos
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  proc_num: $(sysctl -n hw.logicalcpu)
+
+jobs:
+  compile-with-make:
+    runs-on: macos-latest # https://github.com/actions/runner-images
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: install dependences
+      run: |
+           brew install openssl gnu-getopt coreutils gflags protobuf leveldb
+
+    - name: config_brpc
+      run: |
+           GETOPT_PATH=$(find "/usr/local/Cellar/" -name "getopt" -type f -perm +111 -exec dirname {} \;)
+           export PATH=$GETOPT_PATH:$PATH
+           ./config_brpc.sh --header="/usr/local/include" --libs="/usr/local/lib"
+
+    - name: compile
+      run: |
+           make -j ${{env.proc_num}}
+
+  compile-with-cmake:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: install dependences
+      run: |
+           brew install openssl gnu-getopt coreutils gflags protobuf leveldb
+
+    - name: cmake
+      run: |
+           mkdir build
+           cd build
+           cmake ..
+
+    - name: compile
+      run: |
+           cd build
+           make -j ${{env.proc_num}}
