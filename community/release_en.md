@@ -355,9 +355,9 @@ Title:
 
 Content:
 
-Note: 'Release Commit ID' fills in the commit ID of the last commit of the current release branch.
+Note: `Release Commit ID` fills in the commit ID of the last commit of the current release branch.
 
-``
+```
 Hi Apache brpc (Incubating) Community,
 
 This is a call for vote to release Apache brpc (Incubating) version
@@ -585,7 +585,7 @@ Title:
 
 Content:
 
-Note: 'Brief notes of this release' It is only necessary to list the main changes of this release, without corresponding contributors and PR numbers. It is recommended to refer to the previous announcement email.
+Note: `Brief notes of this release` It is only necessary to list the main changes of this release, without corresponding contributors and PR numbers. It is recommended to refer to the previous announcement email.
 
 ```
 Hi all,
