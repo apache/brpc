@@ -31,7 +31,7 @@ The first key feature in RdmaEndpoint data transmission is zero copy. All data w
 
 The second key feature in RdmaEndpoint data transmission is sliding window flow control. The flow control is to avoid fast transmit side overwhelming slow receive side. TCP has similar mechanism in kernel TCP stack. RdmaEndpoint implements this mechanism with explicit ACKs from receive side. to reduce the overhead of ACKs, the ACK number can be piggybacked in ordinary data message as immediate data.
 
-The third key feature in RdmaEndpoint data transmission is event suppression. The size of every message is limited to recv_block_size (defaulty 8KB). If every message will generate an event, the performance will be very poor, even worse than TCP (TCP has GSO/GRO). Therefore, RdmaEndpoint set solicited flag for every message according to data size, window and ACKS. The flag can control whether to generate an event in remove side or not.
+The third key feature in RdmaEndpoint data transmission is event suppression. The size of every message is limited to recv_block_size (default is 8KB). If every message will generate an event, the performance will be very poor, even worse than TCP (TCP has GSO/GRO). Therefore, RdmaEndpoint set solicited flag for every message according to data size, window and ACKS. The flag can control whether to generate an event in remove side or not.
 
 All the memory used for data transmission in RDMA must be registered, which is very inefficient. Generally, a memory pool is employed to avoid frequent memory registration. In fact, brpc uses IOBuf for data transmission. In order to realize total zerocopy and compatibility with IOBuf, the memory used by IOBuf is taken over by the RDMA memory pool (see src/brpc/rdma/block_pool.cpp). Since IOBuf buffer cannot be controlled by user directly, the total memory consumption in IOBuf should be carefully managed. It is suggested that the application registers enough memory at one time according to its requirement.
 
@@ -39,13 +39,13 @@ RDMA is hardware-related. It has some different concepts such as device, port, G
 
 # Parameters
 
-Congifurable parameterss：
+Configurable parameters:
 * rdma_trace_verbose: to print RDMA connection information in log，default is false
 * rdma_recv_zerocopy: enable zero copy in receive side，default is true
 * rdma_zerocopy_min_size: the min message size for receive zero copy (in Byte)，default is 512
 * rdma_recv_block_type: the block type used for receiving, can be default(8KB)/large(64KB)/huge(2MB)，default is default
-* rdma_prepared_qp_size: the size of QP created at the begining of the application，default is 128
-* rdma_prepared_qp_cnt: the number of QPs created at the begining of the application，default is 1024
+* rdma_prepared_qp_size: the size of QPs created at the beginning of the application，default is 128
+* rdma_prepared_qp_cnt: the number of QPs created at the beginning of the application，default is 1024
 * rdma_max_sge: the max length of sglist, default is 0, which is the max length allowed by the device
 * rdma_sq_size: the size of SQ，default is 128
 * rdma_rq_size: the size of RQ，default is 128
