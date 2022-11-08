@@ -21,6 +21,14 @@ mkdir bld && cd bld && cmake ..
 make
 ```
 
+使用bazel:
+```bash
+# Server
+bazel build --define BRPC_WITH_RDMA=true example:rdma_performance_server
+# Client
+bazel build --define BRPC_WITH_RDMA=true example:rdma_performance_client
+```
+
 # 基本实现
 
 RDMA与TCP不同，不使用socket接口进行通信。但是在实现上仍然复用了brpc中原本的Socket类。当用户选择ChannelOptions或ServerOptions中的use_rdma为true时，创建出的Socket类中则有对应的RdmaEndpoint（参见src/brpc/rdma/rdma_endpoint.cpp）。当RDMA被使能时，写入Socket的数据会通过RdmaEndpoint提交给RDMA QP（通过verbs API），而非拷贝到fd。对于数据读取，RdmaEndpoint中则调用verbs API从RDMA CQ中获取对应完成信息（事件获取有独立的fd，复用EventDispatcher，处理函数采用RdmaEndpoint::PollCq），最后复用InputMessenger完成RPC消息解析。
