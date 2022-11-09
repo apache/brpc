@@ -143,6 +143,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS = (1 << 18);
     static const uint32_t FLAGS_HEALTH_CHECK_CALL = (1 << 19);
     static const uint32_t FLAGS_PB_SINGLE_REPEATED_TO_ARRAY = (1 << 20);
+    static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
 
 public:
     struct Inheritable {
@@ -397,6 +398,16 @@ public:
     // User attached data or body of http response, which is wired to network
     // directly instead of being serialized into protobuf messages.
     butil::IOBuf& response_attachment() { return _response_attachment; }
+
+    // Response Body of a failed HTTP call is set to be ErrorText() by default,
+    // even if response_attachment() is non-empty.
+    // If this flag is true, the http body of a failed HTTP call will not be
+    // replaced by ErrorText() and should be managed by user self.
+    void manage_http_body_on_error(bool manage_or_not)
+    { set_flag(FLAGS_MANAGE_HTTP_BODY_ON_ERROR, manage_or_not); }
+    
+    bool does_manage_http_body_on_error() const
+    { return has_flag(FLAGS_MANAGE_HTTP_BODY_ON_ERROR); }
 
     // Create a ProgressiveAttachment to write (often after RPC).
     // If `stop_style' is FORCE_STOP, the underlying socket will be failed
