@@ -21,6 +21,14 @@ mkdir bld && cd bld && cmake ..
 make
 ```
 
+With bazel:
+```bash
+# Server
+bazel build example:rdma_performance_server
+# Client
+bazel build example:rdma_performance_client
+```
+
 # Basic Implementation
 
 RDMA does not use socket API like TCP. However, the brpc::Socket class is still used. If a user sets ChannelOptions.use_rdma or ServerOptions.use_rdma to true, the Socket class created has RdmaEndpoint (see src/brpc/rdma/rdma_endpoint.cpp). When RDMA is enabled, the data which need to transmit will be posted to RDMA QP with verbs API, not written to TCP fd. For data receiving, RdmaEndpoint will get completions from RDMA CQ with verbs API (the event will be generated from a dedicated fd and be added into EventDispatcher, the handling function is RdmaEndpoint::PollCq) before parsing RPC messages with InputMessenger.

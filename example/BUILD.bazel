@@ -32,6 +32,9 @@ COPTS = [
 ] + select({
     "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
+}) + select({
+    "//bazel/config:brpc_with_rdma": ["-DBRPC_WITH_RDMA=1"],
+    "//conditions:default": [""],
 })
 
 proto_library(
@@ -41,10 +44,24 @@ proto_library(
     ],
 )
 
+proto_library(
+    name = "rdma_performance_proto",
+    srcs = [
+        "rdma_performance/test.proto",
+    ],
+)
+
 cc_proto_library(
     name = "cc_echo_c++_proto",
     deps = [
         ":echo_c++_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "cc_rdma_performance_proto",
+    deps = [
+        ":rdma_performance_proto",
     ],
 )
 
@@ -74,6 +91,36 @@ cc_binary(
     ],
     deps = [
         ":cc_echo_c++_proto",
+        "//:brpc",
+    ],
+)
+
+cc_binary(
+    name = "rdma_performance_server",
+    srcs = [
+        "rdma_performance/server.cpp",
+    ],
+    includes = [
+        "rdma_performance",
+    ],
+    copts = COPTS + ["-DBRPC_WITH_RDMA=1"],
+    deps = [
+        ":cc_rdma_performance_proto",
+        "//:brpc",
+    ],
+)
+
+cc_binary(
+    name = "rdma_performance_client",
+    srcs = [
+        "rdma_performance/client.cpp",
+    ],
+    includes = [
+        "rdma_performance",
+    ],
+    copts = COPTS + ["-DBRPC_WITH_RDMA=1"],
+    deps = [
+        ":cc_rdma_performance_proto",
         "//:brpc",
     ],
 )
