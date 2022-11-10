@@ -322,13 +322,12 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    std::string scheme;
     int* port_out = raw_port == -1 ? &raw_port: NULL;
-    ParseURL(raw_server_address, &scheme, &_service_name, port_out);
+    ParseURL(raw_server_address, &_scheme, &_service_name, port_out);
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https") {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && _scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
@@ -363,13 +362,12 @@ int Channel::Init(const char* ns_url,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    std::string scheme;
     int raw_port = -1;
-    ParseURL(ns_url, &scheme, &_service_name, &raw_port);
+    ParseURL(ns_url, &_scheme, &_service_name, &raw_port);
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https") {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && _scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
@@ -429,7 +427,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         CHECK(cntl->protocol_param().empty());
         cntl->protocol_param() = _options.protocol.param();
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP) {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && (_scheme == "https" || _scheme == "http")) {
         URI& uri = cntl->http_request().uri();
         if (uri.host().empty() && !_service_name.empty()) {
             uri.SetHostAndPort(_service_name);
