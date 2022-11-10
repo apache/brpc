@@ -49,11 +49,17 @@ public:
 
 struct StreamOptions {
     StreamOptions()
-        : max_buf_size(2 * 1024 * 1024)
+        : min_buf_size(1024 * 1024)
+        , max_buf_size(2 * 1024 * 1024)
         , idle_timeout_ms(-1)
         , messages_in_batch(128)
         , handler(NULL)
     {}
+
+    // stream max buffer size limit in [min_buf_size, max_buf_size]
+    // If |min_buf_size| <= 0, there's no min size limit of buf size
+    // default: 1048576 (1M)
+    int min_buf_size;
 
     // The max size of unconsumed data allowed at remote side. 
     // If |max_buf_size| <= 0, there's no limit of buf size

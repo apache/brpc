@@ -870,6 +870,7 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+    butil::atomic<int64_t> _total_streams_unconsumed_size;
 
     butil::atomic<int64_t> _ninflight_app_health_check;
 };

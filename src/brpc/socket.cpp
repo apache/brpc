@@ -85,6 +85,10 @@ DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
              "Max unwritten bytes in each socket, if the limit is reached,"
              " Socket.Write fails with EOVERCROWDED");
 
+DEFINE_int64(socket_max_streams_unconsumed_bytes, 0,
+             "Max stream receivers' unconsumed bytes in one socket,"
+             " it used in stream for receiver buffer control.");
+
 DEFINE_int32(max_connection_pool_size, 100,
              "Max number of pooled connections to a single endpoint");
 BRPC_VALIDATE_GFLAG(max_connection_pool_size, PassValidate);
@@ -459,6 +463,7 @@ Socket::Socket(Forbidden)
     , _epollout_butex(NULL)
     , _write_head(NULL)
     , _stream_set(NULL)
+    , _total_streams_unconsumed_size(0)
     , _ninflight_app_health_check(0)
 {
     CreateVarsOnce();
@@ -660,6 +665,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_error_code = 0;
     m->_error_text.clear();
     m->_agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
+    m->_total_streams_unconsumed_size.store(0, butil::memory_order_relaxed);
     m->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
     // NOTE: last two params are useless in bthread > r32787
     const int rc = bthread_id_list_init(&m->_id_wait_list, 512, 512);
@@ -2234,6 +2240,8 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
        << "\n_additional_ref_status="
        << ptr->_additional_ref_status.load(butil::memory_order_relaxed)
+       << "\ntotal_streams_buffer_size="
+       << ptr->_total_streams_unconsumed_size.load(butil::memory_order_relaxed)
        << "\nninflight_app_health_check="
        << ptr->_ninflight_app_health_check.load(butil::memory_order_relaxed)
        << "\nagent_socket_id=";
