@@ -24,9 +24,9 @@ make
 With bazel:
 ```bash
 # Server
-bazel build example:rdma_performance_server
+bazel build --define=BRPC_WITH_RDMA=true example:rdma_performance_server
 # Client
-bazel build example:rdma_performance_client
+bazel build --define=BRPC_WITH_RDMA=true example:rdma_performance_client
 ```
 
 # Basic Implementation
