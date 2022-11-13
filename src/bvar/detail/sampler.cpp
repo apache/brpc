@@ -202,8 +202,14 @@ Sampler::Sampler() : _used(true) {}
 
 Sampler::~Sampler() {}
 
+DEFINE_bool(bvar_enable_sampling, true, "is enable bvar sampling");
+
 void Sampler::schedule() {
-    *butil::get_leaky_singleton<SamplerCollector>() << this;
+    // since the SamplerCollector is initialized before the program starts
+    // flags will not take effect if used in the SamplerCollector constructor
+    if (FLAGS_bvar_enable_sampling) {
+        *butil::get_leaky_singleton<SamplerCollector>() << this;
+    }
 }
 
 void Sampler::destroy() {
