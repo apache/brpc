@@ -35,7 +35,7 @@ DEFINE_int32(health_check_interval, 3,
 // NOTE: Must be limited to positive to guarantee correctness of SocketMapRemove.
 BRPC_VALIDATE_GFLAG(health_check_interval, PositiveInteger);
 
-DEFINE_int32(idle_timeout_second, 10, 
+DEFINE_int32(idle_timeout_second, 30, 
              "Pooled connections without data transmission for so many "
              "seconds will be closed. No effect for non-positive values");
 BRPC_VALIDATE_GFLAG(idle_timeout_second, PassValidate);

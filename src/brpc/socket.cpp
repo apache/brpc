@@ -2594,6 +2594,10 @@ int Socket::ReturnToPool() {
     // - sp must be released after returning to pool because it owns pool
     _connection_type_for_progressive_read = CONNECTION_TYPE_UNKNOWN;
     _controller_released_socket.store(false, butil::memory_order_relaxed);
+    // Reset the write timestamp to make the returned connection live (longer)
+    // This is useful for using a fake Socket + SocketConnection impl. to integrate
+    // 3rd-party client into bRPC (like MySQL Client).
+    _last_writetime_us.store(butil::cpuwide_time_us(), butil::memory_order_relaxed);
     pool->ReturnSocket(this);
     sp->RemoveRefManually();
     return 0;
