@@ -16,6 +16,7 @@ brpc有如下依赖：
 * [Fedora/CentOS](#fedoracentos)
 * [自己构建依赖的Linux](#自己构建依赖的Linux)
 * [MacOS](#macos)
+* [docker][#docker]
 
 ## Ubuntu/LinuxMint/WSL
 ### 依赖准备
@@ -295,6 +296,19 @@ $ sh run_tests.sh
 
 ### 使用cmake编译brpc
 参考[这里](#使用cmake编译brpc)
+
+## Docker
+使用docker 编译brpc：
+
+```shell
+$ mkdir -p ~/brpc
+$ cd ~/brpc
+$ git clone https://github.com/apache/incubator-brpc.git
+$ cd incubator-brpc
+$ docker build -t brpc:master .
+$ docker images
+$ docker run -it brpc:master /bin/bash
+```
 
 # 支持的依赖
 
