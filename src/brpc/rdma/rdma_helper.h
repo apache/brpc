@@ -21,6 +21,7 @@
 #if BRPC_WITH_RDMA
 
 #include <infiniband/verbs.h>
+#include <string>
 
 
 namespace brpc {
