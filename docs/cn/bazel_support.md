@@ -1,6 +1,6 @@
 ## bRPC 作为Bazel第三方依赖
 1. bRPC 依赖于一些开源库, 但这些库并没有提供bazel支持, 所以需要你手动将一部分依赖加入到你的构建项目中.
-2. 将 /example/build_with_bazel/build_for_brpc 该文件移动到你的项目根目录下, 将 /example/build_with_bazel/build_for_brpc/WORKSPACE 内容添加到你的WORKSPACE中.
+2. 将 /example/build_with_bazel/*.BUILD 该文件移动到你的项目根目录下, 将 /example/build_with_bazel/WORKSPACE 内容添加到你的WORKSPACE中.
 3. 链接请使用
   ```c++
   ...
