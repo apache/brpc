@@ -17,15 +17,9 @@
 # this directory as a package.
 
 
-genrule(
-    name = "empty_cc",
-    outs = ["empty.cc"],
-    cmd = "echo 'int main(){return 0;}' > $@",
-)
-
 cc_binary(
-    name = "empty",
-    srcs = [":empty_cc"],
+    name = "test",
+    srcs = ["test.cc"],
     deps = [
         "@apache_brpc//:brpc",
         "@apache_brpc//:bthread",
