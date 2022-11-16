@@ -248,6 +248,15 @@ public:
     // deleted using the deleter func when no IOBuf references it anymore.
     int append_user_data(void* data, size_t size, void (*deleter)(void*));
 
+    // Append the user-data to back side WITHOUT copying.
+    // The meta is associated with this piece of user-data.
+    int append_user_data_with_meta(void* data, size_t size, void (*deleter)(void*), uint64_t meta);
+
+    // Get the data meta of the first byte in this IOBuf.
+    // The meta is specified with append_user_data_with_meta before.
+    // 0 means the meta is invalid.
+    uint64_t get_first_data_meta();
+
     // Resizes the buf to a length of n characters.
     // If n is smaller than the current length, all bytes after n will be
     // truncated.

@@ -199,7 +199,12 @@ struct IOBuf::Block {
     uint16_t abi_check;  // original cap, never be zero.
     uint32_t size;
     uint32_t cap;
-    Block* portal_next;
+    // When flag is 0, portal_next is valid.
+    // When flag & IOBUF_BLOCK_FLAGS_USER_DATA is non-0, data_meta is valid.
+    union {
+        Block* portal_next;
+        uint64_t data_meta;
+    } u;
     // When flag is 0, data points to `size` bytes starting at `(char*)this+sizeof(Block)'
     // When flag & IOBUF_BLOCK_FLAGS_USER_DATA is non-0, data points to the user data and
     // the deleter is put in UserDataExtension at `(char*)this+sizeof(Block)'
@@ -211,7 +216,7 @@ struct IOBuf::Block {
         , abi_check(0)
         , size(0)
         , cap(data_size)
-        , portal_next(NULL)
+        , u({NULL})
         , data(data_in) {
         iobuf::g_nblock.fetch_add(1, butil::memory_order_relaxed);
         iobuf::g_blockmem.fetch_add(data_size + sizeof(Block),
@@ -224,7 +229,7 @@ struct IOBuf::Block {
         , abi_check(0)
         , size(data_size)
         , cap(data_size)
-        , portal_next(NULL)
+        , u({0})
         , data(data_in) {
         get_user_data_extension()->deleter = deleter;
     }
@@ -281,7 +286,7 @@ namespace iobuf {
 int block_shared_count(IOBuf::Block const* b) { return b->ref_count(); }
 
 IOBuf::Block* get_portal_next(IOBuf::Block const* b) {
-    return b->portal_next;
+    return b->u.portal_next;
 }
 
 uint32_t block_cap(IOBuf::Block const* b) {
@@ -346,7 +351,7 @@ void remove_tls_block_chain() {
     tls_data.block_head = NULL;
     int n = 0;
     do {
-        IOBuf::Block* const saved_next = b->portal_next;
+        IOBuf::Block* const saved_next = b->u.portal_next;
         b->dec_ref();
         b = saved_next;
         ++n;
@@ -367,7 +372,7 @@ IOBuf::Block* share_tls_block() {
     if (b) {
         new_block = b;
         while (new_block && new_block->full()) {
-            IOBuf::Block* const saved_next = new_block->portal_next;
+            IOBuf::Block* const saved_next = new_block->u.portal_next;
             new_block->dec_ref();
             --tls_data.num_blocks;
             new_block = saved_next;
@@ -399,7 +404,7 @@ inline void release_tls_block(IOBuf::Block *b) {
         b->dec_ref();
         g_num_hit_tls_threshold.fetch_add(1, butil::memory_order_relaxed);
     } else {
-        b->portal_next = tls_data.block_head;
+        b->u.portal_next = tls_data.block_head;
         tls_data.block_head = b;
         ++tls_data.num_blocks;
         if (!tls_data.registered) {
@@ -417,7 +422,7 @@ void release_tls_block_chain(IOBuf::Block* b) {
     if (tls_data.num_blocks >= MAX_BLOCKS_PER_THREAD) {
         do {
             ++n;
-            IOBuf::Block* const saved_next = b->portal_next;
+            IOBuf::Block* const saved_next = b->u.portal_next;
             b->dec_ref();
             b = saved_next;
         } while (b);
@@ -429,13 +434,13 @@ void release_tls_block_chain(IOBuf::Block* b) {
     do {
         ++n;
         CHECK(!b->full());
-        if (b->portal_next == NULL) {
+        if (b->u.portal_next == NULL) {
             last_b = b;
             break;
         }
-        b = b->portal_next;
+        b = b->u.portal_next;
     } while (true);
-    last_b->portal_next = tls_data.block_head;
+    last_b->u.portal_next = tls_data.block_head;
     tls_data.block_head = first_b;
     tls_data.num_blocks += n;
     if (!tls_data.registered) {
@@ -452,7 +457,7 @@ IOBuf::Block* acquire_tls_block() {
         return create_block();
     }
     while (b->full()) {
-        IOBuf::Block* const saved_next = b->portal_next;
+        IOBuf::Block* const saved_next = b->u.portal_next;
         b->dec_ref();
         tls_data.block_head = saved_next;
         --tls_data.num_blocks;
@@ -461,9 +466,9 @@ IOBuf::Block* acquire_tls_block() {
             return create_block();
         }
     }
-    tls_data.block_head = b->portal_next;
+    tls_data.block_head = b->u.portal_next;
     --tls_data.num_blocks;
-    b->portal_next = NULL;
+    b->u.portal_next = NULL;
     return b;
 }
 
@@ -1206,7 +1211,14 @@ int IOBuf::appendv(const const_iovec* vec, size_t n) {
     return 0;
 }
 
-int IOBuf::append_user_data(void* data, size_t size, void (*deleter)(void*)) {
+int IOBuf::append_user_data_with_meta(void* data,
+                                      size_t size,
+                                      void (*deleter)(void*),
+                                      uint64_t meta) {
+    if (size == 0) {
+        LOG(WARNING) << "data_size should not be 0";
+        return -1;
+    }
     if (size > 0xFFFFFFFFULL - 100) {
         LOG(FATAL) << "data_size=" << size << " is too large";
         return -1;
@@ -1219,9 +1231,21 @@ int IOBuf::append_user_data(void* data, size_t size, void (*deleter)(void*)) {
         deleter = ::free;
     }
     IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, deleter);
+    b->u.data_meta = meta;
     const IOBuf::BlockRef r = { 0, b->cap, b };
     _move_back_ref(r);
     return 0;
+}
+
+uint64_t IOBuf::get_first_data_meta() {
+    if (_ref_num() == 0) {
+        return 0;
+    }
+    IOBuf::BlockRef const& r = _ref_at(0);
+    if (!(r.block->flags & IOBUF_BLOCK_FLAGS_USER_DATA)) {
+        return 0;
+    }
+    return r.block->u.data_meta;
 }
 
 int IOBuf::resize(size_t n, char c) {
@@ -1563,7 +1587,7 @@ ssize_t IOPortal::pappend_from_file_descriptor(
                 return -1;
             }
             if (prev_p != NULL) {
-                prev_p->portal_next = p;
+                prev_p->u.portal_next = p;
             } else {
                 _block = p;
             }
@@ -1576,7 +1600,7 @@ ssize_t IOPortal::pappend_from_file_descriptor(
             break;
         }
         prev_p = p;
-        p = p->portal_next;
+        p = p->u.portal_next;
     } while (1);
 
     ssize_t nr = 0;
@@ -1601,7 +1625,7 @@ ssize_t IOPortal::pappend_from_file_descriptor(
         _push_back_ref(r);
         _block->size += len;
         if (_block->full()) {
-            Block* const saved_next = _block->portal_next;
+            Block* const saved_next = _block->u.portal_next;
             _block->dec_ref();  // _block may be deleted
             _block = saved_next;
         }
@@ -1624,7 +1648,7 @@ ssize_t IOPortal::append_from_reader(IReader* reader, size_t max_count) {
                 return -1;
             }
             if (prev_p != NULL) {
-                prev_p->portal_next = p;
+                prev_p->u.portal_next = p;
             } else {
                 _block = p;
             }
@@ -1637,7 +1661,7 @@ ssize_t IOPortal::append_from_reader(IReader* reader, size_t max_count) {
             break;
         }
         prev_p = p;
-        p = p->portal_next;
+        p = p->u.portal_next;
     } while (1);
 
     const ssize_t nr = reader->ReadV(vec, nvec);
@@ -1656,7 +1680,7 @@ ssize_t IOPortal::append_from_reader(IReader* reader, size_t max_count) {
         _push_back_ref(r);
         _block->size += len;
         if (_block->full()) {
-            Block* const saved_next = _block->portal_next;
+            Block* const saved_next = _block->u.portal_next;
             _block->dec_ref();  // _block may be deleted
             _block = saved_next;
         }
@@ -1686,7 +1710,7 @@ ssize_t IOPortal::append_from_SSL_channel(
             _push_back_ref(r);
             _block->size += rc;
             if (_block->full()) {
-                Block* const saved_next = _block->portal_next;
+                Block* const saved_next = _block->u.portal_next;
                 _block->dec_ref();  // _block may be deleted
                 _block = saved_next;
             }

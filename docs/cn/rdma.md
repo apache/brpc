@@ -43,6 +43,8 @@ RdmaEndpoint数据传输逻辑的第三个重要特性是事件聚合。每个�
 
 RDMA要求数据收发所使用的内存空间必须被注册（memory register），把对应的页表映射注册给网卡，这一操作非常耗时，所以通常都会使用内存池方案来加速。brpc内部的数据收发都使用IOBuf，为了在兼容IOBuf的情况下实现完全零拷贝，整个IOBuf所使用的内存空间整体由统一内存池接管(参见src/brpc/rdma/block_pool.cpp)。注意，由于IOBuf内存池不由用户直接控制，因此实际使用中需要注意IOBuf所消耗的总内存，建议根据实际业务需求，一次性注册足够的内存池以实现性能最大化。
 
+应用程序可以自己管理内存，然后通过IOBuf::append_user_data_with_meta把数据发送出去。在这种情况下，应用程序应该自己使用rdma::RegisterMemoryForRdma注册内存（参见src/brpc/rdma/rdma_helper.h）。注意，RegisterMemoryForRdma会返回注册内存对应的lkey，请在append_user_data_with_meta时以meta形式提供给brpc。
+
 RDMA是硬件相关的通信技术，有很多独特的概念，比如device、port、GID、LID、MaxSge等。这些参数在初始化时会从对应的网卡中读取出来，并且做出默认的选择（参见src/brpc/rdma/rdma_helper.cpp）。有时默认的选择并非用户的期望，则可以通过flag参数方式指定。
 
 # 参数

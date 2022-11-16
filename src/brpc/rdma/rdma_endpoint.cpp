@@ -516,7 +516,8 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     if (s->_rdma_state != Socket::RDMA_OFF) {
         flags |= ACK_MSG_RDMA_OK;
     }
-    *(uint32_t*)data = butil::HostToNet32(flags);
+    uint32_t* tmp = (uint32_t*)data;  // avoid GCC warning on strict-aliasing
+    *tmp = butil::HostToNet32(flags);
     if (ep->WriteToFd(data, ACK_MSG_LEN) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to send Ack Message to server:" << s->description();
@@ -668,7 +669,8 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     }
 
     // Check RDMA enable flag
-    uint32_t flags = butil::NetToHost32(*(uint32_t*)data);
+    uint32_t* tmp = (uint32_t*)data;  // avoid GCC warning on strict-aliasing
+    uint32_t flags = butil::NetToHost32(*tmp);
     if (flags & ACK_MSG_RDMA_OK) {
         if (s->_rdma_state == Socket::RDMA_OFF) {
             LOG(WARNING) << "Fail to parse Hello Message length from client:"
@@ -722,7 +724,16 @@ private:
             butil::IOBuf::BlockRef const& r = _ref_at(0);
             CHECK(r.length > 0);
             const void* start = fetch1();
-            uint32_t lkey = GetLKey((char*)start - r.offset);
+            uint32_t lkey = GetRegionId(start);
+            if (lkey == 0) {  // get lkey for user registered memory
+                uint64_t meta = get_first_data_meta();
+                if (meta <= UINT_MAX) {
+                    lkey = (uint32_t)meta;
+                }
+            }
+            if (BAIDU_UNLIKELY(lkey == 0)) {  // only happens when meta is not specified
+                lkey = GetLKey((char*)start - r.offset);
+            }
             if (lkey == 0) {
                 LOG(WARNING) << "Memory not registered for rdma. "
                              << "Is this iobuf allocated before calling "
@@ -975,7 +986,7 @@ int RdmaEndpoint::DoPostRecv(void* block, size_t block_size) {
     ibv_sge sge;
     sge.addr = (uint64_t)block;
     sge.length = block_size;
-    sge.lkey = GetLKey((char*)block - IOBUF_BLOCK_HEADER_LEN);
+    sge.lkey = GetRegionId(block);
     wr.num_sge = 1;
     wr.sg_list = &sge;
 

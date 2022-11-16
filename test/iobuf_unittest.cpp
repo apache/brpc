@@ -1657,6 +1657,24 @@ TEST_F(IOBufTest, append_user_data_and_share) {
     ASSERT_EQ(data, my_free_params);
 }
 
+TEST_F(IOBufTest, append_user_data_with_meta) {
+    butil::IOBuf b0;
+    const int REP = 16;
+    const size_t len = 256;
+    char* data[REP];
+    for (int i = 0; i < REP; ++i) {
+        data[i] = (char*)malloc(len);
+        ASSERT_EQ(0, b0.append_user_data_with_meta(data[i], len, my_free, i));
+    }
+    for (int i = 0; i < REP; ++i) {
+        ASSERT_EQ(i, b0.get_first_data_meta());
+        butil::IOBuf out;
+        ASSERT_EQ(len / 2, b0.cutn(&out, len / 2));
+        ASSERT_EQ(i, b0.get_first_data_meta());
+        ASSERT_EQ(len / 2, b0.cutn(&out, len / 2));
+    }
+}
+
 TEST_F(IOBufTest, share_tls_block) {
     butil::iobuf::remove_tls_block_chain();
     butil::IOBuf::Block* b = butil::iobuf::acquire_tls_block();
