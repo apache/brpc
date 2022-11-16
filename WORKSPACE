@@ -181,16 +181,6 @@ http_archive(
     ],
 )
 
-http_archive(
-    name = "com_github_libevent_libevent",  # 2020-07-05T13:33:03Z
-    build_file = "//bazel/third_party/event:event.BUILD",
-    sha256 = "92e6de1be9ec176428fd2367677e61ceffc2ee1cb119035037a27d346b0403bb",
-    strip_prefix = "libevent-2.1.12-stable",
-    urls = [
-        "https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz",
-    ],
-)
-
 # TODO: SIMD optimization.
 # https://github.com/cloudflare/zlib
 http_archive(
