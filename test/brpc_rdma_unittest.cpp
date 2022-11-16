@@ -80,6 +80,7 @@ extern bool g_skip_rdma_init;
 }
 }
 
+static const size_t MAX_USER_MRS = 16;
 static std::string g_ip = "127.0.0.1";
 static butil::EndPoint g_ep;
 
@@ -959,7 +960,10 @@ TEST_F(RdmaTest, server_hello_invalid_version) {
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
     ASSERT_EQ(4, read(acc_fd, data, 4));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
     ASSERT_EQ(0, butil::NetToHost32(*(uint32_t*)data));
+#pragma GCC diagnostic pop
     bthread_id_join(cntl.call_id());
 
     ASSERT_EQ(ERPCTIMEDOUT, cntl.ErrorCode());
@@ -1010,7 +1014,10 @@ TEST_F(RdmaTest, server_hello_invalid_sq_rq_size) {
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
     ASSERT_EQ(4, read(acc_fd, data, 4));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
     ASSERT_EQ(0, butil::NetToHost32(*(uint32_t*)data));
+#pragma GCC diagnostic pop
     bthread_id_join(cntl.call_id());
 
     ASSERT_EQ(ERPCTIMEDOUT, cntl.ErrorCode());
@@ -1061,7 +1068,10 @@ TEST_F(RdmaTest, server_miss_after_ack) {
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
     ASSERT_EQ(4, read(acc_fd, data, 4));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
     ASSERT_EQ(1, butil::NetToHost32(*(uint32_t*)data));
+#pragma GCC diagnostic pop
     bthread_id_join(cntl.call_id());
 
     ASSERT_EQ(ERPCTIMEDOUT, cntl.ErrorCode());
@@ -1112,7 +1122,10 @@ TEST_F(RdmaTest, server_close_after_ack) {
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
     ASSERT_EQ(4, read(acc_fd, data, 4));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
     ASSERT_EQ(1, butil::NetToHost32(*(uint32_t*)data));
+#pragma GCC diagnostic pop
     close(acc_fd);
     bthread_id_join(cntl.call_id());
 
@@ -1841,6 +1854,8 @@ TEST_F(RdmaTest, rdma_use_selective_channel) {
     StopServer();
 }
 
+static void MockFree(void* buf) { }
+
 TEST_F(RdmaTest, send_rpcs_with_user_defined_iobuf) {
     if (!FLAGS_rdma_test_enable) {
         return;
@@ -1870,27 +1885,29 @@ TEST_F(RdmaTest, send_rpcs_with_user_defined_iobuf) {
     ASSERT_EQ(ERDMAMEM, cntl[0].ErrorCode());
     attach.clear();
     sleep(2);  // wait for client recover from EHOSTDOWN
+    cntl[0].Reset();
 
-    void* mr[RPC_NUM];
-    butil::IOBuf attachment[RPC_NUM];
-    for (int i = 1; i < RPC_NUM; ++i) {
-        mr[i] = malloc(4096);
+    char* mr[MAX_USER_MRS];
+    for (size_t i = 0; i < MAX_USER_MRS; ++i) {
+        mr[i] = (char*)malloc(4096);
         memset(mr[i], i % 100, 4096);
         ASSERT_EQ(0, rdma::RegisterMemoryForRdma(mr[i], 4096));
-        attachment[i].append_user_data(mr[i], 4096, NULL);
         req[i].set_message(__FUNCTION__);
-        cntl[i].request_attachment().append(attachment[i]);
+        cntl[i].request_attachment().append_user_data(mr[i] + i, 4096 - i, MockFree);
         google::protobuf::Closure* done = DoNothing();
         ::test::EchoService::Stub(&channel).Echo(&cntl[i], &req[i], &res[i], done);
     }
-    for (int i = 1; i < RPC_NUM; ++i) {
+    char tmp;
+    ASSERT_EQ(-1, rdma::RegisterMemoryForRdma(&tmp, 1));
+    for (size_t i = 0; i < MAX_USER_MRS; ++i) {
         bthread_id_join(cntl[i].call_id());
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
         rdma::DeregisterMemoryForRdma(mr[i]);
-        ASSERT_EQ(4096, cntl[i].response_attachment().size());
+        ASSERT_EQ(4096 - i, cntl[i].response_attachment().size());
         char tmp[4096];
-        cntl[i].response_attachment().copy_to(tmp, 4096);
-        ASSERT_EQ(0, memcmp(mr[i], tmp, 4096));
+        cntl[i].response_attachment().copy_to(tmp, 4096 - i);
+        ASSERT_EQ(0, memcmp(mr[i] + i, tmp, 4096 - i));
+        free(mr[i]);
     }
 
     StopServer();

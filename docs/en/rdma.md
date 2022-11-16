@@ -43,6 +43,8 @@ The third key feature in RdmaEndpoint data transmission is event suppression. Th
 
 All the memory used for data transmission in RDMA must be registered, which is very inefficient. Generally, a memory pool is employed to avoid frequent memory registration. In fact, brpc uses IOBuf for data transmission. In order to realize total zerocopy and compatibility with IOBuf, the memory used by IOBuf is taken over by the RDMA memory pool (see src/brpc/rdma/block_pool.cpp). Since IOBuf buffer cannot be controlled by user directly, the total memory consumption in IOBuf should be carefully managed. It is suggested that the application registers enough memory at one time according to its requirement.
 
+The application can manage memory by itself and send data with IOBuf::append_user_data. In this case, the application should register memory by itself with rdma::RegisterMemoryForRdma (see src/brpc/rdma/rdma_helper.h). However, since brpc must find correct memory key for these user-defined memory regions, it uses a simple array to maintain these regions. Too many user-defined regions lead inefficient memory key lookup. Therefore, the application should maintain a memory pool by itself and register the pool one time.
+
 RDMA is hardware-related. It has some different concepts such as device, port, GID, LID, MaxSge and so on. These parameters can be read from NICs at initialization, and brpc will make the default choice (see src/brpc/rdma/rdma_helper.cpp). Sometimes the default choice is not the expectation, then it can be changed in the flag way.
 
 # Parameters

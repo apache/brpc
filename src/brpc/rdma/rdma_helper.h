@@ -32,10 +32,14 @@ namespace rdma {
 void GlobalRdmaInitializeOrDie();
 
 // Register the given memory
+// Currently brpc supports only 16 user-defined memory region
+// It is suggested to maintain the buffer with a memory pool
 // Return 0 if success, -1 if failed and errno set
 int RegisterMemoryForRdma(void* buf, size_t len);
 
 // Deregister the given memory
+// All the registered memory will be deregistered automatically
+// when the application exits
 void DeregisterMemoryForRdma(void* buf);
 
 // Get global RDMA context

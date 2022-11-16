@@ -99,15 +99,16 @@ static ibv_device** g_devices = NULL;
 static ibv_context* g_context = NULL;
 static SocketId g_async_socket;
 static ibv_pd* g_pd = NULL;
-static std::vector<ibv_mr*>* g_mrs = NULL;
+static std::vector<ibv_mr*>* g_mrs = NULL; // mr registered by brpc
+
+static const size_t MAX_USER_MRS = 16;
+static ibv_mr* g_user_mrs[MAX_USER_MRS];  // mr registered by user
+static size_t g_user_mrs_cnt = 0;
+static butil::Mutex* g_user_mrs_lock = NULL;
 
 // Store the original IOBuf memalloc and memdealloc functions
 static void* (*g_mem_alloc)(size_t) = NULL;
 static void (*g_mem_dealloc)(void*) = NULL;
-
-butil::Mutex* g_addr_map_lock;
-typedef butil::FlatMap<const void*, ibv_mr*> AddrMap;
-static AddrMap* g_addr_map = NULL;  // for mr not in memory pool
 
 static void GlobalRelease() {
     g_rdma_available.store(false, butil::memory_order_release);
@@ -116,20 +117,23 @@ static void GlobalRelease() {
     // We do not set `g_async_socket' to failed explicitly to avoid
     // close async_fd twice.
 
-    if (g_addr_map_lock) {
-        BAIDU_SCOPED_LOCK(*g_addr_map_lock);
-        if (g_addr_map) {
-            for (AddrMap::iterator it = g_addr_map->begin();
-                    it != g_addr_map->end(); ++it) {
-                IbvDeregMr(it->second);
+    RdmaEndpoint::GlobalRelease();
+
+    if (g_user_mrs_lock) {
+        BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
+        for (size_t i = 0; i < MAX_USER_MRS; ++i) {
+            if (g_user_mrs_cnt == 0) {
+                break;
             }
-            delete g_addr_map;
-            g_addr_map = NULL;  // must set it to NULL
+            if (g_user_mrs[i]) {
+                IbvDeregMr(g_user_mrs[i]);
+                g_user_mrs[i] = NULL;
+                --g_user_mrs_cnt;
+            }
         }
     }
-    delete g_addr_map_lock;
-
-    RdmaEndpoint::GlobalRelease();
+    delete g_user_mrs_lock;
+    g_user_mrs_lock = NULL;
 
     if (g_mrs) {
         for (size_t i = 0; i < g_mrs->size(); ++i) {
@@ -463,6 +467,12 @@ static void GlobalRdmaInitializeOrDieImpl() {
         ExitWithError();
     }
 
+    g_user_mrs_lock = new (std::nothrow) butil::Mutex;
+    if (!g_user_mrs_lock) {
+        PLOG(WARNING) << "Fail to construct g_user_mrs_lock";
+        ExitWithError();
+    }
+
     g_mrs = new (std::nothrow) std::vector<ibv_mr*>;
     if (!g_mrs) {
         PLOG(ERROR) << "Fail to allocate a RDMA MR list";
@@ -491,23 +501,6 @@ static void GlobalRdmaInitializeOrDieImpl() {
     if (RdmaEndpoint::GlobalInitialize() < 0) {
         LOG(ERROR) << "rdma_recv_block_type incorrect "
                    << "(valid value: default/large/huge)";
-        ExitWithError();
-    }
-
-    g_addr_map_lock = new (std::nothrow) butil::Mutex;
-    if (!g_addr_map_lock) {
-        PLOG(WARNING) << "Fail to construct g_addr_map_lock";
-        ExitWithError();
-    }
-
-    g_addr_map = new (std::nothrow) AddrMap;
-    if (!g_addr_map) {
-        PLOG(WARNING) << "Fail to construct g_addr_map";
-        ExitWithError();
-    }
-
-    if (g_addr_map->init(65536) < 0) {
-        PLOG(WARNING) << "Fail to initialize g_addr_map";
         ExitWithError();
     }
 
@@ -544,25 +537,41 @@ void GlobalRdmaInitializeOrDie() {
 }
 
 int RegisterMemoryForRdma(void* buf, size_t len) {
+    BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
+    if (g_user_mrs_cnt == MAX_USER_MRS) {
+        LOG(WARNING) << "brpc supports only " << MAX_USER_MRS << " user-defined MRs. "
+                     << "Too many MRs will affect the efficiency of lkey lookup. "
+                     << "It is suggested to maintain the user-defined buffer with "
+                     << "a memory pool.";
+        return -1;
+    }
     ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
     if (!mr) {
         return -1;
     }
-    BAIDU_SCOPED_LOCK(*g_addr_map_lock);
-    if (!g_addr_map->insert(buf, mr)) {
-        IbvDeregMr(mr);
-        return -1;
+    for (size_t i = 0; i < MAX_USER_MRS; ++i) {
+        if (!g_user_mrs[i]) {
+            g_user_mrs[i] = mr;
+            ++g_user_mrs_cnt;
+            break;
+        }
     }
     return 0;
 }
 
 void DeregisterMemoryForRdma(void* buf) {
-    BAIDU_SCOPED_LOCK(*g_addr_map_lock);
-    ibv_mr** mr = g_addr_map->seek(buf);
-    if (mr && *mr) {
-        IbvDeregMr(*mr);
-        g_addr_map->erase(buf);
+    BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
+    for (size_t i = 0; i < MAX_USER_MRS; ++i) {
+        if (g_user_mrs[i]) {
+            if (g_user_mrs[i]->addr == buf) {
+                IbvDeregMr(g_user_mrs[i]);
+                g_user_mrs[i] = NULL;
+                --g_user_mrs_cnt;
+                return;
+            }
+        }
     }
+    LOG(WARNING) << "Try to deregister a buffer which is not registered";
 }
 
 int GetRdmaMaxSge() {
@@ -575,7 +584,7 @@ int GetRdmaCompVector() {
     }
     // g_comp_vector_index is not an atomic variable. If more than
     // one CQ is created at the same time, some CQs will share the
-    // same index. However, this vector is only used to assign a
+    // same index. However, this vector is only used to assign an
     // event queue for the CQ. Sharing the same event queue is not
     // a problem.
     return (g_comp_vector_index++) % g_context->num_comp_vectors;
@@ -591,11 +600,16 @@ ibv_pd* GetRdmaPd() {
 
 uint32_t GetLKey(const void* buf) {
     uint32_t lkey = GetRegionId(buf);
-    if (lkey == 0) {
-        BAIDU_SCOPED_LOCK(*g_addr_map_lock);
-        ibv_mr** mr = g_addr_map->seek(buf);
-        if (mr && *mr) {
-            lkey = (*mr)->lkey;
+    if (lkey == 0 && g_user_mrs_cnt > 0) {
+        for (size_t i = 0; i < MAX_USER_MRS; ++i) {
+            if (!g_user_mrs[i]) {
+                continue;
+            }
+            if ((uintptr_t)g_user_mrs[i]->addr <= (uintptr_t)buf &&
+                (uintptr_t)g_user_mrs[i]->addr + g_user_mrs[i]->length > (uintptr_t)buf) {
+                lkey = g_user_mrs[i]->lkey;
+                break;
+            }
         }
     }
     return lkey;
