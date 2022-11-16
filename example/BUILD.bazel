@@ -95,8 +95,26 @@ cc_binary(
     ],
 )
 
+
+bool_flag(
+    name = "rdma",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "have_rdma",
+    flag_values = {
+        "rdma": "false",
+    },
+)
+
 cc_binary(
     name = "rdma_performance_server",
+    target_compatible_with = select({
+        ":have_rdma": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     srcs = [
         "rdma_performance/server.cpp",
     ],
@@ -112,6 +130,10 @@ cc_binary(
 
 cc_binary(
     name = "rdma_performance_client",
+    target_compatible_with = select({
+        ":have_rdma": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     srcs = [
         "rdma_performance/client.cpp",
     ],
