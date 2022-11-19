@@ -38,8 +38,8 @@ namespace example {
 // Service with static path.
 class HttpServiceImpl : public HttpService {
 public:
-    HttpServiceImpl() {};
-    virtual ~HttpServiceImpl() {};
+    HttpServiceImpl() {}
+    virtual ~HttpServiceImpl() {}
     void Echo(google::protobuf::RpcController* cntl_base,
               const HttpRequest*,
               HttpResponse*,
@@ -66,8 +66,8 @@ public:
 // Service with dynamic path.
 class FileServiceImpl : public FileService {
 public:
-    FileServiceImpl() {};
-    virtual ~FileServiceImpl() {};
+    FileServiceImpl() {}
+    virtual ~FileServiceImpl() {}
 
     struct Args {
         butil::intrusive_ptr<brpc::ProgressiveAttachment> pa;
@@ -116,8 +116,8 @@ public:
 // when adding the service into server).
 class QueueServiceImpl : public example::QueueService {
 public:
-    QueueServiceImpl() {};
-    virtual ~QueueServiceImpl() {};
+    QueueServiceImpl() {}
+    virtual ~QueueServiceImpl() {}
     void start(google::protobuf::RpcController* cntl_base,
                const HttpRequest*,
                HttpResponse*,

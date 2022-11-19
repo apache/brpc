@@ -54,7 +54,7 @@ public:
 // Your implementation of example::EchoService
 class StreamingEchoService : public example::EchoService {
 public:
-    StreamingEchoService() : _sd(brpc::INVALID_STREAM_ID) {};
+    StreamingEchoService() : _sd(brpc::INVALID_STREAM_ID) {}
     virtual ~StreamingEchoService() {
         brpc::StreamClose(_sd);
     };

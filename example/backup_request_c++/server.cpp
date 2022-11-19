@@ -37,8 +37,8 @@ namespace example {
 class SleepyEchoService : public EchoService
                         , public brpc::Describable {
 public:
-    SleepyEchoService() : _count(0) {};
-    virtual ~SleepyEchoService() {};
+    SleepyEchoService() : _count(0) {}
+    virtual ~SleepyEchoService() {}
     virtual void Echo(google::protobuf::RpcController* cntl_base,
                       const EchoRequest* request,
                       EchoResponse* response,

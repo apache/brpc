@@ -38,8 +38,8 @@ brpc::Channel channel;
 namespace example {
 class CascadeEchoService : public EchoService {
 public:
-    CascadeEchoService() {};
-    virtual ~CascadeEchoService() {};
+    CascadeEchoService() {}
+    virtual ~CascadeEchoService() {}
     virtual void Echo(google::protobuf::RpcController* cntl_base,
                       const EchoRequest* request,
                       EchoResponse* response,

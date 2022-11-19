@@ -32,8 +32,8 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
 namespace example {
 class EchoServiceImpl : public EchoService {
 public:
-    EchoServiceImpl() {};
-    virtual ~EchoServiceImpl() {};
+    EchoServiceImpl() {}
+    virtual ~EchoServiceImpl() {}
     virtual void Echo(google::protobuf::RpcController*,
                       const EchoRequest* request,
                       EchoResponse* response,
