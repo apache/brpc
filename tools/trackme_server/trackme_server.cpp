@@ -60,7 +60,7 @@ class TrackMeServiceImpl : public brpc::TrackMeService {
 public:
     explicit TrackMeServiceImpl(BugsLoader* bugs) : _bugs(bugs) {
     }
-    ~TrackMeServiceImpl() {};
+    ~TrackMeServiceImpl() {}
     void TrackMe(google::protobuf::RpcController* cntl_base,
                  const brpc::TrackMeRequest* request,
                  brpc::TrackMeResponse* response,

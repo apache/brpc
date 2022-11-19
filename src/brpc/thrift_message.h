@@ -49,7 +49,7 @@ static const int16_t THRIFT_RESPONSE_FID = 0;
 //   from ThriftMessageBase which can be stored and handled uniformly.
 class ThriftMessageBase {
 public:
-    virtual ~ThriftMessageBase() {};
+    virtual ~ThriftMessageBase() {}
     virtual uint32_t Read(::apache::thrift::protocol::TProtocol* iprot) = 0;
     virtual uint32_t Write(::apache::thrift::protocol::TProtocol* oprot) const = 0;
 };
