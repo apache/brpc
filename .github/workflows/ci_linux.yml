@@ -52,7 +52,7 @@ jobs:
     - name: install dependences
       run: |
            sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
-           sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && ls -l && sudo mv libgtest* /usr/lib/
+           sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && find . -name "libgtest*"  && sudo mv libgtest* /usr/lib/
 
     - name: config_brpc
       run: |
