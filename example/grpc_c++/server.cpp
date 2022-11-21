@@ -32,8 +32,8 @@ DEFINE_bool(gzip, false, "compress body using gzip");
 
 class GreeterImpl : public helloworld::Greeter {
 public:
-    GreeterImpl() {};
-    virtual ~GreeterImpl() {};
+    GreeterImpl() {}
+    virtual ~GreeterImpl() {}
     void SayHello(google::protobuf::RpcController* cntl_base,
                  const helloworld::HelloRequest* req,
                  helloworld::HelloReply* res,

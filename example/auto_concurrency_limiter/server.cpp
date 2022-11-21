@@ -93,7 +93,7 @@ public:
         , _running_case(false) {
     };
 
-    virtual ~EchoServiceImpl() {};
+    virtual ~EchoServiceImpl() {}
 
     void SetTestCase(const test::TestCase& test_case) {
         _test_case = test_case;

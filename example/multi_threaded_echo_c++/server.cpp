@@ -36,7 +36,7 @@ namespace example {
 class EchoServiceImpl : public EchoService {
 public:
     EchoServiceImpl() {}
-    ~EchoServiceImpl() {};
+    ~EchoServiceImpl() {}
     void Echo(google::protobuf::RpcController* cntl_base,
               const EchoRequest* request,
               EchoResponse* response,

@@ -37,8 +37,8 @@ DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
 namespace example {
 class EchoServiceImpl : public EchoService {
 public:
-    EchoServiceImpl() {};
-    virtual ~EchoServiceImpl() {};
+    EchoServiceImpl() {}
+    virtual ~EchoServiceImpl() {}
     virtual void Echo(google::protobuf::RpcController* cntl_base,
                       const EchoRequest* request,
                       EchoResponse* response,

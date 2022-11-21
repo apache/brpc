@@ -67,7 +67,7 @@ static void handle_response(brpc::Controller* client_cntl,
 class ViewServiceImpl : public ViewService {
 public:
     ViewServiceImpl() {}
-    virtual ~ViewServiceImpl() {};
+    virtual ~ViewServiceImpl() {}
     virtual void default_method(google::protobuf::RpcController* cntl_base,
                                 const HttpRequest*,
                                 HttpResponse*,
