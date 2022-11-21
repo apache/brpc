@@ -18,7 +18,7 @@ jobs:
     
     - name: install dependences
       run: |
-           apt install openssl gflags protobuf leveldb
+           sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
     - name: config_brpc
       run: |
            GETOPT_PATH=$(find "/usr/local/Cellar/" -name "getopt" -type f -perm +111 -exec dirname {} \;)
