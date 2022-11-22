@@ -21,10 +21,14 @@ jobs:
            sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
     - name: config_brpc
       run: |
-           ./config_brpc.sh --header="/usr/local/include /usr/include" --libs="/usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64"
+           ./config_brpc.sh --header="/usr/include" --libs="/usr/lib /usr/lib64"
     - name: compile
       run: |
            make -j ${{env.proc_num}}
+    - name: make all examples
+      run: |
+           sh tools/make_all_examples
+   
   compile-with-cmake:
     runs-on: ubuntu-latest
 
@@ -43,3 +47,13 @@ jobs:
       run: |
            cd build
            make -j ${{env.proc_num}}
+           
+  compile-with-bazel:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: compile
+      run: |
+           bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
