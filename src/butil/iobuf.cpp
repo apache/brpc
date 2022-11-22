@@ -1211,6 +1211,9 @@ int IOBuf::append_user_data(void* data, size_t size, void (*deleter)(void*)) {
         LOG(FATAL) << "data_size=" << size << " is too large";
         return -1;
     }
+    if (!size) {
+        return 0;
+    }
     char* mem = (char*)malloc(sizeof(IOBuf::Block) + sizeof(UserDataExtension));
     if (mem == NULL) {
         return -1;
