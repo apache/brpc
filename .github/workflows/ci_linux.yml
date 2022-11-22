@@ -25,9 +25,6 @@ jobs:
     - name: compile
       run: |
            make -j ${{env.proc_num}}
-    - name: make all examples
-      run: |
-           sh tools/make_all_examples
    
   compile-with-cmake:
     runs-on: ubuntu-latest
