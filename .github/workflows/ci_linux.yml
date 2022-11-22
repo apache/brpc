@@ -21,7 +21,7 @@ jobs:
            sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
     - name: config_brpc
       run: |
-           ./config_brpc.sh --header="/usr/include" --libs="/usr/lib /usr/lib64"
+           ./config_brpc.sh --header="/usr/local/include /usr/include" --libs="/usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64"
     - name: compile
       run: |
            make -j ${{env.proc_num}}
