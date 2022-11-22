@@ -18,7 +18,7 @@ jobs:
     
     - name: install dependences
       run: |
-           sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+           sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
     - name: config_brpc
       run: |
            ./config_brpc.sh --header="/usr/include" --libs="/usr/lib /usr/lib64"
