@@ -1212,6 +1212,9 @@ int IOBuf::append_user_data(void* data, size_t size, void (*deleter)(void*)) {
         return -1;
     }
     if (!size) {
+        if (deleter) {
+            deleter(data);
+        }
         return 0;
     }
     char* mem = (char*)malloc(sizeof(IOBuf::Block) + sizeof(UserDataExtension));
