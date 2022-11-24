@@ -16,7 +16,7 @@ brpc有如下依赖：
 * [Fedora/CentOS](#fedoracentos)
 * [自己构建依赖的Linux](#自己构建依赖的Linux)
 * [MacOS](#macos)
-* [docker][#docker]
+* [docker](#docker)
 
 ## Ubuntu/LinuxMint/WSL
 ### 依赖准备
