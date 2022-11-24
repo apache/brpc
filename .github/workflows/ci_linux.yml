@@ -25,7 +25,24 @@ jobs:
     - name: compile
       run: |
            make -j ${{env.proc_num}}
-   
+
+  clang-compile-with-make:
+    runs-on: ubuntu-latest # https://github.com/actions/runner-images
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: install dependences
+      run: |
+           sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
+    - name: config_brpc
+      run: |
+           ./config_brpc.sh --header="/usr/local/include /usr/include" --libs="/usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64" --nodebugsymbols --cxx=clang++ --cc=clang
+    - name: compile
+      run: |
+           make -j ${{env.proc_num}}
+
+
   gcc-compile-with-cmake:
     runs-on: ubuntu-latest
 
@@ -45,6 +62,27 @@ jobs:
            cd build
            make -j ${{env.proc_num}}
            
+  clang-compile-with-cmake:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: install dependences
+      run: |
+           sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+    - name: cmake 
+      run: |
+           export CC=clang
+           export CXX=clang++
+           mkdir build
+           cd build
+           cmake ..
+    - name: compile
+      run: |
+           cd build
+           make -j ${{env.proc_num}}
+
   gcc-compile-with-bazel:
     runs-on: ubuntu-latest
 
@@ -58,3 +96,5 @@ jobs:
     - name: compile
       run: |
            bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+
+   
