@@ -38,7 +38,7 @@ sudo apt-get install -y libgoogle-perftools-dev
 
 如果你要运行测试，那么要安装并编译libgtest-dev（它没有被默认编译）：
 ```shell
-sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/ && cd -
 ```
 gtest源码目录可能变动，如果`/usr/src/gtest`不存在，请尝试`/usr/src/googletest/googletest`。
 
