@@ -112,3 +112,26 @@ jobs:
            export CC=clang
            export CXX=clang++
            bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+
+  gcc-compile-with-cmake-all-options:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: install dependences
+      run: |
+           sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
+           sudo apt-get install -y automake bison flex libboost-all-dev libevent-dev libtool pkg-config
+           wget https://archive.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz 
+           tar -xf thrift-0.11.0.tar.gz
+           cd thrift-0.11.0/
+           ./configure --prefix=/usr --with-rs=no --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no CXXFLAGS="-Wno-unused-variable"
+           make -j ${{env.proc_num}}
+           sudo make install
+    - name: config brpc
+      run: |
+           ./config_brpc.sh --header="/usr/local/include /usr/include" --libs="/usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64" --with-thrift --with-glog
+    - name: compile
+      run: |
+           make -j ${{env.proc_num}}
