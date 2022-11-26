@@ -16,6 +16,8 @@ jobs:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-dependences
     - uses: ./.github/actions/init-make-config
+      with:
+        options: --cc=gcc --cxx=g++
     - name: compile
       run: |
            make -j ${{env.proc_num}}
@@ -27,6 +29,7 @@ jobs:
     - uses: ./.github/actions/install-dependences
     - name: cmake 
       run: |
+           export CC=gcc && export CXX=g++
            mkdir build
            cd build
            cmake ..
@@ -45,6 +48,7 @@ jobs:
            sudo apt-get install libibverbs-dev
     - name: compile
       run: |
+           export CC=gcc && export CXX=g++
            bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
 
   gcc-compile-with-make-all-options:
@@ -54,7 +58,7 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - uses: ./.github/actions/init-make-config
       with:
-        options: --with-thrift --with-glog
+        options: --cc=gcc --cxx=g++ --with-thrift --with-glog
     - name: compile
       run: |
            make -j ${{env.proc_num}}
@@ -66,6 +70,7 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - name: cmake 
       run: |
+           export CC=gcc && export CXX=g++
            mkdir build
            cd build
            cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON ..
@@ -84,6 +89,7 @@ jobs:
            sudo apt-get install libibverbs-dev
     - name: compile
       run: |
+           export CC=gcc && export CXX=g++
            bazel build -j 12 -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
 
 
@@ -106,8 +112,7 @@ jobs:
     - uses: ./.github/actions/install-dependences
     - name: cmake 
       run: |
-           export CC=clang
-           export CXX=clang++
+           export CC=clang && export CXX=clang++
            mkdir build
            cd build
            cmake ..
@@ -126,8 +131,7 @@ jobs:
            sudo apt-get install libibverbs-dev
     - name: compile
       run: |
-           export CC=clang
-           export CXX=clang++
+           export CC=clang && export CXX=clang++
            bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
 
   clang-compile-with-make-all-options:
@@ -149,8 +153,7 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - name: cmake 
       run: |
-           export CC=clang
-           export CXX=clang++
+           export CC=clang && export CXX=clang++
            mkdir build
            cd build
            cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON ..
@@ -169,6 +172,5 @@ jobs:
            sudo apt-get install libibverbs-dev
     - name: compile
       run: |
-           export CC=clang
-           export CXX=clang++
+           export CC=clang && export CXX=clang++
            bazel build -j ${{env.proc_num}} -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
