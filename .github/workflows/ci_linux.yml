@@ -58,6 +58,26 @@ jobs:
     - name: compile
       run: |
            bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+  gcc-unittest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: install dependences
+      run: |
+           sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
+           sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/
+    - name: config brpc
+      run: |
+           ./config_brpc.sh --header="/usr/local/include /usr/include" --libs="/usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64" --cc=gcc --cxx=g++
+    - name: compile
+      run: |
+           cd test
+           make -j ${{env.proc_num}}
+    - name: run tests
+      run: |
+           cd test
+           sh ./run_tests.sh
 
    
   clang-compile-with-make:
@@ -112,3 +132,24 @@ jobs:
            export CC=clang
            export CXX=clang++
            bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+
+  clang-unittest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: install dependences
+      run: |
+           sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
+           sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/
+    - name: config brpc
+      run: |
+           ./config_brpc.sh --header="/usr/local/include /usr/include" --libs="/usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64" --cc=clang --cxx=clang++
+    - name: compile
+      run: |
+           cd test
+           make -j ${{env.proc_num}}
+    - name: run tests
+      run: |
+           cd test
+           sh ./run_tests.sh
