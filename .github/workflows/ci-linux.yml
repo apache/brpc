@@ -178,3 +178,23 @@ jobs:
       run: |
            export CC=clang && export CXX=clang++
            bazel build -j ${{env.proc_num}} -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
+
+  clang-unittest:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-dependences
+    - name: install gtest
+      run: |
+           sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/
+    - uses: ./.github/actions/init-make-config
+      with:
+        options: --cc=clang --cxx=clang++
+    - name: compile tests
+      run: |
+           cd test
+           make -j ${{env.proc_num}}
+    - name: run tests
+      run: |
+           cd test
+           sh ./run_tests.sh
