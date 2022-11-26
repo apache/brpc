@@ -1836,7 +1836,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
         const unsigned long e = ERR_get_error();
         if (e != 0) {
             LOG(WARNING) << "Fail to write into ssl_fd=" << fd() <<  ": "
-                         << SSLError(ERR_get_error());
+                         << SSLError(e);
             errno = ESSL;
          } else {
             // System error with corresponding errno set
@@ -1879,6 +1879,7 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
     // we use bthread_fd_wait as polling mechanism instead of EventDispatcher
     // as it may confuse the origin event processing code.
     while (true) {
+        ERR_clear_error();
         int rc = SSL_do_handshake(_ssl_session);
         if (rc == 1) {
             _ssl_state = SSL_CONNECTED;
