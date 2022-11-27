@@ -1,0 +1,10 @@
+runs:
+  using: "composite"
+  steps:
+    - uses: ./.github/actions/install-essential-dependences
+    - run: sudo apt-get install -y libgoogle-glog-dev automake bison flex libboost-all-dev libevent-dev libtool pkg-config
+      shell: bash
+    - run: wget https://archive.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz && tar -xf thrift-0.11.0.tar.gz
+      shell: bash
+    - run: cd thrift-0.11.0/ && ./configure --prefix=/usr --with-rs=no --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no --with-haskell=no --with-dotnetcore=no CXXFLAGS="-Wno-unused-variable" && make -j $(nproc) && sudo make install
+      shell: bash
