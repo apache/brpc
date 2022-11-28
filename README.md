@@ -1,6 +1,7 @@
 [中文版](README_cn.md)
 
-[![Build Status](https://api.travis-ci.com/apache/incubator-brpc.svg?branch=master)](https://travis-ci.com/github/apache/incubator-brpc)
+[![Linux Build Status](https://github.com/apache/incubator-brpc/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/apache/incubator-brpc/actions/workflows/ci-linux.yml)
+[![MacOs Build Status](https://github.com/apache/incubator-brpc/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/apache/incubator-brpc/actions/workflows/ci-macos.yml)
 
 # ![brpc](docs/images/logo.png)
 
