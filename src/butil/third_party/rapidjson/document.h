@@ -1942,6 +1942,8 @@ private:
     template <typename,typename,typename> friend class GenericReader; // for parsing
     template <typename, typename> friend class GenericValue; // for deep copying
 
+// NOTE(jrj): Make the following methods public to enable outside parser/writer 
+public:
     // Implementation of Handler
     bool Null() { new (stack_.template Push<ValueType>()) ValueType(); return true; }
     bool Bool(bool b) { new (stack_.template Push<ValueType>()) ValueType(b); return true; }
@@ -1976,6 +1978,17 @@ private:
         stack_.template Top<ValueType>()->SetArrayRaw(elements, elementCount, GetAllocator());
         return true;
     }
+
+    // NOTE(jrj): Extract the last element from the stack and move into `this' GenericDocument
+    void FinalizeHandler() {
+        if (StackSize() > 0) {
+            ValueType* rhs = stack_.template Pop<ValueType>(1);
+            this->RawAssign(*rhs);  // Transfer ownership
+        }
+        RAPIDJSON_ASSERT(stack_.Empty());
+    }
+
+    size_t StackSize() const { return stack_.GetSize(); }
 
 private:
     //! Prohibit copying
