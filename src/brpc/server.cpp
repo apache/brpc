@@ -2108,7 +2108,7 @@ bool Server::ClearCertMapping(CertMaps& bg) {
 
 int Server::ResetMaxConcurrency(int max_concurrency) {
     if (!IsRunning()) {
-        LOG(WARNING) << "ResetMaxConcurrency is only allowd for a Running Server";
+        LOG(WARNING) << "ResetMaxConcurrency is only allowed for a Running Server";
         return -1;
     }
     // Assume that modifying int32 is atomical in X86

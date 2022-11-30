@@ -57,7 +57,7 @@ struct SocketSSLContext;
 
 struct ServerOptions {
     ServerOptions();  // Constructed with default options.
-        
+
     // connections without data transmission for so many seconds will be closed
     // Default: -1 (disabled)
     int idle_timeout_sec;
@@ -66,7 +66,7 @@ struct ServerOptions {
     // of the server will be created when the server is started.
     // Default: ""
     std::string pid_file;
-    
+
     // Process requests in format of nshead_t + blob.
     // Owned by Server and deleted in server's destructor.
     // Default: NULL
@@ -93,7 +93,7 @@ struct ServerOptions {
 
     // Number of pthreads that server runs on. Notice that this is just a hint,
     // you can't assume that the server uses exactly so many pthreads because
-    // pthread workers are shared by all servers and channels inside a 
+    // pthread workers are shared by all servers and channels inside a
     // process. And there're no "io-thread" and "worker-thread" anymore,
     // brpc automatically schedules "io" and "worker" code for better
     // parallelism and less context switches.
@@ -128,7 +128,7 @@ struct ServerOptions {
     // * session-local data has to be got from a server-side Controller.
     //   thread-local data can be got in any function running inside a server
     //   thread without an object.
-    // * session-local data is attached to current RPC and invalid after 
+    // * session-local data is attached to current RPC and invalid after
     //   calling `done'. thread-local data is attached to current server
     //   thread and invalid after leaving Service::CallMethod(). If you need
     //   to hand down data to an asynchronous `done' which is called outside
@@ -136,13 +136,13 @@ struct ServerOptions {
     // -----------------
     // General guideline
     // -----------------
-    // * Choose a proper value for reserved_xxx_local_data, small value may 
-    //   not create enough data for all searching threads, while big value 
+    // * Choose a proper value for reserved_xxx_local_data, small value may
+    //   not create enough data for all searching threads, while big value
     //   wastes memory.
     // * Comparing to reserving data, making them as small as possible and
     //   creating them on demand is better. Passing a lot of stuff via
     //   session-local data or thread-local data is definitely not a good design.
-    
+
     // The factory to create/destroy data attached to each RPC session.
     // If this option is NULL, Controller::session_local_data() is always NULL.
     // NOT owned by Server and must be valid when Server is running.
@@ -150,7 +150,7 @@ struct ServerOptions {
     const DataFactory* session_local_data_factory;
 
     // Prepare so many session-local data before server starts, so that calls
-    // to Controller::session_local_data() get data directly rather than 
+    // to Controller::session_local_data() get data directly rather than
     // calling session_local_data_factory->Create() at first time. Useful when
     // Create() is slow, otherwise the RPC session may be blocked by the
     // creation of data and not served within timeout.
@@ -175,7 +175,7 @@ struct ServerOptions {
     // Call bthread_init_fn(bthread_init_args) in at least #bthread_init_count
     // bthreads before server runs, mainly for initializing bthread locals.
     // You have to set both `bthread_init_fn' and `bthread_init_count' to
-    // enable the feature. 
+    // enable the feature.
     bool (*bthread_init_fn)(void* args); // default: NULL (do nothing)
     void* bthread_init_args;             // default: NULL
     size_t bthread_init_count;           // default: 0
@@ -277,7 +277,7 @@ struct ServiceOptions {
     // stopping the server.
     // Default: SERVER_DOESNT_OWN_SERVICE
     ServiceOwnership ownership;
-    
+
     // If this option is non-empty, methods in the service will be exposed
     // on specified paths instead of default "/SERVICE/METHOD".
     // Mappings are in form of: "PATH1 => NAME1, PATH2 => NAME2 ..." where
@@ -301,7 +301,7 @@ struct ServiceOptions {
     // Default: true
     bool allow_http_body_to_pb;
 
-    // decode json string to protobuf bytes using base64 decoding when this 
+    // decode json string to protobuf bytes using base64 decoding when this
     // option is turned on.
     // Default: false if BAIDU_INTERNAL is defined, otherwise true
     bool pb_bytes_to_base64;
@@ -361,7 +361,7 @@ public:
             bool pb_single_repeated_to_array;
             OpaqueParams();
         };
-        OpaqueParams params;        
+        OpaqueParams params;
         // NULL if service of the method was never added as restful.
         // "@path1 @path2 ..." if the method was mapped from paths.
         std::string* http_url;
@@ -377,7 +377,7 @@ public:
     struct ThreadLocalOptions {
         bthread_key_t tls_key;
         const DataFactory* thread_local_data_factory;
-        
+
         ThreadLocalOptions()
             : tls_key(INVALID_BTHREAD_KEY)
             , thread_local_data_factory(NULL) {}
@@ -394,7 +394,7 @@ public:
     // * A server can be started more than once if the server is completely
     //   stopped by Stop() and Join().
     // * port can be 0, which makes kernel to choose a port dynamically.
-    
+
     // Start on an address in form of "0.0.0.0:8000".
     int Start(const char* ip_port_str, const ServerOptions* opt);
     int Start(const butil::EndPoint& ip_port, const ServerOptions* opt);
@@ -416,15 +416,15 @@ public:
     int Stop(int closewait_ms/*not used anymore*/);
 
     // Wait until requests in progress are done. If Stop() is not called,
-    // this function NEVER return. If Stop() is called, during the waiting, 
-    // this server responds new requests with `ELOGOFF' error immediately 
-    // without calling any service. When clients see the error, they should 
+    // this function NEVER return. If Stop() is called, during the waiting,
+    // this server responds new requests with `ELOGOFF' error immediately
+    // without calling any service. When clients see the error, they should
     // try other servers.
     int Join();
 
     // Sleep until Ctrl-C is pressed, then stop and join this server.
     // CAUTION: Don't call signal(SIGINT, ...) in your program!
-    // If signal(SIGINT, ..) is called AFTER calling this function, this 
+    // If signal(SIGINT, ..) is called AFTER calling this function, this
     // function may block indefinitely.
     void RunUntilAskedToQuit();
 
@@ -444,7 +444,7 @@ public:
     // NOTE: removing a service while server is running is forbidden.
     // Returns 0 on success, -1 otherwise.
     int RemoveService(google::protobuf::Service* service);
-    
+
     // Remove all services from this server.
     // NOTE: clearing services when server is running is forbidden.
     void ClearServices();
@@ -483,7 +483,7 @@ public:
 
     // Get statistics of this server
     void GetStat(ServerStatistics* stat) const;
-    
+
     // Get the options passed to Start().
     const ServerOptions& options() const { return _options; }
 
@@ -496,8 +496,8 @@ public:
     // Return the first service added to this server. If a service was once
     // returned by first_service() and then removed, first_service() will
     // always be NULL.
-    // This is useful for some production lines whose protocol does not 
-    // contain a service name, in which case this service works as the 
+    // This is useful for some production lines whose protocol does not
+    // contain a service name, in which case this service works as the
     // default service.
     google::protobuf::Service* first_service() const
     { return _first_service; }
@@ -508,7 +508,7 @@ public:
 
     // Return the address this server is listening
     butil::EndPoint listen_address() const { return _listen_addr; }
-    
+
     // Last time that Start() was successfully called. 0 if Start() was
     // never called
     time_t last_start_time() const { return _last_start_time; }
@@ -536,7 +536,7 @@ public:
     // maximum concurrency will not take effect.
     AdaptiveMaxConcurrency& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_method_name) const;
-    
+
     AdaptiveMaxConcurrency& MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                           const butil::StringPiece& method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_service_name,
@@ -603,13 +603,13 @@ friend class Controller;
     const MethodProperty*
     FindMethodPropertyByNameAndIndex(const butil::StringPiece& service_name,
                                      int method_index) const;
-    
+
     const ServiceProperty*
     FindServicePropertyByFullName(const butil::StringPiece& fullname) const;
 
     const ServiceProperty*
     FindServicePropertyByName(const butil::StringPiece& name) const;
-    
+
     std::string ServerPrefix() const;
 
     // Mapping from hostname to corresponding SSL_CTX
@@ -638,13 +638,13 @@ friend class Controller;
 
     AdaptiveMaxConcurrency& MaxConcurrencyOf(MethodProperty*);
     int MaxConcurrencyOf(const MethodProperty*) const;
-    
+
     DISALLOW_COPY_AND_ASSIGN(Server);
 
     // Put frequently-accessed data pool at first.
     SimpleDataPool* _session_local_data_pool;
     ThreadLocalOptions _tl_options;
-    
+
     Status _status;
     int _builtin_service_count;
     // number of the virtual services for mapping URL to methods.
@@ -652,13 +652,13 @@ friend class Controller;
     bool _failed_to_set_max_concurrency_of_method;
     Acceptor* _am;
     Acceptor* _internal_am;
-    
+
     // Use method->full_name() as key
     MethodMap _method_map;
 
     // Use service->full_name() as key
     ServiceMap _fullname_service_map;
-    
+
     // In order to be compatible with some RPC framework that
     // uses service->name() to designate an RPC service
     ServiceMap _service_map;
@@ -674,7 +674,7 @@ friend class Controller;
     //   abc*  => Method
     RestfulMap* _global_restful_map;
 
-    // Default certficate which can't be reloaded
+    // Default certificate which can't be reloaded
     std::shared_ptr<SocketSSLContext> _default_ssl_ctx;
 
     // Reloadable SSL mappings
@@ -682,14 +682,14 @@ friend class Controller;
 
     // Holds the memory of all SSL_CTXs
     SSLContextMap _ssl_ctx_map;
-    
+
     ServerOptions _options;
     butil::EndPoint _listen_addr;
 
     std::string _version;
     time_t _last_start_time;
     bthread_t _derivative_thread;
-    
+
     bthread_keytable_pool_t* _keytable_pool;
 
     // mutable is required for `ServerPrivateAccessor' to change this bvar
@@ -709,7 +709,7 @@ bool IsDummyServerRunning();
 
 // Start a dummy server listening at `port'. If a dummy server was already
 // running, this function does nothing and fails.
-// NOTE: The second parameter(ProfilerLinker) is for linking of profiling 
+// NOTE: The second parameter(ProfilerLinker) is for linking of profiling
 // functions when corresponding macros are defined, just ignore it.
 // Returns 0 on success, -1 otherwise.
 int StartDummyServerAt(int port, ProfilerLinker = ProfilerLinker());
