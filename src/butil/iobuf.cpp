@@ -1217,10 +1217,6 @@ int IOBuf::append_user_data_with_meta(void* data,
                                       size_t size,
                                       void (*deleter)(void*),
                                       uint64_t meta) {
-    if (size == 0) {
-        LOG(WARNING) << "data_size should not be 0";
-        return -1;
-    }
     if (size > 0xFFFFFFFFULL - 100) {
         LOG(FATAL) << "data_size=" << size << " is too large";
         return -1;
