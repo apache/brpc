@@ -32,7 +32,7 @@ namespace test {
 class PerfTestServiceImpl : public PerfTestService {
 public:
     PerfTestServiceImpl() {}
-    ~PerfTestServiceImpl() {};
+    ~PerfTestServiceImpl() {}
 
     void Test(google::protobuf::RpcController* cntl_base,
               const PerfTestRequest* request,

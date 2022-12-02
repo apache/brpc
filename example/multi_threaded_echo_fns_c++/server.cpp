@@ -46,7 +46,7 @@ DEFINE_double(max_ratio, 10, "max_sleep / sleep_us");
 class EchoServiceImpl : public example::EchoService {
 public:
     EchoServiceImpl() : _index(0) {}
-    virtual ~EchoServiceImpl() {};
+    virtual ~EchoServiceImpl() {}
     void set_index(size_t index, int64_t sleep_us) { 
         _index = index; 
         _sleep_us = sleep_us;

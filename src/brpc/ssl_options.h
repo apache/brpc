@@ -140,7 +140,7 @@ struct ServerSSLOptions {
     // Default: ""
     std::string ciphers;
 
-    // Name of the elliptic curve used to generate ECDH ephemerial keys
+    // Name of the elliptic curve used to generate ECDH ephemeral keys
     // Default: prime256v1
     std::string ecdhe_curve_name;
 

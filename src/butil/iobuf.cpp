@@ -19,6 +19,7 @@
 
 // Date: Thu Nov 22 13:57:56 CST 2012
 
+#include <openssl/err.h>
 #include <openssl/ssl.h>                   // SSL_*
 #ifdef USE_MESALINK
 #include <mesalink/openssl/ssl.h>
@@ -141,7 +142,7 @@ inline iov_function get_pwritev_func() {
 
 #else   // ARCH_CPU_X86_64
 
-#warning "We don't check if the kernel supports SYS_preadv or SYS_pwritev on non-X86_64, use impl on pread/pwrite directly."
+#warning "We don't check if the kernel supports SYS_preadv or SYS_pwritev on non-X86_64, use implementation on pread/pwrite directly."
 
 inline iov_function get_preadv_func() {
     return user_preadv;
@@ -982,6 +983,7 @@ ssize_t IOBuf::cut_into_SSL_channel(SSL* ssl, int* ssl_error) {
     }
     
     IOBuf::BlockRef const& r = _ref_at(0);
+    ERR_clear_error();
     const int nw = SSL_write(ssl, r.block->data + r.offset, r.length);
     if (nw > 0) {
         pop_front(nw);
@@ -1223,12 +1225,16 @@ int IOBuf::append_user_data_with_meta(void* data,
         LOG(FATAL) << "data_size=" << size << " is too large";
         return -1;
     }
+    if (!deleter) {
+        deleter = ::free;
+    }
+    if (!size) {
+        deleter(data);
+        return 0;
+    }
     char* mem = (char*)malloc(sizeof(IOBuf::Block) + sizeof(UserDataExtension));
     if (mem == NULL) {
         return -1;
-    }
-    if (deleter == NULL) {
-        deleter = ::free;
     }
     IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, deleter);
     b->u.data_meta = meta;
@@ -1703,6 +1709,7 @@ ssize_t IOPortal::append_from_SSL_channel(
         }
 
         const size_t read_len = std::min(_block->left_space(), max_count - nr);
+        ERR_clear_error();
         const int rc = SSL_read(ssl, _block->data + _block->size, read_len);
         *ssl_error = SSL_get_error(ssl, rc);
         if (rc > 0) {

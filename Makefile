@@ -294,6 +294,9 @@ output/bin:protoc-gen-mcpack
 	@echo "> Generating $@"
 	$(PROTOC) --cpp_out=./src --proto_path=./src --proto_path=$(PROTOBUF_HDR) $<
 
+src/mcpack2pb/generator.o:src/mcpack2pb/generator.cpp src/idl_options.pb.h
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+
 %.o:%.cpp
 	@echo "> Compiling $@"
 	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

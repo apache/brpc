@@ -64,7 +64,7 @@ class Stream;
 class SocketUser {
 public:
     virtual ~SocketUser() {}
-    virtual void BeforeRecycle(Socket*) {};
+    virtual void BeforeRecycle(Socket*) {}
 
     // Will be periodically called in a dedicated thread to check the
     // health.

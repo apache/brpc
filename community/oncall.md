@@ -54,3 +54,5 @@
 | 10/17/2022 - 10/23/2022  | 李磊 | https://lists.apache.org/thread/qn2270p9qsrglkh7oy013ts1zk5rlhwx
 | 10/24/2022 - 10/30/2022  | 王伟冰 | https://lists.apache.org/thread/k74155opmwmopgtsqo6p79z9q0f0sv8j
 | 10/31/2022 - 11/06/2022  | 蔡道进 | https://lists.apache.org/thread/t4z49yt7ymp4vr5sms0m4cpoo94db4oz
+| 11/14/2022 - 11/20/2022  | 刘帅 | https://lists.apache.org/thread/nq50fp79ox3follc7gxp814cvcqnmqzz
+| 11/21/2022 - 11/27/2022  | 朱佳顺 | https://lists.apache.org/thread/57kzov5g3j4vv6l2zcyw0msm36qglc8k

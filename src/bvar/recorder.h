@@ -31,7 +31,7 @@
 namespace bvar {
 
 struct Stat {
-    Stat() : sum(0), num(0) {};
+    Stat() : sum(0), num(0) {}
     Stat(int64_t sum2, int64_t num2) : sum(sum2), num(num2) {}
     int64_t sum;
     int64_t num;

@@ -304,12 +304,17 @@ int str2endpoint(const char* ip_str, int port, EndPoint* point) {
 
 int hostname2endpoint(const char* str, EndPoint* point) {
     // Should be enough to hold ip address
-    char buf[64];
+    // The definitive descriptions of the rules for forming domain names appear in RFC 1035, RFC 1123, RFC 2181,
+    // and RFC 5892. The full domain name may not exceed the length of 253 characters in its textual representation
+    // (Domain Names - Domain Concepts and Facilities. IETF. doi:10.17487/RFC1034. RFC 1034.).
+    // For cacheline optimize, use buf size as 256;
+    char buf[256];
     size_t i = 0;
-    for (; i < sizeof(buf) - 1 && str[i] != '\0' && str[i] != ':'; ++i) {
+    for (; i < MAX_DOMAIN_LENGTH && str[i] != '\0' && str[i] != ':'; ++i) {
         buf[i] = str[i];
     }
-    if (i == sizeof(buf) - 1) {
+
+    if (i >= MAX_DOMAIN_LENGTH || str[i] != ':') {
         return -1;
     }
 

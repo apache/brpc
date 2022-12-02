@@ -1,0 +1,196 @@
+name: Build and Test on Linux
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  proc_num: $(nproc)
+
+jobs:
+  gcc-compile-with-make:
+    runs-on: ubuntu-20.04 # https://github.com/actions/runner-images
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependences
+    - uses: ./.github/actions/init-make-config
+      with:
+        options: --cc=gcc --cxx=g++
+    - name: compile
+      run: |
+           make -j ${{env.proc_num}}
+
+  gcc-compile-with-cmake:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependences
+    - name: cmake 
+      run: |
+           export CC=gcc && export CXX=g++
+           mkdir build
+           cd build
+           cmake ..
+    - name: compile
+      run: |
+           cd build
+           make -j ${{env.proc_num}}
+
+  gcc-compile-with-bazel:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: install dependences
+      run: |
+           sudo apt-get update
+           sudo apt-get install libibverbs-dev
+    - name: compile
+      run: |
+           export CC=gcc && export CXX=g++
+           bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+
+  gcc-compile-with-make-all-options:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-all-dependences
+    - uses: ./.github/actions/init-make-config
+      with:
+        options: --cc=gcc --cxx=g++ --with-thrift --with-glog
+    - name: compile
+      run: |
+           make -j ${{env.proc_num}}
+
+  gcc-compile-with-cmake-all-options:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-all-dependences
+    - name: cmake 
+      run: |
+           export CC=gcc && export CXX=g++
+           mkdir build
+           cd build
+           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON ..
+    - name: compile
+      run: |
+           cd build
+           make -j ${{env.proc_num}}
+
+  gcc-compile-with-bazel-all-options:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: install dependences
+      run: |
+           sudo apt-get update
+           sudo apt-get install libibverbs-dev
+    - name: compile
+      run: |
+           export CC=gcc && export CXX=g++
+           bazel build -j 12 -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
+
+
+  clang-compile-with-make:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependences
+    - uses: ./.github/actions/init-make-config
+      with:
+        options: --cc=clang --cxx=clang++
+    - name: compile
+      run: |
+           make -j ${{env.proc_num}}
+
+  clang-compile-with-cmake:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependences
+    - name: cmake 
+      run: |
+           export CC=clang && export CXX=clang++
+           mkdir build
+           cd build
+           cmake ..
+    - name: compile
+      run: |
+           cd build
+           make -j ${{env.proc_num}}
+
+  clang-compile-with-bazel:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: install dependences
+      run: |
+           sudo apt-get update
+           sudo apt-get install libibverbs-dev
+    - name: compile
+      run: |
+           export CC=clang && export CXX=clang++
+           bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+
+  clang-compile-with-make-all-options:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-all-dependences
+    - uses: ./.github/actions/init-make-config
+      with:
+        options: --cc=clang --cxx=clang++ --with-thrift --with-glog
+    - name: compile
+      run: |
+           make -j ${{env.proc_num}}
+
+  clang-compile-with-cmake-all-options:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-all-dependences
+    - name: cmake 
+      run: |
+           export CC=clang && export CXX=clang++
+           mkdir build
+           cd build
+           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON ..
+    - name: compile
+      run: |
+           cd build
+           make -j ${{env.proc_num}}
+
+  clang-compile-with-bazel-all-options:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: install dependences
+      run: |
+           sudo apt-get update
+           sudo apt-get install libibverbs-dev
+    - name: compile
+      run: |
+           export CC=clang && export CXX=clang++
+           bazel build -j ${{env.proc_num}} -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
+
+  clang-unittest:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependences
+    - name: install gtest
+      run: |
+           sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/
+    - uses: ./.github/actions/init-make-config
+      with:
+        options: --cc=clang --cxx=clang++
+    - name: compile tests
+      run: |
+           cd test
+           make -j ${{env.proc_num}}
+    - name: run tests
+      run: |
+           cd test
+           sh ./run_tests.sh

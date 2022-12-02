@@ -35,7 +35,7 @@ DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 class EchoServiceImpl : public example::EchoService {
 public:
     EchoServiceImpl() {}
-    ~EchoServiceImpl() {};
+    ~EchoServiceImpl() {}
     void Echo(google::protobuf::RpcController* cntl_base,
               const example::EchoRequest* request,
               example::EchoResponse* response,

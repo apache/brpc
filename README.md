@@ -1,6 +1,7 @@
 [中文版](README_cn.md)
 
-[![Build Status](https://api.travis-ci.com/apache/incubator-brpc.svg?branch=master)](https://travis-ci.com/github/apache/incubator-brpc)
+[![Linux Build Status](https://github.com/apache/incubator-brpc/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/apache/incubator-brpc/actions/workflows/ci-linux.yml)
+[![MacOs Build Status](https://github.com/apache/incubator-brpc/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/apache/incubator-brpc/actions/workflows/ci-macos.yml)
 
 # ![brpc](docs/images/logo.png)
 
@@ -80,7 +81,7 @@ You can use it to:
     * [IOBuf](docs/en/iobuf.md)
     * [Streaming Log](docs/en/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
-    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(training material)
+    * [brpc introdution](docs/cn/brpc_intro.pptx)(training material)
     * [A tutorial on building large-scale services](docs/en/tutorial_on_building_services.pptx)(training material)
     * [brpc internal](docs/en/brpc_internal.pptx)(training material)
   * RPC in depth
@@ -94,11 +95,8 @@ You can use it to:
     * [Memory Management](docs/cn/memory_management.md)
     * [Timer keeping](docs/cn/timer_keeping.md)
     * [bthread_id](docs/cn/bthread_id.md)
-  * Use cases inside Baidu
-    * [百度地图api入口](docs/cn/case_apicontrol.md)
-    * [联盟DSP](docs/cn/case_baidu_dsp.md)
-    * [ELF学习框架](docs/cn/case_elf.md)
-    * [云平台代理服务](docs/cn/case_ubrpc.md)
+  * Use cases
+    * [User cases](community/cases.md)
 
 # Contribute code
 Please refer to [here](CONTRIBUTING.md).

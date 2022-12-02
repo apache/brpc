@@ -254,7 +254,7 @@ int main(int argc, char* argv[]) {
     if (req_rate_per_thread > rate_limit_per_thread) {
         LOG(ERROR) << "req_rate: " << (int64_t) req_rate_per_thread << " is too large in one thread. The rate limit is " 
                 <<  rate_limit_per_thread << " in one thread";
-        return false;  
+        return -1;
     }    
 
     std::vector<bthread_t> bids;
