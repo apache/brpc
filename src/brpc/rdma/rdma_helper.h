@@ -32,8 +32,10 @@ namespace rdma {
 void GlobalRdmaInitializeOrDie();
 
 // Register the given memory
-// Return 0 if success, -1 if failed and errno set
-int RegisterMemoryForRdma(void* buf, size_t len);
+// Return the memory lkey for the given memory, Return 0 when fails
+// To use the memory in IOBuf, append_user_data_with_meta must be called
+// and take the lkey as the data meta
+uint32_t RegisterMemoryForRdma(void* buf, size_t len);
 
 // Deregister the given memory
 void DeregisterMemoryForRdma(void* buf);
@@ -45,7 +47,7 @@ ibv_context* GetRdmaContext();
 ibv_pd* GetRdmaPd();
 
 // Return lkey of the given address
-uint32_t GetLKey(const void* buf);
+uint32_t GetLKey(void* buf);
 
 // Return GID Index
 uint8_t GetRdmaGidIndex();
