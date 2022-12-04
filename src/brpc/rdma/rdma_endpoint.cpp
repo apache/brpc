@@ -1211,7 +1211,8 @@ void RdmaEndpoint::DeallocateResources() {
     }
     bool move_to_rdma_resource_list = false;
     if (_sq_size <= FLAGS_rdma_prepared_qp_size &&
-        _rq_size <= FLAGS_rdma_prepared_qp_size) {
+        _rq_size <= FLAGS_rdma_prepared_qp_size &&
+        FLAGS_rdma_prepared_qp_cnt > 0) {
         ibv_qp_attr attr;
         attr.qp_state = IBV_QPS_RESET;
         if (IbvModifyQp(_resource->qp, &attr, IBV_QP_STATE) == 0) {
@@ -1224,12 +1225,14 @@ void RdmaEndpoint::DeallocateResources() {
             if (IbvDestroyQp(_resource->qp) < 0) {
                 PLOG(WARNING) << "Fail to destroy QP";
             }
+            _resource->qp = NULL;
         }
         if (_resource->cq) {
             IbvAckCqEvents(_resource->cq, _cq_events);
             if (IbvDestroyCq(_resource->cq) < 0) {
                 PLOG(WARNING) << "Fail to destroy CQ";
             }
+            _resource->cq = NULL;
         }
         if (_resource->comp_channel) {
             // destroy comp_channel will destroy this fd
@@ -1239,8 +1242,10 @@ void RdmaEndpoint::DeallocateResources() {
             if (IbvDestroyCompChannel(_resource->comp_channel) < 0) {
                 PLOG(WARNING) << "Fail to destroy CQ channel";
             }
+            _resource->comp_channel = NULL;
         }
         delete _resource;
+        _resource = NULL;
     }
 
     SocketUniquePtr s;
@@ -1256,7 +1261,7 @@ void RdmaEndpoint::DeallocateResources() {
         _cq_sid = INVALID_SOCKET_ID;
     }
 
-    if (!move_to_rdma_resource_list) {
+    if (move_to_rdma_resource_list) {
         if (_resource->cq) {
             IbvAckCqEvents(_resource->cq, _cq_events);
         }
