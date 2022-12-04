@@ -1211,7 +1211,8 @@ void RdmaEndpoint::DeallocateResources() {
     }
     bool move_to_rdma_resource_list = false;
     if (_sq_size <= FLAGS_rdma_prepared_qp_size &&
-        _rq_size <= FLAGS_rdma_prepared_qp_size) {
+        _rq_size <= FLAGS_rdma_prepared_qp_size &&
+        FLAGS_rdma_prepared_qp_cnt > 0) {
         ibv_qp_attr attr;
         attr.qp_state = IBV_QPS_RESET;
         if (IbvModifyQp(_resource->qp, &attr, IBV_QP_STATE) == 0) {
@@ -1241,6 +1242,7 @@ void RdmaEndpoint::DeallocateResources() {
             }
         }
         delete _resource;
+        _resource = NULL;
     }
 
     SocketUniquePtr s;
@@ -1256,7 +1258,7 @@ void RdmaEndpoint::DeallocateResources() {
         _cq_sid = INVALID_SOCKET_ID;
     }
 
-    if (!move_to_rdma_resource_list) {
+    if (move_to_rdma_resource_list) {
         if (_resource->cq) {
             IbvAckCqEvents(_resource->cq, _cq_events);
         }
