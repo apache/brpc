@@ -85,6 +85,12 @@ public:
         return get_stats_impl(labels_value, READ_OR_INSERT);
     }
 
+    // Remove stat so those not count and dump
+    void delete_stats(const key_type& labels_value);
+
+    // True if bvar pointer exists
+    bool has_stats(const key_type& labels_value);
+
     // Get number of stats
     size_t count_stats();
 
@@ -96,7 +102,7 @@ public:
     // Return real bvar pointer if labels_name exist, NULL otherwise.
     // CAUTION!!! Just For Debug!!!
     T* get_stats_read_only(const key_type& labels_value) {
-        return get_stats_impl(labels_value, READ_ONLY);
+        return get_stats_impl(labels_value);
     }
 
     // Get real bvar pointer object 
@@ -105,14 +111,12 @@ public:
     T* get_stats_read_or_insert(const key_type& labels_value, bool* do_write = NULL) {
         return get_stats_impl(labels_value, READ_OR_INSERT, do_write);
     }
-
-    // Remove all stats so those not count and dump
-    // CAUTION!!! Just For Debug!!!
-    void delete_stats(const key_type& labels_value);
 #endif
 
 private:
-    T* get_stats_impl(const key_type& labels_value, STATS_OP stats_op = READ_ONLY, bool* do_write = NULL);
+    T* get_stats_impl(const key_type& labels_value);
+
+    T* get_stats_impl(const key_type& labels_value, STATS_OP stats_op, bool* do_write = NULL);
 
     void make_dump_key(std::ostream& os, 
                        const key_type& labels_value, 
@@ -125,6 +129,7 @@ private:
 
     bool is_valid_lables_value(const key_type& labels_value) const;
     
+    // Remove all stats so those not count and dump
     void delete_stats();
     
     static size_t init_flatmap(MetricMap& bg);
