@@ -282,38 +282,50 @@ TEST_F(MultiDimensionTest, stats) {
     std::vector<std::list<std::string> > vec_labels;
     std::vector<std::list<std::string> > vec_labels_no_sort;
     bvar::MultiDimension<bvar::Adder<int> > my_madder("test_stats", labels);
+    ASSERT_EQ(0, my_madder.count_stats());
     std::list<std::string> labels_value1 = {"tc", "get", "200"};
+    ASSERT_FALSE(my_madder.has_stats(labels_value1));
     vec_labels.push_back(labels_value1);
     vec_labels_no_sort.push_back(labels_value1);
     bvar::Adder<int>* adder1 = my_madder.get_stats(labels_value1);
     ASSERT_TRUE(adder1);
+    ASSERT_TRUE(my_madder.has_stats(labels_value1));
     std::vector<std::list<std::string> > ret_labels;
     my_madder.list_stats(&ret_labels);
     ASSERT_EQ(vec_labels, ret_labels);
+    ASSERT_EQ(1, my_madder.count_stats());
 
     std::list<std::string> labels_value2 = {"nj", "get", "200"};
+    ASSERT_FALSE(my_madder.has_stats(labels_value2));
     bvar::Adder<int>* adder2 = my_madder.get_stats(labels_value2);
     ASSERT_TRUE(adder2);
+    ASSERT_TRUE(my_madder.has_stats(labels_value2));
     vec_labels.push_back(labels_value2);
     vec_labels_no_sort.push_back(labels_value2);
     my_madder.list_stats(&ret_labels);
     sort(vec_labels.begin(), vec_labels.end());
     sort(ret_labels.begin(), ret_labels.end());
     ASSERT_EQ(vec_labels, ret_labels);
+    ASSERT_EQ(2, my_madder.count_stats());
 
     std::list<std::string> labels_value3 = {"hz", "post", "500"};
+    ASSERT_FALSE(my_madder.has_stats(labels_value3));
     bvar::Adder<int>* adder3 = my_madder.get_stats(labels_value3);
     ASSERT_TRUE(adder3);
+    ASSERT_TRUE(my_madder.has_stats(labels_value3));
     vec_labels.push_back(labels_value3);
     vec_labels_no_sort.push_back(labels_value3);
     my_madder.list_stats(&ret_labels);
     sort(vec_labels.begin(), vec_labels.end());
     sort(ret_labels.begin(), ret_labels.end());
     ASSERT_EQ(vec_labels, ret_labels);
+    ASSERT_EQ(3, my_madder.count_stats());
 
     std::list<std::string> labels_value4 = {"gz", "post", "500"};
+    ASSERT_FALSE(my_madder.has_stats(labels_value4));
     bvar::Adder<int>* adder4 = my_madder.get_stats(labels_value4);
     ASSERT_TRUE(adder4);
+    ASSERT_TRUE(my_madder.has_stats(labels_value4));
     ASSERT_EQ(4, my_madder.count_stats());
     vec_labels.push_back(labels_value4);
     vec_labels_no_sort.push_back(labels_value4);
@@ -321,14 +333,28 @@ TEST_F(MultiDimensionTest, stats) {
     sort(vec_labels.begin(), vec_labels.end());
     sort(ret_labels.begin(), ret_labels.end());
     ASSERT_EQ(vec_labels, ret_labels);
+    ASSERT_EQ(4, my_madder.count_stats());
 
     my_madder.delete_stats(labels_value4);
+    ASSERT_FALSE(my_madder.has_stats(labels_value4));
     ASSERT_EQ(3, my_madder.count_stats());
     vec_labels_no_sort.pop_back();
     my_madder.list_stats(&ret_labels);
     sort(vec_labels_no_sort.begin(), vec_labels_no_sort.end());
     sort(ret_labels.begin(), ret_labels.end());
     ASSERT_EQ(vec_labels_no_sort, ret_labels);
+
+    ASSERT_TRUE(my_madder.has_stats(labels_value1));
+    ASSERT_TRUE(my_madder.has_stats(labels_value2));
+    ASSERT_TRUE(my_madder.has_stats(labels_value3));
+    ASSERT_FALSE(my_madder.has_stats(labels_value4));
+
+    my_madder.delete_stats();
+    ASSERT_EQ(0, my_madder.count_stats());
+    ASSERT_FALSE(my_madder.has_stats(labels_value1));
+    ASSERT_FALSE(my_madder.has_stats(labels_value2));
+    ASSERT_FALSE(my_madder.has_stats(labels_value3));
+    ASSERT_FALSE(my_madder.has_stats(labels_value4));
 }
 
 TEST_F(MultiDimensionTest, get_description) {
