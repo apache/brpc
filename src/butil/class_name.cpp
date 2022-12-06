@@ -49,7 +49,7 @@ std::string demangle(const char* name) {
     //   -3: One of the arguments is invalid.
     int status = 0;
     char* buf = abi::__cxa_demangle(name, NULL, NULL, &status);
-    if (status == 0) {
+    if (status == 0 && buf) {
         std::string s(buf);
         free(buf);
         return s;
