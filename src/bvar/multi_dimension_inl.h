@@ -224,8 +224,7 @@ T* MultiDimension<T>::get_stats_impl(const key_type& labels_value, STATS_OP stat
 template <typename T>
 inline
 bool MultiDimension<T>::has_stats(const key_type& labels_value) {
-    auto bvar = get_stats_impl(labels_value);
-    return bvar != nullptr;
+    return get_stats_impl(labels_value) != nullptr;
 }
 
 template <typename T>
