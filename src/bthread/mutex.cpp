@@ -404,13 +404,27 @@ static pthread_once_t init_sys_mutex_lock_once = PTHREAD_ONCE_INIT;
 //   #23 0x00000000006fbb9a in tc_malloc ()
 // Call _dl_sym which is a private function in glibc to workaround the malloc
 // causing deadlock temporarily. This fix is hardly portable.
+
+/* refer dlsym implement
+ * https://codebrowser.dev/glibc/glibc/dlfcn/dlsym.c.html#78
+ * void *
+ * ___dlsym (void *handle, const char *name)
+ * {
+ *   return __dlsym (handle, name, RETURN_ADDRESS (0));
+ *   }
+ *
+ */
+
+#define RETURN_ADDRESS(nr) \
+    __builtin_extract_return_addr (__builtin_return_address (nr) )
+
 static void init_sys_mutex_lock() {
 #if defined(OS_LINUX)
     // TODO: may need dlvsym when GLIBC has multiple versions of a same symbol.
     // http://blog.fesnel.com/blog/2009/08/25/preloading-with-multiple-symbol-versions
     if (_dl_sym) {
-        sys_pthread_mutex_lock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_lock", (void*)init_sys_mutex_lock);
-        sys_pthread_mutex_unlock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_unlock", (void*)init_sys_mutex_lock);
+        sys_pthread_mutex_lock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_lock", RETURN_ADDRESS (0));
+        sys_pthread_mutex_unlock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_unlock", RETURN_ADDRESS (0));
     } else {
         // _dl_sym may be undefined reference in some system, fallback to dlsym
         sys_pthread_mutex_lock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_lock");
