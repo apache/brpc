@@ -792,11 +792,6 @@ bvar::MultiDimension<bvar::WindowEx<bvar::Adder<int>, 60>> sum_minute("sum_minut
 void Record(const std::list<std::string>& request_labels, int num) {
     // 获取request对应的单维度mbvar指针，假设request_labels = {"tc", "get", "200"}
     bvar::WindowEx<bvar::Adder<int>, 60>* status = sum_minute.get_stats(request_labels);
-    // 判断指针非空
-    if (status == nullptr) {
-        return -1;
-    }
-
     // status只能在sum_minute生命周期内访问，否则行为未定义，可能会出core
     *status << num;
 }
@@ -820,11 +815,6 @@ bvar::MultiDimension<bvar::PerSecondEx<bvar::Adder<int>>> sum_per_second("sum_pe
 void Record(const std::list<std::string>& request_labels, int num) {
     // 获取request对应的单维度mbvar指针，假设request_labels = {"tc", "get", "200"}
     bvar::PerSecondEx<bvar::Adder<int>>* status = sum_per_second.get_stats(request_labels);
-    // 判断指针非空
-    if (status == nullptr) {
-        return -1;
-    }
-
     // status只能在sum_per_second生命周期内访问，否则行为未定义，可能会出core
     *status << num;
 }
