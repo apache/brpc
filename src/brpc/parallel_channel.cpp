@@ -601,7 +601,7 @@ void ParallelChannel::CallMethod(
     for (int i = 0; i < nchan; ++i) {
         SubChan& sub_chan = _chans[i];
         if (sub_chan.call_mapper != NULL) {
-            aps[i] = sub_chan.call_mapper->Map(i, method, request, response);
+            aps[i] = sub_chan.call_mapper->Map(i, nchan, method, request, response);
             // Test is_skip first because it implies is_bad.
             if (aps[i].is_skip()) {
                 --ndone;
