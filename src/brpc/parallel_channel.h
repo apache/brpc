@@ -93,12 +93,6 @@ struct SubCall {
 //                  response->add_sub_response(), 0);
 class CallMapper : public SharedObject {
 public:
-    // TODO: Remove this backward compatibility method.
-    virtual SubCall Map(int channel_index/*starting from 0*/,
-                        const google::protobuf::MethodDescriptor* method,
-                        const google::protobuf::Message* request,
-                        google::protobuf::Message* response) = 0;
-    
     virtual SubCall Map(int channel_index/*starting from 0*/,
 		        int channel_count,
                         const google::protobuf::MethodDescriptor* method,
@@ -108,6 +102,12 @@ public:
     }
 
 protected:
+    // TODO: Remove this backward compatibility method.
+    virtual SubCall Map(int channel_index/*starting from 0*/,
+                        const google::protobuf::MethodDescriptor* method,
+                        const google::protobuf::Message* request,
+                        google::protobuf::Message* response) = 0;
+    
     // Only callable by subclasses and butil::intrusive_ptr
     virtual ~CallMapper() {}
 };
