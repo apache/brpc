@@ -180,9 +180,9 @@ int expose_as(const butil::StringPiece& prefix, const butil::StringPiece& name);
 ```
 # Export All Variables
 
-Common needs for exporting are querying by HTTP API and writing into local file, the former is provided by brpc [/vars](https://github.com/apache/incubator-brpc/blob/master/docs/cn/vars.md) service, the latter has been implemented in bvar, and it's turned off by default. A couple of methods can activate this function：
+Common needs for exporting are querying by HTTP API and writing into local file, the former is provided by brpc [/vars](https://github.com/apache/brpc/blob/master/docs/cn/vars.md) service, the latter has been implemented in bvar, and it's turned off by default. A couple of methods can activate this function：
 
--   Using [gflags](https://github.com/apache/incubator-brpc/blob/master/docs/cn/flags.md) to parse the input params. We can add `-bvar_dump` during the starup of program or we can dynamically change the params thru brpc [/flags](https://github.com/apache/incubator-brpc/blob/master/docs/cn/flags.md) service after starup. gflags parsing is as below
+-   Using [gflags](https://github.com/apache/brpc/blob/master/docs/cn/flags.md) to parse the input params. We can add `-bvar_dump` during the starup of program or we can dynamically change the params thru brpc [/flags](https://github.com/apache/brpc/blob/master/docs/cn/flags.md) service after starup. gflags parsing is as below
     ```C++
     #include <gflags/gflags.h>
     ...
@@ -224,7 +224,7 @@ Common needs for exporting are querying by HTTP API and writing into local file,
     
     such like we modify the gflags as below：
     
-    [![img](https://github.com/apache/incubator-brpc/raw/master/docs/images/bvar_dump_flags_2.png)](https://github.com/apache/incubator-brpc/blob/master/docs/images/bvar_dump_flags_2.png)
+    [![img](https://github.com/apache/brpc/raw/master/docs/images/bvar_dump_flags_2.png)](https://github.com/apache/brpc/blob/master/docs/images/bvar_dump_flags_2.png)
     
     exporting file will be like：
     ```
