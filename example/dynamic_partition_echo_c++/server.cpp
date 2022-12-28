@@ -31,8 +31,6 @@ DEFINE_bool(echo_attachment, true, "Echo attachment as well");
 DEFINE_int32(port, 8004, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
-DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
-             "(waiting for client to close connection before server stops)");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 DEFINE_int32(server_num, 1, "Number of servers");
 DEFINE_string(sleep_us, "", "Sleep so many microseconds before responding");
@@ -162,11 +160,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Don't forget to stop and join the server otherwise still-running
-    // worker threads may crash your program. Clients will have/ at most
-    // `FLAGS_logoff_ms' to close their connections. If some connections
-    // still remains after `FLAGS_logoff_ms', they will be closed by force.
+    // worker threads may crash your program. 
     for (int i = 0; i < FLAGS_server_num; ++i) {
-        servers[i].Stop(FLAGS_logoff_ms);
+        servers[i].Stop(0/*not used now*/);
     }
     for (int i = 0; i < FLAGS_server_num; ++i) {
         servers[i].Join();

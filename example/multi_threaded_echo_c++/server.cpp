@@ -26,8 +26,6 @@ DEFINE_bool(echo_attachment, true, "Echo attachment as well");
 DEFINE_int32(port, 8002, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
-DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
-             "(waiting for client to close connection before server stops)");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 DEFINE_int32(internal_port, -1, "Only allow builtin services at this port");
 
