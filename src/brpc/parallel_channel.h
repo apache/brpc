@@ -103,10 +103,13 @@ public:
 
 protected:
     // TODO: Remove this backward compatibility method.
+    // This method is deprecated. You should override public Map function.
     virtual SubCall Map(int channel_index/*starting from 0*/,
                         const google::protobuf::MethodDescriptor* method,
                         const google::protobuf::Message* request,
-                        google::protobuf::Message* response) = 0;
+                        google::protobuf::Message* response) {
+        return SubCall::Bad();
+    }
     
     // Only callable by subclasses and butil::intrusive_ptr
     virtual ~CallMapper() {}
