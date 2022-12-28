@@ -52,6 +52,7 @@ public:
     virtual ~CallMapper();
  
     virtual SubCall Map(int channel_index/*starting from 0*/,
+                        int channel_count,
                         const google::protobuf::MethodDescriptor* method,
                         const google::protobuf::Message* request,
                         google::protobuf::Message* response) = 0;
@@ -59,6 +60,8 @@ public:
 ```
 
 channel_index：该sub channel在ParallelChannel中的位置，从0开始计数。
+
+channel_count：ParallelChannel中sub channel的数量。
 
 method/request/response：ParallelChannel.CallMethod()的参数。
 
