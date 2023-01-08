@@ -1095,7 +1095,7 @@ void* Socket::ProcessEvent(void* arg) {
 }
 
 // Check if there're new requests appended.
-// If yes, point old_head to to reversed new requests and return false;
+// If yes, point old_head to reversed new requests and return false;
 // If no:
 //    old_head is fully written, set _write_head to NULL and return true;
 //    old_head is not written yet, keep _write_head unchanged and return false;
@@ -1147,7 +1147,7 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
     old_head->next = tail;
     // Call Setup() from oldest to newest, notice that the calling sequence
     // matters for protocols using pipelined_count, this is why we don't
-    // calling Setup in above loop which is from newest to oldest.
+    // call Setup in above loop which is from newest to oldest.
     for (WriteRequest* q = tail; q; q = q->next) {
         q->Setup(this);
     }

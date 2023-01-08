@@ -320,7 +320,7 @@ static int LoadCertificate(SSL_CTX* ctx,
         return -1;
     }
     
-    // Load the main certficate
+    // Load the main certificate
     if (SSL_CTX_use_certificate(ctx, x.get()) != 1) {
         LOG(ERROR) << "Fail to load " << certificate << ": "
                    << SSLError(ERR_get_error());
