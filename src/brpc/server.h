@@ -623,7 +623,7 @@ friend class Controller;
         std::shared_ptr<SocketSSLContext> ctx;
         std::vector<std::string> filters;
     };
-    // Mapping from [certficate + private-key] to SSLContext
+    // Mapping from [certificate + private-key] to SSLContext
     typedef butil::FlatMap<std::string, SSLContext> SSLContextMap;
 
     void FreeSSLContexts();

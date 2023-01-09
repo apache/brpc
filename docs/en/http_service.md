@@ -1,6 +1,6 @@
 [中文版](../cn/http_service.md)
 
-This document talks about ordinary htt/h2 services rather than protobuf services accessible via http/h2. 
+This document talks about ordinary http/h2 services rather than protobuf services accessible via http/h2. 
 http/h2 services in brpc have to declare interfaces with empty request and response in a .proto file. This requirement keeps all service declarations inside proto files rather than scattering in code, configurations, and proto files.
 
 # Example
