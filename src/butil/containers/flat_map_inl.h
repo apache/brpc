@@ -394,7 +394,7 @@ size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key, _T* old_value) {
     }
     if (_eql(first_node.element().first_ref(), key)) {
         if (old_value) {
-            *old_value = first_node.element().second_ref();
+            *old_value = first_node.element().second_movable_ref();
         }
         if (first_node.next == NULL) {
             first_node.element().~Element();
@@ -420,7 +420,7 @@ size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key, _T* old_value) {
             first_node.next = p->next;
             const_cast<_K&>(first_node.element().first_ref()) =
                 p->element().first_ref();
-            first_node.element().second_ref() = p->element().second_ref();
+            first_node.element().second_ref() = p->element().second_movable_ref();
             p->element().~Element();
             _pool.back(p);
         }
@@ -432,7 +432,7 @@ size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key, _T* old_value) {
     while (p) {
         if (_eql(p->element().first_ref(), key)) {
             if (old_value) {
-                *old_value = p->element().second_ref();
+                *old_value = p->element().second_movable_ref();
             }
             last_p->next = p->next;
             p->element().~Element();
@@ -567,10 +567,12 @@ void FlatMap<_K, _T, _H, _E, _S>::save_iterator(
 template <typename _K, typename _T, typename _H, typename _E, bool _S>
 typename FlatMap<_K, _T, _H, _E, _S>::const_iterator
 FlatMap<_K, _T, _H, _E, _S>::restore_iterator(const PositionHint& hint) const {
-    if (hint.nbucket != _nbucket/*resized*/ ||
-        hint.offset >= _nbucket/*invalid hint*/) {
-        return begin();  // restart
-    }
+    if (hint.nbucket != _nbucket)  // resized
+        return begin(); // restart
+
+    if (hint.offset >= _nbucket) // invalid hint, stop the iteration
+        return end();
+
     Bucket& first_node = _buckets[hint.offset];
     if (hint.at_entry) {
         return const_iterator(this, hint.offset);
@@ -604,13 +606,17 @@ bool FlatMap<_K, _T, _H, _E, _S>::resize(size_t nbucket2) {
     }
 
     FlatMap new_map;
+    // NOTE: following functors must be kept after resizing otherwise the 
+    // internal state is lost.
+    new_map._hashfn = _hashfn; 
+    new_map._eql = _eql;
     if (new_map.init(nbucket2, _load_factor) != 0) {
         LOG(ERROR) << "Fail to init new_map, nbucket=" << nbucket2;
         return false;
     }
     for (iterator it = begin(); it != end(); ++it) {
         new_map[Element::first_ref_from_value(*it)] = 
-            Element::second_ref_from_value(*it);
+            Element::second_movable_ref_from_value(*it);
     }
     new_map.swap(*this);
     return true;

@@ -16,6 +16,7 @@ brpc有如下依赖：
 * [Fedora/CentOS](#fedoracentos)
 * [自己构建依赖的Linux](#自己构建依赖的Linux)
 * [MacOS](#macos)
+* [docker](#docker)
 
 ## Ubuntu/LinuxMint/WSL
 ### 依赖准备
@@ -74,6 +75,11 @@ $ sh run_tests.sh
 ```
 
 ### 使用cmake编译brpc
+
+```shell
+mkdir build && cd build && cmake .. && cmake --build . -j6
+```
+对于 cmake 3.13+ 也可以使用如下命令进行编译:
 ```shell
 cmake -B build && cmake --build build -j6
 ```
@@ -165,6 +171,17 @@ $ sh run_tests.sh
 ### 使用cmake编译brpc
 参考[这里](#使用cmake编译brpc)
 
+### 使用vcpkg编译brpc
+
+[vcpkg](https://github.com/microsoft/vcpkg) 是一个全平台支持的包管理器，你可以使用以下步骤vcpkg轻松编译brpc:
+
+```shell
+$ git clone https://github.com/microsoft/vcpkg.git
+$ ./bootstrap-vcpkg.bat # 使用 powershell
+$ ./bootstrap-vcpkg.sh # 使用 bash
+$ ./vcpkg install brpc
+```
+
 ## 自己构建依赖的Linux
 
 ### 依赖准备
@@ -238,7 +255,7 @@ git clone https://github.com/google/googletest -b release-1.10.0 && cd googletes
 ### OpenSSL
 Monterey中openssl的安装位置可能不再位于`/usr/local/opt/openssl`，很可能会在`/opt/homebrew/Cellar`目录下，如果编译时报告找不到openssl：
 
-* 先运行`brew link openssl --force`看看`/user/local/opt/openssl`是否出现了
+* 先运行`brew link openssl --force`看看`/usr/local/opt/openssl`是否出现了
 * 没有的话可以自行设置软链：`sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`。请注意此命令中openssl的目录可能随环境变化而变化，可通过`brew info openssl`查看。
 
 ### 使用config_brpc.sh编译brpc
@@ -280,9 +297,22 @@ $ sh run_tests.sh
 ### 使用cmake编译brpc
 参考[这里](#使用cmake编译brpc)
 
+## Docker
+使用docker 编译brpc：
+
+```shell
+$ mkdir -p ~/brpc
+$ cd ~/brpc
+$ git clone https://github.com/apache/brpc.git
+$ cd brpc
+$ docker build -t brpc:master .
+$ docker images
+$ docker run -it brpc:master /bin/bash
+```
+
 # 支持的依赖
 
-## GCC: 4.8-7.1
+## GCC: 4.8-11.2
 
 c++11被默认启用，以去除去boost的依赖（比如atomic）。
 
@@ -290,7 +320,7 @@ GCC7中over-aligned的问题暂时被禁止。
 
 使用其他版本的gcc可能会产生编译警告，请联系我们予以修复。
 
-请在makefile中给cxxflags增加`-D__const__=`选项以避免[gcc4+中的errno问题](thread_local.md).
+请在makefile中给cxxflags增加`-D__const__=__unused__`选项以避免[gcc4+中的errno问题](thread_local.md).
 
 ## Clang: 3.5-4.0
 

@@ -1,0 +1,7 @@
+runs:
+  using: "composite"
+  steps:
+    - run: ulimit -c unlimited -S && sudo bash -c "echo 'core.%e.%p' > /proc/sys/kernel/core_pattern"
+      shell: bash
+    - run: sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
+      shell: bash

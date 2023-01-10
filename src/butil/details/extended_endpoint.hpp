@@ -163,6 +163,9 @@ public:
                 eep->_u.in6.sin6_flowinfo = 0u;
                 eep->_u.in6.sin6_scope_id = 0u;
                 eep->_socklen = sizeof(_u.in6);
+#if defined(OS_MACOSX)
+                eep->_u.in6.sin6_len = eep->_socklen;
+#endif
             }
         } else if (sp.starts_with("unix:")) { // ignore port
             sp.remove_prefix(5); // remove `unix:'
@@ -174,6 +177,9 @@ public:
                 int size = sp.copy(eep->_u.un.sun_path, sp.size());
                 eep->_u.un.sun_path[size] = '\0';
                 eep->_socklen = offsetof(sockaddr_un, sun_path) + size + 1;
+#if defined(OS_MACOSX)
+                eep->_u.un.sun_len = eep->_socklen;
+#endif
             }
         }
         if (eep) {

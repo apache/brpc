@@ -26,14 +26,12 @@ DEFINE_bool(send_attachment, true, "Carry attachment along with response");
 DEFINE_int32(port, 8003, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
-DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
-             "(waiting for client to close connection before server stops)");
 
 // Your implementation of example::EchoService
 class EchoServiceImpl : public example::EchoService {
 public:
-    EchoServiceImpl() {};
-    virtual ~EchoServiceImpl() {};
+    EchoServiceImpl() {}
+    virtual ~EchoServiceImpl() {}
     virtual void Echo(google::protobuf::RpcController* cntl_base,
                       const example::EchoRequest* request,
                       example::EchoResponse* response,

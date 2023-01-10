@@ -76,16 +76,12 @@ TEST_F(ExecutionQueueTest, single_thread) {
 }
 
 struct PushArg {
-    bthread::ExecutionQueueId<LongIntTask> id;
-    butil::atomic<int64_t> total_num;
-    butil::atomic<int64_t> total_time;
-    butil::atomic<int64_t> expected_value;
-    volatile bool stopped;
-    bool wait_task_completed;
-
-    PushArg() {
-        memset(this, 0, sizeof(*this));
-    }
+    bthread::ExecutionQueueId<LongIntTask> id {0};
+    butil::atomic<int64_t> total_num {0};
+    butil::atomic<int64_t> total_time {0};
+    butil::atomic<int64_t> expected_value {0};
+    volatile bool stopped {false};
+    bool wait_task_completed {false};
 };
 
 void* push_thread(void *arg) {

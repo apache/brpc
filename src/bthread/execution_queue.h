@@ -198,7 +198,7 @@ int execution_queue_execute(ExecutionQueueId<T> id,
                             const TaskOptions* options,
                             TaskHandle* handle);
 
-// [Thread safe and ABA free] Cancel the corrosponding task.
+// [Thread safe and ABA free] Cancel the corresponding task.
 // Returns:
 //  -1: The task was executed or h is an invalid handle
 //  0: Success

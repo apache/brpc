@@ -77,6 +77,9 @@ DEFINE_bool(pb_enum_as_number, false,
 
 DEFINE_string(request_id_header, "x-request-id", "The http header to mark a session");
 
+DEFINE_bool(use_http_error_code, false, "Whether set the x-bd-error-code header "
+                                        "of http response to brpc error code");
+
 // Read user address from the header specified by -http_header_of_user_ip
 static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
                                          butil::EndPoint* user_addr) {
@@ -395,7 +398,16 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                     &err, std::min((int)res_body.size(),
                                         FLAGS_http_max_error_length));
             }
-            cntl->SetFailed(EHTTP, "%s", err.c_str());
+            // If server return brpc error code by x-bd-error-code,
+            // set the returned error code to controller. Otherwise,
+            // set EHTTP to controller uniformly.
+            const std::string* error_code_ptr = res_header->GetHeader(common->ERROR_CODE);
+            int error_code = error_code_ptr ? strtol(error_code_ptr->data(), NULL, 10) : 0;
+            if (FLAGS_use_http_error_code && error_code != 0) {
+                cntl->SetFailed(error_code, "%s", err.c_str());
+            } else {
+                cntl->SetFailed(EHTTP, "%s", err.c_str());
+            }
             if (cntl->response() == NULL ||
                 cntl->response()->GetDescriptor()->field_count() == 0) {
                 // A http call. Http users may need the body(containing a html,
@@ -835,7 +847,9 @@ HttpResponseSender::~HttpResponseSender() {
     
     bool grpc_compressed = false;
     if (cntl->Failed()) {
-        cntl->response_attachment().clear();
+        if (!cntl->does_manage_http_body_on_error()) {
+            cntl->response_attachment().clear();
+        }
         if (!is_grpc) {
             // Set status-code with default value(converted from error code)
             // if user did not set it.
@@ -846,12 +860,14 @@ HttpResponseSender::~HttpResponseSender() {
             res_header->SetHeader(common->ERROR_CODE,
                                   butil::string_printf("%d", cntl->ErrorCode()));
 
-            // Fill body with ErrorText.
-            // user may compress the output and change content-encoding. However
-            // body is error-text right now, remove the header.
-            res_header->RemoveHeader(common->CONTENT_ENCODING);
-            res_header->set_content_type(common->CONTENT_TYPE_TEXT);
-            cntl->response_attachment().append(cntl->ErrorText());
+            if (!cntl->does_manage_http_body_on_error()) {
+                // Fill body with ErrorText.
+                // user may compress the output and change content-encoding. However
+                // body is error-text right now, remove the header.
+                res_header->RemoveHeader(common->CONTENT_ENCODING);
+                res_header->set_content_type(common->CONTENT_TYPE_TEXT);
+                cntl->response_attachment().append(cntl->ErrorText());
+            }
         }
     } else if (cntl->has_progressive_writer()) {
         // Transfer-Encoding is supported since HTTP/1.1
@@ -1275,7 +1291,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         .set_remote_side(user_addr)
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
-        .set_request_protocol(PROTOCOL_HTTP)
+        .set_request_protocol(is_http2 ? PROTOCOL_H2 : PROTOCOL_HTTP)
         .set_begin_time_us(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
     
@@ -1457,7 +1473,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 if (is_grpc_ct) {
                     bool grpc_compressed = false;
                     if (!RemoveGrpcPrefix(&req_body, &grpc_compressed)) {
-                        cntl->SetFailed(ERESPONSE, "Invalid gRPC response");
+                        cntl->SetFailed(EREQUEST, "Invalid gRPC request");
                         return;
                     }
                     if (grpc_compressed) {

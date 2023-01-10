@@ -16,7 +16,7 @@
 COPTS = [
     "-D__STDC_FORMAT_MACROS",
     "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
-    "-D__const__=",
+    "-D__const__=__unused__",
     "-D_GNU_SOURCE",
     "-DUSE_SYMBOLIZE",
     "-DNO_TCMALLOC",
@@ -27,7 +27,7 @@ COPTS = [
     "-fno-omit-frame-pointer",
     "-DGFLAGS_NS=google",
 ] + select({
-    "//:with_glog": ["-DBRPC_WITH_GLOG=1"],
+    "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
 })
 

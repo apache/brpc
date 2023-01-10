@@ -32,6 +32,7 @@
 #include "brpc/controller.h"
 #include "brpc/channel.h"
 #include "brpc/details/usercode_backup_pool.h"       // TooManyUserCode
+#include "brpc/rdma/rdma_helper.h"
 #include "brpc/policy/esp_authenticator.h"
 
 namespace brpc {
@@ -49,6 +50,7 @@ ChannelOptions::ChannelOptions()
     , connection_type(CONNECTION_TYPE_UNKNOWN)
     , succeed_without_server(true)
     , log_succeed_without_server(true)
+    , use_rdma(false)
     , auth(NULL)
     , retry_policy(NULL)
     , ns_filter(NULL)
@@ -100,6 +102,9 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         } else {
             // All disabled ChannelSSLOptions are the same
         }
+        if (opt.use_rdma) {
+            buf.append("|rdma");
+        }
         butil::MurmurHash3_x64_128_Update(&mm_ctx, buf.data(), buf.size());
         buf.clear();
     
@@ -140,6 +145,21 @@ Channel::~Channel() {
     }
 }
 
+#if BRPC_WITH_RDMA
+static bool OptionsAvailableForRdma(const ChannelOptions* opt) {
+    if (opt->has_ssl_options()) {
+        LOG(WARNING) << "Cannot use SSL and RDMA at the same time";
+        return false;
+    }
+    if (!rdma::SupportedByRdma(opt->protocol.name())) {
+        LOG(WARNING) << "Cannot use " << opt->protocol.name()
+                     << " over RDMA";
+        return false;
+    }
+    return true;
+}
+#endif
+
 int Channel::InitChannelOptions(const ChannelOptions* options) {
     if (options) {  // Override default options if user provided one.
         _options = *options;
@@ -149,6 +169,19 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
         LOG(ERROR) << "Channel does not support the protocol";
         return -1;
     }
+
+    if (_options.use_rdma) {
+#if BRPC_WITH_RDMA
+        if (!OptionsAvailableForRdma(&_options)) {
+            return -1;
+        }
+        rdma::GlobalRdmaInitializeOrDie();
+#else
+        LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
+        return -1;
+#endif
+    }
+
     _serialize_request = protocol->serialize_request;
     _pack_request = protocol->pack_request;
     _get_method_name = protocol->get_method_name;
@@ -289,13 +322,12 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    std::string scheme;
     int* port_out = raw_port == -1 ? &raw_port: NULL;
-    ParseURL(raw_server_address, &scheme, &_service_name, port_out);
+    ParseURL(raw_server_address, &_scheme, &_service_name, port_out);
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https") {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && _scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
@@ -312,7 +344,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
         return -1;
     }
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
-                        &_server_id, ssl_ctx) != 0) {
+                        &_server_id, ssl_ctx, _options.use_rdma) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -330,13 +362,12 @@ int Channel::Init(const char* ns_url,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    std::string scheme;
     int raw_port = -1;
-    ParseURL(ns_url, &scheme, &_service_name, &raw_port);
+    ParseURL(ns_url, &_scheme, &_service_name, &raw_port);
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP && scheme == "https") {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && _scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
@@ -349,6 +380,7 @@ int Channel::Init(const char* ns_url,
     GetNamingServiceThreadOptions ns_opt;
     ns_opt.succeed_without_server = _options.succeed_without_server;
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
+    ns_opt.use_rdma = _options.use_rdma;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
         return -1;
@@ -395,7 +427,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         CHECK(cntl->protocol_param().empty());
         cntl->protocol_param() = _options.protocol.param();
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP) {
+    if (_options.protocol == brpc::PROTOCOL_HTTP && (_scheme == "https" || _scheme == "http")) {
         URI& uri = cntl->http_request().uri();
         if (uri.host().empty() && !_service_name.empty()) {
             uri.SetHostAndPort(_service_name);

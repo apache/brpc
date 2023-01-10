@@ -498,6 +498,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
     {
         brpc::SocketUniquePtr s;
         ASSERT_EQ(0, brpc::Socket::Address(id, &s));
+        s->SetHCRelatedRefHeld(); // set held status
         global_sock = s.get();
         ASSERT_TRUE(s.get());
         ASSERT_EQ(-1, s->fd());
@@ -645,7 +646,8 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
     brpc::SocketUniquePtr s;
     ASSERT_EQ(0, brpc::Socket::Address(id, &s));
-    
+
+    s->SetHCRelatedRefHeld(); // set held status
     global_sock = s.get();
     ASSERT_TRUE(s.get());
     ASSERT_EQ(-1, s->fd());
@@ -745,7 +747,7 @@ TEST_F(SocketTest, health_check) {
     start_time = butil::gettimeofday_us();
     while (brpc::Socket::Status(id) != 0) {
         bthread_usleep(1000);
-        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
+        ASSERT_LT(butil::gettimeofday_us(), start_time + 1200000L);
     }
     ASSERT_TRUE(global_sock);
 

@@ -10,7 +10,7 @@ Meanings of the fields above:
 - **connection_count**: number of connections to the server from clients, not including number of outward connections which are displayed at /vars/rpc_channel_connection_count.
 - **example.EchoService**: Full name of the service, including the package name defined in proto.
 - **Echo (EchoRequest) returns (EchoResponse)**: Signature of the method. A service can have multiple methods. Click links on request/response to see schemes of the protobuf messages.
-- **count**: Number of requests that are succesfully processed.
+- **count**: Number of requests that are successfully processed.
 - **error**: Number of requests that are failed to process.
 - **latency**: average latency in recent *60s/60m/24h/30d* from *right to left* on html, average latency in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
 - **latency_percentiles**: 80%, 90%, 99%, 99.9% percentiles of latency in 10 seconds(specified by[-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)). Curves with historical values are shown on html.

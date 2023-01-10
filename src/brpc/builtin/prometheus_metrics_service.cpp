@@ -30,6 +30,7 @@ namespace bvar {
 DECLARE_int32(bvar_latency_p1);
 DECLARE_int32(bvar_latency_p2);
 DECLARE_int32(bvar_latency_p3);
+DECLARE_int32(bvar_max_dump_multi_dimension_metric_number);
 }
 
 namespace brpc {
@@ -200,6 +201,15 @@ int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output) {
         return -1;
     }
     os.move_to(*output);
+
+    if (bvar::FLAGS_bvar_max_dump_multi_dimension_metric_number > 0) {
+        PrometheusMetricsDumper dumper_md(&os, g_server_info_prefix);
+        const int ndump_md = bvar::MVariable::dump_exposed(&dumper_md, NULL);
+        if (ndump_md < 0) {
+            return -1;
+        }
+        output->append(butil::IOBuf::Movable(os.buf()));
+    }
     return 0;
 }
 

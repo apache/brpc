@@ -27,5 +27,6 @@
 #include "bvar/latency_recorder.h"
 #include "bvar/gflag.h"
 #include "bvar/scoped_timer.h"
+#include "bvar/mvariable.h"
 
 #endif  //BVAR_BVAR_H

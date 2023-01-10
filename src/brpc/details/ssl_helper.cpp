@@ -320,7 +320,7 @@ static int LoadCertificate(SSL_CTX* ctx,
         return -1;
     }
     
-    // Load the main certficate
+    // Load the main certificate
     if (SSL_CTX_use_certificate(ctx, x.get()) != 1) {
         LOG(ERROR) << "Fail to load " << certificate << ": "
                    << SSLError(ERR_get_error());
@@ -350,7 +350,7 @@ static int LoadCertificate(SSL_CTX* ctx,
     if (err != 0 && (ERR_GET_LIB(err) != ERR_LIB_PEM
                      || ERR_GET_REASON(err) != PEM_R_NO_START_LINE)) {
         LOG(ERROR) << "Fail to read chain certificate in "
-                   << certificate << ": " << SSLError(ERR_get_error());
+                   << certificate << ": " << SSLError(err);
         return -1;
     }
     ERR_clear_error();

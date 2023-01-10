@@ -48,6 +48,10 @@ class H2GlobalStreamCreator;
 namespace schan {
 class ChannelBalancer;
 }
+namespace rdma {
+class RdmaEndpoint;
+class RdmaConnect;
+}
 
 class Socket;
 class AuthContext;
@@ -60,7 +64,7 @@ class Stream;
 class SocketUser {
 public:
     virtual ~SocketUser() {}
-    virtual void BeforeRecycle(Socket*) {};
+    virtual void BeforeRecycle(Socket*) {}
 
     // Will be periodically called in a dedicated thread to check the
     // health.
@@ -153,11 +157,11 @@ struct PipelinedInfo {
     PipelinedInfo() { reset(); }
     void reset() {
         count = 0;
-        with_auth = false;
+        auth_flags = 0;
         id_wait = INVALID_BTHREAD_ID;
     }
     uint32_t count;
-    bool with_auth;
+    uint32_t auth_flags;
     bthread_id_t id_wait;
 };
 
@@ -188,6 +192,7 @@ struct SocketOptions {
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
+    bool use_rdma;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
     std::shared_ptr<AppConnect> app_connect;
@@ -208,6 +213,8 @@ friend class Controller;
 friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
+friend class rdma::RdmaEndpoint;
+friend class rdma::RdmaConnect;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
@@ -256,7 +263,7 @@ public:
         // The request contains authenticating information which will be
         // responded by the server and processed specially when dealing
         // with the response.
-        bool with_auth;
+        uint32_t auth_flags;
 
         // Do not return EOVERCROWDED
         // Default: false
@@ -264,7 +271,7 @@ public:
 
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
-            , pipelined_count(0), with_auth(false)
+            , pipelined_count(0), auth_flags(0)
             , ignore_eovercrowded(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
@@ -285,6 +292,17 @@ public:
     // Positive value enables health checking.
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
+
+    // When someone holds a health-checking-related reference,
+    // this function need to be called to make health checking run normally.
+    void SetHCRelatedRefHeld() { _is_hc_related_ref_held = true; }
+    // When someone releases the health-checking-related reference,
+    // this function need to be called to cancel health checking.
+    void SetHCRelatedRefReleased() { _is_hc_related_ref_held = false; }
+    bool IsHCRelatedRefHeld() const { return _is_hc_related_ref_held; }
+
+    // After health checking is complete, set _hc_started to false.
+    void AfterHCCompleted() { _hc_started.store(false, butil::memory_order_relaxed); }
 
     // The unique identifier.
     SocketId id() const { return _this_id; }
@@ -355,8 +373,9 @@ public:
 
     bool Failed() const;
 
-    bool DidReleaseAdditionalRereference() const
-    { return _recycle_flag.load(butil::memory_order_relaxed); }
+    bool DidReleaseAdditionalRereference() const {
+        return _additional_ref_status.load(butil::memory_order_relaxed) == REF_RECYCLED;
+    }
 
     // Notify `id' object (by calling bthread_id_error) when this Socket
     // has been `SetFailed'. If it already has, notify `id' immediately
@@ -531,6 +550,13 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
 
+    // The on/off state of RDMA
+    enum RdmaState {
+        RDMA_ON,
+        RDMA_OFF,
+        RDMA_UNKNOWN
+    };
+
     int ConductError(bthread_id_t);
     int StartWrite(WriteRequest*, const WriteOptions&);
 
@@ -605,6 +631,9 @@ friend void DereferenceSocket(Socket*);
     WriteRequest* ReleaseWriteRequestsExceptLast(
         WriteRequest*, int error_code, const std::string& error_text);
     void ReleaseAllFailedWriteRequests(WriteRequest*);
+
+    // Try to wake socket just like epollout has arrived
+    void WakeAsEpollOut();
 
     // Generic callback for Socket to handle epollout event
     static int HandleEpollOut(SocketId socket_id);
@@ -747,6 +776,15 @@ private:
     // Non-zero when health-checking is on.
     int _health_check_interval_s;
 
+    // The variable indicates whether the reference related
+    // to the health checking is held by someone. It can be
+    // synchronized via _versioned_ref atomic variable.
+    bool _is_hc_related_ref_held;
+
+    // Default: false.
+    // true, if health checking is started.
+    butil::atomic<bool> _hc_started;
+
     // +-1 bit-+---31 bit---+
     // |  flag |   counter  |
     // +-------+------------+
@@ -772,6 +810,11 @@ private:
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
+    // The RdmaEndpoint
+    rdma::RdmaEndpoint* _rdma_ep;
+    // Should use RDMA or not
+    RdmaState _rdma_state;
+
     // Pass from controller, for progressive reading.
     ConnectionType _connection_type_for_progressive_read;
     butil::atomic<bool> _controller_released_socket;
@@ -784,9 +827,20 @@ private:
     // Set by SetLogOff
     butil::atomic<bool> _logoff_flag;
 
-    // Flag used to mark whether additional reference has been decreased
-    // by either `SetFailed' or `SetRecycle'
-    butil::atomic<bool> _recycle_flag;
+    // Status flag used to mark that
+    enum AdditionalRefStatus {
+        REF_USING,        // additional reference has been increased
+        REF_REVIVING,     // additional reference is increasing
+        REF_RECYCLED      // additional reference has been decreased
+    };
+
+    // Indicates whether additional reference has increased,
+    // decreased, or is increasing.
+    // additional ref status:
+    // `Socket'、`Create': REF_USING
+    // `SetFailed': REF_USING -> REF_RECYCLED
+    // `Revive' REF_RECYCLED -> REF_REVIVING -> REF_USING
+    butil::atomic<AdditionalRefStatus> _additional_ref_status;
 
     // Concrete error information from SetFailed()
     // Accesses to these 2 fields(especially _error_text) must be protected
@@ -816,6 +870,7 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+    butil::atomic<int64_t> _total_streams_unconsumed_size;
 
     butil::atomic<int64_t> _ninflight_app_health_check;
 };

@@ -32,6 +32,7 @@ struct ConnectStatistics {
 // Accept connections from a specific port and then
 // process messages from which it reads
 class Acceptor : public InputMessenger {
+friend class Server;
 public:
     typedef butil::FlatMap<SocketId, ConnectStatistics> SocketMap;
 
@@ -106,6 +107,9 @@ private:
     SocketMap _socket_map;
 
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
+
+    // Whether to use rdma or not
+    bool _use_rdma;
 };
 
 } // namespace brpc

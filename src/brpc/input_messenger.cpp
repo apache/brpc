@@ -27,6 +27,7 @@
 #include "brpc/options.pb.h"               // ProtocolType
 #include "brpc/reloadable_flags.h"         // BRPC_VALIDATE_GFLAG
 #include "brpc/protocol.h"                 // ListProtocols
+#include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/input_messenger.h"
 
 
@@ -58,6 +59,7 @@ DECLARE_uint64(max_body_size);
 const size_t MSG_SIZE_WINDOW = 10;  // Take last so many message into stat.
 const size_t MIN_ONCE_READ = 4096;
 const size_t MAX_ONCE_READ = 524288;
+const size_t PROTO_DUMMY_LEN = 4;
 
 ParseResult InputMessenger::CutInputMessage(
         Socket* m, size_t* index, bool read_eof) {
@@ -85,6 +87,16 @@ ParseResult InputMessenger::CutInputMessage(
                     << " bytes, the connection will be closed."
                     " Set max_body_size to allow bigger messages";
                 return result;
+            } else {
+                if (m->_read_buf.size() >= 4) {
+                    char data[PROTO_DUMMY_LEN];
+                    m->_read_buf.copy_to_cstr(data, PROTO_DUMMY_LEN);
+                    if (strncmp(data, "RDMA", PROTO_DUMMY_LEN) == 0 &&
+                        m->_rdma_state == Socket::RDMA_OFF) {
+                        // To avoid timeout when client uses RDMA but server uses TCP
+                        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+                    }
+                }
             }
 
             if (m->CreatedByConnect()) {
@@ -177,6 +189,131 @@ static void QueueMessage(InputMessageBase* to_run_msg,
     }
 }
 
+InputMessenger::InputMessageClosure::~InputMessageClosure() {
+    if (_msg) {
+        ProcessInputMessage(_msg);
+    }
+}
+
+void InputMessenger::InputMessageClosure::reset(InputMessageBase* m) {
+    if (_msg) {
+        ProcessInputMessage(_msg);
+    }
+    _msg = m;
+}
+
+int InputMessenger::ProcessNewMessage(
+        Socket* m, ssize_t bytes, bool read_eof,
+        const uint64_t received_us, const uint64_t base_realtime,
+        InputMessageClosure& last_msg) {
+    m->AddInputBytes(bytes);
+
+    // Avoid this socket to be closed due to idle_timeout_s
+    m->_last_readtime_us.store(received_us, butil::memory_order_relaxed);
+    
+    size_t last_size = m->_read_buf.length();
+    int num_bthread_created = 0;
+    while (1) {
+        size_t index = 8888;
+        ParseResult pr = CutInputMessage(m, &index, read_eof);
+        if (!pr.is_ok()) {
+            if (pr.error() == PARSE_ERROR_NOT_ENOUGH_DATA) {
+                // incomplete message, re-read.
+                // However, some buffer may have been consumed
+                // under protocols like HTTP. Record this size
+                m->_last_msg_size += (last_size - m->_read_buf.length());
+                break;
+            } else if (pr.error() == PARSE_ERROR_TRY_OTHERS) {
+                LOG(WARNING)
+                    << "Close " << *m << " due to unknown message: "
+                    << butil::ToPrintable(m->_read_buf);
+                m->SetFailed(EINVAL, "Close %s due to unknown message",
+                                m->description().c_str());
+                return -1;
+            } else {
+                LOG(WARNING) << "Close " << *m << ": " << pr.error_str();
+                m->SetFailed(EINVAL, "Close %s: %s",
+                                m->description().c_str(), pr.error_str());
+                return -1;
+            }
+        }
+
+        m->AddInputMessages(1);
+        // Calculate average size of messages
+        const size_t cur_size = m->_read_buf.length();
+        if (cur_size == 0) {
+            // _read_buf is consumed, it's good timing to return blocks
+            // cached internally back to TLS, otherwise the memory is not
+            // reused until next message arrives which is quite uncertain
+            // in situations that most connections are idle.
+            m->_read_buf.return_cached_blocks();
+        }
+        m->_last_msg_size += (last_size - cur_size);
+        last_size = cur_size;
+        const size_t old_avg = m->_avg_msg_size;
+        if (old_avg != 0) {
+            m->_avg_msg_size = (old_avg * (MSG_SIZE_WINDOW - 1) + m->_last_msg_size)
+            / MSG_SIZE_WINDOW;
+        } else {
+            m->_avg_msg_size = m->_last_msg_size;
+        }
+        m->_last_msg_size = 0;
+        
+        if (pr.message() == NULL) { // the Process() step can be skipped.
+            continue;
+        }
+        pr.message()->_received_us = received_us;
+        pr.message()->_base_real_us = base_realtime;
+                    
+        // This unique_ptr prevents msg to be lost before transfering
+        // ownership to last_msg
+        DestroyingPtr<InputMessageBase> msg(pr.message());
+        QueueMessage(last_msg.release(), &num_bthread_created,
+                            m->_keytable_pool);
+        if (_handlers[index].process == NULL) {
+            LOG(ERROR) << "process of index=" << index << " is NULL";
+            continue;
+        }
+        m->ReAddress(&msg->_socket);
+        m->PostponeEOF();
+        msg->_process = _handlers[index].process;
+        msg->_arg = _handlers[index].arg;
+        
+        if (_handlers[index].verify != NULL) {
+            int auth_error = 0;
+            if (0 == m->FightAuthentication(&auth_error)) {
+                // Get the right to authenticate
+                if (_handlers[index].verify(msg.get())) {
+                    m->SetAuthentication(0);
+                } else {
+                    m->SetAuthentication(ERPCAUTH);
+                    LOG(WARNING) << "Fail to authenticate " << *m;
+                    m->SetFailed(ERPCAUTH, "Fail to authenticate %s",
+                                    m->description().c_str());
+                    return -1;
+                }
+            } else {
+                LOG_IF(FATAL, auth_error != 0) <<
+                    "Impossible! Socket should have been "
+                    "destroyed when authentication failed";
+            }
+        }
+        if (!m->is_read_progressive()) {
+            // Transfer ownership to last_msg
+            last_msg.reset(msg.release());
+        } else {
+            QueueMessage(msg.release(), &num_bthread_created,
+                                m->_keytable_pool);
+            bthread_flush();
+            num_bthread_created = 0;
+        }
+    }
+    if (num_bthread_created) {
+        bthread_flush();
+    }
+    return 0;
+}
+
 void InputMessenger::OnNewMessages(Socket* m) {
     // Notes:
     // - If the socket has only one message, the message will be parsed and
@@ -189,13 +326,12 @@ void InputMessenger::OnNewMessages(Socket* m) {
     // - Verify will always be called in this bthread at most once and before
     //   any process.
     InputMessenger* messenger = static_cast<InputMessenger*>(m->user());
-    const InputMessageHandler* handlers = messenger->_handlers;
     int progress = Socket::PROGRESS_INIT;
 
     // Notice that all *return* no matter successful or not will run last
     // message, even if the socket is about to be closed. This should be
     // OK in most cases.
-    std::unique_ptr<InputMessageBase, RunLastMessage> last_msg;
+    InputMessageClosure last_msg;
     bool read_eof = false;
     while (!read_eof) {
         const int64_t received_us = butil::cpuwide_time_us();
@@ -233,112 +369,11 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 continue;
             }
         }
-        
-        m->AddInputBytes(nr);
 
-        // Avoid this socket to be closed due to idle_timeout_s
-        m->_last_readtime_us.store(received_us, butil::memory_order_relaxed);
-        
-        size_t last_size = m->_read_buf.length();
-        int num_bthread_created = 0;
-        while (1) {
-            size_t index = 8888;
-            ParseResult pr = messenger->CutInputMessage(m, &index, read_eof);
-            if (!pr.is_ok()) {
-                if (pr.error() == PARSE_ERROR_NOT_ENOUGH_DATA) {
-                    // incomplete message, re-read.
-                    // However, some buffer may have been consumed
-                    // under protocols like HTTP. Record this size
-                    m->_last_msg_size += (last_size - m->_read_buf.length());
-                    break;
-                } else if (pr.error() == PARSE_ERROR_TRY_OTHERS) {
-                    LOG(WARNING)
-                        << "Close " << *m << " due to unknown message: "
-                        << butil::ToPrintable(m->_read_buf);
-                    m->SetFailed(EINVAL, "Close %s due to unknown message",
-                                 m->description().c_str());
-                    return;
-                } else {
-                    LOG(WARNING) << "Close " << *m << ": " << pr.error_str();
-                    m->SetFailed(EINVAL, "Close %s: %s",
-                                 m->description().c_str(), pr.error_str());
-                    return;
-                }
-            }
-
-            m->AddInputMessages(1);
-            // Calculate average size of messages
-            const size_t cur_size = m->_read_buf.length();
-            if (cur_size == 0) {
-                // _read_buf is consumed, it's good timing to return blocks
-                // cached internally back to TLS, otherwise the memory is not
-                // reused until next message arrives which is quite uncertain
-                // in situations that most connections are idle.
-                m->_read_buf.return_cached_blocks();
-            }
-            m->_last_msg_size += (last_size - cur_size);
-            last_size = cur_size;
-            const size_t old_avg = m->_avg_msg_size;
-            if (old_avg != 0) {
-                m->_avg_msg_size = (old_avg * (MSG_SIZE_WINDOW - 1) + m->_last_msg_size)
-                / MSG_SIZE_WINDOW;
-            } else {
-                m->_avg_msg_size = m->_last_msg_size;
-            }
-            m->_last_msg_size = 0;
-            
-            if (pr.message() == NULL) { // the Process() step can be skipped.
-                continue;
-            }
-            pr.message()->_received_us = received_us;
-            pr.message()->_base_real_us = base_realtime;
-                        
-            // This unique_ptr prevents msg to be lost before transfering
-            // ownership to last_msg
-            DestroyingPtr<InputMessageBase> msg(pr.message());
-            QueueMessage(last_msg.release(), &num_bthread_created,
-                             m->_keytable_pool);
-            if (handlers[index].process == NULL) {
-                LOG(ERROR) << "process of index=" << index << " is NULL";
-                continue;
-            }
-            m->ReAddress(&msg->_socket);
-            m->PostponeEOF();
-            msg->_process = handlers[index].process;
-            msg->_arg = handlers[index].arg;
-            
-            if (handlers[index].verify != NULL) {
-                int auth_error = 0;
-                if (0 == m->FightAuthentication(&auth_error)) {
-                    // Get the right to authenticate
-                    if (handlers[index].verify(msg.get())) {
-                        m->SetAuthentication(0);
-                    } else {
-                        m->SetAuthentication(ERPCAUTH);
-                        LOG(WARNING) << "Fail to authenticate " << *m;
-                        m->SetFailed(ERPCAUTH, "Fail to authenticate %s",
-                                     m->description().c_str());
-                        return;
-                    }
-                } else {
-                    LOG_IF(FATAL, auth_error != 0) <<
-                      "Impossible! Socket should have been "
-                      "destroyed when authentication failed";
-                }
-            }
-            if (!m->is_read_progressive()) {
-                // Transfer ownership to last_msg
-                last_msg.reset(msg.release());
-            } else {
-                QueueMessage(msg.release(), &num_bthread_created,
-                                 m->_keytable_pool);
-                bthread_flush();
-                num_bthread_created = 0;
-            }
-        }
-        if (num_bthread_created) {
-            bthread_flush();
-        }
+        if (m->_rdma_state == Socket::RDMA_OFF && messenger->ProcessNewMessage(
+                    m, nr, read_eof, received_us, base_realtime, last_msg) < 0) {
+            return;
+        } 
     }
 
     if (read_eof) {
@@ -444,7 +479,16 @@ int InputMessenger::Create(const butil::EndPoint& remote_side,
 
 int InputMessenger::Create(SocketOptions options, SocketId* id) {
     options.user = this;
-    options.on_edge_triggered_events = OnNewMessages;
+#if BRPC_WITH_RDMA
+    if (options.use_rdma) {
+        options.on_edge_triggered_events = rdma::RdmaEndpoint::OnNewDataFromTcp;
+        options.app_connect = std::make_shared<rdma::RdmaConnect>();
+    } else {
+#else
+    {
+#endif
+        options.on_edge_triggered_events = OnNewMessages;
+    }
     return Socket::Create(options, id);
 }
 

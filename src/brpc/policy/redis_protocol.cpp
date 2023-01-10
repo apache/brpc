@@ -20,6 +20,7 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
+#include "brpc/policy/redis_authenticator.h"
 #include "butil/logging.h"                       // LOG()
 #include "butil/time.h"
 #include "butil/iobuf.h"                         // butil::IOBuf
@@ -189,7 +190,9 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         wopt.ignore_eovercrowded = true;
         LOG_IF(WARNING, socket->Write(&sendbuf, &wopt) != 0)
             << "Fail to send redis reply";
-        ctx->arena.clear();
+        if(ctx->parser.ParsedArgsSize() == 0) {
+            ctx->arena.clear();
+        }
         return MakeParseError(err);
     } else {
         // NOTE(gejun): PopPipelinedInfo() is actually more contended than what
@@ -214,7 +217,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                 socket->reset_parsing_context(msg);
             }
 
-            const int consume_count = (pi.with_auth ? 1 : pi.count);
+            const int consume_count = (pi.auth_flags ? pi.auth_flags : pi.count);
 
             ParseError err = msg->response.ConsumePartialIOBuf(*source, consume_count);
             if (err != PARSE_OK) {
@@ -222,18 +225,21 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                 return MakeParseError(err);
             }
 
-            if (pi.with_auth) {
-                if (msg->response.reply_size() != 1 ||
-                    !(msg->response.reply(0).type() == brpc::REDIS_REPLY_STATUS &&
-                      msg->response.reply(0).data().compare("OK") == 0)) {
-                    LOG(ERROR) << "Redis Auth failed: " << msg->response;
-                    return MakeParseError(PARSE_ERROR_NO_RESOURCE,
-                                          "Fail to authenticate with Redis");
+            if (pi.auth_flags) {
+                for (int i = 0; i < (int)pi.auth_flags; ++i) {
+                    if (i >= msg->response.reply_size() ||
+                        !(msg->response.reply(i).type() ==
+                              brpc::REDIS_REPLY_STATUS &&
+                          msg->response.reply(i).data().compare("OK") == 0)) {
+                        LOG(ERROR) << "Redis Auth failed: " << msg->response;
+                        return MakeParseError(PARSE_ERROR_NO_RESOURCE,
+                            "Fail to authenticate with Redis");
+                    }
                 }
 
                 DestroyingPtr<InputResponse> auth_msg(
                      static_cast<InputResponse*>(socket->release_parsing_context()));
-                pi.with_auth = false;
+                pi.auth_flags = 0;
                 continue;
             }
 
@@ -333,9 +339,15 @@ void PackRedisRequest(butil::IOBuf* buf,
             return cntl->SetFailed(EREQUEST, "Fail to generate credential");
         }
         buf->append(auth_str);
-        ControllerPrivateAccessor(cntl).add_with_auth();
+        const RedisAuthenticator* redis_auth =
+            dynamic_cast<const RedisAuthenticator*>(auth);
+        if (redis_auth == NULL) {
+            return cntl->SetFailed(EREQUEST, "Fail to generate credential");
+        }
+        ControllerPrivateAccessor(cntl).set_auth_flags(
+            redis_auth->GetAuthFlags());
     } else {
-        ControllerPrivateAccessor(cntl).clear_with_auth();
+        ControllerPrivateAccessor(cntl).clear_auth_flags();
     }
 
     buf->append(request);

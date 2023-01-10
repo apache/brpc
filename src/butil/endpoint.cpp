@@ -17,7 +17,6 @@
 
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#include "butil/build_config.h"                // OS_MACOSX
 #include <arpa/inet.h>                         // inet_pton, inet_ntop
 #include <netdb.h>                             // gethostbyname_r
 #include <unistd.h>                            // gethostname
@@ -26,13 +25,15 @@
 #include <stdio.h>                             // snprintf
 #include <stdlib.h>                            // strtol
 #include <sys/un.h>                            // sockaddr_un
+#include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
+#include <memory>
 #include <gflags/gflags.h>
+#include "butil/build_config.h"                // OS_MACOSX
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
-#include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
 
 //supported since Linux 3.9.
 DEFINE_bool(reuse_port, false, "Enable SO_REUSEPORT for all listened sockets");
@@ -193,12 +194,28 @@ int hostname2ip(const char* hostname, ip_t* ip) {
         return -1;
     }
 #else
-    char aux_buf[1024];
+    int aux_buf_len = 1024;
+    std::unique_ptr<char[]> aux_buf(new char[aux_buf_len]);
+    int ret = 0;
     int error = 0;
     struct hostent ent;
     struct hostent* result = NULL;
-    if (gethostbyname_r(hostname, &ent, aux_buf, sizeof(aux_buf),
-                        &result, &error) != 0 || result == NULL) {
+    do {
+        result = NULL;
+        error = 0;
+        ret = gethostbyname_r(hostname,
+                              &ent,
+                              aux_buf.get(),
+                              aux_buf_len,
+                              &result,
+                              &error);
+        if (ret != ERANGE) { // aux_buf is not long enough
+            break;
+        }
+        aux_buf_len *= 2;
+        aux_buf.reset(new char[aux_buf_len]);
+    } while (1);
+    if (ret != 0 || result == NULL) {
         return -1;
     }
 #endif // defined(OS_MACOSX)
@@ -287,12 +304,17 @@ int str2endpoint(const char* ip_str, int port, EndPoint* point) {
 
 int hostname2endpoint(const char* str, EndPoint* point) {
     // Should be enough to hold ip address
-    char buf[64];
+    // The definitive descriptions of the rules for forming domain names appear in RFC 1035, RFC 1123, RFC 2181,
+    // and RFC 5892. The full domain name may not exceed the length of 253 characters in its textual representation
+    // (Domain Names - Domain Concepts and Facilities. IETF. doi:10.17487/RFC1034. RFC 1034.).
+    // For cacheline optimize, use buf size as 256;
+    char buf[256];
     size_t i = 0;
-    for (; i < sizeof(buf) - 1 && str[i] != '\0' && str[i] != ':'; ++i) {
+    for (; i < MAX_DOMAIN_LENGTH && str[i] != '\0' && str[i] != ':'; ++i) {
         buf[i] = str[i];
     }
-    if (i == sizeof(buf) - 1) {
+
+    if (i >= MAX_DOMAIN_LENGTH || str[i] != ':') {
         return -1;
     }
 

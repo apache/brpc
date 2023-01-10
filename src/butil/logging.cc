@@ -21,6 +21,7 @@
 
 #include <gflags/gflags.h>
 DEFINE_bool(log_as_json, false, "Print log as a valid JSON");
+DEFINE_bool(escape_log, false, "Escape log content before printing");
 
 #if !BRPC_WITH_GLOG
 
@@ -466,7 +467,7 @@ static void PrintLogSeverity(std::ostream& os, int severity) {
     }
 }
 
-static void PrintLogPrefix(
+void PrintLogPrefix(
     std::ostream& os, int severity, const char* file, int line) {
     PrintLogSeverity(os, severity);
 #if defined(OS_LINUX)
@@ -565,12 +566,36 @@ static void PrintLogPrefixAsJSON(
     os << "\"C\":\"" << file << ':' << line << "\"";
 }
 
-static void PrintLog(std::ostream& os,
-                     int severity, const char* file, int line,
-                     const butil::StringPiece& content) {
+void EscapeJson(std::ostream& os, const butil::StringPiece& s) {
+    for (auto it = s.begin(); it != s.end(); it++) {
+        auto c = *it;
+        switch (c) {
+        case '"': os << "\\\""; break;
+        case '\\': os << "\\\\"; break;
+        case '\b': os << "\\b"; break;
+        case '\f': os << "\\f"; break;
+        case '\n': os << "\\n"; break;
+        case '\r': os << "\\r"; break;
+        case '\t': os << "\\t"; break;
+        default: os << c;
+        }
+    }
+}
+
+inline void OutputLog(std::ostream& os, const butil::StringPiece& s) {
+    if (FLAGS_escape_log) {
+        EscapeJson(os, s);
+    } else {
+        os.write(s.data(), s.length());
+    }
+}
+
+void PrintLog(std::ostream& os,
+              int severity, const char* file, int line,
+              const butil::StringPiece& content) {
     if (!FLAGS_log_as_json) {
         PrintLogPrefix(os, severity, file, line);
-        os.write(content.data(), content.size());
+        OutputLog(os, content);
     } else {
         os << '{';
         PrintLogPrefixAsJSON(os, severity, file, line);
@@ -582,7 +607,7 @@ static void PrintLog(std::ostream& os,
         } else {
             os << ',';
         }
-        os.write(content.data(), content.size());
+        OutputLog(os, content);
         if (pair_quote) {
             os << '"';
         } else if (!content.empty() && content[content.size()-1] != '"') {

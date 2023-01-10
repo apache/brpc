@@ -236,6 +236,125 @@ public:
             return static_cast<value_type>(round(s.data * 1000000.0 / s.time_us));
         }
     }
+
+    value_type get_value() const { return Base::get_value(); }
+};
+
+namespace adapter {
+
+template <typename R>
+class WindowExType {
+public:
+    typedef R var_type;
+    typedef bvar::Window<var_type > window_type;
+    typedef typename R::value_type value_type;
+    struct WindowExVar {
+        WindowExVar(time_t window_size) : window(&var, window_size) {}
+        var_type var;
+        window_type window;
+    };
+};
+
+template <typename R>
+class PerSecondExType {
+public:
+    typedef R var_type;
+    typedef bvar::PerSecond<var_type > window_type;
+    typedef typename R::value_type value_type;
+    struct WindowExVar {
+        WindowExVar(time_t window_size) : window(&var, window_size) {}
+        var_type var;
+        window_type window;
+    };
+};
+
+template <typename R, typename WindowType>
+class WindowExAdapter : public Variable{
+public:
+    typedef typename R::value_type value_type;
+    typedef typename WindowType::WindowExVar WindowExVar;
+
+    WindowExAdapter(time_t window_size)
+        : _window_size(window_size > 0 ? window_size : FLAGS_bvar_dump_interval)
+        , _window_ex_var(_window_size) {
+    }
+
+    value_type get_value() const {
+        return _window_ex_var.window.get_value();
+    }
+
+    template <typename ANT_TYPE>
+    WindowExAdapter& operator<<(ANT_TYPE value) {
+        _window_ex_var.var << value;
+        return *this;
+    }
+
+    // Implement Variable::describe()
+    void describe(std::ostream& os, bool quote_string) const {
+        if (butil::is_same<value_type, std::string>::value && quote_string) {
+            os << '"' << get_value() << '"';
+        } else {
+            os << get_value();
+        }
+    }
+
+    virtual ~WindowExAdapter() {
+        hide();
+    }
+
+private:
+    time_t      _window_size;
+    WindowExVar _window_ex_var;
+};
+
+}  // namespace adapter
+
+// Get data within a time window.
+// The time unit is 1 second fixed.
+// Window not relies on other bvar.
+
+// R must:
+// - window_size must be a constant
+template <typename R, time_t window_size = 0>
+class WindowEx : public adapter::WindowExAdapter<R, adapter::WindowExType<R> > {
+public:
+    typedef adapter::WindowExAdapter<R, adapter::WindowExType<R> > Base;
+
+    WindowEx() : Base(window_size) {}
+
+    WindowEx(const butil::StringPiece& name) : Base(window_size) {
+        this->expose(name);
+    }
+
+    WindowEx(const butil::StringPiece& prefix,
+             const butil::StringPiece& name)
+        : Base(window_size) {
+        this->expose_as(prefix, name);
+    }
+};
+
+// Get data per second within a time window.
+// The only difference between PerSecondEx and WindowEx is that PerSecondEx divides
+// the data by time duration.
+
+// R must:
+// - window_size must be a constant
+template <typename R, time_t window_size = 0>
+class PerSecondEx : public adapter::WindowExAdapter<R, adapter::PerSecondExType<R> > {
+public:
+    typedef adapter::WindowExAdapter<R, adapter::PerSecondExType<R> > Base;
+
+    PerSecondEx() : Base(window_size) {}
+
+    PerSecondEx(const butil::StringPiece& name) : Base(window_size) {
+        this->expose(name);
+    }
+
+    PerSecondEx(const butil::StringPiece& prefix,
+                const butil::StringPiece& name)
+        : Base(window_size) {
+        this->expose_as(prefix, name);
+    }
 };
 
 }  // namespace bvar

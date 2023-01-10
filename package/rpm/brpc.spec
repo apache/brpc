@@ -1,12 +1,31 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership. The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
 Name:		brpc
-Version:	0.9.7
+Version:	1.3.0
 Release:	1%{?dist}
 Summary:	An industrial-grade RPC framework used throughout Baidu, with 1,000,000+ instances(not counting clients) and thousands kinds of services.
 
 Group:		Development
 License:	Apache2
-URL:		https://github.com/apache/incubator-brpc
-Source0:	incubator-brpc-%{version}.tar.gz
+URL:		https://github.com/apache/brpc
+Source0:	apache-brpc-%{version}-incubating-src.tar.gz
 
 # https://access.redhat.com/solutions/519993
 %global  _filter_GLIBC_PRIVATE 1
@@ -23,6 +42,9 @@ BuildRequires: devtoolset-8-gcc-c++
 %define __strip /opt/rh/devtoolset-8/root/usr/bin/strip
 %endif
 
+BuildRequires:	cmake
+BuildRequires:	gcc
+BuildRequires:	gcc-c++
 BuildRequires:	gflags-devel >= 2.1
 BuildRequires:	protobuf-devel >= 2.4
 BuildRequires:	leveldb-devel
@@ -45,29 +67,36 @@ Requires: brpc-devel = %{version}-%{release}
 Static %{name} libraries.
 
 %prep
-%setup -n incubator-%{name}-%{version}
-
+%setup -n apache-%{name}-%{version}-incubating-src
 
 %build
-mkdir -p %{_target_platform}
-
-pushd %{_target_platform}
-
 %if 0%{?use_devtoolset}
 . /opt/rh/devtoolset-8/enable
 %endif
 
-%{cmake} ..
+%if 0%{?fedora} >= 33 || 0%{?rhel} >= 8
+%{cmake} -DBUILD_BRPC_TOOLS:BOOLEAN=OFF -DDOWNLOAD_GTEST:BOOLEAN=OFF
+%{cmake_build}
+%else
+mkdir -p %{_target_platform}
+pushd %{_target_platform}
 
+%{cmake} -DBUILD_BRPC_TOOLS:BOOLEAN=OFF -DDOWNLOAD_GTEST:BOOLEAN=OFF ..
 make %{?_smp_mflags}
+
 popd
+%endif
 
 %install
 rm -rf $RPM_BUILD_ROOT
 
+%if 0%{?fedora} >= 33 || 0%{?rhel} >= 8
+%{cmake_install}
+%else
 pushd %{_target_platform}
 %make_install
 popd
+%endif
 
 %clean
 rm -rf $RPM_BUILD_ROOT

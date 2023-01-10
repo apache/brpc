@@ -101,7 +101,7 @@ URL的一般形式如下图：
 //                                               interpretable as extension
 ```
 
-在上面例子中可以看到，Channel.Init()和cntl.http_request().uri()被设置了相同的URL。为什么Channel为什么不直接利用Init时传入的URL，而需要给uri()再设置一次？
+在上面例子中可以看到，Channel.Init()和cntl.http_request().uri()被设置了相同的URL。为什么Channel不直接利用Init时传入的URL，而需要给uri()再设置一次？
 
 确实，在简单使用场景下，这两者有所重复，但在复杂场景中，两者差别很大，比如：
 
@@ -114,7 +114,7 @@ URL的一般形式如下图：
 
 若用户没有填且URL中包含host，比如http://www.foo.com/path，则http request中会包含"Host: www.foo.com"。
 
-若用户没有填且URL不包含host，比如"/index.html?name=value"，但如果Channel初始化的地址包含域名，则框架会以域名作为Host，比如"http://www.foo.com"，该http server将会看到"Host: www.foo.com"。如果地址是"http://www.foo.com:8989"，则该http server将会看到"Host: www.foo.com:8989"。
+若用户没有填且URL不包含host，比如"/index.html?name=value"，但如果Channel初始化的地址scheme为http(s)且包含域名，则框架会以域名作为Host，比如"http://www.foo.com"，该http server将会看到"Host: www.foo.com"。如果地址是"http://www.foo.com:8989"，则该http server将会看到"Host: www.foo.com:8989"。
 
 若用户没有填且URL不包含host，比如"/index.html?name=value"，如果Channel初始化的地址也不包含域名，则框架会以目标server的ip和port为Host，地址为10.46.188.39:8989的http server将会看到"Host: 10.46.188.39:8989"。
 
@@ -222,7 +222,7 @@ brpc client支持在读取完body前就结束RPC，让用户在RPC结束后再�
    class ProgressiveReader {
    public:
        // Called when one part was read.
-       // Error returned is treated as *permenant* and the socket where the
+       // Error returned is treated as *permanent* and the socket where the
        // data was read will be closed.
        // A temporary error may be handled by blocking this function, which
        // may block the HTTP parsing on the socket.

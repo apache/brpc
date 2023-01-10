@@ -29,7 +29,7 @@ class AutoConcurrencyLimiter : public ConcurrencyLimiter {
 public:
     AutoConcurrencyLimiter();
 
-    bool OnRequested(int current_concurrency) override;
+    bool OnRequested(int current_concurrency, Controller*) override;
     
     void OnResponded(int error_code, int64_t latency_us) override;
 
@@ -73,12 +73,12 @@ private:
     double _explore_ratio;
   
     // modified per sample.
-    butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<int64_t> _last_sampling_time_us;
     butil::Mutex _sw_mutex;
     SampleWindow _sw;
 
     // modified per request.
-    butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _total_succ_req;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<int32_t> _total_succ_req;
 };
 
 }  // namespace policy

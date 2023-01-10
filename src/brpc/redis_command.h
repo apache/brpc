@@ -53,6 +53,7 @@ public:
     // in `arena'.
     ParseError Consume(butil::IOBuf& buf, std::vector<butil::StringPiece>* args,
                        butil::Arena* arena);
+    size_t ParsedArgsSize();
 
 private:
     // Reset parser to the initial state.

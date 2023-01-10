@@ -44,10 +44,12 @@ public:
 struct GetNamingServiceThreadOptions {
     GetNamingServiceThreadOptions()
         : succeed_without_server(false)
-        , log_succeed_without_server(true) {}
+        , log_succeed_without_server(true)
+        , use_rdma(false) {}
     
     bool succeed_without_server;
     bool log_succeed_without_server;
+    bool use_rdma;
     ChannelSignature channel_signature;
     std::shared_ptr<SocketSSLContext> ssl_ctx;
 };

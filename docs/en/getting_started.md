@@ -16,6 +16,7 @@ brpc depends on following packages:
 * [Fedora/CentOS](#fedoracentos)
 * [Linux with self-built deps](#linux-with-self-built-deps)
 * [MacOS](#macos)
+* [Docker](#docker)
 
 ## Ubuntu/LinuxMint/WSL
 ### Prepare deps
@@ -75,6 +76,10 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 ```shell
+mkdir build && cd build && cmake .. && cmake --build . -j6
+```
+With CMake 3.13+, we can also use the following commands to build the project:
+```shell
 cmake -B build && cmake --build build -j6
 ```
 To help VSCode or Emacs(LSP) to understand code correctly, add `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` to generate `compile_commands.json`
@@ -101,6 +106,18 @@ Examples link brpc statically, if you need to link the shared version, remove `C
 
 ```shell
 $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
+```
+
+### Compile brpc with vcpkg
+
+[vcpkg](https://github.com/microsoft/vcpkg) is a package manager that supports all platforms,
+you can use vcpkg to build brpc with the following step:
+
+```shell
+$ git clone https://github.com/microsoft/vcpkg.git
+$ ./bootstrap-vcpkg.bat # for powershell
+$ ./bootstrap-vcpkg.sh # for bash
+$ ./vcpkg install brpc
 ```
 
 ## Fedora/CentOS
@@ -221,6 +238,19 @@ Note: With same environment, the performance of the MacOS version is worse than 
 
 The code at master HEAD already supports M1 series chips. M2 series are not tested yet. Please feel free to report remaining warnings/errors to us by issues.
 
+## Docker
+Compile brpc with docker:
+
+```shell
+$ mkdir -p ~/brpc
+$ cd ~/brpc
+$ git clone https://github.com/apache/brpc.git
+$ cd brpc
+$ docker build -t brpc:master .
+$ docker images
+$ docker run -it brpc:master /bin/bash
+```
+
 ### Prepare deps
 
 Install dependencies:
@@ -243,7 +273,7 @@ After the compilation, copy `include/` and `lib/` into `/usr/local/include` and 
 
 openssl installed in Monterey may not be found at `/usr/local/opt/openssl`, instead it's probably put under `/opt/homebrew/Cellar`. If the compiler cannot find openssl：
 
-* Run `brew link openssl --force` first and check if `/user/local/opt/openssl` appears.
+* Run `brew link openssl --force` first and check if `/usr/local/opt/openssl` appears.
 * If above command does not work, consider making a soft link using `sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`. Note that the installed openssl in above command may be put in different places in different environments, which could be revealed by running `brew info openssl`.
 
 ### Compile brpc with config_brpc.sh
@@ -289,7 +319,7 @@ Same with [here](#compile-brpc-with-cmake)
 
 # Supported deps
 
-## GCC: 4.8-7.1
+## GCC: 4.8-11.2
 
 c++11 is turned on by default to remove dependencies on boost (atomic).
 
@@ -297,7 +327,7 @@ The over-aligned issues in GCC7 is suppressed temporarily now.
 
 Using other versions of gcc may generate warnings, contact us to fix.
 
-Adding `-D__const__=` to cxxflags in your makefiles is a must to avoid [errno issue in gcc4+](thread_local.md).
+Adding `-D__const__=__unused__` to cxxflags in your makefiles is a must to avoid [errno issue in gcc4+](thread_local.md).
 
 ## Clang: 3.5-4.0
 

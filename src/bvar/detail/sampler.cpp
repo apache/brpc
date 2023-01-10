@@ -17,6 +17,7 @@
 
 // Date: Tue Jul 28 18:14:40 CST 2015
 
+#include <gflags/gflags.h>
 #include "butil/time.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "bvar/reducer.h"
@@ -127,7 +128,11 @@ static PassiveStatus<double>* s_cumulated_time_bvar = NULL;
 static bvar::PerSecond<bvar::PassiveStatus<double> >* s_sampling_thread_usage_bvar = NULL;
 #endif
 
+DEFINE_int32(bvar_sampler_thread_start_delay_us, 10000, "bvar sampler thread start delay us");
+
 void SamplerCollector::run() {
+    ::usleep(FLAGS_bvar_sampler_thread_start_delay_us);
+    
 #ifndef UNIT_TEST
     // NOTE:
     // * Following vars can't be created on thread's stack since this thread
@@ -197,8 +202,14 @@ Sampler::Sampler() : _used(true) {}
 
 Sampler::~Sampler() {}
 
+DEFINE_bool(bvar_enable_sampling, true, "is enable bvar sampling");
+
 void Sampler::schedule() {
-    *butil::get_leaky_singleton<SamplerCollector>() << this;
+    // since the SamplerCollector is initialized before the program starts
+    // flags will not take effect if used in the SamplerCollector constructor
+    if (FLAGS_bvar_enable_sampling) {
+        *butil::get_leaky_singleton<SamplerCollector>() << this;
+    }
 }
 
 void Sampler::destroy() {

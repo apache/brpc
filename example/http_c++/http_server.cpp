@@ -26,8 +26,6 @@
 DEFINE_int32(port, 8010, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
-DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
-             "(waiting for client to close connection before server stops)");
 
 DEFINE_string(certificate, "cert.pem", "Certificate file path to enable SSL");
 DEFINE_string(private_key, "key.pem", "Private key file path to enable SSL");
@@ -38,8 +36,8 @@ namespace example {
 // Service with static path.
 class HttpServiceImpl : public HttpService {
 public:
-    HttpServiceImpl() {};
-    virtual ~HttpServiceImpl() {};
+    HttpServiceImpl() {}
+    virtual ~HttpServiceImpl() {}
     void Echo(google::protobuf::RpcController* cntl_base,
               const HttpRequest*,
               HttpResponse*,
@@ -66,8 +64,8 @@ public:
 // Service with dynamic path.
 class FileServiceImpl : public FileService {
 public:
-    FileServiceImpl() {};
-    virtual ~FileServiceImpl() {};
+    FileServiceImpl() {}
+    virtual ~FileServiceImpl() {}
 
     struct Args {
         butil::intrusive_ptr<brpc::ProgressiveAttachment> pa;
@@ -116,8 +114,8 @@ public:
 // when adding the service into server).
 class QueueServiceImpl : public example::QueueService {
 public:
-    QueueServiceImpl() {};
-    virtual ~QueueServiceImpl() {};
+    QueueServiceImpl() {}
+    virtual ~QueueServiceImpl() {}
     void start(google::protobuf::RpcController* cntl_base,
                const HttpRequest*,
                HttpResponse*,

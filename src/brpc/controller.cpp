@@ -76,6 +76,10 @@ BAIDU_REGISTER_ERRNO(brpc::ELIMIT, "Reached server's max_concurrency");
 BAIDU_REGISTER_ERRNO(brpc::ECLOSE, "Close socket initiatively");
 BAIDU_REGISTER_ERRNO(brpc::EITP, "Bad Itp response");
 
+#if BRPC_WITH_RDMA
+BAIDU_REGISTER_ERRNO(brpc::ERDMA, "RDMA verbs error");
+BAIDU_REGISTER_ERRNO(brpc::ERDMAMEM, "Memory not registered for RDMA");
+#endif
 
 DECLARE_bool(log_as_json);
 
@@ -274,6 +278,7 @@ void Controller::ResetPods() {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
+    _auth_flags = 0;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -1162,7 +1167,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     wopt.id_wait = cid;
     wopt.abstime = pabstime;
     wopt.pipelined_count = _pipelined_count;
-    wopt.with_auth = has_flag(FLAGS_REQUEST_WITH_AUTH);
+    wopt.auth_flags = _auth_flags;
     wopt.ignore_eovercrowded = has_flag(FLAGS_IGNORE_EOVERCROWDED);
     int rc;
     size_t packet_size = 0;

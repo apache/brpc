@@ -35,7 +35,7 @@ DEFINE_int32(health_check_interval, 3,
 // NOTE: Must be limited to positive to guarantee correctness of SocketMapRemove.
 BRPC_VALIDATE_GFLAG(health_check_interval, PositiveInteger);
 
-DEFINE_int32(idle_timeout_second, 10, 
+DEFINE_int32(idle_timeout_second, 30, 
              "Pooled connections without data transmission for so many "
              "seconds will be closed. No effect for non-positive values");
 BRPC_VALIDATE_GFLAG(idle_timeout_second, PassValidate);
@@ -87,8 +87,9 @@ SocketMap* get_or_new_client_side_socket_map() {
 }
 
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
-                    const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
-    return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx);
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx,
+                    bool use_rdma) {
+    return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx, use_rdma);
 }    
 
 int SocketMapFind(const SocketMapKey& key, SocketId* id) {
@@ -210,17 +211,20 @@ void SocketMap::PrintSocketMap(std::ostream& os, void* arg) {
 }
 
 int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
-                      const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
+                      const std::shared_ptr<SocketSSLContext>& ssl_ctx,
+                      bool use_rdma) {
     std::unique_lock<butil::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(key);
     if (sc) {
         if (!sc->socket->Failed() ||
-            sc->socket->health_check_interval() > 0/*HC enabled*/) {
+            (sc->socket->health_check_interval() > 0 &&
+             sc->socket->IsHCRelatedRefHeld())/*HC enabled*/) {
             ++sc->ref_count;
             *id = sc->socket->id();
             return 0;
         }
         // A socket w/o HC is failed (permanently), replace it.
+        sc->socket->SetHCRelatedRefReleased(); // set released status to cancel health checking
         SocketUniquePtr ptr(sc->socket);  // Remove the ref added at insertion.
         _map.erase(key); // in principle, we can override the entry in map w/o
         // removing and inserting it again. But this would make error branches
@@ -232,6 +236,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     SocketOptions opt;
     opt.remote_side = key.peer.addr;
     opt.initial_ssl_ctx = ssl_ctx;
+    opt.use_rdma = use_rdma;
     if (_options.socket_creator->CreateSocket(opt, &tmp_id) != 0) {
         PLOG(FATAL) << "Fail to create socket to " << key.peer;
         return -1;
@@ -244,6 +249,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
         LOG(FATAL) << "Fail to address SocketId=" << tmp_id;
         return -1;
     }
+    ptr->SetHCRelatedRefHeld(); // set held status
     SingleConnection new_sc = { 1, ptr.release(), 0 };
     _map[key] = new_sc;
     *id = tmp_id;
@@ -302,6 +308,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
                     butil::StringPiece(namebuf, len), PrintSocketMap, this);
             }
             s->ReleaseAdditionalReference(); // release extra ref
+            s->SetHCRelatedRefReleased(); // set released status to cancel health checking
             SocketUniquePtr ptr(s);  // Dereference
         }
     }
