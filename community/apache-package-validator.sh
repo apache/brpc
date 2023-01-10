@@ -21,7 +21,7 @@
 set -e
 
 g_package_link=${1}
-g_package_keys=${2:-https://downloads.apache.org/incubator/brpc/KEYS}
+g_package_keys=${2:-https://downloads.apache.org/brpc/KEYS}
 
 g_valid_package_link=' '
 g_valid_package_name=' '
