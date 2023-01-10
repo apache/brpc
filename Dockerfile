@@ -37,6 +37,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libsnappy-dev && \
         apt-get clean -y
 
-RUN git clone https://github.com/apache/incubator-brpc.git
-RUN cd incubator-brpc && sh config_brpc.sh --headers=/usr/include --libs=/usr/lib && \
+RUN git clone https://github.com/apache/brpc.git
+RUN cd brpc && sh config_brpc.sh --headers=/usr/include --libs=/usr/lib && \
     make -j "$(nproc)"

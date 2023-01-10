@@ -213,7 +213,7 @@ mkdir -p ~/brpc_svn/dev/
 
 cd ~/brpc_svn/dev/
 
-svn --username=lorinlee co https://dist.apache.org/repos/dist/dev/incubator/brpc/
+svn --username=lorinlee co https://dist.apache.org/repos/dist/dev/brpc/
 
 cd ~/brpc_svn/dev/brpc
 ```
@@ -265,7 +265,7 @@ sha512sum --check apache-brpc-1.0.0-incubating-src.tar.gz.sha512
 First import the publisher's public key. Import KEYS from the svn repository to the local. (The person who releases the version does not need to import it again. The person who verify needs to import it.)
 
 ```bash
-curl https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS >> KEYS
+curl https://dist.apache.org/repos/dist/dev/brpc/KEYS >> KEYS
 
 gpg --import KEYS
 ```
@@ -367,7 +367,7 @@ This is a call for vote to release Apache brpc (Incubating) version
 - xxx
 
 The release candidates:
-https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0/
+https://dist.apache.org/repos/dist/dev/brpc/1.0.0/
 
 Git tag for the release:
 https://github.com/apache/brpc/releases/tag/1.0.0
@@ -376,7 +376,7 @@ Release Commit ID:
 https://github.com/apache/brpc/commit/xxx
 
 Keys to verify the Release Candidate:
-https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS
+https://dist.apache.org/repos/dist/dev/brpc/KEYS
 
 The vote will be open for at least 72 hours or until the necessary number of
 votes are reached.
@@ -443,12 +443,12 @@ If the community vote is not passed, please modify the code of the release branc
 ## 1. Update GPG Signature
 
 ```
-svn delete https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "delete KEYS"
+svn delete https://dist.apache.org/repos/dist/release/brpc/KEYS -m "delete KEYS"
 
-svn cp https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS https://dist.apache.org/repos/dist/release/incubator/brpc/KEYS -m "update brpc KEYS"
+svn cp https://dist.apache.org/repos/dist/dev/brpc/KEYS https://dist.apache.org/repos/dist/release/brpc/KEYS -m "update brpc KEYS"
 ```
 
-After commit the svn, access <https://downloads.apache.org/incubator/brpc/KEYS>, check whether the content is updated. It may take several minutes to wait for the content to be updated before continuing.
+After commit the svn, access <https://downloads.apache.org/brpc/KEYS>, check whether the content is updated. It may take several minutes to wait for the content to be updated before continuing.
 
 ## 2. Vote stage
 
@@ -486,10 +486,10 @@ brpc community vote thread: xxx
 Vote result thread: xxx
 
 The release candidate:
-https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0/
+https://dist.apache.org/repos/dist/dev/brpc/1.0.0/
 
 This release has been signed with a PGP available here:
-https://downloads.apache.org/incubator/brpc/KEYS
+https://downloads.apache.org/brpc/KEYS
 
 Git tag for the release:
 https://github.com/apache/brpc/releases/tag/1.0.0
@@ -554,7 +554,7 @@ Apache brpc (Incubating) community
 ## 1. Move the release package from Apache SVN directory dist/dev to dist/release
 
 ```
-svn mv https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0 https://dist.apache.org/repos/dist/release/incubator/brpc/1.0.0 -m "release brpc 1.0.0"
+svn mv https://dist.apache.org/repos/dist/dev/brpc/1.0.0 https://dist.apache.org/repos/dist/release/brpc/1.0.0 -m "release brpc 1.0.0"
 ```
 
 ## 2. Create github release
@@ -566,9 +566,9 @@ svn mv https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0 https://dist.
 
 After waiting and confirming that the new release is synchronized to the Apache image, update the following page: <https://brpc.apache.org/docs/downloadbrpc/> by change the code in <https://github.com/apache/brpc-website/>. Please update both Chinese and English.
 
-The download links of GPG signature files and hash check files should use this prefix: `https://downloads.apache.org/incubator/brpc/`
+The download links of GPG signature files and hash check files should use this prefix: `https://downloads.apache.org/brpc/`
 
-The download link of the code package should use this prefix: `https://dlcdn.apache.org/incubator/brpc/`
+The download link of the code package should use this prefix: `https://dlcdn.apache.org/brpc/`
 
 ## 4. Send email to announce release finished
 
