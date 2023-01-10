@@ -59,3 +59,4 @@
 | 12/05/2022 - 12/11/2022  | 王伟冰 | https://lists.apache.org/thread/99o15h9hk5dd73jv8wyp49l8mbw0j611
 | 12/19/2022 - 12/25/2022  | 何磊 | https://lists.apache.org/thread/g1stjjo1mc9ds47do6gosrw5k6wwb9mj
 | 12/26/2022 - 01/01/2023  | 刘帅 | https://lists.apache.org/thread/3xw1gkobqmvr6oo375x3gsfcqvg80n23
+| 01/02/2023 - 01/08/2023  | 朱佳顺 | https://lists.apache.org/thread/sm4f209c8ltols04gpmzo386b02dyc9s
