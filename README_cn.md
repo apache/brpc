@@ -1,6 +1,6 @@
 [English version](README.md)
 
-[![Build Status](https://api.travis-ci.com/apache/incubator-brpc.svg?branch=master)](https://travis-ci.com/github/apache/incubator-brpc)
+[![Build Status](https://api.travis-ci.com/apache/brpc.svg?branch=master)](https://travis-ci.com/github/apache/brpc)
 
 # ![brpc](docs/images/logo.png)
 
@@ -107,7 +107,7 @@ brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机�
 
 # 反馈和参与
 
-* bug、疑惑、修改建议都欢迎提在[Github Issues](https://github.com/apache/incubator-brpc/issues)中
+* bug、疑惑、修改建议都欢迎提在[Github Issues](https://github.com/apache/brpc/issues)中
 * 订阅邮件列表(dev-subscribe@brpc.apache.org)获得项目最新信息
 
 

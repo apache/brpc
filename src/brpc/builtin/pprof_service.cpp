@@ -220,7 +220,7 @@ void PProfService::heap(
             extra_desc = " (no TCMALLOC_SAMPLE_PARAMETER in env)";
         }
         cntl->SetFailed(ENOMETHOD, "Heap profiler is not enabled%s,"
-                        "check out https://github.com/apache/incubator-brpc/blob/master/docs/cn/heap_profiler.md",
+                        "check out https://github.com/apache/brpc/blob/master/docs/cn/heap_profiler.md",
                         extra_desc);
         return;
     }

@@ -24,7 +24,7 @@
 
 #ifndef __const__
 // Avoid over-optimizations of TLS variables by GCC>=4.8
-// See: https://github.com/apache/incubator-brpc/issues/1693
+// See: https://github.com/apache/brpc/issues/1693
 #define __const__ __unused__
 #endif
 

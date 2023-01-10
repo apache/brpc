@@ -170,9 +170,9 @@ Version:	1.0.0
 push the release branch to tag, For example:
 
 ```bash
-git clone -b release-1.0 git@github.com:apache/incubator-brpc.git ~/incubator-brpc
+git clone -b release-1.0 git@github.com:apache/brpc.git ~/brpc
 
-cd ~/incubator-brpc
+cd ~/brpc
 
 git tag -a 1.0.0 -m "release 1.0.0"
 
@@ -233,11 +233,11 @@ mkdir -p ~/brpc_svn/dev/brpc/1.0.0
 
 cd ~/brpc_svn/dev/brpc/1.0.0
 
-cp ~/incubator-brpc/apache-brpc-1.0.0-incubating-src.tar.gz ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-incubating-src.tar.gz ~/brpc_svn/dev/brpc/1.0.0
 
-cp ~/incubator-brpc/apache-brpc-1.0.0-incubating-src.tar.gz.asc ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-incubating-src.tar.gz.asc ~/brpc_svn/dev/brpc/1.0.0
 
-cp ~/incubator-brpc/apache-brpc-1.0.0-incubating-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-incubating-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
 ```
 
 ## 4. Submit SVN
@@ -312,13 +312,13 @@ gpg --verify apache-brpc-1.0.0-incubating-src.tar.gz.asc apache-brpc-1.0.0-incub
 ### 1. Compare the difference of between the source code package and github tag
 
 ```bash
-curl -Lo tag-1.0.0.tar.gz https://github.com/apache/incubator-brpc/archive/refs/tags/1.0.0.tar.gz
+curl -Lo tag-1.0.0.tar.gz https://github.com/apache/brpc/archive/refs/tags/1.0.0.tar.gz
 
 tar xvzf tag-1.0.0.tar.gz
 
 tar xvzf apache-brpc-1.0.0-incubating-src.tar.gz
 
-diff -r incubator-brpc-1.0.0 apache-brpc-1.0.0-incubating-src
+diff -r brpc-1.0.0 apache-brpc-1.0.0-incubating-src
 ```
 
 ### 2. Check file content
@@ -370,10 +370,10 @@ The release candidates:
 https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0/
 
 Git tag for the release:
-https://github.com/apache/incubator-brpc/releases/tag/1.0.0
+https://github.com/apache/brpc/releases/tag/1.0.0
 
 Release Commit ID:
-https://github.com/apache/incubator-brpc/commit/xxx
+https://github.com/apache/brpc/commit/xxx
 
 Keys to verify the Release Candidate:
 https://dist.apache.org/repos/dist/dev/incubator/brpc/KEYS
@@ -492,7 +492,7 @@ This release has been signed with a PGP available here:
 https://downloads.apache.org/incubator/brpc/KEYS
 
 Git tag for the release:
-https://github.com/apache/incubator-brpc/releases/tag/1.0.0
+https://github.com/apache/brpc/releases/tag/1.0.0
 
 Build guide and get started instructions can be found at:
 https://brpc.apache.org/docs/getting_started
@@ -559,12 +559,12 @@ svn mv https://dist.apache.org/repos/dist/dev/incubator/brpc/1.0.0 https://dist.
 
 ## 2. Create github release
 
-1. On the [GitHub Releases page](https://github.com/apache/incubator-brpc/tags) Click the corresponding version of to create a new Release
+1. On the [GitHub Releases page](https://github.com/apache/brpc/tags) Click the corresponding version of to create a new Release
 2. Edit the version number and version description, and click `Publish release`
 
 ## 3. Update download page
 
-After waiting and confirming that the new release is synchronized to the Apache image, update the following page: <https://brpc.apache.org/docs/downloadbrpc/> by change the code in <https://github.com/apache/incubator-brpc-website/>. Please update both Chinese and English.
+After waiting and confirming that the new release is synchronized to the Apache image, update the following page: <https://brpc.apache.org/docs/downloadbrpc/> by change the code in <https://github.com/apache/brpc-website/>. Please update both Chinese and English.
 
 The download links of GPG signature files and hash check files should use this prefix: `https://downloads.apache.org/incubator/brpc/`
 
@@ -609,12 +609,12 @@ The release is available for download at:
 https://brpc.apache.org/docs/downloadbrpc/
 
 The release notes can be found here:
-https://github.com/apache/incubator-brpc/releases/tag/1.0.0
+https://github.com/apache/brpc/releases/tag/1.0.0
 
 Website: http://brpc.apache.org/
 
 brpc(Incubating) Resources:
-- Issue: https://github.com/apache/incubator-brpc/issues/
+- Issue: https://github.com/apache/brpc/issues/
 - Mailing list: dev@brpc.apache.org
 - Documents: https://brpc.apache.org/docs/
 

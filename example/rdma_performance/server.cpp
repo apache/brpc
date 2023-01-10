@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
 
 
 int main(int argc, char* argv[]) {
-    LOG(ERROR) << " brpc is not compiled with rdma. To enable it, please refer to https://github.com/apache/incubator-brpc/blob/master/docs/en/rdma.md";
+    LOG(ERROR) << " brpc is not compiled with rdma. To enable it, please refer to https://github.com/apache/brpc/blob/master/docs/en/rdma.md";
     return 0;
 }
 

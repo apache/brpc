@@ -24,7 +24,7 @@ Summary:	An industrial-grade RPC framework used throughout Baidu, with 1,000,000
 
 Group:		Development
 License:	Apache2
-URL:		https://github.com/apache/incubator-brpc
+URL:		https://github.com/apache/brpc
 Source0:	apache-brpc-%{version}-incubating-src.tar.gz
 
 # https://access.redhat.com/solutions/519993
