@@ -27,7 +27,7 @@ class TimeoutConcurrencyLimiter : public ConcurrencyLimiter {
    public:
     TimeoutConcurrencyLimiter();
 
-    bool OnRequested(int, Controller* cntl) override;
+    bool OnRequested(int current_concurrency, Controller* cntl) override;
 
     void OnResponded(int error_code, int64_t latency_us) override;
 
