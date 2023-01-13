@@ -24,15 +24,22 @@
 #include <openssl/ssl.h>
 // For some versions of openssl, SSL_* are defined inside this header
 #include <openssl/ossl_typ.h>
+#include <openssl/opensslv.h>
 #else
 #include <mesalink/openssl/ssl.h>
 #include <mesalink/openssl/err.h>
 #include <mesalink/openssl/x509.h>
 #endif
-#include "brpc/socket_id.h"            // SocketId
-#include "brpc/ssl_options.h"          // ServerSSLOptions
+#include "brpc/socket_id.h"                 // SocketId
+#include "brpc/ssl_options.h"               // ServerSSLOptions
+#include "brpc/adaptive_protocol_type.h"    // AdaptiveProtocolType
 
 namespace brpc {
+
+// The calculation method is the same as OPENSSL_VERSION_NUMBER in the openssl/crypto.h file.
+// SSL_VERSION_NUMBER can pass parameter calculation instead of using fixed macro.
+#define SSL_VERSION_NUMBER(major, minor, patch) \
+    ( (major << 28) | (minor << 20) | (patch << 4) )
 
 enum SSLState {
     SSL_UNKNOWN = 0,
@@ -78,12 +85,14 @@ int SSLDHInit();
 SSL_CTX* CreateClientSSLContext(const ChannelSSLOptions& options);
 
 // Create a new SSL_CTX in server mode using `certificate_file'
-// and `private_key_file' and then set the right options onto it
-// according `options'. Finally, extract hostnames from CN/subject
+// and `private_key_file' and then set the right options and alpn
+// onto it according `options'.Finally, extract hostnames from CN/subject
 // fields into `hostnames'
+// Attention: ensure that the life cycle of function return is greater than alpns param.
 SSL_CTX* CreateServerSSLContext(const std::string& certificate_file,
                                 const std::string& private_key_file,
                                 const ServerSSLOptions& options,
+                                const std::string* alpns,
                                 std::vector<std::string>* hostnames);
 
 // Create a new SSL (per connection object) using configurations in `ctx'.
@@ -101,6 +110,8 @@ SSLState DetectSSLState(int fd, int* error_code);
 
 void Print(std::ostream& os, SSL* ssl, const char* sep);
 void Print(std::ostream& os, X509* cert, const char* sep);
+
+std::string ALPNProtocolToString(const AdaptiveProtocolType& protocol);
 
 } // namespace brpc
 

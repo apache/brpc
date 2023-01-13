@@ -571,6 +571,8 @@ friend class Controller;
     // ensured to be called only once
     int InitializeOnce();
 
+    int InitALPNOptions(const ServerSSLOptions* options);
+
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();
 
@@ -685,6 +687,10 @@ friend class Controller;
 
     ServerOptions _options;
     butil::EndPoint _listen_addr;
+
+    // ALPN extention protocol-list format. Server initialize this with alpns options.
+    // OpenSSL API use this variable to avoid conversion at each handshake.
+    std::string _raw_alpns;
 
     std::string _version;
     time_t _last_start_time;
