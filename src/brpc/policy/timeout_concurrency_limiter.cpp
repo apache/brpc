@@ -48,6 +48,9 @@ DEFINE_double(
     "the configuration item, the more aggressive the penalty strategy.");
 DEFINE_int32(timeout_cl_default_timeout_ms, 500,
              "Default timeout for rpc request");
+DEFINE_int32(timeout_cl_max_concurrency, 100,
+             "When average latency statistics not refresh, this flag can keep "
+             "requests not exceed this max concurrency");
 
 TimeoutConcurrencyLimiter::TimeoutConcurrencyLimiter()
     : _avg_latency_us(FLAGS_timeout_cl_initial_avg_latency_us),
@@ -58,12 +61,14 @@ TimeoutConcurrencyLimiter *TimeoutConcurrencyLimiter::New(
     return new (std::nothrow) TimeoutConcurrencyLimiter;
 }
 
-bool TimeoutConcurrencyLimiter::OnRequested(int, Controller *cntl) {
+bool TimeoutConcurrencyLimiter::OnRequested(int current_concurrency,
+                                            Controller *cntl) {
     auto timeout_ms = FLAGS_timeout_cl_default_timeout_ms;
     if (cntl != nullptr && cntl->timeout_ms() != UNSET_MAGIC_NUM) {
         timeout_ms = cntl->timeout_ms();
     }
-    return _avg_latency_us < timeout_ms * 1000;
+    return current_concurrency <= FLAGS_timeout_cl_max_concurrency &&
+           _avg_latency_us < timeout_ms * 1000;
 }
 
 void TimeoutConcurrencyLimiter::OnResponded(int error_code,
@@ -94,7 +99,9 @@ void TimeoutConcurrencyLimiter::OnResponded(int error_code,
     }
 }
 
-int TimeoutConcurrencyLimiter::MaxConcurrency() { return 0; }
+int TimeoutConcurrencyLimiter::MaxConcurrency() {
+    return FLAGS_timeout_cl_max_concurrency;
+}
 
 bool TimeoutConcurrencyLimiter::AddSample(int error_code, int64_t latency_us,
                                           int64_t sampling_time_us) {
