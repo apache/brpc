@@ -1,22 +1,50 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 NEED_GPERFTOOLS=1
 NEED_GTEST=1
 include ../config.mk
-CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES --include sstream_workaround.h
+CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES --include sstream_workaround.h
 CXXFLAGS=$(CPPFLAGS) -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 
 #required by butil/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
-	CXXFLAGS+=-msse4 -msse4.2
+  ifeq ($(shell uname -p),i386)  #note: i386 is processor family type, not the 32-bit x86 arch
+    CXXFLAGS+=-msse4 -msse4.2
+  endif
 endif
-#not solved yet
 ifeq ($(CC),gcc)
+  # FIXME(jge): not solved yet
  ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
 	CXXFLAGS+=-Wno-aligned-new
  endif
 endif
 
+LIBS += .
 HDRPATHS=-I. -I../src $(addprefix -I, $(HDRS))
 LIBPATHS=$(addprefix -L, $(LIBS))
+
+COMMA = ,
+SOPATHS = $(addprefix -Wl$(COMMA)-rpath$(COMMA), $(LIBS))
+
+SOEXT = so
+ifeq ($(SYSTEM),Darwin)
+    SOEXT = dylib
+endif
 
 TEST_BUTIL_SOURCES = \
     at_exit_unittest.cc \
@@ -42,7 +70,6 @@ TEST_BUTIL_SOURCES = \
     guid_unittest.cc \
     hash_unittest.cc \
     lazy_instance_unittest.cc \
-    md5_unittest.cc \
     aligned_memory_unittest.cc \
     linked_ptr_unittest.cc \
     ref_counted_memory_unittest.cc \
@@ -87,7 +114,6 @@ TEST_BUTIL_SOURCES = \
     thread_local_storage_unittest.cc \
     thread_local_unittest.cc \
     watchdog_unittest.cc \
-    pr_time_unittest.cc \
     time_unittest.cc \
     version_unittest.cc \
     logging_unittest.cc \
@@ -110,9 +136,12 @@ TEST_BUTIL_SOURCES = \
     flat_map_unittest.cpp \
     crc32c_unittest.cc \
     iobuf_unittest.cpp \
+    object_pool_unittest.cpp \
+    recordio_unittest.cpp \
     test_switches.cc \
     scoped_locale.cc \
     popen_unittest.cpp \
+    bounded_queue_unittest.cc \
     butil_unittest_main.cpp
 
 ifeq ($(SYSTEM), Linux)
@@ -127,6 +156,8 @@ ifeq ($(SYSTEM), Darwin)
 	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_setspecific
 	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_key_create
 endif
+
+UT_DYNAMIC_LINKINGS = $(DYNAMIC_LINKINGS) -lbrpc.dbg
 
 TEST_BUTIL_OBJS = iobuf.pb.o $(addsuffix .o, $(basename $(TEST_BUTIL_SOURCES))) 
 
@@ -149,70 +180,73 @@ all: $(TEST_BINS)
 
 .PHONY:clean
 clean:clean_bins
-	@echo "Cleaning"
-	@rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS)
-	@$(MAKE) -C.. clean_debug
+	@echo "> Cleaning"
+	rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS) $(TEST_PROTO_SOURCES:.proto=.pb.h) $(TEST_PROTO_SOURCES:.proto=.pb.cc)
+	$(MAKE) -C.. clean_debug
 
 .PHONY:clean_bins
 clean_bins:
-	@rm -rf $(TEST_BINS)
+	rm -rf $(TEST_BINS)
 
-libbrpc.dbg.a:FORCE
-	@$(MAKE) -C.. debug
+libbrpc.dbg.$(SOEXT):FORCE
+	$(MAKE) -C.. test/libbrpc.dbg.$(SOEXT)
+
+libbvar.dbg.a:libbrpc.dbg.$(SOEXT) FORCE
+	$(MAKE) -C.. test/libbvar.dbg.a
 
 FORCE:
 
 .PRECIOUS: %.o
 
-test_butil:libbrpc.dbg.a $(TEST_BUTIL_OBJS)
-	@echo "Linking $@"
+test_butil:$(TEST_BUTIL_OBJS) | libbrpc.dbg.$(SOEXT)
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -o $@ $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 endif
 
-test_bvar:libbrpc.dbg.a $(TEST_BVAR_OBJS)
-	@echo "Linking $@"
+test_bvar:libbvar.dbg.a $(TEST_BVAR_OBJS)
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $(TEST_BVAR_OBJS) libbvar.dbg.a -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -o $@ $(LIBPATHS) $(TEST_BVAR_OBJS) libbvar.dbg.a $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
 
-bthread%unittest:libbrpc.dbg.a bthread%unittest.o
-	@echo "Linking $@"
+bthread%unittest:bthread%unittest.o | libbrpc.dbg.$(SOEXT)
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -o $@ $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 endif
 
-brpc_%_unittest:libbrpc.dbg.a $(TEST_PROTO_OBJS) brpc_%_unittest.o
-	@echo "Linking $@"
+brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o | libbrpc.dbg.$(SOEXT)
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -o $@ $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 endif
 
 %.pb.cc %.pb.h:%.proto
-	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=../src --proto_path=$(PROTOBUF_HDR) $<
+	@echo "> Generating $@"
+	$(PROTOC) --cpp_out=. --proto_path=. --proto_path=../src --proto_path=$(PROTOBUF_HDR) $<
 
-baidu_time_unittest.o:baidu_time_unittest.cpp | libbrpc.dbg.a
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) -O2 $(CXXFLAGS) $< -o $@
+baidu_time_unittest.o:baidu_time_unittest.cpp | libbrpc.dbg.$(SOEXT)
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) -O2 $(CXXFLAGS) $< -o $@
 
-brpc_h2_unsent_message_unittest.o:brpc_h2_unsent_message_unittest.cpp | libbrpc.dbg.a
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) -O2 $(CXXFLAGS) $< -o $@
+brpc_h2_unsent_message_unittest.o:brpc_h2_unsent_message_unittest.cpp | libbrpc.dbg.$(SOEXT)
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) -O2 $(CXXFLAGS) $< -o $@
 
-%.o:%.cpp | libbrpc.dbg.a
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+%.o:%.cpp | libbrpc.dbg.$(SOEXT)
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
-%.o:%.cc | libbrpc.dbg.a
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+%.o:%.cc | libbrpc.dbg.$(SOEXT)
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 

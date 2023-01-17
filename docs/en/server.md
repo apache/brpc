@@ -227,6 +227,10 @@ server.Start(..., &options);
 
 One server can only listen to one port (not counting ServerOptions.internal_port). To listen to N ports, start N servers .
 
+## Multi-process listening to one port
+
+When the `reuse_port` flag is turned on at startup, multiple processes can listen to one port (use SO_REUSEPORT internal).
+
 # Stop server
 
 ```c++
@@ -343,6 +347,17 @@ Server detects supported protocols automatically, without assignment from users.
 - Read [Implement NsheadService](nshead_service.md) for UB related protocols.
 
 If you need more protocols, contact us.
+
+# fork without exec
+In general, [forked](https://linux.die.net/man/3/fork) subprocess should call [exec](https://linux.die.net/man/3/exec) ASAP, before which only async-signal-safe functions should be called. brpc programs using fork like this should work correctly even in previous versions. 
+
+But in some scenarios, users continue the subprocess without exec. Since fork only copies its caller's thread, which causes other threads to disappear after fork. In the case of brpc, bvar depends on a sampling_thread to sample various information, which disappears after fork and causes many bvars to be zeros.
+
+Latest brpc re-creates the thread after fork(when necessary) to make bvar work correctly, and can be forked again. A known problem is that the cpu profiler does not work after fork. However users still can't call fork at any time, since brpc and its applications create threads extensively, which are not re-created after fork:
+* most fork continues with exec, which wastes re-creations
+* bring too many troubles and complexities to the code
+
+brpc's strategy is to create these threads on demand and fork without exec should happen before all code that may create the threads. Specifically, **fork without exec should happen before initializing all Servers/Channels/Applications, earlier is better**. fork not obeying this causes the program dysfunctional. BTW, fork without exec better be avoided because many libraries do not support it.
 
 # Settings
 
@@ -636,6 +651,8 @@ User code(client-side done, server-side CallMethod) runs in bthreads with 1MB st
 
 brpc offers pthread mode to solve the issues. When **-usercode_in_pthread** is turned on, user code will be run in pthreads. Functions that would block bthreads block pthreads.
 
+Note: With -usercode_in_pthread on, brpc::thread_local_data() does not guarantee to return valid value.
+
 Performance issues when pthread mode is on:
 
 - Since synchronous RPCs block worker pthreads, server often needs more workers (ServerOptions.num_threads), and scheduling efficiencies will be slightly lower.
@@ -672,6 +689,11 @@ Builtin services are useful, on the other hand include a lot of internal informa
 ```shell
 curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service | awk '{if($3=="false"){++falsecnt}else if($3=="Value"){isrpc=1}}END{if(isrpc!=1||falsecnt==2){print "SAFE"}else{print "NOT SAFE"}}'
 ```
+
+### Disable built-in services completely
+
+Set ServerOptions.has_builtin_services = false, you can completely disable the built-in services.
+
 ### Escape URLs controllable from public
 
 brpc::WebEscape() escapes url to prevent injection attacks with malice.
@@ -758,14 +780,15 @@ public:
     }
 };
 
+MySessionLocalDataFactory g_session_local_data_factory;
+
 int main(int argc, char* argv[]) {
     ...
-    MySessionLocalDataFactory session_local_data_factory;
 
     brpc::Server server;
     brpc::ServerOptions options;
     ...
-    options.session_local_data_factory = &session_local_data_factory;
+    options.session_local_data_factory = &g_session_local_data_factory;
     ...
 ```
 
@@ -848,14 +871,15 @@ public:
     }
 };
 
+MyThreadLocalDataFactory g_thread_local_data_factory;
+
 int main(int argc, char* argv[]) {
     ...
-    MyThreadLocalDataFactory thread_local_data_factory;
 
     brpc::Server server;
     brpc::ServerOptions options;
     ...
-    options.thread_local_data_factory  = &thread_local_data_factory;
+    options.thread_local_data_factory  = &g_thread_local_data_factory;
     ...
 ```
 

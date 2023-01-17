@@ -1,3 +1,20 @@
+#!/usr/bin/env sh
+
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 SYSTEM=$(uname -s)
 if [ "$SYSTEM" = "Darwin" ]; then
     if [ -z "$BASH" ] || [ "$BASH" = "/bin/sh" ] ; then
@@ -21,9 +38,10 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-mesalink,nodebugsymbols -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-mesalink,nodebugsymbols -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
+WITH_RDMA=0
 WITH_MESALINK=0
 DEBUGSYMBOLS=-g
 
@@ -47,6 +65,7 @@ while true; do
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;
         --with-thrift) WITH_THRIFT=1; shift 1 ;;
+        --with-rdma) WITH_RDMA=1; shift 1 ;;
         --with-mesalink) WITH_MESALINK=1; shift 1 ;;
         --nodebugsymbols ) DEBUGSYMBOLS=; shift 1 ;;
         -- ) shift; break ;;
@@ -98,7 +117,7 @@ find_dir_of_lib_or_die() {
 }
 
 find_bin() {
-    TARGET_BIN=$(find ${LIBS_IN} -type f -name "$1" 2>/dev/null | head -n1)
+    TARGET_BIN=$(find -L ${LIBS_IN} -type f -name "$1" 2>/dev/null | head -n1)
     if [ ! -z "$TARGET_BIN" ]; then
         $ECHO $TARGET_BIN
     else
@@ -136,9 +155,21 @@ find_dir_of_header_or_die() {
     $ECHO $dir
 }
 
+if [ "$SYSTEM" = "Darwin" ]; then
+    if [ -d "/usr/local/opt/openssl" ]; then
+        LIBS_IN="/usr/local/opt/openssl/lib $LIBS_IN"
+        HDRS_IN="/usr/local/opt/openssl/include $HDRS_IN"
+    elif [ -d "/opt/homebrew/Cellar" ]; then
+        LIBS_IN="/opt/homebrew/Cellar $LIBS_IN"
+        HDRS_IN="/opt/homebrew/Cellar $HDRS_IN"
+    fi
+fi
+
+# User specified path of openssl, if not given it's empty
+OPENSSL_LIB=$(find_dir_of_lib ssl)
 # Inconvenient to check these headers in baidu-internal
 #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
-OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
+OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h mesalink/openssl/ssl.h)
 
 if [ $WITH_MESALINK != 0 ]; then
     MESALINK_HDR=$(find_dir_of_header_or_die mesalink/openssl/ssl.h)
@@ -233,7 +264,7 @@ PROTOBUF_HDR=$(find_dir_of_header_or_die google/protobuf/message.h)
 LEVELDB_HDR=$(find_dir_of_header_or_die leveldb/db.h)
 
 HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR\n$OPENSSL_HDR" | sort | uniq)
-LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$SNAPPY_LIB" | sort | uniq)
+LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$OPENSSL_LIB\n$SNAPPY_LIB" | sort | uniq)
 
 absent_in_the_list() {
     TMP=`$ECHO "$1\n$2" | sort | uniq`
@@ -289,13 +320,19 @@ append_to_output "CXX=$CXX"
 append_to_output "GCC_VERSION=$GCC_VERSION"
 append_to_output "STATIC_LINKINGS=$STATIC_LINKINGS"
 append_to_output "DYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
+
+# CPP means C PreProcessing, not C PlusPlus
 CPPFLAGS="-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS"
+
+# Avoid over-optimizations of TLS variables by GCC>=4.8
+# See: https://github.com/apache/brpc/issues/1693
+CPPFLAGS="${CPPFLAGS} -D__const__=__unused__"
 
 if [ ! -z "$DEBUGSYMBOLS" ]; then
     CPPFLAGS="${CPPFLAGS} $DEBUGSYMBOLS"
 fi
 if [ "$SYSTEM" = "Darwin" ]; then
-    CPPFLAGS="${CPPFLAGS} -Wno-deprecated-declarations"
+    CPPFLAGS="${CPPFLAGS} -Wno-deprecated-declarations -Wno-inconsistent-missing-override"
     version=`sw_vers -productVersion | awk -F '.' '{print $1 "." $2}'`
     if [[ `echo "$version<10.12" | bc -l` == 1 ]]; then
         CPPFLAGS="${CPPFLAGS} -DNO_CLOCK_GETTIME_IN_MAC"
@@ -317,11 +354,30 @@ if [ $WITH_THRIFT != 0 ]; then
     fi
 fi
 
+if [ $WITH_RDMA != 0 ]; then
+    RDMA_LIB=$(find_dir_of_lib_or_die ibverbs)
+    RDMA_HDR=$(find_dir_of_header_or_die infiniband/verbs.h)
+    append_to_output_libs "$RDMA_LIB"
+    append_to_output_headers "$RDMA_HDR"
+
+    CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_RDMA"
+
+    append_to_output "DYNAMIC_LINKINGS+=-libverbs"
+    append_to_output "WITH_RDMA=1"
+fi
+
 if [ $WITH_MESALINK != 0 ]; then
     CPPFLAGS="${CPPFLAGS} -DUSE_MESALINK"
 fi
 
 append_to_output "CPPFLAGS=${CPPFLAGS}"
+append_to_output "# without the flag, linux+arm64 may crash due to folding on TLS.
+ifeq (\$(CC),gcc)
+  ifeq (\$(shell uname -p),aarch64) 
+    CPPFLAGS+=-fno-gcse
+  endif
+endif
+"
 
 append_to_output "ifeq (\$(NEED_LIBPROTOC), 1)"
 PROTOC_LIB=$(find $PROTOBUF_LIB -name "libprotoc.*" | head -n1)

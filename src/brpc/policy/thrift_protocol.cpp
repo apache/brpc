@@ -1,18 +1,20 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
@@ -130,35 +132,40 @@ bool ReadThriftStruct(const butil::IOBuf& body,
             ::apache::thrift::transport::TMemoryBuffer::TAKE_OWNERSHIP);
     apache::thrift::protocol::TBinaryProtocolT<apache::thrift::transport::TMemoryBuffer> iprot(in_buffer);
 
-    // The following code was taken from thrift auto generate code
-    std::string fname;
-
-    uint32_t xfer = 0;
-    ::apache::thrift::protocol::TType ftype;
-    int16_t fid;
-
-    xfer += iprot.readStructBegin(fname);
     bool success = false;
-    while (true) {
-        xfer += iprot.readFieldBegin(fname, ftype, fid);
-        if (ftype == ::apache::thrift::protocol::T_STOP) {
-            break;
-        }
-        if (fid == expected_fid) {
-            if (ftype == ::apache::thrift::protocol::T_STRUCT) {
-                xfer += raw_msg->Read(&iprot);
-                success = true;
+    try {
+        // The following code was taken from thrift auto generate code
+        std::string fname;
+
+        uint32_t xfer = 0;
+        ::apache::thrift::protocol::TType ftype;
+        int16_t fid;
+        xfer += iprot.readStructBegin(fname);
+        while (true) {
+            xfer += iprot.readFieldBegin(fname, ftype, fid);
+            if (ftype == ::apache::thrift::protocol::T_STOP) {
+                break;
+            }
+            if (fid == expected_fid) {
+                if (ftype == ::apache::thrift::protocol::T_STRUCT) {
+                    xfer += raw_msg->Read(&iprot);
+                    success = true;
+                } else {
+                    xfer += iprot.skip(ftype);
+                }
             } else {
                 xfer += iprot.skip(ftype);
             }
-        } else {
-            xfer += iprot.skip(ftype);
+            xfer += iprot.readFieldEnd();
         }
-        xfer += iprot.readFieldEnd();
-    }
 
-    xfer += iprot.readStructEnd();
-    iprot.getTransport()->readEnd();
+        xfer += iprot.readStructEnd();
+        iprot.getTransport()->readEnd();
+    } catch (std::exception& e) {
+        LOG(WARNING) << "Catched thrift exception: " << e.what();
+    } catch (...) {
+        LOG(WARNING) << "Catched unknown thrift exception";
+    }
     return success;
 }
 
@@ -531,7 +538,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
                 " -usercode_in_pthread is on");
     }
 
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
 
     if (span) {
         span->ResetServerSpanName(cntl->thrift_method_name());
@@ -626,7 +633,7 @@ void ProcessThriftResponse(InputMessageBase* msg_base) {
 
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 

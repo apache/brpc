@@ -1,4 +1,4 @@
-r31658后，brpc能随机地把一部分请求写入一些文件中，并通过rpc_replay工具回放。目前支持的协议有：baidu_std, hulu_pbrpc, sofa_pbrpc。
+r31658后，brpc能随机地把一部分请求写入一些文件中，并通过rpc_replay工具回放。目前支持的协议有：baidu_std, hulu_pbrpc, sofa_pbrpc, http, nshead。
 
 # 获取工具
 
@@ -49,7 +49,7 @@ brpc提供了[SampleIterator](https://github.com/brpc/brpc/blob/master/src/brpc/
 #include <brpc/rpc_dump.h>
 ...
 brpc::SampleIterator it("./rpc_data/rpc_dump/echo_server");         
-for (SampleRequest* req = it->Next(); req != NULL; req = it->Next()) {
+for (brpc::SampledRequest* req = it->Next(); req != NULL; req = it->Next()) {
     ...                    
     // req->meta的类型是brpc::RpcDumpMeta，定义在src/brpc/rpc_dump.proto
     // req->request的类型是butil::IOBuf，对应格式说明中的"serialized request"
@@ -75,6 +75,7 @@ brpc在[tools/rpc_replay](https://github.com/brpc/brpc/tree/master/tools/rpc_rep
 - -thread_num：发送线程数，为0时会根据qps自动调节，默认为0。一般不用设置。
 - -timeout_ms：超时
 - -use_bthread：使用bthread发送，默认是。
+- -http_host：指定回放HTTP请求时的Host字段，如果非标准端口，请补全，比如：www.abc.com:8888，不指定该参数时将使用采样的原始Host字段。
 
 rpc_replay会默认启动一个仅监控用的dummy server。打开后可查看回放的状况。其中rpc_replay_error是回放失败的次数。
 

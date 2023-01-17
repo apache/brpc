@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_CONTROLLER_H
 #define BRPC_CONTROLLER_H
@@ -21,6 +23,7 @@
 // on internal structures, use opaque pointers instead.
 
 #include <gflags/gflags.h>                     // Users often need gflags
+#include <string>
 #include "butil/intrusive_ptr.hpp"             // butil::intrusive_ptr
 #include "bthread/errno.h"                     // Redefine errno
 #include "butil/endpoint.h"                    // butil::EndPoint
@@ -41,6 +44,7 @@
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
 #include "brpc/grpc.h"
+#include "brpc/kvmap.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -63,7 +67,7 @@ class SharedLoadBalancer;
 class ExcludedServers;
 class RPCSender;
 class StreamSettings;
-class RpcDumpMeta;
+class SampledRequest;
 class MongoContext;
 class RetryPolicy;
 class InputMessageBase;
@@ -140,14 +144,28 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_BYTES_TO_BASE64 = (1 << 11);
     static const uint32_t FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE = (1 << 12);
     static const uint32_t FLAGS_USED_BY_RPC = (1 << 13);
-    static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 15);
     static const uint32_t FLAGS_PB_JSONIFY_EMPTY_ARRAY = (1 << 16);
     static const uint32_t FLAGS_ENABLED_CIRCUIT_BREAKER = (1 << 17);
     static const uint32_t FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS = (1 << 18);
     static const uint32_t FLAGS_HEALTH_CHECK_CALL = (1 << 19);
-    
+    static const uint32_t FLAGS_PB_SINGLE_REPEATED_TO_ARRAY = (1 << 20);
+    static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
+
+public:
+    struct Inheritable {
+        Inheritable() : log_id(0) {}
+        void Reset() {
+            log_id = 0;
+            request_id.clear();
+        }
+
+        uint64_t log_id;
+        std::string request_id;
+    };
+
 public:
     Controller();
+    Controller(const Inheritable& parent_ctx);
     ~Controller();
     
     // ------------------------------------------------------------------
@@ -202,6 +220,8 @@ public:
     // throughout baidu's servers to tag a searching session (a series of
     // queries following the topology of servers) with a same log_id.
     void set_log_id(uint64_t log_id);
+
+    void set_request_id(std::string request_id) { _inheritable.request_id = request_id; }
 
     // Set type of service: http://en.wikipedia.org/wiki/Type_of_service
     // Current implementation has limits: If the connection is already
@@ -264,10 +284,10 @@ public:
     int sub_count() const;
     const Controller* sub(int index) const;
 
-    // Get/own RpcDumpMeta for sending dumped requests.
+    // Get/own SampledRequest for sending dumped requests.
     // Deleted along with controller.
-    void reset_rpc_dump_meta(RpcDumpMeta* meta);
-    const RpcDumpMeta* rpc_dump_meta() { return _rpc_dump_meta; }
+    void reset_sampled_request(SampledRequest* req);
+    const SampledRequest* sampled_request() { return _sampled_request; }
 
     // Attach a StreamCreator to this RPC. Notice that the ownership of sc has
     // been transferred to cntl, and sc->DestroyStreamCreator() would be called
@@ -304,6 +324,11 @@ public:
     // to base64 string in HTTP request.
     void set_pb_bytes_to_base64(bool f) { set_flag(FLAGS_PB_BYTES_TO_BASE64, f); }
     bool has_pb_bytes_to_base64() const { return has_flag(FLAGS_PB_BYTES_TO_BASE64); }
+
+    // Set if the single repeated field in protobuf message should be encoded
+    // as array when serialize/deserialize to/from json.
+    void set_pb_single_repeated_to_array(bool f) { set_flag(FLAGS_PB_SINGLE_REPEATED_TO_ARRAY, f); }
+    bool has_pb_single_repeated_to_array() const { return has_flag(FLAGS_PB_SINGLE_REPEATED_TO_ARRAY); }
 
     // Set if convert the repeated field that has no entry to a empty array
     // of json in HTTP response.
@@ -342,7 +367,7 @@ public:
     // call the final "done" callback.
     // Note: Reaching deadline of the RPC would not affect this function, which means
     // even if deadline has been reached, this function may still return false.
-    bool IsCanceled() const;
+    bool IsCanceled() const override;
 
     // Asks that the given callback be called when the RPC is canceled or the
     // connection has broken.  The callback will always be called exactly once.
@@ -351,7 +376,7 @@ public:
     // when NotifyOnCancel() is called, the callback will be called immediately.
     //
     // NotifyOnCancel() must be called no more than once per request.
-    void NotifyOnCancel(google::protobuf::Closure* callback);
+    void NotifyOnCancel(google::protobuf::Closure* callback) override;
 
     // Returns the authenticated result. NULL if there is no authentication
     const AuthContext* auth_context() const { return _auth_context; }
@@ -380,12 +405,23 @@ public:
     // directly instead of being serialized into protobuf messages.
     butil::IOBuf& response_attachment() { return _response_attachment; }
 
+    // Response Body of a failed HTTP call is set to be ErrorText() by default,
+    // even if response_attachment() is non-empty.
+    // If this flag is true, the http body of a failed HTTP call will not be
+    // replaced by ErrorText() and should be managed by user self.
+    void manage_http_body_on_error(bool manage_or_not)
+    { set_flag(FLAGS_MANAGE_HTTP_BODY_ON_ERROR, manage_or_not); }
+    
+    bool does_manage_http_body_on_error() const
+    { return has_flag(FLAGS_MANAGE_HTTP_BODY_ON_ERROR); }
+
     // Create a ProgressiveAttachment to write (often after RPC).
     // If `stop_style' is FORCE_STOP, the underlying socket will be failed
     // immediately when the socket becomes idle or server is stopped.
     // Default value of `stop_style' is WAIT_FOR_STOP.
-    ProgressiveAttachment*
+    butil::intrusive_ptr<ProgressiveAttachment>
     CreateProgressiveAttachment(StopStyle stop_style = WAIT_FOR_STOP);
+
     bool has_progressive_writer() const { return _wpa != NULL; }
 
     // Set compression method for response.
@@ -443,7 +479,7 @@ public:
 
     // Resets the Controller to its initial state so that it may be reused in
     // a new call.  Must NOT be called while an RPC is in progress.
-    void Reset() {
+    void Reset() override {
         ResetNonPods();
         ResetPods();
     }
@@ -454,26 +490,28 @@ public:
     // as well if the protocol is HTTP. If you want to overwrite the 
     // status_code, call http_response().set_status_code() after SetFailed()
     // (rather than before SetFailed)
-    void SetFailed(const std::string& reason);
+    void SetFailed(const std::string& reason) override;
     void SetFailed(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
     
     // After a call has finished, returns true if the RPC call failed.
     // The response to Channel is undefined when Failed() is true.
     // Calling Failed() before a call has finished is undefined.
-    bool Failed() const;
+    bool Failed() const override;
 
     // If Failed() is true, return description of the errors.
     // NOTE: ErrorText() != berror(ErrorCode()). 
-    std::string ErrorText() const;
+    std::string ErrorText() const override;
 
     // Last error code. Equals 0 iff Failed() is false.
     // If there's retry, latter code overwrites former one.
     int ErrorCode() const { return _error_code; }
 
     // Getters:
+    const Inheritable& inheritable() { return _inheritable; }
     bool has_log_id() const { return has_flag(FLAGS_LOG_ID); }
-    uint64_t log_id() const { return _log_id; }
+    uint64_t log_id() const { return _inheritable.log_id; }
+    const std::string& request_id() const { return _inheritable.request_id; }
     CompressType request_compress_type() const { return _request_compress_type; }
     CompressType response_compress_type() const { return _response_compress_type; }
     const HttpHeader& http_request() const 
@@ -484,6 +522,24 @@ public:
 
     const butil::IOBuf& request_attachment() const { return _request_attachment; }
     const butil::IOBuf& response_attachment() const { return _response_attachment; }
+
+    // Get the object to write key/value which will be flushed into
+    // LOG(INFO) when this controller is deleted.
+    KVMap& SessionKV();
+    
+    // Flush SessionKV() into `os'
+    void FlushSessionKV(std::ostream& os);
+
+    // Contextual prefixes for LOGD/LOGI/LOGW/LOGE/LOGF macros
+    class LogPrefixDummy {
+    public:
+        LogPrefixDummy(const Controller* cntl) : _cntl(cntl) {}
+        void DoPrintLogPrefix(std::ostream& os) const { _cntl->DoPrintLogPrefix(os); }
+    private:
+        const Controller* _cntl;
+    };
+    friend class LogPrefixDummy;
+    LogPrefixDummy LogPrefix() const { return LogPrefixDummy(this); }
 
     // Return true if the remote side creates a stream.
     bool has_remote_stream() { return _remote_stream_settings != NULL; }
@@ -563,7 +619,7 @@ private:
     void ResetPods();
     void ResetNonPods();
 
-    void StartCancel();
+    void StartCancel() override;
 
     // Using fixed start_realtime_us (microseconds since the Epoch) gives
     // more accurate deadline.
@@ -664,6 +720,8 @@ private:
     std::string& protocol_param() { return _thrift_method_name; }
     const std::string& protocol_param() const { return _thrift_method_name; }
 
+    void DoPrintLogPrefix(std::ostream& os) const;
+
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
@@ -679,7 +737,7 @@ private:
     bthread_id_t _oncancel_id;
     const AuthContext* _auth_context;        // Authentication result
     butil::intrusive_ptr<MongoContext> _mongo_session_data;
-    RpcDumpMeta* _rpc_dump_meta;
+    SampledRequest* _sampled_request;
 
     ProtocolType _request_protocol;
     // Some of them are copied from `Channel' which might be destroyed
@@ -701,6 +759,8 @@ private:
     int32_t _timeout_ms;
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
+    // If this rpc call has retry/backup request,this var save the real timeout for current call
+    int64_t _real_timeout_ms;
     // Deadline of this RPC (since the Epoch in microseconds).
     int64_t _deadline_us;
     // Timer registered to trigger RPC timeout event
@@ -714,7 +774,7 @@ private:
     int _preferred_index;
     CompressType _request_compress_type;
     CompressType _response_compress_type;
-    uint64_t _log_id;
+    Inheritable _inheritable;
     int _pchan_sub_count;
     google::protobuf::Message* _response;
     google::protobuf::Closure* _done;
@@ -743,6 +803,8 @@ private:
     HttpHeader* _http_request;
     HttpHeader* _http_response;
 
+    std::unique_ptr<KVMap> _session_kv;
+
     // Fields with large size but low access frequency 
     butil::IOBuf _request_attachment;
     butil::IOBuf _response_attachment;
@@ -767,6 +829,8 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
+
+    uint32_t _auth_flags;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be
@@ -796,7 +860,28 @@ bool IsAskedToQuit();
 // Send Ctrl-C to current process.
 void AskToQuit();
 
+std::ostream& operator<<(std::ostream& os, const Controller::LogPrefixDummy& p);
+
 } // namespace brpc
 
+// Print contextual logs prefixed with "@rid=REQUEST_ID" which marks a session
+// and eases debugging. The REQUEST_ID is carried in http/rpc request or 
+// inherited from another controller.
+// As a server:
+//   Call CLOG*(cntl) << ... to log instead of LOG(*) << ..
+// As a client:
+//   Inside a service:
+//     Use Controller(service_cntl->inheritable()) to create controllers which 
+//     inherit session info from the service's requests
+//   Standalone brpc client:
+//     Set cntl->set_request_id(REQUEST_ID);
+//   Standalone http client:
+//     Set header 'X-REQUEST-ID'
+#define CLOGD(cntl) LOG(DEBUG) << (cntl)->LogPrefix()
+#define CLOGI(cntl) LOG(INFO) << (cntl)->LogPrefix()
+#define CLOGW(cntl) LOG(WARNING) << (cntl)->LogPrefix()
+#define CLOGE(cntl) LOG(ERROR) << (cntl)->LogPrefix()
+#define CLOGF(cntl) LOG(FATAL) << (cntl)->LogPrefix()
+#define CVLOG(v, cntl) VLOG(v) << (cntl)->LogPrefix()
 
 #endif  // BRPC_CONTROLLER_H

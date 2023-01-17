@@ -1,37 +1,37 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_REDIS_H
 #define BRPC_REDIS_H
 
-#include <string>
-#include <google/protobuf/stubs/common.h>
-
-#include <google/protobuf/generated_message_util.h>
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_message_reflection.h>
-#include "google/protobuf/descriptor.pb.h"
-
+#include <google/protobuf/message.h>
+#include <unordered_map>
+#include <memory>
+#include <list>
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
-#include "redis_reply.h"
-#include "parse_result.h"
-
+#include "brpc/proto_base.pb.h"
+#include "brpc/redis_reply.h"
+#include "brpc/parse_result.h"
+#include "brpc/callback.h"
+#include "brpc/socket.h"
+#include "brpc/pb_compat.h"
 
 namespace brpc {
 
@@ -108,46 +108,42 @@ public:
     bool SerializeTo(butil::IOBuf* buf) const;
 
     // Protobuf methods.
-    RedisRequest* New() const;
-    void CopyFrom(const ::google::protobuf::Message& from);
-    void MergeFrom(const ::google::protobuf::Message& from);
+    RedisRequest* New() const PB_319_OVERRIDE;
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+    RedisRequest* New(::google::protobuf::Arena* arena) const override;
+#endif
+    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
+    void MergeFrom(const ::google::protobuf::Message& from) override;
     void CopyFrom(const RedisRequest& from);
     void MergeFrom(const RedisRequest& from);
-    void Clear();
-    bool IsInitialized() const;
+    void Clear() override;
+    bool IsInitialized() const override;
   
     int ByteSize() const;
     bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input);
+        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
-    int GetCachedSize() const { return _cached_size_; }
-    
-    static const ::google::protobuf::Descriptor* descriptor();
-    static const RedisRequest& default_instance();
-    ::google::protobuf::Metadata GetMetadata() const;
+        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
+    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
+    int GetCachedSize() const override { return _cached_size_; }
 
+    static const ::google::protobuf::Descriptor* descriptor();
+    
     void Print(std::ostream&) const;
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const;
+    void SetCachedSize(int size) const override;
     bool AddCommandWithArgs(const char* fmt, ...);
 
     int _ncommand;    // # of valid commands
     bool _has_error;  // previous AddCommand had error
     butil::IOBuf _buf;  // the serialized request.
     mutable int _cached_size_;  // ByteSize
-
-friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl();
-friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fredis_5fbase_2eproto();
-  
-    void InitAsDefaultInstance();
-    static RedisRequest* default_instance_;
 };
 
 // Response from Redis.
@@ -173,7 +169,7 @@ public:
         if (index < reply_size()) {
             return (index == 0 ? _first_reply : _other_replies[index - 1]);
         }
-        static RedisReply redis_nil;
+        static RedisReply redis_nil(NULL);
         return redis_nil;
     }
 
@@ -185,50 +181,114 @@ public:
     
     // implements Message ----------------------------------------------
   
-    RedisResponse* New() const;
-    void CopyFrom(const ::google::protobuf::Message& from);
-    void MergeFrom(const ::google::protobuf::Message& from);
+    RedisResponse* New() const PB_319_OVERRIDE;
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+    RedisResponse* New(::google::protobuf::Arena* arena) const override;
+#endif
+    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
+    void MergeFrom(const ::google::protobuf::Message& from) override;
     void CopyFrom(const RedisResponse& from);
     void MergeFrom(const RedisResponse& from);
-    void Clear();
-    bool IsInitialized() const;
+    void Clear() override;
+    bool IsInitialized() const override;
   
     int ByteSize() const;
     bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input);
+        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
-    int GetCachedSize() const { return _cached_size_; }
+        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
+    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
+    int GetCachedSize() const override { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
-    static const RedisResponse& default_instance();
-    ::google::protobuf::Metadata GetMetadata() const;
-    
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
+
 private:
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const;
+    void SetCachedSize(int size) const override;
 
     RedisReply _first_reply;
     RedisReply* _other_replies;
     butil::Arena _arena;
     int _nreply;
     mutable int _cached_size_;
-
-friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl();
-friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fredis_5fbase_2eproto();
-  
-    void InitAsDefaultInstance();
-    static RedisResponse* default_instance_;
 };
 
 std::ostream& operator<<(std::ostream& os, const RedisRequest&);
 std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 
-} // namespace brpc
+class RedisCommandHandler;
 
+// Container of CommandHandlers.
+// Assign an instance to ServerOption.redis_service to enable redis support. 
+class RedisService {
+public:
+    virtual ~RedisService() {}
+    
+    // Call this function to register `handler` that can handle command `name`.
+    bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
+
+    // This function should not be touched by user and used by brpc deverloper only.
+    RedisCommandHandler* FindCommandHandler(const butil::StringPiece& name) const;
+
+private:
+    typedef std::unordered_map<std::string, RedisCommandHandler*> CommandMap;
+    CommandMap _command_map;
+};
+
+enum RedisCommandHandlerResult {
+    REDIS_CMD_HANDLED = 0,
+    REDIS_CMD_CONTINUE = 1,
+    REDIS_CMD_BATCHED = 2,
+};
+
+// The Command handler for a redis request. User should impletement Run().
+class RedisCommandHandler {
+public:
+    virtual ~RedisCommandHandler() {}
+
+    // Once Server receives commands, it will first find the corresponding handlers and
+    // call them sequentially(one by one) according to the order that requests arrive,
+    // just like what redis-server does.
+    // `args' is the array of request command. For example, "set somekey somevalue"
+    // corresponds to args[0]=="set", args[1]=="somekey" and args[2]=="somevalue".
+    // `output', which should be filled by user, is the content that sent to client side.
+    // Read brpc/src/redis_reply.h for more usage.
+    // `flush_batched' indicates whether the user should flush all the results of
+    // batched commands. If user want to do some batch processing, user should buffer
+    // the commands and return REDIS_CMD_BATCHED. Once `flush_batched' is true,
+    // run all the commands, set `output' to be an array in which every element is the
+    // result of batched commands and return REDIS_CMD_HANDLED.
+    //
+    // The return value should be REDIS_CMD_HANDLED for normal cases. If you want
+    // to implement transaction, return REDIS_CMD_CONTINUE once server receives
+    // an start marker and brpc will call MultiTransactionHandler() to new a transaction
+    // handler that all the following commands are sent to this tranction handler until
+    // it returns REDIS_CMD_HANDLED. Read the comment below.
+    virtual RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
+                                          brpc::RedisReply* output,
+                                          bool flush_batched) = 0;
+
+    // The Run() returns CONTINUE for "multi", which makes brpc call this method to
+    // create a transaction_handler to process following commands until transaction_handler
+    // returns OK. For example, for command "multi; set k1 v1; set k2 v2; set k3 v3;
+    // exec":
+    // 1) First command is "multi" and Run() should return REDIS_CMD_CONTINUE,
+    // then brpc calls NewTransactionHandler() to new a transaction_handler.
+    // 2) brpc calls transaction_handler.Run() with command "set k1 v1",
+    // which should return CONTINUE.
+    // 3) brpc calls transaction_handler.Run() with command "set k2 v2",
+    // which should return CONTINUE.
+    // 4) brpc calls transaction_handler.Run() with command "set k3 v3",
+    // which should return CONTINUE.
+    // 5) An ending marker(exec) is found in transaction_handler.Run(), user exeuctes all
+    // the commands and return OK. This Transation is done.
+    virtual RedisCommandHandler* NewTransactionHandler();
+};
+
+} // namespace brpc
 
 #endif  // BRPC_REDIS_H

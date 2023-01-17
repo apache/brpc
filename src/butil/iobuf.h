@@ -1,19 +1,22 @@
-// iobuf - A non-continuous zero-copied buffer
-// Copyright (c) 2012 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// iobuf - A non-continuous zero-copied buffer
+
 // Date: Thu Nov 22 13:57:56 CST 2012
 
 #ifndef BUTIL_IOBUF_H
@@ -59,6 +62,7 @@ class IOBuf {
 friend class IOBufAsZeroCopyInputStream;
 friend class IOBufAsZeroCopyOutputStream;
 friend class IOBufBytesIterator;
+friend class IOBufCutter;
 public:
     static const size_t DEFAULT_BLOCK_SIZE = 8192;
     static const size_t INITIAL_CAP = 32; // must be power of 2
@@ -128,7 +132,7 @@ public:
     // Returns bytes popped.
     size_t pop_back(size_t n);
 
-    // Cut off `n' bytes from front side and APPEND to `out'
+    // Cut off n bytes from front side and APPEND to `out'
     // If n == 0, nothing cut; if n >= length(), all bytes are cut
     // Returns bytes cut.
     size_t cutn(IOBuf* out, size_t n);
@@ -136,7 +140,7 @@ public:
     size_t cutn(std::string* out, size_t n);
     // Cut off 1 byte from the front side and set to *c
     // Return true on cut, false otherwise.
-    bool cut1(char* c);
+    bool cut1(void* c);
 
     // Cut from front side until the characters matches `delim', append
     // data before the matched characters to `out'.
@@ -244,6 +248,15 @@ public:
     // deleted using the deleter func when no IOBuf references it anymore.
     int append_user_data(void* data, size_t size, void (*deleter)(void*));
 
+    // Append the user-data to back side WITHOUT copying.
+    // The meta is associated with this piece of user-data.
+    int append_user_data_with_meta(void* data, size_t size, void (*deleter)(void*), uint64_t meta);
+
+    // Get the data meta of the first byte in this IOBuf.
+    // The meta is specified with append_user_data_with_meta before.
+    // 0 means the meta is invalid.
+    uint64_t get_first_data_meta();
+
     // Resizes the buf to a length of n characters.
     // If n is smaller than the current length, all bytes after n will be
     // truncated.
@@ -292,9 +305,9 @@ public:
     // Returns bytes copied.
     size_t copy_to(void* buf, size_t n = (size_t)-1L, size_t pos = 0) const;
 
-    // NOTE: first parameter is not std::string& because user may passes
-    // a pointer of std::string by mistake, in which case, compiler would
-    // call the void* version which crashes definitely.
+    // NOTE: first parameter is not std::string& because user may pass in
+    // a pointer of std::string by mistake, in which case, the void* overload
+    // would be wrongly called.
     size_t copy_to(std::string* s, size_t n = (size_t)-1L, size_t pos = 0) const;
     size_t append_to(std::string* s, size_t n = (size_t)-1L, size_t pos = 0) const;
 
@@ -319,7 +332,8 @@ public:
     //                      the internal buffer.
     // If n == 0 and buffer is empty, return value is undefined.
     const void* fetch(void* aux_buffer, size_t n) const;
-    // Just fetch one character.
+    // Fetch one character from front side.
+    // Returns pointer to the character, NULL on empty.
     const void* fetch1() const;
 
     // Remove all data
@@ -373,7 +387,14 @@ protected:
 
     // Pop a BlockRef from front side.
     // Returns: 0 on success and -1 on empty.
-    int _pop_front_ref();
+    int _pop_front_ref() { return _pop_or_moveout_front_ref<false>(); }
+
+    // Move a BlockRef out from front side.
+    // Returns: 0 on success and -1 on empty.
+    int _moveout_front_ref() { return _pop_or_moveout_front_ref<true>(); }
+
+    template <bool MOVEOUT>
+    int _pop_or_moveout_front_ref();
 
     // Pop a BlockRef from back side.
     // Returns: 0 on success and -1 on empty.
@@ -467,6 +488,51 @@ private:
     Block* _block;
 };
 
+// Specialized utility to cut from IOBuf faster than using corresponding
+// methods in IOBuf.
+// Designed for efficiently parsing data from IOBuf.
+// The cut IOBuf can be appended during cutting.
+class IOBufCutter {
+public:
+    explicit IOBufCutter(butil::IOBuf* buf);
+    ~IOBufCutter();
+
+    // Cut off n bytes and APPEND to `out'
+    // Returns bytes cut.
+    size_t cutn(butil::IOBuf* out, size_t n);
+    size_t cutn(std::string* out, size_t n);
+    size_t cutn(void* out, size_t n);
+
+    // Cut off 1 byte from the front side and set to *c
+    // Return true on cut, false otherwise.
+    bool cut1(void* data);
+
+    // Copy n bytes into `data'
+    // Returns bytes copied.
+    size_t copy_to(void* data, size_t n);
+
+    // Fetch one character.
+    // Returns pointer to the character, NULL on empty
+    const void* fetch1();
+
+    // Pop n bytes from front side
+    // Returns bytes popped.
+    size_t pop_front(size_t n);
+
+    // Uncut bytes
+    size_t remaining_bytes() const;
+
+private:
+    size_t slower_copy_to(void* data, size_t n);
+    bool load_next_ref();
+
+private:
+    void* _data;
+    void* _data_end;
+    IOBuf::Block* _block;
+    IOBuf* _buf;
+};
+
 // Parse protobuf message from IOBuf. Notice that this wrapper does not change
 // source IOBuf, which also should not change during lifetime of the wrapper.
 // Even if a IOBufAsZeroCopyInputStream is created but parsed, the source
@@ -503,7 +569,7 @@ private:
 //     some_pb_message.SerializeToZeroCopyStream(&wrapper);
 //
 // NOTE: Blocks are by default shared among all the ZeroCopyOutputStream in one
-// thread. If there are many manuplated streams at one time, there may be many
+// thread. If there are many manipulated streams at one time, there may be many
 // fragments. You can create a ZeroCopyOutputStream which has its own block by 
 // passing a positive `block_size' argument to avoid this problem.
 class IOBufAsZeroCopyOutputStream
@@ -534,14 +600,14 @@ public:
     virtual ~IOBufAsSnappySource() {}
 
     // Return the number of bytes left to read from the source
-    virtual size_t Available() const;
+    size_t Available() const override;
 
     // Peek at the next flat region of the source.
-    virtual const char* Peek(size_t* len); 
+    const char* Peek(size_t* len) override; 
 
     // Skip the next n bytes.  Invalidates any buffer returned by
     // a previous call to Peek().
-    virtual void Skip(size_t n);
+    void Skip(size_t n) override;
     
 private:
     const butil::IOBuf* _buf;
@@ -555,10 +621,10 @@ public:
     virtual ~IOBufAsSnappySink() {}
 
     // Append "bytes[0,n-1]" to this.
-    virtual void Append(const char* bytes, size_t n);
+    void Append(const char* bytes, size_t n) override;
     
     // Returns a writable buffer of the specified length for appending.
-    virtual char* GetAppendBuffer(size_t length, char* scratch);
+    char* GetAppendBuffer(size_t length, char* scratch) override;
     
 private:
     char* _cur_buf;
@@ -611,6 +677,11 @@ public:
     // Returns 0 on success, -1 otherwise.
     int append(const void* data, size_t n);
     int append(const butil::StringPiece& str);
+
+    // Format integer |d| to back side of the internal buffer, which is much faster
+    // than snprintf(..., "%lu", d).
+    // Returns 0 on success, -1 otherwise.
+    int append_decimal(long d);
     
     // Push the character to back side of the internal buffer.
     // Costs ~3ns while IOBuf.push_back costs ~13ns on Intel(R) Xeon(R) CPU
@@ -631,6 +702,8 @@ private:
     int add_block();
 
     void* _data;
+    // Saving _data_end instead of _size avoid modifying _data and _size
+    // in each push_back() which is probably a hotspot.
     void* _data_end;
     IOBuf _buf;
     IOBufAsZeroCopyOutputStream _zc_stream;

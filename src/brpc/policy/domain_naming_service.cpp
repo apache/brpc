@@ -1,18 +1,20 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
 
 #include "butil/build_config.h"                       // OS_MACOSX
 #include <netdb.h>                                    // gethostbyname_r
@@ -26,7 +28,9 @@
 namespace brpc {
 namespace policy {
 
-DomainNamingService::DomainNamingService() : _aux_buf_len(0) {}
+DomainNamingService::DomainNamingService(int default_port)
+    : _aux_buf_len(0)
+    , _default_port(default_port) {}
 
 int DomainNamingService::GetServers(const char* dns_name,
                                     std::vector<ServerNode>* servers) {
@@ -49,7 +53,7 @@ int DomainNamingService::GetServers(const char* dns_name,
     }
     
     buf[i] = '\0';
-    int port = 80;  // default port of HTTP
+    int port = _default_port;
     if (dns_name[i] == ':') {
         ++i;
         char* end = NULL;
@@ -118,6 +122,7 @@ int DomainNamingService::GetServers(const char* dns_name,
     }
 #endif
 
+    //TODO add protocols other than IPv4 supports
     butil::EndPoint point;
     point.port = port;
     for (int i = 0; result->h_addr_list[i] != NULL; ++i) {
@@ -140,7 +145,7 @@ void DomainNamingService::Describe(
 }
 
 NamingService* DomainNamingService::New() const {
-    return new DomainNamingService;
+    return new DomainNamingService(_default_port);
 }
 
 void DomainNamingService::Destroy() {

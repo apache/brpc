@@ -1,19 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Rujie Jiang (jiangrujie@baidu.com)
 
 // Since kDefaultTotalBytesLimit is private, we need some hacks to get the limit.
 // Works for pb 2.4, 2.6, 3.0
@@ -26,6 +27,7 @@ const uint64_t PB_TOTAL_BYETS_LIMITS =
 #undef private
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
+#include <google/protobuf/text_format.h>
 #include <gflags/gflags.h>
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
@@ -115,7 +117,7 @@ void ListProtocols(std::vector<std::pair<ProtocolType, Protocol> >* vec) {
     ProtocolEntry* const protocol_map = get_protocol_map();
     for (size_t i = 0; i < MAX_PROTOCOL_SIZE; ++i) {
         if (protocol_map[i].valid.load(butil::memory_order_acquire)) {
-            vec->push_back(std::make_pair((ProtocolType)i, protocol_map[i].protocol));
+            vec->emplace_back((ProtocolType)i, protocol_map[i].protocol);
         }
     }
 }
@@ -138,7 +140,7 @@ void SerializeRequestDefault(butil::IOBuf* buf,
     }
     if (!SerializeAsCompressedData(*request, buf, cntl->request_compress_type())) {
         return cntl->SetFailed(
-            EREQUEST, "Fail to compress request, compress_tpye=%d",
+            EREQUEST, "Fail to compress request, compress_type=%d",
             (int)cntl->request_compress_type());
     }
 }
@@ -202,15 +204,30 @@ BUTIL_FORCE_INLINE bool ParsePbFromZeroCopyStreamInlined(
     // According to source code of pb, SetTotalBytesLimit is not a simple set,
     // avoid calling the function when the limit is definitely unreached.
     if (PB_TOTAL_BYETS_LIMITS < FLAGS_max_body_size) {
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+        decoder.SetTotalBytesLimit(INT_MAX);
+#else
         decoder.SetTotalBytesLimit(INT_MAX, -1);
+#endif
     }
     return msg->ParseFromCodedStream(&decoder) && decoder.ConsumedEntireMessage();
+}
+
+BUTIL_FORCE_INLINE bool ParsePbTextFromZeroCopyStreamInlined(
+    google::protobuf::Message* msg,
+    google::protobuf::io::ZeroCopyInputStream* input) {
+    return google::protobuf::TextFormat::Parse(input, msg);
 }
 
 bool ParsePbFromZeroCopyStream(
     google::protobuf::Message* msg,
     google::protobuf::io::ZeroCopyInputStream* input) {
     return ParsePbFromZeroCopyStreamInlined(msg, input);
+}
+
+bool ParsePbTextFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf) {
+    butil::IOBufAsZeroCopyInputStream stream(buf);
+    return ParsePbTextFromZeroCopyStreamInlined(msg, &stream);
 }
 
 bool ParsePbFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf) {

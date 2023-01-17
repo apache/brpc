@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #ifndef BRPC_CONTROLLER_PRIVATE_ACCESSOR_H
 #define BRPC_CONTROLLER_PRIVATE_ACCESSOR_H
@@ -52,6 +55,10 @@ public:
 
     Socket* get_sending_socket() {
         return _cntl->_current_call.sending_sock.get();
+    }
+
+    int64_t real_timeout_ms() {
+        return _cntl->_real_timeout_ms;
     }
 
     void move_in_server_receiving_sock(SocketUniquePtr& ptr) {
@@ -121,9 +128,11 @@ public:
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)
     { _cntl->_rpa.reset(s); }
 
-    void add_with_auth() {
-        _cntl->add_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
+    void set_auth_flags(uint32_t auth_flags) {
+        _cntl->_auth_flags = auth_flags;
     }
+
+    void clear_auth_flags() { _cntl->_auth_flags = 0; }
 
     std::string& protocol_param() { return _cntl->protocol_param(); }
     const std::string& protocol_param() const { return _cntl->protocol_param(); }

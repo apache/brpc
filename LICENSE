@@ -175,3 +175,752 @@
       of your accepting any such warranty or additional liability.
 
    END OF TERMS AND CONDITIONS
+   
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright [yyyy] [name of copyright owner]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+--------------------------------------------------------------------------------
+
+src/butil/third_party/dmg_fp: licensed under the following terms:
+
+  The author of this software is David M. Gay.
+  
+  Copyright (c) 1991, 2000, 2001 by Lucent Technologies.
+  
+  Permission to use, copy, modify, and distribute this software for any
+  purpose without fee is hereby granted, provided that this entire notice
+  is included in all copies of any software which is or includes a copy
+  or modification of this software and in all copies of the supporting
+  documentation for such software.
+  
+  THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+  WARRANTY.  IN PARTICULAR, NEITHER THE AUTHOR NOR LUCENT MAKES ANY
+  REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+  OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+
+--------------------------------------------------------------------------------
+
+src/butil/third_party/dynamic_annotations: licensed under the following terms:
+
+  Copyright (c) 2008-2009, Google Inc.
+  All rights reserved.
+  
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met:
+  
+      * Redistributions of source code must retain the above copyright
+  notice, this list of conditions and the following disclaimer.
+      * Neither the name of Google Inc. nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+  
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  
+--------------------------------------------------------------------------------
+
+src/butil/third_party/icu: licensed under the following terms:
+
+  ICU License - ICU 1.8.1 and later
+  
+  COPYRIGHT AND PERMISSION NOTICE
+  
+  Copyright (c) 1995-2009 International Business Machines Corporation and others
+  
+  All rights reserved.
+  
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, and/or sell copies of the Software, and to permit persons
+  to whom the Software is furnished to do so, provided that the above
+  copyright notice(s) and this permission notice appear in all copies of
+  the Software and that both the above copyright notice(s) and this
+  permission notice appear in supporting documentation.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+  OF THIRD PARTY RIGHTS. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+  HOLDERS INCLUDED IN THIS NOTICE BE LIABLE FOR ANY CLAIM, OR ANY
+  SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES, OR ANY DAMAGES WHATSOEVER
+  RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF
+  CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+  CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  
+  Except as contained in this notice, the name of a copyright holder
+  shall not be used in advertising or otherwise to promote the sale, use
+  or other dealings in this Software without prior written authorization
+  of the copyright holder.
+
+--------------------------------------------------------------------------------
+
+src/butil/third_party/modp_b64: licensed under the following terms:
+
+  MODP_B64 - High performance base64 encoder/decoder
+  Version 1.3 -- 17-Mar-2006
+  http://modp.com/release/base64
+  
+  Copyright (c) 2005, 2006  Nick Galbreath -- nickg [at] modp [dot] com
+  All rights reserved.
+  
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met:
+  
+    Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  
+    Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+  
+    Neither the name of the modp.com nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+  
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+src/butil/third_party/murmurhash3: MIT license
+
+  MurmurHash3 was written by Austin Appleby, and is placed in the public
+  domain. The author hereby disclaims copyright to this source code.
+  
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this
+  software and associated documentation files (the "Software"), to deal in the Software
+  without restriction, including without limitation the rights to use, copy, modify,
+  merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to the following
+  conditions:
+  
+  The above copyright notice and this permission notice shall be included in all copies or
+  substantial portions of the Software.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+  PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT
+  OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+  OTHER DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+src/butil/third_party/rapidjson: MIT license
+
+  Copyright (C) 2015 THL A29 Limited, a Tencent company, and Milo Yip.  All rights reserved.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this
+  software and associated documentation files (the "Software"), to deal in the Software
+  without restriction, including without limitation the rights to use, copy, modify,
+  merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to the following
+  conditions:
+  
+  The above copyright notice and this permission notice shall be included in all copies or
+  substantial portions of the Software.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+  PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT
+  OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+  OTHER DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+src/butil/third_party/rapidjson/msinttypes: licensed under the following terms:
+
+  Copyright (c) 2006-2013 Alexander Chemeris
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+
+   1. Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimer.
+
+   2. Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+   3. Neither the name of the product nor the names of its contributors may
+      be used to endorse or promote products derived from this software
+      without specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
+ EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+src/butil/third_party/superfasthash: licensed under the following terms:
+
+  Paul Hsieh OLD BSD license
+  
+  Copyright (c) 2010, Paul Hsieh
+  All rights reserved.
+  
+  Redistribution and use in source and binary forms, with or without modification,
+  are permitted provided that the following conditions are met:
+  
+  * Redistributions of source code must retain the above copyright notice, this
+    list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright notice, this
+    list of conditions and the following disclaimer in the documentation and/or
+    other materials provided with the distribution.
+  * Neither my name, Paul Hsieh, nor the names of any other contributors to the
+    code use may not be used to endorse or promote products derived from this
+    software without specific prior written permission.
+  
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+  ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+src/butil/third_party/valgrind/valgrind.h: licensed under the following terms:
+
+  This file is part of Valgrind, a dynamic binary instrumentation
+  framework.
+  
+  Copyright (C) 2000-2008 Julian Seward.  All rights reserved.
+  
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions
+  are met:
+  
+  1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+  
+  2. The origin of this software must not be misrepresented; you must
+    not claim that you wrote the original software.  If you use this
+    software in a product, an acknowledgment in the product
+    documentation would be appreciated but is not required.
+  
+  3. Altered source versions must be plainly marked as such, and must
+    not be misrepresented as being the original software.
+  
+  4. The name of the author may not be used to endorse or promote
+    products derived from this software without specific prior written
+    permission.
+  
+  THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
+  OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+src/butil/crc32c.h, src/butil/crc32c.cc, test/crc32c_unittest.cc: licensed under the following terms:
+
+  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+  This source code is licensed under the BSD-style license found in the
+  LICENSE file in the root directory of this source tree. An additional grant
+  of patent rights can be found in the PATENTS file in the same directory.
+
+ Copyright (c) 2011 The LevelDB Authors. All rights reserved.
+ Use of this source code is governed by a BSD-style license that can be
+ found in the LICENSE file. See the AUTHORS file for names of contributors.
+
+--------------------------------------------------------------------------------
+
+src/butil/unique_ptr.h: licensed under the following terms:
+
+ Copyright 2009 Howard Hinnant, Ion Gazta&ntilde;aga.
+ Distributed under the Boost Software License, Version 1.0. (See
+ accompanying file LICENSE_1_0.txt or copy at
+ http://www.boost.org/LICENSE_1_0.txt)
+
+--------------------------------------------------------------------------------
+
+src/butil/intrusive_ptr.hpp: licensed under the following terms:
+
+ Copyright (c) 2001, 2002 Peter Dimov
+
+ Distributed under the Boost Software License, Version 1.0. (See
+ accompanying file LICENSE_1_0.txt or copy at
+ http://www.boost.org/LICENSE_1_0.txt)
+
+--------------------------------------------------------------------------------
+
+src/butil/string_printf.cpp: licensed under the following terms:
+
+ Copyright 2012 Facebook, Inc.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+   http://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+
+--------------------------------------------------------------------------------
+
+src/bthread/context.h, src/bthread/context.cpp: licensed under the following terms:
+
+ libcontext - a slightly more portable version of boost::context
+ Copyright Martin Husemann 2013.
+ Copyright Oliver Kowalke 2009.
+ Copyright Sergue E. Leontiev 2013.
+ Copyright Thomas Sailer 2013.
+ Minor modifications by Tomasz Wlostowski 2016.
+ Distributed under the Boost Software License, Version 1.0.
+      (See accompanying file LICENSE_1_0.txt or copy at
+            http://www.boost.org/LICENSE_1_0.txt)
+
+--------------------------------------------------------------------------------
+
+src/brpc/details/tcmalloc_extension.h: 3-clause BSD
+
+ Copyright (c) 2005, Google Inc.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+
+     * Redistributions of source code must retain the above copyright
+ notice, this list of conditions and the following disclaimer.
+     * Redistributions in binary form must reproduce the above
+ copyright notice, this list of conditions and the following disclaimer
+ in the documentation and/or other materials provided with the
+ distribution.
+     * Neither the name of Google Inc. nor the names of its
+ contributors may be used to endorse or promote products derived from
+ this software without specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+src/brpc/details/http_parser.h, src/brpc/details/http_parser.cpp:
+licensed under the following terms:
+
+ Based on src/http/ngx_http_parse.c from NGINX copyright Igor Sysoev
+
+ Additional changes are licensed under the same terms as NGINX and
+ copyright Joyent, Inc. and other Node contributors. All rights reserved.
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to
+ deal in the Software without restriction, including without limitation the
+ rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ sell copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ IN THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+src/brpc/ts.h, src/brpc/policy/dh.h, src/brpc/policy/dh.cpp: MIT license
+
+ Copyright (c) 2013-2015 SRS(ossrs)
+ Permission is hereby granted, free of charge, to any person obtaining a copy of
+ this software and associated documentation files (the "Software"), to deal in
+ the Software without restriction, including without limitation the rights to
+ use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software is furnished to do so,
+ subject to the following conditions:
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+src/brpc/ts.cpp: licensed under the following terms:
+
+ Copyright (c) 2013-2015 SRS(ossrs)
+ Permission is hereby granted, free of charge, to any person obtaining a copy of
+ this software and associated documentation files (the "Software"), to deal in
+ the Software without restriction, including without limitation the rights to
+ use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software is furnished to do so,
+ subject to the following conditions:
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+ Copyright (c) 2008 Joerg Sonnenberger
+ Copyright (c) 2009-2012 Michihiro NAKAJIMA
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR(S) ``AS IS'' AND ANY EXPRESS OR
+ IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ IN NO EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY DIRECT, INDIRECT,
+ INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+src/brpc/builtin/pprof_perl.cpp, tools/pprof: licensed under the following terms:
+
+ Copyright (c) 1998-2007, Google Inc.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+
+     * Redistributions of source code must retain the above copyright
+ notice, this list of conditions and the following disclaimer.
+     * Redistributions in binary form must reproduce the above
+ copyright notice, this list of conditions and the following disclaimer
+ in the documentation and/or other materials provided with the
+ distribution.
+     * Neither the name of Google Inc. nor the names of its
+ contributors may be used to endorse or promote products derived from
+ this software without specific prior written permission.
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+  SVGPan library 1.2
+ ====================
+ Copyright 2009-2010 Andrea Leofreddi <a.leofreddi@itcharm.com>. All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without modification, are
+ permitted provided that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright notice, this list of
+       conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright notice, this list
+       of conditions and the following disclaimer in the documentation and/or other materials
+       provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY Andrea Leofreddi ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+ FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL Andrea Leofreddi OR
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+ The views and conclusions contained in the software and documentation are those of the
+ authors and should not be interpreted as representing official policies, either expressed
+ or implied, of Andrea Leofreddi.
+
+--------------------------------------------------------------------------------
+
+src/brpc/callback.h: 3-clause BSD
+
+ Protocol Buffers - Google's data interchange format
+ Copyright 2008 Google Inc.  All rights reserved.
+ http://code.google.com/p/protobuf/
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+
+     * Redistributions of source code must retain the above copyright
+ notice, this list of conditions and the following disclaimer.
+     * Redistributions in binary form must reproduce the above
+ copyright notice, this list of conditions and the following disclaimer
+ in the documentation and/or other materials provided with the
+ distribution.
+     * Neither the name of Google Inc. nor the names of its
+ contributors may be used to endorse or promote products derived from
+ this software without specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+src/butil/at_exit.*
+src/butil/atomic*
+src/butil/auto_reset.h
+src/butil/base64.*
+src/butil/base_export.h
+src/butil/base_paths.cc
+src/butil/basictypes.h
+src/butil/big_endian.*
+src/butil/bits.h
+src/butil/build_config.h
+src/butil/cancelable_callback.h
+src/butil/compiler_specific.h
+src/butil/containers/*
+src/butil/cpu.*
+src/butil/debug/*
+src/butil/environment.*
+src/butil/file_*
+src/butil/files/dir_reader_fallback.h
+src/butil/files/dir_reader_linux.h
+src/butil/files/dir_reader_posix.h
+src/butil/files/file.*
+src/butil/files/file_enumerator*
+src/butil/files/file_p*
+src/butil/files/memory_mapped_file*
+src/butil/files/scoped*
+src/butil/float_util.h
+src/butil/format_macros.h
+src/butil/gtest_prod_util.h
+src/butil/guid.cc
+src/butil/guid.h
+src/butil/guid_posix.cc
+src/butil/hash.cc
+src/butil/hash.h
+src/butil/lazy_instance.cc
+src/butil/lazy_instance.h
+src/butil/location.cc
+src/butil/location.h
+src/butil/mac/bundle_locations.h
+src/butil/mac/bundle_locations.mm
+src/butil/mac/foundation_util.h
+src/butil/mac/foundation_util.mm
+src/butil/mac/scoped_cftyperef.h
+src/butil/mac/scoped_mach_port.cc
+src/butil/mac/scoped_mach_port.h
+src/butil/mac/scoped_typeref.h
+src/butil/macros.h
+src/butil/memory/aligned_memory.cc
+src/butil/memory/aligned_memory.h
+src/butil/memory/linked_ptr.h
+src/butil/memory/manual_constructor.h
+src/butil/memory/raw_scoped_refptr_mismatch_checker.h
+src/butil/memory/ref_counted.cc
+src/butil/memory/ref_counted.h
+src/butil/memory/ref_counted_memory.cc
+src/butil/memory/ref_counted_memory.h
+src/butil/memory/scoped_open_process.h
+src/butil/memory/scoped_policy.h
+src/butil/memory/scoped_ptr.h
+src/butil/memory/scoped_vector.h
+src/butil/memory/singleton.cc
+src/butil/memory/singleton.h
+src/butil/memory/singleton_objc.h
+src/butil/memory/weak_ptr.cc
+src/butil/memory/weak_ptr.h
+src/butil/move.h
+src/butil/numerics/safe_conversions.h
+src/butil/numerics/safe_conversions_impl.h
+src/butil/numerics/safe_math.h
+src/butil/numerics/safe_math_impl.h
+src/butil/observer_list.h
+src/butil/port.h
+src/butil/posix/eintr_wrapper.h
+src/butil/posix/file_descriptor_shuffle.cc
+src/butil/posix/file_descriptor_shuffle.h
+src/butil/posix/global_descriptors.cc
+src/butil/posix/global_descriptors.h
+src/butil/rand_util.cc
+src/butil/rand_util.h
+src/butil/rand_util_posix.cc
+src/butil/safe_strerror_posix.cc
+src/butil/safe_strerror_posix.h
+src/butil/scoped_clear_errno.h
+src/butil/scoped_generic.h
+src/butil/scoped_observer.h
+src/butil/sha1.h
+src/butil/sha1_portable.cc
+src/butil/stl_util.h
+src/butil/strings/latin1_string_conversions.cc
+src/butil/strings/latin1_string_conversions.h
+src/butil/strings/nullable_string16.cc
+src/butil/strings/nullable_string16.h
+src/butil/strings/safe_sprintf.cc
+src/butil/strings/safe_sprintf.h
+src/butil/strings/string16.cc
+src/butil/strings/string16.h
+src/butil/strings/string_number_conversions.cc
+src/butil/strings/string_number_conversions.h
+src/butil/strings/string_piece.cc
+src/butil/strings/string_piece.h
+src/butil/strings/string_split.cc
+src/butil/strings/string_split.h
+src/butil/strings/string_tokenizer.h
+src/butil/strings/string_util.cc
+src/butil/strings/string_util.h
+src/butil/strings/string_util_constants.cc
+src/butil/strings/string_util_posix.h
+src/butil/strings/stringize_macros.h
+src/butil/strings/stringprintf.cc
+src/butil/strings/stringprintf.h
+src/butil/strings/sys_string_conversions.h
+src/butil/strings/sys_string_conversions_mac.mm
+src/butil/strings/sys_string_conversions_posix.cc
+src/butil/strings/utf_offset_string_conversions.cc
+src/butil/strings/utf_offset_string_conversions.h
+src/butil/strings/utf_string_conversion_utils.cc
+src/butil/strings/utf_string_conversion_utils.h
+src/butil/strings/utf_string_conversions.cc
+src/butil/strings/utf_string_conversions.h
+src/butil/synchronization/cancellation_flag.*
+src/butil/synchronization/condition_variable.h
+src/butil/synchronization/condition_variable_posix.cc
+src/butil/synchronization/spin_wait.h
+src/butil/synchronization/waitable_event.h
+src/butil/synchronization/waitable_event_posix.cc
+src/butil/sys_byteorder.h
+src/butil/third_party/symbolize/glog/*
+src/butil/threading/*
+src/butil/time/*
+src/butil/type_traits.h
+src/butil/version.*
+test/*.cc
+test/memory_unittest_mac.h
+test/multiprocess_func_list.h
+test/scoped_locale.h
+test/test_switches.h
+
+Some portions of these files are derived from code in the Chromium project,
+copyright (c) Google inc and (c) The Chromium Authors and licensed under the
+3-clause BSD license:
+
+  Copyright (c) 2000 - 2014 The Chromium Authors. All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met:
+
+     * Redistributions of source code must retain the above copyright
+  notice, this list of conditions and the following disclaimer.
+     * Redistributions in binary form must reproduce the above
+  copyright notice, this list of conditions and the following disclaimer
+  in the documentation and/or other materials provided with the
+  distribution.
+     * Neither the name of Google Inc. nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

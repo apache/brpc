@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <gflags/gflags.h>                  // DECLARE_xxx
 #include <google/protobuf/descriptor.h>
@@ -46,8 +48,6 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
     Controller *cntl = (Controller*)controller;
     cntl->http_response().set_content_type("text/plain");
     const Server* server = cntl->server();
-    const butil::EndPoint my_addr(butil::my_ip(),
-                                 server->listen_address().port);
     const bool use_html = UseHTML(cntl->http_request());
     const bool as_more = cntl->http_request().uri().GetQuery("as_more");
     if (use_html && !as_more) {
@@ -142,8 +142,14 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
            << " : Profiling growth of heap"
            << (!IsHeapProfilerEnabled() ? " (disabled)" : "") << NL;
     }
-    os << "curl -H 'Content-Type: application/json' -d 'JSON' " << my_addr
-       << "/ServiceName/MethodName : Call method by http+json" << NL
+    os << "curl -H 'Content-Type: application/json' -d 'JSON' ";
+    if (butil::is_endpoint_extended(server->listen_address())) {
+        os << "<listen_address>";
+    } else {
+        const butil::EndPoint my_addr(butil::my_ip(), server->listen_address().port);
+        os << my_addr;
+    }
+    os << "/ServiceName/MethodName : Call method by http+json" << NL
     
        << Path("/version", html_addr)
        << " : Version of this server, set by Server::set_version()" << NL

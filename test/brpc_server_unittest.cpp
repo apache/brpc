@@ -1,5 +1,21 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 // brpc - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
@@ -48,6 +64,11 @@ int main(int argc, char* argv[]) {
 namespace brpc {
 DECLARE_bool(enable_threads_service);
 DECLARE_bool(enable_dir_service);
+
+namespace policy {
+DECLARE_bool(use_http_error_code);
+}
+
 }
 
 namespace {
@@ -96,6 +117,16 @@ public:
             bthread_usleep(request->sleep_us());
         } else {
             LOG(INFO) << "No sleep, protocol=" << cntl->request_protocol();
+        }
+    }
+
+    virtual void ComboEcho(google::protobuf::RpcController*,
+                           const test::ComboRequest* request,
+                           test::ComboResponse* response,
+                           google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        for (int i = 0; i < request->requests_size(); ++i) {
+            response->add_responses()->set_message(request->requests(i).message());
         }
     }
 
@@ -183,6 +214,16 @@ TEST_F(ServerTest, sanity) {
         ASSERT_FALSE(server.IsRunning());      // Revert server's status
         // And release the listen port
         ASSERT_EQ(0, server.Start("127.0.0.1:8613", NULL));
+    }
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        ASSERT_EQ(0, server.Start(brpc::PortRange(8000, 9000), &options));
+        ASSERT_TRUE(server.IsRunning());
+        ASSERT_EQ(0ul, server.service_count());
+        ASSERT_TRUE(NULL == server.first_service());
+        ASSERT_EQ(0, server.Stop(0));
+        ASSERT_EQ(0, server.Join());
     }
 
     butil::EndPoint ep;
@@ -653,6 +694,16 @@ TEST_F(ServerTest, restful_mapping) {
                   " /v1/*/* => Echo"));
     ASSERT_EQ(0u, server9.service_count());
     
+    // default url access
+    brpc::Server server10;
+    ASSERT_EQ(0, server10.AddService(
+                  &service_v1,
+                  brpc::SERVER_DOESNT_OWN_SERVICE,
+                  "/v1/echo => Echo",
+                  true));
+    ASSERT_EQ(1u, server10.service_count());
+    ASSERT_FALSE(server10._global_restful_map);
+
     // Access services
     ASSERT_EQ(0, server1.Start(port, NULL));
     brpc::Channel http_channel;
@@ -851,11 +902,188 @@ TEST_F(ServerTest, restful_mapping) {
     server1.Stop(0);
     server1.Join();
 
+    ASSERT_EQ(0, server10.Start(port, NULL));
+
+    // access v1.Echo via /v1/echo.
+    cntl.Reset();
+    cntl.http_request().uri() = "/v1/echo";
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.request_attachment().append("{\"message\":\"foo\"}");
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(12, service_v1.ncalled.load());
+    ASSERT_EQ("{\"message\":\"foo_v1\"}", cntl.response_attachment());
+
+    // access v1.Echo via default url
+    cntl.Reset();
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.request_attachment().append("{\"message\":\"foo\"}");
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(13, service_v1.ncalled.load());
+    ASSERT_EQ("{\"message\":\"foo_v1\"}", cntl.response_attachment());
+
+    server10.Stop(0);
+    server10.Join();
+
     // Removing the service should update _global_restful_map.
     ASSERT_EQ(0, server1.RemoveService(&service_v1));
     ASSERT_EQ(0u, server1.service_count());
     ASSERT_TRUE(server1._global_restful_map); // deleted in dtor.
     ASSERT_EQ(0u, server1._global_restful_map->size());
+}
+
+TEST_F(ServerTest, http_error_code) {
+    brpc::policy::FLAGS_use_http_error_code = true;
+
+    const int port = 9200;
+    // missing_required_fields -> brpc::EREQUEST
+    {
+        brpc::Server server1;
+        EchoServiceV1 service_v1;
+        ASSERT_EQ(0, server1.AddService(&service_v1, brpc::SERVER_DOESNT_OWN_SERVICE));
+        ASSERT_EQ(0, server1.Start(port, NULL));
+
+        brpc::Channel http_channel;
+        brpc::ChannelOptions chan_options;
+        chan_options.protocol = "http";
+        ASSERT_EQ(0, http_channel.Init("0.0.0.0", port, &chan_options));
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/EchoService/Echo";
+        http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        ASSERT_TRUE(cntl.Failed());
+        ASSERT_EQ(brpc::EREQUEST, cntl.ErrorCode());
+        LOG(INFO) << cntl.ErrorText();
+        ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
+        ASSERT_EQ(0, service_v1.ncalled.load());
+    }
+
+    // disallow_http_body_to_pb -> brpc::ERESPONSE
+    {
+        brpc::Server server1;
+        EchoServiceV1 service_v1;
+        brpc::ServiceOptions svc_opt;
+        svc_opt.allow_http_body_to_pb = false;
+        svc_opt.restful_mappings = "/access_echo1=>Echo";
+        ASSERT_EQ(0, server1.AddService(&service_v1, svc_opt));
+        ASSERT_EQ(0, server1.Start(port, NULL));
+        brpc::Channel http_channel;
+        brpc::ChannelOptions chan_options;
+        chan_options.protocol = "http";
+        ASSERT_EQ(0, http_channel.Init("0.0.0.0", port, &chan_options));
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/access_echo1";
+        http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        ASSERT_TRUE(cntl.Failed());
+        ASSERT_EQ(brpc::ERESPONSE, cntl.ErrorCode());
+        ASSERT_EQ(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR,
+            cntl.http_response().status_code());
+        ASSERT_EQ(1, service_v1.ncalled.load());
+    }
+
+    // restful_mapping -> brpc::ENOMETHOD
+    {
+        brpc::Server server1;
+        EchoServiceV1 service_v1;
+        ASSERT_EQ(0u, server1.service_count());
+        ASSERT_EQ(0, server1.AddService(
+            &service_v1,
+            brpc::SERVER_DOESNT_OWN_SERVICE,
+            "/v1/echo/ => Echo,"
+
+            // Map another path to the same method is ok.
+            "/v3/echo => Echo,"
+
+            // end with wildcard
+            "/v2/echo/* => Echo,"
+
+            // single-component path should be OK
+            "/v4_echo => Echo,"
+
+            // heading slash can be ignored
+            " v5/echo => Echo,"
+
+            // with or without wildcard can coexist.
+            " /v6/echo => Echo,"
+            " /v6/echo/* => Echo2,"
+            " /v6/abc/*/def => Echo3,"
+            " /v6/echo/*.flv => Echo4,"
+            " /v6/*.flv => Echo5,"
+            " *.flv => Echo,"
+        ));
+        ASSERT_EQ(1u, server1.service_count());
+        ASSERT_TRUE(server1._global_restful_map);
+        ASSERT_EQ(1UL, server1._global_restful_map->size());
+
+        ASSERT_EQ(0, server1.Start(port, NULL));
+        brpc::Channel http_channel;
+        brpc::ChannelOptions chan_options;
+        chan_options.protocol = "http";
+        ASSERT_EQ(0, http_channel.Init("0.0.0.0", port, &chan_options));
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/v3/echo/anything";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"foo\"}");
+        http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        ASSERT_TRUE(cntl.Failed());
+        ASSERT_EQ(brpc::ENOMETHOD, cntl.ErrorCode());
+        LOG(INFO) << "Expected error: " << cntl.ErrorText();
+        ASSERT_EQ(0, service_v1.ncalled.load());
+    }
+
+    // max_concurrency -> brpc::ELIMIT
+    {
+        brpc::Server server1;
+        EchoServiceImpl service1;
+        ASSERT_EQ(0, server1.AddService(&service1, brpc::SERVER_DOESNT_OWN_SERVICE));
+        server1.MaxConcurrencyOf("test.EchoService.Echo") = 1;
+        ASSERT_EQ(1, server1.MaxConcurrencyOf("test.EchoService.Echo"));
+        server1.MaxConcurrencyOf(&service1, "Echo") = 2;
+        ASSERT_EQ(2, server1.MaxConcurrencyOf(&service1, "Echo"));
+
+        ASSERT_EQ(0, server1.Start(port, NULL));
+        brpc::Channel http_channel;
+        brpc::ChannelOptions chan_options;
+        chan_options.protocol = "http";
+        ASSERT_EQ(0, http_channel.Init("0.0.0.0", port, &chan_options));
+
+        brpc::Channel normal_channel;
+        ASSERT_EQ(0, normal_channel.Init("0.0.0.0", port, NULL));
+        test::EchoService_Stub stub(&normal_channel);
+
+        brpc::Controller cntl1;
+        cntl1.http_request().uri() = "/EchoService/Echo";
+        cntl1.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl1.request_attachment().append("{\"message\":\"hello\",\"sleep_us\":100000}");
+        http_channel.CallMethod(NULL, &cntl1, NULL, NULL, brpc::DoNothing());
+
+        brpc::Controller cntl2;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message("hello");
+        req.set_sleep_us(100000);
+        stub.Echo(&cntl2, &req, &res, brpc::DoNothing());
+
+        bthread_usleep(20000);
+        LOG(INFO) << "Send other requests";
+
+        brpc::Controller cntl3;
+        cntl3.http_request().uri() = "/EchoService/Echo";
+        cntl3.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl3.request_attachment().append("{\"message\":\"hello\"}");
+        http_channel.CallMethod(NULL, &cntl3, NULL, NULL, NULL);
+        ASSERT_TRUE(cntl3.Failed());
+        ASSERT_EQ(brpc::ELIMIT, cntl3.ErrorCode());
+        ASSERT_EQ(brpc::HTTP_STATUS_SERVICE_UNAVAILABLE, cntl3.http_response().status_code());
+
+        brpc::Join(cntl1.call_id());
+        brpc::Join(cntl2.call_id());
+        ASSERT_FALSE(cntl1.Failed()) << cntl1.ErrorText();
+        ASSERT_FALSE(cntl2.Failed()) << cntl2.ErrorText();
+    }
+
+    brpc::policy::FLAGS_use_http_error_code = false;
 }
 
 TEST_F(ServerTest, conflict_name_between_restful_mapping_and_builtin) {
@@ -1158,7 +1386,7 @@ TEST_F(ServerTest, serving_requests) {
 TEST_F(ServerTest, create_pid_file) {
     {
         brpc::Server server;
-        server._options.pid_file = "$PWD//pid_dir/sub_dir/./.server.pid";
+        server._options.pid_file = "./pid_dir/sub_dir/./.server.pid";
         server.PutPidFileIfNeeded();
         pid_t pid = getpid();
         std::ifstream fin("./pid_dir/sub_dir/.server.pid");
@@ -1243,6 +1471,48 @@ TEST_F(ServerTest, base64_to_string) {
         chan.CallMethod(NULL, &cntl, &req, &res, NULL);
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(EXP_REQUEST, res.databytes());
+        server.Stop(0);
+        server.Join();
+    }
+}
+
+TEST_F(ServerTest, single_repeated_to_array) {
+    for (int i = 0; i < 2; ++i) {
+        brpc::Server server;
+        EchoServiceImpl echo_svc;
+        brpc::ServiceOptions service_opt;
+        service_opt.pb_single_repeated_to_array = (i == 0);
+
+        ASSERT_EQ(0, server.AddService(&echo_svc, service_opt));
+        ASSERT_EQ(0, server.Start(8613, NULL));
+
+        for (int j = 0; j < 2; ++j) {
+            brpc::Channel chan;
+            brpc::ChannelOptions opt;
+            opt.protocol = brpc::PROTOCOL_HTTP;
+            ASSERT_EQ(0, chan.Init("localhost:8613", &opt));
+            brpc::Controller cntl;
+            cntl.http_request().uri() = "/EchoService/ComboEcho";
+            cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+            cntl.http_request().set_content_type("application/json");
+            cntl.set_pb_single_repeated_to_array(j == 0);
+            test::ComboRequest req;
+            req.add_requests()->set_message("foo");
+            req.add_requests()->set_message("bar");
+
+            test::ComboResponse res;
+            chan.CallMethod(NULL, &cntl, &req, &res, NULL);
+            if (i == j) {
+                EXPECT_FALSE(cntl.Failed());
+                EXPECT_EQ(res.responses_size(), req.requests_size());
+                for (int k = 0; k < req.requests_size(); ++k) {
+                    EXPECT_EQ(req.requests(k).message(), res.responses(k).message());
+                }
+            } else {
+                EXPECT_TRUE(cntl.Failed());
+            }
+        }
+
         server.Stop(0);
         server.Join();
     }

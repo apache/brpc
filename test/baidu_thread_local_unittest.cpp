@@ -1,6 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: 2010-12-04 11:59
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <gtest/gtest.h>
 #include <errno.h>
@@ -153,15 +166,17 @@ void fun2() {
 }
 
 void fun3(void* arg) {
-    get_oss() << "fun3(" << arg << ")" << std::endl;
+    get_oss() << "fun3(" << (uintptr_t)arg << ")" << std::endl;
 }
 
 void fun4(void* arg) {
-    get_oss() << "fun4(" << arg << ")" << std::endl;
+    get_oss() << "fun4(" << (uintptr_t)arg << ")" << std::endl;
 }
 
 static void check_result() {
-    ASSERT_EQ("fun4(0)\nfun3(0x2)\nfun2\n", get_oss().str());
+  // Don't use gtest function since this function might be invoked when the main
+  // thread quits, instances required by gtest functions are likely destroyed.
+  assert(get_oss().str() == "fun4(0)\nfun3(2)\nfun2\n");
 }
 
 TEST_F(BaiduThreadLocalTest, call_order_and_cancel) {

@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: chenzhangyi01@baidu.com, gejun@baidu.com
 // Date 2014/09/24 16:01:08
 
 #ifndef  BVAR_REDUCER_H
@@ -74,7 +76,7 @@ public:
         SeriesSampler(Reducer* owner, const Op& op)
             : _owner(owner), _series(op) {}
         ~SeriesSampler() {}
-        void take_sample() { _series.append(_owner->get_value()); }
+        void take_sample() override { _series.append(_owner->get_value()); }
         void describe(std::ostream& os) { _series.describe(os, NULL); }
     private:
         Reducer* _owner;
@@ -125,8 +127,7 @@ public:
     // Returns the reduced value before reset.
     T reset() { return _combiner.reset_all_agents(); }
 
-    // Implement Variable::describe() and Variable::get_value().
-    void describe(std::ostream& os, bool quote_string) const {
+    void describe(std::ostream& os, bool quote_string) const override {
         if (butil::is_same<T, std::string>::value && quote_string) {
             os << '"' << get_value() << '"';
         } else {
@@ -135,7 +136,7 @@ public:
     }
     
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const { *value = get_value(); }
+    void get_value(boost::any* value) const override { *value = get_value(); }
 #endif
 
     // True if this reducer is constructed successfully.
@@ -153,7 +154,7 @@ public:
         return _sampler;
     }
 
-    int describe_series(std::ostream& os, const SeriesOptions& options) const {
+    int describe_series(std::ostream& os, const SeriesOptions& options) const override {
         if (_series_sampler == NULL) {
             return 1;
         }
@@ -166,7 +167,7 @@ public:
 protected:
     int expose_impl(const butil::StringPiece& prefix,
                     const butil::StringPiece& name,
-                    DisplayFilter display_filter) {
+                    DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (rc == 0 &&
             _series_sampler == NULL &&

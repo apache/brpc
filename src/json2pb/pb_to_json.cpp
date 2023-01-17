@@ -1,4 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <iostream>
 #include <vector>
@@ -25,7 +40,8 @@ Pb2JsonOptions::Pb2JsonOptions()
     , bytes_to_base64(true)
 #endif
     , jsonify_empty_array(false)
-    , always_print_primitive_fields(false) {
+    , always_print_primitive_fields(false)
+    , single_repeated_to_array(false) {
 }
 
 class PbToJsonConverter {
@@ -33,10 +49,10 @@ public:
     explicit PbToJsonConverter(const Pb2JsonOptions& opt) : _option(opt) {}
 
     template <typename Handler>
-    bool Convert(const google::protobuf::Message& message, Handler& handler);
+    bool Convert(const google::protobuf::Message& message, Handler& handler, bool root_msg = false);
 
     const std::string& ErrorText() const { return _error; }
-    
+
 private:
     template <typename Handler>
     bool _PbFieldToJson(const google::protobuf::Message& message,
@@ -48,11 +64,10 @@ private:
 };
 
 template <typename Handler>
-bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handler& handler) {
-    handler.StartObject();
+bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handler& handler, bool root_msg) {
     const google::protobuf::Reflection* reflection = message.GetReflection();
     const google::protobuf::Descriptor* descriptor = message.GetDescriptor();
-    
+
     int ext_range_count = descriptor->extension_range_count();
     int field_count = descriptor->field_count();
     std::vector<const google::protobuf::FieldDescriptor*> fields;
@@ -78,6 +93,14 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
             fields.push_back(field);
         }
     }
+
+    if (root_msg && _option.single_repeated_to_array) {
+        if (map_fields.empty() && fields.size() == 1 && fields.front()->is_repeated()) {
+            return _PbFieldToJson(message, fields.front(), handler);
+        }
+    }
+
+    handler.StartObject();
 
     // Fill in non-map fields
     std::string field_name_str;
@@ -273,12 +296,12 @@ bool ProtoMessageToJsonStream(const google::protobuf::Message& message,
                               OutputStream& os, std::string* error) {
     PbToJsonConverter converter(options);
     bool succ = false;
-    if (options.pretty_json) {    
+    if (options.pretty_json) {
         BUTIL_RAPIDJSON_NAMESPACE::PrettyWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer); 
+        succ = converter.Convert(message, writer, true);
     } else {
         BUTIL_RAPIDJSON_NAMESPACE::OptimizedWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer); 
+        succ = converter.Convert(message, writer, true);
     }
     if (!succ && error) {
         error->clear();

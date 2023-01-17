@@ -1,24 +1,28 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Dec 31 13:35:39 CST 2015
 
 #ifndef BUTIL_FAST_RAND_H
 #define BUTIL_FAST_RAND_H
 
+#include <cstddef>
 #include <stdint.h>
+#include <string>
 
 namespace butil {
 
@@ -62,6 +66,12 @@ template <typename T> T fast_rand_in(T min, T max) {
 // Generate a random double in [0, 1) from thread-local seed.
 // Cost: ~15ns
 double fast_rand_double();
+
+// Fills |output_length| bytes of |output| with random data.
+void fast_rand_bytes(void *output, size_t output_length);
+
+// Generate a random printable string of |length| bytes
+std::string fast_rand_printable(size_t length);
 
 }
 

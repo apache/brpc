@@ -315,6 +315,10 @@ struct GenericStringRef {
     GenericStringRef(const CharType* str, SizeType len)
         : s(str), length(len) { RAPIDJSON_ASSERT(s != NULL); }
 
+    // Required by clang++ 11 on MacOS catalina
+    GenericStringRef(const GenericStringRef& other)
+        : s(other.s), length(other.length) { RAPIDJSON_ASSERT(s != NULL); }
+
     //! implicit conversion to plain CharType pointer
     operator const Ch *() const { return s; }
 
@@ -322,11 +326,11 @@ struct GenericStringRef {
     const SizeType length; //!< length of the string (excluding the trailing NULL terminator)
 
 private:
-    //! Disallow copy-assignment
-    GenericStringRef operator=(const GenericStringRef&);
+    //! Disallow copy-ctor&assignment
+    GenericStringRef operator=(const GenericStringRef&) = delete;
     //! Disallow construction from non-const array
     template<SizeType N>
-    GenericStringRef(CharType (&str)[N]) /* = delete */;
+    GenericStringRef(CharType (&str)[N]) = delete;
 };
 
 //! Mark a character pointer as constant string
@@ -1657,7 +1661,7 @@ private:
         flags_ = kArrayFlag;
         if (count) {
             data_.a.elements = (GenericValue*)allocator.Malloc(count * sizeof(GenericValue));
-            std::memcpy(data_.a.elements, values, count * sizeof(GenericValue));
+            std::memcpy(static_cast<void*>(data_.a.elements), values, count * sizeof(GenericValue));
         }
         else
             data_.a.elements = NULL;
@@ -1669,7 +1673,7 @@ private:
         flags_ = kObjectFlag;
         if (count) {
             data_.o.members = (Member*)allocator.Malloc(count * sizeof(Member));
-            std::memcpy(data_.o.members, members, count * sizeof(Member));
+            std::memcpy(static_cast<void*>(data_.o.members), members, count * sizeof(Member));
         }
         else
             data_.o.members = NULL;
@@ -1938,6 +1942,8 @@ private:
     template <typename,typename,typename> friend class GenericReader; // for parsing
     template <typename, typename> friend class GenericValue; // for deep copying
 
+// NOTE(jrj): Make the following methods public to enable outside parser/writer 
+public:
     // Implementation of Handler
     bool Null() { new (stack_.template Push<ValueType>()) ValueType(); return true; }
     bool Bool(bool b) { new (stack_.template Push<ValueType>()) ValueType(b); return true; }
@@ -1972,6 +1978,17 @@ private:
         stack_.template Top<ValueType>()->SetArrayRaw(elements, elementCount, GetAllocator());
         return true;
     }
+
+    // NOTE(jrj): Extract the last element from the stack and move into `this' GenericDocument
+    void FinalizeHandler() {
+        if (StackSize() > 0) {
+            ValueType* rhs = stack_.template Pop<ValueType>(1);
+            this->RawAssign(*rhs);  // Transfer ownership
+        }
+        RAPIDJSON_ASSERT(stack_.Empty());
+    }
+
+    size_t StackSize() const { return stack_.GetSize(); }
 
 private:
     //! Prohibit copying

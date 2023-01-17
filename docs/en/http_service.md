@@ -1,6 +1,6 @@
 [中文版](../cn/http_service.md)
 
-This document talks about ordinary htt/h2 services rather than protobuf services accessible via http/h2. 
+This document talks about ordinary http/h2 services rather than protobuf services accessible via http/h2. 
 http/h2 services in brpc have to declare interfaces with empty request and response in a .proto file. This requirement keeps all service declarations inside proto files rather than scattering in code, configurations, and proto files.
 
 # Example
@@ -338,7 +338,7 @@ brpc server is capable of sending large or infinite sized body, in following ste
   ```c++
   #include <brpc/progressive_attachment.h>
   ...
-  butil::intrusive_ptr<brpc::ProgressiveAttachment> pa (cntl->CreateProgressiveAttachment());
+  butil::intrusive_ptr<brpc::ProgressiveAttachment> pa = cntl->CreateProgressiveAttachment();
   ```
 
 2. Call `ProgressiveAttachment::Write()` to send the data.

@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // A server to receive EchoRequest and send back EchoResponse.
 
@@ -28,8 +31,6 @@
 #include <fstream>
 #include "cl_test.pb.h"
 
-DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
-             "(waiting for client to close connection before server stops)");
 DEFINE_int32(server_bthread_concurrency, 4, 
              "Configuring the value of bthread_concurrency, For compute max qps, ");
 DEFINE_int32(server_sync_sleep_us, 2500, 
@@ -90,7 +91,7 @@ public:
         , _running_case(false) {
     };
 
-    virtual ~EchoServiceImpl() {};
+    virtual ~EchoServiceImpl() {}
 
     void SetTestCase(const test::TestCase& test_case) {
         _test_case = test_case;

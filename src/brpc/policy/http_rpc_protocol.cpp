@@ -1,25 +1,28 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #include <google/protobuf/descriptor.h>             // MethodDescriptor
+#include <google/protobuf/text_format.h>
 #include <gflags/gflags.h>
 #include <json2pb/pb_to_json.h>                    // ProtoMessageToJson
 #include <json2pb/json_to_pb.h>                    // JsonToProtoMessage
 
+#include "brpc/policy/http_rpc_protocol.h"
 #include "butil/unique_ptr.h"                       // std::unique_ptr
 #include "butil/string_splitter.h"                  // StringMultiSplitter
 #include "butil/string_printf.h"
@@ -32,6 +35,7 @@
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/span.h"
 #include "brpc/socket.h"                       // Socket
+#include "brpc/rpc_dump.h"                     // SampledRequest
 #include "brpc/http_status_code.h"             // HTTP_STATUS_*
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/builtin/index_service.h"        // IndexService
@@ -63,11 +67,18 @@ DEFINE_int32(http_body_compress_threshold, 512, "Not compress http body when "
 DEFINE_string(http_header_of_user_ip, "", "http requests sent by proxies may "
               "set the client ip in http headers. When this flag is non-empty, "
               "brpc will read ip:port from the specified header for "
-              "authorization and set Controller::remote_side()");
+              "authorization and set Controller::remote_side(). Currently, "
+              "support IPv4 address only.");
 
-DEFINE_bool(pb_enum_as_number, false, "[Not recommended] Convert enums in "
+DEFINE_bool(pb_enum_as_number, false,
+            "[Not recommended] Convert enums in "
             "protobuf to json as numbers, affecting both client-side and "
             "server-side");
+
+DEFINE_string(request_id_header, "x-request-id", "The http header to mark a session");
+
+DEFINE_bool(use_http_error_code, false, "Whether set the x-bd-error-code header "
+                                        "of http response to brpc error code");
 
 // Read user address from the header specified by -http_header_of_user_ip
 static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
@@ -77,6 +88,7 @@ static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
     if (user_addr_str == NULL) {
         return false;
     }
+    //TODO add protocols other than IPv4 supports.
     if (user_addr_str->find(':') == std::string::npos) {
         if (butil::str2ip(user_addr_str->c_str(), &user_addr->ip) != 0) {
             LOG(WARNING) << "Fail to parse ip from " << *user_addr_str;
@@ -109,6 +121,7 @@ CommonStrings::CommonStrings()
     , CONTENT_TYPE_TEXT("text/plain")
     , CONTENT_TYPE_JSON("application/json")
     , CONTENT_TYPE_PROTO("application/proto")
+    , CONTENT_TYPE_SPRING_PROTO("application/x-protobuf")
     , ERROR_CODE("x-bd-error-code")
     , AUTHORIZATION("authorization")
     , ACCEPT_ENCODING("accept-encoding")
@@ -185,9 +198,15 @@ HttpContentType ParseContentType(butil::StringPiece ct, bool* is_grpc_ct) {
     if (ct.starts_with("json")) {
         type = HTTP_CONTENT_JSON;
         ct.remove_prefix(4);
+    } else if (ct.starts_with("proto-text")) {
+        type = HTTP_CONTENT_PROTO_TEXT;
+        ct.remove_prefix(10);
     } else if (ct.starts_with("proto")) {
         type = HTTP_CONTENT_PROTO;
         ct.remove_prefix(5);
+    } else if (ct.starts_with("x-protobuf")) {
+        type = HTTP_CONTENT_PROTO;
+        ct.remove_prefix(10);
     } else {
         return HTTP_CONTENT_OTHERS;
     }
@@ -379,7 +398,16 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                     &err, std::min((int)res_body.size(),
                                         FLAGS_http_max_error_length));
             }
-            cntl->SetFailed(EHTTP, "%s", err.c_str());
+            // If server return brpc error code by x-bd-error-code,
+            // set the returned error code to controller. Otherwise,
+            // set EHTTP to controller uniformly.
+            const std::string* error_code_ptr = res_header->GetHeader(common->ERROR_CODE);
+            int error_code = error_code_ptr ? strtol(error_code_ptr->data(), NULL, 10) : 0;
+            if (FLAGS_use_http_error_code && error_code != 0) {
+                cntl->SetFailed(error_code, "%s", err.c_str());
+            } else {
+                cntl->SetFailed(EHTTP, "%s", err.c_str());
+            }
             if (cntl->response() == NULL ||
                 cntl->response()->GetDescriptor()->field_count() == 0) {
                 // A http call. Http users may need the body(containing a html,
@@ -425,12 +453,18 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content");
                 break;
             }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!ParsePbTextFromIOBuf(cntl->response(), res_body)) {
+                cntl->SetFailed(ERESPONSE, "Fail to parse proto-text content");
+                break;
+            }
         } else if (content_type == HTTP_CONTENT_JSON) {
             // message body is json
             butil::IOBufAsZeroCopyInputStream wrapper(res_body);
             std::string err;
             json2pb::Json2PbOptions options;
             options.base64_to_bytes = cntl->has_pb_bytes_to_base64();
+            options.array_to_single_repeated = cntl->has_pb_single_repeated_to_array();
             if (!json2pb::JsonToProtoMessage(&wrapper, cntl->response(), options, &err)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content, %s", err.c_str());
                 break;
@@ -504,13 +538,20 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                 return cntl->SetFailed(EREQUEST, "Fail to serialize %s",
                                        pbreq->GetTypeName().c_str());
             }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!google::protobuf::TextFormat::Print(*pbreq, &wrapper)) {
+                cntl->request_attachment().clear();
+                return cntl->SetFailed(EREQUEST, "Fail to print %s as proto-text",
+                                       pbreq->GetTypeName().c_str());
+            }
         } else if (content_type == HTTP_CONTENT_JSON) {
             std::string err;
             json2pb::Pb2JsonOptions opt;
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
-            
+            opt.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
+
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -560,8 +601,10 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
     // Fill log-id if user set it.
     if (cntl->has_log_id()) {
         hreq.SetHeader(common->LOG_ID,
-                          butil::string_printf(
-                              "%llu", (unsigned long long)cntl->log_id()));
+                       butil::string_printf("%llu", (unsigned long long)cntl->log_id()));
+    }
+    if (!cntl->request_id().empty()) {
+        hreq.SetHeader(FLAGS_request_id_header, cntl->request_id());
     }
 
     if (!is_http2) {
@@ -582,7 +625,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             hreq.SetHeader(common->TE, common->TRAILERS);
             if (cntl->timeout_ms() >= 0) {
                 hreq.SetHeader(common->GRPC_TIMEOUT,
-                        butil::string_printf("%ldm", cntl->timeout_ms()));
+                        butil::string_printf("%" PRId64 "m", cntl->timeout_ms()));
             }
             // Append compressed and length before body
             AddGrpcPrefix(&cntl->request_attachment(), grpc_compressed);
@@ -746,12 +789,17 @@ HttpResponseSender::~HttpResponseSender() {
             if (!res->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->SetFailed(ERESPONSE, "Fail to serialize %s", res->GetTypeName().c_str());
             }
+        } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+            if (!google::protobuf::TextFormat::Print(*res, &wrapper)) {
+                cntl->SetFailed(ERESPONSE, "Fail to print %s as proto-text", res->GetTypeName().c_str());
+            }
         } else {
             std::string err;
             json2pb::Pb2JsonOptions opt;
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
+            opt.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -799,7 +847,9 @@ HttpResponseSender::~HttpResponseSender() {
     
     bool grpc_compressed = false;
     if (cntl->Failed()) {
-        cntl->response_attachment().clear();
+        if (!cntl->does_manage_http_body_on_error()) {
+            cntl->response_attachment().clear();
+        }
         if (!is_grpc) {
             // Set status-code with default value(converted from error code)
             // if user did not set it.
@@ -810,12 +860,14 @@ HttpResponseSender::~HttpResponseSender() {
             res_header->SetHeader(common->ERROR_CODE,
                                   butil::string_printf("%d", cntl->ErrorCode()));
 
-            // Fill body with ErrorText.
-            // user may compress the output and change content-encoding. However
-            // body is error-text right now, remove the header.
-            res_header->RemoveHeader(common->CONTENT_ENCODING);
-            res_header->set_content_type(common->CONTENT_TYPE_TEXT);
-            cntl->response_attachment().append(cntl->ErrorText());
+            if (!cntl->does_manage_http_body_on_error()) {
+                // Fill body with ErrorText.
+                // user may compress the output and change content-encoding. However
+                // body is error-text right now, remove the header.
+                res_header->RemoveHeader(common->CONTENT_ENCODING);
+                res_header->set_content_type(common->CONTENT_TYPE_TEXT);
+                cntl->response_attachment().append(cntl->ErrorText());
+            }
         }
     } else if (cntl->has_progressive_writer()) {
         // Transfer-Encoding is supported since HTTP/1.1
@@ -1010,7 +1062,7 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
     const Server::MethodProperty* mp =
         FindMethodPropertyByURIImpl(uri_path, server, unresolved_path);
     if (mp != NULL) {
-        if (mp->http_url != NULL) {
+        if (mp->http_url != NULL && !mp->params.allow_default_url) {
             // the restful method is accessed from its
             // default url (SERVICE/METHOD) which should be rejected.
             return NULL;
@@ -1098,7 +1150,7 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             }
             return result;
         } else if (socket->is_read_progressive() &&
-                   http_imsg->stage() >= HTTP_ON_HEADERS_COMPLELE) {
+                   http_imsg->stage() >= HTTP_ON_HEADERS_COMPLETE) {
             // header part of a progressively-read http message is complete,
             // go on to ProcessHttpXXX w/o waiting for full body.
             http_imsg->AddOneRefForStage2(); // released when body is fully read
@@ -1135,13 +1187,13 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
                 return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
             }
             // Send 400 back.
-            butil::IOBuf bad_req;
+            butil::IOBuf resp;
             HttpHeader header;
             header.set_status_code(HTTP_STATUS_BAD_REQUEST);
-            MakeRawHttpRequest(&bad_req, &header, socket->remote_side(), NULL);
+            MakeRawHttpResponse(&resp, &header, NULL);
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
-            socket->Write(&bad_req, &wopt);
+            socket->Write(&resp, &wopt);
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         } else {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
@@ -1239,7 +1291,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         .set_remote_side(user_addr)
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
-        .set_request_protocol(PROTOCOL_HTTP)
+        .set_request_protocol(is_http2 ? PROTOCOL_H2 : PROTOCOL_HTTP)
         .set_begin_time_us(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
     
@@ -1256,6 +1308,11 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         } else {
             cntl->set_log_id(logid);
         }
+    }
+
+    const std::string* request_id = req_header.GetHeader(FLAGS_request_id_header);
+    if (request_id) {
+        cntl->set_request_id(*request_id);
     }
 
     // Tag the bthread with this server's key for
@@ -1416,7 +1473,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 if (is_grpc_ct) {
                     bool grpc_compressed = false;
                     if (!RemoveGrpcPrefix(&req_body, &grpc_compressed)) {
-                        cntl->SetFailed(ERESPONSE, "Invalid gRPC response");
+                        cntl->SetFailed(EREQUEST, "Invalid gRPC request");
                         return;
                     }
                     if (grpc_compressed) {
@@ -1454,12 +1511,20 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                                     req->GetDescriptor()->full_name().c_str());
                     return;
                 }
+            } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
+                if (!ParsePbTextFromIOBuf(req, req_body)) {
+                    cntl->SetFailed(EREQUEST, "Fail to parse http proto-text body as %s",
+                                    req->GetDescriptor()->full_name().c_str());
+                    return;
+                }
             } else {
                 butil::IOBufAsZeroCopyInputStream wrapper(req_body);
                 std::string err;
                 json2pb::Json2PbOptions options;
                 options.base64_to_bytes = sp->params.pb_bytes_to_base64;
+                options.array_to_single_repeated = sp->params.pb_single_repeated_to_array;
                 cntl->set_pb_bytes_to_base64(sp->params.pb_bytes_to_base64);
+                cntl->set_pb_single_repeated_to_array(sp->params.pb_single_repeated_to_array);
                 if (!json2pb::JsonToProtoMessage(&wrapper, req, options, &err)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
                                     req->GetDescriptor()->full_name().c_str(), err.c_str());
@@ -1467,13 +1532,23 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 }
             }
         }
+        SampledRequest* sample = AskToBeSampled();
+        if (sample && !is_http2) {
+            sample->meta.set_compress_type(COMPRESS_TYPE_NONE);
+            sample->meta.set_protocol_type(PROTOCOL_HTTP);
+            sample->meta.set_attachment_size(req_body.size());
+
+            butil::EndPoint ep;
+            MakeRawHttpRequest(&sample->request, &req_header, ep, &req_body);
+            sample->submit(start_parse_us);
+        }
     } else {
         // A http server, just keep content as it is.
         cntl->request_attachment().swap(req_body);
     }
 
     google::protobuf::Closure* done = new HttpResponseSenderAsDone(&resp_sender);
-    imsg_guard.reset();  // optional, just release resourse ASAP
+    imsg_guard.reset();  // optional, just release resource ASAP
 
     if (span) {
         span->set_start_callback_us(butil::cpuwide_time_us());
@@ -1491,23 +1566,23 @@ void ProcessHttpRequest(InputMessageBase *msg) {
 }
 
 bool ParseHttpServerAddress(butil::EndPoint* point, const char* server_addr_and_port) {
-    std::string schema;
+    std::string scheme;
     std::string host;
     int port = -1;
-    if (ParseURL(server_addr_and_port, &schema, &host, &port) != 0) {
+    if (ParseURL(server_addr_and_port, &scheme, &host, &port) != 0) {
         LOG(ERROR) << "Invalid address=`" << server_addr_and_port << '\'';
         return false;
     }
-    if (schema.empty() || schema == "http") {
+    if (scheme.empty() || scheme == "http") {
         if (port < 0) {
             port = 80;
         }
-    } else if (schema == "https") {
+    } else if (scheme == "https") {
         if (port < 0) {
             port = 443;
         }
     } else {
-        LOG(ERROR) << "Invalid schema=`" << schema << '\'';
+        LOG(ERROR) << "Invalid scheme=`" << scheme << '\'';
         return false;
     }
     if (str2endpoint(host.c_str(), port, point) != 0 &&

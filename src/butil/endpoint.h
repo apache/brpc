@@ -1,18 +1,20 @@
-// Copyright (c) 2011 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
 // Wrappers of IP and port.
@@ -21,6 +23,7 @@
 #define BUTIL_ENDPOINT_H
 
 #include <netinet/in.h>                          // in_addr
+#include <sys/un.h>                              // sockaddr_un
 #include <iostream>                              // std::ostream
 #include "butil/containers/hash_tables.h"         // hashing functions
 
@@ -31,6 +34,7 @@ typedef struct in_addr ip_t;
 
 static const ip_t IP_ANY = { INADDR_ANY };
 static const ip_t IP_NONE = { INADDR_NONE };
+static const int MAX_DOMAIN_LENGTH = 253;
 
 // Convert |ip| to an integral
 inline in_addr_t ip2int(ip_t ip) { return ip.s_addr; }
@@ -77,12 +81,20 @@ ip_t my_ip();
 // String form.
 const char* my_ip_cstr();
 
-// ipv4 + port
+// For IPv4 endpoint, ip and port are real things.
+// For UDS/IPv6 endpoint, to keep ABI compatibility, ip is ResourceId, and port is a special flag.
+// See str2endpoint implementation for details.
 struct EndPoint {
     EndPoint() : ip(IP_ANY), port(0) {}
-    EndPoint(ip_t ip2, int port2) : ip(ip2), port(port2) {}
+    EndPoint(ip_t ip2, int port2);
     explicit EndPoint(const sockaddr_in& in)
         : ip(in.sin_addr), port(ntohs(in.sin_port)) {}
+
+    EndPoint(const EndPoint&);
+    ~EndPoint();
+    void operator=(const EndPoint&);
+
+    void reset(void);
     
     ip_t ip;
     int port;
@@ -90,7 +102,7 @@ struct EndPoint {
 
 struct EndPointStr {
     const char* c_str() const { return _buf; }
-    char _buf[INET_ADDRSTRLEN + 16];
+    char _buf[sizeof("unix:") + sizeof(sockaddr_un::sun_path)];
 };
 
 // Convert EndPoint to c-style string. Notice that you can serialize 
@@ -130,6 +142,18 @@ int get_local_side(int fd, EndPoint *out);
 
 // Get the other end of a socket connection
 int get_remote_side(int fd, EndPoint *out);
+
+// Get sockaddr from endpoint, return -1 on failed
+int endpoint2sockaddr(const EndPoint& point, struct sockaddr_storage* ss, socklen_t* size = NULL);
+
+// Create endpoint from sockaddr, return -1 on failed
+int sockaddr2endpoint(struct sockaddr_storage* ss, socklen_t size, EndPoint* point);
+
+// Get EndPoint type (AF_INET/AF_INET6/AF_UNIX)
+sa_family_t get_endpoint_type(const EndPoint& point);
+
+// Check if endpoint is extended.
+bool is_endpoint_extended(const EndPoint& point);
 
 }  // namespace butil
 
@@ -183,7 +207,7 @@ inline bool operator!=(EndPoint p1, EndPoint p2) {
 }
 
 inline std::ostream& operator<<(std::ostream& os, const EndPoint& ep) {
-    return os << ep.ip << ':' << ep.port;
+    return os << endpoint2str(ep).c_str();
 }
 inline std::ostream& operator<<(std::ostream& os, const EndPointStr& ep_str) {
     return os << ep_str.c_str();

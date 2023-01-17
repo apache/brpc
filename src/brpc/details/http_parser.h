@@ -216,13 +216,7 @@ struct http_parser {
   unsigned int status_code : 16; /* responses only */
   unsigned int method : 8;       /* requests only */
   unsigned int http_errno : 7;
-
-  /* 1 = Upgrade header was present and the parser has exited because of that.
-   * 0 = No upgrade header present.
-   * Should be checked when http_parser_execute() returns in addition to
-   * error checking.
-   */
-  unsigned int upgrade : 1;
+  unsigned int dummy : 1;
 
   /** PUBLIC **/
   void *data; /* A pointer to get hook to the "connection" or "socket" object */
@@ -242,7 +236,7 @@ struct http_parser_settings {
 
 
 enum http_parser_url_fields
-  { UF_SCHEMA           = 0
+  { UF_SCHEME           = 0
   , UF_HOST             = 1
   , UF_PORT             = 2
   , UF_PATH             = 3

@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // A server to receive EchoRequest and send back EchoResponse.
 
@@ -29,8 +32,6 @@ DEFINE_bool(send_attachment, false, "Carry attachment along with response");
 DEFINE_int32(port, 8004, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
-DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
-             "(waiting for client to close connection before server stops)");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 DEFINE_int32(server_num, 1, "Number of servers");
 DEFINE_string(sleep_us, "", "Sleep so many microseconds before responding");
@@ -43,7 +44,7 @@ DEFINE_double(max_ratio, 10, "max_sleep / sleep_us");
 class EchoServiceImpl : public example::EchoService {
 public:
     EchoServiceImpl() : _index(0) {}
-    virtual ~EchoServiceImpl() {};
+    virtual ~EchoServiceImpl() {}
     void set_index(size_t index, int64_t sleep_us) { 
         _index = index; 
         _sleep_us = sleep_us;
@@ -174,11 +175,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Don't forget to stop and join the server otherwise still-running
-    // worker threads may crash your program. Clients will have/ at most
-    // `FLAGS_logoff_ms' to close their connections. If some connections
-    // still remains after `FLAGS_logoff_ms', they will be closed by force.
+    // worker threads may crash your program. 
     for (int i = 0; i < FLAGS_server_num; ++i) {
-        servers[i].Stop(FLAGS_logoff_ms);
+        servers[i].Stop(0/*not used now*/);
     }
     for (int i = 0; i < FLAGS_server_num; ++i) {
         servers[i].Join();

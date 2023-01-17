@@ -1,18 +1,20 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
 
 #include "brpc/policy/streaming_rpc_protocol.h"
 
@@ -41,10 +43,9 @@ void PackStreamMessage(butil::IOBuf* out,
                        const StreamFrameMeta &fm,
                        const butil::IOBuf *data) {
     const uint32_t data_length = data ? data->length() : 0;
-    const uint32_t meta_length = fm.ByteSize();
+    const uint32_t meta_length = GetProtobufByteSize(fm);
     char head[12];
-    // dummy supresses strict-aliasing warning.
-    uint32_t* dummy = (uint32_t*)head;
+    uint32_t* dummy = (uint32_t*)head;  // suppresses strict-alias warning
     *(uint32_t*)dummy = *(const uint32_t*)"STRM";
     butil::RawPacker(head + 4)
         .pack32(data_length + meta_length)
@@ -107,7 +108,9 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
                             && fm.frame_type() != FRAME_TYPE_CLOSE
                             && fm.frame_type() != FRAME_TYPE_FEEDBACK)
                    << "Fail to find stream=" << fm.stream_id();
-            if (fm.has_source_stream_id()) {
+            // It's normal that the stream is closed before receiving feedback frames from peer.
+            // In this case, RST frame should not be sent to peer, otherwise on-fly data can be lost.
+            if (fm.has_source_stream_id() && fm.frame_type() != FRAME_TYPE_FEEDBACK) {
                 SendStreamRst(socket, fm.source_stream_id());
             }
             break;

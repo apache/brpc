@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <set>
 #include <pthread.h>
@@ -123,7 +125,8 @@ void NamingServiceThread::Actions::ResetServers(
         //       Socket. SocketMapKey may be passed through AddWatcher. Make sure
         //       to pick those Sockets with the right settings during OnAddedServers
         const SocketMapKey key(_added[i], _owner->_options.channel_signature);
-        CHECK_EQ(0, SocketMapInsert(key, &tagged_id.id, _owner->_options.ssl_ctx));
+        CHECK_EQ(0, SocketMapInsert(key, &tagged_id.id, _owner->_options.ssl_ctx,
+                                    _owner->_options.use_rdma));
         _added_sockets.push_back(tagged_id);
     }
 
@@ -335,7 +338,7 @@ int NamingServiceThread::AddWatcher(NamingServiceWatcher* watcher,
         return -1;
     }
     BAIDU_SCOPED_LOCK(_mutex);
-    if (_watchers.insert(std::make_pair(watcher, filter)).second) {
+    if (_watchers.emplace(watcher, filter).second) {
         if (!_last_sockets.empty()) {
             std::vector<ServerId> added_ids;
             ServerNodeWithId2ServerId(_last_sockets, &added_ids, filter);

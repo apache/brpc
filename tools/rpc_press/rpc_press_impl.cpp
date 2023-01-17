@@ -1,16 +1,19 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <stdio.h>
 #include <pthread.h>
@@ -216,14 +219,10 @@ void RpcPress::sync_client() {
     }
     const int thread_index = g_thread_count.fetch_add(1, butil::memory_order_relaxed);
     int msg_index = thread_index;
-    std::deque<int64_t> timeq;
-    size_t MAX_QUEUE_SIZE = (size_t)req_rate;
-    if (MAX_QUEUE_SIZE < 100) {
-        MAX_QUEUE_SIZE = 100;
-    } else if (MAX_QUEUE_SIZE > 2000) {
-        MAX_QUEUE_SIZE = 2000;
-    }
-    timeq.push_back(butil::gettimeofday_us());
+    int64_t last_expected_time = butil::monotonic_time_ns();
+    const int64_t interval = (int64_t) (1000000000L / req_rate);
+    // the max tolerant delay between end_time and expected_time. 10ms or 10 intervals
+    int64_t max_tolerant_delay = std::max((int64_t) 10000000L, 10 * interval);    
     while (!_stop) {
         brpc::Controller* cntl = new brpc::Controller;
         msg_index = (msg_index + _options.test_thread_num) % _msgs.size();
@@ -244,21 +243,15 @@ void RpcPress::sync_client() {
         if (_options.test_req_rate <= 0) { 
             brpc::Join(cid1);
         } else {
-            int64_t end_time = butil::gettimeofday_us();
-            int64_t expected_elp = 0;
-            int64_t actual_elp = 0;
-            timeq.push_back(end_time);
-            if (timeq.size() > MAX_QUEUE_SIZE) {
-                actual_elp = end_time - timeq.front();
-                timeq.pop_front();
-                expected_elp = (int64_t)(1000000 * timeq.size() / req_rate);
-            } else {
-                actual_elp = end_time - timeq.front();
-                expected_elp = (int64_t)(1000000 * (timeq.size() - 1) / req_rate);
+            int64_t end_time = butil::monotonic_time_ns();
+            int64_t expected_time = last_expected_time + interval;
+            if (end_time < expected_time) {
+                usleep((expected_time - end_time)/1000);
             }
-            if (actual_elp < expected_elp) {
-                usleep(expected_elp - actual_elp);
-            }
+            if (end_time - expected_time > max_tolerant_delay) {
+                expected_time = end_time;
+            }            
+            last_expected_time = expected_time;
         }
     }
 }

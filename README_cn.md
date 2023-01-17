@@ -1,10 +1,12 @@
 [English version](README.md)
 
-[![Build Status](https://travis-ci.org/apache/incubator-brpc.svg?branch=master)](https://travis-ci.org/apache/incubator-brpc)
+[![Build Status](https://api.travis-ci.com/apache/brpc.svg?branch=master)](https://travis-ci.com/github/apache/brpc)
 
 # ![brpc](docs/images/logo.png)
 
-百度内最常使用的工业级RPC框架, 有1,000,000+个实例(不包含client)和上千种多种服务, 在百度内叫做"**baidu-rpc**". 目前只开源C++版本。
+brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机器学习、广告、推荐等高性能系统。
+
+### "brpc"的含义是"better RPC"
 
 你可以使用它：
 
@@ -103,6 +105,11 @@
 
 请参考[这里](CONTRIBUTING.md#chinese-version)。
 
-# 反馈问题
+# 反馈和参与
 
-bug、修改建议、疑惑都欢迎提在issue中，或加入qq群498837325交流源码方面的问题。
+* bug、疑惑、修改建议都欢迎提在[Github Issues](https://github.com/apache/brpc/issues)中
+* 订阅邮件列表(dev-subscribe@brpc.apache.org)获得项目最新信息
+
+
+# 行为准则
+我们遵守Apache软件基金会的行为准则, 请参考如下 [链接](https://www.apache.org/foundation/policies/conduct)

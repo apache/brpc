@@ -1,18 +1,20 @@
-// Copyright (c) 2016 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Dec  4 14:57:27 CST 2016
 
 #ifndef BUTIL_CASE_IGNORED_FLAT_MAP_H
@@ -22,11 +24,12 @@
 
 namespace butil {
 
-// NOTE: Using ascii_tolower instead of ::tolower shortens 150ns in
+// Using ascii_tolower instead of ::tolower shortens 150ns in
 // FlatMapTest.perf_small_string_map (with -O2 added, -O0 by default)
-inline char ascii_tolower(char c) {
-    extern const char* const g_tolower_map;
-    return g_tolower_map[(int)c];
+// note: using char caused crashes on ubuntu 20.04 aarch64 (VM on apple M1)
+inline char ascii_tolower(int/*note*/ c) {
+    extern const signed char* const g_tolower_map;
+    return g_tolower_map[c];
 }
 
 struct CaseIgnoredHasher {
@@ -62,7 +65,7 @@ template <typename T>
 class CaseIgnoredFlatMap : public butil::FlatMap<
     std::string, T, CaseIgnoredHasher, CaseIgnoredEqual> {};
 
-class CaseIgnoredFlatSet : public butil::FlatMap<
+class CaseIgnoredFlatSet : public butil::FlatSet<
     std::string, CaseIgnoredHasher, CaseIgnoredEqual> {};
 
 } // namespace butil

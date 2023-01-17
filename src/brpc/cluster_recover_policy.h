@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #ifndef BRPC_CLUSTER_RECOVER_POLICY
 #define BRPC_CLUSTER_RECOVER_POLICY
@@ -25,7 +27,7 @@
 
 namespace brpc {
 
-class ServerId;
+struct ServerId;
 
 // After all servers are down and health check happens, servers are
 // online one by one. Once one server is up, all the request that should
@@ -59,9 +61,9 @@ class DefaultClusterRecoverPolicy : public ClusterRecoverPolicy {
 public:
     DefaultClusterRecoverPolicy(int64_t min_working_instances, int64_t hold_seconds);
 
-    void StartRecover();
-    bool DoReject(const std::vector<ServerId>& server_list);
-    bool StopRecoverIfNecessary();
+    void StartRecover() override;
+    bool DoReject(const std::vector<ServerId>& server_list) override;
+    bool StopRecoverIfNecessary() override;
 
 private:
     uint64_t GetUsableServerCount(int64_t now_ms, const std::vector<ServerId>& server_list);

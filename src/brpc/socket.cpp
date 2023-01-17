@@ -1,20 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Rujie Jiang (jiangrujie@baidu.com)
-//          Zhangyi Chen (chenzhangyi01@baidu.com)
 
 #include "butil/compat.h"                        // OS_MACOSX
 #include <openssl/ssl.h>
@@ -48,6 +48,8 @@
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
 #include "brpc/periodic_task.h"
 #include "brpc/details/health_check.h"
+#include "brpc/rdma/rdma_endpoint.h"
+#include "brpc/rdma/rdma_helper.h"
 #if defined(OS_MACOSX)
 #include <sys/event.h>
 #endif
@@ -82,6 +84,10 @@ DEFINE_int32(ssl_bio_buffer_size, 16*1024, "Set buffer size for SSL read/write")
 DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
              "Max unwritten bytes in each socket, if the limit is reached,"
              " Socket.Write fails with EOVERCROWDED");
+
+DEFINE_int64(socket_max_streams_unconsumed_bytes, 0,
+             "Max stream receivers' unconsumed bytes in one socket,"
+             " it used in stream for receiver buffer control.");
 
 DEFINE_int32(max_connection_pool_size, 100,
              "Max number of pooled connections to a single endpoint");
@@ -295,7 +301,7 @@ bool Socket::CreatedByConnect() const {
 }
 
 SocketMessage* const DUMMY_USER_MESSAGE = (SocketMessage*)0x1;
-const uint32_t MAX_PIPELINED_COUNT = 32768;
+const uint32_t MAX_PIPELINED_COUNT = 16384;
 
 struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     static WriteRequest* const UNCONNECTED;
@@ -306,12 +312,12 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     Socket* socket;
     
     uint32_t pipelined_count() const {
-        return (_pc_and_udmsg >> 48) & 0x7FFF;
+        return (_pc_and_udmsg >> 48) & 0x3FFF;
     }
-    bool is_with_auth() const {
-        return _pc_and_udmsg & 0x8000000000000000ULL;
+    uint32_t get_auth_flags() const {
+       return (_pc_and_udmsg >> 62) & 0x03;
     }
-    void clear_pipelined_count_and_with_auth() {
+    void clear_pipelined_count_and_auth_flags() {
         _pc_and_udmsg &= 0xFFFFFFFFFFFFULL;
     }
     SocketMessage* user_message() const {
@@ -321,9 +327,9 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
         _pc_and_udmsg &= 0xFFFF000000000000ULL;
     }
     void set_pipelined_count_and_user_message(
-        uint32_t pc, SocketMessage* msg, bool with_auth) {
-        if (with_auth) {
-          pc |= (1 << 15);
+        uint32_t pc, SocketMessage* msg, uint32_t auth_flags) {
+        if (auth_flags) {
+            pc |= (auth_flags & 0x03) << 14;
         }
         _pc_and_udmsg = ((uint64_t)pc << 48) | (uint64_t)(uintptr_t)msg;
     }
@@ -337,7 +343,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
                 // is already failed.
                 (void)msg->AppendAndDestroySelf(&dummy_buf, NULL);
             }
-            set_pipelined_count_and_user_message(0, NULL, false);
+            set_pipelined_count_and_user_message(0, NULL, 0);
             return true;
         }
         return false;
@@ -376,9 +382,9 @@ void Socket::WriteRequest::Setup(Socket* s) {
         // The struct will be popped when reading a message from the socket.
         PipelinedInfo pi;
         pi.count = pc;
-        pi.with_auth = is_with_auth();
+        pi.auth_flags = get_auth_flags();
         pi.id_wait = id_wait;
-        clear_pipelined_count_and_with_auth(); // avoid being pushed again
+        clear_pipelined_count_and_auth_flags(); // avoid being pushed again
         s->PushPipelinedInfo(pi);
     }
 }
@@ -434,18 +440,22 @@ Socket::Socket(Forbidden)
     , _parsing_context(NULL)
     , _correlation_id(0)
     , _health_check_interval_s(-1)
+    , _is_hc_related_ref_held(false)
+    , _hc_started(false)
     , _ninprocess(1)
     , _auth_flag_error(0)
     , _auth_id(INVALID_BTHREAD_ID)
     , _auth_context(NULL)
     , _ssl_state(SSL_UNKNOWN)
     , _ssl_session(NULL)
+    , _rdma_ep(NULL)
+    , _rdma_state(RDMA_OFF)
     , _connection_type_for_progressive_read(CONNECTION_TYPE_UNKNOWN)
     , _controller_released_socket(false)
     , _overcrowded(false)
     , _fail_me_at_server_stop(false)
     , _logoff_flag(false)
-    , _recycle_flag(false)
+    , _additional_ref_status(REF_USING)
     , _error_code(0)
     , _pipeline_q(NULL)
     , _last_writetime_us(0)
@@ -453,6 +463,7 @@ Socket::Socket(Forbidden)
     , _epollout_butex(NULL)
     , _write_head(NULL)
     , _stream_set(NULL)
+    , _total_streams_unconsumed_size(0)
     , _ninflight_app_health_check(0)
 {
     CreateVarsOnce();
@@ -614,6 +625,8 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->reset_parsing_context(options.initial_parsing_context);
     m->_correlation_id = 0;
     m->_health_check_interval_s = options.health_check_interval_s;
+    m->_is_hc_related_ref_held = false;
+    m->_hc_started.store(false, butil::memory_order_relaxed);
     m->_ninprocess.store(1, butil::memory_order_relaxed);
     m->_auth_flag_error.store(0, butil::memory_order_relaxed);
     const int rc2 = bthread_id_create(&m->_auth_id, NULL, NULL);
@@ -626,16 +639,33 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_ssl_state = (options.initial_ssl_ctx == NULL ? SSL_OFF : SSL_UNKNOWN);
     m->_ssl_session = NULL;
     m->_ssl_ctx = options.initial_ssl_ctx;
+#if BRPC_WITH_RDMA
+    CHECK(m->_rdma_ep == NULL);
+    if (options.use_rdma) {
+        m->_rdma_ep = new (std::nothrow)rdma::RdmaEndpoint(m);
+        if (!m->_rdma_ep) {
+            const int saved_errno = errno;
+            PLOG(ERROR) << "Fail to create RdmaEndpoint";
+            m->SetFailed(saved_errno, "Fail to create RdmaEndpoint: %s",
+                         berror(saved_errno));
+            return -1;
+        }
+        m->_rdma_state = RDMA_UNKNOWN;
+    } else {
+        m->_rdma_state = RDMA_OFF;
+    }
+#endif
     m->_connection_type_for_progressive_read = CONNECTION_TYPE_UNKNOWN;
     m->_controller_released_socket.store(false, butil::memory_order_relaxed);
     m->_overcrowded = false;
     // May be non-zero for RTMP connections.
     m->_fail_me_at_server_stop = false;
     m->_logoff_flag.store(false, butil::memory_order_relaxed);
-    m->_recycle_flag.store(false, butil::memory_order_relaxed);
+    m->_additional_ref_status.store(REF_USING, butil::memory_order_relaxed);
     m->_error_code = 0;
     m->_error_text.clear();
     m->_agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
+    m->_total_streams_unconsumed_size.store(0, butil::memory_order_relaxed);
     m->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
     // NOTE: last two params are useless in bthread > r32787
     const int rc = bthread_id_list_init(&m->_id_wait_list, 512, 512);
@@ -682,6 +712,14 @@ int Socket::WaitAndReset(int32_t expected_nref) {
                      << " was abandoned during health checking";
             return -1;
         } else {
+            // nobody holds a health-checking-related reference,
+            // so no need to do health checking.
+            if (!_is_hc_related_ref_held) {
+                RPC_VLOG << "Nobody holds a health-checking-related reference"
+                         << " for SocketId=" << _this_id;
+                return -1;
+            }
+
             break;
         }
     }
@@ -697,6 +735,14 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             g_vars->channel_conn << -1;
         }
     }
+
+#if BRPC_WITH_RDMA
+    if (_rdma_ep) {
+        _rdma_ep->Reset();
+        _rdma_state = RDMA_UNKNOWN;
+    }
+#endif
+
     _local_side = butil::EndPoint();
     if (_ssl_session) {
         SSL_free(_ssl_session);
@@ -712,6 +758,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     _read_buf.clear();
     _ninprocess.store(1, butil::memory_order_relaxed);
     _auth_flag_error.store(0, butil::memory_order_relaxed);
+    bthread_id_error(_auth_id, 0);
     const int rc = bthread_id_create(&_auth_id, NULL, NULL);
     if (rc != 0) {
         LOG(FATAL) << "Fail to create _auth_id, " << berror(rc);
@@ -728,6 +775,12 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             _pipeline_q->clear();
         }
     }
+
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        sp->circuit_breaker.Reset();
+        sp->recent_error_count.store(0, butil::memory_order_relaxed);
+    }
     return 0;
 }
 
@@ -735,11 +788,14 @@ int Socket::WaitAndReset(int32_t expected_nref) {
 void Socket::Revive() {
     const uint32_t id_ver = VersionOfSocketId(_this_id);
     uint64_t vref = _versioned_ref.load(butil::memory_order_relaxed);
+    _additional_ref_status.store(REF_REVIVING, butil::memory_order_relaxed);
     while (1) {
         CHECK_EQ(id_ver + 1, VersionOfVRef(vref));
         
         int32_t nref = NRefOfVRef(vref);
         if (nref <= 1) {
+            // Set status to REF_RECYLED since no one uses this socket
+            _additional_ref_status.store(REF_RECYCLED, butil::memory_order_relaxed);
             CHECK_EQ(1, nref);
             LOG(WARNING) << *this << " was abandoned during revival";
             return;
@@ -750,13 +806,8 @@ void Socket::Revive() {
                 vref, MakeVRef(id_ver, nref + 1/*note*/),
                 butil::memory_order_release,
                 butil::memory_order_relaxed)) {
-            SharedPart* sp = GetSharedPart();
-            if (sp) {
-                sp->circuit_breaker.Reset();
-                sp->recent_error_count.store(0, butil::memory_order_relaxed);
-            }
-            // Set this flag to true since we add additional ref again
-            _recycle_flag.store(false, butil::memory_order_relaxed);
+            // Set status to REF_USING since we add additional ref again
+            _additional_ref_status.store(REF_USING, butil::memory_order_relaxed);
             if (_user) {
                 _user->AfterRevived(this);
             } else {
@@ -768,15 +819,22 @@ void Socket::Revive() {
 }
 
 int Socket::ReleaseAdditionalReference() {
-    bool expect = false;
-    // Use `relaxed' fence here since `Dereference' has `released' fence
-    if (_recycle_flag.compare_exchange_strong(
-            expect, true,
+    do {
+        AdditionalRefStatus expect = REF_USING;
+        if (_additional_ref_status.compare_exchange_strong(
+            expect,
+            REF_RECYCLED,
             butil::memory_order_relaxed,
             butil::memory_order_relaxed)) {
-        return Dereference();
-    }
-    return -1;
+            return Dereference();
+        }
+
+        if (expect == REF_REVIVING) { // sched_yield to wait until status is not REF_REVIVING
+            sched_yield();
+        } else {
+            return -1; // REF_RECYCLED
+        }
+    } while (1);
 }
 
 void Socket::AddRecentError() {
@@ -836,9 +894,19 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // by Channel to revive never-connected socket when server side
             // comes online.
             if (_health_check_interval_s > 0) {
-                GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
-                StartHealthCheck(id(),
+                bool expect = false;
+                if (_hc_started.compare_exchange_strong(expect,
+                                                        true,
+                                                        butil::memory_order_relaxed,
+                                                        butil::memory_order_relaxed)) {
+                    GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
+                    StartHealthCheck(id(),
                         GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
+                } else {
+                    // No need to run 2 health checking at the same time.
+                    RPC_VLOG << "There is already a health checking running "
+                                "for SocketId=" << _this_id;
+                }
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
@@ -975,6 +1043,15 @@ void Socket::OnRecycle() {
             g_vars->channel_conn << -1;
         }
     }
+
+#if BRPC_WITH_RDMA
+    if (_rdma_ep) {
+        delete _rdma_ep;
+        _rdma_ep = NULL;
+        _rdma_state = RDMA_UNKNOWN;
+    }
+#endif
+
     reset_parsing_context(NULL);
     _read_buf.clear();
 
@@ -1018,7 +1095,7 @@ void* Socket::ProcessEvent(void* arg) {
 }
 
 // Check if there're new requests appended.
-// If yes, point old_head to to reversed new requests and return false;
+// If yes, point old_head to reversed new requests and return false;
 // If no:
 //    old_head is fully written, set _write_head to NULL and return true;
 //    old_head is not written yet, keep _write_head unchanged and return false;
@@ -1070,7 +1147,7 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
     old_head->next = tail;
     // Call Setup() from oldest to newest, notice that the calling sequence
     // matters for protocols using pipelined_count, this is why we don't
-    // calling Setup in above loop which is from newest to oldest.
+    // call Setup in above loop which is from newest to oldest.
     for (WriteRequest* q = tail; q; q = q->next) {
         q->Setup(this);
     }
@@ -1113,7 +1190,13 @@ int Socket::Connect(const timespec* abstime,
     } else {
         _ssl_state = SSL_OFF;
     }
-    butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    struct sockaddr_storage serv_addr;
+    socklen_t addr_size = 0;
+    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &addr_size) != 0) {
+        PLOG(ERROR) << "Fail to get sockaddr";
+        return -1;
+    }
+    butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
     if (sockfd < 0) {
         PLOG(ERROR) << "Fail to create socket";
         return -1;
@@ -1122,13 +1205,8 @@ int Socket::Connect(const timespec* abstime,
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
     
-    struct sockaddr_in serv_addr;
-    bzero((char*)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr = remote_side().ip;
-    serv_addr.sin_port = htons(remote_side().port);
     const int rc = ::connect(
-        sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+        sockfd, (struct sockaddr*)&serv_addr, addr_size);
     if (rc != 0 && errno != EINPROGRESS) {
         PLOG(WARNING) << "Fail to connect to " << remote_side();
         return -1;
@@ -1215,13 +1293,12 @@ int Socket::CheckConnected(int sockfd) {
         return -1;
     }
 
-    struct sockaddr_in client;
-    socklen_t size = sizeof(client);
-    CHECK_EQ(0, getsockname(sockfd, (struct sockaddr*) &client, &size));
+    butil::EndPoint local_point;
+    CHECK_EQ(0, butil::get_local_side(sockfd, &local_point));
     LOG_IF(INFO, FLAGS_log_connected)
             << "Connected to " << remote_side()
             << " via fd=" << (int)sockfd << " SocketId=" << id()
-            << " local_port=" << ntohs(client.sin_port);
+            << " local_side=" << local_point;
     if (CreatedByConnect()) {
         g_vars->channel_conn << 1;
     }
@@ -1249,6 +1326,11 @@ int Socket::ConnectIfNot(const timespec* abstime, WriteRequest* req) {
     }
     s.release();
     return 1;    
+}
+
+void Socket::WakeAsEpollOut() {
+    _epollout_butex->fetch_add(1, butil::memory_order_release);
+    bthread::butex_wake_except(_epollout_butex, 0);
 }
 
 int Socket::HandleEpollOut(SocketId id) {
@@ -1460,7 +1542,7 @@ int Socket::Write(butil::IOBuf* data, const WriteOptions* options_in) {
     req->next = WriteRequest::UNCONNECTED;
     req->id_wait = opt.id_wait;
     req->set_pipelined_count_and_user_message(
-        opt.pipelined_count, DUMMY_USER_MESSAGE, opt.with_auth);
+        opt.pipelined_count, DUMMY_USER_MESSAGE, opt.auth_flags);
     return StartWrite(req, opt);
 }
 
@@ -1495,7 +1577,7 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
     // wait until it points to a valid WriteRequest or NULL.
     req->next = WriteRequest::UNCONNECTED;
     req->id_wait = opt.id_wait;
-    req->set_pipelined_count_and_user_message(opt.pipelined_count, msg.release(), opt.with_auth);
+    req->set_pipelined_count_and_user_message(opt.pipelined_count, msg.release(), opt.auth_flags);
     return StartWrite(req, opt);
 }
 
@@ -1550,7 +1632,16 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
         butil::IOBuf* data_arr[1] = { &req->data };
         nw = _conn->CutMessageIntoFileDescriptor(fd(), data_arr, 1);
     } else {
-        nw = req->data.cut_into_file_descriptor(fd());
+#if BRPC_WITH_RDMA
+        if (_rdma_ep && _rdma_state != RDMA_OFF) {
+            butil::IOBuf* data_arr[1] = { &req->data };
+            nw = _rdma_ep->CutFromIOBufList(data_arr, 1);
+        } else {
+#else
+        {
+#endif
+            nw = req->data.cut_into_file_descriptor(fd());
+        }
     }
     if (nw < 0) {
         // RTMP may return EOVERCROWDED
@@ -1632,21 +1723,50 @@ void* Socket::KeepWrite(void* void_arg) {
         // Update(8/15/2017): Not working, performance downgraded.
         //if (nw <= 0 || req->data.empty()/*note*/) {
         if (nw <= 0) {
-            g_vars->nwaitepollout << 1;
-            bool pollin = (s->_on_edge_triggered_events != NULL);
             // NOTE: Waiting epollout within timeout is a must to force
             // KeepWrite to check and setup pending WriteRequests periodically,
             // which may turn on _overcrowded to stop pending requests from
             // growing infinitely.
             const timespec duetime =
                 butil::milliseconds_from_now(WAIT_EPOLLOUT_TIMEOUT_MS);
-            const int rc = s->WaitEpollOut(s->fd(), pollin, &duetime);
-            if (rc < 0 && errno != ETIMEDOUT) {
-                const int saved_errno = errno;
-                PLOG(WARNING) << "Fail to wait epollout of " << *s;
-                s->SetFailed(saved_errno, "Fail to wait epollout of %s: %s",
+#if BRPC_WITH_RDMA
+            if (s->_rdma_state == RDMA_ON) {
+                const int expected_val = s->_epollout_butex
+                    ->load(butil::memory_order_acquire);
+                CHECK(s->_rdma_ep != NULL);
+                if (!s->_rdma_ep->IsWritable()) {
+                    g_vars->nwaitepollout << 1;
+                    if (bthread::butex_wait(s->_epollout_butex,
+                            expected_val, &duetime) < 0) {
+                        if (errno != EAGAIN && errno != ETIMEDOUT) {
+                            const int saved_errno = errno;
+                            PLOG(WARNING) << "Fail to wait rdma window of " << *s;
+                            s->SetFailed(saved_errno, "Fail to wait rdma window of %s: %s",
+                                    s->description().c_str(), berror(saved_errno));
+                        }
+                        if (s->Failed()) {
+                            // NOTE:
+                            // Different from TCP, we cannot find the RDMA channel
+                            // failed by writing to it. Thus we must check if it
+                            // is already failed here.
+                            break;
+                        }
+                    }
+                }
+            } else {
+#else
+            {
+#endif
+                g_vars->nwaitepollout << 1;
+                bool pollin = (s->_on_edge_triggered_events != NULL);
+                const int rc = s->WaitEpollOut(s->fd(), pollin, &duetime);
+                if (rc < 0 && errno != ETIMEDOUT) {
+                    const int saved_errno = errno;
+                    PLOG(WARNING) << "Fail to wait epollout of " << *s;
+                    s->SetFailed(saved_errno, "Fail to wait epollout of %s: %s",
                              s->description().c_str(), berror(saved_errno));
-                break;
+                    break;
+                }
             }
         }
         if (NULL == cur_tail) {
@@ -1681,9 +1801,13 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
         if (_conn) {
             return _conn->CutMessageIntoFileDescriptor(fd(), data_list, ndata);
         } else {
-            ssize_t nw = butil::IOBuf::cut_multiple_into_file_descriptor(
+#if BRPC_WITH_RDMA
+            if (_rdma_ep && _rdma_state != RDMA_OFF) {
+                return _rdma_ep->CutFromIOBufList(data_list, ndata);
+            }
+#endif
+            return butil::IOBuf::cut_multiple_into_file_descriptor(
                 fd(), data_list, ndata);
-            return nw;
         }
     }
 
@@ -1712,7 +1836,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
         const unsigned long e = ERR_get_error();
         if (e != 0) {
             LOG(WARNING) << "Fail to write into ssl_fd=" << fd() <<  ": "
-                         << SSLError(ERR_get_error());
+                         << SSLError(e);
             errno = ESSL;
          } else {
             // System error with corresponding errno set
@@ -1755,6 +1879,7 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
     // we use bthread_fd_wait as polling mechanism instead of EventDispatcher
     // as it may confuse the origin event processing code.
     while (true) {
+        ERR_clear_error();
         int rc = SSL_do_handshake(_ssl_session);
         if (rc == 1) {
             _ssl_state = SSL_CONNECTED;
@@ -1831,6 +1956,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
     }
     // _ssl_state has been set
     if (ssl_state() == SSL_OFF) {
+        CHECK(_rdma_state == RDMA_OFF);
         return _read_buf.append_from_file_descriptor(fd(), size_hint);
     }
 
@@ -2107,12 +2233,16 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     const SSLState ssl_state = ptr->ssl_state();
     os << "\npipeline_q=" << npipelined
        << "\nhc_interval_s=" << ptr->_health_check_interval_s
+       << "\nis_hc_related_ref_held=" << ptr->_is_hc_related_ref_held
        << "\nninprocess=" << ptr->_ninprocess.load(butil::memory_order_relaxed)
        << "\nauth_flag_error=" << ptr->_auth_flag_error.load(butil::memory_order_relaxed)
        << "\nauth_id=" << ptr->_auth_id.value
        << "\nauth_context=" << ptr->_auth_context
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
-       << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
+       << "\n_additional_ref_status="
+       << ptr->_additional_ref_status.load(butil::memory_order_relaxed)
+       << "\ntotal_streams_buffer_size="
+       << ptr->_total_streams_unconsumed_size.load(butil::memory_order_relaxed)
        << "\nninflight_app_health_check="
        << ptr->_ninflight_app_health_check.load(butil::memory_order_relaxed)
        << "\nagent_socket_id=";
@@ -2191,6 +2321,11 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
            << "\n  advmss=" << ti.tcpi_advmss
            << "\n  reordering=" << ti.tcpi_reordering
            << "\n}";
+    }
+#endif
+#if BRPC_WITH_RDMA
+    if (ptr->_rdma_state == RDMA_ON && ptr->_rdma_ep) {
+        ptr->_rdma_ep->DebugInfo(os);
     }
 #endif
 }
@@ -2416,6 +2551,7 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
         opt.initial_ssl_ctx = _ssl_ctx;
         opt.keytable_pool = _keytable_pool;
         opt.app_connect = _app_connect;
+        opt.use_rdma =  (_rdma_ep) ? true : false;
         socket_pool = new SocketPool(opt);
         SocketPool* expected = NULL;
         if (!main_sp->socket_pool.compare_exchange_strong(
@@ -2459,6 +2595,10 @@ int Socket::ReturnToPool() {
     // - sp must be released after returning to pool because it owns pool
     _connection_type_for_progressive_read = CONNECTION_TYPE_UNKNOWN;
     _controller_released_socket.store(false, butil::memory_order_relaxed);
+    // Reset the write timestamp to make the returned connection live (longer)
+    // This is useful for using a fake Socket + SocketConnection impl. to integrate
+    // 3rd-party client into bRPC (like MySQL Client).
+    _last_writetime_us.store(butil::cpuwide_time_us(), butil::memory_order_relaxed);
     pool->ReturnSocket(this);
     sp->RemoveRefManually();
     return 0;
@@ -2512,6 +2652,7 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     opt.initial_ssl_ctx = _ssl_ctx;
     opt.keytable_pool = _keytable_pool;
     opt.app_connect = _app_connect;
+    opt.use_rdma =  (_rdma_ep) ? true : false;
     if (get_client_side_messenger()->Create(opt, &id) != 0 ||
         Socket::Address(id, short_socket) != 0) {
         return -1;

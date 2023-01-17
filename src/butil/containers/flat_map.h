@@ -1,18 +1,20 @@
-// Copyright (c) 2013 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Wed Nov 27 12:59:20 CST 2013
 
 // This closed addressing hash-map puts first linked node in bucket array
@@ -165,12 +167,17 @@ public:
     // Returns address of the inserted value, NULL on error.
     mapped_type* insert(const key_type& key, const mapped_type& value);
 
+    // Insert a pair of {key, value}. If size()*100/bucket_count() is
+    // more than load_factor(), a resize() will be done.
+    // Returns address of the inserted value, NULL on error.
+    mapped_type* insert(const std::pair<key_type, mapped_type>& kv);
+
     // Remove |key| and the associated value
     // Returns: 1 on erased, 0 otherwise.
-    // Remove all items. Allocated spaces are NOT returned by system.
     template <typename K2>
     size_t erase(const K2& key, mapped_type* old_value = NULL);
 
+    // Remove all items. Allocated spaces are NOT returned by system.
     void clear();
 
     // Remove all items and return all allocated spaces to system.
@@ -245,7 +252,7 @@ public:
         { new (element_spaces) Element(other.element()); }
         bool is_valid() const { return next != (const Bucket*)-1UL; }
         void set_invalid() { next = (Bucket*)-1UL; }
-        // NOTE: Only be called when in_valid() is true.
+        // NOTE: Only be called when is_valid() is true.
         Element& element() {
             void* spaces = element_spaces; // Suppress strict-aliasing
             return *reinterpret_cast<Element*>(spaces);
@@ -354,11 +361,15 @@ public:
     //                                             ^^^^^^^^^^^
     const K& first_ref() const { return _key; }
     T& second_ref() { return _value; }
+    T&& second_movable_ref() { return std::move(_value); }
     value_type& value_ref() { return *reinterpret_cast<value_type*>(this); }
     inline static const K& first_ref_from_value(const value_type& v)
     { return v.first; }
     inline static const T& second_ref_from_value(const value_type& v)
     { return v.second; }
+    inline static T&& second_movable_ref_from_value(value_type& v)
+    { return std::move(v.second); }
+
 private:
     const K _key;
     T _value;
@@ -371,11 +382,15 @@ public:
     explicit FlatMapElement(const K& k) : _key(k) {}
     const K& first_ref() const { return _key; }
     FlatMapVoid& second_ref() { return second_ref_from_value(_key); }
+    FlatMapVoid& second_movable_ref() { return second_ref(); }
     value_type& value_ref() { return _key; }
     inline static const K& first_ref_from_value(value_type& v) { return v; }
     inline static FlatMapVoid& second_ref_from_value(value_type&) {
         static FlatMapVoid dummy;
         return dummy;
+    }
+    inline static const FlatMapVoid& second_movable_ref_from_value(value_type& v) {
+        return second_ref_from_value(v);
     }
 private:
     K _key;

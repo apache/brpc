@@ -1,23 +1,30 @@
-// Copyright (c) 2014 Baidu, Inc.G
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// Authors: Lei He (helei@qiyi.com)
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <cmath>
 #include <gflags/gflags.h>
 #include "brpc/errno.pb.h"
 #include "brpc/policy/auto_concurrency_limiter.h"
+
+namespace bthread {
+
+DECLARE_int32(bthread_concurrency);
+
+}  // namespace bthread
 
 namespace brpc {
 namespace policy {
@@ -35,7 +42,7 @@ DEFINE_int32(auto_cl_max_sample_count, 200,
 DEFINE_double(auto_cl_sampling_interval_ms, 0.1, 
              "Interval for sampling request in auto concurrency limiter");
 DEFINE_int32(auto_cl_initial_max_concurrency, 40,
-             "Initial max concurrency for grandient concurrency limiter");
+             "Initial max concurrency for gradient concurrency limiter");
 DEFINE_int32(auto_cl_noload_latency_remeasure_interval_ms, 50000, 
              "Interval for remeasurement of noload_latency. In the period of "
              "remeasurement of noload_latency will halve max_concurrency.");
@@ -86,7 +93,7 @@ AutoConcurrencyLimiter* AutoConcurrencyLimiter::New(const AdaptiveMaxConcurrency
     return new (std::nothrow) AutoConcurrencyLimiter;
 }
 
-bool AutoConcurrencyLimiter::OnRequested(int current_concurrency) {
+bool AutoConcurrencyLimiter::OnRequested(int current_concurrency, Controller*) {
     return current_concurrency <= _max_concurrency;
 }
 
@@ -182,7 +189,7 @@ bool AutoConcurrencyLimiter::AddSample(int error_code,
         UpdateMaxConcurrency(sampling_time_us);
     } else {
         // All request failed
-        _max_concurrency /= 2;
+        AdjustMaxConcurrency(_max_concurrency / 2);
     }
     ResetSampleWindow(sampling_time_us);
     return true;
@@ -212,6 +219,13 @@ void AutoConcurrencyLimiter::UpdateQps(double qps) {
         _ema_max_qps = qps;
     } else {
         _ema_max_qps = qps * ema_factor + _ema_max_qps * (1 - ema_factor);
+    }
+}
+
+void AutoConcurrencyLimiter::AdjustMaxConcurrency(int next_max_concurrency) {
+    next_max_concurrency = std::max(bthread::FLAGS_bthread_concurrency, next_max_concurrency);
+    if (next_max_concurrency != _max_concurrency) {
+        _max_concurrency = next_max_concurrency;
     }
 }
 
@@ -246,9 +260,7 @@ void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
             _min_latency_us * _ema_max_qps / 1000000 *  (1 + _explore_ratio);
     }
 
-    if (next_max_concurrency != _max_concurrency) {
-        _max_concurrency = next_max_concurrency;
-    }
+    AdjustMaxConcurrency(next_max_concurrency);
 }
 
 }  // namespace policy

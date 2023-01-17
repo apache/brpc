@@ -104,6 +104,16 @@ CHECK_EQ(10, response.reply(2).integer());
 CHECK_EQ(-10, response.reply(3).integer());
 ```
 
+# 访问带认证的Redis
+
+创建一个RedisAuthenticator，并设置到ChannelOptions里即可。
+
+```c++
+brpc::ChannelOptions options;
+brpc::policy::RedisAuthenticator* auth = new brpc::policy::RedisAuthenticator("my_password");
+options.auth = auth;
+```
+
 # RedisRequest
 
 一个[RedisRequest](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h)可包含多个Command，调用AddCommand*增加命令，成功返回true，失败返回false**并会打印调用处的栈**。

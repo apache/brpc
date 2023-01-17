@@ -151,7 +151,7 @@ size_t InitCrashKeys(const CrashKey* const keys, size_t count,
 
   size_t total_keys = 0;
   for (size_t i = 0; i < count; ++i) {
-    g_crash_keys_->insert(std::make_pair(keys[i].key_name, keys[i]));
+    g_crash_keys_->emplace(keys[i].key_name, keys[i]);
     total_keys += NumChunksForLength(keys[i].max_length);
     DCHECK_LT(keys[i].max_length, kLargestValueAllowed);
   }

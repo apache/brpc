@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef USE_MESALINK
 #include <openssl/ssl.h>
@@ -36,11 +38,13 @@
 #include "brpc/policy/remote_file_naming_service.h"
 #include "brpc/policy/consul_naming_service.h"
 #include "brpc/policy/discovery_naming_service.h"
+#include "brpc/policy/nacos_naming_service.h"
 
 // Load Balancers
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
+#include "brpc/policy/weighted_randomized_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
@@ -77,6 +81,7 @@
 #include "brpc/concurrency_limiter.h"
 #include "brpc/policy/auto_concurrency_limiter.h"
 #include "brpc/policy/constant_concurrency_limiter.h"
+#include "brpc/policy/timeout_concurrency_limiter.h"
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
@@ -114,7 +119,9 @@ const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
 struct GlobalExtensions {
     GlobalExtensions()
-        : ch_mh_lb(CONS_HASH_LB_MURMUR3)
+        : dns(80)
+        , dns_with_ssl(443)
+        , ch_mh_lb(CONS_HASH_LB_MURMUR3)
         , ch_md5_lb(CONS_HASH_LB_MD5)
         , ch_ketama_lb(CONS_HASH_LB_KETAMA)
         , constant_cl(0) {
@@ -125,14 +132,18 @@ struct GlobalExtensions {
 #endif
     FileNamingService fns;
     ListNamingService lns;
+    DomainListNamingService dlns;
     DomainNamingService dns;
+    DomainNamingService dns_with_ssl;
     RemoteFileNamingService rfns;
     ConsulNamingService cns;
     DiscoveryNamingService dcns;
+    NacosNamingService nns;
 
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
     RandomizedLoadBalancer randomized_lb;
+    WeightedRandomizedLoadBalancer wr_lb;
     LocalityAwareLoadBalancer la_lb;
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
@@ -141,6 +152,7 @@ struct GlobalExtensions {
 
     AutoConcurrencyLimiter auto_cl;
     ConstantConcurrencyLimiter constant_cl;
+    TimeoutConcurrencyLimiter timeout_cl;
 };
 
 static pthread_once_t register_extensions_once = PTHREAD_ONCE_INIT;
@@ -344,17 +356,20 @@ static void GlobalInitializeOrDieImpl() {
 #endif
     NamingServiceExtension()->RegisterOrDie("file", &g_ext->fns);
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
+    NamingServiceExtension()->RegisterOrDie("dlist", &g_ext->dlns);
     NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
-    NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns);
+    NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns_with_ssl);
     NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("remotefile", &g_ext->rfns);
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
     NamingServiceExtension()->RegisterOrDie("discovery", &g_ext->dcns);
+    NamingServiceExtension()->RegisterOrDie("nacos", &g_ext->nns);
 
     // Load Balancers
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
     LoadBalancerExtension()->RegisterOrDie("wrr", &g_ext->wrr_lb);
     LoadBalancerExtension()->RegisterOrDie("random", &g_ext->randomized_lb);
+    LoadBalancerExtension()->RegisterOrDie("wr", &g_ext->wr_lb);
     LoadBalancerExtension()->RegisterOrDie("la", &g_ext->la_lb);
     LoadBalancerExtension()->RegisterOrDie("c_murmurhash", &g_ext->ch_mh_lb);
     LoadBalancerExtension()->RegisterOrDie("c_md5", &g_ext->ch_md5_lb);
@@ -487,7 +502,7 @@ static void GlobalInitializeOrDieImpl() {
     Protocol redis_protocol = { ParseRedisMessage,
                                 SerializeRedisRequest,
                                 PackRedisRequest,
-                                NULL, ProcessRedisResponse,
+                                ProcessRedisRequest, ProcessRedisResponse,
                                 NULL, NULL, GetRedisMethodName,
                                 CONNECTION_TYPE_ALL, "redis" };
     if (RegisterProtocol(PROTOCOL_REDIS, redis_protocol) != 0) {
@@ -603,7 +618,8 @@ static void GlobalInitializeOrDieImpl() {
     // Concurrency Limiters
     ConcurrencyLimiterExtension()->RegisterOrDie("auto", &g_ext->auto_cl);
     ConcurrencyLimiterExtension()->RegisterOrDie("constant", &g_ext->constant_cl);
-    
+    ConcurrencyLimiterExtension()->RegisterOrDie("timeout", &g_ext->timeout_cl);
+
     if (FLAGS_usercode_in_pthread) {
         // Optional. If channel/server are initialized before main(), this
         // flag may be false at here even if it will be set to true after

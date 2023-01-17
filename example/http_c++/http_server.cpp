@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // A server to receive HttpRequest and send back HttpResponse.
 
@@ -23,8 +26,6 @@
 DEFINE_int32(port, 8010, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
-DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
-             "(waiting for client to close connection before server stops)");
 
 DEFINE_string(certificate, "cert.pem", "Certificate file path to enable SSL");
 DEFINE_string(private_key, "key.pem", "Private key file path to enable SSL");
@@ -35,8 +36,8 @@ namespace example {
 // Service with static path.
 class HttpServiceImpl : public HttpService {
 public:
-    HttpServiceImpl() {};
-    virtual ~HttpServiceImpl() {};
+    HttpServiceImpl() {}
+    virtual ~HttpServiceImpl() {}
     void Echo(google::protobuf::RpcController* cntl_base,
               const HttpRequest*,
               HttpResponse*,
@@ -63,20 +64,23 @@ public:
 // Service with dynamic path.
 class FileServiceImpl : public FileService {
 public:
-    FileServiceImpl() {};
-    virtual ~FileServiceImpl() {};
+    FileServiceImpl() {}
+    virtual ~FileServiceImpl() {}
 
-    static void* SendLargeFile(void* arg) {
-        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
-                (brpc::ProgressiveAttachment*)arg);
-        if (pa == NULL) {
+    struct Args {
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa;
+    };
+
+    static void* SendLargeFile(void* raw_args) {
+        std::unique_ptr<Args> args(static_cast<Args*>(raw_args));
+        if (args->pa == NULL) {
             LOG(ERROR) << "ProgressiveAttachment is NULL";
             return NULL;
         }
         for (int i = 0; i < 100; ++i) {
             char buf[16];
             int len = snprintf(buf, sizeof(buf), "part_%d ", i);
-            pa->Write(buf, len);
+            args->pa->Write(buf, len);
 
             // sleep a while to send another part.
             bthread_usleep(10000);
@@ -94,9 +98,10 @@ public:
         const std::string& filename = cntl->http_request().unresolved_path();
         if (filename == "largefile") {
             // Send the "largefile" with ProgressiveAttachment.
+            std::unique_ptr<Args> args(new Args);
+            args->pa = cntl->CreateProgressiveAttachment();
             bthread_t th;
-            bthread_start_background(&th, NULL, SendLargeFile, 
-                    cntl->CreateProgressiveAttachment());
+            bthread_start_background(&th, NULL, SendLargeFile, args.release());
         } else {
             cntl->response_attachment().append("Getting file: ");
             cntl->response_attachment().append(filename);
@@ -109,8 +114,8 @@ public:
 // when adding the service into server).
 class QueueServiceImpl : public example::QueueService {
 public:
-    QueueServiceImpl() {};
-    virtual ~QueueServiceImpl() {};
+    QueueServiceImpl() {}
+    virtual ~QueueServiceImpl() {}
     void start(google::protobuf::RpcController* cntl_base,
                const HttpRequest*,
                HttpResponse*,

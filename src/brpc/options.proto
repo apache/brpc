@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 syntax="proto2";
 import "google/protobuf/descriptor.proto";
 
@@ -29,14 +46,14 @@ enum ProtocolType {
     PROTOCOL_HTTP = 7;
     PROTOCOL_PUBLIC_PBRPC = 8;
     PROTOCOL_NOVA_PBRPC = 9;
-    PROTOCOL_NSHEAD_CLIENT = 10;       // implemented in baidu-rpc-ub
-    PROTOCOL_NSHEAD = 11;
-    PROTOCOL_HADOOP_RPC = 12;
-    PROTOCOL_HADOOP_SERVER_RPC = 13;
-    PROTOCOL_MONGO = 14;               // server side only
-    PROTOCOL_UBRPC_COMPACK = 15;
-    PROTOCOL_DIDX_CLIENT = 16;         // Client side only
-    PROTOCOL_REDIS = 17;               // Client side only
+    PROTOCOL_REDIS = 10;
+    PROTOCOL_NSHEAD_CLIENT = 11;       // implemented in baidu-rpc-ub
+    PROTOCOL_NSHEAD = 12;
+    PROTOCOL_HADOOP_RPC = 13;
+    PROTOCOL_HADOOP_SERVER_RPC = 14;
+    PROTOCOL_MONGO = 15;               // server side only
+    PROTOCOL_UBRPC_COMPACK = 16;
+    PROTOCOL_DIDX_CLIENT = 17;         // Client side only
     PROTOCOL_MEMCACHE = 18;            // Client side only
     PROTOCOL_ITP = 19;
     PROTOCOL_NSHEAD_MCPACK = 20;

@@ -1,0 +1,217 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+---
+header:
+  license:
+    spdx-id: Apache-2.0
+    copyright-owner: Apache Software Foundation
+
+  paths-ignore:
+    - '**/*.md'
+    - '**/*.svg'
+    - '**/*.yml'
+    - '*/TBD'
+    - '.idea'
+    - 'LICENSE'
+    - 'NOTICE'
+    - 'docs'
+    - 'example/*/*.flags'
+    - 'example/*/*.json'
+    - 'example/*/*.pem'
+    - 'example/*/*.port'
+    - 'src/bthread/offset_inl.list'
+    - 'test/*.crt'
+    - 'test/*.key'
+    - 'test/jsonout'
+    - 'tools/trackme_server/bugs'
+
+    # Apache
+    - 'src/butil/recordio.h'
+
+    # Boost Software License
+    - 'src/bthread/context.*'
+    - 'src/butil/intrusive_ptr.hpp'
+    - 'src/butil/unique_ptr.h'
+
+    # BSD
+    - 'src/butil/crc32c.*'
+    - 'src/butil/third_party/modp_b64/*'
+    - 'src/butil/third_party/superfasthash/*'
+    - 'src/butil/third_party/valgrind/*'
+
+    # Chromium
+    - 'src/butil/at_exit.*'
+    - 'src/butil/atomic*'
+    - 'src/butil/auto_reset.h'
+    - 'src/butil/base64.*'
+    - 'src/butil/base_export.h'
+    - 'src/butil/base_paths.cc'
+    - 'src/butil/basictypes.h'
+    - 'src/butil/big_endian.*'
+    - 'src/butil/bits.h'
+    - 'src/butil/build_config.h'
+    - 'src/butil/cancelable_callback.h'
+    - 'src/butil/compiler_specific.h'
+    - 'src/butil/containers/*'
+    - 'src/butil/cpu.*'
+    - 'src/butil/debug/*'
+    - 'src/butil/environment.*'
+    - 'src/butil/file_*'
+    - 'src/butil/files/dir_reader_fallback.h'
+    - 'src/butil/files/dir_reader_linux.h'
+    - 'src/butil/files/dir_reader_posix.h'
+    - 'src/butil/files/file.*'
+    - 'src/butil/files/file_enumerator*'
+    - 'src/butil/files/file_p*'
+    - 'src/butil/files/memory_mapped_file*'
+    - 'src/butil/files/scoped*'
+    - 'src/butil/float_util.h'
+    - 'src/butil/format_macros.h'
+    - 'src/butil/gtest_prod_util.h'
+    - 'src/butil/guid.cc'
+    - 'src/butil/guid.h'
+    - 'src/butil/guid_posix.cc'
+    - 'src/butil/hash.cc'
+    - 'src/butil/hash.h'
+    - 'src/butil/lazy_instance.cc'
+    - 'src/butil/lazy_instance.h'
+    - 'src/butil/location.cc'
+    - 'src/butil/location.h'
+    - 'src/butil/mac/bundle_locations.h'
+    - 'src/butil/mac/bundle_locations.mm'
+    - 'src/butil/mac/foundation_util.h'
+    - 'src/butil/mac/foundation_util.mm'
+    - 'src/butil/mac/scoped_cftyperef.h'
+    - 'src/butil/mac/scoped_mach_port.cc'
+    - 'src/butil/mac/scoped_mach_port.h'
+    - 'src/butil/mac/scoped_typeref.h'
+    - 'src/butil/macros.h'
+    - 'src/butil/memory/aligned_memory.cc'
+    - 'src/butil/memory/aligned_memory.h'
+    - 'src/butil/memory/linked_ptr.h'
+    - 'src/butil/memory/manual_constructor.h'
+    - 'src/butil/memory/raw_scoped_refptr_mismatch_checker.h'
+    - 'src/butil/memory/ref_counted.cc'
+    - 'src/butil/memory/ref_counted.h'
+    - 'src/butil/memory/ref_counted_memory.cc'
+    - 'src/butil/memory/ref_counted_memory.h'
+    - 'src/butil/memory/scoped_open_process.h'
+    - 'src/butil/memory/scoped_policy.h'
+    - 'src/butil/memory/scoped_ptr.h'
+    - 'src/butil/memory/scoped_vector.h'
+    - 'src/butil/memory/singleton.cc'
+    - 'src/butil/memory/singleton.h'
+    - 'src/butil/memory/singleton_objc.h'
+    - 'src/butil/memory/weak_ptr.cc'
+    - 'src/butil/memory/weak_ptr.h'
+    - 'src/butil/move.h'
+    - 'src/butil/numerics/safe_conversions.h'
+    - 'src/butil/numerics/safe_conversions_impl.h'
+    - 'src/butil/numerics/safe_math.h'
+    - 'src/butil/numerics/safe_math_impl.h'
+    - 'src/butil/observer_list.h'
+    - 'src/butil/port.h'
+    - 'src/butil/posix/eintr_wrapper.h'
+    - 'src/butil/posix/file_descriptor_shuffle.cc'
+    - 'src/butil/posix/file_descriptor_shuffle.h'
+    - 'src/butil/posix/global_descriptors.cc'
+    - 'src/butil/posix/global_descriptors.h'
+    - 'src/butil/rand_util.cc'
+    - 'src/butil/rand_util.h'
+    - 'src/butil/rand_util_posix.cc'
+    - 'src/butil/safe_strerror_posix.cc'
+    - 'src/butil/safe_strerror_posix.h'
+    - 'src/butil/scoped_clear_errno.h'
+    - 'src/butil/scoped_generic.h'
+    - 'src/butil/scoped_observer.h'
+    - 'src/butil/sha1.h'
+    - 'src/butil/sha1_portable.cc'
+    - 'src/butil/stl_util.h'
+    - 'src/butil/strings/latin1_string_conversions.cc'
+    - 'src/butil/strings/latin1_string_conversions.h'
+    - 'src/butil/strings/nullable_string16.cc'
+    - 'src/butil/strings/nullable_string16.h'
+    - 'src/butil/strings/safe_sprintf.cc'
+    - 'src/butil/strings/safe_sprintf.h'
+    - 'src/butil/strings/string16.cc'
+    - 'src/butil/strings/string16.h'
+    - 'src/butil/strings/string_number_conversions.cc'
+    - 'src/butil/strings/string_number_conversions.h'
+    - 'src/butil/strings/string_piece.cc'
+    - 'src/butil/strings/string_piece.h'
+    - 'src/butil/strings/string_split.cc'
+    - 'src/butil/strings/string_split.h'
+    - 'src/butil/strings/string_tokenizer.h'
+    - 'src/butil/strings/string_util.cc'
+    - 'src/butil/strings/string_util.h'
+    - 'src/butil/strings/string_util_constants.cc'
+    - 'src/butil/strings/string_util_posix.h'
+    - 'src/butil/strings/stringize_macros.h'
+    - 'src/butil/strings/stringprintf.cc'
+    - 'src/butil/strings/stringprintf.h'
+    - 'src/butil/strings/sys_string_conversions.h'
+    - 'src/butil/strings/sys_string_conversions_mac.mm'
+    - 'src/butil/strings/sys_string_conversions_posix.cc'
+    - 'src/butil/strings/utf_offset_string_conversions.cc'
+    - 'src/butil/strings/utf_offset_string_conversions.h'
+    - 'src/butil/strings/utf_string_conversion_utils.cc'
+    - 'src/butil/strings/utf_string_conversion_utils.h'
+    - 'src/butil/strings/utf_string_conversions.cc'
+    - 'src/butil/strings/utf_string_conversions.h'
+    - 'src/butil/synchronization/cancellation_flag.*'
+    - 'src/butil/synchronization/condition_variable.h'
+    - 'src/butil/synchronization/condition_variable_posix.cc'
+    - 'src/butil/synchronization/spin_wait.h'
+    - 'src/butil/synchronization/waitable_event.h'
+    - 'src/butil/synchronization/waitable_event_posix.cc'
+    - 'src/butil/sys_byteorder.h'
+    - 'src/butil/third_party/symbolize/glog/*'
+    - 'src/butil/threading/*'
+    - 'src/butil/time/*'
+    - 'src/butil/type_traits.h'
+    - 'src/butil/version.*'
+    - 'test/*.cc'
+    - 'test/memory_unittest_mac.h'
+    - 'test/multiprocess_func_list.h'
+    - 'test/scoped_locale.h'
+    - 'test/test_switches.h'
+
+    # David M. Gay
+    - 'src/butil/third_party/dmg_fp/*'
+
+    # Google
+    - 'src/brpc/builtin/pprof_perl.cpp'
+    - 'src/brpc/callback.h'
+    - 'src/brpc/details/tcmalloc_extension.h'
+    - 'src/butil/gperftools_profiler.h'
+    - 'src/butil/third_party/dynamic_annotations/*'
+    - 'src/butil/third_party/snappy/*'
+    - 'src/butil/third_party/symbolize/*'
+    - 'tools/pprof'
+
+    # ICU
+    - 'src/butil/third_party/icu/*'
+
+    # MIT
+    - 'src/brpc/policy/dh.*'
+    - 'src/butil/third_party/rapidjson/**'
+
+    # NGINX
+    - 'src/brpc/details/http_parser.*'
+
+  comment: on-failure

@@ -1,3 +1,20 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 cmake_minimum_required(VERSION 2.8.10)
 project(redis_c++ C CXX)
 
@@ -9,7 +26,7 @@ project(redis_c++ C CXX)
 # sudo yum install readline-devel
 # sudo yum install ncurses-devel
 
-option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
+option(LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
     COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
@@ -20,6 +37,10 @@ set(CMAKE_PREFIX_PATH ${OUTPUT_PATH})
 
 include(FindThreads)
 include(FindProtobuf)
+
+find_path(GPERFTOOLS_INCLUDE_DIR NAMES gperftools/heap-profiler.h)
+find_library(GPERFTOOLS_LIBRARIES NAMES tcmalloc_and_profiler)
+include_directories(${GPERFTOOLS_INCLUDE_DIR})
 
 # Search for libthrift* by best effort. If it is not found and brpc is
 # compiled with thrift protocol enabled, a link error would be reported.
@@ -33,7 +54,7 @@ if (NOT THRIFTNB_LIB)
 endif()
 
 find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
-if(EXAMPLE_LINK_SO)
+if(LINK_SO)
     find_library(BRPC_LIB NAMES brpc)
 else()
     find_library(BRPC_LIB NAMES libbrpc.a brpc)
@@ -69,7 +90,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 endif()
 
 set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DGFLAGS_NS=${GFLAGS_NS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -DNDEBUG -O2 -D__const__=__unused__ -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
 
 if(CMAKE_VERSION VERSION_LESS "3.1.3")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -90,25 +111,25 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 include_directories(${LEVELDB_INCLUDE_PATH})
 
-find_library(SSL_LIB NAMES ssl)
-if (NOT SSL_LIB)
-    message(FATAL_ERROR "Fail to find ssl")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(OPENSSL_ROOT_DIR
+        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
+        )
 endif()
 
-find_library(CRYPTO_LIB NAMES crypto)
-if (NOT CRYPTO_LIB)
-    message(FATAL_ERROR "Fail to find crypto")
-endif()
+find_package(OpenSSL)
+include_directories(${OPENSSL_INCLUDE_DIR})
 
 set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB}
-    ${SSL_LIB}
-    ${CRYPTO_LIB}
+    ${OPENSSL_CRYPTO_LIBRARY}
+    ${OPENSSL_SSL_LIBRARY}
     ${THRIFT_LIB}
     ${THRIFTNB_LIB}
+    ${GPERFTOOLS_LIBRARIES}
     dl
     )
 
@@ -128,7 +149,10 @@ endif()
 
 add_executable(redis_cli redis_cli.cpp)
 add_executable(redis_press redis_press.cpp)
+add_executable(redis_server redis_server.cpp)
 
 set(AUX_LIB readline ncurses)
+
 target_link_libraries(redis_cli ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
-target_link_libraries(redis_press ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
+target_link_libraries(redis_press ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(redis_server ${BRPC_LIB} ${DYNAMIC_LIB})

@@ -1,19 +1,22 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - An M:N threading library to make applications more concurrent.
+
 // Date: Tue Jul 22 17:30:12 CST 2014
 
 #ifndef BTHREAD_BUTEX_H
@@ -43,11 +46,11 @@ void butex_destroy(void* butex);
 
 // Wake up at most 1 thread waiting on |butex|.
 // Returns # of threads woken up.
-int butex_wake(void* butex);
+int butex_wake(void* butex, bool nosignal = false);
 
 // Wake up all threads waiting on |butex|.
 // Returns # of threads woken up.
-int butex_wake_all(void* butex);
+int butex_wake_all(void* butex, bool nosignal = false);
 
 // Wake up all threads waiting on |butex| except a bthread whose identifier
 // is |excluded_bthread|. This function does not yield.

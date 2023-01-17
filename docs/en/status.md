@@ -6,14 +6,14 @@
 
 Meanings of the fields above:
 
-- **non_service_error**: number of errors raised outside processing code of the service. For example, the error that server can't write response back due to a broken connection which had been closed by the client, is a *non_service_error* because the service processing already ends. As a contrast, failing to access back-end servers during the processing is an error of the service, not a *non_service_error*. Even if the response written out successfully stands for failure, the error is counted into the service rather than *non_service_error*.
+- **non_service_error**: number of errors raised outside processing code of the service. When a valid service is obtained, the subsequent error is regarded as *service_error*, otherwise it is regarded as *non_service_error* (such as request parsing failed, service name does not exist, request concurrency exceeding limit, etc.). As a contrast, failing to access back-end servers during the processing is an error of the service, not a *non_service_error*. Even if the response written out successfully stands for failure, the error is counted into the service rather than *non_service_error*.
 - **connection_count**: number of connections to the server from clients, not including number of outward connections which are displayed at /vars/rpc_channel_connection_count.
 - **example.EchoService**: Full name of the service, including the package name defined in proto.
 - **Echo (EchoRequest) returns (EchoResponse)**: Signature of the method. A service can have multiple methods. Click links on request/response to see schemes of the protobuf messages.
-- **count**: Number of requests that are succesfully processed.
+- **count**: Number of requests that are successfully processed.
 - **error**: Number of requests that are failed to process.
 - **latency**: average latency in recent *60s/60m/24h/30d* from *right to left* on html, average latency in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
-- **latency_percentiles**: 50%, 90%, 99%, 99.9% percentiles of latency in 10 seconds(specified by[-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)). Curves with historical values are shown on html.
+- **latency_percentiles**: 80%, 90%, 99%, 99.9% percentiles of latency in 10 seconds(specified by[-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)). Curves with historical values are shown on html.
 - **latency_cdf**: shows percentiles as [CDF](https://en.wikipedia.org/wiki/Cumulative_distribution_function), only available on html.
 - **max_latency**: max latency in recent *60s/60m/24h/30d* from *right to left* on html, max latency in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
 - **qps**: QPS(Queries Per Second) in recent *60s/60m/24h/30d* from *right to left* on html. QPS in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
@@ -26,7 +26,7 @@ Users may customize descriptions on /status by letting the service implement [br
 class MyService : public XXXService, public brpc::Describable {
 public:
     ...
-    void DescribeStatus(std::ostream& os, const brpc::DescribeOptions& options) const {
+    void Describe(std::ostream& os, const brpc::DescribeOptions& options) const {
         os << "my_status: blahblah";
     }
 };

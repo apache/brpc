@@ -1,18 +1,20 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
@@ -24,6 +26,7 @@
 #include "brpc/socket.h"                   // Socket
 #include "brpc/server.h"                   // Server
 #include "brpc/span.h"
+#include "brpc/rpc_dump.h"
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/nshead_service.h"
@@ -227,6 +230,15 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         return;
     }
 
+    // for nshead sample request
+    SampledRequest* sample = AskToBeSampled();
+    if (sample) {
+        sample->meta.set_protocol_type(PROTOCOL_NSHEAD);
+        sample->meta.set_nshead(p, sizeof(nshead_t)); // nshead
+        sample->request = msg->payload;
+        sample->submit(start_parse_us);
+    }
+
     // Switch to service-specific error.
     non_service_error.release();
     MethodStatus* method_status = service->_status;
@@ -305,7 +317,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         }
     } while (false);
 
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     if (span) {
         span->ResetServerSpanName(service->_cached_name);
         span->set_start_callback_us(butil::cpuwide_time_us());
@@ -355,7 +367,7 @@ void ProcessNsheadResponse(InputMessageBase* msg_base) {
 
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    msg.reset();  // optional, just release resourse ASAP
+    msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
 }
 

@@ -114,13 +114,13 @@ namespace snappy {
 // See if that would be more efficient on platforms supporting it,
 // at least for copies.
 
-inline uint64_tUNALIGNED_LOAD64(const void *p) {
-    uint64_tt;
+inline uint64_t UNALIGNED_LOAD64(const void *p) {
+    uint64_t t;
     memcpy(&t, p, sizeof t);
     return t;
 }
 
-inline void UNALIGNED_STORE64(void *p, uint64_tv) {
+inline void UNALIGNED_STORE64(void *p, uint64_t v) {
     memcpy(p, &v, sizeof v);
 }
 
@@ -141,8 +141,8 @@ inline uint32_t UNALIGNED_LOAD32(const void *p) {
     return t;
 }
 
-inline uint64_tUNALIGNED_LOAD64(const void *p) {
-    uint64_tt;
+inline uint64_t UNALIGNED_LOAD64(const void *p) {
+    uint64_t t;
     memcpy(&t, p, sizeof t);
     return t;
 }
@@ -155,7 +155,7 @@ inline void UNALIGNED_STORE32(void *p, uint32_t v) {
     memcpy(p, &v, sizeof v);
 }
 
-inline void UNALIGNED_STORE64(void *p, uint64_tv) {
+inline void UNALIGNED_STORE64(void *p, uint64_t v) {
     memcpy(p, &v, sizeof v);
 }
 

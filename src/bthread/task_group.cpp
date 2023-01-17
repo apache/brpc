@@ -1,19 +1,22 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2012 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - An M:N threading library to make applications more concurrent.
+
 // Date: Tue Jul 10 17:40:58 CST 2012
 
 #include <sys/types.h>
@@ -143,7 +146,7 @@ void TaskGroup::run_main_task() {
     bvar::PassiveStatus<double> cumulated_cputime(
         get_cumulated_cputime_from_this, this);
     std::unique_ptr<bvar::PerSecond<bvar::PassiveStatus<double> > > usage_bvar;
-    
+
     TaskGroup* dummy = this;
     bthread_t tid;
     while (wait_task(&tid)) {
@@ -166,16 +169,12 @@ void TaskGroup::run_main_task() {
                              (name, &cumulated_cputime, 1));
         }
     }
-    // stop_main_task() was called.
     // Don't forget to add elapse of last wait_task.
     current_task()->stat.cputime_ns += butil::cpuwide_time_ns() - _last_run_ns;
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
     :
-#ifndef NDEBUG
-    _sched_recursive_guard(0),
-#endif
     _cur_meta(NULL)
     , _control(c)
     , _num_nosignal(0)
@@ -185,11 +184,14 @@ TaskGroup::TaskGroup(TaskControl* c)
     , _nswitch(0)
     , _last_context_remained(NULL)
     , _last_context_remained_arg(NULL)
-    , _pl(NULL) 
+    , _pl(NULL)
     , _main_stack(NULL)
     , _main_tid(0)
     , _remote_num_nosignal(0)
     , _remote_nsignaled(0)
+#ifndef NDEBUG
+    , _sched_recursive_guard(0)
+#endif
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
@@ -246,6 +248,9 @@ int TaskGroup::init(size_t runqueue_capacity) {
     return 0;
 }
 
+#if defined(__linux__) && defined(__aarch64__) && defined(__clang__)
+    __attribute__((optnone))
+#endif
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
     //       different groups.
@@ -272,7 +277,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // user function is never called, the variables will be unchanged
         // however they'd better reflect failures because the task is stopped
         // abnormally.
-        
+
         // Meta and identifier of the task is persistent in this run.
         TaskMeta* const m = g->_cur_meta;
 
@@ -283,25 +288,25 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             g->_control->exposed_pending_time() <<
                 (butil::cpuwide_time_ns() - m->cpuwide_start_ns) / 1000L;
         }
-        
+
         // Not catch exceptions except ExitException which is for implementing
-        // bthread_exit(). User code is intended to crash when an exception is 
-        // not caught explicitly. This is consistent with other threading 
+        // bthread_exit(). User code is intended to crash when an exception is
+        // not caught explicitly. This is consistent with other threading
         // libraries.
         void* thread_return;
         try {
             thread_return = m->fn(m->arg);
         } catch (ExitException& e) {
             thread_return = e.value();
-        } 
-        
+        }
+
         // Group is probably changed
         g = tls_task_group;
 
         // TODO: Save thread_return
         (void)thread_return;
 
-        // Logging must be done before returning the keytable, since the logging lib 
+        // Logging must be done before returning the keytable, since the logging lib
         // use bthread local storage internally, or will cause memory leak.
         // FIXME: the time from quiting fn to here is not counted into cputime
         if (m->attr.flags & BTHREAD_LOG_START_AND_FINISH) {
@@ -319,7 +324,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             tls_bls.keytable = NULL;
             m->local_storage.keytable = NULL; // optional
         }
-        
+
         // Increase the version and wake up all joiners, if resulting version
         // is 0, change it to 1 to make bthread_t never be 0. Any access
         // or join to the bthread after changing version will be rejected.
@@ -335,9 +340,9 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         g->_control->_nbthreads << -1;
         g->set_remained(TaskGroup::_release_last_context, m);
         ending_sched(&g);
-        
+
     } while (g->_cur_meta->tid != g->_main_tid);
-    
+
     // Was called from a pthread and we don't have BTHREAD_STACKTYPE_PTHREAD
     // tasks to run, quit for more tasks.
 }
@@ -377,6 +382,9 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     CHECK(m->stack == NULL);
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
+    if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
+        m->local_storage.rpcz_parent_span = tls_bls.rpcz_parent_span;
+    }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
@@ -432,6 +440,9 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     CHECK(m->stack == NULL);
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
+    if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
+        m->local_storage.rpcz_parent_span = tls_bls.rpcz_parent_span;
+    }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
@@ -559,6 +570,9 @@ void TaskGroup::sched(TaskGroup** pg) {
     sched_to(pg, next_tid);
 }
 
+#if defined(__linux__) && defined(__aarch64__) && defined(__clang__)
+    __attribute__((optnone))
+#endif
 void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     TaskGroup* g = *pg;
 #ifndef NDEBUG
@@ -588,7 +602,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
         cur_meta->local_storage = tls_bls;
         tls_bls = next_meta->local_storage;
 
-        // Logging must be done after switching the local storage, since the logging lib 
+        // Logging must be done after switching the local storage, since the logging lib
         // use bthread local storage internally, or will cause memory leak.
         if ((cur_meta->attr.flags & BTHREAD_LOG_CONTEXT_SWITCH) ||
             (next_meta->attr.flags & BTHREAD_LOG_CONTEXT_SWITCH)) {
@@ -738,7 +752,7 @@ void TaskGroup::_add_sleep_event(void* void_args) {
     // will be gone.
     SleepArgs e = *static_cast<SleepArgs*>(void_args);
     TaskGroup* g = e.group;
-    
+
     TimerThread::TaskId sleep_id;
     sleep_id = get_global_timer_thread()->schedule(
         ready_to_run_from_timer_thread, void_args,
@@ -749,7 +763,7 @@ void TaskGroup::_add_sleep_event(void* void_args) {
         g->ready_to_run(e.tid);
         return;
     }
-    
+
     // Set TaskMeta::current_sleep which is for interruption.
     const uint32_t given_ver = get_version(e.tid);
     {
@@ -928,7 +942,7 @@ void print_task(std::ostream& os, bthread_t tid) {
            << "\narg=" << (void*)arg
            << "\nattr={stack_type=" << attr.stack_type
            << " flags=" << attr.flags
-           << " keytable_pool=" << attr.keytable_pool 
+           << " keytable_pool=" << attr.keytable_pool
            << "}\nhas_tls=" << has_tls
            << "\nuptime_ns=" << butil::cpuwide_time_ns() - cpuwide_start_ns
            << "\ncputime_ns=" << stat.cputime_ns

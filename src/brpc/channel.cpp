@@ -1,20 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Rujie Jiang(jiangrujie@baidu.com)
-//          Zhangyi Chen(chenzhangyi01@baidu.com)
 
 #include <inttypes.h>
 #include <google/protobuf/descriptor.h>
@@ -32,6 +32,7 @@
 #include "brpc/controller.h"
 #include "brpc/channel.h"
 #include "brpc/details/usercode_backup_pool.h"       // TooManyUserCode
+#include "brpc/rdma/rdma_helper.h"
 #include "brpc/policy/esp_authenticator.h"
 
 namespace brpc {
@@ -49,6 +50,7 @@ ChannelOptions::ChannelOptions()
     , connection_type(CONNECTION_TYPE_UNKNOWN)
     , succeed_without_server(true)
     , log_succeed_without_server(true)
+    , use_rdma(false)
     , auth(NULL)
     , retry_policy(NULL)
     , ns_filter(NULL)
@@ -100,6 +102,9 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         } else {
             // All disabled ChannelSSLOptions are the same
         }
+        if (opt.use_rdma) {
+            buf.append("|rdma");
+        }
         butil::MurmurHash3_x64_128_Update(&mm_ctx, buf.data(), buf.size());
         buf.clear();
     
@@ -140,6 +145,21 @@ Channel::~Channel() {
     }
 }
 
+#if BRPC_WITH_RDMA
+static bool OptionsAvailableForRdma(const ChannelOptions* opt) {
+    if (opt->has_ssl_options()) {
+        LOG(WARNING) << "Cannot use SSL and RDMA at the same time";
+        return false;
+    }
+    if (!rdma::SupportedByRdma(opt->protocol.name())) {
+        LOG(WARNING) << "Cannot use " << opt->protocol.name()
+                     << " over RDMA";
+        return false;
+    }
+    return true;
+}
+#endif
+
 int Channel::InitChannelOptions(const ChannelOptions* options) {
     if (options) {  // Override default options if user provided one.
         _options = *options;
@@ -149,6 +169,19 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
         LOG(ERROR) << "Channel does not support the protocol";
         return -1;
     }
+
+    if (_options.use_rdma) {
+#if BRPC_WITH_RDMA
+        if (!OptionsAvailableForRdma(&_options)) {
+            return -1;
+        }
+        rdma::GlobalRdmaInitializeOrDie();
+#else
+        LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
+        return -1;
+#endif
+    }
+
     _serialize_request = protocol->serialize_request;
     _pack_request = protocol->pack_request;
     _get_method_name = protocol->get_method_name;
@@ -256,7 +289,7 @@ int Channel::Init(const char* server_addr, int port,
             return -1;
         }
     }
-    return InitSingle(point, server_addr, options);
+    return InitSingle(point, server_addr, options, port);
 }
 
 static int CreateSocketSSLContext(const ChannelOptions& options,
@@ -283,20 +316,24 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
 
 int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                         const char* raw_server_address,
-                        const ChannelOptions* options) {
+                        const ChannelOptions* options,
+                        int raw_port) {
     GlobalInitializeOrDie();
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP &&
-        ::strncmp(raw_server_address, "https://", 8) == 0) {
+    int* port_out = raw_port == -1 ? &raw_port: NULL;
+    ParseURL(raw_server_address, &_scheme, &_service_name, port_out);
+    if (raw_port != -1) {
+        _service_name.append(":").append(std::to_string(raw_port));
+    }
+    if (_options.protocol == brpc::PROTOCOL_HTTP && _scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
-            ParseURL(raw_server_address,
-                     NULL, &_options.mutable_ssl_options()->sni_name, NULL);
+            _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
     const int port = server_addr_and_port.port;
-    if (port < 0 || port > 65535) {
+    if (port < 0) {
         LOG(ERROR) << "Invalid port=" << port;
         return -1;
     }
@@ -307,7 +344,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
         return -1;
     }
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
-                        &_server_id, ssl_ctx) != 0) {
+                        &_server_id, ssl_ctx, _options.use_rdma) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -325,11 +362,14 @@ int Channel::Init(const char* ns_url,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
-    if (_options.protocol == brpc::PROTOCOL_HTTP &&
-        ::strncmp(ns_url, "https://", 8) == 0) {
+    int raw_port = -1;
+    ParseURL(ns_url, &_scheme, &_service_name, &raw_port);
+    if (raw_port != -1) {
+        _service_name.append(":").append(std::to_string(raw_port));
+    }
+    if (_options.protocol == brpc::PROTOCOL_HTTP && _scheme == "https") {
         if (_options.mutable_ssl_options()->sni_name.empty()) {
-            ParseURL(ns_url,
-                     NULL, &_options.mutable_ssl_options()->sni_name, NULL);
+            _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
     LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
@@ -340,6 +380,7 @@ int Channel::Init(const char* ns_url,
     GetNamingServiceThreadOptions ns_opt;
     ns_opt.succeed_without_server = _options.succeed_without_server;
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
+    ns_opt.use_rdma = _options.use_rdma;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
         return -1;
@@ -385,6 +426,12 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     if (_options.protocol.has_param()) {
         CHECK(cntl->protocol_param().empty());
         cntl->protocol_param() = _options.protocol.param();
+    }
+    if (_options.protocol == brpc::PROTOCOL_HTTP && (_scheme == "https" || _scheme == "http")) {
+        URI& uri = cntl->http_request().uri();
+        if (uri.host().empty() && !_service_name.empty()) {
+            uri.SetHostAndPort(_service_name);
+        }
     }
     cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;
@@ -464,20 +511,20 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     // Share the lb with controller.
     cntl->_lb = _lb;
 
+    // Ensure that serialize_request is done before pack_request in all
+    // possible executions, including:
+    //   HandleSendFailed => OnVersionedRPCReturned => IssueRPC(pack_request)
+    _serialize_request(&cntl->_request_buf, cntl, request);
+    if (cntl->FailedInline()) {
+        // Handle failures caused by serialize_request, and these error_codes
+        // should be excluded from the retry_policy.
+        return cntl->HandleSendFailed();
+    }
     if (FLAGS_usercode_in_pthread &&
         done != NULL &&
         TooManyUserCode()) {
         cntl->SetFailed(ELIMIT, "Too many user code to run when "
                         "-usercode_in_pthread is on");
-        return cntl->HandleSendFailed();
-    }
-    if (cntl->FailedInline()) {
-        // probably failed before RPC, not called until all necessary
-        // parameters in `cntl' are set.
-        return cntl->HandleSendFailed();
-    }
-    _serialize_request(&cntl->_request_buf, cntl, request);
-    if (cntl->FailedInline()) {
         return cntl->HandleSendFailed();
     }
 
@@ -562,7 +609,7 @@ int Channel::CheckHealth() {
         return -1;
     } else {
         SocketUniquePtr tmp_sock;
-        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
+        LoadBalancer::SelectIn sel_in = { 0, false, true, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         return _lb->SelectServer(sel_in, &sel_out);
     }

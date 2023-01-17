@@ -48,10 +48,14 @@ int Init(const char* server_addr, int port, const ChannelOptions* options);
 - 127.0.0.1:80
 - www.foo.com:8765
 - localhost:9000
+- [::1]:8080      # IPV6
+- unix:path.sock  # Unix domain socket
 
 不合法的"server_addr_and_port"：
 - 127.0.0.1:90000     # 端口过大
 - 10.39.2.300:8000   # 非法的ip
+
+关于IPV6和Unix domain socket的使用，详见 [EndPoint](endpoint.md)。
 
 # 连接服务集群
 
@@ -93,10 +97,10 @@ BNS是百度内常用的命名服务，比如bns://rdev.matrix.all，其中"bns"
  * 当文件更新时, brpc会重新加载。
 ```
 # 此行会被忽略
-10.24.234.17 tag1  # 这是注释，会被忽略
-10.24.234.17 tag2  # 此行和上一行被认为是不同的实例
-10.24.234.18
-10.24.234.19
+10.24.234.17:8080 tag1  # 这是注释，会被忽略
+10.24.234.17:8090 tag2  # 此行和上一行被认为是不同的实例
+10.24.234.18:8080
+10.24.234.19:8080
 ```
 
 优点: 易于修改，方便单测。
@@ -136,6 +140,32 @@ BNS是百度内常用的命名服务，比如bns://rdev.matrix.all，其中"bns"
 若consul返回的服务列表[响应格式](https://www.consul.io/api/health.html#sample-response-2)有错误，或者列表中所有服务都因为地址、端口等关键字段缺失或无法解析而被过滤，consul naming server会拒绝更新服务列表，并在一段时间后（默认500ms，可通过-consul\_retry\_interval\_ms设置）重新访问consul。
 
 如果consul不可访问，服务可自动降级到file naming service获取服务列表。此功能默认关闭，可通过设置-consul\_enable\_degrade\_to\_file\_naming\_service来打开。服务列表文件目录通过-consul \_file\_naming\_service\_dir来设置，使用service-name作为文件名。该文件可通过consul-template生成，里面会保存consul不可用之前最新的下游服务节点。当consul恢复时可自动恢复到consul naming service。
+
+
+### nacos://\<service-name\>
+
+NacosNamingService使用[Open-Api](https://nacos.io/zh-cn/docs/open-api.html)定时从nacos获取服务列表。
+NacosNamingService支持[简单鉴权](https://nacos.io/zh-cn/docs/auth.html)。
+
+`<service-name>`是一个http uri query，具体参数参见`/nacos/v1/ns/instance/list`文档。
+注意：`<service-name>`需要urlencode。
+```
+nacos://serviceName=test&groupName=g&namespaceId=n&clusters=c&healthyOnly=true
+```
+
+NacosNamingService拉取列表的时间间隔为`/nacos/v1/ns/instance/list`api返回的`cacheMillis`。
+NacosNamingService只支持整形的权重值。
+
+| GFlags                             | 描述                       | 默认值                       |
+| ---------------------------------- | -------------------------- | ---------------------------- |
+| nacos_address                      | nacos http url             | ""                           |
+| nacos_service_discovery_path       | nacos服务发现路径          | "/nacos/v1/ns/instance/list" |
+| nacos_service_auth_path            | nacos登陆路径              | "/nacos/v1/auth/login"       |
+| nacos_service_timeout_ms           | 连接nacos超时时间（毫秒）  | 200                          |
+| nacos_username                     | 用户名（urlencode编码）    | ""                           |
+| nacos_password                     | 密码（urlencode编码）      | ""                           |
+| nacos_load_balancer                | nacos集群的负载均衡        | "rr"                         |
+
 
 ### 更多命名服务
 用户可以通过实现brpc::NamingService来对接更多命名服务，具体见[这里](https://github.com/brpc/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1)
@@ -214,9 +244,17 @@ int main() {
 
 即weighted round robin, 根据服务器列表配置的权重值来选择服务器。服务器被选到的机会正比于其权重值，并且该算法能保证同一服务器被选到的结果较均衡的散开。
 
+实例的tag需要是表示权值的int32数字，如tag="50"。
+
 ### random
 
 随机从列表中选择一台服务器，无需其他设置。和round robin类似，这个算法的前提也是服务器都是类似的。
+
+### wr
+
+即weighted random, 根据服务器列表配置的权重值来选择服务器，服务器被选到的机会正比于其权重值。
+
+实例tag的要求同wrr。
 
 ### la
 
@@ -233,6 +271,8 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
 实现原理请查看[Consistent Hashing](consistent_hashing.md)。
+
+其他lb不需要设置Controller.set_request_code()，如果调用了request_code也不会被lb使用，例如：lb=rr调用了Controller.set_request_code()，即使所有RPC的request_code都相同，也依然是rr。
 
 ### 从集群宕机后恢复时的客户端限流
 
@@ -287,6 +327,12 @@ if (cntl->Failed()) {
 }
 ```
 
+> 警告: 请勿在持有pthread锁的情况下，调用brpc的同步CallMethod！否则很容易导致死锁。
+> 
+> 解决方案（二选一）：
+> 1. 将pthread锁换成bthread锁(bthread_mutex_t）
+> 1. 在CallMethod之前将锁释放
+
 ## 异步访问
 
 指的是：给CallMethod传递一个额外的回调对象done，CallMethod在发出request后就结束了，而不是在RPC结束后。当server端返回response或发生错误（包括超时）时，done->Run()会被调用。对RPC的后续处理应该写在done->Run()里，而不是CallMethod后。
@@ -295,7 +341,11 @@ if (cntl->Failed()) {
 
 你可以独立地创建这些对象，并使用[NewCallback](#使用NewCallback)生成done，也可以把Response和Controller作为done的成员变量，[一起new出来](#继承google::protobuf::Closure)，一般使用前一种方法。
 
-**发起异步请求后Request和Channel也可以立刻析构**。这两样和response/controller是不同的。注意:这是说Channel的析构可以立刻发生在CallMethod**之后**，并不是说析构可以和CallMethod同时发生，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
+发起异步请求后Request可以立刻析构。(SelectiveChannel是个例外，SelectiveChannel情况下必须在请求处理完成后再释放request对象）
+
+发起异步请求后Channel可以立刻析构。
+
+注意:这是说Request/Channel的析构可以立刻发生在CallMethod**之后**，并不是说析构可以和CallMethod同时发生，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
 
 ### 使用NewCallback
 ```c++
@@ -318,7 +368,7 @@ MyService_Stub stub(&channel);
 MyRequest request;  // 你不用new request,即使在异步访问中.
 request.set_foo(...);
 cntl->set_timeout_ms(...);
-stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
+stub.some_method(cntl, &request, response, brpc::NewCallback(OnRPCDone, response, cntl));
 ```
 由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](https://github.com/brpc/brpc/blob/master/src/brpc/callback.h)（并增加了一些重载）。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
 
@@ -501,13 +551,13 @@ Controller的特点：
 
 ## 线程数
 
-和大部分的RPC框架不同，brpc中并没有独立的Client线程池。所有Channel和Server通过[bthread](http://wiki.baidu.com/display/RPC/bthread)共享相同的线程池. 如果你的程序同样使用了brpc的server, 仅仅需要设置Server的线程数。 或者可以通过[gflags](http://wiki.baidu.com/display/RPC/flags)设置[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency)来设置全局的线程数.
+和大部分的RPC框架不同，brpc中并没有独立的Client线程池。所有Channel和Server通过[bthread](bthread.md)共享相同的线程池. 如果你的程序同样使用了brpc的server, 仅仅需要设置Server的线程数。 或者可以通过[gflags](flags.md)设置[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency)来设置全局的线程数.
 
 ## 超时
 
 **ChannelOptions.timeout_ms**是对应Channel上所有RPC的总超时，Controller.set_timeout_ms()可修改某次RPC的值。单位毫秒，默认值1秒，最大值2^31（约24天），-1表示一直等到回复或错误。
 
-**ChannelOptions.connect_timeout_ms**是对应Channel上所有RPC的连接超时，单位毫秒，默认值1秒。-1表示等到连接建立或出错，此值被限制为不能超过timeout_ms。注意此超时独立于TCP的连接超时，一般来说前者小于后者，反之则可能在connect_timeout_ms未达到前由于TCP连接超时而出错。
+**ChannelOptions.connect_timeout_ms**是对应Channel上所有RPC的连接超时(单位毫秒)。-1表示等到连接建立或出错，此值被限制为不能超过timeout_ms。注意此超时独立于TCP的连接超时，一般来说前者小于后者，反之则可能在connect_timeout_ms未达到前由于TCP连接超时而出错。
 
 注意1：brpc中的超时是deadline，超过就意味着RPC结束，超时后没有重试。其他实现可能既有单次访问的超时，也有代表deadline的超时。迁移到brpc时请仔细区分。
 
@@ -515,7 +565,7 @@ Controller的特点：
 
 ## 重试
 
-ChannelOptions.max_retry是该Channel上所有RPC的默认最大重试次数，Controller.set_max_retry()可修改某次RPC的值，默认值3，0表示不重试。
+ChannelOptions.max_retry是该Channel上所有RPC的默认最大重试次数，默认值3，0表示不重试。Controller.set_max_retry()可修改某次RPC的值。
 
 r32111后Controller.retried_count()返回重试次数。
 
@@ -599,7 +649,7 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 - PROTOCOL_HTTP 或 ”http", http/1.0或http/1.1协议，默认为连接池(Keep-Alive)。
   - 访问普通http服务的方法见[访问http/h2服务](http_client.md)
   - 通过http:json或http:proto访问pb服务的方法见[http/h2衍生协议](http_derivatives.md)
-- PROTOCOL_H2 或 ”h2", http/2.0协议，默认是单连接。
+- PROTOCOL_H2 或 ”h2", http/2协议，默认是单连接。
   - 访问普通h2服务的方法见[访问http/h2服务](http_client.md)。
   - 通过h2:json或h2:proto访问pb服务的方法见[http/h2衍生协议](http_derivatives.md)
 - "h2:grpc", [gRPC](https://grpc.io)的协议，也是h2的衍生协议，默认为单连接，具体见[h2:grpc](http_derivatives.md#h2grpc)。
@@ -620,8 +670,8 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 
 brpc支持以下连接方式：
 
-- 短连接：每次RPC前建立连接，结束后关闭连接。由于每次调用得有建立连接的开销，这种方式一般用于偶尔发起的操作，而不是持续发起请求的场景。没有协议默认使用这种连接方式，http 1.0对连接的处理效果类似短链接。
-- 连接池：每次RPC前取用空闲连接，结束后归还，一个连接上最多只有一个请求，一个client对一台server可能有多条连接。http 1.1和各类使用nshead的协议都是这个方式。
+- 短连接：每次RPC前建立连接，结束后关闭连接。由于每次调用得有建立连接的开销，这种方式一般用于偶尔发起的操作，而不是持续发起请求的场景。没有协议默认使用这种连接方式，http/1.0对连接的处理效果类似短链接。
+- 连接池：每次RPC前取用空闲连接，结束后归还，一个连接上最多只有一个请求，一个client对一台server可能有多条连接。http/1.1和各类使用nshead的协议都是这个方式。
 - 单连接：进程内所有client与一台server最多只有一个连接，一个连接上可能同时有多个请求，回复返回顺序和请求顺序不需要一致，这是baidu_std，hulu_pbrpc，sofa_pbrpc协议的默认选项。
 
 |                     | 短连接                                      | 连接池                   | 单连接                 |
@@ -707,7 +757,7 @@ options.mutable_ssl_options()->sni_name = "...";
 ```
 - 连接单点和集群的Channel均可以开启SSL访问（初始实现曾不支持集群）。
 - 开启后，该Channel上任何协议的请求，都会被SSL加密后发送。如果希望某些请求不加密，需要额外再创建一个Channel。
-- 针对HTTPS做了些易用性优化：Channel.Init能自动识别https://前缀并自动开启SSL；开启-http_verbose也会输出证书信息。
+- 针对HTTPS做了些易用性优化：Channel.Init能自动识别`https://`前缀并自动开启SSL；开启-http_verbose也会输出证书信息。
 
 ## 认证
 
@@ -747,11 +797,11 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。
 
 注意：附件不会被压缩。
 
-http/h2 body的压缩方法见[client压缩request body](http_client#压缩request-body)。
+http/h2 body的压缩方法见[client压缩request body](http_client.md#压缩request-body)。
 
 支持的压缩方法有：
 
-- brpc::CompressTypeSnappy : [snanpy压缩](http://google.github.io/snappy/)，压缩和解压显著快于其他压缩方法，但压缩率最低。
+- brpc::CompressTypeSnappy : [snappy压缩](http://google.github.io/snappy/)，压缩和解压显著快于其他压缩方法，但压缩率最低。
 - brpc::CompressTypeGzip : [gzip压缩](http://en.wikipedia.org/wiki/Gzip)，显著慢于snappy，但压缩率高
 - brpc::CompressTypeZlib : [zlib压缩](http://en.wikipedia.org/wiki/Zlib)，比gzip快10%~20%，压缩率略好于gzip，但速度仍明显慢于snappy。
 
@@ -793,7 +843,7 @@ http/h2 body的压缩方法见[client压缩request body](http_client#压缩reque
 
 ### Q: brpc能用unix domain socket吗
 
-不能。同机TCP socket并不走网络，相比unix domain socket性能只会略微下降。一些不能用TCP socket的特殊场景可能会需要，以后可能会扩展支持。
+支持，参考 [EndPoint](endpoint.md).
 
 ### Q: Fail to connect to xx.xx.xx.xx:xxxx, Connection refused
 

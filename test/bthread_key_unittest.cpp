@@ -1,6 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: Sun Jul 13 15:04:18 CST 2014
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <algorithm>                         // std::sort
 #include "butil/atomicops.h"
@@ -26,10 +39,10 @@ namespace {
 
 // Count tls usages.
 struct Counters {
-    butil::atomic<size_t> ncreate;
-    butil::atomic<size_t> ndestroy;
-    butil::atomic<size_t> nenterthread;
-    butil::atomic<size_t> nleavethread;
+    butil::atomic<size_t> ncreate {0};
+    butil::atomic<size_t> ndestroy {0};
+    butil::atomic<size_t> nenterthread {0};
+    butil::atomic<size_t> nleavethread {0};
 };
 
 // Wrap same counters into different objects to make sure that different key
@@ -90,7 +103,6 @@ static void* worker1(void* arg) {
 
 TEST(KeyTest, creating_key_in_parallel) {
     Counters args;
-    memset(&args, 0, sizeof(args));
     pthread_t th[8];
     bthread_t bth[8];
     for (size_t i = 0; i < arraysize(th); ++i) {

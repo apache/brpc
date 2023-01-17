@@ -1,14 +1,3 @@
-#ifndef BUTIL_UNIQUE_PTR_H
-#define BUTIL_UNIQUE_PTR_H
-
-#include "butil/build_config.h"
-
-#if defined(BUTIL_CXX11_ENABLED)
-
-#include <memory>                                        // std::unique_ptr
-
-#elif !defined(BAIDU_NO_EMULATED_UNIQUE_PTR)
-
 // Copyright 2009 Howard Hinnant, Ion Gazta&ntilde;aga.
 // Distributed under the Boost Software License, Version 1.0. (See
 // accompanying file LICENSE_1_0.txt or copy at
@@ -20,6 +9,17 @@
 //   for the latest unique_ptr specification, and
 //   reference http://www.open-std.org/jtc1/sc22/wg21/docs/lwg-active.html
 //   for any pending issues against this specification.
+
+#ifndef BUTIL_UNIQUE_PTR_H
+#define BUTIL_UNIQUE_PTR_H
+
+#include "butil/build_config.h"
+
+#if defined(BUTIL_CXX11_ENABLED)
+
+#include <memory>                                        // std::unique_ptr
+
+#elif !defined(BAIDU_NO_EMULATED_UNIQUE_PTR)
 
 #include <algorithm>                // std::swap until C++11
 #include "butil/type_traits.h"

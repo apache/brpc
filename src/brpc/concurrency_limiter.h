@@ -1,18 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.G
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// Authors: Lei He (helei@qiyi.com)
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #ifndef BRPC_CONCURRENCY_LIMITER_H
 #define BRPC_CONCURRENCY_LIMITER_H
@@ -21,6 +22,7 @@
 #include "brpc/destroyable.h"
 #include "brpc/extension.h"                       // Extension<T>
 #include "brpc/adaptive_max_concurrency.h"        // AdaptiveMaxConcurrency
+#include "brpc/controller.h"
 
 namespace brpc {
 
@@ -32,7 +34,7 @@ public:
     // false when the concurrency reaches the upper limit, otherwise it 
     // returns true. Normally, when OnRequested returns false, you should 
     // return an ELIMIT error directly.
-    virtual bool OnRequested(int current_concurrency) = 0;
+    virtual bool OnRequested(int current_concurrency, Controller* cntl) = 0;
 
     // Each request should call this method before responding.
     // `error_code' : Error code obtained from the controller, 0 means success.

@@ -1,19 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #include <cstdlib>
 
@@ -133,7 +134,7 @@ int HttpMessage::on_header_value(http_parser *parser,
 
 int HttpMessage::on_headers_complete(http_parser *parser) {
     HttpMessage *http_message = (HttpMessage *)parser->data;
-    http_message->_stage = HTTP_ON_HEADERS_COMPLELE;
+    http_message->_stage = HTTP_ON_HEADERS_COMPLETE;
     // Move content-type into the member field.
     const std::string* content_type = http_message->header().GetHeader("content-type");
     if (content_type) {
@@ -294,12 +295,12 @@ int HttpMessage::OnMessageComplete() {
     _cur_value = NULL;
     if (!_read_body_progressively) {
         // Normal read.
-        _stage = HTTP_ON_MESSAGE_COMPLELE;
+        _stage = HTTP_ON_MESSAGE_COMPLETE;
         return 0;
     }
     // Progressive read.
     std::unique_lock<butil::Mutex> mu(_body_mutex);
-    _stage = HTTP_ON_MESSAGE_COMPLELE;
+    _stage = HTTP_ON_MESSAGE_COMPLETE;
     if (_body_reader != NULL) {
         // Solve the case: SetBodyReader quit at ntry=MAX_TRY with non-empty
         // _body and the remaining _body is just the last part.
@@ -510,8 +511,7 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
     if (parser.type == HTTP_REQUEST || parser.type == HTTP_BOTH) {
         os << " method=" << HttpMethod2Str((HttpMethod)parser.method);
     }
-    os << " upgrade=" << parser.upgrade
-       << " data=" << parser.data
+    os << " data=" << parser.data
        << '}';
     return os;
 }

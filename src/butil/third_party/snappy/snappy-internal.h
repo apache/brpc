@@ -132,7 +132,7 @@ static inline int FindMatchLength(const char* s1,
         matched += 4;
     }
     if (LittleEndian::IsLittleEndian() && s2 <= s2_limit - 4) {
-        uint32 x = UNALIGNED_LOAD32(s2) ^ UNALIGNED_LOAD32(s1 + matched);
+        uint32_t x = UNALIGNED_LOAD32(s2) ^ UNALIGNED_LOAD32(s1 + matched);
         int matching_bits = Bits::FindLSBSetNonZero(x);
         matched += matching_bits >> 3;
     } else {

@@ -1,19 +1,22 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
+// bthread - An M:N threading library to make applications more concurrent.
+
 // Date: 2015/10/27 17:39:48
 
 #ifndef  BTHREAD_EXECUTION_QUEUE_INL_H
@@ -220,9 +223,9 @@ private:
 
     // Don't change the order of _head, _versioned_ref and _stopped unless you 
     // see improvement of performance in test
-    butil::atomic<TaskNode*> BAIDU_CACHELINE_ALIGNMENT _head;
-    butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT _versioned_ref;
-    butil::atomic<bool> BAIDU_CACHELINE_ALIGNMENT _stopped;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<TaskNode*> _head;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<uint64_t> _versioned_ref;
+    BAIDU_CACHELINE_ALIGNMENT butil::atomic<bool> _stopped;
     butil::atomic<int64_t> _high_priority_tasks;
     uint64_t _this_id;
     void* _meta;
@@ -517,7 +520,7 @@ inline int ExecutionQueueBase::dereference() {
                 _on_recycle();
                 // We don't return m immediatly when the reference count
                 // reaches 0 as there might be in processing tasks. Instead
-                // _on_recycle would push a `stop_task' after which is excuted
+                // _on_recycle would push a `stop_task' after which is executed
                 // m would be finally returned and reset
                 return 1;
             }

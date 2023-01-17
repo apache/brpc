@@ -1,5 +1,21 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 // brpc - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
@@ -9,9 +25,12 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/text_format.h>
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/files/scoped_file.h"
+#include "butil/fd_guard.h"
+#include "butil/file_util.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -24,6 +43,15 @@
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
 #include "brpc/details/method_status.h"
+#include "brpc/rpc_dump.h"
+#include "bvar/collector.h"
+
+namespace brpc {
+DECLARE_bool(rpc_dump);
+DECLARE_string(rpc_dump_dir);
+DECLARE_int32(rpc_dump_max_requests_in_one_file);
+extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
+}
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -79,8 +107,6 @@ public:
         if (sleep_ms_str) {
             bthread_usleep(strtol(sleep_ms_str->data(), NULL, 10) * 1000);
         }
-
-        EXPECT_EQ(EXP_REQUEST, req->message());
         res->set_message(EXP_RESPONSE);
     }
 };
@@ -145,6 +171,20 @@ protected:
         req.set_message(EXP_REQUEST);
         butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
         EXPECT_TRUE(json2pb::ProtoMessageToJson(req, &req_stream, NULL));
+        return msg;
+    }
+
+    brpc::policy::HttpContext* MakePostProtoTextRequestMessage(
+        const std::string& path) {
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
+        msg->header().uri().set_path(path);
+        msg->header().set_content_type("application/proto-text");
+        msg->header().set_method(brpc::HTTP_METHOD_POST);
+
+        test::EchoRequest req;
+        req.set_message(EXP_REQUEST);
+        butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
+        EXPECT_TRUE(google::protobuf::TextFormat::Print(req, &req_stream));
         return msg;
     }
 
@@ -292,6 +332,12 @@ TEST_F(HttpTest, verify_request) {
         brpc::policy::HttpContext* msg =
                 MakePostRequestMessage("/EchoService/Echo");
         _socket->SetFailed();
+        VerifyMessage(msg, false);
+        msg->Destroy();
+    }
+    {
+        brpc::policy::HttpContext* msg =
+                MakePostProtoTextRequestMessage("/EchoService/Echo");
         VerifyMessage(msg, false);
         msg->Destroy();
     }
@@ -484,8 +530,8 @@ public:
         cntl->http_response().set_content_type("text/plain");
         brpc::StopStyle stop_style = (_nrep == std::numeric_limits<size_t>::max() 
                 ? brpc::FORCE_STOP : brpc::WAIT_FOR_STOP);
-        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
-                cntl->CreateProgressiveAttachment(stop_style));
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa
+            = cntl->CreateProgressiveAttachment(stop_style);
         if (pa == NULL) {
             cntl->SetFailed("The socket was just failed");
             return;
@@ -532,8 +578,8 @@ public:
         cntl->http_response().set_content_type("text/plain");
         brpc::StopStyle stop_style = (_nrep == std::numeric_limits<size_t>::max() 
                 ? brpc::FORCE_STOP : brpc::WAIT_FOR_STOP);
-        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
-                cntl->CreateProgressiveAttachment(stop_style));
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa
+            = cntl->CreateProgressiveAttachment(stop_style);
         if (pa == NULL) {
             cntl->SetFailed("The socket was just failed");
             return;
@@ -979,12 +1025,24 @@ TEST_F(HttpTest, http2_sanity) {
     options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
-    // 1) complete flow and
-    // 2) socket replacement when streamId runs out, the initial streamId is a special
-    // value set in ctor of H2Context
+    // Check that the first request with size larger than the default window can
+    // be sent out, when remote settings are not received.
+    brpc::Controller cntl;
+    test::EchoRequest big_req;
+    test::EchoResponse res;
+    std::string message(2 * 1024 * 1024 /* 2M */, 'x');
+    big_req.set_message(message);
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/EchoService/Echo";
+    channel.CallMethod(NULL, &cntl, &big_req, &res, NULL);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+
+    // socket replacement when streamId runs out, the initial streamId is a special
+    // value set in ctor of H2Context so that the number 15000 is enough to run out
+    // of stream.
     test::EchoRequest req;
     req.set_message(EXP_REQUEST);
-    test::EchoResponse res;
     for (int i = 0; i < 15000; ++i) {
         brpc::Controller cntl;
         cntl.http_request().set_content_type("application/json");
@@ -1095,6 +1153,14 @@ TEST_F(HttpTest, http2_window_used_up) {
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.http_request().set_content_type("application/proto");
     brpc::policy::SerializeHttpRequest(&request_buf, &cntl, &req);
+
+    char settingsbuf[brpc::policy::FRAME_HEAD_SIZE + 36];
+    brpc::H2Settings h2_settings;
+    const size_t nb = brpc::policy::SerializeH2Settings(h2_settings, settingsbuf + brpc::policy::FRAME_HEAD_SIZE);
+    brpc::policy::SerializeFrameHead(settingsbuf, nb, brpc::policy::H2_FRAME_SETTINGS, 0, 0);
+    butil::IOBuf buf;
+    buf.append(settingsbuf, brpc::policy::FRAME_HEAD_SIZE + nb);
+    brpc::policy::ParseH2Message(&buf, _h2_client_sock.get(), false, NULL);
 
     int nsuc = brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE / cntl.request_attachment().size();
     for (int i = 0; i <= nsuc; i++) {
@@ -1257,7 +1323,7 @@ TEST_F(HttpTest, http2_header_after_data) {
         }
         {
             brpc::HPacker::Header header("content-length",
-                    butil::string_printf("%" PRIu64, data_buf.size()));
+                    butil::string_printf("%llu", (unsigned long long)data_buf.size()));
             hpacker.Encode(&header1_appender, header, options);
         }
         {
@@ -1324,7 +1390,7 @@ TEST_F(HttpTest, http2_header_after_data) {
     ASSERT_EQ(*user_defined2, "b");
 }
 
-TEST_F(HttpTest, http2_goaway) {
+TEST_F(HttpTest, http2_goaway_sanity) {
     brpc::Controller cntl;
     // Prepare request
     butil::IOBuf req_out;
@@ -1361,6 +1427,199 @@ TEST_F(HttpTest, http2_goaway) {
     butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
     ASSERT_EQ(st.error_code(), brpc::ELOGOFF);
     ASSERT_TRUE(st.error_data().ends_with("the connection just issued GOAWAY"));
+}
+
+class AfterRecevingGoAway : public ::google::protobuf::Closure {
+public:
+    void Run() {
+        ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+        delete this;
+    }
+    brpc::Controller cntl;
+};
+
+TEST_F(HttpTest, http2_handle_goaway_streams) {
+    const butil::EndPoint ep(butil::IP_ANY, 5961);
+    butil::fd_guard listenfd(butil::tcp_listen(ep));
+    ASSERT_GT(listenfd, 0);
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_H2;
+    ASSERT_EQ(0, channel.Init(ep, &options));
+
+    int req_size = 10;
+    std::vector<brpc::CallId> ids(req_size);
+    for (int i = 0; i < req_size; i++) {
+        AfterRecevingGoAway* done = new AfterRecevingGoAway;
+        brpc::Controller& cntl = done->cntl;
+        ids.push_back(cntl.call_id());
+        cntl.set_timeout_ms(-1);
+        cntl.http_request().uri() = "/it-doesnt-matter";
+        channel.CallMethod(NULL, &cntl, NULL, NULL, done);
+    }
+
+    int servfd = accept(listenfd, NULL, NULL);
+    ASSERT_GT(servfd, 0);
+    // Sleep for a while to make sure that server has received all data.
+    bthread_usleep(2000);
+    char goawaybuf[brpc::policy::FRAME_HEAD_SIZE + 8];
+    SerializeFrameHead(goawaybuf, 8, brpc::policy::H2_FRAME_GOAWAY, 0, 0);
+    SaveUint32(goawaybuf + brpc::policy::FRAME_HEAD_SIZE, 0);
+    SaveUint32(goawaybuf + brpc::policy::FRAME_HEAD_SIZE + 4, 0);
+    ASSERT_EQ((ssize_t)brpc::policy::FRAME_HEAD_SIZE + 8, ::write(servfd, goawaybuf, brpc::policy::FRAME_HEAD_SIZE + 8));
+
+    // After receving GOAWAY, the callbacks in client should be run correctly.
+    for (int i = 0; i < req_size; i++) {
+        brpc::Join(ids[i]);
+    }
+}
+
+TEST_F(HttpTest, spring_protobuf_content_type) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_content_type("application/x-protobuf");
+    cntl.request_attachment().append(req.SerializeAsString());
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ("application/x-protobuf", cntl.http_response().content_type());
+    ASSERT_TRUE(res.ParseFromString(cntl.response_attachment().to_string()));
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+
+    brpc::Controller cntl2;
+    test::EchoService_Stub stub(&channel);
+    req.set_message(EXP_REQUEST);
+    res.Clear();
+    cntl2.http_request().set_content_type("application/x-protobuf");
+    stub.Echo(&cntl2, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+    ASSERT_EQ("application/x-protobuf", cntl.http_response().content_type());
+}
+
+TEST_F(HttpTest, dump_http_request) {
+    // save origin value of gflag
+    auto rpc_dump_dir = brpc::FLAGS_rpc_dump_dir;
+    auto rpc_dump_max_requests_in_one_file = brpc::FLAGS_rpc_dump_max_requests_in_one_file;
+
+    // set gflag and global variable in order to be sure to dump request
+    brpc::FLAGS_rpc_dump = true;
+    brpc::FLAGS_rpc_dump_dir = "dump_http_request";
+    brpc::FLAGS_rpc_dump_max_requests_in_one_file = 1;
+    brpc::g_rpc_dump_sl.ever_grabbed = true;
+    brpc::g_rpc_dump_sl.sampling_range = bvar::COLLECTOR_SAMPLING_BASE;
+
+    // init channel
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    // send request and dump it to file
+    {
+        test::EchoRequest req;
+        req.set_message(EXP_REQUEST);
+        std::string req_json;
+        ASSERT_TRUE(json2pb::ProtoMessageToJson(req, &req_json));
+
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/EchoService/Echo";
+        cntl.http_request().set_content_type("application/json");
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment() = req_json;
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed());
+
+        // sleep 1s, because rpc_dump doesn't run immediately
+        sleep(1);
+    }
+
+    // replay request from dump file
+    {
+        brpc::SampleIterator it(brpc::FLAGS_rpc_dump_dir);
+        brpc::SampledRequest* sample = it.Next();
+        ASSERT_NE(nullptr, sample);
+
+        std::unique_ptr<brpc::SampledRequest> sample_guard(sample);
+
+        // the logic of next code is same as that in rpc_replay.cpp
+        ASSERT_EQ(sample->meta.protocol_type(), brpc::PROTOCOL_HTTP);
+        brpc::Controller cntl;
+        cntl.reset_sampled_request(sample_guard.release());
+        brpc::HttpMessage http_message;
+        http_message.ParseFromIOBuf(sample->request);
+        cntl.http_request().Swap(http_message.header());
+        // clear origin Host in header
+        cntl.http_request().RemoveHeader("Host");
+        cntl.http_request().uri().set_host("");
+        cntl.request_attachment() = http_message.body().movable();
+
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_EQ("application/json", cntl.http_response().content_type());
+
+        std::string res_json = cntl.response_attachment().to_string();
+        test::EchoResponse res;
+        json2pb::Json2PbOptions options;
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(res_json, &res, options));
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+    }
+
+    // delete dump directory
+    butil::DeleteFile(butil::FilePath(brpc::FLAGS_rpc_dump_dir), true);
+
+    // restore gflag and global variable
+    brpc::FLAGS_rpc_dump = false;
+    brpc::FLAGS_rpc_dump_dir = rpc_dump_dir;
+    brpc::FLAGS_rpc_dump_max_requests_in_one_file = rpc_dump_max_requests_in_one_file;
+    brpc::g_rpc_dump_sl.ever_grabbed = false;
+    brpc::g_rpc_dump_sl.sampling_range = 0;
+}
+
+TEST_F(HttpTest, spring_protobuf_text_content_type) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_content_type("application/proto-text");
+    cntl.request_attachment().append(req.Utf8DebugString());
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ("application/proto-text", cntl.http_response().content_type());
+    ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+            cntl.response_attachment().to_string(), &res));
+    ASSERT_EQ(EXP_RESPONSE, res.message());
 }
 
 } //namespace

@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_SOCKET_MAP_H
 #define BRPC_SOCKET_MAP_H
@@ -78,11 +80,17 @@ struct SocketMapKeyHasher {
 // successfully, SocketMapRemove() MUST be called when the Socket is not needed.
 // Return 0 on success, -1 otherwise.
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
-                    const std::shared_ptr<SocketSSLContext>& ssl_ctx);
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx,
+                    bool use_rdma);
+
+inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
+    return SocketMapInsert(key, id, ssl_ctx, false);
+}
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id) {
     std::shared_ptr<SocketSSLContext> empty_ptr;
-    return SocketMapInsert(key, id, empty_ptr);
+    return SocketMapInsert(key, id, empty_ptr, false);
 }
 
 // Find the SocketId associated with `key'.
@@ -117,7 +125,7 @@ struct SocketMapOptions {
     // Initial size of the map (proper size reduces number of resizes)
     // Default: 1024
     size_t suggested_map_size;
-    
+  
     // Pooled connections without data transmission for so many seconds will
     // be closed. No effect for non-positive values.
     // If idle_timeout_second_dynamic is not NULL, use the dereferenced value
@@ -142,10 +150,15 @@ public:
     ~SocketMap();
     int Init(const SocketMapOptions&);
     int Insert(const SocketMapKey& key, SocketId* id,
-               const std::shared_ptr<SocketSSLContext>& ssl_ctx);
+               const std::shared_ptr<SocketSSLContext>& ssl_ctx,
+               bool use_rdma);
+    int Insert(const SocketMapKey& key, SocketId* id,
+               const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
+        return Insert(key, id, ssl_ctx, false);   
+    }
     int Insert(const SocketMapKey& key, SocketId* id) {
         std::shared_ptr<SocketSSLContext> empty_ptr;
-        return Insert(key, id, empty_ptr);
+        return Insert(key, id, empty_ptr, false);
     }
 
     void Remove(const SocketMapKey& key, SocketId expected_id);

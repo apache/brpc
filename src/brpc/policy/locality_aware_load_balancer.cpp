@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <limits>                                            // numeric_limits
 #include <gflags/gflags.h>
@@ -80,13 +82,13 @@ bool LocalityAwareLoadBalancer::Add(Servers& bg, const Servers& fg,
 
         // Push the weight structure into the tree. Notice that we also need
         // a left_weight entry to store weight sum of all left nodes so that
-        // the load balancing by weights can be done in O(logN) complexicity.
+        // the load balancing by weights can be done in O(logN) complexity.
         ServerInfo info = { id, lb->PushLeft(), new Weight(initial_weight) };
         bg.weight_tree.push_back(info);
 
         // The weight structure may already have initial weight. Add the weight
         // to left_weight entries of all parent nodes and _total. The time
-        // complexicity is strictly O(logN) because the tree is complete.
+        // complexity is strictly O(logN) because the tree is complete.
         const int64_t diff = info.weight->volatile_value();
         if (diff) {
             bg.UpdateParentWeights(diff, index);
@@ -118,7 +120,7 @@ bool LocalityAwareLoadBalancer::Remove(
     // it retries, as if this range of weight is removed.
     const int64_t rm_weight = w->Disable();
     if (index + 1 == bg.weight_tree.size()) {
-        // last node. Removing is eaiser.
+        // last node. Removing is easier.
         bg.weight_tree.pop_back();
         if (rm_weight) {
             // The first buffer. Remove the weight from parents to disable
@@ -149,10 +151,10 @@ bool LocalityAwareLoadBalancer::Remove(
             // However this process is not atomic. The foreground buffer still
             // sees w2 as last node and it may change the weight during the
             // process. To solve this problem, we atomically reset the weight
-            // and remember the preivous index (back()) in _old_index. Later
+            // and remember the previous index (back()) in _old_index. Later
             // change to weight will add the diff to _old_diff_sum if _old_index
             // matches the index which SelectServer is from. In this way we
-            // know the weight diff from foreground before we laterly modify it.
+            // know the weight diff from foreground before we later modify it.
             const int64_t add_weight = w2->MarkOld(bg.weight_tree.size());
 
             // Add the weight diff to parent nodes of node `index'. Notice
@@ -280,13 +282,13 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
         // falls into infinite loop. This branch should never be entered in
         // production servers. If it does, there must be a bug.
         if (++nloop > 10000) {
-            LOG(FATAL) << "A selection runs too long!";
+            LOG(ERROR) << "A selection runs too long!";
             return EHOSTDOWN;
         }
         
         // Locate a weight range in the tree. This is obviously not atomic and
         // left-weights / total / weight-of-the-node may not be consistent. But
-        // this is what we have to pay to gain more parallism.
+        // this is what we have to pay to gain more parallelism.
         const ServerInfo & info = s->weight_tree[index];
         const int64_t left = info.left->load(butil::memory_order_relaxed);
         if (dice < left) {
@@ -339,6 +341,10 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
             if (++ntry >= n) {
                 break;
             }
+        } else {
+            if (++ntry >= n) {
+                break;
+            } 
         }
         total = _total.load(butil::memory_order_relaxed);
         dice = butil::fast_rand_less_than(total);
@@ -394,7 +400,7 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
         // Accumulate into the last entry so that errors always decrease
         // the overall QPS and latency.
         // Note that the latency used is linearly mixed from the real latency
-        // (of an errorous call) and the timeout, so that errors that are more
+        // (of an erroneous call) and the timeout, so that errors that are more
         // unlikely to be solved by later retries are punished more.
         // Examples:
         //   max_retry=0: always use timeout
@@ -452,6 +458,9 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
         // end_time_us <= top_time_us && n > 1: the QPS is so high that
         // the time elapse between top and bottom is 0(possible in examples),
         // or time skews, we don't update the weight for safety.
+        return 0;
+    }
+    if (_avg_latency == 0) {
         return 0;
     }
     _base_weight = scaled_qps / _avg_latency;
@@ -552,7 +561,7 @@ LocalityAwareLoadBalancer::Weight::~Weight() {
 int64_t LocalityAwareLoadBalancer::Weight::Disable() {
     BAIDU_SCOPED_LOCK(_mutex);
     const int64_t saved = _weight;
-    _base_weight = 0;
+    _base_weight = -1;
     _weight = 0;
     return saved;
 }

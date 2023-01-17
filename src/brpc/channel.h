@@ -1,19 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Rujie Jiang (jiangrujie@baidu.com)
 
 #ifndef BRPC_CHANNEL_H
 #define BRPC_CHANNEL_H
@@ -100,6 +101,10 @@ struct ChannelOptions {
     bool has_ssl_options() const { return _ssl_options != NULL; }
     const ChannelSSLOptions& ssl_options() const { return *_ssl_options.get(); }
     ChannelSSLOptions* mutable_ssl_options();
+
+    // Let this channel use rdma rather than tcp.
+    // Default: false
+    bool use_rdma;
 
     // Turn on authentication for this channel if `auth' is not NULL.
     // Note `auth' will not be deleted by channel and must remain valid when
@@ -212,8 +217,11 @@ protected:
     int InitChannelOptions(const ChannelOptions* options);
     int InitSingle(const butil::EndPoint& server_addr_and_port,
                    const char* raw_server_address,
-                   const ChannelOptions* options);
+                   const ChannelOptions* options,
+                   int raw_port = -1);
 
+    std::string _service_name;
+    std::string _scheme;
     butil::EndPoint _server_address;
     SocketId _server_id;
     Protocol::SerializeRequest _serialize_request;

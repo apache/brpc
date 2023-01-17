@@ -1,19 +1,22 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - An M:N threading library to make applications more concurrent.
+
 // Date: Thu Aug  7 18:56:27 CST 2014
 
 #include "butil/compat.h"
@@ -46,7 +49,7 @@ class LazyArray {
 
 public:
     LazyArray() {
-        memset(_blocks, 0, sizeof(butil::atomic<Block*>) * NBLOCK);
+        memset(static_cast<void*>(_blocks), 0, sizeof(butil::atomic<Block*>) * NBLOCK);
     }
 
     butil::atomic<T>* get_or_new(size_t index) {
@@ -431,7 +434,7 @@ short epoll_to_poll_events(uint32_t epoll_events) {
     return poll_events;
 }
 #elif defined(OS_MACOSX)
-short kqueue_to_poll_events(uint32_t kqueue_events) {
+static short kqueue_to_poll_events(int kqueue_events) {
     //TODO: add more values?
     short poll_events = 0;
     if (kqueue_events == EVFILT_READ) {

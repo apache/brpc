@@ -1,18 +1,20 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
 
 
 #ifndef USE_MESALINK
@@ -318,7 +320,7 @@ static int LoadCertificate(SSL_CTX* ctx,
         return -1;
     }
     
-    // Load the main certficate
+    // Load the main certificate
     if (SSL_CTX_use_certificate(ctx, x.get()) != 1) {
         LOG(ERROR) << "Fail to load " << certificate << ": "
                    << SSLError(ERR_get_error());
@@ -348,7 +350,7 @@ static int LoadCertificate(SSL_CTX* ctx,
     if (err != 0 && (ERR_GET_LIB(err) != ERR_LIB_PEM
                      || ERR_GET_REASON(err) != PEM_R_NO_START_LINE)) {
         LOG(ERROR) << "Fail to read chain certificate in "
-                   << certificate << ": " << SSLError(ERR_get_error());
+                   << certificate << ": " << SSLError(err);
         return -1;
     }
     ERR_clear_error();

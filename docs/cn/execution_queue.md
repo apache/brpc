@@ -112,7 +112,7 @@ template <typename T>
 int execution_queue_join(ExecutionQueueId<T> id);
 ```
 
-stop和join都可以多次调用， 都会又合理的行为。stop可以随时调用而不用当心线程安全性问题。
+stop和join都可以多次调用， 都会有合理的行为。stop可以随时调用而不用当心线程安全性问题。
 
 和fd的close类似，如果stop不被调用, 相应的资源会永久泄露。
 
@@ -157,7 +157,7 @@ int execution_queue_execute(ExecutionQueueId<T> id,
 // Execute a task with options. e.g
 // bthread::execution_queue_execute(queue, task, &bthread::TASK_OPTIONS_URGENT)
 // If |options| is NULL, we will use default options (normal task)
-// If |handle| is not NULL, we will assign it with the hanlder of this task.
+// If |handle| is not NULL, we will assign it with the handler of this task.
 template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id,
                             typename butil::add_const_reference<T>::type task,

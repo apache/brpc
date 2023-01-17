@@ -1,10 +1,13 @@
 [中文版](README_cn.md)
 
-[![Build Status](https://travis-ci.org/apache/incubator-brpc.svg?branch=master)](https://travis-ci.org/apache/incubator-brpc)
+[![Linux Build Status](https://github.com/apache/brpc/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-linux.yml)
+[![MacOs Build Status](https://github.com/apache/brpc/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-macos.yml)
 
 # ![brpc](docs/images/logo.png)
 
-An industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with 1,000,000+ instances(not counting clients) and thousands kinds of services, called "**baidu-rpc**" inside Baidu. Only C++ implementation is opensourced right now.
+brpc is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
+
+### "brpc" means "better RPC". 
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
@@ -78,7 +81,7 @@ You can use it to:
     * [IOBuf](docs/en/iobuf.md)
     * [Streaming Log](docs/en/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
-    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(training material)
+    * [brpc introduction](docs/cn/brpc_intro.pptx)(training material)
     * [A tutorial on building large-scale services](docs/en/tutorial_on_building_services.pptx)(training material)
     * [brpc internal](docs/en/brpc_internal.pptx)(training material)
   * RPC in depth
@@ -92,14 +95,15 @@ You can use it to:
     * [Memory Management](docs/cn/memory_management.md)
     * [Timer keeping](docs/cn/timer_keeping.md)
     * [bthread_id](docs/cn/bthread_id.md)
-  * Use cases inside Baidu
-    * [百度地图api入口](docs/cn/case_apicontrol.md)
-    * [联盟DSP](docs/cn/case_baidu_dsp.md)
-    * [ELF学习框架](docs/cn/case_elf.md)
-    * [云平台代理服务](docs/cn/case_ubrpc.md)
+  * Use cases
+    * [User cases](community/cases.md)
 
 # Contribute code
 Please refer to [here](CONTRIBUTING.md).
 
-# Feedback
-Please report bugs, concerns, suggestions by issues, or join QQ-group 498837325 to discuss problems around source code.
+# Feedback and Getting involved
+* Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/apache/brpc/issues)
+* Subscribe mailing list(dev-subscribe@brpc.apache.org) to get updated with the project
+
+# Code of Conduct
+We follow the code of conduct from Apache Software Foundation, please refer it here [Link](https://www.apache.org/foundation/policies/conduct)

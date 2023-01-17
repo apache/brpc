@@ -1,36 +1,31 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
 #ifndef BRPC_THRIFT_MESSAGE_H
 #define BRPC_THRIFT_MESSAGE_H
 
-#include <functional>
-#include <string>
-
-#include <google/protobuf/stubs/common.h>
-#include <google/protobuf/generated_message_util.h>
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_message_reflection.h>
-#include "google/protobuf/descriptor.pb.h"
-
+#include <google/protobuf/message.h>
 #include "butil/iobuf.h"
 #include "butil/class_name.h"
 #include "brpc/channel_base.h"
 #include "brpc/controller.h"
+#include "brpc/proto_base.pb.h"
+#include "brpc/pb_compat.h"
 
 namespace apache {
 namespace thrift {
@@ -43,11 +38,6 @@ class TProtocol;
 
 namespace brpc {
 
-// Internal implementation detail -- do not call these.
-void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-void protobuf_AssignDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-void protobuf_ShutdownFile_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-
 class ThriftStub;
 
 static const int16_t THRIFT_INVALID_FID = -1;
@@ -59,7 +49,7 @@ static const int16_t THRIFT_RESPONSE_FID = 0;
 //   from ThriftMessageBase which can be stored and handled uniformly.
 class ThriftMessageBase {
 public:
-    virtual ~ThriftMessageBase() {};
+    virtual ~ThriftMessageBase() {}
     virtual uint32_t Read(::apache::thrift::protocol::TProtocol* iprot) = 0;
     virtual uint32_t Write(::apache::thrift::protocol::TProtocol* oprot) const = 0;
 };
@@ -89,40 +79,36 @@ public:
     ThriftFramedMessage& operator=(const ThriftFramedMessage& from) = delete;
   
     static const ::google::protobuf::Descriptor* descriptor();
-    static const ThriftFramedMessage& default_instance();
   
     void Swap(ThriftFramedMessage* other);
   
     // implements Message ----------------------------------------------
   
-    ThriftFramedMessage* New() const;
-    void CopyFrom(const ::google::protobuf::Message& from);
-    void MergeFrom(const ::google::protobuf::Message& from);
+    ThriftFramedMessage* New() const PB_319_OVERRIDE;
+#if GOOGLE_PROTOBUF_VERSION >= 3006000
+    ThriftFramedMessage* New(::google::protobuf::Arena* arena) const override;
+#endif
+    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
+    void MergeFrom(const ::google::protobuf::Message& from) override;
     void CopyFrom(const ThriftFramedMessage& from);
     void MergeFrom(const ThriftFramedMessage& from);
-    void Clear();
-    bool IsInitialized() const;
+    void Clear() override;
+    bool IsInitialized() const override;
   
     int ByteSize() const;
     bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input);
+        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
-    int GetCachedSize() const { return ByteSize(); }
-    ::google::protobuf::Metadata GetMetadata() const;
+        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
+    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
+    int GetCachedSize() const override { return ByteSize(); }
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();
     void SharedDtor();
-private:
-friend void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto_impl();
-friend void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-
-    void InitAsDefaultInstance();
-    static ThriftFramedMessage* default_instance_;
 };
 
 class ThriftStub {

@@ -1,19 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Authors: Rujie Jiang(jiangrujie@baidu.com)
-//          Ge,Jun(gejun@baidu.com)
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #ifndef BRPC_ACCEPTOR_H
 #define BRPC_ACCEPTOR_H
@@ -32,6 +32,7 @@ struct ConnectStatistics {
 // Accept connections from a specific port and then
 // process messages from which it reads
 class Acceptor : public InputMessenger {
+friend class Server;
 public:
     typedef butil::FlatMap<SocketId, ConnectStatistics> SocketMap;
 
@@ -88,7 +89,7 @@ private:
     int Initialize();
 
     // Remove the accepted socket `sock' from inside
-    virtual void BeforeRecycle(Socket* sock);
+    void BeforeRecycle(Socket* sock) override;
 
     bthread_keytable_pool_t* _keytable_pool; // owned by Server
     Status _status;
@@ -106,6 +107,9 @@ private:
     SocketMap _socket_map;
 
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
+
+    // Whether to use rdma or not
+    bool _use_rdma;
 };
 
 } // namespace brpc

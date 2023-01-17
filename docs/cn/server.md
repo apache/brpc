@@ -210,7 +210,13 @@ int Start(int port, const ServerOptions* opt);
 int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt);  // r32009后增加
 ```
 
-"localhost:9000", "cq01-cos-dev00.cq01:8000", “127.0.0.1:7000"都是合法的`ip_and_port_str`。
+合法的`ip_and_port_str`：
+
+- 127.0.0.1:80    # IPV4
+- [::1]:8080      # IPV6
+- unix:path.sock  # Unix domain socket
+
+关于IPV6和Unix domain socket的使用，详见 [EndPoint](endpoint.md)。
 
 `options`为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 
@@ -224,6 +230,10 @@ server.Start(..., &options);
 ## 监听多个端口
 
 一个server只能监听一个端口（不考虑ServerOptions.internal_port），需要监听N个端口就起N个Server。
+
+## 多进程监听一个端口
+
+启动时开启`reuse_port`这个flag，就可以多进程共同监听一个端口（底层是SO_REUSEPORT）。
 
 # 停止
 
@@ -340,6 +350,17 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 - 和UB相关的协议请阅读[实现NsheadService](nshead_service.md)。
 
 如果你有更多的协议需求，可以联系我们。
+
+# fork without exec
+一般来说，[fork](https://linux.die.net/man/3/fork)出的子进程应尽快调用[exec](https://linux.die.net/man/3/exec)以重置所有状态，中间只应调用满足async-signal-safe的函数。这么使用fork的brpc程序在之前的版本也不会有问题。
+
+但在一些场景中，用户想直接运行fork出的子进程，而不调用exec。由于fork只复制其调用者的线程，其余线程便随之消失了。对应到brpc中，bvar会依赖一个sampling_thread采样各种信息，在fork后便消失了，现象是很多bvar归零。
+
+最新版本的brpc会在fork后重建这个线程(如有必要)，从而使bvar在fork后能正常工作，再次fork也可以。已知问题是fork后cpu profiler不正常。然而，这并不意味着用户可随意地fork，不管是brpc还是上层应用都会大量地创建线程，它们在fork后不会被重建，因为：
+* 大部分fork会紧接exec，浪费了重建
+* 给代码编写带来很多的麻烦和复杂度
+
+brpc的策略是按需创建这类线程，同时fork without exec必须发生在所有可能创建这些线程的代码前。具体地说，至少**发生在初始化所有Server/Channel/应用代码前**，越早越好，不遵守这个约定的fork会导致程序不正常。另外，不支持fork without exec的lib相当普遍，最好避免这种用法。
 
 # 设置
 
@@ -636,6 +657,8 @@ server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 
 对于这些情况，brpc提供了pthread模式，开启**-usercode_in_pthread**后，用户代码均会在pthread中运行，原先阻塞bthread的函数转而阻塞pthread。
 
+注意：开启-usercode_in_pthread后，brpc::thread_local_data()不保证能获取到值。
+
 打开pthread模式后在性能上的注意点：
 
 - 同步RPC都会阻塞worker pthread，server端一般需要设置更多的工作线程(ServerOptions.num_threads)，调度效率会略微降低。
@@ -672,6 +695,10 @@ pthread模式可以让一些老代码快速尝试brpc，但我们仍然建议逐
 ```shell
 curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service | awk '{if($3=="false"){++falsecnt}else if($3=="Value"){isrpc=1}}END{if(isrpc!=1||falsecnt==2){print "SAFE"}else{print "NOT SAFE"}}'
 ```
+### 完全禁用内置服务
+
+设置ServerOptions.has_builtin_services = false，可以完全禁用内置服务。
+
 ### 转义外部可控的URL
 
 可调用brpc::WebEscape()对url进行转义，防止恶意URI注入攻击。
@@ -757,15 +784,16 @@ public:
         delete static_cast<MySessionLocalData*>(d);
     }  
 };
- 
+
+MySessionLocalDataFactory g_session_local_data_factory;
+
 int main(int argc, char* argv[]) {
     ...
-    MySessionLocalDataFactory session_local_data_factory;
  
     brpc::Server server;
     brpc::ServerOptions options;
     ...
-    options.session_local_data_factory = &session_local_data_factory;
+    options.session_local_data_factory = &g_session_local_data_factory;
     ...
 ```
 
@@ -848,14 +876,15 @@ public:
     }  
 };
  
+MyThreadLocalDataFactory g_thread_local_data_factory;
+
 int main(int argc, char* argv[]) {
     ...
-    MyThreadLocalDataFactory thread_local_data_factory;
  
     brpc::Server server;
     brpc::ServerOptions options;
     ...
-    options.thread_local_data_factory  = &thread_local_data_factory;
+    options.thread_local_data_factory  = &g_thread_local_data_factory;
     ...
 ```
 

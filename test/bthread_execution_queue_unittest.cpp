@@ -1,6 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
-// Date: 2015/11/09 19:09:02
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <gtest/gtest.h>
 
@@ -63,16 +76,12 @@ TEST_F(ExecutionQueueTest, single_thread) {
 }
 
 struct PushArg {
-    bthread::ExecutionQueueId<LongIntTask> id;
-    butil::atomic<int64_t> total_num;
-    butil::atomic<int64_t> total_time;
-    butil::atomic<int64_t> expected_value;
-    volatile bool stopped;
-    bool wait_task_completed;
-
-    PushArg() {
-        memset(this, 0, sizeof(*this));
-    }
+    bthread::ExecutionQueueId<LongIntTask> id {0};
+    butil::atomic<int64_t> total_num {0};
+    butil::atomic<int64_t> total_time {0};
+    butil::atomic<int64_t> expected_value {0};
+    volatile bool stopped {false};
+    bool wait_task_completed {false};
 };
 
 void* push_thread(void *arg) {
@@ -124,7 +133,7 @@ void* push_thread_which_addresses_execq(void *arg) {
 
 TEST_F(ExecutionQueueTest, performance) {
     pthread_t threads[8];
-    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     int64_t result = 0;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
@@ -220,7 +229,7 @@ int add_with_suspend(void* meta, bthread::TaskIterator<LongIntTask>& iter) {
 TEST_F(ExecutionQueueTest, execute_urgent) {
     g_should_be_urgent = false;
     pthread_t threads[10];
-    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     int64_t result = 0;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
@@ -262,7 +271,7 @@ TEST_F(ExecutionQueueTest, execute_urgent) {
 TEST_F(ExecutionQueueTest, urgent_task_is_the_last_task) {
     g_should_be_urgent = false;
     g_suspending = false;
-    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     int64_t result = 0;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
@@ -319,7 +328,7 @@ int check_order(void* meta, bthread::TaskIterator<LongIntTask>& iter) {
 TEST_F(ExecutionQueueTest, multi_threaded_order) {
     memset(next_task, 0, sizeof(next_task));
     long disorder_times = 0;
-    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
                                                 check_order, &disorder_times));
@@ -346,7 +355,7 @@ int check_running_thread(void* arg, bthread::TaskIterator<LongIntTask>& iter) {
 
 TEST_F(ExecutionQueueTest, in_place_task) {
     pthread_t thread_id = pthread_self();
-    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
                                                 check_running_thread, 
@@ -434,7 +443,7 @@ void* inplace_push_thread(void* arg) {
 TEST_F(ExecutionQueueTest, inplace_and_order) {
     memset(next_task, 0, sizeof(next_task));
     long disorder_times = 0;
-    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
                                                 check_order, &disorder_times));
@@ -476,7 +485,7 @@ int add_with_suspend2(void* meta, bthread::TaskIterator<LongIntTask>& iter) {
 }
 
 TEST_F(ExecutionQueueTest, cancel) {
-    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     int64_t result = 0;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
@@ -517,7 +526,7 @@ int cancel_self(void* /*meta*/, bthread::TaskIterator<CancelSelf*>& iter) {
 }
 
 TEST_F(ExecutionQueueTest, cancel_self) {
-    bthread::ExecutionQueueId<CancelSelf*> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<CancelSelf*> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
                                                 cancel_self, NULL));
@@ -665,7 +674,7 @@ int add_with_suspend3(void* meta, bthread::TaskIterator<LongIntTask>& iter) {
 
 TEST_F(ExecutionQueueTest, cancel_unexecuted_high_priority_task) {
     g_should_be_urgent = false;
-    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to supress warns
+    bthread::ExecutionQueueId<LongIntTask> queue_id = { 0 }; // to suppress warnings
     bthread::ExecutionQueueOptions options;
     int64_t result = 0;
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
