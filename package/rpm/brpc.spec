@@ -20,7 +20,7 @@
 Name:		brpc
 Version:	1.3.0
 Release:	1%{?dist}
-Summary:	An industrial-grade RPC framework used throughout Baidu, with 1,000,000+ instances(not counting clients) and thousands kinds of services.
+Summary:	Industrial-grade RPC framework using C++ Language.
 
 Group:		Development
 License:	Apache2
@@ -51,8 +51,9 @@ BuildRequires:	leveldb-devel
 BuildRequires:	openssl-devel
 
 %description
-An industrial-grade RPC framework used throughout Baidu, with 1,000,000+ instances(not counting clients) and thousands kinds of services.
-"brpc" means "better RPC".
+Apache bRPC is an Industrial-grade RPC framework using C++ Language,
+which is often used in high performance systems such as Search, Storage,
+Machine learning, Advertisement, Recommendation etc.
 
 %package devel
 Summary: The %{name} headers and shared development libraries

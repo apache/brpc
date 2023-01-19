@@ -19,7 +19,7 @@ includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 
 Name: brpc
-Description: An industrial-grade RPC framework used throughout Baidu, with 1,000,000+ instances(not counting clients) and thousands kinds of services, called "baidu-rpc" inside Baidu.
+Description: Apache bRPC is an Industrial-grade RPC framework using C++ Language, which is often used in high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc. "bRPC" means "better RPC".
 Version: @BRPC_VERSION@
 Cflags: -I${includedir}
 Libs: -L${libdir}/ -lbrpc
