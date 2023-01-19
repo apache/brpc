@@ -5,13 +5,19 @@ Overview: divided into the following steps
 
 1. Preparation: including generating the key required for signature, creating github release branch and tag, modifying the version file, etc
 2. Publish software package: including making source tarball, signing, uploading to the designated location and verifying
-3. Vote: including voting in mail group `dev@brpc.apache.org` and `general@incubator.apache.org`
+3. Vote: voting in mail list `dev@brpc.apache.org`
 4. Release announcement: including updating brpc website, sending announcement emails, posting WeChat official account announcements, merging the release branche into the master branch
 
 # Prepare key
 
 ## 1. Install GPG
-Download the installation package from [GnuPG official website](https://www.gnupg.org/download/index.html). The commands of GnuPG version 1.x and version 2.x are slightly different. The following instructions take the `GnuPG-2.3.1` version (OSX) as an example.
+
+The popular Linux distributions should have the GnuPG pre-installed. With OSX, you can install GnuPG using [`brew`](https://brew.sh/):
+```bash
+brew install gnupg
+```
+
+You can also download the installation package from [the GnuPG official website](https://www.gnupg.org/download/index.html). The commands of GnuPG version 1.x and version 2.x are slightly different. The following instructions take the `GnuPG-2.3.1` version (OSX) as an example.
 
 After the installation is complete, execute the following command to check the version number.
 ```bash
@@ -107,7 +113,7 @@ Note that `C30F211F071894258497F46392E18A11B6585834` is the public key.
 Execute the following command:
 
 ```bash
-gpg --keyserver hkp://pgp.mit.edu --send-key C30F211F071894258497F46392E18A11B6585834
+gpg --keyserver hkps://pgp.mit.edu --send-key C30F211F071894258497F46392E18A11B6585834
 ```
 
 ## 5. Generate fingerprint and upload to apache user profile
@@ -119,7 +125,7 @@ Execute the following command to view the fingerprint.
 gpg --fingerprint lorinlee # user id
 ```
 
-output: 
+output:
 ```
 /Users/lilei/.gnupg/pubring.kbx
 ----------------------------------
@@ -135,15 +141,19 @@ Paste the above fingerprint `C30F 211F 0718 9425 8497 F463 92E1 8A11 B658 5834` 
 
 ## 1. Create release branch
 
-If you are releasing a new MINOR version, like `1.0.0`, you need to create a new branch `release-1.0` from master.
+If you are releasing a new MAJOR/MINOR version, like `1.0.0`, you need to create a new branch `release-1.0` from master.
 
 If you are releasing a new PATCH version from existing MINOR version, like `1.0.1`, you only need to modify the existing `release-1.0` branch and add the content to be released.
 
 The code modification during the release process are performed on the release branch (such as `release-1.0`). After the release is complete, please merge the release branch back into the master branch.
 
-## 2. Update version in source code
+## 2. Update the `NOTICE` file
 
-### Update RELEASE_VERSION file
+Check and update the YEAR field of the `NOTIEC` file.
+
+## 3. Update version in source code
+
+### Update `RELEASE_VERSION` file
 
 Edit the `RELEASE_VERSION` file in the project root directory, update the version number, and submit it to the code repository. For example, the `1.0.0` version of the file is:
 
@@ -151,21 +161,23 @@ Edit the `RELEASE_VERSION` file in the project root directory, update the versio
 1.0.0
 ```
 
-### Update CMakeLists.txt file
-Edit the `CMakeLists.txt` file in the project root directory, update the version number, and submit it to the code repository. For example: 
+### Update the `CMakeLists.txt` file
+
+Edit the `CMakeLists.txt` file in the project root directory, update the version number, and submit it to the code repository. For example:
 
 ```
 set(BRPC_VERSION 1.0.0)
 ```
 
-### Update /package/rpm/brpc.spec file
-Edit the `/package/rpm/brpc.spec` file in the project root directory, update the version number, and submit it to the code repository. For example: 
+### Update the `package/rpm/brpc.spec` file
+
+Edit the `/package/rpm/brpc.spec` file in the project root directory, update the version number, and submit it to the code repository. For example:
 
 ```
 Version:	1.0.0
 ```
 
-## 3. Create releasing tag
+## 4. Create releasing tag
 
 push the release branch to tag, For example:
 
@@ -182,24 +194,24 @@ git push origin --tags
 ## 4. Create releasing package
 
 ```bash
-git archive --format=tar 1.0.0 --prefix=apache-brpc-1.0.0-incubating-src/ | gzip > apache-brpc-1.0.0-incubating-src.tar.gz
+git archive --format=tar 1.0.0 --prefix=apache-brpc-1.0.0-src/ | gzip > apache-brpc-1.0.0-src.tar.gz
 ```
 
 ## 5. Generate GPG signature
 
 ```bash
-gpg -u lorinlee@apache.org --armor --output apache-brpc-1.0.0-incubating-src.tar.gz.asc --detach-sign apache-brpc-1.0.0-incubating-src.tar.gz
+gpg -u lorinlee@apache.org --armor --output apache-brpc-1.0.0-src.tar.gz.asc --detach-sign apache-brpc-1.0.0-src.tar.gz
 
-gpg --verify apache-brpc-1.0.0-incubating-src.tar.gz.asc apache-brpc-1.0.0-incubating-src.tar.gz
+gpg --verify apache-brpc-1.0.0-src.tar.gz.asc apache-brpc-1.0.0-src.tar.gz
 
 ```
 
 ## 6. Generate SHA512 sum
 
 ```bash
-sha512sum apache-brpc-1.0.0-incubating-src.tar.gz > apache-brpc-1.0.0-incubating-src.tar.gz.sha512
+sha512sum apache-brpc-1.0.0-src.tar.gz > apache-brpc-1.0.0-src.tar.gz.sha512
 
-sha512sum --check apache-brpc-1.0.0-incubating-src.tar.gz.sha512
+sha512sum --check apache-brpc-1.0.0-src.tar.gz.sha512
 ```
 
 # Publish to Apache SVN repository
@@ -233,11 +245,11 @@ mkdir -p ~/brpc_svn/dev/brpc/1.0.0
 
 cd ~/brpc_svn/dev/brpc/1.0.0
 
-cp ~/brpc/apache-brpc-1.0.0-incubating-src.tar.gz ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-src.tar.gz ~/brpc_svn/dev/brpc/1.0.0
 
-cp ~/brpc/apache-brpc-1.0.0-incubating-src.tar.gz.asc ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.asc ~/brpc_svn/dev/brpc/1.0.0
 
-cp ~/brpc/apache-brpc-1.0.0-incubating-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
 ```
 
 ## 4. Submit SVN
@@ -257,7 +269,7 @@ svn --username=lorinlee commit -m "release 1.0.0"
 ## 1. Verify SHA512 sum
 
 ```bash
-sha512sum --check apache-brpc-1.0.0-incubating-src.tar.gz.sha512
+sha512sum --check apache-brpc-1.0.0-src.tar.gz.sha512
 ```
 
 ## 2. Verify GPG signature
@@ -304,7 +316,7 @@ gpg> save
 
 Then verify the GPG signature:
 ```
-gpg --verify apache-brpc-1.0.0-incubating-src.tar.gz.asc apache-brpc-1.0.0-incubating-src.tar.gz
+gpg --verify apache-brpc-1.0.0-src.tar.gz.asc apache-brpc-1.0.0-src.tar.gz
 ```
 
 ## 3. Check release content
@@ -316,9 +328,9 @@ curl -Lo tag-1.0.0.tar.gz https://github.com/apache/brpc/archive/refs/tags/1.0.0
 
 tar xvzf tag-1.0.0.tar.gz
 
-tar xvzf apache-brpc-1.0.0-incubating-src.tar.gz
+tar xvzf apache-brpc-1.0.0-src.tar.gz
 
-diff -r brpc-1.0.0 apache-brpc-1.0.0-incubating-src
+diff -r brpc-1.0.0 apache-brpc-1.0.0-src
 ```
 
 ### 2. Check file content
@@ -336,21 +348,21 @@ diff -r brpc-1.0.0 apache-brpc-1.0.0-incubating-src
    - The complete version of the dependency license is in the license directory
    - If third-party dependency have the Apache license and have NOTICE files, these NOTICE files also need to be added to the releasing NOTICE file
 
-# Vote in Apache brpc community
+# Vote in the Apache bRPC community
 
 ## 1. Vote stage
 
 1. Send a voting email to `dev@brpc.apache.org`. PPMC needs to check the correctness of the version according to the document before voting. After at least 72 hours and 3 +1 PPMC member votes, you can move to the next stage.
 
-2. Announce the voting results and send the voting results to dev@brpc.apache.org 。
+2. Announce the voting result and send the voting result to dev@brpc.apache.org.
 
 ## 2. Vote email template
 
-1. Apache brpc community vote email template
+1. Apache bRPC community vote email template
 
 Title:
 ```
-[VOTE] Release Apache brpc (Incubating) 1.0.0
+[VOTE] Release Apache bRPC 1.0.0
 ```
 
 Content:
@@ -358,9 +370,9 @@ Content:
 Note: `Release Commit ID` fills in the commit ID of the last commit of the current release branch.
 
 ```
-Hi Apache brpc (Incubating) Community,
+Hi Apache bRPC Community,
 
-This is a call for vote to release Apache brpc (Incubating) version
+This is a call for vote to release Apache bRPC version
 1.0.0
 
 [Release Note]
@@ -401,25 +413,25 @@ Regards,
 LorinLee
 ```
 
-2. Apache brpc community announcement of vote result template
+2. Apache bRPC community announcement of vote result template
 
 Title:
 ```
-[Result] [VOTE] Release Apache brpc (Incubating) 1.0.0
+[Result] [VOTE] Release Apache bRPC 1.0.0
 ```
 
 Content:
 ```
 Hi all,
 
-The vote to release Apache brpc (Incubating) 1.0.0 has passed.
+The vote to release Apache bRPC 1.0.0 has passed.
 
 The vote PASSED with 3 binding +1, 3 non binding +1 and no -1 votes:
 
 Binding votes:
 - xxx
-- yyy 
-- zzz 
+- yyy
+- zzz
 
 Non-binding votes:
 - aaa
@@ -428,7 +440,8 @@ Non-binding votes:
 
 Vote thread: xxx (vote email link in https://lists.apache.org/)
 
-Thank you to all the above members to help us to verify and vote for the 1.0.0 release. We will move to IPMC voting shortly.
+Thank you to all the above members to help us to verify and vote for
+the 1.0.0 release. I will process to publish the release and send ANNOUNCE.
 
 Regards,
 LorinLee
@@ -437,117 +450,6 @@ LorinLee
 ## 3. Vote not passed
 
 If the community vote is not passed, please modify the code of the release branch, package and vote again.
-
-# Vote in Apache incubator community
-
-## 1. Update GPG Signature
-
-```
-svn delete https://dist.apache.org/repos/dist/release/brpc/KEYS -m "delete KEYS"
-
-svn cp https://dist.apache.org/repos/dist/dev/brpc/KEYS https://dist.apache.org/repos/dist/release/brpc/KEYS -m "update brpc KEYS"
-```
-
-After commit the svn, access <https://downloads.apache.org/brpc/KEYS>, check whether the content is updated. It may take several minutes to wait for the content to be updated before continuing.
-
-## 2. Vote stage
-
-1. Send voting email to `general@incubator.apache.org`. IPMC will vote. After at least 72 hours and 3 +1 IPMC member tickets are counted, you can move to the next stage.
-2. Announce the voting results by sending the voting results to `general@incubator.apache.org`.
-
-## 3. Vote email template
-
-1. Apache Incubator community vote email template
-
-Title:
-```
-[VOTE] Release Apache brpc (Incubating) 1.0.0
-```
-
-Content:
-```
-Hi Incubator Community,
-
-This is a call for a vote to release Apache brpc(Incubating) version
-1.0.0.
-
-The Apache brpc community has voted and approved the release of Apache
-brpc (Incubating) 1.0.0.
-
-We now kindly request the Incubator PMC members review and vote on this
-incubator release.
-
-brpc is an industrial-grade RPC framework with extremely high performance,
-and it supports multiple protocols, full rpc features, and has many
-convenient tools.
-
-brpc community vote thread: xxx
-
-Vote result thread: xxx
-
-The release candidate:
-https://dist.apache.org/repos/dist/dev/brpc/1.0.0/
-
-This release has been signed with a PGP available here:
-https://downloads.apache.org/brpc/KEYS
-
-Git tag for the release:
-https://github.com/apache/brpc/releases/tag/1.0.0
-
-Build guide and get started instructions can be found at:
-https://brpc.apache.org/docs/getting_started
-
-The vote will be open for at least 72 hours or until the necessary number
-of votes is reached.
-
-Please vote accordingly:
-[ ] +1 approve
-[ ] +0 no opinion
-[ ] -1 disapprove with the reason
-
-Regards,
-Lorin Lee
-Apache brpc (Incubating) community
-```
-
-2. Apache Incubator community announcement of vote result template
-
-Title:
-```
-[Result] [VOTE] Release Apache brpc (Incubating) 1.0.0
-```
-
-Content:
-```
-Hi Incubator Community,
-
-Thanks to everyone that participated. The vote to release Apache
-brpc (Incubating) version 1.0.0 in general@incubator.apache.org
-is now closed.
-
-Vote thread: xxx
-
-The vote PASSED with 3 binding +1, 3 non binding +1 and no -1 votes:
-
-Binding votes:
-- xxx 
-- yyy 
-- zzz 
-
-Non-binding votes:
-- aaa
-- bbb
-- ccc
-
-Many thanks for all our mentors helping us with the release procedure,
-and all IPMC helped us to review and vote for Apache brpc(Incubating)
-release. We will proceed with publishing the approved artifacts and
-sending out the announcement soon.
-
-Regards,
-Lorin Lee
-Apache brpc (Incubating) community
-```
 
 # Finish the release
 
@@ -572,7 +474,7 @@ The download link of the code package should use this prefix: `https://dlcdn.apa
 
 ## 4. Send email to announce release finished
 
-Send mail to `dev@brpc.apache.org`, `general@incubator.apache.org`, and `announce@apache.org` to announce the completion of release.
+Send mail to `dev@brpc.apache.org` and `announce@apache.org` to announce the completion of release.
 
 Note: The email account must use **personal apache email**, and the email content must be **plain text format** ("plain text mode" can be selected in gmail). And email to `announce@apache.org` mail group will be delivered after manual review. Please wait patiently after sending the email, and it will be passed within one day.
 
@@ -580,7 +482,7 @@ The announcement email template:
 
 Title:
 ```
-[ANNOUNCE] Apache brpc (Incubating) 1.0.0 released
+[ANNOUNCE] Apache bRPC 1.0.0 released
 ```
 
 Content:
@@ -590,11 +492,11 @@ Note: `Brief notes of this release` It is only necessary to list the main change
 ```
 Hi all,
 
-The Apache brpc (Incubating) community is glad to announce the new release
-of Apache brpc (Incubating) 1.0.0.
+The Apache bRPC community is glad to announce the new release
+of Apache bRPC 1.0.0.
 
-brpc is an Industrial-grade RPC framework using C++ Language, which is
-often used in high performance systems such as Search, Storage,
+Apache bRPC is an Industrial-grade RPC framework using C++ Language,
+which is often used in high performance systems such as Search, Storage,
 Machine learning, Advertisement, Recommendation etc.
 
 Brief notes of this release:
@@ -606,23 +508,24 @@ More details regarding Apache brpc can be found at:
 http://brpc.apache.org/
 
 The release is available for download at:
-https://brpc.apache.org/docs/downloadbrpc/
+https://brpc.apache.org/docs/download/
 
 The release notes can be found here:
 https://github.com/apache/brpc/releases/tag/1.0.0
 
 Website: http://brpc.apache.org/
 
-brpc(Incubating) Resources:
+Apache bRPC Resources:
 - Issue: https://github.com/apache/brpc/issues/
 - Mailing list: dev@brpc.apache.org
 - Documents: https://brpc.apache.org/docs/
 
-We would like to thank all contributors of the Apache brpc community and
-Incubating community who made this release possible!
+We would like to thank all contributors of the Apache bRPC community
+who made this release possible!
+
 
 Best Regards,
-Apache brpc (Incubating) community
+Apache bRPC Community
 ```
 
 ## 5. Publish WeChat official account announcement
