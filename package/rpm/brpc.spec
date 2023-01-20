@@ -25,7 +25,7 @@ Summary:	Industrial-grade RPC framework using C++ Language.
 Group:		Development
 License:	Apache2
 URL:		https://github.com/apache/brpc
-Source0:	https://downloads.apache.org/brpc/${version}/apache-brpc-%{version}-src.tar.gz
+Source0:	https://downloads.apache.org/brpc/%{version}/apache-brpc-%{version}-src.tar.gz
 
 # https://access.redhat.com/solutions/519993
 %global  _filter_GLIBC_PRIVATE 1
