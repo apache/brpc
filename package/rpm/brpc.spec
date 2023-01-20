@@ -25,7 +25,7 @@ Summary:	Industrial-grade RPC framework using C++ Language.
 Group:		Development
 License:	Apache2
 URL:		https://github.com/apache/brpc
-Source0:	apache-brpc-%{version}-incubating-src.tar.gz
+Source0:	https://downloads.apache.org/brpc/%{version}/apache-brpc-%{version}-src.tar.gz
 
 # https://access.redhat.com/solutions/519993
 %global  _filter_GLIBC_PRIVATE 1
@@ -55,6 +55,12 @@ Apache bRPC is an Industrial-grade RPC framework using C++ Language,
 which is often used in high performance systems such as Search, Storage,
 Machine learning, Advertisement, Recommendation etc.
 
+%package tools
+Summary: The %{name} tools.
+Requires: %{name} = %{version}-%{release}
+%description tools
+The %{name} tools.
+
 %package devel
 Summary: The %{name} headers and shared development libraries
 Requires: %{name} = %{version}-%{release}
@@ -68,7 +74,7 @@ Requires: brpc-devel = %{version}-%{release}
 Static %{name} libraries.
 
 %prep
-%setup -n apache-%{name}-%{version}-incubating-src
+%setup -n apache-%{name}-%{version}-src
 
 %build
 %if 0%{?use_devtoolset}
@@ -76,13 +82,13 @@ Static %{name} libraries.
 %endif
 
 %if 0%{?fedora} >= 33 || 0%{?rhel} >= 8
-%{cmake} -DBUILD_BRPC_TOOLS:BOOLEAN=OFF -DDOWNLOAD_GTEST:BOOLEAN=OFF
+%{cmake} -DBUILD_BRPC_TOOLS:BOOLEAN=ON -DDOWNLOAD_GTEST:BOOLEAN=OFF
 %{cmake_build}
 %else
 mkdir -p %{_target_platform}
 pushd %{_target_platform}
 
-%{cmake} -DBUILD_BRPC_TOOLS:BOOLEAN=OFF -DDOWNLOAD_GTEST:BOOLEAN=OFF ..
+%{cmake} -DBUILD_BRPC_TOOLS:BOOLEAN=ON -DDOWNLOAD_GTEST:BOOLEAN=OFF ..
 make %{?_smp_mflags}
 
 popd
@@ -104,6 +110,9 @@ rm -rf $RPM_BUILD_ROOT
 
 %files
 %{_libdir}/libbrpc.so
+
+%files tools
+%{_bindir}/*
 
 %files devel
 %{_includedir}/*
