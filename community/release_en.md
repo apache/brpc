@@ -352,7 +352,7 @@ diff -r brpc-1.0.0 apache-brpc-1.0.0-src
 
 ## 1. Vote stage
 
-1. Send a voting email to `dev@brpc.apache.org`. PPMC needs to check the correctness of the version according to the document before voting. After at least 72 hours and 3 +1 PPMC member votes, you can move to the next stage.
+1. Send a voting email to `dev@brpc.apache.org`. PMC needs to check the correctness of the version according to the document before voting. After at least 72 hours and 3 +1 PMC member votes, you can move to the next stage.
 
 2. Announce the voting result and send the voting result to dev@brpc.apache.org.
 

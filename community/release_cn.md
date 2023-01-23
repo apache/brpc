@@ -349,7 +349,7 @@ diff -r brpc-1.0.0 apache-brpc-1.0.0-src
 
 ## 1. 投票阶段
 
-1. 发起投票邮件到 dev@brpc.apache.org。PPMC 需要先按文档检查版本的正确性，然后再进行投票。经过至少 72 小时并统计到 3 个 +1 PPMC member 票后，即可进入下一阶段。
+1. 发起投票邮件到 dev@brpc.apache.org。PMC 需要先按文档检查版本的正确性，然后再进行投票。经过至少 72 小时并统计到 3 个 +1 PMC member 票后，即可进入下一阶段。
 2. 宣布投票结果，发起投票结果邮件到 dev@brpc.apache.org。
 
 ## 2. 投票邮件模板
