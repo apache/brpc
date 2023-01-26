@@ -53,6 +53,18 @@ DEFINE_bool(log_connection_close, false,
             "Print log when remote side closes the connection");
 BRPC_VALIDATE_GFLAG(log_connection_close, PassValidate);
 
+DEFINE_bool(socket_keepalive, false,
+            "Enable keepalive of sockets if this value is true");
+
+DEFINE_int32(socket_keepidle_s, -1,
+             "Set idle time of sockets before keepalive if this value is positive");
+
+DEFINE_int32(socket_keepintvl_s, -1,
+             "Set interval of sockets between keepalives if this value is positive");
+
+DEFINE_int32(socket_keepcnt, -1,
+             "Set number of keepalives of sockets before close if this value is positive");
+
 DECLARE_bool(usercode_in_pthread);
 DECLARE_uint64(max_body_size);
 
@@ -474,6 +486,10 @@ int InputMessenger::Create(const butil::EndPoint& remote_side,
     options.user = this;
     options.on_edge_triggered_events = OnNewMessages;
     options.health_check_interval_s = health_check_interval_s;
+    options.keepalive = FLAGS_socket_keepalive;
+    options.keepidle_s = FLAGS_socket_keepidle_s;
+    options.keepintvl_s = FLAGS_socket_keepintvl_s;
+    options.keepcnt = FLAGS_socket_keepcnt;
     return Socket::Create(options, id);
 }
 
@@ -489,6 +505,10 @@ int InputMessenger::Create(SocketOptions options, SocketId* id) {
 #endif
         options.on_edge_triggered_events = OnNewMessages;
     }
+    options.keepalive = FLAGS_socket_keepalive;
+    options.keepidle_s = FLAGS_socket_keepidle_s;
+    options.keepintvl_s = FLAGS_socket_keepintvl_s;
+    options.keepcnt = FLAGS_socket_keepcnt;
     return Socket::Create(options, id);
 }
 

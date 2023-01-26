@@ -198,6 +198,15 @@ struct SocketOptions {
     std::shared_ptr<AppConnect> app_connect;
     // The created socket will set parsing_context with this value.
     Destroyable* initial_parsing_context;
+
+    // Enable TCP keepalive or not.
+    bool keepalive;
+    // Start keeplives after this period.
+    int keepidle_s;
+    // Interval between keepalives.
+    int keepintvl_s;
+    // Number of keepalives before death.
+    int keepcnt;
 };
 
 // Abstractions on reading from and writing into file descriptors.
@@ -873,6 +882,15 @@ private:
     butil::atomic<int64_t> _total_streams_unconsumed_size;
 
     butil::atomic<int64_t> _ninflight_app_health_check;
+
+    // Enable TCP keepalive or not.
+    bool _keepalive;
+    // Start keeplives after this period.
+    int _keepidle_s;
+    // Interval between keepalives.
+    int _keepintvl_s;
+    // Number of keepalives before death.
+    int _keepcnt;
 };
 
 } // namespace brpc

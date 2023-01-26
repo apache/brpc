@@ -465,6 +465,10 @@ Socket::Socket(Forbidden)
     , _stream_set(NULL)
     , _total_streams_unconsumed_size(0)
     , _ninflight_app_health_check(0)
+    , _keepalive(false)
+    , _keepidle_s(-1)
+    , _keepintvl_s(-1)
+    , _keepcnt(-1)
 {
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, NULL);
@@ -579,6 +583,71 @@ int Socket::ResetFileDescriptor(int fd) {
         }
     }
 
+    do {
+        if (!_keepalive) {
+            break;
+        }
+
+        {
+            int keep_alive = 1;
+            socklen_t size = sizeof(keep_alive);
+            if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, size)!=0) {
+                LOG(FATAL) << "Fail to set keepalive of fd=" << fd;
+                break;
+            }
+        }
+
+#if defined(OS_LINUX)
+        if (_keepidle_s > 0) {
+            int keepidle_s = _keepidle_s;
+            socklen_t size = sizeof(keepidle_s);
+            if (setsockopt(fd, SOL_TCP, TCP_KEEPIDLE, &keepidle_s, size) < 0) {
+                LOG(FATAL) << "Fail to set keepidle of fd=" << fd;
+            }
+        }
+
+        if (_keepintvl_s > 0) {
+            int keepintvl_s = _keepintvl_s;
+            socklen_t size = sizeof(keepintvl_s);
+            if (setsockopt(fd, SOL_TCP, TCP_KEEPINTVL, &keepintvl_s, size) < 0) {
+                LOG(FATAL) << "Fail to set keepintvl of fd=" << fd;
+            }
+        }
+
+        if (_keepcnt > 0) {
+            int keepcnt = _keepcnt;
+            socklen_t size = sizeof(keepcnt);
+            if (setsockopt(fd, SOL_TCP, TCP_KEEPCNT, &keepcnt, size) < 0) {
+                LOG(FATAL) << "Fail to set keepcnt of fd=" << fd;
+            }
+        }
+#elif defined(OS_MACOSX)
+        if (_keepidle_s > 0) {
+            int keepidle_s = _keepidle_s;
+            socklen_t size = sizeof(keepidle_s);
+            if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE, &keepidle_s, size) < 0) {
+                LOG(FATAL) << "Fail to set keepidle of fd=" << fd;
+            }
+        }
+
+        if (_keepintvl_s > 0) {
+            int keepintvl_s = _keepintvl_s;
+            socklen_t size = sizeof(keepintvl_s);
+            if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl_s, size) < 0) {
+                LOG(FATAL) << "Fail to set keepintvl of fd=" << fd;
+            }
+        }
+
+        if (_keepcnt > 0) {
+            int keepcnt = _keepcnt;
+            socklen_t size = sizeof(keepcnt);
+            if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, size) < 0) {
+                LOG(FATAL) << "Fail to set keepcnt of fd=" << fd;
+            }
+        }
+#endif
+    } while (false);
+
     if (_on_edge_triggered_events) {
         if (GetGlobalEventDispatcher(fd).AddConsumer(id(), fd) != 0) {
             PLOG(ERROR) << "Fail to add SocketId=" << id() 
@@ -676,6 +745,10 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     }
     m->_last_writetime_us.store(cpuwide_now, butil::memory_order_relaxed);
     m->_unwritten_bytes.store(0, butil::memory_order_relaxed);
+    m->_keepalive = options.keepalive;
+    m->_keepidle_s = options.keepidle_s;
+    m->_keepintvl_s = options.keepintvl_s;
+    m->_keepcnt = options.keepcnt;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
@@ -2267,6 +2340,10 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         Print(os, ptr->_ssl_session, "\n  ");
         os << "\n}";
     }
+    os << "\nkeepalive=" << ptr->_keepalive
+       << "\ntcp_keepalive_time=" << ptr->_keepidle_s
+       << "\ntcp_keepalive_intvl=" << ptr->_keepintvl_s
+       << "\ntcp_keepalive_probes=" << ptr->_keepcnt;
 #if defined(OS_MACOSX)
     struct tcp_connection_info ti;
     socklen_t len = sizeof(ti);
