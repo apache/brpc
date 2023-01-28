@@ -547,6 +547,10 @@ public:
     int MaxConcurrencyOf(google::protobuf::Service* service,
                          const butil::StringPiece& method_name) const;
 
+    int Concurrency() const {
+        return butil::subtle::NoBarrier_Load(&_concurrency);
+    };
+
 private:
 friend class StatusService;
 friend class ProtobufsService;
@@ -696,6 +700,7 @@ friend class Controller;
     mutable bvar::Adder<int64_t> _nerror_bvar;
     mutable bvar::PerSecond<bvar::Adder<int64_t> > _eps_bvar;
     BAIDU_CACHELINE_ALIGNMENT mutable int32_t _concurrency;
+    bvar::PassiveStatus<int32_t> _concurrency_bvar;
 };
 
 // Get the data attached to current searching thread. The data is created by
