@@ -394,7 +394,7 @@ size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key, _T* old_value) {
     }
     if (_eql(first_node.element().first_ref(), key)) {
         if (old_value) {
-            *old_value = first_node.element().second_ref();
+            *old_value = first_node.element().second_movable_ref();
         }
         if (first_node.next == NULL) {
             first_node.element().~Element();
@@ -420,7 +420,7 @@ size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key, _T* old_value) {
             first_node.next = p->next;
             const_cast<_K&>(first_node.element().first_ref()) =
                 p->element().first_ref();
-            first_node.element().second_ref() = p->element().second_ref();
+            first_node.element().second_ref() = p->element().second_movable_ref();
             p->element().~Element();
             _pool.back(p);
         }
@@ -432,7 +432,7 @@ size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key, _T* old_value) {
     while (p) {
         if (_eql(p->element().first_ref(), key)) {
             if (old_value) {
-                *old_value = p->element().second_ref();
+                *old_value = p->element().second_movable_ref();
             }
             last_p->next = p->next;
             p->element().~Element();
@@ -616,7 +616,7 @@ bool FlatMap<_K, _T, _H, _E, _S>::resize(size_t nbucket2) {
     }
     for (iterator it = begin(); it != end(); ++it) {
         new_map[Element::first_ref_from_value(*it)] = 
-            Element::second_ref_from_value(*it);
+            Element::second_movable_ref_from_value(*it);
     }
     new_map.swap(*this);
     return true;

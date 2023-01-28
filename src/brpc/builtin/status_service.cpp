@@ -109,7 +109,25 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
         os << mc;
     }
     os << '\n';
-    
+
+    // concurrency
+    if (use_html) {
+        os << "<p class=\"variable\">";
+    }
+    os << "concurrency: ";
+    if (use_html) {
+        os << "<span id=\"value-" << server->ServerPrefix()
+           << "_concurrency\">";
+    }
+    os << server->Concurrency();
+    if (use_html) {
+        os << "</span></p><div class=\"detail\"><div id=\""
+           << server->ServerPrefix()
+           << "_concurrency\" class=\"flot-placeholder\"></div></div>";
+    }
+    os << '\n';
+
+
     const Server::ServiceMap &services = server->_fullname_service_map;
     std::ostringstream desc;
     DescribeOptions desc_options;

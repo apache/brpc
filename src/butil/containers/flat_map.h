@@ -361,11 +361,15 @@ public:
     //                                             ^^^^^^^^^^^
     const K& first_ref() const { return _key; }
     T& second_ref() { return _value; }
+    T&& second_movable_ref() { return std::move(_value); }
     value_type& value_ref() { return *reinterpret_cast<value_type*>(this); }
     inline static const K& first_ref_from_value(const value_type& v)
     { return v.first; }
     inline static const T& second_ref_from_value(const value_type& v)
     { return v.second; }
+    inline static T&& second_movable_ref_from_value(value_type& v)
+    { return std::move(v.second); }
+
 private:
     const K _key;
     T _value;
@@ -378,11 +382,15 @@ public:
     explicit FlatMapElement(const K& k) : _key(k) {}
     const K& first_ref() const { return _key; }
     FlatMapVoid& second_ref() { return second_ref_from_value(_key); }
+    FlatMapVoid& second_movable_ref() { return second_ref(); }
     value_type& value_ref() { return _key; }
     inline static const K& first_ref_from_value(value_type& v) { return v; }
     inline static FlatMapVoid& second_ref_from_value(value_type&) {
         static FlatMapVoid dummy;
         return dummy;
+    }
+    inline static const FlatMapVoid& second_movable_ref_from_value(value_type& v) {
+        return second_ref_from_value(v);
     }
 private:
     K _key;

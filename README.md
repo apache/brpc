@@ -1,7 +1,7 @@
 [中文版](README_cn.md)
 
-[![Linux Build Status](https://github.com/apache/incubator-brpc/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/apache/incubator-brpc/actions/workflows/ci-linux.yml)
-[![MacOs Build Status](https://github.com/apache/incubator-brpc/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/apache/incubator-brpc/actions/workflows/ci-macos.yml)
+[![Linux Build Status](https://github.com/apache/brpc/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-linux.yml)
+[![MacOs Build Status](https://github.com/apache/brpc/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-macos.yml)
 
 # ![brpc](docs/images/logo.png)
 
@@ -81,7 +81,7 @@ You can use it to:
     * [IOBuf](docs/en/iobuf.md)
     * [Streaming Log](docs/en/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
-    * [brpc introdution](docs/cn/brpc_intro.pptx)(training material)
+    * [brpc introduction](docs/cn/brpc_intro.pptx)(training material)
     * [A tutorial on building large-scale services](docs/en/tutorial_on_building_services.pptx)(training material)
     * [brpc internal](docs/en/brpc_internal.pptx)(training material)
   * RPC in depth
@@ -102,7 +102,7 @@ You can use it to:
 Please refer to [here](CONTRIBUTING.md).
 
 # Feedback and Getting involved
-* Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/apache/incubator-brpc/issues)
+* Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/apache/brpc/issues)
 * Subscribe mailing list(dev-subscribe@brpc.apache.org) to get updated with the project
 
 # Code of Conduct

@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// bthread - A M:N threading library to make applications more concurrent.
+// bthread - An M:N threading library to make applications more concurrent.
 
 // Date: Sun Aug  3 12:46:15 CST 2014
 
@@ -404,6 +404,7 @@ static pthread_once_t init_sys_mutex_lock_once = PTHREAD_ONCE_INIT;
 //   #23 0x00000000006fbb9a in tc_malloc ()
 // Call _dl_sym which is a private function in glibc to workaround the malloc
 // causing deadlock temporarily. This fix is hardly portable.
+
 static void init_sys_mutex_lock() {
 #if defined(OS_LINUX)
     // TODO: may need dlvsym when GLIBC has multiple versions of a same symbol.

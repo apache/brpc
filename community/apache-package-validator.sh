@@ -21,7 +21,7 @@
 set -e
 
 g_package_link=${1}
-g_package_keys=${2:-https://downloads.apache.org/incubator/brpc/KEYS}
+g_package_keys=${2:-https://downloads.apache.org/brpc/KEYS}
 
 g_valid_package_link=' '
 g_valid_package_name=' '
@@ -35,11 +35,10 @@ summary() {
     cat <<EOF
 
 - [${g_valid_package_link}] the links of the package are valid;
-- [${g_valid_package_name}] 'incubating' in the name;
 - [${g_valid_package_checksum}] the checksum of the package is valid;
 - [${g_valid_package_sig}] the signature of the package is valid;
 - [${g_valid_package_content}] RELEASE_VERSION in the source code matches the current release;
-- [${g_valid_package_license}] DISCLAIMER, LICENSE and NOTICE are not absent, note that we use CI based on Skywalking-eyes to check the license;
+- [${g_valid_package_license}] LICENSE and NOTICE are not absent, note that we use CI based on Skywalking-eyes to check the license;
 - [${g_valid_package_binary}] no compiled archives bundled in the source archive.
 EOF
 }
@@ -51,14 +50,13 @@ on_exit() {
 
 validate_package() {
     local ver=$(echo ${g_package_link%/} | rev | cut -d'/' -f1 | rev)
-    local package_name="apache-brpc-${ver}-incubating-src.tar.gz"
+    local package_name="apache-brpc-${ver}-src.tar.gz"
 
     for suffix in "" ".asc" ".sha512"; do
         wget --quiet -c "${g_package_link%/}/${package_name}${suffix}"
     done
 
     g_valid_package_link='x'
-    g_valid_package_name='x'
 
     sha512sum --status -c ${package_name}.sha512 \
         && g_valid_package_checksum='x'

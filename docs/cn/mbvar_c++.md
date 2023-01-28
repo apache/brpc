@@ -24,6 +24,8 @@
     - [bvar::IntRecorder](#bvarintrecorder)
     - [bvar::LatencyRecorder](#bvarlatencyrecorder)
     - [bvar::Status](#bvarstatus)
+    - [bvar::WindowEx](#bvarwindowex)
+    - [bvar::PerSecondEx](#bvarpersecondex)
 
 # mbvar Introduction
 
@@ -38,7 +40,9 @@ mbvar中有两个类，分别是MVariable和MultiDimension，MVariable是多维�
 | bvar::Miner<T> | 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N)。 |
 | bvar::IntRecorder | 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值。 |
 | bvar::LatencyRecorder | 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。 |
-| bvar::Status<T> | 记录和显示一个值，拥有额外的set_value函数 |
+| bvar::Status<T> | 记录和显示一个值，拥有额外的set_value函数。 |
+| bvar::WindowEx<R, T> | 获得之前一段时间内的统计值。WindowEx是独立存在的，不依赖其他的计数器，需要给它发送数据。 |
+| bvar::PerSecondEx<T> | 获得之前一段时间内平均每秒的统计值。PerSecondEx是独立存在的，不依赖其他的计数器，需要给它发送数据。 |
 
 例子：
 ```c++
@@ -195,6 +199,7 @@ class MVariable {
 | mbvar_dump_format	| common | Dump mbvar write format <br> common：文本格式，Key和Value用冒号分割(和目前的单维度dump文件格式一致) <br><br> prometheus：文本格式，Key和Value用空格分开protobuf：二进制格式，暂时不支持|
 | bvar_dump_interval | 10 |Seconds between consecutive dump |
 | mbvar_dump_prefix | \<app\> | Every dumped name starts with this prefix |
+| bvar_max_dump_multi_dimension_metric_number | 0 | 最多导出的mbvar的bvar个数，默认是0，即不导出任何mbvar |
 
 用户可在程序启动前加上对应的gflags。
 
@@ -208,6 +213,7 @@ class MVariable {
 | mbvar_dump_format	| common | Dump mbvar write format <br> common：文本格式，Key和Value用冒号分割(和目前的单维度dump文件格式一致) <br><br> prometheus：文本格式，Key和Value用空格分开protobuf：二进制格式，暂时不支持|
 | bvar_dump_interval | 10 |Seconds between consecutive dump |
 | mbvar_dump_prefix | mbvar | Every dumped name starts with this prefix |
+| bvar_max_dump_multi_dimension_metric_number | 2000 | 最多导出的mbvar的bvar个数，默认是0，即不导出任何mbvar |
 
 导出的本地文件为monitor/mbvar.\<app\>.data：
 ```
@@ -767,6 +773,52 @@ void request_cost(const std::list<std::string>& request_labels) {
     // cost_status只能在g_request_cost生命周期内访问，否则行为未定义，可能会出core
     cost_status->set_value(5);
     CHECK_EQ(5, cost_status->get_value());
+}
+
+} // namespace bar
+} // namespace foo
+```
+
+### bvar::WindowEx
+获得之前一段时间内的统计值。
+```c++
+#include <bvar/bvar.h>
+#include <bvar/window.h>
+#include <bvar/multi_dimension.h>
+
+namespace foo {
+namespace bar {
+// 定义一个全局的多维度mbvar变量
+bvar::MultiDimension<bvar::WindowEx<bvar::Adder<int>, 60>> sum_minute("sum_minute", {"idc", "method", "status"});
+
+void Record(const std::list<std::string>& request_labels, int num) {
+    // 获取request对应的单维度mbvar指针，假设request_labels = {"tc", "get", "200"}
+    bvar::WindowEx<bvar::Adder<int>, 60>* status = sum_minute.get_stats(request_labels);
+    // status只能在sum_minute生命周期内访问，否则行为未定义，可能会出core
+    *status << num;
+}
+
+} // namespace bar
+} // namespace foo
+```
+
+### bvar::PerSecondEx
+获得之前一段时间内平均每秒的统计值。
+```c++
+#include <bvar/bvar.h>
+#include <bvar/window.h>
+#include <bvar/multi_dimension.h>
+
+namespace foo {
+namespace bar {
+// 定义一个全局的多维度mbvar变量
+bvar::MultiDimension<bvar::PerSecondEx<bvar::Adder<int>>> sum_per_second("sum_per_second", {"idc", "method", "status"});
+
+void Record(const std::list<std::string>& request_labels, int num) {
+    // 获取request对应的单维度mbvar指针，假设request_labels = {"tc", "get", "200"}
+    bvar::PerSecondEx<bvar::Adder<int>>* status = sum_per_second.get_stats(request_labels);
+    // status只能在sum_per_second生命周期内访问，否则行为未定义，可能会出core
+    *status << num;
 }
 
 } // namespace bar

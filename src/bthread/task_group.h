@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// bthread - A M:N threading library to make applications more concurrent.
+// bthread - An M:N threading library to make applications more concurrent.
 
 // Date: Tue Jul 10 17:40:58 CST 2012
 
@@ -221,10 +221,6 @@ friend class TaskControl;
         return _control->steal_task(tid, &_steal_seed, _steal_offset);
     }
 
-#ifndef NDEBUG
-    int _sched_recursive_guard;
-#endif
-
     TaskMeta* _cur_meta;
     
     // the control that this group belongs to
@@ -251,6 +247,8 @@ friend class TaskControl;
     RemoteTaskQueue _remote_rq;
     int _remote_num_nosignal;
     int _remote_nsignaled;
+
+    int _sched_recursive_guard;
 };
 
 }  // namespace bthread

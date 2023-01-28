@@ -24,7 +24,7 @@ ConstantConcurrencyLimiter::ConstantConcurrencyLimiter(int max_concurrency)
     : _max_concurrency(max_concurrency) {
 }
 
-bool ConstantConcurrencyLimiter::OnRequested(int current_concurrency) {
+bool ConstantConcurrencyLimiter::OnRequested(int current_concurrency, Controller*) {
     return current_concurrency <= _max_concurrency;
 }
 

@@ -453,7 +453,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         method_status = mp->status;
         if (method_status) {
             int rejected_cc = 0;
-            if (!method_status->OnRequested(&rejected_cc)) {
+            if (!method_status->OnRequested(&rejected_cc, cntl.get())) {
                 cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
                                 mp->method->full_name().c_str(), rejected_cc);
                 break;

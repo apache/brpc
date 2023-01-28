@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// bthread - A M:N threading library to make applications more concurrent.
+// bthread - An M:N threading library to make applications more concurrent.
 
 // Date: Tue Jul 10 17:40:58 CST 2012
 
@@ -175,9 +175,6 @@ void TaskGroup::run_main_task() {
 
 TaskGroup::TaskGroup(TaskControl* c)
     :
-#ifndef NDEBUG
-    _sched_recursive_guard(0),
-#endif
     _cur_meta(NULL)
     , _control(c)
     , _num_nosignal(0)
@@ -192,6 +189,9 @@ TaskGroup::TaskGroup(TaskControl* c)
     , _main_tid(0)
     , _remote_num_nosignal(0)
     , _remote_nsignaled(0)
+#ifndef NDEBUG
+    , _sched_recursive_guard(0)
+#endif
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];

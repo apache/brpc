@@ -272,6 +272,10 @@ static bvar::Vector<unsigned, 2> GetSessionLocalDataCount(void* arg) {
     return v;
 }
 
+static int cast_no_barrier_int(void* arg) {
+    return butil::subtle::NoBarrier_Load(static_cast<int*>(arg));
+}
+
 std::string Server::ServerPrefix() const {
     if(_options.server_info_name.empty()) {
         return butil::string_printf("%s_%d", g_server_info_prefix, listen_address().port);
@@ -291,6 +295,8 @@ void* Server::UpdateDerivedVars(void* arg) {
     server->_nerror_bvar.expose_as(prefix, "error");
 
     server->_eps_bvar.expose_as(prefix, "eps");
+
+    server->_concurrency_bvar.expose_as(prefix, "concurrency");
 
     bvar::PassiveStatus<timeval> uptime_st(
         prefix, "uptime", GetUptime, (void*)(intptr_t)start_us);
@@ -401,7 +407,8 @@ Server::Server(ProfilerLinker)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
     , _eps_bvar(&_nerror_bvar)
-    , _concurrency(0) {
+    , _concurrency(0)
+    , _concurrency_bvar(cast_no_barrier_int, &_concurrency) {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
 }
@@ -2019,7 +2026,7 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
         return -1;
     }
 
-    // Add default certficiate into tmp_map first since it can't be reloaded
+    // Add default certificate into tmp_map first since it can't be reloaded
     std::string default_cert_key =
         _options.ssl_options().default_cert.certificate
         + _options.ssl_options().default_cert.private_key;

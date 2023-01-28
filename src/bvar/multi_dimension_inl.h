@@ -87,7 +87,6 @@ size_t MultiDimension<T>::count_stats() {
     return metric_map_ptr->size();
 }
 
-#ifdef UNIT_TEST
 template <typename T>
 inline
 void MultiDimension<T>::delete_stats(const key_type& labels_value) {
@@ -110,7 +109,6 @@ void MultiDimension<T>::delete_stats(const key_type& labels_value) {
         }
     }
 }
-#endif // end UNIT_TEST
 
 template <typename T>
 inline
@@ -150,6 +148,25 @@ void MultiDimension<T>::list_stats(std::vector<key_type>* names) {
     for (auto it = metric_map_ptr->begin(); it != metric_map_ptr->end(); ++it) {
         names->emplace_back(it->first);
     }
+}
+
+template <typename T>
+inline
+T* MultiDimension<T>::get_stats_impl(const key_type& labels_value) {
+    if (!is_valid_lables_value(labels_value)) {
+        return nullptr;
+    }
+    MetricMapScopedPtr metric_map_ptr;
+    if (_metric_map.Read(&metric_map_ptr) != 0) {
+        LOG(ERROR) << "Fail to read dbd";
+        return nullptr;
+    }
+
+    auto it = metric_map_ptr->seek(labels_value);
+    if (it == nullptr) {
+        return nullptr;
+    }
+    return (*it);
 }
 
 template <typename T>
@@ -202,6 +219,12 @@ T* MultiDimension<T>::get_stats_impl(const key_type& labels_value, STATS_OP stat
     };
     _metric_map.Modify(insert_fn);
     return cache_metric;
+}
+
+template <typename T>
+inline
+bool MultiDimension<T>::has_stats(const key_type& labels_value) {
+    return get_stats_impl(labels_value) != nullptr;
 }
 
 template <typename T>

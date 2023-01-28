@@ -657,7 +657,7 @@ namespace brpc {
 namespace rdma {
 void GlobalRdmaInitializeOrDie() {
     LOG(ERROR) << "brpc is not compiled with rdma. To enable it, please refer to "
-               << "https://github.com/apache/incubator-brpc/blob/master/docs/en/rdma.md";
+               << "https://github.com/apache/brpc/blob/master/docs/en/rdma.md";
     exit(1);
 }
 }

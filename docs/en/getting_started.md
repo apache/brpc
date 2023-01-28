@@ -244,8 +244,8 @@ Compile brpc with docker:
 ```shell
 $ mkdir -p ~/brpc
 $ cd ~/brpc
-$ git clone https://github.com/apache/incubator-brpc.git
-$ cd incubator-brpc
+$ git clone https://github.com/apache/brpc.git
+$ cd brpc
 $ docker build -t brpc:master .
 $ docker images
 $ docker run -it brpc:master /bin/bash
