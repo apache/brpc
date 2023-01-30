@@ -173,6 +173,20 @@ struct SocketSSLContext {
     std::string sni_name;       // useful for clients
 };
 
+struct SocketKeepaliveOptions {
+    SocketKeepaliveOptions()
+        : keepalive_idle_s(-1)
+        , keepalive_interval_s(-1)
+        , keepalive_count(-1)
+        {}
+    // Start keeplives after this period.
+    int keepalive_idle_s;
+    // Interval between keepalives.
+    int keepalive_interval_s;
+    // Number of keepalives before death.
+    int keepalive_count;
+};
+
 // TODO: Comment fields
 struct SocketOptions {
     SocketOptions();
@@ -199,14 +213,30 @@ struct SocketOptions {
     // The created socket will set parsing_context with this value.
     Destroyable* initial_parsing_context;
 
-    // Enable TCP keepalive or not.
-    bool keepalive;
-    // Start keeplives after this period.
-    int keepidle_s;
-    // Interval between keepalives.
-    int keepintvl_s;
-    // Number of keepalives before death.
-    int keepcnt;
+    // Socket keepalive related options.
+    // Refer to `SocketKeepaliveOptions' for details
+    void enable_keepalive() {
+        if (!_keepalive_options) {
+            _keepalive_options.reset(new SocketKeepaliveOptions);
+        }
+    }
+    bool has_keepalive_options() { return _keepalive_options != NULL; }
+    const SocketKeepaliveOptions& keepalive_options() const {
+        return *_keepalive_options;
+    }
+    SocketKeepaliveOptions* mutable_keepalive_options() {
+        enable_keepalive();
+        return _keepalive_options.get();
+    }
+    std::shared_ptr<SocketKeepaliveOptions>
+    shared_keepalibe_options() const {
+        return _keepalive_options;
+    }
+
+private:
+    // SocketKeepaliveOptions is not often used, allocate it on heap to
+    // prevent SocketKeepaliveOptions from being bloated in most cases.
+    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
 };
 
 // Abstractions on reading from and writing into file descriptors.
@@ -621,6 +651,8 @@ friend void DereferenceSocket(Socket*);
 
     int ResetFileDescriptor(int fd);
 
+    void SetKeepalive(int fd);
+
     // Wait until nref hits `expected_nref' and reset some internal resources.
     int WaitAndReset(int32_t expected_nref);
 
@@ -883,14 +915,10 @@ private:
 
     butil::atomic<int64_t> _ninflight_app_health_check;
 
-    // Enable TCP keepalive or not.
-    bool _keepalive;
-    // Start keeplives after this period.
-    int _keepidle_s;
-    // Interval between keepalives.
-    int _keepintvl_s;
-    // Number of keepalives before death.
-    int _keepcnt;
+    // Socket keepalive related options.
+    // Refer to `SocketKeepaliveOptions' for details.
+    // non-NULL means that keepalive is on.
+    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
 };
 
 } // namespace brpc

@@ -62,10 +62,6 @@ inline SocketOptions::SocketOptions()
     , conn(NULL)
     , app_connect(NULL)
     , initial_parsing_context(NULL)
-    , keepalive(false)
-    , keepidle_s(-1)
-    , keepintvl_s(-1)
-    , keepcnt(-1)
 {}
 
 inline int Socket::Dereference() {
