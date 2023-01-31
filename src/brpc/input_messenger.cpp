@@ -512,7 +512,7 @@ int InputMessenger::Create(SocketOptions options, SocketId* id) {
     }
     // Enable keepalive by options or Gflag.
     // Priority: options > Gflag.
-    while (options.keepalive_options || FLAGS_socket_keepalive) {
+    if (options.keepalive_options || FLAGS_socket_keepalive) {
         if (!options.keepalive_options) {
             options.keepalive_options = std::make_shared<SocketKeepaliveOptions>();
         }
