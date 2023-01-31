@@ -40,6 +40,10 @@ public:
         : _ptr(rhs._ptr ? new T(*rhs._ptr) : NULL) {}
     
     void operator=(const PtrContainer& rhs) {
+        if (this == &rhs) {
+            return;
+        }
+
         if (rhs._ptr) {
             if (_ptr) {
                 *_ptr = *rhs._ptr;
@@ -59,8 +63,14 @@ public:
         _ptr = ptr;
     }
 
-    operator void*() const { return _ptr; }
-    
+    explicit operator void*() const { return _ptr; }
+
+    explicit operator bool() const { return get() != NULL; }
+
+    T& operator*() const { return *get(); }
+
+    T* operator->() const { return get(); }
+
 private:
     T* _ptr;
 };
