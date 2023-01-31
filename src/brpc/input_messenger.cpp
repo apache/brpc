@@ -487,11 +487,12 @@ int InputMessenger::Create(const butil::EndPoint& remote_side,
     options.on_edge_triggered_events = OnNewMessages;
     options.health_check_interval_s = health_check_interval_s;
     if (FLAGS_socket_keepalive) {
-        options.mutable_keepalive_options()->keepalive_idle_s
+        options.keepalive_options = std::make_shared<SocketKeepaliveOptions>();
+        options.keepalive_options->keepalive_idle_s
             = FLAGS_socket_keepalive_idle_s;
-        options.mutable_keepalive_options()->keepalive_interval_s
+        options.keepalive_options->keepalive_interval_s
             = FLAGS_socket_keepalive_interval_s;
-        options.mutable_keepalive_options()->keepalive_count
+        options.keepalive_options->keepalive_count
             = FLAGS_socket_keepalive_count;
     }
     return Socket::Create(options, id);
@@ -511,17 +512,20 @@ int InputMessenger::Create(SocketOptions options, SocketId* id) {
     }
     // Enable keepalive by options or Gflag.
     // Priority: options > Gflag.
-    if (options.has_keepalive_options() || FLAGS_socket_keepalive) {
-        if (options.mutable_keepalive_options()->keepalive_idle_s <= 0) {
-            options.mutable_keepalive_options()->keepalive_idle_s
+    while (options.keepalive_options || FLAGS_socket_keepalive) {
+        if (!options.keepalive_options) {
+            options.keepalive_options = std::make_shared<SocketKeepaliveOptions>();
+        }
+        if (options.keepalive_options->keepalive_idle_s <= 0) {
+            options.keepalive_options->keepalive_idle_s
                 = FLAGS_socket_keepalive_idle_s;
         }
-        if (options.mutable_keepalive_options()->keepalive_interval_s <= 0) {
-            options.mutable_keepalive_options()->keepalive_interval_s
+        if (options.keepalive_options->keepalive_interval_s <= 0) {
+            options.keepalive_options->keepalive_interval_s
                 = FLAGS_socket_keepalive_interval_s;
         }
-        if (options.mutable_keepalive_options()->keepalive_count <= 0) {
-            options.mutable_keepalive_options()->keepalive_count
+        if (options.keepalive_options->keepalive_count <= 0) {
+            options.keepalive_options->keepalive_count
                 = FLAGS_socket_keepalive_count;
         }
     }

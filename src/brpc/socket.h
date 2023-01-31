@@ -214,29 +214,8 @@ struct SocketOptions {
     Destroyable* initial_parsing_context;
 
     // Socket keepalive related options.
-    // Refer to `SocketKeepaliveOptions' for details
-    void enable_keepalive() {
-        if (!_keepalive_options) {
-            _keepalive_options.reset(new SocketKeepaliveOptions);
-        }
-    }
-    bool has_keepalive_options() { return _keepalive_options != NULL; }
-    const SocketKeepaliveOptions& keepalive_options() const {
-        return *_keepalive_options;
-    }
-    SocketKeepaliveOptions* mutable_keepalive_options() {
-        enable_keepalive();
-        return _keepalive_options.get();
-    }
-    std::shared_ptr<SocketKeepaliveOptions>
-    shared_keepalibe_options() const {
-        return _keepalive_options;
-    }
-
-private:
-    // SocketKeepaliveOptions is not often used, allocate it on heap to
-    // prevent SocketKeepaliveOptions from being bloated in most cases.
-    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+    // Refer to `SocketKeepaliveOptions' for details.
+    std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
 };
 
 // Abstractions on reading from and writing into file descriptors.
@@ -651,7 +630,7 @@ friend void DereferenceSocket(Socket*);
 
     int ResetFileDescriptor(int fd);
 
-    void SetKeepalive(int fd);
+    void EnableKeepaliveIfNeeded(int fd);
 
     // Wait until nref hits `expected_nref' and reset some internal resources.
     int WaitAndReset(int32_t expected_nref);

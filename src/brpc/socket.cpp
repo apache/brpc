@@ -557,29 +557,27 @@ int Socket::ResetFileDescriptor(int fd) {
     // OK to fail, namely unix domain socket does not support this.
     butil::make_no_delay(fd);
     if (_tos > 0 &&
-        setsockopt(fd, IPPROTO_IP, IP_TOS, &_tos, sizeof(_tos)) < 0) {
-        PLOG(FATAL) << "Fail to set tos of fd=" << fd << " to " << _tos;
+        setsockopt(fd, IPPROTO_IP, IP_TOS, &_tos, sizeof(_tos)) != 0) {
+        PLOG(ERROR) << "Fail to set tos of fd=" << fd << " to " << _tos;
     }
 
     if (FLAGS_socket_send_buffer_size > 0) {
         int buff_size = FLAGS_socket_send_buffer_size;
-        socklen_t size = sizeof(buff_size);
-        if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buff_size, size) != 0) {
-            PLOG(FATAL) << "Fail to set sndbuf of fd=" << fd << " to " 
+        if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buff_size, sizeof(buff_size)) != 0) {
+            PLOG(ERROR) << "Fail to set sndbuf of fd=" << fd << " to "
                         << buff_size;
         }
     }
 
     if (FLAGS_socket_recv_buffer_size > 0) {
         int buff_size = FLAGS_socket_recv_buffer_size;
-        socklen_t size = sizeof(buff_size);
-        if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buff_size, size) != 0) {
-            PLOG(FATAL) << "Fail to set rcvbuf of fd=" << fd << " to " 
+        if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buff_size, sizeof(buff_size)) != 0) {
+            PLOG(ERROR) << "Fail to set rcvbuf of fd=" << fd << " to "
                         << buff_size;
         }
     }
 
-    SetKeepalive(fd);
+    EnableKeepaliveIfNeeded(fd);
 
     if (_on_edge_triggered_events) {
         if (GetGlobalEventDispatcher(fd).AddConsumer(id(), fd) != 0) {
@@ -592,64 +590,64 @@ int Socket::ResetFileDescriptor(int fd) {
     return 0;
 }
 
-void Socket::SetKeepalive(int fd) {
+void Socket::EnableKeepaliveIfNeeded(int fd) {
     if (!_keepalive_options) {
         return;
-    } else {
-        int keep_alive = 1;
-        socklen_t size = sizeof(keep_alive);
-        if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, size)!=0) {
-            LOG(FATAL) << "Fail to set keepalive of fd=" << fd;
-            return;
-        }
+    }
+
+    int keepalive = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive,
+                   sizeof(keepalive)) != 0) {
+        PLOG(ERROR) << "Fail to set keepalive of fd=" << fd;
+        return;
     }
 
 #if defined(OS_LINUX)
     if (_keepalive_options->keepalive_idle_s > 0) {
-        socklen_t size = sizeof(_keepalive_options->keepalive_idle_s);
         if (setsockopt(fd, SOL_TCP, TCP_KEEPIDLE,
-            &_keepalive_options->keepalive_idle_s, size) < 0) {
+                       &_keepalive_options->keepalive_idle_s,
+                       sizeof(_keepalive_options->keepalive_idle_s)) != 0) {
             LOG(FATAL) << "Fail to set keepidle of fd=" << fd;
         }
     }
 
     if (_keepalive_options->keepalive_interval_s > 0) {
-        socklen_t size = sizeof(_keepalive_options->keepalive_interval_s);
         if (setsockopt(fd, SOL_TCP, TCP_KEEPINTVL,
-            &_keepalive_options->keepalive_interval_s, size) < 0) {
+                       &_keepalive_options->keepalive_interval_s,
+                       sizeof(_keepalive_options->keepalive_interval_s)) != 0) {
             LOG(FATAL) << "Fail to set keepintvl of fd=" << fd;
         }
     }
 
     if (_keepalive_options->keepalive_count > 0) {
-        socklen_t size = sizeof(_keepalive_options->keepalive_count);
         if (setsockopt(fd, SOL_TCP, TCP_KEEPCNT,
-            &_keepalive_options->keepalive_count, size) < 0) {
+                       &_keepalive_options->keepalive_count,
+                       sizeof(_keepalive_options->keepalive_count)) != 0) {
             LOG(FATAL) << "Fail to set keepcnt of fd=" << fd;
         }
     }
 #elif defined(OS_MACOSX)
     if (_keepalive_options->keepalive_idle_s > 0) {
-        socklen_t size = sizeof(_keepalive_options->keepalive_idle_s);
         if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE,
-                       &_keepalive_options->keepalive_idle_s, size) < 0) {
-            LOG(FATAL) << "Fail to set keepidle of fd=" << fd;
+                       &_keepalive_options->keepalive_idle_s,
+                       sizeof(_keepalive_options->keepalive_idle_s)) != 0) {
+            PLOG(ERROR) << "Fail to set keepidle of fd=" << fd;
         }
     }
 
     if (_keepalive_options->keepalive_interval_s > 0) {
-        socklen_t size = sizeof(_keepalive_options->keepalive_interval_s);
         if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL,
-                       &_keepalive_options->keepalive_interval_s, size) < 0) {
-            LOG(FATAL) << "Fail to set keepintvl of fd=" << fd;
+                       &_keepalive_options->keepalive_interval_s,
+                       sizeof(_keepalive_options->keepalive_interval_s)) != 0) {
+            PLOG(ERROR) << "Fail to set keepintvl of fd=" << fd;
         }
     }
 
     if (_keepalive_options->keepalive_count > 0) {
-        socklen_t size = sizeof(_keepalive_options->keepalive_count);
         if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT,
-                       &_keepalive_options->keepalive_count, size) < 0) {
-            LOG(FATAL) << "Fail to set keepcnt of fd=" << fd;
+                       &_keepalive_options->keepalive_count,
+                       sizeof(_keepalive_options->keepalive_count)) != 0) {
+            PLOG(ERROR) << "Fail to set keepcnt of fd=" << fd;
         }
     }
 #endif
@@ -741,7 +739,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     }
     m->_last_writetime_us.store(cpuwide_now, butil::memory_order_relaxed);
     m->_unwritten_bytes.store(0, butil::memory_order_relaxed);
-    m->_keepalive_options = options.shared_keepalibe_options();
+    m->_keepalive_options = options.keepalive_options;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
