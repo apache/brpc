@@ -607,7 +607,7 @@ void Socket::EnableKeepaliveIfNeeded(int fd) {
         if (setsockopt(fd, SOL_TCP, TCP_KEEPIDLE,
                        &_keepalive_options->keepalive_idle_s,
                        sizeof(_keepalive_options->keepalive_idle_s)) != 0) {
-            LOG(FATAL) << "Fail to set keepidle of fd=" << fd;
+            PLOG(ERROR) << "Fail to set keepidle of fd=" << fd;
         }
     }
 
@@ -615,7 +615,7 @@ void Socket::EnableKeepaliveIfNeeded(int fd) {
         if (setsockopt(fd, SOL_TCP, TCP_KEEPINTVL,
                        &_keepalive_options->keepalive_interval_s,
                        sizeof(_keepalive_options->keepalive_interval_s)) != 0) {
-            LOG(FATAL) << "Fail to set keepintvl of fd=" << fd;
+            PLOG(ERROR) << "Fail to set keepintvl of fd=" << fd;
         }
     }
 
@@ -623,7 +623,7 @@ void Socket::EnableKeepaliveIfNeeded(int fd) {
         if (setsockopt(fd, SOL_TCP, TCP_KEEPCNT,
                        &_keepalive_options->keepalive_count,
                        sizeof(_keepalive_options->keepalive_count)) != 0) {
-            LOG(FATAL) << "Fail to set keepcnt of fd=" << fd;
+            PLOG(ERROR) << "Fail to set keepcnt of fd=" << fd;
         }
     }
 #elif defined(OS_MACOSX)
