@@ -63,7 +63,7 @@ public:
         _ptr = ptr;
     }
 
-    explicit operator void*() const { return _ptr; }
+    operator void*() const { return _ptr; }
 
     explicit operator bool() const { return get() != NULL; }
 
