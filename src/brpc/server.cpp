@@ -998,6 +998,10 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     }
     _listen_addr = endpoint;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
+        if (port < 0 || port > 65535) {
+            LOG(ERROR) << "Invalid port=" << port;
+            return -1;
+        }
         _listen_addr.port = port;
         butil::fd_guard sockfd(tcp_listen(_listen_addr));
         if (sockfd < 0) {
@@ -1047,6 +1051,10 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         break; // stop trying
     }
     if (_options.internal_port >= 0 && _options.has_builtin_services) {
+        if (_options.internal_port < 0 || _options.internal_port > 65535) {
+            LOG(ERROR) << "Invalid internal port=" << _options.internal_port;
+            return -1;
+        }
         if (_options.internal_port  == _listen_addr.port) {
             LOG(ERROR) << "ServerOptions.internal_port=" << _options.internal_port
                        << " is same with port=" << _listen_addr.port << " to Start()";
@@ -1143,10 +1151,6 @@ int Server::Start(const char* ip_port_str, const ServerOptions* opt) {
 }
 
 int Server::Start(int port, const ServerOptions* opt) {
-    if (port < 0 || port > 65535) {
-        LOG(ERROR) << "Invalid port=" << port;
-        return -1;
-    }
     return Start(butil::EndPoint(butil::IP_ANY, port), opt);
 }
 
