@@ -12,7 +12,7 @@
 2. 提名者发送close vote邮件给private@brpc和private@incubator ,标题可以为subject [RESULT][VOTE]，close邮件模版见https://community.apache.org/newcommitter.html#close-vote
 3. 提名者给被提名者发invite letter，并得到回复后再提示他提交ICLA，invite邮件模版见https://community.apache.org/newcommitter.html#Committer%20Invite%20Template
 4. 被提名者填写[CLA](https://www.apache.org/licenses/contributor-agreements.html), 个人贡献者需要下载[ICLA](https://www.apache.org/licenses/icla.pdf)填写个人信息并签名，发送电子版给 secretary@apache.org。（注意：ICLA需要填写信息完全，包括邮寄地址和签名，否则会被ASF的秘书打回）个人信息填写项（除签名外）可以使用 PDF 阅读器或浏览器填写，填写后保存进行签名。签名方式支持：
-   - 打印 pdf 文件，手写签名后扫描为电子版；
+   - 打印 该pdf 文件，手工填写表单（姓名、邮箱、邮寄地址），然后手写签名，最后扫描为电子版；
    - 使用支持手写的设备进行电子签名；
    - 使用 `gpg` 进行电子签名，即对填写好个人基本信息的 pdf 文件进行操作（需要提前生成与登记邮箱匹配的公钥/密钥对）：`gpg --armor --detach-sign icla.pdf`；
    - 使用 `DocuSign` 进行签名；
