@@ -204,7 +204,7 @@ struct ServerOptions {
 
     // SSL related options. Refer to `ServerSSLOptions' for details
     bool has_ssl_options() const { return _ssl_options != NULL; }
-    const ServerSSLOptions& ssl_options() const { return *_ssl_options.get(); }
+    const ServerSSLOptions& ssl_options() const { return *_ssl_options; }
     ServerSSLOptions* mutable_ssl_options();
 
     // Whether the server uses rdma or not

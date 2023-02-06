@@ -99,7 +99,7 @@ struct ChannelOptions {
 
     // SSL related options. Refer to `ChannelSSLOptions' for details
     bool has_ssl_options() const { return _ssl_options != NULL; }
-    const ChannelSSLOptions& ssl_options() const { return *_ssl_options.get(); }
+    const ChannelSSLOptions& ssl_options() const { return *_ssl_options; }
     ChannelSSLOptions* mutable_ssl_options();
 
     // Let this channel use rdma rather than tcp.
