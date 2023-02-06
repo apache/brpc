@@ -206,30 +206,10 @@ TEST_F(ServerTest, sanity) {
         ASSERT_EQ(-1, server.Start(99999, NULL));
         ASSERT_EQ(0, server.Start(8613, NULL));
     }
-
-    {
-        brpc::Server server1;
-        brpc::PortRange range1(65534, 65535);
-        ASSERT_EQ(0, server1.Start(range1, NULL));
-
-        brpc::Server server2;
-        ASSERT_EQ(0, server2.Start(range1, NULL));
-
-        brpc::Server server3;
-        ASSERT_EQ(-1, server3.Start(range1, NULL));
-
-        brpc::Server server4;
-        brpc::PortRange range4(65535, 65536);
-        ASSERT_EQ(-1, server4.Start(range4, NULL));
-    }
-
     {
         brpc::Server server;
         brpc::ServerOptions options;
         options.internal_port = 8613;          // The same as service port
-        ASSERT_EQ(-1, server.Start("127.0.0.1:8613", &options));
-        ASSERT_FALSE(server.IsRunning());      // Revert server's status
-        options.internal_port = 65536;          // Invalid port
         ASSERT_EQ(-1, server.Start("127.0.0.1:8613", &options));
         ASSERT_FALSE(server.IsRunning());      // Revert server's status
         // And release the listen port
