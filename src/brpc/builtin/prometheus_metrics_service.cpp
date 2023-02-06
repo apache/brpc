@@ -172,6 +172,8 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
          << si->latency_percentiles[4] << '\n'
          << si->metric_name << "{quantile=\"1\"} "
          << si->latency_percentiles[5] << '\n'
+         << si->metric_name << "{quantile=\"avg\"} "
+         << si->latency_avg << '\n'
          << si->metric_name << "_sum "
          // There is no sum of latency in bvar output, just use
          // average * count as approximation
