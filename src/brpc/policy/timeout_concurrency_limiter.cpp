@@ -67,8 +67,12 @@ bool TimeoutConcurrencyLimiter::OnRequested(int current_concurrency,
     if (cntl != nullptr && cntl->timeout_ms() != UNSET_MAGIC_NUM) {
         timeout_ms = cntl->timeout_ms();
     }
-    return current_concurrency <= FLAGS_timeout_cl_max_concurrency &&
-           _avg_latency_us < timeout_ms * 1000;
+    // In extreme cases, the average latency may be greater than requested
+    // timeout, allow currency_concurrency is 1 ensures the average latency can
+    // be obtained renew.
+    return current_concurrency == 1 ||
+           (current_concurrency <= FLAGS_timeout_cl_max_concurrency &&
+            _avg_latency_us < timeout_ms * 1000);
 }
 
 void TimeoutConcurrencyLimiter::OnResponded(int error_code,
@@ -137,7 +141,7 @@ bool TimeoutConcurrencyLimiter::AddSample(int error_code, int64_t latency_us,
         UpdateAvgLatency();
     } else {
         // All request failed
-        AdjustAvgLatency(_avg_latency_us / 2);
+        AdjustAvgLatency(_avg_latency_us * 2);
     }
     ResetSampleWindow(sampling_time_us);
     return true;
