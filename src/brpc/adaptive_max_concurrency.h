@@ -26,11 +26,18 @@
 
 namespace brpc {
 
+// timeout concurrency limiter config
+struct TimeoutConcurrencyConf {
+    int64_t timeout_ms;
+    int max_concurrency;
+};
+
 class AdaptiveMaxConcurrency{
 public:
     explicit AdaptiveMaxConcurrency();
     explicit AdaptiveMaxConcurrency(int max_concurrency);
     explicit AdaptiveMaxConcurrency(const butil::StringPiece& value);
+    explicit AdaptiveMaxConcurrency(const TimeoutConcurrencyConf& value);
 
     // Non-trivial destructor to prevent AdaptiveMaxConcurrency from being
     // passed to variadic arguments without explicit type conversion.
@@ -41,11 +48,13 @@ public:
 
     void operator=(int max_concurrency);
     void operator=(const butil::StringPiece& value);
+    void operator=(const TimeoutConcurrencyConf& value);
 
     // 0  for type="unlimited"
     // >0 for type="constant"
     // <0 for type="user-defined"
     operator int() const { return _max_concurrency; }
+    operator TimeoutConcurrencyConf() const { return _timeout_conf; }
 
     // "unlimited" for type="unlimited"
     // "10" "20" "30" for type="constant"
@@ -62,6 +71,8 @@ public:
 private:
     std::string _value;
     int _max_concurrency;
+    TimeoutConcurrencyConf
+        _timeout_conf;  // TODO std::varient for different type
 };
 
 inline std::ostream& operator<<(std::ostream& os, const AdaptiveMaxConcurrency& amc) {
