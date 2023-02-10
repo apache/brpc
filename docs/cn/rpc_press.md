@@ -61,7 +61,7 @@ json也可以写在文件中，假如./input.json包含了上述两个请求，-
 rpc_press启动后会默认在8888端口启动一个dummy server，用于观察rpc_press本身的运行情况：
 
 ```
-./rpc_press -proto=echo.proto -service=example.EchoService -method=Echo -server=0.0.0.0:8002 -input=./input.json -duration=0 -qps=100
+./rpc_press -proto=echo.proto -method=example.EchoService.Echo -server=0.0.0.0:8002 -input=./input.json -duration=0 -qps=100
 TRACE: 01-30 16:10:04:   * 0 src/brpc/server.cpp:733] Server[dummy_servers] is serving on port=8888.
 TRACE: 01-30 16:10:04:   * 0 src/brpc/server.cpp:742] Check out http://xxx.com:8888 in your web browser.</code>
 ```
