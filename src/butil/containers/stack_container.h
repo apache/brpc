@@ -36,8 +36,14 @@ namespace butil {
 template<typename T, size_t stack_capacity>
 class StackAllocator : public std::allocator<T> {
  public:
-  typedef typename std::allocator<T>::pointer pointer;
-  typedef typename std::allocator<T>::size_type size_type;
+#if __cplusplus >= 202002L
+  typedef typename std::allocator_traits<std::allocator<T> > Allocator;
+#else
+  typedef typename std::allocator<T> Allocator;
+#endif
+
+  typedef typename Allocator::pointer pointer;
+  typedef typename Allocator::size_type size_type;
 
   // Backing store for the allocator. The container owner is responsible for
   // maintaining this for as long as any containers using this allocator are
@@ -109,7 +115,12 @@ class StackAllocator : public std::allocator<T> {
       source_->used_stack_buffer_ = true;
       return source_->stack_buffer();
     } else {
+#if __cplusplus >= 202002L
+      (void)hint;
+      return std::allocator<T>::allocate(n);
+#else
       return std::allocator<T>::allocate(n, hint);
+#endif
     }
   }
 

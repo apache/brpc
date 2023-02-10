@@ -92,7 +92,15 @@ template <typename T> struct is_pointer : false_type {};
 template <typename T> struct is_pointer<T*> : true_type {};
 
 #if defined(BUTIL_CXX11_ENABLED)
+
+#if __cplusplus >= 202002L
+template <class T> struct is_pod
+: integral_constant<bool, (std::is_standard_layout<T>::value &&
+                           std::is_trivial<T>::value)> {};
+#else
 template <class T> struct is_pod : std::is_pod<T> {};
+#endif
+
 #else
 // We can't get is_pod right without compiler help, so fail conservatively.
 // We will assume it's false except for arithmetic types, enumerations,
