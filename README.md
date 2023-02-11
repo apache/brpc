@@ -5,7 +5,7 @@
 
 # ![brpc](docs/images/logo.png)
 
-brpc is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
+[brpc](https://brpc.apache.org/) is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
 
 ### "brpc" means "better RPC". 
 
