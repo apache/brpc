@@ -37,7 +37,7 @@ int PeriodicNamingService::RunNamingService(
     const char* service_name, NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
     bool ever_reset = false;
-    for (;;) {
+    while (true) {
         servers.clear();
         const int rc = GetServers(service_name, &servers);
         if (bthread_stopped(bthread_self())) {

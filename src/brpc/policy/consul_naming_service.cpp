@@ -62,6 +62,14 @@ std::string RapidjsonValueToString(const BUTIL_RAPIDJSON_NAMESPACE::Value& value
     return buffer.GetString();
 }
 
+ConsulNamingService::ConsulNamingService()
+    : _backup_file_loaded(false), _consul_connected(false) {}
+
+int ConsulNamingService::GetNamingServiceAccessIntervalMs() const {
+    return FLAGS_consul_retry_interval_ms > 0 ? FLAGS_consul_retry_interval_ms :
+        PeriodicNamingService::GetNamingServiceAccessIntervalMs();
+}
+
 int ConsulNamingService::DegradeToOtherServiceIfNeeded(const char* service_name,
                                                        std::vector<ServerNode>* servers) {
     if (FLAGS_consul_enable_degrade_to_file_naming_service && !_backup_file_loaded) {
@@ -209,47 +217,9 @@ int ConsulNamingService::GetServers(const char* service_name,
     return 0;
 }
 
-int ConsulNamingService::RunNamingService(const char* service_name,
-                                          NamingServiceActions* actions) {
-    std::vector<ServerNode> servers;
-    bool ever_reset = false;
-    for (;;) {
-        servers.clear();
-        const int rc = GetServers(service_name, &servers);
-        if (bthread_stopped(bthread_self())) {
-            RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
-            return 0;
-        }
-        if (rc == 0) {
-            ever_reset = true;
-            actions->ResetServers(servers);
-        } else {
-            if (!ever_reset) {
-                // ResetServers must be called at first time even if GetServers
-                // failed, to wake up callers to `WaitForFirstBatchOfServers'
-                ever_reset = true;
-                servers.clear();
-                actions->ResetServers(servers);
-            }
-            if (bthread_usleep(std::max(FLAGS_consul_retry_interval_ms, 1) * butil::Time::kMicrosecondsPerMillisecond) < 0) {
-                if (errno == ESTOP) {
-                    RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
-                    return 0;
-                }
-                PLOG(FATAL) << "Fail to sleep";
-                return -1;
-            }
-        }
-    }
-    CHECK(false);
-    return -1;
-}
-
-
 void ConsulNamingService::Describe(std::ostream& os,
                                    const DescribeOptions&) const {
     os << "consul";
-    return;
 }
 
 NamingService* ConsulNamingService::New() const {

@@ -19,7 +19,7 @@
 #ifndef  BRPC_POLICY_CONSUL_NAMING_SERVICE
 #define  BRPC_POLICY_CONSUL_NAMING_SERVICE
 
-#include "brpc/naming_service.h"
+#include "brpc/periodic_naming_service.h"
 #include "brpc/channel.h"
 
 
@@ -27,13 +27,15 @@ namespace brpc {
 class Channel;
 namespace policy {
 
-class ConsulNamingService : public NamingService {
-private:
-    int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions) override;
+class ConsulNamingService : public PeriodicNamingService {
+public:
+    ConsulNamingService();
 
+private:
     int GetServers(const char* service_name,
-                   std::vector<ServerNode>* servers);
+                   std::vector<ServerNode>* servers) override;
+
+    int GetNamingServiceAccessIntervalMs() const override;
 
     void Describe(std::ostream& os, const DescribeOptions&) const override;
 
@@ -48,8 +50,8 @@ private:
     Channel _channel;
     std::string _consul_index;
     std::string _consul_url;
-    bool _backup_file_loaded = false;
-    bool _consul_connected = false;
+    bool _backup_file_loaded;
+    bool _consul_connected;
 };
 
 }  // namespace policy
