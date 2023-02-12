@@ -1,16 +1,35 @@
-brpc apache release guide step by step
-===
+# brpc apache release guide step by step
 
-Overview: divided into the following steps
+## Preparation
 
-1. Preparation: including generating the key required for signature, creating github release branch and tag, modifying the version file, etc
-2. Publish software package: including making source tarball, signing, uploading to the designated location and verifying
-3. Vote: voting in mail list `dev@brpc.apache.org`
-4. Release announcement: including updating brpc website, sending announcement emails, posting WeChat official account announcements, merging the release branche into the master branch
+### 1. Confirm the release notes
 
-# Prepare key
+It will cost about 1 week or so to finish this phase, during this phase:
+* The content of the `Release Notes` will be confirmed,
+  - no missing changes;
+  - and the description is clear;
+* The PRs those are scheduled for the release can be merged.
 
-## 1. Install GPG
+The `Release Notes` template:
+```
+[Release Notes]
+
+Feature:
+- ...
+
+Bugfix:
+- ...
+
+Enhancement:
+- ...
+
+Other:
+- ...
+```
+
+### 2. Setup GPG
+
+#### 1. Install GPG
 
 The popular Linux distributions should have the GnuPG pre-installed. With OSX, you can install GnuPG using [`brew`](https://brew.sh/):
 ```bash
@@ -24,7 +43,7 @@ After the installation is complete, execute the following command to check the v
 gpg --version
 ```
 
-## 2. Create key
+#### 2. Create key
 
 After the installation is complete, execute the following command to create a key.
 
@@ -86,7 +105,7 @@ uid                      LorinLee (lorinlee's key) <lorinlee@apache.org>
 sub   rsa4096 2021-10-17 [E]
 ```
 
-## 3. Check the generated key
+#### 3. Check the generated key
 
 ```bash
 gpg --list-keys
@@ -108,7 +127,7 @@ sub   rsa4096 2021-10-17 [E]
 
 Note that `C30F211F071894258497F46392E18A11B6585834` is the public key.
 
-## 4. Publish the public key to server
+#### 4. Publish the public key to server
 
 Execute the following command:
 
@@ -116,7 +135,9 @@ Execute the following command:
 gpg --keyserver hkps://pgp.mit.edu --send-key C30F211F071894258497F46392E18A11B6585834
 ```
 
-## 5. Generate fingerprint and upload to apache user profile
+The keyserver can also use hkps://keys.openpgp.org or hkps://keyserver.ubuntu.com，which provide web page to view the keys.
+
+#### 5. Generate fingerprint and upload to Apache user profile
 
 Since the public key server has no verifying mechanism, anyone can upload the public key in your name, so there is no way to guarantee the reliability of the public key on the server. Usually, you can publish a public key fingerprint on your website and let others check the downloaded public key.
 
@@ -137,9 +158,9 @@ sub   rsa4096 2021-10-17 [E]
 
 Paste the above fingerprint `C30F 211F 0718 9425 8497 F463 92E1 8A11 B658 5834` into the `OpenPGP Public Key Primary Fingerprint:` field of your Apache user information on https://id.apache.org.
 
-# Prepare release package
+## Make the release
 
-## 1. Create release branch
+### 1. Create release branch
 
 If you are releasing a new MAJOR/MINOR version, like `1.0.0`, you need to create a new branch `release-1.0` from master.
 
@@ -147,13 +168,13 @@ If you are releasing a new PATCH version from existing MINOR version, like `1.0.
 
 The code modification during the release process are performed on the release branch (such as `release-1.0`). After the release is complete, please merge the release branch back into the master branch.
 
-## 2. Update the `NOTICE` file
+### 2. Update the `NOTICE` file
 
 Check and update the YEAR field of the `NOTIEC` file.
 
-## 3. Update version in source code
+### 3. Update version in source code
 
-### Update `RELEASE_VERSION` file
+#### Update `RELEASE_VERSION` file
 
 Edit the `RELEASE_VERSION` file in the project root directory, update the version number, and submit it to the code repository. For example, the `1.0.0` version of the file is:
 
@@ -161,7 +182,7 @@ Edit the `RELEASE_VERSION` file in the project root directory, update the versio
 1.0.0
 ```
 
-### Update the `CMakeLists.txt` file
+#### Update the `CMakeLists.txt` file
 
 Edit the `CMakeLists.txt` file in the project root directory, update the version number, and submit it to the code repository. For example:
 
@@ -169,7 +190,7 @@ Edit the `CMakeLists.txt` file in the project root directory, update the version
 set(BRPC_VERSION 1.0.0)
 ```
 
-### Update the `package/rpm/brpc.spec` file
+#### Update the `package/rpm/brpc.spec` file
 
 Edit the `/package/rpm/brpc.spec` file in the project root directory, update the version number, and submit it to the code repository. For example:
 
@@ -177,9 +198,9 @@ Edit the `/package/rpm/brpc.spec` file in the project root directory, update the
 Version:	1.0.0
 ```
 
-## 4. Create releasing tag
+### 4. Create releasing tag
 
-push the release branch to tag, For example:
+Pull the release branch to tag, for example:
 
 ```bash
 git clone -b release-1.0 git@github.com:apache/brpc.git ~/brpc
@@ -191,22 +212,25 @@ git tag -a 1.0.0 -m "release 1.0.0"
 git push origin --tags
 ```
 
-## 4. Create releasing package
+### 5. Create releasing package
 
 ```bash
 git archive --format=tar 1.0.0 --prefix=apache-brpc-1.0.0-src/ | gzip > apache-brpc-1.0.0-src.tar.gz
 ```
+or
+```bash
+git archive --format=tar.gz 1.0.0 --prefix=apache-brpc-1.0.0-src/ --output=apache-brpc-1.0.0-src.tar.gz
+```
 
-## 5. Generate GPG signature
+### 6. Generate GPG signature
 
 ```bash
 gpg -u lorinlee@apache.org --armor --output apache-brpc-1.0.0-src.tar.gz.asc --detach-sign apache-brpc-1.0.0-src.tar.gz
 
 gpg --verify apache-brpc-1.0.0-src.tar.gz.asc apache-brpc-1.0.0-src.tar.gz
-
 ```
 
-## 6. Generate SHA512 sum
+### 7. Generate SHA512 checksum
 
 ```bash
 sha512sum apache-brpc-1.0.0-src.tar.gz > apache-brpc-1.0.0-src.tar.gz.sha512
@@ -214,11 +238,11 @@ sha512sum apache-brpc-1.0.0-src.tar.gz > apache-brpc-1.0.0-src.tar.gz.sha512
 sha512sum --check apache-brpc-1.0.0-src.tar.gz.sha512
 ```
 
-# Publish to Apache SVN repository
+## Publish to Apache SVN repository
 
-## 1. checkout dist/dev/brpc directory
+### 1. Checkout dist/dev/brpc directory
 
-If there is no local working directory, create a local working directory first. Clone the Apache SVN repository, username needs to use your own Apache LDAP username:
+If there is no local working directory, create a local working directory first. Checkout the Apache SVN repository, username needs to use your own Apache LDAP username:
 
 ```bash
 mkdir -p ~/brpc_svn/dev/
@@ -230,7 +254,7 @@ svn --username=lorinlee co https://dist.apache.org/repos/dist/dev/brpc/
 cd ~/brpc_svn/dev/brpc
 ```
 
-## 2. Add GPG public key
+### 2. Add GPG public key
 
 A new release manager must add the key into KEYS file for the first time.
 
@@ -238,7 +262,18 @@ A new release manager must add the key into KEYS file for the first time.
 (gpg --list-sigs lorinlee && gpg -a --export lorinlee) >> KEYS
 ```
 
-## 3. Add the releasing package to SVN directory
+Note: if you have more than one keys that use the name, you should explicitly specify the key by email or fingerprint to export.
+
+By email
+```bash
+(gpg --list-sigs lorinlee@apache.org && gpg -a --export lorinlee@apache.org) >> KEYS
+```
+By fingerprint:
+```bash
+(gpg --list-sigs C30F211F071894258497F46392E18A11B6585834 && gpg -a --export C30F211F071894258497F46392E18A11B6585834) >> KEYS
+```
+
+### 3. Add the releasing package to SVN directory
 
 ```bash
 mkdir -p ~/brpc_svn/dev/brpc/1.0.0
@@ -252,7 +287,7 @@ cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.asc ~/brpc_svn/dev/brpc/1.0.0
 cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
 ```
 
-## 4. Submit SVN
+### 4. Submit SVN
 
 Return to the parent directory and use the Apache LDAP account to submit SVN
 
@@ -264,15 +299,15 @@ svn add *
 svn --username=lorinlee commit -m "release 1.0.0"
 ```
 
-# Verify release
+## Verify release
 
-## 1. Verify SHA512 sum
+### 1. Verify SHA512 checksum
 
 ```bash
 sha512sum --check apache-brpc-1.0.0-src.tar.gz.sha512
 ```
 
-## 2. Verify GPG signature
+### 2. Verify GPG signature
 
 First import the publisher's public key. Import KEYS from the svn repository to the local. (The person who releases the version does not need to import it again. The person who verify needs to import it.)
 
@@ -319,9 +354,11 @@ Then verify the GPG signature:
 gpg --verify apache-brpc-1.0.0-src.tar.gz.asc apache-brpc-1.0.0-src.tar.gz
 ```
 
-## 3. Check release content
+### 3. Check release content
 
-### 1. Compare the difference of between the source code package and github tag
+#### 1. Compare the difference between the candidate source package and the package download through github tag page
+
+Should use the `tar.gz` format tarball.
 
 ```bash
 curl -Lo tag-1.0.0.tar.gz https://github.com/apache/brpc/archive/refs/tags/1.0.0.tar.gz
@@ -333,7 +370,7 @@ tar xvzf apache-brpc-1.0.0-src.tar.gz
 diff -r brpc-1.0.0 apache-brpc-1.0.0-src
 ```
 
-### 2. Check file content
+#### 2. Check file content
 
 - Check whether the source code package contains unnecessary files, which makes the tarball too large
 - LICENSE and NOTICE files exist
@@ -348,15 +385,16 @@ diff -r brpc-1.0.0 apache-brpc-1.0.0-src
    - The complete version of the dependency license is in the license directory
    - If third-party dependency have the Apache license and have NOTICE files, these NOTICE files also need to be added to the releasing NOTICE file
 
-# Vote in the Apache bRPC community
+## Vote in the Apache bRPC community
 
-## 1. Vote stage
+This stage will cost 3+ days.
+
+### 1. Vote stage
 
 1. Send a voting email to `dev@brpc.apache.org`. PMC needs to check the correctness of the version according to the document before voting. After at least 72 hours and 3 +1 PMC member votes, you can move to the next stage.
-
 2. Announce the voting result and send the voting result to dev@brpc.apache.org.
 
-## 2. Vote email template
+### 2. Vote email template
 
 1. Apache bRPC community vote email template
 
@@ -447,24 +485,27 @@ Regards,
 LorinLee
 ```
 
-## 3. Vote not passed
+### 3. Vote not passed
 
 If the community vote is not passed, please modify the code of the release branch, package and vote again.
 
-# Finish the release
 
-## 1. Move the release package from Apache SVN directory dist/dev to dist/release
+## Finish the release
+
+### 1. Move the release package from Apache SVN directory dist/dev to dist/release
+
+Note: PMC members only, and it will also update the `KEYS` if changed.
 
 ```
 svn mv https://dist.apache.org/repos/dist/dev/brpc/1.0.0 https://dist.apache.org/repos/dist/release/brpc/1.0.0 -m "release brpc 1.0.0"
 ```
 
-## 2. Create github release
+### 2. Create github release
 
 1. On the [GitHub Releases page](https://github.com/apache/brpc/tags) Click the corresponding version of to create a new Release
 2. Edit the version number and version description, and click `Publish release`
 
-## 3. Update download page
+### 3. Update download page
 
 After waiting and confirming that the new release is synchronized to the Apache image, update the following page: <https://brpc.apache.org/docs/downloadbrpc/> by change the code in <https://github.com/apache/brpc-website/>. Please update both Chinese and English.
 
@@ -472,11 +513,13 @@ The download links of GPG signature files and hash check files should use this p
 
 The download link of the code package should use this prefix: `https://dlcdn.apache.org/brpc/`
 
-## 4. Send email to announce release finished
+### 4. Send email to announce release finished
 
 Send mail to `dev@brpc.apache.org` and `announce@apache.org` to announce the completion of release.
 
 Note: The email account must use **personal apache email**, and the email content must be **plain text format** ("plain text mode" can be selected in gmail). And email to `announce@apache.org` mail group will be delivered after manual review. Please wait patiently after sending the email, and it will be passed within one day.
+
+See https://shenyu.apache.org/community/use-apache-email for more details to setup a personal apache account email, the `SMTP` server should be `mail-relay.apache.org`.
 
 The announcement email template:
 
@@ -508,7 +551,7 @@ More details regarding Apache brpc can be found at:
 http://brpc.apache.org/
 
 The release is available for download at:
-https://brpc.apache.org/docs/download/
+https://brpc.apache.org/download/
 
 The release notes can be found here:
 https://github.com/apache/brpc/releases/tag/1.0.0
@@ -528,10 +571,10 @@ Best Regards,
 Apache bRPC Community
 ```
 
-## 5. Publish WeChat official account announcement
+### 5. Publish WeChat official account announcement
 
 Reference <https://mp.weixin.qq.com/s/DeFhpAV_AYsn_Xd1ylPTSg>.
 
-## 6. Update master branch
+### 6. Update master branch
 
-After the release is completed, merge the release branch into the master branch
+After the release is completed, merge the release branch into the `master` branch.
