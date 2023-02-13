@@ -40,10 +40,6 @@ int PeriodicNamingService::RunNamingService(
     while (true) {
         servers.clear();
         const int rc = GetServers(service_name, &servers);
-        if (bthread_stopped(bthread_self())) {
-            RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
-            return 0;
-        }
         if (rc == 0) {
             ever_reset = true;
             actions->ResetServers(servers);
@@ -55,6 +51,10 @@ int PeriodicNamingService::RunNamingService(
             actions->ResetServers(servers);
         }
 
+        if (bthread_stopped(bthread_self())) {
+            RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
+            return 0;
+        }
         if (bthread_usleep(GetNamingServiceAccessIntervalMs() * 1000UL) < 0) {
             if (errno == ESTOP) {
                 RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
