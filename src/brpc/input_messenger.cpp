@@ -54,6 +54,7 @@ DEFINE_bool(log_connection_close, false,
 BRPC_VALIDATE_GFLAG(log_connection_close, PassValidate);
 
 DECLARE_bool(usercode_in_pthread);
+DECLARE_bool(usercode_in_coroutine);
 DECLARE_uint64(max_body_size);
 
 const size_t MSG_SIZE_WINDOW = 10;  // Take last so many message into stat.
@@ -181,7 +182,7 @@ static void QueueMessage(InputMessageBase* to_run_msg,
                           BTHREAD_ATTR_PTHREAD :
                           BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
     tmp.keytable_pool = keytable_pool;
-    if (bthread_start_background(
+    if (!FLAGS_usercode_in_coroutine && bthread_start_background(
             &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
         ++*num_bthread_created;
     } else {

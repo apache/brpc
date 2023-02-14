@@ -33,7 +33,8 @@ class EchoServiceImpl : public EchoService {
 public:
     EchoServiceImpl() {
         brpc::ChannelOptions options;
-        options.timeout_ms = FLAGS_sleep_us / 1000 * 2;
+        options.timeout_ms = FLAGS_sleep_us / 1000 * 2 + 100;
+        options.max_retry = 0;
         CHECK(_channel.Init(butil::EndPoint(butil::IP_ANY, FLAGS_port), &options) == 0);
     }
 
@@ -107,6 +108,9 @@ int main(int argc, char* argv[]) {
 
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    if (FLAGS_enable_coroutine) {
+        GFLAGS_NS::SetCommandLineOption("usercode_in_coroutine", "true");
+    }
 
     // Generally you only need one Server.
     brpc::Server server;
