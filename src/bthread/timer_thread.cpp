@@ -243,7 +243,7 @@ TimerThread::TaskId TimerThread::schedule(
 }
 
 // Notice that we don't recycle the Task in this function, let TimerThread::run
-// do it. The side effect is that we may allocated many unscheduled tasks before
+// do it. The side effect is that we may allocate many unscheduled tasks before
 // TimerThread wakes up. The number is approximately qps * timeout_s. Under the
 // precondition that ResourcePool<Task> caches 128K for each thread, with some
 // further calculations, we can conclude that in a RPC scenario:

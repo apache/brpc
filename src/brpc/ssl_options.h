@@ -28,7 +28,7 @@ struct CertInfo {
     // Certificate in PEM format.
     // Note that CN and alt subjects will be extracted from the certificate,
     // and will be used as hostnames. Requests to this hostname (provided SNI
-    // extension supported) will be encrypted using this certifcate.
+    // extension supported) will be encrypted using this certificate.
     // Supported both file path and raw string
     std::string certificate;
 
