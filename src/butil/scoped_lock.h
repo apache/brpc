@@ -36,15 +36,8 @@
 #else
 
 // NOTE(gejun): c++11 deduces additional reference to the type.
-namespace butil {
-namespace detail {
-template <typename T>
-std::lock_guard<typename std::remove_reference<T>::type> get_lock_guard();
-}  // namespace detail
-}  // namespace butil
-
-#define BAIDU_SCOPED_LOCK(ref_of_lock)                                  \
-    decltype(::butil::detail::get_lock_guard<decltype(ref_of_lock)>()) \
+#define BAIDU_SCOPED_LOCK(ref_of_lock)                                            \
+    std::lock_guard<typename std::remove_reference<decltype(ref_of_lock)>::type>  \
     BAIDU_CONCAT(scoped_locker_dummy_at_line_, __LINE__)(ref_of_lock)
 #endif
 
