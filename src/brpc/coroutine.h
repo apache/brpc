@@ -115,7 +115,7 @@ private:
 // 
 // NOTE: Inside coroutine function, DO NOT call pthread-blocking or 
 // bthread-blocking functions (eg. bthread_join(), bthread_usleep(), syncronized RPC),
-// otherwise may cause dead lock.
+// otherwise may cause dead lock or long latency.
 class Coroutine {
 public:
     template <typename T>
@@ -123,9 +123,10 @@ public:
 
     ~Coroutine();
 
-    void join();
+    template <typename T = void>
+    T join();
 
-    template <typename T>
+    template <typename T = void>
     Awaitable<T> awaitable();
 
     static Awaitable<int> usleep(int sleep_us);

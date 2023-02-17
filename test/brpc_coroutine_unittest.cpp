@@ -197,7 +197,8 @@ TEST_F(CoroutineTest, coroutine) {
     delay_us = 0;
 
     brpc::Coroutine coro3(inplace_func2());
-    coro3.join();
+    double d = coro3.join<double>();
+    ASSERT_EQ(0.5, d);
 
     brpc::Coroutine coro4(inplace_func("abc"));
     coro4.join();

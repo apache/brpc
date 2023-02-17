@@ -259,12 +259,21 @@ inline Coroutine::~Coroutine() {
     }
 }
 
-inline void Coroutine::join() {
+template <typename T>
+inline T Coroutine::join() {
     CHECK(_promise != nullptr) << "join() can not be called to detached coroutine!";
     CHECK(_waited == false) << "awaitable() or join() can only be called once!";
-    _promise->on_suspend();
     _waited = true;
     bthread::butex_wait(_butex, 0, nullptr);
+    if constexpr (!std::is_same<T, void>::value) {
+        auto promise = dynamic_cast<detail::AwaitablePromise<T>*>(_promise);
+        CHECK(promise != nullptr) << "join type not match";
+        T ret = promise->value();
+        _promise->on_suspend();
+        return ret;
+    } else {
+        _promise->on_suspend();
+    }
 }
 
 template <typename T>
