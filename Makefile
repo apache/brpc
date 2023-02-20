@@ -163,7 +163,8 @@ BUTIL_SOURCES = \
     src/butil/iobuf.cpp \
     src/butil/binary_printer.cpp \
     src/butil/recordio.cc \
-    src/butil/popen.cpp
+    src/butil/popen.cpp   \
+	src/butil/bson_util.cc
 
 ifeq ($(SYSTEM), Linux)
     BUTIL_SOURCES += src/butil/file_util_linux.cc \

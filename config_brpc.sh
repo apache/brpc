@@ -219,6 +219,9 @@ append_linking $GFLAGS_LIB gflags
 PROTOBUF_LIB=$(find_dir_of_lib_or_die protobuf)
 append_linking $PROTOBUF_LIB protobuf
 
+BSON_LIB=$(find_dir_of_lib_or_die bson)
+append_linking $BSON_LIB bson
+
 LEVELDB_LIB=$(find_dir_of_lib_or_die leveldb)
 # required by leveldb
 if [ -f $LEVELDB_LIB/libleveldb.a ]; then
