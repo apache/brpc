@@ -88,178 +88,206 @@ struct ReplicaSetMember {
   std::string state_str;
 };
 
-class MongoQueryRequest : public ::google::protobuf::Message {
- public:
-  MongoQueryRequest();
-  virtual ~MongoQueryRequest();
-  MongoQueryRequest(const MongoQueryRequest& from);
-  MongoQueryRequest& operator=(const MongoQueryRequest& from);
-  void Swap(MongoQueryRequest* other);
-  bool SerializeTo(butil::IOBuf* buf) const;
-  MongoQueryRequest* New() const;
-  void CopyFrom(const ::google::protobuf::Message& from);
-  void MergeFrom(const ::google::protobuf::Message& from);
-  void CopyFrom(const MongoQueryRequest& from);
-  void MergeFrom(const MongoQueryRequest& from);
-  void Clear();
-  bool IsInitialized() const;
-  bool MergePartialFromCodedStream(
-      ::google::protobuf::io::CodedInputStream* input);
-  void SerializeWithCachedSizes(
-      ::google::protobuf::io::CodedOutputStream* output) const;
-  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
-      ::google::protobuf::uint8* output) const;
-  int GetCachedSize() const { return _cached_size_; }
-  static const ::google::protobuf::Descriptor* descriptor();
+class MongoRequest : public ::google::protobuf::Message {
+public:
+    MongoRequest() = default;
+    virtual ~MongoRequest() = default;
+    MongoRequest(const MongoRequest& from) = default;
+    MongoRequest& operator=(const MongoRequest &from) = default;
+
+    static const ::google::protobuf::Descriptor* descriptor();
+    virtual bool SerializeTo(butil::IOBuf* buf) const = 0;
+    virtual const char* RequestId() const = 0;
+    
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
+};
+
+class MongoResponse : public ::google::protobuf::Message {
+public:
+    MongoResponse() = default;
+    virtual~MongoResponse() = default;
+    MongoResponse(const MongoResponse& from) = default;
+    MongoResponse& operator=(const MongoResponse &from) = default;
+
+    static const ::google::protobuf::Descriptor* descriptor();
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
+};
+
+class MongoQueryRequest : public MongoRequest {
+public:
+    MongoQueryRequest();
+    virtual ~MongoQueryRequest();
+    MongoQueryRequest(const MongoQueryRequest& from);
+    MongoQueryRequest& operator=(const MongoQueryRequest& from);
+    void Swap(MongoQueryRequest* other);
+    bool SerializeTo(butil::IOBuf* buf) const override;
+    const char* RequestId() const override {
+        return "query";
+    }
+    MongoQueryRequest* New() const;
+    void CopyFrom(const ::google::protobuf::Message& from);
+    void MergeFrom(const ::google::protobuf::Message& from);
+    void CopyFrom(const MongoQueryRequest& from);
+    void MergeFrom(const MongoQueryRequest& from);
+    void Clear();
+    bool IsInitialized() const;
+    bool MergePartialFromCodedStream(
+        ::google::protobuf::io::CodedInputStream* input);
+    void SerializeWithCachedSizes(
+        ::google::protobuf::io::CodedOutputStream* output) const;
+    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
+        ::google::protobuf::uint8* output) const;
+    int GetCachedSize() const { return _cached_size_; }
+    static const ::google::protobuf::Descriptor* descriptor();
 
   // fields
 
   // database
- public:
-  static const int kdatabaseFieldNumber = 1;
-  const std::string& database() const { return database_; }
-  bool has_database() const { return _has_bits_[0] & 0x1u; }
-  void clear_database() {
-    clear_has_database();
-    database_.clear();
-  }
-  void set_database(std::string value) {
-    database_ = value;
-    set_has_database();
-  }
+public:
+    static const int kdatabaseFieldNumber = 1;
+    const std::string& database() const { return database_; }
+    bool has_database() const { return _has_bits_[0] & 0x1u; }
+    void clear_database() {
+      clear_has_database();
+      database_.clear();
+    }
+    void set_database(std::string value) {
+      database_ = value;
+      set_has_database();
+    }
 
- private:
-  void set_has_database() { _has_bits_[0] |= 0x1u; }
-  void clear_has_database() { _has_bits_[0] &= ~0x1u; }
+private:
+    void set_has_database() { _has_bits_[0] |= 0x1u; }
+    void clear_has_database() { _has_bits_[0] &= ~0x1u; }
 
-  std::string database_;
+    std::string database_;
 
-  // collection
- public:
-  static const int kcollectionFieldNumber = 2;
-  const std::string& collection() const { return collection_; }
-  bool has_collection() const { return _has_bits_[0] & 0x2u; }
-  void clear_collection() {
-    clear_has_collection();
-    collection_.clear();
-  }
-  void set_collection(std::string value) {
-    collection_ = value;
-    set_has_collection();
-  }
+    // collection
+public:
+    static const int kcollectionFieldNumber = 2;
+    const std::string& collection() const { return collection_; }
+    bool has_collection() const { return _has_bits_[0] & 0x2u; }
+    void clear_collection() {
+      clear_has_collection();
+      collection_.clear();
+    }
+    void set_collection(std::string value) {
+      collection_ = value;
+      set_has_collection();
+    }
 
- private:
-  void set_has_collection() { _has_bits_[0] |= 0x2u; }
-  void clear_has_collection() { _has_bits_[0] &= ~0x2u; }
-
-  std::string collection_;
+private:
+    void set_has_collection() { _has_bits_[0] |= 0x2u; }
+    void clear_has_collection() { _has_bits_[0] &= ~0x2u; }
+  
+    std::string collection_;
 
   // query
- public:
-  static const int kqueryFieldNumber = 3;
-  const BsonPtr& query() const { return query_; }
-  bool has_query() const { return _has_bits_[0] & 0x4u; }
-  void clear_query() {
-    clear_has_query();
-    query_.reset();
-  }
-  void set_query(BsonPtr value) {
-    query_ = value;
-    set_has_query();
-  }
+public:
+    static const int kqueryFieldNumber = 3;
+    const BsonPtr& query() const { return query_; }
+    bool has_query() const { return _has_bits_[0] & 0x4u; }
+    void clear_query() {
+      clear_has_query();
+      query_.reset();
+    }
+    void set_query(BsonPtr value) {
+      query_ = value;
+      set_has_query();
+    }
 
- private:
-  void set_has_query() { _has_bits_[0] |= 0x4u; }
-  void clear_has_query() { _has_bits_[0] &= ~0x4u; }
-
-  BsonPtr query_;
+private:
+    void set_has_query() { _has_bits_[0] |= 0x4u; }
+    void clear_has_query() { _has_bits_[0] &= ~0x4u; }
+  
+    BsonPtr query_;
 
   // sort
- public:
-  static const int ksortFieldNumber = 4;
-  const BsonPtr& sort() const { return sort_; }
-  bool has_sort() const { return _has_bits_[0] & 0x8u; }
-  void clear_sort() {
-    clear_has_sort();
-    sort_.reset();
-  }
-  void set_sort(BsonPtr value) {
-    sort_ = value;
-    set_has_sort();
-  }
+public:
+    static const int ksortFieldNumber = 4;
+    const BsonPtr& sort() const { return sort_; }
+    bool has_sort() const { return _has_bits_[0] & 0x8u; }
+    void clear_sort() {
+      clear_has_sort();
+      sort_.reset();
+    }
+    void set_sort(BsonPtr value) {
+      sort_ = value;
+      set_has_sort();
+    }
+  
+private:
+    void set_has_sort() { _has_bits_[0] |= 0x8u; }
+    void clear_has_sort() { _has_bits_[0] &= ~0x8u; }
 
- private:
-  void set_has_sort() { _has_bits_[0] |= 0x8u; }
-  void clear_has_sort() { _has_bits_[0] &= ~0x8u; }
-
-  BsonPtr sort_;
+    BsonPtr sort_;
 
   // skip
- public:
-  static const int kskipFieldNumber = 5;
-  int32_t skip() const { return skip_; }
-  bool has_skip() const { return _has_bits_[0] & 0x10u; }
-  void clear_skip() {
-    clear_has_skip();
-    skip_ = 0;
-  }
-  void set_skip(int32_t value) {
-    skip_ = value;
-    set_has_skip();
-  }
+public:
+    static const int kskipFieldNumber = 5;
+    int32_t skip() const { return skip_; }
+    bool has_skip() const { return _has_bits_[0] & 0x10u; }
+    void clear_skip() {
+        clear_has_skip();
+        skip_ = 0;
+    }
+    void set_skip(int32_t value) {
+        skip_ = value;
+        set_has_skip();
+    }
 
- private:
-  void set_has_skip() { _has_bits_[0] |= 0x10u; }
-  void clear_has_skip() { _has_bits_[0] &= ~0x10u; }
-
-  int32_t skip_;
+private:
+    void set_has_skip() { _has_bits_[0] |= 0x10u; }
+    void clear_has_skip() { _has_bits_[0] &= ~0x10u; }
+  
+    int32_t skip_;
 
   // limit
- public:
-  static const int klimitFieldNumber = 6;
-  int32_t limit() const { return limit_; }
-  bool has_limit() const { return _has_bits_[0] & 0x20u; }
-  void clear_limit() {
-    clear_has_limit();
-    limit_ = 0;
-  }
-  void set_limit(int32_t value) {
-    limit_ = value;
-    set_has_limit();
-  }
+public:
+    static const int klimitFieldNumber = 6;
+    int32_t limit() const { return limit_; }
+    bool has_limit() const { return _has_bits_[0] & 0x20u; }
+    void clear_limit() {
+        clear_has_limit();
+        limit_ = 0;
+    }
+    void set_limit(int32_t value) {
+        limit_ = value;
+        set_has_limit();
+    }
 
- private:
-  void set_has_limit() { _has_bits_[0] |= 0x20u; }
-  void clear_has_limit() { _has_bits_[0] &= ~0x20u; }
-
-  int32_t limit_;
+private:
+    void set_has_limit() { _has_bits_[0] |= 0x20u; }
+    void clear_has_limit() { _has_bits_[0] &= ~0x20u; }
+  
+    int32_t limit_;
 
   // fields
- public:
-  static const int kfieldsFieldNumber = 7;
-  const std::vector<std::string>& fields() const { return fields_; }
-  int fields_size() const { return fields_.size(); }
-  void clear_fields() { fields_.clear(); }
-  const std::string& fields(int index) const { return fields_[index]; }
-  std::string* mutable_fields(int index) { return &fields_[index]; }
-  void add_fields(std::string value) { fields_.push_back(std::move(value)); }
+public:
+    static const int kfieldsFieldNumber = 7;
+    const std::vector<std::string>& fields() const { return fields_; }
+    int fields_size() const { return fields_.size(); }
+    void clear_fields() { fields_.clear(); }
+    const std::string& fields(int index) const { return fields_[index]; }
+    std::string* mutable_fields(int index) { return &fields_[index]; }
+    void add_fields(std::string value) { fields_.push_back(std::move(value)); }
 
- private:
-  std::vector<std::string> fields_;
+private:
+    std::vector<std::string> fields_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
- private:
-  void SharedCtor();
-  void SharedDtor();
-  void SetCachedSize(int size) const;
-
-  ::google::protobuf::internal::HasBits<1> _has_bits_;
-  mutable int _cached_size_;
+private:
+    void SharedCtor();
+    void SharedDtor();
+    void SetCachedSize(int size) const;
+  
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    mutable int _cached_size_;
 };
 
-class MongoQueryResponse : public ::google::protobuf::Message {
+class MongoQueryResponse : public MongoResponse {
  public:
   MongoQueryResponse();
   virtual ~MongoQueryResponse();
@@ -303,8 +331,6 @@ class MongoQueryResponse : public ::google::protobuf::Message {
   void set_ns(std::string value);
   static const int kNSfieldNumber = 5;
 
-  bool SerializeTo(butil::IOBuf* buf) const;
-
   MongoQueryResponse* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -324,9 +350,6 @@ class MongoQueryResponse : public ::google::protobuf::Message {
   static const ::google::protobuf::Descriptor* descriptor();
 
   // void Print(std::ostream&) const;
-
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
 
  private:
   void SharedCtor();
@@ -482,7 +505,7 @@ inline void MongoQueryResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
-class MongoGetMoreRequest : public ::google::protobuf::Message {
+class MongoGetMoreRequest : public MongoRequest {
  public:
   MongoGetMoreRequest();
   virtual ~MongoGetMoreRequest();
@@ -536,6 +559,9 @@ class MongoGetMoreRequest : public ::google::protobuf::Message {
   static const int kCommentFieldNumber = 6;
 
   bool SerializeTo(butil::IOBuf* buf) const;
+  const char* RequestId() const override {
+        return "query_getMore";
+  }
 
   MongoGetMoreRequest* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
@@ -553,9 +579,6 @@ class MongoGetMoreRequest : public ::google::protobuf::Message {
   int GetCachedSize() const { return _cached_size_; }
 
   static const ::google::protobuf::Descriptor* descriptor();
-
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
 
  private:
   void SharedCtor();
@@ -737,7 +760,7 @@ inline void MongoGetMoreRequest::clear_has_comment() {
   _has_bits_[0] &= ~0x00000020u;
 }
 
-class MongoCountRequest : public ::google::protobuf::Message {
+class MongoCountRequest : public MongoRequest {
  public:
   MongoCountRequest();
   virtual ~MongoCountRequest();
@@ -745,6 +768,9 @@ class MongoCountRequest : public ::google::protobuf::Message {
   MongoCountRequest& operator=(const MongoCountRequest& from);
   void Swap(MongoCountRequest* other);
   bool SerializeTo(butil::IOBuf* buf) const;
+  const char* RequestId() const override {
+    return "count";
+  }
   MongoCountRequest* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -862,9 +888,6 @@ class MongoCountRequest : public ::google::protobuf::Message {
 
   int64_t limit_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -874,14 +897,13 @@ class MongoCountRequest : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoCountResponse : public ::google::protobuf::Message {
+class MongoCountResponse : public MongoResponse {
  public:
   MongoCountResponse();
   virtual ~MongoCountResponse();
   MongoCountResponse(const MongoCountResponse& from);
   MongoCountResponse& operator=(const MongoCountResponse& from);
   void Swap(MongoCountResponse* other);
-  bool SerializeTo(butil::IOBuf* buf) const;
   MongoCountResponse* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -919,9 +941,6 @@ class MongoCountResponse : public ::google::protobuf::Message {
 
   int32_t number_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -931,7 +950,7 @@ class MongoCountResponse : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoInsertRequest : public ::google::protobuf::Message {
+class MongoInsertRequest : public MongoRequest {
  public:
   MongoInsertRequest();
   virtual ~MongoInsertRequest();
@@ -939,6 +958,9 @@ class MongoInsertRequest : public ::google::protobuf::Message {
   MongoInsertRequest& operator=(const MongoInsertRequest& from);
   void Swap(MongoInsertRequest* other);
   bool SerializeTo(butil::IOBuf* buf) const;
+  const char* RequestId() const override {
+    return "insert";
+  }
   MongoInsertRequest* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1030,9 +1052,6 @@ class MongoInsertRequest : public ::google::protobuf::Message {
  private:
   std::vector<BsonPtr> documents_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1048,14 +1067,13 @@ struct WriteError {
   std::string errmsg;
 };
 
-class MongoInsertResponse : public ::google::protobuf::Message {
+class MongoInsertResponse : public MongoResponse {
  public:
   MongoInsertResponse();
   virtual ~MongoInsertResponse();
   MongoInsertResponse(const MongoInsertResponse& from);
   MongoInsertResponse& operator=(const MongoInsertResponse& from);
   void Swap(MongoInsertResponse* other);
-  bool SerializeTo(butil::IOBuf* buf) const;
   MongoInsertResponse* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1111,9 +1129,6 @@ class MongoInsertResponse : public ::google::protobuf::Message {
  private:
   std::vector<WriteError> write_errors_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1123,7 +1138,7 @@ class MongoInsertResponse : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoDeleteRequest : public ::google::protobuf::Message {
+class MongoDeleteRequest : public MongoRequest {
  public:
   MongoDeleteRequest();
   virtual ~MongoDeleteRequest();
@@ -1131,6 +1146,9 @@ class MongoDeleteRequest : public ::google::protobuf::Message {
   MongoDeleteRequest& operator=(const MongoDeleteRequest& from);
   void Swap(MongoDeleteRequest* other);
   bool SerializeTo(butil::IOBuf* buf) const;
+  const char* RequestId() const override {
+    return "delete";
+  }
   MongoDeleteRequest* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1249,9 +1267,6 @@ class MongoDeleteRequest : public ::google::protobuf::Message {
 
   bool delete_many_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1261,14 +1276,13 @@ class MongoDeleteRequest : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoDeleteResponse : public ::google::protobuf::Message {
+class MongoDeleteResponse : public MongoResponse {
  public:
   MongoDeleteResponse();
   virtual ~MongoDeleteResponse();
   MongoDeleteResponse(const MongoDeleteResponse& from);
   MongoDeleteResponse& operator=(const MongoDeleteResponse& from);
   void Swap(MongoDeleteResponse* other);
-  bool SerializeTo(butil::IOBuf* buf) const;
   MongoDeleteResponse* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1307,9 +1321,6 @@ class MongoDeleteResponse : public ::google::protobuf::Message {
 
   int32_t number_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1319,7 +1330,7 @@ class MongoDeleteResponse : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoUpdateRequest : public ::google::protobuf::Message {
+class MongoUpdateRequest : public MongoRequest {
  public:
   MongoUpdateRequest();
   virtual ~MongoUpdateRequest();
@@ -1327,6 +1338,9 @@ class MongoUpdateRequest : public ::google::protobuf::Message {
   MongoUpdateRequest& operator=(const MongoUpdateRequest& from);
   void Swap(MongoUpdateRequest* other);
   bool SerializeTo(butil::IOBuf* buf) const;
+  const char* RequestId() const override {
+    return "update";
+  }
   MongoUpdateRequest* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1485,9 +1499,6 @@ class MongoUpdateRequest : public ::google::protobuf::Message {
 
   bool multi_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1502,14 +1513,13 @@ struct UpsertedDoc {
   bson_oid_t _id;
 };
 
-class MongoUpdateResponse : public ::google::protobuf::Message {
+class MongoUpdateResponse : public MongoResponse {
  public:
   MongoUpdateResponse();
   virtual ~MongoUpdateResponse();
   MongoUpdateResponse(const MongoUpdateResponse& from);
   MongoUpdateResponse& operator=(const MongoUpdateResponse& from);
   void Swap(MongoUpdateResponse* other);
-  bool SerializeTo(butil::IOBuf* buf) const;
   MongoUpdateResponse* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1606,9 +1616,6 @@ class MongoUpdateResponse : public ::google::protobuf::Message {
  private:
   std::vector<WriteError> write_errors_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1618,7 +1625,7 @@ class MongoUpdateResponse : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoFindAndModifyRequest : public ::google::protobuf::Message {
+class MongoFindAndModifyRequest : public MongoRequest {
  public:
   MongoFindAndModifyRequest();
   virtual ~MongoFindAndModifyRequest();
@@ -1626,6 +1633,9 @@ class MongoFindAndModifyRequest : public ::google::protobuf::Message {
   MongoFindAndModifyRequest& operator=(const MongoFindAndModifyRequest& from);
   void Swap(MongoFindAndModifyRequest* other);
   bool SerializeTo(butil::IOBuf* buf) const;
+  const char* RequestId() const override {
+    return "find_and_modify";
+  }
   MongoFindAndModifyRequest* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1817,9 +1827,6 @@ class MongoFindAndModifyRequest : public ::google::protobuf::Message {
  private:
   std::vector<std::string> fields_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1829,14 +1836,13 @@ class MongoFindAndModifyRequest : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoFindAndModifyResponse : public ::google::protobuf::Message {
+class MongoFindAndModifyResponse : public MongoResponse {
  public:
   MongoFindAndModifyResponse();
   virtual ~MongoFindAndModifyResponse();
   MongoFindAndModifyResponse(const MongoFindAndModifyResponse& from);
   MongoFindAndModifyResponse& operator=(const MongoFindAndModifyResponse& from);
   void Swap(MongoFindAndModifyResponse* other);
-  bool SerializeTo(butil::IOBuf* buf) const;
   MongoFindAndModifyResponse* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1895,9 +1901,6 @@ class MongoFindAndModifyResponse : public ::google::protobuf::Message {
 
   bson_oid_t upserted_;
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1907,7 +1910,7 @@ class MongoFindAndModifyResponse : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoGetReplSetStatusRequest : public ::google::protobuf::Message {
+class MongoGetReplSetStatusRequest : public MongoRequest {
  public:
   MongoGetReplSetStatusRequest();
   virtual ~MongoGetReplSetStatusRequest();
@@ -1916,6 +1919,9 @@ class MongoGetReplSetStatusRequest : public ::google::protobuf::Message {
       const MongoGetReplSetStatusRequest& from);
   void Swap(MongoGetReplSetStatusRequest* other);
   bool SerializeTo(butil::IOBuf* buf) const;
+  const char* RequestId() const override {
+    return "get_repl_set_status";
+  }
   MongoGetReplSetStatusRequest* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -1934,9 +1940,6 @@ class MongoGetReplSetStatusRequest : public ::google::protobuf::Message {
 
   // fields
 
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
-
  private:
   void SharedCtor();
   void SharedDtor();
@@ -1946,7 +1949,7 @@ class MongoGetReplSetStatusRequest : public ::google::protobuf::Message {
   mutable int _cached_size_;
 };
 
-class MongoGetReplSetStatusResponse : public ::google::protobuf::Message {
+class MongoGetReplSetStatusResponse : public MongoResponse {
  public:
   MongoGetReplSetStatusResponse();
   virtual ~MongoGetReplSetStatusResponse();
@@ -1954,7 +1957,6 @@ class MongoGetReplSetStatusResponse : public ::google::protobuf::Message {
   MongoGetReplSetStatusResponse& operator=(
       const MongoGetReplSetStatusResponse& from);
   void Swap(MongoGetReplSetStatusResponse* other);
-  bool SerializeTo(butil::IOBuf* buf) const;
   MongoGetReplSetStatusResponse* New() const;
   void CopyFrom(const ::google::protobuf::Message& from);
   void MergeFrom(const ::google::protobuf::Message& from);
@@ -2047,9 +2049,6 @@ class MongoGetReplSetStatusResponse : public ::google::protobuf::Message {
 
  private:
   std::vector<ReplicaSetMember> members_;
-
- protected:
-  ::google::protobuf::Metadata GetMetadata() const override;
 
  private:
   void SharedCtor();

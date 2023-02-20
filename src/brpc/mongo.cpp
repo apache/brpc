@@ -6,6 +6,28 @@
 
 namespace brpc {
 
+const ::google::protobuf::Descriptor* MongoRequest::descriptor() {
+    return MongoRequestBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoRequest::GetMetadata() const {
+    ::google::protobuf::Metadata metadata;
+    metadata.descriptor = MongoRequest::descriptor();
+    metadata.reflection = NULL;
+    return metadata;
+}
+
+const ::google::protobuf::Descriptor* MongoResponse::descriptor() {
+    return MongoResponseBase::descriptor();
+}
+
+::google::protobuf::Metadata MongoResponse::GetMetadata() const {
+    ::google::protobuf::Metadata metadata;
+    metadata.descriptor = MongoResponse::descriptor();
+    metadata.reflection = NULL;
+    return metadata;
+}
+ 
 bool DocumentSequence::SerializeTo(butil::IOBuf* buf) const {
   if (identifier.empty()) {
     return false;
@@ -61,16 +83,15 @@ bool Section::SeralizeTo(butil::IOBuf* buf) const {
   }
 }
 
-MongoQueryRequest::MongoQueryRequest() : ::google::protobuf::Message() {
+MongoQueryRequest::MongoQueryRequest() {
   SharedCtor();
 }
 
 MongoQueryRequest::~MongoQueryRequest() { SharedDtor(); }
 
-MongoQueryRequest::MongoQueryRequest(const MongoQueryRequest& from)
-    : ::google::protobuf::Message() {
-  SharedCtor();
-  MergeFrom(from);
+MongoQueryRequest::MongoQueryRequest(const MongoQueryRequest& from) {
+    SharedCtor();
+    MergeFrom(from);
 }
 
 MongoQueryRequest& MongoQueryRequest::operator=(const MongoQueryRequest& from) {
@@ -218,28 +239,16 @@ void MongoQueryRequest::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* MongoQueryRequest::SerializeWithCachedSizesToArray(
     ::google::protobuf::uint8* output) const {
-  return output;
-}
-
-const ::google::protobuf::Descriptor* MongoQueryRequest::descriptor() {
-  return MongoQueryRequestBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoQueryRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
+    return output;
 }
 
 void MongoQueryRequest::SetCachedSize(int size) const { _cached_size_ = size; }
 
-MongoQueryResponse::MongoQueryResponse() : ::google::protobuf::Message() {
-  SharedCtor();
+MongoQueryResponse::MongoQueryResponse() {
+    SharedCtor();
 }
 
-MongoQueryResponse::MongoQueryResponse(const MongoQueryResponse& from)
-    : ::google::protobuf::Message() {
+MongoQueryResponse::MongoQueryResponse(const MongoQueryResponse& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -327,25 +336,13 @@ void MongoQueryResponse::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoQueryResponse::descriptor() {
-  return MongoQueryResponseBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoQueryResponse::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
-MongoGetMoreRequest::MongoGetMoreRequest() : ::google::protobuf::Message() {
+MongoGetMoreRequest::MongoGetMoreRequest() {
   SharedCtor();
 }
 
 MongoGetMoreRequest::~MongoGetMoreRequest() { SharedDtor(); }
 
-MongoGetMoreRequest::MongoGetMoreRequest(const MongoGetMoreRequest& from)
-    : ::google::protobuf::Message() {
+MongoGetMoreRequest::MongoGetMoreRequest(const MongoGetMoreRequest& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -459,10 +456,6 @@ void MongoGetMoreRequest::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoGetMoreRequest::descriptor() {
-  return MongoGetMoreRequestBase::descriptor();
-}
-
 void MongoGetMoreRequest::SharedCtor() {
   cursorid_ = 0;
   batch_size_ = 0;
@@ -476,21 +469,13 @@ void MongoGetMoreRequest::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
-::google::protobuf::Metadata MongoGetMoreRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
-MongoCountRequest::MongoCountRequest() : ::google::protobuf::Message() {
+MongoCountRequest::MongoCountRequest() {
   SharedCtor();
 }
 
 MongoCountRequest::~MongoCountRequest() { SharedDtor(); }
 
-MongoCountRequest::MongoCountRequest(const MongoCountRequest& from)
-    : ::google::protobuf::Message() {
+MongoCountRequest::MongoCountRequest(const MongoCountRequest& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -625,27 +610,15 @@ void MongoCountRequest::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoCountRequest::descriptor() {
-  return MongoCountRequestBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoCountRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoCountRequest::SetCachedSize(int size) const { _cached_size_ = size; }
 
-MongoCountResponse::MongoCountResponse() : ::google::protobuf::Message() {
+MongoCountResponse::MongoCountResponse() {
   SharedCtor();
 }
 
 MongoCountResponse::~MongoCountResponse() { SharedDtor(); }
 
-MongoCountResponse::MongoCountResponse(const MongoCountResponse& from)
-    : ::google::protobuf::Message() {
+MongoCountResponse::MongoCountResponse(const MongoCountResponse& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -662,11 +635,6 @@ void MongoCountResponse::SharedCtor() {
 }
 
 void MongoCountResponse::SharedDtor() {}
-
-bool MongoCountResponse::SerializeTo(butil::IOBuf* buf) const {
-  // TODO custom definetion
-  return true;
-}
 
 void MongoCountResponse::Swap(MongoCountResponse* other) {}
 
@@ -725,27 +693,16 @@ void MongoCountResponse::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoCountResponse::descriptor() {
-  return MongoCountResponseBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoCountResponse::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
 
 void MongoCountResponse::SetCachedSize(int size) const { _cached_size_ = size; }
 
-MongoInsertRequest::MongoInsertRequest() : ::google::protobuf::Message() {
+MongoInsertRequest::MongoInsertRequest() {
   SharedCtor();
 }
 
 MongoInsertRequest::~MongoInsertRequest() { SharedDtor(); }
 
-MongoInsertRequest::MongoInsertRequest(const MongoInsertRequest& from)
-    : ::google::protobuf::Message() {
+MongoInsertRequest::MongoInsertRequest(const MongoInsertRequest& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -895,27 +852,15 @@ void MongoInsertRequest::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoInsertRequest::descriptor() {
-  return MongoInsertRequestBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoInsertRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoInsertRequest::SetCachedSize(int size) const { _cached_size_ = size; }
 
-MongoInsertResponse::MongoInsertResponse() : ::google::protobuf::Message() {
+MongoInsertResponse::MongoInsertResponse() {
   SharedCtor();
 }
 
 MongoInsertResponse::~MongoInsertResponse() { SharedDtor(); }
 
-MongoInsertResponse::MongoInsertResponse(const MongoInsertResponse& from)
-    : ::google::protobuf::Message() {
+MongoInsertResponse::MongoInsertResponse(const MongoInsertResponse& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -932,11 +877,6 @@ void MongoInsertResponse::SharedCtor() {
 }
 
 void MongoInsertResponse::SharedDtor() {}
-
-bool MongoInsertResponse::SerializeTo(butil::IOBuf* buf) const {
-  // TODO custom definetion
-  return true;
-}
 
 void MongoInsertResponse::Swap(MongoInsertResponse* other) {}
 
@@ -1001,29 +941,17 @@ void MongoInsertResponse::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoInsertResponse::descriptor() {
-  return MongoInsertResponseBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoInsertResponse::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoInsertResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
-MongoDeleteRequest::MongoDeleteRequest() : ::google::protobuf::Message() {
+MongoDeleteRequest::MongoDeleteRequest() {
   SharedCtor();
 }
 
 MongoDeleteRequest::~MongoDeleteRequest() { SharedDtor(); }
 
-MongoDeleteRequest::MongoDeleteRequest(const MongoDeleteRequest& from)
-    : ::google::protobuf::Message() {
+MongoDeleteRequest::MongoDeleteRequest(const MongoDeleteRequest& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -1180,27 +1108,15 @@ void MongoDeleteRequest::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoDeleteRequest::descriptor() {
-  return MongoDeleteRequestBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoDeleteRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoDeleteRequest::SetCachedSize(int size) const { _cached_size_ = size; }
 
-MongoDeleteResponse::MongoDeleteResponse() : ::google::protobuf::Message() {
+MongoDeleteResponse::MongoDeleteResponse() {
   SharedCtor();
 }
 
 MongoDeleteResponse::~MongoDeleteResponse() { SharedDtor(); }
 
-MongoDeleteResponse::MongoDeleteResponse(const MongoDeleteResponse& from)
-    : ::google::protobuf::Message() {
+MongoDeleteResponse::MongoDeleteResponse(const MongoDeleteResponse& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -1217,11 +1133,6 @@ void MongoDeleteResponse::SharedCtor() {
 }
 
 void MongoDeleteResponse::SharedDtor() {}
-
-bool MongoDeleteResponse::SerializeTo(butil::IOBuf* buf) const {
-  // TODO custom definetion
-  return true;
-}
 
 void MongoDeleteResponse::Swap(MongoDeleteResponse* other) {}
 
@@ -1280,29 +1191,17 @@ void MongoDeleteResponse::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoDeleteResponse::descriptor() {
-  return MongoDeleteResponseBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoDeleteResponse::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoDeleteResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
-MongoUpdateRequest::MongoUpdateRequest() : ::google::protobuf::Message() {
+MongoUpdateRequest::MongoUpdateRequest() {
   SharedCtor();
 }
 
 MongoUpdateRequest::~MongoUpdateRequest() { SharedDtor(); }
 
-MongoUpdateRequest::MongoUpdateRequest(const MongoUpdateRequest& from)
-    : ::google::protobuf::Message() {
+MongoUpdateRequest::MongoUpdateRequest(const MongoUpdateRequest& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -1478,27 +1377,15 @@ void MongoUpdateRequest::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoUpdateRequest::descriptor() {
-  return MongoUpdateRequestBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoUpdateRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoUpdateRequest::SetCachedSize(int size) const { _cached_size_ = size; }
 
-MongoUpdateResponse::MongoUpdateResponse() : ::google::protobuf::Message() {
+MongoUpdateResponse::MongoUpdateResponse() {
   SharedCtor();
 }
 
 MongoUpdateResponse::~MongoUpdateResponse() { SharedDtor(); }
 
-MongoUpdateResponse::MongoUpdateResponse(const MongoUpdateResponse& from)
-    : ::google::protobuf::Message() {
+MongoUpdateResponse::MongoUpdateResponse(const MongoUpdateResponse& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -1516,11 +1403,6 @@ void MongoUpdateResponse::SharedCtor() {
 }
 
 void MongoUpdateResponse::SharedDtor() {}
-
-bool MongoUpdateResponse::SerializeTo(butil::IOBuf* buf) const {
-  // TODO custom definetion
-  return true;
-}
 
 void MongoUpdateResponse::Swap(MongoUpdateResponse* other) {}
 
@@ -1594,31 +1476,17 @@ void MongoUpdateResponse::SerializeWithCachedSizes(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoUpdateResponse::descriptor() {
-  return MongoUpdateResponseBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoUpdateResponse::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoUpdateResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
-MongoFindAndModifyRequest::MongoFindAndModifyRequest()
-    : ::google::protobuf::Message() {
+MongoFindAndModifyRequest::MongoFindAndModifyRequest() {
   SharedCtor();
 }
 
 MongoFindAndModifyRequest::~MongoFindAndModifyRequest() { SharedDtor(); }
 
-MongoFindAndModifyRequest::MongoFindAndModifyRequest(
-    const MongoFindAndModifyRequest& from)
-    : ::google::protobuf::Message() {
+MongoFindAndModifyRequest::MongoFindAndModifyRequest(const MongoFindAndModifyRequest& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -1819,31 +1687,17 @@ MongoFindAndModifyRequest::SerializeWithCachedSizesToArray(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoFindAndModifyRequest::descriptor() {
-  return MongoFindAndModifyRequestBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoFindAndModifyRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoFindAndModifyRequest::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
-MongoFindAndModifyResponse::MongoFindAndModifyResponse()
-    : ::google::protobuf::Message() {
+MongoFindAndModifyResponse::MongoFindAndModifyResponse() {
   SharedCtor();
 }
 
 MongoFindAndModifyResponse::~MongoFindAndModifyResponse() { SharedDtor(); }
 
-MongoFindAndModifyResponse::MongoFindAndModifyResponse(
-    const MongoFindAndModifyResponse& from)
-    : ::google::protobuf::Message() {
+MongoFindAndModifyResponse::MongoFindAndModifyResponse(const MongoFindAndModifyResponse& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -1860,11 +1714,6 @@ void MongoFindAndModifyResponse::SharedCtor() {
 }
 
 void MongoFindAndModifyResponse::SharedDtor() {}
-
-bool MongoFindAndModifyResponse::SerializeTo(butil::IOBuf* buf) const {
-  // TODO custom definetion
-  return true;
-}
 
 void MongoFindAndModifyResponse::Swap(MongoFindAndModifyResponse* other) {}
 
@@ -1936,31 +1785,18 @@ MongoFindAndModifyResponse::SerializeWithCachedSizesToArray(
   return output;
 }
 
-const ::google::protobuf::Descriptor* MongoFindAndModifyResponse::descriptor() {
-  return MongoFindAndModifyResponseBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoFindAndModifyResponse::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoFindAndModifyResponse::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
-MongoGetReplSetStatusRequest::MongoGetReplSetStatusRequest()
-    : ::google::protobuf::Message() {
+MongoGetReplSetStatusRequest::MongoGetReplSetStatusRequest() {
   SharedCtor();
 }
 
 MongoGetReplSetStatusRequest::~MongoGetReplSetStatusRequest() { SharedDtor(); }
 
 MongoGetReplSetStatusRequest::MongoGetReplSetStatusRequest(
-    const MongoGetReplSetStatusRequest& from)
-    : ::google::protobuf::Message() {
+    const MongoGetReplSetStatusRequest& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -2065,24 +1901,11 @@ MongoGetReplSetStatusRequest::SerializeWithCachedSizesToArray(
   return output;
 }
 
-const ::google::protobuf::Descriptor*
-MongoGetReplSetStatusRequest::descriptor() {
-  return MongoGetReplSetStatusRequestBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoGetReplSetStatusRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
-}
-
 void MongoGetReplSetStatusRequest::SetCachedSize(int size) const {
   _cached_size_ = size;
 }
 
-MongoGetReplSetStatusResponse::MongoGetReplSetStatusResponse()
-    : ::google::protobuf::Message() {
+MongoGetReplSetStatusResponse::MongoGetReplSetStatusResponse() {
   SharedCtor();
 }
 
@@ -2091,8 +1914,7 @@ MongoGetReplSetStatusResponse::~MongoGetReplSetStatusResponse() {
 }
 
 MongoGetReplSetStatusResponse::MongoGetReplSetStatusResponse(
-    const MongoGetReplSetStatusResponse& from)
-    : ::google::protobuf::Message() {
+    const MongoGetReplSetStatusResponse& from) {
   SharedCtor();
   MergeFrom(from);
 }
@@ -2110,11 +1932,6 @@ void MongoGetReplSetStatusResponse::SharedCtor() {
 }
 
 void MongoGetReplSetStatusResponse::SharedDtor() {}
-
-bool MongoGetReplSetStatusResponse::SerializeTo(butil::IOBuf* buf) const {
-  // TODO custom definetion
-  return true;
-}
 
 void MongoGetReplSetStatusResponse::Swap(MongoGetReplSetStatusResponse* other) {
 }
@@ -2194,19 +2011,6 @@ void MongoGetReplSetStatusResponse::SerializeWithCachedSizes(
 MongoGetReplSetStatusResponse::SerializeWithCachedSizesToArray(
     ::google::protobuf::uint8* output) const {
   return output;
-}
-
-const ::google::protobuf::Descriptor*
-MongoGetReplSetStatusResponse::descriptor() {
-  return MongoGetReplSetStatusResponseBase::descriptor();
-}
-
-::google::protobuf::Metadata MongoGetReplSetStatusResponse::GetMetadata()
-    const {
-  ::google::protobuf::Metadata metadata;
-  metadata.descriptor = descriptor();
-  metadata.reflection = NULL;
-  return metadata;
 }
 
 void MongoGetReplSetStatusResponse::SetCachedSize(int size) const {

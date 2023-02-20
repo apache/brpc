@@ -33,25 +33,5 @@ message SerializedRequestBase {}
 
 message ThriftFramedMessageBase {}
 
-message MongoQueryRequestBase {}
-message MongoQueryResponseBase {}
-
-message MongoGetMoreRequestBase {}
-
-message MongoInsertRequestBase {}
-message MongoInsertResponseBase {}
-
-message MongoUpdateRequestBase {}
-message MongoUpdateResponseBase {}
-
-message MongoDeleteRequestBase {}
-message MongoDeleteResponseBase {}
-
-message MongoCountRequestBase {}
-message MongoCountResponseBase {}
-
-message MongoFindAndModifyRequestBase {}
-message MongoFindAndModifyResponseBase {}
-
-message MongoGetReplSetStatusRequestBase {}
-message MongoGetReplSetStatusResponseBase {}
+message MongoRequestBase {}
+message MongoResponseBase {}
