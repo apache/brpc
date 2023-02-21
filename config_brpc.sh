@@ -381,6 +381,9 @@ endif
 
 append_to_output "ifeq (\$(NEED_LIBPROTOC), 1)"
 PROTOC_LIB=$(find $PROTOBUF_LIB -name "libprotoc.*" | head -n1)
+echo "PROTOBUF_LIB:" $PROTOBUF_LIB
+echo "PROTOC_LIB:" $PROTOC_LIB
+
 if [ -z "$PROTOC_LIB" ]; then
     append_to_output "   \$(error \"Fail to find libprotoc\")"
 else
