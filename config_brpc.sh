@@ -172,10 +172,12 @@ echo "wangwei OPENSSL_LIB:" $OPENSSL_LIB
 #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
 OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h mesalink/openssl/ssl.h)
 
+
 if [ $WITH_MESALINK != 0 ]; then
     MESALINK_HDR=$(find_dir_of_header_or_die mesalink/openssl/ssl.h)
     OPENSSL_HDR="$OPENSSL_HDR\n$MESALINK_HDR"
 fi
+echo "wangwei OPENSSL_HDR:" $OPENSSL_HDR
 
 STATIC_LINKINGS=
 DYNAMIC_LINKINGS="-lpthread -lssl -lcrypto -ldl -lz"
