@@ -20,7 +20,10 @@ jobs:
         options: --cc=gcc --cxx=g++
     - name: compile
       run: |
-           find / -name "libprotoc*" 2> /dev/null
+           # find / -name "libprotoc*" 2> /dev/null
+           cat config.mk
+           echo "Makefile:"
+           cat Makefile
            make -j ${{env.proc_num}}
 
   gcc-compile-with-cmake:
