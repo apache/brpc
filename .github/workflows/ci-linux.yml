@@ -21,9 +21,10 @@ jobs:
     - name: compile
       run: |
            # find / -name "libprotoc*" 2> /dev/null
-           cat config.mk
-           echo "Makefile:"
-           cat Makefile
+           #cat config.mk
+           #echo "Makefile:"
+           #cat Makefile
+           echo "wangwei:" $PROTOBUF_LIB
            make -j ${{env.proc_num}}
 
   gcc-compile-with-cmake:
