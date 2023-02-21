@@ -20,6 +20,7 @@ jobs:
         options: --cc=gcc --cxx=g++
     - name: compile
       run: |
+           find / -name "libprotobuf*" 2> /dev/null
            make -j ${{env.proc_num}}
 
   gcc-compile-with-cmake:
