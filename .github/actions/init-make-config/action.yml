@@ -5,5 +5,5 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - run: sh config_brpc.sh --headers="/usr/local/include /usr/include" --libs="/usr/local/lib /usr/local/lib64 /usr/lib /usr/lib64" --nodebugsymbols ${{inputs.options}}
+    - run: sh config_brpc.sh --headers="/usr/include" --libs="/usr/lib /usr/lib64" --nodebugsymbols ${{inputs.options}}
       shell: bash
