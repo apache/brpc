@@ -48,8 +48,8 @@ private:
     Channel _channel;
     std::string _consul_index;
     std::string _consul_url;
-    bool _backup_file_loaded;
-    bool _consul_connected;
+    bool _backup_file_loaded = false;
+    bool _consul_connected = false;
 };
 
 }  // namespace policy
