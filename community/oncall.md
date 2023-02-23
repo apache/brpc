@@ -20,6 +20,7 @@
   * 蔡道进 @cdjingit
   * 何磊 @TousakaRin
   * 刘帅 @serverglen
+  * 胡希国 @Huixxi
 
 ## 5. 值周记录如下
 
