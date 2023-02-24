@@ -98,6 +98,7 @@ private:
     bool _stop;
     butil::atomic<int> _concurrency;
     std::vector<pthread_t> _workers;
+    butil::atomic<int> _next_worker_id;
 
     bvar::Adder<int64_t> _nworkers;
     butil::Mutex _pending_time_mutex;
