@@ -109,7 +109,7 @@ private:
     void run();
 
     static void* sampling_thread(void* arg) {
-        butil::PlatformThread::SetName("brpc_sampling");
+        butil::PlatformThread::SetName("bvar_sampler");
         static_cast<SamplerCollector*>(arg)->run();
         return NULL;
     }
