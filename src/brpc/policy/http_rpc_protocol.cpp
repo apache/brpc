@@ -1251,6 +1251,9 @@ void EndRunningCallMethodInPool(
     ::google::protobuf::Message* response,
     ::google::protobuf::Closure* done);
 
+// Defined in baidu_rpc_protocol.cpp
+bool AcceptRequest(const Server* server, Controller* cntl);
+
 void ProcessHttpRequest(InputMessageBase *msg) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<HttpContext> imsg_guard(static_cast<HttpContext*>(msg));
@@ -1428,6 +1431,9 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
             cntl->SetFailed(ELIMIT, "Too many user code to run when"
                             " -usercode_in_pthread is on");
+            return;
+        }
+        if (!AcceptRequest(server, cntl)) {
             return;
         }
     } else if (security_mode) {

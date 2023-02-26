@@ -328,6 +328,9 @@ void EndRunningCallMethodInPool(
     ::google::protobuf::Message* response,
     ::google::protobuf::Closure* done);
 
+// Defined in baidu_rpc_protocol.cpp
+bool AcceptRequest(const Server* server, Controller* cntl);
+
 void ProcessHuluRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
@@ -469,6 +472,11 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         google::protobuf::Service* svc = sp->service;
         const google::protobuf::MethodDescriptor* method = sp->method;
         accessor.set_method(method);
+
+        if (!AcceptRequest(server, cntl.get())) {
+            break;
+        }
+
         if (span) {
             span->ResetServerSpanName(method->full_name());
         }

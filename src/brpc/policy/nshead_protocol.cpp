@@ -202,6 +202,9 @@ static void EndRunningCallMethodInPool(NsheadService* service,
     return EndRunningUserCodeInPool(CallMethodInBackupThread, args);
 };
 
+// Defined in baidu_rpc_protocol.cpp
+bool AcceptRequest(const Server* server, Controller* cntl);
+
 void ProcessNsheadRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();   
 
@@ -313,6 +316,9 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
             cntl->SetFailed(ELIMIT, "Too many user code to run when"
                             " -usercode_in_pthread is on");
+            break;
+        }
+        if (!AcceptRequest(server, cntl)) {
             break;
         }
     } while (false);

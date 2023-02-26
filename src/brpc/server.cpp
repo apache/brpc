@@ -127,6 +127,8 @@ ServerOptions::ServerOptions()
     , mongo_service_adaptor(NULL)
     , auth(NULL)
     , server_owns_auth(false)
+    , interceptor(NULL)
+    , server_owns_interceptor(false)
     , num_threads(8)
     , max_concurrency(0)
     , session_local_data_factory(NULL)
@@ -450,6 +452,10 @@ Server::~Server() {
     if (_options.server_owns_auth) {
         delete _options.auth;
         _options.auth = NULL;
+    }
+    if (_options.interceptor) {
+        delete _options.interceptor;
+        _options.interceptor = NULL;
     }
 
     delete _options.redis_service;
