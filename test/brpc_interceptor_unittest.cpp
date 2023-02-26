@@ -45,10 +45,10 @@ class EchoServiceImpl : public ::test::EchoService {
 public:
     EchoServiceImpl() = default;
     ~EchoServiceImpl() override = default;
-    virtual void Echo(google::protobuf::RpcController* cntl_base,
-                      const ::test::EchoRequest* request,
-                      ::test::EchoResponse* response,
-                      google::protobuf::Closure* done) {
+    void Echo(google::protobuf::RpcController* cntl_base,
+              const ::test::EchoRequest* request,
+              ::test::EchoResponse* response,
+              google::protobuf::Closure* done) override {
         brpc::ClosureGuard done_guard(done);
         EXPECT_EQ(EXP_REQUEST, request->message());
         response->set_message(EXP_RESPONSE);
@@ -64,8 +64,7 @@ public:
     bool Accept(const brpc::Controller* controller,
                 int& error_code,
                 std::string& error_txt) const override {
-        if (g_index == 0) {
-            // Reject request
+        if (g_index % 2 == 0) {
             error_code = EREJECT;
             error_txt = "reject g_index=0";
             return false;
@@ -88,6 +87,22 @@ public:
 
     ~InterceptorTest() override = default;
 
+    void CallMethod(test::EchoService_Stub& stub,
+                    ::test::EchoRequest& req,
+                    ::test::EchoResponse& res) {
+        for (g_index = 0; g_index < 1000; ++g_index) {
+            brpc::Controller cntl;
+            stub.Echo(&cntl, &req, &res, NULL);
+            if (g_index % 2 == 0) {
+                ASSERT_TRUE(cntl.Failed());
+                ASSERT_EQ(EREJECT, cntl.ErrorCode());
+            } else {
+                ASSERT_FALSE(cntl.Failed());
+                EXPECT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
+            }
+        }
+    }
+
 private:
     brpc::Server _server;
     EchoServiceImpl _echo_svc;
@@ -104,21 +119,9 @@ TEST_F(InterceptorTest, sanity) {
         brpc::ChannelOptions options;
         ASSERT_EQ(0, channel.Init("localhost", port, &options));
         test::EchoService_Stub stub(&channel);
-
-        // First request will be rejected.
-        brpc::Controller cntl;
-        stub.Echo(&cntl, &req, &res, NULL);
-        ASSERT_TRUE(cntl.Failed());
-        ASSERT_EQ(EREJECT, cntl.ErrorCode());
-
-        ++g_index;
-        cntl.Reset();
-        stub.Echo(&cntl, &req, &res, NULL);
-        ASSERT_FALSE(cntl.Failed());
-        EXPECT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
+        CallMethod(stub, req, res);
     }
 
-    g_index = 0;
     // PROTOCOL_HTTP
     {
         brpc::Channel channel;
@@ -126,23 +129,11 @@ TEST_F(InterceptorTest, sanity) {
         options.protocol = brpc::PROTOCOL_HTTP;
         ASSERT_EQ(0, channel.Init("localhost", port, &options));
         test::EchoService_Stub stub(&channel);
-
-        // First request will be rejected.
         // Set the x-bd-error-code header of http response to brpc error code.
         brpc::policy::FLAGS_use_http_error_code = true;
-        brpc::Controller cntl;
-        stub.Echo(&cntl, &req, &res, NULL);
-        ASSERT_TRUE(cntl.Failed());
-        ASSERT_EQ(EREJECT, cntl.ErrorCode());
-
-        ++g_index;
-        cntl.Reset();
-        stub.Echo(&cntl, &req, &res, NULL);
-        ASSERT_FALSE(cntl.Failed());
-        ASSERT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
+        CallMethod(stub, req, res);
     }
 
-    g_index = 0;
     // PROTOCOL_HULU_PBRPC
     {
         brpc::Channel channel;
@@ -150,18 +141,7 @@ TEST_F(InterceptorTest, sanity) {
         options.protocol = brpc::PROTOCOL_HULU_PBRPC;
         ASSERT_EQ(0, channel.Init("localhost", port, &options));
         test::EchoService_Stub stub(&channel);
-
-        // First request will be rejected.
-        brpc::Controller cntl;
-        stub.Echo(&cntl, &req, &res, NULL);
-        ASSERT_TRUE(cntl.Failed());
-        ASSERT_EQ(EREJECT, cntl.ErrorCode());
-
-        ++g_index;
-        cntl.Reset();
-        stub.Echo(&cntl, &req, &res, NULL);
-        ASSERT_FALSE(cntl.Failed());
-        ASSERT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
+        CallMethod(stub, req, res);
     }
 
     g_index = 0;
@@ -172,17 +152,6 @@ TEST_F(InterceptorTest, sanity) {
         options.protocol = brpc::PROTOCOL_SOFA_PBRPC;
         ASSERT_EQ(0, channel.Init("localhost", port, &options));
         test::EchoService_Stub stub(&channel);
-
-        // First request will be rejected.
-        brpc::Controller cntl;
-        stub.Echo(&cntl, &req, &res, NULL);
-        ASSERT_TRUE(cntl.Failed());
-        ASSERT_EQ(EREJECT, cntl.ErrorCode());
-
-        ++g_index;
-        cntl.Reset();
-        stub.Echo(&cntl, &req, &res, NULL);
-        ASSERT_FALSE(cntl.Failed());
-        ASSERT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
+        CallMethod(stub, req, res);
     }
 }
