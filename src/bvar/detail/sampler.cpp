@@ -18,6 +18,7 @@
 // Date: Tue Jul 28 18:14:40 CST 2015
 
 #include <gflags/gflags.h>
+#include "butil/threading/platform_thread.h"
 #include "butil/time.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "bvar/reducer.h"
@@ -108,6 +109,7 @@ private:
     void run();
 
     static void* sampling_thread(void* arg) {
+        butil::PlatformThread::SetName("bvar_sampler");
         static_cast<SamplerCollector*>(arg)->run();
         return NULL;
     }

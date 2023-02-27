@@ -22,6 +22,7 @@
 #include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "butil/errno.h"                   // berror
 #include "butil/logging.h"
+#include "butil/threading/platform_thread.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h"
 #include "bthread/sys_futex.h"            // futex_wake_private
 #include "bthread/interrupt_pthread.h"
@@ -68,6 +69,10 @@ void* TaskControl::worker_thread(void* arg) {
         LOG(ERROR) << "Fail to create TaskGroup in pthread=" << pthread_self();
         return NULL;
     }
+    std::string worker_thread_name = butil::string_printf(
+        "brpc_worker:%d",
+        c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
+    butil::PlatformThread::SetName(worker_thread_name.c_str());
     BT_VLOG << "Created worker=" << pthread_self()
             << " bthread=" << g->main_tid();
 
@@ -126,6 +131,7 @@ TaskControl::TaskControl()
     , _groups((TaskGroup**)calloc(BTHREAD_MAX_CONCURRENCY, sizeof(TaskGroup*)))
     , _stop(false)
     , _concurrency(0)
+    , _next_worker_id(0)
     , _nworkers("bthread_worker_count")
     , _pending_time(NULL)
       // Delay exposure of following two vars because they rely on TC which

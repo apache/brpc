@@ -23,6 +23,7 @@
 #include "butil/logging.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h"   // fmix64
 #include "butil/resource_pool.h"
+#include "butil/threading/platform_thread.h"
 #include "bvar/bvar.h"
 #include "bthread/sys_futex.h"
 #include "bthread/timer_thread.h"
@@ -117,6 +118,7 @@ inline bool task_greater(const TimerThread::Task* a, const TimerThread::Task* b)
 }
 
 void* TimerThread::run_this(void* arg) {
+    butil::PlatformThread::SetName("brpc_timer");
     static_cast<TimerThread*>(arg)->run();
     return NULL;
 }

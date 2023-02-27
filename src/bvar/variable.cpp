@@ -29,6 +29,7 @@
 #include "butil/errno.h"                         // berror
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
+#include "butil/threading/platform_thread.h"
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
@@ -728,6 +729,7 @@ static GFlag s_gflag_bvar_dump_interval("bvar_dump_interval");
 static void* dumping_thread(void*) {
     // NOTE: this variable was declared as static <= r34381, which was
     // destructed when program exits and caused coredumps.
+    butil::PlatformThread::SetName("bvar_dumper");
     const std::string command_name = read_command_name();
     std::string last_filename;
     std::string mbvar_last_filename;
