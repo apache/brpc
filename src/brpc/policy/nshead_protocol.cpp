@@ -202,9 +202,6 @@ static void EndRunningCallMethodInPool(NsheadService* service,
     return EndRunningUserCodeInPool(CallMethodInBackupThread, args);
 };
 
-// Defined in baidu_rpc_protocol.cpp
-bool AcceptRequest(const Server* server, Controller* cntl);
-
 void ProcessNsheadRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();   
 
@@ -318,7 +315,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
                             " -usercode_in_pthread is on");
             break;
         }
-        if (!AcceptRequest(server, cntl)) {
+        if (!server->AcceptRequest(cntl)) {
             break;
         }
     } while (false);

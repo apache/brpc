@@ -309,22 +309,6 @@ void EndRunningCallMethodInPool(
     return EndRunningUserCodeInPool(CallMethodInBackupThread, args);
 };
 
-// Returns true if accept request, reject request otherwise.
-bool AcceptRequest(const Server* server, Controller* cntl) {
-    const Interceptor* interceptor = server->options().interceptor;
-    int error_code = 0;
-    std::string error_text;
-    if (interceptor &&
-        !interceptor->Accept(cntl, error_code, error_text)) {
-        cntl->SetFailed(error_code,
-                        "Reject by Interceptor: %s",
-                        error_text.c_str());
-        return false;
-    }
-
-    return true;
-}
-
 void ProcessRpcRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
@@ -479,7 +463,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         const google::protobuf::MethodDescriptor* method = mp->method;
         accessor.set_method(method);
 
-        if (!AcceptRequest(server, cntl.get())) {
+
+        if (!server->AcceptRequest(cntl.get())) {
             break;
         }
 

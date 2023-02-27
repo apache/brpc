@@ -561,6 +561,9 @@ public:
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
 
+    // Returns true if accept request, reject request otherwise.
+    bool AcceptRequest(Controller* cntl) const;
+
 private:
 friend class StatusService;
 friend class ProtobufsService;

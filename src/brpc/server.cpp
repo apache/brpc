@@ -453,7 +453,7 @@ Server::~Server() {
         delete _options.auth;
         _options.auth = NULL;
     }
-    if (_options.interceptor) {
+    if (_options.server_owns_interceptor) {
         delete _options.interceptor;
         _options.interceptor = NULL;
     }
@@ -2195,6 +2195,21 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(google::protobuf::Service* serv
 int Server::MaxConcurrencyOf(google::protobuf::Service* service,
                              const butil::StringPiece& method_name) const {
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
+}
+
+bool Server::AcceptRequest(Controller* cntl) const {
+    const Interceptor* interceptor = _options.interceptor;
+    int error_code = 0;
+    std::string error_text;
+    if (cntl && interceptor &&
+        !interceptor->Accept(cntl, error_code, error_text)) {
+        cntl->SetFailed(error_code,
+                        "Reject by Interceptor: %s",
+                        error_text.c_str());
+        return false;
+    }
+
+    return true;
 }
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME

@@ -21,6 +21,7 @@
 #include "brpc/channel.h"
 #include "brpc/server.h"
 #include "brpc/interceptor.h"
+#include "brpc/nshead_service.h"
 #include "echo.pb.h"
 
 namespace brpc {
@@ -40,6 +41,7 @@ int g_index = 0;
 const int port = 8613;
 const std::string EXP_REQUEST = "hello";
 const std::string EXP_RESPONSE = "world";
+const std::string NSHEAD_EXP_RESPONSE = "error";
 
 class EchoServiceImpl : public ::test::EchoService {
 public:
@@ -50,8 +52,31 @@ public:
               ::test::EchoResponse* response,
               google::protobuf::Closure* done) override {
         brpc::ClosureGuard done_guard(done);
-        EXPECT_EQ(EXP_REQUEST, request->message());
+        ASSERT_EQ(EXP_REQUEST, request->message());
         response->set_message(EXP_RESPONSE);
+    }
+};
+
+// Adapt your own nshead-based protocol to use brpc
+class MyNsheadProtocol : public brpc::NsheadService {
+public:
+    void ProcessNsheadRequest(const brpc::Server&,
+                              brpc::Controller* cntl,
+                              const brpc::NsheadMessage& request,
+                              brpc::NsheadMessage* response,
+                              brpc::NsheadClosure* done) {
+        // This object helps you to call done->Run() in RAII style. If you need
+        // to process the request asynchronously, pass done_guard.release().
+        brpc::ClosureGuard done_guard(done);
+
+        response->head = request.head;
+        if (cntl->Failed()) {
+            ASSERT_TRUE(cntl->Failed());
+            ASSERT_EQ(EREJECT, cntl->ErrorCode());
+            response->body.append(NSHEAD_EXP_RESPONSE);
+            return;
+        }
+        response->body.append(EXP_RESPONSE);
     }
 };
 
@@ -81,15 +106,16 @@ public:
                                         brpc::SERVER_DOESNT_OWN_SERVICE));
         brpc::ServerOptions options;
         options.interceptor = new MyInterceptor;
+        options.nshead_service = new MyNsheadProtocol;
         options.server_owns_interceptor = true;
         EXPECT_EQ(0, _server.Start(port, &options));
     }
 
     ~InterceptorTest() override = default;
 
-    void CallMethod(test::EchoService_Stub& stub,
-                    ::test::EchoRequest& req,
-                    ::test::EchoResponse& res) {
+    static void CallMethod(test::EchoService_Stub& stub,
+                           ::test::EchoRequest& req,
+                           ::test::EchoResponse& res) {
         for (g_index = 0; g_index < 1000; ++g_index) {
             brpc::Controller cntl;
             stub.Echo(&cntl, &req, &res, NULL);
@@ -144,7 +170,6 @@ TEST_F(InterceptorTest, sanity) {
         CallMethod(stub, req, res);
     }
 
-    g_index = 0;
     // PROTOCOL_SOFA_PBRPC
     {
         brpc::Channel channel;
@@ -153,5 +178,24 @@ TEST_F(InterceptorTest, sanity) {
         ASSERT_EQ(0, channel.Init("localhost", port, &options));
         test::EchoService_Stub stub(&channel);
         CallMethod(stub, req, res);
+    }
+
+    // PROTOCOL_NSHEAD
+    {
+        brpc::Channel channel;
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_NSHEAD;
+        ASSERT_EQ(0, channel.Init("localhost", port, &options));
+        brpc::NsheadMessage request;
+        for (g_index = 0; g_index < 1000; ++g_index) {
+            brpc::Controller cntl;
+            brpc::NsheadMessage response;
+            channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+            if (g_index % 2 == 0) {
+                ASSERT_EQ(NSHEAD_EXP_RESPONSE, response.body.to_string());
+            } else {
+                ASSERT_EQ(EXP_RESPONSE, response.body.to_string());
+            }
+        }
     }
 }
