@@ -23,9 +23,8 @@
 #include "bthread/bthread.h"
 #include "brpc/log.h"
 #include "brpc/policy/domain_naming_service.h"
-#include "butil/details/extended_endpoint.hpp"
 
-DEFINE_bool(dnsIPV6, false, "Resolve DSN Only Use IPV6");
+DEFINE_bool(dns_support_ipv6, false, "Resolve DNS by IPV6 address first");
 
 namespace brpc {
 namespace policy {
@@ -80,33 +79,31 @@ int DomainNamingService::GetServers(const char* dns_name,
         return -1;
     }
 
-    if (FLAGS_dnsIPV6) {
+    if (FLAGS_dns_support_ipv6) {
         struct addrinfo hints;
         struct addrinfo* addrResult;
         memset(&hints, 0, sizeof(hints));
         hints.ai_family = AF_INET6;
         hints.ai_socktype = SOCK_DGRAM;
-        auto ok = getaddrinfo(buf, nullptr, &hints, &addrResult);
-        if (ok != 0) {
-            LOG(WARNING) << "Can't resolve `" << buf << "for ipv6";
-            return -1;
-        }
+        char portBuf[16];
+        snprintf(portBuf, arraysize(portBuf), "%d", port);
+        auto ret = getaddrinfo(buf, portBuf, &hints, &addrResult);
+        if (!ret) {
+            for(auto rp = addrResult; rp != NULL; rp = rp->ai_next) {
+                butil::EndPoint point;
+                auto ret = butil::sockaddr2endpoint((struct sockaddr_storage*)rp->ai_addr, rp->ai_addrlen, &point);
+                if(!ret) {
+                    servers->push_back(ServerNode(point, std::string()));
+                }
+            }
 
-        butil::EndPoint point;
-        for(auto rp = addrResult; rp != NULL; rp = rp->ai_next) {
-            struct sockaddr_in6* a= (struct sockaddr_in6*)rp->ai_addr;
-            char straddr[INET6_ADDRSTRLEN + 2];
-            inet_ntop(AF_INET6, &a->sin6_addr, straddr + 1, INET6_ADDRSTRLEN);
-            straddr[0] = '[';
-            auto len = strlen(straddr + 1);
-            straddr[len + 1] = ']';
-            straddr[len + 2] = '\0';
-            butil::details::ExtendedEndPoint::create(straddr, port, &point);
-            servers->push_back(ServerNode(point, std::string()));
+            freeaddrinfo(addrResult);
+            return 0;
+        } else {
+            LOG(WARNING) << "Can't resolve `" << buf << "for ipv6, fallback to ipv4";
+            // fallback to ipv4
         }
-
-        freeaddrinfo(addrResult);
-        return 0;
+        
     }
 
 #if defined(OS_MACOSX)
