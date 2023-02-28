@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
+#include <gflags/gflags.h>
 #include "butil/build_config.h"                       // OS_MACOSX
 #include <netdb.h>                                    // gethostbyname_r
 #include <stdlib.h>                                   // strtol
@@ -23,7 +23,9 @@
 #include "bthread/bthread.h"
 #include "brpc/log.h"
 #include "brpc/policy/domain_naming_service.h"
+#include "butil/details/extended_endpoint.hpp"
 
+DEFINE_bool(dnsIPV6, false, "Resolve DSN Only Use IPV6");
 
 namespace brpc {
 namespace policy {
@@ -76,6 +78,35 @@ int DomainNamingService::GetServers(const char* dns_name,
     if (port < 0 || port > 65535) {
         LOG(ERROR) << "Invalid port=" << port << " in `" << dns_name << '\'';
         return -1;
+    }
+
+    if (FLAGS_dnsIPV6) {
+        struct addrinfo hints;
+        struct addrinfo* addrResult;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET6;
+        hints.ai_socktype = SOCK_DGRAM;
+        auto ok = getaddrinfo(buf, nullptr, &hints, &addrResult);
+        if (ok != 0) {
+            LOG(WARNING) << "Can't resolve `" << buf << "for ipv6";
+            return -1;
+        }
+
+        butil::EndPoint point;
+        for(auto rp = addrResult; rp != NULL; rp = rp->ai_next) {
+            struct sockaddr_in6* a= (struct sockaddr_in6*)rp->ai_addr;
+            char straddr[INET6_ADDRSTRLEN + 2];
+            inet_ntop(AF_INET6, &a->sin6_addr, straddr + 1, INET6_ADDRSTRLEN);
+            straddr[0] = '[';
+            auto len = strlen(straddr + 1);
+            straddr[len + 1] = ']';
+            straddr[len + 2] = '\0';
+            butil::details::ExtendedEndPoint::create(straddr, port, &point);
+            servers->push_back(ServerNode(point, std::string()));
+        }
+
+        freeaddrinfo(addrResult);
+        return 0;
     }
 
 #if defined(OS_MACOSX)
