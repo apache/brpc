@@ -71,7 +71,8 @@ public:
     // Never run in parallel with pop() or another push().
     bool push(const T& x) {
         const size_t b = _bottom.load(butil::memory_order_relaxed);
-        const size_t t = _top.load(butil::memory_order_acquire);
+        // no instructions before (CAS() in steal()) must be known
+        const size_t t = _top.load(butil::memory_order_relaxed);
         if (b >= t + _capacity) { // Full queue.
             return false;
         }
@@ -94,7 +95,10 @@ public:
         }
         const size_t newb = b - 1;
         _bottom.store(newb, butil::memory_order_relaxed);
-        butil::atomic_thread_fence(butil::memory_order_seq_cst);
+        
+        // erased : butil::atomic_thread_fence(butil::memory_order_seq_cst);
+        // no instructions before store() or CAS() below must be known to other pthreads
+        
         t = _top.load(butil::memory_order_relaxed);
         if (t > newb) {
             _bottom.store(b, butil::memory_order_relaxed);
@@ -115,14 +119,17 @@ public:
     // Returns true on stolen.
     // May run in parallel with push() pop() or another steal().
     bool steal(T* val) {
-        size_t t = _top.load(butil::memory_order_acquire);
+        // no instructions before _top.store() must be aware
+        size_t t = _top.load(butil::memory_order_relaxed);
+        
         size_t b = _bottom.load(butil::memory_order_acquire);
         if (t >= b) {
             // Permit false negative for performance considerations.
             return false;
         }
         do {
-            butil::atomic_thread_fence(butil::memory_order_seq_cst);
+            // erased: butil::atomic_thread_fence(butil::memory_order_seq_cst);
+            // no instruction before _top.cas must be known to other pthreads
             b = _bottom.load(butil::memory_order_acquire);
             
             // If not get t again and another steal() happens
