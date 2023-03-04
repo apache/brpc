@@ -124,6 +124,10 @@ public:
         do {
             butil::atomic_thread_fence(butil::memory_order_seq_cst);
             b = _bottom.load(butil::memory_order_acquire);
+            
+            // If not get t again and another steal() happens
+            // after the first getting, it might stuck in a dead circle
+            t = _top.load(butil::memory_order_acquire);
             if (t >= b) {
                 return false;
             }
