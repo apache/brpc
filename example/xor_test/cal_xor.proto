@@ -1,0 +1,18 @@
+syntax="proto2";
+
+package XorJob;
+
+option cc_generic_services = true;
+
+service CalXor {
+  rpc CalculateXor(CalXorRequest) returns(CalXorResponse) {}
+}
+
+message CalXorRequest {
+  optional uint64 num1 = 1;
+  optional uint64 num2 = 2;
+}
+
+message CalXorResponse {
+  optional uint64 num = 1;
+}
