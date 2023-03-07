@@ -31,7 +31,7 @@
 #endif  // _MSC_VER
 
 #define BAIDU_VOLATILE_THREAD_LOCAL(type, var_name, default_value)             \
-  __thread type var_name = default_value;                                      \
+  BAIDU_THREAD_LOCAL type var_name = default_value;                                      \
   static __attribute__((noinline, unused)) type get_##var_name(void) {         \
     asm volatile("");                                                          \
     return var_name;                                                           \
