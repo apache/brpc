@@ -28,6 +28,7 @@ option(WITH_RDMA "With RDMA" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 option(BUILD_BRPC_TOOLS "Whether to build brpc tools" ON)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
+option(NOT_ALLOW_OPTIMIZE_THREAD_LOCAL_ACCESS "Whether to disable compiler optimize thread local variable access." OFF)
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
 if(POLICY CMP0042)
@@ -110,6 +111,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         set(DEFINE_CLOCK_GETTIME "-DNO_CLOCK_GETTIME_IN_MAC")
     endif()
     set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -Wno-deprecated-declarations -Wno-inconsistent-missing-override")
+endif()
+
+if(NOT_ALLOW_OPTIMIZE_THREAD_LOCAL_ACCESS)
+    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DNOT_ALLOW_OPTIMIZE_THREAD_LOCAL_ACCESS")
 endif()
 
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DBRPC_WITH_RDMA=${WITH_RDMA_VAL} -DGFLAGS_NS=${GFLAGS_NS}")

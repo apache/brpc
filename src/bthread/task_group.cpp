@@ -57,7 +57,7 @@ const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
     ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
                                     pass_bool);
 
-__thread TaskGroup* tls_task_group = NULL;
+BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
 // groundtruth.
@@ -68,7 +68,7 @@ extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
 
 // [Hacky] This is a special TLS set by bthread-rpc privately... to save
 // overhead of creation keytable, may be removed later.
-BAIDU_THREAD_LOCAL void* tls_unique_user_ptr = NULL;
+BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 
 const TaskStatistics EMPTY_STAT = { 0, 0 };
 
@@ -248,9 +248,6 @@ int TaskGroup::init(size_t runqueue_capacity) {
     return 0;
 }
 
-#if defined(__linux__) && defined(__aarch64__) && defined(__clang__)
-    __attribute__((optnone))
-#endif
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
     //       different groups.
@@ -301,7 +298,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         }
 
         // Group is probably changed
-        g = tls_task_group;
+        g =  BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 
         // TODO: Save thread_return
         (void)thread_return;
@@ -570,9 +567,6 @@ void TaskGroup::sched(TaskGroup** pg) {
     sched_to(pg, next_tid);
 }
 
-#if defined(__linux__) && defined(__aarch64__) && defined(__clang__)
-    __attribute__((optnone))
-#endif
 void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     TaskGroup* g = *pg;
 #ifndef NDEBUG
@@ -614,7 +608,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
             if (next_meta->stack != cur_meta->stack) {
                 jump_stack(cur_meta->stack, next_meta->stack);
                 // probably went to another group, need to assign g again.
-                g = tls_task_group;
+                g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
             }
 #ifndef NDEBUG
             else {
@@ -633,12 +627,13 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
         RemainedFn fn = g->_last_context_remained;
         g->_last_context_remained = NULL;
         fn(g->_last_context_remained_arg);
-        g = tls_task_group;
+        g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     }
 
     // Restore errno
     errno = saved_errno;
-    tls_unique_user_ptr = saved_unique_user_ptr;
+    // tls_unique_user_ptr probably changed.
+    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr, saved_unique_user_ptr);
 
 #ifndef NDEBUG
     --g->_sched_recursive_guard;
