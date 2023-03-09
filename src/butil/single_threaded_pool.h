@@ -130,6 +130,8 @@ public:
         return count_allocated() - count_free();
     }
 
+    Allocator& get_allocator() { return _allocator; }
+
 private:
     // You should not copy a pool.
     SingleThreadedPool(const SingleThreadedPool&);

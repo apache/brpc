@@ -269,6 +269,8 @@ public:
         char element_spaces[sizeof(Element)];
     };
 
+    allocator_type& get_allocator() { return _pool.get_allocator(); }
+
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
 template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
@@ -283,7 +285,6 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     u_int _load_factor;
     hasher _hashfn;
     key_equal _eql;
-    allocator_type _allocator;
     SingleThreadedPool<sizeof(Bucket), 1024, 16, allocator_type> _pool;
 };
 

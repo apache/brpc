@@ -232,14 +232,13 @@ FlatMap<_K, _T, _H, _E, _S, _A>::FlatMap(const hasher& hashfn, const key_equal& 
     , _load_factor(0)
     , _hashfn(hashfn)
     , _eql(eql)
-    , _allocator(alloc)
     , _pool(alloc)
 {}
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
 FlatMap<_K, _T, _H, _E, _S, _A>::~FlatMap() {
     clear();
-    _allocator.Free(_buckets);
+    get_allocator().Free(_buckets);
     _buckets = NULL;
     free(_thumbnail);
     _thumbnail = NULL;
@@ -255,8 +254,7 @@ FlatMap<_K, _T, _H, _E, _S, _A>::FlatMap(const FlatMap& rhs)
     , _thumbnail(NULL)
     , _load_factor(rhs._load_factor)
     , _hashfn(rhs._hashfn)
-    , _eql(rhs._eql)
-    , _allocator(rhs._allocator) {
+    , _eql(rhs._eql) {
     operator=(rhs);
 }
 
@@ -276,10 +274,10 @@ FlatMap<_K, _T, _H, _E, _S, _A>::operator=(const FlatMap<_K, _T, _H, _E, _S, _A>
         _load_factor = rhs._load_factor;
     }
     if (_buckets == NULL || is_too_crowded(rhs._size)) {
-        _allocator.Free(_buckets);
+        get_allocator().Free(_buckets);
         _nbucket = rhs._nbucket;
         // note: need an extra bucket to let iterator know where buckets end
-        _buckets = (Bucket*)_allocator.Alloc(sizeof(Bucket) * (_nbucket + 1/*note*/));
+        _buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (_nbucket + 1/*note*/));
         if (NULL == _buckets) {
             LOG(ERROR) << "Fail to new _buckets";
             return;
@@ -338,7 +336,7 @@ int FlatMap<_K, _T, _H, _E, _S, _A>::init(size_t nbucket, u_int load_factor) {
     _nbucket = flatmap_round(nbucket);
     _load_factor = load_factor;
                                 
-    _buckets = (Bucket*)_allocator.Alloc(sizeof(Bucket) * (_nbucket + 1));
+    _buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (_nbucket + 1));
     if (NULL == _buckets) {
         LOG(ERROR) << "Fail to new _buckets";
         return -1;
@@ -368,7 +366,6 @@ void FlatMap<_K, _T, _H, _E, _S, _A>::swap(FlatMap<_K, _T, _H, _E, _S, _A> & rhs
     std::swap(rhs._load_factor, _load_factor);
     std::swap(rhs._hashfn, _hashfn);
     std::swap(rhs._eql, _eql);
-    std::swap(rhs._allocator, _allocator);
     rhs._pool.swap(_pool);
 }
 
