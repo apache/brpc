@@ -446,7 +446,7 @@ int GetNamingServiceThread(
         if (ptr != NULL) {
             if (ptr->AddRefManually() == 0) {
                 // The ns thread's last intrusive_ptr was just destructed and
-                // the removal-from-global-map-code in ptr->~NamingServideThread()
+                // the removal-from-global-map-code in ptr->~NamingServiceThread()
                 // is about to run or already running, need to create another ns
                 // thread.
                 // Notice that we don't need to remove the reference because
