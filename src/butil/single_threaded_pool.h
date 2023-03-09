@@ -30,9 +30,16 @@ namespace butil {
 //   void* mem = pool.get();
 //   pool.back(mem);
 
+class PtAllocator {
+public:
+    void* Alloc(size_t n) { return malloc(n); }
+    void Free(void* p) { free(p); }
+};
+
 template <size_t ITEM_SIZE_IN,   // size of an item
           size_t BLOCK_SIZE_IN,  // suggested size of a block
-          size_t MIN_NITEM = 1>  // minimum number of items in one block
+          size_t MIN_NITEM = 1,
+          typename Allocator = PtAllocator>  // minimum number of items in one block
 class SingleThreadedPool {
 public:
     // Note: this is a union. The next pointer is set iff when spaces is free,
@@ -54,7 +61,8 @@ public:
     static const size_t NITEM = Block::NITEM;
     static const size_t ITEM_SIZE = ITEM_SIZE_IN;
     
-    SingleThreadedPool() : _free_nodes(NULL), _blocks(NULL) {}
+    SingleThreadedPool(const Allocator& alloc = Allocator()) 
+        : _free_nodes(NULL), _blocks(NULL), _allocator(alloc) {}
     ~SingleThreadedPool() { reset(); }
 
     void swap(SingleThreadedPool & other) {
@@ -71,7 +79,7 @@ public:
             return spaces;
         }
         if (_blocks == NULL || _blocks->nalloc >= Block::NITEM) {
-            Block* new_block = (Block*)malloc(sizeof(Block));
+            Block* new_block = (Block*)_allocator.Alloc(sizeof(Block));
             if (new_block == NULL) {
                 return NULL;
             }
@@ -98,7 +106,7 @@ public:
         _free_nodes = NULL;
         while (_blocks) {
             Block* next = _blocks->next;
-            free(_blocks);
+            _allocator.Free(_blocks);
             _blocks = next;
         }
     }
@@ -122,6 +130,8 @@ public:
         return count_allocated() - count_free();
     }
 
+    Allocator& get_allocator() { return _allocator; }
+
 private:
     // You should not copy a pool.
     SingleThreadedPool(const SingleThreadedPool&);
@@ -129,6 +139,7 @@ private:
 
     Node* _free_nodes;
     Block* _blocks;
+    Allocator _allocator;
 };
 
 }  // namespace butil
