@@ -2199,9 +2199,13 @@ int Server::MaxConcurrencyOf(google::protobuf::Service* service,
 
 bool Server::AcceptRequest(Controller* cntl) const {
     const Interceptor* interceptor = _options.interceptor;
+    if (!interceptor) {
+        return true;
+    }
+
     int error_code = 0;
     std::string error_text;
-    if (cntl && interceptor &&
+    if (cntl &&
         !interceptor->Accept(cntl, error_code, error_text)) {
         cntl->SetFailed(error_code,
                         "Reject by Interceptor: %s",
