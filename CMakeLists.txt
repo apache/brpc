@@ -150,11 +150,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     endif()
 endif()
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "(AppleClang)|(Clang)" AND CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64)|(arm64)")
-    # disable thread local access optimization.
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNOT_ALLOW_OPTIMIZE_THREAD_LOCAL_ACCESS")
-endif()
-
 find_package(Protobuf REQUIRED)
 find_package(Threads REQUIRED)
 

@@ -46,7 +46,10 @@
     var_name = v;                                                              \
   }
 
-#if defined(NOT_ALLOW_OPTIMIZE_THREAD_LOCAL_ACCESS)
+#if defined(__clang__) && (defined(__aarch64__) || defined(__arm64__))
+// Clang compiler is incorrectly caching the address of thread_local variables
+// across a suspend-point. The following macros used to disable the volatile
+// thread local access optimization.
 #define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) get_##var_name()
 #define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) get_ptr_##var_name()
 #define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) set_##var_name(value)
