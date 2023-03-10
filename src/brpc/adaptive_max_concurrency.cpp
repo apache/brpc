@@ -40,6 +40,10 @@ AdaptiveMaxConcurrency::AdaptiveMaxConcurrency(int max_concurrency)
     }
 }
 
+AdaptiveMaxConcurrency::AdaptiveMaxConcurrency(
+    const TimeoutConcurrencyConf& value)
+    : _value("timeout"), _max_concurrency(-1), _timeout_conf(value) {}
+
 inline bool CompareStringPieceWithoutCase(
     const butil::StringPiece& s1, const char* s2) {
     DCHECK(s2 != NULL);
@@ -78,6 +82,12 @@ void AdaptiveMaxConcurrency::operator=(int max_concurrency) {
         _value = butil::string_printf("%d", max_concurrency);
         _max_concurrency = max_concurrency;
     }
+}
+
+void AdaptiveMaxConcurrency::operator=(const TimeoutConcurrencyConf& value) {
+    _value = "timeout";
+    _max_concurrency = -1;
+    _timeout_conf = value;
 }
 
 const std::string& AdaptiveMaxConcurrency::type() const {
