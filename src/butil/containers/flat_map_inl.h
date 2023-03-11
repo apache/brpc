@@ -607,11 +607,9 @@ bool FlatMap<_K, _T, _H, _E, _S, _A>::resize(size_t nbucket2) {
         return false;
     }
 
-    FlatMap new_map;
     // NOTE: following functors must be kept after resizing otherwise the 
     // internal state is lost.
-    new_map._hashfn = _hashfn; 
-    new_map._eql = _eql;
+    FlatMap new_map(_hashfn, _eql, get_allocator());
     if (new_map.init(nbucket2, _load_factor) != 0) {
         LOG(ERROR) << "Fail to init new_map, nbucket=" << nbucket2;
         return false;
