@@ -275,6 +275,7 @@ void SendRpcResponse(int64_t correlation_id,
     }
 }
 
+namespace {
 struct CallMethodInBackupThreadArgs {
     ::google::protobuf::Service* service;
     const ::google::protobuf::MethodDescriptor* method;
@@ -283,6 +284,7 @@ struct CallMethodInBackupThreadArgs {
     ::google::protobuf::Message* response;
     ::google::protobuf::Closure* done;
 };
+}
 
 static void CallMethodInBackupThread(void* void_args) {
     CallMethodInBackupThreadArgs* args = (CallMethodInBackupThreadArgs*)void_args;

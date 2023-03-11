@@ -414,6 +414,7 @@ inline void ProcessThriftFramedRequestNoExcept(ThriftService* service,
     done->ResumeRunning();
 }
 
+namespace {
 struct CallMethodInBackupThreadArgs {
     ThriftService* service;
     Controller* controller;
@@ -421,6 +422,7 @@ struct CallMethodInBackupThreadArgs {
     ThriftFramedMessage* response;
     ThriftClosure* done;
 };
+}
 
 static void CallMethodInBackupThread(void* void_args) {
     CallMethodInBackupThreadArgs* args = (CallMethodInBackupThreadArgs*)void_args;
