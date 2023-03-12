@@ -66,11 +66,11 @@ class NamingServiceThread : public SharedObject, public Describable {
     };
     class Actions : public NamingServiceActions {
     public:
-        Actions(NamingServiceThread* owner);
-        ~Actions();
-        void AddServers(const std::vector<ServerNode>& servers);
-        void RemoveServers(const std::vector<ServerNode>& servers);
-        void ResetServers(const std::vector<ServerNode>& servers);
+        explicit Actions(NamingServiceThread* owner);
+        ~Actions() override;
+        void AddServers(const std::vector<ServerNode>& servers) override;
+        void RemoveServers(const std::vector<ServerNode>& servers) override;
+        void ResetServers(const std::vector<ServerNode>& servers) override;
         int WaitForFirstBatchOfServers();
         void EndWait(int error_code);
 
@@ -90,19 +90,20 @@ class NamingServiceThread : public SharedObject, public Describable {
 
 public:    
     NamingServiceThread();
-    ~NamingServiceThread();
+    ~NamingServiceThread() override;
 
     int Start(NamingService* ns,
               const std::string& protocol,
               const std::string& service_name,
               const GetNamingServiceThreadOptions* options);
     int WaitForFirstBatchOfServers();
+    void EndWait(int error_code);
 
     int AddWatcher(NamingServiceWatcher* w, const NamingServiceFilter* f);
     int AddWatcher(NamingServiceWatcher* w) { return AddWatcher(w, NULL); }
     int RemoveWatcher(NamingServiceWatcher* w);
 
-    void Describe(std::ostream& os, const DescribeOptions&) const;
+    void Describe(std::ostream& os, const DescribeOptions&) const override;
 
 private:
     void Run();
