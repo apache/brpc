@@ -169,6 +169,7 @@ ParseResult ParseNsheadMessage(butil::IOBuf* source,
     return MakeMessage(msg);
 }
 
+namespace {
 struct CallMethodInBackupThreadArgs {
     NsheadService* service;
     const Server* server;
@@ -177,6 +178,7 @@ struct CallMethodInBackupThreadArgs {
     NsheadMessage* response;
     NsheadClosure* done;
 };
+}
 
 static void CallMethodInBackupThread(void* void_args) {
     CallMethodInBackupThreadArgs* args = (CallMethodInBackupThreadArgs*)void_args;
