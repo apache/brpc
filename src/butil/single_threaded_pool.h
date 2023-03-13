@@ -68,6 +68,7 @@ public:
     void swap(SingleThreadedPool & other) {
         std::swap(_free_nodes, other._free_nodes);
         std::swap(_blocks, other._blocks);
+        std::swap(_allocator, other._allocator);
     }
 
     // Get space of an item. The space is as long as ITEM_SIZE.
