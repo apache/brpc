@@ -151,6 +151,7 @@ CommonStrings::CommonStrings()
     , GRPC_STATUS("grpc-status")
     , GRPC_MESSAGE("grpc-message")
     , GRPC_TIMEOUT("grpc-timeout")
+    , DEFAULT_PATH("/")
 {}
 
 static CommonStrings* common = NULL;
@@ -1596,7 +1597,8 @@ bool ParseHttpServerAddress(butil::EndPoint* point, const char* server_addr_and_
 const std::string& GetHttpMethodName(
     const google::protobuf::MethodDescriptor*,
     const Controller* cntl) {
-    return cntl->http_request().uri().path();
+    const std::string& path = cntl->http_request().uri().path();
+    return !path.empty() ? path : common->DEFAULT_PATH;
 }
 
 }  // namespace policy
