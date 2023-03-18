@@ -41,6 +41,7 @@ inline uint32_t find_next_prime(uint32_t nbucket) {
     return nbucket;
 }
 
+// NOTE: find_power2(0) = 0
 inline uint64_t find_power2(uint64_t b) {
     b -= 1;
     b |= (b >> 1);
@@ -61,7 +62,8 @@ inline size_t flatmap_round(size_t nbucket) {
 #ifdef FLAT_MAP_ROUND_BUCKET_BY_USE_NEXT_PRIME    
     return find_next_prime(nbucket);
 #else
-    return find_power2(nbucket);
+    // the lowerbound fixes the corner case of nbucket=0 which results in coredump during seeking the map.
+    return nbucket <= 8 ? 8 : find_power2(nbucket);
 #endif
 }
 
@@ -326,6 +328,10 @@ template <typename _K, typename _T, typename _H, typename _E, bool _S, typename 
 int FlatMap<_K, _T, _H, _E, _S, _A>::init(size_t nbucket, u_int load_factor) {
     if (initialized()) {
         LOG(ERROR) << "Already initialized";
+        return -1;
+    }
+    if (nbucket == 0) {
+        LOG(WARNING) << "Fail to init FlatMap, nbucket=" << nbucket; 
         return -1;
     }
     if (load_factor < 10 || load_factor > 100) {
