@@ -63,7 +63,7 @@ BsonEnumerator::~BsonEnumerator() {
 UniqueBsonPtr ExtractBsonFromIOBuf(IOBuf& iobuf) {
     uint32_t bson_length;
     const size_t n = iobuf.copy_to(&bson_length, sizeof(bson_length));
-    if (n < sizeof(bson_length) || iobuf.size() < bson_length + sizeof(bson_length)) {
+    if (n < sizeof(bson_length) || iobuf.size() < bson_length) {
         return nullptr;
     }
     std::unique_ptr<uint8_t[]> buffer(new uint8_t[bson_length]);

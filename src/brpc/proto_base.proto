@@ -24,6 +24,8 @@ message RedisResponseBase {}
 
 message EspMessageBase {}
 
+message MongoMessageBase {}
+
 message MemcacheRequestBase {}
 message MemcacheResponseBase {}
 
