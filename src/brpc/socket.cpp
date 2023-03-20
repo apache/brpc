@@ -1433,10 +1433,11 @@ int Socket::KeepWriteIfConnected(int fd, int err, void* data) {
         // Run ssl connect in a new bthread to avoid blocking
         // the current bthread (thus blocking the EventDispatcher)
         bthread_t th;
-        google::protobuf::Closure* thrd_func = brpc::NewCallback(
-            Socket::CheckConnectedAndKeepWrite, fd, err, data);
+        std::unique_ptr<google::protobuf::Closure> thrd_func(brpc::NewCallback(
+                Socket::CheckConnectedAndKeepWrite, fd, err, data));
         if ((err = bthread_start_background(&th, &BTHREAD_ATTR_NORMAL,
-                                            RunClosure, thrd_func)) == 0) {
+                                            RunClosure, thrd_func.get())) == 0) {
+            thrd_func.release();
             return 0;
         } else {
             PLOG(ERROR) << "Fail to start bthread";
