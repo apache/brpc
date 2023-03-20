@@ -170,6 +170,7 @@ OPENSSL_LIB=$(find_dir_of_lib ssl)
 # Inconvenient to check these headers in baidu-internal
 #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
 OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h mesalink/openssl/ssl.h)
+BSON_HDR=$(find_dir_of_header bson.h)
 
 if [ $WITH_MESALINK != 0 ]; then
     MESALINK_HDR=$(find_dir_of_header_or_die mesalink/openssl/ssl.h)
@@ -199,6 +200,8 @@ if [ "$SYSTEM" = "Darwin" ]; then
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_RegisterThriftProtocol"
 fi
 append_linking() {
+    #convert lib-a.b.c to lib_a_b_c
+    local lib_name=`echo $2 | sed 's/-\|\./_/g'`
     if [ -f $1/lib${2}.a ]; then
         if [ "$SYSTEM" = "Darwin" ]; then
             # *.a must be explicitly specified in clang
@@ -206,10 +209,10 @@ append_linking() {
         else
             STATIC_LINKINGS="$STATIC_LINKINGS -l$2"
         fi
-        export STATICALLY_LINKED_$2=1
+        export STATICALLY_LINKED_$lib_name=1
     else
         DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -l$2"
-        export STATICALLY_LINKED_$2=0
+        export STATICALLY_LINKED_$lib_name=0
     fi
 }
 
@@ -218,6 +221,10 @@ append_linking $GFLAGS_LIB gflags
 
 PROTOBUF_LIB=$(find_dir_of_lib_or_die protobuf)
 append_linking $PROTOBUF_LIB protobuf
+
+# namespace c, grep it from source.
+BSON_LIB=$(find_dir_of_lib_or_die bson-1.0)
+append_linking $BSON_LIB bson-1.0
 
 LEVELDB_LIB=$(find_dir_of_lib_or_die leveldb)
 # required by leveldb
@@ -263,7 +270,7 @@ fi
 PROTOBUF_HDR=$(find_dir_of_header_or_die google/protobuf/message.h)
 LEVELDB_HDR=$(find_dir_of_header_or_die leveldb/db.h)
 
-HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR\n$OPENSSL_HDR" | sort | uniq)
+HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR\n$OPENSSL_HDR\n$BSON_HDR" | sort | uniq)
 LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$OPENSSL_LIB\n$SNAPPY_LIB" | sort | uniq)
 
 absent_in_the_list() {
@@ -373,7 +380,7 @@ fi
 append_to_output "CPPFLAGS=${CPPFLAGS}"
 append_to_output "# without the flag, linux+arm64 may crash due to folding on TLS.
 ifeq (\$(CC),gcc)
-  ifeq (\$(shell uname -p),aarch64) 
+  ifeq (\$(shell uname -p),aarch64)
     CPPFLAGS+=-fno-gcse
   endif
 endif

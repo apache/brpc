@@ -69,6 +69,7 @@ BUTIL_SOURCES = \
     src/butil/atomicops_internals_x86_gcc.cc \
     src/butil/base64.cc \
     src/butil/big_endian.cc \
+	src/butil/bson_util.cc \
     src/butil/cpu.cc \
     src/butil/debug/alias.cc \
     src/butil/debug/asan_invalid_access.cc \
