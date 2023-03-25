@@ -1777,7 +1777,7 @@ protected:
         cntl.Reset();
         cntl.set_max_retry(RETRY_NUM);
         CallMethod(&channel, &cntl, &req, &res, async);
-        EXPECT_EQ(EHOSTDOWN, cntl.ErrorCode());
+        EXPECT_EQ(short_connection ? ECONNREFUSED : EHOSTDOWN, cntl.ErrorCode());
         EXPECT_EQ(RETRY_NUM, cntl.retried_count());
     }
 
@@ -1823,6 +1823,39 @@ protected:
     
     MyEchoService _svc;
 };
+
+void TestBlockServer(bool single_server, bool short_connection, const char* lb) {
+    std::cout << " *** single=" << single_server
+              << " short=" << short_connection
+              << " lb=" << lb << std::endl;
+
+    rpc::Channel channel;
+    rpc::ChannelOptions opt;
+    if (short_connection) {
+        opt.connection_type = rpc::CONNECTION_TYPE_SHORT;
+    } else {
+        opt.connection_type = rpc::CONNECTION_TYPE_POOLED;
+    }
+    opt.max_retry = 0;
+    if (single_server) {
+        EXPECT_EQ(0, channel.Init("127.0.0.1:53829", &opt)); 
+    } else {                                                 
+        EXPECT_EQ(0, channel.Init("list://127.0.0.1:53829,127.0.0.1:53830", lb, &opt));
+    }                                         
+
+    const int RETRY_NUM = 3;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    rpc::Controller cntl;
+    req.set_message(__FUNCTION__);
+
+    cntl.set_max_retry(RETRY_NUM);
+    cntl.set_timeout_ms(10);  // 10ms
+    cntl.set_request_code(1);
+    CallMethod(&channel, &cntl, &req, &res, false);
+    EXPECT_EQ(ECONNREFUSED, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_EQ(RETRY_NUM, cntl.retried_count());
+}
 
 class MyShared : public brpc::SharedObject {
 public:
@@ -2462,6 +2495,17 @@ TEST_F(ChannelTest, retry_other_servers) {
     for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
         for (int k = 0; k <=1; ++k) { // Flag ShortConnection
             TestRetryOtherServer(j, k);
+        }
+    }
+}
+
+TEST_F(ChannelTest, test_block_server) {
+    const char* lbs[] = {"rr", "random", "la", "c_md5"};
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+        for (int j = 0; j <= 1; ++j) { // Flag ShortConnection
+            for (int k = 0; k < 4; ++k) { // Flag LB
+                TestBlockServer(i, j, lbs[k]);
+            }
         }
     }
 }
