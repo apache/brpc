@@ -23,7 +23,6 @@
 #include "bthread/bthread.h"
 #include "brpc/log.h"
 #include "brpc/policy/domain_naming_service.h"
-#include "butil/logging.h"
 
 DEFINE_bool(dns_support_ipv6, false, "Resolve DNS by IPV6 address first");
 
