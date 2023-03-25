@@ -23,6 +23,7 @@
 #include "bthread/bthread.h"
 #include "brpc/log.h"
 #include "brpc/policy/domain_naming_service.h"
+#include "butil/logging.h"
 
 DEFINE_bool(dns_support_ipv6, false, "Resolve DNS by IPV6 address first");
 
@@ -42,7 +43,7 @@ int DomainNamingService::GetServers(const char* dns_name,
     }
 
     // Should be enough to hold host name
-    char buf[128];
+    char buf[256];
     size_t i = 0;
     for (; i < sizeof(buf) - 1 && dns_name[i] != '\0'
              && dns_name[i] != ':' && dns_name[i] != '/'; ++i) {
