@@ -1829,12 +1829,12 @@ void TestBlockServer(bool single_server, bool short_connection, const char* lb) 
               << " short=" << short_connection
               << " lb=" << lb << std::endl;
 
-    rpc::Channel channel;
-    rpc::ChannelOptions opt;
+    brpc::Channel channel;
+    brpc::ChannelOptions opt;
     if (short_connection) {
-        opt.connection_type = rpc::CONNECTION_TYPE_SHORT;
+        opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
     } else {
-        opt.connection_type = rpc::CONNECTION_TYPE_POOLED;
+        opt.connection_type = brpc::CONNECTION_TYPE_POOLED;
     }
     opt.max_retry = 0;
     if (single_server) {
@@ -1846,7 +1846,7 @@ void TestBlockServer(bool single_server, bool short_connection, const char* lb) 
     const int RETRY_NUM = 3;
     test::EchoRequest req;
     test::EchoResponse res;
-    rpc::Controller cntl;
+    brpc::Controller cntl;
     req.set_message(__FUNCTION__);
 
     cntl.set_max_retry(RETRY_NUM);
