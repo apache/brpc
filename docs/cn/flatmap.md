@@ -32,6 +32,44 @@ void flatmap_example() {
     map.clear();
     CHECK_EQ(0UL, map.size());
 }
+
+void flatmap_erase_hinted_during_iteration_example() {
+    typedef butil::FlatMap<int, int> Map;
+    Map map;
+    // bucket_count: initial count of buckets, big enough to avoid resize.
+    // load_factor: element_count * 100 / bucket_count, 80 as default.
+    int bucket_count = 1000;
+    int load_factor = 80;
+    map.init(bucket_count, load_factor);
+    const int N = 10;
+    for (int i = 0; i < N; ++i) {
+        map[i] = i;
+    }
+
+    for (Map::const_iterator it = map.begin(); it != map.end(); ++it) {
+        // After `erase()', ++iterator may fail.
+        // We need to save iterator before `erase()'
+        // and restore iterator after `erase()'.
+        typename Map::PositionHint hint{};
+        map.save_iterator(it, &hint);
+        if (it->first % 2 == 0) {
+            CHECK_EQ(1UL, map.erase(it->first));
+        }
+        it = map.restore_iterator(hint);
+        if (it == map.end()) {
+            break;
+        }
+    }
+    CHECK_EQ((size_t)(N / 2), map.size());
+
+    LOG(INFO) << "All remaining elements of the map:";
+    for (Map::const_iterator it = map.begin(); it != map.end(); ++it) {
+        CHECK_EQ(1, it->first % 2);
+        LOG(INFO) << it->first << " : " << it->second;
+    }
+    map.clear();
+    CHECK_EQ(0UL, map.size());
+}
 ```
 
 # DESCRIPTION
