@@ -807,6 +807,9 @@ private:
     AuthContext* _auth_context;
 
     SSLState _ssl_state;
+    // SSL objects cannot be read and written at the same time.
+    // Use mutex to protect SSL objects when ssl_state is SSL_CONNECTED.
+    mutable butil::Mutex _ssl_session_mutex;
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
