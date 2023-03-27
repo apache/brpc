@@ -1810,6 +1810,39 @@ protected:
         StopAndJoin();
     }
 
+    void TestBlockServer(bool single_server, bool short_connection, const char* lb) {
+        std::cout << " *** single=" << single_server
+                << " short=" << short_connection
+                << " lb=" << lb << std::endl;
+
+        brpc::Channel channel;
+        brpc::ChannelOptions opt;
+        if (short_connection) {
+            opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
+        } else {
+            opt.connection_type = brpc::CONNECTION_TYPE_POOLED;
+        }
+        opt.max_retry = 0;
+        if (single_server) {
+            EXPECT_EQ(0, channel.Init("127.0.0.1:53829", &opt)); 
+        } else {                                                 
+            EXPECT_EQ(0, channel.Init("list://127.0.0.1:53829,127.0.0.1:53830", lb, &opt));
+        }                                         
+
+        const int RETRY_NUM = 3;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        brpc::Controller cntl;
+        req.set_message(__FUNCTION__);
+
+        cntl.set_max_retry(RETRY_NUM);
+        cntl.set_timeout_ms(10);  // 10ms
+        cntl.set_request_code(1);
+        CallMethod(&channel, &cntl, &req, &res, false);
+        EXPECT_EQ(ECONNREFUSED, cntl.ErrorCode()) << cntl.ErrorText();
+        EXPECT_EQ(RETRY_NUM, cntl.retried_count());
+    }
+
     butil::EndPoint _ep;
     butil::TempFile _server_list;                                        
     std::string _naming_url;
@@ -1823,39 +1856,6 @@ protected:
     
     MyEchoService _svc;
 };
-
-void TestBlockServer(bool single_server, bool short_connection, const char* lb) {
-    std::cout << " *** single=" << single_server
-              << " short=" << short_connection
-              << " lb=" << lb << std::endl;
-
-    brpc::Channel channel;
-    brpc::ChannelOptions opt;
-    if (short_connection) {
-        opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
-    } else {
-        opt.connection_type = brpc::CONNECTION_TYPE_POOLED;
-    }
-    opt.max_retry = 0;
-    if (single_server) {
-        EXPECT_EQ(0, channel.Init("127.0.0.1:53829", &opt)); 
-    } else {                                                 
-        EXPECT_EQ(0, channel.Init("list://127.0.0.1:53829,127.0.0.1:53830", lb, &opt));
-    }                                         
-
-    const int RETRY_NUM = 3;
-    test::EchoRequest req;
-    test::EchoResponse res;
-    brpc::Controller cntl;
-    req.set_message(__FUNCTION__);
-
-    cntl.set_max_retry(RETRY_NUM);
-    cntl.set_timeout_ms(10);  // 10ms
-    cntl.set_request_code(1);
-    CallMethod(&channel, &cntl, &req, &res, false);
-    EXPECT_EQ(ECONNREFUSED, cntl.ErrorCode()) << cntl.ErrorText();
-    EXPECT_EQ(RETRY_NUM, cntl.retried_count());
-}
 
 class MyShared : public brpc::SharedObject {
 public:
