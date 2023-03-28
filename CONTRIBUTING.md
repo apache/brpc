@@ -10,7 +10,7 @@ Before the PR:
 
 After the PR:
 
-* Make sure the [travis-ci](https://app.travis-ci.com/github/apache/brpc/pull_requests) passed.
+* Make sure the [GitHub Actions](https://github.com/apache/brpc/actions) passed.
 
 # Chinese version
 
@@ -26,4 +26,4 @@ After the PR:
 
 提交PR后请确认：
 
-* [travis-ci](https://app.travis-ci.com/github/apache/brpc/pull_requests)成功通过。
+* [GitHub Actions](https://github.com/apache/brpc/actions)成功通过。
