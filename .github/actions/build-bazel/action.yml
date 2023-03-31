@@ -1,5 +1,5 @@
-name: Builds CMake
-description: Runs CMake
+name: Bazel Build
+description: Runs Bazel Build
 inputs:
   compiler:
     description: compiler to run on (either clang or gcc)
