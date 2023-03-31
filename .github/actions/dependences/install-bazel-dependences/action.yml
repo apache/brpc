@@ -1,0 +1,9 @@
+name: Install Bazel Dependences
+description: Install dependences to run bazel
+runs:
+  using: "composite"
+  steps:
+    - run: |
+          sudo apt-get update
+          sudo apt-get install libibverbs-dev
+      shell: bash

@@ -1,9 +1,31 @@
+name: Make Config
+descriptions: Runs the configuration script
 inputs:
-  options:
-    description: extra options for config_brpc.sh
+  compiler:
+    description: compiler to run on (either clang or gcc)
     required: false
+  extra_options:
+    description: indicates if the configuration should be run with extra options (with thrift and glog)
+    required: false
+  
 runs:
   using: "composite"
   steps:
-    - run: sh config_brpc.sh --headers="/usr/include" --libs="/usr/lib /usr/lib64" --nodebugsymbols ${{inputs.options}}
+    - name:
+      run: |
+          if [ "${{inputs.compiler}}" = "clang" ]; then
+            compiler_flags="--cc=clang --cxx=clang++"
+          elif [ "${{inputs.compiler}}" = "gcc" ]; then
+            compiler_flags="--cc=gcc --cxx=g++"
+          else
+            compiler_flags=""
+          fi
+
+          if [ "${{inputs.extra_options}}" = "true" ]; then
+            build_flags="--with-thrift --with-glog"
+          else
+            build_flags=""
+          fi
+          
+          sh config_brpc.sh --headers="/usr/include" --libs="/usr/lib /usr/lib64" --nodebugsymbols $compiler_flags $build_flags
       shell: bash

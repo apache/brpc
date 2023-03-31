@@ -1,0 +1,26 @@
+name: Builds CMake
+description: Runs CMake
+inputs:
+  compiler:
+    description: compiler to run on (either clang or gcc)
+    required: false
+  extra_options:
+    description: indicates if we run with extra options or not (disable mesalink and enable glog, thrift)
+    required: false
+runs:
+  using: "composite"
+  steps:
+  - name: Execute the Bazel Build
+    run: |
+        if [ "${{inputs.compiler}}" = "clang" ]; then
+          export CC=clang && export CXX=clang++
+        elif [ "${{inputs.compiler}}" = "gcc" ]; then
+          export CC=gcc && export CXX=g++
+        fi
+
+        if [ "${{inputs.extra_options}}" = "true" ]; then
+          bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 --define with_mesalink=false --define with_glog=true --define with_thrift=true //...
+        else
+          bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+        fi        
+    shell: bash

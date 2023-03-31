@@ -1,0 +1,7 @@
+name: Brew Install Dependencies
+description: Install dependencies using brew
+runs:
+  using: "composite"
+  steps:
+    - run: brew install openssl gnu-getopt coreutils gflags protobuf leveldb
+      shell: bash

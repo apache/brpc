@@ -1,0 +1,15 @@
+name: Compile Code
+descriptions: Compiles the Code through make
+inputs:
+  directory:
+    description: specify if we need to execute the build in a new directory
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - run: |
+          if [ -n "${{inputs.directory}}" ]; then
+            cd ${{inputs.directory}}
+          fi
+          make -j ${{env.proc_num}}
+      shell: bash
