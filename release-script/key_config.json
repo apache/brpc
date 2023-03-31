@@ -1,0 +1,9 @@
+{
+  "key_type": "RSA",
+  "subkey_type": "RSA",
+  "key_length": 4096,
+  "name_email": "test_name test@test.com",
+  "passphrase": "test password",
+  "input_file": "apache-brpc-1.0.0-src.tar.gz",
+  "output_file": "apache-brpc-1.0.0-src.tar.gz.asc"
+}
