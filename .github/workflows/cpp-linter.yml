@@ -21,7 +21,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           style: file
-          lines-changed-only: true
+          files-changed-only: false
 
       - name: Fail fast?!
         if: steps.linter.outputs.checks-failed > 0
