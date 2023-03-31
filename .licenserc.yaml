@@ -39,6 +39,7 @@ header:
     - 'test/*.key'
     - 'test/jsonout'
     - 'tools/trackme_server/bugs'
+    - 'release-script/*.json'
 
     # Apache
     - 'src/butil/recordio.h'
