@@ -39,3 +39,7 @@ build --action_env=CC
 build --action_env=CXX
 build --action_env=LLVM_CONFIG
 build --action_env=PATH
+
+build:ci --build_metadata=ROLE=CI
+build:ci --bes_results_url=https://app.buildbuddy.io/invocation/
+build:ci --bes_backend=grpcs://remote.buildbuddy.io
