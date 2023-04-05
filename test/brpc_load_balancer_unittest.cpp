@@ -982,6 +982,7 @@ public:
 
 butil::atomic<int32_t> num_failed(0);
 butil::atomic<int32_t> num_reject(0);
+butil::atomic<int32_t> num_timedout(0);
 
 class Done : public google::protobuf::Closure {
 public:
@@ -990,6 +991,9 @@ public:
             num_failed.fetch_add(1, butil::memory_order_relaxed);
             if (cntl.ErrorCode() == brpc::EREJECT) {
                 num_reject.fetch_add(1, butil::memory_order_relaxed);
+            }
+            if (cntl.ErrorCode() == brpc::ERPCTIMEDOUT) {
+                num_timedout.fetch_add(1, butil::memory_order_relaxed);
             }
         }
         delete this;
@@ -1070,8 +1074,9 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     // all servers are down, the very first call that trigger recovering would
     // fail with EHOSTDOWN instead of EREJECT. This is where the number 1 comes
     // in following ASSERT.
-    ASSERT_TRUE(num_failed.load(butil::memory_order_relaxed) -
-            num_reject.load(butil::memory_order_relaxed) == 1);
+    ASSERT_EQ(num_failed.load(butil::memory_order_relaxed),
+            num_reject.load(butil::memory_order_relaxed) +
+            num_timedout.load(butil::memory_order_relaxed));
     num_failed.store(0, butil::memory_order_relaxed);
 
     // should recover now

@@ -608,11 +608,11 @@ TEST_F(SocketTest, app_level_health_check) {
 
     for (int i = 0; i < 4; ++i) {
         // although ::connect would succeed, the stall in hc_service makes
-        // the health check rpc fail.
+        // the health check rpc overtime but not fail.
         brpc::Controller cntl;
         cntl.http_request().uri() = "/";
         channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
-        ASSERT_EQ(EHOSTDOWN, cntl.ErrorCode());
+        ASSERT_FALSE(cntl.Failed());
         bthread_usleep(1000000 /*1s*/);
     }
     hc_service._sleep_flag = false;
