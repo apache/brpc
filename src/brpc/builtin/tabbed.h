@@ -21,15 +21,29 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace brpc {
 
 // Contain the information for showing a tab.
 struct TabInfo {
+    TabInfo() : order(0) {}
+
     std::string tab_name;
     std::string path;
+    int order;
 
-    bool valid() const { return !tab_name.empty() && !path.empty(); }
+    TabInfo * add() {
+        _list.push_back(std::shared_ptr<TabInfo>(new TabInfo));
+        return _list.back().get();
+    }
+    size_t size() const { return _list.size(); }
+    const TabInfo* operator[](size_t i) const { return _list[i].get(); }
+
+    bool valid() const { return !tab_name.empty() && (!path.empty() || !_list.empty()); }
+
+private:
+    std::vector<std::shared_ptr<TabInfo>> _list;
 };
 
 // For appending TabInfo
@@ -37,7 +51,7 @@ class TabInfoList {
 public:
     TabInfoList() {}
     TabInfo* add() {
-        _list.push_back(TabInfo());
+        _list.resize(_list.size() + 1);
         return &_list[_list.size() - 1];
     }
     size_t size() const { return _list.size(); }
@@ -84,5 +98,13 @@ public:
 
 } // namespace brpc
 
+namespace std {
+template<>
+struct less<const brpc::TabInfo *> {
+    bool operator()(const brpc::TabInfo * const lhs, const brpc::TabInfo * const rhs) {
+        return lhs->order < rhs->order;
+    }
+};
+}  // namespace std
 
 #endif // BRPC_BUILTIN_TABBED_H
