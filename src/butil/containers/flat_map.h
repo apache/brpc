@@ -416,7 +416,7 @@ struct DefaultHasher<std::string> {
     std::size_t operator()(const butil::StringPiece& s) const {
         std::size_t result = 0;
         for (butil::StringPiece::const_iterator
-                 i = s.begin(); i != s.end(); ++i) {
+                i = s.begin(); i != s.end(); ++i) {
             result = result * 101 + *i;
         }
         return result;
