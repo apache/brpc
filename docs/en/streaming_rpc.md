@@ -19,7 +19,7 @@ Streaming RPC ensures/provides:
 
 We do not support segment large messages automatically so that multiple Streams on a single TCP connection may lead to [Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking) problem. Please avoid putting huge data into single message until we provide automatic segmentation.
 
-For examples please refer to [example/streaming_echo_c++](https://github.com/brpc/brpc/tree/master/example/streaming_echo_c++/).
+For examples please refer to [example/streaming_echo_c++](https://github.com/apache/brpc/tree/master/example/streaming_echo_c++/).
 
 # Create a Stream
 

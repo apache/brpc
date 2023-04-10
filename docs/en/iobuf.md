@@ -1,6 +1,6 @@
 [中文版](../cn/iobuf.md)
 
-brpc uses [butil::IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h) as data structure for attachment in some protocols and HTTP body. It's a non-contiguous zero-copied buffer, proved in previous projects, and good at performance. The interface of `IOBuf` is similar to `std::string`, but not the same.
+brpc uses [butil::IOBuf](https://github.com/apache/brpc/blob/master/src/butil/iobuf.h) as data structure for attachment in some protocols and HTTP body. It's a non-contiguous zero-copied buffer, proved in previous projects, and good at performance. The interface of `IOBuf` is similar to `std::string`, but not the same.
 
 If you've used the `BufHandle` in Kylin before, you should notice the convenience of `IOBuf`: the former one is badly encapsulated, leaving the internal structure directly in front of users, who must carefully handle the referential countings, very error prone and leading to bugs.
 

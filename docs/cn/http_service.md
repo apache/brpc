@@ -5,7 +5,7 @@
 虽然用不到pb消息，但brpc中的http/h2服务接口也得定义在proto文件中，只是request和response都是空的结构体。这确保了所有的服务声明集中在proto文件中，而不是散列在proto文件、程序、配置等多个地方。
 
 #示例
-[http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp)。
+[http_server.cpp](https://github.com/apache/brpc/blob/master/example/http_c++/http_server.cpp)。
 
 # 关于h2
 
@@ -244,7 +244,7 @@ cntl->http_response().set_content_type("text/html");
 
 ## Status Code
 
-status code是http response特有的字段，标记http请求的完成情况。可能的值定义在[http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h)中。
+status code是http response特有的字段，标记http请求的完成情况。可能的值定义在[http_status_code.h](https://github.com/apache/brpc/blob/master/src/brpc/http_status_code.h)中。
 
 ```c++
 // Get Status Code
@@ -268,7 +268,7 @@ cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/i
 
 ## Query String
 
-如上面的[HTTP headers](#http-headers)中提到的那样，我们按约定成俗的方式来理解query string，即key1=value1&key2=value2&...。只有key而没有value也是可以的，仍然会被GetQuery查询到，只是值为空字符串，这常被用做bool型的开关。接口定义在[uri.h](https://github.com/brpc/brpc/blob/master/src/brpc/uri.h)。
+如上面的[HTTP headers](#http-headers)中提到的那样，我们按约定成俗的方式来理解query string，即key1=value1&key2=value2&...。只有key而没有value也是可以的，仍然会被GetQuery查询到，只是值为空字符串，这常被用做bool型的开关。接口定义在[uri.h](https://github.com/apache/brpc/blob/master/src/brpc/uri.h)。
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
@@ -324,7 +324,7 @@ https是http over SSL的简称，SSL并不是http特有的，而是对所有协�
 
 没有极端性能要求的产品都有使用HTTP协议的倾向，特别是移动产品，所以我们很重视HTTP的实现质量，具体来说：
 
-- 使用了node.js的[http parser](https://github.com/brpc/brpc/blob/master/src/brpc/details/http_parser.h)解析http消息，这是一个轻量、优秀、被广泛使用的实现。
+- 使用了node.js的[http parser](https://github.com/apache/brpc/blob/master/src/brpc/details/http_parser.h)解析http消息，这是一个轻量、优秀、被广泛使用的实现。
 - 使用[rapidjson](https://github.com/miloyip/rapidjson)解析json，这是一个主打性能的json库。
 - 在最差情况下解析http请求的时间复杂度也是O(N)，其中N是请求的字节数。反过来说，如果解析代码要求http请求是完整的，那么它可能会花费O(N^2)的时间。HTTP请求普遍较大，这一点意义还是比较大的。
 - 来自不同client的http消息是高度并发的，即使相当复杂的http消息也不会影响对其他客户端的响应。其他rpc和[基于单线程reactor](threading_overview.md#单线程reactor)的各类http server往往难以做到这一点。

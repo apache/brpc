@@ -1,6 +1,6 @@
 [中文版](../cn/memcache_client.md)
 
-[memcached](http://memcached.org/) is a common caching service. In order to access memcached more conveniently and make full use of bthread's capability of concurrency, brpc directly supports the memcached protocol. Check [example/memcache_c++](https://github.com/brpc/brpc/tree/master/example/memcache_c++/) for an example.
+[memcached](http://memcached.org/) is a common caching service. In order to access memcached more conveniently and make full use of bthread's capability of concurrency, brpc directly supports the memcached protocol. Check [example/memcache_c++](https://github.com/apache/brpc/tree/master/example/memcache_c++/) for an example.
 
 **NOTE**: brpc only supports the binary protocol of memcache. There's little benefit to support the textual protocol which is replaced since memcached 1.3. If your memcached is older than 1.3, upgrade to a newer version.
 

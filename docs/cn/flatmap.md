@@ -74,7 +74,7 @@ void flatmap_erase_hinted_during_iteration_example() {
 
 # DESCRIPTION
 
-[FlatMap](https://github.com/brpc/brpc/blob/master/src/butil/containers/flat_map.h)可能是最快的哈希表，但当value较大时它需要更多的内存，它最适合作为检索过程中需要极快查找的小字典。
+[FlatMap](https://github.com/apache/brpc/blob/master/src/butil/containers/flat_map.h)可能是最快的哈希表，但当value较大时它需要更多的内存，它最适合作为检索过程中需要极快查找的小字典。
 
 原理：把开链桶中第一个节点的内容直接放桶内。由于在实践中，大部分桶没有冲突或冲突较少，所以大部分操作只需要一次内存跳转：通过哈希值访问对应的桶。桶内两个及以上元素仍存放在链表中，由于桶之间彼此独立，一个桶的冲突不会影响其他桶，性能很稳定。在很多时候，FlatMap的查找性能和原生数组接近。
 

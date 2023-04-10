@@ -2,7 +2,7 @@
 
 # 示例
 
-[example/http_c++](https://github.com/brpc/brpc/blob/master/example/http_c++/http_client.cpp)
+[example/http_c++](https://github.com/apache/brpc/blob/master/example/http_c++/http_client.cpp)
 
 # 关于h2
 
@@ -41,7 +41,7 @@ HTTP/h2和protobuf关系不大，所以除了Controller和done，CallMethod的�
 
 # POST
 
-默认的HTTP Method为GET，可设置为POST或[更多http method](https://github.com/brpc/brpc/blob/master/src/brpc/http_method.h)。待POST的数据应置入request_attachment()，它([butil::IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h))可以直接append std::string或char*。
+默认的HTTP Method为GET，可设置为POST或[更多http method](https://github.com/apache/brpc/blob/master/src/brpc/http_method.h)。待POST的数据应置入request_attachment()，它([butil::IOBuf](https://github.com/apache/brpc/blob/master/src/butil/iobuf.h))可以直接append std::string或char*。
 
 ```c++
 brpc::Controller cntl;

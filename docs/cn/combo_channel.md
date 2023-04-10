@@ -17,7 +17,7 @@ ParallelChannel (有时被称为“pchan”)同时访问其包含的sub channel�
 - 可以取消。
 - 支持超时。
 
-示例代码见[example/parallel_echo_c++](https://github.com/brpc/brpc/tree/master/example/parallel_echo_c++/)。
+示例代码见[example/parallel_echo_c++](https://github.com/apache/brpc/tree/master/example/parallel_echo_c++/)。
 
 任何brpc::ChannelBase的子类都可以加入ParallelChannel，包括ParallelChannel和其他组合Channel。用户可以设置ParallelChannelOptions.fail_limit来控制访问的最大失败次数，当失败的访问达到这个数目时，RPC会立刻结束而不等待超时。
 
@@ -155,14 +155,14 @@ const Controller* sub(int index) const;
 
 # SelectiveChannel
 
-[SelectiveChannel](https://github.com/brpc/brpc/blob/master/src/brpc/selective_channel.h) (有时被称为“schan”)按负载均衡算法访问其包含的Channel，相比普通Channel它更加高层：把流量分给sub channel，而不是具体的Server。SelectiveChannel主要用来支持机器组之间的负载均衡，它具备Channel的主要属性：
+[SelectiveChannel](https://github.com/apache/brpc/blob/master/src/brpc/selective_channel.h) (有时被称为“schan”)按负载均衡算法访问其包含的Channel，相比普通Channel它更加高层：把流量分给sub channel，而不是具体的Server。SelectiveChannel主要用来支持机器组之间的负载均衡，它具备Channel的主要属性：
 
 - 支持同步和异步访问。
 - 发起异步操作后可以立刻删除。
 - 可以取消。
 - 支持超时。
 
-示例代码见[example/selective_echo_c++](https://github.com/brpc/brpc/tree/master/example/selective_echo_c++/)。
+示例代码见[example/selective_echo_c++](https://github.com/apache/brpc/tree/master/example/selective_echo_c++/)。
 
 任何brpc::ChannelBase的子类都可加入SelectiveChannel，包括SelectiveChannel和其他组合Channel。
 
@@ -246,9 +246,9 @@ stub.FooMethod(&cntl, &request, &response, NULL);
 
 # PartitionChannel
 
-[PartitionChannel](https://github.com/brpc/brpc/blob/master/src/brpc/partition_channel.h)是特殊的ParallelChannel，它会根据命名服务中的tag自动建立对应分库的sub channel。这样用户就可以把所有的分库机器挂在一个命名服务内，通过tag来指定哪台机器对应哪个分库。示例代码见[example/partition_echo_c++](https://github.com/brpc/brpc/tree/master/example/partition_echo_c++/)。
+[PartitionChannel](https://github.com/apache/brpc/blob/master/src/brpc/partition_channel.h)是特殊的ParallelChannel，它会根据命名服务中的tag自动建立对应分库的sub channel。这样用户就可以把所有的分库机器挂在一个命名服务内，通过tag来指定哪台机器对应哪个分库。示例代码见[example/partition_echo_c++](https://github.com/apache/brpc/tree/master/example/partition_echo_c++/)。
 
-ParititonChannel只能处理一种分库方法，当用户需要多种分库方法共存，或从一个分库方法平滑地切换为另一种分库方法时，可以使用DynamicPartitionChannel，它会根据不同的分库方式动态地建立对应的sub PartitionChannel，并根据容量把请求分配给不同的分库。示例代码见[example/dynamic_partition_echo_c++](https://github.com/brpc/brpc/tree/master/example/dynamic_partition_echo_c++/)。
+ParititonChannel只能处理一种分库方法，当用户需要多种分库方法共存，或从一个分库方法平滑地切换为另一种分库方法时，可以使用DynamicPartitionChannel，它会根据不同的分库方式动态地建立对应的sub PartitionChannel，并根据容量把请求分配给不同的分库。示例代码见[example/dynamic_partition_echo_c++](https://github.com/apache/brpc/tree/master/example/dynamic_partition_echo_c++/)。
 
 如果分库在不同的命名服务内，那么用户得自行用ParallelChannel组装，即每个sub channel对应一个分库（使用不同的命名服务）。ParellelChannel的使用方法见[上面](#ParallelChannel)。
 

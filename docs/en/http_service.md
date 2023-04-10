@@ -5,7 +5,7 @@ http/h2 services in brpc have to declare interfaces with empty request and respo
 
 # Example
 
-[http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp)
+[http_server.cpp](https://github.com/apache/brpc/blob/master/example/http_c++/http_server.cpp)
 
 # About h2
 
@@ -245,7 +245,7 @@ If the RPC fails (`Controller` has been `SetFailed`), the framework overwrites `
 
 ## Status Code
 
-Status code is a special field in HTTP response to store processing result of the http request. Possible values are defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h).
+Status code is a special field in HTTP response to store processing result of the http request. Possible values are defined in [http_status_code.h](https://github.com/apache/brpc/blob/master/src/brpc/http_status_code.h).
 
 ```c++
 // Get Status Code
@@ -269,7 +269,7 @@ cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/i
 
 ## Query String
 
-As mentioned in above [HTTP headers](#http-headers), query strings are interpreted in common convention, whose form is `key1=value1&key2=value2&…`. Keys without values are acceptable as well and accessible by `GetQuery` which returns an empty string. Such keys are often used as boolean flags. Full API are defined in [uri.h](https://github.com/brpc/brpc/blob/master/src/brpc/uri.h).
+As mentioned in above [HTTP headers](#http-headers), query strings are interpreted in common convention, whose form is `key1=value1&key2=value2&…`. Keys without values are acceptable as well and accessible by `GetQuery` which returns an empty string. Such keys are often used as boolean flags. Full API are defined in [uri.h](https://github.com/apache/brpc/blob/master/src/brpc/uri.h).
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
@@ -325,7 +325,7 @@ https is short for "http over SSL", SSL is not exclusive for http, but effective
 
 Productions without extreme performance requirements tend to use HTTP protocol, especially mobile products. Thus we put great emphasis on implementation qualities of HTTP. To be more specific:
 
-- Use [http parser](https://github.com/brpc/brpc/blob/master/src/brpc/details/http_parser.h) of node.js to parse http messages, which is a lightweight, well-written, and extensively used implementation.
+- Use [http parser](https://github.com/apache/brpc/blob/master/src/brpc/details/http_parser.h) of node.js to parse http messages, which is a lightweight, well-written, and extensively used implementation.
 - Use [rapidjson](https://github.com/miloyip/rapidjson) to parse json, which is a json library focuses on performance.
 - In the worst case, the time complexity of parsing http requests is still O(N), where N is byte size of the request. As a contrast, parsing code that requires the http request to be complete, may cost O(N^2) time in the worst case. This feature is very helpful since many HTTP requests are large.
 - Processing HTTP messages from different clients is highly concurrent, even a pretty complicated http message does not block responding other clients. It's difficult to achieve this for other RPC implementations and http servers often based on [single-threaded reactor](threading_overview.md#single-threaded-reactor).

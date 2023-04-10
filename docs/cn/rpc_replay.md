@@ -21,7 +21,7 @@ brpc通过如下flags打开和控制如何保存请求，包含(R)后缀的flag�
 - -rpc_dump_max_files: 设置目录下的最大文件数，当超过限制时，老文件会被删除以腾出空间。
 - -rpc_dump_max_requests_in_one_file：一个文件内的最大请求数，超过后写新文件。
 
-brpc通过一个[bvar::Collector](https://github.com/brpc/brpc/blob/master/src/bvar/collector.h)来汇总来自不同线程的被采样请求，不同线程之间没有竞争，开销很小。
+brpc通过一个[bvar::Collector](https://github.com/apache/brpc/blob/master/src/bvar/collector.h)来汇总来自不同线程的被采样请求，不同线程之间没有竞争，开销很小。
 
 写出的内容依次存放在rpc_dump_dir目录下的多个文件内，这个目录默认在./rpc_dump_<app>，其中<app>是程序名。不同程序在同一个目录下同时采样时会写入不同的目录。如果程序启动时rpc_dump_dir已经存在了，目录将被清空。目录中的每个文件以requests.yyyymmdd_hhmmss_uuuuus命名，以保证按时间有序方便查找，比如：
 
@@ -43,7 +43,7 @@ serialized request (body_size - meta_size bytes, including attachment)
 
 > 一个文件可能包含多种协议的请求，如果server被多种协议访问的话。回放时被请求的server也将收到不同协议的请求。
 
-brpc提供了[SampleIterator](https://github.com/brpc/brpc/blob/master/src/brpc/rpc_dump.h)从一个采样目录下的所有文件中依次读取所有的被采样请求，用户可根据需求把serialized request反序列化为protobuf请求，做一些二次开发。
+brpc提供了[SampleIterator](https://github.com/apache/brpc/blob/master/src/brpc/rpc_dump.h)从一个采样目录下的所有文件中依次读取所有的被采样请求，用户可根据需求把serialized request反序列化为protobuf请求，做一些二次开发。
 
 ```c++
 #include <brpc/rpc_dump.h>
@@ -59,7 +59,7 @@ for (brpc::SampledRequest* req = it->Next(); req != NULL; req = it->Next()) {
 
 # 回放
 
-brpc在[tools/rpc_replay](https://github.com/brpc/brpc/tree/master/tools/rpc_replay/)提供了默认的回放工具。运行方式如下：
+brpc在[tools/rpc_replay](https://github.com/apache/brpc/tree/master/tools/rpc_replay/)提供了默认的回放工具。运行方式如下：
 
 ![img](../images/rpc_replay_4.png)
 

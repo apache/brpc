@@ -2,7 +2,7 @@
 
 # Example
 
-[client-side code](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp) of echo.
+[client-side code](https://github.com/apache/brpc/blob/master/example/echo_c++/client.cpp) of echo.
 
 # Quick facts
 
@@ -13,7 +13,7 @@
 - No class named brpc::Client.
 
 # Channel
-Client-side of RPC sends requests. It's called [Channel](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h) rather than "Client" in brpc. A channel represents a communication line to one server or multiple servers, which can be used for calling services.
+Client-side of RPC sends requests. It's called [Channel](https://github.com/apache/brpc/blob/master/src/brpc/channel.h) rather than "Client" in brpc. A channel represents a communication line to one server or multiple servers, which can be used for calling services.
 
 A Channel can be **shared by all threads** in the process. Yon don't need to create separate Channels for each thread, and you don't need to synchronize Channel.CallMethod with lock. However creation and destroying of Channel is **not** thread-safe,  make sure the channel is initialized and destroyed only by one thread.
 
@@ -166,7 +166,7 @@ NOTE: The value of server weight must be an integer.
 
 
 ### More naming services
-User can extend to more naming services by implementing brpc::NamingService, check [this link](https://github.com/brpc/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1) for details.
+User can extend to more naming services by implementing brpc::NamingService, check [this link](https://github.com/apache/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1) for details.
 
 ### The tag in naming service
 Every address can be attached with a tag. The common implementation is that if there're spaces after the address, the content after the spaces is the tag.
@@ -264,7 +264,7 @@ which is consistent hashing. Adding or removing servers does not make destinatio
 
 Need to set Controller.set_request_code() before RPC otherwise the RPC will fail. request_code is often a 32-bit hash code of "key part" of the request, and the hashing algorithm does not need to be same with the one used by load balancer. Say `c_murmurhash`  can use md5 to compute request_code of the request as well.
 
-[src/brpc/policy/hasher.h](https://github.com/brpc/brpc/blob/master/src/brpc/policy/hasher.h) includes common hash functions. If `std::string key` stands for key part of the request, controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size())) sets request_code correctly.
+[src/brpc/policy/hasher.h](https://github.com/apache/brpc/blob/master/src/brpc/policy/hasher.h) includes common hash functions. If `std::string key` stands for key part of the request, controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size())) sets request_code correctly.
 
 Do distinguish "key" and "attributes" of the request. Don't compute request_code by full content of the request just for quick. Minor change in attributes may result in totally different hash code and change destination dramatically. Another cause is padding, for example: `struct Foo { int32_t a; int64_t b; }` has a 4-byte undefined gap between `a` and `b` on 64-bit machines, result of `hash(&foo, sizeof(foo))` is undefined. Fields need to be packed or serialized before hashing.
 
@@ -368,7 +368,7 @@ request.set_foo(...);
 cntl->set_timeout_ms(...);
 stub.some_method(cntl, &request, response, brpc::NewCallback(OnRPCDone, response, cntl));
 ```
-Since protobuf 3 changes NewCallback to private, brpc puts NewCallback in [src/brpc/callback.h](https://github.com/brpc/brpc/blob/master/src/brpc/callback.h) after r32035 (and adds more overloads). If your program has compilation issues with NewCallback, replace google::protobuf::NewCallback with brpc::NewCallback.
+Since protobuf 3 changes NewCallback to private, brpc puts NewCallback in [src/brpc/callback.h](https://github.com/apache/brpc/blob/master/src/brpc/callback.h) after r32035 (and adds more overloads). If your program has compilation issues with NewCallback, replace google::protobuf::NewCallback with brpc::NewCallback.
 
 ### Inherit google::protobuf::Closure
 
@@ -489,7 +489,7 @@ Facts about StartCancel:
 
 ## Get server-side address and port
 
-remote_side() tells where request was sent to, the return type is [butil::EndPoint](https://github.com/brpc/brpc/blob/master/src/butil/endpoint.h), which includes an ipv4 address and port. Calling this method before completion of RPC is undefined.
+remote_side() tells where request was sent to, the return type is [butil::EndPoint](https://github.com/apache/brpc/blob/master/src/butil/endpoint.h), which includes an ipv4 address and port. Calling this method before completion of RPC is undefined.
 
 How to print:
 ```c++
@@ -534,8 +534,8 @@ If the Controller in snippet1 is new-ed on heap, snippet1 has extra cost of "hea
 
 Client-side settings has 3 parts:
 
-- brpc::ChannelOptions: defined in [src/brpc/channel.h](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h), for initializing Channel, becoming immutable once the initialization is done.
-- brpc::Controller: defined in [src/brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h), for overriding fields in brpc::ChannelOptions for some RPC according to contexts.
+- brpc::ChannelOptions: defined in [src/brpc/channel.h](https://github.com/apache/brpc/blob/master/src/brpc/channel.h), for initializing Channel, becoming immutable once the initialization is done.
+- brpc::Controller: defined in [src/brpc/controller.h](https://github.com/apache/brpc/blob/master/src/brpc/controller.h), for overriding fields in brpc::ChannelOptions for some RPC according to contexts.
 - global gflags: for tuning global behaviors, being unchanged generally. Read comments in [/flags](flags.md) before setting.
 
 Controller contains data and options that request may not have. server and client share the same Controller class, but they may set different fields. Read comments in Controller carefully before using.
@@ -599,7 +599,7 @@ Controller.set_max_retry(0) or ChannelOptions.max_retry = 0 disables retries.
 
 If the RPC fails due to request(EREQUEST), no retry will be done because server is very likely to reject the request again, retrying makes no sense here.
 
-Users can inherit [brpc::RetryPolicy](https://github.com/brpc/brpc/blob/master/src/brpc/retry_policy.h) to customize conditions of retrying. For example brpc does not retry for http/h2 related errors by default. If you want to retry for HTTP_STATUS_FORBIDDEN(403) in your app, you can do as follows:
+Users can inherit [brpc::RetryPolicy](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h) to customize conditions of retrying. For example brpc does not retry for http/h2 related errors by default. If you want to retry for HTTP_STATUS_FORBIDDEN(403) in your app, you can do as follows:
 
 ```c++
 #include <brpc/retry_policy.h>
@@ -746,7 +746,7 @@ In http/h2, attachment corresponds to [message body](http://www.w3.org/Protocols
 ## Turn on SSL
 
 Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. 
-Set ChannelOptions.mutable_ssl_options() to enable SSL. Refer to [ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h) for the detailed options. ChannelOptions.has_ssl_options() checks if ssl_options was set; ChannelOptions.ssl_options() returns const reference to the ssl_options.
+Set ChannelOptions.mutable_ssl_options() to enable SSL. Refer to [ssl_options.h](https://github.com/apache/brpc/blob/master/src/brpc/ssl_options.h) for the detailed options. ChannelOptions.has_ssl_options() checks if ssl_options was set; ChannelOptions.ssl_options() returns const reference to the ssl_options.
 
 ```c++
 // Enable client-side SSL and use default values.
@@ -905,11 +905,11 @@ Check if the C++ version turns on compression (Controller::set_compress_type), C
 
 Steps:
 
-1. Create a [bthread_id](https://github.com/brpc/brpc/blob/master/src/bthread/id.h) as correlation_id of current RPC.
-2. According to how the Channel is initialized, choose a server from global [SocketMap](https://github.com/brpc/brpc/blob/master/src/brpc/socket_map.h) or [LoadBalancer](https://github.com/brpc/brpc/blob/master/src/brpc/load_balancer.h) as  destination of the request.
-3. Choose a [Socket](https://github.com/brpc/brpc/blob/master/src/brpc/socket.h) according to connection type (single, pooled, short)
+1. Create a [bthread_id](https://github.com/apache/brpc/blob/master/src/bthread/id.h) as correlation_id of current RPC.
+2. According to how the Channel is initialized, choose a server from global [SocketMap](https://github.com/apache/brpc/blob/master/src/brpc/socket_map.h) or [LoadBalancer](https://github.com/apache/brpc/blob/master/src/brpc/load_balancer.h) as  destination of the request.
+3. Choose a [Socket](https://github.com/apache/brpc/blob/master/src/brpc/socket.h) according to connection type (single, pooled, short)
 4. If authentication is turned on and the Socket is not authenticated yet, first request enters authenticating branch, other requests block until the branch writes authenticating information into the Socket. Server-side only verifies the first request.
-5. According to protocol of the Channel, choose corresponding serialization callback to serialize request into [IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h).
+5. According to protocol of the Channel, choose corresponding serialization callback to serialize request into [IOBuf](https://github.com/apache/brpc/blob/master/src/butil/iobuf.h).
 6. If timeout is set, setup timer. From this point on, avoid using Controller, since the timer may be triggered at anytime and calls user's callback for timeout, which may delete Controller.
 7. Sending phase is completed. If error occurs at any step, Channel::HandleSendFailed is called.
 8. Write IOBuf with serialized data into the Socket and add Channel::HandleSocketFailed into id_wait_list of the Socket. The callback will be called when the write is failed or connection is broken before completion of RPC.

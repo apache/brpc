@@ -44,7 +44,7 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 * 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
   * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io)。使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
   * [redis](redis_client.md)和[memcached](memcache_client.md), 线程安全，比官方client更方便。
-  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server).
+  * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server).
   * hadoop_rpc(可能开源)
   * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)(即将开源)
   * 支持[thrift](thrift.md) , 线程安全，比官方client更方便
@@ -60,11 +60,11 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 
 ### 更友好的接口
 
-只有三个(主要的)用户类: [Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h), [Channel](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h), [Controller](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h), 分别对应server端，client端，参数集合. 你不必推敲诸如"如何初始化XXXManager", "如何组合各种组件",  "XXXController的XXXContext间的关系是什么"。要做的很简单:
+只有三个(主要的)用户类: [Server](https://github.com/apache/brpc/blob/master/src/brpc/server.h), [Channel](https://github.com/apache/brpc/blob/master/src/brpc/channel.h), [Controller](https://github.com/apache/brpc/blob/master/src/brpc/controller.h), 分别对应server端，client端，参数集合. 你不必推敲诸如"如何初始化XXXManager", "如何组合各种组件",  "XXXController的XXXContext间的关系是什么"。要做的很简单:
 
-* 建服务? 包含[brpc/server.h](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)并参考注释或[示例](https://github.com/brpc/brpc/blob/master/example/echo_c++/server.cpp).
-* 访问服务? 包含[brpc/channel.h](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h)并参考注释或[示例](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp).
-* 调整参数? 看看[brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h). 注意这个类是Server和Channel共用的，分成了三段，分别标记为Client-side, Server-side和Both-side methods。
+* 建服务? 包含[brpc/server.h](https://github.com/apache/brpc/blob/master/src/brpc/server.h)并参考注释或[示例](https://github.com/apache/brpc/blob/master/example/echo_c++/server.cpp).
+* 访问服务? 包含[brpc/channel.h](https://github.com/apache/brpc/blob/master/src/brpc/channel.h)并参考注释或[示例](https://github.com/apache/brpc/blob/master/example/echo_c++/client.cpp).
+* 调整参数? 看看[brpc/controller.h](https://github.com/apache/brpc/blob/master/src/brpc/controller.h). 注意这个类是Server和Channel共用的，分成了三段，分别标记为Client-side, Server-side和Both-side methods。
 
 我们尝试让事情变得更加简单，以命名服务为例，在其他RPC实现中，你也许需要复制一长段晦涩的代码才可使用，而在brpc中访问BNS可以这么写`"bns://node-name"`，DNS是`"http://domain-name"`，本地文件列表是`"file:///home/work/server.list"`，相信不用解释，你也能明白这些代表什么。
 

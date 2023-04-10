@@ -2,7 +2,7 @@
 
 # Example
 
-[server-side code](https://github.com/brpc/brpc/blob/master/example/echo_c++/server.cpp) of Echo.
+[server-side code](https://github.com/apache/brpc/blob/master/example/echo_c++/server.cpp) of Echo.
 
 # Fill the .proto
 
@@ -50,15 +50,15 @@ public:
 };
 ```
 
-Service is not available before insertion into [brpc.Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h).
+Service is not available before insertion into [brpc.Server](https://github.com/apache/brpc/blob/master/src/brpc/server.h).
 
-When client sends request, Echo() is called. 
+When client sends request, Echo() is called.
 
 Explain parameters:
 
 **controller**
 
-Statically convertible to brpc::Controller  (provided that the code runs in brpc.Server). Contains parameters that can't be included by request and response, check out [src/brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h) for details.
+Statically convertible to brpc::Controller  (provided that the code runs in brpc.Server). Contains parameters that can't be included by request and response, check out [src/brpc/controller.h](https://github.com/apache/brpc/blob/master/src/brpc/controller.h) for details.
 
 **request**
 
@@ -137,7 +137,7 @@ public:
 
 Call Controller.SetFailed() to set the RPC to be failed. If error occurs during sending response, framework calls the method as well. Users often call the method in services' CallMethod(), For example if a stage of processing fails, user calls SetFailed() and call done->Run(), then quit CallMethod (If ClosureGuard is used, done->Run() is called automatically). The server-side done is created by framework and contains code sending response back to client. If SetFailed() is called, error information is sent to client instead of normal content. When client receives the response, its controller will be SetFailed() as well and Controller::Failed() will be true. In addition, Controller::ErrorCode() and Controller::ErrorText() are error code and error information respectively.
 
-User may set [status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html) for http calls by calling `controller.http_response().set_status_code()` at server-side. Standard status-code are defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h). Controller.SetFailed() sets status-code as well with the value closest to the error-code in semantics. brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR(500) is chosen when there's no proper value.
+User may set [status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html) for http calls by calling `controller.http_response().set_status_code()` at server-side. Standard status-code are defined in [http_status_code.h](https://github.com/apache/brpc/blob/master/src/brpc/http_status_code.h). Controller.SetFailed() sets status-code as well with the value closest to the error-code in semantics. brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR(500) is chosen when there's no proper value.
 
 ## Get address of client
 
@@ -167,7 +167,7 @@ In which done->Run() is called after leaving service's CallMethod().
 
 Some server proxies requests to back-end servers and waits for responses that may come back after a long time. To make better use of threads, save done in corresponding event handlers which are triggered after CallMethod() and call done->Run() inside. This kind of service is **asynchronous**.
 
-Last line of asynchronous service is often `done_guard.release()` to prevent done->Run() from being called at successful exit from CallMethod(). Check out [example/session_data_and_thread_local](https://github.com/brpc/brpc/tree/master/example/session_data_and_thread_local/) for a example.
+Last line of asynchronous service is often `done_guard.release()` to prevent done->Run() from being called at successful exit from CallMethod(). Check out [example/session_data_and_thread_local](https://github.com/apache/brpc/tree/master/example/session_data_and_thread_local/) for a example.
 
 Server-side and client-side both use done to represent the continuation code after leaving CallMethod, but they're **totally different**:
 
@@ -203,7 +203,7 @@ You cannot add or remove services after the server is started.
 
 # Start server
 
-Call following methods of [Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h) to start serving.
+Call following methods of [Server](https://github.com/apache/brpc/blob/master/src/brpc/server.h) to start serving.
 
 ```c++
 int Start(const char* ip_and_port_str, const ServerOptions* opt);
@@ -259,7 +259,7 @@ Services can be added or removed after Join() returns and server can be Start() 
 
 Services using protobuf can be accessed via http/h2+json generally. The json string stored in body is convertible to/from corresponding protobuf message.
 
-[echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp) as an example, is accessible from [curl](https://curl.haxx.se/).
+[echo server](https://github.com/apache/brpc/blob/master/example/echo_c%2B%2B/server.cpp) as an example, is accessible from [curl](https://curl.haxx.se/).
 
 
 ```shell
@@ -381,13 +381,13 @@ If this field is non-empty, Server creates a file named so at start-up, with pid
 
 ## Print hostname in each line of log
 
-This feature only affects logging macros in [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h). 
+This feature only affects logging macros in [butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h).
 
 If [-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname) is turned on, each line of log contains the hostname so that users know machines at where each line is generated from aggregated logs.
 
 ## Crash after printing FATAL log
 
-This feature only affects logging macros in [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h), glog crashes for FATAL log by default.
+This feature only affects logging macros in [butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h), glog crashes for FATAL log by default.
 
 If [-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) is turned on, program crashes after printing LOG(FATAL) or failed assertions by CHECK*(), and generates coredump (with proper environmental settings). Default value is false. This flag can be turned on in tests to make sure the program never hit critical errors.
 
@@ -395,7 +395,7 @@ If [-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) is
 
 ## Minimum log level
 
-This feature is implemented by [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h) and glog separately, as a same-named gflag.
+This feature is implemented by [butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h) and glog separately, as a same-named gflag.
 
 Only logs with levels **not less than** the level specified by -minloglevel are printed. This flag can be modified at run-time. Correspondence between values and log levels: 0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL, default value is 0.
 
@@ -476,7 +476,7 @@ In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rf
 
 ## Turn on SSL
 
-Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ServerOptions.ssl_options` to turn on SSL. Refer to [ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h) for more details.
+Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ServerOptions.ssl_options` to turn on SSL. Refer to [ssl_options.h](https://github.com/apache/brpc/blob/master/src/brpc/ssl_options.h) for more details.
 
 ```c++
 // Certificate structure
@@ -704,7 +704,7 @@ Consider returning signatures of the addresses. For example after setting Server
 
 ## Customize /health
 
-/health returns "OK" by default. If the content on /health needs to be customized: inherit [HealthReporter](https://github.com/brpc/brpc/blob/master/src/brpc/health_reporter.h) and implement code to generate the page (like implementing other http services). Assign an instance to ServerOptions.health_reporter, which is not owned by server and must be valid during lifetime of the server. Users may return richer healthy information according to application requirements.
+/health returns "OK" by default. If the content on /health needs to be customized: inherit [HealthReporter](https://github.com/apache/brpc/blob/master/src/brpc/health_reporter.h) and implement code to generate the page (like implementing other http services). Assign an instance to ServerOptions.health_reporter, which is not owned by server and must be valid during lifetime of the server. Users may return richer healthy information according to application requirements.
 
 ## thread-local variables
 
@@ -765,7 +765,7 @@ struct ServerOptions {
 };
 ```
 
-session_local_data_factory is typed [DataFactory](https://github.com/brpc/brpc/blob/master/src/brpc/data_factory.h). You have to implement CreateData and DestroyData inside.
+session_local_data_factory is typed [DataFactory](https://github.com/apache/brpc/blob/master/src/brpc/data_factory.h). You have to implement CreateData and DestroyData inside.
 
 NOTE: CreateData and DestroyData may be called by multiple threads simultaneously. Thread-safety is a must.
 
@@ -856,7 +856,7 @@ struct ServerOptions {
 };
 ```
 
-thread_local_data_factory is typed [DataFactory](https://github.com/brpc/brpc/blob/master/src/brpc/data_factory.h). You need to implement CreateData and DestroyData inside.
+thread_local_data_factory is typed [DataFactory](https://github.com/apache/brpc/blob/master/src/brpc/data_factory.h). You need to implement CreateData and DestroyData inside.
 
 NOTE: CreateData and DestroyData may be called by multiple threads simultaneously. Thread-safety is a must.
 

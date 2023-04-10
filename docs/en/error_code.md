@@ -1,6 +1,6 @@
 [中文版](../cn/error_code.md)
 
-brpc use [brpc::Controller](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h) to set and get parameters for one RPC. `Controller::ErrorCode()` and `Controller::ErrorText()` return error code and description of the RPC respectively, only accessible after completion of the RPC, otherwise the result is undefined. `ErrorText()` is defined by the base class of the Controller: `google::protobuf::RpcController`, while `ErrorCode()` is defined by `brpc::Controller`. Controller also has a method `Failed()` to tell whether RPC fails or not. Relations between the three methods:
+brpc use [brpc::Controller](https://github.com/apache/brpc/blob/master/src/brpc/controller.h) to set and get parameters for one RPC. `Controller::ErrorCode()` and `Controller::ErrorText()` return error code and description of the RPC respectively, only accessible after completion of the RPC, otherwise the result is undefined. `ErrorText()` is defined by the base class of the Controller: `google::protobuf::RpcController`, while `ErrorCode()` is defined by `brpc::Controller`. Controller also has a method `Failed()` to tell whether RPC fails or not. Relations between the three methods:
 
 -  When `Failed()` is true, `ErrorCode()` must be non-zero and `ErrorText()` be non-empty.
 -  When `Failed()` is false, `ErrorCode()` is 0 and `ErrorText()` is undefined (it's empty in brpc currently, but you'd better not rely on this)
@@ -15,9 +15,9 @@ Both client and server in brpc have `Controller`, which can be set with `setFail
 
 # Error Code in brpc
 
-All error codes in brpc are defined in [errno.proto](https://github.com/brpc/brpc/blob/master/src/brpc/errno.proto), in which those begin with *SYS_* are defined by linux system and exactly same with the ones defined in `/usr/include/errno.h`. The reason that we put it in .proto is to cross language. The rest of the error codes are defined by brpc.
+All error codes in brpc are defined in [errno.proto](https://github.com/apache/brpc/blob/master/src/brpc/errno.proto), in which those begin with *SYS_* are defined by linux system and exactly same with the ones defined in `/usr/include/errno.h`. The reason that we put it in .proto is to cross language. The rest of the error codes are defined by brpc.
 
-[berror(error_code)](https://github.com/brpc/brpc/blob/master/src/butil/errno.h) gets description for the error code, and `berror()` gets description for current [system errno](http://www.cplusplus.com/reference/cerrno/errno/). Note that **ErrorText() != berror(ErorCode())** since `ErrorText()` contains more specific information. brpc includes berror by default so that you can use it in your project directly.
+[berror(error_code)](https://github.com/apache/brpc/blob/master/src/butil/errno.h) gets description for the error code, and `berror()` gets description for current [system errno](http://www.cplusplus.com/reference/cerrno/errno/). Note that **ErrorText() != berror(ErorCode())** since `ErrorText()` contains more specific information. brpc includes berror by default so that you can use it in your project directly.
 
 Following table shows common error codes and their descriptions: 
 

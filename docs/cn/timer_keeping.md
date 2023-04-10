@@ -34,7 +34,7 @@
 - 删除时通过id直接定位到timer内存结构，修改一个标志，timer结构总是由TimerThread释放。
 - TimerThread被唤醒后首先把全局nearest_run_time设置为几乎无限大(max of int64)，然后取出所有Bucket内的链表，并把Bucket的nearest_run_time设置为几乎无限大(max of int64)。TimerThread把未删除的timer插入小顶堆中维护，这个堆就它一个线程用。在每次运行回调或准备睡眠前都会检查全局nearest_run_time， 如果全局更早，说明有更早的时间加入了，重复这个过程。
 
-这里勾勒了TimerThread的大致工作原理，工程实现中还有不少细节问题，具体请阅读[timer_thread.h](https://github.com/brpc/brpc/blob/master/src/bthread/timer_thread.h)和[timer_thread.cpp](https://github.com/brpc/brpc/blob/master/src/bthread/timer_thread.cpp)。
+这里勾勒了TimerThread的大致工作原理，工程实现中还有不少细节问题，具体请阅读[timer_thread.h](https://github.com/apache/brpc/blob/master/src/bthread/timer_thread.h)和[timer_thread.cpp](https://github.com/apache/brpc/blob/master/src/bthread/timer_thread.cpp)。
 
 这个方法之所以有效：
 

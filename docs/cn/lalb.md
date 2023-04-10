@@ -101,7 +101,7 @@ LoadBalancer是一个读远多于写的数据结构：大部分时候，所有�
 - 不同的读之间没有竞争，高度并发。
 - 如果没有写，读总是能无竞争地获取和释放thread-local锁，一般小于25ns，对延时基本无影响。如果有写，由于其临界区极小（拿到立刻释放），读在大部分时候仍能快速地获得锁，少数时候释放锁时可能有唤醒写线程的代价。由于写本身就是少数情况，读整体上几乎不会碰到竞争锁。
 
-完成这些功能的数据结构是[DoublyBufferedData<>](https://github.com/brpc/brpc/blob/master/src/butil/containers/doubly_buffered_data.h)，我们常简称为DBD。brpc中的所有load balancer都使用了这个数据结构，使不同线程在分流时几乎不会互斥。而其他rpc实现往往使用了全局锁，这使得它们无法写出复杂的分流算法：否则分流代码将会成为竞争热点。
+完成这些功能的数据结构是[DoublyBufferedData<>](https://github.com/apache/brpc/blob/master/src/butil/containers/doubly_buffered_data.h)，我们常简称为DBD。brpc中的所有load balancer都使用了这个数据结构，使不同线程在分流时几乎不会互斥。而其他rpc实现往往使用了全局锁，这使得它们无法写出复杂的分流算法：否则分流代码将会成为竞争热点。
 
 这个结构有广泛的应用场景：
 
