@@ -522,22 +522,7 @@ _T& FlatMap<_K, _T, _H, _E, _S, _A>::operator[](const key_type& key) {
         new (&first_node) Bucket(key);
         return first_node.element().second_ref();
     }
-    if (_eql(first_node.element().first_ref(), key)) {
-        return first_node.element().second_ref();
-    }
-    Bucket *p = first_node.next;
-    if (NULL == p) {
-        if (is_too_crowded(_size)) {
-            if (resize(_nbucket + 1)) {
-                return operator[](key);
-            }
-            // fail to resize is OK
-        }
-        ++_size;
-        Bucket* newp = new (_pool.get()) Bucket(key);
-        first_node.next = newp;
-        return newp->element().second_ref();
-    }
+    Bucket *p = &first_node;
     while (1) {
         if (_eql(p->element().first_ref(), key)) {
             return p->element().second_ref();
