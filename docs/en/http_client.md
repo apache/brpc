@@ -2,7 +2,7 @@
 
 # Example
 
-[example/http_c++](https://github.com/brpc/brpc/blob/master/example/http_c++/http_client.cpp)
+[example/http_c++](https://github.com/apache/brpc/blob/master/example/http_c++/http_client.cpp)
 
 # About h2
 
@@ -41,7 +41,7 @@ http/h2 does not relate to protobuf much, thus all parameters of `CallMethod` ar
 
 # POST
 
-The default HTTP Method is GET, which can be changed to POST or [other http methods](https://github.com/brpc/brpc/blob/master/src/brpc/http_method.h). The data to POST should be put into `request_attachment()`, which is typed [butil::IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h) and able to append `std :: string` or `char *` directly.
+The default HTTP Method is GET, which can be changed to POST or [other http methods](https://github.com/apache/brpc/blob/master/src/brpc/http_method.h). The data to POST should be put into `request_attachment()`, which is typed [butil::IOBuf](https://github.com/apache/brpc/blob/master/src/butil/iobuf.h) and able to append `std :: string` or `char *` directly.
 
 ```c++
 brpc::Controller cntl;

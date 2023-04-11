@@ -1,6 +1,6 @@
 [English version](../en/error_code.md)
 
-brpc使用[brpc::Controller](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h)设置和获取一次RPC的参数，`Controller::ErrorCode()`和`Controller::ErrorText()`则分别是该次RPC的错误码和错误描述，RPC结束后才能访问，否则结果未定义。ErrorText()由Controller的基类google::protobuf::RpcController定义，ErrorCode()则是brpc::Controller定义的。Controller还有个Failed()方法告知该次RPC是否失败，这三者的关系是：
+brpc使用[brpc::Controller](https://github.com/apache/brpc/blob/master/src/brpc/controller.h)设置和获取一次RPC的参数，`Controller::ErrorCode()`和`Controller::ErrorText()`则分别是该次RPC的错误码和错误描述，RPC结束后才能访问，否则结果未定义。ErrorText()由Controller的基类google::protobuf::RpcController定义，ErrorCode()则是brpc::Controller定义的。Controller还有个Failed()方法告知该次RPC是否失败，这三者的关系是：
 
 - 当Failed()为true时，ErrorCode()一定为非0，ErrorText()则为非空。
 - 当Failed()为false时，ErrorCode()一定为0，ErrorText()未定义（目前在brpc中会为空，但你最好不要依赖这个事实）
@@ -15,9 +15,9 @@ server端Controller的SetFailed()常由用户在服务回调中调用。当处�
 
 # brpc的错误码
 
-brpc使用的所有ErrorCode都定义在[errno.proto](https://github.com/brpc/brpc/blob/master/src/brpc/errno.proto)中，*SYS_*开头的来自linux系统，与/usr/include/errno.h中定义的精确一致，定义在proto中是为了跨语言。其余的是brpc自有的。
+brpc使用的所有ErrorCode都定义在[errno.proto](https://github.com/apache/brpc/blob/master/src/brpc/errno.proto)中，*SYS_*开头的来自linux系统，与/usr/include/errno.h中定义的精确一致，定义在proto中是为了跨语言。其余的是brpc自有的。
 
-[berror(error_code)](https://github.com/brpc/brpc/blob/master/src/butil/errno.h)可获得error_code的描述，berror()可获得当前[system errno](http://www.cplusplus.com/reference/cerrno/errno/)的描述。**ErrorText() != berror(ErrorCode())**，ErrorText()会包含更具体的错误信息。brpc默认包含berror，你可以直接使用。
+[berror(error_code)](https://github.com/apache/brpc/blob/master/src/butil/errno.h)可获得error_code的描述，berror()可获得当前[system errno](http://www.cplusplus.com/reference/cerrno/errno/)的描述。**ErrorText() != berror(ErrorCode())**，ErrorText()会包含更具体的错误信息。brpc默认包含berror，你可以直接使用。
 
 brpc中常见错误的打印内容列表如下：
 

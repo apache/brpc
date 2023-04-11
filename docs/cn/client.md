@@ -2,7 +2,7 @@
 
 # 示例程序
 
-Echo的[client端代码](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp)。
+Echo的[client端代码](https://github.com/apache/brpc/blob/master/example/echo_c++/client.cpp)。
 
 # 事实速查
 
@@ -13,7 +13,7 @@ Echo的[client端代码](https://github.com/brpc/brpc/blob/master/example/echo_c
 - 没有brpc::Client这个类。
 
 # Channel
-Client指发起请求的一端，在brpc中没有对应的实体，取而代之的是[brpc::Channel](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
+Client指发起请求的一端，在brpc中没有对应的实体，取而代之的是[brpc::Channel](https://github.com/apache/brpc/blob/master/src/brpc/channel.h)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
 
 Channel可以**被所有线程共用**，你不需要为每个线程创建独立的Channel，也不需要用锁互斥。不过Channel的创建和Init并不是线程安全的，请确保在Init成功后再被多线程访问，在没有线程访问后再析构。
 
@@ -168,7 +168,7 @@ NacosNamingService只支持整形的权重值。
 
 
 ### 更多命名服务
-用户可以通过实现brpc::NamingService来对接更多命名服务，具体见[这里](https://github.com/brpc/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1)
+用户可以通过实现brpc::NamingService来对接更多命名服务，具体见[这里](https://github.com/apache/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1)
 
 ### 命名服务中的tag
 每个地址可以附带一个tag，在常见的命名服务中，如果地址后有空格，则空格之后的内容均为tag。
@@ -266,7 +266,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 发起RPC前需要设置Controller.set_request_code()，否则RPC会失败。request_code一般是请求中主键部分的32位哈希值，**不需要和负载均衡使用的哈希算法一致**。比如用c_murmurhash算法也可以用md5计算哈希值。
 
-[src/brpc/policy/hasher.h](https://github.com/brpc/brpc/blob/master/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
+[src/brpc/policy/hasher.h](https://github.com/apache/brpc/blob/master/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
 
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
@@ -370,7 +370,7 @@ request.set_foo(...);
 cntl->set_timeout_ms(...);
 stub.some_method(cntl, &request, response, brpc::NewCallback(OnRPCDone, response, cntl));
 ```
-由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](https://github.com/brpc/brpc/blob/master/src/brpc/callback.h)（并增加了一些重载）。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
+由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](https://github.com/apache/brpc/blob/master/src/brpc/callback.h)（并增加了一些重载）。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
 
 ### 继承google::protobuf::Closure
 
@@ -491,7 +491,7 @@ brpc::StartCancel(call_id)可取消对应的RPC，call_id必须**在发起RPC前
 
 ## 获取Server的地址和端口
 
-remote_side()方法可知道request被送向了哪个server，返回值类型是[butil::EndPoint](https://github.com/brpc/brpc/blob/master/src/butil/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
+remote_side()方法可知道request被送向了哪个server，返回值类型是[butil::EndPoint](https://github.com/apache/brpc/blob/master/src/butil/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
 
 打印方式：
 ```c++
@@ -534,8 +534,8 @@ for (int i = 0; i < n; ++i) {
 
 Client端的设置主要由三部分组成：
 
-- brpc::ChannelOptions: 定义在[src/brpc/channel.h](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
-- brpc::Controller: 定义在[src/brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
+- brpc::ChannelOptions: 定义在[src/brpc/channel.h](https://github.com/apache/brpc/blob/master/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
+- brpc::Controller: 定义在[src/brpc/controller.h](https://github.com/apache/brpc/blob/master/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
 - 全局gflags：常用于调节一些底层代码的行为，一般不用修改。请自行阅读服务[/flags页面](flags.md)中的说明。
 
 Controller包含了request中没有的数据和选项。server端和client端的Controller结构体是一样的，但使用的字段可能是不同的，你需要仔细阅读Controller中的注释，明确哪些字段可以在server端使用，哪些可以在client端使用。
@@ -600,7 +600,7 @@ Controller.set_max_retry(0)或ChannelOptions.max_retry=0关闭重试。
 
 一些错误重试是没有意义的，就不会重试，比如请求有错时(EREQUEST)不会重试，因为server总不会接受,没有意义。
 
-用户可以通过继承[brpc::RetryPolicy](https://github.com/brpc/brpc/blob/master/src/brpc/retry_policy.h)自定义重试条件。比如brpc默认不重试http/h2相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
+用户可以通过继承[brpc::RetryPolicy](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)自定义重试条件。比如brpc默认不重试http/h2相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
 
 ```c++
 #include <brpc/retry_policy.h>
@@ -745,7 +745,7 @@ baidu_std和hulu_pbrpc协议支持附件，这段数据由用户自定义，不�
 ## 开启SSL
 
 要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。
-然后设置`ChannelOptions.mutable_ssl_options()`，具体选项见[ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h)。ChannelOptions.has_ssl_options()可查询是否设置过ssl_options, ChannelOptions.ssl_options()可访问到设置过的只读ssl_options。
+然后设置`ChannelOptions.mutable_ssl_options()`，具体选项见[ssl_options.h](https://github.com/apache/brpc/blob/master/src/brpc/ssl_options.h)。ChannelOptions.has_ssl_options()可查询是否设置过ssl_options, ChannelOptions.ssl_options()可访问到设置过的只读ssl_options。
 
 ```c++
 // 开启客户端SSL并使用默认值。
@@ -903,11 +903,11 @@ FATAL 04-07 20:00:03 7778 src/brpc/channel.cpp:123] Invalid address=`bns://group
 
 主要步骤：
 
-1. 创建一个[bthread_id](https://github.com/brpc/brpc/blob/master/src/bthread/id.h)作为本次RPC的correlation_id。
-2. 根据Channel的创建方式，从进程级的[SocketMap](https://github.com/brpc/brpc/blob/master/src/brpc/socket_map.h)中或从[LoadBalancer](https://github.com/brpc/brpc/blob/master/src/brpc/load_balancer.h)中选择一台下游server作为本次RPC发送的目的地。
-3. 根据连接方式（单连接、连接池、短连接），选择一个[Socket](https://github.com/brpc/brpc/blob/master/src/brpc/socket.h)。
+1. 创建一个[bthread_id](https://github.com/apache/brpc/blob/master/src/bthread/id.h)作为本次RPC的correlation_id。
+2. 根据Channel的创建方式，从进程级的[SocketMap](https://github.com/apache/brpc/blob/master/src/brpc/socket_map.h)中或从[LoadBalancer](https://github.com/apache/brpc/blob/master/src/brpc/load_balancer.h)中选择一台下游server作为本次RPC发送的目的地。
+3. 根据连接方式（单连接、连接池、短连接），选择一个[Socket](https://github.com/apache/brpc/blob/master/src/brpc/socket.h)。
 4. 如果开启验证且当前Socket没有被验证过时，第一个请求进入验证分支，其余请求会阻塞直到第一个包含认证信息的请求写入Socket。server端只对第一个请求进行验证。
-5. 根据Channel的协议，选择对应的序列化函数把request序列化至[IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h)。
+5. 根据Channel的协议，选择对应的序列化函数把request序列化至[IOBuf](https://github.com/apache/brpc/blob/master/src/butil/iobuf.h)。
 6. 如果配置了超时，设置定时器。从这个点开始要避免使用Controller对象，因为在设定定时器后随时可能触发超时->调用到用户的超时回调->用户在回调中析构Controller。
 7. 发送准备阶段结束，若上述任何步骤出错，会调用Channel::HandleSendFailed。
 8. 将之前序列化好的IOBuf写出到Socket上，同时传入回调Channel::HandleSocketFailed，当连接断开、写失败等错误发生时会调用此回调。

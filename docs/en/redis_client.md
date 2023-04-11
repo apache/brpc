@@ -1,6 +1,6 @@
 [中文版](../cn/redis_client.md)
 
-[redis](http://redis.io/) is one of the most popular caching service in recent years. Compared to memcached it provides users with more data structures and operations, speeding up developments. In order to access redis servers more conveniently and make full use of bthread's capability of concurrency, brpc directly supports the redis protocol. Check [example/redis_c++](https://github.com/brpc/brpc/tree/master/example/redis_c++/) for an example.
+[redis](http://redis.io/) is one of the most popular caching service in recent years. Compared to memcached it provides users with more data structures and operations, speeding up developments. In order to access redis servers more conveniently and make full use of bthread's capability of concurrency, brpc directly supports the redis protocol. Check [example/redis_c++](https://github.com/apache/brpc/tree/master/example/redis_c++/) for an example.
 
 Advantages compared to [hiredis](https://github.com/redis/hiredis) (the official redis client):
 
@@ -117,7 +117,7 @@ options.auth = auth;
 
 # RedisRequest
 
-A [RedisRequest](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h) may contain multiple commands by calling `AddCommand*`, which returns true on success and false otherwise. **The callsite backtrace is also printed on error**.
+A [RedisRequest](https://github.com/apache/brpc/blob/master/src/brpc/redis.h) may contain multiple commands by calling `AddCommand*`, which returns true on success and false otherwise. **The callsite backtrace is also printed on error**.
 
 ```c++
 bool AddCommand(const char* fmt, ...);
@@ -137,7 +137,7 @@ Call `Clear()` before re-using the `RedisRequest` object.
 
 # RedisResponse
 
-A [RedisResponse](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h) may contain one or multiple [RedisReply](https://github.com/brpc/brpc/blob/master/src/brpc/redis_reply.h)s. Use `reply_size()` for total number of replies and `reply(i)` for reference to the i-th reply (counting from 0). Note that in hiredis, if the request contains N commands, you have to call `redisGetReply` N times to get replies, while it's unnecessary in brpc as the `RedisResponse` already includes the N replies which are accessible by reply(i). As long as RPC is successful, `response.reply_size()` should be equal to `request.command_size()`, unless the redis-server is buggy. The precondition that redis works correctly is that replies correspond to commands one by one in the same sequence (positional correspondence).
+A [RedisResponse](https://github.com/apache/brpc/blob/master/src/brpc/redis.h) may contain one or multiple [RedisReply](https://github.com/apache/brpc/blob/master/src/brpc/redis_reply.h)s. Use `reply_size()` for total number of replies and `reply(i)` for reference to the i-th reply (counting from 0). Note that in hiredis, if the request contains N commands, you have to call `redisGetReply` N times to get replies, while it's unnecessary in brpc as the `RedisResponse` already includes the N replies which are accessible by reply(i). As long as RPC is successful, `response.reply_size()` should be equal to `request.command_size()`, unless the redis-server is buggy. The precondition that redis works correctly is that replies correspond to commands one by one in the same sequence (positional correspondence).
 
 Each `RedisReply` may be:
 
@@ -239,7 +239,7 @@ We can see a tremendous drop of QPS compared to the one using single connection 
 
 # Command Line Interface
 
-[example/redis_c++/redis_cli](https://github.com/brpc/brpc/blob/master/example/redis_c%2B%2B/redis_cli.cpp) is a command line tool similar to the official CLI, demostrating brpc's capability to talk with redis servers. When unexpected results are got from a redis-server using a brpc client, you can debug with this tool interactively as well.
+[example/redis_c++/redis_cli](https://github.com/apache/brpc/blob/master/example/redis_c%2B%2B/redis_cli.cpp) is a command line tool similar to the official CLI, demostrating brpc's capability to talk with redis servers. When unexpected results are got from a redis-server using a brpc client, you can debug with this tool interactively as well.
 
 Like the official CLI, `redis_cli <command>` runs the command directly, and `-server` which is address of the redis-server can be specified.
 

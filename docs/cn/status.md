@@ -20,7 +20,7 @@
 - **processing**: (新版改名为concurrency)正在处理的请求个数。在压力归0后若此指标仍持续不为0，server则很有可能bug，比如忘记调用done了或卡在某个处理步骤上了。
 
 
-用户可通过让对应Service实现[brpc::Describable](https://github.com/brpc/brpc/blob/master/src/brpc/describable.h)自定义在/status页面上的描述.
+用户可通过让对应Service实现[brpc::Describable](https://github.com/apache/brpc/blob/master/src/brpc/describable.h)自定义在/status页面上的描述.
 
 ```c++
 class MyService : public XXXService, public brpc::Describable {

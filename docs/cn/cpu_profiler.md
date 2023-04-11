@@ -53,7 +53,7 @@ cpu profiler的原理是在定期被调用的SIGPROF handler中采样所在线�
 
 ![img](../images/echo_cpu_profiling.png)
 
-在Linux下，你也可以使用[pprof](https://github.com/brpc/brpc/blob/master/tools/pprof)或gperftools中的pprof进行profiling。
+在Linux下，你也可以使用[pprof](https://github.com/apache/brpc/blob/master/tools/pprof)或gperftools中的pprof进行profiling。
 
 比如`pprof --text localhost:9002 --seconds=5`的意思是统计运行在本机9002端口的server的cpu情况，时长5秒。一次运行的例子如下：
 

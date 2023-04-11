@@ -48,7 +48,7 @@
 
 ## Annotation
 
-只要你使用了brpc，就可以使用[TRACEPRINTF](https://github.com/brpc/brpc/blob/master/src/brpc/traceprintf.h)打印内容到事件流中，比如：
+只要你使用了brpc，就可以使用[TRACEPRINTF](https://github.com/apache/brpc/blob/master/src/brpc/traceprintf.h)打印内容到事件流中，比如：
 
 ```c++
 TRACEPRINTF("Hello rpcz %d", 123);

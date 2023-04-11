@@ -1812,7 +1812,7 @@ void Server::PrintTabsBody(std::ostream& os,
                     current_tab_name);
         }
     }
-    os << "<li id='https://github.com/brpc/brpc/blob/master/docs/cn/builtin_service.md' "
+    os << "<li id='https://github.com/apache/brpc/blob/master/docs/cn/builtin_service.md' "
         "class='help'>?</li>\n</ul>\n"
         "<div style='height:40px;'></div>";  // placeholder
 }
