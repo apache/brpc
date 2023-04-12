@@ -64,12 +64,14 @@ protected:
 TEST_F(VariableTest, status) {
     bvar::Status<int> st1;
     st1.set_value(9);
+    ASSERT_TRUE(st1.is_hidden());
 #ifdef BAIDU_INTERNAL
     boost::any v1;
     st1.get_value(&v1);
     ASSERT_EQ(9, boost::any_cast<int>(v1));
 #endif
     ASSERT_EQ(0, st1.expose("var1"));
+    ASSERT_FALSE(st1.is_hidden());
     ASSERT_EQ("9", bvar::Variable::describe_exposed("var1"));
     std::vector<std::string> vars;
     bvar::Variable::list_exposed(&vars);
@@ -79,13 +81,16 @@ TEST_F(VariableTest, status) {
 
     bvar::Status<int> st2;
     st2.set_value(10);
+    ASSERT_TRUE(st2.is_hidden());
     ASSERT_EQ(-1, st2.expose("var1"));
+    ASSERT_TRUE(st2.is_hidden());
     ASSERT_EQ(1UL, bvar::Variable::count_exposed());
     ASSERT_EQ("10", st2.get_description());
     ASSERT_EQ("9", bvar::Variable::describe_exposed("var1"));
     ASSERT_EQ(1UL, bvar::Variable::count_exposed());
 
     ASSERT_TRUE(st1.hide());
+    ASSERT_TRUE(st1.is_hidden());
     ASSERT_EQ(0UL, bvar::Variable::count_exposed());
     ASSERT_EQ("", bvar::Variable::describe_exposed("var1"));
     ASSERT_EQ(0, st1.expose("var1"));

@@ -162,6 +162,9 @@ public:
     // a variable that is just destructing.
     bool hide();
 
+    // Check if this variable is is_hidden.
+    bool is_hidden() const;
+
     // Get exposed name. If this variable is not exposed, the name is empty.
     const std::string& name() const { return _name; }
 
