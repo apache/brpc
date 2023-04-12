@@ -592,7 +592,7 @@ private:
     google::protobuf::int64 _byte_count;
 };
 
-// Wrap IOBuf into input of snappy compresson.
+// Wrap IOBuf into input of snappy compression.
 class IOBufAsSnappySource : public butil::snappy::Source {
 public:
     explicit IOBufAsSnappySource(const butil::IOBuf& buf)
