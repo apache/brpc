@@ -183,6 +183,10 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
     return -1;
 }
 
+bool Variable::is_hidden() const {
+    return _name.empty();
+}
+
 bool Variable::hide() {
     if (_name.empty()) {
         return false;
