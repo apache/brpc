@@ -1101,4 +1101,113 @@ TEST_F(LoadBalancerTest, la_selection_too_long) {
     ASSERT_EQ(EHOSTDOWN, lb.SelectServer(in, &out));
 }
 
+bool g_started = false;
+bool g_stopped = false;
+int g_prof_name_counter = 0;
+
+using PerfMap = std::unordered_map<int, int>;
+
+bool AddMapN(PerfMap& f, int n) {
+    ++f[n];
+    return true;
+}
+
+template<typename DBD>
+struct BAIDU_CACHELINE_ALIGNMENT PerfArgs {
+    DBD* dbd;
+    int64_t counter;
+    int64_t elapse_ns;
+    bool ready;
+
+    PerfArgs() : dbd(NULL), counter(0), elapse_ns(0), ready(false) {}
+};
+
+template<typename DBD>
+void* read_dbd(void* void_arg) {
+    auto args = (PerfArgs<DBD>*)void_arg;
+    args->ready = true;
+    pthread_mutex_t mutex;
+    pthread_mutex_init(&mutex, NULL);
+    butil::Timer t;
+    while (!g_stopped) {
+        if (g_started) {
+            break;
+        }
+        bthread_usleep(10);
+    }
+    t.start();
+    while (!g_stopped) {
+        {
+            typename DBD::ScopedPtr ptr;
+            args->dbd->Read(&ptr);
+            // ptr->find(1);
+        }
+        ++args->counter;
+    }
+    t.stop();
+    args->elapse_ns = t.n_elapsed();
+    return NULL;
+}
+
+template<typename DBD>
+void PerfTest(int thread_num) {
+    g_started = false;
+    g_stopped = false;
+    DBD dbd;
+    for (int i = 0; i < 1024; ++i) {
+        dbd.Modify(AddMapN, i);
+    }
+    pthread_t threads[thread_num];
+    std::vector<PerfArgs<DBD>> args(thread_num);
+    for (int i = 0; i < thread_num; ++i) {
+        args[i].dbd = &dbd;
+        ASSERT_EQ(0, pthread_create(&threads[i], NULL, read_dbd<DBD>, &args[i]));
+    }
+    while (true) {
+        bool all_ready = true;
+        for (int i = 0; i < thread_num; ++i) {
+            if (!args[i].ready) {
+                all_ready = false;
+                break;
+            }
+        }
+        if (all_ready) {
+            break;
+        }
+        usleep(1000);
+    }
+    g_started = true;
+    char prof_name[32];
+    snprintf(prof_name, sizeof(prof_name), "doubly_buffered_data_%d.prof", ++g_prof_name_counter);
+    ProfilerStart(prof_name);
+    usleep(1000 * 1000);
+    ProfilerStop();
+    g_stopped = true;
+    int64_t wait_time = 0;
+    int64_t count = 0;
+    for (int i = 0; i < thread_num; ++i) {
+        pthread_join(threads[i], NULL);
+        wait_time += args[i].elapse_ns;
+        count += args[i].counter;
+    }
+    LOG(INFO) << " thread_num=" << thread_num
+              << " count=" << count
+              << " average_time=" << wait_time / (double)count
+              << " qps=" << (double)count / wait_time * (1000 * 1000 * 1000);
+}
+
+TEST_F(LoadBalancerTest, performance) {
+    int thread_num = 1;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num);
+
+    thread_num = 4;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num);
+
+    thread_num = 8;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num);
+
+    thread_num = 12;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num);
+}
+
 } //namespace
