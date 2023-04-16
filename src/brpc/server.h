@@ -309,6 +309,10 @@ struct ServiceOptions {
     // decode json array to protobuf message which contains a single repeated field.
     // Default: false.
     bool pb_single_repeated_to_array;
+
+    // enable server end progressive reading, mainly for http server
+    // Default: false.
+    bool enable_progressive_read;
 };
 
 // Represent ports inside [min_port, max_port]
@@ -359,6 +363,7 @@ public:
             bool allow_http_body_to_pb;
             bool pb_bytes_to_base64;
             bool pb_single_repeated_to_array;
+            bool enable_progressive_read;
             OpaqueParams();
         };
         OpaqueParams params;

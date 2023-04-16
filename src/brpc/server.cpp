@@ -1285,6 +1285,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         mp.params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
         mp.params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
         mp.params.pb_single_repeated_to_array = svc_opt.pb_single_repeated_to_array;
+        mp.params.enable_progressive_read = svc_opt.enable_progressive_read;
         mp.service = service;
         mp.method = md;
         mp.status = new MethodStatus;
@@ -1472,6 +1473,7 @@ ServiceOptions::ServiceOptions()
     , pb_bytes_to_base64(true)
 #endif
     , pb_single_repeated_to_array(false)
+    , enable_progressive_read(false)
     {}
 
 int Server::AddService(google::protobuf::Service* service,

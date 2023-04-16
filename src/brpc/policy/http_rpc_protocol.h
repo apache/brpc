@@ -113,6 +113,8 @@ public:
         return SetBodyReader(r);
     }
 
+    void CheckProgressiveRead();
+
 private:
     bool _is_stage2;
 };
