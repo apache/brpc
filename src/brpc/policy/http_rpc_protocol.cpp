@@ -1551,23 +1551,6 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         cntl->request_attachment().swap(req_body);
         if (imsg_guard->read_body_progressively()) {
             accessor.set_readable_progressive_attachment(imsg_guard.get());
-            const int sc = req_header.status_code();
-            if (sc < 200 || sc >= 300) {
-                // Even if the body is for streaming purpose, a non-OK status
-                // code indicates that the body is probably the error text
-                // which is helpful for debugging.
-                // content may be binary data, so the size limit is a must.
-                std::string body_str;
-                req_body.copy_to(
-                    &body_str, std::min((int)req_body.size(),
-                                        FLAGS_http_max_error_length));
-                cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s: %.*s",
-                                req_header.major_version(),
-                                req_header.minor_version(),
-                                sc,
-                                req_header.reason_phrase(),
-                                (int)body_str.size(), body_str.c_str());
-            }
         }
     }
 
@@ -1629,11 +1612,11 @@ void HttpContext::CheckProgressiveRead() {
         return;
     }
     const Server::MethodProperty *const sp = FindMethodPropertyByURI(
-      header().uri().path(), (Server *)arg(),
-      const_cast<std::string *>(&header().unresolved_path()));
+        header().uri().path(), (Server *)arg(),
+        const_cast<std::string *>(&header().unresolved_path()));
     if (sp != NULL && sp->params.enable_progressive_read) {
-          this->set_read_progressively(true);
-          socket()->read_will_be_progressive(CONNECTION_TYPE_SHORT);
+        this->set_read_body_progressively(true);
+        socket()->read_will_be_progressive(CONNECTION_TYPE_SHORT);
     }
 }
 
