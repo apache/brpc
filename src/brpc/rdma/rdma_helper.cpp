@@ -573,8 +573,10 @@ void DeregisterMemoryForRdma(void* buf) {
             g_user_mrs->erase(buf);
         }
     }
-    if (mr && IbvDeregMr(mr)) {
-        PLOG(ERROR) << "Failed to deregister memory at: " << mr->addr;
+    if (mr) {
+        if (IbvDeregMr(mr)) {
+            PLOG(ERROR) << "Failed to deregister memory at: " << mr->addr;
+        }
     } else {
         LOG(WARNING) << "Try to deregister a buffer which is not registered";
     }
