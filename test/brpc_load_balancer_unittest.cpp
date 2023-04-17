@@ -1126,8 +1126,6 @@ template<typename DBD>
 void* read_dbd(void* void_arg) {
     auto args = (PerfArgs<DBD>*)void_arg;
     args->ready = true;
-    pthread_mutex_t mutex;
-    pthread_mutex_init(&mutex, NULL);
     butil::Timer t;
     while (!g_stopped) {
         if (g_started) {
@@ -1150,7 +1148,7 @@ void* read_dbd(void* void_arg) {
 }
 
 template<typename DBD>
-void PerfTest(int thread_num) {
+void PerfTest(int thread_num, bool modify_during_reading) {
     g_started = false;
     g_stopped = false;
     DBD dbd;
@@ -1180,7 +1178,17 @@ void PerfTest(int thread_num) {
     char prof_name[32];
     snprintf(prof_name, sizeof(prof_name), "doubly_buffered_data_%d.prof", ++g_prof_name_counter);
     ProfilerStart(prof_name);
-    usleep(1000 * 1000);
+    int64_t run_ms = 5 * 1000;
+    if (modify_during_reading) {
+        int64_t start = butil::gettimeofday_ms();
+        int i = 1;
+        while (butil::gettimeofday_ms() - start < run_ms) {
+            ASSERT_TRUE(dbd.Modify(AddMapN, i++));
+            usleep(1000);
+        }
+    } else {
+        usleep(run_ms * 1000);
+    }
     ProfilerStop();
     g_stopped = true;
     int64_t wait_time = 0;
@@ -1191,6 +1199,7 @@ void PerfTest(int thread_num) {
         count += args[i].counter;
     }
     LOG(INFO) << " thread_num=" << thread_num
+              << " modify_during_reading=" << modify_during_reading
               << " count=" << count
               << " average_time=" << wait_time / (double)count
               << " qps=" << (double)count / wait_time * (1000 * 1000 * 1000);
@@ -1198,16 +1207,20 @@ void PerfTest(int thread_num) {
 
 TEST_F(LoadBalancerTest, performance) {
     int thread_num = 1;
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
 
     thread_num = 4;
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
 
     thread_num = 8;
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
 
-    thread_num = 12;
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num);
+    thread_num = 16;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
 }
 
 } //namespace
