@@ -34,6 +34,10 @@ int main(int argc, char* argv[]) {
 
 #ifdef BRPC_ENABLE_COROUTINE
 
+using brpc::experimental::Awaitable;
+using brpc::experimental::AwaitableDone;
+using brpc::experimental::Coroutine;
+
 class Trace {
 public:
     Trace(const std::string& name) {
@@ -60,10 +64,10 @@ public:
         // response->set_message(request->message());
 
         // Create a detached coroutine, so the current bthread will return at once.
-        brpc::Coroutine(EchoAsync(request, response, done), true);
+        Coroutine(EchoAsync(request, response, done), true);
     }
 
-    brpc::Awaitable<void> EchoAsync(const test::EchoRequest* request,
+    Awaitable<void> EchoAsync(const test::EchoRequest* request,
                                    test::EchoResponse* response,
                                    google::protobuf::Closure* done) {
         Trace t("EchoAsync");
@@ -71,7 +75,7 @@ public:
         brpc::ClosureGuard done_guard(done);
         if (request->has_sleep_us()) {
             LOG(INFO) << "sleep " << request->sleep_us() << " us at server side";
-            co_await brpc::Coroutine::usleep(request->sleep_us());
+            co_await Coroutine::usleep(request->sleep_us());
         }
         response->set_message(request->message());
     }
@@ -88,21 +92,21 @@ protected:
 
 static int delay_us = 0;
 
-brpc::Awaitable<std::string> inplace_func(const std::string& input) {
+Awaitable<std::string> inplace_func(const std::string& input) {
     Trace t("inplace_func");
     co_return input;
 }
 
-brpc::Awaitable<double> inplace_func2() {
+Awaitable<double> inplace_func2() {
     Trace t("inplace_func2");
     co_await inplace_func("123");
     co_return 0.5;
 }
 
-brpc::Awaitable<int> sleep_func() {
+Awaitable<int> sleep_func() {
     Trace t("sleep_func");
     int64_t s = butil::monotonic_time_us();
-    auto aw = brpc::Coroutine::usleep(1000);
+    auto aw = Coroutine::usleep(1000);
     usleep(delay_us);
     co_await aw;
     int cost = butil::monotonic_time_us() - s;
@@ -111,12 +115,12 @@ brpc::Awaitable<int> sleep_func() {
     co_return 123;
 }
 
-brpc::Awaitable<float> exception_func() {
+Awaitable<float> exception_func() {
     Trace t("exception_func");
     throw std::string("error");
 }
 
-brpc::Awaitable<void> func(brpc::Channel& channel, int* out) {
+Awaitable<void> func(brpc::Channel& channel, int* out) {
     Trace t("func");
     test::EchoService_Stub stub(&channel);
     test::EchoRequest request;
@@ -125,7 +129,7 @@ brpc::Awaitable<void> func(brpc::Channel& channel, int* out) {
     brpc::Controller cntl;
 
     LOG(INFO) << "before start coroutine";
-    brpc::Coroutine coro(sleep_func());
+    Coroutine coro(sleep_func());
     usleep(delay_us);
     LOG(INFO) << "before wait coroutine";
     int ret = co_await coro.awaitable<int>();
@@ -144,7 +148,7 @@ brpc::Awaitable<void> func(brpc::Channel& channel, int* out) {
     }
     EXPECT_EQ(1.0, num);
 
-    brpc::AwaitableDone done;
+    AwaitableDone done;
     LOG(INFO) << "start echo";
     stub.Echo(&cntl, &request, &response, &done);
     LOG(INFO) << "after echo";
@@ -156,7 +160,7 @@ brpc::Awaitable<void> func(brpc::Channel& channel, int* out) {
 
     cntl.Reset();
     request.set_sleep_us(2000);
-    brpc::AwaitableDone done2;
+    AwaitableDone done2;
     LOG(INFO) << "start echo2";
     int64_t s = butil::monotonic_time_us();
     stub.Echo(&cntl, &request, &response, &done2);
@@ -185,30 +189,30 @@ TEST_F(CoroutineTest, coroutine) {
     ASSERT_EQ(0, channel.Init(ep, &options));
 
     int out = 0;
-    brpc::Coroutine coro(func(channel, &out));
+    Coroutine coro(func(channel, &out));
     coro.join();
     ASSERT_EQ(456, out);
 
     out = 0;
     delay_us = 10000;
-    brpc::Coroutine coro2(func(channel, &out));
+    Coroutine coro2(func(channel, &out));
     coro2.join();
     ASSERT_EQ(456, out);
     delay_us = 0;
 
-    brpc::Coroutine coro3(inplace_func2());
+    Coroutine coro3(inplace_func2());
     double d = coro3.join<double>();
     ASSERT_EQ(0.5, d);
 
-    brpc::Coroutine coro4(inplace_func("abc"));
+    Coroutine coro4(inplace_func("abc"));
     coro4.join();
 
-    brpc::Coroutine coro5(sleep_func());
+    Coroutine coro5(sleep_func());
     coro5.join();
 
-    brpc::Coroutine coro6(inplace_func2(), true);
-    brpc::Coroutine coro7(inplace_func("abc"), true);
-    brpc::Coroutine coro8(sleep_func(), true);
+    Coroutine coro6(inplace_func2(), true);
+    Coroutine coro7(inplace_func("abc"), true);
+    Coroutine coro8(sleep_func(), true);
     usleep(10000); // wait sleep_func() to complete
 
     LOG(INFO) << "test case finished";

@@ -28,6 +28,7 @@
 #include "brpc/callback.h"
 
 namespace brpc {
+namespace experimental {
 
 namespace detail {
 class AwaitablePromiseBase;
@@ -40,11 +41,11 @@ class Coroutine;
 
 // WARN：The bRPC coroutine feature is experimental, DO NOT use in production environment!
 
-// brpc::Awaitable<T> is used as coroutine return type, for example:
-//  brpc::Awaitable<int> func1() {
+// Awaitable<T> is used as coroutine return type, for example:
+//  Awaitable<int> func1() {
 //      co_return 42;
 //  }
-//  brpc::Awaitable<std::string> func2() {
+//  Awaitable<std::string> func2() {
 //  	int ret = co_await func1();
 //      co_return std::to_string(ret);
 //  }
@@ -78,7 +79,7 @@ friend class Coroutine;
 };
 
 // Utility for a coroutine to wait for RPC call. Usage:
-//    brpc::AwaitableDone done;
+//    AwaitableDone done;
 //    stub.CallMethod(&cntl, &req, &resp, &done);
 //    co_await done.awaitable();
 // 
@@ -97,21 +98,21 @@ private:
 
 // Class for management of coroutine
 // 1. To create a new coroutine and wait it finish:
-//  brpc::Awaitable<void> func(double val);
+//  Awaitable<void> func(double val);
 //  
 //  int main() {
-//      brpc::Coroutine coro(func(1.0));
+//      Coroutine coro(func(1.0));
 //      coro.join();
 //  }
 // 2. To wait a coroutine in another coroutine:
-//  brpc::Awaitable<void> another_func() {
-//      brpc::Coroutine coro(func(1.0));
+//  Awaitable<void> another_func() {
+//      Coroutine coro(func(1.0));
 //      co_await coro.awaitable<void>();
 //  }
 // 3. To create a detached coroutine without waiting:
-//  brpc::Coroutine coro(func(1.0), true);
+//  Coroutine coro(func(1.0), true);
 // 4. To sleep in a coroutine:
-//  co_await brpc::Coroutine::usleep(100);
+//  co_await Coroutine::usleep(100);
 // 
 // NOTE: Inside coroutine function, DO NOT call pthread-blocking or 
 // bthread-blocking functions (eg. bthread_join(), bthread_usleep(), syncronized RPC),
@@ -137,7 +138,8 @@ private:
     std::atomic<int>* _butex{nullptr};
 };
 
-}
+} // namespace experimental
+} // namespace brpc
 
 #include "brpc/coroutine_inl.h"
 

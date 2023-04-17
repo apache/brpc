@@ -28,6 +28,10 @@ DEFINE_int32(port, 8000, "TCP Port of this server");
 DEFINE_int32(sleep_us, 1000000, "Server sleep us");
 DEFINE_bool(enable_coroutine, true, "Enable coroutine");
 
+using brpc::experimental::Awaitable;
+using brpc::experimental::AwaitableDone;
+using brpc::experimental::Coroutine;
+
 namespace example {
 class EchoServiceImpl : public EchoService {
 public:
@@ -48,7 +52,7 @@ public:
         //     static_cast<brpc::Controller*>(cntl_base);
 
         if (FLAGS_enable_coroutine) {
-            brpc::Coroutine(EchoAsync(request, response, done), true);
+            Coroutine(EchoAsync(request, response, done), true);
         } else {
             brpc::ClosureGuard done_guard(done);
             bthread_usleep(FLAGS_sleep_us);
@@ -56,11 +60,11 @@ public:
         }
     }
 
-    brpc::Awaitable<void> EchoAsync(const EchoRequest* request,
+    Awaitable<void> EchoAsync(const EchoRequest* request,
                EchoResponse* response,
                google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
-        co_await brpc::Coroutine::usleep(FLAGS_sleep_us);
+        co_await Coroutine::usleep(FLAGS_sleep_us);
         response->set_message(request->message());
     }
 
@@ -72,7 +76,7 @@ public:
         //     static_cast<brpc::Controller*>(cntl_base);
 
         if (FLAGS_enable_coroutine) {
-            brpc::Coroutine(ProxyAsync(request, response, done), true);
+            Coroutine(ProxyAsync(request, response, done), true);
         } else {
             brpc::ClosureGuard done_guard(done);
             EchoService_Stub stub(&_channel);
@@ -84,13 +88,13 @@ public:
         }
     }
 
-    brpc::Awaitable<void> ProxyAsync(const EchoRequest* request,
+    Awaitable<void> ProxyAsync(const EchoRequest* request,
                     EchoResponse* response,
                     google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         EchoService_Stub stub(&_channel);
         brpc::Controller cntl;
-        brpc::AwaitableDone done2;
+        AwaitableDone done2;
         stub.Echo(&cntl, request, response, &done2);
         co_await done2.awaitable();
         if (cntl.Failed()) {

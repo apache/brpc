@@ -22,6 +22,7 @@
 #include "bthread/butex.h"      // butex_wake/butex_wait
 
 namespace brpc {
+namespace experimental {
 
 namespace detail {
 
@@ -305,6 +306,7 @@ inline Awaitable<int> Coroutine::usleep(int sleep_us) {
     return Awaitable<int>(promise);
 }
 
-}
+} // namespace experimental
+} // namespace brpc
 
 #endif // BRPC_COROUTINE_INL_H

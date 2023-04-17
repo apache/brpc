@@ -23,23 +23,23 @@ C++协程适用于极高并发的场景。由于bthread使用了mmap，存在系
 #include <brpc/channel.h>
 #include <brpc/coroutine.h>
 
-// 协程函数的返回类型，需要是brpc::Awaitable<T>
+// 协程函数的返回类型，需要是brpc::experimental::Awaitable<T>
 // T是函数返回的实际数据类型
-brpc::Awaitable<int> RpcCall(brpc::Channel& channel) {
+brpc::experimental::Awaitable<int> RpcCall(brpc::Channel& channel) {
     EchoRequest request;
     EchoResponse response;
     EchoService_Stub stub(&_channel);
     brpc::Controller cntl;
-    brpc::AwaitableDone done;
+    brpc::experimental::AwaitableDone done;
     stub.Echo(&cntl, &request, &response, &done);
     // 等待RPC返回结果
     co_await done.awaitable();
     // 返回数据，注意这里用co_return而不是return
-    // 因为函数返回值类型是brpc::Awaitable<int>而不是int
+    // 因为函数返回值类型是brpc::experimental::Awaitable<int>而不是int
     co_return cntl.ErrorCode();
 }
 
-brpc::Awaitable<void> CoroutineMain(const char* server) {
+brpc::experimental::Awaitable<void> CoroutineMain(const char* server) {
     brpc::Channel channel;
     channel.Init(server, NULL);
     // co_await会从Awaitable<int>得到int类型的返回值
@@ -49,7 +49,7 @@ brpc::Awaitable<void> CoroutineMain(const char* server) {
 
 int main() {
     // 启动协程
-    brpc::Coroutine coro(CoroutineMain("127.0.0.1:8080"));
+    brpc::experimental::Coroutine coro(CoroutineMain("127.0.0.1:8080"));
     // 等待协程执行完成
     coro.join();
     return 0;
@@ -63,21 +63,21 @@ int main() {
 1. 在非协程环境下等待一个协程执行完成:
 
 ```cpp
-brpc::Coroutine coro(func(args));
+brpc::experimental::Coroutine coro(func(args));
 coro.join();
 ```
 
 2. 在非协程环境下等待协程完成并获取返回值:
 
 ```cpp
-brpc::Coroutine coro(func(args)); // func的返回值类型为Awaitable<int>
+brpc::experimental::Coroutine coro(func(args)); // func的返回值类型为Awaitable<int>
 int result = coro.join<int>();
 ```
 
 3. 在协程环境下等待协程执行完成:
 
 ```cpp
-brpc::Coroutine coro(func(args));
+brpc::experimental::Coroutine coro(func(args));
 ... // 做一些其它事情
 co_await coro.awaitable();
 ```
@@ -85,14 +85,14 @@ co_await coro.awaitable();
 4. 在协程环境下等待协程执行完成并获取返回值:
 
 ```cpp
-brpc::Coroutine coro(func(args)); // func的返回值类型为Awaitable<int>
+brpc::experimental::Coroutine coro(func(args)); // func的返回值类型为Awaitable<int>
 ... // 做一些其它事情
 int ret = co_await coro.awaitable<int>();
 ```
 
 5. 在协程环境下sleep：
 ```cpp
-co_await brpc::Coroutine::usleep(1000);
+co_await brpc::experimental::Coroutine::usleep(1000);
 ```
 
 ### 注意事项
@@ -102,7 +102,7 @@ co_await brpc::Coroutine::usleep(1000);
 3. 不要在不必要的地方使用协程，如下面的代码，虽然也能正常工作，但没有意义:
 
 ```cpp
-brpc::Awaitable<int> inplace_func() {
+brpc::experimental::Awaitable<int> inplace_func() {
     co_return 123;
 }
 ```
@@ -118,10 +118,10 @@ brpc::Awaitable<int> inplace_func() {
 为了方便理解，我们把上面的CoroutineMain函数稍微改写一下，把co_await前后的逻辑分成两部分：
 
 ```cpp
-brpc::Awaitable<void> CoroutineMain(const char* server) {
+brpc::experimental::Awaitable<void> CoroutineMain(const char* server) {
     brpc::Channel channel;
     channel.Init(server, NULL);
-    brpc::Awaitable<int> awaitable = RpcCall(channel);
+    brpc::experimental::Awaitable<int> awaitable = RpcCall(channel);
 
     int code = co_await awaitable;
     printf("Rpc result:%d\n", code);
@@ -132,17 +132,17 @@ brpc::Awaitable<void> CoroutineMain(const char* server) {
 
 ```cpp
 
-brpc::Awaitable<void> CoroutineMain(const char* server) {
+brpc::experimental::Awaitable<void> CoroutineMain(const char* server) {
     // 根据函数返回类型，找到Awaitable<void>的名为promise_type的子类
     // 在函数的入口，创建一个promise_type类型的对象
-    auto promise = new brpc::Awaitable<void>::promise_type();
+    auto promise = new brpc::experimental::Awaitable<void>::promise_type();
     // 从promise对象中创建返回Awaitable对象
     Awaitable<void> ret = promise->get_return_object();
 
     // co_await之前的逻辑，保持不变
     brpc::Channel channel;
     channel.Init(server, NULL);
-    brpc::Awaitable<int> awaitable = RpcCall(channel);
+    brpc::experimental::Awaitable<int> awaitable = RpcCall(channel);
 
     // co_await的逻辑，转成一个await_suspend的函数调用，传入一个callback函数
     awaitable.await_suspend([promise, &awaitable]() {
@@ -158,7 +158,7 @@ brpc::Awaitable<void> CoroutineMain(const char* server) {
 }
 ```
 
-也就是说，co_await就是一个语法转换器，把看似同步的代码转化成异步调用的代码，仅此而已。至于Awaitable类和promise类的具体实现，编译器就不关心了，这是基础库需要做的。比如在brpc中封装了brpc::Awaitable类和promise子类，实现了await_suspend/await_resume等逻辑，使协程可以正确的工作起来。
+也就是说，co_await就是一个语法转换器，把看似同步的代码转化成异步调用的代码，仅此而已。至于Awaitable类和promise类的具体实现，编译器就不关心了，这是基础库需要做的。比如在brpc中封装了brpc::experimental::Awaitable类和promise子类，实现了await_suspend/await_resume等逻辑，使协程可以正确的工作起来。
 
 ### 原子等待操作
 
