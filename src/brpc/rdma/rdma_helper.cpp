@@ -545,6 +545,7 @@ void GlobalRdmaInitializeOrDie() {
 uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
     ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
     if (!mr) {
+        PLOG(ERROR) << "Fail to register memory";
         return 0;
     }
     {
@@ -556,7 +557,9 @@ uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
             return mr->lkey;
         }
     }
-    IbvDeregMr(mr);
+    if(IbvDeregMr(mr)) {
+        PLOG(ERROR) << "Failed to deregister memory";
+    }
     return 0;
 }
 
@@ -570,8 +573,8 @@ void DeregisterMemoryForRdma(void* buf) {
             g_user_mrs->erase(buf);
         }
     }
-    if (mr) {
-        IbvDeregMr(mr);
+    if (mr && IbvDeregMr(mr)) {
+        PLOG(ERROR) << "Failed to deregister memory at: " << mr->addr;
     } else {
         LOG(WARNING) << "Try to deregister a buffer which is not registered";
     }
