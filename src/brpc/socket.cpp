@@ -631,8 +631,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_auth_flag_error.store(0, butil::memory_order_relaxed);
     const int rc2 = bthread_id_create(&m->_auth_id, NULL, NULL);
     if (rc2) {
-        LOG(ERROR) << "Fail to create auth_id: " << berror(rc2);
-        m->SetFailed(rc2, "Fail to create auth_id: %s", berror(rc2));
+        m->SetFailedOnCreate(rc2, "Fail to create auth_id");
         return -1;
     }
     // Disable SSL check if there is no SSL context
@@ -670,8 +669,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     // NOTE: last two params are useless in bthread > r32787
     const int rc = bthread_id_list_init(&m->_id_wait_list, 512, 512);
     if (rc) {
-        LOG(ERROR) << "Fail to init _id_wait_list: " << berror(rc);
-        m->SetFailed(rc, "Fail to init _id_wait_list: %s", berror(rc));
+        m->SetFailedOnCreate(rc, "Fail to init _id_wait_list");
         return -1;
     }
     m->_last_writetime_us.store(cpuwide_now, butil::memory_order_relaxed);
@@ -680,10 +678,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
     if (m->ResetFileDescriptor(options.fd) != 0) {
-        const int saved_errno = errno;
-        PLOG(ERROR) << "Fail to ResetFileDescriptor";
-        m->SetFailed(saved_errno, "Fail to ResetFileDescriptor: %s", 
-                     berror(saved_errno));
+        m->SetFailedOnCreate(errno, "Fail to ResetFileDescriptor");
         return -1;
     }
     *id = m->_this_id;
@@ -939,6 +934,12 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
 
 int Socket::SetFailed() {
     return SetFailed(EFAILEDSOCKET, NULL);
+}
+
+int Socket::SetFailedOnCreate(int error_code, const char* error_text) {
+    _user = NULL; // Avoid calling _user->BeforeRecycle() which may cause dead lock or double free
+    LOG(ERROR) << error_text << ": " << berror(error_code);
+    return SetFailed(error_code, "%s: %s", error_text, berror(error_code));
 }
 
 void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
