@@ -300,7 +300,9 @@ svn --username=lorinlee commit -m "release 1.0.0"
 ```
 
 ## Verify release
-
+```bash
+cd ~/brpc_svn/dev/brpc/1.0.0
+```
 ### 1. Verify SHA512 checksum
 
 ```bash
