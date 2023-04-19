@@ -298,7 +298,9 @@ svn --username=lorinlee commit -m "release 1.0.0"
 ```
 
 ## 检查发布结果
-
+```bash
+cd ~/brpc_svn/dev/brpc/1.0.0
+```
 ### 1. 检查 sha512 哈希
 
 ```bash
