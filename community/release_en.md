@@ -27,7 +27,7 @@ Other:
 - ...
 ```
 
-### 2. Setup GPG
+### 2. Setup GPG(Please skip this step if you are not a first time distributor)
 
 #### 1. Install GPG
 
