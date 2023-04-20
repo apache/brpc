@@ -42,6 +42,7 @@
 #include "brpc/http2.h"
 #include "brpc/redis.h"
 #include "brpc/interceptor.h"
+#include "brpc/usercode_thread_pool.h"
 
 namespace brpc {
 
@@ -387,6 +388,7 @@ public:
         const google::protobuf::MethodDescriptor* method;
         MethodStatus* status;
         AdaptiveMaxConcurrency max_concurrency;
+        UserCodeThreadPool* thread_pool;
 
         MethodProperty();
     };
@@ -568,9 +570,15 @@ public:
     int Concurrency() const {
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
-  
+
     // Returns true if accept request, reject request otherwise.
     bool AcceptRequest(Controller* cntl) const;
+    // set usercode thread pool for service and method
+    bool SetThreadPool(google::protobuf::Service* service,
+                       const UserCodeThreadPoolConf& conf);
+    bool SetThreadPool(google::protobuf::Service* service,
+                       const butil::StringPiece& method_name,
+                       const UserCodeThreadPoolConf& conf);
 
     bool has_progressive_read_method() const {
         return this->_has_progressive_read_method;

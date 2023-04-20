@@ -171,7 +171,8 @@ Server::MethodProperty::MethodProperty()
     , http_url(NULL)
     , service(NULL)
     , method(NULL)
-    , status(NULL) {
+    , status(NULL)
+    , thread_pool(NULL) {
 }
 
 static timeval GetUptime(void* arg/*start_time*/) {
@@ -2208,7 +2209,37 @@ bool Server::AcceptRequest(Controller* cntl) const {
                         error_text.c_str());
         return false;
     }
+    return true;
+}
 
+bool Server::SetThreadPool(google::protobuf::Service* service,
+                           const UserCodeThreadPoolConf& conf) {
+    const auto sd = service->GetDescriptor();
+    for (int i = 0; i < sd->method_count(); ++i) {
+        const auto md = sd->method(i);
+        if (SetThreadPool(service, md->name(), conf) != true) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Server::SetThreadPool(google::protobuf::Service* service,
+                           const butil::StringPiece& method_name,
+                           const UserCodeThreadPoolConf& conf) {
+    auto full_service_name = service->GetDescriptor()->full_name();
+    auto mp = const_cast<MethodProperty*>(
+        FindMethodPropertyByFullName(full_service_name, method_name));
+    if (mp == nullptr) {
+        LOG(ERROR) << "Fail to find method=" << full_service_name << '/'
+                   << method_name;
+        return false;
+    }
+    auto p = UserCodeThreadPool::GetOrCreatePool(conf);
+    if (p == nullptr) {
+        return false;
+    }
+    mp->thread_pool = p;
     return true;
 }
 

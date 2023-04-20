@@ -311,6 +311,23 @@ void EndRunningCallMethodInPool(
     return EndRunningUserCodeInPool(CallMethodInBackupThread, args);
 };
 
+// Used by other protocols as well.
+void RunningCallMethodInTheadPool(
+    UserCodeThreadPool* pool, ::google::protobuf::Service* service,
+    const ::google::protobuf::MethodDescriptor* method,
+    ::google::protobuf::RpcController* controller,
+    const ::google::protobuf::Message* request,
+    ::google::protobuf::Message* response, ::google::protobuf::Closure* done) {
+    CallMethodInBackupThreadArgs* args = new CallMethodInBackupThreadArgs;
+    args->service = service;
+    args->method = method;
+    args->controller = controller;
+    args->request = request;
+    args->response = response;
+    args->done = done;
+    pool->RunUserCode(CallMethodInBackupThread, args);
+}
+
 void ProcessRpcRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
@@ -515,6 +532,11 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (span) {
             span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
+        }
+        if (mp->thread_pool) {
+            return RunningCallMethodInTheadPool(mp->thread_pool, svc, method,
+                                                cntl.release(), req.release(),
+                                                res.release(), done);
         }
         if (!FLAGS_usercode_in_pthread) {
             return svc->CallMethod(method, cntl.release(), 
