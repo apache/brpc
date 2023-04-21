@@ -690,7 +690,6 @@ public:
                 
     butil::Status OnReadOnePart(const void* data, size_t length) {
         _nread += length;
-        LOG(INFO) << "read one part, length:" << length; 
         while (length > 0) {
             size_t nappend = std::min(_buf.size() + length, PA_DATA_LEN) - _buf.size();
             _buf.append((const char*)data, nappend);
