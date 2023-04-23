@@ -510,6 +510,8 @@ static void GlobalRdmaInitializeOrDieImpl() {
         ExitWithError();
     }
 
+    atexit(GlobalRelease);
+
     SocketOptions opt;
     opt.fd = g_context->async_fd;
     butil::make_close_on_exec(opt.fd);
@@ -522,8 +524,6 @@ static void GlobalRdmaInitializeOrDieImpl() {
         LOG(WARNING) << "Fail to create socket to get async event of RDMA";
         ExitWithError();
     }
-
-    atexit(GlobalRelease);
 
     g_mem_alloc = butil::iobuf::blockmem_allocate;
     g_mem_dealloc = butil::iobuf::blockmem_deallocate;
