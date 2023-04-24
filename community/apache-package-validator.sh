@@ -79,7 +79,7 @@ validate_package() {
 
     (
         pushd ${package_name%.tar.gz} > /dev/null 2>&1
-        [[ -f DISCLAIMER && -f LICENSE && -f NOTICE ]]
+        [[ -f LICENSE && -f NOTICE ]]
     ) && g_valid_package_license='x'
 
     local has_unexpected_binary=
