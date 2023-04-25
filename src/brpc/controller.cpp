@@ -652,6 +652,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         response_attachment().clear();
         return IssueRPC(butil::gettimeofday_us());
     } else if (saved_error == EMOVED) {
+        //todo set real serverid....
         _current_call.OnComplete(this, _error_code, info.responded, false);
         return IssueRPC(butil::gettimeofday_us());
     }
