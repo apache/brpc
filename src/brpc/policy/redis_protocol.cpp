@@ -253,6 +253,35 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
     return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
 }
 
+static bool GetEndPoint(const char* moved_error, butil::EndPoint *out) {
+    int space_count = 0;
+    char ip[256];
+    int port;
+
+    for (int i = 0; moved_error[i] != '\0'; ++i) {
+        if (moved_error[i] == ' ') {
+            space_count++;
+            while (moved_error[i + 1] == ' ') {
+                i++;
+            }
+        }
+
+        if (space_count == 2) {
+            int ip_end = 0;
+            int j = 0;
+            for (j = 0; moved_error[i + 1 + j] != ':'; ++j) {
+                ip[j] = moved_error[i + 1 + j];
+            }
+            ip[j] = '\0';
+            ip_end = i + 1 + j;
+
+            sscanf(moved_error + ip_end + 1, "%d", &port);
+            break;
+        }
+    }
+    return butil::str2endpoint(ip, port, out) == 0 || butil::hostname2endpoint(ip, port, out);
+}
+
 void ProcessRedisResponse(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<InputResponse> msg(static_cast<InputResponse*>(msg_base));
@@ -274,7 +303,20 @@ void ProcessRedisResponse(InputMessageBase* msg_base) {
         span->set_response_size(msg->response.ByteSize());
         span->set_start_parse_us(start_parse_us);
     }
-    const int saved_error = cntl->ErrorCode();
+    int saved_error = cntl->ErrorCode();
+
+    while (msg->response.reply(0).is_error()) {
+        if (0 != std::strncmp(msg->response.reply(0).error_message(), "MOVED", 5)) {
+            break;
+        }
+        butil::EndPoint end_point;
+        if (!GetEndPoint(msg->response.reply(0).error_message(), &end_point)) {
+            break;
+        }
+        saved_error = EMOVED;
+        break;
+    }
+
     if (cntl->response() != NULL) {
         if (cntl->response()->GetDescriptor() != RedisResponse::descriptor()) {
             cntl->SetFailed(ERESPONSE, "Must be RedisResponse");

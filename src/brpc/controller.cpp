@@ -29,7 +29,6 @@
 #include "bthread/unstable.h"
 #include "bvar/bvar.h"
 #include "brpc/socket.h"
-#include "brpc/socket_map.h"
 #include "brpc/channel.h"
 #include "brpc/load_balancer.h"
 #include "brpc/closure_guard.h"
@@ -651,6 +650,9 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
             _http_response->Clear();
         }
         response_attachment().clear();
+        return IssueRPC(butil::gettimeofday_us());
+    } else if (saved_error == EMOVED) {
+        _current_call.OnComplete(this, _error_code, info.responded, false);
         return IssueRPC(butil::gettimeofday_us());
     }
 

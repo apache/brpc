@@ -25,11 +25,13 @@
 #include <butil/logging.h>
 #include <brpc/channel.h>
 #include <brpc/redis.h>
+#include <brpc/policy/redis_authenticator.h>
 
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "127.0.0.1:6379", "IP Address of server");
 DEFINE_int32(timeout_ms, 1000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_string(auth, "", "auth...");
 
 namespace brpc {
 const char* logo();
@@ -89,6 +91,10 @@ int main(int argc, char* argv[]) {
     options.connection_type = FLAGS_connection_type;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
+    if (!FLAGS_auth.empty()) {
+        brpc::policy::RedisAuthenticator* auth = new brpc::policy::RedisAuthenticator(FLAGS_auth);
+        options.auth = auth;
+    }
     if (channel.Init(FLAGS_server.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;

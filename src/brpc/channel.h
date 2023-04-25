@@ -32,6 +32,7 @@
 #include "brpc/adaptive_connection_type.h"  // AdaptiveConnectionType
 #include "brpc/socket_id.h"                 // SocketId
 #include "brpc/controller.h"                // brpc::Controller
+#include "brpc/socket_map.h"                         // SocketMapInsert
 #include "brpc/details/profiler_linker.h"
 #include "brpc/retry_policy.h"
 #include "brpc/naming_service_filter.h"
@@ -233,6 +234,7 @@ protected:
     // the RPC above has finished
     butil::intrusive_ptr<SharedLoadBalancer> _lb;
     ChannelOptions _options;
+    ChannelSignature _sig;
     int _preferred_index;
 };
 

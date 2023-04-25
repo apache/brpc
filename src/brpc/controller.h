@@ -43,6 +43,7 @@
 #include "brpc/callback.h"
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
+#include "brpc/socket_map.h"
 #include "brpc/grpc.h"
 #include "brpc/kvmap.h"
 
@@ -774,6 +775,7 @@ private:
     RPCSender* _sender;
     uint64_t _request_code;
     SocketId _single_server_id;
+    ChannelSignature _sig;
     butil::intrusive_ptr<SharedLoadBalancer> _lb;
 
     // for passing parameters to created bthread, don't modify it otherwhere.
