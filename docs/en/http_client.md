@@ -186,6 +186,8 @@ Turn on [-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose) so that t
 
 When server returns a non-2xx HTTP status code, the HTTP RPC is considered to be failed and `cntl->ErrorCode()` at client-side is set to `EHTTP`, users can check `cntl-> http_response().status_code()` for more specific HTTP error. In addition, server can put html or json describing the error into `cntl->response_attachment()` which is sent back to the client as http body.
 
+If client-side wants to get the real `ErrorCode` returned by the bRPC server when the HTTP RPC fails, instead of `EHTTP`, you need to set GFlag`-use_http_error_code=true`.
+
 # Compress Request Body
 
 `Controller::set_request_compress_type(brpc::COMPRESS_TYPE_GZIP)` makes framework try to gzip the HTTP body. "try to" means the compression may not happen, because:
