@@ -200,14 +200,18 @@ Version:	1.0.0
 ```
 
 ### 4. 创建发布 tag
-
+```bash
+export BRPCVERSION=1.0.0
+export BRPCBRANCH=1.0
+export BRPCUSERNAME=lorinlee
+```
 拉取发布分支，创建并推送 tag
 ```bash
-git clone -b release-1.0 git@github.com:apache/brpc.git ~/brpc
+git clone -b release-$BRPCBRANCH git@github.com:apache/brpc.git ~/brpc
 
 cd ~/brpc
 
-git tag -a 1.0.0 -m "release 1.0.0"
+git tag -a $BRPCVERSION -m "release $BRPCVERSION"
 
 git push origin --tags
 ```
@@ -215,27 +219,27 @@ git push origin --tags
 ### 5. 打包发布包
 
 ```bash
-git archive --format=tar 1.0.0 --prefix=apache-brpc-1.0.0-src/ | gzip > apache-brpc-1.0.0-src.tar.gz
+git archive --format=tar $BRPCVERSION --prefix=apache-brpc-$BRPCVERSION-src/ | gzip > apache-brpc-$BRPCVERSION-src.tar.gz
 ```
 或
 ```bash
-git archive --format=tar.gz 1.0.0 --prefix=apache-brpc-1.0.0-src/ --output=apache-brpc-1.0.0-src.tar.gz
+git archive --format=tar.gz $BRPCVERSION --prefix=apache-brpc-$BRPCVERSION-src/ --output=apache-brpc-$BRPCVERSION-src.tar.gz
 ```
 
 ### 6. 生成签名文件
 
 ```bash
-gpg -u lorinlee@apache.org --armor --output apache-brpc-1.0.0-src.tar.gz.asc --detach-sign apache-brpc-1.0.0-src.tar.gz
+gpg -u $BRPCUSERNAME@apache.org --armor --output apache-brpc-$BRPCVERSION-src.tar.gz.asc --detach-sign apache-brpc-$BRPCVERSION-src.tar.gz
 
-gpg --verify apache-brpc-1.0.0-src.tar.gz.asc apache-brpc-1.0.0-src.tar.gz
+gpg --verify apache-brpc-$BRPCVERSION-src.tar.gz.asc apache-brpc-$BRPCVERSION-src.tar.gz
 ```
 
 ### 7. 生成哈希文件
 
 ```bash
-sha512sum apache-brpc-1.0.0-src.tar.gz > apache-brpc-1.0.0-src.tar.gz.sha512
+sha512sum apache-brpc-$BRPCVERSION-src.tar.gz > apache-brpc-$BRPCVERSION-src.tar.gz.sha512
 
-sha512sum --check apache-brpc-1.0.0-src.tar.gz.sha512
+sha512sum --check apache-brpc-$BRPCVERSION-src.tar.gz.sha512
 ```
 
 ## 发布至 Apache SVN 仓库
@@ -249,7 +253,7 @@ mkdir -p ~/brpc_svn/dev/
 
 cd ~/brpc_svn/dev/
 
-svn --username=lorinlee co https://dist.apache.org/repos/dist/dev/brpc/
+svn --username=$BRPCUSERNAME co https://dist.apache.org/repos/dist/dev/brpc/
 
 cd ~/brpc_svn/dev/brpc
 ```
@@ -258,31 +262,31 @@ cd ~/brpc_svn/dev/brpc
 
 仅第一次部署的账号需要添加，只要 KEYS 中包含已经部署过的账户的公钥即可。
 
-```
-(gpg --list-sigs lorinlee && gpg -a --export lorinlee) >> KEYS
+```bash
+(gpg --list-sigs $BRPCUSERNAME && gpg -a --export $BRPCUSERNAME) >> KEYS
 ```
 
 注意：当有多个名相同的 key 时，可以指定完整邮件地址或者公钥来导出指定的公钥信息。如：
-```
-(gpg --list-sigs lorinlee@apache.org && gpg -a --export lorinlee@apache.org) >> KEYS
+```bash
+(gpg --list-sigs $BRPCUSERNAME@apache.org && gpg -a --export $BRPCUSERNAME@apache.org) >> KEYS
 ```
 或：
-```
+```bash
 (gpg --list-sigs C30F211F071894258497F46392E18A11B6585834 && gpg -a --export C30F211F071894258497F46392E18A11B6585834) >> KEYS
 ```
 
 ### 3. 将待发布的代码包添加至 SVN 目录
 
 ```bash
-mkdir -p ~/brpc_svn/dev/brpc/1.0.0
+mkdir -p ~/brpc_svn/dev/brpc/$BRPCVERSION
 
-cd ~/brpc_svn/dev/brpc/1.0.0
+cd ~/brpc_svn/dev/brpc/$BRPCVERSION
 
-cp ~/brpc/apache-brpc-1.0.0-src.tar.gz ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz ~/brpc_svn/dev/brpc/$BRPCVERSION
 
-cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.asc ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz.asc ~/brpc_svn/dev/brpc/$BRPCVERSION
 
-cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/$BRPCVERSION
 ```
 
 ### 4. 提交 SVN
@@ -294,17 +298,17 @@ cd ~/brpc_svn/dev/brpc
 
 svn add *
 
-svn --username=lorinlee commit -m "release 1.0.0"
+svn --username=$BRPCUSERNAME commit -m "release $BRPCVERSION"
 ```
 
 ## 检查发布结果
 ```bash
-cd ~/brpc_svn/dev/brpc/1.0.0
+cd ~/brpc_svn/dev/brpc/$BRPCVERSION
 ```
 ### 1. 检查 sha512 哈希
 
 ```bash
-sha512sum --check apache-brpc-1.0.0-src.tar.gz.sha512
+sha512sum --check apache-brpc-$BRPCVERSION-src.tar.gz.sha512
 ```
 
 ### 2. 检查 GPG 签名
@@ -319,7 +323,7 @@ gpg --import KEYS
 
 设置信任该用户的签名，执行以下命令，填写发布人的用户名
 ```bash
-gpg --edit-key lorinlee
+gpg --edit-key $BRPCUSERNAME
 ```
 
 输出为
@@ -349,8 +353,8 @@ gpg> save
 ```
 
 然后进行 gpg 签名检查。
-```
-gpg --verify apache-brpc-1.0.0-src.tar.gz.asc apache-brpc-1.0.0-src.tar.gz
+```bash
+gpg --verify apache-brpc-$BRPCVERSION-src.tar.gz.asc apache-brpc-$BRPCVERSION-src.tar.gz
 ```
 
 ### 3. 检查发布内容
@@ -358,13 +362,13 @@ gpg --verify apache-brpc-1.0.0-src.tar.gz.asc apache-brpc-1.0.0-src.tar.gz
 #### 1. 对比源码包与 github 上的 tag 内容差异
 
 ```bash
-curl -Lo tag-1.0.0.tar.gz https://github.com/apache/brpc/archive/refs/tags/1.0.0.tar.gz
+curl -Lo tag-$BRPCVERSION.tar.gz https://github.com/apache/brpc/archive/refs/tags/$BRPCVERSION.tar.gz
 
-tar xvzf tag-1.0.0.tar.gz
+tar xvzf tag-$BRPCVERSION.tar.gz
 
-tar xvzf apache-brpc-1.0.0-src.tar.gz
+tar xvzf apache-brpc-$BRPCVERSION-src.tar.gz
 
-diff -r brpc-1.0.0 apache-brpc-1.0.0-src
+diff -r brpc-$BRPCVERSION apache-brpc-$BRPCVERSION-src
 ```
 
 #### 2. 检查源码包的文件内容
@@ -489,8 +493,8 @@ LorinLee
 
 注意：该过程需要 PMC 成员进行，投票通过后可以联系 PMC 成员进行相关操作，首次发版的成员还需要更新公钥信息 KEYS。
 
-```
-svn mv https://dist.apache.org/repos/dist/dev/brpc/1.0.0 https://dist.apache.org/repos/dist/release/brpc/1.0.0 -m "release brpc 1.0.0"
+```bash
+svn mv https://dist.apache.org/repos/dist/dev/brpc/$BRPCVERSION https://dist.apache.org/repos/dist/release/brpc/$BRPCVERSION -m "release brpc $BRPCVERSION"
 ```
 
 ### 2. 创建 GitHub 版本发布页
