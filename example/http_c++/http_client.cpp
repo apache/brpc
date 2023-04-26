@@ -56,7 +56,7 @@ int main(int argc, char* argv[]) {
 
     // Initialize the channel, NULL means using default options. 
     // options, see `brpc/channel.h'.
-    if (channel.Init(url, FLAGS_load_balancer.c_str(), &options) != 0) {
+    if (channel.Init(url, "", &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;
     }

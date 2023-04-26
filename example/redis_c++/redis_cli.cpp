@@ -23,6 +23,7 @@
 #include <readline/history.h>
 #include <gflags/gflags.h>
 #include <butil/logging.h>
+#include <butil/redis_cluster_slot.h>
 #include <brpc/channel.h>
 #include <brpc/redis.h>
 #include <brpc/policy/redis_authenticator.h>
@@ -32,9 +33,26 @@ DEFINE_string(server, "127.0.0.1:6379", "IP Address of server");
 DEFINE_int32(timeout_ms, 1000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_string(auth, "", "auth...");
+DEFINE_uint64(request_code, 0, "request code");
 
 namespace brpc {
 const char* logo();
+}
+
+static std::string extractSecondWord(const std::string &str) {
+    std::istringstream iss(str);
+    std::vector<std::string> words;
+    std::string word;
+
+    while (iss >> word) {
+        words.push_back(word);
+    }
+
+    if (words.size() >= 2) {
+        return words[1];
+    } else {
+        return "";
+    }
 }
 
 // Send `command' to redis-server via `channel'
@@ -46,6 +64,7 @@ static bool access_redis(brpc::Channel& channel, const char* command) {
     }
     brpc::RedisResponse response;
     brpc::Controller cntl;
+    cntl.set_request_code(butil::cal_slot_num(extractSecondWord(command)));
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to access redis, " << cntl.ErrorText();
@@ -95,7 +114,7 @@ int main(int argc, char* argv[]) {
         brpc::policy::RedisAuthenticator* auth = new brpc::policy::RedisAuthenticator(FLAGS_auth);
         options.auth = auth;
     }
-    if (channel.Init(FLAGS_server.c_str(), &options) != 0) {
+    if (channel.Init(FLAGS_server.c_str(), "c_redis_cluster", &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;
     }

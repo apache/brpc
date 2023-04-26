@@ -36,9 +36,10 @@ enum ConsistentHashingLoadBalancerType {
     CONS_HASH_LB_MURMUR3 = 0,
     CONS_HASH_LB_MD5 = 1,
     CONS_HASH_LB_KETAMA = 2,
+    CONS_HASH_LB_REDIS_CLUSTER = 3,
 
     // Identify the last one.
-    CONS_HASH_LB_LAST = 3
+    CONS_HASH_LB_LAST = 4
 };
 
 class ConsistentHashingLoadBalancer : public LoadBalancer {

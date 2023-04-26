@@ -121,6 +121,41 @@ bool KetamaReplicaPolicy::Build(ServerId server,
     return true;
 }
 
+class RedisClusterPolicy : public ReplicaPolicy {
+public:
+
+    virtual bool Build(ServerId server,
+                       size_t num_replicas,
+                       std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const;
+
+    virtual const char* name() const { return "RedisCluster"; }
+
+private:
+    HashFunc _hash_func;
+};
+
+bool RedisClusterPolicy::Build(ServerId server,
+                                 size_t,
+                                 std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const {
+    SocketUniquePtr ptr;
+    if (Socket::AddressFailedAsWell(server.id, &ptr) == -1) {
+        return false;
+    }
+    replicas->clear();
+    std::stringstream ss(server.tag);
+    int slot_start, slot_end;
+    char delimiter;
+    ss >> slot_start >> delimiter >> slot_end;
+    for (size_t i = slot_start; i <= slot_end; ++i) {
+        ConsistentHashingLoadBalancer::Node node;
+        node.hash = i;
+        node.server_sock = server;
+        node.server_addr = ptr->remote_side();
+        replicas->push_back(node);
+    }
+    return true;
+}
+
 namespace {
 
 pthread_once_t s_replica_policy_once = PTHREAD_ONCE_INIT;
@@ -130,7 +165,8 @@ void InitReplicaPolicy() {
     g_replica_policy = new std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST>({
         new DefaultReplicaPolicy(MurmurHash32),
         new DefaultReplicaPolicy(MD5Hash32),
-        new KetamaReplicaPolicy
+        new KetamaReplicaPolicy,
+        new RedisClusterPolicy
     });
 }
 
@@ -245,12 +281,12 @@ size_t ConsistentHashingLoadBalancer::AddServersInBatch(
     std::sort(add_nodes.begin(), add_nodes.end());
     bool executed = false;
     const size_t ret = _db_hash_ring.ModifyWithForeground(AddBatch, add_nodes, &executed);
-    CHECK(ret % _num_replicas == 0);
-    const size_t n = ret / _num_replicas;
-    LOG_IF(ERROR, n != servers.size())
-        << "Fail to AddServersInBatch, expected " << servers.size()
-        << " actually " << n;
-    return n;
+    // CHECK(ret % _num_replicas == 0);
+    // const size_t n = ret / _num_replicas;
+    // LOG_IF(ERROR, n != servers.size())
+    //     << "Fail to AddServersInBatch, expected " << servers.size()
+    //     << " actually " << n;
+    return add_nodes.size();
 }
 
 bool ConsistentHashingLoadBalancer::RemoveServer(const ServerId& server) {

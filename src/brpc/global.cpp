@@ -39,6 +39,7 @@
 #include "brpc/policy/consul_naming_service.h"
 #include "brpc/policy/discovery_naming_service.h"
 #include "brpc/policy/nacos_naming_service.h"
+#include "brpc/policy/redis_cluster_naming_service.h"
 
 // Load Balancers
 #include "brpc/policy/round_robin_load_balancer.h"
@@ -123,6 +124,7 @@ struct GlobalExtensions {
         , ch_mh_lb(CONS_HASH_LB_MURMUR3)
         , ch_md5_lb(CONS_HASH_LB_MD5)
         , ch_ketama_lb(CONS_HASH_LB_KETAMA)
+        , ch_redis_cluster_lb(CONS_HASH_LB_REDIS_CLUSTER)
         , constant_cl(0) {
     }
     
@@ -138,6 +140,7 @@ struct GlobalExtensions {
     ConsulNamingService cns;
     DiscoveryNamingService dcns;
     NacosNamingService nns;
+    RedisClusterNamingService rcns;
 
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
@@ -147,6 +150,7 @@ struct GlobalExtensions {
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
     ConsistentHashingLoadBalancer ch_ketama_lb;
+    ConsistentHashingLoadBalancer ch_redis_cluster_lb;
     DynPartLoadBalancer dynpart_lb;
 
     AutoConcurrencyLimiter auto_cl;
@@ -363,6 +367,7 @@ static void GlobalInitializeOrDieImpl() {
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
     NamingServiceExtension()->RegisterOrDie("discovery", &g_ext->dcns);
     NamingServiceExtension()->RegisterOrDie("nacos", &g_ext->nns);
+    NamingServiceExtension()->RegisterOrDie("redis_cluster", &g_ext->rcns);
 
     // Load Balancers
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
@@ -373,6 +378,7 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("c_murmurhash", &g_ext->ch_mh_lb);
     LoadBalancerExtension()->RegisterOrDie("c_md5", &g_ext->ch_md5_lb);
     LoadBalancerExtension()->RegisterOrDie("c_ketama", &g_ext->ch_ketama_lb);
+    LoadBalancerExtension()->RegisterOrDie("c_redis_cluster", &g_ext->ch_redis_cluster_lb);
     LoadBalancerExtension()->RegisterOrDie("_dynpart", &g_ext->dynpart_lb);
 
     // Compress Handlers

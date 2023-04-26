@@ -100,6 +100,14 @@ int SocketMapFind(const SocketMapKey& key, SocketId* id) {
     return -1;
 }
 
+int SocketMapFind(const butil::EndPoint& key, SocketId* id) {
+    SocketMap* m = get_client_side_socket_map();
+    if (m) {
+        return m->Find(key, id);
+    }
+    return -1;
+}
+
 void SocketMapRemove(const SocketMapKey& key) {
     SocketMap* m = get_client_side_socket_map();
     if (m) {
@@ -184,6 +192,10 @@ int SocketMap::Init(const SocketMapOptions& options) {
         LOG(ERROR) << "Fail to init _map";
         return -1;
     }
+    if (_point_sock_map.init(_options.suggested_map_size, 70) != 0) {
+        LOG(ERROR) << "Fail to init _point_sock_map";
+        return -1;
+    }
     if (_options.idle_timeout_second_dynamic != NULL ||
         _options.idle_timeout_second > 0) {
         if (bthread_start_background(&_close_idle_thread, NULL,
@@ -230,6 +242,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
         // removing and inserting it again. But this would make error branches
         // below have to remove the entry before returning, which is
         // error-prone. We prefer code maintainability here.
+        _point_sock_map.erase(key.peer.addr);
         sc = NULL;
     }
     SocketId tmp_id;
@@ -252,6 +265,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     ptr->SetHCRelatedRefHeld(); // set held status
     SingleConnection new_sc = { 1, ptr.release(), 0 };
     _map[key] = new_sc;
+    _point_sock_map[key.peer.addr] = tmp_id;
     *id = tmp_id;
     bool need_to_create_bvar = false;
     if (FLAGS_show_socketmap_in_vars && !_exposed_in_bvar) {
@@ -295,6 +309,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
         } else {
             Socket* const s = sc->socket;
             _map.erase(key);
+            _point_sock_map.erase(key.peer.addr);
             bool need_to_create_bvar = false;
             if (FLAGS_show_socketmap_in_vars && !_exposed_in_bvar) {
                 _exposed_in_bvar = true;
@@ -319,6 +334,16 @@ int SocketMap::Find(const SocketMapKey& key, SocketId* id) {
     SingleConnection* sc = _map.seek(key);
     if (sc) {
         *id = sc->socket->id();
+        return 0;
+    }
+    return -1;
+}
+
+int SocketMap::Find(const butil::EndPoint& key, SocketId* id) {
+    BAIDU_SCOPED_LOCK(_mutex);
+    SocketId* sc = _point_sock_map.seek(key);
+    if (sc) {
+        *id = *sc;
         return 0;
     }
     return -1;
