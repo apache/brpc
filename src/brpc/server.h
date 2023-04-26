@@ -41,6 +41,7 @@
 #include "brpc/adaptive_max_concurrency.h"
 #include "brpc/http2.h"
 #include "brpc/redis.h"
+#include "brpc/interceptor.h"
 
 namespace brpc {
 
@@ -90,6 +91,15 @@ struct ServerOptions {
     // true:  `auth' is owned by server and will be deleted when server is destructed.
     // Default: false
     bool server_owns_auth;
+
+    // Turn on request interception  if `interceptor' is not NULL.
+    // Default: NULL
+    const Interceptor* interceptor;
+
+    // false: `interceptor' is not owned by server and must be valid when server is running.
+    // true:  `interceptor' is owned by server and will be deleted when server is destructed.
+    // Default: false
+    bool server_owns_interceptor;
 
     // Number of pthreads that server runs on. Notice that this is just a hint,
     // you can't assume that the server uses exactly so many pthreads because
@@ -550,6 +560,9 @@ public:
     int Concurrency() const {
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
+
+    // Returns true if accept request, reject request otherwise.
+    bool AcceptRequest(Controller* cntl) const;
 
 private:
 friend class StatusService;

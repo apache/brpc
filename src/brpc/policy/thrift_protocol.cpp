@@ -540,6 +540,10 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
                 " -usercode_in_pthread is on");
     }
 
+    if (!server->AcceptRequest(cntl)) {
+        return;
+    }
+
     msg.reset();  // optional, just release resource ASAP
 
     if (span) {
