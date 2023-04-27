@@ -17,8 +17,8 @@
 
 // Date: Mon Sep 22 22:23:13 CST 2014
 
-#ifndef BUTIL_DOUBLY_BUFFERED_DATA_H
-#define BUTIL_DOUBLY_BUFFERED_DATA_H
+#ifndef BUTIL_DOUBLY_BUFFERED_DATA_BTHREAD_H
+#define BUTIL_DOUBLY_BUFFERED_DATA_BTHREAD_H
 
 #include <deque>
 #include <vector>                                       // std::vector
@@ -35,57 +35,58 @@
 
 namespace butil {
 
-// This data structure makes Read() almost lock-free by making Modify()
-// *much* slower. It's very suitable for implementing LoadBalancers which
-// have a lot of concurrent read-only ops from many threads and occasional
-// modifications of data. As a side effect, this data structure can store
-// a thread-local data for user.
+// Compared to DoublyBufferedData, DoublyBufferedDataBthread allows to
+// bthread is suspended when executing query logic.
+// If bthread will not be suspended in the query logic, DoublyBufferedDataBthread
+// also makes Read() almost lock-free by making Modify() *much* slower.
+// If bthread will be suspended in the query logic, there is competition among
+// bthreads using the same Wrapper.
 //
-// Read(): begin with a thread-local mutex locked then read the foreground
-// instance which will not be changed before the mutex is unlocked. Since the
-// mutex is only locked by Modify() with an empty critical section, the
-// function is almost lock-free.
+// Read(): begin with thread-local reference count of foreground instance
+// incremented by one which be protected by a thread-local mutex, then read
+// the foreground instance which will not be changed before its all thread-local
+// reference count become zero. At last, after the query completes, thread-local
+// reference count of foreground instance will be decremented by one, and if
+// it becomes zero, notifies Modify().
 //
 // Modify(): Modify background instance which is not used by any Read(), flip
-// foreground and background, lock thread-local mutexes one by one to make
-// sure all existing Read() finish and later Read() see new foreground,
-// then modify background(foreground before flip) again.
+// foreground and background, lock thread-local mutexes one by one and wait
+// until thread-local reference counts which be protected by a thread-local
+// mutex become 0 to make sure all existing Read() finish and later Read()
+// see new foreground, then modify background(foreground before flip) again.
 
-class Void { };
-
-template <typename T, typename TLS = Void>
-class DoublyBufferedData {
-    friend class internal::WrapperTLSGroup<DoublyBufferedData>;
+template <typename T>
+class DoublyBufferedDataBthread {
+    friend class internal::WrapperTLSGroup<DoublyBufferedDataBthread>;
     class Wrapper;
 public:
     typedef T DataType;
 
     class ScopedPtr {
-    friend class DoublyBufferedData;
+        friend class DoublyBufferedDataBthread;
     public:
-        ScopedPtr() : _data(NULL), _w(NULL) {}
+        ScopedPtr() : _data(NULL), _index(0), _w(NULL) {}
         ~ScopedPtr() {
             if (_w) {
-                _w->EndRead();
+                _w->EndRead(_index);
             }
         }
         const T* get() const { return _data; }
         const T& operator*() const { return *_data; }
         const T* operator->() const { return _data; }
-        TLS& tls() { return _w->user_tls(); }
-        
+
     private:
         DISALLOW_COPY_AND_ASSIGN(ScopedPtr);
         const T* _data;
+        int _index;
         Wrapper* _w;
     };
     
-    DoublyBufferedData();
-    ~DoublyBufferedData();
+    DoublyBufferedDataBthread();
+    ~DoublyBufferedDataBthread();
 
     // Put foreground instance into ptr. The instance will not be changed until
     // ptr is destructed.
-    // This function is not blocked by Read() and Modify() in other threads.
     // Returns 0 on success, -1 otherwise.
     int Read(ScopedPtr* ptr);
 
@@ -108,8 +109,12 @@ public:
     size_t ModifyWithForeground(Fn& fn, const Arg1&, const Arg2&);
     
 private:
-    const T* UnsafeRead() const
-    { return _data + _index.load(butil::memory_order_acquire); }
+
+    const T* UnsafeRead(int& index) const {
+        index = _index.load(butil::memory_order_acquire);
+        return _data + index;
+    }
+
     Wrapper* AddWrapper(Wrapper*);
     void RemoveWrapper(Wrapper*);
 
@@ -132,60 +137,108 @@ private:
     pthread_mutex_t _modify_mutex{};
 };
 
-static const pthread_key_t INVALID_PTHREAD_KEY = (pthread_key_t)-1;
-
-template <typename T, typename TLS>
-class DoublyBufferedDataWrapperBase {
-public:
-    TLS& user_tls() { return _user_tls; }
-protected:
-    TLS _user_tls;
-};
-
 template <typename T>
-class DoublyBufferedDataWrapperBase<T, Void> {
-};
-
-template <typename T, typename TLS>
-class DoublyBufferedData<T, TLS>::Wrapper
-    : public DoublyBufferedDataWrapperBase<T, TLS> {
-friend class DoublyBufferedData;
+class DoublyBufferedDataBthread<T>::Wrapper {
+friend class DoublyBufferedDataBthread;
 public:
-    explicit Wrapper() : _control(NULL) {
+    explicit Wrapper()
+            : _control(NULL)
+            , _ref0(0)
+            , _ref1(0)
+            , _modify_wait(false) {
         pthread_mutex_init(&_mutex, NULL);
+        pthread_cond_init(&_cond0, NULL);
+        pthread_cond_init(&_cond1, NULL);
     }
-    
+
     ~Wrapper() {
         if (_control != NULL) {
             _control->RemoveWrapper(this);
         }
+
+        WaitReadDone(0);
+        WaitReadDone(1);
+
         pthread_mutex_destroy(&_mutex);
+        pthread_cond_destroy(&_cond0);
+        pthread_cond_destroy(&_cond1);
     }
 
-    // _mutex will be locked by the calling pthread and DoublyBufferedData.
+    // _mutex will be locked by the calling pthread and DoublyBufferedDataBthread.
     // Most of the time, no modifications are done, so the mutex is
     // uncontended and fast.
     inline void BeginRead() {
         pthread_mutex_lock(&_mutex);
     }
 
-    inline void EndRead() {
+    // _mutex will be unlocked by the calling pthread and DoublyBufferedDataBthread.
+    inline void BeginReadRelease() {
         pthread_mutex_unlock(&_mutex);
     }
 
-    inline void WaitReadDone() {
+    // Thread-local reference count which be protected by _mutex
+    // will be decremented by one.
+    inline void EndRead(int index) {
         BAIDU_SCOPED_LOCK(_mutex);
+        SubRef(index);
+        SignalReadCond(index);
     }
-    
+
+    inline void WaitReadDone(int index) {
+        BAIDU_SCOPED_LOCK(_mutex);
+        if (index != 0 && index != 1) {
+            return;
+        }
+        int& ref = index == 0 ? _ref0 : _ref1;
+        while (ref != 0) {
+            _modify_wait = true;
+            if (index == 0) {
+              pthread_cond_wait(&_cond0, &_mutex);
+            } else if (index == 1) {
+              pthread_cond_wait(&_cond1, &_mutex);
+            }
+        }
+        _modify_wait = false;
+    }
+
+    inline void SignalReadCond(int index) {
+        if (index == 0 && _ref0 == 0) {
+            pthread_cond_signal(&_cond0);
+        } else if (index == 1 && _ref1 == 0) {
+            pthread_cond_signal(&_cond1);
+        }
+    }
+
+    void AddRef(int index) {
+        if (index == 0) {
+            ++_ref0;
+        } else {
+            ++_ref1;
+        }
+    }
+
+    void SubRef(int index) {
+        if (index == 0) {
+            --_ref0;
+        } else {
+            --_ref1;
+        }
+    }
+
 private:
-    DoublyBufferedData* _control;
+    DoublyBufferedDataBthread* _control;
     pthread_mutex_t _mutex{};
+    pthread_cond_t _cond0{}; // Cond for _ref0.
+    pthread_cond_t _cond1{}; // Cond for _ref1.
+    int _ref0;               // Reference count for _data[0].
+    int _ref1;               // Reference count for _data[1].
+    bool _modify_wait;       // Whether there is a Modify() waiting for _ref0/_ref1.
 };
 
 // Called when thread initializes thread-local wrapper.
-template <typename T, typename TLS>
-typename DoublyBufferedData<T, TLS>::Wrapper* DoublyBufferedData<T, TLS>::AddWrapper(
-        typename DoublyBufferedData<T, TLS>::Wrapper* w) {
+template <typename T>
+typename DoublyBufferedDataBthread<T>::Wrapper* DoublyBufferedDataBthread<T>::AddWrapper(
+        typename DoublyBufferedDataBthread<T>::Wrapper* w) {
     if (NULL == w) {
         return NULL;
     }
@@ -207,9 +260,9 @@ typename DoublyBufferedData<T, TLS>::Wrapper* DoublyBufferedData<T, TLS>::AddWra
 }
 
 // Called when thread quits.
-template <typename T, typename TLS>
-void DoublyBufferedData<T, TLS>::RemoveWrapper(
-    typename DoublyBufferedData<T, TLS>::Wrapper* w) {
+template <typename T>
+void DoublyBufferedDataBthread<T>::RemoveWrapper(
+    typename DoublyBufferedDataBthread<T>::Wrapper* w) {
     if (NULL == w) {
         return;
     }
@@ -223,14 +276,14 @@ void DoublyBufferedData<T, TLS>::RemoveWrapper(
     }
 }
 
-template <typename T, typename TLS>
-DoublyBufferedData<T, TLS>::DoublyBufferedData()
+template <typename T>
+DoublyBufferedDataBthread<T>::DoublyBufferedDataBthread()
     : _index(0)
     , _wrapper_key(0) {
     _wrappers.reserve(64);
     pthread_mutex_init(&_modify_mutex, NULL);
     pthread_mutex_init(&_wrappers_mutex, NULL);
-    _wrapper_key = internal::WrapperTLSGroup<DoublyBufferedData>::key_create();
+    _wrapper_key = internal::WrapperTLSGroup<DoublyBufferedDataBthread<T>>::key_create();
     // Initialize _data for some POD types. This is essential for pointer
     // types because they should be Read() as NULL before any Modify().
     if (is_integral<T>::value || is_floating_point<T>::value ||
@@ -240,8 +293,8 @@ DoublyBufferedData<T, TLS>::DoublyBufferedData()
     }
 }
 
-template <typename T, typename TLS>
-DoublyBufferedData<T, TLS>::~DoublyBufferedData() {
+template <typename T>
+DoublyBufferedDataBthread<T>::~DoublyBufferedDataBthread() {
     // User is responsible for synchronizations between Read()/Modify() and
     // this function.
     
@@ -252,30 +305,34 @@ DoublyBufferedData<T, TLS>::~DoublyBufferedData() {
         }
         _wrappers.clear();
     }
-    internal::WrapperTLSGroup<DoublyBufferedData>::key_delete(_wrapper_key);
+    internal::WrapperTLSGroup<DoublyBufferedDataBthread<T>>::key_delete(_wrapper_key);
     _wrapper_key = -1;
     pthread_mutex_destroy(&_modify_mutex);
     pthread_mutex_destroy(&_wrappers_mutex);
 }
 
-template <typename T, typename TLS>
-int DoublyBufferedData<T, TLS>::Read(
-    typename DoublyBufferedData<T, TLS>::ScopedPtr* ptr) {
-    Wrapper* p = internal::WrapperTLSGroup<DoublyBufferedData>::
+template <typename T>
+int DoublyBufferedDataBthread<T>::Read(
+    typename DoublyBufferedDataBthread<T>::ScopedPtr* ptr) {
+    Wrapper* p = internal::WrapperTLSGroup<DoublyBufferedDataBthread>::
         get_or_create_tls_data(_wrapper_key);
     Wrapper* w = AddWrapper(p);
     if (BAIDU_LIKELY(w != NULL)) {
         w->BeginRead();
-        ptr->_data = UnsafeRead();
+        int index = -1;
+        ptr->_data = UnsafeRead(index);
+        ptr->_index = index;
+        w->AddRef(index);
         ptr->_w = w;
+        w->BeginReadRelease();
         return 0;
     }
     return -1;
 }
 
-template <typename T, typename TLS>
+template <typename T>
 template <typename Fn>
-size_t DoublyBufferedData<T, TLS>::Modify(Fn& fn) {
+size_t DoublyBufferedDataBthread<T>::Modify(Fn& fn) {
     // _modify_mutex sequences modifications. Using a separate mutex rather
     // than _wrappers_mutex is to avoid blocking threads calling
     // AddWrapper() or RemoveWrapper() too long. Most of the time, modifications
@@ -301,7 +358,7 @@ size_t DoublyBufferedData<T, TLS>::Modify(Fn& fn) {
     {
         BAIDU_SCOPED_LOCK(_wrappers_mutex);
         for (size_t i = 0; i < _wrappers.size(); ++i) {
-            _wrappers[i]->WaitReadDone();
+            _wrappers[i]->WaitReadDone(bg_index);
         }
     }
 
@@ -310,38 +367,38 @@ size_t DoublyBufferedData<T, TLS>::Modify(Fn& fn) {
     return ret2;
 }
 
-template <typename T, typename TLS>
+template <typename T>
 template <typename Fn, typename Arg1>
-size_t DoublyBufferedData<T, TLS>::Modify(Fn& fn, const Arg1& arg1) {
+size_t DoublyBufferedDataBthread<T>::Modify(Fn& fn, const Arg1& arg1) {
     internal::Closure1<T, Fn, Arg1> c(fn, arg1);
     return Modify(c);
 }
 
-template <typename T, typename TLS>
+template <typename T>
 template <typename Fn, typename Arg1, typename Arg2>
-size_t DoublyBufferedData<T, TLS>::Modify(
+size_t DoublyBufferedDataBthread<T>::Modify(
     Fn& fn, const Arg1& arg1, const Arg2& arg2) {
     internal::Closure2<T, Fn, Arg1, Arg2> c(fn, arg1, arg2);
     return Modify(c);
 }
 
-template <typename T, typename TLS>
+template <typename T>
 template <typename Fn>
-size_t DoublyBufferedData<T, TLS>::ModifyWithForeground(Fn& fn) {
+size_t DoublyBufferedDataBthread<T>::ModifyWithForeground(Fn& fn) {
     internal::WithFG0<T, Fn> c(fn, _data);
     return Modify(c);
 }
 
-template <typename T, typename TLS>
+template <typename T>
 template <typename Fn, typename Arg1>
-size_t DoublyBufferedData<T, TLS>::ModifyWithForeground(Fn& fn, const Arg1& arg1) {
+size_t DoublyBufferedDataBthread<T>::ModifyWithForeground(Fn& fn, const Arg1& arg1) {
     internal::WithFG1<T, Fn, Arg1> c(fn, _data, arg1);
     return Modify(c);
 }
 
-template <typename T, typename TLS>
+template <typename T>
 template <typename Fn, typename Arg1, typename Arg2>
-size_t DoublyBufferedData<T, TLS>::ModifyWithForeground(
+size_t DoublyBufferedDataBthread<T>::ModifyWithForeground(
     Fn& fn, const Arg1& arg1, const Arg2& arg2) {
     internal::WithFG2<T, Fn, Arg1, Arg2> c(fn, _data, arg1, arg2);
     return Modify(c);
@@ -349,4 +406,4 @@ size_t DoublyBufferedData<T, TLS>::ModifyWithForeground(
 
 }  // namespace butil
 
-#endif  // BUTIL_DOUBLY_BUFFERED_DATA_H
+#endif  // BUTIL_DOUBLY_BUFFERED_DATA_BTHREAD_H
