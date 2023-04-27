@@ -62,7 +62,8 @@ protected:
     virtual ~Sampler();
     
 friend class SamplerCollector;
-    bool _used;
+    // _used indicate whether this sampler is in using.
+    butil::atomic<bool> _used;
     // Sync destroy() and take_sample().
     butil::Mutex _mutex;
 };
