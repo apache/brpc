@@ -338,7 +338,6 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     }
     _server_address = server_addr_and_port;
     const ChannelSignature sig = ComputeChannelSignature(_options);
-    _sig = sig;
     std::shared_ptr<SocketSSLContext> ssl_ctx;
     if (CreateSocketSSLContext(_options, &ssl_ctx) != 0) {
         return -1;
@@ -382,7 +381,6 @@ int Channel::Init(const char* ns_url,
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
     ns_opt.use_rdma = _options.use_rdma;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
-    _sig = ns_opt.channel_signature;
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
         return -1;
     }
@@ -435,7 +433,6 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         }
     }
     cntl->_preferred_index = _preferred_index;
-    cntl->_sig = _sig;
     cntl->_retry_policy = _options.retry_policy;
     if (_options.enable_circuit_breaker) {
         cntl->add_flag(Controller::FLAGS_ENABLED_CIRCUIT_BREAKER);
