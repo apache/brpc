@@ -35,9 +35,6 @@ class RedisClusterNamingService : public PeriodicNamingService {
     NamingService *New() const override;
 
     void Destroy() override;
-
-  private:
-    int _default_port;
 };
 
 } // namespace policy
