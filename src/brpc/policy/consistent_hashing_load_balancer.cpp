@@ -129,9 +129,6 @@ public:
                        std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const;
 
     virtual const char* name() const { return "RedisCluster"; }
-
-private:
-    HashFunc _hash_func;
 };
 
 bool RedisClusterPolicy::Build(ServerId server,
