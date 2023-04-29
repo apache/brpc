@@ -18,10 +18,11 @@ brpc does not enable thrift support or depend on the thrift lib by default. If t
 Install thrift under Linux
 Read [Official wiki](https://thrift.apache.org/docs/install/debian) to install depended libs and tools, then download thrift source code from [official site](https://thrift.apache.org/download), uncompress and compile。
 ```bash
-wget http://www.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
-tar -xf thrift-0.11.0.tar.gz
-cd thrift-0.11.0/
-./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no
+wget https://downloads.apache.org/thrift/0.18.1/thrift-0.18.1.tar.gz
+tar -xf thrift-0.18.1.tar.gz
+cd thrift-0.18.1/
+./bootstrap.sh
+./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no --with-rs=no --with-py3=no CXXFLAGS='-Wno-error'
 make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 4 -s
 sudo make install
 ```
