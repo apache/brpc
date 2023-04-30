@@ -1608,8 +1608,8 @@ const std::string& GetHttpMethodName(
 }
 
 void HttpContext::CheckProgressiveRead(const void* arg, Socket *socket) {
-    if (arg == NULL) {
-        // indicates not in server-end
+    if (arg == NULL || !((Server *)arg)->HasProgressiveReadMethod()) {
+        // arg == NULL indicates not in server-end
         return;
     }
     const Server::MethodProperty *const sp = FindMethodPropertyByURI(

@@ -408,7 +408,8 @@ Server::Server(ProfilerLinker)
     , _keytable_pool(NULL)
     , _eps_bvar(&_nerror_bvar)
     , _concurrency(0)
-    , _concurrency_bvar(cast_no_barrier_int, &_concurrency) {
+    , _concurrency_bvar(cast_no_barrier_int, &_concurrency)
+    ,_has_progressive_read_method(false) {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
 }
@@ -1286,6 +1287,9 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         mp.params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
         mp.params.pb_single_repeated_to_array = svc_opt.pb_single_repeated_to_array;
         mp.params.enable_progressive_read = svc_opt.enable_progressive_read;
+        if (mp.params.enable_progressive_read) {
+            _has_progressive_read_method = true;
+        }
         mp.service = service;
         mp.method = md;
         mp.status = new MethodStatus;

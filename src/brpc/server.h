@@ -556,6 +556,10 @@ public:
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
 
+    bool HasProgressiveReadMethod() const {
+        return this->_has_progressive_read_method;
+    }
+
 private:
 friend class StatusService;
 friend class ProtobufsService;
@@ -706,6 +710,8 @@ friend class Controller;
     mutable bvar::PerSecond<bvar::Adder<int64_t> > _eps_bvar;
     BAIDU_CACHELINE_ALIGNMENT mutable int32_t _concurrency;
     bvar::PassiveStatus<int32_t> _concurrency_bvar;
+
+    bool _has_progressive_read_method;
 };
 
 // Get the data attached to current searching thread. The data is created by

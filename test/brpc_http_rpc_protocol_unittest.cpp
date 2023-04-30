@@ -1137,7 +1137,7 @@ TEST_F(HttpTest, server_end_read_short_body_progressively) {
 }
 
 TEST_F(HttpTest, server_end_read_failed) {
-    const int port = 8923;
+     const int port = 8923;
     brpc::ServiceOptions opt;
     opt.enable_progressive_read = true;
     opt.ownership = brpc::SERVER_DOESNT_OWN_SERVICE;
@@ -1154,7 +1154,7 @@ TEST_F(HttpTest, server_end_read_failed) {
     cntl.http_request().uri() = "/UploadService/UploadFailed";
     cntl.http_request().SetHeader(TEST_PROGRESSIVE_HEADER, TEST_PROGRESSIVE_HEADER_VAL);
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
-    
+
     ASSERT_GT(PA_DATA_LEN, 8u);  // long enough to hold a 64-bit decimal.
     char buf[PA_DATA_LEN];
     for (size_t c = 0; c < 10;) {
