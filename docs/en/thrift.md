@@ -2,7 +2,7 @@
 
 [thrift](https://thrift.apache.org/) is a RPC framework used widely in various environments, which was developed by Facebook and adopted by Apache later. In order to interact with thrift servers and solves issues on thread-safety, usabilities and concurrencies, brpc directly supports the thrift protocol that is used by thrift in NonBlocking mode.
 
-Example: [example/thrift_extension_c++](https://github.com/brpc/brpc/tree/master/example/thrift_extension_c++/).
+Example: [example/thrift_extension_c++](https://github.com/apache/brpc/tree/master/example/thrift_extension_c++/).
 
 Advantages compared to the official solution:
 - Thread safety. No need to set up separate clients for each thread.

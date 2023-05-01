@@ -510,6 +510,8 @@ static void GlobalRdmaInitializeOrDieImpl() {
         ExitWithError();
     }
 
+    atexit(GlobalRelease);
+
     SocketOptions opt;
     opt.fd = g_context->async_fd;
     butil::make_close_on_exec(opt.fd);
@@ -522,8 +524,6 @@ static void GlobalRdmaInitializeOrDieImpl() {
         LOG(WARNING) << "Fail to create socket to get async event of RDMA";
         ExitWithError();
     }
-
-    atexit(GlobalRelease);
 
     g_mem_alloc = butil::iobuf::blockmem_allocate;
     g_mem_dealloc = butil::iobuf::blockmem_deallocate;
@@ -545,6 +545,7 @@ void GlobalRdmaInitializeOrDie() {
 uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
     ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
     if (!mr) {
+        PLOG(ERROR) << "Fail to register memory";
         return 0;
     }
     {
@@ -556,7 +557,9 @@ uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
             return mr->lkey;
         }
     }
-    IbvDeregMr(mr);
+    if(IbvDeregMr(mr)) {
+        PLOG(ERROR) << "Failed to deregister memory";
+    }
     return 0;
 }
 
@@ -571,7 +574,9 @@ void DeregisterMemoryForRdma(void* buf) {
         }
     }
     if (mr) {
-        IbvDeregMr(mr);
+        if (IbvDeregMr(mr)) {
+            PLOG(ERROR) << "Failed to deregister memory at: " << mr->addr;
+        }
     } else {
         LOG(WARNING) << "Try to deregister a buffer which is not registered";
     }

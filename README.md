@@ -11,9 +11,9 @@
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
-  * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
+  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
   * [redis](docs/en/redis_client.md) and [memcached](docs/en/memcache_client.md), thread-safe, more friendly and performant than the official clients.
-  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
+  * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
   * hadoop_rpc (may be opensourced)
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support (will be opensourced)
   * [thrift](docs/en/thrift.md) support,  thread-safe, more friendly and performant than the official clients.
@@ -28,7 +28,7 @@ You can use it to:
 # Try it!
 
 * Read [overview](docs/en/overview.md) to know where brpc can be used and its advantages.
-* Read [getting started](docs/cn/getting_started.md) for building steps and play with [examples](https://github.com/brpc/brpc/tree/master/example/).
+* Read [getting started](docs/cn/getting_started.md) for building steps and play with [examples](https://github.com/apache/brpc/tree/master/example/).
 * Docs:
   * [Performance benchmark](docs/cn/benchmark.md)
   * [bvar](docs/en/bvar.md)

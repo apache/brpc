@@ -293,7 +293,7 @@ int NamingServiceThread::Start(NamingService* naming_service,
         int rc = bthread_start_urgent(&_tid, NULL, RunThis, this);
         if (rc) {
             LOG(ERROR) << "Fail to create bthread: " << berror(rc);
-            return -1;
+            return rc;
         }
     }
     return WaitForFirstBatchOfServers();
@@ -313,6 +313,10 @@ int NamingServiceThread::WaitForFirstBatchOfServers() {
         return -1;
     }
     return 0;
+}
+
+void NamingServiceThread::EndWait(int error_code) {
+    _actions.EndWait(error_code);
 }
 
 void NamingServiceThread::ServerNodeWithId2ServerId(
@@ -446,7 +450,7 @@ int GetNamingServiceThread(
         if (ptr != NULL) {
             if (ptr->AddRefManually() == 0) {
                 // The ns thread's last intrusive_ptr was just destructed and
-                // the removal-from-global-map-code in ptr->~NamingServideThread()
+                // the removal-from-global-map-code in ptr->~NamingServiceThread()
                 // is about to run or already running, need to create another ns
                 // thread.
                 // Notice that we don't need to remove the reference because
@@ -469,8 +473,11 @@ int GetNamingServiceThread(
         }
     }
     if (new_thread) {
-        if (nsthread->Start(source_ns->New(), key.protocol, key.service_name, options) != 0) {
+        int rc = nsthread->Start(source_ns->New(), key.protocol, key.service_name, options);
+        if (rc != 0) {
             LOG(ERROR) << "Fail to start NamingServiceThread";
+            // Wake up those waiting for first batch of servers.
+            nsthread->EndWait(rc);
             std::unique_lock<pthread_mutex_t> mu(g_nsthread_map_mutex);
             g_nsthread_map->erase(key);
             return -1;

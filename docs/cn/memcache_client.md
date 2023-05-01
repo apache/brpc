@@ -1,6 +1,6 @@
 [English version](../en/memcache_client.md)
 
-[memcached](http://memcached.org/)是常用的缓存服务，为了使用户更快捷地访问memcached并充分利用bthread的并发能力，brpc直接支持memcache协议。示例程序：[example/memcache_c++](https://github.com/brpc/brpc/tree/master/example/memcache_c++/)
+[memcached](http://memcached.org/)是常用的缓存服务，为了使用户更快捷地访问memcached并充分利用bthread的并发能力，brpc直接支持memcache协议。示例程序：[example/memcache_c++](https://github.com/apache/brpc/tree/master/example/memcache_c++/)
 
 **注意**：brpc只支持memcache的二进制协议。memcached在1.3前只有文本协议，但在当前看来支持的意义甚微。如果你的memcached早于1.3，升级版本。
 

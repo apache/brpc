@@ -6,7 +6,7 @@ r31687后，brpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不
 
 **步骤：**
 
-1. 用[idl2proto](https://github.com/brpc/brpc/blob/master/tools/idl2proto)把idl文件转化为proto文件，老版本idl2proto不会转化idl中的service，需要手动转化。
+1. 用[idl2proto](https://github.com/apache/brpc/blob/master/tools/idl2proto)把idl文件转化为proto文件，老版本idl2proto不会转化idl中的service，需要手动转化。
 
    ```protobuf
    // Converted from echo.idl by brpc/tools/idl2proto
@@ -141,7 +141,7 @@ r31687后，brpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不
    // cntl.idl_result();
    ```
 
-   例子详见[example/echo_c++_ubrpc_compack](https://github.com/brpc/brpc/blob/master/example/echo_c++_ubrpc_compack/)。
+   例子详见[example/echo_c++_ubrpc_compack](https://github.com/apache/brpc/blob/master/example/echo_c++_ubrpc_compack/)。
 
 # ubrpc (by baidu-rpc-ub)
 
@@ -214,7 +214,7 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
    ...
    ```
 
-   具体example代码可以参考[echo_c++_compack_ubrpc](https://github.com/brpc/brpc/tree/master/example/echo_c++_compack_ubrpc/)，类似的还有[echo_c++_mcpack_ubrpc](https://github.com/brpc/brpc/tree/master/example/echo_c++_mcpack_ubrpc/)。
+   具体example代码可以参考[echo_c++_compack_ubrpc](https://github.com/apache/brpc/tree/master/example/echo_c++_compack_ubrpc/)，类似的还有[echo_c++_mcpack_ubrpc](https://github.com/apache/brpc/tree/master/example/echo_c++_mcpack_ubrpc/)。
 
 # nshead+idl
 
@@ -253,7 +253,7 @@ channel.CallMethod(NULL, &cntl, &request, &response, NULL);    // 假设channel�
 response.message();
 ```
 
-具体example代码可以参考[echo_c++_mcpack_ub](https://github.com/brpc/brpc/blob/master/example/echo_c++_mcpack_ub/)，compack情况类似，不再赘述
+具体example代码可以参考[echo_c++_mcpack_ub](https://github.com/apache/brpc/blob/master/example/echo_c++_mcpack_ub/)，compack情况类似，不再赘述
 
 # nshead+mcpack(非idl产生的)
 
@@ -300,11 +300,11 @@ const mc_pack_t* res_pack = response.McpackHandle();
 mc_pack_get_str(res_pack, "mystr");
 ```
 
-具体example代码可以参考[echo_c++_raw_mcpack](https://github.com/brpc/brpc/blob/master/example/echo_c++_raw_mcpack/)。
+具体example代码可以参考[echo_c++_raw_mcpack](https://github.com/apache/brpc/blob/master/example/echo_c++_raw_mcpack/)。
 
 # nshead+blob
 
-r32897后brpc直接支持用nshead+blob访问老server（而不用依赖baidu-rpc-ub）。example代码可以参考[nshead_extension_c++](https://github.com/brpc/brpc/blob/master/example/nshead_extension_c++/client.cpp)。
+r32897后brpc直接支持用nshead+blob访问老server（而不用依赖baidu-rpc-ub）。example代码可以参考[nshead_extension_c++](https://github.com/apache/brpc/blob/master/example/nshead_extension_c++/client.cpp)。
 
 ```c++
 #include <brpc/nshead_message.h>
@@ -337,7 +337,7 @@ if (cntl.Failed()) {
 // response.head and response.body contains nshead_t and blob respectively.
 ```
 
-或者用户也可以使用baidu-rpc-ub中的UBRawBufferRequest和UBRawBufferResponse来访问。example代码可以参考[echo_c++_raw_buffer](https://github.com/brpc/brpc/blob/master/example/echo_c++_raw_buffer/)。
+或者用户也可以使用baidu-rpc-ub中的UBRawBufferRequest和UBRawBufferResponse来访问。example代码可以参考[echo_c++_raw_buffer](https://github.com/apache/brpc/blob/master/example/echo_c++_raw_buffer/)。
 
 ```c++
 brpc::Channel channel;

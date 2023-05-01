@@ -2,7 +2,7 @@
 
 [thrift](https://thrift.apache.org/)是应用较广的RPC框架，最初由Facebook发布，后交由Apache维护。为了和thrift服务互通，同时解决thrift原生方案在多线程安全、易用性、并发能力等方面的一系列问题，brpc实现并支持thrift在NonBlocking模式下的协议(FramedProtocol), 下文均直接称为thrift协议。
 
-示例程序：[example/thrift_extension_c++](https://github.com/brpc/brpc/tree/master/example/thrift_extension_c++/)
+示例程序：[example/thrift_extension_c++](https://github.com/apache/brpc/tree/master/example/thrift_extension_c++/)
 
 相比使用原生方案的优势有：
 - 线程安全。用户不需要为每个线程建立独立的client.

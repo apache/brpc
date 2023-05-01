@@ -29,7 +29,7 @@
 #include <sys/wait.h>
 
 extern "C" {
-uint64_t BAIDU_WEAK bthread_usleep(uint64_t microseconds);
+int BAIDU_WEAK bthread_usleep(uint64_t microseconds);
 }
 #endif
 

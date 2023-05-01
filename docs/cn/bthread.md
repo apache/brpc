@@ -1,4 +1,4 @@
-[bthread](https://github.com/brpc/brpc/tree/master/src/bthread)是brpc使用的M:N线程库，目的是在提高程序的并发度的同时，降低编码难度，并在核数日益增多的CPU上提供更好的scalability和cache locality。”M:N“是指M个bthread会映射至N个pthread，一般M远大于N。由于linux当下的pthread实现([NPTL](http://en.wikipedia.org/wiki/Native_POSIX_Thread_Library))是1:1的，M个bthread也相当于映射至N个[LWP](http://en.wikipedia.org/wiki/Light-weight_process)。bthread的前身是Distributed Process(DP)中的fiber，一个N:1的合作式线程库，等价于event-loop库，但写的是同步代码。
+[bthread](https://github.com/apache/brpc/tree/master/src/bthread)是brpc使用的M:N线程库，目的是在提高程序的并发度的同时，降低编码难度，并在核数日益增多的CPU上提供更好的scalability和cache locality。”M:N“是指M个bthread会映射至N个pthread，一般M远大于N。由于linux当下的pthread实现([NPTL](http://en.wikipedia.org/wiki/Native_POSIX_Thread_Library))是1:1的，M个bthread也相当于映射至N个[LWP](http://en.wikipedia.org/wiki/Light-weight_process)。bthread的前身是Distributed Process(DP)中的fiber，一个N:1的合作式线程库，等价于event-loop库，但写的是同步代码。
 
 # Goals
 

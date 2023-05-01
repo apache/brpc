@@ -58,6 +58,7 @@ struct RdmaResource {
     RdmaResource* next;
     RdmaResource();
     ~RdmaResource();
+    DISALLOW_COPY_AND_ASSIGN(RdmaResource);
 };
 
 class BAIDU_CACHELINE_ALIGNMENT RdmaEndpoint : public SocketUser {

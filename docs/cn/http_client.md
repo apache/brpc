@@ -2,7 +2,7 @@
 
 # 示例
 
-[example/http_c++](https://github.com/brpc/brpc/blob/master/example/http_c++/http_client.cpp)
+[example/http_c++](https://github.com/apache/brpc/blob/master/example/http_c++/http_client.cpp)
 
 # 关于h2
 
@@ -41,7 +41,7 @@ HTTP/h2和protobuf关系不大，所以除了Controller和done，CallMethod的�
 
 # POST
 
-默认的HTTP Method为GET，可设置为POST或[更多http method](https://github.com/brpc/brpc/blob/master/src/brpc/http_method.h)。待POST的数据应置入request_attachment()，它([butil::IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h))可以直接append std::string或char*。
+默认的HTTP Method为GET，可设置为POST或[更多http method](https://github.com/apache/brpc/blob/master/src/brpc/http_method.h)。待POST的数据应置入request_attachment()，它([butil::IOBuf](https://github.com/apache/brpc/blob/master/src/butil/iobuf.h))可以直接append std::string或char*。
 
 ```c++
 brpc::Controller cntl;
@@ -178,6 +178,8 @@ Notes on http header:
 # HTTP错误
 
 当Server返回的http status code不是2xx时，该次http/h2访问被视为失败，client端会把`cntl->ErrorCode()`设置为EHTTP，用户可通过`cntl->http_response().status_code()`获得具体的http错误。同时server端可以把代表错误的html或json置入`cntl->response_attachment()`作为http body传递回来。
+
+如果Server也是brpc框架实现的服务，client端希望在http/h2失败时获取brpc Server返回的真实`ErrorCode`，而不是统一设置的`EHTTP`，则需要设置GFlag`-use_http_error_code=true`。
 
 # 压缩request body
 

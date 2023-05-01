@@ -30,6 +30,35 @@
 #define BAIDU_THREAD_LOCAL __thread
 #endif  // _MSC_VER
 
+#define BAIDU_VOLATILE_THREAD_LOCAL(type, var_name, default_value)             \
+  BAIDU_THREAD_LOCAL type var_name = default_value;                                      \
+  static __attribute__((noinline, unused)) type get_##var_name(void) {         \
+    asm volatile("");                                                          \
+    return var_name;                                                           \
+  }                                                                            \
+  static __attribute__((noinline, unused)) type *get_ptr_##var_name(void) {    \
+    type *ptr = &var_name;                                                     \
+    asm volatile("" : "+rm"(ptr));                                             \
+    return ptr;                                                                \
+  }                                                                            \
+  static __attribute__((noinline, unused)) void set_##var_name(type v) {       \
+    asm volatile("");                                                          \
+    var_name = v;                                                              \
+  }
+
+#if defined(__clang__) && (defined(__aarch64__) || defined(__arm64__))
+// Clang compiler is incorrectly caching the address of thread_local variables
+// across a suspend-point. The following macros used to disable the volatile
+// thread local access optimization.
+#define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) get_##var_name()
+#define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) get_ptr_##var_name()
+#define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) set_##var_name(value)
+#else
+#define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) var_name
+#define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) &##var_name
+#define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) var_name = value
+#endif
+
 namespace butil {
 
 // Get a thread-local object typed T. The object will be default-constructed

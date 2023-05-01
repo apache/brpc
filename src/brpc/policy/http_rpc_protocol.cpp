@@ -152,6 +152,7 @@ CommonStrings::CommonStrings()
     , GRPC_STATUS("grpc-status")
     , GRPC_MESSAGE("grpc-message")
     , GRPC_TIMEOUT("grpc-timeout")
+    , DEFAULT_PATH("/")
 {}
 
 static CommonStrings* common = NULL;
@@ -1434,6 +1435,9 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                             " -usercode_in_pthread is on");
             return;
         }
+        if (!server->AcceptRequest(cntl)) {
+            return;
+        }
     } else if (security_mode) {
         cntl->SetFailed(EPERM, "Not allowed to access builtin services, try "
                         "ServerOptions.internal_port=%d instead if you're in"
@@ -1604,7 +1608,8 @@ bool ParseHttpServerAddress(butil::EndPoint* point, const char* server_addr_and_
 const std::string& GetHttpMethodName(
     const google::protobuf::MethodDescriptor*,
     const Controller* cntl) {
-    return cntl->http_request().uri().path();
+    const std::string& path = cntl->http_request().uri().path();
+    return !path.empty() ? path : common->DEFAULT_PATH;
 }
 
 void HttpContext::CheckProgressiveRead(const void* arg, Socket *socket) {

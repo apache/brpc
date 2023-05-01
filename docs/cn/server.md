@@ -2,7 +2,7 @@
 
 # 示例程序
 
-Echo的[server端代码](https://github.com/brpc/brpc/blob/master/example/echo_c++/server.cpp)。
+Echo的[server端代码](https://github.com/apache/brpc/blob/master/example/echo_c++/server.cpp)。
 
 # 填写proto文件
 
@@ -50,13 +50,13 @@ public:
 };
 ```
 
-Service在插入[brpc.Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)后才可能提供服务。
+Service在插入[brpc.Server](https://github.com/apache/brpc/blob/master/src/brpc/server.h)后才可能提供服务。
 
 当客户端发来请求时，Echo()会被调用。参数的含义分别是：
 
 **controller**
 
-在brpc中可以静态转为brpc::Controller（前提是代码运行brpc.Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h)
+在brpc中可以静态转为brpc::Controller（前提是代码运行brpc.Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](https://github.com/apache/brpc/blob/master/src/brpc/controller.h)
 
 **request**
 
@@ -135,7 +135,7 @@ public:
 
 调用Controller.SetFailed()可以把当前调用设置为失败，当发送过程出现错误时，框架也会调用这个函数。用户一般是在服务的CallMethod里调用这个函数，比如某个处理环节出错，SetFailed()后确认done->Run()被调用了就可以跳出函数了(若使用了ClosureGuard，跳出函数时会自动调用done，不用手动)。Server端的done的逻辑主要是发送response回client，当其发现用户调用了SetFailed()后，会把错误信息送回client。client收到后，它的Controller::Failed()会为true（成功时为false），Controller::ErrorCode()和Controller::ErrorText()则分别是错误码和错误信息。
 
-用户可以为http访问设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用`controller.http_response().set_status_code()`，标准的status-code定义在[http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h)中。Controller.SetFailed也会设置status-code，值是与错误码含义最接近的status-code，没有相关的则填500错误(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR)。如果你要覆盖status_code，设置代码一定要放在SetFailed()后，而不是之前。
+用户可以为http访问设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用`controller.http_response().set_status_code()`，标准的status-code定义在[http_status_code.h](https://github.com/apache/brpc/blob/master/src/brpc/http_status_code.h)中。Controller.SetFailed也会设置status-code，值是与错误码含义最接近的status-code，没有相关的则填500错误(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR)。如果你要覆盖status_code，设置代码一定要放在SetFailed()后，而不是之前。
 
 ## 获取Client的地址
 
@@ -165,7 +165,7 @@ printf("local_side=%s\n", butil::endpoint2str(cntl->local_side()).c_str());
 
 有些server以等待后端服务返回结果为主，且处理时间特别长，为了及时地释放出线程资源，更好的办法是把done注册到被等待事件的回调中，等到事件发生后再调用done->Run()。
 
-异步service的最后一行一般是done_guard.release()以确保正常退出CallMethod时不会调用done->Run()。例子请看[example/session_data_and_thread_local](https://github.com/brpc/brpc/tree/master/example/session_data_and_thread_local/)。
+异步service的最后一行一般是done_guard.release()以确保正常退出CallMethod时不会调用done->Run()。例子请看[example/session_data_and_thread_local](https://github.com/apache/brpc/tree/master/example/session_data_and_thread_local/)。
 
 Service和Channel都可以使用done来表达后续的操作，但它们是**完全不同**的，请勿混淆：
 
@@ -201,7 +201,7 @@ Server启动后你无法再修改其中的Service。
 
 # 启动
 
-调用以下[Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)的接口启动服务。
+调用以下[Server](https://github.com/apache/brpc/blob/master/src/brpc/server.h)的接口启动服务。
 
 ```c++
 int Start(const char* ip_and_port_str, const ServerOptions* opt);
@@ -263,7 +263,7 @@ Join()完成后可以修改其中的Service，并重新Start。
 
 使用Protobuf的服务通常可以通过http/h2+json访问，存于body的json串可与对应protobuf消息相互自动转化。
 
-以[echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp)为例，你可以用[curl](https://curl.haxx.se/)访问这个服务。
+以[echo server](https://github.com/apache/brpc/blob/master/example/echo_c%2B%2B/server.cpp)为例，你可以用[curl](https://curl.haxx.se/)访问这个服务。
 
 ```shell
 # -H 'Content-Type: application/json' is optional
@@ -384,13 +384,13 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 ## 在每条日志后打印hostname
 
-此功能只对[butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h)中的日志宏有效。
+此功能只对[butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h)中的日志宏有效。
 
 打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
 
 ## 打印FATAL日志后退出程序
 
-此功能只对[butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h)中的日志宏有效，glog默认在FATAL日志时crash。
+此功能只对[butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h)中的日志宏有效，glog默认在FATAL日志时crash。
 
 打开[-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log)后如果程序使用LOG(FATAL)打印了异常日志或违反了CHECK宏中的断言，那么程序会在打印日志后abort，这一般也会产生coredump文件，默认不打开。这个开关可在对程序的压力测试中打开，以确认程序没有进入过严重错误的分支。
 
@@ -398,7 +398,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 ## 最低日志级别
 
-此功能由[butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h)和glog各自实现，为同名选项。
+此功能由[butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h)和glog各自实现，为同名选项。
 
 只有**不低于**-minloglevel指定的日志级别的日志才会被打印。这个选项可以动态修改。设置值和日志级别的对应关系：0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL，默认为0。
 
@@ -480,7 +480,7 @@ baidu_std和hulu_pbrpc协议支持传递附件，这段数据由用户自定义�
 
 ## 开启SSL
 
-要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ServerOptions.ssl_options`，具体见[ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h)。
+要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ServerOptions.ssl_options`，具体见[ssl_options.h](https://github.com/apache/brpc/blob/master/src/brpc/ssl_options.h)。
 
 ```c++
 // Certificate structure
@@ -709,7 +709,7 @@ curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service |
 
 ## 定制/health页面
 
-/health页面默认返回"OK"，若需定制/health页面的内容：先继承[HealthReporter](https://github.com/brpc/brpc/blob/master/src/brpc/health_reporter.h)，在其中实现生成页面的逻辑（就像实现其他http service那样），然后把实例赋给ServerOptions.health_reporter，这个实例不被server拥有，必须保证在server运行期间有效。用户在定制逻辑中可以根据业务的运行状态返回更多样的状态信息。
+/health页面默认返回"OK"，若需定制/health页面的内容：先继承[HealthReporter](https://github.com/apache/brpc/blob/master/src/brpc/health_reporter.h)，在其中实现生成页面的逻辑（就像实现其他http service那样），然后把实例赋给ServerOptions.health_reporter，这个实例不被server拥有，必须保证在server运行期间有效。用户在定制逻辑中可以根据业务的运行状态返回更多样的状态信息。
 
 ## 线程私有变量
 
@@ -770,7 +770,7 @@ struct ServerOptions {
 };
 ```
 
-session_local_data_factory的类型为[DataFactory](https://github.com/brpc/brpc/blob/master/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
+session_local_data_factory的类型为[DataFactory](https://github.com/apache/brpc/blob/master/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
 
 注意：CreateData和DestroyData会被多个线程同时调用，必须线程安全。
 
@@ -861,7 +861,7 @@ struct ServerOptions {
 };
 ```
 
-thread_local_data_factory的类型为[DataFactory](https://github.com/brpc/brpc/blob/master/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
+thread_local_data_factory的类型为[DataFactory](https://github.com/apache/brpc/blob/master/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
 
 注意：CreateData和DestroyData会被多个线程同时调用，必须线程安全。
 

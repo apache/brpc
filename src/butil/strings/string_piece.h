@@ -386,7 +386,7 @@ extern template class BUTIL_EXPORT BasicStringPiece<std::string>;
 extern template class BUTIL_EXPORT BasicStringPiece<string16>;
 #endif
 
-// StingPiece operators --------------------------------------------------------
+// StringPiece operators --------------------------------------------------------
 
 BUTIL_EXPORT bool operator==(const StringPiece& x, const StringPiece& y);
 

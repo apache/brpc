@@ -41,7 +41,7 @@ public:
     // Returns
     //   true:  the data can be kept for future reuse
     //   false: the data is improper to be reused and should be sent to 
-    //          DestoryData() immediately after calling this method
+    //          DestroyData() immediately after calling this method
     virtual bool ResetData(void*) const { return true; }
 };
 

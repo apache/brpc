@@ -103,3 +103,27 @@ TEST(TimeoutConcurrencyLimiterTest, OnResponded) {
     ASSERT_EQ(limiter._sw.succ_count, 2);
     ASSERT_EQ(limiter._sw.failed_count, 0);
 }
+
+TEST(TimeoutConcurrencyLimiterTest, AdaptiveMaxConcurrencyTest) {
+    {
+        brpc::AdaptiveMaxConcurrency concurrency(
+            brpc::TimeoutConcurrencyConf{100, 100});
+        ASSERT_EQ(concurrency.type(), "timeout");
+        ASSERT_EQ(concurrency.value(), "timeout");
+    }
+    {
+        brpc::AdaptiveMaxConcurrency concurrency;
+        concurrency = "timeout";
+        ASSERT_EQ(concurrency.type(), "timeout");
+        ASSERT_EQ(concurrency.value(), "timeout");
+    }
+    {
+        brpc::AdaptiveMaxConcurrency concurrency;
+        concurrency = brpc::TimeoutConcurrencyConf{50, 100};
+        ASSERT_EQ(concurrency.type(), "timeout");
+        ASSERT_EQ(concurrency.value(), "timeout");
+        auto time_conf = static_cast<brpc::TimeoutConcurrencyConf>(concurrency);
+        ASSERT_EQ(time_conf.timeout_ms, 50);
+        ASSERT_EQ(time_conf.max_concurrency, 100);
+    }
+}

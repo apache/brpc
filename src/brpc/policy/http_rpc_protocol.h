@@ -75,6 +75,8 @@ struct CommonStrings {
     std::string GRPC_MESSAGE;
     std::string GRPC_TIMEOUT;
 
+    std::string DEFAULT_PATH;
+
     CommonStrings();
 };
 

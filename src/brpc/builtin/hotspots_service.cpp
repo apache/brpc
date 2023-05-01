@@ -422,7 +422,7 @@ static void DisplayResult(Controller* cntl,
         if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
                 "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
-                "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
+                "(https://github.com/apache/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
 #endif
     }
@@ -893,7 +893,7 @@ static void StartProfiling(ProfilingType type,
         if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
                 "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
-                "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
+                "(https://github.com/apache/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
 #endif
     }
@@ -1104,8 +1104,8 @@ static void StartProfiling(ProfilingType type,
         os << "<p><span style='color:red'>Error:</span> "
            << type_str << " profiler is not enabled." << extra_desc << "</p>"
             "<p>To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER"
-            "</p><p>Or read docs: <a href='https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md'>cpu_profiler</a>"
-            " and <a href='https://github.com/brpc/brpc/blob/master/docs/cn/heap_profiler.md'>heap_profiler</a>"
+            "</p><p>Or read docs: <a href='https://github.com/apache/brpc/blob/master/docs/cn/cpu_profiler.md'>cpu_profiler</a>"
+            " and <a href='https://github.com/apache/brpc/blob/master/docs/cn/heap_profiler.md'>heap_profiler</a>"
             "</p></body></html>";
         os.move_to(cntl->response_attachment());
         cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);

@@ -16,7 +16,6 @@
 // under the License.
 
 
-#include <wordexp.h>                                // wordexp
 #include <iomanip>
 #include <arpa/inet.h>                              // inet_aton
 #include <fcntl.h>                                  // O_CREAT
@@ -127,6 +126,8 @@ ServerOptions::ServerOptions()
     , mongo_service_adaptor(NULL)
     , auth(NULL)
     , server_owns_auth(false)
+    , interceptor(NULL)
+    , server_owns_interceptor(false)
     , num_threads(8)
     , max_concurrency(0)
     , session_local_data_factory(NULL)
@@ -451,6 +452,10 @@ Server::~Server() {
     if (_options.server_owns_auth) {
         delete _options.auth;
         _options.auth = NULL;
+    }
+    if (_options.server_owns_interceptor) {
+        delete _options.interceptor;
+        _options.interceptor = NULL;
     }
 
     delete _options.redis_service;
@@ -1722,23 +1727,7 @@ void Server::GenerateVersionIfNeeded() {
     }
 }
 
-static std::string ExpandPath(const std::string &path) {
-    if (path.empty()) {
-        return std::string();
-    }
-    std::string ret;
-    wordexp_t p;
-    wordexp(path.c_str(), &p, 0);
-    CHECK_EQ(p.we_wordc, 1u);
-    if (p.we_wordc == 1) {
-        ret = p.we_wordv[0];
-    }
-    wordfree(&p);
-    return ret;
-}
-
 void Server::PutPidFileIfNeeded() {
-    _options.pid_file = ExpandPath(_options.pid_file);
     if (_options.pid_file.empty()) {
         return;
     }
@@ -1818,7 +1807,7 @@ void Server::PrintTabsBody(std::ostream& os,
                     current_tab_name);
         }
     }
-    os << "<li id='https://github.com/brpc/brpc/blob/master/docs/cn/builtin_service.md' "
+    os << "<li id='https://github.com/apache/brpc/blob/master/docs/cn/builtin_service.md' "
         "class='help'>?</li>\n</ul>\n"
         "<div style='height:40px;'></div>";  // placeholder
 }
@@ -2195,6 +2184,25 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(google::protobuf::Service* serv
 int Server::MaxConcurrencyOf(google::protobuf::Service* service,
                              const butil::StringPiece& method_name) const {
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
+}
+
+bool Server::AcceptRequest(Controller* cntl) const {
+    const Interceptor* interceptor = _options.interceptor;
+    if (!interceptor) {
+        return true;
+    }
+
+    int error_code = 0;
+    std::string error_text;
+    if (cntl &&
+        !interceptor->Accept(cntl, error_code, error_text)) {
+        cntl->SetFailed(error_code,
+                        "Reject by Interceptor: %s",
+                        error_text.c_str());
+        return false;
+    }
+
+    return true;
 }
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME

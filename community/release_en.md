@@ -27,7 +27,7 @@ Other:
 - ...
 ```
 
-### 2. Setup GPG
+### 2. Setup GPG(Please skip this step if you are not a first time distributor)
 
 #### 1. Install GPG
 
@@ -300,7 +300,9 @@ svn --username=lorinlee commit -m "release 1.0.0"
 ```
 
 ## Verify release
-
+```bash
+cd ~/brpc_svn/dev/brpc/1.0.0
+```
 ### 1. Verify SHA512 checksum
 
 ```bash

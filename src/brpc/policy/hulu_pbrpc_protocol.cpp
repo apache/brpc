@@ -469,6 +469,11 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         google::protobuf::Service* svc = sp->service;
         const google::protobuf::MethodDescriptor* method = sp->method;
         accessor.set_method(method);
+
+        if (!server->AcceptRequest(cntl.get())) {
+            break;
+        }
+
         if (span) {
             span->ResetServerSpanName(method->full_name());
         }

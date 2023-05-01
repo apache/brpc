@@ -41,6 +41,7 @@ Commands:
     6. bthread_reg_restore: bthread_frame will modify registers, reg_restore will restore them
     7. bthread_end: exit bthread debug mode
     8. bthread_regs <id>: print bthread registers
+    9. bthread_all: print all bthread frames
 
 when call bthread_frame, registers will be modified,
 remember to call bthread_end after debug, or process will be corrupted
@@ -139,6 +140,35 @@ class BthreadFrameCmd(gdb.Command):
         gdb.parse_and_eval("$rip = {}".format(rip))
         gdb.parse_and_eval("$rsp = {}".format(rsp))
         gdb.parse_and_eval("$rbp = {}".format(rbp))
+
+class BthreadAllCmd(gdb.Command):
+    """print all bthread frames"""
+    def __init__(self):
+        gdb.Command.__init__(self, "bthread_all", gdb.COMMAND_STACK, gdb.COMPLETE_NONE)
+
+    def invoke(self, arg, tty):
+        global status
+        global bthreads
+        if not status:
+            print("Not in bthread debug mode")
+            return
+        for bthread_id in range(len(bthreads)):
+            stack = bthreads[bthread_id]["stack"]
+            if str(stack) == "0x0":
+                print("this bthread has no stack")
+                continue
+            try:
+                context = gdb.parse_and_eval("(*(('bthread::ContextualStack' *){})).context".format(stack))
+                rip = gdb.parse_and_eval("*(uint64_t*)({}+7*8)".format(context))
+                rbp = gdb.parse_and_eval("*(uint64_t*)({}+6*8)".format(context))
+                rsp = gdb.parse_and_eval("{}+8*8".format(context))
+                gdb.parse_and_eval("$rip = {}".format(rip))
+                gdb.parse_and_eval("$rsp = {}".format(rsp))
+                gdb.parse_and_eval("$rbp = {}".format(rbp))
+                print("Bthread {}:".format(bthread_id))
+                gdb.execute('bt')
+            except Exception as e:
+                pass
 
 class BthreadRegsCmd(gdb.Command):
     """bthread_regs <id>, print bthread registers"""
@@ -255,6 +285,7 @@ BthreadNumCmd()
 BthreadBeginCmd()
 BthreadEndCmd()
 BthreadFrameCmd()
+BthreadAllCmd()
 BthreadMetaCmd()
 BthreadRegRestoreCmd()
 BthreadRegsCmd()

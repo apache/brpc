@@ -173,6 +173,20 @@ struct SocketSSLContext {
     std::string sni_name;       // useful for clients
 };
 
+struct SocketKeepaliveOptions {
+    SocketKeepaliveOptions()
+        : keepalive_idle_s(-1)
+        , keepalive_interval_s(-1)
+        , keepalive_count(-1)
+        {}
+    // Start keeplives after this period.
+    int keepalive_idle_s;
+    // Interval between keepalives.
+    int keepalive_interval_s;
+    // Number of keepalives before death.
+    int keepalive_count;
+};
+
 // TODO: Comment fields
 struct SocketOptions {
     SocketOptions();
@@ -198,6 +212,10 @@ struct SocketOptions {
     std::shared_ptr<AppConnect> app_connect;
     // The created socket will set parsing_context with this value.
     Destroyable* initial_parsing_context;
+
+    // Socket keepalive related options.
+    // Refer to `SocketKeepaliveOptions' for details.
+    std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
 };
 
 // Abstractions on reading from and writing into file descriptors.
@@ -612,6 +630,8 @@ friend void DereferenceSocket(Socket*);
 
     int ResetFileDescriptor(int fd);
 
+    void EnableKeepaliveIfNeeded(int fd);
+
     // Wait until nref hits `expected_nref' and reset some internal resources.
     int WaitAndReset(int32_t expected_nref);
 
@@ -873,6 +893,11 @@ private:
     butil::atomic<int64_t> _total_streams_unconsumed_size;
 
     butil::atomic<int64_t> _ninflight_app_health_check;
+
+    // Socket keepalive related options.
+    // Refer to `SocketKeepaliveOptions' for details.
+    // non-NULL means that keepalive is on.
+    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
 };
 
 } // namespace brpc

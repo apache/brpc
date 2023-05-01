@@ -414,6 +414,7 @@ inline void ProcessThriftFramedRequestNoExcept(ThriftService* service,
     done->ResumeRunning();
 }
 
+namespace {
 struct CallMethodInBackupThreadArgs {
     ThriftService* service;
     Controller* controller;
@@ -421,6 +422,7 @@ struct CallMethodInBackupThreadArgs {
     ThriftFramedMessage* response;
     ThriftClosure* done;
 };
+}
 
 static void CallMethodInBackupThread(void* void_args) {
     CallMethodInBackupThreadArgs* args = (CallMethodInBackupThreadArgs*)void_args;
@@ -536,6 +538,10 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
         return cntl->SetFailed(ELIMIT, "Too many user code to run when"
                 " -usercode_in_pthread is on");
+    }
+
+    if (!server->AcceptRequest(cntl)) {
+        return;
     }
 
     msg.reset();  // optional, just release resource ASAP
