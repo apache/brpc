@@ -106,6 +106,8 @@ static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
 BRPC_VALIDATE_GFLAG(connect_timeout_as_unreachable,
                          validate_connect_timeout_as_unreachable);
 
+DEFINE_bool(force_ssl_for_all_connections, false, "Force ssl for all connections");
+
 const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
 
 class BAIDU_CACHELINE_ALIGNMENT SocketPool {
@@ -2021,6 +2023,10 @@ ssize_t Socket::DoRead(size_t size_hint) {
     }
     // _ssl_state has been set
     if (ssl_state() == SSL_OFF) {
+        if (FLAGS_force_ssl_for_all_connections) {
+            errno = ESSL;
+            return -1;
+        }
         CHECK(_rdma_state == RDMA_OFF);
         return _read_buf.append_from_file_descriptor(fd(), size_hint);
     }

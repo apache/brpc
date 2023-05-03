@@ -112,6 +112,7 @@ DEFINE_bool(enable_threads_service, false, "Enable /threads");
 
 DECLARE_int32(usercode_backup_threads);
 DECLARE_bool(usercode_in_pthread);
+DECLARE_bool(force_ssl_for_all_connections);
 
 const int INITIAL_SERVICE_CAP = 64;
 const int INITIAL_CERT_MAP = 64;
@@ -932,6 +933,10 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 return -1;
             }
         }
+    } else if (FLAGS_force_ssl_for_all_connections) {
+        LOG(ERROR) << "Fail to force SSL for all connections without"
+                   << " ServerOptions.ssl_options";
+        return -1;
     }
 
     _concurrency = 0;

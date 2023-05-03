@@ -35,6 +35,8 @@
 #include "echo.pb.h"
 
 namespace brpc {
+DECLARE_bool(force_ssl_for_all_connections);
+
 void ExtractHostnames(X509* x, std::vector<std::string>* hostnames);
 } // namespace brpc
 
@@ -173,6 +175,55 @@ TEST_F(SSLTest, sanity) {
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
+}
+
+TEST_F(SSLTest, force_ssl_for_all_connections) {
+    brpc::FLAGS_force_ssl_for_all_connections = true;
+    const int port = 8613;
+    brpc::Server server;
+    brpc::ServerOptions options;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(
+        &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(-1, server.Start(port, &options));
+
+    brpc::CertInfo cert;
+    cert.certificate = "cert1.crt";
+    cert.private_key = "cert1.key";
+    options.mutable_ssl_options()->default_cert = cert;
+
+    ASSERT_EQ(0, server.Start(port, &options));
+
+    test::EchoRequest req;
+    req.set_message(EXP_REQUEST);
+    {
+        brpc::Channel channel;
+        brpc::ChannelOptions coptions;
+        coptions.mutable_ssl_options();
+        coptions.mutable_ssl_options()->sni_name = "localhost";
+        ASSERT_EQ(0, channel.Init("localhost", port, &coptions));
+
+        brpc::Controller cntl;
+        test::EchoService_Stub stub(&channel);
+        test::EchoResponse res;
+        stub.Echo(&cntl, &req, &res, NULL);
+        EXPECT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
+    }
+
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("localhost", port, NULL));
+
+        brpc::Controller cntl;
+        test::EchoService_Stub stub(&channel);
+        test::EchoResponse res;
+        stub.Echo(&cntl, &req, &res, NULL);
+        EXPECT_EQ(brpc::ESSL, cntl.ErrorCode());
+    }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+    brpc::FLAGS_force_ssl_for_all_connections = false;
 }
 
 void CheckCert(const char* cname, const char* cert) {
