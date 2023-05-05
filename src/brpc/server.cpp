@@ -109,10 +109,11 @@ butil::static_atomic<int> g_running_server_count = BUTIL_STATIC_ATOMIC_INIT(0);
 // Following services may have security issues and are disabled by default.
 DEFINE_bool(enable_dir_service, false, "Enable /dir");
 DEFINE_bool(enable_threads_service, false, "Enable /threads");
+DEFINE_bool(force_ssl_for_main_port, false, "Force ssl for all connections of main port");
+DEFINE_bool(force_ssl_for_internal_port, false, "Force ssl for all connections of internal port");
 
 DECLARE_int32(usercode_backup_threads);
 DECLARE_bool(usercode_in_pthread);
-DECLARE_bool(force_ssl_for_all_connections);
 
 const int INITIAL_SERVICE_CAP = 64;
 const int INITIAL_CERT_MAP = 64;
@@ -933,9 +934,13 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 return -1;
             }
         }
-    } else if (FLAGS_force_ssl_for_all_connections) {
-        LOG(ERROR) << "Fail to force SSL for all connections without"
-                   << " ServerOptions.ssl_options";
+    } else if (FLAGS_force_ssl_for_main_port) {
+        LOG(ERROR) << "Fail to force SSL for all connections of "
+                      "main port without ServerOptions.ssl_options";
+        return -1;
+    } else if (FLAGS_force_ssl_for_internal_port) {
+        LOG(ERROR) << "Fail to force SSL for all connections of "
+                      "internal port without ServerOptions.ssl_options";
         return -1;
     }
 
@@ -1049,7 +1054,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 
         // Pass ownership of `sockfd' to `_am'
         if (_am->StartAccept(sockfd, _options.idle_timeout_sec,
-                             _default_ssl_ctx) != 0) {
+                             _default_ssl_ctx, FLAGS_force_ssl_for_main_port) != 0) {
             LOG(ERROR) << "Fail to start acceptor";
             return -1;
         }
@@ -1089,7 +1094,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         }
         // Pass ownership of `sockfd' to `_internal_am'
         if (_internal_am->StartAccept(sockfd, _options.idle_timeout_sec,
-                                      _default_ssl_ctx) != 0) {
+                                      _default_ssl_ctx,
+                                      FLAGS_force_ssl_for_internal_port) != 0) {
             LOG(ERROR) << "Fail to start internal_acceptor";
             return -1;
         }

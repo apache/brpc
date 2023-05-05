@@ -106,8 +106,6 @@ static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
 BRPC_VALIDATE_GFLAG(connect_timeout_as_unreachable,
                          validate_connect_timeout_as_unreachable);
 
-DEFINE_bool(force_ssl_for_all_connections, false, "Force ssl for all connections");
-
 const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
 
 class BAIDU_CACHELINE_ALIGNMENT SocketPool {
@@ -700,6 +698,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         m->SetFailed(rc2, "Fail to create auth_id: %s", berror(rc2));
         return -1;
     }
+    m->_force_ssl = options.force_ssl;
     // Disable SSL check if there is no SSL context
     m->_ssl_state = (options.initial_ssl_ctx == NULL ? SSL_OFF : SSL_UNKNOWN);
     m->_ssl_session = NULL;
@@ -2023,7 +2022,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
     }
     // _ssl_state has been set
     if (ssl_state() == SSL_OFF) {
-        if (FLAGS_force_ssl_for_all_connections) {
+        if (_force_ssl) {
             errno = ESSL;
             return -1;
         }
