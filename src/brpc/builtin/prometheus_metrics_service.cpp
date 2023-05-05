@@ -82,6 +82,12 @@ private:
     std::map<std::string, SummaryItems> _m;
 };
 
+butil::StringPiece GetMetricsName(const std::string& name) {
+    auto pos = name.find_first_of('{');
+    int size = (pos == std::string::npos) ? name.size() : pos;
+    return butil::StringPiece(name.data(), size);
+}
+
 bool PrometheusMetricsDumper::dump(const std::string& name,
                                    const butil::StringPiece& desc) {
     if (!desc.empty() && desc[0] == '"') {
@@ -93,8 +99,11 @@ bool PrometheusMetricsDumper::dump(const std::string& name,
         // Leave it to DumpLatencyRecorderSuffix to output Summary.
         return true;
     }
-    *_os << "# HELP " << name << '\n'
-         << "# TYPE " << name << " gauge" << '\n'
+
+    auto metrics_name = GetMetricsName(name);
+
+    *_os << "# HELP " << metrics_name << '\n'
+         << "# TYPE " << metrics_name << " gauge" << '\n'
          << name << " " << desc << '\n';
     return true;
 }
