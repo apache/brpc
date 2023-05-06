@@ -355,6 +355,8 @@ TEST_F(MultiDimensionTest, stats) {
     ASSERT_FALSE(my_madder.has_stats(labels_value2));
     ASSERT_FALSE(my_madder.has_stats(labels_value3));
     ASSERT_FALSE(my_madder.has_stats(labels_value4));
+    bvar::Adder<int> *adder5 = my_madder.get_stats(labels_value1);
+    ASSERT_TRUE(adder5);
 }
 
 TEST_F(MultiDimensionTest, get_description) {
