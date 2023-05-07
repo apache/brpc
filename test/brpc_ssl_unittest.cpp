@@ -35,7 +35,6 @@
 #include "echo.pb.h"
 
 namespace brpc {
-DECLARE_bool(force_ssl_for_main_port);
 
 void ExtractHostnames(X509* x, std::vector<std::string>* hostnames);
 } // namespace brpc
@@ -177,14 +176,15 @@ TEST_F(SSLTest, sanity) {
     ASSERT_EQ(0, server.Join());
 }
 
-TEST_F(SSLTest, force_ssl_for_main_port) {
-    brpc::FLAGS_force_ssl_for_main_port = true;
+TEST_F(SSLTest, force_ssl) {
     const int port = 8613;
     brpc::Server server;
     brpc::ServerOptions options;
     EchoServiceImpl echo_svc;
     ASSERT_EQ(0, server.AddService(
         &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+
+    options.force_ssl = true;
     ASSERT_EQ(-1, server.Start(port, &options));
 
     brpc::CertInfo cert;
@@ -223,7 +223,6 @@ TEST_F(SSLTest, force_ssl_for_main_port) {
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
-    brpc::FLAGS_force_ssl_for_main_port = false;
 }
 
 void CheckCert(const char* cname, const char* cert) {

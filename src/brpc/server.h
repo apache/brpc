@@ -217,6 +217,9 @@ struct ServerOptions {
     const ServerSSLOptions& ssl_options() const { return *_ssl_options; }
     ServerSSLOptions* mutable_ssl_options();
 
+    // Force ssl for all connections of the port to Start().
+    bool force_ssl;
+
     // Whether the server uses rdma or not
     // Default: false
     bool use_rdma;
