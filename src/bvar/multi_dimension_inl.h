@@ -118,6 +118,7 @@ void MultiDimension<T>::delete_stats() {
     // then traversal tmp_map and delete bvar object,
     // which can prevent the bvar object from being deleted twice.
     MetricMap tmp_map;
+    CHECK_EQ(0, tmp_map.init(8192, 80));
     auto clear_fn = [&tmp_map](MetricMap& map) {
         if (!tmp_map.empty()) {
             tmp_map.clear();
