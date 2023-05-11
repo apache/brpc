@@ -160,8 +160,6 @@ void SamplerCollector::run() {
         if (s) {
             s->InsertBeforeAsList(&root);
         }
-        int nremoved = 0;
-        int nsampled = 0;
         for (butil::LinkNode<Sampler>* p = root.next(); p != &root;) {
             // We may remove p from the list, save next first.
             butil::LinkNode<Sampler>* saved_next = p->next();
@@ -171,11 +169,9 @@ void SamplerCollector::run() {
                 s->_mutex.unlock();
                 p->RemoveFromList();
                 delete s;
-                ++nremoved;
             } else {
                 s->take_sample();
                 s->_mutex.unlock();
-                ++nsampled;
             }
             p = saved_next;
         }

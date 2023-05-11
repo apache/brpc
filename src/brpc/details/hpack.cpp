@@ -489,8 +489,7 @@ inline void EncodeInteger(butil::IOBufAppender* out, uint8_t msb,
     value -= max_prefix_value;
     msb |= max_prefix_value;
     out->push_back(msb);
-    size_t out_bytes = 1;
-    for (; value >= 128; ++out_bytes) {
+    for (; value >= 128; ) {
         const uint8_t c = (value & 0x7f) | 0x80;
         value >>= 7;
         out->push_back(c);
