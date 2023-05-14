@@ -409,7 +409,7 @@ void TimerThread::run() {
         // Similarly with the situation before running tasks, we check
         // _nearest_run_time to prevent us from waiting on a non-earliest
         // task. We also use the _nsignal to make sure that if new task 
-        // is earlier that the realtime that we wait for, we'll wake up.
+        // is earlier than the realtime that we wait for, we'll wake up.
         int expected_nsignals = 0;
         {
             BAIDU_SCOPED_LOCK(_mutex);
