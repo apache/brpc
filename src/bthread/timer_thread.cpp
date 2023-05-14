@@ -414,8 +414,8 @@ void TimerThread::run() {
         {
             BAIDU_SCOPED_LOCK(_mutex);
             if (next_run_time > _nearest_run_time) {
-                // a task is earlier that what we would wait for.
-                // We need to check buckets.
+                // a task is earlier than what we would wait for.
+                // We need to check the buckets.
                 continue;
             } else {
                 _nearest_run_time = next_run_time;
