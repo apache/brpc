@@ -440,7 +440,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
     if (available_devices > 1 && FLAGS_rdma_device.size() == 0) {
         LOG(INFO) << "This server has more than one available RDMA device. Only "
-                  << "the first one (" << g_context->device->name
+                  << "the last one (" << g_context->device->name
                   << ") will be used. If you want to use other device, please "
                   << "specify it with --rdma_device.";
     } else {
