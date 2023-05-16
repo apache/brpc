@@ -1947,6 +1947,33 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         ERR_clear_error();
         int rc = SSL_do_handshake(_ssl_session);
         if (rc == 1) {
+            // In client, check if server returned ALPN selection is acceptable.
+            if (!server_mode && !_ssl_ctx->alpn_protocols.empty()) {
+                const unsigned char *alpn_proto;
+                unsigned int alpn_proto_length;
+                SSL_get0_alpn_selected(_ssl_session, &alpn_proto, &alpn_proto_length);
+                if (!alpn_proto) {
+                    LOG(ERROR) << "Server returned no ALPN protocol";
+                    return -1;
+                }
+
+                std::string alpn_protocol(
+                    reinterpret_cast<char const *>(alpn_proto),
+                    alpn_proto_length
+                );
+                if (
+                    std::find(
+                        _ssl_ctx->alpn_protocols.begin(),
+                        _ssl_ctx->alpn_protocols.end(),
+                        alpn_protocol
+                    ) == _ssl_ctx->alpn_protocols.end()
+                ) {
+                    LOG(ERROR) << "Server returned unacceptable ALPN protocol: "
+                               << alpn_protocol;
+                    return -1;
+                }
+            }
+
             _ssl_state = SSL_CONNECTED;
             AddBIOBuffer(_ssl_session, fd, FLAGS_ssl_bio_buffer_size);
             return 0;

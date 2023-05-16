@@ -169,8 +169,9 @@ struct SocketSSLContext {
     SocketSSLContext();
     ~SocketSSLContext();
 
-    SSL_CTX* raw_ctx;           // owned
-    std::string sni_name;       // useful for clients
+    SSL_CTX* raw_ctx;                        // owned
+    std::string sni_name;                    // useful for clients
+    std::vector<std::string> alpn_protocols; // useful for clients
 };
 
 struct SocketKeepaliveOptions {
