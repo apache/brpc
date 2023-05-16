@@ -13,18 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@com_grail_bazel_compdb//:defs.bzl", "compilation_database")
-load("@com_grail_bazel_output_base_util//:defs.bzl", "OUTPUT_BASE")
+load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
-compilation_database(
+refresh_compile_commands(
     name = "brpc_compdb",
-    # OUTPUT_BASE is a dynamic value that will vary for each user workspace.
-    # If you would like your build outputs to be the same across users, then
-    # skip supplying this value, and substitute the default constant value
-    # "__OUTPUT_BASE__" through an external tool like `sed` or `jq` (see
-    # below shell commands for usage).
-    output_base = OUTPUT_BASE,
-    targets = [
-        "//:brpc",
-    ],
+    # Specify the targets of interest.
+    # For example, specify a dict of targets and their arguments:
+    targets = {
+        "//:brpc": "",
+    },
+    # For more details, feel free to look into refresh_compile_commands.bzl if you want.
 )
