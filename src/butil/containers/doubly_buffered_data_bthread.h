@@ -36,7 +36,7 @@
 namespace butil {
 
 // Compared to DoublyBufferedData, DoublyBufferedDataBthread allows to
-// bthread is suspended when executing query logic.
+// suspend bthread when executing query logic.
 // If bthread will not be suspended in the query logic, DoublyBufferedDataBthread
 // also makes Read() almost lock-free by making Modify() *much* slower.
 // If bthread will be suspended in the query logic, there is competition among
@@ -143,12 +143,10 @@ friend class DoublyBufferedDataBthread;
 public:
     explicit Wrapper()
             : _control(NULL)
-            , _ref0(0)
-            , _ref1(0)
             , _modify_wait(false) {
         pthread_mutex_init(&_mutex, NULL);
-        pthread_cond_init(&_cond0, NULL);
-        pthread_cond_init(&_cond1, NULL);
+        pthread_cond_init(&_cond[0], NULL);
+        pthread_cond_init(&_cond[1], NULL);
     }
 
     ~Wrapper() {
@@ -160,8 +158,8 @@ public:
         WaitReadDone(1);
 
         pthread_mutex_destroy(&_mutex);
-        pthread_cond_destroy(&_cond0);
-        pthread_cond_destroy(&_cond1);
+        pthread_cond_destroy(&_cond[0]);
+        pthread_cond_destroy(&_cond[1]);
     }
 
     // _mutex will be locked by the calling pthread and DoublyBufferedDataBthread.
@@ -186,52 +184,36 @@ public:
 
     inline void WaitReadDone(int index) {
         BAIDU_SCOPED_LOCK(_mutex);
-        if (index != 0 && index != 1) {
-            return;
-        }
-        int& ref = index == 0 ? _ref0 : _ref1;
+        int& ref = index == 0 ? _ref[0] : _ref[1];
         while (ref != 0) {
             _modify_wait = true;
-            if (index == 0) {
-              pthread_cond_wait(&_cond0, &_mutex);
-            } else if (index == 1) {
-              pthread_cond_wait(&_cond1, &_mutex);
-            }
+            pthread_cond_wait(&_cond[index], &_mutex);
         }
         _modify_wait = false;
     }
 
     inline void SignalReadCond(int index) {
-        if (index == 0 && _ref0 == 0) {
-            pthread_cond_signal(&_cond0);
-        } else if (index == 1 && _ref1 == 0) {
-            pthread_cond_signal(&_cond1);
+        if (_ref[index] == 0) {
+            pthread_cond_signal(&_cond[index]);
         }
     }
 
     void AddRef(int index) {
-        if (index == 0) {
-            ++_ref0;
-        } else {
-            ++_ref1;
-        }
+        ++_ref[index];
     }
 
     void SubRef(int index) {
-        if (index == 0) {
-            --_ref0;
-        } else {
-            --_ref1;
-        }
+        --_ref[index];
     }
 
 private:
     DoublyBufferedDataBthread* _control;
     pthread_mutex_t _mutex{};
-    pthread_cond_t _cond0{}; // Cond for _ref0.
-    pthread_cond_t _cond1{}; // Cond for _ref1.
-    int _ref0;               // Reference count for _data[0].
-    int _ref1;               // Reference count for _data[1].
+    // _cond[0] for _ref[0], _cond[1] for _ref[1]
+    pthread_cond_t _cond[2];
+    // _ref[0] is reference count for _data[0],
+    // _ref[1] is reference count for _data[1].
+    int _ref[2]{0, 0};
     bool _modify_wait;       // Whether there is a Modify() waiting for _ref0/_ref1.
 };
 
