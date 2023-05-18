@@ -173,6 +173,8 @@ public:
     // Supported load balancer:
     //   rr                           # round robin, choose next server
     //   random                       # randomly choose a server
+    //   wr                           # weighted random
+    //   wrr                          # weighted round robin
     //   la                           # locality aware
     //   c_murmurhash/c_md5           # consistent hashing with murmurhash3/md5
     //   "" or NULL                   # treat `naming_service_url' as `server_addr_and_port'
