@@ -108,6 +108,20 @@ static butil::Mutex* g_user_mrs_lock = NULL;
 static void* (*g_mem_alloc)(size_t) = NULL;
 static void (*g_mem_dealloc)(void*) = NULL;
 
+namespace {
+struct IbvDeviceDeleter {
+    void operator()(ibv_device** device_list) {
+      IbvFreeDeviceList(device_list);
+    }
+};
+
+struct IbvContextDeleter {
+    void operator() (ibv_context* context) {
+        IbvCloseDevice(context);
+    }
+};
+}  // namespace
+
 static void GlobalRelease() {
     g_rdma_available.store(false, butil::memory_order_release);
     usleep(100000);  // to avoid unload library too early
@@ -370,6 +384,44 @@ static inline void ExitWithError() {
     exit(1);
 }
 
+/**
+ * @brief Get num available HCAs which has active port
+ *
+ * @return int 0 if none
+ */
+static int NumAvailableDevices() {
+    int num_available_devices = 0;
+    int num_devices;
+    std::unique_ptr<ibv_device*, IbvDeviceDeleter> device_list{
+        ibv_get_device_list(&num_devices), IbvDeviceDeleter()};
+    if (!device_list) {
+        PLOG(ERROR) << "Failed to ibv_get_device_list ";
+        return 0;
+    }
+    for (int i = 0; i < num_devices; ++i) {
+        std::unique_ptr<ibv_context, IbvContextDeleter> context{
+            IbvOpenDevice(device_list.get()[i]), IbvContextDeleter()};
+        if (!context) {
+            PLOG(ERROR) << "Fail to open rdma device "
+                        << IbvGetDeviceName(device_list.get()[i]);
+            continue;
+        }
+        ibv_port_attr attr;
+        if (IbvQueryPort(context.get(), FLAGS_rdma_port, &attr) < 0) {
+            PLOG(WARNING) << "Fail to query port " << FLAGS_rdma_port << " on "
+                          << IbvGetDeviceName(device_list.get()[i]);
+            continue;
+        }
+        if (attr.state != IBV_PORT_ACTIVE) {
+            LOG(WARNING) << "Device " << IbvGetDeviceName(device_list.get()[i])
+                         << " port not active";
+            continue;
+        }
+        ++num_available_devices;
+    }
+    return num_available_devices;
+}
+
 static void GlobalRdmaInitializeOrDieImpl() {
     if (BAIDU_UNLIKELY(g_skip_rdma_init)) {
         // Just for UT
@@ -397,45 +449,35 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     // Find the first active port
-    int available_devices = 0;
+    int available_devices = NumAvailableDevices();
     g_port_num = FLAGS_rdma_port;
-    auto context_deleter = [](ibv_context* p) { IbvCloseDevice(p); };
     for (int i = 0; i < num; ++i) {
-        std::unique_ptr<ibv_context, decltype(context_deleter)> context(
-            IbvOpenDevice(g_devices[i]), context_deleter);
+        std::unique_ptr<ibv_context, IbvContextDeleter> context{
+            IbvOpenDevice(g_devices[i]), IbvContextDeleter()};
         if (!context) {
-            PLOG(ERROR) << "Fail to open rdma device " << IbvGetDeviceName(g_devices[i]);
-            ExitWithError();
+            PLOG(ERROR) << "Fail to open rdma device "
+                        << IbvGetDeviceName(g_devices[i]);
+            continue;
         }
         ibv_port_attr attr;
         if (IbvQueryPort(context.get(), g_port_num, &attr) < 0) {
-            PLOG(WARNING) << "Fail to query port " << g_port_num 
-                          << " on " << IbvGetDeviceName(g_devices[i]);
-            if (FLAGS_rdma_device.size() > 0) {
-                ExitWithError();
-            }
+            PLOG(ERROR) << "Fail to query port " << g_port_num << " on "
+                        << IbvGetDeviceName(g_devices[i]);
             continue;
         }
         if (attr.state != IBV_PORT_ACTIVE) {
             continue;
         }
-        if (FLAGS_rdma_device.size() > 0) {
-            if (strcmp(context->device->name, FLAGS_rdma_device.c_str()) == 0) {
-                ++available_devices;
-                g_context = context.release();
-                g_gid_tbl_len = attr.gid_tbl_len;
-                g_lid = attr.lid;
-                break;
-            }
-        } else {
-            if (g_context) {
-                IbvCloseDevice(g_context);
-            }
-            g_context = context.release();
-            g_gid_tbl_len = attr.gid_tbl_len;
-            g_lid = attr.lid;
-            ++available_devices;
+        if (FLAGS_rdma_device.size() > 0 &&
+            strcmp(context->device->name, FLAGS_rdma_device.c_str())) {
+            LOG(INFO) << "Device name not match: " << context->device->name
+                      << " vs " << FLAGS_rdma_device;
+            continue;
         }
+        g_context = context.release();
+        g_gid_tbl_len = attr.gid_tbl_len;
+        g_lid = attr.lid;
+        break;
     }
     if (!g_context) {
         LOG(ERROR) << "Fail to find available RDMA device " << FLAGS_rdma_device;
@@ -443,7 +485,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
     if (available_devices > 1 && FLAGS_rdma_device.size() == 0) {
         LOG(INFO) << "This server has more than one available RDMA device. Only "
-                  << "the last one (" << g_context->device->name
+                  << "the first one (" << g_context->device->name
                   << ") will be used. If you want to use other device, please "
                   << "specify it with --rdma_device.";
     } else {
