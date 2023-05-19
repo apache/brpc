@@ -35,8 +35,33 @@ add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB>
                                $<TARGET_OBJECTS:SOURCES_LIB>
                                $<TARGET_OBJECTS:PROTO_LIB>)
 
+function(check_thrift_version target_arg)
+    #use thrift command to get version
+    execute_process(
+        COMMAND thrift --version
+        OUTPUT_VARIABLE THRIFT_VERSION_OUTPUT
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" THRIFT_VERSION ${THRIFT_VERSION_OUTPUT})
+    string(REGEX REPLACE "\\." ";" THRIFT_VERSION_LIST ${THRIFT_VERSION})
+
+    list(GET THRIFT_VERSION_LIST 0 THRIFT_MAJOR_VERSION)
+    list(GET THRIFT_VERSION_LIST 1 THRIFT_MINOR_VERSION)
+
+    if (THRIFT_MAJOR_VERSION EQUAL 0 AND THRIFT_MINOR_VERSION LESS 11)
+        message(STATUS "Thrift version is less than 0.11.0")
+        target_compile_definitions($(target_arg) PRIVATE _THRIFT_VERSION_LOWER_THAN_0_11_0_)
+    else()
+        message(STATUS "Thrift version is equal to or greater than 0.11.0")
+    endif()
+endfunction()
+
+
 if(WITH_THRIFT)
    target_link_libraries(brpc-static ${THRIFT_LIB})
+   check_thrift_version(brpc-static)
 endif()
 
 SET_TARGET_PROPERTIES(brpc-static PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
@@ -47,33 +72,6 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/output/bin)
 set(protoc_gen_mcpack_SOURCES
     ${PROJECT_SOURCE_DIR}/src/mcpack2pb/generator.cpp
  )
-
-function(check_thrift_version)
-#use thrift command to get version
-execute_process(
-    COMMAND thrift --version
-    OUTPUT_VARIABLE THRIFT_VERSION_OUTPUT
-    ERROR_QUIET
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" THRIFT_VERSION ${THRIFT_VERSION_OUTPUT})
-string(REGEX REPLACE "\\." ";" THRIFT_VERSION_LIST ${THRIFT_VERSION})
-
-list(GET THRIFT_VERSION_LIST 0 THRIFT_MAJOR_VERSION)
-list(GET THRIFT_VERSION_LIST 1 THRIFT_MINOR_VERSION)
-
-if (THRIFT_MAJOR_VERSION EQUAL 0 AND THRIFT_MINOR_VERSION LESS 20)
-    message(STATUS "Thrift version is less than 0.11.0")
-else()
-    message(STATUS "Thrift version is equal to or greater than 0.11.0")
-endif()
-endfunction()
-
-if(WITH_THRIFT)
-    check_thrift_version()
-endif()
-
     
 add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
 
@@ -87,6 +85,7 @@ if(BUILD_SHARED_LIBS)
     endif()
     if(WITH_THRIFT)
         target_link_libraries(brpc-shared ${THRIFT_LIB})
+        check_thrift_version(brpc-shared)
     endif()
     SET_TARGET_PROPERTIES(brpc-shared PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
 
