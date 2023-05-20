@@ -385,12 +385,11 @@ static inline void ExitWithError() {
 }
 
 /**
- * @brief Open the RDMA device specified by `device_name` or the first available
- * device if `device_name` is empty. Also, number of available devices are
- * written to `*num_available_devices`
+ * @brief Open the RDMA device specified by FLAGS_rdma_device or the first
+ * available device if FLAGS_rdma_device is empty. Also, number of available
+ * devices are written to `*num_available_devices`
  *
  * @param num_total Total number returned by ibv_open_devices
- * @param device_name Empty if not specified
  * @param num_available_devices Location to write num available
  * @return ibv_context* nullptr if no device available or device_name not match
  */
