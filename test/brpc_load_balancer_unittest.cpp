@@ -25,7 +25,6 @@
 #include "bthread/bthread.h"
 #include "butil/gperftools_profiler.h"
 #include "butil/containers/doubly_buffered_data.h"
-#include "butil/containers/doubly_buffered_data_bthread.h"
 #include "brpc/describable.h"
 #include "brpc/socket.h"
 #include "brpc/socket_map.h"
@@ -69,17 +68,7 @@ protected:
     };
 };
 
-size_t TLS_ctor = 0;
-size_t TLS_dtor = 0;
-struct TLS {
-    TLS() {
-        ++TLS_ctor;
-    }
-    ~TLS() {
-        ++TLS_dtor;
-    }
-
-};
+class UserTLS {};
 
 struct Foo {
     Foo() : x(0) {}
@@ -124,7 +113,9 @@ void test_doubly_buffered_data() {
 
 TEST_F(LoadBalancerTest, doubly_buffered_data) {
     test_doubly_buffered_data<butil::DoublyBufferedData<Foo>>();
-    test_doubly_buffered_data<butil::DoublyBufferedDataBthread<Foo>>();
+    test_doubly_buffered_data<butil::DoublyBufferedData<Foo, butil::Void, false>>();
+    test_doubly_buffered_data<butil::DoublyBufferedData<Foo, UserTLS, false>>();
+    test_doubly_buffered_data<butil::DoublyBufferedData<Foo, butil::Void, true>>();
 }
 
 bool exitFlag = false;
@@ -136,7 +127,7 @@ void* DBDBthread(void* arg) {
         typename DBD::ScopedPtr ptr;
         d->Read(&ptr);
 
-        // If DBD is DoublyBufferedData, may cause deadlock.
+        // If DBD is DoublyBufferedData<T, TLS, false>, may cause deadlock.
         bthread_usleep(100 * 1000);
     }
 
@@ -175,10 +166,11 @@ void DBDMultiBthread() {
 // Deadlock, only for test.
 // TEST_F(LoadBalancerTest, doubly_buffered_data_multi_bthread) {
 //     DBDMultiBthread<butil::DoublyBufferedData<Foo>>();
+//     DBDMultiBthread<butil::DoublyBufferedData<Foo, butil::Void, false>>();
 // }
 
 TEST_F(LoadBalancerTest, doubly_buffered_data_bthread_multi_bthread) {
-    DBDMultiBthread<butil::DoublyBufferedDataBthread<Foo>>();
+    DBDMultiBthread<butil::DoublyBufferedData<Foo, butil::Void, true>>();
 }
 
 
@@ -291,26 +283,26 @@ TEST_F(LoadBalancerTest, dbd_performance) {
     int thread_num = 1;
     PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
     PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
-    PerfTest<butil::DoublyBufferedDataBthread<PerfMap>>(thread_num, false);
-    PerfTest<butil::DoublyBufferedDataBthread<PerfMap>>(thread_num, true);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, true);
 
     thread_num = 4;
     PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
     PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
-    PerfTest<butil::DoublyBufferedDataBthread<PerfMap>>(thread_num, false);
-    PerfTest<butil::DoublyBufferedDataBthread<PerfMap>>(thread_num, true);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, true);
 
     thread_num = 8;
     PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
     PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
-    PerfTest<butil::DoublyBufferedDataBthread<PerfMap>>(thread_num, false);
-    PerfTest<butil::DoublyBufferedDataBthread<PerfMap>>(thread_num, true);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, true);
 
     thread_num = 16;
     PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
     PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
-    PerfTest<butil::DoublyBufferedDataBthread<PerfMap>>(thread_num, false);
-    PerfTest<butil::DoublyBufferedDataBthread<PerfMap>>(thread_num, true);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, true);
 }
 
 
