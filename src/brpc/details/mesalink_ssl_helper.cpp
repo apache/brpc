@@ -410,7 +410,7 @@ bool BuildALPNProtocolList(
     std::vector<unsigned char>& result
 ) {
     size_t alpn_list_length = 0;
-    for (const auto& alpn_protocol : options.alpn_protocols) {
+    for (const auto& alpn_protocol : alpn_protocols) {
         if (alpn_protocol.size() > UCHAR_MAX) {
             LOG(ERROR) << "Fail to build ALPN procotol list: "
                        << "protocol name too long";
@@ -419,7 +419,7 @@ bool BuildALPNProtocolList(
         alpn_list_length += alpn_protocol.size() + 1;
     }
 
-    result.resize(result_length);
+    result.resize(alpn_list_length);
     for (size_t curr = 0, i = 0; i < alpn_protocols.size(); i++) {
         result[curr++] = static_cast<unsigned char>(
             alpn_protocols[i].size()
