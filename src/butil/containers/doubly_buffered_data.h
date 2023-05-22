@@ -41,7 +41,7 @@ namespace butil {
 // modifications of data. As a side effect, this data structure can store
 // a thread-local data for user.
 //
-// --- `AllowSuspendBthread=false' ---
+// --- `AllowBthreadSuspended=false' ---
 // Read(): Begin with a thread-local mutex locked then read the foreground
 // instance which will not be changed before the mutex is unlocked. Since the
 // mutex is only locked by Modify() with an empty critical section, the
@@ -52,11 +52,11 @@ namespace butil {
 // sure all existing Read() finish and later Read() see new foreground,
 // then modify background(foreground before flip) again.
 //
-// But, when `AllowSuspendBthread=false', it is not allowed to suspend bthread
+// But, when `AllowBthreadSuspended=false', it is not allowed to suspend bthread
 // while reading. Otherwise, it may cause deadlock.
 //
 //
-// --- `AllowSuspendBthread=true' ---
+// --- `AllowBthreadSuspended=true' ---
 // It is allowed to suspend bthread while reading.
 // It is not allowed to use non-Void TLS.
 // If bthread will not be suspended while reading, it also makes Read() almost
@@ -79,8 +79,8 @@ namespace butil {
 
 class Void { };
 
-template <typename T> struct is_Void : false_type { };
-template <> struct is_Void<Void> : true_type { };
+template <typename T> struct IsVoid : false_type { };
+template <> struct IsVoid<Void> : true_type { };
 
 template <typename T, typename TLS = Void, bool AllowBthreadSuspended = false>
 class DoublyBufferedData {
@@ -249,8 +249,8 @@ class DoublyBufferedDataWrapperBase<T, Void> {
 // WrapperTLSGroup can store Wrapper in thread local storage.
 // WrapperTLSGroup will destruct Wrapper data when thread exits,
 // other times only reset Wrapper inner structure.
-template <typename T, typename TLS, bool AllowSuspendBthread>
-class DoublyBufferedData<T, TLS, AllowSuspendBthread>::WrapperTLSGroup {
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+class DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup {
 public:
     const static size_t RAW_BLOCK_SIZE = 4096;
     const static size_t ELEMENTS_PER_BLOCK = (RAW_BLOCK_SIZE + sizeof(T) - 1) / sizeof(T);
@@ -345,23 +345,23 @@ private:
     static __thread std::vector<ThreadBlock*>* _s_tls_blocks;
 };
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
-pthread_mutex_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::WrapperTLSGroup::_s_mutex = PTHREAD_MUTEX_INITIALIZER;
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+pthread_mutex_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
-std::deque<typename DoublyBufferedData<T, TLS, AllowSuspendBthread>::WrapperTLSId>*
-        DoublyBufferedData<T, TLS, AllowSuspendBthread>::WrapperTLSGroup::_s_free_ids = NULL;
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+std::deque<typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSId>*
+        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_free_ids = NULL;
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
-typename DoublyBufferedData<T, TLS, AllowSuspendBthread>::WrapperTLSId
-        DoublyBufferedData<T, TLS, AllowSuspendBthread>::WrapperTLSGroup::_s_id = 0;
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSId
+        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_id = 0;
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
-__thread std::vector<typename DoublyBufferedData<T, TLS, AllowSuspendBthread>::WrapperTLSGroup::ThreadBlock*>*
-        DoublyBufferedData<T, TLS, AllowSuspendBthread>::WrapperTLSGroup::_s_tls_blocks = NULL;
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+__thread std::vector<typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::ThreadBlock*>*
+        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_tls_blocks = NULL;
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
-class DoublyBufferedData<T, TLS, AllowSuspendBthread>::Wrapper
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+class DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper
     : public DoublyBufferedDataWrapperBase<T, TLS> {
 friend class DoublyBufferedData;
 public:
@@ -369,8 +369,10 @@ public:
         : _control(NULL)
         , _modify_wait(false) {
         pthread_mutex_init(&_mutex, NULL);
-        pthread_cond_init(&_cond[0], NULL);
-        pthread_cond_init(&_cond[1], NULL);
+        if (AllowBthreadSuspended) {
+            pthread_cond_init(&_cond[0], NULL);
+            pthread_cond_init(&_cond[1], NULL);
+        }
     }
     
     ~Wrapper() {
@@ -378,14 +380,15 @@ public:
             _control->RemoveWrapper(this);
         }
 
-        if (AllowSuspendBthread) {
+        if (AllowBthreadSuspended) {
             WaitReadDone(0);
             WaitReadDone(1);
+
+            pthread_cond_destroy(&_cond[0]);
+            pthread_cond_destroy(&_cond[1]);
         }
 
         pthread_mutex_destroy(&_mutex);
-        pthread_cond_destroy(&_cond[0]);
-        pthread_cond_destroy(&_cond[1]);
     }
 
     // _mutex will be locked by the calling pthread and DoublyBufferedData.
@@ -395,7 +398,7 @@ public:
         pthread_mutex_lock(&_mutex);
     }
 
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     inline void BeginReadRelease() {
         pthread_mutex_unlock(&_mutex);
     }
@@ -404,7 +407,7 @@ public:
         pthread_mutex_unlock(&_mutex);
     }
 
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     // Thread-local reference count which be protected by _mutex
     // will be decremented by one.
     inline void EndRead(int index) {
@@ -417,7 +420,7 @@ public:
         BAIDU_SCOPED_LOCK(_mutex);
     }
 
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     // Wait until all read of foreground instance done.
     inline void WaitReadDone(int index) {
         BAIDU_SCOPED_LOCK(_mutex);
@@ -429,19 +432,19 @@ public:
         _modify_wait = false;
     }
 
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     inline void SignalReadCond(int index) {
         if (_ref[index] == 0 && _modify_wait) {
             pthread_cond_signal(&_cond[index]);
         }
     }
 
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     void AddRef(int index) {
         ++_ref[index];
     }
 
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     void SubRef(int index) {
         --_ref[index];
     }
@@ -449,23 +452,23 @@ public:
 private:
     DoublyBufferedData* _control;
     pthread_mutex_t _mutex{};
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     // _cond[0] for _ref[0], _cond[1] for _ref[1]
     pthread_cond_t _cond[2]{};
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     // _ref[0] is reference count for _data[0],
     // _ref[1] is reference count for _data[1].
     int _ref[2]{0, 0};
-    // For `AllowSuspendBthread=true'.
+    // For `AllowBthreadSuspended=true'.
     // Whether there is a Modify() waiting for _ref0/_ref1.
     bool _modify_wait;
 };
 
 // Called when thread initializes thread-local wrapper.
-template <typename T, typename TLS, bool AllowSuspendBthread>
-typename DoublyBufferedData<T, TLS, AllowSuspendBthread>::Wrapper*
-DoublyBufferedData<T, TLS, AllowSuspendBthread>::AddWrapper(
-        typename DoublyBufferedData<T, TLS, AllowSuspendBthread>::Wrapper* w) {
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper*
+DoublyBufferedData<T, TLS, AllowBthreadSuspended>::AddWrapper(
+        typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper* w) {
     if (NULL == w) {
         return NULL;
     }
@@ -487,9 +490,9 @@ DoublyBufferedData<T, TLS, AllowSuspendBthread>::AddWrapper(
 }
 
 // Called when thread quits.
-template <typename T, typename TLS, bool AllowSuspendBthread>
-void DoublyBufferedData<T, TLS, AllowSuspendBthread>::RemoveWrapper(
-    typename DoublyBufferedData<T, TLS, AllowSuspendBthread>::Wrapper* w) {
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+void DoublyBufferedData<T, TLS, AllowBthreadSuspended>::RemoveWrapper(
+    typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper* w) {
     if (NULL == w) {
         return;
     }
@@ -503,11 +506,11 @@ void DoublyBufferedData<T, TLS, AllowSuspendBthread>::RemoveWrapper(
     }
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
-DoublyBufferedData<T, TLS, AllowSuspendBthread>::DoublyBufferedData()
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+DoublyBufferedData<T, TLS, AllowBthreadSuspended>::DoublyBufferedData()
     : _index(0)
     , _wrapper_key(0) {
-    static_assert(!(AllowSuspendBthread && !is_Void<TLS>::value),
+    static_assert(!(AllowBthreadSuspended && !IsVoid<TLS>::value),
                   "Forbidden to allow suspend bthread with non-Void TLS");
 
     _wrappers.reserve(64);
@@ -523,8 +526,8 @@ DoublyBufferedData<T, TLS, AllowSuspendBthread>::DoublyBufferedData()
     }
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
-DoublyBufferedData<T, TLS, AllowSuspendBthread>::~DoublyBufferedData() {
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+DoublyBufferedData<T, TLS, AllowBthreadSuspended>::~DoublyBufferedData() {
     // User is responsible for synchronizations between Read()/Modify() and
     // this function.
     
@@ -541,13 +544,13 @@ DoublyBufferedData<T, TLS, AllowSuspendBthread>::~DoublyBufferedData() {
     pthread_mutex_destroy(&_wrappers_mutex);
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
-int DoublyBufferedData<T, TLS, AllowSuspendBthread>::Read(
-    typename DoublyBufferedData<T, TLS, AllowSuspendBthread>::ScopedPtr* ptr) {
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(
+    typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::ScopedPtr* ptr) {
     Wrapper* p = WrapperTLSGroup::get_or_create_tls_data(_wrapper_key);
     Wrapper* w = AddWrapper(p);
     if (BAIDU_LIKELY(w != NULL)) {
-        if (AllowSuspendBthread) {
+        if (AllowBthreadSuspended) {
             // Use reference count instead of mutex to indicate read of
             // foreground instance, so during the read process, there is
             // no need to lock mutex and bthread is allowed to be suspended.
@@ -569,9 +572,9 @@ int DoublyBufferedData<T, TLS, AllowSuspendBthread>::Read(
     return -1;
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
+template <typename T, typename TLS, bool AllowBthreadSuspended>
 template <typename Fn>
-size_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::Modify(Fn& fn) {
+size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Modify(Fn& fn) {
     // _modify_mutex sequences modifications. Using a separate mutex rather
     // than _wrappers_mutex is to avoid blocking threads calling
     // AddWrapper() or RemoveWrapper() too long. Most of the time, modifications
@@ -598,7 +601,7 @@ size_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::Modify(Fn& fn) {
         BAIDU_SCOPED_LOCK(_wrappers_mutex);
         for (size_t i = 0; i < _wrappers.size(); ++i) {
             // Wait read of old foreground instance done.
-            if (AllowSuspendBthread) {
+            if (AllowBthreadSuspended) {
                 _wrappers[i]->WaitReadDone(bg_index);
             } else {
                 _wrappers[i]->WaitReadDone();
@@ -611,38 +614,38 @@ size_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::Modify(Fn& fn) {
     return ret2;
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
+template <typename T, typename TLS, bool AllowBthreadSuspended>
 template <typename Fn, typename Arg1>
-size_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::Modify(Fn& fn, const Arg1& arg1) {
+size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Modify(Fn& fn, const Arg1& arg1) {
     Closure1<Fn, Arg1> c(fn, arg1);
     return Modify(c);
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
+template <typename T, typename TLS, bool AllowBthreadSuspended>
 template <typename Fn, typename Arg1, typename Arg2>
-size_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::Modify(
+size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Modify(
     Fn& fn, const Arg1& arg1, const Arg2& arg2) {
     Closure2<Fn, Arg1, Arg2> c(fn, arg1, arg2);
     return Modify(c);
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
+template <typename T, typename TLS, bool AllowBthreadSuspended>
 template <typename Fn>
-size_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::ModifyWithForeground(Fn& fn) {
+size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::ModifyWithForeground(Fn& fn) {
     WithFG0<Fn> c(fn, _data);
     return Modify(c);
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
+template <typename T, typename TLS, bool AllowBthreadSuspended>
 template <typename Fn, typename Arg1>
-size_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::ModifyWithForeground(Fn& fn, const Arg1& arg1) {
+size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::ModifyWithForeground(Fn& fn, const Arg1& arg1) {
     WithFG1<Fn, Arg1> c(fn, _data, arg1);
     return Modify(c);
 }
 
-template <typename T, typename TLS, bool AllowSuspendBthread>
+template <typename T, typename TLS, bool AllowBthreadSuspended>
 template <typename Fn, typename Arg1, typename Arg2>
-size_t DoublyBufferedData<T, TLS, AllowSuspendBthread>::ModifyWithForeground(
+size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::ModifyWithForeground(
     Fn& fn, const Arg1& arg1, const Arg2& arg2) {
     WithFG2<Fn, Arg1, Arg2> c(fn, _data, arg1, arg2);
     return Modify(c);
