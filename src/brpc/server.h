@@ -569,10 +569,10 @@ public:
     // Returns true if accept request, reject request otherwise.
     bool AcceptRequest(Controller* cntl) const;
 
-    bool HasProgressiveReadMethod() const {
+    bool has_progressive_read_method() const {
         return this->_has_progressive_read_method;
     }
-  
+
 private:
 friend class StatusService;
 friend class ProtobufsService;

@@ -1137,7 +1137,7 @@ TEST_F(HttpTest, server_end_read_short_body_progressively) {
 }
 
 TEST_F(HttpTest, server_end_read_failed) {
-     const int port = 8923;
+    const int port = 8923;
     brpc::ServiceOptions opt;
     opt.enable_progressive_read = true;
     opt.ownership = brpc::SERVER_DOESNT_OWN_SERVICE;

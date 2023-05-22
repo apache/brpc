@@ -1613,7 +1613,7 @@ const std::string& GetHttpMethodName(
 }
 
 void HttpContext::CheckProgressiveRead(const void* arg, Socket *socket) {
-    if (arg == NULL || !((Server *)arg)->HasProgressiveReadMethod()) {
+    if (arg == NULL || !((Server *)arg)->has_progressive_read_method()) {
         // arg == NULL indicates not in server-end
         return;
     }
