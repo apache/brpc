@@ -202,7 +202,7 @@ static void QueueMessage(InputMessageBase* to_run_msg,
     }
 }
 
-InputMessenger::InputMessageClosure::~InputMessageClosure() {
+InputMessenger::InputMessageClosure::~InputMessageClosure() noexcept(false) {
     if (_msg) {
         ProcessInputMessage(_msg);
     }
