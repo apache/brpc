@@ -258,7 +258,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             RemainedFn fn = g->_last_context_remained;
             g->_last_context_remained = NULL;
             fn(g->_last_context_remained_arg);
-            g = tls_task_group;
+            g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
         }
 
 #ifndef NDEBUG
