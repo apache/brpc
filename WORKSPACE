@@ -283,14 +283,13 @@ perl_register_toolchains()
 #
 # Tools Dependencies
 #
-
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
 http_archive(
-    name = "com_grail_bazel_compdb",
-    sha256 = "d32835b26dd35aad8fd0ba0d712265df6565a3ad860d39e4c01ad41059ea7eda",
-    strip_prefix = "bazel-compilation-database-0.5.2",
-    urls = ["https://github.com/grailbio/bazel-compilation-database/archive/0.5.2.tar.gz"],
+    name = "hedron_compile_commands",
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/3dddf205a1f5cde20faf2444c1757abe0564ff4c.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-3dddf205a1f5cde20faf2444c1757abe0564ff4c",
+    sha256 = "3cd0e49f0f4a6d406c1d74b53b7616f5e24f5fd319eafc1bf8eee6e14124d115",
 )
-
-load("@com_grail_bazel_compdb//:deps.bzl", "bazel_compdb_deps")
-
-bazel_compdb_deps()
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+hedron_compile_commands_setup()

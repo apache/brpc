@@ -77,7 +77,7 @@ std::string string_printf(const char* format, ...) {
     // of std::string to avoid a double allocation, though it does pad
     // the resulting string with nul bytes.  Our guestimation is twice
     // the format string size, or 32 bytes, whichever is larger.  This
-    // is a hueristic that doesn't affect correctness but attempts to be
+    // is a heuristic that doesn't affect correctness but attempts to be
     // reasonably fast for the most common cases.
     std::string ret;
     ret.reserve(std::max(32UL, strlen(format) * 2));

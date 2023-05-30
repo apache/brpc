@@ -53,6 +53,18 @@ DEFINE_bool(log_connection_close, false,
             "Print log when remote side closes the connection");
 BRPC_VALIDATE_GFLAG(log_connection_close, PassValidate);
 
+DEFINE_bool(socket_keepalive, false,
+            "Enable keepalive of sockets if this value is true");
+
+DEFINE_int32(socket_keepalive_idle_s, -1,
+             "Set idle time of sockets before keepalive if this value is positive");
+
+DEFINE_int32(socket_keepalive_interval_s, -1,
+             "Set interval of sockets between keepalives if this value is positive");
+
+DEFINE_int32(socket_keepalive_count, -1,
+             "Set number of keepalives of sockets before close if this value is positive");
+
 DECLARE_bool(usercode_in_pthread);
 DECLARE_uint64(max_body_size);
 
@@ -89,7 +101,8 @@ ParseResult InputMessenger::CutInputMessage(
                 return result;
             } else {
                 if (m->_read_buf.size() >= 4) {
-                    char data[PROTO_DUMMY_LEN];
+                    // The length of `data' must be PROTO_DUMMY_LEN + 1 to store extra ending char '\0'
+                    char data[PROTO_DUMMY_LEN + 1];
                     m->_read_buf.copy_to_cstr(data, PROTO_DUMMY_LEN);
                     if (strncmp(data, "RDMA", PROTO_DUMMY_LEN) == 0 &&
                         m->_rdma_state == Socket::RDMA_OFF) {
@@ -189,7 +202,7 @@ static void QueueMessage(InputMessageBase* to_run_msg,
     }
 }
 
-InputMessenger::InputMessageClosure::~InputMessageClosure() {
+InputMessenger::InputMessageClosure::~InputMessageClosure() noexcept(false) {
     if (_msg) {
         ProcessInputMessage(_msg);
     }
@@ -474,6 +487,15 @@ int InputMessenger::Create(const butil::EndPoint& remote_side,
     options.user = this;
     options.on_edge_triggered_events = OnNewMessages;
     options.health_check_interval_s = health_check_interval_s;
+    if (FLAGS_socket_keepalive) {
+        options.keepalive_options = std::make_shared<SocketKeepaliveOptions>();
+        options.keepalive_options->keepalive_idle_s
+            = FLAGS_socket_keepalive_idle_s;
+        options.keepalive_options->keepalive_interval_s
+            = FLAGS_socket_keepalive_interval_s;
+        options.keepalive_options->keepalive_count
+            = FLAGS_socket_keepalive_count;
+    }
     return Socket::Create(options, id);
 }
 
@@ -488,6 +510,25 @@ int InputMessenger::Create(SocketOptions options, SocketId* id) {
     {
 #endif
         options.on_edge_triggered_events = OnNewMessages;
+    }
+    // Enable keepalive by options or Gflag.
+    // Priority: options > Gflag.
+    if (options.keepalive_options || FLAGS_socket_keepalive) {
+        if (!options.keepalive_options) {
+            options.keepalive_options = std::make_shared<SocketKeepaliveOptions>();
+        }
+        if (options.keepalive_options->keepalive_idle_s <= 0) {
+            options.keepalive_options->keepalive_idle_s
+                = FLAGS_socket_keepalive_idle_s;
+        }
+        if (options.keepalive_options->keepalive_interval_s <= 0) {
+            options.keepalive_options->keepalive_interval_s
+                = FLAGS_socket_keepalive_interval_s;
+        }
+        if (options.keepalive_options->keepalive_count <= 0) {
+            options.keepalive_options->keepalive_count
+                = FLAGS_socket_keepalive_count;
+        }
     }
     return Socket::Create(options, id);
 }

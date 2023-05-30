@@ -25,6 +25,7 @@
 #include "bthread/task_group.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
+#include "bthread/interrupt_pthread.h"
 
 namespace bthread {
 extern butil::atomic<TaskControl*> g_task_control;
@@ -394,4 +395,52 @@ TEST(ButexTest, stop_before_sleeping) {
         ASSERT_EQ(EINVAL, bthread_stop(th));
     }
 }
+
+void* trigger_signal(void* arg) {
+    pthread_t * th = (pthread_t*)arg;
+    const long t1 = butil::gettimeofday_us();
+    for (size_t i = 0; i < 50; ++i) {
+      usleep(100000);
+      if (bthread::interrupt_pthread(*th) == ESRCH) {
+        LOG(INFO) << "waiter thread end, trigger count=" << i;
+        break;
+      }
+    }
+    const long t2 = butil::gettimeofday_us();
+    LOG(INFO) << "trigger signal thread end, elapsed=" << (t2-t1) << "us";
+    return NULL;
+}
+
+TEST(ButexTest, wait_with_signal_triggered) {
+    butil::Timer tm;
+
+    const int64_t WAIT_MSEC = 500;
+    WaiterArg waiter_args;
+    pthread_t waiter_th, tigger_th;
+    butil::atomic<int>* butex =
+        bthread::butex_create_checked<butil::atomic<int> >();
+    ASSERT_TRUE(butex);
+    *butex = 1;
+    ASSERT_EQ(0, bthread::butex_wake(butex));
+
+    const timespec abstime = butil::milliseconds_from_now(WAIT_MSEC);
+    waiter_args.expected_value = *butex;
+    waiter_args.butex = butex;
+    waiter_args.expected_result = ETIMEDOUT;
+    waiter_args.ptimeout = &abstime;
+    tm.start();
+    pthread_create(&waiter_th, NULL, waiter, &waiter_args);
+    pthread_create(&tigger_th, NULL, trigger_signal, &waiter_th);
+    
+    ASSERT_EQ(0, pthread_join(waiter_th, NULL));
+    tm.stop();
+    auto wait_elapsed_ms = tm.m_elapsed();;
+    LOG(INFO) << "waiter thread end, elapsed " << wait_elapsed_ms << " ms";
+
+    ASSERT_LT(labs(wait_elapsed_ms - WAIT_MSEC), 250);
+
+    ASSERT_EQ(0, pthread_join(tigger_th, NULL));
+    bthread::butex_destroy(butex);
+}
+
 } // namespace

@@ -18,6 +18,7 @@
 #ifndef BAIDU_RPC_HTTP2_H
 #define BAIDU_RPC_HTTP2_H
 
+#include <cstdint>
 #include "brpc/http_status_code.h"
 
 // To baidu-rpc developers: This is a header included by user, don't depend

@@ -126,6 +126,8 @@ ServerOptions::ServerOptions()
     , mongo_service_adaptor(NULL)
     , auth(NULL)
     , server_owns_auth(false)
+    , interceptor(NULL)
+    , server_owns_interceptor(false)
     , num_threads(8)
     , max_concurrency(0)
     , session_local_data_factory(NULL)
@@ -449,6 +451,10 @@ Server::~Server() {
     if (_options.server_owns_auth) {
         delete _options.auth;
         _options.auth = NULL;
+    }
+    if (_options.server_owns_interceptor) {
+        delete _options.interceptor;
+        _options.interceptor = NULL;
     }
 
     delete _options.redis_service;
@@ -2172,6 +2178,25 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(google::protobuf::Service* serv
 int Server::MaxConcurrencyOf(google::protobuf::Service* service,
                              const butil::StringPiece& method_name) const {
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
+}
+
+bool Server::AcceptRequest(Controller* cntl) const {
+    const Interceptor* interceptor = _options.interceptor;
+    if (!interceptor) {
+        return true;
+    }
+
+    int error_code = 0;
+    std::string error_text;
+    if (cntl &&
+        !interceptor->Accept(cntl, error_code, error_text)) {
+        cntl->SetFailed(error_code,
+                        "Reject by Interceptor: %s",
+                        error_text.c_str());
+        return false;
+    }
+
+    return true;
 }
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME

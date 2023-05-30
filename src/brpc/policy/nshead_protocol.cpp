@@ -317,6 +317,9 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
                             " -usercode_in_pthread is on");
             break;
         }
+        if (!server->AcceptRequest(cntl)) {
+            break;
+        }
     } while (false);
 
     msg.reset();  // optional, just release resource ASAP
