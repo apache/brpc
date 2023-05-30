@@ -49,6 +49,7 @@ extern bool g_skip_rdma_init;
 
 DEFINE_int32(rdma_sq_size, 128, "SQ size for RDMA");
 DEFINE_int32(rdma_rq_size, 128, "RQ size for RDMA");
+DEFINE_bool(rdma_send_zerocopy, true, "Enable zerocopy for send side");
 DEFINE_bool(rdma_recv_zerocopy, true, "Enable zerocopy for receive side");
 DEFINE_int32(rdma_zerocopy_min_size, 512, "The minimal size for receive zerocopy");
 DEFINE_string(rdma_recv_block_type, "default", "Default size type for recv WR: "
@@ -801,29 +802,45 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         wr.sg_list = sglist;
         wr.opcode = IBV_WR_SEND_WITH_IMM;
 
-        RdmaIOBuf* data = (RdmaIOBuf*)from[current];
         size_t sge_index = 0;
         while (sge_index < (uint32_t)max_sge &&
                 this_len < _remote_recv_block_size) {
-            if (data->size() == 0) {
+            if (from[current]->size() == 0) {
                 // The current IOBuf is empty, find next one
                 ++current;
                 if (current == ndata) {
                     break;
                 }
-                data = (RdmaIOBuf*)from[current];
                 continue;
             }
 
-            ssize_t len = data->cut_into_sglist_and_iobuf(
-                    sglist, &sge_index, to, max_sge,
-                    _remote_recv_block_size - this_len);
-            if (len < 0) {
-                return -1;
+            ssize_t len = 0;
+            if (FLAGS_rdma_send_zerocopy) {
+                ssize_t len = ((RdmaIOBuf*)from[current])->cut_into_sglist_and_iobuf(
+                        sglist, &sge_index, to, max_sge,
+                        _remote_recv_block_size - this_len);
+                if (len < 0) {
+                    return -1;
+                }
+                this_len += len;
+                total_len += len;
+            } else {
+                len = _remote_recv_block_size - this_len;
+                void* buf = AllocBlock(len);
+                if (!buf) {
+                    return -1;
+                }
+                len = from[current]->copy_to(buf, len);
+                from[current]->cutn(to, len);
+                sglist[sge_index].length = len;
+                sglist[sge_index].addr = (uint64_t)buf;
+                sglist[sge_index].lkey = GetLKey(buf);
+                ++sge_index;
+                this_len += len;
+                total_len += len;
+                _sbuf_data[_sq_current] = buf;
+                break;
             }
-            CHECK(len > 0);
-            this_len += len;
-            total_len += len;
         }
         if (this_len == 0) {
             continue;
@@ -951,6 +968,9 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
             uint32_t acks = butil::NetToHost32(wc.imm_data);
             uint32_t num = acks;
             while (num > 0) {
+                if (!FLAGS_rdma_send_zerocopy) {
+                    DeallocBlock(_sbuf_data[_sq_sent]);
+                }
                 _sbuf[_sq_sent++].clear();
                 if (_sq_sent == _sq_size - RESERVED_WR_NUM) {
                     _sq_sent = 0;
@@ -1137,6 +1157,10 @@ int RdmaEndpoint::AllocateResources() {
     }
     _rbuf.resize(_rq_size);
     if (_rbuf.size() != _rq_size) {
+        return -1;
+    }
+    _sbuf_data.resize(_sq_size, NULL);
+    if (_sbuf_data.size() != _sq_size) {
         return -1;
     }
     _rbuf_data.resize(_rq_size, NULL);

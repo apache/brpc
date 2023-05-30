@@ -38,6 +38,7 @@ DEFINE_int32(expected_qps, 0, "The expected QPS");
 DEFINE_int32(max_thread_num, 16, "The max number of threads are used");
 DEFINE_int32(attachment_size, -1, "Attachment size is used (in Bytes)");
 DEFINE_bool(echo_attachment, false, "Select whether attachment should be echo");
+DEFINE_bool(attachment_as_userdata, false, "Append attachment as user_data");
 DEFINE_string(connection_type, "single", "Connection type of the channel");
 DEFINE_string(protocol, "baidu_std", "Protocol type.");
 DEFINE_string(servers, "0.0.0.0:8002+0.0.0.0:8002", "IP Address of servers");
@@ -86,7 +87,12 @@ public:
         if (attachment_size > 0) {
             _addr = malloc(attachment_size);
             butil::fast_rand_bytes(_addr, attachment_size);
-            _attachment.append(_addr, attachment_size);
+            if (FLAGS_attachment_as_userdata) {
+                brpc::rdma::RegisterMemoryForRdma(_addr, (size_t)attachment_size);
+                _attachment.append_user_data(_addr, attachment_size, NULL);
+            } else {
+                _attachment.append(_addr, attachment_size);
+            }
         }
         _echo_attachment = echo_attachment;
     }

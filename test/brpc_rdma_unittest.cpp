@@ -68,6 +68,7 @@ struct HelloMessage {
 };
 
 DECLARE_bool(rdma_trace_verbose);
+DECLARE_bool(rdma_send_zerocopy);
 DECLARE_int32(rdma_memory_pool_max_regions);
 extern ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int);
 extern int (*IbvDestroyCq)(ibv_cq*);
@@ -1873,7 +1874,11 @@ TEST_F(RdmaTest, send_rpcs_with_user_defined_iobuf) {
     google::protobuf::Closure* done = DoNothing();
     ::test::EchoService::Stub(&channel).Echo(&cntl[0], &req[0], &res[0], done);
     bthread_id_join(cntl[0].call_id());
-    ASSERT_EQ(ERDMAMEM, cntl[0].ErrorCode());
+    if (rdma::FLAGS_rdma_send_zerocopy) {
+        ASSERT_EQ(ERDMAMEM, cntl[0].ErrorCode());
+    } else {
+        ASSERT_EQ(0, cntl[0].ErrorCode());
+    }
     attach.clear();
     sleep(2);  // wait for client recover from EHOSTDOWN
     cntl[0].Reset();
