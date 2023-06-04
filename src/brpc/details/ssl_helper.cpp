@@ -849,7 +849,8 @@ bool BuildALPNProtocolList(
     for (const auto& alpn_protocol : alpn_protocols) {
         if (alpn_protocol.size() > UCHAR_MAX) {
             LOG(ERROR) << "Fail to build ALPN procotol list: "
-                       << "protocol name too long";
+                       << "protocol name length " << alpn_protocol.size() << " too long, "
+                       << "max 255 supported.";
             return false;
         }
         alpn_list_length += alpn_protocol.size() + 1;
