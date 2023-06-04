@@ -46,7 +46,7 @@
     var_name = v;                                                              \
   }
 
-#if defined(__clang__) && (defined(__aarch64__) || defined(__arm64__))
+#if defined(__clang__)
 // Clang compiler is incorrectly caching the address of thread_local variables
 // across a suspend-point. The following macros used to disable the volatile
 // thread local access optimization.
