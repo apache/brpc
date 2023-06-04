@@ -108,7 +108,7 @@ std::string string_printf(size_t hint_size, const char* format, ...) {
     std::string ret;
     va_list ap;
     va_start(ap, format);
-    if (string_printf_impl(ret, std::max(hint_size,strlen(format) * 2),
+    if (string_printf_impl(ret, std::max(hint_size, strlen(format) * 2),
                            format, ap) != 0) {
         ret.clear();
     }
