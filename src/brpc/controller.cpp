@@ -87,6 +87,8 @@ namespace brpc {
 
 DEFINE_bool(graceful_quit_on_sigterm, false,
             "Register SIGTERM handle func to quit graceful");
+DEFINE_bool(graceful_quit_on_sighup, false,
+            "Register SIGHUP handle func to quit graceful");            
 
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
@@ -1461,6 +1463,7 @@ typedef sighandler_t SignalHandler;
 static volatile bool s_signal_quit = false;
 static SignalHandler s_prev_sigint_handler = NULL;
 static SignalHandler s_prev_sigterm_handler = NULL;
+static SignalHandler s_prev_sighup_handler = NULL;
 
 static void quit_handler(int signo) {
     s_signal_quit = true;
@@ -1469,6 +1472,9 @@ static void quit_handler(int signo) {
     }
     if (SIGTERM == signo && s_prev_sigterm_handler) {
         s_prev_sigterm_handler(signo);
+    }
+    if (SIGHUP == signo && s_prev_sighup_handler) {
+        s_prev_sighup_handler(signo);
     }
 }
 
@@ -1498,6 +1504,20 @@ static void RegisterQuitSignalOrDie() {
             } else {
                 s_prev_sigterm_handler = prev;
                 LOG(WARNING) << "SIGTERM was installed with " << prev;
+            }
+        }
+    }
+
+    if (FLAGS_graceful_quit_on_sighup) {
+        prev = signal(SIGHUP, quit_handler);
+        if (prev != SIG_DFL &&
+            prev != SIG_IGN) { // shell may install SIGHUP of background jobs with SIG_IGN
+            if (prev == SIG_ERR) {
+                LOG(ERROR) << "Fail to register SIGHUP, abort";
+                abort();
+            } else {
+                s_prev_sighup_handler = prev;
+                LOG(WARNING) << "SIGHUP was installed with " << prev;
             }
         }
     }
