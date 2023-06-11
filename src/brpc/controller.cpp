@@ -38,6 +38,7 @@
 #include "brpc/span.h"
 #include "brpc/server.h"   // Server::_session_local_data_pool
 #include "brpc/simple_data_pool.h"
+#include "brpc/retry_backoff_policy.h"
 #include "brpc/retry_policy.h"
 #include "brpc/stream_impl.h"
 #include "brpc/policy/streaming_rpc_protocol.h" // FIXME
@@ -48,6 +49,11 @@
 // Force linking the .o in UT (which analysis deps by inclusions)
 #include "brpc/parallel_channel.h"
 #include "brpc/selective_channel.h"
+#include "bthread/task_group.h"
+
+namespace bthread {
+extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
+}
 
 // This is the only place that both client/server must link, so we put
 // registrations of errno here.
@@ -244,6 +250,7 @@ void Controller::ResetPods() {
     _request_protocol = PROTOCOL_UNKNOWN;
     _max_retry = UNSET_MAGIC_NUM;
     _retry_policy = NULL;
+    _retry_backoff = NULL;
     _correlation_id = INVALID_BTHREAD_ID;
     _connection_type = CONNECTION_TYPE_UNKNOWN;
     _timeout_ms = UNSET_MAGIC_NUM;
@@ -1013,6 +1020,18 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         }
         CHECK_EQ(0, bthread_id_unlock(cid));
         return;
+    }
+
+    bthread::TaskGroup* g = bthread::tls_task_group;
+    // Only bthread task can retry with backoff.
+    if (g && !g->is_current_pthread_task() && _retry_backoff && _current_call.nretry > 0) {
+        int64_t remaining_rpc_time_us = _deadline_us - butil::gettimeofday_us();
+        int64_t backoff_time_us = _retry_backoff->get_backoff_time_ms(_current_call.nretry,
+                                                                      remaining_rpc_time_us) * 1000L;
+        // No need to do retry backoff when the backoff time is longer than the remaining rpc time.
+        if (backoff_time_us > 0 && backoff_time_us < remaining_rpc_time_us) {
+            bthread_usleep(backoff_time_us);
+        }
     }
 
     // Pick a target server for sending RPC

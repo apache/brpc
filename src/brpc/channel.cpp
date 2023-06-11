@@ -53,6 +53,7 @@ ChannelOptions::ChannelOptions()
     , use_rdma(false)
     , auth(NULL)
     , retry_policy(NULL)
+    , retry_backoff(NULL)
     , ns_filter(NULL)
 {}
 
@@ -435,6 +436,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     }
     cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;
+    cntl->_retry_backoff = _options.retry_backoff;
     if (_options.enable_circuit_breaker) {
         cntl->add_flag(Controller::FLAGS_ENABLED_CIRCUIT_BREAKER);
     }

@@ -1786,6 +1786,7 @@ protected:
 
         brpc::Channel channel;
         brpc::ChannelOptions opt;
+        opt.timeout_ms = 1000;
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
@@ -1810,6 +1811,73 @@ protected:
         StopAndJoin();
     }
 
+    struct TetsRetryBackoff {
+        TetsRetryBackoff(ChannelTest* channel_test_param,
+                         bool async_param,
+                         bool short_connection_param,
+                         bool fixed_backoff_param)
+                : channel_test(channel_test_param)
+                , async(async_param)
+                , short_connection(short_connection_param)
+                , fixed_backoff(fixed_backoff_param) {}
+        ChannelTest* channel_test;
+        int async;
+        int short_connection;
+        int fixed_backoff;
+    };
+
+    static void* TestRetryBackoffPolicyBthread(void* void_args) {
+        auto args = static_cast<TetsRetryBackoff*>(void_args);
+        args->channel_test->TestRetryBackoffPolicy(args->async, args->short_connection, args->fixed_backoff);
+        return NULL;
+    }
+
+    void TestRetryBackoffPolicy(bool async, bool short_connection, bool fixed_backoff) {
+        ASSERT_EQ(0, StartAccept(_ep));
+
+        const int32_t backoff_time_ms = 100;
+        const int32_t no_backoff_remaining_rpc_time_ms = 100;
+        std::unique_ptr<brpc::RetryBackoffPolicy> backoff_ptr;
+        if (fixed_backoff) {
+            backoff_ptr.reset(new brpc::FixedRetryBackoffPolicy(backoff_time_ms,
+                                                                no_backoff_remaining_rpc_time_ms));
+        } else {
+            backoff_ptr.reset(new brpc::JitteredRetryBackoffPolicy(backoff_time_ms,
+                                                                   backoff_time_ms + 20,
+                                                                   no_backoff_remaining_rpc_time_ms));
+        }
+
+        brpc::Channel channel;
+        brpc::ChannelOptions opt;
+        opt.timeout_ms = 1000;
+        opt.retry_backoff = backoff_ptr.get();
+        if (short_connection) {
+            opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
+        }
+        butil::TempFile server_list;
+        EXPECT_EQ(0, server_list.save_format(
+            "127.0.0.1:100\n"
+            "127.0.0.1:200\n"
+            "%s", endpoint2str(_ep).c_str()));
+        std::string naming_url = std::string("fIle://")
+            + server_list.fname();
+        EXPECT_EQ(0, channel.Init(naming_url.c_str(), "RR", &opt));
+
+        const int RETRY_NUM = 3;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        brpc::Controller cntl;
+        req.set_message(__FUNCTION__);
+        cntl.set_max_retry(RETRY_NUM);
+        CallMethod(&channel, &cntl, &req, &res, async);
+        if (cntl.retried_count() > 0) {
+            EXPECT_GT(cntl.latency_us(), ((int64_t)backoff_time_ms * 1000) * cntl.retried_count())
+                << "latency_us=" << cntl.latency_us() << " retried_count=" << cntl.retried_count();
+        }
+        EXPECT_EQ(0, cntl.ErrorCode()) << async << ", " << short_connection;
+        StopAndJoin();
+    }
+
     butil::EndPoint _ep;
     butil::TempFile _server_list;                                        
     std::string _naming_url;
@@ -1828,7 +1896,7 @@ class MyShared : public brpc::SharedObject {
 public:
     MyShared() { ++ nctor; }
     MyShared(const MyShared&) : brpc::SharedObject() { ++ nctor; }
-    ~MyShared() { ++ ndtor; }
+    ~MyShared() override { ++ ndtor; }
 
     static int nctor;
     static int ndtor;
@@ -2462,6 +2530,22 @@ TEST_F(ChannelTest, retry_other_servers) {
     for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
         for (int k = 0; k <=1; ++k) { // Flag ShortConnection
             TestRetryOtherServer(j, k);
+        }
+    }
+}
+
+TEST_F(ChannelTest, retry_backoff) {
+    for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
+        for (int k = 0; k <= 1; ++k) { // Flag ShortConnection
+            for (int l = 0; l <= 1; ++l) { // Flag FixedRetryBackoffPolicy or JitteredRetryBackoffPolicy
+                bthread_t th;
+                bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+                std::unique_ptr<TetsRetryBackoff> test_retry_backoff(
+                        new TetsRetryBackoff(this, j, k, l));
+                // Make sure that RPC will be retried on bthread which supports retry backoff.
+                bthread_start_background(&th, &attr, TestRetryBackoffPolicyBthread, test_retry_backoff.get());
+                bthread_join(th, NULL);
+            }
         }
     }
 }
