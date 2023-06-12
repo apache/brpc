@@ -19,6 +19,7 @@
 #ifndef BRPC_RETRY_BACKOFF_POLICY_H
 #define BRPC_RETRY_BACKOFF_POLICY_H
 
+#include "brpc/controller.h"
 #include "butil/fast_rand.h"
 
 namespace brpc {
@@ -29,9 +30,10 @@ public:
     virtual ~RetryBackoffPolicy() = default;
 
     // Returns the backoff time in milliseconds before every retry.
-    virtual int32_t get_backoff_time_ms(int nretry, int64_t reaming_rpc_time_ms) const = 0;
-    //                                                                             ^
-    //                                                              don't forget the const modifier
+    virtual int32_t GetBackoffTimeMs(const Controller* controller, int nretry,
+                                     int64_t remaining_rpc_time_ms) const = 0;
+    //                                                                ^
+    //                                                  don't forget the const modifier
 };
 
 class FixedRetryBackoffPolicy : public RetryBackoffPolicy {
@@ -40,11 +42,12 @@ public:
         : _backoff_time_ms(backoff_time_ms)
         , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms) {}
 
-    int32_t get_backoff_time_ms(int nretry, int64_t reaming_rpc_time_ms) const override;
+    int32_t GetBackoffTimeMs(const Controller* controller, int nretry,
+                             int64_t remaining_rpc_time_ms) const override;
 
 private:
     int32_t _backoff_time_ms;
-    // If remaining rpc time is less than _no_backoff_remaining_rpc_time, no backoff.
+    // If remaining rpc time is less than `_no_backoff_remaining_rpc_time', no backoff.
     int32_t _no_backoff_remaining_rpc_time_ms;
 };
 
@@ -57,13 +60,14 @@ public:
         , _max_backoff_time_ms(max_backoff_time_ms)
         , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms) {}
 
-    int32_t get_backoff_time_ms(int nretry , int64_t reaming_rpc_time_ms) const override;
+    int32_t GetBackoffTimeMs(const Controller* controller, int nretry,
+                             int64_t remaining_rpc_time_ms) const override;
 
 private:
     // Generate jittered backoff time between [_min_backoff_ms, _max_backoff_ms].
     int32_t _min_backoff_time_ms;
     int32_t _max_backoff_time_ms;
-    // If remaining rpc time is less than _no_backoff_remaining_rpc_time, no backoff.
+    // If remaining rpc time is less than `_no_backoff_remaining_rpc_time', no backoff.
     int32_t _no_backoff_remaining_rpc_time_ms;
 };
 

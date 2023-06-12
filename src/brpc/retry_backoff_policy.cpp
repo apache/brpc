@@ -16,26 +16,25 @@
 // under the License.
 
 #include "brpc/retry_backoff_policy.h"
-#include "butil/logging.h"
 
 namespace brpc {
 
-int32_t FixedRetryBackoffPolicy::get_backoff_time_ms(int nretry,
-                                                     int64_t reaming_rpc_time_ms) const {
-    if (nretry <= 0 || reaming_rpc_time_ms < _no_backoff_remaining_rpc_time_ms) {
+int32_t FixedRetryBackoffPolicy::GetBackoffTimeMs(const Controller*, int nretry,
+                                                  int64_t remaining_rpc_time_ms) const {
+    if (nretry <= 0 || remaining_rpc_time_ms < _no_backoff_remaining_rpc_time_ms) {
         return 0;
     }
-    return _backoff_time_ms < reaming_rpc_time_ms ? _backoff_time_ms : 0;
+    return _backoff_time_ms < remaining_rpc_time_ms ? _backoff_time_ms : 0;
 }
 
-int32_t JitteredRetryBackoffPolicy::get_backoff_time_ms(int nretry ,
-                                                        int64_t reaming_rpc_time_ms) const {
-    if (nretry <= 0 || reaming_rpc_time_ms < _no_backoff_remaining_rpc_time_ms) {
+int32_t JitteredRetryBackoffPolicy::GetBackoffTimeMs(const Controller*, int nretry,
+                                                     int64_t remaining_rpc_time_ms) const {
+    if (nretry <= 0 || remaining_rpc_time_ms < _no_backoff_remaining_rpc_time_ms) {
       return 0;
     }
     int32_t backoff_time_ms = butil::fast_rand_in(_min_backoff_time_ms,
                                                   _max_backoff_time_ms);
-    return backoff_time_ms < reaming_rpc_time_ms ? backoff_time_ms : 0;
+    return backoff_time_ms < remaining_rpc_time_ms ? backoff_time_ms : 0;
 }
 
 
