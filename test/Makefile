@@ -173,7 +173,9 @@ TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES)))
 TEST_PROTO_SOURCES = $(wildcard *.proto)
 TEST_PROTO_OBJS = $(TEST_PROTO_SOURCES:.proto=.pb.o)
 
-TEST_BINS = test_butil test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURCES:.cpp=)
+TEST_ETCD_CLIENT_SOURCES = brpc_etcd_client_unittest.cpp
+
+TEST_BINS = test_butil test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURCES:.cpp=) brpc_etcd_client_unittest
 
 .PHONY:all
 all: $(TEST_BINS)
@@ -223,6 +225,14 @@ else ifeq ($(SYSTEM),Darwin)
 endif
 
 brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o | libbrpc.dbg.$(SOEXT)
+	@echo "> Linking $@"
+ifeq ($(SYSTEM),Linux)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Darwin)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
+endif
+
+brpc_etcd_client_unittest:$(TEST_PROTO_OBJS) brpc_etcd_client_unittest.o
 	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)

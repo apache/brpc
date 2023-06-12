@@ -203,6 +203,15 @@ BRPC_PROTOS = $(filter %.proto,$(BRPC_SOURCES))
 BRPC_CFAMILIES = $(filter-out %.proto %.pb.cc,$(BRPC_SOURCES))
 BRPC_OBJS = $(BRPC_PROTOS:.proto=.pb.o) $(addsuffix .o, $(basename $(BRPC_CFAMILIES)))
 
+ETCD_CLIENT_PROTOS = src/etcd_client/proto/kv.proto \
+		src/etcd_client/proto/auth.proto \
+		src/etcd_client/proto/rpc.proto \
+		src/etcd_client/proto/gogoproto/gogo.proto\
+		src/etcd_client/proto/google/api/annotations.proto \
+		src/etcd_client/proto/google/api/http.proto
+ETCD_CLIENT_SOURCES = src/etcd_client/etcd_client.cpp
+ETCD_CLIENT_OBJS = $(ETCD_CLIENT_PROTOS:.proto=.pb.o) $(addsuffix .o, $(basename $(ETCD_CLIENT_SOURCES)))
+
 MCPACK2PB_SOURCES = \
 	src/mcpack2pb/field_type.cpp \
 	src/mcpack2pb/mcpack2pb.cpp \
@@ -214,12 +223,12 @@ ifeq (ENABLE_THRIFT_FRAMED_PROTOCOL, $(findstring ENABLE_THRIFT_FRAMED_PROTOCOL,
     THRIFT_OBJS = $(addsuffix .o, $(basename $(THRIFT_SOURCES)))
 endif
 
-OBJS=$(BUTIL_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS) $(BRPC_OBJS) $(THRIFT_OBJS)
+OBJS=$(BUTIL_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS) $(BRPC_OBJS) $(THRIFT_OBJS) $(ETCD_CLIENT_OBJS)
 
 BVAR_DEBUG_OBJS=$(BUTIL_OBJS:.o=.dbg.o) $(BVAR_OBJS:.o=.dbg.o)
 DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 
-PROTOS=$(BRPC_PROTOS) src/idl_options.proto
+PROTOS=$(BRPC_PROTOS) src/idl_options.proto $(ETCD_CLIENT_PROTOS)
 
 .PHONY:all
 all:  protoc-gen-mcpack libbrpc.a libbrpc.$(SOEXT) output/include output/lib output/bin

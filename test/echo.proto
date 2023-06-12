@@ -65,6 +65,30 @@ service DownloadService {
     rpc DownloadFailed(HttpRequest) returns (HttpResponse);
 }
 
+service EtcdService {
+    rpc Range(HttpRequest) returns (HttpResponse);
+    rpc RangeFail(HttpRequest) returns (HttpResponse);
+    rpc Put(HttpRequest) returns (HttpResponse);
+    rpc PutFail(HttpRequest) returns (HttpResponse);
+    rpc DeleteRange(HttpRequest) returns (HttpResponse);
+    rpc DeleteRangeFail(HttpRequest) returns (HttpResponse);
+    rpc Txn(HttpRequest) returns (HttpResponse);
+    rpc TxnFail(HttpRequest) returns (HttpResponse);
+    rpc Compact(HttpRequest) returns (HttpResponse);
+    rpc CompactFail(HttpRequest) returns (HttpResponse);
+    rpc LeaseGrant(HttpRequest) returns (HttpResponse);
+    rpc LeaseGrantFail(HttpRequest) returns (HttpResponse);
+    rpc LeaseRevoke(HttpRequest) returns (HttpResponse);
+    rpc LeaseRevokeFail(HttpRequest) returns (HttpResponse);
+    rpc LeaseTimeToLive(HttpRequest) returns (HttpResponse);
+    rpc LeaseTimeToLiveFail(HttpRequest) returns (HttpResponse);
+    rpc LeaseLeases(HttpRequest) returns (HttpResponse);
+    rpc LeaseLeasesFail(HttpRequest) returns (HttpResponse);
+    rpc LeaseKeepAlive(HttpRequest) returns (HttpResponse);
+    rpc LeaseKeepAliveFail(HttpRequest) returns (HttpResponse);
+
+}
+
 service UserNamingService {
     rpc ListNames(HttpRequest) returns (HttpResponse);
     rpc Touch(HttpRequest) returns (HttpResponse);
