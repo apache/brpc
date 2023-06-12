@@ -47,6 +47,7 @@ class Collected;
 // For processing samples in batch before dumping.
 class CollectorPreprocessor {
 public:
+    virtual ~CollectorPreprocessor() = default;
     virtual void process(std::vector<Collected*>& samples) = 0;
 };
 
