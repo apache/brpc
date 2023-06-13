@@ -34,34 +34,49 @@ public:
                                      int64_t remaining_rpc_time_ms) const = 0;
     //                                                                ^
     //                                                  don't forget the const modifier
+
+    // Returns true if enable retry backoff in pthread, otherwise returns false.
+    virtual bool CanRetryBackoffInPthread() const { return false; }
+    //                                        ^
+    //                           don't forget the const modifier
 };
 
 class FixedRetryBackoffPolicy : public RetryBackoffPolicy {
 public:
-    FixedRetryBackoffPolicy(int32_t backoff_time_ms, int32_t no_backoff_remaining_rpc_time_ms)
+    FixedRetryBackoffPolicy(int32_t backoff_time_ms,
+                            int32_t no_backoff_remaining_rpc_time_ms,
+                            bool retry_backoff_in_pthread)
         : _backoff_time_ms(backoff_time_ms)
-        , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms) {}
+        , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms)
+        , _retry_backoff_in_pthread(retry_backoff_in_pthread) {}
 
     int32_t GetBackoffTimeMs(const Controller* controller, int nretry,
                              int64_t remaining_rpc_time_ms) const override;
+
+    bool CanRetryBackoffInPthread() const override { return _retry_backoff_in_pthread; }
 
 private:
     int32_t _backoff_time_ms;
     // If remaining rpc time is less than `_no_backoff_remaining_rpc_time', no backoff.
     int32_t _no_backoff_remaining_rpc_time_ms;
+    bool _retry_backoff_in_pthread;
 };
 
 class JitteredRetryBackoffPolicy : public RetryBackoffPolicy {
 public:
     explicit JitteredRetryBackoffPolicy(int32_t min_backoff_time_ms,
                                         int32_t max_backoff_time_ms,
-                                        int32_t no_backoff_remaining_rpc_time_ms)
+                                        int32_t no_backoff_remaining_rpc_time_ms,
+                                        bool retry_backoff_in_pthread)
         : _min_backoff_time_ms(min_backoff_time_ms)
         , _max_backoff_time_ms(max_backoff_time_ms)
-        , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms) {}
+        , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms)
+        , _retry_backoff_in_pthread(retry_backoff_in_pthread) {}
 
     int32_t GetBackoffTimeMs(const Controller* controller, int nretry,
                              int64_t remaining_rpc_time_ms) const override;
+
+    bool CanRetryBackoffInPthread() const override { return _retry_backoff_in_pthread; }
 
 private:
     // Generate jittered backoff time between [_min_backoff_ms, _max_backoff_ms].
@@ -69,6 +84,7 @@ private:
     int32_t _max_backoff_time_ms;
     // If remaining rpc time is less than `_no_backoff_remaining_rpc_time', no backoff.
     int32_t _no_backoff_remaining_rpc_time_ms;
+    bool _retry_backoff_in_pthread;
 };
 
 

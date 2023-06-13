@@ -1834,7 +1834,7 @@ protected:
     }
 
     void TestRetryBackoffPolicy(bool async, bool short_connection, bool fixed_backoff,
-                                bool enable_retry_backoff_in_pthread) {
+                                bool retry_backoff_in_pthread) {
         ASSERT_EQ(0, StartAccept(_ep));
 
         const int32_t backoff_time_ms = 100;
@@ -1842,18 +1842,19 @@ protected:
         std::unique_ptr<brpc::RetryBackoffPolicy> backoff_ptr;
         if (fixed_backoff) {
             backoff_ptr.reset(new brpc::FixedRetryBackoffPolicy(backoff_time_ms,
-                                                                no_backoff_remaining_rpc_time_ms));
+                                                                no_backoff_remaining_rpc_time_ms,
+                                                                retry_backoff_in_pthread));
         } else {
             backoff_ptr.reset(new brpc::JitteredRetryBackoffPolicy(backoff_time_ms,
                                                                    backoff_time_ms + 20,
-                                                                   no_backoff_remaining_rpc_time_ms));
+                                                                   no_backoff_remaining_rpc_time_ms,
+                                                                   retry_backoff_in_pthread));
         }
 
         brpc::Channel channel;
         brpc::ChannelOptions opt;
         opt.timeout_ms = 1000;
         opt.retry_backoff_policy = backoff_ptr.get();
-        opt.enable_retry_backoff_in_pthread = enable_retry_backoff_in_pthread;
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
@@ -1875,8 +1876,8 @@ protected:
         CallMethod(&channel, &cntl, &req, &res, async);
         if (cntl.retried_count() > 0) {
             EXPECT_GT(cntl.latency_us(), ((int64_t)backoff_time_ms * 1000) * cntl.retried_count())
-                << "latency_us=" << cntl.latency_us() << " retried_count=" << cntl.retried_count()
-                << " enable_retry_backoff_in_pthread=" << enable_retry_backoff_in_pthread;
+                                << "latency_us=" << cntl.latency_us() << " retried_count=" << cntl.retried_count()
+                                << " enable_retry_backoff_in_pthread=" << retry_backoff_in_pthread;
         }
         EXPECT_EQ(0, cntl.ErrorCode()) << async << ", " << short_connection;
         StopAndJoin();

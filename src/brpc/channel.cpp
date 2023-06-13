@@ -54,7 +54,6 @@ ChannelOptions::ChannelOptions()
     , auth(NULL)
     , retry_policy(NULL)
     , retry_backoff_policy(NULL)
-    , enable_retry_backoff_in_pthread(false)
     , ns_filter(NULL)
 {}
 
@@ -438,7 +437,6 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;
     cntl->_retry_backoff = _options.retry_backoff_policy;
-    cntl->_enable_retry_backoff_in_pthread = _options.enable_retry_backoff_in_pthread;
     if (_options.enable_circuit_breaker) {
         cntl->add_flag(Controller::FLAGS_ENABLED_CIRCUIT_BREAKER);
     }

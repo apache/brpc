@@ -251,7 +251,6 @@ void Controller::ResetPods() {
     _max_retry = UNSET_MAGIC_NUM;
     _retry_policy = NULL;
     _retry_backoff = NULL;
-    _enable_retry_backoff_in_pthread = false;
     _correlation_id = INVALID_BTHREAD_ID;
     _connection_type = CONNECTION_TYPE_UNKNOWN;
     _timeout_ms = UNSET_MAGIC_NUM;
@@ -664,9 +663,9 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         bthread::TaskGroup* g = bthread::tls_task_group;
         if (_retry_backoff && _current_call.nretry > 0) {
             // Retry backoff when:
-            // 1. `ChannelOptions.enable_retry_backoff_in_pthread=true', or
+            // 1. `CanRetryBackoffInPthread' returns true, or
             // 2. retry in bthread.
-            if (_enable_retry_backoff_in_pthread || (g && !g->is_current_pthread_task())) {
+            if (_retry_backoff->CanRetryBackoffInPthread() || (g && !g->is_current_pthread_task())) {
                 int64_t remaining_rpc_time_us = _deadline_us - butil::gettimeofday_us();
                 int64_t backoff_time_us = _retry_backoff->GetBackoffTimeMs(this, _current_call.nretry,
                                                                            remaining_rpc_time_us / 1000) * 1000L;
@@ -675,7 +674,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
                     bthread_usleep(backoff_time_us);
                 }
             } else {
-                LOG(WARNING) << "If 'ChannelOptions.enable_retry_backoff_in_pthread=false', "
+                LOG(WARNING) << "If 'CanRetryBackoffInPthread()' return false, "
                                 "skip retry backoff in pthread ";
             }
         }
