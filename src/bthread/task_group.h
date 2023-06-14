@@ -30,6 +30,8 @@
 #include "butil/resource_pool.h"                    // ResourceId
 #include "bthread/parking_lot.h"
 
+#include "thirdparty/moodycamelqueue.h"
+
 namespace bthread {
 
 // For exiting a bthread.
@@ -182,6 +184,9 @@ public:
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
 
+    bool pop_resume_task(bthread_t* tid);
+    bool push_resume_task(bthread_t tid);
+
 private:
 friend class TaskControl;
 
@@ -249,6 +254,10 @@ friend class TaskControl;
     int _remote_nsignaled;
 
     int _sched_recursive_guard;
+
+    static std::atomic<int> _resume_rq_cnt;
+    static moodycamel::ConcurrentQueue<bthread_t> _resume_rq;
+    moodycamel::ConsumerToken _resume_consumer_token;
 };
 
 }  // namespace bthread
