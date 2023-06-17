@@ -27,9 +27,13 @@ namespace butil {
 std::string string_printf(const char* format, ...)
     __attribute__ ((format (printf, 1, 2)));
 
+// Hint size of formatted string.
+std::string string_printf(size_t hint_size, const char* format, ...)
+    __attribute__ ((format (printf, 2, 3)));
+
 // Write |format| and associated arguments into |output|
 // Returns 0 on success, -1 otherwise.
-int string_printf(std::string* output, const char* fmt, ...)
+int string_printf(std::string* output, const char* format, ...)
     __attribute__ ((format (printf, 2, 3)));
 
 // Write |format| and associated arguments in form of va_list into |output|.
