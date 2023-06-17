@@ -70,7 +70,6 @@ class StreamSettings;
 class SampledRequest;
 class MongoContext;
 class RetryPolicy;
-class RetryBackoffPolicy;
 class InputMessageBase;
 class ThriftStub;
 namespace policy {
@@ -741,7 +740,6 @@ private:
     // after CallMethod.
     int _max_retry;
     const RetryPolicy* _retry_policy;
-    const RetryBackoffPolicy* _retry_backoff;
     // Synchronization object for one RPC call. It remains unchanged even
     // when retry happens. Synchronous RPC will wait on this id.
     CallId _correlation_id;

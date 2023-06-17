@@ -1811,50 +1811,53 @@ protected:
         StopAndJoin();
     }
 
-    struct TestRetryBackoff {
-        TestRetryBackoff(ChannelTest* channel_test_param,
-                         bool async_param,
-                         bool short_connection_param,
-                         bool fixed_backoff_param)
-                : channel_test(channel_test_param)
-                , async(async_param)
-                , short_connection(short_connection_param)
-                , fixed_backoff(fixed_backoff_param) {}
+    struct TestRetryBackoffInfo {
+        TestRetryBackoffInfo(ChannelTest* channel_test_param,
+                             bool async_param,
+                             bool short_connection_param,
+                             bool fixed_backoff_param)
+            : channel_test(channel_test_param)
+            , async(async_param)
+            , short_connection(short_connection_param)
+            , fixed_backoff(fixed_backoff_param) {}
+
         ChannelTest* channel_test;
         int async;
         int short_connection;
         int fixed_backoff;
     };
 
-    static void* TestRetryBackoffPolicyBthread(void* void_args) {
-        auto args = static_cast<TestRetryBackoff*>(void_args);
-        args->channel_test->TestRetryBackoffPolicy(args->async, args->short_connection,
-                                                   args->fixed_backoff, false);
+    static void* TestRetryBackoffBthread(void* void_args) {
+        auto args = static_cast<TestRetryBackoffInfo*>(void_args);
+        args->channel_test->TestRetryBackoff(args->async, args->short_connection,
+                                             args->fixed_backoff, false);
         return NULL;
     }
 
-    void TestRetryBackoffPolicy(bool async, bool short_connection, bool fixed_backoff,
-                                bool retry_backoff_in_pthread) {
+    void TestRetryBackoff(bool async, bool short_connection, bool fixed_backoff,
+                          bool retry_backoff_in_pthread) {
         ASSERT_EQ(0, StartAccept(_ep));
 
         const int32_t backoff_time_ms = 100;
         const int32_t no_backoff_remaining_rpc_time_ms = 100;
-        std::unique_ptr<brpc::RetryBackoffPolicy> backoff_ptr;
+        std::unique_ptr<brpc::RetryPolicy> retry_ptr;
         if (fixed_backoff) {
-            backoff_ptr.reset(new brpc::FixedRetryBackoffPolicy(backoff_time_ms,
+            retry_ptr.reset(
+                    new brpc::RpcRetryPolicyWithFixedBackoff(backoff_time_ms,
+                                                             no_backoff_remaining_rpc_time_ms,
+                                                             retry_backoff_in_pthread));
+        } else {
+            retry_ptr.reset(
+                    new brpc::RpcRetryPolicyWithJitteredBackoff(backoff_time_ms,
+                                                                backoff_time_ms + 20,
                                                                 no_backoff_remaining_rpc_time_ms,
                                                                 retry_backoff_in_pthread));
-        } else {
-            backoff_ptr.reset(new brpc::JitteredRetryBackoffPolicy(backoff_time_ms,
-                                                                   backoff_time_ms + 20,
-                                                                   no_backoff_remaining_rpc_time_ms,
-                                                                   retry_backoff_in_pthread));
         }
 
         brpc::Channel channel;
         brpc::ChannelOptions opt;
         opt.timeout_ms = 1000;
-        opt.retry_backoff_policy = backoff_ptr.get();
+        opt.retry_policy = retry_ptr.get();
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
@@ -1876,8 +1879,8 @@ protected:
         CallMethod(&channel, &cntl, &req, &res, async);
         if (cntl.retried_count() > 0) {
             EXPECT_GT(cntl.latency_us(), ((int64_t)backoff_time_ms * 1000) * cntl.retried_count())
-                                << "latency_us=" << cntl.latency_us() << " retried_count=" << cntl.retried_count()
-                                << " enable_retry_backoff_in_pthread=" << retry_backoff_in_pthread;
+                << "latency_us=" << cntl.latency_us() << " retried_count=" << cntl.retried_count()
+                << " enable_retry_backoff_in_pthread=" << retry_backoff_in_pthread;
         }
         EXPECT_EQ(0, cntl.ErrorCode()) << async << ", " << short_connection;
         StopAndJoin();
@@ -2539,7 +2542,7 @@ TEST_F(ChannelTest, retry_other_servers) {
     }
 }
 
-TEST_F(ChannelTest, retry_backoff_policy) {
+TEST_F(ChannelTest, retry_backoff) {
     for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
         for (int k = 0; k <= 1; ++k) { // Flag ShortConnection
             for (int l = 0; l <= 1; ++l) { // Flag FixedRetryBackoffPolicy or JitteredRetryBackoffPolicy
@@ -2547,14 +2550,14 @@ TEST_F(ChannelTest, retry_backoff_policy) {
                     if (m % 2 == 0) {
                         bthread_t th;
                         bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
-                        std::unique_ptr<TestRetryBackoff> test_retry_backoff(
-                                new TestRetryBackoff(this, j, k, l));
+                        std::unique_ptr<TestRetryBackoffInfo> test_retry_backoff(
+                                new TestRetryBackoffInfo(this, j, k, l));
                         // Retry backoff in bthread.
-                        bthread_start_background(&th, &attr, TestRetryBackoffPolicyBthread, test_retry_backoff.get());
+                        bthread_start_background(&th, &attr, TestRetryBackoffBthread, test_retry_backoff.get());
                         bthread_join(th, NULL);
                     } else {
                         // Retry backoff in pthread.
-                        TestRetryBackoffPolicy(j, k, l, true);
+                        TestRetryBackoff(j, k, l, true);
                     }
                 }
             }

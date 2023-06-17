@@ -38,7 +38,6 @@
 #include "brpc/span.h"
 #include "brpc/server.h"   // Server::_session_local_data_pool
 #include "brpc/simple_data_pool.h"
-#include "brpc/retry_backoff_policy.h"
 #include "brpc/retry_policy.h"
 #include "brpc/stream_impl.h"
 #include "brpc/policy/streaming_rpc_protocol.h" // FIXME
@@ -250,7 +249,6 @@ void Controller::ResetPods() {
     _request_protocol = PROTOCOL_UNKNOWN;
     _max_retry = UNSET_MAGIC_NUM;
     _retry_policy = NULL;
-    _retry_backoff = NULL;
     _correlation_id = INVALID_BTHREAD_ID;
     _connection_type = CONNECTION_TYPE_UNKNOWN;
     _timeout_ms = UNSET_MAGIC_NUM;
@@ -634,51 +632,52 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         ++_current_call.nretry;
         add_flag(FLAGS_BACKUP_REQUEST);
         return IssueRPC(butil::gettimeofday_us());
-    } else if (_retry_policy ? _retry_policy->DoRetry(this)
-               : DefaultRetryPolicy()->DoRetry(this)) {
-        // The error must come from _current_call because:
-        //  * we intercepted error from _unfinished_call in OnVersionedRPCReturned
-        //  * ERPCTIMEDOUT/ECANCELED are not retrying error by default.
-        CHECK_EQ(current_id(), info.id) << "error_code=" << _error_code;
-        if (!SingleServer()) {
-            if (_accessed == NULL) {
-                _accessed = ExcludedServers::Create(
-                    std::min(_max_retry, RETRY_AVOIDANCE));
-                if (NULL == _accessed) {
-                    SetFailed(ENOMEM, "Fail to create ExcludedServers");
-                    goto END_OF_RPC;
+    } else {
+        auto retry_policy = _retry_policy ? _retry_policy : DefaultRetryPolicy();
+        if (retry_policy && retry_policy->DoRetry(this)) {
+            // The error must come from _current_call because:
+            //  * we intercepted error from _unfinished_call in OnVersionedRPCReturned
+            //  * ERPCTIMEDOUT/ECANCELED are not retrying error by default.
+            CHECK_EQ(current_id(), info.id) << "error_code=" << _error_code;
+            if (!SingleServer()) {
+                if (_accessed == NULL) {
+                    _accessed = ExcludedServers::Create(
+                            std::min(_max_retry, RETRY_AVOIDANCE));
+                    if (NULL == _accessed) {
+                        SetFailed(ENOMEM, "Fail to create ExcludedServers");
+                        goto END_OF_RPC;
+                    }
                 }
+                _accessed->Add(_current_call.peer_id);
             }
-            _accessed->Add(_current_call.peer_id);
-        }
-        _current_call.OnComplete(this, _error_code, info.responded, false);
-        ++_current_call.nretry;
-        // Clear http responses before retrying, otherwise the response may
-        // be mixed with older (and undefined) stuff. This is actually not
-        // done before r32008.
-        if (_http_response) {
-            _http_response->Clear();
-        }
-        response_attachment().clear();
-        bthread::TaskGroup* g = bthread::tls_task_group;
-        if (_retry_backoff && _current_call.nretry > 0) {
-            // Retry backoff when:
-            // 1. `CanRetryBackoffInPthread' returns true, or
-            // 2. retry in bthread.
-            if (_retry_backoff->CanRetryBackoffInPthread() || (g && !g->is_current_pthread_task())) {
+            _current_call.OnComplete(this, _error_code, info.responded, false);
+            ++_current_call.nretry;
+            // Clear http responses before retrying, otherwise the response may
+            // be mixed with older (and undefined) stuff. This is actually not
+            // done before r32008.
+            if (_http_response) {
+                _http_response->Clear();
+            }
+            response_attachment().clear();
+            bthread::TaskGroup* g = bthread::tls_task_group;
+            if (retry_policy->CanRetryBackoffInPthread() ||
+                (g && !g->is_current_pthread_task())) {
                 int64_t remaining_rpc_time_us = _deadline_us - butil::gettimeofday_us();
-                int64_t backoff_time_us = _retry_backoff->GetBackoffTimeMs(this, _current_call.nretry,
-                                                                           remaining_rpc_time_us / 1000) * 1000L;
+                int64_t backoff_time_us =
+                        retry_policy->GetBackoffTimeMs(this, _current_call.nretry,
+                                                       remaining_rpc_time_us / 1000) * 1000L;
                 // No need to do retry backoff when the backoff time is longer than the remaining rpc time.
-                if (backoff_time_us > 0 && backoff_time_us < remaining_rpc_time_us) {
+                if (backoff_time_us > 0 &&
+                    backoff_time_us < remaining_rpc_time_us) {
                     bthread_usleep(backoff_time_us);
                 }
+
             } else {
-                LOG(WARNING) << "If 'CanRetryBackoffInPthread()' return false, "
+                LOG(WARNING) << "If 'CanRetryBackoffInPthread()' returns false, "
                                 "skip retry backoff in pthread ";
             }
+            return IssueRPC(butil::gettimeofday_us());
         }
-        return IssueRPC(butil::gettimeofday_us());
     }
 
 END_OF_RPC:
