@@ -285,7 +285,7 @@ class scoped_refptr {
       ptr_->AddRef();
   }
 
-  scoped_refptr(scoped_refptr<T>&& r) {
+  scoped_refptr(scoped_refptr<T>&& r) noexcept {
     if (r.ptr_){
       ptr_ = r.ptr_;
       r.ptr_ = nullptr;
@@ -293,7 +293,7 @@ class scoped_refptr {
   }
 
   template <typename U>
-  scoped_refptr(scoped_refptr<U>&& r) {
+  scoped_refptr(scoped_refptr<U>&& r) noexcept {
     if (r.ptr_){
       ptr_ = r.ptr_;
       r.ptr_ = nullptr;
