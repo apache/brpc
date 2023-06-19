@@ -54,17 +54,23 @@ const RetryPolicy* DefaultRetryPolicy() {
     return g_default_policy;
 }
 
-int32_t RpcRetryPolicyWithFixedBackoff::GetBackoffTimeMs(const Controller*, int nretry,
-                                                  int64_t remaining_rpc_time_ms) const {
-    if (nretry <= 0 || remaining_rpc_time_ms < _no_backoff_remaining_rpc_time_ms) {
+int32_t RpcRetryPolicyWithFixedBackoff::GetBackoffTimeMs(const Controller* controller) const {
+    if (controller->retried_count() <= 0) {
+        return 0;
+    }
+    int64_t remaining_rpc_time_ms = (controller->deadline_us() - butil::gettimeofday_us()) / 1000;
+    if (remaining_rpc_time_ms < _no_backoff_remaining_rpc_time_ms) {
         return 0;
     }
     return _backoff_time_ms < remaining_rpc_time_ms ? _backoff_time_ms : 0;
 }
 
-int32_t RpcRetryPolicyWithJitteredBackoff::GetBackoffTimeMs(const Controller*, int nretry,
-                                                     int64_t remaining_rpc_time_ms) const {
-    if (nretry <= 0 || remaining_rpc_time_ms < _no_backoff_remaining_rpc_time_ms) {
+int32_t RpcRetryPolicyWithJitteredBackoff::GetBackoffTimeMs(const Controller* controller) const {
+    if (controller->retried_count() <= 0) {
+        return 0;
+    }
+    int64_t remaining_rpc_time_ms = controller->deadline_us() / 1000 - butil::gettimeofday_ms();
+    if (remaining_rpc_time_ms < _no_backoff_remaining_rpc_time_ms) {
         return 0;
     }
     int32_t backoff_time_ms = butil::fast_rand_in(_min_backoff_time_ms,

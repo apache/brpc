@@ -70,9 +70,8 @@ public:
     //                                don't forget the const modifier
 
     // Returns the backoff time in milliseconds before every retry.
-    virtual int32_t GetBackoffTimeMs(const Controller* controller, int nretry,
-                                     int64_t remaining_rpc_time_ms) const { return 0; }
-    //                                                                ^
+    virtual int32_t GetBackoffTimeMs(const Controller* controller) const { return 0; }
+    //                                                               ^
     //                                             don't forget the const modifier
 
     // Returns true if enable retry backoff in pthread, otherwise returns false.
@@ -98,8 +97,7 @@ public:
     , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms)
     , _retry_backoff_in_pthread(retry_backoff_in_pthread) {}
 
-    int32_t GetBackoffTimeMs(const Controller* controller, int nretry,
-                             int64_t remaining_rpc_time_ms) const override;
+    int32_t GetBackoffTimeMs(const Controller* controller) const override;
 
     bool CanRetryBackoffInPthread() const override { return _retry_backoff_in_pthread; }
 
@@ -122,8 +120,7 @@ public:
             , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms)
             , _retry_backoff_in_pthread(retry_backoff_in_pthread) {}
 
-    int32_t GetBackoffTimeMs(const Controller* controller, int nretry,
-                             int64_t remaining_rpc_time_ms) const override;
+    int32_t GetBackoffTimeMs(const Controller* controller) const override;
 
     bool CanRetryBackoffInPthread() const override { return _retry_backoff_in_pthread; }
 

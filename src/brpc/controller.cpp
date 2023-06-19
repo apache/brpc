@@ -634,7 +634,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         return IssueRPC(butil::gettimeofday_us());
     } else {
         auto retry_policy = _retry_policy ? _retry_policy : DefaultRetryPolicy();
-        if (retry_policy && retry_policy->DoRetry(this)) {
+        if (retry_policy->DoRetry(this)) {
             // The error must come from _current_call because:
             //  * we intercepted error from _unfinished_call in OnVersionedRPCReturned
             //  * ERPCTIMEDOUT/ECANCELED are not retrying error by default.
@@ -659,22 +659,21 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
                 _http_response->Clear();
             }
             response_attachment().clear();
+
+            // Retry backoff.
             bthread::TaskGroup* g = bthread::tls_task_group;
             if (retry_policy->CanRetryBackoffInPthread() ||
                 (g && !g->is_current_pthread_task())) {
-                int64_t remaining_rpc_time_us = _deadline_us - butil::gettimeofday_us();
-                int64_t backoff_time_us =
-                        retry_policy->GetBackoffTimeMs(this, _current_call.nretry,
-                                                       remaining_rpc_time_us / 1000) * 1000L;
+                int64_t backoff_time_us = retry_policy->GetBackoffTimeMs(this) * 1000L;
                 // No need to do retry backoff when the backoff time is longer than the remaining rpc time.
                 if (backoff_time_us > 0 &&
-                    backoff_time_us < remaining_rpc_time_us) {
+                    backoff_time_us < _deadline_us - butil::gettimeofday_us()) {
                     bthread_usleep(backoff_time_us);
                 }
 
             } else {
-                LOG(WARNING) << "If 'CanRetryBackoffInPthread()' returns false, "
-                                "skip retry backoff in pthread ";
+                LOG(WARNING) << "`CanRetryBackoffInPthread()' returns false, "
+                                "skip retry backoff in pthread.";
             }
             return IssueRPC(butil::gettimeofday_us());
         }
