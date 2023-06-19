@@ -144,6 +144,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_HEALTH_CHECK_CALL = (1 << 19);
     static const uint32_t FLAGS_PB_SINGLE_REPEATED_TO_ARRAY = (1 << 20);
     static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
+    static const uint32_t FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND = (1 << 22);
 
 public:
     struct Inheritable {
@@ -352,6 +353,17 @@ public:
     // True iff above method was called.
     bool is_done_allowed_to_run_in_place() const
     { return has_flag(FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE); }
+
+    // Create a background KEEPWRITE bthread to write to socket when issuing
+    // RPCs, instead of trying to write to socket once in calling thread (see
+    // `Socket::StartWrite` in socket.cpp).
+    // The socket write could take some time (several microseconds maybe), if
+    // you cares about it and don't want the calling thread to be blocked, you
+    // can set this flag.
+    // Should provides better batch effect in situations like when you are
+    // continually issuing lots of async RPC calls in only one thread.
+    void set_write_to_socket_in_background(bool f) { set_flag(FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND, f); }
+    bool write_to_socket_in_background() const { return has_flag(FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND); }
 
     // ------------------------------------------------------------------------
     //                      Server-side methods.
