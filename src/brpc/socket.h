@@ -205,6 +205,8 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
+    // Only accept ssl connection.
+    bool force_ssl;
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bool use_rdma;
     bthread_keytable_pool_t* keytable_pool;
@@ -826,6 +828,8 @@ private:
     // exists in server side
     AuthContext* _auth_context;
 
+    // Only accept ssl connection.
+    bool _force_ssl;
     SSLState _ssl_state;
     // SSL objects cannot be read and written at the same time.
     // Use mutex to protect SSL objects when ssl_state is SSL_CONNECTED.

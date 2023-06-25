@@ -139,6 +139,7 @@ ServerOptions::ServerOptions()
     , bthread_init_count(0)
     , internal_port(-1)
     , has_builtin_services(true)
+    , force_ssl(false)
     , use_rdma(false)
     , http_master_service(NULL)
     , health_reporter(NULL)
@@ -933,6 +934,10 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 return -1;
             }
         }
+    } else if (_options.force_ssl) {
+        LOG(ERROR) << "Fail to force SSL for all connections "
+                      "without ServerOptions.ssl_options";
+        return -1;
     }
 
     _concurrency = 0;
@@ -1045,7 +1050,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 
         // Pass ownership of `sockfd' to `_am'
         if (_am->StartAccept(sockfd, _options.idle_timeout_sec,
-                             _default_ssl_ctx) != 0) {
+                             _default_ssl_ctx,
+                             _options.force_ssl) != 0) {
             LOG(ERROR) << "Fail to start acceptor";
             return -1;
         }
@@ -1085,7 +1091,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         }
         // Pass ownership of `sockfd' to `_internal_am'
         if (_internal_am->StartAccept(sockfd, _options.idle_timeout_sec,
-                                      _default_ssl_ctx) != 0) {
+                                      _default_ssl_ctx,
+                                      false) != 0) {
             LOG(ERROR) << "Fail to start internal_acceptor";
             return -1;
         }

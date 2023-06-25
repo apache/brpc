@@ -339,7 +339,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
-    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
 
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
@@ -727,7 +727,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
-    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
 
     int64_t start_time = butil::gettimeofday_us();
     nref = -1;
