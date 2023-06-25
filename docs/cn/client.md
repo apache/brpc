@@ -631,6 +631,83 @@ options.retry_policy = &g_my_retry_policy;
 * 通过cntl->response()可获得对应RPC的response。
 * 对ERPCTIMEDOUT代表的RPC超时总是不重试，即使你继承的RetryPolicy中允许。
 
+
+### 重试退避
+
+对于一些暂时性的错误，如网络抖动等，等待一小会儿再重试的成功率比立即重试的成功率高，同时可以打散上游重试的时机，减轻服务端压力，避免重试风暴导致服务端出现瞬间流量洪峰。
+
+框架支持两种重试退避策略：固定时间间隔退避策略和随机时间间隔退避策略。
+
+固定时间间隔退避策略需要设置固定时间间隔（毫秒）、无需重试退避的剩余rpc时间阈值（毫秒，当剩余rpc时间小于阈值，则不进行重试退避）、是否允许在pthread进行重试退避。使用方法如下：
+
+```c++
+// 给ChannelOptions.retry_policy赋值就行了。
+// 注意：retry_policy必须在Channel使用期间保持有效，Channel也不会删除retry_policy，所以大部分情况下RetryPolicy都应以单例模式创建。
+brpc::ChannelOptions options;
+int32_t fixed_backoff_time_ms = 100; // 固定时间间隔（毫秒）
+int32_t no_backoff_remaining_rpc_time_ms = 150; // 无需重试退避的剩余rpc时间阈值（毫秒）
+bool retry_backoff_in_pthread = false;
+static brpc::RpcRetryPolicyWithFixedBackoff g_retry_policy_with_fixed_backoff(
+        fixed_backoff_time_ms, no_backoff_remaining_rpc_time_ms, retry_backoff_in_pthread);
+options.retry_policy = &g_retry_policy_with_fixed_backoff;
+...
+```
+
+随机时间间隔退避策略需要设置最小时间间隔（毫秒）、最大时间间隔（毫秒）、无需重试退避的剩余rpc时间阈值（毫秒，当剩余rpc时间小于阈值，则不进行重试退避）、是否允许在pthread做重试退避。每次策略会随机生成一个在最小时间间隔和最大时间间隔之间的重试退避间隔。使用方法如下：
+
+```c++
+// 给ChannelOptions.retry_policy赋值就行了。
+// 注意：retry_policy必须在Channel使用期间保持有效，Channel也不会删除retry_policy，所以大部分情况下RetryPolicy都应以单例模式创建。
+brpc::ChannelOptions options;
+int32_t min_backoff_time_ms = 100; // 最小时间间隔（毫秒）
+int32_t max_backoff_time_ms = 200; // 最大时间间隔（毫秒）
+int32_t no_backoff_remaining_rpc_time_ms = 150; // 无需重试退避的剩余rpc时间阈值（毫秒）
+bool retry_backoff_in_pthread = false; // 是否允许在pthread做重试退避
+static brpc::RpcRetryPolicyWithJitteredBackoff g_retry_policy_with_jitter_backoff(
+        min_backoff_time_ms, max_backoff_time_ms, 
+        no_backoff_remaining_rpc_time_ms, retry_backoff_in_pthread);
+options.retry_policy = &g_retry_policy_with_jitter_backoff;
+...
+```
+
+用户可以通过继承[brpc::RetryPolicy](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)自定义重试退避策略。比如只需要针对服务端并发数超限的情况进行重试退避，可以这么做：
+
+```c++
+class MyRetryPolicy : public brpc::RetryPolicy {
+public:
+    bool DoRetry(const brpc::Controller* cntl) const {
+        // 同《错误值得重试》一节
+    }
+    
+    int32_t GetBackoffTimeMs(const brpc::Controller* cntl) const {
+        if (controller->ErrorCode() == brpc::ELIMIT) {
+            return 100; // 退避100毫秒
+        }
+        return 0; // 返回0表示不进行重试退避。
+    }
+    
+    bool CanRetryBackoffInPthread() const {
+        return true;
+    }
+};
+...
+
+// 给ChannelOptions.retry_policy赋值就行了。
+// 注意：retry_policy必须在Channel使用期间保持有效，Channel也不会删除retry_policy，所以大部分情况下RetryPolicy都应以单例模式创建。
+brpc::ChannelOptions options;
+static MyRetryPolicy g_my_retry_policy;
+options.retry_policy = &g_my_retry_policy;
+...
+```
+
+如果用户希望使用框架默认的DoRetry，只实现自定义的重试退避策略，则可以继承[brpc::RpcRetryPolicy](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)。
+
+一些提示：
+
+- 当策略返回的重试退避时间大于等于剩余的rpc时间或者等于0，框架不会进行重试退避，而是立即进行重试。
+- [brpc::RpcRetryPolicyWithFixedBackoff](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)（固定时间间隔退策略）和[brpc::RpcRetryPolicyWithJitteredBackoff](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)（随机时间间隔退策略）继承了[brpc::RpcRetryPolicy](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)，使用框架默认的DoRetry。
+- 在pthread中进行重试退避（实际上通过bthread_usleep实现）会阻塞pthread，所以默认不会在pthread上进行重试退避。
+
 ### 重试应当保守
 
 由于成本的限制，大部分线上server的冗余度是有限的，主要是满足多机房互备的需求。而激进的重试逻辑很容易导致众多client对server集群造成2-3倍的压力，最终使集群雪崩：由于server来不及处理导致队列越积越长，使所有的请求得经过很长的排队才被处理而最终超时，相当于服务停摆。默认的重试是比较安全的: 只要连接不断RPC就不会重试，一般不会产生大量的重试请求。用户可以通过RetryPolicy定制重试策略，但也可能使重试变成一场“风暴”。当你定制RetryPolicy时，你需要仔细考虑client和server的协作关系，并设计对应的异常测试，以确保行为符合预期。
