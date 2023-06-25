@@ -319,6 +319,10 @@ struct ServiceOptions {
     // decode json array to protobuf message which contains a single repeated field.
     // Default: false.
     bool pb_single_repeated_to_array;
+
+    // enable server end progressive reading, mainly for http server
+    // Default: false.
+    bool enable_progressive_read;
 };
 
 // Represent ports inside [min_port, max_port]
@@ -369,6 +373,7 @@ public:
             bool allow_http_body_to_pb;
             bool pb_bytes_to_base64;
             bool pb_single_repeated_to_array;
+            bool enable_progressive_read;
             OpaqueParams();
         };
         OpaqueParams params;
@@ -560,9 +565,13 @@ public:
     int Concurrency() const {
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
-
+  
     // Returns true if accept request, reject request otherwise.
     bool AcceptRequest(Controller* cntl) const;
+
+    bool has_progressive_read_method() const {
+        return this->_has_progressive_read_method;
+    }
 
 private:
 friend class StatusService;
@@ -714,6 +723,8 @@ friend class Controller;
     mutable bvar::PerSecond<bvar::Adder<int64_t> > _eps_bvar;
     BAIDU_CACHELINE_ALIGNMENT mutable int32_t _concurrency;
     bvar::PassiveStatus<int32_t> _concurrency_bvar;
+
+    bool _has_progressive_read_method;
 };
 
 // Get the data attached to current searching thread. The data is created by

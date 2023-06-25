@@ -115,6 +115,8 @@ public:
         return SetBodyReader(r);
     }
 
+    void CheckProgressiveRead(const void* arg, Socket *socket);
+
 private:
     bool _is_stage2;
 };

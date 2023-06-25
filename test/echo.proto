@@ -65,6 +65,11 @@ service DownloadService {
     rpc DownloadFailed(HttpRequest) returns (HttpResponse);
 }
 
+service UploadService {
+    rpc Upload(HttpRequest) returns (HttpResponse);
+    rpc UploadFailed(HttpRequest) returns (HttpResponse);
+}
+
 service UserNamingService {
     rpc ListNames(HttpRequest) returns (HttpResponse);
     rpc Touch(HttpRequest) returns (HttpResponse);
