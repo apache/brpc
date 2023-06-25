@@ -22,7 +22,8 @@ jobs:
     
     - name: install dependences
       run: |
-           brew install openssl gnu-getopt coreutils gflags protobuf leveldb
+           brew install ./homebrew-formula/protobuf.rb 
+           brew install openssl gnu-getopt coreutils gflags leveldb
 
     - name: config_brpc
       run: |
@@ -42,7 +43,8 @@ jobs:
     
     - name: install dependences
       run: |
-           brew install openssl gnu-getopt coreutils gflags protobuf leveldb
+           brew install ./homebrew-formula/protobuf.rb 
+           brew install openssl gnu-getopt coreutils gflags leveldb
 
     - name: cmake
       run: |
