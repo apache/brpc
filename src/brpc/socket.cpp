@@ -1569,6 +1569,7 @@ X509* Socket::GetPeerCertificate() const {
     if (ssl_state() != SSL_CONNECTED) {
         return NULL;
     }
+    BAIDU_SCOPED_LOCK(_ssl_session_mutex);
     return SSL_get_peer_certificate(_ssl_session);
 }
 
@@ -1879,11 +1880,15 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
     CHECK_EQ(SSL_CONNECTED, ssl_state());
     if (_conn) {
         // TODO: Separate SSL stuff from SocketConnection
+        BAIDU_SCOPED_LOCK(_ssl_session_mutex);
         return _conn->CutMessageIntoSSLChannel(_ssl_session, data_list, ndata);
     }
     int ssl_error = 0;
-    ssize_t nw = butil::IOBuf::cut_multiple_into_SSL_channel(
-        _ssl_session, data_list, ndata, &ssl_error);
+    ssize_t nw = 0;
+    {
+        BAIDU_SCOPED_LOCK(_ssl_session_mutex);
+        nw = butil::IOBuf::cut_multiple_into_SSL_channel(_ssl_session, data_list, ndata, &ssl_error);
+    }
     switch (ssl_error) {
     case SSL_ERROR_NONE:
         break;
@@ -2027,7 +2032,11 @@ ssize_t Socket::DoRead(size_t size_hint) {
 
     CHECK_EQ(SSL_CONNECTED, ssl_state());
     int ssl_error = 0;
-    ssize_t nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
+    ssize_t nr = 0;
+    {
+        BAIDU_SCOPED_LOCK(_ssl_session_mutex);
+        nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
+    }
     switch (ssl_error) {
     case SSL_ERROR_NONE:  // `nr' > 0
         break;
