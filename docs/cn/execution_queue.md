@@ -61,7 +61,7 @@ ExecutionQueue和mutex都可以用来在多线程场景中消除竞争. 相比�
 // #include <bthread/execution_queue.h>
 //
 // int demo_execute(void* meta, TaskIterator<T>& iter) {
-//     if (iter.is_stopped()) {
+//     if (iter.is_queue_stopped()) {
 //         // destroy meta and related resources
 //         return 0;
 //     }
