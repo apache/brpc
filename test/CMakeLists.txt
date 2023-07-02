@@ -162,6 +162,7 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/synchronous_event_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/temp_file_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/baidu_thread_local_unittest.cpp
+    ${PROJECT_SOURCE_DIR}/test/thread_key_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/baidu_time_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/flat_map_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/crc32c_unittest.cc

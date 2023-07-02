@@ -375,6 +375,7 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/status.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/string_printf.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/thread_local.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/thread_key.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/unix_socket.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/endpoint.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/fd_utility.cpp

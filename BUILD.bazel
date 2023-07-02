@@ -200,6 +200,7 @@ BUTIL_SRCS = [
     "src/butil/status.cpp",
     "src/butil/string_printf.cpp",
     "src/butil/thread_local.cpp",
+    "src/butil/thread_key.cpp",
     "src/butil/unix_socket.cpp",
     "src/butil/endpoint.cpp",
     "src/butil/fd_utility.cpp",
