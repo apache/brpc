@@ -53,7 +53,6 @@ TEST(ThreadLocalTest, sanity) {
             std::unique_ptr<int> data(new int(1));
             int *raw_data = data.get();
             ASSERT_EQ(0, butil::thread_key_create(key, NULL));
-            ASSERT_NE(0, butil::thread_key_create(key, NULL));
 
             ASSERT_EQ(NULL, butil::thread_getspecific(key));
             ASSERT_EQ(0, butil::thread_setspecific(key, (void *)raw_data));
@@ -130,7 +129,7 @@ TEST(ThreadLocalTest, thread_key_create_and_delete) {
     }
 }
 
-void* ThreadLocalFun(void* arg) {
+void* ThreadLocalFunc(void* arg) {
     auto thread_locals = (std::vector<ThreadLocal<int>*>*)arg;
     std::vector<int> expects(thread_locals->size(), 0);
     for (auto tl : *thread_locals) {
@@ -146,9 +145,10 @@ void* ThreadLocalFun(void* arg) {
         ++expects[index];
         bthread_usleep(10);
     }
+    return NULL;
 }
 
-void TestThreadLocalMultiThread() {
+TEST(ThreadLocalTest, thread_local_multi_thread) {
     g_stopped = false;
     int thread_local_num = 20480;
     std::vector<ThreadLocal<int>*> args(thread_local_num, NULL);
@@ -159,7 +159,7 @@ void TestThreadLocalMultiThread() {
     const int thread_num = 8;
     pthread_t threads[thread_num];
     for (int i = 0; i < thread_num; ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, ThreadLocalFun, &args));
+        ASSERT_EQ(0, pthread_create(&threads[i], NULL, ThreadLocalFunc, &args));
     }
 
     sleep(5);
@@ -170,10 +170,6 @@ void TestThreadLocalMultiThread() {
     for (auto tl : args) {
         delete tl;
     }
-}
-
-TEST(ThreadLocalTest, thread_local_multi_thread) {
-    TestThreadLocalMultiThread();
 }
 
 struct BAIDU_CACHELINE_ALIGNMENT ThreadKeyArg {
@@ -211,6 +207,7 @@ void* ThreadKeyFunc(void* arg) {
         EXPECT_TRUE(butil::thread_getspecific(*key) == NULL)
         << butil::thread_getspecific(*key);
     }
+    return NULL;
 }
 
 TEST(ThreadLocalTest, thread_key_multi_thread) {

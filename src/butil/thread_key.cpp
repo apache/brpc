@@ -17,7 +17,6 @@
 
 #include "thread_key.h"
 #include "pthread.h"
-#include <errno.h>
 #include <deque>
 #include "butil/thread_local.h"
 

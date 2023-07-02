@@ -163,7 +163,6 @@ T* ThreadLocal<T>::get() {
         }
         int rc = thread_setspecific(_key, ptr);
         if (rc != 0) {
-            errno = rc;
             DefaultDtor(ptr);
             return NULL;
         }
