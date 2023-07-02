@@ -21,7 +21,6 @@
 #include "butil/thread_key.h"
 #include "butil/fast_rand.h"
 #include "bthread/bthread.h"
-#include "butil/gperftools_profiler.h"
 
 namespace butil {
 namespace {
@@ -41,8 +40,6 @@ namespace {
 
 bool g_started = false;
 bool g_stopped = false;
-int g_thread_key_prof_name_counter = 0;
-int g_thread_local_prof_name_counter = 0;
 
 struct ThreadKeyInfo {
     uint32_t id;
@@ -352,12 +349,8 @@ void ThreadKeyPerfTest(int thread_num, bool test_pthread_key) {
         usleep(1000);
     }
     g_started = true;
-     char prof_name[32];
-     snprintf(prof_name, sizeof(prof_name), "thread_key_%d.prof", ++g_thread_key_prof_name_counter);
-     ProfilerStart(prof_name);
     int64_t run_ms = 5 * 1000;
     usleep(run_ms * 1000);
-    ProfilerStop();
     g_stopped = true;
     int64_t wait_time = 0;
     int64_t count = 0;
@@ -433,12 +426,8 @@ void ThreadLocalPerfTest(int thread_num) {
         usleep(1000);
     }
     g_started = true;
-    char prof_name[32];
-    snprintf(prof_name, sizeof(prof_name), "thread_local_%d.prof", ++g_thread_local_prof_name_counter);
-    ProfilerStart(prof_name);
     int64_t run_ms = 5 * 1000;
     usleep(run_ms * 1000);
-     ProfilerStop();
     g_stopped = true;
     int64_t wait_time = 0;
     int64_t count = 0;
