@@ -450,7 +450,7 @@ namespace {  /*anonymous namespace */                           \
         LOG(FATAL) << log;                                              \
     } while (false)
 
-// Assert macro that can Crash the process to generate a dump.
+// Assert macro that can crash the process to generate a dump.
 #define RELEASE_ASSERT(condition)   \
     do {                            \
         if (!(condition)) {         \
@@ -458,7 +458,7 @@ namespace {  /*anonymous namespace */                           \
         }                           \
     } while (false)
 
-// Assert macro that can Crash the process to generate a dump and
+// Assert macro that can crash the process to generate a dump and
 // supply a verbose explanation of what went wrong.
 // For example:
 //  std::vector<int> v;

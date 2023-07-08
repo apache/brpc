@@ -11,6 +11,7 @@
 
 #include "butil/compiler_specific.h"
 #include "butil/move.h"
+#include "butil/macros.h"
 
 namespace butil {
 
