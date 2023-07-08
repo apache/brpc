@@ -16,7 +16,6 @@
 // under the License.
 
 
-#include <stdlib.h>                     // abort()
 #include "butil/macros.h"
 #include "butil/logging.h"
 #include <pthread.h>
@@ -73,9 +72,8 @@ struct LessThanByName {
 static void BuildHttpMethodMaps() {
     for (size_t i = 0; i < ARRAY_SIZE(g_method_pairs); ++i) {
         const int method = (int)g_method_pairs[i].method;
-        if (method < 0 || method > (int)ARRAY_SIZE(g_method2str_map)) {
-            abort();
-        }
+        RELEASE_ASSERT(method >= 0 &&
+                       method <= (int)ARRAY_SIZE(g_method2str_map));
         g_method2str_map[method] = g_method_pairs[i].str;
      }
     std::sort(g_method_pairs, g_method_pairs + ARRAY_SIZE(g_method_pairs),
@@ -83,10 +81,9 @@ static void BuildHttpMethodMaps() {
     char last_fc = '\0';
     for (size_t i = 0; i < ARRAY_SIZE(g_method_pairs); ++i) {
         char fc = g_method_pairs[i].str[0];
-        if (fc < 'A' || fc > 'Z') {
-            LOG(ERROR) << "Invalid method_name=" << g_method_pairs[i].str;
-            abort();
-        }
+        RELEASE_ASSERT_VERBOSE(fc >= 'A' && fc <= 'Z',
+                               "Invalid method_name=%s",
+                               g_method_pairs[i].str);
         if (fc != last_fc) {
             last_fc = fc;
             g_first_char_index[fc - 'A'] = (uint8_t)(i + 1);

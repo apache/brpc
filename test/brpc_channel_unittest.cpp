@@ -76,10 +76,8 @@ public:
     DeleteOnlyOnceChannel() : _c(1) {
     }
     ~DeleteOnlyOnceChannel() {
-        if (_c.fetch_sub(1) != 1) {
-            LOG(ERROR) << "Delete more than once!";
-            abort();
-        }
+        RELEASE_ASSERT_VERBOSE(_c.fetch_sub(1) == 1,
+                               "Delete more than once!");
     }
 private:
     butil::atomic<int> _c;

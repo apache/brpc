@@ -1485,26 +1485,20 @@ static void RegisterQuitSignalOrDie() {
     SignalHandler prev = signal(SIGINT, quit_handler);
     if (prev != SIG_DFL &&
         prev != SIG_IGN) { // shell may install SIGINT of background jobs with SIG_IGN
-        if (prev == SIG_ERR) {
-            LOG(ERROR) << "Fail to register SIGINT, abort";
-            abort();
-        } else {
-            s_prev_sigint_handler = prev;
-            LOG(WARNING) << "SIGINT was installed with " << prev;
-        }
+        RELEASE_ASSERT_VERBOSE(prev != SIG_ERR,
+                               "Fail to register SIGINT, abort");
+        s_prev_sigint_handler = prev;
+        LOG(WARNING) << "SIGINT was installed with " << prev;
     }
 
     if (FLAGS_graceful_quit_on_sigterm) {
         prev = signal(SIGTERM, quit_handler);
         if (prev != SIG_DFL &&
             prev != SIG_IGN) { // shell may install SIGTERM of background jobs with SIG_IGN
-            if (prev == SIG_ERR) {
-                LOG(ERROR) << "Fail to register SIGTERM, abort";
-                abort();
-            } else {
-                s_prev_sigterm_handler = prev;
-                LOG(WARNING) << "SIGTERM was installed with " << prev;
-            }
+            RELEASE_ASSERT_VERBOSE(prev != SIG_ERR,
+                                   "Fail to register SIGTERM, abort");
+            s_prev_sigterm_handler = prev;
+            LOG(WARNING) << "SIGTERM was installed with " << prev;
         }
     }
 
@@ -1512,13 +1506,10 @@ static void RegisterQuitSignalOrDie() {
         prev = signal(SIGHUP, quit_handler);
         if (prev != SIG_DFL &&
             prev != SIG_IGN) { // shell may install SIGHUP of background jobs with SIG_IGN
-            if (prev == SIG_ERR) {
-                LOG(ERROR) << "Fail to register SIGHUP, abort";
-                abort();
-            } else {
-                s_prev_sighup_handler = prev;
-                LOG(WARNING) << "SIGHUP was installed with " << prev;
-            }
+            RELEASE_ASSERT_VERBOSE(prev != SIG_ERR,
+                                   "Fail to register SIGHUP, abort");
+            s_prev_sighup_handler = prev;
+            LOG(WARNING) << "SIGHUP was installed with " << prev;
         }
     }
 }

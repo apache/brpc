@@ -489,19 +489,19 @@ void print_vlog_sites(VLogSitePrinter*);
 
 // file/line can be specified at running-time. This is useful for printing
 // logs with known file/line inside a LogSink or LogMessageHandler
-#define GET_LOG_AT_MACRO(_1, _2, _3, _4, NAME, ...) NAME
+#define LOG_AT_SELECTOR(_1, _2, _3, _4, NAME, ...) NAME
 
 #define LOG_AT_STREAM1(severity, file, line)                                 \
     ::logging::LogMessage(file, line, ::logging::BLOG_##severity).stream()
 #define LOG_AT_STREAM2(severity, file, line, func)                           \
     ::logging::LogMessage(file, line, func, ::logging::BLOG_##severity).stream()
-#define LOG_AT_STREAM(...) GET_LOG_AT_MACRO(__VA_ARGS__, LOG_AT_STREAM2, LOG_AT_STREAM1)(__VA_ARGS__)
+#define LOG_AT_STREAM(...) LOG_AT_SELECTOR(__VA_ARGS__, LOG_AT_STREAM2, LOG_AT_STREAM1)(__VA_ARGS__)
 
 #define LOG_AT1(severity, file, line)                                        \
     BAIDU_LAZY_STREAM(LOG_AT_STREAM(severity, file, line), LOG_IS_ON(severity))
 #define LOG_AT2(severity, file, line, func)                                   \
     BAIDU_LAZY_STREAM(LOG_AT_STREAM(severity, file, line, func), LOG_IS_ON(severity))
-#define LOG_AT(...) GET_LOG_AT_MACRO(__VA_ARGS__, LOG_AT2, LOG_AT1)(__VA_ARGS__)
+#define LOG_AT(...) LOG_AT_SELECTOR(__VA_ARGS__, LOG_AT2, LOG_AT1)(__VA_ARGS__)
 
 
 // The VLOG macros log with negative verbosities.
