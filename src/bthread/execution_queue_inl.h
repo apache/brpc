@@ -290,6 +290,16 @@ public:
 
     int execute(typename butil::add_const_reference<T>::type task,
                 const TaskOptions* options, TaskHandle* handle) {
+        return execute(std::forward<T>(const_cast<T&>(task)), options, handle);
+    }
+
+
+    int execute(T&& task) {
+        return execute(std::forward<T>(task), NULL, NULL);
+    }
+
+    int execute(T&& task,
+                const TaskOptions* options, TaskHandle* handle) {
         if (stopped()) {
             return EINVAL;
         }
@@ -302,7 +312,7 @@ public:
             return_task_node(node);
             return ENOMEM;
         }
-        new (mem) T(task);
+        new (mem) T(std::forward<T>(task));
         node->stop_task = false;
         TaskOptions opt;
         if (options) {
@@ -356,10 +366,37 @@ inline int execution_queue_execute(ExecutionQueueId<T> id,
                        typename butil::add_const_reference<T>::type task,
                        const TaskOptions* options,
                        TaskHandle* handle) {
-    typename ExecutionQueue<T>::scoped_ptr_t 
+    typename ExecutionQueue<T>::scoped_ptr_t
         ptr = ExecutionQueue<T>::address(id);
     if (ptr != NULL) {
         return ptr->execute(task, options, handle);
+    } else {
+        return EINVAL;
+    }
+}
+
+template <typename T>
+inline int execution_queue_execute(ExecutionQueueId<T> id,
+                                   T&& task) {
+    return execution_queue_execute(id, std::forward<T>(task), NULL);
+}
+
+template <typename T>
+inline int execution_queue_execute(ExecutionQueueId<T> id,
+                                   T&& task,
+                                   const TaskOptions* options) {
+    return execution_queue_execute(id, std::forward<T>(task), options, NULL);
+}
+
+template <typename T>
+inline int execution_queue_execute(ExecutionQueueId<T> id,
+                                   T&& task,
+                                   const TaskOptions* options,
+                                   TaskHandle* handle) {
+    typename ExecutionQueue<T>::scoped_ptr_t
+            ptr = ExecutionQueue<T>::address(id);
+    if (ptr != NULL) {
+        return ptr->execute(std::forward<T>(task), options, handle);
     } else {
         return EINVAL;
     }
@@ -518,7 +555,7 @@ inline int ExecutionQueueBase::dereference() {
                         butil::memory_order_acquire,
                         butil::memory_order_relaxed)) {
                 _on_recycle();
-                // We don't return m immediatly when the reference count
+                // We don't return m immediately when the reference count
                 // reaches 0 as there might be in processing tasks. Instead
                 // _on_recycle would push a `stop_task' after which is executed
                 // m would be finally returned and reset

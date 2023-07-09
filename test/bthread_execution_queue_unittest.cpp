@@ -75,6 +75,57 @@ TEST_F(ExecutionQueueTest, single_thread) {
     ASSERT_TRUE(stopped);
 }
 
+class RValue {
+public:
+    RValue() : _value(0) {}
+    explicit RValue(int v) : _value(v) {}
+    RValue(RValue&& rhs)  noexcept : _value(rhs._value) {}
+    RValue& operator=(RValue&& rhs) noexcept {
+        if (this != &rhs) {
+            _value = rhs._value;
+        }
+        return *this;
+    }
+
+    DISALLOW_COPY_AND_ASSIGN(RValue);
+
+    int value() const { return _value; }
+
+
+private:
+    int _value;
+};
+
+int add(void* meta, bthread::TaskIterator<RValue> &iter) {
+    stopped = iter.is_queue_stopped();
+    int* result = (int*)meta;
+    for (; iter; ++iter) {
+        *result += iter->value();
+    }
+    return 0;
+}
+
+TEST_F(ExecutionQueueTest, rvalue) {
+    int64_t result = 0;
+    int64_t expected_result = 0;
+    stopped = false;
+    bthread::ExecutionQueueId<RValue> queue_id;
+    bthread::ExecutionQueueOptions options;
+    ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
+                                                    add, &result));
+    for (int i = 0; i < 100; ++i) {
+        expected_result += i;
+        RValue v(i);
+        ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, std::move(v)));
+    }
+    LOG(INFO) << "stop";
+    ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
+    ASSERT_NE(0, bthread::execution_queue_execute(queue_id, RValue(0)));
+    ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
+    ASSERT_EQ(expected_result, result);
+    ASSERT_TRUE(stopped);
+}
+
 struct PushArg {
     bthread::ExecutionQueueId<LongIntTask> id {0};
     butil::atomic<int64_t> total_num {0};
