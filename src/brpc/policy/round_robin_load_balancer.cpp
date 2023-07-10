@@ -120,7 +120,9 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     TLS tls = s.tls();
     if (tls.stride == 0) {
         tls.stride = GenRandomStride();
-        tls.offset = 0;
+        // use random at first time, for the case of
+        // use rr lb every time in new thread
+        tls.offset = butil::fast_rand_less_than(n);
     }
 
     for (size_t i = 0; i < n; ++i) {
