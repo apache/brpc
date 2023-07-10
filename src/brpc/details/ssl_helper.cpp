@@ -557,7 +557,7 @@ SSL_CTX* CreateServerSSLContext(const std::string& certificate,
 #endif  // OPENSSL_NO_DH
 
     // Set ALPN callback to choose application protocol when alpns is not empty.
-    if (!alpns->empty()) {
+    if (alpns != nullptr && !alpns->empty()) {
         if (SetServerALPNCallback(ssl_ctx.get(), alpns) != 0) {
             return NULL; 
         }
