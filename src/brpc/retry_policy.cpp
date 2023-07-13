@@ -31,13 +31,15 @@ public:
             return false;
         }
         return (EFAILEDSOCKET == error_code
-                || EEOF == error_code 
-                || EHOSTDOWN == error_code 
+                || EEOF == error_code
+                || EHOSTDOWN == error_code
                 || ELOGOFF == error_code
                 || ETIMEDOUT == error_code // This is not timeout of RPC.
                 || ELIMIT == error_code
                 || ENOENT == error_code
                 || EPIPE == error_code
+                || ENETUNREACH == error_code
+                || EHOSTUNREACH == error_code
                 || ECONNREFUSED == error_code
                 || ECONNRESET == error_code
                 || ENODATA == error_code
