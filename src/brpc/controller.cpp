@@ -48,6 +48,11 @@
 // Force linking the .o in UT (which analysis deps by inclusions)
 #include "brpc/parallel_channel.h"
 #include "brpc/selective_channel.h"
+#include "bthread/task_group.h"
+
+namespace bthread {
+extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
+}
 
 // This is the only place that both client/server must link, so we put
 // registrations of errno here.
@@ -627,33 +632,51 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         ++_current_call.nretry;
         add_flag(FLAGS_BACKUP_REQUEST);
         return IssueRPC(butil::gettimeofday_us());
-    } else if (_retry_policy ? _retry_policy->DoRetry(this)
-               : DefaultRetryPolicy()->DoRetry(this)) {
-        // The error must come from _current_call because:
-        //  * we intercepted error from _unfinished_call in OnVersionedRPCReturned
-        //  * ERPCTIMEDOUT/ECANCELED are not retrying error by default.
-        CHECK_EQ(current_id(), info.id) << "error_code=" << _error_code;
-        if (!SingleServer()) {
-            if (_accessed == NULL) {
-                _accessed = ExcludedServers::Create(
-                    std::min(_max_retry, RETRY_AVOIDANCE));
-                if (NULL == _accessed) {
-                    SetFailed(ENOMEM, "Fail to create ExcludedServers");
-                    goto END_OF_RPC;
+    } else {
+        auto retry_policy = _retry_policy ? _retry_policy : DefaultRetryPolicy();
+        if (retry_policy->DoRetry(this)) {
+            // The error must come from _current_call because:
+            //  * we intercepted error from _unfinished_call in OnVersionedRPCReturned
+            //  * ERPCTIMEDOUT/ECANCELED are not retrying error by default.
+            CHECK_EQ(current_id(), info.id) << "error_code=" << _error_code;
+            if (!SingleServer()) {
+                if (_accessed == NULL) {
+                    _accessed = ExcludedServers::Create(
+                            std::min(_max_retry, RETRY_AVOIDANCE));
+                    if (NULL == _accessed) {
+                        SetFailed(ENOMEM, "Fail to create ExcludedServers");
+                        goto END_OF_RPC;
+                    }
                 }
+                _accessed->Add(_current_call.peer_id);
             }
-            _accessed->Add(_current_call.peer_id);
+            _current_call.OnComplete(this, _error_code, info.responded, false);
+            ++_current_call.nretry;
+            // Clear http responses before retrying, otherwise the response may
+            // be mixed with older (and undefined) stuff. This is actually not
+            // done before r32008.
+            if (_http_response) {
+                _http_response->Clear();
+            }
+            response_attachment().clear();
+
+            // Retry backoff.
+            bthread::TaskGroup* g = bthread::tls_task_group;
+            if (retry_policy->CanRetryBackoffInPthread() ||
+                (g && !g->is_current_pthread_task())) {
+                int64_t backoff_time_us = retry_policy->GetBackoffTimeMs(this) * 1000L;
+                // No need to do retry backoff when the backoff time is longer than the remaining rpc time.
+                if (backoff_time_us > 0 &&
+                    backoff_time_us < _deadline_us - butil::gettimeofday_us()) {
+                    bthread_usleep(backoff_time_us);
+                }
+
+            } else {
+                LOG(WARNING) << "`CanRetryBackoffInPthread()' returns false, "
+                                "skip retry backoff in pthread.";
+            }
+            return IssueRPC(butil::gettimeofday_us());
         }
-        _current_call.OnComplete(this, _error_code, info.responded, false);
-        ++_current_call.nretry;
-        // Clear http responses before retrying, otherwise the response may
-        // be mixed with older (and undefined) stuff. This is actually not
-        // done before r32008.
-        if (_http_response) {
-            _http_response->Clear();
-        }
-        response_attachment().clear();
-        return IssueRPC(butil::gettimeofday_us());
     }
 
 END_OF_RPC:
