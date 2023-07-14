@@ -721,6 +721,37 @@ inline bool does_error_affect_main_socket(int error_code) {
         error_code == EINVAL/*returned by connect "0.0.0.1"*/;
 }
 
+inline void maybe_block_server(int error_code, Controller* cntl, SharedLoadBalancer* lb, SocketId sock) {
+    if (!does_error_affect_main_socket(error_code)) {
+        // Error code does not indicate that server is down, we can't block it
+        return;
+    }
+    if (!lb) {
+        // Single server mode, we can't block the only server
+        return;
+    }
+    // We try to SelectServer once to check if sock is the last available server
+    ExcludedServers* excluded = ExcludedServers::Create(1);
+    excluded->Add(sock);
+    SocketUniquePtr tmp_sock;
+    LoadBalancer::SelectIn sel_in = { 0, false, true, 0, excluded };
+    LoadBalancer::SelectOut sel_out(&tmp_sock);
+    const int rc = lb->SelectServer(sel_in, &sel_out);
+    ExcludedServers::Destroy(excluded);
+    if (rc != 0 || tmp_sock->id() == sock) {
+        // sock is the last available server in this LB, we can't block it
+        return;
+    }
+    // main socket should die as well
+    // NOTE: main socket may be wrongly set failed (provided that
+    // short/pooled socket does not hold a ref of the main socket).
+    // E.g. a in-parallel RPC sets the peer_id to be failed
+    //   -> this RPC meets ECONNREFUSED
+    //   -> main socket gets revived from HC
+    //   -> this RPC sets main socket to be failed again.
+    Socket::SetFailed(sock);
+}
+
 //Note: A RPC call is probably consisted by several individual Calls such as
 //      retries and backup requests. This method simply cares about the error of
 //      this very Call (specified by |error_code|) rather than the error of the
@@ -751,9 +782,8 @@ void Controller::Call::OnComplete(
         // "single" streams are often maintained in a separate SocketMap and
         // different from the main socket as well.
         if (c->_stream_creator != NULL &&
-            does_error_affect_main_socket(error_code) &&
             (sending_sock == NULL || sending_sock->id() != peer_id)) {
-            Socket::SetFailed(peer_id);
+            maybe_block_server(error_code, c, c->_lb.get(), peer_id);
         }
         break;
     case CONNECTION_TYPE_POOLED:
@@ -788,16 +818,7 @@ void Controller::Call::OnComplete(
                 sending_sock->OnProgressiveReadCompleted();
             }
         }
-        if (does_error_affect_main_socket(error_code)) {
-            // main socket should die as well.
-            // NOTE: main socket may be wrongly set failed (provided that
-            // short/pooled socket does not hold a ref of the main socket).
-            // E.g. an in-parallel RPC sets the peer_id to be failed
-            //   -> this RPC meets ECONNREFUSED
-            //   -> main socket gets revived from HC
-            //   -> this RPC sets main socket to be failed again.
-            Socket::SetFailed(peer_id);
-        }
+        maybe_block_server(error_code, c, c->_lb.get(), peer_id);
         break;
     }
 
@@ -1035,7 +1056,13 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
             { start_realtime_us, true,
               has_request_code(), _request_code, _accessed };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
-        const int rc = _lb->SelectServer(sel_in, &sel_out);
+        int rc = _lb->SelectServer(sel_in, &sel_out);
+        if (rc == EHOSTDOWN) {
+            // If no server is available, include accessed server and try to SelectServer again
+            sel_in.excluded = NULL;
+            sel_in.changable_weights = false;
+            rc = _lb->SelectServer(sel_in, &sel_out);
+        }
         if (rc != 0) {
             std::ostringstream os;
             DescribeOptions opt;
