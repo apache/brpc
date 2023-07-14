@@ -96,6 +96,7 @@
 #include <stdint.h>
 #include <functional>
 #include <iostream>                               // std::ostream
+#include <type_traits>                            // std::aligned_storage
 #include "butil/type_traits.h"
 #include "butil/logging.h"
 #include "butil/find_cstr.h"
@@ -251,22 +252,23 @@ public:
 
     struct Bucket {
         explicit Bucket(const _K& k) : next(NULL)
-        { new (element_spaces) Element(k); }
+        { new (&element_spaces) Element(k); }
         Bucket(const Bucket& other) : next(NULL)
-        { new (element_spaces) Element(other.element()); }
+        { new (&element_spaces) Element(other.element()); }
         bool is_valid() const { return next != (const Bucket*)-1UL; }
         void set_invalid() { next = (Bucket*)-1UL; }
         // NOTE: Only be called when is_valid() is true.
         Element& element() {
-            void* spaces = element_spaces; // Suppress strict-aliasing
+            void* spaces = &element_spaces; // Suppress strict-aliasing
             return *reinterpret_cast<Element*>(spaces);
         }
         const Element& element() const {
-            const void* spaces = element_spaces;
+            const void* spaces = &element_spaces;
             return *reinterpret_cast<const Element*>(spaces);
         }
-        Bucket* next;
-        char element_spaces[sizeof(Element)];
+        Bucket *next;
+        typename std::aligned_storage<sizeof(Element), alignof(Element)>::type
+            element_spaces;
     };
 
     allocator_type& get_allocator() { return _pool.get_allocator(); }
