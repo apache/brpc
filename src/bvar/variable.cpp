@@ -48,12 +48,7 @@ DEFINE_bool(bvar_abort_on_same_name, false,
 // Remember abort request before bvar_abort_on_same_name is initialized.
 bool s_bvar_may_abort = false;
 static bool validate_bvar_abort_on_same_name(const char*, bool v) {
-    if (v && s_bvar_may_abort) {
-        // Name conflict happens before handling args of main(), this is
-        // generally caused by global bvar.
-        LOG(FATAL) << "Abort due to name conflict";
-        abort();
-    }
+    RELEASE_ASSERT_VERBOSE(!v || !s_bvar_may_abort, "Abort due to name conflict");
     return true;
 }
 const bool ALLOW_UNUSED dummy_bvar_abort_on_same_name = ::GFLAGS_NS::RegisterFlagValidator(
@@ -167,10 +162,9 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
             return 0;
         }
     }
-    if (FLAGS_bvar_abort_on_same_name) {
-        LOG(FATAL) << "Abort due to name conflict";
-        abort();
-    } else if (!s_bvar_may_abort) {
+    RELEASE_ASSERT_VERBOSE(!FLAGS_bvar_abort_on_same_name,
+                           "Abort due to name conflict");
+    if (!s_bvar_may_abort) {
         // Mark name conflict occurs, If this conflict happens before
         // initialization of bvar_abort_on_same_name, the validator will
         // abort the program if needed.

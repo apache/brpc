@@ -12,8 +12,10 @@
 
 #include <stddef.h>  // For size_t.
 #include <string.h>  // For memcpy.
+#include <stdlib.h>
 
 #include "butil/compiler_specific.h"  // For ALLOW_UNUSED.
+#include "butil/string_printf.h"      // For butil::string_printf().
 
 // There must be many copy-paste versions of these macros which are same
 // things, undefine them to avoid conflict.
@@ -441,5 +443,33 @@ namespace {  /*anonymous namespace */                           \
     BAIDU_CONCAT(baidu_global_init_, __LINE__)
 
 #endif  // __cplusplus
+
+#define ASSERT_LOG(fmt, ...)                                            \
+    do {                                                                \
+        std::string log = butil::string_printf(fmt, ## __VA_ARGS__);    \
+        LOG(FATAL) << log;                                              \
+    } while (false)
+
+// Assert macro that can crash the process to generate a dump.
+#define RELEASE_ASSERT(condition)   \
+    do {                            \
+        if (!(condition)) {         \
+            ::abort();              \
+        }                           \
+    } while (false)
+
+// Assert macro that can crash the process to generate a dump and
+// supply a verbose explanation of what went wrong.
+// For example:
+//  std::vector<int> v;
+//  ...
+//  RELEASE_ASSERT_VERBOSE(v.empty(), "v should be empty, but with size=%zu", v.size());
+#define RELEASE_ASSERT_VERBOSE(condition, fmt, ...)                                 \
+    do {                                                                            \
+        if (!(condition)) {                                                         \
+            ASSERT_LOG("Assert failure: " #condition ". " #fmt, ## __VA_ARGS__);    \
+            ::abort();                                                              \
+        }                                                                           \
+    } while (false)
 
 #endif  // BUTIL_MACROS_H_

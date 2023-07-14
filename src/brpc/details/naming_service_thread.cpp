@@ -80,13 +80,13 @@ NamingServiceThread::Actions::~Actions() {
 void NamingServiceThread::Actions::AddServers(
     const std::vector<ServerNode>&) {
     // FIXME(gejun)
-    abort();
+    RELEASE_ASSERT_VERBOSE(false, "Not implemented");
 }
 
 void NamingServiceThread::Actions::RemoveServers(
     const std::vector<ServerNode>&) {
     // FIXME(gejun)
-    abort();
+    RELEASE_ASSERT_VERBOSE(false, "Not implemented");
 }
 
 void NamingServiceThread::Actions::ResetServers(

@@ -167,10 +167,9 @@ int MVariable::expose_impl(const butil::StringPiece& prefix,
         }
     }
 
-    if (FLAGS_bvar_abort_on_same_name) {
-        LOG(FATAL) << "Abort due to name conflict";
-        abort();
-    } else if (!s_bvar_may_abort) {
+    RELEASE_ASSERT_VERBOSE(!FLAGS_bvar_abort_on_same_name,
+                           "Abort due to name conflict");
+    if (!s_bvar_may_abort) {
         // Mark name conflict occurs, If this conflict happens before
         // initialization of bvar_abort_on_same_name, the validator will
         // abort the program if needed.
