@@ -45,8 +45,7 @@
  #if defined(_THRIFT_STDCXX_H_)
  # define THRIFT_STDCXX apache::thrift::stdcxx
  #else
- # define THRIFT_STDCXX boost
- # include <boost/make_shared.hpp>
+ # define THRIFT_STDCXX std
  #endif
 #endif
 
