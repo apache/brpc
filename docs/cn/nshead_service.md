@@ -186,45 +186,45 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 ```c++
 class NsheadPbServiceAdaptor : public NsheadService {
 public:
-    NsheadPbServiceAdaptor() : NsheadService(
-        NsheadServiceOptions(false, SendNsheadPbResponseSize)) {}
-    virtual ~NsheadPbServiceAdaptor() {}
- 
-    // Fetch meta from `nshead_req' into `meta'.
-    // Params:
-    //   server: where the RPC runs.
-    //   nshead_req: the nshead request that server received.
-    //   controller: If something goes wrong, call controller->SetFailed()
-    //   meta: Set meta information into this structure. `full_method_name'
-    //         must be set if controller is not SetFailed()-ed
-    // FIXME: server is not needed anymore, controller->server() is same
-    virtual void ParseNsheadMeta(const Server& server,
-                                 const NsheadMessage& nshead_req,
-                                 Controller* controller,
-                                 NsheadMeta* meta) const = 0;
-    // Transform `nshead_req' to `pb_req'.
-    // Params:
-    //   meta: was set by ParseNsheadMeta()
-    //   nshead_req: the nshead request that server received.
-    //   controller: you can set attachment into the controller. If something
-    //               goes wrong, call controller->SetFailed()
-    //   pb_req: the pb request should be set by your implementation.
-    virtual void ParseRequestFromIOBuf(const NsheadMeta& meta,
-                                       const NsheadMessage& nshead_req,
-                                       Controller* controller,
-                                       google::protobuf::Message* pb_req) const = 0;
-    // Transform `pb_res' (and controller) to `nshead_res'.
-    // Params:
-    //   meta: was set by ParseNsheadMeta()
-    //   controller: If something goes wrong, call controller->SetFailed()
-    //   pb_res: the pb response that returned by pb method. [NOTE] `pb_res'
-    //           can be NULL or uninitialized when RPC failed (indicated by
-    //           Controller::Failed()), in which case you may put error
-    //           information into `nshead_res'.
-    //   nshead_res: the nshead response that will be sent back to client.
-    virtual void SerializeResponseToIOBuf(const NsheadMeta& meta,
-                                          Controller* controller,
-                                          const google::protobuf::Message* pb_res,
-                                          NsheadMessage* nshead_res) const = 0;
+    NsheadPbServiceAdaptor() : NsheadService(
+        NsheadServiceOptions(false, SendNsheadPbResponseSize)) {}
+    virtual ~NsheadPbServiceAdaptor() {}
+ 
+    // Fetch meta from `nshead_req' into `meta'.
+    // Params:
+    //   server: where the RPC runs.
+    //   nshead_req: the nshead request that server received.
+    //   controller: If something goes wrong, call controller->SetFailed()
+    //   meta: Set meta information into this structure. `full_method_name'
+    //         must be set if controller is not SetFailed()-ed
+    // FIXME: server is not needed anymore, controller->server() is same
+    virtual void ParseNsheadMeta(const Server& server,
+                                 const NsheadMessage& nshead_req,
+                                 Controller* controller,
+                                 NsheadMeta* meta) const = 0;
+    // Transform `nshead_req' to `pb_req'.
+    // Params:
+    //   meta: was set by ParseNsheadMeta()
+    //   nshead_req: the nshead request that server received.
+    //   controller: you can set attachment into the controller. If something
+    //               goes wrong, call controller->SetFailed()
+    //   pb_req: the pb request should be set by your implementation.
+    virtual void ParseRequestFromIOBuf(const NsheadMeta& meta,
+                                       const NsheadMessage& nshead_req,
+                                       Controller* controller,
+                                       google::protobuf::Message* pb_req) const = 0;
+    // Transform `pb_res' (and controller) to `nshead_res'.
+    // Params:
+    //   meta: was set by ParseNsheadMeta()
+    //   controller: If something goes wrong, call controller->SetFailed()
+    //   pb_res: the pb response that returned by pb method. [NOTE] `pb_res'
+    //           can be NULL or uninitialized when RPC failed (indicated by
+    //           Controller::Failed()), in which case you may put error
+    //           information into `nshead_res'.
+    //   nshead_res: the nshead response that will be sent back to client.
+    virtual void SerializeResponseToIOBuf(const NsheadMeta& meta,
+                                          Controller* controller,
+                                          const google::protobuf::Message* pb_res,
+                                          NsheadMessage* nshead_res) const = 0;
 };
 ```

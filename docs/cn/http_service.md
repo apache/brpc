@@ -30,12 +30,12 @@ request和response可为空是因为数据都在Controller中：
 
 ```protobuf
 option cc_generic_services = true;
- 
+ 
 message HttpRequest { };
 message HttpResponse { };
- 
+ 
 service HttpService {
-      rpc Echo(HttpRequest) returns (HttpResponse);
+      rpc Echo(HttpRequest) returns (HttpResponse);
 };
 ```
 
@@ -44,27 +44,27 @@ service HttpService {
 ```c++
 class HttpServiceImpl : public HttpService {
 public:
-    ...
-    virtual void Echo(google::protobuf::RpcController* cntl_base,
-                      const HttpRequest* /*request*/,
-                      HttpResponse* /*response*/,
-                      google::protobuf::Closure* done) {
-        brpc::ClosureGuard done_guard(done);
-        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
- 
-        // body是纯文本
-        cntl->http_response().set_content_type("text/plain");
-       
-        // 把请求的query-string和body打印结果作为回复内容。
-        butil::IOBufBuilder os;
-        os << "queries:";
-        for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
-                it != cntl->http_request().uri().QueryEnd(); ++it) {
-            os << ' ' << it->first << '=' << it->second;
-        }
-        os << "\nbody: " << cntl->request_attachment() << '\n';
-        os.move_to(cntl->response_attachment());
-    }
+    ...
+    virtual void Echo(google::protobuf::RpcController* cntl_base,
+                      const HttpRequest* /*request*/,
+                      HttpResponse* /*response*/,
+                      google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+ 
+        // body是纯文本
+        cntl->http_response().set_content_type("text/plain");
+       
+        // 把请求的query-string和body打印结果作为回复内容。
+        butil::IOBufBuilder os;
+        os << "queries:";
+        for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
+                it != cntl->http_request().uri().QueryEnd(); ++it) {
+            os << ' ' << it->first << '=' << it->second;
+        }
+        os << "\nbody: " << cntl->request_attachment() << '\n';
+        os.move_to(cntl->response_attachment());
+    }
 };
 ```
 
@@ -141,10 +141,10 @@ int AddService(google::protobuf::Service* service,
 
 ```protobuf
 service QueueService {
-    rpc start(HttpRequest) returns (HttpResponse);
-    rpc stop(HttpRequest) returns (HttpResponse);
-    rpc get_stats(HttpRequest) returns (HttpResponse);
-    rpc download_data(HttpRequest) returns (HttpResponse);
+    rpc start(HttpRequest) returns (HttpResponse);
+    rpc stop(HttpRequest) returns (HttpResponse);
+    rpc get_stats(HttpRequest) returns (HttpResponse);
+    rpc download_data(HttpRequest) returns (HttpResponse);
 };
 ```
 
@@ -152,22 +152,22 @@ service QueueService {
 
 ```c++
 if (server.AddService(&queue_svc,
-                      brpc::SERVER_DOESNT_OWN_SERVICE,
-                      "/v1/queue/start   => start,"
-                      "/v1/queue/stop    => stop,"
-                      "/v1/queue/stats/* => get_stats") != 0) {
-    LOG(ERROR) << "Fail to add queue_svc";
-    return -1;
+                      brpc::SERVER_DOESNT_OWN_SERVICE,
+                      "/v1/queue/start   => start,"
+                      "/v1/queue/stop    => stop,"
+                      "/v1/queue/stats/* => get_stats") != 0) {
+    LOG(ERROR) << "Fail to add queue_svc";
+    return -1;
 }
- 
+ 
 // 星号可出现在中间
 if (server.AddService(&queue_svc,
-                      brpc::SERVER_DOESNT_OWN_SERVICE,
-                      "/v1/*/start   => start,"
-                      "/v1/*/stop    => stop,"
-                      "*.data        => download_data") != 0) {
-    LOG(ERROR) << "Fail to add queue_svc";
-    return -1;
+                      brpc::SERVER_DOESNT_OWN_SERVICE,
+                      "/v1/*/start   => start,"
+                      "/v1/*/stop    => stop,"
+                      "*.data        => download_data") != 0) {
+    LOG(ERROR) << "Fail to add queue_svc";
+    return -1;
 }
 ```
 
@@ -213,11 +213,11 @@ query string也是key/value对，http headers与query string的区别:
 ```c++
 // 获得header中"User-Agent"的值，大小写不敏感。
 const std::string* user_agent_str = cntl->http_request().GetHeader("User-Agent");
-if (user_agent_str != NULL) {  // has the header
-    LOG(TRACE) << "User-Agent is " << *user_agent_str;
+if (user_agent_str != NULL) {  // has the header
+    LOG(TRACE) << "User-Agent is " << *user_agent_str;
 }
 ...
- 
+ 
 // 在header中增加"Accept-encoding: gzip"，大小写不敏感。
 cntl->http_response().SetHeader("Accept-encoding", "gzip");
 // 覆盖为"Accept-encoding: deflate"
@@ -233,7 +233,7 @@ Content-type记录body的类型，是一个使用频率较高的header。它在b
 ```c++
 // Get Content-Type
 if (cntl->http_request().content_type() == "application/json") {
-    ...
+    ...
 }
 ...
 // Set Content-Type
@@ -249,7 +249,7 @@ status code是http response特有的字段，标记http请求的完成情况。�
 ```c++
 // Get Status Code
 if (cntl->http_response().status_code() == brpc::HTTP_STATUS_NOT_FOUND) {
-    LOG(FATAL) << "FAILED: " << controller.http_response().reason_phrase();
+    LOG(FATAL) << "FAILED: " << controller.http_response().reason_phrase();
 }
 ...
 // Set Status code
@@ -307,12 +307,12 @@ http服务常对http body进行压缩，可以有效减少网页的传输时间�
 ...
 const std::string* encoding = cntl->http_request().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
-    butil::IOBuf uncompressed;
-    if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
-        LOG(ERROR) << "Fail to un-gzip request body";
-        return;
-    }
-    cntl->request_attachment().swap(uncompressed);
+    butil::IOBuf uncompressed;
+    if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
+        LOG(ERROR) << "Fail to un-gzip request body";
+        return;
+    }
+    cntl->request_attachment().swap(uncompressed);
 }
 // cntl->request_attachment()中已经是解压后的数据了
 ```
