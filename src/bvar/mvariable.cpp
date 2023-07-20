@@ -36,12 +36,12 @@ DECLARE_bool(bvar_abort_on_same_name);
 extern bool s_bvar_may_abort;
 
 DEFINE_int32(bvar_max_multi_dimension_metric_number, 1024, "Max number of multi dimension");
-DEFINE_int32(bvar_max_dump_multi_dimension_metric_number, 0,
+DEFINE_int32(bvar_max_dump_multi_dimension_metric_number, 1024,
     "Max number of multi dimension metric number to dump by prometheus rpc service");
 
-static bool validator_bvar_max_multi_dimension_metric_number(const char*, int32_t v) {
+static bool validator_bvar_max_multi_dimension_metric_number(const char* flag_name, int32_t v) {
     if (v < 1) {
-        LOG(ERROR) << "Invalid bvar_max_multi_dimension_metric_number=" << v;
+        LOG(ERROR) << "Invalid " << flag_name << "=" << v;
         return false;
     }
     return true;
@@ -49,6 +49,9 @@ static bool validator_bvar_max_multi_dimension_metric_number(const char*, int32_
 
 const bool ALLOW_UNUSED dummp_bvar_max_multi_dimension_metric_number = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_max_multi_dimension_metric_number, validator_bvar_max_multi_dimension_metric_number);
+
+const bool ALLOW_UNUSED dummp_bvar_max_dump_multi_dimension_metric_number = ::GFLAGS_NS::RegisterFlagValidator(
+  &FLAGS_bvar_max_dump_multi_dimension_metric_number, validator_bvar_max_multi_dimension_metric_number);
 
 class MVarEntry {
 public:
