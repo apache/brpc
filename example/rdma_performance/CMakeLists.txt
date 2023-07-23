@@ -39,10 +39,6 @@ find_library(THRIFT_LIB NAMES thrift)
 if (NOT THRIFT_LIB)
     set(THRIFT_LIB "")
 endif()
-find_library(THRIFTNB_LIB NAMES thriftnb)
-if (NOT THRIFTNB_LIB)
-    set(THRIFTNB_LIB "")
-endif()
 
 find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
 if(LINK_SO)
@@ -125,7 +121,6 @@ set(DYNAMIC_LIB
     ${OPENSSL_CRYPTO_LIBRARY}
     ${OPENSSL_SSL_LIBRARY}
     ${THRIFT_LIB}
-    ${THRIFTNB_LIB}
     dl
     )
 

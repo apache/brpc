@@ -114,7 +114,6 @@ set(DYNAMIC_LIB
     ${OPENSSL_CRYPTO_LIBRARY}
     ${OPENSSL_SSL_LIBRARY}
     ${THRIFT_LIB}
-    ${THRIFTNB_LIB}
     dl
     )
 

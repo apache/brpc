@@ -35,8 +35,8 @@ add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB>
                                $<TARGET_OBJECTS:SOURCES_LIB>
                                $<TARGET_OBJECTS:PROTO_LIB>)
 
-if(BRPC_WITH_THRIFT)
-   target_link_libraries(brpc-static thrift)
+if(WITH_THRIFT)
+   target_link_libraries(brpc-static ${THRIFT_LIB})
 endif()
 
 SET_TARGET_PROPERTIES(brpc-static PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
@@ -55,11 +55,11 @@ if(BUILD_SHARED_LIBS)
                                    $<TARGET_OBJECTS:SOURCES_LIB>
                                    $<TARGET_OBJECTS:PROTO_LIB>)
     target_link_libraries(brpc-shared ${DYNAMIC_LIB})
-    if(BRPC_WITH_GLOG)
+    if(WITH_GLOG)
         target_link_libraries(brpc-shared ${GLOG_LIB})
     endif()
-    if(BRPC_WITH_THRIFT)
-        target_link_libraries(brpc-shared thrift)
+    if(WITH_THRIFT)
+        target_link_libraries(brpc-shared ${THRIFT_LIB})
     endif()
     SET_TARGET_PROPERTIES(brpc-shared PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
 

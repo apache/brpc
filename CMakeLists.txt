@@ -224,7 +224,6 @@ set(DYNAMIC_LIB
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
-    ${THRIFTNB_LIB}
     ${OPENSSL_CRYPTO_LIBRARY}
     dl
     z)
