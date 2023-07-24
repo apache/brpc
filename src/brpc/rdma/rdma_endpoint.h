@@ -216,7 +216,7 @@ private:
     // Data address of _rbuf
     std::vector<void*> _rbuf_data;
     // Remote block size for receiving
-    uint16_t _remote_recv_block_size;
+    uint32_t _remote_recv_block_size;
 
     // The number of new recv WRs acked to the remote side
     uint16_t _accumulated_ack;
