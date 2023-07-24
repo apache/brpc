@@ -33,20 +33,20 @@ protoc运行后会生成echo.pb.cc和echo.pb.h文件，你得include echo.pb.h�
 ```c++
 #include "echo.pb.h"
 ...
-class MyEchoService : public EchoService  {
+class MyEchoService : public EchoService {
 public:
-    void Echo(::google::protobuf::RpcController* cntl_base,
-              const ::example::EchoRequest* request,
-              ::example::EchoResponse* response,
-              ::google::protobuf::Closure* done) {
-        // 这个对象确保在return时自动调用done->Run()
-        brpc::ClosureGuard done_guard(done);
-         
-        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
- 
-        // 填写response
-        response->set_message(request->message());
-    }
+    void Echo(::google::protobuf::RpcController* cntl_base,
+              const ::example::EchoRequest* request,
+              ::example::EchoResponse* response,
+              ::google::protobuf::Closure* done) {
+        // 这个对象确保在return时自动调用done->Run()
+        brpc::ClosureGuard done_guard(done);
+         
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+ 
+        // 填写response
+        response->set_message(request->message());
+    }
 };
 ```
 
@@ -87,26 +87,26 @@ brpc::ClosureGuard done_guard(done);
 一般来说，同步Service和异步Service分别按如下代码处理done：
 
 ```c++
-class MyFooService: public FooService  {
+class MyFooService: public FooService {
 public:
-    // 同步服务
-    void SyncFoo(::google::protobuf::RpcController* cntl_base,
-                 const ::example::EchoRequest* request,
-                 ::example::EchoResponse* response,
-                 ::google::protobuf::Closure* done) {
-         brpc::ClosureGuard done_guard(done);
-         ...
-    }
- 
-    // 异步服务
-    void AsyncFoo(::google::protobuf::RpcController* cntl_base,
-                  const ::example::EchoRequest* request,
-                  ::example::EchoResponse* response,
-                  ::google::protobuf::Closure* done) {
-         brpc::ClosureGuard done_guard(done);
-         ...
-         done_guard.release();
-    }
+    // 同步服务
+    void SyncFoo(::google::protobuf::RpcController* cntl_base,
+                 const ::example::EchoRequest* request,
+                 ::example::EchoResponse* response,
+                 ::google::protobuf::Closure* done) {
+         brpc::ClosureGuard done_guard(done);
+         ...
+    }
+ 
+    // 异步服务
+    void AsyncFoo(::google::protobuf::RpcController* cntl_base,
+                  const ::example::EchoRequest* request,
+                  ::example::EchoResponse* response,
+                  ::google::protobuf::Closure* done) {
+         brpc::ClosureGuard done_guard(done);
+         ...
+         done_guard.release();
+    }
 };
 ```
 
@@ -116,18 +116,18 @@ ClosureGuard的接口如下：
 // RAII: Call Run() of the closure on destruction.
 class ClosureGuard {
 public:
-    ClosureGuard();
-    // Constructed with a closure which will be Run() inside dtor.
-    explicit ClosureGuard(google::protobuf::Closure* done);
-    
-    // Call Run() of internal closure if it's not NULL.
-    ~ClosureGuard();
- 
-    // Call Run() of internal closure if it's not NULL and set it to `done'.
-    void reset(google::protobuf::Closure* done);
- 
-    // Set internal closure to NULL and return the one before set.
-    google::protobuf::Closure* release();
+    ClosureGuard();
+    // Constructed with a closure which will be Run() inside dtor.
+    explicit ClosureGuard(google::protobuf::Closure* done);
+    
+    // Call Run() of internal closure if it's not NULL.
+    ~ClosureGuard();
+ 
+    // Call Run() of internal closure if it's not NULL and set it to `done'.
+    void reset(google::protobuf::Closure* done);
+ 
+    // Set internal closure to NULL and return the one before set.
+    google::protobuf::Closure* release();
 };
 ```
 
@@ -192,8 +192,8 @@ int AddService(google::protobuf::Service* service, ServiceOwnership ownership);
 brpc::Server server;
 MyEchoService my_echo_service;
 if (server.AddService(&my_echo_service, brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
-    LOG(FATAL) << "Fail to add my_echo_service";
-    return -1;
+    LOG(FATAL) << "Fail to add my_echo_service";
+    return -1;
 }
 ```
 
@@ -207,7 +207,7 @@ Server启动后你无法再修改其中的Service。
 int Start(const char* ip_and_port_str, const ServerOptions* opt);
 int Start(EndPoint ip_and_port, const ServerOptions* opt);
 int Start(int port, const ServerOptions* opt);
-int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt);  // r32009后增加
+int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt);  // r32009后增加
 ```
 
 合法的`ip_and_port_str`：
@@ -221,7 +221,7 @@ int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt); 
 `options`为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 
 ```c++
-brpc::ServerOptions options;  // 包含了默认值
+brpc::ServerOptions options;  // 包含了默认值
 options.xxx = yyy;
 ...
 server.Start(..., &options);
@@ -253,7 +253,7 @@ RunUntilAskedToQuit()函数可以在大部分情况下简化server的运转和�
 ```c++
 // Wait until Ctrl-C is pressed, then Stop() and Join() the server.
 server.RunUntilAskedToQuit();
- 
+ 
 // server已经停止了，这里可以写释放资源的代码。
 ```
 
@@ -519,8 +519,8 @@ struct ServerSSLOptions {
     // will be used.
     // Default: false
     bool strict_sni;
- 
-    // ... Other options
+ 
+    // ... Other options
 };
 ```
 
@@ -906,7 +906,7 @@ Session-local和server-thread-local对大部分server已经够用。不过在一
 // associated is NULL when the key is destroyed.
 // Returns 0 on success, error code otherwise.
 extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data));
- 
+ 
 // Delete a key previously returned by bthread_key_create().
 // It is the responsibility of the application to free the data related to
 // the deleted key in any running thread. No destructor is invoked by
@@ -914,7 +914,7 @@ extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data)
 // will no longer be called upon thread exit.
 // Returns 0 on success, error code otherwise.
 extern int bthread_key_delete(bthread_key_t key);
- 
+ 
 // Store `data' in the thread-specific slot identified by `key'.
 // bthread_setspecific() is callable from within destructor. If the application
 // does so, destructors will be repeatedly called for at most
@@ -929,7 +929,7 @@ extern int bthread_key_delete(bthread_key_t key);
 // Returns 0 on success, error code otherwise.
 // If the key is invalid or deleted, return EINVAL.
 extern int bthread_setspecific(bthread_key_t key, void* data);
- 
+ 
 // Return current value of the thread-specific slot identified by `key'.
 // If bthread_setspecific() had not been called in the thread, return NULL.
 // If the key is invalid or deleted, return NULL.
