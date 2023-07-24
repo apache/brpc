@@ -166,7 +166,23 @@ template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id,
                             typename butil::add_const_reference<T>::type task,
                             const TaskOptions* options,
-                            TaskHandle* handle); 
+                            TaskHandle* handle);
+                            
+template <typename T>
+int execution_queue_execute(ExecutionQueueId<T> id,
+                            T&& task);
+
+template <typename T>
+int execution_queue_execute(ExecutionQueueId<T> id,
+                            T&& task,
+                            const TaskOptions* options);
+
+template <typename T>
+int execution_queue_execute(ExecutionQueueId<T> id,
+                            T&& task,
+                            const TaskOptions* options,
+                            TaskHandle* handle);
+                            
 ```
 
 high_priority的task之间的执行顺序也会**严格按照提交顺序**, 这点和ExecMan不同, ExecMan的QueueExecEmergent的AsyncContex执行顺序是undefined. 但是这也意味着你没有办法将任何任务插队到一个high priority的任务之前执行.
