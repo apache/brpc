@@ -354,6 +354,7 @@ void SubDone::Run() {
     main_cntl->_remote_side = _cntl._remote_side;
     // connection_type may be changed during CallMethod. 
     main_cntl->set_connection_type(_cntl.connection_type());
+    main_cntl->response_attachment().swap(_cntl.response_attachment());
     Resource r;
     r.response = _cntl._response;
     r.sub_done = this;
