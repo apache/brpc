@@ -149,10 +149,14 @@ void SendRpcResponse(int64_t correlation_id,
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
+
+    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+
+    ClosureGuard guard(brpc::NewCallback(cntl, &Controller::call_after_rpc_resp, req, res));
     
     StreamId response_stream_id = accessor.response_stream();
 

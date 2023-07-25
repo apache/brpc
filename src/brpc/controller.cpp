@@ -228,6 +228,7 @@ void Controller::ResetNonPods() {
     }
     delete _remote_stream_settings;
     _thrift_method_name.clear();
+    _after_rpc_resp_fn = nullptr;
 
     CHECK(_unfinished_call == NULL);
 }
@@ -1474,6 +1475,13 @@ int Controller::GetSockOption(int level, int optname, void* optval, socklen_t* o
     } else {
         errno = EBADF;
         return -1;
+    }
+}
+
+void Controller::call_after_rpc_resp(const google::protobuf::Message* req, const google::protobuf::Message* res) {
+    if (_after_rpc_resp_fn) {
+        _after_rpc_resp_fn(this, req, res);
+        _after_rpc_resp_fn = nullptr;
     }
 }
 
