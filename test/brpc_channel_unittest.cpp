@@ -1594,7 +1594,9 @@ protected:
                         brpc::Controller* cntl,
                         const google::protobuf::Message* req,
                         const google::protobuf::Message* res) {
-        *str = req->message() + res->message();
+        const test::EchoRequest* request = static_cast<const test::EchoRequest*>(req);
+        const test::EchoResponse* response = static_cast<const test::EchoResponse*>(res);
+        *str = request->message() + response->message();
     }
 
     void RPCThread(bool single_server, bool async, bool short_connection,
