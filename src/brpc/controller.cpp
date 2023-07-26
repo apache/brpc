@@ -1478,7 +1478,7 @@ int Controller::GetSockOption(int level, int optname, void* optval, socklen_t* o
     }
 }
 
-void Controller::call_after_rpc_resp(const google::protobuf::Message* req, const google::protobuf::Message* res) {
+void Controller::CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res) {
     if (_after_rpc_resp_fn) {
         _after_rpc_resp_fn(this, req, res);
         _after_rpc_resp_fn = nullptr;

@@ -1590,12 +1590,23 @@ protected:
         }
     }
 
+    // optional
+    static void CallAfterRpc(std::string* str,
+                        brpc::Controller* cntl,
+                        const google::protobuf::Message* req,
+                        const google::protobuf::Message* res) {
+        *str = req->message() + res->message();
+    }
+
     void RPCThread(bool single_server, bool async, bool short_connection,
                    const brpc::Authenticator* auth, int count) {
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection, auth);
         brpc::Controller cntl;
         for (int i = 0; i < count; ++i) {
+            std::string str;
+            cntl->SetAfterRpcRespFn(std::bind(&ChannelTest::CallAfterRpc, &str,
+                std::placeholders::_1, std::placeholders::_1, std::placeholders::_1));
             test::EchoRequest req;
             test::EchoResponse res;
             req.set_message(__FUNCTION__);
@@ -1603,6 +1614,7 @@ protected:
 
             ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
             ASSERT_EQ("received " + std::string(__FUNCTION__), res.message());
+            ASSERT_EQ(str, req.message() + res.message());
             cntl.Reset();
         }
     }

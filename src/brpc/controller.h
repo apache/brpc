@@ -568,13 +568,13 @@ public:
     // -1 means no deadline.
     int64_t deadline_us() const { return _deadline_us; }
 
-    using after_rpc_resp_fn_t = std::function<void(Controller* cntl,
+    using AfterRpcRespFnType = std::function<void(Controller* cntl,
                                                const google::protobuf::Message* req,
                                                const google::protobuf::Message* res)>;
 
-    void set_after_rpc_resp_fn(after_rpc_resp_fn_t&& fn) { _after_rpc_resp_fn = fn; }
+    void SetAfterRpcRespFn(AfterRpcRespFnType&& fn) { _after_rpc_resp_fn = fn; }
 
-    void call_after_rpc_resp(const google::protobuf::Message* req, const google::protobuf::Message* res);
+    void CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res);
 
 private:
     struct CompletionInfo {
@@ -832,7 +832,7 @@ private:
 
     uint32_t _auth_flags;
 
-    after_rpc_resp_fn_t _after_rpc_resp_fn;
+    AfterRpcRespFnType _after_rpc_resp_fn;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

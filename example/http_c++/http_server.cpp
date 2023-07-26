@@ -45,9 +45,15 @@ public:
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
-        
+
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
+
+        // optional: set a callback function which is called after response is sent
+        // and before cntl/req/res is destructed.
+        cntl->SetAfterRpcRespFn(std::bind(&HttpServiceImpl::CallAfterRpc,
+            std::placeholders::_1, std::placeholders::_1, std::placeholders::_1));
+
         // Fill response.
         cntl->http_response().set_content_type("text/plain");
         butil::IOBufBuilder os;
@@ -58,6 +64,19 @@ public:
         }
         os << "\nbody: " << cntl->request_attachment() << '\n';
         os.move_to(cntl->response_attachment());
+    }
+
+    // optional
+    static void CallAfterRpc(brpc::Controller* cntl,
+                        const google::protobuf::Message* req,
+                        const google::protobuf::Message* res) {
+        // at this time res is already sent to client, but cntl/req/res is not destructed
+        std::string req_str;
+        std::string res_str;
+        json2pb::ProtoMessageToJson(*req, &req_str, NULL);
+        json2pb::ProtoMessageToJson(*res, &res_str, NULL);
+        LOG(INFO) << "req:" << req_str
+                    << " res:" << res_str;
     }
 };
 

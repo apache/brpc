@@ -39,9 +39,14 @@ public:
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
-        
+
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
+
+        // optional: set a callback function which is called after response is sent
+        // and before cntl/req/res is destructed.
+        cntl->SetAfterRpcRespFn(std::bind(&EchoServiceImpl::CallAfterRpc,
+            std::placeholders::_1, std::placeholders::_1, std::placeholders::_1));
 
         // The purpose of following logs is to help you to understand
         // how clients interact with servers more intuitively. You should 
@@ -63,6 +68,19 @@ public:
             // being serialized into protobuf messages.
             cntl->response_attachment().append("bar");
         }
+    }
+
+    // optional
+    static void CallAfterRpc(brpc::Controller* cntl,
+                        const google::protobuf::Message* req,
+                        const google::protobuf::Message* res) {
+        // at this time res is already sent to client, but cntl/req/res is not destructed
+        std::string req_str;
+        std::string res_str;
+        json2pb::ProtoMessageToJson(*req, &req_str, NULL);
+        json2pb::ProtoMessageToJson(*res, &res_str, NULL);
+        LOG(INFO) << "req:" << req_str
+                    << " res:" << res_str;
     }
 };
 

@@ -156,7 +156,7 @@ void SendRpcResponse(int64_t correlation_id,
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
 
-    ClosureGuard guard(brpc::NewCallback(cntl, &Controller::call_after_rpc_resp, req, res));
+    ClosureGuard guard(brpc::NewCallback(cntl, &Controller::CallAfterRpcResp, req, res));
     
     StreamId response_stream_id = accessor.response_stream();
 
