@@ -52,7 +52,7 @@ public:
         // optional: set a callback function which is called after response is sent
         // and before cntl/req/res is destructed.
         cntl->SetAfterRpcRespFn(std::bind(&EchoServiceImpl::CallAfterRpc,
-            std::placeholders::_1, std::placeholders::_1, std::placeholders::_1));
+            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
         // The purpose of following logs is to help you to understand
         // how clients interact with servers more intuitively. You should 
@@ -81,7 +81,7 @@ public:
     static void CallAfterRpc(brpc::Controller* cntl,
                         const google::protobuf::Message* req,
                         const google::protobuf::Message* res) {
-        // at this time res is send to client, but cntl/req/res is not destructed
+        // at this time res is already sent to client, but cntl/req/res is not destructed
         std::string req_str;
         std::string res_str;
         json2pb::ProtoMessageToJson(*req, &req_str, NULL);

@@ -1590,7 +1590,6 @@ protected:
         }
     }
 
-    // optional
     static void CallAfterRpc(std::string* str,
                         brpc::Controller* cntl,
                         const google::protobuf::Message* req,
@@ -1606,7 +1605,7 @@ protected:
         for (int i = 0; i < count; ++i) {
             std::string str;
             cntl->SetAfterRpcRespFn(std::bind(&ChannelTest::CallAfterRpc, &str,
-                std::placeholders::_1, std::placeholders::_1, std::placeholders::_1));
+                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
             test::EchoRequest req;
             test::EchoResponse res;
             req.set_message(__FUNCTION__);
