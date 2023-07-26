@@ -1604,7 +1604,7 @@ protected:
         brpc::Controller cntl;
         for (int i = 0; i < count; ++i) {
             std::string str;
-            cntl->SetAfterRpcRespFn(std::bind(&ChannelTest::CallAfterRpc, &str,
+            cntl.SetAfterRpcRespFn(std::bind(&ChannelTest::CallAfterRpc, &str,
                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
             test::EchoRequest req;
             test::EchoResponse res;
