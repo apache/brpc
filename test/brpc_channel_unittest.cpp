@@ -1564,31 +1564,6 @@ protected:
         }
         StopAndJoin();
     }
-    
-    void RPCThread(brpc::ChannelBase* channel, bool async) {
-        brpc::Controller cntl;
-        test::EchoRequest req;
-        test::EchoResponse res;
-        req.set_message(__FUNCTION__);
-        CallMethod(channel, &cntl, &req, &res, async);
-
-        ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
-        EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
-    }
-
-    void RPCThread(brpc::ChannelBase* channel, bool async, int count) {
-        brpc::Controller cntl;
-        for (int i = 0; i < count; ++i) {
-            test::EchoRequest req;
-            test::EchoResponse res;
-            req.set_message(__FUNCTION__);
-            CallMethod(channel, &cntl, &req, &res, async);
-            
-            ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
-            ASSERT_EQ("received " + std::string(__FUNCTION__), res.message());
-            cntl.Reset();
-        }
-    }
 
     static void CallAfterRpc(std::string* str,
                         brpc::Controller* cntl,
@@ -1599,15 +1574,45 @@ protected:
         *str = request->message() + response->message();
     }
 
+    void RPCThread(brpc::ChannelBase* channel, bool async) {
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        std::string str;
+        cntl.SetAfterRpcRespFn(std::bind(&ChannelTest::CallAfterRpc, &str,
+            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+        req.set_message(__FUNCTION__);
+        CallMethod(channel, &cntl, &req, &res, async);
+
+        ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+        EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
+        ASSERT_EQ(str, req.message() + res.message());
+    }
+
+    void RPCThread(brpc::ChannelBase* channel, bool async, int count) {
+        brpc::Controller cntl;
+        for (int i = 0; i < count; ++i) {
+            test::EchoRequest req;
+            test::EchoResponse res;
+            std::string str;
+            cntl.SetAfterRpcRespFn(std::bind(&ChannelTest::CallAfterRpc, &str,
+                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            req.set_message(__FUNCTION__);
+            CallMethod(channel, &cntl, &req, &res, async);
+
+            ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+            ASSERT_EQ("received " + std::string(__FUNCTION__), res.message());
+            ASSERT_EQ(str, req.message() + res.message());
+            cntl.Reset();
+        }
+    }
+
     void RPCThread(bool single_server, bool async, bool short_connection,
                    const brpc::Authenticator* auth, int count) {
         brpc::Channel channel;
         SetUpChannel(&channel, single_server, short_connection, auth);
         brpc::Controller cntl;
         for (int i = 0; i < count; ++i) {
-            std::string str;
-            cntl.SetAfterRpcRespFn(std::bind(&ChannelTest::CallAfterRpc, &str,
-                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
             test::EchoRequest req;
             test::EchoResponse res;
             req.set_message(__FUNCTION__);
@@ -1615,7 +1620,6 @@ protected:
 
             ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
             ASSERT_EQ("received " + std::string(__FUNCTION__), res.message());
-            ASSERT_EQ(str, req.message() + res.message());
             cntl.Reset();
         }
     }
