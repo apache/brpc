@@ -78,6 +78,22 @@ class TaskIterator;
 ### 启动一个ExecutionQueue:
 
 ```
+struct ExecutionQueueOptions {
+    ExecutionQueueOptions();
+
+    // Execute in resident pthread instead of bthread. default: false.
+    bool use_pthread;
+
+    // Attribute of the bthread which execute runs on. default: BTHREAD_ATTR_NORMAL
+    // Bthread will be used when executor = NULL and use_pthread == false.
+    bthread_attr_t bthread_attr;
+
+    // Executor that tasks run on. default: NULL
+    // Note that TaskOptions.in_place_if_possible = false will not work, if implementation of
+    // Executor is in-place(synchronous).
+    Executor * executor;
+};
+
 // Start a ExecutionQueue. If |options| is NULL, the queue will be created with
 // default options.
 // Returns 0 on success, errno otherwise
