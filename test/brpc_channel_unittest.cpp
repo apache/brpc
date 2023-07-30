@@ -141,8 +141,8 @@ public:
         EXPECT_EQ(str, "CallAfterRpcRespTest");
     }
 
-    void Set(const std::string& s) {
-        str = s;
+    void Append(const std::string& s) {
+        str.append(s);
     }
 
 private:
@@ -186,7 +186,7 @@ class MyEchoService : public ::test::EchoService {
                         const google::protobuf::Message* res) {
         const test::EchoRequest* request = static_cast<const test::EchoRequest*>(req);
         const test::EchoResponse* response = static_cast<const test::EchoResponse*>(res);
-        str->Set("CallAfterRpcRespTest");
+        str->Append("CallAfterRpcRespTest");
         EXPECT_TRUE(nullptr != cntl);
         EXPECT_TRUE(nullptr != request);
         EXPECT_TRUE(nullptr != response);
