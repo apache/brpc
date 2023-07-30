@@ -1477,30 +1477,28 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             const HttpContentType content_type =
                 ParseContentType(req_header.content_type(), &is_grpc_ct);
             const std::string* encoding = NULL;
-            if (is_http2) {
-                if (is_grpc_ct) {
-                    bool grpc_compressed = false;
-                    if (!RemoveGrpcPrefix(&req_body, &grpc_compressed)) {
-                        cntl->SetFailed(EREQUEST, "Invalid gRPC request");
+            if (is_http2 && is_grpc_ct) {
+                bool grpc_compressed = false;
+                if (!RemoveGrpcPrefix(&req_body, &grpc_compressed)) {
+                    cntl->SetFailed(EREQUEST, "Invalid gRPC request");
+                    return;
+                }
+                if (grpc_compressed) {
+                    encoding = req_header.GetHeader(common->GRPC_ENCODING);
+                    if (encoding == NULL) {
+                        cntl->SetFailed(
+                            EREQUEST, "Fail to find header `grpc-encoding'"
+                            " in compressed gRPC request");
                         return;
                     }
-                    if (grpc_compressed) {
-                        encoding = req_header.GetHeader(common->GRPC_ENCODING);
-                        if (encoding == NULL) {
-                            cntl->SetFailed(
-                                EREQUEST, "Fail to find header `grpc-encoding'"
-                                " in compressed gRPC request");
-                            return;
-                        }
-                    }
-                    int64_t timeout_value_us =
-                        ConvertGrpcTimeoutToUS(req_header.GetHeader(common->GRPC_TIMEOUT));
-                    if (timeout_value_us >= 0) {
-                        accessor.set_deadline_us(
-                                butil::gettimeofday_us() + timeout_value_us);
-                    }
                 }
-            } else {
+                int64_t timeout_value_us =
+                    ConvertGrpcTimeoutToUS(req_header.GetHeader(common->GRPC_TIMEOUT));
+                if (timeout_value_us >= 0) {
+                    accessor.set_deadline_us(
+                            butil::gettimeofday_us() + timeout_value_us);
+                }
+            } else { // http or h2 but not grpc
                 encoding = req_header.GetHeader(common->CONTENT_ENCODING);
             }
             if (encoding != NULL && *encoding == common->GZIP) {
