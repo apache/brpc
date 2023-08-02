@@ -572,7 +572,7 @@ public:
                                                const google::protobuf::Message* req,
                                                const google::protobuf::Message* res)>;
 
-    void SetAfterRpcRespFn(AfterRpcRespFnType&& fn) { _after_rpc_resp_fn = fn; }
+    void set_after_rpc_resp_fn(AfterRpcRespFnType&& fn) { _after_rpc_resp_fn = fn; }
 
     void CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res);
 

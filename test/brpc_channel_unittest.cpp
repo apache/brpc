@@ -157,7 +157,7 @@ class MyEchoService : public ::test::EchoService {
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
         std::shared_ptr<CallAfterRpcObject> str_test(new CallAfterRpcObject());
-        cntl->SetAfterRpcRespFn(std::bind(&MyEchoService::CallAfterRpc, str_test,
+        cntl->set_after_rpc_resp_fn(std::bind(&MyEchoService::CallAfterRpc, str_test,
             std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         brpc::ClosureGuard done_guard(done);
         if (req->server_fail()) {

@@ -51,7 +51,7 @@ public:
 
         // optional: set a callback function which is called after response is sent
         // and before cntl/req/res is destructed.
-        cntl->SetAfterRpcRespFn(std::bind(&EchoServiceImpl::CallAfterRpc,
+        cntl->set_after_rpc_resp_fn(std::bind(&EchoServiceImpl::CallAfterRpc,
             std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
         // The purpose of following logs is to help you to understand
