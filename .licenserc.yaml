@@ -59,6 +59,7 @@ header:
     - 'src/butil/atomic*'
     - 'src/butil/auto_reset.h'
     - 'src/butil/base64.*'
+    - 'src/butil/base64url.*'
     - 'src/butil/base_export.h'
     - 'src/butil/base_paths.cc'
     - 'src/butil/basictypes.h'

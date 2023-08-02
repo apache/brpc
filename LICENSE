@@ -761,7 +761,6 @@ src/butil/at_exit.*
 src/butil/atomic*
 src/butil/auto_reset.h
 src/butil/base64.*
-src/butil/base64url.*
 src/butil/base_export.h
 src/butil/base_paths.cc
 src/butil/basictypes.h
@@ -898,7 +897,7 @@ Some portions of these files are derived from code in the Chromium project,
 copyright (c) Google inc and (c) The Chromium Authors and licensed under the
 3-clause BSD license:
 
-  Copyright (c) 2000 - 2015 The Chromium Authors. All rights reserved.
+  Copyright (c) 2000 - 2014 The Chromium Authors. All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are
@@ -911,6 +910,41 @@ copyright (c) Google inc and (c) The Chromium Authors and licensed under the
   in the documentation and/or other materials provided with the
   distribution.
      * Neither the name of Google Inc. nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+src/butil/base64url.*
+test/base64url_unittest.cc
+
+Some portions of these files are derived from code in the Chromium project,
+copyright The Chromium Authors and licensed under the 3-clause BSD license:
+
+  Copyright 2015 The Chromium Authors
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met:
+
+     * Redistributions of source code must retain the above copyright
+  notice, this list of conditions and the following disclaimer.
+     * Redistributions in binary form must reproduce the above
+  copyright notice, this list of conditions and the following disclaimer
+  in the documentation and/or other materials provided with the
+  distribution.
+     * Neither the name of Google LLC nor the names of its
   contributors may be used to endorse or promote products derived from
   this software without specific prior written permission.
 
