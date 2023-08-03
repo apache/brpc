@@ -251,6 +251,7 @@ objc_library(
         "src/butil/mac/scoped_cftyperef.h",
         "src/butil/mac/scoped_typeref.h",
         "src/butil/macros.h",
+        "src/butil/string_printf.h",
         "src/butil/memory/aligned_memory.h",
         "src/butil/memory/scoped_policy.h",
         "src/butil/memory/scoped_ptr.h",
