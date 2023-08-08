@@ -273,15 +273,16 @@ void butex_destroy(void* butex) {
 }
 
 inline TaskGroup* get_task_group(TaskControl* c, bool nosignal = false) {
-    TaskGroup* g;
+    TaskGroup* g = tls_task_group;
     if (nosignal) {
-        g = tls_task_group_nosignal;
-        if (NULL == g) {
-            g = c->choose_one_group();
+        if (NULL == tls_task_group_nosignal) {
+            g = g ? g : c->choose_one_group();
             tls_task_group_nosignal = g;
+        } else {
+            g = tls_task_group_nosignal;
         }
     } else {
-        g = tls_task_group ? tls_task_group : c->choose_one_group();
+        g = g ? g : c->choose_one_group();
     }
     return g;
 }

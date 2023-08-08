@@ -87,6 +87,8 @@ extern "C" {
 void* bthread_get_assigned_data();
 }
 
+DECLARE_int32(task_group_ntags);
+
 namespace brpc {
 
 BAIDU_CASSERT(sizeof(int32_t) == sizeof(butil::subtle::Atomic32),
@@ -144,7 +146,8 @@ ServerOptions::ServerOptions()
     , http_master_service(NULL)
     , health_reporter(NULL)
     , rtmp_service(NULL)
-    , redis_service(NULL) {
+    , redis_service(NULL)
+    , bthread_tag(BTHREAD_TAG_DEFAULT) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -1071,6 +1074,13 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 return -1;
             }
             _am->_use_rdma = _options.use_rdma;
+            if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
+                _options.bthread_tag >= FLAGS_task_group_ntags) {
+                LOG(ERROR) << "Fail to set tag " << _options.bthread_tag << ", tag range is ["
+                           << BTHREAD_TAG_DEFAULT << ":" << FLAGS_task_group_ntags << ")";
+                return -1;
+            }
+            _am->_bthread_tag = _options.bthread_tag;
         }
         // Set `_status' to RUNNING before accepting connections
         // to prevent requests being rejected as ELOGOFF

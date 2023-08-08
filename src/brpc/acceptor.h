@@ -112,6 +112,9 @@ private:
 
     // Whether to use rdma or not
     bool _use_rdma;
+
+    // Acceptor belongs to this tag
+    bthread_tag_t _bthread_tag;
 };
 
 } // namespace brpc

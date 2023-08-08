@@ -581,7 +581,7 @@ int Socket::ResetFileDescriptor(int fd) {
     EnableKeepaliveIfNeeded(fd);
 
     if (_on_edge_triggered_events) {
-        if (GetGlobalEventDispatcher(fd).AddConsumer(id(), fd) != 0) {
+        if (GetGlobalEventDispatcher(fd, _bthread_tag).AddConsumer(id(), fd) != 0) {
             PLOG(ERROR) << "Fail to add SocketId=" << id() 
                         << " into EventDispatcher";
             _fd.store(-1, butil::memory_order_release);
@@ -742,6 +742,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_last_writetime_us.store(cpuwide_now, butil::memory_order_relaxed);
     m->_unwritten_bytes.store(0, butil::memory_order_relaxed);
     m->_keepalive_options = options.keepalive_options;
+    m->_bthread_tag = options.bthread_tag;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
@@ -794,7 +795,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
     if (ValidFileDescriptor(prev_fd)) {
         if (_on_edge_triggered_events != NULL) {
-            GetGlobalEventDispatcher(prev_fd).RemoveConsumer(prev_fd);
+            GetGlobalEventDispatcher(prev_fd, _bthread_tag).RemoveConsumer(prev_fd);
         }
         close(prev_fd);
         if (CreatedByConnect()) {
@@ -1102,7 +1103,7 @@ void Socket::OnRecycle() {
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
     if (ValidFileDescriptor(prev_fd)) {
         if (_on_edge_triggered_events != NULL) {
-            GetGlobalEventDispatcher(prev_fd).RemoveConsumer(prev_fd);
+            GetGlobalEventDispatcher(prev_fd, _bthread_tag).RemoveConsumer(prev_fd);
         }
         close(prev_fd);
         if (create_by_connect) {
@@ -1230,7 +1231,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     // Do not need to check addressable since it will be called by
     // health checker which called `SetFailed' before
     const int expected_val = _epollout_butex->load(butil::memory_order_relaxed);
-    EventDispatcher& edisp = GetGlobalEventDispatcher(fd);
+    EventDispatcher& edisp = GetGlobalEventDispatcher(fd, _bthread_tag);
     if (edisp.AddEpollOut(id(), fd, pollin) != 0) {
         return -1;
     }
@@ -1291,6 +1292,7 @@ int Socket::Connect(const timespec* abstime,
         // be added into epoll device soon
         SocketId connect_id;
         SocketOptions options;
+        options.bthread_tag = _bthread_tag;
         options.user = req;
         if (Socket::Create(options, &connect_id) != 0) {
             LOG(FATAL) << "Fail to create Socket";
@@ -1305,8 +1307,8 @@ int Socket::Connect(const timespec* abstime,
 
         // Add `sockfd' into epoll so that `HandleEpollOutRequest' will
         // be called with `req' when epoll event reaches
-        if (GetGlobalEventDispatcher(sockfd).
-            AddEpollOut(connect_id, sockfd, false) != 0) {
+        if (GetGlobalEventDispatcher(sockfd, _bthread_tag).AddEpollOut(connect_id, sockfd, false) !=
+            0) {
             const int saved_errno = errno;
             PLOG(WARNING) << "Fail to add fd=" << sockfd << " into epoll";
             s->SetFailed(saved_errno, "Fail to add fd=%d into epoll: %s",
@@ -1376,7 +1378,8 @@ int Socket::ConnectIfNot(const timespec* abstime, WriteRequest* req) {
     if (_fd.load(butil::memory_order_consume) >= 0) {
        return 0;
     }
-
+    // Set tag for client side socket
+    _bthread_tag = bthread_self_tag();
     // Have to hold a reference for `req'
     SocketUniquePtr s;
     ReAddress(&s);
@@ -1445,7 +1448,7 @@ int Socket::HandleEpollOutRequest(int error_code, EpollOutRequest* req) {
     }
     // We've got the right to call user callback
     // The timer will be removed inside destructor of EpollOutRequest
-    GetGlobalEventDispatcher(req->fd).RemoveEpollOut(id(), req->fd, false);
+    GetGlobalEventDispatcher(req->fd, _bthread_tag).RemoveEpollOut(id(), req->fd, false);
     return req->on_epollout_event(req->fd, error_code, req->data);
 }
 
@@ -2161,6 +2164,7 @@ int Socket::StartInputEvent(SocketId id, uint32_t events,
 
         bthread_attr_t attr = thread_attr;
         attr.keytable_pool = p->_keytable_pool;
+        attr.tag = bthread_self_tag();
         if (bthread_start_urgent(&tid, &attr, ProcessEvent, p) != 0) {
             LOG(FATAL) << "Fail to start ProcessEvent";
             ProcessEvent(p);
@@ -2459,6 +2463,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         ptr->_rdma_ep->DebugInfo(os);
     }
 #endif
+    { os << "\nbthread_tag=" << ptr->_bthread_tag; }
 }
 
 int Socket::CheckHealth() {

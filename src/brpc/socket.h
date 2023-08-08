@@ -219,6 +219,8 @@ struct SocketOptions {
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
     std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
+    // Tag of this socket
+    bthread_tag_t bthread_tag;
 };
 
 // Abstractions on reading from and writing into file descriptors.
@@ -758,6 +760,7 @@ private:
 
     // [ Set in ResetFileDescriptor ]
     butil::atomic<int> _fd;  // -1 when not connected.
+    bthread_tag_t _bthread_tag;  // bthread tag of this socket
     int _tos;                // Type of service which is actually only 8bits.
     int64_t _reset_fd_real_us; // When _fd was reset, in microseconds.
 

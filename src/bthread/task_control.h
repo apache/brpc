@@ -26,6 +26,9 @@
 #include <iostream>                             // std::ostream
 #endif
 #include <stddef.h>                             // size_t
+#include <vector>
+#include <array>
+#include <memory>
 #include "butil/atomicops.h"                     // butil::atomic
 #include "bvar/bvar.h"                          // bvar::PassiveStatus
 #include "bthread/task_meta.h"                  // TaskMeta
@@ -33,6 +36,7 @@
 #include "bthread/work_stealing_queue.h"        // WorkStealingQueue
 #include "bthread/parking_lot.h"
 
+DECLARE_int32(task_group_ntags);
 namespace bthread {
 
 class TaskGroup;
@@ -49,13 +53,13 @@ public:
     int init(int nconcurrency);
     
     // Create a TaskGroup in this control.
-    TaskGroup* create_group();
+    TaskGroup* create_group(bthread_tag_t tag);
 
     // Steal a task from a "random" group.
     bool steal_task(bthread_t* tid, size_t* seed, size_t offset);
 
     // Tell other groups that `n' tasks was just added to caller's runqueue
-    void signal_task(int num_task);
+    void signal_task(int num_task, bthread_tag_t tag);
 
     // Stop and join worker threads in TaskControl.
     void stop_and_join();
@@ -64,37 +68,59 @@ public:
     int concurrency() const 
     { return _concurrency.load(butil::memory_order_acquire); }
 
+    int concurrency(bthread_tag_t tag) const 
+    { return _tagged_ngroup[tag].load(butil::memory_order_acquire); }
+
     void print_rq_sizes(std::ostream& os);
 
     double get_cumulated_worker_time();
+    double get_cumulated_worker_time_with_tag(bthread_tag_t tag);
     int64_t get_cumulated_switch_count();
     int64_t get_cumulated_signal_count();
 
     // [Not thread safe] Add more worker threads.
     // Return the number of workers actually added, which may be less than |num|
-    int add_workers(int num);
+    int add_workers(int num, bthread_tag_t tag);
 
     // Choose one TaskGroup (randomly right now).
     // If this method is called after init(), it never returns NULL.
-    TaskGroup* choose_one_group();
+    TaskGroup* choose_one_group(bthread_tag_t tag = BTHREAD_TAG_DEFAULT);
 
 private:
+    typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
+    static const int PARKING_LOT_NUM = 4;
+    typedef std::array<ParkingLot, PARKING_LOT_NUM> TaggedParkingLot;
     // Add/Remove a TaskGroup.
     // Returns 0 on success, -1 otherwise.
-    int _add_group(TaskGroup*);
+    int _add_group(TaskGroup*, bthread_tag_t tag);
     int _destroy_group(TaskGroup*);
+
+    // Tag group
+    TaggedGroups& tag_group(bthread_tag_t tag) { return _tagged_groups[tag]; }
+
+    // Tag ngroup
+    butil::atomic<size_t>& tag_ngroup(int tag) { return _tagged_ngroup[tag]; }
+
+    // Tag parking slot
+    TaggedParkingLot& tag_pl(bthread_tag_t tag) { return _pl[tag]; }
 
     static void delete_task_group(void* arg);
 
     static void* worker_thread(void* task_control);
 
+    template <typename F>
+    void for_each_task_group(F const& f);
+
     bvar::LatencyRecorder& exposed_pending_time();
     bvar::LatencyRecorder* create_exposed_pending_time();
+    bvar::Adder<int64_t>& tag_nworkers(bthread_tag_t tag);
+    bvar::Adder<int64_t>& tag_nbthreads(bthread_tag_t tag);
 
-    butil::atomic<size_t> _ngroup;
-    TaskGroup** _groups;
+    std::vector<butil::atomic<size_t>> _tagged_ngroup;
+    std::vector<TaggedGroups> _tagged_groups;
     butil::Mutex _modify_group_mutex;
 
+    butil::atomic<bool> _init;  // if not init, bvar will case coredump
     bool _stop;
     butil::atomic<int> _concurrency;
     std::vector<pthread_t> _workers;
@@ -112,8 +138,12 @@ private:
     bvar::PassiveStatus<std::string> _status;
     bvar::Adder<int64_t> _nbthreads;
 
-    static const int PARKING_LOT_NUM = 4;
-    ParkingLot _pl[PARKING_LOT_NUM];
+    std::vector<bvar::Adder<int64_t>*> _tagged_nworkers;
+    std::vector<bvar::PassiveStatus<double>*> _tagged_cumulated_worker_time;
+    std::vector<bvar::PerSecond<bvar::PassiveStatus<double>>*> _tagged_worker_usage_second;
+    std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
+
+    std::vector<TaggedParkingLot> _pl;
 };
 
 inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {
@@ -122,6 +152,28 @@ inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {
         pt = create_exposed_pending_time();
     }
     return *pt;
+}
+
+inline bvar::Adder<int64_t>& TaskControl::tag_nworkers(bthread_tag_t tag) {
+    return *_tagged_nworkers[tag];
+}
+
+inline bvar::Adder<int64_t>& TaskControl::tag_nbthreads(bthread_tag_t tag) {
+    return *_tagged_nbthreads[tag];
+}
+
+template <typename F>
+inline void TaskControl::for_each_task_group(F const& f) {
+    if (_init.load(butil::memory_order_acquire) == false) {
+        return;
+    }
+    for (size_t i = 0; i < _tagged_groups.size(); ++i) {
+        auto ngroup = tag_ngroup(i).load(butil::memory_order_relaxed);
+        auto& groups = tag_group(i);
+        for (size_t j = 0; j < ngroup; ++j) {
+            f(groups[j]);
+        }
+    }
 }
 
 }  // namespace bthread

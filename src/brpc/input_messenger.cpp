@@ -194,6 +194,7 @@ static void QueueMessage(InputMessageBase* to_run_msg,
                           BTHREAD_ATTR_PTHREAD :
                           BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
     tmp.keytable_pool = keytable_pool;
+    tmp.tag = bthread_self_tag();
     if (bthread_start_background(
             &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
         ++*num_bthread_created;
