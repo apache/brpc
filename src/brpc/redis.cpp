@@ -94,7 +94,7 @@ int RedisRequest::ByteSize() const {
 }
 
 void RedisRequest::MergeFrom(const ::google::protobuf::Message& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     const RedisRequest* source = dynamic_cast<const RedisRequest*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
@@ -104,7 +104,7 @@ void RedisRequest::MergeFrom(const ::google::protobuf::Message& from) {
 }
 
 void RedisRequest::MergeFrom(const RedisRequest& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     _has_error = _has_error || from._has_error;
     _buf.append(from._buf);
     _ncommand += from._ncommand;
@@ -312,7 +312,7 @@ int RedisResponse::ByteSize() const {
 }
 
 void RedisResponse::MergeFrom(const ::google::protobuf::Message& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     const RedisResponse* source = dynamic_cast<const RedisResponse*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
@@ -322,7 +322,7 @@ void RedisResponse::MergeFrom(const ::google::protobuf::Message& from) {
 }
 
 void RedisResponse::MergeFrom(const RedisResponse& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     if (from._nreply == 0) {
         return;
     }

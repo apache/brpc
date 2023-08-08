@@ -107,12 +107,12 @@ int ThriftFramedMessage::ByteSize() const {
 }
 
 void ThriftFramedMessage::MergeFrom(const ::google::protobuf::Message& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     LOG(ERROR) << "ThriftFramedMessage does not support MergeFrom";
 }
 
 void ThriftFramedMessage::MergeFrom(const ThriftFramedMessage& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     LOG(ERROR) << "ThriftFramedMessage does not support MergeFrom";
 }
 

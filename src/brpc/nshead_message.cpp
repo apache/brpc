@@ -93,7 +93,7 @@ int NsheadMessage::ByteSize() const {
 }
 
 void NsheadMessage::MergeFrom(const ::google::protobuf::Message& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     const NsheadMessage* source = dynamic_cast<const NsheadMessage*>(&from);
     if (source == NULL) {
         LOG(ERROR) << "Can only merge from NsheadMessage";
@@ -104,7 +104,7 @@ void NsheadMessage::MergeFrom(const ::google::protobuf::Message& from) {
 }
 
 void NsheadMessage::MergeFrom(const NsheadMessage& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     // No way to merge two nshead messages, just overwrite.
     head = from.head;
     body = from.body;
