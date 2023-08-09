@@ -41,6 +41,7 @@ class HttpHeader {
 public:
     typedef butil::CaseIgnoredFlatMap<std::string> HeaderMap;
     typedef HeaderMap::const_iterator HeaderIterator;
+    typedef HeaderMap::key_equal HeaderKeyEqual;
 
     HttpHeader();
 
@@ -64,9 +65,9 @@ public:
     // True if the message is from HTTP2.
     bool is_http2() const { return major_version() == 2; }
 
-    // Get/set "Content-Type". Notice that you can't get "Content-Type"
-    // via GetHeader().
+    // Get/set "Content-Type".
     // possible values: "text/plain", "application/json" ...
+    // NOTE: Equal to `GetHeader("Content-Type")', ·SetHeader("Content-Type")‘ (case-insensitive).
     const std::string& content_type() const { return _content_type; }
     void set_content_type(const std::string& type) { _content_type = type; }
     void set_content_type(const char* type) { _content_type = type; }
@@ -77,20 +78,22 @@ public:
     // Namely, GetHeader("log-id"), GetHeader("Log-Id"), GetHeader("LOG-ID")
     // point to the same value.
     // Return pointer to the value, NULL on not found.
-    // NOTE: Not work for "Content-Type", call content_type() instead.
+    // NOTE: If the key is "Content-Type", `GetHeader("Content-Type")'
+    // (case-insensitive) is equal to `content_type()'.
     const std::string* GetHeader(const char* key) const
     { return _headers.seek(key); }
     const std::string* GetHeader(const std::string& key) const
     { return _headers.seek(key); }
 
     // Set value of a header.
-    // NOTE: Not work for "Content-Type", call set_content_type() instead.
+    // NOTE: If the key is "Content-Type", `SetHeader("Content-Type", ...)'
+    // (case-insensitive) is equal to `set_content_type(...)'.
     void SetHeader(const std::string& key, const std::string& value)
     { GetOrAddHeader(key) = value; }
 
     // Remove a header.
-    void RemoveHeader(const char* key) { _headers.erase(key); }
-    void RemoveHeader(const std::string& key) { _headers.erase(key); }
+    void RemoveHeader(const char* key);
+    void RemoveHeader(const std::string& key) { RemoveHeader(key.c_str()); }
 
     // Append value to a header. If the header already exists, separate
     // old value and new value with comma(,) according to:
@@ -142,11 +145,10 @@ friend class HttpMessageSerializer;
 friend class policy::H2StreamContext;
 friend void policy::ProcessHttpRequest(InputMessageBase *msg);
 
-    std::string& GetOrAddHeader(const std::string& key) {
-        if (!_headers.initialized()) {
-            _headers.init(29);
-        }
-        return _headers[key];
+    std::string& GetOrAddHeader(const std::string& key);
+
+    static bool IsContentType(const std::string& key) {
+        return HeaderKeyEqual()(key, "content-type");
     }
 
     HeaderMap _headers;
