@@ -30,6 +30,7 @@
 #include "bthread/task_group.h"           // TaskGroup
 #include "bthread/task_control.h"
 #include "bthread/timer_thread.h"         // global_timer_thread
+#include <atomic>
 #include <gflags/gflags.h>
 #include "bthread/log.h"
 
@@ -113,6 +114,11 @@ static void print_rq_sizes_in_the_tc(std::ostream &os, void *arg) {
     tc->print_rq_sizes(os);
 }
 
+static void print_resume_q_sizes_in_the_tc(std::ostream &os, void *arg) {
+    TaskControl *tc = (TaskControl *)arg;
+    tc->print_resume_q_sizes(os);
+}
+
 static double get_cumulated_worker_time_from_this(void *arg) {
     return static_cast<TaskControl*>(arg)->get_cumulated_worker_time();
 }
@@ -143,6 +149,7 @@ TaskControl::TaskControl()
     , _cumulated_signal_count(get_cumulated_signal_count_from_this, this)
     , _signal_per_second(&_cumulated_signal_count)
     , _status(print_rq_sizes_in_the_tc, this)
+    , _resume_q_status(print_resume_q_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
 {
     // calloc shall set memory to zero
@@ -178,6 +185,7 @@ int TaskControl::init(int concurrency) {
     _switch_per_second.expose("bthread_switch_second");
     _signal_per_second.expose("bthread_signal_second");
     _status.expose("bthread_group_status");
+    _resume_q_status.expose("bthread_group_resume_q_status_");
 
     // Wait for at least one group is added so that choose_one_group()
     // never returns NULL.
@@ -259,6 +267,7 @@ TaskControl::~TaskControl() {
     _switch_per_second.hide();
     _signal_per_second.hide();
     _status.hide();
+    _resume_q_status.hide();
     
     stop_and_join();
 
@@ -408,6 +417,22 @@ void TaskControl::print_rq_sizes(std::ostream& os) {
         // ngroup < _ngroup: just ignore _groups[_ngroup ... ngroup-1]
         for (size_t i = 0; i < ngroup; ++i) {
             nums[i] = (_groups[i] ? _groups[i]->_rq.volatile_size() : 0);
+        }
+    }
+    for (size_t i = 0; i < ngroup; ++i) {
+        os << nums[i] << ' ';
+    }
+}
+
+void TaskControl::print_resume_q_sizes(std::ostream &os) {
+    const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
+    DEFINE_SMALL_ARRAY(int, nums, ngroup, 128);
+    {
+        BAIDU_SCOPED_LOCK(_modify_group_mutex);
+        // ngroup > _ngroup: nums[_ngroup ... ngroup-1] = 0
+        // ngroup < _ngroup: just ignore _groups[_ngroup ... ngroup-1]
+        for (size_t i = 0; i < ngroup; ++i) {
+            nums[i] = (_groups[i] ? _groups[i]->_resume_rq_cnt.load(std::memory_order_relaxed) : 0);
         }
     }
     for (size_t i = 0; i < ngroup; ++i) {

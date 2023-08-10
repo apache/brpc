@@ -66,6 +66,8 @@ public:
 
     void print_rq_sizes(std::ostream& os);
 
+    void print_resume_q_sizes(std::ostream& os);
+
     double get_cumulated_worker_time();
     int64_t get_cumulated_switch_count();
     int64_t get_cumulated_signal_count();
@@ -110,6 +112,7 @@ private:
     bvar::PassiveStatus<int64_t> _cumulated_signal_count;
     bvar::PerSecond<bvar::PassiveStatus<int64_t> > _signal_per_second;
     bvar::PassiveStatus<std::string> _status;
+    bvar::PassiveStatus<std::string> _resume_q_status;
     bvar::Adder<int64_t> _nbthreads;
 
     static const int PARKING_LOT_NUM = 4;
