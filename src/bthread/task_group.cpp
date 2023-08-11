@@ -119,7 +119,6 @@ bool TaskGroup::is_stopped(bthread_t tid) {
 }
 
 bool TaskGroup::wait_task(bthread_t* tid) {
-    int64_t wait_begin_ms = butil::cpuwide_time_ms();
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
@@ -129,15 +128,8 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (pop_resume_task(tid)) {
             return true;
         }
-        if (steal_task(tid)) {
-            return true;
-        }
-        if(butil::cpuwide_time_ms() - wait_begin_ms <= 5000){
-            continue;
-        }
 
         _pl->wait(_last_pl_state);
-        wait_begin_ms = butil::cpuwide_time_ms();
         if (steal_task(tid)) {
             return true;
         }
