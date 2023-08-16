@@ -1194,6 +1194,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     wopt.pipelined_count = _pipelined_count;
     wopt.auth_flags = _auth_flags;
     wopt.ignore_eovercrowded = has_flag(FLAGS_IGNORE_EOVERCROWDED);
+    wopt.write_in_background = write_to_socket_in_background();
     int rc;
     size_t packet_size = 0;
     if (user_packet_guard) {
