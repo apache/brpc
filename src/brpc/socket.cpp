@@ -1687,7 +1687,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     // in some protocols(namely RTMP).
     req->Setup(this);
     
-    if (ssl_state() != SSL_OFF) {
+    if (opt.write_in_background || ssl_state() != SSL_OFF) {
         // Writing into SSL may block the current bthread, always write
         // in the background.
         goto KEEPWRITE_IN_BACKGROUND;

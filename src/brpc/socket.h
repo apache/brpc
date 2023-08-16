@@ -289,10 +289,20 @@ public:
         // Default: false
         bool ignore_eovercrowded;
 
+        // The calling thread directly creates KeepWrite thread to write into
+        // this socket, skipping writing once.
+        // In situations like when you are continually issuing lots of
+        // StreamWrite or async RPC calls in only one thread, directly creating
+        // KeepWrite thread at first provides batch write effect and better
+        // performance. Otherwise, each write only writes one `msg` into socket
+        // and no KeepWrite thread can be created, which brings poor
+        // performance.
+        bool write_in_background;
+
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
             , pipelined_count(0), auth_flags(0)
-            , ignore_eovercrowded(false) {}
+            , ignore_eovercrowded(false), write_in_background(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
 

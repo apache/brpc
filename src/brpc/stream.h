@@ -82,6 +82,18 @@ struct StreamOptions {
     StreamInputHandler* handler;
 };
 
+struct StreamWriteOptions
+{
+    StreamWriteOptions() : write_in_background(false) {}
+
+    // Write message to socket in background thread.
+    // Provides batch write effect and better performance in situations when
+    // you are continually issuing lots of StreamWrite or async RPC calls in
+    // only one thread. Otherwise, each StreamWrite directly writes message into
+    // socket and brings poor performance.
+    bool write_in_background;
+};
+
 // [Called at the client side]
 // Create a stream at client-side along with the |cntl|, which will be connected
 // when receiving the response with a stream from server-side. If |options| is
@@ -104,7 +116,8 @@ int StreamAccept(StreamId* response_stream, Controller &cntl,
 //  - EAGAIN: |stream_id| is created with positive |max_buf_size| and buf size
 //            which the remote side hasn't consumed yet excceeds the number.
 //  - EINVAL: |stream_id| is invalied or has been closed
-int StreamWrite(StreamId stream_id, const butil::IOBuf &message);
+int StreamWrite(StreamId stream_id, const butil::IOBuf &message,
+                const StreamWriteOptions* options = NULL);
 
 // Write util the pending buffer size is less than |max_buf_size| or orrur
 // occurs

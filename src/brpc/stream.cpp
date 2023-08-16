@@ -271,7 +271,8 @@ void Stream::TriggerOnConnectIfNeed() {
     bthread_mutex_unlock(&_connect_mutex);
 }
 
-int Stream::AppendIfNotFull(const butil::IOBuf &data) {
+int Stream::AppendIfNotFull(const butil::IOBuf &data,
+                            const StreamWriteOptions* options) {
     if (_cur_buf_size > 0) {
         std::unique_lock<bthread_mutex_t> lck(_congestion_control_mutex);
         if (_produced >= _remote_consumed + _cur_buf_size) {
@@ -290,7 +291,9 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data) {
 
     size_t data_length = data.length();
     butil::IOBuf copied_data(data);
-    const int rc = _fake_socket_weak_ref->Write(&copied_data);
+    Socket::WriteOptions wopt;
+    wopt.write_in_background = options != NULL && options->write_in_background;
+    const int rc = _fake_socket_weak_ref->Write(&copied_data, &wopt);
     if (rc != 0) {
         // Stream may be closed by peer before
         LOG(WARNING) << "Fail to write to _fake_socket, " << berror();
@@ -679,7 +682,8 @@ void Stream::HandleRpcResponse(butil::IOBuf* response_buffer) {
     policy::ProcessRpcResponse(msg);
 }
 
-int StreamWrite(StreamId stream_id, const butil::IOBuf &message) {
+int StreamWrite(StreamId stream_id, const butil::IOBuf &message,
+                const StreamWriteOptions* options) {
     SocketUniquePtr ptr;
     if (Socket::Address(stream_id, &ptr) != 0) {
         return EINVAL;

@@ -42,7 +42,8 @@ public:
 
     // --------------------- SocketConnection --------------
 
-    int AppendIfNotFull(const butil::IOBuf& msg);
+    int AppendIfNotFull(const butil::IOBuf& msg,
+                        const StreamWriteOptions* options = NULL);
     static int Create(const StreamOptions& options,
                       const StreamSettings *remote_settings,
                       StreamId *id);
