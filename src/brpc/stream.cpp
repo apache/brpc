@@ -74,7 +74,7 @@ int Stream::Create(const StreamOptions &options,
     s->_connected = false;
     s->_options = options;
     s->_closed = false;
-    s->_cur_buf_size = options.max_buf_size;
+    s->_cur_buf_size = options.max_buf_size > 0 ? options.max_buf_size : 0;
     if (options.max_buf_size > 0 && options.min_buf_size > options.max_buf_size) {
         // set 0 if min_buf_size is invalid.
         s->_options.min_buf_size = 0;
