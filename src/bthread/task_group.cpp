@@ -39,6 +39,9 @@
 
 namespace bthread {
 
+std::atomic<int> TaskGroup::_resume_rq_cnt{0};
+moodycamel::ConcurrentQueue<bthread_t> TaskGroup::_resume_rq(10000);
+
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
     BTHREAD_STACKTYPE_UNKNOWN, 0, NULL };
 
@@ -121,6 +124,11 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (_last_pl_state.stopped()) {
             return false;
         }
+
+        if (pop_resume_task(tid)) {
+            return true;
+        }
+
         _pl->wait(_last_pl_state);
         if (steal_task(tid)) {
             return true;
@@ -192,6 +200,7 @@ TaskGroup::TaskGroup(TaskControl* c)
 #ifndef NDEBUG
     , _sched_recursive_guard(0)
 #endif
+    ,_resume_consumer_token(_resume_rq)
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
@@ -513,18 +522,21 @@ TaskStatistics TaskGroup::main_stat() const {
 void TaskGroup::ending_sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
-    // Find next task to run, if none, switch to idle thread of the group.
+
+    if (!g->pop_resume_task(&next_tid)) {
+        // Find next task to run, if none, switch to idle thread of the group.
 #ifndef BTHREAD_FAIR_WSQ
-    // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
-    // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
-    // to 2.9%
-    const bool popped = g->_rq.pop(&next_tid);
+        // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
+        // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
+        // to 2.9%
+        const bool popped = g->_rq.pop(&next_tid);
 #else
-    const bool popped = g->_rq.steal(&next_tid);
+        const bool popped = g->_rq.steal(&next_tid);
 #endif
-    if (!popped && !g->steal_task(&next_tid)) {
-        // Jump to main task if there's no task to run.
-        next_tid = g->_main_tid;
+        if (!popped && !g->steal_task(&next_tid)) {
+            // Jump to main task if there's no task to run.
+            next_tid = g->_main_tid;
+        }
     }
 
     TaskMeta* const cur_meta = g->_cur_meta;
@@ -554,15 +566,18 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
 void TaskGroup::sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
-    // Find next task to run, if none, switch to idle thread of the group.
+    
+    if (!g->pop_resume_task(&next_tid)) {
+        // Find next task to run, if none, switch to idle thread of the group.
 #ifndef BTHREAD_FAIR_WSQ
-    const bool popped = g->_rq.pop(&next_tid);
+        const bool popped = g->_rq.pop(&next_tid);
 #else
-    const bool popped = g->_rq.steal(&next_tid);
+        const bool popped = g->_rq.steal(&next_tid);
 #endif
-    if (!popped && !g->steal_task(&next_tid)) {
-        // Jump to main task if there's no task to run.
-        next_tid = g->_main_tid;
+        if (!popped && !g->steal_task(&next_tid)) {
+            // Jump to main task if there's no task to run.
+            next_tid = g->_main_tid;
+        }
     }
     sched_to(pg, next_tid);
 }
@@ -652,7 +667,7 @@ void TaskGroup::destroy_self() {
 
 void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
     push_rq(tid);
-    if (nosignal) {
+    if (nosignal || ParkingLot::_waiting_worker_count == 0) {
         ++_num_nosignal;
     } else {
         const int additional_signal = _num_nosignal;
@@ -672,24 +687,37 @@ void TaskGroup::flush_nosignal_tasks() {
 }
 
 void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
-    _remote_rq._mutex.lock();
-    while (!_remote_rq.push_locked(tid)) {
-        flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
-        LOG_EVERY_SECOND(ERROR) << "_remote_rq is full, capacity="
-                                << _remote_rq.capacity();
+    while (!push_resume_task(tid)) {
+        LOG_EVERY_SECOND(ERROR) << "push_resume_rq fail";
         ::usleep(1000);
-        _remote_rq._mutex.lock();
     }
-    if (nosignal) {
+    if (nosignal || ParkingLot::_waiting_worker_count == 0) {
         ++_remote_num_nosignal;
-        _remote_rq._mutex.unlock();
     } else {
         const int additional_signal = _remote_num_nosignal;
         _remote_num_nosignal = 0;
         _remote_nsignaled += 1 + additional_signal;
-        _remote_rq._mutex.unlock();
         _control->signal_task(1 + additional_signal);
     }
+
+    // _remote_rq._mutex.lock();
+    // while (!_remote_rq.push_locked(tid)) {
+    //     flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
+    //     LOG_EVERY_SECOND(ERROR) << "_remote_rq is full, capacity="
+    //                             << _remote_rq.capacity();
+    //     ::usleep(1000);
+    //     _remote_rq._mutex.lock();
+    // }
+    // if (nosignal) {
+    //     ++_remote_num_nosignal;
+    //     _remote_rq._mutex.unlock();
+    // } else {
+    //     const int additional_signal = _remote_num_nosignal;
+    //     _remote_num_nosignal = 0;
+    //     _remote_nsignaled += 1 + additional_signal;
+    //     _remote_rq._mutex.unlock();
+    //     _control->signal_task(1 + additional_signal);
+    // }
 }
 
 void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
