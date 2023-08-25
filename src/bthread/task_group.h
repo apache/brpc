@@ -30,7 +30,7 @@
 #include "butil/resource_pool.h"                    // ResourceId
 #include "bthread/parking_lot.h"
 
-#include "thirdparty/moodycamelqueue.h"
+#include "moodycamelqueue.h"
 
 namespace bthread {
 
