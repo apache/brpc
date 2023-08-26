@@ -64,8 +64,8 @@ MultiDimension<T>::MultiDimension(const butil::StringPiece& prefix,
 
 template <typename T>
 MultiDimension<T>::~MultiDimension() {
-    delete_stats();
     hide();
+    delete_stats();
 }
 
 template <typename T>
