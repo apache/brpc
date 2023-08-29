@@ -28,6 +28,8 @@
 # ifndef cpu_relax
 #if defined(ARCH_CPU_ARM_FAMILY)
 # define cpu_relax() asm volatile("yield\n": : :"memory")
+#elif defined(ARCH_CPU_LOONGARCH64_FAMILY)
+# define cpu_relax() asm volatile("nop\n": : :"memory");
 #else
 # define cpu_relax() asm volatile("pause\n": : :"memory")
 #endif

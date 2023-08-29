@@ -133,6 +133,11 @@
 #define ARCH_CPU_32_BITS 1
 #define ARCH_CPU_LITTLE_ENDIAN 1
 #endif
+#elif defined(__loongarch64)
+#define ARCH_CPU_LOONGARCH64_FAMILY 1
+#define ARCH_CPU_LOONGARCH64 1
+#define ARCH_CPU_64_BITS 1
+#define ARCH_CPU_LITTLE_ENDIAN 1
 #else
 #error Please add support for your architecture in butil/build_config.h
 #endif
