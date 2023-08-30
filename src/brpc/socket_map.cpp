@@ -149,7 +149,8 @@ SocketMap::~SocketMap() {
         for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
             SingleConnection* sc = &it->second;
             if ((!sc->socket->Failed() ||
-                 sc->socket->health_check_interval() > 0/*HC enabled*/) &&
+                 (sc->socket->health_check_interval() > 0 &&
+                  sc->socket->IsHCRelatedRefHeld())/*HC enabled*/) &&
                 sc->ref_count != 0) {
                 ++nleft;
                 if (nleft == 0) {
