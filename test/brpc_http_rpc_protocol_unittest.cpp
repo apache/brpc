@@ -23,18 +23,15 @@
 #include <google/protobuf/stubs/logging.h>
 #include <string>
 #include <sys/ioctl.h>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <google/protobuf/descriptor.h>
 #include <google/protobuf/text_format.h>
 #include <unistd.h>
+#include <butil/strings/string_number_conversions.h>
 #include "brpc/http_method.h"
 #include "butil/iobuf.h"
 #include "butil/logging.h"
-#include "butil/time.h"
-#include "butil/macros.h"
 #include "butil/files/scoped_file.h"
 #include "butil/fd_guard.h"
 #include "butil/file_util.h"
@@ -43,7 +40,6 @@
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/policy/most_common_message.h"
-#include "brpc/controller.h"
 #include "echo.pb.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/policy/http2_rpc_protocol.h"
@@ -51,7 +47,6 @@
 #include "json2pb/json_to_pb.h"
 #include "brpc/details/method_status.h"
 #include "brpc/rpc_dump.h"
-#include "bvar/collector.h"
 
 namespace brpc {
 DECLARE_bool(rpc_dump);
@@ -78,6 +73,8 @@ namespace {
 
 static const std::string EXP_REQUEST = "hello";
 static const std::string EXP_RESPONSE = "world";
+static const std::string EXP_RESPONSE_CONTENT_LENGTH = "1024";
+static const std::string EXP_RESPONSE_TRANSFER_ENCODING = "chunked";
 
 static const std::string MOCK_CREDENTIAL = "mock credential";
 static const std::string MOCK_USER = "mock user";
@@ -1779,6 +1776,64 @@ TEST_F(HttpTest, spring_protobuf_text_content_type) {
     ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
             cntl.response_attachment().to_string(), &res));
     ASSERT_EQ(EXP_RESPONSE, res.message());
+}
+
+class HttpServiceImpl : public ::test::HttpService {
+    public:
+    void Head(::google::protobuf::RpcController* cntl_base,
+        const ::test::HttpRequest*,
+        ::test::HttpResponse*,
+        ::google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+        ASSERT_EQ(cntl->http_request().method(), brpc::HTTP_METHOD_HEAD);
+        const std::string* index = cntl->http_request().GetHeader("x-db-index");
+        ASSERT_NE(nullptr, index);
+        int i;
+        ASSERT_TRUE(butil::StringToInt(*index, &i));
+        cntl->http_response().set_content_type("text/plain");
+        if (i % 2 == 0) {
+            cntl->http_response().SetHeader("Content-Length",
+                EXP_RESPONSE_CONTENT_LENGTH);
+        } else {
+            cntl->http_response().SetHeader("Transfer-Encoding",
+                EXP_RESPONSE_TRANSFER_ENCODING);
+        }
+    }
+};
+
+TEST_F(HttpTest, http_head) {
+    const int port = 8923;
+    brpc::Server server;
+    HttpServiceImpl svc;
+    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, NULL));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_HTTP;
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+    for (int i = 0; i < 100; ++i) {
+        brpc::Controller cntl;
+        cntl.http_request().set_method(brpc::HTTP_METHOD_HEAD);
+        cntl.http_request().uri().set_path("/HttpService/Head");
+        cntl.http_request().SetHeader("x-db-index", butil::IntToString(i));
+        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        if (i % 2 == 0) {
+            const std::string* content_length
+                = cntl.http_response().GetHeader("content-length");
+            ASSERT_NE(nullptr, content_length);
+            ASSERT_EQ(EXP_RESPONSE_CONTENT_LENGTH, *content_length);
+        } else {
+            const std::string* transfer_encoding
+                = cntl.http_response().GetHeader("Transfer-Encoding");
+            ASSERT_NE(nullptr, transfer_encoding);
+            ASSERT_EQ(EXP_RESPONSE_TRANSFER_ENCODING, *transfer_encoding);
+        }
+    }
 }
 
 } //namespace

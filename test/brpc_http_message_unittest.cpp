@@ -226,6 +226,39 @@ TEST(HttpMessageTest, parse_from_iobuf) {
     ASSERT_EQ("text/plain", http_message.header().content_type());
 }
 
+
+TEST(HttpMessageTest, parse_http_head_response) {
+    char response1[1024] = "HTTP/1.1 200 OK\r\n"
+                          "Content-Type: text/plain\r\n"
+                          "Content-Length: 1024\r\n"
+                          "\r\n";
+    butil::IOBuf request;
+    request.append(response1);
+
+    brpc::HttpMessage http_message(false, brpc::HTTP_METHOD_HEAD);
+    ASSERT_TRUE(http_message.ParseFromIOBuf(request) >= 0);
+    ASSERT_TRUE(http_message.Completed()) << http_message.stage();
+    ASSERT_EQ("text/plain", http_message.header().content_type());
+    const std::string* content_length = http_message.header().GetHeader("Content-Length");
+    ASSERT_NE(nullptr, content_length);
+    ASSERT_EQ("1024", *content_length);
+
+
+    char response2[1024] = "HTTP/1.1 200 OK\r\n"
+                           "Content-Type: text/plain\r\n"
+                           "Transfer-Encoding: chunked\r\n"
+                           "\r\n";
+    butil::IOBuf request2;
+    request2.append(response2);
+    brpc::HttpMessage http_message2(false, brpc::HTTP_METHOD_HEAD);
+    ASSERT_TRUE(http_message2.ParseFromIOBuf(request2) >= 0);
+    ASSERT_TRUE(http_message2.Completed()) << http_message2.stage();
+    ASSERT_EQ("text/plain", http_message2.header().content_type());
+    const std::string* transfer_encoding = http_message2.header().GetHeader("Transfer-Encoding");
+    ASSERT_NE(nullptr, transfer_encoding);
+    ASSERT_EQ("chunked", *transfer_encoding);
+}
+
 TEST(HttpMessageTest, find_method_property_by_uri) {
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(new test::EchoService(),
@@ -393,15 +426,15 @@ TEST(HttpMessageTest, serialize_http_response) {
     // content is cleared.
     CHECK(content.empty());
 
+    // null content
+    header.SetHeader("Content-Length", "100");
+    MakeRawHttpResponse(&response, &header, NULL);
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nFoo: Bar\r\n\r\n", response) << butil::ToPrintable(response);
+
     // user-set content-length is ignored.
     content.append("data2");
-    header.SetHeader("Content-Length", "100");
     MakeRawHttpResponse(&response, &header, &content);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nFoo: Bar\r\n\r\ndata2", response);
-
-    // null content
-    MakeRawHttpResponse(&response, &header, NULL);
-    ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\n\r\n", response);
 }
 
 } //namespace

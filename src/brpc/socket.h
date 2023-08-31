@@ -38,6 +38,7 @@
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
 #include "bvar/bvar.h"
+#include "http_method.h"
 
 namespace brpc {
 namespace policy {
@@ -577,6 +578,9 @@ public:
 
     bthread_keytable_pool_t* keytable_pool() const { return _keytable_pool; }
 
+    void set_http_request_method(const HttpMethod& method) { _http_request_method = method; }
+    HttpMethod http_request_method() const { return _http_request_method; }
+
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
 
@@ -915,6 +919,8 @@ private:
     // Refer to `SocketKeepaliveOptions' for details.
     // non-NULL means that keepalive is on.
     std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+
+    HttpMethod _http_request_method;
 };
 
 } // namespace brpc
