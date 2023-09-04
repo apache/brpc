@@ -196,8 +196,11 @@ extern int bthread_cond_init(bthread_cond_t* __restrict cond,
 // Destroy condition variable `cond'.
 extern int bthread_cond_destroy(bthread_cond_t* cond);
 
+#ifndef BTHREAD_COND_SIGNAL
+#define BTHREAD_COND_SIGNAL
 // Wake up one thread waiting for condition variable `cond'.
-extern int bthread_cond_signal(bthread_cond_t* cond);
+extern int bthread_cond_signal(bthread_cond_t* cond, bool no_signal = false);
+#endif
 
 // Wake up all threads waiting for condition variables `cond'.
 extern int bthread_cond_broadcast(bthread_cond_t* cond);

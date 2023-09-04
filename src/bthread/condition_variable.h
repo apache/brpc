@@ -29,7 +29,10 @@ __BEGIN_DECLS
 extern int bthread_cond_init(bthread_cond_t* __restrict cond,
                              const bthread_condattr_t* __restrict cond_attr);
 extern int bthread_cond_destroy(bthread_cond_t* cond);
-extern int bthread_cond_signal(bthread_cond_t* cond);
+#ifndef BTHREAD_COND_SIGNAL
+#define BTHREAD_COND_SIGNAL
+extern int bthread_cond_signal(bthread_cond_t* cond, bool no_signal = false);
+#endif
 extern int bthread_cond_broadcast(bthread_cond_t* cond);
 extern int bthread_cond_wait(bthread_cond_t* __restrict cond,
                              bthread_mutex_t* __restrict mutex);
@@ -45,7 +48,7 @@ class ConditionVariable {
     DISALLOW_COPY_AND_ASSIGN(ConditionVariable);
 public:
     typedef bthread_cond_t*         native_handler_type;
-    
+
     ConditionVariable() {
         CHECK_EQ(0, bthread_cond_init(&_cond, NULL));
     }
@@ -89,8 +92,8 @@ public:
         return rc == ETIMEDOUT ? ETIMEDOUT : 0;
     }
 
-    void notify_one() {
-        bthread_cond_signal(&_cond);
+    void notify_one(bool no_signal = false) {
+        bthread_cond_signal(&_cond, no_signal);
     }
 
     void notify_all() {
