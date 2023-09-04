@@ -58,14 +58,14 @@ int bthread_cond_destroy(bthread_cond_t* c) {
     return 0;
 }
 
-int bthread_cond_signal(bthread_cond_t* c) {
+int bthread_cond_signal(bthread_cond_t* c, bool no_signal) {
     bthread::CondInternal* ic = reinterpret_cast<bthread::CondInternal*>(c);
     // ic is probably dereferenced after fetch_add, save required fields before
     // this point
     butil::atomic<int>* const saved_seq = ic->seq;
     saved_seq->fetch_add(1, butil::memory_order_release);
     // don't touch ic any more
-    bthread::butex_wake(saved_seq);
+    bthread::butex_wake(saved_seq, no_signal);
     return 0;
 }
 
