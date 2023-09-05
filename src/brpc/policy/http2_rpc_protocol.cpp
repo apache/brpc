@@ -1569,6 +1569,10 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     HPackOptions options;
     options.encode_name = FLAGS_h2_hpack_encode_name;
     options.encode_value = FLAGS_h2_hpack_encode_value;
+    if (ctx->remote_settings().header_table_size == 0) {
+        options.index_policy = HPACK_NEVER_INDEX_HEADER;
+    }
+    
     for (size_t i = 0; i < _size; ++i) {
         hpacker.Encode(&appender, _list[i], options);
     }
@@ -1710,6 +1714,9 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     HPackOptions options;
     options.encode_name = FLAGS_h2_hpack_encode_name;
     options.encode_value = FLAGS_h2_hpack_encode_value;
+    if (ctx->remote_settings().header_table_size == 0) {
+        options.index_policy = HPACK_NEVER_INDEX_HEADER;
+    }
 
     for (size_t i = 0; i < _size; ++i) {
         hpacker.Encode(&appender, _list[i], options);
