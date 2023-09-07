@@ -347,6 +347,8 @@ brpc server支持发送超大或无限长的body。方法如下:
 
 3. 发送完毕后确保所有的`butil::intrusive_ptr<brpc::ProgressiveAttachment>`都析构以释放资源。
 
+另外，利用该特性可以轻松实现Server-Sent Events(SSE)服务，从而使客户端能够通过 HTTP 连接从服务器自动接收更新。非常适合构建诸如chatGPT这类实时应用程序，应用例子详见[http_server.cpp](https://github.com/apache/brpc/blob/master/example/http_c++/http_server.cpp)中的HttpSSEServiceImpl。
+
 # 持续接收
 
 目前brpc server不支持在收齐http请求的header部分后就调用服务回调，即brpc server不适合接收超长或无限长的body。

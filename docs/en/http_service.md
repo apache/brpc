@@ -348,6 +348,8 @@ brpc server is capable of sending large or infinite sized body, in following ste
 
 3. After usage, destruct all `butil::intrusive_ptr<brpc::ProgressiveAttachment>` to release related resources.
 
+In addition, we can easily implement Server-Sent Events(SSE) with this feature, which enables a client to receive automatic updates from a server via a HTTP connection. SSE could be used to build real-time applications such as chatGPT. Please refer to HttpSSEServiceImpl in [http_server.cpp](https://github.com/apache/brpc/blob/master/example/http_c++/http_server.cpp) for more details.
+
 # Progressive receiving
 
 Currently brpc server doesn't support calling the service callback once header part in the http request is parsed. In other words, brpc server is not suitable for receiving large or infinite sized body.
