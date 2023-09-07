@@ -66,7 +66,10 @@ endif()
 
 if(WITH_THRIFT)
     set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
-    set(THRIFT_LIB "thrift")
+    find_library(THRIFT_LIB NAMES thrift)
+    if (NOT THRIFT_LIB)
+        message(FATAL_ERROR "Fail to find Thrift")
+    endif()
 endif()
 
 set(WITH_RDMA_VAL "0")
