@@ -24,6 +24,7 @@
 #include <butil/crc32c.h>
 #include <butil/strings/string_split.h>
 #include <gflags/gflags.h>
+#include <memory>
 #include <unordered_map>
 
 #include <butil/time.h>
@@ -110,9 +111,11 @@ private:
 
 int main(int argc, char* argv[]) {
     google::ParseCommandLineFlags(&argc, &argv, true);
-    RedisServiceImpl* rsimpl = new RedisServiceImpl;
-    rsimpl->AddCommandHandler("get", new GetCommandHandler(rsimpl));
-    rsimpl->AddCommandHandler("set", new SetCommandHandler(rsimpl));
+    RedisServiceImpl *rsimpl = new RedisServiceImpl;
+    auto get_handler =std::unique_ptr<GetCommandHandler>(new GetCommandHandler(rsimpl));
+    auto set_handler =std::unique_ptr<SetCommandHandler>( new SetCommandHandler(rsimpl));
+    rsimpl->AddCommandHandler("get", get_handler.get());
+    rsimpl->AddCommandHandler("set", set_handler.get());
 
     brpc::Server server;
     brpc::ServerOptions server_options;
