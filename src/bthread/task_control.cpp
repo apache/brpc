@@ -432,7 +432,7 @@ void TaskControl::print_resume_q_sizes(std::ostream &os) {
         // ngroup > _ngroup: nums[_ngroup ... ngroup-1] = 0
         // ngroup < _ngroup: just ignore _groups[_ngroup ... ngroup-1]
         for (size_t i = 0; i < ngroup; ++i) {
-            nums[i] = (_groups[i] ? _groups[i]->_resume_rq_cnt.load(std::memory_order_relaxed) : 0);
+            nums[i] = (_groups[i] ? _groups[i]->_resume_rq_cnt->load(std::memory_order_relaxed) : 0);
         }
     }
     for (size_t i = 0; i < ngroup; ++i) {

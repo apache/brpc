@@ -49,6 +49,25 @@ private:
     void* _value;
 };
 
+// Global resumed tasks.
+class ResumeRunQueue {
+public:
+    static std::pair<std::shared_ptr<std::atomic<int>>,
+        std::shared_ptr<moodycamel::ConcurrentQueue<bthread_t>>> Instance() {
+        static ResumeRunQueue instance;
+        return {instance.queue_size_, instance.concurrent_queue_};
+    }
+
+private:
+    ResumeRunQueue() {
+        queue_size_ = std::make_shared<std::atomic<int>>(0);
+        concurrent_queue_ = std::make_shared<moodycamel::ConcurrentQueue<bthread_t>>(10000);
+    }
+
+    std::shared_ptr<std::atomic<int>> queue_size_;
+    std::shared_ptr<moodycamel::ConcurrentQueue<bthread_t>> concurrent_queue_;
+};
+
 // Thread-local group of tasks.
 // Notice that most methods involving context switching are static otherwise
 // pointer `this' may change after wakeup. The **pg parameters in following
@@ -95,7 +114,7 @@ public:
         _last_context_remained = cb;
         _last_context_remained_arg = arg;
     }
-    
+
     // Suspend caller for at least |timeout_us| microseconds.
     // If |timeout_us| is 0, this function does nothing.
     // If |group| is NULL or current thread is non-bthread, call usleep(3)
@@ -227,7 +246,7 @@ friend class TaskControl;
     }
 
     TaskMeta* _cur_meta;
-    
+
     // the control that this group belongs to
     TaskControl* _control;
     int _num_nosignal;
@@ -255,8 +274,8 @@ friend class TaskControl;
 
     int _sched_recursive_guard;
 
-    static std::atomic<int> _resume_rq_cnt;
-    static moodycamel::ConcurrentQueue<bthread_t> _resume_rq;
+    std::shared_ptr<std::atomic<int>> _resume_rq_cnt;
+    std::shared_ptr<moodycamel::ConcurrentQueue<bthread_t>> _resume_rq;
     moodycamel::ConsumerToken _resume_consumer_token;
 };
 
