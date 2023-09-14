@@ -41,14 +41,14 @@ SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "brpc authors")
 INCLUDE(CPack)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    # require at least gcc 4.8
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
-        message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++11")
+    # require at least gcc 8
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8)  # ref: https://gcc.gnu.org/projects/cxx-status.html
+        message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++17")
     endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    # require at least clang 3.3
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.3)
-        message(FATAL_ERROR "Clang is too old, please install a newer version supporting C++11")
+    # require at least clang 5
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5)  # ref: https://clang.llvm.org/cxx_status.html
+        message(FATAL_ERROR "Clang is too old, please install a newer version supporting C++17")
     endif()
 else()
     message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
@@ -121,21 +121,21 @@ set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL} ${THRIFT_CPP_FLAG}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
 
-macro(use_cxx11)
+macro(use_cxx17)
 if(CMAKE_VERSION VERSION_LESS "3.1.3")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
     endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
     endif()
 else()
-    set(CMAKE_CXX_STANDARD 11)
+    set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
-endmacro(use_cxx11)
+endmacro(use_cxx17)
 
-use_cxx11()
+use_cxx17()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     #required by butil/crc32.cc to boost performance for 10x
@@ -169,8 +169,9 @@ if(WITH_SNAPPY)
 endif()
 
 if(WITH_GLOG)
+    message(NOTICE "BRPC WITH_GLOG=ON")
     find_path(GLOG_INCLUDE_PATH NAMES glog/logging.h)
-    find_library(GLOG_LIB NAMES glog)
+    find_library(GLOG_LIB NAMES glog VERSION ">=0.6.0" REQUIRE)
     if((NOT GLOG_INCLUDE_PATH) OR (NOT GLOG_LIB))
         message(FATAL_ERROR "Fail to find glog")
     endif()
