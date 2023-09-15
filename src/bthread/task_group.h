@@ -23,6 +23,7 @@
 #define BTHREAD_TASK_GROUP_H
 
 #include <memory>                                   // shared_ptr
+#include <utility>
 
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
