@@ -22,6 +22,8 @@
 #ifndef BTHREAD_TASK_GROUP_H
 #define BTHREAD_TASK_GROUP_H
 
+#include <memory>                                   // shared_ptr
+
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
 #include "bthread/task_meta.h"                     // bthread_t, TaskMeta
