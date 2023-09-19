@@ -684,6 +684,10 @@ void PackHttpRequest(butil::IOBuf* buf,
     // may not echo back this field. But we send it anyway.
     accessor.get_sending_socket()->set_correlation_id(correlation_id);
 
+    // Store http request method into Socket since http response parser needs it,
+    // and skips response body if request method is HEAD.
+    accessor.get_sending_socket()->set_http_request_method(header->method());
+
     MakeRawHttpRequest(buf, header, cntl->remote_side(),
                        &cntl->request_attachment());
     if (FLAGS_http_verbose) {
@@ -934,7 +938,12 @@ HttpResponseSender::~HttpResponseSender() {
         }
     } else {
         butil::IOBuf* content = NULL;
-        if (cntl->Failed() || !cntl->has_progressive_writer()) {
+        if ((cntl->Failed() || !cntl->has_progressive_writer()) &&
+            // https://datatracker.ietf.org/doc/html/rfc7231#section-4.3.2
+            // The HEAD method is identical to GET except that the server MUST NOT
+            // send a message body in the response (i.e., the response terminates at
+            // the end of the header section).
+            req_header->method() != HTTP_METHOD_HEAD) {
             content = &cntl->response_attachment();
         }
         butil::IOBuf res_buf;
@@ -1097,7 +1106,9 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             //    source is likely to be empty.
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
-        http_imsg = new (std::nothrow) HttpContext(socket->is_read_progressive());
+        http_imsg = new (std::nothrow) HttpContext(
+            socket->is_read_progressive(),
+            socket->http_request_method());
         if (http_imsg == NULL) {
             LOG(FATAL) << "Fail to new HttpContext";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);

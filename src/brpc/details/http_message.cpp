@@ -177,6 +177,14 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
             uri.SetHostAndPort(*host_header);
         }
     }
+
+
+    // If server receives a response to a HEAD request, returns 1 and then
+    // the parser will interpret that as saying that this message has no body.
+    if (parser->type == HTTP_RESPONSE &&
+        http_message->request_method() == HTTP_METHOD_HEAD) {
+        return 1;
+    }
     return 0;
 }
 
@@ -392,9 +400,11 @@ const http_parser_settings g_parser_settings = {
     &HttpMessage::on_message_complete_cb
 };
 
-HttpMessage::HttpMessage(bool read_body_progressively)
+HttpMessage::HttpMessage(bool read_body_progressively,
+                         HttpMethod request_method)
     : _parsed_length(0)
     , _stage(HTTP_ON_MESSAGE_BEGIN)
+    , _request_method(request_method)
     , _read_body_progressively(read_body_progressively)
     , _body_reader(NULL)
     , _cur_value(NULL)
