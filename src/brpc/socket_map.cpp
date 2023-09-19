@@ -149,7 +149,7 @@ SocketMap::~SocketMap() {
         for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
             SingleConnection* sc = &it->second;
             if ((!sc->socket->Failed() ||
-                 sc->socket->health_check_interval() > 0/*HC enabled*/) &&
+                 sc->socket->HCEnabled()) &&
                 sc->ref_count != 0) {
                 ++nleft;
                 if (nleft == 0) {
@@ -216,9 +216,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     std::unique_lock<butil::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(key);
     if (sc) {
-        if (!sc->socket->Failed() ||
-            (sc->socket->health_check_interval() > 0 &&
-             sc->socket->IsHCRelatedRefHeld())/*HC enabled*/) {
+        if (!sc->socket->Failed() || sc->socket->HCEnabled()) {
             ++sc->ref_count;
             *id = sc->socket->id();
             return 0;

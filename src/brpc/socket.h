@@ -320,9 +320,13 @@ public:
     // ip/port of the other end of the connection.
     butil::EndPoint remote_side() const { return _remote_side; }
 
-    // Positive value enables health checking.
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
+
+    // True if health checking is enabled.
+    bool HCEnabled() const {
+        return _health_check_interval_s > 0 && _is_hc_related_ref_held;
+    }
 
     // When someone holds a health-checking-related reference,
     // this function need to be called to make health checking run normally.
