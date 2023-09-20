@@ -50,6 +50,9 @@ DEFINE_bool(show_socketmap_in_vars, false,
             "[DEBUG] Describe SocketMaps in /vars");
 BRPC_VALIDATE_GFLAG(show_socketmap_in_vars, PassValidate);
 
+DEFINE_bool(reserve_one_idle_socket, false,
+            "Reserve one idle socket for pooled connections when idle_timeout_second > 0");
+
 static pthread_once_t g_socket_map_init = PTHREAD_ONCE_INIT;
 static butil::static_atomic<SocketMap*> g_socket_map = BUTIL_STATIC_ATOMIC_INIT(NULL);
 
@@ -370,11 +373,12 @@ void SocketMap::WatchConnections() {
         if (idle_seconds > 0) {
             // Check idle pooled connections
             List(&main_sockets);
-            for (size_t i = 0; i < main_sockets.size(); ++i) {
+            for (auto main_socket : main_sockets) {
                 SocketUniquePtr s;
-                if (Socket::Address(main_sockets[i], &s) == 0) {
+                if (Socket::Address(main_socket, &s) == 0) {
                     s->ListPooledSockets(&pooled_sockets);
-                    for (size_t i = 0; i < pooled_sockets.size(); ++i) {
+                    for (size_t i = FLAGS_reserve_one_idle_socket ? 1 : 0;
+                         i < pooled_sockets.size(); ++i) {
                         SocketUniquePtr s2;
                         if (Socket::Address(pooled_sockets[i], &s2) == 0) {
                             s2->ReleaseReferenceIfIdle(idle_seconds);
