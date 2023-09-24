@@ -435,6 +435,11 @@ TEST(HttpMessageTest, serialize_http_response) {
     content.append("data2");
     MakeRawHttpResponse(&response, &header, &content);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nFoo: Bar\r\n\r\ndata2", response);
+
+    header.SetHeader("Transfer-Encoding", "chunked");
+    header.set_status_code(brpc::HTTP_STATUS_NO_CONTENT);
+    MakeRawHttpResponse(&response, &header, &content);
+    ASSERT_EQ("HTTP/1.1 204 No Content\r\nFoo: Bar\r\n\r\n", response);
 }
 
 } //namespace
