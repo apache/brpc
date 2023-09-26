@@ -2246,8 +2246,9 @@ bool Server::AcceptRequest(Controller* cntl) const {
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
 int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
-                                   int* al, Server* server) {
+                                   int* al, void* se) {
     (void)al;
+    Server* server = reinterpret_cast<Server*>(se);
     const char* hostname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
     bool strict_sni = server->_options.ssl_options().strict_sni;
     if (hostname == NULL) {

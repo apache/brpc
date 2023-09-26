@@ -660,7 +660,7 @@ friend class Controller;
     void FreeSSLContexts();
 
     static int SSLSwitchCTXByHostname(struct ssl_st* ssl,
-                                      int* al, Server* server);
+                                      int* al, void* se);
 
     static bool AddCertMapping(CertMaps& bg, const SSLContext& ssl_ctx);
     static bool RemoveCertMapping(CertMaps& bg, const SSLContext& ssl_ctx);

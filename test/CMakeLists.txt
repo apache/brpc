@@ -15,7 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-find_package(Gperftools)
+find_path(GPERFTOOLS_INCLUDE_DIR NAMES gperftools/heap-profiler.h PATHS /home/gperftools/src)
+find_library(GPERFTOOLS_LIBRARIES NAMES tcmalloc_and_profiler PATHS /home/gperftools/build)
+include_directories(${GPERFTOOLS_INCLUDE_DIR})
+
 include_directories(${GPERFTOOLS_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
@@ -188,6 +191,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
                     "-Wl,-U,_bthread_key_create")
 endif()
 
+message("---- ${DYNAMIC_LIB}")
 add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
 add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB)

@@ -37,9 +37,40 @@
 #include "butil/logging.h"                  // CHECK, LOG
 #include "butil/fd_guard.h"                 // butil::fd_guard
 #include "butil/iobuf.h"
-
+static int BIO_fd_non_fatal_error(int err) {
+  if (
+#ifdef EWOULDBLOCK
+    err == EWOULDBLOCK ||
+#endif
+#ifdef WSAEWOULDBLOCK
+    err == WSAEWOULDBLOCK ||
+#endif
+#ifdef ENOTCONN
+    err == ENOTCONN ||
+#endif
+#ifdef EINTR
+    err == EINTR ||
+#endif
+#ifdef EAGAIN
+    err == EAGAIN ||
+#endif
+#ifdef EPROTO
+    err == EPROTO ||
+#endif
+#ifdef EINPROGRESS
+    err == EINPROGRESS ||
+#endif
+#ifdef EALREADY
+    err == EALREADY ||
+#endif
+    0) {
+    return 1;
+  }
+  return 0;
+}
 namespace butil {
 namespace iobuf {
+
 
 typedef ssize_t (*iov_function)(int fd, const struct iovec *vector,
                                    int count, off_t offset);

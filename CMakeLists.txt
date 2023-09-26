@@ -127,13 +127,13 @@ set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing
 macro(use_cxx11)
 if(CMAKE_VERSION VERSION_LESS "3.1.3")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
     endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
     endif()
 else()
-    set(CMAKE_CXX_STANDARD 11)
+    set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 endmacro(use_cxx11)
@@ -205,13 +205,18 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(OPENSSL_ROOT_DIR
-        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
-        )
-endif()
+#if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+#    set(OPENSSL_ROOT_DIR
+#        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
+#        )
+#endif()
 
-find_package(OpenSSL)
+#find_package(OpenSSL)
+
+set(OPENSSL_INCLUDE_DIR /home/boringssl/include)
+find_library(OPENSSL_CRYPTO_LIBRARY NAMES libcrypto.a HINTS /home/boringssl/build/crypto/)
+find_library(OPENSSL_SSL_LIBRARY NAMES libssl.a HINTS /home/boringssl/build/ssl/)
+message("----OPENSSL_CRYPTO_LIBRARY: ${OPENSSL_SSL_LIBRARY}")
 
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
@@ -241,6 +246,7 @@ if(WITH_RDMA)
     list(APPEND DYNAMIC_LIB ${RDMA_LIB})
 endif()
 
+message("----+++++ ${DYNAMIC_LIB}")
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
 if(WITH_GLOG)

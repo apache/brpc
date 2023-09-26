@@ -324,7 +324,7 @@ BRPC_INLINE int RSA_bits(const RSA *r) {
 
 #endif /* OPENSSL_VERSION_NUMBER < 0x10100000L */
 
-#if OPENSSL_VERSION_NUMBER < 0x0090801fL
+#if OPENSSL_VERSION_NUMBER < 0x0090801fL || defined (BORINGSSL_API_VERSION)
 BRPC_INLINE BIGNUM* get_rfc2409_prime_1024(BIGNUM* bn) {
     static const unsigned char RFC2409_PRIME_1024[] = {
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xC9,0x0F,0xDA,0xA2,
@@ -516,6 +516,6 @@ BRPC_INLINE int EVP_PKEY_base_id(const EVP_PKEY *pkey) {
     return EVP_PKEY_type(pkey->type);
 }
 
-#endif /* OPENSSL_VERSION_NUMBER < 0x0090801fL */
+#endif /* OPENSSL_VERSION_NUMBER < 0x0090801fL || BORINGSSL_API_VERSION */
 
 #endif /* BUTIL_SSL_COMPAT_H */

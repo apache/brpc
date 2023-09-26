@@ -40,9 +40,10 @@ if (NOT THRIFT_LIB)
     set(THRIFT_LIB "")
 endif()
 
-find_path(GPERFTOOLS_INCLUDE_DIR NAMES gperftools/heap-profiler.h)
-find_library(GPERFTOOLS_LIBRARIES NAMES tcmalloc_and_profiler)
+find_path(GPERFTOOLS_INCLUDE_DIR NAMES gperftools/heap-profiler.h PATHS /home/gperftools/src)
+find_library(GPERFTOOLS_LIBRARIES NAMES tcmalloc_and_profiler PATHS /home/gperftools/build)
 include_directories(${GPERFTOOLS_INCLUDE_DIR})
+message("---- ${GPERFTOOLS_LIBRARIES}")
 
 find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
 if(LINK_SO)
@@ -87,13 +88,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_ENABLE_CPU_PROFILER")
 
 if(CMAKE_VERSION VERSION_LESS "3.1.3")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
     endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
     endif()
 else()
-    set(CMAKE_CXX_STANDARD 11)
+    set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 
@@ -104,13 +105,19 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 include_directories(${LEVELDB_INCLUDE_PATH})
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(OPENSSL_ROOT_DIR
-        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
-        )
-endif()
+#if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+#    set(OPENSSL_ROOT_DIR
+#        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
+#        )
+#endif()
 
-find_package(OpenSSL)
+#find_package(OpenSSL)
+
+
+set(OPENSSL_INCLUDE_DIR /home/boringssl/include)
+find_library(OPENSSL_CRYPTO_LIBRARY NAMES libcrypto.a PATHS /home/boringssl/build/crypto)
+find_library(OPENSSL_SSL_LIBRARY NAMES libssl.a PATHS /home/boringssl/build/ssl)
+
 include_directories(${OPENSSL_INCLUDE_DIR})
 
 
