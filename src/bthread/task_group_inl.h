@@ -98,21 +98,21 @@ inline void TaskGroup::push_rq(bthread_t tid) {
 }
 
 inline bool TaskGroup::pop_resume_task(bthread_t* tid) {
-    int tmp_cnt = _resume_rq_cnt->load(std::memory_order_relaxed);
-    if (tmp_cnt>0 && _resume_rq_cnt->compare_exchange_strong(tmp_cnt, tmp_cnt-1)){
-        if(_resume_rq->try_dequeue(_resume_consumer_token, *tid)){
+    int tmp_cnt = _resume_rq_cnt.load(std::memory_order_relaxed);
+    if (tmp_cnt > 0 && _resume_rq_cnt.compare_exchange_strong(tmp_cnt, tmp_cnt-1)){
+        if(_resume_rq.try_dequeue(_resume_consumer_token, *tid)){
             return true;
         }
         else {
-            (*_resume_rq_cnt) ++;
+            _resume_rq_cnt++;
         }
     }
     return false;
 }
 
 inline bool TaskGroup::push_resume_task(bthread_t tid){
-    if(_resume_rq->enqueue(tid)){
-        (*_resume_rq_cnt) ++;
+    if(_resume_rq.enqueue(tid)){
+        _resume_rq_cnt++;
         return true;
     }
     return false;

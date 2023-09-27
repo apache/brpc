@@ -362,6 +362,10 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
         TaskGroup* g = _groups[s % ngroup];
         // g is possibly NULL because of concurrent _destroy_group
         if (g) {
+            if (g->pop_resume_task(tid)) {
+                stolen = true;
+                break;
+            }
             if (g->_rq.steal(tid)) {
                 stolen = true;
                 break;
@@ -432,7 +436,7 @@ void TaskControl::print_resume_q_sizes(std::ostream &os) {
         // ngroup > _ngroup: nums[_ngroup ... ngroup-1] = 0
         // ngroup < _ngroup: just ignore _groups[_ngroup ... ngroup-1]
         for (size_t i = 0; i < ngroup; ++i) {
-            nums[i] = (_groups[i] ? _groups[i]->_resume_rq_cnt->load(std::memory_order_relaxed) : 0);
+            nums[i] = (_groups[i] ? _groups[i]->_resume_rq_cnt.load(std::memory_order_relaxed) : 0);
         }
     }
     for (size_t i = 0; i < ngroup; ++i) {
