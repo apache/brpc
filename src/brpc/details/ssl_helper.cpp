@@ -17,6 +17,7 @@
 
 
 
+#include <openssl/bio.h>
 #ifndef USE_MESALINK
 
 #include <sys/socket.h>                // recv
@@ -212,7 +213,7 @@ void ExtractHostnames(X509* x, std::vector<std::string>* hostnames) {
     STACK_OF(GENERAL_NAME)* names = (STACK_OF(GENERAL_NAME)*)
             X509_get_ext_d2i(x, NID_subject_alt_name, NULL, NULL);
     if (names) {
-        for (size_t i = 0; i < sk_GENERAL_NAME_num(names); i++) {
+        for (size_t i = 0; i < static_cast<size_t>(sk_GENERAL_NAME_num(names)); i++) {
             char* str = NULL;
             GENERAL_NAME* name = sk_GENERAL_NAME_value(names, i);
             if (name->type == GEN_DNS) {
@@ -590,25 +591,25 @@ SSL* CreateSSLSession(SSL_CTX* ctx, SocketId id, int fd, bool server_mode) {
     return ssl;
 }
 
-// void AddBIOBuffer(SSL* ssl, int fd, int bufsize) {
-//     BIO* rbio = BIO_new(BIO_f_buffer());
-//     BIO_set_buffer_size(rbio, bufsize);
-//     BIO* rfd = BIO_new(BIO_s_fd());
-//     BIO_set_fd(rfd, fd, 0);
-//     rbio  = BIO_push(rbio, rfd);
-
-//     BIO* wbio = BIO_new(BIO_f_buffer());
-//     BIO_set_buffer_size(wbio, bufsize);
-//     BIO* wfd = BIO_new(BIO_s_fd());
-//     BIO_set_fd(wfd, fd, 0);
-//     wbio = BIO_push(wbio, wfd);
-//     SSL_set_bio(ssl, rbio, wbio);
-// }
-
 void AddBIOBuffer(SSL* ssl, int fd, int bufsize) {
-    BIO *bio = BIO_new_socket(fd, BIO_CLOSE);
-    SSL_set_bio(ssl, bio, bio);
+    BIO* rbio = BIO_new(BIO_s_mem());
+    //BIO_set_buffer_size(rbio, bufsize);
+    BIO* rfd = BIO_new(BIO_s_fd());
+    BIO_set_fd(rfd, fd, 0);
+    rbio  = BIO_push(rbio, rfd);
+
+    BIO* wbio = BIO_new(BIO_s_mem());
+   // BIO_set_buffer_size(wbio, bufsize);
+    BIO* wfd = BIO_new(BIO_s_fd());
+    BIO_set_fd(wfd, fd, 0);
+    wbio = BIO_push(wbio, wfd);
+    SSL_set_bio(ssl, rbio, wbio);
 }
+
+// void AddBIOBuffer(SSL* ssl, int fd, int bufsize) {
+//     BIO *bio = BIO_new_socket(fd, BIO_CLOSE);
+//     SSL_set_bio(ssl, bio, bio);
+// }
 
 SSLState DetectSSLState(int fd, int* error_code) {
     // Peek the first few bytes inside socket to detect whether

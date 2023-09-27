@@ -191,7 +191,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
                     "-Wl,-U,_bthread_key_create")
 endif()
 
-message("---- ${DYNAMIC_LIB}")
 add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
 add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB)
