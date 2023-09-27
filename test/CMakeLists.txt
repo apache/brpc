@@ -15,10 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-find_path(GPERFTOOLS_INCLUDE_DIR NAMES gperftools/heap-profiler.h PATHS /home/gperftools/src)
-find_library(GPERFTOOLS_LIBRARIES NAMES tcmalloc_and_profiler PATHS /home/gperftools/build)
-include_directories(${GPERFTOOLS_INCLUDE_DIR})
-
+find_package(Gperftools)
 include_directories(${GPERFTOOLS_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 

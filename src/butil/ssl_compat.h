@@ -519,7 +519,7 @@ BRPC_INLINE int EVP_PKEY_base_id(const EVP_PKEY *pkey) {
 #endif /* OPENSSL_VERSION_NUMBER < 0x0090801fL || OPENSSL_IS_BORINGSSL */
 
 #if defined(OPENSSL_IS_BORINGSSL)
-[[maybe_unused]] static int BIO_fd_non_fatal_error(int err) {
+BRPC_INLINE int BIO_fd_non_fatal_error(int err) {
     if (
 #ifdef EWOULDBLOCK
         err == EWOULDBLOCK ||

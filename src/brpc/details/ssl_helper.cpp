@@ -592,7 +592,7 @@ SSL* CreateSSLSession(SSL_CTX* ctx, SocketId id, int fd, bool server_mode) {
 }
 
 void AddBIOBuffer(SSL* ssl, int fd, int bufsize) {
-#if OPENSSL_IS_BORINGSSL
+#if defined(OPENSSL_IS_BORINGSSL)
     BIO *rbio = BIO_new(BIO_s_mem());
     BIO *wbio = BIO_new(BIO_s_mem());
 #else
