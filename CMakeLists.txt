@@ -20,6 +20,7 @@ project(brpc C CXX)
 
 option(WITH_GLOG "With glog" OFF)
 option(WITH_MESALINK "With MesaLink" OFF)
+option(WITH_BORINGSSL "With BoringSSL" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
@@ -205,24 +206,24 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
-#if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-#    set(OPENSSL_ROOT_DIR
-#        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
-#        )
-#endif()
+if(WITH_BORINGSSL)
+    find_package(BoringSSL)
+    include_directories(${BORINGSSL_INCLUDE_DIR})
+else()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(OPENSSL_ROOT_DIR
+            "/usr/local/opt/openssl" # Homebrew installed OpenSSL
+        )
+    endif()
 
-#find_package(OpenSSL)
-
-set(OPENSSL_INCLUDE_DIR /home/boringssl/include)
-find_library(OPENSSL_CRYPTO_LIBRARY NAMES libcrypto.a HINTS /home/boringssl/build/crypto/)
-find_library(OPENSSL_SSL_LIBRARY NAMES libssl.a HINTS /home/boringssl/build/ssl/)
-message("----OPENSSL_CRYPTO_LIBRARY: ${OPENSSL_SSL_LIBRARY}")
+    find_package(OpenSSL)
+    include_directories(${OPENSSL_INCLUDE_DIR})
+endif()
 
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
         ${PROTOBUF_INCLUDE_DIRS}
         ${LEVELDB_INCLUDE_PATH}
-        ${OPENSSL_INCLUDE_DIR}
         )
 
 set(DYNAMIC_LIB
@@ -232,21 +233,27 @@ set(DYNAMIC_LIB
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
-    ${OPENSSL_CRYPTO_LIBRARY}
     dl
     z)
 
-if(WITH_MESALINK)
-    list(APPEND DYNAMIC_LIB ${MESALINK_LIB})
+if(WITH_BORINGSSL)
+    list(APPEND DYNAMIC_LIB ${BORINGSSL_SSL_LIBRARY})
+    list(APPEND DYNAMIC_LIB ${BORINGSSL_CRYPTO_LIBRARY})
 else()
-    list(APPEND DYNAMIC_LIB ${OPENSSL_SSL_LIBRARY})
+    list(APPEND DYNAMIC_LIB ${OPENSSL_CRYPTO_LIBRARY})
+
+    if(WITH_MESALINK)
+        list(APPEND DYNAMIC_LIB ${MESALINK_LIB})
+    else()
+        list(APPEND DYNAMIC_LIB ${OPENSSL_SSL_LIBRARY})
+    endif()
 endif()
 
 if(WITH_RDMA)
     list(APPEND DYNAMIC_LIB ${RDMA_LIB})
 endif()
 
-message("----+++++ ${DYNAMIC_LIB}")
+
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
 if(WITH_GLOG)
