@@ -197,9 +197,9 @@ TaskGroup::TaskGroup(TaskControl* c)
 #ifndef NDEBUG
     , _sched_recursive_guard(0)
 #endif
-    , _resume_rq_cnt(ResumeRunQueue::Instance().first)
-    , _resume_rq(ResumeRunQueue::Instance().second)
-    , _resume_consumer_token(*_resume_rq)
+    , _resume_rq_cnt(0)
+    , _resume_rq(1000)
+    , _resume_consumer_token(_resume_rq)
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
