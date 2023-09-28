@@ -95,7 +95,9 @@ jobs:
       run: |
            export CC=gcc && export CXX=g++
            bazel build -j 12 -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
-
+    - name: compile-with-boringssl
+      run: |
+          bazel build -j 12 -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true --copt -DHAVE_ZLIB=1 //...
 
   clang-compile-with-make:
     runs-on: ubuntu-20.04
@@ -178,6 +180,9 @@ jobs:
       run: |
            export CC=clang && export CXX=clang++
            bazel build -j ${{env.proc_num}} -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
+    - name: compile-with-boringssl
+      run: |
+        bazel build -j ${{env.proc_num}} -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true  --copt -DHAVE_ZLIB=1 //...
 
   clang-unittest:
     runs-on: ubuntu-20.04
