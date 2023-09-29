@@ -630,7 +630,19 @@ void MakeRawHttpResponse(butil::IOBuf* response,
     os << "HTTP/" << h->major_version() << '.'
        << h->minor_version() << ' ' << h->status_code()
        << ' ' << h->reason_phrase() << BRPC_CRLF;
-    if (content) {
+    bool is_invalid_content = h->status_code() < HTTP_STATUS_OK ||
+                      h->status_code() == HTTP_STATUS_NO_CONTENT;
+    if (is_invalid_content) {
+        // https://www.rfc-editor.org/rfc/rfc7230#section-3.3.1
+        // A server MUST NOT send a Transfer-Encoding header field in any
+        // response with a status code of 1xx (Informational) or 204 (No
+        // Content).
+        h->RemoveHeader("Transfer-Encoding");
+        // https://www.rfc-editor.org/rfc/rfc7230#section-3.3.2
+        // A server MUST NOT send a Content-Length header field in any response
+        // with a status code of 1xx (Informational) or 204 (No Content).
+        h->RemoveHeader("Content-Length");
+    } else if (content) {
         h->RemoveHeader("Content-Length");
         // Never use "Content-Length" set by user.
         // Always set Content-Length since lighttpd requires the header to be
@@ -647,7 +659,7 @@ void MakeRawHttpResponse(butil::IOBuf* response,
     }
     os << BRPC_CRLF;  // CRLF before content
     os.move_to(*response);
-    if (content) {
+    if (!is_invalid_content && content) {
         response->append(butil::IOBuf::Movable(*content));
     }
 }
