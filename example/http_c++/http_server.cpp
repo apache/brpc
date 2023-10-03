@@ -151,6 +151,56 @@ public:
     }
 };
 
+class HttpSSEServiceImpl : public HttpSSEService {
+public:
+    HttpSSEServiceImpl() {}
+    virtual ~HttpSSEServiceImpl() {}
+
+    struct PredictJobArgs {
+        std::vector<uint32_t> input_ids;
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa;
+    };
+
+    static void* Predict(void* raw_args) {
+        std::unique_ptr<PredictJobArgs> args(static_cast<PredictJobArgs*>(raw_args));
+        if (args->pa == NULL) {
+            LOG(ERROR) << "ProgressiveAttachment is NULL";
+            return NULL;
+        }
+        for (int i = 0; i < 100; ++i) {
+            char buf[48];
+            int len = snprintf(buf, sizeof(buf), "event: foo\ndata: Hello, world! (%d)\n\n", i);
+            args->pa->Write(buf, len);
+
+            // sleep a while to send another part.
+            bthread_usleep(10000 * 10);
+        }
+        return NULL;
+    }
+
+    void stream(google::protobuf::RpcController* cntl_base,
+                const HttpRequest*,
+                HttpResponse*,
+                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+
+        // Send the first SSE response
+        cntl->http_response().set_content_type("text/event-stream");
+        cntl->http_response().set_status_code(200);
+        cntl->http_response().SetHeader("Connection", "keep-alive");
+        cntl->http_response().SetHeader("Cache-Control", "no-cache");
+
+        // Send the generated words with progressiveAttachment
+        std::unique_ptr<PredictJobArgs> args(new PredictJobArgs);
+        args->pa = cntl->CreateProgressiveAttachment();
+        args->input_ids = {101, 102};
+        bthread_t th;
+        bthread_start_background(&th, NULL, Predict, args.release());
+    }
+};
+
 }  // namespace example
 
 int main(int argc, char* argv[]) {
@@ -163,6 +213,7 @@ int main(int argc, char* argv[]) {
     example::HttpServiceImpl http_svc;
     example::FileServiceImpl file_svc;
     example::QueueServiceImpl queue_svc;
+    example::HttpSSEServiceImpl sse_svc;
     
     // Add services into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
@@ -183,6 +234,11 @@ int main(int argc, char* argv[]) {
                           "/v1/queue/stop    => stop,"
                           "/v1/queue/stats/* => getstats") != 0) {
         LOG(ERROR) << "Fail to add queue_svc";
+        return -1;
+    }
+    if (server.AddService(&sse_svc,
+                          brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
+        LOG(ERROR) << "Fail to add sse_svc";
         return -1;
     }
 
