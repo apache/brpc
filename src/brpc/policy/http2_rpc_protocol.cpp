@@ -1281,8 +1281,7 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                    strcmp(name + 1, /*c*/"ontent-type") == 0) {
             h.set_content_type(pair.value);
         } else {
-            // TODO: AppendHeader?
-            h.SetHeader(pair.name, pair.value);
+            h.AppendHeader(pair.name, pair.value);
         }
 
         if (FLAGS_http_verbose) {

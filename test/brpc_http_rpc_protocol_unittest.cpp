@@ -1541,7 +1541,7 @@ TEST_F(HttpTest, http2_header_after_data) {
     ASSERT_EQ(res_header.content_type(), "application/proto");
     // Check overlapped header is overwritten by the latter.
     const std::string* user_defined1 = res_header.GetHeader("user-defined1");
-    ASSERT_EQ(*user_defined1, "overwrite-a");
+    ASSERT_EQ(*user_defined1, "a,overwrite-a");
     const std::string* user_defined2 = res_header.GetHeader("user-defined2");
     ASSERT_EQ(*user_defined2, "b");
 }
