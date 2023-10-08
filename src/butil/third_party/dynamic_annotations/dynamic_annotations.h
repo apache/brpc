@@ -498,7 +498,7 @@ void DYNAMIC_ANNOTATIONS_NAME(AnnotateBenignRace)(
     const char *file, int line, const volatile void *mem,
     const char *description) DYNAMIC_ANNOTATIONS_ATTRIBUTE_WEAK;
 void DYNAMIC_ANNOTATIONS_NAME(AnnotateBenignRaceSized)(
-    const char *file, int line, const volatile void *mem, long size,
+    const char *file, int line, const volatile void *mem, size_t size,
     const char *description) DYNAMIC_ANNOTATIONS_ATTRIBUTE_WEAK;
 void DYNAMIC_ANNOTATIONS_NAME(AnnotateMutexIsUsedAsCondVar)(
     const char *file, int line,
