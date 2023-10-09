@@ -219,6 +219,15 @@ void SendRpcResponse(int64_t correlation_id,
         }
     }
 
+    if (cntl->has_response_user_fields() &&
+        !cntl->response_user_fields()->empty()) {
+        ::google::protobuf::Map<std::string, std::string>& user_fields
+            = *meta.mutable_user_fields();
+        user_fields.insert(cntl->response_user_fields()->begin(),
+                           cntl->response_user_fields()->end());
+
+    }
+
     butil::IOBuf res_buf;
     SerializeRpcHeaderAndMeta(&res_buf, meta, res_size + attached_size);
     if (append_body) {
@@ -374,6 +383,12 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
     if (meta.has_stream_settings()) {
         accessor.set_remote_stream_settings(meta.release_stream_settings());
+    }
+
+    if (!meta.user_fields().empty()) {
+        for (const auto& it : meta.user_fields()) {
+            (*cntl->request_user_fields())[it.first] = it.second;
+        }
     }
 
     // Tag the bthread with this server's key for thread_local_data().
@@ -591,6 +606,13 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         accessor.set_remote_stream_settings(
                 new StreamSettings(meta.stream_settings()));
     }
+
+    if (!meta.user_fields().empty()) {
+        for (const auto& it : meta.user_fields()) {
+            (*cntl->response_user_fields())[it.first] = it.second;
+        }
+    }
+
     Span* span = accessor.span();
     if (span) {
         span->set_base_real_us(msg->base_real_us());
@@ -688,6 +710,13 @@ void PackRpcRequest(butil::IOBuf* req_buf,
         }
         Stream *s = (Stream*)ptr->conn();
         s->FillSettings(meta.mutable_stream_settings());
+    }
+
+    if (cntl->has_request_user_fields() && !cntl->request_user_fields()->empty()) {
+        ::google::protobuf::Map<std::string, std::string>& user_fields
+            = *meta.mutable_user_fields();
+        user_fields.insert(cntl->request_user_fields()->begin(),
+                           cntl->request_user_fields()->end());
     }
 
     // Don't use res->ByteSize() since it may be compressed
