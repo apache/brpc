@@ -29,7 +29,6 @@
 #include "bthread/unstable.h"
 #include "bvar/bvar.h"
 #include "brpc/socket.h"
-#include "brpc/socket_map.h"
 #include "brpc/channel.h"
 #include "brpc/load_balancer.h"
 #include "brpc/closure_guard.h"
@@ -272,6 +271,7 @@ void Controller::ResetPods() {
     _sender = NULL;
     _request_code = 0;
     _single_server_id = INVALID_SOCKET_ID;
+    _tmp_single_server_id = INVALID_SOCKET_ID;
     _unfinished_call = NULL;
     _stream_creator = NULL;
     _accessed = NULL;
@@ -592,6 +592,12 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         response_attachment().clear();
         CHECK_EQ(0, bthread_id_unlock(info.id));
         return;
+    }
+
+    if (saved_error == EMOVED) {
+        //todo set real serverid....
+        _current_call.OnComplete(this, _error_code, info.responded, false);
+        return IssueRPC(butil::gettimeofday_us());
     }
 
     if ((!_error_code && _retry_policy == NULL) ||
@@ -1045,14 +1051,23 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
-        const int rc = Socket::Address(_single_server_id, &tmp_sock);
+        int rc;
+        SocketId peer_id;
+        if (_single_server_id != INVALID_SOCKET_ID) {
+            rc = Socket::Address(_single_server_id, &tmp_sock);
+            peer_id = _single_server_id;
+        } else {
+            rc = Socket::Address(_tmp_single_server_id, &tmp_sock);
+            peer_id = _tmp_single_server_id;
+            _tmp_single_server_id = INVALID_SOCKET_ID;
+        }
         if (rc != 0 || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
             SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
                       endpoint2str(_remote_side).c_str(), _single_server_id);
             tmp_sock.reset();  // Release ref ASAP
             return HandleSendFailed();
         }
-        _current_call.peer_id = _single_server_id;
+        _current_call.peer_id = peer_id;
     } else {
         LoadBalancer::SelectIn sel_in =
             { start_realtime_us, true,

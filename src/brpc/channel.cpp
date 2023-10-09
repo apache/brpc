@@ -24,7 +24,6 @@
 #include "butil/third_party/murmurhash3/murmurhash3.h"
 #include "butil/strings/string_util.h"
 #include "bthread/unstable.h"                        // bthread_timer_add
-#include "brpc/socket_map.h"                         // SocketMapInsert
 #include "brpc/compress.h"
 #include "brpc/global.h"
 #include "brpc/span.h"

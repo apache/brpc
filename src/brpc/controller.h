@@ -43,6 +43,7 @@
 #include "brpc/callback.h"
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
+#include "brpc/socket_map.h"
 #include "brpc/grpc.h"
 #include "brpc/kvmap.h"
 
@@ -579,6 +580,10 @@ public:
     // -1 means no deadline.
     int64_t deadline_us() const { return _deadline_us; }
 
+    void set_tmp_single_socket_id (const SocketId& id) {
+        _tmp_single_server_id = id;
+    }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -694,7 +699,7 @@ private:
 
     void HandleStreamConnection(Socket *host_socket);
 
-    bool SingleServer() const { return _single_server_id != INVALID_SOCKET_ID; }
+    bool SingleServer() const { return _single_server_id != INVALID_SOCKET_ID || _tmp_single_server_id != INVALID_SOCKET_ID; }
 
     void SubmitSpan();
 
@@ -789,6 +794,7 @@ private:
     RPCSender* _sender;
     uint64_t _request_code;
     SocketId _single_server_id;
+    SocketId _tmp_single_server_id;
     butil::intrusive_ptr<SharedLoadBalancer> _lb;
 
     // for passing parameters to created bthread, don't modify it otherwhere.
