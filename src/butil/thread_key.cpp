@@ -38,7 +38,7 @@ pthread_mutex_t g_thread_key_mutex = PTHREAD_MUTEX_INITIALIZER;
 static size_t g_id = 0;
 static std::deque<size_t>* g_free_ids = NULL;
 static std::vector<ThreadKeyInfo>* g_thread_keys = NULL;
-static __thread std::vector<ThreadKeyD>* tls_data = NULL;
+static __thread std::vector<ThreadKeyTLS>* g_tls_data = NULL;
 
 ThreadKey& ThreadKey::operator=(ThreadKey&& other) noexcept {
     if (this == &other) {
@@ -56,7 +56,7 @@ bool ThreadKey::Valid() const {
 }
 
 static void DestroyTlsData() {
-    if (!tls_data) {
+    if (!g_tls_data) {
         return;
     }
     std::vector<ThreadKeyInfo> dummy_keys;
@@ -66,13 +66,13 @@ static void DestroyTlsData() {
             dummy_keys.insert(dummy_keys.end(), g_thread_keys->begin(), g_thread_keys->end());
         }
     }
-    for (size_t i = 0; i < tls_data->size(); ++i) {
+    for (size_t i = 0; i < g_tls_data->size(); ++i) {
         if (!KEY_UNUSED(dummy_keys[i].seq) && dummy_keys[i].dtor) {
-            dummy_keys[i].dtor((*tls_data)[i].data);
+            dummy_keys[i].dtor((*g_tls_data)[i].data);
         }
     }
-    delete tls_data;
-    tls_data = NULL;
+    delete g_tls_data;
+    g_tls_data = NULL;
 }
 
 static std::deque<size_t>* GetGlobalFreeIds() {
@@ -156,22 +156,22 @@ int thread_setspecific(ThreadKey& thread_key, void* data) {
     }
     size_t id = thread_key._id;
     size_t seq = thread_key._seq;
-    if (BAIDU_UNLIKELY(!tls_data)) {
-        tls_data = new (std::nothrow) std::vector<ThreadKeyD>;
-        if (BAIDU_UNLIKELY(!tls_data)) {
+    if (BAIDU_UNLIKELY(!g_tls_data)) {
+        g_tls_data = new (std::nothrow) std::vector<ThreadKeyTLS>;
+        if (BAIDU_UNLIKELY(!g_tls_data)) {
             return ENOMEM;
         }
-        tls_data->reserve(THREAD_KEY_RESERVE);
+        g_tls_data->reserve(THREAD_KEY_RESERVE);
         // Register the destructor of tls_data in this thread.
         butil::thread_atexit(DestroyTlsData);
     }
 
-    if (id >= tls_data->size()) {
-        tls_data->resize(id + 1);
+    if (id >= g_tls_data->size()) {
+        g_tls_data->resize(id + 1);
     }
 
-    (*tls_data)[id].seq  = seq;
-    (*tls_data)[id].data = data;
+    (*g_tls_data)[id].seq  = seq;
+    (*g_tls_data)[id].data = data;
 
     return 0;
 }
@@ -182,13 +182,13 @@ void* thread_getspecific(ThreadKey& thread_key) {
     }
     size_t id = thread_key._id;
     size_t seq = thread_key._seq;
-    if (BAIDU_UNLIKELY(!tls_data ||
-                       id >= tls_data->size() ||
-                       (*tls_data)[id].seq != seq)){
+    if (BAIDU_UNLIKELY(!g_tls_data ||
+                       id >= g_tls_data->size() ||
+                       (*g_tls_data)[id].seq != seq)){
         return NULL;
     }
 
-    return (*tls_data)[id].data;
+    return (*g_tls_data)[id].data;
 }
 
 } // namespace butil

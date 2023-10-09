@@ -75,8 +75,8 @@ struct ThreadKeyInfo {
     DtorFunction dtor; // Destruction routine.
 };
 
-struct ThreadKeyD {
-    ThreadKeyD() : seq(0), data(NULL) {}
+struct ThreadKeyTLS {
+    ThreadKeyTLS() : seq(0), data(NULL) {}
 
     // Sequence number form ThreadKey,
     // set in `thread_setspecific',
