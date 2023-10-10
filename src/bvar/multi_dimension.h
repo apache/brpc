@@ -88,6 +88,9 @@ public:
     // Remove stat so those not count and dump
     void delete_stats(const key_type& labels_value);
 
+    // Remove all stat
+    void clear_stats();
+
     // True if bvar pointer exists
     bool has_stats(const key_type& labels_value);
 
