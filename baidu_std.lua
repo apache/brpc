@@ -84,6 +84,13 @@ local proto_f_body_size  = Field.new(plugin_info.name .. ".body_size")
 local proto_f_meta_size  = Field.new(plugin_info.name .. ".meta_size")
 
 ----------------------------------------
+-- protobuf dissector
+-- Note:
+--   options.proto, baidu_rpc_meta.proto and streaming_rpc_meta.proto
+--   should be put in Wireshark Protobuf Search Paths.
+local protobuf_dissector = Dissector.get("protobuf")
+
+----------------------------------------
 -- declare functions
 
 local check_length  = function() end
@@ -132,7 +139,6 @@ local function heur_dissect_proto(tvbuf, pktinfo, root)
         return false
     end
 
-    LM_DBG("dissect brpc...")
     proto.dissector(tvbuf, pktinfo, root)
 
     pktinfo.conversation = proto
@@ -190,10 +196,18 @@ dissect_proto = function(tvbuf, pktinfo, root, offset)
     tree:add(pf_body_size, tvbuf:range(offset+4, 4))
     tree:add(pf_meta_size, tvbuf:range(offset+8, 4))
 
-    local cols_info = tostring(pktinfo.cols.info)
-    if string.find(cols_info, MAGIC_CODE_PRPC) == nil and string.find(cols_info, MAGIC_CODE_STRM) then
-      pktinfo.cols.info:set(proto_f_magic():string())
+    local tvb_meta = tvbuf:range(offset + PROTO_HEADER_LENGTH, proto_f_meta_size().value):tvb()
+    if     proto_f_magic_code().value == MAGIC_CODE_PRPC then
+        -- dissect rpc meta fields
+        pktinfo.private["pb_msg_type"] = "message,brpc.policy.RpcMeta"
+        protobuf_dissector:call(tvb_meta, pktinfo, tree)
+    elseif proto_f_magic_code().value == MAGIC_CODE_STRM then
+        -- dissect streaming meta fields
+        pktinfo.private["pb_msg_type"] = "message,brpc.StreamFrameMeta"
+        protobuf_dissector:call(tvb_meta, pktinfo, tree)
     end
+
+    -- body fields are business related, customized here
 
     return len
 end
