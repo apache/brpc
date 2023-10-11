@@ -210,9 +210,21 @@ void SocketMap::PrintSocketMap(std::ostream& os, void* arg) {
     static_cast<SocketMap*>(arg)->Print(os);
 }
 
+void SocketMap::ShowSocketMapInBvarIfNeed() {
+    if (FLAGS_show_socketmap_in_vars &&
+        !_exposed_in_bvar.exchange(true, butil::memory_order_release)) {
+        char namebuf[32];
+        int len = snprintf(namebuf, sizeof(namebuf), "rpc_socketmap_%p", this);
+        _this_map_bvar = new bvar::PassiveStatus<std::string>(
+            butil::StringPiece(namebuf, len), PrintSocketMap, this);
+    }
+}
+
 int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
                       const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                       bool use_rdma) {
+    ShowSocketMapInBvarIfNeed();
+
     std::unique_lock<butil::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(key);
     if (sc) {
@@ -251,18 +263,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     SingleConnection new_sc = { 1, ptr.release(), 0 };
     _map[key] = new_sc;
     *id = tmp_id;
-    bool need_to_create_bvar = false;
-    if (FLAGS_show_socketmap_in_vars && !_exposed_in_bvar) {
-        _exposed_in_bvar = true;
-        need_to_create_bvar = true;
-    }
     mu.unlock();
-    if (need_to_create_bvar) {
-        char namebuf[32];
-        int len = snprintf(namebuf, sizeof(namebuf), "rpc_socketmap_%p", this);
-        _this_map_bvar = new bvar::PassiveStatus<std::string>(
-            butil::StringPiece(namebuf, len), PrintSocketMap, this);
-    }
     return 0;
 }
 
@@ -273,6 +274,8 @@ void SocketMap::Remove(const SocketMapKey& key, SocketId expected_id) {
 void SocketMap::RemoveInternal(const SocketMapKey& key,
                                SocketId expected_id,
                                bool remove_orphan) {
+    ShowSocketMapInBvarIfNeed();
+
     std::unique_lock<butil::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(key);
     if (!sc) {
@@ -293,18 +296,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
         } else {
             Socket* const s = sc->socket;
             _map.erase(key);
-            bool need_to_create_bvar = false;
-            if (FLAGS_show_socketmap_in_vars && !_exposed_in_bvar) {
-                _exposed_in_bvar = true;
-                need_to_create_bvar = true;
-            }
             mu.unlock();
-            if (need_to_create_bvar) {
-                char namebuf[32];
-                int len = snprintf(namebuf, sizeof(namebuf), "rpc_socketmap_%p", this);
-                _this_map_bvar = new bvar::PassiveStatus<std::string>(
-                    butil::StringPiece(namebuf, len), PrintSocketMap, this);
-            }
             s->ReleaseAdditionalReference(); // release extra ref
             s->SetHCRelatedRefReleased(); // set released status to cancel health checking
             SocketUniquePtr ptr(s);  // Dereference
