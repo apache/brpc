@@ -83,6 +83,9 @@ local proto_f_magic_code = Field.new(plugin_info.name .. ".magic")
 local proto_f_body_size  = Field.new(plugin_info.name .. ".body_size")
 local proto_f_meta_size  = Field.new(plugin_info.name .. ".meta_size")
 
+local proto_f_protobuf_field_name  = Field.new("protobuf.field.name")
+local proto_f_protobuf_field_value = Field.new("protobuf.field.value")
+
 ----------------------------------------
 -- protobuf dissector
 -- Note:
@@ -148,6 +151,18 @@ end
 proto:register_heuristic("tcp", heur_dissect_proto)
 
 --------------------------------------------------------------------------------
+
+local correlation_method_map = {}
+
+local store_method = function(correlation_id, method)
+    -- TODO: pop items
+    correlation_method_map[correlation_id] = method
+end
+
+local load_method = function(correlation_id)
+    return correlation_method_map[correlation_id]
+end
+
 -- check packet length, return length of packet if valid
 check_length = function(tvbuf, offset)
     local msglen = tvbuf:len() - offset
@@ -196,11 +211,49 @@ dissect_proto = function(tvbuf, pktinfo, root, offset)
     tree:add(pf_body_size, tvbuf:range(offset+4, 4))
     tree:add(pf_meta_size, tvbuf:range(offset+8, 4))
 
-    local tvb_meta = tvbuf:range(offset + PROTO_HEADER_LENGTH, proto_f_meta_size().value):tvb()
+    local meta_size = proto_f_meta_size().value
+    local body_size = proto_f_body_size().value
+    local tvb_meta = tvbuf:range(offset + PROTO_HEADER_LENGTH, meta_size):tvb()
     if     proto_f_magic_code().value == MAGIC_CODE_PRPC then
         -- dissect rpc meta fields
         pktinfo.private["pb_msg_type"] = "message,brpc.policy.RpcMeta"
         protobuf_dissector:call(tvb_meta, pktinfo, tree)
+
+        local direction, method
+
+        local service_name, method_name, correlation_id
+
+        -- https://ask.wireshark.org/question/31800/protobuf-dissector-with-nested-structures/?answer=31924#post-id-31924
+        local protobuf_field_names  = { proto_f_protobuf_field_name() }
+        local protobuf_field_values = { proto_f_protobuf_field_value() }
+        for k, v in pairs(protobuf_field_names) do
+            if     v.value == "request" then
+                direction = "request"
+            elseif v.value == "response" then
+                direction = "response"
+            elseif v.value == "service_name" then
+                service_name = protobuf_field_values[k].range:string(ENC_UTF8)
+            elseif v.value == "method_name" then
+                method_name = protobuf_field_values[k].range:string(ENC_UTF8)
+            elseif v.value == "correlation_id" then
+                correlation_id = protobuf_field_values[k].range:uint64()
+            end
+        end
+
+        if     direction == "request" then
+            method = service_name .. "/" .. method_name
+            -- NOTE: convert uint64 to string to be used as key of table
+            store_method(tostring(correlation_id), method)
+        elseif direction == "response" then
+            method = load_method(tostring(correlation_id))
+        end
+
+        if method ~= nil then
+            -- dissect rpc body
+            local tvb_body = tvbuf:range(offset + PROTO_HEADER_LENGTH + meta_size, body_size - meta_size):tvb()
+            pktinfo.private["pb_msg_type"] = "application/grpc,/" .. method .. "," .. direction
+            protobuf_dissector:call(tvb_body, pktinfo, tree)
+        end
     elseif proto_f_magic_code().value == MAGIC_CODE_STRM then
         -- dissect streaming meta fields
         pktinfo.private["pb_msg_type"] = "message,brpc.StreamFrameMeta"
