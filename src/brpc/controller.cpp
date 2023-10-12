@@ -1392,6 +1392,12 @@ void WebEscape(const std::string& source, std::string* output) {
     }
 }
 
+std::string WebEscape(const std::string& source) {
+    std::string output;
+    WebEscape(source, &output);
+    return output;
+}
+
 void Controller::reset_sampled_request(SampledRequest* req) {
     delete _sampled_request;
     _sampled_request = req;

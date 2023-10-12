@@ -856,6 +856,7 @@ google::protobuf::Closure* DoNothing();
 
 // Convert non-web symbols to web equivalence.
 void WebEscape(const std::string& source, std::string* output);
+std::string WebEscape(const std::string& source);
 
 // True if Ctrl-C is ever pressed.
 bool IsAskedToQuit();

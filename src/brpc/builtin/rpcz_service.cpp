@@ -56,22 +56,6 @@ inline std::ostream& operator<<(std::ostream& os, const Hex& h) {
     return os;
 }
 
-static std::string EscapeXSS(const std::string& data) {
-    std::string buffer;
-    buffer.reserve(data.size());
-    for (size_t pos = 0; pos != data.size(); ++pos) {
-        switch (data[pos]) {
-            case '&':  buffer.append("&amp;");       break;
-            case '\"': buffer.append("&quot;");      break;
-            case '\'': buffer.append("&apos;");      break;
-            case '<':  buffer.append("&lt;");        break;
-            case '>':  buffer.append("&gt;");        break;
-            default:   buffer.append(&data[pos], 1); break;
-        }
-    }
-    return buffer;
-}
-
 void RpczService::enable(::google::protobuf::RpcController* cntl_base,
                          const ::brpc::RpczRequest*,
                          ::brpc::RpczResponse*,
@@ -210,7 +194,7 @@ static void PrintAnnotations(
         while (extractors[i]->PopAnnotation(cur_time, &anno_time, &a)) {
             PrintRealTime(os, anno_time);
             PrintElapse(os, anno_time, last_time);
-            os << ' ' << EscapeXSS(a);
+            os << ' ' << WebEscape(a);
             if (a.empty() || butil::back_char(a) != '\n') {
                 os << '\n';
             }
@@ -265,7 +249,7 @@ static void PrintClientSpan(
     if (abs_remote_side.ip == loopback_ip) {
         abs_remote_side.ip = butil::my_ip();
     }
-    os << " Requesting " << EscapeXSS(span.full_method_name()) << '@' << remote_side
+    os << " Requesting " << WebEscape(span.full_method_name()) << '@' << remote_side
        << ' ' << protocol_name << ' ' << LOG_ID_STR << '=';
     if (FLAGS_rpcz_hex_log_id) {
         os << Hex(span.log_id());
@@ -362,7 +346,7 @@ static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
             os, span.start_callback_real_us(),
             &last_time, extr, ARRAY_SIZE(extr))) {
         entered_user_method = true;
-        os << " Enter " << EscapeXSS(span.full_method_name()) << std::endl;
+        os << " Enter " << WebEscape(span.full_method_name()) << std::endl;
     }
 
     const int nclient = span.client_spans_size();
@@ -375,7 +359,7 @@ static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
             os, span.start_send_real_us(),
             &last_time, extr, ARRAY_SIZE(extr))) {
         if (entered_user_method) {
-            os << " Leave " << EscapeXSS(span.full_method_name()) << std::endl;
+            os << " Leave " << WebEscape(span.full_method_name()) << std::endl;
         } else {
             os << " Responding" << std::endl;
         }
@@ -681,7 +665,7 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
             } else {
                 os << span.log_id();
             }
-            os << ' ' << EscapeXSS(span.full_method_name()) << '(' << span.request_size()
+            os << ' ' << WebEscape(span.full_method_name()) << '(' << span.request_size()
                << ")=" << span.response_size();
             
             if (span.error_code() == 0) {
