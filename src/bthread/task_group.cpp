@@ -571,7 +571,7 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
 void TaskGroup::sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
-    
+
     if (!g->pop_resume_task(&next_tid)) {
         // Find next task to run, if none, switch to idle thread of the group.
 #ifndef BTHREAD_FAIR_WSQ
@@ -670,10 +670,15 @@ void TaskGroup::destroy_self() {
     }
 }
 
+bvar::Adder<int64_t> ready_to_run_skip_cnt;
+bvar::PerSecond<bvar::Adder<int64_t>> ready_to_run_skip_ps(
+        "ready_to_run_skip_signal_task_per_second",
+        &ready_to_run_skip_cnt, 2);
 void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
     push_rq(tid);
     if (nosignal || ParkingLot::_waiting_worker_count == 0) {
         ++_num_nosignal;
+        ready_to_run_skip_cnt << 1;
     } else {
         const int additional_signal = _num_nosignal;
         _num_nosignal = 0;
