@@ -116,17 +116,23 @@ bool TaskGroup::is_stopped(bthread_t tid) {
 }
 
 bool TaskGroup::wait_task(bthread_t* tid) {
+    int64_t poll_start_ms = butil::cpuwide_time_ms();
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
             return false;
         }
 
-        if (pop_resume_task(tid)) {
+        if (pop_resume_task(tid) || steal_task(tid)) {
             return true;
         }
 
-        _pl->wait(_last_pl_state);
+        // keep polling for some time before waiting on parking lot
+        if (butil::cpuwide_time_ms() - poll_start_ms > 100) {
+            _pl->wait(_last_pl_state);
+            poll_start_ms = butil::cpuwide_time_ms();
+        }
+
         if (steal_task(tid)) {
             return true;
         }
