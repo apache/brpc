@@ -29,6 +29,7 @@
 #include "butil/time.h"                  // butil::cpuwide_time_ns
 #include "bvar/bvar.h"                  // bvar::Adder
 #include "bthread/butex.h"              // butex_construct
+#include "butil/synchronization/condition_variable.h"
 
 namespace bthread {
 
@@ -168,7 +169,9 @@ public:
         : _head(NULL)
         , _versioned_ref(0)  // join() depends on even version
         , _high_priority_tasks(0)
-    {
+        , _pthread_started(false)
+        , _cond(&_mutex)
+        , _current_head(NULL) {
         _join_butex = butex_create_checked<butil::atomic<int> >();
         _join_butex->store(0, butil::memory_order_relaxed);
     }
@@ -203,6 +206,7 @@ private:
     void _on_recycle();
     int _execute(TaskNode* head, bool high_priority, int* niterated);
     static void* _execute_tasks(void* arg);
+    static void* _execute_tasks_pthread(void* arg);
 
     static inline uint32_t _version_of_id(uint64_t id) WARN_UNUSED_RESULT {
         return (uint32_t)(id >> 32);
@@ -234,6 +238,13 @@ private:
     clear_task_mem _clear_func;
     ExecutionQueueOptions _options;
     butil::atomic<int>* _join_butex;
+
+    // For pthread mode.
+    pthread_t _pid;
+    bool _pthread_started;
+    butil::Mutex _mutex;
+    butil::ConditionVariable _cond;
+    TaskNode* _current_head; // Current task head of each execution.
 };
 
 template <typename T>
@@ -330,12 +341,14 @@ public:
 };
 
 inline ExecutionQueueOptions::ExecutionQueueOptions()
-    : bthread_attr(BTHREAD_ATTR_NORMAL), executor(NULL)
+    : use_pthread(false)
+    , bthread_attr(BTHREAD_ATTR_NORMAL)
+    , executor(NULL)
 {}
 
 template <typename T>
 inline int execution_queue_start(
-        ExecutionQueueId<T>* id, 
+        ExecutionQueueId<T>* id,
         const ExecutionQueueOptions* options,
         int (*execute)(void* meta, TaskIterator<T>&),
         void* meta) {

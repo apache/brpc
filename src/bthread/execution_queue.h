@@ -88,11 +88,11 @@ private:
 // }
 template <typename T>
 class TaskIterator : public TaskIteratorBase {
-    TaskIterator();
 public:
     typedef T*          pointer;
     typedef T&          reference;
 
+    TaskIterator() = delete;
     reference operator*() const;
     pointer operator->() const { return &(operator*()); }
     TaskIterator& operator++();
@@ -133,7 +133,7 @@ const static TaskOptions TASK_OPTIONS_INPLACE = TaskOptions(false, true);
 
 class Executor {
 public:
-    virtual ~Executor() {}
+    virtual ~Executor() = default;
 
     // Return 0 on success.
     virtual int submit(void * (*fn)(void*), void* args) = 0;
@@ -141,11 +141,15 @@ public:
 
 struct ExecutionQueueOptions {
     ExecutionQueueOptions();
-    // Attribute of the bthread which execute runs on
-    // default: BTHREAD_ATTR_NORMAL
+
+    // Execute in resident pthread instead of bthread. default: false.
+    bool use_pthread;
+
+    // Attribute of the bthread which execute runs on. default: BTHREAD_ATTR_NORMAL
+    // Bthread will be used when executor = NULL and use_pthread == false.
     bthread_attr_t bthread_attr;
 
-    // Executor that tasks run on. bthread will be used when executor = NULL.
+    // Executor that tasks run on. default: NULL
     // Note that TaskOptions.in_place_if_possible = false will not work, if implementation of
     // Executor is in-place(synchronous).
     Executor * executor;
@@ -197,7 +201,6 @@ int execution_queue_execute(ExecutionQueueId<T> id,
                             typename butil::add_const_reference<T>::type task,
                             const TaskOptions* options,
                             TaskHandle* handle);
-
 
 template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id,
