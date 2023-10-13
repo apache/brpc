@@ -117,7 +117,9 @@ std::string File::ErrorToString(Error error) {
     case FILE_ERROR_IO:
       return "FILE_ERROR_IO";
     case FILE_ERROR_MAX:
-      break;
+      return "FILE_ERROR_MAX";
+    default:
+      return "";
   }
 
   NOTREACHED();
