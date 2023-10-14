@@ -73,8 +73,11 @@ typedef pthread_mutex_t* MutexHandle;
 #include "butil/strings/string_util.h"
 #include "butil/strings/stringprintf.h"
 #include "butil/strings/utf_string_conversions.h"
-#include "butil/synchronization/lock.h"
+#include "butil/synchronization/condition_variable.h"
 #include "butil/threading/platform_thread.h"
+#include "butil/threading/simple_thread.h"
+#include "butil/object_pool.h"
+
 #if defined(OS_POSIX)
 #include "butil/errno.h"
 #include "butil/fd_guard.h"
@@ -143,6 +146,8 @@ DEFINE_bool(log_hostname, false, "Add host after pid in each log so"
 DEFINE_bool(log_year, false, "Log year in datetime part in each log");
 
 DEFINE_bool(log_func_name, false, "Log function name in each log");
+
+DEFINE_bool(async_log, false, "Use async log");
 
 namespace {
 
@@ -399,7 +404,252 @@ void CloseLogFileUnlocked() {
     log_file = NULL;
 }
 
+void Log2File(const std::string& log) {
+    // We can have multiple threads and/or processes, so try to prevent them
+    // from clobbering each other's writes.
+    // If the client app did not call InitLogging, and the lock has not
+    // been created do it now. We do this on demand, but if two threads try
+    // to do this at the same time, there will be a race condition to create
+    // the lock. This is why InitLogging should be called from the main
+    // thread at the beginning of execution.
+    LoggingLock::Init(LOCK_LOG_FILE, NULL);
+    LoggingLock logging_lock;
+    if (InitializeLogFileHandle()) {
+#if defined(OS_WIN)
+        SetFilePointer(log_file, 0, 0, SEEK_END);
+                DWORD num_written;
+                WriteFile(log_file,
+                          static_cast<const void*>(log.data()),
+                          static_cast<DWORD>(log.size()),
+                          &num_written,
+                          NULL);
+#else
+        fwrite(log.data(), log.size(), 1, log_file);
+        fflush(log_file);
+#endif
+    }
+}
+
 }  // namespace
+
+struct BAIDU_CACHELINE_ALIGNMENT LogRequest {
+    static LogRequest* const UNCONNECTED;
+
+    LogRequest* next{NULL};
+    std::string data;
+};
+
+LogRequest* const LogRequest::UNCONNECTED = (LogRequest*)(intptr_t)-1;
+
+class AsyncLog : public butil::SimpleThread {
+public:
+    static AsyncLog* GetInstance();
+
+    void Log(const std::string& log);
+    void Log(std::string&& log);
+
+private:
+friend struct DefaultSingletonTraits<AsyncLog>;
+
+    AsyncLog();
+    ~AsyncLog() override;
+
+    void LogImpl(LogRequest* log_req);
+
+    void Run() override;
+
+    void LogTask();
+
+    bool IsLogComplete(LogRequest* old_head,
+                       bool singular_node,
+                       LogRequest** new_tail);
+
+    butil::atomic<LogRequest*> _log_head;
+    butil::Mutex _mutex;
+    butil::ConditionVariable _cond;
+    LogRequest* _current_log_request;
+    bool _stop;
+};
+
+AsyncLog* AsyncLog::GetInstance() {
+    return Singleton<AsyncLog,
+                     LeakySingletonTraits<AsyncLog>>::get();
+}
+
+AsyncLog::AsyncLog()
+    : butil::SimpleThread("async_log_thread")
+    , _log_head(NULL)
+    , _cond(&_mutex)
+    , _current_log_request(NULL)
+    , _stop(false) {
+    Start();
+}
+
+AsyncLog::~AsyncLog() {
+    {
+        BAIDU_SCOPED_LOCK(_mutex);
+        _stop = true;
+        _cond.Signal();
+    }
+    Join();
+}
+
+void AsyncLog::Log(const std::string& log) {
+    if (log.empty()) {
+        return;
+    }
+
+    auto log_req = butil::get_object<LogRequest>();
+    if (!log_req) {
+        // Async log failed, fallback to sync log.
+        Log2File(log);
+        return;
+    }
+    log_req->data = log;
+    LogImpl(log_req);
+}
+
+void AsyncLog::Log(std::string&& log) {
+    if (log.empty()) {
+        return;
+    }
+
+    auto log_req = butil::get_object<LogRequest>();
+    if (!log_req) {
+        // Async log failed, fallback to sync log.
+        Log2File(log);
+        return;
+    }
+    log_req->data = std::move(log);
+    LogImpl(log_req);
+}
+
+void AsyncLog::LogImpl(LogRequest* log_req) {
+    log_req->next = LogRequest::UNCONNECTED;
+    LogRequest* const prev_head =
+        _log_head.exchange(log_req, butil::memory_order_release);
+    if (prev_head != NULL) {
+        log_req->next = prev_head;
+        return;
+    }
+    // We've got the right to write.
+    log_req->next = NULL;
+
+    BAIDU_SCOPED_LOCK(_mutex);
+    _current_log_request = log_req;
+    _cond.Signal();
+}
+
+void AsyncLog::Run() {
+    while (true) {
+        BAIDU_SCOPED_LOCK(_mutex);
+        while (!_stop && !_current_log_request) {
+            _cond.Wait();
+        }
+        if (_stop) {
+            break;
+        }
+
+        LogTask();
+        _current_log_request = NULL;
+    }
+}
+
+void AsyncLog::LogTask() {
+    LogRequest* req = _current_log_request;
+    LogRequest* cur_tail = NULL;
+    do {
+        // req was written, skip it.
+        if (req->next != NULL && req->data.empty()) {
+            LogRequest* const saved_req = req;
+            req = req->next;
+            butil::return_object(saved_req);
+        }
+
+        // Log all req to file.
+        for (LogRequest* p = req; p != NULL; p = p->next) {
+            if (p->data.empty()) {
+                continue;
+            }
+            Log2File(p->data);
+            p->data.clear();
+        }
+
+        // Release WriteRequest until non-empty data or last request.
+        while (req->next != NULL && req->data.empty()) {
+            LogRequest* const saved_req = req;
+            req = req->next;
+            butil::return_object(saved_req);
+        }
+
+        if (NULL == cur_tail) {
+            for (cur_tail = req; cur_tail->next != NULL;
+                 cur_tail = cur_tail->next);
+        }
+        // Return when there's no more WriteRequests and req is completely
+        // written.
+        if (IsLogComplete(cur_tail, (req == cur_tail), &cur_tail)) {
+            if (cur_tail != req) {
+                fprintf(stderr, "cur_tail should equal to req\n");
+            }
+            butil::return_object(req);
+            return;
+        }
+    } while (true);
+}
+
+bool AsyncLog::IsLogComplete(LogRequest* old_head,
+                             bool singular_node,
+                             LogRequest** new_tail) {
+    if (old_head->next) {
+        fprintf(stderr, "old_head->next should be NULL\n");
+    }
+    LogRequest* new_head = old_head;
+    LogRequest* desired = NULL;
+    bool return_when_no_more = true;
+    if (!old_head->data.empty() || !singular_node) {
+        desired = old_head;
+        // Write is obviously not complete if old_head is not fully written.
+        return_when_no_more = false;
+    }
+    if (_log_head.compare_exchange_strong(
+        new_head, desired, butil::memory_order_acquire)) {
+        // No one added new requests.
+        if (new_tail) {
+            *new_tail = old_head;
+        }
+        return return_when_no_more;
+    }
+    if (new_head == old_head) {
+        fprintf(stderr, "new_head should not be equal to old_head\n");
+    }
+    // Above acquire fence pairs release fence of exchange in Log() to make
+    // sure that we see all fields of requests set.
+
+    // Someone added new requests.
+    // Reverse the list until old_head.
+    LogRequest* tail = NULL;
+    LogRequest* p = new_head;
+    do {
+        while (p->next == LogRequest::UNCONNECTED) {
+            sched_yield();
+        }
+        LogRequest* const saved_next = p->next;
+        p->next = tail;
+        tail = p;
+        p = saved_next;
+        if (!p) {
+            fprintf(stderr, "p should not be NULL\n");
+        }
+    } while (p != old_head);
+
+    // Link old list with new list.
+    old_head->next = tail;
+    if (new_tail) {
+        *new_tail = new_head;
+    }
+    return false;
+}
 
 LoggingSettings::LoggingSettings()
     : logging_dest(LOG_DEFAULT),
@@ -957,35 +1207,17 @@ public:
 
         // write to log file
         if ((logging_destination & LOG_TO_FILE) != 0) {
-            // We can have multiple threads and/or processes, so try to prevent them
-            // from clobbering each other's writes.
-            // If the client app did not call InitLogging, and the lock has not
-            // been created do it now. We do this on demand, but if two threads try
-            // to do this at the same time, there will be a race condition to create
-            // the lock. This is why InitLogging should be called from the main
-            // thread at the beginning of execution.
-            LoggingLock::Init(LOCK_LOG_FILE, NULL);
-            LoggingLock logging_lock;
-            if (InitializeLogFileHandle()) {
-#if defined(OS_WIN)
-                SetFilePointer(log_file, 0, 0, SEEK_END);
-                DWORD num_written;
-                WriteFile(log_file,
-                          static_cast<const void*>(log.data()),
-                          static_cast<DWORD>(log.size()),
-                          &num_written,
-                          NULL);
-#else
-                fwrite(log.data(), log.size(), 1, log_file);
-                fflush(log_file);
-#endif
+            if (FLAGS_async_log) {
+                AsyncLog::GetInstance()->Log(std::move(log));
+            } else {
+                Log2File(log);
             }
         }
         return true;
     }
 private:
-    DefaultLogSink() {}
-    ~DefaultLogSink() {}
+    DefaultLogSink() = default;
+    ~DefaultLogSink() override = default;
 friend struct DefaultSingletonTraits<DefaultLogSink>;
 };
 
