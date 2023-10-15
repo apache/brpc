@@ -23,4 +23,5 @@ Example for the Echo response:
    ![wireshark-protobuf-settings](../images/wireshark_protobuf_settings.png)
 
 The "Personal Lua Plugins" and "Personal configuration" folders above can be found under the `Folders` page of `About Wireshark`, for macOS:
+
 ![About Wireshark](../images/wireshark_folders.png)

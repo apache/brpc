@@ -23,4 +23,5 @@
    ![wireshark-protobuf-settings](../images/wireshark_protobuf_settings.png)
 
 上面提到的 "Personal Lua Plugins" 以及 "Personal configuration" 目录可查看 `About Wireshark` 的 `Folders` 页面，相关目录是平台相关的，macOS 下如：
+
 ![About Wireshark](../images/wireshark_folders.png)
