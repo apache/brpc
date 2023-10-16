@@ -1642,7 +1642,7 @@ TEST_F(ServerTest, user_fields) {
     test::EchoService_Stub stub(&channel);
 
     brpc::Controller cntl;
-    cntl.response_user_fields()->insert(EXP_USER_FIELD_KEY, EXP_USER_FIELD_VALUE);
+    cntl.request_user_fields()->insert(EXP_USER_FIELD_KEY, EXP_USER_FIELD_VALUE);
     test::EchoRequest req;
     test::EchoResponse res;
     req.set_message("hello");
