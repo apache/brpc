@@ -19,6 +19,7 @@
 #ifndef BUTIL_FILES_DIR_READER_UNIX_H_
 #define BUTIL_FILES_DIR_READER_UNIX_H_
 
+#include <cstddef>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -42,18 +43,14 @@ class DirReaderUnix {
   }
 
   ~DirReaderUnix() {
-    if (fd_ >= 0) {
-      if (IGNORE_EINTR(close(fd_)))
+    if (NULL != dir_) {
+      if (IGNORE_EINTR(closedir(dir_))) { // note this implicitly closes fd_
         RAW_LOG(ERROR, "Failed to close directory handle");
-    }
-    if(NULL != dir_){
-        closedir(dir_);
-    }
+      }
+    };
   }
 
-  bool IsValid() const {
-    return fd_ >= 0;
-  }
+  bool IsValid() const { return dir_ == NULL; }
 
   // Move to the next entry returning false if the iteration is complete.
   bool Next() {
