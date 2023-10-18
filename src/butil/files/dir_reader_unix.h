@@ -42,17 +42,17 @@ class DirReaderUnix {
   }
 
   ~DirReaderUnix() {
-    if (fd_ >= 0) {
-      if (IGNORE_EINTR(close(fd_)))
-        RAW_LOG(ERROR, "Failed to close directory handle");
-    }
-    if(NULL != dir_){
-        closedir(dir_);
+    if (NULL != dir_) {
+      if (IGNORE_EINTR(closedir(dir_)) == 0) { // this implicitly closes fd_
+        dir_ = NULL;
+      } else {
+        RAW_LOG(ERROR, "Failed to close directory.");
+      }
     }
   }
 
   bool IsValid() const {
-    return fd_ >= 0;
+    return dir_ != NULL;
   }
 
   // Move to the next entry returning false if the iteration is complete.
