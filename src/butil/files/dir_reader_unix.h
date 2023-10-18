@@ -48,10 +48,10 @@ class DirReaderUnix {
       } else {
         RAW_LOG(ERROR, "Failed to close directory.");
       }
-    };
+    }
   }
 
-  bool IsValid() const { 
+  bool IsValid() const {
     return dir_ != NULL;
   }
 
