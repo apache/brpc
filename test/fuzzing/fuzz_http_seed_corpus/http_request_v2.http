@@ -1,0 +1,23 @@
+GET /CloudApiControl/HttpServer/telematics/v3/weather?location=%E6%B5%B7%E5%8D%97%E7%9C%81%E7%9B%B4%E8%BE%96%E5%8E%BF%E7%BA%A7%E8%A1%8C%E6%94%BF%E5%8D%95%E4%BD%8D&output=json&ak=0l3FSP6qA0WbOzGRaafbmczS HTTP/1.1
+X-Host: api.map.baidu.com
+X-Forwarded-Proto: http
+Host: api.map.baidu.com
+User-Agent: IME/Android/4.4.2/N80.QHD.LT.X10.V3/N80.QHD.LT.X10.V3.20150812.031915
+Accept: application/json
+Accept-Charset: UTF-8,*;q=0.5
+Accept-Encoding: deflate,sdch
+Accept-Language: zh-CN,en-US;q=0.8,zh;q=0.6
+Bfe-Atk: NORMAL_BROWSER
+Bfe_logid: 8767802212038413243
+Bfeip: 10.26.124.40
+CLIENTIP: 119.29.102.26
+CLIENTPORT: 59863
+Cache-Control: max-age=0
+Content-Type: application/json;charset=utf8
+X-Forwarded-For: 119.29.102.26
+X-Forwarded-Port: 59863
+X-Ime-Imei: 35629601890905
+X_BD_LOGID: 3959476981
+X_BD_LOGID64: 16815814797661447369
+X_BD_PRODUCT: map
+X_BD_SUBSYS: apimap
