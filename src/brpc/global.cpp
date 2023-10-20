@@ -509,10 +509,12 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     Protocol mongo_protocol = { ParseMongoMessage,
-                                NULL, NULL,
-                                ProcessMongoRequest, NULL,
+                                SerializeMongoRequest,
+                                PackMongoRequest,
+                                ProcessMongoRequest,
+                                ProcessMongoResponse,
                                 NULL, NULL, NULL,
-                                CONNECTION_TYPE_POOLED, "mongo" };
+                                CONNECTION_TYPE_ALL, "mongo" };
     if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol) != 0) {
         exit(1);
     }

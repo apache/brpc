@@ -13,6 +13,7 @@
 *.so
 *.dylib
 *.rej
+*.patch
 /output
 /test/output
 build/

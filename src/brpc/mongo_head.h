@@ -28,19 +28,33 @@ namespace brpc {
 //   https://docs.mongodb.org/manual/reference/mongodb-wire-protocol/#request-opcodes
 enum MongoOpCode {
     MONGO_OPCODE_REPLY         = 1,
-    MONGO_OPCODE_MSG           = 1000,
     MONGO_OPCODE_UPDATE        = 2001,
     MONGO_OPCODE_INSERT        = 2002,
     MONGO_OPCODE_QUERY         = 2004,
     MONGO_OPCODE_GET_MORE      = 2005,
     MONGO_OPCODE_DELETE        = 2006,
     MONGO_OPCODE_KILL_CURSORS  = 2007,
+    MONGO_OPCODE_COMPRESSED    = 2012,
+    MONGO_OPCODE_MSG           = 2013,
+};
+
+enum MongoMsgFlag {
+    MONGO_MSG_FLAG_CHECKSUM_PRESENT = 1 << 0,
+    MONGO_MSG_FLAG_MORE_TO_COME     = 1 << 2,
+    MONGO_MSG_FLAG_EXHAUST_ALLOWED  = 1 << 3,
+};
+
+enum MongoPayloadType {
+    MONGO_PAYLOAD_TYPE_BODY = 0,
+    MONGO_PAYLOAD_TYPE_DOC_SEQUENCE = 1,
+    MONGO_PAYLOAD_TYPE_INTERNAL = 2,
 };
 
 inline bool is_mongo_opcode(int32_t op_code) {
     switch (op_code) {
     case MONGO_OPCODE_REPLY:         return true;
     case MONGO_OPCODE_MSG:           return true;
+    case MONGO_OPCODE_COMPRESSED:    return true;
     case MONGO_OPCODE_UPDATE:        return true; 
     case MONGO_OPCODE_INSERT:        return true; 
     case MONGO_OPCODE_QUERY:         return true; 

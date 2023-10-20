@@ -20,6 +20,8 @@
 
 #include "brpc/protocol.h"
 #include "brpc/input_messenger.h"
+#include "brpc/socket_message.h"
+#include "butil/iobuf.h"
 
 
 namespace brpc {
@@ -28,8 +30,29 @@ namespace policy {
 // Parse binary format of mongo
 ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket, bool read_eof, const void *arg);
 
+
 // Actions to a (client) request in mongo format
 void ProcessMongoRequest(InputMessageBase* msg);
+
+void PackMongoRequest(butil::IOBuf *buf,
+                      SocketMessage**,
+                      uint64_t correlation_id,
+                      const google::protobuf::MethodDescriptor* method,
+                      Controller* controller,
+                      const butil::IOBuf& request,
+                      const Authenticator* auth);
+
+// Actions to a (server) response in mongo format.
+void ProcessMongoResponse(InputMessageBase* msg);
+
+
+void SerializeMongoRequest(butil::IOBuf* buf,
+                           Controller* cntl,
+                           const google::protobuf::Message* request);
+
+const std::string& GetMongoMethodName(
+    const google::protobuf::MethodDescriptor*,
+    const Controller*);
 
 } // namespace policy
 } // namespace brpc

@@ -155,6 +155,7 @@ endif()
 
 find_package(Protobuf REQUIRED)
 find_package(Threads REQUIRED)
+find_package (bson-1.0 1.7 REQUIRED)
 
 find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
@@ -213,11 +214,16 @@ endif()
 
 find_package(OpenSSL)
 
+find_package(bson-1.0 REQUIRED)
+
+get_target_property(BSON_INCLUDE_DIRS mongo::bson_shared INTERFACE_INCLUDE_DIRECTORIES)
+
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
         ${PROTOBUF_INCLUDE_DIRS}
         ${LEVELDB_INCLUDE_PATH}
         ${OPENSSL_INCLUDE_DIR}
+        ${BSON_INCLUDE_DIRS}
         )
 
 set(DYNAMIC_LIB
@@ -295,6 +301,7 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/atomicops_internals_x86_gcc.cc
     ${PROJECT_SOURCE_DIR}/src/butil/base64.cc
     ${PROJECT_SOURCE_DIR}/src/butil/big_endian.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/bson_util.cc
     ${PROJECT_SOURCE_DIR}/src/butil/cpu.cc
     ${PROJECT_SOURCE_DIR}/src/butil/debug/alias.cc
     ${PROJECT_SOURCE_DIR}/src/butil/debug/asan_invalid_access.cc
