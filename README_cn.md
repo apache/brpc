@@ -2,7 +2,8 @@
 
 [![Build Status](https://api.travis-ci.com/apache/brpc.svg?branch=master)](https://travis-ci.com/github/apache/brpc)
 
-# ![brpc](docs/images/logo.png)
+![brpc logo (light)](docs/images/logo.png#gh-light-mode-only)
+![brpc logo (dark)](docs/images/logo-white.png#gh-dark-mode-only)
 
 brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机器学习、广告、推荐等高性能系统。
 
