@@ -149,6 +149,9 @@ DEFINE_bool(log_func_name, false, "Log function name in each log");
 
 DEFINE_bool(async_log, false, "Use async log");
 
+DEFINE_int32(max_async_log_queue_size, 100000, "Max async log size. "
+             "If current log count of async log > max_async_log_size, Use sync log to protect process.");
+
 namespace {
 
 LoggingDestination logging_destination = LOG_DEFAULT;
@@ -464,10 +467,14 @@ friend struct DefaultSingletonTraits<AsyncLog>;
                        bool singular_node,
                        LogRequest** new_tail);
 
+    void DoLog(LogRequest* req);
+    void DoLog(const std::string& log);
+
     butil::atomic<LogRequest*> _log_head;
     butil::Mutex _mutex;
     butil::ConditionVariable _cond;
     LogRequest* _current_log_request;
+    butil::atomic<int32_t> _log_request_count;
     bool _stop;
 };
 
@@ -499,10 +506,16 @@ void AsyncLog::Log(const std::string& log) {
         return;
     }
 
+    if (_log_request_count.fetch_add(1, butil::memory_order_relaxed) >
+        FLAGS_max_async_log_queue_size) {
+        DoLog(log);
+        return;
+    }
+
     auto log_req = butil::get_object<LogRequest>();
     if (!log_req) {
         // Async log failed, fallback to sync log.
-        Log2File(log);
+        DoLog(log);
         return;
     }
     log_req->data = log;
@@ -514,10 +527,16 @@ void AsyncLog::Log(std::string&& log) {
         return;
     }
 
+    if (_log_request_count.fetch_add(1, butil::memory_order_relaxed) >
+        FLAGS_max_async_log_queue_size) {
+        DoLog(log);
+        return;
+    }
+
     auto log_req = butil::get_object<LogRequest>();
     if (!log_req) {
         // Async log failed, fallback to sync log.
-        Log2File(log);
+        DoLog(log);
         return;
     }
     log_req->data = std::move(log);
@@ -567,19 +586,19 @@ void AsyncLog::LogTask() {
         }
 
         // Log all req to file.
-        for (LogRequest* p = req; p != NULL; p = p->next) {
-            if (p->data.empty()) {
-                continue;
-            }
-            Log2File(p->data);
-            p->data.clear();
-        }
-
-        // Release WriteRequest until non-empty data or last request.
-        while (req->next != NULL && req->data.empty()) {
+        while (req->next != NULL) {
             LogRequest* const saved_req = req;
             req = req->next;
+            if (!saved_req->data.empty()) {
+                DoLog(saved_req);
+                saved_req->data.clear();
+            }
+            // Release WriteRequest until last request.
             butil::return_object(saved_req);
+        }
+        if (!req->data.empty()) {
+            DoLog(req);
+            req->data.clear();
         }
 
         if (NULL == cur_tail) {
@@ -607,7 +626,7 @@ bool AsyncLog::IsLogComplete(LogRequest* old_head,
     LogRequest* new_head = old_head;
     LogRequest* desired = NULL;
     bool return_when_no_more = true;
-    if (!old_head->data.empty() || !singular_node) {
+    if (!singular_node) {
         desired = old_head;
         // Write is obviously not complete if old_head is not fully written.
         return_when_no_more = false;
@@ -649,6 +668,15 @@ bool AsyncLog::IsLogComplete(LogRequest* old_head,
         *new_tail = new_head;
     }
     return false;
+}
+
+void AsyncLog::DoLog(LogRequest* req) {
+    DoLog(req->data);
+}
+
+void AsyncLog::DoLog(const std::string& log) {
+    Log2File(log);
+    _log_request_count.fetch_sub(1);
 }
 
 LoggingSettings::LoggingSettings()
