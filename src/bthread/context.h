@@ -39,6 +39,9 @@
 	#elif __aarch64__
 	    #define BTHREAD_CONTEXT_PLATFORM_linux_arm64
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
+        #elif __loongarch64
+            #define BTHREAD_CONTEXT_PLATFORM_linux_loongarch64
+            #define BTHREAD_CONTEXT_CALL_CONVENTION
 	#endif
 
   #elif defined(__MINGW32__) || defined (__MINGW64__)
