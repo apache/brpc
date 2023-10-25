@@ -40,7 +40,11 @@
 #include "brpc/selective_channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
+#if BAZEL_TEST
+#include "test/echo.pb.h"
+#else
 #include "echo.pb.h"
+#endif   // BAZEL_TEST
 #include "brpc/options.pb.h"
 
 namespace brpc {
@@ -129,6 +133,22 @@ static bool VerifyMyRequest(const brpc::InputMessageBase* msg_base) {
     return true;
 }
 
+class CallAfterRpcObject {
+public:
+    explicit CallAfterRpcObject() {}
+
+    ~CallAfterRpcObject() {
+        EXPECT_EQ(str, "CallAfterRpcRespTest");
+    }
+
+    void Append(const std::string& s) {
+        str.append(s);
+    }
+
+private:
+    std::string str;
+};
+
 class MyEchoService : public ::test::EchoService {
     void Echo(google::protobuf::RpcController* cntl_base,
               const ::test::EchoRequest* req,
@@ -136,6 +156,9 @@ class MyEchoService : public ::test::EchoService {
               google::protobuf::Closure* done) {
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
+        std::shared_ptr<CallAfterRpcObject> str_test(new CallAfterRpcObject());
+        cntl->set_after_rpc_resp_fn(std::bind(&MyEchoService::CallAfterRpc, str_test,
+            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         brpc::ClosureGuard done_guard(done);
         if (req->server_fail()) {
             cntl->SetFailed(req->server_fail(), "Server fail1");
@@ -156,6 +179,17 @@ class MyEchoService : public ::test::EchoService {
             res->add_code_list(req->code());
         }
         res->set_receiving_socket_id(cntl->_current_call.sending_sock->id());
+    }
+    static void CallAfterRpc(std::shared_ptr<CallAfterRpcObject> str,
+                        brpc::Controller* cntl,
+                        const google::protobuf::Message* req,
+                        const google::protobuf::Message* res) {
+        const test::EchoRequest* request = static_cast<const test::EchoRequest*>(req);
+        const test::EchoResponse* response = static_cast<const test::EchoResponse*>(res);
+        str->Append("CallAfterRpcRespTest");
+        EXPECT_TRUE(nullptr != cntl);
+        EXPECT_TRUE(nullptr != request);
+        EXPECT_TRUE(nullptr != response);
     }
 };
 
@@ -247,7 +281,7 @@ protected:
             const brpc::Server*,
             brpc::MethodStatus*, int64_t>(
                 &brpc::policy::SendRpcResponse,
-                meta.correlation_id(), cntl, NULL, res,
+                meta.correlation_id(), cntl, req, res,
                 &ts->_dummy, NULL, -1);
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }
@@ -1564,7 +1598,7 @@ protected:
         }
         StopAndJoin();
     }
-    
+
     void RPCThread(brpc::ChannelBase* channel, bool async) {
         brpc::Controller cntl;
         test::EchoRequest req;
@@ -1583,7 +1617,7 @@ protected:
             test::EchoResponse res;
             req.set_message(__FUNCTION__);
             CallMethod(channel, &cntl, &req, &res, async);
-            
+
             ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
             ASSERT_EQ("received " + std::string(__FUNCTION__), res.message());
             cntl.Reset();

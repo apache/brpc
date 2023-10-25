@@ -22,6 +22,7 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
+#include <functional>                          // std::function
 #include <gflags/gflags.h>                     // Users often need gflags
 #include <string>
 #include "butil/intrusive_ptr.hpp"             // butil::intrusive_ptr
@@ -579,6 +580,14 @@ public:
     // -1 means no deadline.
     int64_t deadline_us() const { return _deadline_us; }
 
+    using AfterRpcRespFnType = std::function<void(Controller* cntl,
+                                               const google::protobuf::Message* req,
+                                               const google::protobuf::Message* res)>;
+
+    void set_after_rpc_resp_fn(AfterRpcRespFnType&& fn) { _after_rpc_resp_fn = fn; }
+
+    void CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res);
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -834,6 +843,8 @@ private:
     std::string _thrift_method_name;
 
     uint32_t _auth_flags;
+
+    AfterRpcRespFnType _after_rpc_resp_fn;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be
