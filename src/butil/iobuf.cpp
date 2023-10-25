@@ -38,6 +38,10 @@
 #include "butil/fd_guard.h"                 // butil::fd_guard
 #include "butil/iobuf.h"
 
+#if defined (OPENSSL_IS_BORINGSSL)
+#include "butil/ssl_compat.h"               // BIO_fd_non_fatal_error
+#endif
+
 namespace butil {
 namespace iobuf {
 
@@ -2151,7 +2155,7 @@ bool IOBufBytesIterator::forward_one_block(const void** data, size_t* size) {
     return true;
 }
 
-}  // namespace butil
+} // namespace butil
 
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n) {
     return butil::iobuf::cp(dest, src, n);

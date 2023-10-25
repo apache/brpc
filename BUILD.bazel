@@ -327,14 +327,15 @@ cc_library(
         "@com_github_gflags_gflags//:gflags",
         "@com_github_madler_zlib//:zlib",
         "@com_google_protobuf//:protobuf",
-        "@openssl//:crypto",
-        "@openssl//:ssl",
     ] + select({
         "//bazel/config:brpc_with_glog": ["@com_github_google_glog//:glog"],
         "//conditions:default": [],
     }) + select({
         "@bazel_tools//tools/osx:darwin": [":macos_lib"],
         "//conditions:default": [],
+    }) + select({
+        "//bazel/config:brpc_with_boringssl": ["@boringssl//:ssl", "@boringssl//:crypto"],
+        "//conditions:default": ["@openssl//:ssl", "@openssl//:crypto"],
     }),
 )
 

@@ -18,6 +18,7 @@
 workspace(name = "com_github_brpc_brpc")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 #
 # Constants
@@ -252,7 +253,6 @@ Set-Content protobuf.bzl -Value $content -Encoding UTF8
     urls = ["https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.19.1.tar.gz"],
 )
 
-# bRPC cannot use boringssl. Build openssl.
 http_archive(
     name = "openssl",  # 2021-12-14T15:45:01Z
     build_file = "//bazel/third_party/openssl:openssl.BUILD",
@@ -262,6 +262,13 @@ http_archive(
         "https://www.openssl.org/source/openssl-1.1.1m.tar.gz",
         "https://github.com/openssl/openssl/archive/OpenSSL_1_1_1m.tar.gz",
     ],
+)
+
+# https://github.com/google/boringssl/blob/master/INCORPORATING.md
+git_repository(
+    name = "boringssl", # 2021-05-01T12:26:01Z
+    commit = "0e6b86549db4c888666512295c3ebd4fa2a402f5", # fips-20210429
+    remote = "https://github.com/google/boringssl",
 )
 
 http_archive(
