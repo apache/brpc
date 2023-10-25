@@ -80,6 +80,7 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/at_exit_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/atomicops_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/base64_unittest.cc
+    ${PROJECT_SOURCE_DIR}/test/base64url_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/big_endian_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/bits_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/hash_tables_unittest.cc

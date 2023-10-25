@@ -50,6 +50,7 @@ TEST_BUTIL_SOURCES = \
     at_exit_unittest.cc \
     atomicops_unittest.cc \
     base64_unittest.cc \
+    base64url_unittest.cc \
     big_endian_unittest.cc \
     bits_unittest.cc \
     hash_tables_unittest.cc \
