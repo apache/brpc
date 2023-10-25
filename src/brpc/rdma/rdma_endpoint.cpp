@@ -71,20 +71,20 @@ static const size_t RESERVED_WR_NUM = 3;
 // message length (2B)
 // hello version (2B)
 // impl version (2B): 0 means should use tcp
-// block size (2B)
+// block size (4B)
 // sq size (2B)
 // rq size (2B)
 // GID (16B)
 // QP number (4B)
 static const char* MAGIC_STR = "RDMA";
 static const size_t MAGIC_STR_LEN = 4;
-static const size_t HELLO_MSG_LEN_MIN = 38;
+static const size_t HELLO_MSG_LEN_MIN = 40;
 static const size_t HELLO_MSG_LEN_MAX = 4096;
 static const size_t ACK_MSG_LEN = 4;
-static uint16_t g_rdma_hello_msg_len = 38;  // In Byte
-static uint16_t g_rdma_hello_version = 1;
+static uint16_t g_rdma_hello_msg_len = 40;  // In Byte
+static uint16_t g_rdma_hello_version = 2;
 static uint16_t g_rdma_impl_version = 1;
-static uint16_t g_rdma_recv_block_size = 0;
+static uint32_t g_rdma_recv_block_size = 0;
 
 static const uint32_t MAX_INLINE_DATA = 64;
 static const uint8_t MAX_HOP_LIMIT = 16;
@@ -105,7 +105,7 @@ struct HelloMessage {
     uint16_t msg_len;
     uint16_t hello_ver;
     uint16_t impl_ver;
-    uint16_t block_size;
+    uint32_t block_size;
     uint16_t sq_size;
     uint16_t rq_size;
     uint16_t lid;
@@ -118,7 +118,9 @@ void HelloMessage::Serialize(void* data) const {
     *(current_pos++) = butil::HostToNet16(msg_len);
     *(current_pos++) = butil::HostToNet16(hello_ver);
     *(current_pos++) = butil::HostToNet16(impl_ver);
-    *(current_pos++) = butil::HostToNet16(block_size);
+    uint32_t* block_size_pos = (uint32_t*)current_pos;
+    *block_size_pos = butil::HostToNet32(block_size);
+    current_pos += 2; // move forward 4 Bytes
     *(current_pos++) = butil::HostToNet16(sq_size);
     *(current_pos++) = butil::HostToNet16(rq_size);
     *(current_pos++) = butil::HostToNet16(lid);
@@ -132,7 +134,8 @@ void HelloMessage::Deserialize(void* data) {
     msg_len = butil::NetToHost16(*current_pos++);
     hello_ver = butil::NetToHost16(*current_pos++);
     impl_ver = butil::NetToHost16(*current_pos++);
-    block_size = butil::NetToHost16(*current_pos++);
+    block_size = butil::NetToHost32(*(uint32_t*)current_pos);
+    current_pos += 2; // move forward 4 Bytes
     sq_size = butil::NetToHost16(*current_pos++);
     rq_size = butil::NetToHost16(*current_pos++);
     lid = butil::NetToHost16(*current_pos++);
