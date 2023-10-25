@@ -3,7 +3,8 @@
 [![Linux Build Status](https://github.com/apache/brpc/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-linux.yml)
 [![MacOs Build Status](https://github.com/apache/brpc/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-macos.yml)
 
-# ![brpc](docs/images/logo.png)
+![brpc logo (light)](docs/images/logo.png#gh-light-mode-only)
+![brpc logo (dark)](docs/images/logo-white.png#gh-dark-mode-only)
 
 [brpc](https://brpc.apache.org/) is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
 
