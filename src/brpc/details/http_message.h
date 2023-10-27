@@ -122,7 +122,7 @@ private:
 
 protected:
     // Only valid when -http_verbose is on
-    butil::IOBufBuilder* _vmsgbuilder;
+    std::unique_ptr<butil::IOBufBuilder> _vmsgbuilder;
     size_t _vbodylen;
 };
 
