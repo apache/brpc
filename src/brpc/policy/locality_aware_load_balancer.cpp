@@ -335,7 +335,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                 dice -= left + self + diff;
                 index = index * 2 + 2;
             } else {
-		// left child may contains available nodes
+		// left child may contain available nodes
 		dice = butil::fast_rand_less_than(left);
 		index = index * 2 + 1;
 	    }
