@@ -37,8 +37,8 @@ inline ssize_t IOBuf::cut_multiple_into_file_descriptor(
     return pcut_multiple_into_file_descriptor(fd, -1, pieces, count);
 }
 
-inline int IOBuf::append_user_data(void* data, size_t size, void (*deleter)(void*)) {
-    return append_user_data_with_meta(data, size, deleter, 0);
+inline int IOBuf::append_user_data(void* data, size_t size, std::function<void(void*)> deleter) {
+    return append_user_data_with_meta(data, size, std::move(deleter), 0);
 }
 
 inline ssize_t IOPortal::append_from_file_descriptor(int fd, size_t max_count) {
