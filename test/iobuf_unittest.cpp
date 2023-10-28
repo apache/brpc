@@ -20,6 +20,7 @@
 #include <sys/socket.h>                // socketpair
 #include <errno.h>                     // errno
 #include <fcntl.h>                     // O_RDONLY
+#include <stdlib.h>
 #include <memory>
 #include <butil/files/temp_file.h>      // TempFile
 #include <butil/containers/flat_map.h>
@@ -1632,6 +1633,9 @@ TEST_F(IOBufTest, append_stateful_user_data) {
     }
 
     struct Deleter {
+        Deleter(std::shared_ptr<char> partial) : partial(std::move(partial)) {}
+        Deleter(const Deleter&) { std::abort(); /*non copy*/ }
+        Deleter(Deleter&&) noexcept = default;
         void operator()(void*) {
             partial.reset();
         }
