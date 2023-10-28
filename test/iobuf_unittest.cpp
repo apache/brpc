@@ -20,6 +20,7 @@
 #include <sys/socket.h>                // socketpair
 #include <errno.h>                     // errno
 #include <fcntl.h>                     // O_RDONLY
+#include <memory>
 #include <butil/files/temp_file.h>      // TempFile
 #include <butil/containers/flat_map.h>
 #include <butil/macros.h>
@@ -1607,6 +1608,51 @@ TEST_F(IOBufTest, append_user_data_and_consume) {
     ASSERT_TRUE(b0.empty());
     ASSERT_EQ(data, my_free_params);
         
+    ASSERT_EQ(len, out.size());
+    // note: cannot memcmp with data which is already free-ed
+    for (int i = 0; i < 256; ++i) {
+        for (int j = 0; j < REP; ++j) {
+            ASSERT_EQ((char)i, out[i * REP + j]);
+        }
+    }
+}
+
+TEST_F(IOBufTest, append_stateful_user_data) {
+    butil::IOBuf b0;
+    const int REP = 16;
+    const size_t len = REP * 256;
+    std::shared_ptr<char> mem(new char[len], std::default_delete<char[]>());
+    std::weak_ptr<char> weaker = mem;
+    ASSERT_EQ(1, mem.use_count());
+    char* data = mem.get();
+    for (int i = 0; i < 256; ++i) {
+        for (int j = 0; j < REP; ++j) {
+            data[i * REP + j] = (char)i;
+        }
+    }
+
+    struct Deleter {
+        void operator()(void*) {
+            partial.reset();
+        }
+        std::shared_ptr<char> partial;
+    };
+
+    for (int i = 0; i < 256; i++) {
+        std::shared_ptr<char> ptr(mem, data + i * REP);
+        ASSERT_EQ(0, b0.append_user_data(data + i * REP, REP, Deleter{std::move(ptr)}));
+    }
+    ASSERT_EQ(256, b0._ref_num());
+    ASSERT_EQ(257, mem.use_count());
+    mem.reset();
+    butil::IOBuf::BlockRef r = b0._front_ref();
+    ASSERT_EQ(1, butil::iobuf::block_shared_count(r.block));
+    ASSERT_EQ(len, b0.size());
+    std::string out;
+    ASSERT_EQ(len, b0.cutn(&out, len));
+    ASSERT_TRUE(b0.empty());
+    ASSERT_TRUE(weaker.expired());
+
     ASSERT_EQ(len, out.size());
     // note: cannot memcmp with data which is already free-ed
     for (int i = 0; i < 256; ++i) {
