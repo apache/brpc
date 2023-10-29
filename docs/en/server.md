@@ -687,7 +687,7 @@ Builtin services are useful, on the other hand include a lot of internal informa
 ```nginx
   location /MyAPI {
       ...
-      proxy_pass http://<target-server>/ServiceName/MethodName$query_string   # $query_string is a nginx varible, check out http://nginx.org/en/docs/http/ngx_http_core_module.html for more.
+      proxy_pass http://<target-server>/ServiceName/MethodName$query_string   # $query_string is a nginx variable, check out http://nginx.org/en/docs/http/ngx_http_core_module.html for more.
       ...
   }
 ```
