@@ -1632,19 +1632,27 @@ TEST_F(IOBufTest, append_stateful_user_data) {
         }
     }
 
+    int incr_upon_destructrion = 0;
+
     struct Deleter {
-        Deleter(std::shared_ptr<char> partial) : partial(std::move(partial)) {}
-        Deleter(const Deleter&) { std::abort(); /*non copy*/ }
+        Deleter(std::shared_ptr<char> partial, int& incr) : partial(std::move(partial)), incr(&incr), allow_incr(false) {}
+        ~Deleter() {
+            if (allow_incr) (*incr)++;
+        }
+        Deleter(const Deleter&) { std::abort(); /*if copy, then crash*/ }
         Deleter(Deleter&&) noexcept = default;
         void operator()(void*) {
             partial.reset();
+            allow_incr = true;
         }
         std::shared_ptr<char> partial;
+        int* incr;
+        bool allow_incr;
     };
 
     for (int i = 0; i < 256; i++) {
         std::shared_ptr<char> ptr(mem, data + i * REP);
-        ASSERT_EQ(0, b0.append_user_data(data + i * REP, REP, Deleter{std::move(ptr)}));
+        ASSERT_EQ(0, b0.append_user_data(data + i * REP, REP, Deleter{std::move(ptr), incr_upon_destructrion}));
     }
     ASSERT_EQ(256, b0._ref_num());
     ASSERT_EQ(257, mem.use_count());
@@ -1656,6 +1664,7 @@ TEST_F(IOBufTest, append_stateful_user_data) {
     ASSERT_EQ(len, b0.cutn(&out, len));
     ASSERT_TRUE(b0.empty());
     ASSERT_TRUE(weaker.expired());
+    ASSERT_EQ(256, incr_upon_destructrion);
 
     ASSERT_EQ(len, out.size());
     // note: cannot memcmp with data which is already free-ed
