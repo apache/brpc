@@ -339,7 +339,7 @@ struct PortRange {
 };
 
 // Server dispatches requests from clients to registered services and
-// and sends responses back to clients.
+// sends responses back to clients.
 class Server {
 public:
     enum Status {
