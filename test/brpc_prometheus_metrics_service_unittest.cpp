@@ -15,25 +15,28 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Date: 2023/05/06 15:10:00
 
-#ifndef BRPC_PROMETHEUS_METRICS_SERVICE_H
-#define BRPC_PROMETHEUS_METRICS_SERVICE_H
+#include <gtest/gtest.h>
 
-#include "brpc/builtin_service.pb.h"
+#include "butil/strings/string_piece.h"
+#include "butil/iobuf.h"
+#include "brpc/builtin/prometheus_metrics_service.h"
 
-namespace brpc {
+namespace {
 
-class PrometheusMetricsService : public brpc_metrics {
-public:
-    void default_method(::google::protobuf::RpcController* cntl_base,
-                        const ::brpc::MetricsRequest* request,
-                        ::brpc::MetricsResponse* response,
-                        ::google::protobuf::Closure* done) override;
+class PrometheusMetricsDumperTest : public testing::Test {
+protected:
+    void SetUp() {}
+    void TearDown() {}
 };
 
-butil::StringPiece GetMetricsName(const std::string& name);
-int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output);
+TEST_F(PrometheusMetricsDumperTest, GetMetricsName) {
+  EXPECT_EQ("", brpc::GetMetricsName(""));
 
-} // namepace brpc
+  EXPECT_EQ("commit_count", brpc::GetMetricsName("commit_count"));
 
-#endif  // BRPC_PROMETHEUS_METRICS_SERVICE_H
+  EXPECT_EQ("commit_count", brpc::GetMetricsName("commit_count{region=\"1000\"}"));
+}
+
+}
