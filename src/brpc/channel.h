@@ -153,7 +153,9 @@ friend class Controller;
 friend class SelectiveChannel;
 public:
     Channel(ProfilerLinker = ProfilerLinker());
-    ~Channel();
+    virtual ~Channel();
+
+    DISALLOW_COPY_AND_ASSIGN(Channel);
 
     // Connect this channel to a single server whose address is given by the
     // first parameter. Use default options if `options' is NULL.
