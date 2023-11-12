@@ -236,7 +236,7 @@ void SendRpcResponse(int64_t correlation_id,
         span->set_response_size(res_buf.size());
     }
     // Send rpc response over stream even if server side failed to create
-    // stream for some reasons.
+    // stream for some reason.
     if(cntl->has_remote_stream()){
         // Send the response over stream to notify that this stream connection
         // is successfully built.
@@ -255,7 +255,7 @@ void SendRpcResponse(int64_t correlation_id,
         }
 
         if(stream_ptr) {
-            // Now it's ok the mark this server-side stream as connectted as all the
+            // Now it's ok the mark this server-side stream as connected as all the
             // written user data would follower the RPC response.
             ((Stream*)stream_ptr->conn())->SetConnected();
         }
