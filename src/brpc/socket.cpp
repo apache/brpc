@@ -2066,8 +2066,10 @@ ssize_t Socket::DoRead(size_t size_hint) {
                          << ": " << SSLError(e);
             errno = ESSL;
         } else {
-            // System error with corresponding errno set
-            PLOG(WARNING) << "Fail to read from ssl_fd=" << fd();
+            // System error with corresponding errno set.
+            PLOG_IF(WARNING, ssl_error != SSL_ERROR_ZERO_RETURN &&
+                             ssl_error != SSL_ERROR_SYSCALL)
+                << "Fail to read from ssl_fd=" << fd();
         }
         break;
     }
