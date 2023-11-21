@@ -247,6 +247,14 @@ inline void Socket::SetLogOff() {
     }
 }
 
+inline void Socket::SetGoAway() {
+    _goaway_flag = true;
+}
+
+inline bool Socket::MarkedGoAway() {
+    return _goaway_flag;
+}
+
 inline bool Socket::IsAvailable() const {
     return !_logoff_flag.load(butil::memory_order_relaxed) &&
         (_ninflight_app_health_check.load(butil::memory_order_relaxed) == 0);

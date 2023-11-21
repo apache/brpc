@@ -603,7 +603,15 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         _current_call.nretry >= _max_retry) {
         goto END_OF_RPC;
     }
-    if (_error_code == EBACKUPREQUEST) {
+    if (_current_call.sending_sock->MarkedGoAway()) {
+        CHECK_EQ(current_id(), info.id) << "error_code=" << _error_code;
+        _current_call.OnComplete(this, 0, info.responded, false);
+        if (_http_response) {
+            _http_response->Clear();
+        }
+        response_attachment().clear();
+        return IssueRPC(butil::gettimeofday_us());
+    } else if (_error_code == EBACKUPREQUEST) {
         // Reset timeout if needed
         int rc = 0;
         if (timeout_ms() >= 0) {
