@@ -556,9 +556,9 @@ void MakeRawHttpRequest(butil::IOBuf* request,
     uri.PrintWithoutHost(os); // host is sent by "Host" header.
     os << " HTTP/" << h->major_version() << '.'
        << h->minor_version() << BRPC_CRLF;
+    // Never use "Content-Length" set by user.
+    h->RemoveHeader("Content-Length");
     if (h->method() != HTTP_METHOD_GET) {
-        h->RemoveHeader("Content-Length");
-        // Never use "Content-Length" set by user.
         os << "Content-Length: " << (content ? content->length() : 0)
            << BRPC_CRLF;
     }
