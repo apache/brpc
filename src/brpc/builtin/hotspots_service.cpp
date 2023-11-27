@@ -113,6 +113,9 @@ DEFINE_int32(max_profiles_kept, 32,
              "max profiles kept for cpu/heap/growth/contention respectively");
 BRPC_VALIDATE_GFLAG(max_profiles_kept, PassValidate);
 
+DEFINE_int32(max_flame_graph_width, 1200, "max width of flame graph image");
+BRPC_VALIDATE_GFLAG(max_flame_graph_width, PositiveInteger);
+
 static const char* const PPROF_FILENAME = "pprof.pl";
 static int DEFAULT_PROFILING_SECONDS = 10;
 static size_t CONCURRENT_PROFILING_LIMIT = 256;
@@ -495,7 +498,8 @@ static void DisplayResult(Controller* cntl,
     if (display_type == DisplayType::kFlameGraph) {
         // For flamegraph, we don't care about pprof error msg, 
         // which will cause confusing messages in the final result.
-        cmd_builder << " 2>/dev/null " << " | " << "perl " << flamegraph_tool;
+        cmd_builder << " 2>/dev/null  | perl " <<  flamegraph_tool << " --width "
+                    << (FLAGS_max_flame_graph_width > 0 ? FLAGS_max_flame_graph_width : 1200);
     }
     cmd_builder << " 2>&1 ";
 #elif defined(OS_MACOSX)
