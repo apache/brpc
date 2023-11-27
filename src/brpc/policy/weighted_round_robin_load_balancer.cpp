@@ -185,7 +185,8 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     size_t remain_servers = s->server_list.size();
     while (remain_servers > 0) {
         SocketId server_id = GetServerInNextStride(s->server_list, filter, tls_temp);
-        if (!ExcludedServers::IsExcluded(in.excluded, server_id)
+        if ((remain_servers == 1 // always take last chance
+                || !ExcludedServers::IsExcluded(in.excluded, server_id))
             && Socket::Address(server_id, out->ptr) == 0
             && (*out->ptr)->IsAvailable()) {
             // update tls.
