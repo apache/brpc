@@ -19,6 +19,7 @@
 
 // Date: Thu Nov 22 13:57:56 CST 2012
 
+#include "butil/ssl_compat.h"               // BIO_fd_non_fatal_error
 #include <openssl/err.h>
 #include <openssl/ssl.h>                   // SSL_*
 #ifdef USE_MESALINK
@@ -37,10 +38,6 @@
 #include "butil/logging.h"                  // CHECK, LOG
 #include "butil/fd_guard.h"                 // butil::fd_guard
 #include "butil/iobuf.h"
-
-#if defined (OPENSSL_IS_BORINGSSL)
-#include "butil/ssl_compat.h"               // BIO_fd_non_fatal_error
-#endif
 
 namespace butil {
 namespace iobuf {
