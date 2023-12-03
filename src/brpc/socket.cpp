@@ -17,6 +17,7 @@
 
 
 #include "butil/compat.h"                        // OS_MACOSX
+#include "butil/ssl_compat.h"                    // BIO_fd_non_fatal_error
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #ifdef USE_MESALINK
@@ -2066,8 +2067,12 @@ ssize_t Socket::DoRead(size_t size_hint) {
                          << ": " << SSLError(e);
             errno = ESSL;
         } else {
-            // System error with corresponding errno set
-            PLOG(WARNING) << "Fail to read from ssl_fd=" << fd();
+            // System error with corresponding errno set.
+            bool is_fatal_error = (ssl_error != SSL_ERROR_ZERO_RETURN &&
+                                   ssl_error != SSL_ERROR_SYSCALL) ||
+                                   BIO_fd_non_fatal_error(errno) != 0 ||
+                                  nr < 0;
+            PLOG_IF(WARNING, is_fatal_error) << "Fail to read from ssl_fd=" << fd();
         }
         break;
     }
