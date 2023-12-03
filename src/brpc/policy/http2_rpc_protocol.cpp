@@ -1285,10 +1285,10 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
         }
 
         if (FLAGS_http_verbose) {
-            butil::IOBufBuilder* vs = this->_vmsgbuilder;
+            butil::IOBufBuilder* vs = this->_vmsgbuilder.get();
             if (vs == NULL) {
                 vs = new butil::IOBufBuilder;
-                this->_vmsgbuilder = vs;
+                this->_vmsgbuilder.reset(vs);
                 if (_conn_ctx->is_server_side()) {
                     *vs << "[ H2 REQUEST @" << butil::my_ip() << " ]";
                 } else {

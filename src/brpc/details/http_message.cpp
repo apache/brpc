@@ -107,10 +107,10 @@ int HttpMessage::on_header_value(http_parser *parser,
         http_message->_cur_value->append(at, length);
     }
     if (FLAGS_http_verbose) {
-        butil::IOBufBuilder* vs = http_message->_vmsgbuilder;
+        butil::IOBufBuilder* vs = http_message->_vmsgbuilder.get();
         if (vs == NULL) {
             vs = new butil::IOBufBuilder;
-            http_message->_vmsgbuilder = vs;
+            http_message->_vmsgbuilder.reset(vs);
             if (parser->type == HTTP_REQUEST) {
                 *vs << "[ HTTP REQUEST @" << butil::my_ip() << " ]\n< "
                     << HttpMethod2Str((HttpMethod)parser->method) << ' '
@@ -231,8 +231,7 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
             // the body is probably streaming data which is too long to print.
             header().status_code() == HTTP_STATUS_OK) {
             LOG(INFO) << '\n' << _vmsgbuilder->buf();
-            delete _vmsgbuilder;
-            _vmsgbuilder = NULL;
+            _vmsgbuilder.reset(NULL);
         } else {
             if (_vbodylen < (size_t)FLAGS_http_verbose_max_body_length) {
                 int plen = std::min(length, (size_t)FLAGS_http_verbose_max_body_length
@@ -296,8 +295,7 @@ int HttpMessage::OnMessageComplete() {
                 - (size_t)FLAGS_http_verbose_max_body_length << " bytes>";
         }
         LOG(INFO) << '\n' << _vmsgbuilder->buf();
-        delete _vmsgbuilder;
-        _vmsgbuilder = NULL;
+        _vmsgbuilder.reset(NULL);
     }
     _cur_header.clear();
     _cur_value = NULL;
@@ -408,7 +406,6 @@ HttpMessage::HttpMessage(bool read_body_progressively,
     , _read_body_progressively(read_body_progressively)
     , _body_reader(NULL)
     , _cur_value(NULL)
-    , _vmsgbuilder(NULL)
     , _vbodylen(0) {
     http_parser_init(&_parser, HTTP_BOTH);
     _parser.data = this;
