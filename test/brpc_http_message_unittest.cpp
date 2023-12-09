@@ -423,24 +423,50 @@ TEST(HttpMessageTest, serialize_http_response) {
     butil::IOBuf content;
     content.append("data");
     MakeRawHttpResponse(&response, &header, &content);
-    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 4\r\nFoo: Bar\r\n\r\ndata", response);
-    // content is cleared.
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 4\r\nFoo: Bar\r\n\r\ndata", response)
+        << butil::ToPrintable(response);
+    // Content is cleared.
     CHECK(content.empty());
 
-    // null content
+    // NULL content
     header.SetHeader("Content-Length", "100");
     MakeRawHttpResponse(&response, &header, NULL);
-    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nFoo: Bar\r\n\r\n", response) << butil::ToPrintable(response);
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nFoo: Bar\r\n\r\n", response)
+        << butil::ToPrintable(response);
 
-    // user-set content-length is ignored.
+    // User-set content-length is ignored.
     content.append("data2");
     MakeRawHttpResponse(&response, &header, &content);
-    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nFoo: Bar\r\n\r\ndata2", response);
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nFoo: Bar\r\n\r\ndata2", response)
+        << butil::ToPrintable(response);
 
+    // User-set content-length and transfer-encoding is ignored when status code is 204 or 1xx.
+    // 204 No Content.
+    header.SetHeader("Content-Length", "100");
     header.SetHeader("Transfer-Encoding", "chunked");
     header.set_status_code(brpc::HTTP_STATUS_NO_CONTENT);
     MakeRawHttpResponse(&response, &header, &content);
     ASSERT_EQ("HTTP/1.1 204 No Content\r\nFoo: Bar\r\n\r\n", response);
+    // 101 Continue
+    header.SetHeader("Content-Length", "100");
+    header.SetHeader("Transfer-Encoding", "chunked");
+    header.set_status_code(brpc::HTTP_STATUS_CONTINUE);
+    MakeRawHttpResponse(&response, &header, &content);
+    ASSERT_EQ("HTTP/1.1 100 Continue\r\nFoo: Bar\r\n\r\n", response)
+        << butil::ToPrintable(response);
+
+    // when request method is HEAD:
+    // 1. There isn't user-set content-length, length of content is used.
+    header.set_method(brpc::HTTP_METHOD_HEAD);
+    header.set_status_code(brpc::HTTP_STATUS_OK);content.append("data2");
+    MakeRawHttpResponse(&response, &header, &content);
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nFoo: Bar\r\n\r\n", response)
+        << butil::ToPrintable(response);
+    // 2. User-set content-length is not ignored .
+    header.SetHeader("Content-Length", "100");
+    MakeRawHttpResponse(&response, &header, &content);
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nFoo: Bar\r\n\r\n", response)
+        << butil::ToPrintable(response);
 }
 
 } //namespace

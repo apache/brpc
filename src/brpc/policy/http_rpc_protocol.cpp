@@ -942,14 +942,10 @@ HttpResponseSender::~HttpResponseSender() {
         }
     } else {
         butil::IOBuf* content = NULL;
-        if ((cntl->Failed() || !cntl->has_progressive_writer()) &&
-            // https://datatracker.ietf.org/doc/html/rfc7231#section-4.3.2
-            // The HEAD method is identical to GET except that the server MUST NOT
-            // send a message body in the response (i.e., the response terminates at
-            // the end of the header section).
-            req_header->method() != HTTP_METHOD_HEAD) {
+        if (cntl->Failed() || !cntl->has_progressive_writer()) {
             content = &cntl->response_attachment();
         }
+        res_header->set_method(req_header->method());
         butil::IOBuf res_buf;
         MakeRawHttpResponse(&res_buf, res_header, content);
         if (FLAGS_http_verbose) {
