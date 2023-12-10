@@ -323,7 +323,7 @@ static void GlobalInitializeOrDieImpl() {
     struct sigaction oldact;
     if (sigaction(SIGPIPE, NULL, &oldact) != 0 ||
             (oldact.sa_handler == NULL && oldact.sa_sigaction == NULL)) {
-        CHECK(NULL == signal(SIGPIPE, SIG_IGN));
+        CHECK(SIG_ERR != signal(SIGPIPE, SIG_IGN));
     }
 
     // Make GOOGLE_LOG print to comlog device

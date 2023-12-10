@@ -27,7 +27,7 @@ namespace brpc {
 // Inherit this class to customize when the RPC should be retried.
 class RetryPolicy {
 public:
-    virtual ~RetryPolicy();
+    virtual ~RetryPolicy() = default;
     
     // Returns true if the RPC represented by `controller' should be retried.
     // [Example]
@@ -68,10 +68,70 @@ public:
     virtual bool DoRetry(const Controller* controller) const = 0;
     //                                                   ^
     //                                don't forget the const modifier
+
+    // Returns the backoff time in milliseconds before every retry.
+    virtual int32_t GetBackoffTimeMs(const Controller* controller) const { return 0; }
+    //                                                               ^
+    //                                             don't forget the const modifier
+
+    // Returns true if enable retry backoff in pthread, otherwise returns false.
+    virtual bool CanRetryBackoffInPthread() const { return false; }
+    //                                        ^
+    //                     don't forget the const modifier
 };
 
 // Get the RetryPolicy used by brpc.
 const RetryPolicy* DefaultRetryPolicy();
+
+class RpcRetryPolicy : public RetryPolicy {
+public:
+    bool DoRetry(const Controller* controller) const override;
+};
+
+class RpcRetryPolicyWithFixedBackoff : public RpcRetryPolicy {
+public:
+    RpcRetryPolicyWithFixedBackoff(int32_t backoff_time_ms,
+                                   int32_t no_backoff_remaining_rpc_time_ms,
+                                   bool retry_backoff_in_pthread)
+    : _backoff_time_ms(backoff_time_ms)
+    , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms)
+    , _retry_backoff_in_pthread(retry_backoff_in_pthread) {}
+
+    int32_t GetBackoffTimeMs(const Controller* controller) const override;
+
+    bool CanRetryBackoffInPthread() const override { return _retry_backoff_in_pthread; }
+
+
+private:
+    int32_t _backoff_time_ms;
+    // If remaining rpc time is less than `_no_backoff_remaining_rpc_time', no backoff.
+    int32_t _no_backoff_remaining_rpc_time_ms;
+    bool _retry_backoff_in_pthread;
+};
+
+class RpcRetryPolicyWithJitteredBackoff : public RpcRetryPolicy {
+public:
+    RpcRetryPolicyWithJitteredBackoff(int32_t min_backoff_time_ms,
+                                      int32_t max_backoff_time_ms,
+                                      int32_t no_backoff_remaining_rpc_time_ms,
+                                      bool retry_backoff_in_pthread)
+            : _min_backoff_time_ms(min_backoff_time_ms)
+            , _max_backoff_time_ms(max_backoff_time_ms)
+            , _no_backoff_remaining_rpc_time_ms(no_backoff_remaining_rpc_time_ms)
+            , _retry_backoff_in_pthread(retry_backoff_in_pthread) {}
+
+    int32_t GetBackoffTimeMs(const Controller* controller) const override;
+
+    bool CanRetryBackoffInPthread() const override { return _retry_backoff_in_pthread; }
+
+private:
+    // Generate jittered backoff time between [_min_backoff_ms, _max_backoff_ms].
+    int32_t _min_backoff_time_ms;
+    int32_t _max_backoff_time_ms;
+    // If remaining rpc time is less than `_no_backoff_remaining_rpc_time', no backoff.
+    int32_t _no_backoff_remaining_rpc_time_ms;
+    bool _retry_backoff_in_pthread;
+};
 
 } // namespace brpc
 

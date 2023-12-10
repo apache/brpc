@@ -223,8 +223,7 @@ class scoped_ptr_impl {
 
   void reset(T* p) {
     // This is a self-reset, which is no longer allowed: http://crbug.com/162971
-    if (p != NULL && p == data_.ptr)
-      abort();
+    RELEASE_ASSERT(p == NULL || p != data_.ptr);
 
     // Note that running data_.ptr = p can lead to undefined behavior if
     // get_deleter()(get()) deletes this. In order to prevent this, reset()

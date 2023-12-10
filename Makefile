@@ -68,6 +68,7 @@ BUTIL_SOURCES = \
     src/butil/at_exit.cc \
     src/butil/atomicops_internals_x86_gcc.cc \
     src/butil/base64.cc \
+    src/butil/base64url.cc \
     src/butil/big_endian.cc \
     src/butil/cpu.cc \
     src/butil/debug/alias.cc \
@@ -151,6 +152,7 @@ BUTIL_SOURCES = \
     src/butil/status.cpp \
     src/butil/string_printf.cpp \
     src/butil/thread_local.cpp \
+    src/butil/thread_key.cpp \
     src/butil/unix_socket.cpp \
     src/butil/endpoint.cpp \
     src/butil/fd_utility.cpp \

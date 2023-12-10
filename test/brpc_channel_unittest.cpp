@@ -40,7 +40,11 @@
 #include "brpc/selective_channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
+#if BAZEL_TEST
+#include "test/echo.pb.h"
+#else
 #include "echo.pb.h"
+#endif   // BAZEL_TEST
 #include "brpc/options.pb.h"
 
 namespace brpc {
@@ -76,10 +80,8 @@ public:
     DeleteOnlyOnceChannel() : _c(1) {
     }
     ~DeleteOnlyOnceChannel() {
-        if (_c.fetch_sub(1) != 1) {
-            LOG(ERROR) << "Delete more than once!";
-            abort();
-        }
+        RELEASE_ASSERT_VERBOSE(_c.fetch_sub(1) == 1,
+                               "Delete more than once!");
     }
 private:
     butil::atomic<int> _c;
@@ -131,6 +133,22 @@ static bool VerifyMyRequest(const brpc::InputMessageBase* msg_base) {
     return true;
 }
 
+class CallAfterRpcObject {
+public:
+    explicit CallAfterRpcObject() {}
+
+    ~CallAfterRpcObject() {
+        EXPECT_EQ(str, "CallAfterRpcRespTest");
+    }
+
+    void Append(const std::string& s) {
+        str.append(s);
+    }
+
+private:
+    std::string str;
+};
+
 class MyEchoService : public ::test::EchoService {
     void Echo(google::protobuf::RpcController* cntl_base,
               const ::test::EchoRequest* req,
@@ -138,6 +156,9 @@ class MyEchoService : public ::test::EchoService {
               google::protobuf::Closure* done) {
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
+        std::shared_ptr<CallAfterRpcObject> str_test(new CallAfterRpcObject());
+        cntl->set_after_rpc_resp_fn(std::bind(&MyEchoService::CallAfterRpc, str_test,
+            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         brpc::ClosureGuard done_guard(done);
         if (req->server_fail()) {
             cntl->SetFailed(req->server_fail(), "Server fail1");
@@ -158,6 +179,17 @@ class MyEchoService : public ::test::EchoService {
             res->add_code_list(req->code());
         }
         res->set_receiving_socket_id(cntl->_current_call.sending_sock->id());
+    }
+    static void CallAfterRpc(std::shared_ptr<CallAfterRpcObject> str,
+                        brpc::Controller* cntl,
+                        const google::protobuf::Message* req,
+                        const google::protobuf::Message* res) {
+        const test::EchoRequest* request = static_cast<const test::EchoRequest*>(req);
+        const test::EchoResponse* response = static_cast<const test::EchoResponse*>(res);
+        str->Append("CallAfterRpcRespTest");
+        EXPECT_TRUE(nullptr != cntl);
+        EXPECT_TRUE(nullptr != request);
+        EXPECT_TRUE(nullptr != response);
     }
 };
 
@@ -249,7 +281,7 @@ protected:
             const brpc::Server*,
             brpc::MethodStatus*, int64_t>(
                 &brpc::policy::SendRpcResponse,
-                meta.correlation_id(), cntl, NULL, res,
+                meta.correlation_id(), cntl, req, res,
                 &ts->_dummy, NULL, -1);
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }
@@ -263,7 +295,7 @@ protected:
                 return -1;
             }
         }
-        if (_messenger.StartAccept(listening_fd, -1, NULL) != 0) {
+        if (_messenger.StartAccept(listening_fd, -1, NULL, false) != 0) {
             return -1;
         }
         return 0;
@@ -1566,7 +1598,7 @@ protected:
         }
         StopAndJoin();
     }
-    
+
     void RPCThread(brpc::ChannelBase* channel, bool async) {
         brpc::Controller cntl;
         test::EchoRequest req;
@@ -1585,7 +1617,7 @@ protected:
             test::EchoResponse res;
             req.set_message(__FUNCTION__);
             CallMethod(channel, &cntl, &req, &res, async);
-            
+
             ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
             ASSERT_EQ("received " + std::string(__FUNCTION__), res.message());
             cntl.Reset();
@@ -1786,6 +1818,7 @@ protected:
 
         brpc::Channel channel;
         brpc::ChannelOptions opt;
+        opt.timeout_ms = 1000;
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
@@ -1810,6 +1843,81 @@ protected:
         StopAndJoin();
     }
 
+    struct TestRetryBackoffInfo {
+        TestRetryBackoffInfo(ChannelTest* channel_test_param,
+                             bool async_param,
+                             bool short_connection_param,
+                             bool fixed_backoff_param)
+            : channel_test(channel_test_param)
+            , async(async_param)
+            , short_connection(short_connection_param)
+            , fixed_backoff(fixed_backoff_param) {}
+
+        ChannelTest* channel_test;
+        int async;
+        int short_connection;
+        int fixed_backoff;
+    };
+
+    static void* TestRetryBackoffBthread(void* void_args) {
+        auto args = static_cast<TestRetryBackoffInfo*>(void_args);
+        args->channel_test->TestRetryBackoff(args->async, args->short_connection,
+                                             args->fixed_backoff, false);
+        return NULL;
+    }
+
+    void TestRetryBackoff(bool async, bool short_connection, bool fixed_backoff,
+                          bool retry_backoff_in_pthread) {
+        ASSERT_EQ(0, StartAccept(_ep));
+
+        const int32_t backoff_time_ms = 100;
+        const int32_t no_backoff_remaining_rpc_time_ms = 100;
+        std::unique_ptr<brpc::RetryPolicy> retry_ptr;
+        if (fixed_backoff) {
+            retry_ptr.reset(
+                    new brpc::RpcRetryPolicyWithFixedBackoff(backoff_time_ms,
+                                                             no_backoff_remaining_rpc_time_ms,
+                                                             retry_backoff_in_pthread));
+        } else {
+            retry_ptr.reset(
+                    new brpc::RpcRetryPolicyWithJitteredBackoff(backoff_time_ms,
+                                                                backoff_time_ms + 20,
+                                                                no_backoff_remaining_rpc_time_ms,
+                                                                retry_backoff_in_pthread));
+        }
+
+        brpc::Channel channel;
+        brpc::ChannelOptions opt;
+        opt.timeout_ms = 1000;
+        opt.retry_policy = retry_ptr.get();
+        if (short_connection) {
+            opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
+        }
+        butil::TempFile server_list;
+        EXPECT_EQ(0, server_list.save_format(
+            "127.0.0.1:100\n"
+            "127.0.0.1:200\n"
+            "%s", endpoint2str(_ep).c_str()));
+        std::string naming_url = std::string("fIle://")
+            + server_list.fname();
+        EXPECT_EQ(0, channel.Init(naming_url.c_str(), "RR", &opt));
+
+        const int RETRY_NUM = 3;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        brpc::Controller cntl;
+        req.set_message(__FUNCTION__);
+        cntl.set_max_retry(RETRY_NUM);
+        CallMethod(&channel, &cntl, &req, &res, async);
+        if (cntl.retried_count() > 0) {
+            EXPECT_GT(cntl.latency_us(), ((int64_t)backoff_time_ms * 1000) * cntl.retried_count())
+                << "latency_us=" << cntl.latency_us() << " retried_count=" << cntl.retried_count()
+                << " enable_retry_backoff_in_pthread=" << retry_backoff_in_pthread;
+        }
+        EXPECT_EQ(0, cntl.ErrorCode()) << async << ", " << short_connection;
+        StopAndJoin();
+    }
+
     butil::EndPoint _ep;
     butil::TempFile _server_list;                                        
     std::string _naming_url;
@@ -1828,7 +1936,7 @@ class MyShared : public brpc::SharedObject {
 public:
     MyShared() { ++ nctor; }
     MyShared(const MyShared&) : brpc::SharedObject() { ++ nctor; }
-    ~MyShared() { ++ ndtor; }
+    ~MyShared() override { ++ ndtor; }
 
     static int nctor;
     static int ndtor;
@@ -2462,6 +2570,29 @@ TEST_F(ChannelTest, retry_other_servers) {
     for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
         for (int k = 0; k <=1; ++k) { // Flag ShortConnection
             TestRetryOtherServer(j, k);
+        }
+    }
+}
+
+TEST_F(ChannelTest, retry_backoff) {
+    for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
+        for (int k = 0; k <= 1; ++k) { // Flag ShortConnection
+            for (int l = 0; l <= 1; ++l) { // Flag FixedRetryBackoffPolicy or JitteredRetryBackoffPolicy
+                for (int m = 0; m <= 1; ++m) { // Flag retry backoff in bthread or pthread
+                    if (m % 2 == 0) {
+                        bthread_t th;
+                        bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+                        std::unique_ptr<TestRetryBackoffInfo> test_retry_backoff(
+                                new TestRetryBackoffInfo(this, j, k, l));
+                        // Retry backoff in bthread.
+                        bthread_start_background(&th, &attr, TestRetryBackoffBthread, test_retry_backoff.get());
+                        bthread_join(th, NULL);
+                    } else {
+                        // Retry backoff in pthread.
+                        TestRetryBackoff(j, k, l, true);
+                    }
+                }
+            }
         }
     }
 }

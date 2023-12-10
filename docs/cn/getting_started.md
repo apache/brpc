@@ -31,7 +31,17 @@ sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev li
 sudo apt-get install -y libsnappy-dev
 ```
 
+如果你需要通过源码编译生成 leveldb 静态库：
+
+```shell
+git clone --recurse-submodules https://github.com/google/leveldb.git
+mkdir -p build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON .. && cmake --build .
+sudo cp -r ../include/leveldb /usr/include/ && sudo cp libleveldb.a /usr/lib/
+```
+
 如果你要在样例中启用cpu/heap的profiler：
+
 ```shell
 sudo apt-get install -y libgoogle-perftools-dev
 ```

@@ -117,6 +117,7 @@ BUTIL_SRCS = [
     "src/butil/at_exit.cc",
     "src/butil/atomicops_internals_x86_gcc.cc",
     "src/butil/base64.cc",
+    "src/butil/base64url.cc",
     "src/butil/big_endian.cc",
     "src/butil/cpu.cc",
     "src/butil/debug/alias.cc",
@@ -200,6 +201,7 @@ BUTIL_SRCS = [
     "src/butil/status.cpp",
     "src/butil/string_printf.cpp",
     "src/butil/thread_local.cpp",
+    "src/butil/thread_key.cpp",
     "src/butil/unix_socket.cpp",
     "src/butil/endpoint.cpp",
     "src/butil/fd_utility.cpp",
@@ -251,6 +253,7 @@ objc_library(
         "src/butil/mac/scoped_cftyperef.h",
         "src/butil/mac/scoped_typeref.h",
         "src/butil/macros.h",
+        "src/butil/string_printf.h",
         "src/butil/memory/aligned_memory.h",
         "src/butil/memory/scoped_policy.h",
         "src/butil/memory/scoped_ptr.h",
@@ -324,14 +327,15 @@ cc_library(
         "@com_github_gflags_gflags//:gflags",
         "@com_github_madler_zlib//:zlib",
         "@com_google_protobuf//:protobuf",
-        "@openssl//:crypto",
-        "@openssl//:ssl",
     ] + select({
         "//bazel/config:brpc_with_glog": ["@com_github_google_glog//:glog"],
         "//conditions:default": [],
     }) + select({
         "@bazel_tools//tools/osx:darwin": [":macos_lib"],
         "//conditions:default": [],
+    }) + select({
+        "//bazel/config:brpc_with_boringssl": ["@boringssl//:ssl", "@boringssl//:crypto"],
+        "//conditions:default": ["@openssl//:ssl", "@openssl//:crypto"],
     }),
 )
 

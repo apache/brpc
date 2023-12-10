@@ -64,8 +64,8 @@ MultiDimension<T>::MultiDimension(const butil::StringPiece& prefix,
 
 template <typename T>
 MultiDimension<T>::~MultiDimension() {
-    delete_stats();
     hide();
+    delete_stats();
 }
 
 template <typename T>
@@ -220,6 +220,12 @@ T* MultiDimension<T>::get_stats_impl(const key_type& labels_value, STATS_OP stat
     };
     _metric_map.Modify(insert_fn);
     return cache_metric;
+}
+
+template <typename T>
+inline
+void MultiDimension<T>::clear_stats() {
+    delete_stats();
 }
 
 template <typename T>

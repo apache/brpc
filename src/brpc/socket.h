@@ -38,6 +38,7 @@
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
 #include "bvar/bvar.h"
+#include "http_method.h"
 
 namespace brpc {
 namespace policy {
@@ -206,6 +207,8 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
+    // Only accept ssl connection.
+    bool force_ssl;
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bool use_rdma;
     bthread_keytable_pool_t* keytable_pool;
@@ -288,10 +291,20 @@ public:
         // Default: false
         bool ignore_eovercrowded;
 
+        // The calling thread directly creates KeepWrite thread to write into
+        // this socket, skipping writing once.
+        // In situations like when you are continually issuing lots of
+        // StreamWrite or async RPC calls in only one thread, directly creating
+        // KeepWrite thread at first provides batch write effect and better
+        // performance. Otherwise, each write only writes one `msg` into socket
+        // and no KeepWrite thread can be created, which brings poor
+        // performance.
+        bool write_in_background;
+
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
             , pipelined_count(0), auth_flags(0)
-            , ignore_eovercrowded(false) {}
+            , ignore_eovercrowded(false), write_in_background(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
 
@@ -308,9 +321,13 @@ public:
     // ip/port of the other end of the connection.
     butil::EndPoint remote_side() const { return _remote_side; }
 
-    // Positive value enables health checking.
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
+
+    // True if health checking is enabled.
+    bool HCEnabled() const {
+        return _health_check_interval_s > 0 && _is_hc_related_ref_held;
+    }
 
     // When someone holds a health-checking-related reference,
     // this function need to be called to make health checking run normally.
@@ -565,6 +582,9 @@ public:
     bool is_overcrowded() const { return _overcrowded; }
 
     bthread_keytable_pool_t* keytable_pool() const { return _keytable_pool; }
+
+    void set_http_request_method(const HttpMethod& method) { _http_request_method = method; }
+    HttpMethod http_request_method() const { return _http_request_method; }
 
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
@@ -827,7 +847,12 @@ private:
     // exists in server side
     AuthContext* _auth_context;
 
+    // Only accept ssl connection.
+    bool _force_ssl;
     SSLState _ssl_state;
+    // SSL objects cannot be read and written at the same time.
+    // Use mutex to protect SSL objects when ssl_state is SSL_CONNECTED.
+    mutable butil::Mutex _ssl_session_mutex;
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
@@ -899,6 +924,8 @@ private:
     // Refer to `SocketKeepaliveOptions' for details.
     // non-NULL means that keepalive is on.
     std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+
+    HttpMethod _http_request_method;
 };
 
 } // namespace brpc

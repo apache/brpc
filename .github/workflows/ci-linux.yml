@@ -54,6 +54,18 @@ jobs:
       run: |
            export CC=gcc && export CXX=g++
            bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+  
+  gcc-compile-with-boringssl:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: install dependences
+      run: |
+           sudo apt-get update
+           sudo apt-get install libibverbs-dev
+    - name: compile-with-boringssl
+      run: |
+          bazel build -j 12 -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true --copt -DHAVE_ZLIB=1 //...
 
   gcc-compile-with-make-all-options:
     runs-on: ubuntu-20.04
@@ -96,7 +108,6 @@ jobs:
            export CC=gcc && export CXX=g++
            bazel build -j 12 -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --copt -DHAVE_ZLIB=1 //...
 
-
   clang-compile-with-make:
     runs-on: ubuntu-20.04
     steps:
@@ -137,6 +148,18 @@ jobs:
       run: |
            export CC=clang && export CXX=clang++
            bazel build -j ${{env.proc_num}} -c opt --copt -DHAVE_ZLIB=1 //...
+
+  clang-compile-with-boringssl:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: install dependences
+      run: |
+           sudo apt-get update
+           sudo apt-get install libibverbs-dev
+    - name: compile
+      run: |
+        bazel build -j ${{env.proc_num}} -c opt --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true  --copt -DHAVE_ZLIB=1 //...
 
   clang-compile-with-make-all-options:
     runs-on: ubuntu-20.04

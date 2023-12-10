@@ -65,6 +65,11 @@ service DownloadService {
     rpc DownloadFailed(HttpRequest) returns (HttpResponse);
 }
 
+service UploadService {
+    rpc Upload(HttpRequest) returns (HttpResponse);
+    rpc UploadFailed(HttpRequest) returns (HttpResponse);
+}
+
 service UserNamingService {
     rpc ListNames(HttpRequest) returns (HttpResponse);
     rpc Touch(HttpRequest) returns (HttpResponse);
@@ -82,6 +87,10 @@ service NacosNamingService {
     rpc Login(HttpRequest) returns (HttpResponse);
     rpc List(HttpRequest) returns (HttpResponse);
 };
+
+service HttpService {
+    rpc Head(HttpRequest) returns (HttpResponse);
+}
 
 enum State0 {
     STATE0_NUM_0 = 0;

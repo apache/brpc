@@ -15,8 +15,7 @@
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_proto_library", "cc_test")
-load("@com_grail_bazel_compdb//:defs.bzl", "compilation_database")
-load("@com_grail_bazel_output_base_util//:defs.bzl", "OUTPUT_BASE")
+load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
 COPTS = [
     "-D__STDC_FORMAT_MACROS",
@@ -46,6 +45,7 @@ TEST_BUTIL_SOURCES = [
     "at_exit_unittest.cc",
     "atomicops_unittest.cc",
     "base64_unittest.cc",
+    "base64url_unittest.cc",
     "big_endian_unittest.cc",
     "bits_unittest.cc",
     "hash_tables_unittest.cc",
@@ -128,6 +128,7 @@ TEST_BUTIL_SOURCES = [
     "synchronous_event_unittest.cpp",
     "temp_file_unittest.cpp",
     "baidu_thread_local_unittest.cpp",
+    "thread_key_unittest.cpp",
     "baidu_time_unittest.cpp",
     "flat_map_unittest.cpp",
     "crc32c_unittest.cc",
@@ -236,20 +237,15 @@ cc_test(
     ],
 )
 
-compilation_database(
+refresh_compile_commands(
     name = "brpc_test_compdb",
-    # Use test profile
-    testonly = True,
-    # OUTPUT_BASE is a dynamic value that will vary for each user workspace.
-    # If you would like your build outputs to be the same across users, then
-    # skip supplying this value, and substitute the default constant value
-    # "__OUTPUT_BASE__" through an external tool like `sed` or `jq` (see
-    # below shell commands for usage).
-    output_base = OUTPUT_BASE,
-    targets = [
-        "//:brpc",
-        ":bvar_test",
-        ":bthread_test",
-        ":butil_test",
-    ],
+    # Specify the targets of interest.
+    # For example, specify a dict of targets and their arguments:
+    targets = {
+        "//:brpc": "",
+        ":bvar_test": "",
+        ":bthread_test": "",
+        ":butil_test": "",
+    },
+    # For more details, feel free to look into refresh_compile_commands.bzl if you want.
 )

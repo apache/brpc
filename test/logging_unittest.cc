@@ -13,6 +13,7 @@
 namespace logging {
 DECLARE_bool(crash_on_fatal_log);
 DECLARE_int32(v);
+DECLARE_bool(log_func_name);
 
 namespace {
 
@@ -417,6 +418,61 @@ TEST_F(LoggingTest, limited_logging) {
         VLOG_EVERY_SECOND(1) << "vi4=" << i;
         usleep(10000);
     }
+}
+
+void CheckFunctionName() {
+    const char* func_name = __func__;
+    DCHECK(1) << "test";
+    ASSERT_EQ(func_name, LOG_STREAM(DCHECK).func());
+
+    LOG(DEBUG) << "test" << noflush;
+    ASSERT_EQ(func_name, LOG_STREAM(DEBUG).func());
+    LOG(INFO) << "test" << noflush;
+    ASSERT_EQ(func_name, LOG_STREAM(INFO).func());
+    LOG(WARNING) << "test" << noflush;
+    ASSERT_EQ(func_name, LOG_STREAM(WARNING).func());
+    LOG(WARNING) << "test" << noflush;
+    ASSERT_EQ(func_name, LOG_STREAM(WARNING).func());
+    LOG(ERROR) << "test" << noflush;
+    ASSERT_EQ(func_name, LOG_STREAM(ERROR).func());
+    LOG(FATAL) << "test" << noflush;
+    ASSERT_EQ(func_name, LOG_STREAM(FATAL).func());
+
+    errno = EINTR;
+    PLOG(DEBUG) << "test" << noflush;
+    ASSERT_EQ(func_name, PLOG_STREAM(DEBUG).func());
+    PLOG(INFO) << "test" << noflush;
+    ASSERT_EQ(func_name, PLOG_STREAM(INFO).func());
+    PLOG(WARNING) << "test" << noflush;
+    ASSERT_EQ(func_name, PLOG_STREAM(WARNING).func());
+    PLOG(WARNING) << "test" << noflush;
+    ASSERT_EQ(func_name, PLOG_STREAM(WARNING).func());
+    PLOG(ERROR) << "test" << noflush;
+    ASSERT_EQ(func_name, PLOG_STREAM(ERROR).func());
+    PLOG(FATAL) << "test" << noflush;
+    ASSERT_EQ(func_name, PLOG_STREAM(FATAL).func());
+
+    ::logging::StringSink log_str;
+    ::logging::LogSink* old_sink = ::logging::SetLogSink(&log_str);
+    LOG_AT(WARNING, "specified_file.cc", 12345, "log_at") << "file/line is specified";
+    // the file:line part should be using the argument given by us.
+    ASSERT_NE(std::string::npos, log_str.find("specified_file.cc:12345 log_at"));
+    ::logging::SetLogSink(old_sink);
+
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("v", "1").empty());
+    VLOG(100) << "test" << noflush;
+    ASSERT_EQ(func_name, VLOG_STREAM(100).func());
+}
+
+TEST_F(LoggingTest, log_func) {
+    bool old_crash_on_fatal_log = ::logging::FLAGS_crash_on_fatal_log;
+    ::logging::FLAGS_crash_on_fatal_log = false;
+
+    ::logging::FLAGS_log_func_name = true;
+    CheckFunctionName();
+    ::logging::FLAGS_log_func_name = false;
+
+    ::logging::FLAGS_crash_on_fatal_log = old_crash_on_fatal_log;
 }
 
 }  // namespace

@@ -149,10 +149,14 @@ void SendRpcResponse(int64_t correlation_id,
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
+
+    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+
+    ClosureGuard guard(brpc::NewCallback(cntl, &Controller::CallAfterRpcResp, req, res));
     
     StreamId response_stream_id = accessor.response_stream();
 
@@ -232,7 +236,7 @@ void SendRpcResponse(int64_t correlation_id,
         span->set_response_size(res_buf.size());
     }
     // Send rpc response over stream even if server side failed to create
-    // stream for some reasons.
+    // stream for some reason.
     if(cntl->has_remote_stream()){
         // Send the response over stream to notify that this stream connection
         // is successfully built.
@@ -251,7 +255,7 @@ void SendRpcResponse(int64_t correlation_id,
         }
 
         if(stream_ptr) {
-            // Now it's ok the mark this server-side stream as connectted as all the
+            // Now it's ok the mark this server-side stream as connected as all the
             // written user data would follower the RPC response.
             ((Stream*)stream_ptr->conn())->SetConnected();
         }

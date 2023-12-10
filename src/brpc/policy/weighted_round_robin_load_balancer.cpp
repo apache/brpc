@@ -165,7 +165,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         return ENODATA;
     }
     TLS& tls = s.tls();
-    if (tls.IsNeededCaculateNewStride(s->weight_sum, s->server_list.size())) {
+    if (tls.IsNeededCalculateNewStride(s->weight_sum, s->server_list.size())) {
       if (tls.stride == 0) {
           tls.position = butil::fast_rand_less_than(s->server_list.size());
       }
@@ -178,14 +178,15 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         tls.remain_server.id != s->server_list[tls.position].id) {
         tls.remain_server.weight = 0;
     }
-    // The servers that can not be choosed.
+    // The servers that can not be chosen.
     std::unordered_set<SocketId> filter;
     TLS tls_temp = tls;
     uint64_t remain_weight = s->weight_sum;
     size_t remain_servers = s->server_list.size();
     while (remain_servers > 0) {
         SocketId server_id = GetServerInNextStride(s->server_list, filter, tls_temp);
-        if (!ExcludedServers::IsExcluded(in.excluded, server_id)
+        if ((remain_servers == 1 // always take last chance
+                || !ExcludedServers::IsExcluded(in.excluded, server_id))
             && Socket::Address(server_id, out->ptr) == 0
             && (*out->ptr)->IsAvailable()) {
             // update tls.

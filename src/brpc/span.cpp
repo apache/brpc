@@ -749,7 +749,7 @@ void ListSpans(int64_t starting_realtime, size_t max_scan,
     }
     BriefSpan brief;
     size_t nscan = 0;
-    for (size_t i = 0; nscan < max_scan && it->Valid(); ++i, it->Prev()) {
+    for (; nscan < max_scan && it->Valid(); it->Prev()) {
         const int64_t key_tm = ToLittleEndian((const uint32_t*)it->key().data());
         // May have some bigger time at the beginning, because leveldb returns
         // keys >= starting_realtime.

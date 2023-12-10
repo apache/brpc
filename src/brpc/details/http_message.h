@@ -46,7 +46,8 @@ class HttpMessage {
 public:
     // If read_body_progressively is true, the body will be read progressively
     // by using SetBodyReader().
-    HttpMessage(bool read_body_progressively = false);
+    explicit HttpMessage(bool read_body_progressively = false,
+                         HttpMethod request_method = HTTP_METHOD_GET);
     ~HttpMessage();
 
     const butil::IOBuf &body() const { return _body; }
@@ -64,6 +65,8 @@ public:
     bool Completed() const { return _stage == HTTP_ON_MESSAGE_COMPLETE; }
     HttpParserStage stage() const { return _stage; }
 
+    HttpMethod request_method() const { return _request_method; }
+
     HttpHeader &header() { return _header; }
     const HttpHeader &header() const { return _header; }
     size_t parsed_length() const { return _parsed_length; }
@@ -74,6 +77,7 @@ public:
     static int on_status(http_parser*, const char *, const size_t);
     static int on_header_field(http_parser *, const char *, const size_t);
     static int on_header_value(http_parser *, const char *, const size_t);
+    // Returns -1 on error, 0 on success, 1 on success and skip body.
     static int on_headers_complete(http_parser *);
     static int on_body_cb(http_parser*, const char *, const size_t);
     static int on_message_complete_cb(http_parser *);
@@ -81,6 +85,10 @@ public:
     const http_parser& parser() const { return _parser; }
 
     bool read_body_progressively() const { return _read_body_progressively; }
+
+    void set_read_body_progressively(bool read_body_progressively) {
+        this->_read_body_progressively = read_body_progressively;
+    }
 
     // Send new parts of the body to the reader. If the body already has some
     // data, feed them to the reader immediately.
@@ -98,6 +106,7 @@ private:
 
     HttpParserStage _stage;
     std::string _url;
+    HttpMethod _request_method;
     HttpHeader _header;
     bool _read_body_progressively;
     // For mutual exclusion between on_body and SetBodyReader.
@@ -113,7 +122,7 @@ private:
 
 protected:
     // Only valid when -http_verbose is on
-    butil::IOBufBuilder* _vmsgbuilder;
+    std::unique_ptr<butil::IOBufBuilder> _vmsgbuilder;
     size_t _vbodylen;
 };
 

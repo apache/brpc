@@ -11,6 +11,7 @@
 
 #include "butil/compiler_specific.h"
 #include "butil/move.h"
+#include "butil/macros.h"
 
 namespace butil {
 
@@ -96,8 +97,8 @@ class ScopedGeneric {
   // object, if given. Self-resets are not allowd as on scoped_ptr. See
   // http://crbug.com/162971
   void reset(const element_type& value = traits_type::InvalidValue()) {
-    if (data_.generic != traits_type::InvalidValue() && data_.generic == value)
-      abort();
+    RELEASE_ASSERT(data_.generic == traits_type::InvalidValue() ||
+                   data_.generic != value);
     FreeIfNecessary();
     data_.generic = value;
   }

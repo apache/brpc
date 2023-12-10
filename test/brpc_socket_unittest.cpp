@@ -339,7 +339,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
-    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
 
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
@@ -727,7 +727,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
-    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
 
     int64_t start_time = butil::gettimeofday_us();
     nref = -1;
@@ -1116,6 +1116,7 @@ TEST_F(SocketTest, keepalive) {
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
         CheckNoKeepalive(ptr->fd());
+        sockfd.release();
     }
 
     int keepalive_idle = 1;
@@ -1136,6 +1137,7 @@ TEST_F(SocketTest, keepalive) {
                        default_keepalive_idle,
                        default_keepalive_interval,
                        default_keepalive_count);
+        sockfd.release();
     }
 
     // Enable keepalive and set keepalive idle.
@@ -1155,6 +1157,7 @@ TEST_F(SocketTest, keepalive) {
                        keepalive_idle,
                        default_keepalive_interval,
                        default_keepalive_count);
+        sockfd.release();
     }
 
     // Enable keepalive and set keepalive interval.
@@ -1174,6 +1177,7 @@ TEST_F(SocketTest, keepalive) {
                        default_keepalive_idle,
                        keepalive_interval,
                        default_keepalive_count);
+        sockfd.release();
     }
 
     // Enable keepalive and set keepalive count.
@@ -1193,6 +1197,7 @@ TEST_F(SocketTest, keepalive) {
                        default_keepalive_idle,
                        default_keepalive_interval,
                        keepalive_count);
+        sockfd.release();
     }
 
     // Enable keepalive and set keepalive idle, interval, count.
@@ -1216,6 +1221,7 @@ TEST_F(SocketTest, keepalive) {
                        keepalive_idle,
                        keepalive_interval,
                        keepalive_count);
+        sockfd.release();
     }
 }
 
@@ -1245,6 +1251,7 @@ TEST_F(SocketTest, keepalive_input_message) {
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
         CheckNoKeepalive(ptr->fd());
+        sockfd.release();
     }
 
     // Enable keepalive.
@@ -1263,6 +1270,7 @@ TEST_F(SocketTest, keepalive_input_message) {
                        default_keepalive_idle,
                        default_keepalive_interval,
                        default_keepalive_count);
+        sockfd.release();
     }
 
     // Enable keepalive and set keepalive idle.
@@ -1281,6 +1289,7 @@ TEST_F(SocketTest, keepalive_input_message) {
                        brpc::FLAGS_socket_keepalive_idle_s,
                        default_keepalive_interval,
                        default_keepalive_count);
+        sockfd.release();
     }
 
     // Enable keepalive and set keepalive idle, interval.
@@ -1299,6 +1308,7 @@ TEST_F(SocketTest, keepalive_input_message) {
                        brpc::FLAGS_socket_keepalive_idle_s,
                        brpc::FLAGS_socket_keepalive_interval_s,
                        default_keepalive_count);
+        sockfd.release();
     }
 
     // Enable keepalive and set keepalive idle, interval, count.
@@ -1317,6 +1327,7 @@ TEST_F(SocketTest, keepalive_input_message) {
                        brpc::FLAGS_socket_keepalive_idle_s,
                        brpc::FLAGS_socket_keepalive_interval_s,
                        brpc::FLAGS_socket_keepalive_count);
+        sockfd.release();
     }
 
     // Options of keepalive set by user have priority over Gflags.
@@ -1340,6 +1351,7 @@ TEST_F(SocketTest, keepalive_input_message) {
                        keepalive_idle,
                        brpc::FLAGS_socket_keepalive_interval_s,
                        brpc::FLAGS_socket_keepalive_count);
+        sockfd.release();
     }
 
     {
@@ -1359,6 +1371,7 @@ TEST_F(SocketTest, keepalive_input_message) {
                        brpc::FLAGS_socket_keepalive_idle_s,
                        keepalive_interval,
                        brpc::FLAGS_socket_keepalive_count);
+        sockfd.release();
     }
 
     {
@@ -1378,6 +1391,7 @@ TEST_F(SocketTest, keepalive_input_message) {
                        brpc::FLAGS_socket_keepalive_idle_s,
                        brpc::FLAGS_socket_keepalive_interval_s,
                        keepalive_count);
+        sockfd.release();
     }
 
     {
@@ -1401,5 +1415,6 @@ TEST_F(SocketTest, keepalive_input_message) {
                        keepalive_idle,
                        keepalive_interval,
                        keepalive_count);
+        sockfd.release();
     }
 }

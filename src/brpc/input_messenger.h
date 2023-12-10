@@ -114,7 +114,7 @@ private:
     class InputMessageClosure {
     public:
         InputMessageClosure() : _msg(NULL) { }
-        ~InputMessageClosure();
+        ~InputMessageClosure() noexcept(false);
 
         InputMessageBase* release() {
             InputMessageBase* m = _msg;

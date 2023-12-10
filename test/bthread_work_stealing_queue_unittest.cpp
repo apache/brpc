@@ -41,6 +41,8 @@ void* steal_thread(void* arg) {
         } else {
 #if defined(ARCH_CPU_ARM_FAMILY)
             asm volatile("yield\n": : :"memory");
+#elif defined(ARCH_CPU_LOONGARCH64_FAMILY)
+            asm volatile("nop\n": : :"memory");
 #else
             asm volatile("pause\n": : :"memory");
 #endif

@@ -1027,7 +1027,9 @@ TEST_F(IOBufTest, append_store_append_cut) {
         if (!write_to_dev_null) {
             ASSERT_EQ(0, system(cmd));
         }
-        remove(name);
+	if (!write_to_dev_null) {
+           remove(name);
+	}
     }
 
     for (size_t i = 0; i < ARRAY_SIZE(w); ++i) {

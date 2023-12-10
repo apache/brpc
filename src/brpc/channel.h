@@ -153,7 +153,9 @@ friend class Controller;
 friend class SelectiveChannel;
 public:
     Channel(ProfilerLinker = ProfilerLinker());
-    ~Channel();
+    virtual ~Channel();
+
+    DISALLOW_COPY_AND_ASSIGN(Channel);
 
     // Connect this channel to a single server whose address is given by the
     // first parameter. Use default options if `options' is NULL.
@@ -173,6 +175,8 @@ public:
     // Supported load balancer:
     //   rr                           # round robin, choose next server
     //   random                       # randomly choose a server
+    //   wr                           # weighted random
+    //   wrr                          # weighted round robin
     //   la                           # locality aware
     //   c_murmurhash/c_md5           # consistent hashing with murmurhash3/md5
     //   "" or NULL                   # treat `naming_service_url' as `server_addr_and_port'

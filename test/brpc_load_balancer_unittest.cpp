@@ -20,13 +20,10 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <map>
 #include <gtest/gtest.h>
 #include "bthread/bthread.h"
 #include "butil/gperftools_profiler.h"
-#include "butil/time.h"
-#include "butil/fast_rand.h"
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/describable.h"
 #include "brpc/socket.h"
@@ -34,7 +31,6 @@
 #include "brpc/global.h"
 #include "brpc/details/load_balancer_with_naming.h"
 #include "butil/strings/string_number_conversions.h"
-#include "brpc/excluded_servers.h" 
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/weighted_randomized_load_balancer.h"
@@ -42,10 +38,8 @@
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
-#include "brpc/errno.pb.h"
 #include "echo.pb.h"
 #include "brpc/channel.h"
-#include "brpc/controller.h"
 #include "brpc/server.h"
 
 namespace brpc {
@@ -74,17 +68,7 @@ protected:
     };
 };
 
-size_t TLS_ctor = 0;
-size_t TLS_dtor = 0;
-struct TLS {
-    TLS() {
-        ++TLS_ctor;
-    }
-    ~TLS() {
-        ++TLS_dtor;
-    }
-
-};
+class UserTLS {};
 
 struct Foo {
     Foo() : x(0) {}
@@ -96,35 +80,231 @@ bool AddN(Foo& f, int n) {
     return true;
 }
 
-TEST_F(LoadBalancerTest, doubly_buffered_data) {
+template <typename DBD>
+void test_doubly_buffered_data() {
     // test doubly_buffered_data TLS limits
     {
         std::cout << "current PTHREAD_KEYS_MAX: " << PTHREAD_KEYS_MAX << std::endl;
-        butil::DoublyBufferedData<Foo> data[PTHREAD_KEYS_MAX + 1];
-        butil::DoublyBufferedData<Foo>::ScopedPtr ptr;
+        DBD data[PTHREAD_KEYS_MAX + 1];
+        typename DBD::ScopedPtr ptr;
         ASSERT_EQ(0, data[PTHREAD_KEYS_MAX].Read(&ptr));
         ASSERT_EQ(0, ptr->x);
     }
 
-    butil::DoublyBufferedData<Foo> d;
+    DBD d;
     {
-        butil::DoublyBufferedData<Foo>::ScopedPtr ptr;
+        typename DBD::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
         ASSERT_EQ(0, ptr->x);
     }
     {
-        butil::DoublyBufferedData<Foo>::ScopedPtr ptr;
+        typename DBD::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
         ASSERT_EQ(0, ptr->x);
     }
 
     d.Modify(AddN, 10);
     {
-        butil::DoublyBufferedData<Foo>::ScopedPtr ptr;
+        typename DBD::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
         ASSERT_EQ(10, ptr->x);
     }
 }
+
+TEST_F(LoadBalancerTest, doubly_buffered_data) {
+    test_doubly_buffered_data<butil::DoublyBufferedData<Foo>>();
+    test_doubly_buffered_data<butil::DoublyBufferedData<Foo, butil::Void, false>>();
+    test_doubly_buffered_data<butil::DoublyBufferedData<Foo, UserTLS, false>>();
+    test_doubly_buffered_data<butil::DoublyBufferedData<Foo, butil::Void, true>>();
+}
+
+bool exitFlag = false;
+
+template <typename DBD>
+void* DBDBthread(void* arg) {
+    auto d = static_cast<DBD*>(arg);
+    while(!exitFlag){
+        typename DBD::ScopedPtr ptr;
+        d->Read(&ptr);
+
+        // If DBD is DoublyBufferedData<T, TLS, false>, may cause deadlock.
+        bthread_usleep(100 * 1000);
+    }
+
+    return NULL;
+}
+
+template <typename DBD>
+void DBDMultiBthread() {
+    DBD d;
+    d.Modify(AddN, 1);
+    {
+        typename DBD::ScopedPtr ptr;
+        ASSERT_EQ(0, d.Read(&ptr));
+        ASSERT_EQ(1, ptr->x);
+    }
+
+    bthread_t tids[10000];
+    for (size_t i = 0; i < ARRAY_SIZE(tids); ++i) {
+        ASSERT_EQ(0, bthread_start_urgent(&tids[i], NULL, DBDBthread<DBD>, &d));
+    }
+
+    // Modify during reading.
+    int64_t start = butil::gettimeofday_ms();
+    while (butil::gettimeofday_ms() - start < 10 * 1000) {
+        d.Modify(AddN, 1);
+        typename DBD::ScopedPtr ptr;
+        d.Read(&ptr);
+        usleep(100 * 1000);
+    }
+    exitFlag = true;
+    for (size_t i = 0; i < ARRAY_SIZE(tids); ++i) {
+        ASSERT_EQ(0, bthread_join(tids[i], NULL));
+    }
+}
+
+// Deadlock, only for test.
+// TEST_F(LoadBalancerTest, doubly_buffered_data_multi_bthread) {
+//     DBDMultiBthread<butil::DoublyBufferedData<Foo>>();
+//     DBDMultiBthread<butil::DoublyBufferedData<Foo, butil::Void, false>>();
+// }
+
+TEST_F(LoadBalancerTest, doubly_buffered_data_bthread_multi_bthread) {
+    DBDMultiBthread<butil::DoublyBufferedData<Foo, butil::Void, true>>();
+}
+
+
+bool g_started = false;
+bool g_stopped = false;
+int g_prof_name_counter = 0;
+
+using PerfMap = std::unordered_map<int, int>;
+
+bool AddMapN(PerfMap& f, int n) {
+    ++f[n];
+    return true;
+}
+
+template<typename DBD>
+struct BAIDU_CACHELINE_ALIGNMENT PerfArgs {
+    DBD* dbd;
+    int64_t counter;
+    int64_t elapse_ns;
+    bool ready;
+
+    PerfArgs() : dbd(NULL), counter(0), elapse_ns(0), ready(false) {}
+};
+
+template<typename DBD>
+void* read_dbd(void* void_arg) {
+    auto args = (PerfArgs<DBD>*)void_arg;
+    args->ready = true;
+    butil::Timer t;
+    while (!g_stopped) {
+        if (g_started) {
+            break;
+        }
+        bthread_usleep(10);
+    }
+    t.start();
+    while (!g_stopped) {
+        {
+            typename DBD::ScopedPtr ptr;
+            args->dbd->Read(&ptr);
+            // ptr->find(1);
+        }
+        ++args->counter;
+    }
+    t.stop();
+    args->elapse_ns = t.n_elapsed();
+    return NULL;
+}
+
+template<typename DBD>
+void PerfTest(int thread_num, bool modify_during_reading) {
+    g_started = false;
+    g_stopped = false;
+    DBD dbd;
+    for (int i = 0; i < 1024; ++i) {
+        dbd.Modify(AddMapN, i);
+    }
+    pthread_t threads[thread_num];
+    std::vector<PerfArgs<DBD>> args(thread_num);
+    for (int i = 0; i < thread_num; ++i) {
+        args[i].dbd = &dbd;
+        ASSERT_EQ(0, pthread_create(&threads[i], NULL, read_dbd<DBD>, &args[i]));
+    }
+    while (true) {
+        bool all_ready = true;
+        for (int i = 0; i < thread_num; ++i) {
+            if (!args[i].ready) {
+                all_ready = false;
+                break;
+            }
+        }
+        if (all_ready) {
+            break;
+        }
+        usleep(1000);
+    }
+    g_started = true;
+    char prof_name[32];
+    snprintf(prof_name, sizeof(prof_name), "doubly_buffered_data_%d.prof", ++g_prof_name_counter);
+    ProfilerStart(prof_name);
+    int64_t run_ms = 5 * 1000;
+    if (modify_during_reading) {
+        int64_t start = butil::gettimeofday_ms();
+        int i = 1;
+        while (butil::gettimeofday_ms() - start < run_ms) {
+            ASSERT_TRUE(dbd.Modify(AddMapN, i++));
+            usleep(1000);
+        }
+    } else {
+        usleep(run_ms * 1000);
+    }
+    ProfilerStop();
+    g_stopped = true;
+    int64_t wait_time = 0;
+    int64_t count = 0;
+    for (int i = 0; i < thread_num; ++i) {
+        pthread_join(threads[i], NULL);
+        wait_time += args[i].elapse_ns;
+        count += args[i].counter;
+    }
+    LOG(INFO) << butil::class_name<DBD>()
+              << " thread_num=" << thread_num
+              << " modify_during_reading=" << modify_during_reading
+              << " count=" << count
+              << " average_time=" << wait_time / (double)count
+              << " qps=" << (double)count / wait_time * (1000 * 1000 * 1000);
+}
+
+TEST_F(LoadBalancerTest, dbd_performance) {
+    int thread_num = 1;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, true);
+
+    thread_num = 4;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, true);
+
+    thread_num = 8;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, true);
+
+    thread_num = 16;
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, false);
+    PerfTest<butil::DoublyBufferedData<PerfMap, butil::Void, true>>(thread_num, true);
+}
+
 
 typedef brpc::policy::LocalityAwareLoadBalancer LALB;
 
@@ -663,7 +843,7 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
 
     // Select the best server according to weight configured.
     // There are 3 valid servers with weight 3, 2 and 7 respectively.
-    // We run SelectServer for 12 times. The result number of each server seleted should be 
+    // We run SelectServer for 12 times. The result number of each server selected should be
     // consistent with weight configured.
     std::map<butil::EndPoint, size_t> select_result;
     brpc::SocketUniquePtr ptr;
@@ -681,7 +861,7 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
         std::cout << "1=" << s << ", ";
     } 
     std::cout << std::endl;   
-    // Check whether slected result is consistent with expected.
+    // Check whether selected result is consistent with expected.
     EXPECT_EQ((size_t)3, select_result.size());
     for (const auto& result : select_result) {
         std::cout << result.first << " result=" << result.second 
@@ -771,7 +951,7 @@ TEST_F(LoadBalancerTest, weighted_randomized) {
 
     // Select the best server according to weight configured.
     // There are 4 valid servers with weight 3, 2, 5 and 10 respectively.
-    // We run SelectServer for multiple times. The result number of each server seleted should be
+    // We run SelectServer for multiple times. The result number of each server selected should be
     // weight randomized with weight configured.
     std::map<butil::EndPoint, size_t> select_result;
     brpc::SocketUniquePtr ptr;
@@ -1099,128 +1279,6 @@ TEST_F(LoadBalancerTest, la_selection_too_long) {
     brpc::SocketUniquePtr ptr;
     brpc::LoadBalancer::SelectOut out(&ptr);
     ASSERT_EQ(EHOSTDOWN, lb.SelectServer(in, &out));
-}
-
-bool g_started = false;
-bool g_stopped = false;
-int g_prof_name_counter = 0;
-
-using PerfMap = std::unordered_map<int, int>;
-
-bool AddMapN(PerfMap& f, int n) {
-    ++f[n];
-    return true;
-}
-
-template<typename DBD>
-struct BAIDU_CACHELINE_ALIGNMENT PerfArgs {
-    DBD* dbd;
-    int64_t counter;
-    int64_t elapse_ns;
-    bool ready;
-
-    PerfArgs() : dbd(NULL), counter(0), elapse_ns(0), ready(false) {}
-};
-
-template<typename DBD>
-void* read_dbd(void* void_arg) {
-    auto args = (PerfArgs<DBD>*)void_arg;
-    args->ready = true;
-    butil::Timer t;
-    while (!g_stopped) {
-        if (g_started) {
-            break;
-        }
-        bthread_usleep(10);
-    }
-    t.start();
-    while (!g_stopped) {
-        {
-            typename DBD::ScopedPtr ptr;
-            args->dbd->Read(&ptr);
-            // ptr->find(1);
-        }
-        ++args->counter;
-    }
-    t.stop();
-    args->elapse_ns = t.n_elapsed();
-    return NULL;
-}
-
-template<typename DBD>
-void PerfTest(int thread_num, bool modify_during_reading) {
-    g_started = false;
-    g_stopped = false;
-    DBD dbd;
-    for (int i = 0; i < 1024; ++i) {
-        dbd.Modify(AddMapN, i);
-    }
-    pthread_t threads[thread_num];
-    std::vector<PerfArgs<DBD>> args(thread_num);
-    for (int i = 0; i < thread_num; ++i) {
-        args[i].dbd = &dbd;
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, read_dbd<DBD>, &args[i]));
-    }
-    while (true) {
-        bool all_ready = true;
-        for (int i = 0; i < thread_num; ++i) {
-            if (!args[i].ready) {
-                all_ready = false;
-                break;
-            }
-        }
-        if (all_ready) {
-            break;
-        }
-        usleep(1000);
-    }
-    g_started = true;
-    char prof_name[32];
-    snprintf(prof_name, sizeof(prof_name), "doubly_buffered_data_%d.prof", ++g_prof_name_counter);
-    ProfilerStart(prof_name);
-    int64_t run_ms = 5 * 1000;
-    if (modify_during_reading) {
-        int64_t start = butil::gettimeofday_ms();
-        int i = 1;
-        while (butil::gettimeofday_ms() - start < run_ms) {
-            ASSERT_TRUE(dbd.Modify(AddMapN, i++));
-            usleep(1000);
-        }
-    } else {
-        usleep(run_ms * 1000);
-    }
-    ProfilerStop();
-    g_stopped = true;
-    int64_t wait_time = 0;
-    int64_t count = 0;
-    for (int i = 0; i < thread_num; ++i) {
-        pthread_join(threads[i], NULL);
-        wait_time += args[i].elapse_ns;
-        count += args[i].counter;
-    }
-    LOG(INFO) << " thread_num=" << thread_num
-              << " modify_during_reading=" << modify_during_reading
-              << " count=" << count
-              << " average_time=" << wait_time / (double)count
-              << " qps=" << (double)count / wait_time * (1000 * 1000 * 1000);
-}
-
-TEST_F(LoadBalancerTest, performance) {
-    int thread_num = 1;
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
-
-    thread_num = 4;
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
-
-    thread_num = 8;
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
-
-    thread_num = 16;
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, false);
-    PerfTest<butil::DoublyBufferedData<PerfMap>>(thread_num, true);
 }
 
 } //namespace

@@ -134,7 +134,7 @@ int MemcacheRequest::ByteSize() const {
 }
 
 void MemcacheRequest::MergeFrom(const ::google::protobuf::Message& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     const MemcacheRequest* source = dynamic_cast<const MemcacheRequest*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
@@ -144,7 +144,7 @@ void MemcacheRequest::MergeFrom(const ::google::protobuf::Message& from) {
 }
 
 void MemcacheRequest::MergeFrom(const MemcacheRequest& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     _buf.append(from._buf);
     _pipelined_count += from._pipelined_count;
 }
@@ -262,7 +262,7 @@ int MemcacheResponse::ByteSize() const {
 }
 
 void MemcacheResponse::MergeFrom(const ::google::protobuf::Message& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     const MemcacheResponse* source = dynamic_cast<const MemcacheResponse*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
@@ -272,7 +272,7 @@ void MemcacheResponse::MergeFrom(const ::google::protobuf::Message& from) {
 }
 
 void MemcacheResponse::MergeFrom(const MemcacheResponse& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     _err = from._err;
     // responses of memcached according to their binary layout, should be
     // directly concatenatible.

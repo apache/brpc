@@ -1281,15 +1281,14 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                    strcmp(name + 1, /*c*/"ontent-type") == 0) {
             h.set_content_type(pair.value);
         } else {
-            // TODO: AppendHeader?
-            h.SetHeader(pair.name, pair.value);
+            h.AppendHeader(pair.name, pair.value);
         }
 
         if (FLAGS_http_verbose) {
-            butil::IOBufBuilder* vs = this->_vmsgbuilder;
+            butil::IOBufBuilder* vs = this->_vmsgbuilder.get();
             if (vs == NULL) {
                 vs = new butil::IOBufBuilder;
-                this->_vmsgbuilder = vs;
+                this->_vmsgbuilder.reset(vs);
                 if (_conn_ctx->is_server_side()) {
                     *vs << "[ H2 REQUEST @" << butil::my_ip() << " ]";
                 } else {
@@ -1569,6 +1568,10 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     HPackOptions options;
     options.encode_name = FLAGS_h2_hpack_encode_name;
     options.encode_value = FLAGS_h2_hpack_encode_value;
+    if (ctx->remote_settings().header_table_size == 0) {
+        options.index_policy = HPACK_NEVER_INDEX_HEADER;
+    }
+    
     for (size_t i = 0; i < _size; ++i) {
         hpacker.Encode(&appender, _list[i], options);
     }
@@ -1710,6 +1713,9 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     HPackOptions options;
     options.encode_name = FLAGS_h2_hpack_encode_name;
     options.encode_value = FLAGS_h2_hpack_encode_value;
+    if (ctx->remote_settings().header_table_size == 0) {
+        options.index_policy = HPACK_NEVER_INDEX_HEADER;
+    }
 
     for (size_t i = 0; i < _size; ++i) {
         hpacker.Encode(&appender, _list[i], options);
