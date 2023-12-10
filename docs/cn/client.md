@@ -831,6 +831,9 @@ options.mutable_ssl_options();
 // 开启客户端SSL并定制选项。
 options.mutable_ssl_options()->ciphers_name = "...";
 options.mutable_ssl_options()->sni_name = "...";
+
+// 设置 ALPN 的协议优先级（默认不启用 ALPN）。
+options.mutable_ssl_options()->alpn_protocols = {"h2", "http/1.1"};
 ```
 - 连接单点和集群的Channel均可以开启SSL访问（初始实现曾不支持集群）。
 - 开启后，该Channel上任何协议的请求，都会被SSL加密后发送。如果希望某些请求不加密，需要额外再创建一个Channel。
