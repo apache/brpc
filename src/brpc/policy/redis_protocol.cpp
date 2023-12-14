@@ -59,6 +59,7 @@ class RedisConnContext : public Destroyable  {
 public:
     explicit RedisConnContext(const RedisService* rs)
         : redis_service(rs)
+        , in_transaction(false)
         , batched_size(0) {}
 
     ~RedisConnContext();
@@ -68,7 +69,10 @@ public:
     const RedisService* redis_service;
     // If user starts a transaction, transaction_handler indicates the
     // handler pointer that runs the transaction command.
-    std::unique_ptr<RedisCommandHandler> transaction_handler;
+    std::unique_ptr<TransactionHandler> transaction_handler;
+    // Whether this connection has begun a transaction. If true, the commands
+    // received will be handled by transaction_handler.
+    bool in_transaction;
     // >0 if command handler is run in batched mode.
     int batched_size;
 
@@ -82,15 +86,33 @@ int ConsumeCommand(RedisConnContext* ctx,
                    butil::IOBufAppender* appender) {
     RedisReply output(&ctx->arena);
     RedisCommandHandlerResult result = REDIS_CMD_HANDLED;
-    if (ctx->transaction_handler) {
+    if (ctx->in_transaction) {
+        assert(ctx->transaction_handler != nullptr);
         result = ctx->transaction_handler->Run(args, &output, flush_batched);
         if (result == REDIS_CMD_HANDLED) {
             ctx->transaction_handler.reset(NULL);
+            ctx->in_transaction = false;
         } else if (result == REDIS_CMD_BATCHED) {
             LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
             return -1;
         }
-    } else {
+    }
+    else if (args[0] == "watch" || args[0] == "unwatch") {
+        if (!ctx->transaction_handler) {
+            ctx->transaction_handler.reset(ctx->redis_service->NewTransactionHandler());
+            ctx->in_transaction = false;
+        }
+        if (!ctx->transaction_handler) {
+            output.SetError("ERR Transaction not supported.");
+        } else {
+            result = ctx->transaction_handler->Run(args, &output, flush_batched);
+            if (result == REDIS_CMD_BATCHED) {
+                LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
+                return -1;
+            }
+        }
+    }
+    else {
         RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(args[0]);
         if (!ch) {
             char buf[64];
@@ -103,7 +125,16 @@ int ConsumeCommand(RedisConnContext* ctx,
                     LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
                     return -1;
                 }
-                ctx->transaction_handler.reset(ch->NewTransactionHandler());
+                if (ctx->transaction_handler == nullptr) {
+                    ctx->transaction_handler.reset(ctx->redis_service->NewTransactionHandler());
+                }
+                if (ctx->transaction_handler != nullptr) {
+                    ctx->transaction_handler->Begin();
+                    ctx->in_transaction = true;
+                }
+                else {
+                    output.SetError("ERR Transaction not supported.");
+                }
             } else if (result == REDIS_CMD_BATCHED) {
                 ctx->batched_size++;
             }
