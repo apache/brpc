@@ -811,6 +811,47 @@ butil::Mutex s_mutex;
 std::unordered_map<std::string, std::string> m;
 std::unordered_map<std::string, int64_t> int_map;
 
+class MultiTransactionHandler : public brpc::TransactionHandler {
+public:
+    brpc::RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
+                                        brpc::RedisReply* output,
+                                        bool flush_batched) {
+        if (args[0] == "multi") {
+            output->SetError("ERR duplicate multi");
+            return brpc::REDIS_CMD_CONTINUE;
+        }
+        if (args[0] != "exec") {
+            std::vector<std::string> comm;
+            for (int i = 0; i < (int)args.size(); ++i) {
+                comm.push_back(args[i].as_string());
+            }
+            _commands.push_back(comm);
+            output->SetStatus("QUEUED");
+            return brpc::REDIS_CMD_CONTINUE;
+        }
+        output->SetArray(_commands.size());
+        s_mutex.lock();
+        for (size_t i = 0; i < _commands.size(); ++i) {
+            if (_commands[i][0] == "incr") {
+                int64_t value;
+                value = ++int_map[_commands[i][1]];
+                (*output)[i].SetInteger(value);
+            } else {
+                (*output)[i].SetStatus("unknown command");
+            }
+        }
+        s_mutex.unlock();
+        return brpc::REDIS_CMD_HANDLED;
+    }
+
+    bool Begin() override {
+        return true;
+    }
+
+private:
+    std::vector<std::vector<std::string> > _commands;
+};
+
 class RedisServiceImpl : public brpc::RedisService {
 public:
     RedisServiceImpl()
@@ -860,6 +901,11 @@ public:
         } else {
             output->SetNullString();
         }
+    }
+
+    brpc::TransactionHandler* NewTransactionHandler() const override {
+
+        return new MultiTransactionHandler;
     }
 
     std::vector<std::vector<std::string> > _batched_command;
@@ -1088,42 +1134,6 @@ public:
     RedisCommandHandler* NewTransactionHandler() override {
         return new MultiTransactionHandler;
     }
-
-    class MultiTransactionHandler : public brpc::RedisCommandHandler {
-    public:
-        brpc::RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
-                                            brpc::RedisReply* output,
-                                            bool flush_batched) {
-            if (args[0] == "multi") {
-                output->SetError("ERR duplicate multi");
-                return brpc::REDIS_CMD_CONTINUE;
-            }
-            if (args[0] != "exec") {
-                std::vector<std::string> comm;
-                for (int i = 0; i < (int)args.size(); ++i) {
-                    comm.push_back(args[i].as_string());
-                }
-                _commands.push_back(comm);
-                output->SetStatus("QUEUED");
-                return brpc::REDIS_CMD_CONTINUE;
-            }
-            output->SetArray(_commands.size());
-            s_mutex.lock();
-            for (size_t i = 0; i < _commands.size(); ++i) {
-                if (_commands[i][0] == "incr") {
-                    int64_t value;
-                    value = ++int_map[_commands[i][1]];
-                    (*output)[i].SetInteger(value);
-                } else {
-                    (*output)[i].SetStatus("unknown command");
-                }
-            }
-            s_mutex.unlock();
-            return brpc::REDIS_CMD_HANDLED;
-        }
-    private:
-        std::vector<std::vector<std::string> > _commands;
-    };
 };
 
 TEST_F(RedisTest, server_command_continue) {

@@ -221,6 +221,7 @@ std::ostream& operator<<(std::ostream& os, const RedisRequest&);
 std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 
 class RedisCommandHandler;
+class TransactionHandler;
 
 // Container of CommandHandlers.
 // Assign an instance to ServerOption.redis_service to enable redis support. 
@@ -230,6 +231,9 @@ public:
     
     // Call this function to register `handler` that can handle command `name`.
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
+
+    // Create a transaction handler to handle commands inside a transaction.
+    virtual TransactionHandler* NewTransactionHandler() const;
 
     // This function should not be touched by user and used by brpc deverloper only.
     RedisCommandHandler* FindCommandHandler(const butil::StringPiece& name) const;
@@ -243,6 +247,8 @@ enum RedisCommandHandlerResult {
     REDIS_CMD_HANDLED = 0,
     REDIS_CMD_CONTINUE = 1,
     REDIS_CMD_BATCHED = 2,
+    REDIS_CMD_TXN_START = 3,
+    REDIS_CMD_TXN_FINISH = 4,
 };
 
 // The Command handler for a redis request. User should impletement Run().
@@ -287,6 +293,11 @@ public:
     // 5) An ending marker(exec) is found in transaction_handler.Run(), user exeuctes all
     // the commands and return OK. This Transation is done.
     virtual RedisCommandHandler* NewTransactionHandler();
+};
+
+class TransactionHandler : public RedisCommandHandler {
+public:
+    virtual bool Begin() = 0;
 };
 
 } // namespace brpc
