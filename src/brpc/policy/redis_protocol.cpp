@@ -33,6 +33,7 @@
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
 #include "brpc/policy/redis_protocol.h"
+#include "bvar/latency_recorder.h"
 
 namespace brpc {
 
@@ -144,6 +145,9 @@ void RedisConnContext::Destroy() {
 
 // ========== impl of RedisConnContext ==========
 
+inline bvar::LatencyRecorder socket_write_latency("socket", "write");
+inline bvar::LatencyRecorder consume_cmd_latency("socket", "consume_cmd");
+
 ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                               bool read_eof, const void* arg) {
     if (read_eof || source->empty()) {
@@ -174,22 +178,28 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             if (err != PARSE_OK) {
                 break;
             }
+            int64_t start_time_us = butil::cpuwide_time_us();
             if (ConsumeCommand(ctx, current_args, false, &appender) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
+            consume_cmd_latency << (butil::cpuwide_time_us() - start_time_us);
             current_args.swap(next_args);
         }
+        int64_t start_time_us = butil::cpuwide_time_us();
         if (ConsumeCommand(ctx, current_args,
                     true /*must be the last message*/, &appender) != 0) {
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
+        consume_cmd_latency << (butil::cpuwide_time_us() - start_time_us);
         butil::IOBuf sendbuf;
         appender.move_to(sendbuf);
         CHECK(!sendbuf.empty());
         Socket::WriteOptions wopt;
         wopt.ignore_eovercrowded = true;
+        start_time_us = butil::cpuwide_time_us();
         LOG_IF(WARNING, socket->Write(&sendbuf, &wopt) != 0)
             << "Fail to send redis reply";
+        socket_write_latency << (butil::cpuwide_time_us() - start_time_us);
         if(ctx->parser.ParsedArgsSize() == 0) {
             ctx->arena.clear();
         }

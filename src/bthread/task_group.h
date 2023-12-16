@@ -22,6 +22,9 @@
 #ifndef BTHREAD_TASK_GROUP_H
 #define BTHREAD_TASK_GROUP_H
 
+#include <memory>                                   // shared_ptr
+#include <utility>
+
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
 #include "bthread/task_meta.h"                     // bthread_t, TaskMeta
@@ -29,6 +32,8 @@
 #include "bthread/remote_task_queue.h"             // RemoteTaskQueue
 #include "butil/resource_pool.h"                    // ResourceId
 #include "bthread/parking_lot.h"
+
+#include "moodycamelqueue.h"
 
 namespace bthread {
 
@@ -93,7 +98,7 @@ public:
         _last_context_remained = cb;
         _last_context_remained_arg = arg;
     }
-    
+
     // Suspend caller for at least |timeout_us| microseconds.
     // If |timeout_us| is 0, this function does nothing.
     // If |group| is NULL or current thread is non-bthread, call usleep(3)
@@ -182,6 +187,9 @@ public:
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
 
+    bool pop_resume_task(bthread_t* tid);
+    bool push_resume_task(bthread_t tid);
+
 private:
 friend class TaskControl;
 
@@ -222,7 +230,7 @@ friend class TaskControl;
     }
 
     TaskMeta* _cur_meta;
-    
+
     // the control that this group belongs to
     TaskControl* _control;
     int _num_nosignal;
@@ -249,6 +257,10 @@ friend class TaskControl;
     int _remote_nsignaled;
 
     int _sched_recursive_guard;
+
+    std::atomic<int> _resume_rq_cnt;
+    moodycamel::ConcurrentQueue<bthread_t> _resume_rq;
+    moodycamel::ConsumerToken _resume_consumer_token;
 };
 
 }  // namespace bthread

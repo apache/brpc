@@ -43,6 +43,7 @@ extern "C" {
 
 extern int bthread_mutex_unlock(bthread_mutex_t*);
 extern int bthread_mutex_lock_contended(bthread_mutex_t*);
+extern void bthread_flush();
 
 int bthread_cond_init(bthread_cond_t* __restrict c,
                       const bthread_condattr_t*) {
@@ -65,7 +66,10 @@ int bthread_cond_signal(bthread_cond_t* c) {
     butil::atomic<int>* const saved_seq = ic->seq;
     saved_seq->fetch_add(1, butil::memory_order_release);
     // don't touch ic any more
-    bthread::butex_wake(saved_seq);
+    bool no_signal = true;
+    bthread::butex_wake(saved_seq, no_signal);
+    // flush unsignaled tasks manually
+    bthread_flush();
     return 0;
 }
 
