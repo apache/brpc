@@ -796,6 +796,11 @@ int TaskGroup::usleep(TaskGroup** pg, uint64_t timeout_us) {
     g->set_remained(_add_sleep_event, &e);
     sched(pg);
     g = *pg;
+    if (e.meta->current_sleep == 0 && !e.meta->interrupted) {
+        // Fail to `_add_sleep_event'.
+        errno = ESTOP;
+        return -1;
+    }
     e.meta->current_sleep = 0;
     if (e.meta->interrupted) {
         // Race with set and may consume multiple interruptions, which are OK.
