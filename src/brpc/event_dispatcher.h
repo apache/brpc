@@ -69,7 +69,7 @@ public:
     // Remove EPOLLOUT event on `fd'. If `pollin' is true, EPOLLIN event
     // will be kept and EPOLL_CTL_MOD will be used instead of EPOLL_CTL_DEL
     // Returns 0 on success, -1 otherwise and errno is set
-    int DeregisterEvent(SocketId socket_id, int fd, bool pollin);
+    int UnregisterEvent(SocketId socket_id, int fd, bool pollin);
 
 private:
     DISALLOW_COPY_AND_ASSIGN(EventDispatcher);

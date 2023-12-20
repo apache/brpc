@@ -1244,7 +1244,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     }
     // Ignore return value since `fd' might have been removed
     // by `RemoveConsumer' in `SetFailed'
-    butil::ignore_result(edisp.DeregisterEvent(id(), fd, pollin));
+    butil::ignore_result(edisp.UnregisterEvent(id(), fd, pollin));
     errno = saved_errno;
     // Could be writable or spurious wakeup (by former epollout)
     return rc;
@@ -1446,7 +1446,7 @@ int Socket::HandleEpollOutRequest(int error_code, EpollOutRequest* req) {
     }
     // We've got the right to call user callback
     // The timer will be removed inside destructor of EpollOutRequest
-    GetGlobalEventDispatcher(req->fd).DeregisterEvent(id(), req->fd, false);
+    GetGlobalEventDispatcher(req->fd).UnregisterEvent(id(), req->fd, false);
     return req->on_epollout_event(req->fd, error_code, req->data);
 }
 
