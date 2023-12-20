@@ -31,7 +31,8 @@ message RpcMeta {
     optional int32 attachment_size = 5;
     optional ChunkInfo chunk_info = 6;
     optional bytes authentication_data = 7;
-    optional StreamSettings stream_settings = 8;   
+    optional StreamSettings stream_settings = 8;
+    map<string, string> user_fields = 9;
 }
 
 message RpcRequestMeta {
