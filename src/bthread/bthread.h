@@ -146,6 +146,12 @@ extern int bthread_getconcurrency(void);
 // NOTE: currently concurrency cannot be reduced after any bthread created.
 extern int bthread_setconcurrency(int num);
 
+// Get number of worker pthreads by tag
+extern int bthread_getconcurrency_by_tag(bthread_tag_t tag);
+
+// Set number of worker pthreads to `num' for specified tag
+extern int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag);
+
 // Yield processor to another bthread. 
 // Notice that current implementation is not fair, which means that 
 // even if bthread_yield() is called, suspended threads may still starve.
@@ -326,6 +332,9 @@ extern int bthread_setspecific(bthread_key_t key, void* data);
 // If bthread_setspecific() had not been called in the thread, return NULL.
 // If the key is invalid or deleted, return NULL.
 extern void* bthread_getspecific(bthread_key_t key);
+
+// Return current bthread tag
+extern bthread_tag_t bthread_self_tag(void);
 
 __END_DECLS
 

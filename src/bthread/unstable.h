@@ -84,6 +84,9 @@ extern int bthread_connect(int sockfd, const struct sockaddr* serv_addr,
 // Returns 0 on success, error code otherwise.
 extern int bthread_set_worker_startfn(void (*start_fn)());
 
+// Add a startup function with tag
+extern int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t));
+
 // Stop all bthread and worker pthreads.
 // You should avoid calling this function which may cause bthread after main()
 // suspend indefinitely.

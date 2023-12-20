@@ -63,6 +63,7 @@ inline SocketOptions::SocketOptions()
     , conn(NULL)
     , app_connect(NULL)
     , initial_parsing_context(NULL)
+    , bthread_tag(BTHREAD_TAG_DEFAULT)
 {}
 
 inline int Socket::Dereference() {
