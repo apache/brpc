@@ -174,26 +174,32 @@ start_from_non_worker(bthread_t* __restrict tid,
     if (NULL == c) {
         return ENOMEM;
     }
-    TaskGroup* g = NULL;
+    auto tag = BTHREAD_TAG_DEFAULT;
+    if (attr != NULL && attr->tag != BTHREAD_TAG_INVALID) {
+        tag = attr->tag;
+    }
     if (attr != NULL && (attr->flags & BTHREAD_NOSIGNAL)) {
         // Remember the TaskGroup to insert NOSIGNAL tasks for 2 reasons:
         // 1. NOSIGNAL is often for creating many bthreads in batch,
         //    inserting into the same TaskGroup maximizes the batch.
         // 2. bthread_flush() needs to know which TaskGroup to flush.
-        g = tls_task_group_nosignal;
+        auto g = tls_task_group_nosignal;
         if (NULL == g) {
-            g = c->choose_one_group(attr->tag);
+            g = c->choose_one_group(tag);
             tls_task_group_nosignal = g;
         }
         return g->start_background<true>(tid, attr, fn, arg);
     }
-    g = c->choose_one_group(attr ? attr->tag : BTHREAD_TAG_DEFAULT);
-    return g->start_background<true>(tid, attr, fn, arg);
+    return c->choose_one_group(tag)->start_background<true>(tid, attr, fn, arg);
 }
 
-// if tag is default or equal to thread local use thread local task group
+// Meet one of the three conditions, can run in thread local
+// attr is nullptr
+// tag equal to thread local
+// tag equal to BTHREAD_TAG_INVALID
 BUTIL_FORCE_INLINE bool can_run_thread_local(const bthread_attr_t* __restrict attr) {
-    return attr == nullptr || attr->tag == bthread::tls_task_group->tag();
+    return attr == nullptr || attr->tag == bthread::tls_task_group->tag() ||
+           attr->tag == BTHREAD_TAG_INVALID;
 }
 
 struct TidTraits {
