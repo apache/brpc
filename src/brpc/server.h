@@ -262,6 +262,10 @@ struct ServerOptions {
     // Default: ""
     std::string server_info_name;
 
+    // Server will run in this tagged bthread worker group
+    // Default: BTHREAD_TAG_DEFAULT
+    bthread_tag_t bthread_tag;
+
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ServerOptions from being bloated in most cases.

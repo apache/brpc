@@ -105,6 +105,8 @@ enum StopStyle {
 
 const int32_t UNSET_MAGIC_NUM = -123456789;
 
+typedef butil::FlatMap<std::string, std::string> UserFieldsMap;
+
 // A Controller mediates a single method call. The primary purpose of
 // the controller is to provide a way to manipulate settings per RPC-call 
 // and to find out about RPC-level errors.
@@ -254,6 +256,26 @@ public:
         _http_request = NULL;
         return tmp;
     }
+
+    UserFieldsMap* request_user_fields() {
+        if (!_request_user_fields) {
+            _request_user_fields = new UserFieldsMap;
+            _request_user_fields->init(29);
+        }
+        return _request_user_fields;
+    }
+
+    bool has_request_user_fields() const { return _request_user_fields; }
+
+    UserFieldsMap* response_user_fields() {
+        if (!_response_user_fields) {
+            _response_user_fields = new UserFieldsMap;
+            _response_user_fields->init(29);
+        }
+        return _response_user_fields;
+    }
+
+    bool has_response_user_fields() const { return _response_user_fields; }
 
     // User attached data or body of http request, which is wired to network
     // directly instead of being serialized into protobuf messages.
@@ -819,6 +841,10 @@ private:
 
     HttpHeader* _http_request;
     HttpHeader* _http_response;
+
+    // User fields of baidu_std protocol.
+    UserFieldsMap* _request_user_fields;
+    UserFieldsMap* _response_user_fields;
 
     std::unique_ptr<KVMap> _session_kv;
 

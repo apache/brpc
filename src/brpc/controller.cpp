@@ -209,6 +209,8 @@ void Controller::ResetNonPods() {
     _request_buf.clear();
     delete _http_request;
     delete _http_response;
+    delete _request_user_fields;
+    delete _response_user_fields;
     _request_attachment.clear();
     _response_attachment.clear();
     if (_wpa) {
@@ -283,6 +285,8 @@ void Controller::ResetPods() {
     _idl_result = IDL_VOID_RESULT;
     _http_request = NULL;
     _http_response = NULL;
+    _request_user_fields = NULL;
+    _response_user_fields = NULL;
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
