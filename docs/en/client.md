@@ -755,6 +755,10 @@ options.mutable_ssl_options();
 // Enable client-side SSL and customize values.
 options.mutable_ssl_options()->ciphers_name = "...";
 options.mutable_ssl_options()->sni_name = "...";
+
+// Set the protocol preference of ALPN.
+// (By default ALPN is disabled.)
+options.mutable_ssl_options()->alpn_protocols = {"h2", "http/1.1"};
 ```
 
 - Channels connecting to a single server or a cluster both support SSL (the initial implementation does not support cluster)

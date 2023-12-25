@@ -498,6 +498,14 @@ SSL_CTX* CreateClientSSLContext(const ChannelSSLOptions& options) {
         return NULL;
     }
 
+    if (!options.alpn_protocols.empty()) {
+        std::vector<unsigned char> alpn_list;
+        if (!BuildALPNProtocolList(options.alpn_protocols, alpn_list)) {
+            return NULL;
+        }
+        SSL_CTX_set_alpn_protos(ssl_ctx.get(), alpn_list.data(), alpn_list.size());
+    }
+
     SSL_CTX_set_session_cache_mode(ssl_ctx.get(), SSL_SESS_CACHE_CLIENT);
     return ssl_ctx.release();
 }
@@ -894,6 +902,36 @@ std::string ALPNProtocolToString(const AdaptiveProtocolType& protocol) {
 
     char length = static_cast<char>(name.size());
     return std::string(&length, 1) + name.data(); 
+}
+
+bool BuildALPNProtocolList(
+    const std::vector<std::string>& alpn_protocols,
+    std::vector<unsigned char>& result
+) {
+    size_t alpn_list_length = 0;
+    for (const auto& alpn_protocol : alpn_protocols) {
+        if (alpn_protocol.size() > UCHAR_MAX) {
+            LOG(ERROR) << "Fail to build ALPN procotol list: "
+                       << "protocol name length " << alpn_protocol.size() << " too long, "
+                       << "max 255 supported.";
+            return false;
+        }
+        alpn_list_length += alpn_protocol.size() + 1;
+    }
+
+    result.resize(alpn_list_length);
+    for (size_t curr = 0, i = 0; i < alpn_protocols.size(); i++) {
+        result[curr++] = static_cast<unsigned char>(
+            alpn_protocols[i].size()
+        );
+        std::copy(
+            alpn_protocols[i].begin(),
+            alpn_protocols[i].end(),
+            result.begin() + curr
+        );
+        curr += alpn_protocols[i].size();
+    }
+    return true;
 }
 
 } // namespace brpc

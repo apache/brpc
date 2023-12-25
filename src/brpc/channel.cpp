@@ -303,6 +303,7 @@ static int CreateSocketSSLContext(const ChannelOptions& options,
         *ssl_ctx = std::make_shared<SocketSSLContext>();
         (*ssl_ctx)->raw_ctx = raw_ctx;
         (*ssl_ctx)->sni_name = options.ssl_options().sni_name;
+        (*ssl_ctx)->alpn_protocols = options.ssl_options().alpn_protocols;
     } else {
         (*ssl_ctx) = NULL;
     }

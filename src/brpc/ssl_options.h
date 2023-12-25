@@ -84,6 +84,10 @@ struct ChannelSSLOptions {
     // Default: see above
     VerifyOptions verify;
 
+    // Set the protocol preference of ALPN (Application-Layer Protocol Negotiation)
+    // Default: unset
+    std::vector<std::string> alpn_protocols;
+
     // TODO: Support CRL
 };
 

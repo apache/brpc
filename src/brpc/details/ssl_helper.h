@@ -113,6 +113,13 @@ void Print(std::ostream& os, X509* cert, const char* sep);
 
 std::string ALPNProtocolToString(const AdaptiveProtocolType& protocol);
 
+// Build a binary formatted ALPN protocol list that OpenSSL's
+// `SSL_CTX_set_alpn_protos` accepts from a C++ string vector.
+bool BuildALPNProtocolList(
+    const std::vector<std::string>& alpn_protocols,
+    std::vector<unsigned char>& result
+);
+
 } // namespace brpc
 
 #endif // BRPC_SSL_HELPER_H
