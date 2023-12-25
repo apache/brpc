@@ -255,7 +255,8 @@ $ docker run -it brpc:master /bin/bash
 
 Install dependencies:
 ```shell
-brew install openssl git gnu-getopt coreutils gflags protobuf leveldb
+brew install ./homebrew-formula/protobuf.rb
+brew install openssl git gnu-getopt coreutils gflags leveldb
 ```
 
 If you need to enable cpu/heap profilers in examples:

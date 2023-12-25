@@ -248,7 +248,8 @@ master HEAD已支持M1系列芯片，M2未测试过。欢迎通过issues向我�
 
 安装依赖：
 ```shell
-brew install openssl git gnu-getopt coreutils gflags protobuf leveldb
+brew install ./homebrew-formula/protobuf.rb
+brew install openssl git gnu-getopt coreutils gflags leveldb
 ```
 
 如果你要在样例中启用cpu/heap的profiler：
