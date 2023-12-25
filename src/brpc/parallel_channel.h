@@ -218,6 +218,13 @@ public:
                    CallMapper* call_mapper,
                    ResponseMerger* response_merger);
 
+    // same as AddChannel(... CallMapper* call_mapper, ResponseMerger* response_merger)
+    // use intrusive_ptr to avoid potential memory leak 
+    int AddChannel(ChannelBase* sub_channel,
+                   ChannelOwnership ownership,
+                   const butil::intrusive_ptr<CallMapper>& call_mapper,
+                   const butil::intrusive_ptr<ResponseMerger>& response_merger);
+
     // Call `method' of the remote service with `request' as input, and 
     // `response' as output. `controller' contains options and extra data.
     // If `done' is not NULL, this method returns after request was sent

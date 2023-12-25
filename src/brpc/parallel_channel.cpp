@@ -477,6 +477,26 @@ int ParallelChannel::AddChannel(ChannelBase* sub_channel,
     return 0;
 }
 
+int ParallelChannel::AddChannel(ChannelBase* sub_channel,
+                                ChannelOwnership ownership,
+                                const butil::intrusive_ptr<CallMapper>& call_mapper,
+                                const butil::intrusive_ptr<ResponseMerger>& merger) {
+    if (NULL == sub_channel) {
+        LOG(ERROR) << "Param[sub_channel] is NULL";
+        return -1;
+    }
+    if (_chans.capacity() == 0) {
+        _chans.reserve(32);
+    }
+    SubChan sc;
+    sc.chan = sub_channel;
+    sc.ownership = ownership;
+    sc.call_mapper = call_mapper;
+    sc.merger = merger;
+    _chans.push_back(sc);
+    return 0;
+}
+
 struct SortByChannelPtr {
     bool operator()(const ParallelChannel::SubChan& c1,
                     const ParallelChannel::SubChan& c2) const {
