@@ -20,6 +20,7 @@
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <brpc/server.h>
+#include <json2pb/pb_to_json.h>
 #include "echo.pb.h"
 
 DEFINE_bool(send_attachment, true, "Carry attachment along with response");
