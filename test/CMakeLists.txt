@@ -144,6 +144,7 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/thread_id_name_manager_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/thread_local_storage_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/thread_local_unittest.cc
+    ${PROJECT_SOURCE_DIR}/test/abalist_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/watchdog_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/time_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/version_unittest.cc
