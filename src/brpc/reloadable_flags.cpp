@@ -29,6 +29,9 @@ bool PassValidate(const char*, bool) {
 bool PassValidate(const char*, int32_t) {
     return true;
 }
+bool PassValidate(const char*, uint32_t) {
+    return true;
+}
 bool PassValidate(const char*, int64_t) {
     return true;
 }
@@ -42,7 +45,13 @@ bool PassValidate(const char*, double) {
 bool PositiveInteger(const char*, int32_t val) {
     return val > 0;
 }
+bool PositiveInteger(const char*, uint32_t val) {
+    return val > 0;
+}
 bool PositiveInteger(const char*, int64_t val) {
+    return val > 0;
+}
+bool PositiveInteger(const char*, uint64_t val) {
     return val > 0;
 }
 
