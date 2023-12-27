@@ -21,6 +21,7 @@
 #include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/restful.h>
+#include <json2pb/pb_to_json.h>
 #include "http.pb.h"
 
 DEFINE_int32(port, 8010, "TCP Port of this server");
