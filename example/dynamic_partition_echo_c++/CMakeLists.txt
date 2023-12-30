@@ -135,7 +135,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-framework Foundation"
         "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
         "-Wl,-U,_ProfilerStart"
-        "-Wl,-U,_ProfilerStop")
+        "-Wl,-U,_ProfilerStop"
+        "-Wl,-U,__Z13GetStackTracePPvii")
 endif()
 
 add_executable(dynamic_partition_echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})

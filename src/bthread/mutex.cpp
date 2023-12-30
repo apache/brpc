@@ -46,11 +46,14 @@
 extern "C" {
 extern void* __attribute__((weak)) _dl_sym(void* handle, const char* symbol, void* caller);
 }
+extern int __attribute__((weak)) GetStackTrace(void** result, int max_depth, int skip_count);
 
 namespace bthread {
 // Warm up backtrace before main().
 void* dummy_buf[4];
-const int ALLOW_UNUSED dummy_bt = backtrace(dummy_buf, arraysize(dummy_buf));
+const int ALLOW_UNUSED dummy_bt = GetStackTrace
+    ? GetStackTrace(dummy_buf, arraysize(dummy_buf), 0)
+    : backtrace(dummy_buf, arraysize(dummy_buf));
 
 // For controlling contentions collected per second.
 static bvar::CollectorSpeedLimit g_cp_sl = BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER;
@@ -64,24 +67,32 @@ struct SampledContention : public bvar::Collected {
     int64_t duration_ns;
     // number of samples, normalized according to to sampling_range
     double count;
-    int nframes;          // #elements in stack
     void* stack[26];      // backtrace.
+    int nframes;          // #elements in stack
 
     // Implement bvar::Collected
     void dump_and_destroy(size_t round) override;
     void destroy() override;
     bvar::CollectorSpeedLimit* speed_limit() override { return &g_cp_sl; }
 
-    // For combining samples with hashmap.
     size_t hash_code() const {
         if (nframes == 0) {
             return 0;
         }
-        uint32_t code = 1;
-        uint32_t seed = nframes;
-        butil::MurmurHash3_x86_32(stack, sizeof(void*) * nframes, seed, &code);
-        return code;
+        if (_hash_code == 0) {
+            _hash_code = 1;
+            uint32_t seed = nframes;
+            butil::MurmurHash3_x86_32(stack, sizeof(void*) * nframes, seed, &_hash_code);
+        }
+        return _hash_code;
     }
+private:
+friend butil::ObjectPool<SampledContention>;
+    SampledContention()
+        : duration_ns(0), count(0), stack{NULL}, nframes(0), _hash_code(0) {}
+    ~SampledContention() override = default;
+
+    mutable uint32_t _hash_code; // For combining samples with hashmap.
 };
 
 BAIDU_CASSERT(sizeof(SampledContention) == 256, be_friendly_to_allocator);
@@ -294,6 +305,7 @@ void SampledContention::dump_and_destroy(size_t /*round*/) {
 }
 
 void SampledContention::destroy() {
+    _hash_code = 0;
     butil::return_object(this);
 }
 
@@ -512,14 +524,16 @@ inline bool remove_pthread_contention_site(
 // Submit the contention along with the callsite('s stacktrace)
 void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
     tls_inside_lock = true;
-    SampledContention* sc = butil::get_object<SampledContention>();
+    auto sc = butil::get_object<SampledContention>();
     // Normalize duration_us and count so that they're addable in later
     // processings. Notice that sampling_range is adjusted periodically by
     // collecting thread.
     sc->duration_ns = csite.duration_ns * bvar::COLLECTOR_SAMPLING_BASE
         / csite.sampling_range;
     sc->count = bvar::COLLECTOR_SAMPLING_BASE / (double)csite.sampling_range;
-    sc->nframes = backtrace(sc->stack, arraysize(sc->stack)); // may lock
+    sc->nframes = GetStackTrace
+        ? GetStackTrace(sc->stack, arraysize(sc->stack), 0)
+        : backtrace(sc->stack, arraysize(sc->stack)); // may lock
     sc->submit(now_ns / 1000);  // may lock
     tls_inside_lock = false;
 }

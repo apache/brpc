@@ -61,6 +61,7 @@ LINKOPTS = [
         "-Wl,-U,_MallocExtension_ReleaseFreeMemory",
         "-Wl,-U,_ProfilerStart",
         "-Wl,-U,_ProfilerStop",
+        "-Wl,-U,__Z13GetStackTracePPvii",
         "-Wl,-U,_RegisterThriftProtocol",
     ],
     "//conditions:default": [

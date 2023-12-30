@@ -45,6 +45,8 @@
 #include "butil/third_party/symbolize/symbolize.h"
 #endif
 
+extern int __attribute__((weak)) GetStackTrace(void** result, int max_depth, int skip_count);
+
 namespace butil {
 namespace debug {
 
@@ -748,13 +750,17 @@ StackTrace::StackTrace() {
   // NOTE: This code MUST be async-signal safe (it's used by in-process
   // stack dumping signal handler). NO malloc or stdio is allowed here.
 
+  if (GetStackTrace) {
+      count_ = GetStackTrace(trace_, arraysize(trace_), 0);
+  } else {
 #if !defined(__UCLIBC__)
-  // Though the backtrace API man page does not list any possible negative
-  // return values, we take no chance.
-  count_ = butil::saturated_cast<size_t>(backtrace(trace_, arraysize(trace_)));
+      // Though the backtrace API man page does not list any possible negative
+      // return values, we take no chance.
+      count_ = butil::saturated_cast<size_t>(backtrace(trace_, arraysize(trace_)));
 #else
-  count_ = 0;
+      count_ = 0;
 #endif
+  }
 }
 
 void StackTrace::Print() const {
