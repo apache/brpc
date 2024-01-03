@@ -45,6 +45,7 @@
 #include "brpc/builtin/bad_method_service.h"   // BadMethodService
 #include "brpc/builtin/get_favicon_service.h"
 #include "brpc/builtin/get_js_service.h"
+#include "brpc/builtin/grpc_health_check_service.h"  // GrpcHealthCheckService
 #include "brpc/builtin/version_service.h"
 #include "brpc/builtin/health_service.h"
 #include "brpc/builtin/list_service.h"
@@ -562,6 +563,10 @@ int Server::AddBuiltinServices() {
     }
     if (AddBuiltinService(new (std::nothrow) GetJsService)) {
         LOG(ERROR) << "Fail to add GetJsService";
+        return -1;
+    }
+    if (AddBuiltinService(new (std::nothrow) GrpcHealthCheckService)) {
+        LOG(ERROR) << "Fail to add GrpcHealthCheckService";
         return -1;
     }
     return 0;
