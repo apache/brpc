@@ -286,20 +286,16 @@ class scoped_refptr {
   }
 
   scoped_refptr(scoped_refptr<T>&& r) noexcept {
-    if (r.ptr_){
-      ptr_ = r.ptr_;
-      r.ptr_ = nullptr;
-    }
+    ptr_ = r.ptr_;
+    r.ptr_ = nullptr;
   }
 
   template <typename U>
   scoped_refptr(scoped_refptr<U>&& r) noexcept {
-    if (r.ptr_){
-      ptr_ = r.ptr_;
-      r.ptr_ = nullptr;
-    }
+    ptr_ = r.ptr_;
+    r.ptr_ = nullptr;
   }
- 
+
   ~scoped_refptr() {
     if (ptr_)
       ptr_->Release();

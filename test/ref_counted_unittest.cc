@@ -82,3 +82,16 @@ TEST(RefCountedUnitTest, ScopedRefPtrBooleanOperations) {
   EXPECT_NE(raw_p, p2);
   EXPECT_EQ(p1, p2);
 }
+
+TEST(RefCountedUnitTest, ScopedRefPtrMoveCtor)
+{
+  scoped_refptr<SelfAssign> p1 = new SelfAssign;
+  EXPECT_TRUE(p1);
+
+  scoped_refptr<SelfAssign> p2(std::move(p1));
+  EXPECT_TRUE(p2);
+  EXPECT_FALSE(p1);
+
+  scoped_refptr<SelfAssign> p3(std::move(p1));
+  EXPECT_FALSE(p3);
+}
