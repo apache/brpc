@@ -88,6 +88,7 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/mru_cache_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/small_map_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/stack_container_unittest.cc
+    ${PROJECT_SOURCE_DIR}/test/mpsc_queue_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/cpu_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/crash_logging_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/leak_tracker_unittest.cc
