@@ -38,6 +38,7 @@
 #include "butil/logging.h"                  // CHECK, LOG
 #include "butil/fd_guard.h"                 // butil::fd_guard
 #include "butil/iobuf.h"
+#include "butil/iobuf_profiler.h"
 
 namespace butil {
 namespace iobuf {
@@ -155,7 +156,7 @@ inline iov_function get_pwritev_func() {
 
 #endif  // ARCH_CPU_X86_64
 
-inline void* cp(void *__restrict dest, const void *__restrict src, size_t n) {
+void* cp(void *__restrict dest, const void *__restrict src, size_t n) {
     // memcpy in gcc 4.8 seems to be faster enough.
     return memcpy(dest, src, n);
 }
@@ -188,7 +189,8 @@ size_t IOBuf::new_bigview_count() {
     return iobuf::g_newbigview.load(butil::memory_order_relaxed);
 }
 
-const uint16_t IOBUF_BLOCK_FLAGS_USER_DATA = 0x1;
+const uint16_t IOBUF_BLOCK_FLAGS_USER_DATA = 1 << 0;
+const uint16_t IOBUF_BLOCK_FLAGS_SAMPLED = 1 << 1;
 using UserDataDeleter = std::function<void(void*)>;
 
 struct UserDataExtension {
@@ -223,6 +225,9 @@ struct IOBuf::Block {
         iobuf::g_nblock.fetch_add(1, butil::memory_order_relaxed);
         iobuf::g_blockmem.fetch_add(data_size + sizeof(Block),
                                     butil::memory_order_relaxed);
+        if (is_samplable()) {
+            SubmitIOBufSample(this, 1);
+        }
     }
 
     Block(char* data_in, uint32_t data_size, UserDataDeleter deleter)
@@ -235,6 +240,9 @@ struct IOBuf::Block {
         , data(data_in) {
         auto ext = new (get_user_data_extension()) UserDataExtension();
         ext->deleter = std::move(deleter);
+        if (is_samplable()) {
+            SubmitIOBufSample(this, 1);
+        }
     }
 
     // Undefined behavior when (flags & IOBUF_BLOCK_FLAGS_USER_DATA) is 0.
@@ -255,13 +263,19 @@ struct IOBuf::Block {
     void inc_ref() {
         check_abi();
         nshared.fetch_add(1, butil::memory_order_relaxed);
+        if (sampled()) {
+            SubmitIOBufSample(this, 1);
+        }
     }
         
     void dec_ref() {
         check_abi();
+        if (sampled()) {
+            SubmitIOBufSample(this, -1);
+        }
         if (nshared.fetch_sub(1, butil::memory_order_release) == 1) {
             butil::atomic_thread_fence(butil::memory_order_acquire);
-            if (!flags) {
+            if (!is_user_data()) {
                 iobuf::g_nblock.fetch_sub(1, butil::memory_order_relaxed);
                 iobuf::g_blockmem.fetch_sub(cap + sizeof(Block),
                                             butil::memory_order_relaxed);
@@ -283,6 +297,23 @@ struct IOBuf::Block {
 
     bool full() const { return size >= cap; }
     size_t left_space() const { return cap - size; }
+
+private:
+    bool is_samplable() {
+        if (IsIOBufProfilerSamplable()) {
+            flags |= IOBUF_BLOCK_FLAGS_SAMPLED;
+            return true;
+        }
+        return false;
+    }
+
+    bool sampled() const {
+        return flags & IOBUF_BLOCK_FLAGS_SAMPLED;
+    }
+
+    bool is_user_data() const {
+        return flags & IOBUF_BLOCK_FLAGS_USER_DATA;
+    }
 };
 
 namespace iobuf {

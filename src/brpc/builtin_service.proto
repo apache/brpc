@@ -149,6 +149,8 @@ service hotspots {
     rpc growth_non_responsive(HotspotsRequest) returns (HotspotsResponse);
     rpc contention(HotspotsRequest) returns (HotspotsResponse);
     rpc contention_non_responsive(HotspotsRequest) returns (HotspotsResponse);
+    rpc iobuf(HotspotsRequest) returns (HotspotsResponse);
+    rpc iobuf_non_responsive(HotspotsRequest) returns (HotspotsResponse);
 }
 
 service flags {
