@@ -761,7 +761,7 @@ int StreamAccept(StreamId* response_stream, Controller &cntl,
                  const StreamOptions* options) {
 
     if (cntl._response_stream != INVALID_STREAM_ID) {
-        LOG(ERROR) << "Can't create reponse stream more than once";
+        LOG(ERROR) << "Can't create response stream more than once";
         return -1;
     }
     if (response_stream == NULL) {
