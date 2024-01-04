@@ -38,7 +38,7 @@ namespace bvar {
 
 DEFINE_bool(save_series, true,
             "Save values of last 60 seconds, last 60 minutes,"
-            " last 24 hours and last 30 days for ploting");
+            " last 24 hours and last 30 days for plotting");
 
 DEFINE_bool(quote_vector, true,
             "Quote description of Vector<> to make it valid to noah");
