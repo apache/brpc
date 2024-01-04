@@ -46,7 +46,7 @@ struct StreamOptions
     // default: 128
     size_t messages_in_batch;
  
-    // Handle input message, if handler is NULL, the remote side is not allowd to
+    // Handle input message, if handler is NULL, the remote side is not allowed to
     // write any message, who will get EBADF on writing
     // default: NULL
     StreamInputHandler* handler;

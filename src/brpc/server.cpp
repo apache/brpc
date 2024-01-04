@@ -2169,7 +2169,7 @@ int Server::ResetMaxConcurrency(int max_concurrency) {
 
 AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {
     if (IsRunning()) {
-        LOG(WARNING) << "MaxConcurrencyOf is only allowd before Server started";
+        LOG(WARNING) << "MaxConcurrencyOf is only allowed before Server started";
         return g_default_max_concurrency_of_method;
     }
     if (mp->status == NULL) {
@@ -2183,7 +2183,7 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {
 
 int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
     if (IsRunning()) {
-        LOG(WARNING) << "MaxConcurrencyOf is only allowd before Server started";
+        LOG(WARNING) << "MaxConcurrencyOf is only allowed before Server started";
         return g_default_max_concurrency_of_method;
     }
     if (mp == NULL || mp->status == NULL) {
