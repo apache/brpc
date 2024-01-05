@@ -38,7 +38,7 @@ namespace bvar {
 
 DEFINE_bool(save_series, true,
             "Save values of last 60 seconds, last 60 minutes,"
-            " last 24 hours and last 30 days for ploting");
+            " last 24 hours and last 30 days for plotting");
 
 DEFINE_bool(quote_vector, true,
             "Quote description of Vector<> to make it valid to noah");
@@ -707,7 +707,7 @@ DEFINE_string(bvar_dump_tabs, "latency=*_latency*"
                               ";qps=*_qps*"
                               ";error=*_error*"
                               ";system=*process_*,*malloc_*,*kernel_*",
-              "Dump bvar into different tabs according to the filters (seperated by semicolon), "
+              "Dump bvar into different tabs according to the filters (separated by semicolon), "
               "format: *(tab_name=wildcards;)");
 
 DEFINE_bool(mbvar_dump, false,

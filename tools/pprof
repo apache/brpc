@@ -4465,7 +4465,7 @@ sub GetProcedureBoundariesViaNm {
 
       # Tag this routine with the starting address in case the image
       # has multiple occurrences of this routine.  We use a syntax
-      # that resembles template paramters that are automatically
+      # that resembles template parameters that are automatically
       # stripped out by ShortFunctionName()
       $this_routine .= "<$start_val>";
 

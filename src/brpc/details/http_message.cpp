@@ -566,7 +566,7 @@ void MakeRawHttpRequest(butil::IOBuf* request,
     //empty field-value.
     //rfc 7231#sec4.3:
     //the request-target consists of only the host name and port number of 
-    //the tunnel destination, seperated by a colon. For example,
+    //the tunnel destination, separated by a colon. For example,
     //Host: server.example.com:80
     if (h->GetHeader("host") == NULL) {
         os << "Host: ";
