@@ -90,6 +90,7 @@ service NacosNamingService {
 
 service HttpService {
     rpc Head(HttpRequest) returns (HttpResponse);
+    rpc Expect(HttpRequest) returns (HttpResponse);
 }
 
 enum State0 {

@@ -559,6 +559,11 @@ void MakeRawHttpRequest(butil::IOBuf* request,
         os << "Content-Length: " << (content ? content->length() : 0)
            << BRPC_CRLF;
     }
+    // `Expect: 100-continue' is not supported, remove it.
+    const std::string* expect = h->GetHeader("Expect");
+    if (expect && *expect == "100-continue") {
+        h->RemoveHeader("Expect");
+    }
     //rfc 7230#section-5.4:
     //A client MUST send a Host header field in all HTTP/1.1 request
     //messages. If the authority component is missing or undefined for

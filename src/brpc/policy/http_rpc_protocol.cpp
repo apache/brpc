@@ -127,6 +127,9 @@ CommonStrings::CommonStrings()
     , AUTHORIZATION("authorization")
     , ACCEPT_ENCODING("accept-encoding")
     , CONTENT_ENCODING("content-encoding")
+    , CONTENT_LENGTH("content_length")
+    , EXPECT("expect")
+    , CONTINUE_100("100-continue")
     , GZIP("gzip")
     , CONNECTION("connection")
     , KEEP_ALIVE("keep-alive")
@@ -1168,6 +1171,29 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             }
             return result;
         } else if (http_imsg->stage() >= HTTP_ON_HEADERS_COMPLETE) {
+            // https://datatracker.ietf.org/doc/html/rfc7231#section-5.1.1
+            // A server that receives a 100-continue expectation in an HTTP/1.0
+            // request MUST ignore that expectation.
+            //
+            // A server MAY omit sending a 100 (Continue) response if it has
+            // already received some or all of the message body for the
+            // corresponding request, or if the framing indicates that there is
+            // no message body.
+            if (http_imsg->parser().type == HTTP_REQUEST &&
+                !http_imsg->header().before_http_1_1()) {
+                const std::string* expect = http_imsg->header().GetHeader(common->EXPECT);
+                if (expect && *expect ==  common->CONTINUE_100) {
+                    // Send 100-continue response back.
+                    butil::IOBuf resp;
+                    HttpHeader header;
+                    header.set_status_code(HTTP_STATUS_CONTINUE);
+                    MakeRawHttpResponse(&resp, &header, NULL);
+                    Socket::WriteOptions wopt;
+                    wopt.ignore_eovercrowded = true;
+                    socket->Write(&resp, &wopt);
+                }
+            }
+
             http_imsg->CheckProgressiveRead(arg, socket);
             if (socket->is_read_progressive()) {
                 // header part of a progressively-read http message is complete,
