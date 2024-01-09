@@ -128,7 +128,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         }
 
         // keep polling for some time before waiting on parking lot
-        if (butil::cpuwide_time_ms() - poll_start_ms > 100) {
+        if (butil::cpuwide_time_ms() - poll_start_ms > 15) {
             _pl->wait(_last_pl_state);
             poll_start_ms = butil::cpuwide_time_ms();
         }
