@@ -20,6 +20,7 @@
 #include <vector>
 #include <gflags/gflags.h>
 #include "butil/scoped_lock.h"
+#include "butil/threading/platform_thread.h"
 #ifdef BAIDU_INTERNAL
 #include "butil/comlog_sink.h"
 #endif
@@ -91,6 +92,7 @@ UserCodeBackupPool::UserCodeBackupPool()
 }
 
 static void* UserCodeRunner(void* args) {
+    butil::PlatformThread::SetName("brpc_user_code_runner");
     static_cast<UserCodeBackupPool*>(args)->UserCodeRunningLoop();
     return NULL;
 }

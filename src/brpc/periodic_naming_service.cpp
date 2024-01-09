@@ -37,7 +37,7 @@ int PeriodicNamingService::RunNamingService(
     const char* service_name, NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
     bool ever_reset = false;
-    for (;;) {
+    while (true) {
         servers.clear();
         const int rc = GetServers(service_name, &servers);
         if (rc == 0) {
@@ -51,6 +51,16 @@ int PeriodicNamingService::RunNamingService(
             actions->ResetServers(servers);
         }
 
+        // If `bthread_stop' is called to stop the ns bthread when `brpc::Join‘ is called
+        // in `GetServers' to wait for a rpc to complete. The bthread will be woken up,
+        // reset `TaskMeta::interrupted' and continue to join the rpc. After the rpc is complete,
+        // `bthread_usleep' will not sense the interrupt signal and sleep successfully.
+        // Finally, the ns bthread will never exit. So need to check the stop status of
+        // the bthread here and exit the bthread in time.
+        if (bthread_stopped(bthread_self())) {
+            RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
+            return 0;
+        }
         if (bthread_usleep(GetNamingServiceAccessIntervalMs() * 1000UL) < 0) {
             if (errno == ESTOP) {
                 RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();

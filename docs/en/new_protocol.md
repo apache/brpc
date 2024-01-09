@@ -20,7 +20,7 @@ brpc is designed to add new protocols at any time, just proceed as follows:
 
 ## add ProtocolType
 
-Add new protocol type in ProtocolType in [options.proto](https://github.com/brpc/brpc/blob/master/src/brpc/options.proto). If you need to add new protocol, please contact us to add it for you to make sure there is no conflict with protocols of others.
+Add new protocol type in ProtocolType in [options.proto](https://github.com/apache/brpc/blob/master/src/brpc/options.proto). If you need to add new protocol, please contact us to add it for you to make sure there is no conflict with protocols of others.
 
 Currently we support in ProtocolType(at the middle of 2018):
 ```c++
@@ -56,7 +56,7 @@ enum ProtocolType {
 ```
 ## Implement Callbacks
 
-All callbacks are defined in struct Protocol, which is defined in [protocol.h](https://github.com/brpc/brpc/blob/master/src/brpc/protocol.h). Among all these callbacks, `parse` is a callback that must be implemented. Besides, `process_request` must be implemented in the server side and `serialize_request`, `pack_request`, `process_response` must be implemented in the client side.
+All callbacks are defined in struct Protocol, which is defined in [protocol.h](https://github.com/apache/brpc/blob/master/src/brpc/protocol.h). Among all these callbacks, `parse` is a callback that must be implemented. Besides, `process_request` must be implemented in the server side and `serialize_request`, `pack_request`, `process_response` must be implemented in the client side.
 
 It is difficult to implement callbacks of the protocol. These codes are not like the codes that ordinary users use which has good prompts and protections. You have to figure it out how to handle similar code in other protocols and implement your own protocol, then send it to us to do code review.
 
@@ -137,7 +137,7 @@ The name of the protocol, which appears in the various configurations and displa
 
 ## Register to global
 
-RegisterProtocol should be called to [register implemented protocol](https://github.com/brpc/brpc/blob/master/src/brpc/global.cpp) to brpc, just like:
+RegisterProtocol should be called to [register implemented protocol](https://github.com/apache/brpc/blob/master/src/brpc/global.cpp) to brpc, just like:
 
 ```c++
 Protocol http_protocol = { ParseHttpMessage,

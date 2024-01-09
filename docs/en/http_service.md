@@ -5,7 +5,7 @@ http/h2 services in brpc have to declare interfaces with empty request and respo
 
 # Example
 
-[http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp)
+[http_server.cpp](https://github.com/apache/brpc/blob/master/example/http_c++/http_server.cpp)
 
 # About h2
 
@@ -30,12 +30,12 @@ Implementation steps:
 
 ```protobuf
 option cc_generic_services = true;
- 
+ 
 message HttpRequest { };
 message HttpResponse { };
- 
+ 
 service HttpService {
-      rpc Echo(HttpRequest) returns (HttpResponse);
+      rpc Echo(HttpRequest) returns (HttpResponse);
 };
 ```
 
@@ -44,27 +44,27 @@ service HttpService {
 ```c++
 class HttpServiceImpl : public HttpService {
 public:
-    ...
-    virtual void Echo(google::protobuf::RpcController* cntl_base,
-                      const HttpRequest* /*request*/,
-                      HttpResponse* /*response*/,
-                      google::protobuf::Closure* done) {
-        brpc::ClosureGuard done_guard(done);
-        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
- 
-        // body is plain text
-        cntl->http_response().set_content_type("text/plain");
-       
-        // Use printed query string and body as the response.
-        butil::IOBufBuilder os;
-        os << "queries:";
-        for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
-                it != cntl->http_request().uri().QueryEnd(); ++it) {
-            os << ' ' << it->first << '=' << it->second;
-        }
-        os << "\nbody: " << cntl->request_attachment() << '\n';
-        os.move_to(cntl->response_attachment());
-    }
+    ...
+    virtual void Echo(google::protobuf::RpcController* cntl_base,
+                      const HttpRequest* /*request*/,
+                      HttpResponse* /*response*/,
+                      google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+ 
+        // body is plain text
+        cntl->http_response().set_content_type("text/plain");
+       
+        // Use printed query string and body as the response.
+        butil::IOBufBuilder os;
+        os << "queries:";
+        for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
+                it != cntl->http_request().uri().QueryEnd(); ++it) {
+            os << ' ' << it->first << '=' << it->second;
+        }
+        os << "\nbody: " << cntl->request_attachment() << '\n';
+        os.move_to(cntl->response_attachment());
+    }
 };
 ```
 
@@ -142,10 +142,10 @@ int AddService(google::protobuf::Service* service,
 
 ```protobuf
 service QueueService {
-    rpc start(HttpRequest) returns (HttpResponse);
-    rpc stop(HttpRequest) returns (HttpResponse);
-    rpc get_stats(HttpRequest) returns (HttpResponse);
-    rpc download_data(HttpRequest) returns (HttpResponse);
+    rpc start(HttpRequest) returns (HttpResponse);
+    rpc stop(HttpRequest) returns (HttpResponse);
+    rpc get_stats(HttpRequest) returns (HttpResponse);
+    rpc download_data(HttpRequest) returns (HttpResponse);
 };
 ```
 
@@ -153,21 +153,21 @@ By specifying the 3rd parameter `restful_mappings` to `AddService`, the URL can 
 
 ```c++
 if (server.AddService(&queue_svc,
-                      brpc::SERVER_DOESNT_OWN_SERVICE,
-                      "/v1/queue/start   => start,"
-                      "/v1/queue/stop    => stop,"
-                      "/v1/queue/stats/* => get_stats") != 0) {
-    LOG(ERROR) << "Fail to add queue_svc";
-    return -1;
+                      brpc::SERVER_DOESNT_OWN_SERVICE,
+                      "/v1/queue/start   => start,"
+                      "/v1/queue/stop    => stop,"
+                      "/v1/queue/stats/* => get_stats") != 0) {
+    LOG(ERROR) << "Fail to add queue_svc";
+    return -1;
 }
- 
+ 
 if (server.AddService(&queue_svc,
-                      brpc::SERVER_DOESNT_OWN_SERVICE,
-                      "/v1/*/start   => start,"
-                      "/v1/*/stop    => stop,"
-                      "*.data        => download_data") != 0) {
-    LOG(ERROR) << "Fail to add queue_svc";
-    return -1;
+                      brpc::SERVER_DOESNT_OWN_SERVICE,
+                      "/v1/*/start   => start,"
+                      "/v1/*/stop    => stop,"
+                      "*.data        => download_data") != 0) {
+    LOG(ERROR) << "Fail to add queue_svc";
+    return -1;
 }
 ```
 
@@ -213,11 +213,11 @@ Query strings are also key/value pairs. Differences between HTTP headers and que
 ```c++
 // Get value for header "User-Agent" (case insensitive)
 const std::string* user_agent_str = cntl->http_request().GetHeader("User-Agent");
-if (user_agent_str != NULL) {  // has the header
-    LOG(TRACE) << "User-Agent is " << *user_agent_str;
+if (user_agent_str != NULL) {  // has the header
+    LOG(TRACE) << "User-Agent is " << *user_agent_str;
 }
 ...
- 
+ 
 // Add a header "Accept-encoding: gzip" (case insensitive)
 cntl->http_response().SetHeader("Accept-encoding", "gzip");
 // Overwrite the previous header "Accept-encoding: deflate"
@@ -234,7 +234,7 @@ cntl->http_response().AppendHeader("Accept-encoding", "gzip");
 ```c++
 // Get Content-Type
 if (cntl->http_request().content_type() == "application/json") {
-    ...
+    ...
 }
 ...
 // Set Content-Type
@@ -245,12 +245,12 @@ If the RPC fails (`Controller` has been `SetFailed`), the framework overwrites `
 
 ## Status Code
 
-Status code is a special field in HTTP response to store processing result of the http request. Possible values are defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h).
+Status code is a special field in HTTP response to store processing result of the http request. Possible values are defined in [http_status_code.h](https://github.com/apache/brpc/blob/master/src/brpc/http_status_code.h).
 
 ```c++
 // Get Status Code
 if (cntl->http_response().status_code() == brpc::HTTP_STATUS_NOT_FOUND) {
-    LOG(FATAL) << "FAILED: " << controller.http_response().reason_phrase();
+    LOG(FATAL) << "FAILED: " << controller.http_response().reason_phrase();
 }
 ...
 // Set Status code
@@ -269,7 +269,7 @@ cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/i
 
 ## Query String
 
-As mentioned in above [HTTP headers](#http-headers), query strings are interpreted in common convention, whose form is `key1=value1&key2=value2&…`. Keys without values are acceptable as well and accessible by `GetQuery` which returns an empty string. Such keys are often used as boolean flags. Full API are defined in [uri.h](https://github.com/brpc/brpc/blob/master/src/brpc/uri.h).
+As mentioned in above [HTTP headers](#http-headers), query strings are interpreted in common convention, whose form is `key1=value1&key2=value2&…`. Keys without values are acceptable as well and accessible by `GetQuery` which returns an empty string. Such keys are often used as boolean flags. Full API are defined in [uri.h](https://github.com/apache/brpc/blob/master/src/brpc/uri.h).
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
@@ -308,12 +308,12 @@ Due to generality, brpc does not decompress request bodies automatically, but us
 ...
 const std::string* encoding = cntl->http_request().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
-    butil::IOBuf uncompressed;
-    if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
-        LOG(ERROR) << "Fail to un-gzip request body";
-        return;
-    }
-    cntl->request_attachment().swap(uncompressed);
+    butil::IOBuf uncompressed;
+    if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
+        LOG(ERROR) << "Fail to un-gzip request body";
+        return;
+    }
+    cntl->request_attachment().swap(uncompressed);
 }
 // cntl->request_attachment() contains the data after decompression
 ```
@@ -325,7 +325,7 @@ https is short for "http over SSL", SSL is not exclusive for http, but effective
 
 Productions without extreme performance requirements tend to use HTTP protocol, especially mobile products. Thus we put great emphasis on implementation qualities of HTTP. To be more specific:
 
-- Use [http parser](https://github.com/brpc/brpc/blob/master/src/brpc/details/http_parser.h) of node.js to parse http messages, which is a lightweight, well-written, and extensively used implementation.
+- Use [http parser](https://github.com/apache/brpc/blob/master/src/brpc/details/http_parser.h) of node.js to parse http messages, which is a lightweight, well-written, and extensively used implementation.
 - Use [rapidjson](https://github.com/miloyip/rapidjson) to parse json, which is a json library focuses on performance.
 - In the worst case, the time complexity of parsing http requests is still O(N), where N is byte size of the request. As a contrast, parsing code that requires the http request to be complete, may cost O(N^2) time in the worst case. This feature is very helpful since many HTTP requests are large.
 - Processing HTTP messages from different clients is highly concurrent, even a pretty complicated http message does not block responding other clients. It's difficult to achieve this for other RPC implementations and http servers often based on [single-threaded reactor](threading_overview.md#single-threaded-reactor).
@@ -347,6 +347,8 @@ brpc server is capable of sending large or infinite sized body, in following ste
    * If the write occurs after running of the server-side done, the sent data is written out in chunked mode immediately.
 
 3. After usage, destruct all `butil::intrusive_ptr<brpc::ProgressiveAttachment>` to release related resources.
+
+In addition, we can easily implement Server-Sent Events(SSE) with this feature, which enables a client to receive automatic updates from a server via a HTTP connection. SSE could be used to build real-time applications such as chatGPT. Please refer to HttpSSEServiceImpl in [http_server.cpp](https://github.com/apache/brpc/blob/master/example/http_c++/http_server.cpp) for more details.
 
 # Progressive receiving
 

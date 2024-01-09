@@ -2,7 +2,8 @@
 
 [![Build Status](https://api.travis-ci.com/apache/brpc.svg?branch=master)](https://travis-ci.com/github/apache/brpc)
 
-# ![brpc](docs/images/logo.png)
+![brpc logo (light)](docs/images/logo.png#gh-light-mode-only)
+![brpc logo (dark)](docs/images/logo-white.png#gh-dark-mode-only)
 
 brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机器学习、广告、推荐等高性能系统。
 
@@ -11,11 +12,11 @@ brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机�
 你可以使用它：
 
 * 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
-  * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io)。使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
+  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io)。使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
   * [redis](docs/cn/redis_client.md)和[memcached](docs/cn/memcache_client.md), 线程安全，比官方client更方便。
-  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server).
+  * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server).
   * hadoop_rpc(可能开源)
-  * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)(即将开源)
+  * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)
   * 支持[thrift](docs/cn/thrift.md) , 线程安全，比官方client更方便
   * 各种百度内使用的协议: [baidu_std](docs/cn/baidu_std.md), [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc和使用nshead的各种协议.
   * 基于工业级的[RAFT算法](https://raft.github.io)实现搭建[高可用](https://en.wikipedia.org/wiki/High_availability)分布式系统，已在[braft](https://github.com/brpc/braft)开源。
@@ -28,7 +29,7 @@ brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机�
 # 试一下!
 
 * 通过[概述](docs/cn/overview.md)了解哪里可以用brpc及其优势。
-* 阅读[编译步骤](docs/cn/getting_started.md)了解如何开始使用, 之后可以运行一下[示例程序](https://github.com/brpc/brpc/tree/master/example/).
+* 阅读[编译步骤](docs/cn/getting_started.md)了解如何开始使用, 之后可以运行一下[示例程序](https://github.com/apache/brpc/tree/master/example/).
 * 文档:
   * [性能测试](docs/cn/benchmark.md)
   * [bvar](docs/cn/bvar.md)

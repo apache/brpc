@@ -172,9 +172,7 @@ private:
     inline static std::deque<AgentId> &_get_free_ids() {
         if (__builtin_expect(!_s_free_ids, 0)) {
             _s_free_ids = new (std::nothrow) std::deque<AgentId>();
-            if (!_s_free_ids) {
-                abort();
-            }
+            RELEASE_ASSERT(_s_free_ids);
         }
         return *_s_free_ids;
     }

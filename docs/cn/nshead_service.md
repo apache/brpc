@@ -10,7 +10,7 @@ ubrpc协议的基本形式是nshead+compack或mcpack2，但compack或mcpack2中�
 
 ## 把idl文件转化为proto文件
 
-使用脚本[idl2proto](https://github.com/brpc/brpc/blob/master/tools/idl2proto)把idl文件自动转化为proto文件，下面是转化后的proto文件。
+使用脚本[idl2proto](https://github.com/apache/brpc/blob/master/tools/idl2proto)把idl文件自动转化为proto文件，下面是转化后的proto文件。
 
 ```protobuf
 // Converted from echo.idl by brpc/tools/idl2proto
@@ -119,11 +119,11 @@ brpc::ServerOptions option;
 option.nshead_service = new brpc::policy::UbrpcCompackAdaptor; // mcpack2用UbrpcMcpack2Adaptor
 ```
 
-例子见[example/echo_c++_ubrpc_compack](https://github.com/brpc/brpc/blob/master/example/echo_c++_ubrpc_compack/)。
+例子见[example/echo_c++_ubrpc_compack](https://github.com/apache/brpc/blob/master/example/echo_c++_ubrpc_compack/)。
 
 # 使用nshead+blob的服务
 
-[NsheadService](https://github.com/brpc/brpc/blob/master/src/brpc/nshead_service.h)是brpc中所有处理nshead打头协议的基类，实现好的NsheadService实例得赋值给ServerOptions.nshead_service才能发挥作用。不赋值的话，默认是NULL，代表不支持任何nshead开头的协议，这个server被nshead开头的数据包访问时会报错。明显地，**一个Server只能处理一种以nshead开头的协议。**
+[NsheadService](https://github.com/apache/brpc/blob/master/src/brpc/nshead_service.h)是brpc中所有处理nshead打头协议的基类，实现好的NsheadService实例得赋值给ServerOptions.nshead_service才能发挥作用。不赋值的话，默认是NULL，代表不支持任何nshead开头的协议，这个server被nshead开头的数据包访问时会报错。明显地，**一个Server只能处理一种以nshead开头的协议。**
 
 NsheadService的接口如下，基本上用户只需要实现`ProcessNsheadRequest`这个函数。
 
@@ -159,11 +159,11 @@ public:
 };
 ```
 
-完整的example在[example/nshead_extension_c++](https://github.com/brpc/brpc/tree/master/example/nshead_extension_c++/)。
+完整的example在[example/nshead_extension_c++](https://github.com/apache/brpc/tree/master/example/nshead_extension_c++/)。
 
 # 使用nshead+mcpack/compack/idl的服务
 
-idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可以生成一些C++结构体，这些结构体可以打包为mcpack/compack。如果你的服务仍在大量地使用idl生成的结构体，且短期内难以修改，同时想要使用brpc提升性能和开发效率的话，可以实现[NsheadService](https://github.com/brpc/brpc/blob/master/src/brpc/nshead_service.h)，其接口接受nshead + 二进制包为request，用户填写自己的处理逻辑，最后的response也是nshead+二进制包。流程与protobuf方法保持一致，但过程中不涉及任何protobuf的序列化和反序列化，用户可以自由地理解nshead后的二进制包，包括用idl加载mcpack/compack数据包。
+idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可以生成一些C++结构体，这些结构体可以打包为mcpack/compack。如果你的服务仍在大量地使用idl生成的结构体，且短期内难以修改，同时想要使用brpc提升性能和开发效率的话，可以实现[NsheadService](https://github.com/apache/brpc/blob/master/src/brpc/nshead_service.h)，其接口接受nshead + 二进制包为request，用户填写自己的处理逻辑，最后的response也是nshead+二进制包。流程与protobuf方法保持一致，但过程中不涉及任何protobuf的序列化和反序列化，用户可以自由地理解nshead后的二进制包，包括用idl加载mcpack/compack数据包。
 
 不过，你应当充分意识到这么改造的坏处：
 
@@ -173,7 +173,7 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 
 # 使用nshead+protobuf的服务
 
-如果你的协议已经使用了nshead + protobuf，或者你想把你的协议适配为protobuf格式，那可以使用另一种模式：实现[NsheadPbServiceAdaptor](https://github.com/brpc/brpc/blob/master/src/brpc/nshead_pb_service_adaptor.h)（NsheadService的子类）。
+如果你的协议已经使用了nshead + protobuf，或者你想把你的协议适配为protobuf格式，那可以使用另一种模式：实现[NsheadPbServiceAdaptor](https://github.com/apache/brpc/blob/master/src/brpc/nshead_pb_service_adaptor.h)（NsheadService的子类）。
 
 工作步骤：
 
@@ -181,50 +181,50 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 - Call ParseRequestFromIOBuf() to convert the body after nshead header to pb request, then call the pb method.
 - When user calls server's done to end the RPC, SerializeResponseToIOBuf() is called to convert pb response to binary data that will be appended after nshead header and sent back to client.
 
-这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如baidu_std，hulu_pbrpc，sofa_pbrpc协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](https://github.com/brpc/brpc/tree/master/example/nshead_pb_extension_c++/)。
+这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如baidu_std，hulu_pbrpc，sofa_pbrpc协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](https://github.com/apache/brpc/tree/master/example/nshead_pb_extension_c++/)。
 
 ```c++
 class NsheadPbServiceAdaptor : public NsheadService {
 public:
-    NsheadPbServiceAdaptor() : NsheadService(
-        NsheadServiceOptions(false, SendNsheadPbResponseSize)) {}
-    virtual ~NsheadPbServiceAdaptor() {}
- 
-    // Fetch meta from `nshead_req' into `meta'.
-    // Params:
-    //   server: where the RPC runs.
-    //   nshead_req: the nshead request that server received.
-    //   controller: If something goes wrong, call controller->SetFailed()
-    //   meta: Set meta information into this structure. `full_method_name'
-    //         must be set if controller is not SetFailed()-ed
-    // FIXME: server is not needed anymore, controller->server() is same
-    virtual void ParseNsheadMeta(const Server& server,
-                                 const NsheadMessage& nshead_req,
-                                 Controller* controller,
-                                 NsheadMeta* meta) const = 0;
-    // Transform `nshead_req' to `pb_req'.
-    // Params:
-    //   meta: was set by ParseNsheadMeta()
-    //   nshead_req: the nshead request that server received.
-    //   controller: you can set attachment into the controller. If something
-    //               goes wrong, call controller->SetFailed()
-    //   pb_req: the pb request should be set by your implementation.
-    virtual void ParseRequestFromIOBuf(const NsheadMeta& meta,
-                                       const NsheadMessage& nshead_req,
-                                       Controller* controller,
-                                       google::protobuf::Message* pb_req) const = 0;
-    // Transform `pb_res' (and controller) to `nshead_res'.
-    // Params:
-    //   meta: was set by ParseNsheadMeta()
-    //   controller: If something goes wrong, call controller->SetFailed()
-    //   pb_res: the pb response that returned by pb method. [NOTE] `pb_res'
-    //           can be NULL or uninitialized when RPC failed (indicated by
-    //           Controller::Failed()), in which case you may put error
-    //           information into `nshead_res'.
-    //   nshead_res: the nshead response that will be sent back to client.
-    virtual void SerializeResponseToIOBuf(const NsheadMeta& meta,
-                                          Controller* controller,
-                                          const google::protobuf::Message* pb_res,
-                                          NsheadMessage* nshead_res) const = 0;
+    NsheadPbServiceAdaptor() : NsheadService(
+        NsheadServiceOptions(false, SendNsheadPbResponseSize)) {}
+    virtual ~NsheadPbServiceAdaptor() {}
+ 
+    // Fetch meta from `nshead_req' into `meta'.
+    // Params:
+    //   server: where the RPC runs.
+    //   nshead_req: the nshead request that server received.
+    //   controller: If something goes wrong, call controller->SetFailed()
+    //   meta: Set meta information into this structure. `full_method_name'
+    //         must be set if controller is not SetFailed()-ed
+    // FIXME: server is not needed anymore, controller->server() is same
+    virtual void ParseNsheadMeta(const Server& server,
+                                 const NsheadMessage& nshead_req,
+                                 Controller* controller,
+                                 NsheadMeta* meta) const = 0;
+    // Transform `nshead_req' to `pb_req'.
+    // Params:
+    //   meta: was set by ParseNsheadMeta()
+    //   nshead_req: the nshead request that server received.
+    //   controller: you can set attachment into the controller. If something
+    //               goes wrong, call controller->SetFailed()
+    //   pb_req: the pb request should be set by your implementation.
+    virtual void ParseRequestFromIOBuf(const NsheadMeta& meta,
+                                       const NsheadMessage& nshead_req,
+                                       Controller* controller,
+                                       google::protobuf::Message* pb_req) const = 0;
+    // Transform `pb_res' (and controller) to `nshead_res'.
+    // Params:
+    //   meta: was set by ParseNsheadMeta()
+    //   controller: If something goes wrong, call controller->SetFailed()
+    //   pb_res: the pb response that returned by pb method. [NOTE] `pb_res'
+    //           can be NULL or uninitialized when RPC failed (indicated by
+    //           Controller::Failed()), in which case you may put error
+    //           information into `nshead_res'.
+    //   nshead_res: the nshead response that will be sent back to client.
+    virtual void SerializeResponseToIOBuf(const NsheadMeta& meta,
+                                          Controller* controller,
+                                          const google::protobuf::Message* pb_res,
+                                          NsheadMessage* nshead_res) const = 0;
 };
 ```

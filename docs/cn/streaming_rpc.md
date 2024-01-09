@@ -19,7 +19,7 @@ Streaming RPC保证：
 
 目前的实现还没有自动切割过大的消息，同一个tcp连接上的多个Stream之间可能有[Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking)问题，请尽量避免过大的单个消息，实现自动切割后我们会告知并更新文档。
 
-例子见[example/streaming_echo_c++](https://github.com/brpc/brpc/tree/master/example/streaming_echo_c++/)。
+例子见[example/streaming_echo_c++](https://github.com/apache/brpc/tree/master/example/streaming_echo_c++/)。
 
 # 建立Stream
 
@@ -46,7 +46,7 @@ struct StreamOptions
     // default: 128
     size_t messages_in_batch;
  
-    // Handle input message, if handler is NULL, the remote side is not allowd to
+    // Handle input message, if handler is NULL, the remote side is not allowed to
     // write any message, who will get EBADF on writing
     // default: NULL
     StreamInputHandler* handler;

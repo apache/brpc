@@ -349,12 +349,14 @@ TEST_F(MultiDimensionTest, stats) {
     ASSERT_TRUE(my_madder.has_stats(labels_value3));
     ASSERT_FALSE(my_madder.has_stats(labels_value4));
 
-    my_madder.delete_stats();
+    my_madder.clear_stats();
     ASSERT_EQ(0, my_madder.count_stats());
     ASSERT_FALSE(my_madder.has_stats(labels_value1));
     ASSERT_FALSE(my_madder.has_stats(labels_value2));
     ASSERT_FALSE(my_madder.has_stats(labels_value3));
     ASSERT_FALSE(my_madder.has_stats(labels_value4));
+    bvar::Adder<int> *adder5 = my_madder.get_stats(labels_value1);
+    ASSERT_TRUE(adder5);
 }
 
 TEST_F(MultiDimensionTest, get_description) {

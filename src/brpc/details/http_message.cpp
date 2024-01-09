@@ -107,10 +107,10 @@ int HttpMessage::on_header_value(http_parser *parser,
         http_message->_cur_value->append(at, length);
     }
     if (FLAGS_http_verbose) {
-        butil::IOBufBuilder* vs = http_message->_vmsgbuilder;
+        butil::IOBufBuilder* vs = http_message->_vmsgbuilder.get();
         if (vs == NULL) {
             vs = new butil::IOBufBuilder;
-            http_message->_vmsgbuilder = vs;
+            http_message->_vmsgbuilder.reset(vs);
             if (parser->type == HTTP_REQUEST) {
                 *vs << "[ HTTP REQUEST @" << butil::my_ip() << " ]\n< "
                     << HttpMethod2Str((HttpMethod)parser->method) << ' '
@@ -177,6 +177,14 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
             uri.SetHostAndPort(*host_header);
         }
     }
+
+
+    // If server receives a response to a HEAD request, returns 1 and then
+    // the parser will interpret that as saying that this message has no body.
+    if (parser->type == HTTP_RESPONSE &&
+        http_message->request_method() == HTTP_METHOD_HEAD) {
+        return 1;
+    }
     return 0;
 }
 
@@ -223,8 +231,7 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
             // the body is probably streaming data which is too long to print.
             header().status_code() == HTTP_STATUS_OK) {
             LOG(INFO) << '\n' << _vmsgbuilder->buf();
-            delete _vmsgbuilder;
-            _vmsgbuilder = NULL;
+            _vmsgbuilder.reset(NULL);
         } else {
             if (_vbodylen < (size_t)FLAGS_http_verbose_max_body_length) {
                 int plen = std::min(length, (size_t)FLAGS_http_verbose_max_body_length
@@ -288,8 +295,7 @@ int HttpMessage::OnMessageComplete() {
                 - (size_t)FLAGS_http_verbose_max_body_length << " bytes>";
         }
         LOG(INFO) << '\n' << _vmsgbuilder->buf();
-        delete _vmsgbuilder;
-        _vmsgbuilder = NULL;
+        _vmsgbuilder.reset(NULL);
     }
     _cur_header.clear();
     _cur_value = NULL;
@@ -392,13 +398,14 @@ const http_parser_settings g_parser_settings = {
     &HttpMessage::on_message_complete_cb
 };
 
-HttpMessage::HttpMessage(bool read_body_progressively)
+HttpMessage::HttpMessage(bool read_body_progressively,
+                         HttpMethod request_method)
     : _parsed_length(0)
     , _stage(HTTP_ON_MESSAGE_BEGIN)
+    , _request_method(request_method)
     , _read_body_progressively(read_body_progressively)
     , _body_reader(NULL)
     , _cur_value(NULL)
-    , _vmsgbuilder(NULL)
     , _vbodylen(0) {
     http_parser_init(&_parser, HTTP_BOTH);
     _parser.data = this;
@@ -546,9 +553,9 @@ void MakeRawHttpRequest(butil::IOBuf* request,
     uri.PrintWithoutHost(os); // host is sent by "Host" header.
     os << " HTTP/" << h->major_version() << '.'
        << h->minor_version() << BRPC_CRLF;
+    // Never use "Content-Length" set by user.
+    h->RemoveHeader("Content-Length");
     if (h->method() != HTTP_METHOD_GET) {
-        h->RemoveHeader("Content-Length");
-        // Never use "Content-Length" set by user.
         os << "Content-Length: " << (content ? content->length() : 0)
            << BRPC_CRLF;
     }
@@ -559,7 +566,7 @@ void MakeRawHttpRequest(butil::IOBuf* request,
     //empty field-value.
     //rfc 7231#sec4.3:
     //the request-target consists of only the host name and port number of 
-    //the tunnel destination, seperated by a colon. For example,
+    //the tunnel destination, separated by a colon. For example,
     //Host: server.example.com:80
     if (h->GetHeader("host") == NULL) {
         os << "Host: ";
@@ -620,7 +627,19 @@ void MakeRawHttpResponse(butil::IOBuf* response,
     os << "HTTP/" << h->major_version() << '.'
        << h->minor_version() << ' ' << h->status_code()
        << ' ' << h->reason_phrase() << BRPC_CRLF;
-    if (content) {
+    bool is_invalid_content = h->status_code() < HTTP_STATUS_OK ||
+                      h->status_code() == HTTP_STATUS_NO_CONTENT;
+    if (is_invalid_content) {
+        // https://www.rfc-editor.org/rfc/rfc7230#section-3.3.1
+        // A server MUST NOT send a Transfer-Encoding header field in any
+        // response with a status code of 1xx (Informational) or 204 (No
+        // Content).
+        h->RemoveHeader("Transfer-Encoding");
+        // https://www.rfc-editor.org/rfc/rfc7230#section-3.3.2
+        // A server MUST NOT send a Content-Length header field in any response
+        // with a status code of 1xx (Informational) or 204 (No Content).
+        h->RemoveHeader("Content-Length");
+    } else if (content) {
         h->RemoveHeader("Content-Length");
         // Never use "Content-Length" set by user.
         // Always set Content-Length since lighttpd requires the header to be
@@ -637,7 +656,7 @@ void MakeRawHttpResponse(butil::IOBuf* response,
     }
     os << BRPC_CRLF;  // CRLF before content
     os.move_to(*response);
-    if (content) {
+    if (!is_invalid_content && content) {
         response->append(butil::IOBuf::Movable(*content));
     }
 }

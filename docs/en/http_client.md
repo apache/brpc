@@ -2,7 +2,7 @@
 
 # Example
 
-[example/http_c++](https://github.com/brpc/brpc/blob/master/example/http_c++/http_client.cpp)
+[example/http_c++](https://github.com/apache/brpc/blob/master/example/http_c++/http_client.cpp)
 
 # About h2
 
@@ -41,7 +41,7 @@ http/h2 does not relate to protobuf much, thus all parameters of `CallMethod` ar
 
 # POST
 
-The default HTTP Method is GET, which can be changed to POST or [other http methods](https://github.com/brpc/brpc/blob/master/src/brpc/http_method.h). The data to POST should be put into `request_attachment()`, which is typed [butil::IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h) and able to append `std :: string` or `char *` directly.
+The default HTTP Method is GET, which can be changed to POST or [other http methods](https://github.com/apache/brpc/blob/master/src/brpc/http_method.h). The data to POST should be put into `request_attachment()`, which is typed [butil::IOBuf](https://github.com/apache/brpc/blob/master/src/butil/iobuf.h) and able to append `std :: string` or `char *` directly.
 
 ```c++
 brpc::Controller cntl;
@@ -185,6 +185,8 @@ Turn on [-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose) so that t
 # HTTP errors 
 
 When server returns a non-2xx HTTP status code, the HTTP RPC is considered to be failed and `cntl->ErrorCode()` at client-side is set to `EHTTP`, users can check `cntl-> http_response().status_code()` for more specific HTTP error. In addition, server can put html or json describing the error into `cntl->response_attachment()` which is sent back to the client as http body.
+
+If client-side wants to get the real `ErrorCode` returned by the bRPC server when the HTTP RPC fails, instead of `EHTTP`, you need to set GFlag`-use_http_error_code=true`.
 
 # Compress Request Body
 

@@ -54,16 +54,26 @@ DEFINE_int32(timeout_cl_max_concurrency, 100,
 
 TimeoutConcurrencyLimiter::TimeoutConcurrencyLimiter()
     : _avg_latency_us(FLAGS_timeout_cl_initial_avg_latency_us),
-      _last_sampling_time_us(0) {}
+      _last_sampling_time_us(0),
+      _timeout_ms(FLAGS_timeout_cl_default_timeout_ms),
+      _max_concurrency(FLAGS_timeout_cl_max_concurrency) {}
+
+TimeoutConcurrencyLimiter::TimeoutConcurrencyLimiter(
+    const TimeoutConcurrencyConf &conf)
+    : _avg_latency_us(FLAGS_timeout_cl_initial_avg_latency_us),
+      _last_sampling_time_us(0),
+      _timeout_ms(conf.timeout_ms),
+      _max_concurrency(conf.max_concurrency) {}
 
 TimeoutConcurrencyLimiter *TimeoutConcurrencyLimiter::New(
-    const AdaptiveMaxConcurrency &) const {
-    return new (std::nothrow) TimeoutConcurrencyLimiter;
+    const AdaptiveMaxConcurrency &amc) const {
+    return new (std::nothrow)
+        TimeoutConcurrencyLimiter(static_cast<TimeoutConcurrencyConf>(amc));
 }
 
 bool TimeoutConcurrencyLimiter::OnRequested(int current_concurrency,
                                             Controller *cntl) {
-    auto timeout_ms = FLAGS_timeout_cl_default_timeout_ms;
+    auto timeout_ms = _timeout_ms;
     if (cntl != nullptr && cntl->timeout_ms() != UNSET_MAGIC_NUM) {
         timeout_ms = cntl->timeout_ms();
     }
@@ -71,7 +81,7 @@ bool TimeoutConcurrencyLimiter::OnRequested(int current_concurrency,
     // timeout, allow currency_concurrency is 1 ensures the average latency can
     // be obtained renew.
     return current_concurrency == 1 ||
-           (current_concurrency <= FLAGS_timeout_cl_max_concurrency &&
+           (current_concurrency <= _max_concurrency &&
             _avg_latency_us < timeout_ms * 1000);
 }
 

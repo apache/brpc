@@ -75,6 +75,8 @@ struct CommonStrings {
     std::string GRPC_MESSAGE;
     std::string GRPC_TIMEOUT;
 
+    std::string DEFAULT_PATH;
+
     CommonStrings();
 };
 
@@ -83,9 +85,10 @@ class HttpContext : public ReadableProgressiveAttachment
                   , public InputMessageBase
                   , public HttpMessage {
 public:
-    HttpContext(bool read_body_progressively)
+    explicit HttpContext(bool read_body_progressively,
+                         HttpMethod request_method = HTTP_METHOD_GET)
         : InputMessageBase()
-        , HttpMessage(read_body_progressively)
+        , HttpMessage(read_body_progressively, request_method)
         , _is_stage2(false) {
         // add one ref for Destroy
         butil::intrusive_ptr<HttpContext>(this).detach();
@@ -104,14 +107,16 @@ public:
     bool is_stage2() const { return _is_stage2; }
 
     // @InputMessageBase
-    void DestroyImpl() {
+    void DestroyImpl() override {
         RemoveOneRefForStage2();
     }
 
     // @ReadableProgressiveAttachment
-    void ReadProgressiveAttachmentBy(ProgressiveReader* r) {
+    void ReadProgressiveAttachmentBy(ProgressiveReader* r) override {
         return SetBodyReader(r);
     }
+
+    void CheckProgressiveRead(const void* arg, Socket *socket);
 
 private:
     bool _is_stage2;

@@ -2,7 +2,7 @@
 
 [thrift](https://thrift.apache.org/)是应用较广的RPC框架，最初由Facebook发布，后交由Apache维护。为了和thrift服务互通，同时解决thrift原生方案在多线程安全、易用性、并发能力等方面的一系列问题，brpc实现并支持thrift在NonBlocking模式下的协议(FramedProtocol), 下文均直接称为thrift协议。
 
-示例程序：[example/thrift_extension_c++](https://github.com/brpc/brpc/tree/master/example/thrift_extension_c++/)
+示例程序：[example/thrift_extension_c++](https://github.com/apache/brpc/tree/master/example/thrift_extension_c++/)
 
 相比使用原生方案的优势有：
 - 线程安全。用户不需要为每个线程建立独立的client.
@@ -18,10 +18,11 @@ brpc默认不启用thrift支持也不需要thrift依赖。但如果需用thrift�
 Linux下安装thrift依赖
 先参考[官方wiki](https://thrift.apache.org/docs/install/debian)安装好必备的依赖和工具，然后从[官网](https://thrift.apache.org/download)下载thrift源代码，解压编译。
 ```bash
-wget http://www.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
-tar -xf thrift-0.11.0.tar.gz
-cd thrift-0.11.0/
-./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no
+wget https://downloads.apache.org/thrift/0.18.1/thrift-0.18.1.tar.gz
+tar -xf thrift-0.18.1.tar.gz
+cd thrift-0.18.1/
+./bootstrap.sh
+./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no --with-rs=no --with-py3=no CXXFLAGS='-Wno-error'
 make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 4 -s
 sudo make install
 ```

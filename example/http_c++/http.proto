@@ -37,3 +37,7 @@ service QueueService {
   rpc stop(HttpRequest) returns (HttpResponse);
   rpc getstats(HttpRequest) returns (HttpResponse);
 };
+
+service HttpSSEService {
+  rpc stream(HttpRequest) returns (HttpResponse);
+};

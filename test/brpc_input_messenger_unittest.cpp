@@ -169,7 +169,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
         ASSERT_TRUE(listening_fd > 0);
         butil::make_non_blocking(listening_fd);
         ASSERT_EQ(0, messenger[i].AddHandler(pairs[0]));
-        ASSERT_EQ(0, messenger[i].StartAccept(listening_fd, -1, NULL));
+        ASSERT_EQ(0, messenger[i].StartAccept(listening_fd, -1, NULL, false));
     }
     
     for (size_t i = 0; i < NCLIENT; ++i) {

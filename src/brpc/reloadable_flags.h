@@ -45,12 +45,15 @@ namespace brpc {
 
 extern bool PassValidate(const char*, bool);
 extern bool PassValidate(const char*, int32_t);
+extern bool PassValidate(const char*, uint32_t);
 extern bool PassValidate(const char*, int64_t);
 extern bool PassValidate(const char*, uint64_t);
 extern bool PassValidate(const char*, double);
 
 extern bool PositiveInteger(const char*, int32_t);
+extern bool PositiveInteger(const char*, uint32_t);
 extern bool PositiveInteger(const char*, int64_t);
+extern bool PositiveInteger(const char*, uint64_t);
 
 extern bool NonNegativeInteger(const char*, int32_t);
 extern bool NonNegativeInteger(const char*, int64_t);
@@ -59,6 +62,8 @@ extern bool RegisterFlagValidatorOrDie(const bool* flag,
                                   bool (*validate_fn)(const char*, bool));
 extern bool RegisterFlagValidatorOrDie(const int32_t* flag,
                                   bool (*validate_fn)(const char*, int32_t));
+extern bool RegisterFlagValidatorOrDie(const uint32_t* flag,
+                                  bool (*validate_fn)(const char*, uint32_t));
 extern bool RegisterFlagValidatorOrDie(const int64_t* flag,
                                   bool (*validate_fn)(const char*, int64_t));
 extern bool RegisterFlagValidatorOrDie(const uint64_t* flag,

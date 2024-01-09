@@ -137,27 +137,41 @@ static void wakeup_pthread(ButexPthreadWaiter* pw) {
 
 bool erase_from_butex(ButexWaiter*, bool, WaiterState);
 
-int wait_pthread(ButexPthreadWaiter& pw, timespec* ptimeout) {
-    while (true) {
-        const int rc = futex_wait_private(&pw.sig, PTHREAD_NOT_SIGNALLED, ptimeout);
-        if (PTHREAD_NOT_SIGNALLED != pw.sig.load(butil::memory_order_acquire)) {
-            // If `sig' is changed, wakeup_pthread() must be called and `pw'
-            // is already removed from the butex.
-            // Acquire fence makes this thread sees changes before wakeup.
-            return rc;
-        }
-        if (rc != 0 && errno == ETIMEDOUT) {
-            // Note that we don't handle the EINTR from futex_wait here since
-            // pthreads waiting on a butex should behave similarly as bthreads
-            // which are not able to be woken-up by signals.
-            // EINTR on butex is only producible by TaskGroup::interrupt().
+int wait_pthread(ButexPthreadWaiter& pw, const timespec* abstime) {
+    timespec* ptimeout = NULL;
+    timespec timeout;
+    int64_t timeout_us = 0;
+    int rc;
 
-            // `pw' is still in the queue, remove it.
+    while (true) {
+        if (abstime != NULL) {
+            timeout_us = butil::timespec_to_microseconds(*abstime) - butil::gettimeofday_us();
+            timeout = butil::microseconds_to_timespec(timeout_us);
+            ptimeout = &timeout;
+        }
+        if (timeout_us > MIN_SLEEP_US || abstime == NULL) {
+            rc = futex_wait_private(&pw.sig, PTHREAD_NOT_SIGNALLED, ptimeout);
+            if (PTHREAD_NOT_SIGNALLED != pw.sig.load(butil::memory_order_acquire)) {
+                // If `sig' is changed, wakeup_pthread() must be called and `pw'
+                // is already removed from the butex.
+                // Acquire fence makes this thread sees changes before wakeup.
+                return rc;
+            }
+        } else {
+            errno = ETIMEDOUT;
+            rc = -1;
+        }
+        // Handle ETIMEDOUT when abstime is valid.
+        // If futex_wait_private return EINTR, just continue the loop.
+        if (rc != 0 && errno == ETIMEDOUT) {
+            // wait futex timeout, `pw' is still in the queue, remove it.
             if (!erase_from_butex(&pw, false, WAITER_STATE_TIMEDOUT)) {
                 // Another thread is erasing `pw' as well, wait for the signal.
                 // Acquire fence makes this thread sees changes before wakeup.
                 if (pw.sig.load(butil::memory_order_acquire) == PTHREAD_NOT_SIGNALLED) {
-                    ptimeout = NULL; // already timedout, ptimeout is expired.
+                    // already timedout, abstime and ptimeout are expired.
+                    abstime = NULL;
+                    ptimeout = NULL;
                     continue;
                 }
             }
@@ -259,15 +273,16 @@ void butex_destroy(void* butex) {
 }
 
 inline TaskGroup* get_task_group(TaskControl* c, bool nosignal = false) {
-    TaskGroup* g;
+    TaskGroup* g = tls_task_group;
     if (nosignal) {
-        g = tls_task_group_nosignal;
-        if (NULL == g) {
-            g = c->choose_one_group();
+        if (NULL == tls_task_group_nosignal) {
+            g = g ? g : c->choose_one_group();
             tls_task_group_nosignal = g;
+        } else {
+            g = tls_task_group_nosignal;
         }
     } else {
-        g = tls_task_group ? tls_task_group : c->choose_one_group();
+        g = g ? g : c->choose_one_group();
     }
     return g;
 }
@@ -567,21 +582,6 @@ static void wait_for_butex(void* arg) {
 
 static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
                                    const timespec* abstime) {
-    // sys futex needs relative timeout.
-    // Compute diff between abstime and now.
-    timespec* ptimeout = NULL;
-    timespec timeout;
-    if (abstime != NULL) {
-        const int64_t timeout_us = butil::timespec_to_microseconds(*abstime) -
-            butil::gettimeofday_us();
-        if (timeout_us < MIN_SLEEP_US) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-        timeout = butil::microseconds_to_timespec(timeout_us);
-        ptimeout = &timeout;
-    }
-
     TaskMeta* task = NULL;
     ButexPthreadWaiter pw;
     pw.tid = 0;
@@ -612,7 +612,7 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
         bvar::Adder<int64_t>& num_waiters = butex_waiter_count();
         num_waiters << 1;
 #endif
-        rc = wait_pthread(pw, ptimeout);
+        rc = wait_pthread(pw, abstime);
 #ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
         num_waiters << -1;
 #endif

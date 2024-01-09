@@ -31,6 +31,7 @@ public:
                         ::google::protobuf::Closure* done) override;
 };
 
+butil::StringPiece GetMetricsName(const std::string& name);
 int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output);
 
 } // namepace brpc

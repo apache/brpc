@@ -20,6 +20,7 @@
 #include <map>
 #include <gflags/gflags.h>
 #include "butil/memory/singleton_on_pthread_once.h"
+#include "butil/threading/platform_thread.h"
 #include "bvar/bvar.h"
 #include "bvar/collector.h"
 
@@ -76,11 +77,13 @@ private:
                             int64_t interval_us);
 
     static void* run_grab_thread(void* arg) {
+        butil::PlatformThread::SetName("bvar_collector_grabber");
         static_cast<Collector*>(arg)->grab_thread();
         return NULL;
     }
 
     static void* run_dump_thread(void* arg) {
+        butil::PlatformThread::SetName("bvar_collector_dumper");
         static_cast<Collector*>(arg)->dump_thread();
         return NULL;
     }

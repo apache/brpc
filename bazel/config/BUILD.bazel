@@ -103,3 +103,9 @@ config_setting(
     define_values = {"BRPC_WITH_RDMA": "true"},
     visibility = ["//visibility:public"],
 )
+
+config_setting(
+    name = "brpc_with_boringssl",
+    define_values = {"BRPC_WITH_BORINGSSL": "true"},
+    visibility = ["//visibility:public"],
+)

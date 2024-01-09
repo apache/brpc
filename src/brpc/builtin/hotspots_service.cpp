@@ -113,6 +113,9 @@ DEFINE_int32(max_profiles_kept, 32,
              "max profiles kept for cpu/heap/growth/contention respectively");
 BRPC_VALIDATE_GFLAG(max_profiles_kept, PassValidate);
 
+DEFINE_int32(max_flame_graph_width, 1200, "max width of flame graph image");
+BRPC_VALIDATE_GFLAG(max_flame_graph_width, PositiveInteger);
+
 static const char* const PPROF_FILENAME = "pprof.pl";
 static int DEFAULT_PROFILING_SECONDS = 10;
 static size_t CONCURRENT_PROFILING_LIMIT = 256;
@@ -422,7 +425,7 @@ static void DisplayResult(Controller* cntl,
         if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
                 "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
-                "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
+                "(https://github.com/apache/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
 #endif
     }
@@ -495,7 +498,8 @@ static void DisplayResult(Controller* cntl,
     if (display_type == DisplayType::kFlameGraph) {
         // For flamegraph, we don't care about pprof error msg, 
         // which will cause confusing messages in the final result.
-        cmd_builder << " 2>/dev/null " << " | " << "perl " << flamegraph_tool;
+        cmd_builder << " 2>/dev/null  | perl " <<  flamegraph_tool << " --width "
+                    << (FLAGS_max_flame_graph_width > 0 ? FLAGS_max_flame_graph_width : 1200);
     }
     cmd_builder << " 2>&1 ";
 #elif defined(OS_MACOSX)
@@ -893,7 +897,7 @@ static void StartProfiling(ProfilingType type,
         if (display_type == DisplayType::kFlameGraph && !flamegraph_tool) {
             return cntl->SetFailed(EINVAL, "Failed to find environment variable "
                 "FLAMEGRAPH_PL_PATH, please read cpu_profiler doc"
-                "(https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md)");
+                "(https://github.com/apache/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
 #endif
     }
@@ -1104,8 +1108,8 @@ static void StartProfiling(ProfilingType type,
         os << "<p><span style='color:red'>Error:</span> "
            << type_str << " profiler is not enabled." << extra_desc << "</p>"
             "<p>To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER"
-            "</p><p>Or read docs: <a href='https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md'>cpu_profiler</a>"
-            " and <a href='https://github.com/brpc/brpc/blob/master/docs/cn/heap_profiler.md'>heap_profiler</a>"
+            "</p><p>Or read docs: <a href='https://github.com/apache/brpc/blob/master/docs/cn/cpu_profiler.md'>cpu_profiler</a>"
+            " and <a href='https://github.com/apache/brpc/blob/master/docs/cn/heap_profiler.md'>heap_profiler</a>"
             "</p></body></html>";
         os.move_to(cntl->response_attachment());
         cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);

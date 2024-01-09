@@ -99,7 +99,7 @@ private:
     int _wakeup_fds[2];
 };
 
-EventDispatcher& GetGlobalEventDispatcher(int fd);
+EventDispatcher& GetGlobalEventDispatcher(int fd, bthread_tag_t tag);
 
 } // namespace brpc
 

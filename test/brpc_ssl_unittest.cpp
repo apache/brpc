@@ -35,6 +35,7 @@
 #include "echo.pb.h"
 
 namespace brpc {
+
 void ExtractHostnames(X509* x, std::vector<std::string>* hostnames);
 } // namespace brpc
 
@@ -169,6 +170,55 @@ TEST_F(SSLTest, sanity) {
         for (int i = 0; i < NUM; ++i) {
             pthread_join(tids[i], NULL);
         }
+    }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+TEST_F(SSLTest, force_ssl) {
+    const int port = 8613;
+    brpc::Server server;
+    brpc::ServerOptions options;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(
+        &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+
+    options.force_ssl = true;
+    ASSERT_EQ(-1, server.Start(port, &options));
+
+    brpc::CertInfo cert;
+    cert.certificate = "cert1.crt";
+    cert.private_key = "cert1.key";
+    options.mutable_ssl_options()->default_cert = cert;
+
+    ASSERT_EQ(0, server.Start(port, &options));
+
+    test::EchoRequest req;
+    req.set_message(EXP_REQUEST);
+    {
+        brpc::Channel channel;
+        brpc::ChannelOptions coptions;
+        coptions.mutable_ssl_options();
+        coptions.mutable_ssl_options()->sni_name = "localhost";
+        ASSERT_EQ(0, channel.Init("localhost", port, &coptions));
+
+        brpc::Controller cntl;
+        test::EchoService_Stub stub(&channel);
+        test::EchoResponse res;
+        stub.Echo(&cntl, &req, &res, NULL);
+        EXPECT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
+    }
+
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("localhost", port, NULL));
+
+        brpc::Controller cntl;
+        test::EchoService_Stub stub(&channel);
+        test::EchoResponse res;
+        stub.Echo(&cntl, &req, &res, NULL);
+        EXPECT_TRUE(cntl.Failed());
     }
 
     ASSERT_EQ(0, server.Stop(0));
@@ -339,7 +389,7 @@ TEST_F(SSLTest, ssl_perf) {
     SSL_CTX* cli_ctx = brpc::CreateClientSSLContext(opt);
     SSL_CTX* serv_ctx =
             brpc::CreateServerSSLContext("cert1.crt", "cert1.key",
-                                         brpc::SSLOptions(), NULL);
+                                         brpc::SSLOptions(), NULL, NULL);
     SSL* cli_ssl = brpc::CreateSSLSession(cli_ctx, 0, clifd, false);
 #if defined(SSL_CTRL_SET_TLSEXT_HOSTNAME) || defined(USE_MESALINK)
     SSL_set_tlsext_host_name(cli_ssl, "localhost");

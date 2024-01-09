@@ -57,11 +57,13 @@ inline SocketOptions::SocketOptions()
     , user(NULL)
     , on_edge_triggered_events(NULL)
     , health_check_interval_s(-1)
+    , force_ssl(false)
     , use_rdma(false)
     , keytable_pool(NULL)
     , conn(NULL)
     , app_connect(NULL)
     , initial_parsing_context(NULL)
+    , bthread_tag(BTHREAD_TAG_DEFAULT)
 {}
 
 inline int Socket::Dereference() {

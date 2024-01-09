@@ -40,7 +40,7 @@
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
-    BTHREAD_STACKTYPE_UNKNOWN, 0, NULL };
+    BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_DEFAULT };
 
 static bool pass_bool(const char*, bool) { return true; }
 
@@ -57,7 +57,7 @@ const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
     ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
                                     pass_bool);
 
-__thread TaskGroup* tls_task_group = NULL;
+BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
 // groundtruth.
@@ -68,7 +68,7 @@ extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
 
 // [Hacky] This is a special TLS set by bthread-rpc privately... to save
 // overhead of creation keytable, may be removed later.
-BAIDU_THREAD_LOCAL void* tls_unique_user_ptr = NULL;
+BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 
 const TaskStatistics EMPTY_STAT = { 0, 0 };
 
@@ -192,10 +192,10 @@ TaskGroup::TaskGroup(TaskControl* c)
 #ifndef NDEBUG
     , _sched_recursive_guard(0)
 #endif
+    , _tag(BTHREAD_TAG_DEFAULT)
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
-    _pl = &c->_pl[butil::fmix64(pthread_numeric_id()) % TaskControl::PARKING_LOT_NUM];
     CHECK(c);
 }
 
@@ -248,9 +248,6 @@ int TaskGroup::init(size_t runqueue_capacity) {
     return 0;
 }
 
-#if defined(__linux__) && defined(__aarch64__) && defined(__clang__)
-    __attribute__((optnone))
-#endif
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
     //       different groups.
@@ -261,7 +258,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             RemainedFn fn = g->_last_context_remained;
             g->_last_context_remained = NULL;
             fn(g->_last_context_remained_arg);
-            g = tls_task_group;
+            g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
         }
 
 #ifndef NDEBUG
@@ -301,7 +298,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         }
 
         // Group is probably changed
-        g = tls_task_group;
+        g =  BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 
         // TODO: Save thread_return
         (void)thread_return;
@@ -338,6 +335,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         butex_wake_except(m->version_butex, 0);
 
         g->_control->_nbthreads << -1;
+        g->_control->tag_nbthreads(g->tag()) << -1;
         g->set_remained(TaskGroup::_release_last_context, m);
         ending_sched(&g);
 
@@ -395,6 +393,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
 
     TaskGroup* g = *pg;
     g->_control->_nbthreads << 1;
+    g->_control->tag_nbthreads(g->tag()) << 1;
     if (g->is_current_pthread_task()) {
         // never create foreground task in pthread.
         g->ready_to_run(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
@@ -451,6 +450,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
         LOG(INFO) << "Started bthread " << m->tid;
     }
     _control->_nbthreads << 1;
+    _control->tag_nbthreads(tag()) << 1;
     if (REMOTE) {
         ready_to_run_remote(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
     } else {
@@ -570,9 +570,6 @@ void TaskGroup::sched(TaskGroup** pg) {
     sched_to(pg, next_tid);
 }
 
-#if defined(__linux__) && defined(__aarch64__) && defined(__clang__)
-    __attribute__((optnone))
-#endif
 void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     TaskGroup* g = *pg;
 #ifndef NDEBUG
@@ -614,7 +611,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
             if (next_meta->stack != cur_meta->stack) {
                 jump_stack(cur_meta->stack, next_meta->stack);
                 // probably went to another group, need to assign g again.
-                g = tls_task_group;
+                g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
             }
 #ifndef NDEBUG
             else {
@@ -633,12 +630,13 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
         RemainedFn fn = g->_last_context_remained;
         g->_last_context_remained = NULL;
         fn(g->_last_context_remained_arg);
-        g = tls_task_group;
+        g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     }
 
     // Restore errno
     errno = saved_errno;
-    tls_unique_user_ptr = saved_unique_user_ptr;
+    // tls_unique_user_ptr probably changed.
+    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr, saved_unique_user_ptr);
 
 #ifndef NDEBUG
     --g->_sched_recursive_guard;
@@ -663,7 +661,7 @@ void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
         const int additional_signal = _num_nosignal;
         _num_nosignal = 0;
         _nsignaled += 1 + additional_signal;
-        _control->signal_task(1 + additional_signal);
+        _control->signal_task(1 + additional_signal, _tag);
     }
 }
 
@@ -672,7 +670,7 @@ void TaskGroup::flush_nosignal_tasks() {
     if (val) {
         _num_nosignal = 0;
         _nsignaled += val;
-        _control->signal_task(val);
+        _control->signal_task(val, _tag);
     }
 }
 
@@ -693,7 +691,7 @@ void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
         _remote_num_nosignal = 0;
         _remote_nsignaled += 1 + additional_signal;
         _remote_rq._mutex.unlock();
-        _control->signal_task(1 + additional_signal);
+        _control->signal_task(1 + additional_signal, _tag);
     }
 }
 
@@ -706,7 +704,7 @@ void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
     _remote_num_nosignal = 0;
     _remote_nsignaled += val;
     locked_mutex.unlock();
-    _control->signal_task(val);
+    _control->signal_task(val, _tag);
 }
 
 void TaskGroup::ready_to_run_general(bthread_t tid, bool nosignal) {
@@ -743,7 +741,9 @@ struct SleepArgs {
 static void ready_to_run_from_timer_thread(void* arg) {
     CHECK(tls_task_group == NULL);
     const SleepArgs* e = static_cast<const SleepArgs*>(arg);
-    e->group->control()->choose_one_group()->ready_to_run_remote(e->tid);
+    auto g = e->group;
+    auto tag = g->tag();
+    g->control()->choose_one_group(tag)->ready_to_run_remote(e->tid);
 }
 
 void TaskGroup::_add_sleep_event(void* void_args) {
@@ -801,6 +801,11 @@ int TaskGroup::usleep(TaskGroup** pg, uint64_t timeout_us) {
     g->set_remained(_add_sleep_event, &e);
     sched(pg);
     g = *pg;
+    if (e.meta->current_sleep == 0 && !e.meta->interrupted) {
+        // Fail to `_add_sleep_event'.
+        errno = ESTOP;
+        return -1;
+    }
     e.meta->current_sleep = 0;
     if (e.meta->interrupted) {
         // Race with set and may consume multiple interruptions, which are OK.

@@ -5,7 +5,7 @@
 虽然用不到pb消息，但brpc中的http/h2服务接口也得定义在proto文件中，只是request和response都是空的结构体。这确保了所有的服务声明集中在proto文件中，而不是散列在proto文件、程序、配置等多个地方。
 
 #示例
-[http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp)。
+[http_server.cpp](https://github.com/apache/brpc/blob/master/example/http_c++/http_server.cpp)。
 
 # 关于h2
 
@@ -30,12 +30,12 @@ request和response可为空是因为数据都在Controller中：
 
 ```protobuf
 option cc_generic_services = true;
- 
+ 
 message HttpRequest { };
 message HttpResponse { };
- 
+ 
 service HttpService {
-      rpc Echo(HttpRequest) returns (HttpResponse);
+      rpc Echo(HttpRequest) returns (HttpResponse);
 };
 ```
 
@@ -44,27 +44,27 @@ service HttpService {
 ```c++
 class HttpServiceImpl : public HttpService {
 public:
-    ...
-    virtual void Echo(google::protobuf::RpcController* cntl_base,
-                      const HttpRequest* /*request*/,
-                      HttpResponse* /*response*/,
-                      google::protobuf::Closure* done) {
-        brpc::ClosureGuard done_guard(done);
-        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
- 
-        // body是纯文本
-        cntl->http_response().set_content_type("text/plain");
-       
-        // 把请求的query-string和body打印结果作为回复内容。
-        butil::IOBufBuilder os;
-        os << "queries:";
-        for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
-                it != cntl->http_request().uri().QueryEnd(); ++it) {
-            os << ' ' << it->first << '=' << it->second;
-        }
-        os << "\nbody: " << cntl->request_attachment() << '\n';
-        os.move_to(cntl->response_attachment());
-    }
+    ...
+    virtual void Echo(google::protobuf::RpcController* cntl_base,
+                      const HttpRequest* /*request*/,
+                      HttpResponse* /*response*/,
+                      google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+ 
+        // body是纯文本
+        cntl->http_response().set_content_type("text/plain");
+       
+        // 把请求的query-string和body打印结果作为回复内容。
+        butil::IOBufBuilder os;
+        os << "queries:";
+        for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
+                it != cntl->http_request().uri().QueryEnd(); ++it) {
+            os << ' ' << it->first << '=' << it->second;
+        }
+        os << "\nbody: " << cntl->request_attachment() << '\n';
+        os.move_to(cntl->response_attachment());
+    }
 };
 ```
 
@@ -141,10 +141,10 @@ int AddService(google::protobuf::Service* service,
 
 ```protobuf
 service QueueService {
-    rpc start(HttpRequest) returns (HttpResponse);
-    rpc stop(HttpRequest) returns (HttpResponse);
-    rpc get_stats(HttpRequest) returns (HttpResponse);
-    rpc download_data(HttpRequest) returns (HttpResponse);
+    rpc start(HttpRequest) returns (HttpResponse);
+    rpc stop(HttpRequest) returns (HttpResponse);
+    rpc get_stats(HttpRequest) returns (HttpResponse);
+    rpc download_data(HttpRequest) returns (HttpResponse);
 };
 ```
 
@@ -152,22 +152,22 @@ service QueueService {
 
 ```c++
 if (server.AddService(&queue_svc,
-                      brpc::SERVER_DOESNT_OWN_SERVICE,
-                      "/v1/queue/start   => start,"
-                      "/v1/queue/stop    => stop,"
-                      "/v1/queue/stats/* => get_stats") != 0) {
-    LOG(ERROR) << "Fail to add queue_svc";
-    return -1;
+                      brpc::SERVER_DOESNT_OWN_SERVICE,
+                      "/v1/queue/start   => start,"
+                      "/v1/queue/stop    => stop,"
+                      "/v1/queue/stats/* => get_stats") != 0) {
+    LOG(ERROR) << "Fail to add queue_svc";
+    return -1;
 }
- 
+ 
 // 星号可出现在中间
 if (server.AddService(&queue_svc,
-                      brpc::SERVER_DOESNT_OWN_SERVICE,
-                      "/v1/*/start   => start,"
-                      "/v1/*/stop    => stop,"
-                      "*.data        => download_data") != 0) {
-    LOG(ERROR) << "Fail to add queue_svc";
-    return -1;
+                      brpc::SERVER_DOESNT_OWN_SERVICE,
+                      "/v1/*/start   => start,"
+                      "/v1/*/stop    => stop,"
+                      "*.data        => download_data") != 0) {
+    LOG(ERROR) << "Fail to add queue_svc";
+    return -1;
 }
 ```
 
@@ -213,11 +213,11 @@ query string也是key/value对，http headers与query string的区别:
 ```c++
 // 获得header中"User-Agent"的值，大小写不敏感。
 const std::string* user_agent_str = cntl->http_request().GetHeader("User-Agent");
-if (user_agent_str != NULL) {  // has the header
-    LOG(TRACE) << "User-Agent is " << *user_agent_str;
+if (user_agent_str != NULL) {  // has the header
+    LOG(TRACE) << "User-Agent is " << *user_agent_str;
 }
 ...
- 
+ 
 // 在header中增加"Accept-encoding: gzip"，大小写不敏感。
 cntl->http_response().SetHeader("Accept-encoding", "gzip");
 // 覆盖为"Accept-encoding: deflate"
@@ -233,7 +233,7 @@ Content-type记录body的类型，是一个使用频率较高的header。它在b
 ```c++
 // Get Content-Type
 if (cntl->http_request().content_type() == "application/json") {
-    ...
+    ...
 }
 ...
 // Set Content-Type
@@ -244,12 +244,12 @@ cntl->http_response().set_content_type("text/html");
 
 ## Status Code
 
-status code是http response特有的字段，标记http请求的完成情况。可能的值定义在[http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h)中。
+status code是http response特有的字段，标记http请求的完成情况。可能的值定义在[http_status_code.h](https://github.com/apache/brpc/blob/master/src/brpc/http_status_code.h)中。
 
 ```c++
 // Get Status Code
 if (cntl->http_response().status_code() == brpc::HTTP_STATUS_NOT_FOUND) {
-    LOG(FATAL) << "FAILED: " << controller.http_response().reason_phrase();
+    LOG(FATAL) << "FAILED: " << controller.http_response().reason_phrase();
 }
 ...
 // Set Status code
@@ -268,7 +268,7 @@ cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/i
 
 ## Query String
 
-如上面的[HTTP headers](#http-headers)中提到的那样，我们按约定成俗的方式来理解query string，即key1=value1&key2=value2&...。只有key而没有value也是可以的，仍然会被GetQuery查询到，只是值为空字符串，这常被用做bool型的开关。接口定义在[uri.h](https://github.com/brpc/brpc/blob/master/src/brpc/uri.h)。
+如上面的[HTTP headers](#http-headers)中提到的那样，我们按约定成俗的方式来理解query string，即key1=value1&key2=value2&...。只有key而没有value也是可以的，仍然会被GetQuery查询到，只是值为空字符串，这常被用做bool型的开关。接口定义在[uri.h](https://github.com/apache/brpc/blob/master/src/brpc/uri.h)。
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
@@ -307,12 +307,12 @@ http服务常对http body进行压缩，可以有效减少网页的传输时间�
 ...
 const std::string* encoding = cntl->http_request().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
-    butil::IOBuf uncompressed;
-    if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
-        LOG(ERROR) << "Fail to un-gzip request body";
-        return;
-    }
-    cntl->request_attachment().swap(uncompressed);
+    butil::IOBuf uncompressed;
+    if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
+        LOG(ERROR) << "Fail to un-gzip request body";
+        return;
+    }
+    cntl->request_attachment().swap(uncompressed);
 }
 // cntl->request_attachment()中已经是解压后的数据了
 ```
@@ -324,7 +324,7 @@ https是http over SSL的简称，SSL并不是http特有的，而是对所有协�
 
 没有极端性能要求的产品都有使用HTTP协议的倾向，特别是移动产品，所以我们很重视HTTP的实现质量，具体来说：
 
-- 使用了node.js的[http parser](https://github.com/brpc/brpc/blob/master/src/brpc/details/http_parser.h)解析http消息，这是一个轻量、优秀、被广泛使用的实现。
+- 使用了node.js的[http parser](https://github.com/apache/brpc/blob/master/src/brpc/details/http_parser.h)解析http消息，这是一个轻量、优秀、被广泛使用的实现。
 - 使用[rapidjson](https://github.com/miloyip/rapidjson)解析json，这是一个主打性能的json库。
 - 在最差情况下解析http请求的时间复杂度也是O(N)，其中N是请求的字节数。反过来说，如果解析代码要求http请求是完整的，那么它可能会花费O(N^2)的时间。HTTP请求普遍较大，这一点意义还是比较大的。
 - 来自不同client的http消息是高度并发的，即使相当复杂的http消息也不会影响对其他客户端的响应。其他rpc和[基于单线程reactor](threading_overview.md#单线程reactor)的各类http server往往难以做到这一点。
@@ -346,6 +346,8 @@ brpc server支持发送超大或无限长的body。方法如下:
    * 如果写入发生在server-side done调用后，发送的数据将立刻以chunked mode写出。
 
 3. 发送完毕后确保所有的`butil::intrusive_ptr<brpc::ProgressiveAttachment>`都析构以释放资源。
+
+另外，利用该特性可以轻松实现Server-Sent Events(SSE)服务，从而使客户端能够通过 HTTP 连接从服务器自动接收更新。非常适合构建诸如chatGPT这类实时应用程序，应用例子详见[http_server.cpp](https://github.com/apache/brpc/blob/master/example/http_c++/http_server.cpp)中的HttpSSEServiceImpl。
 
 # 持续接收
 

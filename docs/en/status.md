@@ -20,7 +20,7 @@ Meanings of the fields above:
 - **processing**: (renamed to concurrency in master) Number of requests being processed by the method. If this counter can't hit zero when the traffic to the service becomes zero, the server probably has bugs, such as forgetting to call done->Run() or stuck on some processing steps.
 
 
-Users may customize descriptions on /status by letting the service implement [brpc::Describable](https://github.com/brpc/brpc/blob/master/src/brpc/describable.h).
+Users may customize descriptions on /status by letting the service implement [brpc::Describable](https://github.com/apache/brpc/blob/master/src/brpc/describable.h).
 
 ```c++
 class MyService : public XXXService, public brpc::Describable {

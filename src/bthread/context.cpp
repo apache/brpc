@@ -810,3 +810,93 @@ __asm (
 
 #endif
 
+#if defined(BTHREAD_CONTEXT_PLATFORM_linux_loongarch64) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
+__asm (
+".text\n"
+".align  3\n"
+".global bthread_jump_fcontext\n"
+".type   bthread_jump_fcontext, %function\n"
+"bthread_jump_fcontext:\n"
+"	addi.d	$sp, $sp, -160\n"
+
+"	st.d	$s0, $sp, 64	# save S0\n"
+"	st.d	$s1, $sp, 72	# save S1\n"
+"	st.d	$s2, $sp, 80	# save S2\n"
+"	st.d	$s3, $sp, 88	# save S3\n"
+"	st.d	$s4, $sp, 96	# save S4\n"
+"	st.d	$s5, $sp, 104	# save S5\n"
+"	st.d	$s6, $sp, 112	# save S6\n"
+"	st.d	$s7, $sp, 120	# save S7\n"
+"	st.d	$s8, $sp, 128	# save S8\n"
+"	st.d	$fp, $sp, 136	# save FP\n"
+"	st.d	$ra, $sp, 144	# save RA\n"
+"	st.d	$ra, $sp, 152	# save RA as PC\n"
+
+"	fst.d	$fs0, $sp, 0	# save F24\n"
+"	fst.d	$fs1, $sp, 8	# save F25\n"
+"	fst.d	$fs2, $sp, 16	# save F26\n"
+"	fst.d	$fs3, $sp, 24	# save F27\n"
+"	fst.d	$fs4, $sp, 32	# save F28\n"
+"	fst.d	$fs5, $sp, 40	# save F29\n"
+"	fst.d	$fs6, $sp, 48	# save F30\n"
+"	fst.d	$fs7, $sp, 56	# save F31\n"
+
+"	# swap a0(new stack), sp(old stack)\n"
+" st.d	$sp, $a0, 0\n"
+" or		$sp, $a1, $zero\n"
+
+"	fld.d	$fs0, $sp, 0	# restore F24\n"
+"	fld.d	$fs1, $sp, 8	# restore F25\n"
+"	fld.d	$fs2, $sp, 16	# restore F26\n"
+"	fld.d	$fs3, $sp, 24	# restore F27\n"
+"	fld.d	$fs4, $sp, 32	# restore F28\n"
+"	fld.d	$fs5, $sp, 40	# restore F29\n"
+"	fld.d	$fs6, $sp, 48	# restore F30\n"
+"	fld.d	$fs7, $sp, 56	# restore F31\n"
+
+"	ld.d	$s0, $sp, 64	# restore S0\n"
+"	ld.d	$s1, $sp, 72	# restore S1\n"
+"	ld.d	$s2, $sp, 80	# restore S2\n"
+"	ld.d	$s3, $sp, 88	# restore S3\n"
+"	ld.d	$s4, $sp, 96	# restore S4\n"
+"	ld.d	$s5, $sp, 104	# restore S5\n"
+"	ld.d	$s6, $sp, 112	# restore S6\n"
+"	ld.d	$s7, $sp, 120	# restore S7\n"
+"	ld.d	$s8, $sp, 128	# restore S8\n"
+"	ld.d	$fp, $sp, 136	# restore FP\n"
+"	ld.d	$ra, $sp, 144	# restore RA\n"
+
+" or		$a0, $a2, $zero \n"
+"	# load PC\n"
+"	ld.d	$a4, $sp, 152\n"
+
+"	# adjust stack\n"
+"	addi.d	$sp, $sp, 160\n"
+
+"	# jump to context\n"
+"	jirl	$zero, $a4, 0\n"
+);
+#endif
+
+#if defined(BTHREAD_CONTEXT_PLATFORM_linux_loongarch64) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
+__asm (
+".text\n"
+".align  3\n"
+".global bthread_make_fcontext\n"
+".type   bthread_make_fcontext, %function\n"
+"bthread_make_fcontext:\n"
+//"	andi	$a0, $a0, ~0xF\n"
+"	addi.d	$a0, $a0, -160\n"
+
+"	st.d	$a2, $a0, 152\n"
+
+"	pcaddi	$a1, 3\n"
+"	st.d	$a1, $a0, 144\n"
+"	jirl $zero, $ra, 0\n"
+
+"finish:\n"
+" or	$a0, $zero, $zero\n"
+" bl _exit\n"
+);
+
+#endif

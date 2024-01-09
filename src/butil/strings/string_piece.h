@@ -165,6 +165,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
   typedef size_t size_type;
   typedef typename STRING_TYPE::value_type value_type;
   typedef const value_type* pointer;
+  typedef const value_type* const_pointer;
   typedef const value_type& reference;
   typedef const value_type& const_reference;
   typedef ptrdiff_t difference_type;
@@ -385,7 +386,7 @@ extern template class BUTIL_EXPORT BasicStringPiece<std::string>;
 extern template class BUTIL_EXPORT BasicStringPiece<string16>;
 #endif
 
-// StingPiece operators --------------------------------------------------------
+// StringPiece operators --------------------------------------------------------
 
 BUTIL_EXPORT bool operator==(const StringPiece& x, const StringPiece& y);
 

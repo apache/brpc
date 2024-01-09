@@ -29,6 +29,7 @@
 #include "butil/errno.h"                         // berror
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
+#include "butil/threading/platform_thread.h"
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
@@ -37,7 +38,7 @@ namespace bvar {
 
 DEFINE_bool(save_series, true,
             "Save values of last 60 seconds, last 60 minutes,"
-            " last 24 hours and last 30 days for ploting");
+            " last 24 hours and last 30 days for plotting");
 
 DEFINE_bool(quote_vector, true,
             "Quote description of Vector<> to make it valid to noah");
@@ -47,12 +48,7 @@ DEFINE_bool(bvar_abort_on_same_name, false,
 // Remember abort request before bvar_abort_on_same_name is initialized.
 bool s_bvar_may_abort = false;
 static bool validate_bvar_abort_on_same_name(const char*, bool v) {
-    if (v && s_bvar_may_abort) {
-        // Name conflict happens before handling args of main(), this is
-        // generally caused by global bvar.
-        LOG(FATAL) << "Abort due to name conflict";
-        abort();
-    }
+    RELEASE_ASSERT_VERBOSE(!v || !s_bvar_may_abort, "Abort due to name conflict");
     return true;
 }
 const bool ALLOW_UNUSED dummy_bvar_abort_on_same_name = ::GFLAGS_NS::RegisterFlagValidator(
@@ -166,10 +162,9 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
             return 0;
         }
     }
-    if (FLAGS_bvar_abort_on_same_name) {
-        LOG(FATAL) << "Abort due to name conflict";
-        abort();
-    } else if (!s_bvar_may_abort) {
+    RELEASE_ASSERT_VERBOSE(!FLAGS_bvar_abort_on_same_name,
+                           "Abort due to name conflict");
+    if (!s_bvar_may_abort) {
         // Mark name conflict occurs, If this conflict happens before
         // initialization of bvar_abort_on_same_name, the validator will
         // abort the program if needed.
@@ -180,6 +175,10 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
                << describe_exposed(_name) << '\'';
     _name.clear();
     return -1;
+}
+
+bool Variable::is_hidden() const {
+    return _name.empty();
 }
 
 bool Variable::hide() {
@@ -708,7 +707,7 @@ DEFINE_string(bvar_dump_tabs, "latency=*_latency*"
                               ";qps=*_qps*"
                               ";error=*_error*"
                               ";system=*process_*,*malloc_*,*kernel_*",
-              "Dump bvar into different tabs according to the filters (seperated by semicolon), "
+              "Dump bvar into different tabs according to the filters (separated by semicolon), "
               "format: *(tab_name=wildcards;)");
 
 DEFINE_bool(mbvar_dump, false,
@@ -728,6 +727,7 @@ static GFlag s_gflag_bvar_dump_interval("bvar_dump_interval");
 static void* dumping_thread(void*) {
     // NOTE: this variable was declared as static <= r34381, which was
     // destructed when program exits and caused coredumps.
+    butil::PlatformThread::SetName("bvar_dumper");
     const std::string command_name = read_command_name();
     std::string last_filename;
     std::string mbvar_last_filename;

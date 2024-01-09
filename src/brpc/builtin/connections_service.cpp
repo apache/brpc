@@ -161,7 +161,7 @@ void ConnectionsService::PrintConnections(
             if (ret < 0) {
                 continue;
             } else if (ret > 0) {
-                if (ptr->_health_check_interval_s <= 0) {
+                if (!ptr->HCEnabled()) {
                     // Sockets without HC will soon be destroyed
                     continue;
                 }

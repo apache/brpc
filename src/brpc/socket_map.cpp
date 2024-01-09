@@ -50,6 +50,9 @@ DEFINE_bool(show_socketmap_in_vars, false,
             "[DEBUG] Describe SocketMaps in /vars");
 BRPC_VALIDATE_GFLAG(show_socketmap_in_vars, PassValidate);
 
+DEFINE_bool(reserve_one_idle_socket, false,
+            "Reserve one idle socket for pooled connections when idle_timeout_second > 0");
+
 static pthread_once_t g_socket_map_init = PTHREAD_ONCE_INIT;
 static butil::static_atomic<SocketMap*> g_socket_map = BUTIL_STATIC_ATOMIC_INIT(NULL);
 
@@ -149,7 +152,7 @@ SocketMap::~SocketMap() {
         for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
             SingleConnection* sc = &it->second;
             if ((!sc->socket->Failed() ||
-                 sc->socket->health_check_interval() > 0/*HC enabled*/) &&
+                 sc->socket->HCEnabled()) &&
                 sc->ref_count != 0) {
                 ++nleft;
                 if (nleft == 0) {
@@ -210,15 +213,25 @@ void SocketMap::PrintSocketMap(std::ostream& os, void* arg) {
     static_cast<SocketMap*>(arg)->Print(os);
 }
 
+void SocketMap::ShowSocketMapInBvarIfNeed() {
+    if (FLAGS_show_socketmap_in_vars &&
+        !_exposed_in_bvar.exchange(true, butil::memory_order_release)) {
+        char namebuf[32];
+        int len = snprintf(namebuf, sizeof(namebuf), "rpc_socketmap_%p", this);
+        _this_map_bvar = new bvar::PassiveStatus<std::string>(
+            butil::StringPiece(namebuf, len), PrintSocketMap, this);
+    }
+}
+
 int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
                       const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                       bool use_rdma) {
+    ShowSocketMapInBvarIfNeed();
+
     std::unique_lock<butil::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(key);
     if (sc) {
-        if (!sc->socket->Failed() ||
-            (sc->socket->health_check_interval() > 0 &&
-             sc->socket->IsHCRelatedRefHeld())/*HC enabled*/) {
+        if (!sc->socket->Failed() || sc->socket->HCEnabled()) {
             ++sc->ref_count;
             *id = sc->socket->id();
             return 0;
@@ -253,18 +266,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     SingleConnection new_sc = { 1, ptr.release(), 0 };
     _map[key] = new_sc;
     *id = tmp_id;
-    bool need_to_create_bvar = false;
-    if (FLAGS_show_socketmap_in_vars && !_exposed_in_bvar) {
-        _exposed_in_bvar = true;
-        need_to_create_bvar = true;
-    }
     mu.unlock();
-    if (need_to_create_bvar) {
-        char namebuf[32];
-        int len = snprintf(namebuf, sizeof(namebuf), "rpc_socketmap_%p", this);
-        _this_map_bvar = new bvar::PassiveStatus<std::string>(
-            butil::StringPiece(namebuf, len), PrintSocketMap, this);
-    }
     return 0;
 }
 
@@ -275,6 +277,8 @@ void SocketMap::Remove(const SocketMapKey& key, SocketId expected_id) {
 void SocketMap::RemoveInternal(const SocketMapKey& key,
                                SocketId expected_id,
                                bool remove_orphan) {
+    ShowSocketMapInBvarIfNeed();
+
     std::unique_lock<butil::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(key);
     if (!sc) {
@@ -295,18 +299,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
         } else {
             Socket* const s = sc->socket;
             _map.erase(key);
-            bool need_to_create_bvar = false;
-            if (FLAGS_show_socketmap_in_vars && !_exposed_in_bvar) {
-                _exposed_in_bvar = true;
-                need_to_create_bvar = true;
-            }
             mu.unlock();
-            if (need_to_create_bvar) {
-                char namebuf[32];
-                int len = snprintf(namebuf, sizeof(namebuf), "rpc_socketmap_%p", this);
-                _this_map_bvar = new bvar::PassiveStatus<std::string>(
-                    butil::StringPiece(namebuf, len), PrintSocketMap, this);
-            }
             s->ReleaseAdditionalReference(); // release extra ref
             s->SetHCRelatedRefReleased(); // set released status to cancel health checking
             SocketUniquePtr ptr(s);  // Dereference
@@ -370,11 +363,12 @@ void SocketMap::WatchConnections() {
         if (idle_seconds > 0) {
             // Check idle pooled connections
             List(&main_sockets);
-            for (size_t i = 0; i < main_sockets.size(); ++i) {
+            for (auto main_socket : main_sockets) {
                 SocketUniquePtr s;
-                if (Socket::Address(main_sockets[i], &s) == 0) {
+                if (Socket::Address(main_socket, &s) == 0) {
                     s->ListPooledSockets(&pooled_sockets);
-                    for (size_t i = 0; i < pooled_sockets.size(); ++i) {
+                    for (size_t i = FLAGS_reserve_one_idle_socket ? 1 : 0;
+                         i < pooled_sockets.size(); ++i) {
                         SocketUniquePtr s2;
                         if (Socket::Address(pooled_sockets[i], &s2) == 0) {
                             s2->ReleaseReferenceIfIdle(idle_seconds);

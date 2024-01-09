@@ -32,11 +32,49 @@ void flatmap_example() {
     map.clear();
     CHECK_EQ(0UL, map.size());
 }
+
+void flatmap_erase_hinted_during_iteration_example() {
+    typedef butil::FlatMap<int, int> Map;
+    Map map;
+    // bucket_count: initial count of buckets, big enough to avoid resize.
+    // load_factor: element_count * 100 / bucket_count, 80 as default.
+    int bucket_count = 1000;
+    int load_factor = 80;
+    map.init(bucket_count, load_factor);
+    const int N = 10;
+    for (int i = 0; i < N; ++i) {
+        map[i] = i;
+    }
+
+    for (Map::const_iterator it = map.begin(); it != map.end(); ++it) {
+        // After `erase()', ++iterator may fail.
+        // We need to save iterator before `erase()'
+        // and restore iterator after `erase()'.
+        typename Map::PositionHint hint{};
+        map.save_iterator(it, &hint);
+        if (it->first % 2 == 0) {
+            CHECK_EQ(1UL, map.erase(it->first));
+        }
+        it = map.restore_iterator(hint);
+        if (it == map.end()) {
+            break;
+        }
+    }
+    CHECK_EQ((size_t)(N / 2), map.size());
+
+    LOG(INFO) << "All remaining elements of the map:";
+    for (Map::const_iterator it = map.begin(); it != map.end(); ++it) {
+        CHECK_EQ(1, it->first % 2);
+        LOG(INFO) << it->first << " : " << it->second;
+    }
+    map.clear();
+    CHECK_EQ(0UL, map.size());
+}
 ```
 
 # DESCRIPTION
 
-[FlatMap](https://github.com/brpc/brpc/blob/master/src/butil/containers/flat_map.h)可能是最快的哈希表，但当value较大时它需要更多的内存，它最适合作为检索过程中需要极快查找的小字典。
+[FlatMap](https://github.com/apache/brpc/blob/master/src/butil/containers/flat_map.h)可能是最快的哈希表，但当value较大时它需要更多的内存，它最适合作为检索过程中需要极快查找的小字典。
 
 原理：把开链桶中第一个节点的内容直接放桶内。由于在实践中，大部分桶没有冲突或冲突较少，所以大部分操作只需要一次内存跳转：通过哈希值访问对应的桶。桶内两个及以上元素仍存放在链表中，由于桶之间彼此独立，一个桶的冲突不会影响其他桶，性能很稳定。在很多时候，FlatMap的查找性能和原生数组接近。
 

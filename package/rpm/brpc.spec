@@ -18,7 +18,7 @@
 #
 
 Name:		brpc
-Version:	1.4.0
+Version:	1.6.0
 Release:	1%{?dist}
 Summary:	Industrial-grade RPC framework using C++ Language.
 
@@ -31,7 +31,7 @@ Source0:	https://downloads.apache.org/brpc/%{version}/apache-brpc-%{version}-src
 %global  _filter_GLIBC_PRIVATE 1
 %global __filter_GLIBC_PRIVATE 1
 
-%if 0%{?fedora} >= 15 || 0%{?rhel} >= 7
+%if 0%{?fedora} >= 15 || 0%{?rhel} >= 8
 %global use_devtoolset 0
 %else
 %global use_devtoolset 1

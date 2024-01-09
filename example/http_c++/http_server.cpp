@@ -21,6 +21,7 @@
 #include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/restful.h>
+#include <json2pb/pb_to_json.h>
 #include "http.pb.h"
 
 DEFINE_int32(port, 8010, "TCP Port of this server");
@@ -45,9 +46,15 @@ public:
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
-        
+
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
+
+        // optional: set a callback function which is called after response is sent
+        // and before cntl/req/res is destructed.
+        cntl->set_after_rpc_resp_fn(std::bind(&HttpServiceImpl::CallAfterRpc,
+            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
         // Fill response.
         cntl->http_response().set_content_type("text/plain");
         butil::IOBufBuilder os;
@@ -58,6 +65,19 @@ public:
         }
         os << "\nbody: " << cntl->request_attachment() << '\n';
         os.move_to(cntl->response_attachment());
+    }
+
+    // optional
+    static void CallAfterRpc(brpc::Controller* cntl,
+                        const google::protobuf::Message* req,
+                        const google::protobuf::Message* res) {
+        // at this time res is already sent to client, but cntl/req/res is not destructed
+        std::string req_str;
+        std::string res_str;
+        json2pb::ProtoMessageToJson(*req, &req_str, NULL);
+        json2pb::ProtoMessageToJson(*res, &res_str, NULL);
+        LOG(INFO) << "req:" << req_str
+                    << " res:" << res_str;
     }
 };
 
@@ -151,6 +171,56 @@ public:
     }
 };
 
+class HttpSSEServiceImpl : public HttpSSEService {
+public:
+    HttpSSEServiceImpl() {}
+    virtual ~HttpSSEServiceImpl() {}
+
+    struct PredictJobArgs {
+        std::vector<uint32_t> input_ids;
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa;
+    };
+
+    static void* Predict(void* raw_args) {
+        std::unique_ptr<PredictJobArgs> args(static_cast<PredictJobArgs*>(raw_args));
+        if (args->pa == NULL) {
+            LOG(ERROR) << "ProgressiveAttachment is NULL";
+            return NULL;
+        }
+        for (int i = 0; i < 100; ++i) {
+            char buf[48];
+            int len = snprintf(buf, sizeof(buf), "event: foo\ndata: Hello, world! (%d)\n\n", i);
+            args->pa->Write(buf, len);
+
+            // sleep a while to send another part.
+            bthread_usleep(10000 * 10);
+        }
+        return NULL;
+    }
+
+    void stream(google::protobuf::RpcController* cntl_base,
+                const HttpRequest*,
+                HttpResponse*,
+                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+
+        // Send the first SSE response
+        cntl->http_response().set_content_type("text/event-stream");
+        cntl->http_response().set_status_code(200);
+        cntl->http_response().SetHeader("Connection", "keep-alive");
+        cntl->http_response().SetHeader("Cache-Control", "no-cache");
+
+        // Send the generated words with progressiveAttachment
+        std::unique_ptr<PredictJobArgs> args(new PredictJobArgs);
+        args->pa = cntl->CreateProgressiveAttachment();
+        args->input_ids = {101, 102};
+        bthread_t th;
+        bthread_start_background(&th, NULL, Predict, args.release());
+    }
+};
+
 }  // namespace example
 
 int main(int argc, char* argv[]) {
@@ -163,6 +233,7 @@ int main(int argc, char* argv[]) {
     example::HttpServiceImpl http_svc;
     example::FileServiceImpl file_svc;
     example::QueueServiceImpl queue_svc;
+    example::HttpSSEServiceImpl sse_svc;
     
     // Add services into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
@@ -183,6 +254,11 @@ int main(int argc, char* argv[]) {
                           "/v1/queue/stop    => stop,"
                           "/v1/queue/stats/* => getstats") != 0) {
         LOG(ERROR) << "Fail to add queue_svc";
+        return -1;
+    }
+    if (server.AddService(&sse_svc,
+                          brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
+        LOG(ERROR) << "Fail to add sse_svc";
         return -1;
     }
 

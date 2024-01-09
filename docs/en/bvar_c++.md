@@ -217,7 +217,7 @@ Common needs for exporting are querying by HTTP API and writing into local file,
     | bvar_dump_include  | ""                      | Dump bvar matching these wildcards(separated by comma), empty means including all |
     | bvar_dump_interval | 10                      | Seconds between consecutive dump         |
     | bvar_dump_prefix   | \<app\>                 | Every dumped name starts with this prefix |
-    | bvar_dump_tabs     | \<check the code\>      | Dump bvar into different tabs according to the filters (seperated by semicolon), format: *(tab_name=wildcards) |
+    | bvar_dump_tabs     | \<check the code\>      | Dump bvar into different tabs according to the filters (separated by semicolon), format: *(tab_name=wildcards) |
 
 
     when the bvar_dump_file is not empty, a background thread will be started to update `bvar_dump_file` for the specified time interval called `bvar_dump_interval` , including all the bvar which is matched by `bvar_dump_include` while not matched by `bvar_dump_exclude`

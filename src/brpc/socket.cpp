@@ -17,6 +17,7 @@
 
 
 #include "butil/compat.h"                        // OS_MACOSX
+#include "butil/ssl_compat.h"                    // BIO_fd_non_fatal_error
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #ifdef USE_MESALINK
@@ -466,6 +467,7 @@ Socket::Socket(Forbidden)
     , _stream_set(NULL)
     , _total_streams_unconsumed_size(0)
     , _ninflight_app_health_check(0)
+    , _http_request_method(HTTP_METHOD_GET)
 {
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, NULL);
@@ -558,30 +560,30 @@ int Socket::ResetFileDescriptor(int fd) {
     // OK to fail, namely unix domain socket does not support this.
     butil::make_no_delay(fd);
     if (_tos > 0 &&
-        setsockopt(fd, IPPROTO_IP, IP_TOS, &_tos, sizeof(_tos)) < 0) {
-        PLOG(FATAL) << "Fail to set tos of fd=" << fd << " to " << _tos;
+        setsockopt(fd, IPPROTO_IP, IP_TOS, &_tos, sizeof(_tos)) != 0) {
+        PLOG(ERROR) << "Fail to set tos of fd=" << fd << " to " << _tos;
     }
 
     if (FLAGS_socket_send_buffer_size > 0) {
         int buff_size = FLAGS_socket_send_buffer_size;
-        socklen_t size = sizeof(buff_size);
-        if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buff_size, size) != 0) {
-            PLOG(FATAL) << "Fail to set sndbuf of fd=" << fd << " to " 
+        if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buff_size, sizeof(buff_size)) != 0) {
+            PLOG(ERROR) << "Fail to set sndbuf of fd=" << fd << " to "
                         << buff_size;
         }
     }
 
     if (FLAGS_socket_recv_buffer_size > 0) {
         int buff_size = FLAGS_socket_recv_buffer_size;
-        socklen_t size = sizeof(buff_size);
-        if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buff_size, size) != 0) {
-            PLOG(FATAL) << "Fail to set rcvbuf of fd=" << fd << " to " 
+        if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buff_size, sizeof(buff_size)) != 0) {
+            PLOG(ERROR) << "Fail to set rcvbuf of fd=" << fd << " to "
                         << buff_size;
         }
     }
 
+    EnableKeepaliveIfNeeded(fd);
+
     if (_on_edge_triggered_events) {
-        if (GetGlobalEventDispatcher(fd).AddConsumer(id(), fd) != 0) {
+        if (GetGlobalEventDispatcher(fd, _bthread_tag).AddConsumer(id(), fd) != 0) {
             PLOG(ERROR) << "Fail to add SocketId=" << id() 
                         << " into EventDispatcher";
             _fd.store(-1, butil::memory_order_release);
@@ -589,6 +591,69 @@ int Socket::ResetFileDescriptor(int fd) {
         }
     }
     return 0;
+}
+
+void Socket::EnableKeepaliveIfNeeded(int fd) {
+    if (!_keepalive_options) {
+        return;
+    }
+
+    int keepalive = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive,
+                   sizeof(keepalive)) != 0) {
+        PLOG(ERROR) << "Fail to set keepalive of fd=" << fd;
+        return;
+    }
+
+#if defined(OS_LINUX)
+    if (_keepalive_options->keepalive_idle_s > 0) {
+        if (setsockopt(fd, SOL_TCP, TCP_KEEPIDLE,
+                       &_keepalive_options->keepalive_idle_s,
+                       sizeof(_keepalive_options->keepalive_idle_s)) != 0) {
+            PLOG(ERROR) << "Fail to set keepidle of fd=" << fd;
+        }
+    }
+
+    if (_keepalive_options->keepalive_interval_s > 0) {
+        if (setsockopt(fd, SOL_TCP, TCP_KEEPINTVL,
+                       &_keepalive_options->keepalive_interval_s,
+                       sizeof(_keepalive_options->keepalive_interval_s)) != 0) {
+            PLOG(ERROR) << "Fail to set keepintvl of fd=" << fd;
+        }
+    }
+
+    if (_keepalive_options->keepalive_count > 0) {
+        if (setsockopt(fd, SOL_TCP, TCP_KEEPCNT,
+                       &_keepalive_options->keepalive_count,
+                       sizeof(_keepalive_options->keepalive_count)) != 0) {
+            PLOG(ERROR) << "Fail to set keepcnt of fd=" << fd;
+        }
+    }
+#elif defined(OS_MACOSX)
+    if (_keepalive_options->keepalive_idle_s > 0) {
+        if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE,
+                       &_keepalive_options->keepalive_idle_s,
+                       sizeof(_keepalive_options->keepalive_idle_s)) != 0) {
+            PLOG(ERROR) << "Fail to set keepidle of fd=" << fd;
+        }
+    }
+
+    if (_keepalive_options->keepalive_interval_s > 0) {
+        if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL,
+                       &_keepalive_options->keepalive_interval_s,
+                       sizeof(_keepalive_options->keepalive_interval_s)) != 0) {
+            PLOG(ERROR) << "Fail to set keepintvl of fd=" << fd;
+        }
+    }
+
+    if (_keepalive_options->keepalive_count > 0) {
+        if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT,
+                       &_keepalive_options->keepalive_count,
+                       sizeof(_keepalive_options->keepalive_count)) != 0) {
+            PLOG(ERROR) << "Fail to set keepcnt of fd=" << fd;
+        }
+    }
+#endif
 }
 
 // SocketId = 32-bit version + 32-bit slot.
@@ -636,6 +701,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         m->SetFailed(rc2, "Fail to create auth_id: %s", berror(rc2));
         return -1;
     }
+    m->_force_ssl = options.force_ssl;
     // Disable SSL check if there is no SSL context
     m->_ssl_state = (options.initial_ssl_ctx == NULL ? SSL_OFF : SSL_UNKNOWN);
     m->_ssl_session = NULL;
@@ -677,6 +743,8 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     }
     m->_last_writetime_us.store(cpuwide_now, butil::memory_order_relaxed);
     m->_unwritten_bytes.store(0, butil::memory_order_relaxed);
+    m->_keepalive_options = options.keepalive_options;
+    m->_bthread_tag = options.bthread_tag;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
@@ -729,7 +797,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
     if (ValidFileDescriptor(prev_fd)) {
         if (_on_edge_triggered_events != NULL) {
-            GetGlobalEventDispatcher(prev_fd).RemoveConsumer(prev_fd);
+            GetGlobalEventDispatcher(prev_fd, _bthread_tag).RemoveConsumer(prev_fd);
         }
         close(prev_fd);
         if (CreatedByConnect()) {
@@ -894,7 +962,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // Do health-checking even if we're not connected before, needed
             // by Channel to revive never-connected socket when server side
             // comes online.
-            if (_health_check_interval_s > 0) {
+            if (HCEnabled()) {
                 bool expect = false;
                 if (_hc_started.compare_exchange_strong(expect,
                                                         true,
@@ -1037,7 +1105,7 @@ void Socket::OnRecycle() {
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
     if (ValidFileDescriptor(prev_fd)) {
         if (_on_edge_triggered_events != NULL) {
-            GetGlobalEventDispatcher(prev_fd).RemoveConsumer(prev_fd);
+            GetGlobalEventDispatcher(prev_fd, _bthread_tag).RemoveConsumer(prev_fd);
         }
         close(prev_fd);
         if (create_by_connect) {
@@ -1165,7 +1233,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     // Do not need to check addressable since it will be called by
     // health checker which called `SetFailed' before
     const int expected_val = _epollout_butex->load(butil::memory_order_relaxed);
-    EventDispatcher& edisp = GetGlobalEventDispatcher(fd);
+    EventDispatcher& edisp = GetGlobalEventDispatcher(fd, _bthread_tag);
     if (edisp.AddEpollOut(id(), fd, pollin) != 0) {
         return -1;
     }
@@ -1226,6 +1294,7 @@ int Socket::Connect(const timespec* abstime,
         // be added into epoll device soon
         SocketId connect_id;
         SocketOptions options;
+        options.bthread_tag = _bthread_tag;
         options.user = req;
         if (Socket::Create(options, &connect_id) != 0) {
             LOG(FATAL) << "Fail to create Socket";
@@ -1240,8 +1309,8 @@ int Socket::Connect(const timespec* abstime,
 
         // Add `sockfd' into epoll so that `HandleEpollOutRequest' will
         // be called with `req' when epoll event reaches
-        if (GetGlobalEventDispatcher(sockfd).
-            AddEpollOut(connect_id, sockfd, false) != 0) {
+        if (GetGlobalEventDispatcher(sockfd, _bthread_tag).AddEpollOut(connect_id, sockfd, false) !=
+            0) {
             const int saved_errno = errno;
             PLOG(WARNING) << "Fail to add fd=" << sockfd << " into epoll";
             s->SetFailed(saved_errno, "Fail to add fd=%d into epoll: %s",
@@ -1311,7 +1380,8 @@ int Socket::ConnectIfNot(const timespec* abstime, WriteRequest* req) {
     if (_fd.load(butil::memory_order_consume) >= 0) {
        return 0;
     }
-
+    // Set tag for client side socket
+    _bthread_tag = bthread_self_tag();
     // Have to hold a reference for `req'
     SocketUniquePtr s;
     ReAddress(&s);
@@ -1380,7 +1450,7 @@ int Socket::HandleEpollOutRequest(int error_code, EpollOutRequest* req) {
     }
     // We've got the right to call user callback
     // The timer will be removed inside destructor of EpollOutRequest
-    GetGlobalEventDispatcher(req->fd).RemoveEpollOut(id(), req->fd, false);
+    GetGlobalEventDispatcher(req->fd, _bthread_tag).RemoveEpollOut(id(), req->fd, false);
     return req->on_epollout_event(req->fd, error_code, req->data);
 }
 
@@ -1434,10 +1504,11 @@ int Socket::KeepWriteIfConnected(int fd, int err, void* data) {
         // Run ssl connect in a new bthread to avoid blocking
         // the current bthread (thus blocking the EventDispatcher)
         bthread_t th;
-        google::protobuf::Closure* thrd_func = brpc::NewCallback(
-            Socket::CheckConnectedAndKeepWrite, fd, err, data);
+        std::unique_ptr<google::protobuf::Closure> thrd_func(brpc::NewCallback(
+                Socket::CheckConnectedAndKeepWrite, fd, err, data));
         if ((err = bthread_start_background(&th, &BTHREAD_ATTR_NORMAL,
-                                            RunClosure, thrd_func)) == 0) {
+                                            RunClosure, thrd_func.get())) == 0) {
+            thrd_func.release();
             return 0;
         } else {
             PLOG(ERROR) << "Fail to start bthread";
@@ -1505,6 +1576,7 @@ X509* Socket::GetPeerCertificate() const {
     if (ssl_state() != SSL_CONNECTED) {
         return NULL;
     }
+    BAIDU_SCOPED_LOCK(_ssl_session_mutex);
     return SSL_get_peer_certificate(_ssl_session);
 }
 
@@ -1621,7 +1693,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     // in some protocols(namely RTMP).
     req->Setup(this);
     
-    if (ssl_state() != SSL_OFF) {
+    if (opt.write_in_background || ssl_state() != SSL_OFF) {
         // Writing into SSL may block the current bthread, always write
         // in the background.
         goto KEEPWRITE_IN_BACKGROUND;
@@ -1815,11 +1887,15 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
     CHECK_EQ(SSL_CONNECTED, ssl_state());
     if (_conn) {
         // TODO: Separate SSL stuff from SocketConnection
+        BAIDU_SCOPED_LOCK(_ssl_session_mutex);
         return _conn->CutMessageIntoSSLChannel(_ssl_session, data_list, ndata);
     }
     int ssl_error = 0;
-    ssize_t nw = butil::IOBuf::cut_multiple_into_SSL_channel(
-        _ssl_session, data_list, ndata, &ssl_error);
+    ssize_t nw = 0;
+    {
+        BAIDU_SCOPED_LOCK(_ssl_session_mutex);
+        nw = butil::IOBuf::cut_multiple_into_SSL_channel(_ssl_session, data_list, ndata, &ssl_error);
+    }
     switch (ssl_error) {
     case SSL_ERROR_NONE:
         break;
@@ -1883,6 +1959,33 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         ERR_clear_error();
         int rc = SSL_do_handshake(_ssl_session);
         if (rc == 1) {
+            // In client, check if server returned ALPN selection is acceptable.
+            if (!server_mode && !_ssl_ctx->alpn_protocols.empty()) {
+                const unsigned char *alpn_proto;
+                unsigned int alpn_proto_length;
+                SSL_get0_alpn_selected(_ssl_session, &alpn_proto, &alpn_proto_length);
+                if (!alpn_proto) {
+                    LOG(ERROR) << "Server returned no ALPN protocol";
+                    return -1;
+                }
+
+                std::string alpn_protocol(
+                    reinterpret_cast<char const *>(alpn_proto),
+                    alpn_proto_length
+                );
+                if (
+                    std::find(
+                        _ssl_ctx->alpn_protocols.begin(),
+                        _ssl_ctx->alpn_protocols.end(),
+                        alpn_protocol
+                    ) == _ssl_ctx->alpn_protocols.end()
+                ) {
+                    LOG(ERROR) << "Server returned unacceptable ALPN protocol: "
+                               << alpn_protocol;
+                    return -1;
+                }
+            }
+
             _ssl_state = SSL_CONNECTED;
             AddBIOBuffer(_ssl_session, fd, FLAGS_ssl_bio_buffer_size);
             return 0;
@@ -1957,13 +2060,21 @@ ssize_t Socket::DoRead(size_t size_hint) {
     }
     // _ssl_state has been set
     if (ssl_state() == SSL_OFF) {
+        if (_force_ssl) {
+            errno = ESSL;
+            return -1;
+        }
         CHECK(_rdma_state == RDMA_OFF);
         return _read_buf.append_from_file_descriptor(fd(), size_hint);
     }
 
     CHECK_EQ(SSL_CONNECTED, ssl_state());
     int ssl_error = 0;
-    ssize_t nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
+    ssize_t nr = 0;
+    {
+        BAIDU_SCOPED_LOCK(_ssl_session_mutex);
+        nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
+    }
     switch (ssl_error) {
     case SSL_ERROR_NONE:  // `nr' > 0
         break;
@@ -1987,8 +2098,12 @@ ssize_t Socket::DoRead(size_t size_hint) {
                          << ": " << SSLError(e);
             errno = ESSL;
         } else {
-            // System error with corresponding errno set
-            PLOG(WARNING) << "Fail to read from ssl_fd=" << fd();
+            // System error with corresponding errno set.
+            bool is_fatal_error = (ssl_error != SSL_ERROR_ZERO_RETURN &&
+                                   ssl_error != SSL_ERROR_SYSCALL) ||
+                                   BIO_fd_non_fatal_error(errno) != 0 ||
+                                  nr < 0;
+            PLOG_IF(WARNING, is_fatal_error) << "Fail to read from ssl_fd=" << fd();
         }
         break;
     }
@@ -2082,6 +2197,7 @@ int Socket::StartInputEvent(SocketId id, uint32_t events,
 
         bthread_attr_t attr = thread_attr;
         attr.keytable_pool = p->_keytable_pool;
+        attr.tag = bthread_self_tag();
         if (FLAGS_usercode_in_coroutine) {
             ProcessEvent(p);
         } else if (bthread_start_urgent(&tid, &attr, ProcessEvent, p) != 0) {
@@ -2270,6 +2386,57 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         Print(os, ptr->_ssl_session, "\n  ");
         os << "\n}";
     }
+
+    {
+        int keepalive = 0;
+        socklen_t len = sizeof(keepalive);
+        if (getsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive, &len) == 0) {
+            os << "\nkeepalive=" << keepalive;
+        }
+    }
+
+    {
+        int keepidle = 0;
+        socklen_t len = sizeof(keepidle);
+#if defined(OS_MACOSX)
+        if (getsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE, &keepidle, &len) == 0) {
+            os << "\ntcp_keepalive_time=" << keepidle;
+        }
+#elif defined(OS_LINUX)
+        if (getsockopt(fd, SOL_TCP, TCP_KEEPIDLE, &keepidle, &len) == 0) {
+            os << "\ntcp_keepalive_time=" << keepidle;
+        }
+#endif
+    }
+
+    {
+        int keepintvl = 0;
+        socklen_t len = sizeof(keepintvl);
+#if defined(OS_MACOSX)
+        if (getsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, &len) == 0) {
+            os << "\ntcp_keepalive_intvl=" << keepintvl;
+        }
+#elif defined(OS_LINUX)
+        if (getsockopt(fd, SOL_TCP, TCP_KEEPINTVL, &keepintvl, &len) == 0) {
+            os << "\ntcp_keepalive_intvl=" << keepintvl;
+        }
+#endif
+    }
+
+    {
+        int keepcnt = 0;
+        socklen_t len = sizeof(keepcnt);
+#if defined(OS_MACOSX)
+        if (getsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, &len) == 0) {
+            os << "\ntcp_keepalive_probes=" << keepcnt;
+        }
+#elif defined(OS_LINUX)
+        if (getsockopt(fd, SOL_TCP, TCP_KEEPCNT, &keepcnt, &len) == 0) {
+            os << "\ntcp_keepalive_probes=" << keepcnt;
+        }
+#endif
+    }
+
 #if defined(OS_MACOSX)
     struct tcp_connection_info ti;
     socklen_t len = sizeof(ti);
@@ -2331,6 +2498,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         ptr->_rdma_ep->DebugInfo(os);
     }
 #endif
+    { os << "\nbthread_tag=" << ptr->_bthread_tag; }
 }
 
 int Socket::CheckHealth() {

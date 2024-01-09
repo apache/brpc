@@ -26,7 +26,7 @@ namespace brpc {
 // Get packed js.
 //   "/js/sorttable"  : http://www.kryogenix.org/code/browser/sorttable/
 //   "/js/jquery_min" : jquery 1.8.3
-//   "/js/flot_min"   : ploting library for jquery.
+//   "/js/flot_min"   : plotting library for jquery.
 class GetJsService : public ::brpc::js {
 public:
     void sorttable(::google::protobuf::RpcController* controller,

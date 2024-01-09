@@ -38,6 +38,7 @@
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
 #include "bvar/bvar.h"
+#include "http_method.h"
 
 namespace brpc {
 namespace policy {
@@ -169,8 +170,23 @@ struct SocketSSLContext {
     SocketSSLContext();
     ~SocketSSLContext();
 
-    SSL_CTX* raw_ctx;           // owned
-    std::string sni_name;       // useful for clients
+    SSL_CTX* raw_ctx;                        // owned
+    std::string sni_name;                    // useful for clients
+    std::vector<std::string> alpn_protocols; // useful for clients
+};
+
+struct SocketKeepaliveOptions {
+    SocketKeepaliveOptions()
+        : keepalive_idle_s(-1)
+        , keepalive_interval_s(-1)
+        , keepalive_count(-1)
+        {}
+    // Start keeplives after this period.
+    int keepalive_idle_s;
+    // Interval between keepalives.
+    int keepalive_interval_s;
+    // Number of keepalives before death.
+    int keepalive_count;
 };
 
 // TODO: Comment fields
@@ -191,6 +207,8 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
+    // Only accept ssl connection.
+    bool force_ssl;
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bool use_rdma;
     bthread_keytable_pool_t* keytable_pool;
@@ -198,6 +216,12 @@ struct SocketOptions {
     std::shared_ptr<AppConnect> app_connect;
     // The created socket will set parsing_context with this value.
     Destroyable* initial_parsing_context;
+
+    // Socket keepalive related options.
+    // Refer to `SocketKeepaliveOptions' for details.
+    std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
+    // Tag of this socket
+    bthread_tag_t bthread_tag;
 };
 
 // Abstractions on reading from and writing into file descriptors.
@@ -269,10 +293,20 @@ public:
         // Default: false
         bool ignore_eovercrowded;
 
+        // The calling thread directly creates KeepWrite thread to write into
+        // this socket, skipping writing once.
+        // In situations like when you are continually issuing lots of
+        // StreamWrite or async RPC calls in only one thread, directly creating
+        // KeepWrite thread at first provides batch write effect and better
+        // performance. Otherwise, each write only writes one `msg` into socket
+        // and no KeepWrite thread can be created, which brings poor
+        // performance.
+        bool write_in_background;
+
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
             , pipelined_count(0), auth_flags(0)
-            , ignore_eovercrowded(false) {}
+            , ignore_eovercrowded(false), write_in_background(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
 
@@ -289,9 +323,13 @@ public:
     // ip/port of the other end of the connection.
     butil::EndPoint remote_side() const { return _remote_side; }
 
-    // Positive value enables health checking.
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
+
+    // True if health checking is enabled.
+    bool HCEnabled() const {
+        return _health_check_interval_s > 0 && _is_hc_related_ref_held;
+    }
 
     // When someone holds a health-checking-related reference,
     // this function need to be called to make health checking run normally.
@@ -351,7 +389,7 @@ public:
 
     // Mark this Socket or the Socket associated with `id' as failed.
     // Any later Address() of the identifier shall return NULL unless the
-    // Socket was revivied by HealthCheckThread. The Socket is NOT recycled
+    // Socket was revivied by StartHealthCheck. The Socket is NOT recycled
     // after calling this function, instead it will be recycled when no one
     // references it. Internal fields of the Socket are still accessible
     // after calling this function. Calling SetFailed() of a Socket more
@@ -547,6 +585,9 @@ public:
 
     bthread_keytable_pool_t* keytable_pool() const { return _keytable_pool; }
 
+    void set_http_request_method(const HttpMethod& method) { _http_request_method = method; }
+    HttpMethod http_request_method() const { return _http_request_method; }
+
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
 
@@ -611,6 +652,8 @@ friend void DereferenceSocket(Socket*);
     int ConnectIfNot(const timespec* abstime, WriteRequest* req);
 
     int ResetFileDescriptor(int fd);
+
+    void EnableKeepaliveIfNeeded(int fd);
 
     // Wait until nref hits `expected_nref' and reset some internal resources.
     int WaitAndReset(int32_t expected_nref);
@@ -718,6 +761,7 @@ private:
 
     // [ Set in ResetFileDescriptor ]
     butil::atomic<int> _fd;  // -1 when not connected.
+    bthread_tag_t _bthread_tag;  // bthread tag of this socket
     int _tos;                // Type of service which is actually only 8bits.
     int64_t _reset_fd_real_us; // When _fd was reset, in microseconds.
 
@@ -806,7 +850,12 @@ private:
     // exists in server side
     AuthContext* _auth_context;
 
+    // Only accept ssl connection.
+    bool _force_ssl;
     SSLState _ssl_state;
+    // SSL objects cannot be read and written at the same time.
+    // Use mutex to protect SSL objects when ssl_state is SSL_CONNECTED.
+    mutable butil::Mutex _ssl_session_mutex;
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
@@ -873,6 +922,13 @@ private:
     butil::atomic<int64_t> _total_streams_unconsumed_size;
 
     butil::atomic<int64_t> _ninflight_app_health_check;
+
+    // Socket keepalive related options.
+    // Refer to `SocketKeepaliveOptions' for details.
+    // non-NULL means that keepalive is on.
+    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+
+    HttpMethod _http_request_method;
 };
 
 } // namespace brpc

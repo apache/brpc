@@ -29,6 +29,14 @@ HttpHeader::HttpHeader()
     // NOTE: don't forget to clear the field in Clear() as well.
 }
 
+void HttpHeader::RemoveHeader(const char* key) {
+    if (IsContentType(key)) {
+        _content_type.clear();
+    } else {
+        _headers.erase(key);
+    }
+}
+
 void HttpHeader::AppendHeader(const std::string& key,
                               const butil::StringPiece& value) {
     std::string& slot = GetOrAddHeader(key);
@@ -67,6 +75,17 @@ const char* HttpHeader::reason_phrase() const {
     
 void HttpHeader::set_status_code(int status_code) {
     _status_code = status_code;
+}
+
+std::string& HttpHeader::GetOrAddHeader(const std::string& key) {
+    if (IsContentType(key)) {
+        return _content_type;
+    }
+
+    if (!_headers.initialized()) {
+        _headers.init(29);
+    }
+    return _headers[key];
 }
 
 const HttpHeader& DefaultHttpHeader() {

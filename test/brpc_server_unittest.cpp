@@ -97,6 +97,8 @@ bool g_delete = false;
 const std::string EXP_REQUEST = "hello";
 const std::string EXP_RESPONSE = "world";
 const std::string EXP_REQUEST_BASE64 = "aGVsbG8=";
+const std::string EXP_USER_FIELD_KEY = "hello";
+const std::string EXP_USER_FIELD_VALUE = "world";
 
 class EchoServiceImpl : public test::EchoService {
 public:
@@ -117,6 +119,13 @@ public:
             bthread_usleep(request->sleep_us());
         } else {
             LOG(INFO) << "No sleep, protocol=" << cntl->request_protocol();
+        }
+        if (cntl->has_request_user_fields()) {
+            ASSERT_TRUE(!cntl->request_user_fields()->empty());
+            std::string* val = cntl->request_user_fields()->seek(EXP_USER_FIELD_KEY);
+            ASSERT_TRUE(val != NULL);
+            ASSERT_EQ(*val, EXP_USER_FIELD_VALUE);
+            cntl->response_user_fields()->insert(EXP_USER_FIELD_KEY, EXP_USER_FIELD_VALUE);
         }
     }
 
@@ -1620,4 +1629,31 @@ TEST_F(ServerTest, max_concurrency) {
     stub.Echo(&cntl4, &req, NULL, NULL);
     ASSERT_FALSE(cntl4.Failed()) << cntl4.ErrorText();
 }
+
+TEST_F(ServerTest, user_fields) {
+    const int port = 9200;
+    brpc::Server server;
+    EchoServiceImpl service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, NULL));
+
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init("0.0.0.0", port, NULL));
+    test::EchoService_Stub stub(&channel);
+
+    brpc::Controller cntl;
+    cntl.request_user_fields()->insert(EXP_USER_FIELD_KEY, EXP_USER_FIELD_VALUE);
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message("hello");
+    stub.Echo(&cntl, &req, &res, NULL);
+
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_TRUE(cntl.has_response_user_fields());
+    ASSERT_TRUE(!cntl.response_user_fields()->empty());
+    std::string* val = cntl.response_user_fields()->seek(EXP_USER_FIELD_KEY);
+    ASSERT_TRUE(val != NULL);
+    ASSERT_EQ(*val, EXP_USER_FIELD_VALUE);
+}
+
 } //namespace

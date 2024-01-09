@@ -149,10 +149,14 @@ void SendRpcResponse(int64_t correlation_id,
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
+
+    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+
+    ClosureGuard guard(brpc::NewCallback(cntl, &Controller::CallAfterRpcResp, req, res));
     
     StreamId response_stream_id = accessor.response_stream();
 
@@ -219,6 +223,15 @@ void SendRpcResponse(int64_t correlation_id,
         }
     }
 
+    if (cntl->has_response_user_fields() &&
+        !cntl->response_user_fields()->empty()) {
+        ::google::protobuf::Map<std::string, std::string>& user_fields
+            = *meta.mutable_user_fields();
+        user_fields.insert(cntl->response_user_fields()->begin(),
+                           cntl->response_user_fields()->end());
+
+    }
+
     butil::IOBuf res_buf;
     SerializeRpcHeaderAndMeta(&res_buf, meta, res_size + attached_size);
     if (append_body) {
@@ -232,7 +245,7 @@ void SendRpcResponse(int64_t correlation_id,
         span->set_response_size(res_buf.size());
     }
     // Send rpc response over stream even if server side failed to create
-    // stream for some reasons.
+    // stream for some reason.
     if(cntl->has_remote_stream()){
         // Send the response over stream to notify that this stream connection
         // is successfully built.
@@ -251,7 +264,7 @@ void SendRpcResponse(int64_t correlation_id,
         }
 
         if(stream_ptr) {
-            // Now it's ok the mark this server-side stream as connectted as all the
+            // Now it's ok the mark this server-side stream as connected as all the
             // written user data would follower the RPC response.
             ((Stream*)stream_ptr->conn())->SetConnected();
         }
@@ -275,6 +288,7 @@ void SendRpcResponse(int64_t correlation_id,
     }
 }
 
+namespace {
 struct CallMethodInBackupThreadArgs {
     ::google::protobuf::Service* service;
     const ::google::protobuf::MethodDescriptor* method;
@@ -283,6 +297,7 @@ struct CallMethodInBackupThreadArgs {
     ::google::protobuf::Message* response;
     ::google::protobuf::Closure* done;
 };
+}
 
 static void CallMethodInBackupThread(void* void_args) {
     CallMethodInBackupThreadArgs* args = (CallMethodInBackupThreadArgs*)void_args;
@@ -374,6 +389,12 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         accessor.set_remote_stream_settings(meta.release_stream_settings());
     }
 
+    if (!meta.user_fields().empty()) {
+        for (const auto& it : meta.user_fields()) {
+            (*cntl->request_user_fields())[it.first] = it.second;
+        }
+    }
+
     // Tag the bthread with this server's key for thread_local_data().
     if (server->thread_local_options().thread_local_data_factory) {
         bthread_assign_data((void*)&server->thread_local_options());
@@ -462,6 +483,12 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         google::protobuf::Service* svc = mp->service;
         const google::protobuf::MethodDescriptor* method = mp->method;
         accessor.set_method(method);
+
+
+        if (!server->AcceptRequest(cntl.get())) {
+            break;
+        }
+
         if (span) {
             span->ResetServerSpanName(method->full_name());
         }
@@ -583,6 +610,13 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         accessor.set_remote_stream_settings(
                 new StreamSettings(meta.stream_settings()));
     }
+
+    if (!meta.user_fields().empty()) {
+        for (const auto& it : meta.user_fields()) {
+            (*cntl->response_user_fields())[it.first] = it.second;
+        }
+    }
+
     Span* span = accessor.span();
     if (span) {
         span->set_base_real_us(msg->base_real_us());
@@ -680,6 +714,13 @@ void PackRpcRequest(butil::IOBuf* req_buf,
         }
         Stream *s = (Stream*)ptr->conn();
         s->FillSettings(meta.mutable_stream_settings());
+    }
+
+    if (cntl->has_request_user_fields() && !cntl->request_user_fields()->empty()) {
+        ::google::protobuf::Map<std::string, std::string>& user_fields
+            = *meta.mutable_user_fields();
+        user_fields.insert(cntl->request_user_fields()->begin(),
+                           cntl->request_user_fields()->end());
     }
 
     // Don't use res->ByteSize() since it may be compressed

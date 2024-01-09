@@ -44,6 +44,7 @@ class AdaptiveProtocolType {
 public:
     explicit AdaptiveProtocolType() : _type(PROTOCOL_UNKNOWN) {}
     explicit AdaptiveProtocolType(ProtocolType type) : _type(type) {}
+    explicit AdaptiveProtocolType(butil::StringPiece name) { *this = name; }
     ~AdaptiveProtocolType() {}
 
     void operator=(ProtocolType type) {

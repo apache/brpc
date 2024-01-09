@@ -32,7 +32,7 @@ protected:
     virtual int GetNamingServiceAccessIntervalMs() const;
 
     int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
+                         NamingServiceActions* actions) override;
 };
 
 } // namespace brpc

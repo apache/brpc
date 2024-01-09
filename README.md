@@ -3,19 +3,20 @@
 [![Linux Build Status](https://github.com/apache/brpc/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-linux.yml)
 [![MacOs Build Status](https://github.com/apache/brpc/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-macos.yml)
 
-# ![brpc](docs/images/logo.png)
+![brpc logo (light)](docs/images/logo.png#gh-light-mode-only)
+![brpc logo (dark)](docs/images/logo-white.png#gh-dark-mode-only)
 
-brpc is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
+[brpc](https://brpc.apache.org/) is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
 
 ### "brpc" means "better RPC". 
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
-  * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
+  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
   * [redis](docs/en/redis_client.md) and [memcached](docs/en/memcache_client.md), thread-safe, more friendly and performant than the official clients.
-  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
+  * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
   * hadoop_rpc (may be opensourced)
-  * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support (will be opensourced)
+  * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support
   * [thrift](docs/en/thrift.md) support,  thread-safe, more friendly and performant than the official clients.
   * all sorts of protocols used in Baidu: [baidu_std](docs/cn/baidu_std.md), [streaming_rpc](docs/en/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc and nshead-based ones.
   * Build [HA](https://en.wikipedia.org/wiki/High_availability) distributed services using an industrial-grade implementation of [RAFT consensus algorithm](https://raft.github.io) which is opensourced at [braft](https://github.com/brpc/braft)
@@ -28,7 +29,7 @@ You can use it to:
 # Try it!
 
 * Read [overview](docs/en/overview.md) to know where brpc can be used and its advantages.
-* Read [getting started](docs/cn/getting_started.md) for building steps and play with [examples](https://github.com/brpc/brpc/tree/master/example/).
+* Read [getting started](docs/cn/getting_started.md) for building steps and play with [examples](https://github.com/apache/brpc/tree/master/example/).
 * Docs:
   * [Performance benchmark](docs/cn/benchmark.md)
   * [bvar](docs/en/bvar.md)
@@ -103,7 +104,7 @@ Please refer to [here](CONTRIBUTING.md).
 
 # Feedback and Getting involved
 * Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/apache/brpc/issues)
-* Subscribe mailing list(dev-subscribe@brpc.apache.org) to get updated with the project
+* Subscribe to the mailing list(dev-subscribe@brpc.apache.org) to get updated with the project
 
 # Code of Conduct
 We follow the code of conduct from Apache Software Foundation, please refer it here [Link](https://www.apache.org/foundation/policies/conduct)

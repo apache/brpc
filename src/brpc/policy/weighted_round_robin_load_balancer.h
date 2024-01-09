@@ -58,9 +58,9 @@ private:
         size_t position = 0;
         uint64_t stride = 0;
         Server remain_server;
-        // If server list changed, we need caculate a new stride.
-        bool IsNeededCaculateNewStride(const uint64_t curr_weight_sum, 
-                                       const size_t curr_servers_num) {
+        // If server list changed, we need calculate a new stride.
+        bool IsNeededCalculateNewStride(const uint64_t curr_weight_sum,
+                                        const size_t curr_servers_num) {
             if (curr_weight_sum != weight_sum 
                 || curr_servers_num != servers_num) {
                 weight_sum = curr_weight_sum;

@@ -28,7 +28,7 @@ struct CertInfo {
     // Certificate in PEM format.
     // Note that CN and alt subjects will be extracted from the certificate,
     // and will be used as hostnames. Requests to this hostname (provided SNI
-    // extension supported) will be encrypted using this certifcate.
+    // extension supported) will be encrypted using this certificate.
     // Supported both file path and raw string
     std::string certificate;
 
@@ -83,6 +83,10 @@ struct ChannelSSLOptions {
     // Options used to verify the server's certificate
     // Default: see above
     VerifyOptions verify;
+
+    // Set the protocol preference of ALPN (Application-Layer Protocol Negotiation)
+    // Default: unset
+    std::vector<std::string> alpn_protocols;
 
     // TODO: Support CRL
 };
@@ -148,7 +152,12 @@ struct ServerSSLOptions {
     // Default: see above
     VerifyOptions verify;
 
-    // TODO: Support NPN & ALPN
+    // Options used to choose the most suitable application protocol, separated by comma.
+    // The NPN protocol is not commonly used, so only ALPN is supported.
+    // Available protocols: http, h2, baidu_std etc.
+    // Default: empty
+    std::string alpns;
+
     // TODO: Support OSCP stapling
 };
 

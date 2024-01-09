@@ -31,14 +31,24 @@ sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev li
 sudo apt-get install -y libsnappy-dev
 ```
 
+如果你需要通过源码编译生成 leveldb 静态库：
+
+```shell
+git clone --recurse-submodules https://github.com/google/leveldb.git
+mkdir -p build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON .. && cmake --build .
+sudo cp -r ../include/leveldb /usr/include/ && sudo cp libleveldb.a /usr/lib/
+```
+
 如果你要在样例中启用cpu/heap的profiler：
+
 ```shell
 sudo apt-get install -y libgoogle-perftools-dev
 ```
 
 如果你要运行测试，那么要安装并编译libgtest-dev（它没有被默认编译）：
 ```shell
-sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/ && cd -
 ```
 gtest源码目录可能变动，如果`/usr/src/gtest`不存在，请尝试`/usr/src/googletest/googletest`。
 
@@ -238,7 +248,8 @@ master HEAD已支持M1系列芯片，M2未测试过。欢迎通过issues向我�
 
 安装依赖：
 ```shell
-brew install openssl git gnu-getopt coreutils gflags protobuf leveldb
+brew install ./homebrew-formula/protobuf.rb
+brew install openssl git gnu-getopt coreutils gflags leveldb
 ```
 
 如果你要在样例中启用cpu/heap的profiler：
@@ -334,7 +345,7 @@ GCC7中over-aligned的问题暂时被禁止。
 
 同一个文件兼容pb 3.x版本和pb 2.x版本：
 不要使用proto3新增的类型，并且在proto文件的起始位置添加`syntax=proto2;`声明。
-[tools/add_syntax_equal_proto2_to_all.sh](https://github.com/brpc/brpc/blob/master/tools/add_syntax_equal_proto2_to_all.sh)这个脚本可以给所有没有这行声明的proto文件添加`syntax="proto2"`声明。
+[tools/add_syntax_equal_proto2_to_all.sh](https://github.com/apache/brpc/blob/master/tools/add_syntax_equal_proto2_to_all.sh)这个脚本可以给所有没有这行声明的proto文件添加`syntax="proto2"`声明。
 
 pb 3.x中的Arena至今没被支持。
 
@@ -378,4 +389,4 @@ brpc会自动检测valgrind（然后注册bthread的栈）。不支持老版本�
 
 # 实例追踪
 
-我们提供了一个程序去帮助你追踪和监控所有brpc实例。 只需要在某处运行 [trackme_server](https://github.com/brpc/brpc/tree/master/tools/trackme_server/) 然后再带着 -trackme_server=SERVER参数启动需要被追踪的实例。trackme_server将从实例周期性地收到ping消息然后打印日志。您可以从日志中聚合实例地址，并调用实例的内置服务以获取更多信息。
+我们提供了一个程序去帮助你追踪和监控所有brpc实例。 只需要在某处运行 [trackme_server](https://github.com/apache/brpc/tree/master/tools/trackme_server/) 然后再带着 -trackme_server=SERVER参数启动需要被追踪的实例。trackme_server将从实例周期性地收到ping消息然后打印日志。您可以从日志中聚合实例地址，并调用实例的内置服务以获取更多信息。

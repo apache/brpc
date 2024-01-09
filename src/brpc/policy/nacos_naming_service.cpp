@@ -182,7 +182,7 @@ int NacosNamingService::GetServerNodes(const char *service_name,
         if (it_enabled == host.MemberEnd() || !(it_enabled->value.IsBool()) ||
             !(it_enabled->value.GetBool())) {
             LOG(INFO) << "nacos " << ip.GetString() << ":" << port.GetInt()
-                      << " is not enable";
+                      << " is not enabled";
             continue;
         }
 

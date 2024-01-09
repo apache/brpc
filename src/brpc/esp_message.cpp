@@ -20,6 +20,8 @@
 #include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
 #include <google/protobuf/wire_format.h>        // WireFormatLite::GetTagWireType
 
+#include "butil/logging.h"
+
 namespace brpc {
 
 EspMessage::EspMessage()
@@ -92,7 +94,7 @@ int EspMessage::ByteSize() const {
 }
 
 void EspMessage::MergeFrom(const ::google::protobuf::Message& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     const EspMessage* source = dynamic_cast<const EspMessage*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
@@ -102,7 +104,7 @@ void EspMessage::MergeFrom(const ::google::protobuf::Message& from) {
 }
 
 void EspMessage::MergeFrom(const EspMessage& from) {
-    GOOGLE_CHECK_NE(&from, this);
+    CHECK_NE(&from, this);
     head = from.head;
     body = from.body;
 }

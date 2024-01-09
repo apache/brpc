@@ -4,7 +4,7 @@ Sometimes in order to ensure availability, we need to visit two services at the 
 
 Channel opens backup request. Channel sends the request to one of the servers and when the response is not returned after ChannelOptions.backup_request_ms ms, it sends to another server, taking the response that coming back first. After backup_request_ms is set up properly, in most of times only one request should be sent, causing no extra pressure to back-end services.
 
-Read [example/backup_request_c++](https://github.com/brpc/brpc/blob/master/example/backup_request_c++) as example code. In this example, client sends backup request after 2ms and server sleeps for 20ms on purpose when the number of requests is even to trigger backup request.
+Read [example/backup_request_c++](https://github.com/apache/brpc/blob/master/example/backup_request_c++) as example code. In this example, client sends backup request after 2ms and server sleeps for 20ms on purpose when the number of requests is even to trigger backup request.
 
 After running, the log in client and server is as following. "Index" is the number of request. After the server receives the first request, it will sleep for 20ms on purpose. Then the client sends the request with the same index. The final delay is not affected by the intentional sleep.
 
@@ -41,6 +41,6 @@ my_func_latency << tm.u_elapsed();  // u represents for microsecond, and s_elaps
 
 # When backend servers cannot be hung in a naming service
 
-[Recommended] Define a SelectiveChannel that sets backup request, in which contains two sub channel. The visiting process of this SelectiveChannel is similar to the above situation. It will visit one sub channel first. If the response is not returned after channelOptions.backup_request_ms ms, then another sub channel is visited. If a sub channel corresponds to a cluster, this method does backups between two clusters. An example of SelectiveChannel can be found in [example/selective_echo_c++](https://github.com/brpc/brpc/tree/master/example/selective_echo_c++). More details please refer to the above program.
+[Recommended] Define a SelectiveChannel that sets backup request, in which contains two sub channel. The visiting process of this SelectiveChannel is similar to the above situation. It will visit one sub channel first. If the response is not returned after channelOptions.backup_request_ms ms, then another sub channel is visited. If a sub channel corresponds to a cluster, this method does backups between two clusters. An example of SelectiveChannel can be found in [example/selective_echo_c++](https://github.com/apache/brpc/tree/master/example/selective_echo_c++). More details please refer to the above program.
 
-[Not Recommended] Issue two asynchronous RPC calls and join them. They cancel each other in their done callback. An example is in [example/cancel_c++](https://github.com/brpc/brpc/tree/master/example/cancel_c++). The problem of this method is that the program always sends two requests, doubling the pressure to back-end services. It is uneconomical in any sense and should be avoided as much as possible.
+[Not Recommended] Issue two asynchronous RPC calls and join them. They cancel each other in their done callback. An example is in [example/cancel_c++](https://github.com/apache/brpc/tree/master/example/cancel_c++). The problem of this method is that the program always sends two requests, doubling the pressure to back-end services. It is uneconomical in any sense and should be avoided as much as possible.

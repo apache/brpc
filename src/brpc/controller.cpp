@@ -48,6 +48,11 @@
 // Force linking the .o in UT (which analysis deps by inclusions)
 #include "brpc/parallel_channel.h"
 #include "brpc/selective_channel.h"
+#include "bthread/task_group.h"
+
+namespace bthread {
+extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
+}
 
 // This is the only place that both client/server must link, so we put
 // registrations of errno here.
@@ -87,6 +92,8 @@ namespace brpc {
 
 DEFINE_bool(graceful_quit_on_sigterm, false,
             "Register SIGTERM handle func to quit graceful");
+DEFINE_bool(graceful_quit_on_sighup, false,
+            "Register SIGHUP handle func to quit graceful");            
 
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
@@ -203,6 +210,8 @@ void Controller::ResetNonPods() {
     _request_buf.clear();
     delete _http_request;
     delete _http_response;
+    delete _request_user_fields;
+    delete _response_user_fields;
     _request_attachment.clear();
     _response_attachment.clear();
     if (_wpa) {
@@ -222,6 +231,7 @@ void Controller::ResetNonPods() {
     }
     delete _remote_stream_settings;
     _thrift_method_name.clear();
+    _after_rpc_resp_fn = nullptr;
 
     CHECK(_unfinished_call == NULL);
 }
@@ -276,6 +286,8 @@ void Controller::ResetPods() {
     _idl_result = IDL_VOID_RESULT;
     _http_request = NULL;
     _http_response = NULL;
+    _request_user_fields = NULL;
+    _response_user_fields = NULL;
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
@@ -626,33 +638,50 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         ++_current_call.nretry;
         add_flag(FLAGS_BACKUP_REQUEST);
         return IssueRPC(butil::gettimeofday_us());
-    } else if (_retry_policy ? _retry_policy->DoRetry(this)
-               : DefaultRetryPolicy()->DoRetry(this)) {
-        // The error must come from _current_call because:
-        //  * we intercepted error from _unfinished_call in OnVersionedRPCReturned
-        //  * ERPCTIMEDOUT/ECANCELED are not retrying error by default.
-        CHECK_EQ(current_id(), info.id) << "error_code=" << _error_code;
-        if (!SingleServer()) {
-            if (_accessed == NULL) {
-                _accessed = ExcludedServers::Create(
-                    std::min(_max_retry, RETRY_AVOIDANCE));
-                if (NULL == _accessed) {
-                    SetFailed(ENOMEM, "Fail to create ExcludedServers");
-                    goto END_OF_RPC;
+    } else {
+        auto retry_policy = _retry_policy ? _retry_policy : DefaultRetryPolicy();
+        if (retry_policy->DoRetry(this)) {
+            // The error must come from _current_call because:
+            //  * we intercepted error from _unfinished_call in OnVersionedRPCReturned
+            //  * ERPCTIMEDOUT/ECANCELED are not retrying error by default.
+            CHECK_EQ(current_id(), info.id) << "error_code=" << _error_code;
+            if (!SingleServer()) {
+                if (_accessed == NULL) {
+                    _accessed = ExcludedServers::Create(
+                            std::min(_max_retry, RETRY_AVOIDANCE));
+                    if (NULL == _accessed) {
+                        SetFailed(ENOMEM, "Fail to create ExcludedServers");
+                        goto END_OF_RPC;
+                    }
+                }
+                _accessed->Add(_current_call.peer_id);
+            }
+            _current_call.OnComplete(this, _error_code, info.responded, false);
+            ++_current_call.nretry;
+            // Clear http responses before retrying, otherwise the response may
+            // be mixed with older (and undefined) stuff. This is actually not
+            // done before r32008.
+            if (_http_response) {
+                _http_response->Clear();
+            }
+            response_attachment().clear();
+
+            // Retry backoff.
+            bthread::TaskGroup* g = bthread::tls_task_group;
+            int64_t backoff_time_us = retry_policy->GetBackoffTimeMs(this) * 1000L;
+            if (backoff_time_us > 0 &&
+                backoff_time_us < _deadline_us - butil::gettimeofday_us()) {
+                // No need to do retry backoff when the backoff time is longer than the remaining rpc time.
+                if (retry_policy->CanRetryBackoffInPthread() ||
+                    (g && !g->is_current_pthread_task())) {
+                    bthread_usleep(backoff_time_us);
+                } else {
+                    LOG(WARNING) << "`CanRetryBackoffInPthread()' returns false, "
+                                    "skip retry backoff in pthread.";
                 }
             }
-            _accessed->Add(_current_call.peer_id);
+            return IssueRPC(butil::gettimeofday_us());
         }
-        _current_call.OnComplete(this, _error_code, info.responded, false);
-        ++_current_call.nretry;
-        // Clear http responses before retrying, otherwise the response may
-        // be mixed with older (and undefined) stuff. This is actually not
-        // done before r32008.
-        if (_http_response) {
-            _http_response->Clear();
-        }
-        response_attachment().clear();
-        return IssueRPC(butil::gettimeofday_us());
     }
 
 END_OF_RPC:
@@ -1170,6 +1199,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     wopt.pipelined_count = _pipelined_count;
     wopt.auth_flags = _auth_flags;
     wopt.ignore_eovercrowded = has_flag(FLAGS_IGNORE_EOVERCROWDED);
+    wopt.write_in_background = write_to_socket_in_background();
     int rc;
     size_t packet_size = 0;
     if (user_packet_guard) {
@@ -1237,8 +1267,25 @@ int Controller::HandleSocketFailed(bthread_id_t id, void* data, int error_code,
         cntl->SetFailed(error_code, "%s @%s", berror(error_code),
                         butil::endpoint2str(cntl->remote_side()).c_str());
     }
-    CompletionInfo info = { id, false };
-    cntl->OnVersionedRPCReturned(info, true, saved_error);
+
+    struct OnVersionedRPCReturnedArgs {
+        bthread_id_t id;
+        Controller* cntl;
+        int error;
+    };
+    auto func = [](void* p) -> void* {
+        std::unique_ptr<OnVersionedRPCReturnedArgs> args(static_cast<OnVersionedRPCReturnedArgs*>(p));
+        CompletionInfo info = { args->id, false };
+        args->cntl->OnVersionedRPCReturned(info, true, args->error);
+        return NULL;
+    };
+
+    auto* args = new OnVersionedRPCReturnedArgs{ id, cntl, saved_error };
+    bthread_t tid;
+    // RetryPolicy may block current bthread, so start a new bthread to run OnVersionedRPCReturned
+    if (!cntl->_retry_policy || bthread_start_background(&tid, NULL, func, args) != 0) {
+        func(args);
+    }
     return 0;
 }
 
@@ -1367,6 +1414,12 @@ void WebEscape(const std::string& source, std::string* output) {
     }
 }
 
+std::string WebEscape(const std::string& source) {
+    std::string output;
+    WebEscape(source, &output);
+    return output;
+}
+
 void Controller::reset_sampled_request(SampledRequest* req) {
     delete _sampled_request;
     _sampled_request = req;
@@ -1453,6 +1506,13 @@ int Controller::GetSockOption(int level, int optname, void* optval, socklen_t* o
     }
 }
 
+void Controller::CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res) {
+    if (_after_rpc_resp_fn) {
+        _after_rpc_resp_fn(this, req, res);
+        _after_rpc_resp_fn = nullptr;
+    }
+}
+
 #if defined(OS_MACOSX)
 typedef sig_t SignalHandler;
 #else
@@ -1462,6 +1522,7 @@ typedef sighandler_t SignalHandler;
 static volatile bool s_signal_quit = false;
 static SignalHandler s_prev_sigint_handler = NULL;
 static SignalHandler s_prev_sigterm_handler = NULL;
+static SignalHandler s_prev_sighup_handler = NULL;
 
 static void quit_handler(int signo) {
     s_signal_quit = true;
@@ -1470,6 +1531,9 @@ static void quit_handler(int signo) {
     }
     if (SIGTERM == signo && s_prev_sigterm_handler) {
         s_prev_sigterm_handler(signo);
+    }
+    if (SIGHUP == signo && s_prev_sighup_handler) {
+        s_prev_sighup_handler(signo);
     }
 }
 
@@ -1480,26 +1544,31 @@ static void RegisterQuitSignalOrDie() {
     SignalHandler prev = signal(SIGINT, quit_handler);
     if (prev != SIG_DFL &&
         prev != SIG_IGN) { // shell may install SIGINT of background jobs with SIG_IGN
-        if (prev == SIG_ERR) {
-            LOG(ERROR) << "Fail to register SIGINT, abort";
-            abort();
-        } else {
-            s_prev_sigint_handler = prev;
-            LOG(WARNING) << "SIGINT was installed with " << prev;
-        }
+        RELEASE_ASSERT_VERBOSE(prev != SIG_ERR,
+                               "Fail to register SIGINT, abort");
+        s_prev_sigint_handler = prev;
+        LOG(WARNING) << "SIGINT was installed with " << prev;
     }
 
     if (FLAGS_graceful_quit_on_sigterm) {
         prev = signal(SIGTERM, quit_handler);
         if (prev != SIG_DFL &&
             prev != SIG_IGN) { // shell may install SIGTERM of background jobs with SIG_IGN
-            if (prev == SIG_ERR) {
-                LOG(ERROR) << "Fail to register SIGTERM, abort";
-                abort();
-            } else {
-                s_prev_sigterm_handler = prev;
-                LOG(WARNING) << "SIGTERM was installed with " << prev;
-            }
+            RELEASE_ASSERT_VERBOSE(prev != SIG_ERR,
+                                   "Fail to register SIGTERM, abort");
+            s_prev_sigterm_handler = prev;
+            LOG(WARNING) << "SIGTERM was installed with " << prev;
+        }
+    }
+
+    if (FLAGS_graceful_quit_on_sighup) {
+        prev = signal(SIGHUP, quit_handler);
+        if (prev != SIG_DFL &&
+            prev != SIG_IGN) { // shell may install SIGHUP of background jobs with SIG_IGN
+            RELEASE_ASSERT_VERBOSE(prev != SIG_ERR,
+                                   "Fail to register SIGHUP, abort");
+            s_prev_sighup_handler = prev;
+            LOG(WARNING) << "SIGHUP was installed with " << prev;
         }
     }
 }

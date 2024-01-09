@@ -50,6 +50,7 @@ TEST_BUTIL_SOURCES = \
     at_exit_unittest.cc \
     atomicops_unittest.cc \
     base64_unittest.cc \
+    base64url_unittest.cc \
     big_endian_unittest.cc \
     bits_unittest.cc \
     hash_tables_unittest.cc \
@@ -132,6 +133,7 @@ TEST_BUTIL_SOURCES = \
     synchronous_event_unittest.cpp \
     temp_file_unittest.cpp \
     baidu_thread_local_unittest.cpp \
+    thread_key_unittest.cpp \
     baidu_time_unittest.cpp \
     flat_map_unittest.cpp \
     crc32c_unittest.cc \

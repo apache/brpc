@@ -40,7 +40,7 @@ You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
   * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
   * [redis](redis_client.md) and [memcached](memcache_client.md), thread-safe, more friendly and performant than the official clients
-  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
+  * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
   * hadoop_rpc (may be opensourced)
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support (will be opensourced)
   * [thrift](thrift.md) support,  thread-safe, more friendly and performant than the official clients.
@@ -56,13 +56,13 @@ You can use it to:
 
 ### More friendly API
 
-Only 3 (major) user headers: [Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h), [Channel](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h), [Controller](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h), corresponding to server-side, client-side and parameter-set respectively. You don't have to worry about "How to initialize XXXManager", "How to layer all these components together",  "What's the relationship between XXXController and XXXContext". All you need to do is simple:
+Only 3 (major) user headers: [Server](https://github.com/apache/brpc/blob/master/src/brpc/server.h), [Channel](https://github.com/apache/brpc/blob/master/src/brpc/channel.h), [Controller](https://github.com/apache/brpc/blob/master/src/brpc/controller.h), corresponding to server-side, client-side and parameter-set respectively. You don't have to worry about "How to initialize XXXManager", "How to layer all these components together",  "What's the relationship between XXXController and XXXContext". All you need to do is simple:
 
-* Build service? include [brpc/server.h](https://github.com/brpc/brpc/blob/master/src/brpc/server.h) and follow the comments or [examples](https://github.com/brpc/brpc/blob/master/example/echo_c++/server.cpp).
+* Build service? include [brpc/server.h](https://github.com/apache/brpc/blob/master/src/brpc/server.h) and follow the comments or [examples](https://github.com/apache/brpc/blob/master/example/echo_c++/server.cpp).
 
-* Access service? include [brpc/channel.h](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h) and follow the comments or [examples](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp).
+* Access service? include [brpc/channel.h](https://github.com/apache/brpc/blob/master/src/brpc/channel.h) and follow the comments or [examples](https://github.com/apache/brpc/blob/master/example/echo_c++/client.cpp).
 
-* Tweak parameters? Checkout [brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h). Note that the class is shared by server and channel. Methods are separated into 3 parts: client-side, server-side and both-side.
+* Tweak parameters? Checkout [brpc/controller.h](https://github.com/apache/brpc/blob/master/src/brpc/controller.h). Note that the class is shared by server and channel. Methods are separated into 3 parts: client-side, server-side and both-side.
 
 We tried to make simple things simple. Take naming service as an example. In older RPC implementations you may need to copy a pile of obscure code to make it work, however, in brpc accessing BNS is expressed as `Init("bns://node-name", ...)`, DNS is `Init("http://domain-name", ...)` and local machine list is `Init("file:///home/work/server.list", ...)`. Without any explanation, you know what it means.
 

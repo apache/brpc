@@ -67,24 +67,49 @@ inline int string_printf_impl(std::string& output, const char* format,
     }
     return 0;
 }
+
+inline int string_printf_impl(std::string& output,  size_t hint,
+                              const char* format, va_list args) {
+    if (hint > output.capacity()) {
+        output.reserve(hint);
+    }
+    return string_printf_impl(output,  format, args);
+}
 }  // end anonymous namespace
 
 std::string string_printf(const char* format, ...) {
     // snprintf will tell us how large the output buffer should be, but
-    // we then have to call it a second time, which is costly.  By
+    // we then have to call it a second time, which is costly. By
     // guestimating the final size, we avoid the double snprintf in many
-    // cases, resulting in a performance win.  We use this constructor
+    // cases, resulting in a performance win. We use this constructor
     // of std::string to avoid a double allocation, though it does pad
-    // the resulting string with nul bytes.  Our guestimation is twice
+    // the resulting string with nul bytes. Our guestimation is twice
     // the format string size, or 32 bytes, whichever is larger.  This
-    // is a hueristic that doesn't affect correctness but attempts to be
+    // is a heuristic that doesn't affect correctness but attempts to be
     // reasonably fast for the most common cases.
     std::string ret;
-    ret.reserve(std::max(32UL, strlen(format) * 2));
-
     va_list ap;
     va_start(ap, format);
-    if (string_printf_impl(ret, format, ap) != 0) {
+    if (string_printf_impl(ret, std::max(32UL, strlen(format) * 2),
+                           format, ap) != 0) {
+        ret.clear();
+    }
+    va_end(ap);
+    return ret;
+}
+
+std::string string_printf(size_t hint_size, const char* format, ...) {
+    // snprintf will tell us how large the output buffer should be, but
+    // we then have to call it a second time, which is costly. By
+    // passing the hint size of formatted string, we avoid the double
+    // snprintf in many cases, resulting in a performance win. We use
+    // this constructor  of std::string to avoid a double allocation,
+    // though it does pad the resulting string with nul bytes.
+    std::string ret;
+    va_list ap;
+    va_start(ap, format);
+    if (string_printf_impl(ret, std::max(hint_size, strlen(format) * 2),
+                           format, ap) != 0) {
         ret.clear();
     }
     va_end(ap);
@@ -96,11 +121,7 @@ std::string string_printf(const char* format, ...) {
 int string_appendf(std::string* output, const char* format, ...) {
     va_list ap;
     va_start(ap, format);
-    const size_t old_size = output->size();
-    const int rc = string_printf_impl(*output, format, ap);
-    if (rc != 0) {
-        output->resize(old_size);
-    }
+    const int rc = string_vappendf(output, format, ap);
     va_end(ap);
     return rc;
 }
@@ -117,11 +138,7 @@ int string_vappendf(std::string* output, const char* format, va_list args) {
 int string_printf(std::string* output, const char* format, ...) {
     va_list ap;
     va_start(ap, format);
-    output->clear();
-    const int rc = string_printf_impl(*output, format, ap);
-    if (rc != 0) {
-        output->clear();
-    }
+    const int rc = string_vprintf(output, format, ap);
     va_end(ap);
     return rc;
 };

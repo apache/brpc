@@ -18,6 +18,7 @@
 workspace(name = "com_github_brpc_brpc")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 #
 # Constants
@@ -252,7 +253,6 @@ Set-Content protobuf.bzl -Value $content -Encoding UTF8
     urls = ["https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.19.1.tar.gz"],
 )
 
-# bRPC cannot use boringssl. Build openssl.
 http_archive(
     name = "openssl",  # 2021-12-14T15:45:01Z
     build_file = "//bazel/third_party/openssl:openssl.BUILD",
@@ -262,6 +262,13 @@ http_archive(
         "https://www.openssl.org/source/openssl-1.1.1m.tar.gz",
         "https://github.com/openssl/openssl/archive/OpenSSL_1_1_1m.tar.gz",
     ],
+)
+
+# https://github.com/google/boringssl/blob/master/INCORPORATING.md
+git_repository(
+    name = "boringssl", # 2021-05-01T12:26:01Z
+    commit = "0e6b86549db4c888666512295c3ebd4fa2a402f5", # fips-20210429
+    remote = "https://github.com/google/boringssl",
 )
 
 http_archive(
@@ -283,14 +290,13 @@ perl_register_toolchains()
 #
 # Tools Dependencies
 #
-
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
 http_archive(
-    name = "com_grail_bazel_compdb",
-    sha256 = "d32835b26dd35aad8fd0ba0d712265df6565a3ad860d39e4c01ad41059ea7eda",
-    strip_prefix = "bazel-compilation-database-0.5.2",
-    urls = ["https://github.com/grailbio/bazel-compilation-database/archive/0.5.2.tar.gz"],
+    name = "hedron_compile_commands",
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/3dddf205a1f5cde20faf2444c1757abe0564ff4c.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-3dddf205a1f5cde20faf2444c1757abe0564ff4c",
+    sha256 = "3cd0e49f0f4a6d406c1d74b53b7616f5e24f5fd319eafc1bf8eee6e14124d115",
 )
-
-load("@com_grail_bazel_compdb//:deps.bzl", "bazel_compdb_deps")
-
-bazel_compdb_deps()
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+hedron_compile_commands_setup()

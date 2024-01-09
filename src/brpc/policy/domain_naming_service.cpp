@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
+#include <gflags/gflags.h>
 #include "butil/build_config.h"                       // OS_MACOSX
 #include <netdb.h>                                    // gethostbyname_r
 #include <stdlib.h>                                   // strtol
@@ -24,6 +24,7 @@
 #include "brpc/log.h"
 #include "brpc/policy/domain_naming_service.h"
 
+DEFINE_bool(dns_support_ipv6, false, "Resolve DNS by IPV6 address first");
 
 namespace brpc {
 namespace policy {
@@ -41,7 +42,7 @@ int DomainNamingService::GetServers(const char* dns_name,
     }
 
     // Should be enough to hold host name
-    char buf[128];
+    char buf[256];
     size_t i = 0;
     for (; i < sizeof(buf) - 1 && dns_name[i] != '\0'
              && dns_name[i] != ':' && dns_name[i] != '/'; ++i) {
@@ -76,6 +77,33 @@ int DomainNamingService::GetServers(const char* dns_name,
     if (port < 0 || port > 65535) {
         LOG(ERROR) << "Invalid port=" << port << " in `" << dns_name << '\'';
         return -1;
+    }
+
+    if (FLAGS_dns_support_ipv6) {
+        struct addrinfo hints;
+        struct addrinfo* addrResult;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET6;
+        hints.ai_socktype = SOCK_DGRAM;
+        char portBuf[16];
+        snprintf(portBuf, arraysize(portBuf), "%d", port);
+        auto ret = getaddrinfo(buf, portBuf, &hints, &addrResult);
+        if (!ret) {
+            for(auto rp = addrResult; rp != NULL; rp = rp->ai_next) {
+                butil::EndPoint point;
+                auto ret = butil::sockaddr2endpoint((struct sockaddr_storage*)rp->ai_addr, rp->ai_addrlen, &point);
+                if(!ret) {
+                    servers->push_back(ServerNode(point, std::string()));
+                }
+            }
+
+            freeaddrinfo(addrResult);
+            return 0;
+        } else {
+            LOG(WARNING) << "Can't resolve `" << buf << "for ipv6, fallback to ipv4";
+            // fallback to ipv4
+        }
+        
     }
 
 #if defined(OS_MACOSX)

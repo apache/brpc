@@ -142,6 +142,8 @@ DEFINE_bool(log_hostname, false, "Add host after pid in each log so"
 
 DEFINE_bool(log_year, false, "Log year in datetime part in each log");
 
+DEFINE_bool(log_func_name, false, "Log function name in each log");
+
 namespace {
 
 LoggingDestination logging_destination = LOG_DEFAULT;
@@ -244,7 +246,7 @@ public:
         UnlockLogging();
     }
 
-    static void Init(LogLockingState lock_log, const PathChar* new_log_file) {
+    static void Init(LogLockingState lock_log, const LogChar* new_log_file) {
         if (initialized)
             return;
         lock_log_file = lock_log;
@@ -467,8 +469,9 @@ static void PrintLogSeverity(std::ostream& os, int severity) {
     }
 }
 
-void PrintLogPrefix(
-    std::ostream& os, int severity, const char* file, int line) {
+void PrintLogPrefix(std::ostream& os, int severity,
+                    const char* file, int line,
+                    const char* func) {
     PrintLogSeverity(os, severity);
 #if defined(OS_LINUX)
     timeval tv;
@@ -507,12 +510,23 @@ void PrintLogPrefix(
         }
         os << ' ' << hostname;
     }
-    os << ' ' << file << ':' << line << "] ";
+    os << ' ' << file << ':' << line;
+    if (func && *func != '\0') {
+        os << " " << func;
+    }
+    os << "] ";
+
     os.fill(prev_fill);
 }
 
-static void PrintLogPrefixAsJSON(
-    std::ostream& os, int severity, const char* file, int line) {
+void PrintLogPrefix(std::ostream& os, int severity,
+                    const char* file, int line) {
+    PrintLogPrefix(os, severity, file, line, "");
+}
+
+static void PrintLogPrefixAsJSON(std::ostream& os, int severity,
+                                 const char* file, const char* func,
+                                 int line) {
     // severity
     os << "\"L\":\"";
     if (severity < 0) {
@@ -563,7 +577,11 @@ static void PrintLogPrefixAsJSON(
         }
         os << "\"host\":\"" << hostname << "\",";
     }
-    os << "\"C\":\"" << file << ':' << line << "\"";
+    os << "\"C\":\"" << file << ':' << line;
+    if (func && *func != '\0') {
+        os << " " << func;
+    }
+    os << "\"";
 }
 
 void EscapeJson(std::ostream& os, const butil::StringPiece& s) {
@@ -590,15 +608,14 @@ inline void OutputLog(std::ostream& os, const butil::StringPiece& s) {
     }
 }
 
-void PrintLog(std::ostream& os,
-              int severity, const char* file, int line,
-              const butil::StringPiece& content) {
+void PrintLog(std::ostream& os, int severity, const char* file, int line,
+              const char* func, const butil::StringPiece& content) {
     if (!FLAGS_log_as_json) {
-        PrintLogPrefix(os, severity, file, line);
+        PrintLogPrefix(os, severity, file, line, func);
         OutputLog(os, content);
     } else {
         os << '{';
-        PrintLogPrefixAsJSON(os, severity, file, line);
+        PrintLogPrefixAsJSON(os, severity, file, func, line);
         bool pair_quote = false;
         if (content.empty() || content[0] != '"') {
             // not a json, add a 'M' field
@@ -616,6 +633,12 @@ void PrintLog(std::ostream& os,
         }
         os << '}';
     }
+}
+
+void PrintLog(std::ostream& os,
+              int severity, const char* file, int line,
+              const butil::StringPiece& content) {
+    PrintLog(os, severity, file, line, "", content);
 }
 
 // A log message handler that gets notified of every log message we process.
@@ -719,10 +742,16 @@ void DisplayDebugMessageInDialog(const std::string& str) {
 #endif  // !defined(NDEBUG)
 
 
-bool StringSink::OnLogMessage(int severity, const char* file, int line, 
+bool StringSink::OnLogMessage(int severity, const char* file, int line,
+                              const butil::StringPiece& content) {
+    return OnLogMessage(severity, file, line, "", content);
+}
+
+bool StringSink::OnLogMessage(int severity, const char* file,
+                              int line, const char* func,
                               const butil::StringPiece& content) {
     std::ostringstream os;
-    PrintLog(os, severity, file, line, content);
+    PrintLog(os, severity, file, line, func, content);
     const std::string msg = os.str();
     {
         butil::AutoLock lock_guard(_lock);
@@ -765,10 +794,20 @@ void CharArrayStreamBuf::reset() {
     setp(_data, _data + _size);
 }
 
-LogStream& LogStream::SetPosition(const PathChar* file, int line,
+LogStream& LogStream::SetPosition(const LogChar* file, int line,
                                   LogSeverity severity) {
     _file = file;
     _line = line;
+    _severity = severity;
+    return *this;
+}
+
+LogStream& LogStream::SetPosition(const LogChar* file, int line,
+                                  const LogChar* func,
+                                  LogSeverity severity) {
+    _file = file;
+    _line = line;
+    _func = func;
     _severity = severity;
     return *this;
 }
@@ -826,7 +865,9 @@ static LogStream** get_or_new_tls_stream_array() {
     return a;
 }
 
-inline LogStream* CreateLogStream(const PathChar* file, int line,
+inline LogStream* CreateLogStream(const LogChar* file,
+                                  int line,
+                                  const LogChar* func,
                                   LogSeverity severity) {
     int slot = 0;
     if (severity >= 0) {
@@ -840,9 +881,15 @@ inline LogStream* CreateLogStream(const PathChar* file, int line,
         stream_array[slot] = stream;
     }
     if (stream->empty()) {
-        stream->SetPosition(file, line, severity);
+        stream->SetPosition(file, line, func, severity);
     }
     return stream;
+}
+
+inline LogStream* CreateLogStream(const LogChar* file,
+                                  int line,
+                                  LogSeverity severity) {
+    return CreateLogStream(file, line, "", severity);
 }
 
 inline void DestroyLogStream(LogStream* stream) {
@@ -853,10 +900,17 @@ inline void DestroyLogStream(LogStream* stream) {
 
 #else
 
-inline LogStream* CreateLogStream(const PathChar* file, int line,
+inline LogStream* CreateLogStream(const LogChar* file, int line,
+                                  LogSeverity severity) {
+    return CreateLogStream(file, line, "", severity);
+}
+
+
+inline LogStream* CreateLogStream(const LogChar* file, int line,
+                                  const LogChar* func,
                                   LogSeverity severity) {
     LogStream* stream = new LogStream;
-    stream->SetPosition(file, line, severity);
+    stream->SetPosition(file, line, func, severity);
     return stream;
 }
 
@@ -875,12 +929,18 @@ public:
 
     bool OnLogMessage(int severity, const char* file, int line,
                       const butil::StringPiece& content) override {
+        return OnLogMessage(severity, file, line, "", content);
+    }
+
+    bool OnLogMessage(int severity, const char* file,
+                      int line, const char* func,
+                      const butil::StringPiece& content) override {
         // There's a copy here to concatenate prefix and content. Since
         // DefaultLogSink is hardly used right now, the copy is irrelevant.
         // A LogSink focused on performance should also be able to handle
         // non-continuous inputs which is a must to maximize performance.
         std::ostringstream os;
-        PrintLog(os, severity, file, line, content);
+        PrintLog(os, severity, file, line, func, content);
         os << '\n';
         std::string log = os.str();
         
@@ -971,7 +1031,15 @@ void LogStream::FlushWithoutReset() {
         DoublyBufferedLogSink::ScopedPtr ptr;
         if (DoublyBufferedLogSink::GetInstance()->Read(&ptr) == 0 &&
             (*ptr) != NULL) {
-            if ((*ptr)->OnLogMessage(_severity, _file, _line, content())) {
+            bool result = false;
+            if (FLAGS_log_func_name) {
+                result = (*ptr)->OnLogMessage(_severity, _file, _line,
+                                              _func, content());
+            } else {
+                result = (*ptr)->OnLogMessage(_severity, _file,
+                                              _line, content());
+            }
+            if (result) {
                 goto FINISH_LOGGING;
             }
 #ifdef BAIDU_INTERNAL
@@ -984,14 +1052,19 @@ void LogStream::FlushWithoutReset() {
 #ifdef BAIDU_INTERNAL
     if (!tried_comlog) {
         if (ComlogSink::GetInstance()->OnLogMessage(
-                _severity, _file, _line, content())) {
+                _severity, _file, _line, _func, content())) {
             goto FINISH_LOGGING;
         }
     }
 #endif
     if (!tried_default) {
-        DefaultLogSink::GetInstance()->OnLogMessage(
-            _severity, _file, _line, content());
+        if (FLAGS_log_func_name) {
+            DefaultLogSink::GetInstance()->OnLogMessage(
+                _severity, _file, _line, _func, content());
+        } else {
+            DefaultLogSink::GetInstance()->OnLogMessage(
+                _severity, _file, _line, content());
+        }
     }
 
 FINISH_LOGGING:
@@ -1021,19 +1094,31 @@ FINISH_LOGGING:
     }
 }
 
-LogMessage::LogMessage(const char* file, int line, LogSeverity severity) {
-    _stream = CreateLogStream(file, line, severity);
+LogMessage::LogMessage(const char* file, int line, LogSeverity severity)
+    : LogMessage(file, line, "", severity) {}
+
+LogMessage::LogMessage(const char* file, int line,
+                       const char* func, LogSeverity severity) {
+    _stream = CreateLogStream(file, line, func, severity);
 }
 
-LogMessage::LogMessage(const char* file, int line, std::string* result) {
-    _stream = CreateLogStream(file, line, BLOG_FATAL);
+LogMessage::LogMessage(const char* file, int line, std::string* result)
+    : LogMessage(file, line, "", result) {}
+
+LogMessage::LogMessage(const char* file, int line,
+                       const char* func, std::string* result) {
+    _stream = CreateLogStream(file, line, func, BLOG_FATAL);
     *_stream << "Check failed: " << *result;
     delete result;
 }
 
 LogMessage::LogMessage(const char* file, int line, LogSeverity severity,
-                       std::string* result) {
-    _stream = CreateLogStream(file, line, severity);
+                       std::string* result)
+   : LogMessage(file, line, "", severity, result) {}
+
+LogMessage::LogMessage(const char* file, int line, const char* func,
+                       LogSeverity severity, std::string* result) {
+    _stream = CreateLogStream(file, line, func, severity);
     *_stream << "Check failed: " << *result;
     delete result;
 }
@@ -1098,8 +1183,16 @@ Win32ErrorLogMessage::Win32ErrorLogMessage(const char* file,
                                            int line,
                                            LogSeverity severity,
                                            SystemErrorCode err)
-    : err_(err),
-      log_message_(file, line, severity) {
+   : Win32ErrorLogMessage(file, line, "", severity, err) {
+}
+
+Win32ErrorLogMessage::Win32ErrorLogMessage(const char* file,
+                                           int line,
+                                           const char* func,
+                                           LogSeverity severity,
+                                           SystemErrorCode err)
+    : err_(err)
+    , log_message_(file, line, func, severity) {
 }
 
 Win32ErrorLogMessage::~Win32ErrorLogMessage() {
@@ -1114,9 +1207,15 @@ ErrnoLogMessage::ErrnoLogMessage(const char* file,
                                  int line,
                                  LogSeverity severity,
                                  SystemErrorCode err)
-    : err_(err),
-      log_message_(file, line, severity) {
-}
+    : ErrnoLogMessage(file, line, "", severity, err) {}
+
+ErrnoLogMessage::ErrnoLogMessage(const char* file,
+                                 int line,
+                                 const char* func,
+                                 LogSeverity severity,
+                                 SystemErrorCode err)
+    : err_(err)
+    , log_message_(file, line, func, severity) {}
 
 ErrnoLogMessage::~ErrnoLogMessage() {
     stream() << ": " << SystemErrorCodeToString(err_);

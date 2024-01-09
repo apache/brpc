@@ -82,7 +82,7 @@ void PutVarsHeading(std::ostream& os, bool expand_all) {
         "<script type=\"text/javascript\">\n"
         // Mark if a bvar was ever clicked.
         "var everEnabled = {}\n"
-        // Mark if a bvar was enabled ploting
+        // Mark if a bvar was enabled plotting
         "var enabled = {}\n"
         // the bvar under cursor
         "var hovering_var = \"\"\n"
@@ -152,7 +152,7 @@ void PutVarsHeading(std::ostream& os, bool expand_all) {
         "  $(\".default_expand\").click();\n") <<
         "}\n"
         
-        // options for ploting.
+        // options for plotting.
         "var trendOptions = {\n"
         "  colors: ['#F0D06E','#F0B06E','#F0A06E','#F0906E','#F0806E'],\n"
         "  legend: {show:false},\n"

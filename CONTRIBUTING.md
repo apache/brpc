@@ -1,6 +1,6 @@
-If you meet any problem or request a new feature, you're welcome to [create an issue](https://github.com/brpc/brpc/issues/new/choose).
+If you meet any problem or request a new feature, you're welcome to [create an issue](https://github.com/apache/brpc/issues/new/choose).
 
-If you can solve any of [the issues](https://github.com/brpc/brpc/issues), you're welcome to send the PR to us.
+If you can solve any of [the issues](https://github.com/apache/brpc/issues), you're welcome to send the PR to us.
 
 Before the PR:
 
@@ -10,13 +10,13 @@ Before the PR:
 
 After the PR:
 
-* Make sure the [travis-ci](https://app.travis-ci.com/github/apache/brpc/pull_requests) passed.
+* Make sure the [GitHub Actions](https://github.com/apache/brpc/actions) passed.
 
 # Chinese version
 
-如果你遇到问题或需要新功能，欢迎[创建issue](https://github.com/brpc/brpc/issues/new/choose)。
+如果你遇到问题或需要新功能，欢迎[创建issue](https://github.com/apache/brpc/issues/new/choose)。
 
-如果你可以解决某个[issue](https://github.com/brpc/brpc/issues), 欢迎发送PR。
+如果你可以解决某个[issue](https://github.com/apache/brpc/issues), 欢迎发送PR。
 
 发送PR前请确认：
 
@@ -26,4 +26,4 @@ After the PR:
 
 提交PR后请确认：
 
-* [travis-ci](https://app.travis-ci.com/github/apache/brpc/pull_requests)成功通过。
+* [GitHub Actions](https://github.com/apache/brpc/actions)成功通过。

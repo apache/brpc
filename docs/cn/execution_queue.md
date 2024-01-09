@@ -1,6 +1,6 @@
 # 概述
 
-类似于kylin的ExecMan, [ExecutionQueue](https://github.com/brpc/brpc/blob/master/src/bthread/execution_queue.h)提供了异步串行执行的功能。ExecutionQueue的相关技术最早使用在RPC中实现[多线程向同一个fd写数据](io.md#发消息). 在r31345之后加入到bthread。 ExecutionQueue 提供了如下基本功能:
+类似于kylin的ExecMan, [ExecutionQueue](https://github.com/apache/brpc/blob/master/src/bthread/execution_queue.h)提供了异步串行执行的功能。ExecutionQueue的相关技术最早使用在RPC中实现[多线程向同一个fd写数据](io.md#发消息). 在r31345之后加入到bthread。 ExecutionQueue 提供了如下基本功能:
 
 - 异步有序执行: 任务在另外一个单独的线程中执行, 并且执行顺序严格和提交顺序一致.
 - Multi Producer: 多个线程可以同时向一个ExecutionQueue提交任务
@@ -61,7 +61,7 @@ ExecutionQueue和mutex都可以用来在多线程场景中消除竞争. 相比�
 // #include <bthread/execution_queue.h>
 //
 // int demo_execute(void* meta, TaskIterator<T>& iter) {
-//     if (iter.is_stopped()) {
+//     if (iter.is_queue_stopped()) {
 //         // destroy meta and related resources
 //         return 0;
 //     }
@@ -78,6 +78,22 @@ class TaskIterator;
 ### 启动一个ExecutionQueue:
 
 ```
+struct ExecutionQueueOptions {
+    ExecutionQueueOptions();
+
+    // Execute in resident pthread instead of bthread. default: false.
+    bool use_pthread;
+
+    // Attribute of the bthread which execute runs on. default: BTHREAD_ATTR_NORMAL
+    // Bthread will be used when executor = NULL and use_pthread == false.
+    bthread_attr_t bthread_attr;
+
+    // Executor that tasks run on. default: NULL
+    // Note that TaskOptions.in_place_if_possible = false will not work, if implementation of
+    // Executor is in-place(synchronous).
+    Executor * executor;
+};
+
 // Start a ExecutionQueue. If |options| is NULL, the queue will be created with
 // default options.
 // Returns 0 on success, errno otherwise
@@ -166,7 +182,23 @@ template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id,
                             typename butil::add_const_reference<T>::type task,
                             const TaskOptions* options,
-                            TaskHandle* handle); 
+                            TaskHandle* handle);
+                            
+template <typename T>
+int execution_queue_execute(ExecutionQueueId<T> id,
+                            T&& task);
+
+template <typename T>
+int execution_queue_execute(ExecutionQueueId<T> id,
+                            T&& task,
+                            const TaskOptions* options);
+
+template <typename T>
+int execution_queue_execute(ExecutionQueueId<T> id,
+                            T&& task,
+                            const TaskOptions* options,
+                            TaskHandle* handle);
+                            
 ```
 
 high_priority的task之间的执行顺序也会**严格按照提交顺序**, 这点和ExecMan不同, ExecMan的QueueExecEmergent的AsyncContex执行顺序是undefined. 但是这也意味着你没有办法将任何任务插队到一个high priority的任务之前执行.

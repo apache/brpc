@@ -191,4 +191,35 @@ TEST(BthreadTest, min_concurrency) {
     ASSERT_EQ(conn + add_conn, bthread::g_task_control->concurrency());
 }
 
+int current_tag(int tag) {
+    std::stringstream ss;
+    ss << tag;
+    std::string ret = GFLAGS_NS::SetCommandLineOption("bthread_current_tag", ss.str().c_str());
+    return !(ret.empty());
+}
+
+TEST(BthreadTest, current_tag) {
+    ASSERT_EQ(false, current_tag(-1));
+    ASSERT_EQ(true, current_tag(0));
+    ASSERT_EQ(false, current_tag(1));
+}
+
+int concurrency_by_tag(int num) {
+    std::stringstream ss;
+    ss << num;
+    std::string ret =
+        GFLAGS_NS::SetCommandLineOption("bthread_concurrency_by_tag", ss.str().c_str());
+    return !(ret.empty());
+}
+
+TEST(BthreadTest, concurrency_by_tag) {
+    ASSERT_EQ(concurrency_by_tag(1), true);
+    ASSERT_EQ(concurrency_by_tag(1), false);
+    auto con = bthread_getconcurrency_by_tag(0);
+    ASSERT_EQ(concurrency_by_tag(con), true);
+    ASSERT_EQ(concurrency_by_tag(con + 1), false);
+    bthread_setconcurrency(con + 1);
+    ASSERT_EQ(concurrency_by_tag(con + 1), true);
+}
+
 } // namespace

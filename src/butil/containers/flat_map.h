@@ -96,6 +96,7 @@
 #include <stdint.h>
 #include <functional>
 #include <iostream>                               // std::ostream
+#include <type_traits>                            // std::aligned_storage
 #include "butil/type_traits.h"
 #include "butil/logging.h"
 #include "butil/find_cstr.h"
@@ -126,11 +127,13 @@ template <typename _K, typename _T,
           // Test equivalence between stored-key and passed-key.
           // stored-key is always on LHS, passed-key is always on RHS.
           typename _Equal = DefaultEqualTo<_K>,
-          bool _Sparse = false>
+          bool _Sparse = false,
+          typename _Alloc = PtAllocator>
 class FlatMap {
 public:
     typedef _K key_type;
     typedef _T mapped_type;
+    typedef _Alloc allocator_type;
     typedef FlatMapElement<_K, _T> Element;
     typedef typename Element::value_type value_type;
     typedef typename conditional<
@@ -148,7 +151,9 @@ public:
         key_type key;
     };
     
-    FlatMap(const hasher& hashfn = hasher(), const key_equal& eql = key_equal());
+    FlatMap(const hasher& hashfn = hasher(), 
+            const key_equal& eql = key_equal(),
+            const allocator_type& alloc = allocator_type());
     ~FlatMap();
     FlatMap(const FlatMap& rhs);    
     void operator=(const FlatMap& rhs);
@@ -247,23 +252,26 @@ public:
 
     struct Bucket {
         explicit Bucket(const _K& k) : next(NULL)
-        { new (element_spaces) Element(k); }
+        { new (&element_spaces) Element(k); }
         Bucket(const Bucket& other) : next(NULL)
-        { new (element_spaces) Element(other.element()); }
+        { new (&element_spaces) Element(other.element()); }
         bool is_valid() const { return next != (const Bucket*)-1UL; }
         void set_invalid() { next = (Bucket*)-1UL; }
         // NOTE: Only be called when is_valid() is true.
         Element& element() {
-            void* spaces = element_spaces; // Suppress strict-aliasing
+            void* spaces = &element_spaces; // Suppress strict-aliasing
             return *reinterpret_cast<Element*>(spaces);
         }
         const Element& element() const {
-            const void* spaces = element_spaces;
+            const void* spaces = &element_spaces;
             return *reinterpret_cast<const Element*>(spaces);
         }
-        Bucket* next;
-        char element_spaces[sizeof(Element)];
+        Bucket *next;
+        typename std::aligned_storage<sizeof(Element), alignof(Element)>::type
+            element_spaces;
     };
+
+    allocator_type& get_allocator() { return _pool.get_allocator(); }
 
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
@@ -279,16 +287,17 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     u_int _load_factor;
     hasher _hashfn;
     key_equal _eql;
-    SingleThreadedPool<sizeof(Bucket), 1024, 16> _pool;
+    SingleThreadedPool<sizeof(Bucket), 1024, 16, allocator_type> _pool;
 };
 
 template <typename _K,
           typename _Hash = DefaultHasher<_K>,
           typename _Equal = DefaultEqualTo<_K>,
-          bool _Sparse = false>
+          bool _Sparse = false,
+          typename _Alloc = PtAllocator>
 class FlatSet {
 public:
-    typedef FlatMap<_K, FlatMapVoid, _Hash, _Equal, _Sparse> Map;
+    typedef FlatMap<_K, FlatMapVoid, _Hash, _Equal, _Sparse, _Alloc> Map;
     typedef typename Map::key_type key_type;
     typedef typename Map::value_type value_type;
     typedef typename Map::Bucket Bucket;
@@ -296,9 +305,12 @@ public:
     typedef typename Map::const_iterator const_iterator;
     typedef typename Map::hasher hasher;
     typedef typename Map::key_equal key_equal;
+    typedef typename Map::allocator_type allocator_type;
     
-    FlatSet(const hasher& hashfn = hasher(), const key_equal& eql = key_equal())
-        : _map(hashfn, eql) {}
+    FlatSet(const hasher& hashfn = hasher(), 
+            const key_equal& eql = key_equal(),
+            const allocator_type& alloc = allocator_type())
+        : _map(hashfn, eql, alloc) {}
     void swap(FlatSet & rhs) { _map.swap(rhs._map); }
 
     int init(size_t nbucket, u_int load_factor = 80)

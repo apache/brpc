@@ -122,45 +122,71 @@ TEST_F(FlatMapTest, copy_flat_map) {
 
     Map m1;
     ASSERT_EQ(0, m1.init(16));
-    m1["hello"] = "world";
-    m1["foo"] = "bar";
+    size_t expected_count = 0;
+    m1["hello"] = "world"; ++expected_count;
+    m1["foo"] = "bar"; ++ expected_count;
+    m1["friend"] = "alice"; ++ expected_count;
+    m1["zone"] = "bj-01"; ++ expected_count;
+    m1["city"] = "shanghai"; ++ expected_count;
+    m1["owner"] = "bob"; ++ expected_count;
+    m1["lang"] = "chinese"; ++ expected_count;
     ASSERT_TRUE(m1.initialized());
-    ASSERT_EQ(2u, m1.size());
+    ASSERT_EQ(expected_count, m1.size());
     // self assignment does nothing.
     m1 = m1;
-    ASSERT_EQ(2u, m1.size());
+    ASSERT_EQ(expected_count, m1.size());
     ASSERT_EQ("world", m1["hello"]);
     ASSERT_EQ("bar", m1["foo"]);
+    ASSERT_EQ("bob", m1["owner"]);
+    ASSERT_EQ("bj-01", m1["zone"]);
+    ASSERT_EQ("shanghai", m1["city"]);
+    ASSERT_EQ("chinese", m1["lang"]);
+    ASSERT_EQ("alice", m1["friend"]);
     // Copy construct from initialized map.
     Map m2 = m1;
     ASSERT_TRUE(m2.initialized());
-    ASSERT_EQ(2u, m2.size());
+    ASSERT_EQ(expected_count, m2.size());
     ASSERT_EQ("world", m2["hello"]);
     ASSERT_EQ("bar", m2["foo"]);
+    ASSERT_EQ("bob", m2["owner"]);
+    ASSERT_EQ("bj-01", m2["zone"]);
+    ASSERT_EQ("shanghai", m2["city"]);
+    ASSERT_EQ("chinese", m2["lang"]);
+    ASSERT_EQ("alice", m2["friend"]);
     // assign initialized map to uninitialized map.
     Map m3;
     m3 = m1;
     ASSERT_TRUE(m3.initialized());
-    ASSERT_EQ(2u, m3.size());
+    ASSERT_EQ(expected_count, m3.size());
     ASSERT_EQ("world", m3["hello"]);
     ASSERT_EQ("bar", m3["foo"]);
+    ASSERT_EQ("bob", m3["owner"]);
+    ASSERT_EQ("bj-01", m3["zone"]);
+    ASSERT_EQ("shanghai", m3["city"]);
+    ASSERT_EQ("chinese", m3["lang"]);
+    ASSERT_EQ("alice", m3["friend"]);
     // assign initialized map to initialized map (triggering resize)
     Map m4;
     ASSERT_EQ(0, m4.init(2));
-    ASSERT_LT(m4.bucket_count(), m1.bucket_count());
+    ASSERT_LE(m4.bucket_count(), m1.bucket_count());
     const void* old_buckets4 = m4._buckets;
     m4 = m1;
     ASSERT_EQ(m1.bucket_count(), m4.bucket_count());
     ASSERT_NE(old_buckets4, m4._buckets);
-    ASSERT_EQ(2u, m4.size());
+    ASSERT_EQ(expected_count, m4.size());
     ASSERT_EQ("world", m4["hello"]);
     ASSERT_EQ("bar", m4["foo"]);
+    ASSERT_EQ("bob", m4["owner"]);
+    ASSERT_EQ("bj-01", m4["zone"]);
+    ASSERT_EQ("shanghai", m4["city"]);
+    ASSERT_EQ("chinese", m4["lang"]);
+    ASSERT_EQ("alice", m4["friend"]);
     // assign initialized map to initialized map (no resize)
-    const size_t bcs[] = { 8, m1.bucket_count(), 32 };
+    const size_t bcs[] = { m1.bucket_count(), 32 };
     // less than m1.bucket_count but enough for holding the elements
-    ASSERT_LT(bcs[0], m1.bucket_count());
+    ASSERT_LE(bcs[0], m1.bucket_count());
     // larger than m1.bucket_count
-    ASSERT_GT(bcs[2], m1.bucket_count());
+    ASSERT_GE(bcs[1], m1.bucket_count());
     for (size_t i = 0; i < arraysize(bcs); ++i) {
         Map m5;
         ASSERT_EQ(0, m5.init(bcs[i]));
@@ -169,9 +195,14 @@ TEST_F(FlatMapTest, copy_flat_map) {
         m5 = m1;
         ASSERT_EQ(old_bucket_count5, m5.bucket_count());
         ASSERT_EQ(old_buckets5, m5._buckets);
-        ASSERT_EQ(2u, m5.size());
+        ASSERT_EQ(expected_count, m5.size());
         ASSERT_EQ("world", m5["hello"]);
         ASSERT_EQ("bar", m5["foo"]);
+        ASSERT_EQ("bob", m5["owner"]);
+        ASSERT_EQ("bj-01", m5["zone"]);
+        ASSERT_EQ("shanghai", m5["city"]);
+        ASSERT_EQ("chinese", m5["lang"]);
+        ASSERT_EQ("alice", m5["friend"]);
     }
 }
 

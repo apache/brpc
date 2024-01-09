@@ -41,6 +41,7 @@
 #include "brpc/adaptive_max_concurrency.h"
 #include "brpc/http2.h"
 #include "brpc/redis.h"
+#include "brpc/interceptor.h"
 
 namespace brpc {
 
@@ -90,6 +91,15 @@ struct ServerOptions {
     // true:  `auth' is owned by server and will be deleted when server is destructed.
     // Default: false
     bool server_owns_auth;
+
+    // Turn on request interception  if `interceptor' is not NULL.
+    // Default: NULL
+    const Interceptor* interceptor;
+
+    // false: `interceptor' is not owned by server and must be valid when server is running.
+    // true:  `interceptor' is owned by server and will be deleted when server is destructed.
+    // Default: false
+    bool server_owns_interceptor;
 
     // Number of pthreads that server runs on. Notice that this is just a hint,
     // you can't assume that the server uses exactly so many pthreads because
@@ -207,6 +217,9 @@ struct ServerOptions {
     const ServerSSLOptions& ssl_options() const { return *_ssl_options; }
     ServerSSLOptions* mutable_ssl_options();
 
+    // Force ssl for all connections of the port to Start().
+    bool force_ssl;
+
     // Whether the server uses rdma or not
     // Default: false
     bool use_rdma;
@@ -248,6 +261,10 @@ struct ServerOptions {
     // Optional info name for composing server bvar prefix. Read ServerPrefix() method for details;
     // Default: ""
     std::string server_info_name;
+
+    // Server will run in this tagged bthread worker group
+    // Default: BTHREAD_TAG_DEFAULT
+    bthread_tag_t bthread_tag;
 
 private:
     // SSLOptions is large and not often used, allocate it on heap to
@@ -309,6 +326,10 @@ struct ServiceOptions {
     // decode json array to protobuf message which contains a single repeated field.
     // Default: false.
     bool pb_single_repeated_to_array;
+
+    // enable server end progressive reading, mainly for http server
+    // Default: false.
+    bool enable_progressive_read;
 };
 
 // Represent ports inside [min_port, max_port]
@@ -322,7 +343,7 @@ struct PortRange {
 };
 
 // Server dispatches requests from clients to registered services and
-// and sends responses back to clients.
+// sends responses back to clients.
 class Server {
 public:
     enum Status {
@@ -359,6 +380,7 @@ public:
             bool allow_http_body_to_pb;
             bool pb_bytes_to_base64;
             bool pb_single_repeated_to_array;
+            bool enable_progressive_read;
             OpaqueParams();
         };
         OpaqueParams params;
@@ -550,6 +572,13 @@ public:
     int Concurrency() const {
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
+  
+    // Returns true if accept request, reject request otherwise.
+    bool AcceptRequest(Controller* cntl) const;
+
+    bool has_progressive_read_method() const {
+        return this->_has_progressive_read_method;
+    }
 
 private:
 friend class StatusService;
@@ -574,6 +603,8 @@ friend class Controller;
     // Initialize internal structure. Initializtion is
     // ensured to be called only once
     int InitializeOnce();
+
+    int InitALPNOptions(const ServerSSLOptions* options);
 
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();
@@ -633,7 +664,7 @@ friend class Controller;
     void FreeSSLContexts();
 
     static int SSLSwitchCTXByHostname(struct ssl_st* ssl,
-                                      int* al, Server* server);
+                                      int* al, void* se);
 
     static bool AddCertMapping(CertMaps& bg, const SSLContext& ssl_ctx);
     static bool RemoveCertMapping(CertMaps& bg, const SSLContext& ssl_ctx);
@@ -690,6 +721,10 @@ friend class Controller;
     ServerOptions _options;
     butil::EndPoint _listen_addr;
 
+    // ALPN extention protocol-list format. Server initialize this with alpns options.
+    // OpenSSL API use this variable to avoid conversion at each handshake.
+    std::string _raw_alpns;
+
     std::string _version;
     time_t _last_start_time;
     bthread_t _derivative_thread;
@@ -701,6 +736,8 @@ friend class Controller;
     mutable bvar::PerSecond<bvar::Adder<int64_t> > _eps_bvar;
     BAIDU_CACHELINE_ALIGNMENT mutable int32_t _concurrency;
     bvar::PassiveStatus<int32_t> _concurrency_bvar;
+
+    bool _has_progressive_read_method;
 };
 
 // Get the data attached to current searching thread. The data is created by
