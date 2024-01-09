@@ -19,7 +19,7 @@
 #ifndef BRPC_HTTP_MESSAGE_H
 #define BRPC_HTTP_MESSAGE_H
 
-#include <memory>
+#include <memory>                      // std::unique_ptr
 #include <string>                      // std::string
 #include "butil/macros.h"
 #include "butil/iobuf.h"               // butil::IOBuf

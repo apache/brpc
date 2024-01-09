@@ -40,7 +40,7 @@
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
-    BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_DEFAULT };
+    BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_INVALID };
 
 static bool pass_bool(const char*, bool) { return true; }
 
