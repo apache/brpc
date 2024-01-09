@@ -670,15 +670,10 @@ void TaskGroup::destroy_self() {
     }
 }
 
-bvar::Adder<int64_t> ready_to_run_skip_cnt;
-bvar::PerSecond<bvar::Adder<int64_t>> ready_to_run_skip_ps(
-        "ready_to_run_skip_signal_task_per_second",
-        &ready_to_run_skip_cnt, 2);
 void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
     push_rq(tid);
-    if (nosignal || ParkingLot::_waiting_worker_count == 0) {
+    if (nosignal) {
         ++_num_nosignal;
-        ready_to_run_skip_cnt << 1;
     } else {
         const int additional_signal = _num_nosignal;
         _num_nosignal = 0;
@@ -701,7 +696,7 @@ void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
         LOG_EVERY_SECOND(ERROR) << "push_resume_rq fail";
         ::usleep(1000);
     }
-    if (nosignal || ParkingLot::_waiting_worker_count == 0) {
+    if (nosignal) {
         ++_remote_num_nosignal;
     } else {
         const int additional_signal = _remote_num_nosignal;
