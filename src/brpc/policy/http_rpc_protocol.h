@@ -43,6 +43,8 @@ struct CommonStrings {
     std::string ACCEPT_ENCODING;
     std::string CONTENT_ENCODING;
     std::string CONTENT_LENGTH;
+    std::string EXPECT;
+    std::string CONTINUE_100;
     std::string GZIP;
     std::string CONNECTION;
     std::string KEEP_ALIVE;
