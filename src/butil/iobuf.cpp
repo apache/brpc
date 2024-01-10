@@ -318,7 +318,7 @@ inline IOBuf::Block* create_block() {
 // === Share TLS blocks between appending operations ===
 // Max number of blocks in each TLS. This is a soft limit namely
 // release_tls_block_chain() may exceed this limit sometimes.
-const int MAX_BLOCKS_PER_THREAD = 8;
+const int MAX_BLOCKS_PER_THREAD = 128;
 
 struct TLSData {
     // Head of the TLS block chain.
