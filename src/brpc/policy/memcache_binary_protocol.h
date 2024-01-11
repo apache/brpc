@@ -25,7 +25,7 @@
 namespace brpc {
 namespace policy {
 
-// Parse memcache messags.
+// Parse memcache messages.
 ParseResult ParseMemcacheMessage(butil::IOBuf* source, Socket *socket, bool read_eof,
         const void *arg);
 
