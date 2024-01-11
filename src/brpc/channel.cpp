@@ -19,6 +19,7 @@
 #include <inttypes.h>
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
+#include <memory>
 #include "butil/time.h"                              // milliseconds_from_now
 #include "butil/logging.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h"
@@ -373,7 +374,8 @@ int Channel::Init(const char* ns_url,
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
-    LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
+    std::unique_ptr<LoadBalancerWithNaming> lb(new (std::nothrow)
+                                                   LoadBalancerWithNaming);
     if (NULL == lb) {
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
         return -1;        
@@ -388,10 +390,9 @@ int Channel::Init(const char* ns_url,
     }
     if (lb->Init(ns_url, lb_name, _options.ns_filter, &ns_opt) != 0) {
         LOG(ERROR) << "Fail to initialize LoadBalancerWithNaming";
-        delete lb;
         return -1;
     }
-    _lb.reset(lb);
+    _lb.reset(lb.release());
     return 0;
 }
 
