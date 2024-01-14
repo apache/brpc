@@ -315,5 +315,7 @@ class PERFTOOLS_DLL_DECL MallocExtension {
 // True iff heap profiler is enabled.
 bool IsHeapProfilerEnabled();
 
+bool IsTCMallocEnabled();
+
 // True iff TCMALLOC_SAMPLE_PARAMETER is set in environment.
 bool has_TCMALLOC_SAMPLE_PARAMETER();

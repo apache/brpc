@@ -64,6 +64,7 @@
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/hotspots_service.h"     // HotspotsService
 #include "brpc/builtin/prometheus_metrics_service.h"
+#include "brpc/builtin/tcmalloc_service.h"
 #include "brpc/details/method_status.h"
 #include "brpc/load_balancer.h"
 #include "brpc/naming_service.h"
@@ -525,6 +526,11 @@ int Server::AddBuiltinServices() {
     if (FLAGS_enable_threads_service &&
         AddBuiltinService(new (std::nothrow) ThreadsService)) {
         LOG(ERROR) << "Fail to add ThreadsService";
+        return -1;
+    }
+    if (IsTCMallocEnabled() &&
+        AddBuiltinService(new (std::nothrow) TcmallocService)) {
+        LOG(ERROR) << "Fail to add TcmallocService";
         return -1;
     }
 

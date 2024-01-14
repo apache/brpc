@@ -163,7 +163,9 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
        << Path("/threads", html_addr) << " : Check pstack"
        << (!FLAGS_enable_threads_service ? " (disabled)" : "") << NL
        << Path("/dir", html_addr) << " : Browse directories and files"
-       << (!FLAGS_enable_dir_service ? " (disabled)" : "") << NL;
+       << (!FLAGS_enable_dir_service ? " (disabled)" : "") << NL
+       << Path("/tcmalloc", html_addr) << " : Get TCMalloc information"
+       << (!IsTCMallocEnabled() ? " (disabled)" : "") << NL;
     if (use_html) {
         os << "</body></html>";
     }

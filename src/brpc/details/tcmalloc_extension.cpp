@@ -50,6 +50,10 @@ bool IsHeapProfilerEnabled() {
     return MallocExtension::instance() != NULL;
 }
 
+bool IsTCMallocEnabled() {
+    return IsHeapProfilerEnabled();
+}
+
 static bool check_TCMALLOC_SAMPLE_PARAMETER() {
     char* str = getenv("TCMALLOC_SAMPLE_PARAMETER");
     if (str == NULL) {
