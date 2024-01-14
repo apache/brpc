@@ -149,6 +149,8 @@ DEFINE_bool(log_func_name, false, "Log function name in each log");
 
 DEFINE_bool(async_log, false, "Use async log");
 
+DEFINE_bool(async_log_in_background_always, false, "Async log written in background always.");
+
 DEFINE_int32(max_async_log_queue_size, 100000, "Max async log size. "
              "If current log count of async log > max_async_log_size, "
              "Use sync log to protect process.");
@@ -519,7 +521,7 @@ void AsyncLogger::Log(const std::string& log) {
     bool is_full = FLAGS_max_async_log_queue_size > 0 &&
         _log_request_count.fetch_add(1, butil::memory_order_relaxed) >
         FLAGS_max_async_log_queue_size;
-    if (is_full || _stop) {
+    if (is_full || _stop.load(butil::memory_order_relaxed)) {
         // Async logger is full or stopped, fallback to sync log.
         DoLog(log);
         return;
@@ -543,7 +545,7 @@ void AsyncLogger::Log(std::string&& log) {
     bool is_full = FLAGS_max_async_log_queue_size > 0 &&
         _log_request_count.fetch_add(1, butil::memory_order_relaxed) >
         FLAGS_max_async_log_queue_size;
-    if (is_full || _stop) {
+    if (is_full || _stop.load(butil::memory_order_relaxed)) {
         // Async logger is full or stopped, fallback to sync log.
         DoLog(log);
         return;
@@ -561,28 +563,46 @@ void AsyncLogger::Log(std::string&& log) {
 
 void AsyncLogger::LogImpl(LogRequest* log_req) {
     log_req->next = LogRequest::UNCONNECTED;
+    // Release fence makes sure the thread getting request sees *req
     LogRequest* const prev_head =
         _log_head.exchange(log_req, butil::memory_order_release);
     if (prev_head != NULL) {
+        // Someone is logging. The async_log_thread thread may spin
+        // until req->next to be non-UNCONNECTED. This process is not
+        // lock-free, but the duration is so short(1~2 instructions,
+        // depending on compiler) that the spin rarely occurs in practice
+        // (I've not seen any spin in highly contended tests).
         log_req->next = prev_head;
         return;
     }
     // We've got the right to write.
     log_req->next = NULL;
 
+    if (!FLAGS_async_log_in_background_always) {
+        // Use sync log for the LogRequest
+        // which has got the right to write.
+        DoLog(log_req);
+        // Return when there's no more LogRequests.
+        if (IsLogComplete(log_req)) {
+            butil::return_object(log_req);
+            return;
+        }
+    }
+
     BAIDU_SCOPED_LOCK(_mutex);
-    if (_stop) {
+    if (_stop.load(butil::memory_order_relaxed)) {
+        // Async logger is stopped, fallback to sync log.
         LogTask(log_req);
     } else {
+        // Wake up async logger.
         _current_log_request = log_req;
         _cond.Signal();
     }
 }
 
 void AsyncLogger::StopAndJoin() {
-    if (!_stop) {
+    if (!_stop.exchange(true, butil::memory_order_relaxed)) {
         BAIDU_SCOPED_LOCK(_mutex);
-        _stop = true;
         _cond.Signal();
     }
     if (!HasBeenJoined()) {
@@ -593,10 +613,12 @@ void AsyncLogger::StopAndJoin() {
 void AsyncLogger::Run() {
     while (true) {
         BAIDU_SCOPED_LOCK(_mutex);
-        while (!_stop && !_current_log_request) {
+        while (!_stop.load(butil::memory_order_relaxed) &&
+               !_current_log_request) {
             _cond.Wait();
         }
-        if (_stop && !_current_log_request) {
+        if (_stop.load(butil::memory_order_relaxed) &&
+            !_current_log_request) {
             break;
         }
 
@@ -620,14 +642,12 @@ void AsyncLogger::LogTask(LogRequest* req) {
             req = req->next;
             if (!saved_req->data.empty()) {
                 DoLog(saved_req);
-                saved_req->data.clear();
             }
             // Release LogRequests until last request.
             butil::return_object(saved_req);
         }
         if (!req->data.empty()) {
             DoLog(req);
-            req->data.clear();
         }
 
         // Return when there's no more LogRequests.
@@ -679,6 +699,7 @@ bool AsyncLogger::IsLogComplete(LogRequest* old_head) {
 
 void AsyncLogger::DoLog(LogRequest* req) {
     DoLog(req->data);
+    req->data.clear();
 }
 
 void AsyncLogger::DoLog(const std::string& log) {
