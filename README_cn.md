@@ -5,14 +5,14 @@
 ![brpc logo (light)](docs/images/logo.png#gh-light-mode-only)
 ![brpc logo (dark)](docs/images/logo-white.png#gh-dark-mode-only)
 
-brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机器学习、广告、推荐等高性能系统。
+[bRPC](https://brpc.apache.org/)是用C++语言编写的工业级RPC框架，常用于搜索、存储、机器学习、广告、推荐等高性能系统。
 
-### "brpc"的含义是"better RPC"
+### "bRPC"的含义是"better RPC"
 
 你可以使用它：
 
 * 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
-  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io)。使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
+  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io)。使用bRPC的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
   * [redis](docs/cn/redis_client.md)和[memcached](docs/cn/memcache_client.md), 线程安全，比官方client更方便。
   * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server).
   * hadoop_rpc(可能开源)
@@ -24,11 +24,11 @@ brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机�
 * Client支持[同步](docs/cn/client.md#同步访问)、[异步](docs/cn/client.md#异步访问)、[半同步](docs/cn/client.md#半同步)，或使用[组合channels](docs/cn/combo_channel.md)简化复杂的分库或并发访问。
 * [通过http界面](docs/cn/builtin_service.md)调试服务, 使用[cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md), [contention](docs/cn/contention_profiler.md) profilers.
 * 获得[更好的延时和吞吐](docs/cn/overview.md#更好的延时和吞吐).
-* 把你组织中使用的协议快速地[加入brpc](docs/cn/new_protocol.md)，或定制各类组件, 包括[命名服务](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [负载均衡](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
+* 把你组织中使用的协议快速地[加入bRPC](docs/cn/new_protocol.md)，或定制各类组件, 包括[命名服务](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [负载均衡](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # 试一下!
 
-* 通过[概述](docs/cn/overview.md)了解哪里可以用brpc及其优势。
+* 通过[概述](docs/cn/overview.md)了解哪里可以用bRPC及其优势。
 * 阅读[编译步骤](docs/cn/getting_started.md)了解如何开始使用, 之后可以运行一下[示例程序](https://github.com/apache/brpc/tree/master/example/).
 * 文档:
   * [性能测试](docs/cn/benchmark.md)
@@ -82,9 +82,9 @@ brpc是用c++语言编写的工业级RPC框架，常用于搜索、存储、机�
     * [IOBuf](docs/cn/iobuf.md)
     * [Streaming Log](docs/cn/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
-    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(培训材料)
+    * [bRPC外功修炼宝典](docs/cn/brpc_intro.pptx)(培训材料)
     * [搭建大型服务入门](docs/en/tutorial_on_building_services.pptx)(培训材料)
-    * [brpc内功修炼宝典](docs/en/brpc_internal.pptx)(培训材料)
+    * [bRPC内功修炼宝典](docs/en/brpc_internal.pptx)(培训材料)
   * 深入RPC
     * [New Protocol](docs/cn/new_protocol.md)
     * [Atomic instructions](docs/cn/atomic_instructions.md)

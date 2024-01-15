@@ -6,13 +6,13 @@
 ![brpc logo (light)](docs/images/logo.png#gh-light-mode-only)
 ![brpc logo (dark)](docs/images/logo-white.png#gh-dark-mode-only)
 
-[brpc](https://brpc.apache.org/) is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
+[bRPC](https://brpc.apache.org/) is an Industrial-grade RPC framework using C++ Language, which is often used in  high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc.
 
-### "brpc" means "better RPC". 
+### "bRPC" means "better RPC". 
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
-  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
+  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io). using http/h2 in bRPC is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
   * [redis](docs/en/redis_client.md) and [memcached](docs/en/memcache_client.md), thread-safe, more friendly and performant than the official clients.
   * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
   * hadoop_rpc (may be opensourced)
@@ -24,11 +24,11 @@ You can use it to:
 * Clients can access servers [synchronously](docs/en/client.md#synchronus-call), [asynchronously](docs/en/client.md#asynchronous-call), [semi-synchronously](docs/en/client.md#semi-synchronous-call), or use [combo channels](docs/en/combo_channel.md) to simplify sharded or parallel accesses declaratively.
 * Debug services [via http](docs/en/builtin_service.md), and run  [cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md) and [contention](docs/cn/contention_profiler.md) profilers.
 * Get [better latency and throughput](docs/en/overview.md#better-latency-and-throughput).
-* [Extend brpc](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
+* [Extend bRPC](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # Try it!
 
-* Read [overview](docs/en/overview.md) to know where brpc can be used and its advantages.
+* Read [overview](docs/en/overview.md) to know where bRPC can be used and its advantages.
 * Read [getting started](docs/cn/getting_started.md) for building steps and play with [examples](https://github.com/apache/brpc/tree/master/example/).
 * Docs:
   * [Performance benchmark](docs/cn/benchmark.md)
@@ -82,9 +82,9 @@ You can use it to:
     * [IOBuf](docs/en/iobuf.md)
     * [Streaming Log](docs/en/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
-    * [brpc introduction](docs/cn/brpc_intro.pptx)(training material)
+    * [bRPC introduction](docs/cn/brpc_intro.pptx)(training material)
     * [A tutorial on building large-scale services](docs/en/tutorial_on_building_services.pptx)(training material)
-    * [brpc internal](docs/en/brpc_internal.pptx)(training material)
+    * [bRPC internal](docs/en/brpc_internal.pptx)(training material)
   * RPC in depth
     * [New Protocol](docs/en/new_protocol.md)
     * [Atomic instructions](docs/en/atomic_instructions.md)
