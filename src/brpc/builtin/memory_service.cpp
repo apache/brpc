@@ -19,7 +19,7 @@
 #include "butil/logging.h"
 #include "brpc/controller.h"           // Controller
 #include "brpc/closure_guard.h"        // ClosureGuard
-#include "brpc/builtin/tcmalloc_service.h"
+#include "brpc/builtin/memory_service.h"
 #include "brpc/details/tcmalloc_extension.h"
 
 namespace brpc {
@@ -36,24 +36,9 @@ static inline void get_tcmalloc_num_prop(MallocExtension* malloc_ext,
     }
 }
 
-void TcmallocService::default_method(::google::protobuf::RpcController* cntl_base,
-                                    const ::brpc::TCMallocRequest*,
-                                    ::brpc::TCMallocResponse*,
-                                    ::google::protobuf::Closure* done) {
-    ClosureGuard done_guard(done);
-    auto cntl = static_cast<Controller*>(cntl_base);
-    cntl->http_response().set_content_type("text/plain");
-    butil::IOBuf& resp = cntl->response_attachment();
-
+static void get_tcmalloc_memory_info(butil::IOBuf& out) {
     MallocExtension* malloc_ext = MallocExtension::instance();
-    if (!malloc_ext) {
-        resp.append("tcmalloc is not enabled");
-        cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
-        return;
-    }
-
     butil::IOBufBuilder os;
-
     os << "------------------------------------------------\n";
     get_tcmalloc_num_prop(malloc_ext, "generic.total_physical_bytes", os);
     get_tcmalloc_num_prop(malloc_ext, "generic.current_allocated_bytes", os);
@@ -70,7 +55,26 @@ void TcmallocService::default_method(::google::protobuf::RpcController* cntl_bas
     malloc_ext->GetStats(buf.get(), len);
     os << buf.get();
 
-    os.move_to(resp);
+    os.move_to(out);
+}
+
+void MemoryService::default_method(::google::protobuf::RpcController* cntl_base,
+                                    const ::brpc::MemoryRequest*,
+                                    ::brpc::MemoryResponse*,
+                                    ::google::protobuf::Closure* done) {
+    ClosureGuard done_guard(done);
+    auto cntl = static_cast<Controller*>(cntl_base);
+    cntl->http_response().set_content_type("text/plain");
+    butil::IOBuf& resp = cntl->response_attachment();
+
+    if (IsTCMallocEnabled()) {
+        butil::IOBufBuilder os;
+        get_tcmalloc_memory_info(resp);
+    } else {
+        resp.append("tcmalloc is not enabled");
+        cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
+        return;
+    }
 }
 
 } // namespace brpc

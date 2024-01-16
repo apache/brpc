@@ -50,7 +50,7 @@
 #include "brpc/builtin/bthreads_service.h"     // BthreadsService
 #include "brpc/builtin/ids_service.h"          // IdsService
 #include "brpc/builtin/sockets_service.h"      // SocketsService
-#include "brpc/builtin/tcmalloc_service.h"
+#include "brpc/builtin/memory_service.h"
 #include "brpc/builtin/common.h"
 #include "brpc/builtin/bad_method_service.h"
 #include "echo.pb.h"
@@ -835,10 +835,10 @@ TEST_F(BuiltinServiceTest, sockets) {
     }    
 }
 
-TEST_F(BuiltinServiceTest, tcmalloc) {
-    brpc::TcmallocService service;
-    brpc::TCMallocRequest req;
-    brpc::TCMallocResponse res;
+TEST_F(BuiltinServiceTest, memory) {
+    brpc::MemoryService service;
+    brpc::MemoryRequest req;
+    brpc::MemoryResponse res;
     brpc::Controller cntl;
     ClosureChecker done;
     service.default_method(&cntl, &req, &res, &done);

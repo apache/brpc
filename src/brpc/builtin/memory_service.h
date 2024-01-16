@@ -15,22 +15,22 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef  BRPC_TCMALLOC_SERVICE_H
-#define  BRPC_TCMALLOC_SERVICE_H
+#ifndef  BRPC_MALLOC_SERVICE_H
+#define  BRPC_MALLOC_SERVICE_H
 
 #include "brpc/builtin_service.pb.h"
 
 namespace brpc {
 
-class TcmallocService : public tcmalloc {
+class MemoryService : public memory {
 public:
     void default_method(::google::protobuf::RpcController* cntl_base,
-                        const ::brpc::TCMallocRequest* request,
-                        ::brpc::TCMallocResponse* response,
+                        const ::brpc::MemoryRequest* request,
+                        ::brpc::MemoryResponse* response,
                         ::google::protobuf::Closure* done) override;
 };
 
 } // namespace brpc
 
 
-#endif  //BRPC_TCMALLOC_SERVICE_H
+#endif  // BRPC_MALLOC_SERVICE_H

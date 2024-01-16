@@ -61,8 +61,8 @@ message VLogRequest {}
 message VLogResponse {}
 message MetricsRequest {}
 message MetricsResponse {}
-message TCMallocRequest {}
-message TCMallocResponse {}
+message MemoryRequest {}
+message MemoryResponse {}
 message BadMethodRequest {
     required string service_name = 1;
 }
@@ -172,6 +172,6 @@ service dir {
     rpc default_method(DirRequest) returns (DirResponse);
 }
 
-service tcmalloc {
-    rpc default_method(TCMallocRequest) returns (TCMallocResponse);
+service memory {
+    rpc default_method(MemoryRequest) returns (MemoryResponse);
 }
