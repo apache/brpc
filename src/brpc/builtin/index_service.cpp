@@ -140,7 +140,9 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
            << (!IsHeapProfilerEnabled() ? " (disabled)" : "") << NL
            << Path("/hotspots/growth", html_addr)
            << " : Profiling growth of heap"
-           << (!IsHeapProfilerEnabled() ? " (disabled)" : "") << NL;
+           << (!IsHeapProfilerEnabled() ? " (disabled)" : "") << NL
+           << Path("/hotspots/contention", html_addr)
+           << " : Profiling contention of lock" << NL;
     }
     os << "curl -H 'Content-Type: application/json' -d 'JSON' ";
     if (butil::is_endpoint_extended(server->listen_address())) {
