@@ -135,12 +135,6 @@ int HttpMessage::on_header_value(http_parser *parser,
 int HttpMessage::on_headers_complete(http_parser *parser) {
     HttpMessage *http_message = (HttpMessage *)parser->data;
     http_message->_stage = HTTP_ON_HEADERS_COMPLETE;
-    // Move content-type into the member field.
-    const std::string* content_type = http_message->header().GetHeader("content-type");
-    if (content_type) {
-        http_message->header().set_content_type(*content_type);
-        http_message->header().RemoveHeader("content-type");
-    }
     if (parser->http_major > 1) {
         // NOTE: this checking is a MUST because ProcessHttpResponse relies
         // on it to cast InputMessageBase* into different types.
@@ -177,7 +171,6 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
             uri.SetHostAndPort(*host_header);
         }
     }
-
 
     // If server receives a response to a HEAD request, returns 1 and then
     // the parser will interpret that as saying that this message has no body.
@@ -633,7 +626,8 @@ void MakeRawHttpResponse(butil::IOBuf* response,
        << h->minor_version() << ' ' << h->status_code()
        << ' ' << h->reason_phrase() << BRPC_CRLF;
     bool is_invalid_content = h->status_code() < HTTP_STATUS_OK ||
-                      h->status_code() == HTTP_STATUS_NO_CONTENT;
+                              h->status_code() == HTTP_STATUS_NO_CONTENT;
+    bool is_head_req = h->method() == HTTP_METHOD_HEAD;
     if (is_invalid_content) {
         // https://www.rfc-editor.org/rfc/rfc7230#section-3.3.1
         // A server MUST NOT send a Transfer-Encoding header field in any
@@ -645,11 +639,22 @@ void MakeRawHttpResponse(butil::IOBuf* response,
         // with a status code of 1xx (Informational) or 204 (No Content).
         h->RemoveHeader("Content-Length");
     } else if (content) {
-        h->RemoveHeader("Content-Length");
-        // Never use "Content-Length" set by user.
-        // Always set Content-Length since lighttpd requires the header to be
-        // set to 0 for empty content.
-        os << "Content-Length: " << content->length() << BRPC_CRLF;
+        const std::string* content_length = h->GetHeader("Content-Length");
+        if (is_head_req) {
+            // Prioritize "Content-Length" set by user.
+            // If "Content-Length" is not set, set it to the length of content.
+            if (!content_length) {
+                os << "Content-Length: " << content->length() << BRPC_CRLF;
+            }
+        } else {
+            if (content_length) {
+                h->RemoveHeader("Content-Length");
+            }
+            // Never use "Content-Length" set by user.
+            // Always set Content-Length since lighttpd requires the header to be
+            // set to 0 for empty content.
+            os << "Content-Length: " << content->length() << BRPC_CRLF;
+        }
     }
     if (!h->content_type().empty()) {
         os << "Content-Type: " << h->content_type()
@@ -661,7 +666,12 @@ void MakeRawHttpResponse(butil::IOBuf* response,
     }
     os << BRPC_CRLF;  // CRLF before content
     os.move_to(*response);
-    if (!is_invalid_content && content) {
+
+    // https://datatracker.ietf.org/doc/html/rfc7231#section-4.3.2
+    // The HEAD method is identical to GET except that the server MUST NOT
+    // send a message body in the response (i.e., the response terminates at
+    // the end of the header section).
+    if (!is_invalid_content && !is_head_req && content) {
         response->append(butil::IOBuf::Movable(*content));
     }
 }
