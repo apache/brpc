@@ -603,7 +603,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         _current_call.nretry >= _max_retry) {
         goto END_OF_RPC;
     }
-    if (_current_call.sending_sock->MarkedGoAway()) {
+    if (_current_call.sending_sock != NULL && _current_call.sending_sock->MarkedGoAway()) {
         CHECK_EQ(current_id(), info.id) << "error_code=" << _error_code;
         _current_call.OnComplete(this, 0, info.responded, false);
         if (_http_response) {
