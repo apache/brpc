@@ -59,10 +59,12 @@ def get_bthread_num():
     global_res = int(gdb.parse_and_eval("((*bthread::g_task_control)._nbthreads)._combiner._global_result"))
     get_agent = "(*(('bvar::detail::AgentCombiner<long, long, bvar::detail::AddTo<long> >::Agent' *){}))"
     last_node = root_agent
+    long_type = gdb.lookup_type("long")
     while True:
         agent = gdb.parse_and_eval(get_agent.format(last_node))
         if last_node != root_agent:
-            val = int(agent["element"]["_value"]["_M_i"])
+            val = int(agent["element"]["_value"].cast(long_type))
+            gdb.parse_and_eval(get_agent.format(last_node))
             global_res += val
         if agent["next_"] == root_agent:
             return global_res
@@ -72,13 +74,13 @@ def get_all_bthreads(total):
     global bthreads
     bthreads = []
     count = 0
-    groups = int(gdb.parse_and_eval("'butil::ResourcePool<bthread::TaskMeta>::_ngroup'")["val"])
+    groups = int(gdb.parse_and_eval("butil::ResourcePool<bthread::TaskMeta>::_ngroup")["val"])
     for group in range(groups):
-        blocks = int(gdb.parse_and_eval("(*((*((('butil::static_atomic<butil::ResourcePool<bthread::TaskMeta>::BlockGroup*>' *)('butil::ResourcePool<bthread::TaskMeta>::_block_groups')) + {})).val)).nblock._M_i".format(group)))
+        blocks = int(gdb.parse_and_eval("(unsigned long)(*((*((('butil::static_atomic<butil::ResourcePool<bthread::TaskMeta>::BlockGroup*>' *)('butil::ResourcePool<bthread::TaskMeta>::_block_groups')) + {})).val)).nblock".format(group)))
         for block in range(blocks):
-            items = int(gdb.parse_and_eval("(*(*(('butil::atomic<butil::ResourcePool<bthread::TaskMeta>::Block*>' *)((*((*((('butil::static_atomic<butil::ResourcePool<bthread::TaskMeta>::BlockGroup*>' *)('butil::ResourcePool<bthread::TaskMeta>::_block_groups')) + {})).val)).blocks) + {}))._M_b._M_p).nitem".format(group, block)))
+            items = int(gdb.parse_and_eval("(*(*((butil::ResourcePool<bthread::TaskMeta>::Block**)((*((*((('butil::static_atomic<butil::ResourcePool<bthread::TaskMeta>::BlockGroup*>' *)('butil::ResourcePool<bthread::TaskMeta>::_block_groups')) + {})).val)).blocks) + {}))).nitem".format(group, block)))
             for item in range(items):
-                task_meta = gdb.parse_and_eval("*(('bthread::TaskMeta' *)((*(*(('butil::atomic<butil::ResourcePool<bthread::TaskMeta>::Block*>' *)((*((*((('butil::static_atomic<butil::ResourcePool<bthread::TaskMeta>::BlockGroup*>' *)('butil::ResourcePool<bthread::TaskMeta>::_block_groups')) + {})).val)).blocks) + {}))._M_b._M_p).items) + {})".format(group, block, item))
+                task_meta = gdb.parse_and_eval("*(('bthread::TaskMeta' *)((*(*((butil::ResourcePool<bthread::TaskMeta>::Block**)((*((*((('butil::static_atomic<butil::ResourcePool<bthread::TaskMeta>::BlockGroup*>' *)('butil::ResourcePool<bthread::TaskMeta>::_block_groups')) + {})).val)).blocks) + {}))).items) + {})".format(group, block, item))
                 version_tid = (int(task_meta["tid"]) >> 32)
                 version_butex = gdb.parse_and_eval("*(uint32_t *){}".format(task_meta["version_butex"]))
                 if version_tid == int(version_butex) and int(task_meta["attr"]["stack_type"]) != 0:
