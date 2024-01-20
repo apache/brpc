@@ -779,7 +779,7 @@ void PrintLogPrefix(std::ostream& os, int severity,
                     const char* file, int line,
                     const char* func) {
     PrintLogSeverity(os, severity);
-#if defined(OS_LINUX)
+#if defined(OS_LINUX) || defined(OS_MACOSX)
     timeval tv;
     gettimeofday(&tv, NULL);
     time_t t = tv.tv_sec;
@@ -801,7 +801,7 @@ void PrintLogPrefix(std::ostream& os, int severity,
        << std::setw(2) << local_tm.tm_hour << ':'
        << std::setw(2) << local_tm.tm_min << ':'
        << std::setw(2) << local_tm.tm_sec;
-#if defined(OS_LINUX)
+#if defined(OS_LINUX) || defined(OS_MACOSX)
     os << '.' << std::setw(6) << tv.tv_usec;
 #endif
     if (FLAGS_log_pid) {
