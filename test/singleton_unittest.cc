@@ -4,6 +4,8 @@
 
 #include "butil/at_exit.h"
 #include "butil/memory/singleton.h"
+#include "bthread/bthread.h"
+#include "bthread/task_control.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -194,11 +196,13 @@ class SingletonTest : public testing::Test {
   static bool non_leak_called_;
   static bool leaky_called_;
   static bool static_called_;
+  static bool bthread_started_;
 };
 
 bool SingletonTest::non_leak_called_ = false;
 bool SingletonTest::leaky_called_ = false;
 bool SingletonTest::static_called_ = false;
+bool SingletonTest::bthread_started_ = false;
 
 TEST_F(SingletonTest, Basic) {
   int* singleton_int;
@@ -284,4 +288,56 @@ TEST_F(SingletonTest, Alignment) {
   EXPECT_ALIGNED(align32, 32);
   EXPECT_ALIGNED(align128, 128);
   EXPECT_ALIGNED(align4096, 4096);
+}
+
+namespace bthread {
+extern TaskControl* g_task_control;
+}
+
+class BthreadSingleton {
+public:
+    BthreadSingleton() {
+        bthread_usleep(5 * 1000 * 1000);
+    }
+};
+
+void get_bthread_singleton() {
+    ASSERT_NE(nullptr, Singleton<BthreadSingleton>::get());
+}
+
+void* first_get_bthread_singleton(void*) {
+    SingletonTest::bthread_started_ = true;
+    get_bthread_singleton();
+    return NULL;
+}
+
+void* get_bthread_singleton(void*) {
+    get_bthread_singleton();
+    return NULL;
+}
+
+// Singleton will definitely not cause deadlock,
+// even if constructor of T will hang the bthread.
+TEST_F(SingletonTest, bthread) {
+    bthread_t bid;
+    ASSERT_EQ(0, bthread_start_background(
+        &bid, NULL, first_get_bthread_singleton, NULL));
+    while (!bthread_started_) {
+        bthread_usleep(1000);
+    }
+    ASSERT_NE(nullptr, bthread::g_task_control);
+    int concurrency = bthread::g_task_control->concurrency();
+    LOG(INFO) << "concurrency: " << concurrency;
+    ASSERT_GT(concurrency, 0);
+    std::vector<bthread_t> bids(concurrency);
+    for (auto& id : bids) {
+        ASSERT_EQ(0, bthread_start_background(
+            &id, NULL, get_bthread_singleton, NULL));
+    }
+    ASSERT_NE(nullptr, Singleton<BthreadSingleton>::get());
+
+    for (auto& id : bids) {
+        bthread_join(id, NULL);
+    }
+    bthread_join(bid, NULL);
 }

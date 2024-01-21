@@ -5,8 +5,22 @@
 #include "butil/memory/singleton.h"
 #include "butil/threading/platform_thread.h"
 
+__BEGIN_DECLS
+// Defined in bthread/bthread.cpp
+void BAIDU_WEAK bthread_yield();
+__END_DECLS
+
 namespace butil {
 namespace internal {
+
+void yield() {
+    if (bthread_yield) {
+        // Use `bthread_yield' to avoid blocking worker threads of bthread.
+        bthread_yield();
+    } else {
+        PlatformThread::YieldCurrentThread();
+    }
+}
 
 subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance) {
   // Handle the race. Another thread beat us and either:
@@ -24,7 +38,7 @@ subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance) {
     value = subtle::Acquire_Load(instance);
     if (value != kBeingCreatedMarker)
       break;
-    PlatformThread::YieldCurrentThread();
+    yield();
   }
   return value;
 }
