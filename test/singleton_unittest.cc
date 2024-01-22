@@ -296,8 +296,12 @@ extern TaskControl* g_task_control;
 
 class BthreadSingleton {
 public:
+    static BthreadSingleton* GetInstance() {
+        return Singleton<BthreadSingleton>::get();
+    }
+private:
     BthreadSingleton() {
-        bthread_usleep(5 * 1000 * 1000);
+        bthread_usleep(1000 * 1000);
     }
 };
 

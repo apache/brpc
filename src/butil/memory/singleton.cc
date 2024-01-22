@@ -2,25 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <gflags/gflags.h>
 #include "butil/memory/singleton.h"
 #include "butil/threading/platform_thread.h"
-
 __BEGIN_DECLS
 // Defined in bthread/bthread.cpp
-void BAIDU_WEAK bthread_yield();
+int BAIDU_WEAK bthread_usleep(uint64_t microseconds);
 __END_DECLS
 
 namespace butil {
-namespace internal {
 
-void yield() {
-    if (bthread_yield) {
-        // Use `bthread_yield' to avoid blocking worker threads of bthread.
-        bthread_yield();
-    } else {
-        PlatformThread::YieldCurrentThread();
-    }
-}
+DEFINE_uint32(max_sched_yield_count_on_bthread, 1000, "Max count of sched_yield on bthread. "
+                                                     "If count of sched_yield is greater than max count, "
+                                                     "use bthread_yield instead.");
+
+namespace internal {
 
 subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance) {
   // Handle the race. Another thread beat us and either:
@@ -31,6 +27,7 @@ subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance) {
   // to hit this race.  When it does, we just spin and yield the thread until
   // the object has been created.
   subtle::AtomicWord value;
+  uint32_t count = 0;
   while (true) {
     // The load has acquire memory ordering as the thread which reads the
     // instance pointer must acquire visibility over the associated data.
@@ -38,7 +35,13 @@ subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance) {
     value = subtle::Acquire_Load(instance);
     if (value != kBeingCreatedMarker)
       break;
-    yield();
+
+    if (bthread_usleep && count >= FLAGS_max_sched_yield_count_on_bthread) {
+        bthread_usleep(1000);
+    } else {
+      PlatformThread::YieldCurrentThread();
+    }
+    ++count;
   }
   return value;
 }

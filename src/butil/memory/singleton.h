@@ -33,9 +33,6 @@ namespace internal {
 // kBeingCreatedMarker means the spinlock is being held for creation.
 static const subtle::AtomicWord kBeingCreatedMarker = 1;
 
-// Yield the current thread/bthread so another thread/bthread can be scheduled.
-void yield();
-
 // We pull out some of the functionality into a non-templated function, so that
 // we can implement the more complicated pieces out of line in the .cc file.
 BUTIL_EXPORT subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance);
