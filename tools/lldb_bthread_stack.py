@@ -108,7 +108,7 @@ def get_bthreads_num(target: lldb.SBTarget):
     root_agent = find_global_value(
         target, "bthread::g_task_control._nbthreads._combiner._agents.root_")
     global_res = find_global_value(
-        target, "bthread::g_task_control._nbthreads._combiner._global_result").GetValueAsUnsigned()
+        target, "bthread::g_task_control._nbthreads._combiner._global_result").GetValueAsSigned()
     long_type = target.GetBasicType(lldb.eBasicTypeLong)
 
     last_node = root_agent
@@ -118,7 +118,7 @@ def get_bthreads_num(target: lldb.SBTarget):
         agent = last_node.Cast(agent_type)
         if (last_node.GetLocation() != root_agent.GetLocation()):
             val = get_child(agent, "element._value").Cast(
-                long_type).GetValueAsUnsigned()
+                long_type).GetValueAsSigned()
             global_res += val
         if (get_child(agent, "next_").Dereference().GetLocation() == root_agent.GetLocation()):
             return global_res
