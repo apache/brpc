@@ -1257,7 +1257,7 @@ void RdmaEndpoint::DeallocateResources() {
         if (_resource->comp_channel) {
             // destroy comp_channel will destroy this fd
             // so that we should remove it from epoll fd first
-            GetGlobalEventDispatcher(fd).RemoveConsumer(fd);
+            GetGlobalEventDispatcher(fd, _socket->_bthread_tag).RemoveConsumer(fd);
             fd = -1;
             if (IbvDestroyCompChannel(_resource->comp_channel) < 0) {
                 PLOG(WARNING) << "Fail to destroy CQ channel";
@@ -1273,7 +1273,7 @@ void RdmaEndpoint::DeallocateResources() {
         if (Socket::Address(_cq_sid, &s) == 0) {
             s->_user = NULL;  // do not release user (this RdmaEndpoint)
             if (fd >= 0) {
-                GetGlobalEventDispatcher(fd).RemoveConsumer(fd);
+                GetGlobalEventDispatcher(fd, _socket->_bthread_tag).RemoveConsumer(fd);
             }
             s->_fd = -1;  // already remove fd from epoll fd
             s->SetFailed();
