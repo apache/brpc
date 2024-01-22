@@ -109,6 +109,9 @@ int ConsumeCommand(RedisConnContext* ctx,
             if (result == REDIS_CMD_BATCHED) {
                 LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
                 return -1;
+            } else if (result == REDIS_CMD_HANDLED) {
+                ctx->transaction_handler.reset(NULL);
+                ctx->in_transaction = false;
             }
         }
     }
