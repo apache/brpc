@@ -24,6 +24,7 @@
 
 #include <sys/uio.h>                             // iovec
 #include <stdint.h>                              // uint32_t
+#include <functional>
 #include <string>                                // std::string
 #include <ostream>                               // std::ostream
 #include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyInputStream
@@ -246,11 +247,11 @@ public:
     // Append the user-data to back side WITHOUT copying.
     // The user-data can be split and shared by smaller IOBufs and will be
     // deleted using the deleter func when no IOBuf references it anymore.
-    int append_user_data(void* data, size_t size, void (*deleter)(void*));
+    int append_user_data(void* data, size_t size, std::function<void(void*)> deleter);
 
     // Append the user-data to back side WITHOUT copying.
     // The meta is associated with this piece of user-data.
-    int append_user_data_with_meta(void* data, size_t size, void (*deleter)(void*), uint64_t meta);
+    int append_user_data_with_meta(void* data, size_t size, std::function<void(void*)> deleter, uint64_t meta);
 
     // Get the data meta of the first byte in this IOBuf.
     // The meta is specified with append_user_data_with_meta before.

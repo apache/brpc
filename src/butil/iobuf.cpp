@@ -189,7 +189,7 @@ size_t IOBuf::new_bigview_count() {
 }
 
 const uint16_t IOBUF_BLOCK_FLAGS_USER_DATA = 0x1;
-typedef void (*UserDataDeleter)(void*);
+using UserDataDeleter = std::function<void(void*)>;
 
 struct UserDataExtension {
     UserDataDeleter deleter;
@@ -233,7 +233,8 @@ struct IOBuf::Block {
         , cap(data_size)
         , u({0})
         , data(data_in) {
-        get_user_data_extension()->deleter = deleter;
+        auto ext = new (get_user_data_extension()) UserDataExtension();
+        ext->deleter = std::move(deleter);
     }
 
     // Undefined behavior when (flags & IOBUF_BLOCK_FLAGS_USER_DATA) is 0.
@@ -267,7 +268,9 @@ struct IOBuf::Block {
                 this->~Block();
                 iobuf::blockmem_deallocate(this);
             } else if (flags & IOBUF_BLOCK_FLAGS_USER_DATA) {
-                get_user_data_extension()->deleter(data);
+                auto ext = get_user_data_extension();
+                ext->deleter(data);
+                ext->~UserDataExtension();
                 this->~Block();
                 free(this);
             }
@@ -395,7 +398,7 @@ IOBuf::Block* share_tls_block() {
 }
 
 // Return one block to TLS.
-inline void release_tls_block(IOBuf::Block *b) {
+inline void release_tls_block(IOBuf::Block* b) {
     if (!b) {
         return;
     }
@@ -1216,7 +1219,7 @@ int IOBuf::appendv(const const_iovec* vec, size_t n) {
 
 int IOBuf::append_user_data_with_meta(void* data,
                                       size_t size,
-                                      void (*deleter)(void*),
+                                      std::function<void(void*)> deleter,
                                       uint64_t meta) {
     if (size > 0xFFFFFFFFULL - 100) {
         LOG(FATAL) << "data_size=" << size << " is too large";
@@ -1233,7 +1236,7 @@ int IOBuf::append_user_data_with_meta(void* data,
     if (mem == NULL) {
         return -1;
     }
-    IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, deleter);
+    IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, std::move(deleter));
     b->u.data_meta = meta;
     const IOBuf::BlockRef r = { 0, b->cap, b };
     _move_back_ref(r);
