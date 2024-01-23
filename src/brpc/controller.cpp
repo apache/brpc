@@ -125,6 +125,7 @@ const Controller* GetSubControllerOfSelectiveChannel(
     const RPCSender* sender, int index);
 
 DECLARE_bool(usercode_in_pthread);
+DECLARE_bool(usercode_in_coroutine);
 static const int MAX_RETRY_COUNT = 1000;
 static bvar::Adder<int64_t>* g_ncontroller = NULL;
 
@@ -684,7 +685,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
     }
 
 END_OF_RPC:
-    if (new_bthread) {
+    if (new_bthread && !FLAGS_usercode_in_coroutine) {
         // [ Essential for -usercode_in_pthread=true ]
         // When -usercode_in_pthread is on, the reserved threads (set by
         // -usercode_backup_threads) may all block on bthread_id_lock in

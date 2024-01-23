@@ -33,6 +33,8 @@ DEFINE_int32(event_dispatcher_num, 1, "Number of event dispatcher");
 
 DEFINE_bool(usercode_in_pthread, false, 
             "Call user's callback in pthreads, use bthreads otherwise");
+DEFINE_bool(usercode_in_coroutine, false,
+            "User's callback are run in coroutine, no bthread or pthread blocking call");
 
 static EventDispatcher* g_edisp = NULL;
 static pthread_once_t g_edisp_once = PTHREAD_ONCE_INIT;

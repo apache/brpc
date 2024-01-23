@@ -100,6 +100,7 @@ DEFINE_int32(connect_timeout_as_unreachable, 3,
              "fails the main socket as well when this socket is pooled.");
 
 DECLARE_int32(health_check_timeout_ms);
+DECLARE_bool(usercode_in_coroutine);
 
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
     return v >= 2 && v < 1000/*large enough*/;
@@ -2197,7 +2198,9 @@ int Socket::StartInputEvent(SocketId id, uint32_t events,
         bthread_attr_t attr = thread_attr;
         attr.keytable_pool = p->_keytable_pool;
         attr.tag = bthread_self_tag();
-        if (bthread_start_urgent(&tid, &attr, ProcessEvent, p) != 0) {
+        if (FLAGS_usercode_in_coroutine) {
+            ProcessEvent(p);
+        } else if (bthread_start_urgent(&tid, &attr, ProcessEvent, p) != 0) {
             LOG(FATAL) << "Fail to start ProcessEvent";
             ProcessEvent(p);
         }
