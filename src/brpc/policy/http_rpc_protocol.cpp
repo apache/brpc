@@ -708,16 +708,19 @@ class HttpResponseSender {
 friend class HttpResponseSenderAsDone;
 public:
     HttpResponseSender()
-        : _method_status(NULL), _received_us(0), _h2_stream_id(-1) {}
-    HttpResponseSender(Controller* cntl/*own*/)
+        : HttpResponseSender(NULL) {}
+    explicit HttpResponseSender(Controller* cntl/*own*/)
         : _cntl(cntl), _method_status(NULL), _received_us(0), _h2_stream_id(-1) {}
-    HttpResponseSender(HttpResponseSender&& s)
+    HttpResponseSender(HttpResponseSender&& s) noexcept
         : _cntl(std::move(s._cntl))
         , _req(std::move(s._req))
         , _res(std::move(s._res))
-        , _method_status(std::move(s._method_status))
+        , _method_status(s._method_status)
         , _received_us(s._received_us)
         , _h2_stream_id(s._h2_stream_id) {
+        s._method_status = NULL;
+        s._received_us = 0;
+        s._h2_stream_id = -1;
     }
     ~HttpResponseSender();
 
@@ -738,7 +741,7 @@ private:
 
 class HttpResponseSenderAsDone : public google::protobuf::Closure {
 public:
-    HttpResponseSenderAsDone(HttpResponseSender* s) : _sender(std::move(*s)) {}
+    explicit HttpResponseSenderAsDone(HttpResponseSender* s) : _sender(std::move(*s)) {}
     void Run() override {
         _sender._cntl->CallAfterRpcResp(_sender._req.get(), _sender._res.get());
         delete this;
