@@ -215,4 +215,7 @@ header:
     # NGINX
     - 'src/brpc/details/http_parser.*'
 
+    # Fuzzing seed
+    - 'test/fuzzing/fuzz_*_seed_corpus/*'
+
   comment: on-failure

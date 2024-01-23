@@ -1,0 +1,9 @@
+GET /path/file.html?sdfsdf=sdfs HTTP/1.0
+From: someuser@jmarshall.com
+User-Agent: HTTPTool/1.0
+Content-Type: json
+Content-Length: 19
+Host: sdlfjslfd
+Accept: */*
+
+Message Body sdfsdf

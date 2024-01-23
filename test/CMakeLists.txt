@@ -255,3 +255,28 @@ foreach(BRPC_UT ${BRPC_UNITTESTS})
                                         ${GPERFTOOLS_LIBRARIES})
     add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
 endforeach()
+
+if(BUILD_FUZZ_TESTS)
+    add_library(brpc-static-debug STATIC $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
+                                        $<TARGET_OBJECTS:SOURCES_DEBUG_LIB>
+                                        $<TARGET_OBJECTS:PROTO_LIB>)
+    # change the debug lib output dir to be different from the release output
+    set_target_properties(brpc-static-debug PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/test)
+
+    target_link_libraries(brpc-static-debug ${DYNAMIC_LIB})
+    if(BRPC_WITH_GLOG)
+        target_link_libraries(brpc-static-debug ${GLOG_LIB})
+    endif()
+
+    set(FUZZ_TARGETS fuzz_butil fuzz_esp fuzz_hpack fuzz_http
+        fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri)
+
+    foreach(target ${FUZZ_TARGETS})
+        add_executable(${target} fuzzing/${target}.cpp $<TARGET_OBJECTS:TEST_PROTO_LIB>)
+        target_link_libraries(${target} brpc-static-debug ${LIB_FUZZING_ENGINE})
+        set_target_properties(${target} PROPERTIES
+            BUILD_WITH_INSTALL_RPATH TRUE
+            INSTALL_RPATH "$ORIGIN/lib")
+    endforeach()
+endif()
