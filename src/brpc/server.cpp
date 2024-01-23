@@ -65,6 +65,7 @@
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/hotspots_service.h"     // HotspotsService
 #include "brpc/builtin/prometheus_metrics_service.h"
+#include "brpc/builtin/memory_service.h"
 #include "brpc/details/method_status.h"
 #include "brpc/load_balancer.h"
 #include "brpc/naming_service.h"
@@ -526,6 +527,10 @@ int Server::AddBuiltinServices() {
     if (FLAGS_enable_threads_service &&
         AddBuiltinService(new (std::nothrow) ThreadsService)) {
         LOG(ERROR) << "Fail to add ThreadsService";
+        return -1;
+    }
+    if (AddBuiltinService(new (std::nothrow) MemoryService)) {
+        LOG(ERROR) << "Fail to add MemoryService";
         return -1;
     }
 

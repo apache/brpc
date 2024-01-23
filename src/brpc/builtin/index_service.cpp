@@ -165,7 +165,8 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
        << Path("/threads", html_addr) << " : Check pstack"
        << (!FLAGS_enable_threads_service ? " (disabled)" : "") << NL
        << Path("/dir", html_addr) << " : Browse directories and files"
-       << (!FLAGS_enable_dir_service ? " (disabled)" : "") << NL;
+       << (!FLAGS_enable_dir_service ? " (disabled)" : "") << NL
+       << Path("/memory", html_addr) << " : Get malloc allocator information" << NL;
     if (use_html) {
         os << "</body></html>";
     }

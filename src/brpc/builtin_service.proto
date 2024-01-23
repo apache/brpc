@@ -61,6 +61,8 @@ message VLogRequest {}
 message VLogResponse {}
 message MetricsRequest {}
 message MetricsResponse {}
+message MemoryRequest {}
+message MemoryResponse {}
 message BadMethodRequest {
     required string service_name = 1;
 }
@@ -168,4 +170,8 @@ service rpcz {
 
 service dir {
     rpc default_method(DirRequest) returns (DirResponse);
+}
+
+service memory {
+    rpc default_method(MemoryRequest) returns (MemoryResponse);
 }

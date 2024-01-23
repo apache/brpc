@@ -50,6 +50,7 @@
 #include "brpc/builtin/bthreads_service.h"     // BthreadsService
 #include "brpc/builtin/ids_service.h"          // IdsService
 #include "brpc/builtin/sockets_service.h"      // SocketsService
+#include "brpc/builtin/memory_service.h"
 #include "brpc/builtin/common.h"
 #include "brpc/builtin/bad_method_service.h"
 #include "echo.pb.h"
@@ -901,4 +902,22 @@ TEST_F(BuiltinServiceTest, sockets) {
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "fd=-1");
     }    
+}
+
+TEST_F(BuiltinServiceTest, memory) {
+    brpc::MemoryService service;
+    brpc::MemoryRequest req;
+    brpc::MemoryResponse res;
+    brpc::Controller cntl;
+    ClosureChecker done;
+    service.default_method(&cntl, &req, &res, &done);
+    EXPECT_FALSE(cntl.Failed());
+    CheckContent(cntl, "generic.current_allocated_bytes");
+    CheckContent(cntl, "generic.heap_size");
+    CheckContent(cntl, "tcmalloc.current_total_thread_cache_bytes");
+    CheckContent(cntl, "tcmalloc.central_cache_free_bytes");
+    CheckContent(cntl, "tcmalloc.transfer_cache_free_bytes");
+    CheckContent(cntl, "tcmalloc.thread_cache_free_bytes");
+    CheckContent(cntl, "tcmalloc.pageheap_free_bytes");
+    CheckContent(cntl, "tcmalloc.pageheap_unmapped_bytes");
 }
