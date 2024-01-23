@@ -53,6 +53,8 @@
 #include "brpc/builtin/common.h"
 #include "brpc/builtin/bad_method_service.h"
 #include "echo.pb.h"
+#include "brpc/grpc_health_check.pb.h"
+#include "json2pb/pb_to_json.h"
 
 DEFINE_bool(foo, false, "Flags for UT");
 BRPC_VALIDATE_GFLAG(foo, brpc::PassValidate);
@@ -550,6 +552,73 @@ TEST_F(BuiltinServiceTest, customized_health) {
     chan.CallMethod(NULL, &cntl, &req, &res, NULL);
     EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
     EXPECT_EQ("i'm ok", cntl.response_attachment());
+}
+
+class MyGrpcHealthReporter : public brpc::HealthReporter {
+public:
+    void GenerateReport(brpc::Controller* cntl,
+                        google::protobuf::Closure* done) {
+        grpc::health::v1::HealthCheckResponse response;
+        response.set_status(grpc::health::v1::HealthCheckResponse_ServingStatus_UNKNOWN);
+
+        if (cntl->response()) {
+            cntl->response()->CopyFrom(response);
+        } else {
+            std::string json;
+            json2pb::ProtoMessageToJson(response, &json);
+            cntl->http_response().set_content_type("application/json");
+            cntl->response_attachment().append(json);
+        }
+        done->Run();
+    }
+};
+
+TEST_F(BuiltinServiceTest, normal_grpc_health) {
+    brpc::ServerOptions opt;
+    ASSERT_EQ(0, _server.Start(9798, &opt));
+
+    grpc::health::v1::HealthCheckResponse response;
+    grpc::health::v1::HealthCheckRequest request;
+    request.set_service("grpc_req_from_brpc");
+    brpc::Controller cntl;
+    brpc::ChannelOptions copt;
+    copt.protocol = "h2:grpc";
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init("127.0.0.1:9798", &copt));
+    grpc::health::v1::Health_Stub stub(&chan);
+    stub.Check(&cntl, &request, &response, NULL);
+    EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse_ServingStatus_SERVING);
+
+    response.Clear();
+    brpc::Controller cntl1;
+    cntl1.http_request().uri() = "/grpc.health.v1.Health/Check";
+    chan.CallMethod(NULL, &cntl1, &request, &response, NULL);
+    EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse_ServingStatus_SERVING);
+}
+
+TEST_F(BuiltinServiceTest, customized_grpc_health) {
+    brpc::ServerOptions opt;
+    MyGrpcHealthReporter hr;
+    opt.health_reporter = &hr;
+    ASSERT_EQ(0, _server.Start(9798, &opt));
+
+    grpc::health::v1::HealthCheckResponse response;
+    grpc::health::v1::HealthCheckRequest request;
+    request.set_service("grpc_req_from_brpc");
+    brpc::Controller cntl;
+
+    brpc::ChannelOptions copt;
+    copt.protocol = "h2:grpc";
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init("127.0.0.1:9798", &copt));
+
+    grpc::health::v1::Health_Stub stub(&chan);
+    stub.Check(&cntl, &request, &response, NULL);
+
+    EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse_ServingStatus_UNKNOWN);
 }
 
 TEST_F(BuiltinServiceTest, status) {
