@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_THREAD_KEY_H
-#define BRPC_THREAD_KEY_H
+#ifndef  BUTIL_THREAD_KEY_H
+#define  BUTIL_THREAD_KEY_H
 
 #include <limits>
 #include <pthread.h>
@@ -199,4 +199,4 @@ void ThreadLocal<T>::reset(T* ptr) {
 }
 
 
-#endif //BRPC_THREAD_KEY_H
+#endif // BUTIL_THREAD_KEY_H
