@@ -25,6 +25,7 @@ option java_outer_classname="Span";
 enum SpanType {
     SPAN_TYPE_SERVER = 0;
     SPAN_TYPE_CLIENT = 1;
+    SPAN_TYPE_BTHREAD = 2;
 }
 
 // We don't unify RpczSpan and TracingSpan as one because the former one needs

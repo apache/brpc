@@ -513,13 +513,39 @@ TEST_F(BthreadTest, bthread_usleep) {
 }
 
 static const bthread_attr_t BTHREAD_ATTR_NORMAL_WITH_SPAN =
-{ BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, NULL };
+{ BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, NULL, BTHREAD_TAG_INVALID };
 
 void* test_parent_span(void* p) {
     uint64_t *q = (uint64_t *)p;
     *q = (uint64_t)(bthread::tls_bls.rpcz_parent_span);
     LOG(INFO) << "span id in thread is " << *q;
     return NULL;
+}
+
+void* test_grandson_parent_span(void* p) {
+    uint64_t* q = (uint64_t*)p;
+    *q = (uint64_t)(bthread::tls_bls.rpcz_parent_span);
+    LOG(INFO) << "parent span id in thread is " << *q;
+    return NULL;
+}
+
+void* test_son_parent_span(void* p) {
+    uint64_t* q = (uint64_t*)p;
+    *q = (uint64_t)(bthread::tls_bls.rpcz_parent_span);
+    LOG(INFO) << "parent span id in thread is " << *q;
+    bthread_t th;
+    uint64_t multi_p;
+    bthread_start_urgent(&th, &BTHREAD_ATTR_NORMAL_WITH_SPAN, test_grandson_parent_span, &multi_p);
+    bthread_join(th, NULL);
+    return NULL;
+}
+
+static uint64_t targets[] = {0xBADBEB0UL, 0xBADBEB1UL, 0xBADBEB2UL, 0xBADBEB3UL};
+void* create_span_func() {
+    static std::atomic<int> index(0);
+    auto idx = index.fetch_add(1);
+    LOG(INFO) << "Bthread create span " << targets[idx];
+    return (void*)targets[idx];
 }
 
 TEST_F(BthreadTest, test_span) {
@@ -531,17 +557,32 @@ TEST_F(BthreadTest, test_span) {
 
     bthread::tls_bls.rpcz_parent_span = (void*)target;
     bthread_t th1;
-    ASSERT_EQ(0, bthread_start_urgent(&th1, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
-                                      test_parent_span, &p1));
+    ASSERT_EQ(0, bthread_start_urgent(&th1, &BTHREAD_ATTR_NORMAL_WITH_SPAN, test_parent_span, &p1));
     ASSERT_EQ(0, bthread_join(th1, NULL));
 
     bthread_t th2;
-    ASSERT_EQ(0, bthread_start_background(&th2, NULL,
-                                      test_parent_span, &p2));
+    ASSERT_EQ(0, bthread_start_background(&th2, NULL, test_parent_span, &p2));
     ASSERT_EQ(0, bthread_join(th2, NULL));
 
     ASSERT_EQ(p1, target);
     ASSERT_NE(p2, target);
+
+    LOG(INFO) << "Test bthread create span";
+
+    bthread_set_create_span_func(create_span_func);
+
+    bthread_t multi_th1;
+    bthread_t multi_th2;
+    uint64_t multi_p1;
+    uint64_t multi_p2;
+    ASSERT_EQ(0, bthread_start_background(&multi_th1, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
+                                          test_son_parent_span, &multi_p1));
+    ASSERT_EQ(0, bthread_start_background(&multi_th2, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
+                                          test_son_parent_span, &multi_p2));
+    ASSERT_EQ(0, bthread_join(multi_th1, NULL));
+    ASSERT_EQ(0, bthread_join(multi_th2, NULL));
+    ASSERT_EQ(multi_p1, targets[0]);
+    ASSERT_EQ(multi_p2, targets[1]);
 }
 
 void* dummy_thread(void*) {
