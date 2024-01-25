@@ -1232,7 +1232,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     // Do not need to check addressable since it will be called by
     // health checker which called `SetFailed' before
     const int expected_val = _epollout_butex->load(butil::memory_order_relaxed);
-    EventDispatcher& edisp = GetGlobalEventDispatcher(fd,_bthread_tag);
+    EventDispatcher& edisp = GetGlobalEventDispatcher(fd, _bthread_tag);
     if (edisp.RegisterEvent(id(), fd, pollin) != 0) {
         return -1;
     }
@@ -1309,7 +1309,8 @@ int Socket::Connect(const timespec* abstime,
         // Add `sockfd' into epoll so that `HandleEpollOutRequest' will
         // be called with `req' when epoll event reaches
         if (GetGlobalEventDispatcher(sockfd),
-    _bthread_tag).RegisterEvent(connect_id, sockfd, false) != 0) {
+    _bthread_tag).RegisterEvent(connect_id, sockfd, false) !=
+                0) {
             const int saved_errno = errno;
             PLOG(WARNING) << "Fail to add fd=" << sockfd << " into epoll";
             s->SetFailed(saved_errno, "Fail to add fd=%d into epoll: %s",
@@ -1449,7 +1450,7 @@ int Socket::HandleEpollOutRequest(int error_code, EpollOutRequest* req) {
     }
     // We've got the right to call user callback
     // The timer will be removed inside destructor of EpollOutRequest
-GetGlobalEventDispatcher(req->fd,_bthread_tag).UnregisterEvent(id(), req->fd, false);
+    GetGlobalEventDispatcher(req->fd, _bthread_tag).UnregisterEvent(id(), req->fd, false);
     return req->on_epollout_event(req->fd, error_code, req->data);
 }
 
