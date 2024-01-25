@@ -1232,7 +1232,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     // Do not need to check addressable since it will be called by
     // health checker which called `SetFailed' before
     const int expected_val = _epollout_butex->load(butil::memory_order_relaxed);
-    EventDispatcher& edisp = GetGlobalEventDispatcher(fd);
+    EventDispatcher& edisp = GetGlobalEventDispatcher(fd,tag);
     if (edisp.RegisterEvent(id(), fd, pollin) != 0) {
         return -1;
     }
