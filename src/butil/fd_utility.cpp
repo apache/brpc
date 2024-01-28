@@ -25,6 +25,11 @@
 
 namespace butil {
 
+bool is_blocking(int fd) {
+    const int flags = fcntl(fd, F_GETFL, 0);
+    return flags >= 0 && !(flags & O_NONBLOCK);
+}
+
 int make_non_blocking(int fd) {
     const int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) {

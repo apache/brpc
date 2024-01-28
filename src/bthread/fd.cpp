@@ -31,9 +31,14 @@
 #include "butil/fd_utility.h"                     // make_non_blocking
 #include "butil/logging.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h"   // fmix32
+#include "butil/memory/scope_guard.h"
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/task_group.h"                  // TaskGroup
 #include "bthread/bthread.h"                             // bthread_start_urgent
+
+namespace butil {
+extern int pthread_fd_wait(int fd, unsigned events, const timespec* abstime);
+}
 
 // Implement bthread functions on file descriptors
 
@@ -422,69 +427,10 @@ int stop_and_join_epoll_threads() {
     return rc;
 }
 
-#if defined(OS_LINUX)
-short epoll_to_poll_events(uint32_t epoll_events) {
-    // Most POLL* and EPOLL* are same values.
-    short poll_events = (epoll_events &
-                         (EPOLLIN | EPOLLPRI | EPOLLOUT |
-                          EPOLLRDNORM | EPOLLRDBAND |
-                          EPOLLWRNORM | EPOLLWRBAND |
-                          EPOLLMSG | EPOLLERR | EPOLLHUP));
-    CHECK_EQ((uint32_t)poll_events, epoll_events);
-    return poll_events;
-}
-#elif defined(OS_MACOSX)
-static short kqueue_to_poll_events(int kqueue_events) {
-    //TODO: add more values?
-    short poll_events = 0;
-    if (kqueue_events == EVFILT_READ) {
-        poll_events |= POLLIN;
-    }
-    if (kqueue_events == EVFILT_WRITE) {
-        poll_events |= POLLOUT;
-    }
-    return poll_events;
-}
-#endif
-
 // For pthreads.
 int pthread_fd_wait(int fd, unsigned events,
                     const timespec* abstime) {
-    int diff_ms = -1;
-    if (abstime) {
-        timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
-        int64_t now_us = butil::timespec_to_microseconds(now);
-        int64_t abstime_us = butil::timespec_to_microseconds(*abstime);
-        if (abstime_us <= now_us) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-        diff_ms = (abstime_us - now_us + 999L) / 1000L;
-    }
-#if defined(OS_LINUX)
-    const short poll_events = bthread::epoll_to_poll_events(events);
-#elif defined(OS_MACOSX)
-    const short poll_events = bthread::kqueue_to_poll_events(events);
-#endif
-    if (poll_events == 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    pollfd ufds = { fd, poll_events, 0 };
-    const int rc = poll(&ufds, 1, diff_ms);
-    if (rc < 0) {
-        return -1;
-    }
-    if (rc == 0) {
-        errno = ETIMEDOUT;
-        return -1;
-    }
-    if (ufds.revents & POLLNVAL) {
-        errno = EBADF;
-        return -1;
-    }
-    return 0;
+    return butil::pthread_fd_wait(fd, events, abstime);
 }
 
 }  // namespace bthread
@@ -527,9 +473,19 @@ int bthread_connect(int sockfd, const sockaddr* serv_addr,
     if (NULL == g || g->is_current_pthread_task()) {
         return ::connect(sockfd, serv_addr, addrlen);
     }
-    // FIXME: Scoped non-blocking?
-    butil::make_non_blocking(sockfd);
-    const int rc = connect(sockfd, serv_addr, addrlen);
+
+    bool is_blocking = butil::is_blocking(sockfd);
+    if (is_blocking) {
+        butil::make_non_blocking(sockfd);
+    }
+    // Scoped non-blocking.
+    auto guard = butil::MakeScopeGuard([is_blocking, sockfd]() {
+        if (is_blocking) {
+            butil::make_blocking(sockfd);
+        }
+    });
+
+    const int rc = ::connect(sockfd, serv_addr, addrlen);
     if (rc == 0 || errno != EINPROGRESS) {
         return rc;
     }
@@ -540,6 +496,49 @@ int bthread_connect(int sockfd, const sockaddr* serv_addr,
 #endif
         return -1;
     }
+    int err;
+    socklen_t errlen = sizeof(err);
+    if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &errlen) < 0) {
+        PLOG(FATAL) << "Fail to getsockopt";
+        return -1;
+    }
+    if (err != 0) {
+        CHECK(err != EINPROGRESS);
+        errno = err;
+        return -1;
+    }
+    return 0;
+}
+
+int bthread_timed_connect(int sockfd, const struct sockaddr* serv_addr,
+                          socklen_t addrlen, const timespec* abstime) {
+    if (!abstime) {
+        return bthread_connect(sockfd, serv_addr, addrlen);
+    }
+
+    bool is_blocking = butil::is_blocking(sockfd);
+    if (is_blocking) {
+        butil::make_non_blocking(sockfd);
+    }
+    // Scoped non-blocking.
+    auto guard = butil::MakeScopeGuard([is_blocking, sockfd]() {
+        if (is_blocking) {
+            butil::make_blocking(sockfd);
+        }
+    });
+
+    const int rc = ::connect(sockfd, serv_addr, addrlen);
+    if (rc == 0 || errno != EINPROGRESS) {
+        return rc;
+    }
+#if defined(OS_LINUX)
+    if (bthread_fd_timedwait(sockfd, EPOLLOUT, abstime) < 0) {
+#elif defined(OS_MACOSX)
+    if (bthread_fd_timedwait(sockfd, EVFILT_WRITE, abstime) < 0) {
+#endif
+        return -1;
+    }
+
     int err;
     socklen_t errlen = sizeof(err);
     if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &errlen) < 0) {

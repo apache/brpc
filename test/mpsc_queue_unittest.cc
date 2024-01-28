@@ -4,7 +4,7 @@
 
 namespace {
 
-const uint MAX_COUNT = 10000000;
+const uint MAX_COUNT = 1000000;
 
 void Consume(butil::MPSCQueue<uint>& q, bool allow_empty) {
     uint i = 0;

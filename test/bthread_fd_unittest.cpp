@@ -26,6 +26,8 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
+#include <butil/endpoint.h>
+#include <butil/fd_guard.h>
 #include "butil/logging.h"
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
@@ -555,4 +557,41 @@ TEST(FDTest, double_close) {
     ASSERT_EQ(-1, bthread_close(fds[1]));
     ASSERT_EQ(ec, errno);
 }
+
+const char* g_hostname = "baidu.com";
+TEST(FDTest, bthread_connect) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname, 80, &ep));
+
+    {
+        struct sockaddr_storage serv_addr{};
+        socklen_t serv_addr_size = 0;
+        ASSERT_EQ(0, endpoint2sockaddr(ep, &serv_addr, &serv_addr_size));
+        butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
+        ASSERT_LE(0, sockfd);
+        bool is_blocking = butil::is_blocking(sockfd);
+        ASSERT_LE(0, sockfd);
+        ASSERT_EQ(0, bthread_connect(sockfd, (struct sockaddr*) &serv_addr, serv_addr_size));
+        ASSERT_EQ(is_blocking, butil::is_blocking(sockfd));
+
+    }
+
+    {
+        struct sockaddr_storage serv_addr{};
+        socklen_t serv_addr_size = 0;
+        ASSERT_EQ(0, endpoint2sockaddr(ep, &serv_addr, &serv_addr_size));
+        butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
+        ASSERT_LE(0, sockfd);
+        bool is_blocking = butil::is_blocking(sockfd);
+        // In most cases, 1 millisecond will result in a connection timeout.
+        timespec abstime = butil::milliseconds_from_now(1);
+        const int rc = bthread_timed_connect(
+            sockfd, (struct sockaddr*) &serv_addr,
+            serv_addr_size, &abstime);
+        ASSERT_EQ(-1, rc);
+        ASSERT_EQ(ETIMEDOUT, errno);
+        ASSERT_EQ(is_blocking, butil::is_blocking(sockfd));
+    }
+}
+
 } // namespace
