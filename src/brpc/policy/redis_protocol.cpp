@@ -61,6 +61,7 @@ public:
     explicit RedisConnContext(const RedisService* rs)
         : redis_service(rs)
         , in_transaction(false)
+        , user_auth_ctx()
         , batched_size(0) {}
 
     ~RedisConnContext();
@@ -74,6 +75,9 @@ public:
     // Whether this connection has begun a transaction. If true, the commands
     // received will be handled by transaction_handler.
     bool in_transaction;
+
+    RedisUserAuthContext user_auth_ctx;
+
     // >0 if command handler is run in batched mode.
     int batched_size;
 
@@ -96,6 +100,19 @@ int ConsumeCommand(RedisConnContext* ctx,
         } else if (result == REDIS_CMD_BATCHED) {
             LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
             return -1;
+        }
+    }
+    else if (args[0] == "auth") {
+        butil::StringPiece default_username= "default";
+        butil::StringPiece input_password= args[1];
+        if (ctx->redis_service->AuthenticateUser(
+                    &ctx->user_auth_ctx, default_username, input_password))
+        {
+            output.SetStatus("OK");
+        }
+        else
+        {
+            output.SetError("-WRONGPASS invalid username-password pair or user is disabled.");
         }
     }
     else if (args[0] == "watch" || args[0] == "unwatch") {
@@ -123,24 +140,31 @@ int ConsumeCommand(RedisConnContext* ctx,
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", args[0].as_string().c_str());
             output.SetError(buf);
         } else {
-            result = ch->Run(args, &output, flush_batched);
-            if (result == REDIS_CMD_CONTINUE) {
-                if (ctx->batched_size != 0) {
-                    LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
-                    return -1;
+            if (ctx->redis_service->AuthRequired(&ctx->user_auth_ctx, args[0]))
+            {
+                output.SetError("-NOAUTH Authentication required.");
+            }
+            else
+            {
+                result = ch->Run(args, &output, flush_batched);
+                if (result == REDIS_CMD_CONTINUE) {
+                    if (ctx->batched_size != 0) {
+                        LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
+                        return -1;
+                    }
+                    if (ctx->transaction_handler == nullptr) {
+                        ctx->transaction_handler.reset(ctx->redis_service->NewTransactionHandler());
+                    }
+                    if (ctx->transaction_handler != nullptr) {
+                        ctx->transaction_handler->Begin();
+                        ctx->in_transaction = true;
+                    }
+                    else {
+                        output.SetError("ERR Transaction not supported.");
+                    }
+                } else if (result == REDIS_CMD_BATCHED) {
+                    ctx->batched_size++;
                 }
-                if (ctx->transaction_handler == nullptr) {
-                    ctx->transaction_handler.reset(ctx->redis_service->NewTransactionHandler());
-                }
-                if (ctx->transaction_handler != nullptr) {
-                    ctx->transaction_handler->Begin();
-                    ctx->in_transaction = true;
-                }
-                else {
-                    output.SetError("ERR Transaction not supported.");
-                }
-            } else if (result == REDIS_CMD_BATCHED) {
-                ctx->batched_size++;
             }
         }
     }

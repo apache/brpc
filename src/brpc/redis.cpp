@@ -472,6 +472,18 @@ TransactionHandler* RedisService::NewTransactionHandler() const {
     return NULL;
 }
 
+bool RedisService::AuthenticateUser(RedisUserAuthContext* ctx,
+        const butil::StringPiece& username, const butil::StringPiece& password) const {
+    LOG(ERROR) << "AuthenticateUser is not implemented";
+    ctx->SetAuthenticated();
+    return true;
+}
+
+bool RedisService::AuthRequired(const RedisUserAuthContext* ctx, const butil::StringPiece& command) const {
+    LOG(ERROR) << "AuthRequired is not implemented";
+    return false;
+}
+
 RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
     LOG(ERROR) << "NewTransactionHandler is not implemented";
     return NULL;
