@@ -229,6 +229,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
         LOG(FATAL) << "Fail to get TaskMeta";
         return -1;
     }
+    m->sleep_failed = false;
     m->stop = false;
     m->interrupted = false;
     m->about_to_quit = false;
@@ -372,6 +373,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
         return ENOMEM;
     }
     CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
+    m->sleep_failed = false;
     m->stop = false;
     m->interrupted = false;
     m->about_to_quit = false;
@@ -431,6 +433,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
         return ENOMEM;
     }
     CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
+    m->sleep_failed = false;
     m->stop = false;
     m->interrupted = false;
     m->about_to_quit = false;
@@ -759,7 +762,8 @@ void TaskGroup::_add_sleep_event(void* void_args) {
         butil::microseconds_from_now(e.timeout_us));
 
     if (!sleep_id) {
-        // fail to schedule timer, go back to previous thread.
+        e.meta->sleep_failed = true;
+        // Fail to schedule timer, go back to previous thread.
         g->ready_to_run(e.tid);
         return;
     }
@@ -801,8 +805,9 @@ int TaskGroup::usleep(TaskGroup** pg, uint64_t timeout_us) {
     g->set_remained(_add_sleep_event, &e);
     sched(pg);
     g = *pg;
-    if (e.meta->current_sleep == 0 && !e.meta->interrupted) {
-        // Fail to `_add_sleep_event'.
+    if (e.meta->sleep_failed) {
+        // Fail to schedule timer, return error.
+        e.meta->sleep_failed = false;
         errno = ESTOP;
         return -1;
     }
