@@ -18,7 +18,7 @@
 #
 
 Name:		brpc
-Version:	1.7.0
+Version:	1.8.0
 Release:	1%{?dist}
 Summary:	Industrial-grade RPC framework using C++ Language.
 
