@@ -196,7 +196,7 @@ if [ "$SYSTEM" = "Darwin" ]; then
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_MallocExtension_ReleaseFreeMemory"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_ProfilerStart"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_ProfilerStop"
-  DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,__Z13GetStackTracePPvii"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,__Z13GetStackTracePPvii"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_RegisterThriftProtocol"
 fi
 append_linking() {

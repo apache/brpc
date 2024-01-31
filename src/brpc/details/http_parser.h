@@ -138,6 +138,7 @@ enum http_parser_flags
   , F_TRAILING              = 1 << 3
   , F_UPGRADE               = 1 << 4
   , F_SKIPBODY              = 1 << 5
+  , F_CONTENTLENGTH         = 1 << 6
   };
 
 
@@ -178,13 +179,17 @@ enum http_parser_flags
   XX(INVALID_HEADER_TOKEN, "invalid character in header")            \
   XX(INVALID_CONTENT_LENGTH,                                         \
      "invalid character in content-length header")                   \
+  XX(UNEXPECTED_CONTENT_LENGTH,                                      \
+     "unexpected content-length header")                             \
   XX(INVALID_CHUNK_SIZE,                                             \
      "invalid character in chunk size header")                       \
   XX(INVALID_CONSTANT, "invalid constant string")                    \
   XX(INVALID_INTERNAL_STATE, "encountered unexpected internal state")\
   XX(STRICT, "strict mode assertion failed")                         \
   XX(PAUSED, "parser is paused")                                     \
-  XX(UNKNOWN, "an unknown error occurred")
+  XX(UNKNOWN, "an unknown error occurred")                           \
+  XX(INVALID_TRANSFER_ENCODING,                                      \
+     "request has invalid transfer-encoding")
 
 
 /* Define HPE_* values for each errno value above */
@@ -202,10 +207,15 @@ enum http_errno {
 struct http_parser {
   /** PRIVATE **/
   unsigned int type : 2;         /* enum http_parser_type */
-  unsigned int flags : 6;        /* F_* values from 'flags' enum; semi-public */
-  unsigned int state : 8;        /* enum state from http_parser.c */
-  unsigned int header_state : 8; /* enum header_state from http_parser.c */
-  unsigned int index : 8;        /* index into current matcher */
+  unsigned int flags : 8;        /* F_* values from 'flags' enum; semi-public */
+  unsigned int state : 7;        /* enum state from http_parser.c */
+  unsigned int header_state : 7; /* enum header_state from http_parser.c */
+  unsigned int index : 5;        /* index into current matcher */
+  unsigned int uses_transfer_encoding : 1; /* Transfer-Encoding header is present */
+  unsigned int allow_chunked_length : 1; /* Allow headers with both
+                                          * `Content-Length` and
+                                          * `Transfer-Encoding: chunked` set */
+  unsigned int lenient_http_headers : 1;
 
   uint32_t nread;          /* # bytes read in various scenarios */
   uint64_t content_length; /* # bytes in body. `(uint64_t) -1` (all bits one)

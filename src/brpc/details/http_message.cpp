@@ -33,6 +33,8 @@
 
 namespace brpc {
 
+DEFINE_bool(allow_chunked_length, false,
+            "Allow both Transfer-Encoding and Content-Length headers are present.");
 DEFINE_bool(http_verbose, false,
             "[DEBUG] Print EVERY http request/response");
 DEFINE_int32(http_verbose_max_body_length, 512,
@@ -169,6 +171,28 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
         const std::string* host_header = http_message->header().GetHeader("host");
         if (host_header != NULL) {
             uri.SetHostAndPort(*host_header);
+        }
+    }
+
+    // https://datatracker.ietf.org/doc/html/rfc7230#section-3.3.3
+    // If a message is received with both a Transfer-Encoding and a
+    // Content-Length header field, the Transfer-Encoding overrides the
+    // Content-Length. Such a message might indicate an attempt to
+    // perform request smuggling (Section 9.5) or response splitting
+    // (Section 9.4) and ought to be handled as an error. A sender MUST
+    // remove the received Content-Length field prior to forwarding such
+    // a message.
+
+    // Reject message if both Transfer-Encoding and Content-Length headers
+    // are present or if allowed by gflag and 'Transfer-Encoding'
+    // is chunked - remove Content-Length and serve request.
+    if (parser->uses_transfer_encoding && parser->flags & F_CONTENTLENGTH) {
+        if (parser->flags & F_CHUNKED && FLAGS_allow_chunked_length) {
+            http_message->header().RemoveHeader("Content-Length");
+        } else {
+            LOG(ERROR) << "HTTP/1.1 protocol error: both Content-Length "
+                       << "and Transfer-Encoding are set.";
+            return -1;
         }
     }
 
@@ -401,6 +425,7 @@ HttpMessage::HttpMessage(bool read_body_progressively,
     , _cur_value(NULL)
     , _vbodylen(0) {
     http_parser_init(&_parser, HTTP_BOTH);
+    _parser.allow_chunked_length = 1;
     _parser.data = this;
 }
 
@@ -489,6 +514,9 @@ static void DescribeHttpParserFlags(std::ostream& os, unsigned int flags) {
     if (flags & F_SKIPBODY) {
         os << "F_SKIPBODY|";
     }
+    if (flags & F_CONTENTLENGTH) {
+        os << "F_CONTENTLENGTH|";
+    }
 }
 
 std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
@@ -548,7 +576,13 @@ void MakeRawHttpRequest(butil::IOBuf* request,
        << h->minor_version() << BRPC_CRLF;
     // Never use "Content-Length" set by user.
     h->RemoveHeader("Content-Length");
-    if (h->method() != HTTP_METHOD_GET) {
+    const std::string* transfer_encoding = h->GetHeader("Transfer-Encoding");
+    if (h->method() == HTTP_METHOD_GET) {
+        h->RemoveHeader("Transfer-Encoding");
+    } else if (!transfer_encoding) {
+        // https://datatracker.ietf.org/doc/html/rfc7230#section-3.3.2
+        // A sender MUST NOT send a Content-Length header field in any message
+        // that contains a Transfer-Encoding header field.
         os << "Content-Length: " << (content ? content->length() : 0)
            << BRPC_CRLF;
     }
@@ -638,25 +672,36 @@ void MakeRawHttpResponse(butil::IOBuf* response,
         // A server MUST NOT send a Content-Length header field in any response
         // with a status code of 1xx (Informational) or 204 (No Content).
         h->RemoveHeader("Content-Length");
-    } else if (content) {
-        const std::string* content_length = h->GetHeader("Content-Length");
-        if (is_head_req) {
-            // Prioritize "Content-Length" set by user.
-            // If "Content-Length" is not set, set it to the length of content.
-            if (!content_length) {
-                os << "Content-Length: " << content->length() << BRPC_CRLF;
+    } else {
+        const std::string* transfer_encoding = h->GetHeader("Transfer-Encoding");
+        // https://datatracker.ietf.org/doc/html/rfc7230#section-3.3.2
+        // A sender MUST NOT send a Content-Length header field in any message
+        // that contains a Transfer-Encoding header field.
+        if (transfer_encoding) {
+            h->RemoveHeader("Content-Length");
+        }
+        if (content) {
+            const std::string* content_length = h->GetHeader("Content-Length");
+            if (is_head_req) {
+                if (!content_length && !transfer_encoding) {
+                    // Prioritize "Content-Length" set by user.
+                    // If "Content-Length" is not set, set it to the length of content.
+                    os << "Content-Length: " << content->length() << BRPC_CRLF;
+                }
+            } else {
+                if (!transfer_encoding) {
+                    if (content_length) {
+                        h->RemoveHeader("Content-Length");
+                    }
+                    // Never use "Content-Length" set by user.
+                    // Always set Content-Length since lighttpd requires the header to be
+                    // set to 0 for empty content.
+                    os << "Content-Length: " << content->length() << BRPC_CRLF;
+                }
             }
-        } else {
-            if (content_length) {
-                h->RemoveHeader("Content-Length");
-            }
-            // Never use "Content-Length" set by user.
-            // Always set Content-Length since lighttpd requires the header to be
-            // set to 0 for empty content.
-            os << "Content-Length: " << content->length() << BRPC_CRLF;
         }
     }
-    if (!h->content_type().empty()) {
+    if (!is_invalid_content && !h->content_type().empty()) {
         os << "Content-Type: " << h->content_type()
            << BRPC_CRLF;
     }

@@ -53,6 +53,9 @@ struct TaskMeta {
     butil::atomic<ButexWaiter*> current_waiter;
     uint64_t current_sleep;
 
+    // A flag to mark if the Timer scheduling failed.
+    bool sleep_failed;
+
     // A builtin flag to mark if the thread is stopping.
     bool stop;
 
