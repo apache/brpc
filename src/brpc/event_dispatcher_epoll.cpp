@@ -111,7 +111,7 @@ void EventDispatcher::Join() {
     }
 }
 
-int EventDispatcher::AddEpollOut(SocketId socket_id, int fd, bool pollin) {
+int EventDispatcher::RegisterEvent(SocketId socket_id, int fd, bool pollin) {
     if (_epfd < 0) {
         errno = EINVAL;
         return -1;
@@ -138,7 +138,7 @@ int EventDispatcher::AddEpollOut(SocketId socket_id, int fd, bool pollin) {
     return 0;
 }
 
-int EventDispatcher::RemoveEpollOut(SocketId socket_id, 
+int EventDispatcher::UnregisterEvent(SocketId socket_id, 
                                     int fd, bool pollin) {
     if (pollin) {
         epoll_event evt;

@@ -64,12 +64,12 @@ public:
     // be used instead of EPOLL_CTL_ADD. When event arrives,
     // `Socket::HandleEpollOut' will be called with `socket_id'
     // Returns 0 on success, -1 otherwise and errno is set
-    int AddEpollOut(SocketId socket_id, int fd, bool pollin);
+    int RegisterEvent(SocketId socket_id, int fd, bool pollin);
     
     // Remove EPOLLOUT event on `fd'. If `pollin' is true, EPOLLIN event
     // will be kept and EPOLL_CTL_MOD will be used instead of EPOLL_CTL_DEL
     // Returns 0 on success, -1 otherwise and errno is set
-    int RemoveEpollOut(SocketId socket_id, int fd, bool pollin);
+    int UnregisterEvent(SocketId socket_id, int fd, bool pollin);
 
 private:
     DISALLOW_COPY_AND_ASSIGN(EventDispatcher);
