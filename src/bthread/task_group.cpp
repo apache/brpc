@@ -57,6 +57,9 @@ const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
     ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
                                     pass_bool);
 
+DEFINE_int32(worker_polling_time_ms, 0, "Worker keep busy polling some time before "
+                                       "sleeping on parking lot");
+
 BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
@@ -116,16 +119,20 @@ bool TaskGroup::is_stopped(bthread_t tid) {
 }
 
 bool TaskGroup::wait_task(bthread_t* tid) {
-    int64_t poll_start_ms = butil::cpuwide_time_ms();
+    int64_t poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
             return false;
         }
+        if (_remote_rq.pop(tid)) {
+            return true;
+        }
         // keep polling for some time before waiting on parking lot
-        if (butil::cpuwide_time_ms() - poll_start_ms > 15) {
+        if (FLAGS_worker_polling_time_ms <= 0 ||
+            butil::cpuwide_time_ms() - poll_start_ms > FLAGS_worker_polling_time_ms) {
             _pl->wait(_last_pl_state);
-            poll_start_ms = butil::cpuwide_time_ms();
+            poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
         }
         if (steal_task(tid)) {
             return true;
