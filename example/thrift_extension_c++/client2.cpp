@@ -19,6 +19,7 @@
 
 #include "gen-cpp/echo_types.h"
 
+#include <vector>
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
 #include <butil/logging.h>
@@ -37,8 +38,13 @@ DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
+DEFINE_string(thrift_protocol, "binary",
+              "Thrift protocol type. Available values: binary, compact");
+DEFINE_int32(request_num_size, 1000,
+             "The size of the number list in the request");
 
 std::string g_request;
+std::vector<int32_t> g_nums;
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::Adder<int> g_error_count("client_error_count");
@@ -55,6 +61,7 @@ static void* sender(void* arg) {
         example::EchoResponse res;
         brpc::Controller cntl;
         
+        req.__set_nums(g_nums);
         req.__set_data(g_request);
         req.__set_need_by_proxy(10);
         
@@ -87,7 +94,14 @@ int main(int argc, char* argv[]) {
     
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
-    options.protocol = brpc::PROTOCOL_THRIFT;
+    if (FLAGS_thrift_protocol == "binary") {
+        options.protocol = brpc::PROTOCOL_THRIFT;
+    } else if (FLAGS_thrift_protocol == "compact") {
+        options.protocol = brpc::PROTOCOL_THRIFT_COMPACT;
+    } else {
+        LOG(FATAL) << "Unsupported thrift protocol type: "
+                   << FLAGS_thrift_protocol;
+    }
     options.connection_type = FLAGS_connection_type;
     options.connect_timeout_ms = std::min(FLAGS_timeout_ms / 2, 100);
     options.timeout_ms = FLAGS_timeout_ms;
@@ -102,6 +116,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     g_request.resize(FLAGS_request_size, 'r');
+    g_nums.resize(FLAGS_request_num_size, 1);
 
     if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
