@@ -467,11 +467,6 @@ RedisCommandHandler* RedisService::FindCommandHandler(const butil::StringPiece& 
     return NULL;
 }
 
-TransactionHandler* RedisService::NewTransactionHandler() const {
-    LOG(ERROR) << "NewTransactionHandler is not implemented";
-    return NULL;
-}
-
 RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
     LOG(ERROR) << "NewTransactionHandler is not implemented";
     return NULL;

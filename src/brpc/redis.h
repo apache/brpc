@@ -27,6 +27,7 @@
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
 #include "brpc/proto_base.pb.h"
+#include "brpc/redis_command.h"
 #include "brpc/redis_reply.h"
 #include "brpc/parse_result.h"
 #include "brpc/callback.h"
@@ -223,17 +224,32 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 class RedisCommandHandler;
 class TransactionHandler;
 
+enum RedisCommandHandlerResult {
+    REDIS_CMD_HANDLED = 0,
+    REDIS_CMD_CONTINUE = 1,
+    REDIS_CMD_BATCHED = 2,
+};
+
+class ConnectionContext {
+public:
+    virtual ~ConnectionContext() {}
+};
+
 // Container of CommandHandlers.
 // Assign an instance to ServerOption.redis_service to enable redis support. 
 class RedisService {
 public:
     virtual ~RedisService() {}
-    
+
+    virtual ConnectionContext* NewConnectionContext() const = 0;
+
+    virtual RedisCommandHandlerResult DispatchCommand(ConnectionContext* ctx,
+                                                      const std::vector<butil::StringPiece>& args,
+                                                      brpc::RedisReply* output,
+                                                      bool flush_batched) const = 0;
+
     // Call this function to register `handler` that can handle command `name`.
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
-
-    // Create a transaction handler to handle commands inside a transaction.
-    virtual TransactionHandler* NewTransactionHandler() const;
 
     // This function should not be touched by user and used by brpc deverloper only.
     RedisCommandHandler* FindCommandHandler(const butil::StringPiece& name) const;
@@ -243,15 +259,8 @@ private:
     CommandMap _command_map;
 };
 
-enum RedisCommandHandlerResult {
-    REDIS_CMD_HANDLED = 0,
-    REDIS_CMD_CONTINUE = 1,
-    REDIS_CMD_BATCHED = 2,
-    REDIS_CMD_TXN_START = 3,
-    REDIS_CMD_TXN_FINISH = 4,
-};
-
-// The Command handler for a redis request. User should impletement Run().
+// The Command handler for a redis request. User should implement Run().
+// TODO: move this to monograph redis and delete it.
 class RedisCommandHandler {
 public:
     virtual ~RedisCommandHandler() {}

@@ -811,7 +811,22 @@ butil::Mutex s_mutex;
 std::unordered_map<std::string, std::string> m;
 std::unordered_map<std::string, int64_t> int_map;
 
-class MultiTransactionHandler : public brpc::TransactionHandler {
+class MultiTransactionHandler;
+
+class RedisConnectionContext : public brpc::ConnectionContext
+{
+public:
+    // If user starts a transaction, transaction_handler indicates the
+    // handler pointer that runs the transaction command.
+    std::unique_ptr<MultiTransactionHandler> transaction_handler;
+    // Whether this connection has begun a transaction. If true, the commands
+    // received will be handled by transaction_handler.
+    bool in_transaction{};
+
+    friend class RedisServiceImpl;
+};
+
+class MultiTransactionHandler {
 public:
     brpc::RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
@@ -844,7 +859,7 @@ public:
         return brpc::REDIS_CMD_HANDLED;
     }
 
-    bool Begin() override {
+    bool Begin() {
         return true;
     }
 
@@ -903,9 +918,96 @@ public:
         }
     }
 
-    brpc::TransactionHandler* NewTransactionHandler() const override {
+    brpc::ConnectionContext* NewConnectionContext() const override {
+        return new RedisConnectionContext;
+    }
 
-        return new MultiTransactionHandler;
+    brpc::RedisCommandHandlerResult DispatchCommand(brpc::ConnectionContext* conn_ctx,
+                                                    const std::vector<butil::StringPiece>& args,
+                                                    brpc::RedisReply* output,
+                                                    bool flush_batched) const override {
+        brpc::RedisCommandHandlerResult result = brpc::REDIS_CMD_HANDLED;
+
+        RedisConnectionContext *ctx =
+                static_cast<RedisConnectionContext *>(conn_ctx);
+        if (ctx->in_transaction)
+        {
+            assert(ctx->transaction_handler != nullptr);
+            result =
+                    ctx->transaction_handler->Run(args, output, flush_batched);
+            if (result == brpc::REDIS_CMD_HANDLED)
+            {
+                ctx->transaction_handler.reset(NULL);
+                ctx->in_transaction = false;
+            }
+            else
+            {
+                assert(result == brpc::REDIS_CMD_CONTINUE);
+            }
+        }
+        else if (args[0] == "watch" || args[0] == "unwatch")
+        {
+            if (!ctx->transaction_handler)
+            {
+                ctx->transaction_handler.reset(new MultiTransactionHandler);
+                ctx->in_transaction = false;
+            }
+            if (!ctx->transaction_handler)
+            {
+                output->SetError("ERR Transaction not supported.");
+            }
+            else
+            {
+                result = static_cast<MultiTransactionHandler *>(
+                        ctx->transaction_handler.get())
+                        ->Run(args, output, flush_batched);
+                if (args[0] == "unwatch" && result == brpc::REDIS_CMD_HANDLED)
+                {
+                    ctx->transaction_handler.reset(nullptr);
+                    ctx->in_transaction = false;
+                }
+            }
+        }
+        else
+        {
+            // The command is a simple command. Find the command handler to
+            // process it.
+            // TODO(zkl): consider removing command handler and dispatching the
+            //  command via a function table.
+            brpc::RedisCommandHandler *ch = FindCommandHandler(args[0]);
+            if (!ch)
+            {
+                char buf[64];
+                snprintf(buf,
+                         sizeof(buf),
+                         "ERR unknown command `%s`",
+                         args[0].as_string().c_str());
+                output->SetError(buf);
+            }
+            else
+            {
+                result = ch->Run(args, output, flush_batched);
+                if (result == brpc::REDIS_CMD_CONTINUE)
+                {
+                    if (ctx->transaction_handler == nullptr)
+                    {
+                        ctx->transaction_handler.reset(
+                                new MultiTransactionHandler);
+                    }
+                    if (ctx->transaction_handler != nullptr)
+                    {
+                        ctx->transaction_handler->Begin();
+                        ctx->in_transaction = true;
+                    }
+                    else
+                    {
+                        output->SetError("ERR Transaction not supported.");
+                    }
+                }
+            }
+        }
+
+        return result;
     }
 
     std::vector<std::vector<std::string> > _batched_command;
@@ -1129,10 +1231,6 @@ public:
                                         bool flush_batched) {
         output->SetStatus("OK");
         return brpc::REDIS_CMD_CONTINUE;
-    }
-
-    RedisCommandHandler* NewTransactionHandler() override {
-        return new MultiTransactionHandler;
     }
 };
 
