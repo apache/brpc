@@ -26,6 +26,7 @@
 #include "butil/threading/simple_thread.h"
 #include "butil/memory/singleton.h"
 #include "butil/containers/flat_map.h"
+#include "butil/containers/mpsc_queue.h"
 
 namespace butil {
 
@@ -139,11 +140,8 @@ private:
 
     void Consume();
 
-    bool IsComplete(IOBufSample* old_head);
-
     butil::atomic<bool> _stop;
-    butil::atomic<IOBufSample*> _sample_head;
-    butil::atomic<IOBufSample*> _cur_sample;
+    MPSCQueue<IOBufSample*> _sample_queue;
 
     butil::IOBuf _disk_buf;  // temp buf before saving the file.
     IOBufRefMap _stack_map; // combining same samples to make result smaller.
