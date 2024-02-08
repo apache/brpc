@@ -355,6 +355,11 @@ inline IOBuf::Block* create_block() {
 // release_tls_block_chain() may exceed this limit sometimes.
 const int MAX_BLOCKS_PER_THREAD = 8;
 
+inline int max_blocks_per_thread() {
+    // If IOBufProfiler is enabled, do not cache blocks in TLS.
+    return IsIOBufProfilerEnabled() ? 0 : MAX_BLOCKS_PER_THREAD;
+}
+
 struct TLSData {
     // Head of the TLS block chain.
     IOBuf::Block* block_head;
@@ -436,7 +441,7 @@ inline void release_tls_block(IOBuf::Block* b) {
     TLSData& tls_data = g_tls_data;
     if (b->full()) {
         b->dec_ref();
-    } else if (tls_data.num_blocks >= MAX_BLOCKS_PER_THREAD) {
+    } else if (tls_data.num_blocks >= max_blocks_per_thread()) {
         b->dec_ref();
         g_num_hit_tls_threshold.fetch_add(1, butil::memory_order_relaxed);
     } else {
@@ -455,7 +460,7 @@ inline void release_tls_block(IOBuf::Block* b) {
 void release_tls_block_chain(IOBuf::Block* b) {
     TLSData& tls_data = g_tls_data;
     size_t n = 0;
-    if (tls_data.num_blocks >= MAX_BLOCKS_PER_THREAD) {
+    if (tls_data.num_blocks >= max_blocks_per_thread()) {
         do {
             ++n;
             IOBuf::Block* const saved_next = b->u.portal_next;
