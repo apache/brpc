@@ -7,7 +7,7 @@ There are some scenarios when the client or server needs to send huge amount of 
 - If these RPCs are parallel, there is no guarantee on the order of the data at the receiving side, which leads to complicate code of reassembling.
 - If these RPCs are serial, we have to endure the latency of the network RTT for each RPC together with the process time, which is especially unpredictable.
 
-In order to allow large packets to flow between client and server like a stream, we provide a new communication model: Streaming RPC. Streaming RPC enables users to establishes Stream which is a user-space connection between client and service. Multiple Streams can share the same TCP connection at the same time. The basic transmission unit on Stream is message. As a result, the sender can continuously write to messages to a Stream, while the receiver can read them out in the order of sending.
+In order to allow large packets to flow between client and server like a stream, we provide a new communication model: Streaming RPC. Streaming RPC enables users to establish Stream which is a user-space connection between client and service. Multiple Streams can share the same TCP connection at the same time. The basic transmission unit on Stream is message. As a result, the sender can continuously write to messages to a Stream, while the receiver can read them out in the order of sending.
 
 Streaming RPC ensures/provides:
 
@@ -23,7 +23,7 @@ For examples please refer to [example/streaming_echo_c++](https://github.com/apa
 
 # Create a Stream
 
-Currently stream is established by the client only. A new Stream object is created in client and then is used to issues an RPC (through baidu_std protocol) to the specified service. The service could accept this stream by responding to the request without error, thus a Stream is created once the client receives the response successfully. Any error during this process fails the RPC and thus fails the Stream creation. Take the Linux environment as an example, the client creates a [socket](http://linux.die.net/man/7/socket) first (creates a Stream), and then try to establish a connection with the remote side by [connect](http://linux.die.net/man/2/connect) (establish a Stream through RPC). Finally the stream has been created once the remote side [accept](http://linux.die.net/man/2/accept) the request.
+Currently stream is established by the client only. A new Stream object is created in client and then is used to issue an RPC (through baidu_std protocol) to the specified service. The service could accept this stream by responding to the request without error, thus a Stream is created once the client receives the response successfully. Any error during this process fails the RPC and thus fails the Stream creation. Take the Linux environment as an example, the client creates a [socket](http://linux.die.net/man/7/socket) first (creates a Stream), and then tries to establish a connection with the remote side by [connect](http://linux.die.net/man/2/connect) (establish a Stream through RPC). Finally the stream has been created once the remote side [accept](http://linux.die.net/man/2/accept) the request.
 
 > If the client tries to establish a stream to a server that doesn't support streaming RPC, it will always return failure.
 
@@ -62,7 +62,7 @@ int StreamCreate(StreamId* request_stream, Controller &cntl, const StreamOptions
 
 # Accept a Stream
 
-If a Stream is attached inside the request of an RPC, the service can accept the Stream by `StreamAccept`. On success this function fill the created Stream into `response_stream`, which can be used to send message to the client.
+If a Stream is attached inside the request of an RPC, the service can accept the Stream by `StreamAccept`. On success this function fills the created Stream into `response_stream`, which can be used to send message to the client.
 
 ```c++
 // [Called at the server side]
@@ -74,7 +74,7 @@ int StreamAccept(StreamId* response_stream, Controller &cntl, const StreamOption
 
 # Read from a Stream
 
-Upon creating/accepting a Stream, your can fill the `hander` in `StreamOptions` with your own implemented `StreamInputHandler`. Then you will be notified when the stream receives data, is closed by the other end, or reaches idle timeout.
+Upon creating/accepting a Stream, you can fill the `hander` in `StreamOptions` with your own implemented `StreamInputHandler`. Then you will be notified when the stream receives data, is closed by the other end, or reaches idle timeout.
 
 ```c++
 class StreamInputHandler {
@@ -104,8 +104,8 @@ public:
 // Returns 0 on success, errno otherwise
 // Errno:
 //  - EAGAIN: |stream_id| is created with positive |max_buf_size| and buf size
-//            which the remote side hasn't consumed yet excceeds the number.
-//  - EINVAL: |stream_id| is invalied or has been closed
+//            which the remote side hasn't consumed yet exceeds the number.
+//  - EINVAL: |stream_id| is invalid or has been closed
 int StreamWrite(StreamId stream_id, const butil::IOBuf &message);
 ```
 
@@ -114,7 +114,7 @@ int StreamWrite(StreamId stream_id, const butil::IOBuf &message);
 When the amount of unacknowledged data reaches the limit, the `Write` operation at the sender will fail with EAGAIN immediately. At this moment, you should wait for the receiver to consume the data synchronously or asynchronously.
 
 ```c++
-// Wait util the pending buffer size is less than |max_buf_size| or error occurs
+// Wait until the pending buffer size is less than |max_buf_size| or error occurs
 // Returns 0 on success, errno otherwise
 // Errno:
 //  - ETIMEDOUT: when |due_time| is not NULL and time expired this
@@ -133,7 +133,7 @@ void StreamWait(StreamId stream_id, const timespec *due_time,
 // Close |stream_id|, after this function is called:
 //  - All the following |StreamWrite| would fail
 //  - |StreamWait| wakes up immediately.
-//  - Both sides |on_closed| would be notifed after all the pending buffers have
+//  - Both sides |on_closed| would be notified after all the pending buffers have
 //    been received
 // This function could be called multiple times without side-effects
 int StreamClose(StreamId stream_id);
