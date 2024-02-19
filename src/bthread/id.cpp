@@ -291,6 +291,7 @@ void id_pool_status(std::ostream &os) {
 struct IdTraits {
     static const size_t BLOCK_SIZE = 63;
     static const size_t MAX_ENTRIES = 100000;
+    static const size_t INIT_GC_SIZE = 4096;
     static const bthread_id_t ID_INIT;
     static bool exists(bthread_id_t id)
     { return bthread::id_exists_with_true_negatives(id); }

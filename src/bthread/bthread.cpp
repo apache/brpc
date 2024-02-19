@@ -205,6 +205,7 @@ BUTIL_FORCE_INLINE bool can_run_thread_local(const bthread_attr_t* __restrict at
 struct TidTraits {
     static const size_t BLOCK_SIZE = 63;
     static const size_t MAX_ENTRIES = 65536;
+    static const size_t INIT_GC_SIZE = 65536;
     static const bthread_t ID_INIT;
     static bool exists(bthread_t id) { return bthread::TaskGroup::exists(id); }
 };
