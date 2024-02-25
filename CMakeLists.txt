@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-cmake_minimum_required(VERSION 2.8.10)
+cmake_minimum_required(VERSION 2.8.12)
 project(brpc C CXX)
 
 option(WITH_GLOG "With glog" OFF)
@@ -140,8 +140,6 @@ else()
 endif()
 endmacro(use_cxx11)
 
-use_cxx11()
-
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     #required by butil/crc32.cc to boost performance for 10x
     if((CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)") AND NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
@@ -156,6 +154,50 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 find_package(Protobuf REQUIRED)
+if(Protobuf_VERSION GREATER_EQUAL 4.22)
+    # required by absl
+    set(CMAKE_CXX_STANDARD 17)
+
+    find_package(absl REQUIRED CONFIG)
+    set(protobuf_ABSL_USED_TARGETS
+        absl::absl_check
+        absl::absl_log
+        absl::algorithm
+        absl::base
+        absl::bind_front
+        absl::bits
+        absl::btree
+        absl::cleanup
+        absl::cord
+        absl::core_headers
+        absl::debugging
+        absl::die_if_null
+        absl::dynamic_annotations
+        absl::flags
+        absl::flat_hash_map
+        absl::flat_hash_set
+        absl::function_ref
+        absl::hash
+        absl::layout
+        absl::log_initialize
+        absl::log_severity
+        absl::memory
+        absl::node_hash_map
+        absl::node_hash_set
+        absl::optional
+        absl::span
+        absl::status
+        absl::statusor
+        absl::strings
+        absl::synchronization
+        absl::time
+        absl::type_traits
+        absl::utility
+        absl::variant
+    )
+else()
+    use_cxx11()
+endif()
 find_package(Threads REQUIRED)
 
 find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
@@ -229,7 +271,7 @@ include_directories(
 
 set(DYNAMIC_LIB
     ${GFLAGS_LIBRARY}
-    ${PROTOBUF_LIBRARIES}
+    ${PROTOBUF_LIBRARIES} ${protobuf_ABSL_USED_TARGETS}
     ${LEVELDB_LIB}
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
