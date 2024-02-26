@@ -83,6 +83,7 @@ TaskControl* g_task_control = NULL;
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 extern void (*g_worker_startfn)();
 extern void (*g_tagged_worker_startfn)(bthread_tag_t);
+extern void* (*g_create_span_func)();
 
 inline TaskControl* get_task_control() {
     return g_task_control;
@@ -486,6 +487,14 @@ int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t)) {
         return EINVAL;
     }
     bthread::g_tagged_worker_startfn = start_fn;
+    return 0;
+}
+
+int bthread_set_create_span_func(void* (*func)()) {
+    if (func == NULL) {
+        return EINVAL;
+    }
+    bthread::g_create_span_func = func;
     return 0;
 }
 

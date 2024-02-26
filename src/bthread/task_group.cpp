@@ -76,6 +76,15 @@ const size_t OFFSET_TABLE[] = {
 #include "bthread/offset_inl.list"
 };
 
+void* (*g_create_span_func)() = NULL;
+
+void* run_create_span_func() {
+    if (g_create_span_func) {
+        return g_create_span_func();
+    }
+    return tls_bls.rpcz_parent_span;
+}
+
 int TaskGroup::get_attr(bthread_t tid, bthread_attr_t* out) {
     TaskMeta* const m = address_meta(tid);
     if (m != NULL) {
@@ -383,7 +392,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
     if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
-        m->local_storage.rpcz_parent_span = tls_bls.rpcz_parent_span;
+        m->local_storage.rpcz_parent_span = run_create_span_func();
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
@@ -443,7 +452,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
     if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
-        m->local_storage.rpcz_parent_span = tls_bls.rpcz_parent_span;
+        m->local_storage.rpcz_parent_span = run_create_span_func();
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;

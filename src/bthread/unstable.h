@@ -91,6 +91,9 @@ extern int bthread_set_worker_startfn(void (*start_fn)());
 // Add a startup function with tag
 extern int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t));
 
+// Add a create span function
+extern int bthread_set_create_span_func(void* (*func)());
+
 // Stop all bthread and worker pthreads.
 // You should avoid calling this function which may cause bthread after main()
 // suspend indefinitely.

@@ -309,6 +309,17 @@ static void PrintClientSpan(std::ostream& os,const RpczSpan& span,
     PrintClientSpan(os, span, &last_time, NULL, use_html);
 }
 
+static void PrintBthreadSpan(std::ostream& os, const RpczSpan& span, int64_t* last_time,
+                             SpanInfoExtractor* server_extr, bool use_html) {
+    SpanInfoExtractor client_extr(span.info().c_str());
+    int num_extr = 0;
+    SpanInfoExtractor* extr[2];
+    if (server_extr) {
+        extr[num_extr++] = server_extr;
+    }
+    extr[num_extr++] = &client_extr;
+    PrintAnnotations(os, std::numeric_limits<int64_t>::max(), last_time, extr, num_extr);
+}
 
 static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
                             bool use_html) {
@@ -351,8 +362,12 @@ static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
 
     const int nclient = span.client_spans_size();
     for (int i = 0; i < nclient; ++i) {
-        PrintClientSpan(os, span.client_spans(i), &last_time,
-                        &server_extr, use_html);
+        auto& client_span = span.client_spans(i);
+        if (client_span.type() == SPAN_TYPE_CLIENT) {
+            PrintClientSpan(os, client_span, &last_time, &server_extr, use_html);
+        } else {
+            PrintBthreadSpan(os, client_span, &last_time, &server_extr, use_html);
+        }
     }
 
     if (PrintAnnotationsAndRealTimeSpan(

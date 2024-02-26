@@ -50,6 +50,11 @@
 #include "brpc/policy/hasher.h"
 #include "brpc/policy/dynpart_load_balancer.h"
 
+
+// Span
+#include "brpc/span.h"
+#include "bthread/unstable.h"
+
 // Compress handlers
 #include "brpc/compress.h"
 #include "brpc/policy/gzip_compress.h"
@@ -328,6 +333,9 @@ static void GlobalInitializeOrDieImpl() {
 
     // Make GOOGLE_LOG print to comlog device
     SetLogHandler(&BaiduStreamingLogHandler);
+
+    // Set bthread create span function
+    bthread_set_create_span_func(CreateBthreadSpan);
 
     // Setting the variable here does not work, the profiler probably check
     // the variable before main() for only once.
