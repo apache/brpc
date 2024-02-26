@@ -130,6 +130,11 @@ int endpoint2hostname(const EndPoint& point, std::string* host);
 // into `self_port' if it's not NULL.
 // Returns the socket descriptor, -1 otherwise and errno is set.
 int tcp_connect(EndPoint server, int* self_port);
+// Suspend caller thread until connect(2) on `sockfd' succeeds
+// or CLOCK_REALTIME reached `abstime' if `abstime' is not NULL.
+// Write port of this side into `self_port' if it's not NULL.
+// Returns the socket descriptor, -1 otherwise and errno is set.
+int tcp_connect(const EndPoint& server, int* self_port, int connect_timeout_ms);
 
 // Create and listen to a TCP socket bound with `ip_and_port'.
 // To enable SO_REUSEADDR for the whole program, enable gflag -reuse_addr

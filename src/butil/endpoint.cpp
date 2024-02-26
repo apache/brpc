@@ -17,6 +17,7 @@
 
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
+#include "butil/compat.h"
 #include <arpa/inet.h>                         // inet_pton, inet_ntop
 #include <netdb.h>                             // gethostbyname_r
 #include <unistd.h>                            // gethostname
@@ -28,12 +29,18 @@
 #include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
 #include <memory>
 #include <gflags/gflags.h>
+#include <sys/poll.h>
+#if defined(OS_MACOSX)
+#include <sys/event.h>                           // kevent(), kqueue()
+#endif
 #include "butil/build_config.h"                // OS_MACOSX
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
+#include "butil/fd_utility.h"
+#include "butil/memory/scope_guard.h"
 
 //supported since Linux 3.9.
 DEFINE_bool(reuse_port, false, "Enable SO_REUSEPORT for all listened sockets");
@@ -47,6 +54,11 @@ int BAIDU_WEAK bthread_connect(
     int sockfd, const struct sockaddr *serv_addr, socklen_t addrlen) {
     return connect(sockfd, serv_addr, addrlen);
 }
+
+int BAIDU_WEAK bthread_timed_connect(
+    int sockfd, const struct sockaddr* serv_addr,
+    socklen_t addrlen, const timespec* abstime);
+
 __END_DECLS
 
 #include "details/extended_endpoint.hpp"
@@ -380,10 +392,121 @@ int endpoint2hostname(const EndPoint& point, std::string* host) {
     return -1;
 }
 
-int tcp_connect(EndPoint point, int* self_port) {
-    struct sockaddr_storage serv_addr;
+#if defined(OS_LINUX)
+static short epoll_to_poll_events(uint32_t epoll_events) {
+    // Most POLL* and EPOLL* are same values.
+    short poll_events = (epoll_events &
+                         (EPOLLIN | EPOLLPRI | EPOLLOUT |
+                          EPOLLRDNORM | EPOLLRDBAND |
+                          EPOLLWRNORM | EPOLLWRBAND |
+                          EPOLLMSG | EPOLLERR | EPOLLHUP));
+    CHECK_EQ((uint32_t)poll_events, epoll_events);
+    return poll_events;
+}
+#elif defined(OS_MACOSX)
+short kqueue_to_poll_events(int kqueue_events) {
+    //TODO: add more values?
+    short poll_events = 0;
+    if (kqueue_events == EVFILT_READ) {
+        poll_events |= POLLIN;
+    }
+    if (kqueue_events == EVFILT_WRITE) {
+        poll_events |= POLLOUT;
+    }
+    return poll_events;
+}
+#endif
+
+int pthread_fd_wait(int fd, unsigned events,
+                    const timespec* abstime) {
+    int diff_ms = -1;
+    if (abstime) {
+        timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        int64_t now_us = butil::timespec_to_microseconds(now);
+        int64_t abstime_us = butil::timespec_to_microseconds(*abstime);
+        if (abstime_us <= now_us) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+        diff_ms = (abstime_us - now_us + 999L) / 1000L;
+    }
+#if defined(OS_LINUX)
+    const short poll_events = epoll_to_poll_events(events);
+#elif defined(OS_MACOSX)
+    const short poll_events = kqueue_to_poll_events(events);
+#endif
+    if (poll_events == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    pollfd ufds = { fd, poll_events, 0 };
+    const int rc = poll(&ufds, 1, diff_ms);
+    if (rc < 0) {
+        return -1;
+    }
+    if (rc == 0) {
+        errno = ETIMEDOUT;
+        return -1;
+    }
+    if (ufds.revents & POLLNVAL) {
+        errno = EBADF;
+        return -1;
+    }
+    return 0;
+}
+
+int pthread_timed_connect(int sockfd, const struct sockaddr* serv_addr,
+                          socklen_t addrlen, const timespec* abstime) {
+    if (abstime == NULL) {
+        return ::connect(sockfd, serv_addr, addrlen);
+    }
+
+    bool is_blocking = butil::is_blocking(sockfd);
+    if (is_blocking) {
+        butil::make_non_blocking(sockfd);
+    }
+    // Scoped non-blocking.
+    auto guard = butil::MakeScopeGuard([is_blocking, sockfd]() {
+        if (is_blocking) {
+            butil::make_blocking(sockfd);
+        }
+    });
+
+    const int rc = ::connect(sockfd, serv_addr, addrlen);
+    if (rc == 0 || errno != EINPROGRESS) {
+        return rc;
+    }
+#if defined(OS_LINUX)
+    if (pthread_fd_wait(sockfd, EPOLLOUT, abstime) < 0) {
+#elif defined(OS_MACOSX)
+    if (pthread_fd_wait(sockfd, EVFILT_WRITE, abstime) < 0) {
+#endif
+        return -1;
+    }
+
+    int err;
+    socklen_t errlen = sizeof(err);
+    if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &errlen) < 0) {
+        PLOG(FATAL) << "Fail to getsockopt";
+        return -1;
+    }
+    if (err != 0) {
+        CHECK(err != EINPROGRESS);
+        errno = err;
+        return -1;
+    }
+    return 0;
+}
+
+int tcp_connect(EndPoint server, int* self_port) {
+    return tcp_connect(server, self_port, -1);
+}
+
+int tcp_connect(const EndPoint& server, int* self_port, int connect_timeout_ms) {
+    struct sockaddr_storage serv_addr{};
     socklen_t serv_addr_size = 0;
-    if (endpoint2sockaddr(point, &serv_addr, &serv_addr_size) != 0) {
+    if (endpoint2sockaddr(server, &serv_addr, &serv_addr_size) != 0) {
         return -1;
     }
     fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
@@ -391,10 +514,21 @@ int tcp_connect(EndPoint point, int* self_port) {
         return -1;
     }
     int rc = 0;
-    if (bthread_connect != NULL) {
-        rc = bthread_connect(sockfd, (struct sockaddr*) &serv_addr, serv_addr_size);
+    if (connect_timeout_ms <= 0) {
+        if (bthread_connect != NULL) {
+            rc = bthread_connect(sockfd, (struct sockaddr*)&serv_addr, serv_addr_size);
+        } else {
+            rc = ::connect(sockfd, (struct sockaddr*) &serv_addr, serv_addr_size);
+        }
     } else {
-        rc = ::connect(sockfd, (struct sockaddr*) &serv_addr, serv_addr_size);
+        timespec abstime = butil::milliseconds_from_now(connect_timeout_ms);
+        if (bthread_timed_connect != NULL) {
+            rc = bthread_timed_connect(sockfd, (struct sockaddr*)&serv_addr,
+                                       serv_addr_size, &abstime);
+        } else {
+            rc = pthread_timed_connect(sockfd, (struct sockaddr*) &serv_addr,
+                                       serv_addr_size, &abstime);
+        }
     }
     if (rc < 0) {
         return -1;
