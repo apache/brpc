@@ -391,7 +391,8 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
     auto c = bthread::get_task_control();
     if (c == NULL) {
-        return EPERM;
+        bthread::FLAGS_bthread_concurrency_by_tag = 0;
+        return 0;
     }
     auto ngroup = c->concurrency();
     auto tag_ngroup = c->concurrency(tag);
