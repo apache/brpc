@@ -336,6 +336,15 @@ extern void* bthread_getspecific(bthread_key_t key);
 // Return current bthread tag
 extern bthread_tag_t bthread_self_tag(void);
 
+// The first call to bthread_once() by any thread in a process, with a given
+// once_control, will call the init_routine() with no arguments. Subsequent
+// calls of bthread_once() with the same once_control will not call the
+// init_routine(). On return from bthread_once(), it is guaranteed that
+// init_routine() has completed. The once_control parameter is used to
+// determine whether the associated initialisation routine has been called.
+// Returns 0 on success, error code otherwise.
+extern int bthread_once(bthread_once_t* once_control, void (*init_routine)());
+
 __END_DECLS
 
 #endif  // BTHREAD_BTHREAD_H

@@ -192,6 +192,29 @@ typedef struct {
 typedef struct {
 } bthread_barrierattr_t;
 
+#if defined(__cplusplus)
+class bthread_once_t;
+namespace bthread {
+extern int bthread_once_impl(bthread_once_t* once_control, void (*init_routine)());
+}
+
+class bthread_once_t {
+public:
+friend int bthread::bthread_once_impl(bthread_once_t* once_control, void (*init_routine)());
+    enum State {
+        UNINITIALIZED = 0,
+        INPROGRESS,
+        INITIALIZED,
+    };
+
+    bthread_once_t();
+    ~bthread_once_t();
+
+private:
+    butil::atomic<int>* _butex;
+};
+#endif
+
 typedef struct {
     uint64_t value;
 } bthread_id_t;
