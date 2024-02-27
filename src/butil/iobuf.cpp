@@ -164,8 +164,13 @@ inline void* cp(void *__restrict dest, const void *__restrict src, size_t n) {
 void* (*blockmem_allocate)(size_t) = ::malloc;
 void  (*blockmem_deallocate)(void*) = ::free;
 
+void remove_tls_block_chain();
+
 // Use default function pointers
 void reset_blockmem_allocate_and_deallocate() {
+    // There maybe block allocated by previous hooks, it's wrong to free them using
+    // mismatched hook.
+    remove_tls_block_chain();
     blockmem_allocate = ::malloc;
     blockmem_deallocate = ::free;
 }
