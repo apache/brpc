@@ -877,7 +877,7 @@ static int set_butex_waiter(bthread_t tid, ButexWaiter* w) {
 // by race conditions.
 // TODO: bthreads created by BTHREAD_ATTR_PTHREAD blocking on bthread_usleep()
 // can't be interrupted.
-int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
+int TaskGroup::interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag) {
     // Consume current_waiter in the TaskMeta, wake it up then set it back.
     ButexWaiter* w = NULL;
     uint64_t sleep_id = 0;
@@ -905,7 +905,7 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
                 if (!c) {
                     return EINVAL;
                 }
-                c->choose_one_group()->ready_to_run_remote(tid);
+                c->choose_one_group(tag)->ready_to_run_remote(tid);
             }
         }
     }
