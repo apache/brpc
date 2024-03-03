@@ -552,13 +552,13 @@ void Controller::NotifyOnCancel(google::protobuf::Closure* callback) {
         LOG(FATAL) << "NotifyCancel a single call more than once!";
         return;
     }
-    if (bthread_id_create(&_oncancel_id, callback, RunOnCancel) != 0) {
-        PLOG(FATAL) << "Fail to create bthread_id";
-        return;
-    }
     SocketUniquePtr sock;
     if (Socket::Address(_current_call.peer_id, &sock) != 0) {
         // Connection already broken
+        return;
+    }
+    if (bthread_id_create(&_oncancel_id, callback, RunOnCancel) != 0) {
+        PLOG(FATAL) << "Fail to create bthread_id";
         return;
     }
     sock->NotifyOnFailed(_oncancel_id);  // Always succeed
