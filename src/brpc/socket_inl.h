@@ -26,30 +26,15 @@ namespace brpc {
 // Utility functions to combine and extract SocketId.
 BUTIL_FORCE_INLINE SocketId
 MakeSocketId(uint32_t version, butil::ResourceId<Socket> slot) {
-    return SocketId((((uint64_t)version) << 32) | slot.value);
+    return MakeVRefId<Socket>(version, slot);
 }
 
 BUTIL_FORCE_INLINE butil::ResourceId<Socket> SlotOfSocketId(SocketId sid) {
-    butil::ResourceId<Socket> id = { (sid & 0xFFFFFFFFul) };
-    return id;
+    return SlotOfVRefId<Socket>(sid);
 }
 
 BUTIL_FORCE_INLINE uint32_t VersionOfSocketId(SocketId sid) {
-    return (uint32_t)(sid >> 32);
-}
-
-// Utility functions to combine and extract Socket::_versioned_ref
-BUTIL_FORCE_INLINE uint32_t VersionOfVRef(uint64_t vref) {
-    return (uint32_t)(vref >> 32);
-}
-
-BUTIL_FORCE_INLINE int32_t NRefOfVRef(uint64_t vref) {
-    return (int32_t)(vref & 0xFFFFFFFFul);
-}
-
-BUTIL_FORCE_INLINE uint64_t MakeVRef(uint32_t version, int32_t nref) {
-    // 1: Intended conversion to uint32_t, nref=-1 is 00000000FFFFFFFF
-    return (((uint64_t)version) << 32) | (uint32_t/*1*/)nref;
+    return VersionOfVRefId(sid);
 }
 
 inline SocketOptions::SocketOptions()
@@ -125,6 +110,21 @@ inline int Socket::Dereference() {
 }
 
 inline int Socket::Address(SocketId id, SocketUniquePtr* ptr) {
+    return AddressImpl(id ,false, ptr);
+}
+
+inline void Socket::ReAddress(SocketUniquePtr* ptr) {
+    _versioned_ref.fetch_add(1, butil::memory_order_acquire);
+    ptr->reset(this);
+}
+
+inline int Socket::AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr) {
+      return AddressImpl(id, true, ptr);
+}
+
+inline int Socket::AddressImpl(SocketId id,
+                               bool failed_as_well,
+                               SocketUniquePtr* ptr) {
     const butil::ResourceId<Socket> slot = SlotOfSocketId(id);
     Socket* const m = address_resource(slot);
     if (__builtin_expect(m != NULL, 1)) {
@@ -137,56 +137,7 @@ inline int Socket::Address(SocketId id, SocketUniquePtr* ptr) {
             ptr->reset(m);
             return 0;
         }
-
-        const uint64_t vref2 = m->_versioned_ref.fetch_sub(
-            1, butil::memory_order_release);
-        const int32_t nref = NRefOfVRef(vref2);
-        if (nref > 1) {
-            return -1;
-        } else if (__builtin_expect(nref == 1, 1)) {
-            const uint32_t ver2 = VersionOfVRef(vref2);
-            if ((ver2 & 1)) {
-                if (ver1 == ver2 || ver1 + 1 == ver2) {
-                    uint64_t expected_vref = vref2 - 1;
-                    if (m->_versioned_ref.compare_exchange_strong(
-                            expected_vref, MakeVRef(ver2 + 1, 0),
-                            butil::memory_order_acquire,
-                            butil::memory_order_relaxed)) {
-                        m->OnRecycle();
-                        return_resource(SlotOfSocketId(id));
-                    }
-                } else {
-                    CHECK(false) << "ref-version=" << ver1
-                                 << " unref-version=" << ver2;
-                }
-            } else {
-                CHECK_EQ(ver1, ver2);
-                // Addressed a free slot.
-            }
-        } else {
-            CHECK(false) << "Over dereferenced SocketId=" << id;
-        }
-    }
-    return -1;
-}
-
-inline void Socket::ReAddress(SocketUniquePtr* ptr) {
-    _versioned_ref.fetch_add(1, butil::memory_order_acquire);
-    ptr->reset(this);
-}
-
-inline int Socket::AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr) {
-    const butil::ResourceId<Socket> slot = SlotOfSocketId(id);
-    Socket* const m = address_resource(slot);
-    if (__builtin_expect(m != NULL, 1)) {
-        const uint64_t vref1 = m->_versioned_ref.fetch_add(
-            1, butil::memory_order_acquire);
-        const uint32_t ver1 = VersionOfVRef(vref1);
-        if (ver1 == VersionOfSocketId(id)) {
-            ptr->reset(m);
-            return 0;
-        }
-        if (ver1 == VersionOfSocketId(id) + 1) {
+        if (failed_as_well && ver1 == VersionOfSocketId(id) + 1) {
             ptr->reset(m);
             return 1;
         }
@@ -219,7 +170,7 @@ inline int Socket::AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr) {
             CHECK(false) << "Over dereferenced SocketId=" << id;
         }
     }
-    return -1;    
+    return -1;
 }
 
 inline bool Socket::Failed() const {

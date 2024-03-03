@@ -71,6 +71,58 @@ EventDispatcher& GetGlobalEventDispatcher(int fd, bthread_tag_t tag) {
     return g_edisp[tag * FLAGS_event_dispatcher_num + index];
 }
 
+int EventData::OnCreate(const EventDataOptions* options) {
+    if (!options) {
+        LOG(ERROR) << "options is NULL";
+        return -1;
+    }
+    if (options->user_id == INVALID_VREF_ID) {
+        LOG(ERROR) << "Invalid user_id=-1";
+        return -1;
+    }
+    if (!options->input_cb) {
+        LOG(ERROR) << "Invalid input_cb=NULL";
+        return -1;
+    }
+    if (!options->output_cb) {
+        LOG(ERROR) << "Invalid output_cb=NULL";
+        return -1;
+    }
+
+    _options = *options;
+    return 0;
+}
+
+void EventData::OnRecycle() {
+    _options = {INVALID_EVENT_DATA_ID, NULL, NULL};
+}
+
+void MakeEventDataIdInvalid(EventDataId& id) {
+    EventData::SetFailed(id);
+    id = INVALID_EVENT_DATA_ID;
+}
+
+int EventDispatcher::CallInputEventCallback(EventDataId event_data_id,
+                                            uint32_t events,
+                                            const bthread_attr_t& thread_attr) {
+    EventDataUniquePtr data;
+    if (EventData::Address(event_data_id, &data) != 0) {
+        return -1;
+    }
+    data->CallInputEventCallback(events, thread_attr);
+    return 0;
+}
+
+int EventDispatcher::CallOutputEventCallback(EventDataId event_data_id,
+                                             uint32_t events,
+                                             const bthread_attr_t& thread_attr) {
+    EventDataUniquePtr data;
+    if (EventData::Address(event_data_id, &data) != 0) {
+        return -1;
+    }
+    return data->CallOutputEventCallback(events, thread_attr);
+}
+
 } // namespace brpc
 
 #if defined(OS_LINUX)

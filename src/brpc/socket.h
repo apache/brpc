@@ -38,7 +38,8 @@
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
 #include "bvar/bvar.h"
-#include "http_method.h"
+#include "brpc/http_method.h"
+#include "brpc/event_dispatcher.h"
 
 namespace brpc {
 namespace policy {
@@ -369,7 +370,7 @@ public:
     AuthContext* mutable_auth_context();
 
     // Create a Socket according to `options', put the identifier into `id'.
-    // Returns 0 on sucess, -1 otherwise.
+    // Returns 0 on success, -1 otherwise.
     static int Create(const SocketOptions& options, SocketId* id);
 
     // Place the Socket associated with identifier `id' into unique_ptr `ptr',
@@ -624,6 +625,12 @@ friend void DereferenceSocket(Socket*);
     // success, -1 otherwise and errno is set
     ssize_t DoWrite(WriteRequest* req);
 
+    // 1. When `failed_ad_well=true', returns 0 on success,
+    //    1 on failed socket, -1 on recycled.
+    // 2. When `failed_ad_well=true', returns 0 on success,
+    //    -1 when the Socket was SetFailed().
+    static int AddressImpl(SocketId id, bool failed_as_well, SocketUniquePtr* ptr);
+
     // Called before returning to pool.
     void OnRecycle();
 
@@ -675,11 +682,14 @@ friend void DereferenceSocket(Socket*);
         WriteRequest*, int error_code, const std::string& error_text);
     void ReleaseAllFailedWriteRequests(WriteRequest*);
 
+    EventDataId event_data_id() const { return _event_data_id; }
+
     // Try to wake socket just like epollout has arrived
     void WakeAsEpollOut();
 
     // Generic callback for Socket to handle epollout event
-    static int HandleEpollOut(SocketId socket_id);
+    static int HandleEpollOut(SocketId socket_id, uint32_t events,
+                              const bthread_attr_t& thread_attr);
 
     class EpollOutRequest;
     // Callback to handle epollout event whose request data
@@ -787,8 +797,11 @@ private:
     // Initialized by SocketOptions.app_connect.
     std::shared_ptr<AppConnect> _app_connect;
 
-    // Identifier of this Socket in ResourcePool
+    // Identifier of this Socket in ResourcePool.
     SocketId _this_id;
+
+    // Identifier of EventData in ResourcePool.
+    EventDataId _event_data_id;
 
     // last chosen index of the protocol as a heuristic value to avoid
     // iterating all protocol handlers each time.

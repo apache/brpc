@@ -35,6 +35,7 @@
 #include "butil/logging.h"                        // CHECK
 #include "butil/macros.h"
 #include "butil/class_name.h"                     // butil::class_name
+#include "butil/memory/scope_guard.h"
 #include "brpc/log.h"
 #include "brpc/reloadable_flags.h"          // BRPC_VALIDATE_GFLAG
 #include "brpc/errno.pb.h"
@@ -434,6 +435,7 @@ Socket::Socket(Forbidden)
     , _user(NULL)
     , _conn(NULL)
     , _this_id(0)
+    , _event_data_id(0)
     , _preferred_index(-1)
     , _hc_count(0)
     , _last_msg_size(0)
@@ -583,7 +585,8 @@ int Socket::ResetFileDescriptor(int fd) {
     EnableKeepaliveIfNeeded(fd);
 
     if (_on_edge_triggered_events) {
-        if (GetGlobalEventDispatcher(fd, _bthread_tag).AddConsumer(id(), fd) != 0) {
+        if (GetGlobalEventDispatcher(fd, _bthread_tag).AddConsumer(
+            _event_data_id, fd) != 0) {
             PLOG(ERROR) << "Fail to add SocketId=" << id() 
                         << " into EventDispatcher";
             _fd.store(-1, butil::memory_order_release);
@@ -666,6 +669,24 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         LOG(FATAL) << "Fail to get_resource<Socket>";
         return -1;
     }
+    // nref can be non-zero due to concurrent AddressSocket().
+    // _this_id will only be used in destructor/Destroy of referenced
+    // slots, which is safe and properly fenced. Although it's better
+    // to put the id into SocketUniquePtr.
+    m->_this_id = MakeSocketId(
+        VersionOfVRef(m->_versioned_ref.fetch_add(
+            1, butil::memory_order_release)), slot);
+    EventDataOptions event_data_options{
+        m->_this_id, StartInputEvent, HandleEpollOut
+    };
+    if (EventData::Create(&event_data_options, &m->_event_data_id) !=0) {
+        LOG(ERROR) << "Fail to create EventDispatcherData";
+        return -1;
+    }
+    auto guard = butil::MakeScopeGuard([m] {
+        MakeEventDataIdInvalid(m->_event_data_id);
+    });
+
     g_vars->nsocket << 1;
     CHECK(NULL == m->_shared_part.load(butil::memory_order_relaxed));
     m->_nevent.store(0, butil::memory_order_relaxed);
@@ -676,13 +697,6 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_user = options.user;
     m->_conn = options.conn;
     m->_app_connect = options.app_connect;
-    // nref can be non-zero due to concurrent AddressSocket().
-    // _this_id will only be used in destructor/Destroy of referenced
-    // slots, which is safe and properly fenced. Although it's better
-    // to put the id into SocketUniquePtr.
-    m->_this_id = MakeSocketId(
-            VersionOfVRef(m->_versioned_ref.fetch_add(
-                    1, butil::memory_order_release)), slot);
     m->_preferred_index = -1;
     m->_hc_count = 0;
     CHECK(m->_read_buf.empty());
@@ -755,6 +769,8 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
                      berror(saved_errno));
         return -1;
     }
+    guard.dismiss();
+
     *id = m->_this_id;
     return 0;
 }
@@ -1102,6 +1118,10 @@ void Socket::OnRecycle() {
     if (sp) {
         sp->RemoveRefManually();
     }
+
+    // Recycle `_event_data_id'.
+    MakeEventDataIdInvalid(_event_data_id);
+
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
     if (ValidFileDescriptor(prev_fd)) {
         if (_on_edge_triggered_events != NULL) {
@@ -1234,7 +1254,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     // health checker which called `SetFailed' before
     const int expected_val = _epollout_butex->load(butil::memory_order_relaxed);
     EventDispatcher& edisp = GetGlobalEventDispatcher(fd, _bthread_tag);
-    if (edisp.RegisterEvent(id(), fd, pollin) != 0) {
+    if (edisp.RegisterEvent(event_data_id(), fd, pollin) != 0) {
         return -1;
     }
 
@@ -1309,8 +1329,8 @@ int Socket::Connect(const timespec* abstime,
 
         // Add `sockfd' into epoll so that `HandleEpollOutRequest' will
         // be called with `req' when epoll event reaches
-        if (GetGlobalEventDispatcher(sockfd, _bthread_tag).RegisterEvent(connect_id, sockfd, false) !=
-            0) {
+        if (GetGlobalEventDispatcher(sockfd, _bthread_tag).RegisterEvent(
+            s->event_data_id(), sockfd, false) != 0) {
             const int saved_errno = errno;
             PLOG(WARNING) << "Fail to add fd=" << sockfd << " into epoll";
             s->SetFailed(saved_errno, "Fail to add fd=%d into epoll: %s",
@@ -1404,7 +1424,8 @@ void Socket::WakeAsEpollOut() {
     bthread::butex_wake_except(_epollout_butex, 0);
 }
 
-int Socket::HandleEpollOut(SocketId id) {
+int Socket::HandleEpollOut(SocketId id, uint32_t,
+                           const bthread_attr_t&) {
     SocketUniquePtr s;
     // Since Sockets might have been `SetFailed' before they were
     // added into epoll, these sockets miss the signal inside
