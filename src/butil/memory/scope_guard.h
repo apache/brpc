@@ -18,20 +18,13 @@
 #ifndef BRPC_SCOPED_GUARD_H
 #define BRPC_SCOPED_GUARD_H
 
-#include <type_traits>
+#include "butil/type_traits.h"
 #include "butil/macros.h"
 
 namespace butil {
 
-// Whether a no-argument callable returns void.
-template<typename T>
-struct returns_void_t
-    : public std::is_same<void, decltype(std::declval<T&&>()())>
-{};
-
 template<typename Callback,
-    typename = typename std::enable_if<
-        returns_void_t<Callback>::value>::type>
+         typename = std::enable_if<is_result_void<Callback>::value>>
 class ScopeGuard;
 
 template<typename Callback>
@@ -43,7 +36,7 @@ template<typename Callback>
 class ScopeGuard<Callback> {
 public:
     ScopeGuard(ScopeGuard&& other) noexcept
-        :_callback(std::move(other._callback))
+        : _callback(std::move(other._callback))
         , _dismiss(other._dismiss) {
         other.dismiss();
     }

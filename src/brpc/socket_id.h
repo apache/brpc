@@ -22,9 +22,7 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
-#include <stdint.h>               // uint64_t
-#include "butil/unique_ptr.h"      // std::unique_ptr
-
+#include "brpc/versioned_ref_with_id.h"
 
 namespace brpc {
 
@@ -32,21 +30,25 @@ namespace brpc {
 // Users shall store SocketId instead of Sockets and call Socket::Address()
 // to convert the identifier to an unique_ptr at each access. Whenever a
 // unique_ptr is not destructed, the enclosed Socket will not be recycled.
-typedef uint64_t SocketId;
+typedef VRefId SocketId;
 
-const SocketId INVALID_SOCKET_ID = (SocketId)-1;
+const SocketId INVALID_SOCKET_ID = INVALID_VREF_ID;
 
 class Socket;
 
 extern void DereferenceSocket(Socket*);
 
-struct SocketDeleter {
+// Explicit (full) template specialization to ignore compiler error,
+// because Socket is an incomplete type where only this header is included.
+template<>
+struct VersionedRefWithIdDeleter<Socket> {
     void operator()(Socket* m) const {
         DereferenceSocket(m);
     }
 };
 
-typedef std::unique_ptr<Socket, SocketDeleter> SocketUniquePtr;
+typedef VersionedRefWithIdUniquePtr<Socket> SocketUniquePtr;
+
 
 } // namespace brpc
 
