@@ -235,6 +235,8 @@ TEST_F(StreamingRpcTest, block) {
     while (handler._expected_next_value != N) {
         usleep(100);
     }
+    // make sure remote consumed is updated by callback
+    usleep(10000);
     // block hanlder again to test async wait
     hc.block = true;
     // async wait

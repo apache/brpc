@@ -22,6 +22,7 @@
 #ifndef BTHREAD_BTHREAD_H
 #define BTHREAD_BTHREAD_H
 
+#include <functional>
 #include <pthread.h>
 #include <sys/socket.h>
 #include "bthread/types.h"
@@ -35,6 +36,9 @@
 #include "bthread/id.h"
 
 __BEGIN_DECLS
+
+extern int bthread_set_ext_tx_prc_func(std::function<
+        std::pair<std::function<void()>, std::function<void(int16_t)>>(int16_t)>);
 
 // Create bthread `fn(args)' with attributes `attr' and put the identifier into
 // `tid'. Switch to the new thread and schedule old thread to run. Use this

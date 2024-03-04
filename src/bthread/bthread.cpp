@@ -28,6 +28,18 @@
 #include "bthread/list_of_abafree_id.h"
 #include "bthread/bthread.h"
 
+extern std::function<
+        std::pair<std::function<void()>, std::function<void(int16_t)>>(int16_t)> get_tx_proc_functors;
+
+int bthread_set_ext_tx_prc_func(std::function<
+        std::pair<std::function<void()>, std::function<void(int16_t)>>(int16_t)> functors) {
+    if (get_tx_proc_functors == nullptr) {
+        get_tx_proc_functors = functors;
+        return 0;
+    }
+    return -1;
+}
+
 namespace bthread {
 
 DEFINE_int32(bthread_concurrency, 8 + BTHREAD_EPOLL_THREAD_NUM,

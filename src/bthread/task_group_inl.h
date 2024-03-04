@@ -97,13 +97,6 @@ inline void TaskGroup::push_rq(bthread_t tid) {
     }
 }
 
-inline void TaskGroup::flush_nosignal_tasks_remote() {
-    if (_remote_num_nosignal) {
-        _remote_rq._mutex.lock();
-        flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
-    }
-}
-
 }  // namespace bthread
 
 #endif  // BTHREAD_TASK_GROUP_INL_H

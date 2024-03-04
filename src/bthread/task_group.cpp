@@ -37,6 +37,9 @@
 #include "bthread/timer_thread.h"
 #include "bthread/errno.h"
 
+extern std::function<
+    std::pair<std::function<void()>, std::function<void(int16_t)>>(int16_t)>
+    get_tx_proc_functors;
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
@@ -120,23 +123,38 @@ bool TaskGroup::is_stopped(bthread_t tid) {
 
 bool TaskGroup::wait_task(bthread_t* tid) {
     int64_t poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
+    size_t empty = 0;
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
-            return false;
+          return false;
         }
-        if (_remote_rq.pop(tid)) {
+
+        if (tx_processor_exec_) {
+            tx_processor_exec_();
+        }
+
+        if (_rq.pop(tid) || _remote_rq.pop(tid)) {
+            _processed_tasks++;
+            return true;
+        }
+
+        empty++;
+        if (empty % 100 == 0 && steal_task(tid)) {
             return true;
         }
         // keep polling for some time before waiting on parking lot
         if (FLAGS_worker_polling_time_ms <= 0 ||
             butil::cpuwide_time_ms() - poll_start_ms > FLAGS_worker_polling_time_ms) {
-            _pl->wait(_last_pl_state);
-            poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
+        if (update_ext_proc_) {
+            update_ext_proc_(-1);
         }
-        if (steal_task(tid)) {
-            return true;
+        _pl->wait(_last_pl_state);
+        poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
+        if (update_ext_proc_) {
+            update_ext_proc_(1);
         }
+      }
 #else
         const ParkingLot::State st = _pl->get_state();
         if (st.stopped()) {
@@ -183,6 +201,9 @@ void TaskGroup::run_main_task() {
     }
     // Don't forget to add elapse of last wait_task.
     current_task()->stat.cputime_ns += butil::cpuwide_time_ns() - _last_run_ns;
+    if (update_ext_proc_) {
+        update_ext_proc_(-1);
+    }
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
@@ -534,9 +555,22 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
 #else
     const bool popped = g->_rq.steal(&next_tid);
 #endif
-    if (!popped && !g->steal_task(&next_tid)) {
-        // Jump to main task if there's no task to run.
-        next_tid = g->_main_tid;
+    if (!popped) {
+        // Yield proactively to run tx processor workload.
+        if (g->tx_processor_exec_ && g->_processed_tasks > 30) {
+            g->_processed_tasks = 0;
+            next_tid = g->_main_tid;
+        } else {
+            if (!g->steal_task(&next_tid)) {
+                // Jump to main task if there's no task to run.
+                g->_processed_tasks = 0;
+                next_tid = g->_main_tid;
+            }
+        }
+    }
+
+    if (next_tid != g->_main_tid) {
+        g->_processed_tasks++;
     }
 
     TaskMeta* const cur_meta = g->_cur_meta;
@@ -572,9 +606,22 @@ void TaskGroup::sched(TaskGroup** pg) {
 #else
     const bool popped = g->_rq.steal(&next_tid);
 #endif
-    if (!popped && !g->steal_task(&next_tid)) {
-        // Jump to main task if there's no task to run.
-        next_tid = g->_main_tid;
+    if (!popped) {
+        // Yield proactively to run tx processor workload.
+        if (g->tx_processor_exec_ && g->_processed_tasks > 30) {
+            g->_processed_tasks = 0;
+            next_tid = g->_main_tid;
+        } else {
+            if (!g->steal_task(&next_tid)) {
+              // Jump to main task if there's no task to run.
+              g->_processed_tasks = 0;
+              next_tid = g->_main_tid;
+            }
+        }
+    }
+
+    if (next_tid != g->_main_tid) {
+        g->_processed_tasks++;
     }
     sched_to(pg, next_tid);
 }
@@ -682,37 +729,32 @@ void TaskGroup::flush_nosignal_tasks() {
         _control->signal_task(val);
     }
 }
+inline bvar::LatencyRecorder ready_to_run_remote_l("a_", "ready_to_run_remote_latency_us");
 
 void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
-    _remote_rq._mutex.lock();
-    while (!_remote_rq.push_locked(tid)) {
-        flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
-        LOG_EVERY_SECOND(ERROR) << "_remote_rq is full, capacity="
-                                << _remote_rq.capacity();
+    while (!_remote_rq.push(tid)) {
+        flush_nosignal_tasks_remote();
+        LOG_EVERY_SECOND(ERROR)
+            << "_remote_rq is full, capacity=" << _remote_rq.capacity();
         ::usleep(1000);
-        _remote_rq._mutex.lock();
     }
     if (nosignal) {
-        ++_remote_num_nosignal;
-        _remote_rq._mutex.unlock();
+        _remote_num_nosignal.fetch_add(1, std::memory_order_release);
     } else {
-        const int additional_signal = _remote_num_nosignal;
-        _remote_num_nosignal = 0;
-        _remote_nsignaled += 1 + additional_signal;
-        _remote_rq._mutex.unlock();
+        const int additional_signal =_remote_num_nosignal.load(std::memory_order_acquire);
+        _remote_num_nosignal.store(0, std::memory_order_release);
+        _remote_nsignaled.fetch_add(additional_signal, std::memory_order_release);
         _control->signal_task(1 + additional_signal);
     }
 }
 
-void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
-    const int val = _remote_num_nosignal;
+void TaskGroup::flush_nosignal_tasks_remote() {
+    const int val = _remote_num_nosignal.load(std::memory_order_acquire);
     if (!val) {
-        locked_mutex.unlock();
         return;
     }
-    _remote_num_nosignal = 0;
-    _remote_nsignaled += val;
-    locked_mutex.unlock();
+    _remote_num_nosignal.store(0);
+    _remote_nsignaled.fetch_add(val);
     _control->signal_task(val);
 }
 

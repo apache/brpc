@@ -35,6 +35,7 @@ struct TaskStatistics {
     int64_t nswitch;
 };
 
+class TaskGroup;
 class KeyTable;
 struct ButexWaiter;
 
@@ -91,18 +92,21 @@ struct TaskMeta {
     // DO NOT use this field directly, use tls_bls instead.
     LocalStorage local_storage;
 
-public:
+    TaskGroup *bound_task_group;
+
+  public:
     // Only initialize [Not Reset] fields, other fields will be reset in
     // bthread_start* functions
     TaskMeta()
         : current_waiter(NULL)
         , current_sleep(0)
-        , stack(NULL) {
-        pthread_spin_init(&version_lock, 0);
-        version_butex = butex_create_checked<uint32_t>();
-        *version_butex = 1;
+        , stack(NULL)
+        , bound_task_group(NULL) {
+      pthread_spin_init(&version_lock, 0);
+      version_butex = butex_create_checked<uint32_t>();
+      *version_butex = 1;
     }
-        
+
     ~TaskMeta() {
         butex_destroy(version_butex);
         version_butex = NULL;

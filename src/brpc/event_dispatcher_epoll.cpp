@@ -20,8 +20,23 @@
 #include "brpc/details/has_epollrdhup.h"
 #endif
 
-namespace brpc {
+#include "bthread/task_control.h"
 
+extern "C" {
+extern void bthread_flush();
+};
+
+namespace bthread {
+extern __thread int tls_dest_task_group_start;
+extern __thread int tls_dest_task_group_end;
+DECLARE_int32(bthread_concurrency);
+}
+
+
+
+namespace brpc {
+DEFINE_bool(use_pthread_event_dispatcher, false,
+            "Use separate pthreads as event dispatcher to do epoll.");
 EventDispatcher::EventDispatcher()
     : _epfd(-1)
     , _stop(false)
@@ -73,6 +88,12 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
     _consumer_thread_attr = (consumer_thread_attr  ?
                              *consumer_thread_attr : BTHREAD_ATTR_NORMAL);
 
+    if (FLAGS_use_pthread_event_dispatcher) {
+        _thd = std::thread(RunThis, this);
+        _tid = 1;
+        return 0;
+    } 
+
     //_consumer_thread_attr is used in StartInputEvent(), assign flag NEVER_QUIT to it will cause new bthread
     // that created by epoll_wait() never to quit.
     bthread_attr_t epoll_thread_attr = _consumer_thread_attr | BTHREAD_NEVER_QUIT;
@@ -105,7 +126,12 @@ void EventDispatcher::Stop() {
 }
 
 void EventDispatcher::Join() {
-    if (_tid) {
+    if (FLAGS_use_pthread_event_dispatcher)
+    {
+        _thd.join();
+        _tid = 0;
+    }
+    else if(_tid) {
         bthread_join(_tid, NULL);
         _tid = 0;
     }
@@ -187,8 +213,33 @@ int EventDispatcher::RemoveConsumer(int fd) {
     return 0;
 }
 
+std::atomic<int> event_dispatcher_num{0};
+
 void* EventDispatcher::RunThis(void* arg) {
+    if (FLAGS_use_pthread_event_dispatcher) {
+        int dispatcher_id = event_dispatcher_num.fetch_add(1, std::memory_order_acquire);
+        int concurrency = bthread::FLAGS_bthread_concurrency;
+        int avg = concurrency / FLAGS_event_dispatcher_num;
+        int remain = concurrency % FLAGS_event_dispatcher_num;
+        bthread::tls_dest_task_group_start = avg * dispatcher_id;
+        bthread::tls_dest_task_group_end = avg * dispatcher_id + avg;
+        if (dispatcher_id < remain) {
+            bthread::tls_dest_task_group_start += dispatcher_id;
+            bthread::tls_dest_task_group_end += dispatcher_id + 1;
+        } else {
+            bthread::tls_dest_task_group_start += remain;
+            bthread::tls_dest_task_group_end += remain;
+        }
+    }
     ((EventDispatcher*)arg)->Run();
+    return NULL;
+}
+
+void* EventDispatcher::HandleEpollOut(void *arg)
+{
+    SocketId* socket = static_cast<SocketId*>(arg);
+    Socket::HandleEpollOut(*socket);
+    delete socket;
     return NULL;
 }
 
@@ -232,8 +283,30 @@ void EventDispatcher::Run() {
         for (int i = 0; i < n; ++i) {
             if (e[i].events & (EPOLLOUT | EPOLLERR | EPOLLHUP)) {
                 // We don't care about the return value.
-                Socket::HandleEpollOut(e[i].data.u64);
+                if (FLAGS_use_pthread_event_dispatcher)
+                {
+                    // Start bthread to handle epoll out as it might has callback
+                    // that is executed right away. We want to keep the same
+                    // behaviour with using bthread event dispatcher.
+                    bthread_t tid;
+                    bthread_attr_t attr = BTHREAD_ATTR_NORMAL | BTHREAD_NOSIGNAL;
+                    SocketId *s = new SocketId;
+                    *s = e[i].data.u64;
+                    int rc = bthread_start_urgent(&tid, &attr, HandleEpollOut, (void*)s);
+                    if (rc)
+                    {
+                        delete s;
+                        Socket::HandleEpollOut(e[i].data.u64);
+                    }
+                }
+                else{
+                    Socket::HandleEpollOut(e[i].data.u64);
+                }
             }
+        }
+        if (FLAGS_use_pthread_event_dispatcher) {
+            // flush added bthreads
+            bthread_flush();
         }
     }
 }

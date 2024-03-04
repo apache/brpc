@@ -22,12 +22,60 @@
 #ifndef BTHREAD_REMOTE_TASK_QUEUE_H
 #define BTHREAD_REMOTE_TASK_QUEUE_H
 
+#include "bthread/bthread.h"
 #include "butil/containers/bounded_queue.h"
 #include "butil/macros.h"
+
+#include "bthread/moodycamelqueue.h"
 
 namespace bthread {
 
 class TaskGroup;
+
+class RemoteQueue {
+public:
+    RemoteQueue() {}
+
+    int init(size_t cap) {
+        _tasks = moodycamel::ConcurrentQueue<bthread_t>(cap);
+        return 0;
+    }
+
+    bool pop(bthread_t *task) {
+      int tmp_cnt = _task_cnt.load(std::memory_order_acquire);
+      if (_tasks.try_dequeue(*task)) {
+        tmp_cnt--;
+        return true;
+      } else {
+        return false;
+      }
+      if (tmp_cnt > 0 &&
+          _task_cnt.compare_exchange_strong(tmp_cnt, tmp_cnt - 1)) {
+        if (_tasks.try_dequeue(*task)) {
+          return true;
+        } else {
+          _task_cnt++;
+          return false;
+        }
+      }
+    }
+
+    bool push(bthread_t task) {
+      if (_tasks.enqueue(task)) {
+        _task_cnt++;
+        return true;
+      }
+      return false;
+    }
+
+    size_t capacity() const {
+      return _task_cnt.load(std::memory_order_acquire);
+    }
+
+    friend class TaskGroup;
+    moodycamel::ConcurrentQueue<bthread_t> _tasks;
+    std::atomic<int> _task_cnt{0};
+};
 
 // A queue for storing bthreads created by non-workers. Since non-workers
 // randomly choose a TaskGroup to push which distributes the contentions,

@@ -22,6 +22,7 @@
 #ifndef BTHREAD_TASK_GROUP_H
 #define BTHREAD_TASK_GROUP_H
 
+#include <functional>
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
 #include "bthread/task_meta.h"                     // bthread_t, TaskMeta
@@ -157,7 +158,6 @@ public:
 
     // Push a bthread into the runqueue from another non-worker thread.
     void ready_to_run_remote(bthread_t tid, bool nosignal = false);
-    void flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex);
     void flush_nosignal_tasks_remote();
 
     // Automatically decide the caller is remote or local, and call
@@ -182,8 +182,12 @@ public:
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
 
-private:
-friend class TaskControl;
+    int group_id_{-1};
+    std::function<void()> tx_processor_exec_{nullptr};
+    std::function<void(int16_t)> update_ext_proc_{nullptr};
+
+  private:
+    friend class TaskControl;
 
     // You shall use TaskControl::create_group to create new instance.
     explicit TaskGroup(TaskControl*);
@@ -230,6 +234,7 @@ friend class TaskControl;
     // last scheduling time
     int64_t _last_run_ns;
     int64_t _cumulated_cputime_ns;
+    size_t _processed_tasks{0};
 
     size_t _nswitch;
     RemainedFn _last_context_remained;
@@ -244,9 +249,9 @@ friend class TaskControl;
     ContextualStack* _main_stack;
     bthread_t _main_tid;
     WorkStealingQueue<bthread_t> _rq;
-    RemoteTaskQueue _remote_rq;
-    int _remote_num_nosignal;
-    int _remote_nsignaled;
+    RemoteQueue _remote_rq;
+    std::atomic<int> _remote_num_nosignal{0};
+    std::atomic<int> _remote_nsignaled{0};
 
     int _sched_recursive_guard;
 };

@@ -19,6 +19,7 @@
 
 // Date: Tue Jul 10 17:40:58 CST 2012
 
+#include <functional>
 #include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "butil/errno.h"                   // berror
 #include "butil/logging.h"
@@ -40,6 +41,9 @@ DEFINE_int32(task_group_runqueue_capacity, 4096,
 DEFINE_int32(task_group_yield_before_idle, 0,
              "TaskGroup yields so many times before idle");
 
+std::function<std::pair<std::function<void()>, std::function<void(int16_t)>>(
+    int16_t)>
+    get_tx_proc_functors;
 namespace bthread {
 
 DECLARE_int32(bthread_concurrency);
@@ -69,9 +73,19 @@ void* TaskControl::worker_thread(void* arg) {
         LOG(ERROR) << "Fail to create TaskGroup in pthread=" << pthread_self();
         return NULL;
     }
+    int task_group_id = c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed);
     std::string worker_thread_name = butil::string_printf(
         "brpc_worker:%d",
-        c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
+        task_group_id);
+
+    g->group_id_ = task_group_id;
+    if (get_tx_proc_functors != nullptr) {
+        auto functors = get_tx_proc_functors(task_group_id);
+        g->tx_processor_exec_ = functors.first;
+        g->update_ext_proc_ = functors.second;
+        (g->update_ext_proc_)(1);
+    }
+
     butil::PlatformThread::SetName(worker_thread_name.c_str());
     BT_VLOG << "Created worker=" << pthread_self()
             << " bthread=" << g->main_tid();
@@ -136,7 +150,7 @@ TaskControl::TaskControl()
     , _pending_time(NULL)
       // Delay exposure of following two vars because they rely on TC which
       // is not initialized yet.
-    , _cumulated_worker_time(get_cumulated_worker_time_from_this, this)
+      , _cumulated_worker_time(get_cumulated_worker_time_from_this, this)
     , _worker_usage_second(&_cumulated_worker_time, 1)
     , _cumulated_switch_count(get_cumulated_switch_count_from_this, this)
     , _switch_per_second(&_cumulated_switch_count)
@@ -145,8 +159,8 @@ TaskControl::TaskControl()
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
 {
-    // calloc shall set memory to zero
-    CHECK(_groups) << "Fail to create array of groups";
+  // calloc shall set memory to zero
+  CHECK(_groups) << "Fail to create array of groups";
 }
 
 int TaskControl::init(int concurrency) {
@@ -216,7 +230,22 @@ int TaskControl::add_workers(int num) {
     return _concurrency.load(butil::memory_order_relaxed) - old_concurency;
 }
 
+
+// The TaskGroup range for ready_to_run_remote to choose destination task group from.
+__thread size_t tls_dest_task_group_start;
+__thread size_t tls_dest_task_group_end;
+
 TaskGroup* TaskControl::choose_one_group() {
+    if (tls_dest_task_group_start || tls_dest_task_group_end) {
+        size_t group = tls_dest_task_group_start + butil::fast_rand_less_than(tls_dest_task_group_end - tls_dest_task_group_start);
+        if (group < tls_dest_task_group_start || group >= tls_dest_task_group_end) {
+            LOG(ERROR) << "group out of range";
+        }
+        const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
+        if (ngroup != 0) {
+            return _groups[group];
+        }
+    }
     const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
     if (ngroup != 0) {
         return _groups[butil::fast_rand_less_than(ngroup)];
@@ -353,7 +382,11 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
         TaskGroup* g = _groups[s % ngroup];
         // g is possibly NULL because of concurrent _destroy_group
         if (g) {
-            if (g->_rq.steal(tid)) {
+            // Only steal from local request queue if the target tg does
+            // not have tx processor bind to it, otherwise we might accidently
+            // steal local only tasks that are meant to be bind to this task group.
+            if (!g->tx_processor_exec_ && g->_rq.steal(tid))
+            {
                 stolen = true;
                 break;
             }
