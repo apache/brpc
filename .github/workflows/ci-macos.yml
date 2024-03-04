@@ -27,9 +27,9 @@ jobs:
 
     - name: config_brpc
       run: |
-           GETOPT_PATH=$(find "/usr/local/Cellar/" -name "getopt" -type f -perm +111 -exec dirname {} \;)
+           GETOPT_PATH=$(brew --prefix gnu-getopt)/bin
            export PATH=$GETOPT_PATH:$PATH
-           ./config_brpc.sh --header="/usr/local/include" --libs="/usr/local/lib"
+           ./config_brpc.sh --header="$(brew --prefix)/include" --libs="$(brew --prefix)/lib"
 
     - name: compile
       run: |
