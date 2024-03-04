@@ -19,6 +19,7 @@
 #ifndef BRPC_EVENT_DISPATCHER_H
 #define BRPC_EVENT_DISPATCHER_H
 
+#include <thread>
 #include "butil/macros.h"                     // DISALLOW_COPY_AND_ASSIGN
 #include "bthread/types.h"                   // bthread_t, bthread_attr_t
 #include "brpc/socket.h"                     // Socket, SocketId
@@ -83,6 +84,8 @@ private:
     // Remove the file descriptor `fd' from epoll.
     int RemoveConsumer(int fd);
 
+    static void* HandleEpollOut(void* arg);
+
     // The epoll to watch events.
     int _epfd;
 
@@ -97,6 +100,8 @@ private:
 
     // Pipe fds to wakeup EventDispatcher from `epoll_wait' in order to quit
     int _wakeup_fds[2];
+
+    std::thread _thd;
 };
 
 EventDispatcher& GetGlobalEventDispatcher(int fd);

@@ -17,6 +17,7 @@
 
 //          Jiashun Zhu(zhujiashun2010@gmail.com)
 
+#include <functional>
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
@@ -33,7 +34,15 @@
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
 #include "brpc/policy/redis_protocol.h"
+#include "bthread/task_group.h"
 
+namespace bthread {
+extern BAIDU_THREAD_LOCAL TaskGroup *tls_task_group;
+}
+
+extern std::function<
+    std::pair<std::function<void()>, std::function<void(int16_t)>>(int16_t)>
+    get_tx_proc_functors;
 namespace brpc {
 
 DECLARE_bool(enable_rpcz);
@@ -128,7 +137,6 @@ void RedisConnContext::Destroy() {
 }
 
 // ========== impl of RedisConnContext ==========
-
 ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                               bool read_eof, const void* arg) {
     if (read_eof || source->empty()) {
@@ -149,8 +157,25 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         butil::IOBufAppender appender;
         ParseError err = PARSE_OK;
 
+        // Bind this command to this task group. We need to make sure that this
+        // bthread cannot be executed by other task groups since we will be
+        // accessing cc shard data which is not thread safe.
+        bthread::TaskGroup *g = bthread::tls_task_group;
+        if (g->tx_processor_exec_ != nullptr) {
+            g->current_task()->bound_task_group = g;
+        } else if (get_tx_proc_functors != nullptr) {
+            // if the tx proc functors are not set yet.
+            bthread::TaskGroup *g = bthread::tls_task_group;
+            auto functors = get_tx_proc_functors(g->group_id_);
+            g->tx_processor_exec_ = functors.first;
+            g->update_ext_proc_ = functors.second;
+            g->update_ext_proc_(1);
+            g->current_task()->bound_task_group = g;
+        }
+
         err = ctx->parser.Consume(*source, &current_args, &ctx->arena);
         if (err != PARSE_OK) {
+            g->current_task()->bound_task_group = NULL;
             return MakeParseError(err);
         }
         while (true) {
@@ -160,14 +185,17 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                 break;
             }
             if (ConsumeCommand(ctx, current_args, false, &appender) != 0) {
+                g->current_task()->bound_task_group = NULL;
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_args.swap(next_args);
         }
         if (ConsumeCommand(ctx, current_args,
-                    true /*must be the last message*/, &appender) != 0) {
+                      true /*must be the last message*/, &appender) != 0) {
+            g->current_task()->bound_task_group = NULL;
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
+        g->current_task()->bound_task_group = NULL;
         butil::IOBuf sendbuf;
         appender.move_to(sendbuf);
         CHECK(!sendbuf.empty());

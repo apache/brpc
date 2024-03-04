@@ -300,7 +300,7 @@ int butex_wake(void* arg, bool nosignal) {
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
         if (b->waiters.empty()) {
-            return 0;
+          return 0;
         }
         front = b->waiters.head()->value();
         front->RemoveFromList();
@@ -312,7 +312,11 @@ int butex_wake(void* arg, bool nosignal) {
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    TaskGroup* g = get_task_group(bbw->control, nosignal);
+    TaskMeta* m = TaskGroup::address_meta(front->tid);
+    // If this task is bound to a specific task group, throw this task back to
+    // the group.
+    TaskGroup* g = m->bound_task_group ? m->bound_task_group
+                                        : get_task_group(bbw->control, nosignal);
     if (g == tls_task_group) {
         run_in_local_task_group(g, bbw->tid, nosignal);
     } else {
@@ -365,12 +369,22 @@ int butex_wake_all(void* arg, bool nosignal) {
             bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
-        g->ready_to_run_general(w->tid, true);
-        ++nwakeup;
+        TaskMeta* m = TaskGroup::address_meta(w->tid);
+        // If this task is bound to a specific task group, throw this task back to
+        // the group.
+        if (m->bound_task_group) {
+            m->bound_task_group->ready_to_run_general(w->tid, true);
+            m->bound_task_group->flush_nosignal_tasks();
+        } else{
+            g->ready_to_run_general(w->tid, true);
+            ++nwakeup;
+        }
     }
     if (!nosignal && saved_nwakeup != nwakeup) {
         g->flush_nosignal_tasks_general();
     }
+    TaskMeta* m = TaskGroup::address_meta(next->tid);
+    g = m->bound_task_group ? m->bound_task_group : g;
     if (g == tls_task_group) {
         run_in_local_task_group(g, next->tid, nosignal);
     } else {
@@ -432,8 +446,16 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
             bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
-        g->ready_to_run_general(w->tid, true);
-        ++nwakeup;
+        TaskMeta* m = TaskGroup::address_meta(w->tid);
+        // If this task is bound to a specific task group, throw this task back to
+        // the group.
+        if (m->bound_task_group) {
+            m->bound_task_group->ready_to_run_general(w->tid, true);
+            m->bound_task_group->flush_nosignal_tasks();
+        } else{
+            g->ready_to_run_general(w->tid, true);
+            ++nwakeup;
+        }
     } while (!bthread_waiters.empty());
     if (saved_nwakeup != nwakeup) {
         g->flush_nosignal_tasks_general();
@@ -514,7 +536,12 @@ inline bool erase_from_butex(ButexWaiter* bw, bool wakeup, WaiterState state) {
     if (erased && wakeup) {
         if (bw->tid) {
             ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(bw);
-            get_task_group(bbw->control)->ready_to_run_general(bw->tid);
+            TaskMeta* m = TaskGroup::address_meta(bw->tid);
+            // If this task is bound to a specific task group, throw this task back to
+            // the group.
+            TaskGroup* g = m->bound_task_group ? m->bound_task_group
+                                      : get_task_group(bbw->control);
+            g->ready_to_run_general(bw->tid);
         } else {
             ButexPthreadWaiter* pw = static_cast<ButexPthreadWaiter*>(bw);
             wakeup_pthread(pw);

@@ -186,6 +186,16 @@ void* EventDispatcher::RunThis(void* arg) {
     return NULL;
 }
 
+void* EventDispatcher::HandleEpollOut(void *arg)
+{
+    // Should not be used if event dispatcher is running in bthread.
+    assert(false);
+    SocketId* socket = static_cast<SocketId*>(arg);
+    Socket::HandleEpollOut(*socket);
+    delete socket;
+    return NULL;
+}
+
 void EventDispatcher::Run() {
     while (!_stop) {
         struct kevent e[32];
