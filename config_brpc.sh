@@ -262,10 +262,89 @@ if [ -z "$GFLAGS_NS" ]; then
 fi
 
 PROTOBUF_HDR=$(find_dir_of_header_or_die google/protobuf/message.h)
+PROTOBUF_VERSION=$(grep '#define GOOGLE_PROTOBUF_VERSION [0-9]\+' $PROTOBUF_HDR/google/protobuf/stubs/common.h | awk '{print $3}')
+if [ "$PROTOBUF_VERSION" -ge 4022000 ]; then
+    ABSL_HDR=$(find_dir_of_header_or_die absl/base/config.h)
+    ABSL_LIB=$(find_dir_of_lib_or_die absl_strings)
+    ABSL_LIB_NAMES="
+        absl_bad_optional_access
+        absl_bad_variant_access
+        absl_base
+        absl_city
+        absl_civil_time
+        absl_cord
+        absl_cord_internal
+        absl_cordz_functions
+        absl_cordz_handle
+        absl_cordz_info
+        absl_crc32c
+        absl_crc_cord_state
+        absl_crc_cpu_detect
+        absl_crc_internal
+        absl_debugging_internal
+        absl_demangle_internal
+        absl_die_if_null
+        absl_examine_stack
+        absl_exponential_biased
+        absl_flags
+        absl_flags_commandlineflag
+        absl_flags_commandlineflag_internal
+        absl_flags_config
+        absl_flags_internal
+        absl_flags_marshalling
+        absl_flags_private_handle_accessor
+        absl_flags_program_name
+        absl_flags_reflection
+        absl_graphcycles_internal
+        absl_hash
+        absl_hashtablez_sampler
+        absl_int128
+        absl_kernel_timeout_internal
+        absl_leak_check
+        absl_log_entry
+        absl_log_globals
+        absl_log_initialize
+        absl_log_internal_check_op
+        absl_log_internal_conditions
+        absl_log_internal_format
+        absl_log_internal_globals
+        absl_log_internal_log_sink_set
+        absl_log_internal_message
+        absl_log_internal_nullguard
+        absl_log_internal_proto
+        absl_log_severity
+        absl_log_sink
+        absl_low_level_hash
+        absl_malloc_internal
+        absl_raw_hash_set
+        absl_raw_logging_internal
+        absl_spinlock_wait
+        absl_stacktrace
+        absl_status
+        absl_statusor
+        absl_str_format_internal
+        absl_strerror
+        absl_string_view
+        absl_strings
+        absl_strings_internal
+        absl_symbolize
+        absl_synchronization
+        absl_throw_delegate
+        absl_time
+        absl_time_zone
+    "
+    for i in $ABSL_LIB_NAMES; do
+         append_linking "$ABSL_LIB" "$i"
+    done
+    CXXFLAGS="-std=c++17"
+else
+    CXXFLAGS="-std=c++0x"
+fi
+
 LEVELDB_HDR=$(find_dir_of_header_or_die leveldb/db.h)
 
-HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR\n$OPENSSL_HDR" | sort | uniq)
-LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$OPENSSL_LIB\n$SNAPPY_LIB" | sort | uniq)
+HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$ABSL_HDR\n$LEVELDB_HDR\n$OPENSSL_HDR" | sort | uniq)
+LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$ABSL_LIB\n$LEVELDB_LIB\n$OPENSSL_LIB\n$SNAPPY_LIB" | sort | uniq)
 
 absent_in_the_list() {
     TMP=`$ECHO "$1\n$2" | sort | uniq`
@@ -389,6 +468,8 @@ ifeq (\$(CC),gcc)
   endif
 endif
 "
+
+append_to_output "CXXFLAGS=${CXXFLAGS}"
 
 append_to_output "ifeq (\$(NEED_LIBPROTOC), 1)"
 PROTOC_LIB=$(find $PROTOBUF_LIB -name "libprotoc.*" | head -n1)
