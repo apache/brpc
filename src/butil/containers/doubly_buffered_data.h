@@ -253,7 +253,7 @@ template <typename T, typename TLS, bool AllowBthreadSuspended>
 class DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup {
 public:
     const static size_t RAW_BLOCK_SIZE = 4096;
-    const static size_t ELEMENTS_PER_BLOCK = (RAW_BLOCK_SIZE + sizeof(DoublyBufferedData::Wrapper) - 1) / sizeof(DoublyBufferedData::Wrapper);
+    const static size_t ELEMENTS_PER_BLOCK = std::max(RAW_BLOCK_SIZE / sizeof(DoublyBufferedData::Wrapper), 1lU);
 
     struct BAIDU_CACHELINE_ALIGNMENT ThreadBlock {
         inline DoublyBufferedData::Wrapper* at(size_t offset) {
