@@ -38,7 +38,7 @@
 #include "bthread/errno.h"
 
 extern std::function<
-    std::pair<std::function<void()>, std::function<void(int16_t)>>(int16_t)>
+    std::tuple<std::function<void()>, std::function<void(int16_t)>, std::function<bool(bool)>>(int16_t)>
     get_tx_proc_functors;
 namespace bthread {
 
@@ -180,6 +180,15 @@ void TaskGroup::run_main_task() {
     TaskGroup* dummy = this;
     bthread_t tid;
     while (wait_task(&tid)) {
+        if (tx_processor_exec_ == nullptr 
+            && get_tx_proc_functors != nullptr) {
+            // if the tx proc functors are not set yet.
+            auto functors = get_tx_proc_functors(group_id_);
+            tx_processor_exec_ = std::get<0>(functors);
+            update_ext_proc_ = std::get<1>(functors);
+            override_shard_heap_ = std::get<2>(functors);
+            update_ext_proc_(1);
+        }
         TaskGroup::sched_to(&dummy, tid);
         DCHECK_EQ(this, dummy);
         DCHECK_EQ(_cur_meta->stack, _main_stack);
@@ -650,6 +659,19 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     ++ g->_nswitch;
     // Switch to the task
     if (__builtin_expect(next_meta != cur_meta, 1)) {
+        if (g->override_shard_heap_)
+        {
+            cur_meta->need_restore_heap = g->override_shard_heap_(true);
+            if (next_meta->need_restore_heap)
+            {
+                // Only main_tid might need to restore miamlloc heap.
+                // If next_meta is main_tid, cur_meta should not need
+                // to restore.
+                assert(!cur_meta->need_restore_heap && next_meta->bound_task_group);
+                g->override_shard_heap_(false);
+                next_meta->need_restore_heap = false;
+            }
+        }
         g->_cur_meta = next_meta;
         // Switch tls_bls
         cur_meta->local_storage = tls_bls;
