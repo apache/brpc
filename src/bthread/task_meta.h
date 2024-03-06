@@ -92,6 +92,7 @@ struct TaskMeta {
     // DO NOT use this field directly, use tls_bls instead.
     LocalStorage local_storage;
 
+    // If this task needs to be executed on a specific task group.
     TaskGroup *bound_task_group;
 
   public:

@@ -41,7 +41,7 @@ extern BAIDU_THREAD_LOCAL TaskGroup *tls_task_group;
 }
 
 extern std::function<
-    std::pair<std::function<void()>, std::function<void(int16_t)>>(int16_t)>
+    std::tuple<std::function<void()>, std::function<void(int16_t)>, std::function<bool(bool)>>(int16_t)>
     get_tx_proc_functors;
 namespace brpc {
 
@@ -165,10 +165,10 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             g->current_task()->bound_task_group = g;
         } else if (get_tx_proc_functors != nullptr) {
             // if the tx proc functors are not set yet.
-            bthread::TaskGroup *g = bthread::tls_task_group;
             auto functors = get_tx_proc_functors(g->group_id_);
-            g->tx_processor_exec_ = functors.first;
-            g->update_ext_proc_ = functors.second;
+            g->tx_processor_exec_ = std::get<0>(functors);
+            g->update_ext_proc_ = std::get<1>(functors);
+            g->override_shard_heap_ = std::get<2>(functors);
             g->update_ext_proc_(1);
             g->current_task()->bound_task_group = g;
         }
