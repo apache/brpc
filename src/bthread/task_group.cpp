@@ -659,18 +659,9 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     ++ g->_nswitch;
     // Switch to the task
     if (__builtin_expect(next_meta != cur_meta, 1)) {
-        if (g->override_shard_heap_)
-        {
-            cur_meta->need_restore_heap = g->override_shard_heap_(true);
-            if (next_meta->need_restore_heap)
-            {
-                // Only the task that occupies tx shard needs to restore heap, and
-                // there's only one task per task group that can gain access to the shard
-                // at a time.
-                assert(!cur_meta->need_restore_heap && next_meta->bound_task_group);
-                g->override_shard_heap_(false);
-                next_meta->need_restore_heap = false;
-            }
+        bool need_restore_heap = false;
+        if (g->override_shard_heap_) {
+            need_restore_heap = g->override_shard_heap_(true);
         }
         g->_cur_meta = next_meta;
         // Switch tls_bls
@@ -700,6 +691,12 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
 #endif
         }
         // else because of ending_sched(including pthread_task->pthread_task)
+        if (need_restore_heap) {
+            // Only the task that occupies tx shard needs to restore heap, and
+            // there's only one task per task group that can gain access to the shard
+            // at a time.
+            g->override_shard_heap_(false);
+        }
     } else {
         LOG(FATAL) << "bthread=" << g->current_tid() << " sched_to itself!";
     }

@@ -95,10 +95,6 @@ struct TaskMeta {
     // If this task needs to be executed on a specific task group.
     TaskGroup *bound_task_group;
 
-    // If the task yields during external tx processor workload, it needs
-    // to restore shard heap when this task resumes.
-    bool need_restore_heap;
-
   public:
     // Only initialize [Not Reset] fields, other fields will be reset in
     // bthread_start* functions
@@ -106,8 +102,7 @@ struct TaskMeta {
         : current_waiter(NULL)
         , current_sleep(0)
         , stack(NULL)
-        , bound_task_group(NULL)
-        , need_restore_heap(false) {
+        , bound_task_group(NULL) {
       pthread_spin_init(&version_lock, 0);
       version_butex = butex_create_checked<uint32_t>();
       *version_butex = 1;
