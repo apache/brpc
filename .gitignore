@@ -44,3 +44,6 @@ CTestTestfile.cmake
 /test/curl.out
 /test/out.txt
 /test/recordio_ref.io
+
+# Ignore protoc-gen-mcpack files
+/protoc-gen-mcpack*/

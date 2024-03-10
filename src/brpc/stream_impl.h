@@ -61,13 +61,16 @@ public:
                     const timespec *due_time);
     int Wait(const timespec* due_time);
     void FillSettings(StreamSettings *settings);
-    static int SetFailed(StreamId id);
-    void Close();
+    static int SetFailed(StreamId id, int error_code, const char* reason_fmt, ...)
+        __attribute__ ((__format__ (__printf__, 3, 4)));
+    void Close(int error_code, const char* reason_fmt, ...)
+        __attribute__ ((__format__ (__printf__, 3, 4)));
 
 private:
 friend void StreamWait(StreamId stream_id, const timespec *due_time,
-                void (*on_writable)(StreamId, void*, int), void *arg);
+                       void (*on_writable)(StreamId, void*, int), void *arg);
 friend class MessageBatcher;
+friend struct butil::DefaultDeleter<Stream>;
     Stream();
     ~Stream();
     int Init(const StreamOptions options);
@@ -111,6 +114,8 @@ friend class MessageBatcher;
     ConnectMeta         _connect_meta;
     bool                _connected;
     bool                _closed;
+    int                 _error_code;
+    std::string         _error_text;
     
     bthread_mutex_t _congestion_control_mutex;
     size_t _produced;
