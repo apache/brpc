@@ -68,42 +68,10 @@ private:
     AfterAcceptStream* _after_accept_stream;
 };
 
-struct HandlerControl {
-    HandlerControl()
-        : block(false)
-    {}
-    bool block;
-};
-
 class StreamingRpcTest : public testing::Test {
 protected:
     void SetUp() { request.set_message("hello world"); }
     void TearDown() {}
-
-    template <typename Handler>
-    void TestReceivedInOrder(brpc::StreamOptions& opt,
-                             Handler& handler);
-
-    template <typename Handler>
-    void TestBlock(brpc::StreamOptions& opt,
-                   Handler& handler, HandlerControl& hc);
-
-    template <typename Handler>
-    void TestAutoClose(brpc::StreamOptions& opt,
-                       Handler& handler, HandlerControl& hc);
-
-    template <typename Handler>
-    void TestIdleTimeout(brpc::StreamOptions& opt,
-                         Handler& handler, HandlerControl& hc);
-
-    template <typename Handler>
-    void TestPingPong(brpc::StreamOptions& opt,
-                      Handler& handler);
-
-    template <typename Handler>
-    void TestServerSendDataBeforeRunDone(brpc::StreamOptions& opt,
-                                         Handler& handler);
-
 
     test::EchoRequest request;
     test::EchoResponse response;
@@ -128,6 +96,13 @@ TEST_F(StreamingRpcTest, sanity) {
     server.Stop(0);
     server.Join();
 }
+
+struct HandlerControl {
+    HandlerControl()
+        : block(false)
+    {}
+    bool block;
+};
 
 class OrderedInputHandler : public brpc::StreamInputHandler {
 public:
@@ -165,64 +140,12 @@ public:
         _stopped = true;
     }
 
-    bool failed() const { return _failed; }
-    bool stopped() const { return _stopped; }
-    int idle_times() const { return _idle_times; }
-private:
-    int _expected_next_value;
-    bool _failed;
-    bool _stopped;
-    int _idle_times;
-    HandlerControl* _cntl;
-};
-
-class OrderedInputHandler2 : public brpc::StreamInputHandler {
-public:
-    explicit OrderedInputHandler2(HandlerControl *cntl = NULL)
-        : _expected_next_value(0)
-        , _failed(false)
-        , _stopped(false)
-        , _idle_times(0)
-        , _cntl(cntl)
-    {}
-
-    int on_received_messages(brpc::StreamId /*id*/,
-                             butil::IOBuf *const messages[],
-                             size_t size) override {
-        if (_cntl && _cntl->block) {
-            while (_cntl->block) {
-                usleep(100);
-            }
-        }
-        for (size_t i = 0; i < size; ++i) {
-            CHECK(messages[i]->length() == sizeof(int));
-            int network = 0;
-            messages[i]->cutn(&network, sizeof(int));
-            EXPECT_EQ((int)ntohl(network), _expected_next_value++);
-        }
-        return 0;
-    }
-
-    void on_idle_timeout(brpc::StreamId /*id*/) override {
-        ++_idle_times;
-    }
-
-    void on_closed(brpc::StreamId /*id*/) override {
-        ASSERT_FALSE(_stopped);
-        _stopped = true;
-    }
-
     void on_failed(brpc::StreamId id, int error_code,
                    const std::string& /*error_text*/) override {
-        ASSERT_FALSE(_stopped || _failed);
-        if (error_code == 0) {
-            _stopped = true;
-        } else {
-            _failed = true;
-        }
+        ASSERT_FALSE(_failed);
+        ASSERT_NE(0, error_code);
+        _failed = true;
     }
-
-    bool split_closed_and_failed() const override { return true; }
 
     bool failed() const { return _failed; }
     bool stopped() const { return _stopped; }
@@ -235,9 +158,10 @@ private:
     HandlerControl* _cntl;
 };
 
-template <typename Handler>
-void StreamingRpcTest::TestReceivedInOrder(brpc::StreamOptions& opt,
-                                           Handler& handler) {
+TEST_F(StreamingRpcTest, received_in_order) {
+    OrderedInputHandler handler;
+    brpc::StreamOptions opt;
+    opt.handler = &handler;
     opt.messages_in_batch = 100;
     brpc::Server server;
     MyServiceWithStream service(opt);
@@ -272,29 +196,19 @@ void StreamingRpcTest::TestReceivedInOrder(brpc::StreamOptions& opt,
     ASSERT_EQ(N, handler._expected_next_value);
 }
 
-TEST_F(StreamingRpcTest, received_in_order) {
-    OrderedInputHandler handler;
-    brpc::StreamOptions opt;
-    opt.handler = &handler;
-    TestReceivedInOrder(opt, handler);
-
-    OrderedInputHandler2 handler2;
-    brpc::StreamOptions opt2;
-    opt2.handler = &handler2;
-    TestReceivedInOrder(opt2, handler2);
-}
-
 void on_writable(brpc::StreamId, void* arg, int error_code) {
     std::pair<bool, int>* p = (std::pair<bool, int>*)arg;
     p->first = true;
     p->second = error_code;
-    // LOG(INFO) << "error_code=" << error_code;
+    LOG(INFO) << "error_code=" << error_code;
 }
 
-template <typename Handler>
-void StreamingRpcTest::TestBlock(brpc::StreamOptions& opt,
-                                 Handler& handler, HandlerControl& hc) {
+TEST_F(StreamingRpcTest, block) {
+    HandlerControl hc;
     hc.block = true;
+    OrderedInputHandler handler(&hc);
+    brpc::StreamOptions opt;
+    opt.handler = &handler;
     const int N = 10000;
     opt.max_buf_size = sizeof(uint32_t) *  N;
     brpc::Server server;
@@ -388,34 +302,12 @@ void StreamingRpcTest::TestBlock(brpc::StreamOptions& opt,
     ASSERT_EQ(N + N + N, handler._expected_next_value);
 }
 
-TEST_F(StreamingRpcTest, block) {
+TEST_F(StreamingRpcTest, auto_close_if_host_socket_closed) {
     HandlerControl hc;
+    hc.block = true;
     OrderedInputHandler handler(&hc);
     brpc::StreamOptions opt;
     opt.handler = &handler;
-    TestBlock(opt, handler, hc);
-
-    OrderedInputHandler2 handler2(&hc);
-    brpc::StreamOptions opt2;
-    opt2.handler = &handler2;
-    TestBlock(opt2, handler2, hc);
-}
-
-void HandleFailed(OrderedInputHandler& handler) {
-    ASSERT_FALSE(handler.failed());
-    ASSERT_TRUE(handler.stopped());
-}
-
-// brpc::StreamInputHandler2 is failed, not closed.
-void HandleFailed(OrderedInputHandler2& handler) {
-    ASSERT_TRUE(handler.failed());
-    ASSERT_FALSE(handler.stopped());
-}
-
-template <typename Handler>
-void StreamingRpcTest::TestAutoClose(brpc::StreamOptions& opt,
-                                     Handler& handler, HandlerControl& hc) {
-    hc.block = true;
     const int N = 10000;
     opt.max_buf_size = sizeof(uint32_t) *  N;
     brpc::Server server;
@@ -439,36 +331,23 @@ void StreamingRpcTest::TestAutoClose(brpc::StreamOptions& opt,
         ASSERT_EQ(0, brpc::Socket::Address(request_stream, &ptr));
         brpc::Stream* s = (brpc::Stream*)ptr->conn();
         ASSERT_TRUE(s->_host_socket != NULL);
-        s->_host_socket->SetFailed(10000, "");
+        s->_host_socket->SetFailed();
     }
 
     usleep(100);
     butil::IOBuf out;
     out.append("test");
     ASSERT_EQ(EINVAL, brpc::StreamWrite(request_stream, out));
-    while (!handler.stopped() && !handler.failed()) {
+    while (!handler.stopped()) {
         usleep(100);
     }
-    HandleFailed(handler);
+    ASSERT_TRUE(handler.failed());
     ASSERT_EQ(0, handler.idle_times());
     ASSERT_EQ(0, handler._expected_next_value);
 }
 
-TEST_F(StreamingRpcTest, auto_close_if_host_socket_closed) {
-    HandlerControl hc;
-    OrderedInputHandler handler(&hc);
-    brpc::StreamOptions opt;
-    opt.handler = &handler;
-    TestAutoClose(opt, handler, hc);
-
-    OrderedInputHandler2 handler2(&hc);
-    brpc::StreamOptions opt2;
-    opt2.handler = &handler2;
-    TestAutoClose(opt2, handler2, hc);
-}
-
 TEST_F(StreamingRpcTest, failed_when_rst) {
-    OrderedInputHandler2 handler;
+    OrderedInputHandler handler;
     brpc::StreamOptions opt;
     opt.handler = &handler;
     opt.messages_in_batch = 100;
@@ -510,15 +389,17 @@ TEST_F(StreamingRpcTest, failed_when_rst) {
     while (!handler.stopped() && !handler.failed()) {
         usleep(100);
     }
-    HandleFailed(handler);
+    ASSERT_TRUE(handler.failed());
     ASSERT_EQ(0, handler.idle_times());
     ASSERT_EQ(N, handler._expected_next_value);
 }
 
-template <typename Handler>
-void StreamingRpcTest::TestIdleTimeout(brpc::StreamOptions& opt,
-                                       Handler& handler, HandlerControl& hc) {
+TEST_F(StreamingRpcTest, idle_timeout) {
+    HandlerControl hc;
     hc.block = true;
+    OrderedInputHandler handler(&hc);
+    brpc::StreamOptions opt;
+    opt.handler = &handler;
     opt.idle_timeout_ms = 2;
     const int N = 10000;
     opt.max_buf_size = sizeof(uint32_t) *  N;
@@ -548,19 +429,6 @@ void StreamingRpcTest::TestIdleTimeout(brpc::StreamOptions& opt,
     ASSERT_EQ(0, handler._expected_next_value);
 }
 
-TEST_F(StreamingRpcTest, idle_timeout) {
-    HandlerControl hc;
-    OrderedInputHandler handler(&hc);
-    brpc::StreamOptions opt;
-    opt.handler = &handler;
-    TestIdleTimeout(opt, handler, hc);
-
-    OrderedInputHandler2 handler2(&hc);
-    brpc::StreamOptions opt2;
-    opt2.handler = &handler2;
-    TestIdleTimeout(opt2, handler2, hc);
-}
-
 class PingPongHandler : public brpc::StreamInputHandler {
 public:
     explicit PingPongHandler()
@@ -570,59 +438,6 @@ public:
         , _idle_times(0)
     {
     }
-    int on_received_messages(brpc::StreamId id,
-                             butil::IOBuf *const messages[],
-                             size_t size) {
-        if (size != 1) {
-            _failed = true;
-            return 0;
-        }
-        for (size_t i = 0; i < size; ++i) {
-            CHECK(messages[i]->length() == sizeof(int));
-            int network = 0;
-            messages[i]->cutn(&network, sizeof(int));
-            if ((int)ntohl(network) != _expected_next_value) {
-                _failed = true;
-            }
-            int send_back = ntohl(network) + 1;
-            _expected_next_value = send_back + 1;
-            butil::IOBuf out;
-            network = htonl(send_back);
-            out.append(&network, sizeof(network));
-            // don't care the return value
-            brpc::StreamWrite(id, out);
-        }
-        return 0;
-    }
-
-    void on_idle_timeout(brpc::StreamId /*id*/) {
-        ++_idle_times;
-    }
-
-    void on_closed(brpc::StreamId /*id*/) {
-        ASSERT_FALSE(_stopped);
-        _stopped = true;
-    }
-
-    bool failed() const { return _failed; }
-    bool stopped() const { return _stopped; }
-    int idle_times() const { return _idle_times; }
-private:
-    int _expected_next_value;
-    bool _failed;
-    bool _stopped;
-    int _idle_times;
-};
-
-class PingPongHandler2 : public brpc::StreamInputHandler {
-public:
-    explicit PingPongHandler2()
-        : _expected_next_value(0)
-        , _failed(false)
-        , _stopped(false)
-        , _idle_times(0)
-    {}
-
     int on_received_messages(brpc::StreamId id,
                              butil::IOBuf *const messages[],
                              size_t size) override {
@@ -657,17 +472,13 @@ public:
         _stopped = true;
     }
 
-    void on_failed(brpc::StreamId id, int error_code,
-        const std::string& /*error_text*/) override {
-        ASSERT_FALSE(_stopped || _failed);
-        if (error_code == 0) {
-            _stopped = true;
-        } else {
-            _failed = true;
-        }
-    }
 
-    bool split_closed_and_failed() const override { return true; }
+    void on_failed(brpc::StreamId id, int error_code,
+                   const std::string& /*error_text*/) override {
+        ASSERT_FALSE(_failed);
+        ASSERT_NE(0, error_code);
+        _failed = true;
+    }
 
     bool failed() const { return _failed; }
     bool stopped() const { return _stopped; }
@@ -679,9 +490,10 @@ private:
     int _idle_times;
 };
 
-template <typename Handler>
-void StreamingRpcTest::TestPingPong(brpc::StreamOptions& opt,
-                                    Handler& resh) {
+TEST_F(StreamingRpcTest, ping_pong) {
+    PingPongHandler resh;
+    brpc::StreamOptions opt;
+    opt.handler = &resh;
     const int N = 10000;
     opt.max_buf_size = sizeof(uint32_t) *  N;
     brpc::Server server;
@@ -717,18 +529,6 @@ void StreamingRpcTest::TestPingPong(brpc::StreamOptions& opt,
     ASSERT_EQ(0, reqh.idle_times());
 }
 
-TEST_F(StreamingRpcTest, ping_pong) {
-    PingPongHandler resh;
-    brpc::StreamOptions opt;
-    opt.handler = &resh;
-    TestPingPong(opt, resh);
-
-    PingPongHandler2 resh2;
-    brpc::StreamOptions opt2;
-    opt2.handler = &resh2;
-    TestPingPong(opt2, resh2);
-}
-
 class SendNAfterAcceptStream : public AfterAcceptStream {
 public:
     explicit SendNAfterAcceptStream(int n)
@@ -745,9 +545,7 @@ private:
     int _n;
 };
 
-template <typename Handler>
-void StreamingRpcTest::TestServerSendDataBeforeRunDone(
-    brpc::StreamOptions& request_stream_options, Handler& handler) {
+TEST_F(StreamingRpcTest, server_send_data_before_run_done) {
     const int N = 10000;
     SendNAfterAcceptStream after_accept(N);
     brpc::StreamOptions opt;
@@ -758,6 +556,9 @@ void StreamingRpcTest::TestServerSendDataBeforeRunDone(
     ASSERT_EQ(0, server.Start(9007, NULL));
     brpc::Channel channel;
     ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    OrderedInputHandler handler;
+    brpc::StreamOptions request_stream_options;
+    request_stream_options.handler = &handler;
     brpc::StreamId request_stream;
     brpc::Controller cntl;
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
@@ -775,16 +576,4 @@ void StreamingRpcTest::TestServerSendDataBeforeRunDone(
     }
     ASSERT_FALSE(handler.failed());
     ASSERT_EQ(0, handler.idle_times());
-}
-
-TEST_F(StreamingRpcTest, server_send_data_before_run_done) {
-    OrderedInputHandler handler;
-    brpc::StreamOptions request_stream_options;
-    request_stream_options.handler = &handler;
-    TestServerSendDataBeforeRunDone(request_stream_options, handler);
-
-    OrderedInputHandler2 handler2;
-    brpc::StreamOptions request_stream_options2;
-    request_stream_options2.handler = &handler2;
-    TestServerSendDataBeforeRunDone(request_stream_options2, handler2);
 }

@@ -44,18 +44,11 @@ public:
                                      butil::IOBuf *const messages[], 
                                      size_t size) = 0;
     virtual void on_idle_timeout(StreamId id) = 0;
-    // 1. If `split_closed_and_failed` returns false(default),
-    //    only `on_closed` will be called.
-    // 2. If `split_closed_and_failed` returns true,
-    //    2.1 `on_closed` will be called Whether `StreamClose`
-    //        is called by local side or remote side.
-    //    2.2 `on_failed` will be called when the stream is
-    //        closed abnormally.
     virtual void on_closed(StreamId id) = 0;
+    // `on_failed` will be called  before `on_closed`
+    // when the stream is closed abnormally.
     virtual void on_failed(StreamId id, int error_code,
-                           const std::string& error_text);
-
-    virtual bool split_closed_and_failed() const { return false; }
+                           const std::string& error_text) {}
 };
 
 struct StreamOptions {

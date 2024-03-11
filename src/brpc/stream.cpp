@@ -39,14 +39,6 @@ DECLARE_int64(socket_max_streams_unconsumed_bytes);
 
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
-void StreamInputHandler::on_failed(StreamId id, int error_code,
-                                   const std::string& error_text) {
-    LOG(ERROR) << "`on_failed' should be override by user when "
-                  "`split_closed_and_failed' returns true. "
-                  "id=" << id << ", [" << error_code
-               << "] " << error_text;
-}
-
 Stream::Stream() 
     : _host_socket(NULL)
     , _fake_socket_weak_ref(NULL)
@@ -528,7 +520,7 @@ public:
         _total_length += buf->length();
 
     }
-    size_t total_length() { return _total_length; }
+    size_t total_length() const { return _total_length; }
 private:
     butil::IOBuf** _storage;
     size_t _cap;
@@ -548,19 +540,16 @@ int Stream::Consume(void *meta, bthread::TaskIterator<butil::IOBuf*>& iter) {
             s->_host_socket = NULL;
         }
         if (s->_options.handler != NULL) {
-            if (s->_options.handler->split_closed_and_failed()) {
-                // Split closed and failed according to the error code.
-                int error_code;
-                std::string error_text;
-                {
-                    BAIDU_SCOPED_LOCK(s->_connect_mutex);
-                    error_code = s->_error_code;
-                    error_text = s->_error_text;
-                }
-                if (error_code != 0) {
-                    s->_options.handler->on_failed(s->id(), error_code, error_text);
-                    return 0;
-                }
+            int error_code;
+            std::string error_text;
+            {
+                BAIDU_SCOPED_LOCK(s->_connect_mutex);
+                error_code = s->_error_code;
+                error_text = s->_error_text;
+            }
+            if (error_code != 0) {
+                // The stream is closed abnormally.
+                s->_options.handler->on_failed(s->id(), error_code, error_text);
             }
             s->_options.handler->on_closed(s->id());
         }
