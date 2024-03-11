@@ -307,9 +307,6 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             thread_return = e.value();
         }
 
-        // Group is probably changed
-        g =  BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
-
         // TODO: Save thread_return
         (void)thread_return;
 
@@ -331,6 +328,10 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             tls_bls.keytable = NULL;
             m->local_storage.keytable = NULL; // optional
         }
+
+        // During running the function in TaskMeta and deleting the KeyTable in
+        // return_KeyTable, the group is probably changed.
+        g =  BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 
         // Increase the version and wake up all joiners, if resulting version
         // is 0, change it to 1 to make bthread_t never be 0. Any access

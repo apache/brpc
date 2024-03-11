@@ -402,4 +402,56 @@ TEST(KeyTest, using_pool) {
     ASSERT_EQ(0, bthread_key_delete(key));
 }
 
+// NOTE: lid is short for 'lock in dtor'.
+butil::atomic<size_t> lid_seq(1);
+std::vector<size_t> lid_seqs;
+bthread_mutex_t mu;
+
+static void lid_dtor(void* tls) {
+    bthread_mutex_lock(&mu);
+    lid_seqs.push_back((size_t)tls);
+    bthread_mutex_unlock(&mu);
+}
+
+static void lid_worker_impl(bthread_key_t key) {
+    ASSERT_EQ(NULL, bthread_getspecific(key));
+    ASSERT_EQ(0, bthread_setspecific(key, (void*)seq.fetch_add(1)));
+}
+
+static void* lid_worker(void* arg) {
+    lid_worker_impl(*static_cast<bthread_key_t*>(arg));
+    return NULL;
+}
+
+TEST(KeyTest, use_bthread_mutex_in_dtor) {
+    bthread_key_t key;
+
+    ASSERT_EQ(0, bthread_mutex_init(&mu, nullptr));
+    ASSERT_EQ(0, bthread_key_create(&key, lid_dtor));
+
+    lid_seqs.clear();
+
+    bthread_t bth[8];
+    for (size_t i = 0; i < arraysize(bth); ++i) {
+        ASSERT_EQ(0, bthread_start_urgent(&bth[i], NULL, lid_worker, &key));
+    }
+    pthread_t th[8];
+    for (size_t i = 0; i < arraysize(th); ++i) {
+        ASSERT_EQ(0, pthread_create(&th[i], NULL, lid_worker, &key));
+    }
+    for (size_t i = 0; i < arraysize(bth); ++i) {
+        ASSERT_EQ(0, bthread_join(bth[i], NULL));
+    }
+    for (size_t i = 0; i < arraysize(th); ++i) {
+        ASSERT_EQ(0, pthread_join(th[i], NULL));
+    }
+    ASSERT_EQ(arraysize(th) + arraysize(bth), lid_seqs.size());
+    std::sort(lid_seqs.begin(), lid_seqs.end());
+    ASSERT_EQ(lid_seqs.end(), std::unique(lid_seqs.begin(), lid_seqs.end()));
+    ASSERT_EQ(arraysize(th) + arraysize(bth) - 1,
+                *(lid_seqs.end() - 1) - *lid_seqs.begin());
+
+    ASSERT_EQ(0, bthread_key_delete(key));
+}
+
 }  // namespace
