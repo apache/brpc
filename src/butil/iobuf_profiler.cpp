@@ -32,12 +32,24 @@ namespace iobuf {
 extern void* cp(void *__restrict dest, const void *__restrict src, size_t n);
 }
 
+// Max and min sleep time for IOBuf profiler consuming thread
+// when `_sample_queue' is empty.
+const uint32_t IOBufProfiler::MIN_SLEEP_MS = 10;
+const uint32_t IOBufProfiler::MAX_SLEEP_MS = 1000;
+
 static pthread_once_t g_iobuf_profiler_info_once = PTHREAD_ONCE_INIT;
 static bool g_iobuf_profiler_enabled = false;
 static uint g_iobuf_profiler_sample_rate = 100;
+
+// Environment variables:
+// 1. ENABLE_IOBUF_PROFILER: set value to 1 to enable IOBuf profiler.
+// 2. IOBUF_PROFILER_SAMPLE_RATE: set value between (0, 100] to control sample rate.
 static void InitGlobalIOBufProfilerInfo() {
     const char* enabled = getenv("ENABLE_IOBUF_PROFILER");
     g_iobuf_profiler_enabled = enabled && strcmp("1", enabled) == 0 && ::GetStackTrace != NULL;
+    if (g_iobuf_profiler_enabled) {
+        return;
+    }
 
     char* rate = getenv("IOBUF_PROFILER_SAMPLE_RATE");
     if (rate) {
@@ -68,8 +80,6 @@ bool IsIOBufProfilerSamplable() {
     return fast_rand_less_than(100) + 1 <= g_iobuf_profiler_sample_rate;
 }
 
-IOBufSample* const IOBufSample::UNCONNECTED = (IOBufSample*)(intptr_t)-1;
-
 size_t IOBufSample::stack_hash_code() const {
     if (nframes == 0) {
         return 0;
@@ -80,9 +90,6 @@ size_t IOBufSample::stack_hash_code() const {
     }
     return _hash_code;
 }
-
-const uint32_t IOBufProfiler::MIN_SLEEP_MS = 10;
-const uint32_t IOBufProfiler::MAX_SLEEP_MS = 1000;
 
 IOBufProfiler* IOBufProfiler::GetInstance() {
     return ::Singleton<IOBufProfiler, LeakySingletonTraits<IOBufProfiler>>::get();
@@ -200,6 +207,8 @@ void IOBufProfiler::Flush2Disk(const char* filename) {
     }
     _disk_buf.append(os.buf().movable());
 
+    // Append /proc/self/maps to the end of the contention file, required by
+    // pprof.pl, otherwise the functions in sys libs are not interpreted.
     butil::IOPortal mem_maps;
     const butil::fd_guard maps_fd(open("/proc/self/maps", O_RDONLY));
     if (maps_fd >= 0) {
@@ -274,8 +283,8 @@ void IOBufProfiler::Consume() {
         is_empty = false;
     }
 
-    _sleep_ms = !is_empty ?
-                MIN_SLEEP_MS :
+    // If `_sample_queue' is empty, exponential increase in sleep time.
+    _sleep_ms = !is_empty ? MIN_SLEEP_MS :
                 std::min(_sleep_ms * 2, MAX_SLEEP_MS);
 }
 

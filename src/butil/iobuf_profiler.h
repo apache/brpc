@@ -34,8 +34,6 @@ struct IOBufSample;
 typedef std::shared_ptr<IOBufSample> IOBufRefSampleSharedPtr;
 
 struct IOBufSample {
-    static IOBufSample* const UNCONNECTED;
-
     IOBufSample* next;
     IOBuf::Block* block;
     int64_t count; // // reference count of the block.
@@ -105,10 +103,11 @@ class IOBufProfiler : public butil::SimpleThread {
 public:
     static IOBufProfiler* GetInstance();
 
+    // Submit the IOBuf sample along with stacktrace.
     void Submit(IOBufSample* s);
-
+    // Dump IOBuf sample to map.
     void Dump(IOBufSample* s);
-
+    // Write buffered data into resulting file.
     void Flush2Disk(const char* filename);
 
     void StopAndJoin();
@@ -137,17 +136,23 @@ private:
     DISALLOW_COPY_AND_ASSIGN(IOBufProfiler);
 
     void Run() override;
-
+    // Consume the IOBuf sample in _sample_queue.
     void Consume();
 
+    // Stop flag of IOBufProfiler.
     butil::atomic<bool> _stop;
+    // IOBuf sample queue.
     MPSCQueue<IOBufSample*> _sample_queue;
 
-    butil::IOBuf _disk_buf;  // temp buf before saving the file.
-    IOBufRefMap _stack_map; // combining same samples to make result smaller.
-    BlockInfoMap _block_info_map; // record block info
+    // Temp buf before saving the file.
+    butil::IOBuf _disk_buf;
+    // Combining same samples to make result smaller.
+    IOBufRefMap _stack_map;
+    // Record block info.
+    BlockInfoMap _block_info_map;
     Mutex _mutex;
 
+    // Sleep when `_sample_queue' is empty.
     uint32_t _sleep_ms;
     static const uint32_t MIN_SLEEP_MS;
     static const uint32_t MAX_SLEEP_MS;
