@@ -127,7 +127,7 @@ static bool read_proc_status(ProcStat &stat) {
 template <typename T>
 class CachedReader {
 public:
-    CachedReader() : _mtime_us(0) {
+    CachedReader() : _mtime_us(0), _cached{} {
         CHECK_EQ(0, pthread_mutex_init(&_mutex, NULL));
     }
     ~CachedReader() {
@@ -150,7 +150,7 @@ public:
                 pthread_mutex_unlock(&p->_mutex);
                 // don't run fn inside lock otherwise a slow fn may
                 // block all concurrent bvar dumppers. (e.g. /vars)
-                T result;
+                T result{};
                 if (fn(&result)) {
                     pthread_mutex_lock(&p->_mutex);
                     p->_cached = result;
