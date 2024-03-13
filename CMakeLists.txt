@@ -154,7 +154,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 find_package(Protobuf REQUIRED)
-if(Protobuf_VERSION GREATER_EQUAL 4.22)
+if(Protobuf_VERSION GREATER 4.21)
     # required by absl
     set(CMAKE_CXX_STANDARD 17)
 
