@@ -135,6 +135,8 @@ DEFINE_string(vmodule, "", "per-module verbose level."
 
 DEFINE_bool(log_pid, false, "Log process id");
 
+DEFINE_bool(log_bid, true, "Log bthread id");
+
 DEFINE_int32(minloglevel, 0, "Any log at or above this level will be "
              "displayed. Anything below this level will be silently ignored. "
              "0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL");
@@ -809,6 +811,9 @@ void PrintLogPrefix(std::ostream& os, int severity,
     }
     os << ' ' << std::setfill(' ') << std::setw(5)
        << butil::PlatformThread::CurrentId() << std::setfill('0');
+    if (FLAGS_log_bid && bthread_self) {
+        os << ' ' << std::setfill(' ') << std::setw(5) << bthread_self();
+    }
     if (FLAGS_log_hostname) {
         butil::StringPiece hostname(butil::my_hostname());
         if (hostname.ends_with(".baidu.com")) { // make it shorter
