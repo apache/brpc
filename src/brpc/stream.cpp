@@ -517,7 +517,7 @@ public:
         _total_length += buf->length();
 
     }
-    size_t total_length() { return _total_length; }
+    size_t total_length() const { return _total_length; }
 private:
     butil::IOBuf** _storage;
     size_t _cap;
