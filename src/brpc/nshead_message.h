@@ -67,7 +67,7 @@ public:
     void SerializeWithCachedSizes(
         ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const override { return ByteSize(); }
+    int GetCachedSize() const PB_422_OVERRIDE { return ByteSize(); }
 
 protected:
     ::google::protobuf::Metadata GetMetadata() const override;

@@ -27,9 +27,9 @@ jobs:
 
     - name: config_brpc
       run: |
-           GETOPT_PATH=$(find "/usr/local/Cellar/" -name "getopt" -type f -perm +111 -exec dirname {} \;)
+           GETOPT_PATH=$(brew --prefix gnu-getopt)/bin
            export PATH=$GETOPT_PATH:$PATH
-           ./config_brpc.sh --header="/usr/local/include" --libs="/usr/local/lib"
+           ./config_brpc.sh --header="$(brew --prefix)/include" --libs="$(brew --prefix)/lib"
 
     - name: compile
       run: |
@@ -44,7 +44,7 @@ jobs:
     - name: install dependences
       run: |
            brew install ./homebrew-formula/protobuf.rb 
-           brew install openssl gnu-getopt coreutils gflags leveldb
+           brew install openssl gflags leveldb
 
     - name: cmake
       run: |
@@ -56,3 +56,44 @@ jobs:
       run: |
            cd build
            make -j ${{env.proc_num}}
+
+  compile-with-make-protobuf22:
+    runs-on: macos-latest # https://github.com/actions/runner-images
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: install dependences
+        run: |
+          brew install protobuf openssl gnu-getopt coreutils gflags leveldb
+
+      - name: config_brpc
+        run: |
+          GETOPT_PATH=$(brew --prefix gnu-getopt)/bin
+          export PATH=$GETOPT_PATH:$PATH
+           ./config_brpc.sh --header="$(brew --prefix)/include" --libs="$(brew --prefix)/lib"
+
+      - name: compile
+        run: |
+          make -j ${{env.proc_num}}
+
+  compile-with-cmake-protobuf22:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: install dependences
+        run: |
+          brew install protobuf openssl gflags leveldb
+
+      - name: cmake
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+
+      - name: compile
+        run: |
+          cd build
+          make -j ${{env.proc_num}}

@@ -125,7 +125,7 @@ public:
     void SerializeWithCachedSizes(
         ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const override { return _cached_size_; }
+    int GetCachedSize() const PB_422_OVERRIDE { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
     
@@ -137,7 +137,7 @@ protected:
 private:
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const override;
+    void SetCachedSize(int size) const PB_422_OVERRIDE;
     bool AddCommandWithArgs(const char* fmt, ...);
 
     int _ncommand;    // # of valid commands
@@ -198,7 +198,7 @@ public:
     void SerializeWithCachedSizes(
         ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const override { return _cached_size_; }
+    int GetCachedSize() const PB_422_OVERRIDE { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
 
@@ -208,7 +208,7 @@ protected:
 private:
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const override;
+    void SetCachedSize(int size) const PB_422_OVERRIDE;
 
     RedisReply _first_reply;
     RedisReply* _other_replies;

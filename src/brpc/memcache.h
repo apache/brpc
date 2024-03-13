@@ -107,7 +107,7 @@ public:
     void SerializeWithCachedSizes(
         ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const override { return _cached_size_; }
+    int GetCachedSize() const PB_422_OVERRIDE { return _cached_size_; }
     
     static const ::google::protobuf::Descriptor* descriptor();
 
@@ -125,7 +125,7 @@ private:
 
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const override;
+    void SetCachedSize(int size) const PB_422_OVERRIDE;
 
     int _pipelined_count;
     butil::IOBuf _buf;
@@ -220,7 +220,7 @@ public:
     void SerializeWithCachedSizes(
         ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const override { return _cached_size_; }
+    int GetCachedSize() const PB_422_OVERRIDE { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
 
@@ -233,7 +233,7 @@ private:
 
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const override;
+    void SetCachedSize(int size) const PB_422_OVERRIDE;
 
     std::string _err;
     butil::IOBuf _buf;
