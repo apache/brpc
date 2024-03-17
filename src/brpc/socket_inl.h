@@ -54,6 +54,8 @@ BUTIL_FORCE_INLINE uint64_t MakeVRef(uint32_t version, int32_t nref) {
 
 inline SocketOptions::SocketOptions()
     : fd(-1)
+    , connect_on_create(false)
+    , abstime(NULL)
     , user(NULL)
     , on_edge_triggered_events(NULL)
     , health_check_interval_s(-1)

@@ -198,6 +198,14 @@ struct SocketOptions {
     // user->BeforeRecycle() before recycling.
     int fd;
     butil::EndPoint remote_side;
+    // If `connect_on_create' is true and `fd' is less than 0,
+    // a client connection will be established to remote_side()
+    // regarding deadline `abstime' when Socket is being created.
+    // Default: false, means that a connection will be established
+    // on first write.
+    bool connect_on_create;
+    // Default: NULL, means no timeout.
+    const timespec* abstime;
     SocketUser* user;
     // When *edge-triggered* events happen on the file descriptor, callback
     // `on_edge_triggered_events' will be called. Inside the callback, user
@@ -640,8 +648,11 @@ friend void DereferenceSocket(Socket*);
     // starting a connection request and `on_connect' will be called
     // when connecting completes (whether it succeeds or not)
     // Returns the socket fd on success, -1 otherwise
+    int DoConnect(const timespec* abstime,
+                  int (*on_connect)(int fd, int err, void* data), void* data);
     int Connect(const timespec* abstime,
                 int (*on_connect)(int fd, int err, void* data), void* data);
+
     int CheckConnected(int sockfd);
 
     // [Not thread-safe] Only used by `Write'.

@@ -746,12 +746,25 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_keepalive_options = options.keepalive_options;
     m->_bthread_tag = options.bthread_tag;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
+    int fd = options.fd;
+    if (!m->ValidFileDescriptor(fd) && options.connect_on_create) {
+        // Connect on created.
+        fd = m->DoConnect(options.abstime, NULL, NULL);
+        if (fd < 0) {
+            PLOG(ERROR) << "Fail to connect to " << options.remote_side;
+            int error_code = errno != 0 ? errno : EHOSTDOWN;
+            m->SetFailed(error_code, "Fail to connect to %s: %s",
+                         butil::endpoint2str(options.remote_side).c_str(),
+                         berror(error_code));
+            return -1;
+        }
+    }
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
-    if (m->ResetFileDescriptor(options.fd) != 0) {
+    if (m->ResetFileDescriptor(fd) != 0) {
         const int saved_errno = errno;
         PLOG(ERROR) << "Fail to ResetFileDescriptor";
-        m->SetFailed(saved_errno, "Fail to ResetFileDescriptor: %s", 
+        m->SetFailed(saved_errno, "Fail to ResetFileDescriptor: %s",
                      berror(saved_errno));
         return -1;
     }
@@ -1363,12 +1376,14 @@ int Socket::CheckConnected(int sockfd) {
         return -1;
     }
 
-    butil::EndPoint local_point;
-    CHECK_EQ(0, butil::get_local_side(sockfd, &local_point));
-    LOG_IF(INFO, FLAGS_log_connected)
-            << "Connected to " << remote_side()
-            << " via fd=" << (int)sockfd << " SocketId=" << id()
-            << " local_side=" << local_point;
+    if (FLAGS_log_connected) {
+        butil::EndPoint local_point;
+        CHECK_EQ(0, butil::get_local_side(sockfd, &local_point));
+        LOG(INFO) << "Connected to " << remote_side()
+                  << " via fd=" << (int)sockfd << " SocketId=" << id()
+                  << " local_side=" << local_point;
+    }
+
     if (CreatedByConnect()) {
         g_vars->channel_conn << 1;
     }
@@ -1376,24 +1391,27 @@ int Socket::CheckConnected(int sockfd) {
     return SSLHandshake(sockfd, false);
 }
 
+int Socket::DoConnect(const timespec* abstime,
+                      int (*on_connect)(int, int, void*), void* data) {
+    if (_conn) {
+        return _conn->Connect(this, abstime, on_connect, data);
+    } else {
+        return Connect(abstime, on_connect, data);
+    }
+}
+
 int Socket::ConnectIfNot(const timespec* abstime, WriteRequest* req) {
     if (_fd.load(butil::memory_order_consume) >= 0) {
        return 0;
     }
-    // Set tag for client side socket
+    // Set tag for client side socket.
     _bthread_tag = bthread_self_tag();
-    // Have to hold a reference for `req'
+    // Have to hold a reference for `req'.
     SocketUniquePtr s;
     ReAddress(&s);
     req->socket = s.get();
-    if (_conn) {
-        if (_conn->Connect(this, abstime, KeepWriteIfConnected, req) < 0) {
-            return -1;
-        }
-    } else {
-        if (Connect(abstime, KeepWriteIfConnected, req) < 0) {
-            return -1;
-        }
+    if (DoConnect(abstime, KeepWriteIfConnected, req) < 0) {
+        return -1;
     }
     s.release();
     return 1;    
