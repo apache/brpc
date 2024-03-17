@@ -296,6 +296,11 @@ friend void DereferenceVersionedRefWithId<>(T* r);
     // it will be recycled automatically and T::BeforeRecycled() will be called.
     int Dereference();
 
+    // Increase the reference count by 1.
+    void AddReference() {
+        _versioned_ref.fetch_add(1, butil::memory_order_release);
+    }
+
     // Make this socket addressable again.
     // If nref is less than `at_least_nref', VersionedRefWithId was
     // abandoned during revival and cannot be revived.

@@ -58,7 +58,7 @@ static butil::static_atomic<SocketMap*> g_socket_map = BUTIL_STATIC_ATOMIC_INIT(
 
 class GlobalSocketCreator : public SocketCreator {
 public:
-    int CreateSocket(const SocketOptions& opt, SocketId* id) {
+    int CreateSocket(const SocketOptions& opt, SocketId* id) override {
         SocketOptions sock_opt = opt;
         sock_opt.health_check_interval_s = FLAGS_health_check_interval;
         return get_client_side_messenger()->Create(sock_opt, id);
@@ -237,8 +237,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
             return 0;
         }
         // A socket w/o HC is failed (permanently), replace it.
-        sc->socket->SetHCRelatedRefReleased(); // set released status to cancel health checking
-        SocketUniquePtr ptr(sc->socket);  // Remove the ref added at insertion.
+        sc->socket->ReleaseHCRelatedReference();
         _map.erase(key); // in principle, we can override the entry in map w/o
         // removing and inserting it again. But this would make error branches
         // below have to remove the entry before returning, which is
@@ -258,12 +257,15 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     // use SocketUniquePtr which cannot put into containers before c++11.
     // The ref will be removed at entry's removal.
     SocketUniquePtr ptr;
-    if (Socket::Address(tmp_id, &ptr) != 0) {
+    int rc = Socket::AddressFailedAsWell(tmp_id, &ptr);
+    if (rc < 0) {
         LOG(FATAL) << "Fail to address SocketId=" << tmp_id;
         return -1;
+    } else if (rc > 0 && !ptr->HCEnabled()) {
+        LOG(FATAL) << "Failed socket is not HC-enabled";
+        return -1;
     }
-    ptr->SetHCRelatedRefHeld(); // set held status
-    SingleConnection new_sc = { 1, ptr.release(), 0 };
+    SingleConnection new_sc = { 1, ptr.get(), 0 };
     _map[key] = new_sc;
     *id = tmp_id;
     mu.unlock();
@@ -301,8 +303,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
             _map.erase(key);
             mu.unlock();
             s->ReleaseAdditionalReference(); // release extra ref
-            s->SetHCRelatedRefReleased(); // set released status to cancel health checking
-            SocketUniquePtr ptr(s);  // Dereference
+            s->ReleaseHCRelatedReference();
         }
     }
 }

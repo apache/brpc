@@ -256,6 +256,14 @@ struct SocketOptions {
     // user->BeforeRecycle() before recycling.
     int fd;
     butil::EndPoint remote_side;
+    // If `connect_on_create' is true and `fd' is less than 0,
+    // a client connection will be established to remote_side()
+    // regarding deadline `connect_abstime' when Socket is being created.
+    // Default: false, means that a connection will be established
+    // on first write.
+    bool connect_on_create;
+    // Default: NULL, means no timeout.
+    const timespec* connect_abstime;
     SocketUser* user;
     // When *edge-triggered* events happen on the file descriptor, callback
     // `on_edge_triggered_events' will be called. Inside the callback, user
@@ -409,16 +417,15 @@ public:
 
     // True if health checking is enabled.
     bool HCEnabled() const {
+        // This fence makes sure that we see change of
+        // `_is_hc_related_ref_held' before changing `_versioned_ref.
+        butil::atomic_thread_fence(butil::memory_order_acquire);
         return _health_check_interval_s > 0 && _is_hc_related_ref_held;
     }
 
-    // When someone holds a health-checking-related reference,
-    // this function need to be called to make health checking run normally.
-    void SetHCRelatedRefHeld() { _is_hc_related_ref_held = true; }
-    // When someone releases the health-checking-related reference,
-    // this function need to be called to cancel health checking.
-    void SetHCRelatedRefReleased() { _is_hc_related_ref_held = false; }
-    bool IsHCRelatedRefHeld() const { return _is_hc_related_ref_held; }
+    // Release the health-checking-related
+    // reference which is held on created.
+    void ReleaseHCRelatedReference();
 
     // After health checking is complete, set _hc_started to false.
     void AfterHCCompleted() { _hc_started.store(false, butil::memory_order_relaxed); }
@@ -665,6 +672,9 @@ private:
 
     std::string OnDescription() const;
 
+    // Hold the health-checking-related
+    // reference on created.
+    void HoldHCRelatedRef();
 
     static int Status(SocketId, int32_t* nref = NULL);  // for unit-test.
 
@@ -699,8 +709,11 @@ private:
     // starting a connection request and `on_connect' will be called
     // when connecting completes (whether it succeeds or not)
     // Returns the socket fd on success, -1 otherwise
+    int DoConnect(const timespec* abstime,
+                  int (*on_connect)(int fd, int err, void* data), void* data);
     int Connect(const timespec* abstime,
                 int (*on_connect)(int fd, int err, void* data), void* data);
+
     int CheckConnected(int sockfd);
 
     // [Not thread-safe] Only used by `Write'.
