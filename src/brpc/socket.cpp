@@ -343,7 +343,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
        return (_pc_and_udmsg.extra() >> 14) & 0x03;
     }
     void clear_pipelined_count_and_auth_flags() {
-        _pc_and_udmsg.reset_ptr_and_extra();
+        _pc_and_udmsg.reset_extra();
     }
     SocketMessage* user_message() const {
         return _pc_and_udmsg.get();
@@ -490,7 +490,7 @@ Socket::Socket(Forbidden)
     , _unwritten_bytes(0)
     , _epollout_butex(NULL)
     , _write_head(NULL)
-    , _is_wirte_shutdown(false)
+    , _is_write_shutdown(false)
     , _stream_set(NULL)
     , _total_streams_unconsumed_size(0)
     , _ninflight_app_health_check(0)
@@ -784,7 +784,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_keepalive_options = options.keepalive_options;
     m->_bthread_tag = options.bthread_tag;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
-    m->_is_wirte_shutdown = false;
+    m->_is_write_shutdown = false;
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
     if (m->ResetFileDescriptor(options.fd) != 0) {
@@ -1721,10 +1721,10 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     req->next = NULL;
 
     // Fast fail when write has been shutdown.
-    if (_is_wirte_shutdown) {
+    if (_is_write_shutdown) {
         goto FAIL_TO_WRITE;
     }
-    _is_wirte_shutdown = req->need_shutdown_write();
+    _is_write_shutdown = req->need_shutdown_write();
     
     // Connect to remote_side() if not.
     ret = ConnectIfNot(opt.abstime, req);
@@ -1934,7 +1934,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
         data_list[ndata++] = &p->data;
         if (p->need_shutdown_write()) {
             // Write WriteRequest until shutdown write.
-            _is_wirte_shutdown = true;
+            _is_write_shutdown = true;
             break;
         }
     }
@@ -2457,7 +2457,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         os << "\n}";
     }
 
-    os << "\nis_wirte_shutdown=" << ptr->_is_wirte_shutdown;
+    os << "\nis_wirte_shutdown=" << ptr->_is_write_shutdown;
 
     {
         int keepalive = 0;

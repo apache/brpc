@@ -383,7 +383,7 @@ public:
     };
 
     // True if write of socket is shutdown.
-    bool IsWriteShutdown() const { return _is_wirte_shutdown; }
+    bool IsWriteShutdown() const { return _is_write_shutdown; }
 
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
 
@@ -994,7 +994,7 @@ private:
     // Storing data that are not flushed into `fd' yet.
     butil::atomic<WriteRequest*> _write_head;
 
-    bool _is_wirte_shutdown;
+    bool _is_write_shutdown;
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
