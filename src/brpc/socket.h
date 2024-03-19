@@ -200,12 +200,12 @@ struct SocketOptions {
     butil::EndPoint remote_side;
     // If `connect_on_create' is true and `fd' is less than 0,
     // a client connection will be established to remote_side()
-    // regarding deadline `abstime' when Socket is being created.
+    // regarding deadline `connect_abstime' when Socket is being created.
     // Default: false, means that a connection will be established
     // on first write.
     bool connect_on_create;
     // Default: NULL, means no timeout.
-    const timespec* abstime;
+    const timespec* connect_abstime;
     SocketUser* user;
     // When *edge-triggered* events happen on the file descriptor, callback
     // `on_edge_triggered_events' will be called. Inside the callback, user

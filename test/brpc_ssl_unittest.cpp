@@ -244,7 +244,7 @@ void ProcessResponse(brpc::InputMessageBase* msg_base) {
     ASSERT_EQ(0, bthread_id_unlock_and_destroy(cid));
 }
 
-TEST_F(SSLTest, fd_ssl) {
+TEST_F(SSLTest, connect_on_create) {
     brpc::Protocol dummy_protocol = {
         brpc::policy::ParseRpcMessage, brpc::SerializeRequestDefault,
         brpc::policy::PackRpcRequest,NULL, ProcessResponse,

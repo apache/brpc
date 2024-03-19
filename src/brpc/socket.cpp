@@ -541,6 +541,10 @@ int Socket::ResetFileDescriptor(int fd) {
     if (!ValidFileDescriptor(fd)) {
         return 0;
     }
+    if (_remote_side == butil::EndPoint()) {
+        // OK to fail, non-socket fd does not support this.
+        butil::get_remote_side(fd, &_remote_side);
+    }
     // OK to fail, non-socket fd does not support this.
     if (butil::get_local_side(fd, &_local_side) != 0) {
         _local_side = butil::EndPoint();
@@ -748,8 +752,8 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
     int fd = options.fd;
     if (!m->ValidFileDescriptor(fd) && options.connect_on_create) {
-        // Connect on created.
-        fd = m->DoConnect(options.abstime, NULL, NULL);
+        // Connect on create.
+        fd = m->DoConnect(options.connect_abstime, NULL, NULL);
         if (fd < 0) {
             PLOG(ERROR) << "Fail to connect to " << options.remote_side;
             int error_code = errno != 0 ? errno : EHOSTDOWN;
