@@ -68,8 +68,8 @@ public:
 
     HttpMethod request_method() const { return _request_method; }
 
-    HttpHeader &header() { return _header; }
-    const HttpHeader &header() const { return _header; }
+    HttpHeader& header() { return _header; }
+    const HttpHeader& header() const { return _header; }
     size_t parsed_length() const { return _parsed_length; }
     
     // Http parser callback functions
