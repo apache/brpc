@@ -18,6 +18,8 @@
 
 // Since kDefaultTotalBytesLimit is private, we need some hacks to get the limit.
 // Works for pb 2.4, 2.6, 3.0
+#include "google/protobuf/stubs/common.h"
+#if GOOGLE_PROTOBUF_VERSION < 4022000
 #define private public
 #include <google/protobuf/io/coded_stream.h>
 const int PB_TOTAL_BYETS_LIMITS_RAW =
@@ -25,6 +27,12 @@ const int PB_TOTAL_BYETS_LIMITS_RAW =
 const uint64_t PB_TOTAL_BYETS_LIMITS =
     PB_TOTAL_BYETS_LIMITS_RAW < 0 ? (uint64_t)-1LL : PB_TOTAL_BYETS_LIMITS_RAW;
 #undef private
+#else
+#include <google/protobuf/io/coded_stream.h>
+const int PB_TOTAL_BYETS_LIMITS_RAW = INT_MAX;
+const uint64_t PB_TOTAL_BYETS_LIMITS =
+    PB_TOTAL_BYETS_LIMITS_RAW < 0 ? (uint64_t)-1LL : PB_TOTAL_BYETS_LIMITS_RAW;
+#endif
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/text_format.h>
