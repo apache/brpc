@@ -1387,7 +1387,8 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
         }
     }
     if (FailedInline()) {
-        Stream::SetFailed(_request_stream);
+        Stream::SetFailed(_request_stream, _error_code,
+                          "%s", _error_text.c_str());
         if (_remote_stream_settings != NULL) {
             policy::SendStreamRst(host_socket,
                                   _remote_stream_settings->stream_id());

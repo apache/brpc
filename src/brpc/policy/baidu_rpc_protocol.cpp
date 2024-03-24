@@ -254,11 +254,13 @@ void SendRpcResponse(int64_t correlation_id,
                            accessor.remote_stream_settings()->stream_id(),
                            accessor.response_stream()) != 0) {
             const int errcode = errno;
-            PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
-            cntl->SetFailed(errcode, "Fail to write into %s",
-                            sock->description().c_str());
+            std::string error_text = butil::string_printf(64, "Fail to write into %s",
+                                                          sock->description().c_str());
+            PLOG_IF(WARNING, errcode != EPIPE) << error_text;
+            cntl->SetFailed(errcode,  "%s", error_text.c_str());
             if(stream_ptr) {
-                ((Stream*)stream_ptr->conn())->Close();
+                ((Stream*)stream_ptr->conn())->Close(errcode, "%s",
+                                                     error_text.c_str());
             }
             return;
         }

@@ -44,6 +44,7 @@ Stream::Stream()
     , _fake_socket_weak_ref(NULL)
     , _connected(false)
     , _closed(false)
+    , _error_code(0)
     , _produced(0)
     , _remote_consumed(0)
     , _cur_buf_size(0)
@@ -74,6 +75,7 @@ int Stream::Create(const StreamOptions &options,
     s->_connected = false;
     s->_options = options;
     s->_closed = false;
+    s->_error_code = 0;
     s->_cur_buf_size = options.max_buf_size > 0 ? options.max_buf_size : 0;
     if (options.max_buf_size > 0 && options.min_buf_size > options.max_buf_size) {
         // set 0 if min_buf_size is invalid.
@@ -131,7 +133,7 @@ void Stream::BeforeRecycle(Socket *) {
     if (_host_socket) {
         _host_socket->RemoveStream(id());
     }
-    
+
     // The instance is to be deleted in the consumer thread
     bthread::execution_queue_stop(_consumer_queue);
 }
@@ -466,21 +468,22 @@ int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* soc
         if (!fm.has_continuation()) {
             butil::IOBuf *tmp = _pending_buf;
             _pending_buf = NULL;
-            if (bthread::execution_queue_execute(_consumer_queue, tmp) != 0) {
+            int rc = bthread::execution_queue_execute(_consumer_queue, tmp);
+            if (rc != 0) {
                 CHECK(false) << "Fail to push into channel";
                 delete tmp;
-                Close();
+                Close(rc, "Fail to push into channel");
             }
         }
         break;
     case FRAME_TYPE_RST:
         RPC_VLOG << "stream=" << id() << " received rst frame";
-        Close();
+        Close(ECONNRESET, "Received RST frame");
         break;
     case FRAME_TYPE_CLOSE:
         RPC_VLOG << "stream=" << id() << " received close frame";
         // TODO:: See the comments in Consume
-        Close();
+        Close(0, "Received CLOSE frame");
         break;
     case FRAME_TYPE_UNKNOWN:
         RPC_VLOG << "Received unknown frame";
@@ -530,15 +533,26 @@ int Stream::Consume(void *meta, bthread::TaskIterator<butil::IOBuf*>& iter) {
     Stream* s = (Stream*)meta;
     s->StopIdleTimer();
     if (iter.is_queue_stopped()) {
-        // indicating the queue was closed
+        scoped_ptr<Stream> recycled_stream(s);
+        // Indicating the queue was closed.
         if (s->_host_socket) {
             DereferenceSocket(s->_host_socket);
             s->_host_socket = NULL;
         }
         if (s->_options.handler != NULL) {
+            int error_code;
+            std::string error_text;
+            {
+                BAIDU_SCOPED_LOCK(s->_connect_mutex);
+                error_code = s->_error_code;
+                error_text = s->_error_text;
+            }
+            if (error_code != 0) {
+                // The stream is closed abnormally.
+                s->_options.handler->on_failed(s->id(), error_code, error_text);
+            }
             s->_options.handler->on_closed(s->id());
         }
-        delete s;
         return 0;
     }
     DEFINE_SMALL_ARRAY(butil::IOBuf*, buf_list, s->_options.messages_in_batch, 256);
@@ -630,7 +644,7 @@ void Stream::StopIdleTimer() {
     }
 }
 
-void Stream::Close() {
+void Stream::Close(int error_code, const char* reason_fmt, ...) {
     _fake_socket_weak_ref->SetFailed();
     bthread_mutex_lock(&_connect_mutex);
     if (_closed) {
@@ -638,6 +652,13 @@ void Stream::Close() {
         return;
     }
     _closed = true;
+    _error_code = error_code;
+
+    va_list ap;
+    va_start(ap, reason_fmt);
+    butil::string_vappendf(&_error_text, reason_fmt, ap);
+    va_end(ap);
+
     if (_connected) {
         bthread_mutex_unlock(&_connect_mutex);
         return;
@@ -647,14 +668,17 @@ void Stream::Close() {
     return TriggerOnConnectIfNeed();
 }
 
-int Stream::SetFailed(StreamId id) {
+int Stream::SetFailed(StreamId id, int error_code, const char* reason_fmt, ...) {
     SocketUniquePtr ptr;
     if (Socket::AddressFailedAsWell(id, &ptr) == -1) {
         // Don't care recycled stream
         return 0;
     }
     Stream* s = (Stream*)ptr->conn();
-    s->Close();
+    va_list ap;
+    va_start(ap, reason_fmt);
+    s->Close(error_code, reason_fmt, ap);
+    va_end(ap);
     return 0;
 }
 
@@ -665,13 +689,13 @@ void Stream::HandleRpcResponse(butil::IOBuf* response_buffer) {
     ParseResult pr = policy::ParseRpcMessage(response_buffer, NULL, true, NULL);
     if (!pr.is_ok()) {
         CHECK(false);
-        Close();
+        Close(EPROTO, "Fail to parse rpc response message");
         return;
     }
     InputMessageBase* msg = pr.message();
     if (msg == NULL) {
         CHECK(false);
-        Close();
+        Close(ENOMEM, "Message is NULL");
         return;
     }
     _host_socket->PostponeEOF();
@@ -730,7 +754,7 @@ int StreamWait(StreamId stream_id, const timespec* due_time) {
 }
 
 int StreamClose(StreamId stream_id) {
-    return Stream::SetFailed(stream_id);
+    return Stream::SetFailed(stream_id, 0, "Local close");
 }
 
 int StreamCreate(StreamId *request_stream, Controller &cntl,

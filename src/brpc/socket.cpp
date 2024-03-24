@@ -986,7 +986,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
                          &_id_wait_list, error_code, error_text,
                          &_id_wait_list_mutex));
 
-            ResetAllStreams();
+            ResetAllStreams(error_code, error_text);
             // _app_connect shouldn't be set to NULL in SetFailed otherwise
             // HC is always not supported.
             // FIXME: Design a better interface for AppConnect
@@ -2541,7 +2541,7 @@ int Socket::RemoveStream(StreamId stream_id) {
     return 0;
 }
 
-void Socket::ResetAllStreams() {
+void Socket::ResetAllStreams(int error_code, const std::string& error_text) {
     DCHECK(Failed());
     std::set<StreamId> saved_stream_set;
     _stream_mutex.lock();
@@ -2552,9 +2552,9 @@ void Socket::ResetAllStreams() {
         saved_stream_set.swap(*_stream_set);
     }
     _stream_mutex.unlock();
-    for (std::set<StreamId>::const_iterator 
-            it = saved_stream_set.begin(); it != saved_stream_set.end(); ++it) {
-        Stream::SetFailed(*it);
+    for (auto it = saved_stream_set.begin();
+            it != saved_stream_set.end(); ++it) {
+        Stream::SetFailed(*it, error_code, "%s", error_text.c_str());
     }
 }
 
