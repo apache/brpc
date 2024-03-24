@@ -134,7 +134,9 @@ void SendStreamRst(Socket *sock, int64_t remote_stream_id) {
     fm.set_frame_type(FRAME_TYPE_RST);
     butil::IOBuf out;
     PackStreamMessage(&out, fm, NULL);
-    sock->Write(&out);
+    Socket::WriteOptions wopt;
+    wopt.ignore_eovercrowded = true;
+    sock->Write(&out, &wopt);
 }
 
 void SendStreamClose(Socket *sock, int64_t remote_stream_id,
@@ -146,11 +148,14 @@ void SendStreamClose(Socket *sock, int64_t remote_stream_id,
     fm.set_frame_type(FRAME_TYPE_CLOSE);
     butil::IOBuf out;
     PackStreamMessage(&out, fm, NULL);
-    sock->Write(&out);
+    Socket::WriteOptions wopt;
+    wopt.ignore_eovercrowded = true;
+    sock->Write(&out, &wopt);
 }
 
 int SendStreamData(Socket* sock, const butil::IOBuf* data,
                    int64_t remote_stream_id, int64_t source_stream_id) {
+    CHECK(sock != NULL);
     StreamFrameMeta fm;
     fm.set_stream_id(remote_stream_id);
     fm.set_source_stream_id(source_stream_id);
@@ -158,7 +163,9 @@ int SendStreamData(Socket* sock, const butil::IOBuf* data,
     fm.set_has_continuation(false);
     butil::IOBuf out;
     PackStreamMessage(&out, fm, data);
-    return sock->Write(&out);
+    Socket::WriteOptions wopt;
+    wopt.ignore_eovercrowded = true;
+    return sock->Write(&out, &wopt);
 }
 
 }  // namespace policy
