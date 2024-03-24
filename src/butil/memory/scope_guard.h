@@ -42,7 +42,7 @@ template<typename Callback>
 class ScopeGuard<Callback> {
 public:
     ScopeGuard(ScopeGuard&& other) noexcept
-        :_callback(std::move(other._callback))
+        : _callback(std::move(other._callback))
         , _dismiss(other._dismiss) {
         other.dismiss();
     }
