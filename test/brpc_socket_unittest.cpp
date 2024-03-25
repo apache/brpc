@@ -1225,7 +1225,6 @@ TEST_F(SocketTest, keepalive) {
     }
 }
 
-
 TEST_F(SocketTest, keepalive_input_message) {
     int default_keepalive = 0;
     int default_keepalive_idle = 0;
@@ -1417,4 +1416,218 @@ TEST_F(SocketTest, keepalive_input_message) {
                        keepalive_count);
         sockfd.release();
     }
+}
+
+int HandleSocketSuccessWrite(bthread_id_t id, void* data, int error_code,
+    const std::string& error_text) {
+    auto success_count = static_cast<size_t*>(data);
+    EXPECT_NE(nullptr, success_count);
+    EXPECT_EQ(0, error_code);
+    ++(*success_count);
+    CHECK_EQ(0, bthread_id_unlock_and_destroy(id));
+    return 0;
+}
+
+TEST_F(SocketTest, notify_on_success) {
+    const size_t REP = 10000;
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+
+    brpc::SocketId id = 8888;
+    butil::EndPoint dummy;
+    ASSERT_EQ(0, str2endpoint("192.168.1.26:8080", &dummy));
+    brpc::SocketOptions options;
+    options.fd = fds[1];
+    options.remote_side = dummy;
+    options.user = new CheckRecycle;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr s;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &s));
+    s->_ssl_state = brpc::SSL_OFF;
+    ASSERT_EQ(2, brpc::NRefOfVRef(s->_versioned_ref));
+    global_sock = s.get();
+    ASSERT_TRUE(s.get());
+    ASSERT_EQ(fds[1], s->fd());
+    ASSERT_EQ(dummy, s->remote_side());
+    ASSERT_EQ(id, s->id());
+
+    pthread_t rth;
+    ReaderArg reader_arg = { fds[0], 0 };
+    pthread_create(&rth, NULL, reader, &reader_arg);
+
+    size_t success_count = 0;
+    char buf[] = "hello reader side!";
+    for (size_t c = 0; c < REP; ++c) {
+        bthread_id_t write_id;
+        ASSERT_EQ(0, bthread_id_create2(&write_id, &success_count,
+            HandleSocketSuccessWrite));
+        brpc::Socket::WriteOptions wopt;
+        wopt.id_wait = write_id;
+        wopt.notify_on_success = true;
+        butil::IOBuf src;
+        src.append(buf, 16);
+        if (s->Write(&src, &wopt) != 0) {
+            if (errno == brpc::EOVERCROWDED) {
+                // The buf is full, sleep a while and retry.
+                bthread_usleep(1000);
+                --c;
+                continue;
+            }
+            PLOG(ERROR) << "Fail to write into SocketId=" << id;
+            break;
+        }
+    }
+    bthread_usleep(1000 * 1000);
+
+    ASSERT_EQ(0, s->SetFailed());
+    s.release()->Dereference();
+    pthread_join(rth, NULL);
+    ASSERT_EQ(REP, success_count);
+    ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+    close(fds[0]);
+}
+
+struct ShutdownWriterArg {
+    size_t times;
+    brpc::SocketId socket_id;
+    butil::atomic<int> total_count;
+    butil::atomic<int> success_count;
+};
+
+int HandleSocketShutdownWrite(bthread_id_t id, void* data, int error_code,
+    const std::string& error_text) {
+    auto arg = static_cast<ShutdownWriterArg*>(data);
+    EXPECT_NE(nullptr, arg);
+    EXPECT_TRUE(0 == error_code || brpc::ESHUTDOWNWRITE == error_code) << error_code;
+    ++arg->total_count;
+    if (0 == error_code) {
+        ++arg->success_count;
+    }
+    CHECK_EQ(0, bthread_id_unlock_and_destroy(id));
+    return 0;
+}
+
+void* ShutdownWriter(void* void_arg) {
+    auto arg = static_cast<ShutdownWriterArg*>(void_arg);
+    brpc::SocketUniquePtr sock;
+    if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
+        LOG(INFO) << "Fail to address SocketId=" << arg->socket_id;
+        return NULL;
+    }
+    for (size_t c = 0; c < arg->times; ++c) {
+        bthread_id_t write_id;
+        EXPECT_EQ(0, bthread_id_create2(&write_id, arg,
+            HandleSocketShutdownWrite));
+        brpc::Socket::WriteOptions wopt;
+        wopt.id_wait = write_id;
+        wopt.notify_on_success = true;
+        wopt.shutdown_write = true;
+        butil::IOBuf src;
+        src.push_back('a');
+        if (sock->Write(&src, &wopt) != 0) {
+            if (errno == brpc::EOVERCROWDED) {
+                // The buf is full, sleep a while and retry.
+                bthread_usleep(1000);
+                --c;
+                continue;
+            }
+        }
+    }
+    return NULL;
+}
+
+void TestShutdownWrite() {
+    const size_t REP = 100;
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+
+    brpc::SocketId id = 8888;
+    butil::EndPoint dummy;
+    ASSERT_EQ(0, str2endpoint("192.168.1.26:8080", &dummy));
+    brpc::SocketOptions options;
+    options.fd = fds[1];
+    options.remote_side = dummy;
+    options.user = new CheckRecycle;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr s;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &s));
+    s->_ssl_state = brpc::SSL_OFF;
+    ASSERT_EQ(2, brpc::NRefOfVRef(s->_versioned_ref));
+    global_sock = s.get();
+    ASSERT_TRUE(s.get());
+    ASSERT_EQ(fds[1], s->fd());
+    ASSERT_EQ(dummy, s->remote_side());
+    ASSERT_EQ(id, s->id());
+    ASSERT_FALSE(s->IsWriteShutdown());
+
+    pthread_t rth;
+    ReaderArg reader_arg = { fds[0], 0 };
+    pthread_create(&rth, NULL, reader, &reader_arg);
+
+    bthread_t th[3];
+    ShutdownWriterArg args[ARRAY_SIZE(th)];
+    for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
+        args[i].times = REP;
+        args[i].socket_id = id;
+        args[i].total_count = 0;
+        args[i].success_count = 0;
+        bthread_start_background(&th[i], NULL, ShutdownWriter, &args[i]);
+    }
+
+    for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
+        ASSERT_EQ(0, bthread_join(th[i], NULL));
+    }
+    bthread_usleep(50 * 1000);
+
+    ASSERT_TRUE(s->IsWriteShutdown());
+    ASSERT_FALSE(s->Failed());
+    ASSERT_EQ(0, s->SetFailed());
+    s.release()->Dereference();
+    pthread_join(rth, NULL);
+    ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+    close(fds[0]);
+
+    size_t total_count = 0;
+    size_t success_count = 0;
+    for (auto & arg : args) {
+        total_count += arg.total_count;
+        success_count += arg.success_count;
+    }
+    ASSERT_EQ(REP * ARRAY_SIZE(th), total_count);
+    EXPECT_EQ((size_t)1, reader_arg.nread);
+    EXPECT_EQ((size_t)1, success_count);
+}
+
+TEST_F(SocketTest, shutdown_write) {
+    for (int i = 0; i < 100; ++i) {
+        TestShutdownWrite();
+    }
+}
+
+TEST_F(SocketTest, packed_ptr) {
+    brpc::PackedPtr<int> ptr;
+    ASSERT_EQ(nullptr, ptr.get());
+    ASSERT_EQ(0, ptr.extra());
+
+    int a = 1;
+    uint16_t b = 2;
+    ptr.set(&a);
+    ASSERT_EQ(&a, ptr.get());
+    *ptr.get() = b;
+    ASSERT_EQ(a, b);
+    ptr.set_extra(b);
+    ASSERT_EQ(b, ptr.extra());
+    ptr.reset();
+    ptr.reset_extra();
+    ASSERT_EQ(nullptr, ptr.get());
+    ASSERT_EQ(0, ptr.extra());
+
+    int c = 3;
+    uint16_t d = 4;
+    ptr.set_ptr_and_extra(&c, d);
+    ASSERT_EQ(&c, ptr.get());
+    ASSERT_EQ(d, ptr.extra());
+    ptr.reset_ptr_and_extra();
+    ASSERT_EQ(nullptr, ptr.get());
+    ASSERT_EQ(0, ptr.extra());
 }
