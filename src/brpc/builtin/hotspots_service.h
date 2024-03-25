@@ -50,6 +50,11 @@ public:
                     ::brpc::HotspotsResponse* response,
                     ::google::protobuf::Closure* done);
 
+    void iobuf(::google::protobuf::RpcController* cntl_base,
+               const ::brpc::HotspotsRequest* request,
+               ::brpc::HotspotsResponse* response,
+               ::google::protobuf::Closure* done);
+
     void cpu_non_responsive(::google::protobuf::RpcController* cntl_base,
                             const ::brpc::HotspotsRequest* request,
                             ::brpc::HotspotsResponse* response,
@@ -69,6 +74,11 @@ public:
                                    const ::brpc::HotspotsRequest* request,
                                    ::brpc::HotspotsResponse* response,
                                    ::google::protobuf::Closure* done);
+
+    void iobuf_non_responsive(::google::protobuf::RpcController* cntl_base,
+                              const ::brpc::HotspotsRequest* request,
+                              ::brpc::HotspotsResponse* response,
+                              ::google::protobuf::Closure* done);
 
     void GetTabInfo(brpc::TabInfoList*) const;
 };

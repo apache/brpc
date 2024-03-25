@@ -52,6 +52,7 @@ enum ProfilingType {
     PROFILING_HEAP = 1,
     PROFILING_GROWTH = 2,
     PROFILING_CONTENTION = 3,
+    PROFILING_IOBUF = 4,
 };
 
 DECLARE_string(rpc_profiling_dir);
