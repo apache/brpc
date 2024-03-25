@@ -217,8 +217,14 @@ void SendRpcResponse(int64_t correlation_id,
         if (Socket::Address(response_stream_id, &stream_ptr) == 0) {
             Stream* s = (Stream*)stream_ptr->conn();
             s->FillSettings(meta.mutable_stream_settings());
+            // If failed to set host socket here,
+            // s->SetConnected will fail at CHECK(_host_socket != NULL)
             if (s->SetHostSocket(sock) != 0) {
-                LOG(WARNING) << "SetHostSocket failed";
+                LOG(WARNING) << "Failed to set host socket " << *sock;
+                cntl->SetFailed(EFAILEDSOCKET, "Fail to set host socket %s",
+                                sock->description().c_str());
+                ((Stream *)stream_ptr->conn())->Close();
+                return;
             }
         } else {
             LOG(WARNING) << "Stream=" << response_stream_id 
@@ -250,17 +256,6 @@ void SendRpcResponse(int64_t correlation_id,
     // Send rpc response over stream even if server side failed to create
     // stream for some reason.
     if(cntl->has_remote_stream()){
-        // We have to check sock->Failed() before calling SetConnected().
-        // Otherwise stream->_host_socket may be nullptr and cause CHECK failures.
-        if (sock->Failed()) {
-            LOG(WARNING) << "Fail to write into " << *sock;
-            cntl->SetFailed(EFAILEDSOCKET, "Fail to write into %s",
-                            sock->description().c_str());
-            if (stream_ptr) {
-                ((Stream *)stream_ptr->conn())->Close();
-            }
-            return;
-        }
         // If we don't set connected here before send the response,
         // client-side may close the stream before server-side set connected.
         // This will cause missing on_closed message on the client-side.
