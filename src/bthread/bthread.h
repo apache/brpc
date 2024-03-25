@@ -73,7 +73,7 @@ extern int bthread_start_background(bthread_t* __restrict tid,
 // bthread_interrupt() guarantees that Thread2 is woken up reliably no matter
 // how the 2 threads are interleaved.
 // Returns 0 on success, errno otherwise.
-extern int bthread_interrupt(bthread_t tid);
+extern int bthread_interrupt(bthread_t tid, bthread_tag_t tag = BTHREAD_TAG_DEFAULT);
 
 // Make bthread_stopped() on the bthread return true and interrupt the bthread.
 // Note that current bthread_stop() solely sets the built-in "stop flag" and

@@ -269,8 +269,8 @@ void bthread_flush() {
     }
 }
 
-int bthread_interrupt(bthread_t tid) {
-    return bthread::TaskGroup::interrupt(tid, bthread::get_task_control());
+int bthread_interrupt(bthread_t tid, bthread_tag_t tag) {
+    return bthread::TaskGroup::interrupt(tid, bthread::get_task_control(), tag);
 }
 
 int bthread_stop(bthread_t tid) {

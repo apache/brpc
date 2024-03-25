@@ -22,6 +22,7 @@
 #include "butil/atomicops.h"                // butil::atomic
 #include "butil/scoped_lock.h"              // BAIDU_SCOPED_LOCK
 #include "butil/macros.h"
+#include "butil/containers/flat_map.h"
 #include "butil/containers/linked_list.h"   // LinkNode
 #ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
 #include "butil/memory/singleton_on_pthread_once.h"
@@ -101,6 +102,7 @@ struct ButexBthreadWaiter : public ButexWaiter {
     Butex* initial_butex;
     TaskControl* control;
     const timespec* abstime;
+    bthread_tag_t tag;
 };
 
 // pthread_task or main_task allocates this structure on stack and queue it
@@ -272,17 +274,22 @@ void butex_destroy(void* butex) {
     butil::return_object(b);
 }
 
-inline TaskGroup* get_task_group(TaskControl* c, bool nosignal = false) {
-    TaskGroup* g = tls_task_group;
+// if TaskGroup g is belong tag
+inline bool is_same_tag(TaskGroup* g, bthread_tag_t tag) {
+    return g && g->tag() == tag;
+}
+
+inline TaskGroup* get_task_group(TaskControl* c, bthread_tag_t tag, bool nosignal = false) {
+    auto g = is_same_tag(tls_task_group, tag) ? tls_task_group : NULL;
     if (nosignal) {
         if (NULL == tls_task_group_nosignal) {
-            g = g ? g : c->choose_one_group();
+            g = g ? g : c->choose_one_group(tag);
             tls_task_group_nosignal = g;
         } else {
             g = tls_task_group_nosignal;
         }
     } else {
-        g = g ? g : c->choose_one_group();
+        g = g ? g : c->choose_one_group(tag);
     }
     return g;
 }
@@ -313,7 +320,7 @@ int butex_wake(void* arg, bool nosignal) {
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    TaskGroup* g = get_task_group(bbw->control, nosignal);
+    TaskGroup* g = get_task_group(bbw->control, bbw->tag, nosignal);
     if (g == tls_task_group) {
         run_in_local_task_group(g, bbw->tid, nosignal);
     } else {
@@ -352,26 +359,32 @@ int butex_wake_all(void* arg, bool nosignal) {
     if (bthread_waiters.empty()) {
         return nwakeup;
     }
+    butil::FlatMap<bthread_tag_t, TaskGroup*> nwakeups;
+    nwakeups.init(FLAGS_task_group_ntags);
     // We will exchange with first waiter in the end.
     ButexBthreadWaiter* next = static_cast<ButexBthreadWaiter*>(
         bthread_waiters.head()->value());
     next->RemoveFromList();
     unsleep_if_necessary(next, get_global_timer_thread());
     ++nwakeup;
-    TaskGroup* g = get_task_group(next->control, nosignal);
-    const int saved_nwakeup = nwakeup;
     while (!bthread_waiters.empty()) {
         // pop reversely
         ButexBthreadWaiter* w = static_cast<ButexBthreadWaiter*>(
             bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
+        auto g = get_task_group(w->control, w->tag, nosignal);
         g->ready_to_run_general(w->tid, true);
+        nwakeups[g->tag()] = g;
         ++nwakeup;
     }
-    if (!nosignal && saved_nwakeup != nwakeup) {
-        g->flush_nosignal_tasks_general();
+    if (!nosignal) {
+        for (auto it = nwakeups.begin(); it != nwakeups.end(); ++it) {
+            auto g = it->second;
+            g->flush_nosignal_tasks_general();
+        }
     }
+    auto g = get_task_group(next->control, next->tag, nosignal);
     if (g == tls_task_group) {
         run_in_local_task_group(g, next->tid, nosignal);
     } else {
@@ -422,21 +435,20 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
     if (bthread_waiters.empty()) {
         return nwakeup;
     }
-    ButexBthreadWaiter* front = static_cast<ButexBthreadWaiter*>(
-                bthread_waiters.head()->value());
-
-    TaskGroup* g = get_task_group(front->control);
-    const int saved_nwakeup = nwakeup;
+    butil::FlatMap<bthread_tag_t, TaskGroup*> nwakeups;
+    nwakeups.init(FLAGS_task_group_ntags);
     do {
         // pop reversely
-        ButexBthreadWaiter* w = static_cast<ButexBthreadWaiter*>(
-            bthread_waiters.tail()->value());
+        ButexBthreadWaiter* w = static_cast<ButexBthreadWaiter*>(bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
+        auto g = get_task_group(w->control, w->tag);
         g->ready_to_run_general(w->tid, true);
+        nwakeups[g->tag()] = g;
         ++nwakeup;
     } while (!bthread_waiters.empty());
-    if (saved_nwakeup != nwakeup) {
+    for (auto it = nwakeups.begin(); it != nwakeups.end(); ++it) {
+        auto g = it->second;
         g->flush_nosignal_tasks_general();
     }
     return nwakeup;
@@ -473,11 +485,11 @@ int butex_requeue(void* arg, void* arg2) {
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    TaskGroup* g = tls_task_group;
+    auto g = is_same_tag(tls_task_group, bbw->tag) ? tls_task_group : NULL;
     if (g) {
         TaskGroup::exchange(&g, front->tid);
     } else {
-        bbw->control->choose_one_group()->ready_to_run_remote(front->tid);
+        bbw->control->choose_one_group(bbw->tag)->ready_to_run_remote(front->tid);
     }
     return 1;
 }
@@ -515,7 +527,7 @@ inline bool erase_from_butex(ButexWaiter* bw, bool wakeup, WaiterState state) {
     if (erased && wakeup) {
         if (bw->tid) {
             ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(bw);
-            get_task_group(bbw->control)->ready_to_run_general(bw->tid);
+            get_task_group(bbw->control, bbw->tag)->ready_to_run_general(bw->tid);
         } else {
             ButexPthreadWaiter* pw = static_cast<ButexPthreadWaiter*>(bw);
             wakeup_pthread(pw);
@@ -658,6 +670,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
     bbw.initial_butex = b;
     bbw.control = g->control();
     bbw.abstime = abstime;
+    bbw.tag = g->tag();
 
     if (abstime != NULL) {
         // Schedule timer before queueing. If the timer is triggered before

@@ -227,6 +227,7 @@ cc_test(
             "bthread_setconcurrency_unittest.cpp",
             # glog CHECK die with a fatal error
             "bthread_key_unittest.cpp",
+            "bthread_butex_multi_tag_unittest.cpp",
         ],
     ),
     copts = COPTS,
