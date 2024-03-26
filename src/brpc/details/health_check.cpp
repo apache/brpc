@@ -206,9 +206,6 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         hc = ptr->CheckHealth();
     }
     if (hc == 0) {
-        if (ptr->CreatedByConnect()) {
-            g_vars->channel_conn << -1;
-        }
         if (!FLAGS_health_check_path.empty()) {
             ptr->_ninflight_app_health_check.fetch_add(
                     1, butil::memory_order_relaxed);

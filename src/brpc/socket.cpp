@@ -1369,9 +1369,6 @@ int Socket::CheckConnected(int sockfd) {
             << "Connected to " << remote_side()
             << " via fd=" << (int)sockfd << " SocketId=" << id()
             << " local_side=" << local_point;
-    if (CreatedByConnect()) {
-        g_vars->channel_conn << 1;
-    }
     // Doing SSL handshake after TCP connected
     return SSLHandshake(sockfd, false);
 }
@@ -1526,6 +1523,9 @@ void Socket::CheckConnectedAndKeepWrite(int fd, int err, void* data) {
     CHECK_GE(sockfd, 0);
     if (err == 0 && s->CheckConnected(sockfd) == 0
         && s->ResetFileDescriptor(sockfd) == 0) {
+        if (s->CreatedByConnect()) {
+            g_vars->channel_conn << 1;
+        }
         if (s->_app_connect) {
             s->_app_connect->StartConnect(req->socket, AfterAppConnected, req);
         } else {
