@@ -504,7 +504,6 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
     {
         brpc::SocketUniquePtr s;
         ASSERT_EQ(0, brpc::Socket::Address(id, &s));
-        s->SetHCRelatedRefHeld(); // set held status
         global_sock = s.get();
         ASSERT_TRUE(s.get());
         ASSERT_EQ(-1, s->fd());
@@ -542,6 +541,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
 #endif
         ASSERT_TRUE(src.empty());
         ASSERT_EQ(-1, s->fd());
+        s->ReleaseHCRelatedReference();
     }
     // StartHealthCheck is possibly still running. Spin until global_sock
     // is NULL(set in CheckRecycle::BeforeRecycle). Notice that you should
@@ -650,12 +650,14 @@ TEST_F(SocketTest, health_check) {
     options.user = new CheckRecycle;
     options.health_check_interval_s = kCheckInteval/*s*/;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
-    brpc::SocketUniquePtr s;
-    ASSERT_EQ(0, brpc::Socket::Address(id, &s));
-
-    s->SetHCRelatedRefHeld(); // set held status
-    global_sock = s.get();
-    ASSERT_TRUE(s.get());
+    brpc::Socket* s = NULL;
+    {
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        s = ptr.get();
+    }
+    global_sock = s;
+    ASSERT_NE(nullptr, s);
     ASSERT_EQ(-1, s->fd());
     ASSERT_EQ(point, s->remote_side());
     ASSERT_EQ(id, s->id());
@@ -763,7 +765,7 @@ TEST_F(SocketTest, health_check) {
         ASSERT_NE(0, ptr->fd());
     }
 
-    s.release()->Dereference();
+    s->ReleaseHCRelatedReference();
 
     // Must stop messenger before SetFailed the id otherwise StartHealthCheck
     // still has chance to get reconnected and revive the id.
@@ -779,7 +781,8 @@ TEST_F(SocketTest, health_check) {
         bthread_usleep(1000);
         ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
     }
-    ASSERT_EQ(-1, brpc::Socket::Status(id));
+    nref = 0;
+    ASSERT_EQ(-1, brpc::Socket::Status(id, &nref)) << "nref=" << nref;
     // The id is invalid.
     brpc::SocketUniquePtr ptr;
     ASSERT_EQ(-1, brpc::Socket::Address(id, &ptr));

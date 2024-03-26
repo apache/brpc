@@ -1087,7 +1087,7 @@ public:
         : _connect_options(connect_options) {
     }
 
-    int CreateSocket(const SocketOptions& opt, SocketId* id) {
+    int CreateSocket(const SocketOptions& opt, SocketId* id) override {
         SocketOptions sock_opt = opt;
         sock_opt.app_connect = std::make_shared<RtmpConnect>();
         sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, NULL);
