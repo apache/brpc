@@ -938,7 +938,7 @@ void PrintLog(std::ostream& os, int severity, const char* file, int line,
         OutputLog(os, content);
         if (pair_quote) {
             os << '"';
-        } else if (!content.empty() && content[content.size()-1] != '"') {
+        } else if (!content.empty() && content[content.size() -1 ] != '"') {
             // Controller may write `"M":"...` which misses the last quote
             os << '"';
         }
@@ -1268,10 +1268,11 @@ public:
 
         // write to log file
         if ((logging_destination & LOG_TO_FILE) != 0) {
-            if (FLAGS_async_log) {
-                AsyncLogger::GetInstance()->Log(std::move(log));
-            } else {
+            if ((FLAGS_crash_on_fatal_log && severity == BLOG_FATAL) ||
+                !FLAGS_async_log) {
                 Log2File(log);
+            } else {
+                AsyncLogger::GetInstance()->Log(std::move(log));
             }
         }
         return true;
