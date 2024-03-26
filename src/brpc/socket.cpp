@@ -772,8 +772,23 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
                      berror(saved_errno));
         return -1;
     }
+    m->HoldHCRelatedRef();
     *id = m->_this_id;
     return 0;
+}
+
+void Socket::HoldHCRelatedRef() {
+    if (_health_check_interval_s > 0) {
+        _is_hc_related_ref_held = true;
+        _versioned_ref.fetch_add(1, butil::memory_order_release);
+    }
+}
+
+void Socket::ReleaseHCRelatedReference() {
+    if (_health_check_interval_s > 0) {
+        _is_hc_related_ref_held = false;
+        Dereference();
+    }
 }
 
 int Socket::WaitAndReset(int32_t expected_nref) {

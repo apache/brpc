@@ -336,16 +336,15 @@ public:
 
     // True if health checking is enabled.
     bool HCEnabled() const {
+        // This fence makes sure that we see change of
+        // `_is_hc_related_ref_held' before changing `_versioned_ref.
+        butil::atomic_thread_fence(butil::memory_order_acquire);
         return _health_check_interval_s > 0 && _is_hc_related_ref_held;
     }
 
-    // When someone holds a health-checking-related reference,
-    // this function need to be called to make health checking run normally.
-    void SetHCRelatedRefHeld() { _is_hc_related_ref_held = true; }
-    // When someone releases the health-checking-related reference,
-    // this function need to be called to cancel health checking.
-    void SetHCRelatedRefReleased() { _is_hc_related_ref_held = false; }
-    bool IsHCRelatedRefHeld() const { return _is_hc_related_ref_held; }
+    // Release the health-checking-related
+    // reference which is held on created.
+    void ReleaseHCRelatedReference();
 
     // After health checking is complete, set _hc_started to false.
     void AfterHCCompleted() { _hc_started.store(false, butil::memory_order_relaxed); }
@@ -608,6 +607,10 @@ private:
 
     int ConductError(bthread_id_t);
     int StartWrite(WriteRequest*, const WriteOptions&);
+
+    // Hold the health-checking-related
+    // reference on created.
+    void HoldHCRelatedRef();
 
     int Dereference();
 friend void DereferenceSocket(Socket*);
