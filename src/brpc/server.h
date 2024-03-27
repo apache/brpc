@@ -576,6 +576,8 @@ public:
         return this->_has_progressive_read_method;
     }
 
+    Acceptor *GetAcceptor();
+
 private:
 friend class StatusService;
 friend class ProtobufsService;

@@ -2212,6 +2212,11 @@ bool Server::AcceptRequest(Controller* cntl) const {
     return true;
 }
 
+Acceptor *Server::GetAcceptor()
+{
+    return _am;
+}
+
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
 int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
                                    int* al, Server* server) {

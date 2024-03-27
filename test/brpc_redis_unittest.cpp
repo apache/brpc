@@ -17,6 +17,7 @@
 
 
 #include <iostream>
+#include <butil/unique_ptr.h>
 #include <unordered_map>
 #include <butil/time.h>
 #include <butil/logging.h>
@@ -816,6 +817,8 @@ class MultiTransactionHandler;
 class RedisConnectionContext : public brpc::ConnectionContext
 {
 public:
+    explicit RedisConnectionContext(brpc::Socket *socket) {}
+
     // If user starts a transaction, transaction_handler indicates the
     // handler pointer that runs the transaction command.
     std::unique_ptr<MultiTransactionHandler> transaction_handler;
@@ -918,8 +921,8 @@ public:
         }
     }
 
-    brpc::ConnectionContext* NewConnectionContext() const override {
-        return new RedisConnectionContext;
+    std::unique_ptr<brpc::ConnectionContext> NewConnectionContext(brpc::Socket *socket) const override {
+        return std::unique_ptr<RedisConnectionContext>(new RedisConnectionContext(socket));
     }
 
     brpc::RedisCommandHandlerResult DispatchCommand(brpc::ConnectionContext* conn_ctx,

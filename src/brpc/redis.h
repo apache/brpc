@@ -241,7 +241,7 @@ class RedisService {
 public:
     virtual ~RedisService() {}
 
-    virtual ConnectionContext* NewConnectionContext() const = 0;
+    virtual std::unique_ptr<ConnectionContext> NewConnectionContext(Socket *socket) const = 0;
 
     virtual RedisCommandHandlerResult DispatchCommand(ConnectionContext* ctx,
                                                       const std::vector<butil::StringPiece>& args,

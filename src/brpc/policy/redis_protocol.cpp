@@ -66,10 +66,11 @@ struct InputResponse : public InputMessageBase {
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
-    explicit RedisConnContext(const RedisService* rs)
+    explicit RedisConnContext(const RedisService* rs, Socket *socket)
         : redis_service(rs)
-        , batched_size(0) {
-        user_ctx.reset(rs->NewConnectionContext());
+        , user_ctx(rs->NewConnectionContext(socket))
+        , batched_size(0)
+    {
     }
 
     ~RedisConnContext();
@@ -150,7 +151,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         }
         RedisConnContext* ctx = static_cast<RedisConnContext*>(socket->parsing_context());
         if (ctx == NULL) {
-            ctx = new RedisConnContext(rs);
+            ctx = new RedisConnContext(rs, socket);
             socket->reset_parsing_context(ctx);
         }
         std::vector<butil::StringPiece> current_args;
