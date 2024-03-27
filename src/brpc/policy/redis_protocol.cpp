@@ -198,11 +198,12 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         g->current_task()->bound_task_group = NULL;
         butil::IOBuf sendbuf;
         appender.move_to(sendbuf);
-        CHECK(!sendbuf.empty());
-        Socket::WriteOptions wopt;
-        wopt.ignore_eovercrowded = true;
-        LOG_IF(WARNING, socket->Write(&sendbuf, &wopt) != 0)
-            << "Fail to send redis reply";
+        if (!sendbuf.empty()) {
+            Socket::WriteOptions wopt;
+            wopt.ignore_eovercrowded = true;
+            LOG_IF(WARNING, socket->Write(&sendbuf, &wopt) != 0)
+                << "Fail to send redis reply";
+        }
         if(ctx->parser.ParsedArgsSize() == 0) {
             ctx->arena.clear();
         }

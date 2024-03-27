@@ -82,7 +82,7 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
             }
             return true;
         case REDIS_REPLY_NIL:
-            LOG(ERROR) << "Do you forget to call SetXXX()?";
+            LOG(WARNING) << "RedisReply not set. Is it intended or do you forget to call SetXXX()?";
             return false;
     }
     CHECK(false) << "unknown redis type=" << _type;
