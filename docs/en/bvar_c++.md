@@ -342,7 +342,7 @@ Since Maxer<> use std::numeric_limits::min() as the identity, it cannot be appli
 
 producing minimum value, operator is std::min
 ```c++
-bvar::Maxer<int> value;
+bvar::Miner<int> value;
 value << 1 << 2 << 3 << -4;
 CHECK_EQ(-4, value.get_value());
 ```
