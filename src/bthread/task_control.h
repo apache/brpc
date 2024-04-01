@@ -84,7 +84,7 @@ public:
 
     // Choose one TaskGroup (randomly right now).
     // If this method is called after init(), it never returns NULL.
-    TaskGroup* choose_one_group(bthread_tag_t tag = BTHREAD_TAG_DEFAULT);
+    TaskGroup* choose_one_group(bthread_tag_t tag);
 
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;

@@ -173,7 +173,7 @@ public:
 
     // Wake up blocking ops in the thread.
     // Returns 0 on success, errno otherwise.
-    static int interrupt(bthread_t tid, TaskControl* c);
+    static int interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag);
 
     // Get the meta associate with the task.
     static TaskMeta* address_meta(bthread_t tid);
