@@ -95,7 +95,7 @@ private:
 
     TimerThreadOptions _options;
     Bucket* _buckets;        // list of tasks to be run
-    internal::FastPthreadMutex _mutex;    // protect _nearest_run_time
+    FastPthreadMutex _mutex;    // protect _nearest_run_time
     int64_t _nearest_run_time;
     // the futex for wake up timer thread. can't use _nearest_run_time because
     // it's 64-bit.

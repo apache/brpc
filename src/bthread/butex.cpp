@@ -121,7 +121,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Butex {
 
     butil::atomic<int> value;
     ButexWaiterList waiters;
-    internal::FastPthreadMutex waiter_lock;
+    FastPthreadMutex waiter_lock;
 };
 
 BAIDU_CASSERT(offsetof(Butex, value) == 0, offsetof_value_must_0);
@@ -460,8 +460,8 @@ int butex_requeue(void* arg, void* arg2) {
 
     ButexWaiter* front = NULL;
     {
-        std::unique_lock<internal::FastPthreadMutex> lck1(b->waiter_lock, std::defer_lock);
-        std::unique_lock<internal::FastPthreadMutex> lck2(m->waiter_lock, std::defer_lock);
+        std::unique_lock<FastPthreadMutex> lck1(b->waiter_lock, std::defer_lock);
+        std::unique_lock<FastPthreadMutex> lck2(m->waiter_lock, std::defer_lock);
         butil::double_lock(lck1, lck2);
         if (b->waiters.empty()) {
             return 0;

@@ -114,7 +114,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Id {
     // contended_ver: locked and contended
     uint32_t first_ver;
     uint32_t locked_ver;
-    internal::FastPthreadMutex mutex;
+    FastPthreadMutex mutex;
     void* data;
     int (*on_error)(bthread_id_t, void*, int);
     int (*on_error2)(bthread_id_t, void*, int, const std::string&);

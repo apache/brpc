@@ -92,7 +92,7 @@ public:
     Task* consume_tasks();
 
 private:
-    internal::FastPthreadMutex _mutex;
+    FastPthreadMutex _mutex;
     int64_t _nearest_run_time;
     Task* _task_head;
 };

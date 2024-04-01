@@ -448,7 +448,8 @@ int first_sys_pthread_mutex_unlock(pthread_mutex_t* mutex) {
     return sys_pthread_mutex_unlock(mutex);
 }
 
-inline uint64_t hash_mutex_ptr(const pthread_mutex_t* m) {
+template <typename Mutex>
+inline uint64_t hash_mutex_ptr(const Mutex* m) {
     return butil::fmix64((uint64_t)m);
 }
 
@@ -468,7 +469,7 @@ static __thread bool tls_inside_lock = false;
 #ifndef DONT_SPEEDUP_PTHREAD_CONTENTION_PROFILER_WITH_TLS
 const int TLS_MAX_COUNT = 3;
 struct MutexAndContentionSite {
-    pthread_mutex_t* mutex;
+    void* mutex;
     bthread_contention_site_t csite;
 };
 struct TLSPthreadContentionSites {
@@ -482,8 +483,9 @@ static __thread TLSPthreadContentionSites tls_csites = {0,0,{}};
 // Guaranteed in linux/win.
 const int PTR_BITS = 48;
 
+template <typename Mutex>
 inline bthread_contention_site_t*
-add_pthread_contention_site(pthread_mutex_t* mutex) {
+add_pthread_contention_site(const Mutex* mutex) {
     MutexMapEntry& entry = g_mutex_map[hash_mutex_ptr(mutex) & (MUTEX_MAP_SIZE - 1)];
     butil::static_atomic<uint64_t>& m = entry.versioned_mutex;
     uint64_t expected = m.load(butil::memory_order_relaxed);
@@ -500,8 +502,9 @@ add_pthread_contention_site(pthread_mutex_t* mutex) {
     return NULL;
 }
 
-inline bool remove_pthread_contention_site(
-    pthread_mutex_t* mutex, bthread_contention_site_t* saved_csite) {
+template <typename Mutex>
+inline bool remove_pthread_contention_site(const Mutex* mutex,
+                                           bthread_contention_site_t* saved_csite) {
     MutexMapEntry& entry = g_mutex_map[hash_mutex_ptr(mutex) & (MUTEX_MAP_SIZE - 1)];
     butil::static_atomic<uint64_t>& m = entry.versioned_mutex;
     if ((m.load(butil::memory_order_relaxed) & ((((uint64_t)1) << PTR_BITS) - 1))
@@ -538,16 +541,44 @@ void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
     tls_inside_lock = false;
 }
 
-BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
+namespace internal {
+BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(pthread_mutex_t* mutex) {
+    return sys_pthread_mutex_lock(mutex);
+}
+
+BUTIL_FORCE_INLINE int pthread_mutex_trylock_internal(pthread_mutex_t* mutex) {
+    return ::pthread_mutex_trylock(mutex);
+}
+
+BUTIL_FORCE_INLINE int pthread_mutex_unlock_internal(pthread_mutex_t* mutex) {
+    return sys_pthread_mutex_unlock(mutex);
+}
+
+BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(FastPthreadMutex* mutex) {
+    mutex->lock();
+    return 0;
+}
+
+BUTIL_FORCE_INLINE int pthread_mutex_trylock_internal(FastPthreadMutex* mutex) {
+    return mutex->try_lock() ? 0 : EBUSY;
+}
+
+BUTIL_FORCE_INLINE int pthread_mutex_unlock_internal(FastPthreadMutex* mutex) {
+    mutex->unlock();
+    return 0;
+}
+
+template <typename Mutex>
+BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(Mutex* mutex) {
     // Don't change behavior of lock when profiler is off.
     if (!g_cp ||
         // collecting code including backtrace() and submit() may call
         // pthread_mutex_lock and cause deadlock. Don't sample.
         tls_inside_lock) {
-        return sys_pthread_mutex_lock(mutex);
+        return pthread_mutex_lock_internal(mutex);
     }
     // Don't slow down non-contended locks.
-    int rc = pthread_mutex_trylock(mutex);
+    int rc = pthread_mutex_trylock_internal(mutex);
     if (rc != EBUSY) {
         return rc;
     }
@@ -567,16 +598,16 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
         csite = &entry.csite;
         if (!sampling_range) {
             make_contention_site_invalid(&entry.csite);
-            return sys_pthread_mutex_lock(mutex);
+            return pthread_mutex_lock_internal(mutex);
         }
     }
 #endif
     if (!sampling_range) {  // don't sample
-        return sys_pthread_mutex_lock(mutex);
+        return pthread_mutex_lock_internal(mutex);
     }
     // Lock and monitor the waiting time.
     const int64_t start_ns = butil::cpuwide_time_ns();
-    rc = sys_pthread_mutex_lock(mutex);
+    rc = pthread_mutex_lock_internal(mutex);
     if (!rc) { // Inside lock
         if (!csite) {
             csite = add_pthread_contention_site(mutex);
@@ -590,13 +621,14 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
     return rc;
 }
 
-BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
+template <typename Mutex>
+BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(Mutex* mutex) {
     // Don't change behavior of unlock when profiler is off.
     if (!g_cp || tls_inside_lock) {
         // This branch brings an issue that an entry created by
-        // add_pthread_contention_site may not be cleared. Thus we add a 
+        // add_pthread_contention_site may not be cleared. Thus we add a
         // 16-bit rolling version in the entry to find out such entry.
-        return sys_pthread_mutex_unlock(mutex);
+        return pthread_mutex_unlock_internal(mutex);
     }
     int64_t unlock_start_ns = 0;
     bool miss_in_tls = true;
@@ -622,7 +654,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
             unlock_start_ns = butil::cpuwide_time_ns();
         }
     }
-    const int rc = sys_pthread_mutex_unlock(mutex);
+    const int rc = pthread_mutex_unlock_internal(mutex);
     // [Outside lock]
     if (unlock_start_ns) {
         const int64_t unlock_end_ns = butil::cpuwide_time_ns();
@@ -630,6 +662,16 @@ BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
         submit_contention(saved_csite, unlock_end_ns);
     }
     return rc;
+}
+
+}
+
+BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
+    return internal::pthread_mutex_lock_impl(mutex);
+}
+
+BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
+    return internal::pthread_mutex_unlock_impl(mutex);
 }
 
 // Implement bthread_mutex_t related functions
@@ -713,6 +755,14 @@ void FastPthreadMutex::unlock() {
 
 } // namespace internal
 #endif // BTHREAD_USE_FAST_PTHREAD_MUTEX
+
+void FastPthreadMutex::lock() {
+    internal::pthread_mutex_lock_impl(&_mutex);
+}
+
+void FastPthreadMutex::unlock() {
+    internal::pthread_mutex_unlock_impl(&_mutex);
+}
 
 } // namespace bthread
 
