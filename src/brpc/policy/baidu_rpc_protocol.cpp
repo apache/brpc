@@ -275,6 +275,7 @@ void SendRpcResponse(int64_t correlation_id,
         // users to set max_concurrency.
         Socket::WriteOptions wopt;
         wopt.ignore_eovercrowded = true;
+        wopt.keep_write_urgent = cntl->keep_write_urgent();
         if (sock->Write(&res_buf, &wopt) != 0) {
             const int errcode = errno;
             PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;

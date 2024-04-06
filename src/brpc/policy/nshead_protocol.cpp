@@ -114,6 +114,7 @@ void NsheadClosure::Run() {
         // users to set max_concurrency.
         Socket::WriteOptions wopt;
         wopt.ignore_eovercrowded = true;
+        wopt.keep_write_urgent = _controller.keep_write_urgent();
         if (sock->Write(&write_buf, &wopt) != 0) {
             const int errcode = errno;
             PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;

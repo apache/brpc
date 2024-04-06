@@ -148,6 +148,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_SINGLE_REPEATED_TO_ARRAY = (1 << 20);
     static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
     static const uint32_t FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND = (1 << 22);
+    static const uint32_t FLAGS_KEEP_WRITE_URGENT = (1 << 23);
 
 public:
     struct Inheritable {
@@ -387,6 +388,11 @@ public:
     // continually issuing lots of async RPC calls in only one thread.
     void set_write_to_socket_in_background(bool f) { set_flag(FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND, f); }
     bool write_to_socket_in_background() const { return has_flag(FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND); }
+
+    // Create a KEEPWRITE bthread to write to socket for
+    // requests or responses of RPCs.
+    void set_keep_write_urgent(bool f) { set_flag(FLAGS_KEEP_WRITE_URGENT, f); }
+    bool keep_write_urgent() const { return has_flag(FLAGS_KEEP_WRITE_URGENT); }
 
     // ------------------------------------------------------------------------
     //                      Server-side methods.

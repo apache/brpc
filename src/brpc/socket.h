@@ -371,6 +371,10 @@ public:
         // Default: false
         bool shutdown_write;
 
+        // KeepWrite with `bthread_start_urgent' or `bthread_start_background'.
+        // Default: false
+        bool keep_write_urgent;
+
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID)
             , notify_on_success(false)
@@ -379,7 +383,8 @@ public:
             , auth_flags(0)
             , ignore_eovercrowded(false)
             , write_in_background(false)
-            , shutdown_write(false) {}
+            , shutdown_write(false)
+            , keep_write_urgent(false) {}
     };
 
     // True if write of socket is shutdown.

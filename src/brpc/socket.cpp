@@ -1787,8 +1787,12 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
 KEEPWRITE_IN_BACKGROUND:
     ReAddress(&ptr_for_keep_write);
     req->set_socket(ptr_for_keep_write.release());
-    if (bthread_start_background(&th, &BTHREAD_ATTR_NORMAL,
-                                 KeepWrite, req) != 0) {
+    if (opt.keep_write_urgent) {
+        ret = bthread_start_urgent(&th, &BTHREAD_ATTR_NORMAL, KeepWrite, req);
+    } else {
+        ret = bthread_start_background(&th, &BTHREAD_ATTR_NORMAL, KeepWrite, req);
+    }
+    if (ret != 0) {
         LOG(FATAL) << "Fail to start KeepWrite";
         KeepWrite(req);
     }
