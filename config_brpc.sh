@@ -266,7 +266,7 @@ PROTOBUF_VERSION=$(grep '#define GOOGLE_PROTOBUF_VERSION [0-9]\+' $PROTOBUF_HDR/
 if [ "$PROTOBUF_VERSION" -ge 4022000 ]; then
     ABSL_HDR=$(find_dir_of_header_or_die absl/base/config.h)
     ABSL_LIB=$(find_dir_of_lib_or_die absl_strings)
-    ABSL_LIB_NAMES="
+    ABSL_TARGET_NAMES="
         absl_bad_optional_access
         absl_bad_variant_access
         absl_base
@@ -333,8 +333,11 @@ if [ "$PROTOBUF_VERSION" -ge 4022000 ]; then
         absl_time
         absl_time_zone
     "
-    for i in $ABSL_LIB_NAMES; do
-         append_linking "$ABSL_LIB" "$i"
+    for i in $ABSL_TARGET_NAMES; do
+        # ignore interface targets
+        if [ -n "$(find_dir_of_lib $i)" ]; then
+            append_linking "$ABSL_LIB" "$i"
+        fi
     done
     CXXFLAGS="-std=c++17"
 else
