@@ -44,7 +44,11 @@ public:
                                      butil::IOBuf *const messages[], 
                                      size_t size) = 0;
     virtual void on_idle_timeout(StreamId id) = 0;
-    virtual void on_closed(StreamId id) = 0; 
+    virtual void on_closed(StreamId id) = 0;
+    // `on_failed` will be called  before `on_closed`
+    // when the stream is closed abnormally.
+    virtual void on_failed(StreamId id, int error_code,
+                           const std::string& error_text) {}
 };
 
 struct StreamOptions {
@@ -82,8 +86,7 @@ struct StreamOptions {
     StreamInputHandler* handler;
 };
 
-struct StreamWriteOptions
-{
+struct StreamWriteOptions {
     StreamWriteOptions() : write_in_background(false) {}
 
     // Write message to socket in background thread.

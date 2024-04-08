@@ -706,7 +706,7 @@ friend void DereferenceSocket(Socket*);
     // broken socket.
     int AddStream(StreamId stream_id);
     int RemoveStream(StreamId stream_id);
-    void ResetAllStreams();
+    void ResetAllStreams(int error_code, const std::string& error_text);
 
     bool ValidFileDescriptor(int fd);
 
