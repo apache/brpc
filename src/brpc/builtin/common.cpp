@@ -308,6 +308,7 @@ const char* ProfilingType2String(ProfilingType t) {
     case PROFILING_HEAP: return "heap";
     case PROFILING_GROWTH: return "growth";
     case PROFILING_CONTENTION: return "contention";
+    case PROFILING_IOBUF: return "iobuf";
     }
     return "unknown";
 }
