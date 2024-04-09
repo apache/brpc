@@ -65,7 +65,12 @@ jobs:
 
       - name: install dependences
         run: |
-          brew install protobuf openssl gnu-getopt coreutils gflags leveldb
+          brew install openssl gnu-getopt coreutils gflags leveldb
+          # abseil 20230125.3
+          curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/abseil.rb
+          # protobuf 22.5
+          curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/protobuf.rb
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install --formula --ignore-dependencies ./abseil.rb ./protobuf.rb
 
       - name: config_brpc
         run: |
@@ -85,7 +90,12 @@ jobs:
 
       - name: install dependences
         run: |
-          brew install protobuf openssl gflags leveldb
+          brew install openssl gflags leveldb
+          # abseil 20230125.3
+          curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/abseil.rb
+          # protobuf 22.5
+          curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/protobuf.rb
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install --formula --ignore-dependencies ./abseil.rb ./protobuf.rb
 
       - name: cmake
         run: |
