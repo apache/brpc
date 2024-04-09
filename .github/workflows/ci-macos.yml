@@ -70,7 +70,7 @@ jobs:
           curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/abseil.rb
           # protobuf 22.5
           curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/protobuf.rb
-          brew install --formula ./abseil.rb ./protobuf.rb
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install --formula --ignore-dependencies ./abseil.rb ./protobuf.rb
 
       - name: config_brpc
         run: |
@@ -95,7 +95,7 @@ jobs:
           curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/abseil.rb
           # protobuf 22.5
           curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/protobuf.rb
-          brew install --formula ./abseil.rb ./protobuf.rb
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install --formula --ignore-dependencies ./abseil.rb ./protobuf.rb
 
       - name: cmake
         run: |
