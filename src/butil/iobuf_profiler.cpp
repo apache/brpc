@@ -47,7 +47,7 @@ static uint g_iobuf_profiler_sample_rate = 100;
 static void InitGlobalIOBufProfilerInfo() {
     const char* enabled = getenv("ENABLE_IOBUF_PROFILER");
     g_iobuf_profiler_enabled = enabled && strcmp("1", enabled) == 0 && ::GetStackTrace != NULL;
-    if (g_iobuf_profiler_enabled) {
+    if (!g_iobuf_profiler_enabled) {
         return;
     }
 
