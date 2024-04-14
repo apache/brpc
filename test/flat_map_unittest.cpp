@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -1107,23 +1108,28 @@ TEST_F(FlatMapTest, random_insert_erase) {
               << "n_cp:" << n_cp;    
 }
 
-template <typename T> void perf_insert_erase(bool random, const T& value)
-{
+template <typename T>
+void perf_insert_erase(bool random, const T& value) {
     size_t nkeys[] = { 100, 1000, 10000 };
     const size_t NPASS = ARRAY_SIZE(nkeys);
 
     std::vector<uint64_t> keys;
     butil::FlatMap<uint64_t, T> id_map;
+    butil::MultiFlatMap<uint64_t, T> multi_id_map;
     std::map<uint64_t, T> std_map;
     butil::PooledMap<uint64_t, T> pooled_map;
+    std::unordered_map<uint64_t, T> std_unordered_map;
+    std::unordered_multimap<uint64_t, T> std_unordered_multimap;
     butil::hash_map<uint64_t, T> hash_map;
-    butil::Timer id_tm, std_tm, pooled_tm, hash_tm;
+    butil::Timer id_tm, multi_id_tm, std_tm, pooled_tm,
+                 std_unordered_tm, std_unordered_multi_tm, hash_tm;
     
     size_t max_nkeys = 0;
     for (size_t i = 0; i < NPASS; ++i) {
         max_nkeys = std::max(max_nkeys, nkeys[i]);
     }
     id_map.init((size_t)(nkeys[NPASS-1] * 1.5));
+    multi_id_map.init((size_t)(nkeys[NPASS-1] * 1.5));
 
     // Make DS hot
     for (size_t i = 0; i < max_nkeys; ++i) {
@@ -1135,6 +1141,8 @@ template <typename T> void perf_insert_erase(bool random, const T& value)
     id_map.clear();
     std_map.clear();
     pooled_map.clear();
+    std_unordered_map.clear();
+    std_unordered_multimap.clear();
     hash_map.clear();
 
     LOG(INFO) << "[ value = " << sizeof(T) << " bytes ]";
@@ -1156,6 +1164,13 @@ template <typename T> void perf_insert_erase(bool random, const T& value)
         }
         id_tm.stop();
 
+        multi_id_map.clear();
+        multi_id_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            multi_id_map[keys[i]] = value;
+        }
+        multi_id_tm.stop();
+
         std_map.clear();
         std_tm.start();
         for (size_t i = 0; i < keys.size(); ++i) {
@@ -1170,6 +1185,20 @@ template <typename T> void perf_insert_erase(bool random, const T& value)
         }
         pooled_tm.stop();
 
+        std_unordered_map.clear();
+        std_unordered_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            std_unordered_map[keys[i]] = value;
+        }
+        std_unordered_tm.stop();
+
+        std_unordered_multimap.clear();
+        std_unordered_multi_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            std_unordered_multimap.insert({ keys[i], value });
+        }
+        std_unordered_multi_tm.stop();
+
         hash_map.clear();
         hash_tm.start();
         for (size_t i = 0; i < keys.size(); ++i) {
@@ -1179,10 +1208,14 @@ template <typename T> void perf_insert_erase(bool random, const T& value)
         
         LOG(INFO) << (random ? "Randomly" : "Sequentially")
                   << " inserting " << keys.size()
-                  << " into FlatMap/std::map/butil::PooledMap/butil::hash_map takes "
+                  << " into FlatMap/MultiFlatMap/std::map/butil::PooledMap/"
+                     "std::unordered_map/std::unordered_multimap/butil::hash_map takes "
                   << id_tm.n_elapsed() / keys.size()
+                  << "/" << multi_id_tm.n_elapsed() / keys.size()
                   << "/" << std_tm.n_elapsed() / keys.size()
                   << "/" << pooled_tm.n_elapsed() / keys.size()
+                  << "/" << std_unordered_tm.n_elapsed() / keys.size()
+                  << "/" << std_unordered_multi_tm.n_elapsed() / keys.size()
                   << "/" << hash_tm.n_elapsed() / keys.size();
         
         if (random) {
@@ -1194,6 +1227,12 @@ template <typename T> void perf_insert_erase(bool random, const T& value)
             id_map.erase(keys[i]);
         }
         id_tm.stop();
+
+        multi_id_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            multi_id_map.erase(keys[i]);
+        }
+        multi_id_tm.stop();
 
         std_tm.start();
         for (size_t i = 0; i < keys.size(); ++i) {
@@ -1207,6 +1246,18 @@ template <typename T> void perf_insert_erase(bool random, const T& value)
         }
         pooled_tm.stop();
 
+        std_unordered_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            std_unordered_map.erase(keys[i]);
+        }
+        std_unordered_tm.stop();
+
+        std_unordered_multi_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            std_unordered_multimap.erase(keys[i]);
+        }
+        std_unordered_multi_tm.stop();
+
         hash_tm.start();
         for (size_t i = 0; i < keys.size(); ++i) {
             hash_map.erase(keys[i]);
@@ -1215,27 +1266,36 @@ template <typename T> void perf_insert_erase(bool random, const T& value)
         
         LOG(INFO) << (random ? "Randomly" : "Sequentially")
                   << " erasing " << keys.size()
-                  << " from FlatMap/std::map/butil::PooledMap/butil::hash_map takes "
+                  << " from FlatMap/MultiFlatMap/std::map/butil::PooledMap/"
+                     "std::unordered_map/std::unordered_multimap/butil::hash_map takes "
                   << id_tm.n_elapsed() / keys.size()
+                  << "/" << multi_id_tm.n_elapsed() / keys.size()
                   << "/" << std_tm.n_elapsed() / keys.size()
                   << "/" << pooled_tm.n_elapsed() / keys.size()
+                  << "/" << std_unordered_tm.n_elapsed() / keys.size()
+                  << "/" << std_unordered_multi_tm.n_elapsed() / keys.size()
                   << "/" << hash_tm.n_elapsed() / keys.size();
     }
 }
 
-template <typename T> void perf_seek(const T& value) {
+template <typename T>
+void perf_seek(const T& value) {
     size_t nkeys[] = { 100, 1000, 10000 };
     const size_t NPASS = ARRAY_SIZE(nkeys);
     std::vector<uint64_t> keys;
     std::vector<uint64_t> rkeys;
     butil::FlatMap<uint64_t, T> id_map;
+    butil::MultiFlatMap<uint64_t, T> multi_id_map;
     std::map<uint64_t, T> std_map;
     butil::PooledMap<uint64_t, T> pooled_map;
+    std::unordered_map<uint64_t, T> std_unordered_map;
+    std::unordered_multimap<uint64_t, T> std_unordered_multimap;
     butil::hash_map<uint64_t, T> hash_map;
-    
-    butil::Timer id_tm, std_tm, pooled_tm, hash_tm;
+    butil::Timer id_tm, multi_id_tm, std_tm, pooled_tm,
+                 std_unordered_tm, std_unordered_multi_tm, hash_tm;
     
     id_map.init((size_t)(nkeys[NPASS-1] * 1.5));
+    multi_id_map.init((size_t)(nkeys[NPASS-1] * 1.5));
     LOG(INFO) << "[ value = " << sizeof(T) << " bytes ]";
     for (size_t pass = 0; pass < NPASS; ++pass) {
         int start = rand();
@@ -1249,6 +1309,11 @@ template <typename T> void perf_seek(const T& value) {
             id_map[keys[i]] = value;
         }
 
+        multi_id_map.clear();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            multi_id_map[keys[i]] = value;
+        }
+
         std_map.clear();
         for (size_t i = 0; i < keys.size(); ++i) {
             std_map[keys[i]] = value;
@@ -1257,6 +1322,16 @@ template <typename T> void perf_seek(const T& value) {
         pooled_map.clear();
         for (size_t i = 0; i < keys.size(); ++i) {
             pooled_map[keys[i]] = value;
+        }
+
+        std_unordered_map.clear();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            std_unordered_map[keys[i]] = value;
+        }
+
+        std_unordered_multimap.clear();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            std_unordered_multimap.insert({ keys[i], value });
         }
 
         hash_map.clear();
@@ -1273,6 +1348,12 @@ template <typename T> void perf_seek(const T& value) {
         }
         id_tm.stop();
 
+        multi_id_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            sum += *(long*)multi_id_map.seek(keys[i]);
+        }
+        multi_id_tm.stop();
+
         std_tm.start();
         for (size_t i = 0; i < keys.size(); ++i) {
             sum += (long&)std_map.find(keys[i])->second;
@@ -1285,6 +1366,18 @@ template <typename T> void perf_seek(const T& value) {
         }
         pooled_tm.stop();
 
+        std_unordered_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            sum += (long&)std_unordered_map[keys[i]];
+        }
+        std_unordered_tm.stop();
+
+        std_unordered_multi_tm.start();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            sum += (long&)std_unordered_multimap.find(keys[i])->second;
+        }
+        std_unordered_multi_tm.stop();
+
         hash_tm.start();
         for (size_t i = 0; i < keys.size(); ++i) {
             sum += (long&)hash_map.find(keys[i])->second;
@@ -1292,12 +1385,15 @@ template <typename T> void perf_seek(const T& value) {
         hash_tm.stop();
         
         LOG(INFO) << "Seeking " << keys.size()
-                  << " from FlatMap/std::map/butil::PooledMap/butil::hash_map takes "
+                  << " from FlatMap/MultiFlatMap/std::map/butil::PooledMap/"
+                     "std::unordered_map/std::unordered_multimap/butil::hash_map takes "
                   << id_tm.n_elapsed() / keys.size()
+                  << "/" << multi_id_tm.n_elapsed() / keys.size()
                   << "/" << std_tm.n_elapsed() / keys.size()
                   << "/" << pooled_tm.n_elapsed() / keys.size()
-                  << "/" << hash_tm.n_elapsed() / keys.size()
-                  << " sum=" << sum;
+                  << "/" << std_unordered_tm.n_elapsed() / keys.size()
+                  << "/" << std_unordered_multi_tm.n_elapsed() / keys.size()
+                  << "/" << hash_tm.n_elapsed() / keys.size();
     }
 }
 
@@ -1347,6 +1443,72 @@ TEST_F(FlatMapTest, copy) {
     butil::FlatMap<int, int> m4 = m3;
     ASSERT_TRUE(m4.initialized());
     ASSERT_TRUE(m4.empty());
+}
+
+TEST_F(FlatMapTest, multi) {
+    // Construct non-POD values w/o copy-construction.
+    g_foo_ctor = 0;
+    g_foo_copy_ctor = 0;
+    g_foo_assign = 0;
+    butil::MultiFlatMap<int, Foo> map;
+    int bucket_count = 32;
+    ASSERT_EQ(0, map.init(bucket_count));
+    ASSERT_EQ(0, g_foo_ctor);
+    ASSERT_EQ(0, g_foo_copy_ctor);
+    ASSERT_EQ(0, g_foo_assign);
+    Foo& f1 = map[1];
+    ASSERT_EQ(1, g_foo_ctor);
+    ASSERT_EQ(0, g_foo_copy_ctor);
+    ASSERT_EQ(0, g_foo_assign);
+    Foo& f2 = map[1];
+    ASSERT_EQ(2, g_foo_ctor);
+    ASSERT_EQ(0, g_foo_copy_ctor);
+    ASSERT_EQ(0, g_foo_assign);
+    Foo f3;
+    Foo& f4 = *map.insert(1, f3);
+    ASSERT_EQ(4, g_foo_ctor);
+    ASSERT_EQ(0, g_foo_copy_ctor);
+    ASSERT_EQ(1, g_foo_assign);
+    ASSERT_EQ(&f1, map.seek(1));
+    std::vector<Foo*> f_vec = map.seek_all(1);
+    ASSERT_NE(f_vec.end(), std::find(f_vec.begin(), f_vec.end(), &f1));
+    ASSERT_NE(f_vec.end(), std::find(f_vec.begin(), f_vec.end(), &f2));
+    ASSERT_NE(f_vec.end(), std::find(f_vec.begin(), f_vec.end(), &f4));
+
+    ASSERT_EQ(bucket_count, map.bucket_count());
+    int same_bucket_key = 1 + bucket_count;
+    butil::DefaultHasher<int> hasher;
+    ASSERT_EQ(butil::flatmap_mod(hasher(1), bucket_count),
+              butil::flatmap_mod(hasher(same_bucket_key), bucket_count));
+    ASSERT_EQ(0, map.erase(same_bucket_key));
+    Foo& f5 = map[same_bucket_key];
+    ASSERT_EQ(&f5, map.seek(same_bucket_key));
+    ASSERT_EQ(1UL, map.seek_all(same_bucket_key).size());
+    ASSERT_EQ(5, g_foo_ctor);
+    ASSERT_EQ(0, g_foo_copy_ctor);
+    ASSERT_EQ(1, g_foo_assign);
+    ASSERT_EQ(&f5, map.seek(same_bucket_key));
+    ASSERT_EQ(3u, map.erase(1));
+    ASSERT_EQ(nullptr, map.seek(1));
+    ASSERT_TRUE(map.seek_all(1).empty());
+    // Value node of same_bucket_key is the last one in the bucket,
+    // so it has been moved to the first node.
+    ASSERT_EQ(&f1, map.seek(same_bucket_key));
+    ASSERT_EQ(1UL, map.erase(same_bucket_key));
+    ASSERT_EQ(nullptr, map.seek(same_bucket_key));
+    ASSERT_TRUE(map.seek_all(same_bucket_key).empty());
+
+    // Zeroize POD values.
+    butil::MultiFlatMap<int, Bar> map2;
+    ASSERT_EQ(0, map2.init(32));
+    Bar& g = map2[1];
+    ASSERT_EQ(0, g.x);
+    g.x = 123;
+    ASSERT_EQ(1u, map2.erase(1));
+    ASSERT_EQ(123, g.x); // g is still accessible in this case.
+    Bar& g2 = map2[1];
+    ASSERT_EQ(&g, &g2);
+    ASSERT_EQ(0, g2.x);
 }
 
 }

@@ -41,10 +41,7 @@ class H2StreamContext;
 // Non-body part of a HTTP message.
 class HttpHeader {
 public:
-    typedef std::unordered_multimap<
-        std::string, std::string,
-        butil::CaseIgnoredHasher,
-        butil::CaseIgnoredEqual> HeaderMap;
+    typedef butil::CaseIgnoredMultiFlatMap<std::string> HeaderMap;
     typedef HeaderMap::const_iterator HeaderIterator;
     typedef HeaderMap::key_equal HeaderKeyEqual;
 
@@ -173,7 +170,7 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
 
     std::string& GetOrAddHeader(const std::string& key);
 
-    std::string& GetNewHeader(const std::string& key);
+    std::string& AddHeader(const std::string& key);
 
     bool IsSetCookie(const std::string& key) const {
         return _header_key_equal(key, SET_COOKIE);
@@ -206,7 +203,7 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     std::string _content_type;
     std::string _unresolved_path;
     std::pair<int, int> _version;
-    HeaderMap::iterator _first_set_cookie_iter;
+    std::string* _first_set_cookie;
 };
 
 const HttpHeader& DefaultHttpHeader();

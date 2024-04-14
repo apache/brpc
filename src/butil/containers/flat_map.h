@@ -23,72 +23,72 @@
 // fastest hashmap for small-sized key/value ever.
 //
 // Performance comparisons between several maps:
-//  [ value = 8 bytes ]
-//  Sequentially inserting 100 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 11/108/55/58
-//  Sequentially erasing 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 7/123/55/37
-//  Sequentially inserting 1000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 10/92/55/54
-//  Sequentially erasing 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/67/51/35
-//  Sequentially inserting 10000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 10/100/66/54
-//  Sequentially erasing 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/72/55/35
-//  [ value = 32 bytes ]
-//  Sequentially inserting 100 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 14/108/56/56
-//  Sequentially erasing 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/77/53/38
-//  Sequentially inserting 1000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 14/94/54/53
-//  Sequentially erasing 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/66/49/36
-//  Sequentially inserting 10000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 13/106/62/54
-//  Sequentially erasing 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/69/53/36
-//  [ value = 128 bytes ]
-//  Sequentially inserting 100 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 31/182/96/96
-//  Sequentially erasing 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 8/117/51/44
-//  Sequentially inserting 1000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 29/191/100/97
-//  Sequentially erasing 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/100/49/44
-//  Sequentially inserting 10000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 30/184/113/114
-//  Sequentially erasing 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/99/52/43
-//  [ value = 8 bytes ]
-//  Randomly inserting 100 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 11/171/108/60
-//  Randomly erasing 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 8/158/126/37
-//  Randomly inserting 1000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 10/159/117/54
-//  Randomly erasing 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/153/135/36
-//  Randomly inserting 10000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 12/223/180/55
-//  Randomly erasing 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 7/237/210/48
-//  [ value = 32 bytes ]
-//  Randomly inserting 100 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 16/179/108/57
-//  Randomly erasing 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 5/157/120/38
-//  Randomly inserting 1000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 15/168/127/54
-//  Randomly erasing 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 5/164/135/39
-//  Randomly inserting 10000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 19/241/201/56
-//  Randomly erasing 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 5/235/218/54
-//  [ value = 128 bytes ]
-//  Randomly inserting 100 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 35/242/154/97
-//  Randomly erasing 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 7/185/119/56
-//  Randomly inserting 1000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 35/262/182/99
-//  Randomly erasing 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/215/157/66
-//  Randomly inserting 10000 into FlatMap/std::map/butil::PooledMap/butil::hash_map takes 44/330/278/114
-//  Randomly erasing 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/307/242/90
-//  [ value = 8 bytes ]
-//  Seeking 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 6/51/52/13
-//  Seeking 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/98/82/14
-//  Seeking 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/175/170/14
-//  [ value = 32 bytes ]
-//  Seeking 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 3/52/52/14
-//  Seeking 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 3/84/82/13
-//  Seeking 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 3/164/156/14
-//  [ value = 128 bytes ]
-//  Seeking 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 3/54/53/14
-//  Seeking 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/88/90/13
-//  Seeking 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/178/185/14
-//  [ value = 8 bytes ]
-//  Seeking 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 5/51/49/14
-//  Seeking 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/86/94/14
-//  Seeking 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/177/171/14
-//  [ value = 32 bytes ]
-//  Seeking 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 3/51/53/14
-//  Seeking 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 3/98/82/13
-//  Seeking 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 3/163/156/14
-//  [ value = 128 bytes ]
-//  Seeking 100 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 3/55/53/14
-//  Seeking 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/88/89/13
-//  Seeking 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/177/185/14
+// [ value = 8 bytes ]
+// Sequentially inserting 100 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/20/300/290/2010/210/230
+// Sequentially erasing 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/20/1700/150/160/170/250
+// Sequentially inserting 1000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 16/15/360/342/206/195/219
+// Sequentially erasing 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 15/18/178/159/149/159/149
+// Sequentially inserting 10000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 15/15/415/410/200/192/235
+// Sequentially erasing 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 14/17/201/181/151/181/154
+// [ value = 32 bytes ]
+// Sequentially inserting 100 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/10/280/280/250/200/230
+// Sequentially erasing 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/10/2070/150/160/160/160
+// Sequentially inserting 1000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 17/17/330/329/207/185/212
+// Sequentially erasing 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/17/172/163/146/157/148
+// Sequentially inserting 10000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 17/17/405/406/197/185/215
+// Sequentially erasing 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/16/206/188/158/168/159
+// [ value = 128 bytes ]
+// Sequentially inserting 100 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/30/290/290/420/220/250
+// Sequentially erasing 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/10/180/150/160/160/160
+// Sequentially inserting 1000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 22/25/352/349/213/193/222
+// Sequentially erasing 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/17/170/165/160/171/157
+// Sequentially inserting 10000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 21/24/416/422/210/206/242
+// Sequentially erasing 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 16/16/213/190/163/171/159
+// [ value = 8 bytes ]
+// Randomly inserting 100 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/20/290/260/250/220/220
+// Randomly erasing 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/20/240/220/170/170/180
+// Randomly inserting 1000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 16/15/315/309/206/191/215
+// Randomly erasing 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 15/17/258/240/155/193/156
+// Randomly inserting 10000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 15/16/378/363/208/191/210
+// Randomly erasing 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 14/16/311/290/162/187/169
+// [ value = 32 bytes ]
+// Randomly inserting 100 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/20/280/270/240/230/220
+// Randomly erasing 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 10/20/250/220/170/180/160
+// Randomly inserting 1000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 18/18/310/304/209/192/209
+// Randomly erasing 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/16/255/247/155/175/152
+// Randomly inserting 10000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 17/17/381/367/209/197/214
+// Randomly erasing 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 15/17/310/296/163/188/168
+// [ value = 128 bytes ]
+// Randomly inserting 100 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 30/40/300/290/280/230/230
+// Randomly erasing 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/20/230/220/160/180/170
+// Randomly inserting 1000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 29/33/327/329/219/197/220
+// Randomly erasing 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 14/16/257/247/159/182/156
+// Randomly inserting 10000 into FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 35/39/398/400/220/213/246
+// Randomly erasing 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 35/36/330/319/221/224/200
+// [ value = 8 bytes ]
+// Seeking 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 10/20/140/130/60/70/50
+// Seeking 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/13/172/161/77/54/46
+// Seeking 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/16/216/211/73/56/51
+// [ value = 32 bytes ]
+// Seeking 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 10/20/130/130/70/60/50
+// Seeking 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/13/174/163/73/54/49
+// Seeking 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/13/218/217/75/58/52
+// [ value = 128 bytes ]
+// Seeking 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/10/140/130/80/50/60
+// Seeking 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/13/173/171/73/55/49
+// Seeking 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 26/22/238/252/107/89/91
+// [ value = 8 bytes ]
+// Seeking 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/10/140/130/70/50/60
+// Seeking 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/14/180/160/68/57/47
+// Seeking 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/13/221/210/72/57/51
+// [ value = 32 bytes ]
+// Seeking 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 20/10/140/130/70/60/50
+// Seeking 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/13/167/160/69/53/50
+// Seeking 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 15/14/224/219/75/59/52
+// [ value = 128 bytes ]
+// Seeking 100 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 10/10/140/130/80/50/60
+// Seeking 1000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 13/13/170/167/70/54/52
+// Seeking 10000 from FlatMap/MultiFlatMap/std::map/butil::PooledMap/std::unordered_map/std::unordered_multimap/butil::hash_map takes 26/22/238/240/85/70/67
 
 #ifndef BUTIL_FLAT_MAP_H
 #define BUTIL_FLAT_MAP_H
@@ -128,7 +128,9 @@ template <typename _K, typename _T,
           // stored-key is always on LHS, passed-key is always on RHS.
           typename _Equal = DefaultEqualTo<_K>,
           bool _Sparse = false,
-          typename _Alloc = PtAllocator>
+          typename _Alloc = PtAllocator,
+          // If `_Multi' is true, allow containing multiple copies of each key value.
+          bool _Multi = false>
 class FlatMap {
 public:
     typedef _K key_type;
@@ -177,10 +179,17 @@ public:
     // Returns address of the inserted value, NULL on error.
     mapped_type* insert(const std::pair<key_type, mapped_type>& kv);
 
-    // Remove |key| and the associated value
+    // For `_Multi=false'. (Default)
+    // Remove |key| and all associated value
     // Returns: 1 on erased, 0 otherwise.
-    template <typename K2>
-    size_t erase(const K2& key, mapped_type* old_value = NULL);
+    template <typename K2, bool Multi = _Multi>
+    typename std::enable_if<!Multi, size_t >::type
+    erase(const K2& key, mapped_type* old_value = NULL);
+    // For `_Multi=true'.
+    // Returns: num of value on erased, 0 otherwise.
+    template <typename K2, bool Multi = _Multi>
+    typename std::enable_if<Multi, size_t >::type
+    erase(const K2& key, std::vector<mapped_type>* old_values = NULL);
 
     // Remove all items. Allocated spaces are NOT returned by system.
     void clear();
@@ -188,15 +197,19 @@ public:
     // Remove all items and return all allocated spaces to system.
     void clear_and_reset_pool();
         
-    // Search for the value associated with |key|
-    // Returns: address of the value
+    // Search for the value associated with |key|.
+    // If `_Multi=false', Search for any of multiple values associated with |key|.
+    // Returns: address of the value.
     template <typename K2> mapped_type* seek(const K2& key) const;
+    template <typename K2> std::vector<mapped_type*> seek_all(const K2& key) const;
 
+    // For `_Multi=false'. (Default)
     // Get the value associated with |key|. If |key| does not exist,
     // insert with a default-constructed value. If size()*100/bucket_count()
     // is more than load_factor, a resize will be done.
     // Returns reference of the value
-    mapped_type& operator[](const key_type& key);
+    template<bool Multi = _Multi>
+    typename std::enable_if<!Multi, mapped_type&>::type operator[](const key_type& key);
 
     // Resize this map. This is optional because resizing will be triggered by
     // insert() or operator[] if there're too many items.
@@ -276,6 +289,15 @@ public:
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
 template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
+
+    // For `_Multi=true'.
+    // Insert a new default-constructed associated with |key| always.
+    // If size()*100/bucket_count() is more than load_factor,
+    // a resize will be done.
+    // Returns reference of the value
+    template<bool Multi = _Multi>
+    typename std::enable_if<Multi, mapped_type&>::type operator[](const key_type& key);
+
     // True if buckets need to be resized before holding `size' elements.
     inline bool is_too_crowded(size_t size) const
     { return size * 100 >= _nbucket * _load_factor; }
@@ -289,6 +311,13 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     key_equal _eql;
     SingleThreadedPool<sizeof(Bucket), 1024, 16, allocator_type> _pool;
 };
+
+template <typename _K, typename _T,
+          typename _Hash = DefaultHasher<_K>,
+          typename _Equal = DefaultEqualTo<_K>,
+          bool _Sparse = false,
+          typename _Alloc = PtAllocator>
+using MultiFlatMap = FlatMap<_K, _T, _Hash, _Equal, _Sparse, _Alloc, true>;
 
 template <typename _K,
           typename _Hash = DefaultHasher<_K>,

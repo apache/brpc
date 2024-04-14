@@ -550,7 +550,7 @@ TEST(HttpMessageTest, http_header) {
     ASSERT_EQ(1, set_cookie_value3_count);
     header.RemoveHeader(brpc::HttpHeader::SET_COOKIE);
     ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::SET_COOKIE));
-    ASSERT_EQ(header._first_set_cookie_iter, header._headers.end());
+    ASSERT_EQ(header._first_set_cookie, nullptr);
 
     ASSERT_EQ(brpc::HTTP_METHOD_GET, header.method());
     header.set_method(brpc::HTTP_METHOD_POST);
@@ -577,7 +577,6 @@ TEST(HttpMessageTest, empty_url) {
 
 TEST(HttpMessageTest, serialize_http_request) {
     brpc::HttpHeader header;
-    header._headers.reserve(1024);
     ASSERT_EQ(0u, header.HeaderCount());
     header.SetHeader("Foo", "Bar");
     ASSERT_EQ(1u, header.HeaderCount());
@@ -598,38 +597,36 @@ TEST(HttpMessageTest, serialize_http_request) {
     // user-host overwrites passed-in remote_side
     header.SetHeader("Host", "MyHost: 4321");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: MyHost: 4321\r\nFoo: Bar\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set accept
     header.SetHeader("accePT"/*intended uppercase*/, "blahblah");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nFoo: Bar\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set UA
     header.SetHeader("user-AGENT", "myUA");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nuser-AGENT: myUA\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nFoo: Bar\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\ndata", request);
 
     // user-set Authorization
     header.SetHeader("authorization", "myAuthString");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nauthorization: myAuthString\r\nuser-AGENT: myUA\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nFoo: Bar\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\ndata", request);
 
     header.SetHeader("Transfer-Encoding", "chunked");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nauthorization: myAuthString\r\nuser-AGENT: myUA\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nFoo: Bar\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\naccePT: blahblah\r\nTransfer-Encoding: chunked\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\ndata", request);
 
     // GET does not serialize content and user-set content-length is ignored.
     header.set_method(brpc::HTTP_METHOD_GET);
     header.SetHeader("Content-Length", "100");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("GET / HTTP/1.1\r\nauthorization: myAuthString\r\nuser-AGENT: myUA\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nFoo: Bar\r\n\r\n", request)
-        << (header.GetHeader("authorization") ==nullptr ? "0" : "1");
+    ASSERT_EQ("GET / HTTP/1.1\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\n", request);
 }
 
 TEST(HttpMessageTest, serialize_http_response) {
     brpc::HttpHeader header;
-    header._headers.reserve(1024);
     header.SetHeader("Foo", "Bar");
     header.set_method(brpc::HTTP_METHOD_POST);
     butil::IOBuf response;

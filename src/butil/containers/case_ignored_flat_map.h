@@ -68,6 +68,10 @@ class CaseIgnoredFlatMap : public butil::FlatMap<
 class CaseIgnoredFlatSet : public butil::FlatSet<
     std::string, CaseIgnoredHasher, CaseIgnoredEqual> {};
 
+template <typename T>
+class CaseIgnoredMultiFlatMap : public butil::FlatMap<
+    std::string, T, CaseIgnoredHasher, CaseIgnoredEqual, false, PtAllocator, true> {};
+
 } // namespace butil
 
 #endif  // BUTIL_CASE_IGNORED_FLAT_MAP_H

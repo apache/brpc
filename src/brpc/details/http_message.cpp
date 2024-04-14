@@ -105,7 +105,7 @@ int HttpMessage::on_header_value(http_parser *parser,
                 &header.GetOrAddHeader(http_message->_cur_header);
         } else {
             http_message->_cur_value =
-                &header.GetNewHeader(http_message->_cur_header);
+                &header.AddHeader(http_message->_cur_header);
         }
         if (http_message->_cur_value && !http_message->_cur_value->empty()) {
             http_message->_cur_value->append(
