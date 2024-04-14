@@ -17,6 +17,8 @@ DECLARE_bool(crash_on_fatal_log);
 DECLARE_int32(v);
 DECLARE_bool(log_func_name);
 DECLARE_bool(async_log);
+DECLARE_bool(async_log_in_background_always);
+DECLARE_int32(max_async_log_queue_size);
 
 namespace {
 
@@ -513,14 +515,14 @@ TEST_F(LoggingTest, async_log) {
         ASSERT_EQ(0, pthread_create(&threads[i], NULL, test_async_log, &log));
     }
 
-    sleep(5);
+    usleep(1000 * 500);
 
     g_stopped = true;
     for (int i = 0; i < thread_num; ++i) {
         pthread_join(threads[i], NULL);
     }
     // Wait for async log thread to flush all logs to file.
-    sleep(10);
+    sleep(15);
 
     std::ostringstream oss;
     std::string cmd = butil::string_printf("grep -c %s %s",
@@ -545,6 +547,8 @@ void* test_log(void* void_arg) {
     auto args = (PerfArgs*)void_arg;
     args->ready = true;
     butil::Timer t;
+    std::string log = *args->log;
+    int counter = 0;
     while (!g_stopped) {
         if (g_started) {
             break;
@@ -554,13 +558,14 @@ void* test_log(void* void_arg) {
     t.start();
     while (!g_stopped) {
         {
-            LOG(INFO) << *args->log;
+            LOG(INFO) << log;
             test_logging_count.fetch_add(1, butil::memory_order_relaxed);
         }
-        ++args->counter;
+        ++counter;
     }
     t.stop();
     args->elapse_ns = t.n_elapsed();
+    args->counter = counter;
     return NULL;
 }
 
@@ -588,11 +593,12 @@ void PerfTest(int thread_num, const std::string& log, bool async) {
         }
         usleep(1000);
     }
+    int sleep_s = 2;
     g_started = true;
     char prof_name[32];
     snprintf(prof_name, sizeof(prof_name), "logging_%d.prof", ++g_prof_name_counter);
     ProfilerStart(prof_name);
-    sleep(5);
+    sleep(sleep_s);
     ProfilerStop();
     g_stopped = true;
     int64_t wait_time = 0;
@@ -606,31 +612,28 @@ void PerfTest(int thread_num, const std::string& log, bool async) {
               << " log_type=" << (async ? "async" : "sync")
               << " log_size=" << log.size()
               << " count=" << count
-              << " average_time=" << wait_time / (double)count
+              << " duration=" << sleep_s << "s"
+              << " qps=" << (int)(count / (double)sleep_s)
+              << " average_time=" << wait_time / (double)count << "us"
               << std::endl;
 }
 
 TEST_F(LoggingTest, performance) {
     bool saved_async_log = FLAGS_async_log;
+    FLAGS_max_async_log_queue_size =
+        std::numeric_limits<int32_t>::max();
+    FLAGS_async_log_in_background_always = true;
 
     LoggingSettings settings;
     settings.logging_dest = LOG_TO_FILE;
+    settings.delete_old = DELETE_OLD_LOG_FILE;
     InitLogging(settings);
-    std::string log(64, 'a');
-    int thread_num = 1;
-    PerfTest(thread_num, log, true);
+    std::string log(100, 'a');
+    PerfTest(1, log, false);
+    PerfTest(8, log, false);
+    PerfTest(1, log, true);
     sleep(10);
-    PerfTest(thread_num, log, false);
-
-    thread_num = 2;
-    PerfTest(thread_num, log, true);
-    sleep(10);
-    PerfTest(thread_num, log, false);
-
-    thread_num = 4;
-    PerfTest(thread_num, log, true);
-    sleep(10);
-    PerfTest(thread_num, log, false);
+    PerfTest(8, log, true);
 
     FLAGS_async_log = saved_async_log;
 }
