@@ -389,6 +389,9 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
         bthread::never_set_bthread_concurrency_by_tag = false;
         return 0;
     }
+    if (tag < BTHREAD_TAG_DEFAULT || tag >= FLAGS_task_group_ntags) {
+        return EPERM;
+    }
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
     auto c = bthread::get_task_control();
     if (c == NULL) {
