@@ -334,11 +334,15 @@ static bool JsonValueToProtoField(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
                     const BUTIL_RAPIDJSON_NAMESPACE::Value & item = value[index];       \
                     if (TYPE_MATCH == J2PCHECKTYPE(item, cpptype, jsontype)) { \
                         reflection->Add##method(message, field, item.Get##jsontype()); \
+                    } else {                                             \
+                        return false;                                    \
                     }                                                   \
                 }                                                       \
             } else if (TYPE_MATCH == J2PCHECKTYPE(value, cpptype, jsontype)) { \
                 reflection->Set##method(message, field, value.Get##jsontype()); \
-            }                                                           \
+            } else {                                                   \
+                return false;                                          \
+            }                                                          \
             break;                                                      \
         }                                                               \
           
@@ -430,7 +434,9 @@ static bool JsonValueToProtoField(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
                         str = str_decoded;
                     }
                     reflection->AddString(message, field, str);
-                }  
+                } else {
+                    return false;
+                }
             }
         } else if (TYPE_MATCH == J2PCHECKTYPE(value, string, String)) {
             std::string str(value.GetString(), value.GetStringLength());
@@ -444,6 +450,8 @@ static bool JsonValueToProtoField(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
                 str = str_decoded;
             }
             reflection->SetString(message, field, str);
+        } else {
+            return false;
         }
         break;
 

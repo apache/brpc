@@ -494,7 +494,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
     JsonContextBody data9;
     ret = json2pb::JsonToProtoMessage(info3, &data9, &error);
     ASSERT_FALSE(ret);
-    ASSERT_STREQ("Invalid value `23' for optional field `Content.uid' which SHOULD be string, Missing required field: Ext.databyte", error.data());
+    ASSERT_STREQ("Invalid value `23' for optional field `Content.uid' which SHOULD be string", error.data());
 }
 
 TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {
