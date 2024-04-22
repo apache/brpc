@@ -209,6 +209,7 @@ jobs:
     - uses: ./.github/actions/install-essential-dependences
     - name: install gtest
       run: |
+           sudo apt-get update
            sudo apt-get install -y cmake libgtest-dev gdb && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/
     - uses: ./.github/actions/init-make-config
       with:

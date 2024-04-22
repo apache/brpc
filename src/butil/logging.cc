@@ -968,7 +968,7 @@ void PrintLog(std::ostream& os, int severity, const char* file, int line,
         bool pair_quote = false;
         if (content.empty() || content[0] != '"') {
             // not a json, add a 'M' field
-            os << R"(,"M":")";
+            os << ",\"M\":\"";
             pair_quote = true;
         } else {
             os << ',';
