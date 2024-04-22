@@ -20,7 +20,6 @@
 #define  BRPC_HTTP_HEADER_H
 
 #include <vector>
-#include <unordered_map>
 #include "butil/strings/string_piece.h"  // StringPiece
 #include "butil/containers/case_ignored_flat_map.h"
 #include "brpc/uri.h"              // URI
