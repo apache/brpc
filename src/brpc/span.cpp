@@ -29,6 +29,7 @@
 #include "butil/object_pool.h"
 #include "butil/fast_rand.h"
 #include "butil/file_util.h"
+#include "butil/files/file_enumerator.h"
 #include "brpc/shared_object.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/span.h"
@@ -58,6 +59,9 @@ DEFINE_int32(rpcz_keep_span_seconds, 3600,
 BRPC_VALIDATE_GFLAG(rpcz_keep_span_seconds, PositiveInteger);
 
 DEFINE_bool(rpcz_keep_span_db, false, "Don't remove DB of rpcz at program's exit");
+
+DEFINE_int64(rpcz_save_span_min_latency_us, 0, "The minimum latency microseconds of span saved");
+BRPC_VALIDATE_GFLAG(rpcz_save_span_min_latency_us, NonNegativeInteger);
 
 struct IdGen {
     bool init;
@@ -378,10 +382,8 @@ private:
         delete id_db;
         delete time_db;
         if (!FLAGS_rpcz_keep_span_db) {
-            std::string cmd = butil::string_printf("rm -rf %s %s",
-                                                  id_db_name.c_str(),
-                                                  time_db_name.c_str());
-            butil::ignore_result(system(cmd.c_str()));
+            butil::DeleteFile(butil::FilePath(id_db_name), true);
+            butil::DeleteFile(butil::FilePath(time_db_name), true);
         }
     }
 };
@@ -508,8 +510,11 @@ inline uint64_t ToLittleEndian(const uint32_t* buf) {
 SpanDB* SpanDB::Open() {
     // Remove old rpcz directory even if crash occurs.
     if (!FLAGS_rpcz_keep_span_db) {
-        std::string cmd = butil::string_printf("rm -rf %s", FLAGS_rpcz_database_dir.c_str());
-        butil::ignore_result(system(cmd.c_str()));
+        butil::FileEnumerator dirs(butil::FilePath(FLAGS_rpcz_database_dir), false,
+                                   butil::FileEnumerator::DIRECTORIES, "[0-9]*.[0-9]*.[0-9]*");
+        for (auto name = dirs.Next(); !name.empty(); name = dirs.Next()) {
+            butil::DeleteFile(name, true);
+        }
     }
 
     SpanDB local;
@@ -574,6 +579,11 @@ leveldb::Status SpanDB::Index(const Span* span, std::string* value_buf) {
     // of time window.
 
     const int64_t start_time = span->GetStartRealTimeUs();
+    const int64_t latency_us = span->GetEndRealTimeUs() - start_time;
+    // if latency_us < FLAGS_rpcz_save_span_min_latency_us, don't save this span
+    if (latency_us < FLAGS_rpcz_save_span_min_latency_us) {
+        return leveldb::Status::OK();
+    }
     BriefSpan brief;
     brief.set_trace_id(span->trace_id());
     brief.set_span_id(span->span_id());
@@ -583,7 +593,7 @@ leveldb::Status SpanDB::Index(const Span* span, std::string* value_buf) {
     brief.set_request_size(span->request_size());
     brief.set_response_size(span->response_size());
     brief.set_start_real_us(start_time);
-    brief.set_latency_us(span->GetEndRealTimeUs() - start_time);
+    brief.set_latency_us(latency_us);
     brief.set_full_method_name(span->full_method_name());
     if (!brief.SerializeToString(value_buf)) {
         return leveldb::Status::InvalidArgument(
