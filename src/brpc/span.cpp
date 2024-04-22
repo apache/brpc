@@ -506,6 +506,12 @@ inline uint64_t ToLittleEndian(const uint32_t* buf) {
 }
 
 SpanDB* SpanDB::Open() {
+    // Remove old rpcz directory even if crash occurs.
+    if (!FLAGS_rpcz_keep_span_db) {
+        std::string cmd = butil::string_printf("rm -rf %s", FLAGS_rpcz_database_dir.c_str());
+        butil::ignore_result(system(cmd.c_str()));
+    }
+
     SpanDB local;
     leveldb::Status st;
     char prefix[64];
