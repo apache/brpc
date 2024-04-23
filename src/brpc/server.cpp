@@ -1889,6 +1889,7 @@ int StartDummyServerAt(int port, ProfilerLinker) {
                         "DummyServerOf(%s)", GetProgramName()));
             ServerOptions options;
             options.num_threads = 0;
+            options.bthread_tag = bthread_self_tag();
             if (dummy_server->Start(port, &options) != 0) {
                 LOG(ERROR) << "Fail to start dummy_server at port=" << port;
                 return -1;
