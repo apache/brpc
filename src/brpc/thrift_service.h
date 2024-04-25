@@ -22,6 +22,7 @@
 #include "brpc/controller.h"                        // Controller
 #include "brpc/thrift_message.h"                    // ThriftFramedMessage
 #include "brpc/describable.h"
+#include "brpc/adaptive_max_concurrency.h"
 
 namespace brpc {
 
@@ -38,7 +39,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base);
 class ThriftService : public Describable {
 public:
     ThriftService();
-    virtual ~ThriftService();
+    ~ThriftService() override;
 
     // Implement this method to handle thrift_binary requests.
     // Parameters:
@@ -53,7 +54,7 @@ public:
         ::google::protobuf::Closure* done) = 0;
 
     // Put descriptions into the stream.
-    void Describe(std::ostream &os, const DescribeOptions&) const;
+    void Describe(std::ostream &os, const DescribeOptions&) const override;
 
 private:
 DISALLOW_COPY_AND_ASSIGN(ThriftService);
@@ -66,6 +67,7 @@ private:
     void Expose(const butil::StringPiece& prefix);
     
     MethodStatus* _status;
+    AdaptiveMaxConcurrency _max_concurrency;
 };
 
 } // namespace brpc

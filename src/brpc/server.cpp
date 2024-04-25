@@ -738,8 +738,8 @@ static int get_port_from_fd(int fd) {
     return ntohs(addr.sin_port);
 }
 
-static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
-                                     ConcurrencyLimiter** out) {
+bool Server::CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
+                                      ConcurrencyLimiter** out) {
     if (amc.type() == AdaptiveMaxConcurrency::UNLIMITED()) {
         *out = NULL;
         return true;
@@ -1040,6 +1040,15 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
             it->second.status->SetConcurrencyLimiter(cl);
         }
     }
+    if (0 != SetServiceMaxConcurrency(_options.nshead_service)) {
+        return -1;
+    }
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+    if (0 != SetServiceMaxConcurrency(_options.thrift_service)) {
+        return -1;
+    }
+#endif
+
 
     // Create listening ports
     if (port_range.min_port > port_range.max_port) {
@@ -2206,13 +2215,33 @@ int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
 }
 
 AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) {
-    MethodProperty* mp = _method_map.seek(full_method_name);
-    if (mp == NULL) {
-        LOG(ERROR) << "Fail to find method=" << full_method_name;
-        _failed_to_set_max_concurrency_of_method = true;
-        return g_default_max_concurrency_of_method;
-    }
-    return MaxConcurrencyOf(mp);
+    do {
+        if (full_method_name == butil::class_name_str<NsheadService>()) {
+            if (NULL == options().nshead_service) {
+                break;
+            }
+            return options().nshead_service->_max_concurrency;
+        }
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+        if (full_method_name == butil::class_name_str<ThriftService>()) {
+            if (NULL == options().thrift_service) {
+                break;
+            }
+            return options().thrift_service->_max_concurrency;
+        }
+#endif
+
+        MethodProperty* mp = _method_map.seek(full_method_name);
+        if (mp == NULL) {
+            break;
+        }
+        return MaxConcurrencyOf(mp);
+
+    } while (false);
+
+    LOG(ERROR) << "Fail to find method=" << full_method_name;
+    _failed_to_set_max_concurrency_of_method = true;
+    return g_default_max_concurrency_of_method;
 }
 
 int Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) const {
