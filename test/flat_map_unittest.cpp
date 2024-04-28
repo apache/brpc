@@ -1332,6 +1332,21 @@ TEST_F(FlatMapTest, copy) {
     m2 = m1;
     ASSERT_FALSE(m1.is_too_crowded(m1.size()));
     ASSERT_FALSE(m2.is_too_crowded(m1.size()));
+
+    butil::FlatMap<int, int> m3;
+    ASSERT_FALSE(m3.initialized());
+    m1 = m3;
+    ASSERT_TRUE(m1.empty());
+    ASSERT_TRUE(m1.initialized());
+
+    m3 = m2;
+    ASSERT_TRUE(m3.initialized());
+    m3.clear();
+    ASSERT_TRUE(m3.initialized());
+    ASSERT_TRUE(m3.empty());
+    butil::FlatMap<int, int> m4 = m3;
+    ASSERT_TRUE(m4.initialized());
+    ASSERT_TRUE(m4.empty());
 }
 
 }
