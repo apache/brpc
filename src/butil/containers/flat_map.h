@@ -151,12 +151,12 @@ public:
         key_type key;
     };
     
-    FlatMap(const hasher& hashfn = hasher(), 
-            const key_equal& eql = key_equal(),
-            const allocator_type& alloc = allocator_type());
+    explicit FlatMap(const hasher& hashfn = hasher(),
+                     const key_equal& eql = key_equal(),
+                     const allocator_type& alloc = allocator_type());
     ~FlatMap();
-    FlatMap(const FlatMap& rhs);    
-    void operator=(const FlatMap& rhs);
+    FlatMap(const FlatMap& rhs);
+    FlatMap& operator=(const FlatMap& rhs);
     void swap(FlatMap & rhs);
 
     // Must be called to initialize this map, otherwise insert/operator[]
@@ -307,9 +307,9 @@ public:
     typedef typename Map::key_equal key_equal;
     typedef typename Map::allocator_type allocator_type;
     
-    FlatSet(const hasher& hashfn = hasher(), 
-            const key_equal& eql = key_equal(),
-            const allocator_type& alloc = allocator_type())
+    explicit FlatSet(const hasher& hashfn = hasher(),
+                     const key_equal& eql = key_equal(),
+                     const allocator_type& alloc = allocator_type())
         : _map(hashfn, eql, alloc) {}
     void swap(FlatSet & rhs) { _map.swap(rhs._map); }
 

@@ -261,20 +261,19 @@ FlatMap<_K, _T, _H, _E, _S, _A>::FlatMap(const FlatMap& rhs)
 }
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-void
+FlatMap<_K, _T, _H, _E, _S, _A>&
 FlatMap<_K, _T, _H, _E, _S, _A>::operator=(const FlatMap<_K, _T, _H, _E, _S, _A>& rhs) {
     if (this == &rhs) {
-        return;
+        return *this;
     }
     // NOTE: assignment does not change _load_factor/_hashfn/_eql if |this| is
     // initialized
     clear();
-    if (rhs.empty()) {
-        return;
+    if (!rhs.initialized()) {
+        return *this;
     }
-    if (!initialized()) {
-        _load_factor = rhs._load_factor;
-    }
+    bool need_copy = !rhs.empty();
+    _load_factor = rhs._load_factor;
     if (_buckets == NULL || is_too_crowded(rhs._size)) {
         get_allocator().Free(_buckets);
         _nbucket = rhs._nbucket;
@@ -282,17 +281,27 @@ FlatMap<_K, _T, _H, _E, _S, _A>::operator=(const FlatMap<_K, _T, _H, _E, _S, _A>
         _buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (_nbucket + 1/*note*/));
         if (NULL == _buckets) {
             LOG(ERROR) << "Fail to new _buckets";
-            return;
+            return *this;
+        }
+        // If no need to copy, set buckets invalid.
+        if (!need_copy) {
+            for (size_t i = 0; i < _nbucket; ++i) {
+                _buckets[i].set_invalid();
+            }
+            _buckets[_nbucket].next = NULL;
         }
         if (_S) {
             free(_thumbnail);
             _thumbnail = bit_array_malloc(_nbucket);
             if (NULL == _thumbnail) {
                 LOG(ERROR) << "Fail to new _thumbnail";
-                return;
+                return *this;
             }
             bit_array_clear(_thumbnail, _nbucket);
         }
+    }
+    if (!need_copy) {
+        return *this;
     }
     if (_nbucket == rhs._nbucket) {
         // For equivalent _nbucket, walking through _buckets instead of using
@@ -322,6 +331,7 @@ FlatMap<_K, _T, _H, _E, _S, _A>::operator=(const FlatMap<_K, _T, _H, _E, _S, _A>
                 Element::second_ref_from_value(*it);
         }
     }
+    return *this;
 }
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
