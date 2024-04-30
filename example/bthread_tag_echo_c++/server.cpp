@@ -17,10 +17,10 @@
 
 // A server to receive EchoRequest and send back EchoResponse.
 
-#include <gflags/gflags.h>
-#include <butil/logging.h>
 #include <brpc/server.h>
 #include <bthread/unstable.h>
+#include <butil/logging.h>
+#include <gflags/gflags.h>
 #include "echo.pb.h"
 
 DEFINE_bool(echo_attachment, true, "Echo attachment as well");
@@ -29,6 +29,8 @@ DEFINE_int32(port2, 8003, "TCP Port of this server");
 DEFINE_int32(tag1, 0, "Server1 tag");
 DEFINE_int32(tag2, 1, "Server2 tag");
 DEFINE_int32(tag3, 2, "Background task tag");
+DEFINE_int32(num_threads1, 4, "Thread number of server1");
+DEFINE_int32(num_threads2, 4, "Thread number of server2");
 DEFINE_int32(idle_timeout_s, -1,
              "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
@@ -63,8 +65,11 @@ static void my_tagged_worker_start_fn(bthread_tag_t tag) {
 }
 
 static void* my_background_task(void*) {
-    LOG(INFO) << "run background task tag=" << bthread_self_tag();
-    bthread_usleep(1000000UL);
+    while (true) {
+        LOG(INFO) << "run background task tag=" << bthread_self_tag();
+        bthread_usleep(1000000UL);
+    }
+    return nullptr;
 }
 
 int main(int argc, char* argv[]) {
@@ -102,6 +107,7 @@ int main(int argc, char* argv[]) {
     options1.max_concurrency = FLAGS_max_concurrency;
     options1.internal_port = FLAGS_internal_port1;
     options1.bthread_tag = FLAGS_tag1;
+    options1.num_threads = FLAGS_num_threads1;
     if (server1.Start(FLAGS_port1, &options1) != 0) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;
@@ -127,6 +133,7 @@ int main(int argc, char* argv[]) {
     options2.max_concurrency = FLAGS_max_concurrency;
     options2.internal_port = FLAGS_internal_port2;
     options2.bthread_tag = FLAGS_tag2;
+    options2.num_threads = FLAGS_num_threads2;
     if (server2.Start(FLAGS_port2, &options2) != 0) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;
