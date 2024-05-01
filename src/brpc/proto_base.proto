@@ -16,6 +16,7 @@
 // under the License.
 
 syntax="proto2";
+option cc_generic_services = true;
 
 package brpc;
 
@@ -30,5 +31,8 @@ message MemcacheResponseBase {}
 message NsheadMessageBase {}
 
 message SerializedRequestBase {}
+message SerializedResponseBase {}
 
 message ThriftFramedMessageBase {}
+
+service BaiduMasterServiceBase {}

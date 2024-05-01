@@ -46,6 +46,7 @@
 #include "brpc/progressive_reader.h"           // ProgressiveReader
 #include "brpc/grpc.h"
 #include "brpc/kvmap.h"
+#include "brpc/rpc_dump.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -68,7 +69,6 @@ class SharedLoadBalancer;
 class ExcludedServers;
 class RPCSender;
 class StreamSettings;
-class SampledRequest;
 class MongoContext;
 class RetryPolicy;
 class InputMessageBase;

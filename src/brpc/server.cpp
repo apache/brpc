@@ -77,6 +77,7 @@
 #include "brpc/builtin/common.h"               // GetProgramName
 #include "brpc/details/tcmalloc_extension.h"
 #include "brpc/rdma/rdma_helper.h"
+#include "brpc/baidu_master_service.h"
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -145,6 +146,7 @@ ServerOptions::ServerOptions()
     , has_builtin_services(true)
     , force_ssl(false)
     , use_rdma(false)
+    , baidu_master_service(NULL)
     , http_master_service(NULL)
     , health_reporter(NULL)
     , rtmp_service(NULL)
@@ -337,6 +339,9 @@ void* Server::UpdateDerivedVars(void* arg) {
             bvar::to_underscored_name(&mprefix, it->second.method->full_name());
             it->second.status->Expose(mprefix);
         }
+    }
+    if (server->options().baidu_master_service) {
+        server->options().baidu_master_service->Expose(prefix);
     }
     if (server->options().nshead_service) {
         server->options().nshead_service->Expose(prefix);
@@ -2240,6 +2245,12 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_
             return options().thrift_service->_max_concurrency;
         }
 #endif
+        if (full_method_name == butil::class_name_str<BaiduMasterService>()) {
+            if (NULL == options().baidu_master_service) {
+                break;
+            }
+            return options().baidu_master_service->_max_concurrency;
+        }
 
         MethodProperty* mp = _method_map.seek(full_method_name);
         if (mp == NULL) {

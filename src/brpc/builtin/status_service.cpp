@@ -200,6 +200,17 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
             }
         }
     }
+    const BaiduMasterService* baidu_master_service = server->options().baidu_master_service;
+    if (baidu_master_service && baidu_master_service->_status) {
+        DescribeOptions options;
+        options.verbose = false;
+        options.use_html = use_html;
+        os << (use_html ? "<h3>" : "[");
+        baidu_master_service->Describe(os, options);
+        os << (use_html ? "</h3>\n" : "]\n");
+        baidu_master_service->_status->Describe(os, desc_options);
+        os << '\n';
+    }
     const NsheadService* nshead_svc = server->options().nshead_service;
     if (nshead_svc && nshead_svc->_status) {
         DescribeOptions options;

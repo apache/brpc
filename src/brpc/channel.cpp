@@ -32,6 +32,8 @@
 #include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/controller.h"
 #include "brpc/channel.h"
+#include "brpc/serialized_request.h"
+#include "brpc/serialized_response.h"
 #include "brpc/details/usercode_backup_pool.h"       // TooManyUserCode
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/policy/esp_authenticator.h"
