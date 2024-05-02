@@ -476,6 +476,22 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 cntl->SetFailed(ENOMEM, "Fail to get sampled_request");
                 break;
             }
+            sampled_request->meta.set_service_name(request_meta.service_name());
+            sampled_request->meta.set_method_name(request_meta.method_name());
+            cntl->reset_sampled_request(sampled_request);
+            // Switch to service-specific error.
+            non_service_error.release();
+            method_status = server->options().baidu_master_service->_status;
+            if (method_status) {
+                int rejected_cc = 0;
+                if (!method_status->OnRequested(&rejected_cc, cntl.get())) {
+                    cntl->SetFailed(
+                        ELIMIT,
+                        "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                        butil::class_name<BaiduMasterService>(), rejected_cc);
+                    break;
+                }
+            }
             if (span) {
                 span->ResetServerSpanName(sampled_request->meta.method_name());
             }
@@ -489,19 +505,6 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                               req_size - meta.attachment_size());
             if (!msg->payload.empty()) {
                 cntl->request_attachment().swap(msg->payload);
-            }
-            // Switch to service-specific error.
-            non_service_error.release();
-            method_status = server->options().baidu_master_service->_status;
-            if (method_status) {
-                int rejected_cc = 0;
-                if (!method_status->OnRequested(&rejected_cc, cntl.get())) {
-                    cntl->SetFailed(
-                        ELIMIT,
-                        "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                        butil::class_name<BaiduMasterService>(), rejected_cc);
-                    break;
-                }
             }
         } else {
             // NOTE(gejun): jprotobuf sends service names without packages. So the

@@ -305,7 +305,9 @@ public:
     // Get/own SampledRequest for sending dumped requests.
     // Deleted along with controller.
     void reset_sampled_request(SampledRequest* req);
-    const SampledRequest* sampled_request() { return _sampled_request; }
+    const SampledRequest* sampled_request() const { return _sampled_request; }
+    SampledRequest* release_sampled_request();
+
 
     // Attach a StreamCreator to this RPC. Notice that the ownership of sc has
     // been transferred to cntl, and sc->DestroyStreamCreator() would be called

@@ -494,7 +494,7 @@ TEST(EndPointTest, tcp_connect) {
     }
     {
         butil::fd_guard sockfd(butil::tcp_connect(ep, NULL, 1));
-        ASSERT_EQ(-1, sockfd);
+        ASSERT_EQ(-1, sockfd) << "errno=" << errno;
         ASSERT_EQ(ETIMEDOUT, errno);
     }
 

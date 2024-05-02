@@ -78,7 +78,7 @@ ScopeGuard<Callback> MakeScopeGuard(Callback&& callback) noexcept {
 }
 
 namespace internal {
-// for BAIDU_SCOPE_EXIT.
+// for BRPC_SCOPE_EXIT.
 enum class ScopeExitHelper {};
 
 template<typename Callback>

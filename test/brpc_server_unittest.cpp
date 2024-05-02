@@ -1666,6 +1666,12 @@ public:
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
+        ASSERT_NE(nullptr, cntl->sampled_request());
+        ASSERT_TRUE(cntl->sampled_request()->meta.has_service_name());
+        ASSERT_EQ(test::EchoService::descriptor()->full_name(),
+                  cntl->sampled_request()->meta.service_name());
+        ASSERT_TRUE(cntl->sampled_request()->meta.has_method_name());
+        ASSERT_EQ("Echo", cntl->sampled_request()->meta.method_name());
         test::EchoRequest echo_request;
         test::EchoResponse echo_response;
         brpc::CompressType type = cntl->request_compress_type();
@@ -1741,12 +1747,11 @@ TEST_F(ServerTest, generic_call) {
             req, &serialized_request.serialized_data(), type));
         cntl.request_attachment().append(EXP_REQUEST);
         cntl.set_request_compress_type(type);
-        brpc::SampledRequest* sampled_request = new (std::nothrow) brpc::SampledRequest();
+        auto sampled_request = new (std::nothrow) brpc::SampledRequest();
         sampled_request->meta.set_service_name(
             test::EchoService::descriptor()->full_name());
         sampled_request->meta.set_method_name(
             test::EchoService::descriptor()->FindMethodByName("Echo")->name());
-        // sampled_request->meta.set_compress_type(cntl.request_compress_type());
         cntl.reset_sampled_request(sampled_request);
         chan.CallMethod(NULL, &cntl, &serialized_request, &serialized_response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
