@@ -351,6 +351,40 @@ template <typename T> struct is_enum<const T> : is_enum<T> { };
 template <typename T> struct is_enum<volatile T> : is_enum<T> { };
 template <typename T> struct is_enum<const volatile T> : is_enum<T> { };
 
+// Deduces the return type of an INVOKE expression
+// at compile time.
+// If the callable is non-static member function,
+// the first argument should be the class type.
+#if (__cplusplus >= 201703L)
+// std::result_of is deprecated in C++17 and removed in C++20,
+// use std::invoke_result instead.
+template <typename>
+struct result_of;
+template <typename F, typename... Args>
+struct result_of<F(Args...)> : std::invoke_result<F, Args...> {};
+#elif (__cplusplus >= 201103L)
+template <typename F>
+using result_of = std::result_of<F>;
+#else
+#error Only C++11 or later is supported.
+#endif
+
+template <typename F>
+using result_of_t = typename result_of<F>::type;
+
+// Whether a callable returns type which is same as ReturnType.
+template<typename ReturnType, typename F, typename... Args>
+struct is_result_same
+    : public butil::is_same<ReturnType, result_of_t<F(Args...)>> {};
+
+// Whether a callable returns void.
+template<typename F, typename... Args>
+struct is_result_void : public is_result_same<void, F, Args...> {};
+
+// Whether a callable returns int.
+template<typename F, typename... Args>
+struct is_result_int : public is_result_same<int, F, Args...> {};
+
 }  // namespace butil
 
 #endif  // BUTIL_TYPE_TRAITS_H

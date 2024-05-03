@@ -486,11 +486,11 @@ TEST(EndPointTest, tcp_connect) {
     ASSERT_EQ(0, butil::hostname2endpoint(g_hostname, 80, &ep));
     {
         butil::fd_guard sockfd(butil::tcp_connect(ep, NULL));
-        ASSERT_LE(0, sockfd);
+        ASSERT_LE(0, sockfd) << "errno=" << errno;
     }
     {
         butil::fd_guard sockfd(butil::tcp_connect(ep, NULL, 1000));
-        ASSERT_LE(0, sockfd);
+        ASSERT_LE(0, sockfd) << "errno=" << errno;
     }
     {
         butil::fd_guard sockfd(butil::tcp_connect(ep, NULL, 1));

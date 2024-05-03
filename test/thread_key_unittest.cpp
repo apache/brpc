@@ -104,7 +104,7 @@ TEST(ThreadLocalTest, thread_key_seq) {
     }
 }
 
-void* THreadKeyCreateAndDeleteFunc(void* arg) {
+void* THreadKeyCreateAndDeleteFunc(void*) {
     while (!g_stopped) {
         ThreadKey key;
         EXPECT_EQ(0, butil::thread_key_create(key, NULL));
@@ -162,7 +162,7 @@ TEST(ThreadLocalTest, thread_local_multi_thread) {
         ASSERT_EQ(0, pthread_create(&threads[i], NULL, ThreadLocalFunc, &args));
     }
 
-    sleep(5);
+    sleep(2);
     g_stopped = true;
     for (const auto& thread : threads) {
         pthread_join(thread, NULL);
@@ -170,6 +170,46 @@ TEST(ThreadLocalTest, thread_local_multi_thread) {
     for (auto tl : args) {
         delete tl;
     }
+}
+
+butil::atomic<int> g_counter(0);
+
+void* ThreadLocalForEachFunc(void* arg) {
+    auto counter = static_cast<ThreadLocal<butil::atomic<int>>*>(arg);
+    auto local_counter = counter->get();
+    EXPECT_NE(nullptr, local_counter);
+    while (!g_stopped) {
+        local_counter->fetch_add(1, butil::memory_order_relaxed);
+        g_counter.fetch_add(1, butil::memory_order_relaxed);
+        if (butil::fast_rand_less_than(100) + 1 > 80) {
+            local_counter = new butil::atomic<int>(
+                local_counter->load(butil::memory_order_relaxed));
+            counter->reset(local_counter);
+        }
+    }
+    return NULL;
+}
+
+TEST(ThreadLocalTest, thread_local_for_each) {
+    g_stopped = false;
+    ThreadLocal<butil::atomic<int>> counter(false);
+    const int thread_num = 8;
+    pthread_t threads[thread_num];
+    for (int i = 0; i < thread_num; ++i) {
+        ASSERT_EQ(0, pthread_create(
+            &threads[i], NULL, ThreadLocalForEachFunc, &counter));
+    }
+
+    sleep(2);
+    g_stopped = true;
+    for (const auto& thread : threads) {
+        pthread_join(thread, NULL);
+    }
+    int count = 0;
+    counter.for_each([&count](butil::atomic<int>* c) {
+        count += c->load(butil::memory_order_relaxed);
+    });
+    ASSERT_EQ(count, g_counter.load(butil::memory_order_relaxed));
 }
 
 struct BAIDU_CACHELINE_ALIGNMENT ThreadKeyArg {
