@@ -35,9 +35,10 @@
 // modify directly. To emphasize this, you have to write the validator by
 // yourself and use GFLAGS_NS::GetCommandLineOption() to acess the flag.
 #define BRPC_VALIDATE_GFLAG(flag, validate_fn)                     \
-    const int register_FLAGS_ ## flag ## _dummy                         \
-                 __attribute__((__unused__)) =                          \
-        ::brpc::RegisterFlagValidatorOrDie(                       \
+    namespace brpc_flags {}                                        \
+    const int register_FLAGS_ ## flag ## _dummy                    \
+                 __attribute__((__unused__)) =                     \
+        ::brpc::RegisterFlagValidatorOrDie(                        \
             &FLAGS_##flag, (validate_fn))
 
 
