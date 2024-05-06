@@ -21,6 +21,7 @@
   * 何磊 @TousakaRin
   * 刘帅 @serverglen
   * 胡希国 @Huixxi
+  * 杨立明 @yanglimingcn
 
 ## 5. 值周记录如下
 
