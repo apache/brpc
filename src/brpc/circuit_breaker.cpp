@@ -21,6 +21,7 @@
 #include <gflags/gflags.h>
 
 #include "brpc/errno.pb.h"
+#include "brpc/reloadable_flags.h"
 #include "butil/time.h"
 
 namespace brpc {
@@ -45,6 +46,10 @@ DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 30000,
     "Maximum isolation duration in milliseconds");
 DEFINE_double(circuit_breaker_epsilon_value, 0.02,
     "ema_alpha = 1 - std::pow(epsilon, 1.0 / window_size)");
+DEFINE_int32(circuit_breaker_half_open_window_size, 10,
+    "Half open window sample size.");
+
+BRPC_VALIDATE_GFLAG(circuit_breaker_half_open_window_size, PositiveInteger);
 
 namespace {
 // EPSILON is used to generate the smoothing coefficient when calculating EMA.
@@ -171,7 +176,10 @@ CircuitBreaker::CircuitBreaker()
     , _last_reset_time_ms(0)
     , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms)
     , _isolated_times(0)
-    , _broken(false) {
+    , _broken(false)
+    , _half_open(false)
+    , _half_open_success_count(0)
+    , _half_open_window_size(FLAGS_circuit_breaker_half_open_window_size) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
@@ -188,6 +196,19 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
     }
+    if (_half_open.load(butil::memory_order_relaxed)) {
+        if (error_code != 0) {
+            MarkAsBroken();
+            return false;
+        }
+        if (_half_open_success_count.fetch_add(1, butil::memory_order_relaxed)
+                + 1 == _half_open_window_size) {
+            _half_open.store(false, butil::memory_order_relaxed);
+            _half_open_success_count.store(0, butil::memory_order_relaxed);
+            return true;
+        }
+    }
+
     if (_long_window.OnCallEnd(error_code, latency) &&
         _short_window.OnCallEnd(error_code, latency)) {
         return true;
@@ -201,6 +222,9 @@ void CircuitBreaker::Reset() {
     _short_window.Reset();
     _last_reset_time_ms = butil::cpuwide_time_ms();
     _broken.store(false, butil::memory_order_release);
+    _half_open.store(true, butil::memory_order_relaxed);
+    _half_open_success_count.store(0, butil::memory_order_relaxed);
+
 }
 
 void CircuitBreaker::MarkAsBroken() {

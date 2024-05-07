@@ -87,6 +87,9 @@ private:
     butil::atomic<int> _isolation_duration_ms;
     butil::atomic<int> _isolated_times;
     butil::atomic<bool> _broken;
+    butil::atomic<bool> _half_open;
+    butil::atomic<int32_t> _half_open_success_count;
+    const int _half_open_window_size;
 };
 
 }  // namespace brpc
