@@ -45,8 +45,6 @@ typedef HANDLE MutexHandle;
 #include <sys/syscall.h>
 #endif
 #include <time.h>
-#endif
-#if defined(OS_POSIX)
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
