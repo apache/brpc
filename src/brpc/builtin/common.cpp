@@ -339,17 +339,35 @@ static void CreateProgramName() {
         s_program_name = s_cmdline;
     }
 }
+
 const char* GetProgramName() {
     pthread_once(&create_program_name_once, CreateProgramName);
     return s_program_name;
 }
+
+static pthread_once_t create_program_path_once = PTHREAD_ONCE_INIT;
+static const char* s_program_path = "unknown";
+static char s_program_exec_path[PATH_MAX];
+static void CreateProgramPath() {
+    const ssize_t nr = butil::GetProcessAbsolutePath(s_program_exec_path, sizeof(s_program_exec_path) - 1);
+    if (nr > 0) {
+        s_program_exec_path[nr] = '\0';
+        s_program_path = s_program_exec_path;
+    }
+}
+
+const char* GetProgramPath() {
+    pthread_once(&create_program_path_once, CreateProgramPath);
+    return s_program_path;
+}
+
 
 static pthread_once_t compute_program_checksum_once = PTHREAD_ONCE_INIT;
 static char s_program_checksum[33];
 static const char s_alphabet[] = "0123456789abcdef";
 static void ComputeProgramCHECKSUM() {
     unsigned char checksum[16];
-    FileChecksum(GetProgramName(), checksum);
+    FileChecksum(GetProgramPath(), checksum);
     for (size_t i = 0, j = 0; i < 16; ++i, j+=2) {
         s_program_checksum[j] = s_alphabet[checksum[i] >> 4];
         s_program_checksum[j+1] = s_alphabet[checksum[i] & 0xF];

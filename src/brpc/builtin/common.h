@@ -112,6 +112,9 @@ int FileChecksum(const char* file_path, unsigned char* checksum);
 // Get name of current program.
 const char* GetProgramName();
 
+// Get absolute path of current program.
+const char* GetProgramPath();
+
 // Get checksum of current program image.
 const char* GetProgramChecksum();
 

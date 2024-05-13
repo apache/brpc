@@ -19,6 +19,8 @@
 
 // Date: Wed Apr 11 14:35:56 CST 2018
 
+#include <cstddef>
+#include <cstring>
 #include <fcntl.h>                      // open
 #include <stdio.h>                      // snprintf
 #include <sys/types.h>  
@@ -30,6 +32,9 @@
 #include "butil/popen.h"                // read_command_output
 #include "butil/process_util.h"
 
+#if defined(OS_MACOSX)
+#include <libproc.h>                   // proc_pidpath
+#endif
 namespace butil {
 
 ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
@@ -83,6 +88,21 @@ ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
         }
         return nr;
     }
+}
+
+// Get absolute path of this program.
+// Returns length of the absolute path on sucess, -1 otherwise.
+// NOTE: `buf' does not end with zero.
+ssize_t GetProcessAbsolutePath(char *buf, size_t len) {
+#if defined(OS_LINUX)
+    memset(buf, 0, len);
+    ssize_t nr = readlink("/proc/self/exe", buf, len);
+    return nr;
+#elif defined(OS_MACOSX)
+    memset(buf, 0, len);
+    int ret = proc_pidpath(getpid(), buf, len);
+    return ret;
+#endif
 }
 
 } // namespace butil
