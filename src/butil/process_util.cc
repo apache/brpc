@@ -19,8 +19,6 @@
 
 // Date: Wed Apr 11 14:35:56 CST 2018
 
-#include <cstddef>
-#include <cstring>
 #include <fcntl.h>                      // open
 #include <stdio.h>                      // snprintf
 #include <sys/types.h>  
@@ -90,9 +88,6 @@ ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
     }
 }
 
-// Get absolute path of this program.
-// Returns length of the absolute path on sucess, -1 otherwise.
-// NOTE: `buf' does not end with zero.
 ssize_t GetProcessAbsolutePath(char *buf, size_t len) {
 #if defined(OS_LINUX)
     memset(buf, 0, len);
