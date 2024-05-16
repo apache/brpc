@@ -96,7 +96,7 @@ operator+(ScopeExitHelper, Callback&& callback) {
 } // namespace internal
 } // namespace butil
 
-#define BAIDU_ANONYMOUS_VARIABLE(prefix) BAIDU_CONCAT(prefix, __COUNTER__)
+#define BRPC_ANONYMOUS_VARIABLE(prefix) BAIDU_CONCAT(prefix, __COUNTER__)
 
 // The code in the braces of BAIDU_SCOPE_EXIT always executes at the end of the scope.
 // Variables used within BAIDU_SCOPE_EXIT are captured by reference.
@@ -107,8 +107,8 @@ operator+(ScopeExitHelper, Callback&& callback) {
 // };
 // use fd ...
 //
-#define BAIDU_SCOPE_EXIT                                     \
-  auto BAIDU_ANONYMOUS_VARIABLE(SCOPE_EXIT) =                \
+#define BRPC_SCOPE_EXIT                                     \
+  auto BRPC_ANONYMOUS_VARIABLE(SCOPE_EXIT) =                \
       ::butil::internal::ScopeExitHelper() + [&]() noexcept
 
 #endif // BRPC_SCOPED_GUARD_H

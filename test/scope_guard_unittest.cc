@@ -30,18 +30,18 @@ TEST(ScopedGuardTest, sanity) {
 
     flag = false;
     {
-        BAIDU_SCOPE_EXIT {
+        BRPC_SCOPE_EXIT {
             flag = true;
         };
     }
     ASSERT_TRUE(flag);
 
     {
-        BAIDU_SCOPE_EXIT {
+        BRPC_SCOPE_EXIT {
             flag = true;
         };
 
-        BAIDU_SCOPE_EXIT {
+        BRPC_SCOPE_EXIT {
             flag = false;
         };
     }

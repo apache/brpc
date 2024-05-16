@@ -467,7 +467,7 @@ int pthread_timed_connect(int sockfd, const struct sockaddr* serv_addr,
         butil::make_non_blocking(sockfd);
     }
     // Scoped non-blocking.
-    BAIDU_SCOPE_EXIT {
+    BRPC_SCOPE_EXIT {
         if (is_blocking) {
             butil::make_blocking(sockfd);
         }
