@@ -30,6 +30,9 @@
 #include "butil/popen.h"                // read_command_output
 #include "butil/process_util.h"
 
+#if defined(OS_MACOSX)
+#include <libproc.h>                   // proc_pidpath
+#endif
 namespace butil {
 
 ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
@@ -83,6 +86,18 @@ ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
         }
         return nr;
     }
+}
+
+ssize_t GetProcessAbsolutePath(char *buf, size_t len) {
+#if defined(OS_LINUX)
+    memset(buf, 0, len);
+    ssize_t nr = readlink("/proc/self/exe", buf, len);
+    return nr;
+#elif defined(OS_MACOSX)
+    memset(buf, 0, len);
+    int ret = proc_pidpath(getpid(), buf, len);
+    return ret;
+#endif
 }
 
 } // namespace butil

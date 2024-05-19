@@ -496,7 +496,7 @@ static void DisplayResult(Controller* cntl,
         cmd_builder << "--base " << *base_name << ' ';
     }
 
-    cmd_builder << GetProgramName() << " " << prof_name;
+    cmd_builder << GetProgramPath() << " " << prof_name;
 
     if (display_type == DisplayType::kFlameGraph) {
         // For flamegraph, we don't care about pprof error msg, 
@@ -512,7 +512,7 @@ static void DisplayResult(Controller* cntl,
     if (base_name) {
         cmd_builder << "-base " << *base_name << ' ';
     }
-    cmd_builder << GetProgramName() << " " << prof_name << " 2>&1 ";
+    cmd_builder << GetProgramPath() << " " << prof_name << " 2>&1 ";
 #endif
 
     const std::string cmd = cmd_builder.str();

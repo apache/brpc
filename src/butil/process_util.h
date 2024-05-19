@@ -32,6 +32,11 @@ namespace butil {
 // NOTE: `buf' does not end with zero.
 ssize_t ReadCommandLine(char* buf, size_t len, bool with_args);
 
+// Get absolute path of this program.
+// Returns length of the absolute path on sucess, -1 otherwise.
+// NOTE: `buf' does not end with zero.
+ssize_t GetProcessAbsolutePath(char* buf, size_t len);
+
 } // namespace butil
 
 #endif // BUTIL_PROCESS_UTIL_H
