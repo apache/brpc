@@ -22,18 +22,23 @@ FLAGS_bthread_concurrency为所有分组的线程数的上限，FLAGS_bthread_mi
 一般情况应用创建的bthread不需要设置bthread_attr_t的tag字段，创建的bthread会在当前tag上下文中执行；如果希望创建的bthread不在当前tag上下文中执行，可以设置bthread_attr_t的tag字段为希望的值，这么做会对性能有些损失，关键路径上应该避免这么做。
 
 Q：如何动态改变分组线程的数量？
-A：当前每个分组的线程数最少为4个，所以先设置FLAGS_bthread_concurrency=4*分组数，再设置FLAGS_bthread_min_concurrency=FLAGS_bthread_concurrency，之后再把FLAGS_bthread_concurrency改大一些，之后再设置FLAGS_bthread_current_tag和FLAGS_bthread_concurrency_by_tag来改变某个分组的线程数。
+
+A：server的线程数最少为4个，后台任务线程数最少为2个，所以上面的例子中，FLAGS_bthread_concurrency最小值为4+4+2=10，再设置FLAGS_bthread_min_concurrency=FLAGS_bthread_concurrency，之后再把FLAGS_bthread_concurrency改大一些，之后再设置FLAGS_bthread_current_tag和FLAGS_bthread_concurrency_by_tag来改变某个分组的线程数。对于server，如果设置了ServerOption.bthread_tag，num_threads的含义是这个分组的线程数；如果没有设置（相当于没有启用分组，默认值为BTHREAD_TAG_INVALID）,num_thread的含义是所有分组的线程数。
 
 Q：不同分组之间有什么关系吗？
+
 A：不同分组是独立的线程池和事件驱动器，完全没有关系。
 
 Q：可以在分组之间做bthread的同步操作吗？
+
 A：可以的，每个bthread都有自己的tag标签，挂起后重新投入运行将继续在这个tag的线程池上执行。
 
 Q：客户端发送和接收RPC消息是在哪个分组上执行的？
+
 A：这取决于客户端的上下文，如果客户端不在任何tag分组上，那将使用tag0分组收发消息；否则将在当前所在的tag分组收发消息。
 
 Q：如何将一个分组的线程绑定到指定的一些cpu上面。
+
 A：int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t))这个函数用于在某个分组上做一些初始化的工作，比如：可以实现绑核的代码，根据tag入参来确定不同分组绑定不同的cpu。
 
 # 监控

@@ -149,7 +149,7 @@ ServerOptions::ServerOptions()
     , health_reporter(NULL)
     , rtmp_service(NULL)
     , redis_service(NULL)
-    , bthread_tag(BTHREAD_TAG_DEFAULT) {
+    , bthread_tag(BTHREAD_TAG_INVALID) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -833,6 +833,17 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 #endif
     }
 
+    auto original_bthread_tag = _options.bthread_tag;
+    if (original_bthread_tag == BTHREAD_TAG_INVALID) {
+        _options.bthread_tag = BTHREAD_TAG_DEFAULT;
+    }
+    if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
+        _options.bthread_tag >= FLAGS_task_group_ntags) {
+        LOG(ERROR) << "Fail to set tag " << _options.bthread_tag << ", tag range is ["
+                   << BTHREAD_TAG_DEFAULT << ":" << FLAGS_task_group_ntags << ")";
+        return -1;
+    }
+
     if (_options.http_master_service) {
         // Check requirements for http_master_service:
         //  has "default_method" & request/response have no fields
@@ -1020,7 +1031,11 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         if (_options.num_threads < BTHREAD_MIN_CONCURRENCY) {
             _options.num_threads = BTHREAD_MIN_CONCURRENCY;
         }
-        bthread_setconcurrency(_options.num_threads);
+        if (original_bthread_tag == BTHREAD_TAG_INVALID) {
+            bthread_setconcurrency(_options.num_threads);
+        } else {
+            bthread_setconcurrency_by_tag(_options.num_threads, _options.bthread_tag);
+        }
     }
 
     for (MethodMap::iterator it = _method_map.begin();
@@ -1085,12 +1100,6 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 return -1;
             }
             _am->_use_rdma = _options.use_rdma;
-            if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
-                _options.bthread_tag >= FLAGS_task_group_ntags) {
-                LOG(ERROR) << "Fail to set tag " << _options.bthread_tag << ", tag range is ["
-                           << BTHREAD_TAG_DEFAULT << ":" << FLAGS_task_group_ntags << ")";
-                return -1;
-            }
             _am->_bthread_tag = _options.bthread_tag;
         }
         // Set `_status' to RUNNING before accepting connections
