@@ -30,6 +30,25 @@ TEST(ScopedGuardTest, sanity) {
 
     flag = false;
     {
+        BRPC_SCOPE_EXIT {
+            flag = true;
+        };
+    }
+    ASSERT_TRUE(flag);
+
+    {
+        BRPC_SCOPE_EXIT {
+            flag = true;
+        };
+
+        BRPC_SCOPE_EXIT {
+            flag = false;
+        };
+    }
+    ASSERT_TRUE(flag);
+
+    flag = false;
+    {
         auto guard = butil::MakeScopeGuard([&flag] {
             flag = true;
         });

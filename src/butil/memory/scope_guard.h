@@ -19,6 +19,7 @@
 #define BRPC_SCOPED_GUARD_H
 
 #include <type_traits>
+#include "butil/macros.h"
 
 namespace butil {
 
@@ -83,6 +84,31 @@ ScopeGuard<Callback> MakeScopeGuard(Callback&& callback) noexcept {
     return ScopeGuard<Callback>{ std::forward<Callback>(callback)};
 }
 
+namespace internal {
+// for BAIDU_SCOPE_EXIT.
+enum class ScopeExitHelper {};
+
+template<typename Callback>
+ScopeGuard<Callback>
+operator+(ScopeExitHelper, Callback&& callback) {
+    return MakeScopeGuard(std::forward<Callback>(callback));
 }
+} // namespace internal
+} // namespace butil
+
+#define BRPC_ANONYMOUS_VARIABLE(prefix) BAIDU_CONCAT(prefix, __COUNTER__)
+
+// The code in the braces of BAIDU_SCOPE_EXIT always executes at the end of the scope.
+// Variables used within BAIDU_SCOPE_EXIT are captured by reference.
+// Example:
+// int fd = open(...);
+// BAIDU_SCOPE_EXIT {
+//     close(fd);
+// };
+// use fd ...
+//
+#define BRPC_SCOPE_EXIT                                     \
+  auto BRPC_ANONYMOUS_VARIABLE(SCOPE_EXIT) =                \
+      ::butil::internal::ScopeExitHelper() + [&]() noexcept
 
 #endif // BRPC_SCOPED_GUARD_H

@@ -467,11 +467,11 @@ int pthread_timed_connect(int sockfd, const struct sockaddr* serv_addr,
         butil::make_non_blocking(sockfd);
     }
     // Scoped non-blocking.
-    auto guard = butil::MakeScopeGuard([is_blocking, sockfd]() {
+    BRPC_SCOPE_EXIT {
         if (is_blocking) {
             butil::make_blocking(sockfd);
         }
-    });
+    };
 
     const int rc = ::connect(sockfd, serv_addr, addrlen);
     if (rc == 0 || errno != EINPROGRESS) {
