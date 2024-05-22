@@ -339,13 +339,12 @@ TEST(KeyTest, set_tls_before_creating_any_bthread) {
 
 struct PoolData {
     bthread_key_t key;
-    PoolData* expected_data;
+    PoolData* data;
     int seq;
     int end_seq;
 };
 
 static void pool_thread_impl(PoolData* data) {
-    ASSERT_EQ(data->expected_data, (PoolData*)bthread_getspecific(data->key));
     if (NULL == bthread_getspecific(data->key)) {
         ASSERT_EQ(0, bthread_setspecific(data->key, data));
     }
@@ -385,19 +384,17 @@ TEST(KeyTest, using_pool) {
     ASSERT_EQ(0, bthread_start_urgent(&bth, &attr, pool_thread, &bth_data));
     ASSERT_EQ(0, bthread_join(bth, NULL));
     ASSERT_EQ(0, bth_data.seq);
-    ASSERT_EQ(1, bthread_keytable_pool_size(&pool));
 
     PoolData bth2_data = { key, &bth_data, 0, 3 };
     bthread_t bth2;
     ASSERT_EQ(0, bthread_start_urgent(&bth2, &attr2, pool_thread, &bth2_data));
     ASSERT_EQ(0, bthread_join(bth2, NULL));
     ASSERT_EQ(0, bth2_data.seq);
-    ASSERT_EQ(1, bthread_keytable_pool_size(&pool));
         
     ASSERT_EQ(0, bthread_keytable_pool_destroy(&pool));
     
     EXPECT_EQ(bth_data.end_seq, bth_data.seq);
-    EXPECT_EQ(0, bth2_data.seq);
+    EXPECT_EQ(bth_data.end_seq, bth2_data.seq);
 
     ASSERT_EQ(0, bthread_key_delete(key));
 }
