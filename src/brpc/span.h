@@ -206,7 +206,7 @@ void AnnotateSpan(const char* fmt, ...);
 
 class SpanFilter {
 public:
-    virtual ~SpanFilter() {}
+    virtual ~SpanFilter() = default;
     virtual bool Keep(const BriefSpan&) = 0;
 };
 
