@@ -234,11 +234,12 @@ public:
 };
 
 static KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
-    if (pool != NULL && (pool->list->get()->keytable || pool->free_keytables)) {
+    butil::ThreadLocal<bthread::KeyTableList>* list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
+    if (pool != NULL && (list->get()->keytable || pool->free_keytables)) {
         pthread_rwlock_rdlock(&pool->rwlock);
-        KeyTable* p = pool->list->get()->keytable;
+        KeyTable* p = list->get()->keytable;
         if (p) {
-            pool->list->get()->keytable = p->next;
+            list->get()->keytable = p->next;
             pthread_rwlock_unlock(&pool->rwlock);
             return p;
         }
@@ -273,8 +274,9 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
         delete kt;
         return;
     }
-    kt->next = pool->list->get()->keytable;
-    pool->list->get()->keytable = kt;
+    butil::ThreadLocal<bthread::KeyTableList>* list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
+    kt->next = list->get()->keytable;
+    list->get()->keytable = kt;
     pthread_rwlock_unlock(&pool->rwlock);
 }
 
@@ -336,7 +338,7 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
     bthread::KeyTable* saved_free_keytables = NULL;
     pthread_rwlock_wrlock(&pool->rwlock);
     pool->destroyed = 1;
-    delete pool->list;
+    delete (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
     saved_free_keytables = (bthread::KeyTable*)pool->free_keytables;
     pool->free_keytables = NULL;
     pthread_rwlock_unlock(&pool->rwlock);
@@ -358,7 +360,7 @@ int bthread_keytable_pool_getstat(bthread_keytable_pool_t* pool,
         LOG(ERROR) << "Param[pool] or Param[stat] is NULL";
         return EINVAL;
     }
-    pthread_rwlock_wrlock(&pool->rwlock);
+    pthread_rwlock_rdlock(&pool->rwlock);
     size_t count = 0;
     bthread::KeyTable* p = (bthread::KeyTable*)pool->free_keytables;
     for (; p; p = p->next, ++count) {}
