@@ -46,6 +46,8 @@ private:
 
 class MongoServiceAdaptor {
 public:
+    virtual ~MongoServiceAdaptor() = default;
+
     // Make an error msg when the cntl fails. If cntl fails, we must send mongo client a msg not 
     // only to indicate the error, but also to finish the round trip.
     virtual void SerializeError(int response_to, butil::IOBuf* out_buf) const = 0;
