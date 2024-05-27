@@ -234,11 +234,12 @@ public:
 };
 
 static KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
-    butil::ThreadLocal<bthread::KeyTableList>* list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
-    if (pool != NULL && (list->get()->keytable || pool->free_keytables)) {
+    if (pool != NULL && (pool->list || pool->free_keytables)) {
+        KeyTable* p;
+        auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
         pthread_rwlock_rdlock(&pool->rwlock);
-        KeyTable* p = list->get()->keytable;
-        if (p) {
+        if (list && list->get()->keytable) {
+            p = list->get()->keytable;
             list->get()->keytable = p->next;
             pthread_rwlock_unlock(&pool->rwlock);
             return p;
@@ -274,7 +275,7 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
         delete kt;
         return;
     }
-    butil::ThreadLocal<bthread::KeyTableList>* list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
+    auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
     kt->next = list->get()->keytable;
     list->get()->keytable = kt;
     pthread_rwlock_unlock(&pool->rwlock);
@@ -340,12 +341,22 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
     pool->destroyed = 1;
     delete (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
     saved_free_keytables = (bthread::KeyTable*)pool->free_keytables;
+    pool->list = NULL;
     pool->free_keytables = NULL;
     pthread_rwlock_unlock(&pool->rwlock);
+
+    // Cheat get/setspecific and destroy the keytables.
+    bthread::TaskGroup* const g = bthread::tls_task_group;
+    bthread::KeyTable* old_kt = bthread::tls_bls.keytable;
     while(saved_free_keytables) {
         bthread::KeyTable* kt = saved_free_keytables;
         saved_free_keytables = kt->next;
+        bthread::tls_bls.keytable = kt;
         delete kt;
+    }
+    bthread::tls_bls.keytable = old_kt;
+    if (g) {
+        g->current_task()->local_storage.keytable = old_kt;
     }
     return 0;
     // TODO: return_keytable may race with this function, we don't destroy
