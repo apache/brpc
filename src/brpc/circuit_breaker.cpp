@@ -47,8 +47,10 @@ DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 30000,
 DEFINE_double(circuit_breaker_epsilon_value, 0.02,
     "ema_alpha = 1 - std::pow(epsilon, 1.0 / window_size)");
 DEFINE_int32(circuit_breaker_half_open_window_size, 0,
-    "Half open window sample size.");
-
+    "The limited number of requests allowed to pass through by the half-open "
+    "window. Only if all of them are successful, the circuit breaker will "
+    "go to the closed state. Otherwise, it goes back to the open state. "
+    "Values == 0 disables this feature");
 BRPC_VALIDATE_GFLAG(circuit_breaker_half_open_window_size, NonNegativeInteger);
 
 namespace {

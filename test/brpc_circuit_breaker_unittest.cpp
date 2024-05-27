@@ -190,6 +190,8 @@ TEST_F(CircuitBreakerTest, should_isolate_with_half_open) {
         total_failed1 += fc->_unhealthy_cnt;
     }
 
+    // Enable the half-open state.
+    // The first request cause _broken = true immediately.
     brpc::FLAGS_circuit_breaker_half_open_window_size = 10;
     _circuit_breaker.Reset();
     int total_failed2 = 0;
@@ -205,7 +207,12 @@ TEST_F(CircuitBreakerTest, should_isolate_with_half_open) {
     }
     brpc::FLAGS_circuit_breaker_half_open_window_size = 0;
 
-    EXPECT_EQ(kLongWindowSize * 2 * kThreadNum - kShortWindowSize * brpc::FLAGS_circuit_breaker_short_window_error_percent / 100, total_failed);
+    EXPECT_EQ(kLongWindowSize * 2 * kThreadNum -
+                  kShortWindowSize *
+                      brpc::FLAGS_circuit_breaker_short_window_error_percent /
+                      100,
+              total_failed);
+
     EXPECT_EQ(total_failed1, total_failed);
     EXPECT_EQ(kLongWindowSize * 2 * kThreadNum, total_failed2);
 }
