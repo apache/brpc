@@ -211,7 +211,7 @@ public:
         keytable = NULL;
     }
     ~KeyTableList() {
-        bthread::TaskGroup* const g = bthread::tls_task_group;
+        bthread::TaskGroup* g = bthread::tls_task_group;
         bthread::KeyTable* old_kt = bthread::tls_bls.keytable;
         while (keytable) {
             bthread::KeyTable* kt = keytable;
@@ -224,6 +224,7 @@ public:
             if (old_kt == kt) {
                 old_kt = NULL;
             }
+            g = bthread::tls_task_group;
         }
         bthread::tls_bls.keytable = old_kt;
         if(g) {
@@ -236,8 +237,8 @@ public:
 static KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
     if (pool != NULL && (pool->list || pool->free_keytables)) {
         KeyTable* p;
-        auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
         pthread_rwlock_rdlock(&pool->rwlock);
+        auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
         if (list && list->get()->keytable) {
             p = list->get()->keytable;
             list->get()->keytable = p->next;
@@ -346,13 +347,17 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
     pthread_rwlock_unlock(&pool->rwlock);
 
     // Cheat get/setspecific and destroy the keytables.
-    bthread::TaskGroup* const g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::tls_task_group;
     bthread::KeyTable* old_kt = bthread::tls_bls.keytable;
     while(saved_free_keytables) {
         bthread::KeyTable* kt = saved_free_keytables;
         saved_free_keytables = kt->next;
         bthread::tls_bls.keytable = kt;
+        if (g) {
+            g->current_task()->local_storage.keytable = kt;
+        }
         delete kt;
+        g = bthread::tls_task_group;
     }
     bthread::tls_bls.keytable = old_kt;
     if (g) {
