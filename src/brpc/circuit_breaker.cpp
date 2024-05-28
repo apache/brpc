@@ -207,7 +207,6 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
                 + 1 == FLAGS_circuit_breaker_half_open_window_size) {
             _half_open.store(false, butil::memory_order_relaxed);
             _half_open_success_count.store(0, butil::memory_order_relaxed);
-            return true;
         }
     }
 
@@ -228,7 +227,6 @@ void CircuitBreaker::Reset() {
         _half_open.store(true, butil::memory_order_relaxed);
         _half_open_success_count.store(0, butil::memory_order_relaxed);
     }
-
 }
 
 void CircuitBreaker::MarkAsBroken() {
