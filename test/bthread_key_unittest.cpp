@@ -344,9 +344,13 @@ struct PoolData {
     int end_seq;
 };
 
+bool use_same_keytable = false;
+
 static void pool_thread_impl(PoolData* data) {
     if (NULL == bthread_getspecific(data->key)) {
         ASSERT_EQ(0, bthread_setspecific(data->key, data));
+    } else {
+        use_same_keytable = true;
     }
 };
 
@@ -385,16 +389,20 @@ TEST(KeyTest, using_pool) {
     ASSERT_EQ(0, bthread_join(bth, NULL));
     ASSERT_EQ(0, bth_data.seq);
 
-    PoolData bth2_data = { key, &bth_data, 0, 3 };
+    PoolData bth2_data = { key, NULL, 0, 3 };
     bthread_t bth2;
     ASSERT_EQ(0, bthread_start_urgent(&bth2, &attr2, pool_thread, &bth2_data));
     ASSERT_EQ(0, bthread_join(bth2, NULL));
     ASSERT_EQ(0, bth2_data.seq);
         
     ASSERT_EQ(0, bthread_keytable_pool_destroy(&pool));
-    
-    EXPECT_EQ(bth_data.end_seq, bth_data.seq);
-    EXPECT_EQ(bth_data.end_seq, bth2_data.seq);
+    if(use_same_keytable) {
+        EXPECT_EQ(bth_data.end_seq, bth_data.seq);
+        EXPECT_EQ(0, bth2_data.seq); 
+    } else {
+        EXPECT_EQ(bth_data.end_seq, bth_data.seq);
+        EXPECT_EQ(bth_data.end_seq, bth2_data.seq);
+    }
 
     ASSERT_EQ(0, bthread_key_delete(key));
 }
@@ -412,7 +420,7 @@ static void lid_dtor(void* tls) {
 
 static void lid_worker_impl(bthread_key_t key) {
     ASSERT_EQ(NULL, bthread_getspecific(key));
-    ASSERT_EQ(0, bthread_setspecific(key, (void*)seq.fetch_add(1)));
+    ASSERT_EQ(0, bthread_setspecific(key, (void*)lid_seq.fetch_add(1)));
 }
 
 static void* lid_worker(void* arg) {
