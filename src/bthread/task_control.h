@@ -78,6 +78,9 @@ public:
     // If this method is called after init(), it never returns NULL.
     TaskGroup* choose_one_group();
 
+    // Select task group.
+    TaskGroup* select_group(int group_id);
+
 private:
     // Add/Remove a TaskGroup.
     // Returns 0 on success, -1 otherwise.

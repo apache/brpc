@@ -42,34 +42,23 @@ public:
     }
 
     bool pop(bthread_t *task) {
-      int tmp_cnt = _task_cnt.load(std::memory_order_acquire);
-      if (_tasks.try_dequeue(*task)) {
-        tmp_cnt--;
-        return true;
-      } else {
-        return false;
-      }
-      if (tmp_cnt > 0 &&
-          _task_cnt.compare_exchange_strong(tmp_cnt, tmp_cnt - 1)) {
-        if (_tasks.try_dequeue(*task)) {
-          return true;
-        } else {
-          _task_cnt++;
-          return false;
+        if (_task_cnt.load(std::memory_order_acquire) > 0 && _tasks.try_dequeue(*task)) {
+            _task_cnt.fetch_sub(1, std::memory_order_release);
+            return true;
         }
-      }
+        return false;
     }
 
     bool push(bthread_t task) {
-      if (_tasks.enqueue(task)) {
-        _task_cnt++;
-        return true;
-      }
-      return false;
+        if (_tasks.enqueue(task)) {
+            _task_cnt.fetch_add(1, std::memory_order_release);
+            return true;
+        }
+        return false;
     }
 
     size_t capacity() const {
-      return _task_cnt.load(std::memory_order_acquire);
+        return _task_cnt.load(std::memory_order_acquire);
     }
 
     friend class TaskGroup;
@@ -118,7 +107,7 @@ public:
     }
 
     size_t capacity() const { return _tasks.capacity(); }
-    
+
 private:
 friend class TaskGroup;
     DISALLOW_COPY_AND_ASSIGN(RemoteTaskQueue);

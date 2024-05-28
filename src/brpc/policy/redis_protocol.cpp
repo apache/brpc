@@ -161,22 +161,25 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         // Bind this command to this task group. We need to make sure that this
         // bthread cannot be executed by other task groups since we will be
         // accessing cc shard data which is not thread safe.
-        bthread::TaskGroup *g = bthread::tls_task_group;
-        if (g->tx_processor_exec_ != nullptr) {
-            g->current_task()->bound_task_group = g;
+        // Note!! The task's bound group might change after parsing and the task
+        // might jump to another task group in `ConsumeCommand`.
+        bthread::TaskGroup *cur_group = bthread::tls_task_group;
+        bthread::TaskMeta *cur_task = cur_group->current_task();
+        if (cur_group->tx_processor_exec_ != nullptr) {
+            cur_task->SetBoundGroup(cur_group);
         } else if (get_tx_proc_functors != nullptr) {
             // if the tx proc functors are not set yet.
-            auto functors = get_tx_proc_functors(g->group_id_);
-            g->tx_processor_exec_ = std::get<0>(functors);
-            g->update_ext_proc_ = std::get<1>(functors);
-            g->override_shard_heap_ = std::get<2>(functors);
-            g->update_ext_proc_(1);
-            g->current_task()->bound_task_group = g;
+            auto functors = get_tx_proc_functors(cur_group->group_id_);
+            cur_group->tx_processor_exec_ = std::get<0>(functors);
+            cur_group->update_ext_proc_ = std::get<1>(functors);
+            cur_group->override_shard_heap_ = std::get<2>(functors);
+            cur_group->update_ext_proc_(1);
+            cur_task->SetBoundGroup(cur_group);
         }
 
         err = ctx->parser.Consume(*source, &current_args, &ctx->arena);
         if (err != PARSE_OK) {
-            g->current_task()->bound_task_group = NULL;
+            cur_task->SetBoundGroup(NULL);
             return MakeParseError(err);
         }
         while (true) {
@@ -186,17 +189,19 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                 break;
             }
             if (ConsumeCommand(ctx, current_args, false, &appender) != 0) {
-                g->current_task()->bound_task_group = NULL;
+                cur_task->SetBoundGroup(NULL);
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_args.swap(next_args);
         }
         if (ConsumeCommand(ctx, current_args,
                       true /*must be the last message*/, &appender) != 0) {
-            g->current_task()->bound_task_group = NULL;
+            cur_task->SetBoundGroup(NULL);
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
-        g->current_task()->bound_task_group = NULL;
+
+        cur_task->SetBoundGroup(NULL);
+
         butil::IOBuf sendbuf;
         appender.move_to(sendbuf);
         if (!sendbuf.empty()) {

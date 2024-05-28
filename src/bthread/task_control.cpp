@@ -254,6 +254,17 @@ TaskGroup* TaskControl::choose_one_group() {
     return NULL;
 }
 
+TaskGroup* TaskControl::select_group(int group_id) {
+    const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
+    for (size_t i = 0; i < ngroup; i++) {
+        if (_groups[i]->group_id_ == group_id) {
+            return _groups[i];
+        }
+    }
+    LOG(ERROR) << "Selected group: " << group_id << " out of range, group number: " << ngroup;
+    return NULL;
+}
+
 extern int stop_and_join_epoll_threads();
 
 void TaskControl::stop_and_join() {

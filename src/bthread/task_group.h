@@ -106,6 +106,12 @@ public:
     // is undefined.
     static void yield(TaskGroup** pg);
 
+    // Suspend caller and move it to another group.
+    static void jump_group(TaskGroup** pg, int target_gid);
+
+    // Suspend caller bthread and block it.
+    static void block(TaskGroup** pg);
+
     // Suspend caller until bthread `tid' terminates.
     static int join(bthread_t tid, void** return_value);
 
@@ -160,6 +166,12 @@ public:
     void ready_to_run_remote(bthread_t tid, bool nosignal = false);
     void flush_nosignal_tasks_remote();
 
+    // Push a bthread into the bound queue from another thread.
+    void ready_to_run_bound(bthread_t tid, bool nosignal = false);
+
+    // Push a bthread bound to this group back.
+    void resume_bound_task(bthread_t tid, bool nosignal = false);
+
     // Automatically decide the caller is remote or local, and call
     // the corresponding function.
     void ready_to_run_general(bthread_t tid, bool nosignal = false);
@@ -210,7 +222,15 @@ public:
         bool nosignal;
     };
     static void ready_to_run_in_worker(void*);
+    struct ReadyToRunTargetArgs {
+        bthread_t tid;
+        bool nosignal;
+        // the target group to push the task into, ready_to_run_in_target_worker
+        TaskGroup *target_group;
+    };
+    static void ready_to_run_in_target_worker(void*);
     static void ready_to_run_in_worker_ignoresignal(void*);
+    static void empty_callback(void*);
 
     // Wait for a task to run.
     // Returns true on success, false is treated as permanent error and the
@@ -218,7 +238,7 @@ public:
     bool wait_task(bthread_t* tid);
 
     bool steal_task(bthread_t* tid) {
-        if (_remote_rq.pop(tid)) {
+        if (_bound_rq.pop(tid) || _remote_rq.pop(tid)) {
             return true;
         }
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
@@ -252,6 +272,8 @@ public:
     bthread_t _main_tid;
     WorkStealingQueue<bthread_t> _rq;
     RemoteQueue _remote_rq;
+    // The tasks bound to this group. Should not be stolen by other groups.
+    RemoteQueue _bound_rq;
     std::atomic<int> _remote_num_nosignal{0};
     std::atomic<int> _remote_nsignaled{0};
 

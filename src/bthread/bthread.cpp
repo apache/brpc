@@ -388,6 +388,24 @@ int bthread_yield(void) {
     return sched_yield();
 }
 
+int bthread_jump_group(int group_id) {
+    bthread::TaskGroup* g = bthread::tls_task_group;
+    if (NULL != g && !g->is_current_pthread_task() && group_id != g->group_id_) {
+        bthread::TaskGroup::jump_group(&g, group_id);
+        return 0;
+    }
+    return -1;
+}
+
+int bthread_block(void) {
+    bthread::TaskGroup* g = bthread::tls_task_group;
+    if (NULL != g && !g->is_current_pthread_task()) {
+        bthread::TaskGroup::block(&g);
+        return 0;
+    }
+    return -1;
+}
+
 int bthread_set_worker_startfn(void (*start_fn)()) {
     if (start_fn == NULL) {
         return EINVAL;

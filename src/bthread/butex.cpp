@@ -319,6 +319,8 @@ int butex_wake(void* arg, bool nosignal) {
                                         : get_task_group(bbw->control, nosignal);
     if (g == tls_task_group) {
         run_in_local_task_group(g, bbw->tid, nosignal);
+    } else if (g == m->bound_task_group) {
+        g->ready_to_run_bound(bbw->tid, nosignal);
     } else {
         g->ready_to_run_remote(bbw->tid, nosignal);
     }

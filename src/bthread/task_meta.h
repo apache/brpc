@@ -93,7 +93,7 @@ struct TaskMeta {
     LocalStorage local_storage;
 
     // If this task needs to be executed on a specific task group.
-    TaskGroup *bound_task_group;
+    TaskGroup *bound_task_group{};
 
   public:
     // Only initialize [Not Reset] fields, other fields will be reset in
@@ -126,6 +126,10 @@ struct TaskMeta {
 
     StackType stack_type() const {
         return static_cast<StackType>(attr.stack_type);
+    }
+
+    void SetBoundGroup(TaskGroup* group) {
+        bound_task_group = group;
     }
 };
 

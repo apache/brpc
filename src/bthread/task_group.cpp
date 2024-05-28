@@ -36,6 +36,7 @@
 #include "bthread/task_group.h"
 #include "bthread/timer_thread.h"
 #include "bthread/errno.h"
+#include "task_meta.h"
 
 extern std::function<
     std::tuple<std::function<void()>, std::function<void(int16_t)>, std::function<bool(bool)>>(int16_t)>
@@ -134,7 +135,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
             tx_processor_exec_();
         }
 
-        if (_rq.pop(tid) || _remote_rq.pop(tid)) {
+        if (_rq.pop(tid) || _bound_rq.pop(tid) || _remote_rq.pop(tid)) {
             _processed_tasks++;
             return true;
         }
@@ -180,7 +181,7 @@ void TaskGroup::run_main_task() {
     TaskGroup* dummy = this;
     bthread_t tid;
     while (wait_task(&tid)) {
-        if (tx_processor_exec_ == nullptr 
+        if (tx_processor_exec_ == nullptr
             && get_tx_proc_functors != nullptr) {
             // if the tx proc functors are not set yet.
             auto functors = get_tx_proc_functors(group_id_);
@@ -390,6 +391,7 @@ void TaskGroup::_release_last_context(void* arg) {
     TaskMeta* m = static_cast<TaskMeta*>(arg);
     if (m->stack_type() != STACK_TYPE_PTHREAD) {
         return_stack(m->release_stack()/*may be NULL*/);
+        m->SetBoundGroup(nullptr);
     } else {
         // it's _main_stack, don't return.
         m->set_stack(NULL);
@@ -427,6 +429,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
+    m->SetBoundGroup(nullptr);
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
         LOG(INFO) << "Started bthread " << m->tid;
@@ -485,6 +488,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
+    m->SetBoundGroup(nullptr);
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
         LOG(INFO) << "Started bthread " << m->tid;
@@ -625,6 +629,12 @@ void TaskGroup::sched(TaskGroup** pg) {
               // Jump to main task if there's no task to run.
               g->_processed_tasks = 0;
               next_tid = g->_main_tid;
+            } else if (next_tid == g->current_tid()) {
+                if (!g->steal_task(&next_tid)) {
+                    next_tid = g->_main_tid;
+                    g->_processed_tasks = 0;
+                }
+                g->ready_to_run_bound(g->current_tid());
             }
         }
     }
@@ -777,6 +787,38 @@ void TaskGroup::flush_nosignal_tasks_remote() {
     _control->signal_task(val);
 }
 
+void TaskGroup::ready_to_run_bound(bthread_t tid, bool nosignal) {
+    if (!_bound_rq.push(tid)) {
+        LOG(WARNING) << "fail to push bounded task into group: " << group_id_;
+        return tls_task_group->ready_to_run(tid, nosignal);
+    }
+    // Update bound group.
+    TaskMeta *m = TaskGroup::address_meta(tid);
+    m->SetBoundGroup(this);
+    if (nosignal) {
+        _remote_num_nosignal.fetch_add(1, std::memory_order_release);
+    } else {
+        const int additional_signal =_remote_num_nosignal.load(std::memory_order_acquire);
+        _remote_num_nosignal.store(0, std::memory_order_release);
+        _remote_nsignaled.fetch_add(additional_signal, std::memory_order_release);
+        _control->signal_task(1 + additional_signal);
+    }
+}
+
+void TaskGroup::resume_bound_task(bthread_t tid, bool nosignal) {
+    if (!_bound_rq.push(tid)) {
+        LOG(FATAL) << "fail to push bounded task into group: " << group_id_;
+    }
+    if (nosignal) {
+        _remote_num_nosignal.fetch_add(1, std::memory_order_release);
+    } else {
+        const int additional_signal =_remote_num_nosignal.load(std::memory_order_acquire);
+        _remote_num_nosignal.store(0, std::memory_order_release);
+        _remote_nsignaled.fetch_add(additional_signal, std::memory_order_release);
+        _control->signal_task(1 + additional_signal);
+    }
+}
+
 void TaskGroup::ready_to_run_general(bthread_t tid, bool nosignal) {
     if (tls_task_group == this) {
         return ready_to_run(tid, nosignal);
@@ -796,9 +838,21 @@ void TaskGroup::ready_to_run_in_worker(void* args_in) {
     return tls_task_group->ready_to_run(args->tid, args->nosignal);
 }
 
+void TaskGroup::ready_to_run_in_target_worker(void* args_in) {
+    ReadyToRunTargetArgs* args = static_cast<ReadyToRunTargetArgs*>(args_in);
+    if (args->target_group != nullptr) {
+        return args->target_group->ready_to_run_bound(args->tid, args->nosignal);
+    }
+    return tls_task_group->ready_to_run(args->tid, args->nosignal);
+}
+
 void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
     return tls_task_group->push_rq(args->tid);
+}
+
+void TaskGroup::empty_callback(void *) {
+    return;
 }
 
 struct SleepArgs {
@@ -965,6 +1019,24 @@ void TaskGroup::yield(TaskGroup** pg) {
     TaskGroup* g = *pg;
     ReadyToRunArgs args = { g->current_tid(), false };
     g->set_remained(ready_to_run_in_worker, &args);
+    sched(pg);
+}
+
+void TaskGroup::jump_group(TaskGroup **pg, int target_gid) {
+    TaskGroup* g = *pg;
+    TaskControl *c = g->control();
+    TaskGroup *target_group = c->select_group(target_gid);
+    if (target_group == nullptr) {
+        return;
+    }
+    ReadyToRunTargetArgs args = { g->current_tid(), false, target_group };
+    g->set_remained(ready_to_run_in_target_worker, &args);
+    sched(pg);
+}
+
+void TaskGroup::block(TaskGroup **pg) {
+    TaskGroup* g = *pg;
+    g->set_remained(empty_callback, nullptr);
     sched(pg);
 }
 

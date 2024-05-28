@@ -155,6 +155,12 @@ extern int bthread_setconcurrency(int num);
 // even if bthread_yield() is called, suspended threads may still starve.
 extern int bthread_yield(void);
 
+// Yield processor to another bthread and move current task to another group.
+extern int bthread_jump_group(int group_id);
+
+// Yield processor to another bthread and block current task.
+extern int bthread_block(void);
+
 // Suspend current thread for at least `microseconds'
 // Interruptible by bthread_interrupt().
 extern int bthread_usleep(uint64_t microseconds);
