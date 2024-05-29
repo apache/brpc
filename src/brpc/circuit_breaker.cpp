@@ -139,7 +139,7 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
     if (ema_latency != 0) {
         error_cost = std::min(ema_latency * max_mutiple, error_cost);
     }
-    //Errorous response
+    // Errorous response
     if (error_cost != 0) {
         int64_t ema_error_cost =
             _ema_error_cost.fetch_add(error_cost, butil::memory_order_relaxed);
@@ -149,7 +149,7 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
         return ema_error_cost <= max_error_cost;
     }
 
-    //Ordinary response
+    // Ordinary response
     int64_t ema_error_cost = _ema_error_cost.load(butil::memory_order_relaxed);
     do {
         if (ema_error_cost == 0) {
