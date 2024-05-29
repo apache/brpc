@@ -396,7 +396,7 @@ TEST(KeyTest, using_pool) {
     ASSERT_EQ(0, bth2_data.seq);
         
     ASSERT_EQ(0, bthread_keytable_pool_destroy(&pool));
-    if(use_same_keytable) {
+    if (use_same_keytable) {
         EXPECT_EQ(bth_data.end_seq, bth_data.seq);
         EXPECT_EQ(0, bth2_data.seq); 
     } else {
