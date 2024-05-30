@@ -689,7 +689,7 @@ int StreamWrite(StreamId stream_id, const butil::IOBuf &message,
         return EINVAL;
     }
     Stream* s = (Stream*)ptr->conn();
-    const int rc = s->AppendIfNotFull(message);
+    const int rc = s->AppendIfNotFull(message, options);
     if (rc == 0) {
         return 0;
     }
