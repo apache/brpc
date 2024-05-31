@@ -266,6 +266,8 @@ struct ServerOptions {
     // Default: BTHREAD_TAG_DEFAULT
     bthread_tag_t bthread_tag;
 
+    // latency_us = latency * latency_scale_factor, default value is 1
+    size_t latency_scale_factor;
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ServerOptions from being bloated in most cases.

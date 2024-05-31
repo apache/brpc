@@ -36,11 +36,12 @@ static int cast_cl(void* arg) {
     return 0;
 }
 
-MethodStatus::MethodStatus()
+MethodStatus::MethodStatus(size_t scale_)
     : _nconcurrency(0)
     , _nconcurrency_bvar(cast_int, &_nconcurrency)
     , _eps_bvar(&_nerror_bvar)
     , _max_concurrency_bvar(cast_cl, &_cl)
+    , _latency_rec(scale_)
 {
 }
 

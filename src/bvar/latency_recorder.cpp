@@ -281,6 +281,7 @@ void LatencyRecorder::hide() {
 }
 
 LatencyRecorder& LatencyRecorder::operator<<(int64_t latency) {
+    latency = latency / scale;
     _latency << latency;
     _max_latency << latency;
     _latency_percentile << latency;

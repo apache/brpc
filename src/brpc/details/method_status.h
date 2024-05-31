@@ -32,7 +32,7 @@ class Server;
 // Record accessing stats of a method.
 class MethodStatus : public Describable {
 public:
-    MethodStatus();
+    MethodStatus(size_t scale_ = 1);
     ~MethodStatus();
 
     // Call this function when the method is about to be called.
