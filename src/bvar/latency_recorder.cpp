@@ -17,6 +17,7 @@
 
 // Date: 2014/09/22 11:57:43
 
+#include <cstddef>
 #include <gflags/gflags.h>
 #include "butil/unique_ptr.h"
 #include "bvar/latency_recorder.h"
@@ -154,7 +155,7 @@ static Vector<int64_t, 4> get_latencies(void *arg) {
     return result;
 }
 
-LatencyRecorderBase::LatencyRecorderBase(time_t window_size)
+LatencyRecorderBase::LatencyRecorderBase(time_t window_size, size_t scale_)
     : _max_latency(0)
     , _latency_window(&_latency, window_size)
     , _max_latency_window(&_max_latency, window_size)
@@ -168,6 +169,7 @@ LatencyRecorderBase::LatencyRecorderBase(time_t window_size)
     , _latency_9999(get_percetile<9999, 10000>, this)
     , _latency_cdf(&_latency_percentile_window)
     , _latency_percentiles(get_latencies, &_latency_percentile_window)
+    , scale(scale_)
 {}
 
 }  // namespace detail

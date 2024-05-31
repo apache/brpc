@@ -82,16 +82,19 @@ public:
         expose(prefix);
     }
     LatencyRecorder(const butil::StringPiece& prefix,
-                    time_t window_size) : Base(window_size) {
+                    time_t window_size,
+                    size_t scale_ = 1) : Base(window_size, scale_) {
         expose(prefix);
     }
     LatencyRecorder(const butil::StringPiece& prefix1,
-                    const butil::StringPiece& prefix2) : Base(-1) {
+                    const butil::StringPiece& prefix2,
+                    size_t scale_ = 1) : Base(-1, scale_) {
         expose(prefix1, prefix2);
     }
     LatencyRecorder(const butil::StringPiece& prefix1,
                     const butil::StringPiece& prefix2,
-                    time_t window_size) : Base(window_size) {
+                    time_t window_size,
+                    size_t scale_ = 1) : Base(window_size, scale_) {
         expose(prefix1, prefix2);
     }
 
