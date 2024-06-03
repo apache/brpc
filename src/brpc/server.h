@@ -42,6 +42,7 @@
 #include "brpc/http2.h"
 #include "brpc/redis.h"
 #include "brpc/interceptor.h"
+#include "brpc/concurrency_limiter.h"
 
 namespace brpc {
 
@@ -673,6 +674,26 @@ friend class Controller;
 
     AdaptiveMaxConcurrency& MaxConcurrencyOf(MethodProperty*);
     int MaxConcurrencyOf(const MethodProperty*) const;
+
+    static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
+                                         ConcurrencyLimiter** out);
+
+    template <typename T>
+    int SetServiceMaxConcurrency(T* service) {
+        if (NULL != service) {
+            const AdaptiveMaxConcurrency* amc = &service->_max_concurrency;
+            if (amc->type() == AdaptiveMaxConcurrency::UNLIMITED()) {
+                amc = &_options.method_max_concurrency;
+            }
+            ConcurrencyLimiter* cl = NULL;
+            if (!CreateConcurrencyLimiter(*amc, &cl)) {
+                LOG(ERROR) << "Fail to create ConcurrencyLimiter for method";
+                return -1;
+            }
+            service->_status->SetConcurrencyLimiter(cl);
+        }
+        return 0;
+    }
 
     DISALLOW_COPY_AND_ASSIGN(Server);
 
