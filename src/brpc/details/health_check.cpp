@@ -210,7 +210,8 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
             ptr->_ninflight_app_health_check.fetch_add(
                     1, butil::memory_order_relaxed);
         }
-        ptr->Revive();
+        // See comments above.
+        ptr->Revive(2/*note*/);
         ptr->_hc_count = 0;
         if (!FLAGS_health_check_path.empty()) {
             HealthCheckManager::StartCheck(_id, ptr->_health_check_interval_s);

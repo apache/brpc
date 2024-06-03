@@ -321,7 +321,7 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
                 // Always add this socket into `_socket_map' whether it
                 // has been `SetFailed' or not, whether `Acceptor' is
                 // running or not. Otherwise, `Acceptor::BeforeRecycle'
-                // may be called (inside Socket::OnRecycle) after `Acceptor'
+                // may be called (inside Socket::BeforeRecycled) after `Acceptor'
                 // has been destroyed
                 am->_socket_map.insert(socket_id, ConnectStatistics());
             }

@@ -27,18 +27,19 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
+#include "butil/memory/scope_guard.h"
+#include "bthread/bthread.h"
 #include "brpc/event_dispatcher.h"
+#include "brpc/socket.h"
 #include "brpc/details/has_epollrdhup.h"
+#include "brpc/versioned_ref_with_id.h"
 
 class EventDispatcherTest : public ::testing::Test{
 protected:
-    EventDispatcherTest(){
-    };
-    virtual ~EventDispatcherTest(){};
-    virtual void SetUp() {
-    };
-    virtual void TearDown() {
-    };
+    EventDispatcherTest() = default;
+    ~EventDispatcherTest() override = default;
+    void SetUp() override {}
+    void TearDown() override {}
 };
 
 TEST_F(EventDispatcherTest, has_epollrdhup) {
@@ -50,6 +51,128 @@ TEST_F(EventDispatcherTest, versioned_ref) {
     versioned_ref.fetch_add(brpc::MakeVRef(0, -1),
                             butil::memory_order_release);
     ASSERT_EQ(brpc::MakeVRef(1, 1), versioned_ref);
+}
+
+struct UserData;
+
+UserData* g_user_data = NULL;
+
+struct UserData : public brpc::VersionedRefWithId<UserData> {
+    explicit UserData(Forbidden f)
+        : brpc::VersionedRefWithId<UserData>(f)
+        , count(0)
+        , _additional_ref_released(false) {}
+
+    int OnCreated() {
+        count.store(1, butil::memory_order_relaxed);
+        _additional_ref_released = false;
+        g_user_data = this;
+        return 0;
+    }
+
+    void BeforeRecycled() {
+        count.store(0, butil::memory_order_relaxed);
+        g_user_data = NULL;
+    }
+
+    void BeforeAdditionalRefReleased() {
+        _additional_ref_released = true;
+    }
+
+    void OnFailed() {
+        count.fetch_sub(1, butil::memory_order_relaxed);
+    }
+
+    void AfterRevived() {
+        count.fetch_add(1, butil::memory_order_relaxed);
+        _additional_ref_released = false;
+    }
+
+    butil::atomic<int> count;
+    bool _additional_ref_released;
+};
+
+// Unique identifier of a UserData.
+// Users shall store UserDataId instead of UserData and call UserData::Address()
+// to convert the identifier to an unique_ptr at each access. Whenever a
+// unique_ptr is not destructed, the enclosed UserData will not be recycled.
+typedef brpc::VRefId UserDataId;
+
+const brpc::VRefId INVALID_EVENT_DATA_ID = brpc::INVALID_VREF_ID;
+
+typedef brpc::VersionedRefWithIdUniquePtr<UserData> UserDataUniquePtr;
+
+volatile bool vref_thread_stop = false;
+butil::atomic<int> g_count(1);
+
+void TestVRef(UserDataId id) {
+    UserDataUniquePtr ptr;
+    ASSERT_EQ(0, UserData::Address(id, &ptr));
+    ptr->count.fetch_add(1, butil::memory_order_relaxed);
+    g_count.fetch_add(1, butil::memory_order_relaxed);
+}
+
+void* VRefThread(void* arg) {
+    auto id = (UserDataId)arg;
+    while (!vref_thread_stop) {
+        TestVRef(id);
+    }
+    return NULL;
+}
+
+TEST_F(EventDispatcherTest, versioned_ref_with_id) {
+    UserDataId id = INVALID_EVENT_DATA_ID;
+    ASSERT_EQ(0, UserData::Create(&id));
+    ASSERT_NE(INVALID_EVENT_DATA_ID, id);
+    UserDataUniquePtr ptr;
+    ASSERT_EQ(0, UserData::Address(id, &ptr));
+    ASSERT_EQ(2, ptr->nref());
+    ASSERT_FALSE(ptr->Failed());
+    ASSERT_EQ(1, ptr->count);
+    ASSERT_EQ(g_user_data, ptr.get());
+    {
+        UserDataUniquePtr temp_ptr;
+        ASSERT_EQ(0, UserData::Address(id, &temp_ptr));
+        ASSERT_EQ(ptr, temp_ptr);
+        ASSERT_EQ(3, ptr->nref());
+    }
+
+    const size_t thread_num = 8;
+    pthread_t tid[thread_num];
+    for (auto& i : tid) {
+        ASSERT_EQ(0, pthread_create(&i, NULL, VRefThread, (void*)id));
+    }
+
+    sleep(2);
+
+    vref_thread_stop = true;
+    for (const auto i : tid) {
+        pthread_join(i, NULL);
+    }
+
+    ASSERT_EQ(2, ptr->nref());
+    ASSERT_EQ(g_count, ptr->count);
+    ASSERT_EQ(0, ptr->SetFailed());
+    ASSERT_TRUE(ptr->Failed());
+    ASSERT_EQ(g_count - 1, ptr->count);
+    // Additional reference has been released.
+    ASSERT_TRUE(ptr->_additional_ref_released);
+    ASSERT_EQ(1, ptr->nref());
+    {
+        UserDataUniquePtr temp_ptr;
+        ASSERT_EQ(1, UserData::AddressFailedAsWell(id, &temp_ptr));
+        ASSERT_EQ(ptr, temp_ptr);
+        ASSERT_EQ(2, ptr->nref());
+    }
+    ptr->Revive(1);
+    ASSERT_EQ(2, ptr->nref());
+    ASSERT_EQ(g_count, ptr->count);
+    ASSERT_FALSE(ptr->_additional_ref_released);
+    ASSERT_EQ(0, UserData::SetFailedById(id));
+    ASSERT_EQ(g_count - 1, ptr->count);
+    ptr.reset();
+    ASSERT_EQ(nullptr, ptr);
+    ASSERT_EQ(nullptr, g_user_data);
 }
 
 std::vector<int> err_fd;
@@ -79,7 +202,7 @@ struct BAIDU_CACHELINE_ALIGNMENT SocketExtra : public brpc::SocketUser {
         times = 0;
     }
 
-    virtual void BeforeRecycle(brpc::Socket* m) {
+    void BeforeRecycle(brpc::Socket* m) override {
         pthread_mutex_lock(&rel_fd_mutex);
         rel_fd.push_back(m->fd());
         pthread_mutex_unlock(&rel_fd_mutex);
@@ -266,4 +389,131 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
 #ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     ASSERT_EQ(NCLIENT, info.free_item_num - old_info.free_item_num);
 #endif
+}
+
+// Unique identifier of a EventPipe.
+// Users shall store EventFDId instead of EventPipe and call EventPipe::Address()
+// to convert the identifier to an unique_ptr at each access. Whenever a
+// unique_ptr is not destructed, the enclosed EventPipe will not be recycled.
+typedef brpc::VRefId EventPipeId;
+
+const brpc::VRefId INVALID_EVENT_PIPE_ID = brpc::INVALID_VREF_ID;
+
+class EventPipe;
+typedef brpc::VersionedRefWithIdUniquePtr<EventPipe> EventPipeUniquePtr;
+
+
+class EventPipe : public brpc::VersionedRefWithId<EventPipe> {
+public:
+    explicit EventPipe(Forbidden f)
+        : brpc::VersionedRefWithId<EventPipe>(f)
+        , _pipe_fds{-1, -1}
+        , _input_event_count(0)
+        {}
+
+    int Notify() {
+        char c = 0;
+        if (write(_pipe_fds[1], &c, 1) != 1) {
+            PLOG(ERROR) << "Fail to write to _pipe_fds[1]";
+            return -1;
+        }
+        return 0;
+    }
+
+private:
+friend class VersionedRefWithId<EventPipe>;
+friend class brpc::IOEvent<EventPipe>;
+
+    int OnCreated() {
+        if (pipe(_pipe_fds)) {
+            PLOG(FATAL) << "Fail to create _pipe_fds";
+            return -1;
+        }
+        if (_io_event.Init((void*)id()) != 0) {
+            LOG(ERROR) << "Fail to init IOEvent";
+            return -1;
+        }
+        _io_event.set_bthread_tag(bthread_self_tag());
+        if (_io_event.AddConsumer(_pipe_fds[0]) != 0) {
+            PLOG(ERROR) << "Fail to add SocketId=" << id()
+                        << " into EventDispatcher";
+            return -1;
+        }
+
+
+        _input_event_count = 0;
+        return 0;
+    }
+
+    void BeforeRecycled() {
+        brpc::GetGlobalEventDispatcher(_pipe_fds[0], bthread_self_tag())
+            .RemoveConsumer(_pipe_fds[0]);
+        _io_event.Reset();
+        if (_pipe_fds[0] >= 0) {
+            close(_pipe_fds[0]);
+        }
+        if (_pipe_fds[1] >= 0) {
+            close(_pipe_fds[1]);
+        }
+    }
+
+    static int OnInputEvent(void* user_data, uint32_t,
+                            const bthread_attr_t&) {
+        auto id = reinterpret_cast<EventPipeId>(user_data);
+        EventPipeUniquePtr ptr;
+        if (EventPipe::Address(id, &ptr) != 0) {
+            LOG(WARNING) << "Fail to address EventPipe";
+            return -1;
+        }
+
+        char buf[1024];
+        ssize_t nr = read(ptr->_pipe_fds[0], &buf, arraysize(buf));
+        if (nr <= 0) {
+            if (errno == EAGAIN) {
+                return 0;
+            } else {
+                PLOG(WARNING) << "Fail to read from _pipe_fds[0]";
+                ptr->SetFailed();
+                return -1;
+            }
+        }
+
+        ptr->_input_event_count += nr;
+        return 0;
+    }
+
+    static int OnOutputEvent(void*, uint32_t,
+                             const bthread_attr_t&) {
+        EXPECT_TRUE(false) << "Should not be called";
+        return 0;
+    }
+
+    brpc::IOEvent<EventPipe> _io_event;
+    int _pipe_fds[2];
+
+    size_t _input_event_count;
+};
+
+TEST_F(EventDispatcherTest, customize_dispatch_task) {
+    EventPipeId id = INVALID_EVENT_PIPE_ID;
+    ASSERT_EQ(0, EventPipe::Create(&id));
+    ASSERT_NE(INVALID_EVENT_PIPE_ID, id);
+    EventPipeUniquePtr ptr;
+    ASSERT_EQ(0, EventPipe::Address(id, &ptr));
+    ASSERT_EQ(2, ptr->nref());
+    ASSERT_FALSE(ptr->Failed());
+
+    ASSERT_EQ((size_t)0, ptr->_input_event_count);
+    const size_t N = 10000;
+    for (size_t i = 0; i < N; ++i) {
+        ASSERT_EQ(0, ptr->Notify());
+    }
+    usleep(1000 * 50);
+    ASSERT_EQ(N, ptr->_input_event_count);
+
+    ASSERT_EQ(0, ptr->SetFailed());
+    ASSERT_TRUE(ptr->Failed());
+    ptr.reset();
+    ASSERT_EQ(nullptr, ptr);
+    ASSERT_NE(0, EventPipe::Address(id, &ptr));
 }

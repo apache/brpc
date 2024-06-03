@@ -1080,7 +1080,7 @@ public:
 
     brpc::RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
-                                        bool flush_batched) {
+                                        bool flush_batched) override {
         output->SetStatus("OK");
         return brpc::REDIS_CMD_CONTINUE;
     }
@@ -1093,7 +1093,7 @@ public:
     public:
         brpc::RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
                                             brpc::RedisReply* output,
-                                            bool flush_batched) {
+                                            bool flush_batched) override {
             if (args[0] == "multi") {
                 output->SetError("ERR duplicate multi");
                 return brpc::REDIS_CMD_CONTINUE;

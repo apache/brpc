@@ -1107,7 +1107,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
     {
         brpc::SocketUniquePtr dummy_ptr;
         ASSERT_EQ(1, brpc::Socket::AddressFailedAsWell(ptr[0]->id(), &dummy_ptr));
-        dummy_ptr->Revive();
+        dummy_ptr->Revive(2);
     }
     bthread_usleep(brpc::FLAGS_detect_available_server_interval_ms * 1000);
     // After one server is revived, the reject rate should be 50%

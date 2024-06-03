@@ -71,6 +71,24 @@ EventDispatcher& GetGlobalEventDispatcher(int fd, bthread_tag_t tag) {
     return g_edisp[tag * FLAGS_event_dispatcher_num + index];
 }
 
+int IOEventData::OnCreated(const IOEventDataOptions& options) {
+    if (!options.input_cb) {
+        LOG(ERROR) << "Invalid input_cb=NULL";
+        return -1;
+    }
+    if (!options.output_cb) {
+        LOG(ERROR) << "Invalid output_cb=NULL";
+        return -1;
+    }
+
+    _options = options;
+    return 0;
+}
+
+void IOEventData::BeforeRecycled() {
+    _options = { NULL, NULL, NULL };
+}
+
 } // namespace brpc
 
 #if defined(OS_LINUX)
