@@ -21,6 +21,7 @@
 #include <gflags/gflags.h>
 
 #include "brpc/errno.pb.h"
+#include "brpc/reloadable_flags.h"
 #include "butil/time.h"
 
 namespace brpc {
@@ -45,6 +46,12 @@ DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 30000,
     "Maximum isolation duration in milliseconds");
 DEFINE_double(circuit_breaker_epsilon_value, 0.02,
     "ema_alpha = 1 - std::pow(epsilon, 1.0 / window_size)");
+DEFINE_int32(circuit_breaker_half_open_window_size, 0,
+    "The limited number of requests allowed to pass through by the half-open "
+    "window. Only if all of them are successful, the circuit breaker will "
+    "go to the closed state. Otherwise, it goes back to the open state. "
+    "Values == 0 disables this feature");
+BRPC_VALIDATE_GFLAG(circuit_breaker_half_open_window_size, NonNegativeInteger);
 
 namespace {
 // EPSILON is used to generate the smoothing coefficient when calculating EMA.
@@ -132,7 +139,7 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
     if (ema_latency != 0) {
         error_cost = std::min(ema_latency * max_mutiple, error_cost);
     }
-    //Errorous response
+    // Errorous response
     if (error_cost != 0) {
         int64_t ema_error_cost =
             _ema_error_cost.fetch_add(error_cost, butil::memory_order_relaxed);
@@ -142,7 +149,7 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
         return ema_error_cost <= max_error_cost;
     }
 
-    //Ordinary response
+    // Ordinary response
     int64_t ema_error_cost = _ema_error_cost.load(butil::memory_order_relaxed);
     do {
         if (ema_error_cost == 0) {
@@ -171,7 +178,9 @@ CircuitBreaker::CircuitBreaker()
     , _last_reset_time_ms(0)
     , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms)
     , _isolated_times(0)
-    , _broken(false) {
+    , _broken(false)
+    , _half_open(false)
+    , _half_open_success_count(0) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
@@ -188,6 +197,19 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
     }
+    if (FLAGS_circuit_breaker_half_open_window_size > 0
+        && _half_open.load(butil::memory_order_relaxed)) {
+        if (error_code != 0) {
+            MarkAsBroken();
+            return false;
+        }
+        if (_half_open_success_count.fetch_add(1, butil::memory_order_relaxed)
+                + 1 == FLAGS_circuit_breaker_half_open_window_size) {
+            _half_open.store(false, butil::memory_order_relaxed);
+            _half_open_success_count.store(0, butil::memory_order_relaxed);
+        }
+    }
+
     if (_long_window.OnCallEnd(error_code, latency) &&
         _short_window.OnCallEnd(error_code, latency)) {
         return true;
@@ -201,6 +223,10 @@ void CircuitBreaker::Reset() {
     _short_window.Reset();
     _last_reset_time_ms = butil::cpuwide_time_ms();
     _broken.store(false, butil::memory_order_release);
+    if (FLAGS_circuit_breaker_half_open_window_size > 0) {
+        _half_open.store(true, butil::memory_order_relaxed);
+        _half_open_success_count.store(0, butil::memory_order_relaxed);
+    }
 }
 
 void CircuitBreaker::MarkAsBroken() {
