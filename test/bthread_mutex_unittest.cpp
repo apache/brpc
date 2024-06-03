@@ -229,8 +229,9 @@ TEST(MutexTest, performance) {
     PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
 }
 
+template <typename Mutex>
 void* loop_until_stopped(void* arg) {
-    bthread::Mutex *m = (bthread::Mutex*)arg;
+    auto m = (Mutex*)arg;
     while (!g_stopped) {
         BAIDU_SCOPED_LOCK(*m);
         bthread_usleep(20);
@@ -251,11 +252,11 @@ TEST(MutexTest, mix_thread_types) {
     // true, thus loop_until_stopped spins forever)
     bthread_setconcurrency(M);
     for (int i = 0; i < N; ++i) {
-        ASSERT_EQ(0, pthread_create(&pthreads[i], NULL, loop_until_stopped, &m));
+        ASSERT_EQ(0, pthread_create(&pthreads[i], NULL, loop_until_stopped<bthread::Mutex>, &m));
     }
     for (int i = 0; i < M; ++i) {
         const bthread_attr_t *attr = i % 2 ? NULL : &BTHREAD_ATTR_PTHREAD;
-        ASSERT_EQ(0, bthread_start_urgent(&bthreads[i], attr, loop_until_stopped, &m));
+        ASSERT_EQ(0, bthread_start_urgent(&bthreads[i], attr, loop_until_stopped<bthread::Mutex>, &m));
     }
     bthread_usleep(1000L * 1000);
     g_stopped = true;
@@ -266,4 +267,37 @@ TEST(MutexTest, mix_thread_types) {
         pthread_join(pthreads[i], NULL);
     }
 }
+
+TEST(MutexTest, fast_pthread_mutex) {
+    bthread::FastPthreadMutex mutex;
+    ASSERT_TRUE(mutex.try_lock());
+    mutex.unlock();
+    mutex.lock();
+    mutex.unlock();
+    {
+        BAIDU_SCOPED_LOCK(mutex);
+    }
+    {
+        std::unique_lock<bthread::FastPthreadMutex> lck1;
+        std::unique_lock<bthread::FastPthreadMutex> lck2(mutex);
+        lck1.swap(lck2);
+        lck1.unlock();
+        lck1.lock();
+    }
+    ASSERT_TRUE(mutex.try_lock());
+    mutex.unlock();
+
+    const int N = 16;
+    pthread_t pthreads[N];
+    for (int i = 0; i < N; ++i) {
+        ASSERT_EQ(0, pthread_create(&pthreads[i], NULL,
+            loop_until_stopped<bthread::FastPthreadMutex>, &mutex));
+    }
+    bthread_usleep(1000L * 1000);
+    g_stopped = true;
+    for (int i = 0; i < N; ++i) {
+        pthread_join(pthreads[i], NULL);
+    }
+}
+
 } // namespace

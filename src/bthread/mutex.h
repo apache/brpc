@@ -72,7 +72,7 @@ namespace internal {
 class FastPthreadMutex {
 public:
     FastPthreadMutex() : _futex(0) {}
-    ~FastPthreadMutex() {}
+    ~FastPthreadMutex() = default;
     void lock();
     void unlock();
     bool try_lock();
@@ -85,6 +85,19 @@ private:
 typedef butil::Mutex FastPthreadMutex;
 #endif
 }
+
+class FastPthreadMutex {
+public:
+    FastPthreadMutex() = default;
+    ~FastPthreadMutex() = default;
+    DISALLOW_COPY_AND_ASSIGN(FastPthreadMutex);
+
+    void lock();
+    void unlock();
+    bool try_lock() { return _mutex.try_lock(); }
+private:
+    internal::FastPthreadMutex _mutex;
+};
 
 }  // namespace bthread
 
