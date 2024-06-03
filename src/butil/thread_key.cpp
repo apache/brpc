@@ -38,7 +38,7 @@ pthread_mutex_t g_thread_key_mutex = PTHREAD_MUTEX_INITIALIZER;
 static size_t g_id = 0;
 static std::deque<size_t>* g_free_ids = NULL;
 static std::vector<ThreadKeyInfo>* g_thread_keys = NULL;
-static __thread std::vector<ThreadKeyTLS>* g_tls_data = NULL;
+static __thread std::vector<ThreadKeyTLS>* thread_key_tls_data = NULL;
 
 ThreadKey& ThreadKey::operator=(ThreadKey&& other) noexcept {
     if (this == &other) {
@@ -56,58 +56,42 @@ bool ThreadKey::Valid() const {
 }
 
 static void DestroyTlsData() {
-    if (!g_tls_data) {
+    if (!thread_key_tls_data) {
         return;
     }
     std::vector<ThreadKeyInfo> dummy_keys;
     {
         BAIDU_SCOPED_LOCK(g_thread_key_mutex);
-        if (BAIDU_LIKELY(g_thread_keys)) {
-            dummy_keys.insert(dummy_keys.end(), g_thread_keys->begin(), g_thread_keys->end());
-        }
+        dummy_keys.insert(dummy_keys.end(),
+                          g_thread_keys->begin(),
+                          g_thread_keys->end());
     }
-    for (size_t i = 0; i < g_tls_data->size(); ++i) {
+    for (size_t i = 0; i < thread_key_tls_data->size(); ++i) {
         if (!KEY_UNUSED(dummy_keys[i].seq) && dummy_keys[i].dtor) {
-            dummy_keys[i].dtor((*g_tls_data)[i].data);
+            dummy_keys[i].dtor((*thread_key_tls_data)[i].data);
         }
     }
-    delete g_tls_data;
-    g_tls_data = NULL;
-}
-
-static std::deque<size_t>* GetGlobalFreeIds() {
-    if (BAIDU_UNLIKELY(!g_free_ids)) {
-        g_free_ids = new (std::nothrow) std::deque<size_t>();
-        if (BAIDU_UNLIKELY(!g_free_ids)) {
-            abort();
-        }
-    }
-
-    return g_free_ids;
+    delete thread_key_tls_data;
+    thread_key_tls_data = NULL;
 }
 
 int thread_key_create(ThreadKey& thread_key, DtorFunction dtor) {
     BAIDU_SCOPED_LOCK(g_thread_key_mutex);
-    size_t id;
-    auto free_ids = GetGlobalFreeIds();
-    if (!free_ids) {
-        return ENOMEM;
+    if (BAIDU_UNLIKELY(!g_free_ids)) {
+        g_free_ids = new std::deque<size_t>;
     }
-
-    if (!free_ids->empty()) {
-        id = free_ids->back();
-        free_ids->pop_back();
+    size_t id;
+    if (!g_free_ids->empty()) {
+        id = g_free_ids->back();
+        g_free_ids->pop_back();
     } else {
         if (g_id >= ThreadKey::InvalidID) {
             // No more available ids.
             return EAGAIN;
         }
         id = g_id++;
-        if(BAIDU_UNLIKELY(!g_thread_keys)) {
-            g_thread_keys = new (std::nothrow) std::vector<ThreadKeyInfo>;
-            if(BAIDU_UNLIKELY(!g_thread_keys)) {
-                return ENOMEM;
-            }
+        if (BAIDU_UNLIKELY(!g_thread_keys)) {
+            g_thread_keys = new std::vector<ThreadKeyInfo>;
             g_thread_keys->reserve(THREAD_KEY_RESERVE);
         }
         g_thread_keys->resize(id + 1);
@@ -136,14 +120,10 @@ int thread_key_delete(ThreadKey& thread_key) {
         return EINVAL;
     }
 
-    if (BAIDU_UNLIKELY(!GetGlobalFreeIds())) {
-        return ENOMEM;
-    }
-
     ++((*g_thread_keys)[id].seq);
     // Collect the usable key id for reuse.
     if (KEY_USABLE((*g_thread_keys)[id].seq)) {
-        GetGlobalFreeIds()->push_back(id);
+        g_free_ids->push_back(id);
     }
     thread_key.Reset();
 
@@ -156,22 +136,19 @@ int thread_setspecific(ThreadKey& thread_key, void* data) {
     }
     size_t id = thread_key._id;
     size_t seq = thread_key._seq;
-    if (BAIDU_UNLIKELY(!g_tls_data)) {
-        g_tls_data = new (std::nothrow) std::vector<ThreadKeyTLS>;
-        if (BAIDU_UNLIKELY(!g_tls_data)) {
-            return ENOMEM;
-        }
-        g_tls_data->reserve(THREAD_KEY_RESERVE);
+    if (BAIDU_UNLIKELY(!thread_key_tls_data)) {
+        thread_key_tls_data = new std::vector<ThreadKeyTLS>;
+        thread_key_tls_data->reserve(THREAD_KEY_RESERVE);
         // Register the destructor of tls_data in this thread.
         butil::thread_atexit(DestroyTlsData);
     }
 
-    if (id >= g_tls_data->size()) {
-        g_tls_data->resize(id + 1);
+    if (id >= thread_key_tls_data->size()) {
+        thread_key_tls_data->resize(id + 1);
     }
 
-    (*g_tls_data)[id].seq  = seq;
-    (*g_tls_data)[id].data = data;
+    (*thread_key_tls_data)[id].seq  = seq;
+    (*thread_key_tls_data)[id].data = data;
 
     return 0;
 }
@@ -182,13 +159,13 @@ void* thread_getspecific(ThreadKey& thread_key) {
     }
     size_t id = thread_key._id;
     size_t seq = thread_key._seq;
-    if (BAIDU_UNLIKELY(!g_tls_data ||
-                       id >= g_tls_data->size() ||
-                       (*g_tls_data)[id].seq != seq)){
+    if (BAIDU_UNLIKELY(!thread_key_tls_data ||
+                       id >= thread_key_tls_data->size() ||
+                       (*thread_key_tls_data)[id].seq != seq)){
         return NULL;
     }
 
-    return (*g_tls_data)[id].data;
+    return (*thread_key_tls_data)[id].data;
 }
 
 } // namespace butil
