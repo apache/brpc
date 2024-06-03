@@ -48,7 +48,7 @@ private:
 // For mimic constructor inheritance.
 class LatencyRecorderBase {
 public:
-    explicit LatencyRecorderBase(time_t window_size, size_t scale);
+    explicit LatencyRecorderBase(time_t window_size);
     time_t window_size() const { return _latency_window.window_size(); }
 protected:
     IntRecorder _latency;
@@ -67,7 +67,6 @@ protected:
     PassiveStatus<int64_t> _latency_9999; // 99.99%
     CDF _latency_cdf;
     PassiveStatus<Vector<int64_t, 4> > _latency_percentiles;
-    size_t scale;
 };
 } // namespace detail
 
@@ -76,25 +75,22 @@ protected:
 class LatencyRecorder : public detail::LatencyRecorderBase {
     typedef detail::LatencyRecorderBase Base;
 public:
-    LatencyRecorder(size_t scale_ = 1) : Base(-1, scale_) {}
-    explicit LatencyRecorder(time_t window_size, size_t scale_ = 1) : Base(window_size, scale_) {}
-    explicit LatencyRecorder(const butil::StringPiece& prefix, size_t scale_ = 1) : Base(-1, scale_) {
+    LatencyRecorder() : Base(-1) {}
+    explicit LatencyRecorder(time_t window_size) : Base(window_size) {}
+    explicit LatencyRecorder(const butil::StringPiece& prefix) : Base(-1) {
         expose(prefix);
     }
     LatencyRecorder(const butil::StringPiece& prefix,
-                    time_t window_size,
-                    size_t scale_ = 1) : Base(window_size, scale_) {
+                    time_t window_size) : Base(window_size) {
         expose(prefix);
     }
     LatencyRecorder(const butil::StringPiece& prefix1,
-                    const butil::StringPiece& prefix2,
-                    size_t scale_ = 1) : Base(-1, scale_) {
+                    const butil::StringPiece& prefix2) : Base(-1) {
         expose(prefix1, prefix2);
     }
     LatencyRecorder(const butil::StringPiece& prefix1,
                     const butil::StringPiece& prefix2,
-                    time_t window_size,
-                    size_t scale_ = 1) : Base(window_size, scale_) {
+                    time_t window_size) : Base(window_size) {
         expose(prefix1, prefix2);
     }
 

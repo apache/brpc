@@ -123,8 +123,6 @@ const int INITIAL_CERT_MAP = 64;
 // compilation units is undefined.
 const int s_ncore = sysconf(_SC_NPROCESSORS_ONLN);
 
-DEFINE_uint64(latency_scale_factor, 1, "latency scale factor, used by method status, etc., latency_us = latency * latency_scale_factor");
-
 ServerOptions::ServerOptions()
     : idle_timeout_sec(-1)
     , nshead_service(NULL)
@@ -151,8 +149,7 @@ ServerOptions::ServerOptions()
     , health_reporter(NULL)
     , rtmp_service(NULL)
     , redis_service(NULL)
-    , bthread_tag(BTHREAD_TAG_INVALID) 
-    , latency_scale_factor(FLAGS_latency_scale_factor) {
+    , bthread_tag(BTHREAD_TAG_INVALID) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }

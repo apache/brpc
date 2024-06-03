@@ -17,7 +17,6 @@
 
 // Date: 2014/09/22 11:57:43
 
-#include <cstddef>
 #include <gflags/gflags.h>
 #include "butil/unique_ptr.h"
 #include "bvar/latency_recorder.h"
@@ -155,7 +154,7 @@ static Vector<int64_t, 4> get_latencies(void *arg) {
     return result;
 }
 
-LatencyRecorderBase::LatencyRecorderBase(time_t window_size, size_t scale_)
+LatencyRecorderBase::LatencyRecorderBase(time_t window_size)
     : _max_latency(0)
     , _latency_window(&_latency, window_size)
     , _max_latency_window(&_max_latency, window_size)
@@ -169,7 +168,6 @@ LatencyRecorderBase::LatencyRecorderBase(time_t window_size, size_t scale_)
     , _latency_9999(get_percetile<9999, 10000>, this)
     , _latency_cdf(&_latency_percentile_window)
     , _latency_percentiles(get_latencies, &_latency_percentile_window)
-    , scale(scale_)
 {}
 
 }  // namespace detail
@@ -282,8 +280,10 @@ void LatencyRecorder::hide() {
     _latency_percentiles.hide();
 }
 
+DEFINE_uint64(latency_scale_factor, 1, "latency scale factor, used by method status, etc., latency_us = latency * latency_scale_factor");
+
 LatencyRecorder& LatencyRecorder::operator<<(int64_t latency) {
-    latency = latency / scale;
+    latency = latency / FLAGS_latency_scale_factor;
     _latency << latency;
     _max_latency << latency;
     _latency_percentile << latency;
