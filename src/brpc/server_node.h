@@ -19,13 +19,16 @@
 #define BRPC_SERVER_NODE_H
 
 #include <string>
+#include <unordered_map>
 #include "butil/endpoint.h"
 
 namespace brpc {
 
 // Representing a server inside a NamingService.
 struct ServerNode {
-    ServerNode() {}
+    typedef std::unordered_map<std::string, std::string> MetaMap;
+
+    ServerNode() = default;
     
     explicit ServerNode(const butil::EndPoint& pt) : addr(pt) {}
 
@@ -39,6 +42,7 @@ struct ServerNode {
 
     butil::EndPoint addr;
     std::string tag;
+    MetaMap meta_map;
 };
 
 inline bool operator<(const ServerNode& n1, const ServerNode& n2)
