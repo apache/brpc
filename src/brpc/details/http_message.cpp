@@ -15,9 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
-#include <cstdlib>
-
 #include <string>                               // std::string
 #include <iostream>
 #include <gflags/gflags.h>
@@ -35,6 +32,8 @@ namespace brpc {
 
 DEFINE_bool(allow_chunked_length, false,
             "Allow both Transfer-Encoding and Content-Length headers are present.");
+DEFINE_bool(allow_http_1_1_request_without_host, true,
+            "Allow HTTP/1.1 request without host which violates the HTTP/1.1 specification.");
 DEFINE_bool(http_verbose, false,
             "[DEBUG] Print EVERY http request/response");
 DEFINE_int32(http_verbose_max_body_length, 512,
@@ -150,35 +149,46 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
         LOG(WARNING) << "Invalid major_version=" << parser->http_major;
         parser->http_major = 1;
     }
-    http_message->header().set_version(parser->http_major, parser->http_minor);
+    HttpHeader& headers = http_message->header();
+    headers.set_version(parser->http_major, parser->http_minor);
     // Only for response
     // http_parser may set status_code to 0 when the field is not needed,
     // e.g. in a request. In principle status_code is undefined in a request,
     // but to be consistent and not surprise users, we set it to OK as well.
-    http_message->header().set_status_code(
+    headers.set_status_code(
         !parser->status_code ? HTTP_STATUS_OK : parser->status_code);
     // Only for request
     // method is 0(which is DELETE) for response as well. Since users are
     // unlikely to check method of a response, we don't do anything.
-    http_message->header().set_method(static_cast<HttpMethod>(parser->method));
-    if (parser->type == HTTP_REQUEST &&
-        http_message->header().uri().SetHttpURL(http_message->_url) != 0) {
+    headers.set_method(static_cast<HttpMethod>(parser->method));
+    bool is_http_request = parser->type == HTTP_REQUEST;
+    if (is_http_request && headers.uri().SetHttpURL(http_message->_url) != 0) {
         LOG(ERROR) << "Fail to parse url=`" << http_message->_url << '\'';
         return -1;
     }
-    //rfc2616-sec5.2
+    // https://datatracker.ietf.org/doc/html/rfc2616#section-5.2
     //1. If Request-URI is an absoluteURI, the host is part of the Request-URI.
     //Any Host header field value in the request MUST be ignored.
     //2. If the Request-URI is not an absoluteURI, and the request includes a
     //Host header field, the host is determined by the Host header field value.
     //3. If the host as determined by rule 1 or 2 is not a valid host on the
-    //server, the responce MUST be a 400 error messsage.
-    URI & uri = http_message->header().uri();
+    //server, the responce MUST be a 400 (Bad Request) error messsage.
+    URI& uri = headers.uri();
     if (uri._host.empty()) {
-        const std::string* host_header = http_message->header().GetHeader("host");
+        const std::string* host_header = headers.GetHeader("host");
         if (host_header != NULL) {
             uri.SetHostAndPort(*host_header);
         }
+    }
+
+    // https://datatracker.ietf.org/doc/html/rfc2616#section-14.23
+    // All Internet-based HTTP/1.1 servers MUST respond with a 400 (Bad Request)
+    // status code to any HTTP/1.1 request message which lacks a Host header field.
+    if (uri.host().empty() && is_http_request &&
+        !headers.before_http_1_1() &&
+        !FLAGS_allow_http_1_1_request_without_host) {
+        LOG(ERROR) << "HTTP protocol error: missing host header";
+        return -1;
     }
 
     // https://datatracker.ietf.org/doc/html/rfc7230#section-3.3.3
@@ -195,9 +205,9 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
     // is chunked - remove Content-Length and serve request.
     if (parser->uses_transfer_encoding && parser->flags & F_CONTENTLENGTH) {
         if (parser->flags & F_CHUNKED && FLAGS_allow_chunked_length) {
-            http_message->header().RemoveHeader("Content-Length");
+            headers.RemoveHeader("Content-Length");
         } else {
-            LOG(ERROR) << "HTTP/1.1 protocol error: both Content-Length "
+            LOG(ERROR) << "HTTP protocol error: both Content-Length "
                        << "and Transfer-Encoding are set.";
             return -1;
         }

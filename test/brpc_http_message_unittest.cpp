@@ -28,6 +28,14 @@
 namespace brpc {
 
 DECLARE_bool(allow_chunked_length);
+DECLARE_bool(allow_http_1_1_request_without_host);
+
+int main(int argc, char* argv[]) {
+    testing::InitGoogleTest(&argc, argv);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    brpc::FLAGS_allow_http_1_1_request_without_host = true;
+    return RUN_ALL_TESTS();
+}
 
 namespace policy {
 Server::MethodProperty*
@@ -690,6 +698,41 @@ TEST(HttpMessageTest, serialize_http_response) {
     MakeRawHttpResponse(&response, &header, &content);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nFoo: Bar\r\n\r\n", response)
         << butil::ToPrintable(response);
+}
+
+TEST(HttpMessageTest, http_1_1_request_without_host) {
+    brpc::FLAGS_allow_http_1_1_request_without_host = false;
+    {
+        butil::IOBuf request;
+        request.append("GET /service/method HTTP/1.1\r\n"
+                       "Content-Type: text/plain\r\n\r\n");
+
+        brpc::HttpMessage http_message;
+        ASSERT_TRUE(http_message.ParseFromIOBuf(request) < 0);
+    }
+    {
+        butil::IOBuf request;
+        request.append("GET http://baidu.com/service/method HTTP/1.1\r\n"
+                       "Content-Type: text/plain\r\n\r\n");
+
+        brpc::HttpMessage http_message;
+        ASSERT_TRUE(http_message.ParseFromIOBuf(request) >= 0);
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ("text/plain", http_message.header().content_type());
+    }
+    {
+        butil::IOBuf request;
+        request.append("GET /service/method HTTP/1.1\r\n"
+                       "Content-Type: text/plain\r\n"
+                       "Host: baidu.com\r\n\r\n");
+
+        brpc::HttpMessage http_message;
+        ASSERT_GE(http_message.ParseFromIOBuf(request), 0);
+        ASSERT_GE(http_message.ParseFromArray(NULL, 0), 0);
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ("text/plain", http_message.header().content_type());
+    }
+    brpc::FLAGS_allow_http_1_1_request_without_host = true;
 }
 
 } //namespace
