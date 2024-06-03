@@ -99,10 +99,17 @@ int HttpMessage::on_header_value(http_parser *parser,
             LOG(ERROR) << "Header name is empty";
             return -1;
         }
-        http_message->_cur_value =
-            &http_message->header().GetOrAddHeader(http_message->_cur_header);
+        HttpHeader& header = http_message->header();
+        if (header.CanFoldedInLine(http_message->_cur_header)) {
+            http_message->_cur_value =
+                &header.GetOrAddHeader(http_message->_cur_header);
+        } else {
+            http_message->_cur_value =
+                &header.AddHeader(http_message->_cur_header);
+        }
         if (http_message->_cur_value && !http_message->_cur_value->empty()) {
-            http_message->_cur_value->push_back(',');
+            http_message->_cur_value->append(
+                header.HeaderValueDelimiter(http_message->_cur_header));
         }
     }
     if (http_message->_cur_value) {

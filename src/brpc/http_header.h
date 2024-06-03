@@ -19,6 +19,7 @@
 #ifndef  BRPC_HTTP_HEADER_H
 #define  BRPC_HTTP_HEADER_H
 
+#include <vector>
 #include "butil/strings/string_piece.h"  // StringPiece
 #include "butil/containers/case_ignored_flat_map.h"
 #include "brpc/uri.h"              // URI
@@ -39,7 +40,7 @@ class H2StreamContext;
 // Non-body part of a HTTP message.
 class HttpHeader {
 public:
-    typedef butil::CaseIgnoredFlatMap<std::string> HeaderMap;
+    typedef butil::CaseIgnoredMultiFlatMap<std::string> HeaderMap;
     typedef HeaderMap::const_iterator HeaderIterator;
     typedef HeaderMap::key_equal HeaderKeyEqual;
 
@@ -80,24 +81,39 @@ public:
     // Return pointer to the value, NULL on not found.
     // NOTE: If the key is "Content-Type", `GetHeader("Content-Type")'
     // (case-insensitive) is equal to `content_type()'.
-    const std::string* GetHeader(const char* key) const
-    { return _headers.seek(key); }
-    const std::string* GetHeader(const std::string& key) const
-    { return _headers.seek(key); }
+    const std::string* GetHeader(const char* key) const;
+    const std::string* GetHeader(const std::string& key) const;
+
+    std::vector<const std::string*> GetAllSetCookieHeader() const;
 
     // Set value of a header.
     // NOTE: If the key is "Content-Type", `SetHeader("Content-Type", ...)'
     // (case-insensitive) is equal to `set_content_type(...)'.
-    void SetHeader(const std::string& key, const std::string& value)
-    { GetOrAddHeader(key) = value; }
+    void SetHeader(const std::string& key, const std::string& value);
 
-    // Remove a header.
+    // Remove all headers of key.
     void RemoveHeader(const char* key);
     void RemoveHeader(const std::string& key) { RemoveHeader(key.c_str()); }
 
     // Append value to a header. If the header already exists, separate
-    // old value and new value with comma(,) according to:
-    //   https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
+    // old value and new value with comma(,), two-byte delimiter of "; "
+    // or into a new header field, according to:
+    //
+    // https://datatracker.ietf.org/doc/html/rfc2616#section-4.2
+    // Multiple message-header fields with the same field-name MAY be
+    // present in a message if and only if the entire field-value for that
+    // header field is defined as a comma-separated list [i.e., #(values)].
+    //
+    // https://datatracker.ietf.org/doc/html/rfc9114#section-4.2.1
+    // If a decompressed field section contains multiple cookie field lines,
+    // these MUST be concatenated into a single byte string using the two-byte
+    // delimiter of "; " (ASCII 0x3b, 0x20) before being passed into a context
+    // other than HTTP/2 or HTTP/3, such as an HTTP/1.1 connection, or a generic
+    // HTTP server application.
+    //
+    // https://datatracker.ietf.org/doc/html/rfc6265#section-3
+    // Origin servers SHOULD NOT fold multiple Set-Cookie header
+    // fields into a single header field.
     void AppendHeader(const std::string& key, const butil::StringPiece& value);
     
     // Get header iterators which are invalidated after calling AppendHeader()
@@ -145,12 +161,40 @@ friend class HttpMessageSerializer;
 friend class policy::H2StreamContext;
 friend void policy::ProcessHttpRequest(InputMessageBase *msg);
 
+    static const char* SET_COOKIE;
+    static const char* COOKIE;
+    static const char* CONTENT_TYPE;
+
+    std::vector<const std::string*> GetMultiLineHeaders(const std::string& key) const;
+
     std::string& GetOrAddHeader(const std::string& key);
 
-    static bool IsContentType(const std::string& key) {
-        return HeaderKeyEqual()(key, "content-type");
+    std::string& AddHeader(const std::string& key);
+
+    bool IsSetCookie(const std::string& key) const {
+        return _header_key_equal(key, SET_COOKIE);
     }
 
+    bool IsCookie(const std::string& key) const {
+        return _header_key_equal(key, COOKIE);
+    }
+
+    bool IsContentType(const std::string& key) const {
+        return _header_key_equal(key, CONTENT_TYPE);
+    }
+
+    // Return true if the header can be folded in line,
+    // otherwise, returns false, i.e., Set-Cookie header.
+    // See comments of `AppendHeader'.
+    bool CanFoldedInLine(const std::string& key) {
+        return !IsSetCookie(key);
+    }
+
+    const char* HeaderValueDelimiter(const std::string& key) {
+        return IsCookie(key) ? "; " : ",";
+    }
+
+    HeaderKeyEqual _header_key_equal;
     HeaderMap _headers;
     URI _uri;
     int _status_code;
@@ -158,6 +202,7 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     std::string _content_type;
     std::string _unresolved_path;
     std::pair<int, int> _version;
+    std::string* _first_set_cookie;
 };
 
 const HttpHeader& DefaultHttpHeader();

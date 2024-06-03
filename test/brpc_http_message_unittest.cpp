@@ -262,6 +262,71 @@ TEST(HttpMessageTest, parse_http_head_response) {
     ASSERT_EQ("chunked", *transfer_encoding);
 }
 
+TEST(HttpMessageTest, parse_http_cookie) {
+    const char* http_request =
+        "GET /CloudApiControl HTTP/1.1\r\n"
+        "Host: api.map.baidu.com\r\n"
+        "Accept: application/json\r\n"
+        "cookie: a=1\r\n"
+        "Cookie: b=2\r\n"
+        "\r\n";
+    butil::IOBuf buf;
+    buf.append(http_request);
+    brpc::HttpMessage http_message;
+    ASSERT_EQ((ssize_t)buf.size(), http_message.ParseFromIOBuf(buf));
+    ASSERT_TRUE(http_message.Completed());
+
+    const std::string* cookie
+        = http_message.header().GetHeader("cookie");
+    ASSERT_NE(nullptr, cookie);
+    ASSERT_EQ("a=1; b=2", *cookie);
+}
+
+TEST(HttpMessageTest, parse_http_set_cookie) {
+    char response[1024] = "HTTP/1.1 200 OK\r\n"
+                          "Content-Type: text/plain\r\n"
+                          "Content-Length: 1024\r\n"
+                          "set-cookie: a=1\r\n"
+                          "Set-Cookie: b=2\r\n"
+                          "\r\n";
+    butil::IOBuf request;
+    request.append(response);
+    brpc::HttpMessage http_message(false, brpc::HTTP_METHOD_HEAD);
+    ASSERT_TRUE(http_message.ParseFromIOBuf(request) >= 0);
+    ASSERT_TRUE(http_message.Completed()) << http_message.stage();
+
+    const std::string* set_cookie = http_message.header().GetHeader("set-cookie");
+    ASSERT_NE(nullptr, set_cookie);
+    ASSERT_EQ("a=1", *set_cookie);
+    std::vector<const std::string*> all_set_cookie
+        = http_message.header().GetAllSetCookieHeader();
+    for (const std::string* sc : all_set_cookie) {
+        ASSERT_NE(nullptr, sc);
+        if (set_cookie == sc) {
+            ASSERT_EQ("a=1", *sc);
+        } else {
+            ASSERT_EQ("b=2", *sc);
+        }
+        if (http_message.header().IsSetCookie(*sc)) {
+        }
+    }
+    int set_cookie_value1_count = 0;
+    int set_cookie_value2_count = 0;
+    for (auto iter = http_message.header().HeaderBegin();
+         iter != http_message.header().HeaderEnd(); ++iter) {
+        if (!http_message.header().IsSetCookie(iter->first)) {
+            continue;
+        }
+        if (iter->second == "b=2") {
+            ++set_cookie_value2_count;
+        } else if (iter->second == "a=1") {
+            ++set_cookie_value1_count;
+        }
+    }
+    ASSERT_EQ(1, set_cookie_value1_count);
+    ASSERT_EQ(1, set_cookie_value2_count);
+}
+
 TEST(HttpMessageTest, cl_and_te) {
     // https://datatracker.ietf.org/doc/html/rfc2616#section-14.41
     // If multiple encodings have been applied to an entity, the transfer-
@@ -435,6 +500,57 @@ TEST(HttpMessageTest, http_header) {
     ASSERT_TRUE(value && *value == "value3");
     header.RemoveHeader("key1");
     ASSERT_FALSE(header.GetHeader("key1"));
+
+    ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::COOKIE));
+    header.AppendHeader(brpc::HttpHeader::COOKIE, "value1=1");
+    value = header.GetHeader(brpc::HttpHeader::COOKIE);
+    ASSERT_TRUE(value && *value == "value1=1");
+    header.AppendHeader(brpc::HttpHeader::COOKIE, "value2=2");
+    value = header.GetHeader(brpc::HttpHeader::COOKIE);
+    ASSERT_TRUE(value && *value == "value1=1; value2=2");
+    header.SetHeader(brpc::HttpHeader::COOKIE, "value3");
+    value = header.GetHeader(brpc::HttpHeader::COOKIE);
+    ASSERT_TRUE(value && *value == "value3");
+    header.RemoveHeader(brpc::HttpHeader::COOKIE);
+    ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::COOKIE));
+
+    std::string set_cookie_value1 = "a=1";
+    std::string set_cookie_value2 = "b=2";
+    std::string set_cookie_value3 = "c=3";
+    ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::SET_COOKIE));
+    header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value1);
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value1);
+    header.AppendHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value2);
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value1);
+    header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value3);
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value3);
+    std::vector<const std::string*> all_set_cookie
+        = header.GetAllSetCookieHeader();
+    ASSERT_EQ(2u, all_set_cookie.size());
+    for (const std::string* sc : all_set_cookie) {
+        ASSERT_TRUE(sc);
+        ASSERT_TRUE(*sc == set_cookie_value2 || *sc == set_cookie_value3);
+    }
+    int set_cookie_value2_count = 0;
+    int set_cookie_value3_count = 0;
+    for (auto iter = header.HeaderBegin(); iter != header.HeaderEnd(); ++iter) {
+        if (!header.IsSetCookie(brpc::HttpHeader::SET_COOKIE)) {
+            continue;
+        }
+        if (iter->second == set_cookie_value2) {
+            ++set_cookie_value2_count;
+        } else if (iter->second == set_cookie_value3) {
+            ++set_cookie_value3_count;
+        }
+    }
+    ASSERT_EQ(1, set_cookie_value2_count);
+    ASSERT_EQ(1, set_cookie_value3_count);
+    header.RemoveHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::SET_COOKIE));
+    ASSERT_EQ(header._first_set_cookie, nullptr);
 
     ASSERT_EQ(brpc::HTTP_METHOD_GET, header.method());
     header.set_method(brpc::HTTP_METHOD_POST);

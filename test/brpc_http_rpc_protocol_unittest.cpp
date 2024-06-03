@@ -59,6 +59,7 @@ namespace brpc {
 DECLARE_bool(rpc_dump);
 DECLARE_string(rpc_dump_dir);
 DECLARE_int32(rpc_dump_max_requests_in_one_file);
+DECLARE_bool(allow_chunked_length);
 extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
 }
 

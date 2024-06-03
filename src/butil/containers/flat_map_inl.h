@@ -225,8 +225,8 @@ friend class SparseFlatMapIterator<Map, ConstValue>;
 };
  
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-FlatMap<_K, _T, _H, _E, _S, _A>::FlatMap(const hasher& hashfn, const key_equal& eql, const allocator_type& alloc)
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::FlatMap(const hasher& hashfn, const key_equal& eql, const allocator_type& alloc)
     : _size(0)
     , _nbucket(0)
     , _buckets(NULL)
@@ -237,8 +237,8 @@ FlatMap<_K, _T, _H, _E, _S, _A>::FlatMap(const hasher& hashfn, const key_equal& 
     , _pool(alloc)
 {}
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-FlatMap<_K, _T, _H, _E, _S, _A>::~FlatMap() {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::~FlatMap() {
     clear();
     get_allocator().Free(_buckets);
     _buckets = NULL;
@@ -248,8 +248,8 @@ FlatMap<_K, _T, _H, _E, _S, _A>::~FlatMap() {
     _load_factor = 0;
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-FlatMap<_K, _T, _H, _E, _S, _A>::FlatMap(const FlatMap& rhs)
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::FlatMap(const FlatMap& rhs)
     : _size(0)
     , _nbucket(0)
     , _buckets(NULL)
@@ -260,9 +260,9 @@ FlatMap<_K, _T, _H, _E, _S, _A>::FlatMap(const FlatMap& rhs)
     operator=(rhs);
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-FlatMap<_K, _T, _H, _E, _S, _A>&
-FlatMap<_K, _T, _H, _E, _S, _A>::operator=(const FlatMap<_K, _T, _H, _E, _S, _A>& rhs) {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+FlatMap<_K, _T, _H, _E, _S, _A, _M>&
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator=(const FlatMap<_K, _T, _H, _E, _S, _A, _M>& rhs) {
     if (this == &rhs) {
         return *this;
     }
@@ -334,8 +334,8 @@ FlatMap<_K, _T, _H, _E, _S, _A>::operator=(const FlatMap<_K, _T, _H, _E, _S, _A>
     return *this;
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-int FlatMap<_K, _T, _H, _E, _S, _A>::init(size_t nbucket, u_int load_factor) {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+int FlatMap<_K, _T, _H, _E, _S, _A, _M>::init(size_t nbucket, u_int load_factor) {
     if (initialized()) {
         LOG(ERROR) << "Already initialized";
         return -1;
@@ -373,8 +373,8 @@ int FlatMap<_K, _T, _H, _E, _S, _A>::init(size_t nbucket, u_int load_factor) {
     return 0;
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-void FlatMap<_K, _T, _H, _E, _S, _A>::swap(FlatMap<_K, _T, _H, _E, _S, _A> & rhs) {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+void FlatMap<_K, _T, _H, _E, _S, _A, _M>::swap(FlatMap<_K, _T, _H, _E, _S, _A, _M> & rhs) {
     std::swap(rhs._size, _size);
     std::swap(rhs._nbucket, _nbucket);
     std::swap(rhs._buckets, _buckets);
@@ -385,22 +385,25 @@ void FlatMap<_K, _T, _H, _E, _S, _A>::swap(FlatMap<_K, _T, _H, _E, _S, _A> & rhs
     rhs._pool.swap(_pool);
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-_T* FlatMap<_K, _T, _H, _E, _S, _A>::insert(const key_type& key,
-                                        const mapped_type& value) {
-    mapped_type *p = &operator[](key);
+template <typename _K, typename _T, typename _H,
+          typename _E, bool _S, typename _A, bool _M>
+_T* FlatMap<_K, _T, _H, _E, _S, _A, _M>::insert(const key_type& key,
+                                                const mapped_type& value) {
+    mapped_type *p = &operator[]<_M>(key);
     *p = value;
     return p;
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-_T* FlatMap<_K, _T, _H, _E, _S, _A>::insert(const std::pair<key_type, mapped_type>& kv) {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+_T* FlatMap<_K, _T, _H, _E, _S, _A, _M>::insert(
+    const std::pair<key_type, mapped_type>& kv) {
     return insert(kv.first, kv.second);
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-template <typename K2>
-size_t FlatMap<_K, _T, _H, _E, _S, _A>::erase(const K2& key, _T* old_value) {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+template <typename K2, bool Multi>
+typename std::enable_if<!Multi, size_t >::type
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(const K2& key, _T* old_value) {
     if (!initialized()) {
         return 0;
     }
@@ -464,8 +467,71 @@ size_t FlatMap<_K, _T, _H, _E, _S, _A>::erase(const K2& key, _T* old_value) {
     return 0;
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-void FlatMap<_K, _T, _H, _E, _S, _A>::clear() {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+template <typename K2, bool Multi>
+typename std::enable_if<Multi, size_t >::type
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(const K2& key,
+                                           std::vector<mapped_type>* old_values) {
+    if (!initialized()) {
+        return 0;
+    }
+    // TODO: Do we need auto collapsing here?
+    const size_t index = flatmap_mod(_hashfn(key), _nbucket);
+    Bucket& first_node = _buckets[index];
+    if (!first_node.is_valid()) {
+        return 0;
+    }
+
+    Bucket* new_head = NULL;
+    Bucket* new_tail = NULL;
+    Bucket* p = &first_node;
+    size_t total = _size;
+    while (NULL != p) {
+        if (_eql(p->element().first_ref(), key)) {
+            if (NULL != old_values) {
+                old_values->push_back(p->element().second_movable_ref());
+            }
+            Bucket* temp = p;
+            p = p->next;
+            temp->element().~Element();
+            if (temp != &first_node) {
+                _pool.back(temp);
+            }
+            --_size;
+        } else {
+            if (NULL == new_head) {
+                new_head = p;
+                new_tail = p;
+            } else {
+                new_tail->next = p;
+                new_tail = new_tail->next;
+            }
+            p = p->next;
+        }
+    }
+    if (NULL != new_tail) {
+        new_tail->next = NULL;
+    }
+    if (NULL == new_head) {
+        // Erase all element.
+        first_node.set_invalid();
+        if (_S) {
+            bit_array_unset(_thumbnail, index);
+        }
+    } else if (new_head != &first_node) {
+        // The First node has been erased, need to move new head node as first node.
+        first_node.next = new_head->next;
+        const_cast<_K&>(first_node.element().first_ref()) =
+            new_head->element().first_ref();
+        first_node.element().second_ref() = new_head->element().second_movable_ref();
+        new_head->element().~Element();
+        _pool.back(new_head);
+    }
+    return total - _size;
+}
+
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+void FlatMap<_K, _T, _H, _E, _S, _A, _M>::clear() {
     if (0 == _size) {
         return;
     }
@@ -491,15 +557,15 @@ void FlatMap<_K, _T, _H, _E, _S, _A>::clear() {
     }
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-void FlatMap<_K, _T, _H, _E, _S, _A>::clear_and_reset_pool() {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+void FlatMap<_K, _T, _H, _E, _S, _A, _M>::clear_and_reset_pool() {
     clear();
     _pool.reset();
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
 template <typename K2>
-_T* FlatMap<_K, _T, _H, _E, _S, _A>::seek(const K2& key) const {
+_T* FlatMap<_K, _T, _H, _E, _S, _A, _M>::seek(const K2& key) const {
     if (!initialized()) {
         return NULL;
     }
@@ -520,8 +586,34 @@ _T* FlatMap<_K, _T, _H, _E, _S, _A>::seek(const K2& key) const {
     return NULL;
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-_T& FlatMap<_K, _T, _H, _E, _S, _A>::operator[](const key_type& key) {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+template <typename K2>
+std::vector<_T*> FlatMap<_K, _T, _H, _E, _S, _A, _M>::seek_all(const K2& key) const {
+    std::vector<_T*> v;
+    if (!initialized()) {
+        return v;
+    }
+    Bucket& first_node = _buckets[flatmap_mod(_hashfn(key), _nbucket)];
+    if (!first_node.is_valid()) {
+        return v;
+    }
+    if (_eql(first_node.element().first_ref(), key)) {
+        v.push_back(&first_node.element().second_ref());
+    }
+    Bucket *p = first_node.next;
+    while (p) {
+        if (_eql(p->element().first_ref(), key)) {
+            v.push_back(&p->element().second_ref());
+        }
+        p = p->next;
+    }
+    return v;
+}
+
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+template<bool Multi>
+typename std::enable_if<!Multi, _T&>::type
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator[](const key_type& key) {
     const size_t index = flatmap_mod(_hashfn(key), _nbucket);
     Bucket& first_node = _buckets[index];
     if (!first_node.is_valid()) {
@@ -553,8 +645,28 @@ _T& FlatMap<_K, _T, _H, _E, _S, _A>::operator[](const key_type& key) {
     }
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-void FlatMap<_K, _T, _H, _E, _S, _A>::save_iterator(
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+template<bool Multi>
+typename std::enable_if<Multi, _T&>::type
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator[](const key_type& key) {
+    const size_t index = flatmap_mod(_hashfn(key), _nbucket);
+    Bucket& first_node = _buckets[index];
+    if (!first_node.is_valid()) {
+        ++_size;
+        if (_S) {
+            bit_array_set(_thumbnail, index);
+        }
+        new (&first_node) Bucket(key);
+        return first_node.element().second_ref();
+    }
+    Bucket* newp = new (_pool.get()) Bucket(key);
+    newp->next = first_node.next;
+    first_node.next = newp;
+    return newp->element().second_ref();
+}
+
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+void FlatMap<_K, _T, _H, _E, _S, _A, _M>::save_iterator(
     const const_iterator& it, PositionHint* hint) const {
     hint->nbucket = _nbucket;
     hint->offset = it._entry - _buckets;
@@ -567,9 +679,9 @@ void FlatMap<_K, _T, _H, _E, _S, _A>::save_iterator(
     }
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-typename FlatMap<_K, _T, _H, _E, _S, _A>::const_iterator
-FlatMap<_K, _T, _H, _E, _S, _A>::restore_iterator(const PositionHint& hint) const {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+typename FlatMap<_K, _T, _H, _E, _S, _A, _M>::const_iterator
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::restore_iterator(const PositionHint& hint) const {
     if (hint.nbucket != _nbucket)  // resized
         return begin(); // restart
 
@@ -601,8 +713,8 @@ FlatMap<_K, _T, _H, _E, _S, _A>::restore_iterator(const PositionHint& hint) cons
     return const_iterator(this, hint.offset);
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-bool FlatMap<_K, _T, _H, _E, _S, _A>::resize(size_t nbucket2) {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+bool FlatMap<_K, _T, _H, _E, _S, _A, _M>::resize(size_t nbucket2) {
     nbucket2 = flatmap_round(nbucket2);
     if (_nbucket == nbucket2) {
         return false;
@@ -623,8 +735,8 @@ bool FlatMap<_K, _T, _H, _E, _S, _A>::resize(size_t nbucket2) {
     return true;
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-BucketInfo FlatMap<_K, _T, _H, _E, _S, _A>::bucket_info() const {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+BucketInfo FlatMap<_K, _T, _H, _E, _S, _A, _M>::bucket_info() const {
     size_t max_n = 0;
     size_t nentry = 0;
     for (size_t i = 0; i < _nbucket; ++i) {
@@ -644,23 +756,23 @@ inline std::ostream& operator<<(std::ostream& os, const BucketInfo& info) {
               << " avgb=" << info.average_length << '}';
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-typename FlatMap<_K, _T, _H, _E, _S, _A>::iterator FlatMap<_K, _T, _H, _E, _S, _A>::begin() {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+typename FlatMap<_K, _T, _H, _E, _S, _A, _M>::iterator FlatMap<_K, _T, _H, _E, _S, _A, _M>::begin() {
     return iterator(this, 0);
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-typename FlatMap<_K, _T, _H, _E, _S, _A>::iterator FlatMap<_K, _T, _H, _E, _S, _A>::end() {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+typename FlatMap<_K, _T, _H, _E, _S, _A, _M>::iterator FlatMap<_K, _T, _H, _E, _S, _A, _M>::end() {
     return iterator(this, _nbucket);
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-typename FlatMap<_K, _T, _H, _E, _S, _A>::const_iterator FlatMap<_K, _T, _H, _E, _S, _A>::begin() const {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+typename FlatMap<_K, _T, _H, _E, _S, _A, _M>::const_iterator FlatMap<_K, _T, _H, _E, _S, _A, _M>::begin() const {
     return const_iterator(this, 0);
 }
 
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A>
-typename FlatMap<_K, _T, _H, _E, _S, _A>::const_iterator FlatMap<_K, _T, _H, _E, _S, _A>::end() const {
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+typename FlatMap<_K, _T, _H, _E, _S, _A, _M>::const_iterator FlatMap<_K, _T, _H, _E, _S, _A, _M>::end() const {
     return const_iterator(this, _nbucket);
 }
 
