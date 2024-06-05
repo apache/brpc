@@ -349,7 +349,7 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
     // Cheat get/setspecific and destroy the keytables.
     bthread::TaskGroup* g = bthread::tls_task_group;
     bthread::KeyTable* old_kt = bthread::tls_bls.keytable;
-    while(saved_free_keytables) {
+    while (saved_free_keytables) {
         bthread::KeyTable* kt = saved_free_keytables;
         saved_free_keytables = kt->next;
         bthread::tls_bls.keytable = kt;
@@ -363,7 +363,6 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
     if (g) {
         g->current_task()->local_storage.keytable = old_kt;
     }
-    return 0;
     // TODO: return_keytable may race with this function, we don't destroy
     // the mutex right now.
     // pthread_mutex_destroy(&pool->mutex);
