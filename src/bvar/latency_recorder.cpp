@@ -280,7 +280,10 @@ void LatencyRecorder::hide() {
     _latency_percentiles.hide();
 }
 
+DEFINE_uint64(latency_scale_factor, 1, "latency scale factor, used by method status, etc., latency_us = latency * latency_scale_factor");
+
 LatencyRecorder& LatencyRecorder::operator<<(int64_t latency) {
+    latency = latency / FLAGS_latency_scale_factor;
     _latency << latency;
     _max_latency << latency;
     _latency_percentile << latency;
