@@ -372,7 +372,7 @@ void MultiDimension<T>::make_labels_kvpair_string(std::ostream& os,
         comma[0] = ',';
     }
     if (quantile > 0) {
-        os << ",quantile=\"" << quantile << "\"";
+        os << comma << "quantile=\"" << quantile << "\"";
     }
     os << "}";
 }
