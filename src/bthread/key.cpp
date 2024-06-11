@@ -205,8 +205,7 @@ private:
     SubKeyTable* _subs[KEY_1STLEVEL_SIZE];
 };
 
-class KeyTableList {
-public:
+struct KeyTableList {
     KeyTableList() {
         keytable = NULL;
     }
