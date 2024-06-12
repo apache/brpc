@@ -590,6 +590,7 @@ int Socket::ResetFileDescriptor(int fd) {
     // Make the fd non-blocking.
     if (butil::make_non_blocking(fd) != 0) {
         PLOG(ERROR) << "Fail to set fd=" << fd << " to non-blocking";
+        _fd.store(-1, butil::memory_order_release);
         return -1;
     }
     // turn off nagling.
