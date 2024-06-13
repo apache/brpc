@@ -158,8 +158,8 @@ private:
 ChannelBalancer::~ChannelBalancer() {
     for (ChannelToIdMap::iterator
              it = _chan_map.begin(); it != _chan_map.end(); ++it) {
-        SocketUniquePtr ptr(it->second); // Dereference
         it->second->ReleaseAdditionalReference();
+        it->second->ReleaseHCRelatedReference();
     }
     _chan_map.clear();
 }
@@ -196,15 +196,21 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
         return -1;
     }
     SocketUniquePtr ptr;
-    CHECK_EQ(0, Socket::Address(sock_id, &ptr));
+    int rc = Socket::AddressFailedAsWell(sock_id, &ptr);
+    if (rc < 0 || (rc > 0 && !ptr->HCEnabled())) {
+        LOG(FATAL) << "Fail to address SocketId=" << sock_id;
+        return -1;
+    }
     if (!AddServer(ServerId(sock_id))) {
         LOG(ERROR) << "Duplicated sub_channel=" << sub_channel;
         // sub_chan will be deleted when the socket is recycled.
         ptr->SetFailed();
+        // Cancel health checking.
+        ptr->ReleaseHCRelatedReference();
         return -1;
     }
-    ptr->SetHCRelatedRefHeld(); // set held status
-    _chan_map[sub_channel]= ptr.release();  // Add reference.
+    // The health-check-related reference has been held on created.
+    _chan_map[sub_channel]= ptr.get();
     if (handle) {
         *handle = sock_id;
     }
@@ -223,13 +229,11 @@ void ChannelBalancer::RemoveAndDestroyChannel(SelectiveChannel::ChannelHandle ha
             BAIDU_SCOPED_LOCK(_mutex);
             CHECK_EQ(1UL, _chan_map.erase(sub->chan));
         }
-        {
-            ptr->SetHCRelatedRefReleased(); // set released status to cancel health checking
-            SocketUniquePtr ptr2(ptr.get()); // Dereference.
-        }
         if (rc == 0) {
             ptr->ReleaseAdditionalReference();
         }
+        // Cancel health checking.
+        ptr->ReleaseHCRelatedReference();
     }
 }
 
