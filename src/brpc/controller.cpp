@@ -1427,6 +1427,12 @@ void Controller::reset_sampled_request(SampledRequest* req) {
     _sampled_request = req;
 }
 
+SampledRequest* Controller::release_sampled_request() {
+    SampledRequest* saved_sampled_request = _sampled_request;
+    _sampled_request = NULL;
+    return saved_sampled_request;
+}
+
 void Controller::set_stream_creator(StreamCreator* sc) {
     if (_stream_creator) {
         LOG(FATAL) << "A StreamCreator has been set previously";
