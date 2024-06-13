@@ -104,6 +104,7 @@
 #include "butil/containers/hash_tables.h"          // hash<>
 #include "butil/bit_array.h"                       // bit_array_*
 #include "butil/strings/string_piece.h"            // StringPiece
+#include "butil/memory/scope_guard.h"
 
 namespace butil {
 
@@ -156,13 +157,13 @@ public:
     explicit FlatMap(const hasher& hashfn = hasher(),
                      const key_equal& eql = key_equal(),
                      const allocator_type& alloc = allocator_type());
-    ~FlatMap();
     FlatMap(const FlatMap& rhs);
+    ~FlatMap();
+
     FlatMap& operator=(const FlatMap& rhs);
     void swap(FlatMap & rhs);
 
-    // Must be called to initialize this map, otherwise insert/operator[]
-    // crashes, and seek/erase fails.
+    // FlatMap will be automatically initialized, so no need to call this function.
     // `nbucket' is the initial number of buckets. `load_factor' is the 
     // maximum value of size()*100/nbucket, if the value is reached, nbucket
     // will be doubled and all items stored will be rehashed which is costly.
@@ -214,7 +215,7 @@ public:
     // Resize this map. This is optional because resizing will be triggered by
     // insert() or operator[] if there're too many items.
     // Returns successful or not.
-    bool resize(size_t nbucket);
+    bool resize(size_t new_nbucket);
     
     // Iterators
     iterator begin();
@@ -252,7 +253,7 @@ public:
     void save_iterator(const const_iterator&, PositionHint*) const;
     const_iterator restore_iterator(const PositionHint&) const;
 
-    // True if init() was successfully called.
+    // Always returns true.
     bool initialized() const { return _buckets != NULL; }
 
     bool empty() const { return _size == 0; }
@@ -279,12 +280,31 @@ public:
             const void* spaces = &element_spaces;
             return *reinterpret_cast<const Element*>(spaces);
         }
+        void swap(Bucket& rhs) {
+            if (!is_valid() && !rhs.is_valid()) {
+                return;
+            } else if (is_valid() && !rhs.is_valid()) {
+                new (&rhs.element_spaces) Element(movable_element());
+                element().~Element();
+            } else if (!is_valid() && rhs.is_valid()) {
+                new (&element_spaces) Element(rhs.movable_element());
+                rhs.element().~Element();
+            } else {
+                element().swap(rhs.element());
+            }
+            std::swap(next, rhs.next);
+        }
+
         Bucket *next;
         typename std::aligned_storage<sizeof(Element), alignof(Element)>::type
             element_spaces;
-    };
 
-    allocator_type& get_allocator() { return _pool.get_allocator(); }
+    private:
+        Element&& movable_element() {
+            void* spaces = &element_spaces; // Suppress strict-aliasing
+            return std::move(*reinterpret_cast<Element*>(spaces));
+        }
+    };
 
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
@@ -298,15 +318,70 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     template<bool Multi = _Multi>
     typename std::enable_if<Multi, mapped_type&>::type operator[](const key_type& key);
 
+    struct NewBucketsInfo {
+        NewBucketsInfo()
+        : buckets(NULL), thumbnail(NULL), nbucket(0) {}
+        NewBucketsInfo(Bucket* b, uint64_t* t, size_t n)
+            : buckets(b), thumbnail(t), nbucket(n) {}
+        Bucket* buckets;
+        uint64_t* thumbnail;
+        size_t nbucket;
+    };
+    NewBucketsInfo new_buckets(size_t size, size_t new_nbucket,
+                               bool ignore_same_nbucket);
+
+    allocator_type& get_allocator() { return _pool.get_allocator(); }
+    allocator_type get_allocator() const { return _pool.get_allocator(); }
+
     // True if buckets need to be resized before holding `size' elements.
-    inline bool is_too_crowded(size_t size) const
-    { return size * 100 >= _nbucket * _load_factor; }
-        
+    bool is_too_crowded(size_t size) const {
+        return is_too_crowded(size, _nbucket, _load_factor);
+    }
+
+    static bool is_too_crowded(size_t size, size_t nbucket, u_int load_factor) {
+        return size * 100 >= nbucket * load_factor;
+    }
+
+    void init_load_factor(u_int load_factor) {
+        if (_is_default_load_factor) {
+            _is_default_load_factor = false;
+            _load_factor = load_factor;
+        }
+    }
+
+    // True if using default buckets which is for small map optimization.
+    bool is_default_buckets() const {
+        return _buckets == (Bucket*)(&_default_buckets_spaces);
+    }
+
+    static void init_buckets(Bucket* buckets, uint64_t* thumbnail, size_t nbucket) {
+        for (size_t i = 0; i < nbucket; ++i) {
+            buckets[i].set_invalid();
+        }
+        buckets[nbucket].next = NULL;
+        if (_Sparse) {
+            bit_array_clear(thumbnail, nbucket);
+        }
+    }
+
+#ifdef FLAT_MAP_ROUND_BUCKET_BY_USE_NEXT_PRIME
+    static const size_t default_nbucket = 29;
+#else
+    static const size_t default_nbucket = 16;
+#endif
+    static const size_t default_nthumbnail = BIT_ARRAY_LEN(default_nbucket);
+    // Small map optimization.
+    typedef typename std::aligned_storage<sizeof(Bucket), alignof(Bucket)>::type
+            buckets_spaces_type;
+    // Note: need an extra bucket to let iterator know where buckets end.
+    buckets_spaces_type _default_buckets_spaces[default_nbucket + 1];
+    uint64_t _default_thumbnail[default_nthumbnail];
     size_t _size;
     size_t _nbucket;
     Bucket* _buckets;
     uint64_t* _thumbnail;
     u_int _load_factor;
+    bool _is_default_load_factor;
     hasher _hashfn;
     key_equal _eql;
     SingleThreadedPool<sizeof(Bucket), 1024, 16, allocator_type> _pool;
@@ -400,6 +475,13 @@ public:
     // POD) which is wrong generally.
     explicit FlatMapElement(const K& k) : _key(k), _value(T()) {}
     //                                             ^^^^^^^^^^^
+
+    FlatMapElement(const FlatMapElement& rhs)
+        : _key(rhs._key), _value(rhs._value) {}
+
+    FlatMapElement(FlatMapElement&& rhs)  noexcept
+        : _key(std::move(rhs._key)), _value(std::move(rhs._value)) {}
+
     const K& first_ref() const { return _key; }
     T& second_ref() { return _value; }
     T&& second_movable_ref() { return std::move(_value); }
@@ -411,8 +493,13 @@ public:
     inline static T&& second_movable_ref_from_value(value_type& v)
     { return std::move(v.second); }
 
+    void swap(FlatMapElement& rhs) {
+        std::swap(_key, rhs._key);
+        std::swap(_value, rhs._value);
+    }
+
 private:
-    const K _key;
+    K _key;
     T _value;
 };
 
