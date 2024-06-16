@@ -61,7 +61,7 @@ int BAIDU_WEAK bthread_timed_connect(
 
 __END_DECLS
 
-#include "details/extended_endpoint.hpp"
+#include "butil/details/extended_endpoint.hpp"
 
 namespace butil {
 
@@ -441,13 +441,18 @@ int pthread_fd_wait(int fd, unsigned events,
         return -1;
     }
     pollfd ufds = { fd, poll_events, 0 };
-    const int rc = poll(&ufds, 1, diff_ms);
-    if (rc < 0) {
-        return -1;
-    }
-    if (rc == 0) {
-        errno = ETIMEDOUT;
-        return -1;
+    while (true) {
+        int rc = poll(&ufds, 1, diff_ms);
+        if (rc < 0 && errno != EINTR) {
+            return -1;
+        }
+        if (rc == 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+        if (rc > 0) {
+            break;
+        }
     }
     if (ufds.revents & POLLNVAL) {
         errno = EBADF;
@@ -458,10 +463,6 @@ int pthread_fd_wait(int fd, unsigned events,
 
 int pthread_timed_connect(int sockfd, const struct sockaddr* serv_addr,
                           socklen_t addrlen, const timespec* abstime) {
-    if (abstime == NULL) {
-        return ::connect(sockfd, serv_addr, addrlen);
-    }
-
     bool is_blocking = butil::is_blocking(sockfd);
     if (is_blocking) {
         butil::make_non_blocking(sockfd);
@@ -485,15 +486,7 @@ int pthread_timed_connect(int sockfd, const struct sockaddr* serv_addr,
         return -1;
     }
 
-    int err;
-    socklen_t errlen = sizeof(err);
-    if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &errlen) < 0) {
-        PLOG(FATAL) << "Fail to getsockopt";
-        return -1;
-    }
-    if (err != 0) {
-        CHECK(err != EINPROGRESS);
-        errno = err;
+    if (is_connected(sockfd) != 0) {
         return -1;
     }
     return 0;
@@ -513,22 +506,19 @@ int tcp_connect(const EndPoint& server, int* self_port, int connect_timeout_ms) 
     if (sockfd < 0) {
         return -1;
     }
-    int rc = 0;
-    if (connect_timeout_ms <= 0) {
-        if (bthread_connect != NULL) {
-            rc = bthread_connect(sockfd, (struct sockaddr*)&serv_addr, serv_addr_size);
-        } else {
-            rc = ::connect(sockfd, (struct sockaddr*) &serv_addr, serv_addr_size);
-        }
+    timespec abstime{};
+    timespec* abstime_ptr = NULL;
+    if (connect_timeout_ms > 0) {
+        abstime = butil::milliseconds_from_now(connect_timeout_ms);
+        abstime_ptr = &abstime;
+    }
+    int rc;
+    if (bthread_timed_connect != NULL) {
+        rc = bthread_timed_connect(sockfd, (struct sockaddr*)&serv_addr,
+                                   serv_addr_size, abstime_ptr);
     } else {
-        timespec abstime = butil::milliseconds_from_now(connect_timeout_ms);
-        if (bthread_timed_connect != NULL) {
-            rc = bthread_timed_connect(sockfd, (struct sockaddr*)&serv_addr,
-                                       serv_addr_size, &abstime);
-        } else {
-            rc = pthread_timed_connect(sockfd, (struct sockaddr*) &serv_addr,
-                                       serv_addr_size, &abstime);
-        }
+        rc = pthread_timed_connect(sockfd, (struct sockaddr*) &serv_addr,
+                                   serv_addr_size, abstime_ptr);
     }
     if (rc < 0) {
         return -1;

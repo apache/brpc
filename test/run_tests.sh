@@ -43,7 +43,7 @@ print_bt () {
     COREFILE=$(find . -name "core*" -type f -printf "%T@ %p\n" | sort -k 1 -n | cut -d' ' -f 2- | tail -n 1)
     if [ ! -z "$COREFILE" ]; then
         >&2 echo "corefile=$COREFILE prog=$1"
-        gdb -c "$COREFILE" $1 -ex "thread apply all bt" -ex "set pagination 0" -batch;
+        gdb -c "$COREFILE" $1 -ex "bt" -ex "thread apply all bt" -ex "set pagination 0" -batch;
     fi
 }
 
