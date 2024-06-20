@@ -419,18 +419,6 @@ short kqueue_to_poll_events(int kqueue_events) {
 
 int pthread_fd_wait(int fd, unsigned events,
                     const timespec* abstime) {
-    int diff_ms = -1;
-    if (abstime) {
-        timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
-        int64_t now_us = butil::timespec_to_microseconds(now);
-        int64_t abstime_us = butil::timespec_to_microseconds(*abstime);
-        if (abstime_us <= now_us) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-        diff_ms = (abstime_us - now_us + 999L) / 1000L;
-    }
 #if defined(OS_LINUX)
     const short poll_events = epoll_to_poll_events(events);
 #elif defined(OS_MACOSX)
@@ -441,17 +429,31 @@ int pthread_fd_wait(int fd, unsigned events,
         return -1;
     }
     pollfd ufds = { fd, poll_events, 0 };
+    int64_t abstime_us = -1;
+    if (NULL != abstime) {
+        abstime_us = butil::timespec_to_microseconds(*abstime);
+    }
     while (true) {
+        int diff_ms = -1;
+        if (NULL != abstime) {
+            int64_t now_us = butil::gettimeofday_us();
+            if (abstime_us <= now_us) {
+                errno = ETIMEDOUT;
+                return -1;
+            }
+            diff_ms = (abstime_us - now_us + 999L) / 1000L;
+        }
         int rc = poll(&ufds, 1, diff_ms);
-        if (rc < 0 && errno != EINTR) {
-            return -1;
-        }
-        if (rc == 0) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
         if (rc > 0) {
             break;
+        } else if (rc == 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        } else {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
         }
     }
     if (ufds.revents & POLLNVAL) {
