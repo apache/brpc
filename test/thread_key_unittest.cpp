@@ -178,6 +178,7 @@ void* ThreadLocalForEachFunc(void* arg) {
     auto counter = static_cast<ThreadLocal<butil::atomic<int>>*>(arg);
     auto local_counter = counter->get();
     EXPECT_NE(nullptr, local_counter);
+    local_counter->store(0, butil::memory_order_relaxed);
     while (!g_stopped) {
         local_counter->fetch_add(1, butil::memory_order_relaxed);
         g_counter.fetch_add(1, butil::memory_order_relaxed);
