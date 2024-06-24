@@ -90,17 +90,12 @@ public:
     
     FlatMapIterator() : _node(NULL), _entry(NULL) {}    
     FlatMapIterator(const Map* map, size_t pos) {
-        if (map->initialized()) {
-            _entry = map->_buckets + pos;
-            find_and_set_valid_node();
-        } else {
-            _node = NULL;
-            _entry = NULL;
-        }
+        _entry = map->_buckets + pos;
+        find_and_set_valid_node();
     }
     FlatMapIterator(const FlatMapIterator<Map, NonConstValue>& rhs)
         : _node(rhs._node), _entry(rhs._entry) {}
-    ~FlatMapIterator() {}  // required by style-checker
+    ~FlatMapIterator() = default;  // required by style-checker
     
     // *this == rhs
     bool operator==(const FlatMapIterator& rhs) const
@@ -163,20 +158,14 @@ public:
     
     SparseFlatMapIterator() : _node(NULL), _pos(0), _map(NULL) {}
     SparseFlatMapIterator(const Map* map, size_t pos) {
-        if (map->initialized()) {
-            _map = map;
-            _pos = pos;
-            find_and_set_valid_node();
-        } else {
-            _node = NULL;
-            _map = NULL;
-            _pos = 0;
-        }
+        _map = map;
+        _pos = pos;
+        find_and_set_valid_node();
     }
     SparseFlatMapIterator(const SparseFlatMapIterator<Map, NonConstValue>& rhs)
         : _node(rhs._node), _pos(rhs._pos), _map(rhs._map)
     {}
-    ~SparseFlatMapIterator() {}  // required by style-checker
+    ~SparseFlatMapIterator() = default;  // required by style-checker
     
     // *this == rhs
     bool operator==(const SparseFlatMapIterator& rhs) const
@@ -226,38 +215,41 @@ friend class SparseFlatMapIterator<Map, ConstValue>;
  
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
-FlatMap<_K, _T, _H, _E, _S, _A, _M>::FlatMap(const hasher& hashfn, const key_equal& eql, const allocator_type& alloc)
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::FlatMap(const hasher& hashfn,
+                                             const key_equal& eql,
+                                             const allocator_type& alloc)
     : _size(0)
-    , _nbucket(0)
-    , _buckets(NULL)
-    , _thumbnail(NULL)
-    , _load_factor(0)
+    , _nbucket(default_nbucket)
+    , _buckets((Bucket*)(&_default_buckets_spaces))
+    , _thumbnail(_S ? _default_thumbnail : NULL)
+    , _load_factor(80)
+    , _is_default_load_factor(true)
     , _hashfn(hashfn)
     , _eql(eql)
-    , _pool(alloc)
-{}
-
-template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
-FlatMap<_K, _T, _H, _E, _S, _A, _M>::~FlatMap() {
-    clear();
-    get_allocator().Free(_buckets);
-    _buckets = NULL;
-    free(_thumbnail);
-    _thumbnail = NULL;
-    _nbucket = 0;
-    _load_factor = 0;
+    , _pool(alloc) {
+    init_buckets(_buckets, _thumbnail, _nbucket);
 }
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
 FlatMap<_K, _T, _H, _E, _S, _A, _M>::FlatMap(const FlatMap& rhs)
-    : _size(0)
-    , _nbucket(0)
-    , _buckets(NULL)
-    , _thumbnail(NULL)
-    , _load_factor(rhs._load_factor)
-    , _hashfn(rhs._hashfn)
-    , _eql(rhs._eql) {
-    operator=(rhs);
+    : FlatMap(rhs._hashfn, rhs._eql, rhs.get_allocator()) {
+    init_buckets(_buckets, _thumbnail, _nbucket);
+    if (!rhs.empty()) {
+        operator=(rhs);
+    }
+}
+
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::~FlatMap() {
+    clear();
+    if (!is_default_buckets()) {
+        get_allocator().Free(_buckets);
+        _buckets = NULL;
+        bit_array_free(_thumbnail);
+        _thumbnail = NULL;
+    }
+    _nbucket = 0;
+    _load_factor = 0;
 }
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
@@ -266,50 +258,29 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator=(const FlatMap<_K, _T, _H, _E, _S,
     if (this == &rhs) {
         return *this;
     }
-    // NOTE: assignment does not change _load_factor/_hashfn/_eql if |this| is
-    // initialized
     clear();
-    if (!rhs.initialized()) {
+    if (rhs.empty()) {
         return *this;
     }
-    bool need_copy = !rhs.empty();
-    _load_factor = rhs._load_factor;
-    if (_buckets == NULL || is_too_crowded(rhs._size)) {
-        get_allocator().Free(_buckets);
-        _nbucket = rhs._nbucket;
-        // note: need an extra bucket to let iterator know where buckets end
-        _buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (_nbucket + 1/*note*/));
-        if (NULL == _buckets) {
-            LOG(ERROR) << "Fail to new _buckets";
-            return *this;
-        }
-        // If no need to copy, set buckets invalid.
-        if (!need_copy) {
-            for (size_t i = 0; i < _nbucket; ++i) {
-                _buckets[i].set_invalid();
+    // NOTE: assignment only changes _load_factor when it is default.
+    init_load_factor(rhs._load_factor);
+    if (is_too_crowded(rhs._size)) {
+        NewBucketsInfo info = new_buckets(rhs._size, rhs._nbucket, false);
+        _nbucket = info.nbucket;
+        if (!is_default_buckets()) {
+            get_allocator().Free(_buckets);
+            if (_S) {
+                bit_array_free(_thumbnail);
             }
-            _buckets[_nbucket].next = NULL;
         }
-        if (_S) {
-            free(_thumbnail);
-            _thumbnail = bit_array_malloc(_nbucket);
-            if (NULL == _thumbnail) {
-                LOG(ERROR) << "Fail to new _thumbnail";
-                return *this;
-            }
-            bit_array_clear(_thumbnail, _nbucket);
-        }
-    }
-    if (!need_copy) {
-        return *this;
+        _buckets = info.buckets;
+        _thumbnail = info.thumbnail;
     }
     if (_nbucket == rhs._nbucket) {
         // For equivalent _nbucket, walking through _buckets instead of using
         // iterators is more efficient.
         for (size_t i = 0; i < rhs._nbucket; ++i) {
-            if (!rhs._buckets[i].is_valid()) {
-                _buckets[i].set_invalid();
-            } else {
+            if (rhs._buckets[i].is_valid()) {
                 if (_S) {
                     bit_array_set(_thumbnail, i);
                 }
@@ -336,49 +307,57 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator=(const FlatMap<_K, _T, _H, _E, _S,
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
 int FlatMap<_K, _T, _H, _E, _S, _A, _M>::init(size_t nbucket, u_int load_factor) {
-    if (initialized()) {
-        LOG(ERROR) << "Already initialized";
-        return -1;
+    if (nbucket <= _nbucket || load_factor < 10 || load_factor > 100 ||
+        !_is_default_load_factor || !empty() || !is_default_buckets()) {
+        return 0;
     }
-    if (nbucket == 0) {
-        LOG(WARNING) << "Fail to init FlatMap, nbucket=" << nbucket; 
-        return -1;
-    }
-    if (load_factor < 10 || load_factor > 100) {
-        LOG(ERROR) << "Invalid load_factor=" << load_factor;
-        return -1;
-    }
-    _size = 0;
-    _nbucket = flatmap_round(nbucket);
-    _load_factor = load_factor;
-                                
-    _buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (_nbucket + 1));
-    if (NULL == _buckets) {
-        LOG(ERROR) << "Fail to new _buckets";
-        return -1;
-    }
-    for (size_t i = 0; i < _nbucket; ++i) {
-        _buckets[i].set_invalid();
-    }
-    _buckets[_nbucket].next = NULL;
 
-    if (_S) {
-        _thumbnail = bit_array_malloc(_nbucket);
-        if (NULL == _thumbnail) {
-            LOG(ERROR) << "Fail to new _thumbnail";
-            return -1;
-        }
-        bit_array_clear(_thumbnail, _nbucket);
+    init_load_factor(load_factor);
+    if (!resize(nbucket)) {
+        LOG(ERROR) << "Fail to init";
+        return -1;
     }
     return 0;
 }
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
-void FlatMap<_K, _T, _H, _E, _S, _A, _M>::swap(FlatMap<_K, _T, _H, _E, _S, _A, _M> & rhs) {
+void FlatMap<_K, _T, _H, _E, _S, _A, _M>::swap(FlatMap<_K, _T, _H, _E, _S, _A, _M>& rhs) {
+    if (!is_default_buckets() && !rhs.is_default_buckets()) {
+        std::swap(rhs._buckets, _buckets);
+        std::swap(rhs._thumbnail, _thumbnail);
+    } else {
+        for (size_t i = 0; i < default_nbucket; ++i) {
+            Bucket& self_bucket = ((Bucket*)&_default_buckets_spaces)[i];
+            Bucket& rhs_bucket = ((Bucket*)&rhs._default_buckets_spaces)[i];
+            if (!is_default_buckets()) {
+                CHECK(!self_bucket.is_valid());
+            }
+            if (!rhs.is_default_buckets()) {
+                CHECK(!rhs_bucket.is_valid());
+            }
+            self_bucket.swap(rhs_bucket);
+        }
+        if (_S) {
+            for (size_t i = 0; i < default_nthumbnail; ++i) {
+                std::swap(_default_thumbnail[i], rhs._default_thumbnail[i]);
+            }
+        }
+        if (!is_default_buckets() && rhs.is_default_buckets()) {
+            rhs._buckets = _buckets;
+            rhs._thumbnail = _thumbnail;
+            _buckets = (Bucket*)&_default_buckets_spaces;
+            _thumbnail = _default_thumbnail;
+        } else if (is_default_buckets() && !rhs.is_default_buckets()) {
+            _buckets = rhs._buckets;
+            _thumbnail = rhs._thumbnail;
+            rhs._buckets = (Bucket*)&rhs._default_buckets_spaces;
+            rhs._thumbnail = rhs._thumbnail;
+        } // else both are default buckets which has been swapped, so no need to swap `_buckets'.
+    }
+
     std::swap(rhs._size, _size);
     std::swap(rhs._nbucket, _nbucket);
-    std::swap(rhs._buckets, _buckets);
-    std::swap(rhs._thumbnail, _thumbnail);
+    std::swap(rhs._is_default_load_factor, _is_default_load_factor);
     std::swap(rhs._load_factor, _load_factor);
     std::swap(rhs._hashfn, _hashfn);
     std::swap(rhs._eql, _eql);
@@ -389,7 +368,7 @@ template <typename _K, typename _T, typename _H,
           typename _E, bool _S, typename _A, bool _M>
 _T* FlatMap<_K, _T, _H, _E, _S, _A, _M>::insert(const key_type& key,
                                                 const mapped_type& value) {
-    mapped_type *p = &operator[]<_M>(key);
+    mapped_type *p = &operator[](key);
     *p = value;
     return p;
 }
@@ -404,9 +383,6 @@ template <typename _K, typename _T, typename _H, typename _E, bool _S, typename 
 template <typename K2, bool Multi>
 typename std::enable_if<!Multi, size_t >::type
 FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(const K2& key, _T* old_value) {
-    if (!initialized()) {
-        return 0;
-    }
     // TODO: Do we need auto collapsing here?
     const size_t index = flatmap_mod(_hashfn(key), _nbucket);
     Bucket& first_node = _buckets[index];
@@ -472,9 +448,6 @@ template <typename K2, bool Multi>
 typename std::enable_if<Multi, size_t >::type
 FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(const K2& key,
                                            std::vector<mapped_type>* old_values) {
-    if (!initialized()) {
-        return 0;
-    }
     // TODO: Do we need auto collapsing here?
     const size_t index = flatmap_mod(_hashfn(key), _nbucket);
     Bucket& first_node = _buckets[index];
@@ -566,9 +539,6 @@ void FlatMap<_K, _T, _H, _E, _S, _A, _M>::clear_and_reset_pool() {
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
 template <typename K2>
 _T* FlatMap<_K, _T, _H, _E, _S, _A, _M>::seek(const K2& key) const {
-    if (!initialized()) {
-        return NULL;
-    }
     Bucket& first_node = _buckets[flatmap_mod(_hashfn(key), _nbucket)];
     if (!first_node.is_valid()) {
         return NULL;
@@ -590,9 +560,6 @@ template <typename _K, typename _T, typename _H, typename _E, bool _S, typename 
 template <typename K2>
 std::vector<_T*> FlatMap<_K, _T, _H, _E, _S, _A, _M>::seek_all(const K2& key) const {
     std::vector<_T*> v;
-    if (!initialized()) {
-        return v;
-    }
     Bucket& first_node = _buckets[flatmap_mod(_hashfn(key), _nbucket)];
     if (!first_node.is_valid()) {
         return v;
@@ -625,17 +592,15 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator[](const key_type& key) {
         return first_node.element().second_ref();
     }
     Bucket *p = &first_node;
-    while (1) {
+    while (true) {
         if (_eql(p->element().first_ref(), key)) {
             return p->element().second_ref();
         }
         if (NULL == p->next) {
-            if (is_too_crowded(_size)) {
-                if (resize(_nbucket + 1)) {
-                    return operator[](key);
-                }
-                // fail to resize is OK
+            if (is_too_crowded(_size) && resize(_nbucket + 1)) {
+                return operator[](key);
             }
+            // Fail to resize is OK.
             ++_size;
             Bucket* newp = new (_pool.get()) Bucket(key);
             p->next = newp;
@@ -714,25 +679,82 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::restore_iterator(const PositionHint& hint) 
 }
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
-bool FlatMap<_K, _T, _H, _E, _S, _A, _M>::resize(size_t nbucket2) {
-    nbucket2 = flatmap_round(nbucket2);
-    if (_nbucket == nbucket2) {
+bool FlatMap<_K, _T, _H, _E, _S, _A, _M>::resize(size_t new_nbucket) {
+    NewBucketsInfo info = new_buckets(_size, new_nbucket, true);
+    if (NULL == info.buckets ||
+        (_S && NULL == info.thumbnail) ||
+        _nbucket == info.nbucket) {
         return false;
     }
 
-    // NOTE: following functors must be kept after resizing otherwise the 
-    // internal state is lost.
-    FlatMap new_map(_hashfn, _eql, get_allocator());
-    if (new_map.init(nbucket2, _load_factor) != 0) {
-        LOG(ERROR) << "Fail to init new_map, nbucket=" << nbucket2;
-        return false;
-    }
     for (iterator it = begin(); it != end(); ++it) {
-        new_map[Element::first_ref_from_value(*it)] = 
-            Element::second_movable_ref_from_value(*it);
+        const key_type& key = Element::first_ref_from_value(*it);
+        const size_t index = flatmap_mod(_hashfn(key), info.nbucket);
+        Bucket& first_node = info.buckets[index];
+        if (!first_node.is_valid()) {
+            if (_S) {
+                bit_array_set(info.thumbnail, index);
+            }
+            new (&first_node) Bucket(key);
+            first_node.element().second_ref() =
+                Element::second_movable_ref_from_value(*it);
+        } else {
+            Bucket* newp = new (_pool.get()) Bucket(key);
+            newp->element().second_ref() =
+                Element::second_movable_ref_from_value(*it);
+            newp->next = first_node.next;
+            first_node.next = newp;
+        }
     }
-    new_map.swap(*this);
+    size_t saved_size = _size;
+    clear();
+    if (!is_default_buckets()) {
+        get_allocator().Free(_buckets);
+        if (_S) {
+            bit_array_free(_thumbnail);
+        }
+    }
+    _nbucket = info.nbucket;
+    _buckets = info.buckets;
+    _thumbnail = info.thumbnail;
+    _size = saved_size;
+
     return true;
+}
+
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+typename FlatMap<_K, _T, _H, _E, _S, _A, _M>::NewBucketsInfo
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::new_buckets(
+    size_t size, size_t new_nbucket, bool ignore_same_nbucket) {
+    do {
+        new_nbucket = flatmap_round(new_nbucket);
+    } while (is_too_crowded(size, new_nbucket, _load_factor));
+    if (_nbucket == new_nbucket && !ignore_same_nbucket) {
+        return {};
+    }
+    // Note: need an extra bucket to let iterator know where buckets end.
+    auto buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (
+        new_nbucket + 1/*note*/));
+    auto guard = MakeScopeGuard([buckets, this]() {
+        get_allocator().Free(buckets);
+    });
+    if (NULL == buckets) {
+        LOG(FATAL) << "Fail to new Buckets";
+        return {};
+    }
+
+    uint64_t* thumbnail = NULL;
+    if (_S) {
+        thumbnail = bit_array_malloc(new_nbucket);
+        if (NULL == thumbnail) {
+            LOG(FATAL) << "Fail to new thumbnail";
+            return {};
+        }
+    }
+
+    guard.dismiss();
+    init_buckets(buckets, thumbnail, new_nbucket);
+    return { buckets, thumbnail, new_nbucket };
 }
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
