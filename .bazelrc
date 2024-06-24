@@ -16,10 +16,13 @@
 #
 # Default build options. These are applied first and unconditionally.
 #
+common --registry=https://bcr.bazel.build
+common --registry=https://baidu.github.io/babylon/registry
+common --registry=https://raw.githubusercontent.com/bazelboost/registry/main
 
-build --cxxopt="-std=c++11"
+build --cxxopt="-std=c++17"
 # Use gnu11 for asm keyword.
-build --conlyopt="-std=gnu11"
+build --conlyopt="-std=gnu17"
 
 # Enable position independent code (this is the default on macOS and Windows)
 # (Workaround for https://github.com/bazelbuild/rules_foreign_cc/issues/421)

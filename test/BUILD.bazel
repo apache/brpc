@@ -30,9 +30,7 @@ COPTS = [
     "-Wno-unused-parameter",
     "-fno-omit-frame-pointer",
     "-DGFLAGS_NS=google",
-    "-Dprivate=public",
-    "-Dprotected=public",
-    "--include test/sstream_workaround.h",
+    "-fno-access-control",
     "-DBAZEL_TEST=1",
     "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
     "-DUNIT_TEST",
@@ -142,7 +140,7 @@ TEST_BUTIL_SOURCES = [
     "bounded_queue_unittest.cc",
     "butil_unittest_main.cpp",
 ] + select({
-    "@bazel_tools//tools/osx:darwin": [],
+    "@bazel_tools//tools/osx:darwin_x86_64": [],
     "//conditions:default": [
         "test_file_util_linux.cc",
         "proc_maps_linux_unittest.cc",
