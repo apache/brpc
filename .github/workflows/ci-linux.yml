@@ -120,13 +120,13 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test --verbose_failures --action_env=CC=clang-14 -- //... -//example/...
+    - run: bazel build --verbose_failures --action_env=CC=clang-12 -- //... -//example/...
 
   clang-compile-with-boringssl:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test --verbose_failures --action_env=CC=clang-14 --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
+    - run: bazel build --verbose_failures --action_env=CC=clang-12 --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
 
   clang-compile-with-make-all-options:
     runs-on: ubuntu-20.04
@@ -160,7 +160,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test --verbose_failures --action_env=CC=clang-14 --define with_mesalink=false --define with_glog=true --define with_thrift=true -- //... -//example/...
+    - run: bazel build --verbose_failures --action_env=CC=clang-12 --define with_mesalink=false --define with_glog=true --define with_thrift=true -- //... -//example/...
 
   clang-unittest:
     runs-on: ubuntu-20.04
