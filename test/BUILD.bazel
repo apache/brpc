@@ -31,8 +31,6 @@ COPTS = [
     "-fno-omit-frame-pointer",
     "-DGFLAGS_NS=google",
     "-fno-access-control",
-    "-Dprotected=public",
-    "--include test/sstream_workaround.h",
     "-DBAZEL_TEST=1",
     "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
     "-DUNIT_TEST",

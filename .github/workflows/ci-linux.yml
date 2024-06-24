@@ -43,16 +43,16 @@ jobs:
            make -j ${{env.proc_num}}
 
   gcc-compile-with-bazel:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test -- //... -//example/...
+    - run: bazel test --verbose_failures -- //... -//example/...
   
   gcc-compile-with-boringssl:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
+    - run: bazel test --verbose_failures --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
 
   gcc-compile-with-make-all-options:
     runs-on: ubuntu-20.04
@@ -83,10 +83,10 @@ jobs:
            make -j ${{env.proc_num}}
 
   gcc-compile-with-bazel-all-options:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test --define with_mesalink=false --define with_glog=true --define with_thrift=true -- //... -//example/...
+    - run: bazel test --verbose_failures --define with_mesalink=false --define with_glog=true --define with_thrift=true -- //... -//example/...
 
   clang-compile-with-make:
     runs-on: ubuntu-20.04
@@ -117,16 +117,16 @@ jobs:
            make -j ${{env.proc_num}}
 
   clang-compile-with-bazel:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel --action_env=CC=clang test -- //... -//example/...
+    - run: bazel test --verbose_failures --action_env=CC=clang -- //... -//example/...
 
   clang-compile-with-boringssl:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test --action_env=CC=clang --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
+    - run: bazel test --verbose_failures ---action_env=CC=clang -define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
 
   clang-compile-with-make-all-options:
     runs-on: ubuntu-20.04
@@ -157,10 +157,10 @@ jobs:
            make -j ${{env.proc_num}}
 
   clang-compile-with-bazel-all-options:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test --action_env=CC=clang --define with_mesalink=false --define with_glog=true --define with_thrift=true -- //... -//example/...
+    - run: bazel test --verbose_failures --action_env=CC=clang --define with_mesalink=false --define with_glog=true --define with_thrift=true -- //... -//example/...
 
   clang-unittest:
     runs-on: ubuntu-20.04
