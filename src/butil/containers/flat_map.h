@@ -104,6 +104,7 @@
 #include "butil/containers/hash_tables.h"          // hash<>
 #include "butil/bit_array.h"                       // bit_array_*
 #include "butil/strings/string_piece.h"            // StringPiece
+#include "butil/memory/scope_guard.h"
 
 namespace butil {
 
@@ -290,6 +291,18 @@ private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
 template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
 
+    struct NewBucketsInfo {
+        NewBucketsInfo()
+            : buckets(NULL), thumbnail(NULL), nbucket(0) {}
+        NewBucketsInfo(Bucket* b, uint64_t* t, size_t n)
+            : buckets(b), thumbnail(t), nbucket(n) {}
+        Bucket* buckets;
+        uint64_t* thumbnail;
+        size_t nbucket;
+    };
+
+    NewBucketsInfo new_buckets_and_thumbnail(size_t size, size_t new_nbucket);
+
     // For `_Multi=true'.
     // Insert a new default-constructed associated with |key| always.
     // If size()*100/bucket_count() is more than load_factor,
@@ -299,8 +312,23 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     typename std::enable_if<Multi, mapped_type&>::type operator[](const key_type& key);
 
     // True if buckets need to be resized before holding `size' elements.
-    inline bool is_too_crowded(size_t size) const
-    { return size * 100 >= _nbucket * _load_factor; }
+    bool is_too_crowded(size_t size) const {
+        return is_too_crowded(size, _nbucket, _load_factor);
+    }
+    static bool is_too_crowded(size_t size, size_t nbucket, u_int load_factor) {
+        return size * 100 >= nbucket * load_factor;
+    }
+
+    static void init_buckets_and_thumbnail(
+        Bucket* buckets, uint64_t* thumbnail, size_t nbucket) {
+        for (size_t i = 0; i < nbucket; ++i) {
+            buckets[i].set_invalid();
+        }
+        buckets[nbucket].next = NULL;
+        if (_Sparse) {
+            bit_array_clear(thumbnail, nbucket);
+        }
+    }
         
     size_t _size;
     size_t _nbucket;
