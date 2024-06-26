@@ -354,6 +354,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
         global_sock = s.get();
         ASSERT_TRUE(s.get());
         ASSERT_EQ(-1, s->fd());
+        ASSERT_EQ(butil::EndPoint(), s->local_side());
         ASSERT_EQ(point, s->remote_side());
         ASSERT_EQ(id, s->id());
         for (size_t i = 0; i < 20; ++i) {
@@ -415,6 +416,16 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     ASSERT_EQ(-1, messenger->listened_fd());
     ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
     ASSERT_EQ(EBADF, errno);
+
+    // The socket object is likely to be reused,
+    // and the local side should be initialized.
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr s;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &s));
+    ASSERT_TRUE(s.get());
+    ASSERT_EQ(-1, s->fd());
+    ASSERT_EQ(butil::EndPoint(), s->local_side());
+    ASSERT_EQ(point, s->remote_side());
 }
 
 #define NUMBER_WIDTH 16
