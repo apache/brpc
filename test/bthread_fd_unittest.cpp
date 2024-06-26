@@ -34,9 +34,11 @@
 #include "bthread/interrupt_pthread.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
+#include <netinet/tcp.h>
 #if defined(OS_MACOSX)
 #include <sys/types.h>                           // struct kevent
 #include <sys/event.h>                           // kevent(), kqueue()
+#include <netinet/tcp_fsm.h>
 #endif
 
 #ifndef NDEBUG
@@ -592,6 +594,54 @@ TEST(FDTest, bthread_connect) {
         ASSERT_EQ(ETIMEDOUT, errno);
         ASSERT_EQ(is_blocking, butil::is_blocking(sockfd));
     }
+}
+
+void TestConnectInterruptImpl(bool timed) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname, 80, &ep));
+    struct sockaddr_storage serv_addr{};
+    socklen_t serv_addr_size = 0;
+    ASSERT_EQ(0, endpoint2sockaddr(ep, &serv_addr, &serv_addr_size));
+    butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
+    ASSERT_GE(sockfd, 0);
+
+    int rc;
+    if (timed) {
+        int64_t start_ms = butil::cpuwide_time_ms();
+        butil::tcp_connect(ep, NULL);
+        int64_t connect_ms = butil::cpuwide_time_ms() - start_ms;
+        LOG(INFO) << "Connect to " << ep << ", cost " << connect_ms << "ms";
+
+        timespec abstime = butil::milliseconds_from_now(connect_ms + 100);
+        rc = bthread_timed_connect(
+            sockfd, (struct sockaddr*) &serv_addr,
+            serv_addr_size, &abstime);
+    } else {
+        rc = bthread_timed_connect(
+            sockfd, (struct sockaddr*) &serv_addr,
+            serv_addr_size, NULL);
+    }
+    ASSERT_EQ(0, rc) << "errno=" << errno;
+    ASSERT_EQ(0, butil::is_connected(sockfd));
+
+}
+
+void* ConnectThread(void* arg) {
+    bool timed = *(bool*)arg;
+    TestConnectInterruptImpl(timed);
+    return NULL;
+}
+
+void TestConnectInterrupt(bool timed) {
+    bthread_t tid;
+    ASSERT_EQ(0, bthread_start_background(&tid, NULL, ConnectThread, &timed));
+    ASSERT_EQ(0, bthread_stop(tid));
+    ASSERT_EQ(0, bthread_join(tid, NULL));
+}
+
+TEST(FDTest, interrupt) {
+    TestConnectInterrupt(false);
+    TestConnectInterrupt(true);
 }
 
 } // namespace

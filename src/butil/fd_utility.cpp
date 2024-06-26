@@ -17,11 +17,17 @@
 
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
+#include "butil/build_config.h"
 #include <fcntl.h>                   // fcntl()
 #include <netinet/in.h>              // IPPROTO_TCP
 #include <sys/types.h>
 #include <sys/socket.h>              // setsockopt
 #include <netinet/tcp.h>             // TCP_NODELAY
+#include <netinet/tcp.h>
+#if defined(OS_MACOSX)
+#include <netinet/tcp_fsm.h>        // TCPS_ESTABLISHED, TCP6S_ESTABLISHED
+#endif
+#include "butil/logging.h"
 
 namespace butil {
 
@@ -56,9 +62,50 @@ int make_close_on_exec(int fd) {
     return fcntl(fd, F_SETFD, FD_CLOEXEC);
 }
 
-int make_no_delay(int socket) {
+int make_no_delay(int sockfd) {
     int flag = 1;
-    return setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(flag));
+    return setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(flag));
+}
+
+int is_connected(int sockfd) {
+    errno = 0;
+    int err;
+    socklen_t errlen = sizeof(err);
+    if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &errlen) < 0) {
+        PLOG(FATAL) << "Fail to getsockopt";
+        return -1;
+    }
+    if (err != 0) {
+        errno = err;
+        return -1;
+    }
+
+#if defined(OS_LINUX)
+    struct tcp_info ti{};
+    socklen_t len = sizeof(ti);
+    if(getsockopt(sockfd, SOL_TCP, TCP_INFO, &ti, &len) < 0) {
+        PLOG(FATAL) << "Fail to getsockopt";
+        return -1;
+    }
+    if (ti.tcpi_state != TCP_ESTABLISHED) {
+        errno = ENOTCONN;
+        return -1;
+    }
+#elif defined(OS_MACOSX)
+    struct tcp_connection_info ti{};
+    socklen_t len = sizeof(ti);
+    if (getsockopt(sockfd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ti, &len) < 0) {
+        PLOG(FATAL) << "Fail to getsockopt";
+        return -1;
+    }
+    if (ti.tcpi_state != TCPS_ESTABLISHED &&
+        ti.tcpi_state != TCP6S_ESTABLISHED) {
+        errno = ENOTCONN;
+        return -1;
+    }
+#endif
+
+    return 0;
 }
 
 }  // namespace butil
