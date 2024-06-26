@@ -582,9 +582,7 @@ int Socket::ResetFileDescriptor(int fd) {
         butil::get_remote_side(fd, &_remote_side);
     }
     // OK to fail, non-socket fd does not support this.
-    if (butil::get_local_side(fd, &_local_side) != 0) {
-        _local_side = butil::EndPoint();
-    }
+    butil::get_local_side(fd, &_local_side);
 
     // FIXME : close-on-exec should be set by new syscalls or worse: set right
     // after fd-creation syscall. Setting at here has higher probabilities of
@@ -720,6 +718,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _keytable_pool = options.keytable_pool;
     _tos = 0;
     _remote_side = options.remote_side;
+    _local_side = butil::EndPoint();
     _on_edge_triggered_events = options.on_edge_triggered_events;
     _user = options.user;
     _conn = options.conn;
