@@ -222,6 +222,10 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         LOG(INFO) << "Cancel checking " << *ptr;
         ptr->AfterHCCompleted();
         return false;
+    } else {
+        RPC_VLOG << "Fail to check " << *ptr
+                 << ", error code=" << errno
+                 << ": " << berror();
     }
     ++ ptr->_hc_count;
     *next_abstime = butil::seconds_from_now(ptr->_health_check_interval_s);
