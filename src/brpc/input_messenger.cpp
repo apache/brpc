@@ -114,9 +114,13 @@ ParseResult InputMessenger::CutInputMessage(
             }
 
             if (m->CreatedByConnect()) {
-                if((ProtocolType)cur_index == PROTOCOL_BAIDU_STD) {
+                if((ProtocolType)cur_index == PROTOCOL_BAIDU_STD && cur_index == preferred) {
                     // baidu_std may fall to streaming_rpc.
                     cur_index = (int)PROTOCOL_STREAMING_RPC;
+                    continue;
+                } else if((ProtocolType)cur_index == PROTOCOL_STREAMING_RPC && cur_index == preferred) {
+                    // streaming_rpc may fall to baidu_std.
+                    cur_index = (int)PROTOCOL_BAIDU_STD;
                     continue;
                 } else {
                     // The protocol is fixed at client-side, no need to try others.
