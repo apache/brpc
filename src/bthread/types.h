@@ -84,7 +84,8 @@ inline std::ostream& operator<<(std::ostream& os, bthread_key_t key) {
 #endif  // __cplusplus
 
 typedef struct {
-    pthread_mutex_t mutex;
+    pthread_rwlock_t rwlock;
+    void* list;
     void* free_keytables;
     int destroyed;
 } bthread_keytable_pool_t;
