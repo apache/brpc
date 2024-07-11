@@ -242,7 +242,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::~FlatMap() {
     clear();
     get_allocator().Free(_buckets);
     _buckets = NULL;
-    free(_thumbnail);
+    bit_array_free(_thumbnail);
     _thumbnail = NULL;
     _nbucket = 0;
     _load_factor = 0;
@@ -272,35 +272,32 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator=(const FlatMap<_K, _T, _H, _E, _S,
     if (!rhs.initialized()) {
         return *this;
     }
-    bool need_copy = !rhs.empty();
     _load_factor = rhs._load_factor;
     if (_buckets == NULL || is_too_crowded(rhs._size)) {
-        get_allocator().Free(_buckets);
-        _nbucket = rhs._nbucket;
-        // note: need an extra bucket to let iterator know where buckets end
-        _buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (_nbucket + 1/*note*/));
-        if (NULL == _buckets) {
-            LOG(ERROR) << "Fail to new _buckets";
+        NewBucketsInfo info = new_buckets_and_thumbnail(_size, rhs._nbucket);
+        if (0 == info.nbucket) {
+            LOG(ERROR) << "Invalid nbucket=0";
             return *this;
         }
-        // If no need to copy, set buckets invalid.
-        if (!need_copy) {
-            for (size_t i = 0; i < _nbucket; ++i) {
-                _buckets[i].set_invalid();
-            }
-            _buckets[_nbucket].next = NULL;
+        if (NULL == info.buckets) {
+            LOG(ERROR) << "Fail to new buckets";
+            return *this;
         }
+        if (_S && NULL == info.thumbnail) {
+            LOG(ERROR) << "Fail to new thumbnail";
+            return *this;
+        }
+
+        _nbucket = info.nbucket;
+        get_allocator().Free(_buckets);
+        _buckets = info.buckets;
         if (_S) {
-            free(_thumbnail);
-            _thumbnail = bit_array_malloc(_nbucket);
-            if (NULL == _thumbnail) {
-                LOG(ERROR) << "Fail to new _thumbnail";
-                return *this;
-            }
-            bit_array_clear(_thumbnail, _nbucket);
+            bit_array_free(_thumbnail);
+            _thumbnail = info.thumbnail;
         }
     }
-    if (!need_copy) {
+    if (rhs.empty()) {
+        // No need to copy, returns directly.
         return *this;
     }
     if (_nbucket == rhs._nbucket) {
@@ -327,7 +324,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator=(const FlatMap<_K, _T, _H, _E, _S,
         _size = rhs._size;
     } else {
         for (const_iterator it = rhs.begin(); it != rhs.end(); ++it) {
-            operator[](Element::first_ref_from_value(*it)) = 
+            operator[](Element::first_ref_from_value(*it)) =
                 Element::second_ref_from_value(*it);
         }
     }
@@ -341,7 +338,7 @@ int FlatMap<_K, _T, _H, _E, _S, _A, _M>::init(size_t nbucket, u_int load_factor)
         return -1;
     }
     if (nbucket == 0) {
-        LOG(WARNING) << "Fail to init FlatMap, nbucket=" << nbucket; 
+        LOG(WARNING) << "Fail to init FlatMap, nbucket=" << nbucket;
         return -1;
     }
     if (load_factor < 10 || load_factor > 100) {
@@ -349,25 +346,25 @@ int FlatMap<_K, _T, _H, _E, _S, _A, _M>::init(size_t nbucket, u_int load_factor)
         return -1;
     }
     _size = 0;
-    _nbucket = flatmap_round(nbucket);
     _load_factor = load_factor;
-                                
-    _buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (_nbucket + 1));
-    if (NULL == _buckets) {
-        LOG(ERROR) << "Fail to new _buckets";
+
+    NewBucketsInfo info = new_buckets_and_thumbnail(_size, nbucket);
+    if (0 == info.nbucket) {
+        LOG(ERROR) << "Invalid nbucket=0";
         return -1;
     }
-    for (size_t i = 0; i < _nbucket; ++i) {
-        _buckets[i].set_invalid();
+    if (NULL == info.buckets) {
+        LOG(ERROR) << "Fail to new buckets";
+        return -1;
     }
-    _buckets[_nbucket].next = NULL;
-
+    if (_S && NULL == info.thumbnail) {
+        LOG(ERROR) << "Fail to new thumbnail";
+        return -1;
+    }
+    _nbucket = info.nbucket;
+    _buckets = info.buckets;
     if (_S) {
-        _thumbnail = bit_array_malloc(_nbucket);
-        if (NULL == _thumbnail) {
-            LOG(ERROR) << "Fail to new _thumbnail";
-            return -1;
-        }
+        _thumbnail = info.thumbnail;
         bit_array_clear(_thumbnail, _nbucket);
     }
     return 0;
@@ -625,7 +622,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator[](const key_type& key) {
         return first_node.element().second_ref();
     }
     Bucket *p = &first_node;
-    while (1) {
+    while (true) {
         if (_eql(p->element().first_ref(), key)) {
             return p->element().second_ref();
         }
@@ -659,6 +656,24 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator[](const key_type& key) {
         new (&first_node) Bucket(key);
         return first_node.element().second_ref();
     }
+    if (is_too_crowded(_size)) {
+        Bucket *p = &first_node;
+        bool need_scale = false;
+        while (NULL != p) {
+            // Increase the capacity of bucket when
+            // hash collision occur and map is crowded.
+            if (!_eql(p->element().first_ref(), key)) {
+                need_scale = true;
+                break;
+            }
+            p = p->next;
+        }
+        if (need_scale && resize(_nbucket + 1)) {
+            return operator[](key);
+        }
+        // fail to resize is OK
+    }
+    ++_size;
     Bucket* newp = new (_pool.get()) Bucket(key);
     newp->next = first_node.next;
     first_node.next = newp;
@@ -720,7 +735,7 @@ bool FlatMap<_K, _T, _H, _E, _S, _A, _M>::resize(size_t nbucket2) {
         return false;
     }
 
-    // NOTE: following functors must be kept after resizing otherwise the 
+    // NOTE: following functors must be kept after resizing otherwise the
     // internal state is lost.
     FlatMap new_map(_hashfn, _eql, get_allocator());
     if (new_map.init(nbucket2, _load_factor) != 0) {
@@ -728,7 +743,7 @@ bool FlatMap<_K, _T, _H, _E, _S, _A, _M>::resize(size_t nbucket2) {
         return false;
     }
     for (iterator it = begin(); it != end(); ++it) {
-        new_map[Element::first_ref_from_value(*it)] = 
+        new_map[Element::first_ref_from_value(*it)] =
             Element::second_movable_ref_from_value(*it);
     }
     new_map.swap(*this);
@@ -749,6 +764,38 @@ BucketInfo FlatMap<_K, _T, _H, _E, _S, _A, _M>::bucket_info() const {
     }
     const BucketInfo info = { max_n, size() / (double)nentry };
     return info;
+}
+
+template <typename _K, typename _T, typename _H, typename _E, bool _S, typename _A, bool _M>
+typename FlatMap<_K, _T, _H, _E, _S, _A, _M>::NewBucketsInfo
+FlatMap<_K, _T, _H, _E, _S, _A, _M>::new_buckets_and_thumbnail(size_t size,
+                                                               size_t new_nbucket) {
+    do {
+        new_nbucket = flatmap_round(new_nbucket);
+    } while (is_too_crowded(size, new_nbucket, _load_factor));
+    // Note: need an extra bucket to let iterator know where buckets end.
+    auto buckets = (Bucket*)get_allocator().Alloc(sizeof(Bucket) * (
+        new_nbucket + 1/*note*/));
+    auto guard = MakeScopeGuard([buckets, this]() {
+        get_allocator().Free(buckets);
+    });
+    if (NULL == buckets) {
+        LOG(FATAL) << "Fail to new Buckets";
+        return {};
+    }
+
+    uint64_t* thumbnail = NULL;
+    if (_S) {
+        thumbnail = bit_array_malloc(new_nbucket);
+        if (NULL == thumbnail) {
+            LOG(FATAL) << "Fail to new thumbnail";
+            return {};
+        }
+    }
+
+    guard.dismiss();
+    init_buckets_and_thumbnail(buckets, thumbnail, new_nbucket);
+    return { buckets, thumbnail, new_nbucket };
 }
 
 inline std::ostream& operator<<(std::ostream& os, const BucketInfo& info) {

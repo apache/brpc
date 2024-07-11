@@ -1437,6 +1437,10 @@ TEST_F(FlatMapTest, copy) {
 
     m3 = m2;
     ASSERT_TRUE(m3.initialized());
+    ASSERT_TRUE(m3.seek(1));
+    ASSERT_TRUE(m3.seek(2));
+    ASSERT_FALSE(m3.seek(3));
+
     m3.clear();
     ASSERT_TRUE(m3.initialized());
     ASSERT_TRUE(m3.empty());
@@ -1451,26 +1455,30 @@ TEST_F(FlatMapTest, multi) {
     g_foo_copy_ctor = 0;
     g_foo_assign = 0;
     butil::MultiFlatMap<int, Foo> map;
-    int bucket_count = 32;
+    size_t bucket_count = 32;
     ASSERT_EQ(0, map.init(bucket_count));
     ASSERT_EQ(0, g_foo_ctor);
     ASSERT_EQ(0, g_foo_copy_ctor);
     ASSERT_EQ(0, g_foo_assign);
     Foo& f1 = map[1];
+    ASSERT_EQ(1UL, map.size());
     ASSERT_EQ(1, g_foo_ctor);
     ASSERT_EQ(0, g_foo_copy_ctor);
     ASSERT_EQ(0, g_foo_assign);
     Foo& f2 = map[1];
+    ASSERT_EQ(2UL, map.size());
     ASSERT_EQ(2, g_foo_ctor);
     ASSERT_EQ(0, g_foo_copy_ctor);
     ASSERT_EQ(0, g_foo_assign);
     Foo f3;
     Foo& f4 = *map.insert(1, f3);
+    ASSERT_EQ(3UL, map.size());
     ASSERT_EQ(4, g_foo_ctor);
     ASSERT_EQ(0, g_foo_copy_ctor);
     ASSERT_EQ(1, g_foo_assign);
     ASSERT_EQ(&f1, map.seek(1));
     std::vector<Foo*> f_vec = map.seek_all(1);
+    ASSERT_EQ(3UL, f_vec.size());
     ASSERT_NE(f_vec.end(), std::find(f_vec.begin(), f_vec.end(), &f1));
     ASSERT_NE(f_vec.end(), std::find(f_vec.begin(), f_vec.end(), &f2));
     ASSERT_NE(f_vec.end(), std::find(f_vec.begin(), f_vec.end(), &f4));
@@ -1479,9 +1487,10 @@ TEST_F(FlatMapTest, multi) {
     int same_bucket_key = 1 + bucket_count;
     butil::DefaultHasher<int> hasher;
     ASSERT_EQ(butil::flatmap_mod(hasher(1), bucket_count),
-              butil::flatmap_mod(hasher(same_bucket_key), bucket_count));
+        butil::flatmap_mod(hasher(same_bucket_key), bucket_count));
     ASSERT_EQ(0, map.erase(same_bucket_key));
     Foo& f5 = map[same_bucket_key];
+    ASSERT_EQ(4UL, map.size());
     ASSERT_EQ(&f5, map.seek(same_bucket_key));
     ASSERT_EQ(1UL, map.seek_all(same_bucket_key).size());
     ASSERT_EQ(5, g_foo_ctor);
@@ -1489,14 +1498,30 @@ TEST_F(FlatMapTest, multi) {
     ASSERT_EQ(1, g_foo_assign);
     ASSERT_EQ(&f5, map.seek(same_bucket_key));
     ASSERT_EQ(3u, map.erase(1));
+    ASSERT_EQ(1UL, map.size());
     ASSERT_EQ(nullptr, map.seek(1));
     ASSERT_TRUE(map.seek_all(1).empty());
     // Value node of same_bucket_key is the last one in the bucket,
     // so it has been moved to the first node.
     ASSERT_EQ(&f1, map.seek(same_bucket_key));
     ASSERT_EQ(1UL, map.erase(same_bucket_key));
+    ASSERT_EQ(0UL, map.size());
     ASSERT_EQ(nullptr, map.seek(same_bucket_key));
     ASSERT_TRUE(map.seek_all(same_bucket_key).empty());
+
+    // Increase the capacity of bucket when hash collision occur and map is crowded.
+    for (size_t i = 0; i < bucket_count + 1; ++i) {
+        map[i] = Foo();
+    }
+    ASSERT_EQ(bucket_count + 1, map.size());
+    ASSERT_EQ(butil::flatmap_round(bucket_count + 1), map.bucket_count());
+
+    // No need to Increase the capacity of bucket when key is already in the map.
+    for (size_t i = 0; i < bucket_count + 1; ++i) {
+        map[1] = Foo();
+    }
+    ASSERT_EQ((bucket_count + 1) * 2, map.size());
+    ASSERT_EQ(butil::flatmap_round(bucket_count + 1), map.bucket_count());
 
     // Zeroize POD values.
     butil::MultiFlatMap<int, Bar> map2;
