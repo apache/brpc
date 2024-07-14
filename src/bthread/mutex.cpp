@@ -382,8 +382,10 @@ make_contention_site_invalid(bthread_contention_site_t* cs) {
 // technique avoids calling pthread_once each time.
 typedef int (*MutexOp)(pthread_mutex_t*);
 int first_sys_pthread_mutex_lock(pthread_mutex_t* mutex);
+int first_sys_pthread_mutex_trylock(pthread_mutex_t* mutex);
 int first_sys_pthread_mutex_unlock(pthread_mutex_t* mutex);
 static MutexOp sys_pthread_mutex_lock = first_sys_pthread_mutex_lock;
+static MutexOp sys_pthread_mutex_trylock = first_sys_pthread_mutex_trylock;
 static MutexOp sys_pthread_mutex_unlock = first_sys_pthread_mutex_unlock;
 static pthread_once_t init_sys_mutex_lock_once = PTHREAD_ONCE_INIT;
 
@@ -429,9 +431,12 @@ static void init_sys_mutex_lock() {
         sys_pthread_mutex_lock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_lock");
         sys_pthread_mutex_unlock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
     }
+    // In some system, _dl_sym may cause symbol lookup error: undefined symbol: pthread_mutex_trylock.
+    sys_pthread_mutex_trylock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 #elif defined(OS_MACOSX)
     // TODO: look workaround for dlsym on mac
     sys_pthread_mutex_lock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+    sys_pthread_mutex_trylock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
     sys_pthread_mutex_unlock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 #endif
 }
@@ -443,6 +448,12 @@ int first_sys_pthread_mutex_lock(pthread_mutex_t* mutex) {
     pthread_once(&init_sys_mutex_lock_once, init_sys_mutex_lock);
     return sys_pthread_mutex_lock(mutex);
 }
+
+int first_sys_pthread_mutex_trylock(pthread_mutex_t* mutex) {
+    pthread_once(&init_sys_mutex_lock_once, init_sys_mutex_lock);
+    return sys_pthread_mutex_trylock(mutex);
+}
+
 int first_sys_pthread_mutex_unlock(pthread_mutex_t* mutex) {
     pthread_once(&init_sys_mutex_lock_once, init_sys_mutex_lock);
     return sys_pthread_mutex_unlock(mutex);
@@ -456,6 +467,24 @@ inline uint64_t hash_mutex_ptr(const Mutex* m) {
 // Mark being inside locking so that pthread_mutex calls inside collecting
 // code are never sampled, otherwise deadlock may occur.
 static __thread bool tls_inside_lock = false;
+
+// ++tls_pthread_lock_count when pthread locking,
+// --tls_pthread_lock_count when pthread unlocking.
+// Only when it is equal to 0, it is safe for the bthread to be scheduled.
+static __thread int tls_pthread_lock_count = 0;
+
+void CheckBthreadScheSafety() {
+    if (BAIDU_LIKELY(0 == tls_pthread_lock_count)) {
+        return;
+    }
+
+    static butil::atomic<bool> b_sched_in_p_lock_logged{false};
+    if (BAIDU_UNLIKELY(!b_sched_in_p_lock_logged.exchange(
+        true, butil::memory_order_relaxed))) {
+        // It can only be checked once because the counter is messed up.
+        CHECK(false) << "bthread is suspended while holding pthread locks";
+    }
+}
 
 // Speed up with TLS:
 //   Most pthread_mutex are locked and unlocked in the same thread. Putting
@@ -543,14 +572,20 @@ void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
 
 namespace internal {
 BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(pthread_mutex_t* mutex) {
+    ++bthread::tls_pthread_lock_count;
     return sys_pthread_mutex_lock(mutex);
 }
 
 BUTIL_FORCE_INLINE int pthread_mutex_trylock_internal(pthread_mutex_t* mutex) {
-    return ::pthread_mutex_trylock(mutex);
+    int rc = sys_pthread_mutex_trylock(mutex);
+    if (0 == rc) {
+        ++tls_pthread_lock_count;
+    }
+    return rc;
 }
 
 BUTIL_FORCE_INLINE int pthread_mutex_unlock_internal(pthread_mutex_t* mutex) {
+    --tls_pthread_lock_count;
     return sys_pthread_mutex_unlock(mutex);
 }
 
@@ -622,6 +657,11 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(Mutex* mutex) {
 }
 
 template <typename Mutex>
+BUTIL_FORCE_INLINE int pthread_mutex_trylock_impl(Mutex* mutex) {
+    return pthread_mutex_trylock_internal(mutex);
+}
+
+template <typename Mutex>
 BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(Mutex* mutex) {
     // Don't change behavior of unlock when profiler is off.
     if (!g_cp || tls_inside_lock) {
@@ -668,6 +708,10 @@ BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(Mutex* mutex) {
 
 BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
     return internal::pthread_mutex_lock_impl(mutex);
+}
+
+BUTIL_FORCE_INLINE int pthread_mutex_trylock_impl(pthread_mutex_t* mutex) {
+    return internal::pthread_mutex_trylock_impl(mutex);
 }
 
 BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
@@ -733,24 +777,30 @@ int FastPthreadMutex::lock_contended() {
 }
 
 void FastPthreadMutex::lock() {
-    bthread::MutexInternal* split = (bthread::MutexInternal*)&_futex;
+    auto split = (bthread::MutexInternal*)&_futex;
     if (split->locked.exchange(1, butil::memory_order_acquire)) {
         (void)lock_contended();
     }
+    ++tls_pthread_lock_count;
 }
 
 bool FastPthreadMutex::try_lock() {
-    bthread::MutexInternal* split = (bthread::MutexInternal*)&_futex;
-    return !split->locked.exchange(1, butil::memory_order_acquire);
+    auto split = (bthread::MutexInternal*)&_futex;
+    bool lock = !split->locked.exchange(1, butil::memory_order_acquire);
+    if (lock) {
+        ++tls_pthread_lock_count;
+    }
+    return lock;
 }
 
 void FastPthreadMutex::unlock() {
-    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)&_futex;
+    auto whole = (butil::atomic<unsigned>*)&_futex;
     const unsigned prev = whole->exchange(0, butil::memory_order_release);
     // CAUTION: the mutex may be destroyed, check comments before butex_create
     if (prev != BTHREAD_MUTEX_LOCKED) {
         futex_wake_private(whole, 1);
     }
+    --tls_pthread_lock_count;
 }
 
 } // namespace internal
@@ -879,10 +929,13 @@ int bthread_mutex_unlock(bthread_mutex_t* m) {
     return 0;
 }
 
-int pthread_mutex_lock (pthread_mutex_t *__mutex) {
+int pthread_mutex_lock(pthread_mutex_t* __mutex) {
     return bthread::pthread_mutex_lock_impl(__mutex);
 }
-int pthread_mutex_unlock (pthread_mutex_t *__mutex) {
+int pthread_mutex_trylock(pthread_mutex_t* __mutex) {
+    return bthread::pthread_mutex_trylock_impl(__mutex);
+}
+int pthread_mutex_unlock(pthread_mutex_t* __mutex) {
     return bthread::pthread_mutex_unlock_impl(__mutex);
 }
 

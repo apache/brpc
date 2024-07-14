@@ -583,6 +583,8 @@ void TaskGroup::sched(TaskGroup** pg) {
     sched_to(pg, next_tid);
 }
 
+extern void CheckBthreadScheSafety();
+
 void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     TaskGroup* g = *pg;
 #ifndef NDEBUG
@@ -622,6 +624,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
 
         if (cur_meta->stack != NULL) {
             if (next_meta->stack != cur_meta->stack) {
+                CheckBthreadScheSafety();
                 jump_stack(cur_meta->stack, next_meta->stack);
                 // probably went to another group, need to assign g again.
                 g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
