@@ -746,19 +746,24 @@ bool EnableInProcessStackDumping() {
   return success;
 }
 
-StackTrace::StackTrace() {
+StackTrace::StackTrace(bool exclude_self) {
   // NOTE: This code MUST be async-signal safe (it's used by in-process
   // stack dumping signal handler). NO malloc or stdio is allowed here.
 
   if (GetStackTrace) {
-      count_ = GetStackTrace(trace_, arraysize(trace_), 0);
+    count_ = GetStackTrace(trace_, arraysize(trace_), exclude_self ? 1 : 0);
   } else {
 #if !defined(__UCLIBC__)
-      // Though the backtrace API man page does not list any possible negative
-      // return values, we take no chance.
-      count_ = butil::saturated_cast<size_t>(backtrace(trace_, arraysize(trace_)));
+    // Though the backtrace API man page does not list any possible negative
+    // return values, we take no chance.
+    count_ = butil::saturated_cast<size_t>(backtrace(trace_, arraysize(trace_)));
+    if (exclude_self && count_ > 1) {
+      // Skip the top frame.
+      memmove(trace_, trace_ + 1, (count_ - 1) * sizeof(void*));
+      count_--;
+    }
 #else
-      count_ = 0;
+    count_ = 0;
 #endif
   }
 }

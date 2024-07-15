@@ -38,10 +38,10 @@
 #include "butil/logging.h"
 #include "butil/object_pool.h"
 #include "bthread/butex.h"                       // butex_*
-#include "bthread/processor.h"                   // cpu_relax, barrier
 #include "bthread/mutex.h"                       // bthread_mutex_t
 #include "bthread/sys_futex.h"
 #include "bthread/log.h"
+#include "butil/debug/stack_trace.h"
 
 extern "C" {
 extern void* __attribute__((weak)) _dl_sym(void* handle, const char* symbol, void* caller);
@@ -481,8 +481,11 @@ void CheckBthreadScheSafety() {
     static butil::atomic<bool> b_sched_in_p_lock_logged{false};
     if (BAIDU_UNLIKELY(!b_sched_in_p_lock_logged.exchange(
         true, butil::memory_order_relaxed))) {
+        butil::debug::StackTrace trace(true);
         // It can only be checked once because the counter is messed up.
-        CHECK(false) << "bthread is suspended while holding pthread locks";
+        LOG(ERROR) << "bthread is suspended while holding"
+                   << tls_pthread_lock_count << " pthread locks."
+                   << std::endl << trace.ToString();
     }
 }
 

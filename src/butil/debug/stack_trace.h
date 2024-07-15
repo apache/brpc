@@ -42,7 +42,8 @@ BUTIL_EXPORT bool EnableInProcessStackDumpingForSandbox();
 class BUTIL_EXPORT StackTrace {
  public:
   // Creates a stacktrace from the current location.
-  StackTrace();
+  // Exclude constructor frame of StackTrace if |exclude_self| is true.
+  explicit StackTrace(bool exclude_self = false);
 
   // Creates a stacktrace from an existing array of instruction
   // pointers (such as returned by Addresses()).  |count| will be
@@ -82,7 +83,7 @@ class BUTIL_EXPORT StackTrace {
   // doesn't give much more information.
   static const int kMaxTraces = 62;
 
-  void* trace_[kMaxTraces];
+  void* trace_[kMaxTraces]{};
 
   // The number of valid frames in |trace_|.
   size_t count_;

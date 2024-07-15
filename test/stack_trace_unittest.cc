@@ -109,10 +109,18 @@ TEST_F(StackTraceTest, MAYBE_OutputToStream) {
 
 // The test is used for manual testing, e.g., to see the raw output.
 TEST_F(StackTraceTest, DebugOutputToStream) {
-  StackTrace trace;
-  std::ostringstream os;
-  trace.OutputToStream(&os);
-  VLOG(1) << os.str();
+  {
+    StackTrace trace;
+    std::ostringstream os;
+    trace.OutputToStream(&os);
+    VLOG(1) << os.str();
+  }
+  {
+    StackTrace trace(true);
+    std::ostringstream os;
+    trace.OutputToStream(&os);
+    VLOG(1) << os.str();
+  }
 }
 
 // The test is used for manual testing, e.g., to see the raw output.
