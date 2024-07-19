@@ -91,11 +91,11 @@ operator+(ScopeExitHelper, Callback&& callback) {
 
 #define BRPC_ANONYMOUS_VARIABLE(prefix) BAIDU_CONCAT(prefix, __COUNTER__)
 
-// The code in the braces of BAIDU_SCOPE_EXIT always executes at the end of the scope.
-// Variables used within BAIDU_SCOPE_EXIT are captured by reference.
+// The code in the braces of BRPC_SCOPE_EXIT always executes at the end of the scope.
+// Variables used within BRPC_SCOPE_EXIT are captured by reference.
 // Example:
 // int fd = open(...);
-// BAIDU_SCOPE_EXIT {
+// BRPC_SCOPE_EXIT {
 //     close(fd);
 // };
 // use fd ...
