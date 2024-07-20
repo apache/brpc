@@ -24,7 +24,7 @@
 #include "butil/hash.h"
 #include <execinfo.h>
 
-extern int __attribute__((weak)) GetStackTrace(void** result, int max_depth, int skip_count);
+extern int BAIDU_WEAK GetStackTrace(void** result, int max_depth, int skip_count);
 
 namespace butil {
 
@@ -296,9 +296,7 @@ void SubmitIOBufSample(IOBuf::Block* block, int64_t ref) {
     auto sample = IOBufSample::New();
     sample->block = block;
     sample->count = ref;
-    sample->nframes = GetStackTrace(sample->stack,
-                                    arraysize(sample->stack),
-                                    0); // may lock
+    sample->nframes = GetStackTrace(sample->stack, arraysize(sample->stack), 0);
     IOBufProfiler::GetInstance()->Submit(sample);
 }
 

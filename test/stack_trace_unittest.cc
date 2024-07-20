@@ -8,7 +8,32 @@
 
 #include "butil/debug/stack_trace.h"
 #include "butil/logging.h"
+#include "butil/scoped_lock.h"
 #include <gtest/gtest.h>
+
+extern "C" {
+void TestFindSymbol1();
+void TestFindSymbol2();
+void TestFindSymbol3();
+
+void TestFindSymbol1() {
+    butil::debug::StackTrace trace;
+    ASSERT_TRUE(trace.ToString().find("TestFindSymbol1") != std::string::npos) << trace.ToString();
+    ASSERT_TRUE(trace.ToString().find("TestFindSymbol2") != std::string::npos) << trace.ToString();
+    ASSERT_TRUE(trace.ToString().find("TestFindSymbol3") == std::string::npos) << trace.ToString();
+    ASSERT_TRUE(trace.FindSymbol((void*)TestFindSymbol2)) << trace.ToString();
+    ASSERT_TRUE(trace.FindSymbol((void*)TestFindSymbol1)) << trace.ToString();
+    ASSERT_FALSE(trace.FindSymbol((void*)TestFindSymbol3)) << trace.ToString();
+}
+
+void TestFindSymbol2() {
+    TestFindSymbol1();
+}
+
+void TestFindSymbol3() {
+    TestFindSymbol1();
+}
+}
 
 namespace butil {
 namespace debug {
@@ -107,20 +132,25 @@ TEST_F(StackTraceTest, MAYBE_OutputToStream) {
 #endif  // define(OS_MACOSX)
 }
 
+void CheckDebugOutputToStream(bool exclude_self) {
+    StackTrace trace(exclude_self);
+    size_t count;
+    const void* const* addrs = trace.Addresses(&count);
+    ASSERT_EQ(count, trace.FrameCount());
+    void* addr = malloc(sizeof(void*) * count);
+    size_t copied_count = trace.CopyAddressTo((void**)addr, count);
+    ASSERT_EQ(count, copied_count);
+    ASSERT_EQ(0, memcmp(addrs, addr, sizeof(void*) * count));
+
+    std::ostringstream os;
+    trace.OutputToStream(&os);
+    VLOG(1) << os.str();
+}
+
 // The test is used for manual testing, e.g., to see the raw output.
 TEST_F(StackTraceTest, DebugOutputToStream) {
-  {
-    StackTrace trace;
-    std::ostringstream os;
-    trace.OutputToStream(&os);
-    VLOG(1) << os.str();
-  }
-  {
-    StackTrace trace(true);
-    std::ostringstream os;
-    trace.OutputToStream(&os);
-    VLOG(1) << os.str();
-  }
+  CheckDebugOutputToStream(false);
+  CheckDebugOutputToStream(true);
 }
 
 // The test is used for manual testing, e.g., to see the raw output.
@@ -205,6 +235,33 @@ TEST_F(StackTraceTest, itoa_r) {
   EXPECT_EQ("00688", itoa_r_wrapper(0x688, 128, 16, 5));
 }
 #endif  // defined(OS_POSIX) && !defined(OS_ANDROID)
+
+void TestFindSymbol1();
+void TestFindSymbol2();
+void TestFindSymbol3();
+
+void TestFindSymbol1() {
+    butil::debug::StackTrace trace;
+    ASSERT_TRUE(trace.ToString().find("TestFindSymbol1") != std::string::npos) << trace.ToString();
+    ASSERT_TRUE(trace.ToString().find("TestFindSymbol2") != std::string::npos) << trace.ToString();
+    ASSERT_TRUE(trace.ToString().find("TestFindSymbol3") == std::string::npos) << trace.ToString();
+    ASSERT_TRUE(trace.FindSymbol((void*)TestFindSymbol2)) << trace.ToString();
+    ASSERT_TRUE(trace.FindSymbol((void*)TestFindSymbol1)) << trace.ToString();
+    ASSERT_FALSE(trace.FindSymbol((void*)TestFindSymbol3)) << trace.ToString();
+}
+
+void TestFindSymbol2() {
+    TestFindSymbol1();
+}
+
+void TestFindSymbol3() {
+    TestFindSymbol1();
+}
+
+TEST_F(StackTraceTest, find_symbol) {
+    ::TestFindSymbol2();
+    TestFindSymbol2();
+}
 
 }  // namespace debug
 }  // namespace butil

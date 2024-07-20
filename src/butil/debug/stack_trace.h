@@ -59,11 +59,19 @@ class BUTIL_EXPORT StackTrace {
 
   // Copying and assignment are allowed with the default functions.
 
-  ~StackTrace();
-
   // Gets an array of instruction pointer values. |*count| will be set to the
   // number of elements in the returned array.
   const void* const* Addresses(size_t* count) const;
+
+  // Gets the number of frames in the stack trace.
+  size_t FrameCount() const { return count_; }
+
+  // Copies the stack trace to |buffer|,
+  // where the size is min(max_nframes, frame_count()).
+  size_t CopyAddressTo(void** dest, size_t max_nframes) const;
+
+  // Whether if the given symbol is found in the stack trace.
+  bool FindSymbol(void* symbol) const;
 
   // Prints the stack trace to stderr.
   void Print() const;

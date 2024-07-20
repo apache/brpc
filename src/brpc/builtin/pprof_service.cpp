@@ -41,8 +41,8 @@ extern "C" {
 #if defined(OS_LINUX)
 extern char *program_invocation_name;
 #endif
-int __attribute__((weak)) ProfilerStart(const char* fname);
-void __attribute__((weak)) ProfilerStop();
+int BAIDU_WEAK ProfilerStart(const char* fname);
+void BAIDU_WEAK ProfilerStop();
 }
 
 namespace bthread {

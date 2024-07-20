@@ -216,12 +216,24 @@ public:
             return -1;
         }
 
+        inline bool free_empty() const {
+            return 0 == _cur_free.nfree;
+        }
+
     private:
         ObjectPool* _pool;
         Block* _cur_block;
         size_t _cur_block_index;
         FreeChunk _cur_free;
     };
+
+    inline bool local_free_empty() {
+        LocalPool* lp = get_or_new_local_pool();
+        if (BAIDU_LIKELY(lp != NULL)) {
+            return lp->free_empty();
+        }
+        return true;
+    }
 
     inline T* get_object() {
         LocalPool* lp = get_or_new_local_pool();
