@@ -21,14 +21,17 @@ StackTrace::StackTrace(const void* const* trace, size_t count) {
   count_ = count;
 }
 
-StackTrace::~StackTrace() {
-}
-
 const void *const *StackTrace::Addresses(size_t* count) const {
   *count = count_;
   if (count_)
     return trace_;
   return NULL;
+}
+
+size_t StackTrace::CopyAddressTo(void** buffer, size_t max_nframes) const {
+    size_t nframes = std::min(count_, max_nframes);
+    memcpy(buffer, trace_, nframes * sizeof(void*));
+    return nframes;
 }
 
 std::string StackTrace::ToString() const {

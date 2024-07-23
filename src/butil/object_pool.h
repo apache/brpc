@@ -69,6 +69,11 @@ template <typename T> struct ObjectPoolValidator {
 
 namespace butil {
 
+// Whether if FreeChunk of LocalPool is empty.
+template <typename T> inline bool local_pool_free_empty() {
+    return ObjectPool<T>::singleton()->local_free_empty();
+}
+
 // Get an object typed |T|. The object should be cleared before usage.
 // NOTE: T must be default-constructible.
 template <typename T> inline T* get_object() {

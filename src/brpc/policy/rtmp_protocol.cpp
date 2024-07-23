@@ -39,7 +39,7 @@
 // we mark the symbol as weak. If the runtime does not have the function,
 // handshaking will fallback to the simple one.
 extern "C" {
-const EVP_MD* __attribute__((weak)) EVP_sha256(void);
+const EVP_MD* BAIDU_WEAK EVP_sha256(void);
 }
 
 

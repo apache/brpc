@@ -45,7 +45,7 @@
 #include "butil/third_party/symbolize/symbolize.h"
 #endif
 
-extern int __attribute__((weak)) GetStackTrace(void** result, int max_depth, int skip_count);
+extern int BAIDU_WEAK GetStackTrace(void** result, int max_depth, int skip_count);
 
 namespace butil {
 namespace debug {
@@ -766,6 +766,24 @@ StackTrace::StackTrace(bool exclude_self) {
     count_ = 0;
 #endif
   }
+}
+
+bool StackTrace::FindSymbol(void* symbol) const {
+#if !defined(__UCLIBC__)
+  for (size_t i = 0; i < count_; ++i) {
+    uint64_t saddr;
+    // Subtract by one as return address of function may be in the next
+    // function when a function is annotated as noreturn.
+    void* address = static_cast<char*>(trace_[i]) - 1;
+    if (!google::SymbolizeAddress(address, &saddr)) {
+      continue;
+    }
+    if ((void*)saddr == symbol) {
+      return true;
+    }
+  }
+#endif
+  return false;
 }
 
 void StackTrace::Print() const {

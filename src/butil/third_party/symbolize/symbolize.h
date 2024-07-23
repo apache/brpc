@@ -150,6 +150,8 @@ _START_GOOGLE_NAMESPACE_
 // returns false.
 bool Symbolize(void *pc, char *out, int out_size);
 
+bool SymbolizeAddress(void *pc, uint64_t *out);
+
 _END_GOOGLE_NAMESPACE_
 
 #endif  // BUTIL_SYMBOLIZE_H_

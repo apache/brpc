@@ -57,8 +57,7 @@
 #endif
 
 namespace bthread {
-size_t __attribute__((weak))
-get_sizes(const bthread_id_list_t* list, size_t* cnt, size_t n);
+size_t BAIDU_WEAK get_sizes(const bthread_id_list_t* list, size_t* cnt, size_t n);
 }
 
 

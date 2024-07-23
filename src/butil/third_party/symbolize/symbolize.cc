@@ -279,8 +279,8 @@ bool BAIDU_WEAK GetSectionHeaderByName(int fd, const char *name, size_t name_len
 // inlined.
 static ATTRIBUTE_NOINLINE bool
 FindSymbol(uint64_t pc, const int fd, char *out, int out_size,
-           uint64_t symbol_offset, const ElfW(Shdr) *strtab,
-           const ElfW(Shdr) *symtab) {
+           uint64_t *out_saddr, uint64_t symbol_offset,
+           const ElfW(Shdr) *strtab, const ElfW(Shdr) *symtab) {
   if (symtab == NULL) {
     return false;
   }
@@ -311,10 +311,15 @@ FindSymbol(uint64_t pc, const int fd, char *out, int out_size,
       if (symbol.st_value != 0 &&  // Skip null value symbols.
           symbol.st_shndx != 0 &&  // Skip undefined symbols.
           start_address <= pc && pc < end_address) {
-        ssize_t len1 = ReadFromOffset(fd, out, out_size,
-                                      strtab->sh_offset + symbol.st_name);
-        if (len1 <= 0 || memchr(out, '\0', out_size) == NULL) {
-          return false;
+        if (NULL != out) {
+          ssize_t len1 = ReadFromOffset(
+              fd, out, out_size, strtab->sh_offset + symbol.st_name);
+          if (len1 <= 0 || memchr(out, '\0', out_size) == NULL) {
+            return false;
+          }
+        }
+        if (NULL != out_saddr) {
+          *out_saddr = start_address;
         }
         return true;  // Obtained the symbol name.
       }
@@ -330,6 +335,7 @@ FindSymbol(uint64_t pc, const int fd, char *out, int out_size,
 // false.
 static bool GetSymbolFromObjectFile(const int fd, uint64_t pc,
                                     char *out, int out_size,
+                                    uint64_t *out_saddr,
                                     uint64_t map_start_address) {
   // Read the ELF header.
   ElfW(Ehdr) elf_header;
@@ -351,8 +357,8 @@ static bool GetSymbolFromObjectFile(const int fd, uint64_t pc,
                              symtab.sh_link * sizeof(symtab))) {
       return false;
     }
-    if (FindSymbol(pc, fd, out, out_size, symbol_offset,
-                   &strtab, &symtab)) {
+    if (FindSymbol(pc, fd, out, out_size, out_saddr,
+                   symbol_offset, &strtab, &symtab)) {
       return true;  // Found the symbol in a regular symbol table.
     }
   }
@@ -364,8 +370,8 @@ static bool GetSymbolFromObjectFile(const int fd, uint64_t pc,
                              symtab.sh_link * sizeof(symtab))) {
       return false;
     }
-    if (FindSymbol(pc, fd, out, out_size, symbol_offset,
-                   &strtab, &symtab)) {
+    if (FindSymbol(pc, fd, out, out_size, out_saddr,
+                   symbol_offset, &strtab, &symtab)) {
       return true;  // Found the symbol in a dynamic symbol table.
     }
   }
@@ -727,17 +733,21 @@ void SafeAppendHexNumber(uint64_t value, char* dest, int dest_size) {
 // To keep stack consumption low, we would like this function to not
 // get inlined.
 static ATTRIBUTE_NOINLINE bool SymbolizeAndDemangle(void *pc, char *out,
-                                                    int out_size) {
+                                                    int out_size,
+                                                    uint64_t *out_saddr) {
   uint64_t pc0 = reinterpret_cast<uintptr_t>(pc);
   uint64_t start_address = 0;
   uint64_t base_address = 0;
   int object_fd = -1;
 
-  if (out_size < 1) {
+  if ((NULL == out || out_size < 1) &&
+      NULL == out_saddr) {
     return false;
   }
-  out[0] = '\0';
-  SafeAppendString("(", out, out_size);
+  if (NULL != out) {
+    out[0] = '\0';
+    SafeAppendString("(", out, out_size);
+  }
 
   if (g_symbolize_open_object_file_callback) {
     object_fd = g_symbolize_open_object_file_callback(pc0, start_address,
@@ -752,7 +762,7 @@ static ATTRIBUTE_NOINLINE bool SymbolizeAndDemangle(void *pc, char *out,
 
   // Check whether a file name was returned.
   if (object_fd < 0) {
-    if (out[1]) {
+    if (NULL != out && out[1] && NULL == out_saddr) {
       // The object file containing PC was determined successfully however the
       // object file was not opened successfully.  This is still considered
       // success because the object file name and offset are known and tools
@@ -785,12 +795,15 @@ static ATTRIBUTE_NOINLINE bool SymbolizeAndDemangle(void *pc, char *out,
     }
   }
   if (!GetSymbolFromObjectFile(wrapped_object_fd.get(), pc0,
-                               out, out_size, start_address)) {
+                               out, out_size, out_saddr,
+                               start_address)) {
     return false;
   }
 
-  // Symbolization succeeded.  Now we try to demangle the symbol.
-  DemangleInplace(out, out_size);
+  if (NULL != out) {
+    // Symbolization succeeded.  Now we try to demangle the symbol.
+    DemangleInplace(out, out_size);
+  }
   return true;
 }
 
@@ -804,17 +817,24 @@ _END_GOOGLE_NAMESPACE_
 _START_GOOGLE_NAMESPACE_
 
 static ATTRIBUTE_NOINLINE bool SymbolizeAndDemangle(void *pc, char *out,
-                                                    int out_size) {
-  Dl_info info;
-  if (dladdr(pc, &info)) {
-    if ((int)strlen(info.dli_sname) < out_size) {
-      strcpy(out, info.dli_sname);
-      // Symbolization succeeded.  Now we try to demangle the symbol.
-      DemangleInplace(out, out_size);
-      return true;
-    }
+                                                    int out_size,
+                                                    uint64_t *out_saddr) {
+  Dl_info info{};
+  if (0 == dladdr(pc, &info)) {
+    return false;
   }
-  return false;
+  if (NULL != out) {
+    if ((int)strlen(info.dli_sname) >= out_size) {
+      return false;
+    }
+    strcpy(out, info.dli_sname);
+    // Symbolization succeeded.  Now we try to demangle the symbol.
+    DemangleInplace(out, out_size);
+  }
+  if (NULL != out_saddr) {
+    *out_saddr = (uint64_t)info.dli_saddr;
+  }
+  return true;
 }
 
 _END_GOOGLE_NAMESPACE_
@@ -827,7 +847,12 @@ _START_GOOGLE_NAMESPACE_
 
 bool BAIDU_WEAK Symbolize(void *pc, char *out, int out_size) {
   SAFE_ASSERT(out_size >= 0);
-  return SymbolizeAndDemangle(pc, out, out_size);
+  return SymbolizeAndDemangle(pc, out, out_size, NULL);
+}
+
+bool BAIDU_WEAK SymbolizeAddress(void *pc, uint64_t *out) {
+  SAFE_ASSERT(NULL != out);
+  return SymbolizeAndDemangle(pc, NULL, 0, out);
 }
 
 _END_GOOGLE_NAMESPACE_
@@ -842,6 +867,11 @@ _START_GOOGLE_NAMESPACE_
 
 // TODO: Support other environments.
 bool BAIDU_WEAK Symbolize(void *pc, char *out, int out_size) {
+  assert(0);
+  return false;
+}
+
+bool BAIDU_WEAK SymbolizeAddress(void *pc, uint64_t *out) {
   assert(0);
   return false;
 }

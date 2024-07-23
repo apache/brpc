@@ -33,8 +33,8 @@
 #include "brpc/details/tcmalloc_extension.h"
 
 extern "C" {
-int __attribute__((weak)) ProfilerStart(const char* fname);
-void __attribute__((weak)) ProfilerStop();
+int BAIDU_WEAK ProfilerStart(const char* fname);
+void BAIDU_WEAK ProfilerStop();
 }
 
 namespace bthread {
