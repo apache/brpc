@@ -1,6 +1,6 @@
 module(
   name = 'brpc',
-  version = '1.9.0',
+  version = '1.10.0',
   compatibility_level = 1,
 )
 
@@ -24,3 +24,9 @@ bazel_dep(name = 'thrift', version = '0.20.0', repo_name = 'org_apache_thrift')
 
 # test only
 bazel_dep(name = 'googletest', version = '1.14.0.bcr.1', repo_name = 'com_google_googletest', dev_dependency = True)
+bazel_dep(name = 'hedron_compile_commands', dev_dependency = True)
+git_override(
+    module_name = 'hedron_compile_commands',
+    remote = 'https://github.com/hedronvision/bazel-compile-commands-extractor.git',
+    commit = '1e08f8e0507b6b6b1f4416a9a22cf5c28beaba93', # Jun 28, 2024
+)
