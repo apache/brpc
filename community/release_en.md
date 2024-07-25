@@ -206,7 +206,7 @@ Edit the `MODULE.bazel` file in the project root directory, update the version n
 # in MODULE.bazel
 module(
   ...
-  version = '1.10.0',
+  version = '1.0.0',
   ...
 )
 ```
