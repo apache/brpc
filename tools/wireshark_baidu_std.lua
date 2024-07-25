@@ -198,6 +198,33 @@ check_length = function(tvbuf, offset)
     return packet_size
 end
 
+-- convert uint32 integer to byte array
+function uint32_to_byte_array(value)
+    local bytes = {}
+    while value > 0 do
+        table.insert(bytes, bit32.band(value, 0xFF))
+        value = bit32.rshift(value, 8)
+    end
+    return bytes
+end
+
+-- varint decoding function
+function decode_varint(value)
+    local bytes = uint32_to_byte_array(value)
+    local result = 0
+    local shift = 0
+
+    for _, byte in ipairs(bytes) do
+        result = bit32.bor(result, bit32.lshift(bit32.band(byte, 0x7F), shift))
+        if bit32.band(byte, 0x80) == 0 then
+            return result
+        end
+        shift = shift + 7
+    end
+
+    LM_DBG("Malformed Varint encoding")
+end
+
 ----------------------------------------
 dissect_proto = function(tvbuf, pktinfo, root, offset)
     local len = check_length(tvbuf, offset)
@@ -211,23 +238,34 @@ dissect_proto = function(tvbuf, pktinfo, root, offset)
     tree:add(pf_body_size, tvbuf:range(offset+4, 4))
     tree:add(pf_meta_size, tvbuf:range(offset+8, 4))
 
-    local meta_size = proto_f_meta_size().value
-    local body_size = proto_f_body_size().value
+    local magic_code = tvbuf:range(offset, 4):string()
+    local meta_size = tvbuf:range(offset + 8, 4):uint()
+    local body_size = tvbuf:range(offset + 4, 4):uint()
     local tvb_meta = tvbuf:range(offset + PROTO_HEADER_LENGTH, meta_size):tvb()
-    if     proto_f_magic_code().value == MAGIC_CODE_PRPC then
+    if magic_code == MAGIC_CODE_PRPC then
+        -- update 'Protocol' field
+        if offset == 0 then
+            pktinfo.cols.protocol:set("ProtoBuf")
+        end
         -- dissect rpc meta fields
         pktinfo.private["pb_msg_type"] = "message,brpc.policy.RpcMeta"
+
+        -- solve the problem of parsing errors when multiple RPCs are included in a packet
+        local protobuf_field_names = { proto_f_protobuf_field_name() }
+        local pre_field_nums = #protobuf_field_names
         protobuf_dissector:call(tvb_meta, pktinfo, tree)
+        -- https://ask.wireshark.org/question/31800/protobuf-dissector-with-nested-structures/?answer=31924#post-id-31924
+        protobuf_field_names = { proto_f_protobuf_field_name() }
+        local cur_field_nums = #protobuf_field_names
+        local protobuf_field_values = { proto_f_protobuf_field_value() }
 
         local direction, method
+        local service_name, method_name, correlation_id, attachment_size
 
-        local service_name, method_name, correlation_id
-
-        -- https://ask.wireshark.org/question/31800/protobuf-dissector-with-nested-structures/?answer=31924#post-id-31924
-        local protobuf_field_names  = { proto_f_protobuf_field_name() }
-        local protobuf_field_values = { proto_f_protobuf_field_value() }
-        for k, v in pairs(protobuf_field_names) do
-            if     v.value == "request" then
+        -- only process new fields added after the previous call to protobuf_dissector
+        for k = pre_field_nums + 1, cur_field_nums do
+            local v = protobuf_field_names[k]
+            if v.value == "request" then
                 direction = "request"
             elseif v.value == "response" then
                 direction = "response"
@@ -237,6 +275,8 @@ dissect_proto = function(tvbuf, pktinfo, root, offset)
                 method_name = protobuf_field_values[k].range:string(ENC_UTF8)
             elseif v.value == "correlation_id" then
                 correlation_id = protobuf_field_values[k].range:uint64()
+            elseif v.value == "attachment_size" then
+                attachment_size = protobuf_field_values[k].range:le_uint()
             end
         end
 
@@ -248,13 +288,19 @@ dissect_proto = function(tvbuf, pktinfo, root, offset)
             method = load_method(tostring(correlation_id))
         end
 
+        if attachment_size then
+            attachment_size = decode_varint(attachment_size)
+        else
+            attachment_size = 0
+        end
+
         if method ~= nil then
             -- dissect rpc body
-            local tvb_body = tvbuf:range(offset + PROTO_HEADER_LENGTH + meta_size, body_size - meta_size):tvb()
+            local tvb_body = tvbuf:range(offset + PROTO_HEADER_LENGTH + meta_size, body_size - meta_size - attachment_size):tvb()
             pktinfo.private["pb_msg_type"] = "application/grpc,/" .. method .. "," .. direction
             protobuf_dissector:call(tvb_body, pktinfo, tree)
         end
-    elseif proto_f_magic_code().value == MAGIC_CODE_STRM then
+    elseif magic_code == MAGIC_CODE_STRM then
         -- dissect streaming meta fields
         pktinfo.private["pb_msg_type"] = "message,brpc.StreamFrameMeta"
         protobuf_dissector:call(tvb_meta, pktinfo, tree)
