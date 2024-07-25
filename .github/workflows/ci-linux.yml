@@ -61,22 +61,22 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - uses: ./.github/actions/init-make-config
       with:
-        options: --cc=gcc --cxx=g++ --with-thrift --with-glog
+       options: --cc=gcc --cxx=g++ --with-thrift --with-glog --with-rdma
     - name: compile
       run: |
-           make -j ${{env.proc_num}}
+        make -j ${{env.proc_num}}
 
   gcc-compile-with-cmake-all-options:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-all-dependences
-    - name: cmake 
+    - name: cmake
       run: |
            export CC=gcc && export CXX=g++
            mkdir build
            cd build
-           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON ..
+           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON ..
     - name: compile
       run: |
            cd build
@@ -135,7 +135,7 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - uses: ./.github/actions/init-make-config
       with:
-        options: --cc=clang --cxx=clang++ --with-thrift --with-glog
+        options: --cc=clang --cxx=clang++ --with-thrift --with-glog --with-rdma
     - name: compile
       run: |
            make -j ${{env.proc_num}}
@@ -145,12 +145,12 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-all-dependences
-    - name: cmake 
+    - name: cmake
       run: |
            export CC=clang && export CXX=clang++
            mkdir build
            cd build
-           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON ..
+           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON ..
     - name: compile
       run: |
            cd build
@@ -170,7 +170,8 @@ jobs:
     - name: install gtest
       run: |
            sudo apt-get update
-           sudo apt-get install -y cmake libgtest-dev gdb && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/
+           sudo apt-get install -y cmake libgtest-dev gdb
+           cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/
     - uses: ./.github/actions/init-make-config
       with:
         options: --cc=clang --cxx=clang++

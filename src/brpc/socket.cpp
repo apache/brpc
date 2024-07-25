@@ -749,7 +749,7 @@ int Socket::OnCreated(const SocketOptions& options) {
 #if BRPC_WITH_RDMA
     CHECK(_rdma_ep == NULL);
     if (options.use_rdma) {
-        _rdma_ep = new (std::nothrow)rdma::RdmaEndpoint(m);
+        _rdma_ep = new (std::nothrow)rdma::RdmaEndpoint(this);
         if (!_rdma_ep) {
             const int saved_errno = errno;
             PLOG(ERROR) << "Fail to create RdmaEndpoint";
