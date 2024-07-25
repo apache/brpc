@@ -201,7 +201,7 @@ Version:	1.0.0
 
 #### 更新 `MODULE.bazel` 文件
 
-编辑项目根目录下 `MODULE.bazel` 文件，更新版本号，并提交至代码仓库，本文以 `1.0.0` 版本为例，修改 `Version` 为：
+编辑项目根目录下 `MODULE.bazel` 文件，更新版本号，并提交至代码仓库，本文以 `1.0.0` 版本为例，修改 `version` 为：
 
 ···
 # in MODULE.bazel
