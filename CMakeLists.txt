@@ -253,7 +253,7 @@ if(WITH_BORINGSSL)
     find_package(BoringSSL)
     include_directories(${BORINGSSL_INCLUDE_DIR})
 else()
-    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT OPENSSL_ROOT_DIR)
         set(OPENSSL_ROOT_DIR
             "/usr/local/opt/openssl" # Homebrew installed OpenSSL
         )
