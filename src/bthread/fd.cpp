@@ -264,9 +264,11 @@ public:
             return -1;
         }
 #endif
-        if (butex_wait(butex, expected_val, abstime) < 0 &&
-            errno != EWOULDBLOCK && errno != EINTR) {
-            return -1;
+        while (butex->load(butil::memory_order_relaxed) == expected_val) {
+            if (butex_wait(butex, expected_val, abstime) < 0 &&
+                errno != EWOULDBLOCK && errno != EINTR) {
+                return -1;
+            }
         }
         return 0;
     }
@@ -496,17 +498,11 @@ int bthread_connect(int sockfd, const sockaddr* serv_addr,
 #endif
         return -1;
     }
-    int err;
-    socklen_t errlen = sizeof(err);
-    if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &errlen) < 0) {
-        PLOG(FATAL) << "Fail to getsockopt";
+
+    if (butil::is_connected(sockfd) != 0) {
         return -1;
     }
-    if (err != 0) {
-        CHECK(err != EINPROGRESS);
-        errno = err;
-        return -1;
-    }
+
     return 0;
 }
 
@@ -539,17 +535,10 @@ int bthread_timed_connect(int sockfd, const struct sockaddr* serv_addr,
         return -1;
     }
 
-    int err;
-    socklen_t errlen = sizeof(err);
-    if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &err, &errlen) < 0) {
-        PLOG(FATAL) << "Fail to getsockopt";
+    if (butil::is_connected(sockfd) != 0) {
         return -1;
     }
-    if (err != 0) {
-        CHECK(err != EINPROGRESS);
-        errno = err;
-        return -1;
-    }
+
     return 0;
 }
 
