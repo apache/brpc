@@ -24,6 +24,7 @@
 #include "butil/time.h"
 #include "butil/iobuf.h"                         // butil::IOBuf
 #include "butil/raw_pack.h"                      // RawPacker RawUnpacker
+#include "butil/memory/scope_guard.h"
 #include "brpc/controller.h"                    // Controller
 #include "brpc/socket.h"                        // Socket
 #include "brpc/server.h"                        // Server
@@ -31,6 +32,7 @@
 #include "brpc/compress.h"                      // ParseFromCompressedData
 #include "brpc/stream_impl.h"
 #include "brpc/rpc_dump.h"                      // SampledRequest
+#include "brpc/rpc_pb_message_factory.h"
 #include "brpc/policy/baidu_rpc_meta.pb.h"      // RpcRequestMeta
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
@@ -157,11 +159,34 @@ static bool SerializeResponse(const google::protobuf::Message& res,
     return true;
 }
 
+namespace {
+struct BaiduProxyPBMessages : public RpcPBMessages {
+    static BaiduProxyPBMessages* Get() {
+        return butil::get_object<BaiduProxyPBMessages>();
+    }
+
+    static void Return(BaiduProxyPBMessages* messages) {
+        messages->Clear();
+        butil::return_object(messages);
+    }
+
+    void Clear() {
+        request.Clear();
+        response.Clear();
+    }
+
+    ::google::protobuf::Message* Request() override { return &request; }
+    ::google::protobuf::Message* Response() override { return &response; }
+
+    SerializedRequest request;
+    SerializedResponse response;
+};
+}
+
 // Used by UT, can't be static.
 void SendRpcResponse(int64_t correlation_id,
-                     Controller* cntl, 
-                     const google::protobuf::Message* req,
-                     const google::protobuf::Message* res,
+                     Controller* cntl,
+                     RpcPBMessages* messages,
                      const Server* server,
                      MethodStatus* method_status,
                      int64_t received_us) {
@@ -172,13 +197,24 @@ void SendRpcResponse(int64_t correlation_id,
     }
     Socket* sock = accessor.get_sending_socket();
 
-    std::unique_ptr<const google::protobuf::Message> recycle_req(req);
-    std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
 
-    ClosureGuard guard(brpc::NewCallback(cntl, &Controller::CallAfterRpcResp, req, res));
+    auto messages_guard = butil::MakeScopeGuard([server, messages] {
+        if (NULL == messages) {
+            return;
+        }
+        if (NULL != server->options().baidu_master_service) {
+            BaiduProxyPBMessages::Return(static_cast<BaiduProxyPBMessages*>(messages));
+        } else {
+            server->options().rpc_pb_message_factory->Return(messages);
+        }
+    });
+
+    const google::protobuf::Message* req = NULL == messages ? NULL : messages->Request();
+    const google::protobuf::Message* res = NULL == messages ? NULL : messages->Response();
+    ClosureGuard guard(brpc::NewCallback(
+        cntl, &Controller::CallAfterRpcResp, req, res));
     
     StreamId response_stream_id = accessor.response_stream();
 
@@ -375,8 +411,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         return;
     }
 
-    std::unique_ptr<google::protobuf::Message> req;
-    std::unique_ptr<google::protobuf::Message> res;
+    RpcPBMessages* messages = NULL;
 
     ServerPrivateAccessor server_accessor(server);
     ControllerPrivateAccessor accessor(cntl.get());
@@ -496,13 +531,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 span->ResetServerSpanName(sampled_request->meta.method_name());
             }
 
-            auto serialized_request = (SerializedRequest*)
-                svc->GetRequestPrototype(NULL).New();
-            req.reset(serialized_request);
-            res.reset(svc->GetResponsePrototype(NULL).New());
-
-            msg->payload.cutn(&serialized_request->serialized_data(),
-                              req_size - meta.attachment_size());
+            messages = BaiduProxyPBMessages::Get();
+            msg->payload.cutn(
+                &((SerializedRequest*)messages->Request())->serialized_data(),
+                req_size - meta.attachment_size());
             if (!msg->payload.empty()) {
                 cntl->request_attachment().swap(msg->payload);
             }
@@ -568,26 +600,25 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             auto req_cmp_type = static_cast<CompressType>(meta.compress_type());
-            req.reset(svc->GetRequestPrototype(method).New());
-            if (!ParseFromCompressedData(req_buf, req.get(), req_cmp_type)) {
+            messages = server->options().rpc_pb_message_factory->Get(*svc, *method);
+            if (!ParseFromCompressedData(req_buf, messages->Request(), req_cmp_type)) {
                 cntl->SetFailed(EREQUEST, "Fail to parse request message, "
                                           "CompressType=%s, request_size=%d",
                                 CompressTypeToCStr(req_cmp_type), req_size);
+                server->options().rpc_pb_message_factory->Return(messages);
                 break;
             }
-
-            res.reset(svc->GetResponsePrototype(method).New());
             req_buf.clear();
         }
 
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
-            int64_t, Controller*, const google::protobuf::Message*,
-            const google::protobuf::Message*, const Server*,
-            MethodStatus*, int64_t>(
-                &SendRpcResponse, meta.correlation_id(), cntl.get(), 
-                req.get(), res.get(), server,
-                method_status, msg->received_us());
+            int64_t, Controller*, RpcPBMessages*,
+            const Server*, MethodStatus*, int64_t>(&SendRpcResponse,
+                                                   meta.correlation_id(),
+                                                   cntl.get(), messages,
+                                                   server, method_status,
+                                                   msg->received_us());
 
         // optional, just release resource ASAP
         msg.reset();
@@ -598,24 +629,28 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         }
         if (!FLAGS_usercode_in_pthread) {
             return svc->CallMethod(method, cntl.release(), 
-                                   req.release(), res.release(), done);
+                                   messages->Request(),
+                                   messages->Response(), done);
         }
         if (BeginRunningUserCode()) {
             svc->CallMethod(method, cntl.release(), 
-                            req.release(), res.release(), done);
+                            messages->Request(),
+                            messages->Response(), done);
             return EndRunningUserCodeInPlace();
         } else {
             return EndRunningCallMethodInPool(
                 svc, method, cntl.release(),
-                req.release(), res.release(), done);
+                messages->Request(),
+                messages->Response(), done);
         }
     } while (false);
     
     // `cntl', `req' and `res' will be deleted inside `SendRpcResponse'
     // `socket' will be held until response has been sent
-    SendRpcResponse(meta.correlation_id(), cntl.release(), 
-                    req.release(), res.release(), server,
-                    method_status, msg->received_us());
+    SendRpcResponse(meta.correlation_id(),
+                    cntl.release(), messages,
+                    server, method_status,
+                    msg->received_us());
 }
 
 bool VerifyRpcRequest(const InputMessageBase* msg_base) {
