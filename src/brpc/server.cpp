@@ -443,6 +443,9 @@ Server::~Server() {
     _options.thrift_service = NULL;
 #endif
 
+    delete _options.baidu_master_service;
+    _options.baidu_master_service = NULL;
+
     delete _options.http_master_service;
     _options.http_master_service = NULL;
 
