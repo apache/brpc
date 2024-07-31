@@ -551,7 +551,7 @@ void TestConnectInterruptImpl(bool timed) {
         int64_t connect_ms = butil::cpuwide_time_ms() - start_ms;
         LOG(INFO) << "Connect to " << ep << ", cost " << connect_ms << "ms";
 
-        timespec abstime = butil::milliseconds_from_now(connect_ms + 1);
+        timespec abstime = butil::milliseconds_from_now(connect_ms * 2);
         rc = butil::pthread_timed_connect(
             sockfd, (struct sockaddr*) &serv_addr,
             serv_addr_size, &abstime);
@@ -570,12 +570,10 @@ void* ConnectThread(void* arg) {
     return NULL;
 }
 
-void sig_handler(int sig) {
-    LOG(INFO) << "sig=" << sig;
-}
+void do_nothing_handler(int) {}
 
 void register_sigurg() {
-    signal(SIGURG, sig_handler);
+    signal(SIGURG, do_nothing_handler);
 }
 
 void TestConnectInterrupt(bool timed) {
