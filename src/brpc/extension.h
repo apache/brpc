@@ -49,8 +49,7 @@ public:
 
 private:
 friend class butil::GetLeakySingleton<Extension<T> >;
-    Extension();
-    ~Extension();
+    Extension() = default;
     butil::CaseIgnoredFlatMap<T*> _instance_map;
     butil::Mutex _map_mutex;
 };

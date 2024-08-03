@@ -68,7 +68,6 @@ static DisplayType StringToDisplayType(const std::string& val) {
     static std::once_flag flag;
     std::call_once(flag, []() {
         display_type_map = new butil::CaseIgnoredFlatMap<DisplayType>;
-        display_type_map->init(10);
         (*display_type_map)["dot"] = DisplayType::kDot;
 #if defined(OS_LINUX)
         (*display_type_map)["flame"] = DisplayType::kFlameGraph;
