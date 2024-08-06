@@ -161,7 +161,7 @@ ifeq ($(SYSTEM), Darwin)
 	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_key_create
 endif
 
-UT_DYNAMIC_LINKINGS = $(DYNAMIC_LINKINGS) -lbrpc.dbg
+UT_DYNAMIC_LINKINGS = -lbrpc.dbg $(DYNAMIC_LINKINGS)
 
 TEST_BUTIL_OBJS = iobuf.pb.o $(addsuffix .o, $(basename $(TEST_BUTIL_SOURCES))) 
 
