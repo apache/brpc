@@ -52,7 +52,7 @@ template <typename T>
 class ObjectPoolAllocator {
 public:
     void* Alloc() { return get_object<MPSCQueueNode<T>>(); }
-    void Free(void* p) { return_object(p); }
+    void Free(void* p) { return_object(static_cast<MPSCQueueNode<T>*>(p)); }
 };
 
 
