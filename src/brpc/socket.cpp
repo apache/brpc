@@ -834,6 +834,10 @@ void Socket::BeforeRecycled() {
         sp->RemoveRefManually();
     }
 
+    // Reset `_io_event' at the end.
+    BRPC_SCOPE_EXIT {
+        _io_event.Reset();
+    };
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
     if (ValidFileDescriptor(prev_fd)) {
         if (_on_edge_triggered_events != NULL) {
@@ -844,7 +848,6 @@ void Socket::BeforeRecycled() {
             g_vars->channel_conn << -1;
         }
     }
-    _io_event.Reset();
 
 #if BRPC_WITH_RDMA
     if (_rdma_ep) {
