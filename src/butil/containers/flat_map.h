@@ -94,6 +94,7 @@
 #define BUTIL_FLAT_MAP_H
 
 #include <stdint.h>
+#include <cstddef>
 #include <functional>
 #include <iostream>                               // std::ostream
 #include <type_traits>                            // std::aligned_storage
@@ -281,8 +282,17 @@ public:
             return *reinterpret_cast<const Element*>(spaces);
         }
         Bucket *next;
-        typename std::aligned_storage<sizeof(Element), alignof(Element)>::type
-            element_spaces;
+
+        // std::aligned_storage has been deprecated in C++23,
+        // because aligned_* are harmful to codebases and should not be used.
+        // Use std::byte(since C++17) instead.
+        // For details, see https://stackoverflow.com/questions/71828288/why-is-stdaligned-storage-to-be-deprecated-in-c23-and-what-to-use-instead
+#if (__cplusplus >= 201703L)
+        alignas(Element) std::byte element_spaces[sizeof(Element)];
+#else
+        typename std::aligned_storage<sizeof(Element),
+                                      alignof(Element)>::type element_spaces;
+#endif
     };
 
     allocator_type& get_allocator() { return _pool.get_allocator(); }
