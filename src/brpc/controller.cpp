@@ -258,6 +258,7 @@ void Controller::ResetPods() {
     _connection_type = CONNECTION_TYPE_UNKNOWN;
     _timeout_ms = UNSET_MAGIC_NUM;
     _backup_request_ms = UNSET_MAGIC_NUM;
+    _backup_request_policy = NULL;
     _connect_timeout_ms = UNSET_MAGIC_NUM;
     _real_timeout_ms = UNSET_MAGIC_NUM;
     _deadline_us = -1;
@@ -342,6 +343,11 @@ void Controller::set_backup_request_ms(int64_t timeout_ms) {
         _backup_request_ms = 0x7fffffff;
         LOG(WARNING) << "backup_request_ms is limited to 0x7fffffff (roughly 24 days)";
     }
+}
+
+int64_t Controller::backup_request_ms() const {
+    return NULL != _backup_request_policy ?
+           _backup_request_policy->GetBackupRequestMs() : _backup_request_ms;
 }
 
 void Controller::set_max_retry(int max_retry) {
@@ -1259,6 +1265,11 @@ int Controller::HandleSocketFailed(bthread_id_t id, void* data, int error_code,
                         cntl->timeout_ms(),
                         butil::endpoint2str(cntl->remote_side()).c_str());
     } else if (error_code == EBACKUPREQUEST) {
+        const BackupRequestPolicy* policy = cntl->_backup_request_policy;
+        if (NULL != policy && !policy->DoBackup(cntl)) {
+            // No need to do backup request.
+            return bthread_id_unlock(id);
+        }
         cntl->SetFailed(error_code, "Reached backup timeout=%" PRId64 "ms @%s",
                         cntl->backup_request_ms(),
                         butil::endpoint2str(cntl->remote_side()).c_str());

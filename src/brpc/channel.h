@@ -34,6 +34,7 @@
 #include "brpc/controller.h"                // brpc::Controller
 #include "brpc/details/profiler_linker.h"
 #include "brpc/retry_policy.h"
+#include "brpc/backup_request_policy.h"
 #include "brpc/naming_service_filter.h"
 
 namespace brpc {
@@ -111,6 +112,12 @@ struct ChannelOptions {
     // the channel is being used.
     // Default: NULL
     const Authenticator* auth;
+
+    // Customize the backup request time and whether to send backup request.
+    // Priority: `backup_request_policy' > `backup_request_ms'.
+    // This object is NOT owned by channel and should remain valid when channel is used.
+    // Default: NULL
+    const BackupRequestPolicy* backup_request_policy;
 
     // Customize the error code that should be retried. The interface is
     // defined in src/brpc/retry_policy.h

@@ -55,6 +55,7 @@ ChannelOptions::ChannelOptions()
     , log_succeed_without_server(true)
     , use_rdma(false)
     , auth(NULL)
+    , backup_request_policy(NULL)
     , retry_policy(NULL)
     , ns_filter(NULL)
 {}
@@ -497,6 +498,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     cntl->_connect_timeout_ms = _options.connect_timeout_ms;
     if (cntl->backup_request_ms() == UNSET_MAGIC_NUM) {
         cntl->set_backup_request_ms(_options.backup_request_ms);
+        cntl->_backup_request_policy = _options.backup_request_policy;
     }
     if (cntl->connection_type() == CONNECTION_TYPE_UNKNOWN) {
         cntl->set_connection_type(_options.connection_type);
@@ -536,6 +538,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // Currently we cannot handle retry and backup request correctly
         cntl->set_max_retry(0);
         cntl->set_backup_request_ms(-1);
+        cntl->_backup_request_policy = NULL;
     }
 
     if (cntl->backup_request_ms() >= 0 &&

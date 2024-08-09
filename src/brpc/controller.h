@@ -47,6 +47,7 @@
 #include "brpc/grpc.h"
 #include "brpc/kvmap.h"
 #include "brpc/rpc_dump.h"
+#include "brpc/backup_request_policy.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -180,7 +181,7 @@ public:
     // Set/get the delay to send backup request in milliseconds. Use
     // ChannelOptions.backup_request_ms on unset.
     void set_backup_request_ms(int64_t timeout_ms);
-    int64_t backup_request_ms() const { return _backup_request_ms; }
+    int64_t backup_request_ms() const;
 
     // Set/get maximum times of retrying. Use ChannelOptions.max_retry on unset.
     // <=0 means no retry.
@@ -670,7 +671,7 @@ private:
     struct ClientSettings {
         int32_t timeout_ms;
         int32_t backup_request_ms;
-        int max_retry;                      
+        int max_retry;
         int32_t tos;
         ConnectionType connection_type;         
         CompressType request_compress_type;
@@ -800,6 +801,8 @@ private:
     int32_t _timeout_ms;
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
+    // Copied from `Channel' which might be destroyed after CallMethod.
+    const BackupRequestPolicy* _backup_request_policy;
     // If this rpc call has retry/backup request,this var save the real timeout for current call
     int64_t _real_timeout_ms;
     // Deadline of this RPC (since the Epoch in microseconds).

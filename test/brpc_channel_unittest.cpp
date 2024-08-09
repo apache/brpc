@@ -310,7 +310,8 @@ protected:
                       bool single_server,
                       bool short_connection,
                       const brpc::Authenticator* auth = NULL,
-                      std::string connection_group = std::string()) {
+                      std::string connection_group = std::string(),
+                      bool use_backup_request_policy = false) {
         brpc::ChannelOptions opt;
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
@@ -318,6 +319,9 @@ protected:
         opt.auth = auth;
         opt.max_retry = 0;
         opt.connection_group = connection_group;
+        if (use_backup_request_policy) {
+            opt.backup_request_policy = &_backup_request_policy;
+        }
         if (single_server) {
             EXPECT_EQ(0, channel->Init(_ep, &opt)); 
         } else {                                                 
@@ -1918,6 +1922,110 @@ protected:
         StopAndJoin();
     }
 
+    void TestBackupRequest(bool single_server, bool async,
+                           bool short_connection) {
+        std::cout << " *** single=" << single_server
+                  << " async=" << async
+                  << " short=" << short_connection << std::endl;
+
+        ASSERT_EQ(0, StartAccept(_ep));
+        brpc::Channel channel;
+        SetUpChannel(&channel, single_server, short_connection);
+
+        const int RETRY_NUM = 1;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        brpc::Controller cntl;
+        req.set_message(__FUNCTION__);
+
+        cntl.set_max_retry(RETRY_NUM);
+        cntl.set_backup_request_ms(10);  // 10ms
+        cntl.set_timeout_ms(100);  // 10ms
+        req.set_sleep_us(50000); // 100ms
+        CallMethod(&channel, &cntl, &req, &res, async);
+        ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+        ASSERT_TRUE(cntl.has_backup_request());
+        ASSERT_EQ(RETRY_NUM, cntl.retried_count());
+        bthread_usleep(70000);  // wait for the sleep task to finish
+
+        if (short_connection) {
+            // Sleep to let `_messenger' detect `Socket' being `SetFailed'
+            const int64_t start_time = butil::gettimeofday_us();
+            while (_messenger.ConnectionCount() != 0) {
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                bthread_usleep(1000);
+            }
+        } else {
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
+        }
+        StopAndJoin();
+    }
+
+    class BackupRequestPolicyImpl : public brpc::BackupRequestPolicy {
+    public:
+        int32_t GetBackupRequestMs() const override {
+            return 10;
+        }
+
+        // Return true if the backup request should be sent.
+        bool DoBackup(const brpc::Controller*) const override {
+            return backup;
+        }
+
+        bool backup{true};
+
+    };
+
+    void TestBackupRequestPolicy(bool single_server, bool async,
+                                 bool short_connection) {
+        ASSERT_EQ(0, StartAccept(_ep));
+        for (int i = 0; i < 3; ++i) {
+            bool backup = i != 1;
+            std::cout << " *** single=" << single_server
+                      << " async=" << async
+                      << " short=" << short_connection
+                      << " backup=" << backup
+                      << std::endl;
+
+            brpc::Channel channel;
+            SetUpChannel(&channel, single_server, short_connection, NULL, "", true);
+
+            const int RETRY_NUM = 1;
+            test::EchoRequest req;
+            test::EchoResponse res;
+            brpc::Controller cntl;
+            req.set_message(__FUNCTION__);
+
+            _backup_request_policy.backup = i == 0;
+            if (i == 2) {
+                // use `set_backup_request_ms'.
+                // Although _backup_request_policy.DoBackup return false, it is ignored.
+                cntl.set_backup_request_ms(10);  // 10ms
+            }
+            cntl.set_max_retry(RETRY_NUM);
+            cntl.set_timeout_ms(100);  // 100ms
+            req.set_sleep_us(50000); // 50ms
+            CallMethod(&channel, &cntl, &req, &res, async);
+            ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+            ASSERT_EQ(backup, cntl.has_backup_request());
+            ASSERT_EQ(backup ? RETRY_NUM : 0, cntl.retried_count());
+            bthread_usleep(70000);  // wait for the sleep task to finish
+
+            if (short_connection) {
+                // Sleep to let `_messenger' detect `Socket' being `SetFailed'
+                const int64_t start_time = butil::gettimeofday_us();
+                while (_messenger.ConnectionCount() != 0) {
+                    EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                    bthread_usleep(1000);
+                }
+            } else {
+                EXPECT_GE(1ul, _messenger.ConnectionCount());
+            }
+        }
+
+        StopAndJoin();
+    }
+
     butil::EndPoint _ep;
     butil::TempFile _server_list;                                        
     std::string _naming_url;
@@ -1930,6 +2038,7 @@ protected:
     bool _close_fd_once;
     
     MyEchoService _svc;
+    BackupRequestPolicyImpl _backup_request_policy;
 };
 
 class MyShared : public brpc::SharedObject {
@@ -2592,6 +2701,26 @@ TEST_F(ChannelTest, retry_backoff) {
                         TestRetryBackoff(j, k, l, true);
                     }
                 }
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, backup_request) {
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
+        for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
+            for (int k = 0; k <= 1; ++k) { // Flag ShortConnection
+                TestBackupRequest(i, j, k);
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, backup_request_policy) {
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
+        for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
+            for (int k = 0; k <= 1; ++k) { // Flag ShortConnection
+                TestBackupRequestPolicy(i, j, k);
             }
         }
     }
