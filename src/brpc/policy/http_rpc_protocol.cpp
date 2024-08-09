@@ -926,6 +926,7 @@ HttpResponseSender::~HttpResponseSender() {
     // users to set max_concurrency.
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
+    wopt.keep_write_urgent = _cntl->keep_write_urgent();
     if (is_http2) {
         if (is_grpc) {
             // Append compressed and length before body
