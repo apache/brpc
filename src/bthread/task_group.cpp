@@ -39,7 +39,7 @@
 #include "task_meta.h"
 
 extern std::function<
-    std::tuple<std::function<void()>, std::function<void(int16_t)>, std::function<bool(bool)>>(int16_t)>
+    std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)>
     get_tx_proc_functors;
 namespace bthread {
 
@@ -147,15 +147,21 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         // keep polling for some time before waiting on parking lot
         if (FLAGS_worker_polling_time_ms <= 0 ||
             butil::cpuwide_time_ms() - poll_start_ms > FLAGS_worker_polling_time_ms) {
-        if (update_ext_proc_) {
-            update_ext_proc_(-1);
+            bool allow_sleep = true;
+            if (update_ext_proc_) {
+                allow_sleep = update_ext_proc_(-1);
+            }
+            if (!allow_sleep) {
+                // keep working as external processor
+                poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
+                continue;
+            }
+            _pl->wait(_last_pl_state);
+            poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
+            if (update_ext_proc_) {
+                update_ext_proc_(1);
+            }
         }
-        _pl->wait(_last_pl_state);
-        poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
-        if (update_ext_proc_) {
-            update_ext_proc_(1);
-        }
-      }
 #else
         const ParkingLot::State st = _pl->get_state();
         if (st.stopped()) {

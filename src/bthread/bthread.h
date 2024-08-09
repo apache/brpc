@@ -38,7 +38,7 @@
 __BEGIN_DECLS
 
 extern int bthread_set_ext_tx_prc_func(std::function<
-        std::tuple<std::function<void()>, std::function<void(int16_t)>, std::function<bool(bool)>>(int16_t)>);
+        std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)>);
 
 // Create bthread `fn(args)' with attributes `attr' and put the identifier into
 // `tid'. Switch to the new thread and schedule old thread to run. Use this

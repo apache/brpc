@@ -29,10 +29,10 @@
 #include "bthread/bthread.h"
 
 extern std::function<
-        std::tuple<std::function<void()>, std::function<void(int16_t)>, std::function<bool(bool)>>(int16_t)> get_tx_proc_functors;
+        std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)> get_tx_proc_functors;
 
 int bthread_set_ext_tx_prc_func(std::function<
-        std::tuple<std::function<void()>, std::function<void(int16_t)>, std::function<bool(bool)>>(int16_t)> functors) {
+        std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)> functors) {
     if (get_tx_proc_functors == nullptr) {
         get_tx_proc_functors = functors;
         return 0;

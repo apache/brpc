@@ -41,7 +41,7 @@ extern BAIDU_THREAD_LOCAL TaskGroup *tls_task_group;
 }
 
 extern std::function<
-    std::tuple<std::function<void()>, std::function<void(int16_t)>, std::function<bool(bool)>>(int16_t)>
+    std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)>
     get_tx_proc_functors;
 namespace brpc {
 

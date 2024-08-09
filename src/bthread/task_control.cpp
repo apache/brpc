@@ -41,7 +41,7 @@ DEFINE_int32(task_group_runqueue_capacity, 4096,
 DEFINE_int32(task_group_yield_before_idle, 0,
              "TaskGroup yields so many times before idle");
 
-std::function<std::pair<std::function<void()>, std::function<void(int16_t)>>(
+std::function<std::pair<std::function<void()>, std::function<bool(int16_t)>>(
     int16_t)>
     get_tx_proc_functors;
 namespace bthread {
