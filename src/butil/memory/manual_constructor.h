@@ -56,6 +56,11 @@ class ManualConstructor {
   inline Type& operator*() { return *get(); }
   inline const Type& operator*() const { return *get(); }
 
+  template<typename Ctor>
+  inline void InitBy(Ctor ctor) {
+    ctor(space_.void_data());
+  }
+
   // You can pass up to eight constructor arguments as arguments of Init().
   inline void Init() {
     new(space_.void_data()) Type;
