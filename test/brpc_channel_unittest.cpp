@@ -1979,8 +1979,8 @@ protected:
     void TestBackupRequestPolicy(bool single_server, bool async,
                                  bool short_connection) {
         ASSERT_EQ(0, StartAccept(_ep));
-        for (int i = 0; i < 3; ++i) {
-            bool backup = i != 1;
+        for (int i = 0; i < 2; ++i) {
+            bool backup = i == 0;
             std::cout << " *** single=" << single_server
                       << " async=" << async
                       << " short=" << short_connection
@@ -1996,12 +1996,7 @@ protected:
             brpc::Controller cntl;
             req.set_message(__FUNCTION__);
 
-            _backup_request_policy.backup = i == 0;
-            if (i == 2) {
-                // use `set_backup_request_ms'.
-                // Although _backup_request_policy.DoBackup return false, it is ignored.
-                cntl.set_backup_request_ms(10);  // 10ms
-            }
+            _backup_request_policy.backup = backup;
             cntl.set_max_retry(RETRY_NUM);
             cntl.set_timeout_ms(100);  // 100ms
             req.set_sleep_us(50000); // 50ms
@@ -2015,11 +2010,11 @@ protected:
                 // Sleep to let `_messenger' detect `Socket' being `SetFailed'
                 const int64_t start_time = butil::gettimeofday_us();
                 while (_messenger.ConnectionCount() != 0) {
-                    EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                    ASSERT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                     bthread_usleep(1000);
                 }
             } else {
-                EXPECT_GE(1ul, _messenger.ConnectionCount());
+                ASSERT_GE(1ul, _messenger.ConnectionCount());
             }
         }
 

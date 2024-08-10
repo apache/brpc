@@ -56,11 +56,12 @@ struct ChannelOptions {
     int32_t timeout_ms;
 
     // Send another request if RPC does not finish after so many milliseconds.
-    // Overridable by Controller.set_backup_request_ms().
+    // Overridable by Controller.set_backup_request_ms() or
+    // Controller.set_backup_request_policy().
     // The request will be sent to a different server by best effort.
     // If timeout_ms is set and backup_request_ms >= timeout_ms, backup request
     // will never be sent.
-    // backup request does NOT imply server-side cancelation.
+    // backup request does NOT imply server-side cancellation.
     // Default: -1 (disabled)
     // Maximum: 0x7fffffff (roughly 30 days)
     int32_t backup_request_ms;
@@ -115,6 +116,8 @@ struct ChannelOptions {
 
     // Customize the backup request time and whether to send backup request.
     // Priority: `backup_request_policy' > `backup_request_ms'.
+    // Overridable by Controller.set_backup_request_ms() or
+    // Controller.set_backup_request_policy().
     // This object is NOT owned by channel and should remain valid when channel is used.
     // Default: NULL
     const BackupRequestPolicy* backup_request_policy;

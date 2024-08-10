@@ -496,7 +496,8 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     // overriding connect_timeout_ms does not make sense, just use the
     // one in ChannelOptions
     cntl->_connect_timeout_ms = _options.connect_timeout_ms;
-    if (cntl->backup_request_ms() == UNSET_MAGIC_NUM) {
+    if (cntl->backup_request_ms() == UNSET_MAGIC_NUM &&
+        NULL == cntl->_backup_request_policy) {
         cntl->set_backup_request_ms(_options.backup_request_ms);
         cntl->_backup_request_policy = _options.backup_request_policy;
     }

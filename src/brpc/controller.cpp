@@ -346,8 +346,13 @@ void Controller::set_backup_request_ms(int64_t timeout_ms) {
 }
 
 int64_t Controller::backup_request_ms() const {
-    return NULL != _backup_request_policy ?
-           _backup_request_policy->GetBackupRequestMs() : _backup_request_ms;
+    int timeout_ms = NULL != _backup_request_policy ?
+        _backup_request_policy->GetBackupRequestMs() : _backup_request_ms;
+    if (timeout_ms > 0x7fffffff) {
+        timeout_ms = 0x7fffffff;
+        LOG(WARNING) << "backup_request_ms is limited to 0x7fffffff (roughly 24 days)";
+    }
+    return timeout_ms;
 }
 
 void Controller::set_max_retry(int max_retry) {
@@ -1324,6 +1329,7 @@ CallId Controller::call_id() {
 void Controller::SaveClientSettings(ClientSettings* s) const {
     s->timeout_ms = _timeout_ms;
     s->backup_request_ms = _backup_request_ms;
+    s->backup_request_policy = _backup_request_policy;
     s->max_retry = _max_retry;
     s->tos = _tos;
     s->connection_type = _connection_type;
@@ -1336,6 +1342,7 @@ void Controller::SaveClientSettings(ClientSettings* s) const {
 void Controller::ApplyClientSettings(const ClientSettings& s) {
     set_timeout_ms(s.timeout_ms);
     set_backup_request_ms(s.backup_request_ms);
+    set_backup_request_policy(s.backup_request_policy);
     set_max_retry(s.max_retry);
     set_type_of_service(s.tos);
     set_connection_type(s.connection_type);
