@@ -124,7 +124,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_ProfilerStart"
         "-Wl,-U,_ProfilerStop"
         "-Wl,-U,__Z13GetStackTracePPvii"
-        "-Wl,-U,_RegisterThriftProtocol")
+        "-Wl,-U,_RegisterThriftProtocol"
+        "-Wl,-U,_mallctl"
+    )
 endif()
 
 add_executable(asynchronous_echo_client client.cpp ${PROTO_SRC})

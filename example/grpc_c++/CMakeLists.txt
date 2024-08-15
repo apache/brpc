@@ -130,7 +130,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_ProfilerStart"
         "-Wl,-U,_ProfilerStop"
         "-Wl,-U,__Z13GetStackTracePPvii"
-        "-Wl,-U,_RegisterThriftProtocol")
+        "-Wl,-U,_RegisterThriftProtocol"
+        "-Wl,-U,_mallctl"
+    )
 endif()
 
 add_executable(server server.cpp ${PROTO_SRC} ${PROTO_HEADER} )
