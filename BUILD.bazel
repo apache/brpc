@@ -63,6 +63,7 @@ LINKOPTS = [
         "-Wl,-U,_ProfilerStop",
         "-Wl,-U,__Z13GetStackTracePPvii",
         "-Wl,-U,_RegisterThriftProtocol",
+        "-Wl,-U,_mallctl",
     ],
     "//conditions:default": [
         "-lrt",

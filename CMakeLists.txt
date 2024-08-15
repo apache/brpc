@@ -323,7 +323,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_ProfilerStart"
         "-Wl,-U,_ProfilerStop"
         "-Wl,-U,__Z13GetStackTracePPvii"
-        "-undefined dynamic_lookup"
+        "-Wl,-U,_mallctl"
     )
 endif()
 
