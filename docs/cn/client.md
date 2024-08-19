@@ -708,6 +708,32 @@ options.retry_policy = &g_my_retry_policy;
 - [brpc::RpcRetryPolicyWithFixedBackoff](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)（固定时间间隔退策略）和[brpc::RpcRetryPolicyWithJitteredBackoff](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)（随机时间间隔退策略）继承了[brpc::RpcRetryPolicy](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)，使用框架默认的DoRetry。
 - 在pthread中进行重试退避（实际上通过bthread_usleep实现）会阻塞pthread，所以默认不会在pthread上进行重试退避。
 
+### backup request
+
+如果response没有在backup_request_ms内返回，则发送另外一个请求，哪个先回来就取哪个。新请求会被尽量送到不同的server。注意如果backup_request_ms大于超时，则backup request总不会被发送。backup request会消耗一次重试次数。backup request不意味着server端cancel。
+
+ChannelOptions.backup_request_ms影响该Channel上所有RPC，单位毫秒，默认值-1（表示不开启）。Controller.set_backup_request_ms()可修改某次RPC的值。
+
+用户可以通过继承[brpc::BackupRequestPolicy](https://github.com/apache/brpc/blob/master/src/brpc/backup_request_policy.h)自定义策略（backup_request_ms和熔断backup request）。 比如根据延时调节backup_request_ms或者根据错误率调节发起backup request的百分比。
+
+ChannelOptions.backup_request_policy同样影响该Channel上所有RPC。Controller.set_backup_request_policy()可修改某次RPC的策略。backup_request_policy优先级高于backup_request_ms。
+
+brpc::BackupRequestPolicy接口如下：
+
+```c++
+class BackupRequestPolicy {
+public:
+    virtual ~BackupRequestPolicy() = default;
+
+    // Return the time in milliseconds in which another request
+    // will be sent if RPC does not finish.
+    virtual int32_t GetBackupRequestMs(const Controller* controller) const = 0;
+
+    // Return true if the backup request should be sent.
+    virtual bool DoBackup(const Controller* controller) const = 0;
+};
+```
+
 ### 重试应当保守
 
 由于成本的限制，大部分线上server的冗余度是有限的，主要是满足多机房互备的需求。而激进的重试逻辑很容易导致众多client对server集群造成2-3倍的压力，最终使集群雪崩：由于server来不及处理导致队列越积越长，使所有的请求得经过很长的排队才被处理而最终超时，相当于服务停摆。默认的重试是比较安全的: 只要连接不断RPC就不会重试，一般不会产生大量的重试请求。用户可以通过RetryPolicy定制重试策略，但也可能使重试变成一场“风暴”。当你定制RetryPolicy时，你需要仔细考虑client和server的协作关系，并设计对应的异常测试，以确保行为符合预期。

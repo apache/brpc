@@ -347,7 +347,7 @@ void Controller::set_backup_request_ms(int64_t timeout_ms) {
 
 int64_t Controller::backup_request_ms() const {
     int timeout_ms = NULL != _backup_request_policy ?
-        _backup_request_policy->GetBackupRequestMs() : _backup_request_ms;
+        _backup_request_policy->GetBackupRequestMs(this) : _backup_request_ms;
     if (timeout_ms > 0x7fffffff) {
         timeout_ms = 0x7fffffff;
         LOG(WARNING) << "backup_request_ms is limited to 0x7fffffff (roughly 24 days)";

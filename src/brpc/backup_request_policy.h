@@ -29,7 +29,7 @@ public:
 
     // Return the time in milliseconds in which another request
     // will be sent if RPC does not finish.
-    virtual int32_t GetBackupRequestMs() const = 0;
+    virtual int32_t GetBackupRequestMs(const Controller* controller) const = 0;
 
     // Return true if the backup request should be sent.
     virtual bool DoBackup(const Controller* controller) const = 0;

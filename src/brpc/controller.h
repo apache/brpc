@@ -47,7 +47,6 @@
 #include "brpc/grpc.h"
 #include "brpc/kvmap.h"
 #include "brpc/rpc_dump.h"
-#include "brpc/backup_request_policy.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -72,6 +71,7 @@ class RPCSender;
 class StreamSettings;
 class MongoContext;
 class RetryPolicy;
+class BackupRequestPolicy;
 class InputMessageBase;
 class ThriftStub;
 namespace policy {

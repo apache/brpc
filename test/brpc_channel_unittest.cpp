@@ -1963,7 +1963,7 @@ protected:
 
     class BackupRequestPolicyImpl : public brpc::BackupRequestPolicy {
     public:
-        int32_t GetBackupRequestMs() const override {
+        int32_t GetBackupRequestMs(const brpc::Controller*) const override {
             return 10;
         }
 
