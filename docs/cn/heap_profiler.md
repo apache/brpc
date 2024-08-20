@@ -107,3 +107,33 @@ brpc还提供一个类似的growth profiler分析内存的分配去向（不考�
 
 1. 安装[standalone pprof](https://github.com/google/pprof)，并把下载的pprof二进制文件路径写入环境变量GOOGLE_PPROF_BINARY_PATH中
 2. 安装llvm-symbolizer（将函数符号转化为函数名），直接用brew安装即可：`brew install llvm`
+
+# Jemalloc Heap Profiler
+
+## 开启方法
+
+1. 编译[jemalloc](https://github.com/jemalloc/jemalloc)时需--enable-prof以支持profiler, 安装完成后bin目录下会有jeprof文件。
+2. 启动进程前最好配置env `JEPROF_FILE=/xxx/jeprof`，否则进程默认用$PATH里的jeprof解析。
+3. 启动进程并开启profiler功能：`MALLOC_CONF="prof:true" LD_PRELOAD=/xxx/lib/libjemalloc.so ./bin/test_server`，MALLOC_CONF是env项，此时只做一些初始化动作，并不会采样。
+4. 相关gflags说明：
+- FLAGS_je_prof_active：true:开启采样，false:关闭采样。
+- FLAGS_je_prof_dump：修改值会生成heap文件，用于手动操作jeprof分析。
+- FLAGS_je_prof_reset：清理已采样数据和重置profiler选项，并且动态设置采样率，[默认](https://jemalloc.net/jemalloc.3.html#opt.lg_prof_sample)2^19B（512K）。
+5. 若要做memory leak，需`MALLOC_CONF="prof:true,prof_leak:true,prof_final:true"`，进程退出时生成heap文件，注：可`kill pid`，不可`kill -9 pid`。
+
+注：每次dump的都是从采样至今的所有数据，若触发了reset，接来下dump的是从reset至今的所有数据，方便做diff。
+更多jemalloc profiler选项请参考[官网](https://jemalloc.net/jemalloc.3.html)，如prof_leak_error:true则检测到内存泄漏，进程立即退出。
+
+## 样例
+
+- jeprof命令`jeprof 127.0.0.1:12345/pprof/heap`。
+
+![img](../images/cmd_jeprof_text.png)
+
+- curl生成text格式`curl 127.0.0.1:12345/pprof/heap?display=text`。
+
+![img](../images/curl_jeprof_text.png)
+
+- curl生成svg图片格式`curl 127.0.0.1:12345/pprof/heap?display=svg`。
+
+![img](../images/curl_jeprof_svg.png)
