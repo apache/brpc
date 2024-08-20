@@ -374,6 +374,7 @@ make_contention_site_invalid(bthread_contention_site_t* cs) {
     cs->sampling_range = 0;
 }
 
+#ifndef NO_PTHREAD_MUTEX_HOOK
 // Replace pthread_mutex_lock and pthread_mutex_unlock:
 // First call to sys_pthread_mutex_lock sets sys_pthread_mutex_lock to the
 // real function so that next calls go to the real function directly. This
@@ -418,19 +419,26 @@ static pthread_once_t init_sys_mutex_lock_once = PTHREAD_ONCE_INIT;
 // causing deadlock temporarily. This fix is hardly portable.
 
 static void init_sys_mutex_lock() {
+// When bRPC library is linked as a shared library, need to make sure bRPC
+// shared library is loaded before the pthread shared library. Otherwise,
+// it may cause runtime error: undefined symbol: pthread_mutex_xxx.
+// Alternatively, static linking can also avoid this problem.
 #if defined(OS_LINUX)
     // TODO: may need dlvsym when GLIBC has multiple versions of a same symbol.
     // http://blog.fesnel.com/blog/2009/08/25/preloading-with-multiple-symbol-versions
     if (_dl_sym) {
-        sys_pthread_mutex_lock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_lock", (void*)init_sys_mutex_lock);
-        sys_pthread_mutex_unlock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_unlock", (void*)init_sys_mutex_lock);
+        sys_pthread_mutex_lock = (MutexOp)_dl_sym(
+            RTLD_NEXT, "pthread_mutex_lock", (void*)init_sys_mutex_lock);
+        sys_pthread_mutex_unlock = (MutexOp)_dl_sym(
+            RTLD_NEXT, "pthread_mutex_unlock", (void*)init_sys_mutex_lock);
+        sys_pthread_mutex_trylock = (MutexOp)_dl_sym(
+            RTLD_NEXT, "pthread_mutex_trylock", (void*)init_sys_mutex_lock);
     } else {
         // _dl_sym may be undefined reference in some system, fallback to dlsym
         sys_pthread_mutex_lock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_lock");
         sys_pthread_mutex_unlock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+        sys_pthread_mutex_trylock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
     }
-    // In some system, _dl_sym may cause symbol lookup error: undefined symbol: pthread_mutex_trylock.
-    sys_pthread_mutex_trylock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 #elif defined(OS_MACOSX)
     // TODO: look workaround for dlsym on mac
     sys_pthread_mutex_lock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_lock");
@@ -456,6 +464,7 @@ int first_sys_pthread_mutex_unlock(pthread_mutex_t* mutex) {
     pthread_once(&init_sys_mutex_lock_once, init_sys_mutex_lock);
     return sys_pthread_mutex_unlock(mutex);
 }
+#endif
 
 template <typename Mutex>
 inline uint64_t hash_mutex_ptr(const Mutex* m) {
@@ -595,6 +604,7 @@ void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
 }
 
 namespace internal {
+#ifndef NO_PTHREAD_MUTEX_HOOK
 BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(pthread_mutex_t* mutex) {
     ++bthread::tls_pthread_lock_count;
     return sys_pthread_mutex_lock(mutex);
@@ -612,6 +622,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_unlock_internal(pthread_mutex_t* mutex) {
     --tls_pthread_lock_count;
     return sys_pthread_mutex_unlock(mutex);
 }
+#endif
 
 BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(FastPthreadMutex* mutex) {
     mutex->lock();
@@ -730,6 +741,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(Mutex* mutex) {
 
 }
 
+#ifndef NO_PTHREAD_MUTEX_HOOK
 BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
     return internal::pthread_mutex_lock_impl(mutex);
 }
@@ -741,6 +753,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_trylock_impl(pthread_mutex_t* mutex) {
 BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
     return internal::pthread_mutex_unlock_impl(mutex);
 }
+#endif
 
 // Implement bthread_mutex_t related functions
 struct MutexInternal {
@@ -953,6 +966,7 @@ int bthread_mutex_unlock(bthread_mutex_t* m) {
     return 0;
 }
 
+#ifndef NO_PTHREAD_MUTEX_HOOK
 int pthread_mutex_lock(pthread_mutex_t* __mutex) {
     return bthread::pthread_mutex_lock_impl(__mutex);
 }
@@ -962,5 +976,6 @@ int pthread_mutex_trylock(pthread_mutex_t* __mutex) {
 int pthread_mutex_unlock(pthread_mutex_t* __mutex) {
     return bthread::pthread_mutex_unlock_impl(__mutex);
 }
+#endif
 
 }  // extern "C"
