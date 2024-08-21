@@ -42,8 +42,12 @@ public:
     virtual void Return(RpcPBMessages* protobuf_message) = 0;
 };
 
-// Get the `RpcPBMessageFactory' used by `Server'.
-RpcPBMessageFactory* GetDefaultRpcPBMessageFactory();
+class DefaultRpcPBMessageFactory : public RpcPBMessageFactory {
+public:
+    RpcPBMessages* Get(const ::google::protobuf::Service& service,
+                       const ::google::protobuf::MethodDescriptor& method) override;
+    void Return(RpcPBMessages* messages) override;
+};
 
 } // namespace brpc
 

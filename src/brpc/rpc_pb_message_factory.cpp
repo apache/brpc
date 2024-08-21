@@ -29,30 +29,23 @@ struct DefaultRpcPBMessages : public RpcPBMessages {
     ::google::protobuf::Message* response;
 };
 
-class DefaultRpcPBMessageFactory : public RpcPBMessageFactory {
-public:
-    RpcPBMessages* Get(const ::google::protobuf::Service& service,
-        const ::google::protobuf::MethodDescriptor& method) override {
-        auto messages = butil::get_object<DefaultRpcPBMessages>();
-        messages->request = service.GetRequestPrototype(&method).New();
-        messages->response = service.GetResponsePrototype(&method).New();
-        return messages;
-    }
 
-    void Return(RpcPBMessages* messages) override {
-        auto default_messages = static_cast<DefaultRpcPBMessages*>(messages);
-        delete default_messages->request;
-        delete default_messages->response;
-        default_messages->request = NULL;
-        default_messages->response = NULL;
-        butil::return_object(default_messages);
-    }
-};
-
-RpcPBMessageFactory* GetDefaultRpcPBMessageFactory() {
-    static DefaultRpcPBMessageFactory factory;
-    return &factory;
+RpcPBMessages* DefaultRpcPBMessageFactory::Get(
+        const ::google::protobuf::Service& service,
+        const ::google::protobuf::MethodDescriptor& method) {
+    auto messages = butil::get_object<DefaultRpcPBMessages>();
+    messages->request = service.GetRequestPrototype(&method).New();
+    messages->response = service.GetResponsePrototype(&method).New();
+    return messages;
 }
 
+void DefaultRpcPBMessageFactory::Return(RpcPBMessages* messages) {
+    auto default_messages = static_cast<DefaultRpcPBMessages*>(messages);
+    delete default_messages->request;
+    delete default_messages->response;
+    default_messages->request = NULL;
+    default_messages->response = NULL;
+    butil::return_object(default_messages);
+}
 
 } // namespace brpc

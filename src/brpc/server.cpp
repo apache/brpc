@@ -152,7 +152,7 @@ ServerOptions::ServerOptions()
     , rtmp_service(NULL)
     , redis_service(NULL)
     , bthread_tag(BTHREAD_TAG_INVALID)
-    , rpc_pb_message_factory(GetDefaultRpcPBMessageFactory()) {
+    , rpc_pb_message_factory(new DefaultRpcPBMessageFactory()) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -450,10 +450,8 @@ Server::~Server() {
     delete _options.http_master_service;
     _options.http_master_service = NULL;
 
-    if (_options.rpc_pb_message_factory != GetDefaultRpcPBMessageFactory()) {
-        delete _options.rpc_pb_message_factory;
-        _options.rpc_pb_message_factory = NULL;
-    }
+    delete _options.rpc_pb_message_factory;
+    _options.rpc_pb_message_factory = NULL;
 
     delete _am;
     _am = NULL;

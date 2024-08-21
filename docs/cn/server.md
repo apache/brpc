@@ -1013,6 +1013,34 @@ public:
         ...
 ```
 
+## RPC Protobuf message factory
+
+Server默认使用`DefaultRpcPBMessageFactory`。它是一个简单的工厂类，通过`new`来创建请求/响应message和`delete`来销毁请求/响应message。
+
+如果用户希望自定义创建销毁机制，可以实现`RpcPBMessages`（请求/响应message的封装）和`RpcPBMessageFactory`（工厂类），并通过`ServerOptions.rpc_pb_message_factory`。
+
+接口如下：
+
+```c++
+// Inherit this class to customize rpc protobuf messages,
+// include request and response.
+class RpcPBMessages {
+public:
+    virtual ~RpcPBMessages() = default;
+    virtual google::protobuf::Message* Request() = 0;
+    virtual google::protobuf::Message* Response() = 0;
+};
+
+// Factory to manage `RpcPBMessages'.
+class RpcPBMessageFactory {
+public:
+    virtual ~RpcPBMessageFactory() = default;
+    virtual RpcPBMessages* Get(const ::google::protobuf::Service& service,
+                               const ::google::protobuf::MethodDescriptor& method) = 0;
+    virtual void Return(RpcPBMessages* protobuf_message) = 0;
+};
+```
+
 # FAQ
 
 ### Q: Fail to write into fd=1865 SocketId=8905@10.208.245.43:54742@8230: Got EOF是什么意思
