@@ -1972,6 +1972,8 @@ protected:
             return backup;
         }
 
+        void OnRPCEnd(const brpc::Controller*) override {}
+
         bool backup{true};
 
     };

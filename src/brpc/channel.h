@@ -120,7 +120,7 @@ struct ChannelOptions {
     // Controller.set_backup_request_policy().
     // This object is NOT owned by channel and should remain valid when channel is used.
     // Default: NULL
-    const BackupRequestPolicy* backup_request_policy;
+    BackupRequestPolicy* backup_request_policy;
 
     // Customize the error code that should be retried. The interface is
     // defined in src/brpc/retry_policy.h

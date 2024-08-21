@@ -980,6 +980,14 @@ void Controller::EndRPC(const CompletionInfo& info) {
         CHECK_EQ(0, bthread_id_unlock_and_destroy(saved_cid));
     }
 }
+
+void Controller::OnRPCEnd(int64_t end_time_us) {
+    _end_time_us = end_time_us;
+    if (NULL != _backup_request_policy) {
+        _backup_request_policy->OnRPCEnd(this);
+    }
+}
+
 void Controller::RunDoneInBackupThread(void* arg) {
     static_cast<Controller*>(arg)->DoneInBackupThread();
 }
@@ -1270,7 +1278,7 @@ int Controller::HandleSocketFailed(bthread_id_t id, void* data, int error_code,
                         cntl->timeout_ms(),
                         butil::endpoint2str(cntl->remote_side()).c_str());
     } else if (error_code == EBACKUPREQUEST) {
-        const BackupRequestPolicy* policy = cntl->_backup_request_policy;
+        BackupRequestPolicy* policy = cntl->_backup_request_policy;
         if (NULL != policy && !policy->DoBackup(cntl)) {
             // No need to do backup request.
             return bthread_id_unlock(id);

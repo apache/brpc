@@ -33,6 +33,9 @@ public:
 
     // Return true if the backup request should be sent.
     virtual bool DoBackup(const Controller* controller) const = 0;
+
+    // Called  when a rpc is end, user can collect call information to adjust policy.
+    virtual void OnRPCEnd(const Controller* controller) = 0;
 };
 
 }
