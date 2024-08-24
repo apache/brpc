@@ -40,6 +40,7 @@ struct CommonStrings {
     std::string CONTENT_TYPE_SPRING_PROTO;
     std::string ERROR_CODE;
     std::string AUTHORIZATION;
+    std::string WWW_AUTHENTICATE;
     std::string ACCEPT_ENCODING;
     std::string CONTENT_ENCODING;
     std::string CONTENT_LENGTH;

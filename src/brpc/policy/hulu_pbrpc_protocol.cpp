@@ -549,12 +549,33 @@ bool VerifyHuluRequest(const InputMessageBase* msg_base) {
     if (NULL == auth) {
         // Fast pass (no authentication)
         return true;
-    }    
-    if (auth->VerifyCredential(
-                meta.credential_data(), socket->remote_side(), 
-                socket->mutable_auth_context()) != 0) {
-        return false;
     }
+    bool success = auth->VerifyCredential(meta.credential_data(),
+                                          socket->remote_side(),
+                                          socket->mutable_auth_context()) == 0;
+    if (!success) {
+        std::string res_info;
+        if (!auth->GetUnauthorizedResponseInfo(res_info)) {
+            return false;
+        }
+
+        // Send `ERPCAUTH' to client.
+        HuluRpcResponseMeta temp_meta;
+        temp_meta.set_correlation_id(meta.correlation_id());
+        temp_meta.set_error_code(ERPCAUTH);
+        std::string error_text = res_info.empty() ? "Fail to authenticate" :
+                                 butil::string_printf("Fail to authenticate, %s", res_info.c_str());
+        temp_meta.set_error_text(error_text);
+
+        butil::IOBuf res_buf;
+        SerializeHuluHeaderAndMeta(&res_buf, meta, 0);
+        Socket::WriteOptions opt;
+        opt.ignore_eovercrowded = true;
+        if (socket->Write(&res_buf, &opt) != 0) {
+            PLOG_IF(WARNING, errno != EPIPE) << "Fail to write into " << *socket;
+        }
+    }
+
     return true;
 }
 

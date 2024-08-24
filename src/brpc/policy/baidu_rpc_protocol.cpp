@@ -668,13 +668,39 @@ bool VerifyRpcRequest(const InputMessageBase* msg_base) {
     if (NULL == auth) {
         // Fast pass (no authentication)
         return true;
-    }    
-    if (auth->VerifyCredential(
-                meta.authentication_data(), socket->remote_side(), 
-                socket->mutable_auth_context()) != 0) {
+    }
+
+    bool success = auth->VerifyCredential(meta.authentication_data(),
+                                          socket->remote_side(),
+                                          socket->mutable_auth_context()) == 0;
+    if (success) {
+        return true;
+    }
+
+    // Send `ERPCAUTH' to client.
+    std::string res_info;
+    if (!auth->GetUnauthorizedResponseInfo(res_info)) {
         return false;
     }
-    return true;
+
+    RpcMeta temp_meta;
+    temp_meta.set_correlation_id(meta.correlation_id());
+    RpcResponseMeta* response_meta = temp_meta.mutable_response();
+    response_meta->set_error_code(ERPCAUTH);
+    std::string error_text = res_info.empty() ? "Fail to authenticate" :
+                             butil::string_printf("Fail to authenticate, %s", res_info.c_str());
+    response_meta->set_error_text(error_text);
+
+    butil::IOBuf res_buf;
+    SerializeRpcHeaderAndMeta(&res_buf, temp_meta, 0);
+
+    Socket::WriteOptions opt;
+    opt.ignore_eovercrowded = true;
+    if (socket->Write(&res_buf, &opt) != 0) {
+        PLOG_IF(WARNING, errno != EPIPE) << "Fail to write into " << *socket;
+    }
+
+    return false;
 }
 
 void ProcessRpcResponse(InputMessageBase* msg_base) {

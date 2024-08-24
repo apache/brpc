@@ -57,7 +57,7 @@ private:
 
 class Authenticator {
 public:
-    virtual ~Authenticator() {}
+    virtual ~Authenticator() = default;
 
     // Implement this method to generate credential information
     // into `auth_str' which will be sent to `VerifyCredential'
@@ -73,6 +73,15 @@ public:
     virtual int VerifyCredential(const std::string& auth_str,
                                  const butil::EndPoint& client_addr,
                                  AuthContext* out_ctx) const = 0;
+
+    // Implement this method to decide whether to send a response
+    // to the client when authentication fails.
+    // Returns true to indicate a response needs to be sent,
+    // otherwise no response is needed.
+    virtual bool GetUnauthorizedResponseInfo(std::string& response_str) const {
+        (void)response_str;
+        return false;
+    }
 
 };
 

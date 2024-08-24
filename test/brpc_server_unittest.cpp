@@ -80,18 +80,29 @@ void* RunClosure(void* arg) {
     return NULL;
 }
 
+bool g_verify_success = true;
+bool g_unauthorized_response = false;
+const std::string g_unauthorized_response_info = "Basic";
+
 class MyAuthenticator : public brpc::Authenticator {
 public:
-    MyAuthenticator() {}
-    virtual ~MyAuthenticator() {}
-    int GenerateCredential(std::string*) const {
+    MyAuthenticator() = default;
+    ~MyAuthenticator() = default;
+    int GenerateCredential(std::string*) const override {
         return 0;
     }
 
     int VerifyCredential(const std::string&,
                          const butil::EndPoint&,
-                         brpc::AuthContext*) const {
-        return 0;
+                         brpc::AuthContext*) const override {
+        return g_verify_success ? 0 : -1;
+    }
+
+    bool GetUnauthorizedResponseInfo(std::string& response_str) const override {
+        if (g_unauthorized_response) {
+            response_str = "Basic";
+        }
+        return g_unauthorized_response;
     }
 };
 
@@ -1823,6 +1834,85 @@ TEST_F(ServerTest, rpc_pb_message_factory) {
     stub.Echo(&cntl, &req, &res, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(EXP_RESPONSE, res.message());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+void TestBaiduStdAuth(const butil::EndPoint& ep,
+    brpc::Controller& cntl,
+    int error_code, bool failed) {
+    brpc::Channel chan;
+    brpc::ChannelOptions copt;
+    copt.max_retry = 0;
+    copt.protocol = "baidu_std";
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&chan);
+    stub.Echo(&cntl, &req, &res, NULL);
+    ASSERT_EQ(cntl.Failed(), failed) << cntl.ErrorText();
+    ASSERT_EQ(cntl.ErrorCode(), error_code);
+}
+
+void TestHttpAuth(const butil::EndPoint& ep,
+                  brpc::Controller& cntl,
+                  int error_code, bool failed) {
+    brpc::Channel chan;
+    brpc::ChannelOptions copt;
+    copt.max_retry = 0;
+    copt.protocol = "http";
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.request_attachment().append(R"({"message": "hello"})");
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    test::EchoService_Stub stub(&chan);
+    chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_EQ(cntl.Failed(), failed) << cntl.ErrorText();
+    ASSERT_EQ(cntl.ErrorCode(), error_code);
+}
+
+TEST_F(ServerTest, auth) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+    brpc::Server server;
+    EchoServiceImpl service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    MyAuthenticator auth;
+    brpc::ServerOptions opt;
+    opt.auth = &auth;
+    ASSERT_EQ(0, server.Start(ep, &opt));
+
+    brpc::Controller cntl;
+    TestBaiduStdAuth(ep, cntl, 0, false);
+
+    g_verify_success = false;
+    cntl.Reset();
+    TestBaiduStdAuth(ep, cntl, brpc::EEOF, true);
+
+    g_unauthorized_response = true;
+    cntl.Reset();
+    TestBaiduStdAuth(ep, cntl, brpc::ERPCAUTH, true);
+    ASSERT_NE(cntl.ErrorText().find(g_unauthorized_response_info), std::string::npos);
+
+    brpc::policy::FLAGS_use_http_error_code = true;
+    cntl.Reset();
+    TestHttpAuth(ep, cntl, brpc::ERPCAUTH, true);
+    const std::string* www_authenticate = cntl.http_response().GetHeader("WWW-Authenticate");
+    ASSERT_NE(nullptr, www_authenticate);
+    ASSERT_EQ(*www_authenticate, g_unauthorized_response_info);
+
+    g_unauthorized_response = false;
+    cntl.Reset();
+    TestHttpAuth(ep, cntl, brpc::EEOF, true);
+
+    g_verify_success = true;
+    cntl.Reset();
+    cntl.http_request().SetHeader("Authorization", "123");
+    TestHttpAuth(ep, cntl, 0, false);
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());

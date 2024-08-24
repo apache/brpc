@@ -125,6 +125,7 @@ CommonStrings::CommonStrings()
     , CONTENT_TYPE_SPRING_PROTO("application/x-protobuf")
     , ERROR_CODE("x-bd-error-code")
     , AUTHORIZATION("authorization")
+    , WWW_AUTHENTICATE("www-authenticate")
     , ACCEPT_ENCODING("accept-encoding")
     , CONTENT_ENCODING("content-encoding")
     , CONTENT_LENGTH("content_length")
@@ -1253,6 +1254,30 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
     }
 }
 
+static void SendUnauthorizedResponseIfNeed(const Authenticator* auth, Socket* socket) {
+    std::string www_authenticate;
+    if (!auth->GetUnauthorizedResponseInfo(www_authenticate)) {
+        return;
+    }
+
+    // Send 401(unauthorized) and `ERPCAUTH' to client.
+    butil::IOBuf res_buf;
+    HttpHeader header;
+    header.set_status_code(HTTP_STATUS_UNAUTHORIZED);
+    // RFC7235 https://datatracker.ietf.org/doc/html/rfc7235#section-4.1
+    // The server generating a 401 response MUST send a WWW-Authenticate
+    // header field (Section 4.1) containing at least one challenge
+    // applicable to the target resource.
+    header.SetHeader(common->ERROR_CODE, butil::string_printf("%d", ERPCAUTH));
+    header.SetHeader(common->WWW_AUTHENTICATE, www_authenticate);
+    MakeRawHttpResponse(&res_buf, &header, NULL);
+    Socket::WriteOptions opt;
+    opt.ignore_eovercrowded = true;
+    if (socket->Write(&res_buf, &opt) != 0) {
+        PLOG_IF(WARNING, errno != EPIPE) << "Fail to write into " << *socket;
+    }
+}
+
 bool VerifyHttpRequest(const InputMessageBase* msg) {
     Server* server = (Server*)msg->arg();
     Socket* socket = msg->socket();
@@ -1275,16 +1300,22 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     }
 
     const std::string *authorization 
-        = http_request->header().GetHeader("Authorization");
+        = http_request->header().GetHeader(common->AUTHORIZATION);
     if (authorization == NULL) {
+        SendUnauthorizedResponseIfNeed(auth, socket);
         return false;
     }
     butil::EndPoint user_addr;
     if (!GetUserAddressFromHeader(http_request->header(), &user_addr)) {
         user_addr = socket->remote_side();
     }
-    return auth->VerifyCredential(*authorization, user_addr,
-                                  socket->mutable_auth_context()) == 0;
+    if (auth->VerifyCredential(*authorization, user_addr,
+                               socket->mutable_auth_context()) != 0) {
+        SendUnauthorizedResponseIfNeed(auth, socket);
+        return false;
+    }
+
+    return true;
 }
 
 
