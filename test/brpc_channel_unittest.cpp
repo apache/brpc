@@ -53,10 +53,11 @@ DECLARE_int32(max_connection_pool_size);
 class Server;
 class MethodStatus;
 namespace policy {
-void SendRpcResponse(int64_t correlation_id, Controller* cntl, 
-                     const google::protobuf::Message* req,
-                     const google::protobuf::Message* res,
-                     const Server* server_raw, MethodStatus *, int64_t);
+void SendRpcResponse(int64_t correlation_id,
+                     Controller* cntl,
+                     RpcPBMessages* messages,
+                     const Server* server_raw,
+                     MethodStatus *, int64_t);
 } // policy
 } // brpc
 
@@ -255,8 +256,10 @@ protected:
         ASSERT_EQ(ts->_svc.descriptor()->full_name(), req_meta.service_name());
         const google::protobuf::MethodDescriptor* method =
             ts->_svc.descriptor()->FindMethodByName(req_meta.method_name());
-        google::protobuf::Message* req =
-              ts->_svc.GetRequestPrototype(method).New();
+        brpc::RpcPBMessages* messages =
+            ts->_dummy.options().rpc_pb_message_factory->Get(ts->_svc, *method);
+        google::protobuf::Message* req = messages->Request();
+        google::protobuf::Message* res = messages->Response();
         if (meta.attachment_size() != 0) {
             butil::IOBuf req_buf;
             msg->payload.cutn(&req_buf, msg->payload.size() - meta.attachment_size());
@@ -271,18 +274,14 @@ protected:
         cntl->_current_call.sending_sock.reset(ptr.release());
         cntl->_server = &ts->_dummy;
 
-        google::protobuf::Message* res =
-              ts->_svc.GetResponsePrototype(method).New();
         google::protobuf::Closure* done =
               brpc::NewCallback<
             int64_t, brpc::Controller*,
-            const google::protobuf::Message*,
-            const google::protobuf::Message*,
+            brpc::RpcPBMessages*,
             const brpc::Server*,
-            brpc::MethodStatus*, int64_t>(
-                &brpc::policy::SendRpcResponse,
-                meta.correlation_id(), cntl, req, res,
-                &ts->_dummy, NULL, -1);
+            brpc::MethodStatus*, int64_t>(&brpc::policy::SendRpcResponse,
+                                          meta.correlation_id(), cntl,
+                                          messages, &ts->_dummy, NULL, -1);
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }
 

@@ -29,6 +29,7 @@
 #include "butil/fd_guard.h"
 #include "butil/files/scoped_file.h"
 #include "brpc/socket.h"
+#include "butil/object_pool.h"
 #include "brpc/builtin/version_service.h"
 #include "brpc/builtin/health_service.h"
 #include "brpc/builtin/list_service.h"
@@ -1762,6 +1763,66 @@ TEST_F(ServerTest, generic_call) {
         ASSERT_EQ(EXP_RESPONSE, res.message());
         ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
     }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+struct DefaultRpcPBMessages : public brpc::RpcPBMessages {
+    DefaultRpcPBMessages() : request(NULL), response(NULL) {}
+    ::google::protobuf::Message* Request() override { return request; }
+    ::google::protobuf::Message* Response() override { return response; }
+
+    ::google::protobuf::Message* request;
+    ::google::protobuf::Message* response;
+};
+
+class TestRpcPBMessageFactory : public brpc::RpcPBMessageFactory {
+public:
+    brpc::RpcPBMessages* Get(const google::protobuf::Service& service,
+                             const google::protobuf::MethodDescriptor& method) override {
+        auto messages = butil::get_object<DefaultRpcPBMessages>();
+        auto request = butil::get_object<test::EchoRequest>();
+        auto response = butil::get_object<test::EchoResponse>();
+        request->clear_message();
+        response->clear_message();
+        messages->request = request;
+        messages->response = response;
+        return messages;
+    }
+
+    void Return(brpc::RpcPBMessages* messages) override {
+        auto test_messages = static_cast<DefaultRpcPBMessages*>(messages);
+        butil::return_object(static_cast<test::EchoRequest*>(test_messages->request));
+        butil::return_object(static_cast<test::EchoResponse*>(test_messages->response));
+        test_messages->request = NULL;
+        test_messages->response = NULL;
+        butil::return_object(test_messages);
+    }
+};
+
+TEST_F(ServerTest, rpc_pb_message_factory) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+    brpc::Server server;
+    EchoServiceImpl service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.rpc_pb_message_factory = new TestRpcPBMessageFactory;
+    ASSERT_EQ(0, server.Start(ep, &opt));
+
+    brpc::Channel chan;
+    brpc::ChannelOptions copt;
+    copt.protocol = "baidu_std";
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&chan);
+    stub.Echo(&cntl, &req, &res, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(EXP_RESPONSE, res.message());
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
