@@ -393,10 +393,7 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
         TaskGroup* g = _groups[s % ngroup];
         // g is possibly NULL because of concurrent _destroy_group
         if (g) {
-            // Only steal from local request queue if the target tg does
-            // not have tx processor bind to it, otherwise we might accidently
-            // steal local only tasks that are meant to be bind to this task group.
-            if (!g->tx_processor_exec_ && g->_rq.steal(tid))
+            if (g->_rq.steal(tid))
             {
                 stolen = true;
                 break;

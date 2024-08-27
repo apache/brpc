@@ -317,10 +317,11 @@ int butex_wake(void* arg, bool nosignal) {
     // the group.
     TaskGroup* g = m->bound_task_group ? m->bound_task_group
                                         : get_task_group(bbw->control, nosignal);
-    if (g == tls_task_group) {
-        run_in_local_task_group(g, bbw->tid, nosignal);
-    } else if (g == m->bound_task_group) {
+    if (m->bound_task_group) {
         g->ready_to_run_bound(bbw->tid, nosignal);
+    }
+    else if (g == tls_task_group) {
+        run_in_local_task_group(g, bbw->tid, nosignal);
     } else {
         g->ready_to_run_remote(bbw->tid, nosignal);
     }
@@ -375,8 +376,7 @@ int butex_wake_all(void* arg, bool nosignal) {
         // If this task is bound to a specific task group, throw this task back to
         // the group.
         if (m->bound_task_group) {
-            m->bound_task_group->ready_to_run_general(w->tid, true);
-            m->bound_task_group->flush_nosignal_tasks();
+            m->bound_task_group->ready_to_run_bound(w->tid, true);
         } else{
             g->ready_to_run_general(w->tid, true);
             ++nwakeup;
