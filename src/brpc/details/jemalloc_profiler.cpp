@@ -169,7 +169,7 @@ void JeControlProfile(Controller* cntl) {
         return;
     }
 
-    // support jeprof 127.0.0.1:12345/pprof/heap
+    // support jeprof ip:port/pprof/heap
     if (uri_display == nullptr || uri_display->empty()) {
         std::string content;
         if (!butil::ReadFileToString(butil::FilePath(prof_name), &content)) {
