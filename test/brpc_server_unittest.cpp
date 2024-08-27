@@ -81,13 +81,12 @@ void* RunClosure(void* arg) {
 }
 
 bool g_verify_success = true;
-bool g_unauthorized_response = false;
-const std::string g_unauthorized_response_info = "Basic";
+const std::string g_unauthorized_error_text = "unauthorized";
 
 class MyAuthenticator : public brpc::Authenticator {
 public:
     MyAuthenticator() = default;
-    ~MyAuthenticator() = default;
+    ~MyAuthenticator() override = default;
     int GenerateCredential(std::string*) const override {
         return 0;
     }
@@ -98,11 +97,8 @@ public:
         return g_verify_success ? 0 : -1;
     }
 
-    bool GetUnauthorizedResponseInfo(std::string& response_str) const override {
-        if (g_unauthorized_response) {
-            response_str = "Basic";
-        }
-        return g_unauthorized_response;
+    std::string GetUnauthorizedErrorText() const override {
+        return g_unauthorized_error_text;
     }
 };
 
@@ -1859,7 +1855,7 @@ void TestBaiduStdAuth(const butil::EndPoint& ep,
 
 void TestHttpAuth(const butil::EndPoint& ep,
                   brpc::Controller& cntl,
-                  int error_code, bool failed) {
+                  int status_code, bool failed) {
     brpc::Channel chan;
     brpc::ChannelOptions copt;
     copt.max_retry = 0;
@@ -1872,7 +1868,7 @@ void TestHttpAuth(const butil::EndPoint& ep,
     test::EchoService_Stub stub(&chan);
     chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_EQ(cntl.Failed(), failed) << cntl.ErrorText();
-    ASSERT_EQ(cntl.ErrorCode(), error_code);
+    ASSERT_EQ(cntl.http_response().status_code(), status_code);
 }
 
 TEST_F(ServerTest, auth) {
@@ -1891,28 +1887,18 @@ TEST_F(ServerTest, auth) {
 
     g_verify_success = false;
     cntl.Reset();
-    TestBaiduStdAuth(ep, cntl, brpc::EEOF, true);
-
-    g_unauthorized_response = true;
-    cntl.Reset();
     TestBaiduStdAuth(ep, cntl, brpc::ERPCAUTH, true);
-    ASSERT_NE(cntl.ErrorText().find(g_unauthorized_response_info), std::string::npos);
+    ASSERT_NE(cntl.ErrorText().find(g_unauthorized_error_text), std::string::npos);
 
-    brpc::policy::FLAGS_use_http_error_code = true;
     cntl.Reset();
-    TestHttpAuth(ep, cntl, brpc::ERPCAUTH, true);
-    const std::string* www_authenticate = cntl.http_response().GetHeader("WWW-Authenticate");
-    ASSERT_NE(nullptr, www_authenticate);
-    ASSERT_EQ(*www_authenticate, g_unauthorized_response_info);
-
-    g_unauthorized_response = false;
-    cntl.Reset();
-    TestHttpAuth(ep, cntl, brpc::EEOF, true);
+    TestHttpAuth(ep, cntl, brpc::HTTP_STATUS_FORBIDDEN, true);
+    ASSERT_NE(cntl.response_attachment().to_string().find(g_unauthorized_error_text),
+              std::string::npos);
 
     g_verify_success = true;
     cntl.Reset();
     cntl.http_request().SetHeader("Authorization", "123");
-    TestHttpAuth(ep, cntl, 0, false);
+    TestHttpAuth(ep, cntl, brpc::HTTP_STATUS_OK, false);
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());

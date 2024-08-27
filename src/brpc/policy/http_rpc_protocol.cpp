@@ -125,7 +125,6 @@ CommonStrings::CommonStrings()
     , CONTENT_TYPE_SPRING_PROTO("application/x-protobuf")
     , ERROR_CODE("x-bd-error-code")
     , AUTHORIZATION("authorization")
-    , WWW_AUTHENTICATE("www-authenticate")
     , ACCEPT_ENCODING("accept-encoding")
     , CONTENT_ENCODING("content-encoding")
     , CONTENT_LENGTH("content_length")
@@ -1254,23 +1253,19 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
     }
 }
 
-static void SendUnauthorizedResponseIfNeed(const Authenticator* auth, Socket* socket) {
-    std::string www_authenticate;
-    if (!auth->GetUnauthorizedResponseInfo(www_authenticate)) {
-        return;
-    }
-
-    // Send 401(unauthorized) and `ERPCAUTH' to client.
-    butil::IOBuf res_buf;
+static void SendUnauthorizedResponse(const std::string& user_error_text, Socket* socket) {
+    // Send 403(forbidden) to client.
     HttpHeader header;
-    header.set_status_code(HTTP_STATUS_UNAUTHORIZED);
-    // RFC7235 https://datatracker.ietf.org/doc/html/rfc7235#section-4.1
-    // The server generating a 401 response MUST send a WWW-Authenticate
-    // header field (Section 4.1) containing at least one challenge
-    // applicable to the target resource.
-    header.SetHeader(common->ERROR_CODE, butil::string_printf("%d", ERPCAUTH));
-    header.SetHeader(common->WWW_AUTHENTICATE, www_authenticate);
-    MakeRawHttpResponse(&res_buf, &header, NULL);
+    header.set_status_code(HTTP_STATUS_FORBIDDEN);
+    butil::IOBuf content;
+    content.append(butil::string_printf("[%d]", ERPCAUTH));
+    content.append("Fail to authenticate");
+    if (!user_error_text.empty()) {
+        content.append(": ");
+        content.append(user_error_text);
+    }
+    butil::IOBuf res_buf;
+    MakeRawHttpResponse(&res_buf, &header, &content);
     Socket::WriteOptions opt;
     opt.ignore_eovercrowded = true;
     if (socket->Write(&res_buf, &opt) != 0) {
@@ -1290,8 +1285,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     }
     const Server::MethodProperty* mp = FindMethodPropertyByURI(
         http_request->header().uri().path(), server, NULL);
-    if (mp != NULL &&
-        mp->is_builtin_service &&
+    if (mp != NULL && mp->is_builtin_service &&
         mp->service->GetDescriptor() != BadMethodService::descriptor()) {
         // BuiltinService doesn't need authentication
         // TODO: Fix backdoor that sends BuiltinService at first
@@ -1302,7 +1296,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     const std::string *authorization 
         = http_request->header().GetHeader(common->AUTHORIZATION);
     if (authorization == NULL) {
-        SendUnauthorizedResponseIfNeed(auth, socket);
+        SendUnauthorizedResponse(auth->GetUnauthorizedErrorText(), socket);
         return false;
     }
     butil::EndPoint user_addr;
@@ -1311,7 +1305,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     }
     if (auth->VerifyCredential(*authorization, user_addr,
                                socket->mutable_auth_context()) != 0) {
-        SendUnauthorizedResponseIfNeed(auth, socket);
+        SendUnauthorizedResponse(auth->GetUnauthorizedErrorText(), socket);
         return false;
     }
 

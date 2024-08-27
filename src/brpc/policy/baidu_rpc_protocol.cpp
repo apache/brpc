@@ -659,8 +659,8 @@ bool VerifyRpcRequest(const InputMessageBase* msg_base) {
     const Server* server = static_cast<const Server*>(msg->arg());
     Socket* socket = msg->socket();
     
-    RpcMeta meta;
-    if (!ParsePbFromIOBuf(&meta, msg->meta)) {
+    RpcMeta request_meta;
+    if (!ParsePbFromIOBuf(&request_meta, msg->meta)) {
         LOG(WARNING) << "Fail to parse RpcRequestMeta";
         return false;
     }
@@ -669,31 +669,24 @@ bool VerifyRpcRequest(const InputMessageBase* msg_base) {
         // Fast pass (no authentication)
         return true;
     }
-
-    bool success = auth->VerifyCredential(meta.authentication_data(),
-                                          socket->remote_side(),
-                                          socket->mutable_auth_context()) == 0;
-    if (success) {
+    if (auth->VerifyCredential(request_meta.authentication_data(),
+                               socket->remote_side(),
+                               socket->mutable_auth_context()) == 0) {
         return true;
     }
 
     // Send `ERPCAUTH' to client.
-    std::string res_info;
-    if (!auth->GetUnauthorizedResponseInfo(res_info)) {
-        return false;
+    RpcMeta response_meta;
+    response_meta.set_correlation_id(request_meta.correlation_id());
+    response_meta.mutable_response()->set_error_code(ERPCAUTH);
+    response_meta.mutable_response()->set_error_text("Fail to authenticate");
+    std::string user_error_text = auth->GetUnauthorizedErrorText();
+    if (!user_error_text.empty()) {
+        response_meta.mutable_response()->mutable_error_text()->append(": ");
+        response_meta.mutable_response()->mutable_error_text()->append(user_error_text);
     }
-
-    RpcMeta temp_meta;
-    temp_meta.set_correlation_id(meta.correlation_id());
-    RpcResponseMeta* response_meta = temp_meta.mutable_response();
-    response_meta->set_error_code(ERPCAUTH);
-    std::string error_text = res_info.empty() ? "Fail to authenticate" :
-                             butil::string_printf("Fail to authenticate, %s", res_info.c_str());
-    response_meta->set_error_text(error_text);
-
     butil::IOBuf res_buf;
-    SerializeRpcHeaderAndMeta(&res_buf, temp_meta, 0);
-
+    SerializeRpcHeaderAndMeta(&res_buf, response_meta, 0);
     Socket::WriteOptions opt;
     opt.ignore_eovercrowded = true;
     if (socket->Write(&res_buf, &opt) != 0) {

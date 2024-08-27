@@ -74,13 +74,11 @@ public:
                                  const butil::EndPoint& client_addr,
                                  AuthContext* out_ctx) const = 0;
 
-    // Implement this method to decide whether to send a response
-    // to the client when authentication fails.
-    // Returns true to indicate a response needs to be sent,
-    // otherwise no response is needed.
-    virtual bool GetUnauthorizedResponseInfo(std::string& response_str) const {
-        (void)response_str;
-        return false;
+    // Implement this method to unauthorized error text which
+    // will be sent as a part of error text in baidu_std/hulu_pbrpc
+    // protocol or body in http protocol.
+    virtual std::string GetUnauthorizedErrorText() const {
+        return "";
     }
 
 };
