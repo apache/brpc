@@ -181,6 +181,9 @@ typedef struct {
 } bthread_condattr_t;
 
 typedef struct {
+    bthread_mutex_t* m;
+    unsigned* w_wait_count; // include the bthread who holding wlock yet
+    unsigned* lock_flag; // highest bit 1 for wlocked, low 31 bit for read lock
 } bthread_rwlock_t;
 
 typedef struct {
