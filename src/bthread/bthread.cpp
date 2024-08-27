@@ -38,13 +38,12 @@ DEFINE_int32(bthread_min_concurrency, 0,
             " The laziness is disabled when this value is non-positive,"
             " and workers will be created eagerly according to -bthread_concurrency and bthread_setconcurrency(). ");
 
-DEFINE_int32(bthread_current_tag, BTHREAD_TAG_DEFAULT, "Set bthread concurrency for this tag");
+DEFINE_int32(bthread_current_tag, BTHREAD_TAG_INVALID, "Set bthread concurrency for this tag");
 
-DEFINE_int32(bthread_concurrency_by_tag, 0,
+DEFINE_int32(bthread_concurrency_by_tag, 8 + BTHREAD_EPOLL_THREAD_NUM,
              "Number of pthread workers of FLAGS_bthread_current_tag");
 
 static bool never_set_bthread_concurrency = true;
-static bool never_set_bthread_concurrency_by_tag = true;
 
 static bool validate_bthread_concurrency(const char*, int32_t val) {
     // bthread_setconcurrency sets the flag on success path which should
@@ -147,13 +146,15 @@ static bool validate_bthread_min_concurrency(const char*, int32_t val) {
 }
 
 static bool validate_bthread_current_tag(const char*, int32_t val) {
-    if (val < BTHREAD_TAG_DEFAULT || val >= FLAGS_task_group_ntags) {
+    if (val == BTHREAD_TAG_INVALID) {
+        return true;
+    } else if (val < BTHREAD_TAG_DEFAULT || val >= FLAGS_task_group_ntags) {
         return false;
     }
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
     auto c = bthread::get_task_control();
     if (c == NULL) {
-        FLAGS_bthread_concurrency_by_tag = 0;
+        FLAGS_bthread_concurrency_by_tag = 8 + BTHREAD_EPOLL_THREAD_NUM;
         return true;
     }
     FLAGS_bthread_concurrency_by_tag = c->concurrency(val);
@@ -385,12 +386,10 @@ int bthread_getconcurrency_by_tag(bthread_tag_t tag) {
 }
 
 int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
-    if (bthread::never_set_bthread_concurrency_by_tag) {
-        bthread::never_set_bthread_concurrency_by_tag = false;
+    if (tag == BTHREAD_TAG_INVALID) {
         return 0;
-    }
-    if (tag < BTHREAD_TAG_DEFAULT || tag >= FLAGS_task_group_ntags) {
-        return EPERM;
+    } else if (tag < BTHREAD_TAG_DEFAULT || tag >= FLAGS_task_group_ntags) {
+        return EINVAL;
     }
     auto c = bthread::get_or_new_task_control();
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
