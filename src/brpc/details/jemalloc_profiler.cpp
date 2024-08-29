@@ -63,7 +63,8 @@ bool HasJemalloc() {
     return mallctl != nullptr;
 }
 
-bool HasEnableJemallocProfile() {
+// env need MALLOC_CONF="prof:true" before process start
+static bool HasEnableJemallocProfile() {
     bool prof = false;
     size_t len = sizeof(prof);
     int ret = mallctl("opt.prof", &prof, &len, nullptr, 0);
