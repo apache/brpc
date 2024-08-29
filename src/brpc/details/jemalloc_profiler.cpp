@@ -35,6 +35,7 @@
 extern "C" {
 // weak symbol: resolved at runtime by the linker if we are using jemalloc, nullptr otherwise
 int mallctl(const char*, void*, size_t*, void*, size_t) __attribute__((__weak__));
+void malloc_stats_print(void (*write_cb)(void *, const char *), void *cbopaque, const char *opts) __attribute__((__weak__));
 }
 
 namespace brpc {
@@ -71,6 +72,23 @@ bool HasEnableJemallocProfile() {
         return false;
     }
     return prof;
+}
+
+static void WriteCb(void *opaque, const char *str) {
+    // maybe call n times WriteCb by single malloc_stats_print
+    static_cast<std::string*>(opaque)->append(str);
+}
+
+// opts: Ja
+// more see ref: https://github.com/jemalloc/jemalloc/blob/dev/include/jemalloc/internal/stats.h#L9
+static std::string StatsPrint(const std::string& opts) {
+    if (malloc_stats_print == nullptr) {
+        return "your jemalloc no support malloc_stats_print";
+    }
+
+    std::string stat_str;
+    malloc_stats_print(WriteCb, &stat_str, opts.c_str());
+    return stat_str;
 }
 
 static int JeProfileActive(bool active) {
@@ -160,6 +178,19 @@ void JeControlProfile(Controller* cntl) {
 
     butil::IOBuf& buf = cntl->response_attachment();
     cntl->http_response().set_content_type("text/plain");
+
+    // support ip:port/pprof/heap?display=stats
+    if (uri_display != nullptr && *uri_display == "stats") {
+        const std::string* uri_opts = uri.GetQuery("opts");
+        std::string opts = !uri_opts || uri_opts->empty() ? "Ja" : *uri_opts;
+        buf.append(StatsPrint(opts));
+        return;
+    }
+
+    if (!HasEnableJemallocProfile()) {
+        cntl->SetFailed(ENOMETHOD, "Heap profiler is not enabled, (no MALLOC_CONF=prof:true in env)");
+        return;
+    }
 
     // only dump profile
     const std::string prof_name = JeProfileDump();

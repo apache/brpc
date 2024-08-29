@@ -114,7 +114,11 @@ brpc还提供一个类似的growth profiler分析内存的分配去向（不考�
 
 1. 编译[jemalloc](https://github.com/jemalloc/jemalloc)时需--enable-prof以支持profiler, 安装完成后bin目录下会有jeprof文件。
 2. 启动进程前最好配置env `JEPROF_FILE=/xxx/jeprof`，否则进程默认用$PATH里的jeprof解析。
-3. 启动进程并开启profiler功能：`MALLOC_CONF="prof:true" LD_PRELOAD=/xxx/lib/libjemalloc.so ./bin/test_server`，若静态链接jemalloc，`MALLOC_CONF="prof:true" ./bin/test_server`，MALLOC_CONF是env项，此时只做一些初始化动作，并不会采样。若启动就采样可设置`MALLOC_CONF="prof:true,prof_active:true,lg_prof_sample:19"`，或通过下面的gflags控制，gflags不会反应MALLOC_CONF值。
+3. 进程开启profiler：
+- 启动进程并开启profiler功能：`MALLOC_CONF="prof:true" LD_PRELOAD=/xxx/lib/libjemalloc.so ./bin/test_server`，MALLOC_CONF是env项，此时只做一些初始化动作，并不会采样。
+- 若静态链接jemalloc：`MALLOC_CONF="prof:true" ./bin/test_server`。
+- 若启动就采样可设置`MALLOC_CONF="prof:true,prof_active:true,lg_prof_sample:19"`。
+- 或通过下面的gflags控制，gflags不会反应MALLOC_CONF值。
 4. 相关gflags说明：
 - FLAGS_je_prof_active：true:开启采样，false:关闭采样。
 - FLAGS_je_prof_dump：修改值会生成heap文件，用于手动操作jeprof分析。
@@ -137,4 +141,8 @@ brpc还提供一个类似的growth profiler分析内存的分配去向（不考�
 - curl生成svg图片格式`curl ip:port/pprof/heap?display=svg`。
 
 ![img](../images/curl_jeprof_svg.png)
+
+- curl获取内存统计信息`curl ip:port/pprof/heap?display=stats&opts=Ja`，更多opts请参考[opts](https://github.com/jemalloc/jemalloc/blob/dev/include/jemalloc/internal/stats.h#L9)。
+
+![img](../images/je_stats_print.png)
 

@@ -199,6 +199,7 @@ if [ "$SYSTEM" = "Darwin" ]; then
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,__Z13GetStackTracePPvii"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_RegisterThriftProtocol"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_mallctl"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_malloc_stats_print"
 fi
 append_linking() {
     if [ -f $1/lib${2}.a ]; then

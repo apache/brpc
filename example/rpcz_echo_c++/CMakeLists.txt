@@ -132,6 +132,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_ProfilerStop"
         "-Wl,-U,__Z13GetStackTracePPvii"
         "-Wl,-U,_mallctl"
+        "-Wl,-U,_malloc_stats_print"
     )
 endif()
 

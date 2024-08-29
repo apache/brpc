@@ -216,10 +216,6 @@ void PProfService::heap(
     Controller* cntl = static_cast<Controller*>(controller_base);
 
     if (HasJemalloc()) {
-        if (!HasEnableJemallocProfile()) {
-            cntl->SetFailed(ENOMETHOD, "Heap profiler is not enabled, (no MALLOC_CONF=prof:true in env)");
-            return;
-        }
         JeControlProfile(cntl);
         return;
     }
