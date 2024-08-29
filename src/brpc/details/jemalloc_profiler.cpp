@@ -34,8 +34,8 @@
 
 extern "C" {
 // weak symbol: resolved at runtime by the linker if we are using jemalloc, nullptr otherwise
-int mallctl(const char*, void*, size_t*, void*, size_t) __attribute__((__weak__));
-void malloc_stats_print(void (*write_cb)(void *, const char *), void *cbopaque, const char *opts) __attribute__((__weak__));
+int BAIDU_WEAK mallctl(const char*, void*, size_t*, void*, size_t);
+void BAIDU_WEAK malloc_stats_print(void (*write_cb)(void *, const char *), void *cbopaque, const char *opts);
 }
 
 namespace brpc {
