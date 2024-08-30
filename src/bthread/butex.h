@@ -67,8 +67,13 @@ int butex_requeue(void* butex1, void* butex2);
 // abstime is not NULL.
 // About |abstime|:
 //   Different from FUTEX_WAIT, butex_wait uses absolute time.
+// About |prepend|:
+//   If |prepend| is true, queue the bthread at the head of the queue,
+//   otherwise at the tail.
 // Returns 0 on success, -1 otherwise and errno is set.
-int butex_wait(void* butex, int expected_value, const timespec* abstime);
+int butex_wait(void* butex, int expected_value,
+               const timespec* abstime,
+               bool prepend = false);
 
 }  // namespace bthread
 

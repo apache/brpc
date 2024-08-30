@@ -537,8 +537,14 @@ inline bool erase_from_butex(ButexWaiter* bw, bool wakeup, WaiterState state) {
     return erased;
 }
 
+struct WaitForButexArgs {
+    ButexBthreadWaiter* bw;
+    bool prepend;
+};
+
 static void wait_for_butex(void* arg) {
-    ButexBthreadWaiter* const bw = static_cast<ButexBthreadWaiter*>(arg);
+    auto args = static_cast<WaitForButexArgs*>(arg);
+    ButexBthreadWaiter* const bw = args->bw;
     Butex* const b = bw->initial_butex;
     // 1: waiter with timeout should have waiter_state == WAITER_STATE_READY
     //    before they're queued, otherwise the waiter is already timedout
@@ -560,7 +566,11 @@ static void wait_for_butex(void* arg) {
             bw->waiter_state = WAITER_STATE_UNMATCHEDVALUE;
         } else if (bw->waiter_state == WAITER_STATE_READY/*1*/ &&
                    !bw->task_meta->interrupted) {
-            b->waiters.Append(bw);
+            if (args->prepend) {
+                b->waiters.Prepend(bw);
+            } else {
+                b->waiters.Append(bw);
+            }
             bw->container.store(b, butil::memory_order_relaxed);
             if (bw->abstime != NULL) {
                 bw->sleep_id = get_global_timer_thread()->schedule(
@@ -593,7 +603,7 @@ static void wait_for_butex(void* arg) {
 }
 
 static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
-                                   const timespec* abstime) {
+                                   const timespec* abstime, bool prepend) {
     TaskMeta* task = NULL;
     ButexPthreadWaiter pw;
     pw.tid = 0;
@@ -616,7 +626,11 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
         errno = EINTR;
         rc = -1;
     } else {
-        b->waiters.Append(&pw);
+        if (prepend) {
+            b->waiters.Prepend(&pw);
+        } else {
+            b->waiters.Append(&pw);
+        }
         pw.container.store(b, butil::memory_order_relaxed);
         b->waiter_lock.unlock();
 
@@ -646,7 +660,7 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
     return rc;
 }
 
-int butex_wait(void* arg, int expected_value, const timespec* abstime) {
+int butex_wait(void* arg, int expected_value, const timespec* abstime, bool prepend) {
     Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
     if (b->value.load(butil::memory_order_relaxed) != expected_value) {
         errno = EWOULDBLOCK;
@@ -657,7 +671,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
     }
     TaskGroup* g = tls_task_group;
     if (NULL == g || g->is_current_pthread_task()) {
-        return butex_wait_from_pthread(g, b, expected_value, abstime);
+        return butex_wait_from_pthread(g, b, expected_value, abstime, prepend);
     }
     ButexBthreadWaiter bbw;
     // tid is 0 iff the thread is non-bthread
@@ -690,7 +704,8 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
     // release fence matches with acquire fence in interrupt_and_consume_waiters
     // in task_group.cpp to guarantee visibility of `interrupted'.
     bbw.task_meta->current_waiter.store(&bbw, butil::memory_order_release);
-    g->set_remained(wait_for_butex, &bbw);
+    WaitForButexArgs args{ &bbw, prepend};
+    g->set_remained(wait_for_butex, &args);
     TaskGroup::sched(&g);
 
     // erase_from_butex_and_wakeup (called by TimerThread) is possibly still

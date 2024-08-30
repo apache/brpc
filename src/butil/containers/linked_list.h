@@ -171,6 +171,11 @@ class LinkedList {
     e->InsertBefore(&root_);
   }
 
+  // Prepend |e| to the head of the linked list.
+  void Prepend(LinkNode<T>* e) {
+    e->InsertAfter(&root_);
+  }
+
   LinkNode<T>* head() const {
     return root_.next();
   }
