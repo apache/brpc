@@ -710,30 +710,33 @@ public:
     HttpResponseSender()
         : HttpResponseSender(NULL) {}
     explicit HttpResponseSender(Controller* cntl/*own*/)
-        : _cntl(cntl), _method_status(NULL), _received_us(0), _h2_stream_id(-1) {}
+        : _cntl(cntl)
+        , _messages(NULL)
+        , _method_status(NULL)
+        , _received_us(0)
+        , _h2_stream_id(-1) {}
+
     HttpResponseSender(HttpResponseSender&& s) noexcept
         : _cntl(std::move(s._cntl))
-        , _req(std::move(s._req))
-        , _res(std::move(s._res))
+        , _messages(s._messages)
         , _method_status(s._method_status)
         , _received_us(s._received_us)
         , _h2_stream_id(s._h2_stream_id) {
+        s._messages = NULL;
         s._method_status = NULL;
         s._received_us = 0;
         s._h2_stream_id = -1;
     }
     ~HttpResponseSender();
 
-    void own_request(google::protobuf::Message* req) { _req.reset(req); }
-    void own_response(google::protobuf::Message* res) { _res.reset(res); }
+    void set_messages(RpcPBMessages* messages) { _messages = messages; }
     void set_method_status(MethodStatus* ms) { _method_status = ms; }
     void set_received_us(int64_t t) { _received_us = t; }
     void set_h2_stream_id(int id) { _h2_stream_id = id; }
 
 private:
     std::unique_ptr<Controller, LogErrorTextAndDelete> _cntl;
-    std::unique_ptr<google::protobuf::Message> _req;
-    std::unique_ptr<google::protobuf::Message> _res;
+    RpcPBMessages* _messages;
     MethodStatus* _method_status;
     int64_t _received_us;
     int _h2_stream_id;
@@ -743,7 +746,8 @@ class HttpResponseSenderAsDone : public google::protobuf::Closure {
 public:
     explicit HttpResponseSenderAsDone(HttpResponseSender* s) : _sender(std::move(*s)) {}
     void Run() override {
-        _sender._cntl->CallAfterRpcResp(_sender._req.get(), _sender._res.get());
+        _sender._cntl->CallAfterRpcResp(
+            _sender._messages->Request(), _sender._messages->Response());
         delete this;
     }
 
@@ -752,6 +756,12 @@ private:
 };
 
 HttpResponseSender::~HttpResponseSender() {
+    // Return messages to factory at the end.
+    BRPC_SCOPE_EXIT {
+        if (NULL != _messages) {
+            _cntl->server()->options().rpc_pb_message_factory->Return(_messages);
+        }
+    };
     Controller* cntl = _cntl.get();
     if (cntl == NULL) {
         return;
@@ -763,7 +773,7 @@ HttpResponseSender::~HttpResponseSender() {
     }
     ConcurrencyRemover concurrency_remover(_method_status, cntl, _received_us);
     Socket* socket = accessor.get_sending_socket();
-    const google::protobuf::Message* res = _res.get();
+    const google::protobuf::Message* res = NULL != _messages ? _messages->Response() : NULL;
     
     if (cntl->IsCloseConnection()) {
         socket->SetFailed();
@@ -1488,10 +1498,10 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     google::protobuf::Service* svc = sp->service;
     const google::protobuf::MethodDescriptor* method = sp->method;
     accessor.set_method(method);
-    google::protobuf::Message* req = svc->GetRequestPrototype(method).New();
-    resp_sender.own_request(req);
-    google::protobuf::Message* res = svc->GetResponsePrototype(method).New();
-    resp_sender.own_response(res);
+    RpcPBMessages* messages = server->options().rpc_pb_message_factory->Get(*svc, *method);;
+    resp_sender.set_messages(messages);
+    google::protobuf::Message* req = messages->Request();
+    google::protobuf::Message* res = messages->Response();
 
     if (__builtin_expect(!req || !res, 0)) {
         PLOG(FATAL) << "Fail to new req or res";

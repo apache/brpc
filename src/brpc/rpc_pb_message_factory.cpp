@@ -16,7 +16,6 @@
 // under the License.
 
 #include "brpc/rpc_pb_message_factory.h"
-#include "butil/object_pool.h"
 
 namespace brpc {
 

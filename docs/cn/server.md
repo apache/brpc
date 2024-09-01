@@ -1027,7 +1027,9 @@ Server默认使用`DefaultRpcPBMessageFactory`。它是一个简单的工厂类�
 class RpcPBMessages {
 public:
     virtual ~RpcPBMessages() = default;
+    // Get protobuf request message.
     virtual google::protobuf::Message* Request() = 0;
+    // Get protobuf response message.
     virtual google::protobuf::Message* Response() = 0;
 };
 
@@ -1035,11 +1037,20 @@ public:
 class RpcPBMessageFactory {
 public:
     virtual ~RpcPBMessageFactory() = default;
+
+    // Get `RpcPBMessages' according to `service' and `method'.
+    // Common practice to create protobuf message:
+    // service.GetRequestPrototype(&method).New() -> request;
+    // service.GetRequestPrototype(&method).New() -> response.
     virtual RpcPBMessages* Get(const ::google::protobuf::Service& service,
                                const ::google::protobuf::MethodDescriptor& method) = 0;
-    virtual void Return(RpcPBMessages* protobuf_message) = 0;
+    // Return `RpcPBMessages' to factory.
+    virtual void Return(RpcPBMessages* messages) = 0;
 };
 ```
+
+### Protobuf arena
+
 
 # FAQ
 
