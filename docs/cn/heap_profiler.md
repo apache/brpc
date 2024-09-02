@@ -142,7 +142,7 @@ brpc还提供一个类似的growth profiler分析内存的分配去向（不考�
 
 ![img](../images/curl_jeprof_svg.png)
 
-- curl获取内存统计信息`curl ip:port/pprof/heap?display=stats&opts=Ja`，更多opts请参考[opts](https://github.com/jemalloc/jemalloc/blob/dev/include/jemalloc/internal/stats.h#L9)。
+- curl获取内存统计信息`curl ip:port/pprof/heap?display=stats&opts=Ja`或`curl ip:port/memory?opts=Ja`，更多opts请参考[opts](https://github.com/jemalloc/jemalloc/blob/dev/include/jemalloc/internal/stats.h#L9)。
 
 ![img](../images/je_stats_print.png)
 

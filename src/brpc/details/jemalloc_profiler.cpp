@@ -80,9 +80,7 @@ static void WriteCb(void *opaque, const char *str) {
     static_cast<std::string*>(opaque)->append(str);
 }
 
-// opts: Ja
-// more see ref: https://github.com/jemalloc/jemalloc/blob/dev/include/jemalloc/internal/stats.h#L9
-static std::string StatsPrint(const std::string& opts) {
+std::string StatsPrint(const std::string& opts) {
     if (malloc_stats_print == nullptr) {
         return "your jemalloc no support malloc_stats_print";
     }

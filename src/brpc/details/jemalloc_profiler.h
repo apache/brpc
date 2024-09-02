@@ -24,6 +24,10 @@ namespace brpc {
 
 bool HasJemalloc();
 
+// opts: Ja
+// more see ref: https://github.com/jemalloc/jemalloc/blob/dev/include/jemalloc/internal/stats.h#L9
+std::string StatsPrint(const std::string& opts);
+
 void JeControlProfile(Controller* cntl);
 
 }

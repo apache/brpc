@@ -21,6 +21,7 @@
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/builtin/memory_service.h"
 #include "brpc/details/tcmalloc_extension.h"
+#include "brpc/details/jemalloc_profiler.h"
 
 namespace brpc {
 
@@ -58,6 +59,15 @@ static void get_tcmalloc_memory_info(butil::IOBuf& out) {
     os.move_to(out);
 }
 
+static void get_jemalloc_memory_info(Controller* cntl) {
+    const brpc::URI& uri = cntl->http_request().uri();
+    cntl->http_response().set_content_type("text/plain");
+    
+    const std::string* uri_opts = uri.GetQuery("opts");
+    std::string opts = !uri_opts || uri_opts->empty() ? "Ja" : *uri_opts;
+    cntl->response_attachment().append(StatsPrint(opts));
+}
+
 void MemoryService::default_method(::google::protobuf::RpcController* cntl_base,
                                     const ::brpc::MemoryRequest*,
                                     ::brpc::MemoryResponse*,
@@ -70,8 +80,11 @@ void MemoryService::default_method(::google::protobuf::RpcController* cntl_base,
     if (IsTCMallocEnabled()) {
         butil::IOBufBuilder os;
         get_tcmalloc_memory_info(resp);
+    } else if (HasJemalloc()) {
+        // support ip:port/memory?opts=Ja
+        get_jemalloc_memory_info(cntl);
     } else {
-        resp.append("tcmalloc is not enabled");
+        resp.append("tcmalloc or jemalloc is not enabled");
         cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
         return;
     }
