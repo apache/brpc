@@ -172,7 +172,7 @@ static int JeProfileReset(size_t lg_sample) {
 
 void JeControlProfile(Controller* cntl) {
     const brpc::URI& uri = cntl->http_request().uri();
-    // http:ip:port/pprof/heap?display=(text|svg)
+    // http:ip:port/pprof/heap?display=(text|svg|stats)
     const std::string* uri_display = uri.GetQuery("display");
 
     butil::IOBuf& buf = cntl->response_attachment();
