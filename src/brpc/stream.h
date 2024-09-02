@@ -28,6 +28,7 @@ namespace brpc {
 class Controller;
 
 typedef SocketId StreamId;
+using StreamIds = std::vector<StreamId>;
 const StreamId INVALID_STREAM_ID = (StreamId)-1L;
 
 namespace detail {
@@ -105,6 +106,14 @@ struct StreamWriteOptions {
 int StreamCreate(StreamId* request_stream, Controller &cntl,
                  const StreamOptions* options);
 
+// [Called at the client side for creating multiple streams]
+// Create streams at client-side along with the |cntl|, which will be connected
+// when receiving the response with streams from server-side. If |options| is
+// NULL, the stream will be created with default options
+// Return 0 on success, -1 otherwise
+int StreamCreate(StreamIds& request_streams, int request_stream_size, Controller& cntl,
+                 const StreamOptions* options);
+
 // [Called at the server side]
 // Accept the stream. If client didn't create a stream with the request 
 // (cntl.has_remote_stream() returns false), this method would fail.
@@ -112,6 +121,12 @@ int StreamCreate(StreamId* request_stream, Controller &cntl,
 int StreamAccept(StreamId* response_stream, Controller &cntl,
                  const StreamOptions* options);
 
+// [Called at the server side for accepting multiple streams]
+// Accept the streams. If client didn't create streams with the request
+// (cntl.has_remote_stream() returns false), this method would fail.
+// Return 0 on success, -1 otherwise.
+int StreamAccept(StreamIds& response_stream, Controller& cntl,
+                 const StreamOptions* options);
 // Write |message| into |stream_id|. The remote-side handler will received the 
 // message by the written order
 // Returns 0 on success, errno otherwise

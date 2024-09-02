@@ -535,7 +535,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         return cntl->HandleSendFailed();
     }
 
-    if (cntl->_request_stream != INVALID_STREAM_ID) {
+    if (!cntl->_request_streams.empty()) {
         // Currently we cannot handle retry and backup request correctly
         cntl->set_max_retry(0);
         cntl->set_backup_request_ms(-1);

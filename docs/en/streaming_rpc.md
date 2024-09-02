@@ -23,7 +23,7 @@ For examples please refer to [example/streaming_echo_c++](https://github.com/apa
 
 # Create a Stream
 
-Currently stream is established by the client only. A new Stream object is created in client and then is used to issue an RPC (through baidu_std protocol) to the specified service. The service could accept this stream by responding to the request without error, thus a Stream is created once the client receives the response successfully. Any error during this process fails the RPC and thus fails the Stream creation. Take the Linux environment as an example, the client creates a [socket](http://linux.die.net/man/7/socket) first (creates a Stream), and then tries to establish a connection with the remote side by [connect](http://linux.die.net/man/2/connect) (establish a Stream through RPC). Finally the stream has been created once the remote side [accept](http://linux.die.net/man/2/accept) the request.
+Currently streams are established by the client only. The new Stream objects are created in client and then are used to issue an RPC (through baidu_std protocol) to the specified service. The service could accept these streams by responding to the request without error, thus the Streams are created once the client receives the response successfully. Any error during this process fails the RPC and thus fails the Stream creation. Take the Linux environment as an example, the client creates a [socket](http://linux.die.net/man/7/socket) first (creates a Stream), and then tries to establish a connection with the remote side by [connect](http://linux.die.net/man/2/connect) (establish a Stream through RPC). Finally the stream has been created once the remote side [accept](http://linux.die.net/man/2/accept) the request.
 
 > If the client tries to establish a stream to a server that doesn't support streaming RPC, it will always return failure.
 
@@ -58,6 +58,14 @@ struct StreamOptions
 // NULL, the Stream will be created with default options
 // Return 0 on success, -1 otherwise
 int StreamCreate(StreamId* request_stream, Controller &cntl, const StreamOptions* options);
+
+// [Called at the client side for creating multiple streams]
+// Create streams at client-side along with the |cntl|, which will be connected
+// when receiving the response with streams from server-side. If |options| is
+// NULL, the stream will be created with default options
+// Return 0 on success, -1 otherwise
+int StreamCreate(StreamIds& request_streams, int request_stream_size, Controller& cntl,
+                 const StreamOptions* options);
 ```
 
 # Accept a Stream
@@ -70,6 +78,12 @@ If a Stream is attached inside the request of an RPC, the service can accept the
 // (cntl.has_remote_stream() returns false), this method would fail.
 // Return 0 on success, -1 otherwise.
 int StreamAccept(StreamId* response_stream, Controller &cntl, const StreamOptions* options);
+
+// [Called at the server side for accepting multiple streams]
+// Accept the streams. If client didn't create streams with the request
+// (cntl.has_remote_stream() returns false), this method would fail.
+// Return 0 on success, -1 otherwise.
+int StreamAccept(StreamIds& response_stream, Controller& cntl, const StreamOptions* options);
 ```
 
 # Read from a Stream

@@ -290,8 +290,8 @@ void Controller::ResetPods() {
     _http_response = NULL;
     _request_user_fields = NULL;
     _response_user_fields = NULL;
-    _request_stream = INVALID_STREAM_ID;
-    _response_stream = INVALID_STREAM_ID;
+    _request_streams.clear();
+    _response_streams.clear();
     _remote_stream_settings = NULL;
     _auth_flags = 0;
 }
@@ -1398,34 +1398,54 @@ void* Controller::session_local_data() {
 }
 
 void Controller::HandleStreamConnection(Socket *host_socket) {
-    if (_request_stream == INVALID_STREAM_ID) {
+    if (_request_streams.empty()) {
         CHECK(!has_remote_stream());
         return;
     }
-    SocketUniquePtr ptr;
+    size_t stream_num = _request_streams.size();
+    std::vector<SocketUniquePtr> ptrs(stream_num);
     if (!FailedInline()) {
-        if (Socket::Address(_request_stream, &ptr) != 0) {
-            if (!FailedInline()) {
-                SetFailed(EREQUEST, "Request stream=%" PRIu64 " was closed before responded",
-                                     _request_stream);
-            }
-        } else if (_remote_stream_settings == NULL) {
+        if (_remote_stream_settings == NULL) {
             if (!FailedInline()) {
                 SetFailed(EREQUEST, "The server didn't accept the stream");
+            }
+        } else {
+            for (size_t i = 0; i < stream_num; ++i) {
+                if (Socket::Address(_request_streams[i], &ptrs[i]) != 0) {
+                    if (!FailedInline()) {
+                        SetFailed(EREQUEST, "Request stream=%" PRIu64 " was closed before responded",
+                                  _request_streams[i]);
+                        break;
+                    }
+                }
             }
         }
     }
     if (FailedInline()) {
-        Stream::SetFailed(_request_stream, _error_code,
+        Stream::SetFailed(_request_streams, _error_code,
                           "%s", _error_text.c_str());
         if (_remote_stream_settings != NULL) {
             policy::SendStreamRst(host_socket,
                                   _remote_stream_settings->stream_id());
+            for (int i = 0; i < _remote_stream_settings->extra_stream_ids().size(); ++i) {
+                policy::SendStreamRst(host_socket,
+                                      _remote_stream_settings->extra_stream_ids()[i]);
+            }
         }
         return;
     }
-    Stream* s = (Stream*)ptr->conn();
+    Stream* s = (Stream*)ptrs[0]->conn();
     s->SetConnected(_remote_stream_settings);
+    if (stream_num > 1) {
+        const auto& extra_stream_ids = _remote_stream_settings->extra_stream_ids();
+        _remote_stream_settings->clear_extra_stream_ids();
+        for (size_t i = 1; i < stream_num; ++i) {
+            Stream* extra_stream = (Stream *) ptrs[i]->conn();
+            _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
+            s->shareHostSocket(*extra_stream);
+            extra_stream->SetConnected(_remote_stream_settings);
+        }
+    }
 }
 
 // TODO: Need more security advices from professionals.

@@ -119,8 +119,8 @@ public:
         return _cntl->_remote_stream_settings;
     }
 
-    StreamId request_stream() { return _cntl->_request_stream; }
-    StreamId response_stream() { return _cntl->_response_stream; }
+    StreamIds request_streams() { return _cntl->_request_streams; }
+    StreamIds response_streams() { return _cntl->_response_streams; }
 
     void set_method(const google::protobuf::MethodDescriptor* method) 
     { _cntl->_method = method; }
