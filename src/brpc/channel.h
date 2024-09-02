@@ -205,9 +205,9 @@ public:
     // Sum of weights of servers that this channel connects to.
     int Weight();
 
-protected:
     int CheckHealth();
 
+protected:
     bool SingleServer() const { return _lb.get() == NULL; }
 
     // Pick a server using `lb' and then send RPC. Wait for response when 
