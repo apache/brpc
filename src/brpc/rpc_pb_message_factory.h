@@ -44,7 +44,7 @@ public:
     // Get `RpcPBMessages' according to `service' and `method'.
     // Common practice to create protobuf message:
     // service.GetRequestPrototype(&method).New() -> request;
-    // service.GetRequestPrototype(&method).New() -> response.
+    // service.GetResponsePrototype(&method).New() -> response.
     virtual RpcPBMessages* Get(const ::google::protobuf::Service& service,
                                const ::google::protobuf::MethodDescriptor& method) = 0;
     // Return `RpcPBMessages' to factory.
