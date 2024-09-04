@@ -67,7 +67,7 @@ public:
     __attribute__ ((__format__ (__printf__, 3, 4)));
     void Close(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
-    int shareHostSocket(Stream& other_stream);
+    int ShareHostSocket(Stream& other_stream);
 
 private:
 friend void StreamWait(StreamId stream_id, const timespec *due_time,

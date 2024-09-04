@@ -1442,7 +1442,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
         for (size_t i = 1; i < stream_num; ++i) {
             Stream* extra_stream = (Stream *) ptrs[i]->conn();
             _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
-            s->shareHostSocket(*extra_stream);
+            s->ShareHostSocket(*extra_stream);
             extra_stream->SetConnected(_remote_stream_settings);
         }
     }

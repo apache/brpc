@@ -666,7 +666,7 @@ void Stream::Close(int error_code, const char* reason_fmt, ...) {
     return TriggerOnConnectIfNeed();
 }
 
-int Stream::shareHostSocket(Stream& other_stream) {
+int Stream::ShareHostSocket(Stream& other_stream) {
     return other_stream.SetHostSocket(_host_socket);
 }
 
