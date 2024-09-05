@@ -51,12 +51,19 @@ inline void TaskGroup::exchange(TaskGroup** pg, bthread_t next_tid) {
     if (g->is_current_pthread_task()) {
         return g->ready_to_run(next_tid);
     }
-    ReadyToRunArgs args = { g->current_tid(), false };
-    g->set_remained((g->current_task()->about_to_quit
-                     ? ready_to_run_in_worker_ignoresignal
-                     : ready_to_run_in_worker),
-                    &args);
-    TaskGroup::sched_to(pg, next_tid);
+    TaskMeta* m = g->current_task();
+    if (m->bound_task_group) {
+        ReadyToRunTargetArgs args = { g->current_tid(), false, g };
+        g->set_remained(ready_to_run_in_target_worker_bound, &args);
+        TaskGroup::sched_to(pg, next_tid);
+    } else {
+        ReadyToRunArgs args = { g->current_tid(), false };
+        g->set_remained((g->current_task()->about_to_quit
+                         ? ready_to_run_in_worker_ignoresignal
+                         : ready_to_run_in_worker),
+                        &args);
+        TaskGroup::sched_to(pg, next_tid);
+    }
 }
 
 inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
@@ -79,6 +86,7 @@ inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
 }
 
 inline void TaskGroup::push_rq(bthread_t tid) {
+//    CHECK(address_meta(tid)->bound_task_group == nullptr);
     while (!_rq.push(tid)) {
         // Created too many bthreads: a promising approach is to insert the
         // task into another TaskGroup, but we don't use it because:

@@ -652,6 +652,7 @@ void TaskGroup::sched(TaskGroup** pg) {
 }
 
 void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
+    CHECK(next_meta->bound_task_group == nullptr || next_meta->bound_task_group == *pg);
     TaskGroup* g = *pg;
 #ifndef NDEBUG
     if ((++g->_sched_recursive_guard) > 1) {
@@ -764,9 +765,9 @@ void TaskGroup::flush_nosignal_tasks() {
         _control->signal_task(val);
     }
 }
-inline bvar::LatencyRecorder ready_to_run_remote_l("a_", "ready_to_run_remote_latency_us");
 
 void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
+//    CHECK(address_meta(tid)->bound_task_group == nullptr);
     while (!_remote_rq.push(tid)) {
         flush_nosignal_tasks_remote();
         LOG_EVERY_SECOND(ERROR)
@@ -795,8 +796,8 @@ void TaskGroup::flush_nosignal_tasks_remote() {
 
 void TaskGroup::ready_to_run_bound(bthread_t tid, bool nosignal) {
     if (!_bound_rq.push(tid)) {
-        LOG(WARNING) << "fail to push bounded task into group: " << group_id_;
-        return tls_task_group->ready_to_run(tid, nosignal);
+        LOG(FATAL) << "fail to push bounded task into group: " << group_id_;
+        return;
     }
     // Update bound group.
     TaskMeta *m = TaskGroup::address_meta(tid);
@@ -844,12 +845,10 @@ void TaskGroup::ready_to_run_in_worker(void* args_in) {
     return tls_task_group->ready_to_run(args->tid, args->nosignal);
 }
 
-void TaskGroup::ready_to_run_in_target_worker(void* args_in) {
+void TaskGroup::ready_to_run_in_target_worker_bound(void* args_in) {
     ReadyToRunTargetArgs* args = static_cast<ReadyToRunTargetArgs*>(args_in);
-    if (args->target_group != nullptr) {
-        return args->target_group->ready_to_run_bound(args->tid, args->nosignal);
-    }
-    return tls_task_group->ready_to_run(args->tid, args->nosignal);
+    CHECK(args->target_group != nullptr);
+    args->target_group->ready_to_run_bound(args->tid, args->nosignal);
 }
 
 void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
@@ -871,7 +870,12 @@ struct SleepArgs {
 static void ready_to_run_from_timer_thread(void* arg) {
     CHECK(tls_task_group == NULL);
     const SleepArgs* e = static_cast<const SleepArgs*>(arg);
-    e->group->control()->choose_one_group()->ready_to_run_remote(e->tid);
+    // If the task is bound to some group. Put it back to the bound queue.
+    if (e->meta->bound_task_group != nullptr) {
+        e->meta->bound_task_group->resume_bound_task(e->tid);
+    } else {
+        e->group->control()->choose_one_group()->ready_to_run_remote(e->tid);
+    }
 }
 
 void TaskGroup::_add_sleep_event(void* void_args) {
@@ -888,7 +892,11 @@ void TaskGroup::_add_sleep_event(void* void_args) {
 
     if (!sleep_id) {
         // fail to schedule timer, go back to previous thread.
-        g->ready_to_run(e.tid);
+        if (e.meta->bound_task_group) {
+            e.meta->bound_task_group->resume_bound_task(e.tid);
+        } else {
+            g->ready_to_run(e.tid);
+        }
         return;
     }
 
@@ -912,7 +920,11 @@ void TaskGroup::_add_sleep_event(void* void_args) {
         // schedule previous thread as well. If sleep_id does not exist,
         // previous thread is scheduled by timer thread before and we don't
         // have to do it again.
-        g->ready_to_run(e.tid);
+        if (e.meta->bound_task_group) {
+            e.meta->bound_task_group->resume_bound_task(e.tid);
+        } else {
+            g->ready_to_run(e.tid);
+        }
     }
 }
 
@@ -1007,14 +1019,19 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
         }
     } else if (sleep_id != 0) {
         if (get_global_timer_thread()->unschedule(sleep_id) == 0) {
-            bthread::TaskGroup* g = bthread::tls_task_group;
-            if (g) {
-                g->ready_to_run(tid);
+            TaskMeta *m = TaskGroup::address_meta(tid);
+            if (m->bound_task_group) {
+                m->bound_task_group->resume_bound_task(tid);
             } else {
-                if (!c) {
-                    return EINVAL;
+                bthread::TaskGroup* g = bthread::tls_task_group;
+                if (g) {
+                    g->ready_to_run(tid);
+                } else {
+                    if (!c) {
+                        return EINVAL;
+                    }
+                    c->choose_one_group()->ready_to_run_remote(tid);
                 }
-                c->choose_one_group()->ready_to_run_remote(tid);
             }
         }
     }
@@ -1023,9 +1040,18 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
 
 void TaskGroup::yield(TaskGroup** pg) {
     TaskGroup* g = *pg;
-    ReadyToRunArgs args = { g->current_tid(), false };
-    g->set_remained(ready_to_run_in_worker, &args);
-    sched(pg);
+    TaskMeta* m = g->current_task();
+    if (m->bound_task_group) {
+        CHECK(m->bound_task_group == g);
+        ReadyToRunTargetArgs args = { g->current_tid(), false, m->bound_task_group };
+        g->set_remained(ready_to_run_in_target_worker_bound, &args);
+        sched(pg);
+    }
+    else {
+        ReadyToRunArgs args = { g->current_tid(), false };
+        g->set_remained(ready_to_run_in_worker, &args);
+        sched(pg);
+    }
 }
 
 void TaskGroup::jump_group(TaskGroup **pg, int target_gid) {
@@ -1036,7 +1062,7 @@ void TaskGroup::jump_group(TaskGroup **pg, int target_gid) {
         return;
     }
     ReadyToRunTargetArgs args = { g->current_tid(), false, target_group };
-    g->set_remained(ready_to_run_in_target_worker, &args);
+    g->set_remained(ready_to_run_in_target_worker_bound, &args);
     sched(pg);
 }
 
