@@ -32,19 +32,24 @@
 
 #define BAIDU_VOLATILE_THREAD_LOCAL(type, var_name, default_value)             \
   BAIDU_THREAD_LOCAL type var_name = default_value;                            \
-  static __attribute__((noinline, unused)) type get_##var_name(void) {         \
+  __attribute__((noinline, unused)) type get_##var_name(void) {                \
     asm volatile("");                                                          \
     return var_name;                                                           \
   }                                                                            \
-  static __attribute__((noinline, unused)) type *get_ptr_##var_name(void) {    \
+  __attribute__((noinline, unused)) type *get_ptr_##var_name(void) {           \
     type *ptr = &var_name;                                                     \
     asm volatile("" : "+rm"(ptr));                                             \
     return ptr;                                                                \
   }                                                                            \
-  static __attribute__((noinline, unused)) void set_##var_name(type v) {       \
+  __attribute__((noinline, unused)) void set_##var_name(type v) {              \
     asm volatile("");                                                          \
     var_name = v;                                                              \
   }
+
+#define EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(type, var_name)                     \
+    type get_##var_name(void);                                                 \
+    type *get_ptr_##var_name(void);                                            \
+    void set_##var_name(type v)
 
 #if (defined (__aarch64__) && defined (__GNUC__)) || defined(__clang__)
 // GNU compiler under aarch and Clang compiler is incorrectly caching the 
@@ -53,10 +58,17 @@
 #define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) get_##var_name()
 #define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) get_ptr_##var_name()
 #define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) set_##var_name(value)
+
+#define EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(type, var_name)                     \
+    type get_##var_name(void);                                                 \
+    type *get_ptr_##var_name(void);                                            \
+    void set_##var_name(type v)
 #else
 #define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) var_name
 #define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) &##var_name
 #define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) var_name = value
+#define EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(type, var_name)                     \
+    extern BAIDU_THREAD_LOCAL type var_name
 #endif
 
 namespace butil {

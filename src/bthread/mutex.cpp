@@ -39,17 +39,22 @@
 #include "butil/logging.h"
 #include "butil/object_pool.h"
 #include "butil/debug/stack_trace.h"
+#include "butil/thread_local.h"
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/mutex.h"                       // bthread_mutex_t
 #include "bthread/sys_futex.h"
 #include "bthread/log.h"
-#include "butil/debug/stack_trace.h"
+#include "bthread/processor.h"
+#include "bthread/task_group.h"
 
 extern "C" {
 extern void* BAIDU_WEAK _dl_sym(void* handle, const char* symbol, void* caller);
 }
 
 namespace bthread {
+
+EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
+
 // Warm up backtrace before main().
 const butil::debug::StackTrace ALLOW_UNUSED dummy_bt;
 
@@ -772,28 +777,40 @@ const MutexInternal MUTEX_LOCKED_RAW = {{1},{0},0};
 BAIDU_CASSERT(sizeof(unsigned) == sizeof(MutexInternal),
               sizeof_mutex_internal_must_equal_unsigned);
 
-inline int mutex_lock_contended(bthread_mutex_t* m) {
-    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
+const int MAX_SPIN_ITER = 4;
+
+inline int mutex_lock_contended_impl(
+    bthread_mutex_t* m, const struct timespec* __restrict abstime) {
+    // When a bthread first contends for a lock, active spinning makes sense.
+    // Spin only few times and only if local `rq' is empty.
+    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    if (BAIDU_UNLIKELY(NULL == g || g->rq_size() == 0)) {
+        for (int i = 0; i < MAX_SPIN_ITER; ++i) {
+            cpu_relax();
+        }
+    }
+
+    bool queue_lifo = false;
+    bool first_wait = true;
+    auto whole = (butil::atomic<unsigned>*)m->butex;
     while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
-        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0 &&
+        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, abstime, queue_lifo) < 0 &&
             errno != EWOULDBLOCK && errno != EINTR/*note*/) {
-            // a mutex lock should ignore interruptions in general since
+            // A mutex lock should ignore interruptions in general since
             // user code is unlikely to check the return value.
             return errno;
         }
-    }
-    return 0;
-}
-
-inline int mutex_timedlock_contended(
-    bthread_mutex_t* m, const struct timespec* __restrict abstime) {
-    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
-    while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
-        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, abstime) < 0 &&
-            errno != EWOULDBLOCK && errno != EINTR/*note*/) {
-            // a mutex lock should ignore interrruptions in general since
-            // user code is unlikely to check the return value.
-            return errno;
+        // Ignore EWOULDBLOCK and EINTR.
+        if (first_wait && 0 == errno) {
+            first_wait = false;
+        }
+        if (!first_wait) {
+            // Normally, bthreads are queued in FIFO order. But competing with new
+            // arriving bthreads over the ownership of mutex, a woken up bthread
+            // has good chances of losing. Because new arriving bthreads are already
+            // running on CPU and there can be lots of them. In such case, for fairness,
+            // to avoid starvation, it is queued at the head of the waiter queue.
+            queue_lifo = true;
         }
     }
     return 0;
@@ -880,7 +897,7 @@ int bthread_mutex_trylock(bthread_mutex_t* m) {
 }
 
 int bthread_mutex_lock_contended(bthread_mutex_t* m) {
-    return bthread::mutex_lock_contended(m);
+    return bthread::mutex_lock_contended_impl(m, NULL);
 }
 
 int bthread_mutex_lock(bthread_mutex_t* m) {
@@ -890,18 +907,18 @@ int bthread_mutex_lock(bthread_mutex_t* m) {
     }
     // Don't sample when contention profiler is off.
     if (!bthread::g_cp) {
-        return bthread::mutex_lock_contended(m);
+        return bthread::mutex_lock_contended_impl(m, NULL);
     }
     // Ask Collector if this (contended) locking should be sampled.
     const size_t sampling_range = bvar::is_collectable(&bthread::g_cp_sl);
     if (!sampling_range) { // Don't sample
-        return bthread::mutex_lock_contended(m);
+        return bthread::mutex_lock_contended_impl(m, NULL);
     }
     // Start sampling.
     const int64_t start_ns = butil::cpuwide_time_ns();
     // NOTE: Don't modify m->csite outside lock since multiple threads are
     // still contending with each other.
-    const int rc = bthread::mutex_lock_contended(m);
+    const int rc = bthread::mutex_lock_contended_impl(m, NULL);
     if (!rc) { // Inside lock
         m->csite.duration_ns = butil::cpuwide_time_ns() - start_ns;
         m->csite.sampling_range = sampling_range;
@@ -917,18 +934,18 @@ int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
     }
     // Don't sample when contention profiler is off.
     if (!bthread::g_cp) {
-        return bthread::mutex_timedlock_contended(m, abstime);
+        return bthread::mutex_lock_contended_impl(m, abstime);
     }
     // Ask Collector if this (contended) locking should be sampled.
     const size_t sampling_range = bvar::is_collectable(&bthread::g_cp_sl);
     if (!sampling_range) { // Don't sample
-        return bthread::mutex_timedlock_contended(m, abstime);
+        return bthread::mutex_lock_contended_impl(m, abstime);
     }
     // Start sampling.
     const int64_t start_ns = butil::cpuwide_time_ns();
     // NOTE: Don't modify m->csite outside lock since multiple threads are
     // still contending with each other.
-    const int rc = bthread::mutex_timedlock_contended(m, abstime);
+    const int rc = bthread::mutex_lock_contended_impl(m, abstime);
     if (!rc) { // Inside lock
         m->csite.duration_ns = butil::cpuwide_time_ns() - start_ns;
         m->csite.sampling_range = sampling_range;

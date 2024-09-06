@@ -182,6 +182,11 @@ public:
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
 
+    // Returns size of local run queue.
+    size_t rq_size() const {
+        return _rq.volatile_size();
+    }
+
     bthread_tag_t tag() const { return _tag; }
 
 private:
