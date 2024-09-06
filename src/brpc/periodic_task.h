@@ -19,6 +19,8 @@
 #ifndef BRPC_PERIODIC_TASK_H
 #define BRPC_PERIODIC_TASK_H
 
+#include <ctime>
+
 namespace brpc {
 
 // Override OnTriggeringTask() with code that needs to be periodically run. If
