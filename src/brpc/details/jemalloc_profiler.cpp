@@ -24,6 +24,7 @@
 #include "butil/iobuf.h"
 #include "butil/popen.h"
 #include "gflags/gflags.h"
+#include "gflags/gflags_declare.h"
 #include <brpc/details/jemalloc_profiler.h>
 #include <brpc/builtin/common.h>
 #include <butil/file_util.h>
@@ -46,6 +47,8 @@ DEFINE_bool(je_prof_active, false, "control jemalloc prof.active, jemalloc profi
 DEFINE_int32(je_prof_dump, 0, "control jemalloc prof.dump, change this only dump profile");
 DEFINE_int32(je_prof_reset, 19, "control jemalloc prof.reset, reset all memory profile statistics, "
              "and optionally update the sample rate, default 2^19 B");
+
+DECLARE_int32(max_flame_graph_width);
 
 // define in src/brpc/builtin/pprof_service.cpp
 extern int MakeProfName(ProfilingType type, char* buf, size_t buf_len);
@@ -172,7 +175,7 @@ static int JeProfileReset(size_t lg_sample) {
 
 void JeControlProfile(Controller* cntl) {
     const brpc::URI& uri = cntl->http_request().uri();
-    // http:ip:port/pprof/heap?display=(text|svg|stats)
+    // http:ip:port/pprof/heap?display=(text|svg|stats|flamegraph)
     const std::string* uri_display = uri.GetQuery("display");
 
     butil::IOBuf& buf = cntl->response_attachment();
@@ -232,10 +235,20 @@ void JeControlProfile(Controller* cntl) {
     }
     const std::string process_file(process_path, len);
 
-    std::string cmd_str = jeprof;
+    std::string cmd_str = jeprof + " " + process_file + " " + prof_name;
     bool display_img = false;
     if (*uri_display == "svg") {
         cmd_str += " --svg ";
+        display_img = true;
+    } else if (*uri_display == "flamegraph") {
+        const char* flamegraph_tool = getenv("FLAMEGRAPH_PL_PATH");
+        if (!flamegraph_tool) {
+            LOG(WARNING) << " display: " << *uri_display << " invalid, env FLAMEGRAPH_PL_PATH invalid";
+            buf.append("\ndisplay:" + *uri_display + " invalid, env FLAMEGRAPH_PL_PATH invalid"); 
+            return;
+        }
+        const int width_size = FLAGS_max_flame_graph_width > 0 ? FLAGS_max_flame_graph_width : 1200;
+        cmd_str += " --collapsed | " + std::string(flamegraph_tool) + " --colors mem --width " + std::to_string(width_size);
         display_img = true;
     } else if (*uri_display == "text") {
         cmd_str += " --text ";
@@ -244,7 +257,6 @@ void JeControlProfile(Controller* cntl) {
         buf.append("\ndisplay:" + *uri_display + " invalid");
         return;
     }
-    cmd_str += process_file + " " + prof_name;
     butil::IOBufBuilder builder;
     if (butil::read_command_output(builder, cmd_str.c_str()) != 0) {
         buf.append("\nread_command_output <" + cmd_str + "> fail");
