@@ -46,11 +46,6 @@
     var_name = v;                                                              \
   }
 
-#define EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(type, var_name)                     \
-    type get_##var_name(void);                                                 \
-    type *get_ptr_##var_name(void);                                            \
-    void set_##var_name(type v)
-
 #if (defined (__aarch64__) && defined (__GNUC__)) || defined(__clang__)
 // GNU compiler under aarch and Clang compiler is incorrectly caching the 
 // address of thread_local variables across a suspend-point. The following
@@ -60,9 +55,9 @@
 #define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) set_##var_name(value)
 
 #define EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(type, var_name)                     \
-    type get_##var_name(void);                                                 \
-    type *get_ptr_##var_name(void);                                            \
-    void set_##var_name(type v)
+    extern type get_##var_name(void);                                          \
+    extern type *get_ptr_##var_name(void);                                     \
+    extern void set_##var_name(type v)
 #else
 #define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) var_name
 #define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) &##var_name
