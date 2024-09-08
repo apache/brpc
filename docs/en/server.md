@@ -1008,6 +1008,49 @@ public:
         ...
 ```
 
+## RPC Protobuf message factory
+
+`DefaultRpcPBMessageFactory' is used at server-side by default. It is a simple factory class that uses `new' to create request/response messages and `delete' to destroy request/response messages. Currently, the baidu_std protocol and HTTP protocol support this feature.
+
+Users can implement `RpcPBMessages' (encapsulation of request/response message) and `RpcPBMessageFactory' (factory class) to customize the creation and destruction mechanism of protobuf message, and then set to `ServerOptions.rpc_pb_message_factory`. Note: After the server is started, the server owns the `RpcPBMessageFactory`.
+
+The interface is as follows:
+
+```c++
+// Inherit this class to customize rpc protobuf messages,
+// include request and response.
+class RpcPBMessages {
+public:
+    virtual ~RpcPBMessages() = default;
+    // Get protobuf request message.
+    virtual google::protobuf::Message* Request() = 0;
+    // Get protobuf response message.
+    virtual google::protobuf::Message* Response() = 0;
+};
+
+// Factory to manage `RpcPBMessages'.
+class RpcPBMessageFactory {
+public:
+    virtual ~RpcPBMessageFactory() = default;
+    // Get `RpcPBMessages' according to `service' and `method'.
+    // Common practice to create protobuf message:
+    // service.GetRequestPrototype(&method).New() -> request;
+    // service.GetResponsePrototype(&method).New() -> response.
+    virtual RpcPBMessages* Get(const ::google::protobuf::Service& service,
+                               const ::google::protobuf::MethodDescriptor& method) = 0;
+    // Return `RpcPBMessages' to factory.
+    virtual void Return(RpcPBMessages* protobuf_message) = 0;
+};
+```
+
+### Protobuf arena
+
+Protobuf arena is a Protobuf message memory management mechanism with the advantages of improving memory allocation efficiency, reducing memory fragmentation, and being cache-friendly. For more information, see [C++ Arena Allocation Guide](https://protobuf.dev/reference/cpp/arenas/).
+
+Users can set `ServerOptions.rpc_pb_message_factory = brpc::GetArenaRpcPBMessageFactory();` to manage Protobuf message memory,  with the default `start_block_size` (256 bytes) and `max_block_size` (8192 bytes). Alternatively, users can use `brpc::GetArenaRpcPBMessageFactory<StartBlockSize, MaxBlockSize>();` to customize the arena size.
+
+Note: Since Protocol Buffers v3.14.0, Arenas are now unconditionally enabled. However, for versions prior to Protobuf v3.14.0, users need to add the option `option cc_enable_arenas = true;` to the proto file. so for compatibility, this option can be added uniformly.
+
 # FAQ
 
 ### Q: Fail to write into fd=1865 SocketId=8905@10.208.245.43:54742@8230: Got EOF

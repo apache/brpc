@@ -1017,7 +1017,7 @@ public:
 
 Server默认使用`DefaultRpcPBMessageFactory`。它是一个简单的工厂类，通过`new`来创建请求/响应message和`delete`来销毁请求/响应message。
 
-如果用户希望自定义创建销毁机制，可以实现`RpcPBMessages`（请求/响应message的封装）和`RpcPBMessageFactory`（工厂类），并通过`ServerOptions.rpc_pb_message_factory`。
+如果用户希望自定义创建销毁机制，可以实现`RpcPBMessages`（请求/响应message的封装）和`RpcPBMessageFactory`（工厂类），并设置`ServerOptions.rpc_pb_message_factory`为自定义的`RpcPBMessageFactory`。注意：server启动后，server拥有了`RpcPBMessageFactory`的所有权。
 
 接口如下：
 
@@ -1027,7 +1027,9 @@ Server默认使用`DefaultRpcPBMessageFactory`。它是一个简单的工厂类�
 class RpcPBMessages {
 public:
     virtual ~RpcPBMessages() = default;
+    // Get protobuf request message.
     virtual google::protobuf::Message* Request() = 0;
+    // Get protobuf response message.
     virtual google::protobuf::Message* Response() = 0;
 };
 
@@ -1035,11 +1037,25 @@ public:
 class RpcPBMessageFactory {
 public:
     virtual ~RpcPBMessageFactory() = default;
+
+    // Get `RpcPBMessages' according to `service' and `method'.
+    // Common practice to create protobuf message:
+    // service.GetRequestPrototype(&method).New() -> request;
+    // service.GetResponsePrototype(&method).New() -> response.
     virtual RpcPBMessages* Get(const ::google::protobuf::Service& service,
                                const ::google::protobuf::MethodDescriptor& method) = 0;
-    virtual void Return(RpcPBMessages* protobuf_message) = 0;
+    // Return `RpcPBMessages' to factory.
+    virtual void Return(RpcPBMessages* messages) = 0;
 };
 ```
+
+### Protobuf arena
+
+Protobuf arena是一种Protobuf message内存管理机制，有着提高内存分配效率、减少内存碎片、对缓存友好等优点。详细信息见[C++ Arena Allocation Guide](https://protobuf.dev/reference/cpp/arenas/)。
+
+如果用户希望使用protobuf arena来管理Protobuf message内存，可以设置`ServerOptions.rpc_pb_message_factory = brpc::GetArenaRpcPBMessageFactory();`，使用默认的`start_block_size`（256 bytes）和`max_block_size`（8192 bytes）来创建arena。用户可以调用`brpc::GetArenaRpcPBMessageFactory<StartBlockSize, MaxBlockSize>();`自定义arena大小。
+
+注意：从Protobuf v3.14.0开始，[默认开启arena](https://github.com/protocolbuffers/protobuf/releases/tag/v3.14.0https://github.com/protocolbuffers/protobuf/releases/tag/v3.14.0)。但是Protobuf v3.14.0之前的版本，用户需要再proto文件中加上选项：`option cc_enable_arenas = true;`，所以为了兼容性，可以统一都加上该选项。
 
 # FAQ
 
