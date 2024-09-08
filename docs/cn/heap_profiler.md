@@ -123,10 +123,13 @@ brpc还提供一个类似的growth profiler分析内存的分配去向（不考�
 - FLAGS_je_prof_active：true:开启采样，false:关闭采样。
 - FLAGS_je_prof_dump：修改值会生成heap文件，用于手动操作jeprof分析。
 - FLAGS_je_prof_reset：清理已采样数据和重置profiler选项，并且动态设置采样率，[默认](https://jemalloc.net/jemalloc.3.html#opt.lg_prof_sample)2^19B（512K）。
-5. 若要做memory leak，需`MALLOC_CONF="prof:true,prof_leak:true,prof_final:true"`，进程退出时生成heap文件，注：可`kill pid`，不可`kill -9 pid`。
+5. 若要做memory leak:
+- `MALLOC_CONF="prof:true,prof_leak:true,prof_final:true" LD_PRELOAD=/xxx/lib/libjemalloc.so ./bin/test_server` ，进程退出时生成heap文件。
+- 注：可`kill pid`优雅退出，不可`kill -9 pid`；并且`FLAGS_graceful_quit_on_sigterm=true FLAGS_graceful_quit_on_sighup=true`来支持优雅退出。
 
-注：每次dump的都是从采样至今的所有数据，若触发了reset，接来下dump的是从reset至今的所有数据，方便做diff。
-更多jemalloc profiler选项请参考[官网](https://jemalloc.net/jemalloc.3.html)，如prof_leak_error:true则检测到内存泄漏，进程立即退出。
+注：
+- 每次dump的都是从采样至今的所有数据，若触发了reset，接来下dump的是从reset至今的所有数据，方便做diff。
+- 更多jemalloc profiler选项请参考[官网](https://jemalloc.net/jemalloc.3.html)，如`prof_leak_error:true`则检测到内存泄漏，进程立即退出。
 
 ## 样例
 
