@@ -23,7 +23,12 @@
 #include <windows.h>
 #elif defined(OS_POSIX)
 #include <pthread.h>
-#endif
+#if defined(OS_LINUX) && defined(__USE_XOPEN2K)
+#define HAS_PTHREAD_MUTEX_TIMEDLOCK 1
+#else
+#define HAS_PTHREAD_MUTEX_TIMEDLOCK 0
+#endif // OS_LINUX __USE_XOPEN2K
+#endif // OS_POSIX
 
 #include "butil/base_export.h"
 #include "butil/macros.h"
@@ -89,6 +94,12 @@ public:
         return pthread_mutex_trylock(&_native_handle) == 0;
 #endif
     }
+
+#if HAS_PTHREAD_MUTEX_TIMEDLOCK
+    bool timed_lock(const struct timespec* abstime) {
+        return pthread_mutex_timedlock(&_native_handle, abstime) == 0;
+    }
+#endif // HAS_PTHREAD_MUTEX_TIMEDLOCK
 
     // Returns the underlying implementation-defined native handle object.
     NativeHandle* native_handle() { return &_native_handle; }

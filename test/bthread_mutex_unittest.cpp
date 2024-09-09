@@ -108,8 +108,12 @@ TEST(MutexTest, cpp_wrapper) {
     mutex.unlock();
     mutex.lock();
     mutex.unlock();
+    struct timespec t = { -2, 0 };
+    ASSERT_TRUE(mutex.timed_lock(&t));
+    mutex.unlock();
     {
         BAIDU_SCOPED_LOCK(mutex);
+        ASSERT_FALSE(mutex.timed_lock(&t));
     }
     {
         std::unique_lock<bthread::Mutex> lck1;
@@ -131,6 +135,8 @@ TEST(MutexTest, cpp_wrapper) {
         lck1.lock();
     }
     ASSERT_TRUE(mutex.try_lock());
+    mutex.unlock();
+    ASSERT_TRUE(mutex.timed_lock(&t));
     mutex.unlock();
 }
 
@@ -268,6 +274,13 @@ TEST(MutexTest, mix_thread_types) {
     }
 }
 
+void* do_fast_pthread_timedlock(void *arg) {
+    struct timespec t = { -2, 0 };
+    EXPECT_FALSE(((bthread::FastPthreadMutex*)arg)->timed_lock(&t));
+    EXPECT_EQ(ETIMEDOUT, errno);
+    return NULL;
+}
+
 TEST(MutexTest, fast_pthread_mutex) {
     bthread::FastPthreadMutex mutex;
     ASSERT_TRUE(mutex.try_lock());
@@ -276,6 +289,12 @@ TEST(MutexTest, fast_pthread_mutex) {
     mutex.unlock();
     {
         BAIDU_SCOPED_LOCK(mutex);
+        struct timespec t = { -2, 0 };
+        ASSERT_FALSE(mutex.timed_lock(&t));
+        ASSERT_EQ(ETIMEDOUT, errno);
+        pthread_t th;
+        ASSERT_EQ(0, pthread_create(&th, NULL, do_fast_pthread_timedlock, &mutex));
+        ASSERT_EQ(0, pthread_join(th, NULL));
     }
     {
         std::unique_lock<bthread::FastPthreadMutex> lck1;
@@ -292,6 +311,49 @@ TEST(MutexTest, fast_pthread_mutex) {
     for (int i = 0; i < N; ++i) {
         ASSERT_EQ(0, pthread_create(&pthreads[i], NULL,
             loop_until_stopped<bthread::FastPthreadMutex>, &mutex));
+    }
+    bthread_usleep(1000L * 1000);
+    g_stopped = true;
+    for (int i = 0; i < N; ++i) {
+        pthread_join(pthreads[i], NULL);
+    }
+}
+
+#if HAS_PTHREAD_MUTEX_TIMEDLOCK
+void* do_pthread_timedlock(void *arg) {
+    struct timespec t = { -2, 0 };
+    EXPECT_EQ(ETIMEDOUT, pthread_mutex_timedlock((pthread_mutex_t*)arg, &t));
+    EXPECT_EQ(ETIMEDOUT, errno);
+    return NULL;
+}
+#endif
+
+TEST(MutexTest, pthread_mutex) {
+    pthread_mutex_t mutex;
+    ASSERT_EQ(0, pthread_mutex_init(&mutex, NULL));
+    ASSERT_EQ(0, pthread_mutex_trylock(&mutex));
+    ASSERT_EQ(0, pthread_mutex_unlock(&mutex));
+    ASSERT_EQ(0, pthread_mutex_lock(&mutex));
+    ASSERT_EQ(0, pthread_mutex_unlock(&mutex));
+    {
+        BAIDU_SCOPED_LOCK(mutex);
+#if HAS_PTHREAD_MUTEX_TIMEDLOCK
+        LOG(INFO) << "pthread_mutex_timedlock is available";
+        struct timespec t = { -2, 0 };
+        ASSERT_EQ(ETIMEDOUT, pthread_mutex_timedlock(&mutex, &t));
+        pthread_t th;
+        ASSERT_EQ(0, pthread_create(&th, NULL, do_fast_pthread_timedlock, &mutex));
+        ASSERT_EQ(0, pthread_join(th, NULL));
+#endif
+    }
+    ASSERT_EQ(0, pthread_mutex_trylock(&mutex));
+    ASSERT_EQ(0, pthread_mutex_unlock(&mutex));
+
+    const int N = 16;
+    pthread_t pthreads[N];
+    for (int i = 0; i < N; ++i) {
+        ASSERT_EQ(0, pthread_create(&pthreads[i], NULL,
+            loop_until_stopped<pthread_mutex_t>, &mutex));
     }
     bthread_usleep(1000L * 1000);
     g_stopped = true;

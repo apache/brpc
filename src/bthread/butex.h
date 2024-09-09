@@ -29,6 +29,11 @@
 
 namespace bthread {
 
+// If a thread would suspend for less than so many microseconds, return
+// ETIMEDOUT directly.
+// Use 1: sleeping for less than 2 microsecond is inefficient and useless.
+static const int64_t MIN_SLEEP_US = 2;
+
 // Create a butex which is a futex-like 32-bit primitive for synchronizing
 // bthreads/pthreads.
 // Returns a pointer to 32-bit data, NULL on failure.
