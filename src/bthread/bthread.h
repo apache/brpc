@@ -277,6 +277,50 @@ extern int bthread_rwlockattr_getkind_np(const bthread_rwlockattr_t* attr,
 extern int bthread_rwlockattr_setkind_np(bthread_rwlockattr_t* attr,
                                          int pref);
 
+// -------------------------------------------
+// Functions for handling semaphore.
+// -------------------------------------------
+
+// Initialize the semaphore referred to by `sem'. The value of the
+// initialized semaphore shall be `value'.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_init(bthread_sem_t* sem, unsigned value);
+
+// Destroy the semaphore indicated by `sem'.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_destroy(bthread_sem_t* semaphore);
+
+// Lock the semaphore referenced by `sem' by performing a semaphore
+// lock operation on that semaphore. If the semaphore value is currently
+// zero, then the calling (b)thread shall not return from the call to
+// bthread_sema_wait() function until it locks the semaphore.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_wait(bthread_sem_t* sem);
+
+// Lock the semaphore referenced by `sem' as in the bthread_sem_wait()
+// function. However, if the semaphore cannot be locked without waiting
+// for another (b)thread to unlock the semaphore by performing a
+// bthread_sem_post() function, this wait shall be terminated when the
+// specified timeout expires.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_timedwait(bthread_sem_t* sem, const struct timespec* abstime);
+
+// Lock the semaphore referenced by `sem' only if the semaphore is
+// currently not locked; that is, if the semaphore value is currently
+// positive. Otherwise, it shall not lock the semaphore.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_trywait(bthread_sem_t* sem);
+
+// Unlock the semaphore referenced by `sem' by performing
+// a semaphore unlock operation on that semaphore.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_post(bthread_sem_t* sem);
+
+// Unlock the semaphore referenced by `sem' by performing
+// `n' semaphore unlock operation on that semaphore.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_post_n(bthread_sem_t* sem, size_t n);
+
 
 // ----------------------------------------------------------------------
 // Functions for handling barrier which is a new feature in 1003.1j-2000.

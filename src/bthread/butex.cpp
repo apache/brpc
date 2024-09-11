@@ -329,14 +329,14 @@ int butex_wake(void* arg, bool nosignal) {
     return 1;
 }
 
-int butex_wake_all(void* arg, bool nosignal) {
+int butex_wake_n(void* arg, size_t n, bool nosignal) {
     Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
 
     ButexWaiterList bthread_waiters;
     ButexWaiterList pthread_waiters;
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
-        while (!b->waiters.empty()) {
+        for (size_t i = 0; (n == 0 || i < n) && !b->waiters.empty(); ++i) {
             ButexWaiter* bw = b->waiters.head()->value();
             bw->RemoveFromList();
             bw->container.store(NULL, butil::memory_order_relaxed);
@@ -391,6 +391,10 @@ int butex_wake_all(void* arg, bool nosignal) {
         g->ready_to_run_remote(next->tid, nosignal);
     }
     return nwakeup;
+}
+
+int butex_wake_all(void* arg, bool nosignal) {
+    return butex_wake_n(arg, 0, nosignal);
 }
 
 int butex_wake_except(void* arg, bthread_t excluded_bthread) {

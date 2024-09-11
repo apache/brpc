@@ -181,6 +181,10 @@ typedef struct {
 } bthread_condattr_t;
 
 typedef struct {
+    unsigned* butex;
+} bthread_sem_t;
+
+typedef struct {
 } bthread_rwlock_t;
 
 typedef struct {
