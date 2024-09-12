@@ -454,7 +454,7 @@ void TaskControl::signal_task(int num_task) {
 
 void TaskControl::print_rq_sizes(std::ostream& os) {
     const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
-    DEFINE_SMALL_ARRAY(int, nums, ngroup, 128);
+    DEFINE_SMALL_ARRAY(int, nums, ngroup*3, 256);
     {
         BAIDU_SCOPED_LOCK(_modify_group_mutex);
         // ngroup > _ngroup: nums[_ngroup ... ngroup-1] = 0
@@ -462,8 +462,25 @@ void TaskControl::print_rq_sizes(std::ostream& os) {
         for (size_t i = 0; i < ngroup; ++i) {
             nums[i] = (_groups[i] ? _groups[i]->_rq.volatile_size() : 0);
         }
+        for (size_t i = 0; i < ngroup; ++i) {
+            nums[ngroup + i] = (_groups[i] ? _groups[i]->_remote_rq._task_cnt.load(butil::memory_order_relaxed)
+                                           : 0);
+        }
+        for (size_t i = 0; i < ngroup; ++i) {
+            nums[ngroup * 2 + i] = (_groups[i] ? _groups[i]->_bound_rq._task_cnt.load(butil::memory_order_relaxed)
+                                               : 0);
+        }
     }
+    os << "rq: ";
     for (size_t i = 0; i < ngroup; ++i) {
+        os << nums[i] << ' ';
+    }
+    os << ", remote_rq: ";
+    for (size_t i = ngroup; i < ngroup*2; ++i) {
+        os << nums[i] << ' ';
+    }
+    os << ", bound_rq: ";
+    for (size_t i = ngroup*2; i < ngroup*3; ++i) {
         os << nums[i] << ' ';
     }
 }
