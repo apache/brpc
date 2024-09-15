@@ -170,7 +170,7 @@ extern int bthread_usleep(uint64_t microseconds);
 // NOTE: mutexattr is not used in current mutex implementation. User shall
 //       always pass a NULL attribute.
 extern int bthread_mutex_init(bthread_mutex_t* __restrict mutex,
-                              const bthread_mutexattr_t* __restrict mutex_attr);
+                              const bthread_mutexattr_t* __restrict attr);
 
 // Destroy `mutex'.
 extern int bthread_mutex_destroy(bthread_mutex_t* mutex);
@@ -241,9 +241,8 @@ extern int bthread_rwlock_rdlock(bthread_rwlock_t* rwlock);
 extern int bthread_rwlock_tryrdlock(bthread_rwlock_t* rwlock);
 
 // Try to acquire read lock for `rwlock' or return after specfied time.
-extern int bthread_rwlock_timedrdlock(
-    bthread_rwlock_t* __restrict rwlock,
-    const struct timespec* __restrict abstime);
+extern int bthread_rwlock_timedrdlock(bthread_rwlock_t* __restrict rwlock,
+                                      const struct timespec* __restrict abstime);
 
 // Acquire write lock for `rwlock'.
 extern int bthread_rwlock_wrlock(bthread_rwlock_t* rwlock);
@@ -252,9 +251,8 @@ extern int bthread_rwlock_wrlock(bthread_rwlock_t* rwlock);
 extern int bthread_rwlock_trywrlock(bthread_rwlock_t* rwlock);
 
 // Try to acquire write lock for `rwlock' or return after specfied time.
-extern int bthread_rwlock_timedwrlock(
-    bthread_rwlock_t* __restrict rwlock,
-    const struct timespec* __restrict abstime);
+extern int bthread_rwlock_timedwrlock(bthread_rwlock_t* __restrict rwlock,
+                                      const struct timespec* __restrict abstime);
 
 // Unlock `rwlock'.
 extern int bthread_rwlock_unlock(bthread_rwlock_t* rwlock);
