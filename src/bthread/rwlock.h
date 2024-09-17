@@ -83,7 +83,7 @@ private:
     bthread_rwlock_t _rwlock{};
 };
 
-
+// Read lock guard of rwlock.
 class RWLockRdGuard {
 public:
     explicit RWLockRdGuard(bthread_rwlock_t& rwlock)
@@ -108,7 +108,7 @@ public:
             bthread_rwlock_unlock(_rwlock);
         }
 #else
-        bthread_rwlock_unlock(_pmutex);
+        bthread_rwlock_unlock(_rwlock);
 #endif // NDEBUG
     }
 
@@ -118,6 +118,7 @@ private:
     bthread_rwlock_t* _rwlock;
 };
 
+// Write lock guard of rwlock.
 class RWLockWrGuard {
 public:
     explicit RWLockWrGuard(bthread_rwlock_t& rwlock)
@@ -142,7 +143,7 @@ public:
             bthread_rwlock_unlock(_rwlock);
         }
 #else
-        bthread_rwlock_unlock(_pmutex);
+        bthread_rwlock_unlock(_rwlock);
 #endif // NDEBUG
     }
 
@@ -187,7 +188,7 @@ public:
             bthread_rwlock_unlock(_rwlock);
         }
 #else
-        bthread_rwlock_unlock(_pmutex);
+        bthread_rwlock_unlock(_rwlock);
 #endif // NDEBUG
     }
 

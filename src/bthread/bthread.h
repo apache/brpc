@@ -188,6 +188,13 @@ extern int bthread_mutex_timedlock(bthread_mutex_t* __restrict mutex,
 // Unlock `mutex'.
 extern int bthread_mutex_unlock(bthread_mutex_t* mutex);
 
+extern int bthread_mutexattr_init(bthread_mutexattr_t* attr);
+
+// Disable the contention profile of the mutex.
+extern int bthread_mutexattr_disable_csite(bthread_mutexattr_t* attr);
+
+extern int bthread_mutexattr_destroy(bthread_mutexattr_t* attr);
+
 // -----------------------------------------------
 // Functions for handling conditional variables.
 // -----------------------------------------------
@@ -283,6 +290,9 @@ extern int bthread_rwlockattr_setkind_np(bthread_rwlockattr_t* attr,
 // initialized semaphore shall be `value'.
 // Return 0 on success, errno otherwise.
 extern int bthread_sem_init(bthread_sem_t* sem, unsigned value);
+
+// Disable the contention profile of the semaphore  referred to by `sem'.
+extern int bthread_sem_disable_csite(bthread_sem_t* sem);
 
 // Destroy the semaphore indicated by `sem'.
 // Return 0 on success, errno otherwise.

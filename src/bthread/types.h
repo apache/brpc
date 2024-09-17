@@ -167,9 +167,11 @@ typedef struct {
 typedef struct {
     unsigned* butex;
     bthread_contention_site_t csite;
+    bool enable_csite;
 } bthread_mutex_t;
 
 typedef struct {
+    bool enable_csite;
 } bthread_mutexattr_t;
 
 typedef struct {
@@ -182,6 +184,7 @@ typedef struct {
 
 typedef struct {
     unsigned* butex;
+    bool enable_csite;
 } bthread_sem_t;
 
 typedef struct {
@@ -191,6 +194,7 @@ typedef struct {
     int reader_wait; // Number of departing readers.
     bool wlock_flag; // Flag used to indicate that a write lock has been hold.
     bthread_mutex_t write_queue_mutex; // Held if there are pending writers.
+    bthread_contention_site_t writer_csite;
 } bthread_rwlock_t;
 
 typedef struct {
