@@ -617,6 +617,13 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         goto END_OF_RPC;
     }
     if (_error_code == EBACKUPREQUEST) {
+        if (NULL != _backup_request_policy && !_backup_request_policy->DoBackup(this)) {
+            // No need to do backup request.
+            _error_code = saved_error;
+            CHECK_EQ(0, bthread_id_unlock(info.id));
+            return;
+        }
+
         // Reset timeout if needed
         int rc = 0;
         if (timeout_ms() >= 0) {
@@ -1278,11 +1285,6 @@ int Controller::HandleSocketFailed(bthread_id_t id, void* data, int error_code,
                         cntl->timeout_ms(),
                         butil::endpoint2str(cntl->remote_side()).c_str());
     } else if (error_code == EBACKUPREQUEST) {
-        BackupRequestPolicy* policy = cntl->_backup_request_policy;
-        if (NULL != policy && !policy->DoBackup(cntl)) {
-            // No need to do backup request.
-            return bthread_id_unlock(id);
-        }
         cntl->SetFailed(error_code, "Reached backup timeout=%" PRId64 "ms @%s",
                         cntl->backup_request_ms(),
                         butil::endpoint2str(cntl->remote_side()).c_str());
