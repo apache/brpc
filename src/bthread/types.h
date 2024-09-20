@@ -23,6 +23,7 @@
 #define BTHREAD_TYPES_H
 
 #include <stdint.h>                            // uint64_t
+#include "butil/macros.h"
 #if defined(__cplusplus)
 #include "butil/logging.h"                      // CHECK
 #endif
@@ -164,7 +165,11 @@ typedef struct {
     size_t sampling_range;
 } bthread_contention_site_t;
 
-typedef struct {
+typedef struct bthread_mutex_t {
+#if defined(__cplusplus)
+    bthread_mutex_t() : butex(NULL), csite{} {}
+    DISALLOW_COPY_AND_ASSIGN(bthread_mutex_t);
+#endif
     unsigned* butex;
     bthread_contention_site_t csite;
 } bthread_mutex_t;
@@ -172,7 +177,11 @@ typedef struct {
 typedef struct {
 } bthread_mutexattr_t;
 
-typedef struct {
+typedef struct bthread_cond_t {
+#if defined(__cplusplus)
+    bthread_cond_t() : m(NULL), seq(NULL) {}
+    DISALLOW_COPY_AND_ASSIGN(bthread_cond_t);
+#endif
     bthread_mutex_t* m;
     int* seq;
 } bthread_cond_t;
@@ -208,8 +217,10 @@ friend int bthread::bthread_once_impl(bthread_once_t* once_control, void (*init_
         INITIALIZED,
     };
 
+
     bthread_once_t();
     ~bthread_once_t();
+    DISALLOW_COPY_AND_ASSIGN(bthread_once_t);
 
 private:
     butil::atomic<int>* _butex;
