@@ -55,6 +55,15 @@ static const uint32_t KEY_1STLEVEL_SIZE = 31;
 // for most projects throughout baidu. 
 static const uint32_t KEYS_MAX = KEY_2NDLEVEL_SIZE * KEY_1STLEVEL_SIZE;
 
+// The maximum length of the KeyTableList. Once this value is exceeded, a
+// portion of the KeyTables will be moved to the global free_keytables list.
+static const uint32_t KEY_TABLE_LIST_SIZE = 10000;
+
+// The maximum number of KeyTables retrieved in a single operation from the
+// global free_keytables when no KeyTable exists in the current thread's
+// keytable_list.
+static const uint32_t BORROW_FROM_GLOBLE_SIZE = 100;
+
 // destructors/version of TLS.
 struct KeyInfo {
     uint32_t version;
@@ -205,32 +214,94 @@ private:
     SubKeyTable* _subs[KEY_1STLEVEL_SIZE];
 };
 
-struct KeyTableList {
-    KeyTableList() {
-        keytable = NULL;
+class BAIDU_CACHELINE_ALIGNMENT KeyTableList {
+ public:
+  KeyTableList() : _head(NULL), _tail(NULL), _length(0) {}
+
+  ~KeyTableList() {
+    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::KeyTable* old_kt = bthread::tls_bls.keytable;
+    KeyTable* keytable = _head;
+    while (keytable) {
+      bthread::KeyTable* kt = keytable;
+      keytable = kt->next;
+      bthread::tls_bls.keytable = kt;
+      if (g) {
+        g->current_task()->local_storage.keytable = kt;
+      }
+      delete kt;
+      if (old_kt == kt) {
+        old_kt = NULL;
+      }
+      g = bthread::tls_task_group;
     }
-    ~KeyTableList() {
-        bthread::TaskGroup* g = bthread::tls_task_group;
-        bthread::KeyTable* old_kt = bthread::tls_bls.keytable;
-        while (keytable) {
-            bthread::KeyTable* kt = keytable;
-            keytable = kt->next;
-            bthread::tls_bls.keytable = kt;
-            if (g) {
-                g->current_task()->local_storage.keytable = kt;
-            }
-            delete kt;
-            if (old_kt == kt) {
-                old_kt = NULL;
-            }
-            g = bthread::tls_task_group;
-        }
-        bthread::tls_bls.keytable = old_kt;
-        if(g) {
-            g->current_task()->local_storage.keytable = old_kt;
-        }
+    bthread::tls_bls.keytable = old_kt;
+    if (g) {
+      g->current_task()->local_storage.keytable = old_kt;
     }
-    KeyTable* keytable;
+  }
+
+  void append(KeyTable* keytable) {
+    if (keytable == NULL) {
+      return;
+    }
+    if (_head == NULL) {
+      _head = _tail = keytable;
+    } else {
+      _tail->next = keytable;
+      _tail = keytable;
+    }
+    keytable->next = NULL;
+    _length++;
+  }
+
+  KeyTable* remove_front() {
+    if (_head == NULL) {
+      return NULL;
+    }
+    KeyTable* temp = _head;
+    _head = _head->next;
+    _length--;
+    if (_head == NULL) {
+      _tail = NULL;
+    }
+    return temp;
+  }
+
+  void move_first_n_to_target(KeyTable* target, uint32_t size) {
+    if (size < _length || _head == NULL) {
+      return;
+    }
+
+    KeyTable* current = _head;
+    KeyTable* prev = NULL;
+    uint32_t count = 0;
+    while (current != NULL && count < size) {
+      prev = current;
+      current = current->next;
+      count++;
+    }
+    if (prev != NULL) {
+      prev->next = NULL;
+      if (target == NULL) {
+        target = _head;
+      } else {
+        target->next = _head;
+      }
+      _head = current;
+      _length -= size;
+      if (_head == NULL) {
+        _tail = NULL;
+      }
+    }
+  }
+
+  inline uint32_t get_length() { return _length; }
+
+ private:
+  KeyTable* _head;
+  KeyTable* _tail;
+  uint32_t _length;
 };
 
 static KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
@@ -238,20 +309,35 @@ static KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
         KeyTable* p;
         pthread_rwlock_rdlock(&pool->rwlock);
         auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
-        if (list && list->get()->keytable) {
-            p = list->get()->keytable;
-            list->get()->keytable = p->next;
+        if (list) {
+          p = list->get()->remove_front();
+          if (p) {
             pthread_rwlock_unlock(&pool->rwlock);
             return p;
+          }
         }
         pthread_rwlock_unlock(&pool->rwlock);
         if (pool->free_keytables) {
             pthread_rwlock_wrlock(&pool->rwlock);
             p = (KeyTable*)pool->free_keytables;
-            if (p) {
+            if (list) {
+              for (uint32_t i = 0; i < BORROW_FROM_GLOBLE_SIZE; ++i) {
+                if (p) {
+                  list->get()->append(p);
+                  pool->free_keytables = p->next;
+                } else {
+                  break;
+                }
+              }
+              KeyTable* result = list->get()->remove_front();
+              pthread_rwlock_unlock(&pool->rwlock);
+              return result;
+            } else {
+              if (p) {
                 pool->free_keytables = p->next;
                 pthread_rwlock_unlock(&pool->rwlock);
                 return p;
+              }
             }
             pthread_rwlock_unlock(&pool->rwlock);
         }
@@ -276,8 +362,15 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
         return;
     }
     auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
-    kt->next = list->get()->keytable;
-    list->get()->keytable = kt;
+    list->get()->append(kt);
+    if (list->get()->get_length() > KEY_TABLE_LIST_SIZE) {
+      pthread_rwlock_unlock(&pool->rwlock);
+      pthread_rwlock_wrlock(&pool->rwlock);
+      if (!pool->destroyed) {
+        list->get()->move_first_n_to_target((KeyTable*)pool->free_keytables,
+                                            KEY_TABLE_LIST_SIZE / 2);
+      }
+    }
     pthread_rwlock_unlock(&pool->rwlock);
 }
 
