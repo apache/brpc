@@ -268,8 +268,8 @@ class BAIDU_CACHELINE_ALIGNMENT KeyTableList {
     return temp;
   }
 
-  void move_first_n_to_target(KeyTable* target, uint32_t size) {
-    if (size < _length || _head == NULL) {
+  void move_first_n_to_target(KeyTable** target, uint32_t size) {
+    if (size > _length || _head == NULL) {
       return;
     }
 
@@ -283,10 +283,10 @@ class BAIDU_CACHELINE_ALIGNMENT KeyTableList {
     }
     if (prev != NULL) {
       prev->next = NULL;
-      if (target == NULL) {
-        target = _head;
+      if (*target == NULL) {
+        *target = _head;
       } else {
-        target->next = _head;
+        (*target)->next = _head;
       }
       _head = current;
       _length -= size;
@@ -367,7 +367,7 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
       pthread_rwlock_unlock(&pool->rwlock);
       pthread_rwlock_wrlock(&pool->rwlock);
       if (!pool->destroyed) {
-        list->get()->move_first_n_to_target((KeyTable*)pool->free_keytables,
+        list->get()->move_first_n_to_target((KeyTable**)(&pool->free_keytables),
                                             KEY_TABLE_LIST_SIZE / 2);
       }
     }
