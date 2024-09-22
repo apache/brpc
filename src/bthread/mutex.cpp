@@ -838,9 +838,58 @@ const MutexInternal MUTEX_LOCKED_RAW = {{1},{0},0};
 BAIDU_CASSERT(sizeof(unsigned) == sizeof(MutexInternal),
               sizeof_mutex_internal_must_equal_unsigned);
 
+#if BRPC_DEBUG_MUTEX
+#define BTHREAD_MUTEX_RESET_OWNER                                                           \
+    ((butil::atomic<mutex_owner_type>*)&m->owner.type)                                      \
+        ->store(OWNER_TYPE_UNKNOWN, butil::memory_order_relaxed)
+
+#define BTHREAD_MUTEX_SET_OWNER                                                             \
+    do {                                                                                    \
+        TaskGroup* task_group = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);            \
+        if (NULL != task_group && !task_group->is_current_main_task()) {                    \
+            m->owner.id = bthread_self();                                                   \
+            ((butil::atomic<mutex_owner_type>*)&m->owner.type)                              \
+                ->store(OWNER_TYPE_BTHREAD, butil::memory_order_release);                   \
+        } else {                                                                            \
+            m->owner.id = pthread_numeric_id();                                             \
+            ((butil::atomic<mutex_owner_type>*)&m->owner.type)                              \
+                ->store(OWNER_TYPE_PTHREAD, butil::memory_order_release);                   \
+        }                                                                                   \
+    } while(false)
+
+// Check if the mutex has been locked by the current thread.
+// Double lock on the same thread will cause deadlock.
+#define BTHREAD_MUTEX_CHECK_OWNER                                                           \
+        mutex_owner_type owner_type = ((butil::atomic<mutex_owner_type>*)&m->owner.type)    \
+            ->load(butil::memory_order_acquire);                                            \
+        bool double_lock =                                                                  \
+            (owner_type == OWNER_TYPE_BTHREAD && m->owner.id == bthread_self()) ||          \
+            (owner_type == OWNER_TYPE_PTHREAD && m->owner.id == pthread_numeric_id());      \
+        if (double_lock) {                                                                  \
+            butil::debug::StackTrace trace(true);                                           \
+            LOG(ERROR) << "Detected deadlock caused by double lock of bthread_mutex_t:"     \
+                       << std::endl << trace.ToString();                                    \
+       }
+#else
+#define BTHREAD_MUTEX_RESET_OWNER ((void)0)
+#define BTHREAD_MUTEX_SET_OWNER ((void)0)
+#define BTHREAD_MUTEX_CHECK_OWNER ((void)0)
+#endif // BRPC_DEBUG_MUTEX
+
+inline int mutex_trylock_impl(bthread_mutex_t* m) {
+    MutexInternal* split = (MutexInternal*)m->butex;
+    if (!split->locked.exchange(1, butil::memory_order_acquire)) {
+        BTHREAD_MUTEX_SET_OWNER;
+        return 0;
+    }
+    return EBUSY;
+}
+
 const int MAX_SPIN_ITER = 4;
 
-inline int mutex_lock_contended_impl(bthread_mutex_t* m, const struct timespec* abstime) {
+inline int mutex_lock_contended_impl(bthread_mutex_t* __restrict m,
+                                     const struct timespec* __restrict abstime) {
+    BTHREAD_MUTEX_CHECK_OWNER;
     // When a bthread first contends for a lock, active spinning makes sense.
     // Spin only few times and only if local `rq' is empty.
     TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
@@ -873,11 +922,42 @@ inline int mutex_lock_contended_impl(bthread_mutex_t* m, const struct timespec* 
             queue_lifo = true;
         }
     }
+    BTHREAD_MUTEX_SET_OWNER;
     return 0;
 }
 
 #ifdef BTHREAD_USE_FAST_PTHREAD_MUTEX
 namespace internal {
+
+#if BRPC_DEBUG_MUTEX
+#define FAST_PTHREAD_MUTEX_RESET_OWNER                                               \
+    ((butil::atomic<mutex_owner_type>*)&_owner.type)                                 \
+        ->store(OWNER_TYPE_UNKNOWN, butil::memory_order_relaxed)
+
+#define FAST_PTHREAD_MUTEX_SET_OWNER                                                 \
+    _owner.id = pthread_numeric_id();                                                \
+    ((butil::atomic<mutex_owner_type>*)&_owner.type)                                 \
+        ->store(OWNER_TYPE_PTHREAD,butil::memory_order_release)
+
+// Check if the mutex has been locked by the current thread.
+// Double lock on the same thread will cause deadlock.
+#define FAST_PTHREAD_MUTEX_CHECK_OWNER                                               \
+    mutex_owner_type owner_type = ((butil::atomic<mutex_owner_type>*)&_owner.type)   \
+        ->load(butil::memory_order_acquire);                                         \
+    if (owner_type == OWNER_TYPE_PTHREAD && _owner.id == pthread_numeric_id()) {     \
+        butil::debug::StackTrace trace(true);                                        \
+        LOG(ERROR) << "Detected deadlock caused by double lock of FastPthreadMutex:" \
+                   << std::endl << trace.ToString();                                 \
+    }
+#else
+#define FAST_PTHREAD_MUTEX_RESET_OWNER ((void)0)
+#define FAST_PTHREAD_MUTEX_SET_OWNER ((void)0)
+#define FAST_PTHREAD_MUTEX_CHECK_OWNER ((void)0)
+#endif // BRPC_DEBUG_MUTEX
+
+FastPthreadMutex::FastPthreadMutex() : _futex(0) {
+    FAST_PTHREAD_MUTEX_RESET_OWNER;
+}
 
 int FastPthreadMutex::lock_contended(const struct timespec* abstime) {
     int64_t abstime_us = 0;
@@ -909,11 +989,13 @@ int FastPthreadMutex::lock_contended(const struct timespec* abstime) {
 }
 
 void FastPthreadMutex::lock() {
+    FAST_PTHREAD_MUTEX_CHECK_OWNER;
     if (try_lock()) {
         return;
     }
 
     (void)lock_contended(NULL);
+    FAST_PTHREAD_MUTEX_SET_OWNER;
     ADD_TLS_PTHREAD_LOCK_COUNT;
 }
 
@@ -921,6 +1003,7 @@ bool FastPthreadMutex::try_lock() {
     auto split = (bthread::MutexInternal*)&_futex;
     bool lock = !split->locked.exchange(1, butil::memory_order_acquire);
     if (lock) {
+        FAST_PTHREAD_MUTEX_SET_OWNER;
         ADD_TLS_PTHREAD_LOCK_COUNT;
     }
     return lock;
@@ -939,6 +1022,7 @@ bool FastPthreadMutex::timed_lock(const struct timespec* abstime) {
 
 void FastPthreadMutex::unlock() {
     SUB_TLS_PTHREAD_LOCK_COUNT;
+    FAST_PTHREAD_MUTEX_RESET_OWNER;
     auto whole = (butil::atomic<unsigned>*)&_futex;
     const unsigned prev = whole->exchange(0, butil::memory_order_release);
     // CAUTION: the mutex may be destroyed, check comments before butex_create
@@ -946,6 +1030,10 @@ void FastPthreadMutex::unlock() {
         futex_wake_private(whole, 1);
     }
 }
+
+#undef FAST_PTHREAD_MUTEX_RESET_OWNER
+#undef FAST_PTHREAD_MUTEX_SET_OWNER
+#undef FAST_PTHREAD_MUTEX_CHECK_OWNER
 
 } // namespace internal
 #endif // BTHREAD_USE_FAST_PTHREAD_MUTEX
@@ -971,6 +1059,7 @@ __BEGIN_DECLS
 int bthread_mutex_init(bthread_mutex_t* __restrict m,
                        const bthread_mutexattr_t* __restrict attr) {
     bthread::make_contention_site_invalid(&m->csite);
+    BTHREAD_MUTEX_RESET_OWNER;
     m->butex = bthread::butex_create_checked<unsigned>();
     if (!m->butex) {
         return ENOMEM;
@@ -986,11 +1075,7 @@ int bthread_mutex_destroy(bthread_mutex_t* m) {
 }
 
 int bthread_mutex_trylock(bthread_mutex_t* m) {
-    bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
-    if (!split->locked.exchange(1, butil::memory_order_acquire)) {
-        return 0;
-    }
-    return EBUSY;
+    return bthread::mutex_trylock_impl(m);
 }
 
 int bthread_mutex_lock_contended(bthread_mutex_t* m) {
@@ -999,8 +1084,7 @@ int bthread_mutex_lock_contended(bthread_mutex_t* m) {
 
 static int bthread_mutex_lock_impl(bthread_mutex_t* __restrict m,
                                    const struct timespec* __restrict abstime) {
-    auto split = (bthread::MutexInternal*)m->butex;
-    if (!split->locked.exchange(1, butil::memory_order_acquire)) {
+    if (0 == bthread::mutex_trylock_impl(m)) {
         return 0;
     }
     // Don't sample when contention profiler is off.
@@ -1047,6 +1131,7 @@ int bthread_mutex_unlock(bthread_mutex_t* m) {
         saved_csite = m->csite;
         bthread::make_contention_site_invalid(&m->csite);
     }
+    BTHREAD_MUTEX_RESET_OWNER;
     const unsigned prev = whole->exchange(0, butil::memory_order_release);
     // CAUTION: the mutex may be destroyed, check comments before butex_create
     if (prev == BTHREAD_MUTEX_LOCKED) {
@@ -1064,6 +1149,9 @@ int bthread_mutex_unlock(bthread_mutex_t* m) {
     bthread::submit_contention(saved_csite, unlock_end_ns);
     return 0;
 }
+#undef BTHREAD_MUTEX_RESET_OWNER
+#undef BTHREAD_MUTEX_SET_OWNER
+#undef BTHREAD_MUTEX_CHECK_OWNER
 
 int bthread_mutexattr_init(bthread_mutexattr_t* attr) {
     attr->enable_csite = true;

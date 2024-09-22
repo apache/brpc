@@ -35,6 +35,7 @@ extern int bthread_mutex_lock(bthread_mutex_t* mutex);
 extern int bthread_mutex_timedlock(bthread_mutex_t* __restrict mutex,
                                    const struct timespec* __restrict abstime);
 extern int bthread_mutex_unlock(bthread_mutex_t* mutex);
+extern bthread_t bthread_self(void);
 __END_DECLS
 
 namespace bthread {
@@ -76,8 +77,7 @@ namespace internal {
 #ifdef BTHREAD_USE_FAST_PTHREAD_MUTEX
 class FastPthreadMutex {
 public:
-    FastPthreadMutex() : _futex(0) {}
-    ~FastPthreadMutex() = default;
+    FastPthreadMutex();
     void lock();
     void unlock();
     bool try_lock();
@@ -85,6 +85,10 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(FastPthreadMutex);
     int lock_contended(const struct timespec* abstime);
+    // Note: Owner detection of the mutex comes with average execution
+    // slowdown of about 50%., so it is only used for debugging and is
+    // only available when the `BRPC_DEBUG_MUTEX' macro is defined.
+    mutex_owner_t _owner;
     unsigned _futex;
 };
 #else
