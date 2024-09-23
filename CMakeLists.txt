@@ -322,7 +322,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
         "-Wl,-U,_ProfilerStart"
         "-Wl,-U,_ProfilerStop"
-        "-Wl,-U,__Z13GetStackTracePPvii")
+        "-Wl,-U,__Z13GetStackTracePPvii"
+        "-Wl,-U,_mallctl"
+        "-Wl,-U,_malloc_stats_print"
+    )
 endif()
 
 # for *.so
