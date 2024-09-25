@@ -31,6 +31,7 @@ set(TEST_PROTO_FILES addressbook1.proto
                      snappy_message.proto
                      v1.proto
                      v2.proto
+                     v3.proto
                      grpc.proto
                      health_check.proto)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/test/hdrs)
