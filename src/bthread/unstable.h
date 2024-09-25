@@ -129,6 +129,10 @@ extern int bthread_keytable_pool_getstat(bthread_keytable_pool_t* pool,
                                          bthread_keytable_pool_stat_t* stat);
 
 // [RPC INTERNAL]
+// Return thread local keytable list length if exist.
+extern int get_thread_local_keytable_list_length(bthread_keytable_pool_t* pool);
+
+// [RPC INTERNAL]
 // Reserve at most `nfree' keytables with `key' pointing to data created by
 // ctor(args).
 extern void bthread_keytable_pool_reserve(
