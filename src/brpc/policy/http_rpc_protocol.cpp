@@ -1263,6 +1263,26 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
     }
 }
 
+static void SendUnauthorizedResponse(const std::string& user_error_text, Socket* socket) {
+    // Send 403(forbidden) to client.
+    HttpHeader header;
+    header.set_status_code(HTTP_STATUS_FORBIDDEN);
+    butil::IOBuf content;
+    content.append(butil::string_printf("[%d]", ERPCAUTH));
+    content.append("Fail to authenticate");
+    if (!user_error_text.empty()) {
+        content.append(": ");
+        content.append(user_error_text);
+    }
+    butil::IOBuf res_buf;
+    MakeRawHttpResponse(&res_buf, &header, &content);
+    Socket::WriteOptions opt;
+    opt.ignore_eovercrowded = true;
+    if (socket->Write(&res_buf, &opt) != 0) {
+        PLOG_IF(WARNING, errno != EPIPE) << "Fail to write into " << *socket;
+    }
+}
+
 bool VerifyHttpRequest(const InputMessageBase* msg) {
     Server* server = (Server*)msg->arg();
     Socket* socket = msg->socket();
@@ -1275,8 +1295,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     }
     const Server::MethodProperty* mp = FindMethodPropertyByURI(
         http_request->header().uri().path(), server, NULL);
-    if (mp != NULL &&
-        mp->is_builtin_service &&
+    if (mp != NULL && mp->is_builtin_service &&
         mp->service->GetDescriptor() != BadMethodService::descriptor()) {
         // BuiltinService doesn't need authentication
         // TODO: Fix backdoor that sends BuiltinService at first
@@ -1285,16 +1304,22 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     }
 
     const std::string *authorization 
-        = http_request->header().GetHeader("Authorization");
+        = http_request->header().GetHeader(common->AUTHORIZATION);
     if (authorization == NULL) {
+        SendUnauthorizedResponse(auth->GetUnauthorizedErrorText(), socket);
         return false;
     }
     butil::EndPoint user_addr;
     if (!GetUserAddressFromHeader(http_request->header(), &user_addr)) {
         user_addr = socket->remote_side();
     }
-    return auth->VerifyCredential(*authorization, user_addr,
-                                  socket->mutable_auth_context()) == 0;
+    if (auth->VerifyCredential(*authorization, user_addr,
+                               socket->mutable_auth_context()) != 0) {
+        SendUnauthorizedResponse(auth->GetUnauthorizedErrorText(), socket);
+        return false;
+    }
+
+    return true;
 }
 
 

@@ -57,7 +57,7 @@ private:
 
 class Authenticator {
 public:
-    virtual ~Authenticator() {}
+    virtual ~Authenticator() = default;
 
     // Implement this method to generate credential information
     // into `auth_str' which will be sent to `VerifyCredential'
@@ -73,6 +73,13 @@ public:
     virtual int VerifyCredential(const std::string& auth_str,
                                  const butil::EndPoint& client_addr,
                                  AuthContext* out_ctx) const = 0;
+
+    // Implement this method to unauthorized error text which
+    // will be sent as a part of error text in baidu_std/hulu_pbrpc
+    // protocol or body in http protocol.
+    virtual std::string GetUnauthorizedErrorText() const {
+        return "";
+    }
 
 };
 

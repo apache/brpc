@@ -540,8 +540,8 @@ bool VerifyHuluRequest(const InputMessageBase* msg_base) {
     Socket* socket = msg->socket();
     const Server* server = static_cast<const Server*>(msg->arg());
 
-    HuluRpcRequestMeta meta;
-    if (!ParsePbFromIOBuf(&meta, msg->meta)) {
+    HuluRpcRequestMeta request_meta;
+    if (!ParsePbFromIOBuf(&request_meta, msg->meta)) {
         LOG(WARNING) << "Fail to parse HuluRpcRequestMeta";
         return false;
     }
@@ -549,13 +549,32 @@ bool VerifyHuluRequest(const InputMessageBase* msg_base) {
     if (NULL == auth) {
         // Fast pass (no authentication)
         return true;
-    }    
-    if (auth->VerifyCredential(
-                meta.credential_data(), socket->remote_side(), 
-                socket->mutable_auth_context()) != 0) {
-        return false;
     }
-    return true;
+    if (auth->VerifyCredential(request_meta.credential_data(),
+                               socket->remote_side(),
+                               socket->mutable_auth_context()) == 0) {
+        return true;
+    }
+
+    // Send `ERPCAUTH' to client.
+    HuluRpcResponseMeta response_meta;
+    response_meta.set_correlation_id(request_meta.correlation_id());
+    response_meta.set_error_code(ERPCAUTH);
+    std::string user_error_text = auth->GetUnauthorizedErrorText();
+    response_meta.set_error_text("Fail to authenticate");
+    if (!user_error_text.empty()) {
+        response_meta.mutable_error_text()->append(": ");
+        response_meta.mutable_error_text()->append(user_error_text);
+    }
+    butil::IOBuf res_buf;
+    SerializeHuluHeaderAndMeta(&res_buf, request_meta, 0);
+    Socket::WriteOptions opt;
+    opt.ignore_eovercrowded = true;
+    if (socket->Write(&res_buf, &opt) != 0) {
+        PLOG_IF(WARNING, errno != EPIPE) << "Fail to write into " << *socket;
+    }
+
+    return false;
 }
 
 void ProcessHuluResponse(InputMessageBase* msg_base) {
