@@ -584,10 +584,6 @@ r34717后Controller.has_backup_request()获知是否发送过backup_request。
 
 如果server一直没有返回，但连接没有问题，这种情况下不会重试。如果你需要在一定时间后发送另一个请求，使用backup request。
 
-工作机制如下：如果response没有在backup_request_ms内返回，则发送另外一个请求，哪个先回来就取哪个。新请求会被尽量送到不同的server。注意如果backup_request_ms大于超时，则backup request总不会被发送。backup request会消耗一次重试次数。backup request不意味着server端cancel。
-
-ChannelOptions.backup_request_ms影响该Channel上所有RPC，单位毫秒，默认值-1（表示不开启），Controller.set_backup_request_ms()可修改某次RPC的值。
-
 ### 没到超时
 
 超时后RPC会尽快结束。
@@ -707,6 +703,35 @@ options.retry_policy = &g_my_retry_policy;
 - 当策略返回的重试退避时间大于等于剩余的rpc时间或者等于0，框架不会进行重试退避，而是立即进行重试。
 - [brpc::RpcRetryPolicyWithFixedBackoff](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)（固定时间间隔退策略）和[brpc::RpcRetryPolicyWithJitteredBackoff](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)（随机时间间隔退策略）继承了[brpc::RpcRetryPolicy](https://github.com/apache/brpc/blob/master/src/brpc/retry_policy.h)，使用框架默认的DoRetry。
 - 在pthread中进行重试退避（实际上通过bthread_usleep实现）会阻塞pthread，所以默认不会在pthread上进行重试退避。
+
+### backup request
+
+工作机制如下：如果response没有在backup_request_ms内返回，则发送另外一个请求，哪个先回来就取哪个。新请求会被尽量送到不同的server。注意如果backup_request_ms大于超时，则backup request总不会被发送。backup request会消耗一次重试次数。backup request不意味着server端cancel。
+
+ChannelOptions.backup_request_ms影响该Channel上所有RPC，单位毫秒，默认值-1（表示不开启）。Controller.set_backup_request_ms()可修改某次RPC的值。
+
+用户可以通过继承[brpc::BackupRequestPolicy](https://github.com/apache/brpc/blob/master/src/brpc/backup_request_policy.h)自定义策略（backup_request_ms和熔断backup request）。 比如根据延时调节backup_request_ms或者根据错误率熔断部分backup request。
+
+ChannelOptions.backup_request_policy同样影响该Channel上所有RPC。Controller.set_backup_request_policy()可修改某次RPC的策略。backup_request_policy优先级高于backup_request_ms。
+
+brpc::BackupRequestPolicy接口如下：
+
+```c++
+class BackupRequestPolicy {
+public:
+    virtual ~BackupRequestPolicy() = default;
+
+    // Return the time in milliseconds in which another request
+    // will be sent if RPC does not finish.
+    virtual int32_t GetBackupRequestMs(const Controller* controller) const = 0;
+
+    // Return true if the backup request should be sent.
+    virtual bool DoBackup(const Controller* controller) const = 0;
+    
+    // Called  when a rpc is end, user can collect call information to adjust policy.
+    virtual void OnRPCEnd(const Controller* controller) = 0;
+};
+```
 
 ### 重试应当保守
 
