@@ -170,7 +170,7 @@ extern int bthread_usleep(uint64_t microseconds);
 // NOTE: mutexattr is not used in current mutex implementation. User shall
 //       always pass a NULL attribute.
 extern int bthread_mutex_init(bthread_mutex_t* __restrict mutex,
-                              const bthread_mutexattr_t* __restrict mutex_attr);
+                              const bthread_mutexattr_t* __restrict attr);
 
 // Destroy `mutex'.
 extern int bthread_mutex_destroy(bthread_mutex_t* mutex);
@@ -187,6 +187,13 @@ extern int bthread_mutex_timedlock(bthread_mutex_t* __restrict mutex,
 
 // Unlock `mutex'.
 extern int bthread_mutex_unlock(bthread_mutex_t* mutex);
+
+extern int bthread_mutexattr_init(bthread_mutexattr_t* attr);
+
+// Disable the contention profile of the mutex.
+extern int bthread_mutexattr_disable_csite(bthread_mutexattr_t* attr);
+
+extern int bthread_mutexattr_destroy(bthread_mutexattr_t* attr);
 
 // -----------------------------------------------
 // Functions for handling conditional variables.
@@ -241,9 +248,8 @@ extern int bthread_rwlock_rdlock(bthread_rwlock_t* rwlock);
 extern int bthread_rwlock_tryrdlock(bthread_rwlock_t* rwlock);
 
 // Try to acquire read lock for `rwlock' or return after specfied time.
-extern int bthread_rwlock_timedrdlock(
-    bthread_rwlock_t* __restrict rwlock,
-    const struct timespec* __restrict abstime);
+extern int bthread_rwlock_timedrdlock(bthread_rwlock_t* __restrict rwlock,
+                                      const struct timespec* __restrict abstime);
 
 // Acquire write lock for `rwlock'.
 extern int bthread_rwlock_wrlock(bthread_rwlock_t* rwlock);
@@ -252,9 +258,8 @@ extern int bthread_rwlock_wrlock(bthread_rwlock_t* rwlock);
 extern int bthread_rwlock_trywrlock(bthread_rwlock_t* rwlock);
 
 // Try to acquire write lock for `rwlock' or return after specfied time.
-extern int bthread_rwlock_timedwrlock(
-    bthread_rwlock_t* __restrict rwlock,
-    const struct timespec* __restrict abstime);
+extern int bthread_rwlock_timedwrlock(bthread_rwlock_t* __restrict rwlock,
+                                      const struct timespec* __restrict abstime);
 
 // Unlock `rwlock'.
 extern int bthread_rwlock_unlock(bthread_rwlock_t* rwlock);
@@ -276,6 +281,53 @@ extern int bthread_rwlockattr_getkind_np(const bthread_rwlockattr_t* attr,
 // Set reader/write preference.
 extern int bthread_rwlockattr_setkind_np(bthread_rwlockattr_t* attr,
                                          int pref);
+
+// -------------------------------------------
+// Functions for handling semaphore.
+// -------------------------------------------
+
+// Initialize the semaphore referred to by `sem'. The value of the
+// initialized semaphore shall be `value'.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_init(bthread_sem_t* sem, unsigned value);
+
+// Disable the contention profile of the semaphore  referred to by `sem'.
+extern int bthread_sem_disable_csite(bthread_sem_t* sem);
+
+// Destroy the semaphore indicated by `sem'.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_destroy(bthread_sem_t* semaphore);
+
+// Lock the semaphore referenced by `sem' by performing a semaphore
+// lock operation on that semaphore. If the semaphore value is currently
+// zero, then the calling (b)thread shall not return from the call to
+// bthread_sema_wait() function until it locks the semaphore.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_wait(bthread_sem_t* sem);
+
+// Lock the semaphore referenced by `sem' as in the bthread_sem_wait()
+// function. However, if the semaphore cannot be locked without waiting
+// for another (b)thread to unlock the semaphore by performing a
+// bthread_sem_post() function, this wait shall be terminated when the
+// specified timeout expires.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_timedwait(bthread_sem_t* sem, const struct timespec* abstime);
+
+// Lock the semaphore referenced by `sem' only if the semaphore is
+// currently not locked; that is, if the semaphore value is currently
+// positive. Otherwise, it shall not lock the semaphore.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_trywait(bthread_sem_t* sem);
+
+// Unlock the semaphore referenced by `sem' by performing
+// a semaphore unlock operation on that semaphore.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_post(bthread_sem_t* sem);
+
+// Unlock the semaphore referenced by `sem' by performing
+// `n' semaphore unlock operation on that semaphore.
+// Return 0 on success, errno otherwise.
+extern int bthread_sem_post_n(bthread_sem_t* sem, size_t n);
 
 
 // ----------------------------------------------------------------------

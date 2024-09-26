@@ -226,6 +226,8 @@ cc_test(
             # glog CHECK die with a fatal error
             "bthread_key_unittest.cpp",
             "bthread_butex_multi_tag_unittest.cpp",
+            "bthread_rwlock_unittest.cpp",
+            "bthread_semaphore_unittest.cpp",
         ],
     ),
     copts = COPTS,

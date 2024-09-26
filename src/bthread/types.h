@@ -172,9 +172,11 @@ typedef struct bthread_mutex_t {
 #endif
     unsigned* butex;
     bthread_contention_site_t csite;
+    bool enable_csite;
 } bthread_mutex_t;
 
 typedef struct {
+    bool enable_csite;
 } bthread_mutexattr_t;
 
 typedef struct bthread_cond_t {
@@ -190,6 +192,18 @@ typedef struct {
 } bthread_condattr_t;
 
 typedef struct {
+    unsigned* butex;
+    bool enable_csite;
+} bthread_sem_t;
+
+typedef struct {
+    bthread_sem_t reader_sema; // Semaphore for readers to wait for completing writers.
+    bthread_sem_t writer_sema; // Semaphore for writers to wait for completing readers.
+    int reader_count; // Number of pending readers.
+    int reader_wait; // Number of departing readers.
+    bool wlock_flag; // Flag used to indicate that a write lock has been hold.
+    bthread_mutex_t write_queue_mutex; // Held if there are pending writers.
+    bthread_contention_site_t writer_csite;
 } bthread_rwlock_t;
 
 typedef struct {

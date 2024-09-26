@@ -48,6 +48,11 @@ void butex_destroy(void* butex);
 // Returns # of threads woken up.
 int butex_wake(void* butex, bool nosignal = false);
 
+// Wake up all threads waiting on |butex| if n is zero,
+// Otherwise, wake up at most n thread waiting on |butex|.
+// Returns # of threads woken up.
+int butex_wake_n(void* butex, size_t n, bool nosignal = false);
+
 // Wake up all threads waiting on |butex|.
 // Returns # of threads woken up.
 int butex_wake_all(void* butex, bool nosignal = false);

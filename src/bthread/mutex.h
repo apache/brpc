@@ -28,7 +28,7 @@
 
 __BEGIN_DECLS
 extern int bthread_mutex_init(bthread_mutex_t* __restrict mutex,
-                              const bthread_mutexattr_t* __restrict mutex_attr);
+                              const bthread_mutexattr_t* __restrict attr);
 extern int bthread_mutex_destroy(bthread_mutex_t* mutex);
 extern int bthread_mutex_trylock(bthread_mutex_t* mutex);
 extern int bthread_mutex_lock(bthread_mutex_t* mutex);
@@ -48,7 +48,8 @@ public:
     Mutex() {
         int ec = bthread_mutex_init(&_mutex, NULL);
         if (ec != 0) {
-            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex constructor failed");
+            throw std::system_error(std::error_code(ec, std::system_category()),
+                                    "Mutex constructor failed");
         }
     }
     ~Mutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
@@ -56,11 +57,12 @@ public:
     void lock() {
         int ec = bthread_mutex_lock(&_mutex);
         if (ec != 0) {
-            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex lock failed");
+            throw std::system_error(std::error_code(ec, std::system_category()),
+                                    "Mutex lock failed");
         }
     }
-    void unlock() { bthread_mutex_unlock(&_mutex); }
-    bool try_lock() { return !bthread_mutex_trylock(&_mutex); }
+    void unlock() { (bthread_mutex_unlock(&_mutex)); }
+    bool try_lock() { return 0 == bthread_mutex_trylock(&_mutex); }
     // TODO(chenzhangyi01): Complement interfaces for C++11
 private:
     DISALLOW_COPY_AND_ASSIGN(Mutex);
@@ -107,7 +109,7 @@ namespace std {
 
 template <> class lock_guard<bthread_mutex_t> {
 public:
-    explicit lock_guard(bthread_mutex_t & mutex) : _pmutex(&mutex) {
+    explicit lock_guard(bthread_mutex_t& mutex) : _pmutex(&mutex) {
 #if !defined(NDEBUG)
         const int rc = bthread_mutex_lock(_pmutex);
         if (rc) {

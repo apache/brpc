@@ -59,7 +59,7 @@ EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 const butil::debug::StackTrace ALLOW_UNUSED dummy_bt;
 
 // For controlling contentions collected per second.
-static bvar::CollectorSpeedLimit g_cp_sl = BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER;
+bvar::CollectorSpeedLimit g_cp_sl = BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER;
 
 const size_t MAX_CACHED_CONTENTIONS = 512;
 // Skip frames which are always same: the unlock function and submit_contention()
@@ -267,7 +267,7 @@ void ContentionProfiler::flush_to_disk(bool ending) {
 
 // If contention profiler is on, this variable will be set with a valid
 // instance. NULL otherwise.
-BAIDU_CACHELINE_ALIGNMENT static ContentionProfiler* g_cp = NULL;
+BAIDU_CACHELINE_ALIGNMENT ContentionProfiler* g_cp = NULL;
 // Need this version to solve an issue that non-empty entries left by
 // previous contention profilers should be detected and overwritten.
 static uint64_t g_cp_version = 0;
@@ -369,13 +369,11 @@ void ContentionProfilerStop() {
     LOG(ERROR) << "Contention profiler is not started!";
 }
 
-BUTIL_FORCE_INLINE bool
-is_contention_site_valid(const bthread_contention_site_t& cs) {
-    return cs.sampling_range;
+bool is_contention_site_valid(const bthread_contention_site_t& cs) {
+    return bvar::is_sampling_range_valid(cs.sampling_range);
 }
 
-BUTIL_FORCE_INLINE void
-make_contention_site_invalid(bthread_contention_site_t* cs) {
+void make_contention_site_invalid(bthread_contention_site_t* cs) {
     cs->sampling_range = 0;
 }
 
@@ -671,13 +669,13 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(Mutex* mutex) {
         MutexAndContentionSite& entry = fast_alt.list[fast_alt.count++];
         entry.mutex = mutex;
         csite = &entry.csite;
-        if (!sampling_range) {
+        if (!bvar::is_sampling_range_valid(sampling_range)) {
             make_contention_site_invalid(&entry.csite);
             return pthread_mutex_lock_internal(mutex);
         }
     }
 #endif
-    if (!sampling_range) {  // don't sample
+    if (!bvar::is_sampling_range_valid(sampling_range)) {  // don't sample
         return pthread_mutex_lock_internal(mutex);
     }
     // Lock and monitor the waiting time.
@@ -873,13 +871,14 @@ void FastPthreadMutex::unlock() {
 extern "C" {
 
 int bthread_mutex_init(bthread_mutex_t* __restrict m,
-                       const bthread_mutexattr_t* __restrict) {
+                       const bthread_mutexattr_t* __restrict attr) {
     bthread::make_contention_site_invalid(&m->csite);
     m->butex = bthread::butex_create_checked<unsigned>();
     if (!m->butex) {
         return ENOMEM;
     }
     *m->butex = 0;
+    m->enable_csite = NULL == attr ? true : attr->enable_csite;
     return 0;
 }
 
@@ -900,35 +899,9 @@ int bthread_mutex_lock_contended(bthread_mutex_t* m) {
     return bthread::mutex_lock_contended_impl(m, NULL);
 }
 
-int bthread_mutex_lock(bthread_mutex_t* m) {
-    bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
-    if (!split->locked.exchange(1, butil::memory_order_acquire)) {
-        return 0;
-    }
-    // Don't sample when contention profiler is off.
-    if (!bthread::g_cp) {
-        return bthread::mutex_lock_contended_impl(m, NULL);
-    }
-    // Ask Collector if this (contended) locking should be sampled.
-    const size_t sampling_range = bvar::is_collectable(&bthread::g_cp_sl);
-    if (!sampling_range) { // Don't sample
-        return bthread::mutex_lock_contended_impl(m, NULL);
-    }
-    // Start sampling.
-    const int64_t start_ns = butil::cpuwide_time_ns();
-    // NOTE: Don't modify m->csite outside lock since multiple threads are
-    // still contending with each other.
-    const int rc = bthread::mutex_lock_contended_impl(m, NULL);
-    if (!rc) { // Inside lock
-        m->csite.duration_ns = butil::cpuwide_time_ns() - start_ns;
-        m->csite.sampling_range = sampling_range;
-    } // else rare
-    return rc;
-}
-
-int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
-                            const struct timespec* __restrict abstime) {
-    bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
+static int bthread_mutex_lock_impl(bthread_mutex_t* __restrict m,
+                                   const struct timespec* __restrict abstime) {
+    auto split = (bthread::MutexInternal*)m->butex;
     if (!split->locked.exchange(1, butil::memory_order_acquire)) {
         return 0;
     }
@@ -937,8 +910,9 @@ int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
         return bthread::mutex_lock_contended_impl(m, abstime);
     }
     // Ask Collector if this (contended) locking should be sampled.
-    const size_t sampling_range = bvar::is_collectable(&bthread::g_cp_sl);
-    if (!sampling_range) { // Don't sample
+    const size_t sampling_range =
+        m->enable_csite ? bvar::is_collectable(&bthread::g_cp_sl) : bvar::INVALID_SAMPLING_RANGE;
+    if (!bvar::is_sampling_range_valid(sampling_range)) { // Don't sample
         return bthread::mutex_lock_contended_impl(m, abstime);
     }
     // Start sampling.
@@ -958,10 +932,20 @@ int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
     return rc;
 }
 
+int bthread_mutex_lock(bthread_mutex_t* m) {
+    return bthread_mutex_lock_impl(m, NULL);
+}
+
+int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
+                            const struct timespec* __restrict abstime) {
+    return bthread_mutex_lock_impl(m, abstime);
+}
+
 int bthread_mutex_unlock(bthread_mutex_t* m) {
-    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
+    auto whole = (butil::atomic<unsigned>*)m->butex;
     bthread_contention_site_t saved_csite = {0, 0};
-    if (bthread::is_contention_site_valid(m->csite)) {
+    bool is_valid = bthread::is_contention_site_valid(m->csite);
+    if (is_valid) {
         saved_csite = m->csite;
         bthread::make_contention_site_invalid(&m->csite);
     }
@@ -971,7 +955,7 @@ int bthread_mutex_unlock(bthread_mutex_t* m) {
         return 0;
     }
     // Wakeup one waiter
-    if (!bthread::is_contention_site_valid(saved_csite)) {
+    if (!is_valid) {
         bthread::butex_wake(whole);
         return 0;
     }
@@ -980,6 +964,21 @@ int bthread_mutex_unlock(bthread_mutex_t* m) {
     const int64_t unlock_end_ns = butil::cpuwide_time_ns();
     saved_csite.duration_ns += unlock_end_ns - unlock_start_ns;
     bthread::submit_contention(saved_csite, unlock_end_ns);
+    return 0;
+}
+
+int bthread_mutexattr_init(bthread_mutexattr_t* attr) {
+    attr->enable_csite = true;
+    return 0;
+}
+
+int bthread_mutexattr_disable_csite(bthread_mutexattr_t* attr) {
+    attr->enable_csite = false;
+    return 0;
+}
+
+int bthread_mutexattr_destroy(bthread_mutexattr_t* attr) {
+    attr->enable_csite = true;
     return 0;
 }
 
