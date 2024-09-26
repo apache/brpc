@@ -441,7 +441,7 @@ static void usleep_thread_impl(PoolData2* data) {
         PoolData2* data_new = new PoolData2();
         ASSERT_EQ(0, bthread_setspecific(data->key, data_new));
     }
-    bthread_usleep(1000L * 1000L);
+    bthread_usleep(1000L);
     int length = get_thread_local_keytable_list_length(&test_pool);
     ASSERT_LE((size_t)length, bthread::FLAGS_key_table_list_size);
 }
@@ -487,7 +487,9 @@ TEST(KeyTest, frequently_borrow_keytable_when_using_pool) {
     bthread_t bth;
     ASSERT_EQ(0, bthread_start_urgent(&bth, &data.attr, run_launch_many_bthreads, &data));
     ASSERT_EQ(0, bthread_join(bth, NULL));
-
+    std::cout << "Free keytable size is "
+              << bthread_keytable_pool_size(&test_pool)
+              << " use keytable size is 25000" << std::endl;
     ASSERT_EQ(0, bthread_keytable_pool_destroy(&test_pool));
     ASSERT_EQ(0, bthread_key_delete(data.key));
 }
@@ -539,10 +541,12 @@ TEST(KeyTest, borrow_and_return_keytable_when_using_pool) {
     bthread_t borrow_bth[8];
     bthread_t return_bth[8];
     for (size_t i = 0; i < arraysize(borrow_bth); ++i) {
-        ASSERT_EQ(0, bthread_start_background(&borrow_bth[i], &attr, borrow_thread, NULL));
+        ASSERT_EQ(0, bthread_start_background(&borrow_bth[i], &attr,
+                                              borrow_thread, NULL));
     }
     for (size_t i = 0; i < arraysize(return_bth); ++i) {
-        ASSERT_EQ(0, bthread_start_background(&return_bth[i], &attr, return_thread, NULL));
+        ASSERT_EQ(0, bthread_start_background(&return_bth[i], &attr,
+                                              return_thread, NULL));
     }
 
     for (size_t i = 0; i < arraysize(borrow_bth); ++i) {
@@ -610,6 +614,7 @@ TEST(KeyTest, use_bthread_mutex_in_dtor) {
               *(lid_seqs.end() - 1) - *lid_seqs.begin());
 
     ASSERT_EQ(0, bthread_key_delete(key));
+    ASSERT_EQ(0, bthread_mutex_destroy(&mu));
 }
 
 }  // namespace

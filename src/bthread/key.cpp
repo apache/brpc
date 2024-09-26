@@ -275,9 +275,9 @@ public:
         return temp;
     }
 
-    void move_first_n_to_target(KeyTable** target, uint32_t size) {
+    int move_first_n_to_target(KeyTable** target, uint32_t size) {
         if (size > _length || _head == NULL) {
-            return;
+            return 0;
         }
 
         KeyTable* current = _head;
@@ -301,6 +301,7 @@ public:
                 _tail = NULL;
             }
         }
+        return count;
     }
 
     inline uint32_t get_length() {
@@ -343,8 +344,10 @@ KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
             if (list) {
                 for (uint32_t i = 0; i < FLAGS_borrow_from_globle_size; ++i) {
                     if (p) {
-                        list->get()->append(p);
                         pool->free_keytables = p->next;
+                        list->get()->append(p);
+                        p = (KeyTable*)pool->free_keytables;
+                        --pool->size;
                     } else {
                         break;
                     }
@@ -387,8 +390,10 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
         pthread_rwlock_unlock(&pool->rwlock);
         pthread_rwlock_wrlock(&pool->rwlock);
         if (!pool->destroyed) {
-            list->get()->move_first_n_to_target((KeyTable**)(&pool->free_keytables),
-                                                FLAGS_key_table_list_size / 2);
+            int out = list->get()->move_first_n_to_target(
+                (KeyTable**)(&pool->free_keytables),
+                FLAGS_key_table_list_size / 2);
+            pool->size += out;
         }
     }
     pthread_rwlock_unlock(&pool->rwlock);
@@ -440,6 +445,7 @@ int bthread_keytable_pool_init(bthread_keytable_pool_t* pool) {
     pthread_rwlock_init(&pool->rwlock, NULL);
     pool->list = new butil::ThreadLocal<bthread::KeyTableList>();
     pool->free_keytables = NULL;
+    pool->size = 0;
     pool->destroyed = 0;
     return 0;
 }
@@ -452,6 +458,7 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
     bthread::KeyTable* saved_free_keytables = NULL;
     pthread_rwlock_wrlock(&pool->rwlock);
     pool->destroyed = 1;
+    pool->size = 0;
     delete (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
     saved_free_keytables = (bthread::KeyTable*)pool->free_keytables;
     pool->list = NULL;
@@ -489,10 +496,7 @@ int bthread_keytable_pool_getstat(bthread_keytable_pool_t* pool,
         return EINVAL;
     }
     pthread_rwlock_wrlock(&pool->rwlock);
-    size_t count = 0;
-    bthread::KeyTable* p = (bthread::KeyTable*)pool->free_keytables;
-    for (; p; p = p->next, ++count) {}
-    stat->nfree = count;
+    stat->nfree = pool->size;
     pthread_rwlock_unlock(&pool->rwlock);
     return 0;
 }
@@ -554,6 +558,7 @@ void bthread_keytable_pool_reserve(bthread_keytable_pool_t* pool,
         }
         kt->next = (bthread::KeyTable*)pool->free_keytables;
         pool->free_keytables = kt;
+        ++pool->size;
         pthread_rwlock_unlock(&pool->rwlock);
         if (data == NULL) {
             break;
