@@ -105,6 +105,7 @@
 #include "butil/bit_array.h"                       // bit_array_*
 #include "butil/strings/string_piece.h"            // StringPiece
 #include "butil/memory/scope_guard.h"
+#include "butil/memory/manual_constructor.h"
 
 namespace butil {
 
@@ -265,24 +266,26 @@ public:
     BucketInfo bucket_info() const;
 
     struct Bucket {
-        explicit Bucket(const _K& k) : next(NULL)
-        { new (&element_spaces) Element(k); }
-        Bucket(const Bucket& other) : next(NULL)
-        { new (&element_spaces) Element(other.element()); }
+        explicit Bucket(const _K& k) : next(NULL) {
+            element_.Init(k);
+        }
+        Bucket(const Bucket& other) : next(NULL) {
+            element_.Init(other.element());
+        }
+
         bool is_valid() const { return next != (const Bucket*)-1UL; }
         void set_invalid() { next = (Bucket*)-1UL; }
         // NOTE: Only be called when is_valid() is true.
         Element& element() {
-            void* spaces = &element_spaces; // Suppress strict-aliasing
-            return *reinterpret_cast<Element*>(spaces);
+            return *element_;
         }
         const Element& element() const {
-            const void* spaces = &element_spaces;
-            return *reinterpret_cast<const Element*>(spaces);
+            return *element_;
         }
         Bucket *next;
-        typename std::aligned_storage<sizeof(Element), alignof(Element)>::type
-            element_spaces;
+
+    private:
+        ManualConstructor<Element> element_;
     };
 
     allocator_type& get_allocator() { return _pool.get_allocator(); }

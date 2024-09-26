@@ -29,6 +29,7 @@
 #include "butil/macros.h"                 // BAIDU_CACHELINE_ALIGNMENT
 #include "butil/scoped_lock.h"            // BAIDU_SCOPED_LOCK
 #include "butil/thread_local.h"           // BAIDU_THREAD_LOCAL
+#include "butil/memory/manual_constructor.h"
 #include <vector>
 
 #ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
@@ -97,7 +98,7 @@ public:
     // items in the Block are only used by the thread.
     // To support cache-aligned objects, align Block.items by cacheline.
     struct BAIDU_CACHELINE_ALIGNMENT Block {
-        char items[sizeof(T) * BLOCK_NITEM];
+        ManualConstructor<T> items[BLOCK_NITEM];
         size_t nitem;
 
         Block() : nitem(0) {}
@@ -145,7 +146,7 @@ public:
         // which may include parenthesis because when T is POD, "new T()"
         // and "new T" are different: former one sets all fields to 0 which
         // we don't want.
-#define BAIDU_OBJECT_POOL_GET(CTOR_ARGS)                                \
+#define BAIDU_OBJECT_POOL_GET(...)                                      \
         /* Fetch local free ptr */                                      \
         if (_cur_free.nfree) {                                          \
             BAIDU_OBJECT_POOL_FREE_ITEM_NUM_SUB1;                       \
@@ -158,9 +159,13 @@ public:
             BAIDU_OBJECT_POOL_FREE_ITEM_NUM_SUB1;                       \
             return _cur_free.ptrs[--_cur_free.nfree];                   \
         }                                                               \
+        T* obj = NULL;                                                  \
+        auto ctor = [&](void* mem) {                                    \
+            obj = new (mem) T(__VA_ARGS__);                             \
+        };                                                              \
         /* Fetch memory from local block */                             \
         if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {            \
-            T* obj = new ((T*)_cur_block->items + _cur_block->nitem) T CTOR_ARGS; \
+            (_cur_block->items + _cur_block->nitem)->InitBy(ctor);      \
             if (!ObjectPoolValidator<T>::validate(obj)) {               \
                 obj->~T();                                              \
                 return NULL;                                            \
@@ -171,7 +176,7 @@ public:
         /* Fetch a Block from global */                                 \
         _cur_block = add_block(&_cur_block_index);                      \
         if (_cur_block != NULL) {                                       \
-            T* obj = new ((T*)_cur_block->items + _cur_block->nitem) T CTOR_ARGS; \
+            (_cur_block->items + _cur_block->nitem)->InitBy(ctor);      \
             if (!ObjectPoolValidator<T>::validate(obj)) {               \
                 obj->~T();                                              \
                 return NULL;                                            \
@@ -188,12 +193,12 @@ public:
 
         template <typename A1>
         inline T* get(const A1& a1) {
-            BAIDU_OBJECT_POOL_GET((a1));
+            BAIDU_OBJECT_POOL_GET(a1);
         }
 
         template <typename A1, typename A2>
         inline T* get(const A1& a1, const A2& a2) {
-            BAIDU_OBJECT_POOL_GET((a1, a2));
+            BAIDU_OBJECT_POOL_GET(a1, a2);
         }
 
 #undef BAIDU_OBJECT_POOL_GET

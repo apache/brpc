@@ -51,24 +51,36 @@ namespace butil {
 template <size_t Size, size_t ByteAlignment>
 struct AlignedMemory {};
 
-#define BUTIL_DECL_ALIGNED_MEMORY(byte_alignment) \
-    template <size_t Size> \
-    class AlignedMemory<Size, byte_alignment> { \
-     public: \
-      ALIGNAS(byte_alignment) uint8_t data_[Size]; \
-      void* void_data() { return static_cast<void*>(data_); } \
-      const void* void_data() const { \
-        return static_cast<const void*>(data_); \
-      } \
-      template<typename Type> \
+// std::aligned_storage has been deprecated in C++23,
+// because aligned_* are harmful to codebases and should not be used.
+// For details, see https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p1413r3.pdf
+#if (__cplusplus >= 201103L)
+// In most places, use the C++11 keyword "alignas", which is preferred.
+#define DECL_ALIGNED_BUFFER(buffer_name, byte_alignment, size) \
+    alignas(byte_alignment) uint8_t buffer_name[size]
+#else
+#define DECL_ALIGNED_BUFFER(buffer_name, byte_alignment, size) \
+    ALIGNAS(byte_alignment) uint8_t buffer_name[size]
+#endif
+
+#define BUTIL_DECL_ALIGNED_MEMORY(byte_alignment)                 \
+    template <size_t Size>                                        \
+    class AlignedMemory<Size, byte_alignment> {                   \
+     public:                                                      \
+      DECL_ALIGNED_BUFFER(data_, byte_alignment, Size);           \
+      void* void_data() { return static_cast<void*>(data_); }     \
+      const void* void_data() const {                             \
+        return static_cast<const void*>(data_);                   \
+      }                                                           \
+      template<typename Type>                                     \
       Type* data_as() { return static_cast<Type*>(void_data()); } \
-      template<typename Type> \
-      const Type* data_as() const { \
-        return static_cast<const Type*>(void_data()); \
-      } \
-     private: \
-      void* operator new(size_t); \
-      void operator delete(void*); \
+      template<typename Type>                                     \
+      const Type* data_as() const {                               \
+        return static_cast<const Type*>(void_data());             \
+      }                                                           \
+     private:                                                     \
+      void* operator new(size_t);                                 \
+      void operator delete(void*);                                \
     }
 
 // Specialization for all alignments is required because MSVC (as of VS 2008)
