@@ -449,17 +449,26 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     } else {
         // NOSIGNAL affects current task, not the new task.
         RemainedFn fn = NULL;
-        if (g->current_task()->about_to_quit) {
-            fn = ready_to_run_in_worker_ignoresignal;
+        TaskMeta* current_task = g->current_task();
+        if (current_task->bound_task_group) {
+            CHECK(current_task->bound_task_group == g);
+            fn = ready_to_run_in_target_worker_bound;
+            ReadyToRunTargetArgs args = {g->current_tid(), false, g};
+            g->set_remained(fn, &args);
+            TaskGroup::sched_to(pg, m->tid);
         } else {
-            fn = ready_to_run_in_worker;
+            if (g->current_task()->about_to_quit) {
+                fn = ready_to_run_in_worker_ignoresignal;
+            } else {
+                fn = ready_to_run_in_worker;
+            }
+            ReadyToRunArgs args = {
+                g->current_tid(),
+                (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
+            };
+            g->set_remained(fn, &args);
+            TaskGroup::sched_to(pg, m->tid);
         }
-        ReadyToRunArgs args = {
-            g->current_tid(),
-            (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
-        };
-        g->set_remained(fn, &args);
-        TaskGroup::sched_to(pg, m->tid);
     }
     return 0;
 }
