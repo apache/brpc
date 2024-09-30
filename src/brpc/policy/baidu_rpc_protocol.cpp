@@ -263,9 +263,10 @@ void SendRpcResponse(int64_t correlation_id,
     if (attached_size > 0) {
         meta.set_attachment_size(attached_size);
     }
+    StreamId response_stream_id = INVALID_STREAM_ID;
     SocketUniquePtr stream_ptr;
     if (!response_stream_ids.empty()) {
-        StreamId response_stream_id = response_stream_ids[0];
+        response_stream_id = response_stream_ids[0];
         if (Socket::Address(response_stream_id, &stream_ptr) == 0) {
             Stream* s = (Stream *) stream_ptr->conn();
             StreamSettings *stream_settings = meta.mutable_stream_settings();
@@ -309,23 +310,34 @@ void SendRpcResponse(int64_t correlation_id,
         // Response_stream can be INVALID_STREAM_ID when error occurs.
         if (SendStreamData(sock, &res_buf,
                            accessor.remote_stream_settings()->stream_id(),
-                           accessor.response_streams()[0]) != 0) {
+                           response_stream_id) != 0) {
             const int errcode = errno;
             std::string error_text = butil::string_printf(64, "Fail to write into %s",
                                                           sock->description().c_str());
             PLOG_IF(WARNING, errcode != EPIPE) << error_text;
             cntl->SetFailed(errcode,  "%s", error_text.c_str());
-            if(stream_ptr) {
-                ((Stream*)stream_ptr->conn())->Close(errcode, "%s",
-                                                     error_text.c_str());
-            }
+            Stream::SetFailed(response_stream_ids, errcode, "%s",
+                              error_text.c_str());
             return;
         }
 
+        // Now it's ok the mark these server-side streams as connected as all the
+        // written user data would follower the RPC response.
+        // Reuse stream_ptr to avoid address first stream id again
         if(stream_ptr) {
-            // Now it's ok the mark this server-side stream as connected as all the
-            // written user data would follower the RPC response.
             ((Stream*)stream_ptr->conn())->SetConnected();
+        }
+        for (size_t i = 1; i < response_stream_ids.size(); ++i) {
+            StreamId extra_stream_id = response_stream_ids[i];
+            SocketUniquePtr extra_stream_ptr;
+            if (Socket::Address(extra_stream_id, &extra_stream_ptr) == 0) {
+                Stream* extra_stream = (Stream *) extra_stream_ptr->conn();
+                extra_stream->SetHostSocket(sock);
+                extra_stream->SetConnected();
+            } else {
+                LOG(WARNING) << "Stream=" << extra_stream_id
+                             << " was closed before sending response";
+            }
         }
     } else{
         // Have the risk of unlimited pending responses, in which case, tell
@@ -722,7 +734,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         if (remote_stream_id != INVALID_STREAM_ID) {
-            SendStreamRst(msg->socket(), meta.stream_settings().stream_id());
+            SendStreamRst(msg->socket(), remote_stream_id);
             const auto & extra_stream_ids = meta.stream_settings().extra_stream_ids();
             for (int i = 0; i < extra_stream_ids.size(); ++i) {
                 policy::SendStreamRst(msg->socket(), extra_stream_ids[i]);

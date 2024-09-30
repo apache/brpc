@@ -37,7 +37,8 @@ public:
         for (size_t i = 0; i < size; ++i) {
             os << "msg[" << i << "]=" << *messages[i];
         }
-        LOG(INFO) << "Received from Stream=" << id << ": " << os.str();
+        auto res = brpc::StreamWrite(id, *messages[0]);
+        LOG(INFO) << "Received from Stream=" << id << ": " << os.str() << " and write back result: " << res;
         return 0;
     }
     virtual void on_idle_timeout(brpc::StreamId id) {
@@ -56,9 +57,7 @@ public:
 class StreamingBatchEchoService : public example::EchoService {
 public:
     virtual ~StreamingBatchEchoService() {
-        brpc::StreamClose(_sds[0]);
-        brpc::StreamClose(_sds[1]);
-        brpc::StreamClose(_sds[2]);
+        closeStreams();
     };
     virtual void Echo(google::protobuf::RpcController* controller,
                       const example::EchoRequest* /*request*/,
@@ -67,7 +66,7 @@ public:
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
-
+        closeStreams();
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(controller);
         brpc::StreamOptions stream_options;
@@ -80,6 +79,12 @@ public:
     }
 
 private:
+    void closeStreams() {
+        for(auto i = 0; i < _sds.size(); ++i) {
+            brpc::StreamClose(_sds[i]);
+        }
+        _sds.clear();
+    }
     StreamReceiver _receiver;
     brpc::StreamIds _sds;
 };
