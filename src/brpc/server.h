@@ -287,6 +287,8 @@ struct ServerOptions {
     // Owned by Server and deleted in server's destructor.
     RpcPBMessageFactory* rpc_pb_message_factory;
 
+    bool ignore_eovercrowded;
+
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ServerOptions from being bloated in most cases.
@@ -412,6 +414,7 @@ public:
         const google::protobuf::MethodDescriptor* method;
         MethodStatus* status;
         AdaptiveMaxConcurrency max_concurrency;
+        bool ignore_eovercrowded = false;
 
         MethodProperty();
     };
@@ -590,6 +593,19 @@ public:
     int MaxConcurrencyOf(google::protobuf::Service* service,
                          const butil::StringPiece& method_name) const;
 
+    bool& IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name);
+    bool IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) const;
+
+    bool& IgnoreEovercrowdedOf(const butil::StringPiece& full_service_name,
+                          const butil::StringPiece& method_name);
+    bool IgnoreEovercrowdedOf(const butil::StringPiece& full_service_name,
+                         const butil::StringPiece& method_name) const;
+
+    bool& IgnoreEovercrowdedOf(google::protobuf::Service* service,
+                          const butil::StringPiece& method_name);
+    bool IgnoreEovercrowdedOf(google::protobuf::Service* service,
+                         const butil::StringPiece& method_name) const;
+
     int Concurrency() const {
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
@@ -694,6 +710,8 @@ friend class Controller;
 
     AdaptiveMaxConcurrency& MaxConcurrencyOf(MethodProperty*);
     int MaxConcurrencyOf(const MethodProperty*) const;
+    bool& IgnoreEovercrowdedOf(MethodProperty*);
+    bool IgnoreEovercrowdedOf(const MethodProperty*) const;
 
     static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
                                          ConcurrencyLimiter** out);
