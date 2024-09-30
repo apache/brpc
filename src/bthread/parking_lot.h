@@ -57,7 +57,9 @@ public:
     // Wait for tasks.
     // If the `expected_state' does not match, wait() may finish directly.
     void wait(const State& expected_state) {
+        _waiting_worker_count++;
         futex_wait_private(&_pending_signal, expected_state.val, NULL);
+        _waiting_worker_count--;
     }
 
     // Wakeup suspended wait() and make them unwaitable ever. 
@@ -66,7 +68,7 @@ public:
         futex_wake_private(&_pending_signal, 10000);
     }
 
-    int waiter_group_id{-1};
+inline static butil::atomic<int> _waiting_worker_count{};
 
 private:
     // higher 31 bits for signalling, LSB for stopping.

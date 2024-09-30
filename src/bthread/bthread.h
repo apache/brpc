@@ -37,11 +37,8 @@
 
 __BEGIN_DECLS
 
-extern int bthread_set_ext_tx_prc_func(
-        std::function<std::tuple<std::function<void()>,
-                std::function<void(int16_t)>,
-                std::function<bool(bool)>,
-                std::function<bool()>>(int16_t)>);
+extern int bthread_set_ext_tx_prc_func(std::function<
+        std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)>);
 
 // Create bthread `fn(args)' with attributes `attr' and put the identifier into
 // `tid'. Switch to the new thread and schedule old thread to run. Use this
@@ -61,11 +58,6 @@ extern int bthread_start_background(bthread_t* __restrict tid,
                                     const bthread_attr_t* __restrict attr,
                                     void * (*fn)(void*),
                                     void* __restrict args);
-
-extern int bthread_start_from_dispatcher(bthread_t* __restrict tid,
-                                         const bthread_attr_t* __restrict attr,
-                                         void * (*fn)(void*),
-                                         void* __restrict args);
 
 // Wake up operations blocking the thread. Different functions may behave
 // differently:
@@ -168,8 +160,6 @@ extern int bthread_jump_group(int group_id);
 
 // Yield processor to another bthread and block current task.
 extern int bthread_block(void);
-
-extern int bthread_notify_worker(int group_id);
 
 // Suspend current thread for at least `microseconds'
 // Interruptible by bthread_interrupt().

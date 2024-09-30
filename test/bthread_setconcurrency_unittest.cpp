@@ -173,22 +173,22 @@ TEST(BthreadTest, min_concurrency) {
     ASSERT_EQ(conn + 1, get_min_concurrency());
     ASSERT_EQ(conn + 1, bthread::g_task_control->concurrency());
 
-//    std::vector<bthread_t> tids;
-//    for (int i = 0; i < conn; ++i) {
-//        bthread_t tid;
-//        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, sleep_proc, NULL);
-//        tids.push_back(tid);
-//    }
-//    for (int i = 0; i < add_conn; ++i) {
-//        bthread_t tid;
-//        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, add_concurrency_proc, NULL);
-//        tids.push_back(tid);
-//    }
-//    for (size_t i = 0; i < tids.size(); ++i) {
-//        bthread_join(tids[i], NULL);
-//    }
-//    ASSERT_EQ(conn + add_conn, bthread_getconcurrency());
-//    ASSERT_EQ(conn + add_conn, bthread::g_task_control->concurrency());
+    std::vector<bthread_t> tids;
+    for (int i = 0; i < conn; ++i) {
+        bthread_t tid;
+        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, sleep_proc, NULL);
+        tids.push_back(tid);
+    }
+    for (int i = 0; i < add_conn; ++i) {
+        bthread_t tid;
+        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, add_concurrency_proc, NULL);
+        tids.push_back(tid);
+    }
+    for (size_t i = 0; i < tids.size(); ++i) {
+        bthread_join(tids[i], NULL);
+    }
+    ASSERT_EQ(conn + add_conn, bthread_getconcurrency());
+    ASSERT_EQ(conn + add_conn, bthread::g_task_control->concurrency());
 }
 
 } // namespace

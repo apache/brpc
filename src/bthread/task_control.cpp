@@ -41,6 +41,9 @@ DEFINE_int32(task_group_runqueue_capacity, 4096,
 DEFINE_int32(task_group_yield_before_idle, 0,
              "TaskGroup yields so many times before idle");
 
+std::function<std::pair<std::function<void()>, std::function<bool(int16_t)>>(
+    int16_t)>
+    get_tx_proc_functors;
 namespace bthread {
 
 DECLARE_int32(bthread_concurrency);
@@ -70,11 +73,19 @@ void* TaskControl::worker_thread(void* arg) {
         LOG(ERROR) << "Fail to create TaskGroup in pthread=" << pthread_self();
         return NULL;
     }
-
-    g->TrySetExtTxProcFuncs();
-
+    int task_group_id = c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed);
     std::string worker_thread_name = butil::string_printf(
-        "brpc_worker:%d", g->group_id_);
+        "brpc_worker:%d",
+        task_group_id);
+
+    g->group_id_ = task_group_id;
+    if (get_tx_proc_functors != nullptr) {
+        auto functors = get_tx_proc_functors(task_group_id);
+        g->tx_processor_exec_ = functors.first;
+        g->update_ext_proc_ = functors.second;
+        (g->update_ext_proc_)(1);
+    }
+
     butil::PlatformThread::SetName(worker_thread_name.c_str());
     BT_VLOG << "Created worker=" << pthread_self()
             << " bthread=" << g->main_tid();
@@ -168,12 +179,12 @@ int TaskControl::init(int concurrency) {
         LOG(ERROR) << "Fail to get global_timer_thread";
         return -1;
     }
-
-    _workers.resize(_concurrency);
-    for (int worker_id = 0; worker_id < _concurrency; ++worker_id) {
-        const int rc = pthread_create(&_workers[worker_id], NULL, worker_thread, this);
+    
+    _workers.resize(_concurrency);   
+    for (int i = 0; i < _concurrency; ++i) {
+        const int rc = pthread_create(&_workers[i], NULL, worker_thread, this);
         if (rc) {
-            LOG(ERROR) << "Fail to create _workers[" << worker_id << "], " << berror(rc);
+            LOG(ERROR) << "Fail to create _workers[" << i << "], " << berror(rc);
             return -1;
         }
     }
@@ -267,7 +278,7 @@ void TaskControl::stop_and_join() {
         _stop = true;
         _ngroup.exchange(0, butil::memory_order_relaxed); 
     }
-    for (int i = 0; i < _parking_lot_num; ++i) {
+    for (int i = 0; i < PARKING_LOT_NUM; ++i) {
         _pl[i].stop();
     }
     // Interrupt blocking operations.
@@ -305,18 +316,9 @@ int TaskControl::_add_group(TaskGroup* g) {
     }
     size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
     if (ngroup < (size_t)BTHREAD_MAX_CONCURRENCY) {
-        CHECK(_groups[ngroup] == nullptr);
         _groups[ngroup] = g;
-        g->group_id_ = int(ngroup);
-        ParkingLot *pl = &_pl[ngroup];
-        CHECK(pl->waiter_group_id == -1);
-        g->_pl = pl;
-        pl->waiter_group_id = g->group_id_;
-        _parking_lot_num++;
         _ngroup.store(ngroup + 1, butil::memory_order_release);
-        CHECK(_parking_lot_num.load() == int(_ngroup.load()));
     }
-    // LOG(INFO) << "add group id: " << ngroup;
     mu.unlock();
     // See the comments in _destroy_group
     // TODO: Not needed anymore since non-worker pthread cannot have TaskGroup
@@ -410,9 +412,7 @@ void TaskControl::signal_task(int num_task) {
     if (num_task <= 0) {
         return;
     }
-
-    int waiting_worker = TaskGroup::_waiting_workers.load(std::memory_order_relaxed);
-    if (waiting_worker == 0) {
+    if (ParkingLot::_waiting_worker_count.load(butil::memory_order_acquire) == 0) {
         if (FLAGS_bthread_min_concurrency > 0 &&
             _concurrency.load(butil::memory_order_relaxed) < FLAGS_bthread_concurrency) {
             // Add worker if all workers are busy and FLAGS_bthread_concurrency is
@@ -424,7 +424,6 @@ void TaskControl::signal_task(int num_task) {
         }
         return;
     }
-
     // TODO(gejun): Current algorithm does not guarantee enough threads will
     // be created to match caller's requests. But in another side, there's also
     // many useless signalings according to current impl. Capping the concurrency
@@ -432,24 +431,14 @@ void TaskControl::signal_task(int num_task) {
     if (num_task > 2) {
         num_task = 2;
     }
-    // TODO(zkl): use _ngroup instead of _parking_lot_num
-    int parking_lot_num = _parking_lot_num.load();
-    if (parking_lot_num == 0) {
-        LOG(WARNING) << "No parking lot initialized yet";
-        return;
-    }
-    int start_index = butil::fmix64(pthread_numeric_id()) % parking_lot_num;
-    // num_task -= _pl[start_index].signal(1);
-    bool force_wakeup = true;
-    num_task -= signal_group(start_index, force_wakeup);
-
+    int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
+    num_task -= _pl[start_index].signal(1);
     if (num_task > 0) {
-        for (int i = 1; i < parking_lot_num && num_task > 0; ++i) {
-            if (++start_index >= parking_lot_num) {
+        for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
+            if (++start_index >= PARKING_LOT_NUM) {
                 start_index = 0;
             }
-            // num_task -= _pl[start_index].signal(1);
-            num_task -= signal_group(start_index, force_wakeup);
+            num_task -= _pl[start_index].signal(1);
         }
     }
     if (num_task > 0 &&
@@ -463,16 +452,6 @@ void TaskControl::signal_task(int num_task) {
     }
 }
 
-
-bool TaskControl::signal_group(int group_id, bool force_wakeup) {
-//    CHECK(group_id < _ngroup.load(std::memory_order_relaxed));
-//    bool success = _groups[group_id]->notify(force_wakeup);
-//    LOG(INFO) << "signal group: " << group_id << ", force wakeup: " << force_wakeup
-//        << " success: " << success;
-//    return success;
-    return _groups[group_id]->notify(force_wakeup);
-}
-
 void TaskControl::print_rq_sizes(std::ostream& os) {
     const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
     DEFINE_SMALL_ARRAY(int, nums, ngroup*3, 256);
@@ -484,10 +463,12 @@ void TaskControl::print_rq_sizes(std::ostream& os) {
             nums[i] = (_groups[i] ? _groups[i]->_rq.volatile_size() : 0);
         }
         for (size_t i = 0; i < ngroup; ++i) {
-            nums[ngroup + i] = (_groups[i] ? _groups[i]->_remote_rq.size() : 0);
+            nums[ngroup + i] = (_groups[i] ? _groups[i]->_remote_rq._task_cnt.load(butil::memory_order_relaxed)
+                                           : 0);
         }
         for (size_t i = 0; i < ngroup; ++i) {
-            nums[ngroup * 2 + i] = (_groups[i] ? _groups[i]->_bound_rq.size() : 0);
+            nums[ngroup * 2 + i] = (_groups[i] ? _groups[i]->_bound_rq._task_cnt.load(butil::memory_order_relaxed)
+                                               : 0);
         }
     }
     os << "rq: ";

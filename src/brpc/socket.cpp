@@ -54,8 +54,6 @@
 #include <sys/event.h>
 #endif
 
-DEFINE_bool(dispatch_lazily, false, "dispatcher lazily creates task");
-
 namespace bthread {
 size_t __attribute__((weak))
 get_sizes(const bthread_id_list_t* list, size_t* cnt, size_t n);
@@ -2162,11 +2160,9 @@ int Socket::StartInputEvent(SocketId id, uint32_t events,
 
         bthread_attr_t attr = thread_attr;
         attr.keytable_pool = p->_keytable_pool;
-
-        // If dispatch lazily, only signals target task group worker.
-        int err = FLAGS_dispatch_lazily ? bthread_start_from_dispatcher(&tid, &attr, ProcessEvent, p)
-                : bthread_start_urgent(&tid, &attr, ProcessEvent, p);
-        if (err != 0) {
+        // set no signal flag
+        attr.flags |= BTHREAD_NOSIGNAL;
+        if (bthread_start_urgent(&tid, &attr, ProcessEvent, p) != 0) {
             LOG(FATAL) << "Fail to start ProcessEvent";
             ProcessEvent(p);
         }

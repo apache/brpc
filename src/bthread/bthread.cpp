@@ -28,17 +28,11 @@
 #include "bthread/list_of_abafree_id.h"
 #include "bthread/bthread.h"
 
-extern std::function<std::tuple<std::function<void()>,
-        std::function<void(int16_t)>,
-        std::function<bool(bool)>,
-        std::function<bool()>>(int16_t)>
-        get_tx_proc_functors;
+extern std::function<
+        std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)> get_tx_proc_functors;
 
-int bthread_set_ext_tx_prc_func(
-        std::function<std::tuple<std::function<void()>,
-                std::function<void(int16_t)>,
-                std::function<bool(bool)>,
-                std::function<bool()>>(int16_t)> functors) {
+int bthread_set_ext_tx_prc_func(std::function<
+        std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)> functors) {
     if (get_tx_proc_functors == nullptr) {
         get_tx_proc_functors = functors;
         return 0;
@@ -104,8 +98,8 @@ inline TaskControl* get_or_new_task_control() {
         return NULL;
     }
     int concurrency = FLAGS_bthread_min_concurrency > 0 ?
-                      FLAGS_bthread_min_concurrency :
-                      FLAGS_bthread_concurrency;
+        FLAGS_bthread_min_concurrency :
+        FLAGS_bthread_concurrency;
     if (c->init(concurrency) != 0) {
         LOG(ERROR) << "Fail to init g_task_control";
         delete c;
@@ -163,18 +157,6 @@ start_from_non_worker(bthread_t* __restrict tid,
         tid, attr, fn, arg);
 }
 
-BUTIL_FORCE_INLINE int
-start_from_dispatcher(bthread_t* __restrict tid,
-                      const bthread_attr_t* __restrict attr,
-                      void * (*fn)(void*),
-                      void* __restrict arg) {
-    TaskControl* c = get_or_new_task_control();
-    if (NULL == c) {
-        return ENOMEM;
-    }
-    return c->choose_one_group()->start_from_dispatcher(tid, attr, fn, arg);
-}
-
 struct TidTraits {
     static const size_t BLOCK_SIZE = 63;
     static const size_t MAX_ENTRIES = 65536;
@@ -221,13 +203,6 @@ int bthread_start_background(bthread_t* __restrict tid,
         return g->start_background<false>(tid, attr, fn, arg);
     }
     return bthread::start_from_non_worker(tid, attr, fn, arg);
-}
-
-int bthread_start_from_dispatcher(bthread_t* __restrict tid,
-                                  const bthread_attr_t* __restrict attr,
-                                  void * (*fn)(void*),
-                                  void* __restrict arg) {
-    return bthread::start_from_dispatcher(tid, attr, fn, arg);
 }
 
 void bthread_flush() {
@@ -429,14 +404,6 @@ int bthread_block(void) {
         return 0;
     }
     return -1;
-}
-
-int bthread_notify_worker(int group_id) {
-    bthread::TaskControl* c = bthread::get_or_new_task_control();
-    if (c == nullptr) {
-        return 0;
-    }
-    return c->signal_group(group_id);
 }
 
 int bthread_set_worker_startfn(void (*start_fn)()) {

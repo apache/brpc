@@ -66,9 +66,10 @@ int bthread_cond_signal(bthread_cond_t* c) {
     butil::atomic<int>* const saved_seq = ic->seq;
     saved_seq->fetch_add(1, butil::memory_order_release);
     // don't touch ic any more
-    bool no_signal = false;
-    bool no_exchange = true;
-    bthread::butex_wake(saved_seq, no_signal, no_exchange);
+    bool no_signal = true;
+    bthread::butex_wake(saved_seq, no_signal);
+    // flush unsignaled tasks manually
+    bthread_flush();
     return 0;
 }
 

@@ -286,15 +286,15 @@ inline TaskGroup* get_task_group(TaskControl* c, bool nosignal = false) {
     return g;
 }
 
-inline void run_in_local_task_group(TaskGroup* g, bthread_t tid, bool nosignal, bool noexchange = false) {
-    if (!noexchange) {
+inline void run_in_local_task_group(TaskGroup* g, bthread_t tid, bool nosignal) {
+    if (!nosignal) {
         TaskGroup::exchange(&g, tid);
     } else {
         g->ready_to_run(tid, nosignal);
     }
 }
 
-int butex_wake(void* arg, bool nosignal, bool noexchange) {
+int butex_wake(void* arg, bool nosignal) {
     Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
     ButexWaiter* front = NULL;
     {
@@ -322,7 +322,7 @@ int butex_wake(void* arg, bool nosignal, bool noexchange) {
         g->resume_bound_task(bbw->tid, nosignal);
     }
     else if (g == tls_task_group) {
-        run_in_local_task_group(g, bbw->tid, nosignal, noexchange);
+        run_in_local_task_group(g, bbw->tid, nosignal);
     } else {
         g->ready_to_run_remote(bbw->tid, nosignal);
     }
@@ -395,6 +395,7 @@ int butex_wake_all(void* arg, bool nosignal) {
         m->bound_task_group->resume_bound_task(next->tid, nosignal);
     }
     else if (g == tls_task_group) {
+        LOG(INFO) << "butex wake all run_in_local_task_group, exchange";
         run_in_local_task_group(g, next->tid, nosignal);
     }
     else {
@@ -461,7 +462,7 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
         // If this task is bound to a specific task group, throw this task back to
         // the group.
         if (m->bound_task_group) {
-            m->bound_task_group->resume_bound_task(w->tid, false);
+            m->bound_task_group->resume_bound_task(w->tid, true);
         } else{
             g->ready_to_run_general(w->tid, true);
             ++nwakeup;

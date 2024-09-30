@@ -42,7 +42,8 @@ public:
     }
 
     bool pop(bthread_t *task) {
-        if (!_tasks.is_empty() && _tasks.try_dequeue(*task)) {
+        if (_task_cnt.load(std::memory_order_acquire) > 0 && _tasks.try_dequeue(*task)) {
+            _task_cnt.fetch_sub(1, std::memory_order_release);
             return true;
         }
         return false;
@@ -50,27 +51,19 @@ public:
 
     bool push(bthread_t task) {
         if (_tasks.enqueue(task)) {
+            _task_cnt.fetch_add(1, std::memory_order_release);
             return true;
         }
         return false;
     }
 
-    bool empty() const {
-        return _tasks.is_empty();
-    }
-
-    size_t size() const {
-        return _tasks.size_approx();
-    }
-
     size_t capacity() const {
-        // Not used for now.
-        return 1000;
+        return _task_cnt.load(std::memory_order_acquire);
     }
 
     friend class TaskGroup;
     moodycamel::ConcurrentQueue<bthread_t> _tasks;
-    bool is_bound_queue{};
+    std::atomic<int> _task_cnt{0};
 };
 
 // A queue for storing bthreads created by non-workers. Since non-workers

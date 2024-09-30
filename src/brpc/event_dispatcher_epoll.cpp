@@ -304,6 +304,10 @@ void EventDispatcher::Run() {
                 }
             }
         }
+        if (FLAGS_use_pthread_event_dispatcher) {
+            // flush added bthreads
+            bthread_flush();
+        }
     }
 }
 

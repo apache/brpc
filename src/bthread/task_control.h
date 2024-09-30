@@ -57,9 +57,6 @@ public:
     // Tell other groups that `n' tasks was just added to caller's runqueue
     void signal_task(int num_task);
 
-    // Notify the group.
-    bool signal_group(int group_id, bool force_wakeup = false);
-
     // Stop and join worker threads in TaskControl.
     void stop_and_join();
     
@@ -118,9 +115,7 @@ private:
     bvar::PassiveStatus<std::string> _status;
     bvar::Adder<int64_t> _nbthreads;
 
-    static const int PARKING_LOT_NUM = BTHREAD_MAX_CONCURRENCY;
-    // one worker one parking lot for precise wakeup
-    std::atomic<int> _parking_lot_num{0};
+    static const int PARKING_LOT_NUM = 4;
     ParkingLot _pl[PARKING_LOT_NUM];
 };
 
