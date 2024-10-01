@@ -1548,7 +1548,9 @@ void Socket::CheckConnectedAndKeepWrite(int fd, int err, void* data) {
     butil::fd_guard sockfd(fd);
     WriteRequest* req = static_cast<WriteRequest*>(data);
     Socket* s = req->get_socket();
-    CHECK_GE(sockfd, 0);
+    if (NULL == s->_conn) {
+        CHECK_GE(sockfd, 0);
+    }
     if (err == 0 && s->CheckConnected(sockfd) == 0
         && s->ResetFileDescriptor(sockfd) == 0) {
         if (s->CreatedByConnect()) {
