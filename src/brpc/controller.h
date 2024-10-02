@@ -264,7 +264,6 @@ public:
     UserFieldsMap* request_user_fields() {
         if (!_request_user_fields) {
             _request_user_fields = new UserFieldsMap;
-            _request_user_fields->init(29);
         }
         return _request_user_fields;
     }
@@ -274,7 +273,6 @@ public:
     UserFieldsMap* response_user_fields() {
         if (!_response_user_fields) {
             _response_user_fields = new UserFieldsMap;
-            _response_user_fields->init(29);
         }
         return _response_user_fields;
     }
