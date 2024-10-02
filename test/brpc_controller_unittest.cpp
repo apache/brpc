@@ -130,7 +130,7 @@ TEST_F(ControllerTest, SessionKV) {
 
         FLAGS_log_as_json = true;
     }
-    ASSERT_TRUE(endsWith(sink1, R"(,"@rid":"abcdEFG-456","M":"Session ends.","Baidu":"NewStuff","Cisco":"33.330000","Apple":"1234567"})")) << sink1;
+    ASSERT_TRUE(endsWith(sink1, R"(,"@rid":"abcdEFG-456","M":"Session ends.","Cisco":"33.330000","Apple":"1234567","Baidu":"NewStuff"})")) << sink1;
     ASSERT_TRUE(startsWith(sink1, R"({"L":"I",)")) << sink1;
 
     logging::SetLogSink(oldSink);

@@ -68,5 +68,5 @@ TEST_F(ExtensionTest, basic) {
 
     os.str("");
     ConstIntExtension()->List(os, ':');
-    ASSERT_EQ("bar:foo", os.str());
+    ASSERT_EQ("foo:bar", os.str());
 }

@@ -30,15 +30,6 @@ Extension<T>* Extension<T>::instance() {
 }
 
 template <typename T>
-Extension<T>::Extension() {
-    _instance_map.init(29);
-}
-
-template <typename T>
-Extension<T>::~Extension() {
-}
-
-template <typename T>
 int Extension<T>::Register(const std::string& name, T* instance) {
     if (NULL == instance) {
         LOG(ERROR) << "instance to \"" << name << "\" is NULL";

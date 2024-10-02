@@ -61,9 +61,11 @@ public:
     static const size_t NITEM = Block::NITEM;
     static const size_t ITEM_SIZE = ITEM_SIZE_IN;
     
-    SingleThreadedPool(const Allocator& alloc = Allocator()) 
+    explicit SingleThreadedPool(const Allocator& alloc = Allocator())
         : _free_nodes(NULL), _blocks(NULL), _allocator(alloc) {}
     ~SingleThreadedPool() { reset(); }
+
+    DISALLOW_COPY_AND_ASSIGN(SingleThreadedPool);
 
     void swap(SingleThreadedPool & other) {
         std::swap(_free_nodes, other._free_nodes);
@@ -132,12 +134,9 @@ public:
     }
 
     Allocator& get_allocator() { return _allocator; }
+    Allocator get_allocator() const { return _allocator; }
 
 private:
-    // You should not copy a pool.
-    SingleThreadedPool(const SingleThreadedPool&);
-    void operator=(const SingleThreadedPool&);
-
     Node* _free_nodes;
     Block* _blocks;
     Allocator _allocator;

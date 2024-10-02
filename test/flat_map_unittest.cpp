@@ -95,31 +95,51 @@ TEST_F(FlatMapTest, swap_pooled_allocator) {
 
 TEST_F(FlatMapTest, copy_flat_map) {
     typedef butil::FlatMap<std::string, std::string> Map;
-    Map uninit_m1;
-    ASSERT_FALSE(uninit_m1.initialized());
-    ASSERT_TRUE(uninit_m1.empty());
+    Map default_init_m1;
+    ASSERT_TRUE(default_init_m1.initialized());
+    ASSERT_TRUE(default_init_m1.empty());
+    ASSERT_EQ(BRPC_FLATMAP_DEFAULT_NBUCKET, default_init_m1.bucket_count());
     // self assignment does nothing.
-    uninit_m1 = uninit_m1;
-    ASSERT_FALSE(uninit_m1.initialized());
-    ASSERT_TRUE(uninit_m1.empty());
-    // Copy construct from uninitialized map.
-    Map uninit_m2 = uninit_m1;
-    ASSERT_FALSE(uninit_m2.initialized());
-    ASSERT_TRUE(uninit_m2.empty());
-    // assign uninitialized map to uninitialized map.
-    Map uninit_m3;
-    uninit_m3 = uninit_m1;
-    ASSERT_FALSE(uninit_m3.initialized());
-    ASSERT_TRUE(uninit_m3.empty());
-    // assign uninitialized map to initialized map.
+    default_init_m1 = default_init_m1;
+    ASSERT_TRUE(default_init_m1.initialized());
+    ASSERT_TRUE(default_init_m1.empty());
+    ASSERT_EQ(BRPC_FLATMAP_DEFAULT_NBUCKET, default_init_m1.bucket_count());
+
+    Map default_init_m2 = default_init_m1;
+    ASSERT_TRUE(default_init_m2.initialized());
+    ASSERT_TRUE(default_init_m2.empty());
+    ASSERT_EQ(BRPC_FLATMAP_DEFAULT_NBUCKET, default_init_m1.bucket_count());
+
+    Map init_m3;
+    ASSERT_TRUE(init_m3.initialized());
+    // smaller than the default value, and the default buckets
+    // is continued to be used.
+    ASSERT_EQ(0, init_m3.init(8));
+    ASSERT_TRUE(init_m3.initialized());
+    ASSERT_EQ(BRPC_FLATMAP_DEFAULT_NBUCKET, init_m3.bucket_count());
+    ASSERT_EQ((Map::Bucket*)init_m3._default_buckets_spaces,
+              init_m3._buckets);
+    init_m3["hello"] = "world";
+    ASSERT_EQ(1u, init_m3.size());
+    init_m3 = default_init_m1;
+    ASSERT_TRUE(init_m3.initialized());
+    ASSERT_TRUE(init_m3.empty());
+
     Map init_m4;
-    ASSERT_EQ(0, init_m4.init(16));
     ASSERT_TRUE(init_m4.initialized());
+    // Resize to a larger buckets, and then not using the default buckets.
+    ASSERT_EQ(0, init_m4.init(BRPC_FLATMAP_DEFAULT_NBUCKET + 1));
+    ASSERT_EQ(butil::flatmap_round(BRPC_FLATMAP_DEFAULT_NBUCKET + 1),
+              init_m4.bucket_count());
+    ASSERT_NE((Map::Bucket*)init_m4._default_buckets_spaces,
+              init_m4._buckets);
     init_m4["hello"] = "world";
     ASSERT_EQ(1u, init_m4.size());
-    init_m4 = uninit_m1;
+    init_m4 = default_init_m1;
     ASSERT_TRUE(init_m4.initialized());
     ASSERT_TRUE(init_m4.empty());
+    ASSERT_EQ(butil::flatmap_round(BRPC_FLATMAP_DEFAULT_NBUCKET + 1),
+              init_m4.bucket_count());
 
     Map m1;
     ASSERT_EQ(0, m1.init(16));
@@ -173,7 +193,7 @@ TEST_F(FlatMapTest, copy_flat_map) {
     const void* old_buckets4 = m4._buckets;
     m4 = m1;
     ASSERT_EQ(m1.bucket_count(), m4.bucket_count());
-    ASSERT_NE(old_buckets4, m4._buckets);
+    ASSERT_EQ(old_buckets4, m4._buckets);
     ASSERT_EQ(expected_count, m4.size());
     ASSERT_EQ("world", m4["hello"]);
     ASSERT_EQ("bar", m4["foo"]);
@@ -226,7 +246,7 @@ TEST_F(FlatMapTest, to_lower) {
     for (int c = -128; c < 128; ++c) {
         ASSERT_EQ((char)::tolower(c), butil::ascii_tolower(c)) << "c=" << c;
     }
-    
+
     const size_t input_len = 102;
     char input[input_len + 1];
     char input2[input_len + 1];
@@ -447,6 +467,58 @@ TEST_F(FlatMapTest, flat_map_of_string) {
         ASSERT_EQ(i, m2[keys[i]]);
         ASSERT_EQ(i, m3[keys[i]]);
     }
+
+    butil::FlatMap<std::string, std::string> m4;
+    m4["111"] = "222";
+    ASSERT_TRUE(m4.seek("111"));
+    ASSERT_EQ("222", *m4.seek("111"));
+    ASSERT_EQ(1UL, m4.size());
+    butil::FlatMap<std::string, std::string> m5;
+    m5["333"] = "444";
+    ASSERT_TRUE(m5.seek("333"));
+    ASSERT_EQ("444", *m5.seek("333"));
+    ASSERT_EQ(1UL, m5.size());
+
+    m4.swap(m5);
+    ASSERT_TRUE(m4.seek("333"));
+    ASSERT_EQ("444", *m4.seek("333"));
+    ASSERT_EQ(1UL, m4.size());
+    ASSERT_TRUE(m5.seek("111"));
+    ASSERT_EQ("222", *m5.seek("111"));
+    ASSERT_EQ(1UL, m5.size());
+
+    m4.resize(BRPC_FLATMAP_DEFAULT_NBUCKET + 1);
+    ASSERT_EQ(1UL, m4.size());
+    ASSERT_TRUE(m4.seek("333"));
+    ASSERT_EQ("444", *m4.seek("333"));
+    m4.swap(m5);
+    ASSERT_TRUE(m4.seek("111"));
+    ASSERT_EQ("222", *m4.seek("111"));
+    ASSERT_EQ(1UL, m4.size());
+    ASSERT_TRUE(m5.seek("333"));
+    ASSERT_EQ("444", *m5.seek("333"));
+    ASSERT_EQ(1UL, m5.size());
+
+    m5.swap(m4);
+    ASSERT_TRUE(m4.seek("333"));
+    ASSERT_EQ("444", *m4.seek("333"));
+    ASSERT_EQ(1UL, m4.size());
+    ASSERT_TRUE(m5.seek("111"));
+    ASSERT_EQ("222", *m5.seek("111"));
+    ASSERT_EQ(1UL, m5.size());
+
+    m5.resize(BRPC_FLATMAP_DEFAULT_NBUCKET + 1);
+    ASSERT_EQ(1UL, m5.size());
+    ASSERT_EQ("222", *m5.seek("111"));
+    ASSERT_EQ(1UL, m5.size());
+    m5.swap(m4);
+    ASSERT_TRUE(m4.seek("111"));
+    ASSERT_EQ("222", *m4.seek("111"));
+    ASSERT_EQ(1UL, m4.size());
+    ASSERT_TRUE(m5.seek("333"));
+    ASSERT_EQ("444", *m5.seek("333"));
+    ASSERT_EQ(1UL, m5.size());
+
 }
 
 TEST_F(FlatMapTest, fast_iterator) {
@@ -457,7 +529,7 @@ TEST_F(FlatMapTest, fast_iterator) {
     M2 m2;
 
     ASSERT_EQ(0, m1.init(16384));
-    ASSERT_EQ(-1, m1.init(1));
+    ASSERT_EQ(0, m1.init(1));
     ASSERT_EQ(0, m2.init(16384));
 
     ASSERT_EQ(NULL, m1._thumbnail);
@@ -537,7 +609,7 @@ typedef butil::FlatMap<uint64_t, uint64_t> PositionHintMap;
 static void fill_position_hint_map(PositionHintMap* map,
                                    std::vector<uint64_t>* keys) {
     srand(time(NULL));
-    const size_t N = 170;
+    const size_t N = 5;
     if (!map->initialized()) {
         ASSERT_EQ(0, map->init(N * 3 / 2, 80));
     }
@@ -553,7 +625,7 @@ static void fill_position_hint_map(PositionHintMap* map,
         keys->push_back(key);
         (*map)[key] = i;
     }
-    LOG(INFO) << map->bucket_info();
+    LOG(INFO) << map->bucket_info() << ", size=" << map->size();
 }
 
 struct CountOnPause {
@@ -900,16 +972,41 @@ TEST_F(FlatMapTest, key_value_are_not_constructed_before_first_insertion) {
 
 TEST_F(FlatMapTest, manipulate_uninitialized_map) {
     butil::FlatMap<int, int> m;
-    ASSERT_FALSE(m.initialized());
-    for (butil::FlatMap<int,int>::iterator it = m.begin(); it != m.end(); ++it) {
-        LOG(INFO) << "nothing";
-    }
+    ASSERT_TRUE(m.initialized());
     ASSERT_EQ(NULL, m.seek(1));
     ASSERT_EQ(0u, m.erase(1));
     ASSERT_EQ(0u, m.size());
     ASSERT_TRUE(m.empty());
-    ASSERT_EQ(0u, m.bucket_count());
-    ASSERT_EQ(0u, m.load_factor());
+    ASSERT_EQ(BRPC_FLATMAP_DEFAULT_NBUCKET, m.bucket_count());
+    ASSERT_EQ(80u, m.load_factor());
+    m[1] = 1;
+    ASSERT_EQ(1UL, m.size());
+    auto one = m.seek(1);
+    ASSERT_NE(nullptr, one);
+    ASSERT_EQ(1, *one);
+
+    butil::FlatMap<int, int> m2 = m;
+    one = m2.seek(1);
+    ASSERT_NE(nullptr, one);
+    ASSERT_EQ(1, *one);
+    m2[2] = 2;
+    ASSERT_EQ(2UL, m2.size());
+
+    m.swap(m2);
+    ASSERT_EQ(2UL, m.size());
+    ASSERT_EQ(1UL, m2.size());
+    auto two = m.seek(2);
+    ASSERT_NE(nullptr, two);
+    ASSERT_EQ(2, *two);
+
+    ASSERT_EQ(1UL, m2.erase(1));
+    ASSERT_EQ(0, m.init(32));
+    one = m.seek(1);
+    ASSERT_NE(nullptr, one);
+    ASSERT_EQ(1, *one);
+    two = m.seek(2);
+    ASSERT_NE(nullptr, two);
+    ASSERT_EQ(2, *two);
 }
 
 TEST_F(FlatMapTest, perf_small_string_map) {
@@ -956,12 +1053,10 @@ TEST_F(FlatMapTest, perf_small_string_map) {
     }
 }
 
-
 TEST_F(FlatMapTest, sanity) {
     typedef butil::FlatMap<uint64_t, long> Map;
     Map m;
-
-    ASSERT_FALSE(m.initialized());
+    ASSERT_TRUE(m.initialized());
     m.init(1000, 70);
     ASSERT_TRUE(m.initialized());
     ASSERT_EQ(0UL, m.size());
@@ -1072,7 +1167,7 @@ TEST_F(FlatMapTest, random_insert_erase) {
                     ref[0].clear();
                 }
             }
-            
+
             LOG(INFO) << "Check j=" << j;
             // bi-check
             for (int i=0; i<2; ++i) {
@@ -1095,11 +1190,9 @@ TEST_F(FlatMapTest, random_insert_erase) {
         }
 
     }
-    // cout << "ht[0] = " << show(ht[0]) << endl
-    //      << "ht[1] = " << show(ht[1]) << endl;
 
-    //ASSERT_EQ (ht[0]._pool->alloc_num(), 0ul);
-    ASSERT_EQ (n_con + n_cp_con, n_des);
+    ASSERT_EQ (n_con + n_cp_con, n_des)
+        << "n_con=" << n_con << " n_cp_con=" << n_cp_con << " n_des=" << n_des;
 
     LOG(INFO) << "n_con:" << n_con << std::endl
               << "n_cp_con:" << n_cp_con << std::endl
@@ -1156,8 +1249,8 @@ void perf_insert_erase(bool random, const T& value) {
         if (random) {
             random_shuffle(keys.begin(), keys.end());
         }
-        
-        id_map.clear();        
+
+        id_map.clear();
         id_tm.start();
         for (size_t i = 0; i < keys.size(); ++i) {
             id_map[keys[i]] = value;
@@ -1293,7 +1386,7 @@ void perf_seek(const T& value) {
     butil::hash_map<uint64_t, T> hash_map;
     butil::Timer id_tm, multi_id_tm, std_tm, pooled_tm,
                  std_unordered_tm, std_unordered_multi_tm, hash_tm;
-    
+
     id_map.init((size_t)(nkeys[NPASS-1] * 1.5));
     multi_id_map.init((size_t)(nkeys[NPASS-1] * 1.5));
     LOG(INFO) << "[ value = " << sizeof(T) << " bytes ]";
@@ -1303,8 +1396,8 @@ void perf_seek(const T& value) {
         for (size_t i = 0; i < nkeys[pass]; ++i) {
             keys.push_back(start + i);
         }
-        
-        id_map.clear();        
+
+        id_map.clear();
         for (size_t i = 0; i < keys.size(); ++i) {
             id_map[keys[i]] = value;
         }
@@ -1428,25 +1521,6 @@ TEST_F(FlatMapTest, copy) {
     m2 = m1;
     ASSERT_FALSE(m1.is_too_crowded(m1.size()));
     ASSERT_FALSE(m2.is_too_crowded(m1.size()));
-
-    butil::FlatMap<int, int> m3;
-    ASSERT_FALSE(m3.initialized());
-    m1 = m3;
-    ASSERT_TRUE(m1.empty());
-    ASSERT_TRUE(m1.initialized());
-
-    m3 = m2;
-    ASSERT_TRUE(m3.initialized());
-    ASSERT_TRUE(m3.seek(1));
-    ASSERT_TRUE(m3.seek(2));
-    ASSERT_FALSE(m3.seek(3));
-
-    m3.clear();
-    ASSERT_TRUE(m3.initialized());
-    ASSERT_TRUE(m3.empty());
-    butil::FlatMap<int, int> m4 = m3;
-    ASSERT_TRUE(m4.initialized());
-    ASSERT_TRUE(m4.empty());
 }
 
 TEST_F(FlatMapTest, multi) {
@@ -1487,8 +1561,8 @@ TEST_F(FlatMapTest, multi) {
     int same_bucket_key = 1 + bucket_count;
     butil::DefaultHasher<int> hasher;
     ASSERT_EQ(butil::flatmap_mod(hasher(1), bucket_count),
-        butil::flatmap_mod(hasher(same_bucket_key), bucket_count));
-    ASSERT_EQ(0, map.erase(same_bucket_key));
+              butil::flatmap_mod(hasher(same_bucket_key), bucket_count));
+    ASSERT_EQ(0UL, map.erase(same_bucket_key));
     Foo& f5 = map[same_bucket_key];
     ASSERT_EQ(4UL, map.size());
     ASSERT_EQ(&f5, map.seek(same_bucket_key));

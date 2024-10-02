@@ -355,7 +355,6 @@ int butex_wake_n(void* arg, size_t n, bool nosignal) {
         return nwakeup;
     }
     butil::FlatMap<bthread_tag_t, TaskGroup*> nwakeups;
-    nwakeups.init(FLAGS_task_group_ntags);
     // We will exchange with first waiter in the end.
     ButexBthreadWaiter* next = static_cast<ButexBthreadWaiter*>(
         bthread_waiters.head()->value());
@@ -435,7 +434,6 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
         return nwakeup;
     }
     butil::FlatMap<bthread_tag_t, TaskGroup*> nwakeups;
-    nwakeups.init(FLAGS_task_group_ntags);
     do {
         // pop reversely
         ButexBthreadWaiter* w = static_cast<ButexBthreadWaiter*>(bthread_waiters.tail()->value());
