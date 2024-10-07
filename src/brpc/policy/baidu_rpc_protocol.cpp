@@ -473,6 +473,12 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             break;
         }
         
+        if (socket->is_overcrowded() && !server->options().ignore_eovercrowded) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            break;
+        }
+
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
@@ -564,11 +570,6 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 BadMethodResponse bres;
                 breq.set_service_name(request_meta.service_name());
                 mp->service->CallMethod(mp->method, cntl.get(), &breq, &bres, NULL);
-                break;
-            }
-            if (socket->is_overcrowded() && !server->options().ignore_eovercrowded && !mp->ignore_eovercrowded) {
-                cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
-                                butil::endpoint2str(socket->remote_side()).c_str());
                 break;
             }
             // Switch to service-specific error.
