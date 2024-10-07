@@ -88,6 +88,7 @@ typedef struct {
     pthread_rwlock_t rwlock;
     void* list;
     void* free_keytables;
+    size_t size;
     int destroyed;
 } bthread_keytable_pool_t;
 

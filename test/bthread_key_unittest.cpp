@@ -16,14 +16,33 @@
 // under the License.
 
 #include <algorithm>                         // std::sort
+#include <gflags/gflags.h>
 #include "butil/atomicops.h"
 #include <gtest/gtest.h>
+#include "butil/thread_key.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
+using namespace bthread;
+namespace bthread {
+DECLARE_uint32(key_table_list_size);
+DECLARE_uint32(borrow_from_globle_size);
+class KeyTable;
+// defined in bthread/key.cpp
+extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
+extern KeyTable* borrow_keytable(bthread_keytable_pool_t*);
+}  // namespace bthread
+
+int main(int argc, char* argv[]) {
+    bthread::FLAGS_key_table_list_size = 20;
+    bthread::FLAGS_borrow_from_globle_size = 20;
+    testing::InitGoogleTest(&argc, argv);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    return RUN_ALL_TESTS();
+}
 
 extern "C" {
 int bthread_keytable_pool_size(bthread_keytable_pool_t* pool) {
@@ -407,6 +426,144 @@ TEST(KeyTest, using_pool) {
     ASSERT_EQ(0, bthread_key_delete(key));
 }
 
+bthread_keytable_pool_t test_pool;
+struct PoolData2 {
+    bthread_key_t key;
+    bthread_attr_t attr;
+};
+
+static void pool_dtor2(void* tls) {
+    delete static_cast<PoolData2*>(tls);
+}
+
+static void usleep_thread_impl(PoolData2* data) {
+    if (NULL == bthread_getspecific(data->key)) {
+        PoolData2* data_new = new PoolData2();
+        ASSERT_EQ(0, bthread_setspecific(data->key, data_new));
+    }
+    bthread_usleep(1000L);
+    int length = get_thread_local_keytable_list_length(&test_pool);
+    ASSERT_LE((size_t)length, bthread::FLAGS_key_table_list_size);
+}
+
+static void* usleep_thread(void* args) {
+    usleep_thread_impl((PoolData2*)args);
+    return NULL;
+}
+
+static void launch_many_bthreads(PoolData2* data) {
+    std::vector<bthread_t> tids;
+    tids.reserve(25000);
+    for (size_t i = 0; i < 25000; ++i) {
+        bthread_t t0;
+        PoolData2* data_tmp = new PoolData2();
+        data_tmp->key = data->key;
+        ASSERT_EQ(0, bthread_start_background(&t0, &(data->attr), usleep_thread, data_tmp));
+        tids.push_back(t0);
+    }
+
+    usleep(3 * 1000 * 1000L);
+    for (size_t i = 0; i < tids.size(); ++i) {
+        bthread_join(tids[i], NULL);
+    }
+}
+
+static void* run_launch_many_bthreads(void* args) {
+    PoolData2* data = (PoolData2*)args;
+    launch_many_bthreads(data);
+    return NULL;
+}
+
+TEST(KeyTest, frequently_borrow_keytable_when_using_pool) {
+    PoolData2 data;
+    ASSERT_EQ(0, bthread_key_create(&data.key, pool_dtor2));
+
+    ASSERT_EQ(0, bthread_keytable_pool_init(&test_pool));
+    ASSERT_EQ(0, bthread_keytable_pool_size(&test_pool));
+
+    ASSERT_EQ(0, bthread_attr_init(&data.attr));
+    data.attr.keytable_pool = &test_pool;
+
+    bthread_t bth;
+    ASSERT_EQ(0, bthread_start_urgent(&bth, &data.attr, run_launch_many_bthreads, &data));
+    ASSERT_EQ(0, bthread_join(bth, NULL));
+    std::cout << "Free keytable size is "
+              << bthread_keytable_pool_size(&test_pool)
+              << " use keytable size is 25000" << std::endl;
+    ASSERT_EQ(0, bthread_keytable_pool_destroy(&test_pool));
+    ASSERT_EQ(0, bthread_key_delete(data.key));
+}
+
+std::vector<bthread::KeyTable*> table_list;
+pthread_mutex_t table_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void return_thread_impl() {
+    for (int i = 0; i < 32768; i++) {
+        {
+            BAIDU_SCOPED_LOCK(table_mutex);
+            if (table_list.size() > 0) {
+                bthread::KeyTable* keytable = table_list[0];
+                table_list.erase(table_list.begin());
+                bthread::return_keytable(&test_pool, keytable);
+            }
+        }
+        int length = get_thread_local_keytable_list_length(&test_pool);
+        ASSERT_LE((size_t)length, bthread::FLAGS_key_table_list_size);
+    }
+}
+
+static void* return_thread(void*) {
+    return_thread_impl();
+    return NULL;
+}
+
+static void borrow_thread_impl() {
+    for (int i = 0; i < 32768; i++) {
+        bthread::KeyTable* keytable = bthread::borrow_keytable(&test_pool);
+        BAIDU_SCOPED_LOCK(table_mutex);
+        table_list.push_back(keytable);
+    }
+}
+
+static void* borrow_thread(void*) {
+    borrow_thread_impl();
+    return NULL;
+}
+
+TEST(KeyTest, borrow_and_return_keytable_when_using_pool) {
+    ASSERT_EQ(0, bthread_keytable_pool_init(&test_pool));
+    ASSERT_EQ(0, bthread_keytable_pool_size(&test_pool));
+
+    bthread_attr_t attr;
+    ASSERT_EQ(0, bthread_attr_init(&attr));
+    attr.keytable_pool = &test_pool;
+
+    bthread_t borrow_bth[8];
+    bthread_t return_bth[8];
+    for (size_t i = 0; i < arraysize(borrow_bth); ++i) {
+        ASSERT_EQ(0, bthread_start_background(&borrow_bth[i], &attr,
+                                              borrow_thread, NULL));
+    }
+    for (size_t i = 0; i < arraysize(return_bth); ++i) {
+        ASSERT_EQ(0, bthread_start_background(&return_bth[i], &attr,
+                                              return_thread, NULL));
+    }
+
+    for (size_t i = 0; i < arraysize(borrow_bth); ++i) {
+        ASSERT_EQ(0, bthread_join(borrow_bth[i], NULL));
+    }
+    for (size_t i = 0; i < arraysize(return_bth); ++i) {
+        ASSERT_EQ(0, bthread_join(return_bth[i], NULL));
+    }
+
+    for (size_t i = 0; i < table_list.size(); i++) {
+        bthread::return_keytable(&test_pool, table_list[i]);
+    }
+    table_list.clear();
+
+    ASSERT_EQ(0, bthread_keytable_pool_destroy(&test_pool));
+}
+
 // NOTE: lid is short for 'lock in dtor'.
 butil::atomic<size_t> lid_seq(1);
 std::vector<size_t> lid_seqs;
@@ -454,9 +611,10 @@ TEST(KeyTest, use_bthread_mutex_in_dtor) {
     std::sort(lid_seqs.begin(), lid_seqs.end());
     ASSERT_EQ(lid_seqs.end(), std::unique(lid_seqs.begin(), lid_seqs.end()));
     ASSERT_EQ(arraysize(th) + arraysize(bth) - 1,
-                *(lid_seqs.end() - 1) - *lid_seqs.begin());
+              *(lid_seqs.end() - 1) - *lid_seqs.begin());
 
     ASSERT_EQ(0, bthread_key_delete(key));
+    ASSERT_EQ(0, bthread_mutex_destroy(&mu));
 }
 
 }  // namespace
