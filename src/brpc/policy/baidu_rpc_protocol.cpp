@@ -491,13 +491,13 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             cntl->SetFailed(ELOGOFF, "Server is stopping");
             break;
         }
-
-        if (socket->is_overcrowded()) {
+        
+        if (socket->is_overcrowded() && !server->options().ignore_eovercrowded) {
             cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                             butil::endpoint2str(socket->remote_side()).c_str());
             break;
         }
-        
+
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
@@ -524,6 +524,11 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         google::protobuf::Service* svc = NULL;
         google::protobuf::MethodDescriptor* method = NULL;
         if (NULL != server->options().baidu_master_service) {
+            if (socket->is_overcrowded()) {
+                cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                                butil::endpoint2str(socket->remote_side()).c_str());
+                break;
+            }
             svc = server->options().baidu_master_service;
             auto sampled_request = new (std::nothrow) SampledRequest;
             if (NULL == sampled_request) {
