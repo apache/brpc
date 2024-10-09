@@ -39,14 +39,20 @@ public:
     // Get value of a key(case-sensitive)
     // Return pointer to the value, NULL on not found.
     const std::string* Get(const char* key) const { return _entries.seek(key); }
-    const std::string* Get(const std::string& key) const { return _entries.seek(key); }
+    const std::string* Get(const std::string& key) const {
+        return _entries.seek(key);
+    }
 
     // Set value of a key
-    void Set(const std::string& key, const std::string& value) { GetOrAdd(key) = value; }
-    void Set(const std::string& key, const char* value) { GetOrAdd(key) = value; }
+    void Set(const std::string& key, const std::string& value) {
+        _entries[key] = value;
+    }
+    void Set(const std::string& key, const char* value) { _entries[key] = value; }
     // Convert other types to string as well
     template <typename T>
-    void Set(const std::string& key, const T& value) { GetOrAdd(key) = std::to_string(value); }
+    void Set(const std::string& key, const T& value) {
+        _entries[key] = std::to_string(value);
+    }
 
     // Remove a key
     void Remove(const char* key) { _entries.erase(key); }
@@ -60,12 +66,6 @@ public:
     size_t Count() const { return _entries.size(); }
 
 private:
-    std::string& GetOrAdd(const std::string& key) {
-        if (!_entries.initialized()) {
-            _entries.init(29);
-        }
-        return _entries[key];
-    }
 
     Map _entries;
 };
