@@ -109,3 +109,9 @@ config_setting(
     define_values = {"BRPC_WITH_BORINGSSL": "true"},
     visibility = ["//visibility:public"],
 )
+
+config_setting(
+    name = "brpc_with_debug_bthread_sche_safety",
+    define_values = {"with_debug_bthread_sche_safety": "true"},
+    visibility = ["//visibility:public"],
+)

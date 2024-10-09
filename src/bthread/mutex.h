@@ -61,8 +61,11 @@ public:
                                     "Mutex lock failed");
         }
     }
-    void unlock() { (bthread_mutex_unlock(&_mutex)); }
+    void unlock() { bthread_mutex_unlock(&_mutex); }
     bool try_lock() { return 0 == bthread_mutex_trylock(&_mutex); }
+    bool timed_lock(const struct timespec* abstime) {
+        return !bthread_mutex_timedlock(&_mutex, abstime);
+    }
     // TODO(chenzhangyi01): Complement interfaces for C++11
 private:
     DISALLOW_COPY_AND_ASSIGN(Mutex);
@@ -78,9 +81,10 @@ public:
     void lock();
     void unlock();
     bool try_lock();
+    bool timed_lock(const struct timespec* abstime);
 private:
     DISALLOW_COPY_AND_ASSIGN(FastPthreadMutex);
-    int lock_contended();
+    int lock_contended(const struct timespec* abstime);
     unsigned _futex;
 };
 #else
@@ -97,6 +101,10 @@ public:
     void lock();
     void unlock();
     bool try_lock() { return _mutex.try_lock(); }
+#if defined(BTHREAD_USE_FAST_PTHREAD_MUTEX) || HAS_PTHREAD_MUTEX_TIMEDLOCK
+    bool timed_lock(const struct timespec* abstime);
+#endif // BTHREAD_USE_FAST_PTHREAD_MUTEX  HAS_PTHREAD_MUTEX_TIMEDLOCK
+
 private:
     internal::FastPthreadMutex _mutex;
 };

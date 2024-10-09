@@ -68,11 +68,6 @@ inline bvar::Adder<int64_t>& butex_waiter_count() {
 }
 #endif
 
-// If a thread would suspend for less than so many microseconds, return
-// ETIMEDOUT directly.
-// Use 1: sleeping for less than 2 microsecond is inefficient and useless.
-static const int64_t MIN_SLEEP_US = 2; 
-
 enum WaiterState {
     WAITER_STATE_NONE,
     WAITER_STATE_READY,
