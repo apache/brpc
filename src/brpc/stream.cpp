@@ -68,7 +68,7 @@ Stream::~Stream() {
 
 int Stream::Create(const StreamOptions &options, 
                    const StreamSettings *remote_settings,
-                   StreamId *id) {
+                   StreamId *id, bool parse_rpc_response) {
     Stream* s = new Stream();
     s->_host_socket = NULL;
     s->_fake_socket_weak_ref = NULL;
@@ -88,10 +88,8 @@ int Stream::Create(const StreamOptions &options,
 
     if (remote_settings != NULL) {
         s->_remote_settings.MergeFrom(*remote_settings);
-        s->_parse_rpc_response = false;
-    } else {
-        s->_parse_rpc_response = true;
     }
+    s->_parse_rpc_response = parse_rpc_response;
     if (bthread_id_list_init(&s->_writable_wait_list, 8, 8/*FIXME*/)) {
         delete s;
         return -1;
@@ -668,6 +666,10 @@ void Stream::Close(int error_code, const char* reason_fmt, ...) {
     return TriggerOnConnectIfNeed();
 }
 
+int Stream::ShareHostSocket(Stream& other_stream) {
+    return other_stream.SetHostSocket(_host_socket);
+}
+
 int Stream::SetFailed(StreamId id, int error_code, const char* reason_fmt, ...) {
     SocketUniquePtr ptr;
     if (Socket::AddressFailedAsWell(id, &ptr) == -1) {
@@ -678,6 +680,16 @@ int Stream::SetFailed(StreamId id, int error_code, const char* reason_fmt, ...) 
     va_list ap;
     va_start(ap, reason_fmt);
     s->Close(error_code, reason_fmt, ap);
+    va_end(ap);
+    return 0;
+}
+
+int Stream::SetFailed(const StreamIds& ids, int error_code, const char* reason_fmt, ...) {
+    va_list ap;
+    va_start(ap, reason_fmt);
+    for(size_t i = 0; i< ids.size(); ++i) {
+        Stream::SetFailed(ids[i], error_code, reason_fmt, ap);
+    }
     va_end(ap);
     return 0;
 }
@@ -759,37 +771,76 @@ int StreamClose(StreamId stream_id) {
 
 int StreamCreate(StreamId *request_stream, Controller &cntl,
                  const StreamOptions* options) {
-    if (cntl._request_stream != INVALID_STREAM_ID) {
-        LOG(ERROR) << "Can't create request stream more than once";
-        return -1;
-    }
     if (request_stream == NULL) {
         LOG(ERROR) << "request_stream is NULL";
         return -1;
     }
-    StreamId stream_id;
+    StreamIds request_streams;
+    StreamCreate(request_streams, 1, cntl, options);
+    *request_stream = request_streams[0];
+    return 0;
+}
+
+int StreamCreate(StreamIds& request_streams, int request_stream_size, Controller & cntl,
+                 const StreamOptions* options) {
+    if (!cntl._request_streams.empty()) {
+        LOG(ERROR) << "Can't create request stream more than once";
+        return -1;
+    }
+    if (!request_streams.empty()) {
+        LOG(ERROR) << "request_streams should be empty";
+        return -1;
+    }
     StreamOptions opt;
     if (options != NULL) {
         opt = *options;
     }
-    if (Stream::Create(opt, NULL, &stream_id) != 0) {
-        LOG(ERROR) << "Fail to create stream";
-        return -1;
+    for (auto i = 0; i < request_stream_size; ++i) {
+        StreamId stream_id;
+        bool parse_rpc_response = (i == 0); // Only the first stream need parse rpc
+        if (Stream::Create(opt, NULL, &stream_id, parse_rpc_response) != 0) {
+            // Close already created streams
+            Stream::SetFailed(request_streams, 0 , "Fail to create stream at %d index", i);
+            LOG(ERROR) << "Fail to create stream";
+            return -1;
+        }
+        cntl._request_streams.push_back(stream_id);
+        request_streams.push_back(stream_id);
     }
-    cntl._request_stream = stream_id;
-    *request_stream = stream_id;
     return 0;
 }
 
 int StreamAccept(StreamId* response_stream, Controller &cntl,
                  const StreamOptions* options) {
+    if (response_stream == NULL) {
+        LOG(ERROR) << "response_stream is NULL";
+        return -1;
+    }
+    StreamIds response_streams;
+    int res = StreamAccept(response_streams, cntl, options);
+    if(res != 0) {
+        return res;
+    }
+    if(response_streams.size() != 1) {
+        Stream::SetFailed(response_streams, EINVAL,
+                          "misusing StreamAccept for single stream to accept multiple streams");
+        cntl._response_streams.clear();
+        LOG(ERROR) << "misusing StreamAccept for single stream to accept multiple streams";
+        return -1;
+    }
+    *response_stream = response_streams[0];
+    return 0;
+}
 
-    if (cntl._response_stream != INVALID_STREAM_ID) {
+int StreamAccept(StreamIds& response_streams, Controller& cntl,
+                 const StreamOptions* options) {
+    if (!cntl._response_streams.empty()) {
         LOG(ERROR) << "Can't create response stream more than once";
         return -1;
     }
-    if (response_stream == NULL) {
-        LOG(ERROR) << "response_stream is NULL";
+
+    if (!response_streams.empty()) {
+        LOG(ERROR) << "response_streams should be empty";
         return -1;
     }
     if (!cntl.has_remote_stream()) {
@@ -801,12 +852,34 @@ int StreamAccept(StreamId* response_stream, Controller &cntl,
         opt = *options;
     }
     StreamId stream_id;
-    if (Stream::Create(opt, cntl._remote_stream_settings, &stream_id) != 0) {
-        LOG(ERROR) << "Fail to create stream";
+    if (Stream::Create(opt, cntl._remote_stream_settings, &stream_id, false) != 0) {
+        Stream::SetFailed(response_streams, 0, "Fail to accept stream");
+        LOG(ERROR) << "Fail to accept stream";
         return -1;
     }
-    cntl._response_stream = stream_id;
-    *response_stream = stream_id;
+
+    cntl._response_streams.push_back(stream_id);
+    response_streams.push_back(stream_id);
+    if(!cntl._remote_stream_settings->extra_stream_ids().empty()) {
+        StreamSettings stream_remote_settings;
+        stream_remote_settings.MergeFrom(*cntl._remote_stream_settings);
+        //Only the first stream needs extra_stream_ids settings
+        stream_remote_settings.clear_extra_stream_ids();
+        for (auto i = 0; i < cntl._remote_stream_settings->extra_stream_ids_size(); ++i) {
+            stream_remote_settings.set_stream_id(cntl._remote_stream_settings->extra_stream_ids()[i]);
+            StreamId extra_stream_id;
+            if (Stream::Create(opt, &stream_remote_settings, &extra_stream_id, false) != 0) {
+                Stream::SetFailed(response_streams, 0, "Fail to accept stream at %d index", i);
+                cntl._response_streams.clear();
+                response_streams.clear();
+                LOG(ERROR) << "Fail to accept stream";
+                return -1;
+            }
+            cntl._response_streams.push_back(extra_stream_id);
+            response_streams.push_back(extra_stream_id);
+        }
+    }
+
     return 0;
 }
 

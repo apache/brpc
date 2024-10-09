@@ -46,7 +46,7 @@ public:
                         const StreamWriteOptions* options = NULL);
     static int Create(const StreamOptions& options,
                       const StreamSettings *remote_settings,
-                      StreamId *id);
+                      StreamId *id, bool parse_rpc_response = true);
     StreamId id() { return _id; }
 
     int OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* sock);
@@ -63,8 +63,11 @@ public:
     void FillSettings(StreamSettings *settings);
     static int SetFailed(StreamId id, int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
+    static int SetFailed(const StreamIds& ids, int error_code, const char* reason_fmt, ...)
+    __attribute__ ((__format__ (__printf__, 3, 4)));
     void Close(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
+    int ShareHostSocket(Stream& other_stream);
 
 private:
 friend void StreamWait(StreamId stream_id, const timespec *due_time,

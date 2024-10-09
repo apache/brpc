@@ -57,7 +57,7 @@ jobs:
            cd build
            make -j ${{env.proc_num}}
 
-  compile-with-make-protobuf22:
+  compile-with-make-protobuf23:
     runs-on: macos-latest # https://github.com/actions/runner-images
 
     steps:
@@ -67,9 +67,9 @@ jobs:
         run: |
           brew install openssl gnu-getopt coreutils gflags leveldb
           # abseil 20230125.3
-          curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/abseil.rb
-          # protobuf 22.5
-          curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/protobuf.rb
+          curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/b85b8dbf23ad509f163677a88ac72268f31e9c4a/Formula/abseil.rb
+          # protobuf 23.3
+          curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/b85b8dbf23ad509f163677a88ac72268f31e9c4a/Formula/protobuf.rb
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install --formula --ignore-dependencies ./abseil.rb ./protobuf.rb
 
       - name: config_brpc
@@ -82,7 +82,7 @@ jobs:
         run: |
           make -j ${{env.proc_num}}
 
-  compile-with-cmake-protobuf22:
+  compile-with-cmake-protobuf23:
     runs-on: macos-latest
 
     steps:
@@ -92,9 +92,9 @@ jobs:
         run: |
           brew install openssl gflags leveldb
           # abseil 20230125.3
-          curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/abseil.rb
-          # protobuf 22.5
-          curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/1e04597501b3096952608efcb13301119a830b35/Formula/protobuf.rb
+          curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/b85b8dbf23ad509f163677a88ac72268f31e9c4a/Formula/abseil.rb
+          # protobuf 23.3
+          curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/b85b8dbf23ad509f163677a88ac72268f31e9c4a/Formula/protobuf.rb
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install --formula --ignore-dependencies ./abseil.rb ./protobuf.rb
 
       - name: cmake
