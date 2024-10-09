@@ -242,16 +242,17 @@ TaskGroup* TaskControl::choose_one_group() {
             LOG(ERROR) << "group out of range";
         }
         const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
-        if (ngroup != 0) {
+        if (group < ngroup) {
             return _groups[group];
         }
     }
-    const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
-    if (ngroup != 0) {
-        return _groups[butil::fast_rand_less_than(ngroup)];
+
+    size_t ngroup = 0;
+    while ((ngroup = _ngroup.load(butil::memory_order_acquire)) == 0) {
+        usleep(10);
+        continue;
     }
-    CHECK(false) << "Impossible: ngroup is 0";
-    return NULL;
+    return _groups[butil::fast_rand_less_than(ngroup)];
 }
 
 TaskGroup* TaskControl::select_group(int group_id) {
