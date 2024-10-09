@@ -505,10 +505,16 @@ static __thread bool tls_inside_lock = false;
 // to avoid deadlock in malloc call stack.
 static __thread bool tls_warn_up = false;
 
+#if BRPC_DEBUG_BTHREAD_SCHE_SAFETY
 // ++tls_pthread_lock_count when pthread locking,
 // --tls_pthread_lock_count when pthread unlocking.
 // Only when it is equal to 0, it is safe for the bthread to be scheduled.
+// Note: If a mutex is locked/unlocked in different thread,
+// `tls_pthread_lock_count' is inaccurate, so this feature cannot be used.
 static __thread int tls_pthread_lock_count = 0;
+
+#define ADD_TLS_PTHREAD_LOCK_COUNT ++tls_pthread_lock_count
+#define SUB_TLS_PTHREAD_LOCK_COUNT --tls_pthread_lock_count
 
 void CheckBthreadScheSafety() {
     if (BAIDU_LIKELY(0 == tls_pthread_lock_count)) {
@@ -525,6 +531,11 @@ void CheckBthreadScheSafety() {
                    << std::endl << trace.ToString();
     }
 }
+#else
+#define ADD_TLS_PTHREAD_LOCK_COUNT ((void)0)
+#define SUB_TLS_PTHREAD_LOCK_COUNT ((void)0)
+void CheckBthreadScheSafety() {}
+#endif // BRPC_DEBUG_BTHREAD_SCHE_SAFETY
 
 // Speed up with TLS:
 //   Most pthread_mutex are locked and unlocked in the same thread. Putting
@@ -638,7 +649,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(pthread_mutex_t* mutex,
              sys_pthread_mutex_lock(mutex) :
              sys_pthread_mutex_timedlock(mutex, abstime);
     if (0 == rc) {
-        ++tls_pthread_lock_count;
+        ADD_TLS_PTHREAD_LOCK_COUNT;
     }
     return rc;
 }
@@ -647,7 +658,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(pthread_mutex_t* mutex,
                                                    const struct timespec*/* Not supported */) {
     int rc = sys_pthread_mutex_lock(mutex);
     if (0 == rc) {
-        ++tls_pthread_lock_count;
+        ADD_TLS_PTHREAD_LOCK_COUNT;
     }
     return rc;
 }
@@ -656,13 +667,13 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(pthread_mutex_t* mutex,
 BUTIL_FORCE_INLINE int pthread_mutex_trylock_internal(pthread_mutex_t* mutex) {
     int rc = sys_pthread_mutex_trylock(mutex);
     if (0 == rc) {
-        ++tls_pthread_lock_count;
+        ADD_TLS_PTHREAD_LOCK_COUNT;
     }
     return rc;
 }
 
 BUTIL_FORCE_INLINE int pthread_mutex_unlock_internal(pthread_mutex_t* mutex) {
-    --tls_pthread_lock_count;
+    SUB_TLS_PTHREAD_LOCK_COUNT;
     return sys_pthread_mutex_unlock(mutex);
 }
 #endif // NO_PTHREAD_MUTEX_HOOK
@@ -903,14 +914,14 @@ void FastPthreadMutex::lock() {
     }
 
     (void)lock_contended(NULL);
-    ++tls_pthread_lock_count;
+    ADD_TLS_PTHREAD_LOCK_COUNT;
 }
 
 bool FastPthreadMutex::try_lock() {
     auto split = (bthread::MutexInternal*)&_futex;
     bool lock = !split->locked.exchange(1, butil::memory_order_acquire);
     if (lock) {
-        ++tls_pthread_lock_count;
+        ADD_TLS_PTHREAD_LOCK_COUNT;
     }
     return lock;
 }
@@ -921,13 +932,13 @@ bool FastPthreadMutex::timed_lock(const struct timespec* abstime) {
     }
     int rc = lock_contended(abstime);
     if (rc == 0) {
-        ++tls_pthread_lock_count;
+        ADD_TLS_PTHREAD_LOCK_COUNT;
     }
     return rc == 0;
 }
 
 void FastPthreadMutex::unlock() {
-    --tls_pthread_lock_count;
+    SUB_TLS_PTHREAD_LOCK_COUNT;
     auto whole = (butil::atomic<unsigned>*)&_futex;
     const unsigned prev = whole->exchange(0, butil::memory_order_release);
     // CAUTION: the mutex may be destroyed, check comments before butex_create
