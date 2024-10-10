@@ -115,3 +115,9 @@ config_setting(
     define_values = {"with_debug_bthread_sche_safety": "true"},
     visibility = ["//visibility:public"],
 )
+
+config_setting(
+    name = "brpc_with_debug_lock",
+    define_values = {"with_debug_lock": "true"},
+    visibility = ["//visibility:public"],
+)

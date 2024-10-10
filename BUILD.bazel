@@ -48,6 +48,9 @@ COPTS = [
 }) + select({
     "//bazel/config:brpc_with_debug_bthread_sche_safety": ["-DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=1"],
     "//conditions:default": ["-DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=0"],
+}) + select({
+      "//bazel/config:brpc_with_debug_lock": ["-DBRPC_DEBUG_LOCK=1"],
+      "//conditions:default": ["-DBRPC_DEBUG_LOCK=0"],
 })
 
 LINKOPTS = [
