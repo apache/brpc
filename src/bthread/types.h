@@ -191,7 +191,7 @@ typedef struct bthread_mutex_t {
     bool enable_csite;
     // Note: Owner detection of the mutex comes with average execution
     // slowdown of about 50%, so it is only used for debugging and is
-    // only available when the `BRPC_DEBUG_MUTEX' macro is defined.
+    // only available when the `BRPC_DEBUG_LOCK' macro is defined.
     mutex_owner_t owner;
 } bthread_mutex_t;
 

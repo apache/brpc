@@ -45,7 +45,7 @@ WITH_RDMA=0
 WITH_MESALINK=0
 BRPC_DEBUG_BTHREAD_SCHE_SAFETY=0
 DEBUGSYMBOLS=-g
-BRPC_DEBUG_MUTEX=0
+BRPC_DEBUG_LOCK=0
 
 if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
 
@@ -70,7 +70,7 @@ while true; do
         --with-rdma) WITH_RDMA=1; shift 1 ;;
         --with-mesalink) WITH_MESALINK=1; shift 1 ;;
         --with-debug-bthread-sche-safety ) BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1; shift 1 ;;
-        --with-debug-lock ) BRPC_DEBUG_MUTEX=1; shift 1 ;;
+        --with-debug-lock ) BRPC_DEBUG_LOCK=1; shift 1 ;;
         --nodebugsymbols ) DEBUGSYMBOLS=; shift 1 ;;
         -- ) shift; break ;;
         * ) break ;;
