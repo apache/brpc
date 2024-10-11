@@ -178,7 +178,6 @@ int wait_pthread(ButexPthreadWaiter& pw, const timespec* abstime) {
 }
 
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
-extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group_nosignal;
 
 // Returns 0 when no need to unschedule or successfully unscheduled,
 // -1 otherwise.
@@ -269,24 +268,19 @@ void butex_destroy(void* butex) {
     butil::return_object(b);
 }
 
-// if TaskGroup g is belong tag
-inline bool is_same_tag(TaskGroup* g, bthread_tag_t tag) {
-    return g && g->tag() == tag;
+// if TaskGroup tls_task_group is belong to tag
+inline bool is_same_tag(bthread_tag_t tag) {
+    return tls_task_group && tls_task_group->tag() == tag;
 }
 
-inline TaskGroup* get_task_group(TaskControl* c, bthread_tag_t tag, bool nosignal = false) {
-    auto g = is_same_tag(tls_task_group, tag) ? tls_task_group : NULL;
-    if (nosignal) {
-        if (NULL == tls_task_group_nosignal) {
-            g = g ? g : c->choose_one_group(tag);
-            tls_task_group_nosignal = g;
-        } else {
-            g = tls_task_group_nosignal;
-        }
-    } else {
-        g = g ? g : c->choose_one_group(tag);
-    }
-    return g;
+//  nosignal is true & tag is same can return true
+inline bool check_nosignal(bool nosignal, bthread_tag_t tag) {
+    return nosignal && is_same_tag(tag);
+}
+
+// if tag is same return tls_task_group else choose one group with tag
+inline TaskGroup* get_task_group(TaskControl* c, bthread_tag_t tag) {
+    return is_same_tag(tag) ? tls_task_group : c->choose_one_group(tag);
 }
 
 inline void run_in_local_task_group(TaskGroup* g, bthread_t tid, bool nosignal) {
@@ -315,11 +309,11 @@ int butex_wake(void* arg, bool nosignal) {
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    TaskGroup* g = get_task_group(bbw->control, bbw->tag, nosignal);
+    TaskGroup* g = get_task_group(bbw->control, bbw->tag);
     if (g == tls_task_group) {
         run_in_local_task_group(g, bbw->tid, nosignal);
     } else {
-        g->ready_to_run_remote(bbw->tid, nosignal);
+        g->ready_to_run_remote(bbw->tid, check_nosignal(nosignal, g->tag()));
     }
     return 1;
 }
@@ -368,22 +362,22 @@ int butex_wake_n(void* arg, size_t n, bool nosignal) {
             bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
-        auto g = get_task_group(w->control, w->tag, nosignal);
+        auto g = get_task_group(w->control, w->tag);
         g->ready_to_run_general(w->tid, true);
         nwakeups[g->tag()] = g;
         ++nwakeup;
     }
-    if (!nosignal) {
-        for (auto it = nwakeups.begin(); it != nwakeups.end(); ++it) {
-            auto g = it->second;
+    for (auto it = nwakeups.begin(); it != nwakeups.end(); ++it) {
+        auto g = it->second;
+        if (!check_nosignal(nosignal, g->tag())) {
             g->flush_nosignal_tasks_general();
         }
     }
-    auto g = get_task_group(next->control, next->tag, nosignal);
+    auto g = get_task_group(next->control, next->tag);
     if (g == tls_task_group) {
         run_in_local_task_group(g, next->tid, nosignal);
     } else {
-        g->ready_to_run_remote(next->tid, nosignal);
+        g->ready_to_run_remote(next->tid, check_nosignal(nosignal, g->tag()));
     }
     return nwakeup;
 }
@@ -484,7 +478,7 @@ int butex_requeue(void* arg, void* arg2) {
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    auto g = is_same_tag(tls_task_group, bbw->tag) ? tls_task_group : NULL;
+    auto g = is_same_tag(bbw->tag) ? tls_task_group : NULL;
     if (g) {
         TaskGroup::exchange(&g, front->tid);
     } else {
