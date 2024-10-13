@@ -85,11 +85,12 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(FastPthreadMutex);
     int lock_contended(const struct timespec* abstime);
+
+    unsigned _futex;
     // Note: Owner detection of the mutex comes with average execution
     // slowdown of about 50%., so it is only used for debugging and is
-    // only available when the `BRPC_DEBUG_MUTEX' macro is defined.
+    // only available when the macro `BRPC_DEBUG_LOCK' = 1.
     mutex_owner_t _owner;
-    unsigned _futex;
 };
 #else
 typedef butil::Mutex FastPthreadMutex;
