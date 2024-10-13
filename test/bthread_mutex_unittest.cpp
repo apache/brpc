@@ -230,6 +230,11 @@ TEST(MutexTest, performance) {
     butil::Mutex base_mutex;
     PerfTest(&base_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
     PerfTest(&base_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+
+    bthread::FastPthreadMutex fast_mutex;
+    PerfTest(&fast_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&fast_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+
     bthread::Mutex bth_mutex;
     PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
     PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);

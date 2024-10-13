@@ -166,14 +166,27 @@ typedef struct {
     size_t sampling_range;
 } bthread_contention_site_t;
 
+struct mutex_owner_t {
+    bool hold;
+    uint64_t id;
+};
+
 typedef struct bthread_mutex_t {
 #if defined(__cplusplus)
-    bthread_mutex_t() : butex(NULL), csite{} {}
+    bthread_mutex_t()
+        : butex(NULL), csite{}
+        , enable_csite(false)
+        , owner{false, 0} {}
+
     DISALLOW_COPY_AND_ASSIGN(bthread_mutex_t);
 #endif
     unsigned* butex;
     bthread_contention_site_t csite;
     bool enable_csite;
+    // Note: Owner detection of the mutex comes with average execution
+    // slowdown of about 50%, so it is only used for debugging and is
+    // only available when the macro `BRPC_DEBUG_LOCK' = 1.
+    mutex_owner_t owner;
 } bthread_mutex_t;
 
 typedef struct {
