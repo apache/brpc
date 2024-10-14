@@ -530,7 +530,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     if (!server->IsRunning()) {
         return cntl->SetFailed(ELOGOFF, "Server is stopping");
     }
-    if (socket->is_overcrowded()) {
+    if (socket->is_overcrowded() && !server->options().ignore_eovercrowded) {
         return cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                 butil::endpoint2str(socket->remote_side()).c_str());
     }

@@ -795,7 +795,6 @@ static bool OptionsAvailableOverRdma(const ServerOptions* opt) {
 #endif
 
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
-static bool g_default_ignore_eovercrowded(false);
 
 int Server::StartInternal(const butil::EndPoint& endpoint,
                           const PortRange& port_range,
