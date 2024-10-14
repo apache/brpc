@@ -287,6 +287,11 @@ struct ServerOptions {
     // Owned by Server and deleted in server's destructor.
     RpcPBMessageFactory* rpc_pb_message_factory;
 
+    // Ignore eovercrowded error on server side, i.e. , if eovercrowded is reported when server is processing a rpc request,
+    // server will keep processing this request, it is expected to be used by some light-weight control-frame rpcs.
+    // [CUATION] You should not enabling this option if your rpc is heavy-loaded.
+    bool ignore_eovercrowded;
+
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ServerOptions from being bloated in most cases.

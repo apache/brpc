@@ -152,7 +152,8 @@ ServerOptions::ServerOptions()
     , rtmp_service(NULL)
     , redis_service(NULL)
     , bthread_tag(BTHREAD_TAG_INVALID)
-    , rpc_pb_message_factory(new DefaultRpcPBMessageFactory()) {
+    , rpc_pb_message_factory(new DefaultRpcPBMessageFactory())
+    , ignore_eovercrowded(false) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
