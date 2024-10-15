@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_NSHEAD;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
@@ -63,9 +63,9 @@ int main(int argc, char* argv[]) {
 
         cntl.set_log_id(log_id ++);  // set by user
 
-        // Because `done'(last parameter) is NULL, this function waits until
+        // Because `done'(last parameter) is nullptr, this function waits until
         // the response comes back or error occurs(including timedout).
-        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to send nshead request, " << cntl.ErrorText();
             sleep(1); // Remove this sleep in production code.

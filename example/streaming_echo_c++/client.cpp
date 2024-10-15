@@ -37,13 +37,13 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
         
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_BAIDU_STD;
     options.connection_type = FLAGS_connection_type;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
-    if (channel.Init(FLAGS_server.c_str(), NULL) != 0) {
+    if (channel.Init(FLAGS_server.c_str(), nullptr) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;
     }
@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
     example::EchoService_Stub stub(&channel);
     brpc::Controller cntl;
     brpc::StreamId stream;
-    if (brpc::StreamCreate(&stream, cntl, NULL) != 0) {
+    if (brpc::StreamCreate(&stream, cntl, nullptr) != 0) {
         LOG(ERROR) << "Fail to create stream";
         return -1;
     }
@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
     example::EchoRequest request;
     example::EchoResponse response;
     request.set_message("I'm a RPC to connect stream");
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to connect stream, " << cntl.ErrorText();
         return -1;

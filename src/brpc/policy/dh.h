@@ -28,7 +28,7 @@ namespace policy {
 // Diffie-Hellman key exchange
 class DHWrapper {
 public:
-    DHWrapper() : _pdh(NULL) {}
+    DHWrapper() : _pdh(nullptr) {}
     ~DHWrapper() { clear(); }
     
     // initialize dh, generate the public and private key.

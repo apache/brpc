@@ -67,18 +67,18 @@ static void* sender(void* arg) {
         brpc::MemcacheResponse response;
         brpc::Controller cntl;
 
-        // Because `done'(last parameter) is NULL, this function waits until
+        // Because `done'(last parameter) is nullptr, this function waits until
         // the response comes back or error occurs(including timedout).
-        channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
         const int64_t elp = cntl.latency_us();
         if (!cntl.Failed()) {
             g_latency_recorder << cntl.latency_us();
             for (int i = 0; i < FLAGS_batch; ++i) {
                 uint32_t flags;
-                if (!response.PopGet(&value, &flags, NULL)) {
+                if (!response.PopGet(&value, &flags, nullptr)) {
                     LOG(INFO) << "Fail to GET the key, " << response.LastError();
                     brpc::AskToQuit();
-                    return NULL;
+                    return nullptr;
                 }
                 CHECK(flags == 0xdeadbeef + base_index + i)
                     << "flags=" << flags;
@@ -96,7 +96,7 @@ static void* sender(void* arg) {
             bthread_usleep(50000);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char* argv[]) {
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MEMCACHE;
     options.connection_type = FLAGS_connection_type;
@@ -141,13 +141,13 @@ int main(int argc, char* argv[]) {
             return -1;
         }
     }
-    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to access memcache, " << cntl.ErrorText();
         return -1;
     }
     for (int i = 0; i < FLAGS_batch * FLAGS_thread_num; ++i) {
-        if (!response.PopSet(NULL)) {
+        if (!response.PopSet(nullptr)) {
             LOG(ERROR) << "Fail to SET memcache, i=" << i
                        << ", " << response.LastError();
             return -1;
@@ -166,7 +166,7 @@ int main(int argc, char* argv[]) {
     if (!FLAGS_use_bthread) {
         pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&pids[i], NULL, sender, &channel) != 0) {
+            if (pthread_create(&pids[i], nullptr, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
@@ -175,7 +175,7 @@ int main(int argc, char* argv[]) {
         bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &bids[i], NULL, sender, &channel) != 0) {
+                    &bids[i], nullptr, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -191,9 +191,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "memcache_client is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(pids[i], NULL);
+            pthread_join(pids[i], nullptr);
         } else {
-            bthread_join(bids[i], NULL);
+            bthread_join(bids[i], nullptr);
         }
     }
     if (options.auth) {

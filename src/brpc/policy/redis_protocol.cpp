@@ -85,7 +85,7 @@ int ConsumeCommand(RedisConnContext* ctx,
     if (ctx->transaction_handler) {
         result = ctx->transaction_handler->Run(args, &output, flush_batched);
         if (result == REDIS_CMD_HANDLED) {
-            ctx->transaction_handler.reset(NULL);
+            ctx->transaction_handler.reset(nullptr);
         } else if (result == REDIS_CMD_BATCHED) {
             LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
             return -1;
@@ -156,7 +156,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
         RedisConnContext* ctx = static_cast<RedisConnContext*>(socket->parsing_context());
-        if (ctx == NULL) {
+        if (ctx == nullptr) {
             ctx = new RedisConnContext(rs);
             socket->reset_parsing_context(ctx);
         }
@@ -212,7 +212,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
 
         do {
             InputResponse* msg = static_cast<InputResponse*>(socket->parsing_context());
-            if (msg == NULL) {
+            if (msg == nullptr) {
                 msg = new InputResponse;
                 socket->reset_parsing_context(msg);
             }
@@ -258,7 +258,7 @@ void ProcessRedisResponse(InputMessageBase* msg_base) {
     DestroyingPtr<InputResponse> msg(static_cast<InputResponse*>(msg_base));
 
     const bthread_id_t cid = msg->id_wait;
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -275,7 +275,7 @@ void ProcessRedisResponse(InputMessageBase* msg_base) {
         span->set_start_parse_us(start_parse_us);
     }
     const int saved_error = cntl->ErrorCode();
-    if (cntl->response() != NULL) {
+    if (cntl->response() != nullptr) {
         if (cntl->response()->GetDescriptor() != RedisResponse::descriptor()) {
             cntl->SetFailed(ERESPONSE, "Must be RedisResponse");
         } else {
@@ -304,8 +304,8 @@ void ProcessRedisRequest(InputMessageBase* msg_base) { }
 void SerializeRedisRequest(butil::IOBuf* buf,
                            Controller* cntl,
                            const google::protobuf::Message* request) {
-    if (request == NULL) {
-        return cntl->SetFailed(EREQUEST, "request is NULL");
+    if (request == nullptr) {
+        return cntl->SetFailed(EREQUEST, "request is nullptr");
     }
     if (request->GetDescriptor() != RedisRequest::descriptor()) {
         return cntl->SetFailed(EREQUEST, "The request is not a RedisRequest");
@@ -341,7 +341,7 @@ void PackRedisRequest(butil::IOBuf* buf,
         buf->append(auth_str);
         const RedisAuthenticator* redis_auth =
             dynamic_cast<const RedisAuthenticator*>(auth);
-        if (redis_auth == NULL) {
+        if (redis_auth == nullptr) {
             return cntl->SetFailed(EREQUEST, "Fail to generate credential");
         }
         ControllerPrivateAccessor(cntl).set_auth_flags(

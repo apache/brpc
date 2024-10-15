@@ -50,13 +50,13 @@ class ParseResult {
 public:
     // Create a failed parsing result.
     explicit ParseResult(ParseError err)
-        : _msg(NULL), _err(err), _user_desc(NULL) {}
+        : _msg(nullptr), _err(err), _user_desc(nullptr) {}
     // The `user_desc' must be string constant or always valid.
     explicit ParseResult(ParseError err, const char* user_desc)
-        : _msg(NULL), _err(err), _user_desc(user_desc) {}
+        : _msg(nullptr), _err(err), _user_desc(user_desc) {}
     // Create a successful parsing result.
     explicit ParseResult(InputMessageBase* msg)
-        : _msg(msg), _err(PARSE_OK), _user_desc(NULL) {}
+        : _msg(msg), _err(PARSE_OK), _user_desc(nullptr) {}
     
     // Return PARSE_OK when the result is successful.
     ParseError error() const { return _err; }
@@ -64,7 +64,7 @@ public:
     { return _user_desc ? _user_desc : ParseErrorToString(_err); }
     bool is_ok() const { return error() == PARSE_OK; }
 
-    // definitely NULL when result is failed.
+    // definitely nullptr when result is failed.
     InputMessageBase* message() const { return _msg; }
  
 private:

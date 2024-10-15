@@ -63,7 +63,7 @@ int bthread_once_impl(bthread_once_t* once_control, void (*init_routine)()) {
         }
         // Unless your constructor can be very time consuming, it is very unlikely o hit
         // this race. When it does, we just wait the thread until the object has been created.
-        if (bthread::butex_wait(butex, val, NULL) < 0 &&
+        if (bthread::butex_wait(butex, val, nullptr) < 0 &&
             errno != EWOULDBLOCK && errno != EINTR/*note*/) {
             return errno;
         }

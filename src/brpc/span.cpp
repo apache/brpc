@@ -106,8 +106,8 @@ inline uint64_t GenerateTraceId() {
 Span* Span::CreateClientSpan(const std::string& full_method_name,
                              int64_t base_real_us) {
     Span* span = butil::get_object<Span>(Forbidden());
-    if (__builtin_expect(span == NULL, 0)) {
-        return NULL;
+    if (__builtin_expect(span == nullptr, 0)) {
+        return nullptr;
     }
     span->_log_id = 0;
     span->_base_cid = INVALID_BTHREAD_ID;
@@ -124,9 +124,9 @@ Span* Span::CreateClientSpan(const std::string& full_method_name,
     span->_start_callback_real_us = 0;
     span->_start_send_real_us = 0;
     span->_sent_real_us = 0;
-    span->_next_client = NULL;
-    span->_client_list = NULL;
-    span->_tls_next = NULL;
+    span->_next_client = nullptr;
+    span->_client_list = nullptr;
+    span->_tls_next = nullptr;
     span->_full_method_name = full_method_name;
     span->_info.clear();
     Span* parent = (Span*)bthread::tls_bls.rpcz_parent_span;
@@ -139,7 +139,7 @@ Span* Span::CreateClientSpan(const std::string& full_method_name,
     } else {
         span->_trace_id = GenerateTraceId();
         span->_parent_span_id = 0;
-        span->_local_parent = NULL;
+        span->_local_parent = nullptr;
     }
     span->_span_id = GenerateSpanId();
     return span;
@@ -148,12 +148,12 @@ Span* Span::CreateClientSpan(const std::string& full_method_name,
 Span* Span::CreateBthreadSpan(const std::string& full_method_name, 
                               int64_t base_real_us) {
     Span* parent = (Span*)bthread::tls_bls.rpcz_parent_span;
-    if (parent == NULL) {
-        return NULL;
+    if (parent == nullptr) {
+        return nullptr;
     }
     Span* span = butil::get_object<Span>(Forbidden());
-    if (__builtin_expect(span == NULL, 0)) {
-        return NULL;
+    if (__builtin_expect(span == nullptr, 0)) {
+        return nullptr;
     }
     span->_log_id = 0;
     span->_base_cid = INVALID_BTHREAD_ID;
@@ -170,9 +170,9 @@ Span* Span::CreateBthreadSpan(const std::string& full_method_name,
     span->_start_callback_real_us = 0;
     span->_start_send_real_us = 0;
     span->_sent_real_us = 0;
-    span->_next_client = NULL;
-    span->_client_list = NULL;
-    span->_tls_next = NULL;
+    span->_next_client = nullptr;
+    span->_client_list = nullptr;
+    span->_tls_next = nullptr;
     span->_full_method_name = full_method_name;
     span->_info.clear();
 
@@ -197,8 +197,8 @@ Span* Span::CreateServerSpan(
     uint64_t trace_id, uint64_t span_id, uint64_t parent_span_id,
     int64_t base_real_us) {
     Span* span = butil::get_object<Span>(Forbidden());
-    if (__builtin_expect(span == NULL, 0)) {
-        return NULL;
+    if (__builtin_expect(span == nullptr, 0)) {
+        return nullptr;
     }
     span->_trace_id = (trace_id ? trace_id : GenerateTraceId());
     span->_span_id = (span_id ? span_id : GenerateSpanId());
@@ -218,13 +218,13 @@ Span* Span::CreateServerSpan(
     span->_start_callback_real_us = 0;
     span->_start_send_real_us = 0;
     span->_sent_real_us = 0;
-    span->_next_client = NULL;
-    span->_client_list = NULL;
-    span->_tls_next = NULL;
+    span->_next_client = nullptr;
+    span->_client_list = nullptr;
+    span->_tls_next = nullptr;
     span->_full_method_name = (!full_method_name.empty() ?
                                full_method_name : unknown_span_name());
     span->_info.clear();
-    span->_local_parent = NULL;
+    span->_local_parent = nullptr;
     return span;
 }
 
@@ -249,10 +249,10 @@ void Span::destroy() {
 }
 
 void Span::traversal(Span* r, const std::function<void(Span*)>& f) const {
-    if (r == NULL) {
+    if (r == nullptr) {
         return;
     }
-    for (auto p = r->_client_list; p != NULL; p = p->_next_client) {
+    for (auto p = r->_client_list; p != nullptr; p = p->_next_client) {
         traversal(p, f);
     }
     f(r);
@@ -319,7 +319,7 @@ SpanInfoExtractor::SpanInfoExtractor(const char* info)
 
 bool SpanInfoExtractor::PopAnnotation(
     int64_t before_this_time, int64_t* time, std::string* annotation) {
-    for (; _sp != NULL; ++_sp) {
+    for (; _sp != nullptr; ++_sp) {
         butil::StringSplitter sp_time(_sp.field(), _sp.field() + _sp.length(), ' ');
         if (sp_time) {
             char* endptr;
@@ -362,7 +362,7 @@ public:
     std::string id_db_name;
     std::string time_db_name;
 
-    SpanDB() : id_db(NULL), time_db(NULL) { }
+    SpanDB() : id_db(nullptr), time_db(nullptr) { }
     static SpanDB* Open();
     leveldb::Status Index(const Span* span, std::string* value_buf);
     leveldb::Status RemoveSpansBefore(int64_t tm);
@@ -376,7 +376,7 @@ private:
     }
 
     ~SpanDB() {
-        if (id_db == NULL && time_db == NULL) {
+        if (id_db == nullptr && time_db == nullptr) {
             return;
         }
         delete id_db;
@@ -397,7 +397,7 @@ static int64_t g_last_delete_tm = 0;
 static pthread_mutex_t g_span_db_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool g_span_ending = false;  // don't open span again if this var is true.
 // Can't use intrusive_ptr which has ctor/dtor issues.
-static SpanDB* g_span_db = NULL;
+static SpanDB* g_span_db = nullptr;
 bool has_span_db() { return !!g_span_db; }
 bvar::CollectorSpeedLimit g_span_sl = BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER;
 static bvar::DisplaySamplingRatio s_display_sampling_ratio(
@@ -416,7 +416,7 @@ public:
         std::sort(list.begin(), list.end(), SpanEarlier());
     }
 };
-static SpanPreprocessor* g_span_prep = NULL;
+static SpanPreprocessor* g_span_prep = nullptr;
 
 bvar::CollectorSpeedLimit* Span::speed_limit() {
     return &g_span_sl;
@@ -427,7 +427,7 @@ bvar::CollectorPreprocessor* Span::preprocessor() {
 }
 
 static void ResetSpanDB(SpanDB* db) {
-    SpanDB* old_db = NULL;
+    SpanDB* old_db = nullptr;
     {
         BAIDU_SCOPED_LOCK(g_span_db_mutex);
         old_db = g_span_db;
@@ -443,7 +443,7 @@ static void ResetSpanDB(SpanDB* db) {
 
 static void RemoveSpanDB() {
     g_span_ending = true;
-    ResetSpanDB(NULL);
+    ResetSpanDB(nullptr);
 }
 
 static void StartSpanIndexing() {
@@ -461,7 +461,7 @@ static int StartIndexingIfNeeded() {
 
 inline int GetSpanDB(butil::intrusive_ptr<SpanDB>* db) {
     BAIDU_SCOPED_LOCK(g_span_db_mutex);
-    if (g_span_db != NULL) {
+    if (g_span_db != nullptr) {
         *db = g_span_db;
         return 0;
     }
@@ -469,7 +469,7 @@ inline int GetSpanDB(butil::intrusive_ptr<SpanDB>* db) {
 }
 
 void Span::Submit(Span* span, int64_t cpuwide_time_us) {
-    if (span->local_parent() == NULL) {
+    if (span->local_parent() == nullptr) {
         span->submit(cpuwide_time_us);
     }
 }
@@ -540,14 +540,14 @@ SpanDB* SpanDB::Open() {
     if (!butil::CreateDirectoryAndGetError(dir, &error)) {
         LOG(ERROR) << "Fail to create directory=`" << dir.value() << ", "
                    << error;
-        return NULL;
+        return nullptr;
     }
 
     local.id_db_name.append("/id.db");
     st = leveldb::DB::Open(options, local.id_db_name.c_str(), &local.id_db);
     if (!st.ok()) {
         LOG(ERROR) << "Fail to open id_db: " << st.ToString();
-        return NULL;
+        return nullptr;
     }
 
     local.time_db_name.append(FLAGS_rpcz_database_dir);
@@ -556,11 +556,11 @@ SpanDB* SpanDB::Open() {
     st = leveldb::DB::Open(options, local.time_db_name.c_str(), &local.time_db);
     if (!st.ok()) {
         LOG(ERROR) << "Fail to open time_db: " << st.ToString();
-        return NULL;
+        return nullptr;
     }
     SpanDB* db = new (std::nothrow) SpanDB;
-    if (NULL == db) {
-        return NULL;
+    if (nullptr == db) {
+        return nullptr;
     }
     LOG(INFO) << "Opened " << local.id_db_name << " and "
                << local.time_db_name;
@@ -659,8 +659,8 @@ leveldb::Status SpanDB::Index(const Span* span, std::string* value_buf) {
 
 // NOTE: may take more than 100ms
 leveldb::Status SpanDB::RemoveSpansBefore(int64_t tm) {
-    if (id_db == NULL || time_db == NULL) {
-        return leveldb::Status::InvalidArgument(leveldb::Slice("NULL param"));
+    if (id_db == nullptr || time_db == nullptr) {
+        return leveldb::Status::InvalidArgument(leveldb::Slice("nullptr param"));
     }
     leveldb::Status rc;
     leveldb::WriteOptions options;
@@ -713,7 +713,7 @@ void Span::dump_and_destroy(size_t /*round*/) {
             return;
         }
         SpanDB* db2 = SpanDB::Open();
-        if (db2 == NULL) {
+        if (db2 == nullptr) {
             LOG(WARNING) << "Fail to open SpanDB";
             destroy();
             return;
@@ -727,7 +727,7 @@ void Span::dump_and_destroy(size_t /*round*/) {
     if (!st.ok()) {
         LOG(WARNING) << st.ToString();
         if (st.IsNotFound() || st.IsIOError() || st.IsCorruption()) {
-            ResetSpanDB(NULL);
+            ResetSpanDB(nullptr);
             return;
         }
     }
@@ -741,7 +741,7 @@ void Span::dump_and_destroy(size_t /*round*/) {
         if (!st.ok()) {
             LOG(ERROR) << st.ToString();
             if (st.IsNotFound() || st.IsIOError() || st.IsCorruption()) {
-                ResetSpanDB(NULL);
+                ResetSpanDB(nullptr);
                 return;
             }
         }
@@ -826,7 +826,7 @@ void ListSpans(int64_t starting_realtime, size_t max_scan,
         }
         brief.Clear();
         if (brief.ParseFromArray(it->value().data(), it->value().size())) {
-            if (NULL == filter || filter->Keep(brief)) {
+            if (nullptr == filter || filter->Keep(brief)) {
                 out->push_back(brief);
             }
             // We increase the count no matter filter passed or not to avoid
@@ -845,7 +845,7 @@ void DescribeSpanDB(std::ostream& os) {
         return;
     }
 
-    if (db->id_db != NULL) {
+    if (db->id_db != nullptr) {
         std::string val;
         if (db->id_db->GetProperty(leveldb::Slice("leveldb.stats"), &val)) {
             os << "[ " << db->id_db_name << " ]\n" << val;
@@ -855,7 +855,7 @@ void DescribeSpanDB(std::ostream& os) {
         }
     }
     os << '\n';
-    if (db->time_db != NULL) {
+    if (db->time_db != nullptr) {
         std::string val;
         if (db->time_db->GetProperty(leveldb::Slice("leveldb.stats"), &val)) {
             os << "[ " << db->time_db_name << " ]\n" << val;

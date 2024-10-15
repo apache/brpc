@@ -311,7 +311,7 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
                                  ::google::protobuf::Closure* done) {
     ClosureGuard done_guard(done);
     Controller *cntl = static_cast<Controller*>(cntl_base);    
-    if (cntl->http_request().uri().GetQuery("series") != NULL) {
+    if (cntl->http_request().uri().GetQuery("series") != nullptr) {
         butil::IOBufBuilder os;
         bvar::SeriesOptions series_options;
         const int rc = bvar::Variable::describe_series_exposed(
@@ -330,7 +330,7 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
     }
     const bool use_html = UseHTML(cntl->http_request());
     bool with_tabs = false;
-    if (use_html && cntl->http_request().uri().GetQuery("dataonly") == NULL) {
+    if (use_html && cntl->http_request().uri().GetQuery("dataonly") == nullptr) {
         with_tabs = true;
     }
     cntl->http_response().set_content_type(

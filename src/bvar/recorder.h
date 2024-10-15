@@ -115,14 +115,14 @@ public:
     typedef detail::AgentCombiner<Stat, uint64_t, AddToStat> combiner_type;
     typedef combiner_type::Agent agent_type;
 
-    IntRecorder() : _sampler(NULL) {}
+    IntRecorder() : _sampler(nullptr) {}
 
-    explicit IntRecorder(const butil::StringPiece& name) : _sampler(NULL) {
+    explicit IntRecorder(const butil::StringPiece& name) : _sampler(nullptr) {
         expose(name);
     }
 
     IntRecorder(const butil::StringPiece& prefix, const butil::StringPiece& name)
-        : _sampler(NULL) {
+        : _sampler(nullptr) {
         expose_as(prefix, name);
     }
 
@@ -130,7 +130,7 @@ public:
         hide();
         if (_sampler) {
             _sampler->destroy();
-            _sampler = NULL;
+            _sampler = nullptr;
         }
     }
 
@@ -163,7 +163,7 @@ public:
     bool valid() const { return _combiner.valid(); }
     
     sampler_type* get_sampler() {
-        if (NULL == _sampler) {
+        if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
             _sampler->schedule();
         }
@@ -237,7 +237,7 @@ private:
 
 inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
     if (BAIDU_UNLIKELY((int64_t)(int)sample != sample)) {
-        const char* reason = NULL;
+        const char* reason = nullptr;
         if (sample > std::numeric_limits<int>::max()) {
             reason = "overflows";
             sample = std::numeric_limits<int>::max();

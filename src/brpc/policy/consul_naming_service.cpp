@@ -103,7 +103,7 @@ int ConsulNamingService::GetServers(const char* service_name,
 
     Controller cntl;
     cntl.http_request().uri() = consul_url;
-    _channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    _channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to access " << consul_url << ": "
                    << cntl.ErrorText();

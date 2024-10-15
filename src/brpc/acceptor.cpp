@@ -39,7 +39,7 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _acception_id(0)
     , _empty_cond(&_map_mutex)
     , _force_ssl(false)
-    , _ssl_ctx(NULL) 
+    , _ssl_ctx(nullptr)
     , _use_rdma(false)
     , _bthread_tag(BTHREAD_TAG_DEFAULT) {
 }
@@ -59,7 +59,7 @@ int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
 
     if (!ssl_ctx && force_ssl) {
         LOG(ERROR) << "Fail to force SSL for all connections "
-                      " because ssl_ctx is NULL";
+                      " because ssl_ctx is nullptr";
         return -1;
     }
     
@@ -119,7 +119,7 @@ void* Acceptor::CloseIdleConnections(void* arg) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 void Acceptor::StopAccept(int /*closewait_ms*/) {
@@ -190,7 +190,7 @@ void Acceptor::Join() {
     // Join the bthread outside lock.
     if (saved_idle_timeout_sec > 0) {
         bthread_stop(saved_close_idle_tid);
-        bthread_join(saved_close_idle_tid, NULL);
+        bthread_join(saved_close_idle_tid, nullptr);
     }
     
     {
@@ -207,8 +207,8 @@ size_t Acceptor::ConnectionCount() const {
 
 void Acceptor::ListConnections(std::vector<SocketId>* conn_list,
                                size_t max_copied) {
-    if (conn_list == NULL) {
-        LOG(FATAL) << "Param[conn_list] is NULL";
+    if (conn_list == nullptr) {
+        LOG(FATAL) << "Param[conn_list] is nullptr";
         return;
     }
     conn_list->clear();
@@ -274,7 +274,7 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         }
 
         Acceptor* am = dynamic_cast<Acceptor*>(acception->user());
-        if (NULL == am) {
+        if (nullptr == am) {
             LOG(FATAL) << "Impossible! acception->user() MUST be Acceptor";
             acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
             return;

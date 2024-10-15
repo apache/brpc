@@ -100,7 +100,7 @@ class SubDone;
 class Sender;
 
 struct Resource {
-    Resource() : response(NULL), sub_done(NULL) {}
+    Resource() : response(nullptr), sub_done(nullptr) {}
         
     google::protobuf::Message* response;
     SubDone* sub_done;
@@ -170,8 +170,8 @@ int ChannelBalancer::Init(const char* lb_name) {
 
 int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
                                 SelectiveChannel::ChannelHandle* handle) {
-    if (NULL == sub_channel) {
-        LOG(ERROR) << "Parameter[sub_channel] is NULL";
+    if (nullptr == sub_channel) {
+        LOG(ERROR) << "Parameter[sub_channel] is nullptr";
         return -1;
     }
     BAIDU_SCOPED_LOCK(_mutex);
@@ -180,7 +180,7 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
         return -1;
     }
     SubChannel* sub_chan = new (std::nothrow) SubChannel;
-    if (sub_chan == NULL) {
+    if (sub_chan == nullptr) {
         LOG(FATAL) << "Fail to to new SubChannel";
         return -1;
     }
@@ -312,7 +312,7 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
     _main_cntl->_current_call.peer_id = sel_out.fake_sock->id();
 
     Resource r = PopFree();
-    if (r.sub_done == NULL) {
+    if (r.sub_done == nullptr) {
         CHECK(false) << "Impossible!";
         _main_cntl->SetFailed("Impossible happens");
         return -1;
@@ -344,7 +344,7 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
 }
 
 void SubDone::Run() {
-    Controller* main_cntl = NULL;
+    Controller* main_cntl = nullptr;
     const int rc = bthread_id_lock(_cid, (void**)&main_cntl);
     if (rc != 0) {
         // _cid must be valid because schan does not dtor before cancelling
@@ -404,14 +404,14 @@ void Sender::Run() {
 }
 
 void Sender::Clear() {
-    if (_main_cntl == NULL) {
+    if (_main_cntl == nullptr) {
         return;
     }
     delete _alloc_resources[1].response;
     delete _alloc_resources[1].sub_done;
     _alloc_resources[1] = Resource();
     const CallId cid = _main_cntl->call_id();
-    _main_cntl = NULL;
+    _main_cntl = nullptr;
     if (_user_done) {
         _user_done->Run();
     }
@@ -441,7 +441,7 @@ inline Resource Sender::PopFree() {
         r.response->Clear();
         Controller& sub_cntl = r.sub_done->_cntl;
         ExcludedServers* saved_accessed = sub_cntl._accessed;
-        sub_cntl._accessed = NULL;
+        sub_cntl._accessed = nullptr;
         sub_cntl.Reset();
         sub_cntl._accessed = saved_accessed;
         return r;
@@ -464,7 +464,7 @@ inline bool Sender::PushFree(const Resource& r) {
 
 inline const Controller* Sender::SubController(int index) const {
     if (index != 0) {
-        return NULL;
+        return nullptr;
     }
     for (int i = 0; i < _nfree; ++i) {
         if (!_free_resources[i].sub_done->_cntl.Failed()) {
@@ -474,7 +474,7 @@ inline const Controller* Sender::SubController(int index) const {
     if (_nfree != 0) {
         return &_free_resources[_nfree - 1].sub_done->_cntl;
     }
-    return NULL;
+    return nullptr;
 }
 
 }  // namespace schan
@@ -500,7 +500,7 @@ int SelectiveChannel::Init(const char* lb_name, const ChannelOptions* options) {
         return -1;
     }
     schan::ChannelBalancer* lb = new (std::nothrow) schan::ChannelBalancer;
-    if (NULL == lb) {
+    if (nullptr == lb) {
         LOG(FATAL) << "Fail to new ChannelBalancer";
         return -1;
     }
@@ -516,21 +516,21 @@ int SelectiveChannel::Init(const char* lb_name, const ChannelOptions* options) {
         // Modify some fields to be consistent with behavior of schan.
         _chan._options.connection_type = CONNECTION_TYPE_UNKNOWN;
         _chan._options.succeed_without_server = true;
-        _chan._options.auth = NULL;
+        _chan._options.auth = nullptr;
     }
     _chan._options.protocol = PROTOCOL_UNKNOWN;
     return 0;
 }
 
 bool SelectiveChannel::initialized() const {
-    return _chan._lb != NULL;
+    return _chan._lb != nullptr;
 }
 
 int SelectiveChannel::AddChannel(ChannelBase* sub_channel,
                                  ChannelHandle* handle) {
     schan::ChannelBalancer* lb =
         static_cast<schan::ChannelBalancer*>(_chan._lb.get());
-    if (lb == NULL) {
+    if (lb == nullptr) {
         LOG(ERROR) << "You must call Init() to initialize a SelectiveChannel";
         return -1;
     }
@@ -540,7 +540,7 @@ int SelectiveChannel::AddChannel(ChannelBase* sub_channel,
 void SelectiveChannel::RemoveAndDestroyChannel(ChannelHandle handle) {
     schan::ChannelBalancer* lb =
         static_cast<schan::ChannelBalancer*>(_chan._lb.get());
-    if (lb == NULL) {
+    if (lb == nullptr) {
         LOG(ERROR) << "You must call Init() to initialize a SelectiveChannel";
         return;
     }
@@ -563,7 +563,7 @@ void SelectiveChannel::CallMethod(
     cntl->add_flag(Controller::FLAGS_DESTROY_CID_IN_DONE);
     const CallId cid = cntl->call_id();
     _chan.CallMethod(method, cntl, request, response, sndr);
-    if (user_done == NULL) {
+    if (user_done == nullptr) {
         Join(cid);
         cntl->OnRPCEnd(butil::gettimeofday_us());
     }
@@ -581,7 +581,7 @@ int SelectiveChannel::CheckHealth() {
 void SelectiveChannel::Describe(
     std::ostream& os, const DescribeOptions& options) const {
     os << "SelectiveChannel[";
-    if (_chan._lb != NULL) {
+    if (_chan._lb != nullptr) {
         _chan._lb->Describe(os, options);
     } else {
         os << "uninitialized";

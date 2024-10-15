@@ -64,7 +64,7 @@ SendNsheadPbResponse::SendNsheadPbResponse(
     , cntl(cntl2)
     , ns_res(ns_res2)
     , done(done2)
-    , status(NULL) {
+    , status(nullptr) {
 }
 
 void SendNsheadPbResponse::Run() {
@@ -114,7 +114,7 @@ void NsheadPbServiceAdaptor::ProcessNsheadRequest(
         ServerPrivateAccessor server_accessor(&server);
         const Server::MethodProperty *sp = server_accessor
             .FindMethodPropertyByFullName(meta->full_method_name());
-        if (NULL == sp ||
+        if (nullptr == sp ||
             sp->service->GetDescriptor() == BadMethodService::descriptor()) {
             controller->SetFailed(ENOMETHOD, "Fail to find method=%s", 
                                   meta->full_method_name().c_str());

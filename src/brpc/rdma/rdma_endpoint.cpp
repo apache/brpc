@@ -95,8 +95,8 @@ static const uint16_t MAX_QP_SIZE = 4096;
 static const uint16_t MIN_BLOCK_SIZE = 1024;
 static const uint32_t ACK_MSG_RDMA_OK = 0x1;
 
-static butil::Mutex* g_rdma_resource_mutex = NULL;
-static RdmaResource* g_rdma_resource_list = NULL;
+static butil::Mutex* g_rdma_resource_mutex = nullptr;
+static RdmaResource* g_rdma_resource_list = nullptr;
 
 struct HelloMessage {
     void Serialize(void* data) const;
@@ -144,30 +144,30 @@ void HelloMessage::Deserialize(void* data) {
 }
 
 RdmaResource::RdmaResource() 
-    : qp(NULL)
-    , cq(NULL)
-    , comp_channel(NULL)
-    , next(NULL) { }
+    : qp(nullptr)
+    , cq(nullptr)
+    , comp_channel(nullptr)
+    , next(nullptr) { }
 
 RdmaResource::~RdmaResource() {
     if (qp) {
         IbvDestroyQp(qp);
-        qp = NULL;
+        qp = nullptr;
     }
     if (cq) {
         IbvDestroyCq(cq);
-        cq = NULL;
+        cq = nullptr;
     }
     if (comp_channel) {
         IbvDestroyCompChannel(comp_channel);
-        comp_channel = NULL;
+        comp_channel = nullptr;
     }
 }
 
 RdmaEndpoint::RdmaEndpoint(Socket* s)
     : _socket(s)
     , _state(UNINIT)
-    , _resource(NULL)
+    , _resource(nullptr)
     , _cq_events(0)
     , _cq_sid(INVALID_SOCKET_ID)
     , _sq_size(FLAGS_rdma_sq_size)
@@ -232,7 +232,7 @@ void RdmaEndpoint::Reset() {
 void RdmaConnect::StartConnect(const Socket* socket,
                                void (*done)(int err, void* data),
                                void* data) {
-    CHECK(socket->_rdma_ep != NULL);
+    CHECK(socket->_rdma_ep != nullptr);
     SocketUniquePtr s;
     if (Socket::Address(socket->id(), &s) != 0) {
         return;
@@ -290,7 +290,7 @@ static void TryReadOnTcpDuringRdmaEst(Socket* s) {
 
 void RdmaEndpoint::OnNewDataFromTcp(Socket* m) {
     RdmaEndpoint* ep = m->_rdma_ep;
-    CHECK(ep != NULL);
+    CHECK(ep != nullptr);
 
     int progress = Socket::PROGRESS_INIT;
     while (true) {
@@ -348,7 +348,7 @@ bool HelloNegotiationValid(HelloMessage& msg) {
 static const int WAIT_TIMEOUT_MS = 50;
 
 int RdmaEndpoint::ReadFromFd(void* data, size_t len) {
-    CHECK(data != NULL);
+    CHECK(data != nullptr);
     int nr = 0;
     size_t received = 0;
     do {
@@ -376,7 +376,7 @@ int RdmaEndpoint::ReadFromFd(void* data, size_t len) {
 }
 
 int RdmaEndpoint::WriteToFd(void* data, size_t len) {
-    CHECK(data != NULL);
+    CHECK(data != nullptr);
     int nw = 0;
     size_t written = 0;
     do {
@@ -425,7 +425,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         LOG(WARNING) << "Fallback to tcp:" << s->description();
         s->_rdma_state = Socket::RDMA_OFF;
         ep->_state = FALLBACK_TCP;
-        return NULL;
+        return nullptr;
     }
 
     // Send hello message to server
@@ -453,7 +453,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     // Check magic str
@@ -464,14 +464,14 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
     if (memcmp(data, MAGIC_STR, MAGIC_STR_LEN) != 0) {
         LOG(WARNING) << "Read unexpected data during handshake:" << s->description();
         s->SetFailed(EPROTO, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(EPROTO));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     // Read hello message from server
@@ -481,7 +481,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
     HelloMessage remote_msg;
     remote_msg.Deserialize(data);
@@ -491,7 +491,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(EPROTO, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(EPROTO));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
@@ -534,7 +534,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     if (s->_rdma_state == Socket::RDMA_ON) {
@@ -549,7 +549,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
 
     errno = 0;
 
-    return NULL;
+    return nullptr;
 }
 
 void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
@@ -568,7 +568,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     if (memcmp(data, MAGIC_STR, MAGIC_STR_LEN) != 0) {
@@ -580,7 +580,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->_state = FALLBACK_TCP;
         s->_rdma_state = Socket::RDMA_OFF;
         ep->TryReadOnTcp();
-        return NULL;
+        return nullptr;
     }
 
     if (ep->ReadFromFd(data, g_rdma_hello_msg_len - MAGIC_STR_LEN) < 0) {
@@ -589,7 +589,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     HelloMessage remote_msg;
@@ -600,7 +600,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(EPROTO, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(EPROTO));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
     if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
         // TODO: Read Hello Message customized header
@@ -664,7 +664,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     // Recv ACK Message
@@ -675,7 +675,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     // Check RDMA enable flag
@@ -688,7 +688,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
             s->SetFailed(EPROTO, "Fail to complete rdma handshake from %s: %s",
                     s->description().c_str(), berror(EPROTO));
             ep->_state = FAILED;
-            return NULL;
+            return nullptr;
         } else {
             s->_rdma_state = Socket::RDMA_ON;
             ep->_state = ESTABLISHED;
@@ -704,7 +704,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
  
     ep->TryReadOnTcp();
 
-    return NULL;
+    return nullptr;
 }
 
 bool RdmaEndpoint::IsWritable() const {
@@ -778,7 +778,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         return -1;
     }
 
-    CHECK(from != NULL);
+    CHECK(from != nullptr);
     CHECK(ndata > 0);
 
     size_t total_len = 0;
@@ -874,7 +874,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             _sq_unsignaled = 0;
         }
 
-        ibv_send_wr* bad = NULL;
+        ibv_send_wr* bad = nullptr;
         if (ibv_post_send(_resource->qp, &wr, &bad) < 0) {
             // We use other way to guarantee the Send Queue is not full.
             // So we just consider this error as an unrecoverable error.
@@ -916,7 +916,7 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
     wr.send_flags |= IBV_SEND_SOLICITED;
     wr.send_flags |= IBV_SEND_SIGNALED;
 
-    ibv_send_wr* bad = NULL;
+    ibv_send_wr* bad = nullptr;
     if (ibv_post_send(_resource->qp, &wr, &bad) < 0) {
         // We use other way to guarantee the Send Queue is not full.
         // So we just consider this error as an unrecoverable error.
@@ -1000,7 +1000,7 @@ int RdmaEndpoint::DoPostRecv(void* block, size_t block_size) {
     wr.num_sge = 1;
     wr.sg_list = &sge;
 
-    ibv_recv_wr* bad = NULL;
+    ibv_recv_wr* bad = nullptr;
     if (ibv_post_recv(_resource->qp, &wr, &bad) < 0) {
         PLOG(WARNING) << "Fail to ibv_post_recv";
         return -1;
@@ -1040,29 +1040,29 @@ int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
 static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
     RdmaResource* res = new (std::nothrow) RdmaResource;
     if (!res) {
-        return NULL;
+        return nullptr;
     }
 
     res->comp_channel = IbvCreateCompChannel(GetRdmaContext());
     if (!res->comp_channel) {
         PLOG(WARNING) << "Fail to create comp channel for CQ";
         delete res;
-        return NULL;
+        return nullptr;
     }
 
     butil::make_close_on_exec(res->comp_channel->fd);
     if (butil::make_non_blocking(res->comp_channel->fd) < 0) {
         PLOG(WARNING) << "Fail to set comp channel nonblocking";
         delete res;
-        return NULL;
+        return nullptr;
     }
 
     res->cq = IbvCreateCq(GetRdmaContext(), 2 * FLAGS_rdma_prepared_qp_size,
-            NULL, res->comp_channel, GetRdmaCompVector());
+            nullptr, res->comp_channel, GetRdmaCompVector());
     if (!res->cq) {
         PLOG(WARNING) << "Fail to create CQ";
         delete res;
-        return NULL;
+        return nullptr;
     }
 
     ibv_qp_init_attr attr;
@@ -1088,7 +1088,7 @@ static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
     if (!res->qp) {
         PLOG(WARNING) << "Fail to create QP";
         delete res;
-        return NULL;
+        return nullptr;
     }
 
     return res;
@@ -1100,7 +1100,7 @@ int RdmaEndpoint::AllocateResources() {
         return 0;
     }
 
-    CHECK(_resource == NULL);
+    CHECK(_resource == nullptr);
 
     if (_sq_size <= FLAGS_rdma_prepared_qp_size &&
         _rq_size <= FLAGS_rdma_prepared_qp_size) {
@@ -1113,7 +1113,7 @@ int RdmaEndpoint::AllocateResources() {
     if (!_resource) {
         _resource = AllocateQpCq(_sq_size, _rq_size);
     } else {
-        _resource->next = NULL;
+        _resource->next = nullptr;
     }
     if (!_resource) {
         return -1;
@@ -1142,7 +1142,7 @@ int RdmaEndpoint::AllocateResources() {
     if (_rbuf.size() != _rq_size) {
         return -1;
     }
-    _rbuf_data.resize(_rq_size, NULL);
+    _rbuf_data.resize(_rq_size, nullptr);
     if (_rbuf_data.size() != _rq_size) {
         return -1;
     }
@@ -1245,14 +1245,14 @@ void RdmaEndpoint::DeallocateResources() {
             if (IbvDestroyQp(_resource->qp) < 0) {
                 PLOG(WARNING) << "Fail to destroy QP";
             }
-            _resource->qp = NULL;
+            _resource->qp = nullptr;
         }
         if (_resource->cq) {
             IbvAckCqEvents(_resource->cq, _cq_events);
             if (IbvDestroyCq(_resource->cq) < 0) {
                 PLOG(WARNING) << "Fail to destroy CQ";
             }
-            _resource->cq = NULL;
+            _resource->cq = nullptr;
         }
         if (_resource->comp_channel) {
             // destroy comp_channel will destroy this fd
@@ -1262,16 +1262,16 @@ void RdmaEndpoint::DeallocateResources() {
             if (IbvDestroyCompChannel(_resource->comp_channel) < 0) {
                 PLOG(WARNING) << "Fail to destroy CQ channel";
             }
-            _resource->comp_channel = NULL;
+            _resource->comp_channel = nullptr;
         }
         delete _resource;
-        _resource = NULL;
+        _resource = nullptr;
     }
 
     SocketUniquePtr s;
     if (_cq_sid != INVALID_SOCKET_ID) {
         if (Socket::Address(_cq_sid, &s) == 0) {
-            s->_user = NULL;  // do not release user (this RdmaEndpoint)
+            s->_user = nullptr;  // do not release user (this RdmaEndpoint)
             if (fd >= 0) {
                 _socket->_io_event.RemoveConsumer(fd);
             }
@@ -1290,13 +1290,13 @@ void RdmaEndpoint::DeallocateResources() {
         g_rdma_resource_list = _resource;
     }
 
-    _resource = NULL;
+    _resource = nullptr;
 }
 
 static const int MAX_CQ_EVENTS = 128;
 
 int RdmaEndpoint::GetAndAckEvents() {
-    int events = 0; void* context = NULL;
+    int events = 0; void* context = nullptr;
     while (1) {
         if (IbvGetCqEvent(_resource->comp_channel, &_resource->cq, &context) < 0) {
             if (errno != EAGAIN) {

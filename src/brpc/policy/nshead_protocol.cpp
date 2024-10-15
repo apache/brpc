@@ -42,7 +42,7 @@ void bthread_assign_data(void* data);
 namespace brpc {
 
 NsheadClosure::NsheadClosure(void* additional_space)
-    : _server(NULL)
+    : _server(nullptr)
     , _received_us(0)
     , _do_respond(true)
     , _additional_space(additional_space) {
@@ -218,7 +218,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     const nshead_t *req_head = (const nshead_t *)p;
 
     NsheadService* service = server->options().nshead_service;
-    if (service == NULL) {
+    if (service == nullptr) {
         LOG_EVERY_SECOND(WARNING) 
             << "Received nshead request however the server does not set"
             " ServerOptions.nshead_service, close the connection.";
@@ -248,7 +248,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         CHECK(method_status->OnRequested());
     }
     
-    void* sub_space = NULL;
+    void* sub_space = nullptr;
     if (service->_additional_space) {
         sub_space = (char*)space + sizeof(NsheadClosure);
     }
@@ -284,7 +284,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    Span* span = nullptr;
     if (IsTraceable(false)) {
         span = Span::CreateServerSpan(0, 0, 0, msg->base_real_us());
         accessor.set_span(span);
@@ -346,7 +346,7 @@ void ProcessNsheadResponse(InputMessageBase* msg_base) {
     
     // Fetch correlation id that we saved before in `PackNsheadRequest'
     const CallId cid = { static_cast<uint64_t>(msg->socket()->correlation_id()) };
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -365,7 +365,7 @@ void ProcessNsheadResponse(InputMessageBase* msg_base) {
     // MUST be NsheadMessage (checked in SerializeNsheadRequest)
     NsheadMessage* response = (NsheadMessage*)cntl->response();
     const int saved_error = cntl->ErrorCode();
-    if (response != NULL) {
+    if (response != nullptr) {
         msg->meta.copy_to(&response->head, sizeof(nshead_t));
         msg->payload.swap(response->body);
     } // else just ignore the response.
@@ -387,13 +387,13 @@ bool VerifyNsheadRequest(const InputMessageBase* msg_base) {
 
 void SerializeNsheadRequest(butil::IOBuf* request_buf, Controller* cntl,
                             const google::protobuf::Message* req_base) {
-    if (req_base == NULL) {
-        return cntl->SetFailed(EREQUEST, "request is NULL");
+    if (req_base == nullptr) {
+        return cntl->SetFailed(EREQUEST, "request is nullptr");
     }
     if (req_base->GetDescriptor() != NsheadMessage::descriptor()) {
         return cntl->SetFailed(EINVAL, "Type of request must be NsheadMessage");
     }
-    if (cntl->response() != NULL &&
+    if (cntl->response() != nullptr &&
         cntl->response()->GetDescriptor() != NsheadMessage::descriptor()) {
         return cntl->SetFailed(EINVAL, "Type of response must be NsheadMessage");
     }

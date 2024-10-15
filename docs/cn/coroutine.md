@@ -41,7 +41,7 @@ brpc::experimental::Awaitable<int> RpcCall(brpc::Channel& channel) {
 
 brpc::experimental::Awaitable<void> CoroutineMain(const char* server) {
     brpc::Channel channel;
-    channel.Init(server, NULL);
+    channel.Init(server, nullptr);
     // co_await会从Awaitable<int>得到int类型的返回值
     int code = co_await RpcCall(channel);
     printf("Rpc result:%d\n", code);
@@ -120,7 +120,7 @@ brpc::experimental::Awaitable<int> inplace_func() {
 ```cpp
 brpc::experimental::Awaitable<void> CoroutineMain(const char* server) {
     brpc::Channel channel;
-    channel.Init(server, NULL);
+    channel.Init(server, nullptr);
     brpc::experimental::Awaitable<int> awaitable = RpcCall(channel);
 
     int code = co_await awaitable;
@@ -141,7 +141,7 @@ brpc::experimental::Awaitable<void> CoroutineMain(const char* server) {
 
     // co_await之前的逻辑，保持不变
     brpc::Channel channel;
-    channel.Init(server, NULL);
+    channel.Init(server, nullptr);
     brpc::experimental::Awaitable<int> awaitable = RpcCall(channel);
 
     // co_await的逻辑，转成一个await_suspend的函数调用，传入一个callback函数

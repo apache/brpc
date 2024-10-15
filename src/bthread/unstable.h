@@ -62,7 +62,7 @@ extern int bthread_timer_del(bthread_timer_t id);
 extern int bthread_fd_wait(int fd, unsigned events);
 
 // Suspend caller thread until the file descriptor `fd' has `epoll_events'
-// or CLOCK_REALTIME reached `abstime' if abstime is not NULL.
+// or CLOCK_REALTIME reached `abstime' if abstime is not nullptr.
 // Returns 0 on success, -1 otherwise and errno is set.
 extern int bthread_fd_timedwait(int fd, unsigned epoll_events,
                                 const struct timespec* abstime);
@@ -79,7 +79,7 @@ extern int bthread_close(int fd);
 extern int bthread_connect(int sockfd, const struct sockaddr* serv_addr,
                            socklen_t addrlen);
 // Suspend caller thread until connect(2) on `sockfd' succeeds
-// or CLOCK_REALTIME reached `abstime' if `abstime' is not NULL.
+// or CLOCK_REALTIME reached `abstime' if `abstime' is not nullptr.
 extern int bthread_timed_connect(int sockfd, const struct sockaddr* serv_addr,
                                  socklen_t addrlen, const timespec* abstime);
 

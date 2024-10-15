@@ -23,7 +23,7 @@
 namespace brpc {
 
 static pthread_once_t s_sorttable_buf_once = PTHREAD_ONCE_INIT; 
-static butil::IOBuf* s_sorttable_buf = NULL;
+static butil::IOBuf* s_sorttable_buf = nullptr;
 static void InitSortTableBuf() {
     s_sorttable_buf = new butil::IOBuf;
     s_sorttable_buf->append(sorttable_js());

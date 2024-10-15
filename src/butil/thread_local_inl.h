@@ -28,11 +28,11 @@ template <typename T>
 class ThreadLocalHelper {
 public:
     inline static T* get() {
-        if (__builtin_expect(value != NULL, 1)) {
+        if (__builtin_expect(value != nullptr, 1)) {
             return value;
         }
         value = new (std::nothrow) T;
-        if (value != NULL) {
+        if (value != nullptr) {
             butil::thread_atexit(delete_object<T>, value);
         }
         return value;
@@ -40,7 +40,7 @@ public:
     static BAIDU_THREAD_LOCAL T* value;
 };
 
-template <typename T> BAIDU_THREAD_LOCAL T* ThreadLocalHelper<T>::value = NULL;
+template <typename T> BAIDU_THREAD_LOCAL T* ThreadLocalHelper<T>::value = nullptr;
 
 }  // namespace detail
 

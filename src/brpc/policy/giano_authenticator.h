@@ -29,7 +29,7 @@ namespace policy {
 
 class GianoAuthenticator: public Authenticator {
 public:
-    // Either `gen' or `ver' can be NULL (but not at the same time),
+    // Either `gen' or `ver' can be nullptr (but not at the same time),
     // in which case it can only verify/generate credential data
     explicit GianoAuthenticator(const baas::CredentialGenerator* gen,
                                 const baas::CredentialVerifier* ver);

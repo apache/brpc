@@ -71,14 +71,14 @@ static void* GenerateToken(void* arg) {
             accumulative_token += delta;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 class PerformanceTest {
 public:
     PerformanceTest(int attachment_size, bool echo_attachment)
-        : _addr(NULL)
-        , _channel(NULL)
+        : _addr(nullptr)
+        , _channel(nullptr)
         , _start_time(0)
         , _iterations(0)
         , _stop(false)
@@ -118,7 +118,7 @@ public:
         test::PerfTestRequest request;
         request.set_echo_attachment(_echo_attachment);
         test::PerfTestService_Stub stub(_channel);
-        stub.Test(&cntl, &request, &response, NULL);
+        stub.Test(&cntl, &request, &response, nullptr);
         if (cntl.Failed()) {
             LOG(ERROR) << "RPC call failed: " << cntl.ErrorText();
             return -1;
@@ -167,8 +167,8 @@ public:
         g_total_bytes.fetch_add(closure->cntl->request_attachment().size(), butil::memory_order_relaxed);
         g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
 
-        cntl_guard.reset(NULL);
-        response_guard.reset(NULL);
+        cntl_guard.reset(nullptr);
+        response_guard.reset(nullptr);
 
         if (closure->test->_iterations == 0 && FLAGS_test_iterations > 0) {
             closure->test->_stop = true;
@@ -199,7 +199,7 @@ public:
             test->SendRequest();
         }
 
-        return NULL;
+        return nullptr;
     }
 
 private:
@@ -215,7 +215,7 @@ private:
 static void* DeleteTest(void* arg) {
     PerformanceTest* test = (PerformanceTest*)arg;
     delete test;
-    return NULL;
+    return nullptr;
 }
 
 void Test(int thread_num, int attachment_size) {
@@ -239,7 +239,7 @@ void Test(int thread_num, int attachment_size) {
     bthread_t tid[thread_num];
     if (FLAGS_expected_qps > 0) {
         bthread_t tid;
-        bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL, GenerateToken, NULL);
+        bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL, GenerateToken, nullptr);
     }
     for (int k = 0; k < thread_num; ++k) {
         bthread_start_background(&tid[k], &BTHREAD_ATTR_NORMAL,

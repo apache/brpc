@@ -178,10 +178,10 @@ template <typename STRING_TYPE> class BasicStringPiece {
   // We provide non-explicit singleton constructors so users can pass
   // in a "const char*" or a "string" wherever a "StringPiece" is
   // expected (likewise for char16, string16, StringPiece16).
-  BasicStringPiece() : ptr_(NULL), length_(0) {}
+  BasicStringPiece() : ptr_(nullptr), length_(0) {}
   BasicStringPiece(const value_type* str)
       : ptr_(str),
-        length_((str == NULL) ? 0 : STRING_TYPE::traits_type::length(str)) {}
+        length_((str == nullptr) ? 0 : STRING_TYPE::traits_type::length(str)) {}
   BasicStringPiece(const STRING_TYPE& str)
       : ptr_(str.data()), length_(str.size()) {}
   BasicStringPiece(const value_type* offset, size_type len)
@@ -190,7 +190,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
       : ptr_(str.data() + pos), length_(std::min(len, str.length() - pos)) {}
   BasicStringPiece(const typename STRING_TYPE::const_iterator& begin,
                     const typename STRING_TYPE::const_iterator& end)
-      : ptr_((end > begin) ? &(*begin) : NULL),
+      : ptr_((end > begin) ? &(*begin) : nullptr),
         length_((end > begin) ? (size_type)(end - begin) : 0) {}
 
   // data() may return a pointer to a buffer with embedded NULs, and the
@@ -203,7 +203,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
   bool empty() const { return length_ == 0; }
 
   void clear() {
-    ptr_ = NULL;
+    ptr_ = nullptr;
     length_ = 0;
   }
   BasicStringPiece& assign(const BasicStringPiece& str, size_type pos, size_type len = npos) {
@@ -252,7 +252,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
   }
 
   STRING_TYPE as_string() const {
-    // std::string doesn't like to take a NULL pointer even with a 0 size.
+    // std::string doesn't like to take a nullptr pointer even with a 0 size.
     return empty() ? STRING_TYPE() : STRING_TYPE(data(), size());
   }
 

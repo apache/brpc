@@ -77,7 +77,7 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
                                  Socket* socket, bool /*read_eof*/, const void */*arg*/) {
     while (1) {
         const uint8_t* p_mcmagic = (const uint8_t*)source->fetch1();
-        if (NULL == p_mcmagic) {
+        if (nullptr == p_mcmagic) {
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }            
         if (*p_mcmagic != (uint8_t)MC_MAGIC_RESPONSE) {
@@ -85,7 +85,7 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
         }
         char buf[24];
         const uint8_t* p = (const uint8_t*)source->fetch(buf, sizeof(buf));
-        if (NULL == p) {
+        if (nullptr == p) {
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
         const MemcacheResponseHeader* header = (const MemcacheResponseHeader*)p;
@@ -108,7 +108,7 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
         }
         MostCommonMessage* msg =
             static_cast<MostCommonMessage*>(socket->parsing_context());
-        if (msg == NULL) {
+        if (msg == nullptr) {
             msg = MostCommonMessage::Get();
             socket->reset_parsing_context(msg);
         }
@@ -155,7 +155,7 @@ void ProcessMemcacheResponse(InputMessageBase* msg_base) {
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
 
     const bthread_id_t cid = msg->pi.id_wait;
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -172,8 +172,8 @@ void ProcessMemcacheResponse(InputMessageBase* msg_base) {
         span->set_start_parse_us(start_parse_us);
     }
     const int saved_error = cntl->ErrorCode();
-    if (cntl->response() == NULL) {
-        cntl->SetFailed(ERESPONSE, "response is NULL!");
+    if (cntl->response() == nullptr) {
+        cntl->SetFailed(ERESPONSE, "response is nullptr!");
     } else if (cntl->response()->GetDescriptor() != MemcacheResponse::descriptor()) {
         cntl->SetFailed(ERESPONSE, "Must be MemcacheResponse");
     } else {
@@ -194,8 +194,8 @@ void ProcessMemcacheResponse(InputMessageBase* msg_base) {
 void SerializeMemcacheRequest(butil::IOBuf* buf,
                               Controller* cntl,
                               const google::protobuf::Message* request) {
-    if (request == NULL) {
-        return cntl->SetFailed(EREQUEST, "request is NULL");
+    if (request == nullptr) {
+        return cntl->SetFailed(EREQUEST, "request is nullptr");
     }
     if (request->GetDescriptor() != MemcacheRequest::descriptor()) {
         return cntl->SetFailed(EREQUEST, "Must be MemcacheRequest");

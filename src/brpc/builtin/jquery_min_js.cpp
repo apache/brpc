@@ -25,13 +25,13 @@
 namespace brpc {
 
 static pthread_once_t s_jquery_min_buf_once = PTHREAD_ONCE_INIT; 
-static butil::IOBuf* s_jquery_min_buf = NULL;
-static butil::IOBuf* s_jquery_min_buf_gzip = NULL;
+static butil::IOBuf* s_jquery_min_buf = nullptr;
+static butil::IOBuf* s_jquery_min_buf_gzip = nullptr;
 static void InitJQueryMinBuf() {
     s_jquery_min_buf = new butil::IOBuf;
     s_jquery_min_buf->append(jquery_min_js());
     s_jquery_min_buf_gzip = new butil::IOBuf;
-    CHECK(policy::GzipCompress(*s_jquery_min_buf, s_jquery_min_buf_gzip, NULL));
+    CHECK(policy::GzipCompress(*s_jquery_min_buf, s_jquery_min_buf_gzip, nullptr));
 }
 const butil::IOBuf& jquery_min_js_iobuf() {
     pthread_once(&s_jquery_min_buf_once, InitJQueryMinBuf);

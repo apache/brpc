@@ -97,7 +97,7 @@ class BUTIL_EXPORT ThreadLocalStorage {
   struct BUTIL_EXPORT StaticSlot {
     // Set up the TLS slot.  Called by the constructor.
     // 'destructor' is a pointer to a function to perform per-thread cleanup of
-    // this object.  If set to NULL, no cleanup is done for this TLS slot.
+    // this object.  If set to nullptr, no cleanup is done for this TLS slot.
     // Returns false on error.
     bool Initialize(TLSDestructorFunc destructor);
 
@@ -127,7 +127,7 @@ class BUTIL_EXPORT ThreadLocalStorage {
   class BUTIL_EXPORT Slot : public StaticSlot {
    public:
     // Calls StaticSlot::Initialize().
-    explicit Slot(TLSDestructorFunc destructor = NULL);
+    explicit Slot(TLSDestructorFunc destructor = nullptr);
 
    private:
     using StaticSlot::initialized_;

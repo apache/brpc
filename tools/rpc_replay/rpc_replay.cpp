@@ -62,7 +62,7 @@ public:
         if ((size_t)type < _chans.size()) {
             return _chans[(size_t)type];
         }
-        return NULL;
+        return nullptr;
     }
     
 private:
@@ -148,14 +148,14 @@ static void* replay_thread(void* arg) {
         brpc::SampleIterator it(FLAGS_dir);
         int j = 0;
         for (brpc::SampledRequest* sample = it.Next();
-             !brpc::IsAskedToQuit() && sample != NULL; sample = it.Next(), ++j) {
+             !brpc::IsAskedToQuit() && sample != nullptr; sample = it.Next(), ++j) {
             std::unique_ptr<brpc::SampledRequest> sample_guard(sample);
             if ((j % FLAGS_thread_num) != thread_offset) {
                 continue;
             }
             brpc::Channel* chan =
                 chan_group->channel(sample->meta.protocol_type());
-            if (chan == NULL) {
+            if (chan == nullptr) {
                 LOG(ERROR) << "No channel on protocol="
                            << sample->meta.protocol_type();
                 continue;
@@ -175,7 +175,7 @@ static void* replay_thread(void* arg) {
                     cntl->http_request().SetHeader("Host", FLAGS_http_host);
                 }
                 cntl->request_attachment() = http_message.body().movable();
-                req_ptr = NULL;
+                req_ptr = nullptr;
             } else if (sample->meta.protocol_type() == brpc::PROTOCOL_NSHEAD) {
                 nshead_req.Clear();
                 memcpy(&nshead_req.head, sample->meta.nshead().c_str(), sample->meta.nshead().length());
@@ -192,14 +192,14 @@ static void* replay_thread(void* arg) {
             g_sent_count << 1;
             const int64_t start_time = butil::gettimeofday_us();
             if (FLAGS_qps <= 0) {
-                chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
-                        cntl, req_ptr, NULL/*ignore response*/, NULL);
+                chan->CallMethod(nullptr/*use rpc_dump_context in cntl instead*/,
+                        cntl, req_ptr, nullptr/*ignore response*/, nullptr);
                 handle_response(cntl, start_time, true);
             } else {
                 google::protobuf::Closure* done =
                     brpc::NewCallback(handle_response, cntl, start_time, false);
-                chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
-                        cntl, req_ptr, NULL/*ignore response*/, done);
+                chan->CallMethod(nullptr/*use rpc_dump_context in cntl instead*/,
+                        cntl, req_ptr, nullptr/*ignore response*/, done);
                 int64_t end_time = butil::monotonic_time_ns();
                 int64_t expected_time = last_expected_time + interval;
                 if (end_time < expected_time) {
@@ -212,7 +212,7 @@ static void* replay_thread(void* arg) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char* argv[]) {
@@ -262,7 +262,7 @@ int main(int argc, char* argv[]) {
     if (!FLAGS_use_bthread) {
         pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&pids[i], NULL, replay_thread, &chan_group) != 0) {
+            if (pthread_create(&pids[i], nullptr, replay_thread, &chan_group) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
@@ -271,7 +271,7 @@ int main(int argc, char* argv[]) {
         bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &bids[i], NULL, replay_thread, &chan_group) != 0) {
+                    &bids[i], nullptr, replay_thread, &chan_group) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -290,9 +290,9 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(pids[i], NULL);
+            pthread_join(pids[i], nullptr);
         } else {
-            bthread_join(bids[i], NULL);
+            bthread_join(bids[i], nullptr);
         }
     }
     info_thr.stop();

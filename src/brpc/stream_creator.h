@@ -67,7 +67,7 @@ public:
     // of StreamCreator has returned a valid StreamUserData pointer.
     // Params:
     //   sending_sock: The socket chosen by OnCreatingStream(), if an error
-    //     happens during choosing, the enclosed socket is NULL.
+    //     happens during choosing, the enclosed socket is nullptr.
     //   cntl: contexts of the RPC.
     //   error_code: Use this instead of cntl->ErrorCode().
     //   end_of_rpc: true if the RPC is about to destroyed.

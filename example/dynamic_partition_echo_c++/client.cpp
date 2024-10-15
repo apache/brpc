@@ -53,7 +53,7 @@ static void* sender(void* arg) {
     // a stub Service wrapping it. stub can be shared by all threads as well.
     example::EchoService_Stub stub(static_cast<google::protobuf::RpcChannel*>(arg));
 
-    SenderInfo* info = NULL;
+    SenderInfo* info = nullptr;
     {
         BAIDU_SCOPED_LOCK(g_latency_mutex);
         g_sender_info.push_back(SenderInfo());
@@ -76,9 +76,9 @@ static void* sender(void* arg) {
             cntl.request_attachment().append(g_attachment);
         }
 
-        // Because `done'(last parameter) is NULL, this function waits until
+        // Because `done'(last parameter) is nullptr, this function waits until
         // the response comes back or error occurs(including timedout).
-        stub.Echo(&cntl, &request, &response, NULL);
+        stub.Echo(&cntl, &request, &response, nullptr);
         if (!cntl.Failed()) {
             info->latency_sum += cntl.latency_us();
             ++info->nsuccess;
@@ -92,7 +92,7 @@ static void* sender(void* arg) {
             bthread_usleep(50000);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 class MyPartitionParser : public brpc::PartitionParser {
@@ -104,7 +104,7 @@ public:
             LOG(ERROR) << "Invalid tag=" << tag;
             return false;
         }
-        char* endptr = NULL;
+        char* endptr = nullptr;
         out->index = strtol(tag.c_str(), &endptr, 10);
         if (endptr != tag.data() + pos) {
             LOG(ERROR) << "Invalid index=" << butil::StringPiece(tag.data(), pos);
@@ -156,7 +156,7 @@ int main(int argc, char* argv[]) {
     if (!FLAGS_use_bthread) {
         pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&pids[i], NULL, sender, &channel) != 0) {
+            if (pthread_create(&pids[i], nullptr, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
         bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &bids[i], NULL, sender, &channel) != 0) {
+                    &bids[i], nullptr, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -203,9 +203,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "EchoClient is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(pids[i], NULL);
+            pthread_join(pids[i], nullptr);
         } else {
-            bthread_join(bids[i], NULL);
+            bthread_join(bids[i], nullptr);
         }
     }
 

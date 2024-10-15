@@ -54,7 +54,7 @@ DEFINE_bool(reserve_one_idle_socket, false,
             "Reserve one idle socket for pooled connections when idle_timeout_second > 0");
 
 static pthread_once_t g_socket_map_init = PTHREAD_ONCE_INIT;
-static butil::static_atomic<SocketMap*> g_socket_map = BUTIL_STATIC_ATOMIC_INIT(NULL);
+static butil::static_atomic<SocketMap*> g_socket_map = BUTIL_STATIC_ATOMIC_INIT(nullptr);
 
 class GlobalSocketCreator : public SocketCreator {
 public:
@@ -79,7 +79,7 @@ static void CreateClientSideSocketMap() {
 }
 
 SocketMap* get_client_side_socket_map() {
-    // The consume fence makes sure that we see a NULL or a fully initialized
+    // The consume fence makes sure that we see a nullptr or a fully initialized
     // SocketMap.
     return g_socket_map.load(butil::memory_order_consume);
 }
@@ -126,17 +126,17 @@ void SocketMapList(std::vector<SocketId>* ids) {
 // ========== SocketMap impl. ============
 
 SocketMapOptions::SocketMapOptions()
-    : socket_creator(NULL)
+    : socket_creator(nullptr)
     , suggested_map_size(1024)
-    , idle_timeout_second_dynamic(NULL)
+    , idle_timeout_second_dynamic(nullptr)
     , idle_timeout_second(0)
-    , defer_close_second_dynamic(NULL)
+    , defer_close_second_dynamic(nullptr)
     , defer_close_second(0) {
 }
 
 SocketMap::SocketMap()
     : _exposed_in_bvar(false)
-    , _this_map_bvar(NULL)
+    , _this_map_bvar(nullptr)
     , _has_close_idle_thread(false) {
 }
 
@@ -144,7 +144,7 @@ SocketMap::~SocketMap() {
     RPC_VLOG << "Destroying SocketMap=" << this;
     if (_has_close_idle_thread) {
         bthread_stop(_close_idle_thread);
-        bthread_join(_close_idle_thread, NULL);
+        bthread_join(_close_idle_thread, nullptr);
     }
     if (!_map.empty()) {
         std::ostringstream err;
@@ -167,19 +167,19 @@ SocketMap::~SocketMap() {
     }
 
     delete _this_map_bvar;
-    _this_map_bvar = NULL;
+    _this_map_bvar = nullptr;
 
     delete _options.socket_creator;
-    _options.socket_creator = NULL;
+    _options.socket_creator = nullptr;
 }
 
 int SocketMap::Init(const SocketMapOptions& options) {
-    if (_options.socket_creator != NULL) {
+    if (_options.socket_creator != nullptr) {
         LOG(ERROR) << "Already initialized";
         return -1;
     }
     _options = options;
-    if (_options.socket_creator == NULL) {
+    if (_options.socket_creator == nullptr) {
         LOG(ERROR) << "SocketOptions.socket_creator must be set";
         return -1;
     }
@@ -187,9 +187,9 @@ int SocketMap::Init(const SocketMapOptions& options) {
         LOG(ERROR) << "Fail to init _map";
         return -1;
     }
-    if (_options.idle_timeout_second_dynamic != NULL ||
+    if (_options.idle_timeout_second_dynamic != nullptr ||
         _options.idle_timeout_second > 0) {
-        if (bthread_start_background(&_close_idle_thread, NULL,
+        if (bthread_start_background(&_close_idle_thread, nullptr,
                                      RunWatchConnections, this) != 0) {
             LOG(FATAL) << "Fail to start bthread";
             return -1;
@@ -242,7 +242,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
         // removing and inserting it again. But this would make error branches
         // below have to remove the entry before returning, which is
         // error-prone. We prefer code maintainability here.
-        sc = NULL;
+        sc = nullptr;
     }
     SocketId tmp_id;
     SocketOptions opt;
@@ -348,7 +348,7 @@ void SocketMap::ListOrphans(int64_t defer_us, std::vector<SocketMapKey>* out) {
 
 void* SocketMap::RunWatchConnections(void* arg) {
     static_cast<SocketMap*>(arg)->WatchConnections();
-    return NULL;
+    return nullptr;
 }
 
 void SocketMap::WatchConnections() {

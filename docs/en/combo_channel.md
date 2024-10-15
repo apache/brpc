@@ -44,7 +44,7 @@ Calling ` AddChannel` during a RPC over `ParallelChannel` is **NOT thread safe**
 
 ## CallMapper
 
-This class converts RPCs to `ParallelChannel`  to the ones to `sub channel`. If `call_mapper` is NULL, requests to the sub channel is just the ones to `ParallelChannel`, and responses are created by calling `New()` on the responses to `ParallelChannel`. `call_mapper` is deleted when `ParallelChannel` destructs. Due to the reference counting inside, one `call_mapper` can be associated with multiple sub channels.
+This class converts RPCs to `ParallelChannel`  to the ones to `sub channel`. If `call_mapper` is nullptr, requests to the sub channel is just the ones to `ParallelChannel`, and responses are created by calling `New()` on the responses to `ParallelChannel`. `call_mapper` is deleted when `ParallelChannel` destructs. Due to the reference counting inside, one `call_mapper` can be associated with multiple sub channels.
 
 ```c++
 class CallMapper {
@@ -72,7 +72,7 @@ The returned `SubCall` configures the calls to the corresponding sub channel and
 
 Common implementations of `Map()` are listed below:
 
-- Broadcast the request. This is also the behavior when `call_mapper` is NULL:
+- Broadcast the request. This is also the behavior when `call_mapper` is nullptr:
 
 ```c++
   class Broadcaster : public CallMapper {
@@ -129,7 +129,7 @@ Common implementations of `Map()` are listed below:
 
 ## ResponseMerger
 
-`response_merger` merges responses from all sub channels into one for the `ParallelChannel`. When it's NULL, `response->MergeFrom(*sub_response)` is used instead, whose behavior can be summarized as "merge repeated fields and overwrite the rest". If you need more complex behavior, implement `ResponseMerger`. Multiple `response_merger` are called one by one to merge sub responses so that you do not need to consider the race conditions between merging multiple responses simultaneously. The object is deleted when `ParallelChannel ` destructs. Due to the reference counting inside, `response_merger ` can be associated with multiple sub channels.
+`response_merger` merges responses from all sub channels into one for the `ParallelChannel`. When it's nullptr, `response->MergeFrom(*sub_response)` is used instead, whose behavior can be summarized as "merge repeated fields and overwrite the rest". If you need more complex behavior, implement `ResponseMerger`. Multiple `response_merger` are called one by one to merge sub responses so that you do not need to consider the race conditions between merging multiple responses simultaneously. The object is deleted when `ParallelChannel ` destructs. Due to the reference counting inside, `response_merger ` can be associated with multiple sub channels.
 
 Possible values of `Result` are:
 
@@ -144,13 +144,13 @@ Sometimes users may need to know the details around sub calls. `Controller.sub(i
 ```c++
 // Get the controllers for accessing sub channels in combo channels.
 // Ordinary channel:
-//   sub_count() is 0 and sub() is always NULL.
+//   sub_count() is 0 and sub() is always nullptr.
 // ParallelChannel/PartitionChannel:
 //   sub_count() is #sub-channels and sub(i) is the controller for
 //   accessing i-th sub channel inside ParallelChannel, if i is outside
-//    [0, sub_count() - 1], sub(i) is NULL.
-//   NOTE: You must test sub() against NULL, ALWAYS. Even if i is inside
-//   range, sub(i) can still be NULL:
+//    [0, sub_count() - 1], sub(i) is nullptr.
+//   NOTE: You must test sub() against nullptr, ALWAYS. Even if i is inside
+//   range, sub(i) can still be nullptr:
 //   * the rpc call may fail and terminate before accessing the sub channel
 //   * the sub channel was skipped
 // SelectiveChannel/DynamicPartitionChannel:
@@ -199,8 +199,8 @@ After successful initialization, add sub channels with `AddChannel`.
 
 ```c++
 // The second parameter ChannelHandle is used to delete sub channel,
-// which can be NULL if this isn't necessary.
-if (schan.AddChannel(sub_channel, NULL/*ChannelHandle*/) != 0) { 
+// which can be nullptr if this isn't necessary.
+if (schan.AddChannel(sub_channel, nullptr/*ChannelHandle*/) != 0) { 
     LOG(ERROR) << "Fail to add sub_channel";
     return -1;
 }
@@ -210,7 +210,7 @@ Note that:
 
 - Unlike `ParallelChannel`, `SelectiveChannel::AddChannel` can be called at any time, even if a RPC over the SelectiveChannel is going on. (newly added channels take effects at the next RPC).
 - `SelectiveChannel` always owns sub channels, which is different from `ParallelChannel`'s configurable ownership.
-- If the second parameter to `AddChannel` is not NULL, it's filled with a value typed `brpc::SelectiveChannel::ChannelHandle`, which can be used as the parameter to `RemoveAndDestroyChannel` to remove and destroy a channel dynamically.
+- If the second parameter to `AddChannel` is not nullptr, it's filled with a value typed `brpc::SelectiveChannel::ChannelHandle`, which can be used as the parameter to `RemoveAndDestroyChannel` to remove and destroy a channel dynamically.
 - `SelectiveChannel` overrides timeouts in sub channels. For example, having timeout set to 100ms for a sub channel and 500ms for `SelectiveChannel`, the actual timeout is 500ms.
 
 `SelectiveChannel`s are accessed same as regular channels.
@@ -238,18 +238,18 @@ if (channel.Init("c_murmurhash", &schan_options) != 0) {
  
 for (int i = 0; i < 3; ++i) {
     brpc::Channel* sub_channel = new brpc::Channel;
-    if (sub_channel->Init(ns_node_name[i], "rr", NULL) != 0) {
+    if (sub_channel->Init(ns_node_name[i], "rr", nullptr) != 0) {
         LOG(ERROR) << "Fail to init sub channel " << i;
         return -1;
     }
-    if (channel.AddChannel(sub_channel, NULL/*handle for removal*/) != 0) {
+    if (channel.AddChannel(sub_channel, nullptr/*handle for removal*/) != 0) {
         LOG(ERROR) << "Fail to add sub_channel to channel";
         return -1;
     } 
 }
 ...
 XXXService_Stub stub(&channel);
-stub.FooMethod(&cntl, &request, &response, NULL);
+stub.FooMethod(&cntl, &request, &response, nullptr);
 ...
 ```
 
@@ -277,7 +277,7 @@ public:
             LOG(ERROR) << "Invalid tag=" << tag;
             return false;
         }
-        char* endptr = NULL;
+        char* endptr = nullptr;
         out->index = strtol(tag.c_str(), &endptr, 10);
         if (endptr != tag.data() + pos) {
             LOG(ERROR) << "Invalid index=" << butil::StringPiece(tag.data(), pos);

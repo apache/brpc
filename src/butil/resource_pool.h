@@ -78,7 +78,7 @@ template <typename T> struct ResourcePoolFreeChunkMaxItem {
 
 // ResourcePool calls this function on newly constructed objects. If this
 // function returns false, the object is destructed immediately and
-// get_resource() shall return NULL. This is useful when the constructor
+// get_resource() shall return nullptr. This is useful when the constructor
 // failed internally(namely ENOMEM).
 template <typename T> struct ResourcePoolValidator {
     static bool validate(const T*) { return true; }
@@ -119,9 +119,9 @@ template <typename T> inline int return_resource(ResourceId<T> id) {
 }
 
 // Get the object associated with the identifier |id|.
-// Returns NULL if |id| was not allocated by get_resource<T> or
+// Returns nullptr if |id| was not allocated by get_resource<T> or
 // ResourcePool<T>::get_resource() of a variant before.
-// Addressing a free(returned to pool) identifier does not return NULL.
+// Addressing a free(returned to pool) identifier does not return nullptr.
 // NOTE: Calling this function before any other get_resource<T>/
 //       return_resource<T>/address<T>, even if the identifier is valid,
 //       may race with another thread calling clear_resources<T>.

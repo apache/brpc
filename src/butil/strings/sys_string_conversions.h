@@ -59,7 +59,7 @@ BUTIL_EXPORT std::string SysWideToMultiByte(const std::wstring& wide,
 // Converts between STL strings and CFStringRefs/NSStrings.
 
 // Creates a string, and returns it with a refcount of 1. You are responsible
-// for releasing it. Returns NULL on failure.
+// for releasing it. Returns nullptr on failure.
 BUTIL_EXPORT CFStringRef SysUTF8ToCFStringRef(const std::string& utf8);
 BUTIL_EXPORT CFStringRef SysUTF16ToCFStringRef(const string16& utf16);
 

@@ -24,7 +24,7 @@
 namespace {
 typedef MallocExtension* (*GetInstanceFn)();
 static pthread_once_t g_get_instance_fn_once = PTHREAD_ONCE_INIT;
-static GetInstanceFn g_get_instance_fn = NULL;
+static GetInstanceFn g_get_instance_fn = nullptr;
 static void InitGetInstanceFn() {
     g_get_instance_fn = (GetInstanceFn)dlsym(
         RTLD_NEXT, "_ZN15MallocExtension8instanceEv");
@@ -43,11 +43,11 @@ MallocExtension* BAIDU_WEAK MallocExtension::instance() {
     if (g_get_instance_fn) {
         return g_get_instance_fn();
     }
-    return NULL;
+    return nullptr;
 }
 
 bool IsHeapProfilerEnabled() {
-    return MallocExtension::instance() != NULL;
+    return MallocExtension::instance() != nullptr;
 }
 
 bool IsTCMallocEnabled() {
@@ -56,7 +56,7 @@ bool IsTCMallocEnabled() {
 
 static bool check_TCMALLOC_SAMPLE_PARAMETER() {
     char* str = getenv("TCMALLOC_SAMPLE_PARAMETER");
-    if (str == NULL) {
+    if (str == nullptr) {
         return false;
     }
     char* endptr;

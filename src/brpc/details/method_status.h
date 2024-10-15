@@ -37,8 +37,8 @@ public:
 
     // Call this function when the method is about to be called.
     // Returns false when the method is overloaded. If rejected_cc is not
-    // NULL, it's set with the rejected concurrency.
-    bool OnRequested(int* rejected_cc = NULL, Controller* cntl = NULL);
+    // nullptr, it's set with the rejected concurrency.
+    bool OnRequested(int* rejected_cc = nullptr, Controller* cntl = nullptr);
 
     // Call this when the method just finished.
     // `error_code' : The error code obtained from the controller. Equal to 
@@ -91,7 +91,7 @@ private:
 
 inline bool MethodStatus::OnRequested(int* rejected_cc, Controller* cntl) {
     const int cc = _nconcurrency.fetch_add(1, butil::memory_order_relaxed) + 1;
-    if (NULL == _cl || _cl->OnRequested(cc, cntl)) {
+    if (nullptr == _cl || _cl->OnRequested(cc, cntl)) {
         return true;
     } 
     if (rejected_cc) {
@@ -107,7 +107,7 @@ inline void MethodStatus::OnResponded(int error_code, int64_t latency) {
     } else {
         _nerror_bvar << 1;
     }
-    if (NULL != _cl) {
+    if (nullptr != _cl) {
         _cl->OnResponded(error_code, latency);
     }
 }

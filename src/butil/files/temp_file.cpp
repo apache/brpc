@@ -45,7 +45,7 @@ TempFile::TempFile() : _ever_opened(0) {
 }
 
 TempFile::TempFile(const char* ext) {
-    if (NULL == ext || '\0' == *ext) {
+    if (nullptr == ext || '\0' == *ext) {
         new (this) TempFile();
         return;
     }

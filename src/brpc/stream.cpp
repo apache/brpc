@@ -40,8 +40,8 @@ DECLARE_int64(socket_max_streams_unconsumed_bytes);
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
 Stream::Stream() 
-    : _host_socket(NULL)
-    , _fake_socket_weak_ref(NULL)
+    : _host_socket(nullptr)
+    , _fake_socket_weak_ref(nullptr)
     , _connected(false)
     , _closed(false)
     , _error_code(0)
@@ -50,17 +50,17 @@ Stream::Stream()
     , _cur_buf_size(0)
     , _local_consumed(0)
     , _parse_rpc_response(false)
-    , _pending_buf(NULL)
+    , _pending_buf(nullptr)
     , _start_idle_timer_us(0)
     , _idle_timer(0)
 {
-    _connect_meta.on_connect = NULL;
-    CHECK_EQ(0, bthread_mutex_init(&_connect_mutex, NULL));
-    CHECK_EQ(0, bthread_mutex_init(&_congestion_control_mutex, NULL));
+    _connect_meta.on_connect = nullptr;
+    CHECK_EQ(0, bthread_mutex_init(&_connect_mutex, nullptr));
+    CHECK_EQ(0, bthread_mutex_init(&_congestion_control_mutex, nullptr));
 }
 
 Stream::~Stream() {
-    CHECK(_host_socket == NULL);
+    CHECK(_host_socket == nullptr);
     bthread_mutex_destroy(&_connect_mutex);
     bthread_mutex_destroy(&_congestion_control_mutex);
     bthread_id_list_destroy(&_writable_wait_list);
@@ -70,8 +70,8 @@ int Stream::Create(const StreamOptions &options,
                    const StreamSettings *remote_settings,
                    StreamId *id, bool parse_rpc_response) {
     Stream* s = new Stream();
-    s->_host_socket = NULL;
-    s->_fake_socket_weak_ref = NULL;
+    s->_host_socket = nullptr;
+    s->_fake_socket_weak_ref = nullptr;
     s->_connected = false;
     s->_options = options;
     s->_closed = false;
@@ -86,7 +86,7 @@ int Stream::Create(const StreamOptions &options,
         s->_cur_buf_size = s->_options.min_buf_size;
     }
 
-    if (remote_settings != NULL) {
+    if (remote_settings != nullptr) {
         s->_remote_settings.MergeFrom(*remote_settings);
     }
     s->_parse_rpc_response = parse_rpc_response;
@@ -106,7 +106,7 @@ int Stream::Create(const StreamOptions &options,
     sock_opt.conn = s;
     SocketId fake_sock_id;
     if (Socket::Create(sock_opt, &fake_sock_id) != 0) {
-        s->BeforeRecycle(NULL);
+        s->BeforeRecycle(nullptr);
         return -1;
     }
     SocketUniquePtr ptr;
@@ -123,7 +123,7 @@ void Stream::BeforeRecycle(Socket *) {
     if (_connected) {
         // Send CLOSE frame
         RPC_VLOG << "Send close frame";
-        CHECK(_host_socket != NULL);
+        CHECK(_host_socket != nullptr);
         policy::SendStreamClose(_host_socket,
                                 _remote_settings.stream_id(), id());
     }
@@ -139,7 +139,7 @@ void Stream::BeforeRecycle(Socket *) {
 ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/, 
                                              butil::IOBuf **data_list, 
                                              size_t size) {
-    if (_host_socket == NULL) {
+    if (_host_socket == nullptr) {
         CHECK(false) << "Not connected";
         errno = EBADF;
         return -1;
@@ -187,14 +187,14 @@ void* Stream::RunOnConnect(void *arg) {
         meta->on_connect(-1, meta->ec, meta->arg);
     }
     delete meta;
-    return NULL;
+    return nullptr;
 }
 
 int Stream::Connect(Socket* ptr, const timespec*,
                     int (*on_connect)(int, int, void *), void *data) {
     CHECK_EQ(ptr->id(), _id);
     bthread_mutex_lock(&_connect_mutex);
-    if (_connect_meta.on_connect != NULL) {
+    if (_connect_meta.on_connect != nullptr) {
         CHECK(false) << "Connect is supposed to be called once";
         bthread_mutex_unlock(&_connect_mutex);
         return -1;
@@ -219,7 +219,7 @@ int Stream::Connect(Socket* ptr, const timespec*,
 }
 
 void Stream::SetConnected() {
-    return SetConnected(NULL);
+    return SetConnected(nullptr);
 }
 
 void Stream::SetConnected(const StreamSettings* remote_settings) {
@@ -233,20 +233,20 @@ void Stream::SetConnected(const StreamSettings* remote_settings) {
         bthread_mutex_unlock(&_connect_mutex);
         return;
     }
-    CHECK(_host_socket != NULL);
-    if (remote_settings != NULL) {
+    CHECK(_host_socket != nullptr);
+    if (remote_settings != nullptr) {
         CHECK(!_remote_settings.IsInitialized());
         _remote_settings.MergeFrom(*remote_settings);
     } else {
         CHECK(_remote_settings.IsInitialized());
     }
-    CHECK(_host_socket != NULL);
+    CHECK(_host_socket != nullptr);
     RPC_VLOG << "stream=" << id() << " is connected to stream_id=" 
              << _remote_settings.stream_id() << " at host_socket=" << *_host_socket;
     _connected = true;
     _connect_meta.ec = 0;
     TriggerOnConnectIfNeed();
-    if (remote_settings == NULL) {
+    if (remote_settings == nullptr) {
         // Start the timer at server-side
         // Client-side timer would triggered in Consume after received the first
         // message which is the very RPC response
@@ -255,7 +255,7 @@ void Stream::SetConnected(const StreamSettings* remote_settings) {
 }
 
 void Stream::TriggerOnConnectIfNeed() {
-    if (_connect_meta.on_connect != NULL) {
+    if (_connect_meta.on_connect != nullptr) {
         ConnectMeta* meta = new ConnectMeta;
         meta->on_connect = _connect_meta.on_connect;
         meta->arg = _connect_meta.arg;
@@ -292,7 +292,7 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data,
     size_t data_length = data.length();
     butil::IOBuf copied_data(data);
     Socket::WriteOptions wopt;
-    wopt.write_in_background = options != NULL && options->write_in_background;
+    wopt.write_in_background = options != nullptr && options->write_in_background;
     const int rc = _fake_socket_weak_ref->Write(&copied_data, &wopt);
     if (rc != 0) {
         // Stream may be closed by peer before
@@ -352,7 +352,7 @@ void* Stream::RunOnWritable(void* arg) {
     WritableMeta *wm = (WritableMeta*)arg;
     wm->on_writable(wm->id, wm->arg, wm->error_code);
     delete wm;
-    return NULL;
+    return nullptr;
 }
 
 int Stream::TriggerOnWritable(bthread_id_t id, void *data, int error_code) {
@@ -401,8 +401,8 @@ void Stream::Wait(void (*on_writable)(StreamId, void*, int), void* arg,
     if (join_id) {
         *join_id = wait_id;
     }
-    CHECK_EQ(0, bthread_id_lock(wait_id, NULL));
-    if (due_time != NULL) {
+    CHECK_EQ(0, bthread_id_lock(wait_id, nullptr));
+    if (due_time != nullptr) {
         wm->has_timer = true;
         const int rc = bthread_timer_add(&wm->timer, *due_time,
                                          OnTimedOut, 
@@ -427,7 +427,7 @@ void Stream::Wait(void (*on_writable)(StreamId, void*, int), void* arg,
 
 void Stream::Wait(void (*on_writable)(StreamId, void *, int), void *arg,
                   const timespec* due_time) {
-    return Wait(on_writable, arg, due_time, true, NULL);
+    return Wait(on_writable, arg, due_time, true, nullptr);
 }
 
 void OnWritable(StreamId, void *arg, int error_code) {
@@ -445,7 +445,7 @@ int Stream::Wait(const timespec* due_time) {
 }
 
 int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* sock) {
-    if (_host_socket == NULL) {
+    if (_host_socket == nullptr) {
         if (SetHostSocket(sock) != 0) {
             return -1;
         }
@@ -456,7 +456,7 @@ int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* soc
         CHECK(buf->empty());
         break;
     case FRAME_TYPE_DATA:
-        if (_pending_buf != NULL) {
+        if (_pending_buf != nullptr) {
             _pending_buf->append(*buf);
             buf->clear();
         } else {
@@ -465,7 +465,7 @@ int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* soc
         }
         if (!fm.has_continuation()) {
             butil::IOBuf *tmp = _pending_buf;
-            _pending_buf = NULL;
+            _pending_buf = nullptr;
             int rc = bthread::execution_queue_execute(_consumer_queue, tmp);
             if (rc != 0) {
                 CHECK(false) << "Fail to push into channel";
@@ -501,7 +501,7 @@ public:
     {}
     ~MessageBatcher() { flush(); }
     void flush() {
-        if (_size > 0 && _s->_options.handler != NULL) {
+        if (_size > 0 && _s->_options.handler != nullptr) {
             _s->_options.handler->on_received_messages(
                     _s->id(), _storage, _size);
         }
@@ -535,9 +535,9 @@ int Stream::Consume(void *meta, bthread::TaskIterator<butil::IOBuf*>& iter) {
         // Indicating the queue was closed.
         if (s->_host_socket) {
             DereferenceSocket(s->_host_socket);
-            s->_host_socket = NULL;
+            s->_host_socket = nullptr;
         }
-        if (s->_options.handler != NULL) {
+        if (s->_options.handler != nullptr) {
             int error_code;
             std::string error_text;
             {
@@ -569,7 +569,7 @@ int Stream::Consume(void *meta, bthread::TaskIterator<butil::IOBuf*>& iter) {
             }
         }
     }
-    if (s->_options.handler != NULL) {
+    if (s->_options.handler != nullptr) {
         if (has_timeout_task && mb.total_length() == 0) {
             s->_options.handler->on_idle_timeout(s->id());
         }
@@ -591,12 +591,12 @@ void Stream::SendFeedback() {
     fm.set_source_stream_id(id());
     fm.mutable_feedback()->set_consumed_size(_local_consumed);
     butil::IOBuf out;
-    policy::PackStreamMessage(&out, fm, NULL);
+    policy::PackStreamMessage(&out, fm, nullptr);
     WriteToHostSocket(&out);
 }
 
 int Stream::SetHostSocket(Socket *host_socket) {
-    if (_host_socket != NULL) {
+    if (_host_socket != nullptr) {
         CHECK(false) << "SetHostSocket has already been called";
         return -1;
     }
@@ -613,7 +613,7 @@ int Stream::SetHostSocket(Socket *host_socket) {
 void Stream::FillSettings(StreamSettings *settings) {
     settings->set_stream_id(id());
     settings->set_need_feedback(_cur_buf_size > 0);
-    settings->set_writable(_options.handler != NULL);
+    settings->set_writable(_options.handler != nullptr);
 }
 
 void OnIdleTimeout(void *arg) {
@@ -696,25 +696,25 @@ int Stream::SetFailed(const StreamIds& ids, int error_code, const char* reason_f
 
 void Stream::HandleRpcResponse(butil::IOBuf* response_buffer) {
     CHECK(!_remote_settings.IsInitialized());
-    CHECK(_host_socket != NULL);
+    CHECK(_host_socket != nullptr);
     std::unique_ptr<butil::IOBuf> buf_guard(response_buffer);
-    ParseResult pr = policy::ParseRpcMessage(response_buffer, NULL, true, NULL);
+    ParseResult pr = policy::ParseRpcMessage(response_buffer, nullptr, true, nullptr);
     if (!pr.is_ok()) {
         CHECK(false);
         Close(EPROTO, "Fail to parse rpc response message");
         return;
     }
     InputMessageBase* msg = pr.message();
-    if (msg == NULL) {
+    if (msg == nullptr) {
         CHECK(false);
-        Close(ENOMEM, "Message is NULL");
+        Close(ENOMEM, "Message is nullptr");
         return;
     }
     _host_socket->PostponeEOF();
     _host_socket->ReAddress(&msg->_socket);
     msg->_received_us = butil::gettimeofday_us(); 
     msg->_base_real_us = butil::gettimeofday_us();
-    msg->_arg = NULL; // ProcessRpcResponse() don't need arg
+    msg->_arg = nullptr; // ProcessRpcResponse() don't need arg
     policy::ProcessRpcResponse(msg);
 }
 
@@ -771,8 +771,8 @@ int StreamClose(StreamId stream_id) {
 
 int StreamCreate(StreamId *request_stream, Controller &cntl,
                  const StreamOptions* options) {
-    if (request_stream == NULL) {
-        LOG(ERROR) << "request_stream is NULL";
+    if (request_stream == nullptr) {
+        LOG(ERROR) << "request_stream is nullptr";
         return -1;
     }
     StreamIds request_streams;
@@ -792,13 +792,13 @@ int StreamCreate(StreamIds& request_streams, int request_stream_size, Controller
         return -1;
     }
     StreamOptions opt;
-    if (options != NULL) {
+    if (options != nullptr) {
         opt = *options;
     }
     for (auto i = 0; i < request_stream_size; ++i) {
         StreamId stream_id;
         bool parse_rpc_response = (i == 0); // Only the first stream need parse rpc
-        if (Stream::Create(opt, NULL, &stream_id, parse_rpc_response) != 0) {
+        if (Stream::Create(opt, nullptr, &stream_id, parse_rpc_response) != 0) {
             // Close already created streams
             Stream::SetFailed(request_streams, 0 , "Fail to create stream at %d index", i);
             LOG(ERROR) << "Fail to create stream";
@@ -812,8 +812,8 @@ int StreamCreate(StreamIds& request_streams, int request_stream_size, Controller
 
 int StreamAccept(StreamId* response_stream, Controller &cntl,
                  const StreamOptions* options) {
-    if (response_stream == NULL) {
-        LOG(ERROR) << "response_stream is NULL";
+    if (response_stream == nullptr) {
+        LOG(ERROR) << "response_stream is nullptr";
         return -1;
     }
     StreamIds response_streams;
@@ -848,7 +848,7 @@ int StreamAccept(StreamIds& response_streams, Controller& cntl,
         return -1;
     }
     StreamOptions opt;
-    if (options != NULL) {
+    if (options != nullptr) {
         opt = *options;
     }
     StreamId stream_id;

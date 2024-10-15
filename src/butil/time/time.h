@@ -268,7 +268,7 @@ class BUTIL_EXPORT Time {
     bool HasValidValues() const;
   };
 
-  // Contains the NULL time. Use Time::Now() to get the current time.
+  // Contains the nullptr time. Use Time::Now() to get the current time.
   Time() : us_(0) {
   }
 

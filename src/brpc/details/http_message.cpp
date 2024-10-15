@@ -116,7 +116,7 @@ int HttpMessage::on_header_value(http_parser *parser,
     }
     if (FLAGS_http_verbose) {
         butil::IOBufBuilder* vs = http_message->_vmsgbuilder.get();
-        if (vs == NULL) {
+        if (vs == nullptr) {
             vs = new butil::IOBufBuilder;
             http_message->_vmsgbuilder.reset(vs);
             if (parser->type == HTTP_REQUEST) {
@@ -176,7 +176,7 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
     URI& uri = headers.uri();
     if (uri._host.empty()) {
         const std::string* host_header = headers.GetHeader("host");
-        if (host_header != NULL) {
+        if (host_header != nullptr) {
             uri.SetHostAndPort(*host_header);
         }
     }
@@ -235,7 +235,7 @@ int HttpMessage::UnlockAndFlushToBodyReader(std::unique_lock<butil::Mutex>& mu) 
         butil::Status st = r->OnReadOnePart(blk.data(), blk.size());
         if (!st.ok()) {
             mu.lock();
-            _body_reader = NULL;
+            _body_reader = nullptr;
             mu.unlock();
             r->OnEndOfMessage(st);
             return -1;
@@ -265,7 +265,7 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
             // the body is probably streaming data which is too long to print.
             header().status_code() == HTTP_STATUS_OK) {
             LOG(INFO) << '\n' << _vmsgbuilder->buf();
-            _vmsgbuilder.reset(NULL);
+            _vmsgbuilder.reset(nullptr);
         } else {
             if (_vbodylen < (size_t)FLAGS_http_verbose_max_body_length) {
                 int plen = std::min(length, (size_t)FLAGS_http_verbose_max_body_length
@@ -290,7 +290,7 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
     // Progressive read.
     std::unique_lock<butil::Mutex> mu(_body_mutex);
     ProgressiveReader* r = _body_reader;
-    while (r == NULL) {
+    while (r == nullptr) {
         // When _body is full, the sleep-waiting may block parse handler
         // of the protocol. A more efficient solution is to remove the
         // socket from epoll and add it back when the _body is not full,
@@ -316,7 +316,7 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
         return 0;
     }
     mu.lock();
-    _body_reader = NULL;
+    _body_reader = nullptr;
     mu.unlock();
     r->OnEndOfMessage(st);
     return -1;
@@ -329,10 +329,10 @@ int HttpMessage::OnMessageComplete() {
                 - (size_t)FLAGS_http_verbose_max_body_length << " bytes>";
         }
         LOG(INFO) << '\n' << _vmsgbuilder->buf();
-        _vmsgbuilder.reset(NULL);
+        _vmsgbuilder.reset(nullptr);
     }
     _cur_header.clear();
-    _cur_value = NULL;
+    _cur_value = nullptr;
     if (!_read_body_progressively) {
         // Normal read.
         _stage = HTTP_ON_MESSAGE_COMPLETE;
@@ -341,7 +341,7 @@ int HttpMessage::OnMessageComplete() {
     // Progressive read.
     std::unique_lock<butil::Mutex> mu(_body_mutex);
     _stage = HTTP_ON_MESSAGE_COMPLETE;
-    if (_body_reader != NULL) {
+    if (_body_reader != nullptr) {
         // Solve the case: SetBodyReader quit at ntry=MAX_TRY with non-empty
         // _body and the remaining _body is just the last part.
         // Make sure _body is emptied.
@@ -350,7 +350,7 @@ int HttpMessage::OnMessageComplete() {
         }
         mu.lock();
         ProgressiveReader* r = _body_reader;
-        _body_reader = NULL;
+        _body_reader = nullptr;
         mu.unlock();
         r->OnEndOfMessage(butil::Status());
     }
@@ -367,7 +367,7 @@ public:
     void OnEndOfMessage(const butil::Status&) {}
 };
 
-static FailAllRead* s_fail_all_read = NULL;
+static FailAllRead* s_fail_all_read = nullptr;
 static pthread_once_t s_fail_all_read_once = PTHREAD_ONCE_INIT;
 static void CreateFailAllRead() { s_fail_all_read = new FailAllRead; }
 
@@ -381,7 +381,7 @@ void HttpMessage::SetBodyReader(ProgressiveReader* r) {
     int ntry = 0;
     do {
         std::unique_lock<butil::Mutex> mu(_body_mutex);
-        if (_body_reader != NULL) {
+        if (_body_reader != nullptr) {
             mu.unlock();
             return r->OnEndOfMessage(
                 butil::Status(EPERM, "SetBodyReader is called more than once"));
@@ -438,8 +438,8 @@ HttpMessage::HttpMessage(bool read_body_progressively,
     , _stage(HTTP_ON_MESSAGE_BEGIN)
     , _request_method(request_method)
     , _read_body_progressively(read_body_progressively)
-    , _body_reader(NULL)
-    , _cur_value(NULL)
+    , _body_reader(nullptr)
+    , _cur_value(nullptr)
     , _vbodylen(0) {
     http_parser_init(&_parser, HTTP_BOTH);
     _parser.allow_chunked_length = 1;
@@ -449,7 +449,7 @@ HttpMessage::HttpMessage(bool read_body_progressively,
 HttpMessage::~HttpMessage() {
     if (_body_reader) {
         ProgressiveReader* saved_body_reader = _body_reader;
-        _body_reader = NULL;
+        _body_reader = nullptr;
         // Successfully ended message is ended in OnMessageComplete() or
         // SetBodyReader() and _body_reader should be null-ed. Non-null
         // _body_reader here just means the socket is broken before completion
@@ -617,7 +617,7 @@ void MakeRawHttpRequest(butil::IOBuf* request,
     //the request-target consists of only the host name and port number of 
     //the tunnel destination, separated by a colon. For example,
     //Host: server.example.com:80
-    if (h->GetHeader("host") == NULL) {
+    if (h->GetHeader("host") == nullptr) {
         os << "Host: ";
         if (!uri.host().empty()) {
             os << uri.host();
@@ -637,15 +637,15 @@ void MakeRawHttpRequest(butil::IOBuf* request,
          it != h->HeaderEnd(); ++it) {
         os << it->first << ": " << it->second << BRPC_CRLF;
     }
-    if (h->GetHeader("Accept") == NULL) {
+    if (h->GetHeader("Accept") == nullptr) {
         os << "Accept: */*" BRPC_CRLF;
     }
     // The fake "curl" user-agent may let servers return plain-text results.
-    if (h->GetHeader("User-Agent") == NULL) {
+    if (h->GetHeader("User-Agent") == nullptr) {
         os << "User-Agent: brpc/1.0 curl/7.0" BRPC_CRLF;
     }
     const std::string& user_info = h->uri().user_info();
-    if (!user_info.empty() && h->GetHeader("Authorization") == NULL) {
+    if (!user_info.empty() && h->GetHeader("Authorization") == nullptr) {
         // NOTE: just assume user_info is well formatted, namely
         // "<user_name>:<password>". Users are very unlikely to add extra
         // characters in this part and even if users did, most of them are

@@ -197,7 +197,7 @@ public:
                                 brpc::SERVER_OWNS_SERVICE) != 0) {
             LOG(FATAL) << "Fail to add service";
         }
-        g_timer_thread.start(NULL);
+        g_timer_thread.start(nullptr);
     }
     virtual ~ControlServiceImpl() { 
         _echo_service->StopTestCase();
@@ -284,7 +284,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    if (server.Start(FLAGS_cntl_port, NULL) != 0) {
+    if (server.Start(FLAGS_cntl_port, nullptr) != 0) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;
     }

@@ -70,7 +70,7 @@ public:
                 _series.append(_owner->get_value());
             }
         }
-        void describe(std::ostream& os) { _series.describe(os, NULL); }
+        void describe(std::ostream& os) { _series.describe(os, nullptr); }
     private:
         WindowBase* _owner;
         detail::Series<value_type, Op> _series;
@@ -80,7 +80,7 @@ public:
         : _var(var)
         , _window_size(window_size > 0 ? window_size : FLAGS_bvar_dump_interval)
         , _sampler(var->get_sampler())
-        , _series_sampler(NULL) {
+        , _series_sampler(nullptr) {
         CHECK_EQ(0, _sampler->set_window_size(_window_size));
     }
     
@@ -88,7 +88,7 @@ public:
         hide();
         if (_series_sampler) {
             _series_sampler->destroy();
-            _series_sampler = NULL;
+            _series_sampler = nullptr;
         }
     }
 
@@ -125,7 +125,7 @@ public:
     time_t window_size() const { return _window_size; }
 
     int describe_series(std::ostream& os, const SeriesOptions& options) const override {
-        if (_series_sampler == NULL) {
+        if (_series_sampler == nullptr) {
             return 1;
         }
         if (!options.test_only) {
@@ -146,7 +146,7 @@ protected:
                     DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (rc == 0 &&
-            _series_sampler == NULL &&
+            _series_sampler == nullptr &&
             FLAGS_save_series) {
             _series_sampler = new SeriesSampler(this, _var);
             _series_sampler->schedule();

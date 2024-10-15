@@ -39,7 +39,7 @@ public:
     // Params:
     //   out  - The buffer to be generated, being empty initially, could
     //          remain empty after being called.
-    //   sock - the socket to write. NULL when the message will be abandoned
+    //   sock - the socket to write. nullptr when the message will be abandoned
     // If the status returned is an error, WriteOptions.id_wait (if absent)
     // will be signaled with the error. Other messages are not affected.
     virtual butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket* sock) = 0;
@@ -53,7 +53,7 @@ struct SocketMessageDeleter {
     void operator()(SocketMessage* msg) const {
         butil::IOBuf dummy_buf;
         // We don't care about the return value since the message is abandoned
-        (void)msg->AppendAndDestroySelf(&dummy_buf, NULL);
+        (void)msg->AppendAndDestroySelf(&dummy_buf, nullptr);
     }
 };
 }

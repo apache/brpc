@@ -63,7 +63,7 @@ class EnvironmentImpl : public butil::Environment {
     return true;
 #elif defined(OS_WIN)
     DWORD value_length = ::GetEnvironmentVariable(
-        UTF8ToWide(variable_name).c_str(), NULL, 0);
+        UTF8ToWide(variable_name).c_str(), nullptr, 0);
     if (value_length == 0)
       return false;
     if (result) {
@@ -95,7 +95,7 @@ class EnvironmentImpl : public butil::Environment {
     return !unsetenv(variable_name);
 #elif defined(OS_WIN)
     // On success, a nonzero value is returned.
-    return !!SetEnvironmentVariable(UTF8ToWide(variable_name).c_str(), NULL);
+    return !!SetEnvironmentVariable(UTF8ToWide(variable_name).c_str(), nullptr);
 #endif
   }
 };
@@ -137,7 +137,7 @@ Environment* Environment::Create() {
 }
 
 bool Environment::HasVar(const char* variable_name) {
-  return GetVar(variable_name, NULL);
+  return GetVar(variable_name, nullptr);
 }
 
 #if defined(OS_WIN)

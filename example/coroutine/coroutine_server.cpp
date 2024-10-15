@@ -81,7 +81,7 @@ public:
             brpc::ClosureGuard done_guard(done);
             EchoService_Stub stub(&_channel);
             brpc::Controller cntl;
-            stub.Echo(&cntl, request, response, NULL);
+            stub.Echo(&cntl, request, response, nullptr);
             if (cntl.Failed()) {
                 response->set_message(cntl.ErrorText());
             }

@@ -36,10 +36,10 @@ public:
         : _iobuf(&b), _max_length(max_length) {}
 
     ToPrintable(const StringPiece& str, size_t max_length = DEFAULT_MAX_LENGTH)
-        : _iobuf(NULL), _str(str), _max_length(max_length) {}
+        : _iobuf(nullptr), _str(str), _max_length(max_length) {}
 
     ToPrintable(const void* data, size_t n, size_t max_length = DEFAULT_MAX_LENGTH)
-        : _iobuf(NULL), _str((const char*)data, n), _max_length(max_length) {}
+        : _iobuf(nullptr), _str((const char*)data, n), _max_length(max_length) {}
     
     void Print(std::ostream& os) const;
 

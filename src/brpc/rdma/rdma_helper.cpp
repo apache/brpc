@@ -43,35 +43,35 @@ extern void  (*blockmem_deallocate)(void*);
 namespace brpc {
 namespace rdma {
 
-void* g_handle_ibverbs = NULL;
+void* g_handle_ibverbs = nullptr;
 bool g_skip_rdma_init = false;
 
-ibv_device** (*IbvGetDeviceList)(int*) = NULL;
-void (*IbvFreeDeviceList)(ibv_device**) = NULL;
-ibv_context* (*IbvOpenDevice)(ibv_device*) = NULL;
-int (*IbvCloseDevice)(ibv_context*) = NULL;
-const char* (*IbvGetDeviceName)(ibv_device*) = NULL;
-int (*IbvForkInit)(void) = NULL;
-int (*IbvQueryDevice)(ibv_context*, ibv_device_attr*) = NULL;
-int (*IbvQueryPort)(ibv_context*, uint8_t, ibv_port_attr*) = NULL;
-int (*IbvQueryGid)(ibv_context*, uint8_t, int, ibv_gid*) = NULL;
-ibv_pd* (*IbvAllocPd)(ibv_context*) = NULL;
-int (*IbvDeallocPd)(ibv_pd*) = NULL;
-ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int) = NULL;
-int (*IbvDestroyCq)(ibv_cq*) = NULL;
-ibv_qp* (*IbvCreateQp)(ibv_pd*, ibv_qp_init_attr*) = NULL;
-int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask) = NULL;
-int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_attr*) = NULL;
-int (*IbvDestroyQp)(ibv_qp*) = NULL;
-ibv_comp_channel* (*IbvCreateCompChannel)(ibv_context*) = NULL;
-int (*IbvDestroyCompChannel)(ibv_comp_channel*) = NULL;
-ibv_mr* (*IbvRegMr)(ibv_pd*, void*, size_t, ibv_access_flags) = NULL;
-int (*IbvDeregMr)(ibv_mr*) = NULL;
-int (*IbvGetCqEvent)(ibv_comp_channel*, ibv_cq**, void**) = NULL;
-void (*IbvAckCqEvents)(ibv_cq*, unsigned int) = NULL;
-int (*IbvGetAsyncEvent)(ibv_context*, ibv_async_event*) = NULL;
-void (*IbvAckAsyncEvent)(ibv_async_event*) = NULL;
-const char* (*IbvEventTypeStr)(ibv_event_type) = NULL;
+ibv_device** (*IbvGetDeviceList)(int*) = nullptr;
+void (*IbvFreeDeviceList)(ibv_device**) = nullptr;
+ibv_context* (*IbvOpenDevice)(ibv_device*) = nullptr;
+int (*IbvCloseDevice)(ibv_context*) = nullptr;
+const char* (*IbvGetDeviceName)(ibv_device*) = nullptr;
+int (*IbvForkInit)(void) = nullptr;
+int (*IbvQueryDevice)(ibv_context*, ibv_device_attr*) = nullptr;
+int (*IbvQueryPort)(ibv_context*, uint8_t, ibv_port_attr*) = nullptr;
+int (*IbvQueryGid)(ibv_context*, uint8_t, int, ibv_gid*) = nullptr;
+ibv_pd* (*IbvAllocPd)(ibv_context*) = nullptr;
+int (*IbvDeallocPd)(ibv_pd*) = nullptr;
+ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int) = nullptr;
+int (*IbvDestroyCq)(ibv_cq*) = nullptr;
+ibv_qp* (*IbvCreateQp)(ibv_pd*, ibv_qp_init_attr*) = nullptr;
+int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask) = nullptr;
+int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_attr*) = nullptr;
+int (*IbvDestroyQp)(ibv_qp*) = nullptr;
+ibv_comp_channel* (*IbvCreateCompChannel)(ibv_context*) = nullptr;
+int (*IbvDestroyCompChannel)(ibv_comp_channel*) = nullptr;
+ibv_mr* (*IbvRegMr)(ibv_pd*, void*, size_t, ibv_access_flags) = nullptr;
+int (*IbvDeregMr)(ibv_mr*) = nullptr;
+int (*IbvGetCqEvent)(ibv_comp_channel*, ibv_cq**, void**) = nullptr;
+void (*IbvAckCqEvents)(ibv_cq*, unsigned int) = nullptr;
+int (*IbvGetAsyncEvent)(ibv_context*, ibv_async_event*) = nullptr;
+void (*IbvAckAsyncEvent)(ibv_async_event*) = nullptr;
+const char* (*IbvEventTypeStr)(ibv_event_type) = nullptr;
 
 // NOTE:
 // ibv_post_send, ibv_post_recv, ibv_poll_cq, ibv_req_notify_cq are all inline function
@@ -95,18 +95,18 @@ DEFINE_int32(rdma_port, 1, "The port number to use. For RoCE, it is always 1.");
 DEFINE_int32(rdma_gid_index, -1, "The GID index to use. -1 means using the last one.");
 
 static const size_t SYSFS_SIZE = 4096;
-static ibv_device** g_devices = NULL;
-static ibv_context* g_context = NULL;
+static ibv_device** g_devices = nullptr;
+static ibv_context* g_context = nullptr;
 static SocketId g_async_socket;
-static ibv_pd* g_pd = NULL;
-static std::vector<ibv_mr*>* g_mrs = NULL; // mr registered by brpc
+static ibv_pd* g_pd = nullptr;
+static std::vector<ibv_mr*>* g_mrs = nullptr; // mr registered by brpc
 
 static butil::FlatMap<void*, ibv_mr*>* g_user_mrs;  // mr registered by user
-static butil::Mutex* g_user_mrs_lock = NULL;
+static butil::Mutex* g_user_mrs_lock = nullptr;
 
 // Store the original IOBuf memalloc and memdealloc functions
-static void* (*g_mem_alloc)(size_t) = NULL;
-static void (*g_mem_dealloc)(void*) = NULL;
+static void* (*g_mem_alloc)(size_t) = nullptr;
+static void (*g_mem_dealloc)(void*) = nullptr;
 
 namespace {
 struct IbvDeviceDeleter {
@@ -139,32 +139,32 @@ static void GlobalRelease() {
         }
         g_user_mrs->clear();
         delete g_user_mrs;
-        g_user_mrs = NULL;
+        g_user_mrs = nullptr;
     }
     delete g_user_mrs_lock;
-    g_user_mrs_lock = NULL;
+    g_user_mrs_lock = nullptr;
 
     if (g_mrs) {
         for (size_t i = 0; i < g_mrs->size(); ++i) {
             IbvDeregMr((*g_mrs)[i]);
         }
         delete g_mrs;
-        g_mrs = NULL;
+        g_mrs = nullptr;
     }
 
     if (g_pd) {
         IbvDeallocPd(g_pd);
-        g_pd = NULL;
+        g_pd = nullptr;
     }
 
     if (g_context) {
         IbvCloseDevice(g_context);
-        g_context = NULL;
+        g_context = nullptr;
     }
 
     if (g_devices) {
         IbvFreeDeviceList(g_devices);
-        g_devices = NULL;
+        g_devices = nullptr;
     }
 }
 
@@ -183,7 +183,7 @@ uint32_t RdmaRegisterMemory(void* buf, size_t size) {
 static void* BlockAllocate(size_t len) {
     if (len == 0) {
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     void* ptr = AllocBlock(len);
     if (!ptr) {
@@ -600,7 +600,7 @@ uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
 }
 
 void DeregisterMemoryForRdma(void* buf) {
-    ibv_mr* mr = NULL;
+    ibv_mr* mr = nullptr;
     {
         BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
         ibv_mr** mr_ptr = g_user_mrs->seek(buf);

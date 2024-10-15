@@ -23,12 +23,12 @@ namespace brpc {
 
 BaiduMasterService::BaiduMasterService()
     :_status(new(std::nothrow) MethodStatus) {
-    LOG_IF(FATAL, NULL == _status) << "Fail to new MethodStatus";
+    LOG_IF(FATAL, nullptr == _status) << "Fail to new MethodStatus";
 }
 
 BaiduMasterService::~BaiduMasterService() {
     delete _status;
-    _status = NULL;
+    _status = nullptr;
 }
 
 void BaiduMasterService::Describe(std::ostream &os,
@@ -37,7 +37,7 @@ void BaiduMasterService::Describe(std::ostream &os,
 }
 
 void BaiduMasterService::Expose(const butil::StringPiece& prefix) {
-    if (NULL == _status) {
+    if (nullptr == _status) {
         return;
     }
     std::string s;

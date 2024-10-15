@@ -134,7 +134,7 @@ void ExtractHostnames(X509* x, std::vector<std::string>* hostnames) {
 
 struct FreeSSL {
     inline void operator()(SSL* ssl) const {
-        if (ssl != NULL) {
+        if (ssl != nullptr) {
             SSL_free(ssl);
         }
     }
@@ -142,7 +142,7 @@ struct FreeSSL {
 
 struct FreeBIO {
     inline void operator()(BIO* io) const {
-        if (io != NULL) {
+        if (io != nullptr) {
             BIO_free(io);
         }
     }
@@ -150,7 +150,7 @@ struct FreeBIO {
 
 struct FreeX509 {
     inline void operator()(X509* x) const {
-        if (x != NULL) {
+        if (x != nullptr) {
             X509_free(x);
         }
     }
@@ -158,7 +158,7 @@ struct FreeX509 {
 
 struct FreeEVPKEY {
     inline void operator()(EVP_PKEY* k) const {
-        if (k != NULL) {
+        if (k != nullptr) {
             EVP_PKEY_free(k);
         }
     }
@@ -173,7 +173,7 @@ static int LoadCertificate(SSL_CTX* ctx,
         std::unique_ptr<BIO, FreeBIO> kbio(
             BIO_new_mem_buf((void*)private_key.c_str(), -1));
         std::unique_ptr<EVP_PKEY, FreeEVPKEY> key(
-            PEM_read_bio_PrivateKey(kbio.get(), NULL, 0, NULL));
+            PEM_read_bio_PrivateKey(kbio.get(), nullptr, 0, nullptr));
         if (SSL_CTX_use_PrivateKey(ctx, key.get()) != 1) {
             LOG(ERROR) << "Fail to load " << private_key << ": "
                        << SSLError(ERR_get_error());
@@ -201,7 +201,7 @@ static int LoadCertificate(SSL_CTX* ctx,
         }
     }
     std::unique_ptr<X509, FreeX509> x(
-        PEM_read_bio_X509(cbio.get(), NULL, 0, NULL));
+        PEM_read_bio_X509(cbio.get(), nullptr, 0, nullptr));
     if (!x) {
         LOG(ERROR) << "Fail to parse " << certificate << ": "
                    << SSLError(ERR_get_error());
@@ -217,8 +217,8 @@ static int LoadCertificate(SSL_CTX* ctx,
 
     // Load the certificate chain
     //SSL_CTX_clear_chain_certs(ctx);
-    X509* ca = NULL;
-    while ((ca = PEM_read_bio_X509(cbio.get(), NULL, 0, NULL))) {
+    X509* ca = nullptr;
+    while ((ca = PEM_read_bio_X509(cbio.get(), nullptr, 0, nullptr))) {
         if (SSL_CTX_add_extra_chain_cert(ctx, ca) != 1) {
             LOG(ERROR) << "Fail to load chain certificate in "
                        << certificate << ": " << SSLError(ERR_get_error());
@@ -243,16 +243,16 @@ static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
     if (verify.verify_depth > 0) {
         std::string cafile = verify.ca_file_path;
         if (!cafile.empty()) {
-            if (SSL_CTX_load_verify_locations(ctx, cafile.c_str(), NULL) == 0) {
+            if (SSL_CTX_load_verify_locations(ctx, cafile.c_str(), nullptr) == 0) {
                 LOG(ERROR) << "Fail to load CA file " << cafile
                            << ": " << SSLError(ERR_get_error());
                 return -1;
             }
         }
         SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
-                                 | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
+                                 | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), nullptr);
     } else {
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);
     }
 
     return 0;
@@ -263,21 +263,21 @@ SSL_CTX* CreateClientSSLContext(const ChannelSSLOptions& options) {
         SSL_CTX_new(TLSv1_2_client_method()));
     if (!ssl_ctx) {
         LOG(ERROR) << "Fail to new SSL_CTX: " << SSLError(ERR_get_error());
-        return NULL;
+        return nullptr;
     }
 
     if (!options.client_cert.certificate.empty()
         && LoadCertificate(ssl_ctx.get(),
                            options.client_cert.certificate,
-                           options.client_cert.private_key, NULL) != 0) {
-        return NULL;
+                           options.client_cert.private_key, nullptr) != 0) {
+        return nullptr;
     }
 
     int protocols = ParseSSLProtocols(options.protocols);
     if (protocols < 0
         || SetSSLOptions(ssl_ctx.get(), options.ciphers,
                          protocols, options.verify) != 0) {
-        return NULL;
+        return nullptr;
     }
 
     SSL_CTX_set_session_cache_mode(ssl_ctx.get(), SSL_SESS_CACHE_CLIENT);
@@ -292,12 +292,12 @@ SSL_CTX* CreateServerSSLContext(const std::string& certificate,
         SSL_CTX_new(TLSv1_2_server_method()));
     if (!ssl_ctx) {
         LOG(ERROR) << "Fail to new SSL_CTX: " << SSLError(ERR_get_error());
-        return NULL;
+        return nullptr;
     }
 
     if (LoadCertificate(ssl_ctx.get(), certificate,
                         private_key, hostnames) != 0) {
-        return NULL;
+        return nullptr;
     }
 
     int protocols = TLSv1 | TLSv1_1 | TLSv1_2;
@@ -306,7 +306,7 @@ SSL_CTX* CreateServerSSLContext(const std::string& certificate,
     }
     if (SetSSLOptions(ssl_ctx.get(), options.ciphers,
                       protocols, options.verify) != 0) {
-        return NULL;
+        return nullptr;
     }
 
     /* SSL_CTX_set_timeout(ssl_ctx.get(), options.session_lifetime_s); */
@@ -316,19 +316,19 @@ SSL_CTX* CreateServerSSLContext(const std::string& certificate,
 }
 
 SSL* CreateSSLSession(SSL_CTX* ctx, SocketId id, int fd, bool server_mode) {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         LOG(WARNING) << "Lack SSL_ctx to create an SSL session";
-        return NULL;
+        return nullptr;
     }
     SSL* ssl = SSL_new(ctx);
-    if (ssl == NULL) {
+    if (ssl == nullptr) {
         LOG(ERROR) << "Fail to SSL_new: " << SSLError(ERR_get_error());
-        return NULL;
+        return nullptr;
     }
     if (SSL_set_fd(ssl, fd) != 1) {
         LOG(ERROR) << "Fail to SSL_set_fd: " << SSLError(ERR_get_error());
         SSL_free(ssl);
-        return NULL;
+        return nullptr;
     }
 
     if (server_mode) {

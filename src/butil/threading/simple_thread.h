@@ -167,7 +167,7 @@ class BUTIL_EXPORT DelegateSimpleThreadPool
   void JoinAll();
 
   // It is safe to AddWork() any time, before or after Start().
-  // Delegate* should always be a valid pointer, NULL is reserved internally.
+  // Delegate* should always be a valid pointer, nullptr is reserved internally.
   void AddWork(Delegate* work, int repeat_count);
   void AddWork(Delegate* work) {
     AddWork(work, 1);

@@ -42,7 +42,7 @@ void BthreadsService::default_method(::google::protobuf::RpcController* cntl_bas
     if (constraint.empty()) {
         os << "Use /bthreads/<bthread_id>";
     } else {
-        char* endptr = NULL;
+        char* endptr = nullptr;
         bthread_t tid = strtoull(constraint.c_str(), &endptr, 10);
         if (*endptr == '\0' || *endptr == '/') {
             ::bthread::print_task(os, tid);

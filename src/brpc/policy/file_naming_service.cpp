@@ -38,7 +38,7 @@ bool SplitIntoServerAndTag(const butil::StringPiece& line,
         return false;
     }
     const char* const addr_start = line.data() + i;
-    const char* tag_start = NULL;
+    const char* tag_start = nullptr;
     ssize_t tag_size = 0;
     for (; i < line.size() && !isspace(line[i]); ++i) {}
     if (server_addr) {
@@ -69,7 +69,7 @@ bool SplitIntoServerAndTag(const butil::StringPiece& line,
 int FileNamingService::GetServers(const char *service_name,
                                   std::vector<ServerNode>* servers) {
     servers->clear();
-    char* line = NULL;
+    char* line = nullptr;
     size_t line_len = 0;
     ssize_t nr = 0;
     // Sort/unique the inserted vector is faster, but may have a different order

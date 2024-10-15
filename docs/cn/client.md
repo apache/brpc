@@ -23,7 +23,7 @@ Channel可以**被所有线程共用**，你不需要为每个线程创建独立
 2. 共用资源。比如server和channel可以共用后台线程。(bthread的工作线程)
 3. 生命周期。析构ClientManager的过程很容易出错，现在由框架负责则不会有问题。
 
-就像大部分类那样，Channel必须在**Init**之后才能使用，options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
+就像大部分类那样，Channel必须在**Init**之后才能使用，options为nullptr时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 ```c++
 brpc::ChannelOptions options;  // 包含了默认值
 options.xxx = yyy;
@@ -37,7 +37,7 @@ Init函数分为连接一台服务器和连接服务集群。
 # 连接一台服务器
 
 ```c++
-// options为NULL时取默认值
+// options为nullptr时取默认值
 int Init(EndPoint server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr, int port, const ChannelOptions* options);
@@ -68,7 +68,7 @@ int Init(const char* naming_service_url,
 
 你**不应该**在每次请求前动态地创建此类（连接服务集群的）Channel。因为创建和析构此类Channel牵涉到较多的资源，比如在创建时得访问一次命名服务，否则便不知道有哪些服务器可选。由于Channel可被多个线程共用，一般也没有必要动态创建。
 
-当`load_balancer_name`为NULL或空时，此Init等同于连接单台server的Init，`naming_service_url`应该是"ip:port"或"域名:port"。你可以通过这个Init函数统一Channel的初始化方式。比如你可以把`naming_service_url`和`load_balancer_name`放在配置文件中，要连接单台server时把`load_balancer_name`置空，要连接服务集群时则设置一个有效的算法名称。
+当`load_balancer_name`为nullptr或空时，此Init等同于连接单台server的Init，`naming_service_url`应该是"ip:port"或"域名:port"。你可以通过这个Init函数统一Channel的初始化方式。比如你可以把`naming_service_url`和`load_balancer_name`放在配置文件中，要连接单台server时把`load_balancer_name`置空，要连接服务集群时则设置一个有效的算法名称。
 
 ## 命名服务
 
@@ -208,7 +208,7 @@ struct ServerNode {
 ```
 常见的业务策略如根据server的tag进行过滤。
 
-自定义的过滤器配置在ChannelOptions中，默认为NULL（不过滤）。
+自定义的过滤器配置在ChannelOptions中，默认为nullptr（不过滤）。
 
 ```c++
 class MyNamingServiceFilter : public brpc::NamingServiceFilter {
@@ -304,7 +304,7 @@ stub.some_method(controller, request, response, done);
 ```c++
 XXX_Stub(&channel).some_method(controller, request, response, done);
 ```
-一个例外是http/h2 client。访问http服务和protobuf没什么关系，直接调用CallMethod即可，除了Controller和done均为NULL，详见[访问http/h2服务](http_client.md)。
+一个例外是http/h2 client。访问http服务和protobuf没什么关系，直接调用CallMethod即可，除了Controller和done均为nullptr，详见[访问http/h2服务](http_client.md)。
 
 ## 同步访问
 
@@ -319,7 +319,7 @@ XXX_Stub stub(&channel);
  
 request.set_foo(...);
 cntl.set_timeout_ms(...);
-stub.some_method(&cntl, &request, &response, NULL);
+stub.some_method(&cntl, &request, &response, nullptr);
 if (cntl->Failed()) {
     // RPC失败了. response里的值是未定义的，勿用。
 } else {

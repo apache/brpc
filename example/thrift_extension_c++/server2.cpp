@@ -34,7 +34,7 @@ DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 class EchoServiceImpl : public brpc::ThriftService {
 public:
     EchoServiceImpl() {
-        // Initialize the channel, NULL means using default options. 
+        // Initialize the channel, nullptr means using default options.
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_THRIFT;
         if (_channel.Init("0.0.0.0", FLAGS_port , &options) != 0) {
@@ -55,7 +55,7 @@ public:
             // TODO: Following Cast<> drops data field from ProxyRequest which
             // does not recognize the field, should be debugged further.
             // LOG(INFO) << "req=" << *req->Cast<example::ProxyRequest>();
-            stub.CallMethod("RealEcho", &cntl, req, res, NULL);
+            stub.CallMethod("RealEcho", &cntl, req, res, nullptr);
             done->Run();
         } else if (cntl->thrift_method_name() == "RealEcho") {
             return RealEcho(cntl, req->Cast<example::EchoRequest>(),

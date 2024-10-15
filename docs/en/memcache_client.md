@@ -41,12 +41,12 @@ if (!request.Set("hello", "world", 0xdeadbeef/*flags*/, 10/*expiring seconds*/, 
     LOG(FATAL) << "Fail to SET request";
     return -1;
 } 
-channel.CallMethod(NULL, &cntl, &request, &response, NULL/*done*/);
+channel.CallMethod(nullptr, &cntl, &request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(FATAL) << "Fail to access memcached, " << cntl.ErrorText();
     return -1;
 }  
-if (!response.PopSet(NULL)) {
+if (!response.PopSet(nullptr)) {
     LOG(FATAL) << "Fail to SET memcached, " << response.LastError();
     return -1;   
 }
@@ -55,7 +55,7 @@ if (!response.PopSet(NULL)) {
 
 Notes on above code:
 
-- The class of the request must be `MemcacheRequest`, response must be `MemcacheResponse`, otherwise `CallMethod` fails. `stub` is not necessary, just call `channel.CallMethod` with `method` to NULL.
+- The class of the request must be `MemcacheRequest`, response must be `MemcacheResponse`, otherwise `CallMethod` fails. `stub` is not necessary, just call `channel.CallMethod` with `method` to nullptr.
 - Call `request.XXX()` to add an operation, where `XXX` is `Set` in this example. Multiple operations inside a request are sent to a memcached server together (often referred to as "pipeline mode").
 - call `response.PopXXX()` to pop result of an operation from the response, where `XXX` is `Set` in this example. true is returned on success, and false otherwise in which case use `response.LastError()` to get the error message. `XXX` must match the corresponding operation in the request, otherwise the pop is rejected. In above example, a `PopGet` would fail with the error message of "not a GET response".
 - Results of `Pop` are independent from the RPC result. Even if "a value cannot be put into the memcached", the RPC may still be successful. RPC failure means things like broken connection, timeout etc. If the business logic requires the memcache operations to be successful, you should test successfulness of both RPC and `PopXXX`.

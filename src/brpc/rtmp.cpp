@@ -191,7 +191,7 @@ butil::Status FlvReader::ReadHeader() {
         // { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 }.
         char header_buf[9 + 4/* PreviousTagSize0 */];
         const char* p = (const char*)_buf->fetch(header_buf, sizeof(header_buf));
-        if (p == NULL) {
+        if (p == nullptr) {
             return butil::Status(EAGAIN, "Fail to read, not enough data");
         }
         const char flv_header_signature[3] = { 'F', 'L', 'V' };
@@ -211,7 +211,7 @@ butil::Status FlvReader::PeekMessageType(FlvTagType* type_out) {
         return st;
     }
     const char* p = (const char*)_buf->fetch1();
-    if (p == NULL) {
+    if (p == nullptr) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
     FlvTagType type = (FlvTagType)*p;
@@ -228,7 +228,7 @@ butil::Status FlvReader::PeekMessageType(FlvTagType* type_out) {
 butil::Status FlvReader::Read(RtmpVideoMessage* msg) {
     char tags[11];
     const unsigned char* p = (const unsigned char*)_buf->fetch(tags, sizeof(tags));
-    if (p == NULL) {
+    if (p == nullptr) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
     if (*p != FLV_TAG_VIDEO) {
@@ -256,7 +256,7 @@ butil::Status FlvReader::Read(RtmpVideoMessage* msg) {
 butil::Status FlvReader::Read(RtmpAudioMessage* msg) {
     char tags[11];
     const unsigned char* p = (const unsigned char*)_buf->fetch(tags, sizeof(tags));
-    if (p == NULL) {
+    if (p == nullptr) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
     if (*p != FLV_TAG_AUDIO) {
@@ -285,7 +285,7 @@ butil::Status FlvReader::Read(RtmpAudioMessage* msg) {
 butil::Status FlvReader::Read(RtmpMetaData* msg, std::string* name) {
     char tags[11];
     const unsigned char* p = (const unsigned char*)_buf->fetch(tags, sizeof(tags));
-    if (p == NULL) {
+    if (p == nullptr) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
     if (*p != FLV_TAG_SCRIPT_DATA) {
@@ -418,7 +418,7 @@ butil::Status RtmpAACMessage::Create(const RtmpAudioMessage& msg) {
                             FlvAudioCodec2Str(msg.codec));
     }
     const uint8_t* p = (const uint8_t*)msg.data.fetch1();
-    if (p == NULL) {
+    if (p == nullptr) {
         return butil::Status(EINVAL, "Not enough data in AudioMessage");
     }
     if (*p > FLV_AAC_PACKET_RAW) {
@@ -469,7 +469,7 @@ bool RtmpAudioMessage::IsAACSequenceHeader() const {
         return false;
     }
     const uint8_t* p = (const uint8_t*)data.fetch1();
-    if (p == NULL) {
+    if (p == nullptr) {
         return false;
     }
     return *p == FLV_AAC_PACKET_SEQUENCE_HEADER;
@@ -482,7 +482,7 @@ butil::Status RtmpAVCMessage::Create(const RtmpVideoMessage& msg) {
     }
     uint8_t buf[4];
     const uint8_t* p = (const uint8_t*)msg.data.fetch(buf, sizeof(buf));
-    if (p == NULL) {
+    if (p == nullptr) {
         return butil::Status(EINVAL, "Not enough data in VideoMessage");
     }
     if (*p > FLV_AVC_PACKET_END_OF_SEQUENCE) {
@@ -501,7 +501,7 @@ bool RtmpVideoMessage::IsAVCSequenceHeader() const {
         return false;
     }
     const uint8_t* p = (const uint8_t*)data.fetch1();
-    if (p == NULL) {
+    if (p == nullptr) {
         return false;
     }
     return *p == FLV_AVC_PACKET_SEQUENCE_HEADER;
@@ -512,7 +512,7 @@ bool RtmpVideoMessage::IsHEVCSequenceHeader() const {
         return false;
     }
     const uint8_t* p = (const uint8_t*)data.fetch1();
-    if (p == NULL) {
+    if (p == nullptr) {
         return false;
     }
     return *p == FLV_AVC_PACKET_SEQUENCE_HEADER;
@@ -816,7 +816,7 @@ butil::Status AVCDecoderConfigurationRecord::ParseSPS(
 static bool find_avc_annexb_nalu_start_code(const butil::IOBuf& buf,
                                             size_t* start_code_length) {
     size_t consecutive_zero_count = 0;
-    for (butil::IOBufBytesIterator it(buf); it != NULL; ++it) {
+    for (butil::IOBufBytesIterator it(buf); it != nullptr; ++it) {
         char c = *it;
         if (c == 0) {
             ++consecutive_zero_count;
@@ -840,7 +840,7 @@ static void find_avc_annexb_nalu_stop_code(const butil::IOBuf& buf,
                                            size_t* stop_code_length) {
     size_t nalu_length = 0;
     size_t consecutive_zero_count = 0;
-    for (butil::IOBufBytesIterator it(buf); it != NULL; ++it) {
+    for (butil::IOBufBytesIterator it(buf); it != nullptr; ++it) {
         unsigned char c = (unsigned char)*it;
         if (c > 1) { // most frequent
             ++nalu_length;
@@ -1040,8 +1040,8 @@ void RtmpConnect::StartConnect(
     RPC_VLOG << "Establish rtmp-level connection on " << *s;
     policy::RtmpContext* ctx =
         static_cast<policy::RtmpContext*>(s->parsing_context());
-    if (ctx == NULL) {
-        LOG(FATAL) << "RtmpContext of " << *s << " is NULL";
+    if (ctx == nullptr) {
+        LOG(FATAL) << "RtmpContext of " << *s << " is nullptr";
         return done(EINVAL, data);
     }
 
@@ -1074,8 +1074,8 @@ void RtmpConnect::StartConnect(
 void RtmpConnect::StopConnect(Socket* s) {
     policy::RtmpContext* ctx =
         static_cast<policy::RtmpContext*>(s->parsing_context());
-    if (ctx == NULL) {
-        LOG(FATAL) << "RtmpContext of " << *s << " is NULL";
+    if (ctx == nullptr) {
+        LOG(FATAL) << "RtmpContext of " << *s << " is nullptr";
     } else {
         ctx->OnConnected(EFAILEDSOCKET);
     }
@@ -1090,7 +1090,7 @@ public:
     int CreateSocket(const SocketOptions& opt, SocketId* id) override {
         SocketOptions sock_opt = opt;
         sock_opt.app_connect = std::make_shared<RtmpConnect>();
-        sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, NULL);
+        sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, nullptr);
         return get_client_side_messenger()->Create(sock_opt, id);
     }
     
@@ -1102,7 +1102,7 @@ int RtmpClientImpl::CreateSocket(const butil::EndPoint& pt, SocketId* id) {
     SocketOptions sock_opt;
     sock_opt.remote_side = pt;
     sock_opt.app_connect = std::make_shared<RtmpConnect>();
-    sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, NULL);
+    sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, nullptr);
     return get_client_side_messenger()->Create(sock_opt, id);
 }
 
@@ -1184,7 +1184,7 @@ const RtmpClientOptions& RtmpClient::options() const {
 int RtmpClient::Init(butil::EndPoint server_addr_and_port,
                      const RtmpClientOptions& options) {
     butil::intrusive_ptr<RtmpClientImpl> tmp(new (std::nothrow) RtmpClientImpl);
-    if (tmp == NULL) {
+    if (tmp == nullptr) {
         LOG(FATAL) << "Fail to new RtmpClientImpl";
         return -1;
     }
@@ -1198,7 +1198,7 @@ int RtmpClient::Init(butil::EndPoint server_addr_and_port,
 int RtmpClient::Init(const char* server_addr_and_port,
                      const RtmpClientOptions& options) {
     butil::intrusive_ptr<RtmpClientImpl> tmp(new (std::nothrow) RtmpClientImpl);
-    if (tmp == NULL) {
+    if (tmp == nullptr) {
         LOG(FATAL) << "Fail to new RtmpClientImpl";
         return -1;
     }
@@ -1212,7 +1212,7 @@ int RtmpClient::Init(const char* server_addr_and_port,
 int RtmpClient::Init(const char* server_addr, int port,
                      const RtmpClientOptions& options) {
     butil::intrusive_ptr<RtmpClientImpl> tmp(new (std::nothrow) RtmpClientImpl);
-    if (tmp == NULL) {
+    if (tmp == nullptr) {
         LOG(FATAL) << "Fail to new RtmpClientImpl";
         return -1;
     }
@@ -1227,7 +1227,7 @@ int RtmpClient::Init(const char* naming_service_url,
                      const char* load_balancer_name,
                      const RtmpClientOptions& options) {
     butil::intrusive_ptr<RtmpClientImpl> tmp(new (std::nothrow) RtmpClientImpl);
-    if (tmp == NULL) {
+    if (tmp == nullptr) {
         LOG(FATAL) << "Fail to new RtmpClientImpl";
         return -1;
     }
@@ -1238,7 +1238,7 @@ int RtmpClient::Init(const char* naming_service_url,
     return 0;
 }
 
-bool RtmpClient::initialized() const { return _impl != NULL; }
+bool RtmpClient::initialized() const { return _impl != nullptr; }
 
 RtmpStreamBase::RtmpStreamBase(bool is_client)
     : _is_client(is_client)
@@ -1262,7 +1262,7 @@ void RtmpStreamBase::Destroy() {
 int RtmpStreamBase::SendMessage(uint32_t timestamp,
                                 uint8_t message_type,
                                 const butil::IOBuf& body) {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         errno = EPERM;
         return -1;
     }
@@ -1283,7 +1283,7 @@ int RtmpStreamBase::SendMessage(uint32_t timestamp,
 
 int RtmpStreamBase::SendControlMessage(
     uint8_t message_type, const void* body, size_t size) {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         errno = EPERM;
         return -1;
     }
@@ -1330,7 +1330,7 @@ int RtmpStreamBase::SendSharedObjectMessage(const RtmpSharedObjectMessage&) {
 }
 
 int RtmpStreamBase::SendAudioMessage(const RtmpAudioMessage& msg) {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         errno = EPERM;
         return -1;
     }
@@ -1361,7 +1361,7 @@ int RtmpStreamBase::SendAudioMessage(const RtmpAudioMessage& msg) {
 }
 
 int RtmpStreamBase::SendAACMessage(const RtmpAACMessage& msg) {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         errno = EPERM;
         return -1;
     }
@@ -1398,7 +1398,7 @@ int RtmpStreamBase::SendUserMessage(void*) {
 }
 
 int RtmpStreamBase::SendVideoMessage(const RtmpVideoMessage& msg) {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         errno = EPERM;
         return -1;
     }
@@ -1431,7 +1431,7 @@ int RtmpStreamBase::SendVideoMessage(const RtmpVideoMessage& msg) {
 }
 
 int RtmpStreamBase::SendAVCMessage(const RtmpAVCMessage& msg) {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         errno = EPERM;
         return -1;
     }
@@ -1696,20 +1696,20 @@ StreamUserData* RtmpClientStream::OnCreatingStream(
         std::unique_lock<butil::Mutex> mu(_state_mutex);
         if (_state == STATE_ERROR || _state == STATE_DESTROYING) {
             cntl->SetFailed(EINVAL, "Fail to replace socket for stream, _state is error or destroying");
-            return NULL;
+            return nullptr;
         }
     }
     SocketId esid;
     if (cntl->connection_type() == CONNECTION_TYPE_SHORT) {
         if (_client_impl->CreateSocket((*inout)->remote_side(), &esid) != 0) {
             cntl->SetFailed(EINVAL, "Fail to create RTMP socket");
-            return NULL;
+            return nullptr;
         }
     } else {
         if (_client_impl->socket_map().Insert(
                 SocketMapKey((*inout)->remote_side()), &esid) != 0) {
             cntl->SetFailed(EINVAL, "Fail to get the RTMP socket");
-            return NULL;
+            return nullptr;
         }
     }
     SocketUniquePtr tmp_ptr;
@@ -1717,7 +1717,7 @@ StreamUserData* RtmpClientStream::OnCreatingStream(
         cntl->SetFailed(EFAILEDSOCKET, "Fail to address RTMP SocketId=%" PRIu64
                         " from SocketMap of RtmpClient=%p",
                         esid, _client_impl.get());
-        return NULL;
+        return nullptr;
     }
     RPC_VLOG << "Replace Socket For Stream, RTMP socketId=" << esid
              << ", main socketId=" << (*inout)->id();
@@ -1784,8 +1784,8 @@ void RtmpClientStream::DestroyStreamUserData(SocketUniquePtr& sending_sock,
 
 void RtmpClientStream::DestroyStreamCreator(Controller* cntl) {
     if (cntl->Failed()) {
-        if (_rtmpsock != NULL &&
-            // ^ If sending_sock is NULL, the RPC fails before _pack_request
+        if (_rtmpsock != nullptr &&
+            // ^ If sending_sock is nullptr, the RPC fails before _pack_request
             // which calls AddTransaction, in another word, RemoveTransaction
             // is not needed.
             cntl->ErrorCode() != ERTMPCREATESTREAM) {
@@ -1795,7 +1795,7 @@ void RtmpClientStream::DestroyStreamCreator(Controller* cntl) {
             const uint32_t transaction_id = cntl->log_id();
             policy::RtmpContext* rtmp_ctx =
                 static_cast<policy::RtmpContext*>(_rtmpsock->parsing_context());
-            if (rtmp_ctx == NULL) {
+            if (rtmp_ctx == nullptr) {
                 LOG(FATAL) << "RtmpContext must be created";
             } else {
                 policy::RtmpTransactionHandler* handler =
@@ -1844,7 +1844,7 @@ void RtmpClientStream::DestroyStreamCreator(Controller* cntl) {
 }
 
 void RtmpClientStream::OnStopInternal() {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         return CallOnStop();
     }
 
@@ -1895,13 +1895,13 @@ void RtmpClientStream::OnStopInternal() {
     }
     policy::RtmpContext* ctx =
         static_cast<policy::RtmpContext*>(_rtmpsock->parsing_context());
-    if (ctx != NULL) {
+    if (ctx != nullptr) {
         if (!ctx->RemoveMessageStream(this)) {
             // The stream is not registered yet. Is this normal?
             LOG(ERROR) << "Fail to remove stream_id=" << _message_stream_id;
         }
     } else {
-        LOG(FATAL) << "RtmpContext of " << *_rtmpsock << " is NULL";
+        LOG(FATAL) << "RtmpContext of " << *_rtmpsock << " is nullptr";
     }
     if (_from_socketmap) {
         _client_impl->socket_map().Remove(SocketMapKey(_rtmpsock->remote_side()),
@@ -1919,7 +1919,7 @@ RtmpPlayOptions::RtmpPlayOptions()
 }
 
 int RtmpClientStream::Play(const RtmpPlayOptions& opt) {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         errno = EPERM;
         return -1;
     }
@@ -1928,7 +1928,7 @@ int RtmpClientStream::Play(const RtmpPlayOptions& opt) {
         errno = EINVAL;
         return -1;
     }
-    if (_client_impl == NULL) {
+    if (_client_impl == nullptr) {
         LOG(ERROR) << "The client stream is not created yet";
         errno = EPERM;
         return -1;
@@ -2133,7 +2133,7 @@ void OnClientStreamCreated::Run() {
 
 void RtmpClientStream::Init(const RtmpClient* client,
                             const RtmpClientStreamOptions& options) {
-    if (client->_impl == NULL) {
+    if (client->_impl == nullptr) {
         LOG(FATAL) << "RtmpClient is not initialized";
         return OnStopInternal();
     }
@@ -2183,14 +2183,14 @@ void RtmpClientStream::Init(const RtmpClient* client,
             return done->CancelBeforeCallMethod();
         }
     }
-    _client_impl->_chan.CallMethod(NULL, &done->cntl, NULL, res, done);
+    _client_impl->_chan.CallMethod(nullptr, &done->cntl, nullptr, res, done);
     if (options.wait_until_play_or_publish_is_sent) {
         Join(call_id);
     }
 }
 
 std::string RtmpClientStream::rtmp_url() const {
-    if (_client_impl == NULL) {
+    if (_client_impl == nullptr) {
         return std::string();
     }
     butil::StringPiece tcurl = _client_impl->options().tcUrl;
@@ -2223,14 +2223,14 @@ RtmpRetryingClientStream::RtmpRetryingClientStream()
     , _last_creation_time_us(0)
     , _last_retry_start_time_us(0)
     , _create_timer_id(0)
-    , _sub_stream_creator(NULL) {
+    , _sub_stream_creator(nullptr) {
     get_rtmp_bvars()->retrying_client_stream_count << 1;
     _self_ref.reset(this);
 }
 
 RtmpRetryingClientStream::~RtmpRetryingClientStream() {
     delete _sub_stream_creator;
-    _sub_stream_creator = NULL;
+    _sub_stream_creator = nullptr;
     get_rtmp_bvars()->retrying_client_stream_count << -1;
 }
 
@@ -2250,7 +2250,7 @@ void RtmpRetryingClientStream::Destroy() {
     }
 
     // Make sure _self_ref is released before quiting this function.
-    // Notice that _self_ref.reset(NULL) is wrong because it may destructs
+    // Notice that _self_ref.reset(nullptr) is wrong because it may destructs
     // this object immediately.
     butil::intrusive_ptr<RtmpRetryingClientStream> self_ref;
     _self_ref.swap(self_ref);
@@ -2258,7 +2258,7 @@ void RtmpRetryingClientStream::Destroy() {
     butil::intrusive_ptr<RtmpStreamBase> old_sub_stream;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
-        // swap instead of reset(NULL) to make the stream destructed
+        // swap instead of reset(nullptr) to make the stream destructed
         // outside _stream_mutex.
         _using_sub_stream.swap(old_sub_stream);
     }
@@ -2279,8 +2279,8 @@ void RtmpRetryingClientStream::Destroy() {
 void RtmpRetryingClientStream::Init(
     SubStreamCreator* sub_stream_creator,
     const RtmpRetryingClientStreamOptions& options) {
-    if (sub_stream_creator == NULL) {
-        LOG(ERROR) << "sub_stream_creator is NULL";
+    if (sub_stream_creator == nullptr) {
+        LOG(ERROR) << "sub_stream_creator is nullptr";
         return CallOnStopIfNeeded();
     }
     _sub_stream_creator = sub_stream_creator;
@@ -2383,7 +2383,7 @@ void RtmpRetryingClientStream::OnSubStreamStop(RtmpStreamBase* sub_stream) {
             _using_sub_stream.swap(removed_sub_stream);
         }
     }
-    if (removed_sub_stream == NULL ||
+    if (removed_sub_stream == nullptr ||
         _destroying.load(butil::memory_order_relaxed) ||
         _called_on_stop.load(butil::memory_order_relaxed)) {
         return;
@@ -2623,7 +2623,7 @@ int RtmpServerStream::OnPause(bool pause, double offset_ms) {
 void RtmpServerStream::OnSetBufferLength(uint32_t /*buffer_length_ms*/) {}
 
 int RtmpServerStream::SendStopMessage(const butil::StringPiece& error_desc) {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         errno = EINVAL;
         return -1;
     }
@@ -2703,14 +2703,14 @@ int RtmpServerStream::RunOnFailed(bthread_id_t id, void* data, int) {
 }
 
 void RtmpServerStream::OnStopInternal() {
-    if (_rtmpsock == NULL) {
+    if (_rtmpsock == nullptr) {
         return CallOnStop();
     }
     policy::RtmpContext* ctx =
         static_cast<policy::RtmpContext*>(_rtmpsock->parsing_context());
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         LOG(FATAL) << _rtmpsock->remote_side() << ": RtmpContext of "
-                   << *_rtmpsock << " is NULL";
+                   << *_rtmpsock << " is nullptr";
         return CallOnStop();
     }
     if (ctx->RemoveMessageStream(this)) {
@@ -2847,7 +2847,7 @@ void ParseRtmpURL(const butil::StringPiece& rtmp_url_in,
         return SplitVHostFromApp(rtmp_url, app, vhost);
     }
     SplitVHostFromApp(rtmp_url.substr(0, slash2_pos), app, vhost);
-    if (stream_name != NULL) {
+    if (stream_name != nullptr) {
         // Remove duplicated slashes.
         for (++slash2_pos; slash2_pos < rtmp_url.size() &&
                  rtmp_url[slash2_pos] == '/'; ++slash2_pos);

@@ -232,7 +232,7 @@ class RefCountedData
 //   void some_other_function() {
 //     scoped_refptr<MyFoo> foo = new MyFoo();
 //     ...
-//     foo = NULL;  // explicitly releases |foo|
+//     foo = nullptr;  // explicitly releases |foo|
 //     ...
 //     if (foo)
 //       foo->Method(param);
@@ -247,7 +247,7 @@ class RefCountedData
 //     scoped_refptr<MyFoo> b;
 //
 //     b.swap(a);
-//     // now, |b| references the MyFoo object, and |a| references NULL.
+//     // now, |b| references the MyFoo object, and |a| references nullptr.
 //   }
 //
 // To make both |a| and |b| in the above example reference the same MyFoo
@@ -266,7 +266,7 @@ class scoped_refptr {
  public:
   typedef T element_type;
 
-  scoped_refptr() : ptr_(NULL) {
+  scoped_refptr() : ptr_(nullptr) {
   }
 
   scoped_refptr(T* p) : ptr_(p) {
@@ -308,7 +308,7 @@ class scoped_refptr {
   operator T*() const { return ptr_; }
 
   T* operator->() const {
-    assert(ptr_ != NULL);
+    assert(ptr_ != nullptr);
     return ptr_;
   }
 
@@ -344,7 +344,7 @@ class scoped_refptr {
 
   // Release ownership of ptr_, keeping its reference counter unchanged.
   T* release() WARN_UNUSED_RESULT {
-      T* saved_ptr = NULL;
+      T* saved_ptr = nullptr;
       swap(&saved_ptr);
       return saved_ptr;
   }

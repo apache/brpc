@@ -45,9 +45,9 @@ static int32_t s_trackme_interval = TRACKME_MIN_INTERVAL;
 // Protecting global vars on trackme
 static pthread_mutex_t s_trackme_mutex = PTHREAD_MUTEX_INITIALIZER;
 // For contacting with trackme_server.
-static Channel* s_trackme_chan = NULL;
+static Channel* s_trackme_chan = nullptr;
 // Any server address in this process.
-static std::string* s_trackme_addr = NULL;
+static std::string* s_trackme_addr = nullptr;
 
 // Information of bugs.
 // Notice that this structure may be a combination of all affected bugs.
@@ -63,7 +63,7 @@ struct BugInfo {
 };
 // If a bug was shown, its info was stored in this var as well so that we
 // can avoid showing the same bug repeatly.
-static BugInfo* g_bug_info = NULL;
+static BugInfo* g_bug_info = nullptr;
 // The timestamp(microseconds) that we sent TrackMeRequest.
 static int64_t s_trackme_last_time = 0;
 
@@ -81,14 +81,14 @@ const int64_t g_rpc_version = 0;
 int ReadJPaasHostPort(int container_port) {
     const uid_t uid = getuid();
     struct passwd* pw = getpwuid(uid);
-    if (pw == NULL) {
+    if (pw == nullptr) {
         RPC_VLOG << "Fail to get password file entry of uid=" << uid;
         return -1;
     }
     char JPAAS_LOG_PATH[64];
     snprintf(JPAAS_LOG_PATH, sizeof(JPAAS_LOG_PATH),
              "%s/jpaas_run/logs/env.log", pw->pw_dir);
-    char* line = NULL;
+    char* line = nullptr;
     size_t line_len = 0;
     ssize_t nr = 0;
     butil::ScopedFILE fp(fopen(JPAAS_LOG_PATH, "r"));
@@ -105,7 +105,7 @@ int ReadJPaasHostPort(int container_port) {
             --nr;
         }
         if (nr > prefix_len && memcmp(line, prefix, prefix_len) == 0) {
-            host_port = strtol(line + prefix_len, NULL, 10);
+            host_port = strtol(line + prefix_len, nullptr, 10);
             break;
         }
     }
@@ -117,7 +117,7 @@ int ReadJPaasHostPort(int container_port) {
 // Called in server.cpp
 void SetTrackMeAddress(butil::EndPoint pt) {
     BAIDU_SCOPED_LOCK(s_trackme_mutex);
-    if (s_trackme_addr == NULL) {
+    if (s_trackme_addr == nullptr) {
         // JPAAS has NAT capabilities, read its log to figure out the open port
         // accessible from outside.
         const int jpaas_port = ReadJPaasHostPort(pt.port);
@@ -140,12 +140,12 @@ static void HandleTrackMeResponse(Controller* cntl, TrackMeResponse* res) {
         bool already_reported = false;
         {
             BAIDU_SCOPED_LOCK(s_trackme_mutex);
-            if (g_bug_info != NULL && *g_bug_info == cur_info) {
+            if (g_bug_info != nullptr && *g_bug_info == cur_info) {
                 // we've shown the bug.
                 already_reported = true;
             } else {
                 // save the bug.
-                if (g_bug_info == NULL) {
+                if (g_bug_info == nullptr) {
                     g_bug_info = new BugInfo(cur_info);
                 } else {
                     *g_bug_info = cur_info;
@@ -187,12 +187,12 @@ static void HandleTrackMeResponse(Controller* cntl, TrackMeResponse* res) {
 }
 
 static void TrackMeNow(std::unique_lock<pthread_mutex_t>& mu) {
-    if (s_trackme_addr == NULL) {
+    if (s_trackme_addr == nullptr) {
         return;
     }
-    if (s_trackme_chan == NULL) {
+    if (s_trackme_chan == nullptr) {
         Channel* chan = new (std::nothrow) Channel;
-        if (chan == NULL) {
+        if (chan == nullptr) {
             LOG(FATAL) << "Fail to new trackme channel";
             return;
         }

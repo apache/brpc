@@ -74,7 +74,7 @@ void PublicPbrpcServiceAdaptor::ParseNsheadMeta(
     const RequestBody& body = pbreq.requestbody(0);
     const Server::MethodProperty *sp = ServerPrivateAccessor(&svr)
         .FindMethodPropertyByNameAndIndex(body.service(), body.method_id());
-    if (NULL == sp) {
+    if (nullptr == sp) {
         cntl->SetFailed(ENOMETHOD, "Fail to find method by service=%s method_id=%u",
                         body.service().c_str(), body.method_id());
         return;
@@ -165,7 +165,7 @@ void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
     const ResponseHead& head = pbres.responsehead();
     const ResponseBody& body = pbres.responsebody(0);
     const bthread_id_t cid = { static_cast<uint64_t>(body.id()) };
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -242,7 +242,7 @@ void PackPublicPbrpcRequest(butil::IOBuf* buf,
     head->set_connection(!short_connection);
     head->set_charset(CHARSET);
     char time_buf[128];
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     strftime(time_buf, sizeof(time_buf), TIME_FORMAT, localtime(&now));
     head->set_create_time(time_buf);
     if (controller->has_log_id()) {

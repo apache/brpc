@@ -54,9 +54,9 @@ static void* sender(void* arg) {
             cntl.request_attachment().append(FLAGS_data);
         }
 
-        // Because `done'(last parameter) is NULL, this function waits until
+        // Because `done'(last parameter) is nullptr, this function waits until
         // the response comes back or error occurs(including timedout).
-        channel->CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel->CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         if (!cntl.Failed()) {
             g_latency_recorder << cntl.latency_us();
         } else {
@@ -69,7 +69,7 @@ static void* sender(void* arg) {
             bthread_usleep(100000);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char* argv[]) {
@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
     options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
     
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, nullptr means using default options.
     // options, see `brpc/channel.h'.
     if (channel.Init(FLAGS_url.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
     if (!FLAGS_use_bthread) {
         pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&pids[i], NULL, sender, &channel) != 0) {
+            if (pthread_create(&pids[i], nullptr, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
         bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &bids[i], NULL, sender, &channel) != 0) {
+                    &bids[i], nullptr, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -125,9 +125,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "benchmark_http is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(pids[i], NULL);
+            pthread_join(pids[i], nullptr);
         } else {
-            bthread_join(bids[i], NULL);
+            bthread_join(bids[i], nullptr);
         }
     }
 

@@ -15,7 +15,7 @@
 //
 // ThreadLocalPointer<Type> wraps a Type*.  It performs no creation or
 // destruction, so memory management must be handled elsewhere.  The first call
-// to Get() on a thread will return NULL.  You can update the pointer with a
+// to Get() on a thread will return nullptr.  You can update the pointer with a
 // call to Set().
 //
 // ThreadLocalBoolean wraps a bool.  It will default to false if it has never
@@ -33,17 +33,17 @@
 //   // My class is logically attached to a single thread.  We cache a pointer
 //   // on the thread it was created on, so we can implement current().
 //   MyClass::MyClass() {
-//     DCHECK(Singleton<ThreadLocalPointer<MyClass> >::get()->Get() == NULL);
+//     DCHECK(Singleton<ThreadLocalPointer<MyClass> >::get()->Get() == nullptr);
 //     Singleton<ThreadLocalPointer<MyClass> >::get()->Set(this);
 //   }
 //
 //   MyClass::~MyClass() {
-//     DCHECK(Singleton<ThreadLocalPointer<MyClass> >::get()->Get() != NULL);
-//     Singleton<ThreadLocalPointer<MyClass> >::get()->Set(NULL);
+//     DCHECK(Singleton<ThreadLocalPointer<MyClass> >::get()->Get() != nullptr);
+//     Singleton<ThreadLocalPointer<MyClass> >::get()->Set(nullptr);
 //   }
 //
 //   // Return the current MyClass associated with the calling thread, can be
-//   // NULL if there isn't a MyClass associated.
+//   // nullptr if there isn't a MyClass associated.
 //   MyClass* MyClass::current() {
 //     return Singleton<ThreadLocalPointer<MyClass> >::get()->Get();
 //   }
@@ -115,11 +115,11 @@ class ThreadLocalBoolean {
   ~ThreadLocalBoolean() {}
 
   bool Get() {
-    return tlp_.Get() != NULL;
+    return tlp_.Get() != nullptr;
   }
 
   void Set(bool val) {
-    tlp_.Set(val ? this : NULL);
+    tlp_.Set(val ? this : nullptr);
   }
 
  private:

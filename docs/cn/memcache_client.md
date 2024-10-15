@@ -41,12 +41,12 @@ if (!request.Set("hello", "world", 0xdeadbeef/*flags*/, 10/*expiring seconds*/, 
     LOG(FATAL) << "Fail to SET request";
     return -1;
 } 
-channel.CallMethod(NULL, &cntl, &request, &response, NULL/*done*/);
+channel.CallMethod(nullptr, &cntl, &request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(FATAL) << "Fail to access memcached, " << cntl.ErrorText();
     return -1;
 }  
-if (!response.PopSet(NULL)) {
+if (!response.PopSet(nullptr)) {
     LOG(FATAL) << "Fail to SET memcached, " << response.LastError();
     return -1;   
 }
@@ -55,7 +55,7 @@ if (!response.PopSet(NULL)) {
 
 上述代码的说明：
 
-- 请求类型必须为MemcacheRequest，回复类型必须为MemcacheResponse，否则CallMethod会失败。不需要stub，直接调用channel.CallMethod，method填NULL。
+- 请求类型必须为MemcacheRequest，回复类型必须为MemcacheResponse，否则CallMethod会失败。不需要stub，直接调用channel.CallMethod，method填nullptr。
 - 调用request.XXX()增加操作，本例XXX=Set，一个request多次调用不同的操作，这些操作会被同时送到memcached（常被称为pipeline模式）。
 - 依次调用response.PopXXX()弹出操作结果，本例XXX=Set，成功返回true，失败返回false，调用response.LastError()可获得错误信息。XXX必须和request的依次对应，否则失败。本例中若用PopGet就会失败，错误信息为“not a GET response"。
 - Pop结果独立于RPC结果。即使“不能把某个值设入memcached”，RPC可能还是成功的。RPC失败指连接断开，超时之类的。如果业务上认为要成功操作才算成功，那么你不仅要判RPC成功，还要判PopXXX是成功的。

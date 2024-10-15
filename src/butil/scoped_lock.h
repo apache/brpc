@@ -77,7 +77,7 @@ template <typename Mutex> class unique_lock {
     DISALLOW_COPY_AND_ASSIGN(unique_lock);
 public:
     typedef Mutex mutex_type;
-    unique_lock() : _mutex(NULL), _owns_lock(false) {}
+    unique_lock() : _mutex(nullptr), _owns_lock(false) {}
     explicit unique_lock(mutex_type& mutex)
         : _mutex(&mutex), _owns_lock(true) {
         mutex.lock();
@@ -132,7 +132,7 @@ public:
 
     mutex_type* release() {
         mutex_type* saved_mutex = _mutex;
-        _mutex = NULL;
+        _mutex = nullptr;
         _owns_lock = false;
         return saved_mutex;
     }
@@ -157,7 +157,7 @@ public:
         const int rc = pthread_mutex_lock(_pmutex);
         if (rc) {
             LOG(FATAL) << "Fail to lock pthread_mutex_t=" << _pmutex << ", " << berror(rc);
-            _pmutex = NULL;
+            _pmutex = nullptr;
         }
 #else
         pthread_mutex_lock(_pmutex);
@@ -186,7 +186,7 @@ public:
         const int rc = pthread_spin_lock(_pspin);
         if (rc) {
             LOG(FATAL) << "Fail to lock pthread_spinlock_t=" << _pspin << ", " << berror(rc);
-            _pspin = NULL;
+            _pspin = nullptr;
         }
 #else
         pthread_spin_lock(_pspin);
@@ -212,7 +212,7 @@ template<> class unique_lock<pthread_mutex_t> {
     DISALLOW_COPY_AND_ASSIGN(unique_lock);
 public:
     typedef pthread_mutex_t         mutex_type;
-    unique_lock() : _mutex(NULL), _owns_lock(false) {}
+    unique_lock() : _mutex(nullptr), _owns_lock(false) {}
     explicit unique_lock(mutex_type& mutex)
         : _mutex(&mutex), _owns_lock(true) {
         pthread_mutex_lock(_mutex);
@@ -276,7 +276,7 @@ public:
 
     mutex_type* release() {
         mutex_type* saved_mutex = _mutex;
-        _mutex = NULL;
+        _mutex = nullptr;
         _owns_lock = false;
         return saved_mutex;
     }
@@ -294,7 +294,7 @@ template<> class unique_lock<pthread_spinlock_t> {
     DISALLOW_COPY_AND_ASSIGN(unique_lock);
 public:
     typedef pthread_spinlock_t  mutex_type;
-    unique_lock() : _mutex(NULL), _owns_lock(false) {}
+    unique_lock() : _mutex(nullptr), _owns_lock(false) {}
     explicit unique_lock(mutex_type& mutex)
         : _mutex(&mutex), _owns_lock(true) {
         pthread_spin_lock(_mutex);
@@ -358,7 +358,7 @@ public:
 
     mutex_type* release() {
         mutex_type* saved_mutex = _mutex;
-        _mutex = NULL;
+        _mutex = nullptr;
         _owns_lock = false;
         return saved_mutex;
     }

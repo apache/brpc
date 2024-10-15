@@ -186,7 +186,7 @@ void RunCase(test::ControlService_Stub &cntl_stub,
     test::NotifyResponse cntl_rsp;
     brpc::Controller cntl;
     cntl_req.set_message("StartCase");
-    cntl_stub.Notify(&cntl, &cntl_req, &cntl_rsp, NULL);
+    cntl_stub.Notify(&cntl, &cntl_req, &cntl_rsp, nullptr);
     CHECK(!cntl.Failed()) << "control failed";
 
     TestCaseContext context(test_case);
@@ -208,7 +208,7 @@ void RunCase(test::ControlService_Stub &cntl_stub,
     ::sleep(FLAGS_case_interval);
     cntl.Reset();
     cntl_req.set_message("StopCase");
-    cntl_stub.Notify(&cntl, &cntl_req, &cntl_rsp, NULL);
+    cntl_stub.Notify(&cntl, &cntl_req, &cntl_rsp, nullptr);
     CHECK(!cntl.Failed()) << "control failed";
     LOG(INFO) << "Case `" << test_case.case_name() << "' finshed:";
 }
@@ -237,7 +237,7 @@ int main(int argc, char* argv[]) {
     test::NotifyRequest cntl_req;
     test::NotifyResponse cntl_rsp;
     cntl_req.set_message("ResetCaseSet");
-    cntl_stub.Notify(&cntl, &cntl_req, &cntl_rsp, NULL);
+    cntl_stub.Notify(&cntl, &cntl_req, &cntl_rsp, nullptr);
     CHECK(!cntl.Failed()) << "Cntl Failed";
     for (int i = 0; i < case_set.test_case_size(); ++i) {
         RunCase(cntl_stub, case_set.test_case(i));

@@ -57,8 +57,8 @@ private:
     friend ObjectPool<IOBufSample>;
 
     IOBufSample()
-        : next(NULL)
-        , block(NULL)
+        : next(nullptr)
+        , block(nullptr)
         , count(0)
         , stack{}
         , nframes(0)

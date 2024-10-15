@@ -28,19 +28,19 @@ namespace brpc {
 // RAII: Call Run() of the closure on destruction.
 class ClosureGuard {
 public:
-    ClosureGuard() : _done(NULL) {}
+    ClosureGuard() : _done(nullptr) {}
 
     // Constructed with a closure which will be Run() inside dtor.
     explicit ClosureGuard(google::protobuf::Closure* done) : _done(done) {}
     
-    // Run internal closure if it's not NULL.
+    // Run internal closure if it's not nullptr.
     ~ClosureGuard() {
         if (_done) {
             _done->Run();
         }
     }
 
-    // Run internal closure if it's not NULL and set it to `done'.
+    // Run internal closure if it's not nullptr and set it to `done'.
     void reset(google::protobuf::Closure* done) {
         if (_done) {
             _done->Run();
@@ -48,15 +48,15 @@ public:
         _done = done;
     }
 
-    // Return and set internal closure to NULL.
+    // Return and set internal closure to nullptr.
     google::protobuf::Closure* release() {
         google::protobuf::Closure* const prev_done = _done;
-        _done = NULL;
+        _done = nullptr;
         return prev_done;
     }
 
     // True if no closure inside.
-    bool empty() const { return _done == NULL; }
+    bool empty() const { return _done == nullptr; }
 
     // Exchange closure with another guard.
     void swap(ClosureGuard& other) { std::swap(_done, other._done); }

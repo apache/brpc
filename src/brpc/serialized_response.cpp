@@ -96,7 +96,7 @@ void SerializedResponse::MergeFrom(const SerializedResponse&) {
 void SerializedResponse::CopyFrom(const ::google::protobuf::Message& from) {
     if (&from == this) return;
     const SerializedResponse* source = dynamic_cast<const SerializedResponse*>(&from);
-    if (source == NULL) {
+    if (source == nullptr) {
         CHECK(false) << "SerializedResponse can only CopyFrom SerializedResponse";
     } else {
         _serialized = source->_serialized;
@@ -122,7 +122,7 @@ void SerializedResponse::Swap(SerializedResponse* other) {
 ::google::protobuf::Metadata SerializedResponse::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
     metadata.descriptor = SerializedResponse::descriptor();
-    metadata.reflection = NULL;
+    metadata.reflection = nullptr;
     return metadata;
 }
 

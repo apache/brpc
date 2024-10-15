@@ -33,8 +33,8 @@ class SimuFutex {
 public:
     SimuFutex() : counts(0)
                 , ref(0) {
-        pthread_mutex_init(&lock, NULL);
-        pthread_cond_init(&cond, NULL);
+        pthread_mutex_init(&lock, nullptr);
+        pthread_cond_init(&cond, nullptr);
     }
     ~SimuFutex() {
         pthread_mutex_destroy(&lock);
@@ -50,11 +50,11 @@ public:
 
 static pthread_mutex_t s_futex_map_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_futex_map_once = PTHREAD_ONCE_INIT;
-static std::unordered_map<void*, SimuFutex>* s_futex_map = NULL;
+static std::unordered_map<void*, SimuFutex>* s_futex_map = nullptr;
 static void InitFutexMap() {
     // Leave memory to process's clean up.
     s_futex_map = new (std::nothrow) std::unordered_map<void*, SimuFutex>();
-    if (NULL == s_futex_map) {
+    if (nullptr == s_futex_map) {
         exit(1);
     }
     return;

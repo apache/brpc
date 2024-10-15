@@ -64,7 +64,7 @@ BAIDU_CASSERT(!(SUB_MAP_COUNT & (SUB_MAP_COUNT - 1)), must_be_power_of_2);
 
 class VarEntry {
 public:
-    VarEntry() : var(NULL), display_filter(DISPLAY_ON_ALL) {}
+    VarEntry() : var(nullptr), display_filter(DISPLAY_ON_ALL) {}
 
     Variable* var;
     DisplayFilter display_filter;
@@ -88,7 +88,7 @@ struct VarMapWithLock : public VarMap {
 // We have to initialize global map on need because bvar is possibly used
 // before main().
 static pthread_once_t s_var_maps_once = PTHREAD_ONCE_INIT;
-static VarMapWithLock* s_var_maps = NULL;
+static VarMapWithLock* s_var_maps = nullptr;
 
 static void init_var_maps() {
     // It's probably slow to initialize all sub maps, but rpc often expose 
@@ -155,7 +155,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
     {
         BAIDU_SCOPED_LOCK(m.mutex);
         VarEntry* entry = m.seek(_name);
-        if (entry == NULL) {
+        if (entry == nullptr) {
             entry = &m[_name];
             entry->var = this;
             entry->display_filter = display_filter;
@@ -199,7 +199,7 @@ bool Variable::hide() {
 
 void Variable::list_exposed(std::vector<std::string>* names,
                             DisplayFilter display_filter) {
-    if (names == NULL) {
+    if (names == nullptr) {
         return;
     }
     names->clear();
@@ -248,7 +248,7 @@ int Variable::describe_exposed(const std::string& name, std::ostream& os,
     VarMapWithLock& m = get_var_map(name);
     BAIDU_SCOPED_LOCK(m.mutex);
     VarEntry* p = m.seek(name);
-    if (p == NULL) {
+    if (p == nullptr) {
         return -1;
     }
     if (!(display_filter & p->display_filter)) {
@@ -288,7 +288,7 @@ int Variable::describe_series_exposed(const std::string& name,
     VarMapWithLock& m = get_var_map(name);
     BAIDU_SCOPED_LOCK(m.mutex);
     VarEntry* p = m.seek(name);
-    if (p == NULL) {
+    if (p == nullptr) {
         return -1;
     }
     return p->var->describe_series(os, options);
@@ -299,7 +299,7 @@ int Variable::get_exposed(const std::string& name, boost::any* value) {
     VarMapWithLock& m = get_var_map(name);
     BAIDU_SCOPED_LOCK(m.mutex);
     VarEntry* p = m.seek(name);
-    if (p == NULL) {
+    if (p == nullptr) {
         return -1;
     }
     p->var->get_value(value);
@@ -314,7 +314,7 @@ int Variable::get_exposed(const std::string& name, boost::any* value) {
 // creation of std::string which allocates memory internally.
 class CharArrayStreamBuf : public std::streambuf {
 public:
-    explicit CharArrayStreamBuf() : _data(NULL), _size(0) {}
+    explicit CharArrayStreamBuf() : _data(nullptr), _size(0) {}
     ~CharArrayStreamBuf();
 
     int overflow(int ch) override;
@@ -339,8 +339,8 @@ int CharArrayStreamBuf::overflow(int ch) {
     }
     size_t new_size = std::max(_size * 3 / 2, (size_t)64);
     char* new_data = (char*)malloc(new_size);
-    if (BAIDU_UNLIKELY(new_data == NULL)) {
-        setp(NULL, NULL);
+    if (BAIDU_UNLIKELY(new_data == nullptr)) {
+        setp(nullptr, nullptr);
         return std::streambuf::traits_type::eof();
     }
     memcpy(new_data, _data, _size);
@@ -367,8 +367,8 @@ void CharArrayStreamBuf::reset() {
 // Written by Jack Handy
 // <A href="mailto:jakkhandy@hotmail.com">jakkhandy@hotmail.com</A>
 inline bool wildcmp(const char* wild, const char* str, char question_mark) {
-    const char* cp = NULL;
-    const char* mp = NULL;
+    const char* cp = nullptr;
+    const char* mp = nullptr;
 
     while (*str && *wild != '*') {
         if (*wild != *str && *wild != question_mark) {
@@ -413,7 +413,7 @@ public:
         std::string name;
         const char wc_pattern[3] = { '*', question_mark, '\0' };
         for (butil::StringMultiSplitter sp(wildcards.c_str(), ",;");
-             sp != NULL; ++sp) {
+             sp != nullptr; ++sp) {
             name.assign(sp.field(), sp.length());
             if (name.find_first_of(wc_pattern) != std::string::npos) {
                 if (_wcs.empty()) {
@@ -459,8 +459,8 @@ DumpOptions::DumpOptions()
 {}
 
 int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
-    if (NULL == dumper) {
-        LOG(ERROR) << "Parameter[dumper] is NULL";
+    if (nullptr == dumper) {
+        LOG(ERROR) << "Parameter[dumper] is nullptr";
         return -1;
     }
     DumpOptions opt;
@@ -564,7 +564,7 @@ std::string read_command_name() {
 class FileDumper : public Dumper {
 public:
     FileDumper(const std::string& filename, butil::StringPiece s/*prefix*/)
-        : _filename(filename), _fp(NULL) {
+        : _filename(filename), _fp(nullptr) {
         // setting prefix.
         // remove trailing spaces.
         const char* p = s.data() + s.size();
@@ -585,13 +585,13 @@ public:
     void close() {
         if (_fp) {
             fclose(_fp);
-            _fp = NULL;
+            _fp = nullptr;
         }
     }
 
 protected:
     bool dump_impl(const std::string& name, const butil::StringPiece& desc, const std::string& separator) {
-        if (_fp == NULL) {
+        if (_fp == nullptr) {
             butil::File::Error error;
             butil::FilePath dir = butil::FilePath(_filename).DirName();
             if (!butil::CreateDirectoryAndGetError(dir, &error)) {
@@ -600,7 +600,7 @@ protected:
                 return false;
             }
             _fp = fopen(_filename.c_str(), "w");
-            if (NULL == _fp) {
+            if (nullptr == _fp) {
                 LOG(ERROR) << "Fail to open " << _filename;
                 return false;
             }
@@ -665,7 +665,7 @@ public:
         }
         dumpers.emplace_back(
                     new CommonFileDumper(path.AddExtension("data").value(), s), 
-                    (WildcardMatcher *)NULL);
+                    (WildcardMatcher *)nullptr);
     }
     ~FileDumperGroup() {
         for (size_t i = 0; i < dumpers.size(); ++i) {
@@ -742,39 +742,39 @@ static void* dumping_thread(void*) {
         std::string mbvar_format;
         if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_file", &filename)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_file";
-            return NULL;
+            return nullptr;
         }
         if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_include",
                                           &options.white_wildcards)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_include";
-            return NULL;
+            return nullptr;
         }
         if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_exclude",
                                           &options.black_wildcards)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_exclude";
-            return NULL;
+            return nullptr;
         }
         if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_prefix", &prefix)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_prefix";
-            return NULL;
+            return nullptr;
         }
         if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_tabs", &tabs)) {
             LOG(ERROR) << "Fail to get gflags bvar_dump_tabs";
-            return NULL;
+            return nullptr;
         }
 
         // We can't access string flags directly because it's thread-unsafe.
         if (!GFLAGS_NS::GetCommandLineOption("mbvar_dump_file", &mbvar_filename)) {
             LOG(ERROR) << "Fail to get gflag mbvar_dump_file";
-            return NULL;
+            return nullptr;
         }
         if (!GFLAGS_NS::GetCommandLineOption("mbvar_dump_prefix", &mbvar_prefix)) {
             LOG(ERROR) << "Fail to get gflag mbvar_dump_prefix";
-            return NULL;
+            return nullptr;
         }
         if (!GFLAGS_NS::GetCommandLineOption("mbvar_dump_format", &mbvar_format)) {
             LOG(ERROR) << "Fail to get gflag mbvar_dump_format";
-            return NULL;
+            return nullptr;
         }
 
         if (FLAGS_bvar_dump && !filename.empty()) {
@@ -824,7 +824,7 @@ static void* dumping_thread(void*) {
                 mbvar_prefix.replace(pos2, 5/*<app>*/, command_name);
             }
 
-            Dumper* dumper = NULL;
+            Dumper* dumper = nullptr;
             if ("common" == mbvar_format) {
                 dumper = new CommonFileDumper(mbvar_filename, mbvar_prefix);
             } else if ("prometheus" == mbvar_format) {
@@ -835,7 +835,7 @@ static void* dumping_thread(void*) {
                 LOG(ERROR) << "Fail to dump mvars into " << filename;
             }
             delete dumper;
-            dumper = NULL;
+            dumper = nullptr;
         }
 
         // We need to separate the sleeping into a long interruptible sleep
@@ -858,7 +858,7 @@ static void* dumping_thread(void*) {
 
 static void launch_dumping_thread() {
     pthread_t thread_id;
-    int rc = pthread_create(&thread_id, NULL, dumping_thread, NULL);
+    int rc = pthread_create(&thread_id, nullptr, dumping_thread, nullptr);
     if (rc != 0) {
         LOG(FATAL) << "Fail to launch dumping thread: " << berror(rc);
         return;

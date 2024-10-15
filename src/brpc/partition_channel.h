@@ -116,7 +116,7 @@ public:
     int partition_count() const;
 
 private:
-    bool initialized() const { return _parser != NULL; }
+    bool initialized() const { return _parser != nullptr; }
 
     int CheckHealth();
 
@@ -154,7 +154,7 @@ public:
                     google::protobuf::Closure* done);
 
 private:
-    bool initialized() const { return _parser != NULL; }
+    bool initialized() const { return _parser != nullptr; }
 
     int CheckHealth() {
         return static_cast<ChannelBase*>(&_schan)->CheckHealth();

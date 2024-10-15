@@ -54,15 +54,15 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
         google::protobuf::Service* svc = server->FindServiceByFullName(
             StatusService::descriptor()->full_name());
         StatusService* st_svc = dynamic_cast<StatusService*>(svc);
-        if (st_svc == NULL) {
+        if (st_svc == nullptr) {
             cntl->SetFailed("Fail to find StatusService");
             return;
         }
-        return st_svc->default_method(cntl, NULL, NULL, done_guard.release());
+        return st_svc->default_method(cntl, nullptr, nullptr, done_guard.release());
     }
     cntl->http_response().set_content_type(
         use_html ? "text/html" : "text/plain");
-    const butil::EndPoint* const html_addr = (use_html ? Path::LOCAL : NULL);
+    const butil::EndPoint* const html_addr = (use_html ? Path::LOCAL : nullptr);
     const char* const NL = (use_html ? "<br>\n" : "\n");
     const char* const SP = (use_html ? "&nbsp;" : "  ");
 

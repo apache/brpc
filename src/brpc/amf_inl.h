@@ -40,7 +40,7 @@ inline size_t AMFInputStream::cutn(void* out, size_t n) {
             n -= _size;
         }
     } while (_zc_stream->Next(&_data, &_size));
-    _data = NULL;
+    _data = nullptr;
     _size = 0;
     _popped_bytes += saved_n - n;
     return saved_n - n;
@@ -127,7 +127,7 @@ inline void AMFOutputStream::putn(const void* data, int n) {
         data = (const char*)data + _size;
         n -= _size;
     } while (_zc_stream->Next(&_data, &_size));
-    _data = NULL;
+    _data = nullptr;
     _size = 0;
     _pushed_bytes += (saved_n - n);
     if (n) {
@@ -145,7 +145,7 @@ inline void AMFOutputStream::put_u8(uint8_t val) {
             return;
         }
     } while (_zc_stream->Next(&_data, &_size));
-    _data = NULL;
+    _data = nullptr;
     _size = 0;
     set_bad();
 }

@@ -62,7 +62,7 @@ public:
     static const size_t ITEM_SIZE = ITEM_SIZE_IN;
     
     SingleThreadedPool(const Allocator& alloc = Allocator()) 
-        : _free_nodes(NULL), _blocks(NULL), _allocator(alloc) {}
+        : _free_nodes(nullptr), _blocks(nullptr), _allocator(alloc) {}
     ~SingleThreadedPool() { reset(); }
 
     void swap(SingleThreadedPool & other) {
@@ -72,17 +72,17 @@ public:
     }
 
     // Get space of an item. The space is as long as ITEM_SIZE.
-    // Returns NULL on out of memory
+    // Returns nullptr on out of memory
     void* get() {
         if (_free_nodes) {
             void* spaces = _free_nodes->spaces;
             _free_nodes = _free_nodes->next;
             return spaces;
         }
-        if (_blocks == NULL || _blocks->nalloc >= Block::NITEM) {
+        if (_blocks == nullptr || _blocks->nalloc >= Block::NITEM) {
             Block* new_block = (Block*)_allocator.Alloc(sizeof(Block));
-            if (new_block == NULL) {
-                return NULL;
+            if (new_block == nullptr) {
+                return nullptr;
             }
             new_block->nalloc = 0;
             new_block->next = _blocks;
@@ -92,9 +92,9 @@ public:
     }
     
     // Return a space allocated by get() before.
-    // Do nothing for NULL.
+    // Do nothing for nullptr.
     void back(void* p) {
-        if (NULL != p) {
+        if (nullptr != p) {
             Node* node = (Node*)((char*)p - offsetof(Node, spaces));
             node->next = _free_nodes;
             _free_nodes = node;
@@ -104,7 +104,7 @@ public:
     // Remove all allocated spaces. Spaces that are not back()-ed yet become
     // invalid as well.
     void reset() {
-        _free_nodes = NULL;
+        _free_nodes = nullptr;
         while (_blocks) {
             Block* next = _blocks->next;
             _allocator.Free(_blocks);

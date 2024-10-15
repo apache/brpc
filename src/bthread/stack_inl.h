@@ -52,7 +52,7 @@ template <typename StackClass> struct StackFactory {
             if (allocate_stack_storage(&storage, *StackClass::stack_size_flag,
                                        FLAGS_guard_page_size) != 0) {
                 storage.zeroize();
-                context = NULL;
+                context = nullptr;
                 return;
             }
             context = bthread_make_fcontext(storage.bottom, storage.stacksize, entry);
@@ -60,7 +60,7 @@ template <typename StackClass> struct StackFactory {
         }
         ~Wrapper() {
             if (context) {
-                context = NULL;
+                context = nullptr;
                 deallocate_stack_storage(&storage);
                 storage.zeroize();
             }
@@ -79,10 +79,10 @@ template <typename StackClass> struct StackFactory {
 template <> struct StackFactory<MainStackClass> {
     static ContextualStack* get_stack(void (*)(intptr_t)) {
         ContextualStack* s = new (std::nothrow) ContextualStack;
-        if (NULL == s) {
-            return NULL;
+        if (nullptr == s) {
+            return nullptr;
         }
-        s->context = NULL;
+        s->context = nullptr;
         s->stacktype = STACK_TYPE_MAIN;
         s->storage.zeroize();
         return s;
@@ -96,7 +96,7 @@ template <> struct StackFactory<MainStackClass> {
 inline ContextualStack* get_stack(StackType type, void (*entry)(intptr_t)) {
     switch (type) {
     case STACK_TYPE_PTHREAD:
-        return NULL;
+        return nullptr;
     case STACK_TYPE_SMALL:
         return StackFactory<SmallStackClass>::get_stack(entry);
     case STACK_TYPE_NORMAL:
@@ -106,11 +106,11 @@ inline ContextualStack* get_stack(StackType type, void (*entry)(intptr_t)) {
     case STACK_TYPE_MAIN:
         return StackFactory<MainStackClass>::get_stack(entry);
     }
-    return NULL;
+    return nullptr;
 }
 
 inline void return_stack(ContextualStack* s) {
-    if (NULL == s) {
+    if (nullptr == s) {
         return;
     }
     switch (s->stacktype) {
@@ -173,7 +173,7 @@ template <> struct ObjectPoolValidator<
     bthread::StackFactory<bthread::LargeStackClass>::Wrapper> {
     inline static bool validate(
         const bthread::StackFactory<bthread::LargeStackClass>::Wrapper* w) {
-        return w->context != NULL;
+        return w->context != nullptr;
     }
 };
 
@@ -181,7 +181,7 @@ template <> struct ObjectPoolValidator<
     bthread::StackFactory<bthread::NormalStackClass>::Wrapper> {
     inline static bool validate(
         const bthread::StackFactory<bthread::NormalStackClass>::Wrapper* w) {
-        return w->context != NULL;
+        return w->context != nullptr;
     }
 };
 
@@ -189,7 +189,7 @@ template <> struct ObjectPoolValidator<
     bthread::StackFactory<bthread::SmallStackClass>::Wrapper> {
     inline static bool validate(
         const bthread::StackFactory<bthread::SmallStackClass>::Wrapper* w) {
-        return w->context != NULL;
+        return w->context != nullptr;
     }
 };
     

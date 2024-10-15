@@ -41,12 +41,12 @@ public:
     // This method is mainly for iterating all metas.
     const NamedMeta& MetaAt(size_t i) const { return _metas[i]; }
 
-    // Get meta by |name|. NULL on not found.
+    // Get meta by |name|. nullptr on not found.
     const butil::IOBuf* Meta(const char* name) const;
 
     // Returns a mutable pointer to the meta with |name|. If the meta does
     // not exist, add it first.
-    // If |null_on_found| is true and meta with |name| is present, NULL is
+    // If |null_on_found| is true and meta with |name| is present, nullptr is
     // returned. This is useful for detecting uniqueness of meta names in some
     // scenarios.
     // NOTE: With the assumption that there won't be many metas, the impl.

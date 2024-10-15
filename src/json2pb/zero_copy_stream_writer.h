@@ -42,14 +42,14 @@ class ZeroCopyStreamWriter {
 public:
     typedef char Ch;
     ZeroCopyStreamWriter(google::protobuf::io::ZeroCopyOutputStream *stream)
-        : _stream(stream), _data(NULL), 
-          _cursor(NULL), _data_size(0) {
+        : _stream(stream), _data(nullptr),
+          _cursor(nullptr), _data_size(0) {
     }
     ~ZeroCopyStreamWriter() {
         if (_stream && _data) {
             _stream->BackUp(RemainSize());
         }
-        _stream = NULL;
+        _stream = nullptr;
     }
 
     void Put(char c) {
@@ -84,14 +84,14 @@ public:
     char Peek() { return 0; }
     char Take() { return 0; }
     size_t Tell() { return 0; }
-    char *PutBegin() { return NULL; }
+    char *PutBegin() { return nullptr; }
     size_t PutEnd(char *) { return 0; }
 private:
     bool AcquireNextBuf() {
         if (__builtin_expect(!_stream, 0)) {
             return false;
         }
-        if (_data == NULL || _cursor == _data + _data_size) {
+        if (_data == nullptr || _cursor == _data + _data_size) {
             if (!_stream->Next((void **)&_data, &_data_size)) {
                 return false;
             } 

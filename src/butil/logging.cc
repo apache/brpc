@@ -175,17 +175,17 @@ typedef std::wstring PathString;
 #else
 typedef std::string PathString;
 #endif
-PathString* log_file_name = NULL;
+PathString* log_file_name = nullptr;
 
-// this file is lazily opened and the handle may be NULL
-FileHandle log_file = NULL;
+// this file is lazily opened and the handle may be nullptr
+FileHandle log_file = nullptr;
 
 // Should we pop up fatal debug messages in a dialog?
 bool show_error_dialogs = false;
 
 // An assert handler override specified by the client to be called instead of
 // the debug message dialog and process termination.
-LogAssertHandler log_assert_handler = NULL;
+LogAssertHandler log_assert_handler = nullptr;
 
 // Helper functions to wrap platform differences.
 
@@ -229,7 +229,7 @@ PathString GetDefaultLogFile() {
 #if defined(OS_WIN)
     // On Windows we use the same path as the exe.
     wchar_t module_name[MAX_PATH];
-    GetModuleFileName(NULL, module_name, MAX_PATH);
+    GetModuleFileName(nullptr, module_name, MAX_PATH);
 
     PathString log_file = module_name;
     PathString::size_type last_backslash =
@@ -278,9 +278,9 @@ public:
                 std::replace(safe_name.begin(), safe_name.end(), '\\', '/');
                 std::wstring t(L"Global\\");
                 t.append(safe_name);
-                log_mutex = ::CreateMutex(NULL, FALSE, t.c_str());
+                log_mutex = ::CreateMutex(nullptr, FALSE, t.c_str());
 
-                if (log_mutex == NULL) {
+                if (log_mutex == nullptr) {
 #if DEBUG
                     // Keep the error code for debugging
                     int error = GetLastError();  // NOLINT
@@ -347,20 +347,20 @@ private:
 // static
 bool LoggingLock::initialized = false;
 // static
-butil::Mutex* LoggingLock::log_lock = NULL;
+butil::Mutex* LoggingLock::log_lock = nullptr;
 // static
 LogLockingState LoggingLock::lock_log_file = LOCK_LOG_FILE;
 
 #if defined(OS_WIN)
 // static
-MutexHandle LoggingLock::log_mutex = NULL;
+MutexHandle LoggingLock::log_mutex = nullptr;
 #elif defined(OS_POSIX)
 pthread_mutex_t LoggingLock::log_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 // Called by logging functions to ensure that debug_file is initialized
 // and can be used for writing. Returns false if the file could not be
-// initialized. debug_file will be NULL in this case.
+// initialized. debug_file will be nullptr in this case.
 bool InitializeLogFileHandle() {
     if (log_file)
         return true;
@@ -374,22 +374,22 @@ bool InitializeLogFileHandle() {
     if ((logging_destination & LOG_TO_FILE) != 0) {
 #if defined(OS_WIN)
         log_file = CreateFile(log_file_name->c_str(), GENERIC_WRITE,
-                              FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                              OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (log_file == INVALID_HANDLE_VALUE || log_file == NULL) {
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                              OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (log_file == INVALID_HANDLE_VALUE || log_file == nullptr) {
             // try the current directory
             log_file = CreateFile(L".\\debug.log", GENERIC_WRITE,
-                                  FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                                  OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-            if (log_file == INVALID_HANDLE_VALUE || log_file == NULL) {
-                log_file = NULL;
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                  OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (log_file == INVALID_HANDLE_VALUE || log_file == nullptr) {
+                log_file = nullptr;
                 return false;
             }
         }
         SetFilePointer(log_file, 0, 0, FILE_END);
 #elif defined(OS_POSIX)
         log_file = fopen(log_file_name->c_str(), "a");
-        if (log_file == NULL) {
+        if (log_file == nullptr) {
             fprintf(stderr, "Fail to fopen %s", log_file_name->c_str());
             return false;
         }
@@ -412,7 +412,7 @@ void CloseLogFileUnlocked() {
         return;
 
     CloseFile(log_file);
-    log_file = NULL;
+    log_file = nullptr;
 }
 
 void Log2File(const std::string& log) {
@@ -423,14 +423,14 @@ void Log2File(const std::string& log) {
     // to do this at the same time, there will be a race condition to create
     // the lock. This is why InitLogging should be called from the main
     // thread at the beginning of execution.
-    LoggingLock::Init(LOCK_LOG_FILE, NULL);
+    LoggingLock::Init(LOCK_LOG_FILE, nullptr);
     LoggingLock logging_lock;
     if (InitializeLogFileHandle()) {
 #if defined(OS_WIN)
         SetFilePointer(log_file, 0, 0, SEEK_END);
         DWORD num_written;
         WriteFile(log_file, static_cast<const void*>(log.data()),
-                  static_cast<DWORD>(log.size()), &num_written, NULL);
+                  static_cast<DWORD>(log.size()), &num_written, nullptr);
 #else
         fwrite(log.data(), log.size(), 1, log_file);
         fflush(log_file);
@@ -451,10 +451,10 @@ struct TimeVal {
 TimeVal GetTimestamp() {
 #if defined(OS_LINUX) || defined(OS_MACOSX)
     timeval tv;
-    gettimeofday(&tv, NULL);
+    gettimeofday(&tv, nullptr);
     return tv;
 #else
-    return { time(NULL) };
+    return { time(nullptr) };
 #endif
 }
 
@@ -473,7 +473,7 @@ struct BAIDU_CACHELINE_ALIGNMENT LogInfo {
 struct BAIDU_CACHELINE_ALIGNMENT LogRequest {
     static LogRequest* const UNCONNECTED;
 
-    LogRequest* next{NULL};
+    LogRequest* next{nullptr};
     LogInfo log_info;
 };
 
@@ -528,9 +528,9 @@ AsyncLogger* AsyncLogger::GetInstance() {
 
 AsyncLogger::AsyncLogger()
     : butil::SimpleThread("async_log_thread")
-    , _log_head(NULL)
+    , _log_head(nullptr)
     , _cond(&_mutex)
-    , _current_log_request(NULL)
+    , _current_log_request(nullptr)
     , _stop(false) {
     Start();
     // We need to stop async logger and
@@ -613,7 +613,7 @@ void AsyncLogger::LogImpl(LogRequest* log_req) {
     // Release fence makes sure the thread getting request sees *req
     LogRequest* const prev_head =
         _log_head.exchange(log_req, butil::memory_order_release);
-    if (prev_head != NULL) {
+    if (prev_head != nullptr) {
         // Someone is logging. The async_log_thread thread may spin
         // until req->next to be non-UNCONNECTED. This process is not
         // lock-free, but the duration is so short(1~2 instructions,
@@ -623,7 +623,7 @@ void AsyncLogger::LogImpl(LogRequest* log_req) {
         return;
     }
     // We've got the right to write.
-    log_req->next = NULL;
+    log_req->next = nullptr;
 
     if (!FLAGS_async_log_in_background_always) {
         // Use sync log for the LogRequest
@@ -670,21 +670,21 @@ void AsyncLogger::Run() {
         }
 
         LogTask(_current_log_request);
-        _current_log_request = NULL;
+        _current_log_request = nullptr;
     }
 }
 
 void AsyncLogger::LogTask(LogRequest* req) {
     do {
         // req was logged, skip it.
-        if (req->next != NULL && req->log_info.content.empty()) {
+        if (req->next != nullptr && req->log_info.content.empty()) {
             LogRequest* const saved_req = req;
             req = req->next;
             butil::return_object(saved_req);
         }
 
         // Log all requests to file.
-        while (req->next != NULL) {
+        while (req->next != nullptr) {
             LogRequest* const saved_req = req;
             req = req->next;
             if (!saved_req->log_info.content.empty()) {
@@ -707,10 +707,10 @@ void AsyncLogger::LogTask(LogRequest* req) {
 
 bool AsyncLogger::IsLogComplete(LogRequest* old_head) {
     if (old_head->next) {
-        fprintf(stderr, "old_head->next should be NULL\n");
+        fprintf(stderr, "old_head->next should be nullptr\n");
     }
     LogRequest* new_head = old_head;
-    LogRequest* desired = NULL;
+    LogRequest* desired = nullptr;
     if (_log_head.compare_exchange_strong(
         new_head, desired, butil::memory_order_acquire)) {
         // No one added new requests.
@@ -724,7 +724,7 @@ bool AsyncLogger::IsLogComplete(LogRequest* old_head) {
 
     // Someone added new requests.
     // Reverse the list until old_head.
-    LogRequest* tail = NULL;
+    LogRequest* tail = nullptr;
     LogRequest* p = new_head;
     do {
         while (p->next == LogRequest::UNCONNECTED) {
@@ -735,7 +735,7 @@ bool AsyncLogger::IsLogComplete(LogRequest* old_head) {
         tail = p;
         p = saved_next;
         if (!p) {
-            fprintf(stderr, "p should not be NULL\n");
+            fprintf(stderr, "p should not be nullptr\n");
         }
     } while (p != old_head);
 
@@ -760,7 +760,7 @@ void AsyncLogger::DoLog(const LogInfo& log_info) {
 
 LoggingSettings::LoggingSettings()
     : logging_dest(LOG_DEFAULT),
-      log_file(NULL),
+      log_file(nullptr),
       lock_log(LOCK_LOG_FILE),
       delete_old(APPEND_TO_OLD_LOG_FILE) {}
 
@@ -831,7 +831,7 @@ void PrintLogPrefix(std::ostream& os, int severity,
                     butil::StringPiece func, TimeVal tv) {
     PrintLogSeverity(os, severity);
     time_t t = tv.tv_sec;
-    struct tm local_tm = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL};
+    struct tm local_tm = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr};
 #if _MSC_VER >= 1400
     localtime_s(&local_tm, &t);
 #else
@@ -894,7 +894,7 @@ static void PrintLogPrefixAsJSON(std::ostream& os, int severity,
     // time
     os << "\",\"T\":\"";
     time_t t = tv.tv_sec;
-    struct tm local_tm = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL};
+    struct tm local_tm = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr};
 #if _MSC_VER >= 1400
     localtime_s(&local_tm, &t);
 #else
@@ -1017,7 +1017,7 @@ struct SetLogSinkFn {
 };
 
 LogSink* SetLogSink(LogSink* sink) {
-    SetLogSinkFn fn = { sink, NULL };
+    SetLogSinkFn fn = { sink, nullptr };
     CHECK(DoublyBufferedLogSink::GetInstance()->Modify(fn));
     return fn.old_sink;
 }
@@ -1058,7 +1058,7 @@ void DisplayDebugMessageInDialog(const std::string& str) {
     // Message.exe" in the same directory as the application. If it
     // exists, we use it, otherwise, we use a regular message box.
     wchar_t prog_name[MAX_PATH];
-    GetModuleFileNameW(NULL, prog_name, MAX_PATH);
+    GetModuleFileNameW(nullptr, prog_name, MAX_PATH);
     wchar_t* backslash = wcsrchr(prog_name, '\\');
     if (backslash)
         backslash[1] = 0;
@@ -1073,14 +1073,14 @@ void DisplayDebugMessageInDialog(const std::string& str) {
     startup_info.cb = sizeof(startup_info);
 
     PROCESS_INFORMATION process_info;
-    if (CreateProcessW(prog_name, &cmdline[0], NULL, NULL, false, 0, NULL,
-                       NULL, &startup_info, &process_info)) {
+    if (CreateProcessW(prog_name, &cmdline[0], nullptr, nullptr, false, 0, nullptr,
+                       nullptr, &startup_info, &process_info)) {
         WaitForSingleObject(process_info.hProcess, INFINITE);
         CloseHandle(process_info.hThread);
         CloseHandle(process_info.hProcess);
     } else {
         // debug process broken, let's just do a message box
-        MessageBoxW(NULL, &cmdline[0], L"Fatal error",
+        MessageBoxW(nullptr, &cmdline[0], L"Fatal error",
                     MB_OK | MB_ICONHAND | MB_TOPMOST);
     }
 #else
@@ -1119,8 +1119,8 @@ int CharArrayStreamBuf::overflow(int ch) {
     }
     size_t new_size = std::max(_size * 3 / 2, (size_t)64);
     char* new_data = (char*)malloc(new_size);
-    if (BAIDU_UNLIKELY(new_data == NULL)) {
-        setp(NULL, NULL);
+    if (BAIDU_UNLIKELY(new_data == nullptr)) {
+        setp(nullptr, nullptr);
         return std::streambuf::traits_type::eof();
     }
     memcpy(new_data, _data, _size);
@@ -1165,9 +1165,9 @@ LogStream& LogStream::SetPosition(const LogChar* file, int line,
 static bthread_key_t stream_bkey;
 static pthread_key_t stream_pkey;
 static pthread_once_t create_stream_key_once = PTHREAD_ONCE_INIT;
-inline bool is_bthread_linked() { return bthread_key_create != NULL; }
+inline bool is_bthread_linked() { return bthread_key_create != nullptr; }
 static void destroy_tls_streams(void* data) {
-    if (data == NULL) {
+    if (data == nullptr) {
         return;
     }
     LogStream** a = (LogStream**)data;
@@ -1202,7 +1202,7 @@ static LogStream** get_tls_stream_array() {
 
 static LogStream** get_or_new_tls_stream_array() {
     LogStream** a = get_tls_stream_array();
-    if (a == NULL) {
+    if (a == nullptr) {
         a = new LogStream*[LOG_NUM_SEVERITIES + 1];
         memset(a, 0, sizeof(LogStream*) * (LOG_NUM_SEVERITIES + 1));
         if (is_bthread_linked()) {
@@ -1225,7 +1225,7 @@ inline LogStream* CreateLogStream(const LogChar* file,
     } // else vlog
     LogStream** stream_array = get_or_new_tls_stream_array();
     LogStream* stream = stream_array[slot];
-    if (stream == NULL) {
+    if (stream == nullptr) {
         stream = new LogStream;
         stream_array[slot] = stream;
     }
@@ -1242,7 +1242,7 @@ inline LogStream* CreateLogStream(const LogChar* file,
 }
 
 inline void DestroyLogStream(LogStream* stream) {
-    if (stream != NULL) {
+    if (stream != nullptr) {
         stream->Flush();
     }
 }
@@ -1368,7 +1368,7 @@ void LogStream::FlushWithoutReset() {
     {
         DoublyBufferedLogSink::ScopedPtr ptr;
         if (DoublyBufferedLogSink::GetInstance()->Read(&ptr) == 0 &&
-            (*ptr) != NULL) {
+            (*ptr) != nullptr) {
             bool result = false;
             if (FLAGS_log_func_name) {
                 result = (*ptr)->OnLogMessage(_severity, _file, _line,
@@ -1497,8 +1497,8 @@ BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
     const int error_message_buffer_size = 256;
     char msgbuf[error_message_buffer_size];
     DWORD flags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
-    DWORD len = FormatMessageA(flags, NULL, error_code, 0, msgbuf,
-                               arraysize(msgbuf), NULL);
+    DWORD len = FormatMessageA(flags, nullptr, error_code, 0, msgbuf,
+                               arraysize(msgbuf), nullptr);
     if (len) {
         // Messages returned by system end with line breaks.
         return butil::CollapseWhitespaceASCII(msgbuf, true) +
@@ -1615,14 +1615,14 @@ struct VModuleList;
 extern const int VLOG_UNINITIALIZED = std::numeric_limits<int>::max();
 
 static pthread_mutex_t vlog_site_list_mutex = PTHREAD_MUTEX_INITIALIZER;
-static VLogSite* vlog_site_list = NULL;
-static VModuleList* vmodule_list = NULL;
+static VLogSite* vlog_site_list = nullptr;
+static VModuleList* vmodule_list = nullptr;
 
 static pthread_mutex_t reset_vmodule_and_v_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static const int64_t DELAY_DELETION_SEC = 10;
 static std::deque<std::pair<VModuleList*, int64_t> >*
-deleting_vmodule_list = NULL;
+deleting_vmodule_list = nullptr;
 
 struct VLogSite {
     VLogSite(const char* filename, int required_v, int line_no)
@@ -1670,7 +1670,7 @@ struct VLogSite {
     const std::string& full_module() const { return _full_module; }
     
 private:
-    // Next site in the list. NULL means no next.
+    // Next site in the list. nullptr means no next.
     butil::subtle::AtomicWord _next;
 
     // --vmodule > --v
@@ -1691,8 +1691,8 @@ private:
 // Written by Jack Handy
 // <A href="mailto:jakkhandy@hotmail.com">jakkhandy@hotmail.com</A>
 bool wildcmp(const char* wild, const char* str) {
-    const char* cp = NULL;
-    const char* mp = NULL;
+    const char* cp = nullptr;
+    const char* mp = nullptr;
 
     while (*str && *wild != '*') {
         if (*wild != *str && *wild != '?') {
@@ -1736,7 +1736,7 @@ struct VModuleList {
             size_t off = 0;
             for (; off < sp.length() && sp.field()[off] != '='; ++off) {}
             if (off + 1 < sp.length()) {
-                verbose_level = strtol(sp.field() + off + 1, NULL, 10);
+                verbose_level = strtol(sp.field() + off + 1, nullptr, 10);
                 
             }
             const char* name_begin = sp.field();
@@ -1844,7 +1844,7 @@ static int vlog_site_list_add(VLogSite* site,
 bool add_vlog_site(const int** v, const char* filename, int line_no,
                    int required_v) {
     VLogSite* site = new (std::nothrow) VLogSite(filename, required_v, line_no);
-    if (site == NULL) {
+    if (site == nullptr) {
         return false;
     }
     VModuleList* module_list = vmodule_list;
@@ -1861,7 +1861,7 @@ bool add_vlog_site(const int** v, const char* filename, int line_no,
 }
 
 void print_vlog_sites(VLogSitePrinter* printer) {
-    VLogSite* head = NULL;
+    VLogSite* head = nullptr;
     {
         BAIDU_SCOPED_LOCK(vlog_site_list_mutex);
         head = vlog_site_list;
@@ -1882,7 +1882,7 @@ static int on_reset_vmodule(const char* vmodule) {
     BAIDU_SCOPED_LOCK(reset_vmodule_and_v_mutex);
     
     VModuleList* module_list = new (std::nothrow) VModuleList;
-    if (NULL == module_list) {
+    if (nullptr == module_list) {
         LOG(FATAL) << "Fail to new VModuleList";
         return -1;
     }
@@ -1892,8 +1892,8 @@ static int on_reset_vmodule(const char* vmodule) {
         return -1;
     }
     
-    VModuleList* old_module_list = NULL;
-    VLogSite* old_vlog_site_list = NULL;
+    VModuleList* old_module_list = nullptr;
+    VLogSite* old_vlog_site_list = nullptr;
     {
         {
             BAIDU_SCOPED_LOCK(vlog_site_list_mutex);
@@ -1910,7 +1910,7 @@ static int on_reset_vmodule(const char* vmodule) {
     
     if (old_module_list) {
         //delay the deletion.
-        if (NULL == deleting_vmodule_list) {
+        if (nullptr == deleting_vmodule_list) {
             deleting_vmodule_list =
                 new std::deque<std::pair<VModuleList*, int64_t> >;
         }
@@ -1935,8 +1935,8 @@ const bool ALLOW_UNUSED validate_vmodule_dummy = GFLAGS_NS::RegisterFlagValidato
 
 // [Thread-safe] Reset FLAGS_v.
 static void on_reset_verbose(int default_v) {
-    VModuleList* cur_module_list = NULL;
-    VLogSite* cur_vlog_site_list = NULL;
+    VModuleList* cur_module_list = nullptr;
+    VLogSite* cur_vlog_site_list = nullptr;
     {
         // resetting must be serialized.
         BAIDU_SCOPED_LOCK(reset_vmodule_and_v_mutex);

@@ -233,11 +233,11 @@ static void SendSofaResponse(int64_t correlation_id,
 
     bool append_body = false;
     butil::IOBuf res_body;
-    // `res' can be NULL here, in which case we don't serialize it
+    // `res' can be nullptr here, in which case we don't serialize it
     // If user calls `SetFailed' on Controller, we don't serialize
     // response either
     CompressType type = cntl->response_compress_type();
-    if (res != NULL && !cntl->Failed()) {
+    if (res != nullptr && !cntl->Failed()) {
         if (!res->IsInitialized()) {
             cntl->SetFailed(
                 ERESPONSE, "Missing required fields in response: %s", 
@@ -332,7 +332,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
     }
 
     std::unique_ptr<Controller> cntl(new (std::nothrow) Controller);
-    if (NULL == cntl.get()) {
+    if (nullptr == cntl.get()) {
         LOG(WARNING) << "Fail to new Controller";
         return;
     }
@@ -361,7 +361,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    Span* span = nullptr;
     if (IsTraceable(false)) {
         span = Span::CreateServerSpan(
             0/*meta.trace_id()*/, 0/*meta.span_id()*/,
@@ -374,7 +374,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         span->set_request_size(msg->meta.size() + msg->payload.size() + 24);
     }
 
-    MethodStatus* method_status = NULL;
+    MethodStatus* method_status = nullptr;
     do {
         if (!server->IsRunning()) {
             cntl->SetFailed(ELOGOFF, "Server is stopping");
@@ -401,7 +401,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         
         const Server::MethodProperty *sp =
             server_accessor.FindMethodPropertyByFullName(meta.method());
-        if (NULL == sp) {
+        if (nullptr == sp) {
             cntl->SetFailed(ENOMETHOD, "Fail to find method=%s", 
                             meta.method().c_str());
             break;
@@ -494,7 +494,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
     }
 
     const bthread_id_t cid = { static_cast<uint64_t>(meta.sequence_id()) };
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -558,7 +558,7 @@ void PackSofaRequest(butil::IOBuf* req_buf,
         meta.set_compress_type(
             CompressType2Sofa(cntl->sampled_request()->meta.compress_type()));
     } else {
-        return cntl->SetFailed(ENOMETHOD, "method is NULL");
+        return cntl->SetFailed(ENOMETHOD, "method is nullptr");
     }
 
     SerializeSofaHeaderAndMeta(req_buf, meta, req_body.size());

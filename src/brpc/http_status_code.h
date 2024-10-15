@@ -71,7 +71,7 @@ namespace brpc {
 // Return the reason phrase of a given status_code. 
 // "Unknown status code (|status_code|)" will be returned if the status_code is
 // unknown
-// This function is thread-safe and NULL is never supposed to be returned
+// This function is thread-safe and nullptr is never supposed to be returned
 //
 // NOTICE: the memory referenced by the pointer returned before might be reused 
 // when this function is called again, so please DON'T try to cache the return

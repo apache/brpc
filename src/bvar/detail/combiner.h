@@ -161,12 +161,12 @@ public:
 friend class GlobalValue<self_type>;
     
     struct Agent : public butil::LinkNode<Agent> {
-        Agent() : combiner(NULL) {}
+        Agent() : combiner(nullptr) {}
 
         ~Agent() {
             if (combiner) {
                 combiner->commit_and_erase(this);
-                combiner = NULL;
+                combiner = nullptr;
             }
         }
         
@@ -266,7 +266,7 @@ friend class GlobalValue<self_type>;
 
     // Always called from the thread owning the agent.
     void commit_and_erase(Agent *agent) {
-        if (NULL == agent) {
+        if (nullptr == agent) {
             return;
         }
         ElementTp local;
@@ -280,7 +280,7 @@ friend class GlobalValue<self_type>;
 
     // Always called from the thread owning the agent
     void commit_and_clear(Agent *agent) {
-        if (NULL == agent) {
+        if (nullptr == agent) {
             return;
         }
         ElementTp prev;
@@ -295,9 +295,9 @@ friend class GlobalValue<self_type>;
         if (!agent) {
             // Create the agent
             agent = AgentGroup::get_or_create_tls_agent(_id);
-            if (NULL == agent) {
+            if (nullptr == agent) {
                 LOG(FATAL) << "Fail to create agent";
-                return NULL;
+                return nullptr;
             }
         }
         if (agent->combiner) {
@@ -319,7 +319,7 @@ friend class GlobalValue<self_type>;
         // internal allocations should be released.
         for (butil::LinkNode<Agent>* 
                 node = _agents.head(); node != _agents.end();) {
-            node->value()->reset(ElementTp(), NULL);
+            node->value()->reset(ElementTp(), nullptr);
             butil::LinkNode<Agent>* const saved_next =  node->next();
             node->RemoveFromList();
             node = saved_next;

@@ -150,7 +150,7 @@ int ProgressiveAttachment::Write(const butil::IOBuf& data) {
 }
 
 int ProgressiveAttachment::Write(const void* data, size_t n) {
-    if (data == NULL || n == 0) {
+    if (data == nullptr || n == 0) {
         LOG_EVERY_SECOND(WARNING)
             << "Write an empty chunk. To suppress this warning, check emptiness"
             " of the chunk before calling ProgressiveAttachment.Write()";
@@ -239,15 +239,15 @@ static int RunOnFailed(bthread_id_t id, void* data, int) {
 }
 
 void ProgressiveAttachment::NotifyOnStopped(google::protobuf::Closure* done) {
-    if (done == NULL) {
-        LOG(ERROR) << "Param[done] is NULL";
+    if (done == nullptr) {
+        LOG(ERROR) << "Param[done] is nullptr";
         return;
     }
     if (_notify_id != INVALID_BTHREAD_ID) {
         LOG(ERROR) << "NotifyOnStopped() can only be called once";
         return done->Run();
     }
-    if (_httpsock == NULL) {
+    if (_httpsock == nullptr) {
         return done->Run();
     }
     const int rc = bthread_id_create(&_notify_id, done, RunOnFailed);

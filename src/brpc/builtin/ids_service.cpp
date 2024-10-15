@@ -44,7 +44,7 @@ void IdsService::default_method(::google::protobuf::RpcController* cntl_base,
         os << "# Use /ids/<call_id>\n";
         bthread::id_pool_status(os);
     } else {
-        char* endptr = NULL;
+        char* endptr = nullptr;
         bthread_id_t id = { strtoull(constraint.c_str(), &endptr, 10) };
         if (*endptr == '\0' || *endptr == '/') {
             bthread::id_status(id, os);

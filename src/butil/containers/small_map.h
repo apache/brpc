@@ -229,10 +229,10 @@ class SmallMap {
     typedef typename NormalMap::iterator::pointer pointer;
     typedef typename NormalMap::iterator::reference reference;
 
-    inline iterator(): array_iter_(NULL) {}
+    inline iterator(): array_iter_(nullptr) {}
 
     inline iterator& operator++() {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         ++array_iter_;
       } else {
         ++hash_iter_;
@@ -245,7 +245,7 @@ class SmallMap {
       return result;
     }
     inline iterator& operator--() {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         --array_iter_;
       } else {
         --hash_iter_;
@@ -258,7 +258,7 @@ class SmallMap {
       return result;
     }
     inline value_type* operator->() const {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         return array_iter_->get();
       } else {
         return hash_iter_.operator->();
@@ -266,7 +266,7 @@ class SmallMap {
     }
 
     inline value_type& operator*() const {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         return *array_iter_->get();
       } else {
         return *hash_iter_;
@@ -274,10 +274,10 @@ class SmallMap {
     }
 
     inline bool operator==(const iterator& other) const {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         return array_iter_ == other.array_iter_;
       } else {
-        return other.array_iter_ == NULL && hash_iter_ == other.hash_iter_;
+        return other.array_iter_ == nullptr && hash_iter_ == other.hash_iter_;
       }
     }
 
@@ -294,7 +294,7 @@ class SmallMap {
     inline explicit iterator(ManualConstructor<value_type>* init)
       : array_iter_(init) {}
     inline explicit iterator(const typename NormalMap::iterator& init)
-      : array_iter_(NULL), hash_iter_(init) {}
+      : array_iter_(nullptr), hash_iter_(init) {}
 
     ManualConstructor<value_type>* array_iter_;
     typename NormalMap::iterator hash_iter_;
@@ -309,13 +309,13 @@ class SmallMap {
     typedef typename NormalMap::const_iterator::pointer pointer;
     typedef typename NormalMap::const_iterator::reference reference;
 
-    inline const_iterator(): array_iter_(NULL) {}
+    inline const_iterator(): array_iter_(nullptr) {}
     // Non-explicit ctor lets us convert regular iterators to const iterators
     inline const_iterator(const iterator& other)
       : array_iter_(other.array_iter_), hash_iter_(other.hash_iter_) {}
 
     inline const_iterator& operator++() {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         ++array_iter_;
       } else {
         ++hash_iter_;
@@ -329,7 +329,7 @@ class SmallMap {
     }
 
     inline const_iterator& operator--() {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         --array_iter_;
       } else {
         --hash_iter_;
@@ -343,7 +343,7 @@ class SmallMap {
     }
 
     inline const value_type* operator->() const {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         return array_iter_->get();
       } else {
         return hash_iter_.operator->();
@@ -351,7 +351,7 @@ class SmallMap {
     }
 
     inline const value_type& operator*() const {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         return *array_iter_->get();
       } else {
         return *hash_iter_;
@@ -359,10 +359,10 @@ class SmallMap {
     }
 
     inline bool operator==(const const_iterator& other) const {
-      if (array_iter_ != NULL) {
+      if (array_iter_ != nullptr) {
         return array_iter_ == other.array_iter_;
       } else {
-        return other.array_iter_ == NULL && hash_iter_ == other.hash_iter_;
+        return other.array_iter_ == nullptr && hash_iter_ == other.hash_iter_;
       }
     }
 
@@ -377,7 +377,7 @@ class SmallMap {
       : array_iter_(init) {}
     inline explicit const_iterator(
         const typename NormalMap::const_iterator& init)
-      : array_iter_(NULL), hash_iter_(init) {}
+      : array_iter_(nullptr), hash_iter_(init) {}
 
     const ManualConstructor<value_type>* array_iter_;
     typename NormalMap::const_iterator hash_iter_;

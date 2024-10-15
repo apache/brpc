@@ -42,7 +42,7 @@ static unsigned int check_epollrdhup() {
         return 0;
     }
     epoll_event evt = { static_cast<uint32_t>(EPOLLIN | EPOLLRDHUP | EPOLLET),
-                        { NULL }};
+                        { nullptr }};
     if (epoll_ctl(epfd, EPOLL_CTL_ADD, fds[0], &evt) < 0) {
         return 0;
     }

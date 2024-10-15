@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_THRIFT;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
         req.__set_data("hello");
         req.__set_need_by_proxy(10);
 
-        stub.CallMethod("Echo", &cntl, &req, &res, NULL);
+        stub.CallMethod("Echo", &cntl, &req, &res, nullptr);
 
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to send thrift request, " << cntl.ErrorText();

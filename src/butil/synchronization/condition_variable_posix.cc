@@ -18,7 +18,7 @@ ConditionVariable::ConditionVariable(Mutex* user_lock)
     : user_mutex_(user_lock->native_handle()) {
   // NOTE(gejun): Disable monotonic clock always due to difficulty of adapting
   // all versions of gcc
-  int rv = pthread_cond_init(&condition_, NULL);
+  int rv = pthread_cond_init(&condition_, nullptr);
   DCHECK_EQ(0, rv);
 }
 
@@ -46,7 +46,7 @@ void ConditionVariable::TimedWait(const TimeDelta& max_time) {
       &condition_, user_mutex_, &relative_time);
 #else
   struct timeval now;
-  gettimeofday(&now, NULL);
+  gettimeofday(&now, nullptr);
   struct timespec absolute_time;
   absolute_time.tv_sec = now.tv_sec;
   absolute_time.tv_nsec = now.tv_usec * Time::kNanosecondsPerMicrosecond;

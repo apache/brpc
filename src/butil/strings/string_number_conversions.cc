@@ -462,7 +462,7 @@ bool StringToDouble(const std::string& input, double* output) {
   // Thread-safe?  It is on at least Mac, Linux, and Windows.
   ScopedClearErrno clear_errno;
 
-  char* endptr = NULL;
+  char* endptr = nullptr;
   *output = dmg_fp::strtod(input.c_str(), &endptr);
 
   // Cases to return false:

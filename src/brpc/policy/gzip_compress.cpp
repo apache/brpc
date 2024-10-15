@@ -73,9 +73,9 @@ bool GzipCompress(const butil::IOBuf& msg, butil::IOBuf* buf,
     }
     google::protobuf::io::GzipOutputStream out(&wrapper, gzip_opt);
     butil::IOBufAsZeroCopyInputStream in(msg);
-    const void* data_in = NULL;
+    const void* data_in = nullptr;
     int size_in = 0;
-    void* data_out = NULL;
+    void* data_out = nullptr;
     int size_out = 0;
     while (1) {
         if (size_out == 0 && !out.Next(&data_out, &size_out)) {
@@ -108,9 +108,9 @@ inline bool GzipDecompressBase(
     butil::IOBufAsZeroCopyInputStream wrapper(data);
     google::protobuf::io::GzipInputStream in(&wrapper, format);
     butil::IOBufAsZeroCopyOutputStream out(msg);
-    const void* data_in = NULL;
+    const void* data_in = nullptr;
     int size_in = 0;
-    void* data_out = NULL;
+    void* data_out = nullptr;
     int size_out = 0;
     while (1) {
         if (size_out == 0 && !out.Next(&data_out, &size_out)) {

@@ -202,7 +202,7 @@ inline bool convert_enum_type(const BUTIL_RAPIDJSON_NAMESPACE::Value&item, bool 
                               const google::protobuf::FieldDescriptor* field,
                               const google::protobuf::Reflection* reflection,
                               std::string* err) {
-    const google::protobuf::EnumValueDescriptor * enum_value_descriptor = NULL; 
+    const google::protobuf::EnumValueDescriptor * enum_value_descriptor = nullptr;
     if (item.IsInt()) {
         enum_value_descriptor = field->enum_type()->FindValueByNumber(item.GetInt()); 
     } else if (item.IsString()) {                                          
@@ -561,7 +561,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
     }
 
     std::string field_name_str_temp; 
-    const BUTIL_RAPIDJSON_NAMESPACE::Value* value_ptr = NULL;
+    const BUTIL_RAPIDJSON_NAMESPACE::Value* value_ptr = nullptr;
     for (size_t i = 0; i < fields.size(); ++i) {
         const google::protobuf::FieldDescriptor* field = fields[i];
         
@@ -583,7 +583,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
 #else 
         const BUTIL_RAPIDJSON_NAMESPACE::Value::Member* member =
                 json_value.FindMember(field_name_str.data());
-        if (member == NULL) {
+        if (member == nullptr) {
             if (field->is_required()) {
                 J2PERROR(err, "Missing required field: %s", field->full_name().c_str());
                 return false;

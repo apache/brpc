@@ -251,7 +251,7 @@ public:
     
     // Mutable header of http request.
     HttpHeader& http_request() {
-        if (_http_request == NULL) {
+        if (_http_request == nullptr) {
             _http_request = new HttpHeader;
         }
         return *_http_request;
@@ -259,7 +259,7 @@ public:
     bool has_http_request() const { return _http_request; }
     HttpHeader* release_http_request() {
         HttpHeader* const tmp = _http_request;
-        _http_request = NULL;
+        _http_request = nullptr;
         return tmp;
     }
 
@@ -288,18 +288,18 @@ public:
     butil::IOBuf& request_attachment() { return _request_attachment; }
 
     ConnectionType connection_type() const { return _connection_type; }
-    // Get the called method. May-be NULL for non-pb services.
+    // Get the called method. May-be nullptr for non-pb services.
     const google::protobuf::MethodDescriptor* method() const { return _method; }
 
     // Get the controllers for accessing sub channels in combo channels.
     // Ordinary channel:
-    //   sub_count() is 0 and sub() is always NULL.
+    //   sub_count() is 0 and sub() is always nullptr.
     // ParallelChannel/PartitionChannel:
     //   sub_count() is #sub-channels and sub(i) is the controller for 
     //   accessing i-th sub channel inside ParallelChannel, if i is outside
-    //    [0, sub_count() - 1], sub(i) is NULL.
-    //   NOTE: You must test sub() against NULL, ALWAYS. Even if i is inside 
-    //   range, sub(i) can still be NULL:
+    //    [0, sub_count() - 1], sub(i) is nullptr.
+    //   NOTE: You must test sub() against nullptr, ALWAYS. Even if i is inside
+    //   range, sub(i) can still be nullptr:
     //   * the rpc call may fail and terminate before accessing the sub channel
     //   * the sub channel was skipped
     // SelectiveChannel/DynamicPartitionChannel:
@@ -418,7 +418,7 @@ public:
     // NotifyOnCancel() must be called no more than once per request.
     void NotifyOnCancel(google::protobuf::Closure* callback) override;
 
-    // Returns the authenticated result. NULL if there is no authentication
+    // Returns the authenticated result. nullptr if there is no authentication
     const AuthContext* auth_context() const { return _auth_context; }
 
     // Whether the underlying channel is using SSL
@@ -429,7 +429,7 @@ public:
 
     // Mutable header of http response.
     HttpHeader& http_response() {
-        if (_http_response == NULL) {
+        if (_http_response == nullptr) {
             _http_response = new HttpHeader;
         }
         return *_http_response;
@@ -437,7 +437,7 @@ public:
     bool has_http_response() const { return _http_response; }
     HttpHeader* release_http_response() {
         HttpHeader* const tmp = _http_response;
-        _http_response = NULL;
+        _http_response = nullptr;
         return tmp;
     }
     
@@ -462,7 +462,7 @@ public:
     butil::intrusive_ptr<ProgressiveAttachment>
     CreateProgressiveAttachment(StopStyle stop_style = WAIT_FOR_STOP);
 
-    bool has_progressive_writer() const { return _wpa != NULL; }
+    bool has_progressive_writer() const { return _wpa != nullptr; }
 
     // Set compression method for response.
     void set_response_compress_type(CompressType t) { _response_compress_type = t; }
@@ -486,12 +486,12 @@ public:
     bool is_security_mode() const { return has_flag(FLAGS_SECURITY_MODE); }
 
     // The server running this RPC session.
-    // Always NULL at client-side.
+    // Always nullptr at client-side.
     const Server* server() const { return _server; }
 
     // Get the data attached to current RPC session. The data is created by 
     // ServerOptions.session_local_data_factory and reused between different
-    // RPC. If factory is NULL, this method returns NULL.
+    // RPC. If factory is nullptr, this method returns nullptr.
     void* session_local_data();
 
     // Get the data attached to a mongo session(practically a socket).
@@ -555,10 +555,10 @@ public:
     CompressType request_compress_type() const { return _request_compress_type; }
     CompressType response_compress_type() const { return _response_compress_type; }
     const HttpHeader& http_request() const 
-    { return _http_request != NULL ? *_http_request : DefaultHttpHeader(); }
+    { return _http_request != nullptr ? *_http_request : DefaultHttpHeader(); }
     
     const HttpHeader& http_response() const
-    { return _http_response != NULL ? *_http_response : DefaultHttpHeader(); }
+    { return _http_response != nullptr ? *_http_response : DefaultHttpHeader(); }
 
     const butil::IOBuf& request_attachment() const { return _request_attachment; }
     const butil::IOBuf& response_attachment() const { return _response_attachment; }
@@ -582,7 +582,7 @@ public:
     LogPrefixDummy LogPrefix() const { return LogPrefixDummy(this); }
 
     // Return true if the remote side creates a stream.
-    bool has_remote_stream() { return _remote_stream_settings != NULL; }
+    bool has_remote_stream() { return _remote_stream_settings != nullptr; }
 
     // The id to cancel RPC call or join response.
     CallId call_id();

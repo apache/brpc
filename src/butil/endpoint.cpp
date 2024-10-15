@@ -115,8 +115,8 @@ void EndPoint::operator=(const EndPoint& rhs) {
 }
 
 int str2ip(const char* ip_str, ip_t* ip) {
-    // ip_str can be NULL when called by EndPoint(0, ...)
-    if (ip_str != NULL) {
+    // ip_str can be nullptr when called by EndPoint(0, ...)
+    if (ip_str != nullptr) {
         for (; isspace(*ip_str); ++ip_str);
         int rc = inet_pton(AF_INET, ip_str, ip);
         if (rc > 0) {
@@ -128,14 +128,14 @@ int str2ip(const char* ip_str, ip_t* ip) {
 
 IPStr ip2str(ip_t ip) {
     IPStr str;
-    if (inet_ntop(AF_INET, &ip, str._buf, INET_ADDRSTRLEN) == NULL) {
+    if (inet_ntop(AF_INET, &ip, str._buf, INET_ADDRSTRLEN) == nullptr) {
         return ip2str(IP_NONE);
     }
     return str;
 }
 
 int ip2hostname(ip_t ip, char* host, size_t host_len) {
-    if (host == NULL || host_len == 0) {
+    if (host == nullptr || host_len == 0) {
         errno = EINVAL;
         return -1;
     }
@@ -145,7 +145,7 @@ int ip2hostname(ip_t ip, char* host, size_t host_len) {
     sa.sin_port = 0;    // useless since we don't need server_name
     sa.sin_addr = ip;
     if (getnameinfo((const sockaddr*)&sa, sizeof(sa),
-                    host, host_len, NULL, 0, NI_NAMEREQD) != 0) {
+                    host, host_len, nullptr, 0, NI_NAMEREQD) != 0) {
         return -1;
     }
     // remove baidu-specific domain name (that every name has)
@@ -176,7 +176,7 @@ EndPointStr endpoint2str(const EndPoint& point) {
         }
         return str;
     }
-    if (inet_ntop(AF_INET, &point.ip, str._buf, INET_ADDRSTRLEN) == NULL) {
+    if (inet_ntop(AF_INET, &point.ip, str._buf, INET_ADDRSTRLEN) == nullptr) {
         return endpoint2str(EndPoint(IP_NONE, 0));
     }
     char* buf = str._buf + strlen(str._buf);
@@ -187,7 +187,7 @@ EndPointStr endpoint2str(const EndPoint& point) {
 
 int hostname2ip(const char* hostname, ip_t* ip) {
     char buf[256];
-    if (NULL == hostname) {
+    if (nullptr == hostname) {
         if (gethostname(buf, sizeof(buf)) < 0) {
             return -1;
         }
@@ -202,7 +202,7 @@ int hostname2ip(const char* hostname, ip_t* ip) {
     // returned hostent is TLS. Check following link for the ref:
     // https://lists.apple.com/archives/darwin-dev/2006/May/msg00008.html
     struct hostent* result = gethostbyname(hostname);
-    if (result == NULL) {
+    if (result == nullptr) {
         return -1;
     }
 #else
@@ -211,9 +211,9 @@ int hostname2ip(const char* hostname, ip_t* ip) {
     int ret = 0;
     int error = 0;
     struct hostent ent;
-    struct hostent* result = NULL;
+    struct hostent* result = nullptr;
     do {
-        result = NULL;
+        result = nullptr;
         error = 0;
         ret = gethostbyname_r(hostname,
                               &ent,
@@ -227,7 +227,7 @@ int hostname2ip(const char* hostname, ip_t* ip) {
         aux_buf_len *= 2;
         aux_buf.reset(new char[aux_buf_len]);
     } while (1);
-    if (ret != 0 || result == NULL) {
+    if (ret != 0 || result == nullptr) {
         return -1;
     }
 #endif // defined(OS_MACOSX)
@@ -283,7 +283,7 @@ int str2endpoint(const char* str, EndPoint* point) {
         return -1;
     }
     ++i;
-    char* end = NULL;
+    char* end = nullptr;
     point->port = strtol(str + i, &end, 10);
     if (end == str + i) {
         return -1;
@@ -337,7 +337,7 @@ int hostname2endpoint(const char* str, EndPoint* point) {
     if (str[i] == ':') {
         ++i;
     }
-    char* end = NULL;
+    char* end = nullptr;
     point->port = strtol(str + i, &end, 10);
     if (end == str + i) {
         return -1;
@@ -430,12 +430,12 @@ int pthread_fd_wait(int fd, unsigned events,
     }
     pollfd ufds = { fd, poll_events, 0 };
     int64_t abstime_us = -1;
-    if (NULL != abstime) {
+    if (nullptr != abstime) {
         abstime_us = butil::timespec_to_microseconds(*abstime);
     }
     while (true) {
         int diff_ms = -1;
-        if (NULL != abstime) {
+        if (nullptr != abstime) {
             int64_t now_us = butil::gettimeofday_us();
             if (abstime_us <= now_us) {
                 errno = ETIMEDOUT;
@@ -509,13 +509,13 @@ int tcp_connect(const EndPoint& server, int* self_port, int connect_timeout_ms) 
         return -1;
     }
     timespec abstime{};
-    timespec* abstime_ptr = NULL;
+    timespec* abstime_ptr = nullptr;
     if (connect_timeout_ms > 0) {
         abstime = butil::milliseconds_from_now(connect_timeout_ms);
         abstime_ptr = &abstime;
     }
     int rc;
-    if (bthread_timed_connect != NULL) {
+    if (bthread_timed_connect != nullptr) {
         rc = bthread_timed_connect(sockfd, (struct sockaddr*)&serv_addr,
                                    serv_addr_size, abstime_ptr);
     } else {
@@ -525,7 +525,7 @@ int tcp_connect(const EndPoint& server, int* self_port, int connect_timeout_ms) 
     if (rc < 0) {
         return -1;
     }
-    if (self_port != NULL) {
+    if (self_port != nullptr) {
         EndPoint pt;
         if (get_local_side(sockfd, &pt) == 0) {
             *self_port = pt.port;

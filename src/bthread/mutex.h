@@ -47,7 +47,7 @@ class Mutex {
 public:
     typedef bthread_mutex_t* native_handler_type;
     Mutex() {
-        int ec = bthread_mutex_init(&_mutex, NULL);
+        int ec = bthread_mutex_init(&_mutex, nullptr);
         if (ec != 0) {
             throw std::system_error(std::error_code(ec, std::system_category()),
                                     "Mutex constructor failed");
@@ -127,7 +127,7 @@ public:
         const int rc = bthread_mutex_lock(_pmutex);
         if (rc) {
             LOG(FATAL) << "Fail to lock bthread_mutex_t=" << _pmutex << ", " << berror(rc);
-            _pmutex = NULL;
+            _pmutex = nullptr;
         }
 #else
         bthread_mutex_lock(_pmutex);
@@ -153,7 +153,7 @@ template <> class unique_lock<bthread_mutex_t> {
     DISALLOW_COPY_AND_ASSIGN(unique_lock);
 public:
     typedef bthread_mutex_t         mutex_type;
-    unique_lock() : _mutex(NULL), _owns_lock(false) {}
+    unique_lock() : _mutex(nullptr), _owns_lock(false) {}
     explicit unique_lock(mutex_type& mutex)
         : _mutex(&mutex), _owns_lock(false) {
         lock();
@@ -218,7 +218,7 @@ public:
 
     mutex_type* release() {
         mutex_type* saved_mutex = _mutex;
-        _mutex = NULL;
+        _mutex = nullptr;
         _owns_lock = false;
         return saved_mutex;
     }
@@ -239,7 +239,7 @@ namespace bvar {
 template <>
 struct MutexConstructor<bthread_mutex_t> {
     bool operator()(bthread_mutex_t* mutex) const { 
-        return bthread_mutex_init(mutex, NULL) == 0;
+        return bthread_mutex_init(mutex, nullptr) == 0;
     }
 };
 

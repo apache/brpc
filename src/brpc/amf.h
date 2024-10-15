@@ -37,7 +37,7 @@ public:
     AMFInputStream(google::protobuf::io::ZeroCopyInputStream* stream)
         : _good(true)
         , _size(0)
-        , _data(NULL)
+        , _data(nullptr)
         , _zc_stream(stream)
         , _popped_bytes(0)
     {}
@@ -81,7 +81,7 @@ public:
     AMFOutputStream(google::protobuf::io::ZeroCopyOutputStream* stream)
         : _good(true)
         , _size(0)
-        , _data(NULL)
+        , _data(nullptr)
         , _zc_stream(stream)
         , _pushed_bytes(0)
     {}

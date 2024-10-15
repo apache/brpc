@@ -44,7 +44,7 @@ struct LocalStorage {
     void* rpcz_parent_span;
 };
 
-#define BTHREAD_LOCAL_STORAGE_INITIALIZER { NULL, NULL, NULL }
+#define BTHREAD_LOCAL_STORAGE_INITIALIZER { nullptr, nullptr, nullptr }
 
 const static LocalStorage LOCAL_STORAGE_INIT = BTHREAD_LOCAL_STORAGE_INITIALIZER;
 
@@ -98,9 +98,9 @@ public:
     // Only initialize [Not Reset] fields, other fields will be reset in
     // bthread_start* functions
     TaskMeta()
-        : current_waiter(NULL)
+        : current_waiter(nullptr)
         , current_sleep(0)
-        , stack(NULL) {
+        , stack(nullptr) {
         pthread_spin_init(&version_lock, 0);
         version_butex = butex_create_checked<uint32_t>();
         *version_butex = 1;
@@ -108,7 +108,7 @@ public:
         
     ~TaskMeta() {
         butex_destroy(version_butex);
-        version_butex = NULL;
+        version_butex = nullptr;
         pthread_spin_destroy(&version_lock);
     }
 
@@ -118,7 +118,7 @@ public:
 
     ContextualStack* release_stack() {
         ContextualStack* tmp = stack;
-        stack = NULL;
+        stack = nullptr;
         return tmp;
     }
 

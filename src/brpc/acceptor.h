@@ -44,7 +44,7 @@ public:
     };
 
 public:
-    explicit Acceptor(bthread_keytable_pool_t* pool = NULL);
+    explicit Acceptor(bthread_keytable_pool_t* pool = nullptr);
     ~Acceptor();
 
     // [thread-safe] Accept connections from `listened_fd'. Ownership of

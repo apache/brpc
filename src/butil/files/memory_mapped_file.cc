@@ -47,7 +47,7 @@ bool MemoryMappedFile::Initialize(File file) {
 }
 
 bool MemoryMappedFile::IsValid() const {
-  return data_ != NULL;
+  return data_ != nullptr;
 }
 
 }  // namespace butil

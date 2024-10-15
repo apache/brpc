@@ -49,7 +49,7 @@ public:
     };
 
     // Create a success status.
-    Status() : _state(NULL) { }
+    Status() : _state(nullptr) { }
     // Return a success status.
     static Status OK() { return Status(); }
 
@@ -59,13 +59,13 @@ public:
     // error_text is formatted from `fmt' and following arguments.
     Status(int code, const char* fmt, ...) 
         __attribute__ ((__format__ (__printf__, 3, 4)))
-        : _state(NULL) {
+        : _state(nullptr) {
         va_list ap;
         va_start(ap, fmt);
         set_errorv(code, fmt, ap);
         va_end(ap);
     }
-    Status(int code, const butil::StringPiece& error_msg) : _state(NULL) {
+    Status(int code, const butil::StringPiece& error_msg) : _state(nullptr) {
         set_error(code, error_msg);
     }
 
@@ -84,11 +84,11 @@ public:
     int set_errorv(int code, const char* error_format, va_list args);
 
     // Returns true iff the status indicates success.
-    bool ok() const { return (_state == NULL); }
+    bool ok() const { return (_state == nullptr); }
 
     // Get the error code
     int error_code() const {
-        return (_state == NULL) ? 0 : _state->code;
+        return (_state == nullptr) ? 0 : _state->code;
     }
 
     // Return a string representation of the status.
@@ -97,10 +97,10 @@ public:
     //   * You can print a Status to std::ostream directly
     //   * if message contains '\0', error_cstr() will not be shown fully.
     const char* error_cstr() const {
-        return (_state == NULL ? "OK" : _state->message);
+        return (_state == nullptr ? "OK" : _state->message);
     }
     butil::StringPiece error_data() const {
-        return (_state == NULL ? butil::StringPiece("OK", 2) 
+        return (_state == nullptr ? butil::StringPiece("OK", 2)
                 : butil::StringPiece(_state->message, _state->size));
     }
     std::string error_str() const;
@@ -108,7 +108,7 @@ public:
     void swap(butil::Status& other) { std::swap(_state, other._state); }
 
 private:    
-    // OK status has a NULL _state.  Otherwise, _state is a State object
+    // OK status has a nullptr _state.  Otherwise, _state is a State object
     // converted from malloc().
     State* _state;
 
@@ -116,7 +116,7 @@ private:
 };
 
 inline Status::Status(const Status& s) {
-    _state = (s._state == NULL) ? NULL : copy_state(s._state);
+    _state = (s._state == nullptr) ? nullptr : copy_state(s._state);
 }
 
 inline int Status::set_error(int code, const char* msg, ...) {
@@ -129,7 +129,7 @@ inline int Status::set_error(int code, const char* msg, ...) {
 
 inline void Status::reset() {
     free(_state);
-    _state = NULL;
+    _state = nullptr;
 }
 
 inline void Status::operator=(const Status& s) {
@@ -138,9 +138,9 @@ inline void Status::operator=(const Status& s) {
     if (_state == s._state) {
         return;
     }
-    if (s._state == NULL) {
+    if (s._state == nullptr) {
         free(_state);
-        _state = NULL;
+        _state = nullptr;
     } else {
         set_error(s._state->code,
                   butil::StringPiece(s._state->message, s._state->size));

@@ -37,7 +37,7 @@ public:
     void Clear() { _entries.clear(); }
 
     // Get value of a key(case-sensitive)
-    // Return pointer to the value, NULL on not found.
+    // Return pointer to the value, nullptr on not found.
     const std::string* Get(const char* key) const { return _entries.seek(key); }
     const std::string* Get(const std::string& key) const { return _entries.seek(key); }
 

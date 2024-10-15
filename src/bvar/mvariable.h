@@ -86,7 +86,7 @@ public:
 
     // Find all exposed mvariables matching `white_wildcards' but
     // `black_wildcards' and send them to `dumper'.
-    // Use default options when `options' is NULL.
+    // Use default options when `options' is nullptr.
     // Return number of dumped mvariables, -1 on error.
     static size_t dump_exposed(Dumper* dumper, const DumpOptions* options);
 

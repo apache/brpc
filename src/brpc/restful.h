@@ -69,7 +69,7 @@ public:
     virtual ~RestfulMap();
 
     // Map `path' to the method denoted by `method_name' in `service'.
-    // Returns MethodStatus of the method on success, NULL otherwise.
+    // Returns MethodStatus of the method on success, nullptr otherwise.
     bool AddMethod(const RestfulMethodPath& path,
                    google::protobuf::Service* service,
                    const Server::MethodProperty::OpaqueParams& params,

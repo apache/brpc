@@ -74,8 +74,8 @@ public:
         // at this time res is already sent to client, but cntl/req/res is not destructed
         std::string req_str;
         std::string res_str;
-        json2pb::ProtoMessageToJson(*req, &req_str, NULL);
-        json2pb::ProtoMessageToJson(*res, &res_str, NULL);
+        json2pb::ProtoMessageToJson(*req, &req_str, nullptr);
+        json2pb::ProtoMessageToJson(*res, &res_str, nullptr);
         LOG(INFO) << "req:" << req_str
                     << " res:" << res_str;
     }
@@ -93,9 +93,9 @@ public:
 
     static void* SendLargeFile(void* raw_args) {
         std::unique_ptr<Args> args(static_cast<Args*>(raw_args));
-        if (args->pa == NULL) {
-            LOG(ERROR) << "ProgressiveAttachment is NULL";
-            return NULL;
+        if (args->pa == nullptr) {
+            LOG(ERROR) << "ProgressiveAttachment is nullptr";
+            return nullptr;
         }
         for (int i = 0; i < 100; ++i) {
             char buf[16];
@@ -105,7 +105,7 @@ public:
             // sleep a while to send another part.
             bthread_usleep(10000);
         }
-        return NULL;
+        return nullptr;
     }
 
     void default_method(google::protobuf::RpcController* cntl_base,
@@ -121,7 +121,7 @@ public:
             std::unique_ptr<Args> args(new Args);
             args->pa = cntl->CreateProgressiveAttachment();
             bthread_t th;
-            bthread_start_background(&th, NULL, SendLargeFile, args.release());
+            bthread_start_background(&th, nullptr, SendLargeFile, args.release());
         } else {
             cntl->response_attachment().append("Getting file: ");
             cntl->response_attachment().append(filename);
@@ -183,9 +183,9 @@ public:
 
     static void* Predict(void* raw_args) {
         std::unique_ptr<PredictJobArgs> args(static_cast<PredictJobArgs*>(raw_args));
-        if (args->pa == NULL) {
-            LOG(ERROR) << "ProgressiveAttachment is NULL";
-            return NULL;
+        if (args->pa == nullptr) {
+            LOG(ERROR) << "ProgressiveAttachment is nullptr";
+            return nullptr;
         }
         for (int i = 0; i < 100; ++i) {
             char buf[48];
@@ -195,7 +195,7 @@ public:
             // sleep a while to send another part.
             bthread_usleep(10000 * 10);
         }
-        return NULL;
+        return nullptr;
     }
 
     void stream(google::protobuf::RpcController* cntl_base,
@@ -217,7 +217,7 @@ public:
         args->pa = cntl->CreateProgressiveAttachment();
         args->input_ids = {101, 102};
         bthread_t th;
-        bthread_start_background(&th, NULL, Predict, args.release());
+        bthread_start_background(&th, nullptr, Predict, args.release());
     }
 };
 

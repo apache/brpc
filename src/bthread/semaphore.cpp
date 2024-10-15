@@ -71,7 +71,7 @@ static int bthread_sem_wait_impl(bthread_sem_t* sem, const struct timespec* abst
             }
         }
         // Don't sample when contention profiler is off.
-        if (NULL != bthread::g_cp && start_ns == 0 && sem->enable_csite &&
+        if (nullptr != bthread::g_cp && start_ns == 0 && sem->enable_csite &&
             !bvar::is_sampling_range_valid(sampling_range)) {
             // Ask Collector if this (contended) sem waiting should be sampled.
             sampling_range = bvar::is_collectable(&bthread::g_cp_sl);
@@ -112,7 +112,7 @@ static inline int bthread_sem_post(bthread_sem_t* sem, size_t num) {
     if (num > 0) {
         unsigned n = ((butil::atomic<unsigned>*)sem->butex)
             ->fetch_add(num, butil::memory_order_relaxed);
-        const size_t sampling_range = NULL != bthread::g_cp && sem->enable_csite ?
+        const size_t sampling_range = nullptr != bthread::g_cp && sem->enable_csite ?
             bvar::is_collectable(&bthread::g_cp_sl) : bvar::INVALID_SAMPLING_RANGE;
         const int64_t start_ns = bvar::is_sampling_range_valid(sampling_range) ?
                                  butil::cpuwide_time_ns() : -1;
@@ -155,7 +155,7 @@ int bthread_sem_trywait(bthread_sem_t* sem) {
 }
 
 int bthread_sem_wait(bthread_sem_t* sem) {
-    return bthread::bthread_sem_wait_impl(sem, NULL);
+    return bthread::bthread_sem_wait_impl(sem, nullptr);
 }
 
 int bthread_sem_timedwait(bthread_sem_t* sem, const struct timespec* abstime) {

@@ -42,7 +42,7 @@ public:
     // True if the server shall be excluded.
     bool IsExcluded(SocketId id) const;
     static bool IsExcluded(const ExcludedServers* s, SocketId id) {
-        return s != NULL && s->IsExcluded(id);
+        return s != nullptr && s->IsExcluded(id);
     }
 
     // #servers inside.
@@ -65,8 +65,8 @@ private:
 inline ExcludedServers* ExcludedServers::Create(int cap) {
     void *space = malloc(
         offsetof(ExcludedServers, _space) + sizeof(SocketId) * cap);
-    if (NULL == space) {
-        return NULL;
+    if (nullptr == space) {
+        return nullptr;
     }
     return new (space) ExcludedServers(cap);
 }
@@ -81,7 +81,7 @@ inline void ExcludedServers::Destroy(ExcludedServers* ptr) {
 inline void ExcludedServers::Add(SocketId id) {
     BAIDU_SCOPED_LOCK(_mutex);
     const SocketId* last_id = _l.bottom();
-    if (last_id == NULL || *last_id != id) {
+    if (last_id == nullptr || *last_id != id) {
         _l.elim_push(id);
     }
 }

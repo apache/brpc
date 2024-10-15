@@ -28,7 +28,7 @@ namespace butil {
 template <typename T>
 class PtrContainer {
 public:
-    PtrContainer() : _ptr(NULL) {}
+    PtrContainer() : _ptr(nullptr) {}
 
     explicit PtrContainer(T* obj) : _ptr(obj) {}
 
@@ -37,7 +37,7 @@ public:
     }
 
     PtrContainer(const PtrContainer& rhs)
-        : _ptr(rhs._ptr ? new T(*rhs._ptr) : NULL) {}
+        : _ptr(rhs._ptr ? new T(*rhs._ptr) : nullptr) {}
     
     void operator=(const PtrContainer& rhs) {
         if (this == &rhs) {
@@ -52,7 +52,7 @@ public:
             }
         } else {
             delete _ptr;
-            _ptr = NULL;
+            _ptr = nullptr;
         }
     }
 
@@ -65,7 +65,7 @@ public:
 
     operator void*() const { return _ptr; }
 
-    explicit operator bool() const { return get() != NULL; }
+    explicit operator bool() const { return get() != nullptr; }
 
     T& operator*() const { return *get(); }
 

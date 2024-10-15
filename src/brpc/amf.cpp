@@ -111,13 +111,13 @@ void AMFField::SlowerClear() {
         break;
     case AMF_MARKER_STRICT_ARRAY:
         delete _arr;
-        _arr = NULL;
+        _arr = nullptr;
         break;
     case AMF_MARKER_STRING:
     case AMF_MARKER_LONG_STRING:
         if (!_is_shortstr) {
             free(_str);
-            _str = NULL;
+            _str = nullptr;
         }
         _strsize = 0;
         _is_shortstr = false;
@@ -125,7 +125,7 @@ void AMFField::SlowerClear() {
     case AMF_MARKER_OBJECT:
     case AMF_MARKER_ECMA_ARRAY:
         delete _obj;
-        _obj = NULL;
+        _obj = nullptr;
         break;
     }
     _type = AMF_MARKER_UNDEFINED;
@@ -137,7 +137,7 @@ const AMFField* AMFObject::Find(const char* name) const {
     if (it != _fields.end()) {
         return &it->second;
     }
-    return NULL;
+    return nullptr;
 }
 
 void AMFField::SetString(const butil::StringPiece& str) {
@@ -384,7 +384,7 @@ static bool SkipAMFObjectBody(AMFInputStream* stream);
 static bool ReadAMFObjectField(AMFInputStream* stream,
                                google::protobuf::Message* message,
                                const google::protobuf::FieldDescriptor* field) {
-    const google::protobuf::Reflection* reflection = NULL;
+    const google::protobuf::Reflection* reflection = nullptr;
     if (field) {
         reflection = message->GetReflection();
     }
@@ -542,7 +542,7 @@ static bool SkipAMFObjectBody(AMFInputStream* stream) {
             }
             break;
         }
-        if (!ReadAMFObjectField(stream, NULL, NULL)) {
+        if (!ReadAMFObjectField(stream, nullptr, nullptr)) {
             return false;
         }
     }
@@ -564,7 +564,7 @@ static bool ReadAMFEcmaArrayBody(google::protobuf::Message* message,
             return false;
         }
         const google::protobuf::FieldDescriptor* field = desc->FindFieldByName(name);
-        RPC_VLOG_IF(field == NULL) << "Unknown field=" << desc->full_name()
+        RPC_VLOG_IF(field == nullptr) << "Unknown field=" << desc->full_name()
                                    << "." << name;
         if (!ReadAMFObjectField(stream, message, field)) {
             return false;

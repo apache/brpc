@@ -33,7 +33,7 @@ namespace butil {
 // Create an array with at least |nbit| bits. The array is not cleared.
 inline uint64_t* bit_array_malloc(size_t nbit) {
     if (!nbit) {
-        return NULL;
+        return nullptr;
     }
     return (uint64_t*)malloc(BIT_ARRAY_LEN(nbit)/*different from /8*/);
 }

@@ -55,12 +55,12 @@ bool LocalityAwareLoadBalancer::Add(Servers& bg, const Servers& fg,
     if (bg.weight_tree.capacity() < INITIAL_WEIGHT_TREE_SIZE) {
         bg.weight_tree.reserve(INITIAL_WEIGHT_TREE_SIZE);
     }
-    if (bg.server_map.seek(id) != NULL) {
+    if (bg.server_map.seek(id) != nullptr) {
         // The id duplicates.
         return false;
     }
     const size_t* pindex = fg.server_map.seek(id);
-    if (pindex == NULL) {
+    if (pindex == nullptr) {
         // Both fg and bg do not have the id. We create and insert a new Weight
         // structure. Later when we modify the other buffer(current fg), just
         // copy the pointer.
@@ -106,7 +106,7 @@ bool LocalityAwareLoadBalancer::Add(Servers& bg, const Servers& fg,
 bool LocalityAwareLoadBalancer::Remove(
     Servers& bg, SocketId id, LocalityAwareLoadBalancer* lb) {
     size_t* pindex = bg.server_map.seek(id);
-    if (NULL == pindex) {
+    if (nullptr == pindex) {
         // The id does not exist.
         return false;
     }
@@ -363,7 +363,7 @@ void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {
         return;
     }
     const size_t* pindex = s->server_map.seek(info.server_id);
-    if (NULL == pindex) {
+    if (nullptr == pindex) {
         return;
     }
     const size_t index = *pindex;

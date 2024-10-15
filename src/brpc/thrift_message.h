@@ -144,7 +144,7 @@ namespace details {
 template <typename T>
 class ThriftMessageWrapper final : public ThriftMessageBase {
 public:
-    ThriftMessageWrapper() : msg_ptr(NULL) {}
+    ThriftMessageWrapper() : msg_ptr(nullptr) {}
     ThriftMessageWrapper(T* msg2) : msg_ptr(msg2) {}
     virtual ~ThriftMessageWrapper() {}
     // NOTE: "T::" makes the function call work around vtable
@@ -221,20 +221,20 @@ void ThriftStub::CallMethod(const char* method_name,
     ThriftFramedMessage request;
     request._raw_instance = &raw_request_wrapper;
 
-    if (done == NULL) {
+    if (done == nullptr) {
         // response is guaranteed to be unused after a synchronous RPC, no
         // need to allocate it on heap.
         ThriftFramedMessage response;
         details::ThriftMessageWrapper<RESPONSE> raw_response_wrapper(raw_response);
         response._raw_instance = &raw_response_wrapper;
-        _channel->CallMethod(NULL, cntl, &request, &response, NULL);
+        _channel->CallMethod(nullptr, cntl, &request, &response, nullptr);
     } else {
         // Let the new_done own the response and release it after Run().
         details::ThriftDoneWrapper<RESPONSE>* new_done =
             new details::ThriftDoneWrapper<RESPONSE>(done);
         new_done->raw_response_wrapper.msg_ptr = raw_response;
         new_done->response._raw_instance = &new_done->raw_response_wrapper;
-        _channel->CallMethod(NULL, cntl, &request, &new_done->response, new_done);
+        _channel->CallMethod(nullptr, cntl, &request, &new_done->response, new_done);
     }
 }
 

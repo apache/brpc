@@ -80,7 +80,7 @@ public:
     size_t dump(Dumper* dumper, const DumpOptions* options);
 
     // Get real bvar pointer object
-    // Return real bvar pointer on success, NULL otherwise.
+    // Return real bvar pointer on success, nullptr otherwise.
     T* get_stats(const key_type& labels_value) {
         return get_stats_impl(labels_value, READ_OR_INSERT);
     }
@@ -102,7 +102,7 @@ public:
     
 #ifdef UNIT_TEST
     // Get real bvar pointer object 
-    // Return real bvar pointer if labels_name exist, NULL otherwise.
+    // Return real bvar pointer if labels_name exist, nullptr otherwise.
     // CAUTION!!! Just For Debug!!!
     T* get_stats_read_only(const key_type& labels_value) {
         return get_stats_impl(labels_value);
@@ -111,7 +111,7 @@ public:
     // Get real bvar pointer object 
     // Return real bvar pointer if labels_name exist, otherwise(not exist) create bvar pointer.
     // CAUTION!!! Just For Debug!!!
-    T* get_stats_read_or_insert(const key_type& labels_value, bool* do_write = NULL) {
+    T* get_stats_read_or_insert(const key_type& labels_value, bool* do_write = nullptr) {
         return get_stats_impl(labels_value, READ_OR_INSERT, do_write);
     }
 #endif
@@ -119,7 +119,7 @@ public:
 private:
     T* get_stats_impl(const key_type& labels_value);
 
-    T* get_stats_impl(const key_type& labels_value, STATS_OP stats_op, bool* do_write = NULL);
+    T* get_stats_impl(const key_type& labels_value, STATS_OP stats_op, bool* do_write = nullptr);
 
     void make_dump_key(std::ostream& os, 
                        const key_type& labels_value, 

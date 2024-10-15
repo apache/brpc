@@ -19,7 +19,7 @@ namespace internal {
 bool CopyFileUnsafe(const FilePath& from_path, const FilePath& to_path) {
   ThreadRestrictions::AssertIOAllowed();
   return (copyfile(from_path.value().c_str(),
-                   to_path.value().c_str(), NULL, COPYFILE_DATA) == 0);
+                   to_path.value().c_str(), nullptr, COPYFILE_DATA) == 0);
 }
 
 }  // namespace internal

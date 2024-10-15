@@ -100,7 +100,7 @@ public:
     void EndWait(int error_code);
 
     int AddWatcher(NamingServiceWatcher* w, const NamingServiceFilter* f);
-    int AddWatcher(NamingServiceWatcher* w) { return AddWatcher(w, NULL); }
+    int AddWatcher(NamingServiceWatcher* w) { return AddWatcher(w, nullptr); }
     int RemoveWatcher(NamingServiceWatcher* w);
 
     void Describe(std::ostream& os, const DescribeOptions&) const override;

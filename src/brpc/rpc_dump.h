@@ -61,13 +61,13 @@ public:
     }
 };
 
-// If this function returns non-NULL, the caller must fill the returned
+// If this function returns non-nullptr, the caller must fill the returned
 // object and submit it for later dumping by calling SubmitSample(). If
-// the caller ignores non-NULL return value, the object is leaked.
+// the caller ignores non-nullptr return value, the object is leaked.
 inline SampledRequest* AskToBeSampled() {
     extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
     if (!FLAGS_rpc_dump || !bvar::is_collectable(&g_rpc_dump_sl)) {
-        return NULL;
+        return nullptr;
     }
     return new (std::nothrow) SampledRequest;
 }
@@ -75,7 +75,7 @@ inline SampledRequest* AskToBeSampled() {
 // Read samples from dumped files in a directory.
 // Example:
 //   SampleIterator it("./rpc_dump_echo_server");
-//   for (SampledRequest* req = it->Next(); req != NULL; req = it->Next()) {
+//   for (SampledRequest* req = it->Next(); req != nullptr; req = it->Next()) {
 //     ...
 //   }
 class SampleIterator {
@@ -85,7 +85,7 @@ public:
 
     // Read a sample. Order of samples are not guaranteed to be same with
     // the order that they're stored in dumped files.
-    // Returns the sample which should be deleted by caller. NULL means
+    // Returns the sample which should be deleted by caller. nullptr means
     // all dumped files are read.
     SampledRequest* Next();
 

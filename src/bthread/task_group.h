@@ -96,7 +96,7 @@ public:
     
     // Suspend caller for at least |timeout_us| microseconds.
     // If |timeout_us| is 0, this function does nothing.
-    // If |group| is NULL or current thread is non-bthread, call usleep(3)
+    // If |group| is nullptr or current thread is non-bthread, call usleep(3)
     // instead. This function does not create thread-local TaskGroup.
     // Returns: 0 on success, -1 otherwise and errno is set.
     static int usleep(TaskGroup** pg, uint64_t timeout_us);

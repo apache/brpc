@@ -19,7 +19,7 @@ void flatmap_example() {
     map.insert(10, "hello");
     map[20] = "world";
     std::string* value = map.seek(20);
-    CHECK(value != NULL);
+    CHECK(value != nullptr);
 
     CHECK_EQ(2UL, map.size());
     CHECK_EQ(0UL, map.erase(30));

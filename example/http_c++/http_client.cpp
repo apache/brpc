@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
 
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, nullptr means using default options.
     // options, see `brpc/channel.h'.
     if (channel.Init(url, FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
@@ -71,9 +71,9 @@ int main(int argc, char* argv[]) {
         cntl.request_attachment().append(FLAGS_d);
     }
 
-    // Because `done'(last parameter) is NULL, this function waits until
+    // Because `done'(last parameter) is nullptr, this function waits until
     // the response comes back or error occurs(including timedout).
-    channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     if (cntl.Failed()) {
         std::cerr << cntl.ErrorText() << std::endl;
         return -1;

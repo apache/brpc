@@ -57,7 +57,7 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
         , high_priority(false)
         , in_place(false) 
         , next(UNCONNECTED)
-        , q(NULL)
+        , q(nullptr)
     {}
     ~TaskNode() {}
     int cancel(int64_t expected_version) {
@@ -102,7 +102,7 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
             clear_func(this);
             CHECK(iterated);
         }
-        q = NULL;
+        q = nullptr;
         std::unique_lock<butil::Mutex> lck(mutex);
         ++version;
         const int saved_status = status;
@@ -158,7 +158,7 @@ struct Forbidden {};
 friend class TaskIteratorBase;
     struct Dereferencer {
         void operator()(ExecutionQueueBase* queue) {
-            if (queue != NULL) {
+            if (queue != nullptr) {
                 queue->dereference();
             }
         }
@@ -166,12 +166,12 @@ friend class TaskIteratorBase;
 public:
     // User cannot create ExecutionQueue fron construct
     ExecutionQueueBase(Forbidden)
-        : _head(NULL)
+        : _head(nullptr)
         , _versioned_ref(0)  // join() depends on even version
         , _high_priority_tasks(0)
         , _pthread_started(false)
         , _cond(&_mutex)
-        , _current_head(NULL) {
+        , _current_head(nullptr) {
         _join_butex = butex_create_checked<butil::atomic<int> >();
         _join_butex->store(0, butil::memory_order_relaxed);
     }
@@ -257,7 +257,7 @@ public:
     typedef ExecutionQueue<T>                                   self_type;
     struct Dereferencer {
         void operator()(self_type* queue) {
-            if (queue != NULL) {
+            if (queue != nullptr) {
                 queue->dereference();
             }
         }
@@ -296,7 +296,7 @@ public:
     }
 
     int execute(typename butil::add_const_reference<T>::type task) {
-        return execute(task, NULL, NULL);
+        return execute(task, nullptr, nullptr);
     }
 
     int execute(typename butil::add_const_reference<T>::type task,
@@ -306,7 +306,7 @@ public:
 
 
     int execute(T&& task) {
-        return execute(std::forward<T>(task), NULL, NULL);
+        return execute(std::forward<T>(task), nullptr, nullptr);
     }
 
     int execute(T&& task,
@@ -315,7 +315,7 @@ public:
             return EINVAL;
         }
         TaskNode* node = allocate_node();
-        if (BAIDU_UNLIKELY(node == NULL)) {
+        if (BAIDU_UNLIKELY(node == nullptr)) {
             return ENOMEM;
         }
         void* const mem = allocator::allocate(node);
@@ -343,7 +343,7 @@ public:
 inline ExecutionQueueOptions::ExecutionQueueOptions()
     : use_pthread(false)
     , bthread_attr(BTHREAD_ATTR_NORMAL)
-    , executor(NULL)
+    , executor(nullptr)
 {}
 
 template <typename T>
@@ -364,14 +364,14 @@ execution_queue_address(ExecutionQueueId<T> id) {
 template <typename T>
 inline int execution_queue_execute(ExecutionQueueId<T> id, 
                        typename butil::add_const_reference<T>::type task) {
-    return execution_queue_execute(id, task, NULL);
+    return execution_queue_execute(id, task, nullptr);
 }
 
 template <typename T>
 inline int execution_queue_execute(ExecutionQueueId<T> id, 
                        typename butil::add_const_reference<T>::type task,
                        const TaskOptions* options) {
-    return execution_queue_execute(id, task, options, NULL);
+    return execution_queue_execute(id, task, options, nullptr);
 }
 
 template <typename T>
@@ -381,7 +381,7 @@ inline int execution_queue_execute(ExecutionQueueId<T> id,
                        TaskHandle* handle) {
     typename ExecutionQueue<T>::scoped_ptr_t
         ptr = ExecutionQueue<T>::address(id);
-    if (ptr != NULL) {
+    if (ptr != nullptr) {
         return ptr->execute(task, options, handle);
     } else {
         return EINVAL;
@@ -391,14 +391,14 @@ inline int execution_queue_execute(ExecutionQueueId<T> id,
 template <typename T>
 inline int execution_queue_execute(ExecutionQueueId<T> id,
                                    T&& task) {
-    return execution_queue_execute(id, std::forward<T>(task), NULL);
+    return execution_queue_execute(id, std::forward<T>(task), nullptr);
 }
 
 template <typename T>
 inline int execution_queue_execute(ExecutionQueueId<T> id,
                                    T&& task,
                                    const TaskOptions* options) {
-    return execution_queue_execute(id, std::forward<T>(task), options, NULL);
+    return execution_queue_execute(id, std::forward<T>(task), options, nullptr);
 }
 
 template <typename T>
@@ -408,7 +408,7 @@ inline int execution_queue_execute(ExecutionQueueId<T> id,
                                    TaskHandle* handle) {
     typename ExecutionQueue<T>::scoped_ptr_t
             ptr = ExecutionQueue<T>::address(id);
-    if (ptr != NULL) {
+    if (ptr != nullptr) {
         return ptr->execute(std::forward<T>(task), options, handle);
     } else {
         return EINVAL;
@@ -419,7 +419,7 @@ template <typename T>
 inline int execution_queue_stop(ExecutionQueueId<T> id) {
     typename ExecutionQueue<T>::scoped_ptr_t 
         ptr = ExecutionQueue<T>::address(id);
-    if (ptr != NULL) {
+    if (ptr != nullptr) {
         return ptr->stop();
     } else {
         return EINVAL;
@@ -444,7 +444,7 @@ inline TaskOptions::TaskOptions(bool high_priority, bool in_place_if_possible)
 //--------------------- TaskIterator ------------------------
 
 inline TaskIteratorBase::operator bool() const {
-    return !_is_stopped && !_should_break && _cur_node != NULL 
+    return !_is_stopped && !_should_break && _cur_node != nullptr
            && !_cur_node->stop_task;
 }
 
@@ -467,12 +467,12 @@ void TaskIterator<T>::operator++(int) {
 }
 
 inline TaskHandle::TaskHandle()
-    : node(NULL)
+    : node(nullptr)
     , version(0)
 {}
 
 inline int execution_queue_cancel(const TaskHandle& h) {
-    if (h.node == NULL) {
+    if (h.node == nullptr) {
         return -1;
     }
     return h.node->cancel(h.version);
@@ -483,10 +483,10 @@ inline bool ExecutionQueueBase::_more_tasks(
         TaskNode* old_head, TaskNode** new_tail, 
         bool has_uniterated) {
 
-    CHECK(old_head->next == NULL);
-    // Try to set _head to NULL to mark that the execute is done.
+    CHECK(old_head->next == nullptr);
+    // Try to set _head to nullptr to mark that the execute is done.
     TaskNode* new_head = old_head;
-    TaskNode* desired = NULL;
+    TaskNode* desired = nullptr;
     bool return_when_no_more = false;
     if (has_uniterated) {
         desired = old_head;
@@ -503,7 +503,7 @@ inline bool ExecutionQueueBase::_more_tasks(
 
     // Someone added new requests.
     // Reverse the list until old_head.
-    TaskNode* tail = NULL;
+    TaskNode* tail = nullptr;
     if (new_tail) {
         *new_tail = new_head;
     }
@@ -517,7 +517,7 @@ inline bool ExecutionQueueBase::_more_tasks(
         p->next = tail;
         tail = p;
         p = saved_next;
-        CHECK(p != NULL);
+        CHECK(p != nullptr);
     } while (p != old_head);
 
     // Link old list with new list.

@@ -110,7 +110,7 @@ struct ComlogSinkOptions {
 //   logging::SetLogSink(ComlogSink::GetInstance());
 //
 // [ Setup from ComlogSinkOptions ]
-//   if (logging::ComlogSink::GetInstance()->Setup(NULL/*default options*/) != 0) {
+//   if (logging::ComlogSink::GetInstance()->Setup(nullptr/*default options*/) != 0) {
 //       LOG(ERROR) << "Fail to setup comlog";
 //       return -1;
 //   }

@@ -13,7 +13,7 @@
 
 namespace butil {
 
-MemoryMappedFile::MemoryMappedFile() : data_(NULL), length_(0) {
+MemoryMappedFile::MemoryMappedFile() : data_(nullptr), length_(0) {
 }
 
 bool MemoryMappedFile::MapFileToMemory() {
@@ -27,7 +27,7 @@ bool MemoryMappedFile::MapFileToMemory() {
   length_ = file_stat.st_size;
 
   data_ = static_cast<uint8_t*>(
-      mmap(NULL, length_, PROT_READ, MAP_SHARED, file_.GetPlatformFile(), 0));
+      mmap(nullptr, length_, PROT_READ, MAP_SHARED, file_.GetPlatformFile(), 0));
   if (data_ == MAP_FAILED)
     DPLOG(ERROR) << "mmap " << file_.GetPlatformFile();
 
@@ -37,11 +37,11 @@ bool MemoryMappedFile::MapFileToMemory() {
 void MemoryMappedFile::CloseHandles() {
   ThreadRestrictions::AssertIOAllowed();
 
-  if (data_ != NULL)
+  if (data_ != nullptr)
     munmap(data_, length_);
   file_.Close();
 
-  data_ = NULL;
+  data_ = nullptr;
   length_ = 0;
 }
 

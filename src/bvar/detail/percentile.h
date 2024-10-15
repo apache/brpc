@@ -263,7 +263,7 @@ friend class AddLatency;
             if (rhs._intervals[i] && !rhs._intervals[i]->empty()) {
                 _intervals[i] = new PercentileInterval<SAMPLE_SIZE>(*rhs._intervals[i]);
             } else {
-                _intervals[i] = NULL;
+                _intervals[i] = nullptr;
             }
         }
     }
@@ -298,7 +298,7 @@ friend class AddLatency;
             return 0;
         }
         for (size_t i = 0; i < NUM_INTERVALS; ++i) {
-            if (_intervals[i] == NULL) {
+            if (_intervals[i] == nullptr) {
                 continue;
             }
             PercentileInterval<SAMPLE_SIZE>& invl = *_intervals[i];
@@ -413,7 +413,7 @@ template <size_t size1> friend class PercentileSamples;
 
     // Get/create interval on-demand.
     PercentileInterval<SAMPLE_SIZE>& get_interval_at(size_t index) {
-        if (_intervals[index] == NULL) {
+        if (_intervals[index] == nullptr) {
             _intervals[index] = new PercentileInterval<SAMPLE_SIZE>;
         }
         return *_intervals[index];
@@ -471,7 +471,7 @@ public:
 
     // The sampler for windows over percentile.
     sampler_type* get_sampler() {
-        if (NULL == _sampler) {
+        if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
             _sampler->schedule();
         }
@@ -484,7 +484,7 @@ public:
     
     Percentile& operator<<(int64_t latency);
 
-    bool valid() const { return _combiner != NULL && _combiner->valid(); }
+    bool valid() const { return _combiner != nullptr && _combiner->valid(); }
     
     // This name is useful for warning negative latencies in operator<<
     void set_debug_name(const butil::StringPiece& name) {

@@ -107,7 +107,7 @@ typedef struct bthread_attr_t {
     void operator=(unsigned stacktype_and_flags) {
         stack_type = (stacktype_and_flags & 7);
         flags = (stacktype_and_flags & ~(unsigned)7u);
-        keytable_pool = NULL;
+        keytable_pool = nullptr;
         tag = BTHREAD_TAG_INVALID;
     }
     bthread_attr_t operator|(unsigned other_flags) const {
@@ -126,21 +126,21 @@ typedef struct bthread_attr_t {
 // obvious drawback is that you need more worker pthreads when you have a lot
 // of such bthreads.
 static const bthread_attr_t BTHREAD_ATTR_PTHREAD =
-{ BTHREAD_STACKTYPE_PTHREAD, 0, NULL, BTHREAD_TAG_INVALID };
+{ BTHREAD_STACKTYPE_PTHREAD, 0, nullptr, BTHREAD_TAG_INVALID };
 
 // bthreads created with following attributes will have different size of
 // stacks. Default is BTHREAD_ATTR_NORMAL.
-static const bthread_attr_t BTHREAD_ATTR_SMALL = {BTHREAD_STACKTYPE_SMALL, 0, NULL,
+static const bthread_attr_t BTHREAD_ATTR_SMALL = {BTHREAD_STACKTYPE_SMALL, 0, nullptr,
                                                   BTHREAD_TAG_INVALID};
-static const bthread_attr_t BTHREAD_ATTR_NORMAL = {BTHREAD_STACKTYPE_NORMAL, 0, NULL,
+static const bthread_attr_t BTHREAD_ATTR_NORMAL = {BTHREAD_STACKTYPE_NORMAL, 0, nullptr,
                                                    BTHREAD_TAG_INVALID};
-static const bthread_attr_t BTHREAD_ATTR_LARGE = {BTHREAD_STACKTYPE_LARGE, 0, NULL,
+static const bthread_attr_t BTHREAD_ATTR_LARGE = {BTHREAD_STACKTYPE_LARGE, 0, nullptr,
                                                   BTHREAD_TAG_INVALID};
 
 // bthreads created with this attribute will print log when it's started,
 // context-switched, finished.
 static const bthread_attr_t BTHREAD_ATTR_DEBUG = {
-    BTHREAD_STACKTYPE_NORMAL, BTHREAD_LOG_START_AND_FINISH | BTHREAD_LOG_CONTEXT_SWITCH, NULL,
+    BTHREAD_STACKTYPE_NORMAL, BTHREAD_LOG_START_AND_FINISH | BTHREAD_LOG_CONTEXT_SWITCH, nullptr,
     BTHREAD_TAG_INVALID};
 
 static const size_t BTHREAD_EPOLL_THREAD_NUM = 1;
@@ -174,7 +174,7 @@ struct mutex_owner_t {
 typedef struct bthread_mutex_t {
 #if defined(__cplusplus)
     bthread_mutex_t()
-        : butex(NULL), csite{}
+        : butex(nullptr), csite{}
         , enable_csite(false)
         , owner{false, 0} {}
 
@@ -195,7 +195,7 @@ typedef struct {
 
 typedef struct bthread_cond_t {
 #if defined(__cplusplus)
-    bthread_cond_t() : m(NULL), seq(NULL) {}
+    bthread_cond_t() : m(nullptr), seq(nullptr) {}
     DISALLOW_COPY_AND_ASSIGN(bthread_cond_t);
 #endif
     bthread_mutex_t* m;
@@ -207,7 +207,7 @@ typedef struct {
 
 typedef struct bthread_sem_t {
 #if defined(__cplusplus)
-    bthread_sem_t() : butex(NULL), enable_csite(true) {}
+    bthread_sem_t() : butex(nullptr), enable_csite(true) {}
     DISALLOW_COPY_AND_ASSIGN(bthread_sem_t);
 #endif
     unsigned* butex;

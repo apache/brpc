@@ -262,7 +262,7 @@ struct SocketOptions {
     // Default: false, means that a connection will be established
     // on first write.
     bool connect_on_create;
-    // Default: NULL, means no timeout.
+    // Default: nullptr, means no timeout.
     const timespec* connect_abstime;
     SocketUser* user;
     // When *edge-triggered* events happen on the file descriptor, callback
@@ -350,8 +350,8 @@ public:
         bool notify_on_success;
 
         // If no connection exists, a connection will be established to
-        // remote_side() regarding deadline `abstime'. NULL means no timeout.
-        // Default: NULL
+        // remote_side() regarding deadline `abstime'. nullptr means no timeout.
+        // Default: nullptr
         const timespec* abstime;
 
         // Will be queued to implement positional correspondence with responses
@@ -386,7 +386,7 @@ public:
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID)
             , notify_on_success(false)
-            , abstime(NULL)
+            , abstime(nullptr)
             , pipelined_count(0)
             , auth_flags(0)
             , ignore_eovercrowded(false)
@@ -397,11 +397,11 @@ public:
     // True if write of socket is shutdown.
     bool IsWriteShutdown() const { return _is_write_shutdown; }
 
-    int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
+    int Write(butil::IOBuf *msg, const WriteOptions* options = nullptr);
 
     // Write an user-defined message. `msg' is released when Write() is
     // successful and *may* remain unchanged otherwise.
-    int Write(SocketMessagePtr<>& msg, const WriteOptions* options = NULL);
+    int Write(SocketMessagePtr<>& msg, const WriteOptions* options = nullptr);
 
     // The file descriptor
     int fd() const { return _fd.load(butil::memory_order_relaxed); }
@@ -443,8 +443,8 @@ public:
     Destroyable* release_parsing_context();
     Destroyable* parsing_context() const
     { return _parsing_context.load(butil::memory_order_consume); }
-    // Try to set _parsing_context to *ctx when _parsing_context is NULL.
-    // If _parsing_context is NULL, the set is successful and true is returned.
+    // Try to set _parsing_context to *ctx when _parsing_context is nullptr.
+    // If _parsing_context is nullptr, the set is successful and true is returned.
     // Otherwise, *ctx is Destroy()-ed and replaced with the value of
     // _parsing_context, and false is returned. This process is thread-safe.
     template <typename T> bool initialize_parsing_context(T** ctx);
@@ -458,7 +458,7 @@ public:
     static int Create(const SocketOptions& options, SocketId* id);
 
     // Mark this Socket or the Socket associated with `id' as failed.
-    // Any later Address() of the identifier shall return NULL unless the
+    // Any later Address() of the identifier shall return nullptr unless the
     // Socket was revivied by StartHealthCheck. The Socket is NOT recycled
     // after calling this function, instead it will be recycled when no one
     // references it. Internal fields of the Socket are still accessible
@@ -589,7 +589,7 @@ public:
     // Get and persist a socket connecting to the same place as this socket.
     // If an agent socket was already created and persisted, it's returned
     // directly (provided other constraints are satisfied)
-    // If `checkfn' is not NULL, and the checking result on the socket that
+    // If `checkfn' is not nullptr, and the checking result on the socket that
     // would be returned is false, the socket is abandoned and the getting
     // process is restarted.
     // For example, http2 connections may run out of stream_id after long time
@@ -676,7 +676,7 @@ private:
     // reference on created.
     void HoldHCRelatedRef();
 
-    static int Status(SocketId, int32_t* nref = NULL);  // for unit-test.
+    static int Status(SocketId, int32_t* nref = nullptr);  // for unit-test.
 
     // Perform SSL handshake after TCP connection has been established.
     // Create SSL session inside and block (in bthread) until handshake
@@ -704,7 +704,7 @@ private:
     int WaitEpollOut(int fd, bool pollin, const timespec* abstime);
 
     // [Not thread-safe] Establish a tcp connection to `remote_side()'
-    // If `on_connect' is NULL, this function blocks current thread
+    // If `on_connect' is nullptr, this function blocks current thread
     // until connected/timeout. Otherwise, it returns immediately after
     // starting a connection request and `on_connect' will be called
     // when connecting completes (whether it succeeds or not)
@@ -970,7 +970,7 @@ private:
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    // non-NULL means that keepalive is on.
+    // non-nullptr means that keepalive is on.
     std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
 
     HttpMethod _http_request_method;
