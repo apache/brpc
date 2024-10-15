@@ -392,6 +392,10 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
     if (tag < BTHREAD_TAG_DEFAULT || tag >= FLAGS_task_group_ntags) {
         return EPERM;
     }
+    if (num < BTHREAD_MIN_CONCURRENCY || num > BTHREAD_MAX_CONCURRENCY) {
+        LOG(ERROR) << "Invalid concurrency_by_tag=" << num;
+        return EINVAL;
+    }
     auto c = bthread::get_or_new_task_control();
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
     auto ngroup = c->concurrency();
