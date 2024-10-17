@@ -4,7 +4,7 @@ module(
   compatibility_level = 1,
 )
 
-# https://bcr.bazel.build
+# --registry=https://bcr.bazel.build
 bazel_dep(name = 'abseil-cpp', version = '20210324.2', repo_name = 'com_google_absl')
 bazel_dep(name = 'bazel_skylib', version = '1.0.3')
 bazel_dep(name = 'boringssl', version = '0.0.0-20211025-d4f1ab9')
@@ -16,11 +16,10 @@ bazel_dep(name = 'rules_cc', version = '0.0.1')
 bazel_dep(name = 'rules_proto', version = '4.0.0')
 bazel_dep(name = 'zlib', version = '1.2.13', repo_name = 'com_github_madler_zlib')
 
-# https://baidu.github.io/babylon/registry
-# https://raw.githubusercontent.com/bazelboost/registry/main
+# --registry=https://baidu.github.io/babylon/registry
 bazel_dep(name = 'leveldb', version = '1.23', repo_name = 'com_github_google_leveldb')
-bazel_dep(name = 'openssl', version = '3.3.1')
-bazel_dep(name = 'thrift', version = '0.20.0', repo_name = 'org_apache_thrift')
+bazel_dep(name = 'openssl', version = '3.3.2')
+bazel_dep(name = 'thrift', version = '0.21.0', repo_name = 'org_apache_thrift')
 
 # test only
 bazel_dep(name = 'googletest', version = '1.14.0.bcr.1', repo_name = 'com_google_googletest', dev_dependency = True)

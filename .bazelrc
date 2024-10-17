@@ -18,10 +18,9 @@
 #
 common --registry=https://bcr.bazel.build
 common --registry=https://baidu.github.io/babylon/registry
-common --registry=https://raw.githubusercontent.com/bazelboost/registry/main
 
 build --cxxopt="-std=c++17"
-# Use gnu11 for asm keyword.
+# Use gnu17 for asm keyword.
 build --conlyopt="-std=gnu17"
 
 # Enable position independent code (this is the default on macOS and Windows)
