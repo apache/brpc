@@ -733,7 +733,9 @@ RtmpContext::RtmpContext(const RtmpClientOptions* copt, const Server* server)
     _free_ms_ids.reserve(32);
     CHECK_EQ(0, _mstream_map.init(1024, 70));
     CHECK_EQ(0, _trans_map.init(1024, 70));
-    memset(static_cast<void*>(_cstream_ctx), 0, sizeof(_cstream_ctx));
+    for (size_t i = 0; i < ARRAY_SIZE(_cstream_ctx); ++i) {
+        _cstream_ctx[i].store(NULL, butil::memory_order_relaxed);
+    }
 }
     
 RtmpContext::~RtmpContext() {
@@ -809,7 +811,9 @@ RtmpUnsentMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
 }
 
 RtmpContext::SubChunkArray::SubChunkArray() {
-    memset(static_cast<void*>(ptrs), 0, sizeof(ptrs));
+    for (size_t i = 0; i < ARRAY_SIZE(ptrs); ++i) {
+        ptrs[i].store(NULL, butil::memory_order_relaxed);
+    }
 }
 
 RtmpContext::SubChunkArray::~SubChunkArray() {
