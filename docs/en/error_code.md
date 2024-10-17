@@ -64,7 +64,7 @@ Note that `strerror` and `strerror_r` do not recognize error codes defined by `B
 ```c++
 errno = ESTOP;
 printf("Describe errno: %m\n");                              // [Wrong] Describe errno: Unknown error -114
-printf("Describe errno: %s\n", strerror_r(errno, NULL, 0));  // [Wrong] Describe errno: Unknown error -114
+printf("Describe errno: %s\n", strerror_r(errno, nullptr, 0));  // [Wrong] Describe errno: Unknown error -114
 printf("Describe errno: %s\n", berror());                    // [Correct] Describe errno: the thread is stopping
 printf("Describe errno: %s\n", berror(errno));               // [Correct] Describe errno: the thread is stopping
 ```

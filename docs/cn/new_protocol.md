@@ -67,7 +67,7 @@ typedef ParseResult (*Parse)(butil::IOBuf* source, Socket *socket, bool read_eof
 ```
 用于把消息从source上切割下来，client端和server端使用同一个parse函数。返回的消息会被递给process_request(server端)或process_response(client端)。
 
-参数：source是读取到的二进制内容，socket是对应的连接，read_eof为true表示连接已被对端关闭，arg在server端是对应server的指针，在client端是NULL。
+参数：source是读取到的二进制内容，socket是对应的连接，read_eof为true表示连接已被对端关闭，arg在server端是对应server的指针，在client端是nullptr。
 
 ParseResult可能是错误，也可能包含一个切割下来的message，可能的值有：
 
@@ -116,7 +116,7 @@ typedef void (*ProcessResponse)(InputMessageBase* msg_base);
 ```c++
 typedef bool (*Verify)(const InputMessageBase* msg);
 ```
-处理连接的认证，只会对连接上的第一个消息调用，需要支持认证的server端必须实现，不需要认证或仅支持client端的协议可填NULL。成功返回true，否则false。
+处理连接的认证，只会对连接上的第一个消息调用，需要支持认证的server端必须实现，不需要认证或仅支持client端的协议可填nullptr。成功返回true，否则false。
 
 ### parse_server_address
 ```c++

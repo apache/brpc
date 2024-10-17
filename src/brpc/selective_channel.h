@@ -58,7 +58,7 @@ public:
 
     // You MUST initialize a schan before using it. `load_balancer_name' is the
     // name of load balancing algorithm which is listed in brpc/channel.h
-    // if `options' is NULL, use default options.
+    // if `options' is nullptr, use default options.
     int Init(const char* load_balancer_name, const ChannelOptions* options);
 
     // Add a sub channel, which will be deleted along with schan or explicitly

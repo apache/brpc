@@ -30,7 +30,7 @@ HttpHeader::HttpHeader()
     : _status_code(HTTP_STATUS_OK)
     , _method(HTTP_METHOD_GET)
     , _version(1, 1)
-    , _first_set_cookie(NULL) {
+    , _first_set_cookie(nullptr) {
     CHECK_EQ(0, _headers.init(29));
     // NOTE: don't forget to clear the field in Clear() as well.
 }
@@ -93,7 +93,7 @@ void HttpHeader::RemoveHeader(const char* key) {
     } else {
         _headers.erase(key);
         if (IsSetCookie(key)) {
-            _first_set_cookie = NULL;
+            _first_set_cookie = nullptr;
         }
     }
 }
@@ -131,12 +131,12 @@ std::string& HttpHeader::GetOrAddHeader(const std::string& key) {
 
     bool is_set_cookie = IsSetCookie(key);
     // Only returns the first Set-Cookie header field for compatibility.
-    if (is_set_cookie && NULL != _first_set_cookie) {
+    if (is_set_cookie && nullptr != _first_set_cookie) {
         return *_first_set_cookie;
     }
 
     std::string* val = _headers.seek(key);
-    if (NULL == val) {
+    if (nullptr == val) {
         val = _headers.insert({ key, "" });
         if (is_set_cookie) {
             _first_set_cookie = val;
@@ -147,7 +147,7 @@ std::string& HttpHeader::GetOrAddHeader(const std::string& key) {
 
 std::string& HttpHeader::AddHeader(const std::string& key) {
     std::string* val = _headers.insert({ key, "" });
-    if (IsSetCookie(key) && NULL == _first_set_cookie) {
+    if (IsSetCookie(key) && nullptr == _first_set_cookie) {
         _first_set_cookie = val;
     }
     return *val;

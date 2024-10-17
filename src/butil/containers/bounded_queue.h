@@ -84,14 +84,14 @@ public:
         , _cap(0)
         , _start(0)
         , _ownership(NOT_OWN_STORAGE)
-        , _items(NULL) {
+        , _items(nullptr) {
     };
 
     ~BoundedQueue() {
         clear();
         if (_ownership == OWNS_STORAGE) {
             free(_items);
-            _items = NULL;
+            _items = nullptr;
         }
     }
 
@@ -124,7 +124,7 @@ public:
         if (_count < _cap) {
             return new ((T*)_items + _mod(_start + _count++, _cap)) T();
         }
-        return NULL;
+        return nullptr;
     }
 
     // Push |item| into top side of this queue
@@ -147,7 +147,7 @@ public:
             ++_count;
             return new ((T*)_items + _start) T();
         }
-        return NULL;
+        return nullptr;
     }
     
     // Pop top-most item from this queue
@@ -209,52 +209,52 @@ public:
         _start = 0;
     }
 
-    // Get address of top-most item, NULL if queue is empty
+    // Get address of top-most item, nullptr if queue is empty
     T* top() { 
-        return _count ? ((T*)_items + _start) : NULL; 
+        return _count ? ((T*)_items + _start) : nullptr;
     }
     const T* top() const { 
-        return _count ? ((const T*)_items + _start) : NULL; 
+        return _count ? ((const T*)_items + _start) : nullptr;
     }
 
     // Randomly access item from top side.
     // top(0) == top(), top(size()-1) == bottom()
-    // Returns NULL if |index| is out of range.
+    // Returns nullptr if |index| is out of range.
     T* top(size_t index) {
         if (index < _count) {
             return (T*)_items + _mod(_start + index, _cap);
         }
-        return NULL;   // including _count == 0
+        return nullptr;   // including _count == 0
     }
     const T* top(size_t index) const {
         if (index < _count) {
             return (const T*)_items + _mod(_start + index, _cap);
         }
-        return NULL;   // including _count == 0
+        return nullptr;   // including _count == 0
     }
 
-    // Get address of bottom-most item, NULL if queue is empty
+    // Get address of bottom-most item, nullptr if queue is empty
     T* bottom() { 
-        return _count ? ((T*)_items + _mod(_start + _count - 1, _cap)) : NULL; 
+        return _count ? ((T*)_items + _mod(_start + _count - 1, _cap)) : nullptr;
     }
     const T* bottom() const {
-        return _count ? ((const T*)_items + _mod(_start + _count - 1, _cap)) : NULL; 
+        return _count ? ((const T*)_items + _mod(_start + _count - 1, _cap)) : nullptr;
     }
     
     // Randomly access item from bottom side.
     // bottom(0) == bottom(), bottom(size()-1) == top()
-    // Returns NULL if |index| is out of range.
+    // Returns nullptr if |index| is out of range.
     T* bottom(size_t index) {
         if (index < _count) {
             return (T*)_items + _mod(_start + _count - index - 1, _cap);
         }
-        return NULL;  // including _count == 0
+        return nullptr;  // including _count == 0
     }
     const T* bottom(size_t index) const {
         if (index < _count) {
             return (const T*)_items + _mod(_start + _count - index - 1, _cap);
         }
-        return NULL;  // including _count == 0
+        return nullptr;  // including _count == 0
     }
 
     bool empty() const { return !_count; }
@@ -270,7 +270,7 @@ public:
     size_t max_capacity() const { return (1UL << (sizeof(_cap) * 8)) - 1; }
 
     // True if the queue was constructed successfully.
-    bool initialized() const { return _items != NULL; }
+    bool initialized() const { return _items != nullptr; }
 
     // Swap internal fields with another queue.
     void swap(BoundedQueue& rhs) {

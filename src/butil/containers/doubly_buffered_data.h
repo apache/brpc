@@ -91,7 +91,7 @@ public:
     class ScopedPtr {
     friend class DoublyBufferedData;
     public:
-        ScopedPtr() : _data(NULL), _index(0), _w(NULL) {}
+        ScopedPtr() : _data(nullptr), _index(0), _w(nullptr) {}
         ~ScopedPtr() {
             if (_w) {
                 if (AllowBthreadSuspended) {
@@ -289,13 +289,13 @@ public:
     inline static DoublyBufferedData::Wrapper* get_or_create_tls_data(WrapperTLSId id) {
         if (BAIDU_UNLIKELY(id < 0)) {
             CHECK(false) << "Invalid id=" << id;
-            return NULL;
+            return nullptr;
         }
-        if (_s_tls_blocks == NULL) {
+        if (_s_tls_blocks == nullptr) {
             _s_tls_blocks = new (std::nothrow) std::vector<ThreadBlock*>;
-            if (BAIDU_UNLIKELY(_s_tls_blocks == NULL)) {
+            if (BAIDU_UNLIKELY(_s_tls_blocks == nullptr)) {
                 LOG(FATAL) << "Fail to create vector, " << berror();
-                return NULL;
+                return nullptr;
             }
             butil::thread_atexit(_destroy_tls_blocks);
         }
@@ -305,10 +305,10 @@ public:
             _s_tls_blocks->resize(std::max(block_id + 1, 32ul));
         }
         ThreadBlock* tb = (*_s_tls_blocks)[block_id];
-        if (tb == NULL) {
+        if (tb == nullptr) {
             ThreadBlock* new_block = new (std::nothrow) ThreadBlock;
-            if (BAIDU_UNLIKELY(new_block == NULL)) {
-                return NULL;
+            if (BAIDU_UNLIKELY(new_block == nullptr)) {
+                return nullptr;
             }
             tb = new_block;
             (*_s_tls_blocks)[block_id] = new_block;
@@ -325,7 +325,7 @@ private:
             delete (*_s_tls_blocks)[i];
         }
         delete _s_tls_blocks;
-        _s_tls_blocks = NULL;
+        _s_tls_blocks = nullptr;
     }
 
     inline static std::deque<WrapperTLSId>& _get_free_ids() {
@@ -348,7 +348,7 @@ pthread_mutex_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGro
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 std::deque<typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSId>*
-        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_free_ids = NULL;
+        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_free_ids = nullptr;
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSId
@@ -356,7 +356,7 @@ typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSId
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 __thread std::vector<typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::ThreadBlock*>*
-        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_tls_blocks = NULL;
+        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_tls_blocks = nullptr;
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 class BAIDU_CACHELINE_ALIGNMENT DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper
@@ -364,17 +364,17 @@ class BAIDU_CACHELINE_ALIGNMENT DoublyBufferedData<T, TLS, AllowBthreadSuspended
 friend class DoublyBufferedData;
 public:
     explicit Wrapper()
-        : _control(NULL)
+        : _control(nullptr)
         , _modify_wait(false) {
-        pthread_mutex_init(&_mutex, NULL);
+        pthread_mutex_init(&_mutex, nullptr);
         if (AllowBthreadSuspended) {
-            pthread_cond_init(&_cond[0], NULL);
-            pthread_cond_init(&_cond[1], NULL);
+            pthread_cond_init(&_cond[0], nullptr);
+            pthread_cond_init(&_cond[1], nullptr);
         }
     }
     
     ~Wrapper() {
-        if (_control != NULL) {
+        if (_control != nullptr) {
             _control->RemoveWrapper(this);
         }
 
@@ -467,22 +467,22 @@ template <typename T, typename TLS, bool AllowBthreadSuspended>
 typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper*
 DoublyBufferedData<T, TLS, AllowBthreadSuspended>::AddWrapper(
         typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper* w) {
-    if (NULL == w) {
-        return NULL;
+    if (nullptr == w) {
+        return nullptr;
     }
     if (w->_control == this) {
         return w;
     }
-    if (w->_control != NULL) {
+    if (w->_control != nullptr) {
         LOG(FATAL) << "Get wrapper from tls but control != this";
-        return NULL;
+        return nullptr;
     }
     try {
         w->_control = this;
         BAIDU_SCOPED_LOCK(_wrappers_mutex);
         _wrappers.push_back(w);
     } catch (std::exception& e) {
-        return NULL;
+        return nullptr;
     }
     return w;
 }
@@ -491,7 +491,7 @@ DoublyBufferedData<T, TLS, AllowBthreadSuspended>::AddWrapper(
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 void DoublyBufferedData<T, TLS, AllowBthreadSuspended>::RemoveWrapper(
     typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper* w) {
-    if (NULL == w) {
+    if (nullptr == w) {
         return;
     }
     BAIDU_SCOPED_LOCK(_wrappers_mutex);
@@ -512,11 +512,11 @@ DoublyBufferedData<T, TLS, AllowBthreadSuspended>::DoublyBufferedData()
                   "Forbidden to allow bthread suspended with non-Void TLS");
 
     _wrappers.reserve(64);
-    pthread_mutex_init(&_modify_mutex, NULL);
-    pthread_mutex_init(&_wrappers_mutex, NULL);
+    pthread_mutex_init(&_modify_mutex, nullptr);
+    pthread_mutex_init(&_wrappers_mutex, nullptr);
     _wrapper_key = WrapperTLSGroup::key_create();
     // Initialize _data for some POD types. This is essential for pointer
-    // types because they should be Read() as NULL before any Modify().
+    // types because they should be Read() as nullptr before any Modify().
     if (is_integral<T>::value || is_floating_point<T>::value ||
         is_pointer<T>::value || is_member_function_pointer<T>::value) {
         _data[0] = T();
@@ -532,7 +532,7 @@ DoublyBufferedData<T, TLS, AllowBthreadSuspended>::~DoublyBufferedData() {
     {
         BAIDU_SCOPED_LOCK(_wrappers_mutex);
         for (size_t i = 0; i < _wrappers.size(); ++i) {
-            _wrappers[i]->_control = NULL;  // hack: disable removal.
+            _wrappers[i]->_control = nullptr;  // hack: disable removal.
         }
         _wrappers.clear();
     }
@@ -547,7 +547,7 @@ int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(
     typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::ScopedPtr* ptr) {
     Wrapper* p = WrapperTLSGroup::get_or_create_tls_data(_wrapper_key);
     Wrapper* w = AddWrapper(p);
-    if (BAIDU_LIKELY(w != NULL)) {
+    if (BAIDU_LIKELY(w != nullptr)) {
         if (AllowBthreadSuspended) {
             // Use reference count instead of mutex to indicate read of
             // foreground instance, so during the read process, there is

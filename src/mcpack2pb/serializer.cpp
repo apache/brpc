@@ -161,7 +161,7 @@ std::ostream& operator<<(std::ostream& os, const Serializer::GroupInfo& gi) {
 Serializer::Serializer(OutputStream* stream)
     : _stream(stream)
     , _ndepth(0)
-    , _group_info_more(NULL) {
+    , _group_info_more(nullptr) {
     GroupInfo & info = _group_info_fast[0];
     info.item_count = 0;
     info.isomorphic = false;
@@ -184,7 +184,7 @@ Serializer::~Serializer() {
         CHECK(false) << oss.str();
     }
     free(_group_info_more);
-    _group_info_more = NULL;
+    _group_info_more = nullptr;
 }
 
 void add_pending_nulls(OutputStream* stream,
@@ -632,7 +632,7 @@ void Serializer::begin_object_internal() {
         return _stream->set_bad();
     }
     GroupInfo* info = push_group_info();
-    if (info == NULL) {
+    if (info == nullptr) {
         CHECK(false) << "Fail to push object";
         return _stream->set_bad();
     }
@@ -658,7 +658,7 @@ void Serializer::begin_object_internal(const StringWrapper& name) {
         return _stream->set_bad();
     }
     GroupInfo* info = push_group_info();
-    if (info == NULL) {
+    if (info == nullptr) {
         CHECK(false) << "Fail to push object=" << name;
         return _stream->set_bad();
     }
@@ -721,7 +721,7 @@ void Serializer::begin_array_internal(FieldType item_type, bool compack) {
         return _stream->set_bad();
     }
     GroupInfo* info = push_group_info();
-    if (info == NULL) {
+    if (info == nullptr) {
         CHECK(false) << "Fail to push array";
         return _stream->set_bad();
     }
@@ -755,7 +755,7 @@ void Serializer::begin_array_internal(const StringWrapper& name,
         return _stream->set_bad();
     }
     GroupInfo* info = push_group_info();
-    if (info == NULL) {
+    if (info == nullptr) {
         CHECK(false) << "Fail to push array";
         return _stream->set_bad();
     }

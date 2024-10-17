@@ -29,7 +29,7 @@ uint64_t ComputeCurrentTicks() {
   struct timeval boottime;
   int mib[2] = {CTL_KERN, KERN_BOOTTIME};
   size_t size = sizeof(boottime);
-  int kr = sysctl(mib, arraysize(mib), &boottime, &size, NULL, 0);
+  int kr = sysctl(mib, arraysize(mib), &boottime, &size, nullptr, 0);
   DCHECK_EQ(KERN_SUCCESS, kr);
   butil::TimeDelta time_difference = butil::Time::Now() -
       (butil::Time::FromTimeT(boottime.tv_sec) +
@@ -171,7 +171,7 @@ Time Time::FromExploded(bool is_local, const Exploded& exploded) {
   date.year = exploded.year;
 
   butil::ScopedCFTypeRef<CFTimeZoneRef> time_zone(
-      is_local ? CFTimeZoneCopySystem() : NULL);
+      is_local ? CFTimeZoneCopySystem() : nullptr);
   CFAbsoluteTime seconds = CFGregorianDateGetAbsoluteTime(date, time_zone) +
       kCFAbsoluteTimeIntervalSince1970;
   return Time(static_cast<int64_t>(seconds * kMicrosecondsPerSecond) +
@@ -189,7 +189,7 @@ void Time::Explode(bool is_local, Exploded* exploded) const {
                            kCFAbsoluteTimeIntervalSince1970;
 
   butil::ScopedCFTypeRef<CFTimeZoneRef> time_zone(
-      is_local ? CFTimeZoneCopySystem() : NULL);
+      is_local ? CFTimeZoneCopySystem() : nullptr);
   CFGregorianDate date = CFAbsoluteTimeGetGregorianDate(seconds, time_zone);
   // 1 = Monday, ..., 7 = Sunday.
   int cf_day_of_week = CFAbsoluteTimeGetDayOfWeek(seconds, time_zone);

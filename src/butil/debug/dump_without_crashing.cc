@@ -10,7 +10,7 @@ namespace {
 
 // Pointer to the function that's called by DumpWithoutCrashing() to dump the
 // process's memory.
-void (CDECL *dump_without_crashing_function_)() = NULL;
+void (CDECL *dump_without_crashing_function_)() = nullptr;
 
 }  // namespace
 

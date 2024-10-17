@@ -57,7 +57,7 @@ public:
     // Wait for tasks.
     // If the `expected_state' does not match, wait() may finish directly.
     void wait(const State& expected_state) {
-        futex_wait_private(&_pending_signal, expected_state.val, NULL);
+        futex_wait_private(&_pending_signal, expected_state.val, nullptr);
     }
 
     // Wakeup suspended wait() and make them unwaitable ever. 

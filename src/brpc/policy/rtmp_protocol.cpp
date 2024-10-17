@@ -106,7 +106,7 @@ static const size_t MAGIC_NUMBER_SIZE = 4; /* magic number */
 // ========== The handshaking described in RTMP spec ==========
 
 // The random data for handshaking
-static butil::IOBuf* s_rtmp_handshake_server_random = NULL;
+static butil::IOBuf* s_rtmp_handshake_server_random = nullptr;
 static pthread_once_t s_sr_once = PTHREAD_ONCE_INIT;
 static void InitRtmpHandshakeServerRandom() {
     char buf[1528];
@@ -121,7 +121,7 @@ static const butil::IOBuf& GetRtmpHandshakeServerRandom() {
     return *s_rtmp_handshake_server_random;
 }
 
-static butil::IOBuf* s_rtmp_handshake_client_random = NULL;
+static butil::IOBuf* s_rtmp_handshake_client_random = nullptr;
 static pthread_once_t s_cr_once = PTHREAD_ONCE_INIT;
 static void InitRtmpHandshakeClientRandom() {
     char buf[1528];
@@ -147,16 +147,16 @@ namespace adobe_hs {
 // Modified from code in SRS2 (src/protocol/srs_rtmp_handshake.cpp:94)
 int openssl_HMACsha256(const void* key, int key_size,
                        const void* data, int data_size, void* digest) {
-    if (NULL == EVP_sha256) {
+    if (nullptr == EVP_sha256) {
         LOG_ONCE(ERROR) << "Fail to find EVP_sha256, fall back to simple handshaking";
         return -1;
     }
     unsigned int digest_size = 0;
     unsigned char* temp_digest = (unsigned char*)digest;
-    if (key == NULL) {
+    if (key == nullptr) {
         // NOTE: first parameter of EVP_Digest in older openssl is void*.
         if (EVP_Digest(const_cast<void*>(data), data_size, temp_digest,
-                       &digest_size, EVP_sha256(), NULL) < 0) {
+                       &digest_size, EVP_sha256(), nullptr) < 0) {
             LOG(ERROR) << "Fail to EVP_Digest";
             return -1;
         }
@@ -165,7 +165,7 @@ int openssl_HMACsha256(const void* key, int key_size,
         // inconsistent in different version of openssl.
         if (HMAC(EVP_sha256(), key, key_size,
                  (const unsigned char*) data, data_size,
-                 temp_digest, &digest_size) == NULL) {
+                 temp_digest, &digest_size) == nullptr) {
             LOG(ERROR) << "Fail to HMAC";
             return -1;
         }
@@ -431,7 +431,7 @@ bool C1S1Base::ComputeDigestBase(const void* key, int key_size,
 
 bool C1::Generate(C1S1Schema schema) {
     _schema = schema;
-    time = ::time(NULL);
+    time = ::time(nullptr);
     version = FP_VERSION;
     key_blk.Generate();
     digest_blk.Generate();
@@ -473,7 +473,7 @@ bool C1::Load(const void* buf) {
 
 bool S1::Generate(const C1& c1) {
     _schema = c1.schema();
-    time = ::time(NULL);
+    time = ::time(nullptr);
     version = FMS_VERSION;
     key_blk.Generate();
     digest_blk.Generate();
@@ -710,7 +710,7 @@ RtmpUnsentMessage* MakeUnsentControlMessage(
 
 RtmpContext::RtmpContext(const RtmpClientOptions* copt, const Server* server)
     : _state(RtmpContext::STATE_UNINITIALIZED)
-    , _s1_digest(NULL)
+    , _s1_digest(nullptr)
     , _chunk_size_out(RTMP_INITIAL_CHUNK_SIZE)
     , _chunk_size_in(RTMP_INITIAL_CHUNK_SIZE)
     , _window_ack_size(RTMP_DEFAULT_WINDOW_ACK_SIZE)
@@ -719,12 +719,12 @@ RtmpContext::RtmpContext(const RtmpClientOptions* copt, const Server* server)
     , _cs_id_allocator(RTMP_CONTROL_CHUNK_STREAM_ID + 1)
     , _ms_id_allocator(RTMP_CONTROL_MESSAGE_STREAM_ID + 1)
     , _client_options(copt)
-    , _on_connect(NULL)
-    , _on_connect_arg(NULL)
+    , _on_connect(nullptr)
+    , _on_connect_arg(nullptr)
     , _only_check_simple_s0s1(false)
     , _create_stream_with_play_or_publish(false)
     , _server(server)
-    , _service(NULL)
+    , _service(nullptr)
     , _trans_id_allocator(2)
     , _simplified_rtmp(false) {
     if (server) {
@@ -767,13 +767,13 @@ RtmpContext::~RtmpContext() {
     for (size_t i = 0; i < RTMP_CHUNK_ARRAY_1ST_SIZE; ++i) {
         SubChunkArray* p = _cstream_ctx[i].load(butil::memory_order_relaxed);
         if (p) {
-            _cstream_ctx[i].store(NULL, butil::memory_order_relaxed);
+            _cstream_ctx[i].store(nullptr, butil::memory_order_relaxed);
             delete p;
         }
     }
 
     free(_s1_digest);
-    _s1_digest = NULL;
+    _s1_digest = nullptr;
 }
 
 void RtmpContext::Destroy() {
@@ -783,13 +783,13 @@ void RtmpContext::Destroy() {
 butil::Status
 RtmpUnsentMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
     std::unique_ptr<RtmpUnsentMessage> destroy_self(this);
-    if (s == NULL) { // abandoned
-        RPC_VLOG << "Socket=NULL";
+    if (s == nullptr) { // abandoned
+        RPC_VLOG << "Socket=nullptr";
         return butil::Status::OK();
     }
     RtmpContext* ctx = static_cast<RtmpContext*>(s->parsing_context());
     RtmpChunkStream* cstream = ctx->GetChunkStream(chunk_stream_id);
-    if (cstream == NULL) {
+    if (cstream == nullptr) {
         s->SetFailed(EINVAL, "Invalid chunk_stream_id=%u", chunk_stream_id);
         return butil::Status(EINVAL, "Invalid chunk_stream_id=%u", chunk_stream_id);
     }
@@ -816,7 +816,7 @@ RtmpContext::SubChunkArray::~SubChunkArray() {
     for (size_t i = 0; i < RTMP_CHUNK_ARRAY_2ND_SIZE; ++i) {
         RtmpChunkStream* stream = ptrs[i].load(butil::memory_order_relaxed);
         if (stream) {
-            ptrs[i].store(NULL, butil::memory_order_relaxed);
+            ptrs[i].store(nullptr, butil::memory_order_relaxed);
             delete stream;
         }
     }
@@ -825,15 +825,15 @@ RtmpContext::SubChunkArray::~SubChunkArray() {
 RtmpChunkStream* RtmpContext::GetChunkStream(uint32_t cs_id) {
     if (cs_id > RTMP_MAX_CHUNK_STREAM_ID) {
         LOG(ERROR) << "Invalid chunk_stream_id=" << cs_id;
-        return NULL;
+        return nullptr;
     }
     const uint32_t index1 = cs_id / RTMP_CHUNK_ARRAY_2ND_SIZE;
     SubChunkArray* sub_array =
         _cstream_ctx[index1].load(butil::memory_order_consume);
-    if (sub_array == NULL) {
+    if (sub_array == nullptr) {
         // Optimistic creation.
         sub_array = new SubChunkArray;
-        SubChunkArray* expected = NULL;
+        SubChunkArray* expected = nullptr;
         if (!_cstream_ctx[index1].compare_exchange_strong(
                 expected, sub_array, butil::memory_order_acq_rel)) {
             delete sub_array;
@@ -843,10 +843,10 @@ RtmpChunkStream* RtmpContext::GetChunkStream(uint32_t cs_id) {
     const uint32_t index2 = cs_id - index1 * RTMP_CHUNK_ARRAY_2ND_SIZE;
     RtmpChunkStream* cstream =
         sub_array->ptrs[index2].load(butil::memory_order_consume);
-    if (cstream == NULL) {
+    if (cstream == nullptr) {
         // Optimistic creation.
         cstream = new RtmpChunkStream(this, cs_id);
-        RtmpChunkStream* expected = NULL;
+        RtmpChunkStream* expected = nullptr;
         if (!sub_array->ptrs[index2].compare_exchange_strong(
                 expected, cstream, butil::memory_order_acq_rel)) {
             delete cstream;
@@ -864,19 +864,19 @@ void RtmpContext::ClearChunkStream(uint32_t cs_id) {
     const uint32_t index1 = cs_id / RTMP_CHUNK_ARRAY_2ND_SIZE;
     SubChunkArray* sub_array =
         _cstream_ctx[index1].load(butil::memory_order_consume);
-    if (sub_array == NULL) {
+    if (sub_array == nullptr) {
         LOG(ERROR) << "chunk_stream_id=" << cs_id << " does not exist";
         return;
     }
     const uint32_t index2 = cs_id - index1 * RTMP_CHUNK_ARRAY_2ND_SIZE;
     RtmpChunkStream* cstream =
         sub_array->ptrs[index2].load(butil::memory_order_consume);
-    if (cstream == NULL) {
+    if (cstream == nullptr) {
         LOG(ERROR) << "chunk_stream_id=" << cs_id << " does not exist";
         return;
     }
     delete sub_array->ptrs[index2].exchange(
-        NULL, butil::memory_order_acquire);
+        nullptr, butil::memory_order_acquire);
 }
 
 void RtmpContext::AllocateChunkStreamId(uint32_t* chunk_stream_id) {
@@ -917,7 +917,7 @@ bool RtmpContext::FindMessageStream(
     uint32_t stream_id, butil::intrusive_ptr<RtmpStreamBase>* stream) {
     BAIDU_SCOPED_LOCK(_stream_mutex);
     MessageStreamInfo* info = _mstream_map.seek(stream_id);
-    if (info == NULL || info->stream == NULL) {
+    if (info == nullptr || info->stream == nullptr) {
         return false;
     }
     *stream = info->stream;
@@ -935,7 +935,7 @@ bool RtmpContext::AddClientStream(RtmpStreamBase* stream) {
     {
         std::unique_lock<butil::Mutex> mu(_stream_mutex);
         MessageStreamInfo& info = _mstream_map[stream_id];
-        if (info.stream != NULL) {
+        if (info.stream != nullptr) {
             mu.unlock();
             LOG(ERROR) << "stream_id=" << stream_id << " is already used";
             return false;
@@ -955,7 +955,7 @@ bool RtmpContext::AddServerStream(RtmpStreamBase* stream) {
             return false;
         }
         MessageStreamInfo& info = _mstream_map[stream_id];
-        if (info.stream != NULL) {
+        if (info.stream != nullptr) {
             mu.unlock();
             LOG(ERROR) << "stream_id=" << stream_id << " is already used";
             return false;
@@ -968,8 +968,8 @@ bool RtmpContext::AddServerStream(RtmpStreamBase* stream) {
 }
 
 bool RtmpContext::RemoveMessageStream(RtmpStreamBase* stream) {
-    if (stream == NULL) {
-        LOG(FATAL) << "Param[stream] is NULL";
+    if (stream == nullptr) {
+        LOG(FATAL) << "Param[stream] is nullptr";
         return false;
     }
     const uint32_t stream_id = stream->stream_id();
@@ -983,7 +983,7 @@ bool RtmpContext::RemoveMessageStream(RtmpStreamBase* stream) {
     {
         std::unique_lock<butil::Mutex> mu(_stream_mutex);
         MessageStreamInfo* info = _mstream_map.seek(stream_id);
-        if (info == NULL) {
+        if (info == nullptr) {
             mu.unlock();
             return false;
         }
@@ -1022,7 +1022,7 @@ bool RtmpContext::AddTransaction(uint32_t* out_transaction_id,
             continue;
         }
         step *= 2; // 1,2,4,8,16,32,64,128,256,512,1024
-        if (_trans_map.seek(transaction_id) == NULL) {
+        if (_trans_map.seek(transaction_id) == nullptr) {
             _trans_map[transaction_id] = handler;
             *out_transaction_id = transaction_id;
             return true;
@@ -1033,11 +1033,11 @@ bool RtmpContext::AddTransaction(uint32_t* out_transaction_id,
 
 RtmpTransactionHandler*
 RtmpContext::RemoveTransaction(uint32_t transaction_id) {
-    RtmpTransactionHandler* handler = NULL;
+    RtmpTransactionHandler* handler = nullptr;
     {
         BAIDU_SCOPED_LOCK(_trans_mutex);
         RtmpTransactionHandler** phandler = _trans_map.seek(transaction_id);
-        if (phandler != NULL) {
+        if (phandler != nullptr) {
             handler = *phandler;
             _trans_map.erase(transaction_id);
         }
@@ -1205,7 +1205,7 @@ ParseResult RtmpContext::WaitForC0C1orSimpleRtmp(butil::IOBuf* source, Socket* s
             s1.Save(buf);
             tmp.append(buf, RTMP_HANDSHAKE_SIZE1);
             _s1_digest = malloc(adobe_hs::DigestBlock::DIGEST_SIZE);
-            if (_s1_digest == NULL) {
+            if (_s1_digest == nullptr) {
                 LOG(ERROR) << "Fail to malloc";
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE);
             }
@@ -1325,7 +1325,7 @@ ParseResult RtmpContext::WaitForS2(butil::IOBuf* source, Socket* socket) {
 ParseResult RtmpContext::OnChunks(butil::IOBuf* source, Socket* socket) {
     // Parse basic header.
     const char* p = (const char*)source->fetch1();
-    if (NULL == p) {
+    if (nullptr == p) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     const uint8_t first_byte = *p;
@@ -1353,7 +1353,7 @@ ParseResult RtmpContext::OnChunks(butil::IOBuf* source, Socket* socket) {
     } // else 1-byte basic header, keep cs_id as it is.
     RtmpBasicHeader bh = { cs_id, fmt, basic_header_len };
     RtmpChunkStream* cstream = GetChunkStream(cs_id);
-    if (cstream == NULL) {
+    if (cstream == nullptr) {
         LOG(ERROR) << "Invalid chunk_stream_id=" << cs_id;
         return MakeParseError(PARSE_ERROR_NO_RESOURCE);
     }
@@ -1396,14 +1396,14 @@ RtmpChunkStream::WriteParams::WriteParams()
     , last_timestamp_delta(0) {
 }
 
-MethodStatus* g_client_msg_status = NULL;
+MethodStatus* g_client_msg_status = nullptr;
 static pthread_once_t g_client_msg_status_once = PTHREAD_ONCE_INIT;
 static void InitClientMessageStatus() {
     g_client_msg_status = new MethodStatus;
     g_client_msg_status->Expose("rtmp_client_in");
 }
 
-MethodStatus* g_server_msg_status = NULL;
+MethodStatus* g_server_msg_status = nullptr;
 static pthread_once_t g_server_msg_status_once = PTHREAD_ONCE_INIT;
 static void InitServerMessageStatus() {
     g_server_msg_status = new MethodStatus;
@@ -1615,8 +1615,8 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
     AddChunk();
 
     if (_r.left_message_length == 0) {
-        MethodStatus* st = NULL;
-        if (ctx->service() != NULL) {
+        MethodStatus* st = nullptr;
+        if (ctx->service() != nullptr) {
             pthread_once(&g_server_msg_status_once, InitServerMessageStatus);
             st = g_server_msg_status;
         } else {
@@ -1639,7 +1639,7 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
     } else {
         _r.first_chunk_of_message = false;
     }
-    return MakeMessage(NULL);
+    return MakeMessage(nullptr);
 }
 
 int RtmpChunkStream::SerializeMessage(butil::IOBuf* buf,
@@ -1742,26 +1742,26 @@ static const RtmpChunkStream::MessageHandler s_msg_handlers[] = {
     &RtmpChunkStream::OnUserControlMessage, // 4
     &RtmpChunkStream::OnWindowAckSize,// 5
     &RtmpChunkStream::OnSetPeerBandwidth, // 6
-    NULL, //7
+    nullptr, //7
     &RtmpChunkStream::OnAudioMessage, // 8
     &RtmpChunkStream::OnVideoMessage, // 9
-    NULL, // 10
-    NULL, // 11
-    NULL, // 12
-    NULL, // 13
-    NULL, // 14
+    nullptr, // 10
+    nullptr, // 11
+    nullptr, // 12
+    nullptr, // 13
+    nullptr, // 14
     &RtmpChunkStream::OnDataMessageAMF3, // 15
     &RtmpChunkStream::OnSharedObjectMessageAMF3, // 16
     &RtmpChunkStream::OnCommandMessageAMF3, // 17
     &RtmpChunkStream::OnDataMessageAMF0, // 18
     &RtmpChunkStream::OnSharedObjectMessageAMF0, // 19
     &RtmpChunkStream::OnCommandMessageAMF0, // 20
-    NULL, // 21
+    nullptr, // 21
     &RtmpChunkStream::OnAggregateMessage, // 22
 };
 
 typedef butil::FlatMap<std::string, RtmpChunkStream::CommandHandler> CommandHandlerMap;
-static CommandHandlerMap* s_cmd_handlers = NULL;
+static CommandHandlerMap* s_cmd_handlers = nullptr;
 static pthread_once_t s_cmd_handlers_init_once = PTHREAD_ONCE_INIT;
 static void InitCommandHandlers() {
     // Dispatch commands based on "Command Name".
@@ -1811,7 +1811,7 @@ bool RtmpChunkStream::OnMessage(const RtmpBasicHeader& bh,
         return false;
     }
     MessageHandler handler = s_msg_handlers[index];
-    if (handler == NULL) {
+    if (handler == nullptr) {
         RTMP_ERROR(socket, mh) << "Unknown message_type=" << (int)mh.message_type;
         return false;
     }
@@ -1956,7 +1956,7 @@ bool RtmpChunkStream::OnStreamBegin(const RtmpMessageHeader& mh,
                                     const butil::StringPiece& event_data,
                                     Socket* socket) {
     RtmpService* service = connection_context()->service();
-    if (service != NULL) {
+    if (service != nullptr) {
         RTMP_ERROR(socket, mh) << "Server should not receive `StreamBegin'";
         return false;
     }
@@ -1973,7 +1973,7 @@ bool RtmpChunkStream::OnStreamEOF(const RtmpMessageHeader& mh,
                                   const butil::StringPiece& event_data,
                                   Socket* socket) {
     RtmpService* service = connection_context()->service();
-    if (service != NULL) {
+    if (service != nullptr) {
         RTMP_ERROR(socket, mh) << "Server should not receive `StreamEOF'";
         return false;
     }
@@ -1990,7 +1990,7 @@ bool RtmpChunkStream::OnStreamDry(const RtmpMessageHeader& mh,
                                   const butil::StringPiece& event_data,
                                   Socket* socket) {
     RtmpService* service = connection_context()->service();
-    if (service != NULL) {
+    if (service != nullptr) {
         RTMP_ERROR(socket, mh) << "Server should not receive `StreamDry'";
         return false;
     }
@@ -2007,7 +2007,7 @@ bool RtmpChunkStream::OnStreamIsRecorded(const RtmpMessageHeader& mh,
                                          const butil::StringPiece& event_data,
                                          Socket* socket) {
     RtmpService* service = connection_context()->service();
-    if (service != NULL) {
+    if (service != nullptr) {
         RTMP_ERROR(socket, mh) << "Server should not receive `StreamIsRecorded'";
         return false;
     }
@@ -2024,7 +2024,7 @@ bool RtmpChunkStream::OnSetBufferLength(const RtmpMessageHeader& mh,
                                         const butil::StringPiece& event_data,
                                         Socket* socket) {
     RtmpService* service = connection_context()->service();
-    if (service == NULL) {
+    if (service == nullptr) {
         RTMP_ERROR(socket, mh) << "Client should not receive `SetBufferLength'";
         return false;
     }
@@ -2055,7 +2055,7 @@ bool RtmpChunkStream::OnPingRequest(const RtmpMessageHeader& mh,
                                     const butil::StringPiece& event_data,
                                     Socket* socket) {
     RtmpService* service = connection_context()->service();
-    if (service != NULL) {
+    if (service != nullptr) {
         RTMP_ERROR(socket, mh) << "Server should not receive `PingRequest'";
         return false;
     }
@@ -2082,7 +2082,7 @@ bool RtmpChunkStream::OnPingResponse(const RtmpMessageHeader& mh,
                                      const butil::StringPiece& event_data,
                                      Socket* socket) {
     RtmpService* service = connection_context()->service();
-    if (service == NULL) {
+    if (service == nullptr) {
         RTMP_ERROR(socket, mh) << "Client should not receive `PingResponse'";
         return false;
     }
@@ -2276,7 +2276,7 @@ bool RtmpChunkStream::OnCommandMessageAMF0(
     pthread_once(&s_cmd_handlers_init_once, InitCommandHandlers);
     RtmpChunkStream::CommandHandler* phandler =
         s_cmd_handlers->seek(command_name);
-    if (phandler == NULL) {
+    if (phandler == nullptr) {
         RTMP_ERROR(socket, mh) << "Unknown command_name=" << command_name;
         return false;
     }
@@ -2345,7 +2345,7 @@ bool RtmpChunkStream::OnConnect(const RtmpMessageHeader& mh,
              << "] connect{" << req->ShortDebugString() << '}';
 
     TemporaryArrayBuilder<SocketMessagePtr<RtmpUnsentMessage>, 5> msgs;
-    char* p = NULL;
+    char* p = nullptr;
     // WindowAckSize
     // TODO(gejun): seems not effective to ffplay.
     char wasbuf[4];
@@ -2454,10 +2454,10 @@ bool RtmpChunkStream::OnBWDone(const RtmpMessageHeader& mh,
 }
 
 void RtmpContext::OnConnected(int error_code) {
-    if (_on_connect != NULL) {
+    if (_on_connect != nullptr) {
         void (*saved_on_connect)(int, void*) = _on_connect;
         void* saved_arg = _on_connect_arg;
-        _on_connect = NULL;
+        _on_connect = nullptr;
         saved_on_connect(error_code, saved_arg);
     }
 }
@@ -2496,7 +2496,7 @@ bool RtmpChunkStream::OnResult(const RtmpMessageHeader& mh,
     }
     RtmpContext* ctx = static_cast<RtmpContext*>(socket->parsing_context());
     RtmpTransactionHandler* handler = ctx->RemoveTransaction(transaction_id);
-    if (handler == NULL) {
+    if (handler == nullptr) {
         RTMP_WARNING(socket, mh) << "Unknown _result.TransactionId="
                                  << transaction_id;
         return false;
@@ -2526,7 +2526,7 @@ bool RtmpChunkStream::OnError(const RtmpMessageHeader& mh,
     }
     RtmpContext* ctx = static_cast<RtmpContext*>(socket->parsing_context());
     RtmpTransactionHandler* handler = ctx->RemoveTransaction(transaction_id);
-    if (handler == NULL) {
+    if (handler == nullptr) {
         RTMP_WARNING(socket, mh) << "Unknown _error.TransactionId="
                                  << transaction_id;
         return false;
@@ -2571,7 +2571,7 @@ bool RtmpChunkStream::OnCreateStream(const RtmpMessageHeader& mh,
                                      AMFInputStream* istream,
                                      Socket* socket) {
     RtmpService* service = connection_context()->service();
-    if (service == NULL) {
+    if (service == nullptr) {
         RTMP_ERROR(socket, mh) << "Client should not receive `createStream'";
         return false;
     }
@@ -2589,16 +2589,16 @@ bool RtmpChunkStream::OnCreateStream(const RtmpMessageHeader& mh,
         return false;
     }
     const AMFField* cmd_name_field = cmd_obj.Find("CommandName");
-    if (cmd_name_field != NULL && cmd_name_field->IsString()) {
+    if (cmd_name_field != nullptr && cmd_name_field->IsString()) {
         is_publish = (cmd_name_field->AsString() == "publish");
     }
     const AMFField* stream_name_field = cmd_obj.Find("StreamName");
-    if (stream_name_field != NULL && stream_name_field->IsString()) {
+    if (stream_name_field != nullptr && stream_name_field->IsString()) {
         stream_name_field->AsString().CopyToString(&stream_name);
     }
     if (is_publish) {
         const AMFField* publish_type_field = cmd_obj.Find("PublishType");
-        if (publish_type_field != NULL && publish_type_field->IsString()) {
+        if (publish_type_field != nullptr && publish_type_field->IsString()) {
             Str2RtmpPublishType(publish_type_field->AsString(), &publish_type);
         }
     }
@@ -2608,10 +2608,10 @@ bool RtmpChunkStream::OnCreateStream(const RtmpMessageHeader& mh,
     butil::intrusive_ptr<RtmpServerStream> stream(
         service->NewStream(connection_context()->_connect_req));
     if (connection_context()->_connect_req.stream_multiplexing() &&
-        stream != NULL) {
+        stream != nullptr) {
         stream->_client_supports_stream_multiplexing = true;
     }
-    if (NULL == stream) {
+    if (nullptr == stream) {
         error_text = "Fail to create stream";
         LOG(ERROR) << error_text;
     } else {
@@ -3408,26 +3408,26 @@ bool RtmpChunkStream::OnPause(const RtmpMessageHeader& mh,
 
 inline ParseResult IsPossiblyRtmp(const butil::IOBuf* source) {
     const char* p = (const char*)source->fetch1();
-    if (p == NULL) {
+    if (p == nullptr) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     if (*p != RTMP_DEFAULT_VERSION) {
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
-    return MakeMessage(NULL);
+    return MakeMessage(nullptr);
 }
 
 ParseResult ParseRtmpMessage(butil::IOBuf* source, Socket *socket, bool read_eof,
                              const void* arg) {
     RtmpContext* rtmp_ctx = static_cast<RtmpContext*>(socket->parsing_context());
-    if (rtmp_ctx == NULL) {
-        if (arg == NULL) {
+    if (rtmp_ctx == nullptr) {
+        if (arg == nullptr) {
             // We are probably parsing another client-side protocol.
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
         const Server* server = static_cast<const Server*>(arg);
         RtmpService* service = server->options().rtmp_service;
-        if (service == NULL) {
+        if (service == nullptr) {
             // Validating RTMP protocol only checks the first byte, which
             // is very easy to be confused with other protocols. Currently
             // if rtmp_service is not set, the protocol is skipped w/o any
@@ -3443,8 +3443,8 @@ ParseResult ParseRtmpMessage(butil::IOBuf* source, Socket *socket, bool read_eof
         if (!r.is_ok()) {
             return r;
         }
-        rtmp_ctx = new (std::nothrow) RtmpContext(NULL, server);
-        if (rtmp_ctx == NULL) {
+        rtmp_ctx = new (std::nothrow) RtmpContext(nullptr, server);
+        if (rtmp_ctx == nullptr) {
             LOG(FATAL) << "Fail to new RtmpContext";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
@@ -3480,7 +3480,7 @@ void OnServerStreamCreated::Run(bool error,
     std::unique_ptr<OnServerStreamCreated> delete_self(this);
     // End the createStream call.
     RtmpContext* ctx = static_cast<RtmpContext*>(socket->parsing_context());
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         LOG(FATAL) << "RtmpContext must be created";
         return;
     }
@@ -3489,7 +3489,7 @@ void OnServerStreamCreated::Run(bool error,
     const int64_t received_us = start_parse_us;
     const int64_t base_realtime = butil::gettimeofday_us() - received_us;
     const bthread_id_t cid = _call_id;
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -3506,7 +3506,7 @@ void OnServerStreamCreated::Run(bool error,
             break;
         }
         const AMFField* field = cmd_obj.Find("PlayOrPublishAccepted");
-        if (field != NULL && field->IsBool() && field->AsBool()) {
+        if (field != nullptr && field->IsBool() && field->AsBool()) {
             _stream->_created_stream_with_play_or_publish = true;
         }
         if (error) {
@@ -3555,12 +3555,12 @@ void OnServerStreamCreated::Cancel() {
 butil::Status
 RtmpCreateStreamMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
     std::unique_ptr<RtmpCreateStreamMessage> destroy_self(this);
-    if (s == NULL) {  // abandoned
+    if (s == nullptr) {  // abandoned
         return butil::Status::OK();
     }
     // Serialize createStream command
     RtmpContext* ctx = static_cast<RtmpContext*>(socket->parsing_context());
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return butil::Status(EINVAL, "RtmpContext of %s is not created",
                             socket->description().c_str());
     }
@@ -3601,7 +3601,7 @@ RtmpCreateStreamMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
         CHECK(ostream.good());
     }
     RtmpChunkStream* cstream = ctx->GetChunkStream(RTMP_CONTROL_CHUNK_STREAM_ID);
-    if (cstream == NULL) {
+    if (cstream == nullptr) {
         socket->SetFailed(EINVAL, "Invalid chunk_stream_id=%u",
                           RTMP_CONTROL_CHUNK_STREAM_ID);
         return butil::Status(EINVAL, "Invalid chunk_stream_id=%u",
@@ -3621,7 +3621,7 @@ RtmpCreateStreamMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
 void PackRtmpRequest(butil::IOBuf* /*buf*/,
                      SocketMessage** user_message,
                      uint64_t /*correlation_id*/,
-                     const google::protobuf::MethodDescriptor* /*NULL*/,
+                     const google::protobuf::MethodDescriptor* /*nullptr*/,
                      Controller* cntl,
                      const butil::IOBuf& /*request*/,
                      const Authenticator*) {
@@ -3629,7 +3629,7 @@ void PackRtmpRequest(butil::IOBuf* /*buf*/,
     ControllerPrivateAccessor accessor(cntl);
     Socket* s = accessor.get_sending_socket();
     RtmpContext* ctx = static_cast<RtmpContext*>(s->parsing_context());
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         cntl->SetFailed(EINVAL, "RtmpContext of %s is not created",
                         s->description().c_str());
         return;
@@ -3665,7 +3665,7 @@ void PackRtmpRequest(butil::IOBuf* /*buf*/,
 
 void SerializeRtmpRequest(butil::IOBuf* /*buf*/,
                           Controller* /*cntl*/,
-                          const google::protobuf::Message* /*NULL*/) {
+                          const google::protobuf::Message* /*nullptr*/) {
 }
 
 }  // namespace policy

@@ -55,14 +55,14 @@ public:
         typedef typename butil::conditional<
         ADDITIVE, detail::AddTo<Tp>, PlaceHolderOp>::type Op;
         explicit SeriesSampler(PassiveStatus* owner)
-            : _owner(owner), _vector_names(NULL), _series(Op()) {}
+            : _owner(owner), _vector_names(nullptr), _series(Op()) {}
         ~SeriesSampler() {
             delete _vector_names;
         }
         void take_sample() override { _series.append(_owner->get_value()); }
         void describe(std::ostream& os) { _series.describe(os, _vector_names); }
         void set_vector_names(const std::string& names) {
-            if (_vector_names == NULL) {
+            if (_vector_names == nullptr) {
                 _vector_names = new std::string;
             }
             *_vector_names = names;
@@ -80,8 +80,8 @@ public:
                   Tp (*getfn)(void*), void* arg)
         : _getfn(getfn)
         , _arg(arg)
-        , _sampler(NULL)
-        , _series_sampler(NULL) {
+        , _sampler(nullptr)
+        , _series_sampler(nullptr) {
         expose(name);
     }
     
@@ -90,27 +90,27 @@ public:
                   Tp (*getfn)(void*), void* arg)
         : _getfn(getfn)
         , _arg(arg)
-        , _sampler(NULL)
-        , _series_sampler(NULL) {
+        , _sampler(nullptr)
+        , _series_sampler(nullptr) {
         expose_as(prefix, name);
     }
     
     PassiveStatus(Tp (*getfn)(void*), void* arg) 
         : _getfn(getfn)
         , _arg(arg)
-        , _sampler(NULL)
-        , _series_sampler(NULL) {
+        , _sampler(nullptr)
+        , _series_sampler(nullptr) {
     }
 
     ~PassiveStatus() {
         hide();
         if (_sampler) {
             _sampler->destroy();
-            _sampler = NULL;
+            _sampler = nullptr;
         }
         if (_series_sampler) {
             _series_sampler->destroy();
-            _series_sampler = NULL;
+            _series_sampler = nullptr;
         }
     }
     
@@ -141,7 +141,7 @@ public:
     }
     
     sampler_type* get_sampler() {
-        if (NULL == _sampler) {
+        if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
             _sampler->schedule();
         }
@@ -152,7 +152,7 @@ public:
     detail::MinusFrom<Tp> inv_op() const { return detail::MinusFrom<Tp>(); }
 
     int describe_series(std::ostream& os, const SeriesOptions& options) const override {
-        if (_series_sampler == NULL) {
+        if (_series_sampler == nullptr) {
             return 1;
         }
         if (!options.test_only) {
@@ -173,7 +173,7 @@ protected:
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (ADDITIVE &&
             rc == 0 &&
-            _series_sampler == NULL &&
+            _series_sampler == nullptr &&
             FLAGS_save_series) {
             _series_sampler = new SeriesSampler(this);
             _series_sampler->schedule();

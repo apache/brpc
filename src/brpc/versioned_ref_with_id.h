@@ -236,7 +236,7 @@ public:
 
     // Mark this VersionedRefWithId or the VersionedRefWithId associated
     // with `id' as failed.
-    // Any later Address() of the identifier shall return NULL. The
+    // Any later Address() of the identifier shall return nullptr. The
     // VersionedRefWithId is NOT recycled after calling this function,
     // instead it will be recycled when no one references it. Internal
     // fields of the Socket are still accessible after calling this
@@ -354,7 +354,7 @@ template<typename ... Args>
 int VersionedRefWithId<T>::Create(VRefId* id, Args... args) {
     resource_id_t slot;
     T* const t = butil::get_resource(&slot, Forbidden());
-    if (t == NULL) {
+    if (t == nullptr) {
         LOG(FATAL) << "Fail to get_resource<"
                    << butil::class_name_str<T>() << ">";
         return -1;
@@ -399,7 +399,7 @@ int VersionedRefWithId<T>::AddressImpl(
     VRefId id, bool failed_as_well, VersionedRefWithIdUniquePtr<T>* ptr) {
     const resource_id_t slot = SlotOfVRefId<T>(id);
     T* const t = address_resource(slot);
-    if (__builtin_expect(t != NULL, 1)) {
+    if (__builtin_expect(t != nullptr, 1)) {
         // acquire fence makes sure this thread sees latest changes before
         // Dereference() or Revive().
         VersionedRefWithId<T>* const vref_with_id = t;
@@ -481,7 +481,7 @@ int VersionedRefWithId<T>::SetFailedImpl(Args... args) {
         if (VersionOfVRef(vref) != id_ver) {
             return -1;
         }
-        // Try to set version=id_ver+1 (to make later address() return NULL),
+        // Try to set version=id_ver+1 (to make later address() return nullptr),
         // retry on fail.
         if (_versioned_ref.compare_exchange_strong(
                 vref, MakeVRef(id_ver + 1, NRefOfVRef(vref)),

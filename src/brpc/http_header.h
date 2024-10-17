@@ -78,7 +78,7 @@ public:
     //   https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
     // Namely, GetHeader("log-id"), GetHeader("Log-Id"), GetHeader("LOG-ID")
     // point to the same value.
-    // Return pointer to the value, NULL on not found.
+    // Return pointer to the value, nullptr on not found.
     // NOTE: If the key is "Content-Type", `GetHeader("Content-Type")'
     // (case-insensitive) is equal to `content_type()'.
     const std::string* GetHeader(const char* key) const;

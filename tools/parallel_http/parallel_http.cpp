@@ -92,9 +92,9 @@ void* access_thread(void* void_args) {
         done->cntl.http_request().uri() = url;
         done->args = args;
         done->url = url;
-        channel.CallMethod(NULL, &done->cntl, NULL, NULL, done);
+        channel.CallMethod(nullptr, &done->cntl, nullptr, nullptr, done);
     }
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char** argv) {
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     // }
 
     butil::ScopedFILE fp_guard;
-    FILE* fp = NULL;
+    FILE* fp = nullptr;
     if (!FLAGS_url_file.empty()) {
         fp_guard.reset(fopen(FLAGS_url_file.c_str(), "r"));
         if (!fp_guard) {
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     } else {
         fp = stdin;
     }
-    char* line_buf = NULL;
+    char* line_buf = nullptr;
     size_t line_len = 0;
     ssize_t nr = 0;
     std::deque<std::string> url_list;
@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
     std::vector<bthread_t> tids;
     tids.resize(FLAGS_thread_num);
     for (int i = 0; i < FLAGS_thread_num; ++i) {
-        CHECK_EQ(0, bthread_start_background(&tids[i], NULL, access_thread, &args[i]));
+        CHECK_EQ(0, bthread_start_background(&tids[i], nullptr, access_thread, &args[i]));
     }
     std::deque<std::pair<std::string, butil::IOBuf> > output_queue;
     size_t nprinted = 0;
@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
     }
 
     for (int i = 0; i < FLAGS_thread_num; ++i) {
-        bthread_join(tids[i], NULL);
+        bthread_join(tids[i], nullptr);
     }
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         while (args[i].current_concurrency.load(butil::memory_order_relaxed) != 0) {

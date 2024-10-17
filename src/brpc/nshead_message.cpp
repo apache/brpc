@@ -95,7 +95,7 @@ int NsheadMessage::ByteSize() const {
 void NsheadMessage::MergeFrom(const ::google::protobuf::Message& from) {
     CHECK_NE(&from, this);
     const NsheadMessage* source = dynamic_cast<const NsheadMessage*>(&from);
-    if (source == NULL) {
+    if (source == nullptr) {
         LOG(ERROR) << "Can only merge from NsheadMessage";
         return;
     } else {
@@ -138,7 +138,7 @@ void NsheadMessage::Swap(NsheadMessage* other) {
 ::google::protobuf::Metadata NsheadMessage::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
     metadata.descriptor = NsheadMessage::descriptor();
-    metadata.reflection = NULL;
+    metadata.reflection = nullptr;
     return metadata;
 }
 

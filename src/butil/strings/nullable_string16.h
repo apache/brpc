@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BUTIL_STRINGS_NULLABLE_STRING16_H_
-#define BUTIL_STRINGS_NULLABLE_STRING16_H_
+#ifndef BUTIL_STRINGS_nullptrABLE_STRING16_H_
+#define BUTIL_STRINGS_nullptrABLE_STRING16_H_
 
 #include <iosfwd>
 
@@ -43,4 +43,4 @@ BUTIL_EXPORT std::ostream& operator<<(std::ostream& out,
 
 }  // namespace
 
-#endif  // BUTIL_STRINGS_NULLABLE_STRING16_H_
+#endif  // BUTIL_STRINGS_nullptrABLE_STRING16_H_

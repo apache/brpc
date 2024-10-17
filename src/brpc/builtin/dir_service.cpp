@@ -48,7 +48,7 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
         open_path = "/";
     }
     DIR* dir = opendir(open_path.c_str());
-    if (NULL == dir) {
+    if (nullptr == dir) {
         butil::fd_guard fd(open(open_path.c_str(), O_RDONLY));
         if (fd < 0) {
             cntl->SetFailed(errno, "Cannot open `%s'", open_path.c_str());
@@ -81,7 +81,7 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
         cntl->http_response().set_content_type("text/plain");
     } else {
         const bool use_html = UseHTML(cntl->http_request());
-        const butil::EndPoint* const html_addr = (use_html ? Path::LOCAL : NULL);
+        const butil::EndPoint* const html_addr = (use_html ? Path::LOCAL : nullptr);
         cntl->http_response().set_content_type(
             use_html ? "text/html" : "text/plain");
 
@@ -90,10 +90,10 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
         // readdir_r is marked as deprecated since glibc 2.24. 
 #if defined(__GLIBC__) && \
         (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 24))
-        for (struct dirent* p = NULL; (p = readdir(dir)) != NULL; ) {
+        for (struct dirent* p = nullptr; (p = readdir(dir)) != nullptr; ) {
 #else
         struct dirent entbuf;
-        for (struct dirent* p = NULL; readdir_r(dir, &entbuf, &p) == 0 && p; ) {
+        for (struct dirent* p = nullptr; readdir_r(dir, &entbuf, &p) == 0 && p; ) {
 #endif
             files.push_back(p->d_name);
         }

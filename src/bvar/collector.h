@@ -94,20 +94,20 @@ public:
     virtual void destroy() = 0;
 
     // Returns an object to control #samples collected per second.
-    // If NULL is returned, samples collected per second is limited by a
-    // global speed limit shared with other samples also returning NULL.
+    // If nullptr is returned, samples collected per second is limited by a
+    // global speed limit shared with other samples also returning nullptr.
     // All instances of a subclass of Collected should return a same instance
     // of CollectorSpeedLimit. The instance should remain valid during lifetime
     // of program.
     virtual CollectorSpeedLimit* speed_limit() = 0;
 
-    // If this method returns a non-NULL instance, it will be applied to
+    // If this method returns a non-nullptr instance, it will be applied to
     // samples in batch before dumping. You can sort or shuffle the samples
     // in the impl.
     // All instances of a subclass of Collected should return a same instance
     // of CollectorPreprocessor. The instance should remain valid during
     // lifetime of program.
-    virtual CollectorPreprocessor* preprocessor() { return NULL; }
+    virtual CollectorPreprocessor* preprocessor() { return nullptr; }
 };
 
 // To know if an instance should be sampled.

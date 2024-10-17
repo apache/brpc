@@ -65,11 +65,11 @@ void GFlag::get_value(boost::any* value) const {
         *value = static_cast<int64_t>(atoll(info.current_value.c_str()));
     } else if (info.type == "uint64") {
         *value = static_cast<uint64_t>(
-            strtoull(info.current_value.c_str(), NULL, 10));
+            strtoull(info.current_value.c_str(), nullptr, 10));
     } else if (info.type == "bool") {
         *value = (info.current_value == "true");
     } else if (info.type == "double") {
-        *value = strtod(info.current_value.c_str(), NULL);
+        *value = strtod(info.current_value.c_str(), nullptr);
     } else {
         *value = "Unknown type=" + info.type + " of gflag=" + gflag_name();
     }

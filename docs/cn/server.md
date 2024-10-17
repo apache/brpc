@@ -120,13 +120,13 @@ public:
     // Constructed with a closure which will be Run() inside dtor.
     explicit ClosureGuard(google::protobuf::Closure* done);
     
-    // Call Run() of internal closure if it's not NULL.
+    // Call Run() of internal closure if it's not nullptr.
     ~ClosureGuard();
  
-    // Call Run() of internal closure if it's not NULL and set it to `done'.
+    // Call Run() of internal closure if it's not nullptr and set it to `done'.
     void reset(google::protobuf::Closure* done);
  
-    // Set internal closure to NULL and return the one before set.
+    // Set internal closure to nullptr and return the one before set.
     google::protobuf::Closure* release();
 };
 ```
@@ -218,7 +218,7 @@ int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt);  
 
 关于IPV6和Unix domain socket的使用，详见 [EndPoint](endpoint.md)。
 
-`options`为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
+`options`为nullptr时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 
 ```c++
 brpc::ServerOptions options;  // 包含了默认值
@@ -726,7 +726,7 @@ curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service |
 
 session-local data与一次server端RPC绑定: 从进入service回调开始，到调用server端的done结束，不管该service是同步还是异步处理。 session-local data会尽量被重用，在server停止前不会被删除。
 
-设置ServerOptions.session_local_data_factory后访问Controller.session_local_data()即可获得session-local数据。若没有设置，Controller.session_local_data()总是返回NULL。
+设置ServerOptions.session_local_data_factory后访问Controller.session_local_data()即可获得session-local数据。若没有设置，Controller.session_local_data()总是返回nullptr。
 
 若ServerOptions.reserved_session_local_data大于0，Server会在提供服务前就创建这么多个数据。
 
@@ -751,7 +751,7 @@ public:
         // Get the session-local data which is created by ServerOptions.session_local_data_factory
         // and reused between different RPC.
         MySessionLocalData* sd = static_cast<MySessionLocalData*>(cntl->session_local_data());
-        if (sd == NULL) {
+        if (sd == nullptr) {
             cntl->SetFailed("Require ServerOptions.session_local_data_factory to be set with a correctly implemented instance");
             return;
         }
@@ -762,9 +762,9 @@ public:
 struct ServerOptions {
     ...
     // The factory to create/destroy data attached to each RPC session.
-    // If this field is NULL, Controller::session_local_data() is always NULL.
+    // If this field is nullptr, Controller::session_local_data() is always nullptr.
     // NOT owned by Server and must be valid when Server is running.
-    // Default: NULL
+    // Default: nullptr
     const DataFactory* session_local_data_factory;
  
     // Prepare so many session-local data before server starts, so that calls
@@ -808,7 +808,7 @@ int main(int argc, char* argv[]) {
 
 server-thread-local与一次service回调绑定，从进service回调开始，到出service回调结束。所有的server-thread-local data会被尽量重用，在server停止前不会被删除。在实现上server-thread-local是一个特殊的bthread-local。
 
-设置ServerOptions.thread_local_data_factory后访问brpc::thread_local_data()即可获得thread-local数据。若没有设置，brpc::thread_local_data()总是返回NULL。
+设置ServerOptions.thread_local_data_factory后访问brpc::thread_local_data()即可获得thread-local数据。若没有设置，brpc::thread_local_data()总是返回nullptr。
 
 若ServerOptions.reserved_thread_local_data大于0，Server会在启动前就创建这么多个数据。
 
@@ -840,7 +840,7 @@ public:
         // and reused between different threads.
         // "tls" is short for "thread local storage".
         MyThreadLocalData* tls = static_cast<MyThreadLocalData*>(brpc::thread_local_data());
-        if (tls == NULL) {
+        if (tls == nullptr) {
             cntl->SetFailed("Require ServerOptions.thread_local_data_factory "
                             "to be set with a correctly implemented instance");
             return;
@@ -853,9 +853,9 @@ struct ServerOptions {
     ...    
     // The factory to create/destroy data attached to each searching thread
     // in server.
-    // If this field is NULL, brpc::thread_local_data() is always NULL.
+    // If this field is nullptr, brpc::thread_local_data() is always nullptr.
     // NOT owned by Server and must be valid when Server is running.
-    // Default: NULL
+    // Default: nullptr
     const DataFactory* thread_local_data_factory;
  
     // Prepare so many thread-local data before server starts, so that calls
@@ -908,9 +908,9 @@ Session-local和server-thread-local对大部分server已经够用。不过在一
 ```c++
 // Create a key value identifying a slot in a thread-specific data area.
 // Each thread maintains a distinct thread-specific data area.
-// `destructor', if non-NULL, is called with the value associated to that key
+// `destructor', if non-nullptr, is called with the value associated to that key
 // when the key is destroyed. `destructor' is not called if the value
-// associated is NULL when the key is destroyed.
+// associated is nullptr when the key is destroyed.
 // Returns 0 on success, error code otherwise.
 extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data));
  
@@ -938,8 +938,8 @@ extern int bthread_key_delete(bthread_key_t key);
 extern int bthread_setspecific(bthread_key_t key, void* data);
  
 // Return current value of the thread-specific slot identified by `key'.
-// If bthread_setspecific() had not been called in the thread, return NULL.
-// If the key is invalid or deleted, return NULL.
+// If bthread_setspecific() had not been called in the thread, return nullptr.
+// If the key is invalid or deleted, return nullptr.
 extern void* bthread_getspecific(bthread_key_t key);
 ```
 
@@ -947,7 +947,7 @@ extern void* bthread_getspecific(bthread_key_t key);
 
 用bthread_key_create创建一个bthread_key_t，它代表一种bthread私有变量。
 
-用bthread_[get|set]specific查询和设置bthread私有变量。一个线程中第一次访问某个私有变量返回NULL。
+用bthread_[get|set]specific查询和设置bthread私有变量。一个线程中第一次访问某个私有变量返回nullptr。
 
 在所有线程都不使用和某个bthread_key_t相关的私有变量后再删除它。如果删除了一个仍在被使用的bthread_key_t，相关的私有变量就泄露了。
 
@@ -966,7 +966,7 @@ if (bthread_key_create(&tls_key, my_data_destructor) != 0) {
 ```c++
 // in some thread ...
 MyThreadLocalData* tls = static_cast<MyThreadLocalData*>(bthread_getspecific(tls_key));
-if (tls == NULL) {  // First call to bthread_getspecific (and before any bthread_setspecific) returns NULL
+if (tls == nullptr) {  // First call to bthread_getspecific (and before any bthread_setspecific) returns nullptr
     tls = new MyThreadLocalData;   // Create thread-local data on demand.
     CHECK_EQ(0, bthread_setspecific(tls_key, tls));  // set the data so that next time bthread_getspecific in the thread returns the data.
 }
@@ -1006,7 +1006,7 @@ public:
         //   pthread_getspecific -> bthread_getspecific
         //   pthread_setspecific -> bthread_setspecific
         MyThreadLocalData* tls2 = static_cast<MyThreadLocalData*>(bthread_getspecific(_tls2_key));
-        if (tls2 == NULL) {
+        if (tls2 == nullptr) {
             tls2 = new MyThreadLocalData;
             CHECK_EQ(0, bthread_setspecific(_tls2_key, tls2));
         }

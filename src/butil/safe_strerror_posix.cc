@@ -97,7 +97,7 @@ static void POSSIBLY_UNUSED wrap_posix_strerror_r(
 }
 
 void safe_strerror_r(int err, char *buf, size_t len) {
-  if (buf == NULL || len <= 0) {
+  if (buf == nullptr || len <= 0) {
     return;
   }
   // If using glibc (i.e., Linux), the compiler will automatically select the

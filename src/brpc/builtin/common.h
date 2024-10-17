@@ -73,7 +73,7 @@ std::ostream& operator<<(std::ostream& os, const PrintedAsDateTime&);
 struct Path {
     static const butil::EndPoint *LOCAL;
     Path(const char* uri2, const butil::EndPoint* html_addr2)
-        : uri(uri2), html_addr(html_addr2), text(NULL) {}
+        : uri(uri2), html_addr(html_addr2), text(nullptr) {}
     
     Path(const char* uri2, const butil::EndPoint* html_addr2, const char* text2)
         : uri(uri2), html_addr(html_addr2), text(text2) {}

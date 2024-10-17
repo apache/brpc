@@ -180,7 +180,7 @@ class LazyInstance {
       value = reinterpret_cast<subtle::AtomicWord>(
           Traits::New(private_buf_.void_data()));
       internal::CompleteLazyInstance(&private_instance_, value, this,
-                                     Traits::kRegisterOnExit ? OnExit : NULL);
+                                     Traits::kRegisterOnExit ? OnExit : nullptr);
     }
 
     // This annotation helps race detectors recognize correct lock-less
@@ -195,7 +195,7 @@ class LazyInstance {
   bool operator==(Type* p) {
     switch (subtle::NoBarrier_Load(&private_instance_)) {
       case 0:
-        return p == NULL;
+        return p == nullptr;
       case internal::kLazyInstanceStateCreating:
         return static_cast<void*>(p) == private_buf_.void_data();
       default:

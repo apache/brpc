@@ -18,7 +18,7 @@ sa_family_t type = get_endpoint_type(ep); // 可能为AF_INET、AF_INET6或AF_UN
 LOG(DEBUG) << ep; // 打印EndPoint
 std::string ep_str = endpoint2str(ep).c_str(); // EndPoint转str
 tcp_listen(ep); // 用监听EndPoint表示的tcp端口
-tcp_connect(ep, NULL); // 用连接EndPoint表示的tcp端口
+tcp_connect(ep, nullptr); // 用连接EndPoint表示的tcp端口
  
 sockaddr_storage ss;
 socklen_t socklen = 0;

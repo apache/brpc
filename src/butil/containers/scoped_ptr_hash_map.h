@@ -78,7 +78,7 @@ class ScopedPtrHashMap {
       return scoped_ptr<Value>();
 
     scoped_ptr<Value> ret(it->second);
-    it->second = NULL;
+    it->second = nullptr;
     return ret.Pass();
   }
 
@@ -109,11 +109,11 @@ class ScopedPtrHashMap {
   }
 
   // Returns the element in the hash_map that matches the given key.
-  // If no such element exists it returns NULL.
+  // If no such element exists it returns nullptr.
   Value* get(const Key& k) const {
     const_iterator it = find(k);
     if (it == end())
-      return NULL;
+      return nullptr;
     return it->second;
   }
 

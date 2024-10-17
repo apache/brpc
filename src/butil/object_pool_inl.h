@@ -114,7 +114,7 @@ public:
         BlockGroup() : nblock(0) {
             // We fetch_add nblock in add_block() before setting the entry,
             // thus address_resource() may sees the unset entry. Initialize
-            // all entries to NULL makes such address_resource() return NULL.
+            // all entries to nullptr makes such address_resource() return nullptr.
             memset(static_cast<void*>(blocks), 0, sizeof(butil::atomic<Block*>) * OP_GROUP_NBLOCK);
         }
     };
@@ -124,7 +124,7 @@ public:
     public:
         explicit LocalPool(ObjectPool* pool)
             : _pool(pool)
-            , _cur_block(NULL)
+            , _cur_block(nullptr)
             , _cur_block_index(0) {
             _cur_free.nfree = 0;
         }
@@ -159,7 +159,7 @@ public:
             BAIDU_OBJECT_POOL_FREE_ITEM_NUM_SUB1;                       \
             return _cur_free.ptrs[--_cur_free.nfree];                   \
         }                                                               \
-        T* obj = NULL;                                                  \
+        T* obj = nullptr;                                               \
         auto ctor = [&](void* mem) {                                    \
             obj = new (mem) T(__VA_ARGS__);                             \
         };                                                              \
@@ -168,23 +168,23 @@ public:
             (_cur_block->items + _cur_block->nitem)->InitBy(ctor);      \
             if (!ObjectPoolValidator<T>::validate(obj)) {               \
                 obj->~T();                                              \
-                return NULL;                                            \
+                return nullptr;                                         \
             }                                                           \
             ++_cur_block->nitem;                                        \
             return obj;                                                 \
         }                                                               \
         /* Fetch a Block from global */                                 \
         _cur_block = add_block(&_cur_block_index);                      \
-        if (_cur_block != NULL) {                                       \
+        if (_cur_block != nullptr) {                                    \
             (_cur_block->items + _cur_block->nitem)->InitBy(ctor);      \
             if (!ObjectPoolValidator<T>::validate(obj)) {               \
                 obj->~T();                                              \
-                return NULL;                                            \
+                return nullptr;                                         \
             }                                                           \
             ++_cur_block->nitem;                                        \
             return obj;                                                 \
         }                                                               \
-        return NULL;                                                    \
+        return nullptr;                                                 \
  
 
         inline T* get() {
@@ -234,7 +234,7 @@ public:
 
     inline bool local_free_empty() {
         LocalPool* lp = get_or_new_local_pool();
-        if (BAIDU_LIKELY(lp != NULL)) {
+        if (BAIDU_LIKELY(lp != nullptr)) {
             return lp->free_empty();
         }
         return true;
@@ -242,33 +242,33 @@ public:
 
     inline T* get_object() {
         LocalPool* lp = get_or_new_local_pool();
-        if (BAIDU_LIKELY(lp != NULL)) {
+        if (BAIDU_LIKELY(lp != nullptr)) {
             return lp->get();
         }
-        return NULL;
+        return nullptr;
     }
 
     template <typename A1>
     inline T* get_object(const A1& arg1) {
         LocalPool* lp = get_or_new_local_pool();
-        if (BAIDU_LIKELY(lp != NULL)) {
+        if (BAIDU_LIKELY(lp != nullptr)) {
             return lp->get(arg1);
         }
-        return NULL;
+        return nullptr;
     }
 
     template <typename A1, typename A2>
     inline T* get_object(const A1& arg1, const A2& arg2) {
         LocalPool* lp = get_or_new_local_pool();
-        if (BAIDU_LIKELY(lp != NULL)) {
+        if (BAIDU_LIKELY(lp != nullptr)) {
             return lp->get(arg1, arg2);
         }
-        return NULL;
+        return nullptr;
     }
 
     inline int return_object(T* ptr) {
         LocalPool* lp = get_or_new_local_pool();
-        if (BAIDU_LIKELY(lp != NULL)) {
+        if (BAIDU_LIKELY(lp != nullptr)) {
             return lp->return_object(ptr);
         }
         return -1;
@@ -277,7 +277,7 @@ public:
     void clear_objects() {
         LocalPool* lp = _local_pool;
         if (lp) {
-            _local_pool = NULL;
+            _local_pool = nullptr;
             butil::thread_atexit_cancel(LocalPool::delete_local_pool, lp);
             delete lp;
         }
@@ -303,7 +303,7 @@ public:
 
         for (size_t i = 0; i < info.block_group_num; ++i) {
             BlockGroup* bg = _block_groups[i].load(butil::memory_order_consume);
-            if (NULL == bg) {
+            if (nullptr == bg) {
                 break;
             }
             size_t nblock = std::min(bg->nblock.load(butil::memory_order_relaxed),
@@ -311,7 +311,7 @@ public:
             info.block_num += nblock;
             for (size_t j = 0; j < nblock; ++j) {
                 Block* b = bg->blocks[j].load(butil::memory_order_consume);
-                if (NULL != b) {
+                if (nullptr != b) {
                     info.item_num += b->nitem;
                 }
             }
@@ -338,7 +338,7 @@ public:
 private:
     ObjectPool() {
         _free_chunks.reserve(OP_INITIAL_FREE_LIST_SIZE);
-        pthread_mutex_init(&_free_chunks_mutex, NULL);
+        pthread_mutex_init(&_free_chunks_mutex, nullptr);
     }
 
     ~ObjectPool() {
@@ -348,8 +348,8 @@ private:
     // Create a Block and append it to right-most BlockGroup.
     static Block* add_block(size_t* index) {
         Block* const new_block = new(std::nothrow) Block;
-        if (NULL == new_block) {
-            return NULL;
+        if (nullptr == new_block) {
+            return nullptr;
         }
         size_t ngroup;
         do {
@@ -371,13 +371,13 @@ private:
 
         // Fail to add_block_group.
         delete new_block;
-        return NULL;
+        return nullptr;
     }
 
     // Create a BlockGroup and append it to _block_groups.
     // Shall be called infrequently because a BlockGroup is pretty big.
     static bool add_block_group(size_t old_ngroup) {
-        BlockGroup* bg = NULL;
+        BlockGroup* bg = nullptr;
         BAIDU_SCOPED_LOCK(_block_group_mutex);
         const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
         if (ngroup != old_ngroup) {
@@ -386,24 +386,24 @@ private:
         }
         if (ngroup < OP_MAX_BLOCK_NGROUP) {
             bg = new(std::nothrow) BlockGroup;
-            if (NULL != bg) {
+            if (nullptr != bg) {
                 // Release fence is paired with consume fence in add_block()
                 // to avoid un-constructed bg to be seen by other threads.
                 _block_groups[ngroup].store(bg, butil::memory_order_release);
                 _ngroup.store(ngroup + 1, butil::memory_order_release);
             }
         }
-        return bg != NULL;
+        return bg != nullptr;
     }
 
     inline LocalPool* get_or_new_local_pool() {
         LocalPool* lp = _local_pool;
-        if (BAIDU_LIKELY(lp != NULL)) {
+        if (BAIDU_LIKELY(lp != nullptr)) {
             return lp;
         }
         lp = new(std::nothrow) LocalPool(this);
-        if (NULL == lp) {
-            return NULL;
+        if (nullptr == lp) {
+            return nullptr;
         }
         BAIDU_SCOPED_LOCK(_change_thread_mutex); //avoid race with clear()
         _local_pool = lp;
@@ -414,7 +414,7 @@ private:
 
     void clear_from_destructor_of_local_pool() {
         // Remove tls
-        _local_pool = NULL;
+        _local_pool = nullptr;
 
         // Do nothing if there're active threads.
         if (_nlocal.fetch_sub(1, butil::memory_order_relaxed) != 1) {
@@ -443,14 +443,14 @@ private:
         const size_t ngroup = _ngroup.exchange(0, butil::memory_order_relaxed);
         for (size_t i = 0; i < ngroup; ++i) {
             BlockGroup* bg = _block_groups[i].load(butil::memory_order_relaxed);
-            if (NULL == bg) {
+            if (nullptr == bg) {
                 break;
             }
             size_t nblock = std::min(bg->nblock.load(butil::memory_order_relaxed),
                                      OP_GROUP_NBLOCK);
             for (size_t j = 0; j < nblock; ++j) {
                 Block* b = bg->blocks[j].load(butil::memory_order_relaxed);
-                if (NULL == b) {
+                if (nullptr == b) {
                     continue;
                 }
                 for (size_t k = 0; k < b->nitem; ++k) {
@@ -525,10 +525,10 @@ const size_t ObjectPool<T>::FREE_CHUNK_NITEM;
 
 template <typename T>
 BAIDU_THREAD_LOCAL typename ObjectPool<T>::LocalPool*
-ObjectPool<T>::_local_pool = NULL;
+ObjectPool<T>::_local_pool = nullptr;
 
 template <typename T>
-butil::static_atomic<ObjectPool<T>*> ObjectPool<T>::_singleton = BUTIL_STATIC_ATOMIC_INIT(NULL);
+butil::static_atomic<ObjectPool<T>*> ObjectPool<T>::_singleton = BUTIL_STATIC_ATOMIC_INIT(nullptr);
 
 template <typename T>
 pthread_mutex_t ObjectPool<T>::_singleton_mutex = PTHREAD_MUTEX_INITIALIZER;

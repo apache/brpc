@@ -70,9 +70,9 @@ void* sender(void* arg) {
         // being serialized into protobuf messages.
         cntl.request_attachment().append(FLAGS_attachment);
 
-        // Because `done'(last parameter) is NULL, this function waits until
+        // Because `done'(last parameter) is nullptr, this function waits until
         // the response comes back or error occurs(including timedout).
-        stub.Echo(&cntl, &request, &response, NULL);
+        stub.Echo(&cntl, &request, &response, nullptr);
         if (cntl.Failed()) {
             //LOG_EVERY_SECOND(WARNING) << "Fail to send EchoRequest, " << cntl.ErrorText();
         } else {
@@ -82,7 +82,7 @@ void* sender(void* arg) {
             bthread_usleep(FLAGS_sleep_ms * 1000L);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char* argv[]) {
@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
     
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, nullptr means using default options.
     // options, see `brpc/channel.h'.
     if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
     if (!FLAGS_use_bthread) {
         pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&pids[i], NULL, sender, &channel) != 0) {
+            if (pthread_create(&pids[i], nullptr, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
         bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &bids[i], NULL, sender, &channel) != 0) {
+                    &bids[i], nullptr, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -140,9 +140,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "EchoClient is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(pids[i], NULL);
+            pthread_join(pids[i], nullptr);
         } else {
-            bthread_join(bids[i], NULL);
+            bthread_join(bids[i], nullptr);
         }
     }
     return 0;

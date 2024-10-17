@@ -46,23 +46,23 @@ struct StreamOptions
     // default: 128
     size_t messages_in_batch;
  
-    // Handle input message, if handler is NULL, the remote side is not allowed to
+    // Handle input message, if handler is nullptr, the remote side is not allowed to
     // write any message, who will get EBADF on writing
-    // default: NULL
+    // default: nullptr
     StreamInputHandler* handler;
 };
  
 // [Called at the client side]
 // Create a Stream at client-side along with the |cntl|, which will be connected
 // when receiving the response with a Stream from server-side. If |options| is
-// NULL, the Stream will be created with default options
+// nullptr, the Stream will be created with default options
 // Return 0 on success, -1 otherwise
 int StreamCreate(StreamId* request_stream, Controller &cntl, const StreamOptions* options);
 
 // [Called at the client side for creating multiple streams]
 // Create streams at client-side along with the |cntl|, which will be connected
 // when receiving the response with streams from server-side. If |options| is
-// NULL, the stream will be created with default options
+// nullptr, the stream will be created with default options
 // Return 0 on success, -1 otherwise
 int StreamCreate(StreamIds& request_streams, int request_stream_size, Controller& cntl, const StreamOptions* options);
 ```
@@ -130,7 +130,7 @@ int StreamWrite(StreamId stream_id, const butil::IOBuf &message);
 // Wait util the pending buffer size is less than |max_buf_size| or error occurs
 // Returns 0 on success, errno otherwise
 // Errno:
-//  - ETIMEDOUT: when |due_time| is not NULL and time expired this
+//  - ETIMEDOUT: when |due_time| is not nullptr and time expired this
 //  - EINVAL: the Stream was close during waiting
 int StreamWait(StreamId stream_id, const timespec* due_time);
  

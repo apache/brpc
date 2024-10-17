@@ -326,7 +326,7 @@ class Variable {
     ...
     // Find all exposed variables matching `white_wildcards' but
     // `black_wildcards' and send them to `dumper'.
-    // Use default options when `options' is NULL.
+    // Use default options when `options' is nullptr.
     // Return number of dumped variables, -1 on error.
     static int dump_exposed(Dumper* dumper, const DumpOptions* options);
 };
@@ -634,7 +634,7 @@ static void get_username(std::ostream& os, void*) {
         os << "unknown";
     }
 }
-PassiveStatus<std::string> g_username("process_username", get_username, NULL);
+PassiveStatus<std::string> g_username("process_username", get_username, nullptr);
 ```
 
 # bvar::GFlag

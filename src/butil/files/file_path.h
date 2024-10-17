@@ -202,7 +202,7 @@ class BUTIL_EXPORT FilePath {
   // parent.
   bool IsParent(const FilePath& child) const;
 
-  // If IsParent(child) holds, appends to path (if non-NULL) the
+  // If IsParent(child) holds, appends to path (if non-nullptr) the
   // relative path to child and returns true.  For example, if parent
   // holds "/Users/johndoe/Library/Application Support", child holds
   // "/Users/johndoe/Library/Application Support/Google/Chrome/Default", and

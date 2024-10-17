@@ -73,7 +73,7 @@ public:
     //   meta: was set by ParseNsheadMeta()
     //   controller: If something goes wrong, call controller->SetFailed()
     //   pb_res: the pb response that returned by pb method. [NOTE] `pb_res'
-    //           can be NULL or uninitialized when RPC failed (indicated by
+    //           can be nullptr or uninitialized when RPC failed (indicated by
     //           Controller::Failed()), in which case you may put error
     //           information into `nshead_res'.
     //   nshead_res: the nshead response that will be sent back to client.

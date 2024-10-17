@@ -39,10 +39,10 @@ inline uint32_t get_version(bthread_t tid) {
 
 inline TaskMeta* TaskGroup::address_meta(bthread_t tid) {
     // TaskMeta * m = address_resource<TaskMeta>(get_slot(tid));
-    // if (m != NULL && m->version == get_version(tid)) {
+    // if (m != nullptr && m->version == get_version(tid)) {
     //     return m;
     // }
-    // return NULL;
+    // return nullptr;
     return address_resource(get_slot(tid));
 }
 
@@ -61,7 +61,7 @@ inline void TaskGroup::exchange(TaskGroup** pg, bthread_t next_tid) {
 
 inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
     TaskMeta* next_meta = address_meta(next_tid);
-    if (next_meta->stack == NULL) {
+    if (next_meta->stack == nullptr) {
         ContextualStack* stk = get_stack(next_meta->stack_type(), task_runner);
         if (stk) {
             next_meta->set_stack(stk);

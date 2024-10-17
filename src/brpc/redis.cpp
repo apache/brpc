@@ -96,7 +96,7 @@ int RedisRequest::ByteSize() const {
 void RedisRequest::MergeFrom(const ::google::protobuf::Message& from) {
     CHECK_NE(&from, this);
     const RedisRequest* source = dynamic_cast<const RedisRequest*>(&from);
-    if (source == NULL) {
+    if (source == nullptr) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {
         MergeFrom(*source);
@@ -215,7 +215,7 @@ const ::google::protobuf::Descriptor* RedisRequest::descriptor() {
 ::google::protobuf::Metadata RedisRequest::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
     metadata.descriptor = RedisRequest::descriptor();
-    metadata.reflection = NULL;
+    metadata.reflection = nullptr;
     return metadata;
 }
 
@@ -257,7 +257,7 @@ RedisResponse::RedisResponse(const RedisResponse& from)
 }
 
 void RedisResponse::SharedCtor() {
-    _other_replies = NULL;
+    _other_replies = nullptr;
     _cached_size_ = 0;
     _nreply = 0;
 }
@@ -285,7 +285,7 @@ RedisResponse* RedisResponse::New(::google::protobuf::Arena* arena) const {
 
 void RedisResponse::Clear() {
     _first_reply.Reset();
-    _other_replies = NULL;
+    _other_replies = nullptr;
     _arena.clear();
     _nreply = 0;
     _cached_size_ = 0;
@@ -314,7 +314,7 @@ int RedisResponse::ByteSize() const {
 void RedisResponse::MergeFrom(const ::google::protobuf::Message& from) {
     CHECK_NE(&from, this);
     const RedisResponse* source = dynamic_cast<const RedisResponse*>(&from);
-    if (source == NULL) {
+    if (source == nullptr) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {
         MergeFrom(*source);
@@ -386,7 +386,7 @@ const ::google::protobuf::Descriptor* RedisResponse::descriptor() {
 ::google::protobuf::Metadata RedisResponse::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
     metadata.descriptor = RedisResponse::descriptor();
-    metadata.reflection = NULL;
+    metadata.reflection = nullptr;
     return metadata;
 }
 
@@ -405,10 +405,10 @@ ParseError RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count
         ++_nreply;
     }
     if (reply_count > 1) {
-        if (_other_replies == NULL) {
+        if (_other_replies == nullptr) {
             _other_replies = (RedisReply*)_arena.allocate(
                 sizeof(RedisReply) * (reply_count - 1));
-            if (_other_replies == NULL) {
+            if (_other_replies == nullptr) {
                 LOG(ERROR) << "Fail to allocate RedisReply[" << reply_count -1 << "]";
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
@@ -464,12 +464,12 @@ RedisCommandHandler* RedisService::FindCommandHandler(const butil::StringPiece& 
     if (it != _command_map.end()) {
         return it->second;
     }
-    return NULL;
+    return nullptr;
 }
 
 RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
     LOG(ERROR) << "NewTransactionHandler is not implemented";
-    return NULL;
+    return nullptr;
 }
 
 } // namespace brpc

@@ -58,8 +58,8 @@ static int ReadSeconds(Controller* cntl) {
     int seconds = 0;
     const std::string* param =
         cntl->http_request().uri().GetQuery("seconds");
-    if (param != NULL) {
-        char* endptr = NULL;
+    if (param != nullptr) {
+        char* endptr = nullptr;
         const long sec = strtol(param->c_str(), &endptr, 10);
         if (endptr == param->c_str() + param->length()) {
             seconds = sec;
@@ -101,7 +101,7 @@ void PProfService::profile(
     ClosureGuard done_guard(done);
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->http_response().set_content_type("text/plain");
-    if ((void*)ProfilerStart == NULL || (void*)ProfilerStop == NULL) {
+    if ((void*)ProfilerStart == nullptr || (void*)ProfilerStop == nullptr) {
         cntl->SetFailed(ENOMETHOD, "%s, to enable cpu profiler, check out "
                         "docs/cn/cpu_profiler.md",
                         berror(ENOMETHOD));
@@ -221,9 +221,9 @@ void PProfService::heap(
     }
 
     MallocExtension* malloc_ext = MallocExtension::instance();
-    if (malloc_ext == NULL || !has_TCMALLOC_SAMPLE_PARAMETER()) {
+    if (malloc_ext == nullptr || !has_TCMALLOC_SAMPLE_PARAMETER()) {
         const char* extra_desc = "";
-        if (malloc_ext != NULL) {
+        if (malloc_ext != nullptr) {
             extra_desc = " (no TCMALLOC_SAMPLE_PARAMETER in env)";
         }
         cntl->SetFailed(ENOMETHOD, "Heap profiler is not enabled%s,"
@@ -255,7 +255,7 @@ void PProfService::growth(
     ClosureGuard done_guard(done);
     Controller* cntl = static_cast<Controller*>(controller_base);
     MallocExtension* malloc_ext = MallocExtension::instance();
-    if (malloc_ext == NULL) {
+    if (malloc_ext == nullptr) {
         cntl->SetFailed(ENOMETHOD, "%s, to enable growth profiler, check out "
                         "docs/cn/heap_profiler.md",
                         berror(ENOMETHOD));
@@ -312,10 +312,10 @@ static int ExtractSymbolsFromBinary(
     std::string line;
     while (std::getline(ss, line)) {
         butil::StringSplitter sp(line.c_str(), ' ');
-        if (sp == NULL) {
+        if (sp == nullptr) {
             continue;
         }
-        char* endptr = NULL;
+        char* endptr = nullptr;
         uintptr_t addr = strtoull(sp.field(), &endptr, 16);
         if (*endptr != ' ') {
             continue;
@@ -327,7 +327,7 @@ static int ExtractSymbolsFromBinary(
             continue;
         }
         ++sp;
-        if (sp == NULL) {
+        if (sp == nullptr) {
             continue;
         }
         if (sp.length() != 1UL) {
@@ -336,7 +336,7 @@ static int ExtractSymbolsFromBinary(
         //const char c = *sp.field();
         
         ++sp;
-        if (sp == NULL) {
+        if (sp == nullptr) {
             continue;
         }
         const char* name_begin = sp.field();
@@ -403,15 +403,15 @@ static void LoadSymbols() {
     butil::Timer tm;
     tm.start();
     butil::ScopedFILE fp(fopen("/proc/self/maps", "r"));
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
-    char* line = NULL;
+    char* line = nullptr;
     size_t line_len = 0;
     ssize_t nr = 0;
     while ((nr = getline(&line, &line_len, fp.get())) != -1) {
         butil::StringSplitter sp(line, line + nr, ' ');
-        if (sp == NULL) {
+        if (sp == nullptr) {
             continue;
         }
         char* endptr;
@@ -426,11 +426,11 @@ static void LoadSymbols() {
         }
         ++sp;
         // ..x. must be executable
-        if (sp == NULL || sp.length() != 4 || sp.field()[2] != 'x') {
+        if (sp == nullptr || sp.length() != 4 || sp.field()[2] != 'x') {
             continue;
         }
         ++sp;
-        if (sp == NULL) {
+        if (sp == nullptr) {
             continue;
         }
         size_t offset = strtoull(sp.field(), &endptr, 16);
@@ -441,7 +441,7 @@ static void LoadSymbols() {
         for (int i = 0; i < 3; ++i) {
             ++sp;
         }
-        if (sp == NULL) {
+        if (sp == nullptr) {
             continue;
         }
         size_t n = sp.length();
@@ -551,7 +551,7 @@ void PProfService::symbol(
         std::vector<uintptr_t> addr_list;
         addr_list.reserve(32);
         butil::StringSplitter sp(addr_cstr, '+');
-        for ( ; sp != NULL; ++sp) {
+        for ( ; sp != nullptr; ++sp) {
             char* endptr;
             uintptr_t addr = strtoull(sp.field(), &endptr, 16);
             addr_list.push_back(addr);

@@ -43,7 +43,7 @@ namespace policy {
 
 struct SendMongoResponse : public google::protobuf::Closure {
     SendMongoResponse(const Server *server) :
-        status(NULL),
+        status(nullptr),
         received_us(0L),
         server(server) {}
     ~SendMongoResponse();
@@ -111,14 +111,14 @@ ParseResult ParseMongoMessage(butil::IOBuf* source,
                               Socket* socket, bool /*read_eof*/, const void *arg) {
     const Server* server = static_cast<const Server*>(arg);
     const MongoServiceAdaptor* adaptor = server->options().mongo_service_adaptor;
-    if (NULL == adaptor) {
+    if (nullptr == adaptor) {
         // The server does not enable mongo adaptor.
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
 
     char buf[sizeof(mongo_head_t)];
     const char *p = (const char *)source->fetch(buf, sizeof(buf));
-    if (NULL == p) {
+    if (nullptr == p) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     mongo_head_t header = *(const mongo_head_t*)p;
@@ -143,9 +143,9 @@ ParseResult ParseMongoMessage(butil::IOBuf* source,
     // socket::_input_message, and created at the first time when msg
     // comes over the socket.
     Destroyable *socket_context_msg = socket->parsing_context();
-    if (NULL == socket_context_msg) {
+    if (nullptr == socket_context_msg) {
         MongoContext *context = adaptor->CreateSocketContext();
-        if (NULL == context) {
+        if (nullptr == context) {
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
         socket_context_msg = new MongoContextMessage(context);
@@ -193,7 +193,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
 
     MongoContextMessage *context_msg =
         dynamic_cast<MongoContextMessage*>(socket->parsing_context());
-    if (NULL == context_msg) {
+    if (nullptr == context_msg) {
         LOG(WARNING) << "socket context wasn't set correctly";
         return;
     }
@@ -235,7 +235,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
             break;
         }
 
-        if (NULL == mp ||
+        if (nullptr == mp ||
             mp->service->GetDescriptor() == BadMethodService::descriptor()) {
             mongo_done->cntl.SetFailed(ENOMETHOD, "Fail to find default_method");
             break;

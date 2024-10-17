@@ -28,7 +28,7 @@ DEFINE_bool(mcpack2pb_absent_field_is_error, false, "Parsing fails if the "
 namespace mcpack2pb {
 
 static pthread_once_t s_init_handler_map_once = PTHREAD_ONCE_INIT;
-static butil::FlatMap<std::string, MessageHandler>* s_handler_map = NULL;
+static butil::FlatMap<std::string, MessageHandler>* s_handler_map = nullptr;
 static void init_handler_map() {
     s_handler_map = new butil::FlatMap<std::string, MessageHandler>;
     if (s_handler_map->init(64, 50) != 0) {
@@ -39,7 +39,7 @@ static void init_handler_map() {
 void register_message_handler_or_die(const std::string& full_name,
                                      const MessageHandler& handler) {
     pthread_once(&s_init_handler_map_once, init_handler_map);
-    if (s_handler_map->seek(full_name) != NULL) {
+    if (s_handler_map->seek(full_name) != nullptr) {
         LOG(ERROR) << full_name << " was registered before!";
         exit(1);
     } else {
@@ -50,10 +50,10 @@ void register_message_handler_or_die(const std::string& full_name,
 MessageHandler find_message_handler(const std::string& full_name) {
     pthread_once(&s_init_handler_map_once, init_handler_map);
     MessageHandler* handler = s_handler_map->seek(full_name);
-    if (handler != NULL) {
+    if (handler != nullptr) {
         return *handler;
     }
-    MessageHandler null_handler = { NULL, NULL, NULL, NULL };
+    MessageHandler null_handler = { nullptr, nullptr, nullptr, nullptr };
     return null_handler;
 }
 

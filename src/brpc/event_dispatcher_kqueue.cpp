@@ -99,14 +99,14 @@ void EventDispatcher::Stop() {
     if (_event_dispatcher_fd >= 0) {
         struct kevent kqueue_event;
         EV_SET(&kqueue_event, _wakeup_fds[1], EVFILT_WRITE, EV_ADD | EV_ENABLE,
-                    0, 0, NULL);
-        kevent(_event_dispatcher_fd, &kqueue_event, 1, NULL, 0, NULL);
+                    0, 0, nullptr);
+        kevent(_event_dispatcher_fd, &kqueue_event, 1, nullptr, 0, nullptr);
     }
 }
 
 void EventDispatcher::Join() {
     if (_tid) {
-        bthread_join(_tid, NULL);
+        bthread_join(_tid, nullptr);
         _tid = 0;
     }
 }
@@ -122,13 +122,13 @@ int EventDispatcher::RegisterEvent(IOEventDataId event_data_id,
     //TODO(zhujiashun): add EV_EOF
     EV_SET(&evt, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_CLEAR,
            0, 0, (void*)event_data_id);
-    if (kevent(_event_dispatcher_fd, &evt, 1, NULL, 0, NULL) < 0) {
+    if (kevent(_event_dispatcher_fd, &evt, 1, nullptr, 0, nullptr) < 0) {
         return -1;
     }
     if (pollin) {
         EV_SET(&evt, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR,
                0, 0, (void*)event_data_id);
-        if (kevent(_event_dispatcher_fd, &evt, 1, NULL, 0, NULL) < 0) {
+        if (kevent(_event_dispatcher_fd, &evt, 1, nullptr, 0, nullptr) < 0) {
             return -1;
         }
     }
@@ -138,14 +138,14 @@ int EventDispatcher::RegisterEvent(IOEventDataId event_data_id,
 int EventDispatcher::UnregisterEvent(IOEventDataId event_data_id,
                                      int fd, bool pollin) {
     struct kevent evt;
-    EV_SET(&evt, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
-    if (kevent(_event_dispatcher_fd, &evt, 1, NULL, 0, NULL) < 0) {
+    EV_SET(&evt, fd, EVFILT_WRITE, EV_DELETE, 0, 0, nullptr);
+    if (kevent(_event_dispatcher_fd, &evt, 1, nullptr, 0, nullptr) < 0) {
         return -1;
     }
     if (pollin) {
         EV_SET(&evt, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR,
                0, 0, (void*)event_data_id);
-        return kevent(_event_dispatcher_fd, &evt, 1, NULL, 0, NULL);
+        return kevent(_event_dispatcher_fd, &evt, 1, nullptr, 0, nullptr);
     }
     return 0;
 }
@@ -158,7 +158,7 @@ int EventDispatcher::AddConsumer(IOEventDataId event_data_id, int fd) {
     struct kevent evt;
     EV_SET(&evt, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR,
            0, 0, (void*)event_data_id);
-    return kevent(_event_dispatcher_fd, &evt, 1, NULL, 0, NULL);
+    return kevent(_event_dispatcher_fd, &evt, 1, nullptr, 0, nullptr);
 }
 
 int EventDispatcher::RemoveConsumer(int fd) {
@@ -173,22 +173,22 @@ int EventDispatcher::RemoveConsumer(int fd) {
     // kevent will keep returning events of the fd continuously, making
     // program abnormal.
     struct kevent evt;
-    EV_SET(&evt, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-    kevent(_event_dispatcher_fd, &evt, 1, NULL, 0, NULL);
-    EV_SET(&evt, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
-    kevent(_event_dispatcher_fd, &evt, 1, NULL, 0, NULL);
+    EV_SET(&evt, fd, EVFILT_READ, EV_DELETE, 0, 0, nullptr);
+    kevent(_event_dispatcher_fd, &evt, 1, nullptr, 0, nullptr);
+    EV_SET(&evt, fd, EVFILT_WRITE, EV_DELETE, 0, 0, nullptr);
+    kevent(_event_dispatcher_fd, &evt, 1, nullptr, 0, nullptr);
     return 0;
 }
 
 void* EventDispatcher::RunThis(void* arg) {
     ((EventDispatcher*)arg)->Run();
-    return NULL;
+    return nullptr;
 }
 
 void EventDispatcher::Run() {
     while (!_stop) {
         struct kevent e[32];
-        int n = kevent(_event_dispatcher_fd, NULL, 0, e, ARRAY_SIZE(e), NULL);
+        int n = kevent(_event_dispatcher_fd, nullptr, 0, e, ARRAY_SIZE(e), nullptr);
         if (_stop) {
             // EV_SET/kevent should have some sort of memory fencing
             // guaranteeing that we(after kevent) see _stop set before

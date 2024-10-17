@@ -25,7 +25,7 @@ const void *const *StackTrace::Addresses(size_t* count) const {
   *count = count_;
   if (count_)
     return trace_;
-  return NULL;
+  return nullptr;
 }
 
 size_t StackTrace::CopyAddressTo(void** buffer, size_t max_nframes) const {

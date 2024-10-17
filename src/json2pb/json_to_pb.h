@@ -44,7 +44,7 @@ struct Json2PbOptions {
 };
 
 // Convert `json' to protobuf `message'.
-// Returns true on success. `error' (if not NULL) will be set with error
+// Returns true on success. `error' (if not nullptr) will be set with error
 // message on failure.
 //
 // [When options.allow_remaining_bytes_after_parsing is true]

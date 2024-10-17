@@ -32,18 +32,18 @@ inline size_t status_size(size_t message_size) {
 int Status::set_errorv(int c, const char* fmt, va_list args) {
     if (0 == c) {
         free(_state);
-        _state = NULL;
+        _state = nullptr;
         return 0;
     }
-    State* new_state = NULL;
-    State* state = NULL;
-    if (_state != NULL) {
+    State* new_state = nullptr;
+    State* state = nullptr;
+    if (_state != nullptr) {
         state = _state;
     } else {
         const size_t guess_size = std::max(strlen(fmt) * 2, 32UL);
         const size_t st_size = status_size(guess_size);
         new_state = reinterpret_cast<State*>(malloc(st_size));
-        if (NULL == new_state) {
+        if (nullptr == new_state) {
             return -1;
         }
         new_state->state_size = st_size;
@@ -69,7 +69,7 @@ int Status::set_errorv(int c, const char* fmt, va_list args) {
         free(new_state);
         const size_t st_size = status_size(bytes_used);
         new_state = reinterpret_cast<State*>(malloc(st_size));
-        if (NULL == new_state) {
+        if (nullptr == new_state) {
             return -1;
         }
         new_state->code = c;
@@ -90,13 +90,13 @@ int Status::set_errorv(int c, const char* fmt, va_list args) {
 int Status::set_error(int c, const butil::StringPiece& error_msg) {
     if (0 == c) {
         free(_state);
-        _state = NULL;
+        _state = nullptr;
         return 0;
     }
     const size_t st_size = status_size(error_msg.size());
-    if (_state == NULL || _state->state_size < st_size) {
+    if (_state == nullptr || _state->state_size < st_size) {
         State* new_state = reinterpret_cast<State*>(malloc(st_size));
-        if (NULL == new_state) {
+        if (nullptr == new_state) {
             return -1;
         }
         new_state->state_size = st_size;
@@ -113,9 +113,9 @@ int Status::set_error(int c, const butil::StringPiece& error_msg) {
 Status::State* Status::copy_state(const State* s) {
     const size_t n = status_size(s->size);
     State* s2 = reinterpret_cast<State*>(malloc(n));
-    if (NULL == s2) {
+    if (nullptr == s2) {
         // TODO: If we failed to allocate, the status will be OK.
-        return NULL;
+        return nullptr;
     }
     s2->code = s->code;
     s2->size = s->size;
@@ -127,7 +127,7 @@ Status::State* Status::copy_state(const State* s) {
 };
 
 std::string Status::error_str() const {
-    if (_state == NULL) {
+    if (_state == nullptr) {
         static std::string s_ok_str = "OK";
         return s_ok_str;
     }

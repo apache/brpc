@@ -116,20 +116,20 @@ ListOfABAFreeId<Id, IdTraits>::ListOfABAFreeId()
     for (size_t i = 0; i < IdTraits::BLOCK_SIZE; ++i) {
         _head_block.ids[i] = IdTraits::ID_INIT;
     }
-    _head_block.next = NULL;
+    _head_block.next = nullptr;
 }
 
 template <typename Id, typename IdTraits> 
 ListOfABAFreeId<Id, IdTraits>::~ListOfABAFreeId() {
-    _cur_block = NULL;
+    _cur_block = nullptr;
     _cur_index = 0;
     _nblock = 0;
-    for (IdBlock* p = _head_block.next; p != NULL;) {
+    for (IdBlock* p = _head_block.next; p != nullptr;) {
         IdBlock* saved_next = p->next;
         delete p;
         p = saved_next;
     }
-    _head_block.next = NULL;
+    _head_block.next = nullptr;
 }
 
 template <typename Id, typename IdTraits> 
@@ -195,7 +195,7 @@ int ListOfABAFreeId<Id, IdTraits>::add(Id id) {
     //  [..xxxx....] -> [......yyyy] -> [..........]
     //    block A        new block      block B
     IdBlock* new_block = new (std::nothrow) IdBlock;
-    if (NULL == new_block) {
+    if (nullptr == new_block) {
         return ENOMEM;
     }
     ++_nblock;
@@ -230,14 +230,14 @@ int ListOfABAFreeId<Id, IdTraits>::add(Id id) {
 template <typename Id, typename IdTraits>
 int ListOfABAFreeId<Id, IdTraits>::gc() {
     IdBlock* new_block = new (std::nothrow) IdBlock;
-    if (NULL == new_block) {
+    if (nullptr == new_block) {
         return ENOMEM;
     }
     // reset head block
     for (size_t i = 0; i < IdTraits::BLOCK_SIZE; ++i) {
         new_block->ids[i] = IdTraits::ID_INIT;
     }
-    new_block->next = NULL;
+    new_block->next = nullptr;
 
     TempIdBlock tmp_id_block;
     tmp_id_block.block = new_block;
@@ -286,14 +286,14 @@ int ListOfABAFreeId<Id, IdTraits>::add_to_temp_list(TempIdBlock* block_list, Id 
         block_list->index = 0;
         block_list->nblock++;
         block_list->block->next = new (std::nothrow) IdBlock;
-        if (NULL == block_list->block->next) {
+        if (nullptr == block_list->block->next) {
             return ENOMEM;
         }
         block_list->block = block_list->block->next;
         for (size_t i = 0; i < IdTraits::BLOCK_SIZE; ++i) {
             block_list->block->ids[i] = IdTraits::ID_INIT;
         }
-        block_list->block->next = NULL;
+        block_list->block->next = nullptr;
     }
     return 0;
 }
@@ -301,7 +301,7 @@ int ListOfABAFreeId<Id, IdTraits>::add_to_temp_list(TempIdBlock* block_list, Id 
 template <typename Id, typename IdTraits>
 template <typename Fn>
 int ListOfABAFreeId<Id, IdTraits>::for_each(const Fn& fn) {
-    for (IdBlock* p = &_head_block; p != NULL; p = p->next) {
+    for (IdBlock* p = &_head_block; p != nullptr; p = p->next) {
         for (size_t i = 0; i < IdTraits::BLOCK_SIZE; ++i) {
             if (p->ids[i] != IdTraits::ID_INIT && IdTraits::exists(p->ids[i])) {
                 int rc = fn(p->ids[i]);
@@ -317,7 +317,7 @@ int ListOfABAFreeId<Id, IdTraits>::for_each(const Fn& fn) {
 template <typename Id, typename IdTraits>
 template <typename Fn>
 void ListOfABAFreeId<Id, IdTraits>::apply(const Fn& fn) {
-    for (IdBlock* p = &_head_block; p != NULL; p = p->next) {
+    for (IdBlock* p = &_head_block; p != nullptr; p = p->next) {
         for (size_t i = 0; i < IdTraits::BLOCK_SIZE; ++i) {
             if (p->ids[i] != IdTraits::ID_INIT && IdTraits::exists(p->ids[i])) {
                 fn(p->ids[i]);
@@ -328,7 +328,7 @@ void ListOfABAFreeId<Id, IdTraits>::apply(const Fn& fn) {
 
 template <typename Id, typename IdTraits>
 void ListOfABAFreeId<Id, IdTraits>::free_list(IdBlock* p) {
-    for (; p != NULL;) {
+    for (; p != nullptr;) {
         IdBlock* saved_next = p->next;
         delete p;
         p = saved_next;

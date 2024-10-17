@@ -40,7 +40,7 @@ DEFINE_int32(rdma_memory_pool_max_regions, 4, "Max number of regions");
 DEFINE_int32(rdma_memory_pool_buckets, 4, "Number of buckets to reduce race");
 DEFINE_int32(rdma_memory_pool_tls_cache_num, 128, "Number of cached block in tls");
 
-static RegisterCallback g_cb = NULL;
+static RegisterCallback g_cb = nullptr;
 
 // Number of bytes in 1MB
 static const size_t BYTES_IN_MB = 1048576;
@@ -78,13 +78,13 @@ static const int32_t RDMA_MEMORY_POOL_MAX_BUCKETS = 16;
 static size_t g_buckets = 1;
 
 static bool g_dump_enable = false;
-static butil::Mutex* g_dump_mutex = NULL;
+static butil::Mutex* g_dump_mutex = nullptr;
 
 // Only for default block size
-static __thread IdleNode* tls_idle_list = NULL;
+static __thread IdleNode* tls_idle_list = nullptr;
 static __thread size_t tls_idle_num = 0;
 static __thread bool tls_inited = false;
-static butil::Mutex* g_tls_info_mutex = NULL;
+static butil::Mutex* g_tls_info_mutex = nullptr;
 static size_t g_tls_info_cnt = 0;
 static size_t* g_tls_info[1024];
 
@@ -95,14 +95,14 @@ struct GlobalInfo {
     std::vector<size_t> idle_size[BLOCK_SIZE_COUNT];
     butil::Mutex extend_lock;
 };
-static GlobalInfo* g_info = NULL;
+static GlobalInfo* g_info = nullptr;
 
 static inline Region* GetRegion(const void* buf) {
     if (!buf) {
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
-    Region* r = NULL;
+    Region* r = nullptr;
     uintptr_t addr = (uintptr_t)buf;
     for (int i = 0; i < FLAGS_rdma_memory_pool_max_regions; ++i) {
         if (g_regions[i].start == 0) {
@@ -129,13 +129,13 @@ uint32_t GetRegionId(const void* buf) {
 static void* ExtendBlockPool(size_t region_size, int block_type) {
     if (region_size < 1) {
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
 
     if (g_region_num == FLAGS_rdma_memory_pool_max_regions) {
         LOG(INFO) << "Memory pool reaches max regions";
         errno = ENOMEM;
-        return NULL;
+        return nullptr;
     }
 
     // Regularize region size
@@ -144,16 +144,16 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
 
     LOG(INFO) << "Start extend rdma memory " << region_size / BYTES_IN_MB << "MB";
 
-    void* region_base = NULL;
+    void* region_base = nullptr;
     if (posix_memalign(&region_base, 4096, region_size) != 0) {
         PLOG_EVERY_SECOND(ERROR) << "Memory not enough";
-        return NULL;
+        return nullptr;
     }
 
     uint32_t id = g_cb(region_base, region_size);
     if (id == 0) {
         free(region_base);
-        return NULL;
+        return nullptr;
     }
 
     IdleNode* node[g_buckets];
@@ -165,7 +165,7 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
                 butil::return_object<IdleNode>(node[j]);
             }
             free(region_base);
-            return NULL;
+            return nullptr;
         }
     }
  
@@ -178,7 +178,7 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
     for (size_t i = 0; i < g_buckets; ++i) {
         node[i]->start = (void*)(region->start + i * (region_size / g_buckets));
         node[i]->len = region_size / g_buckets;
-        node[i]->next = NULL;
+        node[i]->next = nullptr;
         g_info->idle_list[block_type][i] = node[i];
         g_info->idle_size[block_type][i] += node[i]->len;
     }
@@ -189,12 +189,12 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
 void* InitBlockPool(RegisterCallback cb) {
     if (!cb) {
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     if (g_cb) {
         LOG(WARNING) << "Do not initialize block pool repeatedly";
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     g_cb = cb;
     if (FLAGS_rdma_memory_pool_max_regions < RDMA_MEMORY_POOL_MIN_REGIONS ||
@@ -204,7 +204,7 @@ void* InitBlockPool(RegisterCallback cb) {
                      << RDMA_MEMORY_POOL_MIN_REGIONS << ","
                      << RDMA_MEMORY_POOL_MAX_REGIONS << "]!";
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     if (FLAGS_rdma_memory_pool_initial_size_mb < RDMA_MEMORY_POOL_MIN_SIZE ||
         FLAGS_rdma_memory_pool_initial_size_mb > RDMA_MEMORY_POOL_MAX_SIZE) {
@@ -213,7 +213,7 @@ void* InitBlockPool(RegisterCallback cb) {
                      << RDMA_MEMORY_POOL_MIN_SIZE << ","
                      << RDMA_MEMORY_POOL_MAX_SIZE << "]!";
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     if (FLAGS_rdma_memory_pool_increase_size_mb < RDMA_MEMORY_POOL_MIN_SIZE ||
         FLAGS_rdma_memory_pool_increase_size_mb > RDMA_MEMORY_POOL_MAX_SIZE) {
@@ -222,7 +222,7 @@ void* InitBlockPool(RegisterCallback cb) {
                      << RDMA_MEMORY_POOL_MIN_SIZE << ","
                      << RDMA_MEMORY_POOL_MAX_SIZE << "]!";
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     if (FLAGS_rdma_memory_pool_buckets < RDMA_MEMORY_POOL_MIN_BUCKETS ||
         FLAGS_rdma_memory_pool_buckets > RDMA_MEMORY_POOL_MAX_BUCKETS) {
@@ -231,32 +231,32 @@ void* InitBlockPool(RegisterCallback cb) {
                      << RDMA_MEMORY_POOL_MIN_BUCKETS << ","
                      << RDMA_MEMORY_POOL_MAX_BUCKETS << "]!";
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     g_buckets = FLAGS_rdma_memory_pool_buckets;
 
     g_info = new (std::nothrow) GlobalInfo;
     if (!g_info) {
-        return NULL;
+        return nullptr;
     }
 
     for (int i = 0; i < BLOCK_SIZE_COUNT; ++i) {
-        g_info->idle_list[i].resize(g_buckets, NULL);
+        g_info->idle_list[i].resize(g_buckets, nullptr);
         if (g_info->idle_list[i].size() != g_buckets) {
-            return NULL;
+            return nullptr;
         }
-        g_info->lock[i].resize(g_buckets, NULL);
+        g_info->lock[i].resize(g_buckets, nullptr);
         if (g_info->lock[i].size() != g_buckets) {
-            return NULL;
+            return nullptr;
         }
         g_info->idle_size[i].resize(g_buckets, 0);
         if (g_info->idle_size[i].size() != g_buckets) {
-            return NULL;
+            return nullptr;
         }
         for (size_t j = 0; j < g_buckets; ++j) {
             g_info->lock[i][j] = new (std::nothrow) butil::Mutex;
             if (!g_info->lock[i][j]) {
-                return NULL;
+                return nullptr;
             }
         }
     }
@@ -274,8 +274,8 @@ static void* AllocBlockFrom(int block_type) {
         g_dump_mutex->lock();
         locked = true;
     }
-    void* ptr = NULL;
-    if (block_type == 0 && tls_idle_list != NULL){
+    void* ptr = nullptr;
+    if (block_type == 0 && tls_idle_list != nullptr){
         CHECK(tls_idle_num > 0);
         IdleNode* n = tls_idle_list;
         tls_idle_list = n->next;
@@ -307,7 +307,7 @@ static void* AllocBlockFrom(int block_type) {
                 if (locked) {
                     g_dump_mutex->unlock();
                 }
-                return NULL;
+                return nullptr;
             }
             node = g_info->idle_list[block_type][index];
         }
@@ -326,14 +326,14 @@ static void* AllocBlockFrom(int block_type) {
         if (locked) {
             g_dump_mutex->unlock();
         }
-        return NULL;
+        return nullptr;
     }
 
     // Move more blocks from global list to tls list
     if (block_type == 0) {
         node = g_info->idle_list[0][index];
         tls_idle_list = node;
-        IdleNode* last_node = NULL;
+        IdleNode* last_node = nullptr;
         while (node) {
             if (tls_idle_num > (uint32_t)FLAGS_rdma_memory_pool_tls_cache_num / 2
                     || node->len > g_block_size[0]) {
@@ -344,12 +344,12 @@ static void* AllocBlockFrom(int block_type) {
             node = node->next;
         }
         if (tls_idle_num == 0) {
-            tls_idle_list = NULL;
+            tls_idle_list = nullptr;
         } else {
             g_info->idle_list[0][index] = node;
         }
         if (last_node) {
-            last_node->next = NULL;
+            last_node->next = nullptr;
         }
     }
 
@@ -362,14 +362,14 @@ static void* AllocBlockFrom(int block_type) {
 void* AllocBlock(size_t size) {
     if (size == 0 || size > g_block_size[BLOCK_SIZE_COUNT - 1]) {
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     for (int i = 0; i < BLOCK_SIZE_COUNT; ++i) {
         if (size <= g_block_size[i]) {
             return AllocBlockFrom(i);;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 void RecycleAll() {
@@ -439,7 +439,7 @@ int DeallocBlock(void* buf) {
         // Recycle half the cached blocks in tls for default block size
         int num = FLAGS_rdma_memory_pool_tls_cache_num / 2;
         IdleNode* new_head = tls_idle_list;
-        IdleNode* recycle_tail = NULL;
+        IdleNode* recycle_tail = nullptr;
         for (int i = 0; i < num; ++i) {
             recycle_tail = new_head;
             len += recycle_tail->len;
@@ -512,11 +512,11 @@ void DestroyBlockPool() {
                 butil::return_object<IdleNode>(node);
                 node = tmp;
             }
-            g_info->idle_list[i][j] = NULL;
+            g_info->idle_list[i][j] = nullptr;
         }
     }
     delete g_info;
-    g_info = NULL;
+    g_info = nullptr;
     for (int i = 0; i < g_region_num; ++i) {
         if (g_regions[i].start == 0) {
             break;
@@ -525,7 +525,7 @@ void DestroyBlockPool() {
         g_regions[i].start = 0;
     }
     g_region_num = 0;
-    g_cb = NULL;
+    g_cb = nullptr;
 }
 
 // Just for UT

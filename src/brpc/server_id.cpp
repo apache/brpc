@@ -35,7 +35,7 @@ bool ServerId2SocketIdMapper::AddServer(const ServerId& server) {
 
 bool ServerId2SocketIdMapper::RemoveServer(const ServerId& server) {
     int* nref = _nref_map.seek(server.id);
-    if (nref == NULL) {
+    if (nref == nullptr) {
         LOG(ERROR) << "Unexist SocketId=" << server.id;
         return false;
     }

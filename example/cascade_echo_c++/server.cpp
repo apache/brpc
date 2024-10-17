@@ -62,7 +62,7 @@ public:
 
             cntl2.set_timeout_ms(FLAGS_timeout_ms);
             cntl2.set_max_retry(FLAGS_max_retry);
-            stub.Echo(&cntl2, &request2, &response2, NULL);
+            stub.Echo(&cntl2, &request2, &response2, nullptr);
             if (cntl2.Failed()) {
                 CLOGE(&cntl2) << "Fail to send EchoRequest, " << cntl2.ErrorText();
                 cntl->SetFailed(cntl2.ErrorCode(), "%s", cntl2.ErrorText().c_str());
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
         coption.protocol = brpc::PROTOCOL_HTTP;
     }
     
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, nullptr means using default options.
     // options, see `brpc/channel.h'.
     if (FLAGS_server.empty()) {
         if (channel.Init("localhost", FLAGS_port, &coption) != 0) {

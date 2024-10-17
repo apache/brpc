@@ -213,7 +213,7 @@ Query strings are also key/value pairs. Differences between HTTP headers and que
 ```c++
 // Get value for header "User-Agent" (case insensitive)
 const std::string* user_agent_str = cntl->http_request().GetHeader("User-Agent");
-if (user_agent_str != NULL) {  // has the header
+if (user_agent_str != nullptr) {  // has the header
     LOG(TRACE) << "User-Agent is " << *user_agent_str;
 }
 ...
@@ -273,7 +273,7 @@ As mentioned in above [HTTP headers](#http-headers), query strings are interpret
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
-if (time_value != NULL) {  // the query string is present
+if (time_value != nullptr) {  // the query string is present
     LOG(TRACE) << "time = " << *time_value;
 }
 
@@ -307,7 +307,7 @@ Due to generality, brpc does not decompress request bodies automatically, but us
 #include <brpc/policy/gzip_compress.h>
 ...
 const std::string* encoding = cntl->http_request().GetHeader("Content-Encoding");
-if (encoding != NULL && *encoding == "gzip") {
+if (encoding != nullptr && *encoding == "gzip") {
     butil::IOBuf uncompressed;
     if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
         LOG(ERROR) << "Fail to un-gzip request body";

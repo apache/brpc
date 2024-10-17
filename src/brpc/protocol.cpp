@@ -101,13 +101,13 @@ const Protocol* FindProtocol(ProtocolType type) {
     const size_t index = type;
     if (index >= MAX_PROTOCOL_SIZE) {
         LOG(ERROR) << "ProtocolType=" << type << " is out of range";
-        return NULL;
+        return nullptr;
     }
     ProtocolEntry* const protocol_map = get_protocol_map();
     if (protocol_map[index].valid.load(butil::memory_order_acquire)) {
         return &protocol_map[index].protocol;
     }
-    return NULL;
+    return nullptr;
 }
 
 void ListProtocols(std::vector<Protocol>* vec) {
@@ -135,7 +135,7 @@ void SerializeRequestDefault(butil::IOBuf* buf,
                              const google::protobuf::Message* request) {
     // Check sanity of request.
     if (!request) {
-        return cntl->SetFailed(EREQUEST, "`request' is NULL");
+        return cntl->SetFailed(EREQUEST, "`request' is nullptr");
     }
     if (request->GetDescriptor() == SerializedRequest::descriptor()) {
         buf->append(((SerializedRequest*)request)->serialized_data());
@@ -198,7 +198,7 @@ const char* ProtocolTypeToString(ProtocolType type) {
     GlobalInitializeOrDie();
     
     const Protocol* p = FindProtocol(type);
-    if (p != NULL) {
+    if (p != nullptr) {
         return p->name;
     }
     return "unknown";

@@ -31,7 +31,7 @@ inline OutputStream::Area::Area(const Area& rhs)
     , _addr2(rhs._addr2)
     , _size1(rhs._size1)
     , _size2(rhs._size2)
-    , _addional_area(NULL) {
+    , _addional_area(nullptr) {
 
     if (rhs._addional_area) {
         _addional_area = new std::vector<butil::StringPiece>(*rhs._addional_area);
@@ -41,7 +41,7 @@ inline OutputStream::Area::Area(const Area& rhs)
 inline OutputStream::Area::~Area() {
     if (_addional_area) {
         delete _addional_area;
-        _addional_area = NULL;
+        _addional_area = nullptr;
     }
 }
 
@@ -58,14 +58,14 @@ inline void OutputStream::Area::add(void* data, size_t n) {
     if (!data) {
         return;
     }
-    if (_addr1 == NULL) {
+    if (_addr1 == nullptr) {
         _addr1 = data;
         _size1 = n;
-    } else if (_addr2 == NULL) {
+    } else if (_addr2 == nullptr) {
         _addr2 = data;
         _size2 = n;
     } else {
-        if (_addional_area == NULL) {
+        if (_addional_area == nullptr) {
             _addional_area = new std::vector<butil::StringPiece>;
         }
         _addional_area->push_back(butil::StringPiece((const char*)data, n));
@@ -117,7 +117,7 @@ inline void OutputStream::append(const void* data, int n) {
         }
         _fullsize = _size;
     } while (1);
-    _data = NULL;
+    _data = nullptr;
     _size = 0;
     _fullsize = 0;
     _pushed_bytes += (saved_n - n);
@@ -152,7 +152,7 @@ inline void OutputStream::push_back(char c) {
         }
         _fullsize = _size;
     } while (1);
-    _data = NULL;
+    _data = nullptr;
     _size = 0;
     _fullsize = 0;
     set_bad();
@@ -166,7 +166,7 @@ inline void* OutputStream::skip_continuous(int n) {
         _pushed_bytes += n;
         return ret;
     }
-    return NULL;
+    return nullptr;
 }
 
 inline OutputStream::Area OutputStream::reserve(int n) {
@@ -187,7 +187,7 @@ inline OutputStream::Area OutputStream::reserve(int n) {
         }
         _fullsize = _size;
     } while (1);
-    _data = NULL;
+    _data = nullptr;
     _size = 0;
     _fullsize = 0;
     _pushed_bytes += (saved_n - n);
@@ -219,7 +219,7 @@ inline void OutputStream::backup(int n) {
     }
     _size = 0;
     _fullsize = 0;
-    _data = NULL;
+    _data = nullptr;
     _pushed_bytes -= n;
 }
 
@@ -228,14 +228,14 @@ inline Serializer::GroupInfo* Serializer::push_group_info() {
         return &_group_info_fast[++_ndepth];
     }
     if (_ndepth >= MAX_DEPTH) {
-        return NULL;
+        return nullptr;
     }
-    if (_group_info_more == NULL) {
+    if (_group_info_more == nullptr) {
         _group_info_more =
             (GroupInfo*)malloc((MAX_DEPTH + 1 - arraysize(_group_info_fast))
                                * sizeof(GroupInfo));
-        if (_group_info_more == NULL) {
-            return NULL;
+        if (_group_info_more == nullptr) {
+            return nullptr;
         }
     }
     return &_group_info_more[++_ndepth - arraysize(_group_info_fast)];

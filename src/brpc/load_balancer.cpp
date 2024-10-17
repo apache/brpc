@@ -55,7 +55,7 @@ void SharedLoadBalancer::ExposeLB() {
 }
 
 SharedLoadBalancer::SharedLoadBalancer()
-    : _lb(NULL)
+    : _lb(nullptr)
     , _weight_sum(0)
     , _exposed(false)
     , _st(DescribeLB, this) {
@@ -65,7 +65,7 @@ SharedLoadBalancer::~SharedLoadBalancer() {
     _st.hide();
     if (_lb) {
         _lb->Destroy();
-        _lb = NULL;
+        _lb = nullptr;
     }
 }
 
@@ -77,12 +77,12 @@ int SharedLoadBalancer::Init(const char* lb_protocol) {
         return -1;
     }
     const LoadBalancer* lb = LoadBalancerExtension()->Find(lb_name.c_str());
-    if (lb == NULL) {
+    if (lb == nullptr) {
         LOG(FATAL) << "Fail to find LoadBalancer by `" << lb_name << "'";
         return -1;
     }
     _lb = lb->New(lb_params);
-    if (_lb == NULL) {
+    if (_lb == nullptr) {
         LOG(FATAL) << "Fail to new LoadBalancer";
         return -1;
     }
@@ -94,8 +94,8 @@ int SharedLoadBalancer::Init(const char* lb_protocol) {
 
 void SharedLoadBalancer::Describe(std::ostream& os,
                                   const DescribeOptions& options) {
-    if (_lb == NULL) {
-        os << "lb=NULL";
+    if (_lb == nullptr) {
+        os << "lb=nullptr";
     } else {
         _lb->Describe(os, options);
     }

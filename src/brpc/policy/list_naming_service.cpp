@@ -42,10 +42,10 @@ int ParseServerList(const char* service_name,
     std::string line;
 
     if (!service_name) {
-        LOG(FATAL) << "Param[service_name] is NULL";
+        LOG(FATAL) << "Param[service_name] is nullptr";
         return -1;
     }
-    for (butil::StringSplitter sp(service_name, ','); sp != NULL; ++sp) {
+    for (butil::StringSplitter sp(service_name, ','); sp != nullptr; ++sp) {
         line.assign(sp.field(), sp.length());
         butil::StringPiece addr;
         butil::StringPiece tag;

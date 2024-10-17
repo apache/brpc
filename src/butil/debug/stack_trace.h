@@ -103,7 +103,7 @@ namespace internal {
 // POSIX doesn't define any async-signal safe function for converting
 // an integer to ASCII. We'll have to define our own version.
 // itoa_r() converts a (signed) integer to ASCII. It returns "buf", if the
-// conversion was successful or NULL otherwise. It never writes more than "sz"
+// conversion was successful or nullptr otherwise. It never writes more than "sz"
 // bytes. Output will be truncated as needed, and a NUL character is always
 // appended.
 BUTIL_EXPORT char *itoa_r(intptr_t i,

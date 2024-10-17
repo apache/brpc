@@ -213,7 +213,7 @@ query string也是key/value对，http headers与query string的区别:
 ```c++
 // 获得header中"User-Agent"的值，大小写不敏感。
 const std::string* user_agent_str = cntl->http_request().GetHeader("User-Agent");
-if (user_agent_str != NULL) {  // has the header
+if (user_agent_str != nullptr) {  // has the header
     LOG(TRACE) << "User-Agent is " << *user_agent_str;
 }
 ...
@@ -272,7 +272,7 @@ cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/i
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
-if (time_value != NULL) {  // the query string is present
+if (time_value != nullptr) {  // the query string is present
     LOG(TRACE) << "time = " << *time_value;
 }
 
@@ -306,7 +306,7 @@ http服务常对http body进行压缩，可以有效减少网页的传输时间�
 #include <brpc/policy/gzip_compress.h>
 ...
 const std::string* encoding = cntl->http_request().GetHeader("Content-Encoding");
-if (encoding != NULL && *encoding == "gzip") {
+if (encoding != nullptr && *encoding == "gzip") {
     butil::IOBuf uncompressed;
     if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
         LOG(ERROR) << "Fail to un-gzip request body";

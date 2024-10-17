@@ -36,7 +36,7 @@ DEFINE_bool(usercode_in_pthread, false,
 DEFINE_bool(usercode_in_coroutine, false,
             "User's callback are run in coroutine, no bthread or pthread blocking call");
 
-static EventDispatcher* g_edisp = NULL;
+static EventDispatcher* g_edisp = nullptr;
 static pthread_once_t g_edisp_once = PTHREAD_ONCE_INIT;
 
 static void StopAndJoinGlobalDispatchers() {
@@ -73,11 +73,11 @@ EventDispatcher& GetGlobalEventDispatcher(int fd, bthread_tag_t tag) {
 
 int IOEventData::OnCreated(const IOEventDataOptions& options) {
     if (!options.input_cb) {
-        LOG(ERROR) << "Invalid input_cb=NULL";
+        LOG(ERROR) << "Invalid input_cb=nullptr";
         return -1;
     }
     if (!options.output_cb) {
-        LOG(ERROR) << "Invalid output_cb=NULL";
+        LOG(ERROR) << "Invalid output_cb=nullptr";
         return -1;
     }
 
@@ -86,7 +86,7 @@ int IOEventData::OnCreated(const IOEventDataOptions& options) {
 }
 
 void IOEventData::BeforeRecycled() {
-    _options = { NULL, NULL, NULL };
+    _options = { nullptr, nullptr, nullptr };
 }
 
 } // namespace brpc

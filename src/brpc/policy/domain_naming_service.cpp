@@ -37,7 +37,7 @@ int DomainNamingService::GetServers(const char* dns_name,
                                     std::vector<ServerNode>* servers) {
     servers->clear();
     if (!dns_name) {
-        LOG(ERROR) << "dns_name is NULL";
+        LOG(ERROR) << "dns_name is nullptr";
         return -1;
     }
 
@@ -57,7 +57,7 @@ int DomainNamingService::GetServers(const char* dns_name,
     int port = _default_port;
     if (dns_name[i] == ':') {
         ++i;
-        char* end = NULL;
+        char* end = nullptr;
         port = strtol(dns_name + i, &end, 10);
         if (end == dns_name + i) {
             LOG(ERROR) << "No port after colon in `" << dns_name << '\'';
@@ -89,7 +89,7 @@ int DomainNamingService::GetServers(const char* dns_name,
         snprintf(portBuf, arraysize(portBuf), "%d", port);
         auto ret = getaddrinfo(buf, portBuf, &hints, &addrResult);
         if (!ret) {
-            for(auto rp = addrResult; rp != NULL; rp = rp->ai_next) {
+            for(auto rp = addrResult; rp != nullptr; rp = rp->ai_next) {
                 butil::EndPoint point;
                 auto ret = butil::sockaddr2endpoint((struct sockaddr_storage*)rp->ai_addr, rp->ai_addrlen, &point);
                 if(!ret) {
@@ -112,21 +112,21 @@ int DomainNamingService::GetServers(const char* dns_name,
     // returned hostent is TLS. Check following link for the ref:
     // https://lists.apple.com/archives/darwin-dev/2006/May/msg00008.html
     struct hostent* result = gethostbyname(buf);
-    if (result == NULL) {
-        LOG(WARNING) << "result of gethostbyname is NULL";
+    if (result == nullptr) {
+        LOG(WARNING) << "result of gethostbyname is nullptr";
         return -1;
     }
 #else
-    if (_aux_buf == NULL) {
+    if (_aux_buf == nullptr) {
         _aux_buf_len = 1024;
         _aux_buf.reset(new char[_aux_buf_len]);
     }
     int ret = 0;
     int error = 0;
     struct hostent ent;
-    struct hostent* result = NULL;
+    struct hostent* result = nullptr;
     do {
-        result = NULL;
+        result = nullptr;
         error = 0;
         ret = gethostbyname_r(buf, &ent, _aux_buf.get(), _aux_buf_len,
                               &result, &error);
@@ -144,8 +144,8 @@ int DomainNamingService::GetServers(const char* dns_name,
                      << "' herror=`" << hstrerror(error) << '\'';
         return -1;
     }
-    if (result == NULL) {
-        LOG(WARNING) << "result of gethostbyname_r is NULL";
+    if (result == nullptr) {
+        LOG(WARNING) << "result of gethostbyname_r is nullptr";
         return -1;
     }
 #endif
@@ -153,7 +153,7 @@ int DomainNamingService::GetServers(const char* dns_name,
     //TODO add protocols other than IPv4 supports
     butil::EndPoint point;
     point.port = port;
-    for (int i = 0; result->h_addr_list[i] != NULL; ++i) {
+    for (int i = 0; result->h_addr_list[i] != nullptr; ++i) {
         if (result->h_addrtype == AF_INET) {
             // Only fetch IPv4 addresses
             bcopy(result->h_addr_list[i], &point.ip, result->h_length);

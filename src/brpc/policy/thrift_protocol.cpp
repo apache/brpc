@@ -248,7 +248,7 @@ void ThriftClosure::DoRun() {
     }
     Socket* sock = accessor.get_sending_socket();
     MethodStatus* method_status = (server->options().thrift_service ? 
-        server->options().thrift_service->_status : NULL);
+        server->options().thrift_service->_status : nullptr);
     ConcurrencyRemover concurrency_remover(method_status, &_controller, _received_us);
     if (!method_status) {
         // Judge errors belongings.
@@ -492,11 +492,11 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     cntl->set_log_id(seq_id);    // Pass seq_id by log_id
 
     ThriftService* service = server->options().thrift_service;
-    if (service == NULL) {
+    if (service == nullptr) {
         LOG_EVERY_SECOND(ERROR)
             << "Received thrift request however the server does not set"
             " ServerOptions.thrift_service, close the connection.";
-        return cntl->SetFailed(EINTERNAL, "ServerOptions.thrift_service is NULL");
+        return cntl->SetFailed(EINTERNAL, "ServerOptions.thrift_service is nullptr");
     }
 
     // Switch to service-specific error.
@@ -515,7 +515,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    Span* span = nullptr;
     if (IsTraceable(false)) {
         span = Span::CreateServerSpan(0, 0, 0, msg->base_real_us());
         accessor.set_span(span);
@@ -575,7 +575,7 @@ void ProcessThriftResponse(InputMessageBase* msg_base) {
     
     // Fetch correlation id that we saved before in `PacThriftRequest'
     const CallId cid = { static_cast<uint64_t>(msg->socket()->correlation_id()) };
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -657,13 +657,13 @@ bool VerifyThriftRequest(const InputMessageBase* msg_base) {
 
 void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
                             const google::protobuf::Message* req_base) {
-    if (req_base == NULL) {
-        return cntl->SetFailed(EREQUEST, "request is NULL");
+    if (req_base == nullptr) {
+        return cntl->SetFailed(EREQUEST, "request is nullptr");
     }
     if (req_base->GetDescriptor() != ThriftFramedMessage::descriptor()) {
         return cntl->SetFailed(EINVAL, "Type of request must be ThriftFramedMessage");
     }
-    if (cntl->response() != NULL &&
+    if (cntl->response() != nullptr &&
         cntl->response()->GetDescriptor() != ThriftFramedMessage::descriptor()) {
         return cntl->SetFailed(EINVAL, "Type of response must be ThriftFramedMessage");
     }

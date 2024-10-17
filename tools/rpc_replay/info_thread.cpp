@@ -22,8 +22,8 @@ namespace brpc {
 InfoThread::InfoThread()
     : _stop(false)
     , _tid(0) {
-    pthread_mutex_init(&_mutex, NULL);
-    pthread_cond_init(&_cond, NULL);
+    pthread_mutex_init(&_mutex, nullptr);
+    pthread_cond_init(&_cond, nullptr);
 }
 
 InfoThread::~InfoThread() {
@@ -96,19 +96,19 @@ void InfoThread::run() {
 
 static void* run_info_thread(void* arg) {
     ((InfoThread*)arg)->run();
-    return NULL;
+    return nullptr;
 }
 
 bool InfoThread::start(const InfoThreadOptions& options) {
-    if (options.latency_recorder == NULL ||
-        options.error_count == NULL ||
-        options.sent_count == NULL) {
-        LOG(ERROR) << "Some required options are NULL";
+    if (options.latency_recorder == nullptr ||
+        options.error_count == nullptr ||
+        options.sent_count == nullptr) {
+        LOG(ERROR) << "Some required options are nullptr";
         return false;
     }
     _options = options;
     _stop = false;
-    if (pthread_create(&_tid, NULL, run_info_thread, this) != 0) {
+    if (pthread_create(&_tid, nullptr, run_info_thread, this) != 0) {
         LOG(ERROR) << "Fail to create info_thread";
         return false;
     }
@@ -124,7 +124,7 @@ void InfoThread::stop() {
         _stop = true;
         pthread_cond_signal(&_cond);
     }
-    pthread_join(_tid, NULL);
+    pthread_join(_tid, nullptr);
 }
 
 } // brpc

@@ -79,8 +79,8 @@ struct ArenaRpcPBMessages : public RpcPBMessages {
 
     explicit ArenaRpcPBMessages(ArenaOptionsWrapper options_wrapper)
         : arena(options_wrapper.options)
-        , request(NULL)
-        , response(NULL) {}
+        , request(nullptr)
+        , response(nullptr) {}
 
     ::google::protobuf::Message* Request() override { return request; }
     ::google::protobuf::Message* Response() override { return response; }
@@ -111,8 +111,8 @@ public:
 
     void Return(RpcPBMessages* messages) override {
         auto arena_messages = static_cast<ArenaRpcPBMessages*>(messages);
-        arena_messages->request = NULL;
-        arena_messages->response = NULL;
+        arena_messages->request = nullptr;
+        arena_messages->response = nullptr;
         butil::return_object(arena_messages);
     }
 

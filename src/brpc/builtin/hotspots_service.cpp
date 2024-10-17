@@ -156,11 +156,11 @@ struct ProfilingEnvironment {
 
 // Different ProfilingType have different env.
 static ProfilingEnvironment g_env[5] = {
-    { PTHREAD_MUTEX_INITIALIZER, 0, NULL, NULL, NULL },
-    { PTHREAD_MUTEX_INITIALIZER, 0, NULL, NULL, NULL },
-    { PTHREAD_MUTEX_INITIALIZER, 0, NULL, NULL, NULL },
-    { PTHREAD_MUTEX_INITIALIZER, 0, NULL, NULL, NULL },
-    { PTHREAD_MUTEX_INITIALIZER, 0, NULL, NULL, NULL }
+    { PTHREAD_MUTEX_INITIALIZER, 0, nullptr, nullptr, nullptr },
+    { PTHREAD_MUTEX_INITIALIZER, 0, nullptr, nullptr, nullptr },
+    { PTHREAD_MUTEX_INITIALIZER, 0, nullptr, nullptr, nullptr },
+    { PTHREAD_MUTEX_INITIALIZER, 0, nullptr, nullptr, nullptr },
+    { PTHREAD_MUTEX_INITIALIZER, 0, nullptr, nullptr, nullptr }
 };
 
 // The `content' should be small so that it can be written into file in one
@@ -176,7 +176,7 @@ static bool WriteSmallFile(const char* filepath_in,
         return false;
     }
     FILE* fp = fopen(path.value().c_str(), "w");
-    if (NULL == fp) {
+    if (nullptr == fp) {
         LOG(ERROR) << "Fail to open `" << path.value() << '\'';
         return false;
     }
@@ -200,12 +200,12 @@ static bool WriteSmallFile(const char* filepath_in,
         return false;
     }
     FILE* fp = fopen(path.value().c_str(), "w");
-    if (NULL == fp) {
+    if (nullptr == fp) {
         LOG(ERROR) << "Fail to open `" << path.value() << '\'';
         return false;
     }
     butil::IOBufAsZeroCopyInputStream iter(content);
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (iter.Next(&data, &size)) {
         if (fwrite(data, size, 1UL, fp) != 1UL) {
@@ -222,8 +222,8 @@ static int ReadSeconds(const Controller* cntl) {
     int seconds = DEFAULT_PROFILING_SECONDS;
     const std::string* param =
         cntl->http_request().uri().GetQuery("seconds");
-    if (param != NULL) {
-        char* endptr = NULL;
+    if (param != nullptr) {
+        char* endptr = nullptr;
         const long sec = strtol(param->c_str(), &endptr, 10);
         if (endptr == param->c_str() + param->length()) {
             seconds = sec;
@@ -236,8 +236,8 @@ static int ReadSeconds(const Controller* cntl) {
 }
 
 static const char* GetBaseName(const std::string* full_base_name) {
-    if (full_base_name == NULL) {
-        return NULL;
+    if (full_base_name == nullptr) {
+        return nullptr;
     }
     size_t offset = full_base_name->find_last_of('/');
     if (offset == std::string::npos) {
@@ -339,10 +339,10 @@ static void ConsumeWaiters(ProfilingType type, const Controller* cur_cntl,
     ProfilingEnvironment& env = g_env[type];
     if (env.client) {
         BAIDU_SCOPED_LOCK(env.mutex);
-        if (env.client == NULL) {
+        if (env.client == nullptr) {
             return;
         }
-        if (env.cached_result == NULL) {
+        if (env.cached_result == nullptr) {
             env.cached_result = new ProfilingResult;
         }
         env.cached_result->id = env.client->id;
@@ -351,7 +351,7 @@ static void ConsumeWaiters(ProfilingType type, const Controller* cur_cntl,
         env.cached_result->result = cur_cntl->response_attachment();
 
         delete env.client;
-        env.client = NULL;
+        env.client = nullptr;
         if (env.waiters) {
             env.waiters->swap(*waiters);
         }
@@ -361,7 +361,7 @@ static void ConsumeWaiters(ProfilingType type, const Controller* cur_cntl,
 // This function is always called with g_env[type].mutex UNLOCKED.
 static void NotifyWaiters(ProfilingType type, const Controller* cur_cntl,
                           const std::string* view) {
-    if (view != NULL) {
+    if (view != nullptr) {
         return;
     }
     std::vector<ProfilingWaiter> saved_waiters;
@@ -381,7 +381,7 @@ static void NotifyWaiters(ProfilingType type, const Controller* cur_cntl,
 static const char* s_pprof_binary_path = nullptr;
 static bool check_GOOGLE_PPROF_BINARY_PATH() {
     char* str = getenv("GOOGLE_PPROF_BINARY_PATH");
-    if (str == NULL) {
+    if (str == nullptr) {
         return false;
     }
     butil::fd_guard fd(open(str, O_RDONLY));
@@ -432,7 +432,7 @@ static void DisplayResult(Controller* cntl,
         }
 #endif
     }
-    if (base_name != NULL) {
+    if (base_name != nullptr) {
         if (!ValidProfilePath(*base_name)) {
             return cntl->SetFailed(EINVAL, "Invalid query `base'");
         }
@@ -449,7 +449,7 @@ static void DisplayResult(Controller* cntl,
                   display_type, show_ccount);
     // Try to read cache first.
     FILE* fp = fopen(expected_result_name, "r");
-    if (fp != NULL) {
+    if (fp != nullptr) {
         bool succ = false;
         char buffer[1024];
         while (1) {
@@ -562,7 +562,7 @@ static void DisplayResult(Controller* cntl,
         // current profile is.
         butil::IOBuf before_label;
         butil::IOBuf tmp;
-        if (cntl->http_request().uri().GetQuery("view") == NULL) {
+        if (cntl->http_request().uri().GetQuery("view") == nullptr) {
             tmp.append(prof_name);
             tmp.append("[addToProfEnd]");
         }
@@ -671,8 +671,8 @@ static void DoProfiling(ProfilingType type,
     int64_t prof_id = 0;
     const std::string* prof_id_str =
         cntl->http_request().uri().GetQuery("profiling_id");
-    if (prof_id_str != NULL) {
-        char* endptr = NULL;
+    if (prof_id_str != nullptr) {
+        char* endptr = nullptr;
         prof_id = strtoll(prof_id_str->c_str(), &endptr, 10);
         LOG_IF(ERROR, *endptr != '\0') << "Invalid profiling_id=" << prof_id;
     }
@@ -680,7 +680,7 @@ static void DoProfiling(ProfilingType type,
     {
         BAIDU_SCOPED_LOCK(g_env[type].mutex);
         if (g_env[type].client) {
-            if (NULL == g_env[type].waiters) {
+            if (nullptr == g_env[type].waiters) {
                 g_env[type].waiters = new std::vector<ProfilingWaiter>;
             }
             ProfilingWaiter waiter = { cntl, done_guard.release() };
@@ -688,7 +688,7 @@ static void DoProfiling(ProfilingType type,
             RPC_VLOG << "Queue request from " << cntl->remote_side();
             return;
         }
-        if (g_env[type].cached_result != NULL &&
+        if (g_env[type].cached_result != nullptr &&
             g_env[type].cached_result->id == prof_id) {
             cntl->http_response().set_status_code(
                 g_env[type].cached_result->status_code);
@@ -697,7 +697,7 @@ static void DoProfiling(ProfilingType type,
             RPC_VLOG << "Hit cached result, id=" << prof_id;
             return;
         }
-        CHECK(NULL == g_env[type].client);
+        CHECK(nullptr == g_env[type].client);
         g_env[type].client = new ProfilingClient;
         g_env[type].client->end_us = butil::cpuwide_time_us() + seconds * 1000000L;
         g_env[type].client->seconds = seconds;
@@ -737,7 +737,7 @@ static void DoProfiling(ProfilingType type,
     }
 #endif
     if (type == PROFILING_CPU) {
-        if ((void*)ProfilerStart == NULL || (void*)ProfilerStop == NULL) {
+        if ((void*)ProfilerStart == nullptr || (void*)ProfilerStop == nullptr) {
             os << "CPU profiler is not enabled"
                << (use_html ? "</body></html>" : "\n");
             os.move_to(resp);
@@ -788,9 +788,9 @@ static void DoProfiling(ProfilingType type,
         butil::IOBufProfilerFlush(prof_name);
     } else if (type == PROFILING_HEAP) {
         MallocExtension* malloc_ext = MallocExtension::instance();
-        if (malloc_ext == NULL || !has_TCMALLOC_SAMPLE_PARAMETER()) {
+        if (malloc_ext == nullptr || !has_TCMALLOC_SAMPLE_PARAMETER()) {
             os << "Heap profiler is not enabled";
-            if (malloc_ext != NULL) {
+            if (malloc_ext != nullptr) {
                 os << " (no TCMALLOC_SAMPLE_PARAMETER in env)";
             }
             os << '.' << (use_html ? "</body></html>" : "\n");
@@ -810,7 +810,7 @@ static void DoProfiling(ProfilingType type,
         }
     } else if (type == PROFILING_GROWTH) {
         MallocExtension* malloc_ext = MallocExtension::instance();
-        if (malloc_ext == NULL) {
+        if (malloc_ext == nullptr) {
             os << "Growth profiler is not enabled."
                << (use_html ? "</body></html>" : "\n");
             os.move_to(resp);
@@ -922,7 +922,7 @@ static void StartProfiling(ProfilingType type,
     ProfilingClient profiling_client;
     size_t nwaiters = 0;
     ProfilingEnvironment & env = g_env[type];
-    if (view == NULL) {
+    if (view == nullptr) {
         BAIDU_SCOPED_LOCK(env.mutex);
         if (env.client) {
             profiling_client = *env.client;
@@ -966,7 +966,7 @@ static void StartProfiling(ProfilingType type,
         "}\n"
         "$(function() {\n"
         "  function onDataReceived(data) {\n";
-    if (view == NULL) {
+    if (view == nullptr) {
         os <<
         "    var selEnd = data.indexOf('[addToProfEnd]');\n"
         "    if (selEnd != -1) {\n"
@@ -1091,7 +1091,7 @@ static void StartProfiling(ProfilingType type,
     os << "<option value=''>&lt;new profile&gt;</option>";
     for (size_t i = 0; i < past_profs.size(); ++i) {
         os << "<option value='" << past_profs[i] << "' ";
-        if (view != NULL && past_profs[i] == *view) {
+        if (view != nullptr && past_profs[i] == *view) {
             os << "selected";
         }
         os << '>' << GetBaseName(&past_profs[i]);
@@ -1116,7 +1116,7 @@ static void StartProfiling(ProfilingType type,
               "<option value=''>&lt;none&gt;</option>";
         for (size_t i = 0; i<past_profs.size(); ++i) {
             os << "<option value='" << past_profs[i] << "' ";
-            if (base_name!=NULL && past_profs[i]==*base_name) {
+            if (base_name!=nullptr && past_profs[i]==*base_name) {
                 os << "selected";
             }
             os << '>' << GetBaseName(&past_profs[i]);
@@ -1124,7 +1124,7 @@ static void StartProfiling(ProfilingType type,
         os << "</select></div>";
     }
     
-    if (!enabled && view == NULL) {
+    if (!enabled && view == nullptr) {
         os << "<p><span style='color:red'>Error:</span> "
            << type_str << " profiler is not enabled." << extra_desc << "</p>"
             "<p>To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER"
@@ -1136,7 +1136,7 @@ static void StartProfiling(ProfilingType type,
         return;
     }
 
-    if ((type == PROFILING_CPU || type == PROFILING_CONTENTION) && view == NULL) {
+    if ((type == PROFILING_CPU || type == PROFILING_CONTENTION) && view == nullptr) {
         if (seconds < 0) {
             os << "Invalid seconds</body></html>";
             os.move_to(cntl->response_attachment());
@@ -1164,7 +1164,7 @@ static void StartProfiling(ProfilingType type,
             os << ", showing in about " << wait_seconds << " seconds ...";
         }
     } else {
-        if ((type == PROFILING_CPU || type == PROFILING_CONTENTION) && view == NULL) {
+        if ((type == PROFILING_CPU || type == PROFILING_CONTENTION) && view == nullptr) {
             os << "Profiling " << ProfilingType2String(type) << " for "
                << seconds << " seconds ...";
         } else {

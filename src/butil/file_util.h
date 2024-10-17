@@ -90,7 +90,7 @@ BUTIL_EXPORT bool Move(const FilePath& from_path, const FilePath& to_path);
 // if it doesn't exist. Prefer this function over Move when dealing with
 // temporary files. On Windows it preserves attributes of the target file.
 // Returns true on success, leaving *error unchanged.
-// Returns false on failure and sets *error appropriately, if it is non-NULL.
+// Returns false on failure and sets *error appropriately, if it is non-nullptr.
 BUTIL_EXPORT bool ReplaceFile(const FilePath& from_path,
                              const FilePath& to_path,
                              File::Error* error);
@@ -141,7 +141,7 @@ BUTIL_EXPORT bool TextContentsEqual(const FilePath& filename1,
 // components ('..') is treated as a read error and |contents| is set to empty.
 // In case of I/O error, |contents| holds the data that could be read from the
 // file before the error occurred.
-// |contents| may be NULL, in which case this function is useful for its side
+// |contents| may be nullptr, in which case this function is useful for its side
 // effect of priming the disk cache (could be used for unit tests).
 BUTIL_EXPORT bool ReadFileToString(const FilePath& path, std::string* contents);
 
@@ -152,7 +152,7 @@ BUTIL_EXPORT bool ReadFileToString(const FilePath& path, std::string* contents);
 // file before the error occurred.  When the file size exceeds |max_size|, the
 // function returns false with |contents| holding the file truncated to
 // |max_size|.
-// |contents| may be NULL, in which case this function is useful for its side
+// |contents| may be nullptr, in which case this function is useful for its side
 // effect of priming the disk cache (could be used for unit tests).
 BUTIL_EXPORT bool ReadFileToString(const FilePath& path,
                                   std::string* contents,
@@ -232,7 +232,7 @@ BUTIL_EXPORT bool CreateTemporaryFileInDir(const FilePath& dir,
 
 // Create and open a temporary file.  File is opened for read/write.
 // The full path is placed in |path|.
-// Returns a handle to the opened file or NULL if an error occurred.
+// Returns a handle to the opened file or nullptr if an error occurred.
 BUTIL_EXPORT FILE* CreateAndOpenTemporaryFile(FilePath* path);
 
 // Similar to CreateAndOpenTemporaryFile, but the file is created in |dir|.
@@ -259,7 +259,7 @@ BUTIL_EXPORT bool CreateTemporaryDirInDir(const FilePath& base_dir,
 // Returns 'true' on successful creation, or if the directory already exists.
 // The directory is readable for all the users.
 // Returns true on success, leaving *error unchanged.
-// Returns false on failure and sets *error appropriately, if it is non-NULL.
+// Returns false on failure and sets *error appropriately, if it is non-nullptr.
 BUTIL_EXPORT bool CreateDirectoryAndGetError(const FilePath& full_path,
                                             File::Error* error);
 BUTIL_EXPORT bool CreateDirectoryAndGetError(const FilePath& full_path,
@@ -309,7 +309,7 @@ BUTIL_EXPORT bool TouchFile(const FilePath& path,
                            const Time& last_accessed,
                            const Time& last_modified);
 
-// Wrapper for fopen-like calls. Returns non-NULL FILE* on success.
+// Wrapper for fopen-like calls. Returns non-nullptr FILE* on success.
 BUTIL_EXPORT FILE* OpenFile(const FilePath& filename, const char* mode);
 
 // Closes file opened by OpenFile. Returns true on success.

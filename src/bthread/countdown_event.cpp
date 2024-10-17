@@ -60,7 +60,7 @@ int CountdownEvent::wait() {
         if (seen_counter <= 0) {
             return 0;
         }
-        if (butex_wait(_butex, seen_counter, NULL) < 0 &&
+        if (butex_wait(_butex, seen_counter, nullptr) < 0 &&
             errno != EWOULDBLOCK && errno != EINTR) {
             return errno;
         }

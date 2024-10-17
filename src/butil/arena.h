@@ -72,7 +72,7 @@ private:
 };
 
 inline void* Arena::allocate(size_t n) {
-    if (_cur_block != NULL && _cur_block->left_space() >= n) {
+    if (_cur_block != nullptr && _cur_block->left_space() >= n) {
         void* ret = _cur_block->data + _cur_block->alloc_size;
         _cur_block->alloc_size += n;
         return ret;

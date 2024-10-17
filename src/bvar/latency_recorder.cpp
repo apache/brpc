@@ -55,7 +55,7 @@ void CDF::describe(std::ostream& os, bool) const {
 
 int CDF::describe_series(
     std::ostream& os, const SeriesOptions& options) const {
-    if (_w == NULL) {
+    if (_w == nullptr) {
         return 1;
     }
     if (options.test_only) {

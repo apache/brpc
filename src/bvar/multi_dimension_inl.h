@@ -93,10 +93,10 @@ void MultiDimension<T>::delete_stats(const key_type& labels_value) {
     if (is_valid_lables_value(labels_value)) {
         // Because there are two copies(foreground and background) in DBD, we need to use an empty tmp_metric,
         // get the deleted value of second copy into tmp_metric, which can prevent the bvar object from being deleted twice.
-        op_value_type tmp_metric = NULL;
+        op_value_type tmp_metric = nullptr;
         auto erase_fn = [&labels_value, &tmp_metric](MetricMap& bg) {
             auto it = bg.seek(labels_value);
-            if (it != NULL) {
+            if (it != nullptr) {
                 tmp_metric = *it;
                 bg.erase(labels_value);
                 return 1;
@@ -136,7 +136,7 @@ void MultiDimension<T>::delete_stats() {
 template <typename T>
 inline
 void MultiDimension<T>::list_stats(std::vector<key_type>* names) {
-    if (names == NULL) {
+    if (names == nullptr) {
         return;
     }
     names->clear();
@@ -184,7 +184,7 @@ T* MultiDimension<T>::get_stats_impl(const key_type& labels_value, STATS_OP stat
         }
 
         auto it = metric_map_ptr->seek(labels_value);
-        if (it != NULL) {
+        if (it != nullptr) {
             return (*it);
         } else if (READ_ONLY == stats_op) {
             return nullptr;
@@ -199,17 +199,17 @@ T* MultiDimension<T>::get_stats_impl(const key_type& labels_value, STATS_OP stat
     // Because DBD has two copies(foreground and background) MetricMap, both copies need to be modify,
     // In order to avoid new duplicate bvar object, need use cache_metric to cache the new bvar object,
     // In this way, when modifying the second copy, can directly use the cache_metric bvar object.
-    op_value_type cache_metric = NULL;
+    op_value_type cache_metric = nullptr;
     auto insert_fn = [&labels_value, &cache_metric, &do_write](MetricMap& bg) {
         auto bg_metric = bg.seek(labels_value);
-        if (NULL != bg_metric) {
+        if (nullptr != bg_metric) {
             cache_metric = *bg_metric;
             return 0;
         }
         if (do_write) {
             *do_write = true;
         }
-        if (NULL != cache_metric) {
+        if (nullptr != cache_metric) {
             bg.insert(labels_value, cache_metric);
         } else {
             T* add_metric = new T();
