@@ -18,6 +18,8 @@
 #ifndef BRPC_ESP_HEAD_H
 #define BRPC_ESP_HEAD_H
 
+#include <cstdint>
+
 namespace brpc {
 
 #pragma pack(push, r1, 1)

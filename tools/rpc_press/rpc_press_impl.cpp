@@ -46,6 +46,13 @@ public:
                           int /*column*/, const std::string& message) {
         LOG_AT(ERROR, filename.c_str(), line) << message;
     }
+
+#if GOOGLE_PROTOBUF_VERSION >= 5026000
+    void RecordError(absl::string_view filename, int line, int column,
+                     absl::string_view message) override {
+        LOG_AT(ERROR, filename.data(), line) << message;
+    }
+#endif
 };
 
 int PressClient::init() {

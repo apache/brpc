@@ -15,38 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#ifndef BRPC_MESSAGE_HELPER_H
+#define BRPC_MESSAGE_HELPER_H
 
-#ifndef BRPC_PB_COMPAT_H
-#define BRPC_PB_COMPAT_H
+#include "brpc/nonreflectable_message.h"
 
-#if GOOGLE_PROTOBUF_VERSION < 5027000
-# define PB_527_OVERRIDE override
-#else
-# define PB_527_OVERRIDE
-#endif
+namespace brpc {
 
-#if GOOGLE_PROTOBUF_VERSION < 5026000
-# define PB_526_OVERRIDE override
-#else
-# define PB_526_OVERRIDE
-#endif
+template <typename T>
+struct MessageHelper {
+    using BaseType = NonreflectableMessage<T>;
+};
 
-#if GOOGLE_PROTOBUF_VERSION < 4025000
-# define PB_425_OVERRIDE override
-#else
-# define PB_425_OVERRIDE
-#endif
+} // namespace brpc
 
-#if GOOGLE_PROTOBUF_VERSION < 3021000
-# define PB_321_OVERRIDE override
-#else
-# define PB_321_OVERRIDE
-#endif
-
-#if GOOGLE_PROTOBUF_VERSION < 3010000
-# define PB_310_OVERRIDE override
-#else
-# define PB_310_OVERRIDE
-#endif
-
-#endif  // BRPC_PB_COMPAT_H
+#endif // BRPC_MESSAGE_HELPER_H
