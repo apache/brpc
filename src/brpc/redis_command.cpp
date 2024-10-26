@@ -374,10 +374,54 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     }
     // '*' stands for array "*<size>\r\n<sub-reply1><sub-reply2>..."
     if (!_parsing_array && *pfc != '*') {
+        // Check if the buffer equals "PING\r\n"
+        const size_t ping_cmd_len = 6; // Length of "PING\r\n"
+        if (buf.size() < ping_cmd_len) {
+            return PARSE_ERROR_TRY_OTHERS;
+        }
+        // Peek at the first 6 bytes without consuming them
+        char cmd[6];
+        buf.copy_to(cmd, ping_cmd_len);
+        if (memcmp(cmd, "PING\r\n", ping_cmd_len) == 0) {
+            // Consume "PING\r\n" from the buffer
+            buf.pop_front(ping_cmd_len);
+            // Add "PING" to args
+            args->clear();
+            // Allocate memory from the arena for "PING"
+            char* arg = (char*)arena->allocate(4); // Length of "PING"
+            memcpy(arg, "ping", 4);
+            args->push_back(butil::StringPiece(arg, 4));
+            return PARSE_OK;
+        } else {
+            return PARSE_ERROR_TRY_OTHERS;
+        }
+
         return PARSE_ERROR_TRY_OTHERS;
     }
     // '$' stands for bulk string "$<length>\r\n<string>\r\n"
     if (_parsing_array && *pfc != '$') {
+        // Check if the buffer equals "PING\r\n"
+        const size_t ping_cmd_len = 6; // Length of "PING\r\n"
+        if (buf.size() < ping_cmd_len) {
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
+        // Peek at the first 6 bytes without consuming them
+        char cmd[6];
+        buf.copy_to(cmd, ping_cmd_len);
+        if (memcmp(cmd, "PING\r\n", ping_cmd_len) == 0) {
+            // Consume "PING\r\n" from the buffer
+            buf.pop_front(ping_cmd_len);
+            // Add "PING" to args
+            args->clear();
+            // Allocate memory from the arena for "PING"
+            char* arg = (char*)arena->allocate(4); // Length of "PING"
+            memcpy(arg, "ping", 4);
+            args->push_back(butil::StringPiece(arg, 4));
+            return PARSE_OK;
+        } else {
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
+
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     char intbuf[32];  // enough for fc + 64-bit decimal + \r\n

@@ -395,7 +395,6 @@ int butex_wake_all(void* arg, bool nosignal) {
         m->bound_task_group->resume_bound_task(next->tid, nosignal);
     }
     else if (g == tls_task_group) {
-        LOG(INFO) << "butex wake all run_in_local_task_group, exchange";
         run_in_local_task_group(g, next->tid, nosignal);
     }
     else {
