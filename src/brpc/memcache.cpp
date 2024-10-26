@@ -27,12 +27,12 @@
 namespace brpc {
 
 MemcacheRequest::MemcacheRequest()
-    : MessageHelper<MemcacheRequest>::BaseType() {
+    : NonreflectableMessage<MemcacheRequest>() {
     SharedCtor();
 }
 
 MemcacheRequest::MemcacheRequest(const MemcacheRequest& from)
-    : MessageHelper<MemcacheRequest>::BaseType() {
+    : NonreflectableMessage<MemcacheRequest>() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -138,12 +138,12 @@ void MemcacheRequest::Swap(MemcacheRequest* other) {
 }
 
 MemcacheResponse::MemcacheResponse()
-    : MessageHelper<MemcacheResponse>::BaseType() {
+    : NonreflectableMessage<MemcacheResponse>() {
     SharedCtor();
 }
 
 MemcacheResponse::MemcacheResponse(const MemcacheResponse& from)
-    : MessageHelper<MemcacheResponse>::BaseType() {
+    : NonreflectableMessage<MemcacheResponse>() {
     SharedCtor();
     MergeFrom(from);
 }

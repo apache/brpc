@@ -23,12 +23,12 @@
 namespace brpc {
 
 SerializedResponse::SerializedResponse()
-    : MessageHelper<SerializedResponse>::BaseType() {
+    : NonreflectableMessage<SerializedResponse>() {
     SharedCtor();
 }
 
 SerializedResponse::SerializedResponse(const SerializedResponse& from)
-    : MessageHelper<SerializedResponse>::BaseType() {
+    : NonreflectableMessage<SerializedResponse>() {
     SharedCtor();
     MergeFrom(from);
 }

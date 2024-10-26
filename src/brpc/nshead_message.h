@@ -19,7 +19,7 @@
 #ifndef BRPC_NSHEAD_MESSAGE_H
 #define BRPC_NSHEAD_MESSAGE_H
 
-#include "brpc/message_helper.h"
+#include "brpc/nonreflectable_message.h"
 #include "brpc/nshead.h" // nshead_t
 #include "brpc/pb_compat.h"
 #include "butil/iobuf.h" // IOBuf
@@ -27,7 +27,7 @@
 namespace brpc {
 
 // Representing a nshead request or response.
-class NsheadMessage : public MessageHelper<NsheadMessage>::BaseType {
+class NsheadMessage : public NonreflectableMessage<NsheadMessage> {
 public:
     nshead_t head;
     butil::IOBuf body;

@@ -19,12 +19,12 @@
 #define BRPC_ESP_MESSAGE_H
 
 #include "brpc/esp_head.h"
-#include "brpc/message_helper.h"
+#include "brpc/nonreflectable_message.h"
 #include "butil/iobuf.h"
 
 namespace brpc {
 
-class EspMessage : public MessageHelper<EspMessage>::BaseType {
+class EspMessage : public NonreflectableMessage<EspMessage> {
 public:
     EspHead head;
     butil::IOBuf body;

@@ -30,12 +30,12 @@ namespace brpc {
 DEFINE_bool(redis_verbose_crlf2space, false, "[DEBUG] Show \\r\\n as a space");
 
 RedisRequest::RedisRequest()
-    : MessageHelper<RedisRequest>::BaseType() {
+    : NonreflectableMessage<RedisRequest>() {
     SharedCtor();
 }
 
 RedisRequest::RedisRequest(const RedisRequest& from)
-    : MessageHelper<RedisRequest>::BaseType() {
+    : NonreflectableMessage<RedisRequest>() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -195,12 +195,12 @@ std::ostream& operator<<(std::ostream& os, const RedisRequest& r) {
 }
 
 RedisResponse::RedisResponse()
-    : MessageHelper<RedisResponse>::BaseType()
+    : NonreflectableMessage<RedisResponse>()
     , _first_reply(&_arena) {
     SharedCtor();
 }
 RedisResponse::RedisResponse(const RedisResponse& from)
-    : MessageHelper<RedisResponse>::BaseType()
+    : NonreflectableMessage<RedisResponse>()
     , _first_reply(&_arena) {
     SharedCtor();
     MergeFrom(from);

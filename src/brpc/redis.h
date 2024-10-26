@@ -21,7 +21,7 @@
 
 #include <unordered_map>
 
-#include "brpc/message_helper.h"
+#include "brpc/nonreflectable_message.h"
 #include "brpc/parse_result.h"
 #include "brpc/pb_compat.h"
 #include "brpc/redis_reply.h"
@@ -42,7 +42,7 @@ namespace brpc {
 //   if (!cntl.Failed()) {
 //       LOG(INFO) << response.reply(0);
 //   }
-class RedisRequest : public MessageHelper<RedisRequest>::BaseType {
+class RedisRequest : public NonreflectableMessage<RedisRequest> {
 public:
     RedisRequest();
     ~RedisRequest() override;
@@ -130,7 +130,7 @@ private:
 // Response from Redis.
 // Notice that a RedisResponse instance may contain multiple replies
 // due to pipelining.
-class RedisResponse : public MessageHelper<RedisResponse>::BaseType {
+class RedisResponse : public NonreflectableMessage<RedisResponse> {
 public:
     RedisResponse();
     ~RedisResponse() override;

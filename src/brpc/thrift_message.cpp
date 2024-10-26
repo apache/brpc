@@ -24,7 +24,7 @@
 namespace brpc {
 
 ThriftFramedMessage::ThriftFramedMessage()
-    : MessageHelper<ThriftFramedMessage>::BaseType() {
+    : NonreflectableMessage<ThriftFramedMessage>() {
     SharedCtor();
 }
 

@@ -23,12 +23,12 @@
 namespace brpc {
 
 SerializedRequest::SerializedRequest()
-    : MessageHelper<SerializedRequest>::BaseType() {
+    : NonreflectableMessage<SerializedRequest>() {
     SharedCtor();
 }
 
 SerializedRequest::SerializedRequest(const SerializedRequest& from)
-    : MessageHelper<SerializedRequest>::BaseType() {
+    : NonreflectableMessage<SerializedRequest>() {
     SharedCtor();
     MergeFrom(from);
 }

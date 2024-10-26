@@ -23,7 +23,7 @@
 namespace brpc {
 
 EspMessage::EspMessage()
-    : MessageHelper<EspMessage>::BaseType() {
+    : NonreflectableMessage<EspMessage>() {
     SharedCtor();
 }
 

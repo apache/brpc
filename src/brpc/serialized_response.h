@@ -19,13 +19,13 @@
 #ifndef BRPC_SERIALIZED_RESPONSE_H
 #define BRPC_SERIALIZED_RESPONSE_H
 
-#include "brpc/message_helper.h"
+#include "brpc/nonreflectable_message.h"
 #include "brpc/pb_compat.h"
 #include "butil/iobuf.h"
 
 namespace brpc {
 
-class SerializedResponse : public MessageHelper<SerializedResponse>::BaseType {
+class SerializedResponse : public NonreflectableMessage<SerializedResponse> {
 public:
     SerializedResponse();
     ~SerializedResponse() override;

@@ -23,12 +23,12 @@
 namespace brpc {
 
 NsheadMessage::NsheadMessage()
-    : MessageHelper<NsheadMessage>::BaseType() {
+    : NonreflectableMessage<NsheadMessage>() {
     SharedCtor();
 }
 
 NsheadMessage::NsheadMessage(const NsheadMessage& from)
-    : MessageHelper<NsheadMessage>::BaseType() {
+    : NonreflectableMessage<NsheadMessage>() {
     SharedCtor();
     MergeFrom(from);
 }

@@ -19,13 +19,13 @@
 #ifndef BRPC_SERIALIZED_REQUEST_H
 #define BRPC_SERIALIZED_REQUEST_H
 
-#include "brpc/message_helper.h"
+#include "brpc/nonreflectable_message.h"
 #include "brpc/pb_compat.h"
 #include "butil/iobuf.h"
 
 namespace brpc {
 
-class SerializedRequest : public MessageHelper<SerializedRequest>::BaseType {
+class SerializedRequest : public NonreflectableMessage<SerializedRequest> {
 public:
     SerializedRequest();
     ~SerializedRequest() override;

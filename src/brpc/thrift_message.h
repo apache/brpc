@@ -21,7 +21,7 @@
 
 #include "brpc/channel_base.h"
 #include "brpc/controller.h"
-#include "brpc/message_helper.h"
+#include "brpc/nonreflectable_message.h"
 #include "brpc/pb_compat.h"
 #include "brpc/proto_base.pb.h"
 #include "butil/class_name.h"
@@ -55,7 +55,7 @@ public:
 };
 
 // Representing a thrift framed request or response.
-class ThriftFramedMessage : public MessageHelper<ThriftFramedMessage>::BaseType {
+class ThriftFramedMessage : public NonreflectableMessage<ThriftFramedMessage> {
 friend class ThriftStub;
 public:
     butil::IOBuf body; // ~= "{ raw_instance }"

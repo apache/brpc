@@ -23,7 +23,7 @@
 
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
-#include "brpc/message_helper.h"
+#include "brpc/nonreflectable_message.h"
 #include "brpc/pb_compat.h"
 
 namespace brpc {
@@ -40,7 +40,7 @@ namespace brpc {
 //   MemcacheResponse response;
 //   // 2 GET and 1 SET are sent to the server together.
 //   channel.CallMethod(&controller, &request, &response, NULL/*done*/);
-class MemcacheRequest : public MessageHelper<MemcacheRequest>::BaseType {
+class MemcacheRequest : public NonreflectableMessage<MemcacheRequest> {
 public:
     MemcacheRequest();
     ~MemcacheRequest() override;
@@ -144,7 +144,7 @@ private:
 //   } else {
 //       // the SET was successful.
 //   }
-class MemcacheResponse : public MessageHelper<MemcacheResponse>::BaseType {
+class MemcacheResponse : public NonreflectableMessage<MemcacheResponse> {
 public:
     // Definition of the valid response status numbers.
     // See section 3.2 Response Status
