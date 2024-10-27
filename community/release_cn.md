@@ -512,7 +512,7 @@ svn mv https://dist.apache.org/repos/dist/dev/brpc/$BRPCVERSION https://dist.apa
 
 ### 2. 创建 GitHub 版本发布页
 
-在 [GitHub Releases 页面](https://github.com/apache/brpc/tags)的对应 tag 上点击，创建新的 Release，编辑版本号及版本说明，并点击 Publish release。
+在 [GitHub Releases 页面](https://github.com/apache/brpc/tags)的对应 tag 上点击，创建新的 Release，编辑版本号及版本说明。注意Release title统一根据本次版本号写为Apache bRPC 1.x.0，并点击 Publish release。
 
 ### 3. 更新网站下载页
 
