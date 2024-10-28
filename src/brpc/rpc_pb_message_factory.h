@@ -113,6 +113,7 @@ public:
         auto arena_messages = static_cast<ArenaRpcPBMessages*>(messages);
         arena_messages->request = NULL;
         arena_messages->response = NULL;
+        arena_messages->arena.Reset();
         butil::return_object(arena_messages);
     }
 
