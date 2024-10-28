@@ -195,8 +195,8 @@ bool ParseRestfulPath(butil::StringPiece path,
 
 bool ParseRestfulMappings(const butil::StringPiece& mappings,
                           std::vector<RestfulMapping>* list) {
-    if (list == NULL) {
-        LOG(ERROR) << "Param[list] is NULL";
+    if (list == nullptr) {
+        LOG(ERROR) << "Param[list] is nullptr";
         return false;
     }
     list->clear();
@@ -262,13 +262,13 @@ bool RestfulMap::AddMethod(const RestfulMethodPath& path,
                            const Server::MethodProperty::OpaqueParams& params,
                            const std::string& method_name,
                            MethodStatus* status) {
-    if (service == NULL) {
-        LOG(ERROR) << "Param[service] is NULL";
+    if (service == nullptr) {
+        LOG(ERROR) << "Param[service] is nullptr";
         return false;
     }
     const google::protobuf::MethodDescriptor* md =
         service->GetDescriptor()->FindMethodByName(method_name);
-    if (md == NULL) {
+    if (md == nullptr) {
         LOG(ERROR) << service->GetDescriptor()->full_name()
                    << " has no method called `" << method_name << '\'';
         return false;
@@ -412,14 +412,14 @@ RestfulMap::FindMethodProperty(const butil::StringPiece& method_path,
                                std::string* unresolved_path) const {
     if (_sorted_paths.empty()) {
         LOG(ERROR) << "_sorted_paths is empty, method_path=" << method_path;
-        return NULL;
+        return nullptr;
     }
     const std::string full_path = NormalizeSlashes(method_path);
     butil::StringPiece sub_path = full_path;
     PathList::const_iterator last_find_pos = _sorted_paths.end();
     do {
         if (last_find_pos == _sorted_paths.begin()) {
-            return NULL;
+            return nullptr;
         }
         // Note: stop trying places that we already visited or skipped.
         PathList::const_iterator it =
@@ -482,7 +482,7 @@ RestfulMap::FindMethodProperty(const butil::StringPiece& method_path,
                     << "Hit beginning, sub_path=" << sub_path
                     << " full_path=" << full_path
                     << " candidate=" << DebugPrinter(rpath);
-                return NULL;
+                return nullptr;
             }
             // Matched with prefix but postfix or wildcard, moving forward
             --it;
@@ -507,7 +507,7 @@ RestfulMap::FindMethodProperty(const butil::StringPiece& method_path,
     } while (RemoveLastComponent(&sub_path));
     //                            ^^^^^^^^
     // sub_path can be / to match patterns like "*.flv => M" whose prefix is /
-    return NULL;
+    return nullptr;
 }
 
 } // namespace brpc

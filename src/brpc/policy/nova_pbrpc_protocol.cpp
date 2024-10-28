@@ -112,7 +112,7 @@ void ProcessNovaResponse(InputMessageBase* msg_base) {
     
     // Fetch correlation id that we saved before in `PackNovaRequest'
     const bthread_id_t cid = { static_cast<uint64_t>(socket->correlation_id()) };
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -132,7 +132,7 @@ void ProcessNovaResponse(InputMessageBase* msg_base) {
     // Fetch compress flag from nshead
     char buf[sizeof(nshead_t)];
     const char *p = (const char *)msg->meta.fetch(buf, sizeof(buf));
-    if (NULL == p) {
+    if (nullptr == p) {
         LOG(WARNING) << "Fail to fetch nshead from client="
                      << socket->remote_side();
         return;

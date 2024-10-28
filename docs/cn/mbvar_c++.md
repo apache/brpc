@@ -184,7 +184,7 @@ class MVariable {
     ...
     ...
     // Find all exposed mvariables and send them to `dumper'.
-    // Use default options when `options' is NULL.
+    // Use default options when `options' is nullptr.
     // Return number of dumped mvariables, -1 on error.
     static size_t dump_exposed(Dumper* dumper, const DumpOptions* options);
 };
@@ -404,7 +404,7 @@ public:
     ...
 
     // Get real bvar pointer object
-    // Return real bvar pointer(Not NULL) on success, NULL otherwise.
+    // Return real bvar pointer(Not nullptr) on success, nullptr otherwise.
     T* get_stats(const std::list<std::string>& labels_value);
 };
 ```

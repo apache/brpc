@@ -111,12 +111,12 @@ public:
     ~ScopedNonServiceError() {
         if (_server) {
             ServerPrivateAccessor(_server).AddError();
-            _server = NULL;
+            _server = nullptr;
         }
     }
     const Server* release() {
         const Server* tmp = _server;
-        _server = NULL;
+        _server = nullptr;
         return tmp;
     }
 private:

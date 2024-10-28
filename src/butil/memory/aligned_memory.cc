@@ -16,7 +16,7 @@ void* AlignedAlloc(size_t size, size_t alignment) {
   DCHECK_GT(size, 0U);
   DCHECK_EQ(alignment & (alignment - 1), 0U);
   DCHECK_EQ(alignment % sizeof(void*), 0U);
-  void* ptr = NULL;
+  void* ptr = nullptr;
 #if defined(COMPILER_MSVC)
   ptr = _aligned_malloc(size, alignment);
 // Android technically supports posix_memalign(), but does not expose it in
@@ -28,7 +28,7 @@ void* AlignedAlloc(size_t size, size_t alignment) {
   ptr = memalign(alignment, size);
 #else
   if (posix_memalign(&ptr, alignment, size))
-    ptr = NULL;
+    ptr = nullptr;
 #endif
   // Since aligned allocations may fail for non-memory related reasons, force a
   // crash if we encounter a failed allocation; maintaining consistent behavior

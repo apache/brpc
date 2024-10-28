@@ -72,14 +72,14 @@ typedef uint32_t (*RegisterCallback)(void*, size_t);
 // The argument is a callback called when the pool is enlarged with a new
 // region. It should be the memory registration in brpc. However,
 // in block_pool, we just abstract it into a function to get region id.
-// Return the first region's address, NULL if failed and errno is set.
+// Return the first region's address, nullptr if failed and errno is set.
 void* InitBlockPool(RegisterCallback cb);
 
 // Allocate a buf with length at least @a size (require: size>0)
-// Return the address allocated, NULL if failed and errno is set.
+// Return the address allocated, nullptr if failed and errno is set.
 void* AllocBlock(size_t size);
 
-// Deallocate the buf (require: buf!=NULL)
+// Deallocate the buf (require: buf!=nullptr)
 // Return 0 if success, -1 if failed and errno is set.
 // If the given buf is not in any region, the errno is ERANGE.
 int DeallocBlock(void* buf);

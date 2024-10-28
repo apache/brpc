@@ -104,7 +104,7 @@ static BAIDU_THREAD_LOCAL char tls_phrase_cache[64];
 
 const char *HttpReasonPhrase(int status_code) {
     pthread_once(&init_reason_phrases_once, InitReasonPhrases);
-    const char* desc = NULL;
+    const char* desc = nullptr;
     if (status_code >= 0 &&
         status_code < (int)ARRAY_SIZE(phrases) &&
         (desc = phrases[status_code])) {

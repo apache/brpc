@@ -83,7 +83,7 @@ public:
     int add_workers(int num, bthread_tag_t tag);
 
     // Choose one TaskGroup (randomly right now).
-    // If this method is called after init(), it never returns NULL.
+    // If this method is called after init(), it never returns nullptr.
     TaskGroup* choose_one_group(bthread_tag_t tag);
 
 private:

@@ -25,9 +25,9 @@ namespace brpc {
 namespace policy {
 
 void DHWrapper::clear() {
-    if (_pdh != NULL) {
+    if (_pdh != nullptr) {
         DH_free(_pdh);
-        _pdh = NULL;
+        _pdh = nullptr;
     }
 }
     
@@ -37,8 +37,8 @@ int DHWrapper::initialize(bool ensure_128bytes_public_key) {
             return -1;
         }
         if (ensure_128bytes_public_key) {
-            const BIGNUM* pub_key = NULL;
-            DH_get0_key(_pdh, &pub_key, NULL);
+            const BIGNUM* pub_key = nullptr;
+            DH_get0_key(_pdh, &pub_key, nullptr);
             int key_size = BN_num_bytes(pub_key);
             if (key_size != 128) {
                 RPC_VLOG << "regenerate 128B key, current=" << key_size;
@@ -52,8 +52,8 @@ int DHWrapper::initialize(bool ensure_128bytes_public_key) {
 }
     
 int DHWrapper::copy_public_key(char* pkey, int* pkey_size) const {
-    const BIGNUM* pub_key = NULL;
-    DH_get0_key(_pdh, &pub_key, NULL);
+    const BIGNUM* pub_key = nullptr;
+    DH_get0_key(_pdh, &pub_key, nullptr);
     // copy public key to bytes.
     // sometimes, the key_size is 127, seems ok.
     int key_size = BN_num_bytes(pub_key);
@@ -75,7 +75,7 @@ int DHWrapper::copy_public_key(char* pkey, int* pkey_size) const {
 int DHWrapper::copy_shared_key(const void* ppkey, int ppkey_size,
                            void* skey, int* skey_size) const {
     BIGNUM* ppk = BN_bin2bn((const unsigned char*)ppkey, ppkey_size, 0);
-    if (ppk == NULL) {
+    if (ppk == nullptr) {
         LOG(ERROR) << "Fail to BN_bin2bn";
         return -1;
     }
@@ -91,13 +91,13 @@ int DHWrapper::copy_shared_key(const void* ppkey, int ppkey_size,
 }
     
 int DHWrapper::do_initialize() {
-    BIGNUM* p = get_rfc2409_prime_1024(NULL);
+    BIGNUM* p = get_rfc2409_prime_1024(nullptr);
     if (!p) {
         return -1;
     }
     // See RFC 2409, Section 6 "Oakley Groups"
     // for the reason why 2 is used as generator.
-    BIGNUM* g = NULL;
+    BIGNUM* g = nullptr;
     BN_dec2bn(&g, "2");
     if (!g) {
         BN_free(p);
@@ -109,7 +109,7 @@ int DHWrapper::do_initialize() {
         BN_free(g);
         return -1;
     }
-    DH_set0_pqg(_pdh, p, NULL, g);
+    DH_set0_pqg(_pdh, p, nullptr, g);
     
     // Generate private and public key
     if (!DH_generate_key(_pdh)) {

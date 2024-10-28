@@ -10,7 +10,7 @@
 #include "butil/strings/string_util.h"
 #include "butil/strings/utf_string_conversions.h"
 
-// gcc7 reports that the first arg to vsnprintfT in StringAppendVT is NULL,
+// gcc7 reports that the first arg to vsnprintfT in StringAppendVT is nullptr,
 // which I can't figure out why, turn off the warning right now.
 #if defined(__GNUC__) && __GNUC__ >= 7
 #pragma GCC diagnostic warning "-Wformat-truncation=0"

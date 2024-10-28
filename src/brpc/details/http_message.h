@@ -132,7 +132,7 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser);
 // Serialize a http request.
 // header: may be modified in some cases
 // remote_side: used when "Host" is absent
-// content: could be NULL.
+// content: could be nullptr.
 void MakeRawHttpRequest(butil::IOBuf* request,
                         HttpHeader* header,
                         const butil::EndPoint& remote_side,
@@ -140,7 +140,7 @@ void MakeRawHttpRequest(butil::IOBuf* request,
 
 // Serialize a http response.
 // header: may be modified in some cases
-// content: cleared after usage. could be NULL. 
+// content: cleared after usage. could be nullptr.
 void MakeRawHttpResponse(butil::IOBuf* response,
                          HttpHeader* header,
                          butil::IOBuf* content);

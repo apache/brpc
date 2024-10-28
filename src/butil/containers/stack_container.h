@@ -93,14 +93,14 @@ class StackAllocator : public std::allocator<T> {
   // iff sizeof(T) == sizeof(U).
   template<typename U, size_t other_capacity>
   StackAllocator(const StackAllocator<U, other_capacity>& other)
-      : source_(NULL) {
+      : source_(nullptr) {
   }
 
   // This constructor must exist. It creates a default allocator that doesn't
   // actually have a stack buffer. glibc's std::string() will compare the
   // current allocator against the default-constructed allocator, so this
   // should be fast.
-  StackAllocator() : source_(NULL) {
+  StackAllocator() : source_(nullptr) {
   }
 
   explicit StackAllocator(Source* source) : source_(source) {
@@ -110,7 +110,7 @@ class StackAllocator : public std::allocator<T> {
   // and the size requested fits. Otherwise, fall through to the standard
   // allocator.
   pointer allocate(size_type n, void* hint = 0) {
-    if (source_ != NULL && !source_->used_stack_buffer_
+    if (source_ != nullptr && !source_->used_stack_buffer_
         && n <= stack_capacity) {
       source_->used_stack_buffer_ = true;
       return source_->stack_buffer();
@@ -127,7 +127,7 @@ class StackAllocator : public std::allocator<T> {
   // Free: when trying to free the stack buffer, just mark it as free. For
   // non-stack-buffer pointers, just fall though to the standard allocator.
   void deallocate(pointer p, size_type n) {
-    if (source_ != NULL && p == source_->stack_buffer())
+    if (source_ != nullptr && p == source_->stack_buffer())
       source_->used_stack_buffer_ = false;
     else
       std::allocator<T>::deallocate(p, n);

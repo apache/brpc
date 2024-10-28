@@ -51,7 +51,7 @@ class ScopedTypeRef {
   typedef T element_type;
 
   ScopedTypeRef(
-      T object = NULL,
+      T object = nullptr,
       scoped_policy::OwnershipPolicy policy = scoped_policy::ASSUME)
       : object_(object) {
     if (object_ && policy == scoped_policy::RETAIN)
@@ -76,13 +76,13 @@ class ScopedTypeRef {
 
   // This is to be used only to take ownership of objects that are created
   // by pass-by-pointer create functions. To enforce this, require that the
-  // object be reset to NULL before this may be used.
+  // object be reset to nullptr before this may be used.
   T* InitializeInto() WARN_UNUSED_RESULT {
     DCHECK(!object_);
     return &object_;
   }
 
-  void reset(T object = NULL,
+  void reset(T object = nullptr,
              scoped_policy::OwnershipPolicy policy = scoped_policy::ASSUME) {
     if (object && policy == scoped_policy::RETAIN)
       Traits::Retain(object);
@@ -118,7 +118,7 @@ class ScopedTypeRef {
   // Release(), use ScopedTypeRef<>::reset().
   T release() WARN_UNUSED_RESULT {
     T temp = object_;
-    object_ = NULL;
+    object_ = nullptr;
     return temp;
   }
 

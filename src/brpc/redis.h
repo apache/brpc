@@ -42,7 +42,7 @@ namespace brpc {
 //   RedisRequest request;
 //   request.AddCommand("PING");
 //   RedisResponse response;
-//   channel.CallMethod(&controller, &request, &response, NULL/*done*/);
+//   channel.CallMethod(&controller, &request, &response, nullptr/*done*/);
 //   if (!cntl.Failed()) {
 //       LOG(INFO) << response.reply(0);
 //   }
@@ -169,7 +169,7 @@ public:
         if (index < reply_size()) {
             return (index == 0 ? _first_reply : _other_replies[index - 1]);
         }
-        static RedisReply redis_nil(NULL);
+        static RedisReply redis_nil(nullptr);
         return redis_nil;
     }
 

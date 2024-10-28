@@ -253,7 +253,7 @@ void FilePath::GetComponents(std::vector<StringType>* components) const {
 }
 
 bool FilePath::IsParent(const FilePath& child) const {
-  return AppendRelativePath(child, NULL);
+  return AppendRelativePath(child, nullptr);
 }
 
 bool FilePath::AppendRelativePath(const FilePath& child,
@@ -292,7 +292,7 @@ bool FilePath::AppendRelativePath(const FilePath& child,
     ++child_comp;
   }
 
-  if (path != NULL) {
+  if (path != nullptr) {
     for (; child_comp != child_components.end(); ++child_comp) {
       *path = path->Append(*child_comp);
     }
@@ -1159,7 +1159,7 @@ int FilePath::HFSFastUnicodeCompare(const StringType& string1,
 StringType FilePath::GetHFSDecomposedForm(const StringType& string) {
   ScopedCFTypeRef<CFStringRef> cfstring(
       CFStringCreateWithBytesNoCopy(
-          NULL,
+          nullptr,
           reinterpret_cast<const UInt8*>(string.c_str()),
           string.length(),
           kCFStringEncodingUTF8,
@@ -1206,7 +1206,7 @@ int FilePath::CompareIgnoreCase(const StringType& string1,
     NOTREACHED();
     ScopedCFTypeRef<CFStringRef> cfstring1(
         CFStringCreateWithBytesNoCopy(
-            NULL,
+            nullptr,
             reinterpret_cast<const UInt8*>(string1.c_str()),
             string1.length(),
             kCFStringEncodingUTF8,
@@ -1214,7 +1214,7 @@ int FilePath::CompareIgnoreCase(const StringType& string1,
             kCFAllocatorNull));
     ScopedCFTypeRef<CFStringRef> cfstring2(
         CFStringCreateWithBytesNoCopy(
-            NULL,
+            nullptr,
             reinterpret_cast<const UInt8*>(string2.c_str()),
             string2.length(),
             kCFStringEncodingUTF8,

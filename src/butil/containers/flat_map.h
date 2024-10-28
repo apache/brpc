@@ -173,12 +173,12 @@ public:
     
     // Insert a pair of |key| and |value|. If size()*100/bucket_count() is 
     // more than load_factor(), a resize() will be done.
-    // Returns address of the inserted value, NULL on error.
+    // Returns address of the inserted value, nullptr on error.
     mapped_type* insert(const key_type& key, const mapped_type& value);
 
     // Insert a pair of {key, value}. If size()*100/bucket_count() is
     // more than load_factor(), a resize() will be done.
-    // Returns address of the inserted value, NULL on error.
+    // Returns address of the inserted value, nullptr on error.
     mapped_type* insert(const std::pair<key_type, mapped_type>& kv);
 
     // For `_Multi=false'. (Default)
@@ -186,12 +186,12 @@ public:
     // Returns: 1 on erased, 0 otherwise.
     template <typename K2, bool Multi = _Multi>
     typename std::enable_if<!Multi, size_t >::type
-    erase(const K2& key, mapped_type* old_value = NULL);
+    erase(const K2& key, mapped_type* old_value = nullptr);
     // For `_Multi=true'.
     // Returns: num of value on erased, 0 otherwise.
     template <typename K2, bool Multi = _Multi>
     typename std::enable_if<Multi, size_t >::type
-    erase(const K2& key, std::vector<mapped_type>* old_values = NULL);
+    erase(const K2& key, std::vector<mapped_type>* old_values = nullptr);
 
     // Remove all items. Allocated spaces are NOT returned by system.
     void clear();
@@ -255,7 +255,7 @@ public:
     const_iterator restore_iterator(const PositionHint&) const;
 
     // True if init() was successfully called.
-    bool initialized() const { return _buckets != NULL; }
+    bool initialized() const { return _buckets != nullptr; }
 
     bool empty() const { return _size == 0; }
     size_t size() const { return _size; }
@@ -266,10 +266,10 @@ public:
     BucketInfo bucket_info() const;
 
     struct Bucket {
-        explicit Bucket(const _K& k) : next(NULL) {
+        explicit Bucket(const _K& k) : next(nullptr) {
             element_.Init(k);
         }
-        Bucket(const Bucket& other) : next(NULL) {
+        Bucket(const Bucket& other) : next(nullptr) {
             element_.Init(other.element());
         }
 
@@ -296,7 +296,7 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
 
     struct NewBucketsInfo {
         NewBucketsInfo()
-            : buckets(NULL), thumbnail(NULL), nbucket(0) {}
+            : buckets(nullptr), thumbnail(nullptr), nbucket(0) {}
         NewBucketsInfo(Bucket* b, uint64_t* t, size_t n)
             : buckets(b), thumbnail(t), nbucket(n) {}
         Bucket* buckets;
@@ -327,7 +327,7 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
         for (size_t i = 0; i < nbucket; ++i) {
             buckets[i].set_invalid();
         }
-        buckets[nbucket].next = NULL;
+        buckets[nbucket].next = nullptr;
         if (_Sparse) {
             bit_array_clear(thumbnail, nbucket);
         }
@@ -380,7 +380,7 @@ public:
     { return _map.insert(key, FlatMapVoid()); }
 
     template <typename K2>
-    size_t erase(const K2& key) { return _map.erase(key, NULL); }
+    size_t erase(const K2& key) { return _map.erase(key, nullptr); }
 
     void clear() { return _map.clear(); }
     void clear_and_reset_pool() { return _map.clear_and_reset_pool(); }

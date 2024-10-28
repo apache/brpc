@@ -36,7 +36,7 @@ static const int64_t MIN_SLEEP_US = 2;
 
 // Create a butex which is a futex-like 32-bit primitive for synchronizing
 // bthreads/pthreads.
-// Returns a pointer to 32-bit data, NULL on failure.
+// Returns a pointer to 32-bit data, nullptr on failure.
 // NOTE: all butexes are private(not inter-process).
 void* butex_create();
 
@@ -74,7 +74,7 @@ int butex_requeue(void* butex1, void* butex2);
 
 // Atomically wait on |butex| if *butex equals |expected_value|, until the
 // butex is woken up by butex_wake*, or CLOCK_REALTIME reached |abstime| if
-// abstime is not NULL.
+// abstime is not nullptr.
 // About |abstime|:
 //   Different from FUTEX_WAIT, butex_wait uses absolute time.
 // About |prepend|:

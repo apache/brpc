@@ -85,16 +85,16 @@ private:
     int64_t _latency;
 };
 
-Percentile::Percentile() : _combiner(NULL), _sampler(NULL) {
+Percentile::Percentile() : _combiner(nullptr), _sampler(nullptr) {
     _combiner = new combiner_type;
 }
 
 Percentile::~Percentile() {
     // Have to destroy sampler first to avoid the race between destruction and
     // sampler
-    if (_sampler != NULL) {
+    if (_sampler != nullptr) {
         _sampler->destroy();
-        _sampler = NULL;
+        _sampler = nullptr;
     }
     delete _combiner;
 }

@@ -81,7 +81,7 @@ static void helper_exit_global() {
     detail::ThreadExitHelper* h = 
         (detail::ThreadExitHelper*)pthread_getspecific(detail::thread_atexit_key);
     if (h) {
-        pthread_setspecific(detail::thread_atexit_key, NULL);
+        pthread_setspecific(detail::thread_atexit_key, nullptr);
         delete h;
     }
 }
@@ -101,9 +101,9 @@ detail::ThreadExitHelper* get_or_new_thread_exit_helper() {
 
     detail::ThreadExitHelper* h =
         (detail::ThreadExitHelper*)pthread_getspecific(detail::thread_atexit_key);
-    if (NULL == h) {
+    if (nullptr == h) {
         h = new (std::nothrow) detail::ThreadExitHelper;
-        if (NULL != h) {
+        if (nullptr != h) {
             pthread_setspecific(detail::thread_atexit_key, h);
         }
     }
@@ -122,7 +122,7 @@ static void call_single_arg_fn(void* fn) {
 }  // namespace detail
 
 int thread_atexit(void (*fn)(void*), void* arg) {
-    if (NULL == fn) {
+    if (nullptr == fn) {
         errno = EINVAL;
         return -1;
     }
@@ -135,7 +135,7 @@ int thread_atexit(void (*fn)(void*), void* arg) {
 }
 
 int thread_atexit(void (*fn)()) {
-    if (NULL == fn) {
+    if (nullptr == fn) {
         errno = EINVAL;
         return -1;
     }
@@ -143,7 +143,7 @@ int thread_atexit(void (*fn)()) {
 }
 
 void thread_atexit_cancel(void (*fn)(void*), void* arg) {
-    if (fn != NULL) {
+    if (fn != nullptr) {
         detail::ThreadExitHelper* h = detail::get_thread_exit_helper();
         if (h) {
             h->remove(fn, arg);
@@ -152,7 +152,7 @@ void thread_atexit_cancel(void (*fn)(void*), void* arg) {
 }
 
 void thread_atexit_cancel(void (*fn)()) {
-    if (NULL != fn) {
+    if (nullptr != fn) {
         thread_atexit_cancel(detail::call_single_arg_fn, (void*)fn);
     }
 }

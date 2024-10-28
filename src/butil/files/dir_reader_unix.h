@@ -37,14 +37,14 @@ class DirReaderUnix {
  public:
   explicit DirReaderUnix(const char* directory_path)
       : fd_(open(directory_path, O_RDONLY | O_DIRECTORY)),
-        dir_(NULL),current_(NULL) {
+        dir_(nullptr),current_(nullptr) {
       dir_ = fdopendir(fd_);
   }
 
   ~DirReaderUnix() {
-    if (NULL != dir_) {
+    if (nullptr != dir_) {
       if (IGNORE_EINTR(closedir(dir_)) == 0) { // this implicitly closes fd_
-        dir_ = NULL;
+        dir_ = nullptr;
       } else {
         RAW_LOG(ERROR, "Failed to close directory.");
       }
@@ -52,21 +52,21 @@ class DirReaderUnix {
   }
 
   bool IsValid() const {
-    return dir_ != NULL;
+    return dir_ != nullptr;
   }
 
   // Move to the next entry returning false if the iteration is complete.
   bool Next() {
     int err = readdir_r(dir_,&entry_, &current_);
-    if(0 != err || NULL == current_){
+    if(0 != err || nullptr == current_){
         return false;
     }
     return true;
   }
 
   const char* name() const {
-    if (NULL == current_)
-      return NULL;
+    if (nullptr == current_)
+      return nullptr;
     return current_->d_name;
   }
 

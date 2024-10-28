@@ -63,8 +63,8 @@ inline T* get_leaky_singleton() {
         GetLeakySingleton<T>::g_leaky_singleton_untyped);
 }
 
-// True(non-NULL) if the singleton is created.
-// The returned object (if not NULL) can be used directly.
+// True(non-nullptr) if the singleton is created.
+// The returned object (if not nullptr) can be used directly.
 template <typename T>
 inline T* has_leaky_singleton() {
     return reinterpret_cast<T*>(

@@ -45,7 +45,7 @@ class ScopedCFTypeRef
   typedef CFT element_type;
 
   explicit ScopedCFTypeRef(
-      CFT object = NULL,
+      CFT object = nullptr,
       butil::scoped_policy::OwnershipPolicy policy = butil::scoped_policy::ASSUME)
       : ScopedTypeRef<CFT,
                       internal::ScopedCFTypeRefTraits>(object, policy) {}

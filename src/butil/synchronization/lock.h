@@ -53,7 +53,7 @@ public:
     // contending thread from going to sleep which helps performance greatly.
         ::InitializeCriticalSectionAndSpinCount(&_native_handle, 2000);
 #elif defined(OS_POSIX)
-        pthread_mutex_init(&_native_handle, NULL);
+        pthread_mutex_init(&_native_handle, nullptr);
 #endif
     }
     

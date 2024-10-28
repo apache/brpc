@@ -34,10 +34,10 @@ const int WARN_NOSLEEP_THRESHOLD = 2;
 // Combine two circular linked list into one.
 struct CombineSampler {
     void operator()(Sampler* & s1, Sampler* s2) const {
-        if (s2 == NULL) {
+        if (s2 == nullptr) {
             return;
         }
-        if (s1 == NULL) {
+        if (s1 == nullptr) {
             s1 = s2;
             return;
         }
@@ -71,7 +71,7 @@ public:
     ~SamplerCollector() {
         if (_created) {
             _stop = true;
-            pthread_join(_tid, NULL);
+            pthread_join(_tid, nullptr);
             _created = false;
         }
     }
@@ -89,14 +89,14 @@ private:
     }
 
     void create_sampling_thread() {
-        const int rc = pthread_create(&_tid, NULL, sampling_thread, this);
+        const int rc = pthread_create(&_tid, nullptr, sampling_thread, this);
         if (rc != 0) {
             LOG(FATAL) << "Fail to create sampling_thread, " << berror(rc);
         } else {
             _created = true;
             if (!registered_atfork) {
                 registered_atfork = true;
-                pthread_atfork(NULL, NULL, child_callback_atfork);
+                pthread_atfork(nullptr, nullptr, child_callback_atfork);
             }
         }
     }
@@ -111,7 +111,7 @@ private:
     static void* sampling_thread(void* arg) {
         butil::PlatformThread::SetName("bvar_sampler");
         static_cast<SamplerCollector*>(arg)->run();
-        return NULL;
+        return nullptr;
     }
 
     static double get_cumulated_time(void* arg) {
@@ -126,8 +126,8 @@ private:
 };
 
 #ifndef UNIT_TEST
-static PassiveStatus<double>* s_cumulated_time_bvar = NULL;
-static bvar::PerSecond<bvar::PassiveStatus<double> >* s_sampling_thread_usage_bvar = NULL;
+static PassiveStatus<double>* s_cumulated_time_bvar = nullptr;
+static bvar::PerSecond<bvar::PassiveStatus<double> >* s_sampling_thread_usage_bvar = nullptr;
 #endif
 
 DEFINE_int32(bvar_sampler_thread_start_delay_us, 10000, "bvar sampler thread start delay us");
@@ -141,11 +141,11 @@ void SamplerCollector::run() {
     //   may be abandoned at any time after forking.
     // * They can't created inside the constructor of SamplerCollector as well,
     //   which results in deadlock.
-    if (s_cumulated_time_bvar == NULL) {
+    if (s_cumulated_time_bvar == nullptr) {
         s_cumulated_time_bvar =
             new PassiveStatus<double>(get_cumulated_time, this);
     }
-    if (s_sampling_thread_usage_bvar == NULL) {
+    if (s_sampling_thread_usage_bvar == nullptr) {
         s_sampling_thread_usage_bvar =
             new bvar::PerSecond<bvar::PassiveStatus<double> >(
                     "bvar_sampler_collector_usage", s_cumulated_time_bvar, 10);

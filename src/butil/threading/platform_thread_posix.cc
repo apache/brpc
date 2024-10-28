@@ -39,10 +39,10 @@ namespace {
 
 struct ThreadParams {
   ThreadParams()
-      : delegate(NULL),
+      : delegate(nullptr),
         joinable(false),
         priority(kThreadPriority_Normal),
-        handle(NULL),
+        handle(nullptr),
         handle_set(false, false) {
   }
 
@@ -83,7 +83,7 @@ void* ThreadFunc(void* params) {
       PlatformThread::CurrentId());
 
   butil::TerminateOnThread();
-  return NULL;
+  return nullptr;
 }
 
 bool CreateThread(size_t stack_size, bool joinable,
@@ -231,7 +231,7 @@ void PlatformThread::Join(PlatformThreadHandle thread_handle) {
   // the thread referred to by |thread_handle| may still be running long-lived /
   // blocking tasks.
   butil::ThreadRestrictions::AssertIOAllowed();
-  CHECK_EQ(0, pthread_join(thread_handle.handle_, NULL));
+  CHECK_EQ(0, pthread_join(thread_handle.handle_, nullptr));
 }
 
 }  // namespace butil

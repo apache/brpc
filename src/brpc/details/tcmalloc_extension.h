@@ -168,14 +168,14 @@ class PERFTOOLS_DLL_DECL MallocExtension {
   // Get the named "property"'s value.  Returns true if the property
   // is known.  Returns false if the property is not a valid property
   // name for the current malloc implementation.
-  // REQUIRES: property != NULL; value != NULL
+  // REQUIRES: property != nullptr; value != nullptr
   virtual bool GetNumericProperty(const char* property, size_t* value);
 
   // Set the named "property"'s value.  Returns true if the property
   // is known and writable.  Returns false if the property is not a
   // valid property name for the current malloc implementation, or
   // is not writable.
-  // REQUIRES: property != NULL
+  // REQUIRES: property != nullptr
   virtual bool SetNumericProperty(const char* property, size_t value);
 
   // Mark the current thread as "idle".  This routine may optionally
@@ -232,14 +232,14 @@ class PERFTOOLS_DLL_DECL MallocExtension {
   // p must have been allocated by this malloc implementation,
   // must not be an interior pointer -- that is, must be exactly
   // the pointer returned to by malloc() et al., not some offset
-  // from that -- and should not have been freed yet.  p may be NULL.
+  // from that -- and should not have been freed yet.  p may be nullptr.
   // (Currently only implemented in tcmalloc; other implementations
   // will return 0.)
   // This is equivalent to malloc_size() in OS X, malloc_usable_size()
   // in glibc, and _msize() for windows.
   virtual size_t GetAllocatedSize(void* p);
 
-  // The current malloc implementation.  Always non-NULL.
+  // The current malloc implementation.  Always non-nullptr.
   static MallocExtension* instance();
 
   // Change the malloc implementation.  Typically called by the
@@ -301,7 +301,7 @@ class PERFTOOLS_DLL_DECL MallocExtension {
   //
   // It is the responsibility of the caller to "delete[]" the returned array.
   //
-  // May return NULL to indicate no results.
+  // May return nullptr to indicate no results.
   //
   // This is an internal extension.  Callers should use the more
   // convenient "GetHeapSample(string*)" method defined above.

@@ -31,7 +31,7 @@ public:
     virtual ~DataFactory() {}
 
     // Implement this method to create a piece of data
-    // Returns the data, NULL on error.
+    // Returns the data, nullptr on error.
     virtual void* CreateData() const = 0;
 
     // Implement this method to destroy data created by Create().

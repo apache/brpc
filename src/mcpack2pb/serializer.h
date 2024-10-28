@@ -39,11 +39,11 @@ class OutputStream {
 public:
     class Area {
     public:
-        Area() : _addr1(NULL)
-               , _addr2(NULL)
+        Area() : _addr1(nullptr)
+               , _addr2(nullptr)
                , _size1(0)
                , _size2(0)
-               , _addional_area(NULL) {}
+               , _addional_area(nullptr) {}
         Area(const butil::LinkerInitialized&) {}
         Area(const Area& rhs);
         Area& operator=(const Area& rhs);
@@ -65,7 +65,7 @@ public:
         : _good(true)
         , _fullsize(0)
         , _size(0)
-        , _data(NULL)
+        , _data(nullptr)
         , _zc_stream(stream)
         , _pushed_bytes(0)
     {}
@@ -84,7 +84,7 @@ public:
     void push_back(char c);
 
     // If next n bytes in the zero-copy stream is continuous, consume it
-    // and return the begining address. NULL otherwise.
+    // and return the begining address. nullptr otherwise.
     void* skip_continuous(int n);
 
     // Consume n bytes from the stream and return an object representing the

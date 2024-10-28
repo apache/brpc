@@ -42,7 +42,7 @@ struct StackStorage {
     void zeroize() {
         stacksize = 0;
         guardsize = 0;
-        bottom = NULL;
+        bottom = nullptr;
         valgrind_stack_id = 0;
     }
 };
@@ -70,7 +70,7 @@ struct ContextualStack {
 // Get a stack in the `type' and run `entry' at the first time that the
 // stack is jumped.
 ContextualStack* get_stack(StackType type, void (*entry)(intptr_t));
-// Recycle a stack. NULL does nothing.
+// Recycle a stack. nullptr does nothing.
 void return_stack(ContextualStack*);
 // Jump from stack `from' to stack `to'. `from' must be the stack of callsite
 // (to save contexts before jumping)

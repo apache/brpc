@@ -33,7 +33,7 @@
 
 namespace brpc {
 
-InputMessenger* g_messenger = NULL;
+InputMessenger* g_messenger = nullptr;
 static pthread_once_t g_messenger_init = PTHREAD_ONCE_INIT;
 static void InitClientSideMessenger() {
     g_messenger = new InputMessenger;
@@ -81,7 +81,7 @@ ParseResult InputMessenger::CutInputMessage(
     // Try preferred handler first. The preferred_index is set on last
     // selection or by client.
     if (preferred >= 0 && preferred <= max_index
-            && _handlers[preferred].parse != NULL) {
+            && _handlers[preferred].parse != nullptr) {
         int cur_index = preferred;
         do {
             ParseResult result =
@@ -137,12 +137,12 @@ ParseResult InputMessenger::CutInputMessage(
         // Clear context before trying next protocol which probably has
         // an incompatible context with the current one.
         if (m->parsing_context()) {
-            m->reset_parsing_context(NULL);
+            m->reset_parsing_context(nullptr);
         }
         m->set_preferred_index(-1);
     }
     for (int i = 0; i <= max_index; ++i) {
-        if (i == preferred || _handlers[i].parse == NULL) {
+        if (i == preferred || _handlers[i].parse == nullptr) {
             // Don't try preferred handler(already tried) or invalid handler
             continue;
         }
@@ -165,7 +165,7 @@ ParseResult InputMessenger::CutInputMessage(
         // Clear context before trying next protocol which definitely has
         // an incompatible context with the current one.
         if (m->parsing_context()) {
-            m->reset_parsing_context(NULL);
+            m->reset_parsing_context(nullptr);
         }
         // Try other protocols.
     }
@@ -175,7 +175,7 @@ ParseResult InputMessenger::CutInputMessage(
 void* ProcessInputMessage(void* void_arg) {
     InputMessageBase* msg = static_cast<InputMessageBase*>(void_arg);
     msg->_process(msg);
-    return NULL;
+    return nullptr;
 }
 
 struct RunLastMessage {
@@ -278,7 +278,7 @@ int InputMessenger::ProcessNewMessage(
         }
         m->_last_msg_size = 0;
         
-        if (pr.message() == NULL) { // the Process() step can be skipped.
+        if (pr.message() == nullptr) { // the Process() step can be skipped.
             continue;
         }
         pr.message()->_received_us = received_us;
@@ -289,8 +289,8 @@ int InputMessenger::ProcessNewMessage(
         DestroyingPtr<InputMessageBase> msg(pr.message());
         QueueMessage(last_msg.release(), &num_bthread_created,
                             m->_keytable_pool);
-        if (_handlers[index].process == NULL) {
-            LOG(ERROR) << "process of index=" << index << " is NULL";
+        if (_handlers[index].process == nullptr) {
+            LOG(ERROR) << "process of index=" << index << " is nullptr";
             continue;
         }
         m->ReAddress(&msg->_socket);
@@ -298,7 +298,7 @@ int InputMessenger::ProcessNewMessage(
         msg->_process = _handlers[index].process;
         msg->_arg = _handlers[index].arg;
         
-        if (_handlers[index].verify != NULL) {
+        if (_handlers[index].verify != nullptr) {
             int auth_error = 0;
             if (0 == m->FightAuthentication(&auth_error)) {
                 // Get the right to authenticate
@@ -401,7 +401,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
 }
 
 InputMessenger::InputMessenger(size_t capacity)
-    : _handlers(NULL)
+    : _handlers(nullptr)
     , _max_index(-1)
     , _non_protocol(false)
     , _capacity(capacity) {
@@ -409,21 +409,21 @@ InputMessenger::InputMessenger(size_t capacity)
 
 InputMessenger::~InputMessenger() {
     delete[] _handlers;
-    _handlers = NULL;        
+    _handlers = nullptr;
     _max_index.store(-1, butil::memory_order_relaxed);
     _capacity = 0;
 }
 
 int InputMessenger::AddHandler(const InputMessageHandler& handler) {
-    if (handler.parse == NULL || handler.process == NULL 
-            || handler.name == NULL) {
+    if (handler.parse == nullptr || handler.process == nullptr
+            || handler.name == nullptr) {
         CHECK(false) << "Invalid argument";
         return -1;
     }
     BAIDU_SCOPED_LOCK(_add_handler_mutex);
-    if (NULL == _handlers) {
+    if (nullptr == _handlers) {
         _handlers = new (std::nothrow) InputMessageHandler[_capacity];
-        if (NULL == _handlers) {
+        if (nullptr == _handlers) {
             LOG(FATAL) << "Fail to new array of InputMessageHandler";
             return -1;
         }
@@ -444,7 +444,7 @@ int InputMessenger::AddHandler(const InputMessageHandler& handler) {
         LOG(FATAL) << "Can't add more handlers than " << _capacity;
         return -1;
     }
-    if (_handlers[index].parse == NULL) {
+    if (_handlers[index].parse == nullptr) {
         // The same protocol might be added more than twice
         _handlers[index] = handler;
     } else if (_handlers[index].parse != handler.parse 
@@ -460,15 +460,15 @@ int InputMessenger::AddHandler(const InputMessageHandler& handler) {
 }
 
 int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
-    if (handler.parse == NULL || handler.process == NULL 
-            || handler.name == NULL) {
+    if (handler.parse == nullptr || handler.process == nullptr
+            || handler.name == nullptr) {
         CHECK(false) << "Invalid argument";
         return -1;
     }
     BAIDU_SCOPED_LOCK(_add_handler_mutex);
-    if (NULL == _handlers) {
+    if (nullptr == _handlers) {
         _handlers = new (std::nothrow) InputMessageHandler[_capacity];
-        if (NULL == _handlers) {
+        if (nullptr == _handlers) {
             LOG(FATAL) << "Fail to new array of InputMessageHandler";
             return -1;
         }
@@ -541,7 +541,7 @@ int InputMessenger::Create(SocketOptions options, SocketId* id) {
 
 int InputMessenger::FindProtocolIndex(const char* name) const {
     for (size_t i = 0; i < _capacity; ++i) {
-        if (_handlers[i].parse != NULL 
+        if (_handlers[i].parse != nullptr
                 && strcmp(name, _handlers[i].name) == 0) {
             return i;
         }
@@ -551,7 +551,7 @@ int InputMessenger::FindProtocolIndex(const char* name) const {
 
 int InputMessenger::FindProtocolIndex(ProtocolType type) const {
     const Protocol* proto = FindProtocol(type);
-    if (NULL == proto) {
+    if (nullptr == proto) {
         return -1;
     }
     return FindProtocolIndex(proto->name);
@@ -559,7 +559,7 @@ int InputMessenger::FindProtocolIndex(ProtocolType type) const {
 }
 
 const char* InputMessenger::NameOfProtocol(int n) const {
-    if (n < 0 || (size_t)n >= _capacity || _handlers[n].parse == NULL) {
+    if (n < 0 || (size_t)n >= _capacity || _handlers[n].parse == nullptr) {
         return "unknown";  // use lowercase to be consistent with valid names.
     }
     return _handlers[n].name;

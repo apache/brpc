@@ -48,14 +48,14 @@ inline ssize_t IOPortal::append_from_file_descriptor(int fd, size_t max_count) {
 inline void IOPortal::return_cached_blocks() {
     if (_block) {
         return_cached_blocks_impl(_block);
-        _block = NULL;
+        _block = nullptr;
     }
 }
 
 inline void reset_block_ref(IOBuf::BlockRef& ref) {
     ref.offset = 0;
     ref.length = 0;
-    ref.block = NULL;
+    ref.block = nullptr;
 }
 
 inline IOBuf::IOBuf() {
@@ -165,9 +165,9 @@ inline const IOBuf::BlockRef& IOBuf::_ref_at(size_t i) const {
 
 inline const IOBuf::BlockRef* IOBuf::_pref_at(size_t i) const {
     if (_small()) {
-        return i < (size_t)(!!_sv.refs[0].block + !!_sv.refs[1].block) ? &_sv.refs[i] : NULL;
+        return i < (size_t)(!!_sv.refs[0].block + !!_sv.refs[1].block) ? &_sv.refs[i] : nullptr;
     } else {
-        return i < _bv.nref ? &_bv.ref_at(i) : NULL;
+        return i < _bv.nref ? &_bv.ref_at(i) : nullptr;
     }
 }
 
@@ -219,7 +219,7 @@ inline bool IOBufCutter::cut1(void* c) {
 inline const void* IOBufCutter::fetch1() {
     if (_data == _data_end) {
         if (!load_next_ref()) {
-            return NULL;
+            return nullptr;
         }
     }
     return _data;
@@ -323,8 +323,8 @@ inline int IOBufAppender::add_block() {
         _data_end = (char*)_data + size;
         return 0;
     }
-    _data = NULL;
-    _data_end = NULL;
+    _data = nullptr;
+    _data_end = nullptr;
     return -1;
 }
 
@@ -332,13 +332,13 @@ inline void IOBufAppender::shrink() {
     const size_t size = (char*)_data_end - (char*)_data;
     if (size != 0) {
         _zc_stream.BackUp(size);
-        _data = NULL;
-        _data_end = NULL;
+        _data = nullptr;
+        _data_end = nullptr;
     }
 }
 
 inline IOBufBytesIterator::IOBufBytesIterator(const butil::IOBuf& buf)
-    : _block_begin(NULL), _block_end(NULL), _block_count(0), 
+    : _block_begin(nullptr), _block_end(nullptr), _block_count(0),
       _bytes_left(buf.length()), _buf(&buf) {
     try_next_block();
 }

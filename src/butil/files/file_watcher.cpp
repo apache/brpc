@@ -33,12 +33,12 @@ int FileWatcher::init(const char* file_path) {
     if (init_from_not_exist(file_path) != 0) {
         return -1;
     }
-    check_and_consume(NULL);
+    check_and_consume(nullptr);
     return 0;
 }
 
 int FileWatcher::init_from_not_exist(const char* file_path) {
-    if (NULL == file_path) {
+    if (nullptr == file_path) {
         return -1;
     }
     if (!_file_path.empty()) {

@@ -52,7 +52,7 @@ static int rwlock_rdlock_impl(bthread_rwlock_t* __restrict rwlock,
     // Slow path.
 
     // Don't sample when contention profiler is off.
-    if (NULL == bthread::g_cp) {
+    if (nullptr == bthread::g_cp) {
         return bthread_sem_timedwait(&rwlock->reader_sema, abstime);
     }
     // Ask Collector if this (contended) locking should be sampled.
@@ -74,7 +74,7 @@ static int rwlock_rdlock_impl(bthread_rwlock_t* __restrict rwlock,
 }
 
 static inline int rwlock_rdlock(bthread_rwlock_t* rwlock) {
-    return rwlock_rdlock_impl(rwlock, NULL);
+    return rwlock_rdlock_impl(rwlock, nullptr);
 }
 
 static inline int rwlock_timedrdlock(bthread_rwlock_t* __restrict rwlock,
@@ -123,7 +123,7 @@ static inline int rwlock_unrdlock(bthread_rwlock_t* rwlock) {
 
     // The last reader unblocks the writer.
 
-    if (NULL == bthread::g_cp) {
+    if (nullptr == bthread::g_cp) {
         bthread_sem_post(&rwlock->writer_sema);
         return 0;
     }
@@ -148,7 +148,7 @@ static inline int rwlock_unrdlock(bthread_rwlock_t* rwlock) {
 #define DO_CSITE_IF_NEED                                                              \
     do {                                                                              \
         /* Don't sample when contention profiler is off. */                           \
-        if (NULL != bthread::g_cp) {                                                  \
+        if (nullptr != bthread::g_cp) {                                                  \
             /* Ask Collector if this (contended) locking should be sampled. */        \
             sampling_range = bvar::is_collectable(&bthread::g_cp_sl);                 \
             start_ns = bvar::is_sampling_range_valid(sampling_range) ?                \
@@ -220,7 +220,7 @@ static inline int rwlock_wrlock_impl(bthread_rwlock_t* __restrict rwlock,
 #undef SUBMIT_CSITE_IF_NEED
 
 static inline int rwlock_wrlock(bthread_rwlock_t* rwlock) {
-    return rwlock_wrlock_impl(rwlock, NULL);
+    return rwlock_wrlock_impl(rwlock, nullptr);
 }
 
 static inline int rwlock_timedwrlock(bthread_rwlock_t* __restrict rwlock,

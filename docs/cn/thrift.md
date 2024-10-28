@@ -70,7 +70,7 @@ example::EchoRequest req;
 example::EchoResponse res;
 req.data = "hello";
 
-stub.CallMethod("Echo", &cntl, &req, &res, NULL);
+stub.CallMethod("Echo", &cntl, &req, &res, nullptr);
 
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to send thrift request, " << cntl.ErrorText();

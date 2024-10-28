@@ -61,7 +61,7 @@ inline int snprintf(char* buffer, size_t size, const char* format, ...) {
 
 // BSD-style safe and consistent string copy functions.
 // Copies |src| to |dst|, where |dst_size| is the total allocated size of |dst|.
-// Copies at most |dst_size|-1 characters, and always NULL terminates |dst|, as
+// Copies at most |dst_size|-1 characters, and always nullptr terminates |dst|, as
 // long as |dst_size| is not 0.  Returns the length of |src| in characters.
 // If the return value is >= dst_size, then the output was truncated.
 // NOTE: All sizes are in number of characters, NOT in bytes.
@@ -374,7 +374,7 @@ inline Char HexDigitToInt(Char c) {
 
 // Returns true if it's a whitespace character.
 inline bool IsWhitespace(wchar_t c) {
-  return wcschr(butil::kWhitespaceWide, c) != NULL;
+  return wcschr(butil::kWhitespaceWide, c) != nullptr;
 }
 
 inline bool IsBlankString(const butil::StringPiece &s) {
@@ -477,7 +477,7 @@ BUTIL_EXPORT butil::string16 JoinString(
 // Replace $1-$2-$3..$9 in the format string with |a|-|b|-|c|..|i| respectively.
 // Additionally, any number of consecutive '$' characters is replaced by that
 // number less one. Eg $$->$, $$$->$$, etc. The offsets parameter here can be
-// NULL. This only allows you to use up to nine replacements.
+// nullptr. This only allows you to use up to nine replacements.
 BUTIL_EXPORT butil::string16 ReplaceStringPlaceholders(
     const butil::string16& format_string,
     const std::vector<butil::string16>& subst,
@@ -488,7 +488,7 @@ BUTIL_EXPORT std::string ReplaceStringPlaceholders(
     const std::vector<std::string>& subst,
     std::vector<size_t>* offsets);
 
-// Single-string shortcut for ReplaceStringHolders. |offset| may be NULL.
+// Single-string shortcut for ReplaceStringHolders. |offset| may be nullptr.
 BUTIL_EXPORT butil::string16 ReplaceStringPlaceholders(
     const butil::string16& format_string,
     const butil::string16& a,

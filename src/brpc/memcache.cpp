@@ -80,7 +80,7 @@ bool MemcacheRequest::MergePartialFromCodedStream(
     
     // simple approach just making it work.
     butil::IOBuf tmp;
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (input->GetDirectBufferPointer(&data, &size)) {
         tmp.append(data, size);
@@ -92,7 +92,7 @@ bool MemcacheRequest::MergePartialFromCodedStream(
         char aux_buf[sizeof(policy::MemcacheRequestHeader)];
         const policy::MemcacheRequestHeader* header =
             (const policy::MemcacheRequestHeader*)tmp.fetch(aux_buf, sizeof(aux_buf));
-        if (header == NULL) {
+        if (header == nullptr) {
             return false;
         }
         if (header->magic != (uint8_t)policy::MC_MAGIC_REQUEST) {
@@ -115,7 +115,7 @@ void MemcacheRequest::SerializeWithCachedSizes(
 
     // simple approach just making it work.
     butil::IOBufAsZeroCopyInputStream wrapper(_buf);
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (wrapper.Next(&data, &size)) {
         output->WriteRaw(data, size);
@@ -136,7 +136,7 @@ int MemcacheRequest::ByteSize() const {
 void MemcacheRequest::MergeFrom(const ::google::protobuf::Message& from) {
     CHECK_NE(&from, this);
     const MemcacheRequest* source = dynamic_cast<const MemcacheRequest*>(&from);
-    if (source == NULL) {
+    if (source == nullptr) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {
         MergeFrom(*source);
@@ -176,7 +176,7 @@ void MemcacheRequest::Swap(MemcacheRequest* other) {
 ::google::protobuf::Metadata MemcacheRequest::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
     metadata.descriptor = MemcacheRequest::descriptor();
-    metadata.reflection = NULL;
+    metadata.reflection = nullptr;
     return metadata;
 }
 
@@ -228,7 +228,7 @@ bool MemcacheResponse::MergePartialFromCodedStream(
     LOG(WARNING) << "You're not supposed to parse a MemcacheResponse";
 
     // simple approach just making it work.
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (input->GetDirectBufferPointer(&data, &size)) {
         _buf.append(data, size);
@@ -243,7 +243,7 @@ void MemcacheResponse::SerializeWithCachedSizes(
     
     // simple approach just making it work.
     butil::IOBufAsZeroCopyInputStream wrapper(_buf);
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (wrapper.Next(&data, &size)) {
         output->WriteRaw(data, size);
@@ -264,7 +264,7 @@ int MemcacheResponse::ByteSize() const {
 void MemcacheResponse::MergeFrom(const ::google::protobuf::Message& from) {
     CHECK_NE(&from, this);
     const MemcacheResponse* source = dynamic_cast<const MemcacheResponse*>(&from);
-    if (source == NULL) {
+    if (source == nullptr) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {
         MergeFrom(*source);
@@ -305,7 +305,7 @@ void MemcacheResponse::Swap(MemcacheResponse* other) {
 ::google::protobuf::Metadata MemcacheResponse::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
     metadata.descriptor = MemcacheResponse::descriptor();
-    metadata.reflection = NULL;
+    metadata.reflection = nullptr;
     return metadata;
 }
 
@@ -506,10 +506,10 @@ bool MemcacheResponse::PopGet(
 // MUST NOT have key
 // MUST NOT have value
 bool MemcacheResponse::PopDelete() {
-    return PopStore(policy::MC_BINARY_DELETE, NULL);
+    return PopStore(policy::MC_BINARY_DELETE, nullptr);
 }
 bool MemcacheResponse::PopFlush() {
-    return PopStore(policy::MC_BINARY_FLUSH, NULL);
+    return PopStore(policy::MC_BINARY_FLUSH, nullptr);
 }
 
 struct StoreHeaderWithExtras {

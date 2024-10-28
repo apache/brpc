@@ -36,11 +36,11 @@ brpc中的异步和单线程的异步是完全不同的，异步回调会运行�
 bool search() {
   ...
   bthread th1, th2;
-  if (bthread_start_background(&th1, NULL, part1, part1_args) != 0) {
+  if (bthread_start_background(&th1, nullptr, part1, part1_args) != 0) {
     LOG(ERROR) << "Fail to create bthread for part1";
     return false;
   }
-  if (bthread_start_background(&th2, NULL, part2, part2_args) != 0) {
+  if (bthread_start_background(&th2, nullptr, part2, part2_args) != 0) {
     LOG(ERROR) << "Fail to create bthread for part2";
     return false;
   }

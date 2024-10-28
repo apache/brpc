@@ -42,7 +42,7 @@ brpc::RedisRequest set_request;
 brpc::RedisResponse response;
 brpc::Controller cntl;
 set_request.AddCommand("SET %s %d", my_key.c_str(), my_number);
-redis_channel.CallMethod(NULL, &cntl, &set_request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &set_request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -63,7 +63,7 @@ brpc::RedisRequest incr_request;
 incr_request.AddCommand("INCR %s", my_key.c_str());
 response.Clear();
 cntl.Reset();
-redis_channel.CallMethod(NULL, &cntl, &incr_request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &incr_request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -88,7 +88,7 @@ request.AddCommand("INCR counter1");
 request.AddCommand("DECR counter1");
 request.AddCommand("INCRBY counter1 10");
 request.AddCommand("DECRBY counter1 20");
-redis_channel.CallMethod(NULL, &cntl, &request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -141,7 +141,7 @@ A [RedisResponse](https://github.com/apache/brpc/blob/master/src/brpc/redis.h) m
 
 Each `RedisReply` may be:
 
-- REDIS_REPLY_NIL: NULL in redis, which means value does not exist. Testable by `is_nil()`.
+- REDIS_REPLY_NIL: nullptr in redis, which means value does not exist. Testable by `is_nil()`.
 - REDIS_REPLY_STATUS: Referred to `Simple String` in the redis document, usually used as the status of operations, such as the `OK` returned by `SET`. Testable by `is_string()` (same function for REDIS_REPLY_STRING). Use `c_str()` or `data()` to get the value.
 - REDIS_REPLY_STRING: Referred to `Bulk String` in the redis document. Most return values are of this type, including those returned by `incr`. Testable by `is_string()`. Use `c_str()` or `data()` for the value.
 - REDIS_REPLY_ERROR: The error message for a failed operation. Testable by `is_error()`. Use `error_message()` to get the message.

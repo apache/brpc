@@ -30,27 +30,27 @@ GianoAuthenticator::GianoAuthenticator(const baas::CredentialGenerator* gen,
         _generator = new(std::nothrow) baas::CredentialGenerator(*gen);
         CHECK(_generator);
     } else {
-        _generator = NULL;
+        _generator = nullptr;
     }
     if (ver) {
         _verifier = new(std::nothrow) baas::CredentialVerifier(*ver);
         CHECK(_verifier);
     } else {
-        _verifier = NULL;
+        _verifier = nullptr;
     }        
 }
 
 GianoAuthenticator::~GianoAuthenticator() {
     delete _generator;
-    _generator = NULL;
+    _generator = nullptr;
 
     delete _verifier;
-    _verifier = NULL;
+    _verifier = nullptr;
 }
 
 int GianoAuthenticator::GenerateCredential(std::string* auth_str) const {
-    if (NULL == _generator) {
-        LOG(FATAL) << "CredentialGenerator is NULL";
+    if (nullptr == _generator) {
+        LOG(FATAL) << "CredentialGenerator is nullptr";
         return -1;
     }
 
@@ -62,8 +62,8 @@ int GianoAuthenticator::VerifyCredential(
         const std::string& auth_str,
         const butil::EndPoint& client_addr,
         AuthContext* out_ctx) const {
-    if (NULL == _verifier) {
-        LOG(FATAL) << "CredentialVerifier is NULL";
+    if (nullptr == _verifier) {
+        LOG(FATAL) << "CredentialVerifier is nullptr";
         return -1;
     }
 
@@ -75,7 +75,7 @@ int GianoAuthenticator::VerifyCredential(
                      << baas::sdk::GetReturnCodeMessage(rc);
         return -1;        
     }
-    if (out_ctx != NULL) {
+    if (out_ctx != nullptr) {
         out_ctx->set_user(ctx.user());
         out_ctx->set_group(ctx.group());
         out_ctx->set_roles(ctx.roles());

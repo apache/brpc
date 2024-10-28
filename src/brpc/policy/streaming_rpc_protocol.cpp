@@ -53,7 +53,7 @@ void PackStreamMessage(butil::IOBuf* out,
     out->append(head, ARRAY_SIZE(head));
     butil::IOBufAsZeroCopyOutputStream wrapper(out);
     CHECK(fm.SerializeToZeroCopyStream(&wrapper));
-    if (data != NULL) {
+    if (data != nullptr) {
         out->append(*data);
     }
 }
@@ -120,7 +120,7 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
     } while (0);
 
     // Hack input messenger
-    return MakeMessage(NULL);
+    return MakeMessage(nullptr);
 }
 
 void ProcessStreamingMessage(InputMessageBase* /*msg*/) {
@@ -128,12 +128,12 @@ void ProcessStreamingMessage(InputMessageBase* /*msg*/) {
 }
 
 void SendStreamRst(Socket *sock, int64_t remote_stream_id) {
-    CHECK(sock != NULL);
+    CHECK(sock != nullptr);
     StreamFrameMeta fm;
     fm.set_stream_id(remote_stream_id);
     fm.set_frame_type(FRAME_TYPE_RST);
     butil::IOBuf out;
-    PackStreamMessage(&out, fm, NULL);
+    PackStreamMessage(&out, fm, nullptr);
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     sock->Write(&out, &wopt);
@@ -141,13 +141,13 @@ void SendStreamRst(Socket *sock, int64_t remote_stream_id) {
 
 void SendStreamClose(Socket *sock, int64_t remote_stream_id,
                      int64_t source_stream_id) {
-    CHECK(sock != NULL);
+    CHECK(sock != nullptr);
     StreamFrameMeta fm;
     fm.set_stream_id(remote_stream_id);
     fm.set_source_stream_id(source_stream_id);
     fm.set_frame_type(FRAME_TYPE_CLOSE);
     butil::IOBuf out;
-    PackStreamMessage(&out, fm, NULL);
+    PackStreamMessage(&out, fm, nullptr);
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     sock->Write(&out, &wopt);
@@ -155,7 +155,7 @@ void SendStreamClose(Socket *sock, int64_t remote_stream_id,
 
 int SendStreamData(Socket* sock, const butil::IOBuf* data,
                    int64_t remote_stream_id, int64_t source_stream_id) {
-    CHECK(sock != NULL);
+    CHECK(sock != nullptr);
     StreamFrameMeta fm;
     fm.set_stream_id(remote_stream_id);
     fm.set_source_stream_id(source_stream_id);

@@ -57,7 +57,7 @@ enum SSLProtocol {
 
 struct FreeSSLCTX {
     inline void operator()(SSL_CTX* ctx) const {
-        if (ctx != NULL) {
+        if (ctx != nullptr) {
             SSL_CTX_free(ctx);
         }
     }

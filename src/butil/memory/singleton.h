@@ -122,17 +122,17 @@ const bool LeakySingletonTraits<Type>::kAllowedToAccessOnNonjoinableThread = tru
 template <typename Type>
 struct StaticMemorySingletonTraits {
   // WARNING: User has to deal with get() in the singleton class
-  // this is traits for returning NULL.
+  // this is traits for returning nullptr.
   static Type* New() {
-    // Only constructs once and returns pointer; otherwise returns NULL.
+    // Only constructs once and returns pointer; otherwise returns nullptr.
     if (butil::subtle::NoBarrier_AtomicExchange(&dead_, 1))
-      return NULL;
+      return nullptr;
 
     return new(buffer_.void_data()) Type();
   }
 
   static void Delete(Type* p) {
-    if (p != NULL)
+    if (p != nullptr)
       p->Type::~Type();
   }
 
@@ -253,7 +253,7 @@ class Singleton {
     // Object isn't created yet, maybe we will get to create it, let's try...
     if (butil::subtle::Acquire_CompareAndSwap(
           &instance_, 0, butil::internal::kBeingCreatedMarker) == 0) {
-      // instance_ was NULL and is now kBeingCreatedMarker.  Only one thread
+      // instance_ was nullptr and is now kBeingCreatedMarker.  Only one thread
       // will ever get here.  Threads might be spinning on us, and they will
       // stop right after we do this store.
       Type* newval = Traits::New();
@@ -266,8 +266,8 @@ class Singleton {
       butil::subtle::Release_Store(
           &instance_, reinterpret_cast<butil::subtle::AtomicWord>(newval));
 
-      if (newval != NULL && Traits::kRegisterAtExit)
-        butil::AtExitManager::RegisterCallback(OnExit, NULL);
+      if (newval != nullptr && Traits::kRegisterAtExit)
+        butil::AtExitManager::RegisterCallback(OnExit, nullptr);
 
       return newval;
     }

@@ -97,12 +97,12 @@ void STLDeleteContainerPairSecondPointers(ForwardIterator begin,
 // directly, but that is undefined behaviour if |v| is empty.
 template<typename T>
 inline T* vector_as_array(std::vector<T>* v) {
-  return v->empty() ? NULL : &*v->begin();
+  return v->empty() ? nullptr : &*v->begin();
 }
 
 template<typename T>
 inline const T* vector_as_array(const std::vector<T>* v) {
-  return v->empty() ? NULL : &*v->begin();
+  return v->empty() ? nullptr : &*v->begin();
 }
 
 // Return a mutable char* pointing to a string's internal buffer,
@@ -119,7 +119,7 @@ inline const T* vector_as_array(const std::vector<T>* v) {
 // already work on all current implementations.
 inline char* string_as_array(std::string* str) {
   // DO NOT USE const_cast<char*>(str->data())
-  return str->empty() ? NULL : &*str->begin();
+  return str->empty() ? nullptr : &*str->begin();
 }
 
 // The following functions are useful for cleaning up STL containers whose
@@ -130,7 +130,7 @@ inline char* string_as_array(std::string* str) {
 // hash_set, or any other STL container which defines sensible begin(), end(),
 // and clear() methods.
 //
-// If container is NULL, this function is a no-op.
+// If container is nullptr, this function is a no-op.
 //
 // As an alternative to calling STLDeleteElements() directly, consider
 // STLElementDeleter (defined below), which ensures that your container's
@@ -145,7 +145,7 @@ void STLDeleteElements(T* container) {
 
 // Given an STL container consisting of (key, value) pairs, STLDeleteValues
 // deletes all the "value" components and clears the container.  Does nothing
-// in the case it's given a NULL pointer.
+// in the case it's given a nullptr pointer.
 template <class T>
 void STLDeleteValues(T* container) {
   if (!container)

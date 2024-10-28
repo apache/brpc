@@ -230,7 +230,7 @@ TsChannel* TsChannelGroup::get(TsPid pid) {
     // if (it != _pids.end()) {
     //     return &it->second;
     // }
-    // return NULL;
+    // return nullptr;
 }
 
 TsChannel* TsChannelGroup::set(TsPid pid) {
@@ -251,8 +251,8 @@ TsPacket::TsPacket(TsChannelGroup* g)
     , _transport_scrambling_control(TS_SCRAMBLED_DISABLED)
     , _adaptation_field_control(TS_AF_RESERVED)
     , _continuity_counter(0)
-    , _adaptation_field(NULL)
-    , _payload(NULL)
+    , _adaptation_field(nullptr)
+    , _payload(nullptr)
     , _tschan_group(g) {
 }
 
@@ -263,9 +263,9 @@ TsPacket::~TsPacket() {
 
 void TsPacket::Reset() {
     delete _payload;
-    _payload = NULL;
+    _payload = nullptr;
     delete _adaptation_field;
-    _adaptation_field = NULL;
+    _adaptation_field = nullptr;
     _transport_error_indicator = 0;
     _payload_unit_start_indicator = 0;
     _transport_priority = 0;
@@ -273,13 +273,13 @@ void TsPacket::Reset() {
     _transport_scrambling_control = TS_SCRAMBLED_DISABLED;
     _adaptation_field_control = TS_AF_RESERVED;
     _continuity_counter = 0;
-    _payload = NULL;
+    _payload = nullptr;
     _modified = false;
 }
 
 TsAdaptationField* TsPacket::CreateAdaptationField() {
-    if (_adaptation_field != NULL) {
-        LOG(ERROR) << "_adaptation_field is not NULL";
+    if (_adaptation_field != nullptr) {
+        LOG(ERROR) << "_adaptation_field is not nullptr";
         return _adaptation_field;
     }
     _adaptation_field = new TsAdaptationField;
@@ -345,7 +345,7 @@ int TsPacket::Encode(void* data) const {
 }
 
 void TsPacket::AddPadding(size_t num_stuffings) {
-    const bool no_af_before = (_adaptation_field == NULL);
+    const bool no_af_before = (_adaptation_field == nullptr);
     TsAdaptationField* af = mutable_adaptation_field();
     if (no_af_before) {
         const size_t sz = af->ByteSize();
@@ -487,7 +487,7 @@ TsAdaptationField::TsAdaptationField()
     , original_program_clock_reference_extension(0)
     , splice_countdown(0)
     , transport_private_data_length(0)
-    , transport_private_data(NULL)
+    , transport_private_data(nullptr)
     , adaptation_field_extension_length(0)
     , ltw_flag(0)
     , piecewise_rate_flag(0)
@@ -611,9 +611,9 @@ TsPayload::~TsPayload() {}
 
 TsPayloadPES::TsPayloadPES(const TsPacket* p) : TsPayload(p) {
     _PES_header_data_length = -1;
-    PES_private_data = NULL;
-    pack_field = NULL;
-    PES_extension_field = NULL;
+    PES_private_data = nullptr;
+    pack_field = nullptr;
+    PES_extension_field = nullptr;
     nb_stuffings = 0;
     nb_bytes = 0;
     nb_paddings = 0;
@@ -889,7 +889,7 @@ TsPayloadPMTESInfo::TsPayloadPMTESInfo(TsStream st, TsPid epid)
     : stream_type(st)
     , elementary_PID(epid)
     , ES_info_length(0)
-    , ES_info(NULL) {
+    , ES_info(nullptr) {
 }
 
 TsPayloadPMTESInfo::~TsPayloadPMTESInfo() {
@@ -923,7 +923,7 @@ int TsPayloadPMTESInfo::Encode(void* data) const {
 TsPayloadPMT::TsPayloadPMT(const TsPacket* p)
     : TsPayloadPSI(p)
     , program_info_length(0)
-    , program_info_desc(NULL) {
+    , program_info_desc(nullptr) {
 }
 
 TsPayloadPMT::~TsPayloadPMT() {
@@ -1281,7 +1281,7 @@ butil::Status TsWriter::Write(const RtmpVideoMessage& msg) {
     butil::IOBuf nalus;
     bool has_idr = false;
     for (AVCNaluIterator it(&avc_msg.data, _avc_seq_header.length_size_minus1,
-                            &_nalu_format); it != NULL; ++it) {
+                            &_nalu_format); it != nullptr; ++it) {
         // ignore SPS/PPS/AUD
         switch (it.nalu_type()) {
         case AVC_NALU_IDR:
@@ -1414,7 +1414,7 @@ butil::Status TsWriter::EncodePES(TsMessage* msg, TsStream sid, TsPid pid,
     }
 
     TsChannel* channel = _tschan_group.get(pid);
-    if (channel == NULL) {
+    if (channel == nullptr) {
         return butil::Status(EINVAL, "Fail to get channel on pid=%d", (int)pid);
     }
 

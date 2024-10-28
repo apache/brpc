@@ -101,7 +101,7 @@
 // parsing.
 //
 // The code for DebugMessage.exe is only one line. In WinMain, do:
-//   MessageBox(NULL, GetCommandLineW(), L"Fatal Error", 0);
+//   MessageBox(nullptr, GetCommandLineW(), L"Fatal Error", 0);
 //
 // If DebugMessage.exe is not found, the logging code will use a normal
 // MessageBox, potentially causing the problems discussed above.
@@ -245,7 +245,7 @@ struct BUTIL_EXPORT LoggingSettings {
     // The defaults values are:
     //
     //  logging_dest: LOG_DEFAULT
-    //  log_file:     NULL
+    //  log_file:     nullptr
     //  lock_log:     LOCK_LOG_FILE
     //  delete_old:   APPEND_TO_OLD_LOG_FILE
     LoggingSettings();
@@ -653,11 +653,11 @@ std::string* MakeCheckOpString<std::string, std::string>(
     template <class t1, class t2>                                       \
     inline std::string* Check##name##Impl(const t1& v1, const t2& v2,   \
                                           const char* names) {          \
-        if (v1 op v2) return NULL;                                      \
+        if (v1 op v2) return nullptr;                                      \
         else return MakeCheckOpString(v1, v2, names);                   \
     }                                                                   \
     inline std::string* Check##name##Impl(int v1, int v2, const char* names) { \
-        if (v1 op v2) return NULL;                                      \
+        if (v1 op v2) return nullptr;                                      \
         else return MakeCheckOpString(v1, v2, names);                   \
     }
 BAIDU_DEFINE_CHECK_OP_IMPL(EQ, ==)
@@ -857,7 +857,7 @@ const LogSeverity BLOG_DCHECK = BLOG_INFO;
 //   DCHECK_EQ(string("abc")[1], 'b');
 //
 // WARNING: These may not compile correctly if one of the arguments is a pointer
-// and the other is NULL. To work around this, simply static_cast NULL to the
+// and the other is nullptr. To work around this, simply static_cast nullptr to the
 // type of the desired pointer.
 
 #define DCHECK_EQ(val1, val2) BAIDU_DCHECK_OP(EQ, ==, val1, val2)
@@ -884,7 +884,7 @@ BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code);
 // creation of std::string which allocates memory internally.
 class CharArrayStreamBuf : public std::streambuf {
 public:
-    explicit CharArrayStreamBuf() : _data(NULL), _size(0) {}
+    explicit CharArrayStreamBuf() : _data(nullptr), _size(0) {}
     ~CharArrayStreamBuf() override;
 
     int overflow(int ch) override;

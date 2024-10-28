@@ -17,7 +17,7 @@ namespace butil {
 // version of the constructor, and if we are building a dynamic library we may
 // end up with multiple AtExitManagers on the same process.  We don't protect
 // this for thread-safe access, since it will only be modified in testing.
-static AtExitManager* g_top_manager = NULL;
+static AtExitManager* g_top_manager = nullptr;
 
 AtExitManager::AtExitManager() : next_manager_(g_top_manager) {
 // If multiple modules instantiate AtExitManagers they'll end up living in this

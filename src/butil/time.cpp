@@ -46,7 +46,7 @@ static void InitClock() {
         exit(1);
     }
     timeval now;
-    if (gettimeofday(&now, NULL) != 0) {
+    if (gettimeofday(&now, nullptr) != 0) {
         exit(1);
     }
     s_init_time.tv_sec = now.tv_sec;
@@ -103,7 +103,7 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
     if (n > 0) {
         char *mhz = static_cast<char*>(memmem(buf, n, "cpu MHz", 7));
 
-        if (mhz != NULL) {
+        if (mhz != nullptr) {
             char *endp = buf + n;
             int seen_decpoint = 0;
             int ndigits = 0;

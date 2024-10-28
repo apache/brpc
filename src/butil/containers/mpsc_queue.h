@@ -32,7 +32,7 @@ template <typename T>
 struct BAIDU_CACHELINE_ALIGNMENT MPSCQueueNode {
     static MPSCQueueNode* const UNCONNECTED;
 
-    MPSCQueueNode* next{NULL};
+    MPSCQueueNode* next{nullptr};
     ManualConstructor<T> data_mem;
 };
 
@@ -60,9 +60,9 @@ template <typename T, typename Alloc = DefaultAllocator<T>>
 class MPSCQueue {
 public:
     MPSCQueue()
-        : _head(NULL)
-        , _cur_enqueue_node(NULL)
-        , _cur_dequeue_node(NULL) {}
+        : _head(nullptr)
+        , _cur_enqueue_node(nullptr)
+        , _cur_dequeue_node(nullptr) {}
 
     ~MPSCQueue();
 
@@ -88,7 +88,7 @@ private:
 
 template <typename T, typename Alloc>
 MPSCQueue<T, Alloc>::~MPSCQueue() {
-    while (DequeueImpl(NULL));
+    while (DequeueImpl(nullptr));
 }
 
 template <typename T, typename Alloc>
@@ -114,7 +114,7 @@ void MPSCQueue<T, Alloc>::EnqueueImpl(MPSCQueueNode<T>* node) {
         node->next = prev;
         return;
     }
-    node->next = NULL;
+    node->next = nullptr;
     _cur_enqueue_node.store(node, memory_order_relaxed);
 }
 
@@ -129,7 +129,7 @@ bool MPSCQueue<T, Alloc>::DequeueImpl(T* data) {
     if (_cur_dequeue_node) {
         node = _cur_dequeue_node;
     } else {
-        node = _cur_enqueue_node.exchange(NULL, memory_order_relaxed);
+        node = _cur_enqueue_node.exchange(nullptr, memory_order_relaxed);
     }
     if (!node) {
         return false;
@@ -151,9 +151,9 @@ bool MPSCQueue<T, Alloc>::DequeueImpl(T* data) {
 
 template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::ReverseList(MPSCQueueNode<T>* old_head) {
-    // Try to set _write_head to NULL to mark that it is done.
+    // Try to set _write_head to nullptr to mark that it is done.
     MPSCQueueNode<T>* new_head = old_head;
-    MPSCQueueNode<T>* desired = NULL;
+    MPSCQueueNode<T>* desired = nullptr;
     if (_head.compare_exchange_strong(
         new_head, desired, memory_order_acquire)) {
         // No one added new requests.
@@ -165,7 +165,7 @@ void MPSCQueue<T, Alloc>::ReverseList(MPSCQueueNode<T>* old_head) {
 
     // Someone added new requests.
     // Reverse the list until old_head.
-    MPSCQueueNode<T>* tail = NULL;
+    MPSCQueueNode<T>* tail = nullptr;
     MPSCQueueNode<T>* p = new_head;
     do {
         while (p->next == MPSCQueueNode<T>::UNCONNECTED) {

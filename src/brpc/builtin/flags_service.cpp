@@ -146,7 +146,7 @@ void FlagsService::default_method(::google::protobuf::RpcController* cntl_base,
     cntl->http_response().set_content_type(
         use_html ? "text/html" : "text/plain");
 
-    if (value_str != NULL) {
+    if (value_str != nullptr) {
         // reload value if ?setvalue=VALUE is present.
         if (constraint.empty()) {
             cntl->SetFailed(ENOMETHOD, "Require gflag name");
@@ -189,7 +189,7 @@ void FlagsService::default_method(::google::protobuf::RpcController* cntl_base,
     std::vector<std::string> wildcards;
     std::set<std::string> exact;
     if (!constraint.empty()) {
-        for (butil::StringMultiSplitter sp(constraint.c_str(), ",;"); sp != NULL; ++sp) {
+        for (butil::StringMultiSplitter sp(constraint.c_str(), ",;"); sp != nullptr; ++sp) {
             std::string name(sp.field(), sp.length());
             if (name.find_first_of("$*") != std::string::npos) {
                 wildcards.push_back(name);

@@ -71,7 +71,7 @@ void ThriftFramedMessage::Clear() {
     if (_own_raw_instance) {
         delete _raw_instance;
         _own_raw_instance = false;
-        _raw_instance = NULL;
+        _raw_instance = nullptr;
     }
 }
 
@@ -142,7 +142,7 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
 ::google::protobuf::Metadata ThriftFramedMessage::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
     metadata.descriptor = ThriftFramedMessage::descriptor();
-    metadata.reflection = NULL;
+    metadata.reflection = nullptr;
     return metadata;
 }
 
@@ -152,7 +152,7 @@ void ThriftStub::CallMethod(const char* method_name,
                             ThriftFramedMessage* res,
                             ::google::protobuf::Closure* done) {
     cntl->_thrift_method_name.assign(method_name);
-    _channel->CallMethod(NULL, cntl, req, res, done);
+    _channel->CallMethod(nullptr, cntl, req, res, done);
 }
 
 } // namespace brpc

@@ -64,7 +64,7 @@ const bool ALLOW_UNUSED dummp_bvar_max_dump_multi_dimension_metric_number = ::GF
 
 class MVarEntry {
 public:
-    MVarEntry() : var(NULL) {}
+    MVarEntry() : var(nullptr) {}
 
     MVariable* var;
 };
@@ -76,14 +76,14 @@ struct MVarMapWithLock : public MVarMap {
 
     MVarMapWithLock() {
         CHECK_EQ(0, init(256, 80));
-        pthread_mutex_init(&mutex, NULL);
+        pthread_mutex_init(&mutex, nullptr);
     }
 };
 
 // We have to initialize global map on need because bvar is possibly used
 // before main().
 static pthread_once_t s_mvar_map_once = PTHREAD_ONCE_INIT;
-static MVarMapWithLock* s_mvar_map = NULL;
+static MVarMapWithLock* s_mvar_map = nullptr;
 
 static void init_mvar_map() {
     // It's probably slow to initialize all sub maps, but rpc often expose 
@@ -121,7 +121,7 @@ int MVariable::describe_exposed(const std::string& name,
     MVarMapWithLock& m = get_mvar_map();
     BAIDU_SCOPED_LOCK(m.mutex);
     MVarEntry* entry = m.seek(name);
-    if (entry == NULL) {
+    if (entry == nullptr) {
         return -1;
     }
     entry->var->describe(os);
@@ -172,7 +172,7 @@ int MVariable::expose_impl(const butil::StringPiece& prefix,
     {
         BAIDU_SCOPED_LOCK(m.mutex);
         MVarEntry* entry = m.seek(_name);
-        if (entry == NULL) {
+        if (entry == nullptr) {
             entry = &m[_name];
             entry->var = this;
             return 0;
@@ -226,7 +226,7 @@ size_t MVariable::count_exposed() {
 }
 
 void MVariable::list_exposed(std::vector<std::string>* names) {
-    if (names == NULL) {
+    if (names == nullptr) {
         return;
     }
 
@@ -241,8 +241,8 @@ void MVariable::list_exposed(std::vector<std::string>* names) {
 }
 
 size_t MVariable::dump_exposed(Dumper* dumper, const DumpOptions* options) {
-    if (NULL == dumper) {
-        LOG(ERROR) << "Parameter[dumper] is NULL";
+    if (nullptr == dumper) {
+        LOG(ERROR) << "Parameter[dumper] is nullptr";
         return -1;
     }
     DumpOptions opt;

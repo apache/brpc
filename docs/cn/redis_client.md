@@ -42,7 +42,7 @@ brpc::RedisRequest set_request;
 brpc::RedisResponse response;
 brpc::Controller cntl;
 set_request.AddCommand("SET %s %d", my_key.c_str(), my_number);
-redis_channel.CallMethod(NULL, &cntl, &set_request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &set_request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -63,7 +63,7 @@ brpc::RedisRequest incr_request;
 incr_request.AddCommand("INCR %s", my_key.c_str());
 response.Clear();
 cntl.Reset();
-redis_channel.CallMethod(NULL, &cntl, &incr_request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &incr_request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -88,7 +88,7 @@ request.AddCommand("INCR counter1");
 request.AddCommand("DECR counter1");
 request.AddCommand("INCRBY counter1 10");
 request.AddCommand("DECRBY counter1 20");
-redis_channel.CallMethod(NULL, &cntl, &request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -140,7 +140,7 @@ command_size()可获得（成功）加入的命令个数。
 
 每个reply可能是：
 
-- REDIS_REPLY_NIL：redis中的NULL，代表值不存在。可通过is_nil()判定。
+- REDIS_REPLY_NIL：redis中的nullptr，代表值不存在。可通过is_nil()判定。
 - REDIS_REPLY_STATUS：在redis文档中称为Simple String。一般是操作的返回状态，比如SET返回的OK。可通过is_string()判定（和string相同），c_str()或data()获得值。
 - REDIS_REPLY_STRING：在redis文档中称为Bulk String。大多数值都是这个类型，包括incr返回的。可通过is_string()判定，c_str()或data()获得值。
 - REDIS_REPLY_ERROR：操作出错时的返回值，包含一段错误信息。可通过is_error()判定，error_message()获得错误信息。

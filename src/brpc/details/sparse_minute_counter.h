@@ -41,7 +41,7 @@ template <typename T> class SparseMinuteCounter {
         Item(int64_t ts, const T& v) : timestamp_ms(ts), value(v) {}
     };
 public:
-    SparseMinuteCounter() : _q(NULL) {}
+    SparseMinuteCounter() : _q(nullptr) {}
     ~SparseMinuteCounter() { DestroyQueue(_q); }
 
     // Add `value' into this counter at timestamp `now_ms'
@@ -145,7 +145,7 @@ template <typename T>
 bool SparseMinuteCounter<T>::TryPop(int64_t now_ms, T* popped) {
     if (_q) {
         const Item* const oldest = _q->top();
-        if (oldest == NULL || now_ms < oldest->timestamp_ms + 60000) {
+        if (oldest == nullptr || now_ms < oldest->timestamp_ms + 60000) {
             return false;
         }
         *popped = oldest->value;

@@ -39,7 +39,7 @@ public:
     InputStream(google::protobuf::io::ZeroCopyInputStream* stream)
         : _good(true)
         , _size(0)
-        , _data(NULL)
+        , _data(nullptr)
         , _zc_stream(stream)
         , _popped_bytes(0)
     {}
@@ -91,7 +91,7 @@ class ISOArrayIterator;
 // Represent a piece of unparsed(and unread) data of InputStream.
 struct UnparsedValue {
     UnparsedValue()
-        : _type(FIELD_UNKNOWN), _stream(NULL), _size(0) {}
+        : _type(FIELD_UNKNOWN), _stream(nullptr), _size(0) {}
     UnparsedValue(FieldType type, InputStream* stream, size_t size)
         : _type(type), _stream(stream), _size(size) {}
     void set(FieldType type, InputStream* stream, size_t size) {
@@ -141,7 +141,7 @@ size_t unbox(InputStream* stream);
 
 // Iterator all fields in an object which should be created like this:
 //   ObjectIterator it(unparsed_value);
-//   for (; it != NULL; ++it) {
+//   for (; it != nullptr; ++it) {
 //     std::cout << "name=" << it->name << " value=" << it->value << std::endl;
 //   }
 class ObjectIterator {
@@ -185,7 +185,7 @@ private:
 
 // Iterator all items in a (mcpack) array which should be created like this:
 //   ArrayIterator it(unparsed_value);
-//   for (; it != NULL; ++it) {
+//   for (; it != nullptr; ++it) {
 //     std::cout << " item=" << *it << std::endl;
 //   }
 class ArrayIterator {

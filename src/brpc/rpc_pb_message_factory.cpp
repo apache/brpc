@@ -20,7 +20,7 @@
 namespace brpc {
 
 struct DefaultRpcPBMessages : public RpcPBMessages {
-    DefaultRpcPBMessages() : request(NULL), response(NULL) {}
+    DefaultRpcPBMessages() : request(nullptr), response(nullptr) {}
     ::google::protobuf::Message* Request() override { return request; }
     ::google::protobuf::Message* Response() override { return response; }
 
@@ -42,8 +42,8 @@ void DefaultRpcPBMessageFactory::Return(RpcPBMessages* messages) {
     auto default_messages = static_cast<DefaultRpcPBMessages*>(messages);
     delete default_messages->request;
     delete default_messages->response;
-    default_messages->request = NULL;
-    default_messages->response = NULL;
+    default_messages->request = nullptr;
+    default_messages->response = nullptr;
     butil::return_object(default_messages);
 }
 
