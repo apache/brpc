@@ -55,7 +55,8 @@ extern int bthread_timer_del(bthread_timer_t id);
 
 // Suspend caller thread until the file descriptor `fd' has `epoll_events'.
 // Returns 0 on success, -1 otherwise and errno is set.
-// NOTE: Due to an epoll bug(https://patchwork.kernel.org/patch/1970231),
+// NOTE: Due to an epoll
+// bug(https://web.archive.org/web/20150423184820/https://patchwork.kernel.org/patch/1970231/),
 // current implementation relies on EPOLL_CTL_ADD and EPOLL_CTL_DEL which
 // are not scalable, don't use bthread_fd_*wait functions in performance
 // critical scenario.
