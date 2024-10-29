@@ -583,7 +583,8 @@ Apache bRPC Community
 
 #### 微信公众号
 
-参考 <https://mp.weixin.qq.com/s/DeFhpAV_AYsn_Xd1ylPTSg>。
+参考 <https://mp.weixin.qq.com/s/DeFhpAV_AYsn_Xd1ylPTSg>。  
+建议先在腾讯文档中编辑后粘贴至公众号，统一字体大小和格式，参考 [腾讯文档：bRPC 1.11.0](https://docs.qq.com/doc/DYmZ2Tnpub1lySWZO?_t=1730208105245&u=31460cd039dd4461877a61ab9f56be1f)
 
 
 ### 6. 更新 master 分支
