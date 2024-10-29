@@ -11,19 +11,19 @@
 
 ```c++
 服务端启动
-./echo_server -task_group_ntags 3 -tag1 0 -tag2 1 -bthread_concurrency 20 -bthread_min_concurrency 12 -event_dispatcher_num 1
+./echo_server -task_group_ntags 3 -tag1 0 -tag2 1 -bthread_concurrency 20 -bthread_min_concurrency 8 -event_dispatcher_num 1
 
 客户端启动
 ./echo_client -dummy_port 8888 -server "0.0.0.0:8002" -use_bthread true
 ./echo_client -dummy_port 8889 -server "0.0.0.0:8003" -use_bthread true
 ```
 
-FLAGS_bthread_concurrency为所有分组的线程数的上限，FLAGS_bthread_min_concurrency为所有分组的线程数的下限，FLAGS_event_dispatcher_num为单个分组中事件驱动器的数量。FLAGS_bthread_current_tag为将要修改的分组的tag值，FLAGS_bthread_concurrency_by_tag设置这个分组的线程数。
+FLAGS_bthread_concurrency为所有线程的数，FLAGS_bthread_min_concurrency为所有分组的线程数的下限，FLAGS_event_dispatcher_num为单个分组中事件驱动器的数量。FLAGS_bthread_current_tag为将要修改的分组的tag值，FLAGS_bthread_concurrency_by_tag设置这个分组的线程数。
 一般情况应用创建的bthread不需要设置bthread_attr_t的tag字段，创建的bthread会在当前tag上下文中执行；如果希望创建的bthread不在当前tag上下文中执行，可以设置bthread_attr_t的tag字段为希望的值，这么做会对性能有些损失，关键路径上应该避免这么做。
 
 Q：如何动态改变分组线程的数量？
 
-A：server的线程数最少为4个，后台任务线程数最少为2个，所以上面的例子中，FLAGS_bthread_concurrency最小值为4+4+2=10，再设置FLAGS_bthread_min_concurrency=FLAGS_bthread_concurrency，之后再把FLAGS_bthread_concurrency改大一些，之后再设置FLAGS_bthread_current_tag和FLAGS_bthread_concurrency_by_tag来改变某个分组的线程数。对于server，如果设置了ServerOption.bthread_tag，num_threads的含义是这个分组的线程数；如果没有设置（相当于没有启用分组，默认值为BTHREAD_TAG_INVALID）,num_thread的含义是所有分组的线程数。
+A：你可以根据你的服务更自由的设计你的每个分组的线程数，启动的时候会根据你设置的 bthread_concurrency 来初始化线程池，如果你设置了 bthread_min_concurrency，那么会根据 bthread_min_concurrency 来设置线程池，对于 server 来说，num_threads 就是该 tag 对应的 worker 数量。可以通过设置 FLAGS_bthread_current_tag 和 FLAGS_bthread_concurrency_by_tag 来改变某个分组的线程数。如果没有设置（相当于没有启用分组，默认值为BTHREAD_TAG_INVALID）,num_threads的含义是所有分组的 worker 总数。
 
 Q：不同分组之间有什么关系吗？
 

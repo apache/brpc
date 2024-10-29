@@ -29,8 +29,8 @@ DEFINE_int32(port2, 8003, "TCP Port of this server");
 DEFINE_int32(tag1, 0, "Server1 tag");
 DEFINE_int32(tag2, 1, "Server2 tag");
 DEFINE_int32(tag3, 2, "Background task tag");
-DEFINE_int32(num_threads1, 4, "Thread number of server1");
-DEFINE_int32(num_threads2, 4, "Thread number of server2");
+DEFINE_int32(num_threads1, 6, "Thread number of server1");
+DEFINE_int32(num_threads2, 16, "Thread number of server2");
 DEFINE_int32(idle_timeout_s, -1,
              "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
