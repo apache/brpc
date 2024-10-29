@@ -17,6 +17,7 @@
 
 
 
+#include <cstdint>                  // int64_t
 #include <sstream>                  // std::stringstream
 #include <iomanip>                  // std::setw
 #include "brpc/grpc.h"
