@@ -19,19 +19,12 @@
 #define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
 #include "brpc/thrift_message.h"
 
-#include <algorithm>
 #include "butil/logging.h"
-
-#include <google/protobuf/stubs/once.h>
-#include <google/protobuf/io/coded_stream.h>
-#include <google/protobuf/descriptor.h>
-#include <google/protobuf/reflection_ops.h>
-#include <google/protobuf/wire_format.h>
 
 namespace brpc {
 
 ThriftFramedMessage::ThriftFramedMessage()
-    : ::google::protobuf::Message() {
+    : NonreflectableMessage<ThriftFramedMessage>() {
     SharedCtor();
 }
 
@@ -51,21 +44,6 @@ ThriftFramedMessage::~ThriftFramedMessage() {
 void ThriftFramedMessage::SharedDtor() {
 }
 
-const ::google::protobuf::Descriptor* ThriftFramedMessage::descriptor() {
-    return ThriftFramedMessageBase::descriptor();
-}
-
-ThriftFramedMessage* ThriftFramedMessage::New() const {
-    return new ThriftFramedMessage;
-}
-
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-ThriftFramedMessage*
-ThriftFramedMessage::New(::google::protobuf::Arena* arena) const {
-    return CreateMaybeMessage<ThriftFramedMessage>(arena);
-}
-#endif
-
 void ThriftFramedMessage::Clear() {
     body.clear();
     if (_own_raw_instance) {
@@ -75,30 +53,7 @@ void ThriftFramedMessage::Clear() {
     }
 }
 
-bool ThriftFramedMessage::MergePartialFromCodedStream(
-    ::google::protobuf::io::CodedInputStream* input) {
-#define DO_(EXPRESSION) if (!(EXPRESSION)) return false
-    ::google::protobuf::uint32 tag;
-    while ((tag = input->ReadTag()) != 0) {
-        if (::google::protobuf::internal::WireFormatLite::GetTagWireType(tag) ==
-            ::google::protobuf::internal::WireFormatLite::WIRETYPE_END_GROUP) {
-            return true;
-        }
-    }
-    return true;
-#undef DO_
-}
-
-void ThriftFramedMessage::SerializeWithCachedSizes(
-    ::google::protobuf::io::CodedOutputStream*) const {
-}
-
-::google::protobuf::uint8* ThriftFramedMessage::SerializeWithCachedSizesToArray(
-    ::google::protobuf::uint8* target) const {
-    return target;
-}
-
-int ThriftFramedMessage::ByteSize() const {
+size_t ThriftFramedMessage::ByteSizeLong() const {
     if (_raw_instance) {
         LOG(ERROR) << "ByteSize() is always 0 when _raw_instance is set";
         return 0;
@@ -106,28 +61,9 @@ int ThriftFramedMessage::ByteSize() const {
     return body.size();
 }
 
-void ThriftFramedMessage::MergeFrom(const ::google::protobuf::Message& from) {
-    CHECK_NE(&from, this);
-    LOG(ERROR) << "ThriftFramedMessage does not support MergeFrom";
-}
-
 void ThriftFramedMessage::MergeFrom(const ThriftFramedMessage& from) {
     CHECK_NE(&from, this);
     LOG(ERROR) << "ThriftFramedMessage does not support MergeFrom";
-}
-
-void ThriftFramedMessage::CopyFrom(const ::google::protobuf::Message& from) {
-    if (&from == this) return;
-    LOG(ERROR) << "ThriftFramedMessage does not support CopyFrom";
-}
-
-void ThriftFramedMessage::CopyFrom(const ThriftFramedMessage& from) {
-    if (&from == this) return;
-    LOG(ERROR) << "ThriftFramedMessage does not support CopyFrom";
-}
-
-bool ThriftFramedMessage::IsInitialized() const {
-    return true;
 }
 
 void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
@@ -140,9 +76,9 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
 }
 
 ::google::protobuf::Metadata ThriftFramedMessage::GetMetadata() const {
-    ::google::protobuf::Metadata metadata;
-    metadata.descriptor = ThriftFramedMessage::descriptor();
-    metadata.reflection = NULL;
+    ::google::protobuf::Metadata metadata{};
+    metadata.descriptor = ThriftFramedMessageBase::descriptor();
+    metadata.reflection = nullptr;
     return metadata;
 }
 

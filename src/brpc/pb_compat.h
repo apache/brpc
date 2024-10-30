@@ -19,22 +19,28 @@
 #ifndef BRPC_PB_COMPAT_H
 #define BRPC_PB_COMPAT_H
 
-#if GOOGLE_PROTOBUF_VERSION < 4022000
-# define PB_422_OVERRIDE override
+#if GOOGLE_PROTOBUF_VERSION < 5027000
+# define PB_527_OVERRIDE override
 #else
-# define PB_422_OVERRIDE
+# define PB_527_OVERRIDE
+#endif
+
+#if GOOGLE_PROTOBUF_VERSION < 5026000
+# define PB_526_OVERRIDE override
+#else
+# define PB_526_OVERRIDE
+#endif
+
+#if GOOGLE_PROTOBUF_VERSION < 4025000
+# define PB_425_OVERRIDE override
+#else
+# define PB_425_OVERRIDE
 #endif
 
 #if GOOGLE_PROTOBUF_VERSION < 3021000
 # define PB_321_OVERRIDE override
 #else
 # define PB_321_OVERRIDE
-#endif
-
-#if GOOGLE_PROTOBUF_VERSION < 3019000
-# define PB_319_OVERRIDE override
-#else
-# define PB_319_OVERRIDE
 #endif
 
 #if GOOGLE_PROTOBUF_VERSION < 3010000

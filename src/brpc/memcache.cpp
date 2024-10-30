@@ -15,26 +15,24 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
-#include <algorithm>
-#include <google/protobuf/reflection_ops.h>
-#include <google/protobuf/wire_format.h>
-#include "butil/string_printf.h"
-#include "butil/macros.h"
-#include "butil/sys_byteorder.h"
-#include "butil/logging.h"
 #include "brpc/memcache.h"
+
 #include "brpc/policy/memcache_binary_header.h"
+#include "brpc/proto_base.pb.h"
+#include "butil/logging.h"
+#include "butil/macros.h"
+#include "butil/string_printf.h"
+#include "butil/sys_byteorder.h"
 
 namespace brpc {
 
 MemcacheRequest::MemcacheRequest()
-    : ::google::protobuf::Message() {
+    : NonreflectableMessage<MemcacheRequest>() {
     SharedCtor();
 }
 
 MemcacheRequest::MemcacheRequest(const MemcacheRequest& from)
-    : ::google::protobuf::Message() {
+    : NonreflectableMessage<MemcacheRequest>() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -54,20 +52,6 @@ void MemcacheRequest::SharedDtor() {
 void MemcacheRequest::SetCachedSize(int size) const {
     _cached_size_ = size;
 }
-
-const ::google::protobuf::Descriptor* MemcacheRequest::descriptor() {
-    return MemcacheRequestBase::descriptor();
-}
-
-MemcacheRequest* MemcacheRequest::New() const {
-    return new MemcacheRequest;
-}
-
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-MemcacheRequest* MemcacheRequest::New(::google::protobuf::Arena* arena) const {
-    return CreateMaybeMessage<MemcacheRequest>(arena);
-}
-#endif
 
 void MemcacheRequest::Clear() {
     _buf.clear();
@@ -122,43 +106,16 @@ void MemcacheRequest::SerializeWithCachedSizes(
     }
 }
 
-::google::protobuf::uint8* MemcacheRequest::SerializeWithCachedSizesToArray(
-    ::google::protobuf::uint8* target) const {
-    return target;
-}
-
-int MemcacheRequest::ByteSize() const {
-    int total_size =  _buf.size();
+size_t MemcacheRequest::ByteSizeLong() const {
+    int total_size =  static_cast<int>(_buf.size());
     _cached_size_ = total_size;
     return total_size;
-}
-
-void MemcacheRequest::MergeFrom(const ::google::protobuf::Message& from) {
-    CHECK_NE(&from, this);
-    const MemcacheRequest* source = dynamic_cast<const MemcacheRequest*>(&from);
-    if (source == NULL) {
-        ::google::protobuf::internal::ReflectionOps::Merge(from, this);
-    } else {
-        MergeFrom(*source);
-    }
 }
 
 void MemcacheRequest::MergeFrom(const MemcacheRequest& from) {
     CHECK_NE(&from, this);
     _buf.append(from._buf);
     _pipelined_count += from._pipelined_count;
-}
-
-void MemcacheRequest::CopyFrom(const ::google::protobuf::Message& from) {
-    if (&from == this) return;
-    Clear();
-    MergeFrom(from);
-}
-
-void MemcacheRequest::CopyFrom(const MemcacheRequest& from) {
-    if (&from == this) return;
-    Clear();
-    MergeFrom(from);
 }
 
 bool MemcacheRequest::IsInitialized() const {
@@ -174,19 +131,19 @@ void MemcacheRequest::Swap(MemcacheRequest* other) {
 }
 
 ::google::protobuf::Metadata MemcacheRequest::GetMetadata() const {
-    ::google::protobuf::Metadata metadata;
-    metadata.descriptor = MemcacheRequest::descriptor();
-    metadata.reflection = NULL;
+    ::google::protobuf::Metadata metadata{};
+    metadata.descriptor = MemcacheRequestBase::descriptor();
+    metadata.reflection = nullptr;
     return metadata;
 }
 
 MemcacheResponse::MemcacheResponse()
-    : ::google::protobuf::Message() {
+    : NonreflectableMessage<MemcacheResponse>() {
     SharedCtor();
 }
 
 MemcacheResponse::MemcacheResponse(const MemcacheResponse& from)
-    : ::google::protobuf::Message() {
+    : NonreflectableMessage<MemcacheResponse>() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -205,20 +162,6 @@ void MemcacheResponse::SharedDtor() {
 void MemcacheResponse::SetCachedSize(int size) const {
     _cached_size_ = size;
 }
-const ::google::protobuf::Descriptor* MemcacheResponse::descriptor() {
-    return MemcacheResponseBase::descriptor();
-}
-
-MemcacheResponse* MemcacheResponse::New() const {
-    return new MemcacheResponse;
-}
-
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-MemcacheResponse*
-MemcacheResponse::New(::google::protobuf::Arena* arena) const {
-    return CreateMaybeMessage<MemcacheResponse>(arena);
-}
-#endif
 
 void MemcacheResponse::Clear() {
 }
@@ -250,25 +193,10 @@ void MemcacheResponse::SerializeWithCachedSizes(
     }
 }
 
-::google::protobuf::uint8* MemcacheResponse::SerializeWithCachedSizesToArray(
-    ::google::protobuf::uint8* target) const {
-    return target;
-}
-
-int MemcacheResponse::ByteSize() const {
-    int total_size = _buf.size();
+size_t MemcacheResponse::ByteSizeLong() const {
+    int total_size = static_cast<int>(_buf.size());
     _cached_size_ = total_size;
     return total_size;
-}
-
-void MemcacheResponse::MergeFrom(const ::google::protobuf::Message& from) {
-    CHECK_NE(&from, this);
-    const MemcacheResponse* source = dynamic_cast<const MemcacheResponse*>(&from);
-    if (source == NULL) {
-        ::google::protobuf::internal::ReflectionOps::Merge(from, this);
-    } else {
-        MergeFrom(*source);
-    }
 }
 
 void MemcacheResponse::MergeFrom(const MemcacheResponse& from) {
@@ -277,18 +205,6 @@ void MemcacheResponse::MergeFrom(const MemcacheResponse& from) {
     // responses of memcached according to their binary layout, should be
     // directly concatenatible.
     _buf.append(from._buf);
-}
-
-void MemcacheResponse::CopyFrom(const ::google::protobuf::Message& from) {
-    if (&from == this) return;
-    Clear();
-    MergeFrom(from);
-}
-
-void MemcacheResponse::CopyFrom(const MemcacheResponse& from) {
-    if (&from == this) return;
-    Clear();
-    MergeFrom(from);
 }
 
 bool MemcacheResponse::IsInitialized() const {
@@ -303,9 +219,9 @@ void MemcacheResponse::Swap(MemcacheResponse* other) {
 }
 
 ::google::protobuf::Metadata MemcacheResponse::GetMetadata() const {
-    ::google::protobuf::Metadata metadata;
-    metadata.descriptor = MemcacheResponse::descriptor();
-    metadata.reflection = NULL;
+    ::google::protobuf::Metadata metadata{};
+    metadata.descriptor = MemcacheResponseBase::descriptor();
+    metadata.reflection = nullptr;
     return metadata;
 }
 

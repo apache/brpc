@@ -15,22 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
-#include <algorithm>
-#include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
-#include <google/protobuf/wire_format.h>
 #include "brpc/nshead_message.h"
+
+#include "brpc/proto_base.pb.h"
 #include "butil/logging.h"
 
 namespace brpc {
 
 NsheadMessage::NsheadMessage()
-    : ::google::protobuf::Message() {
+    : NonreflectableMessage<NsheadMessage>() {
     SharedCtor();
 }
 
 NsheadMessage::NsheadMessage(const NsheadMessage& from)
-    : ::google::protobuf::Message() {
+    : NonreflectableMessage<NsheadMessage>() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -46,49 +44,12 @@ NsheadMessage::~NsheadMessage() {
 void NsheadMessage::SharedDtor() {
 }
 
-const ::google::protobuf::Descriptor* NsheadMessage::descriptor() {
-    return NsheadMessageBase::descriptor();
-}
-
-NsheadMessage* NsheadMessage::New() const {
-    return new NsheadMessage;
-}
-
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-NsheadMessage* NsheadMessage::New(::google::protobuf::Arena* arena) const {
-    return CreateMaybeMessage<NsheadMessage>(arena);
-}
-#endif
-
 void NsheadMessage::Clear() {
     memset(&head, 0, sizeof(head));
     body.clear();
 }
 
-bool NsheadMessage::MergePartialFromCodedStream(
-    ::google::protobuf::io::CodedInputStream* input) {
-#define DO_(EXPRESSION) if (!(EXPRESSION)) return false
-    ::google::protobuf::uint32 tag;
-    while ((tag = input->ReadTag()) != 0) {
-        if (::google::protobuf::internal::WireFormatLite::GetTagWireType(tag) ==
-            ::google::protobuf::internal::WireFormatLite::WIRETYPE_END_GROUP) {
-            return true;
-        }
-    }
-    return true;
-#undef DO_
-}
-
-void NsheadMessage::SerializeWithCachedSizes(
-    ::google::protobuf::io::CodedOutputStream*) const {
-}
-
-::google::protobuf::uint8* NsheadMessage::SerializeWithCachedSizesToArray(
-    ::google::protobuf::uint8* target) const {
-    return target;
-}
-
-int NsheadMessage::ByteSize() const {
+size_t NsheadMessage::ByteSizeLong() const {
     return sizeof(nshead_t) + body.size();
 }
 
@@ -110,22 +71,6 @@ void NsheadMessage::MergeFrom(const NsheadMessage& from) {
     body = from.body;
 }
 
-void NsheadMessage::CopyFrom(const ::google::protobuf::Message& from) {
-    if (&from == this) return;
-    Clear();
-    MergeFrom(from);
-}
-
-void NsheadMessage::CopyFrom(const NsheadMessage& from) {
-    if (&from == this) return;
-    Clear();
-    MergeFrom(from);
-}
-
-bool NsheadMessage::IsInitialized() const {
-    return true;
-}
-
 void NsheadMessage::Swap(NsheadMessage* other) {
     if (other != this) {
         const nshead_t tmp = other->head;
@@ -136,9 +81,9 @@ void NsheadMessage::Swap(NsheadMessage* other) {
 }
 
 ::google::protobuf::Metadata NsheadMessage::GetMetadata() const {
-    ::google::protobuf::Metadata metadata;
-    metadata.descriptor = NsheadMessage::descriptor();
-    metadata.reflection = NULL;
+    ::google::protobuf::Metadata metadata{};
+    metadata.descriptor = NsheadMessageBase::descriptor();
+    metadata.reflection = nullptr;
     return metadata;
 }
 

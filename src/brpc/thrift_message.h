@@ -19,13 +19,13 @@
 #ifndef BRPC_THRIFT_MESSAGE_H
 #define BRPC_THRIFT_MESSAGE_H
 
-#include <google/protobuf/message.h>
-#include "butil/iobuf.h"
-#include "butil/class_name.h"
 #include "brpc/channel_base.h"
 #include "brpc/controller.h"
-#include "brpc/proto_base.pb.h"
+#include "brpc/nonreflectable_message.h"
 #include "brpc/pb_compat.h"
+#include "brpc/proto_base.pb.h"
+#include "butil/class_name.h"
+#include "butil/iobuf.h"
 
 namespace apache {
 namespace thrift {
@@ -55,12 +55,12 @@ public:
 };
 
 // Representing a thrift framed request or response.
-class ThriftFramedMessage : public ::google::protobuf::Message {
+class ThriftFramedMessage : public NonreflectableMessage<ThriftFramedMessage> {
 friend class ThriftStub;
 public:
     butil::IOBuf body; // ~= "{ raw_instance }"
     int16_t field_id;  // must be set when body is set.
-    
+
 private:
     bool _own_raw_instance;
     ThriftMessageBase* _raw_instance;
@@ -69,42 +69,25 @@ public:
     ThriftMessageBase* raw_instance() const { return _raw_instance; }
 
     template <typename T> T* Cast();
-    
+
     ThriftFramedMessage();
 
-    virtual ~ThriftFramedMessage();
-  
+    ~ThriftFramedMessage() override;
+
     ThriftFramedMessage(const ThriftFramedMessage& from) = delete;
-  
+
     ThriftFramedMessage& operator=(const ThriftFramedMessage& from) = delete;
-  
-    static const ::google::protobuf::Descriptor* descriptor();
-  
+
     void Swap(ThriftFramedMessage* other);
-  
+
     // implements Message ----------------------------------------------
-  
-    ThriftFramedMessage* New() const PB_319_OVERRIDE;
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-    ThriftFramedMessage* New(::google::protobuf::Arena* arena) const override;
-#endif
-    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
-    void MergeFrom(const ::google::protobuf::Message& from) override;
-    void CopyFrom(const ThriftFramedMessage& from);
     void MergeFrom(const ThriftFramedMessage& from);
     void Clear() override;
-    bool IsInitialized() const override;
-  
-    int ByteSize() const;
-    bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
-    void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const override { return ByteSize(); }
 
-protected:
-    ::google::protobuf::Metadata GetMetadata() const override;
+    size_t ByteSizeLong() const override;
+    int GetCachedSize() const PB_425_OVERRIDE { return ByteSize(); }
+
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
 
 private:
     void SharedCtor();

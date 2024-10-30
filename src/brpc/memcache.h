@@ -20,11 +20,10 @@
 #define BRPC_MEMCACHE_H
 
 #include <string>
-#include <google/protobuf/message.h>
 
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
-#include "brpc/proto_base.pb.h"
+#include "brpc/nonreflectable_message.h"
 #include "brpc/pb_compat.h"
 
 namespace brpc {
@@ -41,10 +40,10 @@ namespace brpc {
 //   MemcacheResponse response;
 //   // 2 GET and 1 SET are sent to the server together.
 //   channel.CallMethod(&controller, &request, &response, NULL/*done*/);
-class MemcacheRequest : public ::google::protobuf::Message {
+class MemcacheRequest : public NonreflectableMessage<MemcacheRequest> {
 public:
     MemcacheRequest();
-    virtual ~MemcacheRequest();
+    ~MemcacheRequest() override;
     MemcacheRequest(const MemcacheRequest& from);
     inline MemcacheRequest& operator=(const MemcacheRequest& from) {
         CopyFrom(from);
@@ -89,30 +88,20 @@ public:
     butil::IOBuf& raw_buffer() { return _buf; }
     const butil::IOBuf& raw_buffer() const { return _buf; }
 
+public:
     // Protobuf methods.
-    MemcacheRequest* New() const PB_319_OVERRIDE;
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-    MemcacheRequest* New(::google::protobuf::Arena* arena) const override;
-#endif
-    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
-    void MergeFrom(const ::google::protobuf::Message& from) override;
-    void CopyFrom(const MemcacheRequest& from);
-    void MergeFrom(const MemcacheRequest& from);
+    void MergeFrom(const MemcacheRequest& from) override;
     void Clear() override;
-    bool IsInitialized() const override;
+    bool IsInitialized() const PB_527_OVERRIDE;
   
-    int ByteSize() const;
+    size_t ByteSizeLong() const override;
     bool MergePartialFromCodedStream(
         ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(
         ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const PB_422_OVERRIDE { return _cached_size_; }
-    
-    static const ::google::protobuf::Descriptor* descriptor();
+    int GetCachedSize() const PB_425_OVERRIDE { return _cached_size_; }
 
-protected:
-    ::google::protobuf::Metadata GetMetadata() const override;
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
     
 private:
     bool GetOrDelete(uint8_t command, const butil::StringPiece& key);
@@ -125,7 +114,7 @@ private:
 
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const PB_422_OVERRIDE;
+    void SetCachedSize(int size) const PB_425_OVERRIDE;
 
     int _pipelined_count;
     butil::IOBuf _buf;
@@ -155,7 +144,7 @@ private:
 //   } else {
 //       // the SET was successful.
 //   }
-class MemcacheResponse : public ::google::protobuf::Message {
+class MemcacheResponse : public NonreflectableMessage<MemcacheResponse> {
 public:
     // Definition of the valid response status numbers.
     // See section 3.2 Response Status
@@ -174,7 +163,7 @@ public:
     };
 
     MemcacheResponse();
-    virtual ~MemcacheResponse();
+    ~MemcacheResponse() override;
     MemcacheResponse(const MemcacheResponse& from);
     inline MemcacheResponse& operator=(const MemcacheResponse& from) {
         CopyFrom(from);
@@ -200,32 +189,21 @@ public:
     butil::IOBuf& raw_buffer() { return _buf; }
     const butil::IOBuf& raw_buffer() const { return _buf; }
     static const char* status_str(Status);
-      
+
+public:
     // implements Message ----------------------------------------------
-  
-    MemcacheResponse* New() const PB_319_OVERRIDE;
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-    MemcacheResponse* New(::google::protobuf::Arena* arena) const override;
-#endif
-    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
-    void MergeFrom(const ::google::protobuf::Message& from) override;
-    void CopyFrom(const MemcacheResponse& from);
-    void MergeFrom(const MemcacheResponse& from);
+    void MergeFrom(const MemcacheResponse& from) override;
     void Clear() override;
-    bool IsInitialized() const override;
+    bool IsInitialized() const PB_527_OVERRIDE;
   
-    int ByteSize() const;
+    size_t ByteSizeLong() const;
     bool MergePartialFromCodedStream(
         ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(
         ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const PB_422_OVERRIDE { return _cached_size_; }
+    int GetCachedSize() const PB_425_OVERRIDE { return _cached_size_; }
 
-    static const ::google::protobuf::Descriptor* descriptor();
-
-protected:
-    ::google::protobuf::Metadata GetMetadata() const override;
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
 
 private:
     bool PopCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
@@ -233,7 +211,7 @@ private:
 
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const PB_422_OVERRIDE;
+    void SetCachedSize(int size) const PB_425_OVERRIDE;
 
     std::string _err;
     butil::IOBuf _buf;
@@ -241,6 +219,5 @@ private:
 };
 
 } // namespace brpc
-
 
 #endif  // BRPC_MEMCACHE_H

@@ -19,19 +19,15 @@
 #ifndef BRPC_REDIS_H
 #define BRPC_REDIS_H
 
-#include <google/protobuf/message.h>
 #include <unordered_map>
-#include <memory>
-#include <list>
+
+#include "brpc/nonreflectable_message.h"
+#include "brpc/parse_result.h"
+#include "brpc/pb_compat.h"
+#include "brpc/redis_reply.h"
+#include "butil/arena.h"
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
-#include "butil/arena.h"
-#include "brpc/proto_base.pb.h"
-#include "brpc/redis_reply.h"
-#include "brpc/parse_result.h"
-#include "brpc/callback.h"
-#include "brpc/socket.h"
-#include "brpc/pb_compat.h"
 
 namespace brpc {
 
@@ -46,10 +42,10 @@ namespace brpc {
 //   if (!cntl.Failed()) {
 //       LOG(INFO) << response.reply(0);
 //   }
-class RedisRequest : public ::google::protobuf::Message {
+class RedisRequest : public NonreflectableMessage<RedisRequest> {
 public:
     RedisRequest();
-    virtual ~RedisRequest();
+    ~RedisRequest() override;
     RedisRequest(const RedisRequest& from);
     inline RedisRequest& operator=(const RedisRequest& from) {
         CopyFrom(from);
@@ -68,28 +64,28 @@ public:
     //   butil::StringPiece components[] = { "set", "key", "value" };
     //   request.AddCommandByComponents(components, arraysize(components));
     bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
-    
+
     // Add a command with variadic args to this request.
     // The reason that adding so many overloads rather than using ... is that
     // it's the only way to dispatch the AddCommand w/o args differently.
     bool AddCommand(const butil::StringPiece& command);
-    
+
     template <typename A1>
     bool AddCommand(const char* format, A1 a1)
     { return AddCommandWithArgs(format, a1); }
-    
+
     template <typename A1, typename A2>
     bool AddCommand(const char* format, A1 a1, A2 a2)
     { return AddCommandWithArgs(format, a1, a2); }
-    
+
     template <typename A1, typename A2, typename A3>
     bool AddCommand(const char* format, A1 a1, A2 a2, A3 a3)
     { return AddCommandWithArgs(format, a1, a2, a3); }
-    
+
     template <typename A1, typename A2, typename A3, typename A4>
     bool AddCommand(const char* format, A1 a1, A2 a2, A3 a3, A4 a4)
     { return AddCommandWithArgs(format, a1, a2, a3, a4); }
-    
+
     template <typename A1, typename A2, typename A3, typename A4, typename A5>
     bool AddCommand(const char* format, A1 a1, A2 a2, A3 a3, A4 a4, A5 a5)
     { return AddCommandWithArgs(format, a1, a2, a3, a4, a5); }
@@ -108,36 +104,21 @@ public:
     bool SerializeTo(butil::IOBuf* buf) const;
 
     // Protobuf methods.
-    RedisRequest* New() const PB_319_OVERRIDE;
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-    RedisRequest* New(::google::protobuf::Arena* arena) const override;
-#endif
-    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
-    void MergeFrom(const ::google::protobuf::Message& from) override;
-    void CopyFrom(const RedisRequest& from);
-    void MergeFrom(const RedisRequest& from);
+    void MergeFrom(const RedisRequest& from) override;
     void Clear() override;
-    bool IsInitialized() const override;
-  
-    int ByteSize() const;
-    bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
-    void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const PB_422_OVERRIDE { return _cached_size_; }
+    bool IsInitialized() const PB_527_OVERRIDE;
 
-    static const ::google::protobuf::Descriptor* descriptor();
-    
+    size_t ByteSizeLong() const override;
+    int GetCachedSize() const PB_425_OVERRIDE { return _cached_size_; }
+
     void Print(std::ostream&) const;
 
-protected:
-    ::google::protobuf::Metadata GetMetadata() const override;
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
 
 private:
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const PB_422_OVERRIDE;
+    void SetCachedSize(int size) const PB_425_OVERRIDE;
     bool AddCommandWithArgs(const char* fmt, ...);
 
     int _ncommand;    // # of valid commands
@@ -149,10 +130,10 @@ private:
 // Response from Redis.
 // Notice that a RedisResponse instance may contain multiple replies
 // due to pipelining.
-class RedisResponse : public ::google::protobuf::Message {
+class RedisResponse : public NonreflectableMessage<RedisResponse> {
 public:
     RedisResponse();
-    virtual ~RedisResponse();
+    ~RedisResponse() override;
     RedisResponse(const RedisResponse& from);
     inline RedisResponse& operator=(const RedisResponse& from) {
         CopyFrom(from);
@@ -180,35 +161,19 @@ public:
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count);
     
     // implements Message ----------------------------------------------
-  
-    RedisResponse* New() const PB_319_OVERRIDE;
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-    RedisResponse* New(::google::protobuf::Arena* arena) const override;
-#endif
-    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
-    void MergeFrom(const ::google::protobuf::Message& from) override;
-    void CopyFrom(const RedisResponse& from);
-    void MergeFrom(const RedisResponse& from);
+    void MergeFrom(const RedisResponse& from) override;
     void Clear() override;
-    bool IsInitialized() const override;
+    bool IsInitialized() const PB_527_OVERRIDE;
   
-    int ByteSize() const;
-    bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
-    void SerializeWithCachedSizes(
-        ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const PB_422_OVERRIDE { return _cached_size_; }
+    size_t ByteSizeLong() const override;
+    int GetCachedSize() const PB_425_OVERRIDE { return _cached_size_; }
 
-    static const ::google::protobuf::Descriptor* descriptor();
-
-protected:
-    ::google::protobuf::Metadata GetMetadata() const override;
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
 
 private:
     void SharedCtor();
     void SharedDtor();
-    void SetCachedSize(int size) const PB_422_OVERRIDE;
+    void SetCachedSize(int size) const PB_425_OVERRIDE;
 
     RedisReply _first_reply;
     RedisReply* _other_replies;

@@ -18,64 +18,32 @@
 #ifndef BRPC_ESP_MESSAGE_H
 #define BRPC_ESP_MESSAGE_H
 
-#include <string>
-
-#include <google/protobuf/message.h>
-#include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
-#include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
-
 #include "brpc/esp_head.h"
-#include "butil/iobuf.h"       
-#include "brpc/proto_base.pb.h"
-#include "brpc/pb_compat.h"
+#include "brpc/nonreflectable_message.h"
+#include "butil/iobuf.h"
 
 namespace brpc {
 
-class EspMessage : public ::google::protobuf::Message {
+class EspMessage : public NonreflectableMessage<EspMessage> {
 public:
     EspHead head;
     butil::IOBuf body;
 
 public:
     EspMessage();
-    virtual ~EspMessage();
-
-    EspMessage(const EspMessage& from);
-
-    inline EspMessage& operator=(const EspMessage& from) {
-        CopyFrom(from);
-        return *this;
-    }
-
-    static const ::google::protobuf::Descriptor* descriptor();
-    static const EspMessage& default_instance();
+    ~EspMessage() override;
 
     void Swap(EspMessage* other);
 
     // implements Message ----------------------------------------------
 
-    EspMessage* New() const PB_319_OVERRIDE;
-#if GOOGLE_PROTOBUF_VERSION >= 3006000
-    EspMessage* New(::google::protobuf::Arena* arena) const override;
-#endif
-    void CopyFrom(const ::google::protobuf::Message& from) PB_321_OVERRIDE;
-    void MergeFrom(const ::google::protobuf::Message& from) override;
-    void CopyFrom(const EspMessage& from);
-    void MergeFrom(const EspMessage& from);
+    void MergeFrom(const EspMessage& from) override;
     void Clear() override;
-    bool IsInitialized() const override;
 
-    int ByteSize() const;
-    bool MergePartialFromCodedStream(
-            ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
-    void SerializeWithCachedSizes(
-            ::google::protobuf::io::CodedOutputStream* output) const PB_310_OVERRIDE;
-    ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
-            ::google::protobuf::uint8* output) const PB_310_OVERRIDE;
-    int GetCachedSize() const PB_422_OVERRIDE { return ByteSize(); }
+    size_t ByteSizeLong() const override;
+    int GetCachedSize() const PB_425_OVERRIDE { return ByteSize(); }
 
-protected:
-    ::google::protobuf::Metadata GetMetadata() const override;
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
 
 private:
     void SharedCtor();
