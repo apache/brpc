@@ -401,8 +401,8 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
     auto add = num - tag_ngroup;
 
     if (add > 0) {
-        bthread::FLAGS_bthread_concurrency += add;
         auto added = c->add_workers(add, tag);
+        bthread::FLAGS_bthread_concurrency += added;
         return (add == added ? 0 : EPERM);
 
     } else if (add < 0){
