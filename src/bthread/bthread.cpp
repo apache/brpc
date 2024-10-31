@@ -397,20 +397,22 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
     }
     auto c = bthread::get_or_new_task_control();
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
-    auto ngroup = c->concurrency();
     auto tag_ngroup = c->concurrency(tag);
     auto add = num - tag_ngroup;
-    if (ngroup + add > bthread::FLAGS_bthread_concurrency) {
-        LOG(ERROR) << "Fail to set concurrency by tag " << tag
-                   << ", Total concurrency larger than bthread_concurrency";
-        return EPERM;
-    }
-    auto added = 0;
+
     if (add > 0) {
-        added = c->add_workers(add, tag);
+        auto added = c->add_workers(add, tag);
+        bthread::FLAGS_bthread_concurrency += added;
         return (add == added ? 0 : EPERM);
+
+    } else if (add < 0){
+        LOG(WARNING) << "Fail to set concurrency by tag: " << tag
+                     << ", tag concurrency must larger than old oncurrency. old concurrency: "
+                     << tag_ngroup << ", new concurrency: " << num;
+        return EPERM;
+    } else {
+        return 0;
     }
-    return (num == tag_ngroup ? 0 : EPERM);
 }
 
 int bthread_about_to_quit() {

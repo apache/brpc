@@ -214,9 +214,11 @@ int concurrency_by_tag(int num) {
 
 TEST(BthreadTest, concurrency_by_tag) {
     ASSERT_EQ(concurrency_by_tag(1), false);
-    auto con = bthread_getconcurrency_by_tag(0);
+    auto tag_con = bthread_getconcurrency_by_tag(0);
+    auto con = bthread_getconcurrency();
     ASSERT_EQ(concurrency_by_tag(con), true);
-    ASSERT_EQ(concurrency_by_tag(con + 1), false);
+    ASSERT_EQ(concurrency_by_tag(con + 1), true);
+    ASSERT_EQ(bthread_getconcurrency(), con+1);
     bthread_setconcurrency(con + 1);
     ASSERT_EQ(concurrency_by_tag(con + 1), true);
 }

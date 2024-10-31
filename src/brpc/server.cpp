@@ -1044,11 +1044,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         if (_options.num_threads < BTHREAD_MIN_CONCURRENCY) {
             _options.num_threads = BTHREAD_MIN_CONCURRENCY;
         }
-        if (original_bthread_tag == BTHREAD_TAG_INVALID) {
-            bthread_setconcurrency(_options.num_threads);
-        } else {
-            bthread_setconcurrency_by_tag(_options.num_threads, _options.bthread_tag);
-        }
+        bthread_setconcurrency_by_tag(_options.num_threads, _options.bthread_tag);
     }
 
     for (MethodMap::iterator it = _method_map.begin();
