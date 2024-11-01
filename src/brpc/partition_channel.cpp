@@ -400,10 +400,6 @@ public:
         if (options) {
             _options = *options;
         }
-        if (_part_chan_map.init(32, 70) != 0) {
-            LOG(ERROR) << "Fail to init _part_chan_map";
-            return -1;
-        }
         return 0;
     }
 

@@ -23,7 +23,9 @@ namespace brpc {
 
 ServerId2SocketIdMapper::ServerId2SocketIdMapper() {
     _tmp.reserve(128);
-    CHECK_EQ(0, _nref_map.init(128));
+    if (_nref_map.init(128) != 0) {
+        LOG(WARNING) << "Fail to init _nref_map";
+    }
 }
 
 ServerId2SocketIdMapper::~ServerId2SocketIdMapper() {

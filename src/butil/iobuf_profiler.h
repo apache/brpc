@@ -54,7 +54,7 @@ struct IOBufSample {
     size_t stack_hash_code() const;
 
 private:
-    friend ObjectPool<IOBufSample>;
+friend ObjectPool<IOBufSample>;
 
     IOBufSample()
         : next(NULL)

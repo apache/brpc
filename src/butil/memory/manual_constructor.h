@@ -24,104 +24,52 @@ namespace butil {
 
 template <typename Type>
 class ManualConstructor {
- public:
-  // No constructor or destructor because one of the most useful uses of
-  // this class is as part of a union, and members of a union cannot have
-  // constructors or destructors.  And, anyway, the whole point of this
-  // class is to bypass these.
+public:
+    // No constructor or destructor because one of the most useful uses of
+    // this class is as part of a union, and members of a union cannot have
+    // constructors or destructors.  And, anyway, the whole point of this
+    // class is to bypass these.
 
-  // Support users creating arrays of ManualConstructor<>s.  This ensures that
-  // the array itself has the correct alignment.
-  static void* operator new[](size_t size) {
+    // Support users creating arrays of ManualConstructor<>s.  This ensures that
+    // the array itself has the correct alignment.
+    static void* operator new[](size_t size) {
 #if defined(COMPILER_MSVC)
-    return AlignedAlloc(size, __alignof(Type));
+        return AlignedAlloc(size, __alignof(Type));
 #else
-    return AlignedAlloc(size, __alignof__(Type));
+        return AlignedAlloc(size, __alignof__(Type));
 #endif
-  }
-  static void operator delete[](void* mem) {
-    AlignedFree(mem);
-  }
+    }
 
-  inline Type* get() {
-    return space_.template data_as<Type>();
-  }
-  inline const Type* get() const  {
-    return space_.template data_as<Type>();
-  }
+    static void operator delete[](void* mem) {
+        AlignedFree(mem);
+    }
 
-  inline Type* operator->() { return get(); }
-  inline const Type* operator->() const { return get(); }
+    Type* get() {
+        return _space.template data_as<Type>();
+    }
 
-  inline Type& operator*() { return *get(); }
-  inline const Type& operator*() const { return *get(); }
+    const Type* get() const  {
+        return _space.template data_as<Type>();
+    }
 
-  template<typename Ctor>
-  inline void InitBy(Ctor ctor) {
-    ctor(space_.void_data());
-  }
+    Type* operator->() { return get(); }
+    const Type* operator->() const { return get(); }
 
-  // You can pass up to eight constructor arguments as arguments of Init().
-  inline void Init() {
-    new(space_.void_data()) Type;
-  }
+    Type& operator*() { return *get(); }
+    const Type& operator*() const { return *get(); }
 
-  template <typename T1>
-  inline void Init(const T1& p1) {
-    new(space_.void_data()) Type(p1);
-  }
+    template<typename... Args>
+    void Init(Args&&... args) {
+        new (_space.void_data()) Type(std::forward<Args>(args)...);
+    }
 
-  template <typename T1, typename T2>
-  inline void Init(const T1& p1, const T2& p2) {
-    new(space_.void_data()) Type(p1, p2);
-  }
-
-  template <typename T1, typename T2, typename T3>
-  inline void Init(const T1& p1, const T2& p2, const T3& p3) {
-    new(space_.void_data()) Type(p1, p2, p3);
-  }
-
-  template <typename T1, typename T2, typename T3, typename T4>
-  inline void Init(const T1& p1, const T2& p2, const T3& p3, const T4& p4) {
-    new(space_.void_data()) Type(p1, p2, p3, p4);
-  }
-
-  template <typename T1, typename T2, typename T3, typename T4, typename T5>
-  inline void Init(const T1& p1, const T2& p2, const T3& p3, const T4& p4,
-                   const T5& p5) {
-    new(space_.void_data()) Type(p1, p2, p3, p4, p5);
-  }
-
-  template <typename T1, typename T2, typename T3, typename T4, typename T5,
-            typename T6>
-  inline void Init(const T1& p1, const T2& p2, const T3& p3, const T4& p4,
-                   const T5& p5, const T6& p6) {
-    new(space_.void_data()) Type(p1, p2, p3, p4, p5, p6);
-  }
-
-  template <typename T1, typename T2, typename T3, typename T4, typename T5,
-            typename T6, typename T7>
-  inline void Init(const T1& p1, const T2& p2, const T3& p3, const T4& p4,
-                   const T5& p5, const T6& p6, const T7& p7) {
-    new(space_.void_data()) Type(p1, p2, p3, p4, p5, p6, p7);
-  }
-
-  template <typename T1, typename T2, typename T3, typename T4, typename T5,
-            typename T6, typename T7, typename T8>
-  inline void Init(const T1& p1, const T2& p2, const T3& p3, const T4& p4,
-                   const T5& p5, const T6& p6, const T7& p7, const T8& p8) {
-    new(space_.void_data()) Type(p1, p2, p3, p4, p5, p6, p7, p8);
-  }
-
-  inline void Destroy() {
-    get()->~Type();
-  }
+     void Destroy() { get()->~Type(); }
 
  private:
 #if defined(COMPILER_MSVC)
-  AlignedMemory<sizeof(Type), __alignof(Type)> space_;
+    AlignedMemory<sizeof(Type), __alignof(Type)> _space;
 #else
-  AlignedMemory<sizeof(Type), __alignof__(Type)> space_;
+    AlignedMemory<sizeof(Type), __alignof__(Type)> _space;
 #endif
 };
 

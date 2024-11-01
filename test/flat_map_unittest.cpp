@@ -117,8 +117,7 @@ TEST_F(FlatMapTest, copy_flat_map) {
     ASSERT_EQ(0, init_m3.init(8));
     ASSERT_TRUE(init_m3.initialized());
     ASSERT_EQ(BRPC_FLATMAP_DEFAULT_NBUCKET, init_m3.bucket_count());
-    ASSERT_EQ((Map::Bucket*)init_m3._default_buckets_spaces,
-              init_m3._buckets);
+    ASSERT_EQ(init_m3._default_buckets, init_m3._buckets);
     init_m3["hello"] = "world";
     ASSERT_EQ(1u, init_m3.size());
     init_m3 = default_init_m1;
@@ -131,8 +130,7 @@ TEST_F(FlatMapTest, copy_flat_map) {
     ASSERT_EQ(0, init_m4.init(BRPC_FLATMAP_DEFAULT_NBUCKET + 1));
     ASSERT_EQ(butil::flatmap_round(BRPC_FLATMAP_DEFAULT_NBUCKET + 1),
               init_m4.bucket_count());
-    ASSERT_NE((Map::Bucket*)init_m4._default_buckets_spaces,
-              init_m4._buckets);
+    ASSERT_NE(init_m4._default_buckets, init_m4._buckets);
     init_m4["hello"] = "world";
     ASSERT_EQ(1u, init_m4.size());
     init_m4 = default_init_m1;
@@ -399,7 +397,7 @@ TEST_F(FlatMapTest, flat_map_of_string) {
     for (size_t i = 0; i < N; ++i) {
         keys.push_back(butil::string_printf("up_latency_as_key_%lu", i));
     }
-    
+
     tm1.start();
     for (size_t i = 0; i < N; ++i) {
         m1[keys[i]] += i;
@@ -461,7 +459,7 @@ TEST_F(FlatMapTest, flat_map_of_string) {
     LOG(INFO) << "finding c_strings takes " << tm1.n_elapsed()/N
               << " " << tm2.n_elapsed()/N << " " << tm3.n_elapsed()/N
               << " " << tm1_2.n_elapsed()/N << " sum=" << sum;
-    
+
     for (size_t i = 0; i < N; ++i) {
         ASSERT_EQ(i, m1[keys[i]]) << "i=" << i;
         ASSERT_EQ(i, m2[keys[i]]);
@@ -613,7 +611,7 @@ static void fill_position_hint_map(PositionHintMap* map,
     if (!map->initialized()) {
         ASSERT_EQ(0, map->init(N * 3 / 2, 80));
     }
-    
+
     keys->reserve(N);
     keys->clear();
     map->clear();
@@ -673,7 +671,7 @@ struct RemoveInsertVisitedOnPause {
             removed_keys.insert(removed_key);
             break;
         } while (true);
-        
+
         // Insert one
         uint64_t inserted_key =
             ((rand() % hint.offset) + rand() * hint.nbucket);
@@ -916,14 +914,17 @@ struct Value {
     Value() : x_(0) { ++n_con; }
     Value(int x) : x_(x) { ++ n_con; }
     Value (const Value& rhs) : x_(rhs.x_) { ++ n_cp_con; }
-    ~Value() { ++ n_des; }
-    
+    ~Value() {
+        ++ n_des;
+        // CHECK(false);
+    }
+
     Value& operator= (const Value& rhs) {
         x_ = rhs.x_;
         ++ n_cp;
         return *this;
     }
-    
+
     bool operator== (const Value& rhs) const { return x_ == rhs.x_; }
     bool operator!= (const Value& rhs) const { return x_ != rhs.x_; }
 
@@ -1045,7 +1046,7 @@ TEST_F(FlatMapTest, perf_small_string_map) {
         m2["Request-Id"] = "true";
         m2["Status-Code"] = "200";
         tm2.stop();
-    
+
         LOG(INFO) << "flatmap=" << tm1.n_elapsed()
                   << " ci_flatmap=" << tm4.n_elapsed()
                   << " map=" << tm2.n_elapsed()
@@ -1076,7 +1077,7 @@ TEST_F(FlatMapTest, sanity) {
     long* p = m.seek(k1);
     ASSERT_TRUE(p && *p == 10);
     ASSERT_EQ(0UL, m._pool.count_allocated());
-    
+
     ASSERT_EQ(NULL, m.seek(k2));
 
     // Override
@@ -1085,7 +1086,7 @@ TEST_F(FlatMapTest, sanity) {
     ASSERT_FALSE(m.empty());
     p = m.seek(k1);
     ASSERT_TRUE(p && *p == 100);
-    
+
     // Insert another
     m[k3] = 20;
     ASSERT_EQ(2UL, m.size());
@@ -1101,7 +1102,7 @@ TEST_F(FlatMapTest, sanity) {
     ASSERT_FALSE(m.empty());
     p = m.seek(k2);
     ASSERT_TRUE(p && *p == 30);
-    
+
     ASSERT_EQ(NULL, m.seek(2049));
 
     Map::iterator it = m.begin();
@@ -1156,9 +1157,13 @@ TEST_F(FlatMapTest, random_insert_erase) {
             for (int i = 0; i < 100000; ++i) {
                 int k = rand() % 0xFFFF;
                 int p = rand() % 1000;
+                ht[0].insert(k, i);
+                // LOG(INFO) << "i=" << i << " k=" << k;
+
+                // ASSERT_EQ(n_con + n_cp_con, n_des * 2)
+                // << " n_con=" << n_con << " n_cp_con=" << n_cp_con << " n_des=" << n_des << " n_cp=" << n_cp;
+                ref[0][k] = i;
                 if (p < 600) {
-                    ht[0].insert(k, i);
-                    ref[0][k] = i;
                 } else if(p < 999) {
                     ht[0].erase (k);
                     ref[0].erase (k);
@@ -1168,7 +1173,7 @@ TEST_F(FlatMapTest, random_insert_erase) {
                 }
             }
 
-            LOG(INFO) << "Check j=" << j;
+            // LOG(INFO) << "Check j=" << j;
             // bi-check
             for (int i=0; i<2; ++i) {
                 for (Map::iterator it = ht[i].begin(); it != ht[i].end(); ++it)
@@ -1177,7 +1182,7 @@ TEST_F(FlatMapTest, random_insert_erase) {
                     ASSERT_TRUE (it2 != ref[i].end());
                     ASSERT_EQ (it2->second, it->second);
                 }
-        
+
                 for (butil::hash_map<uint64_t, Value>::iterator it = ref[i].begin();
                      it != ref[i].end(); ++it)
                 {
@@ -1192,7 +1197,8 @@ TEST_F(FlatMapTest, random_insert_erase) {
     }
 
     ASSERT_EQ (n_con + n_cp_con, n_des)
-        << "n_con=" << n_con << " n_cp_con=" << n_cp_con << " n_des=" << n_des;
+        // todo delete
+        << "n_con=" << n_con << " n_cp_con=" << n_cp_con << " n_des=" << n_des << " n_cp=" << n_cp;
 
     LOG(INFO) << "n_con:" << n_con << std::endl
               << "n_cp_con:" << n_cp_con << std::endl
