@@ -159,6 +159,8 @@ ifeq ($(SYSTEM), Darwin)
 	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_getspecific
 	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_setspecific
 	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_key_create
+	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_self
+	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_timed_connect
 endif
 
 UT_DYNAMIC_LINKINGS = -lbrpc.dbg $(DYNAMIC_LINKINGS)

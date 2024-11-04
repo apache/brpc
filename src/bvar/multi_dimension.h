@@ -134,10 +134,15 @@ private:
     
     // Remove all stats so those not count and dump
     void delete_stats();
+
+    void set_max_stats_count(size_t max_stats_count) {
+        _max_stats_count = max_stats_count;
+    }
     
     static size_t init_flatmap(MetricMap& bg);
     
 private:
+    size_t _max_stats_count;
     MetricMapDBD _metric_map;
 };
 
