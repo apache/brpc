@@ -350,6 +350,12 @@ TEST_F(LoggingTest, check) {
     CHECK_GE(3, 3);
 }
 
+TEST_F(LoggingTest, log_backtrace) {
+    LOG_BACKTRACE_IF(INFO, true) << "log_backtrace_if";
+    LOG_BACKTRACE_IF_ONCE(INFO, true) << "log_backtrace_if_once";
+    LOG_BACKTRACE_ONCE(INFO) << "log_backtrace_once";
+}
+
 int foo(int* p) {
     return ++*p;
 }

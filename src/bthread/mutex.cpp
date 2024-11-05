@@ -544,15 +544,9 @@ void CheckBthreadScheSafety() {
         return;
     }
 
-    static butil::atomic<bool> b_sched_in_p_lock_logged{false};
-    if (BAIDU_UNLIKELY(!b_sched_in_p_lock_logged.exchange(
-        true, butil::memory_order_relaxed))) {
-        butil::debug::StackTrace trace(true);
-        // It can only be checked once because the counter is messed up.
-        LOG(ERROR) << "bthread is suspended while holding "
-                   << tls_pthread_lock_count << " pthread locks."
-                   << std::endl << trace.ToString();
-    }
+    // It can only be checked once because the counter is messed up.
+    LOG_BACKTRACE_ONCE(ERROR) << "bthread is suspended while holding "
+                              << tls_pthread_lock_count << " pthread locks.";
 }
 #else
 #define ADD_TLS_PTHREAD_LOCK_COUNT ((void)0)

@@ -1334,7 +1334,7 @@ void LogStream::FlushWithoutReset() {
     }
 
 #if !defined(OS_NACL) && !defined(__UCLIBC__)
-    if (FLAGS_print_stack_on_check && _is_check && _severity == BLOG_FATAL) {
+    if ((FLAGS_print_stack_on_check && _is_check && _severity == BLOG_FATAL) || _backtrace) {
         // Include a stack trace on a fatal.
         butil::debug::StackTrace trace;
         size_t count = 0;
