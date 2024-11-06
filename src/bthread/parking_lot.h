@@ -30,6 +30,7 @@ namespace bthread {
 // Park idle workers.
 class BAIDU_CACHELINE_ALIGNMENT ParkingLot {
 public:
+    static butil::atomic<int> _waiting_count;
     class State {
     public:
         State(): val(0) {}
@@ -70,6 +71,7 @@ public:
         _pending_signal.fetch_or(1);
         futex_wake_private(&_pending_signal, 10000);
     }
+
 private:
     // higher 31 bits for signalling, LSB for stopping.
     butil::atomic<int> _pending_signal;

@@ -401,6 +401,9 @@ extern void* bthread_getspecific(bthread_key_t key);
 // Return current bthread tag
 extern bthread_tag_t bthread_self_tag(void);
 
+// set task_groups epoll tid by tag
+extern void bthread_epoll_tid_set(bthread_tag_t tag, bthread_t tid);
+
 // The first call to bthread_once() by any thread in a process, with a given
 // once_control, will call the init_routine() with no arguments. Subsequent
 // calls of bthread_once() with the same once_control will not call the
