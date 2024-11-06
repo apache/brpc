@@ -184,6 +184,7 @@ TaskControl::TaskControl()
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
     , _pl(FLAGS_task_group_ntags)
+    , _epoll_tid_states(FLAGS_task_group_ntags)
 {}
 
 int TaskControl::init(int concurrency) {
@@ -430,6 +431,17 @@ int TaskControl::_destroy_group(TaskGroup* g) {
 
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     auto tag = tls_task_group->tag();
+    bool except_state = true;
+    // epoll tid should be stolen first.
+    for (auto &epoll_state : _epoll_tid_states[tag]) {
+        if (epoll_state.second.compare_exchange_strong(
+                except_state, false, butil::memory_order_seq_cst,
+                butil::memory_order_relaxed)) {
+            *tid = epoll_state.first;
+            return true;
+        }
+    }
+
     // 1: Acquiring fence is paired with releasing fence in _add_group to
     // avoid accessing uninitialized slot of _groups.
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_acquire/*1*/);
@@ -575,4 +587,12 @@ bvar::LatencyRecorder* TaskControl::create_exposed_pending_time() {
     return pt;
 }
 
+void TaskControl::set_group_epoll_tid(bthread_tag_t tag, bthread_t tid) {
+    _epoll_tid_states[tag][tid] = false;
+    auto groups = tag_group(tag);
+    const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_acquire);
+    for (size_t i = 0; i < ngroup; i++) {
+        groups[i]->add_epoll_tid(tid);
+    }
+}
 }  // namespace bthread

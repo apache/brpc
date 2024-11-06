@@ -22,6 +22,7 @@
 #ifndef BTHREAD_TASK_GROUP_H
 #define BTHREAD_TASK_GROUP_H
 
+#include <unordered_set>
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
 #include "bthread/task_meta.h"                     // bthread_t, TaskMeta
@@ -199,6 +200,10 @@ public:
         total_ns += butil::cputhread_time_ns() - _last_cpu_clock_ns;
         return total_ns;
     }
+    // Thread Unsafe
+    void add_epoll_tid(bthread_t tid) { _epoll_tids.emplace(tid); }
+
+    bool cur_epoll_tid() { return _epoll_tids.count(current_tid()) > 0; }
 
 private:
 friend class TaskControl;
@@ -218,11 +223,13 @@ friend class TaskControl;
     static void _release_last_context(void*);
     static void _add_sleep_event(void*);
     struct ReadyToRunArgs {
+        bthread_tag_t tag;
         TaskMeta* meta;
         bool nosignal;
     };
     static void ready_to_run_in_worker(void*);
     static void ready_to_run_in_worker_ignoresignal(void*);
+    static void ready_to_run_epoll(void*);
 
     // Wait for a task to run.
     // Returns true on success, false is treated as permanent error and the
@@ -278,6 +285,7 @@ friend class TaskControl;
 
     // Worker thread id.
     pid_t _tid;
+    std::unordered_set<bthread_t> _epoll_tids;
 };
 
 }  // namespace bthread

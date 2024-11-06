@@ -30,6 +30,7 @@ namespace bthread {
 // Park idle workers.
 class BAIDU_CACHELINE_ALIGNMENT ParkingLot {
 public:
+    static butil::atomic<int> _waiting_count;
     class State {
     public:
         State(): val(0) {}
@@ -40,7 +41,7 @@ public:
         int val;
     };
 
-    ParkingLot() : _pending_signal(0) {}
+    ParkingLot() : _pending_signal(0){}
 
     // Wake up at most `num_task' workers.
     // Returns #workers woken up.
@@ -57,7 +58,9 @@ public:
     // Wait for tasks.
     // If the `expected_state' does not match, wait() may finish directly.
     void wait(const State& expected_state) {
+        _waiting_count++;
         futex_wait_private(&_pending_signal, expected_state.val, NULL);
+        _waiting_count--;
     }
 
     // Wakeup suspended wait() and make them unwaitable ever. 
@@ -65,6 +68,7 @@ public:
         _pending_signal.fetch_or(1);
         futex_wake_private(&_pending_signal, 10000);
     }
+
 private:
     // higher 31 bits for signalling, LSB for stopping.
     butil::atomic<int> _pending_signal;

@@ -435,12 +435,18 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     } else {
         // NOSIGNAL affects current task, not the new task.
         RemainedFn fn = NULL;
-        if (g->current_task()->about_to_quit) {
+        if (g->cur_epoll_tid()) {
+            fn = ready_to_run_epoll;
+        } else if (g->current_task()->about_to_quit) {
             fn = ready_to_run_in_worker_ignoresignal;
         } else {
             fn = ready_to_run_in_worker;
         }
-        ReadyToRunArgs args = { g->_cur_meta, (bool)(using_attr.flags & BTHREAD_NOSIGNAL) };
+        ReadyToRunArgs args = {
+            g->tag(),
+            g->_cur_meta,
+            (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
+        };
         g->set_remained(fn, &args);
         TaskGroup::sched_to(pg, m->tid);
     }
@@ -565,7 +571,6 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
         // Jump to main task if there's no task to run.
         next_tid = g->_main_tid;
     }
-
     TaskMeta* const cur_meta = g->_cur_meta;
     TaskMeta* next_meta = address_meta(next_tid);
     if (next_meta->stack == NULL) {
@@ -727,7 +732,9 @@ void TaskGroup::ready_to_run(TaskMeta* meta, bool nosignal) {
         const int additional_signal = _num_nosignal;
         _num_nosignal = 0;
         _nsignaled += 1 + additional_signal;
-        _control->signal_task(1 + additional_signal, _tag);
+        if (ParkingLot::_waiting_count.load(std::memory_order_acquire) > 0) {
+            _control->signal_task(1 + additional_signal, _tag);
+        }
     }
 }
 
@@ -736,7 +743,9 @@ void TaskGroup::flush_nosignal_tasks() {
     if (val) {
         _num_nosignal = 0;
         _nsignaled += val;
-        _control->signal_task(val, _tag);
+        if (ParkingLot::_waiting_count.load(std::memory_order_acquire) > 0) {
+            _control->signal_task(val, _tag);
+        }
     }
 }
 
@@ -760,7 +769,9 @@ void TaskGroup::ready_to_run_remote(TaskMeta* meta, bool nosignal) {
         _remote_num_nosignal = 0;
         _remote_nsignaled += 1 + additional_signal;
         _remote_rq._mutex.unlock();
-        _control->signal_task(1 + additional_signal, _tag);
+        if (ParkingLot::_waiting_count.load(std::memory_order_acquire) > 0) {
+             _control->signal_task(1 + additional_signal, _tag);
+        }
     }
 }
 
@@ -773,7 +784,9 @@ void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
     _remote_num_nosignal = 0;
     _remote_nsignaled += val;
     locked_mutex.unlock();
-    _control->signal_task(val, _tag);
+    if (ParkingLot::_waiting_count.load(std::memory_order_acquire) > 0) {
+        _control->signal_task(val, _tag);
+    }
 }
 
 void TaskGroup::ready_to_run_general(TaskMeta* meta, bool nosignal) {
@@ -802,6 +815,11 @@ void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
         TASK_STATUS_READY, args->meta);
 #endif // BRPC_BTHREAD_TRACER
     return tls_task_group->push_rq(args->meta->tid);
+}
+
+void TaskGroup::ready_to_run_epoll(void* args_in) {
+    ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    return tls_task_group->control()->epoll_waiting(args->tag, args->meta->tid);
 }
 
 struct SleepArgs {
@@ -978,7 +996,7 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag) {
 
 void TaskGroup::yield(TaskGroup** pg) {
     TaskGroup* g = *pg;
-    ReadyToRunArgs args = {  g->_cur_meta, false };
+    ReadyToRunArgs args = { g->tag(), g->_cur_meta, false };
     g->set_remained(ready_to_run_in_worker, &args);
     sched(pg);
 }
