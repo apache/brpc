@@ -557,4 +557,10 @@ bthread_tag_t bthread_self_tag(void) {
                                               : BTHREAD_TAG_DEFAULT;
 }
 
+void bthread_epoll_tid_set(bthread_tag_t tag, bthread_t tid) {
+    CHECK(tag >= BTHREAD_TAG_DEFAULT && tag < FLAGS_task_group_ntags);
+    auto c = bthread::get_task_control();
+    return c->set_group_epoll_tid(tag, tid);
+}
+
 }  // extern "C"
