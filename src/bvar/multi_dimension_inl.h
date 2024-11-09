@@ -37,6 +37,7 @@ template <typename T>
 inline
 MultiDimension<T>::MultiDimension(const key_type& labels)
     : Base(labels)
+    , _max_stats_count(MAX_MULTI_DIMENSION_STATS_COUNT)
 {
     _metric_map.Modify(init_flatmap);
 }
@@ -45,9 +46,8 @@ template <typename T>
 inline
 MultiDimension<T>::MultiDimension(const butil::StringPiece& name,
                                   const key_type& labels)
-    : Base(labels)
+    : MultiDimension(labels)
 {
-    _metric_map.Modify(init_flatmap);
     this->expose(name);
 }
 
@@ -56,9 +56,8 @@ inline
 MultiDimension<T>::MultiDimension(const butil::StringPiece& prefix,
                                   const butil::StringPiece& name,
                                   const key_type& labels)
-    : Base(labels)
+    : MultiDimension(labels)
 {
-    _metric_map.Modify(init_flatmap);
     this->expose_as(prefix, name);
 }
 
@@ -190,8 +189,8 @@ T* MultiDimension<T>::get_stats_impl(const key_type& labels_value, STATS_OP stat
             return nullptr;
         }
 
-        if (metric_map_ptr->size() > MAX_MULTI_DIMENSION_STATS_COUNT) {
-            LOG(ERROR) << "Too many stats seen, overflow detected, max stats count:" << MAX_MULTI_DIMENSION_STATS_COUNT;
+        if (metric_map_ptr->size() > _max_stats_count) {
+            LOG(ERROR) << "Too many stats seen, overflow detected, max stats count=" << _max_stats_count;
             return nullptr;
         }
     }
