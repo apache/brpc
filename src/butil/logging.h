@@ -55,8 +55,25 @@
 #  define DVPLOG(...) DVLOG(__VA_ARGS__)
 # endif
 
+#ifndef LOG_BACKTRACE_IF
+#define LOG_BACKTRACE_IF(severity, condition) LOG_IF(severity, condition)
+#endif
+
+#ifndef LOG_BACKTRACE_IF_ONCE
+#define LOG_BACKTRACE_IF_ONCE(severity, condition) LOG_IF_ONCE(severity, condition)
+#endif
+
+#ifndef LOG_BACKTRACE_FIRST_N
+#define LOG_BACKTRACE_FIRST_N(severity, N) LOG_FIRST_N(severity, N)
+#endif
+
+#ifndef LOG_BACKTRACE_IF_FIRST_N
+#define LOG_BACKTRACE_IF_FIRST_N(severity, condition, N) LOG_IF_FIRST_N(severity, condition, N)
+#endif
+
+
 #define LOG_AT(severity, file, line)                                    \
-    google::LogMessage(file, line, google::severity).stream()
+    ::google::LogMessage(file, line, ::google::severity).stream()
 
 #else
 
@@ -468,6 +485,8 @@ void print_vlog_sites(VLogSitePrinter*);
     BAIDU_LAZY_STREAM(LOG_STREAM(severity), LOG_IS_ON(severity))
 #define LOG_IF(severity, condition)                                     \
     BAIDU_LAZY_STREAM(LOG_STREAM(severity), LOG_IS_ON(severity) && (condition))
+#define LOG_BACKTRACE_IF(severity, condition)                               \
+    BAIDU_LAZY_STREAM(LOG_STREAM(severity).SetBacktrace(), LOG_IS_ON(severity) && (condition))
 
 // FIXME(gejun): Should always crash.
 #define LOG_ASSERT(condition)                                           \
@@ -942,6 +961,11 @@ public:
         return *this;
     }
 
+    LogStream& SetBacktrace() {
+        _backtrace = true;
+        return *this;
+    }
+
     bool empty() const { return pbase() == pptr(); }
 
     butil::StringPiece content() const
@@ -972,6 +996,7 @@ private:
             clear();
             SetLastSystemErrorCode(err);
             _is_check = false;
+            _backtrace = false;
         }
     }
 
@@ -981,6 +1006,7 @@ private:
     LogSeverity _severity;
     bool _noflush;
     bool _is_check;
+    bool _backtrace;
 };
 
 // This class more or less represents a particular log message.  You
@@ -1231,7 +1257,10 @@ inline std::ostream& operator<<(std::ostream& out, const std::wstring& wstr) {
 // Almost zero overhead when the log was printed.
 #ifndef LOG_ONCE
 # define LOG_ONCE(severity) LOG_FIRST_N(severity, 1)
+# define LOG_BACKTRACE_ONCE(severity) LOG_BACKTRACE_FIRST_N(severity, 1)
 # define LOG_IF_ONCE(severity, condition) LOG_IF_FIRST_N(severity, condition, 1)
+# define LOG_BACKTRACE_IF_ONCE(severity, condition) \
+    LOG_BACKTRACE_IF_FIRST_N(severity, condition, 1)
 #endif
 
 // Print a log after every N calls. First call always prints.
@@ -1250,8 +1279,12 @@ inline std::ostream& operator<<(std::ostream& out, const std::wstring& wstr) {
 #ifndef LOG_FIRST_N
 # define LOG_FIRST_N(severity, N)                                \
      BAIDU_LOG_IF_FIRST_N_IMPL(LOG_IF, severity, true, N)
+# define LOG_BACKTRACE_FIRST_N(severity, N)                          \
+     BAIDU_LOG_IF_FIRST_N_IMPL(LOG_BACKTRACE_IF, severity, true, N)
 # define LOG_IF_FIRST_N(severity, condition, N)                  \
      BAIDU_LOG_IF_FIRST_N_IMPL(LOG_IF, severity, condition, N)
+# define LOG_BACKTRACE_IF_FIRST_N(severity, condition, N)            \
+     BAIDU_LOG_IF_FIRST_N_IMPL(LOG_BACKTRACE_IF, severity, condition, N)
 #endif
 
 // Print a log every second. (not present in glog). First call always prints.

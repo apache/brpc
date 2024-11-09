@@ -99,7 +99,7 @@ public:
             // No sample should be dropped
             CHECK_EQ(_num_samples, _num_added)
                 << "_num_added=" << _num_added
-                << " rhs._num_added" << rhs._num_added
+                << " rhs._num_added=" << rhs._num_added
                 << " _num_samples=" << _num_samples
                 << " rhs._num_samples=" << rhs._num_samples
                 << " SAMPLE_SIZE=" << SAMPLE_SIZE
