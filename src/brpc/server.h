@@ -420,7 +420,8 @@ public:
         // ignore_eovercrowded on method-level, it should be used with carefulness. 
         // It might introduce inbalance between methods, 
         // as some methods(ignore_eovercrowded=1) might never return eovercrowded 
-        // while other methods(ignore_eovercrowded=0) keep returning eovercrowded. 
+        // while other methods(ignore_eovercrowded=0) keep returning eovercrowded.
+        // currently only valid for baidu_rpc, http_rpc, hulu_pbrpc and sofa_pbrpc protocols 
         bool ignore_eovercrowded = false;
 
         MethodProperty();
