@@ -751,6 +751,7 @@ friend class Controller;
     // number of the virtual services for mapping URL to methods.
     int _virtual_service_count;
     bool _failed_to_set_max_concurrency_of_method;
+    bool _failed_to_set_ignore_eovercrowded;
     Acceptor* _am;
     Acceptor* _internal_am;
 

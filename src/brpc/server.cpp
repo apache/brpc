@@ -412,6 +412,7 @@ Server::Server(ProfilerLinker)
     , _builtin_service_count(0)
     , _virtual_service_count(0)
     , _failed_to_set_max_concurrency_of_method(false)
+    , _failed_to_set_ignore_eovercrowded(false)
     , _am(NULL)
     , _internal_am(NULL)
     , _first_service(NULL)
@@ -804,6 +805,12 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     if (_failed_to_set_max_concurrency_of_method) {
         _failed_to_set_max_concurrency_of_method = false;
         LOG(ERROR) << "previous call to MaxConcurrencyOf() was failed, "
+            "fix it before starting server";
+        return -1;
+    }
+    if (_failed_to_set_ignore_eovercrowded) {
+        _failed_to_set_ignore_eovercrowded = false;
+        LOG(ERROR) << "previous call to IgnoreEovercrowdedOf() was failed, "
             "fix it before starting server";
         return -1;
     }
@@ -2310,8 +2317,8 @@ bool& Server::IgnoreEovercrowdedOf(MethodProperty* mp) {
     }
     if (mp->status == NULL) {
         LOG(ERROR) << "method=" << mp->method->full_name()
-                   << " does not support max_concurrency";
-        _failed_to_set_max_concurrency_of_method = true;
+                   << " does not support ignore_eovercrowded";
+        _failed_to_set_ignore_eovercrowded = true;
         return g_default_ignore_eovercrowded;
     }
     return mp->ignore_eovercrowded;
@@ -2332,7 +2339,7 @@ bool& Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) {
     MethodProperty* mp = _method_map.seek(full_method_name);
     if (mp == NULL) {
         LOG(ERROR) << "Fail to find method=" << full_method_name;
-        _failed_to_set_max_concurrency_of_method = true;
+        _failed_to_set_ignore_eovercrowded = true;
         return g_default_ignore_eovercrowded;
     }
     return IgnoreEovercrowdedOf(mp);
@@ -2349,7 +2356,7 @@ bool& Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_service_name,
     if (mp == NULL) {
         LOG(ERROR) << "Fail to find method=" << full_service_name
                    << '/' << method_name;
-        _failed_to_set_max_concurrency_of_method = true;
+        _failed_to_set_ignore_eovercrowded = true;
         return g_default_ignore_eovercrowded;
     }
     return IgnoreEovercrowdedOf(mp);
