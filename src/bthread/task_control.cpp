@@ -482,6 +482,18 @@ void TaskControl::signal_task(int num_task, bthread_tag_t tag) {
     if (num_task > 2) {
         num_task = 2;
     }
+    if (ParkingLot::_waiting_count.load(std::memory_order_acquire) == 0) {
+       if (FLAGS_bthread_min_concurrency > 0 &&
+           _concurrency.load(butil::memory_order_relaxed) < FLAGS_bthread_concurrency) {
+            // TODO: Reduce this lock
+            BAIDU_SCOPED_LOCK(g_task_control_mutex);
+            if (_concurrency.load(butil::memory_order_acquire) < FLAGS_bthread_concurrency) {
+                add_workers(1, tag);
+            }
+        } else {
+            return;
+        }
+    }
     auto& pl = tag_pl(tag);
     int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
     num_task -= pl[start_index].signal(1);
