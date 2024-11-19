@@ -431,11 +431,11 @@ int TaskControl::_destroy_group(TaskGroup* g) {
 
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     auto tag = tls_task_group->tag();
-    bool except_state = true;
     // epoll tid should be stolen first.
     for (auto &epoll_state : _epoll_tid_states[tag]) {
+        bool expected_state = true;
         if (epoll_state.second.compare_exchange_strong(
-                except_state, false, butil::memory_order_seq_cst,
+                expected_state, false, butil::memory_order_seq_cst,
                 butil::memory_order_relaxed)) {
             *tid = epoll_state.first;
             return true;
