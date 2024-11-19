@@ -8,7 +8,7 @@ module(
 bazel_dep(name = 'abseil-cpp', version = '20210324.2', repo_name = 'com_google_absl')
 bazel_dep(name = 'bazel_skylib', version = '1.0.3')
 bazel_dep(name = 'boringssl', version = '0.0.0-20211025-d4f1ab9')
-bazel_dep(name = 'protobuf', version = '3.19.6', repo_name = 'com_google_protobuf')
+bazel_dep(name = 'protobuf', version = '27.3', repo_name = 'com_google_protobuf')
 bazel_dep(name = 'gflags', version = '2.2.2', repo_name = 'com_github_gflags_gflags')
 bazel_dep(name = 'glog', version = '0.5.0', repo_name = 'com_github_google_glog')
 bazel_dep(name = 'platforms', version = '0.0.4')
