@@ -726,9 +726,7 @@ void TaskGroup::ready_to_run(TaskMeta* meta, bool nosignal) {
         const int additional_signal = _num_nosignal;
         _num_nosignal = 0;
         _nsignaled += 1 + additional_signal;
-        if (ParkingLot::_waiting_count.load(std::memory_order_acquire) > 0) {
-            _control->signal_task(1 + additional_signal, _tag);
-        }
+        _control->signal_task(1 + additional_signal, _tag);
     }
 }
 
@@ -737,9 +735,7 @@ void TaskGroup::flush_nosignal_tasks() {
     if (val) {
         _num_nosignal = 0;
         _nsignaled += val;
-        if (ParkingLot::_waiting_count.load(std::memory_order_acquire) > 0) {
-            _control->signal_task(val, _tag);
-        }
+        _control->signal_task(val, _tag);
     }
 }
 
@@ -763,9 +759,7 @@ void TaskGroup::ready_to_run_remote(TaskMeta* meta, bool nosignal) {
         _remote_num_nosignal = 0;
         _remote_nsignaled += 1 + additional_signal;
         _remote_rq._mutex.unlock();
-        if (ParkingLot::_waiting_count.load(std::memory_order_acquire) > 0) {
-             _control->signal_task(1 + additional_signal, _tag);
-        }
+        _control->signal_task(1 + additional_signal, _tag);
     }
 }
 
@@ -778,9 +772,7 @@ void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
     _remote_num_nosignal = 0;
     _remote_nsignaled += val;
     locked_mutex.unlock();
-    if (ParkingLot::_waiting_count.load(std::memory_order_acquire) > 0) {
-        _control->signal_task(val, _tag);
-    }
+    _control->signal_task(val, _tag);
 }
 
 void TaskGroup::ready_to_run_general(TaskMeta* meta, bool nosignal) {
