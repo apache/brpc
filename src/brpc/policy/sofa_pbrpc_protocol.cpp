@@ -400,7 +400,9 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
                             meta.method().c_str());
             break;
         }
-        if (socket->is_overcrowded() && !server->options().ignore_eovercrowded && !sp->ignore_eovercrowded) {
+        if (socket->is_overcrowded() &&
+            !server->options().ignore_eovercrowded &&
+            !sp->ignore_eovercrowded) {
             cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                             butil::endpoint2str(socket->remote_side()).c_str());
             break;

@@ -448,7 +448,9 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             sp->service->CallMethod(sp->method, cntl.get(), &breq, &bres, NULL);
             break;
         }
-        if (socket->is_overcrowded() && !server->options().ignore_eovercrowded && !sp->ignore_eovercrowded) {
+        if (socket->is_overcrowded() &&
+            !server->options().ignore_eovercrowded &&
+            !sp->ignore_eovercrowded) {
             cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                             butil::endpoint2str(socket->remote_side()).c_str());
             break;
