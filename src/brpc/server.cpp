@@ -151,7 +151,7 @@ ServerOptions::ServerOptions()
     , health_reporter(NULL)
     , rtmp_service(NULL)
     , redis_service(NULL)
-    , bthread_tag(BTHREAD_TAG_INVALID)
+    , bthread_tag(BTHREAD_TAG_DEFAULT)
     , rpc_pb_message_factory(new DefaultRpcPBMessageFactory())
     , ignore_eovercrowded(false) {
     if (s_ncore > 0) {
@@ -846,10 +846,6 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 #endif
     }
 
-    auto original_bthread_tag = _options.bthread_tag;
-    if (original_bthread_tag == BTHREAD_TAG_INVALID) {
-        _options.bthread_tag = BTHREAD_TAG_DEFAULT;
-    }
     if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
         _options.bthread_tag >= FLAGS_task_group_ntags) {
         LOG(ERROR) << "Fail to set tag " << _options.bthread_tag << ", tag range is ["
