@@ -96,7 +96,7 @@ friend class Server;
 
     MethodStatus* _status;
     AdaptiveMaxConcurrency _max_concurrency;
-    bool ignore_eovercrowded = false;
+    bool ignore_eovercrowded;
 };
 
 }

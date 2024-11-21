@@ -419,10 +419,10 @@ public:
         AdaptiveMaxConcurrency max_concurrency;
         // ignore_eovercrowded on method-level, it should be used with carefulness. 
         // It might introduce inbalance between methods, 
-        // as some methods(ignore_eovercrowded=1) might never return eovercrowded 
-        // while other methods(ignore_eovercrowded=0) keep returning eovercrowded.
-        // currently only valid for baidu_rpc, http_rpc, hulu_pbrpc and sofa_pbrpc protocols 
-        bool ignore_eovercrowded = false;
+        // as some methods(ignore_eovercrowded=true) might never return eovercrowded 
+        // while other methods(ignore_eovercrowded=false) keep returning eovercrowded.
+        // currently only valid for baidu_master_service, baidu_rpc, http_rpc, hulu_pbrpc and sofa_pbrpc protocols 
+        bool ignore_eovercrowded;
 
         MethodProperty();
     };

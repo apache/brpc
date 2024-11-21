@@ -180,7 +180,8 @@ Server::MethodProperty::MethodProperty()
     , http_url(NULL)
     , service(NULL)
     , method(NULL)
-    , status(NULL) {
+    , status(NULL)
+    , ignore_eovercrowded(false) {
 }
 
 static timeval GetUptime(void* arg/*start_time*/) {
