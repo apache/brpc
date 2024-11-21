@@ -404,7 +404,6 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
         auto added = c->add_workers(add, tag);
         bthread::FLAGS_bthread_concurrency += added;
         return (add == added ? 0 : EPERM);
-
     } else {
         LOG(WARNING) << "Fail to set concurrency by tag: " << tag
                      << ", tag concurrency should be larger than old oncurrency. old concurrency: "
