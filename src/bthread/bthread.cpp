@@ -400,18 +400,15 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
     auto tag_ngroup = c->concurrency(tag);
     auto add = num - tag_ngroup;
 
-    if (add > 0) {
+    if (add >= 0) {
         auto added = c->add_workers(add, tag);
         bthread::FLAGS_bthread_concurrency += added;
         return (add == added ? 0 : EPERM);
-
-    } else if (add < 0){
+    } else {
         LOG(WARNING) << "Fail to set concurrency by tag: " << tag
-                     << ", tag concurrency must larger than old oncurrency. old concurrency: "
+                     << ", tag concurrency should be larger than old oncurrency. old concurrency: "
                      << tag_ngroup << ", new concurrency: " << num;
         return EPERM;
-    } else {
-        return 0;
     }
 }
 
