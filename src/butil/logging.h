@@ -922,7 +922,7 @@ friend void DestroyLogStream(LogStream*);
 public:
     LogStream()
         : std::ostream(this), _file("-"), _line(0), _func("-")
-        , _severity(0) , _noflush(false), _is_check(false) {
+        , _severity(0) , _noflush(false), _is_check(false), _backtrace(false) {
     }
 
     ~LogStream() {
