@@ -254,7 +254,10 @@ cc_test(
         "bthread_cond_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":sstream_workaround",
@@ -270,7 +273,10 @@ cc_test(
         "bthread_setconcurrency_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":sstream_workaround",
@@ -286,7 +292,10 @@ cc_test(
         "bthread_butex_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":sstream_workaround",
@@ -330,10 +339,10 @@ cc_test(
         ],
     ),
     copts = COPTS,
-    # data = [
-    #     ":copy_test_data",
-    # ],
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
@@ -350,7 +359,10 @@ cc_test(
         "brpc_builtin_service_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
@@ -365,7 +377,10 @@ cc_test(
         "brpc_channel_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -381,7 +396,10 @@ cc_test(
         "brpc_circuit_breaker_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -397,7 +415,10 @@ cc_test(
         "brpc_esp_protocol_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -413,7 +434,10 @@ cc_test(
         "brpc_grpc_protocol_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -429,7 +453,10 @@ cc_test(
         "brpc_h2_unsent_message_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -445,7 +472,10 @@ cc_test(
         "brpc_http_rpc_protocol_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -461,7 +491,10 @@ cc_test(
         "brpc_hulu_pbrpc_protocol_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -477,7 +510,10 @@ cc_test(
         "brpc_input_messenger_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -493,7 +529,10 @@ cc_test(
         "brpc_memcache_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -509,7 +548,10 @@ cc_test(
         "brpc_mongo_protocol_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -525,7 +567,10 @@ cc_test(
         "brpc_prometheus_metrics_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
@@ -540,7 +585,10 @@ cc_test(
         "brpc_public_pbrpc_protocol_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -556,7 +604,10 @@ cc_test(
         "brpc_redis_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -572,7 +623,10 @@ cc_test(
         "brpc_rtmp_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -588,7 +642,10 @@ cc_test(
         "brpc_socket_map_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -604,7 +661,10 @@ cc_test(
         "brpc_socket_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -620,7 +680,10 @@ cc_test(
         "brpc_sofa_pbrpc_protocol_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -636,10 +699,10 @@ cc_test(
         "brpc_ssl_unittest.cpp",
     ]),
     copts = COPTS,
-    # data = [
-    #     ":copy_test_data",
-    # ],
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -655,7 +718,10 @@ cc_test(
         "brpc_server_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -671,7 +737,10 @@ cc_test(
         "brpc_alpn_protocol_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
@@ -687,7 +756,10 @@ cc_test(
         "brpc_coroutine_unittest.cpp",
     ]),
     copts = COPTS,
-    includes = ["."],
+    includes = [
+        ".",
+        "test",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":cc_test_proto",
