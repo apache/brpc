@@ -45,6 +45,7 @@ LINKOPTS = [
     #"-lcrypto",
     "-ldl",
     "-lz",
+    "-lprofiler",
 ]
 
 TEST_BUTIL_SOURCES = [
