@@ -46,12 +46,7 @@ LINKOPTS = [
     "-ldl",
     "-lz",
     "-lprofiler",
-] + select({
-    "@bazel_tools//tools/osx:darwin": [],
-    "//conditions:default": [
-        "-lrt",
-    ],
-})
+]
 
 TEST_BUTIL_SOURCES = [
     "at_exit_unittest.cc",
