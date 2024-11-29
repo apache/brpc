@@ -45,7 +45,6 @@ LINKOPTS = [
     #"-lcrypto",
     "-ldl",
     "-lz",
-    "-lprofiler",
 ]
 
 TEST_BUTIL_SOURCES = [
@@ -335,9 +334,6 @@ cc_test(
     #     ":copy_test_data",
     # ],
     includes = ["."],
-    linkopts = [
-        "-lprofiler",
-    ],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
@@ -355,7 +351,6 @@ cc_test(
     ]),
     copts = COPTS,
     includes = ["."],
-    linkopts = LINKOPTS + ["-ltcmalloc_and_profiler"],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
@@ -531,9 +526,6 @@ cc_test(
     ]),
     copts = COPTS,
     includes = ["."],
-    linkopts = [
-        "-lprofiler",
-    ],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
