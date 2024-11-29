@@ -240,6 +240,462 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "bthread_cond_unittest",
+    srcs = glob([
+        "bthread_cond_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":sstream_workaround",
+        "//:bthread",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "bthread_setconcurrency_unittest",
+    srcs = glob([
+        "bthread_setconcurrency_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":sstream_workaround",
+        "//:bthread",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "bthread_butex_test",
+    srcs = glob([
+        "bthread_butex_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":sstream_workaround",
+        "//:bthread",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "brpc_unittest",
+    srcs = glob(
+        [
+            "brpc_*_unittest.cpp",
+        ],
+        exclude = [
+            "brpc_builtin_service_unittest.cpp",
+            "brpc_channel_unittest.cpp",
+            "brpc_circuit_breaker_unittest.cpp",
+            "brpc_esp_protocol_unittest.cpp",
+            "brpc_grpc_protocol_unittest.cpp",
+            "brpc_h2_unsent_message_unittest.cpp",
+            "brpc_http_rpc_protocol_unittest.cpp",
+            "brpc_hulu_pbrpc_protocol_unittest.cpp",
+            "brpc_input_messenger_unittest.cpp",
+            "brpc_memcache_unittest.cpp",
+            "brpc_mongo_protocol_unittest.cpp",
+            "brpc_prometheus_metrics_unittest.cpp",
+            "brpc_public_pbrpc_protocol_unittest.cpp",
+            "brpc_redis_unittest.cpp",
+            "brpc_rtmp_unittest.cpp",
+            "brpc_socket_map_unittest.cpp",
+            "brpc_socket_unittest.cpp",
+            "brpc_sofa_pbrpc_protocol_unittest.cpp",
+            "brpc_ssl_unittest.cpp",
+            "brpc_server_unittest.cpp",
+            "brpc_rdma_unittest.cpp",
+            "brpc_block_pool_unittest.cpp",
+            "brpc_alpn_protocol_unittest.cpp",
+            "brpc_coroutine_unittest.cpp",
+        ],
+    ),
+    copts = COPTS,
+    # data = [
+    #     ":copy_test_data",
+    # ],
+    includes = ["."],
+    linkopts = [
+        "-lprofiler",
+    ],
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "//:butil",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "brpc_builtin_service_unittest",
+    srcs = glob([
+        "brpc_builtin_service_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS + ["-ltcmalloc_and_profiler"],
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_channel_unittest",
+    srcs = glob([
+        "brpc_channel_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_circuit_breaker_unittest",
+    srcs = glob([
+        "brpc_circuit_breaker_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_esp_protocol_unittest",
+    srcs = glob([
+        "brpc_esp_protocol_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_grpc_protocol_unittest",
+    srcs = glob([
+        "brpc_grpc_protocol_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_h2_unsent_message_unittest",
+    srcs = glob([
+        "brpc_h2_unsent_message_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_http_rpc_protocol_unittest",
+    srcs = glob([
+        "brpc_http_rpc_protocol_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_hulu_pbrpc_protocol_unittest",
+    srcs = glob([
+        "brpc_hulu_pbrpc_protocol_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_input_messenger_unittest",
+    srcs = glob([
+        "brpc_input_messenger_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_memcache_unittest",
+    srcs = glob([
+        "brpc_memcache_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_mongo_protocol_unittest",
+    srcs = glob([
+        "brpc_mongo_protocol_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_prometheus_metrics_unittest",
+    srcs = glob([
+        "brpc_prometheus_metrics_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = [
+        "-lprofiler",
+    ],
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_public_pbrpc_protocol_unittest",
+    srcs = glob([
+        "brpc_public_pbrpc_protocol_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_redis_unittest",
+    srcs = glob([
+        "brpc_redis_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_rtmp_unittest",
+    srcs = glob([
+        "brpc_rtmp_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_socket_map_unittest",
+    srcs = glob([
+        "brpc_socket_map_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_socket_unittest",
+    srcs = glob([
+        "brpc_socket_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_sofa_pbrpc_protocol_unittest",
+    srcs = glob([
+        "brpc_sofa_pbrpc_protocol_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_ssl_unittest",
+    srcs = glob([
+        "brpc_ssl_unittest.cpp",
+    ]),
+    copts = COPTS,
+    # data = [
+    #     ":copy_test_data",
+    # ],
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_server_unittest",
+    srcs = glob([
+        "brpc_server_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_alpn_protocol_unittest",
+    srcs = glob([
+        "brpc_alpn_protocol_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "brpc_coroutine_unittest",
+    srcs = glob([
+        "brpc_coroutine_unittest.cpp",
+    ]),
+    copts = COPTS,
+    includes = ["."],
+    linkopts = LINKOPTS,
+    deps = [
+        ":cc_test_proto",
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 refresh_compile_commands(
     name = "brpc_test_compdb",
     # Specify the targets of interest.
