@@ -482,6 +482,7 @@ cc_test(
         ":sstream_workaround",
         "//:brpc",
         "@com_google_googletest//:gtest",
+        "@com_google_protobuf",
     ],
 )
 
