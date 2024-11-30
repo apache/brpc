@@ -108,6 +108,7 @@ cmake -B build && cmake --build build -j6
 ```shell
 $ cd example/echo_c++
 $ cmake -B build && cmake --build build -j4
+$ cd build
 $ ./echo_server &
 $ ./echo_client
 ```
