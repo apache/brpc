@@ -76,7 +76,10 @@ struct VarMapWithLock : public VarMap {
     pthread_mutex_t mutex;
 
     VarMapWithLock() {
-        CHECK_EQ(0, init(1024, 80));
+        if (init(1024) != 0) {
+            LOG(WARNING) << "Fail to init VarMap";
+        }
+
         pthread_mutexattr_t attr;
         pthread_mutexattr_init(&attr);
         pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);

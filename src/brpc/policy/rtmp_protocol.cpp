@@ -731,8 +731,12 @@ RtmpContext::RtmpContext(const RtmpClientOptions* copt, const Server* server)
         _service = server->options().rtmp_service;
     }
     _free_ms_ids.reserve(32);
-    CHECK_EQ(0, _mstream_map.init(1024, 70));
-    CHECK_EQ(0, _trans_map.init(1024, 70));
+    if (_mstream_map.init(1024, 70) != 0) {
+        LOG(FATAL) << "Fail to initialize _mstream_map";
+    }
+    if (_trans_map.init(1024, 70) != 0) {
+        LOG(FATAL) << "Fail to initialize _trans_map";
+    }
     memset(static_cast<void*>(_cstream_ctx), 0, sizeof(_cstream_ctx));
 }
     
@@ -1766,7 +1770,9 @@ static pthread_once_t s_cmd_handlers_init_once = PTHREAD_ONCE_INIT;
 static void InitCommandHandlers() {
     // Dispatch commands based on "Command Name".
     s_cmd_handlers = new CommandHandlerMap;
-    CHECK_EQ(0, s_cmd_handlers->init(64, 70));
+    if (s_cmd_handlers->init(64, 70) != 0) {
+        LOG(WARNING) << "Fail to init s_cmd_handlers";
+    }
     (*s_cmd_handlers)[RTMP_AMF0_COMMAND_CONNECT] = &RtmpChunkStream::OnConnect;
     (*s_cmd_handlers)[RTMP_AMF0_COMMAND_ON_BW_DONE] = &RtmpChunkStream::OnBWDone;
     (*s_cmd_handlers)[RTMP_AMF0_COMMAND_RESULT] = &RtmpChunkStream::OnResult;

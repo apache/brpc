@@ -610,27 +610,27 @@ TEST(HttpMessageTest, serialize_http_request) {
     // user-set accept
     header.SetHeader("accePT"/*intended uppercase*/, "blahblah");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nFoo: Bar\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set UA
     header.SetHeader("user-AGENT", "myUA");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nFoo: Bar\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nuser-AGENT: myUA\r\n\r\ndata", request);
 
     // user-set Authorization
     header.SetHeader("authorization", "myAuthString");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nFoo: Bar\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\n\r\ndata", request);
 
     header.SetHeader("Transfer-Encoding", "chunked");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\naccePT: blahblah\r\nTransfer-Encoding: chunked\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nFoo: Bar\r\naccePT: blahblah\r\nTransfer-Encoding: chunked\r\nHost: MyHost: 4321\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\n\r\ndata", request);
 
     // GET does not serialize content and user-set content-length is ignored.
     header.set_method(brpc::HTTP_METHOD_GET);
     header.SetHeader("Content-Length", "100");
     MakeRawHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("GET / HTTP/1.1\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\n", request);
+    ASSERT_EQ("GET / HTTP/1.1\r\nFoo: Bar\r\naccePT: blahblah\r\nHost: MyHost: 4321\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\n\r\n", request);
 }
 
 TEST(HttpMessageTest, serialize_http_response) {
@@ -649,12 +649,12 @@ TEST(HttpMessageTest, serialize_http_response) {
     // NULL content
     header.SetHeader("Content-Length", "100");
     MakeRawHttpResponse(&response, &header, NULL);
-    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nFoo: Bar\r\n\r\n", response)
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nContent-Length: 100\r\n\r\n", response)
         << butil::ToPrintable(response);
 
     header.SetHeader("Transfer-Encoding", "chunked");
     MakeRawHttpResponse(&response, &header, NULL);
-    ASSERT_EQ("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nFoo: Bar\r\n\r\n", response)
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nTransfer-Encoding: chunked\r\n\r\n", response)
                     << butil::ToPrintable(response);
     header.RemoveHeader("Transfer-Encoding");
 
@@ -667,7 +667,7 @@ TEST(HttpMessageTest, serialize_http_response) {
     header.SetHeader("Content-Length", "100");
     header.SetHeader("Transfer-Encoding", "chunked");
     MakeRawHttpResponse(&response, &header, NULL);
-    ASSERT_EQ("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nFoo: Bar\r\n\r\n", response)
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nTransfer-Encoding: chunked\r\n\r\n", response)
                     << butil::ToPrintable(response);
     header.RemoveHeader("Transfer-Encoding");
 
@@ -696,7 +696,7 @@ TEST(HttpMessageTest, serialize_http_response) {
     // 2. User-set content-length is not ignored .
     header.SetHeader("Content-Length", "100");
     MakeRawHttpResponse(&response, &header, &content);
-    ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nFoo: Bar\r\n\r\n", response)
+    ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nContent-Length: 100\r\n\r\n", response)
         << butil::ToPrintable(response);
 }
 

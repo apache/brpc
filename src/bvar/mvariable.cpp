@@ -75,7 +75,9 @@ struct MVarMapWithLock : public MVarMap {
     pthread_mutex_t mutex;
 
     MVarMapWithLock() {
-        CHECK_EQ(0, init(256, 80));
+        if (init(256) != 0) {
+            LOG(WARNING) << "Fail to init";
+        }
         pthread_mutex_init(&mutex, NULL);
     }
 };

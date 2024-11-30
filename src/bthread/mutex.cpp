@@ -161,7 +161,9 @@ void ContentionProfiler::init_if_needed() {
     if (!_init) {
         // Already output nanoseconds, always set cycles/second to 1000000000.
         _disk_buf.append("--- contention\ncycles/second=1000000000\n");
-        CHECK_EQ(0, _dedup_map.init(1024, 60));
+        if (_dedup_map.init(1024, 60) != 0) {
+            LOG(WARNING) << "Fail to initialize dedup_map";
+        }
         _init = true;
     }
 }

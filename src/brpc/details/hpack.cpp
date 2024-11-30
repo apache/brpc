@@ -241,12 +241,10 @@ int IndexTable::Init(const IndexTableOptions& options) {
     _need_indexes = options.need_indexes;
     if (_need_indexes) {
         if (_name_index.init(num_headers * 2) != 0) {
-            LOG(ERROR) << "Fail to init _name_index";
-            return -1;
+            LOG(WARNING) << "Fail to init _name_index";
         }
         if (_header_index.init(num_headers * 2) != 0) {
-            LOG(ERROR) << "Fail to init _name_index";
-            return -1;
+            LOG(WARNING) << "Fail to init _name_index";
         }
     }
     if (options.static_table_size > 0) {

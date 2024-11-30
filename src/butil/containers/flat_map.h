@@ -94,6 +94,7 @@
 #define BUTIL_FLAT_MAP_H
 
 #include <stdint.h>
+#include <cstddef>
 #include <functional>
 #include <iostream>                               // std::ostream
 #include <type_traits>                            // std::aligned_storage
@@ -105,7 +106,7 @@
 #include "butil/bit_array.h"                       // bit_array_*
 #include "butil/strings/string_piece.h"            // StringPiece
 #include "butil/memory/scope_guard.h"
-#include "butil/memory/manual_constructor.h"
+#include "butil/containers/optional.h"
 
 namespace butil {
 
@@ -120,6 +121,14 @@ struct BucketInfo {
     size_t longest_length;
     double average_length;
 };
+
+#ifndef BRPC_FLATMAP_DEFAULT_NBUCKET
+#ifdef FLAT_MAP_ROUND_BUCKET_BY_USE_NEXT_PRIME
+#define BRPC_FLATMAP_DEFAULT_NBUCKET 29U
+#else
+#define BRPC_FLATMAP_DEFAULT_NBUCKET 16U
+#endif
+#endif // BRPC_FLATMAP_DEFAULT_NBUCKET
 
 // NOTE: Objects stored in FlatMap MUST be copyable.
 template <typename _K, typename _T,
@@ -144,34 +153,39 @@ public:
         _Sparse, SparseFlatMapIterator<FlatMap, value_type>,
         FlatMapIterator<FlatMap, value_type> >::type iterator;
     typedef typename conditional<
-        _Sparse, SparseFlatMapIterator<FlatMap, const value_type>, 
+        _Sparse, SparseFlatMapIterator<FlatMap, const value_type>,
         FlatMapIterator<FlatMap, const value_type> >::type const_iterator;
     typedef _Hash hasher;
     typedef _Equal key_equal;
+    static constexpr size_t DEFAULT_NBUCKET = BRPC_FLATMAP_DEFAULT_NBUCKET;
+
     struct PositionHint {
         size_t nbucket;
         size_t offset;
         bool at_entry;
         key_type key;
     };
-    
+
     explicit FlatMap(const hasher& hashfn = hasher(),
                      const key_equal& eql = key_equal(),
                      const allocator_type& alloc = allocator_type());
-    ~FlatMap();
     FlatMap(const FlatMap& rhs);
+    ~FlatMap();
+
     FlatMap& operator=(const FlatMap& rhs);
     void swap(FlatMap & rhs);
 
-    // Must be called to initialize this map, otherwise insert/operator[]
-    // crashes, and seek/erase fails.
-    // `nbucket' is the initial number of buckets. `load_factor' is the 
+    // FlatMap will be automatically initialized with small FlatMap optimization,
+    // so this function only needs to be call when a large initial number of
+    // buckets or non-default `load_factor' is required.
+    // Returns 0 on success, -1 on error, but FlatMap can still be used normally.
+    // `nbucket' is the initial number of buckets. `load_factor' is the
     // maximum value of size()*100/nbucket, if the value is reached, nbucket
     // will be doubled and all items stored will be rehashed which is costly.
     // Choosing proper values for these 2 parameters reduces costs.
     int init(size_t nbucket, u_int load_factor = 80);
-    
-    // Insert a pair of |key| and |value|. If size()*100/bucket_count() is 
+
+    // Insert a pair of |key| and |value|. If size()*100/bucket_count() is
     // more than load_factor(), a resize() will be done.
     // Returns address of the inserted value, NULL on error.
     mapped_type* insert(const key_type& key, const mapped_type& value);
@@ -198,7 +212,7 @@ public:
 
     // Remove all items and return all allocated spaces to system.
     void clear_and_reset_pool();
-        
+
     // Search for the value associated with |key|.
     // If `_Multi=false', Search for any of multiple values associated with |key|.
     // Returns: address of the value.
@@ -217,7 +231,7 @@ public:
     // insert() or operator[] if there're too many items.
     // Returns successful or not.
     bool resize(size_t nbucket);
-    
+
     // Iterators
     iterator begin();
     iterator end();
@@ -254,7 +268,7 @@ public:
     void save_iterator(const const_iterator&, PositionHint*) const;
     const_iterator restore_iterator(const PositionHint&) const;
 
-    // True if init() was successfully called.
+    // Always returns true.
     bool initialized() const { return _buckets != NULL; }
 
     bool empty() const { return _size == 0; }
@@ -266,29 +280,41 @@ public:
     BucketInfo bucket_info() const;
 
     struct Bucket {
+        Bucket() : next((Bucket*)-1UL) {}
         explicit Bucket(const _K& k) : next(NULL) {
-            element_.Init(k);
+            element_space_.Init(k);
         }
         Bucket(const Bucket& other) : next(NULL) {
-            element_.Init(other.element());
+            element_space_.Init(other.element());
         }
 
         bool is_valid() const { return next != (const Bucket*)-1UL; }
         void set_invalid() { next = (Bucket*)-1UL; }
         // NOTE: Only be called when is_valid() is true.
-        Element& element() {
-            return *element_;
+        Element& element() { return *element_space_; }
+        const Element& element() const { return *element_space_; }
+        void destroy_element() { element_space_.Destroy(); }
+
+        void swap(Bucket& rhs) {
+            if (!is_valid() && !rhs.is_valid()) {
+                return;
+            } else if (is_valid() && !rhs.is_valid()) {
+                rhs.element_space_.Init(std::move(element()));
+                destroy_element();
+            } else if (!is_valid() && rhs.is_valid()) {
+                element_space_.Init(std::move(rhs.element()));
+                rhs.destroy_element();
+            } else {
+                element().swap(rhs.element());
+            }
+            std::swap(next, rhs.next);
         }
-        const Element& element() const {
-            return *element_;
-        }
-        Bucket *next;
+
+        Bucket* next;
 
     private:
-        ManualConstructor<Element> element_;
+        ManualConstructor<Element> element_space_;
     };
-
-    allocator_type& get_allocator() { return _pool.get_allocator(); }
 
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
@@ -299,12 +325,13 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
             : buckets(NULL), thumbnail(NULL), nbucket(0) {}
         NewBucketsInfo(Bucket* b, uint64_t* t, size_t n)
             : buckets(b), thumbnail(t), nbucket(n) {}
+
         Bucket* buckets;
         uint64_t* thumbnail;
         size_t nbucket;
     };
 
-    NewBucketsInfo new_buckets_and_thumbnail(size_t size, size_t new_nbucket);
+    optional<NewBucketsInfo> new_buckets_and_thumbnail(size_t size, size_t new_nbucket);
 
     // For `_Multi=true'.
     // Insert a new default-constructed associated with |key| always.
@@ -314,6 +341,9 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     template<bool Multi = _Multi>
     typename std::enable_if<Multi, mapped_type&>::type operator[](const key_type& key);
 
+    allocator_type& get_allocator() { return _pool.get_allocator(); }
+    allocator_type get_allocator() const { return _pool.get_allocator(); }
+
     // True if buckets need to be resized before holding `size' elements.
     bool is_too_crowded(size_t size) const {
         return is_too_crowded(size, _nbucket, _load_factor);
@@ -322,8 +352,21 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
         return size * 100 >= nbucket * load_factor;
     }
 
-    static void init_buckets_and_thumbnail(
-        Bucket* buckets, uint64_t* thumbnail, size_t nbucket) {
+    void init_load_factor(u_int load_factor) {
+        if (_is_default_load_factor) {
+            _is_default_load_factor = false;
+            _load_factor = load_factor;
+        }
+    }
+
+    // True if using default buckets.
+    bool is_default_buckets() const {
+        return _buckets == (Bucket*)(&_default_buckets);
+    }
+
+    static void init_buckets_and_thumbnail(Bucket* buckets,
+                                           uint64_t* thumbnail,
+                                           size_t nbucket) {
         for (size_t i = 0; i < nbucket; ++i) {
             buckets[i].set_invalid();
         }
@@ -332,12 +375,18 @@ template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
             bit_array_clear(thumbnail, nbucket);
         }
     }
-        
+
+    static const size_t default_nthumbnail = BIT_ARRAY_LEN(DEFAULT_NBUCKET);
+    // Note: need an extra bucket to let iterator know where buckets end.
+    // Small map optimization.
+    Bucket _default_buckets[DEFAULT_NBUCKET + 1];
+    uint64_t _default_thumbnail[default_nthumbnail];
     size_t _size;
     size_t _nbucket;
     Bucket* _buckets;
     uint64_t* _thumbnail;
     u_int _load_factor;
+    bool _is_default_load_factor;
     hasher _hashfn;
     key_equal _eql;
     SingleThreadedPool<sizeof(Bucket), 1024, 16, allocator_type> _pool;
@@ -348,7 +397,8 @@ template <typename _K, typename _T,
           typename _Equal = DefaultEqualTo<_K>,
           bool _Sparse = false,
           typename _Alloc = PtAllocator>
-using MultiFlatMap = FlatMap<_K, _T, _Hash, _Equal, _Sparse, _Alloc, true>;
+using MultiFlatMap = FlatMap<
+    _K, _T, _Hash, _Equal, _Sparse, _Alloc, true>;
 
 template <typename _K,
           typename _Hash = DefaultHasher<_K>,
@@ -357,7 +407,8 @@ template <typename _K,
           typename _Alloc = PtAllocator>
 class FlatSet {
 public:
-    typedef FlatMap<_K, FlatMapVoid, _Hash, _Equal, _Sparse, _Alloc> Map;
+    typedef FlatMap<_K, FlatMapVoid, _Hash, _Equal, _Sparse,
+                    _Alloc, false> Map;
     typedef typename Map::key_type key_type;
     typedef typename Map::value_type value_type;
     typedef typename Map::Bucket Bucket;
@@ -408,15 +459,18 @@ private:
 
 template <typename _K, typename _T,
           typename _Hash = DefaultHasher<_K>,
-          typename _Equal = DefaultEqualTo<_K> >
-class SparseFlatMap : public FlatMap<_K, _T, _Hash, _Equal, true> {
-};
+          typename _Equal = DefaultEqualTo<_K>,
+          typename _Alloc = PtAllocator,
+          bool _Multi = false>
+class SparseFlatMap : public FlatMap<
+    _K, _T, _Hash, _Equal, true, _Alloc, _Multi> {};
 
 template <typename _K,
           typename _Hash = DefaultHasher<_K>,
-          typename _Equal = DefaultEqualTo<_K> >
-class SparseFlatSet : public FlatSet<_K, _Hash, _Equal, true> {
-};
+          typename _Equal = DefaultEqualTo<_K>,
+          typename _Alloc = PtAllocator>
+class SparseFlatSet : public FlatSet<
+    _K, _Hash, _Equal, true, _Alloc> {};
 
 // Implement FlatMapElement
 template <typename K, typename T>
@@ -431,6 +485,13 @@ public:
     // POD) which is wrong generally.
     explicit FlatMapElement(const K& k) : _key(k), _value(T()) {}
     //                                             ^^^^^^^^^^^
+
+    FlatMapElement(const FlatMapElement& rhs)
+        : _key(rhs._key), _value(rhs._value) {}
+
+    FlatMapElement(FlatMapElement&& rhs) noexcept
+        : _key(std::move(rhs._key)), _value(std::move(rhs._value)) {}
+
     const K& first_ref() const { return _key; }
     T& second_ref() { return _value; }
     T&& second_movable_ref() { return std::move(_value); }
@@ -442,8 +503,13 @@ public:
     inline static T&& second_movable_ref_from_value(value_type& v)
     { return std::move(v.second); }
 
+    void swap(FlatMapElement& rhs) {
+        std::swap(_key, rhs._key);
+        std::swap(_value, rhs._value);
+    }
+
 private:
-    const K _key;
+    K _key;
     T _value;
 };
 
@@ -451,7 +517,11 @@ template <typename K>
 class FlatMapElement<K, FlatMapVoid> {
 public:
     typedef const K value_type;
+    // See the comment in the above FlatMapElement.
     explicit FlatMapElement(const K& k) : _key(k) {}
+    FlatMapElement(const FlatMapElement& rhs) : _key(rhs._key) {}
+    FlatMapElement(FlatMapElement&& rhs) noexcept : _key(std::move(rhs._key)) {}
+
     const K& first_ref() const { return _key; }
     FlatMapVoid& second_ref() { return second_ref_from_value(_key); }
     FlatMapVoid& second_movable_ref() { return second_ref(); }
@@ -470,8 +540,7 @@ private:
 
 // Implement DefaultHasher and DefaultEqualTo
 template <typename K>
-struct DefaultHasher : public BUTIL_HASH_NAMESPACE::hash<K> {
-};
+struct DefaultHasher : public BUTIL_HASH_NAMESPACE::hash<K> {};
 
 template <>
 struct DefaultHasher<std::string> {

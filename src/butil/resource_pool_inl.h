@@ -25,11 +25,11 @@
 #include <iostream>                      // std::ostream
 #include <pthread.h>                     // pthread_mutex_t
 #include <algorithm>                     // std::max, std::min
-#include "butil/atomicops.h"              // butil::atomic
-#include "butil/macros.h"                 // BAIDU_CACHELINE_ALIGNMENT
-#include "butil/scoped_lock.h"            // BAIDU_SCOPED_LOCK
-#include "butil/thread_local.h"           // thread_atexit
-#include "butil/memory/manual_constructor.h"
+#include "butil/atomicops.h"             // butil::atomic
+#include "butil/macros.h"                // BAIDU_CACHELINE_ALIGNMENT
+#include "butil/scoped_lock.h"           // BAIDU_SCOPED_LOCK
+#include "butil/thread_local.h"          // thread_atexit
+#include "butil/memory/aligned_memory.h" // butil::AlignedMemory
 #include <vector>
 
 #ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
@@ -110,11 +110,12 @@ public:
     typedef ResourcePoolFreeChunk<T, FREE_CHUNK_NITEM>      FreeChunk;
     typedef ResourcePoolFreeChunk<T, 0> DynamicFreeChunk;
 
+    typedef AlignedMemory<sizeof(T), __alignof__(T)> BlockItem;
     // When a thread needs memory, it allocates a Block. To improve locality,
     // items in the Block are only used by the thread.
     // To support cache-aligned objects, align Block.items by cacheline.
     struct BAIDU_CACHELINE_ALIGNMENT Block {
-        ManualConstructor<T> items[BLOCK_NITEM];
+        BlockItem items[BLOCK_NITEM];
         size_t nitem;
 
         Block() : nitem(0) {}
@@ -182,13 +183,11 @@ public:
             return unsafe_address_resource(free_id);                        \
         }                                                                   \
         T* p = NULL;                                                        \
-        auto ctor = [&](void* mem) {                                        \
-            p = new (mem) T(__VA_ARGS__);                                   \
-        };                                                                  \
         /* Fetch memory from local block */                                 \
         if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {                \
             id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
-            (_cur_block->items + _cur_block->nitem)->InitBy(ctor);          \
+            auto item = _cur_block->items + _cur_block->nitem;              \
+            p = new (item->void_data()) T(__VA_ARGS__);                     \
             if (!ResourcePoolValidator<T>::validate(p)) {                   \
                 p->~T();                                                    \
                 return NULL;                                                \
@@ -200,7 +199,8 @@ public:
         _cur_block = add_block(&_cur_block_index);                          \
         if (_cur_block != NULL) {                                           \
             id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
-            (_cur_block->items + _cur_block->nitem)->InitBy(ctor);          \
+            auto item = _cur_block->items + _cur_block->nitem;              \
+            p = new (item->void_data()) T(__VA_ARGS__);                     \
             if (!ResourcePoolValidator<T>::validate(p)) {                   \
                 p->~T();                                                    \
                 return NULL;                                                \

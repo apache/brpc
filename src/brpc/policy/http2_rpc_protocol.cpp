@@ -362,12 +362,10 @@ H2Context::~H2Context() {
 
 int H2Context::Init() {
     if (_pending_streams.init(64, 70) != 0) {
-        LOG(ERROR) << "Fail to init _pending_streams";
-        return -1;
+        LOG(WARNING) << "Fail to init _pending_streams";
     }
     if (_hpacker.Init(_unack_local_settings.header_table_size) != 0) {
-        LOG(ERROR) << "Fail to init _hpacker";
-        return -1;
+        LOG(WARNING) << "Fail to init _hpacker";
     }
     return 0;
 }

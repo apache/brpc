@@ -32,8 +32,7 @@ static butil::FlatMap<std::string, MessageHandler>* s_handler_map = NULL;
 static void init_handler_map() {
     s_handler_map = new butil::FlatMap<std::string, MessageHandler>;
     if (s_handler_map->init(64, 50) != 0) {
-        LOG(ERROR) << "Fail to init s_handler_map";
-        exit(1);
+        LOG(WARNING) << "Fail to init s_handler_map";
     }
 }
 void register_message_handler_or_die(const std::string& full_name,

@@ -325,6 +325,17 @@ template <typename T> struct remove_pointer<T* const volatile> {
     typedef T type; 
 };
 
+// Shortcut for removing const, volatile and reference.
+#if __cplusplus >= 202002L
+template <typename T>
+using remove_cvref = std::remove_cvref<T>;
+#else
+template<typename T>
+struct remove_cvref {
+    typedef typename remove_cv<typename remove_reference<T>::type>::type type;
+};
+#endif
+
 // is_reference is false except for reference types.
 template<typename T> struct is_reference : false_type {};
 template<typename T> struct is_reference<T&> : true_type {};
@@ -355,14 +366,14 @@ template <typename T> struct is_enum<const volatile T> : is_enum<T> { };
 // at compile time.
 // If the callable is non-static member function,
 // the first argument should be the class type.
-#if (__cplusplus >= 201703L)
+#if __cplusplus >= 201703L
 // std::result_of is deprecated in C++17 and removed in C++20,
 // use std::invoke_result instead.
 template <typename>
 struct result_of;
 template <typename F, typename... Args>
 struct result_of<F(Args...)> : std::invoke_result<F, Args...> {};
-#elif (__cplusplus >= 201103L)
+#elif __cplusplus >= 201103L
 template <typename F>
 using result_of = std::result_of<F>;
 #else

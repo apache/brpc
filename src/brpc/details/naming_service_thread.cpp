@@ -441,9 +441,7 @@ int GetNamingServiceThread(
                 return -1;
             }
             if (g_nsthread_map->init(64) != 0) {
-                mu.unlock();
-                LOG(ERROR) << "Fail to init g_nsthread_map";
-                return -1;
+                LOG(WARNING) << "Fail to init g_nsthread_map";
             }
         }
         NamingServiceThread*& ptr = (*g_nsthread_map)[key];

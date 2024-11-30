@@ -146,7 +146,8 @@ TEST_BUTIL_SOURCES = \
     popen_unittest.cpp \
     bounded_queue_unittest.cc \
     butil_unittest_main.cpp \
-    scope_guard_unittest.cc
+    scope_guard_unittest.cpp \
+    optional_unittest.cpp
 
 ifeq ($(SYSTEM), Linux)
     TEST_BUTIL_SOURCES += test_file_util_linux.cc \

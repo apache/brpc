@@ -99,8 +99,12 @@ IOBufProfiler::IOBufProfiler()
     : butil::SimpleThread("IOBufProfiler")
     , _stop(false)
     , _sleep_ms(MIN_SLEEP_MS) {
-    CHECK_EQ(0, _stack_map.init(1024));
-    CHECK_EQ(0, _block_info_map.init(1024));
+    if (_stack_map.init(1024) != 0) {
+        LOG(WARNING) << "Fail to init _stack_map";
+    }
+    if (_block_info_map.init(1024) != 0) {
+        LOG(WARNING) << "Fail to init _block_info_map";
+    }
     Start();
 }
 
@@ -161,7 +165,6 @@ void IOBufProfiler::Dump(IOBufSample* s) {
         } else {
             BlockInfo& new_info = _block_info_map[s->block];
             new_info.ref += s->count;
-            CHECK_EQ(0, new_info.stack_count_map.init(64));
             new_info.stack_count_map[*stack_ptr] = s->count;
         }
     } while (false);

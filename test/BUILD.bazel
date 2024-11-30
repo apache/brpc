@@ -139,7 +139,8 @@ TEST_BUTIL_SOURCES = [
     #"popen_unittest.cpp",
     "bounded_queue_unittest.cc",
     "butil_unittest_main.cpp",
-    "scope_guard_unittest.cc",
+    "scope_guard_unittest.cpp",
+    "optional_unittest.cpp",
 ] + select({
     "@bazel_tools//tools/osx:darwin_x86_64": [],
     "//conditions:default": [

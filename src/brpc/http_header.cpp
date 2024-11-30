@@ -31,7 +31,6 @@ HttpHeader::HttpHeader()
     , _method(HTTP_METHOD_GET)
     , _version(1, 1)
     , _first_set_cookie(NULL) {
-    CHECK_EQ(0, _headers.init(29));
     // NOTE: don't forget to clear the field in Clear() as well.
 }
 
