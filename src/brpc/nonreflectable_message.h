@@ -51,7 +51,11 @@ public:
         return *this;
     }
 
-#if GOOGLE_PROTOBUF_VERSION >= 5026000
+#if GOOGLE_PROTOBUF_VERSION >= 5029000
+    const ::google::protobuf::internal::ClassData* GetClassData() const override {
+        return nullptr;
+    }
+#elif GOOGLE_PROTOBUF_VERSION >= 5026000
     const ClassData* GetClassData() const override {
         return nullptr;
     }
@@ -63,7 +67,7 @@ public:
     }
 #endif
 
-#if GOOGLE_PROTOBUF_VERSION >= 3000000
+#if GOOGLE_PROTOBUF_VERSION >= 3000000 && GOOGLE_PROTOBUF_VERSION < 5029000
     Message* New(::google::protobuf::Arena* arena) const override {
         return ::google::protobuf::Arena::Create<T>(arena);
     }
