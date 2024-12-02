@@ -1063,8 +1063,6 @@ server.IgnoreEovercrowdedOf("...") = … sets ignore_eovercrowded of the method.
 ```c++
 ServerOptions.ignore_eovercrowded = true;                   // Set the default ignore_eovercrowded for all methods
 server.IgnoreEovercrowdedOf("example.EchoService.Echo") = true;
-server.IgnoreEovercrowdedOf("example.EchoService", "Echo") = true;
-server.IgnoreEovercrowdedOf(&service, "Echo") = true;
 ```
 
 The code is generally put **after AddService, before Start() of the server**. When a setting fails(namely the method does not exist), server will fail to start and notify user to fix settings on IgnoreEovercrowdedOf.

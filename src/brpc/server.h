@@ -604,16 +604,6 @@ public:
     bool& IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name);
     bool IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) const;
 
-    bool& IgnoreEovercrowdedOf(const butil::StringPiece& full_service_name,
-                          const butil::StringPiece& method_name);
-    bool IgnoreEovercrowdedOf(const butil::StringPiece& full_service_name,
-                         const butil::StringPiece& method_name) const;
-
-    bool& IgnoreEovercrowdedOf(google::protobuf::Service* service,
-                          const butil::StringPiece& method_name);
-    bool IgnoreEovercrowdedOf(google::protobuf::Service* service,
-                         const butil::StringPiece& method_name) const;
-
     int Concurrency() const {
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
@@ -718,8 +708,6 @@ friend class Controller;
 
     AdaptiveMaxConcurrency& MaxConcurrencyOf(MethodProperty*);
     int MaxConcurrencyOf(const MethodProperty*) const;
-    bool& IgnoreEovercrowdedOf(MethodProperty*);
-    bool IgnoreEovercrowdedOf(const MethodProperty*) const;
 
     static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
                                          ConcurrencyLimiter** out);

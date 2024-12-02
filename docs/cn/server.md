@@ -1067,8 +1067,6 @@ server.IgnoreEovercrowdedOf("...") = ...可设置method级别的ignore_eovercrow
 ```c++
 ServerOptions.ignore_eovercrowded = true;                   // Set the default ignore_eovercrowded for all methods
 server.IgnoreEovercrowdedOf("example.EchoService.Echo") = true;
-server.IgnoreEovercrowdedOf("example.EchoService", "Echo") = true;
-server.IgnoreEovercrowdedOf(&service, "Echo") = true;
 ```
 
 此设置一般**发生在AddService后，server启动前**。当设置失败时（比如对应的method不存在），server会启动失败同时提示用户修正IgnoreEovercrowdedOf设置错误。

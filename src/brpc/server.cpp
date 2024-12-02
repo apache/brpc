@@ -2311,7 +2311,13 @@ int Server::MaxConcurrencyOf(google::protobuf::Service* service,
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
 }
 
-bool& Server::IgnoreEovercrowdedOf(MethodProperty* mp) {
+bool& Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) {
+    MethodProperty* mp = _method_map.seek(full_method_name);
+    if (mp == NULL) {
+        LOG(ERROR) << "Fail to find method=" << full_method_name;
+        _failed_to_set_ignore_eovercrowded = true;
+        return g_default_ignore_eovercrowded;
+    }
     if (IsRunning()) {
         LOG(WARNING) << "IgnoreEovercrowdedOf is only allowd before Server started";
         return g_default_ignore_eovercrowded;
@@ -2325,7 +2331,8 @@ bool& Server::IgnoreEovercrowdedOf(MethodProperty* mp) {
     return mp->ignore_eovercrowded;
 }
 
-bool Server::IgnoreEovercrowdedOf(const MethodProperty* mp) const {
+bool Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) const {
+    MethodProperty* mp = _method_map.seek(full_method_name);
     if (IsRunning()) {
         LOG(WARNING) << "IgnoreEovercrowdedOf is only allowd before Server started";
         return g_default_ignore_eovercrowded;
@@ -2334,49 +2341,6 @@ bool Server::IgnoreEovercrowdedOf(const MethodProperty* mp) const {
         return false;
     }
     return mp->ignore_eovercrowded;
-}
-
-bool& Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) {
-    MethodProperty* mp = _method_map.seek(full_method_name);
-    if (mp == NULL) {
-        LOG(ERROR) << "Fail to find method=" << full_method_name;
-        _failed_to_set_ignore_eovercrowded = true;
-        return g_default_ignore_eovercrowded;
-    }
-    return IgnoreEovercrowdedOf(mp);
-}
-
-bool Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) const {
-    return IgnoreEovercrowdedOf(_method_map.seek(full_method_name));
-}
-
-bool& Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_service_name,
-                              const butil::StringPiece& method_name) {
-    MethodProperty* mp = const_cast<MethodProperty*>(
-        FindMethodPropertyByFullName(full_service_name, method_name));
-    if (mp == NULL) {
-        LOG(ERROR) << "Fail to find method=" << full_service_name
-                   << '/' << method_name;
-        _failed_to_set_ignore_eovercrowded = true;
-        return g_default_ignore_eovercrowded;
-    }
-    return IgnoreEovercrowdedOf(mp);
-}
-
-bool Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_service_name,
-                             const butil::StringPiece& method_name) const {
-    return IgnoreEovercrowdedOf(FindMethodPropertyByFullName(
-                                full_service_name, method_name));
-}
-
-bool& Server::IgnoreEovercrowdedOf(google::protobuf::Service* service,
-                              const butil::StringPiece& method_name) {
-    return IgnoreEovercrowdedOf(service->GetDescriptor()->full_name(), method_name);
-}
-
-bool Server::IgnoreEovercrowdedOf(google::protobuf::Service* service,
-                             const butil::StringPiece& method_name) const {
-    return IgnoreEovercrowdedOf(service->GetDescriptor()->full_name(), method_name);
 }
 
 bool Server::AcceptRequest(Controller* cntl) const {
