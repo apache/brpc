@@ -520,7 +520,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (NULL != server->options().baidu_master_service) {
           if (socket->is_overcrowded() &&
               !server->options().ignore_eovercrowded &&
-              !server->options().baidu_master_service->IgnoreEOverCrowded()) {
+              !server->options().baidu_master_service->ignore_eovercrowded()) {
             cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                             butil::endpoint2str(socket->remote_side()).c_str());
             break;
