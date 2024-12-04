@@ -22,7 +22,7 @@
 namespace brpc {
 
 BaiduMasterService::BaiduMasterService()
-    :_status(new(std::nothrow) MethodStatus) {
+    : _status(new (std::nothrow) MethodStatus), _ignore_eovercrowded(false) {
     LOG_IF(FATAL, NULL == _status) << "Fail to new MethodStatus";
 }
 

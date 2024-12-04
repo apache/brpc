@@ -1057,6 +1057,24 @@ Protobuf arena是一种Protobuf message内存管理机制，有着提高内存�
 
 注意：从Protobuf v3.14.0开始，[默认开启arena](https://github.com/protocolbuffers/protobuf/releases/tag/v3.14.0https://github.com/protocolbuffers/protobuf/releases/tag/v3.14.0)。但是Protobuf v3.14.0之前的版本，用户需要再proto文件中加上选项：`option cc_enable_arenas = true;`，所以为了兼容性，可以统一都加上该选项。
 
+## server端忽略eovercrowded
+### server级别忽略eovercrowded
+设置ServerOptions.ignore_eovercrowded，默认值0代表不忽略
+
+### method级别忽略eovercrowded
+server.IgnoreEovercrowdedOf("...") = ...可设置method级别的ignore_eovercrowded。也可以通过设置ServerOptions.ignore_eovercrowded一次性为所有的method设置忽略eovercrowded。
+
+```c++
+ServerOptions.ignore_eovercrowded = true;                   // Set the default ignore_eovercrowded for all methods
+server.IgnoreEovercrowdedOf("example.EchoService.Echo") = true;
+```
+
+此设置一般**发生在AddService后，server启动前**。当设置失败时（比如对应的method不存在），server会启动失败同时提示用户修正IgnoreEovercrowdedOf设置错误。
+
+当ServerOptions.ignore_eovercrowded和server.IgnoreEovercrowdedOf("...")=...同时被设置时，任何一个设置为true，就表示会忽略eovercrowded。
+
+注意：没有service级别的ignore_eovercrowded。
+
 # FAQ
 
 ### Q: Fail to write into fd=1865 SocketId=8905@10.208.245.43:54742@8230: Got EOF是什么意思

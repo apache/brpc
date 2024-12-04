@@ -1051,6 +1051,26 @@ Users can set `ServerOptions.rpc_pb_message_factory = brpc::GetArenaRpcPBMessage
 
 Note: Since Protocol Buffers v3.14.0, Arenas are now unconditionally enabled. However, for versions prior to Protobuf v3.14.0, users need to add the option `option cc_enable_arenas = true;` to the proto file. so for compatibility, this option can be added uniformly.
 
+## Ignoring eovercrowded on server-side
+### Ignore eovercrowded on server-level
+
+Set ServerOptions.ignore_eovercrowded. Default value is 0 which means not ignored.
+
+### Ignore eovercrowded on method-level
+
+server.IgnoreEovercrowdedOf("...") = … sets ignore_eovercrowded of the method. Possible settings:
+
+```c++
+ServerOptions.ignore_eovercrowded = true;                   // Set the default ignore_eovercrowded for all methods
+server.IgnoreEovercrowdedOf("example.EchoService.Echo") = true;
+```
+
+The code is generally put **after AddService, before Start() of the server**. When a setting fails(namely the method does not exist), server will fail to start and notify user to fix settings on IgnoreEovercrowdedOf.
+
+When method-level and server-level ignore_eovercrowded are both set, if any one of them is set to true, eovercrowded will be ignored.
+
+NOTE: No service-level ignore_eovercrowded.
+
 # FAQ
 
 ### Q: Fail to write into fd=1865 SocketId=8905@10.208.245.43:54742@8230: Got EOF

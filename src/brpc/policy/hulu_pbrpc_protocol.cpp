@@ -422,12 +422,6 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             break;
         }
 
-        if (socket->is_overcrowded() && !server->options().ignore_eovercrowded) {
-            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
-                            butil::endpoint2str(socket->remote_side()).c_str());
-            break;
-        }
-
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);
@@ -454,6 +448,14 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             sp->service->CallMethod(sp->method, cntl.get(), &breq, &bres, NULL);
             break;
         }
+        if (socket->is_overcrowded() &&
+            !server->options().ignore_eovercrowded &&
+            !sp->ignore_eovercrowded) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            break;
+        }
+
         // Switch to service-specific error.
         non_service_error.release();
         method_status = sp->status;

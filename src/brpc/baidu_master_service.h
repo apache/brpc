@@ -45,6 +45,14 @@ public:
         return _max_concurrency;
     }
 
+    bool ignore_eovercrowded() {
+        return _ignore_eovercrowded;
+    }
+
+    void set_ignore_eovercrowded(bool ignore_eovercrowded) {
+        _ignore_eovercrowded = ignore_eovercrowded;
+    }
+
     virtual void ProcessRpcRequest(Controller* cntl,
                                    const SerializedRequest* request,
                                    SerializedResponse* response,
@@ -92,6 +100,7 @@ friend class Server;
 
     MethodStatus* _status;
     AdaptiveMaxConcurrency _max_concurrency;
+    bool _ignore_eovercrowded;
 };
 
 }

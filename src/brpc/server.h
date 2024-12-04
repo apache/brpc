@@ -417,6 +417,12 @@ public:
         const google::protobuf::MethodDescriptor* method;
         MethodStatus* status;
         AdaptiveMaxConcurrency max_concurrency;
+        // ignore_eovercrowded on method-level, it should be used with carefulness. 
+        // It might introduce inbalance between methods, 
+        // as some methods(ignore_eovercrowded=true) might never return eovercrowded 
+        // while other methods(ignore_eovercrowded=false) keep returning eovercrowded.
+        // currently only valid for baidu_master_service, baidu_rpc, http_rpc, hulu_pbrpc and sofa_pbrpc protocols 
+        bool ignore_eovercrowded;
 
         MethodProperty();
     };
@@ -595,6 +601,9 @@ public:
     int MaxConcurrencyOf(google::protobuf::Service* service,
                          const butil::StringPiece& method_name) const;
 
+    bool& IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name);
+    bool IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) const;
+
     int Concurrency() const {
         return butil::subtle::NoBarrier_Load(&_concurrency);
     };
@@ -731,6 +740,7 @@ friend class Controller;
     // number of the virtual services for mapping URL to methods.
     int _virtual_service_count;
     bool _failed_to_set_max_concurrency_of_method;
+    bool _failed_to_set_ignore_eovercrowded;
     Acceptor* _am;
     Acceptor* _internal_am;
 
