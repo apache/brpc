@@ -189,6 +189,15 @@ public:
 
     bthread_tag_t tag() const { return _tag; }
 
+    int64_t current_task_cpu_clock_ns() {
+        if (_last_cpu_clock_ns == 0) {
+            return 0;
+        }
+        int64_t total_ns = _cur_meta->stat.cpu_usage_ns;
+        total_ns += butil::cputhread_time_ns() - _last_cpu_clock_ns;
+        return total_ns;
+    }
+
 private:
 friend class TaskControl;
 
@@ -241,6 +250,8 @@ friend class TaskControl;
     // last scheduling time
     int64_t _last_run_ns;
     int64_t _cumulated_cputime_ns;
+    // last thread cpu clock
+    int64_t _last_cpu_clock_ns;
 
     size_t _nswitch;
     RemainedFn _last_context_remained;

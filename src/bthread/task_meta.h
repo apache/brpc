@@ -33,6 +33,7 @@ namespace bthread {
 struct TaskStatistics {
     int64_t cputime_ns;
     int64_t nswitch;
+    int64_t cpu_usage_ns;
 };
 
 class KeyTable;
