@@ -100,6 +100,7 @@ void SendMongoResponse::Run() {
         // users to set max_concurrency.
         Socket::WriteOptions wopt;
         wopt.ignore_eovercrowded = true;
+        wopt.keep_write_urgent = cntl.keep_write_urgent();
         if (socket->Write(&res_buf, &wopt) != 0) {
             PLOG(WARNING) << "Fail to write into " << *socket;
             return;
