@@ -326,7 +326,11 @@ $ docker run -it brpc:master /bin/bash
 
 ## GCC: 4.8-11.2
 
-c++11被默认启用，以去除去boost的依赖（比如atomic）。
+**推荐 8.2 及以上版本。**
+
+默认启用 c++11，以去除对 boost 的依赖（比如 atomic）。
+
+理论支持 c++11 的编译器都应可以，但部分编译器版本对 c++11 的支持存在问题。目前 GCC 4.8 可支持编译的最高版本为 1.5.0。
 
 GCC7中over-aligned的问题暂时被禁止。
 
@@ -342,15 +346,17 @@ GCC7中over-aligned的问题暂时被禁止。
 
 无已知问题。
 
-## protobuf: 3.0-3.25
+## protobuf: 3.0-5.29
 
-[1.8.0版本](https://github.com/apache/brpc/releases/tag/1.8.0)中[#2406](https://github.com/apache/brpc/pull/2406)和[#2493](https://github.com/apache/brpc/pull/2493)引入了部分proto3语法，所以目前bRPC不再兼容pb 2.x版本。如果你希望使用pb 2.x版本，可以使用1.8.0之前的bRPC版本。
+bRPC 中使用了 protobuf 内部 API，上游不保证相关 API 的兼容性，目前测试可以支持到 v29(5.29)，如有问题欢迎[反馈](https://github.com/apache/brpc/issues)。
+
+[1.8.0](https://github.com/apache/brpc/releases/tag/1.8.0) 中 [#2406](https://github.com/apache/brpc/pull/2406) 和 [#2493](https://github.com/apache/brpc/pull/2493)引入了部分 proto3 语法，所以目前 bRPC 不再兼容 protobuf 2.x 版本。如果你希望使用 2.x 版本，可以使用 1.8.0 之前的 bRPC 版本。
 
 pb 3.x中的Arena至今没被支持。
 
-## gflags: 2.0-2.2.1
+## gflags: 2.1-2.2.2
 
-无已知问题。
+2.1.1 中存在一处已知问题，需要[补丁](https://github.com/gflags/gflags/commit/408061b46974cc8377a8a794a048ecae359ad887)。
 
 ## openssl: 0.97-1.1
 
