@@ -72,9 +72,6 @@ static void ParseQueries(URI::QueryMap& query_map, const std::string &query) {
     }
     for (QuerySplitter sp(query.c_str()); sp; ++sp) {
         if (!sp.key().empty()) {
-            if (!query_map.initialized()) {
-                query_map.init(URI::QUERY_MAP_INITIAL_BUCKET);
-            }
             std::string key(sp.key().data(), sp.key().size());
             std::string value(sp.value().data(), sp.value().size());
             query_map[key] = value;
@@ -347,9 +344,6 @@ void URI::PrintWithoutHost(std::ostream& os) const {
 }
 
 void URI::InitializeQueryMap() const {
-    if (!_query_map.initialized()) {
-        CHECK_EQ(0, _query_map.init(QUERY_MAP_INITIAL_BUCKET));
-    }
     ParseQueries(_query_map, _query);
     _query_was_modified = false;
     _initialized_query_map = true;

@@ -54,7 +54,7 @@ struct AlignedMemory {};
 // std::aligned_storage has been deprecated in C++23,
 // because aligned_* are harmful to codebases and should not be used.
 // For details, see https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p1413r3.pdf
-#if (__cplusplus >= 201103L)
+#if __cplusplus >= 201103L
 // In most places, use the C++11 keyword "alignas", which is preferred.
 #define DECL_ALIGNED_BUFFER(buffer_name, byte_alignment, size) \
     alignas(byte_alignment) uint8_t buffer_name[size]

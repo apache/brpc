@@ -165,9 +165,8 @@ void Acceptor::StopAccept(int /*closewait_ms*/) {
 
 int Acceptor::Initialize() {
     if (_socket_map.init(INITIAL_CONNECTION_CAP) != 0) {
-        LOG(FATAL) << "Fail to initialize FlatMap, size="
+        LOG(WARNING) << "Fail to initialize FlatMap, size="
                    << INITIAL_CONNECTION_CAP;
-        return -1;
     }
     return 0;    
 }
@@ -217,10 +216,6 @@ void Acceptor::ListConnections(std::vector<SocketId>* conn_list,
     conn_list->reserve(ConnectionCount() + 10);
 
     std::unique_lock<butil::Mutex> mu(_map_mutex);
-    if (!_socket_map.initialized()) {
-        // Optional. Uninitialized FlatMap should be iteratable.
-        return;
-    }
     // Copy all the SocketId (protected by mutex) into a temporary
     // container to avoid dealing with sockets inside the mutex.
     size_t ntotal = 0;

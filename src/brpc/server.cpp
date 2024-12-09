@@ -118,8 +118,6 @@ DEFINE_bool(enable_threads_service, false, "Enable /threads");
 DECLARE_int32(usercode_backup_threads);
 DECLARE_bool(usercode_in_pthread);
 
-const int INITIAL_SERVICE_CAP = 64;
-const int INITIAL_CERT_MAP = 64;
 // NOTE: never make s_ncore extern const whose ctor seq against other
 // compilation units is undefined.
 const int s_ncore = sysconf(_SC_NPROCESSORS_ONLN);
@@ -663,22 +661,6 @@ int Server::InitializeOnce() {
 
     if (_status != UNINITIALIZED) {
         return 0;
-    }
-    if (_fullname_service_map.init(INITIAL_SERVICE_CAP) != 0) {
-        LOG(ERROR) << "Fail to init _fullname_service_map";
-        return -1;
-    }
-    if (_service_map.init(INITIAL_SERVICE_CAP) != 0) {
-        LOG(ERROR) << "Fail to init _service_map";
-        return -1;
-    }
-    if (_method_map.init(INITIAL_SERVICE_CAP * 2) != 0) {
-        LOG(ERROR) << "Fail to init _method_map";
-        return -1;
-    }
-    if (_ssl_ctx_map.init(INITIAL_CERT_MAP) != 0) {
-        LOG(ERROR) << "Fail to init _ssl_ctx_map";
-        return -1;
     }
     _status = READY;
     return 0;
@@ -2030,17 +2012,6 @@ int Server::AddCertificate(const CertInfo& cert) {
 }
 
 bool Server::AddCertMapping(CertMaps& bg, const SSLContext& ssl_ctx) {
-    if (!bg.cert_map.initialized()
-        && bg.cert_map.init(INITIAL_CERT_MAP) != 0) {
-        LOG(ERROR) << "Fail to init _cert_map";
-        return false;
-    }
-    if (!bg.wildcard_cert_map.initialized()
-        && bg.wildcard_cert_map.init(INITIAL_CERT_MAP) != 0) {
-        LOG(ERROR) << "Fail to init _wildcard_cert_map";
-        return false;
-    }
-
     for (size_t i = 0; i < ssl_ctx.filters.size(); ++i) {
         const char* hostname = ssl_ctx.filters[i].c_str();
         CertMap* cmap = NULL;
@@ -2111,8 +2082,8 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
     }
 
     SSLContextMap tmp_map;
-    if (tmp_map.init(INITIAL_CERT_MAP) != 0) {
-        LOG(ERROR) << "Fail to initialize tmp_map";
+    if (tmp_map.init(certs.size() + 1) != 0) {
+        LOG(ERROR) << "Fail to init tmp_map";
         return -1;
     }
 
@@ -2156,16 +2127,6 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
 }
 
 bool Server::ResetCertMappings(CertMaps& bg, const SSLContextMap& ctx_map) {
-    if (!bg.cert_map.initialized()
-        && bg.cert_map.init(INITIAL_CERT_MAP) != 0) {
-        LOG(ERROR) << "Fail to init _cert_map";
-        return false;
-    }
-    if (!bg.wildcard_cert_map.initialized()
-        && bg.wildcard_cert_map.init(INITIAL_CERT_MAP) != 0) {
-        LOG(ERROR) << "Fail to init _wildcard_cert_map";
-        return false;
-    }
     bg.cert_map.clear();
     bg.wildcard_cert_map.clear();
 

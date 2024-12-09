@@ -51,7 +51,6 @@ namespace brpc {
 //                                               interpretable as extension
 class URI {
 public:
-    static const size_t QUERY_MAP_INITIAL_BUCKET = 16;
     typedef butil::FlatMap<std::string, std::string> QueryMap;
     typedef QueryMap::const_iterator QueryIterator;
 
