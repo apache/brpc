@@ -658,7 +658,7 @@ void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
 }
 
 #if BRPC_DEBUG_LOCK
-#define MUTEX_RESET_OWNER_COMMON(owner)                                                     \
+#define MUTEX_RESET_OWNER_COMMON(owner)                                              \
     ((butil::atomic<bool>*)&(owner).hold)                                            \
         ->store(false, butil::memory_order_relaxed)
 
@@ -678,9 +678,9 @@ void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
                    << std::endl << trace.ToString();                                 \
     }
 #else
-#define MUTEX_RESET_OWNER_COMMON(owner) ((void)0)
-#define PTHREAD_MUTEX_SET_OWNER(owner) ((void)0)
-#define PTHREAD_MUTEX_CHECK_OWNER(owner) ((void)0)
+#define MUTEX_RESET_OWNER_COMMON(owner) ((void)owner)
+#define PTHREAD_MUTEX_SET_OWNER(owner) ((void)owner)
+#define PTHREAD_MUTEX_CHECK_OWNER(owner) ((void)owner)
 #endif // BRPC_DEBUG_LOCK
 
 namespace internal {
