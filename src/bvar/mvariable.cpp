@@ -261,13 +261,13 @@ size_t MVariable::dump_exposed(Dumper* dumper, const DumpOptions* options) {
         if (entry) {
             n += entry->var->dump(dumper, &opt);
         }
-	if (n > static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number)) {
+        if (n > static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number)) {
             LOG(WARNING) << "truncated because of \
-		            exceed max dump multi dimension label number["
-			 << FLAGS_bvar_max_dump_multi_dimension_metric_number
-			 << "]";
+                            exceed max dump multi dimension label number["
+                         << FLAGS_bvar_max_dump_multi_dimension_metric_number
+                         << "]";
             break;
-	}
+        }
     }
     return n;
 }
