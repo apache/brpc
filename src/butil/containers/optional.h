@@ -27,6 +27,9 @@
 // After C++17, `optional` is an alias for `std::optional`.
 
 #if __cplusplus >= 201703L
+
+#include <optional>
+
 namespace butil {
 using std::in_place_t;
 using std::in_place;
