@@ -20,14 +20,23 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
-#include "butil/logging.h"
 #include "butil/gperftools_profiler.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
 #include "bthread/task_meta.h"
 
+int main(int argc, char* argv[]) {
+    testing::InitGoogleTest(&argc, argv);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    int rc = RUN_ALL_TESTS();
+    return rc;
+}
+
 namespace bthread {
-    extern __thread bthread::LocalStorage tls_bls;
+extern __thread bthread::LocalStorage tls_bls;
+#ifdef BRPC_BTHREAD_TRACER
+extern std::string stack_trace(bthread_t tid);
+#endif // BRPC_BTHREAD_TRACER
 }
 
 namespace {
@@ -607,5 +616,33 @@ TEST_F(BthreadTest, yield_single_thread) {
     ASSERT_EQ(0, bthread_start_background(&tid, NULL, yield_thread, NULL));
     ASSERT_EQ(0, bthread_join(tid, NULL));
 }
+
+#ifdef BRPC_BTHREAD_TRACER
+TEST_F(BthreadTest, trace) {
+    stop = false;
+    bthread_t th;
+    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, spin_and_log, (void*)1));
+    usleep(100 * 1000);
+    std::string st = bthread::stack_trace(th);
+    LOG(INFO) << "spin_and_log stack trace:\n" << st;
+    ASSERT_NE(std::string::npos, st.find("spin_and_log"));
+    stop = true;
+    ASSERT_EQ(0, bthread_join(th, NULL));
+
+    stop = false;
+    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, repeated_sleep, (void*)1));
+    usleep(100 * 1000);
+    st = bthread::stack_trace(th);
+    LOG(INFO) << "repeated_sleep stack trace:\n" << st;
+    ASSERT_NE(std::string::npos, st.find("repeated_sleep"));
+    stop = true;
+    ASSERT_EQ(0, bthread_join(th, NULL));
+
+    st = bthread::stack_trace(th);
+    LOG(INFO) << "ended bthread stack trace:\n" << st;
+    ASSERT_NE(std::string::npos, st.find("not exist now"));
+
+}
+#endif // BRPC_BTHREAD_TRACER
 
 } // namespace

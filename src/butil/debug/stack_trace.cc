@@ -29,17 +29,18 @@ const void *const *StackTrace::Addresses(size_t* count) const {
 }
 
 size_t StackTrace::CopyAddressTo(void** buffer, size_t max_nframes) const {
-    size_t nframes = std::min(count_, max_nframes);
-    memcpy(buffer, trace_, nframes * sizeof(void*));
-    return nframes;
+  size_t nframes = std::min(count_, max_nframes);
+  memcpy(buffer, trace_, nframes * sizeof(void*));
+  return nframes;
 }
 
 std::string StackTrace::ToString() const {
-  std::stringstream stream;
+  std::string str;
+  str.reserve(1024);
 #if !defined(__UCLIBC__)
-  OutputToStream(&stream);
+  OutputToString(str);
 #endif
-  return stream.str();
+  return str;
 }
 
 }  // namespace debug

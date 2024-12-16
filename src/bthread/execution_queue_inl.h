@@ -38,17 +38,17 @@ struct ExecutionQueueId {
     uint64_t value;
 };
 
-enum TaskStatus {
-    UNEXECUTED = 0,
-    EXECUTING = 1,
-    EXECUTED = 2
-};
-
 struct TaskNode;
 class ExecutionQueueBase;
 typedef void (*clear_task_mem)(TaskNode*);
 
 struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
+    enum TaskStatus {
+        UNEXECUTED = 0,
+        EXECUTING = 1,
+        EXECUTED = 2
+    };
+
     TaskNode()
         : version(0)
         , status(UNEXECUTED)
