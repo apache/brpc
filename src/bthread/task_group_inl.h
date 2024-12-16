@@ -87,7 +87,8 @@ inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
 
 inline void TaskGroup::push_rq(bthread_t tid) {
     // CHECK(address_meta(tid)->bound_task_group == nullptr);
-    while (!_rq.push(tid)) {
+    // If _rq is full, throw this task to _remote_rq since it is never full.
+    while (!_rq.push(tid) && !_remote_rq.push(tid)) {
         // Created too many bthreads: a promising approach is to insert the
         // task into another TaskGroup, but we don't use it because:
         // * There're already many bthreads to run, inserting the bthread
