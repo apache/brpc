@@ -28,11 +28,26 @@
 #include "bthread/errno.h"
 
 #if defined(__cplusplus)
-#  include <iostream>
-#  include "bthread/mutex.h"        // use bthread_mutex_t in the RAII way
-#endif
+#include <iostream>
+#include "bthread/mutex.h"        // use bthread_mutex_t in the RAII way
+#endif // __cplusplus
 
 #include "bthread/id.h"
+
+#if defined(__cplusplus) && defined(BRPC_BTHREAD_TRACER)
+#include "butil/resource_pool.h"
+#include "bthread/task_meta.h"
+namespace bthread {
+// Assign a TaskMeta to the pthread and set the state to Running,
+// so that `stack_trace()' can trace the call stack of the pthread.
+bthread_t init_for_pthread_stack_trace();
+
+// Trace the call stack of the bthread, or pthread which has been
+// initialized by `init_for_pthread_stack_trace()'.
+void stack_trace(std::ostream& os, bthread_t tid);
+std::string stack_trace(bthread_t tid);
+} // namespace bthread
+#endif // __cplusplus && BRPC_BTHREAD_TRACER
 
 __BEGIN_DECLS
 
