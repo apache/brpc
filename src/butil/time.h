@@ -303,6 +303,14 @@ inline int64_t cpuwide_time_ns() {
 #endif // defined(BAIDU_INTERNAL)
 }
 
+// Get cpu clock time of the current thread in nanoseconds without the time spent in blocking I/O operations.
+// Cost ~200ns
+inline int64_t cputhread_time_ns() {
+    timespec now;
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
+    return now.tv_sec * 1000000000L + now.tv_nsec;
+}
+
 inline int64_t cpuwide_time_us() {
     return cpuwide_time_ns() / 1000L;
 }

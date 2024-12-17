@@ -554,4 +554,12 @@ bthread_tag_t bthread_self_tag(void) {
                                               : BTHREAD_TAG_DEFAULT;
 }
 
+uint64_t bthread_cpu_clock_ns(void) {
+     bthread::TaskGroup* g = bthread::tls_task_group;
+    if (g != NULL && !g->is_current_main_task()) {
+        return g->current_task_cpu_clock_ns();
+    }
+    return 0;
+}
+
 }  // extern "C"
