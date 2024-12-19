@@ -23,7 +23,7 @@
 #include "brpc/builtin/bthreads_service.h"
 
 namespace bthread {
-void print_task(std::ostream& os, bthread_t tid);
+extern void print_task(std::ostream& os, bthread_t tid);
 }
 
 

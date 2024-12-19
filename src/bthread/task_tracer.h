@@ -15,16 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_BTHREAD_TRACER_H
-#define BRPC_BTHREAD_TRACER_H
+#ifndef BTHREAD_TASK_TRACER_H
+#define BTHREAD_TASK_TRACER_H
 
 #ifdef BRPC_BTHREAD_TRACER
 
 #include <signal.h>
+#include <semaphore.h>
 #include <vector>
+#include <algorithm>
 #include <libunwind.h>
 #include "butil/strings/safe_sprintf.h"
 #include "butil/synchronization/condition_variable.h"
+#include "butil/shared_object.h"
+#include "butil/fd_utility.h"
 #include "bthread/task_meta.h"
 #include "bthread/mutex.h"
 
@@ -34,14 +38,11 @@ namespace bthread {
 class TaskTracer {
 public:
     // Returns 0 on success, -1 otherwise.
-    int Init();
+    bool Init();
     // Set the status to `s'.
     void set_status(TaskStatus s, TaskMeta* meta);
     static void set_running_status(pid_t worker_tid, TaskMeta* meta);
     static bool set_end_status_unsafe(TaskMeta* m);
-
-    // Async signal safe usleep.
-    static void SignalSafeUsleep(unsigned int microseconds);
 
     // Trace the bthread of `tid'.
     std::string Trace(bthread_t tid);
@@ -60,47 +61,66 @@ private:
         int _errno;
     };
 
-    enum SignalTraceStatus {
-        SIGNAL_TRACE_STATUS_UNKNOWN = 0,
-        SIGNAL_TRACE_STATUS_START,
-        SIGNAL_TRACE_STATUS_TRACING,
-    };
-
     struct Result {
         template<typename... Args>
         static Result MakeErrorResult(const char* fmt, Args... args) {
             Result result{};
-            result.error = true;
-            butil::strings::SafeSPrintf(result.err_msg, fmt, args...);
+            result.SetError(fmt, std::forward<Args>(args)...);
             return result;
         }
 
+        template<typename... Args>
+        void SetError(const char* fmt, Args... args) {
+            err_count = std::max(err_count + 1, MAX_ERROR_NUM);
+            butil::strings::SafeSPrintf(err_msg[err_count - 1], fmt, args...);
+        }
+
+        std::string OutputToString();
+        void OutputToStream(std::ostream& os);
+
+        bool OK() const { return err_count == 0; }
+
         static const size_t MAX_TRACE_NUM = 64;
+        static const size_t MAX_ERROR_NUM = 2;
+
         unw_word_t ips[MAX_TRACE_NUM];
+        char mangled[MAX_TRACE_NUM][256]{};
         size_t frame_count{0};
-        bool error{false};
-        union {
-            char mangled[MAX_TRACE_NUM][256]{};
-            char err_msg[256];
-        };
+        char err_msg[MAX_ERROR_NUM][64]{};
+        size_t err_count{0};
 
         bool fast_unwind{false};
     };
 
-    Result TraceImpl(bthread_t tid);
+    // For signal trace.
+    struct SignalSync : public butil::SharedObject {
+        ~SignalSync() override;
+        bool Init();
+
+        unw_context_t* context{NULL};
+        sem_t sem{};
+        int pipe_fds[2]{};
+
+    private:
+        bool _pipe_init{false};
+        bool _sem_init{false};
+    };
 
     static TaskStatus WaitForJumping(TaskMeta* m);
-
-    Result ContextTrace(bthread_fcontext_t fcontext);
-
-    // Register signal handler for signal trace.
-    static int RegisterSignalHandler();
-    static void SignalHandler(int sig, siginfo_t* info, void* context);
-    void SignalTraceHandler(unw_context_t* context);
-    Result SignalTrace(pid_t worker_tid);
+    Result TraceImpl(bthread_t tid);
 
     unw_cursor_t MakeCursor(bthread_fcontext_t fcontext);
-    Result TraceCore(unw_cursor_t& cursor);
+    Result ContextTrace(bthread_fcontext_t fcontext);
+
+    static bool RegisterSignalHandler();
+    static void SignalHandler(int sig, siginfo_t* info, void* context);
+    static bool WaitForSignalHandler(butil::intrusive_ptr<SignalSync> signal_sync,
+                                     const timespec* abs_timeout, Result& result);
+    static void WakeupSignalHandler(
+        butil::intrusive_ptr<SignalSync> signal_sync, Result& result);
+    Result SignalTrace(pid_t worker_tid);
+
+    static Result TraceCore(unw_cursor_t& cursor);
 
     // Make sure only one bthread is traced at a time.
     bthread::Mutex _trace_request_mutex;
@@ -112,17 +132,8 @@ private:
 
     // For context trace.
     unw_context_t _context{};
-    // For signal trace.
-    unw_context_t* _signal_handler_context{NULL};
-    butil::atomic<SignalTraceStatus> _signal_handler_flag{SIGNAL_TRACE_STATUS_UNKNOWN};
-
-    // Protect `_worker_tids'.
-    butil::Mutex _worker_mutex;
-    std::vector<pid_t> _worker_tids;
 
     bvar::LatencyRecorder _trace_time{"bthread_trace_time"};
-    bvar::LatencyRecorder _unwind_time{"bthread_unwind_time"};
-    bvar::LatencyRecorder _signal_handler_time{"bthread_signal_handler_time"};
 };
 
 } // namespace bthread

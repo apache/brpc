@@ -660,8 +660,13 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
                 CHECK(cur_meta->stack == g->_main_stack);
             }
 #endif
+        } /* else because of ending_sched(including pthread_task->pthread_task). */
+#ifdef BRPC_BTHREAD_TRACER
+        else {
+            // _cur_meta: TASK_STATUS_FIRST_READY -> TASK_STATUS_RUNNING.
+            TaskTracer::set_running_status(g->tid(), g->_cur_meta);
         }
-        // else because of ending_sched(including pthread_task->pthread_task)
+#endif // BRPC_BTHREAD_TRACER
     } else {
         LOG(FATAL) << "bthread=" << g->current_tid() << " sched_to itself!";
     }
@@ -1013,13 +1018,15 @@ void print_task(std::ostream& os, bthread_t tid) {
            << "}\nhas_tls=" << has_tls
            << "\nuptime_ns=" << butil::cpuwide_time_ns() - cpuwide_start_ns
            << "\ncputime_ns=" << stat.cputime_ns
-            << "\nnswitch=" << stat.nswitch
+           << "\nnswitch=" << stat.nswitch
 #ifdef BRPC_BTHREAD_TRACER
            << "\nstatus=" << status
            << "\ntraced=" << traced
            << "\nworker_tid=" << worker_tid;
-#endif // BRPC_BTHREAD_TRACER
+#else
            ;
+           (void)status;(void)traced;(void)worker_tid;
+#endif // BRPC_BTHREAD_TRACER
     }
 }
 

@@ -216,7 +216,7 @@ int TaskControl::init(int concurrency) {
     }
 
 #ifdef BRPC_BTHREAD_TRACER
-    if (_task_tracer.Init() != 0) {
+    if (!_task_tracer.Init()) {
         LOG(ERROR) << "Fail to init TaskTracer";
         return -1;
     }

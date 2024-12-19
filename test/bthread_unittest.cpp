@@ -34,6 +34,7 @@ int main(int argc, char* argv[]) {
 
 namespace bthread {
 extern __thread bthread::LocalStorage tls_bls;
+DECLARE_bool(enable_fast_unwind);
 #ifdef BRPC_BTHREAD_TRACER
 extern std::string stack_trace(bthread_t tid);
 #endif // BRPC_BTHREAD_TRACER
@@ -622,8 +623,14 @@ TEST_F(BthreadTest, trace) {
     stop = false;
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, spin_and_log, (void*)1));
-    usleep(100 * 1000);
+    usleep(10 * 1000);
+    bthread::FLAGS_enable_fast_unwind = false;
     std::string st = bthread::stack_trace(th);
+    LOG(INFO) << "fast_unwind spin_and_log stack trace:\n" << st;
+    ASSERT_NE(std::string::npos, st.find("spin_and_log"));
+
+    bthread::FLAGS_enable_fast_unwind = true;
+    st = bthread::stack_trace(th);
     LOG(INFO) << "spin_and_log stack trace:\n" << st;
     ASSERT_NE(std::string::npos, st.find("spin_and_log"));
     stop = true;
@@ -632,6 +639,12 @@ TEST_F(BthreadTest, trace) {
     stop = false;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, repeated_sleep, (void*)1));
     usleep(100 * 1000);
+    bthread::FLAGS_enable_fast_unwind = false;
+    st = bthread::stack_trace(th);
+    LOG(INFO) << "repeated_sleep stack trace:\n" << st;
+    ASSERT_NE(std::string::npos, st.find("repeated_sleep"));
+
+    bthread::FLAGS_enable_fast_unwind = true;
     st = bthread::stack_trace(th);
     LOG(INFO) << "repeated_sleep stack trace:\n" << st;
     ASSERT_NE(std::string::npos, st.find("repeated_sleep"));
