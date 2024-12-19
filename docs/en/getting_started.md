@@ -377,13 +377,19 @@ When you remove tcmalloc, not only remove the linkage with tcmalloc but also the
 
 ## glog: 3.3+
 
-brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh or add `-DWITH_GLOG=ON` to cmake.
+brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add `--with-glog` to config_brpc.sh or add `-DWITH_GLOG=ON` to cmake.
 
 ## valgrind: 3.8+
 
 brpc detects valgrind automatically (and registers stacks of bthread). Older valgrind(say 3.2) is not supported.
 
 ## thrift: 0.9.3-0.11.0
+
+## libunwind: 1.3-1.8.1
+
+brpc does **not** link [libunwind](https://github.com/libunwind/libunwind) by default. Users link libunwind on-demand by adding `--with-glog` to config_brpc.sh or adding `-DWITH_GLOG=ON` to cmake.
+
+It is recommended to use the latest possible version of libunwind.
 
 no known issues.
 

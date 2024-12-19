@@ -19,9 +19,11 @@
 
 // Date: Tue Jul 10 17:40:58 CST 2012
 
+#include <sys/syscall.h>
 #include <gflags/gflags.h>
 #include "butil/macros.h"                       // BAIDU_CASSERT
 #include "butil/logging.h"
+#include "butil/thread_local.h"
 #include "bthread/task_group.h"                // TaskGroup
 #include "bthread/task_control.h"              // TaskControl
 #include "bthread/timer_thread.h"
@@ -114,6 +116,79 @@ inline TaskControl* get_or_new_task_control() {
     p->store(c, butil::memory_order_release);
     return c;
 }
+
+#ifdef BRPC_BTHREAD_TRACER
+BAIDU_THREAD_LOCAL TaskMeta* pthread_fake_meta = NULL;
+
+bthread_t init_for_pthread_stack_trace() {
+    if (NULL != pthread_fake_meta) {
+        return pthread_fake_meta->tid;
+    }
+
+    TaskControl* c = get_task_control();
+    if (NULL == c) {
+        LOG(ERROR) << "TaskControl has not been created, "
+                      "please use bthread_start_xxx before call this function";
+        return INVALID_BTHREAD;
+    }
+
+    butil::ResourceId<TaskMeta> slot;
+    pthread_fake_meta = butil::get_resource(&slot);
+    if (BAIDU_UNLIKELY(NULL == pthread_fake_meta)) {
+        LOG(ERROR) << "Fail to get TaskMeta";
+        return INVALID_BTHREAD;
+    }
+
+    pthread_fake_meta->attr = BTHREAD_ATTR_PTHREAD;
+    pthread_fake_meta->tid = make_tid(*pthread_fake_meta->version_butex, slot);
+    // Make TaskTracer use signal trace mode for pthread.
+    c->_task_tracer.set_running_status(syscall(SYS_gettid), pthread_fake_meta);
+
+    // Release the TaskMeta at exit of pthread.
+    butil::thread_atexit([]() {
+        // Similar to TaskGroup::task_runner.
+        bool tracing;
+        {
+            BAIDU_SCOPED_LOCK(pthread_fake_meta->version_lock);
+            tracing = TaskTracer::set_end_status_unsafe(pthread_fake_meta);
+            // If resulting version is 0,
+            // change it to 1 to make bthread_t never be 0.
+            if (0 == ++*pthread_fake_meta->version_butex) {
+                ++*pthread_fake_meta->version_butex;
+            }
+        }
+
+        if (tracing) {
+            // Wait for tracing completion.
+            get_task_control()->_task_tracer.WaitForTracing(pthread_fake_meta);
+        }
+        get_task_control()->_task_tracer.set_status(
+            TASK_STATUS_UNKNOWN, pthread_fake_meta);
+
+        butil::return_resource(get_slot(pthread_fake_meta->tid));
+        pthread_fake_meta = NULL;
+    });
+
+    return pthread_fake_meta->tid;
+}
+
+void stack_trace(std::ostream& os, bthread_t tid) {
+    TaskControl* c = get_task_control();
+    if (NULL == c) {
+        os << "TaskControl has not been created";
+        return;
+    }
+    c->stack_trace(os, tid);
+}
+
+std::string stack_trace(bthread_t tid) {
+    TaskControl* c = get_task_control();
+    if (NULL == c) {
+        return "TaskControl has not been created";
+    }
+    return c->stack_trace(tid);
+}
+#endif // BRPC_BTHREAD_TRACER
 
 static int add_workers_for_each_tag(int num) {
     int added = 0;

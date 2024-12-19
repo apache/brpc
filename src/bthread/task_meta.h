@@ -27,6 +27,7 @@
 #include "butil/atomicops.h"          // butil::atomic
 #include "bthread/types.h"           // bthread_attr_t
 #include "bthread/stack.h"           // ContextualStack
+#include "bthread/timer_thread.h"
 
 namespace bthread {
 
@@ -48,59 +49,75 @@ struct LocalStorage {
 
 const static LocalStorage LOCAL_STORAGE_INIT = BTHREAD_LOCAL_STORAGE_INITIALIZER;
 
+enum TaskStatus {
+    TASK_STATUS_UNKNOWN,
+    TASK_STATUS_CREATED,
+    TASK_STATUS_FIRST_READY,
+    TASK_STATUS_READY,
+    TASK_STATUS_JUMPING,
+    TASK_STATUS_RUNNING,
+    TASK_STATUS_SUSPENDED,
+    TASK_STATUS_END,
+};
+
 struct TaskMeta {
     // [Not Reset]
-    butil::atomic<ButexWaiter*> current_waiter;
-    uint64_t current_sleep;
+    butil::atomic<ButexWaiter*> current_waiter{NULL};
+    uint64_t current_sleep{TimerThread::INVALID_TASK_ID};
 
     // A flag to mark if the Timer scheduling failed.
-    bool sleep_failed;
+    bool sleep_failed{false};
 
     // A builtin flag to mark if the thread is stopping.
-    bool stop;
+    bool stop{false};
 
     // The thread is interrupted and should wake up from some blocking ops.
-    bool interrupted;
+    bool interrupted{false};
 
     // Scheduling of the thread can be delayed.
-    bool about_to_quit;
+    bool about_to_quit{false};
     
     // [Not Reset] guarantee visibility of version_butex.
-    pthread_spinlock_t version_lock;
+    pthread_spinlock_t version_lock{};
     
     // [Not Reset] only modified by one bthread at any time, no need to be atomic
-    uint32_t* version_butex;
+    uint32_t* version_butex{NULL};
 
     // The identifier. It does not have to be here, however many code is
     // simplified if they can get tid from TaskMeta.
-    bthread_t tid;
+    bthread_t tid{INVALID_BTHREAD};
 
     // User function and argument
-    void* (*fn)(void*);
-    void* arg;
+    void* (*fn)(void*){NULL};
+    void* arg{NULL};
 
     // Stack of this task.
-    ContextualStack* stack;
+    ContextualStack* stack{NULL};
 
     // Attributes creating this task
-    bthread_attr_t attr;
+    bthread_attr_t attr{BTHREAD_ATTR_NORMAL};
     
     // Statistics
-    int64_t cpuwide_start_ns;
-    TaskStatistics stat;
+    int64_t cpuwide_start_ns{0};
+    TaskStatistics stat{};
 
     // bthread local storage, sync with tls_bls (defined in task_group.cpp)
     // when the bthread is created or destroyed.
     // DO NOT use this field directly, use tls_bls instead.
-    LocalStorage local_storage;
+    LocalStorage local_storage{};
+
+    // Only used when TaskTracer is enabled.
+    // Bthread status.
+    TaskStatus status{TASK_STATUS_UNKNOWN};
+    // Whether bthread is traced？
+    bool traced{false};
+    // Worker thread id.
+    pid_t worker_tid{-1};
 
 public:
     // Only initialize [Not Reset] fields, other fields will be reset in
     // bthread_start* functions
-    TaskMeta()
-        : current_waiter(NULL)
-        , current_sleep(0)
-        , stack(NULL) {
+    TaskMeta() {
         pthread_spin_init(&version_lock, 0);
         version_butex = butex_create_checked<uint32_t>();
         *version_butex = 1;

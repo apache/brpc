@@ -837,6 +837,17 @@ void* dummy_bthread(void*) {
     return NULL;
 }
 
+
+#ifdef BRPC_BTHREAD_TRACER
+bool g_bthread_trace_stop = false;
+void* bthread_trace(void*) {
+    while (!g_bthread_trace_stop) {
+        bthread_usleep(1000 * 100);
+    }
+    return NULL;
+}
+#endif // BRPC_BTHREAD_TRACER
+
 TEST_F(BuiltinServiceTest, bthreads) {
     brpc::BthreadsService service;
     brpc::BthreadsRequest req;
@@ -867,7 +878,25 @@ TEST_F(BuiltinServiceTest, bthreads) {
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "stop=0");
-    }    
+    }
+
+#ifdef BRPC_BTHREAD_TRACER
+    {
+        bthread_t th;
+        EXPECT_EQ(0, bthread_start_background(&th, NULL, bthread_trace, NULL));
+        ClosureChecker done;
+        brpc::Controller cntl;
+        std::string id_string;
+        butil::string_printf(&id_string, "%llu?st=1", (unsigned long long)th);
+        cntl.http_request().uri().SetHttpURL("/bthreads/" + id_string);
+        cntl.http_request()._unresolved_path = id_string;
+        service.default_method(&cntl, &req, &res, &done);
+        g_bthread_trace_stop = true;
+        EXPECT_FALSE(cntl.Failed());
+        CheckContent(cntl, "stop=0");
+        CheckContent(cntl, "bthread_trace");
+    }
+#endif // BRPC_BTHREAD_TRACER
 }
 
 TEST_F(BuiltinServiceTest, sockets) {

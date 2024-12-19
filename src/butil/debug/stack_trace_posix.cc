@@ -429,6 +429,23 @@ class StreamBacktraceOutputHandler : public BacktraceOutputHandler {
   DISALLOW_COPY_AND_ASSIGN(StreamBacktraceOutputHandler);
 };
 
+class StringBacktraceOutputHandler : public BacktraceOutputHandler {
+public:
+    explicit StringBacktraceOutputHandler(std::string& str) : _str(str) {}
+
+    DISALLOW_COPY_AND_ASSIGN(StringBacktraceOutputHandler);
+
+    void HandleOutput(const char* output) OVERRIDE {
+        if (NULL == output) {
+            return;
+        }
+        _str.append(output);
+    }
+
+private:
+    std::string& _str;
+};
+
 void WarmUpBacktrace() {
   // Warm up stack trace infrastructure. It turns out that on the first
   // call glibc initializes some internal data structures using pthread_once,
@@ -800,6 +817,11 @@ void StackTrace::Print() const {
 void StackTrace::OutputToStream(std::ostream* os) const {
   StreamBacktraceOutputHandler handler(os);
   ProcessBacktrace(trace_, count_, &handler);
+}
+
+void StackTrace::OutputToString(std::string& str) const {
+    StringBacktraceOutputHandler handler(str);
+    ProcessBacktrace(trace_, count_, &handler);
 }
 #endif
 
