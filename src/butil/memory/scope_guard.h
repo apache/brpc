@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_SCOPED_GUARD_H
-#define BRPC_SCOPED_GUARD_H
+#ifndef BUTIL_SCOPED_GUARD_H
+#define BUTIL_SCOPED_GUARD_H
 
 #include "butil/type_traits.h"
 #include "butil/macros.h"
@@ -104,4 +104,4 @@ operator+(ScopeExitHelper, Callback&& callback) {
   auto BRPC_ANONYMOUS_VARIABLE(SCOPE_EXIT) =                \
       ::butil::internal::ScopeExitHelper() + [&]() noexcept
 
-#endif // BRPC_SCOPED_GUARD_H
+#endif // BUTIL_SCOPED_GUARD_H

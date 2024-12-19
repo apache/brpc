@@ -15,10 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
-#include <unistd.h>                    // write, _exit
-#include <gflags/gflags.h>
-#include "butil/macros.h"
 #include "brpc/reloadable_flags.h"
 
 namespace brpc {
@@ -62,37 +58,25 @@ bool NonNegativeInteger(const char*, int64_t val) {
     return val >= 0;
 }
 
-template <typename T>
-static bool RegisterFlagValidatorOrDieImpl(
-    const T* flag, bool (*validate_fn)(const char*, T val)) {
-    if (GFLAGS_NS::RegisterFlagValidator(flag, validate_fn)) {
-        return true;
-    }
-    // Error printed by gflags does not have newline. Add one to it.
-    char newline = '\n';
-    butil::ignore_result(write(2, &newline, 1));
-    _exit(1);
-}
-
 bool RegisterFlagValidatorOrDie(const bool* flag,
                                 bool (*validate_fn)(const char*, bool)) {
-    return RegisterFlagValidatorOrDieImpl(flag, validate_fn);
+    return butil::RegisterFlagValidatorOrDieImpl(flag, validate_fn);
 }
 bool RegisterFlagValidatorOrDie(const int32_t* flag,
                                 bool (*validate_fn)(const char*, int32_t)) {
-    return RegisterFlagValidatorOrDieImpl(flag, validate_fn);
+    return butil::RegisterFlagValidatorOrDieImpl(flag, validate_fn);
 }
 bool RegisterFlagValidatorOrDie(const int64_t* flag,
                                 bool (*validate_fn)(const char*, int64_t)) {
-    return RegisterFlagValidatorOrDieImpl(flag, validate_fn);
+    return butil::RegisterFlagValidatorOrDieImpl(flag, validate_fn);
 }
 bool RegisterFlagValidatorOrDie(const uint64_t* flag,
                                 bool (*validate_fn)(const char*, uint64_t)) {
-    return RegisterFlagValidatorOrDieImpl(flag, validate_fn);
+    return butil::RegisterFlagValidatorOrDieImpl(flag, validate_fn);
 }
 bool RegisterFlagValidatorOrDie(const double* flag,
                                 bool (*validate_fn)(const char*, double)) {
-    return RegisterFlagValidatorOrDieImpl(flag, validate_fn);
+    return butil::RegisterFlagValidatorOrDieImpl(flag, validate_fn);
 }
 
 } // namespace brpc
