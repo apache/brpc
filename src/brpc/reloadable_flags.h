@@ -21,6 +21,8 @@
 
 #include "butil/reloadable_flags.h"
 
+#define BRPC_VALIDATE_GFLAG(flag, validate_fn) BUTIL_VALIDATE_GFLAG(flag, validate_fn)
+
 namespace brpc {
 
 extern bool PassValidate(const char*, bool);

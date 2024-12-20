@@ -31,7 +31,7 @@ namespace bthread {
 
 DEFINE_bool(enable_fast_unwind, true, "Whether to enable fast unwind");
 DEFINE_uint32(signal_trace_timeout_ms, 50, "Timeout for signal trace in ms");
-BRPC_VALIDATE_GFLAG(signal_trace_timeout_ms, butil::PositiveInteger<uint32_t>);
+BUTIL_VALIDATE_GFLAG(signal_trace_timeout_ms, butil::PositiveInteger<uint32_t>);
 
 extern BAIDU_THREAD_LOCAL TaskMeta* pthread_fake_meta;
 

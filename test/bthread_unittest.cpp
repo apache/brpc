@@ -623,7 +623,7 @@ TEST_F(BthreadTest, trace) {
     stop = false;
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, spin_and_log, (void*)1));
-    usleep(10 * 1000);
+    usleep(100 * 1000);
     bthread::FLAGS_enable_fast_unwind = false;
     std::string st = bthread::stack_trace(th);
     LOG(INFO) << "fast_unwind spin_and_log stack trace:\n" << st;
@@ -641,7 +641,7 @@ TEST_F(BthreadTest, trace) {
     usleep(100 * 1000);
     bthread::FLAGS_enable_fast_unwind = false;
     st = bthread::stack_trace(th);
-    LOG(INFO) << "repeated_sleep stack trace:\n" << st;
+    LOG(INFO) << "fast_unwind repeated_sleep stack trace:\n" << st;
     ASSERT_NE(std::string::npos, st.find("repeated_sleep"));
 
     bthread::FLAGS_enable_fast_unwind = true;

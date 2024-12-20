@@ -35,8 +35,6 @@
 #include "bthread/id.h"
 
 #if defined(__cplusplus) && defined(BRPC_BTHREAD_TRACER)
-#include "butil/resource_pool.h"
-#include "bthread/task_meta.h"
 namespace bthread {
 // Assign a TaskMeta to the pthread and set the state to Running,
 // so that `stack_trace()' can trace the call stack of the pthread.
