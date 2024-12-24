@@ -57,6 +57,11 @@ const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
     ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
                                     pass_bool);
 
+DEFINE_bool(bthread_enable_cpu_clock_stat, false,
+            "Enable CPU clock statistics for bthread");
+const bool ALLOW_UNUSED dummy_bthread_enable_cpu_clock_stat =  ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_bthread_enable_cpu_clock_stat,
+                                    pass_bool);
+
 BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
@@ -70,7 +75,7 @@ extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
 // overhead of creation keytable, may be removed later.
 BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 
-const TaskStatistics EMPTY_STAT = { 0, 0 };
+const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
 const size_t OFFSET_TABLE[] = {
 #include "bthread/offset_inl.list"
@@ -255,6 +260,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
     _main_tid = m->tid;
     _main_stack = stk;
     _last_run_ns = butil::cpuwide_time_ns();
+    _last_cpu_clock_ns = 0;
     return 0;
 }
 
@@ -602,6 +608,17 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     const int64_t elp_ns = now - g->_last_run_ns;
     g->_last_run_ns = now;
     cur_meta->stat.cputime_ns += elp_ns;
+
+    if (FLAGS_bthread_enable_cpu_clock_stat) {
+        const int64_t cpu_thread_time = butil::cputhread_time_ns();
+        if (g->_last_cpu_clock_ns != 0) {
+            cur_meta->stat.cpu_usage_ns += cpu_thread_time - g->_last_cpu_clock_ns;
+        }
+        g->_last_cpu_clock_ns = cpu_thread_time;
+    } else {
+        g->_last_cpu_clock_ns = 0;
+    }
+    
     if (cur_meta->tid != g->main_tid()) {
         g->_cumulated_cputime_ns += elp_ns;
     }
