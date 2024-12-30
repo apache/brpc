@@ -112,7 +112,7 @@ protected:
     }
     
     // Only callable by subclasses and butil::intrusive_ptr
-    virtual ~CallMapper() {}
+    ~CallMapper() override = default;
 };
 
 // Clone req_base typed `Req'.
@@ -140,12 +140,11 @@ public:
         FAIL_ALL
     };
 
-    ResponseMerger() { }
     virtual Result Merge(google::protobuf::Message* response,
                          const google::protobuf::Message* sub_response) = 0;
 protected:
     // Only callable by subclasses and butil::intrusive_ptr
-    virtual ~ResponseMerger() { }
+    ~ResponseMerger() override = default;
 };
 
 struct ParallelChannelOptions {
@@ -156,7 +155,7 @@ struct ParallelChannelOptions {
     // Overridable by Controller.set_timeout_ms().
     // Default: 500 (milliseconds)
     // Maximum: 0x7fffffff (roughly 30 days)
-    int32_t timeout_ms;
+    int32_t timeout_ms{500};
 
     // The RPC is considered to be successful if number of failed sub RPC
     // does not reach this limit. Even if the RPC is timedout or canceled,
@@ -165,10 +164,14 @@ struct ParallelChannelOptions {
     // the timeout) when the limit is reached.
     // Default: number of sub channels, meaning that the RPC to ParallChannel
     // does not fail unless all sub RPC failed.
-    int fail_limit;
+    int fail_limit{-1};
 
-    // Construct with default options.
-    ParallelChannelOptions();
+    // The RPC is considered to be successful when number of successful sub
+    // RPC reach this limit.
+    // Default: number of sub channels, meaning that the RPC to ParallChannel
+    // does not return unless all sub RPC succeed.
+    // Note: `success_limit' is only valid when `fail_limit' is not set.
+    int success_limit{ -1};
 };
 
 // ParallelChannel(aka "pchan") accesses all sub channels simultaneously with
@@ -185,8 +188,7 @@ struct ParallelChannelOptions {
 class ParallelChannel : public ChannelBase {
 friend class Controller;
 public:
-    ParallelChannel() { }
-    ~ParallelChannel();
+    ~ParallelChannel() override;
 
     // Initialize ParallelChannel with `options'.
     // NOTE: Currently this function always returns 0.
@@ -234,7 +236,7 @@ public:
                     google::protobuf::RpcController* controller,
                     const google::protobuf::Message* request,
                     google::protobuf::Message* response,
-                    google::protobuf::Closure* done);
+                    google::protobuf::Closure* done) override;
 
     // Number of sub channels.
     size_t channel_count() const { return _chans.size(); }
@@ -245,10 +247,10 @@ public:
 
     // Minimum weight of sub channels.
     // FIXME(gejun): be minimum of top(nchan-fail_limit)
-    int Weight();
+    int Weight() override;
 
     // Put description into `os'.
-    void Describe(std::ostream& os, const DescribeOptions&) const;
+    void Describe(std::ostream& os, const DescribeOptions&) const override;
 
 public:
     struct SubChan {
@@ -263,7 +265,7 @@ public:
 
 protected:
     static void* RunDoneAndDestroy(void* arg);
-    int CheckHealth();
+    int CheckHealth() override;
 
     ParallelChannelOptions _options;
     ChannelList _chans;
