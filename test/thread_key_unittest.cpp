@@ -46,6 +46,10 @@ struct ThreadKeyInfo {
     uint32_t seq;
 };
 
+struct ThreadKeyData {
+    int a{0};
+};
+
 TEST(ThreadLocalTest, sanity) {
     {
         ThreadKey key;
@@ -65,13 +69,16 @@ TEST(ThreadLocalTest, sanity) {
     }
 
     for (int i = 0; i < 5; ++i) {
-        ThreadLocal<int> tl;
-        ASSERT_TRUE(tl.get()!=NULL);
-        int* data = new int;
+        ThreadLocal<ThreadKeyData> tl;
+        ASSERT_TRUE(tl.get());
+        ASSERT_EQ(tl->a, 0);
+        auto data = new ThreadKeyData;
+        data->a = 1;
         tl.reset(data); // tl owns data
         ASSERT_EQ(data, tl.get());
+        ASSERT_EQ((*tl).a, 1);
         tl.reset(); // data has been deleted
-        ASSERT_TRUE(tl.get()!=NULL);
+        ASSERT_TRUE(tl.get());
     }
 }
 

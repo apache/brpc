@@ -108,9 +108,9 @@ public:
 
     T* get();
 
-    T* operator->() const { return get(); }
+    T* operator->() { return get(); }
 
-    T& operator*() const { return *get(); }
+    T& operator*() { return *get(); }
 
     // Iterate through all thread local objects.
     // Callback, which must accept Args params and return void,
