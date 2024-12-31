@@ -661,7 +661,7 @@ namespace bvar
         std::string normalized_name;
         if (command_name.size() >= 2UL && command_name.front() == '(' && command_name.back() == ')')
         {
-            to_underscored_name(&normalized_name, command_name.substr(1, command_name.size() - 2));
+            to_underscored_name(&normalized_name, command_name.substr(1, command_name.size() - 2UL));
         }
         else
         {
