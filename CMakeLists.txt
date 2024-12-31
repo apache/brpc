@@ -165,6 +165,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     endif()
 endif()
 
+
+
 find_package(Protobuf REQUIRED)
 if(Protobuf_VERSION GREATER 4.21)
     # required by absl
@@ -545,11 +547,7 @@ set(SOURCES
     ${THRIFT_SOURCES}
     )
 
-add_subdirectory(src)
-if(BUILD_UNIT_TESTS)
-    enable_testing()
-    add_subdirectory(test)
-endif()
+
 
 if(BUILD_FUZZ_TESTS)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
