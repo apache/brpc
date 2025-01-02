@@ -287,8 +287,7 @@ int InputMessenger::ProcessNewMessage(
         // This unique_ptr prevents msg to be lost before transfering
         // ownership to last_msg
         DestroyingPtr<InputMessageBase> msg(pr.message());
-        QueueMessage(last_msg.release(), &num_bthread_created,
-                            m->_keytable_pool);
+        QueueMessage(last_msg.release(), &num_bthread_created, m->_keytable_pool);
         if (_handlers[index].process == NULL) {
             LOG(ERROR) << "process of index=" << index << " is NULL";
             continue;

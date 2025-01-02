@@ -68,7 +68,7 @@ inline ExecutionQueueVars* get_execq_vars() {
 
 void ExecutionQueueBase::start_execute(TaskNode* node) {
     node->next = TaskNode::UNCONNECTED;
-    node->status = UNEXECUTED;
+    node->status = TaskNode::UNEXECUTED;
     node->iterated = false;
     if (node->high_priority) {
         // Add _high_priority_tasks before pushing this task into queue to
@@ -304,7 +304,7 @@ int ExecutionQueueBase::_execute(TaskNode* head, bool high_priority, int* nitera
     if (head != NULL && head->stop_task) {
         CHECK(head->next == NULL);
         head->iterated = true;
-        head->status = EXECUTED;
+        head->status = TaskNode::EXECUTED;
         TaskIteratorBase iter(NULL, this, true, false);
         _execute_func(_meta, _type_specific_function, iter);
         if (niterated) {
