@@ -105,6 +105,7 @@ struct LeakyLazyInstanceTraits {
 #endif
 
   static Type* New(void* instance) {
+    // Instruct LeakSanitizer to ignore the designated memory leak.
     ANNOTATE_SCOPED_MEMORY_LEAK;
     return DefaultLazyInstanceTraits<Type>::New(instance);
   }

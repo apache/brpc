@@ -199,6 +199,19 @@
 #define WARN_UNUSED_RESULT
 #endif
 
+// Compiler feature-detection.
+// clang.llvm.org/docs/LanguageExtensions.html#has-feature-and-has-extension
+#if defined(__has_feature)
+#define BUTIL_HAS_FEATURE(FEATURE) __has_feature(FEATURE)
+#else
+#define BUTIL_HAS_FEATURE(FEATURE) 0
+#endif
+
+// Instruct ASan is enabled.
+#if BUTIL_HAS_FEATURE(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
+#define BUTIL_USE_ASAN 1
+#endif
+
 // Tell the compiler a function is using a printf-style format string.
 // |format_param| is the one-based index of the format string parameter;
 // |dots_param| is the one-based index of the "..." parameter.
