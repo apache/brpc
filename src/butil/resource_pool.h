@@ -92,21 +92,10 @@ namespace butil {
 
 // Get an object typed |T| and write its identifier into |id|.
 // The object should be cleared before usage.
-// NOTE: T must be default-constructible.
-template <typename T> inline T* get_resource(ResourceId<T>* id) {
-    return ResourcePool<T>::singleton()->get_resource(id);
-}
-
-// Get an object whose constructor is T(arg1)
-template <typename T, typename A1>
-inline T* get_resource(ResourceId<T>* id, const A1& arg1) {
-    return ResourcePool<T>::singleton()->get_resource(id, arg1);
-}
-
-// Get an object whose constructor is T(arg1, arg2)
-template <typename T, typename A1, typename A2>
-inline T* get_resource(ResourceId<T>* id, const A1& arg1, const A2& arg2) {
-    return ResourcePool<T>::singleton()->get_resource(id, arg1, arg2);
+// NOTE: If there are no arguments, T must be default-constructible.
+template <typename T, typename... Args>
+inline T* get_resource(ResourceId<T>* id, Args... args) {
+    return ResourcePool<T>::singleton()->get_resource(id, std::forward<Args>(args)...);
 }
 
 // Return the object associated with identifier |id| back. The object is NOT

@@ -164,7 +164,7 @@ public:
         // which may include parenthesis because when T is POD, "new T()"
         // and "new T" are different: former one sets all fields to 0 which
         // we don't want.
-#define BAIDU_RESOURCE_POOL_GET(...)                                        \
+#define BAIDU_RESOURCE_POOL_GET(CTOR_ARGS)                                  \
         /* Fetch local free id */                                           \
         if (_cur_free.nfree) {                                              \
             const ResourceId<T> free_id = _cur_free.ids[--_cur_free.nfree]; \
@@ -187,7 +187,7 @@ public:
         if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {                \
             id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
             auto item = _cur_block->items + _cur_block->nitem;              \
-            p = new (item->void_data()) T(__VA_ARGS__);                     \
+            p = new (item->void_data()) T CTOR_ARGS;                        \
             if (!ResourcePoolValidator<T>::validate(p)) {                   \
                 p->~T();                                                    \
                 return NULL;                                                \
@@ -200,7 +200,7 @@ public:
         if (_cur_block != NULL) {                                           \
             id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
             auto item = _cur_block->items + _cur_block->nitem;              \
-            p = new (item->void_data()) T(__VA_ARGS__);                     \
+            p = new (item->void_data()) T CTOR_ARGS;                        \
             if (!ResourcePoolValidator<T>::validate(p)) {                   \
                 p->~T();                                                    \
                 return NULL;                                                \
@@ -215,14 +215,9 @@ public:
             BAIDU_RESOURCE_POOL_GET();
         }
 
-        template <typename A1>
-        inline T* get(ResourceId<T>* id, const A1& a1) {
-            BAIDU_RESOURCE_POOL_GET(a1);
-        }
-
-        template <typename A1, typename A2>
-        inline T* get(ResourceId<T>* id, const A1& a1, const A2& a2) {
-            BAIDU_RESOURCE_POOL_GET(a1, a2);
+        template<typename... Args>
+        inline T* get(ResourceId<T>* id, Args... args) {
+            BAIDU_RESOURCE_POOL_GET((std::forward<Args>(args)...));
         }
 
 #undef BAIDU_RESOURCE_POOL_GET
