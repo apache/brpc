@@ -147,7 +147,7 @@ public:
         // which may include parenthesis because when T is POD, "new T()"
         // and "new T" are different: former one sets all fields to 0 which
         // we don't want.
-#define BAIDU_OBJECT_POOL_GET(...)                                      \
+#define BAIDU_OBJECT_POOL_GET(CTOR_ARGS)                                \
         /* Fetch local free ptr */                                      \
         if (_cur_free.nfree) {                                          \
             BAIDU_OBJECT_POOL_FREE_ITEM_NUM_SUB1;                       \
@@ -164,7 +164,7 @@ public:
         /* Fetch memory from local block */                             \
         if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {            \
             auto item = _cur_block->items + _cur_block->nitem;          \
-            obj = new (item->void_data()) T(__VA_ARGS__);                \
+            obj = new (item->void_data()) T CTOR_ARGS;                  \
             if (!ObjectPoolValidator<T>::validate(obj)) {               \
                 obj->~T();                                              \
                 return NULL;                                            \
@@ -176,7 +176,7 @@ public:
         _cur_block = add_block(&_cur_block_index);                      \
         if (_cur_block != NULL) {                                       \
             auto item = _cur_block->items + _cur_block->nitem;          \
-            obj = new (item->void_data()) T(__VA_ARGS__);                \
+            obj = new (item->void_data()) T CTOR_ARGS;                  \
             if (!ObjectPoolValidator<T>::validate(obj)) {               \
                 obj->~T();                                              \
                 return NULL;                                            \
@@ -191,14 +191,9 @@ public:
             BAIDU_OBJECT_POOL_GET();
         }
 
-        template <typename A1>
-        inline T* get(const A1& a1) {
-            BAIDU_OBJECT_POOL_GET(a1);
-        }
-
-        template <typename A1, typename A2>
-        inline T* get(const A1& a1, const A2& a2) {
-            BAIDU_OBJECT_POOL_GET(a1, a2);
+        template<typename... Args>
+        inline T* get(Args... args) {
+            BAIDU_OBJECT_POOL_GET((std::forward<Args>(args)...));
         }
 
 #undef BAIDU_OBJECT_POOL_GET
