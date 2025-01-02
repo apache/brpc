@@ -26,8 +26,7 @@
 #include "bthread/unstable.h"                       // bthread_keytable_pool_init
 #include "butil/macros.h"                           // ARRAY_SIZE
 #include "butil/fd_guard.h"                         // fd_guard
-#include "butil/logging.h"
-// CHECK
+#include "butil/logging.h"                          // CHECK
 #include "butil/time.h"
 #include "butil/class_name.h"
 #include "butil/string_printf.h"
