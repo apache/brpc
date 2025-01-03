@@ -94,7 +94,7 @@ namespace butil {
 // The object should be cleared before usage.
 // NOTE: If there are no arguments, T must be default-constructible.
 template <typename T, typename... Args>
-inline T* get_resource(ResourceId<T>* id, Args... args) {
+inline T* get_resource(ResourceId<T>* id, Args&&... args) {
     return ResourcePool<T>::singleton()->get_resource(id, std::forward<Args>(args)...);
 }
 

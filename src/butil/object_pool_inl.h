@@ -192,7 +192,7 @@ public:
         }
 
         template<typename... Args>
-        inline T* get(Args... args) {
+        inline T* get(Args&&... args) {
             BAIDU_OBJECT_POOL_GET((std::forward<Args>(args)...));
         }
 
@@ -235,28 +235,11 @@ public:
         return true;
     }
 
-    inline T* get_object() {
+    template <typename... Args>
+    inline T* get_object(Args&&... args) {
         LocalPool* lp = get_or_new_local_pool();
         if (BAIDU_LIKELY(lp != NULL)) {
-            return lp->get();
-        }
-        return NULL;
-    }
-
-    template <typename A1>
-    inline T* get_object(const A1& arg1) {
-        LocalPool* lp = get_or_new_local_pool();
-        if (BAIDU_LIKELY(lp != NULL)) {
-            return lp->get(arg1);
-        }
-        return NULL;
-    }
-
-    template <typename A1, typename A2>
-    inline T* get_object(const A1& arg1, const A2& arg2) {
-        LocalPool* lp = get_or_new_local_pool();
-        if (BAIDU_LIKELY(lp != NULL)) {
-            return lp->get(arg1, arg2);
+            return lp->get(std::forward<Args>(args)...);
         }
         return NULL;
     }

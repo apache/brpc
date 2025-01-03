@@ -77,7 +77,7 @@ template <typename T> inline bool local_pool_free_empty() {
 // Get an object typed |T|. The object should be cleared before usage.
 // NOTE: If there are no arguments, T must be default-constructible.
 template <typename T, typename... Args>
-inline T* get_object(Args... args) {
+inline T* get_object(Args&&... args) {
     return ObjectPool<T>::singleton()->get_object(std::forward<Args>(args)...);
 }
 
