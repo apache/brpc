@@ -102,7 +102,7 @@ typename std::enable_if<butil::is_void<Ret>::value, Ret>::type ReturnEmpty() {}
         template<typename... Args>                                                          \
         typename std::enable_if<decltype(                                                   \
             Test<class_type, Args...>(0))::value, return_type>::type                        \
-        Call(class_type* obj, Args... args) {                                               \
+        Call(class_type* obj, Args&&... args) {                                               \
             BAIDU_CASSERT((butil::is_result_same<                                           \
                               return_type, decltype(&T::func_name), T, Args...>::value),    \
                           "Params or return type mismatch");                                          \
@@ -112,7 +112,7 @@ typename std::enable_if<butil::is_void<Ret>::value, Ret>::type ReturnEmpty() {}
         template<typename... Args>                                                          \
         typename std::enable_if<!decltype(                                                  \
             Test<class_type, Args...>(0))::value, return_type>::type                        \
-        Call(class_type* obj, Args... args) {                                               \
+        Call(class_type* obj, Args&&... args) {                                               \
             return ReturnEmpty<return_type>();                                              \
         }                                                                                   \
     }
@@ -128,13 +128,13 @@ typename std::enable_if<butil::is_void<Ret>::value, Ret>::type ReturnEmpty() {}
 //
 // CRTP
 // Derived classes implement 6 functions :
-// 1. (required) int OnCreated(Args... args) :
+// 1. (required) int OnCreated(Args&&... args) :
 //   Will be called in Create() to initialize T init when T is created successfully.
 //   If initialization fails, return non-zero. VersionedRefWithId will be `SetFailed'
 //   and Create() returns non-zero.
 // 2. (required) void BeforeRecycled() :
 //   Will be called in Dereference() before T is recycled.
-// 3. (optional) void OnFailed(Args... args) :
+// 3. (optional) void OnFailed(Args&&... args) :
 //   Will be called in SetFailed() when VersionedRefWithId is set failed successfully.
 // 4. (optional) void BeforeAdditionalRefReleased() :
 //   Will be called in ReleaseAdditionalReference() before additional ref is released.
@@ -212,7 +212,7 @@ public:
     // `args' will be passed to OnCreated() directly.
     // Returns 0 on success, -1 otherwise.
     template<typename ... Args>
-    static int Create(VRefId* id, Args... args);
+    static int Create(VRefId* id, Args&&... args);
 
     // Place the VersionedRefWithId associated with identifier `id' into
     // unique_ptr `ptr', which will be released automatically when out
@@ -246,10 +246,10 @@ public:
     // This function is lock-free.
     // Returns -1 when the Socket was already SetFailed(), 0 otherwise.
     template<typename... Args>
-    static int SetFailedById(VRefId id, Args... args);
+    static int SetFailedById(VRefId id, Args&&... args);
 
     template<typename... Args>
-    int SetFailed(Args... args);
+    int SetFailed(Args&&... args);
 
     bool Failed() const {
         return VersionOfVRef(_versioned_ref.load(butil::memory_order_relaxed))
@@ -290,7 +290,7 @@ friend void DereferenceVersionedRefWithId<>(T* r);
     }
 
     template<typename... Args>
-    int SetFailedImpl(Args... args);
+    int SetFailedImpl(Args&&... args);
 
     // Release the reference. If no one is addressing this VersionedRefWithId,
     // it will be recycled automatically and T::BeforeRecycled() will be called.
@@ -351,7 +351,7 @@ void DereferenceVersionedRefWithId(T* r) {
 
 template <typename T>
 template<typename ... Args>
-int VersionedRefWithId<T>::Create(VRefId* id, Args... args) {
+int VersionedRefWithId<T>::Create(VRefId* id, Args&&... args) {
     resource_id_t slot;
     T* const t = butil::get_resource(&slot, Forbidden());
     if (t == NULL) {
@@ -458,7 +458,7 @@ void VersionedRefWithId<T>::ReAddress(VersionedRefWithIdUniquePtr<T>* ptr) {
 
 template<typename T>
 template<typename... Args>
-int VersionedRefWithId<T>::SetFailedById(VRefId id, Args... args) {
+int VersionedRefWithId<T>::SetFailedById(VRefId id, Args&&... args) {
     VersionedRefWithIdUniquePtr<T> ptr;
     if (Address(id, &ptr) != 0) {
         return -1;
@@ -468,13 +468,13 @@ int VersionedRefWithId<T>::SetFailedById(VRefId id, Args... args) {
 
 template<typename T>
 template<typename... Args>
-int VersionedRefWithId<T>::SetFailed(Args... args) {
+int VersionedRefWithId<T>::SetFailed(Args&&... args) {
     return SetFailedImpl(std::forward<Args>(args)...);
 }
 
 template<typename T>
 template<typename... Args>
-int VersionedRefWithId<T>::SetFailedImpl(Args... args) {
+int VersionedRefWithId<T>::SetFailedImpl(Args&&... args) {
     const uint32_t id_ver = VersionOfVRefId(_this_id);
     uint64_t vref = _versioned_ref.load(butil::memory_order_relaxed);
     for (;;) {

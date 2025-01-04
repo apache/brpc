@@ -216,7 +216,7 @@ public:
         }
 
         template<typename... Args>
-        inline T* get(ResourceId<T>* id, Args... args) {
+        inline T* get(ResourceId<T>* id, Args&&... args) {
             BAIDU_RESOURCE_POOL_GET((std::forward<Args>(args)...));
         }
 
@@ -277,28 +277,11 @@ public:
         return NULL;
     }
 
-    inline T* get_resource(ResourceId<T>* id) {
+    template<typename... Args>
+    inline T* get_resource(ResourceId<T>* id, Args&&... args) {
         LocalPool* lp = get_or_new_local_pool();
         if (__builtin_expect(lp != NULL, 1)) {
-            return lp->get(id);
-        }
-        return NULL;
-    }
-
-    template <typename A1>
-    inline T* get_resource(ResourceId<T>* id, const A1& arg1) {
-        LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
-            return lp->get(id, arg1);
-        }
-        return NULL;
-    }
-
-    template <typename A1, typename A2>
-    inline T* get_resource(ResourceId<T>* id, const A1& arg1, const A2& arg2) {
-        LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
-            return lp->get(id, arg1, arg2);
+            return lp->get(id, std::forward<Args>(args)...);
         }
         return NULL;
     }
