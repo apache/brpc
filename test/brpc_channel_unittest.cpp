@@ -569,6 +569,24 @@ protected:
         }
     };
 
+    class SuccessLimitCallMapper : public brpc::CallMapper {
+    public:
+        brpc::SubCall Map(int channel_index,
+                          const google::protobuf::MethodDescriptor* method,
+                          const google::protobuf::Message* req_base,
+                          google::protobuf::Message* response) override {
+            auto req = brpc::Clone<test::EchoRequest>(req_base);
+            req->set_code(channel_index + 1/*non-zero*/);
+            if (_index++ > 0) {
+                req->set_sleep_us(5 * 1000);
+            }
+            return brpc::SubCall(method, req, response->New(),
+                                 brpc::DELETE_REQUEST | brpc::DELETE_RESPONSE);
+        }
+    private:
+        size_t _index{0};
+    };
+
     class MergeNothing : public brpc::ResponseMerger {
         Result Merge(google::protobuf::Message* /*response*/,
                      const google::protobuf::Message* /*sub_response*/) {
@@ -826,7 +844,60 @@ protected:
         }
         StopAndJoin();
     }
-    
+
+    void TestSuccessLimitParallel(bool single_server, bool async, bool short_connection) {
+        std::cout << " *** single=" << single_server
+                  << " async=" << async
+                  << " short=" << short_connection << std::endl;
+
+        ASSERT_EQ(0, StartAccept(_ep));
+        const size_t NCHANS = 8;
+        brpc::Channel subchans[NCHANS];
+        brpc::ParallelChannel channel;
+        brpc::ParallelChannelOptions options;
+        // Only care about the first successful response.
+        options.success_limit = 1;
+        channel.Init(&options);
+        butil::intrusive_ptr<brpc::CallMapper> fast_call_mapper(new SuccessLimitCallMapper);
+        for (size_t i = 0; i < NCHANS; ++i) {
+            SetUpChannel(&subchans[i], single_server, short_connection);
+            ASSERT_EQ(0, channel.AddChannel(
+                &subchans[i], brpc::DOESNT_OWN_CHANNEL, fast_call_mapper, NULL));
+        }
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(__FUNCTION__);
+        req.set_code(23);
+        CallMethod(&channel, &cntl, &req, &res, async);
+
+        EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+        EXPECT_EQ(NCHANS, (size_t)cntl.sub_count());
+        for (int i = 0; i < cntl.sub_count(); ++i) {
+            EXPECT_TRUE(cntl.sub(i)) << "i=" << i;
+            if (0 == i) {
+                EXPECT_TRUE(!cntl.sub(i)->Failed()) << "i=" << i;
+            } else {
+                EXPECT_TRUE(cntl.sub(i)->Failed()) << "i=" << i;
+                EXPECT_EQ(brpc::EPCHANFINISH, cntl.sub(i)->ErrorCode()) << "i=" << i;
+            }
+        }
+        EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
+        ASSERT_EQ(1, res.code_list_size());
+        ASSERT_EQ((int)1, res.code_list(0));
+        if (short_connection) {
+            // Sleep to let `_messenger' detect `Socket' being `SetFailed'
+            const int64_t start_time = butil::gettimeofday_us();
+            while (_messenger.ConnectionCount() != 0) {
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                bthread_usleep(1000);
+            }
+        } else {
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
+        }
+        StopAndJoin();
+    }
+
     struct CancelerArg {
         int64_t sleep_before_cancel_us;
         brpc::CallId cid;
@@ -2382,7 +2453,7 @@ TEST_F(ChannelTest, success_parallel) {
 }
 
 TEST_F(ChannelTest, success_duplicated_parallel) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSuccessDuplicatedParallel(i, j, k);
@@ -2416,6 +2487,16 @@ TEST_F(ChannelTest, success_parallel2) {
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSuccessParallel2(i, j, k);
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, success_limit_parallel) {
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
+        for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
+            for (int k = 0; k <=1; ++k) { // Flag ShortConnection
+                TestSuccessLimitParallel(i, j, k);
             }
         }
     }
