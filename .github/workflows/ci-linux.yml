@@ -31,7 +31,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-essential-dependences
-    - name: cmake 
+    - name: cmake
       run: |
            export CC=gcc && export CXX=g++
            mkdir build
@@ -47,7 +47,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - run: bazel test --verbose_failures -- //... -//example/...
-  
+
   gcc-compile-with-boringssl:
     runs-on: ubuntu-20.04
     steps:
@@ -61,7 +61,7 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - uses: ./.github/actions/init-make-config
       with:
-       options: --cc=gcc --cxx=g++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock
+       options: --cc=gcc --cxx=g++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer
     - name: compile
       run: |
         make -j ${{env.proc_num}}
@@ -76,7 +76,7 @@ jobs:
            export CC=gcc && export CXX=g++
            mkdir build
            cd build
-           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON ..
+           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -WITH_BTHREAD_TRACER=ON ..
     - name: compile
       run: |
            cd build
@@ -105,7 +105,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-essential-dependences
-    - name: cmake 
+    - name: cmake
       run: |
            export CC=clang && export CXX=clang++
            mkdir build
@@ -135,7 +135,7 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - uses: ./.github/actions/init-make-config
       with:
-        options: --cc=clang --cxx=clang++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock
+        options: --cc=clang --cxx=clang++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer
     - name: compile
       run: |
            make -j ${{env.proc_num}}
@@ -150,7 +150,7 @@ jobs:
            export CC=clang && export CXX=clang++
            mkdir build
            cd build
-           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON ..
+           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -WITH_BTHREAD_TRACER=ON ..
     - name: compile
       run: |
            cd build
@@ -165,21 +165,17 @@ jobs:
   clang-unittest:
     runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-essential-dependences
-    - name: install gtest
-      run: |
-           sudo apt-get update
-           sudo apt-get install -y cmake libgtest-dev gdb
-           cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/
-    - uses: ./.github/actions/init-make-config
-      with:
-        options: --cc=clang --cxx=clang++
-    - name: compile tests
-      run: |
-           cd test
-           make -j ${{env.proc_num}}
-    - name: run tests
-      run: |
-           cd test
-           sh ./run_tests.sh
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/install-essential-dependences
+      - uses: ./.github/actions/init-ut-make-config
+        with:
+          options: --cc=clang --cxx=clang++ --with-bthread-tracer
+      - name: compile tests
+        run: |
+          cat config.mk
+          cd test
+          make -j ${{env.proc_num}}
+      - name: run tests
+        run: |
+          cd test
+          sh ./run_tests.sh

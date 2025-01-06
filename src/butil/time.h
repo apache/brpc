@@ -384,7 +384,7 @@ public:
     };
 
     Timer() : _stop(0), _start(0) {}
-    explicit Timer(const TimerType) {
+    explicit Timer(const TimerType) : Timer() {
         start();
     }
 

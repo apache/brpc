@@ -46,17 +46,17 @@ inline TaskMeta* TaskGroup::address_meta(bthread_t tid) {
     return address_resource(get_slot(tid));
 }
 
-inline void TaskGroup::exchange(TaskGroup** pg, bthread_t next_tid) {
+inline void TaskGroup::exchange(TaskGroup** pg, TaskMeta* next_meta) {
     TaskGroup* g = *pg;
     if (g->is_current_pthread_task()) {
-        return g->ready_to_run(next_tid);
+        return g->ready_to_run(next_meta);
     }
-    ReadyToRunArgs args = { g->current_tid(), false };
+    ReadyToRunArgs args = { g->_cur_meta, false };
     g->set_remained((g->current_task()->about_to_quit
                      ? ready_to_run_in_worker_ignoresignal
                      : ready_to_run_in_worker),
                     &args);
-    TaskGroup::sched_to(pg, next_tid);
+    TaskGroup::sched_to(pg, next_meta);
 }
 
 inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {

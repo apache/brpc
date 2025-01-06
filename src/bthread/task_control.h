@@ -25,14 +25,15 @@
 #ifndef NDEBUG
 #include <iostream>                             // std::ostream
 #endif
+#include <signal.h>
 #include <stddef.h>                             // size_t
 #include <vector>
 #include <array>
 #include <memory>
 #include "butil/atomicops.h"                     // butil::atomic
 #include "bvar/bvar.h"                          // bvar::PassiveStatus
+#include "bthread/task_tracer.h"
 #include "bthread/task_meta.h"                  // TaskMeta
-#include "butil/resource_pool.h"                 // ResourcePool
 #include "bthread/work_stealing_queue.h"        // WorkStealingQueue
 #include "bthread/parking_lot.h"
 
@@ -43,7 +44,11 @@ class TaskGroup;
 
 // Control all task groups
 class TaskControl {
-    friend class TaskGroup;
+friend class TaskGroup;
+friend void wait_for_butex(void*);
+#ifdef BRPC_BTHREAD_TRACER
+friend bthread_t init_for_pthread_stack_trace();
+#endif // BRPC_BTHREAD_TRACER
 
 public:
     TaskControl();
@@ -85,6 +90,12 @@ public:
     // Choose one TaskGroup (randomly right now).
     // If this method is called after init(), it never returns NULL.
     TaskGroup* choose_one_group(bthread_tag_t tag);
+
+#ifdef BRPC_BTHREAD_TRACER
+    // A stacktrace of bthread can be helpful in debugging.
+    void stack_trace(std::ostream& os, bthread_t tid);
+    std::string stack_trace(bthread_t tid);
+#endif // BRPC_BTHREAD_TRACER
 
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
@@ -144,6 +155,11 @@ private:
     std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
 
     std::vector<TaggedParkingLot> _pl;
+
+#ifdef BRPC_BTHREAD_TRACER
+    TaskTracer _task_tracer;
+#endif // BRPC_BTHREAD_TRACER
+
 };
 
 inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {

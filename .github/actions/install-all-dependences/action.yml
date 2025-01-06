@@ -2,7 +2,7 @@ runs:
   using: "composite"
   steps:
     - uses: ./.github/actions/install-essential-dependences
-    - run: sudo apt-get install -y libgoogle-glog-dev automake bison flex libboost-all-dev libevent-dev libtool pkg-config  libibverbs1 libibverbs-dev
+    - run: sudo apt-get install -y libgoogle-glog-dev automake bison flex libboost-all-dev libevent-dev libtool pkg-config  libibverbs1 libibverbs-dev  libunwind8-dev
       shell: bash
     - run: wget https://archive.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz && tar -xf thrift-0.11.0.tar.gz
       shell: bash

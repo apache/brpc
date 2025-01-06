@@ -79,6 +79,7 @@ class BUTIL_EXPORT StackTrace {
 #if !defined(__UCLIBC__)
   // Resolves backtrace to symbols and write to stream.
   void OutputToStream(std::ostream* os) const;
+  void OutputToString(std::string& str) const;
 #endif
 
   // Resolves backtrace to symbols and returns as string.

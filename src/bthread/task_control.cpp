@@ -19,6 +19,7 @@
 
 // Date: Tue Jul 10 17:40:58 CST 2012
 
+#include <sys/syscall.h>                   // SYS_gettid
 #include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "butil/errno.h"                   // berror
 #include "butil/logging.h"
@@ -88,14 +89,19 @@ void* TaskControl::worker_thread(void* arg) {
         LOG(ERROR) << "Fail to create TaskGroup in pthread=" << pthread_self();
         return NULL;
     }
+
+    g->_tid = syscall(SYS_gettid);
+
     std::string worker_thread_name = butil::string_printf(
-        "brpc_wkr:%d-%d", g->tag(), c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
+        "brpc_wkr:%d-%d", g->tag(),
+        c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
     butil::PlatformThread::SetName(worker_thread_name.c_str());
-    BT_VLOG << "Created worker=" << pthread_self() << " bthread=" << g->main_tid()
-            << " tag=" << g->tag();
+    BT_VLOG << "Created worker=" << pthread_self() << " tid=" << g->_tid
+            << " bthread=" << g->main_tid() << " tag=" << g->tag();
     tls_task_group = g;
     c->_nworkers << 1;
     c->tag_nworkers(g->tag()) << 1;
+
     g->run_main_task();
 
     stat = g->main_stat();
@@ -208,6 +214,13 @@ int TaskControl::init(int concurrency) {
         LOG(ERROR) << "Fail to get global_timer_thread";
         return -1;
     }
+
+#ifdef BRPC_BTHREAD_TRACER
+    if (!_task_tracer.Init()) {
+        LOG(ERROR) << "Fail to init TaskTracer";
+        return -1;
+    }
+#endif // BRPC_BTHREAD_TRACER
     
     _workers.resize(_concurrency);   
     for (int i = 0; i < _concurrency; ++i) {
@@ -281,6 +294,16 @@ TaskGroup* TaskControl::choose_one_group(bthread_tag_t tag) {
     return NULL;
 }
 
+#ifdef BRPC_BTHREAD_TRACER
+void TaskControl::stack_trace(std::ostream& os, bthread_t tid) {
+    _task_tracer.Trace(os, tid);
+}
+
+std::string TaskControl::stack_trace(bthread_t tid) {
+    return _task_tracer.Trace(tid);
+}
+#endif // BRPC_BTHREAD_TRACER
+
 extern int stop_and_join_epoll_threads();
 
 void TaskControl::stop_and_join() {
@@ -301,13 +324,19 @@ void TaskControl::stop_and_join() {
             pl.stop();
         }
     }
-    // Interrupt blocking operations.
-    for (size_t i = 0; i < _workers.size(); ++i) {
-        interrupt_pthread(_workers[i]);
+
+    for (auto worker: _workers) {
+        // Interrupt blocking operations.
+#ifdef BRPC_BTHREAD_TRACER
+        // TaskTracer has registered signal handler for SIGURG.
+        pthread_kill(worker, SIGURG);
+#else
+        interrupt_pthread(worker);
+#endif // BRPC_BTHREAD_TRACER
     }
     // Join workers
-    for (size_t i = 0; i < _workers.size(); ++i) {
-        pthread_join(_workers[i], NULL);
+    for (auto worker : _workers) {
+        pthread_join(worker, NULL);
     }
 }
 

@@ -1,0 +1,13 @@
+inputs:
+  options:
+    description: extra options for config_brpc.sh
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - run: sudo git clone https://github.com/libunwind/libunwind.git && cd libunwind && sudo git checkout tags/v1.8.1 && sudo mkdir -p /libunwind && sudo autoreconf -i && sudo CC=clang CXX=clang++ ./configure --prefix=/libunwind && sudo make -j ${{env.proc_num}} && sudo make install
+      shell: bash
+    - run: sudo apt-get update && sudo apt-get install -y libgtest-dev cmake gdb libstdc++6-9-dbg && cd /usr/src/gtest && sudo cmake . && sudo make -j ${{env.proc_num}} && sudo mv lib/libgtest* /usr/lib/
+      shell: bash
+    - run: sh config_brpc.sh --headers="/libunwind/include /usr/include" --libs="/libunwind/lib /usr/lib /usr/lib64" --nodebugsymbols ${{inputs.options}}
+      shell: bash

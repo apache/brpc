@@ -382,7 +382,7 @@ brpc默认**不**链接 [tcmalloc](http://goog-perftools.sourceforge.net/doc/tcm
 
 ## glog: 3.3+
 
-brpc实现了一个默认的[日志功能](../../src/butil/logging.h)它和glog冲突。要替换成glog，可以给config_brpc.sh增加*--with-glog*选项或者给cmake增加`-DWITH_GLOG=ON`选项。
+brpc实现了一个默认的[日志功能](../../src/butil/logging.h)它和glog冲突。要替换成glog，可以给config_brpc.sh增加`--with-glog`选项或者给cmake增加`-DWITH_GLOG=ON`选项。
 
 ## valgrind: 3.8+
 
@@ -391,6 +391,12 @@ brpc会自动检测valgrind（然后注册bthread的栈）。不支持老版本�
 ## thrift: 0.9.3-0.11.0
 
 无已知问题。
+
+## libunwind: 1.3-1.8.1
+
+bRPC默认**不**链接 [libunwind](https://github.com/libunwind/libunwind)。用户需要追踪bthread功能则链接libunwind，可以给config_brpc.sh增加`--with-bthread-tracer`选项或者给cmake增加`-DWITH_BTHREAD_TRACER=ON`选项。
+
+建议使用最新版本的libunwind。
 
 # 实例追踪
 
