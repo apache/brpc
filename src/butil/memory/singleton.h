@@ -25,6 +25,7 @@
 #include "butil/memory/aligned_memory.h"
 #include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
 #include "butil/threading/thread_restrictions.h"
+#include "butil/debug/leak_annotations.h"
 
 namespace butil {
 namespace internal {
@@ -266,8 +267,14 @@ class Singleton {
       butil::subtle::Release_Store(
           &instance_, reinterpret_cast<butil::subtle::AtomicWord>(newval));
 
-      if (newval != NULL && Traits::kRegisterAtExit)
-        butil::AtExitManager::RegisterCallback(OnExit, NULL);
+      if (newval != NULL) {
+        if (Traits::kRegisterAtExit) {
+          butil::AtExitManager::RegisterCallback(OnExit, NULL);
+        } else {
+          // Instruct LeakSanitizer to ignore the designated memory leak.
+          ANNOTATE_LEAKING_OBJECT_PTR(newval);
+        }
+      }
 
       return newval;
     }
