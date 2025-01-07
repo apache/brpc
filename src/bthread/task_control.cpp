@@ -183,8 +183,8 @@ TaskControl::TaskControl()
     , _signal_per_second(&_cumulated_signal_count)
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
+    , _priority_qs(FLAGS_task_group_ntags)
     , _pl(FLAGS_task_group_ntags)
-    , _epoll_tid_states(FLAGS_task_group_ntags)
 {}
 
 int TaskControl::init(int concurrency) {
@@ -208,6 +208,10 @@ int TaskControl::init(int concurrency) {
         _tagged_worker_usage_second.push_back(new bvar::PerSecond<bvar::PassiveStatus<double>>(
             "bthread_worker_usage", tag_str, _tagged_cumulated_worker_time[i], 1));
         _tagged_nbthreads.push_back(new bvar::Adder<int64_t>("bthread_count", tag_str));
+        if (_priority_qs[i].init(BTHREAD_MAX_CONCURRENCY) != 0) {
+            LOG(FATAL) << "Fail to init _priority_q";
+            return -1;
+        }
     }
 
     // Make sure TimerThread is ready.
@@ -431,15 +435,9 @@ int TaskControl::_destroy_group(TaskGroup* g) {
 
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     auto tag = tls_task_group->tag();
-    // epoll tid should be stolen first.
-    for (auto &epoll_state : _epoll_tid_states[tag]) {
-        bool expected_state = true;
-        if (epoll_state.second.compare_exchange_strong(
-                expected_state, false, butil::memory_order_seq_cst,
-                butil::memory_order_relaxed)) {
-            *tid = epoll_state.first;
-            return true;
-        }
+
+    if (_priority_qs[tag].steal(tid)) {
+        return true;
     }
 
     // 1: Acquiring fence is paired with releasing fence in _add_group to
@@ -482,22 +480,14 @@ void TaskControl::signal_task(int num_task, bthread_tag_t tag) {
     if (num_task > 2) {
         num_task = 2;
     }
-    if (ParkingLot::_waiting_count.load(std::memory_order_acquire) == 0) {
-       if (FLAGS_bthread_min_concurrency > 0 &&
-           _concurrency.load(butil::memory_order_relaxed) < FLAGS_bthread_concurrency) {
-            // TODO: Reduce this lock
-            BAIDU_SCOPED_LOCK(g_task_control_mutex);
-            if (_concurrency.load(butil::memory_order_acquire) < FLAGS_bthread_concurrency) {
-                add_workers(1, tag);
-            }
-        } else {
-            return;
-        }
-    }
     auto& pl = tag_pl(tag);
     int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
-    num_task -= pl[start_index].signal(1);
-    if (num_task > 0) {
+    // WARNING: This allow some bad case happen when  wait_count is not accurente.
+    auto wait_count = ParkingLot::_waiting_count.load(butil::memory_order_relaxed);
+    if (wait_count > 0) {
+        num_task -= pl[start_index].signal(1);
+    }
+    if (num_task > 0 && wait_count > 0) {
         for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
             if (++start_index >= PARKING_LOT_NUM) {
                 start_index = 0;
@@ -505,7 +495,7 @@ void TaskControl::signal_task(int num_task, bthread_tag_t tag) {
             num_task -= pl[start_index].signal(1);
         }
     }
-    if (num_task > 0 &&
+    if (num_task > 0 && wait_count >0 &&
         FLAGS_bthread_min_concurrency > 0 &&    // test min_concurrency for performance
         _concurrency.load(butil::memory_order_relaxed) < FLAGS_bthread_concurrency) {
         // TODO: Reduce this lock
@@ -600,7 +590,6 @@ bvar::LatencyRecorder* TaskControl::create_exposed_pending_time() {
 }
 
 void TaskControl::set_group_epoll_tid(bthread_tag_t tag, bthread_t tid) {
-    _epoll_tid_states[tag][tid] = false;
     auto groups = tag_group(tag);
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_acquire);
     for (size_t i = 0; i < ngroup; i++) {

@@ -430,7 +430,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
         // NOSIGNAL affects current task, not the new task.
         RemainedFn fn = NULL;
         if (g->cur_epoll_tid()) {
-            fn = ready_to_run_epoll;
+            fn = priority_to_run;
         } else if (g->current_task()->about_to_quit) {
             fn = ready_to_run_in_worker_ignoresignal;
         } else {
@@ -803,9 +803,9 @@ void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
     return tls_task_group->push_rq(args->meta->tid);
 }
 
-void TaskGroup::ready_to_run_epoll(void* args_in) {
+void TaskGroup::priority_to_run(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
-    return tls_task_group->control()->epoll_waiting(args->tag, args->meta->tid);
+    return tls_task_group->control()->push_priority_q(args->tag, args->meta->tid);
 }
 
 struct SleepArgs {

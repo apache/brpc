@@ -100,15 +100,14 @@ public:
     // Only deal once when init epoll bthread.
     void set_group_epoll_tid(bthread_tag_t tag, bthread_t tid);
 
-    void epoll_waiting(bthread_tag_t tag, bthread_t tid) {
-        _epoll_tid_states[tag][tid].store(true, butil::memory_order_release);
+    void push_priority_q(bthread_tag_t tag, bthread_t tid) {
+        _priority_qs[tag].push(tid);
     }
 
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
     static const int PARKING_LOT_NUM = 4;
     typedef std::array<ParkingLot, PARKING_LOT_NUM> TaggedParkingLot;
-    typedef std::unordered_map<bthread_t, butil::atomic<bool>> EpollTidState;
     // Add/Remove a TaskGroup.
     // Returns 0 on success, -1 otherwise.
     int _add_group(TaskGroup*, bthread_tag_t tag);
@@ -161,14 +160,13 @@ private:
     std::vector<bvar::PassiveStatus<double>*> _tagged_cumulated_worker_time;
     std::vector<bvar::PerSecond<bvar::PassiveStatus<double>>*> _tagged_worker_usage_second;
     std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
+    std::vector<WorkStealingQueue<bthread_t>> _priority_qs;
 
     std::vector<TaggedParkingLot> _pl;
 
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer _task_tracer;
 #endif // BRPC_BTHREAD_TRACER
-
-    std::vector<EpollTidState> _epoll_tid_states;
 };
 
 inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {
