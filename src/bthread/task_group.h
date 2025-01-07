@@ -229,7 +229,7 @@ friend class TaskControl;
     };
     static void ready_to_run_in_worker(void*);
     static void ready_to_run_in_worker_ignoresignal(void*);
-    static void ready_to_run_epoll(void*);
+    static void priority_to_run(void*);
 
     // Wait for a task to run.
     // Returns true on success, false is treated as permanent error and the

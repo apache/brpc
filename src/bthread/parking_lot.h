@@ -41,7 +41,7 @@ public:
         int val;
     };
 
-    ParkingLot() : _pending_signal(0){}
+    ParkingLot() : _pending_signal(0) {}
 
     // Wake up at most `num_task' workers.
     // Returns #workers woken up.
