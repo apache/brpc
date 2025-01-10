@@ -483,19 +483,20 @@ void TaskControl::signal_task(int num_task, bthread_tag_t tag) {
     auto& pl = tag_pl(tag);
     int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
     // WARNING: This allow some bad case happen when  wait_count is not accurente.
-    auto wait_count = ParkingLot::_waiting_count.load(butil::memory_order_relaxed);
-    if (wait_count > 0) {
+    if (ParkingLot::_waiting_count.load(butil::memory_order_relaxed) > 0) {
         num_task -= pl[start_index].signal(1);
     }
-    if (num_task > 0 && wait_count > 0) {
+    if (num_task > 0) {
         for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
             if (++start_index >= PARKING_LOT_NUM) {
                 start_index = 0;
             }
-            num_task -= pl[start_index].signal(1);
+            if (ParkingLot::_waiting_count.load(butil::memory_order_relaxed) > 0) {
+                num_task -= pl[start_index].signal(1);
+            }
         }
     }
-    if (num_task > 0 && wait_count >0 &&
+    if (num_task > 0 &&
         FLAGS_bthread_min_concurrency > 0 &&    // test min_concurrency for performance
         _concurrency.load(butil::memory_order_relaxed) < FLAGS_bthread_concurrency) {
         // TODO: Reduce this lock
