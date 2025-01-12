@@ -59,6 +59,7 @@ DECLARE_bool(socket_keepalive);
 DECLARE_int32(socket_keepalive_idle_s);
 DECLARE_int32(socket_keepalive_interval_s);
 DECLARE_int32(socket_keepalive_count);
+DECLARE_int32(socket_tcp_user_timeout_ms);
 }
 
 void EchoProcessHuluRequest(brpc::InputMessageBase* msg_base);
@@ -1113,16 +1114,15 @@ TEST_F(SocketTest, keepalive) {
     int default_keepalive_count = 0;
     {
         butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
-        GetKeepaliveValue(sockfd,
-                          default_keepalive,
-                          default_keepalive_idle,
-                          default_keepalive_interval,
-                          default_keepalive_count);
+        ASSERT_GT(sockfd, 0);
+        GetKeepaliveValue(sockfd, default_keepalive, default_keepalive_idle,
+                          default_keepalive_interval, default_keepalive_count);
     }
 
     // Disable keepalive.
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         brpc::SocketId id;
@@ -1130,7 +1130,6 @@ TEST_F(SocketTest, keepalive) {
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
         CheckNoKeepalive(ptr->fd());
-        sockfd.release();
     }
 
     int keepalive_idle = 1;
@@ -1138,7 +1137,8 @@ TEST_F(SocketTest, keepalive) {
     int keepalive_count = 2;
     // Enable keepalive.
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
@@ -1146,17 +1146,14 @@ TEST_F(SocketTest, keepalive) {
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       default_keepalive_idle,
-                       default_keepalive_interval,
-                       default_keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, default_keepalive_idle,
+                       default_keepalive_interval, default_keepalive_count);
     }
 
     // Enable keepalive and set keepalive idle.
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
@@ -1166,17 +1163,15 @@ TEST_F(SocketTest, keepalive) {
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       keepalive_idle,
+        CheckKeepalive(ptr->fd(), true, keepalive_idle,
                        default_keepalive_interval,
                        default_keepalive_count);
-        sockfd.release();
     }
 
     // Enable keepalive and set keepalive interval.
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
@@ -1186,56 +1181,42 @@ TEST_F(SocketTest, keepalive) {
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       default_keepalive_idle,
-                       keepalive_interval,
-                       default_keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, default_keepalive_idle,
+                       keepalive_interval, default_keepalive_count);
     }
 
     // Enable keepalive and set keepalive count.
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
-        options.keepalive_options->keepalive_count
-            = keepalive_count;
+        options.keepalive_options->keepalive_count = keepalive_count;
         brpc::SocketId id;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       default_keepalive_idle,
-                       default_keepalive_interval,
-                       keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, default_keepalive_idle,
+                       default_keepalive_interval, keepalive_count);
     }
 
     // Enable keepalive and set keepalive idle, interval, count.
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
-        options.keepalive_options->keepalive_idle_s
-            = keepalive_idle;
-        options.keepalive_options->keepalive_interval_s
-            = keepalive_interval;
-        options.keepalive_options->keepalive_count
-            = keepalive_count;
+        options.keepalive_options->keepalive_idle_s = keepalive_idle;
+        options.keepalive_options->keepalive_interval_s = keepalive_interval;
+        options.keepalive_options->keepalive_count = keepalive_count;
         brpc::SocketId id;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       keepalive_idle,
-                       keepalive_interval,
-                       keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, keepalive_idle,
+                       keepalive_interval, keepalive_count);
     }
 }
 
@@ -1246,101 +1227,83 @@ TEST_F(SocketTest, keepalive_input_message) {
     int default_keepalive_count = 0;
     {
         butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
-        GetKeepaliveValue(sockfd,
-                          default_keepalive,
-                          default_keepalive_idle,
-                          default_keepalive_interval,
-                          default_keepalive_count);
+        ASSERT_GT(sockfd, 0);
+        GetKeepaliveValue(sockfd, default_keepalive, default_keepalive_idle,
+                          default_keepalive_interval, default_keepalive_count);
     }
 
     // Disable keepalive.
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
         CheckNoKeepalive(ptr->fd());
-        sockfd.release();
     }
 
     // Enable keepalive.
     brpc::FLAGS_socket_keepalive = true;
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       default_keepalive_idle,
-                       default_keepalive_interval,
-                       default_keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, default_keepalive_idle,
+                       default_keepalive_interval, default_keepalive_count);
     }
 
     // Enable keepalive and set keepalive idle.
     brpc::FLAGS_socket_keepalive_idle_s = 10;
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       brpc::FLAGS_socket_keepalive_idle_s,
-                       default_keepalive_interval,
-                       default_keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
+                       default_keepalive_interval, default_keepalive_count);
     }
 
     // Enable keepalive and set keepalive idle, interval.
     brpc::FLAGS_socket_keepalive_interval_s = 10;
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       brpc::FLAGS_socket_keepalive_idle_s,
-                       brpc::FLAGS_socket_keepalive_interval_s,
-                       default_keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
+                       brpc::FLAGS_socket_keepalive_interval_s, default_keepalive_count);
     }
 
     // Enable keepalive and set keepalive idle, interval, count.
     brpc::FLAGS_socket_keepalive_count = 10;
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       brpc::FLAGS_socket_keepalive_idle_s,
+        CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
                        brpc::FLAGS_socket_keepalive_interval_s,
                        brpc::FLAGS_socket_keepalive_count);
-        sockfd.release();
     }
 
     // Options of keepalive set by user have priority over Gflags.
@@ -1348,89 +1311,131 @@ TEST_F(SocketTest, keepalive_input_message) {
     int keepalive_interval = 2;
     int keepalive_count = 2;
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
-        options.keepalive_options->keepalive_idle_s
-            = keepalive_idle;
+        options.keepalive_options->keepalive_idle_s = keepalive_idle;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       keepalive_idle,
+        CheckKeepalive(ptr->fd(), true, keepalive_idle,
                        brpc::FLAGS_socket_keepalive_interval_s,
                        brpc::FLAGS_socket_keepalive_count);
-        sockfd.release();
     }
 
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
-        options.keepalive_options->keepalive_interval_s
-            = keepalive_interval;
+        options.keepalive_options->keepalive_interval_s = keepalive_interval;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       brpc::FLAGS_socket_keepalive_idle_s,
-                       keepalive_interval,
-                       brpc::FLAGS_socket_keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
+                       keepalive_interval, brpc::FLAGS_socket_keepalive_count);
     }
 
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
-        options.keepalive_options->keepalive_count
-            = keepalive_count;
+        options.keepalive_options->keepalive_count = keepalive_count;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       brpc::FLAGS_socket_keepalive_idle_s,
-                       brpc::FLAGS_socket_keepalive_interval_s,
-                       keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
+                       brpc::FLAGS_socket_keepalive_interval_s, keepalive_count);
     }
 
     {
-        butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
-        options.keepalive_options->keepalive_idle_s
-            = keepalive_idle;
-        options.keepalive_options->keepalive_interval_s
-            = keepalive_interval;
-        options.keepalive_options->keepalive_count
-            = keepalive_count;
+        options.keepalive_options->keepalive_idle_s = keepalive_idle;
+        options.keepalive_options->keepalive_interval_s = keepalive_interval;
+        options.keepalive_options->keepalive_count = keepalive_count;
         brpc::SocketId id;
-        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()
-            ->Create(options, &id));
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
-        CheckKeepalive(ptr->fd(),
-                       true,
-                       keepalive_idle,
-                       keepalive_interval,
-                       keepalive_count);
-        sockfd.release();
+        CheckKeepalive(ptr->fd(), true, keepalive_idle,
+                       keepalive_interval, keepalive_count);
     }
 }
+
+#if defined(OS_LINUX)
+void CheckTCPUserTimeout(int fd, int expect_tcp_user_timeout) {
+    int tcp_user_timeout = 0;
+    socklen_t len = sizeof(tcp_user_timeout);
+    ASSERT_EQ(0, getsockopt(fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &tcp_user_timeout, &len) );
+    ASSERT_EQ(tcp_user_timeout, expect_tcp_user_timeout);
+}
+
+TEST_F(SocketTest, tcp_user_timeout) {
+    {
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
+        brpc::SocketOptions options;
+        options.fd = sockfd;
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        CheckTCPUserTimeout(ptr->fd(), 0);
+    }
+
+    {
+        int tcp_user_timeout_ms = 1000;
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
+        brpc::SocketOptions options;
+        options.fd = sockfd;
+        options.tcp_user_timeout_ms = tcp_user_timeout_ms;
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        CheckTCPUserTimeout(ptr->fd(), tcp_user_timeout_ms);
+    }
+
+    brpc::FLAGS_socket_tcp_user_timeout_ms = 2000;
+    {
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
+        brpc::SocketOptions options;
+        options.fd = sockfd;
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        CheckTCPUserTimeout(ptr->fd(), brpc::FLAGS_socket_tcp_user_timeout_ms);
+    }
+    {
+        int tcp_user_timeout_ms = 3000;
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_GT(sockfd, 0);
+        brpc::SocketOptions options;
+        options.fd = sockfd;
+        options.tcp_user_timeout_ms = tcp_user_timeout_ms;
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        CheckTCPUserTimeout(ptr->fd(), tcp_user_timeout_ms);
+    }
+}
+#endif
 
 int HandleSocketSuccessWrite(bthread_id_t id, void* data, int error_code,
     const std::string& error_text) {
