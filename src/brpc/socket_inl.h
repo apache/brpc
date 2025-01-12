@@ -23,21 +23,6 @@
 
 namespace brpc {
 
-inline SocketOptions::SocketOptions()
-    : fd(-1)
-    , connect_on_create(false)
-    , connect_abstime(NULL)
-    , user(NULL)
-    , on_edge_triggered_events(NULL)
-    , health_check_interval_s(-1)
-    , force_ssl(false)
-    , use_rdma(false)
-    , keytable_pool(NULL)
-    , conn(NULL)
-    , app_connect(NULL)
-    , initial_parsing_context(NULL)
-    , bthread_tag(BTHREAD_TAG_DEFAULT) {}
-
 inline bool Socket::MoreReadEvents(int* progress) {
     // Fail to CAS means that new events arrived.
     return !_nevent.compare_exchange_strong(

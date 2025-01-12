@@ -57,13 +57,20 @@ DEFINE_bool(socket_keepalive, false,
             "Enable keepalive of sockets if this value is true");
 
 DEFINE_int32(socket_keepalive_idle_s, -1,
-             "Set idle time of sockets before keepalive if this value is positive");
+             "Set idle time for socket keepalive in seconds if this value is positive");
 
 DEFINE_int32(socket_keepalive_interval_s, -1,
-             "Set interval of sockets between keepalives if this value is positive");
+             "Set interval between keepalives in seconds if this value is positive");
 
 DEFINE_int32(socket_keepalive_count, -1,
-             "Set number of keepalives of sockets before close if this value is positive");
+             "Set number of keepalives before death if this value is positive");
+
+DEFINE_int32(socket_tcp_user_timeout_ms, -1,
+             "If this value is positive, set number of milliseconds that transmitted "
+             "data may remain unacknowledged, or bufferred data may remain untransmitted "
+             "(due to zero window size) before TCP will forcibly close the corresponding "
+             "connection and return ETIMEDOUT to the application. Only linux supports "
+             "TCP_USER_TIMEOUT.");
 
 DECLARE_bool(usercode_in_pthread);
 DECLARE_bool(usercode_in_coroutine);
@@ -501,6 +508,7 @@ int InputMessenger::Create(const butil::EndPoint& remote_side,
         options.keepalive_options->keepalive_count
             = FLAGS_socket_keepalive_count;
     }
+    options.tcp_user_timeout_ms = FLAGS_socket_tcp_user_timeout_ms;
     return Socket::Create(options, id);
 }
 
@@ -534,6 +542,9 @@ int InputMessenger::Create(SocketOptions options, SocketId* id) {
             options.keepalive_options->keepalive_count
                 = FLAGS_socket_keepalive_count;
         }
+    }
+    if (options.tcp_user_timeout_ms <= 0) {
+        options.tcp_user_timeout_ms = FLAGS_socket_tcp_user_timeout_ms;
     }
     return Socket::Create(options, id);
 }

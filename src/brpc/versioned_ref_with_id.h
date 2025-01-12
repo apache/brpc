@@ -211,7 +211,7 @@ public:
     // Create a VersionedRefWithId, put the identifier into `id'.
     // `args' will be passed to OnCreated() directly.
     // Returns 0 on success, -1 otherwise.
-    template<typename ... Args>
+    template<typename... Args>
     static int Create(VRefId* id, Args&&... args);
 
     // Place the VersionedRefWithId associated with identifier `id' into
@@ -350,7 +350,7 @@ void DereferenceVersionedRefWithId(T* r) {
 }
 
 template <typename T>
-template<typename ... Args>
+template<typename... Args>
 int VersionedRefWithId<T>::Create(VRefId* id, Args&&... args) {
     resource_id_t slot;
     T* const t = butil::get_resource(&slot, Forbidden());
