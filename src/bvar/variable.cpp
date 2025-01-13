@@ -561,7 +561,7 @@ std::string read_command_name() {
     } else {
         to_underscored_name(&s, command_name);
     }
-    return s
+    return s;
 }
 
 class FileDumper : public Dumper {
