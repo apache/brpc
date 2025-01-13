@@ -80,6 +80,7 @@ private:
     butil::IOBufBuilder* _os;
     const std::string _server_prefix;
     std::map<std::string, SummaryItems> _m;
+    std::set<std::string> emitted_metrics;//added to track emitted metric names
 };
 
 butil::StringPiece GetMetricsName(const std::string& name) {
@@ -102,9 +103,13 @@ bool PrometheusMetricsDumper::dump(const std::string& name,
 
     auto metrics_name = GetMetricsName(name);
 
-    *_os << "# HELP " << metrics_name << '\n'
-         << "# TYPE " << metrics_name << " gauge" << '\n'
-         << name << " " << desc << '\n';
+    if(emitted_metrics.find(metrics_name.as_string()) == emitted_metrics.end()){
+        *_os<< "# HELP " << metrics_name <<'\n'
+            << "# TYPE " << metrics_name <<" gauge\n";
+            emitted_metrics.insert(metrics_name.as_string());
+    }
+
+    *_os << name << " " << desc << '\n';
     return true;
 }
 
@@ -164,9 +169,12 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
     if (!si->IsComplete()) {
         return true;
     }
-    *_os << "# HELP " << si->metric_name << '\n'
-         << "# TYPE " << si->metric_name << " summary\n"
-         << si->metric_name << "{quantile=\""
+    if(emitted_metrics.find(si->metric_name) == emitted_metrics.end()){
+        *_os << "# HELP " << si->metric_name << '\n'
+             << "# TYPE " << si->metric_name << " summary\n";
+        emitted_metrics.insert(si->metric_name);
+    }
+    *_os << si->metric_name << "{quantile=\""
          << (double)(bvar::FLAGS_bvar_latency_p1) / 100 << "\"} "
          << si->latency_percentiles[0] << '\n'
          << si->metric_name << "{quantile=\""
