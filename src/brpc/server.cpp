@@ -151,7 +151,7 @@ ServerOptions::ServerOptions()
     , rtmp_service(NULL)
     , redis_service(NULL)
     , bthread_tag(BTHREAD_TAG_DEFAULT)
-    , rpc_pb_message_factory(new DefaultRpcPBMessageFactory())
+    , rpc_pb_message_factory(NULL)
     , ignore_eovercrowded(false) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
@@ -813,12 +813,24 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         }
         return -1;
     }
-    if (opt) {
+
+    if (&_options == opt) {
+        // do nothing
+    } else if (opt) {
+        if (_options.rpc_pb_message_factory != opt->rpc_pb_message_factory) {
+            delete _options.rpc_pb_message_factory;
+            _options.rpc_pb_message_factory = NULL;
+        }
+
         _options = *opt;
     } else {
+        delete _options.rpc_pb_message_factory;
+        _options.rpc_pb_message_factory = NULL;
+
         // Always reset to default options explicitly since `_options'
         // may be the options for the last run or even bad options
         _options = ServerOptions();
+        _options.rpc_pb_message_factory = new DefaultRpcPBMessageFactory();
     }
 
     if (!_options.h2_settings.IsValid(true/*log_error*/)) {
