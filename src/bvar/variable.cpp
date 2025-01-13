@@ -539,43 +539,29 @@ int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
 // ============= export to files ==============
 
 std::string read_command_name() {
-        std::ifstream fin("/proc/self/cmdline", std::ios::in | std::ios::binary);
-        if (!fin.is_open())
-        {
-            return std::string();
-        }
-        int pid = 0;
-        // read entire content into a buffer
-        std::ostringstream oss;
-        oss << fin.rdbuf();
-        std::string cmdline = oss.str();
-        if (cmdline.empty())
-        {
-            return std::string();
-            // return empty string
-        }
-
-        // extract the first null-terminated string
-        std::string::size_type pos = cmdline.find('\0');
-        std::string command_name = (pos != std::string::npos) ? cmdline.substr(0, pos) : cmdline;
-        std::string s;
-
-        // Although the man page says the command name is in parenthesis, for
-        // safety we normalize the name.
-        std::string s;
-        if (command_name.size() >= 2UL && command_name[0] == '(' &&
-            butil::back_char(command_name) == ')')
-        {
-            // remove parenthesis.
-            to_underscored_name(&s,
-                                butil::StringPiece(command_name.data() + 1,
-                                                   command_name.size() - 2UL));
-        }
-        else
-        {
-            to_underscored_name(&s, command_name);
-        }
-        return s;
+    std::ifstream fin("/proc/self/stat");
+    if (!fin.is_open()) {
+        return std::string();
+    }
+    int pid = 0;
+    std::string command_name;
+    fin >> pid >> command_name;
+    if (!fin.good()) {
+        return std::string();
+    }
+    // Although the man page says the command name is in parenthesis, for
+    // safety we normalize the name.
+    std::string s;
+    if (command_name.size() >= 2UL && command_name[0] == '(' &&
+        butil::back_char(command_name) == ')') {
+        // remove parenthesis.
+        to_underscored_name(&s,
+                            butil::StringPiece(command_name.data() + 1, 
+                                              command_name.size() - 2UL));
+    } else {
+        to_underscored_name(&s, command_name);
+    }
+    return s
 }
 
 class FileDumper : public Dumper {
