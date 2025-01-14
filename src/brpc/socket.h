@@ -234,60 +234,57 @@ struct SocketSSLContext {
 };
 
 struct SocketKeepaliveOptions {
-    SocketKeepaliveOptions()
-        : keepalive_idle_s(-1)
-        , keepalive_interval_s(-1)
-        , keepalive_count(-1)
-        {}
     // Start keeplives after this period.
-    int keepalive_idle_s;
+    int keepalive_idle_s{-1};
     // Interval between keepalives.
-    int keepalive_interval_s;
+    int keepalive_interval_s{-1};
     // Number of keepalives before death.
-    int keepalive_count;
+    int keepalive_count{-1};
 };
 
 // TODO: Comment fields
 struct SocketOptions {
-    SocketOptions();
-
     // If `fd' is non-negative, set `fd' to be non-blocking and take the
     // ownership. Socket will close the fd(if needed) and call
     // user->BeforeRecycle() before recycling.
-    int fd;
+    int fd{-1};
     butil::EndPoint remote_side;
     // If `connect_on_create' is true and `fd' is less than 0,
     // a client connection will be established to remote_side()
     // regarding deadline `connect_abstime' when Socket is being created.
     // Default: false, means that a connection will be established
     // on first write.
-    bool connect_on_create;
+    bool connect_on_create{false};
     // Default: NULL, means no timeout.
-    const timespec* connect_abstime;
-    SocketUser* user;
+    const timespec* connect_abstime{NULL};
+    SocketUser* user{NULL};
     // When *edge-triggered* events happen on the file descriptor, callback
     // `on_edge_triggered_events' will be called. Inside the callback, user
     // shall read fd() in non-blocking mode until all data has been read
     // or EAGAIN is met, otherwise the callback will not be called again
     // until new data arrives. The callback will not be called from more than
     // one thread at any time.
-    void (*on_edge_triggered_events)(Socket*);
-    int health_check_interval_s;
+    void (*on_edge_triggered_events)(Socket*){NULL};
+    int health_check_interval_s{-1};
     // Only accept ssl connection.
-    bool force_ssl;
+    bool force_ssl{false};
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
-    bool use_rdma;
-    bthread_keytable_pool_t* keytable_pool;
-    SocketConnection* conn;
+    bool use_rdma{false};
+    bthread_keytable_pool_t* keytable_pool{NULL};
+    SocketConnection* conn{NULL};
     std::shared_ptr<AppConnect> app_connect;
     // The created socket will set parsing_context with this value.
-    Destroyable* initial_parsing_context;
+    Destroyable* initial_parsing_context{NULL};
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
     std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
+    // https://github.com/apache/brpc/issues/1154
+    // https://github.com/grpc/grpc/pull/16419/files
+    // Only linux supports TCP_USER_TIMEOUT.
+    int tcp_user_timeout_ms{ -1};
     // Tag of this socket
-    bthread_tag_t bthread_tag;
+    bthread_tag_t bthread_tag{BTHREAD_TAG_DEFAULT};
 };
 
 // Abstractions on reading from and writing into file descriptors.
@@ -725,7 +722,7 @@ private:
 
     int ResetFileDescriptor(int fd);
 
-    void EnableKeepaliveIfNeeded(int fd);
+    void SetSocketOptions(int fd);
 
     // Wait until nref hits `expected_nref' and reset some internal resources.
     int WaitAndReset(int32_t expected_nref);
@@ -972,6 +969,15 @@ private:
     // Refer to `SocketKeepaliveOptions' for details.
     // non-NULL means that keepalive is on.
     std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+
+    // Only linux supports TCP_USER_TIMEOUT.
+    // When the value is greater than 0, it specifies the maximum
+    // amount of time in milliseconds that transmitted data may
+    // remain unacknowledged, or bufferred data may remain
+    // untransmitted (due to zero window size) before TCP will
+    // forcibly close the corresponding connection and return
+    // ETIMEDOUT to the application.
+    int _tcp_user_timeout_ms;
 
     HttpMethod _http_request_method;
 };
