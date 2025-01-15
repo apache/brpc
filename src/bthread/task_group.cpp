@@ -435,12 +435,18 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     } else {
         // NOSIGNAL affects current task, not the new task.
         RemainedFn fn = NULL;
-        if (g->current_task()->about_to_quit) {
+        if (g->cur_epoll_tid()) {
+            fn = priority_to_run;
+        } else if (g->current_task()->about_to_quit) {
             fn = ready_to_run_in_worker_ignoresignal;
         } else {
             fn = ready_to_run_in_worker;
         }
-        ReadyToRunArgs args = { g->_cur_meta, (bool)(using_attr.flags & BTHREAD_NOSIGNAL) };
+        ReadyToRunArgs args = {
+            g->tag(),
+            g->_cur_meta,
+            (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
+        };
         g->set_remained(fn, &args);
         TaskGroup::sched_to(pg, m->tid);
     }
@@ -565,7 +571,6 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
         // Jump to main task if there's no task to run.
         next_tid = g->_main_tid;
     }
-
     TaskMeta* const cur_meta = g->_cur_meta;
     TaskMeta* next_meta = address_meta(next_tid);
     if (next_meta->stack == NULL) {
@@ -804,6 +809,11 @@ void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
     return tls_task_group->push_rq(args->meta->tid);
 }
 
+void TaskGroup::priority_to_run(void* args_in) {
+    ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    return tls_task_group->control()->push_priority_q(args->tag, args->meta->tid);
+}
+
 struct SleepArgs {
     uint64_t timeout_us;
     bthread_t tid;
@@ -978,7 +988,7 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag) {
 
 void TaskGroup::yield(TaskGroup** pg) {
     TaskGroup* g = *pg;
-    ReadyToRunArgs args = {  g->_cur_meta, false };
+    ReadyToRunArgs args = { g->tag(), g->_cur_meta, false };
     g->set_remained(ready_to_run_in_worker, &args);
     sched(pg);
 }

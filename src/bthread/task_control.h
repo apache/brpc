@@ -30,6 +30,7 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include <unordered_map>
 #include "butil/atomicops.h"                     // butil::atomic
 #include "bvar/bvar.h"                          // bvar::PassiveStatus
 #include "bthread/task_tracer.h"
@@ -96,6 +97,12 @@ public:
     void stack_trace(std::ostream& os, bthread_t tid);
     std::string stack_trace(bthread_t tid);
 #endif // BRPC_BTHREAD_TRACER
+    // Only deal once when init epoll bthread.
+    void set_group_epoll_tid(bthread_tag_t tag, bthread_t tid);
+
+    void push_priority_q(bthread_tag_t tag, bthread_t tid) {
+        _priority_qs[tag].push(tid);
+    }
 
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
@@ -153,13 +160,13 @@ private:
     std::vector<bvar::PassiveStatus<double>*> _tagged_cumulated_worker_time;
     std::vector<bvar::PerSecond<bvar::PassiveStatus<double>>*> _tagged_worker_usage_second;
     std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
+    std::vector<WorkStealingQueue<bthread_t>> _priority_qs;
 
     std::vector<TaggedParkingLot> _pl;
 
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer _task_tracer;
 #endif // BRPC_BTHREAD_TRACER
-
 };
 
 inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {
