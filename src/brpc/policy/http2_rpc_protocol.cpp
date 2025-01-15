@@ -740,9 +740,13 @@ H2ParseResult H2StreamContext::OnData(
         }
     }
 
-    const int64_t acc = _deferred_window_update.fetch_add(frag_size, butil::memory_order_relaxed) + frag_size;
+    int64_t acc = frag_size +
+        _deferred_window_update.fetch_add(frag_size, butil::memory_order_relaxed);
+    int64_t quota = static_cast<int64_t>(
+        _conn_ctx->local_settings().stream_window_size /
+        (_conn_ctx->VolatilePendingStreamSize() + 1));
     // Allocate the quota of the window to each stream.
-    if (acc >= static_cast<int64_t>(_conn_ctx->local_settings().stream_window_size) / (_conn_ctx->VolatilePendingStreamSize() + 1)) {
+    if (acc >= quota) {
         if (acc > _conn_ctx->local_settings().stream_window_size) {
             LOG(ERROR) << "Fail to satisfy the stream-level flow control policy";
             return MakeH2Error(H2_FLOW_CONTROL_ERROR, frame_head.stream_id);

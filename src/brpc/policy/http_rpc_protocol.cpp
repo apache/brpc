@@ -1457,9 +1457,9 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         return svc->CallMethod(md, cntl, NULL, NULL, done);
     }
     
-    const Server::MethodProperty* const sp =
+    const Server::MethodProperty* const mp =
         FindMethodPropertyByURI(path, server, &req_header._unresolved_path);
-    if (NULL == sp) {
+    if (NULL == mp) {
         if (security_mode) {
             std::string escape_path;
             WebEscape(path, &escape_path);
@@ -1468,36 +1468,36 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             cntl->SetFailed(ENOMETHOD, "Fail to find method on `%s'", path.c_str());
         }
         return;
-    } else if (sp->service->GetDescriptor() == BadMethodService::descriptor()) {
+    } else if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {
         BadMethodRequest breq;
         BadMethodResponse bres;
         butil::StringSplitter split(path.c_str(), '/');
         breq.set_service_name(std::string(split.field(), split.length()));
-        sp->service->CallMethod(sp->method, cntl, &breq, &bres, NULL);
+        mp->service->CallMethod(mp->method, cntl, &breq, &bres, NULL);
         return;
     }
     // Switch to service-specific error.
     non_service_error.release();
-    MethodStatus* method_status = sp->status;
+    MethodStatus* method_status = mp->status;
     resp_sender.set_method_status(method_status);
     if (method_status) {
         int rejected_cc = 0;
         if (!method_status->OnRequested(&rejected_cc)) {
             cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                            sp->method->full_name().c_str(), rejected_cc);
+                            mp->method->full_name().c_str(), rejected_cc);
             return;
         }
     }
     
     if (span) {
-        span->ResetServerSpanName(sp->method->full_name());
+        span->ResetServerSpanName(mp->method->full_name());
     }
     // NOTE: accesses to builtin services are not counted as part of
     // concurrency, therefore are not limited by ServerOptions.max_concurrency.
-    if (!sp->is_builtin_service && !sp->params.is_tabbed) {
+    if (!mp->is_builtin_service && !mp->params.is_tabbed) {
         if (socket->is_overcrowded() &&
             !server->options().ignore_eovercrowded &&
-            !sp->ignore_eovercrowded) {
+            !mp->ignore_eovercrowded) {
             cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                             butil::endpoint2str(socket->remote_side()).c_str());
             return;
@@ -1522,8 +1522,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         return;
     }
 
-    google::protobuf::Service* svc = sp->service;
-    const google::protobuf::MethodDescriptor* method = sp->method;
+    google::protobuf::Service* svc = mp->service;
+    const google::protobuf::MethodDescriptor* method = mp->method;
     accessor.set_method(method);
     RpcPBMessages* messages = server->options().rpc_pb_message_factory->Get(*svc, *method);;
     resp_sender.set_messages(messages);
@@ -1535,7 +1535,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         cntl->SetFailed("Fail to new req or res");
         return;
     }
-    if (sp->params.allow_http_body_to_pb &&
+    if (mp->params.allow_http_body_to_pb &&
         method->input_type()->field_count() > 0) {
         // A protobuf service. No matter if Content-type is set to
         // applcation/json or body is empty, we have to treat body as a json
@@ -1604,10 +1604,10 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 butil::IOBufAsZeroCopyInputStream wrapper(req_body);
                 std::string err;
                 json2pb::Json2PbOptions options;
-                options.base64_to_bytes = sp->params.pb_bytes_to_base64;
-                options.array_to_single_repeated = sp->params.pb_single_repeated_to_array;
-                cntl->set_pb_bytes_to_base64(sp->params.pb_bytes_to_base64);
-                cntl->set_pb_single_repeated_to_array(sp->params.pb_single_repeated_to_array);
+                options.base64_to_bytes = mp->params.pb_bytes_to_base64;
+                options.array_to_single_repeated = mp->params.pb_single_repeated_to_array;
+                cntl->set_pb_bytes_to_base64(mp->params.pb_bytes_to_base64);
+                cntl->set_pb_single_repeated_to_array(mp->params.pb_single_repeated_to_array);
                 if (!json2pb::JsonToProtoMessage(&wrapper, req, options, &err)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
                                     req->GetDescriptor()->full_name().c_str(), err.c_str());

@@ -21,7 +21,7 @@ jobs:
     - uses: ./.github/actions/install-essential-dependences
     - uses: ./.github/actions/init-make-config
       with:
-        options: --cc=gcc --cxx=g++
+        options: --cc=gcc --cxx=g++ --werror
     - name: compile
       run: |
            make -j ${{env.proc_num}}
@@ -61,7 +61,7 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - uses: ./.github/actions/init-make-config
       with:
-       options: --cc=gcc --cxx=g++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer
+       options: --cc=gcc --cxx=g++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer --werror
     - name: compile
       run: |
         make -j ${{env.proc_num}}
@@ -95,7 +95,7 @@ jobs:
     - uses: ./.github/actions/install-essential-dependences
     - uses: ./.github/actions/init-make-config
       with:
-        options: --cc=clang --cxx=clang++
+        options: --cc=clang --cxx=clang++ --werror
     - name: compile
       run: |
            make -j ${{env.proc_num}}
@@ -135,7 +135,7 @@ jobs:
     - uses: ./.github/actions/install-all-dependences
     - uses: ./.github/actions/init-make-config
       with:
-        options: --cc=clang --cxx=clang++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer
+        options: --cc=clang --cxx=clang++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer --werror
     - name: compile
       run: |
            make -j ${{env.proc_num}}
