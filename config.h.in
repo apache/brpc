@@ -21,4 +21,8 @@
 #endif
 #cmakedefine BRPC_WITH_GLOG @WITH_GLOG_VAL@
 
+#ifndef GFLAGS_NS
+#define GFLAGS_NS google
+#endif
+
 #endif  // BUTIL_CONFIG_H
