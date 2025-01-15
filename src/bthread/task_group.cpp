@@ -28,6 +28,7 @@
 #include "butil/fast_rand.h"
 #include "butil/unique_ptr.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h" // fmix64
+#include "butil/reloadable_flags.h"
 #include "bthread/errno.h"                  // ESTOP
 #include "bthread/butex.h"                  // butex_*
 #include "bthread/sys_futex.h"              // futex_wake_private
@@ -41,24 +42,17 @@ namespace bthread {
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
     BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_INVALID };
 
-static bool pass_bool(const char*, bool) { return true; }
-
 DEFINE_bool(show_bthread_creation_in_vars, false, "When this flags is on, The time "
             "from bthread creation to first run will be recorded and shown in /vars");
-const bool ALLOW_UNUSED dummy_show_bthread_creation_in_vars =
-    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_bthread_creation_in_vars,
-                                    pass_bool);
+BUTIL_VALIDATE_GFLAG(show_bthread_creation_in_vars, butil::PassValidate);
 
 DEFINE_bool(show_per_worker_usage_in_vars, false,
             "Show per-worker usage in /vars/bthread_per_worker_usage_<tid>");
-const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
-    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
-                                    pass_bool);
+BUTIL_VALIDATE_GFLAG(show_per_worker_usage_in_vars, butil::PassValidate);
 
 DEFINE_bool(bthread_enable_cpu_clock_stat, false,
             "Enable CPU clock statistics for bthread");
-const bool ALLOW_UNUSED dummy_bthread_enable_cpu_clock_stat =  ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_bthread_enable_cpu_clock_stat,
-                                    pass_bool);
+BUTIL_VALIDATE_GFLAG(bthread_enable_cpu_clock_stat, butil::PassValidate);
 
 BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.

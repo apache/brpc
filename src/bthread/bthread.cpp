@@ -24,6 +24,7 @@
 #include "butil/macros.h"                       // BAIDU_CASSERT
 #include "butil/logging.h"
 #include "butil/thread_local.h"
+#include "butil/reloadable_flags.h"
 #include "bthread/task_group.h"                // TaskGroup
 #include "bthread/task_control.h"              // TaskControl
 #include "bthread/timer_thread.h"
@@ -32,46 +33,33 @@
 
 namespace bthread {
 
-DEFINE_int32(bthread_concurrency, 8 + BTHREAD_EPOLL_THREAD_NUM,
-             "Number of pthread workers");
-
-DEFINE_int32(bthread_min_concurrency, 0,
-            "Initial number of pthread workers which will be added on-demand."
-            " The laziness is disabled when this value is non-positive,"
-            " and workers will be created eagerly according to -bthread_concurrency and bthread_setconcurrency(). ");
-
-DEFINE_int32(bthread_current_tag, BTHREAD_TAG_INVALID, "Set bthread concurrency for this tag");
-
-DEFINE_int32(bthread_concurrency_by_tag, 8 + BTHREAD_EPOLL_THREAD_NUM,
-             "Number of pthread workers of FLAGS_bthread_current_tag");
-
-static bool never_set_bthread_concurrency = true;
-
 static bool validate_bthread_concurrency(const char*, int32_t val) {
     // bthread_setconcurrency sets the flag on success path which should
     // not be strictly in a validator. But it's OK for a int flag.
     return bthread_setconcurrency(val) == 0;
 }
-const int ALLOW_UNUSED register_FLAGS_bthread_concurrency = 
-    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_bthread_concurrency,
-                                    validate_bthread_concurrency);
-
 static bool validate_bthread_min_concurrency(const char*, int32_t val);
-
-const int ALLOW_UNUSED register_FLAGS_bthread_min_concurrency =
-    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_bthread_min_concurrency,
-                                    validate_bthread_min_concurrency);
-
 static bool validate_bthread_current_tag(const char*, int32_t val);
-
-const int ALLOW_UNUSED register_FLAGS_bthread_current_tag =
-    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_bthread_current_tag, validate_bthread_current_tag);
-
 static bool validate_bthread_concurrency_by_tag(const char*, int32_t val);
 
-const int ALLOW_UNUSED register_FLAGS_bthread_concurrency_by_tag =
-    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_bthread_concurrency_by_tag,
-                                       validate_bthread_concurrency_by_tag);
+DEFINE_int32(bthread_concurrency, 8 + BTHREAD_EPOLL_THREAD_NUM,
+             "Number of pthread workers");
+BUTIL_VALIDATE_GFLAG(bthread_concurrency, validate_bthread_concurrency);
+
+DEFINE_int32(bthread_min_concurrency, 0,
+            "Initial number of pthread workers which will be added on-demand."
+            " The laziness is disabled when this value is non-positive,"
+            " and workers will be created eagerly according to -bthread_concurrency and bthread_setconcurrency(). ");
+BUTIL_VALIDATE_GFLAG(bthread_min_concurrency, validate_bthread_min_concurrency);
+
+DEFINE_int32(bthread_current_tag, BTHREAD_TAG_INVALID, "Set bthread concurrency for this tag");
+BUTIL_VALIDATE_GFLAG(bthread_current_tag, validate_bthread_current_tag);
+
+DEFINE_int32(bthread_concurrency_by_tag, 8 + BTHREAD_EPOLL_THREAD_NUM,
+             "Number of pthread workers of FLAGS_bthread_current_tag");
+BUTIL_VALIDATE_GFLAG(bthread_concurrency_by_tag, validate_bthread_concurrency_by_tag);
+
+static bool never_set_bthread_concurrency = true;
 
 BAIDU_CASSERT(sizeof(TaskControl*) == sizeof(butil::atomic<TaskControl*>), atomic_size_match);
 

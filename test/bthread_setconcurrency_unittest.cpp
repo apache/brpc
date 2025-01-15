@@ -140,13 +140,13 @@ void* add_concurrency_proc(void*) {
 bool set_min_concurrency(int num) {
     std::stringstream ss;
     ss << num;
-    std::string ret = GFLAGS_NS::SetCommandLineOption("bthread_min_concurrency", ss.str().c_str());
+    std::string ret = GFLAGS_NAMESPACE::SetCommandLineOption("bthread_min_concurrency", ss.str().c_str());
     return !ret.empty();
 }
 
 int get_min_concurrency() {
     std::string ret;
-    GFLAGS_NS::GetCommandLineOption("bthread_min_concurrency", &ret);
+    GFLAGS_NAMESPACE::GetCommandLineOption("bthread_min_concurrency", &ret);
     return atoi(ret.c_str());
 }
 
@@ -194,7 +194,7 @@ TEST(BthreadTest, min_concurrency) {
 int current_tag(int tag) {
     std::stringstream ss;
     ss << tag;
-    std::string ret = GFLAGS_NS::SetCommandLineOption("bthread_current_tag", ss.str().c_str());
+    std::string ret = GFLAGS_NAMESPACE::SetCommandLineOption("bthread_current_tag", ss.str().c_str());
     return !(ret.empty());
 }
 
@@ -208,7 +208,7 @@ int concurrency_by_tag(int num) {
     std::stringstream ss;
     ss << num;
     std::string ret =
-        GFLAGS_NS::SetCommandLineOption("bthread_concurrency_by_tag", ss.str().c_str());
+        GFLAGS_NAMESPACE::SetCommandLineOption("bthread_concurrency_by_tag", ss.str().c_str());
     return !(ret.empty());
 }
 

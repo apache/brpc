@@ -1955,7 +1955,7 @@ TEST_F(RdmaTest, try_memory_pool_empty) {
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
 #if BRPC_WITH_RDMA
     rdma::FLAGS_rdma_trace_verbose = true;
     rdma::FLAGS_rdma_memory_pool_max_regions = 2;

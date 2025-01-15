@@ -27,12 +27,12 @@
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    if (GFLAGS_NS::SetCommandLineOption("http_body_compress_threshold", "0").empty()) {
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
+    if (GFLAGS_NAMESPACE::SetCommandLineOption("http_body_compress_threshold", "0").empty()) {
         std::cerr << "Fail to set -crash_on_fatal_log" << std::endl;
         return -1;
     }
-    if (GFLAGS_NS::SetCommandLineOption("crash_on_fatal_log", "true").empty()) {
+    if (GFLAGS_NAMESPACE::SetCommandLineOption("crash_on_fatal_log", "true").empty()) {
         std::cerr << "Fail to set -crash_on_fatal_log" << std::endl;
         return -1;
     }

@@ -158,15 +158,15 @@ TEST_F(MVariableTest, dump) {
     std::string old_mbvar_dump_prefix;
     std::string old_mbvar_dump_format;
 
-    GFLAGS_NS::GetCommandLineOption("bvar_dump_interval", &old_bvar_dump_interval);
-    GFLAGS_NS::GetCommandLineOption("mbvar_dump", &old_mbvar_dump);
-    GFLAGS_NS::GetCommandLineOption("mbvar_dump_prefix", &old_mbvar_dump_prefix);
-    GFLAGS_NS::GetCommandLineOption("mbvar_dump_format", &old_mbvar_dump_format);
+    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_interval", &old_bvar_dump_interval);
+    GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump", &old_mbvar_dump);
+    GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump_prefix", &old_mbvar_dump_prefix);
+    GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump_format", &old_mbvar_dump_format);
 
-    GFLAGS_NS::SetCommandLineOption("bvar_dump_interval", "1");
-    GFLAGS_NS::SetCommandLineOption("mbvar_dump", "true");
-    GFLAGS_NS::SetCommandLineOption("mbvar_dump_prefix", "my_mdump_prefix");
-    GFLAGS_NS::SetCommandLineOption("mbvar_dump_format", "common");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", "1");
+    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump", "true");
+    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump_prefix", "my_mdump_prefix");
+    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump_format", "common");
 
     bvar::MultiDimension<bvar::Adder<int> > my_madder("dump_adder", labels);
     std::list<std::string> labels_value1 {"gz", "post", "200"};
@@ -218,10 +218,10 @@ TEST_F(MVariableTest, dump) {
     *my_latencyrecorder1 << 3 << 6 << 9;
     sleep(2);
     
-    GFLAGS_NS::SetCommandLineOption("bvar_dump_interval", old_bvar_dump_interval.c_str());
-    GFLAGS_NS::SetCommandLineOption("mbvar_dump", old_mbvar_dump.c_str());
-    GFLAGS_NS::SetCommandLineOption("mbvar_dump_prefix", old_mbvar_dump_prefix.c_str());
-    GFLAGS_NS::SetCommandLineOption("mbvar_dump_format", old_mbvar_dump_format.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", old_bvar_dump_interval.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump", old_mbvar_dump.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump_prefix", old_mbvar_dump_prefix.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump_format", old_mbvar_dump_format.c_str());
 }
 
 TEST_F(MVariableTest, test_describe_exposed) {

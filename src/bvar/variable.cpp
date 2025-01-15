@@ -30,6 +30,7 @@
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
 #include "butil/threading/platform_thread.h"
+#include "butil/reloadable_flags.h"
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
@@ -43,21 +44,20 @@ DEFINE_bool(save_series, true,
 DEFINE_bool(quote_vector, true,
             "Quote description of Vector<> to make it valid to noah");
 
-DEFINE_bool(bvar_abort_on_same_name, false,
-            "Abort when names of bvar are same");
 // Remember abort request before bvar_abort_on_same_name is initialized.
 bool s_bvar_may_abort = false;
 static bool validate_bvar_abort_on_same_name(const char*, bool v) {
     RELEASE_ASSERT_VERBOSE(!v || !s_bvar_may_abort, "Abort due to name conflict");
     return true;
 }
-const bool ALLOW_UNUSED dummy_bvar_abort_on_same_name = ::GFLAGS_NS::RegisterFlagValidator(
-    &FLAGS_bvar_abort_on_same_name, validate_bvar_abort_on_same_name);
+DEFINE_bool(bvar_abort_on_same_name, false, "Abort when names of bvar are same");
+BUTIL_VALIDATE_GFLAG(bvar_abort_on_same_name, validate_bvar_abort_on_same_name);
 
 
 DEFINE_bool(bvar_log_dumpped,  false,
             "[For debugging] print dumpped info"
             " into logstream before call Dumpper");
+BUTIL_VALIDATE_GFLAG(bvar_log_dumpped, butil::PassValidate);
 
 const size_t SUB_MAP_COUNT = 32;  // must be power of 2
 BAIDU_CASSERT(!(SUB_MAP_COUNT & (SUB_MAP_COUNT - 1)), must_be_power_of_2);
@@ -743,39 +743,39 @@ static void* dumping_thread(void*) {
         std::string mbvar_filename;
         std::string mbvar_prefix;
         std::string mbvar_format;
-        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_file", &filename)) {
+        if (!GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_file", &filename)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_file";
             return NULL;
         }
-        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_include",
+        if (!GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_include",
                                           &options.white_wildcards)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_include";
             return NULL;
         }
-        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_exclude",
+        if (!GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_exclude",
                                           &options.black_wildcards)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_exclude";
             return NULL;
         }
-        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_prefix", &prefix)) {
+        if (!GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_prefix", &prefix)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_prefix";
             return NULL;
         }
-        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_tabs", &tabs)) {
+        if (!GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_tabs", &tabs)) {
             LOG(ERROR) << "Fail to get gflags bvar_dump_tabs";
             return NULL;
         }
 
         // We can't access string flags directly because it's thread-unsafe.
-        if (!GFLAGS_NS::GetCommandLineOption("mbvar_dump_file", &mbvar_filename)) {
+        if (!GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump_file", &mbvar_filename)) {
             LOG(ERROR) << "Fail to get gflag mbvar_dump_file";
             return NULL;
         }
-        if (!GFLAGS_NS::GetCommandLineOption("mbvar_dump_prefix", &mbvar_prefix)) {
+        if (!GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump_prefix", &mbvar_prefix)) {
             LOG(ERROR) << "Fail to get gflag mbvar_dump_prefix";
             return NULL;
         }
-        if (!GFLAGS_NS::GetCommandLineOption("mbvar_dump_format", &mbvar_format)) {
+        if (!GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump_format", &mbvar_format)) {
             LOG(ERROR) << "Fail to get gflag mbvar_dump_format";
             return NULL;
         }
@@ -883,8 +883,7 @@ static bool validate_bvar_dump(const char*, bool enabled) {
     }
     return true;
 }
-const bool ALLOW_UNUSED dummy_bvar_dump = ::GFLAGS_NS::RegisterFlagValidator(
-    &FLAGS_bvar_dump, validate_bvar_dump);
+BUTIL_VALIDATE_GFLAG(bvar_dump, validate_bvar_dump);
 
 // validators (to make these gflags reloadable in brpc)
 static bool validate_bvar_dump_interval(const char*, int32_t v) {
@@ -898,12 +897,7 @@ static bool validate_bvar_dump_interval(const char*, int32_t v) {
     }
     return true;
 }
-const bool ALLOW_UNUSED dummy_bvar_dump_interval = ::GFLAGS_NS::RegisterFlagValidator(
-    &FLAGS_bvar_dump_interval, validate_bvar_dump_interval);
-
-static bool validate_bvar_log_dumpped(const char *, bool) { return true; }
-const bool ALLOW_UNUSED dummy_bvar_log_dumpped = ::GFLAGS_NS::RegisterFlagValidator(
-        &FLAGS_bvar_log_dumpped, validate_bvar_log_dumpped);
+BUTIL_VALIDATE_GFLAG(bvar_dump_interval, validate_bvar_dump_interval);
 
 static bool wakeup_dumping_thread(const char*, const std::string&) {
     // We're modifying a flag, wake up dumping_thread to generate
@@ -912,22 +906,21 @@ static bool wakeup_dumping_thread(const char*, const std::string&) {
     return true;
 }
 
-const bool ALLOW_UNUSED dummy_bvar_dump_file = ::GFLAGS_NS::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_file = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_bvar_dump_file, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_filter = ::GFLAGS_NS::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_filter = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_bvar_dump_include, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_exclude = ::GFLAGS_NS::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_exclude = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_bvar_dump_exclude, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_prefix = ::GFLAGS_NS::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_prefix = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_bvar_dump_prefix, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_tabs = ::GFLAGS_NS::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_tabs = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_bvar_dump_tabs, wakeup_dumping_thread);
 
-const bool ALLOW_UNUSED dummy_mbvar_dump = ::GFLAGS_NS::RegisterFlagValidator(
-    &FLAGS_mbvar_dump, validate_bvar_dump);
-const bool ALLOW_UNUSED dummy_mbvar_dump_prefix = ::GFLAGS_NS::RegisterFlagValidator(
+BUTIL_VALIDATE_GFLAG(mbvar_dump, validate_bvar_dump);
+const bool ALLOW_UNUSED dummy_mbvar_dump_prefix = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_mbvar_dump_prefix, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dump_mbvar_dump_file = ::GFLAGS_NS::RegisterFlagValidator(
+const bool ALLOW_UNUSED dump_mbvar_dump_file = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_mbvar_dump_file, wakeup_dumping_thread);
 
 static bool validate_mbvar_dump_format(const char*, const std::string& format) {
@@ -943,7 +936,7 @@ static bool validate_mbvar_dump_format(const char*, const std::string& format) {
     return true;
 }
 
-const bool ALLOW_UNUSED dummy_mbvar_dump_format = ::GFLAGS_NS::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_mbvar_dump_format = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_mbvar_dump_format, validate_mbvar_dump_format);
 
 void to_underscored_name(std::string* name, const butil::StringPiece& src) {

@@ -29,7 +29,6 @@ COPTS = [
     "-fPIC",
     "-Wno-unused-parameter",
     "-fno-omit-frame-pointer",
-    "-DGFLAGS_NS=google",
     "-fno-access-control",
     "-DBAZEL_TEST=1",
     "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",

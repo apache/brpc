@@ -27,7 +27,7 @@ DECLARE_int32(task_group_ntags);
 int main(int argc, char* argv[]) {
     FLAGS_task_group_ntags = 3;
     testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
 

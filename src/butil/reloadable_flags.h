@@ -34,12 +34,11 @@
 //
 // This macro does not work for string-flags because they're thread-unsafe to
 // modify directly. To emphasize this, you have to write the validator by
-// yourself and use GFLAGS_NS::GetCommandLineOption() to acess the flag.
-#define BUTIL_VALIDATE_GFLAG(flag, validate_fn)                     \
-    namespace butil_flags {}                                       \
-    const int register_FLAGS_ ## flag ## _dummy                    \
-                 __attribute__((__unused__)) =                     \
-        ::butil::RegisterFlagValidatorOrDieImpl<                   \
+// yourself and use GFLAGS_NAMESPACE::GetCommandLineOption() to acess the flag.
+#define BUTIL_VALIDATE_GFLAG(flag, validate_fn)                   \
+    namespace butil_flags {}                                      \
+    const int ALLOW_UNUSED register_FLAGS_ ## flag ## _dummy =    \
+        ::butil::RegisterFlagValidatorOrDieImpl<                  \
             decltype(FLAGS_##flag)>(&FLAGS_##flag, (validate_fn))
 
 
@@ -56,11 +55,16 @@ bool PositiveInteger(const char*, T v) {
 }
 
 template <typename T>
+bool NonNegativeInteger(const char*, T v) {
+    return v >= 0;
+}
+
+template <typename T>
 bool RegisterFlagValidatorOrDieImpl(
     const T* flag, bool (*validate_fn)(const char*, T val)) {
     static_assert(!butil::is_same<std::string, T>::value,
                   "Not support string flags");
-    if (GFLAGS_NS::RegisterFlagValidator(flag, validate_fn)) {
+    if (::GFLAGS_NAMESPACE::RegisterFlagValidator(flag, validate_fn)) {
         return true;
     }
     // Error printed by gflags does not have newline. Add one to it.

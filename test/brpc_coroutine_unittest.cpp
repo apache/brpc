@@ -24,7 +24,7 @@
 int main(int argc, char* argv[]) {
 #ifdef BRPC_ENABLE_COROUTINE
     testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 #else
     printf("bRPC coroutine is not enabled, please add -std=c++20 to compile options\n");

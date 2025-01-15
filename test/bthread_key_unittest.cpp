@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
     bthread::FLAGS_key_table_list_size = 20;
     bthread::FLAGS_borrow_from_globle_size = 20;
     testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
 
