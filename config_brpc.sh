@@ -493,7 +493,7 @@ fi
 append_to_output "CPPFLAGS=${CPPFLAGS}"
 append_to_output "# without the flag, linux+arm64 may crash due to folding on TLS.
 ifeq (\$(CC),gcc)
-  ifeq (\$(shell uname -p),aarch64) 
+  ifeq (\$(shell uname -p),aarch64)
     CPPFLAGS+=-fno-gcse
   endif
 endif
@@ -584,6 +584,10 @@ cat << EOF > src/butil/config.h
 #undef BRPC_WITH_GLOG
 #endif
 #define BRPC_WITH_GLOG $WITH_GLOG
+
+#ifndef GFLAGS_NS
+#define GFLAGS_NS google
+#endif
 
 #endif  // BUTIL_CONFIG_H
 EOF

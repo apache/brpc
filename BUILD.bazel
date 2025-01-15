@@ -104,6 +104,11 @@ genrule(
               "//conditions:default": "0",
           }) +
           """
+
+#ifndef GFLAGS_NS
+#define GFLAGS_NS google
+#endif
+
 #endif  // BUTIL_CONFIG_H
 EOF
     """,
