@@ -102,6 +102,7 @@ typedef pthread_mutex_t* MutexHandle;
 #include "butil/containers/doubly_buffered_data.h"
 #include "butil/memory/singleton.h"
 #include "butil/endpoint.h"
+#include "butil/reloadable_flags.h"
 #ifdef BAIDU_INTERNAL
 #include "butil/comlog_sink.h"
 #endif
@@ -122,8 +123,11 @@ namespace logging {
 
 DEFINE_bool(crash_on_fatal_log, false,
             "Crash process when a FATAL log is printed");
+BUTIL_VALIDATE_GFLAG(crash_on_fatal_log, butil::PassValidate);
+
 DEFINE_bool(print_stack_on_check, true,
             "Print the stack trace when a CHECK was failed");
+BUTIL_VALIDATE_GFLAG(print_stack_on_check, butil::PassValidate);
 
 DEFINE_int32(v, 0, "Show all VLOG(m) messages for m <= this."
              " Overridable by --vmodule.");
@@ -140,6 +144,7 @@ DEFINE_bool(log_bid, true, "Log bthread id");
 DEFINE_int32(minloglevel, 0, "Any log at or above this level will be "
              "displayed. Anything below this level will be silently ignored. "
              "0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL");
+BUTIL_VALIDATE_GFLAG(minloglevel, butil::NonNegativeInteger);
 
 DEFINE_bool(log_hostname, false, "Add host after pid in each log so"
             " that we know where logs came from when using aggregation tools"
@@ -1930,7 +1935,7 @@ static bool validate_vmodule(const char*, const std::string& vmodule) {
     return on_reset_vmodule(vmodule.c_str()) == 0;
 }
 
-const bool ALLOW_UNUSED validate_vmodule_dummy = GFLAGS_NS::RegisterFlagValidator(
+const bool ALLOW_UNUSED validate_vmodule_dummy = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_vmodule, &validate_vmodule);
 
 // [Thread-safe] Reset FLAGS_v.
@@ -1959,26 +1964,7 @@ static bool validate_v(const char*, int32_t v) {
     on_reset_verbose(v);
     return true;
 }
-
-const bool ALLOW_UNUSED validate_v_dummy = GFLAGS_NS::RegisterFlagValidator(
-    &FLAGS_v, &validate_v);
-
-static bool PassValidate(const char*, bool) {
-    return true;
-}
-
-const bool ALLOW_UNUSED validate_crash_on_fatal_log =
-    GFLAGS_NS::RegisterFlagValidator(&FLAGS_crash_on_fatal_log, PassValidate);
-
-const bool ALLOW_UNUSED validate_print_stack_on_check =
-    GFLAGS_NS::RegisterFlagValidator(&FLAGS_print_stack_on_check, PassValidate);
-
-static bool NonNegativeInteger(const char*, int32_t v) {
-    return v >= 0;
-}
-
-const bool ALLOW_UNUSED validate_min_log_level = GFLAGS_NS::RegisterFlagValidator(
-    &FLAGS_minloglevel, NonNegativeInteger);
+BUTIL_VALIDATE_GFLAG(v, validate_v);
 
 }  // namespace logging
 

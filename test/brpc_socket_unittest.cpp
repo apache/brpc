@@ -66,7 +66,7 @@ void EchoProcessHuluRequest(brpc::InputMessageBase* msg_base);
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     brpc::Protocol dummy_protocol = 
                              { brpc::policy::ParseHuluMessage,
                                brpc::SerializeRequestDefault, 
@@ -591,8 +591,8 @@ public:
 
 TEST_F(SocketTest, app_level_health_check) {
     int old_health_check_interval = brpc::FLAGS_health_check_interval;
-    GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
-    GFLAGS_NS::SetCommandLineOption("health_check_interval", "1");
+    GFLAGS_NAMESPACE::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
+    GFLAGS_NAMESPACE::SetCommandLineOption("health_check_interval", "1");
 
     butil::EndPoint point(butil::IP_ANY, 7777);
     brpc::ChannelOptions options;
@@ -644,10 +644,10 @@ TEST_F(SocketTest, app_level_health_check) {
         ASSERT_GT(cntl.response_attachment().size(), (size_t)0);
     }
 
-    GFLAGS_NS::SetCommandLineOption("health_check_path", "");
+    GFLAGS_NAMESPACE::SetCommandLineOption("health_check_path", "");
     char hc_buf[8];
     snprintf(hc_buf, sizeof(hc_buf), "%d", old_health_check_interval);
-    GFLAGS_NS::SetCommandLineOption("health_check_interval", hc_buf);
+    GFLAGS_NAMESPACE::SetCommandLineOption("health_check_interval", hc_buf);
 }
 
 TEST_F(SocketTest, health_check) {
