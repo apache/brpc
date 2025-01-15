@@ -94,7 +94,7 @@ DEFINE_string(rdma_device, "", "The name of the HCA device used "
 DEFINE_int32(rdma_port, 1, "The port number to use. For RoCE, it is always 1.");
 DEFINE_int32(rdma_gid_index, -1, "The GID index to use. -1 means using the last one.");
 
-static const size_t SYSFS_SIZE = 4096;
+// static const size_t SYSFS_SIZE = 4096;
 static ibv_device** g_devices = NULL;
 static ibv_context* g_context = NULL;
 static SocketId g_async_socket;

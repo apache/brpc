@@ -46,8 +46,8 @@ static RegisterCallback g_cb = NULL;
 static const size_t BYTES_IN_MB = 1048576;
 
 static const int BLOCK_DEFAULT = 0; // 8KB
-static const int BLOCK_LARGE = 1;  // 64KB
-static const int BLOCK_HUGE = 2;  // 2MB
+// static const int BLOCK_LARGE = 1;  // 64KB
+// static const int BLOCK_HUGE = 2;  // 2MB
 static const int BLOCK_SIZE_COUNT = 3;
 static size_t g_block_size[BLOCK_SIZE_COUNT] = { 8192, 65536, 2 * BYTES_IN_MB };
 

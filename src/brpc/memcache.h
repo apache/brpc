@@ -196,7 +196,7 @@ public:
     void Clear() override;
     bool IsInitialized() const PB_527_OVERRIDE;
   
-    size_t ByteSizeLong() const;
+    size_t ByteSizeLong() const override;
     bool MergePartialFromCodedStream(
         ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
     void SerializeWithCachedSizes(

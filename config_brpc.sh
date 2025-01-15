@@ -38,7 +38,7 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,nodebugsymbols -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
 WITH_RDMA=0
@@ -46,6 +46,7 @@ WITH_MESALINK=0
 WITH_BTHREAD_TRACER=0
 BRPC_DEBUG_BTHREAD_SCHE_SAFETY=0
 DEBUGSYMBOLS=-g
+WERROR=
 BRPC_DEBUG_LOCK=0
 
 if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
@@ -74,6 +75,7 @@ while true; do
         --with-debug-bthread-sche-safety ) BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1; shift 1 ;;
         --with-debug-lock ) BRPC_DEBUG_LOCK=1; shift 1 ;;
         --nodebugsymbols ) DEBUGSYMBOLS=; shift 1 ;;
+        --werror ) WERROR=-Werror; shift 1 ;;
         -- ) shift; break ;;
         * ) break ;;
     esac
@@ -440,6 +442,9 @@ CPPFLAGS="${CPPFLAGS} -D__const__=__unused__"
 
 if [ ! -z "$DEBUGSYMBOLS" ]; then
     CPPFLAGS="${CPPFLAGS} $DEBUGSYMBOLS"
+fi
+if [ ! -z "$WERROR" ]; then
+    CPPFLAGS="${CPPFLAGS} $WERROR"
 fi
 if [ "$SYSTEM" = "Darwin" ]; then
     CPPFLAGS="${CPPFLAGS} -Wno-deprecated-declarations -Wno-inconsistent-missing-override"
