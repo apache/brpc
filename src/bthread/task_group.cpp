@@ -999,7 +999,7 @@ void print_task(std::ostream& os, bthread_t tid) {
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     bool has_tls = false;
     int64_t cpuwide_start_ns = 0;
-    TaskStatistics stat = {0, 0};
+    TaskStatistics stat = {0, 0, 0};
     TaskStatus status = TASK_STATUS_UNKNOWN;
     bool traced = false;
     pid_t worker_tid = 0;
