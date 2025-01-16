@@ -81,7 +81,7 @@ public:
     void Swap(ThriftFramedMessage* other);
 
     // implements Message ----------------------------------------------
-    void MergeFrom(const ThriftFramedMessage& from);
+    void MergeFrom(const ThriftFramedMessage& from) override;
     void Clear() override;
 
     size_t ByteSizeLong() const override;
