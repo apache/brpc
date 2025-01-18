@@ -401,17 +401,17 @@ TEST_F(MultiDimensionTest, mlatencyrecorder) {
     std::string old_bvar_latency_p2;
     std::string old_bvar_latency_p3;
 
-    GFLAGS_NS::GetCommandLineOption("bvar_dump_interval", &old_bvar_dump_interval);
-    GFLAGS_NS::GetCommandLineOption("mbvar_dump", &old_mbvar_dump);
-    GFLAGS_NS::GetCommandLineOption("bvar_latency_p1", &old_bvar_latency_p1);
-    GFLAGS_NS::GetCommandLineOption("bvar_latency_p2", &old_bvar_latency_p2);
-    GFLAGS_NS::GetCommandLineOption("bvar_latency_p3", &old_bvar_latency_p3);
+    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_interval", &old_bvar_dump_interval);
+    GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump", &old_mbvar_dump);
+    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p1", &old_bvar_latency_p1);
+    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p2", &old_bvar_latency_p2);
+    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p3", &old_bvar_latency_p3);
 
-    GFLAGS_NS::SetCommandLineOption("bvar_dump_interval", "1");
-    GFLAGS_NS::SetCommandLineOption("mbvar_dump", "true");
-    GFLAGS_NS::SetCommandLineOption("bvar_latency_p1", "60");
-    GFLAGS_NS::SetCommandLineOption("bvar_latency_p2", "70");
-    GFLAGS_NS::SetCommandLineOption("bvar_latency_p3", "80");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", "1");
+    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump", "true");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", "60");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p2", "70");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p3", "80");
 
     bvar::MultiDimension<bvar::LatencyRecorder> my_mlatencyrecorder("client_request_count_mlatencyrecorder", labels);
     std::list<std::string> labels_value = {"tc", "get", "200"};
@@ -424,11 +424,11 @@ TEST_F(MultiDimensionTest, mlatencyrecorder) {
     ASSERT_LE(7, my_latencyrecorder->qps());
     ASSERT_EQ(7, my_latencyrecorder->count());
 
-    GFLAGS_NS::SetCommandLineOption("bvar_dump_interval", old_bvar_dump_interval.c_str());
-    GFLAGS_NS::SetCommandLineOption("mbvar_dump", old_mbvar_dump.c_str());
-    GFLAGS_NS::SetCommandLineOption("bvar_latency_p1", old_bvar_latency_p1.c_str());
-    GFLAGS_NS::SetCommandLineOption("bvar_latency_p2", old_bvar_latency_p2.c_str());
-    GFLAGS_NS::SetCommandLineOption("bvar_latency_p3", old_bvar_latency_p3.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", old_bvar_dump_interval.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump", old_mbvar_dump.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", old_bvar_latency_p1.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p2", old_bvar_latency_p2.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p3", old_bvar_latency_p3.c_str());
 }
 
 TEST_F(MultiDimensionTest, mstatus) {

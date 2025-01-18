@@ -34,7 +34,7 @@ TEST_F(FileDumperTest, filters) {
     bvar::Adder<int> a3("a_error");
     bvar::Adder<int> a4("process_*");
     bvar::Adder<int> a5("default");
-    GFLAGS_NS::SetCommandLineOption("bvar_dump_interval", "1");
-    GFLAGS_NS::SetCommandLineOption("bvar_dump", "true");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", "1");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump", "true");
     sleep(2);
 }

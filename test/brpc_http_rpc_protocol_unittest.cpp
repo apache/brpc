@@ -65,12 +65,12 @@ extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    if (GFLAGS_NS::SetCommandLineOption("socket_max_unwritten_bytes", "2000000").empty()) {
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
+    if (GFLAGS_NAMESPACE::SetCommandLineOption("socket_max_unwritten_bytes", "2000000").empty()) {
         std::cerr << "Fail to set -socket_max_unwritten_bytes" << std::endl;
         return -1;
     }
-    if (GFLAGS_NS::SetCommandLineOption("crash_on_fatal_log", "true").empty()) {
+    if (GFLAGS_NAMESPACE::SetCommandLineOption("crash_on_fatal_log", "true").empty()) {
         std::cerr << "Fail to set -crash_on_fatal_log" << std::endl;
         return -1;
     }
