@@ -27,8 +27,8 @@ DEFINE_bool(disable_coredump, false, "Never core dump");
 int main(int argc, char** argv) {
     butil::AtExitManager at_exit;
     testing::InitGoogleTest(&argc, argv);
-    
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     if (FLAGS_disable_coredump) {
         rlimit core_limit;
         core_limit.rlim_cur = 0;
@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
         setrlimit(RLIMIT_CORE, &core_limit);
     }
 #if !BRPC_WITH_GLOG
-    CHECK(!GFLAGS_NS::SetCommandLineOption("crash_on_fatal_log", "true").empty());
+    CHECK(!GFLAGS_NAMESPACE::SetCommandLineOption("crash_on_fatal_log", "true").empty());
 #endif
     return RUN_ALL_TESTS();
 }
