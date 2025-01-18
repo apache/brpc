@@ -37,7 +37,7 @@ DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
 
     // brpc::FLAGS_enable_rpcz = true;
     // A Channel represents a communication line to a Server. Notice that 

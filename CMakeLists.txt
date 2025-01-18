@@ -114,17 +114,6 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 find_package(GFLAGS REQUIRED)
 
-execute_process(
-    COMMAND bash -c "grep \"namespace [_A-Za-z0-9]\\+ {\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $2}' | tr -d '\n'"
-    OUTPUT_VARIABLE GFLAGS_NS
-)
-if(${GFLAGS_NS} STREQUAL "GFLAGS_NAMESPACE")
-    execute_process(
-        COMMAND bash -c "grep \"#define GFLAGS_NAMESPACE [_A-Za-z0-9]\\+\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $3}' | tr -d '\n'"
-        OUTPUT_VARIABLE GFLAGS_NS
-    )
-endif()
-
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -144,7 +133,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -Wno-deprecated-declarations -Wno-inconsistent-missing-override")
 endif()
 
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DBRPC_WITH_RDMA=${WITH_RDMA_VAL} -DGFLAGS_NS=${GFLAGS_NS} -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL} -DBRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}")
+set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DBRPC_WITH_RDMA=${WITH_RDMA_VAL} -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL} -DBRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}")
 if(WITH_MESALINK)
     set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DUSE_MESALINK")
 endif()

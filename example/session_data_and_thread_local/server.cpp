@@ -211,7 +211,7 @@ void AsyncJob::run() {
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
 
     // The factory to create MySessionLocalData. Must be valid when server is running.
     MySessionLocalDataFactory session_local_data_factory;

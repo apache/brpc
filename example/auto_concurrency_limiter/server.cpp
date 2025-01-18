@@ -271,7 +271,7 @@ private:
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     bthread::FLAGS_bthread_concurrency= FLAGS_server_bthread_concurrency;
 
     brpc::Server server;

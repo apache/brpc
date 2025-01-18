@@ -272,7 +272,7 @@ void Test(int thread_num, int attachment_size) {
 }
 
 int main(int argc, char* argv[]) {
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
 
     // Initialize RDMA environment in advance.
     if (FLAGS_use_rdma) {
