@@ -111,9 +111,9 @@ int main(int argc, char* argv[]) {
     bthread_setconcurrency(BTHREAD_MIN_CONCURRENCY);
 
     // Parse gflags. We recommend you to use gflags as well.
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     if (FLAGS_enable_coroutine) {
-        GFLAGS_NS::SetCommandLineOption("usercode_in_coroutine", "true");
+        GFLAGS_NAMESPACE::SetCommandLineOption("usercode_in_coroutine", "true");
     }
 
     // Generally you only need one Server.

@@ -63,7 +63,7 @@ public:
 }
 
 int main(int argc, char* argv[]) {
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
 
     brpc::Server server;
     test::PerfTestServiceImpl perf_test_service_impl;
