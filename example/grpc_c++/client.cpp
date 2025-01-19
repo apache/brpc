@@ -33,9 +33,9 @@ DEFINE_bool(gzip, false, "compress body using gzip");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     if (FLAGS_gzip) {
-        GFLAGS_NS::SetCommandLineOption("http_body_compress_threshold", 0);
+        GFLAGS_NAMESPACE::SetCommandLineOption("http_body_compress_threshold", 0);
     }
     
     // A Channel represents a communication line to a Server. Notice that 
