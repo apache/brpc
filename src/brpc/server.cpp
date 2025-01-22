@@ -426,7 +426,13 @@ Server::Server(ProfilerLinker)
     , _concurrency_bvar(cast_no_barrier_int, &_concurrency)
     , _has_progressive_read_method(false) {
     // `rpc_pb_message_factory` is created here because it is possible
-    // for users to visit it at any time after `Server` created
+    // for users to visit it at any time after `Server` created, such as
+    // the `_dummy` server of ChannelTest.success unit test case that uses
+    // `rpc_pb_message_factory` of the default ServerOptions:
+    //   ```cpp
+    //   Server _dummy;
+    //   auto messages = _dummy.options().rpc_pb_message_factory->Get(...);
+    //   ```
     _options.rpc_pb_message_factory = new DefaultRpcPBMessageFactory();
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
