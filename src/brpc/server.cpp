@@ -406,6 +406,57 @@ const std::string& Server::ServiceProperty::service_name() const {
     return s_unknown_name;
 }
 
+inline void copy_and_fill_server_options(ServerOptions& dst, const ServerOptions& src) {
+// follow Server::~Server()
+#define FREE_PTR_IF_NOT_REUSED(ptr)         \
+    if (dst.ptr != src.ptr) {               \
+        delete dst.ptr;                     \
+        dst.ptr = NULL;                     \
+    }
+
+    if (&dst != &src) {
+        FREE_PTR_IF_NOT_REUSED(nshead_service);
+
+ #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+        FREE_PTR_IF_NOT_REUSED(thrift_service);
+ #endif
+
+        FREE_PTR_IF_NOT_REUSED(baidu_master_service);
+        FREE_PTR_IF_NOT_REUSED(http_master_service);
+        FREE_PTR_IF_NOT_REUSED(rpc_pb_message_factory);
+
+        if (dst.pid_file != src.pid_file && !dst.pid_file.empty()) {
+            unlink(dst.pid_file.c_str());
+        }
+
+        if (dst.server_owns_auth) {
+            FREE_PTR_IF_NOT_REUSED(auth);
+        }
+
+        if (dst.server_owns_interceptor) {
+            FREE_PTR_IF_NOT_REUSED(interceptor);
+        }
+
+        FREE_PTR_IF_NOT_REUSED(redis_service);
+
+        // copy data members directly
+        dst = src;
+    }
+#undef FREE_PTR_IF_NOT_REUSED
+
+    // `rpc_pb_message_factory` is created here because it is possible
+    // for users to visit it at any time after `Server` created, such as
+    // the `_dummy` server of ChannelTest.success unit test case that uses
+    // `rpc_pb_message_factory` of the default ServerOptions:
+    //   ```cpp
+    //   Server _dummy;
+    //   auto messages = _dummy.options().rpc_pb_message_factory->Get(...);
+    //   ```
+    if (!dst.rpc_pb_message_factory) {
+        dst.rpc_pb_message_factory = new DefaultRpcPBMessageFactory();
+    }
+}
+
 Server::Server(ProfilerLinker)
     : _session_local_data_pool(NULL)
     , _status(UNINITIALIZED)
@@ -425,15 +476,7 @@ Server::Server(ProfilerLinker)
     , _concurrency(0)
     , _concurrency_bvar(cast_no_barrier_int, &_concurrency)
     , _has_progressive_read_method(false) {
-    // `rpc_pb_message_factory` is created here because it is possible
-    // for users to visit it at any time after `Server` created, such as
-    // the `_dummy` server of ChannelTest.success unit test case that uses
-    // `rpc_pb_message_factory` of the default ServerOptions:
-    //   ```cpp
-    //   Server _dummy;
-    //   auto messages = _dummy.options().rpc_pb_message_factory->Get(...);
-    //   ```
-    _options.rpc_pb_message_factory = new DefaultRpcPBMessageFactory();
+    copy_and_fill_server_options(_options, _options);
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
 }
@@ -791,47 +834,6 @@ static bool OptionsAvailableOverRdma(const ServerOptions* opt) {
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 static bool g_default_ignore_eovercrowded(false);
 
-
-inline void copy_server_option(ServerOptions& dst, const ServerOptions& src) {
-    if (&dst == &src) {
-        return;
-    }
-
-#define FREE_PTR_IF_NOT_REUSED(ptr)         \
-    if (dst.ptr != src.ptr) {               \
-        delete dst.ptr;                     \
-        dst.ptr = NULL;                     \
-    }
-
-    FREE_PTR_IF_NOT_REUSED(nshead_service);
-
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-    FREE_PTR_IF_NOT_REUSED(thrift_service);
-#endif
-
-    FREE_PTR_IF_NOT_REUSED(baidu_master_service);
-    FREE_PTR_IF_NOT_REUSED(http_master_service);
-    FREE_PTR_IF_NOT_REUSED(rpc_pb_message_factory);
-
-    if (dst.pid_file != src.pid_file && !dst.pid_file.empty()) {
-        unlink(dst.pid_file.c_str());
-    }
-
-    if (dst.server_owns_auth) {
-        FREE_PTR_IF_NOT_REUSED(auth);
-    }
-
-    if (dst.server_owns_interceptor) {
-        FREE_PTR_IF_NOT_REUSED(interceptor);
-    }
-
-    FREE_PTR_IF_NOT_REUSED(redis_service);
-
-#undef FREE_PTR_IF_NOT_REUSED
-
-    dst = src;
-}
-
 int Server::StartInternal(const butil::EndPoint& endpoint,
                           const PortRange& port_range,
                           const ServerOptions *opt) {
@@ -864,24 +866,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         return -1;
     }
 
-    if (opt) {
-        copy_server_option(_options, *opt);
-    } else {
-        // Don't forget to release `rpc_pb_message_factory` before overwriting `_options`
-        delete _options.rpc_pb_message_factory;
-        _options.rpc_pb_message_factory = NULL;
-
-        // Always reset to default options explicitly since `_options'
-        // may be the options for the last run or even bad options
-        _options = ServerOptions();
-    }
-
-    // Create the resource if:
-    //   1. `_options` copied from user and user forgot to create
-    //   2. `_options` created by our
-    if (!_options.rpc_pb_message_factory) {
-        _options.rpc_pb_message_factory = new DefaultRpcPBMessageFactory();
-    }
+    copy_and_fill_server_options(_options, opt ? *opt : ServerOptions());
 
     if (!_options.h2_settings.IsValid(true/*log_error*/)) {
         LOG(ERROR) << "Invalid h2_settings";
