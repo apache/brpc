@@ -406,57 +406,6 @@ const std::string& Server::ServiceProperty::service_name() const {
     return s_unknown_name;
 }
 
-inline void copy_and_fill_server_options(ServerOptions& dst, const ServerOptions& src) {
-// follow Server::~Server()
-#define FREE_PTR_IF_NOT_REUSED(ptr)         \
-    if (dst.ptr != src.ptr) {               \
-        delete dst.ptr;                     \
-        dst.ptr = NULL;                     \
-    }
-
-    if (&dst != &src) {
-        FREE_PTR_IF_NOT_REUSED(nshead_service);
-
- #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-        FREE_PTR_IF_NOT_REUSED(thrift_service);
- #endif
-
-        FREE_PTR_IF_NOT_REUSED(baidu_master_service);
-        FREE_PTR_IF_NOT_REUSED(http_master_service);
-        FREE_PTR_IF_NOT_REUSED(rpc_pb_message_factory);
-
-        if (dst.pid_file != src.pid_file && !dst.pid_file.empty()) {
-            unlink(dst.pid_file.c_str());
-        }
-
-        if (dst.server_owns_auth) {
-            FREE_PTR_IF_NOT_REUSED(auth);
-        }
-
-        if (dst.server_owns_interceptor) {
-            FREE_PTR_IF_NOT_REUSED(interceptor);
-        }
-
-        FREE_PTR_IF_NOT_REUSED(redis_service);
-
-        // copy data members directly
-        dst = src;
-    }
-#undef FREE_PTR_IF_NOT_REUSED
-
-    // `rpc_pb_message_factory` is created here because it is possible
-    // for users to visit it at any time after `Server` created, such as
-    // the `_dummy` server of ChannelTest.success unit test case that uses
-    // `rpc_pb_message_factory` of the default ServerOptions:
-    //   ```cpp
-    //   Server _dummy;
-    //   auto messages = _dummy.options().rpc_pb_message_factory->Get(...);
-    //   ```
-    if (!dst.rpc_pb_message_factory) {
-        dst.rpc_pb_message_factory = new DefaultRpcPBMessageFactory();
-    }
-}
-
 Server::Server(ProfilerLinker)
     : _session_local_data_pool(NULL)
     , _status(UNINITIALIZED)
@@ -476,7 +425,6 @@ Server::Server(ProfilerLinker)
     , _concurrency(0)
     , _concurrency_bvar(cast_no_barrier_int, &_concurrency)
     , _has_progressive_read_method(false) {
-    copy_and_fill_server_options(_options, _options);
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
 }
@@ -833,6 +781,52 @@ static bool OptionsAvailableOverRdma(const ServerOptions* opt) {
 
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 static bool g_default_ignore_eovercrowded(false);
+
+inline void copy_and_fill_server_options(ServerOptions& dst, const ServerOptions& src) {
+// follow Server::~Server()
+#define FREE_PTR_IF_NOT_REUSED(ptr)         \
+    if (dst.ptr != src.ptr) {               \
+        delete dst.ptr;                     \
+        dst.ptr = NULL;                     \
+    }
+
+    if (&dst != &src) {
+        FREE_PTR_IF_NOT_REUSED(nshead_service);
+
+ #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+        FREE_PTR_IF_NOT_REUSED(thrift_service);
+ #endif
+
+        FREE_PTR_IF_NOT_REUSED(baidu_master_service);
+        FREE_PTR_IF_NOT_REUSED(http_master_service);
+        FREE_PTR_IF_NOT_REUSED(rpc_pb_message_factory);
+
+        if (dst.pid_file != src.pid_file && !dst.pid_file.empty()) {
+            unlink(dst.pid_file.c_str());
+        }
+
+        if (dst.server_owns_auth) {
+            FREE_PTR_IF_NOT_REUSED(auth);
+        }
+
+        if (dst.server_owns_interceptor) {
+            FREE_PTR_IF_NOT_REUSED(interceptor);
+        }
+
+        FREE_PTR_IF_NOT_REUSED(redis_service);
+
+        // copy data members directly
+        dst = src;
+    }
+#undef FREE_PTR_IF_NOT_REUSED
+
+    // Create the resource if:
+    //   1. `dst` copied from user and user forgot to create
+    //   2. `dst` created by our
+    if (!dst.rpc_pb_message_factory) {
+        dst.rpc_pb_message_factory = new DefaultRpcPBMessageFactory();
+    }
+}
 
 int Server::StartInternal(const butil::EndPoint& endpoint,
                           const PortRange& port_range,
