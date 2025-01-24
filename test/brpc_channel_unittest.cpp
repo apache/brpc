@@ -201,6 +201,10 @@ protected:
     ChannelTest() 
         : _ep(butil::IP_ANY, 8787)
         , _close_fd_once(false) {
+        if (!_dummy.options().rpc_pb_message_factory) {
+            _dummy._options.rpc_pb_message_factory = new brpc::DefaultRpcPBMessageFactory();
+        }
+
         pthread_once(&register_mock_protocol, register_protocol);
         const brpc::InputMessageHandler pairs[] = {
             { brpc::policy::ParseRpcMessage, 
@@ -256,11 +260,6 @@ protected:
         ASSERT_EQ(ts->_svc.descriptor()->full_name(), req_meta.service_name());
         const google::protobuf::MethodDescriptor* method =
             ts->_svc.descriptor()->FindMethodByName(req_meta.method_name());
-
-        if (!ts->_dummy.options().rpc_pb_message_factory) {
-            ts->_dummy._options.rpc_pb_message_factory = new brpc::DefaultRpcPBMessageFactory();
-        }
-
         brpc::RpcPBMessages* messages =
             ts->_dummy.options().rpc_pb_message_factory->Get(ts->_svc, *method);
         google::protobuf::Message* req = messages->Request();
