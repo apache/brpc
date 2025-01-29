@@ -132,7 +132,10 @@ protected:
         // Hack: Regard `_server' as running 
         _server._status = brpc::Server::RUNNING;
         _server._options.auth = &_auth;
-        
+        if (!_server._options.rpc_pb_message_factory) {
+            _server._options.rpc_pb_message_factory = new brpc::DefaultRpcPBMessageFactory();
+        }
+
         EXPECT_EQ(0, pipe(_pipe_fds));
 
         brpc::SocketId id;

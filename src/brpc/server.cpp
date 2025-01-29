@@ -151,7 +151,7 @@ ServerOptions::ServerOptions()
     , rtmp_service(NULL)
     , redis_service(NULL)
     , bthread_tag(BTHREAD_TAG_DEFAULT)
-    , rpc_pb_message_factory(new DefaultRpcPBMessageFactory())
+    , rpc_pb_message_factory(NULL)
     , ignore_eovercrowded(false) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
@@ -424,7 +424,7 @@ Server::Server(ProfilerLinker)
     , _eps_bvar(&_nerror_bvar)
     , _concurrency(0)
     , _concurrency_bvar(cast_no_barrier_int, &_concurrency)
-    ,_has_progressive_read_method(false) {
+    , _has_progressive_read_method(false) {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
 }
@@ -782,6 +782,52 @@ static bool OptionsAvailableOverRdma(const ServerOptions* opt) {
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 static bool g_default_ignore_eovercrowded(false);
 
+inline void copy_and_fill_server_options(ServerOptions& dst, const ServerOptions& src) {
+// follow Server::~Server()
+#define FREE_PTR_IF_NOT_REUSED(ptr)         \
+    if (dst.ptr != src.ptr) {               \
+        delete dst.ptr;                     \
+        dst.ptr = NULL;                     \
+    }
+
+    if (&dst != &src) {
+        FREE_PTR_IF_NOT_REUSED(nshead_service);
+
+ #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+        FREE_PTR_IF_NOT_REUSED(thrift_service);
+ #endif
+
+        FREE_PTR_IF_NOT_REUSED(baidu_master_service);
+        FREE_PTR_IF_NOT_REUSED(http_master_service);
+        FREE_PTR_IF_NOT_REUSED(rpc_pb_message_factory);
+
+        if (dst.pid_file != src.pid_file && !dst.pid_file.empty()) {
+            unlink(dst.pid_file.c_str());
+        }
+
+        if (dst.server_owns_auth) {
+            FREE_PTR_IF_NOT_REUSED(auth);
+        }
+
+        if (dst.server_owns_interceptor) {
+            FREE_PTR_IF_NOT_REUSED(interceptor);
+        }
+
+        FREE_PTR_IF_NOT_REUSED(redis_service);
+
+        // copy data members directly
+        dst = src;
+    }
+#undef FREE_PTR_IF_NOT_REUSED
+
+    // Create the resource if:
+    //   1. `dst` copied from user and user forgot to create
+    //   2. `dst` created by our
+    if (!dst.rpc_pb_message_factory) {
+        dst.rpc_pb_message_factory = new DefaultRpcPBMessageFactory();
+    }
+}
+
 int Server::StartInternal(const butil::EndPoint& endpoint,
                           const PortRange& port_range,
                           const ServerOptions *opt) {
@@ -813,13 +859,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         }
         return -1;
     }
-    if (opt) {
-        _options = *opt;
-    } else {
-        // Always reset to default options explicitly since `_options'
-        // may be the options for the last run or even bad options
-        _options = ServerOptions();
-    }
+
+    copy_and_fill_server_options(_options, opt ? *opt : ServerOptions());
 
     if (!_options.h2_settings.IsValid(true/*log_error*/)) {
         LOG(ERROR) << "Invalid h2_settings";

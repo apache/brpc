@@ -201,6 +201,10 @@ protected:
     ChannelTest() 
         : _ep(butil::IP_ANY, 8787)
         , _close_fd_once(false) {
+        if (!_dummy.options().rpc_pb_message_factory) {
+            _dummy._options.rpc_pb_message_factory = new brpc::DefaultRpcPBMessageFactory();
+        }
+
         pthread_once(&register_mock_protocol, register_protocol);
         const brpc::InputMessageHandler pairs[] = {
             { brpc::policy::ParseRpcMessage, 
