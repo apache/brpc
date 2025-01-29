@@ -934,7 +934,12 @@ HttpResponseSender::~HttpResponseSender() {
     int rc = -1;
     // Have the risk of unlimited pending responses, in which case, tell
     // users to set max_concurrency.
+    ResponseWriteInfo args;
+    bthread_id_t response_id;
+    CHECK_EQ(0, bthread_id_create2(&response_id, &args, HandleResponseWritten));
     Socket::WriteOptions wopt;
+    wopt.id_wait = response_id;
+    wopt.notify_on_success = true;
     wopt.ignore_eovercrowded = true;
     if (is_http2) {
         if (is_grpc) {
@@ -980,9 +985,19 @@ HttpResponseSender::~HttpResponseSender() {
         cntl->SetFailed(errcode, "Fail to write into %s", socket->description().c_str());
         return;
     }
+
+    bthread_id_join(response_id);
+    concurrency_remover.set_sent_us(args.sent_us);
+    const int errcode = args.error_code;
+    if (0 != errcode) {
+        LOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *socket;
+        cntl->SetFailed(errcode, "Fail to write into %s", socket->description().c_str());
+        return;
+    }
+
     if (span) {
         // TODO: this is not sent
-        span->set_sent_us(butil::cpuwide_time_us());
+        span->set_sent_us(args.sent_us);
     }
 }
 

@@ -95,6 +95,7 @@ void NsheadClosure::Run() {
         return;
     }
 
+    int64_t sent_us = 0;
     if (_do_respond) {
         // response uses request's head as default.
         // Notice that the response use request.head.log_id directly rather
@@ -112,7 +113,12 @@ void NsheadClosure::Run() {
         write_buf.append(_response.body.movable());
         // Have the risk of unlimited pending responses, in which case, tell
         // users to set max_concurrency.
+        ResponseWriteInfo args;
+        bthread_id_t response_id;
+        CHECK_EQ(0, bthread_id_create2(&response_id, &args, HandleResponseWritten));
         Socket::WriteOptions wopt;
+        wopt.id_wait = response_id;
+        wopt.notify_on_success = true;
         wopt.ignore_eovercrowded = true;
         if (sock->Write(&write_buf, &wopt) != 0) {
             const int errcode = errno;
@@ -121,10 +127,21 @@ void NsheadClosure::Run() {
                                   sock->description().c_str());
             return;
         }
+
+        bthread_id_join(response_id);
+        concurrency_remover.set_sent_us(args.sent_us);
+        const int errcode = args.error_code;
+        if (0 != errcode) {
+            LOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
+            _controller.SetFailed(errcode, "Fail to write into %s",
+                                  sock->description().c_str());
+            return;
+        }
+        sent_us = args.sent_us;
     }
     if (span) {
         // TODO: this is not sent
-        span->set_sent_us(butil::cpuwide_time_us());
+        span->set_sent_us(0 == sent_us ? butil::cpuwide_time_us() : sent_us);
     }
 }
 

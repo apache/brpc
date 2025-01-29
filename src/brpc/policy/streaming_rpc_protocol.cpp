@@ -154,7 +154,9 @@ void SendStreamClose(Socket *sock, int64_t remote_stream_id,
 }
 
 int SendStreamData(Socket* sock, const butil::IOBuf* data,
-                   int64_t remote_stream_id, int64_t source_stream_id) {
+                   int64_t remote_stream_id,
+                   int64_t source_stream_id,
+                   bthread_id_t response_id) {
     CHECK(sock != NULL);
     StreamFrameMeta fm;
     fm.set_stream_id(remote_stream_id);
@@ -164,6 +166,8 @@ int SendStreamData(Socket* sock, const butil::IOBuf* data,
     butil::IOBuf out;
     PackStreamMessage(&out, fm, data);
     Socket::WriteOptions wopt;
+    wopt.id_wait = response_id;
+    wopt.notify_on_success = true;
     wopt.ignore_eovercrowded = true;
     return sock->Write(&out, &wopt);
 }

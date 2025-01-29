@@ -184,12 +184,9 @@ struct BaiduProxyPBMessages : public RpcPBMessages {
 }
 
 // Used by UT, can't be static.
-void SendRpcResponse(int64_t correlation_id,
-                     Controller* cntl,
-                     RpcPBMessages* messages,
-                     const Server* server,
-                     MethodStatus* method_status,
-                     int64_t received_us) {
+void SendRpcResponse(int64_t correlation_id, Controller* cntl,
+                     RpcPBMessages* messages, const Server* server,
+                     MethodStatus* method_status, int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -197,24 +194,33 @@ void SendRpcResponse(int64_t correlation_id,
     }
     Socket* sock = accessor.get_sending_socket();
 
-    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+    const google::protobuf::Message* req = NULL == messages ? NULL : messages->Request();
+    const google::protobuf::Message* res = NULL == messages ? NULL : messages->Response();
 
-    auto messages_guard = butil::MakeScopeGuard([server, messages] {
+    ResponseWriteInfo args;
+
+    // Recycle resources at the end of this function.
+    BRPC_SCOPE_EXIT {
+        {
+            // Remove concurrency and record latency at first.
+            ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+            concurrency_remover.set_sent_us(args.sent_us);
+        }
+
+        std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
+
+
         if (NULL == messages) {
             return;
         }
-        if (NULL != server->options().baidu_master_service) {
-            BaiduProxyPBMessages::Return(static_cast<BaiduProxyPBMessages*>(messages));
-        } else {
-            server->options().rpc_pb_message_factory->Return(messages);
-        }
-    });
 
-    const google::protobuf::Message* req = NULL == messages ? NULL : messages->Request();
-    const google::protobuf::Message* res = NULL == messages ? NULL : messages->Response();
-    ClosureGuard guard(brpc::NewCallback(
-        cntl, &Controller::CallAfterRpcResp, req, res));
+        cntl->CallAfterRpcResp(req, res);
+        if (NULL == server->options().baidu_master_service) {
+            server->options().rpc_pb_message_factory->Return(messages);
+        } else {
+            BaiduProxyPBMessages::Return(static_cast<BaiduProxyPBMessages*>(messages));
+        }
+    };
     
     StreamIds response_stream_ids = accessor.response_streams();
 
@@ -302,29 +308,65 @@ void SendRpcResponse(int64_t correlation_id,
     if (span) {
         span->set_response_size(res_buf.size());
     }
+
+    bthread_id_t response_id;
+    CHECK_EQ(0, bthread_id_create2(&response_id, &args, HandleResponseWritten));
     // Send rpc response over stream even if server side failed to create
     // stream for some reason.
-    if(cntl->has_remote_stream()){
+    if (cntl->has_remote_stream()) {
         // Send the response over stream to notify that this stream connection
         // is successfully built.
         // Response_stream can be INVALID_STREAM_ID when error occurs.
         if (SendStreamData(sock, &res_buf,
                            accessor.remote_stream_settings()->stream_id(),
-                           response_stream_id) != 0) {
+                           response_stream_id, response_id) != 0) {
+            error_code = errno;
+            PLOG_IF(WARNING, error_code != EPIPE)
+                << "Fail to write into " << sock->description();
+            cntl->SetFailed(error_code,  "Fail to write into %s",
+                            sock->description().c_str());
+            Stream::SetFailed(response_stream_ids, error_code,
+                              "Fail to write into %s",
+                              sock->description().c_str());
+        }
+    } else{
+        // Have the risk of unlimited pending responses, in which case, tell
+        // users to set max_concurrency.
+        Socket::WriteOptions wopt;
+        wopt.id_wait = response_id;
+        wopt.notify_on_success = true;
+        wopt.ignore_eovercrowded = true;
+        if (sock->Write(&res_buf, &wopt) != 0) {
             const int errcode = errno;
-            std::string error_text = butil::string_printf(64, "Fail to write into %s",
-                                                          sock->description().c_str());
-            PLOG_IF(WARNING, errcode != EPIPE) << error_text;
-            cntl->SetFailed(errcode,  "%s", error_text.c_str());
-            Stream::SetFailed(response_stream_ids, errcode, "%s",
-                              error_text.c_str());
+            PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
+            cntl->SetFailed(errcode, "Fail to write into %s",
+                            sock->description().c_str());
+            return;
+        }
+    }
+
+    bthread_id_join(response_id);
+
+    error_code = args.error_code;
+    if (cntl->has_remote_stream()) {
+        if (0 != error_code) {
+            LOG_IF(WARNING, error_code != EPIPE)
+                << "Fail to write into " << *sock
+                << ", error text= " << args.error_text
+                << ": " << berror(error_code);
+            cntl->SetFailed(error_code,  "Fail to write into %s: %s",
+                            sock->description().c_str(),
+                            args.error_text.c_str());
+            Stream::SetFailed(response_stream_ids, error_code,
+                              "Fail to write into %s",
+                              args.error_text.c_str());
             return;
         }
 
         // Now it's ok the mark these server-side streams as connected as all the
         // written user data would follower the RPC response.
         // Reuse stream_ptr to avoid address first stream id again
-        if(stream_ptr) {
+        if (NULL != stream_ptr) {
             ((Stream*)stream_ptr->conn())->SetConnected();
         }
         for (size_t i = 1; i < response_stream_ids.size(); ++i) {
@@ -342,20 +384,19 @@ void SendRpcResponse(int64_t correlation_id,
     } else{
         // Have the risk of unlimited pending responses, in which case, tell
         // users to set max_concurrency.
-        Socket::WriteOptions wopt;
-        wopt.ignore_eovercrowded = true;
-        if (sock->Write(&res_buf, &wopt) != 0) {
-            const int errcode = errno;
-            PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
-            cntl->SetFailed(errcode, "Fail to write into %s",
-                            sock->description().c_str());
+        if (0 != error_code) {
+            LOG_IF(WARNING, error_code != EPIPE) << "Fail to write into " << *sock
+                                              << ", error text= " << args.error_text
+                                              << ": " << strerror(error_code);
+            cntl->SetFailed(error_code,  "Fail to write into %s: %s",
+                            sock->description().c_str(), args.error_text.c_str());
             return;
         }
     }
 
     if (span) {
         // TODO: this is not sent
-        span->set_sent_us(butil::cpuwide_time_us());
+        span->set_sent_us(args.sent_us);
     }
 }
 
