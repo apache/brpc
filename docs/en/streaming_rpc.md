@@ -16,8 +16,8 @@ Streaming RPC ensures/provides:
 - Full duplex
 - Flow control
 - Notification on timeout
-
-We do not support segment large messages automatically so that multiple Streams on a single TCP connection may lead to [Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking) problem. Please avoid putting huge data into single message until we provide automatic segmentation.
+- We support segment large messages automatically to avoid [Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_bloc
+king) problem.
 
 For examples please refer to [example/streaming_echo_c++](https://github.com/apache/brpc/tree/master/example/streaming_echo_c++/).
 
