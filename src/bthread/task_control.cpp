@@ -183,6 +183,7 @@ TaskControl::TaskControl()
     , _signal_per_second(&_cumulated_signal_count)
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
+    , _priority_qs(FLAGS_task_group_ntags)
     , _pl(FLAGS_task_group_ntags)
 {}
 
@@ -207,6 +208,10 @@ int TaskControl::init(int concurrency) {
         _tagged_worker_usage_second.push_back(new bvar::PerSecond<bvar::PassiveStatus<double>>(
             "bthread_worker_usage", tag_str, _tagged_cumulated_worker_time[i], 1));
         _tagged_nbthreads.push_back(new bvar::Adder<int64_t>("bthread_count", tag_str));
+        if (_priority_qs[i].init(BTHREAD_MAX_CONCURRENCY) != 0) {
+            LOG(FATAL) << "Fail to init _priority_q";
+            return -1;
+        }
     }
 
     // Make sure TimerThread is ready.
@@ -430,6 +435,11 @@ int TaskControl::_destroy_group(TaskGroup* g) {
 
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     auto tag = tls_task_group->tag();
+
+    if (_priority_qs[tag].steal(tid)) {
+        return true;
+    }
+
     // 1: Acquiring fence is paired with releasing fence in _add_group to
     // avoid accessing uninitialized slot of _groups.
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_acquire/*1*/);
@@ -472,13 +482,18 @@ void TaskControl::signal_task(int num_task, bthread_tag_t tag) {
     }
     auto& pl = tag_pl(tag);
     int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
-    num_task -= pl[start_index].signal(1);
+    // WARNING: This allow some bad case happen when  wait_count is not accurente.
+    if (ParkingLot::_waiting_count.load(butil::memory_order_relaxed) > 0) {
+        num_task -= pl[start_index].signal(1);
+    }
     if (num_task > 0) {
         for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
             if (++start_index >= PARKING_LOT_NUM) {
                 start_index = 0;
             }
-            num_task -= pl[start_index].signal(1);
+            if (ParkingLot::_waiting_count.load(butil::memory_order_relaxed) > 0) {
+                num_task -= pl[start_index].signal(1);
+            }
         }
     }
     if (num_task > 0 &&
@@ -575,4 +590,11 @@ bvar::LatencyRecorder* TaskControl::create_exposed_pending_time() {
     return pt;
 }
 
+void TaskControl::set_group_epoll_tid(bthread_tag_t tag, bthread_t tid) {
+    auto groups = tag_group(tag);
+    const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_acquire);
+    for (size_t i = 0; i < ngroup; i++) {
+        groups[i]->add_epoll_tid(tid);
+    }
+}
 }  // namespace bthread
