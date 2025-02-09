@@ -88,7 +88,7 @@ public:
     bool read_body_progressively() const { return _read_body_progressively; }
 
     void set_read_body_progressively(bool read_body_progressively) {
-        this->_read_body_progressively = read_body_progressively;
+        _read_body_progressively = read_body_progressively;
     }
 
     // Send new parts of the body to the reader. If the body already has some

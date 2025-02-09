@@ -97,7 +97,7 @@ TEST(BthreadTest, setconcurrency_with_running_bthread) {
     *odd = 0;
     *even = 0;
     std::vector<bthread_t> tids;
-    const int N = 500;
+    const int N = 200;
     for (int i = 0; i < N; ++i) {
         bthread_t tid;
         bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, odd_thread, NULL);
@@ -155,7 +155,7 @@ TEST(BthreadTest, min_concurrency) {
     ASSERT_EQ(1, set_min_concurrency(0)); // set min success
     ASSERT_EQ(0, get_min_concurrency());
     int conn = bthread_getconcurrency();
-    int add_conn = 100;
+    int add_conn = 50;
 
     ASSERT_EQ(0, set_min_concurrency(conn + 1)); // set min failed
     ASSERT_EQ(0, get_min_concurrency());

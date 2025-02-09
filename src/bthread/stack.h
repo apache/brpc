@@ -31,8 +31,8 @@
 namespace bthread {
 
 struct StackStorage {
-     int stacksize;
-     int guardsize;
+     unsigned stacksize;
+     unsigned guardsize;
     // Assume stack grows upwards.
     // http://www.boost.org/doc/libs/1_55_0/libs/context/doc/html/context/stack.html
     void* bottom;
@@ -62,6 +62,7 @@ enum StackType {
 };
 
 struct ContextualStack {
+    virtual ~ContextualStack() = default;
     bthread_fcontext_t context;
     StackType stacktype;
     StackStorage storage;

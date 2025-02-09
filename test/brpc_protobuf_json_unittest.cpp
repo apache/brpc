@@ -26,7 +26,9 @@
 #include "butil/strings/string_util.h"
 #include "butil/third_party/rapidjson/rapidjson.h"
 #include "butil/time.h"
+#ifdef BRPC_WITH_GPERFTOOLS
 #include "butil/gperftools_profiler.h"
+#endif // BRPC_WITH_GPERFTOOLS
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
 #include "json2pb/encode_decode.h"
@@ -505,9 +507,11 @@ TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {
 
     printf("----------test json to pb performance------------\n\n");
 
-    std::string error; 
-  
+    std::string error;
+
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("json_to_pb_perf.prof");
+#endif // BRPC_WITH_GPERFTOOLS
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
@@ -531,7 +535,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {
     }
     avg_time1 /= times;
     avg_time2 /= times;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     printf("avg time to convert json to pb is %fus\n", avg_time1);
     printf("avg time to convert pb to json is %fus\n", avg_time2);
 }
@@ -542,9 +548,11 @@ TEST_F(ProtobufJsonTest, json_to_pb_encode_decode_perf_case) {
                           \"welcome\", \"enum--type\":1},\"uid*\":\"welcome\"}], \
                           \"judge\":false, \"spur\":2, \"data:array\":[]}";  
     printf("----------test json to pb encode/decode performance------------\n\n");
-    std::string error; 
-    
+    std::string error;
+
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("json_to_pb_encode_decode_perf.prof");
+#endif // BRPC_WITH_GPERFTOOLS
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
@@ -568,7 +576,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_encode_decode_perf_case) {
     }
     avg_time1 /= times;
     avg_time2 /= times;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     printf("avg time to convert json to pb is %fus\n", avg_time1);
     printf("avg time to convert pb to json is %fus\n", avg_time2);
 }
@@ -592,8 +602,10 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
     const int times = 10000;
     json2pb::Json2PbOptions options;
     options.base64_to_bytes = false;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("json_to_pb_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+#endif // BRPC_WITH_GPERFTOOLS
+    for (int i = 0; i < times; i++) {
         gss::message::gss_us_res_t data;
         butil::IOBufAsZeroCopyInputStream stream(buf); 
         timer.start();
@@ -602,7 +614,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
         avg_time1 += timer.u_elapsed();
         ASSERT_TRUE(res);
     }
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     avg_time1 /= times;
     printf("avg time to convert json to pb is %fus\n", avg_time1);
 }
@@ -624,8 +638,10 @@ TEST_F(ProtobufJsonTest, json_to_pb_to_string_complex_perf_case) {
     const int times = 10000;
     json2pb::Json2PbOptions options;
     options.base64_to_bytes = false;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("json_to_pb_to_string_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+#endif // BRPC_WITH_GPERFTOOLS
+    for (int i = 0; i < times; i++) {
         gss::message::gss_us_res_t data;
         timer.start();
         res = json2pb::JsonToProtoMessage(info3, &data, options, &error);
@@ -634,7 +650,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_to_string_complex_perf_case) {
         ASSERT_TRUE(res);
     }
     avg_time1 /= times;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     printf("avg time to convert json to pb is %fus\n", avg_time1);
 }
 
@@ -1292,7 +1310,10 @@ TEST_F(ProtobufJsonTest, pb_to_json_perf_case) {
     printf("text:%s\n", text.data());
 
     printf("----------test pb to json performance------------\n\n");
+
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("pb_to_json_perf.prof");
+#endif // BRPC_WITH_GPERFTOOLS
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
@@ -1316,7 +1337,9 @@ TEST_F(ProtobufJsonTest, pb_to_json_perf_case) {
     }
     avg_time1 /= times;
     avg_time2 /= times;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     printf("avg time to convert json to pb is %fus\n", avg_time1);
     printf("avg time to convert pb to json is %fus\n", avg_time2);
 }
@@ -1350,8 +1373,11 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode_perf_case) {
     
     ASSERT_TRUE(json2pb::ProtoMessageToJson(json_data, &info1, NULL));
 
+#ifdef BRPC_WITH_GPERFTOOLS
     printf("----------test pb to json encode decode performance------------\n\n");
     ProfilerStart("pb_to_json_encode_decode_perf.prof");
+#endif // BRPC_WITH_GPERFTOOLS
+
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
@@ -1374,7 +1400,9 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode_perf_case) {
     }
     avg_time1 /= times;
     avg_time2 /= times;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     printf("avg time to convert json to pb is %fus\n", avg_time1);
     printf("avg time to convert pb to json is %fus\n", avg_time2);
 }
@@ -1400,8 +1428,10 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
     option.base64_to_bytes = false;
     res = JsonToProtoMessage(info3, &data, option, &error);
     ASSERT_TRUE(res) << error;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("pb_to_json_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+#endif // BRPC_WITH_GPERFTOOLS
+    for (int i = 0; i < times; i++) {
         std::string error1;
         timer.start();
         butil::IOBuf buf;
@@ -1412,7 +1442,9 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
         ASSERT_TRUE(res);
     }
     avg_time2 /= times;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     printf("avg time to convert pb to json is %fus\n", avg_time2);
 }
 
@@ -1436,8 +1468,10 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
     option.base64_to_bytes = false;
     res = JsonToProtoMessage(info3, &data, option, &error);
     ASSERT_TRUE(res);
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("pb_to_json_to_string_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+#endif // BRPC_WITH_GPERFTOOLS
+    for (int i = 0; i < times; i++) {
         std::string info4;  
         std::string error1;
         timer.start();
@@ -1448,7 +1482,9 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
         ASSERT_TRUE(res);
     }
     avg_time2 /= times;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     printf("avg time to convert pb to json is %fus\n", avg_time2);
 }
 

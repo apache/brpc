@@ -2191,13 +2191,13 @@ http_parser_init (http_parser *parser, enum http_parser_type t)
 
 const char *
 http_errno_name(enum http_errno err) {
-  assert(err < (sizeof(http_strerror_tab)/sizeof(http_strerror_tab[0])));
+  assert(err < (http_errno)(sizeof(http_strerror_tab)/sizeof(http_strerror_tab[0])));
   return http_strerror_tab[err].name;
 }
 
 const char *
 http_errno_description(enum http_errno err) {
-  assert(err < (sizeof(http_strerror_tab)/sizeof(http_strerror_tab[0])));
+  assert(err < (http_errno)(sizeof(http_strerror_tab)/sizeof(http_strerror_tab[0])));
   return http_strerror_tab[err].description;
 }
 

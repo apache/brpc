@@ -23,6 +23,7 @@
 #define BUTIL_OBJECT_POOL_H
 
 #include <cstddef>                       // size_t
+#include "butil/type_traits.h"
 
 // ObjectPool is a derivative class of ResourcePool to allocate and
 // reuse fixed-size objects without identifiers.
@@ -62,6 +63,10 @@ template <typename T> struct ObjectPoolFreeChunkMaxItem {
 template <typename T> struct ObjectPoolValidator {
     static bool validate(const T*) { return true; }
 };
+
+//
+template <typename T>
+struct ObjectPoolWithASanPoison : true_type {};
 
 }  // namespace butil
 

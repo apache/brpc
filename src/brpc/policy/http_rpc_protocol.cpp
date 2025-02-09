@@ -1698,7 +1698,7 @@ void HttpContext::CheckProgressiveRead(const void* arg, Socket *socket) {
         header().uri().path(), (Server *)arg,
         const_cast<std::string *>(&header().unresolved_path()));
     if (sp != NULL && sp->params.enable_progressive_read) {
-        this->set_read_body_progressively(true);
+        set_read_body_progressively(true);
         socket->read_will_be_progressive(CONNECTION_TYPE_SHORT);
     }
 }

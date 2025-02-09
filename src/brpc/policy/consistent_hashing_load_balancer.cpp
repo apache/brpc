@@ -19,6 +19,7 @@
 #include <algorithm>                                           // std::set_union
 #include <array>
 #include <gflags/gflags.h>
+#include <openssl/md5.h>
 #include "butil/containers/flat_map.h"
 #include "butil/errno.h"
 #include "butil/strings/string_number_conversions.h"
@@ -102,10 +103,10 @@ bool KetamaReplicaPolicy::Build(ServerId server,
     CHECK(num_replicas % points_per_hash == 0)
         << "Ketam hash replicas number(" << num_replicas << ") should be n*4";
     for (size_t i = 0; i < num_replicas / points_per_hash; ++i) {
-        char host[32];
+        char host[256];
         int len = snprintf(host, sizeof(host), "%s-%lu",
                            endpoint2str(ptr->remote_side()).c_str(), i);
-        unsigned char digest[16];
+        unsigned char digest[MD5_DIGEST_LENGTH];
         MD5HashSignature(host, len, digest);
         for (size_t j = 0; j < points_per_hash; ++j) {
             ConsistentHashingLoadBalancer::Node node;

@@ -309,8 +309,6 @@ TEST(ThreadLocalTest, thread_key_multi_thread) {
     }
 }
 
-DEFINE_bool(test_pthread_key, true, "test pthread_key");
-
 struct BAIDU_CACHELINE_ALIGNMENT ThreadKeyPerfArgs {
     pthread_key_t pthread_key;
     ThreadKey* thread_key;

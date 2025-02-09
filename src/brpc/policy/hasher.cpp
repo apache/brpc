@@ -28,12 +28,12 @@ namespace policy {
 void MD5HashSignature(const void* key, size_t len, unsigned char* results) {
     MD5_CTX my_md5;
     MD5_Init(&my_md5);
-    MD5_Update(&my_md5, (const unsigned char *)key, len);
+    MD5_Update(&my_md5, key, len);
     MD5_Final(results, &my_md5);
 }
 
 uint32_t MD5Hash32(const void* key, size_t len) {
-    unsigned char results[16];
+    unsigned char results[MD5_DIGEST_LENGTH];
     MD5HashSignature(key, len, results);
     return ((uint32_t) (results[3] & 0xFF) << 24) 
             | ((uint32_t) (results[2] & 0xFF) << 16) 
@@ -48,7 +48,7 @@ uint32_t MD5Hash32V(const butil::StringPiece* keys, size_t num_keys) {
         MD5_Update(&ctx, (const unsigned char *)keys[i].data(),
                    keys[i].size());
     }
-    unsigned char results[16];
+    unsigned char results[MD5_DIGEST_LENGTH];
     MD5_Final(results, &ctx);
     return ((uint32_t) (results[3] & 0xFF) << 24) 
             | ((uint32_t) (results[2] & 0xFF) << 16) 

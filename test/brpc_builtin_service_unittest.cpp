@@ -25,7 +25,9 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
+#ifdef BRPC_WITH_GPERFTOOLS
 #include "butil/gperftools_profiler.h"
+#endif // BRPC_WITH_GPERFTOOLS
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "brpc/socket.h"
@@ -113,7 +115,7 @@ void MyVLogSite() {
 void CheckContent(const brpc::Controller& cntl, const char* name) {
     const std::string& content = cntl.response_attachment().to_string();
     std::size_t pos = content.find(name);
-    ASSERT_TRUE(pos != std::string::npos) << "name=" << name;
+    ASSERT_TRUE(pos != std::string::npos) << "name=" << name << " content=" << content;
 }
 
 void CheckErrorText(const brpc::Controller& cntl, const char* error) {
@@ -717,6 +719,7 @@ TEST_F(BuiltinServiceTest, rpcz) {
     }
 }
 
+#ifdef BRPC_WITH_GPERFTOOLS
 TEST_F(BuiltinServiceTest, pprof) {
     brpc::PProfService service;
     {
@@ -758,6 +761,7 @@ TEST_F(BuiltinServiceTest, pprof) {
         CheckContent(cntl, "brpc_builtin_service_unittest");
     }
 }
+#endif // BRPC_WITH_GPERFTOOLS
 
 TEST_F(BuiltinServiceTest, dir) {
     brpc::DirService service;
@@ -933,6 +937,7 @@ TEST_F(BuiltinServiceTest, sockets) {
     }    
 }
 
+#ifdef BRPC_WITH_GPERFTOOLS
 TEST_F(BuiltinServiceTest, memory) {
     brpc::MemoryService service;
     brpc::MemoryRequest req;
@@ -950,3 +955,4 @@ TEST_F(BuiltinServiceTest, memory) {
     CheckContent(cntl, "tcmalloc.pageheap_free_bytes");
     CheckContent(cntl, "tcmalloc.pageheap_unmapped_bytes");
 }
+#endif // BRPC_WITH_GPERFTOOLS

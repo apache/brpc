@@ -22,7 +22,6 @@
 #include "bthread/execution_queue.h"
 
 #include "butil/memory/singleton_on_pthread_once.h"
-#include "butil/object_pool.h"           // butil::get_object
 #include "butil/resource_pool.h"         // butil::get_resource
 #include "butil/threading/platform_thread.h"
 

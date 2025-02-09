@@ -2,9 +2,6 @@
 #include <pthread.h>
 #include "butil/containers/mpsc_queue.h"
 
-#define BAIDU_CLEAR_OBJECT_POOL_AFTER_ALL_THREADS_QUIT
-#include "butil/object_pool.h"
-
 namespace {
 
 const uint MAX_COUNT = 1000000;
