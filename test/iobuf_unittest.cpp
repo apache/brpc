@@ -32,6 +32,7 @@
 #include <butil/fd_guard.h>
 #include <butil/errno.h>
 #include <butil/fast_rand.h>
+// #include <butil/debug/leak_annotations.h>
 #if BAZEL_TEST
 #include "test/iobuf.pb.h"
 #else
@@ -295,6 +296,7 @@ TEST_F(IOBufTest, appendv) {
     ASSERT_EQ(0, b.appendv(vec2, arraysize(vec2)));
     ASSERT_EQ(full_len, b.size());
     ASSERT_EQ(0, memcmp(str, b.to_string().data(), full_len));
+    free(str);
 }
 
 TEST_F(IOBufTest, reserve) {
@@ -349,6 +351,8 @@ TEST_F(IOBufTest, reserve) {
     ASSERT_EQ("orang" + s2 + s1, b.to_string());
 }
 
+#ifdef BRPC_WITH_GPERFTOOLS
+// ASan will detect heap-buffer-overflow error casued by FakeBlock.
 struct FakeBlock {
     int nshared;
     FakeBlock() : nshared(1) {}
@@ -455,6 +459,7 @@ TEST_F(IOBufTest, iobuf_as_queue) {
         delete blocks[i];
     }
 }
+#endif // BRPC_WITH_GPERFTOOLS
 
 TEST_F(IOBufTest, iobuf_sanity) {
     install_debug_allocator();
@@ -1780,6 +1785,7 @@ TEST_F(IOBufTest, acquire_tls_block) {
     ASSERT_EQ(2, butil::iobuf::get_tls_block_count());
     head = butil::iobuf::get_tls_block_head();
     ASSERT_EQ(butil::iobuf::block_cap(head), butil::iobuf::block_size(head));
+    // ANNOTATE_SCOPED_MEMORY_LEAK;
     b = butil::iobuf::acquire_tls_block();
     ASSERT_EQ(0, butil::iobuf::get_tls_block_count());
     ASSERT_NE(butil::iobuf::block_cap(b), butil::iobuf::block_size(b));

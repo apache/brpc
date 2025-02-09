@@ -22,7 +22,9 @@
 #include <condition_variable>
 #endif
 #include <gtest/gtest.h>
+#ifdef BRPC_WITH_GPERFTOOLS
 #include "butil/gperftools_profiler.h"
+#endif // BRPC_WITH_GPERFTOOLS
 #include "bvar/utils/lock_timer.h"
 
 namespace {
@@ -220,36 +222,48 @@ TEST_F(LockTimerTest, overhead) {
     MutexWithLatencyRecorder<DummyMutex> m0(r0);
     butil::Timer timer;
     const size_t N = 1000 * 1000 * 10;
-    
+
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("mutex_with_latency_recorder.prof");
+#endif // BRPC_WITH_GPERFTOOLS
     timer.start();
     for (size_t i = 0; i < N; ++i) {
         BAIDU_SCOPED_LOCK(m0);
     }
     timer.stop();
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     LOG(INFO) << "The overhead of MutexWithLatencyRecorder is "
               << timer.n_elapsed() / N << "ns";
 
     IntRecorder r1;
     MutexWithRecorder<DummyMutex> m1(r1);
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("mutex_with_recorder.prof");
+#endif // BRPC_WITH_GPERFTOOLS
     timer.start();
     for (size_t i = 0; i < N; ++i) {
         BAIDU_SCOPED_LOCK(m1);
     }
     timer.stop();
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     LOG(INFO) << "The overhead of MutexWithRecorder is "
               << timer.n_elapsed() / N << "ns";
     MutexWithRecorder<DummyMutex> m2;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("mutex_with_timer.prof");
+#endif // BRPC_WITH_GPERFTOOLS
     timer.start();
     for (size_t i = 0; i < N; ++i) {
         BAIDU_SCOPED_LOCK(m2);
     }
     timer.stop();
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     LOG(INFO) << "The overhead of timer is "
               << timer.n_elapsed() / N << "ns";
 }

@@ -109,6 +109,7 @@ TEST(WSQTest, sanity) {
         for (size_t j = 0; j < res->size(); ++j, ++nstolen) {
             values.push_back((*res)[j]);
         }
+        delete res;
     }
     pthread_join(wth, NULL);
     std::vector<value_type>* res = NULL;
@@ -116,6 +117,7 @@ TEST(WSQTest, sanity) {
     for (size_t j = 0; j < res->size(); ++j, ++npopped) {
         values.push_back((*res)[j]);
     }
+    delete res;
 
     value_type val;
     while (q.pop(&val)) {

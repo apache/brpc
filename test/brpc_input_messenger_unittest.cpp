@@ -21,9 +21,11 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netdb.h>                   //
+#include <netdb.h>
 #include <gtest/gtest.h>
+#ifdef BRPC_WITH_GPERFTOOLS
 #include "butil/gperftools_profiler.h"
+#endif // BRPC_WITH_GPERFTOOLS
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
@@ -180,9 +182,12 @@ TEST_F(MessengerTest, dispatch_tasks) {
     }
 
     sleep(1);
-    
+
+
+#ifdef BRPC_WITH_GPERFTOOLS
     LOG(INFO) << "Begin to profile... (5 seconds)";
     ProfilerStart("input_messenger.prof");
+#endif // BRPC_WITH_GPERFTOOLS
 
     size_t start_client_bytes = 0;
     for (size_t i = 0; i < NCLIENT; ++i) {
@@ -194,8 +199,11 @@ TEST_F(MessengerTest, dispatch_tasks) {
     sleep(5);
     
     tm.stop();
+
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
     LOG(INFO) << "End profiling";
+#endif // BRPC_WITH_GPERFTOOLS
 
     client_stop = true;
 

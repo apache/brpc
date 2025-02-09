@@ -20,7 +20,9 @@
 // Date: 2015/01/20 19:01:06
 
 #include <gtest/gtest.h>
+#ifdef BRPC_WITH_GPERFTOOLS
 #include "butil/gperftools_profiler.h"
+#endif // BRPC_WITH_GPERFTOOLS
 #include "butil/third_party/snappy/snappy.h"
 #include "butil/macros.h"
 #include "butil/iobuf.h"
@@ -121,11 +123,15 @@ TEST_F(test_compress_method, mass_snappy) {
     old_msg.add_numbers(7);
     old_msg.add_numbers(45);
     butil::IOBuf buf;
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("./snappy_compress.prof");
+#endif // BRPC_WITH_GPERFTOOLS
     ASSERT_TRUE(brpc::policy::SnappyCompress(old_msg, &buf));
     snappy_message::SnappyMessageProto new_msg;
     ASSERT_TRUE(brpc::policy::SnappyDecompress(buf, &new_msg));
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     ASSERT_TRUE(strcmp(new_msg.text().c_str(), text) == 0);
     ASSERT_TRUE(new_msg.numbers_size() == 3);
     ASSERT_EQ(new_msg.numbers(0), 2);

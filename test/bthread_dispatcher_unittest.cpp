@@ -25,7 +25,9 @@
 #include "butil/scoped_lock.h"
 #include "butil/fd_utility.h"
 #include "butil/logging.h"
+#ifdef BRPC_WITH_GPERFTOOLS
 #include "butil/gperftools_profiler.h"
+#endif // BRPC_WITH_GPERFTOOLS
 #include "bthread/bthread.h"
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
@@ -192,6 +194,7 @@ void* client_thread(void* arg) {
             }
         }
     }
+    free(buf);
     return NULL;
 }
 
@@ -256,8 +259,10 @@ TEST(DispatcherTest, dispatch_tasks) {
         cm[i]->bytes = 0;
         ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i]));
     }
-    
+
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("dispatcher.prof");
+#endif // BRPC_WITH_GPERFTOOLS
     butil::Timer tm;
     tm.start();
 
@@ -275,7 +280,9 @@ TEST(DispatcherTest, dispatch_tasks) {
     sleep(5);
 
     tm.stop();
+#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
+#endif // BRPC_WITH_GPERFTOOLS
     size_t client_bytes = 0;
     size_t server_bytes = 0;
     for (size_t i = 0; i < NCLIENT; ++i) {

@@ -22,6 +22,9 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
+#include "butil/compiler_specific.h"
+
+#ifdef BRPC_WITH_GPERFTOOLS
 
 using std::nothrow;
 using std::numeric_limits;
@@ -298,3 +301,5 @@ TEST(SecurityTest, TCMALLOC_TEST(RandomMemoryAllocations)) {
 #endif  // defined(OS_LINUX) && defined(__x86_64__)
 
 }  // namespace
+
+#endif // BRPC_WITH_GPERFTOOLS

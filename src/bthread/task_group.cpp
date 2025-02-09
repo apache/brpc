@@ -208,11 +208,38 @@ TaskGroup::~TaskGroup() {
     if (_main_tid) {
         TaskMeta* m = address_meta(_main_tid);
         CHECK(_main_stack == m->stack);
+#ifdef BUTIL_USE_ASAN
+        _main_stack->storage.bottom = NULL;
+        _main_stack->storage.stacksize = 0;
+#endif // BUTIL_USE_ASAN
         return_stack(m->release_stack());
         return_resource(get_slot(_main_tid));
         _main_tid = 0;
     }
 }
+
+#ifdef BUTIL_USE_ASAN
+int PthreadAttrGetStack(void*& stack_addr, size_t& stack_size) {
+#if defined(OS_MACOSX)
+    stack_addr = pthread_get_stackaddr_np(pthread_self());
+    stack_size = pthread_get_stacksize_np(pthread_self());
+    return 0;
+#else
+    pthread_attr_t attr;
+    int rc = pthread_getattr_np(pthread_self(), &attr);
+    if (0 != rc) {
+        LOG(ERROR) << "Fail to get pthread attributes: " << berror(rc);
+        return rc;
+    }
+    rc = pthread_attr_getstack(&attr, &stack_addr, &stack_size);
+    if (0 != rc) {
+        LOG(ERROR) << "Fail to get pthread stack: " << berror(rc);
+    }
+    pthread_attr_destroy(&attr);
+    return rc;
+#endif // OS_MACOSX
+}
+#endif // BUTIL_USE_ASAN
 
 int TaskGroup::init(size_t runqueue_capacity) {
     if (_rq.init(runqueue_capacity) != 0) {
@@ -223,6 +250,15 @@ int TaskGroup::init(size_t runqueue_capacity) {
         LOG(FATAL) << "Fail to init _remote_rq";
         return -1;
     }
+
+#ifdef BUTIL_USE_ASAN
+    void* stack_addr = NULL;
+    size_t stack_size = 0;
+    if (0 != PthreadAttrGetStack(stack_addr, stack_size)) {
+        return -1;
+    }
+#endif // BUTIL_USE_ASAN
+
     ContextualStack* stk = get_stack(STACK_TYPE_MAIN, NULL);
     if (NULL == stk) {
         LOG(FATAL) << "Fail to get main stack container";
@@ -247,6 +283,12 @@ int TaskGroup::init(size_t runqueue_capacity) {
     m->tid = make_tid(*m->version_butex, slot);
     m->set_stack(stk);
 
+#ifdef BUTIL_USE_ASAN
+    stk->storage.bottom = stack_addr;
+    stk->storage.stacksize = stack_size;
+    // No guard size required for ASan.
+#endif // BUTIL_USE_ASAN
+
     _cur_meta = m;
     _main_tid = m->tid;
     _main_stack = stk;
@@ -254,6 +296,15 @@ int TaskGroup::init(size_t runqueue_capacity) {
     _last_cpu_clock_ns = 0;
     return 0;
 }
+
+#ifdef BUTIL_USE_ASAN
+void TaskGroup::bthread_task_runner(intptr_t) {
+    // This is a new thread, and it doesn't have the fake stack yet. ASan will
+    // create it lazily, for now just pass NULL.
+    internal::FinishSwitchFiber(NULL);
+    task_runner(0);
+}
+#endif // BUTIL_USE_ASAN
 
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
@@ -564,11 +615,18 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
     TaskMeta* next_meta = address_meta(next_tid);
     if (next_meta->stack == NULL) {
         if (next_meta->stack_type() == cur_meta->stack_type()) {
+            // Reuse the stack of the current ending task.
+            //
             // also works with pthread_task scheduling to pthread_task, the
             // transfered stack is just _main_stack.
             next_meta->set_stack(cur_meta->release_stack());
         } else {
+#ifdef BUTIL_USE_ASAN
+            ContextualStack* stk = get_stack(
+                next_meta->stack_type(), bthread_task_runner);
+#else
             ContextualStack* stk = get_stack(next_meta->stack_type(), task_runner);
+#endif // BUTIL_USE_ASAN
             if (stk) {
                 next_meta->set_stack(stk);
             } else {
@@ -581,7 +639,7 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
             }
         }
     }
-    sched_to(pg, next_meta);
+    sched_to(pg, next_meta, true);
 }
 
 void TaskGroup::sched(TaskGroup** pg) {
@@ -602,7 +660,7 @@ void TaskGroup::sched(TaskGroup** pg) {
 
 extern void CheckBthreadScheSafety();
 
-void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
+void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
     TaskGroup* g = *pg;
 #ifndef NDEBUG
     if ((++g->_sched_recursive_guard) > 1) {
@@ -657,7 +715,11 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
                 g->_control->_task_tracer.set_status(TASK_STATUS_JUMPING, cur_meta);
                 g->_control->_task_tracer.set_status(TASK_STATUS_JUMPING, next_meta);
 #endif // BRPC_BTHREAD_TRACER
-                jump_stack(cur_meta->stack, next_meta->stack);
+                {
+                    BTHREAD_SCOPED_ASAN_FIBER_SWITCHER(
+                        cur_meta->stack->storage, cur_ending);
+                    jump_stack(cur_meta->stack, next_meta->stack);
+                }
                 // probably went to another group, need to assign g again.
                 g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 #ifdef BRPC_BTHREAD_TRACER

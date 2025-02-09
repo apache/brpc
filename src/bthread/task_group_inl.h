@@ -56,13 +56,17 @@ inline void TaskGroup::exchange(TaskGroup** pg, TaskMeta* next_meta) {
                      ? ready_to_run_in_worker_ignoresignal
                      : ready_to_run_in_worker),
                     &args);
-    TaskGroup::sched_to(pg, next_meta);
+    TaskGroup::sched_to(pg, next_meta, false);
 }
 
 inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
     TaskMeta* next_meta = address_meta(next_tid);
     if (next_meta->stack == NULL) {
+#ifdef BUTIL_USE_ASAN
+        ContextualStack* stk = get_stack(next_meta->stack_type(), bthread_task_runner);
+#else
         ContextualStack* stk = get_stack(next_meta->stack_type(), task_runner);
+#endif // BUTIL_USE_ASAN
         if (stk) {
             next_meta->set_stack(stk);
         } else {
@@ -75,7 +79,7 @@ inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
         }
     }
     // Update now_ns only when wait_task did yield.
-    sched_to(pg, next_meta);
+    sched_to(pg, next_meta, false);
 }
 
 inline void TaskGroup::push_rq(bthread_t tid) {

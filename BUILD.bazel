@@ -50,6 +50,9 @@ COPTS = [
 }) + select({
       "//bazel/config:brpc_with_debug_lock": ["-DBRPC_DEBUG_LOCK=1"],
       "//conditions:default": ["-DBRPC_DEBUG_LOCK=0"],
+}) + select({
+      "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
+      "//conditions:default": [""],
 })
 
 LINKOPTS = [
@@ -84,7 +87,10 @@ LINKOPTS = [
         "-libverbs",
     ],
     "//conditions:default": [],
-})
+}) + select({
+        "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
+        "//conditions:default": [""],
+  })
 
 genrule(
     name = "config_h",
