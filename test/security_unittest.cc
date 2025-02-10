@@ -24,7 +24,7 @@
 #endif
 #include "butil/compiler_specific.h"
 
-#ifdef BRPC_WITH_GPERFTOOLS
+#ifdef BUTIL_USE_ASAN
 
 using std::nothrow;
 using std::numeric_limits;
@@ -302,4 +302,4 @@ TEST(SecurityTest, TCMALLOC_TEST(RandomMemoryAllocations)) {
 
 }  // namespace
 
-#endif // BRPC_WITH_GPERFTOOLS
+#endif // BUTIL_USE_ASAN

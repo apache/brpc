@@ -25,9 +25,7 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
-#ifdef BRPC_WITH_GPERFTOOLS
-#include "butil/gperftools_profiler.h"
-#endif // BRPC_WITH_GPERFTOOLS
+#include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "brpc/socket.h"
@@ -719,7 +717,7 @@ TEST_F(BuiltinServiceTest, rpcz) {
     }
 }
 
-#ifdef BRPC_WITH_GPERFTOOLS
+#if defined(BRPC_ENABLE_CPU_PROFILER) || defined(BAIDU_RPC_ENABLE_CPU_PROFILER)
 TEST_F(BuiltinServiceTest, pprof) {
     brpc::PProfService service;
     {
@@ -761,7 +759,7 @@ TEST_F(BuiltinServiceTest, pprof) {
         CheckContent(cntl, "brpc_builtin_service_unittest");
     }
 }
-#endif // BRPC_WITH_GPERFTOOLS
+#endif // BRPC_ENABLE_CPU_PROFILER || BAIDU_RPC_ENABLE_CPU_PROFILER
 
 TEST_F(BuiltinServiceTest, dir) {
     brpc::DirService service;
@@ -937,7 +935,7 @@ TEST_F(BuiltinServiceTest, sockets) {
     }    
 }
 
-#ifdef BRPC_WITH_GPERFTOOLS
+#if defined(BRPC_ENABLE_CPU_PROFILER) || defined(BAIDU_RPC_ENABLE_CPU_PROFILER)
 TEST_F(BuiltinServiceTest, memory) {
     brpc::MemoryService service;
     brpc::MemoryRequest req;
@@ -955,4 +953,4 @@ TEST_F(BuiltinServiceTest, memory) {
     CheckContent(cntl, "tcmalloc.pageheap_free_bytes");
     CheckContent(cntl, "tcmalloc.pageheap_unmapped_bytes");
 }
-#endif // BRPC_WITH_GPERFTOOLS
+#endif // BRPC_ENABLE_CPU_PROFILER || BAIDU_RPC_ENABLE_CPU_PROFILER

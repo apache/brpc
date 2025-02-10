@@ -21,9 +21,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
-#ifdef BRPC_WITH_GPERFTOOLS
-#include "butil/gperftools_profiler.h"
-#endif // BRPC_WITH_GPERFTOOLS
+#include "gperftools_helper.h"
 #include "bthread/bthread.h"
 #include "bthread/condition_variable.h"
 #include "bthread/stack.h"
@@ -264,9 +262,7 @@ TEST(CondTest, ping_pong) {
     arg.stopped = false;
     arg.nthread = 0;
     bthread_t threads[2];
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("cond.prof");
-#endif // BRPC_WITH_GPERFTOOLS
     for (int i = 0; i < 2; ++i) {
         ASSERT_EQ(0, bthread_start_urgent(&threads[i], NULL, ping_pong_thread, &arg));
     }
@@ -277,9 +273,7 @@ TEST(CondTest, ping_pong) {
     for (int i = 0; i < 2; ++i) {
         ASSERT_EQ(0, bthread_join(threads[i], NULL));
     }
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
-#endif // BRPC_WITH_GPERFTOOLS
     LOG(INFO) << "total_count=" << arg.total_count.load();
 }
 

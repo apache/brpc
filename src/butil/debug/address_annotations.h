@@ -7,16 +7,12 @@
 
 #include "butil/macros.h"
 
+// It provides AddressSanitizer annotations for bthread and memory management.
+// See <sanitizer/asan_interface.h> for detail of these annotations.
+
 #ifdef BUTIL_USE_ASAN
 
-// Public ASan API from <sanitizer/asan_interface.h>.
-extern "C" {
-void __asan_poison_memory_region(void const volatile*, size_t);
-void __asan_unpoison_memory_region(void const volatile*, size_t);
-void __sanitizer_start_switch_fiber(void**, const void*, size_t);
-void __sanitizer_finish_switch_fiber(void*, const void**, size_t*);
-int __asan_address_is_poisoned(void const volatile *addr);
-} // extern "C"
+#include <sanitizer/asan_interface.h>
 
 #define BUTIL_ASAN_POISON_MEMORY_REGION(addr, size) \
     __asan_poison_memory_region(addr, size)
@@ -34,7 +30,7 @@ int __asan_address_is_poisoned(void const volatile *addr);
     __sanitizer_finish_switch_fiber(fake_stack_save, bottom_old, size_old)
 
 #else
-// If ASan are used, the annotations should be no-ops.
+// If ASan is not used, these annotations are no-ops.
 #define BUTIL_ASAN_POISON_MEMORY_REGION(addr, size) ((void)(addr), (void)(size))
 #define BUTIL_ASAN_UNPOISON_MEMORY_REGION(addr, size) ((void)(addr), (void)(size))
 #define BUTIL_ASAN_START_SWITCH_FIBER(fake_stack_save, bottom, size) \

@@ -23,9 +23,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#ifdef BRPC_WITH_GPERFTOOLS
-#include "butil/gperftools_profiler.h"
-#endif // BRPC_WITH_GPERFTOOLS
+#include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
@@ -344,17 +342,13 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
     }
     
     LOG(INFO) << "Begin to profile... (5 seconds)";
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("event_dispatcher.prof");
-#endif // BRPC_WITH_GPERFTOOLS
     butil::Timer tm;
     tm.start();
     sleep(5);
     tm.stop();
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
     LOG(INFO) << "End profiling";
-#endif // BRPC_WITH_GPERFTOOLS
 
     size_t client_bytes = 0;
     size_t server_bytes = 0;

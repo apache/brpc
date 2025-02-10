@@ -533,7 +533,7 @@ if [ -z "$TCMALLOC_LIB" ]; then
 elif [ $WITH_ASAN != 0 ]; then
     append_to_output "    \$(error \"gperftools is not compatible with ASAN\")"
 else
-    append_to_output "    CPPFLAGS+=-DBRPC_WITH_GPERFTOOLS"
+    append_to_output "    CPPFLAGS+=-DBRPC_ENABLE_CPU_PROFILER"
     append_to_output_libs "$TCMALLOC_LIB" "    "
     if [ -f $TCMALLOC_LIB/libtcmalloc.$SO ]; then
         append_to_output "    DYNAMIC_LINKINGS+=-ltcmalloc_and_profiler"
