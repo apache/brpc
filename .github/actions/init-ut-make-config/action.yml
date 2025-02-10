@@ -9,5 +9,5 @@ runs:
       shell: bash
     - run: sudo apt-get update && sudo apt-get install -y libgtest-dev cmake gdb libstdc++6-9-dbg && cd /usr/src/gtest && sudo cmake . && sudo make -j ${{env.proc_num}} && sudo mv lib/libgtest* /usr/lib/
       shell: bash
-    - run: sh config_brpc.sh --headers="/libunwind/include /usr/include" --libs="/libunwind/lib /usr/lib /usr/lib64" --nodebugsymbols ${{inputs.options}}
+    - run: sh config_brpc.sh --headers="/libunwind/include /usr/include" --libs="/libunwind/lib /usr/lib /usr/lib64" ${{inputs.options}}
       shell: bash
