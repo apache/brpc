@@ -17,6 +17,8 @@ BUTIL_ASAN_POISON_MEMORY_REGION(addr, size);
 BUTIL_ASAN_UNPOISON_MEMORY_REGION(addr, size);
 ```
 
+其他问题：如果ASan报告中new/delete的调用栈不完整，可以通过设置`fast_unwind_on_malloc=0`回溯出完整的调用栈了。需要注意的是`fast_unwind_on_malloc=0`很耗性能。
+
 ## ThreadSanitizer(TSan)
 
 待支持（TODO）

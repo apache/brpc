@@ -208,8 +208,10 @@
 #endif
 
 // Instruct ASan is enabled.
-#if BUTIL_HAS_FEATURE(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
-#define BUTIL_USE_ASAN 1
+#if defined(BUTIL_USE_ASAN)
+#error "BUTIL_USE_ASAN cannot be set directly."
+#elif BUTIL_HAS_FEATURE(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
+#define BUTIL_USE_ASAN
 #endif
 
 // https://github.com/google/sanitizers/wiki/AddressSanitizer#turning-off-instrumentation

@@ -213,7 +213,7 @@ friend class TaskControl;
     ~TaskGroup();
 
 #ifdef BUTIL_USE_ASAN
-    static void bthread_task_runner(intptr_t);
+    static void asan_task_runner(intptr_t);
 #endif // BUTIL_USE_ASAN
     static void task_runner(intptr_t skip_remained);
 

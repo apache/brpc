@@ -23,9 +23,7 @@
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <pthread.h>
-#ifdef BRPC_WITH_GPERFTOOLS
-#include "butil/gperftools_profiler.h"
-#endif // BRPC_WITH_GPERFTOOLS
+#include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
@@ -307,9 +305,7 @@ TEST(FDTest, ping_pong) {
 #endif
     }
 
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("ping_pong.prof");
-#endif // BRPC_WITH_GPERFTOOLS
     butil::Timer tm;
     tm.start();
 
@@ -332,9 +328,7 @@ TEST(FDTest, ping_pong) {
         ASSERT_EQ(i + REP * NCLIENT, cm[i]->count);
     }
     tm.stop();
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
-#endif // BRPC_WITH_GPERFTOOLS
     LOG(INFO) << "tid=" << REP*NCLIENT * 1000000L / tm.u_elapsed();
     stop = true;
     for (size_t i = 0; i < NEPOLL; ++i) {

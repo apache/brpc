@@ -22,9 +22,7 @@
 #include <bthread/countdown_event.h>
 #include "butil/time.h"
 #include "butil/fast_rand.h"
-#ifdef BRPC_WITH_GPERFTOOLS
-#include "butil/gperftools_profiler.h"
-#endif // BRPC_WITH_GPERFTOOLS
+#include "gperftools_helper.h"
 
 namespace {
 bool stopped = false;
@@ -227,9 +225,7 @@ void test_performance(bool use_pthread) {
     pa.total_time = 0;
     pa.expected_value = 0;
     pa.stopped = false;
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("execq.prof");
-#endif // BRPC_WITH_GPERFTOOLS
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
         pthread_create(&threads[i], NULL, &push_thread_which_addresses_execq, &pa);
     }
@@ -238,9 +234,7 @@ void test_performance(bool use_pthread) {
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
         pthread_join(threads[i], NULL);
     }
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
-#endif // BRPC_WITH_GPERFTOOLS
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
     ASSERT_EQ(pa.expected_value.load(), result);
     LOG(INFO) << "With addressed execq, each execution_queue_execute takes "
@@ -257,9 +251,7 @@ void test_performance(bool use_pthread) {
     pa.total_time = 0;
     pa.expected_value = 0;
     pa.stopped = false;
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart("execq_id.prof");
-#endif // BRPC_WITH_GPERFTOOLS
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
         pthread_create(&threads[i], NULL, &push_thread, &pa);
     }
@@ -268,9 +260,7 @@ void test_performance(bool use_pthread) {
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
         pthread_join(threads[i], NULL);
     }
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
-#endif // BRPC_WITH_GPERFTOOLS
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
     ASSERT_EQ(pa.expected_value.load(), result);
     LOG(INFO) << "With id explicitly, execution_queue_execute takes "

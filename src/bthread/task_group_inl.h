@@ -63,7 +63,7 @@ inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
     TaskMeta* next_meta = address_meta(next_tid);
     if (next_meta->stack == NULL) {
 #ifdef BUTIL_USE_ASAN
-        ContextualStack* stk = get_stack(next_meta->stack_type(), bthread_task_runner);
+        ContextualStack* stk = get_stack(next_meta->stack_type(), asan_task_runner);
 #else
         ContextualStack* stk = get_stack(next_meta->stack_type(), task_runner);
 #endif // BUTIL_USE_ASAN

@@ -1033,7 +1033,7 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
     ASSERT_EQ(ECONNRESET, reader->destroying_status().error_code());
 }
 
-#ifdef BRPC_WITH_GPERFTOOLS
+#ifndef BUTIL_USE_ASAN
 static const std::string TEST_PROGRESSIVE_HEADER = "Progressive";
 static const std::string TEST_PROGRESSIVE_HEADER_VAL = "Progressive-val";
 
@@ -1187,7 +1187,7 @@ TEST_F(HttpTest, server_end_read_failed) {
     channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
 }
-#endif // BRPC_WITH_GPERFTOOLS
+#endif // BUTIL_USE_ASAN
 
 TEST_F(HttpTest, http2_sanity) {
     const int port = 8923;

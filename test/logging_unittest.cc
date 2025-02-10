@@ -4,9 +4,7 @@
 
 #include "butil/basictypes.h"
 #include "butil/logging.h"
-#ifdef BRPC_WITH_GPERFTOOLS
-#include "butil/gperftools_profiler.h"
-#endif // BRPC_WITH_GPERFTOOLS
+#include "gperftools_helper.h"
 #include "butil/files/temp_file.h"
 #include "butil/popen.h"
 #include <gtest/gtest.h>
@@ -542,7 +540,7 @@ TEST_F(LoggingTest, async_log) {
     FLAGS_async_log = saved_async_log;
 }
 
-#ifdef BRPC_WITH_GPERFTOOLS
+#if defined(BRPC_ENABLE_CPU_PROFILER) || defined(BAIDU_RPC_ENABLE_CPU_PROFILER)
 struct BAIDU_CACHELINE_ALIGNMENT PerfArgs {
     const std::string* log;
     int64_t counter;
@@ -646,7 +644,7 @@ TEST_F(LoggingTest, performance) {
 
     FLAGS_async_log = saved_async_log;
 }
-#endif // BRPC_WITH_GPERFTOOLS
+#endif // BRPC_ENABLE_CPU_PROFILER || BAIDU_RPC_ENABLE_CPU_PROFILER
 
 }  // namespace
 

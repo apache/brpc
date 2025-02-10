@@ -105,7 +105,7 @@ private:
 #define OBJECT_POOL_ASAN_POISON_MEMORY_REGION(ptr) asan_poison_memory_region(ptr)
 #define OBJECT_POOL_ASAN_UNPOISON_MEMORY_REGION(ptr) asan_unpoison_memory_region(ptr)
 #else
-    #define OBJECT_POOL_ASAN_POISON_MEMORY_REGION(ptr) ((void)(ptr))
+#define OBJECT_POOL_ASAN_POISON_MEMORY_REGION(ptr) ((void)(ptr))
 #define OBJECT_POOL_ASAN_UNPOISON_MEMORY_REGION(ptr) ((void)(ptr))
 #endif // BUTIL_USE_ASAN
 

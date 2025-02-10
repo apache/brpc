@@ -298,7 +298,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
 }
 
 #ifdef BUTIL_USE_ASAN
-void TaskGroup::bthread_task_runner(intptr_t) {
+void TaskGroup::asan_task_runner(intptr_t) {
     // This is a new thread, and it doesn't have the fake stack yet. ASan will
     // create it lazily, for now just pass NULL.
     internal::FinishSwitchFiber(NULL);
@@ -623,7 +623,7 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
         } else {
 #ifdef BUTIL_USE_ASAN
             ContextualStack* stk = get_stack(
-                next_meta->stack_type(), bthread_task_runner);
+                next_meta->stack_type(), asan_task_runner);
 #else
             ContextualStack* stk = get_stack(next_meta->stack_type(), task_runner);
 #endif // BUTIL_USE_ASAN

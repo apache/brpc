@@ -20,9 +20,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
-#ifdef BRPC_WITH_GPERFTOOLS
-#include "butil/gperftools_profiler.h"
-#endif // BRPC_WITH_GPERFTOOLS
+#include "gperftools_helper.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
 #include "bthread/task_meta.h"
@@ -125,7 +123,6 @@ void* sleep_for_awhile(void* arg) {
 
 void* just_exit(void* arg) {
     LOG(INFO) << "just_exit(" << arg << ")";
-    // __asan_handle_no_return();
     bthread_exit(NULL);
     EXPECT_TRUE(false) << "just_exit(" << arg << ") should never be here";
     return NULL;
@@ -314,11 +311,9 @@ TEST_F(BthreadTest, small_threads) {
         butil::Timer tm;
         for (size_t j = 0; j < 3; ++j) {
             th.clear();
-#ifdef BRPC_WITH_GPERFTOOLS
             if (j == 1) {
                 ProfilerStart(prof_name);
             }
-#endif // BRPC_WITH_GPERFTOOLS
             tm.start();
             for (size_t i = 0; i < N; ++i) {
                 bthread_t t1;
@@ -327,11 +322,9 @@ TEST_F(BthreadTest, small_threads) {
                 th.push_back(t1);
             }
             tm.stop();
-#ifdef BRPC_WITH_GPERFTOOLS
             if (j == 1) {
                 ProfilerStop();
             }
-#endif // BRPC_WITH_GPERFTOOLS
             for (size_t i = 0; i < N; ++i) {
                 bthread_join(th[i], NULL);
             }
@@ -374,9 +367,7 @@ TEST_F(BthreadTest, start_bthreads_frequently) {
     bthread_t th[con];
 
     std::cout << "Perf with different parameters..." << std::endl;
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStart(prof_name);
-#endif // BRPC_WITH_GPERFTOOLS
     for (int cur_con = 1; cur_con <= con; ++cur_con) {
         stop = false;
         for (int i = 0; i < cur_con; ++i) {
@@ -399,9 +390,7 @@ TEST_F(BthreadTest, start_bthreads_frequently) {
         std::cout << sum << ",";
     }
     std::cout << std::endl;
-#ifdef BRPC_WITH_GPERFTOOLS
     ProfilerStop();
-#endif // BRPC_WITH_GPERFTOOLS
     delete [] counters;
 }
 
