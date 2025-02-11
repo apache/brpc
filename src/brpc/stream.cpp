@@ -36,6 +36,9 @@ namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
 DECLARE_int64(socket_max_streams_unconsumed_bytes);
+DEFINE_uint64(stream_write_max_segment_size, 512 * 1024 * 1024,
+              "Stream message exceeding this size will be automatically split into smaller segments");
+BRPC_VALIDATE_GFLAG(stream_write_max_segment_size, PositiveInteger);
 
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
@@ -60,6 +63,11 @@ Stream::Stream()
 }
 
 Stream::~Stream() {
+    // Clear pending buffer
+    if (_pending_buf != NULL) {
+        delete _pending_buf;
+        _pending_buf = NULL;
+    }
     CHECK(_host_socket == NULL);
     bthread_mutex_destroy(&_connect_mutex);
     bthread_mutex_destroy(&_congestion_control_mutex);
@@ -154,18 +162,54 @@ ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/,
     }
     butil::IOBuf out;
     ssize_t len = 0;
+    ssize_t unwritten_data_size = 0;
     for (size_t i = 0; i < size; ++i) {
-        StreamFrameMeta fm;
-        fm.set_stream_id(_remote_settings.stream_id());
-        fm.set_source_stream_id(id());
-        fm.set_frame_type(FRAME_TYPE_DATA);
-        // TODO: split large data
-        fm.set_has_continuation(false);
-        policy::PackStreamMessage(&out, fm, data_list[i]);
-        len += data_list[i]->length();
-        data_list[i]->clear();
+        butil::IOBuf *data = data_list[i];
+        size_t length = data->length();
+        if (length > FLAGS_stream_write_max_segment_size) {
+            if (unwritten_data_size) {
+                WriteToHostSocket(&out);
+                unwritten_data_size = 0;
+                out.clear();
+            }
+            // segmenting large data into multiple parts
+            butil::IOBuf segment_buf;
+            bool has_continuation = true;
+            while (has_continuation) {
+                data->cutn(&segment_buf, FLAGS_stream_write_max_segment_size);
+                StreamFrameMeta fm;
+                fm.set_stream_id(_remote_settings.stream_id());
+                fm.set_source_stream_id(id());
+                fm.set_frame_type(FRAME_TYPE_DATA);
+                has_continuation = !data->empty();
+                fm.set_has_continuation(has_continuation);
+                policy::PackStreamMessage(&out, fm, &segment_buf);
+                len += segment_buf.length();
+                segment_buf.clear();
+                WriteToHostSocket(&out);
+                out.clear();
+            }
+        } else {
+            if (unwritten_data_size + length > FLAGS_stream_write_max_segment_size) {
+                WriteToHostSocket(&out);
+                unwritten_data_size = 0;
+                out.clear();
+            }
+            unwritten_data_size += length;
+            StreamFrameMeta fm;
+            fm.set_stream_id(_remote_settings.stream_id());
+            fm.set_source_stream_id(id());
+            fm.set_frame_type(FRAME_TYPE_DATA);
+            fm.set_has_continuation(false);
+            policy::PackStreamMessage(&out, fm, data_list[i]);
+            len += length;
+            data_list[i]->clear();
+        }
     }
-    WriteToHostSocket(&out);
+
+    if (!out.empty()) {
+        WriteToHostSocket(&out);
+    }
     return len;
 }
 

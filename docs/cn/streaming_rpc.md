@@ -16,8 +16,7 @@ Streaming RPC保证：
 - 全双工。
 - 支持流控。
 - 提供超时提醒
-
-目前的实现还没有自动切割过大的消息，同一个tcp连接上的多个Stream之间可能有[Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking)问题，请尽量避免过大的单个消息，实现自动切割后我们会告知并更新文档。
+- 支持自动切割过大的消息，避免[Head-of-line blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking)问题
 
 例子见[example/streaming_echo_c++](https://github.com/apache/brpc/tree/master/example/streaming_echo_c++/)。
 
