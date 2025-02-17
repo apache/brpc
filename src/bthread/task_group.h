@@ -22,7 +22,9 @@
 #ifndef BTHREAD_TASK_GROUP_H
 #define BTHREAD_TASK_GROUP_H
 
+#include <condition_variable>
 #include <functional>
+#include <mutex>
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
 #include "bthread/task_meta.h"                     // bthread_t, TaskMeta
@@ -74,6 +76,12 @@ public:
                          const bthread_attr_t* __restrict attr,
                          void * (*fn)(void*),
                          void* __restrict arg);
+
+    // Start a bthread, only signals target task group worker.
+    int start_from_dispatcher(bthread_t* __restrict tid,
+                              const bthread_attr_t* __restrict attr,
+                              void * (*fn)(void*),
+                              void* __restrict arg);
 
     // Suspend caller and run next bthread in TaskGroup *pg.
     static void sched(TaskGroup** pg);
@@ -194,11 +202,16 @@ public:
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
 
+    bool notify(bool force_wakeup);
+
+    bool TrySetExtTxProcFuncs();
+
     int group_id_{-1};
     // external tx processor functions. Only used with MonoRedis.
     std::function<void()> tx_processor_exec_{nullptr};
-    std::function<bool(int16_t)> update_ext_proc_{nullptr};
+    std::function<void(int16_t)> update_ext_proc_{nullptr};
     std::function<bool(bool)> override_shard_heap_{nullptr};
+    std::function<bool()> has_tx_processor_work_{nullptr};
 
   private:
     friend class TaskControl;
@@ -247,6 +260,16 @@ public:
         return _control->steal_task(tid, &_steal_seed, _steal_offset);
     }
 
+    bool steal_from_others(bthread_t* tid) {
+        return _control->steal_task(tid, &_steal_seed, _steal_offset);
+    }
+
+    bool NoTasks();
+
+    bool Wait();
+
+    void RunExtTxProcTask();
+
     TaskMeta* _cur_meta;
     
     // the control that this group belongs to
@@ -278,6 +301,12 @@ public:
     std::atomic<int> _remote_nsignaled{0};
 
     int _sched_recursive_guard;
+
+    inline static std::atomic<int> _waiting_workers{0};
+    std::atomic<bool> _waiting{false};
+    std::atomic<bool> _force_wakeup{false};
+    std::mutex _mux;
+    std::condition_variable _cv;
 };
 
 }  // namespace bthread

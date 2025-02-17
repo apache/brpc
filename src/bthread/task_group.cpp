@@ -38,9 +38,17 @@
 #include "bthread/errno.h"
 #include "task_meta.h"
 
-extern std::function<
-    std::tuple<std::function<void()>, std::function<bool(int16_t)>, std::function<bool(bool)>>(int16_t)>
-    get_tx_proc_functors;
+std::function<std::tuple<std::function<void()>,
+        std::function<void(int16_t)>,
+        std::function<bool(bool)>,
+        std::function<bool()>>(int16_t)>
+        get_tx_proc_functors{nullptr};
+
+std::atomic<bool> tx_proc_functors_set{false};
+
+DEFINE_int32(steal_task_rnd, 100, "Steal task frequency in wait_task");
+DEFINE_bool(brpc_worker_as_ext_processor, false, "Work as external processor");
+
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
@@ -61,7 +69,7 @@ const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
     ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
                                     pass_bool);
 
-DEFINE_int32(worker_polling_time_ms, 0, "Worker keep busy polling some time before "
+DEFINE_int32(worker_polling_time_us, 0, "Worker keep busy polling some time before "
                                        "sleeping on parking lot");
 
 BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
@@ -123,16 +131,16 @@ bool TaskGroup::is_stopped(bthread_t tid) {
 }
 
 bool TaskGroup::wait_task(bthread_t* tid) {
-    int64_t poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
-    size_t empty = 0;
+    int64_t poll_start_us = FLAGS_worker_polling_time_us > 0 ? butil::cpuwide_time_us() : 0;
+    int empty_rnd = 0;
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
           return false;
         }
 
-        if (tx_processor_exec_) {
-            tx_processor_exec_();
+        if (FLAGS_brpc_worker_as_ext_processor) {
+            RunExtTxProcTask();
         }
 
         if (_rq.pop(tid) || _bound_rq.pop(tid) || _remote_rq.pop(tid)) {
@@ -140,27 +148,27 @@ bool TaskGroup::wait_task(bthread_t* tid) {
             return true;
         }
 
-        empty++;
-        if (empty % 100 == 0 && steal_task(tid)) {
+        if (empty_rnd % FLAGS_steal_task_rnd == 0 && steal_from_others(tid)) {
             return true;
         }
+        empty_rnd++;
+
         // keep polling for some time before waiting on parking lot
-        if (FLAGS_worker_polling_time_ms <= 0 ||
-            butil::cpuwide_time_ms() - poll_start_ms > FLAGS_worker_polling_time_ms) {
-            bool allow_sleep = true;
-            if (update_ext_proc_) {
-                allow_sleep = update_ext_proc_(-1);
+        if (FLAGS_worker_polling_time_us <= 0 ||
+            butil::cpuwide_time_us() - poll_start_us > FLAGS_worker_polling_time_us) {
+            if (NoTasks()) {
+                if (update_ext_proc_) {
+                    update_ext_proc_(-1);
+                }
+
+                Wait();
+
+                if (update_ext_proc_) {
+                    update_ext_proc_(1);
+                }
             }
-            if (!allow_sleep) {
-                // keep working as external processor
-                poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
-                continue;
-            }
-            _pl->wait(_last_pl_state);
-            poll_start_ms = FLAGS_worker_polling_time_ms > 0 ? butil::cpuwide_time_ms() : 0;
-            if (update_ext_proc_) {
-                update_ext_proc_(1);
-            }
+            poll_start_us = FLAGS_worker_polling_time_us > 0 ? butil::cpuwide_time_us() : 0;
+            empty_rnd = 0;
         }
 #else
         const ParkingLot::State st = _pl->get_state();
@@ -187,15 +195,6 @@ void TaskGroup::run_main_task() {
     TaskGroup* dummy = this;
     bthread_t tid;
     while (wait_task(&tid)) {
-        if (tx_processor_exec_ == nullptr
-            && get_tx_proc_functors != nullptr) {
-            // if the tx proc functors are not set yet.
-            auto functors = get_tx_proc_functors(group_id_);
-            tx_processor_exec_ = std::get<0>(functors);
-            update_ext_proc_ = std::get<1>(functors);
-            override_shard_heap_ = std::get<2>(functors);
-            update_ext_proc_(1);
-        }
         TaskGroup::sched_to(&dummy, tid);
         DCHECK_EQ(this, dummy);
         DCHECK_EQ(_cur_meta->stack, _main_stack);
@@ -244,8 +243,8 @@ TaskGroup::TaskGroup(TaskControl* c)
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
-    _pl = &c->_pl[butil::fmix64(pthread_numeric_id()) % TaskControl::PARKING_LOT_NUM];
     CHECK(c);
+    _bound_rq.is_bound_queue = true;
 }
 
 TaskGroup::~TaskGroup() {
@@ -529,6 +528,57 @@ TaskGroup::start_background<false>(bthread_t* __restrict th,
                                    void * (*fn)(void*),
                                    void* __restrict arg);
 
+int TaskGroup::start_from_dispatcher(bthread_t* __restrict th,
+                                     const bthread_attr_t* __restrict attr,
+                                     void * (*fn)(void*),
+                                     void* __restrict arg) {
+    if (__builtin_expect(!fn, 0)) {
+        return EINVAL;
+    }
+    const int64_t start_ns = butil::cpuwide_time_ns();
+    const bthread_attr_t using_attr = (attr ? *attr : BTHREAD_ATTR_NORMAL);
+    butil::ResourceId<TaskMeta> slot;
+    TaskMeta* m = butil::get_resource(&slot);
+    if (__builtin_expect(!m, 0)) {
+        return ENOMEM;
+    }
+    CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
+    m->stop = false;
+    m->interrupted = false;
+    m->about_to_quit = false;
+    m->fn = fn;
+    m->arg = arg;
+    CHECK(m->stack == NULL);
+    m->attr = using_attr;
+    m->local_storage = LOCAL_STORAGE_INIT;
+    if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
+        m->local_storage.rpcz_parent_span = tls_bls.rpcz_parent_span;
+    }
+    m->cpuwide_start_ns = start_ns;
+    m->stat = EMPTY_STAT;
+    m->tid = make_tid(*m->version_butex, slot);
+    m->SetBoundGroup(nullptr);
+    *th = m->tid;
+    if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
+        LOG(INFO) << "Started bthread " << m->tid;
+    }
+    _control->_nbthreads << 1;
+
+    //    CHECK(address_meta(tid)->bound_task_group == nullptr);
+
+    while (!_remote_rq.push(m->tid)) {
+        flush_nosignal_tasks_remote();
+        LOG_EVERY_SECOND(ERROR)
+                << "_remote_rq is full, capacity=" << _remote_rq.capacity();
+        ::usleep(1000);
+    }
+    // From dispatcher, should never be nosignal, at least for now.
+    CHECK(!(using_attr.flags & BTHREAD_NOSIGNAL));
+    _control->signal_group(group_id_);
+
+    return 0;
+}
+
 int TaskGroup::join(bthread_t tid, void** return_value) {
     if (__builtin_expect(!tid, 0)) {  // tid of bthread is never 0.
         return EINVAL;
@@ -663,6 +713,7 @@ void TaskGroup::sched(TaskGroup** pg) {
 void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     CHECK(next_meta->bound_task_group == nullptr || next_meta->bound_task_group == *pg);
     TaskGroup* g = *pg;
+
 #ifndef NDEBUG
     if ((++g->_sched_recursive_guard) > 1) {
         LOG(FATAL) << "Recursively(" << g->_sched_recursive_guard - 1
@@ -763,6 +814,7 @@ void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
         _num_nosignal = 0;
         _nsignaled += 1 + additional_signal;
         _control->signal_task(1 + additional_signal);
+        // _control->signal_group(group_id_);
     }
 }
 
@@ -772,11 +824,12 @@ void TaskGroup::flush_nosignal_tasks() {
         _num_nosignal = 0;
         _nsignaled += val;
         _control->signal_task(val);
+        // _control->signal_group(group_id_);
     }
 }
 
 void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
-//    CHECK(address_meta(tid)->bound_task_group == nullptr);
+    // CHECK(address_meta(tid)->bound_task_group == nullptr);
     while (!_remote_rq.push(tid)) {
         flush_nosignal_tasks_remote();
         LOG_EVERY_SECOND(ERROR)
@@ -790,6 +843,7 @@ void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
         _remote_num_nosignal.store(0, std::memory_order_release);
         _remote_nsignaled.fetch_add(additional_signal, std::memory_order_release);
         _control->signal_task(1 + additional_signal);
+        // _control->signal_group(group_id_);
     }
 }
 
@@ -801,6 +855,7 @@ void TaskGroup::flush_nosignal_tasks_remote() {
     _remote_num_nosignal.store(0);
     _remote_nsignaled.fetch_add(val);
     _control->signal_task(val);
+    // _control->signal_group(group_id_);
 }
 
 void TaskGroup::ready_to_run_bound(bthread_t tid, bool nosignal) {
@@ -811,28 +866,16 @@ void TaskGroup::ready_to_run_bound(bthread_t tid, bool nosignal) {
     // Update bound group.
     TaskMeta *m = TaskGroup::address_meta(tid);
     m->SetBoundGroup(this);
-    if (nosignal) {
-        _remote_num_nosignal.fetch_add(1, std::memory_order_release);
-    } else {
-        const int additional_signal =_remote_num_nosignal.load(std::memory_order_acquire);
-        _remote_num_nosignal.store(0, std::memory_order_release);
-        _remote_nsignaled.fetch_add(additional_signal, std::memory_order_release);
-        _control->signal_task(1 + additional_signal);
-    }
+    CHECK(!nosignal);
+    _control->signal_group(group_id_);
 }
 
 void TaskGroup::resume_bound_task(bthread_t tid, bool nosignal) {
     if (!_bound_rq.push(tid)) {
         LOG(FATAL) << "fail to push bounded task into group: " << group_id_;
     }
-    if (nosignal) {
-        _remote_num_nosignal.fetch_add(1, std::memory_order_release);
-    } else {
-        const int additional_signal =_remote_num_nosignal.load(std::memory_order_acquire);
-        _remote_num_nosignal.store(0, std::memory_order_release);
-        _remote_nsignaled.fetch_add(additional_signal, std::memory_order_release);
-        _control->signal_task(1 + additional_signal);
-    }
+    CHECK(!nosignal);
+    _control->signal_group(group_id_);
 }
 
 void TaskGroup::ready_to_run_general(bthread_t tid, bool nosignal) {
@@ -1129,6 +1172,67 @@ void print_task(std::ostream& os, bthread_t tid) {
            << "\ncputime_ns=" << stat.cputime_ns
            << "\nnswitch=" << stat.nswitch;
     }
+}
+
+bool TaskGroup::notify(bool force_wakeup) {
+    if (force_wakeup) {
+        _force_wakeup.store(true, std::memory_order_release);
+    }
+    if (!_waiting.load(std::memory_order_acquire)) {
+        return false;
+    }
+    std::unique_lock<std::mutex> lk(_mux);
+    _cv.notify_one();
+    return true;
+}
+
+bool TaskGroup::NoTasks() {
+    return _remote_rq.empty() && _bound_rq.empty() && (has_tx_processor_work_ == nullptr || !has_tx_processor_work_());
+}
+
+bool TaskGroup::Wait(){
+    _waiting.store(true, std::memory_order_release);
+    _waiting_workers.fetch_add(1, std::memory_order_relaxed);
+    std::unique_lock<std::mutex> lk(_mux);
+    _cv.wait(lk, [this]()->bool {
+        if (has_tx_processor_work_ == nullptr) {
+            bool success = TrySetExtTxProcFuncs();
+            if (success) {
+                CHECK(update_ext_proc_ != nullptr);
+                update_ext_proc_(-1);
+            }
+        }
+        return _force_wakeup.load(std::memory_order_relaxed) || !NoTasks();
+    });
+    _waiting.store(false, std::memory_order_release);
+    _waiting_workers.fetch_sub(1, std::memory_order_relaxed);
+    _force_wakeup.store(false, std::memory_order_relaxed);
+    return true;
+}
+
+void TaskGroup::RunExtTxProcTask() {
+    if (!tx_processor_exec_) {
+        TrySetExtTxProcFuncs();
+    }
+    if (tx_processor_exec_) {
+        tx_processor_exec_();
+    }
+}
+
+// Usually ExtTxProcFuncs is set in TaskGroup::wait_task
+bool TaskGroup::TrySetExtTxProcFuncs() {
+    if (FLAGS_brpc_worker_as_ext_processor && tx_processor_exec_ == nullptr &&
+            tx_proc_functors_set.load(std::memory_order_acquire)) {
+        auto functors = get_tx_proc_functors(group_id_);
+        tx_processor_exec_ = std::get<0>(functors);
+        update_ext_proc_ = std::get<1>(functors);
+        override_shard_heap_ = std::get<2>(functors);
+        has_tx_processor_work_ = std::get<3>(functors);
+
+        update_ext_proc_(1);
+        return true;
+    }
+    return false;
 }
 
 }  // namespace bthread

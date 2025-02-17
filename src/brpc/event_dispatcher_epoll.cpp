@@ -289,7 +289,7 @@ void EventDispatcher::Run() {
                     // that is executed right away. We want to keep the same
                     // behaviour with using bthread event dispatcher.
                     bthread_t tid;
-                    bthread_attr_t attr = BTHREAD_ATTR_NORMAL | BTHREAD_NOSIGNAL;
+                    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
                     SocketId *s = new SocketId;
                     *s = e[i].data.u64;
                     int rc = bthread_start_urgent(&tid, &attr, HandleEpollOut, (void*)s);
@@ -303,10 +303,6 @@ void EventDispatcher::Run() {
                     Socket::HandleEpollOut(e[i].data.u64);
                 }
             }
-        }
-        if (FLAGS_use_pthread_event_dispatcher) {
-            // flush added bthreads
-            bthread_flush();
         }
     }
 }
