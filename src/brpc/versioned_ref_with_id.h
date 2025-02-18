@@ -102,17 +102,17 @@ typename std::enable_if<butil::is_void<Ret>::value, Ret>::type ReturnEmpty() {}
         template<typename... Args>                                                          \
         typename std::enable_if<decltype(                                                   \
             Test<class_type, Args...>(0))::value, return_type>::type                        \
-        Call(class_type* obj, Args&&... args) {                                               \
+        Call(class_type* obj, Args&&... args) {                                             \
             BAIDU_CASSERT((butil::is_result_same<                                           \
                               return_type, decltype(&T::func_name), T, Args...>::value),    \
-                          "Params or return type mismatch");                                          \
+                          "Params or return type mismatch");                                \
                 return obj->func_name(std::forward<Args>(args)...);                         \
         }                                                                                   \
                                                                                             \
         template<typename... Args>                                                          \
         typename std::enable_if<!decltype(                                                  \
             Test<class_type, Args...>(0))::value, return_type>::type                        \
-        Call(class_type* obj, Args&&... args) {                                               \
+        Call(class_type* obj, Args&&...) {                                                  \
             return ReturnEmpty<return_type>();                                              \
         }                                                                                   \
     }
@@ -356,7 +356,7 @@ int VersionedRefWithId<T>::Create(VRefId* id, Args&&... args) {
     T* const t = butil::get_resource(&slot, Forbidden());
     if (t == NULL) {
         LOG(FATAL) << "Fail to get_resource<"
-                   << butil::class_name_str<T>() << ">";
+                   << butil::class_name<T>() << ">";
         return -1;
     }
     // nref can be non-zero due to concurrent Address().
@@ -617,10 +617,10 @@ template<typename T>
 std::string VersionedRefWithId<T>::description() const {
     std::string result;
     result.reserve(128);
-    butil::string_appendf(&result, "Socket{id=%" PRIu64, id());
+    butil::string_appendf(&result, "%s{id=%" PRIu64 " ", butil::class_name<T>(), id());
     result.append(WRAPPER_CALL(
         OnDescription, const_cast<T*>(static_cast<const T*>(this))));
-    butil::string_appendf(&result, "} (0x%p)", this);
+    butil::string_appendf(&result, "} (%p)", this);
     return result;
 }
 

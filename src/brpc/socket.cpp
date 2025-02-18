@@ -960,9 +960,9 @@ std::string Socket::OnDescription() const {
     result.reserve(64);
     const int saved_fd = fd();
     if (saved_fd >= 0) {
-        butil::string_appendf(&result, "fd=%d", saved_fd);
+        butil::string_appendf(&result, "fd=%d ", saved_fd);
     }
-    butil::string_appendf(&result, " addr=%s",
+    butil::string_appendf(&result, "addr=%s",
         butil::endpoint2str(remote_side()).c_str());
     const int local_port = local_side().port;
     if (local_port > 0) {
