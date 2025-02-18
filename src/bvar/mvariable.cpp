@@ -60,6 +60,17 @@ DEFINE_int32(bvar_max_dump_multi_dimension_metric_number, 1024,
 BUTIL_VALIDATE_GFLAG(bvar_max_dump_multi_dimension_metric_number,
                      validator_bvar_max_dump_multi_dimension_metric_number);
 
+static bool validator_max_multi_dimension_stats_count(const char*, uint32_t v) {
+    if (v < 1) {
+        LOG(ERROR) << "Invalid max_multi_dimension_stats_count=" << v;
+        return false;
+    }
+    return true;
+}
+DEFINE_uint32(max_multi_dimension_stats_count, 20000, "Max stats count of a multi dimension metric.");
+BUTIL_VALIDATE_GFLAG(max_multi_dimension_stats_count,
+                     validator_max_multi_dimension_stats_count);
+
 class MVarEntry {
 public:
     MVarEntry() : var(NULL) {}
