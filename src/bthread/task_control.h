@@ -58,7 +58,7 @@ public:
     void signal_task(int num_task);
 
     // Notify the group.
-    bool signal_group(int group_id, bool force_wakeup = false);
+    bool signal_group(int group_id);
 
     // Stop and join worker threads in TaskControl.
     void stop_and_join();

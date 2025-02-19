@@ -202,7 +202,7 @@ public:
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
 
-    bool notify(bool force_wakeup);
+    bool notify();
 
     bool TrySetExtTxProcFuncs();
 
@@ -304,7 +304,6 @@ public:
 
     inline static std::atomic<int> _waiting_workers{0};
     std::atomic<bool> _waiting{false};
-    std::atomic<bool> _force_wakeup{false};
     std::mutex _mux;
     std::condition_variable _cv;
 };

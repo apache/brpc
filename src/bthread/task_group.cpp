@@ -1174,10 +1174,7 @@ void print_task(std::ostream& os, bthread_t tid) {
     }
 }
 
-bool TaskGroup::notify(bool force_wakeup) {
-    if (force_wakeup) {
-        _force_wakeup.store(true, std::memory_order_release);
-    }
+bool TaskGroup::notify() {
     if (!_waiting.load(std::memory_order_acquire)) {
         return false;
     }
@@ -1195,18 +1192,23 @@ bool TaskGroup::Wait(){
     _waiting_workers.fetch_add(1, std::memory_order_relaxed);
     std::unique_lock<std::mutex> lk(_mux);
     _cv.wait(lk, [this]()->bool {
+        bthread_t tid;
+        if (steal_from_others(&tid)) {
+            if (!_rq.push(tid)) {
+                LOG(FATAL) << "Group: " << group_id_ << " fail to push into rq";
+            }
+            return true;
+        }
         if (has_tx_processor_work_ == nullptr) {
             bool success = TrySetExtTxProcFuncs();
             if (success) {
-                CHECK(update_ext_proc_ != nullptr);
                 update_ext_proc_(-1);
             }
         }
-        return _force_wakeup.load(std::memory_order_relaxed) || !NoTasks();
+        return !NoTasks();
     });
     _waiting.store(false, std::memory_order_release);
     _waiting_workers.fetch_sub(1, std::memory_order_relaxed);
-    _force_wakeup.store(false, std::memory_order_relaxed);
     return true;
 }
 

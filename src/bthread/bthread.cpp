@@ -439,7 +439,7 @@ int bthread_notify_worker(int group_id) {
     if (c == nullptr) {
         return 0;
     }
-    return c->signal_group(group_id, true);
+    return c->signal_group(group_id);
 }
 
 int bthread_set_worker_startfn(void (*start_fn)()) {
