@@ -21,9 +21,9 @@
 #include "butil/fd_utility.h"                         // make_close_on_exec
 #include "butil/logging.h"                            // LOG
 #include "butil/third_party/murmurhash3/murmurhash3.h"// fmix32
+#include "bvar/latency_recorder.h"                    // bvar::LatencyRecorder
 #include "bthread/bthread.h"                          // bthread_start_background
 #include "brpc/event_dispatcher.h"
-#include "brpc/reloadable_flags.h"
 
 DECLARE_int32(task_group_ntags);
 
@@ -37,6 +37,8 @@ DEFINE_bool(usercode_in_coroutine, false,
             "User's callback are run in coroutine, no bthread or pthread blocking call");
 
 static EventDispatcher* g_edisp = NULL;
+static bvar::LatencyRecorder* g_edisp_read_lantency = NULL;
+static bvar::LatencyRecorder* g_edisp_write_lantency = NULL;
 static pthread_once_t g_edisp_once = PTHREAD_ONCE_INIT;
 
 static void StopAndJoinGlobalDispatchers() {
@@ -46,8 +48,13 @@ static void StopAndJoinGlobalDispatchers() {
             g_edisp[i * FLAGS_event_dispatcher_num + j].Join();
         }
     }
+    delete g_edisp_read_lantency;
+    delete g_edisp_write_lantency;
 }
 void InitializeGlobalDispatchers() {
+    g_edisp_read_lantency = new bvar::LatencyRecorder("event_dispatcher_read_latency");
+    g_edisp_write_lantency = new bvar::LatencyRecorder("event_dispatcher_write_latency");
+
     g_edisp = new EventDispatcher[FLAGS_task_group_ntags * FLAGS_event_dispatcher_num];
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
         for (int j = 0; j < FLAGS_event_dispatcher_num; ++j) {
