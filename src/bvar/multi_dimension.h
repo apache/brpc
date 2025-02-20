@@ -29,8 +29,6 @@
 
 namespace bvar {
 
-constexpr uint64_t MAX_MULTI_DIMENSION_STATS_COUNT = 20000;
-
 template <typename  T>
 class MultiDimension : public MVariable {
 public:

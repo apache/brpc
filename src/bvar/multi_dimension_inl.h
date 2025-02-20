@@ -27,6 +27,7 @@ namespace bvar {
 DECLARE_int32(bvar_latency_p1);
 DECLARE_int32(bvar_latency_p2);
 DECLARE_int32(bvar_latency_p3);
+DECLARE_uint32(max_multi_dimension_stats_count);
 
 static const std::string ALLOW_UNUSED METRIC_TYPE_COUNTER = "counter";
 static const std::string ALLOW_UNUSED METRIC_TYPE_SUMMARY = "summary";
@@ -37,7 +38,7 @@ template <typename T>
 inline
 MultiDimension<T>::MultiDimension(const key_type& labels)
     : Base(labels)
-    , _max_stats_count(MAX_MULTI_DIMENSION_STATS_COUNT)
+    , _max_stats_count(FLAGS_max_multi_dimension_stats_count)
 {
     _metric_map.Modify(init_flatmap);
 }
