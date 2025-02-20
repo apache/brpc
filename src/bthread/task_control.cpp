@@ -245,6 +245,15 @@ TaskGroup* TaskControl::choose_one_group() {
     return _groups[butil::fast_rand_less_than(ngroup)];
 }
 
+TaskGroup *TaskControl::choose_group(size_t g_seed) {
+  const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
+  if (ngroup != 0) {
+    size_t g_idx = g_seed % ngroup;
+    return _groups[g_idx];
+  }
+  return NULL;
+}
+
 TaskGroup* TaskControl::select_group(int group_id) {
     const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
     for (size_t i = 0; i < ngroup; i++) {
@@ -465,7 +474,7 @@ void TaskControl::signal_task(int num_task) {
 
 
 bool TaskControl::signal_group(int group_id) {
-    return _groups[group_id]->notify();
+    return _groups[group_id]->Notify();
 }
 
 void TaskControl::print_rq_sizes(std::ostream& os) {

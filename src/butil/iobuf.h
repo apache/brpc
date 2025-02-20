@@ -49,6 +49,9 @@ struct ssl_st;
 #endif
 }
 
+struct io_uring;
+struct io_uring_sqe;
+
 namespace butil {
 
 // IOBuf is a non-continuous buffer that can be cut and combined w/o copying
@@ -170,6 +173,11 @@ public:
     // of |offset|.
     ssize_t pcut_into_file_descriptor(int fd, off_t offset /*NOTE*/, 
                                       size_t size_hint = 1024*1024);
+
+    void prepare_iovecs(std::vector<struct iovec> *iovecs);
+
+    static void cut_multiple_into_iovecs(std::vector<struct iovec> *iovecs,
+        IOBuf* const* pieces, size_t count);
 
     // Cut into SSL channel `ssl'. Returns what `SSL_write' returns
     // and the ssl error code will be filled into `ssl_error'
@@ -696,10 +704,22 @@ public:
     void move_to(IOBuf& target) {
         target = IOBuf::Movable(buf());
     }
+#ifdef IO_URING_ENABLED
+    uint32_t ring_buffer_size() const {
+        return ring_buf_size_;
+    }
+
+    void set_ring_buffer(char *buf, uint32_t buf_capacity = 4096) {
+        ring_buf_ = buf;
+        ring_buf_size_ = 0;
+        ring_buf_capacity_ = buf_capacity;
+    }
+#endif
     
 private:
     void shrink();
     int add_block();
+    int append_to_stream(const void* src, size_t n);
 
     void* _data;
     // Saving _data_end instead of _size avoid modifying _data and _size
@@ -707,6 +727,11 @@ private:
     void* _data_end;
     IOBuf _buf;
     IOBufAsZeroCopyOutputStream _zc_stream;
+#ifdef IO_URING_ENABLED
+    char *ring_buf_{nullptr};
+    uint32_t ring_buf_size_{0};
+    uint32_t ring_buf_capacity_{0};
+#endif
 };
 
 // Iterate bytes of a IOBuf.

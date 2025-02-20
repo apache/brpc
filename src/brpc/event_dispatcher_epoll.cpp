@@ -21,9 +21,12 @@
 #endif
 
 #include "bthread/task_control.h"
+#include "bthread/task_group.h"
+#include <unordered_map>
 
 extern "C" {
 extern void bthread_flush();
+extern bthread::TaskControl* bthread_get_task_control();
 };
 
 namespace bthread {

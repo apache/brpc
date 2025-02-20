@@ -29,6 +29,7 @@
 #include "brpc/protocol.h"                 // ListProtocols
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/input_messenger.h"
+#include "brpc/socket.h"
 
 
 namespace brpc {
@@ -393,6 +394,59 @@ void InputMessenger::OnNewMessages(Socket* m) {
         m->SetEOF();
     }
 }
+#ifdef IO_URING_ENABLED
+void InputMessenger::OnNewMessagesFromRing(Socket *m) {
+  // Notes:
+  // - If the socket has only one message, the message will be parsed and
+  //   processed in this bthread. nova-pbrpc and http works in this way.
+  // - If the socket has several messages, all messages will be parsed (
+  //   meaning cutting from butil::IOBuf. serializing from protobuf is part of
+  //   "process") in this bthread. All messages except the last one will be
+  //   processed in separate bthreads. To minimize the overhead, scheduling
+  //   is batched(notice the BTHREAD_NOSIGNAL and bthread_flush).
+  // - Verify will always be called in this bthread at most once and before
+  //   any process.
+  InputMessenger *messenger = static_cast<InputMessenger *>(m->user());
+
+  // Notice that all *return* no matter successful or not will run last
+  // message, even if the socket is about to be closed. This should be
+  // OK in most cases.
+  InputMessageClosure last_msg;
+  bool read_eof = false;
+  const int64_t received_us = butil::cpuwide_time_us();
+  const int64_t base_realtime = butil::gettimeofday_us() - received_us;
+
+  const ssize_t nr = m->inbound_nw_;
+  if (nr <= 0) {
+    if (0 == nr) {
+      // Set `read_eof' flag and proceed to feed EOF into `Protocol'
+      // (implied by m->_read_buf.empty), which may produce a new
+      // `InputMessageBase' under some protocols such as HTTP
+      LOG_IF(WARNING, FLAGS_log_connection_close)
+          << *m << " was closed by remote side";
+      read_eof = true;
+    } else {
+      int err_code = -nr;
+      if (err_code != EAGAIN && err_code != EINTR && err_code != ENOBUFS) {
+        PLOG(WARNING) << "Fail to read from " << *m;
+        m->SetFailed(err_code, "Fail to read from %s: %s",
+                     m->description().c_str(), berror(err_code));
+      }
+      return;
+    }
+  }
+
+  if (m->_rdma_state == Socket::RDMA_OFF &&
+      messenger->ProcessNewMessage(m, nr, read_eof, received_us, base_realtime,
+                                   last_msg) < 0) {
+    return;
+  }
+
+  if (read_eof) {
+    m->SetEOF();
+  }
+}
+#endif
 
 InputMessenger::InputMessenger(size_t capacity)
     : _handlers(NULL)

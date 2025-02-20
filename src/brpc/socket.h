@@ -38,7 +38,17 @@
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
 #include "bvar/bvar.h"
+#include "bthread/mutex.h"
+#include "bthread/condition_variable.h"
 
+#ifdef IO_URING_ENABLED
+class RingListener;
+struct InboundRingBuf;
+
+namespace bthread {
+class TaskGroup;
+}
+#endif
 namespace brpc {
 namespace policy {
 class ConsistentHashingLoadBalancer;
@@ -218,7 +228,34 @@ struct SocketOptions {
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
     std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
+    size_t bound_gid_{99999};
 };
+
+#ifdef IO_URING_ENABLED
+struct SocketInboundBuf {
+  SocketInboundBuf() = delete;
+  SocketInboundBuf(int32_t size, uint16_t bid, bool rearm = false)
+      : bytes_(size), buf_id_(bid), need_rearm_(rearm) {}
+
+  SocketInboundBuf(SocketInboundBuf &&rhs)
+      : bytes_(rhs.bytes_), buf_id_(rhs.buf_id_), need_rearm_(rhs.need_rearm_) {
+  }
+
+  SocketInboundBuf &operator=(SocketInboundBuf &&rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
+    bytes_ = rhs.bytes_;
+    buf_id_ = rhs.buf_id_;
+    need_rearm_ = rhs.need_rearm_;
+    return *this;
+  }
+
+  int32_t bytes_{0};
+  uint16_t buf_id_{UINT16_MAX};
+  bool need_rearm_{false};
+};
+#endif
 
 // Abstractions on reading from and writing into file descriptors.
 // NOTE: accessed by multiple threads(frequently), align it by cacheline.
@@ -299,10 +336,22 @@ public:
         // performance.
         bool write_in_background;
 
+#ifdef IO_URING_ENABLED
+        // This write must wait the result.
+        bool synchronous_write;
+        // Write data through iouring.
+        bool write_through_ring;
+#endif
+
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
             , pipelined_count(0), auth_flags(0)
-            , ignore_eovercrowded(false), write_in_background(false) {}
+            , ignore_eovercrowded(false), write_in_background(false)
+#ifdef IO_URING_ENABLED
+            , synchronous_write(false), write_through_ring(false) {}
+#else
+            {}
+#endif
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
 
@@ -432,6 +481,10 @@ public:
     // This function does not block caller.
     static int StartInputEvent(SocketId id, uint32_t events,
                                const bthread_attr_t& thread_attr);
+#ifdef IO_URING_ENABLED
+    static void SocketResume(Socket *sock, InboundRingBuf &rbuf,
+                             bthread::TaskGroup *group);
+#endif
 
     static const int PROGRESS_INIT = 1;
     bool MoreReadEvents(int* progress);
@@ -577,6 +630,13 @@ public:
 
     bthread_keytable_pool_t* keytable_pool() const { return _keytable_pool; }
 
+#ifdef IO_URING_ENABLED
+    void RingNonFixedWriteCb(int nw);
+    void ProcessInbound();
+    void SetFixedWriteLen(uint32_t write_len);
+    int WaitForNonFixedWrite();
+    void NotifyWaitingNonFixedWrite(int nw);
+#endif
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
 
@@ -640,7 +700,7 @@ friend void DereferenceSocket(Socket*);
     //   -1 - Failed to connect to remote side
     int ConnectIfNot(const timespec* abstime, WriteRequest* req);
 
-    int ResetFileDescriptor(int fd);
+    int ResetFileDescriptor(int fd, size_t bound_gid = 0);
 
     void EnableKeepaliveIfNeeded(int fd);
 
@@ -651,6 +711,11 @@ friend void DereferenceSocket(Socket*);
     void Revive();
 
     static void* ProcessEvent(void*);
+#ifdef IO_URING_ENABLED
+    static void *SocketProcess(void *);
+    static void *SocketRegister(void *);
+    static void *SocketUnRegister(void *);
+#endif
 
     static void* KeepWrite(void*);
 
@@ -915,6 +980,28 @@ private:
     // Refer to `SocketKeepaliveOptions' for details.
     // non-NULL means that keepalive is on.
     std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+
+#ifdef IO_URING_ENABLED
+    WriteRequest *io_uring_write_req_{nullptr};
+    std::vector<struct iovec> iovecs_;
+    int32_t keep_write_nw_;
+    bool write_finish_{};
+    bthread::Mutex keep_write_mutex_;
+    bthread::ConditionVariable keep_write_cv_;
+
+    std::vector<SocketInboundBuf> in_bufs_;
+    bthread::TaskGroup *bound_g_{nullptr};
+    int inbound_nw_{INT32_MAX};
+    int reg_fd_idx_{-1};
+    // Registering a file in IO uring is async. This is the slot to hold the fd
+    // of the socket.
+    int reg_fd_{-1};
+    uint16_t recv_num_{0};
+    uint16_t write_buf_idx_{UINT16_MAX};
+    uint32_t write_len_{0};
+
+    friend class ::RingListener;
+#endif
 };
 
 } // namespace brpc

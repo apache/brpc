@@ -31,6 +31,7 @@
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/stream_impl.h"
 
+DECLARE_bool(use_io_uring);
 
 namespace brpc {
 
@@ -170,7 +171,17 @@ ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/,
 }
 
 void Stream::WriteToHostSocket(butil::IOBuf* b) {
+#ifdef IO_URING_ENABLED
+    if (FLAGS_use_io_uring) {
+        Socket::WriteOptions wopt;
+        wopt.synchronous_write = true;
+        BRPC_HANDLE_EOVERCROWDED(_host_socket->Write(b, &wopt));
+    } else {
+        BRPC_HANDLE_EOVERCROWDED(_host_socket->Write(b));
+    }
+#else
     BRPC_HANDLE_EOVERCROWDED(_host_socket->Write(b));
+#endif
 }
 
 ssize_t Stream::CutMessageIntoSSLChannel(SSL*, butil::IOBuf**, size_t) {

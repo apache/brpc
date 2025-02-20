@@ -53,6 +53,9 @@ public:
     // in `arena'.
     ParseError Consume(butil::IOBuf& buf, std::vector<butil::StringPiece>* args,
                        butil::Arena* arena);
+    // ParseError Consume(std::string_view buf, size_t &consume_offset,
+    //                    std::vector<butil::StringPiece> *args,
+    //                    butil::Arena *arena);
     size_t ParsedArgsSize();
 
 private:

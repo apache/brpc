@@ -57,7 +57,7 @@ public:
         Block* next;
         Node nodes[NITEM];
     };
-    static const size_t BLOCK_SIZE = sizeof(Block);
+    static const size_t SIZE_OF_BLOBK = sizeof(Block);
     static const size_t NITEM = Block::NITEM;
     static const size_t ITEM_SIZE = ITEM_SIZE_IN;
     

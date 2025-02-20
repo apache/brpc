@@ -33,6 +33,19 @@
 #include "butil/resource_pool.h"                    // ResourceId
 #include "bthread/parking_lot.h"
 
+#ifdef IO_URING_ENABLED
+#include "spsc_queue.h"
+#include "inbound_ring_buf.h"
+
+class RingWriteBufferPool;
+class RingListener;
+
+namespace brpc {
+class Socket;
+struct SocketInboundBuf;
+}
+#endif
+
 namespace bthread {
 
 // For exiting a bthread.
@@ -75,7 +88,8 @@ public:
     int start_background(bthread_t* __restrict tid,
                          const bthread_attr_t* __restrict attr,
                          void * (*fn)(void*),
-                         void* __restrict arg);
+                         void* __restrict arg,
+                         bool is_bound = false);
 
     // Start a bthread, only signals target task group worker.
     int start_from_dispatcher(bthread_t* __restrict tid,
@@ -202,7 +216,7 @@ public:
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
 
-    bool notify();
+    bool Notify();
 
     bool TrySetExtTxProcFuncs();
 
@@ -213,6 +227,23 @@ public:
     std::function<bool(bool)> override_shard_heap_{nullptr};
     std::function<bool()> has_tx_processor_work_{nullptr};
 
+#ifdef IO_URING_ENABLED
+    bool RingListenerNotify();
+    int RegisterSocket(brpc::Socket *sock);
+    void UnregisterSocket(int fd);
+    void SocketRecv(brpc::Socket *sock);
+    int SocketFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx);
+    int SocketNonFixedWrite(brpc::Socket *sock);
+    int SocketWaitingNonFixedWrite(brpc::Socket *sock);
+    int RingFsync(int fd);
+    const char *GetRingReadBuf(uint16_t buf_id);
+    bool EnqueueInboundRingBuf(brpc::Socket *sock, int32_t bytes, uint16_t bid,
+                               bool rearm);
+    void RecycleRingReadBuf(uint16_t bid, int32_t bytes);
+    std::pair<char *, uint16_t> GetRingWriteBuf();
+    void RecycleRingWriteBuf(uint16_t buf_idx);
+    static TaskGroup* VolatileTLSTaskGroup();
+#endif
   private:
     friend class TaskControl;
 
@@ -306,6 +337,13 @@ public:
     std::atomic<bool> _waiting{false};
     std::mutex _mux;
     std::condition_variable _cv;
+
+#ifdef IO_URING_ENABLED
+    std::atomic<bool> signaled_by_ring_{false};
+    std::unique_ptr<RingListener> ring_listener_{nullptr};
+    eloq::SpscQueue<InboundRingBuf> inbound_queue_;
+    std::array<InboundRingBuf, 128> inbound_batch_;
+#endif
 };
 
 }  // namespace bthread

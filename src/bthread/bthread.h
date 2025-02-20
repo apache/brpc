@@ -347,6 +347,8 @@ extern int bthread_setspecific(bthread_key_t key, void* data);
 // If the key is invalid or deleted, return NULL.
 extern void* bthread_getspecific(bthread_key_t key);
 
+extern int bthread_fsync(int fd);
+
 __END_DECLS
 
 #endif  // BTHREAD_BTHREAD_H

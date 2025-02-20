@@ -24,6 +24,7 @@
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/acceptor.h"
 
+DECLARE_bool(use_io_uring);
 
 namespace brpc {
 
@@ -292,9 +293,21 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
 #else
         {
 #endif
+#ifndef IO_URING_ENABLED
             options.on_edge_triggered_events = InputMessenger::OnNewMessages;
+#else
+            options.on_edge_triggered_events =
+                FLAGS_use_io_uring ? InputMessenger::OnNewMessagesFromRing
+                                   : InputMessenger::OnNewMessages;
+#endif
         }
         options.use_rdma = am->_use_rdma;
+#ifdef IO_URING_ENABLED
+        if (FLAGS_use_io_uring) {
+            options.bound_gid_ = acception->recv_num_;
+            acception->recv_num_++;
+        }
+ #endif
         if (Socket::Create(options, &socket_id) != 0) {
             LOG(ERROR) << "Fail to create Socket";
             continue;

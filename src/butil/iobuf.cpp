@@ -952,6 +952,56 @@ ssize_t IOBuf::pcut_into_file_descriptor(int fd, off_t offset, size_t size_hint)
     return nw;
 }
 
+void IOBuf::prepare_iovecs(std::vector<struct iovec> *iovecs)
+{
+    assert(!empty());
+    // iovecs is allocated on heap, so it is not bound by IOBUF_IOV_MAX,
+    size_t nref = _ref_num();
+    if (nref > IOV_MAX)
+    {
+        // the iovecs size can not exceed IOV_MAX
+        nref = IOV_MAX;
+    }
+    iovecs->reserve(nref);
+    iovecs->clear();
+    size_t nvec = 0;
+    size_t cur_len = 0;
+
+    do
+    {
+        IOBuf::BlockRef const &r = _ref_at(nvec);
+        iovecs->emplace_back();
+        iovec &last = iovecs->back();
+        last.iov_base = r.block->data + r.offset;
+        last.iov_len = r.length;
+        ++nvec;
+        cur_len += r.length;
+    } while (nvec < nref);
+
+    assert(iovecs->size() == nvec);
+}
+
+void IOBuf::cut_multiple_into_iovecs(std::vector<struct iovec> *iovecs,
+    IOBuf* const* pieces, size_t count) {
+    if (BAIDU_UNLIKELY(count == 0)) {
+        return;
+    }
+    iovecs->reserve(count);
+    iovecs->clear();
+    size_t nvec = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const IOBuf* p = pieces[i];
+        const size_t nref = p->_ref_num();
+        for (size_t j = 0; j < nref && nvec < IOV_MAX; ++j, ++nvec) {
+            iovecs->emplace_back();
+            iovec &iov = iovecs->back();
+            IOBuf::BlockRef const& r = p->_ref_at(j);
+            iov.iov_base = r.block->data + r.offset;
+            iov.iov_len = r.length;
+        }
+    }
+}
+
 ssize_t IOBuf::cut_into_writer(IWriter* writer, size_t size_hint) {
     if (empty()) {
         return 0;

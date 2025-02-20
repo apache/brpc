@@ -28,6 +28,8 @@
 #include "bthread/list_of_abafree_id.h"
 #include "bthread/bthread.h"
 
+DECLARE_bool(use_io_uring);
+
 extern std::function<std::tuple<std::function<void()>,
         std::function<void(int16_t)>,
         std::function<bool(bool)>,
@@ -176,6 +178,17 @@ start_from_dispatcher(bthread_t* __restrict tid,
         return ENOMEM;
     }
     return c->choose_one_group()->start_from_dispatcher(tid, attr, fn, arg);
+}
+
+BUTIL_FORCE_INLINE int
+start_from_bound_group(size_t g_seed, bthread_t *__restrict tid,
+                       const bthread_attr_t *__restrict attr,
+                       void *(*fn)(void *), void *__restrict arg) {
+    TaskControl *c = get_or_new_task_control();
+    if (NULL == c) {
+        return ENOMEM;
+    }
+    return c->choose_group(g_seed)->start_background<true>(tid, attr, fn, arg, true);
 }
 
 struct TidTraits {
@@ -499,5 +512,28 @@ int bthread_list_join(bthread_list_t* list) {
     static_cast<bthread::TidList*>(list->impl)->apply(bthread::TidJoiner());
     return 0;
 }
+
+bthread::TaskControl* bthread_get_task_control() {
+    return bthread::get_task_control();
+}
     
 }  // extern "C"
+
+int bthread_start_from_bound_group(size_t g_seed, bthread_t *__restrict tid,
+                                   const bthread_attr_t *__restrict attr,
+                                   void *(*fn)(void *), void *__restrict arg) {
+  return bthread::start_from_bound_group(g_seed, tid, attr, fn, arg);
+}
+
+int bthread_fsync(int fd) {
+#ifdef IO_URING_ENABLED
+    bthread::TaskGroup *g =
+        FLAGS_use_io_uring ? bthread::tls_task_group : nullptr;
+    if (g == nullptr) {
+        return -1;
+    }
+    return g->RingFsync(fd);
+#else
+    return -1;
+#endif
+}

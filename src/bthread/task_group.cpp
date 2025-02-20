@@ -37,6 +37,11 @@
 #include "bthread/timer_thread.h"
 #include "bthread/errno.h"
 #include "task_meta.h"
+#ifdef IO_URING_ENABLED
+#include <liburing.h>
+#include "ring_write_buf_pool.h"
+#include "bthread/ring_listener.h"
+#endif
 
 std::function<std::tuple<std::function<void()>,
         std::function<void(int16_t)>,
@@ -48,6 +53,7 @@ std::atomic<bool> tx_proc_functors_set{false};
 
 DEFINE_int32(steal_task_rnd, 100, "Steal task frequency in wait_task");
 DEFINE_bool(brpc_worker_as_ext_processor, false, "Work as external processor");
+DECLARE_bool(use_io_uring);
 
 namespace bthread {
 
@@ -139,19 +145,56 @@ bool TaskGroup::wait_task(bthread_t* tid) {
           return false;
         }
 
+#ifdef IO_URING_ENABLED
+        if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
+            ring_listener_->SubmitAll();
+        }
+#endif
+
         if (FLAGS_brpc_worker_as_ext_processor) {
             RunExtTxProcTask();
         }
+
+#ifdef IO_URING_ENABLED
+        if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
+            size_t ring_poll_cnt = ring_listener_->ExtPoll();
+
+            size_t cnt = inbound_queue_.TryDequeueBulk(inbound_batch_.begin(),
+                                                       inbound_batch_.size());
+            for (size_t idx = 0; idx < cnt; ++idx) {
+                InboundRingBuf &rbuf = inbound_batch_[idx];
+                brpc::Socket *sock = rbuf.sock_;
+                brpc::Socket::SocketResume(sock, rbuf, this);
+            }
+        }
+#endif
 
         if (_rq.pop(tid) || _bound_rq.pop(tid) || _remote_rq.pop(tid)) {
             _processed_tasks++;
             return true;
         }
+#ifdef IO_URING_ENABLED
+        // if (cnt > 0 || ring_poll_cnt > 0) {
+        //     empty_rnd = 0;
+        //     continue;
+        // }
+#endif
 
         if (empty_rnd % FLAGS_steal_task_rnd == 0 && steal_from_others(tid)) {
             return true;
         }
+        if (empty_rnd == 0) {
+            // Empty rounds start counting.
+            poll_start_us =
+                FLAGS_worker_polling_time_us > 0 ? butil::cpuwide_time_us() : 0;
+        }
+
         empty_rnd++;
+
+        // if ((empty_rnd & 1023) != 0) {
+        //     // For every 1024 rounds, checks if the worker thread should sleep.
+        //     continue;
+        // }
 
         // keep polling for some time before waiting on parking lot
         if (FLAGS_worker_polling_time_us <= 0 ||
@@ -161,6 +204,11 @@ bool TaskGroup::wait_task(bthread_t* tid) {
                     update_ext_proc_(-1);
                 }
 
+#ifdef IO_URING_ENABLED
+                if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
+                    ring_listener_->ExtWakeup();
+                }
+#endif
                 Wait();
 
                 if (update_ext_proc_) {
@@ -240,6 +288,9 @@ TaskGroup::TaskGroup(TaskControl* c)
 #ifndef NDEBUG
     , _sched_recursive_guard(0)
 #endif
+#ifdef IO_URING_ENABLED
+    , inbound_queue_(1024)
+#endif
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
@@ -293,6 +344,16 @@ int TaskGroup::init(size_t runqueue_capacity) {
     _main_tid = m->tid;
     _main_stack = stk;
     _last_run_ns = butil::cpuwide_time_ns();
+#ifdef IO_URING_ENABLED
+    if (FLAGS_use_io_uring) {
+        ring_listener_ = std::make_unique<RingListener>(this);
+        int ret = ring_listener_->Init();
+        if (ret) {
+            LOG(ERROR) << "Failed to initialize the IO uring listener.";
+            ring_listener_ = nullptr;
+        }
+    }
+#endif
     return 0;
 }
 
@@ -476,7 +537,8 @@ template <bool REMOTE>
 int TaskGroup::start_background(bthread_t* __restrict th,
                                 const bthread_attr_t* __restrict attr,
                                 void * (*fn)(void*),
-                                void* __restrict arg) {
+                                void* __restrict arg,
+                                bool is_bound) {
     if (__builtin_expect(!fn, 0)) {
         return EINVAL;
     }
@@ -509,7 +571,11 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     }
     _control->_nbthreads << 1;
     if (REMOTE) {
-        ready_to_run_remote(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
+        if (is_bound) {
+            ready_to_run_bound(m->tid);
+        } else {
+            ready_to_run_remote(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
+        }
     } else {
         ready_to_run(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
     }
@@ -521,12 +587,14 @@ template int
 TaskGroup::start_background<true>(bthread_t* __restrict th,
                                   const bthread_attr_t* __restrict attr,
                                   void * (*fn)(void*),
-                                  void* __restrict arg);
+                                  void* __restrict arg,
+                                  bool is_bound = false);
 template int
 TaskGroup::start_background<false>(bthread_t* __restrict th,
                                    const bthread_attr_t* __restrict attr,
                                    void * (*fn)(void*),
-                                   void* __restrict arg);
+                                   void* __restrict arg,
+                                   bool is_bound = false);
 
 int TaskGroup::start_from_dispatcher(bthread_t* __restrict th,
                                      const bthread_attr_t* __restrict attr,
@@ -1174,7 +1242,7 @@ void print_task(std::ostream& os, bthread_t tid) {
     }
 }
 
-bool TaskGroup::notify() {
+bool TaskGroup::Notify() {
     if (!_waiting.load(std::memory_order_acquire)) {
         return false;
     }
@@ -1184,7 +1252,21 @@ bool TaskGroup::notify() {
 }
 
 bool TaskGroup::NoTasks() {
-    return _remote_rq.empty() && _bound_rq.empty() && (has_tx_processor_work_ == nullptr || !has_tx_processor_work_());
+    bool has_external_task =
+        has_tx_processor_work_ != nullptr && has_tx_processor_work_();
+    bool has_ring_task = false;
+#ifdef IO_URING_ENABLED
+    if (FLAGS_use_io_uring) {
+        bool has_jobs_to_submit = ring_listener_ != nullptr && ring_listener_->HasJobsToSubmit();
+        bool wakeup_by_ring_listener = signaled_by_ring_.load(std::memory_order_relaxed);
+        if (wakeup_by_ring_listener) {
+            signaled_by_ring_.store(false, std::memory_order_relaxed);
+        }
+        has_ring_task = has_jobs_to_submit || wakeup_by_ring_listener;
+    }
+#endif
+    return _remote_rq.empty() && _bound_rq.empty() && !has_ring_task &&
+           !has_external_task;
 }
 
 bool TaskGroup::Wait(){
@@ -1207,6 +1289,9 @@ bool TaskGroup::Wait(){
         }
         return !NoTasks();
     });
+#ifdef IO_URING_ENABLED
+    signaled_by_ring_.store(false, std::memory_order_relaxed);
+#endif
     _waiting.store(false, std::memory_order_release);
     _waiting_workers.fetch_sub(1, std::memory_order_relaxed);
     return true;
@@ -1237,4 +1322,104 @@ bool TaskGroup::TrySetExtTxProcFuncs() {
     return false;
 }
 
+#ifdef IO_URING_ENABLED
+bool TaskGroup::RingListenerNotify() {
+    signaled_by_ring_.store(true, std::memory_order_relaxed);
+    return Notify();
+}
+
+int TaskGroup::RegisterSocket(brpc::Socket *sock) {
+    return ring_listener_->Register(sock);
+}
+
+void TaskGroup::UnregisterSocket(int fd) {
+    ring_listener_->Unregister(fd);
+}
+
+void TaskGroup::SocketRecv(brpc::Socket *sock) {
+  ring_listener_->SubmitRecv(sock);
+}
+
+int TaskGroup::SocketFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx) {
+  // ReAddress() increments references of the socket (same as
+  // KeepWrite in background) so that the socket is still
+  // available when the async IO finishes and the write request
+  // is post-processed. The socket needs to be deferenced when
+  // post-processing the write request.
+  brpc::SocketUniquePtr ptr_for_async_write;
+  sock->ReAddress(&ptr_for_async_write);
+
+  int ret = ring_listener_->SubmitFixedWrite(sock, ring_buf_idx);
+  if (ret == 0) {
+    (void)ptr_for_async_write.release();
+  }
+
+  return ret;
+}
+
+int TaskGroup::SocketNonFixedWrite(brpc::Socket *sock) {
+  // ReAddress() increments references of the socket (same as
+  // KeepWrite in background) so that the socket is still
+  // available when the async IO finishes and the write request
+  // is post-processed. The socket needs to be deferenced when
+  // post-processing the write request.
+  brpc::SocketUniquePtr ptr_for_async_write;
+  sock->ReAddress(&ptr_for_async_write);
+
+  int ret = ring_listener_->SubmitNonFixedWrite(sock);
+  if (ret == 0) {
+    (void)ptr_for_async_write.release();
+  }
+
+  return ret;
+}
+
+int TaskGroup::SocketWaitingNonFixedWrite(brpc::Socket *sock) {
+    int ret = ring_listener_->SubmitWaitingNonFixedWrite(sock);
+    if (ret != 0) {
+        LOG(FATAL) << "Submit Waiting Fixed write fails. Socket: " << *sock;
+    }
+    return sock->WaitForNonFixedWrite();
+}
+
+int TaskGroup::RingFsync(int fd) {
+    RingFsyncData args;
+    args.fd_ = fd;
+
+    int res = ring_listener_->SubmitFsync(&args);
+    if (res != 0) {
+        return -1;
+    }
+
+    return args.Wait();
+}
+
+const char *TaskGroup::GetRingReadBuf(uint16_t buf_id) {
+  return ring_listener_->GetReadBuf(buf_id);
+}
+
+bool TaskGroup::EnqueueInboundRingBuf(brpc::Socket *sock, int32_t bytes,
+                                      uint16_t bid, bool rearm) {
+  bool success =
+      inbound_queue_.TryEnqueue(InboundRingBuf(sock, bytes, bid, rearm));
+  _control->signal_group(group_id_);
+  return success;
+}
+
+void TaskGroup::RecycleRingReadBuf(uint16_t bid, int32_t bytes) {
+  ring_listener_->RecycleReadBuf(bid, bytes);
+}
+
+std::pair<char *, uint16_t> TaskGroup::GetRingWriteBuf() {
+  return ring_listener_->GetWriteBuf();
+}
+
+void TaskGroup::RecycleRingWriteBuf(uint16_t buf_idx) {
+  ring_listener_->RecycleWriteBuf(buf_idx);
+}
+
+TaskGroup* TaskGroup::VolatileTLSTaskGroup() {
+    return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+}
+#endif
 }  // namespace bthread

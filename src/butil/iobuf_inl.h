@@ -264,6 +264,33 @@ inline size_t IOBufCutter::cutn(std::string* out, size_t n) {
 
 /////////////// IOBufAppender /////////////////
 inline int IOBufAppender::append(const void* src, size_t n) {
+#ifdef IO_URING_ENABLED
+    // If this appender has an IO uring fixed buffer, tries
+    // to append the result to the buffer, which will be
+    // flushed via io_uring_prep_write_fixed().
+    if (ring_buf_ != nullptr) {
+        if (ring_buf_size_ + n <= ring_buf_capacity_) {
+            memcpy(ring_buf_ + ring_buf_size_, src, n);
+            ring_buf_size_ += n;
+            return 0;
+        }
+        else {
+            // The fixed buffer will overflow. Copies the
+            // content of the ring buffer to the old stream.
+            int ret = append_to_stream(ring_buf_, ring_buf_size_);
+            ring_buf_size_ = 0;
+            ring_buf_ = nullptr;
+            if (ret < 0) {
+                return ret;
+            }
+        }
+    }
+
+    return append_to_stream(src, n);
+}
+
+inline int IOBufAppender::append_to_stream(const void* src, size_t n) {
+#endif
     do {
         const size_t size = (char*)_data_end - (char*)_data;
         if (n <= size) {
@@ -306,6 +333,24 @@ inline int IOBufAppender::append_decimal(long d) {
 }
 
 inline int IOBufAppender::push_back(char c) {
+#ifdef IO_URING_ENABLED
+    if (ring_buf_ != nullptr) {
+        if (ring_buf_size_ + 1 <= ring_buf_capacity_) {
+            *(ring_buf_ + ring_buf_size_) = c;
+            ++ring_buf_size_;
+            return 0;
+        } else {
+            // The fixed buffer will overflow. Copies the
+            // content of the ring buffer to the old stream.
+            int ret = append_to_stream(ring_buf_, ring_buf_size_);
+            ring_buf_size_ = 0;
+            ring_buf_ = nullptr;
+            if (ret < 0) {
+                return ret;
+            }
+        }
+    }
+#endif
     if (_data == _data_end) {
         if (add_block() != 0) {
             return -1;

@@ -81,6 +81,8 @@ public:
     // If this method is called after init(), it never returns NULL.
     TaskGroup* choose_one_group();
 
+    TaskGroup* choose_group(size_t g_seed);
+
     // Select task group.
     TaskGroup* select_group(int group_id);
 

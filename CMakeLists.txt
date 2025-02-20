@@ -29,6 +29,12 @@ option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 option(BUILD_BRPC_TOOLS "Whether to build brpc tools" ON)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 
+option(IO_URING_ENABLED "Enable IO uring based network" OFF)
+if (IO_URING_ENABLED)
+    message("IO_URING_ENABLED: " ${IO_URING_ENABLED})
+    add_compile_definitions(IO_URING_ENABLED)
+endif()
+
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
 if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW)
@@ -203,6 +209,15 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
+if(IO_URING_ENABLED)
+    find_path(URING_INCLUDE_PATH NAMES liburing.h)
+    find_library(URING_LIB NAMES uring)
+    if ((NOT URING_INCLUDE_PATH) OR (NOT URING_LIB))
+        message(FATAL_ERROR "Fail to find liburing")
+    endif()
+    include_directories(${URING_INCLUDE_PATH})
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(OPENSSL_ROOT_DIR
         "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
@@ -249,6 +264,10 @@ endif()
 if(WITH_SNAPPY)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${SNAPPY_LIB})
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lsnappy")
+endif()
+
+if(IO_URING_ENABLED)
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} ${URING_LIB})
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
