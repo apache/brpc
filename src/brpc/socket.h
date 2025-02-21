@@ -44,11 +44,11 @@
 #ifdef IO_URING_ENABLED
 class RingListener;
 struct InboundRingBuf;
-
+#endif
 namespace bthread {
 class TaskGroup;
 }
-#endif
+
 namespace brpc {
 namespace policy {
 class ConsistentHashingLoadBalancer;
@@ -231,7 +231,6 @@ struct SocketOptions {
     size_t bound_gid_{99999};
 };
 
-#ifdef IO_URING_ENABLED
 struct SocketInboundBuf {
   SocketInboundBuf() = delete;
   SocketInboundBuf(int32_t size, uint16_t bid, bool rearm = false)
@@ -255,7 +254,6 @@ struct SocketInboundBuf {
   uint16_t buf_id_{UINT16_MAX};
   bool need_rearm_{false};
 };
-#endif
 
 // Abstractions on reading from and writing into file descriptors.
 // NOTE: accessed by multiple threads(frequently), align it by cacheline.
@@ -981,7 +979,7 @@ private:
     // non-NULL means that keepalive is on.
     std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
 
-#ifdef IO_URING_ENABLED
+    // These fields are only for io_uring build.
     WriteRequest *io_uring_write_req_{nullptr};
     std::vector<struct iovec> iovecs_;
     int32_t keep_write_nw_;
@@ -1000,6 +998,7 @@ private:
     uint16_t write_buf_idx_{UINT16_MAX};
     uint32_t write_len_{0};
 
+#ifdef IO_URING_ENABLED
     friend class ::RingListener;
 #endif
 };
