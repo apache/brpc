@@ -48,6 +48,8 @@ static void StopAndJoinGlobalDispatchers() {
             g_edisp[i * FLAGS_event_dispatcher_num + j].Join();
         }
     }
+    delete g_edisp_read_lantency;
+    delete g_edisp_write_lantency;
 }
 void InitializeGlobalDispatchers() {
     g_edisp_read_lantency = new bvar::LatencyRecorder("event_dispatcher_read_latency");
