@@ -80,6 +80,7 @@ private:
     butil::IOBufBuilder* _os;
     const std::string _server_prefix;
     std::map<std::string, SummaryItems> _m;
+    std::string _last_metric_name;
 };
 
 butil::StringPiece GetMetricsName(const std::string& name) {
@@ -102,9 +103,14 @@ bool PrometheusMetricsDumper::dump(const std::string& name,
 
     auto metrics_name = GetMetricsName(name);
 
-    *_os << "# HELP " << metrics_name << '\n'
-         << "# TYPE " << metrics_name << " gauge" << '\n'
-         << name << " " << desc << '\n';
+    // To meet specification of prometheus metric, there should be only
+    // one TYPE field for the same metric name.
+    if (metrics_name.as_string() != _last_metric_name) {
+        *_os << "# HELP " << metrics_name << '\n'
+             << "# TYPE " << metrics_name << " gauge" << '\n';
+    }
+    *_os << name << " " << desc << '\n';
+    _last_metric_name = metrics_name.as_string();
     return true;
 }
 
