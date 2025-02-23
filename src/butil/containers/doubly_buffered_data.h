@@ -123,6 +123,12 @@ public:
     // Returns 0 on success, -1 otherwise.
     int Read(ScopedPtr* ptr);
 
+    // fn is `int Fn(const T& foreground)', will be called with foreground instance.
+    // This function is not blocked by Read() and Modify() in other threads.
+    // Returns 0 on success, otherwise on error.
+    template<typename Fn>
+    int Read(Fn& fn);
+
     // Modify background and foreground instances. fn(T&, ...) will be called
     // twice. Modify() from different threads are exclusive from each other.
     // NOTE: Call same series of fn to different equivalent instances should
@@ -568,6 +574,16 @@ int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(
         return 0;
     }
     return -1;
+}
+
+template <typename T, typename TLS, bool AllowBthreadSuspended>
+template <typename Fn>
+int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(Fn& fn) {
+    ScopedPtr ptr;
+    if (Read(&ptr) != 0) {
+        return -1;
+    }
+    return fn(*ptr);
 }
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
