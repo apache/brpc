@@ -123,10 +123,14 @@ void test_doubly_buffered_data() {
     }
 
     d.Modify(AddN, 10);
+    d.Modify([](Foo& f, int n) -> size_t {
+        f.x += n;
+        return 1;
+    }, 10);
     {
         typename DBD::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
-        ASSERT_EQ(10, ptr->x);
+        ASSERT_EQ(20, ptr->x);
     }
 }
 
