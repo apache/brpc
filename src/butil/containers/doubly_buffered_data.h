@@ -127,7 +127,7 @@ public:
     // This function is not blocked by Read() and Modify() in other threads.
     // Returns 0 on success, otherwise on error.
     template<typename Fn>
-    int Read(Fn& fn);
+    int Read(Fn&& fn);
 
     // Modify background and foreground instances. fn(T&, ...) will be called
     // twice. Modify() from different threads are exclusive from each other.
@@ -578,12 +578,15 @@ int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 template <typename Fn>
-int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(Fn& fn) {
+int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(Fn&& fn) {
+    BAIDU_CASSERT((is_result_void<Fn, const T&>::value),
+                  "Fn must accept `const T&' and return void");
     ScopedPtr ptr;
     if (Read(&ptr) != 0) {
         return -1;
     }
-    return fn(*ptr);
+    fn(*ptr);
+    return 0;
 }
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
