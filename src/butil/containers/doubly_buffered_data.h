@@ -572,7 +572,7 @@ size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Modify(Fn&& fn, Args&&
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 template <typename Fn, typename... Args>
 size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::ModifyWithForeground(Fn&& fn, Args&&... args) {
-    return Modify([this, fn](T& bg, Args&&... args) {
+    return Modify([this, &fn](T& bg, Args&&... args) {
         return fn(bg, (const T&)_data[&bg == _data], std::forward<Args>(args)...);
     }, std::forward<Args>(args)...);
 }
