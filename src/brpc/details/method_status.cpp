@@ -149,6 +149,13 @@ void MethodStatus::SetConcurrencyLimiter(ConcurrencyLimiter* cl) {
     _cl.reset(cl);
 }
 
+int HandleResponseWritten(bthread_id_t id, void* data, int /*error_code*/) {
+    auto args = static_cast<ResponseWriteInfo*>(data);
+    args->sent_us = butil::cpuwide_time_us();
+    CHECK_EQ(0, bthread_id_unlock_and_destroy(id));
+    return 0;
+}
+
 ConcurrencyRemover::~ConcurrencyRemover() {
     if (_status) {
         _status->OnResponded(_c->ErrorCode(), butil::cpuwide_time_us() - _received_us);
