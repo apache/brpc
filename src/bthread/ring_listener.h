@@ -130,7 +130,7 @@ public:
 
         write_buf_pool_ = std::make_unique<RingWriteBufferPool>(1024, &ring_);
 
-        poll_status_.store(PollStatus::Active, std::memory_order_release);
+        poll_status_.store(PollStatus::Sleep, std::memory_order_release);
         poll_thd_ = std::thread([&]() {
             std::string ring_listener = "ring_listener:";
             ring_listener.append(std::to_string(task_group_->group_id_));
@@ -186,8 +186,6 @@ public:
             reg_fds_.erase(fd);
             return -1;
         }
-
-        reg_cnt_.fetch_add(1, std::memory_order_release);
 
         return 0;
     }
@@ -406,6 +404,8 @@ public:
             LOG(ERROR) << "Listener uring wait errno: " << ret;
             return;
         }
+        cqe_ready_.store(true);
+        poll_status_.store(PollStatus::Sleep);
         task_group_->RingListenerNotify();
     }
 
@@ -417,7 +417,8 @@ public:
         // has_external_ should be updated before poll_status_ is checked.
         std::atomic_thread_fence(std::memory_order_release);
 
-        if (poll_status_.load(std::memory_order_acquire) != PollStatus::Sleep) {
+        PollStatus status = PollStatus::Sleep;
+        if (!poll_status_.compare_exchange_strong(status, PollStatus::ExtPoll)) {
             return 0;
         }
 
@@ -426,6 +427,7 @@ public:
         io_uring_cqe *cqe = nullptr;
         int ret = io_uring_peek_cqe(&ring_, &cqe);
         if (ret != 0) {
+            poll_status_.store(PollStatus::Sleep, std::memory_order_relaxed);
             return 0;
         }
 
@@ -440,6 +442,8 @@ public:
             io_uring_cq_advance(&ring_, processed);
         }
 
+        cqe_ready_.store(false, std::memory_order_relaxed);
+        poll_status_.store(PollStatus::Sleep, std::memory_order_relaxed);
         return processed;
     }
 
@@ -454,19 +458,20 @@ public:
 
     void Run() {
         while (poll_status_.load(std::memory_order_relaxed) != PollStatus::Closed) {
-            if (reg_cnt_.load(std::memory_order_acquire) > 0 &&
-                !has_external_.load(std::memory_order_relaxed)) {
+            bool success = false;
+            if (!has_external_.load(std::memory_order_relaxed)) {
                 PollStatus status = PollStatus::Sleep;
-                if (poll_status_.compare_exchange_strong(status, PollStatus::Active,
-                                                         std::memory_order_acq_rel)) {
+                success = poll_status_.compare_exchange_strong(status, PollStatus::Active,
+                                                               std::memory_order_acq_rel);
+                if (success) {
                     PollAndNotify();
                 }
             }
-            poll_status_.store(PollStatus::Sleep, std::memory_order_acq_rel);
             std::unique_lock<std::mutex> lk(mux_);
             cv_.wait(lk, [this]() {
-                return (reg_cnt_.load(std::memory_order_acquire) > 0 &&
-                        !has_external_.load(std::memory_order_relaxed)) ||
+                // wait for the worker to process the ready cqes and notify RingListener when it sleeps
+                return !has_external_.load(std::memory_order_relaxed)
+                       && !cqe_ready_.load(std::memory_order_relaxed) ||
                        poll_status_.load(std::memory_order_relaxed) ==
                        PollStatus::Closed;
             });
@@ -861,13 +866,14 @@ private:
         return success;
     }
 
-    enum struct PollStatus : uint8_t { Active = 0, Sleep, Closed };
+    enum struct PollStatus : uint8_t { Active = 0, Sleep, ExtPoll, Closed };
 
     struct io_uring ring_;
     bool ring_init_{false};
-    std::atomic<PollStatus> poll_status_{PollStatus::Active};
+    std::atomic<PollStatus> poll_status_{PollStatus::Sleep};
+    // cqe_ready_ is set by the ring listener and unset by the worker
+    std::atomic<bool> cqe_ready_{false};
     uint16_t submit_cnt_{0};
-    std::atomic<uint32_t> reg_cnt_{0};
     std::unordered_map<int, int> reg_fds_;
     std::mutex mux_;
     std::condition_variable cv_;
