@@ -123,3 +123,14 @@ cc_binary(
         "//:brpc",
     ],
 )
+
+cc_binary(
+    name = "redis_c++_server",
+    srcs = [
+        "redis_c++/redis_server.cpp",
+    ],
+    copts = COPTS,
+    deps = [
+        "//:brpc",
+    ],
+)

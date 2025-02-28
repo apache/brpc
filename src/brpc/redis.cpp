@@ -369,5 +369,9 @@ RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
     LOG(ERROR) << "NewTransactionHandler is not implemented";
     return NULL;
 }
-
+// ========== impl of RedisConnContext ==========
+RedisConnContext::~RedisConnContext() { }
+void RedisConnContext::Destroy() {
+    delete this;
+}
 } // namespace brpc

@@ -30,22 +30,38 @@
 #include <butil/time.h>
 
 DEFINE_int32(port, 6379, "TCP Port of this server");
-
 class RedisServiceImpl : public brpc::RedisService {
 public:
-    bool Set(const std::string& key, const std::string& value) {
+    RedisServiceImpl() {
+        _user_password["db1"] = "123456";
+        _user_password["db2"] = "123456";
+        _db_map["db1"].resize(kHashSlotNum);
+        _db_map["db2"].resize(kHashSlotNum);
+    }
+    bool Set(const std::string& db_name, const std::string& key, const std::string& value) {
         int slot = butil::crc32c::Value(key.c_str(), key.size()) % kHashSlotNum;
         _mutex[slot].lock();
-        _map[slot][key] = value;
+        auto& kv = _db_map[db_name];
+        kv[slot][key] = value;
         _mutex[slot].unlock();
         return true;
     }
-
-    bool Get(const std::string& key, std::string* value) {
+    bool Auth(const std::string& db_name, const std::string& password) {
+        if (_user_password.find(db_name) == _user_password.end()) {
+            return false;
+        } else {
+            if (_user_password[db_name] != password) {
+                return false;
+            }
+        }
+        return true;
+    }
+    bool Get(const std::string& db_name, const std::string& key, std::string* value) {
         int slot = butil::crc32c::Value(key.c_str(), key.size()) % kHashSlotNum;
         _mutex[slot].lock();
-        auto it = _map[slot].find(key);
-        if (it == _map[slot].end()) {
+        auto& kv = _db_map[db_name];
+        auto it = kv[slot].find(key);
+        if (it == kv[slot].end()) {
             _mutex[slot].unlock();
             return false;
         }
@@ -56,7 +72,9 @@ public:
 
 private:
     const static int kHashSlotNum = 32;
-    std::unordered_map<std::string, std::string> _map[kHashSlotNum];
+    typedef std::unordered_map<std::string, std::string> KVStore;
+    std::unordered_map<std::string, std::vector<KVStore>> _db_map;
+    std::unordered_map<std::string, std::string> _user_password;
     butil::Mutex _mutex[kHashSlotNum];
 };
 
@@ -65,16 +83,20 @@ public:
     explicit GetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
+    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
                                         bool /*flush_batched*/) override {
+        if (ctx->user_name.empty()) {
+            output->FormatError("No user name");
+            return brpc::REDIS_CMD_HANDLED;
+        }
         if (args.size() != 2ul) {
             output->FormatError("Expect 1 arg for 'get', actually %lu", args.size()-1);
             return brpc::REDIS_CMD_HANDLED;
         }
         const std::string key(args[1].data(), args[1].size());
         std::string value;
-        if (_rsimpl->Get(key, &value)) {
+        if (_rsimpl->Get(ctx->user_name, key, &value)) {
             output->SetString(value);
         } else {
             output->SetNullString();
@@ -91,22 +113,55 @@ public:
     explicit SetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
+    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
                                         bool /*flush_batched*/) override {
+        if (ctx->user_name.empty()) {
+            output->FormatError("No user name");
+            return brpc::REDIS_CMD_HANDLED;
+        }                                            
         if (args.size() != 3ul) {
             output->FormatError("Expect 2 args for 'set', actually %lu", args.size()-1);
             return brpc::REDIS_CMD_HANDLED;
         }
         const std::string key(args[1].data(), args[1].size());
         const std::string value(args[2].data(), args[2].size());
-        _rsimpl->Set(key, value);
+        _rsimpl->Set(ctx->user_name, key, value);
         output->SetStatus("OK");
         return brpc::REDIS_CMD_HANDLED;
 	}
 
 private:
-   	RedisServiceImpl* _rsimpl;
+    RedisServiceImpl* _rsimpl;
+};
+
+class AuthCommandHandler : public brpc::RedisCommandHandler {
+public:
+    explicit AuthCommandHandler(RedisServiceImpl* rsimpl)
+        : _rsimpl(rsimpl) {}
+    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, const std::vector<butil::StringPiece>& args,
+                                        brpc::RedisReply* output,
+                                        bool /*flush_batched*/) override {
+        if (args.size() != 3ul) {
+            output->FormatError("Expect 2 args for 'auth', actually %lu", args.size()-1);
+            return brpc::REDIS_CMD_HANDLED;
+        }
+        
+        const std::string db_name(args[1].data(), args[1].size());
+        const std::string password(args[2].data(), args[2].size());
+        
+        if (_rsimpl->Auth(db_name, password)) {
+            output->SetStatus("OK");
+            ctx->user_name = db_name;
+            ctx->password = password;
+        } else {
+            output->FormatError("Invalid password for database '%s'", db_name.c_str());
+        }
+        return brpc::REDIS_CMD_HANDLED;
+    }
+
+private:
+    RedisServiceImpl* _rsimpl;
 };
 
 int main(int argc, char* argv[]) {
@@ -114,9 +169,11 @@ int main(int argc, char* argv[]) {
     RedisServiceImpl *rsimpl = new RedisServiceImpl;
     auto get_handler =std::unique_ptr<GetCommandHandler>(new GetCommandHandler(rsimpl));
     auto set_handler =std::unique_ptr<SetCommandHandler>( new SetCommandHandler(rsimpl));
+    auto auth_handler = std::unique_ptr<AuthCommandHandler>(new AuthCommandHandler(rsimpl));
     rsimpl->AddCommandHandler("get", get_handler.get());
     rsimpl->AddCommandHandler("set", set_handler.get());
-
+    rsimpl->AddCommandHandler("auth", auth_handler.get());
+    
     brpc::Server server;
     brpc::ServerOptions server_options;
     server_options.redis_service = rsimpl;
