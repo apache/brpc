@@ -30,6 +30,20 @@
 #include <butil/time.h>
 
 DEFINE_int32(port, 6379, "TCP Port of this server");
+
+class AuthSession : public brpc::Destroyable {
+public:
+    explicit AuthSession(const std::string& user_name, const std::string& password)
+        : _user_name(user_name), _password(password) {}    
+
+    void Destroy() override {
+        delete this;
+    }    
+
+    const std::string _user_name;
+    const std::string _password;
+};
+
 class RedisServiceImpl : public brpc::RedisService {
 public:
     RedisServiceImpl() {
@@ -38,6 +52,7 @@ public:
         _db_map["db1"].resize(kHashSlotNum);
         _db_map["db2"].resize(kHashSlotNum);
     }
+
     bool Set(const std::string& db_name, const std::string& key, const std::string& value) {
         int slot = butil::crc32c::Value(key.c_str(), key.size()) % kHashSlotNum;
         _mutex[slot].lock();
@@ -46,6 +61,7 @@ public:
         _mutex[slot].unlock();
         return true;
     }
+
     bool Auth(const std::string& db_name, const std::string& password) {
         if (_user_password.find(db_name) == _user_password.end()) {
             return false;
@@ -56,6 +72,7 @@ public:
         }
         return true;
     }
+
     bool Get(const std::string& db_name, const std::string& key, std::string* value) {
         int slot = butil::crc32c::Value(key.c_str(), key.size()) % kHashSlotNum;
         _mutex[slot].lock();
@@ -83,10 +100,12 @@ public:
     explicit GetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, const std::vector<butil::StringPiece>& args,
+    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, 
+                                        const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
                                         bool /*flush_batched*/) override {
-        if (ctx->user_name.empty()) {
+        AuthSession* session = static_cast<AuthSession*>(ctx->session);
+        if (session->_user_name.empty()) {
             output->FormatError("No user name");
             return brpc::REDIS_CMD_HANDLED;
         }
@@ -96,7 +115,7 @@ public:
         }
         const std::string key(args[1].data(), args[1].size());
         std::string value;
-        if (_rsimpl->Get(ctx->user_name, key, &value)) {
+        if (_rsimpl->Get(session->_user_name, key, &value)) {
             output->SetString(value);
         } else {
             output->SetNullString();
@@ -113,10 +132,12 @@ public:
     explicit SetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, const std::vector<butil::StringPiece>& args,
+    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, 
+                                        const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
                                         bool /*flush_batched*/) override {
-        if (ctx->user_name.empty()) {
+        AuthSession* session = static_cast<AuthSession*>(ctx->session);
+        if (session->_user_name.empty()) {
             output->FormatError("No user name");
             return brpc::REDIS_CMD_HANDLED;
         }                                            
@@ -126,7 +147,7 @@ public:
         }
         const std::string key(args[1].data(), args[1].size());
         const std::string value(args[2].data(), args[2].size());
-        _rsimpl->Set(ctx->user_name, key, value);
+        _rsimpl->Set(session->_user_name, key, value);
         output->SetStatus("OK");
         return brpc::REDIS_CMD_HANDLED;
 	}
@@ -135,11 +156,14 @@ private:
     RedisServiceImpl* _rsimpl;
 };
 
+
+
 class AuthCommandHandler : public brpc::RedisCommandHandler {
 public:
     explicit AuthCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
-    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, const std::vector<butil::StringPiece>& args,
+    brpc::RedisCommandHandlerResult Run(brpc::RedisConnContext* ctx, 
+                                        const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
                                         bool /*flush_batched*/) override {
         if (args.size() != 3ul) {
@@ -152,8 +176,8 @@ public:
         
         if (_rsimpl->Auth(db_name, password)) {
             output->SetStatus("OK");
-            ctx->user_name = db_name;
-            ctx->password = password;
+            auto auth_session = new AuthSession(db_name, password);
+            ctx->session = auth_session;
         } else {
             output->FormatError("Invalid password for database '%s'", db_name.c_str());
         }

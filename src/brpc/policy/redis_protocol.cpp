@@ -114,8 +114,6 @@ int ConsumeCommand(RedisConnContext* ctx,
 }
 
 
-// ========== impl of RedisConnContext ==========
-
 ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                               bool read_eof, const void* arg) {
     if (read_eof || source->empty()) {

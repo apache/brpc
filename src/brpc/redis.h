@@ -211,7 +211,9 @@ enum RedisCommandHandlerResult {
     REDIS_CMD_CONTINUE = 1,
     REDIS_CMD_BATCHED = 2,
 };
+
 class RedisCommandParser;
+
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
@@ -229,13 +231,13 @@ public:
     std::unique_ptr<RedisCommandHandler> transaction_handler;
     // >0 if command handler is run in batched mode.
     int batched_size;
-    // If user is authenticated, user_name and password are set.
-    // Keep auth info in RedisConnContext to distinguish diffrent users( or diffrent db).
-    std::string user_name;
-    std::string password;
+    // If user is authenticated, session is set.
+    // Keep auth session info in RedisConnContext to distinguish diffrent users( or diffrent db).
+    Destroyable* session;
     RedisCommandParser parser;
     butil::Arena arena;
 };
+
 // The Command handler for a redis request. User should impletement Run().
 class RedisCommandHandler {
 public:
@@ -264,7 +266,8 @@ public:
                                           bool flush_batched) {
         return REDIS_CMD_HANDLED;                                    
     };
-    virtual RedisCommandHandlerResult Run(RedisConnContext* ctx, const std::vector<butil::StringPiece>& args,
+    virtual RedisCommandHandlerResult Run(RedisConnContext* ctx, 
+                                          const std::vector<butil::StringPiece>& args,
                                           brpc::RedisReply* output,
                                           bool flush_batched) {
         return Run(args, output, flush_batched);
