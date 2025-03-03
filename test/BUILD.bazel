@@ -193,6 +193,21 @@ cc_test(
 )
 
 cc_test(
+    name = "brpc_redis_test",
+    srcs = glob(
+        [
+            "brpc_redis_unittest.cpp",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":sstream_workaround",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "bvar_test",
     srcs = glob(
         [

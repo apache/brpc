@@ -104,7 +104,12 @@ public:
                                         const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
                                         bool /*flush_batched*/) override {
-        AuthSession* session = static_cast<AuthSession*>(ctx->session);
+
+        AuthSession* session = static_cast<AuthSession*>(ctx->get_session());
+        if (session == nullptr) {
+            output->FormatError("No auth session");
+            return brpc::REDIS_CMD_HANDLED;
+        }
         if (session->_user_name.empty()) {
             output->FormatError("No user name");
             return brpc::REDIS_CMD_HANDLED;
@@ -136,7 +141,11 @@ public:
                                         const std::vector<butil::StringPiece>& args,
                                         brpc::RedisReply* output,
                                         bool /*flush_batched*/) override {
-        AuthSession* session = static_cast<AuthSession*>(ctx->session);
+        AuthSession* session = static_cast<AuthSession*>(ctx->get_session());
+        if (session == nullptr) {
+            output->FormatError("No auth session");
+            return brpc::REDIS_CMD_HANDLED;
+        }
         if (session->_user_name.empty()) {
             output->FormatError("No user name");
             return brpc::REDIS_CMD_HANDLED;
@@ -177,7 +186,7 @@ public:
         if (_rsimpl->Auth(db_name, password)) {
             output->SetStatus("OK");
             auto auth_session = new AuthSession(db_name, password);
-            ctx->session = auth_session;
+            ctx->reset_session(auth_session);
         } else {
             output->FormatError("Invalid password for database '%s'", db_name.c_str());
         }

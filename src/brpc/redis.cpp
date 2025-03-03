@@ -379,4 +379,12 @@ void RedisConnContext::Destroy() {
     }
     delete this;
 }
+
+void RedisConnContext::reset_session(Destroyable* s){
+    if (session) {
+        session->Destroy();
+    }
+    session = s;
+}
+
 } // namespace brpc

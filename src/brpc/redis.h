@@ -219,11 +219,15 @@ class RedisConnContext : public Destroyable  {
 public:
     explicit RedisConnContext(const RedisService* rs)
         : redis_service(rs)
-        , batched_size(0) {}
+        , batched_size(0)
+        , session(nullptr) {}
 
     ~RedisConnContext();
     // @Destroyable
     void Destroy() override;
+    void reset_session(Destroyable* s);
+
+    Destroyable* get_session() { return session; }
 
     const RedisService* redis_service;
     // If user starts a transaction, transaction_handler indicates the
@@ -231,11 +235,14 @@ public:
     std::unique_ptr<RedisCommandHandler> transaction_handler;
     // >0 if command handler is run in batched mode.
     int batched_size;
+
+    RedisCommandParser parser;
+    butil::Arena arena;
+
+private:
     // If user is authenticated, session is set.
     // Keep auth session info in RedisConnContext to distinguish diffrent users( or diffrent db).
     Destroyable* session;
-    RedisCommandParser parser;
-    butil::Arena arena;
 };
 
 // The Command handler for a redis request. User should impletement Run().
