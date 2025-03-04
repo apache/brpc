@@ -560,7 +560,7 @@ TEST(FDTest, double_close) {
     ASSERT_EQ(ec, errno);
 }
 
-const char* g_hostname = "baidu.com";
+const char* g_hostname = "github.com";
 TEST(FDTest, bthread_connect) {
     butil::EndPoint ep;
     ASSERT_EQ(0, butil::hostname2endpoint(g_hostname, 80, &ep));
