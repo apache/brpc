@@ -906,6 +906,7 @@ public:
         }
         auto auth_session = new AuthSession(user, password);
         ctx->reset_session(auth_session);
+        output->SetStatus("OK");
         return brpc::REDIS_CMD_HANDLED;
     }
 
@@ -1059,6 +1060,14 @@ TEST_F(RedisTest, server_sanity) {
     brpc::RedisResponse response;
     brpc::Controller cntl;
     ASSERT_TRUE(request.AddCommand("auth user1 password1"));
+    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(1, response.reply_size());
+    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+    ASSERT_STREQ("OK", response.reply(0).c_str());
+    request.Clear();
+    response.Clear();
+    cntl.Reset();
     ASSERT_TRUE(request.AddCommand("get hello"));
     ASSERT_TRUE(request.AddCommand("get hello2"));
     ASSERT_TRUE(request.AddCommand("set key1 value1"));
@@ -1222,6 +1231,7 @@ TEST_F(RedisTest, server_command_continue) {
     brpc::Server server;
     brpc::ServerOptions server_options;
     RedisServiceImpl* rsimpl = new RedisServiceImpl;
+    rsimpl->AddCommandHandler("auth", new AuthCommandHandler(rsimpl));
     rsimpl->AddCommandHandler("get", new GetCommandHandler(rsimpl));
     rsimpl->AddCommandHandler("set", new SetCommandHandler(rsimpl));
     rsimpl->AddCommandHandler("incr", new IncrCommandHandler(rsimpl));
@@ -1234,6 +1244,13 @@ TEST_F(RedisTest, server_command_continue) {
     options.protocol = brpc::PROTOCOL_REDIS;
     brpc::Channel channel;
     ASSERT_EQ(0, channel.Init("127.0.0.1", server.listen_address().port, &options));
+    // do auth
+    brpc::RedisRequest auth_req;
+    brpc::RedisResponse auth_resp;
+    brpc::Controller auth_cntl;
+    ASSERT_TRUE(auth_req.AddCommand("auth user1 password1"));
+    channel.CallMethod(NULL, &auth_cntl, &auth_req, &auth_resp, NULL);
+    ASSERT_FALSE(auth_cntl.Failed()) << auth_cntl.ErrorText();
 
     {
         brpc::RedisRequest request;
@@ -1317,6 +1334,13 @@ TEST_F(RedisTest, server_handle_pipeline) {
     brpc::RedisResponse response;
     brpc::Controller cntl;
     ASSERT_TRUE(request.AddCommand("auth user1 password1"));
+    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(1, response.reply_size());
+    ASSERT_STREQ("OK", response.reply(0).c_str());
+    request.Clear();
+    response.Clear();
+    cntl.Reset();
     ASSERT_TRUE(request.AddCommand("set key1 v1"));
     ASSERT_TRUE(request.AddCommand("set key2 v2"));
     ASSERT_TRUE(request.AddCommand("set key3 v3"));
