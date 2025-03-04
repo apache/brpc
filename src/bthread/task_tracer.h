@@ -80,8 +80,8 @@ private:
 
         bool OK() const { return err_count == 0; }
 
-        static const size_t MAX_TRACE_NUM = 64;
-        static const size_t MAX_ERROR_NUM = 2;
+        static constexpr size_t MAX_TRACE_NUM = 64;
+        static constexpr size_t MAX_ERROR_NUM = 2;
 
         unw_word_t ips[MAX_TRACE_NUM];
         char mangled[MAX_TRACE_NUM][256]{};
