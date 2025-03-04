@@ -40,11 +40,14 @@ public:
         int val;
     };
 
-    ParkingLot() : _pending_signal(0) {}
+    ParkingLot() : _pending_signal(0), _waiter_num(0) {}
 
     // Wake up at most `num_task' workers.
     // Returns #workers woken up.
     int signal(int num_task) {
+        if (_waiter_num.load(butil::memory_order_relaxed) == 0) {
+            return 0;
+        }
         _pending_signal.fetch_add((num_task << 1), butil::memory_order_release);
         return futex_wake_private(&_pending_signal, num_task);
     }
@@ -57,7 +60,9 @@ public:
     // Wait for tasks.
     // If the `expected_state' does not match, wait() may finish directly.
     void wait(const State& expected_state) {
+        _waiter_num.fetch_add(1, butil::memory_order_relaxed);
         futex_wait_private(&_pending_signal, expected_state.val, NULL);
+        _waiter_num.fetch_sub(1, butil::memory_order_relaxed);
     }
 
     // Wakeup suspended wait() and make them unwaitable ever. 
@@ -68,6 +73,7 @@ public:
 private:
     // higher 31 bits for signalling, LSB for stopping.
     butil::atomic<int> _pending_signal;
+    butil::atomic<int> _waiter_num;
 };
 
 }  // namespace bthread
