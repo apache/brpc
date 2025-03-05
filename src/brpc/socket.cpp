@@ -1215,29 +1215,17 @@ void* Socket::ProcessEvent(void* arg) {
 
 #ifdef IO_URING_ENABLED
 void *Socket::SocketProcess(void *arg) {
-  bthread::TaskGroup *cur_group = bthread::TaskGroup::VolatileTLSTaskGroup();
+    bthread::TaskGroup *cur_group = bthread::TaskGroup::VolatileTLSTaskGroup();
 
-  Socket *sock = static_cast<Socket *>(arg);
-  SocketUniquePtr s_uptr{sock};
-  CHECK(sock->bound_g_ == cur_group);
+    Socket *sock = static_cast<Socket *>(arg);
+    SocketUniquePtr s_uptr{sock};
+    CHECK(sock->bound_g_ == cur_group);
 
-  for (size_t idx = 0; idx < sock->in_bufs_.size(); ++idx) {
-    auto &rbuf = sock->in_bufs_[idx];
-    sock->inbound_nw_ = rbuf.bytes_;
-    if (rbuf.bytes_ > 0) {
-      const char *buf_head = cur_group->GetRingReadBuf(rbuf.buf_id_);
-      sock->_read_buf.append(buf_head, rbuf.bytes_);
-      cur_group->RecycleRingReadBuf(rbuf.buf_id_, rbuf.bytes_);
+    while (sock->buf_idx_ < sock->in_bufs_.size()) {
+        sock->_on_edge_triggered_events(sock);
     }
-
-    sock->_on_edge_triggered_events(sock);
-
-    if (rbuf.need_rearm_ && rbuf.bytes_ != 0) {
-      cur_group->SocketRecv(sock);
-    }
-  }
-  sock->in_bufs_.clear();
-  return nullptr;
+    sock->ClearInboundBuf();
+    return nullptr;
 }
 
 void *Socket::SocketRegister(void *arg) {
@@ -3183,6 +3171,41 @@ void Socket::NotifyWaitingNonFixedWrite(int nw) {
     write_finish_ = true;
     keep_write_nw_ = nw;
     keep_write_cv_.notify_one();
+}
+
+int Socket::CopyDataRead() {
+    bthread::TaskGroup *cur_group = bound_g_;
+    CHECK(buf_idx_ < in_bufs_.size());
+    auto &rbuf = in_bufs_[buf_idx_];
+    int nw = rbuf.bytes_;
+    if (rbuf.bytes_ > 0) {
+        const char *buf_head = cur_group->GetRingReadBuf(rbuf.buf_id_);
+        _read_buf.append(buf_head, rbuf.bytes_);
+    }
+
+    if (rbuf.need_rearm_ && rbuf.bytes_ != 0) {
+        cur_group->SocketRecv(this);
+    }
+
+    if (rbuf.buf_id_ != UINT16_MAX) {
+        cur_group->RecycleRingReadBuf(rbuf.buf_id_, rbuf.bytes_);
+    }
+    buf_idx_++;
+    return nw;
+}
+
+void Socket::ClearInboundBuf() {
+    // TODO(zkl): simply access tls_task_group
+    bthread::TaskGroup *cur_group = bthread::TaskGroup::VolatileTLSTaskGroup();
+    CHECK(cur_group == bound_g_);
+    for (; buf_idx_ < in_bufs_.size(); ++buf_idx_) {
+        auto &buf = in_bufs_[buf_idx_];
+        if (buf.buf_id_ != UINT16_MAX) {
+            cur_group->RecycleRingReadBuf(buf.buf_id_, buf.bytes_);
+        }
+    }
+    in_bufs_.clear();
+    buf_idx_ = 0;
 }
 #endif
 

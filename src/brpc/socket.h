@@ -634,6 +634,8 @@ public:
     void SetFixedWriteLen(uint32_t write_len);
     int WaitForNonFixedWrite();
     void NotifyWaitingNonFixedWrite(int nw);
+    int CopyDataRead();
+    void ClearInboundBuf();
 #endif
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
@@ -988,8 +990,8 @@ private:
     bthread::ConditionVariable keep_write_cv_;
 
     std::vector<SocketInboundBuf> in_bufs_;
+    int buf_idx_{};
     bthread::TaskGroup *bound_g_{nullptr};
-    int inbound_nw_{INT32_MAX};
     int reg_fd_idx_{-1};
     // Registering a file in IO uring is async. This is the slot to hold the fd
     // of the socket.
