@@ -32,11 +32,18 @@
 #include "brpc/stream_impl.h"
 
 DECLARE_bool(use_io_uring);
+DECLARE_bool(brpc_worker_as_ext_processor);
+
+namespace bthread {
+extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
+}
 
 namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
 DECLARE_int64(socket_max_streams_unconsumed_bytes);
+DEFINE_bool(stream_write_try_lock, true,
+    "StreamWrite uses try_lock to avoid blocking the caller and bthread switch");
 
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
@@ -285,7 +292,23 @@ void Stream::TriggerOnConnectIfNeed() {
 int Stream::AppendIfNotFull(const butil::IOBuf &data,
                             const StreamWriteOptions* options) {
     if (_cur_buf_size > 0) {
-        std::unique_lock<bthread_mutex_t> lck(_congestion_control_mutex);
+        std::unique_lock<bthread_mutex_t> lck(_congestion_control_mutex, std::defer_lock);
+        // Do not block bthread if brpc worker as external processor.
+        // TODO(zkl): mark and check current bthread is ExternalForwarding
+        if (FLAGS_stream_write_try_lock && FLAGS_brpc_worker_as_ext_processor &&
+                bthread::tls_task_group != nullptr) {
+            lck.try_lock();
+            int busy_loop_rounds = 0;
+            while (!lck.owns_lock() && busy_loop_rounds++ < 100) {
+                lck.try_lock();
+            }
+            if (!lck.owns_lock()) {
+                // return EAGAIN
+                return 1;
+            }
+        } else {
+            lck.lock();
+        }
         if (_produced >= _remote_consumed + _cur_buf_size) {
             const size_t saved_produced = _produced;
             const size_t saved_remote_consumed = _remote_consumed;
@@ -308,7 +331,15 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data,
     if (rc != 0) {
         // Stream may be closed by peer before
         LOG(WARNING) << "Fail to write to _fake_socket, " << berror();
-        BAIDU_SCOPED_LOCK(_congestion_control_mutex);
+        std::unique_lock<bthread_mutex_t> lck(_congestion_control_mutex, std::defer_lock);
+        if (FLAGS_stream_write_try_lock && FLAGS_brpc_worker_as_ext_processor &&
+                bthread::tls_task_group != nullptr) {
+            while (!lck.owns_lock()) {
+                lck.try_lock();
+            }
+        } else {
+            lck.lock();
+        }
         _produced -= data_length;
         return -1;
     }
