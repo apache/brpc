@@ -483,7 +483,7 @@ TEST(EndPointTest, endpoint_concurrency) {
     }
 }
 
-const char* g_hostname = "baidu.com";
+const char* g_hostname = "github.com";
 
 TEST(EndPointTest, tcp_connect) {
     butil::EndPoint ep;
