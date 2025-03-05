@@ -36,6 +36,11 @@
 #include "rapidjson.h"
 
 
+#ifdef __GNUC__
+// Ignore -Wnonnull for `(::google::protobuf::Message*)nullptr' of J2PERROR by design.
+#pragma GCC diagnostic ignored "-Wnonnull"
+#endif
+
 #define J2PERROR(perr, fmt, ...)                                    \
     J2PERROR_WITH_PB((::google::protobuf::Message*)nullptr, perr, fmt, ##__VA_ARGS__)
 

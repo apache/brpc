@@ -560,15 +560,18 @@ TEST(FDTest, double_close) {
     ASSERT_EQ(ec, errno);
 }
 
-const char* g_hostname = "github.com";
+const char* g_hostname1 = "github.com";
+const char* g_hostname2 = "baidu.com";
 TEST(FDTest, bthread_connect) {
-    butil::EndPoint ep;
-    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname, 80, &ep));
+    butil::EndPoint ep1;
+    butil::EndPoint ep2;
+    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname1, 80, &ep1));
+    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname2, 80, &ep2));
 
     {
         struct sockaddr_storage serv_addr{};
         socklen_t serv_addr_size = 0;
-        ASSERT_EQ(0, endpoint2sockaddr(ep, &serv_addr, &serv_addr_size));
+        ASSERT_EQ(0, endpoint2sockaddr(ep1, &serv_addr, &serv_addr_size));
         butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
         ASSERT_LE(0, sockfd);
         bool is_blocking = butil::is_blocking(sockfd);
@@ -581,7 +584,7 @@ TEST(FDTest, bthread_connect) {
     {
         struct sockaddr_storage serv_addr{};
         socklen_t serv_addr_size = 0;
-        ASSERT_EQ(0, endpoint2sockaddr(ep, &serv_addr, &serv_addr_size));
+        ASSERT_EQ(0, endpoint2sockaddr(ep2, &serv_addr, &serv_addr_size));
         butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
         ASSERT_LE(0, sockfd);
         bool is_blocking = butil::is_blocking(sockfd);
@@ -598,7 +601,7 @@ TEST(FDTest, bthread_connect) {
 
 void TestConnectInterruptImpl(bool timed) {
     butil::EndPoint ep;
-    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname, 80, &ep));
+    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname1, 80, &ep));
     struct sockaddr_storage serv_addr{};
     socklen_t serv_addr_size = 0;
     ASSERT_EQ(0, endpoint2sockaddr(ep, &serv_addr, &serv_addr_size));
