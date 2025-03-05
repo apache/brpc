@@ -53,6 +53,12 @@ public:
     virtual ~Dumper() { }
     virtual bool dump(const std::string& name,
                       const butil::StringPiece& description) = 0;
+    // Only for dumping value of multiple dimension var to prometheus service
+    virtual bool dump_mvar(const std::string& name,
+                           const butil::StringPiece& description) {
+        return true;
+    }
+    // Only for dumping comment of multiple dimension var to prometheus service
     virtual bool dump_comment(const std::string&, const std::string& /*type*/) {
         return true;
     }

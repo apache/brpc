@@ -54,6 +54,8 @@ public:
     }
 
     bool dump(const std::string& name, const butil::StringPiece& desc) override;
+    bool dump_mvar(const std::string& name, const butil::StringPiece& desc) override;
+    bool dump_comment(const std::string& name, const std::string& type) override;
 
 private:
     DISALLOW_COPY_AND_ASSIGN(PrometheusMetricsDumper);
@@ -105,6 +107,21 @@ bool PrometheusMetricsDumper::dump(const std::string& name,
     *_os << "# HELP " << metrics_name << '\n'
          << "# TYPE " << metrics_name << " gauge" << '\n'
          << name << " " << desc << '\n';
+    return true;
+}
+
+bool PrometheusMetricsDumper::dump_mvar(const std::string& name, const butil::StringPiece& desc) {
+    if (!desc.empty() && desc[0] == '"') {
+        // there is no necessary to monitor string in prometheus
+        return true;
+    }
+    *_os << name << " " << desc << "\n";
+    return true;
+}
+
+bool PrometheusMetricsDumper::dump_comment(const std::string& name, const std::string& type) {
+    *_os << "# HELP " << name << '\n'
+         << "# TYPE " << name << " " << type << '\n';
     return true;
 }
 

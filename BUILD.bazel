@@ -465,6 +465,7 @@ filegroup(
 proto_library(
     name = "brpc_idl_options_proto",
     srcs = [":brpc_idl_options_proto_srcs"],
+    strip_import_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_protobuf//:descriptor_proto",
