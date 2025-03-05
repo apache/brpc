@@ -5,9 +5,11 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - run: sudo git clone https://github.com/libunwind/libunwind.git && cd libunwind && sudo git checkout tags/v1.8.1 && sudo mkdir -p /libunwind && sudo autoreconf -i && sudo CC=clang CXX=clang++ ./configure --prefix=/libunwind && sudo make -j ${{env.proc_num}} && sudo make install
+    - run: sudo apt-get update && sudo apt-get install -y clang-12 lldb-12 lld-12 libgtest-dev cmake gdb libstdc++6-11-dbg && cd /usr/src/gtest && export CC=clang-12 && export CXX=clang++-12 && sudo cmake . && sudo make -j ${{env.proc_num}} && sudo mv lib/libgtest* /usr/lib/
       shell: bash
-    - run: sudo apt-get update && sudo apt-get install -y libgtest-dev cmake gdb libstdc++6-9-dbg && cd /usr/src/gtest && sudo cmake . && sudo make -j ${{env.proc_num}} && sudo mv lib/libgtest* /usr/lib/
+    - run: sudo git clone https://github.com/libunwind/libunwind.git && cd libunwind && sudo git checkout tags/v1.8.1 && sudo mkdir -p /libunwind && sudo autoreconf -i && sudo CC=clang-12 CXX=clang++-12 ./configure --prefix=/libunwind && sudo make -j ${{env.proc_num}} && sudo make install
       shell: bash
-    - run: sh config_brpc.sh --headers="/libunwind/include /usr/include" --libs="/libunwind/lib /usr/lib /usr/lib64" --nodebugsymbols ${{inputs.options}}
+    - run: sudo git clone https://github.com/gperftools/gperftools.git && cd gperftools && sudo git checkout tags/gperftools-2.16 && sudo mkdir -p /gperftools && sudo ./autogen.sh && sudo CC=clang-12 CXX=clang++-12 ./configure --prefix=/gperftools --enable-frame-pointers && sudo make -j ${{env.proc_num}} && sudo make install
+      shell: bash
+    - run: sh config_brpc.sh --headers="/libunwind/include /gperftools/include /usr/include" --libs="/libunwind/lib /gperftools/lib /usr/lib /usr/lib64" ${{inputs.options}}
       shell: bash

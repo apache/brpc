@@ -111,6 +111,7 @@ TEST_F(BthreadTest, call_bthread_functions_before_tls_created) {
     ASSERT_EQ(0UL, bthread_self());
 }
 
+butil::atomic<bool> start(false);
 butil::atomic<bool> stop(false);
 
 void* sleep_for_awhile(void* arg) {
@@ -128,6 +129,7 @@ void* just_exit(void* arg) {
 }
 
 void* repeated_sleep(void* arg) {
+    start = true;
     for (size_t i = 0; !stop; ++i) {
         LOG(INFO) << "repeated_sleep(" << arg << ") i=" << i;
         bthread_usleep(1000000L);
@@ -136,6 +138,7 @@ void* repeated_sleep(void* arg) {
 }
 
 void* spin_and_log(void* arg) {
+    start = true;
     // This thread never yields CPU.
     butil::EveryManyUS every_1s(1000000L);
     size_t i = 0;
@@ -620,10 +623,13 @@ TEST_F(BthreadTest, yield_single_thread) {
 
 #ifdef BRPC_BTHREAD_TRACER
 TEST_F(BthreadTest, trace) {
+    start = false;
     stop = false;
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, spin_and_log, (void*)1));
-    usleep(100 * 1000);
+    while (!start) {
+        usleep(10 * 1000);
+    }
     bthread::FLAGS_enable_fast_unwind = false;
     std::string st = bthread::stack_trace(th);
     LOG(INFO) << "fast_unwind spin_and_log stack trace:\n" << st;
@@ -636,9 +642,12 @@ TEST_F(BthreadTest, trace) {
     stop = true;
     ASSERT_EQ(0, bthread_join(th, NULL));
 
+    start = false;
     stop = false;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, repeated_sleep, (void*)1));
-    usleep(100 * 1000);
+    while (!start) {
+        usleep(10 * 1000);
+    }
     bthread::FLAGS_enable_fast_unwind = false;
     st = bthread::stack_trace(th);
     LOG(INFO) << "fast_unwind repeated_sleep stack trace:\n" << st;

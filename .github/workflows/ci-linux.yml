@@ -15,7 +15,7 @@ env:
 
 jobs:
   gcc-compile-with-make:
-    runs-on: ubuntu-20.04 # https://github.com/actions/runner-images
+    runs-on: ubuntu-22.04 # https://github.com/actions/runner-images
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-essential-dependences
@@ -27,7 +27,7 @@ jobs:
            make -j ${{env.proc_num}}
 
   gcc-compile-with-cmake:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-essential-dependences
@@ -43,19 +43,19 @@ jobs:
            make -j ${{env.proc_num}}
 
   gcc-compile-with-bazel:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - run: bazel build --verbose_failures -- //... -//example/...
 
   gcc-compile-with-boringssl:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - run: bazel build --verbose_failures --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
 
   gcc-compile-with-make-all-options:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-all-dependences
@@ -67,7 +67,7 @@ jobs:
         make -j ${{env.proc_num}}
 
   gcc-compile-with-cmake-all-options:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-all-dependences
@@ -83,13 +83,13 @@ jobs:
            make -j ${{env.proc_num}}
 
   gcc-compile-with-bazel-all-options:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - run: bazel build --verbose_failures --define with_mesalink=false --define with_glog=true --define with_thrift=true --define with_debug_bthread_sche_safety=true --define with_debug_lock=true -- //... -//example/...
 
   clang-compile-with-make:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-essential-dependences
@@ -101,7 +101,7 @@ jobs:
            make -j ${{env.proc_num}}
 
   clang-compile-with-cmake:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-essential-dependences
@@ -117,19 +117,19 @@ jobs:
            make -j ${{env.proc_num}}
 
   clang-compile-with-bazel:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel build --verbose_failures --action_env=CC=clang-12 -- //... -//example/...
+    - run: bazel build --verbose_failures --action_env=CC=clang -- //... -//example/...
 
   clang-compile-with-boringssl:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel build --verbose_failures --action_env=CC=clang-12 --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
+    - run: bazel build --verbose_failures --action_env=CC=clang --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
 
   clang-compile-with-make-all-options:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-all-dependences
@@ -141,7 +141,7 @@ jobs:
            make -j ${{env.proc_num}}
 
   clang-compile-with-cmake-all-options:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/install-all-dependences
@@ -157,19 +157,19 @@ jobs:
            make -j ${{env.proc_num}}
 
   clang-compile-with-bazel-all-options:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel build --verbose_failures --action_env=CC=clang-12 --define with_mesalink=false --define with_glog=true --define with_thrift=true --define with_debug_bthread_sche_safety=true --define with_debug_lock=true -- //... -//example/...
+    - run: bazel build --verbose_failures --action_env=CC=clang --define with_mesalink=false --define with_glog=true --define with_thrift=true --define with_debug_bthread_sche_safety=true --define with_debug_lock=true -- //... -//example/...
 
   clang-unittest:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2
       - uses: ./.github/actions/install-essential-dependences
       - uses: ./.github/actions/init-ut-make-config
         with:
-          options: --cc=clang --cxx=clang++ --with-bthread-tracer
+          options: --cc=clang-12 --cxx=clang++-12 --with-bthread-tracer
       - name: compile tests
         run: |
           cat config.mk

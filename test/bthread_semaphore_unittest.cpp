@@ -129,7 +129,6 @@ TEST(SemaphoreTest, trywait) {
     ASSERT_EQ(0, bthread_sem_destroy(&sem));
 }
 
-bool g_started = false;
 bool g_stopped = false;
 
 void wait_op(bthread_sem_t* sem, int64_t sleep_us) {
