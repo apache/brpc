@@ -113,7 +113,10 @@ configure_file(${PROJECT_SOURCE_DIR}/config.h.in ${PROJECT_SOURCE_DIR}/src/butil
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 find_package(GFLAGS REQUIRED)
+find_path(ZLIB_INCLUDE_PATH NAMES zlib.h)
 
+# needed by protobuf
+include_directories(${ZLIB_INCLUDE_PATH})
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_BINARY_DIR}
