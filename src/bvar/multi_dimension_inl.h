@@ -252,7 +252,7 @@ size_t MultiDimension<T>::dump(Dumper* dumper, const DumpOptions* options) {
         bvar->describe(oss, options->quote_string);
         std::ostringstream oss_key;
         make_dump_key(oss_key, label_name);
-        if (!dumper->dump(oss_key.str(), oss.str())) {
+        if (!dumper->dump_mvar(oss_key.str(), oss.str())) {
             continue;
         }
         n++;
@@ -269,20 +269,20 @@ size_t MultiDimension<bvar::LatencyRecorder>::dump(Dumper* dumper, const DumpOpt
         return 0;
     }
     size_t n = 0;
+    // To meet prometheus specification, we must guarantee no second TYPE line for one metric name
+
+    // latency comment
+    dumper->dump_comment(name() + "_latency", METRIC_TYPE_GAUGE);
     for (auto &label_name : label_names) {
         bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
         if (!bvar) {
             continue;
         }
 
-        // latency comment
-        if (!dumper->dump_comment(name() + "_latency", METRIC_TYPE_GAUGE)) {
-            continue;
-        }
         // latency
         std::ostringstream oss_latency_key;
         make_dump_key(oss_latency_key, label_name, "_latency");
-        if (dumper->dump(oss_latency_key.str(), std::to_string(bvar->latency()))) {
+        if (dumper->dump_mvar(oss_latency_key.str(), std::to_string(bvar->latency()))) {
             n++;
         }
         // latency_percentiles
@@ -291,53 +291,62 @@ size_t MultiDimension<bvar::LatencyRecorder>::dump(Dumper* dumper, const DumpOpt
         for (auto lp : latency_percentiles) {
             std::ostringstream oss_lp_key;
             make_dump_key(oss_lp_key, label_name, "_latency", lp);
-            if (dumper->dump(oss_lp_key.str(), std::to_string(bvar->latency_percentile(lp / 100.0)))) {
+            if (dumper->dump_mvar(oss_lp_key.str(), std::to_string(bvar->latency_percentile(lp / 100.0)))) {
                 n++;
             }
         }
         // 999
         std::ostringstream oss_p999_key;
         make_dump_key(oss_p999_key, label_name, "_latency", 999);
-        if (dumper->dump(oss_p999_key.str(), std::to_string(bvar->latency_percentile(0.999)))) {
+        if (dumper->dump_mvar(oss_p999_key.str(), std::to_string(bvar->latency_percentile(0.999)))) {
             n++;
         }
         // 9999
         std::ostringstream oss_p9999_key;
         make_dump_key(oss_p9999_key, label_name, "_latency", 9999);
-        if (dumper->dump(oss_p9999_key.str(), std::to_string(bvar->latency_percentile(0.9999)))) {
+        if (dumper->dump_mvar(oss_p9999_key.str(), std::to_string(bvar->latency_percentile(0.9999)))) {
             n++;
         }
+    }
 
-        // max_latency comment
-        if (!dumper->dump_comment(name() + "_max_latency", METRIC_TYPE_GAUGE)) {
+    // max_latency comment
+    dumper->dump_comment(name() + "_max_latency", METRIC_TYPE_GAUGE);
+    for (auto &label_name : label_names) {
+        bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
+        if (!bvar) {
             continue;
         }
-        // max_latency
         std::ostringstream oss_max_latency_key;
         make_dump_key(oss_max_latency_key, label_name, "_max_latency");
-        if (dumper->dump(oss_max_latency_key.str(), std::to_string(bvar->max_latency()))) {
+        if (dumper->dump_mvar(oss_max_latency_key.str(), std::to_string(bvar->max_latency()))) {
             n++;
         }
-        
-        // qps comment
-        if (!dumper->dump_comment(name() + "_qps", METRIC_TYPE_GAUGE)) {
+    }
+
+    // qps comment
+    dumper->dump_comment(name() + "_qps", METRIC_TYPE_GAUGE);
+    for (auto &label_name : label_names) {
+        bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
+        if (!bvar) {
             continue;
         }
-        // qps
         std::ostringstream oss_qps_key;
         make_dump_key(oss_qps_key, label_name, "_qps");
-        if (dumper->dump(oss_qps_key.str(), std::to_string(bvar->qps()))) {
+        if (dumper->dump_mvar(oss_qps_key.str(), std::to_string(bvar->qps()))) {
             n++;
         }
+    }
 
-        // qps comment
-        if (!dumper->dump_comment(name() + "_count", METRIC_TYPE_COUNTER)) {
+    // count comment
+    dumper->dump_comment(name() + "_count", METRIC_TYPE_COUNTER);
+    for (auto &label_name : label_names) {
+        bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
+        if (!bvar) {
             continue;
         }
-        // count
         std::ostringstream oss_count_key;
         make_dump_key(oss_count_key, label_name, "_count");
-        if (dumper->dump(oss_count_key.str(), std::to_string(bvar->count()))) {
+        if (dumper->dump_mvar(oss_count_key.str(), std::to_string(bvar->count()))) {
             n++;
         }
     }
