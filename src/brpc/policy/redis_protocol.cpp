@@ -54,27 +54,6 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-// This class is as parsing_context in socket.
-class RedisConnContext : public Destroyable  {
-public:
-    explicit RedisConnContext(const RedisService* rs)
-        : redis_service(rs)
-        , batched_size(0) {}
-
-    ~RedisConnContext();
-    // @Destroyable
-    void Destroy() override;
-
-    const RedisService* redis_service;
-    // If user starts a transaction, transaction_handler indicates the
-    // handler pointer that runs the transaction command.
-    std::unique_ptr<RedisCommandHandler> transaction_handler;
-    // >0 if command handler is run in batched mode.
-    int batched_size;
-
-    RedisCommandParser parser;
-    butil::Arena arena;
-};
 
 int ConsumeCommand(RedisConnContext* ctx,
                    const std::vector<butil::StringPiece>& args,
@@ -83,7 +62,7 @@ int ConsumeCommand(RedisConnContext* ctx,
     RedisReply output(&ctx->arena);
     RedisCommandHandlerResult result = REDIS_CMD_HANDLED;
     if (ctx->transaction_handler) {
-        result = ctx->transaction_handler->Run(args, &output, flush_batched);
+        result = ctx->transaction_handler->Run(ctx, args, &output, flush_batched);
         if (result == REDIS_CMD_HANDLED) {
             ctx->transaction_handler.reset(NULL);
         } else if (result == REDIS_CMD_BATCHED) {
@@ -97,7 +76,7 @@ int ConsumeCommand(RedisConnContext* ctx,
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", args[0].as_string().c_str());
             output.SetError(buf);
         } else {
-            result = ch->Run(args, &output, flush_batched);
+            result = ch->Run(ctx, args, &output, flush_batched);
             if (result == REDIS_CMD_CONTINUE) {
                 if (ctx->batched_size != 0) {
                     LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
@@ -134,15 +113,6 @@ int ConsumeCommand(RedisConnContext* ctx,
     return 0;
 }
 
-// ========== impl of RedisConnContext ==========
-
-RedisConnContext::~RedisConnContext() { }
-
-void RedisConnContext::Destroy() {
-    delete this;
-}
-
-// ========== impl of RedisConnContext ==========
 
 ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                               bool read_eof, const void* arg) {

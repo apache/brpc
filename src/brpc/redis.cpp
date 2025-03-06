@@ -370,4 +370,21 @@ RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
     return NULL;
 }
 
+// ========== impl of RedisConnContext ==========
+RedisConnContext::~RedisConnContext() { }
+
+void RedisConnContext::Destroy() {
+    if (session) {
+        session->Destroy();
+    }
+    delete this;
+}
+
+void RedisConnContext::reset_session(Destroyable* s){
+    if (session) {
+        session->Destroy();
+    }
+    session = s;
+}
+
 } // namespace brpc

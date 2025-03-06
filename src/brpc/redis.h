@@ -21,8 +21,10 @@
 
 #include <unordered_map>
 
+#include "brpc/destroyable.h"
 #include "brpc/nonreflectable_message.h"
 #include "brpc/parse_result.h"
+#include "brpc/redis_command.h"
 #include "brpc/pb_compat.h"
 #include "brpc/redis_reply.h"
 #include "butil/arena.h"
@@ -210,6 +212,39 @@ enum RedisCommandHandlerResult {
     REDIS_CMD_BATCHED = 2,
 };
 
+class RedisCommandParser;
+
+// This class is as parsing_context in socket.
+class RedisConnContext : public Destroyable  {
+public:
+    explicit RedisConnContext(const RedisService* rs)
+        : redis_service(rs)
+        , batched_size(0)
+        , session(nullptr) {}
+
+    ~RedisConnContext();
+    // @Destroyable
+    void Destroy() override;
+    void reset_session(Destroyable* s);
+
+    Destroyable* get_session() { return session; }
+
+    const RedisService* redis_service;
+    // If user starts a transaction, transaction_handler indicates the
+    // handler pointer that runs the transaction command.
+    std::unique_ptr<RedisCommandHandler> transaction_handler;
+    // >0 if command handler is run in batched mode.
+    int batched_size;
+
+    RedisCommandParser parser;
+    butil::Arena arena;
+
+private:
+    // If user is authenticated, session is set.
+    // Keep auth session info in RedisConnContext to distinguish diffrent users( or diffrent db).
+    Destroyable* session;
+};
+
 // The Command handler for a redis request. User should impletement Run().
 class RedisCommandHandler {
 public:
@@ -235,8 +270,15 @@ public:
     // it returns REDIS_CMD_HANDLED. Read the comment below.
     virtual RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
                                           brpc::RedisReply* output,
-                                          bool flush_batched) = 0;
-
+                                          bool flush_batched) {
+        return REDIS_CMD_HANDLED;                                    
+    };
+    virtual RedisCommandHandlerResult Run(RedisConnContext* ctx, 
+                                          const std::vector<butil::StringPiece>& args,
+                                          brpc::RedisReply* output,
+                                          bool flush_batched) {
+        return Run(args, output, flush_batched);
+    }
     // The Run() returns CONTINUE for "multi", which makes brpc call this method to
     // create a transaction_handler to process following commands until transaction_handler
     // returns OK. For example, for command "multi; set k1 v1; set k2 v2; set k3 v3;
