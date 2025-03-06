@@ -103,16 +103,6 @@ const std::string& AdaptiveMaxConcurrency::type() const {
     }
 }
 
-/*const std::string& AdaptiveMaxConcurrency::UNLIMITED() {
-    static const std::string s = "unlimited";
-    return s;
-}
-
-const std::string& AdaptiveMaxConcurrency::CONSTANT() {
-    static const std::string s = "constant";
-    return s;
-}*/
-
 bool operator==(const AdaptiveMaxConcurrency& adaptive_concurrency,
                 const butil::StringPiece& concurrency) {
     return CompareStringPieceWithoutCase(concurrency, 

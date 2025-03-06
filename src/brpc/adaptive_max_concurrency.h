@@ -65,8 +65,6 @@ public:
     const std::string& type() const;
 
     // Get strings filled with "unlimited" and "constant"
-    //static const std::string& UNLIMITED();
-    //static const std::string& CONSTANT();
     static const std::string UNLIMITED;// = "unlimited";
     static const std::string CONSTANT;// = "constant";
 
