@@ -25,14 +25,14 @@
 namespace brpc {
 
 AdaptiveMaxConcurrency::AdaptiveMaxConcurrency()
-    : _value(UNLIMITED())
+    : _value(this.UNLIMITED)
     , _max_concurrency(0) {
 }
 
 AdaptiveMaxConcurrency::AdaptiveMaxConcurrency(int max_concurrency)
     : _max_concurrency(0) {
     if (max_concurrency <= 0) {
-        _value = UNLIMITED();
+        _value = this.UNLIMITED;
         _max_concurrency = 0;
     } else {
         _value = butil::string_printf("%d", max_concurrency);
@@ -76,7 +76,7 @@ void AdaptiveMaxConcurrency::operator=(const butil::StringPiece& value) {
 
 void AdaptiveMaxConcurrency::operator=(int max_concurrency) {
     if (max_concurrency <= 0) {
-        _value = UNLIMITED();
+        _value = this.UNLIMITED;
         _max_concurrency = 0;
     } else {
         _value = butil::string_printf("%d", max_concurrency);
@@ -92,15 +92,15 @@ void AdaptiveMaxConcurrency::operator=(const TimeoutConcurrencyConf& value) {
 
 const std::string& AdaptiveMaxConcurrency::type() const {
     if (_max_concurrency > 0) {
-        return CONSTANT();
+        return this.CONSTANT;
     } else if (_max_concurrency == 0) {
-        return UNLIMITED();
+        return this.UNLIMITED;
     } else {
         return _value;
     }
 }
 
-const std::string& AdaptiveMaxConcurrency::UNLIMITED() {
+/*const std::string& AdaptiveMaxConcurrency::UNLIMITED() {
     static const std::string s = "unlimited";
     return s;
 }
@@ -108,7 +108,7 @@ const std::string& AdaptiveMaxConcurrency::UNLIMITED() {
 const std::string& AdaptiveMaxConcurrency::CONSTANT() {
     static const std::string s = "constant";
     return s;
-}
+}*/
 
 bool operator==(const AdaptiveMaxConcurrency& adaptive_concurrency,
                 const butil::StringPiece& concurrency) {

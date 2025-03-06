@@ -31,13 +31,13 @@ const std::string kPooled = "PoOled";
 TEST(AdaptiveMaxConcurrencyTest, ShouldConvertCorrectly) {
     brpc::AdaptiveMaxConcurrency amc(0);
 
-    EXPECT_EQ(brpc::AdaptiveMaxConcurrency::UNLIMITED(), amc.type());
-    EXPECT_EQ(brpc::AdaptiveMaxConcurrency::UNLIMITED(), amc.value());
+    EXPECT_EQ(brpc::AdaptiveMaxConcurrency.UNLIMITED, amc.type());
+    EXPECT_EQ(brpc::AdaptiveMaxConcurrency.UNLIMITED, amc.value());
     EXPECT_EQ(0, int(amc));
-    EXPECT_TRUE(amc == brpc::AdaptiveMaxConcurrency::UNLIMITED());
+    EXPECT_TRUE(amc == brpc::AdaptiveMaxConcurrency.UNLIMITED);
 
     amc = 10;
-    EXPECT_EQ(brpc::AdaptiveMaxConcurrency::CONSTANT(), amc.type());
+    EXPECT_EQ(brpc::AdaptiveMaxConcurrency.CONSTANT, amc.type());
     EXPECT_EQ("10", amc.value());
     EXPECT_EQ(10, int(amc));
     EXPECT_EQ(amc, "10");
