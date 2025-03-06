@@ -24,6 +24,9 @@
 
 namespace brpc {
 
+const std::string AdaptiveMaxConcurrency::UNLIMITED = "unlimited";
+const std::string AdaptiveMaxConcurrency::CONSTANT = "constant";
+
 AdaptiveMaxConcurrency::AdaptiveMaxConcurrency()
     : _value(this.UNLIMITED)
     , _max_concurrency(0) {
