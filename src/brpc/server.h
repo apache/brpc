@@ -716,7 +716,7 @@ friend class Controller;
     int SetServiceMaxConcurrency(T* service) {
         if (NULL != service) {
             const AdaptiveMaxConcurrency* amc = &service->_max_concurrency;
-            if (amc->type() == AdaptiveMaxConcurrency.UNLIMITED) {
+            if (amc->type() == AdaptiveMaxConcurrency::UNLIMITED) {
                 amc = &_options.method_max_concurrency;
             }
             ConcurrencyLimiter* cl = NULL;

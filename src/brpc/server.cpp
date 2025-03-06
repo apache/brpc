@@ -738,7 +738,7 @@ static int get_port_from_fd(int fd) {
 
 bool Server::CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
                                       ConcurrencyLimiter** out) {
-    if (amc.type() == AdaptiveMaxConcurrency.UNLIMITED) {
+    if (amc.type() == AdaptiveMaxConcurrency::UNLIMITED) {
         *out = NULL;
         return true;
     }
@@ -1086,7 +1086,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
             it->second.status->SetConcurrencyLimiter(NULL);
         } else {
             const AdaptiveMaxConcurrency* amc = &it->second.max_concurrency;
-            if (amc->type() == AdaptiveMaxConcurrency.UNLIMITED) {
+            if (amc->type() == AdaptiveMaxConcurrency::UNLIMITED) {
                 amc = &_options.method_max_concurrency;
             }
             ConcurrencyLimiter* cl = NULL;
