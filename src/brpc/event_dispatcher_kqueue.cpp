@@ -205,16 +205,20 @@ void EventDispatcher::Run() {
         }
         for (int i = 0; i < n; ++i) {
             if ((e[i].flags & EV_ERROR) || e[i].filter == EVFILT_READ) {
+                int64_t start_ns = butil::cpuwide_time_ns();
                 // We don't care about the return value.
                 CallInputEventCallback((IOEventDataId)e[i].udata,
                                        e[i].filter, _thread_attr);
+                (*g_edisp_read_lantency) << (butil::cpuwide_time_ns() - start_ns);
             }
         }
         for (int i = 0; i < n; ++i) {
             if ((e[i].flags & EV_ERROR) || e[i].filter == EVFILT_WRITE) {
+                int64_t start_ns = butil::cpuwide_time_ns();
                 // We don't care about the return value.
                 CallOutputEventCallback((IOEventDataId)e[i].udata,
                                         e[i].filter, _thread_attr);
+                (*g_edisp_write_lantency) << (butil::cpuwide_time_ns() - start_ns);
             }
         }
     }
