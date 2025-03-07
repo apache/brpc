@@ -347,8 +347,6 @@ Please [submit issue](https://github.com/apache/brpc/issues) if you have any pro
 
 [#2406](https://github.com/apache/brpc/pull/2406) and [#2493](https://github.com/apache/brpc/pull/2493) in [version 1.8.0]((https://github.com/apache/brpc/releases/tag/1.8.0)) introduce some proto3 syntax, so currently bRPC is no longer compatible with pb 2.x version. If you want to use pb 2.x version, you can use bRPC version before 1.8.0.
 
-Arena in pb 3.x is not supported yet.
-
 ## gflags: 2.0-2.2.2
 
 [gflags patch](https://github.com/gflags/gflags/commit/408061b46974cc8377a8a794a048ecae359ad887) is required when compiled with 2.1.1.

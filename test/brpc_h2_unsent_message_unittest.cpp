@@ -25,7 +25,7 @@
 #include "butil/atomicops.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/policy/http2_rpc_protocol.h"
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);

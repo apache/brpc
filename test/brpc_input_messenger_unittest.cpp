@@ -21,9 +21,9 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netdb.h>                   //
+#include <netdb.h>
 #include <gtest/gtest.h>
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
@@ -180,7 +180,8 @@ TEST_F(MessengerTest, dispatch_tasks) {
     }
 
     sleep(1);
-    
+
+
     LOG(INFO) << "Begin to profile... (5 seconds)";
     ProfilerStart("input_messenger.prof");
 

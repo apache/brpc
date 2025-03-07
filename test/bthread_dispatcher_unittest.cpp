@@ -25,7 +25,7 @@
 #include "butil/scoped_lock.h"
 #include "butil/fd_utility.h"
 #include "butil/logging.h"
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 #include "bthread/bthread.h"
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
@@ -192,6 +192,7 @@ void* client_thread(void* arg) {
             }
         }
     }
+    free(buf);
     return NULL;
 }
 
@@ -256,7 +257,7 @@ TEST(DispatcherTest, dispatch_tasks) {
         cm[i]->bytes = 0;
         ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i]));
     }
-    
+
     ProfilerStart("dispatcher.prof");
     butil::Timer tm;
     tm.start();
