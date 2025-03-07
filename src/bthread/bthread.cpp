@@ -51,6 +51,24 @@ int bthread_set_ext_tx_prc_func(
     return -1;
 }
 
+extern std::array<eloq::EloqModule *, 10> registered_modules;
+extern std::atomic<int> registered_module_cnt;
+
+int register_module(eloq::EloqModule *module) {
+    static std::mutex module_mutex;
+    std::unique_lock<std::mutex> lk(module_mutex);
+    size_t i = 0;
+    while (i < registered_modules.size() && registered_modules[i] != nullptr) {
+        // Each module should only be registered once.
+        CHECK(registered_modules[i] != module);
+        i++;
+    }
+    registered_modules[i] = module;
+    registered_module_cnt.fetch_add(1, std::memory_order_release);
+    return 0;
+}
+
+
 namespace bthread {
 
 DEFINE_int32(bthread_concurrency, 8 + BTHREAD_EPOLL_THREAD_NUM,

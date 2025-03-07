@@ -37,6 +37,7 @@
 #include "bthread/timer_thread.h"
 #include "bthread/errno.h"
 #include "task_meta.h"
+#include "bthread/brpc_module.h"
 #ifdef IO_URING_ENABLED
 #include <liburing.h>
 #include "ring_write_buf_pool.h"
@@ -50,6 +51,9 @@ std::function<std::tuple<std::function<void()>,
         get_tx_proc_functors{nullptr};
 
 std::atomic<bool> tx_proc_functors_set{false};
+
+std::array<eloq::EloqModule *, 10> registered_modules;
+std::atomic<int> registered_module_cnt;
 
 DEFINE_int32(steal_task_rnd, 100, "Steal task frequency in wait_task");
 DEFINE_bool(brpc_worker_as_ext_processor, false, "Work as external processor");
@@ -155,17 +159,11 @@ bool TaskGroup::wait_task(bthread_t* tid) {
             RunExtTxProcTask();
         }
 
+        ProcessModulesTask();
+
 #ifdef IO_URING_ENABLED
         if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
             size_t ring_poll_cnt = ring_listener_->ExtPoll();
-
-            size_t cnt = inbound_queue_.TryDequeueBulk(inbound_batch_.begin(),
-                                                       inbound_batch_.size());
-            for (size_t idx = 0; idx < cnt; ++idx) {
-                InboundRingBuf &rbuf = inbound_batch_[idx];
-                brpc::Socket *sock = rbuf.sock_;
-                brpc::Socket::SocketResume(sock, rbuf, this);
-            }
         }
 #endif
 
@@ -199,7 +197,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         // keep polling for some time before waiting on parking lot
         if (FLAGS_worker_polling_time_us <= 0 ||
             butil::cpuwide_time_us() - poll_start_us > FLAGS_worker_polling_time_us) {
-            if (NoTasks()) {
+            if (!HasTasks()) {
                 if (update_ext_proc_) {
                     update_ext_proc_(-1);
                 }
@@ -209,7 +207,11 @@ bool TaskGroup::wait_task(bthread_t* tid) {
                     ring_listener_->ExtWakeup();
                 }
 #endif
+                NotifyRegisteredModules(WorkerStatus::Sleep);
+
                 Wait();
+
+                NotifyRegisteredModules(WorkerStatus::Working);
 
                 if (update_ext_proc_) {
                     update_ext_proc_(1);
@@ -287,9 +289,6 @@ TaskGroup::TaskGroup(TaskControl* c)
     , _remote_nsignaled(0)
 #ifndef NDEBUG
     , _sched_recursive_guard(0)
-#endif
-#ifdef IO_URING_ENABLED
-    , inbound_queue_(1024)
 #endif
 {
     _steal_seed = butil::fast_rand();
@@ -702,8 +701,8 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
     const bool popped = g->_rq.steal(&next_tid);
 #endif
     if (!popped) {
-        // Yield proactively to run tx processor workload.
-        if (g->tx_processor_exec_ && g->_processed_tasks > 30) {
+        // Yield proactively to run modules workload.
+        if (g->modules_cnt_ > 0 && g->_processed_tasks > 30) {
             g->_processed_tasks = 0;
             next_tid = g->_main_tid;
         } else {
@@ -753,8 +752,8 @@ void TaskGroup::sched(TaskGroup** pg) {
     const bool popped = g->_rq.steal(&next_tid);
 #endif
     if (!popped) {
-        // Yield proactively to run tx processor workload.
-        if (g->tx_processor_exec_ && g->_processed_tasks > 30) {
+        // Yield proactively to run modules workload.
+        if (g->modules_cnt_ > 0 && g->_processed_tasks > 30) {
             g->_processed_tasks = 0;
             next_tid = g->_main_tid;
         } else {
@@ -1233,30 +1232,12 @@ void print_task(std::ostream& os, bthread_t tid) {
 }
 
 bool TaskGroup::Notify() {
-    if (!_waiting.load(std::memory_order_acquire)) {
+    if (!_waiting.load(std::memory_order_relaxed)) {
         return false;
     }
     std::unique_lock<std::mutex> lk(_mux);
     _cv.notify_one();
     return true;
-}
-
-bool TaskGroup::NoTasks() {
-    bool has_external_task =
-        has_tx_processor_work_ != nullptr && has_tx_processor_work_();
-    bool has_ring_task = false;
-#ifdef IO_URING_ENABLED
-    if (FLAGS_use_io_uring) {
-        bool has_jobs_to_submit = ring_listener_ != nullptr && ring_listener_->HasJobsToSubmit();
-        bool wakeup_by_ring_listener = signaled_by_ring_.load(std::memory_order_relaxed);
-        if (wakeup_by_ring_listener) {
-            signaled_by_ring_.store(false, std::memory_order_relaxed);
-        }
-        has_ring_task = has_jobs_to_submit || wakeup_by_ring_listener;
-    }
-#endif
-    return _remote_rq.empty() && _bound_rq.empty() && !has_ring_task &&
-           !has_external_task;
 }
 
 bool TaskGroup::Wait(){
@@ -1277,11 +1258,11 @@ bool TaskGroup::Wait(){
                 update_ext_proc_(-1);
             }
         }
-        return !NoTasks();
+        // Check any new module registered before checking modules' tasks.
+        CheckAndUpdateModules();
+
+        return HasTasks();
     });
-#ifdef IO_URING_ENABLED
-    signaled_by_ring_.store(false, std::memory_order_relaxed);
-#endif
     _waiting.store(false, std::memory_order_release);
     _waiting_workers.fetch_sub(1, std::memory_order_relaxed);
     return true;
@@ -1293,6 +1274,53 @@ void TaskGroup::RunExtTxProcTask() {
     }
     if (tx_processor_exec_) {
         tx_processor_exec_();
+    }
+}
+
+void TaskGroup::ProcessModulesTask() {
+    if (CheckAndUpdateModules()) {
+        NotifyRegisteredModules(WorkerStatus::Working);
+    }
+    for (auto *module : registered_modules_) {
+        if (module != nullptr) {
+            module->Process(group_id_);
+        }
+    }
+}
+
+bool TaskGroup::HasTasks() {
+    if (!_remote_rq.empty() || !_bound_rq.empty()) {
+        return true;
+    }
+    bool has_task = std::any_of(registered_modules_.begin(), registered_modules_.end(),
+        [this](eloq::EloqModule* module) {
+            return module != nullptr && module->HasTask(group_id_);
+    });
+
+    return has_task;
+}
+
+bool TaskGroup::CheckAndUpdateModules() {
+    if (modules_cnt_ < registered_module_cnt.load(std::memory_order_acquire)) {
+        registered_modules_ = registered_modules;
+        modules_cnt_ = std::count_if(registered_modules_.begin(), registered_modules_.end(), [](eloq::EloqModule* module) {
+            return module != nullptr;
+        });
+        return true;
+    }
+    return false;
+}
+
+
+void TaskGroup::NotifyRegisteredModules(WorkerStatus status) {
+    for (eloq::EloqModule *module : registered_modules_) {
+        if (module != nullptr) {
+            if (status == WorkerStatus::Sleep) {
+                module->ExtThdEnd(group_id_);
+            } else {
+                module->ExtThdStart(group_id_);
+            }
+        }
     }
 }
 
@@ -1313,11 +1341,6 @@ bool TaskGroup::TrySetExtTxProcFuncs() {
 }
 
 #ifdef IO_URING_ENABLED
-bool TaskGroup::RingListenerNotify() {
-    signaled_by_ring_.store(true, std::memory_order_relaxed);
-    return Notify();
-}
-
 int TaskGroup::RegisterSocket(brpc::Socket *sock) {
     return ring_listener_->Register(sock);
 }
@@ -1386,14 +1409,6 @@ int TaskGroup::RingFsync(int fd) {
 
 const char *TaskGroup::GetRingReadBuf(uint16_t buf_id) {
   return ring_listener_->GetReadBuf(buf_id);
-}
-
-bool TaskGroup::EnqueueInboundRingBuf(brpc::Socket *sock, int32_t bytes,
-                                      uint16_t bid, bool rearm) {
-  bool success =
-      inbound_queue_.TryEnqueue(InboundRingBuf(sock, bytes, bid, rearm));
-  _control->signal_group(group_id_);
-  return success;
 }
 
 void TaskGroup::RecycleRingReadBuf(uint16_t bid, int32_t bytes) {

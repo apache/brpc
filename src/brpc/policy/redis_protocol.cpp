@@ -43,6 +43,8 @@ namespace bthread {
 extern BAIDU_THREAD_LOCAL TaskGroup *tls_task_group;
 }
 
+DECLARE_bool(brpc_worker_as_ext_processor);
+
 namespace brpc {
 
 DECLARE_bool(enable_rpcz);
@@ -165,10 +167,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         // might jump to another task group in `ConsumeCommand`.
         bthread::TaskGroup *cur_group = bthread::tls_task_group;
         bthread::TaskMeta *cur_task = cur_group->current_task();
-        if (cur_group->tx_processor_exec_ == nullptr) {
-            cur_group->TrySetExtTxProcFuncs();
-        }
-        if (cur_group->tx_processor_exec_ != nullptr) {
+        if (FLAGS_brpc_worker_as_ext_processor) {
             cur_task->SetBoundGroup(cur_group);
         }
 #ifdef IO_URING_ENABLED

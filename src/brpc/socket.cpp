@@ -56,6 +56,7 @@
 #include "bthread/task_group.h"
 #ifdef IO_URING_ENABLED
 #include <liburing.h>
+#include "bthread/inbound_ring_buf.h"
 #endif
 
 DEFINE_bool(dispatch_lazily, false, "dispatcher lazily creates task");

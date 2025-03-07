@@ -17,23 +17,30 @@
  * under the License.
  */
 
-#ifndef BRPC_MODULE_H
-#define BRPC_MODULE_H
+#pragma once
+#include "ring_module.h"
+#include "ring_listener.h"
+#include <atomic>
 
-namespace eloq {
+#ifdef IO_URING_ENABLED
+void RingModule::ExtThdStart(int thd_id) {
+    listeners_.at(thd_id)->has_external_.store(true, std::memory_order_relaxed);
+}
 
-class EloqModule {
-public:
-    virtual ~EloqModule() {};
+void RingModule::ExtThdEnd(int thd_id) { listeners_.at(thd_id)->ExtWakeup(); }
 
-    virtual void ExtThdStart(int thd_id) = 0;
-    virtual void ExtThdEnd(int thd_id) = 0;
-    virtual void Process(int thd_id) = 0;
-    virtual bool HasTask(int thd_id) const = 0;
+void RingModule::Process(int thd_id) {
+    listeners_.at(thd_id)->ExtPoll();
+}
 
-    static bool NotifyWorker(int thd_id);
-};
+bool RingModule::HasTask(int thd_id) const {
+    RingListener *listener = listeners_.at(thd_id);
+    return listener->HasTasks();
+}
 
-}  // namespace bthread
+void RingModule::AddListener(int thd_id, RingListener *listener) {
+    // protected by TaskControl::_modify_group_mutex
+    listeners_[thd_id] = listener;
+}
 
-#endif //BRPC_MODULE_H
+#endif

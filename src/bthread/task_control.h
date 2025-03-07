@@ -32,6 +32,7 @@
 #include "butil/resource_pool.h"                 // ResourcePool
 #include "bthread/work_stealing_queue.h"        // WorkStealingQueue
 #include "bthread/parking_lot.h"
+#include "bthread/ring_module.h"
 
 namespace bthread {
 
@@ -86,6 +87,12 @@ public:
     // Select task group.
     TaskGroup* select_group(int group_id);
 
+#ifdef IO_URING_ENABLED
+    RingModule* get_ring_module() {
+        return &ring_module_;
+    }
+#endif
+
 private:
     // Add/Remove a TaskGroup.
     // Returns 0 on success, -1 otherwise.
@@ -124,6 +131,9 @@ private:
     // one worker one parking lot for precise wakeup
     std::atomic<int> _parking_lot_num{0};
     ParkingLot _pl[PARKING_LOT_NUM];
+#ifdef IO_URING_ENABLED
+    RingModule ring_module_;
+#endif
 };
 
 inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {

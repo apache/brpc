@@ -17,23 +17,13 @@
  * under the License.
  */
 
-#ifndef BRPC_MODULE_H
-#define BRPC_MODULE_H
+#include "brpc_module.h"
+#include "bthread/bthread.h"
 
 namespace eloq {
 
-class EloqModule {
-public:
-    virtual ~EloqModule() {};
-
-    virtual void ExtThdStart(int thd_id) = 0;
-    virtual void ExtThdEnd(int thd_id) = 0;
-    virtual void Process(int thd_id) = 0;
-    virtual bool HasTask(int thd_id) const = 0;
-
-    static bool NotifyWorker(int thd_id);
-};
+bool EloqModule::NotifyWorker(int thd_id) {
+  return bthread_notify_worker(thd_id);
+}
 
 }  // namespace bthread
-
-#endif //BRPC_MODULE_H

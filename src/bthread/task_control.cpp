@@ -40,6 +40,7 @@ DEFINE_int32(task_group_runqueue_capacity, 4096,
              "capacity of runqueue in each TaskGroup");
 DEFINE_int32(task_group_yield_before_idle, 0,
              "TaskGroup yields so many times before idle");
+DECLARE_bool(use_io_uring);
 
 namespace bthread {
 
@@ -326,6 +327,15 @@ int TaskControl::_add_group(TaskGroup* g) {
         _parking_lot_num++;
         _ngroup.store(ngroup + 1, butil::memory_order_release);
         CHECK(_parking_lot_num.load() == int(_ngroup.load()));
+#ifdef IO_URING_ENABLED
+        if (FLAGS_use_io_uring) {
+            ring_module_.AddListener(ngroup, g->ring_listener_.get());
+            if (ngroup == 0) {
+                // The first group worker registers the RingModule.
+                register_module(&ring_module_);
+            }
+        }
+#endif
     }
     mu.unlock();
     // See the comments in _destroy_group
