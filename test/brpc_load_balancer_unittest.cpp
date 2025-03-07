@@ -80,6 +80,16 @@ bool AddN(Foo& f, int n) {
     return true;
 }
 
+void read_cb(const Foo& f) {
+    ASSERT_EQ(0, f.x);
+}
+
+struct CallableObj {
+    void operator()(const Foo& f) {
+        ASSERT_EQ(0, f.x);
+    }
+};
+
 template <typename DBD>
 void test_doubly_buffered_data() {
     // test doubly_buffered_data TLS limits
@@ -98,16 +108,29 @@ void test_doubly_buffered_data() {
         ASSERT_EQ(0, ptr->x);
     }
     {
+        ASSERT_EQ(0, d.Read([](const Foo& f) {
+            ASSERT_EQ(0, f.x);
+        }));
+        ASSERT_EQ(0, d.Read(read_cb));
+        ASSERT_EQ(0, d.Read(CallableObj()));
+        CallableObj co;
+        ASSERT_EQ(0, d.Read(co));
+    }
+    {
         typename DBD::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
         ASSERT_EQ(0, ptr->x);
     }
 
     d.Modify(AddN, 10);
+    d.Modify([](Foo& f, int n) -> size_t {
+        f.x += n;
+        return 1;
+    }, 10);
     {
         typename DBD::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
-        ASSERT_EQ(10, ptr->x);
+        ASSERT_EQ(20, ptr->x);
     }
 }
 
