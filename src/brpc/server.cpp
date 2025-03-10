@@ -434,7 +434,6 @@ Server::~Server() {
     Join();
     ClearServices();
     FreeSSLContexts();
-
     delete _session_local_data_pool;
     _session_local_data_pool = NULL;
 
@@ -867,23 +866,27 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         return -1;
     }
 
+    if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
+        _options.bthread_tag >= FLAGS_task_group_ntags) {
+        LOG(ERROR) << "Fail to set tag " << _options.bthread_tag
+                   << ", tag range is [" << BTHREAD_TAG_DEFAULT << ":"
+                   << FLAGS_task_group_ntags << ")";
+        return -1;
+    }
+
     if (_options.use_rdma) {
 #if BRPC_WITH_RDMA
         if (!OptionsAvailableOverRdma(&_options)) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
+        if (!rdma::InitPollingModeWithTag(_options.bthread_tag)) {
+            return -1;
+        }
 #else
         LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
         return -1;
 #endif
-    }
-
-    if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
-        _options.bthread_tag >= FLAGS_task_group_ntags) {
-        LOG(ERROR) << "Fail to set tag " << _options.bthread_tag << ", tag range is ["
-                   << BTHREAD_TAG_DEFAULT << ":" << FLAGS_task_group_ntags << ")";
-        return -1;
     }
 
     if (_options.http_master_service) {

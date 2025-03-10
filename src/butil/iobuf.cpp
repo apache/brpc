@@ -31,6 +31,7 @@
 #include <errno.h>                         // errno
 #include <limits.h>                        // CHAR_BIT
 #include <stdexcept>                       // std::invalid_argument
+#include <gflags/gflags.h>                 // gflags
 #include "butil/build_config.h"             // ARCH_CPU_X86_64
 #include "butil/atomicops.h"                // butil::atomic
 #include "butil/thread_local.h"             // thread_atexit
@@ -42,6 +43,8 @@
 
 namespace butil {
 namespace iobuf {
+
+DEFINE_int32(iobuf_aligned_buf_block_size, 0, "iobuf aligned buf block size");
 
 typedef ssize_t (*iov_function)(int fd, const struct iovec *vector,
                                    int count, off_t offset);
@@ -1817,8 +1820,11 @@ IOBuf::Area IOReserveAlignedBuf::reserve(size_t count) {
     count = (count + _alignment - 1) & ~(_alignment - 1);
     size_t total_nc = 0;
     while (total_nc < count) {
-        const auto block_size =
+        auto block_size =
             std::max(_alignment, 4096UL) * 2 + sizeof(IOBuf::Block);
+        if (iobuf::FLAGS_iobuf_aligned_buf_block_size != 0) {
+            block_size = iobuf::FLAGS_iobuf_aligned_buf_block_size;
+        }
         auto b = iobuf::create_block_aligned(block_size, _alignment);
         if (BAIDU_UNLIKELY(!b)) {
             LOG(ERROR) << "Create block failed";
