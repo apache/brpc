@@ -300,7 +300,12 @@ TaskControl::~TaskControl() {
     _switch_per_second.hide();
     _signal_per_second.hide();
     _status.hide();
-    
+#ifdef IO_URING_ENABLED
+    if (FLAGS_use_io_uring) {
+        unregister_module(&ring_module_);
+    }
+#endif
+
     stop_and_join();
 
     free(_groups);

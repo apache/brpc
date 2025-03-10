@@ -46,6 +46,8 @@ extern int bthread_set_ext_tx_prc_func(
 
 extern int register_module(eloq::EloqModule *module);
 
+extern int unregister_module(eloq::EloqModule *module);
+
 // Create bthread `fn(args)' with attributes `attr' and put the identifier into
 // `tid'. Switch to the new thread and schedule old thread to run. Use this
 // function when the new thread is more urgent.

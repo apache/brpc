@@ -225,12 +225,12 @@ int RingListener::SubmitNonFixedWrite(brpc::Socket *sock) {
     io_uring_prep_writev(sqe, sfd, sock->iovecs_.data(), sock->iovecs_.size(),
                          0);
 
-    uint64_t size = 0;
-    std::string total_data;
-    for (auto &iovec: sock->iovecs_) {
-        size += iovec.iov_len;
-        total_data.append(static_cast<char *>(iovec.iov_base), iovec.iov_len);
-    }
+    // uint64_t size = 0;
+    // std::string total_data;
+    // for (auto &iovec: sock->iovecs_) {
+    //     size += iovec.iov_len;
+    //     total_data.append(static_cast<char *>(iovec.iov_base), iovec.iov_len);
+    // }
     // LOG(INFO) << "SubmitNonFixedWrite() sock->iovecs size: " << sock->iovecs_.size()
     //     << " data total size: " << size
     //     << " socket: " << *sock << ", fd_idx: " << fd_idx
@@ -278,12 +278,12 @@ int RingListener::SubmitWaitingNonFixedWrite(brpc::Socket *sock) {
 
     io_uring_prep_writev(sqe, sfd, sock->iovecs_.data(), sock->iovecs_.size(),
                          0);
-    uint64_t size = 0;
-    std::string total_data;
-    for (auto &iovec: sock->iovecs_) {
-        size += iovec.iov_len;
-        total_data.append(static_cast<char *>(iovec.iov_base), iovec.iov_len);
-    }
+    // uint64_t size = 0;
+    // std::string total_data;
+    // for (auto &iovec: sock->iovecs_) {
+    //     size += iovec.iov_len;
+    //     total_data.append(static_cast<char *>(iovec.iov_base), iovec.iov_len);
+    // }
     // LOG(INFO) << "SubmitWaitingNonFixedWrite() sock->iovecs size: " << sock->iovecs_.size()
     //     << " data total size: " << size
     //     << " socket: " << *sock << ", fd_idx: " << fd_idx
