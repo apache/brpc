@@ -30,7 +30,6 @@ namespace bthread {
 // Park idle workers.
 class BAIDU_CACHELINE_ALIGNMENT ParkingLot {
 public:
-    static butil::atomic<int> _waiting_count;
     class State {
     public:
         State(): val(0) {}
