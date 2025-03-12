@@ -23,6 +23,7 @@
 #include "brpc/controller.h"
 #include "butil/strings/string_piece.h"
 #include "echo.pb.h"
+#include "bvar/multi_dimension.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -45,7 +46,13 @@ enum STATE {
     HELP = 0,
     TYPE,
     GAUGE,
-    SUMMARY
+    SUMMARY,
+    COUNTER,
+    // When meets a line with a gauge/counter with labels, we have no
+    // idea the next line is a new HELP or the same gauge/counter just
+    // with different labels
+    HELP_OR_GAUGE,
+    HELP_OR_COUNTER,
 };
 
 TEST(PrometheusMetrics, sanity) {
@@ -54,10 +61,22 @@ TEST(PrometheusMetrics, sanity) {
     ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server.Start("127.0.0.1:8614", NULL));
 
-    brpc::Server server2;
-    DummyEchoServiceImpl echo_svc2;
-    ASSERT_EQ(0, server2.AddService(&echo_svc2, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server2.Start("127.0.0.1:8615", NULL));
+    const std::list<std::string> labels = {"label1", "label2"};
+    bvar::MultiDimension<bvar::Adder<uint32_t> > my_madder("madder", labels);
+    bvar::Adder<uint32_t>* my_adder1 = my_madder.get_stats({"val1", "val2"});
+    ASSERT_TRUE(my_adder1);
+    *my_adder1 << 1 << 2;
+    bvar::Adder<uint32_t>* my_adder2 = my_madder.get_stats({"val2", "val3"});
+    ASSERT_TRUE(my_adder1);
+    *my_adder2 << 3 << 4;
+
+    bvar::MultiDimension<bvar::LatencyRecorder > my_mlat("mlat", labels);
+    bvar::LatencyRecorder* my_lat1 = my_mlat.get_stats({"val1", "val2"});
+    ASSERT_TRUE(my_lat1);
+    *my_lat1 << 1 << 2;
+    bvar::LatencyRecorder* my_lat2 = my_mlat.get_stats({"val2", "val3"});
+    ASSERT_TRUE(my_lat2);
+    *my_lat2 << 3 << 4;
 
     brpc::Channel channel;
     brpc::ChannelOptions channel_opts;
@@ -68,19 +87,22 @@ TEST(PrometheusMetrics, sanity) {
     channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_FALSE(cntl.Failed());
     std::string res = cntl.response_attachment().to_string();
-
+    LOG(INFO) << "output:\n" << res;
     size_t start_pos = 0;
     size_t end_pos = 0;
+    size_t label_start = 0;
     STATE state = HELP;
     char name_help[128];
     char name_type[128];
     char type[16];
     int matched = 0;
-    int gauge_num = 0;
+    int num = 0;
     bool summary_sum_gathered = false;
     bool summary_count_gathered = false;
     bool has_ever_summary = false;
     bool has_ever_gauge = false;
+    bool has_ever_counter = false; // brought in by mvar latency recorder
+    std::unordered_set<std::string> metric_name_set;
 
     while ((end_pos = res.find('\n', start_pos)) != butil::StringPiece::npos) {
         res[end_pos] = '\0';       // safe;
@@ -98,21 +120,52 @@ TEST(PrometheusMetrics, sanity) {
                     state = GAUGE;
                 } else if (strcmp(type, "summary") == 0) {
                     state = SUMMARY;
+                } else if (strcmp(type, "counter") == 0) {
+                    state = COUNTER;
                 } else {
+                    ASSERT_TRUE(false) << "invalid type: " << type;
+                }
+                ASSERT_EQ(0, metric_name_set.count(name_type)) << "second TYPE line for metric name "
+                    << name_type;
+                metric_name_set.insert(name_help);
+                break;
+            case HELP_OR_GAUGE:
+            case HELP_OR_COUNTER:
+                matched = sscanf(res.data() + start_pos, "# HELP %s", name_help);
+                // Try to figure out current line is a new COMMENT or not
+                if (matched == 1) {
+                    state = HELP;
+                } else {
+                    state = state == HELP_OR_GAUGE ? GAUGE : COUNTER;
+                }
+                res[end_pos] = '\n'; // revert to original
+                continue; // do not jump to next line
+            case GAUGE:
+            case COUNTER:
+                matched = sscanf(res.data() + start_pos, "%s %d", name_type, &num);
+                ASSERT_EQ(2, matched);
+                if (state == GAUGE) {
+                    has_ever_gauge = true;
+                }
+                if (state == COUNTER) {
+                    has_ever_counter = true;
+                }
+                label_start = butil::StringPiece(name_type).find("{");
+                if (label_start == strlen(name_help)) { // mvar
+                    ASSERT_EQ(name_type[strlen(name_type) - 1], '}');
+                    ASSERT_TRUE(strncmp(name_type, name_help, strlen(name_help)) == 0);
+                    state = state == GAUGE ? HELP_OR_GAUGE : HELP_OR_COUNTER;
+                } else if (label_start == butil::StringPiece::npos) { // var
+                    ASSERT_STREQ(name_type, name_help);
+                    state = HELP;
+                } else { // invalid
                     ASSERT_TRUE(false);
                 }
-                break;
-            case GAUGE:
-                matched = sscanf(res.data() + start_pos, "%s %d", name_type, &gauge_num);
-                ASSERT_EQ(2, matched);
-                ASSERT_STREQ(name_type, name_help);
-                state = HELP;
-                has_ever_gauge = true;
                 break;
             case SUMMARY:
                 if (butil::StringPiece(res.data() + start_pos, end_pos - start_pos).find("quantile=")
                         == butil::StringPiece::npos) {
-                    matched = sscanf(res.data() + start_pos, "%s %d", name_type, &gauge_num);
+                    matched = sscanf(res.data() + start_pos, "%s %d", name_type, &num);
                     ASSERT_EQ(2, matched);
                     ASSERT_TRUE(strncmp(name_type, name_help, strlen(name_help)) == 0);
                     if (butil::StringPiece(name_type).ends_with("_sum")) {
@@ -138,7 +191,7 @@ TEST(PrometheusMetrics, sanity) {
         }
         start_pos = end_pos + 1;
     }
-    ASSERT_TRUE(has_ever_gauge && has_ever_summary);
+    ASSERT_TRUE(has_ever_gauge && has_ever_summary && has_ever_counter);
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
 }

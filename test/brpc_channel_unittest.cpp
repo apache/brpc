@@ -40,11 +40,7 @@
 #include "brpc/selective_channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
-#if BAZEL_TEST
-#include "test/echo.pb.h"
-#else
 #include "echo.pb.h"
-#endif   // BAZEL_TEST
 #include "brpc/options.pb.h"
 
 namespace brpc {
