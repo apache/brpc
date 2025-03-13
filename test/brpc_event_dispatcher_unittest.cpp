@@ -23,7 +23,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
@@ -345,13 +345,11 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
     ProfilerStart("event_dispatcher.prof");
     butil::Timer tm;
     tm.start();
-    
     sleep(5);
-    
     tm.stop();
     ProfilerStop();
     LOG(INFO) << "End profiling";
-    
+
     size_t client_bytes = 0;
     size_t server_bytes = 0;
     for (size_t i = 0; i < NCLIENT; ++i) {

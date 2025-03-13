@@ -23,7 +23,7 @@
 #include <map>
 #include <gtest/gtest.h>
 #include "bthread/bthread.h"
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/describable.h"
 #include "brpc/socket.h"

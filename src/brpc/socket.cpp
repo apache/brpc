@@ -508,9 +508,11 @@ void Socket::ReturnSuccessfulWriteRequest(Socket::WriteRequest* p) {
     DCHECK(p->data.empty());
     AddOutputMessages(1);
     const bthread_id_t id_wait = p->id_wait;
+    bool is_notify_on_success = p->is_notify_on_success();
     butil::return_object(p);
+    // Do not access `p' after it is returned to ObjectPool.
     if (id_wait != INVALID_BTHREAD_ID) {
-        if (p->is_notify_on_success() && !Failed()) {
+        if (is_notify_on_success && !Failed()) {
             bthread_id_error(id_wait, 0);
         } else {
             NotifyOnFailed(id_wait);

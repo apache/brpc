@@ -352,8 +352,6 @@ bRPC 中使用了 protobuf 内部 API，上游不保证相关 API 的兼容性�
 
 [1.8.0](https://github.com/apache/brpc/releases/tag/1.8.0) 中 [#2406](https://github.com/apache/brpc/pull/2406) 和 [#2493](https://github.com/apache/brpc/pull/2493)引入了部分 proto3 语法，所以目前 bRPC 不再兼容 protobuf 2.x 版本。如果你希望使用 2.x 版本，可以使用 1.8.0 之前的 bRPC 版本。
 
-pb 3.x中的Arena至今没被支持。
-
 ## gflags: 2.1-2.2.2
 
 2.1.1 中存在一处已知问题，需要[补丁](https://github.com/gflags/gflags/commit/408061b46974cc8377a8a794a048ecae359ad887)。
