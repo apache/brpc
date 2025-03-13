@@ -141,7 +141,7 @@ int HttpMessage::on_header_value(http_parser *parser,
 }
 
 int HttpMessage::on_headers_complete(http_parser *parser) {
-    HttpMessage *http_message = (HttpMessage *)parser->data;
+    HttpMessage* http_message = (HttpMessage *)parser->data;
     http_message->_stage = HTTP_ON_HEADERS_COMPLETE;
     if (parser->http_major > 1) {
         // NOTE: this checking is a MUST because ProcessHttpResponse relies
@@ -282,9 +282,12 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
     }
     if (!_read_body_progressively) {
         // Normal read.
-        // TODO: The input data is from IOBuf as well, possible to append
-        // data w/o copying.
-        _body.append(at, length);
+        if (NULL != _current_source_iobuf) {
+            _current_source_iobuf->append_to(
+                &_body, length, _parsed_block_size + (at - _current_block_base));
+        } else {
+            _body.append(at, length);
+        }
         return 0;
     }
     // Progressive read.
@@ -434,13 +437,8 @@ const http_parser_settings g_parser_settings = {
 
 HttpMessage::HttpMessage(bool read_body_progressively,
                          HttpMethod request_method)
-    : _parsed_length(0)
-    , _stage(HTTP_ON_MESSAGE_BEGIN)
-    , _request_method(request_method)
-    , _read_body_progressively(read_body_progressively)
-    , _body_reader(NULL)
-    , _cur_value(NULL)
-    , _vbodylen(0) {
+    : _request_method(request_method)
+    , _read_body_progressively(read_body_progressively) {
     http_parser_init(&_parser, HTTP_BOTH);
     _parser.allow_chunked_length = 1;
     _parser.data = this;
@@ -489,6 +487,11 @@ ssize_t HttpMessage::ParseFromIOBuf(const butil::IOBuf &buf) {
                    << ") to already-completed message";
         return -1;
     }
+    _parsed_block_size = 0;
+    _current_source_iobuf = &buf;
+    BRPC_SCOPE_EXIT {
+        _current_source_iobuf = NULL;
+    };
     size_t nprocessed = 0;
     for (size_t i = 0; i < buf.backing_block_num(); ++i) {
         butil::StringPiece blk = buf.backing_block(i);
@@ -496,8 +499,11 @@ ssize_t HttpMessage::ParseFromIOBuf(const butil::IOBuf &buf) {
             // length=0 will be treated as EOF by http_parser, must skip.
             continue;
         }
-        nprocessed += http_parser_execute(
+        _current_block_base = blk.data();
+        size_t n = http_parser_execute(
             &_parser, &g_parser_settings, blk.data(), blk.size());
+        nprocessed += n;
+        _parsed_block_size += n;
         if (_parser.http_errno != 0) {
             // May try HTTP on other formats, failure is norm.
             RPC_VLOG << "Fail to parse http message, parser=" << _parser

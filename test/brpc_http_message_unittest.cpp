@@ -224,8 +224,10 @@ TEST(HttpMessageTest, parse_from_iobuf) {
             "Content-Length: %lu\r\n"
             "\r\n",
             content_length);
-    std::string content;
-    for (size_t i = 0; i < content_length; ++i) content.push_back('2');
+    butil::IOBuf content;
+    for (size_t i = 0; i < content_length; ++i) {
+        content.push_back('2');
+    }
     butil::IOBuf request;
     request.append(header);
     request.append(content);
@@ -233,6 +235,7 @@ TEST(HttpMessageTest, parse_from_iobuf) {
     brpc::HttpMessage http_message;
     ASSERT_TRUE(http_message.ParseFromIOBuf(request) >= 0);
     ASSERT_TRUE(http_message.Completed());
+    ASSERT_EQ(content, http_message.body());
     ASSERT_EQ(content, http_message.body().to_string());
     ASSERT_EQ("text/plain", http_message.header().content_type());
 }
