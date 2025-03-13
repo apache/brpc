@@ -32,18 +32,11 @@
 #include "brpc/stream_impl.h"
 
 DECLARE_bool(use_io_uring);
-DECLARE_bool(brpc_worker_as_ext_processor);
-
-namespace bthread {
-extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
-}
 
 namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
 DECLARE_int64(socket_max_streams_unconsumed_bytes);
-DEFINE_bool(stream_write_try_lock, true,
-    "StreamWrite uses try_lock to avoid blocking the caller and bthread switch");
 
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
@@ -82,14 +75,14 @@ int Stream::Create(const StreamOptions &options,
     s->_connected = false;
     s->_options = options;
     s->_closed = false;
-    s->_cur_buf_size = options.max_buf_size;
+    s->_cur_buf_size.store(options.max_buf_size, std::memory_order_relaxed);
     if (options.max_buf_size > 0 && options.min_buf_size > options.max_buf_size) {
         // set 0 if min_buf_size is invalid.
         s->_options.min_buf_size = 0;
         LOG(WARNING) << "options.min_buf_size is larger than options.max_buf_size, it will be set to 0.";
     }
     if (FLAGS_socket_max_streams_unconsumed_bytes > 0 && s->_options.min_buf_size > 0) {
-        s->_cur_buf_size = s->_options.min_buf_size;
+        s->_cur_buf_size.store(s->_options.min_buf_size, std::memory_order_relaxed);
     }
 
     if (remote_settings != NULL) {
@@ -291,36 +284,21 @@ void Stream::TriggerOnConnectIfNeed() {
 
 int Stream::AppendIfNotFull(const butil::IOBuf &data,
                             const StreamWriteOptions* options) {
-    if (_cur_buf_size > 0) {
-        std::unique_lock<bthread_mutex_t> lck(_congestion_control_mutex, std::defer_lock);
-        // Do not block bthread if brpc worker as external processor.
-        // TODO(zkl): mark and check current bthread is ExternalForwarding
-        if (FLAGS_stream_write_try_lock && FLAGS_brpc_worker_as_ext_processor &&
-                bthread::tls_task_group != nullptr) {
-            lck.try_lock();
-            int busy_loop_rounds = 0;
-            while (!lck.owns_lock() && busy_loop_rounds++ < 100) {
-                lck.try_lock();
-            }
-            if (!lck.owns_lock()) {
-                // return EAGAIN
-                return 1;
-            }
-        } else {
-            lck.lock();
-        }
-        if (_produced >= _remote_consumed + _cur_buf_size) {
-            const size_t saved_produced = _produced;
-            const size_t saved_remote_consumed = _remote_consumed;
-            lck.unlock();
-            RPC_VLOG << "Stream=" << _id << " is full" 
+    size_t cur_buf_size = _cur_buf_size.load(std::memory_order_relaxed);
+    size_t remote_consumed = _remote_consumed.load(std::memory_order_relaxed);
+    size_t produced = _produced.load(std::memory_order_relaxed);
+    size_t new_produced = data.size();
+    if (cur_buf_size > 0) {
+        if (produced >= remote_consumed + cur_buf_size) {
+            const size_t saved_produced = produced;
+            const size_t saved_remote_consumed = remote_consumed;
+            RPC_VLOG << "Stream=" << _id << " is full"
                      << "_produced=" << saved_produced
                      << " _remote_consumed=" << saved_remote_consumed
                      << " gap=" << saved_produced - saved_remote_consumed
-                     << " max_buf_size=" << _cur_buf_size;
+                     << " max_buf_size=" << cur_buf_size;
             return 1;
         }
-        _produced += data.length();
     }
 
     size_t data_length = data.length();
@@ -331,18 +309,9 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data,
     if (rc != 0) {
         // Stream may be closed by peer before
         LOG(WARNING) << "Fail to write to _fake_socket, " << berror();
-        std::unique_lock<bthread_mutex_t> lck(_congestion_control_mutex, std::defer_lock);
-        if (FLAGS_stream_write_try_lock && FLAGS_brpc_worker_as_ext_processor &&
-                bthread::tls_task_group != nullptr) {
-            while (!lck.owns_lock()) {
-                lck.try_lock();
-            }
-        } else {
-            lck.lock();
-        }
-        _produced -= data_length;
         return -1;
     }
+    _produced.fetch_add(new_produced, std::memory_order_relaxed);
     if (FLAGS_socket_max_streams_unconsumed_bytes > 0) {
         _host_socket->_total_streams_unconsumed_size += data_length;
     }
@@ -350,36 +319,44 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data,
 }
 
 void Stream::SetRemoteConsumed(size_t new_remote_consumed) {
-    CHECK(_cur_buf_size > 0);
     bthread_id_list_t tmplist;
     bthread_id_list_init(&tmplist, 0, 0);
     bthread_mutex_lock(&_congestion_control_mutex);
-    if (_remote_consumed >= new_remote_consumed) {
+    size_t cur_buf_size = _cur_buf_size.load(std::memory_order_relaxed);
+    size_t remote_consumed = _remote_consumed.load(std::memory_order_relaxed);
+    size_t produced = _produced.load(std::memory_order_relaxed);
+    CHECK(cur_buf_size > 0);
+    if (remote_consumed >= new_remote_consumed) {
         bthread_mutex_unlock(&_congestion_control_mutex);
         return;
     }
-    const bool was_full = _produced >= _remote_consumed + _cur_buf_size;
+    const bool was_full = produced >= remote_consumed + cur_buf_size;
 
     if (FLAGS_socket_max_streams_unconsumed_bytes > 0) {
-        _host_socket->_total_streams_unconsumed_size -= new_remote_consumed - _remote_consumed;
+        _host_socket->_total_streams_unconsumed_size -= new_remote_consumed - remote_consumed;
         if (_host_socket->_total_streams_unconsumed_size > FLAGS_socket_max_streams_unconsumed_bytes) {
             if (_options.min_buf_size > 0) {
-                _cur_buf_size = _options.min_buf_size;
+                cur_buf_size = _options.min_buf_size;
+                _cur_buf_size.store(_options.min_buf_size, std::memory_order_relaxed);
             } else {
-                _cur_buf_size /= 2;
+                cur_buf_size /= 2;
+                _cur_buf_size.store(cur_buf_size, std::memory_order_relaxed);
             }
-            LOG(INFO) << "stream consumers on socket " << _host_socket->id() << " is crowded, " <<  "cut stream " << id() << " buffer to " << _cur_buf_size;
-        } else if (_produced >= new_remote_consumed + _cur_buf_size && (_options.max_buf_size <= 0 || _cur_buf_size < (size_t)_options.max_buf_size)) {
-            if (_options.max_buf_size > 0 && _cur_buf_size * 2 > (size_t)_options.max_buf_size) {
-                _cur_buf_size = _options.max_buf_size;
+            LOG(INFO) << "stream consumers on socket " << _host_socket->id() << " is crowded, " <<  "cut stream " << id() << " buffer to " << cur_buf_size;
+        } else if (produced >= new_remote_consumed + cur_buf_size && (_options.max_buf_size <= 0 || cur_buf_size < (size_t)_options.max_buf_size)) {
+            if (_options.max_buf_size > 0 && cur_buf_size * 2 > (size_t)_options.max_buf_size) {
+                cur_buf_size = _options.max_buf_size;
+                _cur_buf_size.store(_options.max_buf_size, std::memory_order_relaxed);
             } else {
-                _cur_buf_size *= 2;
+                cur_buf_size *= 2;
+                _cur_buf_size.store(cur_buf_size, std::memory_order_relaxed);
             }
         }
     }
 
-    _remote_consumed = new_remote_consumed;
-    const bool is_full = _produced >= _remote_consumed + _cur_buf_size;
+    remote_consumed = new_remote_consumed;
+    _remote_consumed.store(new_remote_consumed, std::memory_order_relaxed);
+    const bool is_full = produced >= remote_consumed + cur_buf_size;
     if (was_full && !is_full) {
         bthread_id_list_swap(&tmplist, &_writable_wait_list);
     }
@@ -455,8 +432,11 @@ void Stream::Wait(void (*on_writable)(StreamId, void*, int), void* arg,
         }
     }
     bthread_mutex_lock(&_congestion_control_mutex);
-    if (_cur_buf_size <= 0 
-            || _produced < _remote_consumed + _cur_buf_size) {
+    size_t cur_buf_size = _cur_buf_size.load(std::memory_order_relaxed);
+    size_t remote_consumed = _remote_consumed.load(std::memory_order_relaxed);
+    size_t produced = _produced.load(std::memory_order_relaxed);
+    if (cur_buf_size <= 0
+            || produced < remote_consumed + cur_buf_size) {
         bthread_mutex_unlock(&_congestion_control_mutex);
         CHECK_EQ(0, TriggerOnWritable(wait_id, wm, 0));
         return;
@@ -642,7 +622,7 @@ int Stream::SetHostSocket(Socket *host_socket) {
 
 void Stream::FillSettings(StreamSettings *settings) {
     settings->set_stream_id(id());
-    settings->set_need_feedback(_cur_buf_size > 0);
+    settings->set_need_feedback(_cur_buf_size.load(std::memory_order_relaxed) > 0);
     settings->set_writable(_options.handler != NULL);
 }
 

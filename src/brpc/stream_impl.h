@@ -113,9 +113,9 @@ friend class MessageBatcher;
     bool                _closed;
     
     bthread_mutex_t _congestion_control_mutex;
-    size_t _produced;
-    size_t _remote_consumed;
-    size_t _cur_buf_size;
+    std::atomic<size_t> _produced;
+    std::atomic<size_t> _remote_consumed;
+    std::atomic<size_t> _cur_buf_size;
     bthread_id_list_t _writable_wait_list;
 
     int64_t _local_consumed;

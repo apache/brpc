@@ -294,24 +294,40 @@ TEST(ButexTest, join_cant_be_wakeup) {
     ButexWaitArg arg = { butex, *butex, 1000, EINTR };
 
     for (int i = 0; i < 2; ++i) {
+        LOG(INFO) << "i: " << i << " starts";
         const bthread_attr_t attr =
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
         tm.start();
         bthread_t th, th2;
+        LOG(INFO) << "ASSERT_EQ(0, bthread_start_urgent(&th, NULL, wait_butex, &arg))...";
         ASSERT_EQ(0, bthread_start_urgent(&th, NULL, wait_butex, &arg));
+        LOG(INFO) << "ASSERT_EQ(0, bthread_start_urgent(&th2, &attr, join_the_waiter, (void*)th))...";
         ASSERT_EQ(0, bthread_start_urgent(&th2, &attr, join_the_waiter, (void*)th));
+        LOG(INFO) << "ASSERT_EQ(0, bthread_stop(th2))...";
         ASSERT_EQ(0, bthread_stop(th2));
+        LOG(INFO) << "ASSERT_EQ(0, bthread_usleep(WAIT_MSEC / 2 * 1000L))...";
         ASSERT_EQ(0, bthread_usleep(WAIT_MSEC / 2 * 1000L));
+        LOG(INFO) << "ASSERT_TRUE(bthread::TaskGroup::exists(th))...";
         ASSERT_TRUE(bthread::TaskGroup::exists(th));
+        LOG(INFO) << "ASSERT_TRUE(bthread::TaskGroup::exists(th2))...";
         ASSERT_TRUE(bthread::TaskGroup::exists(th2));
+        LOG(INFO) << "ASSERT_EQ(0, bthread_usleep(WAIT_MSEC / 2 * 1000L))...";
         ASSERT_EQ(0, bthread_usleep(WAIT_MSEC / 2 * 1000L));
+        LOG(INFO) << "ASSERT_EQ(0, bthread_stop(th))...";
         ASSERT_EQ(0, bthread_stop(th));
+        LOG(INFO) << "ASSERT_EQ(0, bthread_join(th2, NULL))...";
         ASSERT_EQ(0, bthread_join(th2, NULL));
+        LOG(INFO) << "ASSERT_EQ(0, bthread_join(th, NULL))...";
         ASSERT_EQ(0, bthread_join(th, NULL));
+        LOG(INFO) << "tm.stop()...";
         tm.stop();
+        LOG(INFO) << "ASSERT_LT(tm.m_elapsed(), WAIT_MSEC + 15)...";
         ASSERT_LT(tm.m_elapsed(), WAIT_MSEC + 15);
+        LOG(INFO) << "ASSERT_EQ(EINVAL, bthread_stop(th))...";
         ASSERT_EQ(EINVAL, bthread_stop(th));
+        LOG(INFO) << "ASSERT_EQ(EINVAL, bthread_stop(th2))...";
         ASSERT_EQ(EINVAL, bthread_stop(th2));
+        LOG(INFO) << "i: " << i << " finishes";
     }
     bthread::butex_destroy(butex);
 }
