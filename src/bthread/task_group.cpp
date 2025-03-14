@@ -429,7 +429,8 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     } else {
         // NOSIGNAL affects current task, not the new task.
         RemainedFn fn = NULL;
-        if (g->cur_epoll_tid()) {
+        auto& cur_attr = g->get_current_attr();
+        if (cur_attr.flags & BTHREAD_GLOBAL_PRIORITY) {
             fn = priority_to_run;
         } else if (g->current_task()->about_to_quit) {
             fn = ready_to_run_in_worker_ignoresignal;
@@ -565,6 +566,7 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
         // Jump to main task if there's no task to run.
         next_tid = g->_main_tid;
     }
+
     TaskMeta* const cur_meta = g->_cur_meta;
     TaskMeta* next_meta = address_meta(next_tid);
     if (next_meta->stack == NULL) {

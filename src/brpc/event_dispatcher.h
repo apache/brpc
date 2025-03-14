@@ -133,8 +133,6 @@ public:
     // Returns 0 on success, -1 otherwise and errno is set
     int UnregisterEvent(IOEventDataId event_data_id, int fd, bool pollin);
 
-    bthread_t Tid() const { return _tid; }
-
 private:
     DISALLOW_COPY_AND_ASSIGN(EventDispatcher);
 

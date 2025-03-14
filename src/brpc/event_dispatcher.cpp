@@ -62,7 +62,6 @@ void InitializeGlobalDispatchers() {
                 FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
             attr.tag = (BTHREAD_TAG_DEFAULT + i) % FLAGS_task_group_ntags;
             CHECK_EQ(0, g_edisp[i * FLAGS_event_dispatcher_num + j].Start(&attr));
-            bthread_epoll_tid_set(i, g_edisp[i].Tid());
         }
     }
     // This atexit is will be run before g_task_control.stop() because above
