@@ -601,7 +601,7 @@ bool CreateDirectoryAndGetError(const FilePath& full_path,
     if (mkdir(i->value().c_str(), 0755/*others can read the dir*/) == 0)
       continue;
     // Mkdir failed, but it might have failed with EEXIST, or some other error
-    // due to the the directory appearing out of thin air. This can occur if
+    // due to the directory appearing out of thin air. This can occur if
     // two processes are trying to create the same file system tree at the same
     // time. Check to see if it exists and make sure it is a directory.
     int saved_errno = errno;
