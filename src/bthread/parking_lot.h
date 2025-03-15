@@ -45,10 +45,10 @@ public:
     // Wake up at most `num_task' workers.
     // Returns #workers woken up.
     int signal(int num_task) {
+        _pending_signal.fetch_add((num_task << 1), butil::memory_order_release);
         if (_waiter_num.load(butil::memory_order_relaxed) == 0) {
             return 0;
         }
-        _pending_signal.fetch_add((num_task << 1), butil::memory_order_release);
         return futex_wake_private(&_pending_signal, num_task);
     }
 
