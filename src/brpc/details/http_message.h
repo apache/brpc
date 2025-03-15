@@ -99,32 +99,38 @@ public:
 protected:
     int OnBody(const char* data, size_t size);
     int OnMessageComplete();
-    size_t _parsed_length;
+    size_t _parsed_length{0};
     
 private:
     DISALLOW_COPY_AND_ASSIGN(HttpMessage);
     int UnlockAndFlushToBodyReader(std::unique_lock<butil::Mutex>& locked);
 
-    HttpParserStage _stage;
+    HttpParserStage _stage{HTTP_ON_MESSAGE_BEGIN};
     std::string _url;
-    HttpMethod _request_method;
+    HttpMethod _request_method{HTTP_METHOD_GET};
     HttpHeader _header;
-    bool _read_body_progressively;
+    bool _read_body_progressively{false};
     // For mutual exclusion between on_body and SetBodyReader.
     butil::Mutex _body_mutex;
     // Read body progressively
-    ProgressiveReader* _body_reader;
+    ProgressiveReader* _body_reader{NULL};
     butil::IOBuf _body;
+
+    // Store the IOBuf information in `ParseFromIOBuf'
+    // for later zero-copy usage in `OnBody'.
+    const butil::IOBuf* _current_source_iobuf{NULL};
+    const char* _current_block_base{NULL};
+    size_t _parsed_block_size{0};
 
     // Parser related members
     struct http_parser _parser;
     std::string _cur_header;
-    std::string *_cur_value;
+    std::string *_cur_value{NULL};
 
 protected:
     // Only valid when -http_verbose is on
     std::unique_ptr<butil::IOBufBuilder> _vmsgbuilder;
-    size_t _vbodylen;
+    size_t _vbodylen{0};
 };
 
 std::ostream& operator<<(std::ostream& os, const http_parser& parser);
