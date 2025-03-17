@@ -75,6 +75,9 @@ int unregister_module(eloq::EloqModule *module) {
     while (i < registered_modules.size() && registered_modules[i] != module) {
         i++;
     }
+    if (i == registered_modules.size()) {
+        return 0;
+    }
     CHECK(i < registered_module_cnt);
     while (i < registered_modules.size() - 1) {
         registered_modules[i] = registered_modules[i+1];
