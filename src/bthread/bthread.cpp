@@ -70,6 +70,7 @@ pthread_mutex_t g_task_control_mutex = PTHREAD_MUTEX_INITIALIZER;
 TaskControl* g_task_control = NULL;
 
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
+EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 extern void (*g_worker_startfn)();
 extern void (*g_tagged_worker_startfn)(bthread_tag_t);
 extern void* (*g_create_span_func)();
@@ -521,7 +522,7 @@ int bthread_timer_del(bthread_timer_t id) {
 }
 
 int bthread_usleep(uint64_t microseconds) {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (NULL != g && !g->is_current_pthread_task()) {
         return bthread::TaskGroup::usleep(&g, microseconds);
     }
@@ -529,7 +530,7 @@ int bthread_usleep(uint64_t microseconds) {
 }
 
 int bthread_yield(void) {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (NULL != g && !g->is_current_pthread_task()) {
         bthread::TaskGroup::yield(&g);
         return 0;
