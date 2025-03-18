@@ -839,8 +839,10 @@ void* dummy_bthread(void*) {
 
 
 #ifdef BRPC_BTHREAD_TRACER
+bool g_bthread_trace_start = false;
 bool g_bthread_trace_stop = false;
 void* bthread_trace(void*) {
+    g_bthread_trace_start = true;
     while (!g_bthread_trace_stop) {
         bthread_usleep(1000 * 100);
     }
@@ -884,6 +886,9 @@ TEST_F(BuiltinServiceTest, bthreads) {
     {
         bthread_t th;
         EXPECT_EQ(0, bthread_start_background(&th, NULL, bthread_trace, NULL));
+        while (!g_bthread_trace_start) {
+            bthread_usleep(1000 * 10);
+        }
         ClosureChecker done;
         brpc::Controller cntl;
         std::string id_string;

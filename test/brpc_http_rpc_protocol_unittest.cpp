@@ -189,6 +189,20 @@ protected:
         return msg;
     }
 
+    brpc::policy::HttpContext* MakePostJsonStdRequestMessage(const std::string& path) {
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
+        msg->header().uri().set_path(path);
+        msg->header().set_content_type("application/proto-json");
+        msg->header().set_method(brpc::HTTP_METHOD_POST);
+
+        test::EchoRequest req;
+        req.set_message(EXP_REQUEST);
+        butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
+        json2pb::Pb2ProtoJsonOptions options;
+        EXPECT_TRUE(json2pb::ProtoMessageToProtoJson(req, &req_stream, options));
+        return msg;
+    }
+
     brpc::policy::HttpContext* MakePostProtoTextRequestMessage(
         const std::string& path) {
         brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
@@ -334,7 +348,7 @@ TEST_F(HttpTest, parse_http_address) {
 TEST_F(HttpTest, verify_request) {
     {
         brpc::policy::HttpContext* msg =
-                MakePostRequestMessage("/EchoService/Echo");
+            MakePostRequestMessage("/EchoService/Echo");
         VerifyMessage(msg, false);
         msg->Destroy();
     }
@@ -347,6 +361,12 @@ TEST_F(HttpTest, verify_request) {
         brpc::policy::HttpContext* msg =
                 MakePostRequestMessage("/EchoService/Echo");
         _socket->SetFailed();
+        VerifyMessage(msg, false);
+        msg->Destroy();
+    }
+    {
+        brpc::policy::HttpContext* msg =
+            MakePostJsonStdRequestMessage("/EchoService/Echo");
         VerifyMessage(msg, false);
         msg->Destroy();
     }
@@ -1669,7 +1689,6 @@ TEST_F(HttpTest, spring_protobuf_content_type) {
 
     brpc::Controller cntl2;
     test::EchoService_Stub stub(&channel);
-    req.set_message(EXP_REQUEST);
     res.Clear();
     cntl2.http_request().set_content_type("application/x-protobuf");
     stub.Echo(&cntl2, &req, &res, nullptr);
@@ -1762,7 +1781,7 @@ TEST_F(HttpTest, dump_http_request) {
     brpc::g_rpc_dump_sl.sampling_range = 0;
 }
 
-TEST_F(HttpTest, spring_protobuf_text_content_type) {
+TEST_F(HttpTest, proto_text_content_type) {
     const int port = 8923;
     brpc::Server server;
     EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
@@ -1787,6 +1806,55 @@ TEST_F(HttpTest, spring_protobuf_text_content_type) {
     ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
             cntl.response_attachment().to_string(), &res));
     ASSERT_EQ(EXP_RESPONSE, res.message());
+
+    test::EchoService_Stub stub(&channel);
+    cntl.Reset();
+    cntl.http_request().set_content_type("application/proto-text");
+    res.Clear();
+    stub.Echo(&cntl, &req, &res, NULL);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+    ASSERT_EQ("application/proto-text", cntl.http_response().content_type());
+}
+
+TEST_F(HttpTest, proto_json_content_type) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_content_type("application/proto-json");
+    json2pb::Pb2ProtoJsonOptions json_options;
+    butil::IOBufAsZeroCopyOutputStream output_stream(&cntl.request_attachment());
+    ASSERT_TRUE(json2pb::ProtoMessageToProtoJson(req, &output_stream, json_options));
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ("application/proto-json", cntl.http_response().content_type());
+    json2pb::ProtoJson2PbOptions parse_options;
+    parse_options.ignore_unknown_fields = true;
+    butil::IOBufAsZeroCopyInputStream input_stream(cntl.response_attachment());
+    ASSERT_TRUE(json2pb::ProtoJsonToProtoMessage(&input_stream, &res, parse_options));
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+
+    test::EchoService_Stub stub(&channel);
+    cntl.Reset();
+    cntl.http_request().set_content_type("application/proto-json");
+    res.Clear();
+    stub.Echo(&cntl, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+    ASSERT_EQ("application/proto-json", cntl.http_response().content_type());
 }
 
 class HttpServiceImpl : public ::test::HttpService {

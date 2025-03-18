@@ -27,14 +27,14 @@
 #include "butil/strings/string_number_conversions.h"
 #include "butil/third_party/rapidjson/error/error.h"
 #include "butil/third_party/rapidjson/rapidjson.h"
-#include "json_to_pb.h"
-#include "zero_copy_stream_reader.h"       // ZeroCopyStreamReader
-#include "encode_decode.h"
+#include "json2pb/json_to_pb.h"
+#include "json2pb/zero_copy_stream_reader.h"       // ZeroCopyStreamReader
+#include "json2pb/encode_decode.h"
+#include "json2pb/protobuf_map.h"
+#include "json2pb/rapidjson.h"
+#include "json2pb/protobuf_type_resolver.h"
 #include "butil/base64.h"
-#include "butil/string_printf.h"
-#include "protobuf_map.h"
-#include "rapidjson.h"
-
+#include "butil/iobuf.h"
 
 #ifdef __GNUC__
 // Ignore -Wnonnull for `(::google::protobuf::Message*)nullptr' of J2PERROR by design.
@@ -712,6 +712,40 @@ bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream *stream,
                         std::string* error) {
     return JsonToProtoMessage(stream, message, Json2PbOptions(), error, nullptr);
 }
+
+bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
+                             google::protobuf::Message* message,
+                             const ProtoJson2PbOptions& options,
+                             std::string* error) {
+    TypeResolverUniqueptr type_resolver = GetTypeResolver(*message);
+    butil::IOBuf buf;
+    butil::IOBufAsZeroCopyOutputStream output_stream(&buf);
+    std::string type_url = GetTypeUrl(*message);
+    auto st = google::protobuf::util::JsonToBinaryStream(
+        type_resolver.get(), type_url, json, &output_stream, options);
+
+    butil::IOBufAsZeroCopyInputStream input_stream(buf);
+    google::protobuf::io::CodedInputStream decoder(&input_stream);
+    if (!st.ok()) {
+        if (NULL != error) {
+            *error = st.ToString();
+        }
+        return false;
+    }
+
+    bool ok = message->ParseFromCodedStream(&decoder);
+    if (!ok && NULL != error) {
+        *error = "Fail to ParseFromCodedStream";
+    }
+    return ok;
+}
+
+bool ProtoJsonToProtoMessage(const std::string& json, google::protobuf::Message* message,
+                             const ProtoJson2PbOptions& options, std::string* error) {
+    google::protobuf::io::ArrayInputStream input_stream(json.data(), json.size());
+    return ProtoJsonToProtoMessage(&input_stream, message, options, error);
+}
+
 } //namespace json2pb
 
 #undef J2PERROR

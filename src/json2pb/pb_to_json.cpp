@@ -22,12 +22,14 @@
 #include <sys/time.h>
 #include <time.h>
 #include <google/protobuf/descriptor.h>
+#include "json2pb/zero_copy_stream_writer.h"
+#include "json2pb/encode_decode.h"
+#include "json2pb/protobuf_map.h"
+#include "json2pb/rapidjson.h"
+#include "json2pb/pb_to_json.h"
+#include "json2pb/protobuf_type_resolver.h"
+#include "butil/iobuf.h"
 #include "butil/base64.h"
-#include "zero_copy_stream_writer.h"
-#include "encode_decode.h"
-#include "protobuf_map.h"
-#include "rapidjson.h"
-#include "pb_to_json.h"
 
 namespace json2pb {
 Pb2JsonOptions::Pb2JsonOptions()
@@ -345,4 +347,33 @@ bool ProtoMessageToJson(const google::protobuf::Message& message,
                         std::string* error) {
     return ProtoMessageToJson(message, stream, Pb2JsonOptions(), error);
 }
+
+bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
+                        google::protobuf::io::ZeroCopyOutputStream* json,
+                        const Pb2ProtoJsonOptions& options, std::string* error) {
+    TypeResolverUniqueptr type_resolver = GetTypeResolver(message);
+    butil::IOBuf buf;
+    butil::IOBufAsZeroCopyOutputStream output_stream(&buf);
+    google::protobuf::io::CodedOutputStream coded_stream(&output_stream);
+    if (!message.SerializeToCodedStream(&coded_stream)) {
+        return false;
+    }
+
+    butil::IOBufAsZeroCopyInputStream input_stream(buf);
+    auto st = google::protobuf::util::BinaryToJsonStream(
+            type_resolver.get(), GetTypeUrl(message), &input_stream, json, options);
+
+    bool ok = st.ok();
+    if (!ok && NULL != error) {
+        *error = st.ToString();
+    }
+    return ok;
+}
+
+bool ProtoMessageToProtoJson(const google::protobuf::Message& message, std::string* json,
+                             const Pb2ProtoJsonOptions& options, std::string* error) {
+    google::protobuf::io::StringOutputStream output_stream(json);
+    return ProtoMessageToProtoJson(message, &output_stream, options, error);
+}
+
 } // namespace json2pb
