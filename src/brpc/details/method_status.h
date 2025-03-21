@@ -75,18 +75,23 @@ friend class Server;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
 };
 
+struct ResponseWriteInfo {
+    int64_t sent_us{0};
+};
+
+int HandleResponseWritten(bthread_id_t id, void* data, int error_code);
+
 class ConcurrencyRemover {
 public:
     ConcurrencyRemover(MethodStatus* status, Controller* c, int64_t received_us)
-        : _status(status) 
-        , _c(c)
-        , _received_us(received_us) {}
+        : _status(status) , _c(c) , _received_us(received_us) {}
     ~ConcurrencyRemover();
+
 private:
     DISALLOW_COPY_AND_ASSIGN(ConcurrencyRemover);
     MethodStatus* _status;
     Controller* _c;
-    uint64_t _received_us;
+    int64_t _received_us;
 };
 
 inline bool MethodStatus::OnRequested(int* rejected_cc, Controller* cntl) {
