@@ -2314,6 +2314,34 @@ int Server::MaxConcurrencyOf(google::protobuf::Service* service,
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
 }
 
+int Server::ResetMaxConcurrencyOf(const MethodProperty* mp,
+                                  const AdaptiveMaxConcurrency& concurrency) {
+    if (mp == nullptr) {
+        LOG(ERROR) << "Fail to find method";
+        return -1;
+    }
+    auto status = mp->status;
+    return status->ResetMaxConcurrency(concurrency);
+}
+
+int Server::ResetMaxConcurrencyOf(const butil::StringPiece& full_method_name,
+                                  const AdaptiveMaxConcurrency& concurrency) {
+    return ResetMaxConcurrencyOf(_method_map.seek(full_method_name), concurrency);
+}
+
+int Server::ResetMaxConcurrencyOf(const butil::StringPiece& full_service_name,
+                                  const butil::StringPiece& method_name,
+                                  const AdaptiveMaxConcurrency& concurrency) {
+    return ResetMaxConcurrencyOf(FindMethodPropertyByFullName(full_service_name, method_name),
+                                 concurrency);
+}
+
+int Server::ResetMaxConcurrencyOf(google::protobuf::Service* service,
+                                  const butil::StringPiece& method_name,
+                                  const AdaptiveMaxConcurrency& concurrency) {
+    return ResetMaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name, concurrency);
+}
+
 bool& Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) {
     MethodProperty* mp = _method_map.seek(full_method_name);
     if (mp == NULL) {

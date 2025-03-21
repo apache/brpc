@@ -601,6 +601,16 @@ public:
     int MaxConcurrencyOf(google::protobuf::Service* service,
                          const butil::StringPiece& method_name) const;
 
+    // Reset max_concurrency associated with a method.
+    int ResetMaxConcurrencyOf(const butil::StringPiece& full_method_name,
+                              const AdaptiveMaxConcurrency& concurrency);
+    int ResetMaxConcurrencyOf(const butil::StringPiece& full_service_name,
+                              const butil::StringPiece& method_name,
+                              const AdaptiveMaxConcurrency& concurrency);
+    int ResetMaxConcurrencyOf(google::protobuf::Service* service,
+                              const butil::StringPiece& method_name,
+                              const AdaptiveMaxConcurrency& concurrency);
+
     bool& IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name);
     bool IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) const;
 
@@ -708,6 +718,8 @@ friend class Controller;
 
     AdaptiveMaxConcurrency& MaxConcurrencyOf(MethodProperty*);
     int MaxConcurrencyOf(const MethodProperty*) const;
+
+    int ResetMaxConcurrencyOf(const MethodProperty*, const AdaptiveMaxConcurrency&);
 
     static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
                                          ConcurrencyLimiter** out);
