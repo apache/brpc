@@ -23,6 +23,7 @@
 #include "json2pb/zero_copy_stream_reader.h"
 #include <google/protobuf/message.h>
 #include <google/protobuf/io/zero_copy_stream.h>    // ZeroCopyInputStream
+#include <google/protobuf/util/json_util.h>
 
 namespace json2pb {
 
@@ -43,7 +44,7 @@ struct Json2PbOptions {
     bool allow_remaining_bytes_after_parsing;
 };
 
-// Convert `json' to protobuf `message'.
+// Convert `json' to protobuf `message' according to `options'.
 // Returns true on success. `error' (if not NULL) will be set with error
 // message on failure.
 //
@@ -58,18 +59,18 @@ bool JsonToProtoMessage(const std::string& json,
                         size_t* parsed_offset = nullptr);
 
 // Use ZeroCopyInputStream as input instead of std::string.
-bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream *json,
-                        google::protobuf::Message *message,
-                        const Json2PbOptions &options,
-                        std::string *error = nullptr,
-                        size_t *parsed_offset = nullptr);
+bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
+                        google::protobuf::Message* message,
+                        const Json2PbOptions& options,
+                        std::string* error = nullptr,
+                        size_t* parsed_offset = nullptr);
 
 // Use ZeroCopyStreamReader as input instead of std::string.
 // If you need to parse multiple jsons from IOBuf, you should use this
 // overload instead of the ZeroCopyInputStream one which bases on this
 // and recreates a ZeroCopyStreamReader internally that can't be reused
 // between continuous calls.
-bool JsonToProtoMessage(ZeroCopyStreamReader *json,
+bool JsonToProtoMessage(ZeroCopyStreamReader* json,
                         google::protobuf::Message* message,
                         const Json2PbOptions& options,
                         std::string* error = nullptr,
@@ -83,6 +84,20 @@ bool JsonToProtoMessage(const std::string& json,
 bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* stream,
                         google::protobuf::Message* message,
                         std::string* error = nullptr);
+
+// See <google/protobuf/util/json_util.h> for details.
+using ProtoJson2PbOptions = google::protobuf::util::JsonParseOptions;
+
+// Convert ProtoJSON formatted `json' to protobuf `message' according to `options'.
+// See https://protobuf.dev/programming-guides/json/ for details.
+bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
+                             google::protobuf::Message* message,
+                             const ProtoJson2PbOptions& options,
+                             std::string* error = NULL);
+// Use default GoogleJson2PbOptions.
+bool ProtoJsonToProtoMessage(const std::string& json, google::protobuf::Message* message,
+                             const ProtoJson2PbOptions& options, std::string* error = NULL);
+
 } // namespace json2pb
 
 #endif // BRPC_JSON2PB_JSON_TO_PB_H

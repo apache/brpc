@@ -19,27 +19,26 @@
 #include <google/protobuf/descriptor.h>             // MethodDescriptor
 #include <google/protobuf/text_format.h>
 #include <gflags/gflags.h>
-#include <json2pb/pb_to_json.h>                    // ProtoMessageToJson
-#include <json2pb/json_to_pb.h>                    // JsonToProtoMessage
 #include <string>
-
 #include "brpc/policy/http_rpc_protocol.h"
 #include "butil/unique_ptr.h"                       // std::unique_ptr
 #include "butil/string_splitter.h"                  // StringMultiSplitter
 #include "butil/string_printf.h"
 #include "butil/time.h"
 #include "butil/sys_byteorder.h"
+#include "json2pb/pb_to_json.h"                     // ProtoMessageToJson
+#include "json2pb/json_to_pb.h"                     // JsonToProtoMessage
 #include "brpc/compress.h"
-#include "brpc/errno.pb.h"                     // ENOSERVICE, ENOMETHOD
-#include "brpc/controller.h"                   // Controller
-#include "brpc/server.h"                       // Server
+#include "brpc/errno.pb.h"                          // ENOSERVICE, ENOMETHOD
+#include "brpc/controller.h"                        // Controller
+#include "brpc/server.h"                            // Server
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/span.h"
-#include "brpc/socket.h"                       // Socket
-#include "brpc/rpc_dump.h"                     // SampledRequest
-#include "brpc/http_status_code.h"             // HTTP_STATUS_*
+#include "brpc/socket.h"                            // Socket
+#include "brpc/rpc_dump.h"                          // SampledRequest
+#include "brpc/http_status_code.h"                  // HTTP_STATUS_*
 #include "brpc/details/controller_private_accessor.h"
-#include "brpc/builtin/index_service.h"        // IndexService
+#include "brpc/builtin/index_service.h"             // IndexService
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/details/usercode_backup_pool.h"
@@ -203,6 +202,9 @@ HttpContentType ParseContentType(butil::StringPiece ct, bool* is_grpc_ct) {
     if (ct.starts_with("json")) {
         type = HTTP_CONTENT_JSON;
         ct.remove_prefix(4);
+    } else if (ct.starts_with("proto-json")) {
+        type = HTTP_CONTENT_PROTO_JSON;
+        ct.remove_prefix(10);
     } else if (ct.starts_with("proto-text")) {
         type = HTTP_CONTENT_PROTO_TEXT;
         ct.remove_prefix(10);
@@ -269,6 +271,79 @@ static bool RemoveGrpcPrefix(butil::IOBuf* body, bool* compressed) {
     *compressed = buf[0];
     const size_t message_length = butil::NetToHost32(*(uint32_t*)(buf + 1));
     return (message_length + 5 == sz);
+}
+
+static bool JsonToProtoMessage(const butil::IOBuf& body,
+                               google::protobuf::Message* message,
+                               Controller* cntl, int error_code) {
+    butil::IOBufAsZeroCopyInputStream wrapper(body);
+    json2pb::Json2PbOptions options;
+    options.base64_to_bytes = cntl->has_pb_bytes_to_base64();
+    options.array_to_single_repeated = cntl->has_pb_single_repeated_to_array();
+    std::string error;
+    bool ok = json2pb::JsonToProtoMessage(&wrapper, message, options, &error);
+    if (!ok) {
+        cntl->SetFailed(error_code, "Fail to parse http json body as %s: %s",
+                        message->GetDescriptor()->full_name().c_str(),
+                        error.c_str());
+    }
+    return ok;
+}
+
+static bool ProtoMessageToJson(const google::protobuf::Message& message,
+                               butil::IOBufAsZeroCopyOutputStream* wrapper,
+                               Controller* cntl, int error_code) {
+    json2pb::Pb2JsonOptions options;
+    options.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
+    options.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
+    options.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
+    options.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
+    options.enum_option = FLAGS_pb_enum_as_number
+                          ? json2pb::OUTPUT_ENUM_BY_NUMBER
+                          : json2pb::OUTPUT_ENUM_BY_NAME;
+    std::string error;
+    bool ok = json2pb::ProtoMessageToJson(message, wrapper, options, &error);
+    if (!ok) {
+        cntl->SetFailed(error_code, "Fail to convert %s to json: %s",
+                        message.GetDescriptor()->full_name().c_str(),
+                        error.c_str());
+    }
+    return ok;
+}
+
+static bool ProtoJsonToProtoMessage(const butil::IOBuf& body,
+                                    google::protobuf::Message* message,
+                                    Controller* cntl, int error_code) {
+    json2pb::ProtoJson2PbOptions options;
+    options.ignore_unknown_fields = true;
+    butil::IOBufAsZeroCopyInputStream wrapper(body);
+    std::string error;
+    bool ok = json2pb::ProtoJsonToProtoMessage(&wrapper, message, options, &error);
+    if (!ok) {
+        cntl->SetFailed(error_code, "Fail to parse http proto-json body as %s: %s",
+                        message->GetDescriptor()->full_name().c_str(),
+                        error.c_str());
+    }
+    return ok;
+}
+
+static bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
+                                    butil::IOBufAsZeroCopyOutputStream* wrapper,
+                                    Controller* cntl, int error_code) {
+    json2pb::Pb2ProtoJsonOptions options;
+#if GOOGLE_PROTOBUF_VERSION >= 5026002
+    options.always_print_fields_with_no_presence = cntl->has_always_print_primitive_fields();
+#else
+    options.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
+#endif
+    options.always_print_enums_as_ints = FLAGS_pb_enum_as_number;
+    std::string error;
+    bool ok = json2pb::ProtoMessageToProtoJson(message, wrapper, options, &error);
+    if (!ok) {
+        cntl->SetFailed(error_code, "Fail to convert %s to proto-json: %s",
+                        message.GetDescriptor()->full_name().c_str(), error.c_str());
+    }
+    return ok;
 }
 
 void ProcessHttpResponse(InputMessageBase* msg) {
@@ -435,8 +510,8 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             if (grpc_compressed) {
                 encoding = res_header->GetHeader(common->GRPC_ENCODING);
                 if (encoding == NULL) {
-                    cntl->SetFailed(ERESPONSE, "Fail to find header `grpc-encoding'"
-                                    " in compressed gRPC response");
+                    cntl->SetFailed(ERESPONSE, "Fail to find header `grpc-encoding' "
+                                               "in compressed gRPC response");
                     break;
                 }
             }
@@ -455,23 +530,24 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         }
         if (content_type == HTTP_CONTENT_PROTO) {
             if (!ParsePbFromIOBuf(cntl->response(), res_body)) {
-                cntl->SetFailed(ERESPONSE, "Fail to parse content");
+                cntl->SetFailed(ERESPONSE, "Fail to parse content as %s",
+                                cntl->response()->GetDescriptor()->full_name().c_str());
                 break;
             }
         } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
             if (!ParsePbTextFromIOBuf(cntl->response(), res_body)) {
-                cntl->SetFailed(ERESPONSE, "Fail to parse proto-text content");
+                cntl->SetFailed(ERESPONSE, "Fail to parse proto-text content as %s",
+                                cntl->response()->GetDescriptor()->full_name().c_str());
                 break;
             }
         } else if (content_type == HTTP_CONTENT_JSON) {
-            // message body is json
-            butil::IOBufAsZeroCopyInputStream wrapper(res_body);
-            std::string err;
-            json2pb::Json2PbOptions options;
-            options.base64_to_bytes = cntl->has_pb_bytes_to_base64();
-            options.array_to_single_repeated = cntl->has_pb_single_repeated_to_array();
-            if (!json2pb::JsonToProtoMessage(&wrapper, cntl->response(), options, &err)) {
-                cntl->SetFailed(ERESPONSE, "Fail to parse content, %s", err.c_str());
+            // Message body is json.
+            if (!JsonToProtoMessage(res_body, cntl->response(), cntl, ERESPONSE)) {
+                break;
+            }
+        } else if (content_type == HTTP_CONTENT_PROTO_JSON) {
+            // Message body is json.
+            if (!ProtoJsonToProtoMessage(res_body, cntl->response(), cntl, ERESPONSE)) {
                 break;
             }
         } else {
@@ -530,8 +606,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             }
         } else {
             bool is_grpc_ct = false;
-            content_type = ParseContentType(hreq.content_type(),
-                                            &is_grpc_ct);
+            content_type = ParseContentType(hreq.content_type(), &is_grpc_ct);
             is_grpc = (is_http2 && is_grpc_ct);
         }
 
@@ -549,21 +624,15 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                 return cntl->SetFailed(EREQUEST, "Fail to print %s as proto-text",
                                        pbreq->GetTypeName().c_str());
             }
-        } else if (content_type == HTTP_CONTENT_JSON) {
-            std::string err;
-            json2pb::Pb2JsonOptions opt;
-            opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
-            opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
-            opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
-            opt.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
-
-            opt.enum_option = (FLAGS_pb_enum_as_number
-                               ? json2pb::OUTPUT_ENUM_BY_NUMBER
-                               : json2pb::OUTPUT_ENUM_BY_NAME);
-            if (!json2pb::ProtoMessageToJson(*pbreq, &wrapper, opt, &err)) {
+        } else if (content_type == HTTP_CONTENT_PROTO_JSON) {
+            if (!ProtoMessageToProtoJson(*pbreq, &wrapper, cntl, EREQUEST)) {
                 cntl->request_attachment().clear();
-                return cntl->SetFailed(
-                    EREQUEST, "Fail to convert request to json, %s", err.c_str());
+                return;
+            }
+        } else if (content_type == HTTP_CONTENT_JSON) {
+            if (!ProtoMessageToJson(*pbreq, &wrapper, cntl, EREQUEST)) {
+                cntl->request_attachment().clear();
+                return;
             }
         } else {
             return cntl->SetFailed(
@@ -819,19 +888,10 @@ HttpResponseSender::~HttpResponseSender() {
             if (!google::protobuf::TextFormat::Print(*res, &wrapper)) {
                 cntl->SetFailed(ERESPONSE, "Fail to print %s as proto-text", res->GetTypeName().c_str());
             }
+        } else if (content_type == HTTP_CONTENT_PROTO_JSON) {
+            ProtoMessageToProtoJson(*res, &wrapper, cntl, ERESPONSE);
         } else {
-            std::string err;
-            json2pb::Pb2JsonOptions opt;
-            opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
-            opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
-            opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
-            opt.single_repeated_to_array = cntl->has_pb_single_repeated_to_array();
-            opt.enum_option = (FLAGS_pb_enum_as_number
-                               ? json2pb::OUTPUT_ENUM_BY_NUMBER
-                               : json2pb::OUTPUT_ENUM_BY_NAME);
-            if (!json2pb::ProtoMessageToJson(*res, &wrapper, opt, &err)) {
-                cntl->SetFailed(ERESPONSE, "Fail to convert response to json, %s", err.c_str());
-            }
+            ProtoMessageToJson(*res, &wrapper, cntl, ERESPONSE);
         }
     }
 
@@ -1600,17 +1660,14 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                                     req->GetDescriptor()->full_name().c_str());
                     return;
                 }
+            } else if (content_type == HTTP_CONTENT_PROTO_JSON) {
+                if (!ProtoJsonToProtoMessage(req_body, req, cntl, EREQUEST)) {
+                    return;
+                }
             } else {
-                butil::IOBufAsZeroCopyInputStream wrapper(req_body);
-                std::string err;
-                json2pb::Json2PbOptions options;
-                options.base64_to_bytes = mp->params.pb_bytes_to_base64;
-                options.array_to_single_repeated = mp->params.pb_single_repeated_to_array;
                 cntl->set_pb_bytes_to_base64(mp->params.pb_bytes_to_base64);
                 cntl->set_pb_single_repeated_to_array(mp->params.pb_single_repeated_to_array);
-                if (!json2pb::JsonToProtoMessage(&wrapper, req, options, &err)) {
-                    cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
-                                    req->GetDescriptor()->full_name().c_str(), err.c_str());
+                if (!JsonToProtoMessage(req_body, req, cntl, EREQUEST)) {
                     return;
                 }
             }

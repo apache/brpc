@@ -52,6 +52,16 @@ message AddressComplex {
     repeated FriendEntry friends = 2;
 }
 
+message AddressIntMapStd {
+    required string addr = 1;
+    map<string, int32> numbers = 2;
+}
+
+message AddressStringMapStd {
+    required string addr = 1;
+    map<string, string> contacts = 2;
+}
+
 message haha {
     repeated int32 a = 1;
 }

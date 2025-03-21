@@ -1638,4 +1638,107 @@ TEST_F(ProtobufJsonTest, parse_multiple_json_error) {
     ASSERT_EQ(47ul, offset);
 }
 
+TEST_F(ProtobufJsonTest, proto_json_to_pb) {
+    std::string error;
+    json2pb::ProtoJson2PbOptions options;
+
+    std::string json1 = R"({"addr":"baidu.com",)"
+                        R"("numbers":[{"key":"tel","value":123456},{"key":"cell","value":654321}]})";
+    AddressIntMapStd aims;
+    ASSERT_FALSE(json2pb::ProtoJsonToProtoMessage(json1, &aims, options, &error));
+    LOG(INFO) << "Fail to ProtoJsonToProtoMessage: " << error;
+
+    error.clear();
+    butil::IOBuf json_buf1;
+    json_buf1.append(json1);
+    butil::IOBufAsZeroCopyInputStream input_stream1(json_buf1);
+    ASSERT_FALSE(json2pb::ProtoJsonToProtoMessage(&input_stream1, &aims, options, &error));
+    LOG(INFO) << "Fail to ProtoJsonToProtoMessage: " << error;
+    error.clear();
+
+    std::string json2 = R"({"addr":"baidu.com",)"
+                        R"("numbers":{"tel":123456,"cell":654321}})";
+    ASSERT_TRUE(json2pb::ProtoJsonToProtoMessage(json2, &aims, options, &error)) << error;
+    ASSERT_TRUE(aims.has_addr());
+    ASSERT_EQ(aims.addr(), "baidu.com");
+    ASSERT_EQ(aims.numbers_size(), 2);
+    ASSERT_EQ(aims.numbers().at("tel"), 123456);
+    ASSERT_EQ(aims.numbers().at("cell"), 654321);
+
+    aims.Clear();
+    butil::IOBuf json_buf2;
+    json_buf2.append(json2);
+    butil::IOBufAsZeroCopyInputStream input_stream2(json_buf2);
+    ASSERT_TRUE(json2pb::ProtoJsonToProtoMessage(&input_stream2, &aims, options, &error)) << error;
+    ASSERT_TRUE(aims.has_addr());
+    ASSERT_EQ(aims.addr(), "baidu.com");
+    ASSERT_EQ(aims.numbers_size(), 2);
+    ASSERT_EQ(aims.numbers().at("tel"), 123456);
+    ASSERT_EQ(aims.numbers().at("cell"), 654321);
+
+    std::string json3 = R"({"addr":"baidu.com",)"
+                        R"("contacts":{"email":"frank@apache.org","office":"Shanghai"}})";
+    AddressStringMapStd asms;
+    ASSERT_TRUE(json2pb::ProtoJsonToProtoMessage(json3, &asms, options, &error)) << error;
+    ASSERT_TRUE(asms.has_addr());
+    ASSERT_EQ(asms.addr(), "baidu.com");
+    ASSERT_EQ(asms.contacts().size(), 2);
+    ASSERT_EQ(asms.contacts().at("email"), "frank@apache.org");
+    ASSERT_EQ(asms.contacts().at("office"), "Shanghai");
+
+    asms.Clear();
+    butil::IOBuf json_buf3;
+    json_buf3.append(json3);
+    butil::IOBufAsZeroCopyInputStream input_stream3(json_buf3);
+    ASSERT_TRUE(json2pb::ProtoJsonToProtoMessage(&input_stream3, &asms, options, &error)) << error;
+    ASSERT_TRUE(asms.has_addr());
+    ASSERT_EQ(asms.addr(), "baidu.com");
+    ASSERT_EQ(asms.contacts().size(), 2);
+    ASSERT_EQ(asms.contacts().at("email"), "frank@apache.org");
+    ASSERT_EQ(asms.contacts().at("office"), "Shanghai");
+}
+
+TEST_F(ProtobufJsonTest, pb_to_proto_json) {
+    std::string error;
+    json2pb::Pb2ProtoJsonOptions options;
+
+    AddressIntMapStd aims;
+    aims.set_addr("baidu.com");
+    (*aims.mutable_numbers())["tel"] = 123456;
+    (*aims.mutable_numbers())["cell"] = 654321;
+    std::string json1;
+    ASSERT_TRUE(json2pb::ProtoMessageToJson(aims, &json1)) << error;
+    ASSERT_NE(json1.find(R"("addr":"baidu.com")"), std::string::npos);
+    ASSERT_NE(json1.find(R"("cell":654321)"), std::string::npos);
+    ASSERT_NE(json1.find(R"("tel":123456)"), std::string::npos);
+
+    butil::IOBuf json_buf1;
+    json_buf1.append(json1);
+    butil::IOBufAsZeroCopyOutputStream output_stream1(&json_buf1);
+    ASSERT_TRUE(json2pb::ProtoMessageToJson(aims, &output_stream1, &error)) << error;
+    json1 = json_buf1.to_string();
+    ASSERT_NE(json1.find(R"("addr":"baidu.com")"), std::string::npos);
+    ASSERT_NE(json1.find(R"("cell":654321)"), std::string::npos);
+    ASSERT_NE(json1.find(R"("tel":123456)"), std::string::npos);
+
+    AddressStringMapStd asms;
+    asms.set_addr("baidu.com");
+    (*asms.mutable_contacts())["email"] = "frank@apache.org";
+    (*asms.mutable_contacts())["office"] = "Shanghai";
+    std::string json2;
+    ASSERT_TRUE(json2pb::ProtoMessageToJson(asms, &json2)) << error;
+    ASSERT_NE(json2.find(R"("addr":"baidu.com")"), std::string::npos);
+    ASSERT_NE(json2.find(R"("email":"frank@apache.org")"), std::string::npos);
+    ASSERT_NE(json2.find(R"("office":"Shanghai")"), std::string::npos);
+
+    butil::IOBuf json_buf2;
+    json_buf2.append(json2);
+    butil::IOBufAsZeroCopyOutputStream output_stream2(&json_buf2);
+    ASSERT_TRUE(json2pb::ProtoMessageToJson(asms, &output_stream2, &error)) << error;
+    json2 = json_buf2.to_string();
+    ASSERT_NE(json2.find(R"("addr":"baidu.com")"), std::string::npos);
+    ASSERT_NE(json2.find(R"("email":"frank@apache.org")"), std::string::npos);
+    ASSERT_NE(json2.find(R"("office":"Shanghai")"), std::string::npos);
+}
+
 } // namespace
