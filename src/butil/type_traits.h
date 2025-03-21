@@ -99,7 +99,7 @@ template <class T> struct is_pod
                            std::is_trivial<T>::value)> {};
 #else
 template <class T> struct is_pod : std::is_pod<T> {};
-#endif
+#endif // __cplusplus
 
 #else
 // We can't get is_pod right without compiler help, so fail conservatively.
@@ -334,7 +334,7 @@ template<typename T>
 struct remove_cvref {
     typedef typename remove_cv<typename remove_reference<T>::type>::type type;
 };
-#endif
+#endif // __cplusplus
 
 // is_reference is false except for reference types.
 template<typename T> struct is_reference : false_type {};
@@ -378,7 +378,7 @@ template <typename F>
 using result_of = std::result_of<F>;
 #else
 #error Only C++11 or later is supported.
-#endif
+#endif // __cplusplus
 
 template <typename F>
 using result_of_t = typename result_of<F>::type;
