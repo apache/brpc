@@ -58,6 +58,11 @@ public:
     // Current max_concurrency of the method.
     int MaxConcurrency() const { return _cl ? _cl->MaxConcurrency() : 0; }
 
+    // Reset max_concurrency of the method.
+    int ResetMaxConcurrency(const AdaptiveMaxConcurrency& concurrency) {
+        return _cl ? _cl->ResetMaxConcurrency(concurrency) : -1;
+    }
+
 private:
 friend class Server;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
