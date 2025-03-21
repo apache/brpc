@@ -28,6 +28,83 @@ DECLARE_int32(tc_stack_normal);
 
 namespace bthread {
 
+#ifdef BUTIL_USE_ASAN
+namespace internal {
+
+BUTIL_FORCE_INLINE void ASanPoisonMemoryRegion(const StackStorage& storage) {
+    if (NULL == storage.bottom) {
+        return;
+    }
+
+    CHECK_GT((void*)storage.bottom,
+             reinterpret_cast<void*>(storage.stacksize + + storage.guardsize));
+    BUTIL_ASAN_POISON_MEMORY_REGION(
+        (char*)storage.bottom - storage.stacksize, storage.stacksize);
+}
+
+BUTIL_FORCE_INLINE void ASanUnpoisonMemoryRegion(const StackStorage& storage) {
+    if (NULL == storage.bottom) {
+        return;
+    }
+    CHECK_GT(storage.bottom,
+             reinterpret_cast<void*>(storage.stacksize + storage.guardsize));
+    BUTIL_ASAN_UNPOISON_MEMORY_REGION(
+        (char*)storage.bottom - storage.stacksize, storage.stacksize);
+}
+
+
+BUTIL_FORCE_INLINE void StartSwitchFiber(void** fake_stack_save, StackStorage& storage) {
+    if (NULL == storage.bottom) {
+        return;
+    }
+    RELEASE_ASSERT(storage.bottom >
+                   reinterpret_cast<void*>(storage.stacksize + storage.guardsize));
+    // Lowest address of this stack.
+    void* asan_stack_bottom = (char*)storage.bottom - storage.stacksize;
+    BUTIL_ASAN_START_SWITCH_FIBER(fake_stack_save, asan_stack_bottom, storage.stacksize);
+}
+
+BUTIL_FORCE_INLINE void FinishSwitchFiber(void* fake_stack_save) {
+    BUTIL_ASAN_FINISH_SWITCH_FIBER(fake_stack_save, NULL, NULL);
+}
+
+class ScopedASanFiberSwitcher {
+public:
+    ScopedASanFiberSwitcher(StackStorage& storage, bool ending) {
+        // If bthread will be quit here, pass NULL as `fake_stack_save',
+        // so that ASan knows it can destroy the fake stack.
+        StartSwitchFiber(ending ? NULL : &_fake_stack, storage);
+    }
+
+    ~ScopedASanFiberSwitcher() {
+        FinishSwitchFiber(_fake_stack);
+    }
+
+    DISALLOW_COPY_AND_ASSIGN(ScopedASanFiberSwitcher);
+
+private:
+    void* _fake_stack{NULL};
+};
+
+#define BTHREAD_ASAN_POISON_MEMORY_REGION(storage) \
+    ::bthread::internal::ASanPoisonMemoryRegion(storage)
+
+#define BTHREAD_ASAN_UNPOISON_MEMORY_REGION(storage) \
+    ::bthread::internal::ASanUnpoisonMemoryRegion(storage)
+
+#define BTHREAD_SCOPED_ASAN_FIBER_SWITCHER(storage, ending) \
+    ::bthread::internal::ScopedASanFiberSwitcher switcher(storage, ending)
+
+} // namespace internal
+#else
+
+// If ASan are used, the annotations should be no-ops.
+#define BTHREAD_ASAN_POISON_MEMORY_REGION(storage) ((void)(storage))
+#define BTHREAD_ASAN_UNPOISON_MEMORY_REGION(storage) ((void)(storage))
+#define BTHREAD_SCOPED_ASAN_FIBER_SWITCHER(storage, ending) ((void)(storage), (void)(ending))
+
+#endif // BUTIL_USE_ASAN
+
 struct MainStackClass {};
 
 struct SmallStackClass {
@@ -57,10 +134,14 @@ template <typename StackClass> struct StackFactory {
             }
             context = bthread_make_fcontext(storage.bottom, storage.stacksize, entry);
             stacktype = (StackType)StackClass::stacktype;
+            // It's poisoned prior to use.
+            BTHREAD_ASAN_POISON_MEMORY_REGION(storage);
         }
         ~Wrapper() {
             if (context) {
                 context = NULL;
+                // Unpoison to avoid affecting other allocator.
+                BTHREAD_ASAN_UNPOISON_MEMORY_REGION(storage);
                 deallocate_stack_storage(&storage);
                 storage.zeroize();
             }
@@ -68,11 +149,16 @@ template <typename StackClass> struct StackFactory {
     };
     
     static ContextualStack* get_stack(void (*entry)(intptr_t)) {
-        return butil::get_object<Wrapper>(entry);
+        ContextualStack* cs = butil::get_object<Wrapper>(entry);
+        // Marks stack as addressable.
+        BTHREAD_ASAN_UNPOISON_MEMORY_REGION(cs->storage);
+        return cs;
     }
     
-    static void return_stack(ContextualStack* sc) {
-        butil::return_object(static_cast<Wrapper*>(sc));
+    static void return_stack(ContextualStack* cs) {
+        // Marks stack as unaddressable.
+        BTHREAD_ASAN_POISON_MEMORY_REGION(cs->storage);
+        butil::return_object(static_cast<Wrapper*>(cs));
     }
 };
 

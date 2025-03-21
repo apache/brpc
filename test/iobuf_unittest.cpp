@@ -291,6 +291,7 @@ TEST_F(IOBufTest, appendv) {
     ASSERT_EQ(0, b.appendv(vec2, arraysize(vec2)));
     ASSERT_EQ(full_len, b.size());
     ASSERT_EQ(0, memcmp(str, b.to_string().data(), full_len));
+    free(str);
 }
 
 TEST_F(IOBufTest, reserve) {
@@ -345,6 +346,8 @@ TEST_F(IOBufTest, reserve) {
     ASSERT_EQ("orang" + s2 + s1, b.to_string());
 }
 
+#ifndef BUTIL_USE_ASAN
+// ASan will detect heap-buffer-overflow error casued by FakeBlock.
 struct FakeBlock {
     int nshared;
     FakeBlock() : nshared(1) {}
@@ -451,6 +454,7 @@ TEST_F(IOBufTest, iobuf_as_queue) {
         delete blocks[i];
     }
 }
+#endif // BUTIL_USE_ASAN
 
 TEST_F(IOBufTest, iobuf_sanity) {
     install_debug_allocator();
