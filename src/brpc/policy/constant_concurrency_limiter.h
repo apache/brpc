@@ -33,6 +33,8 @@ public:
 
     int MaxConcurrency() override;
 
+    int ResetMaxConcurrency(const AdaptiveMaxConcurrency&) override;
+
     ConstantConcurrencyLimiter* New(const AdaptiveMaxConcurrency&) const override;
 
 private:

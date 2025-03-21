@@ -32,6 +32,7 @@ struct TimeoutConcurrencyConf {
     int max_concurrency;
 };
 
+class ConcurrencyLimiter;
 class AdaptiveMaxConcurrency{
 public:
     explicit AdaptiveMaxConcurrency();
@@ -68,11 +69,14 @@ public:
     static const std::string& UNLIMITED();
     static const std::string& CONSTANT();
 
+    void SetConcurrencyLimiter(ConcurrencyLimiter* cl) { _cl = cl; }
+
 private:
     std::string _value;
     int _max_concurrency;
     TimeoutConcurrencyConf
         _timeout_conf;  // TODO std::varient for different type
+    ConcurrencyLimiter* _cl{nullptr};
 };
 
 inline std::ostream& operator<<(std::ostream& os, const AdaptiveMaxConcurrency& amc) {

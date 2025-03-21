@@ -21,6 +21,7 @@
 #include "butil/logging.h"
 #include "butil/strings/string_number_conversions.h"
 #include "brpc/adaptive_max_concurrency.h"
+#include "brpc/concurrency_limiter.h"
 
 namespace brpc {
 
@@ -72,6 +73,9 @@ void AdaptiveMaxConcurrency::operator=(const butil::StringPiece& value) {
         value.CopyToString(&_value);
         _max_concurrency = -1;
     }
+    if (_cl) {
+        _cl->ResetMaxConcurrency(*this);
+    }
 }
 
 void AdaptiveMaxConcurrency::operator=(int max_concurrency) {
@@ -82,12 +86,18 @@ void AdaptiveMaxConcurrency::operator=(int max_concurrency) {
         _value = butil::string_printf("%d", max_concurrency);
         _max_concurrency = max_concurrency;
     }
+    if (_cl) {
+        _cl->ResetMaxConcurrency(*this);
+    }
 }
 
 void AdaptiveMaxConcurrency::operator=(const TimeoutConcurrencyConf& value) {
     _value = "timeout";
     _max_concurrency = -1;
     _timeout_conf = value;
+    if (_cl) {
+        _cl->ResetMaxConcurrency(*this);
+    }
 }
 
 const std::string& AdaptiveMaxConcurrency::type() const {

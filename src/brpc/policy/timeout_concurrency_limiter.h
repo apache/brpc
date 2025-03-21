@@ -34,6 +34,8 @@ class TimeoutConcurrencyLimiter : public ConcurrencyLimiter {
 
     int MaxConcurrency() override;
 
+    int ResetMaxConcurrency(const AdaptiveMaxConcurrency&) override;
+
     TimeoutConcurrencyLimiter* New(
         const AdaptiveMaxConcurrency&) const override;
 
