@@ -149,11 +149,8 @@ void MethodStatus::SetConcurrencyLimiter(ConcurrencyLimiter* cl) {
     _cl.reset(cl);
 }
 
-int HandleResponseWritten(bthread_id_t id, void* data, int error_code,
-    const std::string& error_text) {
+int HandleResponseWritten(bthread_id_t id, void* data, int /*error_code*/) {
     auto args = static_cast<ResponseWriteInfo*>(data);
-    args->error_code = error_code;
-    args->error_text = error_text;
     args->sent_us = butil::cpuwide_time_us();
     CHECK_EQ(0, bthread_id_unlock_and_destroy(id));
     return 0;
@@ -161,10 +158,7 @@ int HandleResponseWritten(bthread_id_t id, void* data, int error_code,
 
 ConcurrencyRemover::~ConcurrencyRemover() {
     if (_status) {
-        if (_sent_us < _received_us) {
-            _sent_us = butil::cpuwide_time_us();
-        }
-        _status->OnResponded(_c->ErrorCode(), _sent_us - _received_us);
+        _status->OnResponded(_c->ErrorCode(), butil::cpuwide_time_us() - _received_us);
         _status = NULL;
     }
     ServerPrivateAccessor(_c->server()).RemoveConcurrency(_c);

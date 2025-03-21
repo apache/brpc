@@ -41,8 +41,8 @@ void SendStreamClose(Socket *sock, int64_t remote_stream_id,
                      int64_t source_stream_id);
 
 int SendStreamData(Socket* sock, const butil::IOBuf* data,
-                   int64_t remote_stream_id,
-                   int64_t source_stream_id, bthread_id_t);
+                   int64_t remote_stream_id, int64_t source_stream_id,
+                   bthread_id_t);
 
 }  // namespace policy
 } // namespace brpc

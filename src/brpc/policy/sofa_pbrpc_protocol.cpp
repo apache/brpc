@@ -282,12 +282,14 @@ static void SendSofaResponse(int64_t correlation_id,
     // Have the risk of unlimited pending responses, in which case, tell
     // users to set max_concurrency.
     ResponseWriteInfo args;
-    bthread_id_t response_id;
-    CHECK_EQ(0, bthread_id_create2(&response_id, &args, HandleResponseWritten));
     Socket::WriteOptions wopt;
-    wopt.id_wait = response_id;
-    wopt.notify_on_success = true;
     wopt.ignore_eovercrowded = true;
+    bthread_id_t response_id = INVALID_BTHREAD_ID;
+    if (span) {
+        CHECK_EQ(0, bthread_id_create(&response_id, &args, HandleResponseWritten));
+        wopt.id_wait = response_id;
+        wopt.notify_on_success = true;
+    }
     if (sock->Write(&res_buf, &wopt) != 0) {
         const int errcode = errno;
         PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
@@ -296,17 +298,9 @@ static void SendSofaResponse(int64_t correlation_id,
         return;
     }
 
-    bthread_id_join(response_id);
-    concurrency_remover.set_sent_us(args.sent_us);
-    const int errcode = args.error_code;
-    if (0 != errcode) {
-        LOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
-        cntl->SetFailed(errcode, "Fail to write into %s",
-                        sock->description().c_str());
-        return;
-    }
-
     if (span) {
+        bthread_id_join(response_id);
+        // Do not care about the result of background writing.
         // TODO: this is not sent
         span->set_sent_us(args.sent_us);
     }

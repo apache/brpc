@@ -95,34 +95,16 @@ void SendMongoResponse::Run() {
         res_buf.append(res.message());
     }
 
-    if (res_buf.empty()) {
-        return;
+    if (!res_buf.empty()) {
+        // Have the risk of unlimited pending responses, in which case, tell
+        // users to set max_concurrency.
+        Socket::WriteOptions wopt;
+        wopt.ignore_eovercrowded = true;
+        if (socket->Write(&res_buf, &wopt) != 0) {
+            PLOG(WARNING) << "Fail to write into " << *socket;
+            return;
+        }
     }
-
-    // Have the risk of unlimited pending responses, in which case, tell
-    // users to set max_concurrency.
-    ResponseWriteInfo args;
-    bthread_id_t response_id;
-    CHECK_EQ(0, bthread_id_create2(&response_id, &args, HandleResponseWritten));
-    Socket::WriteOptions wopt;
-    wopt.id_wait = response_id;
-    wopt.notify_on_success = true;
-    wopt.ignore_eovercrowded = true;
-    wopt.ignore_eovercrowded = true;
-    if (socket->Write(&res_buf, &wopt) != 0) {
-        PLOG(WARNING) << "Fail to write into " << *socket;
-        return;
-    }
-
-    bthread_id_join(response_id);
-    concurrency_remover.set_sent_us(args.sent_us);
-    const int errcode = args.error_code;
-    if (0 != errcode) {
-        LOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *socket;
-        cntl.SetFailed(errcode, "Fail to write into %s", socket->description().c_str());
-        return;
-    }
-
 }
 
 ParseResult ParseMongoMessage(butil::IOBuf* source,

@@ -197,18 +197,14 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
     const google::protobuf::Message* req = NULL == messages ? NULL : messages->Request();
     const google::protobuf::Message* res = NULL == messages ? NULL : messages->Response();
 
-    ResponseWriteInfo args;
-
     // Recycle resources at the end of this function.
     BRPC_SCOPE_EXIT {
         {
             // Remove concurrency and record latency at first.
             ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
-            concurrency_remover.set_sent_us(args.sent_us);
         }
 
         std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-
 
         if (NULL == messages) {
             return;
@@ -305,12 +301,13 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         }
     }
 
+    ResponseWriteInfo args;
+    bthread_id_t response_id = INVALID_BTHREAD_ID;
     if (span) {
         span->set_response_size(res_buf.size());
+        CHECK_EQ(0, bthread_id_create(&response_id, &args, HandleResponseWritten));
     }
 
-    bthread_id_t response_id;
-    CHECK_EQ(0, bthread_id_create2(&response_id, &args, HandleResponseWritten));
     // Send rpc response over stream even if server side failed to create
     // stream for some reason.
     if (cntl->has_remote_stream()) {
@@ -328,45 +325,13 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
             Stream::SetFailed(response_stream_ids, error_code,
                               "Fail to write into %s",
                               sock->description().c_str());
-        }
-    } else{
-        // Have the risk of unlimited pending responses, in which case, tell
-        // users to set max_concurrency.
-        Socket::WriteOptions wopt;
-        wopt.id_wait = response_id;
-        wopt.notify_on_success = true;
-        wopt.ignore_eovercrowded = true;
-        if (sock->Write(&res_buf, &wopt) != 0) {
-            const int errcode = errno;
-            PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
-            cntl->SetFailed(errcode, "Fail to write into %s",
-                            sock->description().c_str());
-            return;
-        }
-    }
-
-    bthread_id_join(response_id);
-
-    error_code = args.error_code;
-    if (cntl->has_remote_stream()) {
-        if (0 != error_code) {
-            LOG_IF(WARNING, error_code != EPIPE)
-                << "Fail to write into " << *sock
-                << ", error text= " << args.error_text
-                << ": " << berror(error_code);
-            cntl->SetFailed(error_code,  "Fail to write into %s: %s",
-                            sock->description().c_str(),
-                            args.error_text.c_str());
-            Stream::SetFailed(response_stream_ids, error_code,
-                              "Fail to write into %s",
-                              args.error_text.c_str());
             return;
         }
 
         // Now it's ok the mark these server-side streams as connected as all the
         // written user data would follower the RPC response.
         // Reuse stream_ptr to avoid address first stream id again
-        if (NULL != stream_ptr) {
+        if (stream_ptr) {
             ((Stream*)stream_ptr->conn())->SetConnected();
         }
         for (size_t i = 1; i < response_stream_ids.size(); ++i) {
@@ -384,17 +349,24 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
     } else{
         // Have the risk of unlimited pending responses, in which case, tell
         // users to set max_concurrency.
-        if (0 != error_code) {
-            LOG_IF(WARNING, error_code != EPIPE) << "Fail to write into " << *sock
-                                              << ", error text= " << args.error_text
-                                              << ": " << strerror(error_code);
-            cntl->SetFailed(error_code,  "Fail to write into %s: %s",
-                            sock->description().c_str(), args.error_text.c_str());
+        Socket::WriteOptions wopt;
+        wopt.ignore_eovercrowded = true;
+        if (INVALID_BTHREAD_ID != response_id) {
+            wopt.id_wait = response_id;
+            wopt.notify_on_success = true;
+        }
+        if (sock->Write(&res_buf, &wopt) != 0) {
+            const int errcode = errno;
+            PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *sock;
+            cntl->SetFailed(errcode, "Fail to write into %s",
+                            sock->description().c_str());
             return;
         }
     }
 
     if (span) {
+        bthread_id_join(response_id);
+        // Do not care about the result of background writing.
         // TODO: this is not sent
         span->set_sent_us(args.sent_us);
     }
