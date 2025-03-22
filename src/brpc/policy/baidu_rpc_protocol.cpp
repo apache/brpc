@@ -646,7 +646,6 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 cntl->SetFailed(EREQUEST, "Fail to parse request message, "
                                           "CompressType=%s, request_size=%d",
                                 CompressTypeToCStr(req_cmp_type), req_size);
-                server->options().rpc_pb_message_factory->Return(messages);
                 break;
             }
             req_buf.clear();
