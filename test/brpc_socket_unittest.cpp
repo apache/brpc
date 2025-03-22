@@ -1238,10 +1238,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckNoKeepalive(ptr->fd());
     }
 
@@ -1252,10 +1252,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckKeepalive(ptr->fd(), true, default_keepalive_idle,
                        default_keepalive_interval, default_keepalive_count);
     }
@@ -1267,10 +1267,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
                        default_keepalive_interval, default_keepalive_count);
     }
@@ -1282,10 +1282,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
                        brpc::FLAGS_socket_keepalive_interval_s, default_keepalive_count);
     }
@@ -1297,10 +1297,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
                        brpc::FLAGS_socket_keepalive_interval_s,
                        brpc::FLAGS_socket_keepalive_count);
@@ -1317,10 +1317,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
         options.keepalive_options->keepalive_idle_s = keepalive_idle;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckKeepalive(ptr->fd(), true, keepalive_idle,
                        brpc::FLAGS_socket_keepalive_interval_s,
                        brpc::FLAGS_socket_keepalive_count);
@@ -1333,10 +1333,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
         options.keepalive_options->keepalive_interval_s = keepalive_interval;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
                        keepalive_interval, brpc::FLAGS_socket_keepalive_count);
     }
@@ -1348,10 +1348,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         options.fd = sockfd;
         options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
         options.keepalive_options->keepalive_count = keepalive_count;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckKeepalive(ptr->fd(), true, brpc::FLAGS_socket_keepalive_idle_s,
                        brpc::FLAGS_socket_keepalive_interval_s, keepalive_count);
     }
@@ -1365,10 +1365,10 @@ TEST_F(SocketTest, keepalive_input_message) {
         options.keepalive_options->keepalive_idle_s = keepalive_idle;
         options.keepalive_options->keepalive_interval_s = keepalive_interval;
         options.keepalive_options->keepalive_count = keepalive_count;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckKeepalive(ptr->fd(), true, keepalive_idle,
                        keepalive_interval, keepalive_count);
     }
@@ -1388,10 +1388,10 @@ TEST_F(SocketTest, tcp_user_timeout) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckTCPUserTimeout(ptr->fd(), 0);
     }
 
@@ -1402,10 +1402,10 @@ TEST_F(SocketTest, tcp_user_timeout) {
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.tcp_user_timeout_ms = tcp_user_timeout_ms;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckTCPUserTimeout(ptr->fd(), tcp_user_timeout_ms);
     }
 
@@ -1415,10 +1415,10 @@ TEST_F(SocketTest, tcp_user_timeout) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckTCPUserTimeout(ptr->fd(), brpc::FLAGS_socket_tcp_user_timeout_ms);
     }
     {
@@ -1428,10 +1428,10 @@ TEST_F(SocketTest, tcp_user_timeout) {
         brpc::SocketOptions options;
         options.fd = sockfd;
         options.tcp_user_timeout_ms = tcp_user_timeout_ms;
-        brpc::SocketId id;
+        brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckTCPUserTimeout(ptr->fd(), tcp_user_timeout_ms);
     }
 }
