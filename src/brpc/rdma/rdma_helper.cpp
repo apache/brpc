@@ -686,6 +686,21 @@ bool SupportedByRdma(std::string protocol) {
     return false;
 }
 
+bool InitPollingModeWithTag(bthread_tag_t tag) {
+    if (RdmaEndpoint::PollingModeInitialize(tag) == 0) {
+        return true;
+    }
+    return false;
+}
+
+void ReleasePollingModeWithTag(bthread_tag_t tag) {
+    RdmaEndpoint::PollingModeRelease(tag);
+}
+
+void SetPollingModeCallback(std::function<void()> cb, bthread_tag_t tag) {
+    RdmaEndpoint::SetCallbackFn(cb, tag);
+}
+
 }  // namespace rdma
 }  // namespace brpc
 
@@ -696,12 +711,14 @@ bool SupportedByRdma(std::string protocol) {
 
 namespace brpc {
 namespace rdma {
+
 void GlobalRdmaInitializeOrDie() {
     LOG(ERROR) << "brpc is not compiled with rdma. To enable it, please refer to "
                << "https://github.com/apache/brpc/blob/master/docs/en/rdma.md";
     exit(1);
 }
 }
+
 }
 
 #endif  // if BRPC_WITH_RDMA

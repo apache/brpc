@@ -22,6 +22,7 @@
 
 #include <infiniband/verbs.h>
 #include <string>
+#include <functional>
 
 
 namespace brpc {
@@ -30,6 +31,14 @@ namespace rdma {
 // Initialize RDMA environment
 // Exit if failed
 void GlobalRdmaInitializeOrDie();
+
+// Initialize RDMA polling mode with tag
+bool InitPollingModeWithTag(bthread_tag_t tag);
+
+void ReleasePollingModeWithTag(bthread_tag_t tag);
+
+// Set callback for polling mode with tag
+void SetPollingModeCallback(std::function<void()> cb, bthread_tag_t tag);
 
 // Register the given memory
 // Return the memory lkey for the given memory, Return 0 when fails

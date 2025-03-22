@@ -147,6 +147,11 @@ Channel::~Channel() {
         const ChannelSignature sig = ComputeChannelSignature(_options);
         SocketMapRemove(SocketMapKey(_server_address, sig));
     }
+    if (_options.use_rdma) {
+#if BRPC_WITH_RDMA
+        rdma::ReleasePollingModeWithTag(bthread_self_tag());
+#endif
+    }
 }
 
 #if BRPC_WITH_RDMA
@@ -180,6 +185,9 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
+        if (!rdma::InitPollingModeWithTag(bthread_self_tag())) {
+            return -1;
+        }
 #else
         LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
         return -1;
