@@ -53,6 +53,7 @@ static const bthread_attrflags_t BTHREAD_LOG_CONTEXT_SWITCH = 16;
 static const bthread_attrflags_t BTHREAD_NOSIGNAL = 32;
 static const bthread_attrflags_t BTHREAD_NEVER_QUIT = 64;
 static const bthread_attrflags_t BTHREAD_INHERIT_SPAN = 128;
+static const bthread_attrflags_t BTHREAD_GLOBAL_PRIORITY = 256;
 
 // Key of thread-local data, created by bthread_key_create.
 typedef struct {
@@ -136,6 +137,10 @@ static const bthread_attr_t BTHREAD_ATTR_NORMAL = {BTHREAD_STACKTYPE_NORMAL, 0, 
                                                    BTHREAD_TAG_INVALID};
 static const bthread_attr_t BTHREAD_ATTR_LARGE = {BTHREAD_STACKTYPE_LARGE, 0, NULL,
                                                   BTHREAD_TAG_INVALID};
+
+// epoll bthread
+static const bthread_attr_t BTHREAD_ATTR_EPOLL = {
+    BTHREAD_STACKTYPE_NORMAL, BTHREAD_GLOBAL_PRIORITY, NULL, BTHREAD_TAG_INVALID};
 
 // bthreads created with this attribute will print log when it's started,
 // context-switched, finished.

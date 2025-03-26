@@ -51,7 +51,7 @@ inline void TaskGroup::exchange(TaskGroup** pg, TaskMeta* next_meta) {
     if (g->is_current_pthread_task()) {
         return g->ready_to_run(next_meta);
     }
-    ReadyToRunArgs args = { g->_cur_meta, false };
+    ReadyToRunArgs args = { g->tag(), g->_cur_meta, false };
     g->set_remained((g->current_task()->about_to_quit
                      ? ready_to_run_in_worker_ignoresignal
                      : ready_to_run_in_worker),

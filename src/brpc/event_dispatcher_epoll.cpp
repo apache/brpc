@@ -26,7 +26,7 @@ EventDispatcher::EventDispatcher()
     : _event_dispatcher_fd(-1)
     , _stop(false)
     , _tid(0)
-    , _thread_attr(BTHREAD_ATTR_NORMAL) {
+    , _thread_attr(BTHREAD_ATTR_EPOLL) {
     _event_dispatcher_fd = epoll_create(1024 * 1024);
     if (_event_dispatcher_fd < 0) {
         PLOG(FATAL) << "Fail to create epoll";
@@ -70,7 +70,8 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
     // Set _thread_attr before creating epoll thread to make sure
     // everyting seems sane to the thread.
     _thread_attr = consumer_thread_attr  ?
-        *consumer_thread_attr : BTHREAD_ATTR_NORMAL;
+        *consumer_thread_attr : _thread_attr;
+    _thread_attr = _thread_attr | BTHREAD_GLOBAL_PRIORITY;
 
     //_thread_attr is used in StartInputEvent(), assign flag NEVER_QUIT to it will cause new bthread
     // that created by epoll_wait() never to quit.
