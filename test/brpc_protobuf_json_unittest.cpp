@@ -26,7 +26,7 @@
 #include "butil/strings/string_util.h"
 #include "butil/third_party/rapidjson/rapidjson.h"
 #include "butil/time.h"
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
 #include "json2pb/encode_decode.h"
@@ -505,8 +505,8 @@ TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {
 
     printf("----------test json to pb performance------------\n\n");
 
-    std::string error; 
-  
+    std::string error;
+
     ProfilerStart("json_to_pb_perf.prof");
     butil::Timer timer;
     bool res;
@@ -542,8 +542,8 @@ TEST_F(ProtobufJsonTest, json_to_pb_encode_decode_perf_case) {
                           \"welcome\", \"enum--type\":1},\"uid*\":\"welcome\"}], \
                           \"judge\":false, \"spur\":2, \"data:array\":[]}";  
     printf("----------test json to pb encode/decode performance------------\n\n");
-    std::string error; 
-    
+    std::string error;
+
     ProfilerStart("json_to_pb_encode_decode_perf.prof");
     butil::Timer timer;
     bool res;
@@ -593,7 +593,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
     json2pb::Json2PbOptions options;
     options.base64_to_bytes = false;
     ProfilerStart("json_to_pb_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         gss::message::gss_us_res_t data;
         butil::IOBufAsZeroCopyInputStream stream(buf); 
         timer.start();
@@ -625,7 +625,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_to_string_complex_perf_case) {
     json2pb::Json2PbOptions options;
     options.base64_to_bytes = false;
     ProfilerStart("json_to_pb_to_string_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         gss::message::gss_us_res_t data;
         timer.start();
         res = json2pb::JsonToProtoMessage(info3, &data, options, &error);
@@ -1292,6 +1292,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_perf_case) {
     printf("text:%s\n", text.data());
 
     printf("----------test pb to json performance------------\n\n");
+
     ProfilerStart("pb_to_json_perf.prof");
     butil::Timer timer;
     bool res;
@@ -1352,6 +1353,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode_perf_case) {
 
     printf("----------test pb to json encode decode performance------------\n\n");
     ProfilerStart("pb_to_json_encode_decode_perf.prof");
+
     butil::Timer timer;
     bool res;
     float avg_time1 = 0;
@@ -1401,7 +1403,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
     res = JsonToProtoMessage(info3, &data, option, &error);
     ASSERT_TRUE(res) << error;
     ProfilerStart("pb_to_json_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         std::string error1;
         timer.start();
         butil::IOBuf buf;
@@ -1437,7 +1439,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
     res = JsonToProtoMessage(info3, &data, option, &error);
     ASSERT_TRUE(res);
     ProfilerStart("pb_to_json_to_string_complex_perf.prof");
-    for (int i = 0; i < times; i++) { 
+    for (int i = 0; i < times; i++) {
         std::string info4;  
         std::string error1;
         timer.start();

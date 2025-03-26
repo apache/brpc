@@ -464,6 +464,13 @@ TimeVal GetTimestamp() {
 }
 
 struct BAIDU_CACHELINE_ALIGNMENT LogInfo {
+    ~LogInfo() = default;
+    void clear() {
+        file.clear();
+        func.clear();
+        content.clear();
+    }
+
     std::string file;
     std::string func;
     std::string content;
@@ -751,7 +758,7 @@ bool AsyncLogger::IsLogComplete(LogRequest* old_head) {
 
 void AsyncLogger::DoLog(LogRequest* req) {
     DoLog(req->log_info);
-    req->log_info.content.clear();
+    req->log_info.clear();
 }
 
 void AsyncLogger::DoLog(const LogInfo& log_info) {

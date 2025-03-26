@@ -25,7 +25,7 @@
 #include "bthread/butex.h"
 #include "bthread/task_control.h"
 #include "bthread/mutex.h"
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 
 namespace {
 inline unsigned* get_butex(bthread_mutex_t & m) {
@@ -206,7 +206,7 @@ void PerfTest(Mutex* mutex,
     }
     g_started = true;
     char prof_name[32];
-    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter); 
+    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter);
     ProfilerStart(prof_name);
     usleep(500 * 1000);
     ProfilerStop();

@@ -145,6 +145,7 @@ void CheckDebugOutputToStream(bool exclude_self) {
     std::ostringstream os;
     trace.OutputToStream(&os);
     VLOG(1) << os.str();
+    free(addr);
 }
 
 // The test is used for manual testing, e.g., to see the raw output.

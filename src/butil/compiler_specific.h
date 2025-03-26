@@ -208,9 +208,20 @@
 #endif
 
 // Instruct ASan is enabled.
-#if BUTIL_HAS_FEATURE(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
-#define BUTIL_USE_ASAN 1
+#if defined(BUTIL_USE_ASAN)
+#error "BUTIL_USE_ASAN cannot be set directly."
+#elif BUTIL_HAS_FEATURE(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
+#define BUTIL_USE_ASAN
 #endif
+
+// https://github.com/google/sanitizers/wiki/AddressSanitizer#turning-off-instrumentation
+// Attribute to instruct ASan to ignore a function.
+#if defined(COMPILER_GCC)
+# define BUTIL_ATTRIBUTE_NO_SANITIZE_ADDRESS __attribute__((no_sanitize_address))
+#else
+# define BUTIL_ATTRIBUTE_NO_SANITIZE_ADDRESS
+#endif
+
 
 // Tell the compiler a function is using a printf-style format string.
 // |format_param| is the one-based index of the format string parameter;

@@ -27,7 +27,6 @@
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
 #include "butil/macros.h"
-#include "butil/gperftools_profiler.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"

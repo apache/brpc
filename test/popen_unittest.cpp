@@ -135,6 +135,7 @@ TEST(PopenTest, does_vfork_suspend_all_threads) {
               << " as=" << counter_after_sleep
               << std::endl;
     ASSERT_EQ(cpid, waitpid(cpid, &ws, __WALL));
+    free(child_stack_mem);
 }
 
 #endif  // OS_LINUX

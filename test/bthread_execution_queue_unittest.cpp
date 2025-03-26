@@ -22,7 +22,7 @@
 #include <bthread/countdown_event.h>
 #include "butil/time.h"
 #include "butil/fast_rand.h"
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 
 namespace {
 bool stopped = false;

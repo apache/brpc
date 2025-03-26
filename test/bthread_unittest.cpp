@@ -20,7 +20,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
 #include "bthread/task_meta.h"
@@ -230,6 +230,7 @@ TEST_F(BthreadTest, backtrace) {
     for (int i = 0; i < bt_cnt; ++i) {
         puts(text[i]);
     }
+    free(text);
 }
 
 void* show_self(void*) {
@@ -330,7 +331,7 @@ TEST_F(BthreadTest, small_threads) {
             LOG(INFO) << "[Round " << j + 1 << "] bthread_start_urgent takes "
                       << tm.n_elapsed()/N << "ns, sum=" << s;
             ASSERT_EQ(N * (j + 1), (size_t)s);
-        
+
             // Check uniqueness of th
             std::sort(th.begin(), th.end());
             ASSERT_EQ(th.end(), std::unique(th.begin(), th.end()));
@@ -339,9 +340,14 @@ TEST_F(BthreadTest, small_threads) {
 }
 
 void* bthread_starter(void* void_counter) {
+    std::vector<bthread_t> ths;
     while (!stop.load(butil::memory_order_relaxed)) {
         bthread_t th;
         EXPECT_EQ(0, bthread_start_urgent(&th, NULL, adding_func, void_counter));
+        ths.push_back(th);
+    }
+    for (size_t i = 0; i < ths.size(); ++i) {
+        EXPECT_EQ(0, bthread_join(ths[i], NULL));
     }
     return NULL;
 }
@@ -361,7 +367,7 @@ TEST_F(BthreadTest, start_bthreads_frequently) {
     bthread_t th[con];
 
     std::cout << "Perf with different parameters..." << std::endl;
-    //ProfilerStart(prof_name);
+    ProfilerStart(prof_name);
     for (int cur_con = 1; cur_con <= con; ++cur_con) {
         stop = false;
         for (int i = 0; i < cur_con; ++i) {
@@ -384,7 +390,7 @@ TEST_F(BthreadTest, start_bthreads_frequently) {
         std::cout << sum << ",";
     }
     std::cout << std::endl;
-    //ProfilerStop();
+    ProfilerStop();
     delete [] counters;
 }
 

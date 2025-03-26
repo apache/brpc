@@ -27,8 +27,9 @@
 #include "butil/memory/scoped_ptr.h"     // butil::scoped_ptr
 #include "butil/logging.h"               // LOG
 #include "butil/time.h"                  // butil::cpuwide_time_ns
-#include "bvar/bvar.h"                  // bvar::Adder
-#include "bthread/butex.h"              // butex_construct
+#include "butil/object_pool.h"           // butil::get_object
+#include "bvar/bvar.h"                   // bvar::Adder
+#include "bthread/butex.h"               // butex_construct
 #include "butil/synchronization/condition_variable.h"
 
 namespace bthread {
@@ -584,5 +585,12 @@ inline int ExecutionQueueBase::dereference() {
 }
 
 }  // namespace bthread
+
+namespace butil {
+// `TaskNode::cancel' may access the TaskNode object returned to the ObjectPool<TaskNode>,
+// so ObjectPool<TaskNode> can not poison the memory region of TaskNode.
+template <>
+struct ObjectPoolWithASanPoison<bthread::TaskNode> : false_type {};
+} // namespace butil
 
 #endif  //BTHREAD_EXECUTION_QUEUE_INL_H

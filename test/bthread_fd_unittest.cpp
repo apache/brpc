@@ -16,13 +16,14 @@
 // under the License.
 
 #include "butil/compat.h"
+#include "butil/compiler_specific.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/utsname.h>                           // uname
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <pthread.h>
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
@@ -328,7 +329,7 @@ TEST(FDTest, ping_pong) {
     }
     tm.stop();
     ProfilerStop();
-    LOG(INFO) << "tid=" << REP*NCLIENT*1000000L/tm.u_elapsed();
+    LOG(INFO) << "tid=" << REP*NCLIENT * 1000000L / tm.u_elapsed();
     stop = true;
     for (size_t i = 0; i < NEPOLL; ++i) {
 #if defined(OS_LINUX)

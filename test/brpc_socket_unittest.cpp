@@ -24,7 +24,7 @@
 #include <fcntl.h>  // F_GETFD
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include "butil/gperftools_profiler.h"
+#include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"

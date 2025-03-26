@@ -16,7 +16,7 @@
 // under the License.
 
 #include <gtest/gtest.h>
-#include <butil/gperftools_profiler.h>
+#include "gperftools_helper.h"
 #include <bthread/rwlock.h>
 
 namespace {
@@ -447,6 +447,7 @@ TEST(RWLockTest, pthread_rdlock_performance) {
         long* res = NULL;
         pthread_join(rth[i], (void**)&res);
         printf("read thread %lu = %ldns\n", i, *res);
+        delete res;
     }
     pthread_join(wth, NULL);
 #ifdef CHECK_RWLOCK

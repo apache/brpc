@@ -121,3 +121,9 @@ config_setting(
     define_values = {"with_debug_lock": "true"},
     visibility = ["//visibility:public"],
 )
+
+config_setting(
+    name = "brpc_with_asan",
+    define_values = {"with_asan": "true"},
+    visibility = ["//visibility:public"],
+)

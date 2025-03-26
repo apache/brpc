@@ -53,6 +53,9 @@ COPTS = [
 }) + select({
     "@platforms//cpu:x86_64": ["-DBRPC_BTHREAD_TRACER"],
     "//conditions:default": [],
+}) + select({
+    "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
+    "//conditions:default": [""],
 })
 
 LINKOPTS = [
@@ -87,7 +90,10 @@ LINKOPTS = [
         "-libverbs",
     ],
     "//conditions:default": [],
-})
+}) + select({
+        "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
+        "//conditions:default": [""],
+  })
 
 genrule(
     name = "config_h",
