@@ -117,6 +117,11 @@ int TimeoutConcurrencyLimiter::MaxConcurrency() {
     return FLAGS_timeout_cl_max_concurrency;
 }
 
+int TimeoutConcurrencyLimiter::ResetMaxConcurrency(
+    const AdaptiveMaxConcurrency &) {
+    return -1;
+}
+
 bool TimeoutConcurrencyLimiter::AddSample(int error_code, int64_t latency_us,
                                           int64_t sampling_time_us) {
     std::unique_lock<butil::Mutex> lock_guard(_sw_mutex);

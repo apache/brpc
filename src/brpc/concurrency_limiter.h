@@ -47,6 +47,9 @@ public:
     // The return value is only for logging.
     virtual int MaxConcurrency() = 0;
 
+    // Reset max_concurrency
+    virtual int ResetMaxConcurrency(const AdaptiveMaxConcurrency& amc) = 0;
+
     // Create an instance from the amc
     // Caller is responsible for delete the instance after usage.
     virtual ConcurrencyLimiter* New(const AdaptiveMaxConcurrency& amc) const = 0;

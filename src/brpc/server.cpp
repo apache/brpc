@@ -1095,6 +1095,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 return -1;
             }
             it->second.status->SetConcurrencyLimiter(cl);
+            it->second.max_concurrency.SetConcurrencyLimiter(cl);
         }
     }
     if (0 != SetServiceMaxConcurrency(_options.nshead_service)) {
@@ -2221,10 +2222,6 @@ int Server::ResetMaxConcurrency(int max_concurrency) {
 }
 
 AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {
-    if (IsRunning()) {
-        LOG(WARNING) << "MaxConcurrencyOf is only allowed before Server started";
-        return g_default_max_concurrency_of_method;
-    }
     if (mp->status == NULL) {
         LOG(ERROR) << "method=" << mp->method->full_name()
                    << " does not support max_concurrency";
@@ -2235,10 +2232,6 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {
 }
 
 int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
-    if (IsRunning()) {
-        LOG(WARNING) << "MaxConcurrencyOf is only allowed before Server started";
-        return g_default_max_concurrency_of_method;
-    }
     if (mp == NULL || mp->status == NULL) {
         return 0;
     }
