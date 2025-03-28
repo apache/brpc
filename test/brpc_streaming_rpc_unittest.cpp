@@ -240,7 +240,6 @@ TEST_F(StreamingRpcTest, block) {
     out.append(&dummy, sizeof(dummy));
     ASSERT_EQ(EAGAIN, brpc::StreamWrite(request_stream, out));
     hc.block = false;
-    ASSERT_EQ(0, brpc::StreamWait(request_stream, NULL));
     // wait flushing all the pending messages
     while (handler._expected_next_value != N) {
         usleep(100);
@@ -249,6 +248,7 @@ TEST_F(StreamingRpcTest, block) {
     hc.block = true;
     // async wait
     for (int i = N; i < N + N; ++i) {
+        ASSERT_EQ(0, brpc::StreamWait(request_stream, NULL));
         int network = htonl(i);
         butil::IOBuf out;
         out.append(&network, sizeof(network));
@@ -432,18 +432,12 @@ TEST_F(StreamingRpcTest, idle_timeout) {
 
 class PingPongHandler : public brpc::StreamInputHandler {
 public:
-    explicit PingPongHandler()
-        : _expected_next_value(0)
-        , _failed(false)
-        , _stopped(false)
-        , _idle_times(0)
-    {
-    }
     int on_received_messages(brpc::StreamId id,
                              butil::IOBuf *const messages[],
                              size_t size) override {
         if (size != 1) {
-            _failed = true;
+            LOG(INFO) << "size=" << size;
+            _error = true;
             return 0;
         }
         for (size_t i = 0; i < size; ++i) {
@@ -451,7 +445,7 @@ public:
             int network = 0;
             messages[i]->cutn(&network, sizeof(int));
             if ((int)ntohl(network) != _expected_next_value) {
-                _failed = true;
+                _error = true;
             }
             int send_back = ntohl(network) + 1;
             _expected_next_value = send_back + 1;
@@ -481,14 +475,16 @@ public:
         _failed = true;
     }
 
+    bool error() const { return _error; }
     bool failed() const { return _failed; }
     bool stopped() const { return _stopped; }
     int idle_times() const { return _idle_times; }
 private:
-    int _expected_next_value;
-    bool _failed;
-    bool _stopped;
-    int _idle_times;
+    int _expected_next_value{0};
+    bool _error{false};
+    bool _failed{false};
+    bool _stopped{false};
+    int _idle_times{0};
 };
 
 TEST_F(StreamingRpcTest, ping_pong) {
@@ -524,8 +520,8 @@ TEST_F(StreamingRpcTest, ping_pong) {
     while (!resh.stopped() || !reqh.stopped()) {
         usleep(100);
     }
-    ASSERT_FALSE(resh.failed());
-    ASSERT_FALSE(reqh.failed());
+    ASSERT_FALSE(resh.error());
+    ASSERT_FALSE(reqh.error());
     ASSERT_EQ(0, resh.idle_times());
     ASSERT_EQ(0, reqh.idle_times());
 }

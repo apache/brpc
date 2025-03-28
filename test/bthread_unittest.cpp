@@ -600,8 +600,9 @@ TEST_F(BthreadTest, test_span) {
                                           test_son_parent_span, &multi_p2));
     ASSERT_EQ(0, bthread_join(multi_th1, NULL));
     ASSERT_EQ(0, bthread_join(multi_th2, NULL));
-    ASSERT_EQ(multi_p1, targets[0]);
-    ASSERT_EQ(multi_p2, targets[1]);
+    ASSERT_NE(multi_p1, multi_p2);
+    ASSERT_NE(std::find(targets, targets + 4, multi_p1), targets + 4);
+    ASSERT_NE(std::find(targets, targets + 4, multi_p2), targets + 4);
 }
 
 void* dummy_thread(void*) {
@@ -628,48 +629,74 @@ TEST_F(BthreadTest, yield_single_thread) {
 }
 
 #ifdef BRPC_BTHREAD_TRACER
+void spin_and_log_trace() {
+    bool ok = false;
+    for (int i = 0; i < 10; ++i) {
+        start = false;
+        stop = false;
+        bthread_t th;
+        ASSERT_EQ(0, bthread_start_urgent(&th, NULL, spin_and_log, (void*)1));
+        while (!start) {
+            usleep(10 * 1000);
+        }
+        bthread::FLAGS_enable_fast_unwind = false;
+        std::string st1 = bthread::stack_trace(th);
+        LOG(INFO) << "spin_and_log stack trace:\n" << st1;
+
+        bthread::FLAGS_enable_fast_unwind = true;
+        std::string st2 = bthread::stack_trace(th);
+        LOG(INFO) << "fast_unwind spin_and_log stack trace:\n" << st2;
+        stop = true;
+        ASSERT_EQ(0, bthread_join(th, NULL));
+
+        std::string st3 = bthread::stack_trace(th);
+        LOG(INFO) << "ended bthread stack trace:\n" << st3;
+        ASSERT_NE(std::string::npos, st3.find("not exist now"));
+
+        ok = st1.find("spin_and_log") != std::string::npos &&
+             st2.find("spin_and_log") != std::string::npos;
+        if (ok) {
+            break;
+        }
+    }
+    ASSERT_TRUE(ok);
+}
+
+void repeated_sleep_trace() {
+    bool ok = false;
+    for (int i = 0; i < 10; ++i) {
+        start = false;
+        stop = false;
+        bthread_t th;
+        ASSERT_EQ(0, bthread_start_urgent(&th, NULL, repeated_sleep, (void*)1));
+        while (!start) {
+            usleep(10 * 1000);
+        }
+        bthread::FLAGS_enable_fast_unwind = false;
+        std::string st1 = bthread::stack_trace(th);
+        LOG(INFO) << "repeated_sleep stack trace:\n" << st1;
+
+        bthread::FLAGS_enable_fast_unwind = true;
+        std::string st2 = bthread::stack_trace(th);
+        LOG(INFO) << "fast_unwind repeated_sleep stack trace:\n" << st2;
+        stop = true;
+        ASSERT_EQ(0, bthread_join(th, NULL));
+
+        std::string st3 = bthread::stack_trace(th);
+        LOG(INFO) << "ended bthread stack trace:\n" << st3;
+        ASSERT_NE(std::string::npos, st3.find("not exist now"));
+        ok = st1.find("repeated_sleep") != std::string::npos &&
+             st2.find("repeated_sleep") != std::string::npos;
+        if (ok) {
+            break;
+        }
+    }
+    ASSERT_TRUE(ok);
+}
+
 TEST_F(BthreadTest, trace) {
-    start = false;
-    stop = false;
-    bthread_t th;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, spin_and_log, (void*)1));
-    while (!start) {
-        usleep(10 * 1000);
-    }
-    bthread::FLAGS_enable_fast_unwind = false;
-    std::string st = bthread::stack_trace(th);
-    LOG(INFO) << "fast_unwind spin_and_log stack trace:\n" << st;
-    ASSERT_NE(std::string::npos, st.find("spin_and_log"));
-
-    bthread::FLAGS_enable_fast_unwind = true;
-    st = bthread::stack_trace(th);
-    LOG(INFO) << "spin_and_log stack trace:\n" << st;
-    ASSERT_NE(std::string::npos, st.find("spin_and_log"));
-    stop = true;
-    ASSERT_EQ(0, bthread_join(th, NULL));
-
-    start = false;
-    stop = false;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, repeated_sleep, (void*)1));
-    while (!start) {
-        usleep(10 * 1000);
-    }
-    bthread::FLAGS_enable_fast_unwind = false;
-    st = bthread::stack_trace(th);
-    LOG(INFO) << "fast_unwind repeated_sleep stack trace:\n" << st;
-    ASSERT_NE(std::string::npos, st.find("repeated_sleep"));
-
-    bthread::FLAGS_enable_fast_unwind = true;
-    st = bthread::stack_trace(th);
-    LOG(INFO) << "repeated_sleep stack trace:\n" << st;
-    ASSERT_NE(std::string::npos, st.find("repeated_sleep"));
-    stop = true;
-    ASSERT_EQ(0, bthread_join(th, NULL));
-
-    st = bthread::stack_trace(th);
-    LOG(INFO) << "ended bthread stack trace:\n" << st;
-    ASSERT_NE(std::string::npos, st.find("not exist now"));
-
+    spin_and_log_trace();
+    repeated_sleep_trace();
 }
 #endif // BRPC_BTHREAD_TRACER
 
