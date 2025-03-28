@@ -812,7 +812,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     }
     // Must be the last one! Internal fields of this Socket may be accessed
     // just after calling ResetFileDescriptor.
-    if (ResetFileDescriptor(options.fd) != 0) {
+    if (ResetFileDescriptor(fd) != 0) {
         const int saved_errno = errno;
         PLOG(ERROR) << "Fail to ResetFileDescriptor";
         SetFailed(saved_errno, "Fail to ResetFileDescriptor: %s",

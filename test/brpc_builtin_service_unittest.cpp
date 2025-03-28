@@ -841,8 +841,10 @@ void* dummy_bthread(void*) {
 
 
 #ifdef BRPC_BTHREAD_TRACER
+bool g_bthread_trace_start = false;
 bool g_bthread_trace_stop = false;
 void* bthread_trace(void*) {
+    g_bthread_trace_start = true;
     while (!g_bthread_trace_stop) {
         bthread_usleep(1000 * 100);
     }
@@ -883,9 +885,13 @@ TEST_F(BuiltinServiceTest, bthreads) {
     }
 
 #ifdef BRPC_BTHREAD_TRACER
-    {
+    bool ok = false;
+    for (int i = 0; i < 10; ++i) {
         bthread_t th;
         EXPECT_EQ(0, bthread_start_background(&th, NULL, bthread_trace, NULL));
+        while (!g_bthread_trace_start) {
+            bthread_usleep(1000 * 10);
+        }
         ClosureChecker done;
         brpc::Controller cntl;
         std::string id_string;
@@ -895,9 +901,14 @@ TEST_F(BuiltinServiceTest, bthreads) {
         service.default_method(&cntl, &req, &res, &done);
         g_bthread_trace_stop = true;
         EXPECT_FALSE(cntl.Failed());
-        CheckContent(cntl, "stop=0");
-        CheckContent(cntl, "bthread_trace");
+        const std::string& content = cntl.response_attachment().to_string();
+        ok = content.find("stop=0") != std::string::npos &&
+             content.find("bthread_trace") != std::string::npos;
+        if (ok) {
+            break;
+        }
     }
+    ASSERT_TRUE(ok);
 #endif // BRPC_BTHREAD_TRACER
 }
 

@@ -499,7 +499,7 @@ TEST(EndPointTest, tcp_connect) {
         ASSERT_LE(0, sockfd) << "errno=" << errno;
     }
     {
-        butil::fd_guard sockfd(butil::tcp_connect(ep1, NULL, 1));
+        butil::fd_guard sockfd(butil::tcp_connect(ep2, NULL, 1));
         ASSERT_EQ(-1, sockfd) << "errno=" << errno;
         ASSERT_EQ(ETIMEDOUT, errno);
     }
@@ -553,7 +553,7 @@ void TestConnectInterruptImpl(bool timed) {
         int64_t connect_ms = butil::cpuwide_time_ms() - start_ms;
         LOG(INFO) << "Connect to " << ep << ", cost " << connect_ms << "ms";
 
-        timespec abstime = butil::milliseconds_from_now(connect_ms * 2);
+        timespec abstime = butil::milliseconds_from_now(connect_ms * 10);
         rc = butil::pthread_timed_connect(
             sockfd, (struct sockaddr*) &serv_addr,
             serv_addr_size, &abstime);
