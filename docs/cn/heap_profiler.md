@@ -121,7 +121,7 @@ brpc还提供一个类似的growth profiler分析内存的分配去向（不考�
 4. 相关gflags说明：
   - FLAGS_je_prof_active：true:开启采样，false:关闭采样。
   - FLAGS_je_prof_dump：修改值会生成heap文件，用于手动操作jeprof分析。
-  - FLAGS_je_prof_reset：清理已采样数据和重置profiler选项，并且动态设置采样率，[默认](https://jemalloc.net/jemalloc.3.html#opt.lg_prof_sample)2^19B（512K），对性能影响可忽略。
+  - FLAGS_je_prof_reset：清理已采样数据，并且动态设置采样率，[默认](https://jemalloc.net/jemalloc.3.html#opt.lg_prof_sample)2^19B（512K），对性能影响可忽略。
 5. 若要做memory leak:
   - `MALLOC_CONF="prof:true,prof_leak:true,prof_final:true" LD_PRELOAD=/xxx/lib/libjemalloc.so ./bin/test_server` ，进程退出时生成heap文件。
   - 注：可`kill pid`优雅退出，不可`kill -9 pid`；可用`FLAGS_graceful_quit_on_sigterm=true FLAGS_graceful_quit_on_sighup=true`来支持优雅退出。
@@ -143,6 +143,8 @@ brpc还提供一个类似的growth profiler分析内存的分配去向（不考�
 - curl生成svg图片格式`curl ip:port/pprof/heap?display=svg`。
 
 ![img](../images/curl_jeprof_svg.png)
+
+- 分配对象个数`curl ip:port/pprof/heap?display=svg&extra_options=inuse_objects`。
 
 - curl生成火焰图`curl ip:port/pprof/heap?display=flamegraph`。需配置env FLAMEGRAPH_PL_PATH=/xxx/flamegraph.pl，[flamegraph](https://github.com/brendangregg/FlameGraph)
 

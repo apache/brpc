@@ -163,19 +163,12 @@ static int JeProfileReset(size_t lg_sample) {
         return ret;
     }
     LOG(INFO) << "mallctl set prof.reset:" << lg_sample << " succ";
-
-    FLAGS_je_prof_active = false;
-    if (FLAGS_je_prof_active) {
-        LOG(WARNING) << "reset FLAGS_je_prof_active fail";
-        return -1;
-    }
-
     return 0;
 }
 
 void JeControlProfile(Controller* cntl) {
     const brpc::URI& uri = cntl->http_request().uri();
-    // http:ip:port/pprof/heap?display=(text|svg|stats|flamegraph)
+    // http:ip:port/pprof/heap?display=(text|svg|stats|flamegraph)&extra_options=(inuse_space|inuse_objects..)
     const std::string* uri_display = uri.GetQuery("display");
 
     butil::IOBuf& buf = cntl->response_attachment();
@@ -236,6 +229,14 @@ void JeControlProfile(Controller* cntl) {
     const std::string process_file(process_path, len);
 
     std::string cmd_str = jeprof + " " + process_file + " " + prof_name;
+
+    // https://github.com/jemalloc/jemalloc/blob/5.3.0/bin/jeprof.in#L211-L222
+    // e.g: inuse_space, contentions
+    const std::string* uri_extra_options = uri.GetQuery("extra_options");
+    if (uri_extra_options != nullptr && !uri_extra_options->empty()) {
+        cmd_str += " --" + *uri_extra_options + " ";
+    }
+
     bool display_img = false;
     if (*uri_display == "svg") {
         cmd_str += " --svg ";
