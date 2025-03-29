@@ -149,6 +149,7 @@ enum HttpContentType {
     HTTP_CONTENT_JSON = 1,
     HTTP_CONTENT_PROTO = 2,
     HTTP_CONTENT_PROTO_TEXT = 3,
+    HTTP_CONTENT_PROTO_JSON = 4,
 };
 
 // Parse from the textual content type. One type may have more than one literals.
