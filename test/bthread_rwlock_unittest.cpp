@@ -26,9 +26,9 @@ int c = 0;
 void* rdlocker(void* arg) {
     auto rw = (bthread_rwlock_t*)arg;
     bthread_rwlock_rdlock(rw);
-    LOG(INFO) <<butil::string_printf("[%" PRIu64 "] I'm rdlocker, %d, %" PRId64 "ms\n",
-        pthread_numeric_id(), ++c,
-        butil::cpuwide_time_ms() - start_time);
+    LOG(INFO) << butil::string_printf("[%" PRIu64 "] I'm rdlocker, %d, %" PRId64 "ms\n",
+                                      pthread_numeric_id(), ++c,
+                                      butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_rwlock_unlock(rw);
     return NULL;
@@ -38,8 +38,8 @@ void* wrlocker(void* arg) {
     auto rw = (bthread_rwlock_t*)arg;
     bthread_rwlock_wrlock(rw);
     LOG(INFO) << butil::string_printf("[%" PRIu64 "] I'm wrlocker, %d, %" PRId64 "ms\n",
-        pthread_numeric_id(), ++c,
-        butil::cpuwide_time_ms() - start_time);
+                                      pthread_numeric_id(), ++c,
+                                      butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_rwlock_unlock(rw);
     return NULL;

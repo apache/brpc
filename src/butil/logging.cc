@@ -395,7 +395,7 @@ bool InitializeLogFileHandle() {
 #elif defined(OS_POSIX)
         log_file = fopen(log_file_name->c_str(), "a");
         if (log_file == NULL) {
-            fprintf(stderr, "Fail to fopen %s", log_file_name->c_str());
+            fprintf(stderr, "Fail to fopen %s: %s", log_file_name->c_str(), berror());
             return false;
         }
 #endif

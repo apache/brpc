@@ -222,8 +222,7 @@ private:
 class BAIDU_CACHELINE_ALIGNMENT KeyTableList {
 public:
     KeyTableList() :
-        _head(NULL), _tail(NULL), _length(0) {
-    }
+        _head(NULL), _tail(NULL), _length(0) {}
 
     ~KeyTableList() {
         TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
@@ -305,7 +304,7 @@ public:
         return count;
     }
 
-    inline uint32_t get_length() {
+    inline uint32_t get_length() const {
         return _length;
     }
 
