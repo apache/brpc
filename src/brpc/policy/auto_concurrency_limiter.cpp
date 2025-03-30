@@ -134,6 +134,10 @@ int AutoConcurrencyLimiter::MaxConcurrency() {
     return _max_concurrency;
 }
 
+int AutoConcurrencyLimiter::ResetMaxConcurrency(const AdaptiveMaxConcurrency&) {
+    return -1;
+}
+
 int64_t AutoConcurrencyLimiter::NextResetTime(int64_t sampling_time_us) {
     int64_t reset_start_us = sampling_time_us + 
         (FLAGS_auto_cl_noload_latency_remeasure_interval_ms / 2 + 
