@@ -34,6 +34,9 @@ option(BUILD_FUZZ_TESTS "Whether to build fuzz tests" OFF)
 option(BUILD_BRPC_TOOLS "Whether to build brpc tools" ON)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 
+# see https://github.com/apache/brpc/pull/2727
+add_compile_definitions(NO_PTHREAD_MUTEX_HOOK)
+
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
 if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW)
