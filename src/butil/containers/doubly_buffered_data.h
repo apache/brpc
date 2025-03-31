@@ -174,8 +174,6 @@ private:
     pthread_mutex_t _modify_mutex{};
 };
 
-static const pthread_key_t INVALID_PTHREAD_KEY = (pthread_key_t)-1;
-
 template <typename T, typename TLS>
 class DoublyBufferedDataWrapperBase {
 public:
