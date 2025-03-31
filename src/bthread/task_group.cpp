@@ -717,7 +717,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
 #endif // BRPC_BTHREAD_TRACER
                 {
                     BTHREAD_SCOPED_ASAN_FIBER_SWITCHER(
-                        cur_meta->stack->storage, cur_ending);
+                        cur_ending, next_meta->stack->storage);
                     jump_stack(cur_meta->stack, next_meta->stack);
                 }
                 // probably went to another group, need to assign g again.

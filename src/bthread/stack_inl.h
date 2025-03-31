@@ -70,10 +70,10 @@ BUTIL_FORCE_INLINE void FinishSwitchFiber(void* fake_stack_save) {
 
 class ScopedASanFiberSwitcher {
 public:
-    ScopedASanFiberSwitcher(StackStorage& storage, bool ending) {
-        // If bthread will be quit here, pass NULL as `fake_stack_save',
+    ScopedASanFiberSwitcher(bool cur_ending, StackStorage& next_storage) {
+        // If the current bthread will be quit here, pass NULL as `fake_stack_save',
         // so that ASan knows it can destroy the fake stack.
-        StartSwitchFiber(ending ? NULL : &_fake_stack, storage);
+        StartSwitchFiber(cur_ending ? NULL : &_fake_stack, next_storage);
     }
 
     ~ScopedASanFiberSwitcher() {
