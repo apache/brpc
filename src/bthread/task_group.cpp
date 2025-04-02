@@ -297,6 +297,17 @@ int TaskGroup::init(size_t runqueue_capacity) {
     return 0;
 }
 
+// use noinline to avoid read wrong tls due to compiler optimization
+// https://github.com/apache/brpc/issues/1776
+__attribute__((noinline)) void clean_tls_bls(TaskMeta* const m) {
+    KeyTable* kt = tls_bls.keytable;
+    if (kt != NULL) {
+        return_keytable(m->attr.keytable_pool, kt);
+        tls_bls.keytable = NULL;
+        m->local_storage.keytable = NULL; // optional
+    }
+}
+
 #ifdef BUTIL_USE_ASAN
 void TaskGroup::asan_task_runner(intptr_t) {
     // This is a new thread, and it doesn't have the fake stack yet. ASan will
@@ -372,13 +383,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // Clean tls variables, must be done before changing version_butex
         // otherwise another thread just joined this thread may not see side
         // effects of destructing tls variables.
-        KeyTable* kt = tls_bls.keytable;
-        if (kt != NULL) {
-            return_keytable(m->attr.keytable_pool, kt);
-            // After deletion: tls may be set during deletion.
-            tls_bls.keytable = NULL;
-            m->local_storage.keytable = NULL; // optional
-        }
+        clean_tls_bls(m);
 
         // During running the function in TaskMeta and deleting the KeyTable in
         // return_KeyTable, the group is probably changed.
