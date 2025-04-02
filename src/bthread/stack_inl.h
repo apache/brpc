@@ -70,10 +70,8 @@ BUTIL_FORCE_INLINE void FinishSwitchFiber(void* fake_stack_save) {
 
 class ScopedASanFiberSwitcher {
 public:
-    ScopedASanFiberSwitcher(bool cur_ending, StackStorage& next_storage) {
-        // If the current bthread will be quit here, pass NULL as `fake_stack_save',
-        // so that ASan knows it can destroy the fake stack.
-        StartSwitchFiber(cur_ending ? NULL : &_fake_stack, next_storage);
+    ScopedASanFiberSwitcher(StackStorage& next_storage) {
+        StartSwitchFiber(&_fake_stack, next_storage);
     }
 
     ~ScopedASanFiberSwitcher() {
@@ -92,8 +90,8 @@ private:
 #define BTHREAD_ASAN_UNPOISON_MEMORY_REGION(storage) \
     ::bthread::internal::ASanUnpoisonMemoryRegion(storage)
 
-#define BTHREAD_SCOPED_ASAN_FIBER_SWITCHER(storage, ending) \
-    ::bthread::internal::ScopedASanFiberSwitcher switcher(storage, ending)
+#define BTHREAD_SCOPED_ASAN_FIBER_SWITCHER(storage) \
+    ::bthread::internal::ScopedASanFiberSwitcher switcher(storage)
 
 } // namespace internal
 #else
@@ -101,7 +99,7 @@ private:
 // If ASan are used, the annotations should be no-ops.
 #define BTHREAD_ASAN_POISON_MEMORY_REGION(storage) ((void)(storage))
 #define BTHREAD_ASAN_UNPOISON_MEMORY_REGION(storage) ((void)(storage))
-#define BTHREAD_SCOPED_ASAN_FIBER_SWITCHER(storage, ending) ((void)(storage), (void)(ending))
+#define BTHREAD_SCOPED_ASAN_FIBER_SWITCHER(storage) ((void)(storage))
 
 #endif // BUTIL_USE_ASAN
 

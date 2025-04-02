@@ -445,6 +445,7 @@ static void launch_many_bthreads() {
 }
 
 TEST(CondTest, too_many_bthreads_from_pthread) {
+    bthread_setconcurrency(16);
     launch_many_bthreads();
 }
 
@@ -454,6 +455,7 @@ static void* run_launch_many_bthreads(void*) {
 }
 
 TEST(CondTest, too_many_bthreads_from_bthread) {
+    bthread_setconcurrency(16);
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, run_launch_many_bthreads, NULL));
     bthread_join(th, NULL);
