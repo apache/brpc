@@ -6,7 +6,7 @@
 
 ASan提供了[对协程的支持](https://reviews.llvm.org/D20913)。 在bthread创建、切换、销毁时，让ASan知道当前bthread的栈信息，主要用于维护[fake stack](https://github.com/google/sanitizers/wiki/AddressSanitizerUseAfterReturn)。
 
-bRPC中启用ASan的方法：给config_brpc.sh增加`--with-glog`选项、给cmake增加`-DWITH_GLOG=ON`选项或者给bazel增加`--define with_asan=true`选项。
+bRPC中启用ASan的方法：给config_brpc.sh增加`--with-asan`选项、给cmake增加`-DWITH_ASAN=ON`选项或者给bazel增加`--define with_asan=true`选项。
 
 另外需要注意的是，ASan没法检测非ASan分配内存或者对象池复用内存。所以我们封装了两个宏，让ASan知道内存块是否能被使用。在非ASan环境下，这两个宏什么也不做，没有开销。
 
