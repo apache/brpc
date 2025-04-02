@@ -58,7 +58,7 @@ BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
 // groundtruth.
-__thread LocalStorage tls_bls = BTHREAD_LOCAL_STORAGE_INITIALIZER;
+__thread LocalStorage tls_bls __attribute__((noinline)) = BTHREAD_LOCAL_STORAGE_INITIALIZER;
 
 // defined in bthread/key.cpp
 extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
