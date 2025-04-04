@@ -60,7 +60,7 @@
     extern void set_##var_name(type v)
 #else
 #define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) var_name
-#define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) &##var_name
+#define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) &var_name
 #define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) var_name = value
 #define EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(type, var_name)                     \
     extern BAIDU_THREAD_LOCAL type var_name
