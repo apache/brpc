@@ -24,6 +24,7 @@
 #include <gtest/gtest.h>
 #include "bthread/bthread.h"
 #include "gperftools_helper.h"
+#include "butil/compiler_specific.h"
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/describable.h"
 #include "brpc/socket.h"
@@ -1155,6 +1156,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
     }
 }
 
+#ifndef BUTIL_USE_ASAN
 class EchoServiceImpl : public test::EchoService {
 public:
     EchoServiceImpl()
@@ -1251,14 +1253,14 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     }
 
     butil::EndPoint point(butil::IP_ANY, 7777);
-    brpc::Server server;
     EchoServiceImpl service;
+    brpc::Server server;
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server.Start(point, NULL));
 
     butil::EndPoint point2(butil::IP_ANY, 7778);
-    brpc::Server server2;
     EchoServiceImpl service2;
+    brpc::Server server2;
     ASSERT_EQ(0, server2.AddService(&service2, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server2.Start(point2, NULL));
     
@@ -1287,6 +1289,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     bthread_usleep(500000 /* sleep longer than timeout of channel */);
     ASSERT_EQ(0, num_failed.load(butil::memory_order_relaxed));
 }
+#endif // BUTIL_USE_ASAN
 
 TEST_F(LoadBalancerTest, la_selection_too_long) {
     brpc::GlobalInitializeOrDie();

@@ -24,7 +24,7 @@
 #endif
 #include "butil/compiler_specific.h"
 
-#ifdef BUTIL_USE_ASAN
+#ifndef BUTIL_USE_ASAN
 
 using std::nothrow;
 using std::numeric_limits;
