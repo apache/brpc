@@ -449,6 +449,7 @@ TEST(CondTest, too_many_bthreads_from_pthread) {
     launch_many_bthreads();
 }
 
+#ifndef BUTIL_USE_ASAN
 static void* run_launch_many_bthreads(void*) {
     launch_many_bthreads();
     return NULL;
@@ -460,4 +461,5 @@ TEST(CondTest, too_many_bthreads_from_bthread) {
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, run_launch_many_bthreads, NULL));
     bthread_join(th, NULL);
 }
+#endif // BUTIL_USE_ASAN
 } // namespace
