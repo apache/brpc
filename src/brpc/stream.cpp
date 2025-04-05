@@ -640,17 +640,16 @@ void Stream::SendFeedback() {
 }
 
 int Stream::SetHostSocket(Socket *host_socket) {
-    if (_host_socket != NULL) {
-        CHECK(false) << "SetHostSocket has already been called";
-        return -1;
-    }
-    SocketUniquePtr ptr;
-    host_socket->ReAddress(&ptr);
-    // TODO add *this to host socke
-    if (ptr->AddStream(id()) != 0) {
-        return -1;
-    }
-    _host_socket = ptr.release();
+    std::call_once(_set_host_socket_flag, [this, host_socket]() {
+        SocketUniquePtr ptr;
+        host_socket->ReAddress(&ptr);
+        // TODO add *this to host socke
+        if (ptr->AddStream(id()) != 0) {
+            CHECK(false) << id() << " fail to add stream to host socket";
+            return;
+        }
+        _host_socket = ptr.release();
+    });
     return 0;
 }
 
@@ -708,10 +707,6 @@ void Stream::Close(int error_code, const char* reason_fmt, ...) {
     _connect_meta.ec = ECONNRESET;
     // Trigger on connect to release the reference of socket
     return TriggerOnConnectIfNeed();
-}
-
-int Stream::ShareHostSocket(Stream& other_stream) {
-    return other_stream.SetHostSocket(_host_socket);
 }
 
 int Stream::SetFailed(StreamId id, int error_code, const char* reason_fmt, ...) {
