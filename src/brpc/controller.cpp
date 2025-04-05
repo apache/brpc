@@ -1437,12 +1437,12 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
     Stream* s = (Stream*)ptrs[0]->conn();
     s->SetConnected(_remote_stream_settings);
     if (stream_num > 1) {
-        const auto& extra_stream_ids = _remote_stream_settings->extra_stream_ids();
+        auto extra_stream_ids = std::move(*_remote_stream_settings->mutable_extra_stream_ids());
         _remote_stream_settings->clear_extra_stream_ids();
         for (size_t i = 1; i < stream_num; ++i) {
             Stream* extra_stream = (Stream *) ptrs[i]->conn();
             _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
-            s->ShareHostSocket(*extra_stream);
+            s->SetHostSocket(host_socket);
             extra_stream->SetConnected(_remote_stream_settings);
         }
     }
