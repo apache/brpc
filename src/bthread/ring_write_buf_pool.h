@@ -76,7 +76,9 @@ public:
     return mem_bulk_ + (buf_idx * buf_length);
   }
 
-  void Recycle(uint16_t buf_idx) { buf_pool_.emplace_back(buf_idx); }
+  void Recycle(uint16_t buf_idx) {
+    buf_pool_.emplace_back(buf_idx);
+  }
 
   inline static size_t buf_length = sysconf(_SC_PAGESIZE);
 

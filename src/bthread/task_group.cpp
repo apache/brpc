@@ -1354,7 +1354,7 @@ void TaskGroup::SocketRecv(brpc::Socket *sock) {
   ring_listener_->SubmitRecv(sock);
 }
 
-int TaskGroup::SocketFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx) {
+int TaskGroup::SocketFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx, uint32_t ring_buf_size) {
   // ReAddress() increments references of the socket (same as
   // KeepWrite in background) so that the socket is still
   // available when the async IO finishes and the write request
@@ -1363,7 +1363,7 @@ int TaskGroup::SocketFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx) {
   brpc::SocketUniquePtr ptr_for_async_write;
   sock->ReAddress(&ptr_for_async_write);
 
-  int ret = ring_listener_->SubmitFixedWrite(sock, ring_buf_idx);
+  int ret = ring_listener_->SubmitFixedWrite(sock, ring_buf_idx, ring_buf_size);
   if (ret == 0) {
     (void)ptr_for_async_write.release();
   }

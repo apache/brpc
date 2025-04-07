@@ -17,7 +17,6 @@
  * under the License.
  */
 
-#pragma once
 #include "ring_module.h"
 #include "ring_listener.h"
 #include <atomic>

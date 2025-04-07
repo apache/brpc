@@ -1002,6 +1002,17 @@ void IOBuf::cut_multiple_into_iovecs(std::vector<struct iovec> *iovecs,
     }
 }
 
+void IOBuf::cut_into_iovecs(std::vector<struct iovec> *iovecs) {
+    const size_t nref = _ref_num();
+    for (size_t j = 0; j < nref && iovecs->size() < IOV_MAX; ++j) {
+        iovecs->emplace_back();
+        iovec &iov = iovecs->back();
+        IOBuf::BlockRef const& r = _ref_at(j);
+        iov.iov_base = r.block->data + r.offset;
+        iov.iov_len = r.length;
+    }
+}
+
 ssize_t IOBuf::cut_into_writer(IWriter* writer, size_t size_hint) {
     if (empty()) {
         return 0;

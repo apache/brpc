@@ -163,7 +163,7 @@ int RingListener::SubmitRecv(brpc::Socket *sock) {
     return 0;
 }
 
-int RingListener::SubmitFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx) {
+int RingListener::SubmitFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx, uint32_t ring_buf_size) {
     io_uring_sqe *sqe = io_uring_get_sqe(&ring_);
     if (sqe == nullptr) {
         LOG(ERROR)
@@ -178,16 +178,8 @@ int RingListener::SubmitFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx) {
         fd_idx = sock->reg_fd_idx_;
     }
     int sfd = fd_idx >= 0 ? fd_idx : sock->fd();
-    // LOG(INFO) << "SubmitFixedWrite tls_task_group: " << bthread::tls_task_group
-    //     << ", socket bound task_group: " << sock->bound_g_
-    //     << ", sfd: " << sfd << ", fd_idx: " << fd_idx
-    //     << ", socket: " << *sock;
-
     const char *write_buf = write_buf_pool_->GetBuf(ring_buf_idx);
-    sock->write_buf_idx_ = ring_buf_idx;
-
-    io_uring_prep_write_fixed(sqe, sfd, write_buf, sock->write_len_, 0,
-                              ring_buf_idx);
+    io_uring_prep_write_fixed(sqe, sfd, write_buf, ring_buf_size, 0, ring_buf_idx);
 
     uint64_t data = reinterpret_cast<uint64_t>(sock);
     data = data << 16;
@@ -216,25 +208,9 @@ int RingListener::SubmitNonFixedWrite(brpc::Socket *sock) {
         fd_idx = sock->reg_fd_idx_;
     }
     int sfd = fd_idx >= 0 ? fd_idx : sock->fd();
-    // LOG(INFO) << "SubmitNonFixedWrite tls_task_group: " << bthread::tls_task_group
-    //     << ", socket bound task_group: " << sock->bound_g_
-    //     << ", sfd: " << sfd << ", fd_idx: " << fd_idx
-    //     << ", socket: " << *sock;
-
     CHECK(sock->iovecs_.size() <= IOV_MAX);
     io_uring_prep_writev(sqe, sfd, sock->iovecs_.data(), sock->iovecs_.size(),
                          0);
-
-    // uint64_t size = 0;
-    // std::string total_data;
-    // for (auto &iovec: sock->iovecs_) {
-    //     size += iovec.iov_len;
-    //     total_data.append(static_cast<char *>(iovec.iov_base), iovec.iov_len);
-    // }
-    // LOG(INFO) << "SubmitNonFixedWrite() sock->iovecs size: " << sock->iovecs_.size()
-    //     << " data total size: " << size
-    //     << " socket: " << *sock << ", fd_idx: " << fd_idx
-    //     << " total data: " << total_data;
 
     uint64_t data = reinterpret_cast<uint64_t>(sock);
     data = data << 16;
@@ -269,25 +245,11 @@ int RingListener::SubmitWaitingNonFixedWrite(brpc::Socket *sock) {
         fd_idx = sock->reg_fd_idx_;
     }
     int sfd = fd_idx >= 0 ? fd_idx : sock->fd();
-    // LOG(INFO) << "SubmitWaitingNonFixedWrite tls_task_group: " << bthread::tls_task_group
-    //     << ", socket bound task_group: " << sock->bound_g_
-    //     << ", sfd: " << sfd << ", fd_idx: " << fd_idx
-    //     << ", socket: " << *sock;
 
     CHECK(sock->iovecs_.size() <= IOV_MAX);
 
     io_uring_prep_writev(sqe, sfd, sock->iovecs_.data(), sock->iovecs_.size(),
                          0);
-    // uint64_t size = 0;
-    // std::string total_data;
-    // for (auto &iovec: sock->iovecs_) {
-    //     size += iovec.iov_len;
-    //     total_data.append(static_cast<char *>(iovec.iov_base), iovec.iov_len);
-    // }
-    // LOG(INFO) << "SubmitWaitingNonFixedWrite() sock->iovecs size: " << sock->iovecs_.size()
-    //     << " data total size: " << size
-    //     << " socket: " << *sock << ", fd_idx: " << fd_idx
-    //     << " total data: " << total_data;
 
     uint64_t data = reinterpret_cast<uint64_t>(sock);
     data = data << 16;
@@ -354,6 +316,8 @@ size_t RingListener::ExtPoll() {
     if (!has_external_.load(std::memory_order_relaxed)) {
         has_external_.store(true, std::memory_order_release);
     }
+
+    RecycleReturnedWriteBufs();
 
     // has_external_ should be updated before poll_status_ is checked.
     std::atomic_thread_fence(std::memory_order_release);
@@ -436,6 +400,16 @@ void RingListener::RecycleReadBuf(uint16_t bid, size_t bytes) {
         buf_cnt++;
     }
     io_uring_buf_ring_advance(in_buf_ring_, buf_cnt);
+}
+
+void RingListener::RecycleWriteBuf(uint16_t buf_idx) {
+    bthread::TaskGroup *cur_group = bthread::tls_task_group;
+    if (task_group_ == cur_group) {
+        write_buf_pool_->Recycle(buf_idx);
+    } else {
+        recycle_buf_cnt_.fetch_add(1, std::memory_order_relaxed);
+        write_bufs_.enqueue(buf_idx);
+    }
 }
 
 int RingListener::SubmitCancel(int fd) {
@@ -536,11 +510,7 @@ void RingListener::HandleCqe(io_uring_cqe *cqe) {
             SubmitRecv(sock);
             break;
         }
-        case OpCode::FixedWrite: {
-            brpc::Socket *sock = reinterpret_cast<brpc::Socket *>(data >> 16);
-            HandleFixedWrite(sock, cqe->res, sock->write_buf_idx_);
-            break;
-        }
+        case OpCode::FixedWrite:
         case OpCode::NonFixedWrite: {
             brpc::Socket *sock = reinterpret_cast<brpc::Socket *>(data >> 16);
             sock->RingNonFixedWriteCb(cqe->res);
@@ -606,51 +576,6 @@ void RingListener::HandleRecv(brpc::Socket *sock, io_uring_cqe *cqe) {
     brpc::Socket::SocketResume(sock, in_buf, task_group_);
 }
 
-void RingListener::HandleFixedWrite(brpc::Socket *sock, int nw, uint16_t write_buf_idx) {
-    // Fixed write finished. Deferences the socket, until the write is retried.
-    brpc::SocketUniquePtr sock_uptr(sock);
-
-    if (nw >= 0) {
-        CHECK(sock->write_len_ >= nw);
-        sock->write_len_ -= nw;
-        if (sock->write_len_ == 0) {
-            // Data fully written, recycle the write buffer.
-            RecycleWriteBuf(write_buf_idx);
-            return;
-        }
-        // Data not fully written, shift the data and submit again.
-        const char *write_buf = write_buf_pool_->GetBuf(write_buf_idx);
-        std::memmove(const_cast<char *>(write_buf), write_buf + nw, sock->write_len_);
-        int ret = SubmitFixedWrite(sock, write_buf_idx);
-        if (ret == 0) {
-            // Does not dereference the socket because the write is retried.
-            (void) sock_uptr.release();
-        } else {
-            // TODO(zkl)
-        }
-    } else {
-        // Fixed write failed. If the errorno is EAGAIN, retries the write.
-        LOG(ERROR) << "fixed write error, sock: " << *sock
-                << ", errno: " << -nw;
-        int err = -nw;
-        if (err == EAGAIN) {
-            int ret = SubmitFixedWrite(sock, write_buf_idx);
-            if (ret == 0) {
-                // Does not dereference the socket because the write is retried.
-                (void) sock_uptr.release();
-            } else {
-                // TODO(zkl)
-            }
-        } else {
-            // EPIPE is common in pooled connections + backup requests.
-            PLOG_IF(WARNING, err != EPIPE) << "Fail to write into " << *sock;
-            sock->SetFailed(err, "Fail to write into %s: %s",
-                            sock->description().c_str(), berror(err));
-            RecycleWriteBuf(write_buf_idx);
-        }
-    }
-}
-
 void RingListener::HandleBacklog() {
     while (waiting_cnt_.load(std::memory_order_relaxed) > 0) {
         size_t cnt = waiting_socks_.TryDequeueBulk(waiting_batch_.begin(),
@@ -663,11 +588,7 @@ void RingListener::HandleBacklog() {
                 case OpCode::Recv:
                     SubmitRecv(sock);
                     break;
-                case OpCode::FixedWriteFinish: {
-                    int nw = (int) (data >> 32);
-                    HandleFixedWrite(sock, nw, sock->write_buf_idx_);
-                    break;
-                }
+                case OpCode::FixedWriteFinish:
                 case OpCode::NonFixedWriteFinish: {
                     int nw = (int) (data >> 32);
                     sock->RingNonFixedWriteCb(nw);
@@ -694,6 +615,17 @@ bool RingListener::SubmitBacklog(brpc::Socket *sock, uint64_t data) {
     }
 
     return success;
+}
+
+void RingListener::RecycleReturnedWriteBufs() {
+    while (recycle_buf_cnt_.load(std::memory_order_relaxed) > 0) {
+        uint16_t buf_idxes[100];
+        int n = write_bufs_.try_dequeue_bulk(buf_idxes, 100);
+        for (size_t idx = 0; idx < n; ++idx) {
+            write_buf_pool_->Recycle(buf_idxes[idx]);
+        }
+        recycle_buf_cnt_.fetch_sub(n, std::memory_order_relaxed);
+    }
 }
 
 #endif

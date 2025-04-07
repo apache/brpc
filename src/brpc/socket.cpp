@@ -56,11 +56,14 @@
 #include "bthread/task_group.h"
 #ifdef IO_URING_ENABLED
 #include <liburing.h>
+#include <variant>
 #include "bthread/inbound_ring_buf.h"
 #endif
 
 DEFINE_bool(dispatch_lazily, false, "dispatcher lazily creates task");
+#ifdef IO_URING_ENABLED
 DEFINE_bool(use_io_uring, false, "Use IO URING to do the polling.");
+#endif
 
 namespace bthread {
 size_t __attribute__((weak))
@@ -76,6 +79,10 @@ extern int bthread_start_from_bound_group(size_t g_seed,
                                           const bthread_attr_t *__restrict attr,
                                           void *(*fn)(void *),
                                           void *__restrict arg);
+
+namespace bthread {
+    extern BAIDU_THREAD_LOCAL TaskGroup *tls_task_group;
+}
 
 namespace brpc {
 
@@ -320,13 +327,59 @@ bool Socket::CreatedByConnect() const {
 SocketMessage* const DUMMY_USER_MESSAGE = (SocketMessage*)0x1;
 const uint32_t MAX_PIPELINED_COUNT = 16384;
 
+#ifdef IO_URING_ENABLED
+struct RegisteredRingBuffer {
+    char *ring_buf{nullptr};
+    int32_t ring_buf_idx{-1};
+    uint32_t ring_buf_size{0};
+
+    bool empty() const {
+        return ring_buf_size == 0;
+    }
+
+    void reset(char *buf, int32_t buf_idx, uint32_t buf_size) {
+        ring_buf = buf;
+        ring_buf_idx = buf_idx;
+        ring_buf_size = buf_size;
+    }
+
+    void clear() {
+        ring_buf_size = 0;
+    }
+
+    size_t pop_front(size_t n) {
+        if (n == 0 || ring_buf == nullptr || ring_buf_size == 0) {
+            return 0;
+        }
+        size_t len = ring_buf_size;
+        if (n >= len) {
+            ring_buf_size = 0;
+            return len;
+        }
+        std::memmove(ring_buf, ring_buf + n, ring_buf_size - n);
+        ring_buf_size -= n;
+        return n;
+    }
+};
+#endif
+
 struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     static WriteRequest* const UNCONNECTED;
     
     butil::IOBuf data;
+#ifdef IO_URING_ENABLED
+    RegisteredRingBuffer ring_buf_data;
+#endif
     WriteRequest* next;
     bthread_id_t id_wait;
     Socket* socket;
+
+    bool empty() const {
+#ifdef IO_URING_ENABLED
+        return data.empty() && ring_buf_data.empty();
+#endif
+        return data.empty();
+    }
     
     uint32_t pipelined_count() const {
         return (_pc_and_udmsg >> 48) & 0x3FFF;
@@ -381,6 +434,11 @@ void Socket::WriteRequest::Setup(Socket* s) {
             butil::Status st = msg->AppendAndDestroySelf(&data, s);
             if (!st.ok()) {
                 // Abandon the request.
+#ifdef IO_URING_ENABLED
+                if (FLAGS_use_io_uring) {
+                    ring_buf_data.clear();
+                }
+#endif
                 data.clear();
                 bthread_id_error2(id_wait, st.error_code(), st.error_cstr());
                 return;
@@ -494,9 +552,15 @@ Socket::~Socket() {
 }
 
 void Socket::ReturnSuccessfulWriteRequest(Socket::WriteRequest* p) {
-    DCHECK(p->data.empty());
+    CHECK(p->empty());
     AddOutputMessages(1);
     const bthread_id_t id_wait = p->id_wait;
+#ifdef IO_URING_ENABLED
+    if (FLAGS_use_io_uring && p->ring_buf_data.ring_buf_idx != -1) {
+        bound_g_->RecycleRingWriteBuf(p->ring_buf_data.ring_buf_idx);
+        p->ring_buf_data.reset(nullptr, -1, 0);
+    }
+#endif
     butil::return_object(p);
     if (id_wait != INVALID_BTHREAD_ID) {
         NotifyOnFailed(id_wait);
@@ -508,6 +572,14 @@ void Socket::ReturnFailedWriteRequest(Socket::WriteRequest* p, int error_code,
     if (!p->reset_pipelined_count_and_user_message()) {
         CancelUnwrittenBytes(p->data.size());
     }
+#ifdef IO_URING_ENABLED
+    if (FLAGS_use_io_uring) {
+        if (p->ring_buf_data.ring_buf_idx != -1) {
+            bound_g_->RecycleRingWriteBuf(p->ring_buf_data.ring_buf_idx);
+        }
+        p->ring_buf_data.reset(nullptr, -1, 0);
+    }
+#endif
     p->data.clear();  // data is probably not written.
     const bthread_id_t id_wait = p->id_wait;
     butil::return_object(p);
@@ -539,6 +611,11 @@ void Socket::ReleaseAllFailedWriteRequests(Socket::WriteRequest* req) {
         if (!req->reset_pipelined_count_and_user_message()) {
             CancelUnwrittenBytes(req->data.size());
         }
+#ifdef IO_URING_ENABLED
+        if (FLAGS_use_io_uring) {
+            req->ring_buf_data.clear();
+        }
+#endif
         req->data.clear();  // MUST, otherwise IsWriteComplete is false
     } while (!IsWriteComplete(req, true, NULL));
     ReturnFailedWriteRequest(req, error_code, error_text);
@@ -1216,7 +1293,7 @@ void* Socket::ProcessEvent(void* arg) {
 
 #ifdef IO_URING_ENABLED
 void *Socket::SocketProcess(void *arg) {
-    bthread::TaskGroup *cur_group = bthread::TaskGroup::VolatileTLSTaskGroup();
+    bthread::TaskGroup *cur_group = bthread::tls_task_group;
 
     Socket *sock = static_cast<Socket *>(arg);
     SocketUniquePtr s_uptr{sock};
@@ -1286,7 +1363,7 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
     WriteRequest* new_head = old_head;
     WriteRequest* desired = NULL;
     bool return_when_no_more = true;
-    if (!old_head->data.empty() || !singular_node) {
+    if (!old_head->empty() || !singular_node) {
         desired = old_head;
         // Write is obviously not complete if old_head is not fully written.
         return_when_no_more = false;
@@ -1685,6 +1762,52 @@ X509* Socket::GetPeerCertificate() const {
     return SSL_get_peer_certificate(_ssl_session);
 }
 
+#ifdef IO_URING_ENABLED
+
+int Socket::Write(char *ring_buf, uint16_t ring_buf_idx, uint32_t ring_buf_size,
+                  const WriteOptions *options_in) {
+
+    WriteOptions opt;
+    if (options_in) {
+        opt = *options_in;
+    }
+    if (ring_buf_size == 0) {
+        return SetError(opt.id_wait, EINVAL);
+    }
+    if (opt.pipelined_count > MAX_PIPELINED_COUNT) {
+        LOG(ERROR) << "pipelined_count=" << opt.pipelined_count
+                   << " is too large";
+        return SetError(opt.id_wait, EOVERFLOW);
+    }
+    if (Failed()) {
+        const int rc = ConductError(opt.id_wait);
+        if (rc <= 0) {
+            return rc;
+        }
+    }
+
+    if (!opt.ignore_eovercrowded && _overcrowded) {
+        return SetError(opt.id_wait, EOVERCROWDED);
+    }
+
+    WriteRequest *req = butil::get_object<WriteRequest>();
+    if (!req) {
+        return SetError(opt.id_wait, ENOMEM);
+    }
+
+    req->ring_buf_data.reset(ring_buf, ring_buf_idx, ring_buf_size);
+
+    // Set `req->next' to UNCONNECTED so that the KeepWrite thread will
+    // wait until it points to a valid WriteRequest or NULL.
+    req->next = WriteRequest::UNCONNECTED;
+    req->id_wait = opt.id_wait;
+    req->set_pipelined_count_and_user_message(
+        opt.pipelined_count, DUMMY_USER_MESSAGE, opt.auth_flags);
+    return StartWrite(req, opt);
+}
+
+#endif
+
 int Socket::Write(butil::IOBuf* data, const WriteOptions* options_in) {
     WriteOptions opt;
     if (options_in) {
@@ -1819,31 +1942,40 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
         {
 #endif
 #ifdef IO_URING_ENABLED
-            // TODO(zkl): simply access tls_task_group
             bthread::TaskGroup *g = FLAGS_use_io_uring
-                                        ? bthread::TaskGroup::VolatileTLSTaskGroup()
+                                        ? bthread::tls_task_group
                                         : nullptr;
             if (g != nullptr && (opt.write_through_ring || opt.synchronous_write)) {
+
                 io_uring_write_req_ = req;
-                req->data.prepare_iovecs(&iovecs_);
                 req->socket = this;
-                // If this write is from Stream's DoWrite, wait and return the result.
-                if (opt.synchronous_write) {
-                    nw = g->SocketWaitingNonFixedWrite(this);
-                    if (nw < 0) {
-                        errno = -nw;
-                    }
-                    else {
-                        req->data.pop_front(nw);
-                    }
-                    iovecs_.clear();
-                }
-                else {
-                    int ret = g->SocketNonFixedWrite(this);
+                if (req->ring_buf_data.ring_buf != nullptr) {
+                    int ret = g->SocketFixedWrite(this, req->ring_buf_data.ring_buf_idx, req->ring_buf_data.ring_buf_size);
                     if (ret == 0) {
                         return 0;
                     }
-                    iovecs_.clear();
+                    LOG(WARNING) << "Socket: " << *this << " submit FixedWrite failed, will KeepWrite";
+                } else {
+                    req->data.prepare_iovecs(&iovecs_);
+                    req->socket = this;
+                    // If this write is from Stream's DoWrite, wait and return the result.
+                    if (opt.synchronous_write) {
+                        nw = g->SocketWaitingNonFixedWrite(this);
+                        if (nw < 0) {
+                            errno = -nw;
+                        }
+                        else {
+                            req->data.pop_front(nw);
+                        }
+                        iovecs_.clear();
+                    }
+                    else {
+                        int ret = g->SocketNonFixedWrite(this);
+                        if (ret == 0) {
+                            return 0;
+                        }
+                        iovecs_.clear();
+                    }
                 }
             } else {
                 nw = req->data.cut_into_file_descriptor(fd());
@@ -1903,7 +2035,7 @@ void* Socket::KeepWrite(void* void_arg) {
     WriteRequest* cur_tail = NULL;
     do {
         // req was written, skip it.
-        if (req->next != NULL && req->data.empty()) {
+        if (req->next != NULL && req->empty()) {
             WriteRequest* const saved_req = req;
             req = req->next;
             s->ReturnSuccessfulWriteRequest(saved_req);
@@ -1921,7 +2053,7 @@ void* Socket::KeepWrite(void* void_arg) {
             s->AddOutputBytes(nw);
         }
         // Release WriteRequest until non-empty data or last request.
-        while (req->next != NULL && req->data.empty()) {
+        while (req->next != NULL && req->empty()) {
             WriteRequest* const saved_req = req;
             req = req->next;
             s->ReturnSuccessfulWriteRequest(saved_req);
@@ -2003,13 +2135,57 @@ void* Socket::KeepWrite(void* void_arg) {
     return NULL;
 }
 
+#ifdef IO_URING_ENABLED
+void cut_data_into_iovecs(std::vector<struct iovec> *iovecs,
+    std::variant<butil::IOBuf*, RegisteredRingBuffer*> const* data_list, size_t count) {
+    if (BAIDU_UNLIKELY(count == 0)) {
+        return;
+    }
+    // Use count as the initial capacity.
+    iovecs->reserve(count);
+    iovecs->clear();
+    for (size_t i = 0; i < count && iovecs->size() < IOV_MAX; ++i) {
+        if (std::holds_alternative<butil::IOBuf*>(data_list[i])) {
+            butil::IOBuf *buf = std::get<butil::IOBuf*>(data_list[i]);
+            buf->cut_into_iovecs(iovecs);
+        } else if (std::holds_alternative<RegisteredRingBuffer*>(data_list[i])) {
+            RegisteredRingBuffer* rb = std::get<RegisteredRingBuffer*>(data_list[i]);
+            if (rb->ring_buf && rb->ring_buf_size > 0) {
+                iovecs->emplace_back();
+                iovec &iov = iovecs->back();
+                iov.iov_base = rb->ring_buf;
+                iov.iov_len = rb->ring_buf_size;
+            }
+        }
+    }
+}
+#endif
+
 ssize_t Socket::DoWrite(WriteRequest* req) {
     // Group butil::IOBuf in the list into a batch array.
     butil::IOBuf* data_list[DATA_LIST_MAX];
+#ifdef IO_URING_ENABLED
+    std::variant<butil::IOBuf*, RegisteredRingBuffer*> mixed_data_list[DATA_LIST_MAX];
+    // If io_uring is used and this is not a stream, use mixed_data_list.
+    bool use_mixed_data_list = FLAGS_use_io_uring && _conn == nullptr;
+#endif
     size_t ndata = 0;
     for (WriteRequest* p = req; p != NULL && ndata < DATA_LIST_MAX;
          p = p->next) {
+#ifdef IO_URING_ENABLED
+        if (use_mixed_data_list) {
+            if (p->ring_buf_data.ring_buf != nullptr) {
+                mixed_data_list[ndata] = &p->ring_buf_data;
+            } else {
+                mixed_data_list[ndata] = &p->data;
+            }
+        } else {
+            data_list[ndata] = &p->data;
+        }
+        ndata++;
+#else
         data_list[ndata++] = &p->data;
+#endif
     }
 
     if (ssl_state() == SSL_OFF) {
@@ -2023,8 +2199,9 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
             }
 #endif
 #ifdef IO_URING_ENABLED
-            if (FLAGS_use_io_uring) {
-                butil::IOBuf::cut_multiple_into_iovecs(&iovecs_, data_list, ndata);
+            if (use_mixed_data_list) {
+                cut_data_into_iovecs(&iovecs_, mixed_data_list, ndata);
+
                 // Submit write into the iouring and wait for the result
                 bthread::TaskGroup *g =
                         bthread::TaskGroup::VolatileTLSTaskGroup();
@@ -2036,12 +2213,17 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
                 }
                 size_t npop_all = nw;
                 for (size_t i = 0; i < ndata; ++i) {
-                    npop_all -= data_list[i]->pop_front(npop_all);
+                    if (std::holds_alternative<butil::IOBuf*>(mixed_data_list[i])) {
+                        butil::IOBuf *buf = std::get<butil::IOBuf*>(mixed_data_list[i]);
+                        npop_all -= buf->pop_front(npop_all);
+                    } else if (std::holds_alternative<RegisteredRingBuffer*>(mixed_data_list[i])) {
+                        RegisteredRingBuffer* rb = std::get<RegisteredRingBuffer*>(mixed_data_list[i]);
+                        npop_all -= rb->pop_front(npop_all);
+                    }
                     if (npop_all == 0) {
                         break;
                     }
                 }
-
                 return nw;
             } else {
                 return butil::IOBuf::cut_multiple_into_file_descriptor(
@@ -2053,6 +2235,11 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
 #endif
         }
     }
+
+#ifdef IO_URING_ENABLED
+    // io_uring and SSL is not supported.
+    CHECK(!use_mixed_data_list);
+#endif
 
     CHECK_EQ(SSL_CONNECTED, ssl_state());
     if (_conn) {
@@ -3013,7 +3200,7 @@ int Socket::PeekAgentSocket(SocketUniquePtr* out) const {
 
 void Socket::GetStat(SocketStat* s) const {
     BAIDU_CASSERT(offsetof(Socket, _preferred_index) >= 64, different_cacheline);
-    BAIDU_CASSERT(sizeof(WriteRequest) == 64, sizeof_write_request_is_64);
+    // BAIDU_CASSERT(sizeof(WriteRequest) == 64, sizeof_write_request_is_64);
 
     SharedPart* sp = GetSharedPart();
     if (sp != NULL && sp->extended_stat != NULL) {
@@ -3094,7 +3281,21 @@ void Socket::RingNonFixedWriteCb(int nw) {
     WriteRequest *req = io_uring_write_req_;
     CHECK(req->socket == this);
     if (nw > 0) {
-        req->data.pop_front(nw);
+        // ring_buf is not null if this is a fixed write of the socket.
+        if (req->ring_buf_data.ring_buf != nullptr) {
+            // Handle registered buffer write.
+            CHECK(req->ring_buf_data.ring_buf_size >= nw);
+            req->ring_buf_data.pop_front(nw);
+            bthread::TaskGroup *group = bthread::tls_task_group;
+            // The fixed write must be submitted by the same group.
+            CHECK(group == bound_g_);
+            if (req->ring_buf_data.ring_buf_size > 0) {
+                LOG(WARNING) << "socket: " << *this << " fixed write data not fully written, will KeepWrite.";
+            }
+            // The ring buf will be recycled in ReturnSuccessfulWriteRequest.
+        } else {
+            req->data.pop_front(nw);
+        }
     }
 
     int saved_errno = 0;
@@ -3118,7 +3319,6 @@ void Socket::RingNonFixedWriteCb(int nw) {
         return;
     }
 
-KEEPWRITE_IN_BACKGROUND:
     // KeepWrite will continue to reference the socket. So, releases the unique
     // pointer which does not decrement the reference count.
     (void) sock.release();
@@ -3155,8 +3355,6 @@ void Socket::ProcessInbound() {
     SocketProcess(this);
   }
 }
-
-void Socket::SetFixedWriteLen(uint32_t write_len) { write_len_ = write_len; }
 
 int Socket::WaitForNonFixedWrite() {
     std::unique_lock lk(keep_write_mutex_);
@@ -3196,8 +3394,7 @@ int Socket::CopyDataRead() {
 }
 
 void Socket::ClearInboundBuf() {
-    // TODO(zkl): simply access tls_task_group
-    bthread::TaskGroup *cur_group = bthread::TaskGroup::VolatileTLSTaskGroup();
+    bthread::TaskGroup *cur_group = bthread::tls_task_group;
     CHECK(cur_group == bound_g_);
     for (; buf_idx_ < in_bufs_.size(); ++buf_idx_) {
         auto &buf = in_bufs_[buf_idx_];

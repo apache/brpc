@@ -182,6 +182,11 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         err = ctx->parser.Consume(*source, &current_args, &ctx->arena);
         if (err != PARSE_OK) {
             cur_task->SetBoundGroup(NULL);
+#ifdef IO_URING_ENABLED
+            if (FLAGS_use_io_uring) {
+                cur_group->RecycleRingWriteBuf(ring_buf_idx);
+            }
+#endif
             return MakeParseError(err);
         }
         while (true) {
@@ -192,6 +197,11 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             }
             if (ConsumeCommand(ctx, current_args, false, &appender) != 0) {
                 cur_task->SetBoundGroup(NULL);
+#ifdef IO_URING_ENABLED
+                if (FLAGS_use_io_uring) {
+                    cur_group->RecycleRingWriteBuf(ring_buf_idx);
+                }
+#endif
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_args.swap(next_args);
@@ -199,6 +209,11 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         if (ConsumeCommand(ctx, current_args,
                       true /*must be the last message*/, &appender) != 0) {
             cur_task->SetBoundGroup(NULL);
+#ifdef IO_URING_ENABLED
+            if (FLAGS_use_io_uring) {
+                cur_group->RecycleRingWriteBuf(ring_buf_idx);
+            }
+#endif
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
 
@@ -210,11 +225,12 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             uint32_t ring_buf_size = appender.ring_buffer_size();
             if (ring_buf_size > 0) {
                 CHECK(sendbuf.empty());
-                socket->SetFixedWriteLen(ring_buf_size);
-                int ret = cur_group->SocketFixedWrite(socket, ring_buf_idx);
-                if (ret != 0) {
-                    // If the fixed buffer write is not submitted,
-                    // falls back to the old socket write.
+                Socket::WriteOptions wopt;
+                wopt.ignore_eovercrowded = true;
+                wopt.write_through_ring = true;
+                if (socket->Write(ring_buf, ring_buf_idx, ring_buf_size, &wopt) != 0) {
+                    LOG(WARNING) << "Fail to send redis reply through iouring registered buffer";
+                    // If the fixed buffer write is not submitted, falls back to the old socket write.
                     sendbuf.append(ring_buf, ring_buf_size);
                     cur_group->RecycleRingWriteBuf(ring_buf_idx);
                 } else {
@@ -223,10 +239,6 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                 }
             } else if (ring_buf != nullptr) {
                 cur_group->RecycleRingWriteBuf(ring_buf_idx);
-            }
-
-            if (ring_buf_size == 0) {
-                DLOG(INFO) << "Redis socket write not using fixed buffer.";
             }
         }
 #endif

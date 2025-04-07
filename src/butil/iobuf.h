@@ -179,6 +179,8 @@ public:
     static void cut_multiple_into_iovecs(std::vector<struct iovec> *iovecs,
         IOBuf* const* pieces, size_t count);
 
+    void cut_into_iovecs(std::vector<struct iovec> *iovecs);
+
     // Cut into SSL channel `ssl'. Returns what `SSL_write' returns
     // and the ssl error code will be filled into `ssl_error'
     ssize_t cut_into_SSL_channel(struct ssl_st* ssl, int* ssl_error);

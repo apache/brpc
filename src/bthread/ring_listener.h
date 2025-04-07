@@ -31,6 +31,8 @@
 
 #include "brpc/socket.h"
 #include "bthread/inbound_ring_buf.h"
+#undef BLOCK_SIZE
+#include "bthread/moodycamelqueue.h"
 #include "bthread/ring_write_buf_pool.h"
 #include "butil/threading/platform_thread.h"
 #include "spsc_queue.h"
@@ -87,7 +89,7 @@ public:
 
     int SubmitRecv(brpc::Socket *sock);
 
-    int SubmitFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx);
+    int SubmitFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx, uint32_t ring_buf_size);
 
     int SubmitNonFixedWrite(brpc::Socket *sock);
 
@@ -123,7 +125,7 @@ public:
 
     std::pair<char *, uint16_t> GetWriteBuf() { return write_buf_pool_->Get(); }
 
-    void RecycleWriteBuf(uint16_t buf_idx) { write_buf_pool_->Recycle(buf_idx); }
+    void RecycleWriteBuf(uint16_t buf_idx);
 
 private:
     void FreeBuf() {
@@ -142,6 +144,7 @@ private:
         Recv = 0,
         CancelRecv,
         RegisterFile,
+        // TODO(zkl): Remove (Non)FixedWrite, merge into Write, WriteFinish
         FixedWrite,
         FixedWriteFinish,
         NonFixedWrite,
@@ -203,11 +206,11 @@ private:
 
     void HandleRecv(brpc::Socket *sock, io_uring_cqe *cqe);
 
-    void HandleFixedWrite(brpc::Socket *sock, int nw, uint16_t write_buf_idx);
-
     void HandleBacklog();
 
     bool SubmitBacklog(brpc::Socket *sock, uint64_t data);
+
+    void RecycleReturnedWriteBufs();
 
     enum struct PollStatus : uint8_t { Active = 0, Sleep, ExtPoll, Closed };
 
@@ -240,6 +243,8 @@ private:
     std::vector<uint16_t> free_reg_fd_idx_;
 
     std::unique_ptr<RingWriteBufferPool> write_buf_pool_;
+    moodycamel::ConcurrentQueue<uint16_t> write_bufs_;
+    std::atomic<int64_t> recycle_buf_cnt_{0};
 
     inline static size_t buf_length = sysconf(_SC_PAGESIZE);
     inline static size_t buf_ring_size = 1024;

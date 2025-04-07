@@ -232,7 +232,7 @@ public:
     int RegisterSocket(brpc::Socket *sock);
     void UnregisterSocket(int fd);
     void SocketRecv(brpc::Socket *sock);
-    int SocketFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx);
+    int SocketFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx, uint32_t ring_buf_size);
     int SocketNonFixedWrite(brpc::Socket *sock);
     int SocketWaitingNonFixedWrite(brpc::Socket *sock);
     int RingFsync(int fd);
