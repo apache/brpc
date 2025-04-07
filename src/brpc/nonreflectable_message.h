@@ -52,12 +52,20 @@ public:
     }
 
 #if GOOGLE_PROTOBUF_VERSION >= 5029000
-    const ::google::protobuf::internal::ClassData* GetClassData() const override {
-        return nullptr;
-    }
+    using ClassData = ::google::protobuf::internal::ClassData;
+    using ClassDataFull = ::google::protobuf::internal::ClassDataFull;
 #elif GOOGLE_PROTOBUF_VERSION >= 5026000
+    using ClassData = ::google::protobuf::Message::ClassData;
+    using ClassDataFull = ::google::protobuf::Message::ClassDataFull;
+#endif
+
+#if GOOGLE_PROTOBUF_VERSION >= 5026000
     const ClassData* GetClassData() const override {
+#    if GOOGLE_PROTOBUF_VERSION >= 5027000
+        return _class_data_.base();
+#    else
         return nullptr;
+#    endif
     }
 #endif
 
@@ -210,7 +218,66 @@ public:
 
 private:
     static T _instance;
+
+#if GOOGLE_PROTOBUF_VERSION >= 5027000
+    struct NonreflectableMessageClassData : ClassDataFull {
+        constexpr NonreflectableMessageClassData()
+                : ClassDataFull(
+#    if GOOGLE_PROTOBUF_VERSION >= 5029000
+                        ClassData{
+                                &_instance, // prototype
+                                nullptr,    // tc_table
+                                nullptr,    // on_demand_register_arena_dtor
+                                nullptr,    // is_initialized
+                                nullptr,    // merge_to_from
+                                ::google::protobuf::internal::MessageCreator(), // message_creator
+                                0,     // cached_size_offset
+                                false, // is_lite
+                        },
+                        nullptr, // descriptor_methods
+                        nullptr, // descriptor_table
+                        nullptr  // get_metadata_tracker
+#    elif GOOGLE_PROTOBUF_VERSION >= 5028000
+                        ClassData{
+                                &_instance, // prototype
+                                nullptr,    // tc_table
+                                nullptr,    // on_demand_register_arena_dtor
+                                nullptr,    // is_initialized
+                                nullptr,    // merge_to_from
+                                0,          // cached_size_offset
+                                false,      // is_lite
+                        },
+                        nullptr, // descriptor_methods
+                        nullptr, // descriptor_table
+                        nullptr  // get_metadata_tracker
+#    else
+                        ClassData{
+                                nullptr, // tc_table
+                                nullptr, // on_demand_register_arena_dtor
+                                nullptr, // is_initialized
+                                0,       // cached_size_offset
+                                false,   // is_lite
+                        },
+                        nullptr, // merge_to_from
+                        nullptr, // descriptor_methods
+                        nullptr, // descriptor_table
+                        nullptr  // get_metadata_tracker
+#    endif
+                ) {
+            // Only can be used to determine whether the Types are the same.
+            descriptor = default_instance().GetMetadata().descriptor;
+            reflection = default_instance().GetMetadata().reflection;
+        }
+    };
+
+    static const NonreflectableMessageClassData _class_data_;
+#endif
 };
+
+#if GOOGLE_PROTOBUF_VERSION >= 5027000
+template <typename T>
+const typename NonreflectableMessage<T>::NonreflectableMessageClassData NonreflectableMessage<T>::_class_data_;
+#endif
 
 template <typename T>
 T NonreflectableMessage<T>::_instance;
