@@ -334,10 +334,7 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
     sub_cntl->set_request_code(_main_cntl->request_code());
     // Forward request attachment to the subcall
     sub_cntl->request_attachment().append(_main_cntl->request_attachment());
-    for (auto iter = _main_cntl->http_request().HeaderBegin();
-           iter != _main_cntl->http_request().HeaderEnd(); ++iter) {
-        sub_cntl->http_request().SetHeader(iter->first, iter->second);
-    }
+    sub_cntl->http_request() = _main_cntl->http_request();
 
     sel_out.channel()->CallMethod(_main_cntl->_method,
                                   &r.sub_done->_cntl,
