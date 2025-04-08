@@ -373,7 +373,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // otherwise another thread just joined this thread may not see side
         // effects of destructing tls variables.
         LocalStorage* tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
-        KeyTable* kt = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls)->keytable;
+        KeyTable* kt = tls_bls_ptr->keytable;
         if (kt != NULL) {
             return_keytable(m->attr.keytable_pool, kt);
             // After deletion: tls may be set during deletion.
