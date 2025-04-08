@@ -58,7 +58,7 @@ BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
 // groundtruth.
-__thread LocalStorage tls_bls = BTHREAD_LOCAL_STORAGE_INITIALIZER;
+BAIDU_VOLATILE_THREAD_LOCAL(LocalStorage, tls_bls, BTHREAD_LOCAL_STORAGE_INITIALIZER);
 
 // defined in bthread/key.cpp
 extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
@@ -79,7 +79,7 @@ void* run_create_span_func() {
     if (g_create_span_func) {
         return g_create_span_func();
     }
-    return tls_bls.rpcz_parent_span;
+    return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
 }
 
 int TaskGroup::get_attr(bthread_t tid, bthread_attr_t* out) {
@@ -372,11 +372,13 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // Clean tls variables, must be done before changing version_butex
         // otherwise another thread just joined this thread may not see side
         // effects of destructing tls variables.
-        KeyTable* kt = tls_bls.keytable;
+        LocalStorage* tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+        KeyTable* kt = tls_bls_ptr->keytable;
         if (kt != NULL) {
             return_keytable(m->attr.keytable_pool, kt);
             // After deletion: tls may be set during deletion.
-            tls_bls.keytable = NULL;
+            tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+            tls_bls_ptr->keytable = NULL;
             m->local_storage.keytable = NULL; // optional
         }
 
@@ -697,8 +699,8 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
     if (__builtin_expect(next_meta != cur_meta, 1)) {
         g->_cur_meta = next_meta;
         // Switch tls_bls
-        cur_meta->local_storage = tls_bls;
-        tls_bls = next_meta->local_storage;
+        cur_meta->local_storage = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
+        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, next_meta->local_storage);
 
         // Logging must be done after switching the local storage, since the logging lib
         // use bthread local storage internally, or will cause memory leak.
