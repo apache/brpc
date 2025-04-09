@@ -17,14 +17,16 @@
 
 
 #include "butil/logging.h"
+#include "json2pb/json_to_pb.h"
 #include "brpc/compress.h"
 #include "brpc/protocol.h"
-
 
 namespace brpc {
 
 static const int MAX_HANDLER_SIZE = 1024;
-static CompressHandler s_handler_map[MAX_HANDLER_SIZE] = { { NULL, NULL, NULL } };
+static CompressHandler s_handler_map[MAX_HANDLER_SIZE] = {
+    { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL }
+};
 
 int RegisterCompressHandler(CompressType type, 
                             CompressHandler handler) {
@@ -47,7 +49,7 @@ int RegisterCompressHandler(CompressType type,
 
 // Find CompressHandler by type.
 // Returns NULL if not found
-inline const CompressHandler* FindCompressHandler(CompressType type) {
+const CompressHandler* FindCompressHandler(CompressType type) {
     int index = type;
     if (index < 0 || index >= MAX_HANDLER_SIZE) {
         LOG(ERROR) << "CompressType=" << type << " is out of range";

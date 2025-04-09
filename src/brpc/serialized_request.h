@@ -54,7 +54,6 @@ private:
     void SharedCtor();
     void SharedDtor();
 
-private:
     butil::IOBuf _serialized;
 };
 

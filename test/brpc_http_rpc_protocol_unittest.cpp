@@ -189,7 +189,7 @@ protected:
         return msg;
     }
 
-    brpc::policy::HttpContext* MakePostJsonStdRequestMessage(const std::string& path) {
+    brpc::policy::HttpContext* MakePostProtoJsonRequestMessage(const std::string& path) {
         brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().uri().set_path(path);
         msg->header().set_content_type("application/proto-json");
@@ -199,7 +199,8 @@ protected:
         req.set_message(EXP_REQUEST);
         butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
         json2pb::Pb2ProtoJsonOptions options;
-        EXPECT_TRUE(json2pb::ProtoMessageToProtoJson(req, &req_stream, options));
+        std::string error;
+        EXPECT_TRUE(json2pb::ProtoMessageToProtoJson(req, &req_stream, options, &error)) << error;
         return msg;
     }
 
@@ -366,7 +367,7 @@ TEST_F(HttpTest, verify_request) {
     }
     {
         brpc::policy::HttpContext* msg =
-            MakePostJsonStdRequestMessage("/EchoService/Echo");
+            MakePostProtoJsonRequestMessage("/EchoService/Echo");
         VerifyMessage(msg, false);
         msg->Destroy();
     }
@@ -1847,7 +1848,7 @@ TEST_F(HttpTest, proto_json_content_type) {
     butil::IOBufAsZeroCopyOutputStream output_stream(&cntl.request_attachment());
     ASSERT_TRUE(json2pb::ProtoMessageToProtoJson(req, &output_stream, json_options));
     channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed());
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ("application/proto-json", cntl.http_response().content_type());
     json2pb::ProtoJson2PbOptions parse_options;
     parse_options.ignore_unknown_fields = true;
@@ -1860,7 +1861,7 @@ TEST_F(HttpTest, proto_json_content_type) {
     cntl.http_request().set_content_type("application/proto-json");
     res.Clear();
     stub.Echo(&cntl, &req, &res, nullptr);
-    ASSERT_FALSE(cntl.Failed());
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(EXP_RESPONSE, res.message());
     ASSERT_EQ("application/proto-json", cntl.http_response().content_type());
 }

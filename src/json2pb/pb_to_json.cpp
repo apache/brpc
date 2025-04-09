@@ -349,16 +349,15 @@ bool ProtoMessageToJson(const google::protobuf::Message& message,
 }
 
 bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
-                        google::protobuf::io::ZeroCopyOutputStream* json,
-                        const Pb2ProtoJsonOptions& options, std::string* error) {
-    TypeResolverUniqueptr type_resolver = GetTypeResolver(message);
+                             google::protobuf::io::ZeroCopyOutputStream* json,
+                             const Pb2ProtoJsonOptions& options, std::string* error) {
     butil::IOBuf buf;
     butil::IOBufAsZeroCopyOutputStream output_stream(&buf);
-    google::protobuf::io::CodedOutputStream coded_stream(&output_stream);
-    if (!message.SerializeToCodedStream(&coded_stream)) {
+    if (!message.SerializeToZeroCopyStream(&output_stream)) {
         return false;
     }
 
+    TypeResolverUniqueptr type_resolver = GetTypeResolver(message);
     butil::IOBufAsZeroCopyInputStream input_stream(buf);
     auto st = google::protobuf::util::BinaryToJsonStream(
             type_resolver.get(), GetTypeUrl(message), &input_stream, json, options);

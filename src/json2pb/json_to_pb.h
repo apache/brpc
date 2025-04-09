@@ -92,11 +92,11 @@ using ProtoJson2PbOptions = google::protobuf::util::JsonParseOptions;
 // See https://protobuf.dev/programming-guides/json/ for details.
 bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
                              google::protobuf::Message* message,
-                             const ProtoJson2PbOptions& options,
+                             const ProtoJson2PbOptions& options = ProtoJson2PbOptions(),
                              std::string* error = NULL);
-// Use default GoogleJson2PbOptions.
 bool ProtoJsonToProtoMessage(const std::string& json, google::protobuf::Message* message,
-                             const ProtoJson2PbOptions& options, std::string* error = NULL);
+                             const ProtoJson2PbOptions& options = ProtoJson2PbOptions(),
+                             std::string* error = NULL);
 
 } // namespace json2pb
 

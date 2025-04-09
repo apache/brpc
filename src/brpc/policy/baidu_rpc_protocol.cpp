@@ -20,11 +20,12 @@
 #include <google/protobuf/message.h>            // Message
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/text_format.h>
 #include "butil/logging.h"                       // LOG()
-#include "butil/time.h"
 #include "butil/iobuf.h"                         // butil::IOBuf
 #include "butil/raw_pack.h"                      // RawPacker RawUnpacker
 #include "butil/memory/scope_guard.h"
+#include "json2pb/json_to_pb.h"
 #include "brpc/controller.h"                    // Controller
 #include "brpc/socket.h"                        // Socket
 #include "brpc/server.h"                        // Server
@@ -55,6 +56,8 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
 
 DEFINE_bool(baidu_std_protocol_deliver_timeout_ms, false,
             "If this flag is true, baidu_std puts timeout_ms in requests.");
+
+DECLARE_bool(pb_enum_as_number);
 
 // Notes:
 // 1. 12-byte header [PRPC][body_size][meta_size]
@@ -137,9 +140,64 @@ ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
     return MakeMessage(msg);
 }
 
+static json2pb::Pb2JsonOptions MakePb2JsonOptions(Controller& cntl) {
+    json2pb::Pb2JsonOptions options;
+    options.bytes_to_base64 = cntl.has_pb_bytes_to_base64();
+    options.jsonify_empty_array = cntl.has_pb_jsonify_empty_array();
+    options.always_print_primitive_fields = cntl.has_always_print_primitive_fields();
+    options.single_repeated_to_array = cntl.has_pb_single_repeated_to_array();
+    options.enum_option = FLAGS_pb_enum_as_number
+                          ? json2pb::OUTPUT_ENUM_BY_NUMBER
+                          : json2pb::OUTPUT_ENUM_BY_NAME;
+    return options;
+}
+
+bool SerializeRpcMessage(const google::protobuf::Message& message,
+                         Controller& cntl, ContentType content_type,
+                         CompressType compress_type, butil::IOBuf* buf,
+                         std::string* error) {
+    if (COMPRESS_TYPE_NONE == compress_type) {
+        butil::IOBufAsZeroCopyOutputStream wrapper(buf);
+        if (CONTENT_TYPE_PB == content_type) {
+            return message.SerializeToZeroCopyStream(&wrapper);
+        } else if (CONTENT_TYPE_JSON == content_type ) {
+            json2pb::Pb2JsonOptions options = MakePb2JsonOptions(cntl);
+            return json2pb::ProtoMessageToJson(message, &wrapper, options, error);
+        } else if (CONTENT_TYPE_PROTO_JSON == content_type) {
+            json2pb::Pb2ProtoJsonOptions options;
+            AlwaysPrintPrimitiveFields(options) = cntl.has_always_print_primitive_fields();
+            return json2pb::ProtoMessageToProtoJson(message, &wrapper, options, error);
+        } else if (CONTENT_TYPE_PROTO_TEXT == content_type) {
+            return google::protobuf::TextFormat::Print(message, &wrapper);
+        }
+        return false;
+    }
+
+    const CompressHandler* handler = FindCompressHandler(compress_type);
+    if (NULL == handler) {
+        return false;
+    }
+    if (CONTENT_TYPE_PB == content_type) {
+        return handler->Compress(message, buf);
+    }
+    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
+    if (CONTENT_TYPE_JSON == content_type) {
+        json2pb::Pb2JsonOptions options = MakePb2JsonOptions(cntl);
+        return handler->Compress2Json(message, buf, options);
+    } else if (CONTENT_TYPE_PROTO_JSON == content_type) {
+        json2pb::Pb2ProtoJsonOptions options;
+        options.always_print_enums_as_ints = FLAGS_pb_enum_as_number;
+        AlwaysPrintPrimitiveFields(options) = cntl.has_always_print_primitive_fields();
+        return handler->Compress2ProtoJson(message, buf, options);
+    } else if (CONTENT_TYPE_PROTO_TEXT == content_type) {
+        return handler->Compress2ProtoText(message, buf);
+    }
+
+    return false;
+}
+
 static bool SerializeResponse(const google::protobuf::Message& res,
-                              Controller& cntl, CompressType compress_type,
-                              butil::IOBuf& buf) {
+                              Controller& cntl, butil::IOBuf& buf) {
     if (res.GetDescriptor() == SerializedResponse::descriptor()) {
         buf.swap(((SerializedResponse&)res).serialized_data());
         return true;
@@ -150,9 +208,16 @@ static bool SerializeResponse(const google::protobuf::Message& res,
                        "Missing required fields in response: %s",
                        res.InitializationErrorString().c_str());
         return false;
-    } else if (!SerializeAsCompressedData(res, &buf, compress_type)) {
-        cntl.SetFailed(ERESPONSE,
-                       "Fail to serialize response, CompressType=%s",
+    }
+
+    ContentType content_type = cntl.response_content_type();
+    CompressType compress_type = cntl.response_compress_type();
+    std::string error;
+    if (!SerializeRpcMessage(res, cntl, content_type,
+                             compress_type, &buf, &error)) {
+        cntl.SetFailed(ERESPONSE, "Fail to serialize response, "
+                                  "ContentType=%s, CompressType=%s",
+                       ContentTypeToCStr(content_type),
                        CompressTypeToCStr(compress_type));
         return false;
     }
@@ -234,8 +299,7 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
     // response either
     CompressType compress_type = cntl->response_compress_type();
     if (res != NULL && !cntl->Failed()) {
-        append_body = SerializeResponse(
-            *res, *cntl, compress_type, res_body);
+        append_body = SerializeResponse(*res, *cntl, res_body);
     }
 
     // Don't use res->ByteSize() since it may be compressed
@@ -262,6 +326,7 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
     }
     meta.set_correlation_id(correlation_id);
     meta.set_compress_type(compress_type);
+    meta.set_content_type(cntl->response_content_type());
     if (attached_size > 0) {
         meta.set_attachment_size(attached_size);
     }
@@ -408,6 +473,52 @@ void EndRunningCallMethodInPool(
     return EndRunningUserCodeInPool(CallMethodInBackupThread, args);
 };
 
+bool DeserializeRpcMessage(const butil::IOBuf& data, Controller& cntl,
+                           ContentType content_type, CompressType compress_type,
+                           google::protobuf::Message* message, std::string* error) {
+    if (COMPRESS_TYPE_NONE != compress_type) {
+        const CompressHandler* handler = FindCompressHandler(compress_type);
+        if (NULL == handler) {
+            return false;
+        }
+
+        if (CONTENT_TYPE_PB == content_type) {
+            return handler->Decompress(data, message);
+        } else if (CONTENT_TYPE_JSON == content_type) {
+            butil::IOBufAsZeroCopyInputStream wrapper(data);
+            json2pb::Json2PbOptions options;
+            options.base64_to_bytes = cntl.has_pb_bytes_to_base64();
+            options.array_to_single_repeated = cntl.has_pb_single_repeated_to_array();
+            return handler->DecompressFromJson(data, message, options);
+        } else if (CONTENT_TYPE_PROTO_JSON == content_type) {
+            json2pb::ProtoJson2PbOptions options;
+            options.ignore_unknown_fields = true;
+            return handler->DecompressFromProtoJson(data, message, options);
+        } else if (CONTENT_TYPE_PROTO_TEXT == content_type) {
+            return handler->DecompressFromProtoText(data, message);
+        }
+        return false;
+    }
+
+    butil::IOBufAsZeroCopyInputStream wrapper(data);
+    if (CONTENT_TYPE_PB == content_type) {
+        return ParsePbFromZeroCopyStream(message, &wrapper);
+    } else if (CONTENT_TYPE_JSON == content_type) {
+        json2pb::Json2PbOptions options;
+        options.base64_to_bytes = cntl.has_pb_bytes_to_base64();
+        options.array_to_single_repeated = cntl.has_pb_single_repeated_to_array();
+        return json2pb::JsonToProtoMessage(&wrapper, message, options, error);
+    } else if (CONTENT_TYPE_PROTO_JSON == content_type) {
+        json2pb::ProtoJson2PbOptions options;
+        options.ignore_unknown_fields = true;
+        return json2pb::ProtoJsonToProtoMessage(&wrapper, message, options, error);
+    } else if (CONTENT_TYPE_PROTO_TEXT == content_type) {
+        return google::protobuf::TextFormat::Parse(&wrapper, message);
+    }
+
+    return false;
+}
+
 void ProcessRpcRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
@@ -458,6 +569,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     if (request_meta.has_timeout_ms()) {
         cntl->set_timeout_ms(request_meta.timeout_ms());
     }
+    cntl->set_request_content_type(meta.content_type());
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     accessor.set_server(server)
         .set_security_mode(security_mode)
@@ -640,12 +752,17 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 cntl->request_attachment().swap(msg->payload);
             }
 
-            auto req_cmp_type = static_cast<CompressType>(meta.compress_type());
+            ContentType content_type = meta.content_type();
+            auto compress_type = static_cast<CompressType>(meta.compress_type());
             messages = server->options().rpc_pb_message_factory->Get(*svc, *method);
-            if (!ParseFromCompressedData(req_buf, messages->Request(), req_cmp_type)) {
-                cntl->SetFailed(EREQUEST, "Fail to parse request message, "
-                                          "CompressType=%s, request_size=%d",
-                                CompressTypeToCStr(req_cmp_type), req_size);
+            std::string error;
+            if (!DeserializeRpcMessage(req_buf, *cntl, content_type, compress_type,
+                                       messages->Request(), &error)) {
+                cntl->SetFailed(
+                    EREQUEST, "Fail to parse request message, ContentType=%s,"
+                              "CompressType=%s, request_size=%d : %s",
+                    ContentTypeToCStr(content_type), CompressTypeToCStr(compress_type),
+                    req_size, error.c_str());
                 break;
             }
             req_buf.clear();
@@ -654,11 +771,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, RpcPBMessages*,
-            const Server*, MethodStatus*, int64_t>(&SendRpcResponse,
-                                                   meta.correlation_id(),
-                                                   cntl.get(), messages,
-                                                   server, method_status,
-                                                   msg->received_us());
+            const Server*, MethodStatus*, int64_t>(
+                &SendRpcResponse, meta.correlation_id(),cntl.get(),
+                messages, server, method_status, msg->received_us());
 
         // optional, just release resource ASAP
         msg.reset();
@@ -799,8 +914,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         if (meta.has_attachment_size()) {
             if (meta.attachment_size() > res_size) {
                 cntl->SetFailed(
-                    ERESPONSE,
-                    "attachment_size=%d is larger than response_size=%d",
+                    ERESPONSE, "attachment_size=%d is larger than response_size=%d",
                     meta.attachment_size(), res_size);
                 break;
             }
@@ -810,25 +924,56 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
             cntl->response_attachment().swap(msg->payload);
         }
 
-        auto res_cmp_type = (CompressType)meta.compress_type();
-        cntl->set_response_compress_type(res_cmp_type);
+        ContentType content_type = meta.content_type();
+        auto compress_type = (CompressType)meta.compress_type();
+        cntl->set_response_content_type(content_type);
+        cntl->set_response_compress_type(compress_type);
         if (cntl->response()) {
+            std::string error;
             if (cntl->response()->GetDescriptor() == SerializedResponse::descriptor()) {
                 ((SerializedResponse*)cntl->response())->
                     serialized_data().append(*res_buf_ptr);
-            } else if (!ParseFromCompressedData(
-                    *res_buf_ptr, cntl->response(), res_cmp_type)) {
+            } else if (!DeserializeRpcMessage(*res_buf_ptr, *cntl, content_type,
+                                              compress_type, cntl->response(), &error)) {
                 cntl->SetFailed(
-                    ERESPONSE, "Fail to parse response message, "
-                    "CompressType=%s, response_size=%d", 
-                    CompressTypeToCStr(res_cmp_type), res_size);
+                    EREQUEST, "Fail to parse request message, ContentType=%s,"
+                              "CompressType=%s, request_size=%d : %s",
+                    ContentTypeToCStr(content_type), CompressTypeToCStr(compress_type),
+                    res_size, error.c_str());
             }
-        } // else silently ignore the response.        
+        } // else silently ignore the response.
     } while (0);
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
     msg.reset();  // optional, just release resource ASAP
     accessor.OnResponse(cid, saved_error);
+}
+
+void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
+                         const google::protobuf::Message* request) {
+    // Check sanity of request.
+    if (NULL == request) {
+        return cntl->SetFailed(EREQUEST, "`request' is NULL");
+    }
+    if (request->GetDescriptor() == SerializedRequest::descriptor()) {
+        request_buf->append(((SerializedRequest*)request)->serialized_data());
+        return;
+    }
+    if (!request->IsInitialized()) {
+        return cntl->SetFailed(EREQUEST, "Missing required fields in request: %s",
+                               request->InitializationErrorString().c_str());
+    }
+
+    ContentType content_type = cntl->request_content_type();
+    CompressType compress_type = cntl->request_compress_type();
+    std::string error;
+    if (!SerializeRpcMessage(*request, *cntl, content_type,
+                             compress_type, request_buf, &error)) {
+        return cntl->SetFailed(EREQUEST, "Fail to compress request, "
+                                         "ContentType=%s, CompressType=%s",
+                               ContentTypeToCStr(content_type),
+                               CompressTypeToCStr(compress_type));
+    }
 }
 
 void PackRpcRequest(butil::IOBuf* req_buf,
@@ -904,6 +1049,7 @@ void PackRpcRequest(butil::IOBuf* req_buf,
             request_meta->set_timeout_ms(accessor.real_timeout_ms());
         }
     }
+    meta.set_content_type(cntl->request_content_type());
 
     Span* span = accessor.span();
     if (span) {
@@ -916,6 +1062,21 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     req_buf->append(request_body);
     if (attached_size) {
         req_buf->append(cntl->request_attachment());
+    }
+}
+
+const char* ContentTypeToCStr(ContentType content_type) {
+    switch (content_type) {
+    case CONTENT_TYPE_PB:
+        return "pb";
+    case CONTENT_TYPE_JSON:
+        return "json";
+    case CONTENT_TYPE_PROTO_JSON:
+        return "proto-json";
+    case CONTENT_TYPE_PROTO_TEXT:
+        return "proto-text";
+    default:
+        return "unknown";
     }
 }
 

@@ -22,6 +22,8 @@
 #include <google/protobuf/message.h>              // Message
 #include <google/protobuf/io/gzip_stream.h>
 #include "butil/iobuf.h"                           // butil::IOBuf
+#include "json2pb/pb_to_json.h"
+#include "json2pb/json_to_pb.h"
 
 
 namespace brpc {
@@ -31,11 +33,34 @@ typedef google::protobuf::io::GzipOutputStream::Options GzipCompressOptions;
 
 // Compress serialized `msg' into `buf'.
 bool GzipCompress(const google::protobuf::Message& msg, butil::IOBuf* buf);
+bool GzipCompress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                       const json2pb::Pb2JsonOptions& options);
+bool GzipCompress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                            const json2pb::Pb2ProtoJsonOptions& options);
+bool GzipCompress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf);
+
 bool ZlibCompress(const google::protobuf::Message& msg, butil::IOBuf* buf);
+bool ZlibCompress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                       const json2pb::Pb2JsonOptions& options);
+bool ZlibCompress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                            const json2pb::Pb2ProtoJsonOptions& options);
+bool ZlibCompress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf);
 
 // Parse `msg' from decompressed `buf'.
 bool GzipDecompress(const butil::IOBuf& buf, google::protobuf::Message* msg);
+bool GzipDecompressFromJson(const butil::IOBuf& buf, google::protobuf::Message* msg,
+                            const json2pb::Json2PbOptions& options);
+bool GzipDecompressFromProtoJson(const butil::IOBuf& data, google::protobuf::Message* msg,
+                                 const json2pb::ProtoJson2PbOptions& options);
+bool GzipDecompressFromProtoText(const butil::IOBuf& data, google::protobuf::Message* msg);
+
+
 bool ZlibDecompress(const butil::IOBuf& buf, google::protobuf::Message* msg);
+bool ZlibDecompressFromJson(const butil::IOBuf& buf, google::protobuf::Message* msg,
+                            const json2pb::Json2PbOptions& options);
+bool ZlibDecompressFromProtoJson(const butil::IOBuf& data, google::protobuf::Message* msg,
+                                 const json2pb::ProtoJson2PbOptions& options);
+bool ZlibDecompressFromProtoText(const butil::IOBuf& data, google::protobuf::Message* msg);
 
 // Put compressed `in' into `out'.
 bool GzipCompress(const butil::IOBuf& in, butil::IOBuf* out,

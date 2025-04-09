@@ -30,6 +30,7 @@
 #include "butil/files/scoped_file.h"
 #include "brpc/socket.h"
 #include "butil/object_pool.h"
+#include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/builtin/version_service.h"
 #include "brpc/builtin/health_service.h"
 #include "brpc/builtin/list_service.h"
@@ -70,6 +71,13 @@ DECLARE_bool(enable_dir_service);
 
 namespace policy {
 DECLARE_bool(use_http_error_code);
+
+extern bool SerializeRpcMessage(const google::protobuf::Message& message, Controller& cntl,
+                                ContentType content_type, CompressType compress_type,
+                                butil::IOBuf* buf, std::string* error);
+extern bool DeserializeRpcMessage(const butil::IOBuf& data, Controller& cntl,
+                                  ContentType content_type, CompressType compress_type,
+                                  google::protobuf::Message* message, std::string* error);
 }
 
 }
@@ -1693,22 +1701,59 @@ public:
                   cntl->sampled_request()->meta.service_name());
         ASSERT_TRUE(cntl->sampled_request()->meta.has_method_name());
         ASSERT_EQ("Echo", cntl->sampled_request()->meta.method_name());
+        brpc::ContentType content_type = cntl->request_content_type();
+        brpc::CompressType compress_type = cntl->request_compress_type();
+
         test::EchoRequest echo_request;
         test::EchoResponse echo_response;
-        brpc::CompressType type = cntl->request_compress_type();
-        ASSERT_TRUE(brpc::ParseFromCompressedData(
-            request->serialized_data(), &echo_request, type));
+        std::string error;
+        ASSERT_TRUE(brpc::policy::DeserializeRpcMessage(
+            request->serialized_data(), *cntl, content_type,
+            compress_type, &echo_request, &error)) << error;
         ASSERT_EQ(EXP_REQUEST, echo_request.message());
         ASSERT_EQ(EXP_REQUEST, cntl->request_attachment().to_string());
 
-        echo_response.set_message(EXP_RESPONSE);
-        butil::IOBuf compressed_data;
-        ASSERT_TRUE(brpc::SerializeAsCompressedData(
-            echo_response, &response->serialized_data(), type));
-        cntl->set_response_compress_type(type);
+        content_type = (brpc::ContentType)_content_type_index;
+        compress_type = (brpc::CompressType)_compress_type_index;
+        ++_compress_type_index;
+        if (_compress_type_index == brpc::COMPRESS_TYPE_LZ4) {
+            ++_compress_type_index;
+        }
+        if (_compress_type_index > brpc::CompressType_MAX) {
+            _compress_type_index = brpc::CompressType_MIN;
+
+            ++_content_type_index;
+            if (_content_type_index > brpc::ContentType_MAX) {
+                _content_type_index = brpc::ContentType_MIN;
+            }
+        }
+
+        cntl->set_response_content_type(content_type);
+        cntl->set_response_compress_type(compress_type);
         cntl->response_attachment().append(EXP_RESPONSE);
+        echo_response.set_message(EXP_RESPONSE);
+        ASSERT_TRUE(brpc::policy::SerializeRpcMessage(
+            echo_response, *cntl, content_type, compress_type,
+            &response->serialized_data(), &error)) << error;
     }
+private:
+    int _content_type_index = brpc::ContentType_MIN;
+    int _compress_type_index = brpc::CompressType_MIN;
 };
+
+void TestBaiduMasterService(brpc::Channel& channel, brpc::CompressType compress_type) {
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl.request_attachment().append(EXP_REQUEST);
+    cntl.set_request_compress_type(compress_type);
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &req, &res, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+    ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
+}
 
 TEST_F(ServerTest, baidu_master_service) {
     butil::EndPoint ep;
@@ -1716,30 +1761,64 @@ TEST_F(ServerTest, baidu_master_service) {
     brpc::Server server;
     EchoServiceImpl service;
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    brpc::ServerOptions opt;
-    opt.baidu_master_service = new BaiduMasterServiceImpl;
-    ASSERT_EQ(0, server.Start(ep, &opt));
+    brpc::ServerOptions server_options;
+    server_options.baidu_master_service = new BaiduMasterServiceImpl;
+    ASSERT_EQ(0, server.Start(ep, &server_options));
 
-    brpc::Channel chan;
-    brpc::ChannelOptions copt;
-    copt.protocol = "baidu_std";
-    ASSERT_EQ(0, chan.Init(ep, &copt));
-    brpc::Controller cntl;
-    test::EchoRequest req;
-    test::EchoResponse res;
-    req.set_message(EXP_REQUEST);
-    cntl.request_attachment().append(EXP_REQUEST);
-    cntl.set_request_compress_type(brpc::COMPRESS_TYPE_GZIP);
-    test::EchoService_Stub stub(&chan);
-    stub.Echo(&cntl, &req, &res, NULL);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ(EXP_RESPONSE, res.message());
-    ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
+    brpc::Channel channel;
+    brpc::ChannelOptions channel_options;
+    channel_options.protocol = "baidu_std";
+    ASSERT_EQ(0, channel.Init(ep, &channel_options));
+
+    for (int i = 0; i < 10; ++i) {
+        TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_ZLIB);
+        TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_GZIP);
+        TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_SNAPPY);
+        TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_NONE);
+    }
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
 }
 
+void TestGenericCall(brpc::Channel& channel,
+                     brpc::ContentType content_type,
+                     brpc::CompressType compress_type) {
+    LOG(INFO) << "TestGenericCall: content_type=" << content_type
+              << ", compress_type=" << compress_type;
+    test::EchoRequest request;
+    test::EchoResponse response;
+    request.set_message(EXP_REQUEST);
+
+    brpc::SerializedResponse serialized_response;
+    brpc::SerializedRequest serialized_request;
+
+    brpc::Controller cntl;
+    cntl.set_request_content_type(content_type);
+    cntl.set_request_compress_type(compress_type);
+    cntl.request_attachment().append(EXP_REQUEST);
+
+    std::string error;
+    ASSERT_TRUE(brpc::policy::SerializeRpcMessage(
+        request, cntl, content_type, compress_type,
+        &serialized_request.serialized_data(), &error)) << error;
+    auto sampled_request = new (std::nothrow) brpc::SampledRequest();
+    sampled_request->meta.set_service_name(
+        test::EchoService::descriptor()->full_name());
+    sampled_request->meta.set_method_name(
+        test::EchoService::descriptor()->FindMethodByName("Echo")->name());
+    cntl.reset_sampled_request(sampled_request);
+
+    channel.CallMethod(NULL, &cntl, &serialized_request, &serialized_response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_TRUE(brpc::policy::DeserializeRpcMessage(serialized_response.serialized_data(),
+                                                    cntl, cntl.response_content_type(),
+                                                    cntl.response_compress_type(),
+                                                    &response, &error)) << error;
+    ASSERT_EQ(EXP_RESPONSE, response.message());
+    ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
+}
 
 TEST_F(ServerTest, generic_call) {
     butil::EndPoint ep;
@@ -1747,42 +1826,34 @@ TEST_F(ServerTest, generic_call) {
     brpc::Server server;
     EchoServiceImpl service;
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    brpc::ServerOptions opt;
-    opt.baidu_master_service = new BaiduMasterServiceImpl;
-    ASSERT_EQ(0, server.Start(ep, &opt));
+    brpc::ServerOptions server_options;
+    server_options.baidu_master_service = new BaiduMasterServiceImpl;
+    ASSERT_EQ(0, server.Start(ep, &server_options));
 
-    {
-        brpc::Channel chan;
-        brpc::ChannelOptions copt;
-        copt.protocol = "baidu_std";
-        ASSERT_EQ(0, chan.Init(ep, &copt));
-        brpc::Controller cntl;
-        test::EchoRequest req;
-        test::EchoResponse res;
-        req.set_message(EXP_REQUEST);
+    brpc::Channel channel;
+    brpc::ChannelOptions channel_options;
+    channel_options.protocol = "baidu_std";
+    ASSERT_EQ(0, channel.Init(ep, &channel_options));
 
-        brpc::SerializedResponse serialized_response;
-        brpc::SerializedRequest serialized_request;
-        brpc::CompressType type = brpc::COMPRESS_TYPE_GZIP;
-        ASSERT_TRUE(brpc::SerializeAsCompressedData(
-            req, &serialized_request.serialized_data(), type));
-        cntl.request_attachment().append(EXP_REQUEST);
-        cntl.set_request_compress_type(type);
-        auto sampled_request = new (std::nothrow) brpc::SampledRequest();
-        sampled_request->meta.set_service_name(
-            test::EchoService::descriptor()->full_name());
-        sampled_request->meta.set_method_name(
-            test::EchoService::descriptor()->FindMethodByName("Echo")->name());
-        cntl.reset_sampled_request(sampled_request);
-        chan.CallMethod(NULL, &cntl, &serialized_request, &serialized_response, NULL);
-        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_ZLIB);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_GZIP);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_SNAPPY);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_NONE);
 
-        ASSERT_TRUE(brpc::ParseFromCompressedData(serialized_response.serialized_data(),
-                                                  &res, cntl.response_compress_type()))
-                                                  << serialized_response.serialized_data().size();
-        ASSERT_EQ(EXP_RESPONSE, res.message());
-        ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
-    }
+    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_ZLIB);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_GZIP);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_SNAPPY);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_NONE);
+
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON, brpc::COMPRESS_TYPE_ZLIB);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON, brpc::COMPRESS_TYPE_GZIP);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON, brpc::COMPRESS_TYPE_SNAPPY);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON, brpc::COMPRESS_TYPE_NONE);
+
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT, brpc::COMPRESS_TYPE_ZLIB);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT, brpc::COMPRESS_TYPE_GZIP);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT, brpc::COMPRESS_TYPE_SNAPPY);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT, brpc::COMPRESS_TYPE_NONE);
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());

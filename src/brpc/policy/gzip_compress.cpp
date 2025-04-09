@@ -17,6 +17,7 @@
 
 
 #include <google/protobuf/io/gzip_stream.h>    // GzipXXXStream
+#include <google/protobuf/text_format.h>
 #include "butil/logging.h"
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/protocol.h"
@@ -25,43 +26,169 @@
 namespace brpc {
 namespace policy {
 
-static void LogError(const google::protobuf::io::GzipOutputStream& gzip) {
-    if (gzip.ZlibErrorMessage()) {
-        LOG(WARNING) << "Fail to decompress: " << gzip.ZlibErrorMessage();
+template <bool IsCompress>
+void LogError(const char* error_message1 = NULL,
+              const char* error_message2 = NULL) {
+    if (IsCompress) {
+        LOG(WARNING) << "Fail to compress. "
+                     << (NULL == error_message1 ? "" : error_message1) << " "
+                     << (NULL == error_message2 ? "" : error_message2);
     } else {
-        LOG(WARNING) << "Fail to decompress.";
+        LOG(WARNING) << "Fail to decompress."
+                     << error_message1 << " "
+                     << error_message2;
     }
 }
 
-static void LogError(const google::protobuf::io::GzipInputStream& gzip) {
-    if (gzip.ZlibErrorMessage()) {
-        LOG(WARNING) << "Fail to decompress: " << gzip.ZlibErrorMessage();
-    } else {
-        LOG(WARNING) << "Fail to decompress.";
-    }
-}
-
-bool GzipCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
+static bool Compress(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                     google::protobuf::io::GzipOutputStream::Format format) {
     butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options gzip_opt;
-    gzip_opt.format = google::protobuf::io::GzipOutputStream::GZIP;
-    google::protobuf::io::GzipOutputStream gzip(&wrapper, gzip_opt);
+    google::protobuf::io::GzipOutputStream::Options options;
+    options.format = format;
+    google::protobuf::io::GzipOutputStream gzip(&wrapper, options);
     if (!msg.SerializeToZeroCopyStream(&gzip)) {
-        LogError(gzip);
+        LogError<true>(gzip.ZlibErrorMessage());
         return false;
     }
     return gzip.Close();
 }
 
-bool GzipDecompress(const butil::IOBuf& data, google::protobuf::Message* msg) {
+static bool Compress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                          const json2pb::Pb2JsonOptions& options,
+                          google::protobuf::io::GzipOutputStream::Format format) {
+    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
+    google::protobuf::io::GzipOutputStream::Options gzip_opt;
+    gzip_opt.format = format;
+    google::protobuf::io::GzipOutputStream gzip(&wrapper, gzip_opt);
+    std::string error;
+    if (!json2pb::ProtoMessageToJson(msg, &gzip, options, &error)) {
+        LogError<true>(error.c_str(), gzip.ZlibErrorMessage());
+        return false;
+    }
+    return gzip.Close();
+}
+
+static bool Compress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                               const json2pb::Pb2ProtoJsonOptions& options,
+                               google::protobuf::io::GzipOutputStream::Format format) {
+    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
+    google::protobuf::io::GzipOutputStream::Options gzip_opt;
+    gzip_opt.format = format;
+    google::protobuf::io::GzipOutputStream gzip(&wrapper, gzip_opt);
+    std::string error;
+    if (!json2pb::ProtoMessageToProtoJson(msg, &gzip, options, &error)) {
+        LogError<true>(error.c_str(), gzip.ZlibErrorMessage());
+        return false;
+    }
+    return gzip.Close();
+}
+
+static bool Compress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                               google::protobuf::io::GzipOutputStream::Format format) {
+    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
+    google::protobuf::io::GzipOutputStream::Options gzip_opt;
+    gzip_opt.format = format;
+    google::protobuf::io::GzipOutputStream gzip(&wrapper, gzip_opt);
+    if (!google::protobuf::TextFormat::Print(msg, &gzip)) {
+        LogError<true>(gzip.ZlibErrorMessage());
+        return false;
+    }
+    return gzip.Close();
+}
+
+static bool Decompress(const butil::IOBuf& data, google::protobuf::Message* msg,
+                       google::protobuf::io::GzipInputStream::Format format) {
     butil::IOBufAsZeroCopyInputStream wrapper(data);
-    google::protobuf::io::GzipInputStream gzip(
-            &wrapper, google::protobuf::io::GzipInputStream::GZIP);
+    google::protobuf::io::GzipInputStream gzip(&wrapper, format);
     if (!ParsePbFromZeroCopyStream(msg, &gzip)) {
-        LogError(gzip);
+        LogError<false>(gzip.ZlibErrorMessage(), gzip.ZlibErrorMessage());
         return false;
     }
     return true;
+}
+
+static bool DecompressFromJson(const butil::IOBuf& data,
+                               google::protobuf::Message* msg,
+                               const json2pb::Json2PbOptions& options,
+                               google::protobuf::io::GzipInputStream::Format format) {
+    butil::IOBufAsZeroCopyInputStream wrapper(data);
+    google::protobuf::io::GzipInputStream gzip(&wrapper, format);
+    std::string error;
+    if (!json2pb::JsonToProtoMessage(&gzip, msg, options, &error)) {
+        LogError<false>(error.c_str(), gzip.ZlibErrorMessage());
+        return false;
+    }
+    return true;
+}
+
+static bool DecompressFromProtoJson(const butil::IOBuf& data,
+                                    google::protobuf::Message* msg,
+                                    const json2pb::ProtoJson2PbOptions& options,
+                                    google::protobuf::io::GzipInputStream::Format format) {
+    butil::IOBufAsZeroCopyInputStream wrapper(data);
+    google::protobuf::io::GzipInputStream gzip(&wrapper, format);
+    std::string error;
+    if (!json2pb::ProtoJsonToProtoMessage(&gzip, msg, options, &error)) {
+        LogError<false>(error.c_str(), gzip.ZlibErrorMessage());
+        return false;
+    }
+    return true;
+}
+
+static bool DecompressFromProtoText(const butil::IOBuf& data,
+                                    google::protobuf::Message* msg,
+                                    google::protobuf::io::GzipInputStream::Format format) {
+    butil::IOBufAsZeroCopyInputStream wrapper(data);
+    google::protobuf::io::GzipInputStream gzip(&wrapper, format);
+    std::string error;
+    if (!google::protobuf::TextFormat::Parse(&gzip, msg)) {
+        LogError<false>(error.c_str(), gzip.ZlibErrorMessage());
+        return false;
+    }
+    return true;
+}
+
+bool GzipCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
+    return Compress(msg, buf, google::protobuf::io::GzipOutputStream::GZIP);
+}
+
+bool GzipCompress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                       const json2pb::Pb2JsonOptions& options) {
+    return Compress2Json(
+        msg, buf, options, google::protobuf::io::GzipOutputStream::GZIP);
+}
+
+bool GzipCompress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                            const json2pb::Pb2ProtoJsonOptions& options) {
+    return Compress2ProtoJson(
+        msg, buf, options, google::protobuf::io::GzipOutputStream::GZIP);
+}
+
+bool GzipCompress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf) {
+    return Compress2ProtoText(msg, buf, google::protobuf::io::GzipOutputStream::GZIP);
+}
+
+bool GzipDecompress(const butil::IOBuf& data, google::protobuf::Message* msg) {
+    return Decompress(data, msg, google::protobuf::io::GzipInputStream::GZIP);
+}
+
+bool GzipDecompressFromJson(const butil::IOBuf& data, google::protobuf::Message* msg,
+                            const json2pb::Json2PbOptions& options) {
+    return DecompressFromJson(
+        data, msg, options, google::protobuf::io::GzipInputStream::GZIP);
+}
+
+bool GzipDecompressFromProtoJson(const butil::IOBuf& data,
+                                 google::protobuf::Message* msg,
+                                 const json2pb::ProtoJson2PbOptions& options) {
+    return DecompressFromProtoJson(
+        data, msg, options, google::protobuf::io::GzipInputStream::GZIP);
+}
+
+bool GzipDecompressFromProtoText(const butil::IOBuf& data,
+                                 google::protobuf::Message* msg) {
+    return DecompressFromProtoText(
+        data, msg, google::protobuf::io::GzipInputStream::GZIP);
 }
 
 bool GzipCompress(const butil::IOBuf& msg, butil::IOBuf* buf,
@@ -93,7 +220,7 @@ bool GzipCompress(const butil::IOBuf& msg, butil::IOBuf* buf,
     }
     if (size_in != 0 || (size_t)in.ByteCount() != msg.size()) {
         // If any stage is not fully consumed, something went wrong.
-        LogError(out);
+        LogError<true>(out.ZlibErrorMessage());
         return false;
     }
     if (size_out != 0) {
@@ -132,7 +259,7 @@ inline bool GzipDecompressBase(
         // If any stage is not fully consumed, something went wrong.
         // Here we call in.Next addtitionally to make sure that the gzip
         // "blackbox" does not have buffer left.
-        LogError(in);
+        LogError<false>(in.ZlibErrorMessage());
         return false;
     }
     if (size_out != 0) {
@@ -141,19 +268,48 @@ inline bool GzipDecompressBase(
     return true;
 }
 
-bool ZlibCompress(const google::protobuf::Message& res, butil::IOBuf* buf) {
-    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options zlib_opt;
-    zlib_opt.format = google::protobuf::io::GzipOutputStream::ZLIB;
-    google::protobuf::io::GzipOutputStream zlib(&wrapper, zlib_opt);
-    return res.SerializeToZeroCopyStream(&zlib) && zlib.Close();
+bool ZlibCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
+    return Compress(msg, buf, google::protobuf::io::GzipOutputStream::ZLIB);
 }
 
-bool ZlibDecompress(const butil::IOBuf& data, google::protobuf::Message* req) {
-    butil::IOBufAsZeroCopyInputStream wrapper(data);
-    google::protobuf::io::GzipInputStream zlib(
-        &wrapper, google::protobuf::io::GzipInputStream::ZLIB);
-    return ParsePbFromZeroCopyStream(req, &zlib);
+bool ZlibCompress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                       const json2pb::Pb2JsonOptions& options) {
+    return Compress2Json(
+        msg, buf, options, google::protobuf::io::GzipOutputStream::ZLIB);
+}
+
+bool ZlibCompress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                            const json2pb::Pb2ProtoJsonOptions& options) {
+    return Compress2ProtoJson(
+        msg, buf, options, google::protobuf::io::GzipOutputStream::ZLIB);
+}
+
+bool ZlibCompress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf) {
+    return Compress2ProtoText(msg, buf, google::protobuf::io::GzipOutputStream::ZLIB);
+}
+
+bool ZlibDecompress(const butil::IOBuf& data,
+                    google::protobuf::Message* msg) {
+    return Decompress(data, msg, google::protobuf::io::GzipInputStream::ZLIB);
+}
+
+bool ZlibDecompressFromJson(const butil::IOBuf& data,
+                            google::protobuf::Message* msg,
+                            const json2pb::Json2PbOptions& options) {
+    return DecompressFromJson(
+        data, msg, options, google::protobuf::io::GzipInputStream::ZLIB);
+}
+
+bool ZlibDecompressFromProtoJson(const butil::IOBuf& data,
+                                 google::protobuf::Message* msg,
+                                 const json2pb::ProtoJson2PbOptions& options) {
+    return DecompressFromProtoJson(
+        data, msg, options, google::protobuf::io::GzipInputStream::ZLIB);
+}
+
+bool ZlibDecompressFromProtoText(const butil::IOBuf& data,
+                                 google::protobuf::Message* msg) {
+    return DecompressFromProtoText(data, msg, google::protobuf::io::GzipInputStream::ZLIB);
 }
 
 bool GzipDecompress(const butil::IOBuf& data, butil::IOBuf* msg) {

@@ -397,6 +397,7 @@ private:
     bthread_mutex_t _mutex;
 };
 
+#ifndef BUTIL_USE_ASAN
 volatile bool g_stop = false;
 bool started_wait = false;
 bool ended_wait = false;
@@ -449,7 +450,6 @@ TEST(CondTest, too_many_bthreads_from_pthread) {
     launch_many_bthreads();
 }
 
-#ifndef BUTIL_USE_ASAN
 static void* run_launch_many_bthreads(void*) {
     launch_many_bthreads();
     return NULL;

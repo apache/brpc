@@ -718,14 +718,11 @@ bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
                              const ProtoJson2PbOptions& options,
                              std::string* error) {
     TypeResolverUniqueptr type_resolver = GetTypeResolver(*message);
+    std::string type_url = GetTypeUrl(*message);
     butil::IOBuf buf;
     butil::IOBufAsZeroCopyOutputStream output_stream(&buf);
-    std::string type_url = GetTypeUrl(*message);
     auto st = google::protobuf::util::JsonToBinaryStream(
         type_resolver.get(), type_url, json, &output_stream, options);
-
-    butil::IOBufAsZeroCopyInputStream input_stream(buf);
-    google::protobuf::io::CodedInputStream decoder(&input_stream);
     if (!st.ok()) {
         if (NULL != error) {
             *error = st.ToString();
@@ -733,6 +730,8 @@ bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
         return false;
     }
 
+    butil::IOBufAsZeroCopyInputStream input_stream(buf);
+    google::protobuf::io::CodedInputStream decoder(&input_stream);
     bool ok = message->ParseFromCodedStream(&decoder);
     if (!ok && NULL != error) {
         *error = "Fail to ParseFromCodedStream";

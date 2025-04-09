@@ -130,16 +130,11 @@ void ListProtocols(std::vector<std::pair<ProtocolType, Protocol> >* vec) {
     }
 }
 
-void SerializeRequestDefault(butil::IOBuf* buf,
-                             Controller* cntl,
+void SerializeRequestDefault(butil::IOBuf* buf, Controller* cntl,
                              const google::protobuf::Message* request) {
     // Check sanity of request.
     if (!request) {
         return cntl->SetFailed(EREQUEST, "`request' is NULL");
-    }
-    if (request->GetDescriptor() == SerializedRequest::descriptor()) {
-        buf->append(((SerializedRequest*)request)->serialized_data());
-        return;
     }
     if (!request->IsInitialized()) {
         return cntl->SetFailed(

@@ -21,6 +21,8 @@
 
 #include <google/protobuf/message.h>              // Message
 #include "butil/iobuf.h"                           // butil::IOBuf
+#include "json2pb/pb_to_json.h"
+#include "json2pb/json_to_pb.h"
 #include "brpc/options.pb.h"                     // CompressType
 
 namespace brpc {
@@ -29,10 +31,20 @@ struct CompressHandler {
     // Compress serialized `msg' into `buf'.
     // Returns true on success, false otherwise
     bool (*Compress)(const google::protobuf::Message& msg, butil::IOBuf* buf);
+    bool (*Compress2Json)(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                          const json2pb::Pb2JsonOptions& options);
+    bool (*Compress2ProtoJson)(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                               const json2pb::Pb2ProtoJsonOptions& options);
+    bool (*Compress2ProtoText)(const google::protobuf::Message& msg, butil::IOBuf* buf);
 
     // Parse decompressed `data' as `msg'.
     // Returns true on success, false otherwise
     bool (*Decompress)(const butil::IOBuf& data, google::protobuf::Message* msg);
+    bool (*DecompressFromJson)(const butil::IOBuf& data, google::protobuf::Message* msg,
+                               const json2pb::Json2PbOptions& options);
+    bool (*DecompressFromProtoJson)(const butil::IOBuf& data, google::protobuf::Message* msg,
+                                    const json2pb::ProtoJson2PbOptions& options);
+    bool (*DecompressFromProtoText)(const butil::IOBuf& data, google::protobuf::Message* msg);
 
     // Name of the compression algorithm, must be string constant.
     const char* name;
@@ -41,6 +53,9 @@ struct CompressHandler {
 // [NOT thread-safe] Register `handler' using key=`type'
 // Returns 0 on success, -1 otherwise
 int RegisterCompressHandler(CompressType type, CompressHandler handler);
+
+// Returns CompressHandler pointer of `type' if registered, NULL otherwise.
+const CompressHandler* FindCompressHandler(CompressType type);
 
 // Returns the `name' of the CompressType if registered
 const char* CompressTypeToCStr(CompressType type);

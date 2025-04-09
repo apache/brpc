@@ -33,6 +33,7 @@ message RpcMeta {
     optional bytes authentication_data = 7;
     optional StreamSettings stream_settings = 8;
     map<string, string> user_fields = 9;
+    optional ContentType content_type = 10;
 }
 
 message RpcRequestMeta {
