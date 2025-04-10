@@ -26,6 +26,8 @@
 #include "bvar/passive_status.h"
 #include "bvar/window.h"
 
+DEFINE_bool(bvar_enable_sampling, true, "is enable bvar sampling");
+
 namespace bvar {
 namespace detail {
 
@@ -199,8 +201,6 @@ void SamplerCollector::run() {
 Sampler::Sampler() : _used(true) {}
 
 Sampler::~Sampler() {}
-
-DEFINE_bool(bvar_enable_sampling, true, "is enable bvar sampling");
 
 void Sampler::schedule() {
     // since the SamplerCollector is initialized before the program starts
