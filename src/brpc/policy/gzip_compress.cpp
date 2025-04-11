@@ -21,180 +21,85 @@
 #include "butil/logging.h"
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/protocol.h"
-
+#include "brpc/compress.h"
 
 namespace brpc {
 namespace policy {
 
-template <bool IsCompress>
-void LogError(const char* error_message1 = NULL,
-              const char* error_message2 = NULL) {
-    if (IsCompress) {
-        LOG(WARNING) << "Fail to compress. "
-                     << (NULL == error_message1 ? "" : error_message1) << " "
-                     << (NULL == error_message2 ? "" : error_message2);
-    } else {
-        LOG(WARNING) << "Fail to decompress."
-                     << error_message1 << " "
-                     << error_message2;
+const char* Format2CStr(google::protobuf::io::GzipOutputStream::Format format) {
+    switch (format) {
+    case google::protobuf::io::GzipOutputStream::GZIP:
+        return "gzip";
+    case google::protobuf::io::GzipOutputStream::ZLIB:
+        return "zlib";
+    default:
+        return "unknown";
+    }
+}
+
+const char* Format2CStr(google::protobuf::io::GzipInputStream::Format format) {
+    switch (format) {
+    case google::protobuf::io::GzipInputStream::GZIP:
+        return "gzip";
+    case google::protobuf::io::GzipInputStream::ZLIB:
+        return "zlib";
+    default:
+        return "unknown";
     }
 }
 
 static bool Compress(const google::protobuf::Message& msg, butil::IOBuf* buf,
                      google::protobuf::io::GzipOutputStream::Format format) {
     butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options options;
+    GzipCompressOptions options;
     options.format = format;
     google::protobuf::io::GzipOutputStream gzip(&wrapper, options);
-    if (!msg.SerializeToZeroCopyStream(&gzip)) {
-        LogError<true>(gzip.ZlibErrorMessage());
-        return false;
+    bool ok;
+    if (msg.GetDescriptor() == Serializer::descriptor()) {
+        ok = ((const Serializer&)msg).SerializeTo(&gzip);
+    } else {
+        ok = msg.SerializeToZeroCopyStream(&gzip);
     }
-    return gzip.Close();
-}
-
-static bool Compress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                          const json2pb::Pb2JsonOptions& options,
-                          google::protobuf::io::GzipOutputStream::Format format) {
-    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options gzip_opt;
-    gzip_opt.format = format;
-    google::protobuf::io::GzipOutputStream gzip(&wrapper, gzip_opt);
-    std::string error;
-    if (!json2pb::ProtoMessageToJson(msg, &gzip, options, &error)) {
-        LogError<true>(error.c_str(), gzip.ZlibErrorMessage());
-        return false;
+    if (!ok) {
+        LOG(WARNING) << "Fail to serialize input message="
+                     << msg.GetDescriptor()->full_name()
+                     << ", format=" << Format2CStr(format) << " : "
+                     << (NULL == gzip.ZlibErrorMessage() ? "" : gzip.ZlibErrorMessage());
     }
-    return gzip.Close();
-}
-
-static bool Compress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                               const json2pb::Pb2ProtoJsonOptions& options,
-                               google::protobuf::io::GzipOutputStream::Format format) {
-    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options gzip_opt;
-    gzip_opt.format = format;
-    google::protobuf::io::GzipOutputStream gzip(&wrapper, gzip_opt);
-    std::string error;
-    if (!json2pb::ProtoMessageToProtoJson(msg, &gzip, options, &error)) {
-        LogError<true>(error.c_str(), gzip.ZlibErrorMessage());
-        return false;
-    }
-    return gzip.Close();
-}
-
-static bool Compress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                               google::protobuf::io::GzipOutputStream::Format format) {
-    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options gzip_opt;
-    gzip_opt.format = format;
-    google::protobuf::io::GzipOutputStream gzip(&wrapper, gzip_opt);
-    if (!google::protobuf::TextFormat::Print(msg, &gzip)) {
-        LogError<true>(gzip.ZlibErrorMessage());
-        return false;
-    }
-    return gzip.Close();
+    return ok && gzip.Close();
 }
 
 static bool Decompress(const butil::IOBuf& data, google::protobuf::Message* msg,
                        google::protobuf::io::GzipInputStream::Format format) {
     butil::IOBufAsZeroCopyInputStream wrapper(data);
     google::protobuf::io::GzipInputStream gzip(&wrapper, format);
-    if (!ParsePbFromZeroCopyStream(msg, &gzip)) {
-        LogError<false>(gzip.ZlibErrorMessage(), gzip.ZlibErrorMessage());
-        return false;
+    bool ok;
+    if (msg->GetDescriptor() == Deserializer::descriptor()) {
+        ok = ((Deserializer*)msg)->DeserializeFrom(&gzip);
+    } else {
+        ok = msg->ParseFromZeroCopyStream(&gzip);
     }
-    return true;
-}
-
-static bool DecompressFromJson(const butil::IOBuf& data,
-                               google::protobuf::Message* msg,
-                               const json2pb::Json2PbOptions& options,
-                               google::protobuf::io::GzipInputStream::Format format) {
-    butil::IOBufAsZeroCopyInputStream wrapper(data);
-    google::protobuf::io::GzipInputStream gzip(&wrapper, format);
-    std::string error;
-    if (!json2pb::JsonToProtoMessage(&gzip, msg, options, &error)) {
-        LogError<false>(error.c_str(), gzip.ZlibErrorMessage());
-        return false;
+    if (!ok) {
+        LOG(WARNING) << "Fail to deserialize input message="
+                     << msg->GetDescriptor()->full_name()
+                     << ", format=" << Format2CStr(format) << " : "
+                     << (NULL == gzip.ZlibErrorMessage() ? "" : gzip.ZlibErrorMessage());
     }
-    return true;
-}
-
-static bool DecompressFromProtoJson(const butil::IOBuf& data,
-                                    google::protobuf::Message* msg,
-                                    const json2pb::ProtoJson2PbOptions& options,
-                                    google::protobuf::io::GzipInputStream::Format format) {
-    butil::IOBufAsZeroCopyInputStream wrapper(data);
-    google::protobuf::io::GzipInputStream gzip(&wrapper, format);
-    std::string error;
-    if (!json2pb::ProtoJsonToProtoMessage(&gzip, msg, options, &error)) {
-        LogError<false>(error.c_str(), gzip.ZlibErrorMessage());
-        return false;
-    }
-    return true;
-}
-
-static bool DecompressFromProtoText(const butil::IOBuf& data,
-                                    google::protobuf::Message* msg,
-                                    google::protobuf::io::GzipInputStream::Format format) {
-    butil::IOBufAsZeroCopyInputStream wrapper(data);
-    google::protobuf::io::GzipInputStream gzip(&wrapper, format);
-    std::string error;
-    if (!google::protobuf::TextFormat::Parse(&gzip, msg)) {
-        LogError<false>(error.c_str(), gzip.ZlibErrorMessage());
-        return false;
-    }
-    return true;
+    return ok;
 }
 
 bool GzipCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
     return Compress(msg, buf, google::protobuf::io::GzipOutputStream::GZIP);
 }
 
-bool GzipCompress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                       const json2pb::Pb2JsonOptions& options) {
-    return Compress2Json(
-        msg, buf, options, google::protobuf::io::GzipOutputStream::GZIP);
-}
-
-bool GzipCompress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                            const json2pb::Pb2ProtoJsonOptions& options) {
-    return Compress2ProtoJson(
-        msg, buf, options, google::protobuf::io::GzipOutputStream::GZIP);
-}
-
-bool GzipCompress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf) {
-    return Compress2ProtoText(msg, buf, google::protobuf::io::GzipOutputStream::GZIP);
-}
-
 bool GzipDecompress(const butil::IOBuf& data, google::protobuf::Message* msg) {
     return Decompress(data, msg, google::protobuf::io::GzipInputStream::GZIP);
-}
-
-bool GzipDecompressFromJson(const butil::IOBuf& data, google::protobuf::Message* msg,
-                            const json2pb::Json2PbOptions& options) {
-    return DecompressFromJson(
-        data, msg, options, google::protobuf::io::GzipInputStream::GZIP);
-}
-
-bool GzipDecompressFromProtoJson(const butil::IOBuf& data,
-                                 google::protobuf::Message* msg,
-                                 const json2pb::ProtoJson2PbOptions& options) {
-    return DecompressFromProtoJson(
-        data, msg, options, google::protobuf::io::GzipInputStream::GZIP);
-}
-
-bool GzipDecompressFromProtoText(const butil::IOBuf& data,
-                                 google::protobuf::Message* msg) {
-    return DecompressFromProtoText(
-        data, msg, google::protobuf::io::GzipInputStream::GZIP);
 }
 
 bool GzipCompress(const butil::IOBuf& msg, butil::IOBuf* buf,
                   const GzipCompressOptions* options_in) {
     butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options gzip_opt;
+    GzipCompressOptions gzip_opt;
     if (options_in) {
         gzip_opt = *options_in;
     }
@@ -220,7 +125,8 @@ bool GzipCompress(const butil::IOBuf& msg, butil::IOBuf* buf,
     }
     if (size_in != 0 || (size_t)in.ByteCount() != msg.size()) {
         // If any stage is not fully consumed, something went wrong.
-        LogError<true>(out.ZlibErrorMessage());
+        LOG(WARNING) << "Fail to compress, format=" << Format2CStr(gzip_opt.format)
+                     << " : " << out.ZlibErrorMessage();
         return false;
     }
     if (size_out != 0) {
@@ -259,7 +165,8 @@ inline bool GzipDecompressBase(
         // If any stage is not fully consumed, something went wrong.
         // Here we call in.Next addtitionally to make sure that the gzip
         // "blackbox" does not have buffer left.
-        LogError<false>(in.ZlibErrorMessage());
+        LOG(WARNING) << "Fail to decompress, format=" << Format2CStr(format)
+                     << " : " << in.ZlibErrorMessage();
         return false;
     }
     if (size_out != 0) {
@@ -272,44 +179,9 @@ bool ZlibCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
     return Compress(msg, buf, google::protobuf::io::GzipOutputStream::ZLIB);
 }
 
-bool ZlibCompress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                       const json2pb::Pb2JsonOptions& options) {
-    return Compress2Json(
-        msg, buf, options, google::protobuf::io::GzipOutputStream::ZLIB);
-}
-
-bool ZlibCompress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                            const json2pb::Pb2ProtoJsonOptions& options) {
-    return Compress2ProtoJson(
-        msg, buf, options, google::protobuf::io::GzipOutputStream::ZLIB);
-}
-
-bool ZlibCompress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf) {
-    return Compress2ProtoText(msg, buf, google::protobuf::io::GzipOutputStream::ZLIB);
-}
-
 bool ZlibDecompress(const butil::IOBuf& data,
                     google::protobuf::Message* msg) {
     return Decompress(data, msg, google::protobuf::io::GzipInputStream::ZLIB);
-}
-
-bool ZlibDecompressFromJson(const butil::IOBuf& data,
-                            google::protobuf::Message* msg,
-                            const json2pb::Json2PbOptions& options) {
-    return DecompressFromJson(
-        data, msg, options, google::protobuf::io::GzipInputStream::ZLIB);
-}
-
-bool ZlibDecompressFromProtoJson(const butil::IOBuf& data,
-                                 google::protobuf::Message* msg,
-                                 const json2pb::ProtoJson2PbOptions& options) {
-    return DecompressFromProtoJson(
-        data, msg, options, google::protobuf::io::GzipInputStream::ZLIB);
-}
-
-bool ZlibDecompressFromProtoText(const butil::IOBuf& data,
-                                 google::protobuf::Message* msg) {
-    return DecompressFromProtoText(data, msg, google::protobuf::io::GzipInputStream::ZLIB);
 }
 
 bool GzipDecompress(const butil::IOBuf& data, butil::IOBuf* msg) {

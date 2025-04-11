@@ -28,7 +28,7 @@ NsheadMessage::NsheadMessage()
 }
 
 NsheadMessage::NsheadMessage(const NsheadMessage& from)
-    : NonreflectableMessage<NsheadMessage>() {
+    : NonreflectableMessage<NsheadMessage>(from) {
     SharedCtor();
     MergeFrom(from);
 }

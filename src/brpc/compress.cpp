@@ -20,13 +20,12 @@
 #include "json2pb/json_to_pb.h"
 #include "brpc/compress.h"
 #include "brpc/protocol.h"
+#include "brpc/proto_base.pb.h"
 
 namespace brpc {
 
 static const int MAX_HANDLER_SIZE = 1024;
-static CompressHandler s_handler_map[MAX_HANDLER_SIZE] = {
-    { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL }
-};
+static CompressHandler s_handler_map[MAX_HANDLER_SIZE] = { { NULL, NULL, NULL } };
 
 int RegisterCompressHandler(CompressType type, 
                             CompressHandler handler) {
@@ -85,10 +84,14 @@ bool ParseFromCompressedData(const butil::IOBuf& data,
         return ParsePbFromIOBuf(msg, data);
     }
     const CompressHandler* handler = FindCompressHandler(compress_type);
-    if (NULL != handler) {
-        return handler->Decompress(data, msg);
+    if (NULL == handler) {
+        return false;
     }
-    return false;
+
+    Deserializer deserializer([msg](google::protobuf::io::ZeroCopyInputStream* input) {
+        return msg->ParseFromZeroCopyStream(input);
+    });
+    return handler->Decompress(data, &deserializer);
 }
 
 bool SerializeAsCompressedData(const google::protobuf::Message& msg,
@@ -98,10 +101,28 @@ bool SerializeAsCompressedData(const google::protobuf::Message& msg,
         return msg.SerializeToZeroCopyStream(&wrapper);
     }
     const CompressHandler* handler = FindCompressHandler(compress_type);
-    if (NULL != handler) {
-        return handler->Compress(msg, buf);
+    if (NULL == handler) {
+        return false;
     }
-    return false;
+
+    Serializer serializer([&msg](google::protobuf::io::ZeroCopyOutputStream* output) {
+        return msg.SerializeToZeroCopyStream(output);
+    });
+    return handler->Compress(serializer, buf);
+}
+
+::google::protobuf::Metadata Serializer::GetMetadata() const {
+    ::google::protobuf::Metadata metadata{};
+    metadata.descriptor = SerializerBase::descriptor();
+    metadata.reflection = nullptr;
+    return metadata;
+}
+
+::google::protobuf::Metadata Deserializer::GetMetadata() const {
+    ::google::protobuf::Metadata metadata{};
+    metadata.descriptor = DeserializerBase::descriptor();
+    metadata.reflection = nullptr;
+    return metadata;
 }
 
 } // namespace brpc

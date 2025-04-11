@@ -21,30 +21,151 @@
 
 #include <google/protobuf/message.h>              // Message
 #include "butil/iobuf.h"                           // butil::IOBuf
-#include "json2pb/pb_to_json.h"
-#include "json2pb/json_to_pb.h"
+#include "butil/logging.h"
 #include "brpc/options.pb.h"                     // CompressType
+#include "brpc/nonreflectable_message.h"
 
 namespace brpc {
+
+// Serializer can be used to implement custom serialization
+// before compression with user callback.
+class Serializer : public NonreflectableMessage<Serializer> {
+public:
+    using Callback = std::function<bool(google::protobuf::io::ZeroCopyOutputStream*)>;
+
+    Serializer() :Serializer(NULL) {}
+
+    explicit Serializer(Callback callback)
+        :_callback(std::move(callback)) {
+        SharedCtor();
+    }
+
+    ~Serializer() override {
+        SharedDtor();
+    }
+
+    Serializer(const Serializer& from)
+        : NonreflectableMessage(from) {
+        SharedCtor();
+        MergeFrom(from);
+    }
+
+    Serializer& operator=(const Serializer& from) {
+        CopyFrom(from);
+        return *this;
+    }
+
+    void Swap(Serializer* other) {
+        if (other != this) {
+        }
+    }
+
+    void MergeFrom(const Serializer& from) override {
+        CHECK_NE(&from, this);
+    }
+
+    // implements Message ----------------------------------------------
+    void Clear() override {
+        _callback = nullptr;
+    }
+    size_t ByteSizeLong() const override { return 0; }
+    int GetCachedSize() const PB_425_OVERRIDE { return ByteSize(); }
+
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
+
+    // Converts the data into `output' for later compression.
+    bool SerializeTo(google::protobuf::io::ZeroCopyOutputStream* output) const {
+        if (!_callback) {
+            LOG(WARNING) << "Serializer::SerializeTo() called without callback";
+            return false;
+        }
+        return _callback(output);
+    }
+
+    void SetCallback(Callback callback) {
+        _callback = std::move(callback);
+    }
+
+private:
+    void SharedCtor() {}
+    void SharedDtor() {}
+
+    Callback _callback;
+};
+
+// Deserializer can be used to implement custom deserialization
+// after decompression with user callback.
+class Deserializer : public NonreflectableMessage<Deserializer> {
+public:
+public:
+    using Callback = std::function<bool(google::protobuf::io::ZeroCopyInputStream*)>;
+
+    Deserializer() :Deserializer(NULL) {}
+
+    explicit Deserializer(Callback callback) : _callback(std::move(callback)) {
+        SharedCtor();
+    }
+
+    ~Deserializer() override {
+        SharedDtor();
+    }
+
+    Deserializer(const Deserializer& from)
+        : NonreflectableMessage(from) {
+        SharedCtor();
+        MergeFrom(from);
+    }
+
+    Deserializer& operator=(const Deserializer& from) {
+        CopyFrom(from);
+        return *this;
+    }
+
+    void Swap(Deserializer* other) {
+        if (other != this) {
+            _callback.swap(other->_callback);
+        }
+    }
+
+    void MergeFrom(const Deserializer& from) override {
+        CHECK_NE(&from, this);
+        _callback = from._callback;
+    }
+
+    // implements Message ----------------------------------------------
+    void Clear() override { _callback = nullptr; }
+    size_t ByteSizeLong() const override { return 0; }
+    int GetCachedSize() const PB_425_OVERRIDE { return ByteSize(); }
+
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
+
+    // Converts the decompressed `input'.
+    bool DeserializeFrom(google::protobuf::io::ZeroCopyInputStream* intput) const {
+        if (!_callback) {
+            LOG(WARNING) << "Deserializer::DeserializeFrom() called without callback";
+            return false;
+        }
+        return _callback(intput);
+    }
+    void SetCallback(Callback callback) {
+        _callback = std::move(callback);
+    }
+
+private:
+    void SharedCtor() {}
+    void SharedDtor() {}
+
+    Callback _callback;
+};
 
 struct CompressHandler {
     // Compress serialized `msg' into `buf'.
     // Returns true on success, false otherwise
     bool (*Compress)(const google::protobuf::Message& msg, butil::IOBuf* buf);
-    bool (*Compress2Json)(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                          const json2pb::Pb2JsonOptions& options);
-    bool (*Compress2ProtoJson)(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                               const json2pb::Pb2ProtoJsonOptions& options);
-    bool (*Compress2ProtoText)(const google::protobuf::Message& msg, butil::IOBuf* buf);
 
     // Parse decompressed `data' as `msg'.
     // Returns true on success, false otherwise
     bool (*Decompress)(const butil::IOBuf& data, google::protobuf::Message* msg);
-    bool (*DecompressFromJson)(const butil::IOBuf& data, google::protobuf::Message* msg,
-                               const json2pb::Json2PbOptions& options);
-    bool (*DecompressFromProtoJson)(const butil::IOBuf& data, google::protobuf::Message* msg,
-                                    const json2pb::ProtoJson2PbOptions& options);
-    bool (*DecompressFromProtoText)(const butil::IOBuf& data, google::protobuf::Message* msg);
 
     // Name of the compression algorithm, must be string constant.
     const char* name;

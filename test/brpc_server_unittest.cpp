@@ -30,7 +30,6 @@
 #include "butil/files/scoped_file.h"
 #include "brpc/socket.h"
 #include "butil/object_pool.h"
-#include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/builtin/version_service.h"
 #include "brpc/builtin/health_service.h"
 #include "brpc/builtin/list_service.h"
@@ -72,12 +71,12 @@ DECLARE_bool(enable_dir_service);
 namespace policy {
 DECLARE_bool(use_http_error_code);
 
-extern bool SerializeRpcMessage(const google::protobuf::Message& message, Controller& cntl,
+extern bool SerializeRpcMessage(const google::protobuf::Message& serializer, Controller& cntl,
                                 ContentType content_type, CompressType compress_type,
-                                butil::IOBuf* buf, std::string* error);
-extern bool DeserializeRpcMessage(const butil::IOBuf& data, Controller& cntl,
+                                butil::IOBuf* buf);
+extern bool DeserializeRpcMessage(const butil::IOBuf& deserializer, Controller& cntl,
                                   ContentType content_type, CompressType compress_type,
-                                  google::protobuf::Message* message, std::string* error);
+                                  google::protobuf::Message* message);
 }
 
 }
@@ -1706,10 +1705,8 @@ public:
 
         test::EchoRequest echo_request;
         test::EchoResponse echo_response;
-        std::string error;
         ASSERT_TRUE(brpc::policy::DeserializeRpcMessage(
-            request->serialized_data(), *cntl, content_type,
-            compress_type, &echo_request, &error)) << error;
+            request->serialized_data(), *cntl, content_type, compress_type, &echo_request));
         ASSERT_EQ(EXP_REQUEST, echo_request.message());
         ASSERT_EQ(EXP_REQUEST, cntl->request_attachment().to_string());
 
@@ -1733,8 +1730,7 @@ public:
         cntl->response_attachment().append(EXP_RESPONSE);
         echo_response.set_message(EXP_RESPONSE);
         ASSERT_TRUE(brpc::policy::SerializeRpcMessage(
-            echo_response, *cntl, content_type, compress_type,
-            &response->serialized_data(), &error)) << error;
+            echo_response, *cntl, content_type, compress_type, &response->serialized_data()));
     }
 private:
     int _content_type_index = brpc::ContentType_MIN;
@@ -1800,8 +1796,7 @@ void TestGenericCall(brpc::Channel& channel,
 
     std::string error;
     ASSERT_TRUE(brpc::policy::SerializeRpcMessage(
-        request, cntl, content_type, compress_type,
-        &serialized_request.serialized_data(), &error)) << error;
+        request, cntl, content_type, compress_type, &serialized_request.serialized_data()));
     auto sampled_request = new (std::nothrow) brpc::SampledRequest();
     sampled_request->meta.set_service_name(
         test::EchoService::descriptor()->full_name());
@@ -1814,8 +1809,7 @@ void TestGenericCall(brpc::Channel& channel,
 
     ASSERT_TRUE(brpc::policy::DeserializeRpcMessage(serialized_response.serialized_data(),
                                                     cntl, cntl.response_content_type(),
-                                                    cntl.response_compress_type(),
-                                                    &response, &error)) << error;
+                                                    cntl.response_compress_type(), &response));
     ASSERT_EQ(EXP_RESPONSE, response.message());
     ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
 }

@@ -35,7 +35,7 @@ RedisRequest::RedisRequest()
 }
 
 RedisRequest::RedisRequest(const RedisRequest& from)
-    : NonreflectableMessage<RedisRequest>() {
+    : NonreflectableMessage<RedisRequest>(from) {
     SharedCtor();
     MergeFrom(from);
 }
@@ -200,7 +200,7 @@ RedisResponse::RedisResponse()
     SharedCtor();
 }
 RedisResponse::RedisResponse(const RedisResponse& from)
-    : NonreflectableMessage<RedisResponse>()
+    : NonreflectableMessage<RedisResponse>(from)
     , _first_reply(&_arena) {
     SharedCtor();
     MergeFrom(from);

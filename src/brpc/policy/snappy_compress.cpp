@@ -16,12 +16,11 @@
 // under the License.
 
 
-#include <google/protobuf/text_format.h>
 #include "butil/logging.h"
 #include "butil/third_party/snappy/snappy.h"
 #include "brpc/policy/snappy_compress.h"
 #include "brpc/protocol.h"
-
+#include "brpc/compress.h"
 
 namespace brpc {
 namespace policy {
@@ -29,108 +28,45 @@ namespace policy {
 bool SnappyCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
     butil::IOBuf serialized_pb;
     butil::IOBufAsZeroCopyOutputStream wrapper(&serialized_pb);
-    if (msg.SerializeToZeroCopyStream(&wrapper)) {
-        return SnappyCompress(serialized_pb, buf);
+    bool ok;
+    if (msg.GetDescriptor() == Serializer::descriptor()) {
+        ok = ((const Serializer&)msg).SerializeTo(&wrapper);
+    } else {
+        ok = msg.SerializeToZeroCopyStream(&wrapper);
+    }
+    if (!ok) {
+        LOG(WARNING) << "Fail to serialize input pb="
+                     << msg.GetDescriptor()->full_name();
+        return false;
     }
 
-    LOG(WARNING) << "Fail to serialize input pb=" << &msg;
-    return false;
-}
-
-bool SnappyCompress2Json(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                         const json2pb::Pb2JsonOptions& options) {
-    butil::IOBuf serialized_pb;
-    butil::IOBufAsZeroCopyOutputStream wrapper(&serialized_pb);
-    std::string error;
-    if (json2pb::ProtoMessageToJson(msg, &wrapper, options, &error)) {
-        return SnappyCompress(serialized_pb, buf);
+    ok = SnappyCompress(serialized_pb, buf);
+    if (!ok) {
+        LOG(WARNING) << "Fail to snappy::Compress, size="
+                     << serialized_pb.size();
     }
-
-    LOG(WARNING) << "Fail to serialize input pb=" << &msg << " : " << error;
-    return false;
-
-}
-
-bool SnappyCompress2ProtoJson(const google::protobuf::Message& msg, butil::IOBuf* buf,
-                              const json2pb::Pb2ProtoJsonOptions& options) {
-    butil::IOBuf serialized_pb;
-    butil::IOBufAsZeroCopyOutputStream wrapper(&serialized_pb);
-    std::string error;
-    if (json2pb::ProtoMessageToProtoJson(msg, &wrapper, options, &error)) {
-        return SnappyCompress(serialized_pb, buf);
-    }
-
-    LOG(WARNING) << "Fail to serialize input pb=" << &msg << " : " << error;
-    return false;
-}
-
-bool SnappyCompress2ProtoText(const google::protobuf::Message& msg, butil::IOBuf* buf) {
-    butil::IOBuf serialized_pb;
-    butil::IOBufAsZeroCopyOutputStream wrapper(&serialized_pb);
-    if (google::protobuf::TextFormat::Print(msg, &wrapper)) {
-        return SnappyCompress(serialized_pb, buf);
-    }
-
-    LOG(WARNING) << "Fail to serialize input pb=" << &msg;
-    return false;
+    return ok;
 }
 
 bool SnappyDecompress(const butil::IOBuf& data, google::protobuf::Message* msg) {
     butil::IOBuf binary_pb;
-    if (SnappyDecompress(data, &binary_pb)) {
-        return ParsePbFromIOBuf(msg, binary_pb);
-    }
-    LOG(WARNING) << "Fail to snappy::Uncompress, size=" << data.size();
-    return false;
-}
-
-bool SnappyDecompressFromJson(const butil::IOBuf& data, google::protobuf::Message* msg,
-                              const json2pb::Json2PbOptions& options) {
-    butil::IOBuf json;
-    if (!SnappyDecompress(data, &json)) {
+    if (!SnappyDecompress(data, &binary_pb)) {
         LOG(WARNING) << "Fail to snappy::Uncompress, size=" << data.size();
         return false;
     }
 
-    butil::IOBufAsZeroCopyInputStream wrapper(json);
-    std::string error;
-    if (json2pb::JsonToProtoMessage(&wrapper, msg, options, &error)) {
-        return true;
+    bool ok;
+    butil::IOBufAsZeroCopyInputStream stream(binary_pb);
+    if (msg->GetDescriptor() == Deserializer::descriptor()) {
+        ok = ((Deserializer*)msg)->DeserializeFrom(&stream);
+    } else {
+        ok = msg->ParseFromZeroCopyStream(&stream);
     }
-
-    LOG(WARNING) << "Fail to serialize input pb=" << &msg << " : " << error;
-    return false;
-}
-bool SnappyDecompressFromProtoJson(const butil::IOBuf& data, google::protobuf::Message* msg,
-                                   const json2pb::ProtoJson2PbOptions& options) {
-    butil::IOBuf json;
-    if (!SnappyDecompress(data, &json)) {
-        LOG(WARNING) << "Fail to snappy::Uncompress, size=" << data.size();
-        return false;
+    if (!ok) {
+        LOG(WARNING) << "Fail to eserialize input message="
+                     << msg->GetDescriptor()->full_name();
     }
-
-    butil::IOBufAsZeroCopyInputStream wrapper(json);
-    std::string error;
-    if (json2pb::ProtoJsonToProtoMessage(&wrapper, msg, options, &error)) {
-        return true;
-    }
-    LOG(WARNING) << "Fail to serialize input pb=" << &msg << " : " << error;
-    return false;
-}
-
-bool SnappyDecompressFromProtoText(const butil::IOBuf& data, google::protobuf::Message* msg) {
-    butil::IOBuf json;
-    if (!SnappyDecompress(data, &json)) {
-        LOG(WARNING) << "Fail to snappy::Uncompress, size=" << data.size();
-        return false;
-    }
-
-    butil::IOBufAsZeroCopyInputStream wrapper(json);
-    if (google::protobuf::TextFormat::Parse(&wrapper, msg)) {
-        return true;
-    }
-    LOG(WARNING) << "Fail to serialize input pb=" << &msg;
-    return false;
+    return ok;
 }
 
 bool SnappyCompress(const butil::IOBuf& in, butil::IOBuf* out) {

@@ -388,27 +388,15 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("_dynpart", &g_ext->dynpart_lb);
 
     // Compress Handlers
-    CompressHandler gzip_compress = {
-        GzipCompress, GzipCompress2Json, GzipCompress2ProtoJson,
-        GzipCompress2ProtoText, GzipDecompress, GzipDecompressFromJson,
-        GzipDecompressFromProtoJson, GzipDecompressFromProtoText, "gzip"
-    };
+    CompressHandler gzip_compress = { GzipCompress, GzipDecompress, "gzip" };
     if (RegisterCompressHandler(COMPRESS_TYPE_GZIP, gzip_compress) != 0) {
         exit(1);
     }
-    CompressHandler zlib_compress = {
-        ZlibCompress, ZlibCompress2Json, ZlibCompress2ProtoJson,
-        ZlibCompress2ProtoText, ZlibDecompress, ZlibDecompressFromJson,
-        ZlibDecompressFromProtoJson, ZlibDecompressFromProtoText, "zlib"
-    };
+    CompressHandler zlib_compress = { ZlibCompress, ZlibDecompress, "zlib" };
     if (RegisterCompressHandler(COMPRESS_TYPE_ZLIB, zlib_compress) != 0) {
         exit(1);
     }
-    CompressHandler snappy_compress = {
-        SnappyCompress, SnappyCompress2Json, SnappyCompress2ProtoJson,
-        SnappyCompress2ProtoText, SnappyDecompress, SnappyDecompressFromJson,
-        SnappyDecompressFromProtoJson, SnappyDecompressFromProtoText, "snappy"
-    };
+    CompressHandler snappy_compress = { SnappyCompress, SnappyDecompress, "snappy" };
     if (RegisterCompressHandler(COMPRESS_TYPE_SNAPPY, snappy_compress) != 0) {
         exit(1);
     }
