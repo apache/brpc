@@ -284,7 +284,7 @@ struct SocketOptions {
     // Only linux supports TCP_USER_TIMEOUT.
     int tcp_user_timeout_ms{ -1};
     // Tag of this socket
-    bthread_tag_t bthread_tag{BTHREAD_TAG_DEFAULT};
+    bthread_tag_t bthread_tag{bthread_self_tag()};
 };
 
 // Abstractions on reading from and writing into file descriptors.
