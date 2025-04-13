@@ -85,9 +85,8 @@ private:
     int64_t _latency;
 };
 
-Percentile::Percentile() : _combiner(NULL), _sampler(NULL) {
-    _combiner = new combiner_type;
-}
+Percentile::Percentile()
+    : _combiner(std::make_shared<combiner_type>()), _sampler(NULL) {}
 
 Percentile::~Percentile() {
     // Have to destroy sampler first to avoid the race between destruction and
@@ -96,7 +95,6 @@ Percentile::~Percentile() {
         _sampler->destroy();
         _sampler = NULL;
     }
-    delete _combiner;
 }
 
 Percentile::value_type Percentile::reset() {
@@ -126,7 +124,7 @@ Percentile &Percentile::operator<<(int64_t latency) {
         }
         return *this;
     }
-    agent->merge_global(AddLatency(latency));
+    agent->merge_global(AddLatency(latency), _combiner);
     return *this;
 }
 

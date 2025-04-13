@@ -69,13 +69,13 @@ template <typename T, typename Op, typename InvOp = detail::VoidOp>
 class Reducer : public Variable {
 public:
     typedef typename detail::AgentCombiner<T, T, Op> combiner_type;
+    typedef typename combiner_type::self_shared_type shared_combiner_type;
     typedef typename combiner_type::Agent agent_type;
     typedef detail::ReducerSampler<Reducer, T, Op, InvOp> sampler_type;
     class SeriesSampler : public detail::Sampler {
     public:
         SeriesSampler(Reducer* owner, const Op& op)
             : _owner(owner), _series(op) {}
-        ~SeriesSampler() {}
         void take_sample() override { _series.append(_owner->get_value()); }
         void describe(std::ostream& os) { _series.describe(os, NULL); }
     private:
@@ -85,16 +85,12 @@ public:
 
 public:
     // The `identify' must satisfy: identity Op a == a
-    Reducer(typename butil::add_cr_non_integral<T>::type identity = T(),
-            const Op& op = Op(),
-            const InvOp& inv_op = InvOp())
-        : _combiner(identity, identity, op)
-        , _sampler(NULL)
-        , _series_sampler(NULL)
-        , _inv_op(inv_op) {
-    }
+    explicit Reducer(typename butil::add_cr_non_integral<T>::type identity = T(),
+                     const Op& op = Op(), const InvOp& inv_op = InvOp())
+        : _combiner(std::make_shared<combiner_type>(identity, identity, op))
+        , _sampler(NULL) , _series_sampler(NULL) , _inv_op(inv_op) {}
 
-    ~Reducer() {
+    ~Reducer() override {
         // Calling hide() manually is a MUST required by Variable.
         hide();
         if (_sampler) {
@@ -119,13 +115,13 @@ public:
             << "You should not call Reducer<" << butil::class_name_str<T>()
             << ", " << butil::class_name_str<Op>() << ">::get_value() when a"
             << " Window<> is used because the operator does not have inverse.";
-        return _combiner.combine_agents();
+        return _combiner->combine_agents();
     }
 
 
     // Reset the reduced value to T().
     // Returns the reduced value before reset.
-    T reset() { return _combiner.reset_all_agents(); }
+    T reset() { return _combiner->reset_all_agents(); }
 
     void describe(std::ostream& os, bool quote_string) const override {
         if (butil::is_same<T, std::string>::value && quote_string) {
@@ -140,10 +136,10 @@ public:
 #endif
 
     // True if this reducer is constructed successfully.
-    bool valid() const { return _combiner.valid(); }
+    bool valid() const { return _combiner->valid(); }
 
     // Get instance of Op.
-    const Op& op() const { return _combiner.op(); }
+    const Op& op() const { return _combiner->op(); }
     const InvOp& inv_op() const { return _inv_op; }
     
     sampler_type* get_sampler() {
@@ -174,14 +170,14 @@ protected:
             !butil::is_same<InvOp, detail::VoidOp>::value &&
             !butil::is_same<T, std::string>::value &&
             FLAGS_save_series) {
-            _series_sampler = new SeriesSampler(this, _combiner.op());
+            _series_sampler = new SeriesSampler(this, _combiner->op());
             _series_sampler->schedule();
         }
         return rc;
     }
 
 private:
-    combiner_type   _combiner;
+    shared_combiner_type _combiner;
     sampler_type* _sampler;
     SeriesSampler* _series_sampler;
     InvOp _inv_op;
@@ -191,12 +187,12 @@ template <typename T, typename Op, typename InvOp>
 inline Reducer<T, Op, InvOp>& Reducer<T, Op, InvOp>::operator<<(
     typename butil::add_cr_non_integral<T>::type value) {
     // It's wait-free for most time
-    agent_type* agent = _combiner.get_or_create_tls_agent();
+    agent_type* agent = _combiner->get_or_create_tls_agent();
     if (__builtin_expect(!agent, 0)) {
         LOG(FATAL) << "Fail to create agent";
         return *this;
     }
-    agent->element.modify(_combiner.op(), value);
+    agent->element.modify(_combiner->op(), value);
     return *this;
 }
 

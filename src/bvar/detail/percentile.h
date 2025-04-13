@@ -462,6 +462,7 @@ public:
     typedef AgentCombiner <GlobalPercentileSamples,
                            ThreadLocalPercentileSamples,
                            AddPercentileSamples>            combiner_type;
+    typedef typename combiner_type::self_shared_type        shared_combiner_type;
     typedef combiner_type::Agent                            agent_type;
     Percentile();
     ~Percentile();
@@ -494,8 +495,8 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(Percentile);
 
-    combiner_type*          _combiner;
-    sampler_type*           _sampler;
+    shared_combiner_type _combiner;
+    sampler_type* _sampler;
     std::string _debug_name;
 };
 
