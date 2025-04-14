@@ -336,14 +336,14 @@ bool ProtoMessageToJson(const google::protobuf::Message& message,
 }
 
 bool ProtoMessageToJson(const google::protobuf::Message& message,
-                        google::protobuf::io::ZeroCopyOutputStream *stream,
+                        google::protobuf::io::ZeroCopyOutputStream* stream,
                         const Pb2JsonOptions& options, std::string* error) {
     json2pb::ZeroCopyStreamWriter wrapper(stream);
     return json2pb::ProtoMessageToJsonStream(message, options, wrapper, error);
 }
 
 bool ProtoMessageToJson(const google::protobuf::Message& message,
-                        google::protobuf::io::ZeroCopyOutputStream *stream,
+                        google::protobuf::io::ZeroCopyOutputStream* stream,
                         std::string* error) {
     return ProtoMessageToJson(message, stream, Pb2JsonOptions(), error);
 }
