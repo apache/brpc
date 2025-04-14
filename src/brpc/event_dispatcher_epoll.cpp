@@ -69,9 +69,9 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
 
     // Set _thread_attr before creating epoll thread to make sure
     // everyting seems sane to the thread.
-    _thread_attr = consumer_thread_attr  ?
-        *consumer_thread_attr : _thread_attr;
-    _thread_attr = _thread_attr | BTHREAD_GLOBAL_PRIORITY;
+    if (consumer_thread_attr) {
+        _thread_attr = *consumer_thread_attr | BTHREAD_GLOBAL_PRIORITY;
+    }
 
     //_thread_attr is used in StartInputEvent(), assign flag NEVER_QUIT to it will cause new bthread
     // that created by epoll_wait() never to quit.

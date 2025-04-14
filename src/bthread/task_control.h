@@ -97,8 +97,8 @@ public:
     std::string stack_trace(bthread_t tid);
 #endif // BRPC_BTHREAD_TRACER
 
-    void push_priority_q(bthread_tag_t tag, bthread_t tid) {
-        _priority_qs[tag].push(tid);
+    void push_priority_queue(bthread_tag_t tag, bthread_t tid) {
+        _priority_queues[tag].push(tid);
     }
 
 private:
@@ -157,7 +157,7 @@ private:
     std::vector<bvar::PassiveStatus<double>*> _tagged_cumulated_worker_time;
     std::vector<bvar::PerSecond<bvar::PassiveStatus<double>>*> _tagged_worker_usage_second;
     std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
-    std::vector<WorkStealingQueue<bthread_t>> _priority_qs;
+    std::vector<WorkStealingQueue<bthread_t>> _priority_queues;
 
     std::vector<TaggedParkingLot> _pl;
 

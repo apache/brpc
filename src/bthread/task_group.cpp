@@ -807,7 +807,7 @@ void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
 
 void TaskGroup::priority_to_run(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
-    return tls_task_group->control()->push_priority_q(args->tag, args->meta->tid);
+    return tls_task_group->control()->push_priority_queue(args->tag, args->meta->tid);
 }
 
 struct SleepArgs {
