@@ -21,7 +21,7 @@
 #include <google/protobuf/generated_message_reflection.h>
 #include <google/protobuf/message.h>
 
-#include "pb_compat.h"
+#include "brpc/pb_compat.h"
 
 namespace brpc {
 

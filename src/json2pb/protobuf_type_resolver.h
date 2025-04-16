@@ -35,6 +35,8 @@ inline std::string GetTypeUrl(const google::protobuf::Message& message) {
                                 message.GetDescriptor()->full_name().c_str());
 }
 
+// unique_ptr deleter for TypeResolver only deletes the object
+// when it's not from the generated pool.
 class TypeResolverDeleter {
 public:
     explicit TypeResolverDeleter(bool is_generated_pool)

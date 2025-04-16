@@ -28,7 +28,7 @@ SerializedResponse::SerializedResponse()
 }
 
 SerializedResponse::SerializedResponse(const SerializedResponse& from)
-    : NonreflectableMessage<SerializedResponse>() {
+    : NonreflectableMessage<SerializedResponse>(from) {
     SharedCtor();
     MergeFrom(from);
 }

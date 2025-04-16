@@ -33,6 +33,9 @@ message NsheadMessageBase {}
 message SerializedRequestBase {}
 message SerializedResponseBase {}
 
+message SerializerBase {}
+message DeserializerBase {}
+
 message ThriftFramedMessageBase {}
 
 service BaiduMasterServiceBase {}

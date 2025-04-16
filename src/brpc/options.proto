@@ -74,6 +74,13 @@ enum CompressType {
     COMPRESS_TYPE_LZ4 = 4;
 }
 
+enum ContentType {
+    CONTENT_TYPE_PB = 0;
+    CONTENT_TYPE_JSON = 1;
+    CONTENT_TYPE_PROTO_JSON = 2;
+    CONTENT_TYPE_PROTO_TEXT = 3;
+}
+
 message ChunkInfo {
     required int64 stream_id = 1;
     required int64 chunk_id = 2;

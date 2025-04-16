@@ -290,6 +290,8 @@ void Controller::ResetPods() {
     _http_response = NULL;
     _request_user_fields = NULL;
     _response_user_fields = NULL;
+    _request_content_type = CONTENT_TYPE_PB;
+    _response_content_type = CONTENT_TYPE_PB;
     _request_streams.clear();
     _response_streams.clear();
     _remote_stream_settings = NULL;

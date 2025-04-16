@@ -616,6 +616,20 @@ public:
 
     void CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res);
 
+    void set_request_content_type(ContentType type) {
+        _request_content_type = type;
+    }
+    ContentType request_content_type() const {
+        return _request_content_type;
+    }
+
+    void set_response_content_type(ContentType type) {
+        _response_content_type = type;
+    }
+    ContentType response_content_type() const {
+        return _response_content_type;
+    }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -858,6 +872,11 @@ private:
     // Fields with large size but low access frequency 
     butil::IOBuf _request_attachment;
     butil::IOBuf _response_attachment;
+
+    // Only SerializedRequest supports `_request_content_type'.
+    ContentType _request_content_type;
+    // Only SerializedResponse supports `_response_content_type'.
+    ContentType _response_content_type;
 
     // Writable progressive attachment
     butil::intrusive_ptr<ProgressiveAttachment> _wpa;

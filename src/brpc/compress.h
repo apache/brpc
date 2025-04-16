@@ -21,9 +21,142 @@
 
 #include <google/protobuf/message.h>              // Message
 #include "butil/iobuf.h"                           // butil::IOBuf
+#include "butil/logging.h"
 #include "brpc/options.pb.h"                     // CompressType
+#include "brpc/nonreflectable_message.h"
 
 namespace brpc {
+
+// Serializer can be used to implement custom serialization
+// before compression with user callback.
+class Serializer : public NonreflectableMessage<Serializer> {
+public:
+    using Callback = std::function<bool(google::protobuf::io::ZeroCopyOutputStream*)>;
+
+    Serializer() :Serializer(NULL) {}
+
+    explicit Serializer(Callback callback)
+        :_callback(std::move(callback)) {
+        SharedCtor();
+    }
+
+    ~Serializer() override {
+        SharedDtor();
+    }
+
+    Serializer(const Serializer& from)
+        : NonreflectableMessage(from) {
+        SharedCtor();
+        MergeFrom(from);
+    }
+
+    Serializer& operator=(const Serializer& from) {
+        CopyFrom(from);
+        return *this;
+    }
+
+    void Swap(Serializer* other) {
+        if (other != this) {
+        }
+    }
+
+    void MergeFrom(const Serializer& from) override {
+        CHECK_NE(&from, this);
+    }
+
+    // implements Message ----------------------------------------------
+    void Clear() override {
+        _callback = nullptr;
+    }
+    size_t ByteSizeLong() const override { return 0; }
+    int GetCachedSize() const PB_425_OVERRIDE { return ByteSize(); }
+
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
+
+    // Converts the data into `output' for later compression.
+    bool SerializeTo(google::protobuf::io::ZeroCopyOutputStream* output) const {
+        if (!_callback) {
+            LOG(WARNING) << "Serializer::SerializeTo() called without callback";
+            return false;
+        }
+        return _callback(output);
+    }
+
+    void SetCallback(Callback callback) {
+        _callback = std::move(callback);
+    }
+
+private:
+    void SharedCtor() {}
+    void SharedDtor() {}
+
+    Callback _callback;
+};
+
+// Deserializer can be used to implement custom deserialization
+// after decompression with user callback.
+class Deserializer : public NonreflectableMessage<Deserializer> {
+public:
+public:
+    using Callback = std::function<bool(google::protobuf::io::ZeroCopyInputStream*)>;
+
+    Deserializer() :Deserializer(NULL) {}
+
+    explicit Deserializer(Callback callback) : _callback(std::move(callback)) {
+        SharedCtor();
+    }
+
+    ~Deserializer() override {
+        SharedDtor();
+    }
+
+    Deserializer(const Deserializer& from)
+        : NonreflectableMessage(from) {
+        SharedCtor();
+        MergeFrom(from);
+    }
+
+    Deserializer& operator=(const Deserializer& from) {
+        CopyFrom(from);
+        return *this;
+    }
+
+    void Swap(Deserializer* other) {
+        if (other != this) {
+            _callback.swap(other->_callback);
+        }
+    }
+
+    void MergeFrom(const Deserializer& from) override {
+        CHECK_NE(&from, this);
+        _callback = from._callback;
+    }
+
+    // implements Message ----------------------------------------------
+    void Clear() override { _callback = nullptr; }
+    size_t ByteSizeLong() const override { return 0; }
+    int GetCachedSize() const PB_425_OVERRIDE { return ByteSize(); }
+
+    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
+
+    // Converts the decompressed `input'.
+    bool DeserializeFrom(google::protobuf::io::ZeroCopyInputStream* intput) const {
+        if (!_callback) {
+            LOG(WARNING) << "Deserializer::DeserializeFrom() called without callback";
+            return false;
+        }
+        return _callback(intput);
+    }
+    void SetCallback(Callback callback) {
+        _callback = std::move(callback);
+    }
+
+private:
+    void SharedCtor() {}
+    void SharedDtor() {}
+
+    Callback _callback;
+};
 
 struct CompressHandler {
     // Compress serialized `msg' into `buf'.
@@ -41,6 +174,9 @@ struct CompressHandler {
 // [NOT thread-safe] Register `handler' using key=`type'
 // Returns 0 on success, -1 otherwise
 int RegisterCompressHandler(CompressType type, CompressHandler handler);
+
+// Returns CompressHandler pointer of `type' if registered, NULL otherwise.
+const CompressHandler* FindCompressHandler(CompressType type);
 
 // Returns the `name' of the CompressType if registered
 const char* CompressTypeToCStr(CompressType type);

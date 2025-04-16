@@ -421,6 +421,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     ASSERT_EQ(-1, brpc::Socket::Address(id, &ptr));
 
     messenger->StopAccept(0);
+    messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
     ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
     ASSERT_EQ(EBADF, errno);
@@ -789,6 +790,7 @@ TEST_F(SocketTest, health_check) {
     // Must stop messenger before SetFailed the id otherwise StartHealthCheck
     // still has chance to get reconnected and revive the id.
     messenger->StopAccept(0);
+    messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
     ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
     ASSERT_EQ(EBADF, errno);
@@ -1408,6 +1410,7 @@ TEST_F(SocketTest, keepalive_input_message) {
     }
 
     messenger->StopAccept(0);
+    messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
     ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
     ASSERT_EQ(EBADF, errno);
@@ -1422,11 +1425,24 @@ void CheckTCPUserTimeout(int fd, int expect_tcp_user_timeout) {
 }
 
 TEST_F(SocketTest, tcp_user_timeout) {
+    brpc::Acceptor* messenger = new brpc::Acceptor;
+    int listening_fd = -1;
+    butil::EndPoint point(butil::IP_ANY, 7878);
+    for (int i = 0; i < 100; ++i) {
+        point.port += i;
+        listening_fd = tcp_listen(point);
+        if (listening_fd >= 0) {
+            break;
+        }
+    }
+    ASSERT_GT(listening_fd, 0) << berror();
+    ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
+
     {
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
-        options.fd = sockfd;
+        options.remote_side = point;
+        options.connect_on_create = true;
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
@@ -1436,10 +1452,9 @@ TEST_F(SocketTest, tcp_user_timeout) {
 
     {
         int tcp_user_timeout_ms = 1000;
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
-        options.fd = sockfd;
+        options.remote_side = point;
+        options.connect_on_create = true;
         options.tcp_user_timeout_ms = tcp_user_timeout_ms;
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
@@ -1450,10 +1465,9 @@ TEST_F(SocketTest, tcp_user_timeout) {
 
     brpc::FLAGS_socket_tcp_user_timeout_ms = 2000;
     {
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
-        options.fd = sockfd;
+        options.remote_side = point;
+        options.connect_on_create = true;
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
@@ -1462,10 +1476,9 @@ TEST_F(SocketTest, tcp_user_timeout) {
     }
     {
         int tcp_user_timeout_ms = 3000;
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
-        options.fd = sockfd;
+        options.remote_side = point;
+        options.connect_on_create = true;
         options.tcp_user_timeout_ms = tcp_user_timeout_ms;
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
@@ -1473,6 +1486,12 @@ TEST_F(SocketTest, tcp_user_timeout) {
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
         CheckTCPUserTimeout(ptr->fd(), tcp_user_timeout_ms);
     }
+
+    messenger->StopAccept(0);
+    messenger->Join();
+    ASSERT_EQ(-1, messenger->listened_fd());
+    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
+    ASSERT_EQ(EBADF, errno);
 }
 #endif
 

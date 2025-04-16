@@ -17,57 +17,89 @@
 
 
 #include <google/protobuf/io/gzip_stream.h>    // GzipXXXStream
+#include <google/protobuf/text_format.h>
 #include "butil/logging.h"
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/protocol.h"
-
+#include "brpc/compress.h"
 
 namespace brpc {
 namespace policy {
 
-static void LogError(const google::protobuf::io::GzipOutputStream& gzip) {
-    if (gzip.ZlibErrorMessage()) {
-        LOG(WARNING) << "Fail to decompress: " << gzip.ZlibErrorMessage();
-    } else {
-        LOG(WARNING) << "Fail to decompress.";
+const char* Format2CStr(google::protobuf::io::GzipOutputStream::Format format) {
+    switch (format) {
+    case google::protobuf::io::GzipOutputStream::GZIP:
+        return "gzip";
+    case google::protobuf::io::GzipOutputStream::ZLIB:
+        return "zlib";
+    default:
+        return "unknown";
     }
 }
 
-static void LogError(const google::protobuf::io::GzipInputStream& gzip) {
-    if (gzip.ZlibErrorMessage()) {
-        LOG(WARNING) << "Fail to decompress: " << gzip.ZlibErrorMessage();
-    } else {
-        LOG(WARNING) << "Fail to decompress.";
+const char* Format2CStr(google::protobuf::io::GzipInputStream::Format format) {
+    switch (format) {
+    case google::protobuf::io::GzipInputStream::GZIP:
+        return "gzip";
+    case google::protobuf::io::GzipInputStream::ZLIB:
+        return "zlib";
+    default:
+        return "unknown";
     }
+}
+
+static bool Compress(const google::protobuf::Message& msg, butil::IOBuf* buf,
+                     google::protobuf::io::GzipOutputStream::Format format) {
+    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
+    GzipCompressOptions options;
+    options.format = format;
+    google::protobuf::io::GzipOutputStream gzip(&wrapper, options);
+    bool ok;
+    if (msg.GetDescriptor() == Serializer::descriptor()) {
+        ok = ((const Serializer&)msg).SerializeTo(&gzip);
+    } else {
+        ok = msg.SerializeToZeroCopyStream(&gzip);
+    }
+    if (!ok) {
+        LOG(WARNING) << "Fail to serialize input message="
+                     << msg.GetDescriptor()->full_name()
+                     << ", format=" << Format2CStr(format) << " : "
+                     << (NULL == gzip.ZlibErrorMessage() ? "" : gzip.ZlibErrorMessage());
+    }
+    return ok && gzip.Close();
+}
+
+static bool Decompress(const butil::IOBuf& data, google::protobuf::Message* msg,
+                       google::protobuf::io::GzipInputStream::Format format) {
+    butil::IOBufAsZeroCopyInputStream wrapper(data);
+    google::protobuf::io::GzipInputStream gzip(&wrapper, format);
+    bool ok;
+    if (msg->GetDescriptor() == Deserializer::descriptor()) {
+        ok = ((Deserializer*)msg)->DeserializeFrom(&gzip);
+    } else {
+        ok = msg->ParseFromZeroCopyStream(&gzip);
+    }
+    if (!ok) {
+        LOG(WARNING) << "Fail to deserialize input message="
+                     << msg->GetDescriptor()->full_name()
+                     << ", format=" << Format2CStr(format) << " : "
+                     << (NULL == gzip.ZlibErrorMessage() ? "" : gzip.ZlibErrorMessage());
+    }
+    return ok;
 }
 
 bool GzipCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
-    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options gzip_opt;
-    gzip_opt.format = google::protobuf::io::GzipOutputStream::GZIP;
-    google::protobuf::io::GzipOutputStream gzip(&wrapper, gzip_opt);
-    if (!msg.SerializeToZeroCopyStream(&gzip)) {
-        LogError(gzip);
-        return false;
-    }
-    return gzip.Close();
+    return Compress(msg, buf, google::protobuf::io::GzipOutputStream::GZIP);
 }
 
 bool GzipDecompress(const butil::IOBuf& data, google::protobuf::Message* msg) {
-    butil::IOBufAsZeroCopyInputStream wrapper(data);
-    google::protobuf::io::GzipInputStream gzip(
-            &wrapper, google::protobuf::io::GzipInputStream::GZIP);
-    if (!ParsePbFromZeroCopyStream(msg, &gzip)) {
-        LogError(gzip);
-        return false;
-    }
-    return true;
+    return Decompress(data, msg, google::protobuf::io::GzipInputStream::GZIP);
 }
 
 bool GzipCompress(const butil::IOBuf& msg, butil::IOBuf* buf,
                   const GzipCompressOptions* options_in) {
     butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options gzip_opt;
+    GzipCompressOptions gzip_opt;
     if (options_in) {
         gzip_opt = *options_in;
     }
@@ -93,7 +125,8 @@ bool GzipCompress(const butil::IOBuf& msg, butil::IOBuf* buf,
     }
     if (size_in != 0 || (size_t)in.ByteCount() != msg.size()) {
         // If any stage is not fully consumed, something went wrong.
-        LogError(out);
+        LOG(WARNING) << "Fail to compress, format=" << Format2CStr(gzip_opt.format)
+                     << " : " << out.ZlibErrorMessage();
         return false;
     }
     if (size_out != 0) {
@@ -132,7 +165,8 @@ inline bool GzipDecompressBase(
         // If any stage is not fully consumed, something went wrong.
         // Here we call in.Next addtitionally to make sure that the gzip
         // "blackbox" does not have buffer left.
-        LogError(in);
+        LOG(WARNING) << "Fail to decompress, format=" << Format2CStr(format)
+                     << " : " << in.ZlibErrorMessage();
         return false;
     }
     if (size_out != 0) {
@@ -141,19 +175,13 @@ inline bool GzipDecompressBase(
     return true;
 }
 
-bool ZlibCompress(const google::protobuf::Message& res, butil::IOBuf* buf) {
-    butil::IOBufAsZeroCopyOutputStream wrapper(buf);
-    google::protobuf::io::GzipOutputStream::Options zlib_opt;
-    zlib_opt.format = google::protobuf::io::GzipOutputStream::ZLIB;
-    google::protobuf::io::GzipOutputStream zlib(&wrapper, zlib_opt);
-    return res.SerializeToZeroCopyStream(&zlib) && zlib.Close();
+bool ZlibCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
+    return Compress(msg, buf, google::protobuf::io::GzipOutputStream::ZLIB);
 }
 
-bool ZlibDecompress(const butil::IOBuf& data, google::protobuf::Message* req) {
-    butil::IOBufAsZeroCopyInputStream wrapper(data);
-    google::protobuf::io::GzipInputStream zlib(
-        &wrapper, google::protobuf::io::GzipInputStream::ZLIB);
-    return ParsePbFromZeroCopyStream(req, &zlib);
+bool ZlibDecompress(const butil::IOBuf& data,
+                    google::protobuf::Message* msg) {
+    return Decompress(data, msg, google::protobuf::io::GzipInputStream::ZLIB);
 }
 
 bool GzipDecompress(const butil::IOBuf& data, butil::IOBuf* msg) {

@@ -388,25 +388,22 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("_dynpart", &g_ext->dynpart_lb);
 
     // Compress Handlers
-    const CompressHandler gzip_compress =
-        { GzipCompress, GzipDecompress, "gzip" };
+    CompressHandler gzip_compress = { GzipCompress, GzipDecompress, "gzip" };
     if (RegisterCompressHandler(COMPRESS_TYPE_GZIP, gzip_compress) != 0) {
         exit(1);
     }
-    const CompressHandler zlib_compress =
-        { ZlibCompress, ZlibDecompress, "zlib" };
+    CompressHandler zlib_compress = { ZlibCompress, ZlibDecompress, "zlib" };
     if (RegisterCompressHandler(COMPRESS_TYPE_ZLIB, zlib_compress) != 0) {
         exit(1);
     }
-    const CompressHandler snappy_compress =
-        { SnappyCompress, SnappyDecompress, "snappy" };
+    CompressHandler snappy_compress = { SnappyCompress, SnappyDecompress, "snappy" };
     if (RegisterCompressHandler(COMPRESS_TYPE_SNAPPY, snappy_compress) != 0) {
         exit(1);
     }
 
     // Protocols
     Protocol baidu_protocol = { ParseRpcMessage,
-                                SerializeRequestDefault, PackRpcRequest,
+                                SerializeRpcRequest, PackRpcRequest,
                                 ProcessRpcRequest, ProcessRpcResponse,
                                 VerifyRpcRequest, NULL, NULL,
                                 CONNECTION_TYPE_ALL, "baidu_std" };

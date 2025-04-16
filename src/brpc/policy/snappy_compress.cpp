@@ -20,32 +20,53 @@
 #include "butil/third_party/snappy/snappy.h"
 #include "brpc/policy/snappy_compress.h"
 #include "brpc/protocol.h"
-
+#include "brpc/compress.h"
 
 namespace brpc {
 namespace policy {
 
-bool SnappyCompress(const google::protobuf::Message& res, butil::IOBuf* buf) {
+bool SnappyCompress(const google::protobuf::Message& msg, butil::IOBuf* buf) {
     butil::IOBuf serialized_pb;
     butil::IOBufAsZeroCopyOutputStream wrapper(&serialized_pb);
-    if (res.SerializeToZeroCopyStream(&wrapper)) {
-        butil::IOBufAsSnappySource source(serialized_pb);
-        butil::IOBufAsSnappySink sink(*buf);
-        return butil::snappy::Compress(&source, &sink);
+    bool ok;
+    if (msg.GetDescriptor() == Serializer::descriptor()) {
+        ok = ((const Serializer&)msg).SerializeTo(&wrapper);
+    } else {
+        ok = msg.SerializeToZeroCopyStream(&wrapper);
     }
-    LOG(WARNING) << "Fail to serialize input pb=" << &res;
-    return false;
+    if (!ok) {
+        LOG(WARNING) << "Fail to serialize input pb="
+                     << msg.GetDescriptor()->full_name();
+        return false;
+    }
+
+    ok = SnappyCompress(serialized_pb, buf);
+    if (!ok) {
+        LOG(WARNING) << "Fail to snappy::Compress, size="
+                     << serialized_pb.size();
+    }
+    return ok;
 }
 
-bool SnappyDecompress(const butil::IOBuf& data, google::protobuf::Message* req) {
-    butil::IOBufAsSnappySource source(data);
+bool SnappyDecompress(const butil::IOBuf& data, google::protobuf::Message* msg) {
     butil::IOBuf binary_pb;
-    butil::IOBufAsSnappySink sink(binary_pb);
-    if (butil::snappy::Uncompress(&source, &sink)) {
-        return ParsePbFromIOBuf(req, binary_pb);
+    if (!SnappyDecompress(data, &binary_pb)) {
+        LOG(WARNING) << "Fail to snappy::Uncompress, size=" << data.size();
+        return false;
     }
-    LOG(WARNING) << "Fail to snappy::Uncompress, size=" << data.size();
-    return false;
+
+    bool ok;
+    butil::IOBufAsZeroCopyInputStream stream(binary_pb);
+    if (msg->GetDescriptor() == Deserializer::descriptor()) {
+        ok = ((Deserializer*)msg)->DeserializeFrom(&stream);
+    } else {
+        ok = msg->ParseFromZeroCopyStream(&stream);
+    }
+    if (!ok) {
+        LOG(WARNING) << "Fail to eserialize input message="
+                     << msg->GetDescriptor()->full_name();
+    }
+    return ok;
 }
 
 bool SnappyCompress(const butil::IOBuf& in, butil::IOBuf* out) {

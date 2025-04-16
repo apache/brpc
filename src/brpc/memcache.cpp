@@ -32,7 +32,7 @@ MemcacheRequest::MemcacheRequest()
 }
 
 MemcacheRequest::MemcacheRequest(const MemcacheRequest& from)
-    : NonreflectableMessage<MemcacheRequest>() {
+    : NonreflectableMessage<MemcacheRequest>(from) {
     SharedCtor();
     MergeFrom(from);
 }
@@ -143,7 +143,7 @@ MemcacheResponse::MemcacheResponse()
 }
 
 MemcacheResponse::MemcacheResponse(const MemcacheResponse& from)
-    : NonreflectableMessage<MemcacheResponse>() {
+    : NonreflectableMessage<MemcacheResponse>(from) {
     SharedCtor();
     MergeFrom(from);
 }

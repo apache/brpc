@@ -37,6 +37,10 @@ void ProcessRpcResponse(InputMessageBase* msg);
 // Verify authentication information in baidu_std format
 bool VerifyRpcRequest(const InputMessageBase* msg);
 
+// Serialize `request' into `buf'.
+void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
+                         const google::protobuf::Message* request);
+
 // Pack `request' to `method' into `buf'.
 void PackRpcRequest(butil::IOBuf* buf,
                     SocketMessage**,
@@ -45,6 +49,9 @@ void PackRpcRequest(butil::IOBuf* buf,
                     Controller* controller,
                     const butil::IOBuf& request,
                     const Authenticator* auth);
+
+// Returns the `name' of the 'content_type'.
+const char* ContentTypeToCStr(ContentType content_type);
 
 }  // namespace policy
 } // namespace brpc
