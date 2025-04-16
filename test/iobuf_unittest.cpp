@@ -22,6 +22,7 @@
 #include <fcntl.h>                     // O_RDONLY
 #include <stdlib.h>
 #include <memory>
+#include <cstring>
 #include <butil/files/temp_file.h>      // TempFile
 #include <butil/containers/flat_map.h>
 #include <butil/macros.h>
@@ -1783,6 +1784,110 @@ TEST_F(IOBufTest, acquire_tls_block) {
     b = butil::iobuf::acquire_tls_block();
     ASSERT_EQ(0, butil::iobuf::get_tls_block_count());
     ASSERT_NE(butil::iobuf::block_cap(b), butil::iobuf::block_size(b));
+}
+
+TEST_F(IOBufTest, reserve_aligned) {
+    {
+        butil::IOReserveAlignedBuf buf(16);
+        auto area = buf.reserve(1024);
+        ASSERT_NE(area, butil::IOBuf::INVALID_AREA);
+        butil::IOBufAsZeroCopyInputStream wrapper(buf);
+        const void* data;
+        int size;
+        int total_size = 0;
+        while (wrapper.Next(&data, &size)) {
+            ASSERT_EQ(reinterpret_cast<uintptr_t>(data) % 16, 0);
+            ASSERT_EQ(size % 16, 0);
+            total_size += size;
+        }
+        ASSERT_EQ(total_size, 1024);
+    }
+    {
+        butil::IOReserveAlignedBuf buf(4096);
+        auto area = buf.reserve(1024);
+        ASSERT_NE(area, butil::IOBuf::INVALID_AREA);
+        butil::IOBufAsZeroCopyInputStream wrapper(buf);
+        const void* data;
+        int size;
+        int total_size = 0;
+        while (wrapper.Next(&data, &size)) {
+            ASSERT_EQ(reinterpret_cast<uintptr_t>(data) % 4096, 0);
+            ASSERT_EQ(size % 4096, 0);
+            total_size += size;
+        }
+        ASSERT_EQ(total_size, 4096);
+    }
+    {
+        butil::IOReserveAlignedBuf buf(4096);
+        auto area = buf.reserve(8191);
+        ASSERT_NE(area, butil::IOBuf::INVALID_AREA);
+        butil::IOBufAsZeroCopyInputStream wrapper(buf);
+        const void* data;
+        int size;
+        int total_size = 0;
+        while (wrapper.Next(&data, &size)) {
+            ASSERT_EQ(reinterpret_cast<uintptr_t>(data) % 4096, 0);
+            ASSERT_EQ(size % 4096, 0);
+            total_size += size;
+        }
+        ASSERT_EQ(total_size, 8192);
+    }
+    {
+        butil::IOReserveAlignedBuf buf(4096);
+        auto area = buf.reserve(4096 * 10 - 1);
+        ASSERT_NE(area, butil::IOBuf::INVALID_AREA);
+        butil::IOBufAsZeroCopyInputStream wrapper(buf);
+        const void* data;
+        int size;
+        int total_size = 0;
+        while (wrapper.Next(&data, &size)) {
+            ASSERT_EQ(reinterpret_cast<uintptr_t>(data) % 4096, 0);
+            ASSERT_EQ(size % 4096, 0);
+            total_size += size;
+        }
+        ASSERT_EQ(total_size, 4096 * 10);
+    }
+    {
+        butil::IOReserveAlignedBuf buf(4095);
+        auto area = buf.reserve(4096);
+        ASSERT_EQ(area, butil::IOBuf::INVALID_AREA);
+    }
+    {
+        butil::IOReserveAlignedBuf buf(8192);
+        auto area = buf.reserve(4096 * 10 + 1);
+        ASSERT_NE(area, butil::IOBuf::INVALID_AREA);
+        butil::IOBufAsZeroCopyInputStream wrapper(buf);
+        const void* data;
+        int size;
+        int total_size = 0;
+        while (wrapper.Next(&data, &size)) {
+            ASSERT_EQ(reinterpret_cast<uintptr_t>(data) % 4096, 0);
+            ASSERT_EQ(size % 4096, 0);
+            total_size += size;
+        }
+        ASSERT_EQ(total_size, 4096 * 10 + 8192);
+    }
+    {
+        butil::IOReserveAlignedBuf buf(4096);
+        auto area = buf.reserve(1024 * 1024 * 3);
+        ASSERT_NE(area, butil::IOBuf::INVALID_AREA);
+        butil::IOBufAsZeroCopyInputStream wrapper(buf);
+        const void* data;
+        int size;
+        int count = 0;
+        int total_size = 0;
+        std::stringstream ss;
+        while (wrapper.Next(&data, &size)) {
+            ASSERT_EQ(reinterpret_cast<uintptr_t>(data) % 4096, 0);
+            ASSERT_EQ(size % 4096, 0);
+            std::string str(size, 'A' + count++);
+            ss << str;
+            std::memcpy(const_cast<void*>(data), str.data(), str.size());
+            total_size += size;
+        }
+        ASSERT_EQ(total_size, 3145728);
+        ASSERT_EQ(ss.str(), buf.to_string());
+    }
 }
 
 } // namespace
