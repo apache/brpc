@@ -429,7 +429,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     } else {
         // NOSIGNAL affects current task, not the new task.
         RemainedFn fn = NULL;
-        auto& cur_attr = g->get_current_attr();
+        auto& cur_attr = g->_cur_meta->attr;
         if (cur_attr.flags & BTHREAD_GLOBAL_PRIORITY) {
             fn = priority_to_run;
         } else if (g->current_task()->about_to_quit) {

@@ -200,8 +200,6 @@ public:
         return total_ns;
     }
 
-    const bthread_attr_t& get_current_attr() { return _cur_meta->attr; }
-
 private:
 friend class TaskControl;
 
