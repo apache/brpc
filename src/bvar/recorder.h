@@ -113,9 +113,10 @@ public:
     };
     
     typedef detail::AgentCombiner<Stat, uint64_t, AddToStat> combiner_type;
+    typedef typename combiner_type::self_shared_type shared_combiner_type;
     typedef combiner_type::Agent agent_type;
 
-    IntRecorder() : _sampler(NULL) {}
+    IntRecorder() : _combiner(std::make_shared<combiner_type>()), _sampler(NULL) {}
 
     explicit IntRecorder(const butil::StringPiece& name) : _sampler(NULL) {
         expose(name);
@@ -126,7 +127,7 @@ public:
         expose_as(prefix, name);
     }
 
-    ~IntRecorder() {
+    ~IntRecorder() override {
         hide();
         if (_sampler) {
             _sampler->destroy();
@@ -138,19 +139,19 @@ public:
     IntRecorder& operator<<(int64_t/*note*/ sample);
 
     int64_t average() const {
-        return _combiner.combine_agents().get_average_int();
+        return _combiner->combine_agents().get_average_int();
     }
 
     double average(double) const {
-        return _combiner.combine_agents().get_average_double();
+        return _combiner->combine_agents().get_average_double();
     }
 
     Stat get_value() const {
-        return _combiner.combine_agents();
+        return _combiner->combine_agents();
     }
     
     Stat reset() {
-        return _combiner.reset_all_agents();
+        return _combiner->reset_all_agents();
     }
 
     AddStat op() const { return AddStat(); }
@@ -160,7 +161,7 @@ public:
         os << get_value();
     }
 
-    bool valid() const { return _combiner.valid(); }
+    bool valid() const { return _combiner->valid(); }
     
     sampler_type* get_sampler() {
         if (NULL == _sampler) {
@@ -230,7 +231,7 @@ private:
     }
 
 private:
-    combiner_type           _combiner;
+    shared_combiner_type    _combiner;
     sampler_type*           _sampler;
     std::string             _debug_name;
 };
@@ -258,7 +259,7 @@ inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
                        << (void*)this << ") " << reason;
         }
     }
-    agent_type* agent = _combiner.get_or_create_tls_agent();
+    agent_type* agent = _combiner->get_or_create_tls_agent();
     if (BAIDU_UNLIKELY(!agent)) {
         LOG(FATAL) << "Fail to create agent";
         return *this;
@@ -276,7 +277,7 @@ inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
             // Although agent->element might have been cleared at this 
             // point, it is just OK because the very value is 0 in
             // this case
-            agent->combiner->commit_and_clear(agent);
+            _combiner->commit_and_clear(agent);
             sum = 0;
             num = 0;
             n = 0;
