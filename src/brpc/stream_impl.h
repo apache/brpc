@@ -19,6 +19,7 @@
 #ifndef  BRPC_STREAM_IMPL_H
 #define  BRPC_STREAM_IMPL_H
 
+#include <mutex>
 #include "bthread/bthread.h"
 #include "bthread/execution_queue.h"
 #include "brpc/socket.h"
@@ -67,7 +68,6 @@ public:
     __attribute__ ((__format__ (__printf__, 3, 4)));
     void Close(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
-    int ShareHostSocket(Stream& other_stream);
 
 private:
 friend void StreamWait(StreamId stream_id, const timespec *due_time,
@@ -134,6 +134,7 @@ friend struct butil::DefaultDeleter<Stream>;
     butil::IOBuf *_pending_buf;
     int64_t _start_idle_timer_us;
     bthread_timer_t _idle_timer;
+    std::once_flag _set_host_socket_flag;
 };
 
 } // namespace brpc
