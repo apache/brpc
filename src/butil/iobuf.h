@@ -729,11 +729,11 @@ private:
     void* _data_end;
     IOBuf _buf;
     IOBufAsZeroCopyOutputStream _zc_stream;
-#ifdef IO_URING_ENABLED
+
+    // These fields are only for io_uring build.
     char *ring_buf_{nullptr};
     uint32_t ring_buf_size_{0};
     uint32_t ring_buf_capacity_{0};
-#endif
 };
 
 // Iterate bytes of a IOBuf.
