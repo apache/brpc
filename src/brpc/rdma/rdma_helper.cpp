@@ -643,12 +643,15 @@ ibv_pd* GetRdmaPd() {
 }
 
 uint32_t GetLKey(void* buf) {
-    BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
-    ibv_mr** mr_ptr = g_user_mrs->seek(buf);
-    if (mr_ptr) {
-        return (*mr_ptr)->lkey;
+    uint32_t lkey = GetRegionId(buf);
+    if (lkey == 0) {
+        BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
+        ibv_mr** mr_ptr = g_user_mrs->seek(buf);
+        if (mr_ptr) {
+            return (*mr_ptr)->lkey;
+        }
     }
-    return 0;
+    return lkey;
 }
 
 ibv_gid GetRdmaGid() {
