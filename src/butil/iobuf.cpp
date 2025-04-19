@@ -355,6 +355,23 @@ inline IOBuf::Block* create_block() {
     return create_block(IOBuf::DEFAULT_BLOCK_SIZE);
 }
 
+inline IOBuf::Block* create_block_aligned(size_t block_size, size_t alignment) {
+    if (block_size > 0xFFFFFFFFULL) {
+        LOG(FATAL) << "block_size=" << block_size << " is too large";
+        return NULL;
+    }
+    char* mem = (char*)iobuf::blockmem_allocate(block_size);
+    if (mem == NULL) {
+        return NULL;
+    }
+    char* data = mem + sizeof(IOBuf::Block);
+    // change data pointer & data size make align satisfied
+    size_t adder = (-reinterpret_cast<uintptr_t>(data)) & (alignment - 1);
+    size_t size =
+        (block_size - sizeof(IOBuf::Block) - adder) & ~(alignment - 1);
+    return new (mem) IOBuf::Block(data + adder, size);
+}
+
 // === Share TLS blocks between appending operations ===
 // Max number of blocks in each TLS. This is a soft limit namely
 // release_tls_block_chain() may exceed this limit sometimes.
@@ -1783,6 +1800,45 @@ ssize_t IOPortal::append_from_SSL_channel(
 
 void IOPortal::return_cached_blocks_impl(Block* b) {
     iobuf::release_tls_block_chain(b);
+}
+
+IOBuf::Area IOReserveAlignedBuf::reserve(size_t count) {
+    IOBuf::Area result = INVALID_AREA;
+    if (_reserved == true) {
+        LOG(ERROR) << "Already call reserved";
+        return result;
+    }
+    _reserved = true;
+    bool is_power_two = _alignment > 0 && (_alignment & (_alignment - 1));
+    if (is_power_two != 0) {
+        LOG(ERROR) << "Invalid alignment, must power of two";
+        return INVALID_AREA;
+    }
+    count = (count + _alignment - 1) & ~(_alignment - 1);
+    size_t total_nc = 0;
+    while (total_nc < count) {
+        const auto block_size =
+            std::max(_alignment, 4096UL) * 2 + sizeof(IOBuf::Block);
+        auto b = iobuf::create_block_aligned(block_size, _alignment);
+        if (BAIDU_UNLIKELY(!b)) {
+            LOG(ERROR) << "Create block failed";
+            return result;
+        }
+        const size_t nc = std::min(count - total_nc, b->left_space());
+        const IOBuf::BlockRef r = {(uint32_t)b->size, (uint32_t)nc, b};
+        _push_back_ref(r);
+        // aligned block is not from tls, release block ref
+        b->dec_ref();
+        if (total_nc == 0) {
+            // Encode the area at first time. Notice that the pushed ref may
+            // be merged with existing ones.
+            result = make_area(_ref_num() - 1, _back_ref().length - nc, count);
+        }
+        // add total nc
+        total_nc += nc;
+        b->size += nc;
+    };
+    return result;
 }
 
 //////////////// IOBufCutter ////////////////
