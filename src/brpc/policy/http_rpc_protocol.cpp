@@ -331,11 +331,7 @@ static bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
                                     butil::IOBufAsZeroCopyOutputStream* wrapper,
                                     Controller* cntl, int error_code) {
     json2pb::Pb2ProtoJsonOptions options;
-#if GOOGLE_PROTOBUF_VERSION >= 5026002
-    options.always_print_fields_with_no_presence = cntl->has_always_print_primitive_fields();
-#else
-    options.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
-#endif
+    AlwaysPrintPrimitiveFields(options) = cntl->has_always_print_primitive_fields();
     options.always_print_enums_as_ints = FLAGS_pb_enum_as_number;
     std::string error;
     bool ok = json2pb::ProtoMessageToProtoJson(message, wrapper, options, &error);

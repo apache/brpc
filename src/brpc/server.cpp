@@ -1972,7 +1972,7 @@ bool IsDummyServerRunning() {
 }
 
 const Server::MethodProperty*
-Server::FindMethodPropertyByFullName(const butil::StringPiece&fullname) const  {
+Server::FindMethodPropertyByFullName(const butil::StringPiece& fullname) const  {
     return _method_map.seek(fullname);
 }
 
