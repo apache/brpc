@@ -4,20 +4,20 @@ about: Create a report to help us improve
 
 ---
 
-**Describe the bug (描述bug)**
+**Describe the bug**
 
 
-**To Reproduce (复现方法)**
+**To Reproduce**
 
 
-**Expected behavior (期望行为)**
+**Expected behavior**
 
 
-**Versions (各种版本)**
+**Versions**
 OS:
 Compiler:
 brpc:
 protobuf:
 
-**Additional context/screenshots (更多上下文/截图)**
+**Additional context/screenshots**
 
