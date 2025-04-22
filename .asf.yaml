@@ -1,3 +1,5 @@
+notifications:
+  issues: issues@brpc.apache.org
 github:
   description: brpc is an Industrial-grade RPC framework using C++ Language, which is often used in high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc. "brpc" means "better RPC".
   labels:
