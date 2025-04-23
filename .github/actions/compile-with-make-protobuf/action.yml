@@ -1,0 +1,27 @@
+inputs:
+  protobuf-version:
+    description: version of protobuf
+    required: true
+  protobuf-cpp-version:
+    description: version of protobuf-cpp
+    required: true
+  protobuf-install-dir:
+    description: install directory of protobuf
+    required: true
+  config-brpc-options:
+    description: extra options for config_brpc.sh
+    required: true
+runs:
+  using: "composite"
+  steps:
+  - run: | 
+      wget https://github.com/protocolbuffers/protobuf/releases/download/v${{inputs.protobuf-version}}/protobuf-cpp-${{inputs.protobuf-cpp-version}}.tar.gz
+      tar -xf protobuf-cpp-${{inputs.protobuf-cpp-version}}.tar.gz
+      cd protobuf-${{inputs.protobuf-cpp-version}}
+      ./configure --prefix=${{inputs.protobuf-install-dir}} --with-pic --disable-java --disable-python --disable-other-languages
+      sudo mkdir ${{inputs.protobuf-install-dir}}
+      make -j ${{env.proc_num}} && sudo make install
+    shell: bash
+  - uses: ./.github/actions/compile-with-make
+    with:
+      options: --headers="${{inputs.protobuf-install-dir}}/include /usr/include" --libs="${{inputs.protobuf-install-dir}} /usr/lib /usr/lib64" ${{inputs.config-brpc-options}}

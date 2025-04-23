@@ -22,6 +22,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include "json2pb/zero_copy_stream_writer.h"
 #include "json2pb/encode_decode.h"
 #include "json2pb/protobuf_map.h"

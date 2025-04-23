@@ -13,34 +13,95 @@ on:
 env:
   proc_num: $(nproc)
 
+# https://github.com/actions/runner-images
 jobs:
-  gcc-compile-with-make:
-    runs-on: ubuntu-22.04 # https://github.com/actions/runner-images
-    steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-essential-dependences
-    - uses: ./.github/actions/init-make-config
-      with:
-        options: --cc=gcc --cxx=g++ --werror
-    - name: compile
-      run: |
-           make -j ${{env.proc_num}}
-
-  gcc-compile-with-cmake:
+  compile-with-make:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-essential-dependences
-    - name: cmake
+    - uses: ./.github/actions/install-all-dependencies
+
+    - name: gcc with default options
+      uses: ./.github/actions/compile-with-make
+      with:
+        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=gcc --cxx=g++ --werror
+
+    - name: gcc with all options
+      uses: ./.github/actions/compile-with-make
+      with:
+        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=gcc --cxx=g++ --werror --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer --with-asan
+
+    - name: clang with default options
+      uses: ./.github/actions/compile-with-make
+      with:
+        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=clang --cxx=clang++ --werror
+
+    - name: clang with all options
+      uses: ./.github/actions/compile-with-make
+      with:
+        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=clang --cxx=clang++ --werror --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer --with-asan
+
+  compile-with-cmake:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-all-dependencies
+
+    - name: gcc with default options
       run: |
-           export CC=gcc && export CXX=g++
-           mkdir build
-           cd build
-           cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-    - name: compile
+        export CC=gcc && export CXX=g++
+        mkdir gcc_build && cd gcc_build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+        make -j ${{env.proc_num}} && make clean
+
+    - name: gcc with all options
       run: |
-           cd build
-           make -j ${{env.proc_num}}
+        export CC=gcc && export CXX=g++
+        mkdir gcc_build_all && cd gcc_build_all
+        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+        make -j ${{env.proc_num}} && make clean
+
+    - name: clang with default options
+      run: |
+        export CC=clang && export CXX=clang++
+        mkdir clang_build && cd clang_build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+        make -j ${{env.proc_num}} && make clean
+
+    - name: clang with all options
+      run: |
+        export CC=clang && export CXX=clang++
+        mkdir clang_build_all && cd clang_build_all
+        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+        make -j ${{env.proc_num}} && make clean
+
+  gcc-compile-with-make-protobuf:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependencies
+
+    - name: protobuf 3.5.1
+      uses: ./.github/actions/compile-with-make-protobuf
+      with:
+        protobuf-version: 3.5.1
+        protobuf-cpp-version: 3.5.1
+        protobuf-install-dir: /protobuf-3.5.1
+        config-brpc-options: --cc=gcc --cxx=g++ --werror
+
+    - name: protobuf 3.12.4
+      uses: ./.github/actions/compile-with-make-protobuf
+      with:
+        protobuf-version: 3.12.4
+        protobuf-cpp-version: 3.12.4
+        protobuf-install-dir: /protobuf-3.12.4
+        config-brpc-options: --cc=gcc --cxx=g++ --werror
+
+    - name: protobuf 21.12
+      uses: ./.github/actions/compile-with-make-protobuf
+      with:
+        protobuf-version: 21.12
+        protobuf-cpp-version: 3.21.12
+        protobuf-install-dir: /protobuf-3.21.12
+        config-brpc-options: --cc=gcc --cxx=g++ --werror
 
   gcc-compile-with-bazel:
     runs-on: ubuntu-22.04
@@ -54,67 +115,41 @@ jobs:
     - uses: actions/checkout@v2
     - run: bazel build --verbose_failures --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
 
-  gcc-compile-with-make-all-options:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-all-dependences
-    - uses: ./.github/actions/init-make-config
-      with:
-       options: --cc=gcc --cxx=g++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer --werror --with-asan
-    - name: compile
-      run: |
-        make -j ${{env.proc_num}}
-
-  gcc-compile-with-cmake-all-options:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-all-dependences
-    - name: cmake
-      run: |
-           export CC=gcc && export CXX=g++
-           mkdir build
-           cd build
-           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-    - name: compile
-      run: |
-           cd build
-           make -j ${{env.proc_num}}
-
   gcc-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - run: bazel build --verbose_failures --define with_mesalink=false --define with_glog=true --define with_thrift=true --define with_debug_bthread_sche_safety=true --define with_debug_lock=true --define with_asan=true -- //... -//example/...
 
-  clang-compile-with-make:
+  clang-compile-with-make-protobuf:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-essential-dependences
-    - uses: ./.github/actions/init-make-config
-      with:
-        options: --cc=clang --cxx=clang++ --werror
-    - name: compile
-      run: |
-           make -j ${{env.proc_num}}
+    - uses: ./.github/actions/install-essential-dependencies
 
-  clang-compile-with-cmake:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-essential-dependences
-    - name: cmake
-      run: |
-           export CC=clang && export CXX=clang++
-           mkdir build
-           cd build
-           cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-    - name: compile
-      run: |
-           cd build
-           make -j ${{env.proc_num}}
+    - name: protobuf 3.5.1
+      uses: ./.github/actions/compile-with-make-protobuf
+      with:
+        protobuf-version: 3.5.1
+        protobuf-cpp-version: 3.5.1
+        protobuf-install-dir: /protobuf-3.5.1
+        config-brpc-options: --cc=clang --cxx=clang++ --werror
+
+    - name: protobuf 3.12.4
+      uses: ./.github/actions/compile-with-make-protobuf
+      with:
+        protobuf-version: 3.12.4
+        protobuf-cpp-version: 3.12.4
+        protobuf-install-dir: /protobuf-3.12.4
+        config-brpc-options: --cc=clang --cxx=clang++ --werror
+
+    - name: protobuf 21.12
+      uses: ./.github/actions/compile-with-make-protobuf
+      with:
+        protobuf-version: 21.12
+        protobuf-cpp-version: 3.21.12
+        protobuf-install-dir: /protobuf-3.21.12
+        config-brpc-options: --cc=clang --cxx=clang++ --werror
 
   clang-compile-with-bazel:
     runs-on: ubuntu-22.04
@@ -128,34 +163,6 @@ jobs:
     - uses: actions/checkout@v2
     - run: bazel build --verbose_failures --action_env=CC=clang --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
 
-  clang-compile-with-make-all-options:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-all-dependences
-    - uses: ./.github/actions/init-make-config
-      with:
-        options: --cc=clang --cxx=clang++ --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer --werror --with-asan
-    - name: compile
-      run: |
-           make -j ${{env.proc_num}}
-
-  clang-compile-with-cmake-all-options:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-all-dependences
-    - name: cmake
-      run: |
-           export CC=clang && export CXX=clang++
-           mkdir build
-           cd build
-           cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-    - name: compile
-      run: |
-           cd build
-           make -j ${{env.proc_num}}
-
   clang-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
@@ -165,35 +172,35 @@ jobs:
   clang-unittest:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
-      - uses: ./.github/actions/install-essential-dependences
-      - uses: ./.github/actions/init-ut-make-config
-        with:
-          options: --cc=clang-12 --cxx=clang++-12 --with-bthread-tracer
-      - name: compile tests
-        run: |
-          cat config.mk
-          cd test
-          make -j ${{env.proc_num}}
-      - name: run tests
-        run: |
-          cd test
-          sh ./run_tests.sh
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependencies
+    - uses: ./.github/actions/init-ut-make-config
+      with:
+        options: --cc=clang-12 --cxx=clang++-12 --with-bthread-tracer
+    - name: compile tests
+      run: |
+        cat config.mk
+        cd test
+        make -j ${{env.proc_num}}
+    - name: run tests
+      run: |
+        cd test
+        sh ./run_tests.sh
 
   clang-unittest-asan:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
-      - uses: ./.github/actions/install-essential-dependences
-      - uses: ./.github/actions/init-ut-make-config
-        with:
-          options: --cc=clang-12 --cxx=clang++-12 --with-bthread-tracer --with-asan
-      - name: compile tests
-        run: |
-          cat config.mk
-          cd test
-          make NEED_GPERFTOOLS=0 -j ${{env.proc_num}}
-      - name: run tests
-        run: |
-          cd test
-          sh ./run_tests.sh
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependencies
+    - uses: ./.github/actions/init-ut-make-config
+      with:
+        options: --cc=clang-12 --cxx=clang++-12 --with-bthread-tracer --with-asan
+    - name: compile tests
+      run: |
+        cat config.mk
+        cd test
+        make NEED_GPERFTOOLS=0 -j ${{env.proc_num}}
+    - name: run tests
+      run: |
+        cd test
+        sh ./run_tests.sh
