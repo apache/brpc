@@ -184,6 +184,13 @@ inline Extension<const LoadBalancer>* LoadBalancerExtension() {
     return Extension<const LoadBalancer>::instance();
 }
 
+inline uint32_t GenRandomStride() {
+    uint32_t prime_offset[] = {
+        #include "bthread/offset_inl.list"
+    };
+    return prime_offset[butil::fast_rand_less_than(ARRAY_SIZE(prime_offset))];
+}
+
 } // namespace brpc
 
 

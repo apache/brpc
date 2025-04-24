@@ -31,17 +31,18 @@ namespace policy {
 // Weight is got from tag of ServerId.
 class WeightedRandomizedLoadBalancer : public LoadBalancer {
 public:
-    bool AddServer(const ServerId& id);
-    bool RemoveServer(const ServerId& id);
-    size_t AddServersInBatch(const std::vector<ServerId>& servers);
-    size_t RemoveServersInBatch(const std::vector<ServerId>& servers);
-    int SelectServer(const SelectIn& in, SelectOut* out);
-    LoadBalancer* New(const butil::StringPiece&) const;
-    void Destroy();
-    void Describe(std::ostream& os, const DescribeOptions&);
+    bool AddServer(const ServerId& id) override;
+    bool RemoveServer(const ServerId& id) override;
+    size_t AddServersInBatch(const std::vector<ServerId>& servers) override;
+    size_t RemoveServersInBatch(const std::vector<ServerId>& servers) override;
+    int SelectServer(const SelectIn& in, SelectOut* out) override;
+    LoadBalancer* New(const butil::StringPiece&) const override;
+    void Destroy() override;
+    void Describe(std::ostream& os, const DescribeOptions&) override;
 
     struct Server {
-        Server(SocketId s_id = 0, uint32_t s_w = 0, uint64_t s_c_w_s = 0): id(s_id), weight(s_w), current_weight_sum(s_c_w_s) {}
+        Server(SocketId s_id = 0, uint32_t s_w = 0, uint64_t s_c_w_s = 0)
+            : id(s_id), weight(s_w), current_weight_sum(s_c_w_s) {}
         SocketId id;
         uint32_t weight;
         uint64_t current_weight_sum;
@@ -60,6 +61,7 @@ private:
     static bool Remove(Servers& bg, const ServerId& id);
     static size_t BatchAdd(Servers& bg, const std::vector<ServerId>& servers);
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
+    static bool IsServerAvailable(SocketId id, SocketUniquePtr* out);
 
     butil::DoublyBufferedData<Servers> _db_servers;
 };

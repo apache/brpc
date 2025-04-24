@@ -41,16 +41,16 @@ DECLARE_double(punish_inflight_ratio);
 class LocalityAwareLoadBalancer : public LoadBalancer {
 public:
     LocalityAwareLoadBalancer();
-    ~LocalityAwareLoadBalancer();
-    bool AddServer(const ServerId& id);
-    bool RemoveServer(const ServerId& id);
-    size_t AddServersInBatch(const std::vector<ServerId>& servers);
-    size_t RemoveServersInBatch(const std::vector<ServerId>& servers);
-    LocalityAwareLoadBalancer* New(const butil::StringPiece&) const;
-    void Destroy();
-    int SelectServer(const SelectIn& in, SelectOut* out);
-    void Feedback(const CallInfo& info);
-    void Describe(std::ostream& os, const DescribeOptions& options);
+    ~LocalityAwareLoadBalancer() override;
+    bool AddServer(const ServerId& id) override;
+    bool RemoveServer(const ServerId& id) override;
+    size_t AddServersInBatch(const std::vector<ServerId>& servers) override;
+    size_t RemoveServersInBatch(const std::vector<ServerId>& servers) override;
+    LocalityAwareLoadBalancer* New(const butil::StringPiece&) const override;
+    void Destroy() override;
+    int SelectServer(const SelectIn& in, SelectOut* out) override;
+    void Feedback(const CallInfo& info) override;
+    void Describe(std::ostream& os, const DescribeOptions& options) override;
 
 private:
     struct TimeInfo {

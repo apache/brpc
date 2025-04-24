@@ -33,14 +33,14 @@ namespace policy {
 // than RoundRobinLoadBalancer.
 class RandomizedLoadBalancer : public LoadBalancer {
 public:
-    bool AddServer(const ServerId& id);
-    bool RemoveServer(const ServerId& id);
-    size_t AddServersInBatch(const std::vector<ServerId>& servers);
-    size_t RemoveServersInBatch(const std::vector<ServerId>& servers);
-    int SelectServer(const SelectIn& in, SelectOut* out);
-    RandomizedLoadBalancer* New(const butil::StringPiece&) const;
-    void Destroy();
-    void Describe(std::ostream& os, const DescribeOptions&);
+    bool AddServer(const ServerId& id) override;
+    bool RemoveServer(const ServerId& id) override;
+    size_t AddServersInBatch(const std::vector<ServerId>& servers) override;
+    size_t RemoveServersInBatch(const std::vector<ServerId>& servers) override;
+    int SelectServer(const SelectIn& in, SelectOut* out) override;
+    RandomizedLoadBalancer* New(const butil::StringPiece&) const override;
+    void Destroy() override;
+    void Describe(std::ostream& os, const DescribeOptions&) override;
     
 private:
     struct Servers {
