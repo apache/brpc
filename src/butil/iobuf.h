@@ -489,6 +489,17 @@ private:
     Block* _block;
 };
 
+class IOReserveAlignedBuf : public IOBuf {
+public:
+    IOReserveAlignedBuf(size_t alignment)
+        : _alignment(alignment), _reserved(false) {}
+    Area reserve(size_t count);
+
+private:
+    size_t _alignment;
+    bool _reserved;
+};
+
 // Specialized utility to cut from IOBuf faster than using corresponding
 // methods in IOBuf.
 // Designed for efficiently parsing data from IOBuf.
