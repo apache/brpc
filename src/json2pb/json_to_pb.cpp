@@ -24,6 +24,8 @@
 #include <typeinfo>
 #include <limits> 
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include "butil/strings/string_number_conversions.h"
 #include "butil/third_party/rapidjson/error/error.h"
 #include "butil/third_party/rapidjson/rapidjson.h"

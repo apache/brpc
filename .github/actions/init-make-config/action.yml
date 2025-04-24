@@ -1,9 +1,0 @@
-inputs:
-  options:
-    description: extra options for config_brpc.sh
-    required: false
-runs:
-  using: "composite"
-  steps:
-    - run: sh config_brpc.sh --headers="/usr/include" --libs="/usr/lib /usr/lib64" --nodebugsymbols ${{inputs.options}}
-      shell: bash

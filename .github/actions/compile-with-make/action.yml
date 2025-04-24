@@ -1,0 +1,11 @@
+inputs:
+  options:
+    description: extra options for config_brpc.sh
+    required: false
+runs:
+  using: "composite"
+  steps:
+  - run: |
+      sh config_brpc.sh --nodebugsymbols ${{inputs.options}}
+      cat config.mk && make clean && make -j ${{env.proc_num}}
+    shell: bash
