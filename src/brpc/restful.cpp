@@ -314,29 +314,22 @@ void RestfulMap::ClearMethods() {
 struct CompareItemInPathList {
     bool operator()(const RestfulMethodProperty* e1,
                     const RestfulMethodProperty* e2) const {
-        const int rc1 = e1->path.prefix.compare(e2->path.prefix);
+        const RestfulMethodPath& path1 = e1->path;
+        const RestfulMethodPath& path2 = e2->path;
+        const int rc1 = path1.prefix.compare(path2.prefix);
         if (rc1 != 0) {
             return rc1 < 0;
         }
         // /A/*/B is put before /A/B so that we try exact patterns first
         // (the matching is in reversed order)
-        if (e1->path.has_wildcard != e2->path.has_wildcard) {
-            return e1->path.has_wildcard > e2->path.has_wildcard;
+        if (path1.has_wildcard != path2.has_wildcard) {
+            return path1.has_wildcard > path2.has_wildcard;
         }
         // Compare postfix from back to front.
-        // TODO: Optimize this.
-        std::string::const_reverse_iterator it1 = e1->path.postfix.rbegin();
-        std::string::const_reverse_iterator it2 = e2->path.postfix.rbegin();
-        while (it1 != e1->path.postfix.rend() &&
-               it2 != e2->path.postfix.rend()) {
-            if (*it1 != *it2) {
-                return (*it1 < *it2);
-            }
-            ++it1;
-            ++it2;
-        }
-        return (it1 == e1->path.postfix.rend())
-            > (it2 == e2->path.postfix.rend());
+        const bool postfix_result = std::lexicographical_compare(
+            path1.postfix.rbegin(), path1.postfix.rend(),
+            path2.postfix.rbegin(), path2.postfix.rend());
+        return postfix_result;
     }
 };
 
