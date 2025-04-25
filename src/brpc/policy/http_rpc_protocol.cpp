@@ -811,8 +811,10 @@ class HttpResponseSenderAsDone : public google::protobuf::Closure {
 public:
     explicit HttpResponseSenderAsDone(HttpResponseSender* s) : _sender(std::move(*s)) {}
     void Run() override {
-        _sender._cntl->CallAfterRpcResp(
-            _sender._messages->Request(), _sender._messages->Response());
+        if (NULL != _sender._messages) {
+            _sender._cntl->CallAfterRpcResp(_sender._messages->Request(),
+                                            _sender._messages->Response());
+        }
         delete this;
     }
 
