@@ -1346,8 +1346,8 @@ int TaskGroup::RegisterSocket(brpc::Socket *sock) {
     return ring_listener_->Register(sock);
 }
 
-void TaskGroup::UnregisterSocket(int fd) {
-    ring_listener_->Unregister(fd);
+int TaskGroup::UnregisterSocket(int fd) {
+    return ring_listener_->Unregister(fd);
 }
 
 void TaskGroup::SocketRecv(brpc::Socket *sock) {

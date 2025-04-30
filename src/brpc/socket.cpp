@@ -58,6 +58,7 @@
 #include <liburing.h>
 #include <variant>
 #include "bthread/inbound_ring_buf.h"
+#include "bthread/ring_listener.h"
 #endif
 
 DEFINE_bool(dispatch_lazily, false, "dispatcher lazily creates task");
@@ -686,6 +687,8 @@ int Socket::ResetFileDescriptor(int fd, size_t bound_gid) {
         // Start bthread that continously processes messages of this socket.
         bthread_t tid;
         attr.keytable_pool = _keytable_pool;
+          // TODO(zkl): handle SocketRegister error return -1
+          //  should wait for the recv cqe here?
         bthread_start_from_bound_group(bound_gid, &tid, &attr, SocketRegister,
                                        this);
       } else {
@@ -1216,18 +1219,32 @@ void Socket::OnRecycle() {
         if (_on_edge_triggered_events != NULL) {
 #ifdef IO_URING_ENABLED
             if (FLAGS_use_io_uring && bound_g_ != nullptr) {
-                bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
-                bthread_t tid;
-                intptr_t arg = prev_fd;
-                void *args = reinterpret_cast<void *>(arg);
-                if (bthread_start_from_bound_group(
-                    bound_g_->group_id_, &tid, &attr, SocketUnRegister, args) != 0) {
-                    LOG(FATAL) << "Fail to start SocketUnRegister";
-                    SocketUnRegister(args);
+                bthread::TaskGroup *cur_group = bthread::tls_task_group;
+                if (cur_group == bound_g_) {
+                    int res = bound_g_->UnregisterSocket(prev_fd);
+                    if (res != 0) {
+                        LOG(ERROR) << "SocketUnRegister failed: " << res;
+                    }
+                } else {
+                    // This thread is not the socket's bound_g_, start a bound bthread.
+                    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+                    bthread_t tid;
+                    SocketUnRegisterArg args;
+                    args.fd_ = prev_fd;
+                    void *args_ptr = &args;
+                    if (bthread_start_from_bound_group(
+                        bound_g_->group_id_, &tid, &attr, SocketUnRegister, args_ptr) != 0) {
+                        LOG(FATAL) << "Fail to start SocketUnRegister";
+                        SocketUnRegister(args_ptr);
+                    }
+                    int res = args.Wait();
+                    if (res != 0) {
+                        LOG(ERROR) << "SocketUnRegister failed: " << res;
+                    }
                 }
-              bound_g_ = nullptr;
-              reg_fd_idx_ = -1;
-              reg_fd_ = -1;
+                bound_g_ = nullptr;
+                reg_fd_idx_ = -1;
+                reg_fd_ = -1;
             } else {
 #endif
                 GetGlobalEventDispatcher(prev_fd).RemoveConsumer(prev_fd);
@@ -1316,6 +1333,7 @@ void *Socket::SocketRegister(void *arg) {
   if (reg_ret < 0) {
     LOG(ERROR) << "Failed to register the socket " << sock->id()
                << " to the IO uring listener.";
+      // TODO(zkl): return the result to ResetFileDescriptor
     return nullptr;
   }
 
@@ -1324,9 +1342,11 @@ void *Socket::SocketRegister(void *arg) {
 }
 
 void *Socket::SocketUnRegister(void *arg) {
-    bthread::TaskGroup *cur_group = bthread::TaskGroup::VolatileTLSTaskGroup();
-    intptr_t fd = reinterpret_cast<intptr_t>(arg);
-    cur_group->UnregisterSocket(fd);
+    bthread::TaskGroup *cur_group = bthread::tls_task_group;
+    SocketUnRegisterArg *args = static_cast<SocketUnRegisterArg *>(arg);
+    // TODO(zkl): should wait the cancel cqe and return the result to caller?
+    int res = cur_group->UnregisterSocket(args->fd_);
+    args->Notify(res);
     return nullptr;
 }
 

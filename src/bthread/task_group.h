@@ -230,7 +230,7 @@ public:
 
 #ifdef IO_URING_ENABLED
     int RegisterSocket(brpc::Socket *sock);
-    void UnregisterSocket(int fd);
+    int UnregisterSocket(int fd);
     void SocketRecv(brpc::Socket *sock);
     int SocketFixedWrite(brpc::Socket *sock, uint16_t ring_buf_idx, uint32_t ring_buf_size);
     int SocketNonFixedWrite(brpc::Socket *sock);

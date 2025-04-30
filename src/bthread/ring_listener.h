@@ -64,6 +64,29 @@ struct RingFsyncData {
     }
 };
 
+struct SocketUnRegisterArg {
+    int fd_;
+    bthread::Mutex mutex_;
+    bthread::ConditionVariable cv_;
+    bool finish_{false};
+    int res_{-1};
+
+    int Wait() {
+        std::unique_lock lk(mutex_);
+        while (!finish_) {
+            cv_.wait(lk);
+        }
+        return res_;
+    }
+
+    void Notify(int res) {
+        std::unique_lock lk(mutex_);
+        finish_ = true;
+        res_ = res;
+        cv_.notify_one();
+    }
+};
+
 class RingListener {
 public:
     RingListener(bthread::TaskGroup *group) : task_group_(group) {
@@ -107,7 +130,10 @@ public:
 
     int SubmitAll();
 
-    void Unregister(int fd) { SubmitCancel(fd); }
+    int Unregister(int fd) {
+        // TODO(zkl): should wait for the cancel cqe?
+        return SubmitCancel(fd);
+    }
 
     void PollAndNotify();
 

@@ -106,9 +106,10 @@ int RingListener::Register(brpc::Socket *sock) {
 
     auto it = reg_fds_.find(fd);
     if (it != reg_fds_.end()) {
-        LOG(WARNING) << "Socket " << sock->id() << ", fd: " << sock->fd()
+        LOG(ERROR) << "Socket " << sock->id() << ", fd: " << sock->fd()
                << " has been registered before.";
-        return -1;
+        int ret = SubmitRecv(sock);
+        return ret;
     }
 
     sock->reg_fd_idx_ = -1;
@@ -421,12 +422,14 @@ int RingListener::SubmitCancel(int fd) {
         return -1;
     }
 
+    int fd_idx = -1;
     auto it = reg_fds_.find(fd);
     if (it == reg_fds_.end()) {
-        return 0;
+        LOG(WARNING) << "Canceling an unregistered fd: " << fd;
+    } else {
+        fd_idx = it->second;
     }
 
-    int fd_idx = it->second;
     int sfd;
     uint64_t data;
 
@@ -504,7 +507,7 @@ void RingListener::HandleCqe(io_uring_cqe *cqe) {
                 free_reg_fd_idx_.emplace_back(sock->reg_fd_idx_);
                 sock->reg_fd_idx_ = -1;
                 auto it = reg_fds_.find(sock->fd());
-                assert(it != reg_fds_.end());
+                CHECK(it != reg_fds_.end());
                 it->second = -1;
             }
             SubmitRecv(sock);
@@ -537,7 +540,7 @@ void RingListener::HandleRecv(brpc::Socket *sock, io_uring_cqe *cqe) {
     uint16_t buf_id = UINT16_MAX;
     bool need_rearm = false;
 
-    assert(sock != nullptr);
+    CHECK(sock != nullptr);
 
     if (nw < 0) {
         int err = -nw;
