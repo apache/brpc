@@ -139,11 +139,11 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
             std::lower_bound(s->server_list.begin(), s->server_list.end(),
                              random_server, server_compare);
         const SocketId id = server->id;
-        random_traversed.insert(id);
-        if (0 != IsServerAvailable(id, out->ptr)) {
+        if (ExcludedServers::IsExcluded(in.excluded, id)) {
             continue;
         }
-        if (!ExcludedServers::IsExcluded(in.excluded, id)) {
+        random_traversed.insert(id);
+        if (0 == IsServerAvailable(id, out->ptr)) {
             // An available server is found.
             return 0;
         }

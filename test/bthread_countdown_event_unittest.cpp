@@ -36,6 +36,7 @@ void *signaler(void *arg) {
 }
 
 TEST(CountdonwEventTest, sanity) {
+    std::vector<bthread_t> tids;
     for (int n = 1; n < 10; ++n) {
         Arg a;
         a.num_sig = n;
@@ -43,9 +44,13 @@ TEST(CountdonwEventTest, sanity) {
         for (int i = 0; i < n; ++i) {
             bthread_t tid;
             ASSERT_EQ(0, bthread_start_urgent(&tid, NULL, signaler, &a));
+            tids.push_back(tid);
         }
         a.event.wait();
         ASSERT_EQ(0, a.num_sig.load(butil::memory_order_relaxed));
+    }
+    for (size_t i = 0; i < tids.size(); ++i) {
+        bthread_join(tids[i], NULL);
     }
 }
 
