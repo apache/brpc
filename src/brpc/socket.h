@@ -266,6 +266,8 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*){NULL};
     int health_check_interval_s{-1};
+    std::string health_check_path;
+    int32_t health_check_timeout_ms{500};
     // Only accept ssl connection.
     bool force_ssl{false};
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
@@ -411,6 +413,10 @@ public:
 
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
+
+    const std::string& health_check_path() const { return _health_check_path; }
+
+    int32_t health_check_timeout_ms() const {return _health_check_timeout_ms; }
 
     // True if health checking is enabled.
     bool HCEnabled() const {
@@ -980,6 +986,8 @@ private:
     int _tcp_user_timeout_ms;
 
     HttpMethod _http_request_method;
+    std::string _health_check_path;
+    int32_t _health_check_timeout_ms{500};
 };
 
 } // namespace brpc

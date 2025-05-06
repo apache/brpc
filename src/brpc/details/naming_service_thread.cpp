@@ -125,8 +125,11 @@ void NamingServiceThread::Actions::ResetServers(
         //       Socket. SocketMapKey may be passed through AddWatcher. Make sure
         //       to pick those Sockets with the right settings during OnAddedServers
         const SocketMapKey key(_added[i], _owner->_options.channel_signature);
+        HealthCheckOption hc_option;
+        hc_option.health_check_timeout_ms = _owner->_options.health_check_timeout_ms;
+        hc_option.health_check_path = _owner->_options.health_check_path;
         CHECK_EQ(0, SocketMapInsert(key, &tagged_id.id, _owner->_options.ssl_ctx,
-                                    _owner->_options.use_rdma));
+                                    _owner->_options.use_rdma, hc_option));
         _added_sockets.push_back(tagged_id);
     }
 

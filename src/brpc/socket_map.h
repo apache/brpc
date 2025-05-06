@@ -44,6 +44,11 @@ inline bool operator!=(const ChannelSignature& s1, const ChannelSignature& s2) {
     return !(s1 == s2);
 }
 
+struct HealthCheckOption {
+    std::string health_check_path;
+    int32_t health_check_timeout_ms = 500;
+};
+
 // The following fields uniquely define a Socket. In other word,
 // Socket can't be shared between 2 different SocketMapKeys
 struct SocketMapKey {
@@ -81,16 +86,19 @@ struct SocketMapKeyHasher {
 // Return 0 on success, -1 otherwise.
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-                    bool use_rdma);
+                    bool use_rdma,
+                    const HealthCheckOption& hc_option);
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
-    return SocketMapInsert(key, id, ssl_ctx, false);
+    HealthCheckOption hc_option;
+    return SocketMapInsert(key, id, ssl_ctx, false, hc_option);
 }
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id) {
     std::shared_ptr<SocketSSLContext> empty_ptr;
-    return SocketMapInsert(key, id, empty_ptr, false);
+    HealthCheckOption hc_option;
+    return SocketMapInsert(key, id, empty_ptr, false, hc_option);
 }
 
 // Find the SocketId associated with `key'.
@@ -151,14 +159,18 @@ public:
     int Init(const SocketMapOptions&);
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-               bool use_rdma);
+               bool use_rdma,
+               const HealthCheckOption& hc_option);
+
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
-        return Insert(key, id, ssl_ctx, false);   
+        HealthCheckOption hc_option;
+        return Insert(key, id, ssl_ctx, false, hc_option);   
     }
     int Insert(const SocketMapKey& key, SocketId* id) {
         std::shared_ptr<SocketSSLContext> empty_ptr;
-        return Insert(key, id, empty_ptr, false);
+        HealthCheckOption hc_option;
+        return Insert(key, id, empty_ptr, false, hc_option);
     }
 
     void Remove(const SocketMapKey& key, SocketId expected_id);

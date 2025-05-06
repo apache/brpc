@@ -291,7 +291,7 @@ channel.Init("http://...", "random:min_working_instances=6 hold_seconds=10", &op
 | ------------------------- | ----- | ---------------------------------------- | ----------------------- |
 | health_check_interval （R） | 3     | seconds between consecutive health-checkings | src/brpc/socket_map.cpp |
 
-在默认的配置下，一旦server被连接上，它会恢复为可用状态；brpc还提供了应用层健康检查的机制，框架会发送一个HTTP GET请求到该server，请求路径通过-health\_check\_path设置（默认为空），只有当server返回200时，它才会恢复。在两种健康检查机制下，都可通过-health\_check\_timeout\_ms设置超时（默认500ms）。如果在隔离过程中，server从命名服务中删除了，brpc也会停止连接尝试。
+在默认的配置下，一旦server被连接上，它会恢复为可用状态,可通过-health\_check\_timeout\_ms设置超时（默认500ms）；brpc还提供了应用层健康检查的机制，框架会发送一个HTTP GET请求到该server，只有当server返回200时，它才会恢复，在这种机制下，既可通过-health\_check\_path（默认为空）和-health\_check\_timeout\_ms（默认500ms）分别设置全局的健康检查请求路径和超时，也可通过ChannelOptions中的health\_check\_path和health\_check\_timeout\_ms来对不同的channel设置不同的请求路径和超时，ChannelOptions设置的这俩参数优先级要高于gflag参数。如果在隔离过程中，server从命名服务中删除了，brpc也会停止连接尝试。
 
 # 发起访问
 

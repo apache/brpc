@@ -91,8 +91,9 @@ SocketMap* get_or_new_client_side_socket_map() {
 
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-                    bool use_rdma) {
-    return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx, use_rdma);
+                    bool use_rdma,
+                    const HealthCheckOption& hc_option) {
+    return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx, use_rdma, hc_option);
 }    
 
 int SocketMapFind(const SocketMapKey& key, SocketId* id) {
@@ -225,7 +226,8 @@ void SocketMap::ShowSocketMapInBvarIfNeed() {
 
 int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
                       const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-                      bool use_rdma) {
+                      bool use_rdma,
+                      const HealthCheckOption& hc_option) {
     ShowSocketMapInBvarIfNeed();
 
     std::unique_lock<butil::Mutex> mu(_mutex);
@@ -249,6 +251,8 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     opt.remote_side = key.peer.addr;
     opt.initial_ssl_ctx = ssl_ctx;
     opt.use_rdma = use_rdma;
+    opt.health_check_path = hc_option.health_check_path;
+    opt.health_check_timeout_ms = hc_option.health_check_timeout_ms;
     if (_options.socket_creator->CreateSocket(opt, &tmp_id) != 0) {
         PLOG(FATAL) << "Fail to create socket to " << key.peer;
         return -1;
