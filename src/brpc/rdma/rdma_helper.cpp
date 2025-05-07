@@ -168,6 +168,11 @@ static void GlobalRelease() {
     }
 }
 
+void* UserExtendBlockPool(void* region_base, size_t region_size,
+                          int block_type) {
+    return ExtendBlockPoolByUser(region_base, region_size, block_type);
+}
+
 uint32_t RdmaRegisterMemory(void* buf, size_t size) {
     // Register the memory as callback in block_pool
     // The thread-safety should be guaranteed by the caller

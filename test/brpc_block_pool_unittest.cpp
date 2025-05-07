@@ -54,7 +54,7 @@ TEST_F(BlockPoolTest, single_thread) {
     FLAGS_rdma_memory_pool_increase_size_mb = 1024;
     FLAGS_rdma_memory_pool_max_regions = 16;
     FLAGS_rdma_memory_pool_buckets = 4;
-    EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
+    EXPECT_TRUE(InitBlockPool(DummyCallback));
 
     size_t num = 1024;
     void* buf[num];
@@ -108,7 +108,7 @@ TEST_F(BlockPoolTest, multiple_thread) {
     FLAGS_rdma_memory_pool_increase_size_mb = 1024;
     FLAGS_rdma_memory_pool_max_regions = 16;
     FLAGS_rdma_memory_pool_buckets = 4;
-    EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
+    EXPECT_TRUE(InitBlockPool(DummyCallback));
 
     uintptr_t thread_num = 32;
     bthread_t tid[thread_num];
@@ -130,7 +130,7 @@ TEST_F(BlockPoolTest, extend) {
     FLAGS_rdma_memory_pool_increase_size_mb = 64;
     FLAGS_rdma_memory_pool_max_regions = 16;
     FLAGS_rdma_memory_pool_buckets = 1;
-    EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
+    EXPECT_TRUE(InitBlockPool(DummyCallback));
 
     EXPECT_EQ(1, GetRegionNum());
     size_t num = 15 * 64 * 1024 * 1024 / GetBlockSize(2);
@@ -153,7 +153,7 @@ TEST_F(BlockPoolTest, memory_not_enough) {
     FLAGS_rdma_memory_pool_increase_size_mb = 64;
     FLAGS_rdma_memory_pool_max_regions = 2;
     FLAGS_rdma_memory_pool_buckets = 1;
-    EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
+    EXPECT_TRUE(InitBlockPool(DummyCallback));
 
     EXPECT_EQ(1, GetRegionNum());
     size_t num = 64 * 1024 * 1024 / GetBlockSize(2);
@@ -179,7 +179,7 @@ TEST_F(BlockPoolTest, invalid_use) {
     FLAGS_rdma_memory_pool_increase_size_mb = 64;
     FLAGS_rdma_memory_pool_max_regions = 2;
     FLAGS_rdma_memory_pool_buckets = 1;
-    EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
+    EXPECT_TRUE(InitBlockPool(DummyCallback));
 
     void* buf = AllocBlock(0);
     EXPECT_EQ(NULL, buf);
@@ -201,7 +201,7 @@ TEST_F(BlockPoolTest, dump_info) {
     FLAGS_rdma_memory_pool_increase_size_mb = 64;
     FLAGS_rdma_memory_pool_max_regions = 2;
     FLAGS_rdma_memory_pool_buckets = 4;
-    EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
+    EXPECT_TRUE(InitBlockPool(DummyCallback));
     DumpMemoryPoolInfo(std::cout);
     void* buf = AllocBlock(8192);
     DumpMemoryPoolInfo(std::cout);
