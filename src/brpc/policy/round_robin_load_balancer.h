@@ -32,14 +32,14 @@ namespace policy {
 // at the same time) are very close.
 class RoundRobinLoadBalancer : public LoadBalancer {
 public:
-    bool AddServer(const ServerId& id);
-    bool RemoveServer(const ServerId& id);
-    size_t AddServersInBatch(const std::vector<ServerId>& servers);
-    size_t RemoveServersInBatch(const std::vector<ServerId>& servers);
-    int SelectServer(const SelectIn& in, SelectOut* out);
-    RoundRobinLoadBalancer* New(const butil::StringPiece&) const;
-    void Destroy();
-    void Describe(std::ostream&, const DescribeOptions& options);
+    bool AddServer(const ServerId& id) override;
+    bool RemoveServer(const ServerId& id) override;
+    size_t AddServersInBatch(const std::vector<ServerId>& servers) override;
+    size_t RemoveServersInBatch(const std::vector<ServerId>& servers) override;
+    int SelectServer(const SelectIn& in, SelectOut* out) override;
+    RoundRobinLoadBalancer* New(const butil::StringPiece&) const override;
+    void Destroy() override;
+    void Describe(std::ostream&, const DescribeOptions& options) override;
 
 private:
     struct Servers {
