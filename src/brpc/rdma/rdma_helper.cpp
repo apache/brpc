@@ -319,7 +319,7 @@ static void OnRdmaAsyncEvent(Socket* m) {
             break;
         }
         default:
-            // should not hannen
+            // should not happen
             IbvAckAsyncEvent(&event);
             break;
         }
