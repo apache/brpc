@@ -36,6 +36,7 @@
 #include "brpc/retry_policy.h"
 #include "brpc/backup_request_policy.h"
 #include "brpc/naming_service_filter.h"
+#include "brpc/socket.h"
 
 namespace brpc {
 
@@ -143,18 +144,10 @@ struct ChannelOptions {
     // Default: ""
     std::string connection_group;
 
-    // Set the health check path according to the channel granularity. 
-    // Its priority is higher than FLAGS_health_check_path
-    // When it is not set, FLAGS_health_check_path will take effect
-    // Default: ""
-    std::string health_check_path;
-
-    // Set the rpc health check timeout according to the channel granularity
-    // Its priority is higher than FLAGS_health_check_timeout_ms
-    // When it is smaller than -1, FLAGS_health_check_timeout_ms will take effect
-    // Default: -1
-    int32_t health_check_timeout_ms;
-
+    // Set the health check param according to the channel granularity. 
+    // Its priority is higher than FLAGS_health_check_path and FLAGS_health_check_timeout_ms.
+    // When it is not set, FLAGS_health_check_path and FLAGS_health_check_timeout_ms will take effect.
+    HealthCheckOption hc_option;
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ChannelOptions from being bloated in most cases.

@@ -44,11 +44,6 @@ inline bool operator!=(const ChannelSignature& s1, const ChannelSignature& s2) {
     return !(s1 == s2);
 }
 
-struct HealthCheckOption {
-    std::string health_check_path;
-    int32_t health_check_timeout_ms = 500;
-};
-
 // The following fields uniquely define a Socket. In other word,
 // Socket can't be shared between 2 different SocketMapKeys
 struct SocketMapKey {

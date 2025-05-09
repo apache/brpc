@@ -242,6 +242,13 @@ struct SocketKeepaliveOptions {
     int keepalive_count{-1};
 };
 
+struct HealthCheckOption {
+    // Http path of health check call
+    std::string health_check_path;
+    // The timeout for both establishing the connection and the http call to health_check_path over the connection
+    int32_t health_check_timeout_ms{500};
+};
+
 // TODO: Comment fields
 struct SocketOptions {
     // If `fd' is non-negative, set `fd' to be non-blocking and take the
@@ -266,8 +273,6 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*){NULL};
     int health_check_interval_s{-1};
-    std::string health_check_path;
-    int32_t health_check_timeout_ms{500};
     // Only accept ssl connection.
     bool force_ssl{false};
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
@@ -287,6 +292,7 @@ struct SocketOptions {
     int tcp_user_timeout_ms{ -1};
     // Tag of this socket
     bthread_tag_t bthread_tag{bthread_self_tag()};
+    HealthCheckOption hc_option;
 };
 
 // Abstractions on reading from and writing into file descriptors.

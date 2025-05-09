@@ -65,7 +65,6 @@ ChannelOptions::ChannelOptions()
     , backup_request_policy(NULL)
     , retry_policy(NULL)
     , ns_filter(NULL)
-    , health_check_timeout_ms(-1)
 {}
 
 ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
@@ -78,7 +77,8 @@ ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
 static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
     if (opt.auth == NULL &&
         !opt.has_ssl_options() &&
-        opt.connection_group.empty()) {
+        opt.connection_group.empty() &&
+        opt.hc_option.health_check_path.empty()) {
         // Returning zeroized result by default is more intuitive for users.
         return ChannelSignature();
     }
@@ -97,6 +97,12 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         if (opt.auth) {
             buf.append("|auth=");
             buf.append((char*)&opt.auth, sizeof(opt.auth));
+        }
+        if (!opt.hc_option.health_check_path.empty()) {
+            buf.append("|health_check_path=");
+            buf.append(opt.hc_option.health_check_path);
+            buf.append("|health_check_timeout_ms=");
+            buf.append(std::to_string(opt.hc_option.health_check_timeout_ms));
         }
         if (opt.has_ssl_options()) {
             const ChannelSSLOptions& ssl = opt.ssl_options();
@@ -181,14 +187,10 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
         LOG(ERROR) << "Channel does not support the protocol";
         return -1;
     }
-
-    if (_options.health_check_path.empty()) {
-        _options.health_check_path = FLAGS_health_check_path;
+    if (_options.hc_option.health_check_path.empty()) {
+        _options.hc_option.health_check_path = FLAGS_health_check_path;
+        _options.hc_option.health_check_timeout_ms = FLAGS_health_check_timeout_ms;
     }
-    if (_options.health_check_timeout_ms < 0) {
-        _options.health_check_timeout_ms = FLAGS_health_check_timeout_ms;
-    }
-
     if (_options.use_rdma) {
 #if BRPC_WITH_RDMA
         if (!OptionsAvailableForRdma(&_options)) {
@@ -363,13 +365,8 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (CreateSocketSSLContext(_options, &ssl_ctx) != 0) {
         return -1;
     }
-    HealthCheckOption hc_option;
-    hc_option.health_check_path = _options.health_check_path;
-    if (_options.health_check_timeout_ms > 0) {
-        hc_option.health_check_timeout_ms = _options.health_check_timeout_ms;
-    }
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
-                        &_server_id, ssl_ctx, _options.use_rdma, hc_option) != 0) {
+                        &_server_id, ssl_ctx, _options.use_rdma, _options.hc_option) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -408,10 +405,7 @@ int Channel::Init(const char* ns_url,
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
     ns_opt.use_rdma = _options.use_rdma;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
-    ns_opt.health_check_path =  _options.health_check_path;
-    if (_options.health_check_timeout_ms > 0) {
-       ns_opt.health_check_timeout_ms = _options.health_check_timeout_ms;
-    }
+    ns_opt.hc_option =  _options.hc_option;
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
         return -1;
     }
