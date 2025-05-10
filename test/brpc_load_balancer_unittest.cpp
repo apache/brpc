@@ -981,7 +981,7 @@ TEST_F(LoadBalancerTest, weighted_randomized) {
     brpc::SocketUniquePtr ptr;
     brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&ptr);
-    int run_times = configed_weight_sum * 10;
+    int run_times = configed_weight_sum * 100;
     std::vector<butil::EndPoint> select_servers;
     for (int i = 0; i < run_times; ++i) {
         EXPECT_EQ(0, wrlb.SelectServer(in, &out));
