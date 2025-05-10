@@ -57,8 +57,7 @@ public:
     SocketId id;
     int64_t interval_s;
     int64_t last_check_time_ms;
-    int32_t health_check_timeout_ms;
-    std::string health_check_path;
+    HealthCheckOption hc_option;
 };
 
 class HealthCheckManager {
@@ -79,13 +78,12 @@ void HealthCheckManager::StartCheck(SocketId id, int64_t check_interval_s) {
     OnAppHealthCheckDone* done = new OnAppHealthCheckDone;
     done->id = id;
     done->interval_s = check_interval_s;
-    done->health_check_timeout_ms = ptr->health_check_timeout_ms();
-    done->health_check_path = ptr->health_check_path();
+    done->hc_option = ptr->_hc_option;
     brpc::ChannelOptions options;
     options.protocol = PROTOCOL_HTTP;
     options.max_retry = 0;
     options.timeout_ms =
-        std::min((int64_t)(done->health_check_timeout_ms), check_interval_s * 1000);
+        std::min((int64_t)(done->hc_option.health_check_timeout_ms), check_interval_s * 1000);
     if (done->channel.Init(id, &options) != 0) {
         LOG(WARNING) << "Fail to init health check channel to SocketId=" << id;
         ptr->_ninflight_app_health_check.fetch_sub(
@@ -99,7 +97,7 @@ void HealthCheckManager::StartCheck(SocketId id, int64_t check_interval_s) {
 void* HealthCheckManager::AppCheck(void* arg) {
     OnAppHealthCheckDone* done = static_cast<OnAppHealthCheckDone*>(arg);
     done->cntl.Reset();
-    done->cntl.http_request().uri() = done->health_check_path;
+    done->cntl.http_request().uri() = done->hc_option.health_check_path;
     ControllerPrivateAccessor(&done->cntl).set_health_check_call();
     done->last_check_time_ms = butil::gettimeofday_ms();
     done->channel.CallMethod(NULL, &done->cntl, NULL, NULL, done);
@@ -117,14 +115,14 @@ void OnAppHealthCheckDone::Run() {
     }
     if (!cntl.Failed() || ptr->Failed()) {
         LOG_IF(INFO, !cntl.Failed()) << "Succeeded to call "
-            << ptr->remote_side() << health_check_path;
+            << ptr->remote_side() << hc_option.health_check_path;
         // if ptr->Failed(), previous SetFailed would trigger next round
         // of hc, just return here.
         ptr->_ninflight_app_health_check.fetch_sub(
                     1, butil::memory_order_relaxed);
         return;
     }
-    RPC_VLOG << "Fail to check path=" << health_check_path
+    RPC_VLOG << "Fail to check path=" << hc_option.health_check_path
         << ", " << cntl.ErrorText();
 
     int64_t sleep_time_ms =

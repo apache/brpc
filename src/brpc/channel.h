@@ -36,7 +36,7 @@
 #include "brpc/retry_policy.h"
 #include "brpc/backup_request_policy.h"
 #include "brpc/naming_service_filter.h"
-#include "brpc/socket.h"
+#include "brpc/health_check_option.h"
 
 namespace brpc {
 

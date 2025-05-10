@@ -742,8 +742,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     reset_parsing_context(options.initial_parsing_context);
     _correlation_id = 0;
     _health_check_interval_s = options.health_check_interval_s;
-    _health_check_path =  options.hc_option.health_check_path;
-    _health_check_timeout_ms = options.hc_option.health_check_timeout_ms;
+    _hc_option = options.hc_option;
     _is_hc_related_ref_held = false;
     _hc_started.store(false, butil::memory_order_relaxed);
     _ninprocess.store(1, butil::memory_order_relaxed);
@@ -2594,7 +2593,7 @@ int Socket::CheckHealth() {
         LOG(INFO) << "Checking " << *this;
     }
     const timespec duetime =
-        butil::milliseconds_from_now(_health_check_timeout_ms);
+        butil::milliseconds_from_now(_hc_option.health_check_timeout_ms);
     const int connected_fd = Connect(&duetime, NULL, NULL);
     if (connected_fd >= 0) {
         ::close(connected_fd);

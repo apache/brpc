@@ -41,6 +41,7 @@
 #include "brpc/http_method.h"
 #include "brpc/event_dispatcher.h"
 #include "brpc/versioned_ref_with_id.h"
+#include "brpc/health_check_option.h"
 
 namespace brpc {
 namespace policy {
@@ -242,13 +243,6 @@ struct SocketKeepaliveOptions {
     int keepalive_count{-1};
 };
 
-struct HealthCheckOption {
-    // Http path of health check call
-    std::string health_check_path;
-    // The timeout for both establishing the connection and the http call to health_check_path over the connection
-    int32_t health_check_timeout_ms{500};
-};
-
 // TODO: Comment fields
 struct SocketOptions {
     // If `fd' is non-negative, set `fd' to be non-blocking and take the
@@ -420,9 +414,9 @@ public:
     // Initialized by SocketOptions.health_check_interval_s.
     int health_check_interval() const { return _health_check_interval_s; }
 
-    const std::string& health_check_path() const { return _health_check_path; }
+    const std::string& health_check_path() const { return _hc_option.health_check_path; }
 
-    int32_t health_check_timeout_ms() const {return _health_check_timeout_ms; }
+    int32_t health_check_timeout_ms() const {return _hc_option.health_check_timeout_ms; }
 
     // True if health checking is enabled.
     bool HCEnabled() const {
@@ -992,8 +986,7 @@ private:
     int _tcp_user_timeout_ms;
 
     HttpMethod _http_request_method;
-    std::string _health_check_path;
-    int32_t _health_check_timeout_ms{500};
+    HealthCheckOption _hc_option;
 };
 
 } // namespace brpc
