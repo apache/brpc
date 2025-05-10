@@ -92,22 +92,34 @@ TEST_F(SocketMapTest, idle_timeout) {
     brpc::FLAGS_idle_timeout_second = TIMEOUT;
     brpc::SocketUniquePtr main_ptr;
     brpc::SocketUniquePtr ptr;
+    int ref_num = 0;
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
     ASSERT_EQ(0, main_ptr->GetPooledSocket(&ptr));
     ASSERT_TRUE(main_ptr.get());
-    main_ptr.reset();
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 2);
     id = ptr->id();
     ptr->ReturnToPool();
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 1);
+    main_ptr.reset();
     ptr.reset(NULL);
     usleep(TIMEOUT * 1000000L + 2000000L);
     // Pooled connection should be `ReleaseAdditionalReference',
     // which destroyed the Socket. As a result `GetSocketFromPool'
     // should return a new one
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 1);
     ASSERT_EQ(0, main_ptr->GetPooledSocket(&ptr));
     ASSERT_TRUE(main_ptr.get());
-    main_ptr.reset();
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 2);
     ASSERT_NE(id, ptr->id());
+    ptr->DiscardFromPool();
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 1);
+    main_ptr.reset();
     brpc::SocketMapRemove(g_key);
 }
 
@@ -139,6 +151,11 @@ TEST_F(SocketMapTest, max_pool_size) {
     for (int i = MAXSIZE; i < TOTALSIZE; ++i) {
         EXPECT_TRUE(ptrs[i]->Failed());
     }
+
+    int ref_num = 0;
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 1);
+    brpc::SocketMapRemove(g_key);
 }
 } //namespace
 
