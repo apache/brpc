@@ -378,6 +378,9 @@ void RecycleAll() {
         IdleNode* node = tls_idle_list;
         tls_idle_list = node->next;
         Region* r = GetRegion(node->start);
+        if (!r) {
+            continue;
+        }
         uint64_t index = ((uintptr_t)node->start - r->start) * g_buckets / r->size;
         BAIDU_SCOPED_LOCK(*g_info->lock[0][index]);
         node->next = g_info->idle_list[0][index];
