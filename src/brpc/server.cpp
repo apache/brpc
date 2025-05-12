@@ -33,6 +33,7 @@
 #include "butil/debug/leak_annotations.h"
 #include "brpc/log.h"
 #include "brpc/compress.h"
+#include "brpc/checksum.h"
 #include "brpc/policy/nova_pbrpc_protocol.h"
 #include "brpc/global.h"
 #include "brpc/socket_map.h"                   // SocketMapList
@@ -227,6 +228,17 @@ static void PrintSupportedCompressions(std::ostream& os, void*) {
     }
 }
 
+static void PrintSupportedChecksums(std::ostream& os, void*) {
+    std::vector<ChecksumHandler> handlers;
+    ListChecksumHandler(&handlers);
+    for (size_t i = 0; i < handlers.size(); ++i) {
+        if (i != 0) {
+            os << ' ';
+        }
+        os << (handlers[i].name ? handlers[i].name : "(null)");
+    }
+}
+
 static void PrintEnabledProfilers(std::ostream& os, void*) {
     if (cpu_profiler_enabled) {
         os << "cpu ";
@@ -252,6 +264,9 @@ static bvar::PassiveStatus<std::string> s_proto_st(
 
 static bvar::PassiveStatus<std::string> s_comp_st(
     "rpc_compressions", PrintSupportedCompressions, NULL);
+
+static bvar::PassiveStatus<std::string> s_cksum_st(
+    "rpc_checksums", PrintSupportedChecksums, NULL);
 
 static bvar::PassiveStatus<std::string> s_prof_st(
     "rpc_profilers", PrintEnabledProfilers, NULL);

@@ -29,6 +29,7 @@ DEFINE_string(listen_addr, "", "Server listen address, may be IPV4/IPV6/UDS."
             " If this is set, the flag port will be ignored");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
+DEFINE_bool(enable_checksum, false, "Enable checksum or not");
 
 // Your implementation of example::EchoService
 // Notice that implementing brpc::Describable grants the ability to put
@@ -74,6 +75,11 @@ public:
             // Set attachment which is wired to network directly instead of
             // being serialized into protobuf messages.
             cntl->response_attachment().append(cntl->request_attachment());
+        }
+
+        // Use checksum, only support CRC32C now.
+        if (FLAGS_enable_checksum) {
+            cntl->set_response_checksum_type(brpc::CHECKSUM_TYPE_CRC32C);
         }
     }
 

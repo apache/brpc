@@ -71,11 +71,14 @@ DECLARE_bool(enable_dir_service);
 namespace policy {
 DECLARE_bool(use_http_error_code);
 
-extern bool SerializeRpcMessage(const google::protobuf::Message& serializer, Controller& cntl,
-                                ContentType content_type, CompressType compress_type,
-                                butil::IOBuf* buf);
-extern bool DeserializeRpcMessage(const butil::IOBuf& deserializer, Controller& cntl,
-                                  ContentType content_type, CompressType compress_type,
+extern bool SerializeRpcMessage(const google::protobuf::Message& serializer,
+                                Controller& cntl, ContentType content_type,
+                                CompressType compress_type,
+                                ChecksumType checksum_type, butil::IOBuf* buf);
+extern bool DeserializeRpcMessage(const butil::IOBuf& deserializer,
+                                  Controller& cntl, ContentType content_type,
+                                  CompressType compress_type,
+                                  ChecksumType checksum_type,
                                   google::protobuf::Message* message);
 }
 
@@ -1702,11 +1705,13 @@ public:
         ASSERT_EQ("Echo", cntl->sampled_request()->meta.method_name());
         brpc::ContentType content_type = cntl->request_content_type();
         brpc::CompressType compress_type = cntl->request_compress_type();
+        brpc::ChecksumType checksum_type = cntl->request_checksum_type();
 
         test::EchoRequest echo_request;
         test::EchoResponse echo_response;
         ASSERT_TRUE(brpc::policy::DeserializeRpcMessage(
-            request->serialized_data(), *cntl, content_type, compress_type, &echo_request));
+            request->serialized_data(), *cntl, content_type, compress_type,
+            checksum_type, &echo_request));
         ASSERT_EQ(EXP_REQUEST, echo_request.message());
         ASSERT_EQ(EXP_REQUEST, cntl->request_attachment().to_string());
 
@@ -1727,10 +1732,12 @@ public:
 
         cntl->set_response_content_type(content_type);
         cntl->set_response_compress_type(compress_type);
+        cntl->set_response_checksum_type(checksum_type);
         cntl->response_attachment().append(EXP_RESPONSE);
         echo_response.set_message(EXP_RESPONSE);
         ASSERT_TRUE(brpc::policy::SerializeRpcMessage(
-            echo_response, *cntl, content_type, compress_type, &response->serialized_data()));
+            echo_response, *cntl, content_type, compress_type, checksum_type,
+            &response->serialized_data()));
     }
 private:
     int _content_type_index = brpc::ContentType_MIN;
@@ -1777,11 +1784,12 @@ TEST_F(ServerTest, baidu_master_service) {
     ASSERT_EQ(0, server.Join());
 }
 
-void TestGenericCall(brpc::Channel& channel,
-                     brpc::ContentType content_type,
-                     brpc::CompressType compress_type) {
+void TestGenericCall(brpc::Channel& channel, brpc::ContentType content_type,
+                     brpc::CompressType compress_type,
+                     brpc::ChecksumType checksum_type) {
     LOG(INFO) << "TestGenericCall: content_type=" << content_type
-              << ", compress_type=" << compress_type;
+              << ", compress_type=" << compress_type
+              << ", checksum_type=" << checksum_type;
     test::EchoRequest request;
     test::EchoResponse response;
     request.set_message(EXP_REQUEST);
@@ -1792,11 +1800,13 @@ void TestGenericCall(brpc::Channel& channel,
     brpc::Controller cntl;
     cntl.set_request_content_type(content_type);
     cntl.set_request_compress_type(compress_type);
+    cntl.set_request_checksum_type(checksum_type);
     cntl.request_attachment().append(EXP_REQUEST);
 
     std::string error;
     ASSERT_TRUE(brpc::policy::SerializeRpcMessage(
-        request, cntl, content_type, compress_type, &serialized_request.serialized_data()));
+        request, cntl, content_type, compress_type, checksum_type,
+        &serialized_request.serialized_data()));
     auto sampled_request = new (std::nothrow) brpc::SampledRequest();
     sampled_request->meta.set_service_name(
         test::EchoService::descriptor()->full_name());
@@ -1807,9 +1817,10 @@ void TestGenericCall(brpc::Channel& channel,
     channel.CallMethod(NULL, &cntl, &serialized_request, &serialized_response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
 
-    ASSERT_TRUE(brpc::policy::DeserializeRpcMessage(serialized_response.serialized_data(),
-                                                    cntl, cntl.response_content_type(),
-                                                    cntl.response_compress_type(), &response));
+    ASSERT_TRUE(brpc::policy::DeserializeRpcMessage(
+        serialized_response.serialized_data(), cntl,
+        cntl.response_content_type(), cntl.response_compress_type(),
+        cntl.response_checksum_type(), &response));
     ASSERT_EQ(EXP_RESPONSE, response.message());
     ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
 }
@@ -1829,25 +1840,41 @@ TEST_F(ServerTest, generic_call) {
     channel_options.protocol = "baidu_std";
     ASSERT_EQ(0, channel.Init(ep, &channel_options));
 
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_ZLIB);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_GZIP);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_SNAPPY);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_NONE);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_ZLIB,
+                    brpc::CHECKSUM_TYPE_CRC32C);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_GZIP,
+                    brpc::CHECKSUM_TYPE_CRC32C);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_SNAPPY,
+                    brpc::CHECKSUM_TYPE_NONE);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PB, brpc::COMPRESS_TYPE_NONE,
+                    brpc::CHECKSUM_TYPE_NONE);
 
-    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_ZLIB);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_GZIP);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_SNAPPY);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_NONE);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_ZLIB,
+                    brpc::CHECKSUM_TYPE_CRC32C);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_GZIP,
+                    brpc::CHECKSUM_TYPE_CRC32C);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON,
+                    brpc::COMPRESS_TYPE_SNAPPY, brpc::CHECKSUM_TYPE_NONE);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_JSON, brpc::COMPRESS_TYPE_NONE,
+                    brpc::CHECKSUM_TYPE_NONE);
 
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON, brpc::COMPRESS_TYPE_ZLIB);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON, brpc::COMPRESS_TYPE_GZIP);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON, brpc::COMPRESS_TYPE_SNAPPY);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON, brpc::COMPRESS_TYPE_NONE);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON,
+                    brpc::COMPRESS_TYPE_ZLIB, brpc::CHECKSUM_TYPE_CRC32C);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON,
+                    brpc::COMPRESS_TYPE_GZIP, brpc::CHECKSUM_TYPE_CRC32C);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON,
+                    brpc::COMPRESS_TYPE_SNAPPY, brpc::CHECKSUM_TYPE_NONE);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_JSON,
+                    brpc::COMPRESS_TYPE_NONE, brpc::CHECKSUM_TYPE_NONE);
 
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT, brpc::COMPRESS_TYPE_ZLIB);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT, brpc::COMPRESS_TYPE_GZIP);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT, brpc::COMPRESS_TYPE_SNAPPY);
-    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT, brpc::COMPRESS_TYPE_NONE);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT,
+                    brpc::COMPRESS_TYPE_ZLIB, brpc::CHECKSUM_TYPE_CRC32C);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT,
+                    brpc::COMPRESS_TYPE_GZIP, brpc::CHECKSUM_TYPE_CRC32C);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT,
+                    brpc::COMPRESS_TYPE_SNAPPY, brpc::CHECKSUM_TYPE_NONE);
+    TestGenericCall(channel, brpc::CONTENT_TYPE_PROTO_TEXT,
+                    brpc::COMPRESS_TYPE_NONE, brpc::CHECKSUM_TYPE_NONE);
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
