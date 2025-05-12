@@ -60,6 +60,10 @@
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/policy/snappy_compress.h"
 
+// Checksum handlers
+#include "brpc/checksum.h"
+#include "brpc/policy/crc32c_checksum.h"
+
 // Protocols
 #include "brpc/protocol.h"
 #include "brpc/policy/baidu_rpc_protocol.h"
@@ -398,6 +402,13 @@ static void GlobalInitializeOrDieImpl() {
     }
     CompressHandler snappy_compress = { SnappyCompress, SnappyDecompress, "snappy" };
     if (RegisterCompressHandler(COMPRESS_TYPE_SNAPPY, snappy_compress) != 0) {
+        exit(1);
+    }
+
+    // Checksum Handlers
+    const ChecksumHandler crc32c_checksum = {Crc32cCompute, Crc32cVerify,
+                                             "crc32c"};
+    if (RegisterChecksumHandler(CHECKSUM_TYPE_CRC32C, crc32c_checksum) != 0) {
         exit(1);
     }
 

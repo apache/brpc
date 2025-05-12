@@ -152,6 +152,10 @@ public:
         return *this;
     }
 
+    void set_checksum_value(uint32_t c) { _cntl->_checksum_value = c; }
+
+    uint32_t checksum_value() const { return _cntl->_checksum_value; }
+
 private:
     Controller* _cntl;
 };
