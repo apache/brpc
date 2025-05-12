@@ -99,7 +99,6 @@ DEFINE_int32(connect_timeout_as_unreachable, 3,
              "times *continuously*, the error is changed to ENETUNREACH which "
              "fails the main socket as well when this socket is pooled.");
 
-DECLARE_int32(health_check_timeout_ms);
 DECLARE_bool(usercode_in_coroutine);
 
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
@@ -743,6 +742,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     reset_parsing_context(options.initial_parsing_context);
     _correlation_id = 0;
     _health_check_interval_s = options.health_check_interval_s;
+    _hc_option = options.hc_option;
     _is_hc_related_ref_held = false;
     _hc_started.store(false, butil::memory_order_relaxed);
     _ninprocess.store(1, butil::memory_order_relaxed);
@@ -2593,7 +2593,7 @@ int Socket::CheckHealth() {
         LOG(INFO) << "Checking " << *this;
     }
     const timespec duetime =
-        butil::milliseconds_from_now(FLAGS_health_check_timeout_ms);
+        butil::milliseconds_from_now(_hc_option.health_check_timeout_ms);
     const int connected_fd = Connect(&duetime, NULL, NULL);
     if (connected_fd >= 0) {
         ::close(connected_fd);
