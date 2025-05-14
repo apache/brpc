@@ -31,6 +31,14 @@ namespace rdma {
 // Exit if failed
 void GlobalRdmaInitializeOrDie();
 
+// In scenarios where users need to manually specify memory regions (e.g., using
+// hugepages or custom memory pools), when
+// FLAGS_rdma_memory_pool_user_specified_memory is true, user is  responsibility
+// of extending memory blocks , this ensuring flexibility for advanced use
+// cases.
+void* UserExtendBlockPool(void* region_base, size_t region_size,
+                          int block_type);
+
 // Register the given memory
 // Return the memory lkey for the given memory, Return 0 when fails
 // To use the memory in IOBuf, append_user_data_with_meta must be called
