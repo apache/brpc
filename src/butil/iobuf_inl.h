@@ -344,6 +344,8 @@ inline int IOBufAppender::push_back(char c) {
             // content of the ring buffer to the old stream.
             int ret = append_to_stream(ring_buf_, ring_buf_size_);
             ring_buf_size_ = 0;
+            // The ring_buf_ will be recycled on the outside in `ParseRedisMessage`
+            // since ring_buffer_size is 0.
             ring_buf_ = nullptr;
             if (ret < 0) {
                 return ret;

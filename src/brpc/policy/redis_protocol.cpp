@@ -172,10 +172,12 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         }
 #ifdef IO_URING_ENABLED
         char *ring_buf = nullptr;
-        uint16_t ring_buf_idx = 0;
+        uint16_t ring_buf_idx = UINT16_MAX;
         if (FLAGS_use_io_uring) {
             std::tie(ring_buf, ring_buf_idx) = cur_group->GetRingWriteBuf();
-            appender.set_ring_buffer(ring_buf, RingWriteBufferPool::buf_length);
+            if (ring_buf_idx != UINT16_MAX) {
+                appender.set_ring_buffer(ring_buf, RingWriteBufferPool::buf_length);
+            }
         }
 #endif
 
@@ -183,7 +185,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         if (err != PARSE_OK) {
             cur_task->SetBoundGroup(NULL);
 #ifdef IO_URING_ENABLED
-            if (FLAGS_use_io_uring) {
+            if (FLAGS_use_io_uring && ring_buf_idx != UINT16_MAX) {
                 cur_group->RecycleRingWriteBuf(ring_buf_idx);
             }
 #endif
@@ -198,7 +200,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             if (ConsumeCommand(ctx, current_args, false, &appender) != 0) {
                 cur_task->SetBoundGroup(NULL);
 #ifdef IO_URING_ENABLED
-                if (FLAGS_use_io_uring) {
+                if (FLAGS_use_io_uring && ring_buf_idx != UINT16_MAX) {
                     cur_group->RecycleRingWriteBuf(ring_buf_idx);
                 }
 #endif
@@ -210,7 +212,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                       true /*must be the last message*/, &appender) != 0) {
             cur_task->SetBoundGroup(NULL);
 #ifdef IO_URING_ENABLED
-            if (FLAGS_use_io_uring) {
+            if (FLAGS_use_io_uring && ring_buf_idx != UINT16_MAX) {
                 cur_group->RecycleRingWriteBuf(ring_buf_idx);
             }
 #endif
@@ -221,7 +223,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         butil::IOBuf sendbuf;
         appender.move_to(sendbuf);
 #ifdef IO_URING_ENABLED
-        if (FLAGS_use_io_uring) {
+        if (FLAGS_use_io_uring && ring_buf_idx != UINT16_MAX) {
             uint32_t ring_buf_size = appender.ring_buffer_size();
             if (ring_buf_size > 0) {
                 CHECK(sendbuf.empty());
@@ -237,7 +239,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                     // The fixed buffer write is submitted successfully. The ring buffer
                     // will be recycled after the IO uring finishes the write request.
                 }
-            } else if (ring_buf != nullptr) {
+            } else if (ring_buf_idx != UINT16_MAX) {
                 cur_group->RecycleRingWriteBuf(ring_buf_idx);
             }
         }
