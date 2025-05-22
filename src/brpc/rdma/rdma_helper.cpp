@@ -686,6 +686,21 @@ bool SupportedByRdma(std::string protocol) {
     return false;
 }
 
+bool InitPollingModeWithTag(bthread_tag_t tag,
+                            std::function<void(void)> callback,
+                            std::function<void(void)> init_fn,
+                            std::function<void(void)> release_fn) {
+    if (RdmaEndpoint::PollingModeInitialize(tag, callback, init_fn,
+                                            release_fn) == 0) {
+        return true;
+    }
+    return false;
+}
+
+void ReleasePollingModeWithTag(bthread_tag_t tag) {
+    RdmaEndpoint::PollingModeRelease(tag);
+}
+
 }  // namespace rdma
 }  // namespace brpc
 

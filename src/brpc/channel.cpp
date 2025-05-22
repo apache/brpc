@@ -197,6 +197,9 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
+        if (!rdma::InitPollingModeWithTag(bthread_self_tag())) {
+            return -1;
+        }
 #else
         LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
         return -1;
