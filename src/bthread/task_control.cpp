@@ -183,6 +183,7 @@ TaskControl::TaskControl()
     , _signal_per_second(&_cumulated_signal_count)
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
+    , _priority_queues(FLAGS_task_group_ntags)
     , _pl(FLAGS_task_group_ntags)
 {}
 
@@ -207,6 +208,10 @@ int TaskControl::init(int concurrency) {
         _tagged_worker_usage_second.push_back(new bvar::PerSecond<bvar::PassiveStatus<double>>(
             "bthread_worker_usage", tag_str, _tagged_cumulated_worker_time[i], 1));
         _tagged_nbthreads.push_back(new bvar::Adder<int64_t>("bthread_count", tag_str));
+        if (_priority_queues[i].init(BTHREAD_MAX_CONCURRENCY) != 0) {
+            LOG(FATAL) << "Fail to init _priority_q";
+            return -1;
+        }
     }
 
     // Make sure TimerThread is ready.
@@ -429,6 +434,11 @@ int TaskControl::_destroy_group(TaskGroup* g) {
 
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     auto tag = tls_task_group->tag();
+
+    if (_priority_queues[tag].steal(tid)) {
+        return true;
+    }
+
     // 1: Acquiring fence is paired with releasing fence in _add_group to
     // avoid accessing uninitialized slot of _groups.
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_acquire/*1*/);

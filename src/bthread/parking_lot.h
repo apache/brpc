@@ -70,6 +70,7 @@ public:
         _pending_signal.fetch_or(1);
         futex_wake_private(&_pending_signal, 10000);
     }
+
 private:
     // higher 31 bits for signalling, LSB for stopping.
     butil::atomic<int> _pending_signal;
