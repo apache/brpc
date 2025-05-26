@@ -796,6 +796,9 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_this_id = MakeSocketId(
             VersionOfVRef(m->_versioned_ref.fetch_add(
                     1, butil::memory_order_release)), slot);
+    // Copy the id to a new variable, because m->_this_id might be changed
+    // after ResetFileDescriptor.
+    SocketId new_id = m->_this_id;
     m->_preferred_index = -1;
     m->_hc_count = 0;
     CHECK(m->_read_buf.empty());
@@ -867,7 +870,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
                      berror(saved_errno));
         return -1;
     }
-    *id = m->_this_id;
+    *id = new_id;
     return 0;
 }
 
