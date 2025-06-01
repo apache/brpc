@@ -24,7 +24,7 @@
 
 #include <deque>
 #include <vector>
-
+#include <cstdint>
 #include "butil/macros.h"
 
 namespace bthread {
