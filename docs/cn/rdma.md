@@ -47,6 +47,8 @@ RDMA要求数据收发所使用的内存空间必须被注册（memory register�
 
 RDMA是硬件相关的通信技术，有很多独特的概念，比如device、port、GID、LID、MaxSge等。这些参数在初始化时会从对应的网卡中读取出来，并且做出默认的选择（参见src/brpc/rdma/rdma_helper.cpp）。有时默认的选择并非用户的期望，则可以通过flag参数方式指定。
 
+RDMA支持事件驱动和轮询两种模式，默认是事件驱动模式，通过设置rdma_use_polling可以开启轮询模式。轮询模式下还可以设置轮询器数目（rdma_poller_num），以及是否主动放弃CPU（rdma_poller_yield）。轮询模式下还可以设置一个回调函数，在每次轮询时调用，可以配合io_uring/spdk等使用。在配合使用spdk等驱动的时候，因为spdk只支持轮询模式，并且只能在单线程使用（或者叫Run To Completion模式上使用）执行一个任务过程中不允许被调度到别的线程上，所以这时候需要设置（rdma_edisp_unsched）为true，使事件驱动程序一直占用一个worker线程，不能调度别的任务。
+
 # 参数
 
 可配置参数说明：
@@ -68,3 +70,8 @@ RDMA是硬件相关的通信技术，有很多独特的概念，比如device、p
 * rdma_memory_pool_max_regions: 最大的内存池块数，默认16
 * rdma_memory_pool_buckets: 内存池中为避免竞争采用的bucket数目，默认为4
 * rdma_memory_pool_tls_cache_num: 内存池中thread local的缓存block数目，默认为128
+* rdma_use_polling: 是否使用RDMA的轮询模式，默认false
+* rdma_poller_num: 轮询模式下的poller数目，默认1
+* rdma_poller_yield: 轮询模式下的poller是否主动放弃CPU，默认是false
+* rdma_edisp_unsched: 让事件驱动器不可以被调度，默认是false
+* rdma_disable_bthread: 禁用bthread，默认是false
