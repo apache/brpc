@@ -213,6 +213,8 @@ private:
     // Act as sendbuf and recvbuf, but requires no memcpy
     std::vector<butil::IOBuf> _sbuf;
     std::vector<butil::IOBuf> _rbuf;
+    // Data address of _sbuf
+    std::vector<void*> _sbuf_data;
     // Data address of _rbuf
     std::vector<void*> _rbuf_data;
     // Remote block size for receiving
