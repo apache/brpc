@@ -1128,7 +1128,7 @@ public:
 private:
     void check_header(brpc::Controller* cntl) {
         const std::string* test_header = cntl->http_request().GetHeader(TEST_PROGRESSIVE_HEADER);
-        GOOGLE_CHECK_NOTNULL(test_header);
+        CHECK(test_header != NULL);
         CHECK_EQ(*test_header, TEST_PROGRESSIVE_HEADER_VAL);
     }
 };
