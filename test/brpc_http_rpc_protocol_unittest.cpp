@@ -20,7 +20,6 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <cstddef>
-#include <google/protobuf/stubs/logging.h>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
