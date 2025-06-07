@@ -347,6 +347,11 @@ void TimerThread::run() {
         // would run the consumed tasks.
         {
             BAIDU_SCOPED_LOCK(_mutex);
+            if (__builtin_expect(_nearest_run_time == 0, 0)) {
+                // If _nearest_run_time is 0, it means that stop_and_join() was called
+                CHECK(_stop.load(butil::memory_order_relaxed));
+                break;
+            }
             _nearest_run_time = std::numeric_limits<int64_t>::max();
         }
         
