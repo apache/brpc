@@ -31,6 +31,7 @@ DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
+DEFINE_bool(enable_checksum, false, "Enable checksum or not");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
@@ -70,6 +71,11 @@ int main(int argc, char* argv[]) {
         // Set attachment which is wired to network directly instead of 
         // being serialized into protobuf messages.
         cntl.request_attachment().append(FLAGS_attachment);
+
+        // Use checksum, only support CRC32C now.
+        if (FLAGS_enable_checksum) {
+            cntl.set_request_checksum_type(brpc::CHECKSUM_TYPE_CRC32C);
+        }
 
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).

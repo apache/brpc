@@ -241,6 +241,9 @@ public:
     // Set compression method for request.
     void set_request_compress_type(CompressType t) { _request_compress_type = t; }
 
+    // Set checksum type for request.
+    void set_request_checksum_type(ChecksumType t) { _request_checksum_type = t; }
+
     // Required by some load balancers.
     void set_request_code(uint64_t request_code) {
         add_flag(FLAGS_REQUEST_CODE);
@@ -464,6 +467,9 @@ public:
 
     // Set compression method for response.
     void set_response_compress_type(CompressType t) { _response_compress_type = t; }
+
+    // Set checksum type for response.
+    void set_response_checksum_type(ChecksumType t) { _response_checksum_type = t; }
     
     // Non-zero when this RPC call is traced (by rpcz or rig).
     // NOTE: Only valid at server-side, always zero at client-side.
@@ -552,6 +558,8 @@ public:
     const std::string& request_id() const { return _inheritable.request_id; }
     CompressType request_compress_type() const { return _request_compress_type; }
     CompressType response_compress_type() const { return _response_compress_type; }
+    ChecksumType request_checksum_type() const { return _request_checksum_type; }
+    ChecksumType response_checksum_type() const { return _response_checksum_type; }
     const HttpHeader& http_request() const 
     { return _http_request != NULL ? *_http_request : DefaultHttpHeader(); }
     
@@ -693,6 +701,7 @@ private:
         int32_t tos;
         ConnectionType connection_type;         
         CompressType request_compress_type;
+        ChecksumType request_checksum_type;
         uint64_t log_id;
         bool has_request_code;
         int64_t request_code;
@@ -834,6 +843,9 @@ private:
     int _preferred_index;
     CompressType _request_compress_type;
     CompressType _response_compress_type;
+    ChecksumType _request_checksum_type;
+    ChecksumType _response_checksum_type;
+    std::string _checksum_value;
     Inheritable _inheritable;
     int _pchan_sub_count;
     google::protobuf::Message* _response;
