@@ -272,6 +272,17 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
         }
     }
 
+    BRPC_SCOPE_EXIT {
+        {
+            BAIDU_SCOPED_LOCK(m->version_lock);
+            // If m->status is BTHREAD_STATUS_END, the bthread also waits for
+            // tracing completion, so given_version != *m->version_butex is OK.
+            m->traced = false;
+        }
+        // Wake up the waiting worker thread to jump.
+        _cond.Signal();
+    };
+
     if (TASK_STATUS_UNKNOWN == status) {
         return Result::MakeErrorResult("bthread=%d not exist now", tid);
     } else if (TASK_STATUS_CREATED == status) {
@@ -292,15 +303,6 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
     } else if (TASK_STATUS_SUSPENDED == status || TASK_STATUS_READY == status) {
         result = ContextTrace(m->stack->context);
     }
-
-    {
-        BAIDU_SCOPED_LOCK(m->version_lock);
-        // If m->status is BTHREAD_STATUS_END, the bthread also waits for tracing completion,
-        // so given_version != *m->version_butex is OK.
-        m->traced = false;
-    }
-    // Wake up the waiting worker thread to jump.
-    _cond.Signal();
 
     return result;
 }
