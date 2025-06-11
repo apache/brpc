@@ -1319,10 +1319,7 @@ void *Socket::SocketProcess(void *arg) {
     SocketUniquePtr s_uptr{sock};
     CHECK(sock->bound_g_ == cur_group);
 
-    while (sock->buf_idx_ < sock->in_bufs_.size()) {
-        sock->_on_edge_triggered_events(sock);
-    }
-    sock->ClearInboundBuf();
+    sock->_on_edge_triggered_events(sock);
     return nullptr;
 }
 

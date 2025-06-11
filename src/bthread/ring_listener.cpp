@@ -280,6 +280,8 @@ int RingListener::SubmitFsync(RingFsyncData *args) {
     data |= OpCodeToInt(OpCode::Fsync);
     io_uring_sqe_set_data64(sqe, data);
     ++submit_cnt_;
+    // Submit immediately since fsync latency matters.
+    SubmitAll();
     return 0;
 }
 
@@ -410,6 +412,7 @@ void RingListener::RecycleWriteBuf(uint16_t buf_idx) {
     } else {
         recycle_buf_cnt_.fetch_add(1, std::memory_order_relaxed);
         write_bufs_.enqueue(buf_idx);
+        RingModule::NotifyWorker(task_group_->group_id_);
     }
 }
 

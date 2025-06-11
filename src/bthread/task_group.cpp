@@ -162,9 +162,9 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         ProcessModulesTask();
 
 #ifdef IO_URING_ENABLED
-        if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
-            size_t ring_poll_cnt = ring_listener_->ExtPoll();
-        }
+        // if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
+        //     size_t ring_poll_cnt = ring_listener_->ExtPoll();
+        // }
 #endif
 
         if (_rq.pop(tid) || _bound_rq.pop(tid) || _remote_rq.pop(tid)) {
