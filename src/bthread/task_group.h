@@ -290,6 +290,9 @@ public:
     }
 
     bool steal_from_others(bthread_t* tid) {
+#ifndef BTHREAD_DONT_SAVE_PARKING_STATE
+        _last_pl_state = _pl->get_state();
+#endif
         return _control->steal_task(tid, &_steal_seed, _steal_offset);
     }
 
