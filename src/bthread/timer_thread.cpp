@@ -347,6 +347,11 @@ void TimerThread::run() {
         // would run the consumed tasks.
         {
             BAIDU_SCOPED_LOCK(_mutex);
+            // This check of _stop ensures we won't miss the reset of _nearest_run_time
+            // to 0 in stop_and_join, avoiding potential race conditions.
+            if (BAIDU_UNLIKELY(_stop.load(butil::memory_order_relaxed))) {
+                break;
+            }
             _nearest_run_time = std::numeric_limits<int64_t>::max();
         }
         
