@@ -50,7 +50,10 @@ public:
         bool operator<(const Node &rhs) const {
             if (hash < rhs.hash) { return true; }
             if (hash > rhs.hash) { return false; }
-            return server_addr < rhs.server_addr;
+            if (server_addr < rhs.server_addr) { return true; }
+            if (server_addr > rhs.server_addr) { return false; }
+            // compare by tag if has the same ip-port
+            return server_sock.tag < rhs.server_sock.tag;
         }
         bool operator<(const uint32_t code) const {
             return hash < code;
