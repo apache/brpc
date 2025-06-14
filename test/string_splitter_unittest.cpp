@@ -354,6 +354,51 @@ TEST_F(StringSplitterTest, split_limit_len) {
     ASSERT_FALSE(ss3);
 }
 
+TEST_F(StringSplitterTest, non_null_terminated_string) {
+    const char str[] = "  a non  null   terminated  string   ";
+    const size_t len = strlen(str);
+    char* buf = new char[len];
+    memcpy(buf, str, len);
+
+    butil::StringSplitter ss(buf, buf + len, ' ');
+
+    // "a"
+    ASSERT_TRUE(ss != NULL);
+    ASSERT_EQ(1ul, ss.length());
+    ASSERT_EQ(ss.field(), buf + 2);
+
+    // "non"
+    ++ss;
+    ASSERT_TRUE(ss != NULL);
+    ASSERT_EQ(3ul, ss.length());
+    ASSERT_EQ(ss.field(), buf + 4);
+
+    // "null"
+    ++ss;
+    ASSERT_TRUE(ss != NULL);
+    ASSERT_EQ(4ul, ss.length());
+    ASSERT_EQ(ss.field(), buf + 9);
+
+    // "terminated"
+    ++ss;
+    ASSERT_TRUE(ss != NULL);
+    ASSERT_EQ(10ul, ss.length());
+    ASSERT_EQ(ss.field(), buf + 16);
+
+    // "string"
+    ++ss;
+    ASSERT_TRUE(ss != NULL);
+    ASSERT_EQ(6ul, ss.length());
+    ASSERT_EQ(ss.field(), buf + 28);
+
+    ++ss;
+    ASSERT_FALSE(ss);
+    ASSERT_EQ(0ul, ss.length());
+    ASSERT_EQ(ss.field(), buf + len);
+
+    delete[] buf;
+}
+
 TEST_F(StringSplitterTest, key_value_pairs_splitter_sanity) {
     std::string kvstr = "key1=value1&&&key2=value2&key3=value3&===&key4=&=&=value5";
     for (int i = 0 ; i < 3; ++i) {

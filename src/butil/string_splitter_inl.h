@@ -47,9 +47,9 @@ void StringSplitter::init() {
     // Find the starting _head and _tail.
     if (__builtin_expect(_head != NULL, 1)) {
         if (_empty_field_action == SKIP_EMPTY_FIELD) {
-            for (; _sep == *_head && not_end(_head); ++_head) {}
+            for (; not_end(_head) && *_head == _sep; ++_head) {}
         }
-        for (_tail = _head; *_tail != _sep && not_end(_tail); ++_tail) {}
+        for (_tail = _head; not_end(_tail) && *_tail != _sep; ++_tail) {}
     } else {
         _tail = NULL;
     }
@@ -60,11 +60,11 @@ StringSplitter& StringSplitter::operator++() {
         if (not_end(_tail)) {
             ++_tail;
             if (_empty_field_action == SKIP_EMPTY_FIELD) {
-                for (; _sep == *_tail && not_end(_tail); ++_tail) {}
+                for (; not_end(_tail) && *_tail == _sep; ++_tail) {}
             }
         }
         _head = _tail;
-        for (; *_tail != _sep && not_end(_tail); ++_tail) {}
+        for (; not_end(_tail) && *_tail != _sep; ++_tail) {}
     }
     return *this;
 }
@@ -189,9 +189,9 @@ StringMultiSplitter::StringMultiSplitter (
 void StringMultiSplitter::init() {
     if (__builtin_expect(_head != NULL, 1)) {
         if (_empty_field_action == SKIP_EMPTY_FIELD) {
-            for (; is_sep(*_head) && not_end(_head); ++_head) {}
+            for (; not_end(_head) && is_sep(*_head); ++_head) {}
         }
-        for (_tail = _head; !is_sep(*_tail) && not_end(_tail); ++_tail) {}
+        for (_tail = _head; not_end(_tail) && !is_sep(*_tail); ++_tail) {}
     } else {
         _tail = NULL;
     }
@@ -202,11 +202,11 @@ StringMultiSplitter& StringMultiSplitter::operator++() {
         if (not_end(_tail)) {
             ++_tail;
             if (_empty_field_action == SKIP_EMPTY_FIELD) {
-                for (; is_sep(*_tail) && not_end(_tail); ++_tail) {}
+                for (; not_end(_tail) && is_sep(*_tail); ++_tail) {}
             }
         }
         _head = _tail;
-        for (; !is_sep(*_tail) && not_end(_tail); ++_tail) {}
+        for (; not_end(_tail) && !is_sep(*_tail); ++_tail) {}
     }
     return *this;
 }
