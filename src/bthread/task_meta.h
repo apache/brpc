@@ -89,6 +89,7 @@ struct TaskMeta {
     bthread_t tid{INVALID_BTHREAD};
 
     // User function and argument
+    //协程函数在这里
     void* (*fn)(void*){NULL};
     void* arg{NULL};
 

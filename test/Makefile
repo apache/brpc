@@ -257,6 +257,188 @@ protoc-gen-mcpack/fast:
 .PHONY : protoc-gen-mcpack/fast
 
 #=============================================================================
+# Target rules for targets named http_client
+
+# Build rule for target.
+http_client: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 http_client
+.PHONY : http_client
+
+# fast build rule for target.
+http_client/fast:
+	$(MAKE) $(MAKESILENT) -f example/http_c++/CMakeFiles/http_client.dir/build.make example/http_c++/CMakeFiles/http_client.dir/build
+.PHONY : http_client/fast
+
+#=============================================================================
+# Target rules for targets named http_server
+
+# Build rule for target.
+http_server: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 http_server
+.PHONY : http_server
+
+# fast build rule for target.
+http_server/fast:
+	$(MAKE) $(MAKESILENT) -f example/http_c++/CMakeFiles/http_server.dir/build.make example/http_c++/CMakeFiles/http_server.dir/build
+.PHONY : http_server/fast
+
+#=============================================================================
+# Target rules for targets named benchmark_http
+
+# Build rule for target.
+benchmark_http: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 benchmark_http
+.PHONY : benchmark_http
+
+# fast build rule for target.
+benchmark_http/fast:
+	$(MAKE) $(MAKESILENT) -f example/http_c++/CMakeFiles/benchmark_http.dir/build.make example/http_c++/CMakeFiles/benchmark_http.dir/build
+.PHONY : benchmark_http/fast
+
+#=============================================================================
+# Target rules for targets named echo_client
+
+# Build rule for target.
+echo_client: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 echo_client
+.PHONY : echo_client
+
+# fast build rule for target.
+echo_client/fast:
+	$(MAKE) $(MAKESILENT) -f example/echo_c++/CMakeFiles/echo_client.dir/build.make example/echo_c++/CMakeFiles/echo_client.dir/build
+.PHONY : echo_client/fast
+
+#=============================================================================
+# Target rules for targets named echo_server
+
+# Build rule for target.
+echo_server: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 echo_server
+.PHONY : echo_server
+
+# fast build rule for target.
+echo_server/fast:
+	$(MAKE) $(MAKESILENT) -f example/echo_c++/CMakeFiles/echo_server.dir/build.make example/echo_c++/CMakeFiles/echo_server.dir/build
+.PHONY : echo_server/fast
+
+#=============================================================================
+# Target rules for targets named mytest
+
+# Build rule for target.
+mytest: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 mytest
+.PHONY : mytest
+
+# fast build rule for target.
+mytest/fast:
+	$(MAKE) $(MAKESILENT) -f example/echo_c++/CMakeFiles/mytest.dir/build.make example/echo_c++/CMakeFiles/mytest.dir/build
+.PHONY : mytest/fast
+
+#=============================================================================
+# Target rules for targets named bthreadPool
+
+# Build rule for target.
+bthreadPool: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 bthreadPool
+.PHONY : bthreadPool
+
+# fast build rule for target.
+bthreadPool/fast:
+	$(MAKE) $(MAKESILENT) -f example/echo_c++/CMakeFiles/bthreadPool.dir/build.make example/echo_c++/CMakeFiles/bthreadPool.dir/build
+.PHONY : bthreadPool/fast
+
+#=============================================================================
+# Target rules for targets named baiban
+
+# Build rule for target.
+baiban: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 baiban
+.PHONY : baiban
+
+# fast build rule for target.
+baiban/fast:
+	$(MAKE) $(MAKESILENT) -f example/echo_c++/CMakeFiles/baiban.dir/build.make example/echo_c++/CMakeFiles/baiban.dir/build
+.PHONY : baiban/fast
+
+#=============================================================================
+# Target rules for targets named AIbthreadPool
+
+# Build rule for target.
+AIbthreadPool: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 AIbthreadPool
+.PHONY : AIbthreadPool
+
+# fast build rule for target.
+AIbthreadPool/fast:
+	$(MAKE) $(MAKESILENT) -f example/echo_c++/CMakeFiles/AIbthreadPool.dir/build.make example/echo_c++/CMakeFiles/AIbthreadPool.dir/build
+.PHONY : AIbthreadPool/fast
+
+#=============================================================================
+# Target rules for targets named huibiantest
+
+# Build rule for target.
+huibiantest: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 huibiantest
+.PHONY : huibiantest
+
+# fast build rule for target.
+huibiantest/fast:
+	$(MAKE) $(MAKESILENT) -f example/echo_c++/CMakeFiles/huibiantest.dir/build.make example/echo_c++/CMakeFiles/huibiantest.dir/build
+.PHONY : huibiantest/fast
+
+#=============================================================================
+# Target rules for targets named streaming_echo_client
+
+# Build rule for target.
+streaming_echo_client: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 streaming_echo_client
+.PHONY : streaming_echo_client
+
+# fast build rule for target.
+streaming_echo_client/fast:
+	$(MAKE) $(MAKESILENT) -f example/streaming_echo_c++/CMakeFiles/streaming_echo_client.dir/build.make example/streaming_echo_c++/CMakeFiles/streaming_echo_client.dir/build
+.PHONY : streaming_echo_client/fast
+
+#=============================================================================
+# Target rules for targets named streaming_echo_server
+
+# Build rule for target.
+streaming_echo_server: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 streaming_echo_server
+.PHONY : streaming_echo_server
+
+# fast build rule for target.
+streaming_echo_server/fast:
+	$(MAKE) $(MAKESILENT) -f example/streaming_echo_c++/CMakeFiles/streaming_echo_server.dir/build.make example/streaming_echo_c++/CMakeFiles/streaming_echo_server.dir/build
+.PHONY : streaming_echo_server/fast
+
+#=============================================================================
+# Target rules for targets named streaming_batch_echo_client
+
+# Build rule for target.
+streaming_batch_echo_client: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 streaming_batch_echo_client
+.PHONY : streaming_batch_echo_client
+
+# fast build rule for target.
+streaming_batch_echo_client/fast:
+	$(MAKE) $(MAKESILENT) -f example/streaming_batch_echo_c++/CMakeFiles/streaming_batch_echo_client.dir/build.make example/streaming_batch_echo_c++/CMakeFiles/streaming_batch_echo_client.dir/build
+.PHONY : streaming_batch_echo_client/fast
+
+#=============================================================================
+# Target rules for targets named streaming_batch_echo_server
+
+# Build rule for target.
+streaming_batch_echo_server: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 streaming_batch_echo_server
+.PHONY : streaming_batch_echo_server
+
+# fast build rule for target.
+streaming_batch_echo_server/fast:
+	$(MAKE) $(MAKESILENT) -f example/streaming_batch_echo_c++/CMakeFiles/streaming_batch_echo_server.dir/build.make example/streaming_batch_echo_c++/CMakeFiles/streaming_batch_echo_server.dir/build
+.PHONY : streaming_batch_echo_server/fast
+
+#=============================================================================
 # Target rules for targets named TEST_PROTO_LIB
 
 # Build rule for target.
@@ -1949,6 +2131,7 @@ help:
 	@echo "... package_source"
 	@echo "... rebuild_cache"
 	@echo "... test"
+	@echo "... AIbthreadPool"
 	@echo "... BUTIL_DEBUG_LIB"
 	@echo "... BUTIL_LIB"
 	@echo "... BVAR_DEBUG_LIB"
@@ -1956,6 +2139,8 @@ help:
 	@echo "... SOURCES_DEBUG_LIB"
 	@echo "... SOURCES_LIB"
 	@echo "... TEST_PROTO_LIB"
+	@echo "... baiban"
+	@echo "... benchmark_http"
 	@echo "... brpc-shared-debug"
 	@echo "... brpc-static"
 	@echo "... brpc-static-debug"
@@ -2004,6 +2189,7 @@ help:
 	@echo "... brpc_streaming_rpc_unittest"
 	@echo "... brpc_timeout_concurrency_limiter_unittest"
 	@echo "... brpc_uri_unittest"
+	@echo "... bthreadPool"
 	@echo "... bthread_butex_multi_tag_unittest"
 	@echo "... bthread_butex_unittest"
 	@echo "... bthread_cond_bug_unittest"
@@ -2026,6 +2212,8 @@ help:
 	@echo "... bthread_timer_thread_unittest"
 	@echo "... bthread_unittest"
 	@echo "... bthread_work_stealing_queue_unittest"
+	@echo "... echo_client"
+	@echo "... echo_server"
 	@echo "... fuzz_butil"
 	@echo "... fuzz_esp"
 	@echo "... fuzz_hpack"
@@ -2040,11 +2228,19 @@ help:
 	@echo "... gmock_main"
 	@echo "... gtest"
 	@echo "... gtest_main"
+	@echo "... http_client"
+	@echo "... http_server"
+	@echo "... huibiantest"
+	@echo "... mytest"
 	@echo "... parallel_http"
 	@echo "... protoc-gen-mcpack"
 	@echo "... rpc_press"
 	@echo "... rpc_replay"
 	@echo "... rpc_view"
+	@echo "... streaming_batch_echo_client"
+	@echo "... streaming_batch_echo_server"
+	@echo "... streaming_echo_client"
+	@echo "... streaming_echo_server"
 	@echo "... test_butil"
 	@echo "... test_bvar"
 	@echo "... trackme_server"

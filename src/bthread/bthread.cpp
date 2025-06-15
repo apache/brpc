@@ -311,11 +311,15 @@ int bthread_start_background(bthread_t* __restrict tid,
                              const bthread_attr_t* __restrict attr,
                              void * (*fn)(void*),
                              void* __restrict arg) {
+
+    //bthread_start_background()
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g) {
         // if attribute is null use thread local task group
         if (bthread::can_run_thread_local(attr)) {
+
             return g->start_background<false>(tid, attr, fn, arg);
+        
         }
     }
     return bthread::start_from_non_worker(tid, attr, fn, arg);

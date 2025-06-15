@@ -35,6 +35,8 @@ struct StackStorage {
      unsigned guardsize;
     // Assume stack grows upwards.
     // http://www.boost.org/doc/libs/1_55_0/libs/context/doc/html/context/stack.html
+    //栈分配时（allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in)）
+    // 会通过mmap匿名映射一段空间，然后将高地址位赋值给bottom
     void* bottom;
     unsigned valgrind_stack_id;
 
@@ -60,7 +62,7 @@ enum StackType {
     STACK_TYPE_NORMAL = BTHREAD_STACKTYPE_NORMAL,
     STACK_TYPE_LARGE = BTHREAD_STACKTYPE_LARGE
 };
-
+// context指向协程栈顶，stacktype表示栈的类型(大小)，storage为栈空间。
 struct ContextualStack {
     virtual ~ContextualStack() = default;
     bthread_fcontext_t context;

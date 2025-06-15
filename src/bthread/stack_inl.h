@@ -124,6 +124,7 @@ struct LargeStackClass {
 template <typename StackClass> struct StackFactory {
     struct Wrapper : public ContextualStack {
         explicit Wrapper(void (*entry)(intptr_t)) {
+            //entry不是协程绑定的协程函数，而是ask_runner
             if (allocate_stack_storage(&storage, *StackClass::stack_size_flag,
                                        FLAGS_guard_page_size) != 0) {
                 storage.zeroize();

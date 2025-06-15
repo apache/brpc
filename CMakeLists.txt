@@ -36,7 +36,7 @@ option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" ON)
 option(WITH_DEBUG_LOCK "With debugging lock" ON)
 option(WITH_ASAN "With AddressSanitizer" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" ON)
-option(BUILD_FUZZ_TESTS "Whether to build fuzz tests" ON)
+option(BUILD_FUZZ_TESTS "Whether to build fuzz tests" OFF)
 option(BUILD_BRPC_TOOLS "Whether to build brpc tools" ON)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 

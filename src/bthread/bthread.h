@@ -18,6 +18,21 @@
 // bthread - An M:N threading library to make applications more concurrent.
 
 // Date: Tue Jul 10 17:40:58 CST 2012
+// 授权给 Apache Software Foundation (ASF) 的一个或多个贡献者许可协议。
+// 有关版权归属的更多信息，请参阅随本作品分发的 NOTICE 文件。
+// ASF 根据 Apache License, Version 2.0（“许可证”）授权此文件；
+// 除非符合许可证，否则您不得使用此文件。
+// 您可以在以下网址获取许可证副本：
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// 除非适用法律要求或书面同意，否则根据许可证分发的软件
+// 是按“原样”分发的，没有任何明示或暗示的担保或条件。
+// 有关许可证下特定语言的权限和限制，请参阅许可证。
+//
+// bthread - 一个 M:N threading 库，用于使应用程序更具并发性。
+//
+// 日期: 2012年7月10日 星期二
 
 #ifndef BTHREAD_BTHREAD_H
 #define BTHREAD_BTHREAD_H

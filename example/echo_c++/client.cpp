@@ -22,7 +22,7 @@
 #include <butil/time.h>
 #include <brpc/channel.h>
 #include "echo.pb.h"
-
+using namespace std;
 DEFINE_string(attachment, "", "Carry this along with requests");
 DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
@@ -39,7 +39,8 @@ int main(int argc, char* argv[]) {
     // A Channel represents a communication line to a Server. Notice that 
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
+    LOG(INFO)<<endl;
+    LOG(INFO) <<"哈哈哈"<<std::endl;
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;
@@ -58,6 +59,7 @@ int main(int argc, char* argv[]) {
     // Send a request and wait for the response every 1 second.
     int log_id = 0;
     while (!brpc::IsAskedToQuit()) {
+        
         // We will receive response synchronously, safe to put variables
         // on stack.
         example::EchoRequest request;

@@ -81,11 +81,16 @@ extern "C"{
 #endif
 
 intptr_t BTHREAD_CONTEXT_CALL_CONVENTION
+//bthread_jump_fcontext(&from->context, to->context, 0/*not skip remained*/);
+//保存和恢复寄存器和栈信息。
 bthread_jump_fcontext(bthread_fcontext_t * ofc, bthread_fcontext_t nfc,
                       intptr_t vp, bool preserve_fpu = false);
 bthread_fcontext_t BTHREAD_CONTEXT_CALL_CONVENTION
+// bthread_fcontext_t context = bthread_make_fcontext(storage.bottom, storage.stacksize, entry);
+// 创建bthread协程栈上下文，返回值为协程栈顶context，函数入参分别为协程栈底，栈大小，以及这个bthread要执行的函数entry。
+//初始化协程执行上下文
+//
 bthread_make_fcontext(void* sp, size_t size, void (* fn)( intptr_t));
-
 #ifdef __cplusplus
 };
 #endif

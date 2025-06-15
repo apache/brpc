@@ -65,6 +65,7 @@ inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
 #ifdef BUTIL_USE_ASAN
         ContextualStack* stk = get_stack(next_meta->stack_type(), asan_task_runner);
 #else
+        //关键，新协程
         ContextualStack* stk = get_stack(next_meta->stack_type(), task_runner);
 #endif // BUTIL_USE_ASAN
         if (stk) {
@@ -79,6 +80,7 @@ inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
         }
     }
     // Update now_ns only when wait_task did yield.
+    //有meta的sched_to
     sched_to(pg, next_meta, false);
 }
 

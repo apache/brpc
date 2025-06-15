@@ -21,13 +21,18 @@
 #include "bthread/condition_variable.h"
 #include "bthread/countdown_event.h"
 #include "bthread/mutex.h"
-
+#include <iostream>>
 DECLARE_int32(task_group_ntags);
 
 int main(int argc, char* argv[]) {
+    bthread_t tid1;
+    bthread_t tid2;
+    std::cout<<"我是tid1:"<<tid1<<std::endl;
+    std::cout<<"我是tid2:"<<tid1<<std::endl;
     FLAGS_task_group_ntags = 3;
     testing::InitGoogleTest(&argc, argv);
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
+    std::cout<<"?哇塞哇塞"<<std::endl;
     return RUN_ALL_TESTS();
 }
 

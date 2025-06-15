@@ -1,38 +1,38 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
+// 授权给Apache Software Foundation (ASF)
+// 或更多贡献者许可协议。请参阅通知文件
+// 与这项工作一起分发以获取更多信息
+// 关于版权所有权。ASF许可此文件
+// 在Apache许可证版本2.0 (
+// “许可证”); 除非符合要求，否则您不得使用此文件
+// 有执照。您可以在以下位置获得许可证的副本
 //
-//   http://www.apache.org/licenses/LICENSE-2.0
+//   http://www.apache.org/licenses/ 许可证-2.0
 //
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+// 除非适用法律要求或书面同意，
+// 根据许可证分发的软件在
+// “按现状” 为基础，不附带任何保证或条件
+// 种类，无论是明示的还是暗示的。请参阅的许可证
+// 管理权限和限制的特定语言
+// 根据许可证。
 
-// bthread - An M:N threading library to make applications more concurrent.
+// bthread-一个M:N线程库，使应用程序更加并发。
 
-// Date: Tue Jul 10 17:40:58 CST 2012
+// 日期: 星期二7月10日17:40:58 CST 2012
 
 #ifndef BTHREAD_TASK_GROUP_H
 #define BTHREAD_TASK_GROUP_H
 
-#include "butil/time.h"                             // cpuwide_time_ns
+#include "butil/time.h"                             // Cpuwide时间ns
 #include "bthread/task_control.h"
 #include "bthread/task_meta.h"                     // bthread_t, TaskMeta
-#include "bthread/work_stealing_queue.h"           // WorkStealingQueue
-#include "bthread/remote_task_queue.h"             // RemoteTaskQueue
-#include "butil/resource_pool.h"                    // ResourceId
+#include "bthread/work_stealing_queue.h"           // 工作窃取队列
+#include "bthread/remote_task_queue.h"             // 远程任务尾巴
+#include "butil/resource_pool.h"                    // 资源id
 #include "bthread/parking_lot.h"
 
 namespace bthread {
 
-// For exiting a bthread.
+// 用于退出bthread。
 class ExitException : public std::exception {
 public:
     explicit ExitException(void* value) : _value(value) {}
@@ -47,142 +47,142 @@ private:
     void* _value;
 };
 
-// Thread-local group of tasks.
-// Notice that most methods involving context switching are static otherwise
-// pointer `this' may change after wakeup. The **pg parameters in following
-// function are updated before returning.
+// 线程本地任务组。
+// 请注意，大多数涉及上下文切换的方法都是静态的，否则
+// 指针 “this” 在唤醒后可能会改变。以下中的 ** pg参数
+// 函数在返回之前更新。
 class TaskGroup {
 public:
-    // Create task `fn(arg)' with attributes `attr' in TaskGroup *pg and put
-    // the identifier into `tid'. Switch to the new task and schedule old task
-    // to run.
-    // Return 0 on success, errno otherwise.
+    // 在TaskGroup * pg中创建具有属性 'attr' 的任务 'fn(arg)'，并将
+    // 将标识符转换为 “tid”。切换到新任务并计划旧任务
+    // 跑。
+    // 成功时返回0，否则返回errno。
     static int start_foreground(TaskGroup** pg,
                                 bthread_t* __restrict tid,
                                 const bthread_attr_t* __restrict attr,
                                 void * (*fn)(void*),
                                 void* __restrict arg);
 
-    // Create task `fn(arg)' with attributes `attr' in this TaskGroup, put the
-    // identifier into `tid'. Schedule the new thread to run.
-    //   Called from worker: start_background<false>
-    //   Called from non-worker: start_background<true>
-    // Return 0 on success, errno otherwise.
+    // 在此任务组中创建属性为 “attr' 的任务 'fn(arg)'，将
+    // 将标识符转换为 “tid”。安排新线程运行。
+    //   从worker调用: start_background<false>
+    //   从非worker调用: start_background<true>
+    // 成功时返回0，否则返回errno。
     template <bool REMOTE>
     int start_background(bthread_t* __restrict tid,
                          const bthread_attr_t* __restrict attr,
                          void * (*fn)(void*),
                          void* __restrict arg);
 
-    // Suspend caller and run next bthread in TaskGroup *pg.
+    // 暂停调用方并在TaskGroup * pg中运行下一个bthread。
     static void sched(TaskGroup** pg);
     static void ending_sched(TaskGroup** pg);
 
-    // Suspend caller and run bthread `next_tid' in TaskGroup *pg.
-    // Purpose of this function is to avoid pushing `next_tid' to _rq and
-    // then being popped by sched(pg), which is not necessary.
+    // 暂停调用方并在TaskGroup * pg中运行bthread 'next_tid'。
+    // 此函数的目的是避免将 “next_tid” 推送到 _rq和
+    // 然后被sched(pg) 弹出，这是没有必要的。
     static void sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending);
     static void sched_to(TaskGroup** pg, bthread_t next_tid);
     static void exchange(TaskGroup** pg, TaskMeta* next_meta);
 
-    // The callback will be run in the beginning of next-run bthread.
-    // Can't be called by current bthread directly because it often needs
-    // the target to be suspended already.
+    // 回调将在下一个运行bthread的开始运行。
+    // 不能被当前bthread直接调用，因为它经常需要
+    // 已暂停的目标。
     typedef void (*RemainedFn)(void*);
     void set_remained(RemainedFn cb, void* arg) {
         _last_context_remained = cb;
         _last_context_remained_arg = arg;
     }
     
-    // Suspend caller for at least |timeout_us| microseconds.
-    // If |timeout_us| is 0, this function does nothing.
-    // If |group| is NULL or current thread is non-bthread, call usleep(3)
-    // instead. This function does not create thread-local TaskGroup.
-    // Returns: 0 on success, -1 otherwise and errno is set.
+    // 将调用方挂起至少 | timeout_us | 微秒。
+    // 如果 | timeout_us | 为0，则此函数不执行任何操作。
+    // 如果 | group | 为NULL或当前线程为非bthread，则调用usleep(3)
+    // 相反。此函数不创建线程本地TaskGroup。
+    // 成功时返回0，否则返回-1，并设置errno。
     static int usleep(TaskGroup** pg, uint64_t timeout_us);
 
-    // Suspend caller and run another bthread. When the caller will resume
-    // is undefined.
+    // 挂起调用方并运行另一个bthread。当呼叫者将恢复
+    // 未定义。
     static void yield(TaskGroup** pg);
 
-    // Suspend caller until bthread `tid' terminates.
+    // 挂起调用方，直到bthread “tid” 终止。
     static int join(bthread_t tid, void** return_value);
 
-    // Returns true iff the bthread `tid' still exists. Notice that it is
-    // just the result at this very moment which may change soon.
-    // Don't use this function unless you have to. Never write code like this:
+    // 如果bthread 'tid' 仍然存在，则返回true。请注意，它是
+    // 只是此时此刻的结果可能很快就会改变。
+    // 除非必须，否则不要使用此功能。永远不要写这样的代码:
     //    if (exists(tid)) {
-    //        Wait for events of the thread.   // Racy, may block indefinitely.
+    //        等待线程的事件。// Racy可能会无限期阻塞。
     //    }
     static bool exists(bthread_t tid);
 
-    // Put attribute associated with `tid' into `*attr'.
-    // Returns 0 on success, -1 otherwise and errno is set.
+    // 将与 'tid' 关联的属性放入 '* attr'。
+    // 成功时返回0，否则返回-1，并设置errno。
     static int get_attr(bthread_t tid, bthread_attr_t* attr);
 
-    // Get/set TaskMeta.stop of the tid.
+    // 获取/设置TaskMeta.stop的tid。
     static void set_stopped(bthread_t tid);
     static bool is_stopped(bthread_t tid);
 
-    // The bthread running run_main_task();
+    // 运行run_main_task() 的bthread；
     bthread_t main_tid() const { return _main_tid; }
     TaskStatistics main_stat() const;
-    // Routine of the main task which should be called from a dedicated pthread.
+    // 应该从专用pthread调用的主要任务的例程。
     void run_main_task();
 
-    // current_task is a function in macOS 10.0+
+    // current_task是macOS 10.0中的函数
 #ifdef current_task
 #undef current_task
 #endif
-    // Meta/Identifier of current task in this group.
+    // 此组中当前任务的Meta/标识符。
     TaskMeta* current_task() const { return _cur_meta; }
     bthread_t current_tid() const { return _cur_meta->tid; }
-    // Uptime of current task in nanoseconds.
+    // 当前任务的正常运行时间 (以纳秒为单位)。
     int64_t current_uptime_ns() const
     { return butil::cpuwide_time_ns() - _cur_meta->cpuwide_start_ns; }
 
-    // True iff current task is the one running run_main_task()
+    // True iff当前任务是运行run_main_task() 的任务
     bool is_current_main_task() const { return current_tid() == _main_tid; }
-    // True iff current task is in pthread-mode.
+    // 如果当前任务处于pthread模式，则为True。
     bool is_current_pthread_task() const
     { return _cur_meta->stack == _main_stack; }
 
-    // Active time in nanoseconds spent by this TaskGroup.
+    // 此任务组花费的活动时间 (以纳秒为单位)。
     int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
 
-    // Push a bthread into the runqueue
+    // 将bthread推入runqueue
     void ready_to_run(TaskMeta* meta, bool nosignal = false);
-    // Flush tasks pushed to rq but signalled.
+    // 刷新任务已推送到rq，但已发出信号。
     void flush_nosignal_tasks();
 
-    // Push a bthread into the runqueue from another non-worker thread.
+    // 将bthread从另一个非工作线程推入runqueue。
     void ready_to_run_remote(TaskMeta* meta, bool nosignal = false);
     void flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex);
     void flush_nosignal_tasks_remote();
 
-    // Automatically decide the caller is remote or local, and call
-    // the corresponding function.
+    // 自动确定呼叫者是远程还是本地，并调用
+    // 相应的函数。
     void ready_to_run_general(TaskMeta* meta, bool nosignal = false);
     void flush_nosignal_tasks_general();
 
-    // The TaskControl that this TaskGroup belongs to.
+    // 此TaskGroup所属的TaskControl。
     TaskControl* control() const { return _control; }
 
-    // Call this instead of delete.
+    // 调用此，而不是删除。
     void destroy_self();
 
-    // Wake up blocking ops in the thread.
-    // Returns 0 on success, errno otherwise.
+    // 唤醒线程中的阻塞ops。
+    // 成功时返回0，否则返回errno。
     static int interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag);
 
-    // Get the meta associate with the task.
+    // 获取与任务关联的元。
     static TaskMeta* address_meta(bthread_t tid);
 
-    // Push a task into _rq, if _rq is full, retry after some time. This
-    // process make go on indefinitely.
+    // 将任务推入 _rq，如果 _rq已满，请在一段时间后重试。这个
+    // 过程无限期地进行下去。
     void push_rq(bthread_t tid);
 
-    // Returns size of local run queue.
+    // 返回本地运行队列的大小。
     size_t rq_size() const {
         return _rq.volatile_size();
     }
@@ -203,21 +203,21 @@ public:
 private:
 friend class TaskControl;
 
-    // You shall use TaskControl::create_group to create new instance.
+    // 您应使用TaskControl::create_group创建新实例。
     explicit TaskGroup(TaskControl* c);
 
     int init(size_t runqueue_capacity);
 
-    // You shall call destroy_selfm() instead of destructor because deletion
-    // of groups are postponed to avoid race.
+    // 你应该调用destroy_selfm() 而不是析构函数，因为删除
+    // 团体被推迟以避免种族。
     ~TaskGroup();
 
 #ifdef BUTIL_USE_ASAN
     static void asan_task_runner(intptr_t);
-#endif // BUTIL_USE_ASAN
+#endif // 丁基磨损
     static void task_runner(intptr_t skip_remained);
 
-    // Callbacks for set_remained()
+    // Set_restaed () 的回调
     static void _release_last_context(void*);
     static void _add_sleep_event(void*);
     struct ReadyToRunArgs {
@@ -229,9 +229,9 @@ friend class TaskControl;
     static void ready_to_run_in_worker_ignoresignal(void*);
     static void priority_to_run(void*);
 
-    // Wait for a task to run.
-    // Returns true on success, false is treated as permanent error and the
-    // loop calling this function should end.
+    // 等待任务运行。
+    // 成功时返回true，false被视为永久错误，
+    // 循环调用此函数应结束。
     bool wait_task(bthread_t* tid);
 
     bool steal_task(bthread_t* tid) {
@@ -250,14 +250,14 @@ friend class TaskControl;
 
     TaskMeta* _cur_meta;
     
-    // the control that this group belongs to
+    // 此组所属的控件
     TaskControl* _control;
     int _num_nosignal;
     int _nsignaled;
-    // last scheduling time
+    // 充电调度时间
     int64_t _last_run_ns;
     int64_t _cumulated_cputime_ns;
-    // last thread cpu clock
+    // 最后一个线程cpu时钟
     int64_t _last_cpu_clock_ns;
 
     size_t _nswitch;
@@ -278,15 +278,15 @@ friend class TaskControl;
     int _remote_nsignaled;
 
     int _sched_recursive_guard;
-    // tag of this taskgroup
+    // 此任务组的标记
     bthread_tag_t _tag;
 
-    // Worker thread id.
+    // 工作线程id。
     pid_t _tid;
 };
 
-}  // namespace bthread
+}  // 命名空间bthread
 
 #include "task_group_inl.h"
 
-#endif  // BTHREAD_TASK_GROUP_H
+#endif  // Bthread任务组h

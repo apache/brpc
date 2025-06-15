@@ -156,6 +156,7 @@ void TaskGroup::run_main_task() {
     TaskGroup* dummy = this;
     bthread_t tid;
     while (wait_task(&tid)) {
+        //关键
         TaskGroup::sched_to(&dummy, tid);
         DCHECK_EQ(this, dummy);
         DCHECK_EQ(_cur_meta->stack, _main_stack);
@@ -306,6 +307,7 @@ void TaskGroup::asan_task_runner(intptr_t) {
 }
 #endif // BUTIL_USE_ASAN
 
+//协程初始化运行函数
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
     //       different groups.
@@ -353,6 +355,8 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // libraries.
         void* thread_return;
         try {
+            //运行用户函数
+            //关键
             thread_return = m->fn(m->arg);
         } catch (ExitException& e) {
             thread_return = e.value();
@@ -384,6 +388,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
 
         // During running the function in TaskMeta and deleting the KeyTable in
         // return_KeyTable, the group is probably changed.
+        //通过线程本地变量获得g
         g =  BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 
         // Increase the version and wake up all joiners, if resulting version
@@ -415,6 +420,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         g->_control->_nbthreads << -1;
         g->_control->tag_nbthreads(g->tag()) << -1;
         g->set_remained(TaskGroup::_release_last_context, m);
+        //关键
         ending_sched(&g);
 
     } while (g->_cur_meta->tid != g->_main_tid);

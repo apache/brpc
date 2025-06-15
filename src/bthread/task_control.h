@@ -138,6 +138,7 @@ private:
     butil::atomic<bool> _init;  // if not init, bvar will case coredump
     bool _stop;
     butil::atomic<int> _concurrency;
+    //工作线程
     std::vector<pthread_t> _workers;
     butil::atomic<int> _next_worker_id;
 

@@ -102,6 +102,7 @@ void* TaskControl::worker_thread(void* arg) {
     c->_nworkers << 1;
     c->tag_nworkers(g->tag()) << 1;
 
+    //关键
     g->run_main_task();
 
     stat = g->main_stat();
