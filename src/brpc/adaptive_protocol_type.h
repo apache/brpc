@@ -83,9 +83,9 @@ public:
     const std::string& param() const { return _param; }
 
 private:
-    ProtocolType _type;
-    std::string _name;
-    std::string _param;
+    ProtocolType _type;//协议类型
+    std::string _name;//协议名称
+    std::string _param;//扩展
 };
 
 } // namespace brpc

@@ -198,6 +198,11 @@ public:
         return NULL;
     }
 
+    
+// event: foo
+// data: Hello, world! (87)
+
+
     void stream(google::protobuf::RpcController* cntl_base,
                 const HttpRequest*,
                 HttpResponse*,

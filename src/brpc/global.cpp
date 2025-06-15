@@ -339,6 +339,7 @@ static void GlobalInitializeOrDieImpl() {
 #endif
 
     // Set bthread create span function
+    //追踪上下文（Span）
     bthread_set_create_span_func(CreateBthreadSpan);
 
     // Setting the variable here does not work, the profiler probably check

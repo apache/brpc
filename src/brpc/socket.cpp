@@ -1832,6 +1832,7 @@ void* Socket::KeepWrite(void* void_arg) {
             break;
         }
 
+        //最终写
         const ssize_t nw = s->DoWrite(req);
         if (nw < 0) {
             if (errno != EAGAIN && errno != EOVERCROWDED) {

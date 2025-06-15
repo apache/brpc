@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-cmake_minimum_required(VERSION 2.8.10)
+cmake_minimum_required(VERSION 3.28.3)
 project(session_data_and_thread_local C CXX)
 
 option(LINK_SO "Whether examples are linked dynamically" OFF)

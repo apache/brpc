@@ -25,8 +25,11 @@
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <brpc/channel.h>
+#include <iostream>
+#include <string>
 
 DEFINE_string(d, "", "POST this data to the http server");
+DEFINE_string(url, "127.0.0.1:8010/HttpService/Echo", "url");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 2000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
@@ -40,11 +43,14 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
 
-    if (argc != 2) {
-        LOG(ERROR) << "Usage: ./http_client \"http(s)://www.foo.com\"";
-        return -1;
-    }
-    char* url = argv[1];
+    // if (argc != 2) {
+    //     LOG(ERROR) << "Usage: ./http_client \"http(s)://www.foo.com\"";
+    //     return -1;
+    // }
+    std::cout << "Entering main function" << std::endl;
+    std::cout<<argv[0]<<std::endl;
+    const char* url = FLAGS_url.c_str();
+    std::cout<<url<<std::endl;
     
     // A Channel represents a communication line to a Server. Notice that 
     // Channel is thread-safe and can be shared by all threads in your program.

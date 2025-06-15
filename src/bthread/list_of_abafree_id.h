@@ -25,9 +25,11 @@
 #include <deque>
 #include <vector>
 
+#include <cstdint>  // 引入 uint32_t 类型
 #include "butil/macros.h"
 
 namespace bthread {
+    
 
 // A container for storing identifiers that may be invalidated.
 

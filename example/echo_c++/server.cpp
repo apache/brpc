@@ -132,3 +132,17 @@ int main(int argc, char* argv[]) {
     server.RunUntilAskedToQuit();
     return 0;
 }
+
+
+
+// I0526 18:22:17.728257 70704     0 src/brpc/server.cpp:1245] Check out http://mike-VMware-Virtual-Platform:8000 in web browser.
+// I0526 18:22:19.098456 70712 17179870977 server.cpp:60] Received request[log_id=16] from 127.0.0.1:58548 to 127.0.0.1:8000: hello world (attached=)
+// I0526 18:22:19.099503 70712 17179870977 server.cpp:89] req:{"message":"hello world"} res:{"message":"hello world"}
+
+// I0526 18:22:20.101549 70712 21474838273 server.cpp:60] Received request[log_id=17] from 127.0.0.1:58548 to 127.0.0.1:8000: hello world (attached=)
+// I0526 18:22:20.101735 70712 21474838273 server.cpp:89] req:{"message":"hello world"} res:{"message":"hello world"}
+// I0526 18:22:21.102946 70712 25769805569 server.cpp:60] Received request[log_id=18] from 127.0.0.1:58548 to 127.0.0.1:8000: hello world (attached=)
+// I0526 18:22:21.103123 70712 25769805569 server.cpp:89] req:{"message":"hello world"} res:{"message":"hello world"}
+// I0526 18:22:22.104449 70712 30064772865 server.cpp:60] Received request[log_id=19] from 127.0.0.1:58548 to 127.0.0.1:8000: hello world (attached=)
+// I0526 18:22:22.104554 70712 30064772865 server.cpp:89] req:{"message":"hello world"} res:{"message":"hello world"}
+// I0526 18:22:23.105528 70712 34359740161 server.cpp:60] Received request[log_id=20] from 127.0.0.1:58548 to 127.0.0.1:8000: hello world (attached=)

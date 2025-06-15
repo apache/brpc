@@ -340,6 +340,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                         const char* raw_server_address,
                         const ChannelOptions* options,
                         int raw_port) {
+                            
     GlobalInitializeOrDie();
     if (InitChannelOptions(options) != 0) {
         return -1;
@@ -380,6 +381,8 @@ int Channel::Init(const char* ns_url,
         // Treat ns_url as server_addr_and_port
         return Init(ns_url, options);
     }
+    //// BRPC 内部初始化代码（简化）??
+    //// 启动全局的 I/O 线程池和定时器线程?？
     GlobalInitializeOrDie();
     if (InitChannelOptions(options) != 0) {
         return -1;
@@ -461,6 +464,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     if (_options.enable_circuit_breaker) {
         cntl->add_flag(Controller::FLAGS_ENABLED_CIRCUIT_BREAKER);
     }
+    //暂时理解为进程内区分不同服务的ID
     const CallId correlation_id = cntl->call_id();
     const int rc = bthread_id_lock_and_reset_range(
                     correlation_id, NULL, 2 + cntl->max_retry());
@@ -560,6 +564,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         cntl->_backup_request_policy = NULL;
     }
 
+    //定时器处理，超时有关
     if (cntl->backup_request_ms() >= 0 &&
         (cntl->backup_request_ms() < cntl->timeout_ms() ||
          cntl->timeout_ms() < 0)) {
@@ -604,6 +609,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // MUST wait for response when sending synchronous RPC. It will
         // be woken up by callback when RPC finishes (succeeds or still
         // fails after retry)
+        //// 阻塞等待 RPC 完成
         Join(correlation_id);
         if (cntl->_span) {
             cntl->SubmitSpan();

@@ -15,25 +15,33 @@
 # specific language governing permissions and limitations
 # under the License.
 
-cmake_minimum_required(VERSION 2.8.12)
+
+cmake_minimum_required(VERSION 3.28.3)
 project(brpc C CXX)
+
+set(CMAKE_CXX_STANDARD 11)           # 指定标准为 C++11
+set(CMAKE_CXX_STANDARD_REQUIRED ON)  # 必须满足此标准，否则报错
+set(CMAKE_CXX_EXTENSIONS OFF)        # 禁用编译器扩展（保持代码标准兼容性）
 
 option(WITH_GLOG "With glog" OFF)
 option(WITH_MESALINK "With MesaLink" OFF)
 option(WITH_BORINGSSL "With BoringSSL" OFF)
-option(DEBUG "Print debug logs" OFF)
+option(DEBUG "Print debug logs" ON)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
-option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" OFF)
-option(WITH_DEBUG_LOCK "With debugging lock" OFF)
+option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" ON)
+option(WITH_DEBUG_LOCK "With debugging lock" ON)
 option(WITH_ASAN "With AddressSanitizer" OFF)
-option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
-option(BUILD_FUZZ_TESTS "Whether to build fuzz tests" OFF)
+option(BUILD_UNIT_TESTS "Whether to build unit tests" ON)
+option(BUILD_FUZZ_TESTS "Whether to build fuzz tests" ON)
 option(BUILD_BRPC_TOOLS "Whether to build brpc tools" ON)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
+
+# cmake .. -DBUILD_UNIT_TESTS=ON  显式启用
+
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
 if(POLICY CMP0042)
@@ -560,6 +568,11 @@ set(SOURCES
     )
 
 add_subdirectory(src)
+add_subdirectory(example/http_c++)
+add_subdirectory(example/echo_c++)
+add_subdirectory(example/streaming_echo_c++)
+add_subdirectory(example/streaming_batch_echo_c++)
+
 if(BUILD_UNIT_TESTS)
     enable_testing()
     add_subdirectory(test)

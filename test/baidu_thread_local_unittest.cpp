@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include <errno.h>
 #include "butil/thread_local.h"
+#include <stdint.h>
 
 namespace {
 

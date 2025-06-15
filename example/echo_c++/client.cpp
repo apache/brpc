@@ -80,6 +80,7 @@ int main(int argc, char* argv[]) {
                 << ": " << response.message() << " (attached="
                 << cntl.response_attachment() << ")"
                 << " latency=" << cntl.latency_us() << "us";
+                
         } else {
             LOG(WARNING) << cntl.ErrorText();
         }
@@ -89,3 +90,12 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "EchoClient is going to quit";
     return 0;
 }
+
+
+
+// I0526 18:22:19.100494 70636     0 client.cpp:78] Received response from 0.0.0.0:8000 to 127.0.0.1:58548: hello world (attached=) latency=3416us
+// I0526 18:22:20.101992 70636     0 client.cpp:78] Received response from 0.0.0.0:8000 to 127.0.0.1:58548: hello world (attached=) latency=779us
+// I0526 18:22:21.103354 70636     0 client.cpp:78] Received response from 0.0.0.0:8000 to 127.0.0.1:58548: hello world (attached=) latency=775us
+// I0526 18:22:22.104831 70636     0 client.cpp:78] Received response from 0.0.0.0:8000 to 127.0.0.1:58548: hello world (attached=) latency=761us
+// I0526 18:22:23.106078 70636     0 client.cpp:78] Received response from 0.0.0.0:8000 to 127.0.0.1:58548: hello world (attached=) latency=896us
+// I0526 18:22:24.107141 70636     0 client.cpp:78] Received response from 0.0.0.0:8000 to 127.0.0.1:58548: hello world (attached=) latency=764us

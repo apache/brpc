@@ -292,6 +292,7 @@ struct SocketOptions {
 // Abstractions on reading from and writing into file descriptors.
 // NOTE: accessed by multiple threads(frequently), align it by cacheline.
 class BAIDU_CACHELINE_ALIGNMENT/*note*/ Socket : public VersionedRefWithId<Socket> {
+    //brpc使用一个或多个EventDispatcher(简称为EDISP)等待任一fd发生事件。和常见的“IO线程”不同，EDISP不负责读取。
 friend class EventDispatcher;
 friend class InputMessenger;
 friend class Acceptor;
@@ -961,6 +962,9 @@ private:
     butil::atomic<int>* _epollout_butex;
 
     // Storing data that are not flushed into `fd' yet.
+    //待写入FD的数据先存到链表里，多线程通过原子指令竞争写
+    //链表头节点
+    //理解为写不立即写，而是写入一个待写入链表，通过原子指令交换头节点判断是否可写
     butil::atomic<WriteRequest*> _write_head;
 
     bool _is_write_shutdown;
