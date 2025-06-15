@@ -34,6 +34,7 @@ int main(int argc, char* argv[]) {
 //0x7fffffffe220
 // 0x7fffffffe220
     int main_n=1;
+    (void)main_n;
     // fun1();
     // fun2();
     thread t1(fun1);
