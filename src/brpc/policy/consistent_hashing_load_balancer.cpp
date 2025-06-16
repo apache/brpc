@@ -33,6 +33,8 @@ namespace policy {
 // TODO: or 160?
 DEFINE_int32(chash_num_replicas, 100, 
              "default number of replicas per server in chash");
+DEFINE_bool(consistent_hashing_enable_server_tag, false, 
+             "if consistent hashing enable server with tag");
 
 // Defined in hasher.cpp.
 const char* GetHashName(HashFunc hasher);
@@ -71,8 +73,14 @@ bool DefaultReplicaPolicy::Build(ServerId server,
     replicas->clear();
     for (size_t i = 0; i < num_replicas; ++i) {
         char host[256];
-        int len = snprintf(host, sizeof(host), "%s-%lu-%s",
+        int len = 0;
+        if (!FLAGS_consistent_hashing_enable_server_tag) {
+            len = snprintf(host, sizeof(host), "%s-%lu",
+                           endpoint2str(ptr->remote_side()).c_str(), i);
+        } else {
+            len = snprintf(host, sizeof(host), "%s-%lu-%s",
                            endpoint2str(ptr->remote_side()).c_str(), i, server.tag.c_str());
+        }
         ConsistentHashingLoadBalancer::Node node;
         node.hash = _hash_func(host, len);
         node.server_sock = server;
@@ -104,8 +112,14 @@ bool KetamaReplicaPolicy::Build(ServerId server,
         << "Ketam hash replicas number(" << num_replicas << ") should be n*4";
     for (size_t i = 0; i < num_replicas / points_per_hash; ++i) {
         char host[256];
-        int len = snprintf(host, sizeof(host), "%s-%lu-%s",
+        int len = 0;
+        if (!FLAGS_consistent_hashing_enable_server_tag) {
+            len = snprintf(host, sizeof(host), "%s-%lu",
+                           endpoint2str(ptr->remote_side()).c_str(), i);
+        } else {
+            len = snprintf(host, sizeof(host), "%s-%lu-%s",
                            endpoint2str(ptr->remote_side()).c_str(), i, server.tag.c_str());
+        }
         unsigned char digest[MD5_DIGEST_LENGTH];
         MD5HashSignature(host, len, digest);
         for (size_t j = 0; j < points_per_hash; ++j) {
