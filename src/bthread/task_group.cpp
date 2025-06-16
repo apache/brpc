@@ -1224,9 +1224,6 @@ bool TaskGroup::Wait(){
     _waiting.store(true, std::memory_order_release);
     _waiting_workers.fetch_add(1, std::memory_order_relaxed);
 
-    // Check any new module registered before checking modules' tasks.
-    CheckAndUpdateModules();
-
     std::unique_lock<std::mutex> lk(_mux);
     _cv.wait(lk, [this]()->bool {
         bthread_t tid;
@@ -1237,6 +1234,8 @@ bool TaskGroup::Wait(){
             return true;
         }
 
+        // Check any new module registered before checking modules' tasks.
+        CheckAndUpdateModules();
         return HasTasks();
     });
     _waiting.store(false, std::memory_order_release);
