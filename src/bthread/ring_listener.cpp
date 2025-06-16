@@ -20,7 +20,7 @@
 #ifdef IO_URING_ENABLED
 #include "brpc/socket.h"
 #include "bthread/task_group.h"
-#include "bthread/brpc_module.h"
+#include "bthread/eloq_module.h"
 #include "bthread/inbound_ring_buf.h"
 #include "bthread/ring_write_buf_pool.h"
 #include "butil/threading/platform_thread.h"
@@ -319,8 +319,6 @@ size_t RingListener::ExtPoll() {
     if (!has_external_.load(std::memory_order_relaxed)) {
         has_external_.store(true, std::memory_order_release);
     }
-
-    RecycleReturnedWriteBufs();
 
     // has_external_ should be updated before poll_status_ is checked.
     std::atomic_thread_fence(std::memory_order_release);

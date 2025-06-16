@@ -72,8 +72,6 @@ void* TaskControl::worker_thread(void* arg) {
         return NULL;
     }
 
-    g->TrySetExtTxProcFuncs();
-
     std::string worker_thread_name = butil::string_printf(
         "brpc_worker:%d", g->group_id_);
     butil::PlatformThread::SetName(worker_thread_name.c_str());

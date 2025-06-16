@@ -37,20 +37,12 @@
 #include "bthread/timer_thread.h"
 #include "bthread/errno.h"
 #include "task_meta.h"
-#include "bthread/brpc_module.h"
+#include "bthread/eloq_module.h"
 #ifdef IO_URING_ENABLED
 #include <liburing.h>
 #include "ring_write_buf_pool.h"
 #include "bthread/ring_listener.h"
 #endif
-
-std::function<std::tuple<std::function<void()>,
-        std::function<void(int16_t)>,
-        std::function<bool(bool)>,
-        std::function<bool()>>(int16_t)>
-        get_tx_proc_functors{nullptr};
-
-std::atomic<bool> tx_proc_functors_set{false};
 
 std::array<eloq::EloqModule *, 10> registered_modules;
 std::atomic<int> registered_module_cnt;
@@ -146,18 +138,17 @@ bool TaskGroup::wait_task(bthread_t* tid) {
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
+
+            NotifyRegisteredModules(WorkerStatus::Sleep);
+
           return false;
         }
 
 #ifdef IO_URING_ENABLED
-        if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
-            ring_listener_->SubmitAll();
-        }
+        // if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
+        //     ring_listener_->SubmitAll();
+        // }
 #endif
-
-        if (FLAGS_brpc_worker_as_ext_processor) {
-            RunExtTxProcTask();
-        }
 
         ProcessModulesTask();
 
@@ -198,10 +189,6 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (FLAGS_worker_polling_time_us <= 0 ||
             butil::cpuwide_time_us() - poll_start_us > FLAGS_worker_polling_time_us) {
             if (!HasTasks()) {
-                if (update_ext_proc_) {
-                    update_ext_proc_(-1);
-                }
-
 #ifdef IO_URING_ENABLED
                 if (FLAGS_use_io_uring && ring_listener_ != nullptr) {
                     ring_listener_->ExtWakeup();
@@ -212,10 +199,6 @@ bool TaskGroup::wait_task(bthread_t* tid) {
                 Wait();
 
                 NotifyRegisteredModules(WorkerStatus::Working);
-
-                if (update_ext_proc_) {
-                    update_ext_proc_(1);
-                }
             }
             poll_start_us = FLAGS_worker_polling_time_us > 0 ? butil::cpuwide_time_us() : 0;
             empty_rnd = 0;
@@ -266,9 +249,6 @@ void TaskGroup::run_main_task() {
     }
     // Don't forget to add elapse of last wait_task.
     current_task()->stat.cputime_ns += butil::cpuwide_time_ns() - _last_run_ns;
-    if (update_ext_proc_) {
-        update_ext_proc_(-1);
-    }
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
@@ -1233,7 +1213,7 @@ void print_task(std::ostream& os, bthread_t tid) {
 
 bool TaskGroup::Notify() {
     if (!_waiting.load(std::memory_order_relaxed)) {
-        return false;
+        return true;
     }
     std::unique_lock<std::mutex> lk(_mux);
     _cv.notify_one();
@@ -1243,6 +1223,10 @@ bool TaskGroup::Notify() {
 bool TaskGroup::Wait(){
     _waiting.store(true, std::memory_order_release);
     _waiting_workers.fetch_add(1, std::memory_order_relaxed);
+
+    // Check any new module registered before checking modules' tasks.
+    CheckAndUpdateModules();
+
     std::unique_lock<std::mutex> lk(_mux);
     _cv.wait(lk, [this]()->bool {
         bthread_t tid;
@@ -1252,14 +1236,6 @@ bool TaskGroup::Wait(){
             }
             return true;
         }
-        if (has_tx_processor_work_ == nullptr) {
-            bool success = TrySetExtTxProcFuncs();
-            if (success) {
-                update_ext_proc_(-1);
-            }
-        }
-        // Check any new module registered before checking modules' tasks.
-        CheckAndUpdateModules();
 
         return HasTasks();
     });
@@ -1268,19 +1244,17 @@ bool TaskGroup::Wait(){
     return true;
 }
 
-void TaskGroup::RunExtTxProcTask() {
-    if (!tx_processor_exec_) {
-        TrySetExtTxProcFuncs();
-    }
-    if (tx_processor_exec_) {
-        tx_processor_exec_();
-    }
-}
-
 void TaskGroup::ProcessModulesTask() {
-    if (CheckAndUpdateModules()) {
-        NotifyRegisteredModules(WorkerStatus::Working);
+    int old_modules_cnt = modules_cnt_;
+
+    CheckAndUpdateModules();
+
+    int new_modules_cnt = modules_cnt_;
+    for (int i = old_modules_cnt; i < new_modules_cnt; ++i) {
+        eloq::EloqModule *module = registered_modules_[i];
+        module->ExtThdStart(group_id_);
     }
+
     for (auto *module : registered_modules_) {
         if (module != nullptr) {
             module->Process(group_id_);
@@ -1300,20 +1274,16 @@ bool TaskGroup::HasTasks() {
     return has_task;
 }
 
-bool TaskGroup::CheckAndUpdateModules() {
+void TaskGroup::CheckAndUpdateModules() {
     if (modules_cnt_ != registered_module_cnt.load(std::memory_order_acquire)) {
         registered_modules_ = registered_modules;
         modules_cnt_ = std::count_if(registered_modules_.begin(), registered_modules_.end(), [](eloq::EloqModule* module) {
             return module != nullptr;
         });
-        return true;
     }
-    return false;
 }
 
-
 void TaskGroup::NotifyRegisteredModules(WorkerStatus status) {
-    CheckAndUpdateModules();
     for (eloq::EloqModule *module : registered_modules_) {
         if (module != nullptr) {
             if (status == WorkerStatus::Sleep) {
@@ -1323,22 +1293,6 @@ void TaskGroup::NotifyRegisteredModules(WorkerStatus status) {
             }
         }
     }
-}
-
-// Usually ExtTxProcFuncs is set in TaskGroup::wait_task
-bool TaskGroup::TrySetExtTxProcFuncs() {
-    if (FLAGS_brpc_worker_as_ext_processor && tx_processor_exec_ == nullptr &&
-            tx_proc_functors_set.load(std::memory_order_acquire)) {
-        auto functors = get_tx_proc_functors(group_id_);
-        tx_processor_exec_ = std::get<0>(functors);
-        update_ext_proc_ = std::get<1>(functors);
-        override_shard_heap_ = std::get<2>(functors);
-        has_tx_processor_work_ = std::get<3>(functors);
-
-        update_ext_proc_(1);
-        return true;
-    }
-    return false;
 }
 
 #ifdef IO_URING_ENABLED

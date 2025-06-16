@@ -18,7 +18,7 @@
  */
 
 #pragma once
-#include "bthread/brpc_module.h"
+#include "bthread/eloq_module.h"
 #include "bthread/types.h"
 #include <array>
 #include <thread>

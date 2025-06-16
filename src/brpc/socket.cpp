@@ -71,10 +71,6 @@ size_t __attribute__((weak))
 get_sizes(const bthread_id_list_t* list, size_t* cnt, size_t n);
 }
 
-extern std::function<
-    std::tuple<std::function<void()>, std::function<bool(int16_t)>,
-               std::function<bool(bool)>>(int16_t)>
-    get_tx_proc_functors;
 extern int bthread_start_from_bound_group(size_t g_seed,
                                           bthread_t *__restrict tid,
                                           const bthread_attr_t *__restrict attr,

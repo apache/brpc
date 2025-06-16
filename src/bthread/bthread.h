@@ -27,7 +27,6 @@
 #include <sys/socket.h>
 #include "bthread/types.h"
 #include "bthread/errno.h"
-#include "bthread/brpc_module.h"
 
 #if defined(__cplusplus)
 #  include <iostream>
@@ -38,15 +37,6 @@
 
 __BEGIN_DECLS
 
-extern int bthread_set_ext_tx_prc_func(
-        std::function<std::tuple<std::function<void()>,
-                std::function<void(int16_t)>,
-                std::function<bool(bool)>,
-                std::function<bool()>>(int16_t)>);
-
-extern int register_module(eloq::EloqModule *module);
-
-extern int unregister_module(eloq::EloqModule *module);
 
 // Create bthread `fn(args)' with attributes `attr' and put the identifier into
 // `tid'. Switch to the new thread and schedule old thread to run. Use this
