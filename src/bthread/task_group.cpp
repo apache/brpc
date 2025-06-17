@@ -1226,6 +1226,10 @@ bool TaskGroup::Wait(){
 
     std::unique_lock<std::mutex> lk(_mux);
     _cv.wait(lk, [this]()->bool {
+        // No need to check _rq since _rq can only be pushed by itself.
+        if (!_remote_rq.empty() || !_bound_rq.empty()) {
+            return true;
+        }
         bthread_t tid;
         if (steal_from_others(&tid)) {
             if (!_rq.push(tid)) {
