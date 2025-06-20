@@ -152,6 +152,16 @@ public:
         return *this;
     }
 
+    void set_checksum_value(const char* c, size_t size) {
+        _cntl->_checksum_value.assign(c, size);
+    }
+
+    void set_checksum_value(const std::string& c) {
+        _cntl->_checksum_value = c;
+    }
+
+    const std::string& checksum_value() const { return _cntl->_checksum_value; }
+
 private:
     Controller* _cntl;
 };

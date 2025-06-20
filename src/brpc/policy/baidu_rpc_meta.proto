@@ -34,6 +34,8 @@ message RpcMeta {
     optional StreamSettings stream_settings = 8;
     map<string, string> user_fields = 9;
     optional ContentType content_type = 10;
+    optional int32 checksum_type = 11;
+    optional bytes checksum_value = 12;
 }
 
 message RpcRequestMeta {
