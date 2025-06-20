@@ -17,6 +17,7 @@
 
 
 #include <netinet/in.h>
+#include <functional>
 #include <gflags/gflags.h>
 #include <leveldb/db.h>
 #include <leveldb/comparator.h>
