@@ -59,7 +59,9 @@ public:
     void signal_task(int num_task);
 
     // Notify the group.
-    bool signal_group(int group_id);
+    void signal_group(int group_id);
+    // Notify the group. Return true if worker is waiting and notified.
+    bool signal_group_if_waiting(int group_id);
 
     // Stop and join worker threads in TaskControl.
     void stop_and_join();

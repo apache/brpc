@@ -214,7 +214,10 @@ public:
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
 
-    bool Notify();
+    void Notify();
+
+    // Notify worker, return true if worker is notified from sleep.
+    bool NotifyIfWaiting();
 
     int group_id_{-1};
     // external tx processor functions. Only used with MonoRedis.

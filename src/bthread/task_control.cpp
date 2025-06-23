@@ -463,7 +463,7 @@ void TaskControl::signal_task(int num_task) {
     }
     int start_index = butil::fmix64(pthread_numeric_id()) % parking_lot_num;
     // num_task -= _pl[start_index].signal(1);
-    num_task -= signal_group(start_index);
+    num_task -= signal_group_if_waiting(start_index);
 
     if (num_task > 0) {
         for (int i = 1; i < parking_lot_num && num_task > 0; ++i) {
@@ -471,7 +471,7 @@ void TaskControl::signal_task(int num_task) {
                 start_index = 0;
             }
             // num_task -= _pl[start_index].signal(1);
-            num_task -= signal_group(start_index);
+            num_task -= signal_group_if_waiting(start_index);
         }
     }
     if (num_task > 0 &&
@@ -486,8 +486,12 @@ void TaskControl::signal_task(int num_task) {
 }
 
 
-bool TaskControl::signal_group(int group_id) {
+void TaskControl::signal_group(int group_id) {
     return _groups[group_id]->Notify();
+}
+
+bool TaskControl::signal_group_if_waiting(int group_id) {
+    return _groups[group_id]->NotifyIfWaiting();
 }
 
 void TaskControl::print_rq_sizes(std::ostream& os) {
