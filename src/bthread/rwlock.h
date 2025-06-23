@@ -15,6 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#ifndef  BTHREAD_RWLOCK_H
+#define  BTHREAD_RWLOCK_H
+
 #include "bthread/types.h"
 #include "bthread/bthread.h"
 #include "butil/scoped_lock.h"
@@ -212,3 +215,5 @@ private:
 };
 
 } // namespace std
+
+#endif  //BTHREAD_RWLOCK_H
