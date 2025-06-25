@@ -52,7 +52,7 @@ DEFINE_bool(reuse_uds_path, false, "remove unix domain socket file before listen
 __BEGIN_DECLS
 int BAIDU_WEAK bthread_connect(
     int sockfd, const struct sockaddr *serv_addr, socklen_t addrlen) {
-    return connect(sockfd, serv_addr, addrlen);
+    return ::connect(sockfd, serv_addr, addrlen);
 }
 
 int BAIDU_WEAK bthread_timed_connect(
@@ -577,7 +577,7 @@ int tcp_listen(EndPoint point) {
         ::unlink(((sockaddr_un*) &serv_addr)->sun_path);
     }
 
-    if (bind(sockfd, (struct sockaddr*)& serv_addr, serv_addr_size) != 0) {
+    if (::bind(sockfd, (struct sockaddr*)& serv_addr, serv_addr_size) != 0) {
         return -1;
     }
     if (listen(sockfd, 65535) != 0) {
