@@ -161,6 +161,9 @@ private:
 
     std::vector<TaggedParkingLot> _pl;
 
+    // The last time of getting cumulated time.
+    int64_t _last_get_cumulated_time_ns;
+
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer _task_tracer;
 #endif // BRPC_BTHREAD_TRACER
