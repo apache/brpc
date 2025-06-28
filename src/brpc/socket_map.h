@@ -177,6 +177,7 @@ public:
 private:
     void RemoveInternal(const SocketMapKey& key, SocketId id,
                         bool remove_orphan);
+    static void ReleaseReference(Socket* s);
     void ListOrphans(int64_t defer_us, std::vector<SocketMapKey>* out);
     void WatchConnections();
     static void* RunWatchConnections(void*);
