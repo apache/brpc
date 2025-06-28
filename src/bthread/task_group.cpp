@@ -69,10 +69,6 @@ BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
-const size_t OFFSET_TABLE[] = {
-#include "bthread/offset_inl.list"
-};
-
 void* (*g_create_span_func)() = NULL;
 
 void* run_create_span_func() {
@@ -180,27 +176,7 @@ void TaskGroup::run_main_task() {
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
-    : _cur_meta(NULL)
-    , _control(c)
-    , _num_nosignal(0)
-    , _nsignaled(0)
-    , _last_run_ns(butil::cpuwide_time_ns())
-    , _cumulated_cputime_ns(0)
-    , _nswitch(0)
-    , _last_context_remained(NULL)
-    , _last_context_remained_arg(NULL)
-    , _pl(NULL)
-    , _main_stack(NULL)
-    , _main_tid(0)
-    , _remote_num_nosignal(0)
-    , _remote_nsignaled(0)
-#ifndef NDEBUG
-    , _sched_recursive_guard(0)
-#endif
-    , _tag(BTHREAD_TAG_DEFAULT)
-    , _tid(-1) {
-    _steal_seed = butil::fast_rand();
-    _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
+    :  _control(c) {
     CHECK(c);
 }
 
@@ -292,7 +268,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
     _cur_meta = m;
     _main_tid = m->tid;
     _main_stack = stk;
-    _last_run_ns = butil::cpuwide_time_ns();
+    _last_run_ns = -m->cpuwide_start_ns;
     _last_cpu_clock_ns = 0;
     return 0;
 }
@@ -683,8 +659,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
 
     TaskMeta* const cur_meta = g->_cur_meta;
     const int64_t now = butil::cpuwide_time_ns();
-    const int64_t elp_ns = now - g->_last_run_ns;
-    g->_last_run_ns = now;
+    const int64_t elp_ns = now - std::abs(g->_last_run_ns);
     cur_meta->stat.cputime_ns += elp_ns;
 
     if (FLAGS_bthread_enable_cpu_clock_stat) {
@@ -696,9 +671,12 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
     } else {
         g->_last_cpu_clock_ns = 0;
     }
-    
+
+    g->_last_run_ns = next_meta->tid != g->main_tid() ? now : -now;
     if (cur_meta->tid != g->main_tid()) {
-        g->_cumulated_cputime_ns += elp_ns;
+        // Makes sure that we see the change of `_cur_run_start_ns'
+        // before changing `_cumulated_cputime_ns'.
+        g->_cumulated_cputime_ns.fetch_add(elp_ns, butil::memory_order_release);
     }
     ++cur_meta->stat.nswitch;
     ++ g->_nswitch;

@@ -29,6 +29,7 @@
 #include "bthread/remote_task_queue.h"             // RemoteTaskQueue
 #include "butil/resource_pool.h"                    // ResourceId
 #include "bthread/parking_lot.h"
+#include "bthread/prime_offset.h"
 
 namespace bthread {
 
@@ -248,41 +249,45 @@ friend class TaskControl;
 
     void set_pl(ParkingLot* pl) { _pl = pl; }
 
-    TaskMeta* _cur_meta;
+    TaskMeta* _cur_meta{NULL};
     
     // the control that this group belongs to
-    TaskControl* _control;
-    int _num_nosignal;
-    int _nsignaled;
-    // last scheduling time
-    int64_t _last_run_ns;
-    int64_t _cumulated_cputime_ns;
+    TaskControl* _control{NULL};
+    int _num_nosignal{0};
+    int _nsignaled{0};
+    // Last scheduling time. If this value is negative,
+    // it means that it is the main task.
+    int64_t _last_run_ns{0};
+    // Last scheduling time observed in
+    // TaskControl::get_cumulated_worker_time().
+    int64_t _last_run_ns_in_tc{0};
+    butil::atomic<int64_t> _cumulated_cputime_ns{0};
     // last thread cpu clock
-    int64_t _last_cpu_clock_ns;
+    int64_t _last_cpu_clock_ns{0};
 
-    size_t _nswitch;
-    RemainedFn _last_context_remained;
-    void* _last_context_remained_arg;
+    size_t _nswitch{0};
+    RemainedFn _last_context_remained{NULL};
+    void* _last_context_remained_arg{NULL};
 
-    ParkingLot* _pl;
+    ParkingLot* _pl{NULL};
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
     ParkingLot::State _last_pl_state;
 #endif
-    size_t _steal_seed;
-    size_t _steal_offset;
-    ContextualStack* _main_stack;
-    bthread_t _main_tid;
+    size_t _steal_seed{butil::fast_rand()};
+    size_t _steal_offset{prime_offset(_steal_seed)};
+    ContextualStack* _main_stack{NULL};
+    bthread_t _main_tid{INVALID_BTHREAD};
     WorkStealingQueue<bthread_t> _rq;
     RemoteTaskQueue _remote_rq;
-    int _remote_num_nosignal;
-    int _remote_nsignaled;
+    int _remote_num_nosignal{0};
+    int _remote_nsignaled{0};
 
-    int _sched_recursive_guard;
+    int _sched_recursive_guard{0};
     // tag of this taskgroup
-    bthread_tag_t _tag;
+    bthread_tag_t _tag{BTHREAD_TAG_DEFAULT};
 
     // Worker thread id.
-    pid_t _tid;
+    pid_t _tid{-1};
 };
 
 }  // namespace bthread

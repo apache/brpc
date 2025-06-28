@@ -185,6 +185,7 @@ TaskControl::TaskControl()
     , _nbthreads("bthread_count")
     , _priority_queues(FLAGS_task_group_ntags)
     , _pl(FLAGS_task_group_ntags)
+    , _last_get_cumulated_time_ns(0)
 {}
 
 int TaskControl::init(int concurrency) {
@@ -524,12 +525,29 @@ void TaskControl::print_rq_sizes(std::ostream& os) {
 
 double TaskControl::get_cumulated_worker_time() {
     int64_t cputime_ns = 0;
+    int64_t now = butil::cpuwide_time_ns();
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     for_each_task_group([&](TaskGroup* g) {
         if (g) {
-            cputime_ns += g->_cumulated_cputime_ns;
+            // With the acquire-release atomic operation, the CPU time of the bthread is
+            // only calculated once through `_cumulated_cputime_ns' or `_last_run_ns'.
+            cputime_ns += g->_cumulated_cputime_ns.load(butil::memory_order_acquire);
+            // The bthread is still running on the worker,
+            // so we need to add the elapsed time since it started.
+            // In extreme cases, before getting `_last_run_ns_in_tc',
+            // `_last_run_ns_in_tc' may have been updated multiple times,
+            // and `cputime_ns' will miss some cpu time, which is ok.
+            int64_t last_run_ns = g->_last_run_ns;
+            if (last_run_ns > _last_get_cumulated_time_ns) {
+                g->_last_run_ns_in_tc = last_run_ns;
+                cputime_ns += now - last_run_ns;
+            } else if (last_run_ns == g->_last_run_ns_in_tc) {
+                // The bthread is still running on the same worker.
+                cputime_ns += now - last_run_ns;
+            }
         }
     });
+    _last_get_cumulated_time_ns = now;
     return cputime_ns / 1000000000.0;
 }
 
