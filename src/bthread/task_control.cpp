@@ -33,6 +33,13 @@
 #include "bthread/timer_thread.h"         // global_timer_thread
 #include <gflags/gflags.h>
 #include "bthread/log.h"
+#ifdef __x86_64__
+#include <x86intrin.h>
+#endif // __x86_64__
+
+#ifdef __ARM_NEON
+#include <arm_neon.h>
+#endif // __ARM_NEON
 
 DEFINE_int32(task_group_delete_delay, 1,
              "delay deletion of TaskGroup for so many seconds");
@@ -152,7 +159,7 @@ static double get_cumulated_worker_time_from_this_with_tag(void* arg) {
     auto a = static_cast<CumulatedWithTagArgs*>(arg);
     auto c = a->c;
     auto t = a->t;
-    return c->get_cumulated_worker_time_with_tag(t);
+    return c->get_cumulated_worker_time(t);
 }
 
 static int64_t get_cumulated_switch_count_from_this(void *arg) {
@@ -185,7 +192,6 @@ TaskControl::TaskControl()
     , _nbthreads("bthread_count")
     , _priority_queues(FLAGS_task_group_ntags)
     , _pl(FLAGS_task_group_ntags)
-    , _last_get_cumulated_time_ns(0)
 {}
 
 int TaskControl::init(int concurrency) {
@@ -525,43 +531,51 @@ void TaskControl::print_rq_sizes(std::ostream& os) {
 
 double TaskControl::get_cumulated_worker_time() {
     int64_t cputime_ns = 0;
-    int64_t now = butil::cpuwide_time_ns();
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     for_each_task_group([&](TaskGroup* g) {
-        if (g) {
-            // With the acquire-release atomic operation, the CPU time of the bthread is
-            // only calculated once through `_cumulated_cputime_ns' or `_last_run_ns'.
-            cputime_ns += g->_cumulated_cputime_ns.load(butil::memory_order_acquire);
-            // The bthread is still running on the worker,
-            // so we need to add the elapsed time since it started.
-            // In extreme cases, before getting `_last_run_ns_in_tc',
-            // `_last_run_ns_in_tc' may have been updated multiple times,
-            // and `cputime_ns' will miss some cpu time, which is ok.
-            int64_t last_run_ns = g->_last_run_ns;
-            if (last_run_ns > _last_get_cumulated_time_ns) {
-                g->_last_run_ns_in_tc = last_run_ns;
-                cputime_ns += now - last_run_ns;
-            } else if (last_run_ns == g->_last_run_ns_in_tc) {
-                // The bthread is still running on the same worker.
-                cputime_ns += now - last_run_ns;
-            }
-        }
+        cputime_ns += get_cumulated_worker_time(g);
     });
-    _last_get_cumulated_time_ns = now;
     return cputime_ns / 1000000000.0;
 }
 
-double TaskControl::get_cumulated_worker_time_with_tag(bthread_tag_t tag) {
+double TaskControl::get_cumulated_worker_time(bthread_tag_t tag) {
     int64_t cputime_ns = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_relaxed);
     auto& groups = tag_group(tag);
     for (size_t i = 0; i < ngroup; ++i) {
-        if (groups[i]) {
-            cputime_ns += groups[i]->_cumulated_cputime_ns;
-        }
+        cputime_ns += get_cumulated_worker_time(groups[i]);
     }
     return cputime_ns / 1000000000.0;
+}
+
+double TaskControl::get_cumulated_worker_time(TaskGroup* g) {
+    if (NULL == g) {
+        return 0.0;
+    }
+
+#if __x86_64__ || __ARM_NEON
+#ifdef __x86_64__
+    __m128i cpu_time_stat = _mm_load_si128(reinterpret_cast<__m128i*>(&g->_cpu_time_stat));
+#else // __ARM_NEON
+    int64x2_t cpu_time_stat = vld1q_s64(reinterpret_cast<const int64_t*>(&g->_cpu_time_stat));
+#endif // __x86_64__
+    int64_t last_run_ns = cpu_time_stat[0];
+    int64_t cputime_ns = cpu_time_stat[1];
+#else // __x86_64__ || __ARM_NEON
+    int64_t last_run_ns = 0;
+    int64_t cputime_ns = 0;
+    {
+        BAIDU_SCOPED_LOCK(g->_cpu_time_stat_mutex);
+        last_run_ns = g->_cpu_time_stat.last_run_ns;
+        cputime_ns = g->_cpu_time_stat.cumulated_cputime_ns;
+    }
+#endif // __x86_64__ || __ARM_NEON
+    // Add the elapsed time of running bthread.
+    if (last_run_ns > 0) {
+        cputime_ns += butil::cpuwide_time_ns() - last_run_ns;
+    }
+    return cputime_ns;
 }
 
 int64_t TaskControl::get_cumulated_switch_count() {
