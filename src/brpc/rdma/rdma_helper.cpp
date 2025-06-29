@@ -337,16 +337,22 @@ static void OnRdmaAsyncEvent(Socket* m) {
     }
 
 static int ReadRdmaDynamicLib() {
-    g_handle_ibverbs = dlopen("libibverbs.so", RTLD_LAZY);
-    if (!g_handle_ibverbs) {
-        LOG(WARNING) << "Failed to load libibverbs.so " << dlerror() << " try libibverbs.so.1";
-        // Clear existing error
-        dlerror();
-        g_handle_ibverbs = dlopen("libibverbs.so.1", RTLD_LAZY);
-        if (!g_handle_ibverbs) {
-            LOG(ERROR) << "Fail to load libibverbs.so.1 due to " << dlerror();
-            return -1;
+    const static char* const kRdmaLibs[] = {
+        "libibverbs.so",
+        "libibverbs.so.1"
+    };
+    for (const char* lib : kRdmaLibs) {
+        dlerror();  // Clear existing error
+        g_handle_ibverbs = dlopen(lib, RTLD_LAZY);
+        if (g_handle_ibverbs) {
+            LOG(INFO) << "Successfully loaded " << lib;
+            break;
         }
+        LOG(WARNING) << "Failed to load " << lib << ": " << dlerror();
+    }
+    if (!g_handle_ibverbs) {
+        LOG(ERROR) << "Failed to load any of the RDMA libraries";
+        return -1;
     }
 
     LoadSymbol(g_handle_ibverbs, IbvGetDeviceList, "ibv_get_device_list");
