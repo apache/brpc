@@ -79,7 +79,8 @@ public:
     void print_rq_sizes(std::ostream& os);
 
     double get_cumulated_worker_time();
-    double get_cumulated_worker_time_with_tag(bthread_tag_t tag);
+    double get_cumulated_worker_time(bthread_tag_t tag);
+    double get_cumulated_worker_time(TaskGroup* g);
     int64_t get_cumulated_switch_count();
     int64_t get_cumulated_signal_count();
 
@@ -160,9 +161,6 @@ private:
     std::vector<WorkStealingQueue<bthread_t>> _priority_queues;
 
     std::vector<TaggedParkingLot> _pl;
-
-    // The last time of getting cumulated time.
-    int64_t _last_get_cumulated_time_ns;
 
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer _task_tracer;

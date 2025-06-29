@@ -149,7 +149,9 @@ public:
     { return _cur_meta->stack == _main_stack; }
 
     // Active time in nanoseconds spent by this TaskGroup.
-    int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
+    int64_t cumulated_cputime_ns() const {
+        return _cpu_time_stat.cumulated_cputime_ns;
+    }
 
     // Push a bthread into the runqueue
     void ready_to_run(TaskMeta* meta, bool nosignal = false);
@@ -204,6 +206,14 @@ public:
 private:
 friend class TaskControl;
 
+    struct CPUTimeStat {
+        // Last scheduling time.
+        // If this value is negative,
+        // it means that it is the main task.
+        int64_t last_run_ns;
+        int64_t cumulated_cputime_ns;
+    };
+
     // You shall use TaskControl::create_group to create new instance.
     explicit TaskGroup(TaskControl* c);
 
@@ -255,13 +265,9 @@ friend class TaskControl;
     TaskControl* _control{NULL};
     int _num_nosignal{0};
     int _nsignaled{0};
-    // Last scheduling time. If this value is negative,
-    // it means that it is the main task.
-    int64_t _last_run_ns{0};
-    // Last scheduling time observed in
-    // TaskControl::get_cumulated_worker_time().
-    int64_t _last_run_ns_in_tc{0};
-    butil::atomic<int64_t> _cumulated_cputime_ns{0};
+    // Used to protect `_cpu_time_stat' when __x86_64__ and __ARM_NEON is not defined.
+    FastPthreadMutex _cpu_time_stat_mutex;
+    BAIDU_CACHELINE_ALIGNMENT CPUTimeStat _cpu_time_stat{0, 0};
     // last thread cpu clock
     int64_t _last_cpu_clock_ns{0};
 

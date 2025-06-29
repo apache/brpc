@@ -37,6 +37,14 @@
 #include "bthread/task_group.h"
 #include "bthread/timer_thread.h"
 
+#ifdef __x86_64__
+#include <x86intrin.h>
+#endif // __x86_64__
+
+#ifdef __ARM_NEON
+#include <arm_neon.h>
+#endif // __ARM_NEON
+
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
@@ -172,12 +180,18 @@ void TaskGroup::run_main_task() {
         }
     }
     // Don't forget to add elapse of last wait_task.
-    current_task()->stat.cputime_ns += butil::cpuwide_time_ns() - _last_run_ns;
+    current_task()->stat.cputime_ns +=
+        butil::cpuwide_time_ns() - std::abs(_cpu_time_stat.last_run_ns);
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
     :  _control(c) {
     CHECK(c);
+#if __x86_64__ || __ARM_NEON
+    // Supress compiler warning.
+    (void)_cpu_time_stat_mutex;
+#endif // __x86_64__ || __ARM_NEON
+
 }
 
 TaskGroup::~TaskGroup() {
@@ -268,7 +282,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
     _cur_meta = m;
     _main_tid = m->tid;
     _main_stack = stk;
-    _last_run_ns = -m->cpuwide_start_ns;
+    _cpu_time_stat.last_run_ns = -m->cpuwide_start_ns;
     _last_cpu_clock_ns = 0;
     return 0;
 }
@@ -659,7 +673,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
 
     TaskMeta* const cur_meta = g->_cur_meta;
     const int64_t now = butil::cpuwide_time_ns();
-    const int64_t elp_ns = now - std::abs(g->_last_run_ns);
+    const int64_t elp_ns = now - std::abs(g->_cpu_time_stat.last_run_ns);
     cur_meta->stat.cputime_ns += elp_ns;
 
     if (FLAGS_bthread_enable_cpu_clock_stat) {
@@ -672,12 +686,36 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
         g->_last_cpu_clock_ns = 0;
     }
 
-    g->_last_run_ns = next_meta->tid != g->main_tid() ? now : -now;
+#if __x86_64__ || __ARM_NEON
+    // Refer to https://rigtorp.se/isatomic/, On the modern CPU microarchitectures
+    // (Skylake and Zen 2) AVX/AVX2 128b/256b aligned loads and stores are atomic
+    // even though Intel and AMD officially doesn’t guarantee this.
+    CPUTimeStat cpu_time_stat{
+        next_meta->tid != g->main_tid() ? now : -now,
+        g->_cpu_time_stat.cumulated_cputime_ns
+    };
     if (cur_meta->tid != g->main_tid()) {
-        // Makes sure that we see the change of `_cur_run_start_ns'
-        // before changing `_cumulated_cputime_ns'.
-        g->_cumulated_cputime_ns.fetch_add(elp_ns, butil::memory_order_release);
+        cpu_time_stat.cumulated_cputime_ns += elp_ns;
     }
+#if __x86_64__
+    // On X86, SSE instructions can ensure atomic loads and stores.
+    __m128i value = _mm_load_si128(reinterpret_cast<__m128i*>(&cpu_time_stat));
+    _mm_store_si128(reinterpret_cast<__m128i*>(&g->_cpu_time_stat), value);
+#else // __ARM_NEON
+    // Starting from Armv8.4-A, neon can ensure atomic loads and stores.
+    int64x2_t value = vld1q_s64(reinterpret_cast<const int64_t*>(&cpu_time_stat));
+    vst1q_s64(reinterpret_cast<int64_t*>(&g->_cpu_time_stat), value);
+#endif // __x86_64__
+#else // __x86_64__ || __ARM_NEON
+    {
+        BAIDU_SCOPED_LOCK(g->_cpu_time_stat_mutex);
+        g->_cpu_time_stat.last_run_ns = next_meta->tid != g->main_tid() ? now : -now;
+        if (cur_meta->tid != g->main_tid()) {
+            g->_cpu_time_stat.cumulated_cputime_ns += elp_ns;
+        }
+    }
+#endif // __x86_64__ || __ARM_NEON
+
     ++cur_meta->stat.nswitch;
     ++ g->_nswitch;
     // Switch to the task
