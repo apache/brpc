@@ -1331,7 +1331,26 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
     }
 }
 
-static void SendUnauthorizedResponse(const std::string& user_error_text, Socket* socket) {
+static void SendUnauthorizedResponse(const std::string& user_error_text, Socket* socket, const InputMessageBase* msg) {
+    HttpContext* http_request = (HttpContext*)msg;
+    const bool is_http2 = http_request->header().is_http2();
+    if (is_http2) {
+        // for grpc client
+        const H2StreamContext* h2_sctx = static_cast<const H2StreamContext*>(msg);
+        brpc::Controller* cntl = new brpc::Controller();
+        cntl->http_response().set_status_code(200);
+        cntl->http_response().set_content_type("application/grpc");
+        cntl->SetFailed(ERPCAUTH, "%s", user_error_text.empty() ? "Fail to authenticate" : user_error_text.c_str());
+
+        SocketMessagePtr<H2UnsentResponse> h2_response(
+            H2UnsentResponse::New(cntl, h2_sctx->stream_id(), true));
+        brpc::Socket::WriteOptions opt;
+        opt.ignore_eovercrowded = true;
+        socket->Write(h2_response, &opt);
+        delete cntl;
+        return;
+    }
+
     // Send 403(forbidden) to client.
     HttpHeader header;
     header.set_status_code(HTTP_STATUS_FORBIDDEN);
@@ -1374,7 +1393,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     const std::string *authorization 
         = http_request->header().GetHeader(common->AUTHORIZATION);
     if (authorization == NULL) {
-        SendUnauthorizedResponse(auth->GetUnauthorizedErrorText(), socket);
+        SendUnauthorizedResponse(auth->GetUnauthorizedErrorText(), socket, msg);
         return false;
     }
     butil::EndPoint user_addr;
@@ -1383,7 +1402,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     }
     if (auth->VerifyCredential(*authorization, user_addr,
                                socket->mutable_auth_context()) != 0) {
-        SendUnauthorizedResponse(auth->GetUnauthorizedErrorText(), socket);
+        SendUnauthorizedResponse(auth->GetUnauthorizedErrorText(), socket, msg);
         return false;
     }
 
