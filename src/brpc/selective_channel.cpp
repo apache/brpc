@@ -197,8 +197,13 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     }
     SocketUniquePtr ptr;
     int rc = Socket::AddressFailedAsWell(sock_id, &ptr);
-    if (rc < 0 || (rc > 0 && !ptr->HCEnabled())) {
-        LOG(FATAL) << "Fail to address SocketId=" << sock_id;
+    if (rc < 0) {
+        LOG(ERROR) << "Fail to address SocketId=" << sock_id;
+        return -1;
+    }
+    if (rc > 0 && !ptr->HCEnabled()) {
+        LOG(ERROR) << "Health check of SocketId="
+                   << sock_id << " is disabled";
         return -1;
     }
     if (!AddServer(ServerId(sock_id))) {

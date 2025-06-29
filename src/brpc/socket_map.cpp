@@ -239,7 +239,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
             return 0;
         }
         // A socket w/o HC is failed (permanently), replace it.
-        sc->socket->ReleaseHCRelatedReference();
+        ReleaseReference(sc->socket);
         _map.erase(key); // in principle, we can override the entry in map w/o
         // removing and inserting it again. But this would make error branches
         // below have to remove the entry before returning, which is
@@ -268,7 +268,10 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
         LOG(FATAL) << "Failed socket is not HC-enabled";
         return -1;
     }
-    SingleConnection new_sc = { 1, ptr.get(), 0 };
+    // If health check is enabled, a health-checking-related reference
+    // is hold in Socket::Create.
+    // If health check is disabled, hold a reference in SocketMap.
+    SingleConnection new_sc = { 1, ptr->HCEnabled() ? ptr.get() : ptr.release(), 0 };
     _map[key] = new_sc;
     *id = tmp_id;
     mu.unlock();
@@ -306,8 +309,17 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
             _map.erase(key);
             mu.unlock();
             s->ReleaseAdditionalReference(); // release extra ref
-            s->ReleaseHCRelatedReference();
+            ReleaseReference(s);
         }
+    }
+}
+
+void SocketMap::ReleaseReference(Socket* s) {
+    if (s->HCEnabled()) {
+        s->ReleaseHCRelatedReference();
+    } else {
+        // Release the extra ref hold in SocketMap::Insert.
+        SocketUniquePtr ptr(s);
     }
 }
 
