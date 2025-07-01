@@ -1337,17 +1337,16 @@ static void SendUnauthorizedResponse(const std::string& user_error_text, Socket*
     if (is_http2) {
         // for grpc client
         const H2StreamContext* h2_sctx = static_cast<const H2StreamContext*>(msg);
-        brpc::Controller* cntl = new brpc::Controller();
-        cntl->http_response().set_status_code(200);
-        cntl->http_response().set_content_type("application/grpc");
-        cntl->SetFailed(ERPCAUTH, "%s", user_error_text.empty() ? "Fail to authenticate" : user_error_text.c_str());
+        brpc::Controller cntl;
+        cntl.http_response().set_status_code(200);
+        cntl.http_response().set_content_type("application/grpc");
+        cntl.SetFailed(ERPCAUTH, "%s", user_error_text.empty() ? "Fail to authenticate" : user_error_text.c_str());
 
         SocketMessagePtr<H2UnsentResponse> h2_response(
-            H2UnsentResponse::New(cntl, h2_sctx->stream_id(), true));
+            H2UnsentResponse::New(&cntl, h2_sctx->stream_id(), true));
         brpc::Socket::WriteOptions opt;
         opt.ignore_eovercrowded = true;
         socket->Write(h2_response, &opt);
-        delete cntl;
         return;
     }
 
