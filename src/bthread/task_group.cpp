@@ -37,6 +37,14 @@
 #include "bthread/task_group.h"
 #include "bthread/timer_thread.h"
 
+#ifdef __x86_64__
+#include <x86intrin.h>
+#endif // __x86_64__
+
+#ifdef __ARM_NEON
+#include <arm_neon.h>
+#endif // __ARM_NEON
+
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
@@ -68,10 +76,6 @@ extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
 BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
-
-const size_t OFFSET_TABLE[] = {
-#include "bthread/offset_inl.list"
-};
 
 void* (*g_create_span_func)() = NULL;
 
@@ -176,32 +180,18 @@ void TaskGroup::run_main_task() {
         }
     }
     // Don't forget to add elapse of last wait_task.
-    current_task()->stat.cputime_ns += butil::cpuwide_time_ns() - _last_run_ns;
+    current_task()->stat.cputime_ns +=
+        butil::cpuwide_time_ns() - std::abs(_cpu_time_stat.last_run_ns);
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
-    : _cur_meta(NULL)
-    , _control(c)
-    , _num_nosignal(0)
-    , _nsignaled(0)
-    , _last_run_ns(butil::cpuwide_time_ns())
-    , _cumulated_cputime_ns(0)
-    , _nswitch(0)
-    , _last_context_remained(NULL)
-    , _last_context_remained_arg(NULL)
-    , _pl(NULL)
-    , _main_stack(NULL)
-    , _main_tid(0)
-    , _remote_num_nosignal(0)
-    , _remote_nsignaled(0)
-#ifndef NDEBUG
-    , _sched_recursive_guard(0)
-#endif
-    , _tag(BTHREAD_TAG_DEFAULT)
-    , _tid(-1) {
-    _steal_seed = butil::fast_rand();
-    _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
+    :  _control(c) {
     CHECK(c);
+#if __x86_64__ || __ARM_NEON
+    // Supress compiler warning.
+    (void)_cpu_time_stat_mutex;
+#endif // __x86_64__ || __ARM_NEON
+
 }
 
 TaskGroup::~TaskGroup() {
@@ -292,7 +282,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
     _cur_meta = m;
     _main_tid = m->tid;
     _main_stack = stk;
-    _last_run_ns = butil::cpuwide_time_ns();
+    _cpu_time_stat.last_run_ns = -m->cpuwide_start_ns;
     _last_cpu_clock_ns = 0;
     return 0;
 }
@@ -683,8 +673,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
 
     TaskMeta* const cur_meta = g->_cur_meta;
     const int64_t now = butil::cpuwide_time_ns();
-    const int64_t elp_ns = now - g->_last_run_ns;
-    g->_last_run_ns = now;
+    const int64_t elp_ns = now - std::abs(g->_cpu_time_stat.last_run_ns);
     cur_meta->stat.cputime_ns += elp_ns;
 
     if (FLAGS_bthread_enable_cpu_clock_stat) {
@@ -696,10 +685,37 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
     } else {
         g->_last_cpu_clock_ns = 0;
     }
-    
+
+#if __x86_64__ || __ARM_NEON
+    // Refer to https://rigtorp.se/isatomic/, On the modern CPU microarchitectures
+    // (Skylake and Zen 2) AVX/AVX2 128b/256b aligned loads and stores are atomic
+    // even though Intel and AMD officially doesn’t guarantee this.
+    CPUTimeStat cpu_time_stat{
+        next_meta->tid != g->main_tid() ? now : -now,
+        g->_cpu_time_stat.cumulated_cputime_ns
+    };
     if (cur_meta->tid != g->main_tid()) {
-        g->_cumulated_cputime_ns += elp_ns;
+        cpu_time_stat.cumulated_cputime_ns += elp_ns;
     }
+#if __x86_64__
+    // On X86, SSE instructions can ensure atomic loads and stores.
+    __m128i value = _mm_load_si128(reinterpret_cast<__m128i*>(&cpu_time_stat));
+    _mm_store_si128(reinterpret_cast<__m128i*>(&g->_cpu_time_stat), value);
+#else // __ARM_NEON
+    // Starting from Armv8.4-A, neon can ensure atomic loads and stores.
+    int64x2_t value = vld1q_s64(reinterpret_cast<const int64_t*>(&cpu_time_stat));
+    vst1q_s64(reinterpret_cast<int64_t*>(&g->_cpu_time_stat), value);
+#endif // __x86_64__
+#else // __x86_64__ || __ARM_NEON
+    {
+        BAIDU_SCOPED_LOCK(g->_cpu_time_stat_mutex);
+        g->_cpu_time_stat.last_run_ns = next_meta->tid != g->main_tid() ? now : -now;
+        if (cur_meta->tid != g->main_tid()) {
+            g->_cpu_time_stat.cumulated_cputime_ns += elp_ns;
+        }
+    }
+#endif // __x86_64__ || __ARM_NEON
+
     ++cur_meta->stat.nswitch;
     ++ g->_nswitch;
     // Switch to the task
