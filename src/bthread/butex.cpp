@@ -122,6 +122,17 @@ struct BAIDU_CACHELINE_ALIGNMENT Butex {
 BAIDU_CASSERT(offsetof(Butex, value) == 0, offsetof_value_must_0);
 BAIDU_CASSERT(sizeof(Butex) == BAIDU_CACHELINE_SIZE, butex_fits_in_one_cacheline);
 
+} // namespace bthread
+
+namespace butil {
+// Butex object returned to the ObjectPool<Butex> may be accessed,
+// so ObjectPool<Butex> can not poison the memory region of Butex.
+template <>
+struct ObjectPoolWithASanPoison<bthread::Butex> : false_type {};
+} // namespace butil
+
+namespace bthread {
+
 static void wakeup_pthread(ButexPthreadWaiter* pw) {
     // release fence makes wait_pthread see changes before wakeup.
     pw->sig.store(PTHREAD_SIGNALLED, butil::memory_order_release);

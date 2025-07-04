@@ -17,6 +17,24 @@ BUTIL_ASAN_POISON_MEMORY_REGION(addr, size);
 BUTIL_ASAN_UNPOISON_MEMORY_REGION(addr, size);
 ```
 
+如果某些对象池在设计上允许操作对象池中的对象，例如ExecutionQueue、Butex，则需要特化ObjectPoolWithASanPoison，表示不对这些对象池的对象内存进行poison/unpoison，例如：
+
+```c++
+namespace butil {
+// TaskNode::cancel() may access the TaskNode object returned to the ObjectPool<TaskNode>,
+// so ObjectPool<TaskNode> can not poison the memory region of TaskNode.
+template <>
+struct ObjectPoolWithASanPoison<bthread::TaskNode> : false_type {};
+} // namespace butil
+
+namespace butil {
+// Butex object returned to the ObjectPool<Butex> may be accessed,
+// so ObjectPool<Butex> can not poison the memory region of Butex.
+template <>
+struct ObjectPoolWithASanPoison<bthread::Butex> : false_type {};
+} // namespace butil
+```
+
 其他问题：如果ASan报告中new/delete的调用栈不完整，可以通过设置`fast_unwind_on_malloc=0`回溯出完整的调用栈了。需要注意的是`fast_unwind_on_malloc=0`很耗性能。
 
 ## ThreadSanitizer(TSan)
