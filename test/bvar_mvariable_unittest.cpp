@@ -17,12 +17,16 @@
 
 // Date 2021/11/17 14:57:49
 
+// #if __cplusplus >= 201703L
+#include <string_view>
+// #endif // __cplusplus >= 201703L
 #include <pthread.h>                                // pthread_*
 #include <cstddef>
 #include <memory>
 #include <iostream>
 #include <set>
 #include <string>
+#include <array>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include "butil/time.h"
@@ -30,20 +34,7 @@
 #include "bvar/bvar.h"
 #include "bvar/multi_dimension.h"
 
-static const int num_thread = 24;
-
-static const int idc_count = 20;
-static const int method_count = 20;
-static const int status_count = 50;
-static const int labels_count = idc_count * method_count * status_count;
-
 static const std::list<std::string> labels = {"idc", "method", "status"};
-
-struct thread_perf_data {
-    bvar::MVariable* mbvar;
-    bvar::Variable*  rbvar;
-    bvar::Variable*  wbvar;
-};
 
 class MVariableTest : public testing::Test {
 protected:
@@ -66,9 +57,9 @@ TEST_F(MVariableTest, expose) {
     std::vector<std::string> list_exposed_vars;
     std::list<std::string> labels_value1 {"bj", "get", "200"};
     bvar::MultiDimension<bvar::Adder<int> > my_madder1(labels);
-    ASSERT_EQ(0UL, bvar::MVariable::count_exposed());
+    ASSERT_EQ(0UL, bvar::MVariableBase::count_exposed());
     my_madder1.expose("request_count_madder");
-    ASSERT_EQ(1UL, bvar::MVariable::count_exposed());
+    ASSERT_EQ(1UL, bvar::MVariableBase::count_exposed());
     bvar::Adder<int>* my_adder1 = my_madder1.get_stats(labels_value1);
     ASSERT_TRUE(my_adder1);
     ASSERT_STREQ("request_count_madder", my_madder1.name().c_str());
@@ -102,54 +93,138 @@ TEST_F(MVariableTest, expose) {
     list_exposed_vars.push_back("request_count_madder");
 
     ASSERT_EQ(1UL, my_madder1.count_stats());
-    ASSERT_EQ(1UL, bvar::MVariable::count_exposed());
+    ASSERT_EQ(1UL, bvar::MVariableBase::count_exposed());
 
     std::list<std::string> labels2 {"user", "url", "cost"};
     bvar::MultiDimension<bvar::Adder<int> > my_madder2("client_url", labels2);
-    ASSERT_EQ(2UL, bvar::MVariable::count_exposed());
+    ASSERT_EQ(2UL, bvar::MVariableBase::count_exposed());
     list_exposed_vars.push_back("client_url");
 
     std::list<std::string> labels3 {"product", "system", "module"};
     bvar::MultiDimension<bvar::Adder<int> > my_madder3("request_from", labels3);
     list_exposed_vars.push_back("request_from");
-    ASSERT_EQ(3UL, bvar::MVariable::count_exposed());
+    ASSERT_EQ(3UL, bvar::MVariableBase::count_exposed());
 
     std::vector<std::string> exposed_vars;
-    bvar::MVariable::list_exposed(&exposed_vars);
+    bvar::MVariableBase::list_exposed(&exposed_vars);
     ASSERT_EQ(3, exposed_vars.size());
 
     my_madder3.hide();
-    ASSERT_EQ(2UL, bvar::MVariable::count_exposed());
+    ASSERT_EQ(2UL, bvar::MVariableBase::count_exposed());
     list_exposed_vars.pop_back();
     exposed_vars.clear();
-    bvar::MVariable::list_exposed(&exposed_vars);
+    bvar::MVariableBase::list_exposed(&exposed_vars);
     ASSERT_EQ(2, exposed_vars.size());
 }
 
-TEST_F(MVariableTest, labels) {
-    std::list<std::string> labels_value1 {"bj", "get", "200"};
-    bvar::MultiDimension<bvar::Adder<int> > my_madder1("request_count_madder", labels);
+class MyStringView {
+public:
+    MyStringView() : _ptr(NULL), _len(0) {}
+    MyStringView(const char* str)
+        : _ptr(str),
+          _len(str == NULL ? 0 : strlen(str)) {}
+#if __cplusplus >= 201703L
+    MyStringView(const std::string_view& str)
+        : _ptr(str.data()), _len(str.size()) {}
+#endif // __cplusplus >= 201703L
+    MyStringView(const std::string& str)
+        : _ptr(str.data()), _len(str.size()) {}
+    MyStringView(const char* offset, size_t len)
+        : _ptr(offset), _len(len) {}
 
-    ASSERT_EQ(labels.size(), my_madder1.count_labels());
-    ASSERT_STREQ("request_count_madder", my_madder1.name().c_str());
+    const char* data() const { return _ptr; }
+    size_t size() const { return _len; }
 
-    ASSERT_EQ(labels, my_madder1.labels());
-
-    std::list<std::string> labels_too_long;
-    std::list<std::string> labels_max;
-    int labels_too_long_count = 15;
-    for (int i = 0; i < labels_too_long_count; ++i) {
-        std::ostringstream os;
-        os << "label" << i;
-        labels_too_long.push_back(os.str());
-        if (i < 10) {
-            labels_max.push_back(os.str());
+    // Converts to `std::basic_string`.
+    explicit operator std::string() const {
+        if (NULL == _ptr) {
+            return {};
         }
+        return {_ptr, size()};
     }
-    ASSERT_EQ(labels_too_long_count, labels_too_long.size());
-    bvar::MultiDimension<bvar::Adder<int> > my_madder2("request_labels_too_long", labels_too_long);
-    ASSERT_EQ(10, my_madder2.count_labels());
-    ASSERT_EQ(labels_max, my_madder2.labels());
+
+    // Converts to butil::StringPiece.
+    explicit operator butil::StringPiece() const {
+        if (NULL == _ptr) {
+            return {};
+        }
+        return {_ptr, size()};
+    }
+
+private:
+    const char* _ptr;
+    size_t _len;
+};
+
+bool operator==(const MyStringView& x, const std::string& y) {
+    if (x.size() != y.size())
+        return false;
+
+    return butil::StringPiece::wordmemcmp(x.data(), y.data(), x.size()) == 0;
+}
+
+bool operator==(const std::string& x, const MyStringView& y) {
+    if (x.size() != y.size())
+        return false;
+
+    return butil::StringPiece::wordmemcmp(x.data(), y.data(), x.size()) == 0;
+}
+
+static int g_exposed_count = 0;
+
+template <typename KeyType, typename ValueType>
+static void TestLabels() {
+    std::string mbvar_name = butil::string_printf("my_madder_%d", g_exposed_count);
+    KeyType labels{"idc", "method", "status"};
+    bvar::MultiDimension<bvar::Adder<int>, KeyType> my_madder(mbvar_name, labels);
+    ASSERT_EQ(labels.size(), my_madder.count_labels());
+    ASSERT_STREQ(mbvar_name.c_str(), my_madder.name().c_str());
+    ASSERT_EQ(labels, my_madder.labels());
+
+    using ItemType = typename ValueType::value_type;
+    ValueType labels_value{ItemType("cv"), ItemType("post"), ItemType("200")};
+    bvar::Adder<int>* adder = my_madder.get_stats(labels_value);
+    ASSERT_NE(nullptr, adder);
+    ASSERT_TRUE(my_madder.has_stats(labels_value));
+    ASSERT_EQ((size_t)1, my_madder.count_stats());
+    {
+        // Compatible with old API.
+        bvar::Adder<int>* temp = my_madder.get_stats({"cv", "post", "200"});
+        ASSERT_EQ(adder, temp);
+    }
+    *adder << g_exposed_count;
+    ASSERT_EQ(g_exposed_count, adder->get_value());
+    my_madder.delete_stats(labels_value);
+    ASSERT_FALSE(my_madder.has_stats(labels_value));
+    ASSERT_EQ((size_t)0, my_madder.count_stats());
+}
+
+TEST_F(MVariableTest, labels) {
+    TestLabels<std::list<std::string>, std::list<std::string>>();
+    TestLabels<std::list<std::string>, std::vector<std::string>>();
+    TestLabels<std::list<std::string>, std::array<std::string, 3>>();
+
+    TestLabels<std::vector<std::string>, std::list<std::string>>();
+    TestLabels<std::vector<std::string>, std::vector<std::string>>();
+    TestLabels<std::vector<std::string>, std::array<std::string, 3>>();
+
+#if __cplusplus >= 201703L
+    TestLabels<std::list<std::string>, std::list<std::string_view>>();
+    TestLabels<std::list<std::string>, std::vector<std::string_view>>();
+    TestLabels<std::list<std::string>, std::array<std::string_view, 3>>();
+#endif // __cplusplus >= 201703L
+
+    TestLabels<std::vector<std::string>, std::list<butil::StringPiece>>();
+    TestLabels<std::vector<std::string>, std::vector<butil::StringPiece>>();
+    TestLabels<std::vector<std::string>, std::array<butil::StringPiece, 3>>();
+
+    TestLabels<std::list<std::string>, std::list<MyStringView>>();
+    TestLabels<std::list<std::string>, std::vector<MyStringView>>();
+    TestLabels<std::list<std::string>, std::array<MyStringView, 3>>();
+
+    TestLabels<std::vector<std::string>, std::list<MyStringView>>();
+    TestLabels<std::vector<std::string>, std::vector<MyStringView>>();
+    TestLabels<std::vector<std::string>, std::array<MyStringView, 3>>();
 }
 
 TEST_F(MVariableTest, dump) {
@@ -229,9 +304,9 @@ TEST_F(MVariableTest, test_describe_exposed) {
     std::string bvar_name("request_count_describe");
     bvar::MultiDimension<bvar::Adder<int> > my_madder1(bvar_name, labels);
 
-    std::string describe_str = bvar::MVariable::describe_exposed(bvar_name);
+    std::string describe_str = bvar::MVariableBase::describe_exposed(bvar_name);
 
     std::ostringstream describe_oss;
-    ASSERT_EQ(0, bvar::MVariable::describe_exposed(bvar_name, describe_oss));
+    ASSERT_EQ(0, bvar::MVariableBase::describe_exposed(bvar_name, describe_oss));
     ASSERT_STREQ(describe_str.c_str(), describe_oss.str().c_str());
 }

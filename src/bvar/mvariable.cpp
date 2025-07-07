@@ -30,8 +30,6 @@
 
 namespace bvar {
 
-constexpr uint64_t MAX_LABELS_COUNT = 10;
-
 DECLARE_bool(bvar_abort_on_same_name);
 
 extern bool s_bvar_may_abort;
@@ -75,7 +73,7 @@ class MVarEntry {
 public:
     MVarEntry() : var(NULL) {}
 
-    MVariable* var;
+    MVariableBase* var;
 };
 
 typedef butil::FlatMap<std::string, MVarEntry> MVarMap;
@@ -107,27 +105,18 @@ inline MVarMapWithLock& get_mvar_map() {
     return *s_mvar_map;
 }
 
-MVariable::MVariable(const std::list<std::string>& labels) {
-    _labels.assign(labels.begin(), labels.end());
-    size_t n = labels.size();
-    if (n > MAX_LABELS_COUNT) {
-        LOG(ERROR) << "Too many labels: " << n << " seen, overflow detected, max labels count: " << MAX_LABELS_COUNT;
-        _labels.resize(MAX_LABELS_COUNT);
-    }
+MVariableBase::~MVariableBase() {
+    CHECK(!hide()) << "Subclass of MVariableBase MUST call hide() manually in their "
+                      "dtors to avoid displaying a variable that is just destructing";
 }
 
-MVariable::~MVariable() {
-    CHECK(!hide()) << "Subclass of MVariable MUST call hide() manually in their"
-    " dtors to avoid displaying a variable that is just destructing";
-}
-
-std::string MVariable::get_description() {
+std::string MVariableBase::get_description() {
     std::ostringstream os;
     describe(os);
     return os.str();
 }
 
-int MVariable::describe_exposed(const std::string& name,
+int MVariableBase::describe_exposed(const std::string& name,
                                 std::ostream& os) {
     MVarMapWithLock& m = get_mvar_map();
     BAIDU_SCOPED_LOCK(m.mutex);
@@ -139,7 +128,7 @@ int MVariable::describe_exposed(const std::string& name,
     return 0;
 }
 
-std::string MVariable::describe_exposed(const std::string& name) {
+std::string MVariableBase::describe_exposed(const std::string& name) {
     std::ostringstream oss;
     if (describe_exposed(name, oss) == 0) {
         return oss.str();
@@ -147,7 +136,7 @@ std::string MVariable::describe_exposed(const std::string& name) {
     return std::string();
 }
 
-int MVariable::expose_impl(const butil::StringPiece& prefix,
+int MVariableBase::expose_impl(const butil::StringPiece& prefix,
                            const butil::StringPiece& name) {
     if (name.empty()) {
         LOG(ERROR) << "Parameter[name] is empty";
@@ -205,7 +194,7 @@ int MVariable::expose_impl(const butil::StringPiece& prefix,
     return 0;
 }
 
-bool MVariable::hide() {
+bool MVariableBase::hide() {
     if (_name.empty()) {
         return false;
     }
@@ -223,20 +212,20 @@ bool MVariable::hide() {
 }
 
 #ifdef UNIT_TEST
-void MVariable::hide_all() {
+void MVariableBase::hide_all() {
     MVarMapWithLock& m = get_mvar_map();
     BAIDU_SCOPED_LOCK(m.mutex);
     m.clear();
 }
 #endif // end UNIT_TEST
 
-size_t MVariable::count_exposed() {
+size_t MVariableBase::count_exposed() {
     MVarMapWithLock& m = get_mvar_map();
     BAIDU_SCOPED_LOCK(m.mutex);
     return m.size();
 }
 
-void MVariable::list_exposed(std::vector<std::string>* names) {
+void MVariableBase::list_exposed(std::vector<std::string>* names) {
     if (names == NULL) {
         return;
     }
@@ -251,7 +240,7 @@ void MVariable::list_exposed(std::vector<std::string>* names) {
     }
 }
 
-size_t MVariable::dump_exposed(Dumper* dumper, const DumpOptions* options) {
+size_t MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
     if (NULL == dumper) {
         LOG(ERROR) << "Parameter[dumper] is NULL";
         return -1;
@@ -271,10 +260,8 @@ size_t MVariable::dump_exposed(Dumper* dumper, const DumpOptions* options) {
             n += entry->var->dump(dumper, &opt);
         }
         if (n > static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number)) {
-            LOG(WARNING) << "truncated because of \
-                            exceed max dump multi dimension label number["
-                         << FLAGS_bvar_max_dump_multi_dimension_metric_number
-                         << "]";
+            LOG(WARNING) << "truncated because of exceed max dump multi dimension label number["
+                         << FLAGS_bvar_max_dump_multi_dimension_metric_number << "]";
             break;
         }
     }
