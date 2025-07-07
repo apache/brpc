@@ -152,7 +152,10 @@ DEFINE_bool(log_hostname, false, "Add host after pid in each log so"
 
 DEFINE_bool(log_year, false, "Log year in datetime part in each log");
 
-DEFINE_bool(log_func_name, false, "Log function name in each log");
+DEFINE_bool(log_func_name, false, "[DEPRECATED]Log function name in each log. "
+                                  "Now DefaultLogSink logs function names by default. "
+                                  "Customized LogSink can also log function names through "
+                                  "corresponding OnLogMessage.");
 
 DEFINE_bool(async_log, false, "Use async log");
 
@@ -1381,14 +1384,8 @@ void LogStream::FlushWithoutReset() {
         DoublyBufferedLogSink::ScopedPtr ptr;
         if (DoublyBufferedLogSink::GetInstance()->Read(&ptr) == 0 &&
             (*ptr) != NULL) {
-            bool result = false;
-            if (FLAGS_log_func_name) {
-                result = (*ptr)->OnLogMessage(_severity, _file, _line,
-                                              _func, content());
-            } else {
-                result = (*ptr)->OnLogMessage(_severity, _file,
-                                              _line, content());
-            }
+            bool result = (*ptr)->OnLogMessage(
+                _severity, _file, _line, _func, content());
             if (result) {
                 goto FINISH_LOGGING;
             }
@@ -1408,13 +1405,8 @@ void LogStream::FlushWithoutReset() {
     }
 #endif
     if (!tried_default) {
-        if (FLAGS_log_func_name) {
-            DefaultLogSink::GetInstance()->OnLogMessage(
-                _severity, _file, _line, _func, content());
-        } else {
-            DefaultLogSink::GetInstance()->OnLogMessage(
-                _severity, _file, _line, content());
-        }
+        DefaultLogSink::GetInstance()->OnLogMessage(
+            _severity, _file, _line, _func, content());
     }
 
 FINISH_LOGGING:
