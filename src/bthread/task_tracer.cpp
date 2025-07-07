@@ -353,8 +353,9 @@ bool TaskTracer::RegisterSignalHandler() {
 // Caution: This function should be async-signal-safety.
 void TaskTracer::SignalHandler(int, siginfo_t* info, void* context) {
     ErrnoGuard guard;
+    // Ref has been taken before the signal is sent, so no need to add ref here.
     butil::intrusive_ptr<SignalSync> signal_sync(
-        static_cast<SignalSync*>(info->si_value.sival_ptr));
+        static_cast<SignalSync*>(info->si_value.sival_ptr), false);
     if (NULL == signal_sync || NULL == signal_sync->result) {
         // The signal is not from Tracer, such as TaskControl, do nothing.
         return;
@@ -408,7 +409,7 @@ TaskTracer::Result TaskTracer::SignalTrace(pid_t tid) {
     auto iter = std::remove_if(
         _inuse_signal_syncs.begin(), _inuse_signal_syncs.end(),
         [](butil::intrusive_ptr<SignalSync>& sync) {
-            return sync->ref_count() == 0;
+            return sync->ref_count() == 1;
     });
     _inuse_signal_syncs.erase(iter, _inuse_signal_syncs.end());
 
