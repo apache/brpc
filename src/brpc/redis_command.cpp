@@ -220,7 +220,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                     }
                     goto fmt_invalid;
                 }
-                
+
             fmt_invalid:
                 va_end(_cpy);
                 return butil::Status(EINVAL, "Invalid format");
@@ -243,7 +243,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 break;
             }  // end default
             }  // end switch
-            
+
             ++c;
         }
     }
@@ -255,7 +255,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
         return butil::Status(EINVAL, "Unmatched quote: ...%.*s... (offset=%lu)",
                              (int)ctx_size, ctx_begin, quote_pos - fmt);
     }
-    
+
     if (!compbuf.empty()) {
         FlushComponent(&nocount_buf, &compbuf, &ncomponent);
     }
@@ -263,7 +263,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
     LOG_IF(ERROR, nargs == 0) << "You must call RedisCommandNoFormat() "
         "to replace RedisCommandFormatV without any args (to avoid potential "
         "formatting of conversion specifiers)";
-    
+
     AppendHeader(*outbuf, '*', ncomponent);
     outbuf->append(nocount_buf);
     return butil::Status::OK();
@@ -331,7 +331,7 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
         return butil::Status(EINVAL, "Unmatched quote: ...%.*s... (offset=%lu)",
                              (int)ctx_size, ctx_begin, quote_pos - cmd.data());
     }
-    
+
     if (!compbuf.empty()) {
         FlushComponent(&nocount_buf, &compbuf, &ncomponent);
     }
@@ -365,38 +365,73 @@ size_t RedisCommandParser::ParsedArgsSize() {
     return _args.size();
 }
 
+int find_crlf(const char* pfc, size_t length) {
+    for (size_t i = 0; i < length - 1; ++i) {
+        if (pfc[i] == '\r' && pfc[i + 1] == '\n') {
+            return i;
+        }
+    }
+    return -1;
+}
+
 ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
                                        std::vector<butil::StringPiece>* args,
                                        butil::Arena* arena) {
-    const char* pfc = (const char*)buf.fetch1();
+    const auto pfc = static_cast<const char *>(buf.fetch1());
     if (pfc == NULL) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     // '*' stands for array "*<size>\r\n<sub-reply1><sub-reply2>..."
     if (!_parsing_array && *pfc != '*') {
-        // Check if the buffer equals "PING\r\n"
-        const size_t ping_cmd_len = 6; // Length of "PING\r\n"
-        if (buf.size() < ping_cmd_len) {
-            return PARSE_ERROR_TRY_OTHERS;
+        const size_t buf_size = buf.size();
+        const auto copy_str = static_cast<char *>(arena->allocate(buf_size));
+        buf.copy_to(copy_str, buf_size);
+        if (*copy_str == ' ') {
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
-        // Peek at the first 6 bytes without consuming them
-        char cmd[6];
-        buf.copy_to(cmd, ping_cmd_len);
-        if (memcmp(cmd, "PING\r\n", ping_cmd_len) == 0) {
-            // Consume "PING\r\n" from the buffer
-            buf.pop_front(ping_cmd_len);
-            // Add "PING" to args
-            args->clear();
-            // Allocate memory from the arena for "PING"
-            char* arg = (char*)arena->allocate(4); // Length of "PING"
-            memcpy(arg, "ping", 4);
-            args->push_back(butil::StringPiece(arg, 4));
+        const int crlf_pos = find_crlf(copy_str, buf_size);
+        if (crlf_pos == -1) {
+            return PARSE_ERROR_NOT_ENOUGH_DATA;
+        }
+        args->clear();
+        int offset = 0;
+        while (offset < crlf_pos && copy_str[offset] != ' ') {
+            ++offset;
+        }
+        const auto first_arg = static_cast<char*>(arena->allocate(offset));
+        memcpy(first_arg, copy_str, offset);
+        for (int i = 0; i < offset; ++i) {
+            first_arg[i] = tolower(first_arg[i]);
+        }
+        args->push_back(butil::StringPiece(first_arg, offset));
+        if (offset == crlf_pos) {
+            // only one argument, directly return
+            buf.pop_front(crlf_pos + 2);
             return PARSE_OK;
-        } else {
-            return PARSE_ERROR_TRY_OTHERS;
+        }
+        int arg_start_pos = ++offset;
+
+        for (; offset < crlf_pos; ++offset) {
+            if (copy_str[offset] != ' ') {
+                continue;
+            }
+            const auto arg_length = offset - arg_start_pos;
+            const auto arg = static_cast<char *>(arena->allocate(arg_length));
+            memcpy(arg, copy_str + arg_start_pos, arg_length);
+            args->push_back(butil::StringPiece(arg, arg_length));
+            arg_start_pos = ++offset;
         }
 
-        return PARSE_ERROR_TRY_OTHERS;
+        if (arg_start_pos < crlf_pos) {
+            // process the last argument
+            const auto arg_length = crlf_pos - arg_start_pos;
+            const auto arg = static_cast<char *>(arena->allocate(arg_length));
+            memcpy(arg, copy_str + arg_start_pos, arg_length);
+            args->push_back(butil::StringPiece(arg, arg_length));
+        }
+
+        buf.pop_front(crlf_pos + 2);
+        return PARSE_OK;
     }
     // '$' stands for bulk string "$<length>\r\n<string>\r\n"
     if (_parsing_array && *pfc != '$') {
@@ -418,10 +453,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
             memcpy(arg, "ping", 4);
             args->push_back(butil::StringPiece(arg, 4));
             return PARSE_OK;
-        } else {
-            return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
-
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     char intbuf[32];  // enough for fc + 64-bit decimal + \r\n
