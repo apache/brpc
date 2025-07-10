@@ -379,7 +379,55 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     }
     // '*' stands for array "*<size>\r\n<sub-reply1><sub-reply2>..."
     if (!_parsing_array && *pfc != '*') {
-        return PARSE_ERROR_TRY_OTHERS;
+        const size_t buf_size = buf.size();
+        const auto copy_str = static_cast<char *>(arena->allocate(buf_size));
+        buf.copy_to(copy_str, buf_size);
+        if (*copy_str == ' ') {
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
+        const int crlf_pos = find_crlf(copy_str, buf_size);
+        if (crlf_pos == -1) {
+            return PARSE_ERROR_NOT_ENOUGH_DATA;
+        }
+        args->clear();
+        int offset = 0;
+        while (offset < crlf_pos && copy_str[offset] != ' ') {
+            ++offset;
+        }
+        const auto first_arg = static_cast<char*>(arena->allocate(offset));
+        memcpy(first_arg, copy_str, offset);
+        for (int i = 0; i < offset; ++i) {
+            first_arg[i] = tolower(first_arg[i]);
+        }
+        args->push_back(butil::StringPiece(first_arg, offset));
+        if (offset == crlf_pos) {
+            // only one argument, directly return
+            buf.pop_front(crlf_pos + 2);
+            return PARSE_OK;
+        }
+        int arg_start_pos = ++offset;
+
+        for (; offset < crlf_pos; ++offset) {
+            if (copy_str[offset] != ' ') {
+                continue;
+            }
+            const auto arg_length = offset - arg_start_pos;
+            const auto arg = static_cast<char *>(arena->allocate(arg_length));
+            memcpy(arg, copy_str + arg_start_pos, arg_length);
+            args->push_back(butil::StringPiece(arg, arg_length));
+            arg_start_pos = ++offset;
+        }
+
+        if (arg_start_pos < crlf_pos) {
+            // process the last argument
+            const auto arg_length = crlf_pos - arg_start_pos;
+            const auto arg = static_cast<char *>(arena->allocate(arg_length));
+            memcpy(arg, copy_str + arg_start_pos, arg_length);
+            args->push_back(butil::StringPiece(arg, arg_length));
+        }
+
+        buf.pop_front(crlf_pos + 2);
+        return PARSE_OK;
     }
     // '$' stands for bulk string "$<length>\r\n<string>\r\n"
     if (_parsing_array && *pfc != '$') {
