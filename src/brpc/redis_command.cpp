@@ -370,10 +370,19 @@ size_t RedisCommandParser::ParsedArgsSize() {
     return _args.size();
 }
 
+int find_crlf(const char* pfc, size_t length) {
+    for (size_t i = 0; i < length - 1; ++i) {
+        if (pfc[i] == '\r' && pfc[i + 1] == '\n') {
+            return i;
+        }
+    }
+    return -1;
+}
+
 ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
                                        std::vector<butil::StringPiece>* args,
                                        butil::Arena* arena) {
-    const char* pfc = (const char*)buf.fetch1();
+    const auto pfc = static_cast<const char *>(buf.fetch1());
     if (pfc == NULL) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
