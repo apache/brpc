@@ -253,10 +253,12 @@ int LatencyRecorder::expose(const butil::StringPiece& prefix1,
     if (_latency_percentiles.expose_as(prefix, "latency_percentiles", DISPLAY_ON_HTML) != 0) {
         return -1;
     }
-    snprintf(namebuf, sizeof(namebuf), "%d%%,%d%%,%d%%,99.9%%",
-             (int)FLAGS_bvar_latency_p1, (int)FLAGS_bvar_latency_p2,
-             (int)FLAGS_bvar_latency_p3);
-    CHECK_EQ(0, _latency_percentiles.set_vector_names(namebuf));
+    if (FLAGS_save_series) {
+        snprintf(namebuf, sizeof(namebuf), "%d%%,%d%%,%d%%,99.9%%",
+                 (int)FLAGS_bvar_latency_p1, (int)FLAGS_bvar_latency_p2,
+                 (int)FLAGS_bvar_latency_p3);
+        CHECK_EQ(0, _latency_percentiles.set_vector_names(namebuf));
+    }
     return 0;
 }
 
