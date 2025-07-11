@@ -51,9 +51,6 @@ COPTS = [
     "//bazel/config:brpc_with_debug_lock": ["-DBRPC_DEBUG_LOCK=1"],
     "//conditions:default": ["-DBRPC_DEBUG_LOCK=0"],
 }) + select({
-    "//bazel/config:brpc_with_bthread_tracer": ["-DBRPC_BTHREAD_TRACER"],
-    "//conditions:default": [],
-}) + select({
     "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
     "//conditions:default": [""],
 })
@@ -402,6 +399,12 @@ cc_library(
         "src/bthread/*.h",
         "src/bthread/*.list",
     ]),
+    defines = [] + select({
+        "//bazel/config:brpc_with_bthread_tracer": [
+            "-DBRPC_BTHREAD_TRACER",
+        ],
+        "//conditions:default": [],
+    }),
     copts = COPTS,
     includes = [
         "src/",
@@ -412,7 +415,11 @@ cc_library(
         ":butil",
         ":bvar",
     ] + select({
-        "//bazel/config:brpc_with_bthread_tracer": ["@com_github_libunwind_libunwind//:libunwind"],
+        "//bazel/config:brpc_with_bthread_tracer": [
+            "@com_github_libunwind_libunwind//:libunwind",
+            "@com_google_absl//absl/debugging:stacktrace",
+            "@com_google_absl//absl/debugging:symbolize",
+        ],
         "//conditions:default": [],
     }),
 )

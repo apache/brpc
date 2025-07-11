@@ -209,7 +209,7 @@ int TaskControl::init(int concurrency) {
             "bthread_worker_usage", tag_str, _tagged_cumulated_worker_time[i], 1));
         _tagged_nbthreads.push_back(new bvar::Adder<int64_t>("bthread_count", tag_str));
         if (_priority_queues[i].init(BTHREAD_MAX_CONCURRENCY) != 0) {
-            LOG(FATAL) << "Fail to init _priority_q";
+            LOG(ERROR) << "Fail to init _priority_q";
             return -1;
         }
     }

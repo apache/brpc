@@ -363,6 +363,8 @@ if [ $WITH_BTHREAD_TRACER != 0 ]; then
     fi
     LIBUNWIND_HDR=$(find_dir_of_header_or_die libunwind.h)
     LIBUNWIND_LIB=$(find_dir_of_lib_or_die unwind)
+    ABSL_HDR=$(find_dir_of_header_or_die absl/base/config.h)
+    ABSL_LIB=$(find_dir_of_lib_or_die absl_symbolize)
 
     CPPFLAGS="${CPPFLAGS} -DBRPC_BTHREAD_TRACER"
 
@@ -370,6 +372,11 @@ if [ $WITH_BTHREAD_TRACER != 0 ]; then
         DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lunwind -lunwind-x86_64"
     else
         STATIC_LINKINGS="$STATIC_LINKINGS -lunwind -lunwind-x86_64"
+    fi
+    if [ -f "$ABSL_LIB/libabsl_base.$SO" ]; then
+        DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -labsl_stacktrace -labsl_symbolize -labsl_debugging_internal -labsl_demangle_internal -labsl_malloc_internal -labsl_raw_logging_internal -labsl_spinlock_wait -labsl_base"
+    else
+        STATIC_LINKINGS="$STATIC_LINKINGS -labsl_stacktrace -labsl_symbolize -labsl_debugging_internal -labsl_demangle_internal -labsl_malloc_internal -labsl_raw_logging_internal -labsl_spinlock_wait -labsl_base"
     fi
 fi
 

@@ -496,7 +496,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
             (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
         };
         g->set_remained(fn, &args);
-        TaskGroup::sched_to(pg, m->tid);
+        sched_to(pg, m->tid);
     }
     return 0;
 }
@@ -870,6 +870,10 @@ void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
 
 void TaskGroup::priority_to_run(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+#ifdef BRPC_BTHREAD_TRACER
+    tls_task_group->_control->_task_tracer.set_status(
+        TASK_STATUS_READY, args->meta);
+#endif // BRPC_BTHREAD_TRACER
     return tls_task_group->control()->push_priority_queue(args->tag, args->meta->tid);
 }
 
@@ -1031,14 +1035,15 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag) {
         }
     } else if (sleep_id != 0) {
         if (get_global_timer_thread()->unschedule(sleep_id) == 0) {
-            bthread::TaskGroup* g = bthread::tls_task_group;
+            TaskGroup* g = tls_task_group;
+            TaskMeta* m = address_meta(tid);
             if (g) {
-                g->ready_to_run(TaskGroup::address_meta(tid));
+                g->ready_to_run(m);
             } else {
                 if (!c) {
                     return EINVAL;
                 }
-                c->choose_one_group(tag)->ready_to_run_remote(TaskGroup::address_meta(tid));
+                c->choose_one_group(tag)->ready_to_run_remote(m);
             }
         }
     }
