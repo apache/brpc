@@ -18,6 +18,7 @@
 
 #include "butil/macros.h"
 #include "butil/fast_rand.h"
+#include "bthread/prime_offset.h"
 #include "brpc/socket.h"
 #include "brpc/policy/round_robin_load_balancer.h"
 
@@ -108,7 +109,7 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     }
     TLS tls = s.tls();
     if (tls.stride == 0) {
-        tls.stride = GenRandomStride();
+        tls.stride = bthread::prime_offset();
         // use random at first time, for the case of
         // use rr lb every time in new thread
         tls.offset = butil::fast_rand_less_than(n);
