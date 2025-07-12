@@ -389,7 +389,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     }
     // '*' stands for array "*<size>\r\n<sub-reply1><sub-reply2>..."
     if (!_parsing_array && *pfc != '*') {
-        if (!std::isalpha(static_cast<unsigned char>(ch))) {
+        if (!std::isalpha(static_cast<unsigned char>(*pfc))) {
             return PARSE_ERROR_TRY_OTHERS;
         }
         const size_t buf_size = buf.size();
