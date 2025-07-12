@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <cctype>
 #include <limits>
 
 #include "butil/logging.h"
@@ -388,6 +389,9 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     }
     // '*' stands for array "*<size>\r\n<sub-reply1><sub-reply2>..."
     if (!_parsing_array && *pfc != '*') {
+        if (!std::isalpha(static_cast<unsigned char>(ch))) {
+            return PARSE_ERROR_TRY_OTHERS;
+        }
         const size_t buf_size = buf.size();
         const auto copy_str = static_cast<char *>(arena->allocate(buf_size));
         buf.copy_to(copy_str, buf_size);
