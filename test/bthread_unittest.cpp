@@ -34,7 +34,6 @@ int main(int argc, char* argv[]) {
 
 namespace bthread {
 extern __thread bthread::LocalStorage tls_bls;
-DECLARE_bool(enable_fast_unwind);
 #ifdef BRPC_BTHREAD_TRACER
 extern std::string stack_trace(bthread_t tid);
 #endif // BRPC_BTHREAD_TRACER
@@ -639,22 +638,18 @@ void spin_and_log_trace() {
         while (!start) {
             usleep(10 * 1000);
         }
-        bthread::FLAGS_enable_fast_unwind = false;
+
         std::string st1 = bthread::stack_trace(th);
         LOG(INFO) << "spin_and_log stack trace:\n" << st1;
+        ok = st1.find("spin_and_log") != std::string::npos;
 
-        bthread::FLAGS_enable_fast_unwind = true;
-        std::string st2 = bthread::stack_trace(th);
-        LOG(INFO) << "fast_unwind spin_and_log stack trace:\n" << st2;
         stop = true;
         ASSERT_EQ(0, bthread_join(th, NULL));
 
-        std::string st3 = bthread::stack_trace(th);
-        LOG(INFO) << "ended bthread stack trace:\n" << st3;
-        ASSERT_NE(std::string::npos, st3.find("not exist now"));
+        std::string st2 = bthread::stack_trace(th);
+        LOG(INFO) << "ended bthread stack trace:\n" << st2;
+        ASSERT_NE(std::string::npos, st2.find("not exist now"));
 
-        ok = st1.find("spin_and_log") != std::string::npos &&
-             st2.find("spin_and_log") != std::string::npos;
         if (ok) {
             break;
         }
@@ -672,21 +667,18 @@ void repeated_sleep_trace() {
         while (!start) {
             usleep(10 * 1000);
         }
-        bthread::FLAGS_enable_fast_unwind = false;
+
         std::string st1 = bthread::stack_trace(th);
         LOG(INFO) << "repeated_sleep stack trace:\n" << st1;
+        ok = st1.find("repeated_sleep") != std::string::npos;
 
-        bthread::FLAGS_enable_fast_unwind = true;
-        std::string st2 = bthread::stack_trace(th);
-        LOG(INFO) << "fast_unwind repeated_sleep stack trace:\n" << st2;
         stop = true;
         ASSERT_EQ(0, bthread_join(th, NULL));
 
-        std::string st3 = bthread::stack_trace(th);
-        LOG(INFO) << "ended bthread stack trace:\n" << st3;
-        ASSERT_NE(std::string::npos, st3.find("not exist now"));
-        ok = st1.find("repeated_sleep") != std::string::npos &&
-             st2.find("repeated_sleep") != std::string::npos;
+        std::string st2 = bthread::stack_trace(th);
+        LOG(INFO) << "ended bthread stack trace:\n" << st2;
+        ASSERT_NE(std::string::npos, st2.find("not exist now"));
+
         if (ok) {
             break;
         }

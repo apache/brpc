@@ -58,8 +58,8 @@ jump_stack是bthread挂起或者运行的必经之路，也是STB的拦截点。
 
 # 使用方法
 
-1. 下载安装libunwind。
-2. 给config_brpc.sh增加`--with-bthread-tracer`选项或者给cmake增加`-DWITH_BTHREAD_TRACER=ON`选项。
+1. 下载安装libunwind和abseil-cpp。
+2. 给config_brpc.sh增加`--with-bthread-tracer`选项或者给cmake增加`-DWITH_BTHREAD_TRACER=ON`选项或者给bazel（Bzlmod模式）增加`--define with_bthread_tracer=true`选项。
 3. 访问服务的内置服务：`http://ip:port/bthreads/<bthread_id>?st=1`或者代码里调用`bthread::stack_trace()`函数。
 4. 如果希望追踪pthread的调用栈，在对应pthread上调用`bthread::init_for_pthread_stack_trace()`函数获取一个伪bthread_t，然后使用步骤3即可获取pthread调用栈。
 
@@ -75,5 +75,4 @@ jump_stack是bthread挂起或者运行的必经之路，也是STB的拦截点。
 
 # 相关flag
 
-- `enable_fast_unwind`：是否启用快速回溯功能，默认为true。大多数情况下，不需要关闭快速回溯功能。除非你关注的调用栈函数名转换失败，显示为`<unknown>`，则可以尝试关闭快速回溯功能，但这会导致性能下降。以包含30帧的调用栈举例，快速回溯基本上在200us以内就可以完成，而关闭快速回溯则需要4ms左右，性能下降了近20倍。
-- `signal_trace_timeout_ms`：信号追踪模式的超时时间，默认为50ms。虽然libunwind文档显示回溯功能是异步信号安全的，但是[gpertools社区发现libunwind在某些情况下会死锁](https://github.com/gperftools/gperftools/issues/775)，所以TaskTracer会设置了超时时间，超时后会放弃回溯，打破死锁。
+- `signal_trace_timeout_ms`：信号追踪模式的超时时间，默认为50ms。
