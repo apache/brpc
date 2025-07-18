@@ -157,15 +157,17 @@ private:
 };
 
 bool operator==(const MyStringView& x, const std::string& y) {
-    if (x.size() != y.size())
+    if (x.size() != y.size()) {
         return false;
+    }
 
     return butil::StringPiece::wordmemcmp(x.data(), y.data(), x.size()) == 0;
 }
 
 bool operator==(const std::string& x, const MyStringView& y) {
-    if (x.size() != y.size())
+    if (x.size() != y.size()) {
         return false;
+    }
 
     return butil::StringPiece::wordmemcmp(x.data(), y.data(), x.size()) == 0;
 }

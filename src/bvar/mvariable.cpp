@@ -137,7 +137,7 @@ std::string MVariableBase::describe_exposed(const std::string& name) {
 }
 
 int MVariableBase::expose_impl(const butil::StringPiece& prefix,
-                           const butil::StringPiece& name) {
+                               const butil::StringPiece& name) {
     if (name.empty()) {
         LOG(ERROR) << "Parameter[name] is empty";
         return -1;
