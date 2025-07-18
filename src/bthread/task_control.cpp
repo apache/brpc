@@ -533,7 +533,7 @@ double TaskControl::get_cumulated_worker_time() {
     int64_t cputime_ns = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     for_each_task_group([&](TaskGroup* g) {
-        cputime_ns += get_cumulated_worker_time(g);
+        cputime_ns += g->cumulated_cputime_ns();
     });
     return cputime_ns / 1000000000.0;
 }
@@ -544,38 +544,9 @@ double TaskControl::get_cumulated_worker_time(bthread_tag_t tag) {
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_relaxed);
     auto& groups = tag_group(tag);
     for (size_t i = 0; i < ngroup; ++i) {
-        cputime_ns += get_cumulated_worker_time(groups[i]);
+        cputime_ns += groups[i]->cumulated_cputime_ns();
     }
     return cputime_ns / 1000000000.0;
-}
-
-double TaskControl::get_cumulated_worker_time(TaskGroup* g) {
-    if (NULL == g) {
-        return 0.0;
-    }
-
-#if __x86_64__ || __ARM_NEON
-#ifdef __x86_64__
-    __m128i cpu_time_stat = _mm_load_si128(reinterpret_cast<__m128i*>(&g->_cpu_time_stat));
-#else // __ARM_NEON
-    int64x2_t cpu_time_stat = vld1q_s64(reinterpret_cast<const int64_t*>(&g->_cpu_time_stat));
-#endif // __x86_64__
-    int64_t last_run_ns = cpu_time_stat[0];
-    int64_t cputime_ns = cpu_time_stat[1];
-#else // __x86_64__ || __ARM_NEON
-    int64_t last_run_ns = 0;
-    int64_t cputime_ns = 0;
-    {
-        BAIDU_SCOPED_LOCK(g->_cpu_time_stat_mutex);
-        last_run_ns = g->_cpu_time_stat.last_run_ns;
-        cputime_ns = g->_cpu_time_stat.cumulated_cputime_ns;
-    }
-#endif // __x86_64__ || __ARM_NEON
-    // Add the elapsed time of running bthread.
-    if (last_run_ns > 0) {
-        cputime_ns += butil::cpuwide_time_ns() - last_run_ns;
-    }
-    return cputime_ns;
 }
 
 int64_t TaskControl::get_cumulated_switch_count() {

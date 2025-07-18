@@ -80,7 +80,6 @@ public:
 
     double get_cumulated_worker_time();
     double get_cumulated_worker_time(bthread_tag_t tag);
-    double get_cumulated_worker_time(TaskGroup* g);
     int64_t get_cumulated_switch_count();
     int64_t get_cumulated_signal_count();
 

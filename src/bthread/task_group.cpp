@@ -86,6 +86,39 @@ void* run_create_span_func() {
     return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
 }
 
+AtomicInteger128::Value AtomicInteger128::load() const {
+#if __x86_64__ || __ARM_NEON
+    // Supress compiler warning.
+    (void)_mutex;
+#endif // __x86_64__ || __ARM_NEON
+
+#if __x86_64__ || __ARM_NEON
+#ifdef __x86_64__
+    __m128i value = _mm_load_si128(reinterpret_cast<const __m128i*>(&_value));
+#else // __ARM_NEON
+    int64x2_t value = vld1q_s64(reinterpret_cast<const int64_t*>(&_value));
+#endif // __x86_64__
+    return {value[0], value[1]};
+#else // __x86_64__ || __ARM_NEON
+    BAIDU_SCOPED_LOCK(_mutex);
+    return _value;
+#endif // __x86_64__ || __ARM_NEON
+}
+
+void AtomicInteger128::store(Value value) {
+#if __x86_64__
+    __m128i v = _mm_load_si128(reinterpret_cast<__m128i*>(&value));
+    _mm_store_si128(reinterpret_cast<__m128i*>(&_value), v);
+#elif __ARM_NEON
+    int64x2_t v = vld1q_s64(reinterpret_cast<int64_t*>(&value));
+    vst1q_s64(reinterpret_cast<int64_t*>(&_value), v);
+#else
+    BAIDU_SCOPED_LOCK(_mutex);
+    _value = value;
+#endif // __x86_64__ || __ARM_NEON
+}
+
+
 int TaskGroup::get_attr(bthread_t tid, bthread_attr_t* out) {
     TaskMeta* const m = address_meta(tid);
     if (m != NULL) {
@@ -152,6 +185,16 @@ static double get_cumulated_cputime_from_this(void* arg) {
     return static_cast<TaskGroup*>(arg)->cumulated_cputime_ns() / 1000000000.0;
 }
 
+int64_t TaskGroup::cumulated_cputime_ns() const {
+    CPUTimeStat cpu_time_stat = _cpu_time_stat.load();
+    // Add the elapsed time of running bthread.
+    int64_t cumulated_cputime_ns = cpu_time_stat.cumulated_cputime_ns();
+    if (!cpu_time_stat.is_main_task()) {
+        cumulated_cputime_ns += butil::cpuwide_time_ns() - cpu_time_stat.last_run_ns();
+    }
+    return cumulated_cputime_ns;
+}
+
 void TaskGroup::run_main_task() {
     bvar::PassiveStatus<double> cumulated_cputime(
         get_cumulated_cputime_from_this, this);
@@ -160,11 +203,11 @@ void TaskGroup::run_main_task() {
     TaskGroup* dummy = this;
     bthread_t tid;
     while (wait_task(&tid)) {
-        TaskGroup::sched_to(&dummy, tid);
+        sched_to(&dummy, tid);
         DCHECK_EQ(this, dummy);
         DCHECK_EQ(_cur_meta->stack, _main_stack);
         if (_cur_meta->tid != _main_tid) {
-            TaskGroup::task_runner(1/*skip remained*/);
+            task_runner(1/*skip remained*/);
         }
         if (FLAGS_show_per_worker_usage_in_vars && !usage_bvar) {
             char name[32];
@@ -181,17 +224,12 @@ void TaskGroup::run_main_task() {
     }
     // Don't forget to add elapse of last wait_task.
     current_task()->stat.cputime_ns +=
-        butil::cpuwide_time_ns() - std::abs(_cpu_time_stat.last_run_ns);
+        butil::cpuwide_time_ns() - _cpu_time_stat.load_unsafe().last_run_ns();
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
     :  _control(c) {
     CHECK(c);
-#if __x86_64__ || __ARM_NEON
-    // Supress compiler warning.
-    (void)_cpu_time_stat_mutex;
-#endif // __x86_64__ || __ARM_NEON
-
 }
 
 TaskGroup::~TaskGroup() {
@@ -282,8 +320,12 @@ int TaskGroup::init(size_t runqueue_capacity) {
     _cur_meta = m;
     _main_tid = m->tid;
     _main_stack = stk;
-    _cpu_time_stat.last_run_ns = -m->cpuwide_start_ns;
+
+    CPUTimeStat cpu_time_stat;
+    cpu_time_stat.set_last_run_ns(m->cpuwide_start_ns, true);
+    _cpu_time_stat.store(cpu_time_stat);
     _last_cpu_clock_ns = 0;
+
     return 0;
 }
 
@@ -404,7 +446,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
 
         g->_control->_nbthreads << -1;
         g->_control->tag_nbthreads(g->tag()) << -1;
-        g->set_remained(TaskGroup::_release_last_context, m);
+        g->set_remained(_release_last_context, m);
         ending_sched(&g);
 
     } while (g->_cur_meta->tid != g->_main_tid);
@@ -481,9 +523,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
             fn = ready_to_run_in_worker;
         }
         ReadyToRunArgs args = {
-            g->tag(),
-            g->_cur_meta,
-            (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
+            g->tag(), g->_cur_meta, (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
         };
         g->set_remained(fn, &args);
         sched_to(pg, m->tid);
@@ -668,13 +708,18 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
     }
 #endif
     // Save errno so that errno is bthread-specific.
-    const int saved_errno = errno;
+    int saved_errno = errno;
     void* saved_unique_user_ptr = tls_unique_user_ptr;
 
     TaskMeta* const cur_meta = g->_cur_meta;
-    const int64_t now = butil::cpuwide_time_ns();
-    const int64_t elp_ns = now - std::abs(g->_cpu_time_stat.last_run_ns);
+    int64_t now = butil::cpuwide_time_ns();
+    CPUTimeStat cpu_time_stat = g->_cpu_time_stat.load_unsafe();
+    int64_t elp_ns = now - cpu_time_stat.last_run_ns();
     cur_meta->stat.cputime_ns += elp_ns;
+    // Update cpu_time_stat.
+    cpu_time_stat.set_last_run_ns(now, is_main_task(g, next_meta->tid));
+    cpu_time_stat.add_cumulated_cputime_ns(elp_ns, is_main_task(g, cur_meta->tid));
+    g->_cpu_time_stat.store(cpu_time_stat);
 
     if (FLAGS_bthread_enable_cpu_clock_stat) {
         const int64_t cpu_thread_time = butil::cputhread_time_ns();
@@ -685,36 +730,6 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
     } else {
         g->_last_cpu_clock_ns = 0;
     }
-
-#if __x86_64__ || __ARM_NEON
-    // Refer to https://rigtorp.se/isatomic/, On the modern CPU microarchitectures
-    // (Skylake and Zen 2) AVX/AVX2 128b/256b aligned loads and stores are atomic
-    // even though Intel and AMD officially doesn’t guarantee this.
-    CPUTimeStat cpu_time_stat{
-        next_meta->tid != g->main_tid() ? now : -now,
-        g->_cpu_time_stat.cumulated_cputime_ns
-    };
-    if (cur_meta->tid != g->main_tid()) {
-        cpu_time_stat.cumulated_cputime_ns += elp_ns;
-    }
-#if __x86_64__
-    // On X86, SSE instructions can ensure atomic loads and stores.
-    __m128i value = _mm_load_si128(reinterpret_cast<__m128i*>(&cpu_time_stat));
-    _mm_store_si128(reinterpret_cast<__m128i*>(&g->_cpu_time_stat), value);
-#else // __ARM_NEON
-    // Starting from Armv8.4-A, neon can ensure atomic loads and stores.
-    int64x2_t value = vld1q_s64(reinterpret_cast<const int64_t*>(&cpu_time_stat));
-    vst1q_s64(reinterpret_cast<int64_t*>(&g->_cpu_time_stat), value);
-#endif // __x86_64__
-#else // __x86_64__ || __ARM_NEON
-    {
-        BAIDU_SCOPED_LOCK(g->_cpu_time_stat_mutex);
-        g->_cpu_time_stat.last_run_ns = next_meta->tid != g->main_tid() ? now : -now;
-        if (cur_meta->tid != g->main_tid()) {
-            g->_cpu_time_stat.cumulated_cputime_ns += elp_ns;
-        }
-    }
-#endif // __x86_64__ || __ARM_NEON
 
     ++cur_meta->stat.nswitch;
     ++ g->_nswitch;
