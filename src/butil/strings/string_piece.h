@@ -32,6 +32,9 @@
 
 #include <iosfwd>
 #include <string>
+#if __cplusplus >= 201703L
+#include <string_view>
+#endif // __cplusplus >= 201703L
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -182,6 +185,11 @@ template <typename STRING_TYPE> class BasicStringPiece {
   BasicStringPiece(const value_type* str)
       : ptr_(str),
         length_((str == NULL) ? 0 : STRING_TYPE::traits_type::length(str)) {}
+#if __cplusplus >= 201703L
+  BasicStringPiece(
+    const std::basic_string_view<value_type, typename STRING_TYPE::traits_type>& str)
+      : ptr_(str.data()), length_(str.size()) {}
+#endif // __cplusplus >= 201703L
   BasicStringPiece(const STRING_TYPE& str)
       : ptr_(str.data()), length_(str.size()) {}
   BasicStringPiece(const value_type* offset, size_type len)
@@ -368,6 +376,14 @@ template <typename STRING_TYPE> class BasicStringPiece {
   BasicStringPiece substr(size_type pos,
                           size_type n = BasicStringPiece::npos) const {
     return internal::substr(*this, pos, n);
+  }
+
+  // Converts to `std::basic_string`.
+  explicit operator STRING_TYPE() const {
+    if (NULL == data()) {
+      return {};
+    }
+    return STRING_TYPE(data(), size());
   }
 
  protected:

@@ -833,7 +833,7 @@ static void* dumping_thread(void*) {
             } else if ("prometheus" == mbvar_format) {
                 dumper = new PrometheusFileDumper(mbvar_filename, mbvar_prefix);
             }
-            int nline = MVariable::dump_exposed(dumper, &options);
+            int nline = MVariableBase::dump_exposed(dumper, &options);
             if (nline < 0) {
                 LOG(ERROR) << "Fail to dump mvars into " << filename;
             }

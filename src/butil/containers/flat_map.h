@@ -199,12 +199,12 @@ public:
     // Remove |key| and all associated value
     // Returns: 1 on erased, 0 otherwise.
     template <typename K2, bool Multi = _Multi>
-    typename std::enable_if<!Multi, size_t >::type
+    typename std::enable_if<!Multi, size_t>::type
     erase(const K2& key, mapped_type* old_value = NULL);
     // For `_Multi=true'.
     // Returns: num of value on erased, 0 otherwise.
     template <typename K2, bool Multi = _Multi>
-    typename std::enable_if<Multi, size_t >::type
+    typename std::enable_if<Multi, size_t>::type
     erase(const K2& key, std::vector<mapped_type>* old_values = NULL);
 
     // Remove all items. Allocated spaces are NOT returned by system.

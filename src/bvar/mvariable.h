@@ -32,11 +32,11 @@ namespace bvar {
 class Dumper;
 struct DumpOptions;
 
-class MVariable {
+class MVariableBase {
 public:
-    explicit MVariable(const std::list<std::string>& labels);
+    MVariableBase() = default;
 
-    virtual ~MVariable();
+    virtual ~MVariableBase();
 
     // Implement this method to print the mvariable info into ostream.
     virtual void describe(std::ostream&) = 0;
@@ -46,12 +46,6 @@ public:
    
     // Get mvariable name
     const std::string& name() const { return _name; }
-    
-    // Get mvariable labels
-    const std::list<std::string>& labels() const { return _labels; }
-
-    // Get number of mvariable labels
-    size_t count_labels() const { return _labels.size(); }
 
     // Expose this mvariable globally so that it's counted in following
     // functions:
@@ -113,11 +107,28 @@ protected:
 
 protected:
     std::string _name;
-    std::list<std::string>  _labels;
 
     // mbvar uses bvar, bvar uses TLS, thus copying/assignment need to copy TLS stuff as well,
     // which is heavy. We disable copying/assignment now. 
-    DISALLOW_COPY_AND_ASSIGN(MVariable);
+    DISALLOW_COPY_AND_ASSIGN(MVariableBase);
+};
+
+template <typename KeyType>
+class MVariable : public MVariableBase {
+public:
+    explicit MVariable(const KeyType& labels) : _labels(labels.cbegin(), labels.cend()) {
+        static_assert(std::is_same<typename KeyType::value_type, std::string>::value,
+                      "value_type of KeyType must be std::string");
+    }
+
+    // Get mvariable labels
+    const KeyType& labels() const { return _labels; }
+
+    // Get number of mvariable labels
+    size_t count_labels() const { return _labels.size(); }
+
+protected:
+    KeyType  _labels;
 };
 
 } // namespace bvar

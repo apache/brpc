@@ -592,7 +592,6 @@ typename std::enable_if<!Multi, _T&>::type
 FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator[](const key_type& key) {
     const size_t index = flatmap_mod(_hashfn(key), _nbucket);
     Bucket& first_node = _buckets[index];
-    // LOG(INFO) << "index=" << index;
     if (!first_node.is_valid()) {
         ++_size;
         if (_S) {
