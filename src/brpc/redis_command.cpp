@@ -395,13 +395,13 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
             return PARSE_ERROR_NOT_ENOUGH_DATA;
         }
         args->clear();
-        int offset = 0;
+        size_t offset = 0;
         while (offset < crlf_pos && copy_str[offset] != ' ') {
             ++offset;
         }
         const auto first_arg = static_cast<char*>(arena->allocate(offset));
         memcpy(first_arg, copy_str, offset);
-        for (int i = 0; i < offset; ++i) {
+        for (size_t i = 0; i < offset; ++i) {
             first_arg[i] = tolower(first_arg[i]);
         }
         args->push_back(butil::StringPiece(first_arg, offset));
@@ -410,7 +410,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
             buf.pop_front(crlf_pos + 2);
             return PARSE_OK;
         }
-        int arg_start_pos = ++offset;
+        size_t arg_start_pos = ++offset;
 
         for (; offset < crlf_pos; ++offset) {
             if (copy_str[offset] != ' ') {
