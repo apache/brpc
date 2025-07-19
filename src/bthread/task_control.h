@@ -79,7 +79,7 @@ public:
     void print_rq_sizes(std::ostream& os);
 
     double get_cumulated_worker_time();
-    double get_cumulated_worker_time_with_tag(bthread_tag_t tag);
+    double get_cumulated_worker_time(bthread_tag_t tag);
     int64_t get_cumulated_switch_count();
     int64_t get_cumulated_signal_count();
 
