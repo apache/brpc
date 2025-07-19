@@ -371,15 +371,6 @@ size_t RedisCommandParser::ParsedArgsSize() {
     return _args.size();
 }
 
-int find_crlf(const char* pfc, size_t length) {
-    for (size_t i = 0; i < length - 1; ++i) {
-        if (pfc[i] == '\r' && pfc[i + 1] == '\n') {
-            return i;
-        }
-    }
-    return -1;
-}
-
 ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
                                        std::vector<butil::StringPiece>* args,
                                        butil::Arena* arena) {
@@ -393,13 +384,14 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
             return PARSE_ERROR_TRY_OTHERS;
         }
         const size_t buf_size = buf.size();
-        const auto copy_str = static_cast<char *>(arena->allocate(buf_size));
+        const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
         buf.copy_to(copy_str, buf_size);
         if (*copy_str == ' ') {
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
-        const int crlf_pos = find_crlf(copy_str, buf_size);
-        if (crlf_pos == -1) {
+        copy_str[buf_size] = '\0';
+        const size_t crlf_pos = butil::StringPiece(copy_str, buf_size).find("\r\n");
+        if (crlf_pos == butil::StringPiece::npos) {  // not enough data
             return PARSE_ERROR_NOT_ENOUGH_DATA;
         }
         args->clear();
