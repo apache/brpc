@@ -580,9 +580,30 @@ TEST_F(RedisTest, command_parser) {
         ASSERT_EQ(command, GetCompleteCommand(command_out));
     }
     {
-        // simulate parsing from network
+        // simulate parsing from network following RESP
         int t = 100;
         std::string raw_string("*3\r\n$3\r\nset\r\n$3\r\nabc\r\n$3\r\ndef\r\n");
+        int size = raw_string.size();
+        while (t--) {
+            for (int i = 0; i < size; ++i) {
+                buf.push_back(raw_string[i]);
+                if (i == size - 1) {
+                    ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out, &arena));
+                } else {
+                    if (butil::fast_rand_less_than(2) == 0) {
+                        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                                parser.Consume(buf, &command_out, &arena));
+                    }
+                }
+            }
+            ASSERT_TRUE(buf.empty());
+            ASSERT_EQ(GetCompleteCommand(command_out), "set abc def");
+        }
+    }
+    {
+        // simulate parsing from network under inline protocol
+        int t = 100;
+        std::string raw_string("set abc def\r\n");
         int size = raw_string.size();
         while (t--) {
             for (int i = 0; i < size; ++i) {
