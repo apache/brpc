@@ -103,7 +103,7 @@ public:
 
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
-    typedef std::array<ParkingLot, BTHREAD_MAX_CONCURRENCY> TaggedParkingLot;
+    typedef std::array<ParkingLot, BTHREAD_MAX_PARKINGLOT> TaggedParkingLot;
     // Add/Remove a TaskGroup.
     // Returns 0 on success, -1 otherwise.
     int _add_group(TaskGroup*, bthread_tag_t tag);
