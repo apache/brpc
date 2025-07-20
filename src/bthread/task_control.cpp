@@ -33,13 +33,6 @@
 #include "bthread/timer_thread.h"         // global_timer_thread
 #include <gflags/gflags.h>
 #include "bthread/log.h"
-#ifdef __x86_64__
-#include <x86intrin.h>
-#endif // __x86_64__
-
-#ifdef __ARM_NEON
-#include <arm_neon.h>
-#endif // __ARM_NEON
 
 DEFINE_int32(task_group_delete_delay, 1,
              "delay deletion of TaskGroup for so many seconds");
