@@ -878,10 +878,13 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         }
 
         ibv_send_wr* bad = NULL;
-        if (ibv_post_send(_resource->qp, &wr, &bad) < 0) {
+        if (int err = ibv_post_send(_resource->qp, &wr, &bad)) {
             // We use other way to guarantee the Send Queue is not full.
             // So we just consider this error as an unrecoverable error.
-            PLOG(WARNING) << "Fail to ibv_post_send";
+            PLOG(WARNING) << "Fail to ibv_post_send: " << berror(err)
+                          << ", window=" << window
+                          << ", sq_current=" << _sq_current;
+            errno = err;
             return -1;
         }
 
@@ -920,10 +923,10 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
     wr.send_flags |= IBV_SEND_SIGNALED;
 
     ibv_send_wr* bad = NULL;
-    if (ibv_post_send(_resource->qp, &wr, &bad) < 0) {
+    if (int err = ibv_post_send(_resource->qp, &wr, &bad)) {
         // We use other way to guarantee the Send Queue is not full.
         // So we just consider this error as an unrecoverable error.
-        PLOG(WARNING) << "Fail to ibv_post_send";
+        PLOG(WARNING) << "Fail to ibv_post_send: " << berror(err);
         return -1;
     }
     return 0;
@@ -1004,8 +1007,8 @@ int RdmaEndpoint::DoPostRecv(void* block, size_t block_size) {
     wr.sg_list = &sge;
 
     ibv_recv_wr* bad = NULL;
-    if (ibv_post_recv(_resource->qp, &wr, &bad) < 0) {
-        PLOG(WARNING) << "Fail to ibv_post_recv";
+    if (int err = ibv_post_recv(_resource->qp, &wr, &bad)) {
+        PLOG(WARNING) << "Fail to ibv_post_recv: " << berror(err);
         return -1;
     }
     return 0;
@@ -1143,8 +1146,8 @@ int RdmaEndpoint::AllocateResources() {
             return -1;
         }
 
-        if (ibv_req_notify_cq(_resource->cq, 1) < 0) {
-            PLOG(WARNING) << "Fail to arm CQ comp channel";
+        if (int err = ibv_req_notify_cq(_resource->cq, 1)) {
+            PLOG(WARNING) << "Fail to arm CQ comp channel: " << berror(err);
             return -1;
         }
     } else {
@@ -1186,12 +1189,12 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
     attr.pkey_index = 0;  // TODO: support more pkey use in future
     attr.port_num = GetRdmaPortNum();
     attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE;
-    if (IbvModifyQp(_resource->qp, &attr, (ibv_qp_attr_mask)(
+    if (int err = IbvModifyQp(_resource->qp, &attr, (ibv_qp_attr_mask)(
                 IBV_QP_STATE | 
                 IBV_QP_PKEY_INDEX |
                 IBV_QP_PORT |
-                IBV_QP_ACCESS_FLAGS)) < 0) {
-        PLOG(WARNING) << "Fail to modify QP from RESET to INIT";
+                IBV_QP_ACCESS_FLAGS))) {
+        PLOG(WARNING) << "Fail to modify QP from RESET to INIT: " << berror(err);
         return -1;
     }
 
@@ -1217,15 +1220,15 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
     attr.rq_psn = 0;
     attr.max_dest_rd_atomic = 0;
     attr.min_rnr_timer = 0;  // We do not allow rnr error
-    if (IbvModifyQp(_resource->qp, &attr, (ibv_qp_attr_mask)(
+    if (int err = IbvModifyQp(_resource->qp, &attr, (ibv_qp_attr_mask)(
                 IBV_QP_STATE |
                 IBV_QP_PATH_MTU |
                 IBV_QP_MIN_RNR_TIMER |
                 IBV_QP_AV |
                 IBV_QP_MAX_DEST_RD_ATOMIC |
                 IBV_QP_DEST_QPN |
-                IBV_QP_RQ_PSN)) < 0) {
-        PLOG(WARNING) << "Fail to modify QP from INIT to RTR";
+                IBV_QP_RQ_PSN))) {
+        PLOG(WARNING) << "Fail to modify QP from INIT to RTR: " << berror(err);
         return -1;
     }
 
@@ -1235,14 +1238,14 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
     attr.rnr_retry = 0;  // We do not allow rnr error
     attr.sq_psn = 0;
     attr.max_rd_atomic = 0;
-    if (IbvModifyQp(_resource->qp, &attr, (ibv_qp_attr_mask)(
+    if (int err = IbvModifyQp(_resource->qp, &attr, (ibv_qp_attr_mask)(
                 IBV_QP_STATE |
                 IBV_QP_RNR_RETRY |
                 IBV_QP_RETRY_CNT |
                 IBV_QP_TIMEOUT |
                 IBV_QP_SQ_PSN |
-                IBV_QP_MAX_QP_RD_ATOMIC)) < 0) {
-        PLOG(WARNING) << "Fail to modify QP from RTR to RTS";
+                IBV_QP_MAX_QP_RD_ATOMIC))) {
+        PLOG(WARNING) << "Fail to modify QP from RTR to RTS: " << berror(err);
         return -1;
     }
 
@@ -1272,15 +1275,15 @@ void RdmaEndpoint::DeallocateResources() {
     }
     if (!move_to_rdma_resource_list) {
         if (_resource->qp) {
-            if (IbvDestroyQp(_resource->qp) < 0) {
-                PLOG(WARNING) << "Fail to destroy QP";
+            if (int err = IbvDestroyQp(_resource->qp)) {
+                PLOG(WARNING) << "Fail to destroy QP: " << berror(err);
             }
             _resource->qp = NULL;
         }
         if (_resource->cq) {
             IbvAckCqEvents(_resource->cq, _cq_events);
-            if (IbvDestroyCq(_resource->cq) < 0) {
-                PLOG(WARNING) << "Fail to destroy CQ";
+            if (int err = IbvDestroyCq(_resource->cq)) {
+                PLOG(WARNING) << "Fail to destroy CQ: " << berror(err);
             }
             _resource->cq = NULL;
         }
@@ -1289,8 +1292,8 @@ void RdmaEndpoint::DeallocateResources() {
             // so that we should remove it from epoll fd first
             _socket->_io_event.RemoveConsumer(fd);
             fd = -1;
-            if (IbvDestroyCompChannel(_resource->comp_channel) < 0) {
-                PLOG(WARNING) << "Fail to destroy CQ channel";
+            if (int err = IbvDestroyCompChannel(_resource->comp_channel)) {
+                PLOG(WARNING) << "Fail to destroy CQ channel: " << berror(err);
             }
             _resource->comp_channel = NULL;
         }
@@ -1328,7 +1331,7 @@ static const int MAX_CQ_EVENTS = 128;
 int RdmaEndpoint::GetAndAckEvents() {
     int events = 0; void* context = NULL;
     while (1) {
-        if (IbvGetCqEvent(_resource->comp_channel, &_resource->cq, &context) < 0) {
+        if (IbvGetCqEvent(_resource->comp_channel, &_resource->cq, &context) != 0) {
             if (errno != EAGAIN) {
                 return -1;
             }
@@ -1392,7 +1395,7 @@ void RdmaEndpoint::PollCq(Socket* m) {
                 // that the event arrives after the poll but before the notify,
                 // we should re-poll the CQ once after the notify to check if
                 // there is an available CQE.
-                if (ibv_req_notify_cq(ep->_resource->cq, 1) < 0) {
+                if ((errno = ibv_req_notify_cq(ep->_resource->cq, 1))) {
                     const int saved_errno = errno;
                     PLOG(WARNING) << "Fail to arm CQ comp channel: " << s->description();
                     s->SetFailed(saved_errno, "Fail to arm cq channel from %s: %s",
