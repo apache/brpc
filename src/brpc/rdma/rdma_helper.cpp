@@ -203,7 +203,7 @@ void BlockDeallocate(void* buf) {
 
 static void FindRdmaLid() {
     ibv_port_attr attr;
-    if (IbvQueryPort(g_context, g_port_num, &attr)) {
+    if (IbvQueryPort(g_context, g_port_num, &attr) != 0) {
         return;
     }
     g_lid = attr.lid;
@@ -405,7 +405,8 @@ static ibv_context* OpenDevice(int num_total, int* num_available_devices) {
             continue;
         }
         ibv_port_attr attr;
-        if ((errno = IbvQueryPort(context.get(), uint8_t(FLAGS_rdma_port), &attr))) {
+        errno = IbvQueryPort(context.get(), uint8_t(FLAGS_rdma_port), &attr);
+        if (errno != 0) {
             PLOG(WARNING) << "Fail to query port " << FLAGS_rdma_port << " on "
                           << dev_name;
             continue;
@@ -522,7 +523,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     ibv_device_attr attr;
-    if (IbvQueryDevice(g_context, &attr)) {
+    if (IbvQueryDevice(g_context, &attr) != 0) {
         PLOG(ERROR) << "Fail to get the device information";
         ExitWithError();
     }
