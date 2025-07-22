@@ -406,7 +406,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (!_parsing_array) {
-        if (value > FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece)) {
+        if (value > (int64_t)(FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece))) {
             LOG(ERROR) << "command array size exceeds limit! max=" 
                       << (FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece)) 
                       << ", actually=" << value;

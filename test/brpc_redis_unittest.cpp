@@ -1354,7 +1354,7 @@ TEST_F(RedisTest, memory_allocation_limits) {
     {
         // Test array allocation exceeding limit
         butil::IOBuf buf;
-        int64_t large_count = brpc::FLAGS_redis_max_allocation_size / sizeof(brpc::RedisReply) + 1;
+        int32_t large_count = brpc::FLAGS_redis_max_allocation_size / sizeof(brpc::RedisReply) + 1;
         std::string large_array = "*" + std::to_string(large_count) + "\r\n";
         buf.append(large_array);
         
@@ -1382,7 +1382,7 @@ TEST_F(RedisTest, memory_allocation_limits) {
         // Test command array size exceeding limit
         brpc::RedisCommandParser parser;
         butil::IOBuf buf;
-        int64_t large_array_size = brpc::FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece) + 1;
+        int32_t large_array_size = brpc::FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece) + 1;
         std::string large_array_cmd = "*" + std::to_string(large_array_size) + "\r\n";
         buf.append(large_array_cmd);
         
