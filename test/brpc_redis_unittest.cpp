@@ -26,9 +26,11 @@
 #include <brpc/server.h>
 #include <brpc/redis_command.h>
 #include <gtest/gtest.h>
+#include <gflags/gflags.h>
 
 namespace brpc {
 DECLARE_int32(idle_timeout_second);
+DECLARE_int32(redis_max_allocation_size);
 }
 
 int main(int argc, char* argv[]) {
@@ -1327,6 +1329,99 @@ TEST_F(RedisTest, server_handle_pipeline) {
     ASSERT_EQ(1, rsimpl->_batch_count);
     ASSERT_TRUE(response.reply(7).is_string());
     ASSERT_STREQ(response.reply(7).c_str(), "world");
+}
+
+TEST_F(RedisTest, memory_allocation_limits) {
+    int32_t original_limit = brpc::FLAGS_redis_max_allocation_size;
+    brpc::FLAGS_redis_max_allocation_size = 1024;
+    
+    butil::Arena arena;
+    
+    // Test redis_reply.cpp limits
+    {
+        // Test bulk string exceeding limit
+        butil::IOBuf buf;
+        std::string large_string = "*1\r\n$2000\r\n";
+        large_string.append(2000, 'a');
+        large_string.append("\r\n");
+        buf.append(large_string);
+        
+        brpc::RedisReply reply(&arena);
+        brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+    }
+    
+    {
+        // Test array allocation exceeding limit
+        butil::IOBuf buf;
+        int32_t large_count = brpc::FLAGS_redis_max_allocation_size / sizeof(brpc::RedisReply) + 1;
+        std::string large_array = "*" + std::to_string(large_count) + "\r\n";
+        buf.append(large_array);
+        
+        brpc::RedisReply reply(&arena);
+        brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+    }
+    
+    // Test redis_command.cpp limits
+    {
+        // Test command string exceeding limit
+        brpc::RedisCommandParser parser;
+        butil::IOBuf buf;
+        std::string large_cmd = "*2\r\n$3\r\nget\r\n$2000\r\n";
+        large_cmd.append(2000, 'b');
+        large_cmd.append("\r\n");
+        buf.append(large_cmd);
+        
+        std::vector<butil::StringPiece> args;
+        brpc::ParseError err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+    }
+    
+    {
+        // Test command array size exceeding limit
+        brpc::RedisCommandParser parser;
+        butil::IOBuf buf;
+        int32_t large_array_size = brpc::FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece) + 1;
+        std::string large_array_cmd = "*" + std::to_string(large_array_size) + "\r\n";
+        buf.append(large_array_cmd);
+        
+        std::vector<butil::StringPiece> args;
+        brpc::ParseError err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+    }
+    
+    // Test valid cases within limits
+    {
+        // Test small bulk string should work
+        butil::IOBuf buf;
+        std::string small_string = "*1\r\n$10\r\nhelloworld\r\n";
+        buf.append(small_string);
+        
+        brpc::RedisReply reply(&arena);
+        brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
+        ASSERT_EQ(brpc::PARSE_OK, err);
+        ASSERT_TRUE(reply.is_array());
+        ASSERT_EQ(1, (int)reply.size());
+        ASSERT_STREQ("helloworld", reply[0].c_str());
+    }
+    
+    {
+        // Test small command should work
+        brpc::RedisCommandParser parser;
+        butil::IOBuf buf;
+        std::string small_cmd = "*2\r\n$3\r\nget\r\n$5\r\nmykey\r\n";
+        buf.append(small_cmd);
+        
+        std::vector<butil::StringPiece> args;
+        brpc::ParseError err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_OK, err);
+        ASSERT_EQ(2, (int)args.size());
+        ASSERT_EQ("get", args[0].as_string());
+        ASSERT_EQ("mykey", args[1].as_string());
+    }
+    
+    brpc::FLAGS_redis_max_allocation_size = original_limit;
 }
 
 } //namespace
