@@ -408,8 +408,8 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     if (!_parsing_array) {
         if (value > (int64_t)(FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece))) {
             LOG(ERROR) << "command array size exceeds limit! max=" 
-                      << (FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece)) 
-                      << ", actually=" << value;
+                       << (FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece)) 
+                       << ", actually=" << value;
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
         buf.pop_front(crlf_pos + 2/*CRLF*/);
@@ -428,7 +428,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     }
     if (len > FLAGS_redis_max_allocation_size) {
         LOG(ERROR) << "command string exceeds max allocation size! max=" 
-                  << FLAGS_redis_max_allocation_size << ", actually=" << len;
+                   << FLAGS_redis_max_allocation_size << ", actually=" << len;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (buf.size() < crlf_pos + 2 + (size_t)len + 2/*CRLF*/) {

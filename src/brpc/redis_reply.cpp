@@ -181,7 +181,7 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
             }
             if (len > FLAGS_redis_max_allocation_size) {
                 LOG(ERROR) << "bulk string exceeds max allocation size! max=" 
-                          << FLAGS_redis_max_allocation_size << ", actually=" << len;
+                           << FLAGS_redis_max_allocation_size << ", actually=" << len;
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // We provide c_str(), thus even if bulk string is started with
@@ -236,11 +236,11 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
             int64_t array_size = sizeof(RedisReply) * count;
             if (array_size > FLAGS_redis_max_allocation_size) {
                 LOG(ERROR) << "array allocation exceeds max allocation size! max=" 
-                          << FLAGS_redis_max_allocation_size << ", actually=" << array_size;
+                           << FLAGS_redis_max_allocation_size << ", actually=" << array_size;
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // FIXME(gejun): Call allocate_aligned instead.
-            RedisReply* subs = (RedisReply*)_arena->allocate(sizeof(RedisReply) * count);
+            RedisReply* subs = (RedisReply*)_arena->allocate(array_size);
             if (subs == NULL) {
                 LOG(FATAL) << "Fail to allocate RedisReply[" << count << "]";
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
