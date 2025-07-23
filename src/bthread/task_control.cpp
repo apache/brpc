@@ -152,7 +152,7 @@ static double get_cumulated_worker_time_from_this_with_tag(void* arg) {
     auto a = static_cast<CumulatedWithTagArgs*>(arg);
     auto c = a->c;
     auto t = a->t;
-    return c->get_cumulated_worker_time_with_tag(t);
+    return c->get_cumulated_worker_time(t);
 }
 
 static int64_t get_cumulated_switch_count_from_this(void *arg) {
@@ -526,22 +526,18 @@ double TaskControl::get_cumulated_worker_time() {
     int64_t cputime_ns = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     for_each_task_group([&](TaskGroup* g) {
-        if (g) {
-            cputime_ns += g->_cumulated_cputime_ns;
-        }
+        cputime_ns += g->cumulated_cputime_ns();
     });
     return cputime_ns / 1000000000.0;
 }
 
-double TaskControl::get_cumulated_worker_time_with_tag(bthread_tag_t tag) {
+double TaskControl::get_cumulated_worker_time(bthread_tag_t tag) {
     int64_t cputime_ns = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_relaxed);
     auto& groups = tag_group(tag);
     for (size_t i = 0; i < ngroup; ++i) {
-        if (groups[i]) {
-            cputime_ns += groups[i]->_cumulated_cputime_ns;
-        }
+        cputime_ns += groups[i]->cumulated_cputime_ns();
     }
     return cputime_ns / 1000000000.0;
 }

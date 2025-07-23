@@ -29,6 +29,7 @@
 #include "bthread/remote_task_queue.h"             // RemoteTaskQueue
 #include "butil/resource_pool.h"                    // ResourceId
 #include "bthread/parking_lot.h"
+#include "bthread/prime_offset.h"
 
 namespace bthread {
 
@@ -45,6 +46,35 @@ public:
     }
 private:
     void* _value;
+};
+
+// Refer to https://rigtorp.se/isatomic/, On the modern CPU microarchitectures
+// (Skylake and Zen 2) AVX/AVX2 128b/256b aligned loads and stores are atomic
+// even though Intel and AMD officially doesn’t guarantee this.
+// On X86, SSE instructions can ensure atomic loads and stores.
+// Starting from Armv8.4-A, neon can ensure atomic loads and stores.
+// Otherwise, use mutex to guarantee atomicity.
+class AtomicInteger128 {
+public:
+    struct Value {
+        int64_t v1;
+        int64_t v2;
+    };
+
+    AtomicInteger128() = default;
+    explicit AtomicInteger128(Value value) : _value(value) {}
+
+    Value load() const;
+    Value load_unsafe() const {
+        return _value;
+    }
+
+    void store(Value value);
+
+private:
+    Value BAIDU_CACHELINE_ALIGNMENT _value{};
+    // Used to protect `_cpu_time_stat' when __x86_64__ and __ARM_NEON is not defined.
+    FastPthreadMutex _mutex;
 };
 
 // Thread-local group of tasks.
@@ -148,7 +178,7 @@ public:
     { return _cur_meta->stack == _main_stack; }
 
     // Active time in nanoseconds spent by this TaskGroup.
-    int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
+    int64_t cumulated_cputime_ns() const;
 
     // Push a bthread into the runqueue
     void ready_to_run(TaskMeta* meta, bool nosignal = false);
@@ -203,6 +233,70 @@ public:
 private:
 friend class TaskControl;
 
+    // Last scheduling time, task type and cumulated CPU time.
+    class CPUTimeStat {
+        static constexpr int64_t LAST_SCHEDULING_TIME_MASK = 0x7FFFFFFFFFFFFFFFLL;
+        static constexpr int64_t TASK_TYPE_MASK = 0x8000000000000000LL;
+    public:
+        CPUTimeStat() : _last_run_ns_and_type(0), _cumulated_cputime_ns(0) {}
+        CPUTimeStat(AtomicInteger128::Value value)
+            : _last_run_ns_and_type(value.v1), _cumulated_cputime_ns(value.v2) {}
+
+        // Convert to AtomicInteger128::Value for atomic operations.
+        explicit operator AtomicInteger128::Value() const {
+            return {_last_run_ns_and_type, _cumulated_cputime_ns};
+        }
+
+        void set_last_run_ns(int64_t last_run_ns, bool main_task) {
+            _last_run_ns_and_type = (last_run_ns & LAST_SCHEDULING_TIME_MASK) |
+                                    (static_cast<int64_t>(main_task) << 63);
+        }
+        int64_t last_run_ns() const {
+            return _last_run_ns_and_type & LAST_SCHEDULING_TIME_MASK;
+        }
+        int64_t last_run_ns_and_type() const {
+            return _last_run_ns_and_type;
+        }
+
+        bool is_main_task() const {
+            return _last_run_ns_and_type & TASK_TYPE_MASK;
+        }
+
+        void add_cumulated_cputime_ns(int64_t cputime_ns, bool main_task) {
+            if (main_task) {
+                return;
+            }
+            _cumulated_cputime_ns += cputime_ns;
+        }
+        int64_t cumulated_cputime_ns() const {
+            return _cumulated_cputime_ns;
+        }
+
+    private:
+        // The higher bit for task type, main task is 1, otherwise 0.
+        // Lowest 63 bits for last scheduling time.
+        int64_t _last_run_ns_and_type;
+        // Cumulated CPU time in nanoseconds.
+        int64_t _cumulated_cputime_ns;
+    };
+
+    class AtomicCPUTimeStat {
+    public:
+        CPUTimeStat load() const {
+            return  _cpu_time_stat.load();
+        }
+        CPUTimeStat load_unsafe() const {
+            return _cpu_time_stat.load_unsafe();
+        }
+
+        void store(CPUTimeStat cpu_time_stat) {
+            _cpu_time_stat.store(AtomicInteger128::Value(cpu_time_stat));
+        }
+
+    private:
+        AtomicInteger128 _cpu_time_stat;
+    };
+
     // You shall use TaskControl::create_group to create new instance.
     explicit TaskGroup(TaskControl* c);
 
@@ -248,41 +342,43 @@ friend class TaskControl;
 
     void set_pl(ParkingLot* pl) { _pl = pl; }
 
-    TaskMeta* _cur_meta;
+    static bool is_main_task(TaskGroup* g, bthread_t tid) {
+        return g->_main_tid == tid;
+    }
+
+    TaskMeta* _cur_meta{NULL};
     
     // the control that this group belongs to
-    TaskControl* _control;
-    int _num_nosignal;
-    int _nsignaled;
-    // last scheduling time
-    int64_t _last_run_ns;
-    int64_t _cumulated_cputime_ns;
+    TaskControl* _control{NULL};
+    int _num_nosignal{0};
+    int _nsignaled{0};
+    AtomicCPUTimeStat _cpu_time_stat;
     // last thread cpu clock
-    int64_t _last_cpu_clock_ns;
+    int64_t _last_cpu_clock_ns{0};
 
-    size_t _nswitch;
-    RemainedFn _last_context_remained;
-    void* _last_context_remained_arg;
+    size_t _nswitch{0};
+    RemainedFn _last_context_remained{NULL};
+    void* _last_context_remained_arg{NULL};
 
-    ParkingLot* _pl;
+    ParkingLot* _pl{NULL};
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
     ParkingLot::State _last_pl_state;
 #endif
-    size_t _steal_seed;
-    size_t _steal_offset;
-    ContextualStack* _main_stack;
-    bthread_t _main_tid;
+    size_t _steal_seed{butil::fast_rand()};
+    size_t _steal_offset{prime_offset(_steal_seed)};
+    ContextualStack* _main_stack{NULL};
+    bthread_t _main_tid{INVALID_BTHREAD};
     WorkStealingQueue<bthread_t> _rq;
     RemoteTaskQueue _remote_rq;
-    int _remote_num_nosignal;
-    int _remote_nsignaled;
+    int _remote_num_nosignal{0};
+    int _remote_nsignaled{0};
 
-    int _sched_recursive_guard;
+    int _sched_recursive_guard{0};
     // tag of this taskgroup
-    bthread_tag_t _tag;
+    bthread_tag_t _tag{BTHREAD_TAG_DEFAULT};
 
     // Worker thread id.
-    pid_t _tid;
+    pid_t _tid{-1};
 };
 
 }  // namespace bthread

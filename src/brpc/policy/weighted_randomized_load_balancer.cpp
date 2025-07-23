@@ -19,6 +19,7 @@
 #include <algorithm>
 
 #include "butil/fast_rand.h"
+#include "bthread/prime_offset.h"
 #include "brpc/socket.h"
 #include "brpc/policy/weighted_randomized_load_balancer.h"
 #include "butil/strings/string_number_conversions.h"
@@ -152,7 +153,7 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     if (random_traversed.size() == n) {
         // Try to traverse the remaining servers to find an available server.
         uint32_t offset = butil::fast_rand_less_than(n);
-        uint32_t stride = GenRandomStride();
+        uint32_t stride = bthread::prime_offset();
         for (size_t i = 0; i < n; ++i) {
             offset = (offset + stride) % n;
             SocketId id = s->server_list[offset].id;
