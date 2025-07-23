@@ -32,7 +32,6 @@
 
 namespace bthread {
 
-DEFINE_bool(enable_fast_unwind, true, "Whether to enable fast unwind");
 DEFINE_uint32(signal_trace_timeout_ms, 50, "Timeout for signal trace in ms");
 BUTIL_VALIDATE_GFLAG(signal_trace_timeout_ms, butil::PositiveInteger<uint32_t>);
 
@@ -356,15 +355,14 @@ void TaskTracer::SignalHandler(int, siginfo_t* info, void* context) {
     // Ref has been taken before the signal is sent, so no need to add ref here.
     butil::intrusive_ptr<SignalSync> signal_sync(
         static_cast<SignalSync*>(info->si_value.sival_ptr), false);
-    if (NULL == signal_sync || NULL == signal_sync->result) {
+    if (NULL == signal_sync) {
         // The signal is not from Tracer, such as TaskControl, do nothing.
         return;
     }
-    Result* result = signal_sync->result;
     // Skip the first frame, which is the signal handler itself.
-    result->frame_count = absl::DefaultStackUnwinder(&result->ips[0], NULL,
-                                                     arraysize(result->ips),
-                                                     1, context, NULL);
+    signal_sync->result.frame_count = absl::DefaultStackUnwinder(signal_sync->result.ips, NULL,
+                                                                arraysize(signal_sync->result.ips), 1,
+                                                                context, NULL);
     // write() is async-signal-safe.
     // Don't care about the return value.
     butil::ignore_result(write(signal_sync->pipe_fds[1], "1", 1));
@@ -415,11 +413,9 @@ TaskTracer::Result TaskTracer::SignalTrace(pid_t tid) {
 
     // Each signal trace has an independent SignalSync to
     // prevent the previous SignalHandler from affecting the new SignalTrace.
-    Result result;
-    butil::intrusive_ptr<SignalSync> signal_sync(new SignalSync(&result));
+    butil::intrusive_ptr<SignalSync> signal_sync(new SignalSync());
     if (!signal_sync->Init()) {
-        result.SetError("Fail to init SignalSync");
-        return result;
+        return Result::MakeErrorResult("Fail to init SignalSync");
     }
 
     // Add reference for SignalHandler.
@@ -432,8 +428,7 @@ TaskTracer::Result TaskTracer::SignalTrace(pid_t tid) {
         if (errno != EAGAIN || sigqueue_try++ >= 3) {
             // Remove reference for SignalHandler.
             signal_sync->RemoveRefManually();
-            result.SetError("Fail to sigqueue: %s", berror());
-            return result;
+            return Result::MakeErrorResult("Fail to sigqueue: %s, tid: %d", berror(), tid);
         }
     }
     _inuse_signal_syncs.push_back(signal_sync);
@@ -450,8 +445,7 @@ TaskTracer::Result TaskTracer::SignalTrace(pid_t tid) {
         if (FLAGS_signal_trace_timeout_ms > 0) {
             timer.stop();
             if (timer.m_elapsed() >= FLAGS_signal_trace_timeout_ms) {
-                result.SetError("Timeout exceed %dms", FLAGS_signal_trace_timeout_ms);
-                break;
+                return Result::MakeErrorResult("Timeout exceed %dms", FLAGS_signal_trace_timeout_ms);
             }
             timeout = (int64_t)FLAGS_signal_trace_timeout_ms - timer.m_elapsed();
         }
@@ -462,11 +456,12 @@ TaskTracer::Result TaskTracer::SignalTrace(pid_t tid) {
             if (EINTR == errno) {
                 continue;
             }
-            result.SetError("Fail to poll: %s", berror());
+            return Result::MakeErrorResult("Fail to poll: %s", berror());
         }
         break;
     }
-    return result;
+    
+    return signal_sync->result;
 }
 
 } // namespace bthread

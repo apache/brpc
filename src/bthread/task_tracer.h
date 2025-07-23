@@ -87,12 +87,11 @@ private:
 
     // For signal trace.
     struct SignalSync : public butil::SharedObject {
-        explicit SignalSync(Result* result) : result(result) {}
         ~SignalSync() override;
         bool Init();
 
         int pipe_fds[2]{-1, -1};
-        Result* result{NULL};
+        Result result;
     };
 
     static TaskStatus WaitForJumping(TaskMeta* m);
