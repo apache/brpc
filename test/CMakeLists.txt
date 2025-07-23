@@ -188,10 +188,12 @@ endif()
 # bthread_* functions are used in logging.cc, and they need to be marked as
 # weak symbols explicitly in Darwin system.
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(DYNAMIC_LIB ${DYNAMIC_LIB}
-                    "-Wl,-U,_bthread_getspecific"
-                    "-Wl,-U,_bthread_setspecific"
-                    "-Wl,-U,_bthread_key_create")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} "-Wl,-U,_bthread_getspecific"
+                                   "-Wl,-U,_bthread_setspecific"
+                                   "-Wl,-U,_bthread_key_create"
+                                   "-Wl,-U,_bthread_self"
+                                   "-Wl,-U,_bthread_timed_connect"
+    )
 endif()
 
 add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
