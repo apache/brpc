@@ -559,7 +559,7 @@ public:
     virtual int VerifyCredential(const std::string& auth_str,
                                  const base::EndPoint& client_addr,
                                  AuthContext* out_ctx) const = 0;
-    }; 
+};
 
 class AuthContext {
 public:
@@ -573,7 +573,7 @@ public:
 
 server的验证是基于连接的。当server收到连接上的第一个请求时，会尝试解析出其中的身份信息部分（如baidu_std里的auth字段、HTTP协议里的Authorization头），然后附带client地址信息一起调用`VerifyCredential`。若返回0，表示验证成功，用户可以把验证后的信息填入`AuthContext`，后续可通过`controller->auth_context()`获取，用户不需要关心其分配和释放。否则表示验证失败，连接会被直接关闭，client访问失败。
 
-后续请求默认通过验证么，没有认证开销。
+后续请求默认通过验证，没有认证开销。
 
 把实现的`Authenticator`实例赋值到`ServerOptions.auth`，即开启验证功能，需要保证该实例在整个server运行周期内都有效，不能被析构。
 
