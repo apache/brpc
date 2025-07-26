@@ -19,6 +19,7 @@
 
 // Date: Tue Jul 10 17:40:58 CST 2012
 
+#include <pthread.h>
 #include <sys/syscall.h>                   // SYS_gettid
 #include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "butil/errno.h"                   // berror
@@ -90,7 +91,7 @@ void* TaskControl::worker_thread(void* arg) {
         return NULL;
     }
 
-    g->_tid = syscall(SYS_gettid);
+    g->_tid = pthread_self();
 
     std::string worker_thread_name = butil::string_printf(
         "brpc_wkr:%d-%d", g->tag(),
