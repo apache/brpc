@@ -208,7 +208,7 @@ void BlockDeallocate(void* buf) {
 
 static void FindRdmaLid() {
     ibv_port_attr attr;
-    if (IbvQueryPort(g_context, g_port_num, &attr) < 0) {
+    if (IbvQueryPort(g_context, g_port_num, &attr) != 0) {
         return;
     }
     g_lid = attr.lid;
@@ -220,7 +220,7 @@ static bool FindRdmaGid(ibv_context* context) {
     bool found = false;
     for (int i = g_gid_tbl_len - 1; i >= 0; --i) {
         ibv_gid gid;
-        if (IbvQueryGid(context, g_port_num, i, &gid) < 0) {
+        if (IbvQueryGid(context, g_port_num, i, &gid) != 0) {
             continue;
         }
         if (gid.global.interface_id == 0) {
@@ -250,7 +250,7 @@ static void OnRdmaAsyncEvent(Socket* m) {
     int progress = Socket::PROGRESS_INIT;
     do {
         ibv_async_event event;
-        if (IbvGetAsyncEvent(g_context, &event) < 0) {
+        if (IbvGetAsyncEvent(g_context, &event) != 0) {
             break;
         }
         LOG(WARNING) << "rdma async event: " << IbvEventTypeStr(event.event_type);
@@ -416,7 +416,8 @@ static ibv_context* OpenDevice(int num_total, int* num_available_devices) {
             continue;
         }
         ibv_port_attr attr;
-        if (IbvQueryPort(context.get(), uint8_t(FLAGS_rdma_port), &attr) < 0) {
+        errno = IbvQueryPort(context.get(), uint8_t(FLAGS_rdma_port), &attr);
+        if (errno != 0) {
             PLOG(WARNING) << "Fail to query port " << FLAGS_rdma_port << " on "
                           << dev_name;
             continue;
@@ -533,7 +534,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     ibv_device_attr attr;
-    if (IbvQueryDevice(g_context, &attr) < 0) {
+    if (IbvQueryDevice(g_context, &attr) != 0) {
         PLOG(ERROR) << "Fail to get the device information";
         ExitWithError();
     }
