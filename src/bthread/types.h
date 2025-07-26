@@ -154,6 +154,9 @@ static const bthread_t BTHREAD_ATOMIC_INIT = 0;
 // Min/Max number of work pthreads.
 static const int BTHREAD_MIN_CONCURRENCY = 3 + BTHREAD_EPOLL_THREAD_NUM;
 static const int BTHREAD_MAX_CONCURRENCY = 1024;
+// Min/max number of ParkingLot.
+static const int BTHREAD_MIN_PARKINGLOT = 4;
+static const int BTHREAD_MAX_PARKINGLOT = 1024;
 
 typedef struct {
     void* impl;
