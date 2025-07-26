@@ -372,9 +372,6 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/modp_b64/modp_b64.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/symbolize/demangle.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/symbolize/symbolize.cc
-    ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy-sinksource.cc
-    ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy-stubs-internal.cc
-    ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/murmurhash3/murmurhash3.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/arena.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/at_exit.cc
