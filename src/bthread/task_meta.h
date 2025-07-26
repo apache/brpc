@@ -113,7 +113,7 @@ struct TaskMeta {
     // Whether bthread is traced？
     bool traced{false};
     // Worker thread id.
-    pid_t worker_tid{-1};
+    pthread_t worker_tid{0};
 
 public:
     // Only initialize [Not Reset] fields, other fields will be reset in
