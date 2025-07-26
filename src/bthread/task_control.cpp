@@ -38,9 +38,9 @@ DEFINE_int32(task_group_delete_delay, 1,
              "delay deletion of TaskGroup for so many seconds");
 DEFINE_int32(task_group_runqueue_capacity, 4096,
              "capacity of runqueue in each TaskGroup");
-DEFINE_int32(task_group_yield_before_idle, 0,
-             "TaskGroup yields so many times before idle");
 DEFINE_int32(task_group_ntags, 1, "TaskGroup will be grouped by number ntags");
+DEFINE_bool(task_group_set_worker_name, true,
+            "Whether to set the name of the worker thread");
 
 namespace bthread {
 
@@ -92,10 +92,12 @@ void* TaskControl::worker_thread(void* arg) {
 
     g->_tid = syscall(SYS_gettid);
 
-    std::string worker_thread_name = butil::string_printf(
-        "brpc_wkr:%d-%d", g->tag(),
-        c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
-    butil::PlatformThread::SetName(worker_thread_name.c_str());
+    if (FLAGS_task_group_set_worker_name) {
+        std::string worker_thread_name = butil::string_printf(
+            "brpc_wkr:%d-%d", g->tag(),
+            c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
+        butil::PlatformThread::SetName(worker_thread_name.c_str());
+    }
     BT_VLOG << "Created worker=" << pthread_self() << " tid=" << g->_tid
             << " bthread=" << g->main_tid() << " tag=" << g->tag();
     tls_task_group = g;
