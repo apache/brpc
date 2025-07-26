@@ -20,15 +20,15 @@
 
 #ifdef BRPC_BTHREAD_TRACER
 
+#include "bthread/mutex.h"
+#include "bthread/task_meta.h"
+#include "butil/intrusive_ptr.hpp"
+#include "butil/shared_object.h"
+#include "butil/strings/safe_sprintf.h"
+#include "butil/synchronization/condition_variable.h"
+#include <libunwind.h>
 #include <signal.h>
 #include <vector>
-#include <libunwind.h>
-#include "butil/synchronization/condition_variable.h"
-#include "butil/intrusive_ptr.hpp"
-#include "butil/strings/safe_sprintf.h"
-#include "butil/shared_object.h"
-#include "bthread/task_meta.h"
-#include "bthread/mutex.h"
 
 namespace bthread {
 
@@ -39,10 +39,10 @@ public:
     bool Init();
     // Set the status to `s'.
     void set_status(TaskStatus s, TaskMeta* meta);
-    static void set_running_status(pid_t worker_tid, TaskMeta* meta);
+    static void set_running_status(pthread_t worker_tid, TaskMeta* meta);
     static bool set_end_status_unsafe(TaskMeta* m);
 
-    // Trace the bthread of `tid'.
+    // Trace the bthread of `tid`.
     std::string Trace(bthread_t tid);
     void Trace(std::ostream& os, bthread_t tid);
 
@@ -103,7 +103,7 @@ private:
 
     static bool RegisterSignalHandler();
     static void SignalHandler(int sig, siginfo_t* info, void* context);
-    Result SignalTrace(pid_t worker_tid);
+    Result SignalTrace(pthread_t worker_tid);
 
     // Make sure only one bthread is traced at a time.
     Mutex _trace_request_mutex;
