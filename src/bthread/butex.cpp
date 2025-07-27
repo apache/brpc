@@ -755,4 +755,9 @@ namespace butil {
 template <> struct ObjectPoolBlockMaxItem<bthread::Butex> {
     static const size_t value = 128;
 };
+// `bthread::butex_wake_n' may access the bthread::Butex object returned to the
+// ObjectPool<bthread::Butex>, so ObjectPool<bthread::Butex> can not poison
+// the memory region of bthread::Butex.
+template <>
+struct ObjectPoolWithASanPoison<bthread::Butex> : false_type {};
 }
