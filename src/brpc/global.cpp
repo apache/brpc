@@ -75,6 +75,7 @@
 #include "brpc/policy/ubrpc2pb_protocol.h"
 #include "brpc/policy/sofa_pbrpc_protocol.h"
 #include "brpc/policy/memcache_binary_protocol.h"
+#include "brpc/policy/couchbase_protocol.h"
 #include "brpc/policy/streaming_rpc_protocol.h"
 #include "brpc/policy/mongo_protocol.h"
 #include "brpc/policy/redis_protocol.h"
@@ -515,6 +516,16 @@ static void GlobalInitializeOrDieImpl() {
                                     NULL, NULL, GetMemcacheMethodName,
                                     CONNECTION_TYPE_ALL, "memcache" };
     if (RegisterProtocol(PROTOCOL_MEMCACHE, mc_binary_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol couchbase_protocol = { ParseCouchbaseMessage,
+                                    SerializeCouchbaseRequest,
+                                    PackCouchbaseRequest,
+                                    NULL, ProcessCouchbaseResponse,
+                                    NULL, NULL, GetCouchbaseMethodName,
+                                    CONNECTION_TYPE_POOLED_AND_SHORT, "couchbase" };
+    if (RegisterProtocol(PROTOCOL_COUCHBASE, couchbase_protocol) != 0) {
         exit(1);
     }
 
