@@ -524,7 +524,7 @@ static void GlobalInitializeOrDieImpl() {
                                     PackCouchbaseRequest,
                                     NULL, ProcessCouchbaseResponse,
                                     NULL, NULL, GetCouchbaseMethodName,
-                                    CONNECTION_TYPE_POOLED_AND_SHORT, "couchbase" };
+                                    CONNECTION_TYPE_ALL, "couchbase" };
     if (RegisterProtocol(PROTOCOL_COUCHBASE, couchbase_protocol) != 0) {
         exit(1);
     }
