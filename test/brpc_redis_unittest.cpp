@@ -1362,6 +1362,18 @@ TEST_F(RedisTest, memory_allocation_limits) {
         brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
         ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
     }
+
+    {
+        // Test int overflow
+        butil::IOBuf buf;
+        int64_t large_count = 9223372036854775807;
+        std::string large_array = "*" + std::to_string(large_count) + "\r\n";
+        buf.append(large_array);
+        
+        brpc::RedisReply reply(&arena);
+        brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+    }
     
     // Test redis_command.cpp limits
     {
