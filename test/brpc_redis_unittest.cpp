@@ -1385,7 +1385,7 @@ TEST_F(RedisTest, memory_allocation_limits) {
     }
 
     {
-        // Test int overflow
+        // Test large count
         butil::IOBuf buf;
         int64_t large_count = 9223372036854775807;
         std::string large_array = "*" + std::to_string(large_count) + "\r\n";
