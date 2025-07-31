@@ -10,6 +10,7 @@
 #include "brpc/pb_compat.h"
 
 namespace brpc {
+    static uint32_t hash_crc32(const char *key, size_t key_length);
     class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
         private:
             int _pipelined_count;
@@ -37,6 +38,7 @@ namespace brpc {
             bool SelectBucket(const butil::StringPiece &bucket_name);
             bool Authenticate(const butil::StringPiece &username,
                                 const butil::StringPiece &password);
+            bool HelloRequest();
             
             // Collection Management Methods
             bool GetCollectionsManifest();
