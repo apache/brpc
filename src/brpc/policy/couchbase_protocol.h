@@ -25,6 +25,7 @@ namespace policy {
     // Definition of the different command opcodes.
     // https://github.com/couchbase/kv_engine/blob/master/docs/BinaryProtocol.md
     enum CouchbaseBinaryCommand {
+        CB_HELLO_SELECT_FEATURES = 0x1f,
         CB_SELECT_BUCKET = 0x89,
         CB_GET_SCOPE_ID = 0xBC,
         CB_BINARY_GET = 0x00,
