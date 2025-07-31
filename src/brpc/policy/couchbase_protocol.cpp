@@ -51,6 +51,7 @@ static pthread_once_t supported_cmd_map_once = PTHREAD_ONCE_INIT;
 static void InitSupportedCommandMap() {
     butil::bit_array_clear(supported_cmd_map, 256);
     butil::bit_array_set(supported_cmd_map, CB_BINARY_GET);
+    butil::bit_array_set(supported_cmd_map, CB_HELLO_SELECT_FEATURES);
     butil::bit_array_set(supported_cmd_map, CB_SELECT_BUCKET);
     butil::bit_array_set(supported_cmd_map, CB_GET_SCOPE_ID);
     butil::bit_array_set(supported_cmd_map, CB_BINARY_SET);
@@ -143,8 +144,6 @@ ParseResult ParseCouchbaseMessage(butil::IOBuf* source,
                 msg->pi = pi;
                 return MakeMessage(msg);
         } else {
-            std::cout<<"Received Couchbase Response with command: " << std::hex << header->command << std::endl;
-            std::cout<<"Status: " << std::hex << header->status << std::hex;
             if (++msg->pi.count >= pi.count) {
                 CHECK_EQ(msg->pi.count, pi.count);
                 msg = static_cast<MostCommonMessage*>(socket->release_parsing_context());
