@@ -41,7 +41,8 @@ const int RWLockMaxReaders = 1 << 30;
 // For reading.
 static int rwlock_rdlock_impl(bthread_rwlock_t* __restrict rwlock,
                               const struct timespec* __restrict abstime) {
-    int reader_count = ((butil::atomic<int>*)&rwlock->reader_count)
+    auto* reader_count_atomic = (butil::atomic<int>*)&rwlock->reader_count;
+    int reader_count = reader_count_atomic
         ->fetch_add(1, butil::memory_order_acquire) + 1;
     // Fast path.
     if (reader_count >= 0) {
@@ -53,18 +54,32 @@ static int rwlock_rdlock_impl(bthread_rwlock_t* __restrict rwlock,
 
     // Don't sample when contention profiler is off.
     if (NULL == bthread::g_cp) {
-        return bthread_sem_timedwait(&rwlock->reader_sema, abstime);
+        int rc = bthread_sem_timedwait(&rwlock->reader_sema, abstime);
+        if (rc != 0){
+            reader_count_atomic->fetch_add(-1, butil::memory_order_relaxed);
+        }
+        return rc;
     }
     // Ask Collector if this (contended) locking should be sampled.
     const size_t sampling_range = bvar::is_collectable(&bthread::g_cp_sl);
     if (!bvar::is_sampling_range_valid(sampling_range)) { // Don't sample.
-        return bthread_sem_timedwait(&rwlock->reader_sema, abstime);
+        int rc = bthread_sem_timedwait(&rwlock->reader_sema, abstime);
+        if (rc != 0){
+            reader_count_atomic->fetch_add(-1, butil::memory_order_relaxed);
+        }
+        return rc;
     }
 
     // Sample.
     const int64_t start_ns = butil::cpuwide_time_ns();
     int rc = bthread_sem_timedwait(&rwlock->reader_sema, abstime);
+    if (rc != 0){
+        reader_count_atomic->fetch_add(-1, butil::memory_order_relaxed);
+    }
     const int64_t end_ns = butil::cpuwide_time_ns();
+    if (rc != 0){
+        ((butil::atomic<int>*)&rwlock->reader_count)->fetch_add(-1, butil::memory_order_relaxed);
+    }
     const bthread_contention_site_t csite{end_ns - start_ns, sampling_range};
     // Submit `csite' for each reader immediately after
     // owning rdlock to avoid the contention of `csite'.
@@ -189,7 +204,8 @@ static inline int rwlock_wrlock_impl(bthread_rwlock_t* __restrict rwlock,
     }
 
     // Announce to readers there is a pending writer.
-    int reader_count = ((butil::atomic<int>*)&rwlock->reader_count)
+    auto* reader_count_atomic = (butil::atomic<int>*)&rwlock->reader_count;
+    int reader_count = reader_count_atomic
         ->fetch_add(-RWLockMaxReaders, butil::memory_order_release);
     // Wait for active readers.
     if (reader_count != 0 &&
@@ -204,6 +220,7 @@ static inline int rwlock_wrlock_impl(bthread_rwlock_t* __restrict rwlock,
             rc = bthread_sem_timedwait(&rwlock->writer_sema, abstime);
             if (0 != rc) {
                 SUBMIT_CSITE_IF_NEED;
+                reader_count_atomic->fetch_add(RWLockMaxReaders, butil::memory_order_release);
                 bthread_mutex_unlock(&rwlock->write_queue_mutex);
                 return rc;
             }
