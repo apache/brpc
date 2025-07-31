@@ -21,7 +21,6 @@
 #include "butil/logging.h"
 #include "brpc/log.h"
 #include "brpc/redis_command.h"
-#include "gflags/gflags.h"
 
 namespace {
 
@@ -30,8 +29,6 @@ const size_t CTX_WIDTH = 5;
 } // namespace
 
 namespace brpc {
-
-DECLARE_int32(redis_max_allocation_size);
 
 // Much faster than snprintf(..., "%lu", d);
 inline size_t AppendDecimal(char* outbuf, unsigned long d) {
@@ -459,12 +456,6 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (!_parsing_array) {
-        if (value > (int64_t)(FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece))) {
-            LOG(ERROR) << "command array size exceeds limit! max=" 
-                       << (FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece)) 
-                       << ", actually=" << value;
-            return PARSE_ERROR_ABSOLUTELY_WRONG;
-        }
         buf.pop_front(crlf_pos + 2/*CRLF*/);
         _parsing_array = true;
         _length = value;
@@ -479,9 +470,9 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         LOG(ERROR) << "string in command is nil!";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    if (len > FLAGS_redis_max_allocation_size) {
-        LOG(ERROR) << "command string exceeds max allocation size! max=" 
-                   << FLAGS_redis_max_allocation_size << ", actually=" << len;
+    if (len > (int64_t)std::numeric_limits<uint32_t>::max()) {
+        LOG(ERROR) << "string in command is too long! max length=2^32-1,"
+            " actually=" << len;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (buf.size() < crlf_pos + 2 + (size_t)len + 2/*CRLF*/) {
