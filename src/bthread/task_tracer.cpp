@@ -18,17 +18,18 @@
 #ifdef BRPC_BTHREAD_TRACER
 
 #include "bthread/task_tracer.h"
-#include <unistd.h>
-#include <poll.h>
-#include <gflags/gflags.h>
-#include <absl/debugging/stacktrace.h>
-#include <absl/debugging/symbolize.h>
-#include "butil/debug/stack_trace.h"
+#include "bthread/processor.h"
+#include "bthread/task_group.h"
+#include "butil/fd_utility.h"
 #include "butil/memory/scope_guard.h"
 #include "butil/reloadable_flags.h"
-#include "butil/fd_utility.h"
-#include "bthread/task_group.h"
-#include "bthread/processor.h"
+#include <absl/debugging/stacktrace.h>
+#include <absl/debugging/symbolize.h>
+#include <csignal>
+#include <gflags/gflags.h>
+#include <poll.h>
+#include <pthread.h>
+#include <unistd.h>
 
 namespace bthread {
 
@@ -151,7 +152,7 @@ void TaskTracer::set_status(TaskStatus s, TaskMeta* m) {
             m->status = s;
         }
         if (TASK_STATUS_CREATED == s) {
-            m->worker_tid = -1;
+            m->worker_tid = pthread_t{};
         }
     }
 
@@ -161,7 +162,7 @@ void TaskTracer::set_status(TaskStatus s, TaskMeta* m) {
     }
 }
 
-void TaskTracer::set_running_status(pid_t worker_tid, TaskMeta* m) {
+void TaskTracer::set_running_status(pthread_t worker_tid, TaskMeta* m) {
     BAIDU_SCOPED_LOCK(m->version_lock);
     m->worker_tid = worker_tid;
     m->status = TASK_STATUS_RUNNING;
@@ -230,7 +231,7 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
 
     BAIDU_SCOPED_LOCK(_mutex);
     TaskStatus status;
-    pid_t worker_tid;
+    pthread_t worker_tid;
     const uint32_t given_version = get_version(tid);
     {
         BAIDU_SCOPED_LOCK(m->version_lock);
@@ -368,7 +369,7 @@ void TaskTracer::SignalHandler(int, siginfo_t* info, void* context) {
     butil::ignore_result(write(signal_sync->pipe_fds[1], "1", 1));
 }
 
-TaskTracer::Result TaskTracer::SignalTrace(pid_t tid) {
+TaskTracer::Result TaskTracer::SignalTrace(pthread_t worker_tid) {
     // CAUTION:
     // https://github.com/gperftools/gperftools/wiki/gperftools'-stacktrace-capturing-methods-and-their-issues#libunwind
     // Generally, libunwind promises async-signal-safety for capturing backtraces.
@@ -403,6 +404,10 @@ TaskTracer::Result TaskTracer::SignalTrace(pid_t tid) {
     //
     // Therefore, use async-signal-safe absl::DefaultStackUnwinder instead of libunwind.
 
+    if (pthread_equal(worker_tid, pthread_self())) {
+        return Result::MakeErrorResult("Forbid to trace self");
+    }
+
     // Remove unused SignalSyncs.
     auto iter = std::remove_if(
         _inuse_signal_syncs.begin(), _inuse_signal_syncs.end(),
@@ -424,11 +429,11 @@ TaskTracer::Result TaskTracer::SignalTrace(pid_t tid) {
     sigval value{};
     value.sival_ptr = signal_sync.get();
     size_t sigqueue_try = 0;
-    while (sigqueue(tid, SIGURG, value) != 0) {
+    while (pthread_sigqueue(worker_tid, SIGURG, value) != 0) {
         if (errno != EAGAIN || sigqueue_try++ >= 3) {
             // Remove reference for SignalHandler.
             signal_sync->RemoveRefManually();
-            return Result::MakeErrorResult("Fail to sigqueue: %s, tid: %d", berror(), tid);
+            return Result::MakeErrorResult("Fail to pthread_sigqueue: %s", berror());
         }
     }
     _inuse_signal_syncs.push_back(signal_sync);
