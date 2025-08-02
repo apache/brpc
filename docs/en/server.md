@@ -669,7 +669,7 @@ Performance issues when pthread mode is on:
 
 pthread-mode lets legacy code to try brpc more easily, but we still recommend refactoring the code with bthread-local or even remove TLS gradually, to turn off the option in future.
 
-## Security mode
+## Security
 
 If requests are from public(including being proxied by nginx etc), you have to be aware of some security issues.
 
@@ -708,6 +708,10 @@ brpc::WebEscape() escapes url to prevent injection attacks with malice.
 ### Not return addresses of internal servers
 
 Consider returning signatures of the addresses. For example after setting ServerOptions.internal_port, addresses in error information returned by server is replaced by their MD5 signatures.
+
+### Not start the brpc process as the root user
+
+During its operation, brpc writes various files (such as server pid files, rpcz, rpc dump, profiling, etc.). If brpc runs as the root user, attackers may exploit this feature to perform unauthorized file writes. Therefore, regardless of whether brpc provides network services or not, it is not recommended to start the brpc process as the root user.
 
 ## Customize /health
 
