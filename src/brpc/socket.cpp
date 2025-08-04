@@ -2273,6 +2273,8 @@ int Socket::OnInputEvent(void* user_data, uint32_t events,
         bthread_attr_t attr = thread_attr;
         attr.keytable_pool = p->_keytable_pool;
         attr.tag = bthread_self_tag();
+        // Only event dispatcher thread has flag BTHREAD_GLOBAL_PRIORITY
+        attr.flags = attr.flags & (~BTHREAD_GLOBAL_PRIORITY);
         if (FLAGS_usercode_in_coroutine) {
             ProcessEvent(p);
 #if BRPC_WITH_RDMA
