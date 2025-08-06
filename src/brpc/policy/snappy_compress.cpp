@@ -17,7 +17,7 @@
 
 
 #include "butil/logging.h"
-#include "butil/third_party/snappy/snappy.h"
+#include "snappy.h"
 #include "brpc/policy/snappy_compress.h"
 #include "brpc/protocol.h"
 #include "brpc/compress.h"
@@ -72,13 +72,13 @@ bool SnappyDecompress(const butil::IOBuf& data, google::protobuf::Message* msg) 
 bool SnappyCompress(const butil::IOBuf& in, butil::IOBuf* out) {
     butil::IOBufAsSnappySource source(in);
     butil::IOBufAsSnappySink sink(*out);
-    return butil::snappy::Compress(&source, &sink);
+    return snappy::Compress(&source, &sink);
 }
 
 bool SnappyDecompress(const butil::IOBuf& in, butil::IOBuf* out) {
     butil::IOBufAsSnappySource source(in);
     butil::IOBufAsSnappySink sink(*out);
-    return butil::snappy::Uncompress(&source, &sink);
+    return snappy::Uncompress(&source, &sink);
 }
 
 }  // namespace policy
