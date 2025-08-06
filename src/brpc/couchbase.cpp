@@ -460,27 +460,128 @@ const char* CouchbaseResponse::status_str(Status st) {
     case STATUS_SUCCESS:
         return "SUCCESS";
     case STATUS_KEY_ENOENT:
-        return "The key does not exist";
+        return "Key not found";
     case STATUS_KEY_EEXISTS:
-        return "The key exists";
+        return "Key already exists";
     case STATUS_E2BIG:
-        return "Arg list is too long";
+        return "Value too large";
     case STATUS_EINVAL:
-        return "Invalid argument";
+        return "Invalid arguments";
     case STATUS_NOT_STORED:
-        return "Not stored";
+        return "Item not stored";
     case STATUS_DELTA_BADVAL:
-        return "Bad delta";
+        return "Invalid delta value for increment/decrement";
+    case STATUS_VBUCKET_BELONGS_TO_ANOTHER_SERVER:
+        return "VBucket belongs to another server";
     case STATUS_AUTH_ERROR:
-        return "authentication error";
+        return "Authentication failed";
     case STATUS_AUTH_CONTINUE:
-        return "authentication continue";
+        return "Authentication continue";
+    case STATUS_ERANGE:
+        return "Range error";
+    case STATUS_ROLLBACK:
+        return "Rollback required";
+    case STATUS_EACCESS:
+        return "Access denied";
+    case STATUS_NOT_INITIALIZED:
+        return "Not initialized";
     case STATUS_UNKNOWN_COMMAND:
         return "Unknown command";
     case STATUS_ENOMEM:
         return "Out of memory";
+    case STATUS_NOT_SUPPORTED:
+        return "Operation not supported";
+    case STATUS_EINTERNAL:
+        return "Internal server error";
+    case STATUS_EBUSY:
+        return "Server busy";
+    case STATUS_ETMPFAIL:
+        return "Temporary failure";
+    case STATUS_UNKNOWN_COLLECTION:
+        return "Unknown collection";
+    case STATUS_NO_COLLECTIONS_MANIFEST:
+        return "No collections manifest";
+    case STATUS_CANNOT_APPLY_COLLECTIONS_MANIFEST:
+        return "Cannot apply collections manifest";
+    case STATUS_COLLECTIONS_MANIFEST_IS_AHEAD:
+        return "Collections manifest is ahead";
+    case STATUS_UNKNOWN_SCOPE:
+        return "Unknown scope";
+    case STATUS_DCP_STREAM_ID_INVALID:
+        return "Invalid DCP stream ID";
+    case STATUS_DURABILITY_INVALID_LEVEL:
+        return "Invalid durability level";
+    case STATUS_DURABILITY_IMPOSSIBLE:
+        return "Durability requirements impossible";
+    case STATUS_SYNC_WRITE_IN_PROGRESS:
+        return "Synchronous write in progress";
+    case STATUS_SYNC_WRITE_AMBIGUOUS:
+        return "Synchronous write result ambiguous";
+    case STATUS_SYNC_WRITE_RE_COMMIT_IN_PROGRESS:
+        return "Synchronous write re-commit in progress";
+    case STATUS_SUBDOC_PATH_NOT_FOUND:
+        return "Sub-document path not found";
+    case STATUS_SUBDOC_PATH_MISMATCH:
+        return "Sub-document path mismatch";
+    case STATUS_SUBDOC_PATH_EINVAL:
+        return "Invalid sub-document path";
+    case STATUS_SUBDOC_PATH_E2BIG:
+        return "Sub-document path too deep";
+    case STATUS_SUBDOC_DOC_E2DEEP:
+        return "Sub-document too deep";
+    case STATUS_SUBDOC_VALUE_CANTINSERT:
+        return "Cannot insert sub-document value";
+    case STATUS_SUBDOC_DOC_NOT_JSON:
+        return "Document is not JSON";
+    case STATUS_SUBDOC_NUM_E2BIG:
+        return "Sub-document number too large";
+    case STATUS_SUBDOC_DELTA_E2BIG:
+        return "Sub-document delta too large";
+    case STATUS_SUBDOC_PATH_EEXISTS:
+        return "Sub-document path already exists";
+    case STATUS_SUBDOC_VALUE_E2DEEP:
+        return "Sub-document value too deep";
+    case STATUS_SUBDOC_INVALID_COMBO:
+        return "Invalid sub-document operation combination";
+    case STATUS_SUBDOC_MULTI_PATH_FAILURE:
+        return "Sub-document multi-path operation failed";
+    case STATUS_SUBDOC_SUCCESS_DELETED:
+        return "Sub-document operation succeeded on deleted document";
+    case STATUS_SUBDOC_XATTR_INVALID_FLAG_COMBO:
+        return "Invalid extended attribute flag combination";
+    case STATUS_SUBDOC_XATTR_INVALID_KEY_COMBO:
+        return "Invalid extended attribute key combination";
+    case STATUS_SUBDOC_XATTR_UNKNOWN_MACRO:
+        return "Unknown extended attribute macro";
+    case STATUS_SUBDOC_XATTR_UNKNOWN_VATTR:
+        return "Unknown virtual extended attribute";
+    case STATUS_SUBDOC_XATTR_CANT_MODIFY_VATTR:
+        return "Cannot modify virtual extended attribute";
+    case STATUS_SUBDOC_MULTI_PATH_FAILURE_DELETED:
+        return "Sub-document multi-path operation failed on deleted document";
+    case STATUS_SUBDOC_INVALID_XATTR_ORDER:
+        return "Invalid extended attribute order";
+    case STATUS_SUBDOC_XATTR_UNKNOWN_VATTR_MACRO:
+        return "Unknown virtual extended attribute macro";
+    case STATUS_SUBDOC_CAN_ONLY_REVIVE_DELETED_DOCUMENTS:
+        return "Can only revive deleted documents";
+    case STATUS_SUBDOC_DELETED_DOCUMENT_CANT_HAVE_VALUE:
+        return "Deleted document cannot have a value";
+    case STATUS_XATTR_EINVAL:
+        return "Invalid extended attributes";
     }
     return "Unknown status";
+}
+
+// Helper method to format error messages with status codes
+std::string CouchbaseResponse::format_error_message(uint16_t status_code, const std::string& operation, const std::string& error_msg) {
+    if (error_msg.empty()) {
+        return butil::string_printf("%s failed with status 0x%02x (%s)", 
+                                  operation.c_str(), status_code, status_str((Status)status_code));
+    } else {
+        return butil::string_printf("%s failed with status 0x%02x (%s): %s", 
+                                  operation.c_str(), status_code, status_str((Status)status_code), error_msg.c_str());
+    }
 }
 
 // MUST NOT have extras.
@@ -606,8 +707,13 @@ bool CouchbaseResponse::PopGet(
         }
         _buf.pop_front(sizeof(header) + header.extras_length +
                       header.key_length);
-        _err.clear();
-        _buf.cutn(&_err, value_size);
+        if (value_size > 0) {
+            std::string error_msg;
+            _buf.cutn(&error_msg, value_size);
+            _err = format_error_message(header.status, "GET operation", error_msg);
+        } else {
+            _err = format_error_message(header.status, "GET operation");
+        }
         return false;
     }
     if (header.extras_length != 4u) {
@@ -743,8 +849,13 @@ bool CouchbaseResponse::PopStore(uint8_t command, uint64_t* cas_value) {
         - (int)header.key_length;
     if (header.status != (uint16_t)STATUS_SUCCESS) {
         _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-        _err.clear();
-        _buf.cutn(&_err, value_size);
+        if (value_size > 0) {
+            std::string error_msg;
+            _buf.cutn(&error_msg, value_size);
+            _err = format_error_message(header.status, "STORE operation", error_msg);
+        } else {
+            _err = format_error_message(header.status, "STORE operation");
+        }
         return false;
     }
     LOG_IF(ERROR, value_size != 0) << "STORE response must not have value, actually="
@@ -758,7 +869,7 @@ bool CouchbaseResponse::PopStore(uint8_t command, uint64_t* cas_value) {
     return true;
 }
 
-bool CouchbaseRequest::Set(
+bool CouchbaseRequest::Upsert(
     const butil::StringPiece& key, const butil::StringPiece& value,
     uint32_t flags, uint32_t exptime, uint64_t cas_value) {
     return Store(policy::CB_BINARY_SET, key, value, flags, exptime, cas_value);
@@ -819,7 +930,7 @@ bool CouchbaseRequest::GetFromCollection(const butil::StringPiece& key,
     return GetOrDelete(policy::CB_BINARY_GET, butil::StringPiece(scoped_key));
 }
 
-bool CouchbaseRequest::SetToCollection(const butil::StringPiece& key, 
+bool CouchbaseRequest::UpsertToCollection(const butil::StringPiece& key, 
                                      const butil::StringPiece& value,
                                      uint32_t flags, uint32_t exptime, uint64_t cas_value,
                                      const butil::StringPiece& scope_name,
@@ -861,7 +972,7 @@ bool CouchbaseRequest::Prepend(
     return Store(policy::CB_BINARY_PREPEND, key, value, flags, exptime, cas_value);
 }
 
-bool CouchbaseResponse::PopSet(uint64_t* cas_value) {
+bool CouchbaseResponse::PopUpsert(uint64_t* cas_value) {
     return PopStore(policy::CB_BINARY_SET, cas_value);
 }
 bool CouchbaseResponse::PopAdd(uint64_t* cas_value) {
@@ -896,9 +1007,14 @@ bool CouchbaseResponse::PopCollectionsManifest(std::string* manifest_json) {
     }
     if (header.status != 0) {
         _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-        _err.clear();
         int value_size = (int)header.total_body_length - (int)header.extras_length - (int)header.key_length;
-        _buf.cutn(&_err, value_size);
+        if (value_size > 0) {
+            std::string error_msg;
+            _buf.cutn(&error_msg, value_size);
+            _err = format_error_message(header.status, "Collections manifest request", error_msg);
+        } else {
+            _err = format_error_message(header.status, "Collections manifest request");
+        }
         return false;
     }
 
@@ -935,9 +1051,14 @@ bool CouchbaseResponse::PopCollectionId(uint32_t* collection_id) {
     }
     if (header.status != 0) {
         _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-        _err.clear();
         int value_size = (int)header.total_body_length - (int)header.extras_length - (int)header.key_length;
-        _buf.cutn(&_err, value_size);
+        if (value_size > 0) {
+            std::string error_msg;
+            _buf.cutn(&error_msg, value_size);
+            _err = format_error_message(header.status, "Collection ID request", error_msg);
+        } else {
+            _err = format_error_message(header.status, "Collection ID request");
+        }
         return false;
     }
 
@@ -965,9 +1086,9 @@ bool CouchbaseResponse::PopGetFromCollection(butil::IOBuf* value, uint32_t* flag
     return PopGet(value, flags, cas_value);
 }
 
-bool CouchbaseResponse::PopSetToCollection(uint64_t* cas_value) {
+bool CouchbaseResponse::PopUpsertToCollection(uint64_t* cas_value) {
     // Same implementation as PopSet, just aliased for clarity
-    return PopSet(cas_value);
+    return PopUpsert(cas_value);
 }
 
 struct IncrHeaderWithExtras {
@@ -1070,8 +1191,13 @@ bool CouchbaseResponse::PopCounter(
         if (value_size < 0) {
             butil::string_printf(&_err, "value_size=%d is negative", value_size);
         } else {
-            _err.clear();
-            _buf.cutn(&_err, value_size);
+            if (value_size > 0) {
+                std::string error_msg;
+                _buf.cutn(&error_msg, value_size);
+                _err = format_error_message(header.status, "Counter operation", error_msg);
+            } else {
+                _err = format_error_message(header.status, "Counter operation");
+            }
         }
         return false;
     }
@@ -1163,6 +1289,10 @@ bool CouchbaseRequest::Version() {
 // MUST NOT have extras.
 // MUST NOT have key.
 // MUST have value.
+bool CouchbaseResponse::PopTouch() {
+    return PopStore(policy::CB_BINARY_TOUCH, NULL);
+}
+
 bool CouchbaseResponse::PopVersion(std::string* version) {
     const size_t n = _buf.size();
     policy::CouchbaseResponseHeader header;
@@ -1190,8 +1320,13 @@ bool CouchbaseResponse::PopVersion(std::string* version) {
         return false;
     }
     if (header.status != (uint16_t)STATUS_SUCCESS) {
-        _err.clear();
-        _buf.cutn(&_err, value_size);
+        if (value_size > 0) {
+            std::string error_msg;
+            _buf.cutn(&error_msg, value_size);
+            _err = format_error_message(header.status, "Version request", error_msg);
+        } else {
+            _err = format_error_message(header.status, "Version request");
+        }
         return false;
     }
     if (version) {

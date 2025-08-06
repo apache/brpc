@@ -53,9 +53,9 @@ namespace brpc {
                                  const butil::StringPiece& scope_name,
                                  const butil::StringPiece& collection_name);
             
-            bool Set(const butil::StringPiece& key, const butil::StringPiece& value,
+            bool Upsert(const butil::StringPiece& key, const butil::StringPiece& value,
              uint32_t flags, uint32_t exptime, uint64_t cas_value);
-            bool SetToCollection(const butil::StringPiece& key, const butil::StringPiece& value,
+            bool UpsertToCollection(const butil::StringPiece& key, const butil::StringPiece& value,
              uint32_t flags, uint32_t exptime, uint64_t cas_value,
              const butil::StringPiece& scope_name, const butil::StringPiece& collection_name);
                      
@@ -129,10 +129,55 @@ namespace brpc {
                 STATUS_EINVAL = 0x04,
                 STATUS_NOT_STORED = 0x05,
                 STATUS_DELTA_BADVAL = 0x06,
+                STATUS_VBUCKET_BELONGS_TO_ANOTHER_SERVER = 0x07,
                 STATUS_AUTH_ERROR = 0x20,
                 STATUS_AUTH_CONTINUE = 0x21,
+                STATUS_ERANGE = 0x22,
+                STATUS_ROLLBACK = 0x23,
+                STATUS_EACCESS = 0x24,
+                STATUS_NOT_INITIALIZED = 0x25,
                 STATUS_UNKNOWN_COMMAND = 0x81,
-                STATUS_ENOMEM = 0x82
+                STATUS_ENOMEM = 0x82,
+                STATUS_NOT_SUPPORTED = 0x83,
+                STATUS_EINTERNAL = 0x84,
+                STATUS_EBUSY = 0x85,
+                STATUS_ETMPFAIL = 0x86,
+                STATUS_UNKNOWN_COLLECTION = 0x88,
+                STATUS_NO_COLLECTIONS_MANIFEST = 0x89,
+                STATUS_CANNOT_APPLY_COLLECTIONS_MANIFEST = 0x8a,
+                STATUS_COLLECTIONS_MANIFEST_IS_AHEAD = 0x8b,
+                STATUS_UNKNOWN_SCOPE = 0x8c,
+                STATUS_DCP_STREAM_ID_INVALID = 0x8d,
+                STATUS_DURABILITY_INVALID_LEVEL = 0xa0,
+                STATUS_DURABILITY_IMPOSSIBLE = 0xa1,
+                STATUS_SYNC_WRITE_IN_PROGRESS = 0xa2,
+                STATUS_SYNC_WRITE_AMBIGUOUS = 0xa3,
+                STATUS_SYNC_WRITE_RE_COMMIT_IN_PROGRESS = 0xa4,
+                STATUS_SUBDOC_PATH_NOT_FOUND = 0xc0,
+                STATUS_SUBDOC_PATH_MISMATCH = 0xc1,
+                STATUS_SUBDOC_PATH_EINVAL = 0xc2,
+                STATUS_SUBDOC_PATH_E2BIG = 0xc3,
+                STATUS_SUBDOC_DOC_E2DEEP = 0xc4,
+                STATUS_SUBDOC_VALUE_CANTINSERT = 0xc5,
+                STATUS_SUBDOC_DOC_NOT_JSON = 0xc6,
+                STATUS_SUBDOC_NUM_E2BIG = 0xc7,
+                STATUS_SUBDOC_DELTA_E2BIG = 0xc8,
+                STATUS_SUBDOC_PATH_EEXISTS = 0xc9,
+                STATUS_SUBDOC_VALUE_E2DEEP = 0xca,
+                STATUS_SUBDOC_INVALID_COMBO = 0xcb,
+                STATUS_SUBDOC_MULTI_PATH_FAILURE = 0xcc,
+                STATUS_SUBDOC_SUCCESS_DELETED = 0xcd,
+                STATUS_SUBDOC_XATTR_INVALID_FLAG_COMBO = 0xce,
+                STATUS_SUBDOC_XATTR_INVALID_KEY_COMBO = 0xcf,
+                STATUS_SUBDOC_XATTR_UNKNOWN_MACRO = 0xd0,
+                STATUS_SUBDOC_XATTR_UNKNOWN_VATTR = 0xd1,
+                STATUS_SUBDOC_XATTR_CANT_MODIFY_VATTR = 0xd2,
+                STATUS_SUBDOC_MULTI_PATH_FAILURE_DELETED = 0xd3,
+                STATUS_SUBDOC_INVALID_XATTR_ORDER = 0xd4,
+                STATUS_SUBDOC_XATTR_UNKNOWN_VATTR_MACRO = 0xd5,
+                STATUS_SUBDOC_CAN_ONLY_REVIVE_DELETED_DOCUMENTS = 0xd6,
+                STATUS_SUBDOC_DELETED_DOCUMENT_CANT_HAVE_VALUE = 0xd7,
+                STATUS_XATTR_EINVAL = 0xe0
             };
 
             void MergeFrom(const CouchbaseResponse& from) override;
@@ -151,12 +196,16 @@ namespace brpc {
             butil::IOBuf& raw_buffer() { return _buf; }
             const butil::IOBuf& raw_buffer() const { return _buf; }
             static const char* status_str(Status);
+            
+            // Helper method to format error messages with status codes
+            static std::string format_error_message(uint16_t status_code, const std::string& operation, const std::string& error_msg = "");
+            
             // Add methods to handle response parsing
             void Swap(CouchbaseResponse* other);
             bool PopGet(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
             bool PopGet(std::string* value, uint32_t* flags, uint64_t* cas_value);
             const std::string& LastError() const { return _err; }
-            bool PopSet(uint64_t* cas_value);
+            bool PopUpsert(uint64_t* cas_value);
             bool PopAdd(uint64_t* cas_value);
             bool PopReplace(uint64_t* cas_value);
             bool PopAppend(uint64_t* cas_value);
@@ -168,7 +217,7 @@ namespace brpc {
             
             // Collection-aware response methods (same as regular but for documentation)
             bool PopGetFromCollection(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
-            bool PopSetToCollection(uint64_t* cas_value);
+            bool PopUpsertToCollection(uint64_t* cas_value);
 
             bool PopDelete();
             bool PopFlush();
