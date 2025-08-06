@@ -126,6 +126,8 @@ bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
 
 格式和hiredis基本兼容：即%b对应二进制数据（指针+length)，其他和printf的参数类似。对一些细节做了改进：当某个字段包含空格时，使用单引号或双引号包围起来会被视作一个字段。比如AddCommand("Set 'a key with space' 'a value with space as well'")中的key是a key with space，value是a value with space as well。在hiredis中必须写成redisvCommand(..., "SET %s %s", "a key with space", "a value with space as well");
 
+> 注意，AddCommand和AddCommandV的fmt参数如果设置错误，有可能导致程序crash或者数据泄露，请谨慎设置。不应将受用户输入影响的内容作为fmt参数进行调用！
+
 AddCommandByComponents类似hiredis中的redisCommandArgv，用户通过数组指定命令中的每一个部分。这个方法对AddCommand和AddCommandV可能发生的转义问题免疫，且效率最高。如果你在使用AddCommand和AddCommandV时出现了“Unmatched quote”，“无效格式”等问题且无法定位，可以试下这个方法。
 
 如果AddCommand\*失败，后续的AddCommand\*和CallMethod都会失败。一般来说不用判AddCommand*的结果，失败后自然会通过RPC失败体现出来。
