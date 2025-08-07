@@ -219,7 +219,7 @@ public:
 
     bthread_tag_t tag() const { return _tag; }
 
-    pid_t tid() const { return _tid; }
+    pthread_t tid() const { return _tid; }
 
     int64_t current_task_cpu_clock_ns() {
         if (_last_cpu_clock_ns == 0) {
@@ -378,7 +378,7 @@ friend class TaskControl;
     bthread_tag_t _tag{BTHREAD_TAG_DEFAULT};
 
     // Worker thread id.
-    pid_t _tid{-1};
+    pthread_t _tid{};
 };
 
 }  // namespace bthread

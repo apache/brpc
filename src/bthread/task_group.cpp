@@ -1107,7 +1107,7 @@ void print_task(std::ostream& os, bthread_t tid) {
     TaskStatistics stat = {0, 0, 0};
     TaskStatus status = TASK_STATUS_UNKNOWN;
     bool traced = false;
-    pid_t worker_tid = 0;
+    pthread_t worker_tid{};
     {
         BAIDU_SCOPED_LOCK(m->version_lock);
         if (given_ver == *m->version_butex) {
