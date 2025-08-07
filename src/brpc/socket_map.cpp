@@ -46,6 +46,13 @@ DEFINE_int32(defer_close_second, 0,
              "non-positive values.");
 BRPC_VALIDATE_GFLAG(defer_close_second, PassValidate);
 
+DEFINE_bool(defer_close_respect_idle, false,
+            "When defer_close_second > 0, close a connection immediately when "
+            "the last reference is removed and the socket has already been "
+            "idle for longer than defer_close_second. Disabled by default for "
+            "backward compatibility.");
+BRPC_VALIDATE_GFLAG(defer_close_respect_idle, PassValidate);
+
 DEFINE_bool(show_socketmap_in_vars, false,
             "[DEBUG] Describe SocketMaps in /vars");
 BRPC_VALIDATE_GFLAG(show_socketmap_in_vars, PassValidate);
@@ -71,6 +78,7 @@ static void CreateClientSideSocketMap() {
     options.socket_creator = new GlobalSocketCreator;
     options.idle_timeout_second_dynamic = &FLAGS_idle_timeout_second;
     options.defer_close_second_dynamic = &FLAGS_defer_close_second;
+    options.defer_close_respect_idle_dynamic = &FLAGS_defer_close_respect_idle;
     if (socket_map->Init(options) != 0) {
         LOG(FATAL) << "Fail to init SocketMap";
         exit(1);
@@ -130,7 +138,8 @@ SocketMapOptions::SocketMapOptions()
     , idle_timeout_second_dynamic(NULL)
     , idle_timeout_second(0)
     , defer_close_second_dynamic(NULL)
-    , defer_close_second(0) {
+    , defer_close_second(0)
+    , defer_close_respect_idle_dynamic(NULL) {
 }
 
 SocketMap::SocketMap()
@@ -296,15 +305,29 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
             *_options.defer_close_second_dynamic
             : _options.defer_close_second;
         if (!remove_orphan && defer_close_second > 0) {
-            // Start count down on this Socket 
-            sc->no_ref_us = butil::cpuwide_time_us();
-        } else {
-            Socket* const s = sc->socket;
-            _map.erase(key);
-            mu.unlock();
-            s->ReleaseAdditionalReference(); // release extra ref
-            ReleaseReference(s);
+            const int64_t now_us = butil::cpuwide_time_us();
+            // NOTE: save the gflag which may be reloaded at any time
+            const bool defer_close_respect_idle = _options.defer_close_respect_idle_dynamic ?
+            *_options.defer_close_respect_idle_dynamic : false;
+            if (!defer_close_respect_idle) {
+                // Start count down on this Socket.
+                sc->no_ref_us = now_us;
+                return;
+            }
+            const int64_t defer_us = (int64_t)defer_close_second * 1000000L;
+            if (sc->no_ref_us <= sc->socket->last_active_time_us() + defer_us) {
+                // When defer_close_respect_idle is enabled, a connection that has
+                // already been idle for longer than defer_close_second is closed
+                // immediately.
+                sc->no_ref_us = now_us;
+                return;
+            }
         }
+        Socket* const s = sc->socket;
+        _map.erase(key);
+        mu.unlock();
+        s->ReleaseAdditionalReference(); // release extra ref
+        ReleaseReference(s);
     }
 }
 
