@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-def generate_brpc_unit_tests(name, srcs, deps, copts):
+def generate_brpc_unit_tests(name, srcs, deps, copts, data = []):
     tests = []
     for s in srcs:
         tgt = s.replace(".cpp", "")
@@ -21,6 +21,7 @@ def generate_brpc_unit_tests(name, srcs, deps, copts):
             name = tgt,
             srcs = [s],
             copts = copts,
+            data = data,
             deps  = deps,
         )
         tests.append(":" + tgt)

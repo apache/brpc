@@ -169,6 +169,26 @@ jobs:
     - uses: actions/checkout@v2
     - run: bazel build --verbose_failures --action_env=CC=clang --define with_mesalink=false --define with_glog=true --define with_thrift=true --define with_debug_bthread_sche_safety=true --define with_debug_lock=true --define with_asan=true -- //... -//example/...
 
+  gcc-bazel-unittest:
+    runs-on: ubuntu-22.04
+    env:
+      HTTP_PROXY: http://127.0.0.1:7890  # 假设代理端口是7890
+      HTTPS_PROXY: http://127.0.0.1:7890
+      NO_PROXY: localhost,127.0.0.1
+    steps:
+    - uses: actions/checkout@v2
+    # - uses: bazelbuild/setup-bazelisk@v2
+    - name: run bazel tests
+      run: bazel test --test_output=errors --verbose_failures -- //test/... 
+
+  clang-bazel-unittest:
+    runs-on: ubuntu-22.04  
+    steps:
+    - uses: actions/checkout@v2
+    - uses: bazelbuild/setup-bazelisk@v2
+    - name: run bazel tests
+      run: bazel test --test_output=errors --verbose_failures --action_env=CC=clang -- //test/... //...
+
   clang-unittest:
     runs-on: ubuntu-22.04
     steps:

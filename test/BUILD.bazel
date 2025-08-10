@@ -17,6 +17,18 @@ load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_proto_library", "cc_test")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 load("//test:brpc_unit_test.bzl", "generate_brpc_unit_tests")
+load("//test:flat_runfiles.bzl", "flat_runfiles")
+
+flat_runfiles(
+    name = "root_test_assets",
+    srcs = [
+        "cert1.crt",
+        "cert1.key",
+        "cert2.crt",
+        "cert2.key",
+        "jsonout",
+    ],
+)
 
 COPTS = [
     "-D__STDC_FORMAT_MACROS",
@@ -206,6 +218,7 @@ generate_brpc_unit_tests(
     name = "brpc_test",
     srcs = glob(["brpc_*_unittest.cpp"]),
     copts = COPTS,
+    data = [":root_test_assets"],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
