@@ -430,9 +430,6 @@ public:
     // reference which is held on created.
     void ReleaseHCRelatedReference();
 
-    // After health checking is complete, set _hc_started to false.
-    void AfterHCCompleted() { _hc_started.store(false, butil::memory_order_relaxed); }
-
     // `user' parameter passed to Create().
     SocketUser* user() const { return _user; }
 
@@ -885,10 +882,6 @@ private:
     // to the health checking is held by someone. It can be
     // synchronized via _versioned_ref atomic variable.
     bool _is_hc_related_ref_held;
-
-    // Default: false.
-    // true, if health checking is started.
-    butil::atomic<bool> _hc_started;
 
     // +-1 bit-+---31 bit---+
     // |  flag |   counter  |

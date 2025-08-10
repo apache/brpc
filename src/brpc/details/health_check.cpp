@@ -183,7 +183,6 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         _first_time = false;
         if (ptr->WaitAndReset(2/*note*/) != 0) {
             LOG(INFO) << "Cancel checking " << *ptr;
-            ptr->AfterHCCompleted();
             return false;
         }
     }
@@ -210,11 +209,9 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         if (!ptr->health_check_path().empty()) {
             HealthCheckManager::StartCheck(_id, ptr->_health_check_interval_s);
         }
-        ptr->AfterHCCompleted();
         return false;
     } else if (hc == ESTOP) {
         LOG(INFO) << "Cancel checking " << *ptr;
-        ptr->AfterHCCompleted();
         return false;
     } else {
         RPC_VLOG << "Fail to check " << *ptr

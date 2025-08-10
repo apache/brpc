@@ -467,7 +467,6 @@ Socket::Socket(Forbidden f)
     , _correlation_id(0)
     , _health_check_interval_s(-1)
     , _is_hc_related_ref_held(false)
-    , _hc_started(false)
     , _ninprocess(1)
     , _auth_flag_error(0)
     , _auth_id(INVALID_BTHREAD_ID)
@@ -744,7 +743,6 @@ int Socket::OnCreated(const SocketOptions& options) {
     _health_check_interval_s = options.health_check_interval_s;
     _hc_option = options.hc_option;
     _is_hc_related_ref_held = false;
-    _hc_started.store(false, butil::memory_order_relaxed);
     _ninprocess.store(1, butil::memory_order_relaxed);
     _auth_flag_error.store(0, butil::memory_order_relaxed);
     const int rc2 = bthread_id_create(&_auth_id, NULL, NULL);
@@ -915,19 +913,9 @@ void Socket::OnFailed(int error_code, const std::string& error_text) {
     // by Channel to revive never-connected socket when server side
     // comes online.
     if (HCEnabled()) {
-        bool expect = false;
-        if (_hc_started.compare_exchange_strong(expect,
-            true,
-            butil::memory_order_relaxed,
-            butil::memory_order_relaxed)) {
-            GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
-            StartHealthCheck(id(),
-                GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
-        } else {
-            // No need to run 2 health checking at the same time.
-            RPC_VLOG << "There is already a health checking running "
-                        "for SocketId=" << id();
-        }
+        GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
+        StartHealthCheck(id(),
+            GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
     }
     // Wake up all threads waiting on EPOLLOUT when closing fd
     _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
