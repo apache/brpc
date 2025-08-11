@@ -475,7 +475,6 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/crc32c.cc
     ${PROJECT_SOURCE_DIR}/src/butil/containers/case_ignored_flat_map.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/iobuf.cpp
-    ${PROJECT_SOURCE_DIR}/src/butil/iobuf_inl.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/single_iobuf.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/iobuf_profiler.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/binary_printer.cpp

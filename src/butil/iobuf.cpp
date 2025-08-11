@@ -179,9 +179,23 @@ void reset_blockmem_allocate_and_deallocate() {
     blockmem_deallocate = ::free;
 }
 
-butil::atomic<size_t> g_nblock = BUTIL_STATIC_ATOMIC_INIT(0);
-butil::atomic<size_t> g_blockmem = BUTIL_STATIC_ATOMIC_INIT(0);
-butil::atomic<size_t> g_newbigview = BUTIL_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> g_nblock = BUTIL_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> g_blockmem = BUTIL_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> g_newbigview = BUTIL_STATIC_ATOMIC_INIT(0);
+
+void inc_g_nblock() {
+    g_nblock.fetch_add(1, butil::memory_order_relaxed);
+}
+void dec_g_nblock() {
+    g_nblock.fetch_sub(1, butil::memory_order_relaxed);
+}
+
+void inc_g_blockmem() {
+    g_blockmem.fetch_add(1, butil::memory_order_relaxed);
+}
+void dec_g_blockmem() {
+    g_blockmem.fetch_sub(1, butil::memory_order_relaxed);
+}
 
 }  // namespace iobuf
 
@@ -214,23 +228,6 @@ uint32_t block_size(IOBuf::Block const* b) {
     return b->size;
 }
 
-IOBuf::Block* create_block(const size_t block_size) {
-    if (block_size > 0xFFFFFFFFULL) {
-        LOG(FATAL) << "block_size=" << block_size << " is too large";
-        return NULL;
-    }
-    char* mem = (char*)iobuf::blockmem_allocate(block_size);
-    if (mem == NULL) {
-        return NULL;
-    }
-    return new (mem) IOBuf::Block(mem + sizeof(IOBuf::Block),
-                                  block_size - sizeof(IOBuf::Block));
-}
-
-IOBuf::Block* create_block() {
-    return create_block(IOBuf::DEFAULT_BLOCK_SIZE);
-}
-
 inline IOBuf::Block* create_block_aligned(size_t block_size, size_t alignment) {
     if (block_size > 0xFFFFFFFFULL) {
         LOG(FATAL) << "block_size=" << block_size << " is too large";
@@ -249,28 +246,11 @@ inline IOBuf::Block* create_block_aligned(size_t block_size, size_t alignment) {
 }
 
 // === Share TLS blocks between appending operations ===
-// Max number of blocks in each TLS. This is a soft limit namely
-// release_tls_block_chain() may exceed this limit sometimes.
-const int MAX_BLOCKS_PER_THREAD = 8;
-
-inline int max_blocks_per_thread() {
-    // If IOBufProfiler is enabled, do not cache blocks in TLS.
-    return IsIOBufProfilerEnabled() ? 0 : MAX_BLOCKS_PER_THREAD;
-}
-
-struct TLSData {
-    // Head of the TLS block chain.
-    IOBuf::Block* block_head;
-    
-    // Number of TLS blocks
-    int num_blocks;
-    
-    // True if the remote_tls_block_chain is registered to the thread.
-    bool registered;
-};
 
 static __thread TLSData g_tls_data = { NULL, 0, false };
 
+// Used in release_tls_block()
+TLSData* get_g_tls_data() { return &g_tls_data; }
 // Used in UT
 IOBuf::Block* get_tls_block_head() { return g_tls_data.block_head; }
 int get_tls_block_count() { return g_tls_data.num_blocks; }
@@ -279,6 +259,14 @@ int get_tls_block_count() { return g_tls_data.num_blocks; }
 // already. This counter should be 0 in most scenarios, otherwise performance
 // of appending functions in IOPortal may be lowered.
 static butil::static_atomic<size_t> g_num_hit_tls_threshold = BUTIL_STATIC_ATOMIC_INIT(0);
+
+void inc_g_num_hit_tls_threshold() {
+    g_num_hit_tls_threshold.fetch_add(1, butil::memory_order_relaxed);
+}
+
+void dec_g_num_hit_tls_threshold() {
+    g_num_hit_tls_threshold.fetch_sub(1, butil::memory_order_relaxed);
+}
 
 // Called in UT.
 void remove_tls_block_chain() {
@@ -329,28 +317,6 @@ IOBuf::Block* share_tls_block() {
     }
     tls_data.block_head = new_block;
     return new_block;
-}
-
-// Return one block to TLS.
-void release_tls_block(IOBuf::Block* b) {
-    if (!b) {
-        return;
-    }
-    TLSData& tls_data = g_tls_data;
-    if (b->full()) {
-        b->dec_ref();
-    } else if (tls_data.num_blocks >= max_blocks_per_thread()) {
-        b->dec_ref();
-        g_num_hit_tls_threshold.fetch_add(1, butil::memory_order_relaxed);
-    } else {
-        b->u.portal_next = tls_data.block_head;
-        tls_data.block_head = b;
-        ++tls_data.num_blocks;
-        if (!tls_data.registered) {
-            tls_data.registered = true;
-            butil::thread_atexit(remove_tls_block_chain);
-        }
-    }
 }
 
 // Return chained blocks to TLS.

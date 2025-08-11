@@ -46,6 +46,8 @@ public:
     void deallocate(void* p);
 
     // Reallocates the current buffer to a larger size.
+    // in_use_back indicates the memory used by message data.
+    // in_use_front indicates the memory used by metadata.
     void* reallocate_downward(uint32_t new_size,
                             uint32_t in_use_back,
                             uint32_t in_use_front);
@@ -76,7 +78,7 @@ public:
     
     // Assigns user date to the SingleIOBuf,
     // updates _cur_ref to point to the block storing the data.
-    int assign_user_data(void* data, size_t size, void (*deleter)(void*));
+    int assign_user_data(void* data, size_t size, std::function<void(void*)> deleter);
     
     // Increments the reference count of the specified target block.
     static void target_block_inc_ref(void* b);  
@@ -94,7 +96,7 @@ protected:
     IOBuf::Block* alloc_block_by_size(uint32_t data_size);
     
 private:
-    // Current block the SingleIOBuf used.
+    // Current block the SingleIOBuf used to allocate memory.
     IOBuf::Block* _cur_block;
     // Current block total size, include sizeof(IOBuf::Block).
     uint32_t _block_size;

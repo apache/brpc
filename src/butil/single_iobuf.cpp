@@ -65,6 +65,10 @@ SingleIOBuf& SingleIOBuf::operator=(const SingleIOBuf& rhs) {
 }
 
 void SingleIOBuf::swap(SingleIOBuf& other) {
+    if (this == &other) {
+        return;
+    }
+
     IOBuf::BlockRef tmp_ref = _cur_ref;
     _cur_ref = other._cur_ref;
     other._cur_ref = tmp_ref;
@@ -205,12 +209,13 @@ bool SingleIOBuf::assign(const IOBuf& buf, uint32_t msg_size) {
             << " from source iobuf of size:" << buf.length();
         return false;
     }
-    reset();
     if (BAIDU_UNLIKELY(msg_size == 0)) {
         return true;
     }
+    
     const IOBuf::BlockRef& ref = buf._front_ref();
     if (ref.length >= msg_size) {
+        reset();
         _cur_ref.offset = ref.offset;
         _cur_ref.length = msg_size;
         _cur_ref.block = ref.block;
@@ -221,6 +226,7 @@ bool SingleIOBuf::assign(const IOBuf& buf, uint32_t msg_size) {
         if (!b) {
             return false;
         }
+        reset();
         char* out = b->data + b->size;
         const size_t nref = buf.backing_block_num();
         uint32_t last_len = msg_size;
@@ -246,8 +252,7 @@ void SingleIOBuf::append_to(IOBuf* buf) const {
     }
 }
 
-int SingleIOBuf::assign_user_data(void* data, size_t size, void (*deleter)(void*)) {
-    reset();
+int SingleIOBuf::assign_user_data(void* data, size_t size, std::function<void(void*)> deleter) {
     if (size > 0xFFFFFFFFULL - 100) {
         LOG(FATAL) << "data_size=" << size << " is too large";
         return -1;
@@ -259,6 +264,7 @@ int SingleIOBuf::assign_user_data(void* data, size_t size, void (*deleter)(void*
     if (deleter == NULL) {
         deleter = ::free;
     }
+    reset();
     IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, deleter);
     _cur_ref.offset = 0;
     _cur_ref.length = b->cap;

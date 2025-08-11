@@ -1920,17 +1920,30 @@ TEST_F(IOBufTest, single_iobuf) {
     ASSERT_EQ(sbuf2.get_length(), total_len);
     sbuf2.reset();
     ASSERT_EQ(0, sbuf2.get_length());
+    
     void* buf = sbuf.allocate(1024);
     ASSERT_TRUE(NULL != buf);
     buf = sbuf.reallocate_downward(16384, 0, 0);
     ASSERT_TRUE(NULL != buf);
     s_len = sbuf.get_length();
     ASSERT_EQ(16384, s_len);
+
     butil::IOBuf::BlockRef ref = sbuf.get_cur_ref();
     butil::SingleIOBuf sbuf3(ref);
     s_len = sbuf3.get_length();
     ASSERT_EQ(16384, s_len);
     sbuf.deallocate(buf);
+
+    errno = 0;
+    void *null_buf = sbuf3.reallocate_downward(s_len - 1, 0, 0);
+    ASSERT_EQ(null_buf, nullptr);
+
+    uint32_t old_size = sbuf3.get_length();
+    void *p = sbuf3.reallocate_downward(old_size + 16, 0, old_size); 
+    ASSERT_TRUE(p != nullptr);
+    old_size = sbuf3.get_length();
+    p = sbuf3.reallocate_downward(old_size + 16, old_size, 0);
+    ASSERT_TRUE(p != nullptr);
 }
 
 } // namespace
