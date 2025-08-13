@@ -172,7 +172,7 @@ friend class GlobalValue<self_type>;
             }
         }
         
-        void reset(const ElementTp& val, self_shared_type c) {
+        void reset(const ElementTp& val, const self_shared_type& c) {
             combiner = c;
             element.store(val);
         }
