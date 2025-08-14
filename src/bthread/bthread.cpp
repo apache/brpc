@@ -59,6 +59,21 @@ DEFINE_int32(bthread_concurrency_by_tag, 8 + BTHREAD_EPOLL_THREAD_NUM,
              "Number of pthread workers of FLAGS_bthread_current_tag");
 BUTIL_VALIDATE_GFLAG(bthread_concurrency_by_tag, validate_bthread_concurrency_by_tag);
 
+DEFINE_int32(bthread_parking_lot_of_each_tag, 4, "Number of parking lots of each tag");
+BUTIL_VALIDATE_GFLAG(bthread_parking_lot_of_each_tag, [](const char*, int32_t val) {
+    if (val < BTHREAD_MIN_PARKINGLOT) {
+        LOG(ERROR) << "bthread_parking_lot_of_each_tag must be greater than or equal to "
+                   << BTHREAD_MIN_PARKINGLOT;
+        return false;
+    }
+    if (val > BTHREAD_MAX_PARKINGLOT) {
+        LOG(ERROR) << "bthread_parking_lot_of_each_tag must be less than or equal to "
+                   << BTHREAD_MAX_PARKINGLOT;
+        return false;
+    }
+    return true;
+});
+
 static bool never_set_bthread_concurrency = true;
 
 BAIDU_CASSERT(sizeof(TaskControl*) == sizeof(butil::atomic<TaskControl*>), atomic_size_match);
@@ -216,7 +231,7 @@ static bool validate_bthread_current_tag(const char*, int32_t val) {
         return false;
     }
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
-    auto c = bthread::get_task_control();
+    auto c = get_task_control();
     if (c == NULL) {
         FLAGS_bthread_concurrency_by_tag = 8 + BTHREAD_EPOLL_THREAD_NUM;
         return true;
