@@ -85,7 +85,7 @@ void BAIDU_WEAK InstallSymbolizeCallback(SymbolizeCallback callback) {
 
 static SymbolizeOpenObjectFileCallback g_symbolize_open_object_file_callback =
     NULL;
-void InstallSymbolizeOpenObjectFileCallback(
+void BAIDU_WEAK InstallSymbolizeOpenObjectFileCallback(
     SymbolizeOpenObjectFileCallback callback) {
   g_symbolize_open_object_file_callback = callback;
 }
