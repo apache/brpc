@@ -24,9 +24,20 @@
 #ifndef BUTIL_IOBUF_INL_H
 #define BUTIL_IOBUF_INL_H
 
+#include "butil/atomicops.h"                // butil::atomic
+
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
 
 namespace butil {
+
+using UserDataDeleter = std::function<void(void*)>;
+
+struct UserDataExtension {
+    UserDataDeleter deleter;
+};
+
+const uint16_t IOBUF_BLOCK_FLAGS_USER_DATA = 1 << 0;
+const uint16_t IOBUF_BLOCK_FLAGS_SAMPLED = 1 << 1;
 
 inline ssize_t IOBuf::cut_into_file_descriptor(int fd, size_t size_hint) {
     return pcut_into_file_descriptor(fd, -1, size_hint);
@@ -424,6 +435,73 @@ inline size_t IOBufBytesIterator::forward(size_t n) {
     }
     return nc;
 }
+
+namespace iobuf {
+
+extern butil::atomic<size_t> g_nblock;
+extern butil::atomic<size_t> g_blockmem;
+extern butil::atomic<size_t> g_newbigview;
+
+// Function pointers to allocate or deallocate memory for a IOBuf::Block
+extern void* (*blockmem_allocate)(size_t);
+extern void  (*blockmem_deallocate)(void*);
+
+IOBuf::Block* acquire_tls_block();
+void release_tls_block(IOBuf::Block* b);
+
+IOBuf::Block* create_block(const size_t block_size);
+IOBuf::Block* create_block();
+
+void* cp(void *__restrict dest, const void *__restrict src, size_t n);
+
+};  // namespace iobuf;
+
+struct IOBuf::Block {
+    butil::atomic<int> nshared;
+    uint16_t flags;
+    uint16_t abi_check;  // original cap, never be zero.
+    uint32_t size;
+    uint32_t cap;
+    // When flag is 0, portal_next is valid.
+    // When flag & IOBUF_BLOCK_FLAGS_USER_DATA is non-0, data_meta is valid.
+    union {
+        Block* portal_next;
+        uint64_t data_meta;
+    } u;
+    // When flag is 0, data points to `size` bytes starting at `(char*)this+sizeof(Block)'
+    // When flag & IOBUF_BLOCK_FLAGS_USER_DATA is non-0, data points to the user data and
+    // the deleter is put in UserDataExtension at `(char*)this+sizeof(Block)'
+    char* data;
+        
+    Block(char* data_in, uint32_t data_size);
+
+    Block(char* data_in, uint32_t data_size, UserDataDeleter deleter);
+
+    // Undefined behavior when (flags & IOBUF_BLOCK_FLAGS_USER_DATA) is 0.
+    UserDataExtension* get_user_data_extension();
+
+    inline void check_abi();
+
+    void inc_ref();
+        
+    void dec_ref();
+
+    int ref_count() const;
+
+    bool full() const { return size >= cap; }
+    size_t left_space() const { return cap - size; }
+
+private:
+    bool is_samplable();
+
+    bool sampled() const {
+        return flags & IOBUF_BLOCK_FLAGS_SAMPLED;
+    }
+
+    bool is_user_data() const {
+        return flags & IOBUF_BLOCK_FLAGS_USER_DATA;
+    }
+};
 
 }  // namespace butil
 
