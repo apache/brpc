@@ -2266,7 +2266,7 @@ int Socket::OnInputEvent(void* user_data, uint32_t events,
         if (FLAGS_usercode_in_coroutine) {
             ProcessEvent(p);
 #if BRPC_WITH_RDMA
-        } else if (rdma::FLAGS_rdma_edisp_unsched == false) {
+        } else if (rdma::FLAGS_rdma_edisp_unsched) {
             auto rc = bthread_start_background(&tid, &attr, ProcessEvent, p);
             if (rc != 0) {
                 LOG(FATAL) << "Fail to start ProcessEvent";

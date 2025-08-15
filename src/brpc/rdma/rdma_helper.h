@@ -91,7 +91,16 @@ bool SupportedByRdma(std::string protocol);
 
 }  // namespace rdma
 }  // namespace brpc
+#else
+namespace brpc {
+namespace rdma {
 
+// Initialize RDMA environment
+// Exit if failed
+void GlobalRdmaInitializeOrDie();
+
+}  // namespace rdma
+}  // namespace brpc
 #endif  // if BRPC_WITH_RDMA
 
 #endif  // BRPC_RDMA_HELPER_H
