@@ -103,8 +103,7 @@ public:
 
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
-    static const int PARKING_LOT_NUM = 4;
-    typedef std::array<ParkingLot, PARKING_LOT_NUM> TaggedParkingLot;
+    typedef std::array<ParkingLot, BTHREAD_MAX_PARKINGLOT> TaggedParkingLot;
     // Add/Remove a TaskGroup.
     // Returns 0 on success, -1 otherwise.
     int _add_group(TaskGroup*, bthread_tag_t tag);
@@ -117,7 +116,7 @@ private:
     butil::atomic<size_t>& tag_ngroup(int tag) { return _tagged_ngroup[tag]; }
 
     // Tag parking slot
-    TaggedParkingLot& tag_pl(bthread_tag_t tag) { return _pl[tag]; }
+    TaggedParkingLot& tag_pl(bthread_tag_t tag) { return _tagged_pl[tag]; }
 
     static void delete_task_group(void* arg);
 
@@ -159,7 +158,8 @@ private:
     std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
     std::vector<WorkStealingQueue<bthread_t>> _priority_queues;
 
-    std::vector<TaggedParkingLot> _pl;
+    size_t _pl_num_of_each_tag;
+    std::vector<TaggedParkingLot> _tagged_pl;
 
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer _task_tracer;

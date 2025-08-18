@@ -118,12 +118,12 @@ public:
 
     IntRecorder() : _combiner(std::make_shared<combiner_type>()), _sampler(NULL) {}
 
-    explicit IntRecorder(const butil::StringPiece& name) : _sampler(NULL) {
+    explicit IntRecorder(const butil::StringPiece& name) : IntRecorder() {
         expose(name);
     }
 
     IntRecorder(const butil::StringPiece& prefix, const butil::StringPiece& name)
-        : _sampler(NULL) {
+        : IntRecorder() {
         expose_as(prefix, name);
     }
 

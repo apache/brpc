@@ -60,6 +60,10 @@ public:
     // Wait for tasks.
     // If the `expected_state' does not match, wait() may finish directly.
     void wait(const State& expected_state) {
+        if (get_state().val != expected_state.val) {
+            // Fast path, no need to futex_wait.
+            return;
+        }
         _waiter_num.fetch_add(1, butil::memory_order_relaxed);
         futex_wait_private(&_pending_signal, expected_state.val, NULL);
         _waiter_num.fetch_sub(1, butil::memory_order_relaxed);
