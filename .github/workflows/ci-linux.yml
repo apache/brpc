@@ -171,13 +171,8 @@ jobs:
 
   gcc-bazel-unittest:
     runs-on: ubuntu-22.04
-    env:
-      HTTP_PROXY: http://127.0.0.1:7890  # 假设代理端口是7890
-      HTTPS_PROXY: http://127.0.0.1:7890
-      NO_PROXY: localhost,127.0.0.1
     steps:
     - uses: actions/checkout@v2
-    # - uses: bazelbuild/setup-bazelisk@v2
     - name: run bazel tests
       run: bazel test --test_output=errors --verbose_failures -- //test/... 
 
