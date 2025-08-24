@@ -714,8 +714,13 @@ template <typename _K, typename _T, typename _H, typename _E,
 optional<typename FlatMap<_K, _T, _H, _E, _S, _A, _M>::NewBucketsInfo>
 FlatMap<_K, _T, _H, _E, _S, _A, _M>::new_buckets_and_thumbnail(size_t size,
                                                                size_t new_nbucket) {
+    size_t bump = 0;
     do {
-        new_nbucket = flatmap_round(new_nbucket);
+        // The first iteration uses 'new_nbucket + 0' ensures that when new_nbucket is a power
+        // of 2 and is already sufficient to accommodate `size`, it does not need to be doubled.
+        // Subsequent use of 'new_nbucket + 1' avoids an infinite loop.
+        new_nbucket = flatmap_round(new_nbucket + bump);
+        bump = 1;
     } while (is_too_crowded(size, new_nbucket, _load_factor));
     if (_nbucket == new_nbucket) {
         return nullopt;
