@@ -638,6 +638,17 @@ public:
         return _response_content_type;
     }
 
+    // If brpc acts as a server, this interface exposes the time when the RPC was received from the
+    // socket. This function can be used in scenarios where the user code needs to understand the RPC
+    // reception time, such as for precise control of timeouts. Users will require timing to start
+    // from the receipt of the RPC. When the user processing function starts to handle the RPC, if
+    // it is found that the RPC has timed out, it will be directly discarded
+    void set_rpc_received_us(int64_t received_us) { _rpc_received_us = received_us; }
+
+    // Get the received time of RPC (in microseconds), if the returned value is 0, it means that
+    // the received time of RPC is not recorded in the controller.
+    int64_t get_rpc_received_us() const { return _rpc_received_us; }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -909,6 +920,9 @@ private:
     uint32_t _auth_flags;
 
     AfterRpcRespFnType _after_rpc_resp_fn;
+
+    // The point in time when the rpc is read from the socket
+    int64_t _rpc_received_us;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

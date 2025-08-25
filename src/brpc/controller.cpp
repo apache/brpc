@@ -298,6 +298,7 @@ void Controller::ResetPods() {
     _response_streams.clear();
     _remote_stream_settings = NULL;
     _auth_flags = 0;
+    _rpc_received_us = 0;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
