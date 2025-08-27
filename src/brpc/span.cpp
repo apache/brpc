@@ -130,7 +130,7 @@ Span* Span::CreateClientSpan(const std::string& full_method_name,
     span->_tls_next = NULL;
     span->_full_method_name = full_method_name;
     span->_info.clear();
-    Span* parent = (Span*)bthread::tls_bls.rpcz_parent_span;
+    Span* parent = static_cast<Span*>(bthread::tls_bls.rpcz_parent_span);
     if (parent) {
         span->_trace_id = parent->trace_id();
         span->_parent_span_id = parent->span_id();
@@ -148,7 +148,7 @@ Span* Span::CreateClientSpan(const std::string& full_method_name,
 
 Span* Span::CreateBthreadSpan(const std::string& full_method_name, 
                               int64_t base_real_us) {
-    Span* parent = (Span*)bthread::tls_bls.rpcz_parent_span;
+    Span* parent = static_cast<Span*>(bthread::tls_bls.rpcz_parent_span);
     if (parent == NULL) {
         return NULL;
     }
@@ -349,7 +349,7 @@ bool CanAnnotateSpan() {
 }
 
 void AnnotateSpan(const char* fmt, ...) {
-    Span* span = (Span*)bthread::tls_bls.rpcz_parent_span;
+    Span* span = static_cast<Span*>(bthread::tls_bls.rpcz_parent_span);
     va_list ap;
     va_start(ap, fmt);
     span->Annotate(fmt, ap);
@@ -406,7 +406,9 @@ static bvar::DisplaySamplingRatio s_display_sampling_ratio(
 
 struct SpanEarlier {
     bool operator()(bvar::Collected* c1, bvar::Collected* c2) const {
-        return ((Span*)c1)->GetStartRealTimeUs() < ((Span*)c2)->GetStartRealTimeUs();
+        const Span* span1 = static_cast<const Span*>(c1);
+        const Span* span2 = static_cast<const Span*>(c2);
+        return span1->GetStartRealTimeUs() < span2->GetStartRealTimeUs();
     }
 };
 class SpanPreprocessor : public bvar::CollectorPreprocessor {

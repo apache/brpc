@@ -117,7 +117,7 @@ public:
 
     Span* local_parent() const { return _local_parent; }
     static Span* tls_parent() {
-        return (Span*)bthread::tls_bls.rpcz_parent_span;
+        return static_cast<Span*>(bthread::tls_bls.rpcz_parent_span);
     }
 
     uint64_t trace_id() const { return _trace_id; }
@@ -151,7 +151,7 @@ private:
     bvar::CollectorPreprocessor* preprocessor();
 
     void EndAsParent() {
-        if (this == (Span*)bthread::tls_bls.rpcz_parent_span) {
+        if (this == static_cast<Span*>(bthread::tls_bls.rpcz_parent_span)) {
             bthread::tls_bls.rpcz_parent_span = NULL;
         }
     }
