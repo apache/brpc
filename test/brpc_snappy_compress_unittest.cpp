@@ -21,7 +21,7 @@
 
 #include <gtest/gtest.h>
 #include "gperftools_helper.h"
-#include "butil/third_party/snappy/snappy.h"
+#include "snappy.h"
 #include "butil/macros.h"
 #include "butil/iobuf.h"
 #include "butil/time.h"
@@ -62,11 +62,11 @@ inline void CompressMessage(const char* method_name,
 
 static bool SnappyDecompressIOBuf(char* input, size_t len, butil::IOBuf* buf) {
     size_t decompress_length;
-    if (!butil::snappy::GetUncompressedLength(input, len, &decompress_length)) {
+    if (!snappy::GetUncompressedLength(input, len, &decompress_length)) {
         return false;
     }
     char* output = new char[decompress_length];
-    if (!butil::snappy::RawUncompress(input, len, output)) {
+    if (!snappy::RawUncompress(input, len, output)) {
         delete [] output;
         return false;
     }
@@ -149,17 +149,17 @@ TEST_F(test_compress_method, snappy_test) {
     butil::IOBuf buf;
     std::string output;
     std::string append_string;
-    ASSERT_TRUE(butil::snappy::Compress(text, len, &output));
+    ASSERT_TRUE(snappy::Compress(text, len, &output));
     size_t com_len1 = output.size();
     const char* s_text = "123456";
-    ASSERT_TRUE(butil::snappy::Compress(s_text, strlen(s_text), &append_string));
+    ASSERT_TRUE(snappy::Compress(s_text, strlen(s_text), &append_string));
     output.append(append_string);
     std::string uncompress_str;
     std::string uncompress_str_t;
     char* ptr = const_cast<char*>(output.c_str());
-    ASSERT_TRUE(butil::snappy::Uncompress(ptr, com_len1, &uncompress_str));
+    ASSERT_TRUE(snappy::Uncompress(ptr, com_len1, &uncompress_str));
     ptr = const_cast<char*>(append_string.c_str());
-    ASSERT_TRUE(butil::snappy::Uncompress(ptr, strlen(ptr), &uncompress_str_t));
+    ASSERT_TRUE(snappy::Uncompress(ptr, strlen(ptr), &uncompress_str_t));
     delete [] text;
 }
 
