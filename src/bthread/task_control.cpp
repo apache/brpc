@@ -45,6 +45,8 @@ DEFINE_bool(task_group_set_worker_name, true,
 
 namespace bthread {
 
+DEFINE_bool(enable_bthread_priority_queue, false, "Whether to enable priority queue");
+
 DECLARE_int32(bthread_concurrency);
 DECLARE_int32(bthread_min_concurrency);
 DECLARE_int32(bthread_parking_lot_of_each_tag);
@@ -187,6 +189,7 @@ TaskControl::TaskControl()
     , _signal_per_second(&_cumulated_signal_count)
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
+    , _enable_priority_queue(FLAGS_enable_bthread_priority_queue)
     , _priority_queues(FLAGS_task_group_ntags)
     , _pl_num_of_each_tag(FLAGS_bthread_parking_lot_of_each_tag)
     , _tagged_pl(FLAGS_task_group_ntags)
