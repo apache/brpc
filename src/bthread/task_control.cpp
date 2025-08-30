@@ -45,6 +45,10 @@ DEFINE_bool(task_group_set_worker_name, true,
 
 namespace bthread {
 
+DEFINE_bool(parking_lot_no_signal_when_no_waiter, false,
+            "ParkingLot doesn't signal when there is no waiter. "
+            "In busy worker scenarios, signal overhead can be reduced.");
+
 DECLARE_int32(bthread_concurrency);
 DECLARE_int32(bthread_min_concurrency);
 DECLARE_int32(bthread_parking_lot_of_each_tag);
