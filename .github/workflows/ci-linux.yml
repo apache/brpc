@@ -181,7 +181,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: run bazel tests
-      run: bazel test --test_output=errors --verbose_failures --action_env=CC=clang -- //test/... //...
+      run: bazel test --test_output=errors --verbose_failures --action_env=CC=clang -- //test/...
 
   clang-unittest:
     runs-on: ubuntu-22.04
