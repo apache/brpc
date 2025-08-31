@@ -168,6 +168,11 @@ static void GlobalRelease() {
     }
 }
 
+void* UserExtendBlockPool(void* region_base, size_t region_size,
+                          int block_type) {
+    return ExtendBlockPoolByUser(region_base, region_size, block_type);
+}
+
 uint32_t RdmaRegisterMemory(void* buf, size_t size) {
     // Register the memory as callback in block_pool
     // The thread-safety should be guaranteed by the caller
@@ -203,7 +208,7 @@ void BlockDeallocate(void* buf) {
 
 static void FindRdmaLid() {
     ibv_port_attr attr;
-    if (IbvQueryPort(g_context, g_port_num, &attr) < 0) {
+    if (IbvQueryPort(g_context, g_port_num, &attr) != 0) {
         return;
     }
     g_lid = attr.lid;
@@ -215,7 +220,7 @@ static bool FindRdmaGid(ibv_context* context) {
     bool found = false;
     for (int i = g_gid_tbl_len - 1; i >= 0; --i) {
         ibv_gid gid;
-        if (IbvQueryGid(context, g_port_num, i, &gid) < 0) {
+        if (IbvQueryGid(context, g_port_num, i, &gid) != 0) {
             continue;
         }
         if (gid.global.interface_id == 0) {
@@ -245,7 +250,7 @@ static void OnRdmaAsyncEvent(Socket* m) {
     int progress = Socket::PROGRESS_INIT;
     do {
         ibv_async_event event;
-        if (IbvGetAsyncEvent(g_context, &event) < 0) {
+        if (IbvGetAsyncEvent(g_context, &event) != 0) {
             break;
         }
         LOG(WARNING) << "rdma async event: " << IbvEventTypeStr(event.event_type);
@@ -337,16 +342,22 @@ static void OnRdmaAsyncEvent(Socket* m) {
     }
 
 static int ReadRdmaDynamicLib() {
-    g_handle_ibverbs = dlopen("libibverbs.so", RTLD_LAZY);
-    if (!g_handle_ibverbs) {
-        LOG(WARNING) << "Failed to load libibverbs.so " << dlerror() << " try libibverbs.so.1";
-        // Clear existing error
-        dlerror();
-        g_handle_ibverbs = dlopen("libibverbs.so.1", RTLD_LAZY);
-        if (!g_handle_ibverbs) {
-            LOG(ERROR) << "Fail to load libibverbs.so.1 due to " << dlerror();
-            return -1;
+    const static char* const kRdmaLibs[] = {
+        "libibverbs.so",
+        "libibverbs.so.1"
+    };
+    for (const char* lib : kRdmaLibs) {
+        dlerror();  // Clear existing error
+        g_handle_ibverbs = dlopen(lib, RTLD_LAZY);
+        if (g_handle_ibverbs) {
+            LOG(INFO) << "Successfully loaded " << lib;
+            break;
         }
+        LOG(WARNING) << "Failed to load " << lib << ": " << dlerror();
+    }
+    if (!g_handle_ibverbs) {
+        LOG(ERROR) << "Failed to load any of the RDMA libraries";
+        return -1;
     }
 
     LoadSymbol(g_handle_ibverbs, IbvGetDeviceList, "ibv_get_device_list");
@@ -405,7 +416,8 @@ static ibv_context* OpenDevice(int num_total, int* num_available_devices) {
             continue;
         }
         ibv_port_attr attr;
-        if (IbvQueryPort(context.get(), uint8_t(FLAGS_rdma_port), &attr) < 0) {
+        errno = IbvQueryPort(context.get(), uint8_t(FLAGS_rdma_port), &attr);
+        if (errno != 0) {
             PLOG(WARNING) << "Fail to query port " << FLAGS_rdma_port << " on "
                           << dev_name;
             continue;
@@ -522,7 +534,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     ibv_device_attr attr;
-    if (IbvQueryDevice(g_context, &attr) < 0) {
+    if (IbvQueryDevice(g_context, &attr) != 0) {
         PLOG(ERROR) << "Fail to get the device information";
         ExitWithError();
     }
@@ -684,6 +696,21 @@ bool SupportedByRdma(std::string protocol) {
         return true;
     }
     return false;
+}
+
+bool InitPollingModeWithTag(bthread_tag_t tag,
+                            std::function<void(void)> callback,
+                            std::function<void(void)> init_fn,
+                            std::function<void(void)> release_fn) {
+    if (RdmaEndpoint::PollingModeInitialize(tag, callback, init_fn,
+                                            release_fn) == 0) {
+        return true;
+    }
+    return false;
+}
+
+void ReleasePollingModeWithTag(bthread_tag_t tag) {
+    RdmaEndpoint::PollingModeRelease(tag);
 }
 
 }  // namespace rdma

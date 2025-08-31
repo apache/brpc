@@ -326,9 +326,9 @@ public:
     virtual bool OnLogMessage(int severity, const char* file, int line,
                               const butil::StringPiece& log_content) = 0;
     virtual bool OnLogMessage(int severity, const char* file,
-                              int line, const char* func,
+                              int line, const char* /*func*/,
                               const butil::StringPiece& log_content) {
-        return true;
+        return OnLogMessage(severity, file, line, log_content);
     }
 private:
     DISALLOW_COPY_AND_ASSIGN(LogSink);

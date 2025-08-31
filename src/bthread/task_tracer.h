@@ -20,17 +20,15 @@
 
 #ifdef BRPC_BTHREAD_TRACER
 
-#include <signal.h>
-#include <semaphore.h>
-#include <vector>
-#include <algorithm>
-#include <libunwind.h>
+#include "bthread/mutex.h"
+#include "bthread/task_meta.h"
+#include "butil/intrusive_ptr.hpp"
+#include "butil/shared_object.h"
 #include "butil/strings/safe_sprintf.h"
 #include "butil/synchronization/condition_variable.h"
-#include "butil/shared_object.h"
-#include "butil/fd_utility.h"
-#include "bthread/task_meta.h"
-#include "bthread/mutex.h"
+#include <libunwind.h>
+#include <signal.h>
+#include <vector>
 
 namespace bthread {
 
@@ -41,10 +39,10 @@ public:
     bool Init();
     // Set the status to `s'.
     void set_status(TaskStatus s, TaskMeta* meta);
-    static void set_running_status(pid_t worker_tid, TaskMeta* meta);
+    static void set_running_status(pthread_t worker_tid, TaskMeta* meta);
     static bool set_end_status_unsafe(TaskMeta* m);
 
-    // Trace the bthread of `tid'.
+    // Trace the bthread of `tid`.
     std::string Trace(bthread_t tid);
     void Trace(std::ostream& os, bthread_t tid);
 
@@ -63,33 +61,28 @@ private:
 
     struct Result {
         template<typename... Args>
-        static Result MakeErrorResult(const char* fmt, Args... args) {
-            Result result{};
+        static Result MakeErrorResult(const char* fmt, Args&&... args) {
+            Result result;
             result.SetError(fmt, std::forward<Args>(args)...);
             return result;
         }
 
         template<typename... Args>
-        void SetError(const char* fmt, Args... args) {
-            err_count = std::max(err_count + 1, MAX_ERROR_NUM);
-            butil::strings::SafeSPrintf(err_msg[err_count - 1], fmt, args...);
+        void SetError(const char* fmt, Args&&... args) {
+            error = true;
+            butil::ignore_result(butil::strings::SafeSPrintf(
+                err_msg, fmt, std::forward<Args>(args)...));
         }
 
-        std::string OutputToString();
-        void OutputToStream(std::ostream& os);
-
-        bool OK() const { return err_count == 0; }
+        std::string OutputToString() const;
+        void OutputToStream(std::ostream& os) const;
 
         static constexpr size_t MAX_TRACE_NUM = 64;
-        static constexpr size_t MAX_ERROR_NUM = 2;
 
-        unw_word_t ips[MAX_TRACE_NUM];
-        char mangled[MAX_TRACE_NUM][256]{};
+        void* ips[MAX_TRACE_NUM];
         size_t frame_count{0};
-        char err_msg[MAX_ERROR_NUM][64]{};
-        size_t err_count{0};
-
-        bool fast_unwind{false};
+        char err_msg[64];
+        bool error{false};
     };
 
     // For signal trace.
@@ -97,13 +90,8 @@ private:
         ~SignalSync() override;
         bool Init();
 
-        unw_context_t* context{NULL};
-        sem_t sem{};
-        int pipe_fds[2]{};
-
-    private:
-        bool _pipe_init{false};
-        bool _sem_init{false};
+        int pipe_fds[2]{-1, -1};
+        Result result;
     };
 
     static TaskStatus WaitForJumping(TaskMeta* m);
@@ -111,19 +99,14 @@ private:
 
     unw_cursor_t MakeCursor(bthread_fcontext_t fcontext);
     Result ContextTrace(bthread_fcontext_t fcontext);
+    static Result TraceByLibunwind(unw_cursor_t& cursor);
 
     static bool RegisterSignalHandler();
     static void SignalHandler(int sig, siginfo_t* info, void* context);
-    static bool WaitForSignalHandler(butil::intrusive_ptr<SignalSync> signal_sync,
-                                     const timespec* abs_timeout, Result& result);
-    static void WakeupSignalHandler(
-        butil::intrusive_ptr<SignalSync> signal_sync, Result& result);
-    Result SignalTrace(pid_t worker_tid);
-
-    static Result TraceCore(unw_cursor_t& cursor);
+    Result SignalTrace(pthread_t worker_tid);
 
     // Make sure only one bthread is traced at a time.
-    bthread::Mutex _trace_request_mutex;
+    Mutex _trace_request_mutex;
 
     // For signal trace.
     // Make sure bthread does not jump stack when it is being traced.
@@ -132,6 +115,10 @@ private:
 
     // For context trace.
     unw_context_t _context{};
+
+    // Hold SignalSync and wait until no one is using it before releasing it.
+    // This will avoid deadlock because it will not be released in the signal handler.
+    std::vector<butil::intrusive_ptr<SignalSync>> _inuse_signal_syncs;
 
     bvar::LatencyRecorder _trace_time{"bthread_trace_time"};
 };

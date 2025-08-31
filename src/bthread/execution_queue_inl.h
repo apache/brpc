@@ -587,7 +587,7 @@ inline int ExecutionQueueBase::dereference() {
 }  // namespace bthread
 
 namespace butil {
-// `TaskNode::cancel' may access the TaskNode object returned to the ObjectPool<TaskNode>,
+// TaskNode::cancel() may access the TaskNode object returned to the ObjectPool<TaskNode>,
 // so ObjectPool<TaskNode> can not poison the memory region of TaskNode.
 template <>
 struct ObjectPoolWithASanPoison<bthread::TaskNode> : false_type {};

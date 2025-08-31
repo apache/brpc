@@ -15,11 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <cctype>
 #include <limits>
 
 #include "butil/logging.h"
 #include "brpc/log.h"
 #include "brpc/redis_command.h"
+#include "gflags/gflags.h"
 
 namespace {
 
@@ -28,6 +30,8 @@ const size_t CTX_WIDTH = 5;
 } // namespace
 
 namespace brpc {
+
+DECLARE_int32(redis_max_allocation_size);
 
 // Much faster than snprintf(..., "%lu", d);
 inline size_t AppendDecimal(char* outbuf, unsigned long d) {
@@ -373,13 +377,65 @@ size_t RedisCommandParser::ParsedArgsSize() {
 ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
                                        std::vector<butil::StringPiece>* args,
                                        butil::Arena* arena) {
-    const char* pfc = (const char*)buf.fetch1();
+    const auto pfc = static_cast<const char *>(buf.fetch1());
     if (pfc == NULL) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     // '*' stands for array "*<size>\r\n<sub-reply1><sub-reply2>..."
     if (!_parsing_array && *pfc != '*') {
-        return PARSE_ERROR_TRY_OTHERS;
+        if (!std::isalpha(static_cast<unsigned char>(*pfc))) {
+            return PARSE_ERROR_TRY_OTHERS;
+        }
+        const size_t buf_size = buf.size();
+        const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
+        buf.copy_to(copy_str, buf_size);
+        if (*copy_str == ' ') {
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
+        copy_str[buf_size] = '\0';
+        const size_t crlf_pos = butil::StringPiece(copy_str, buf_size).find("\r\n");
+        if (crlf_pos == butil::StringPiece::npos) {  // not enough data
+            return PARSE_ERROR_NOT_ENOUGH_DATA;
+        }
+        args->clear();
+        size_t offset = 0;
+        while (offset < crlf_pos && copy_str[offset] != ' ') {
+            ++offset;
+        }
+        const auto first_arg = static_cast<char*>(arena->allocate(offset));
+        memcpy(first_arg, copy_str, offset);
+        for (size_t i = 0; i < offset; ++i) {
+            first_arg[i] = tolower(first_arg[i]);
+        }
+        args->push_back(butil::StringPiece(first_arg, offset));
+        if (offset == crlf_pos) {
+            // only one argument, directly return
+            buf.pop_front(crlf_pos + 2);
+            return PARSE_OK;
+        }
+        size_t arg_start_pos = ++offset;
+
+        for (; offset < crlf_pos; ++offset) {
+            if (copy_str[offset] != ' ') {
+                continue;
+            }
+            const auto arg_length = offset - arg_start_pos;
+            const auto arg = static_cast<char *>(arena->allocate(arg_length));
+            memcpy(arg, copy_str + arg_start_pos, arg_length);
+            args->push_back(butil::StringPiece(arg, arg_length));
+            arg_start_pos = ++offset;
+        }
+
+        if (arg_start_pos < crlf_pos) {
+            // process the last argument
+            const auto arg_length = crlf_pos - arg_start_pos;
+            const auto arg = static_cast<char *>(arena->allocate(arg_length));
+            memcpy(arg, copy_str + arg_start_pos, arg_length);
+            args->push_back(butil::StringPiece(arg, arg_length));
+        }
+
+        buf.pop_front(crlf_pos + 2);
+        return PARSE_OK;
     }
     // '$' stands for bulk string "$<length>\r\n<string>\r\n"
     if (_parsing_array && *pfc != '$') {
@@ -403,6 +459,12 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (!_parsing_array) {
+        if (value > (int64_t)(FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece))) {
+            LOG(ERROR) << "command array size exceeds limit! max=" 
+                       << (FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece)) 
+                       << ", actually=" << value;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
         buf.pop_front(crlf_pos + 2/*CRLF*/);
         _parsing_array = true;
         _length = value;
@@ -417,9 +479,9 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         LOG(ERROR) << "string in command is nil!";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    if (len > (int64_t)std::numeric_limits<uint32_t>::max()) {
-        LOG(ERROR) << "string in command is too long! max length=2^32-1,"
-            " actually=" << len;
+    if (len > FLAGS_redis_max_allocation_size) {
+        LOG(ERROR) << "command string exceeds max allocation size! max=" 
+                   << FLAGS_redis_max_allocation_size << ", actually=" << len;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (buf.size() < crlf_pos + 2 + (size_t)len + 2/*CRLF*/) {

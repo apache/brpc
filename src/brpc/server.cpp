@@ -33,6 +33,7 @@
 #include "butil/debug/leak_annotations.h"
 #include "brpc/log.h"
 #include "brpc/compress.h"
+#include "brpc/checksum.h"
 #include "brpc/policy/nova_pbrpc_protocol.h"
 #include "brpc/global.h"
 #include "brpc/socket_map.h"                   // SocketMapList
@@ -227,6 +228,17 @@ static void PrintSupportedCompressions(std::ostream& os, void*) {
     }
 }
 
+static void PrintSupportedChecksums(std::ostream& os, void*) {
+    std::vector<ChecksumHandler> handlers;
+    ListChecksumHandler(&handlers);
+    for (size_t i = 0; i < handlers.size(); ++i) {
+        if (i != 0) {
+            os << ' ';
+        }
+        os << (handlers[i].name ? handlers[i].name : "(null)");
+    }
+}
+
 static void PrintEnabledProfilers(std::ostream& os, void*) {
     if (cpu_profiler_enabled) {
         os << "cpu ";
@@ -252,6 +264,9 @@ static bvar::PassiveStatus<std::string> s_proto_st(
 
 static bvar::PassiveStatus<std::string> s_comp_st(
     "rpc_compressions", PrintSupportedCompressions, NULL);
+
+static bvar::PassiveStatus<std::string> s_cksum_st(
+    "rpc_checksums", PrintSupportedChecksums, NULL);
 
 static bvar::PassiveStatus<std::string> s_prof_st(
     "rpc_profilers", PrintEnabledProfilers, NULL);
@@ -434,7 +449,6 @@ Server::~Server() {
     Join();
     ClearServices();
     FreeSSLContexts();
-
     delete _session_local_data_pool;
     _session_local_data_pool = NULL;
 
@@ -867,23 +881,27 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         return -1;
     }
 
+    if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
+        _options.bthread_tag >= FLAGS_task_group_ntags) {
+        LOG(ERROR) << "Fail to set tag " << _options.bthread_tag
+                   << ", tag range is [" << BTHREAD_TAG_DEFAULT << ":"
+                   << FLAGS_task_group_ntags << ")";
+        return -1;
+    }
+
     if (_options.use_rdma) {
 #if BRPC_WITH_RDMA
         if (!OptionsAvailableOverRdma(&_options)) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
+        if (!rdma::InitPollingModeWithTag(_options.bthread_tag)) {
+            return -1;
+        }
 #else
         LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
         return -1;
 #endif
-    }
-
-    if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
-        _options.bthread_tag >= FLAGS_task_group_ntags) {
-        LOG(ERROR) << "Fail to set tag " << _options.bthread_tag << ", tag range is ["
-                   << BTHREAD_TAG_DEFAULT << ":" << FLAGS_task_group_ntags << ")";
-        return -1;
     }
 
     if (_options.http_master_service) {

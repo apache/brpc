@@ -73,7 +73,15 @@ typedef uint32_t (*RegisterCallback)(void*, size_t);
 // region. It should be the memory registration in brpc. However,
 // in block_pool, we just abstract it into a function to get region id.
 // Return the first region's address, NULL if failed and errno is set.
-void* InitBlockPool(RegisterCallback cb);
+bool InitBlockPool(RegisterCallback cb);
+
+// In scenarios where users need to manually specify memory regions (e.g., using
+// hugepages or custom memory pools), when
+// FLAGS_rdma_memory_pool_user_specified_memory is true, user is  responsibility
+// of extending memory blocks , this ensuring flexibility for advanced use
+// cases.
+void* ExtendBlockPoolByUser(void* region_base, size_t region_size,
+                            int block_type);
 
 // Allocate a buf with length at least @a size (require: size>0)
 // Return the address allocated, NULL if failed and errno is set.

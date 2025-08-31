@@ -241,6 +241,9 @@ public:
     // Set compression method for request.
     void set_request_compress_type(CompressType t) { _request_compress_type = t; }
 
+    // Set checksum type for request.
+    void set_request_checksum_type(ChecksumType t) { _request_checksum_type = t; }
+
     // Required by some load balancers.
     void set_request_code(uint64_t request_code) {
         add_flag(FLAGS_REQUEST_CODE);
@@ -464,6 +467,9 @@ public:
 
     // Set compression method for response.
     void set_response_compress_type(CompressType t) { _response_compress_type = t; }
+
+    // Set checksum type for response.
+    void set_response_checksum_type(ChecksumType t) { _response_checksum_type = t; }
     
     // Non-zero when this RPC call is traced (by rpcz or rig).
     // NOTE: Only valid at server-side, always zero at client-side.
@@ -552,6 +558,8 @@ public:
     const std::string& request_id() const { return _inheritable.request_id; }
     CompressType request_compress_type() const { return _request_compress_type; }
     CompressType response_compress_type() const { return _response_compress_type; }
+    ChecksumType request_checksum_type() const { return _request_checksum_type; }
+    ChecksumType response_checksum_type() const { return _response_checksum_type; }
     const HttpHeader& http_request() const 
     { return _http_request != NULL ? *_http_request : DefaultHttpHeader(); }
     
@@ -630,6 +638,17 @@ public:
         return _response_content_type;
     }
 
+    // If brpc acts as a server, this interface exposes the time when the RPC was received from the
+    // socket. This function can be used in scenarios where the user code needs to understand the RPC
+    // reception time, such as for precise control of timeouts. Users will require timing to start
+    // from the receipt of the RPC. When the user processing function starts to handle the RPC, if
+    // it is found that the RPC has timed out, it will be directly discarded
+    void set_rpc_received_us(int64_t received_us) { _rpc_received_us = received_us; }
+
+    // Get the received time of RPC (in microseconds), if the returned value is 0, it means that
+    // the received time of RPC is not recorded in the controller.
+    int64_t get_rpc_received_us() const { return _rpc_received_us; }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -693,6 +712,7 @@ private:
         int32_t tos;
         ConnectionType connection_type;         
         CompressType request_compress_type;
+        ChecksumType request_checksum_type;
         uint64_t log_id;
         bool has_request_code;
         int64_t request_code;
@@ -834,6 +854,9 @@ private:
     int _preferred_index;
     CompressType _request_compress_type;
     CompressType _response_compress_type;
+    ChecksumType _request_checksum_type;
+    ChecksumType _response_checksum_type;
+    std::string _checksum_value;
     Inheritable _inheritable;
     int _pchan_sub_count;
     google::protobuf::Message* _response;
@@ -897,6 +920,9 @@ private:
     uint32_t _auth_flags;
 
     AfterRpcRespFnType _after_rpc_resp_fn;
+
+    // The point in time when the rpc is read from the socket
+    int64_t _rpc_received_us;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

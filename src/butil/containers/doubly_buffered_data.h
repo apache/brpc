@@ -484,17 +484,15 @@ int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(
         // foreground instance, so during the read process, there is
         // no need to lock mutex and bthread is allowed to be suspended.
         w->BeginRead();
-        int index = -1;
-        ptr->_data = UnsafeRead(index);
-        ptr->_index = index;
-        w->AddRef(index);
-        ptr->_w = w;
+        // UnsafeRead will update ptr->_index
+        ptr->_data = UnsafeRead(ptr->_index);
+        w->AddRef(ptr->_index);
         w->BeginReadRelease();
     } else {
         w->BeginRead();
         ptr->_data = UnsafeRead();
-        ptr->_w = w;
     }
+    ptr->_w.swap(w);
     return 0;
 }
 

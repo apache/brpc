@@ -19,6 +19,7 @@
 
 // Date: Tue Jul 10 17:40:58 CST 2012
 
+#include <pthread.h>
 #include <sys/syscall.h>                   // SYS_gettid
 #include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "butil/errno.h"                   // berror
@@ -38,14 +39,15 @@ DEFINE_int32(task_group_delete_delay, 1,
              "delay deletion of TaskGroup for so many seconds");
 DEFINE_int32(task_group_runqueue_capacity, 4096,
              "capacity of runqueue in each TaskGroup");
-DEFINE_int32(task_group_yield_before_idle, 0,
-             "TaskGroup yields so many times before idle");
 DEFINE_int32(task_group_ntags, 1, "TaskGroup will be grouped by number ntags");
+DEFINE_bool(task_group_set_worker_name, true,
+            "Whether to set the name of the worker thread");
 
 namespace bthread {
 
 DECLARE_int32(bthread_concurrency);
 DECLARE_int32(bthread_min_concurrency);
+DECLARE_int32(bthread_parking_lot_of_each_tag);
 
 extern pthread_mutex_t g_task_control_mutex;
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
@@ -90,12 +92,14 @@ void* TaskControl::worker_thread(void* arg) {
         return NULL;
     }
 
-    g->_tid = syscall(SYS_gettid);
+    g->_tid = pthread_self();
 
-    std::string worker_thread_name = butil::string_printf(
-        "brpc_wkr:%d-%d", g->tag(),
-        c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
-    butil::PlatformThread::SetName(worker_thread_name.c_str());
+    if (FLAGS_task_group_set_worker_name) {
+        std::string worker_thread_name = butil::string_printf(
+            "brpc_wkr:%d-%d", g->tag(),
+            c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
+        butil::PlatformThread::SetName(worker_thread_name.c_str());
+    }
     BT_VLOG << "Created worker=" << pthread_self() << " tid=" << g->_tid
             << " bthread=" << g->main_tid() << " tag=" << g->tag();
     tls_task_group = g;
@@ -152,7 +156,7 @@ static double get_cumulated_worker_time_from_this_with_tag(void* arg) {
     auto a = static_cast<CumulatedWithTagArgs*>(arg);
     auto c = a->c;
     auto t = a->t;
-    return c->get_cumulated_worker_time_with_tag(t);
+    return c->get_cumulated_worker_time(t);
 }
 
 static int64_t get_cumulated_switch_count_from_this(void *arg) {
@@ -184,7 +188,8 @@ TaskControl::TaskControl()
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
     , _priority_queues(FLAGS_task_group_ntags)
-    , _pl(FLAGS_task_group_ntags)
+    , _pl_num_of_each_tag(FLAGS_bthread_parking_lot_of_each_tag)
+    , _tagged_pl(FLAGS_task_group_ntags)
 {}
 
 int TaskControl::init(int concurrency) {
@@ -209,7 +214,7 @@ int TaskControl::init(int concurrency) {
             "bthread_worker_usage", tag_str, _tagged_cumulated_worker_time[i], 1));
         _tagged_nbthreads.push_back(new bvar::Adder<int64_t>("bthread_count", tag_str));
         if (_priority_queues[i].init(BTHREAD_MAX_CONCURRENCY) != 0) {
-            LOG(FATAL) << "Fail to init _priority_q";
+            LOG(ERROR) << "Fail to init _priority_q";
             return -1;
         }
     }
@@ -324,7 +329,7 @@ void TaskControl::stop_and_join() {
             [](butil::atomic<size_t>& index) { index.store(0, butil::memory_order_relaxed); });
     }
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
-        for (auto& pl : _pl[i]) {
+        for (auto& pl : _tagged_pl[i]) {
             pl.stop();
         }
     }
@@ -365,7 +370,7 @@ int TaskControl::_add_group(TaskGroup* g, bthread_tag_t tag) {
         return -1;
     }
     g->set_tag(tag);
-    g->set_pl(&_pl[tag][butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM]);
+    g->set_pl(&_tagged_pl[tag][butil::fmix64(pthread_numeric_id()) % _pl_num_of_each_tag]);
     size_t ngroup = _tagged_ngroup[tag].load(butil::memory_order_relaxed);
     if (ngroup < (size_t)BTHREAD_MAX_CONCURRENCY) {
         _tagged_groups[tag][ngroup] = g;
@@ -480,14 +485,11 @@ void TaskControl::signal_task(int num_task, bthread_tag_t tag) {
         num_task = 2;
     }
     auto& pl = tag_pl(tag);
-    int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
-    num_task -= pl[start_index].signal(1);
-    if (num_task > 0) {
-        for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
-            if (++start_index >= PARKING_LOT_NUM) {
-                start_index = 0;
-            }
-            num_task -= pl[start_index].signal(1);
+    size_t start_index = butil::fmix64(pthread_numeric_id()) % _pl_num_of_each_tag;
+    for (size_t i = 0; i < _pl_num_of_each_tag && num_task > 0; ++i) {
+        num_task -= pl[start_index].signal(1);
+        if (++start_index >= _pl_num_of_each_tag) {
+            start_index = 0;
         }
     }
     if (num_task > 0 &&
@@ -526,22 +528,18 @@ double TaskControl::get_cumulated_worker_time() {
     int64_t cputime_ns = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     for_each_task_group([&](TaskGroup* g) {
-        if (g) {
-            cputime_ns += g->_cumulated_cputime_ns;
-        }
+        cputime_ns += g->cumulated_cputime_ns();
     });
     return cputime_ns / 1000000000.0;
 }
 
-double TaskControl::get_cumulated_worker_time_with_tag(bthread_tag_t tag) {
+double TaskControl::get_cumulated_worker_time(bthread_tag_t tag) {
     int64_t cputime_ns = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_relaxed);
     auto& groups = tag_group(tag);
     for (size_t i = 0; i < ngroup; ++i) {
-        if (groups[i]) {
-            cputime_ns += groups[i]->_cumulated_cputime_ns;
-        }
+        cputime_ns += groups[i]->cumulated_cputime_ns();
     }
     return cputime_ns / 1000000000.0;
 }

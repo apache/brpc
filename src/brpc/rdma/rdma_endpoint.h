@@ -23,16 +23,22 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <functional>
 #include <infiniband/verbs.h>
 #include "butil/atomicops.h"
 #include "butil/iobuf.h"
 #include "butil/macros.h"
+#include "butil/containers/mpsc_queue.h"
 #include "brpc/socket.h"
 
 
 namespace brpc {
 class Socket;
 namespace rdma {
+
+DECLARE_int32(rdma_poller_num);
+DECLARE_bool(rdma_edisp_unsched);
+DECLARE_bool(rdma_disable_bthread);
 
 class RdmaConnect : public AppConnect {
 public:
@@ -89,6 +95,14 @@ public:
 
     // Callback when there is new epollin event on TCP fd
     static void OnNewDataFromTcp(Socket* m);
+
+    // Initialize polling mode
+    static int PollingModeInitialize(bthread_tag_t tag,
+                                     std::function<void(void)> callback,
+                                     std::function<void(void)> init_fn,
+                                     std::function<void(void)> release_fn);
+
+    static void PollingModeRelease(bthread_tag_t tag);
 
 private:
     enum State {
@@ -191,6 +205,12 @@ private:
     // Try to read data on TCP fd in _socket
     inline void TryReadOnTcp();
 
+    // Add cq socket id to poller
+    void PollerAddCqSid();
+
+    // Remove cq socket id to poller
+    void PollerRemoveCqSid();
+
     // Not owner
     Socket* _socket;
 
@@ -245,6 +265,33 @@ private:
     butil::atomic<int> *_read_butex;
 
     DISALLOW_COPY_AND_ASSIGN(RdmaEndpoint);
+
+    // Cq socket id operation type
+    struct CqSidOp {
+        enum OpType {
+            ADD,
+            REMOVE,
+        };
+        SocketId sid;
+        OpType type;
+    };
+    // Poller instance
+    struct BAIDU_CACHELINE_ALIGNMENT Poller {
+        bthread_t tid{INVALID_BTHREAD};
+        butil::MPSCQueue<CqSidOp, butil::ObjectPoolAllocator<CqSidOp>> op_queue;
+        // Callback used for io_uring/spdk etc
+        std::function<void()> callback;
+        // Init and Destory function
+        std::function<void(void)> init_fn;
+        std::function<void(void)> release_fn;
+    };
+    // Poller group
+    struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {
+        PollerGroup() : pollers(FLAGS_rdma_poller_num), running(false) {}
+        std::vector<Poller> pollers;
+        std::atomic<bool> running;
+    };
+    static std::vector<PollerGroup> _poller_groups;
 };
 
 }  // namespace rdma

@@ -269,6 +269,8 @@ void Controller::ResetPods() {
     _preferred_index = -1;
     _request_compress_type = COMPRESS_TYPE_NONE;
     _response_compress_type = COMPRESS_TYPE_NONE;
+    _request_checksum_type = CHECKSUM_TYPE_NONE;
+    _response_checksum_type = CHECKSUM_TYPE_NONE;
     _fail_limit = UNSET_MAGIC_NUM;
     _pipelined_count = 0;
     _inheritable.Reset();
@@ -296,6 +298,7 @@ void Controller::ResetPods() {
     _response_streams.clear();
     _remote_stream_settings = NULL;
     _auth_flags = 0;
+    _rpc_received_us = 0;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -1346,6 +1349,7 @@ void Controller::SaveClientSettings(ClientSettings* s) const {
     s->tos = _tos;
     s->connection_type = _connection_type;
     s->request_compress_type = _request_compress_type;
+    s->request_checksum_type = _request_checksum_type;
     s->log_id = log_id();
     s->has_request_code = has_request_code();
     s->request_code = _request_code;
@@ -1359,6 +1363,7 @@ void Controller::ApplyClientSettings(const ClientSettings& s) {
     set_type_of_service(s.tos);
     set_connection_type(s.connection_type);
     set_request_compress_type(s.request_compress_type);
+    set_request_checksum_type(s.request_checksum_type);
     set_log_id(s.log_id);
     set_flag(FLAGS_REQUEST_CODE, s.has_request_code);
     _request_code = s.request_code;

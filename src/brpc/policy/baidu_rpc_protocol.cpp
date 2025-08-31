@@ -32,6 +32,7 @@
 #include "brpc/server.h"                        // Server
 #include "brpc/span.h"
 #include "brpc/compress.h"                      // ParseFromCompressedData
+#include "brpc/checksum.h"
 #include "brpc/stream_impl.h"
 #include "brpc/rpc_dump.h"                      // SampledRequest
 #include "brpc/rpc_pb_message_factory.h"
@@ -143,7 +144,8 @@ ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
 
 bool SerializeRpcMessage(const google::protobuf::Message& message,
                          Controller& cntl, ContentType content_type,
-                         CompressType compress_type, butil::IOBuf* buf) {
+                         CompressType compress_type, ChecksumType checksum_type,
+                         butil::IOBuf* buf) {
     auto serialize = [&](Serializer& serializer) -> bool {
         bool ok;
         if (COMPRESS_TYPE_NONE == compress_type) {
@@ -156,6 +158,8 @@ bool SerializeRpcMessage(const google::protobuf::Message& message,
             }
             ok = handler->Compress(serializer, buf);
         }
+        ChecksumIn checksum_in{buf, &cntl};
+        ComputeDataChecksum(checksum_in, checksum_type);
         return ok;
     };
 
@@ -223,13 +227,16 @@ static bool SerializeResponse(const google::protobuf::Message& res,
 
     ContentType content_type = cntl.response_content_type();
     CompressType compress_type = cntl.response_compress_type();
-    if (!SerializeRpcMessage(res, cntl, content_type, compress_type, &buf)) {
-        cntl.SetFailed(
-            ERESPONSE, "Fail to serialize response=%s, "
-                       "ContentType=%s, CompressType=%s",
-            res.GetDescriptor()->full_name().c_str(),
-            ContentTypeToCStr(content_type),
-            CompressTypeToCStr(compress_type));
+    ChecksumType checksum_type = cntl.response_checksum_type();
+    if (!SerializeRpcMessage(res, cntl, content_type, compress_type,
+                             checksum_type, &buf)) {
+        cntl.SetFailed(ERESPONSE,
+                       "Fail to serialize response=%s, "
+                       "ContentType=%s, CompressType=%s, ChecksumType=%s",
+                       res.GetDescriptor()->full_name().c_str(),
+                       ContentTypeToCStr(content_type),
+                       CompressTypeToCStr(compress_type),
+                       ChecksumTypeToCStr(checksum_type));
         return false;
     }
     return true;
@@ -308,7 +315,6 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
     // `res' can be NULL here, in which case we don't serialize it
     // If user calls `SetFailed' on Controller, we don't serialize
     // response either
-    CompressType compress_type = cntl->response_compress_type();
     if (res != NULL && !cntl->Failed()) {
         append_body = SerializeResponse(*res, *cntl, res_body);
     }
@@ -336,8 +342,10 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         response_meta->set_error_text(cntl->ErrorText());
     }
     meta.set_correlation_id(correlation_id);
-    meta.set_compress_type(compress_type);
+    meta.set_compress_type(cntl->response_compress_type());
     meta.set_content_type(cntl->response_content_type());
+    meta.set_checksum_type(cntl->response_checksum_type());
+    meta.set_checksum_value(accessor.checksum_value());
     if (attached_size > 0) {
         meta.set_attachment_size(attached_size);
     }
@@ -486,9 +494,14 @@ void EndRunningCallMethodInPool(
 
 bool DeserializeRpcMessage(const butil::IOBuf& data, Controller& cntl,
                            ContentType content_type, CompressType compress_type,
+                           ChecksumType checksum_type,
                            google::protobuf::Message* message) {
     auto deserialize = [&](Deserializer& deserializer) -> bool {
-        bool ok;
+        ChecksumIn checksum_in{&data, &cntl};
+        bool ok = VerifyDataChecksum(checksum_in, checksum_type);
+        if (!ok) {
+            return ok;
+        }
         if (COMPRESS_TYPE_NONE == compress_type) {
             butil::IOBufAsZeroCopyInputStream stream(data);
             ok = deserializer.DeserializeFrom(&stream);
@@ -601,6 +614,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     }
     cntl->set_request_content_type(meta.content_type());
     cntl->set_request_compress_type((CompressType)meta.compress_type());
+    cntl->set_request_checksum_type((ChecksumType)meta.checksum_type());
+    cntl->set_rpc_received_us(msg->received_us());
+    accessor.set_checksum_value(meta.checksum_value());
     accessor.set_server(server)
         .set_security_mode(security_mode)
         .set_peer_id(socket->id())
@@ -783,16 +799,23 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             ContentType content_type = meta.content_type();
-            auto compress_type = static_cast<CompressType>(meta.compress_type());
-            messages = server->options().rpc_pb_message_factory->Get(*svc, *method);
+            auto compress_type =
+                static_cast<CompressType>(meta.compress_type());
+            auto checksum_type =
+                static_cast<ChecksumType>(meta.checksum_type());
+            messages =
+                server->options().rpc_pb_message_factory->Get(*svc, *method);
             if (!DeserializeRpcMessage(req_buf, *cntl, content_type,
-                                       compress_type, messages->Request())) {
+                                       compress_type, checksum_type,
+                                       messages->Request())) {
                 cntl->SetFailed(
-                    EREQUEST, "Fail to parse request=%s, ContentType=%s, "
-                              "CompressType=%s, request_size=%d",
+                    EREQUEST,
+                    "Fail to parse request=%s, ContentType=%s, "
+                    "CompressType=%s, ChecksumType=%s, request_size=%d",
                     messages->Request()->GetDescriptor()->full_name().c_str(),
                     ContentTypeToCStr(content_type),
-                    CompressTypeToCStr(compress_type), req_size);
+                    CompressTypeToCStr(compress_type),
+                    ChecksumTypeToCStr(checksum_type), req_size);
                 break;
             }
             req_buf.clear();
@@ -921,6 +944,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         }
     }
 
+    cntl->set_rpc_received_us(msg->received_us());
     Span* span = accessor.span();
     if (span) {
         span->set_base_real_us(msg->base_real_us());
@@ -956,20 +980,26 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
 
         ContentType content_type = meta.content_type();
         auto compress_type = (CompressType)meta.compress_type();
+        auto checksum_type = (ChecksumType)meta.checksum_type();
         cntl->set_response_content_type(content_type);
         cntl->set_response_compress_type(compress_type);
+        cntl->set_response_checksum_type(checksum_type);
+        accessor.set_checksum_value(meta.checksum_value());
         if (cntl->response()) {
             if (cntl->response()->GetDescriptor() == SerializedResponse::descriptor()) {
                 ((SerializedResponse*)cntl->response())->
                     serialized_data().append(*res_buf_ptr);
             } else if (!DeserializeRpcMessage(*res_buf_ptr, *cntl, content_type,
-                                              compress_type, cntl->response())) {
+                                              compress_type, checksum_type,
+                                              cntl->response())) {
                 cntl->SetFailed(
-                    EREQUEST, "Fail to parse response=%s, ContentType=%s, "
-                              "CompressType=%s, request_size=%d",
+                    EREQUEST,
+                    "Fail to parse response=%s, ContentType=%s, "
+                    "CompressType=%s, ChecksumType=%s, request_size=%d",
                     cntl->response()->GetDescriptor()->full_name().c_str(),
                     ContentTypeToCStr(content_type),
-                    CompressTypeToCStr(compress_type), res_size);
+                    CompressTypeToCStr(compress_type),
+                    ChecksumTypeToCStr(checksum_type), res_size);
             }
         } // else silently ignore the response.
     } while (0);
@@ -996,13 +1026,16 @@ void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
 
     ContentType content_type = cntl->request_content_type();
     CompressType compress_type = cntl->request_compress_type();
-    if (!SerializeRpcMessage(*request, *cntl, content_type, compress_type, request_buf)) {
+    ChecksumType checksum_type = cntl->request_checksum_type();
+    if (!SerializeRpcMessage(*request, *cntl, content_type, compress_type,
+                             checksum_type, request_buf)) {
         return cntl->SetFailed(
-            EREQUEST, "Fail to compress request=%s, "
-                      "ContentType=%s, CompressType=%s",
+            EREQUEST,
+            "Fail to compress request=%s, "
+            "ContentType=%s, CompressType=%s, ChecksumType=%s",
             request->GetDescriptor()->full_name().c_str(),
-            ContentTypeToCStr(content_type),
-            CompressTypeToCStr(compress_type));
+            ContentTypeToCStr(content_type), CompressTypeToCStr(compress_type),
+            ChecksumTypeToCStr(checksum_type));
     }
 }
 
@@ -1027,6 +1060,8 @@ void PackRpcRequest(butil::IOBuf* req_buf,
                                        method->service()->name());
         request_meta->set_method_name(method->name());
         meta.set_compress_type(cntl->request_compress_type());
+        meta.set_checksum_type(cntl->request_checksum_type());
+        meta.set_checksum_value(accessor.checksum_value());
     } else if (NULL != cntl->sampled_request()) {
         // Replaying. Keep service-name as the one seen by server.
         request_meta->set_service_name(cntl->sampled_request()->meta.service_name());

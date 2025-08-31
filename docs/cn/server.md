@@ -559,7 +559,7 @@ public:
     virtual int VerifyCredential(const std::string& auth_str,
                                  const base::EndPoint& client_addr,
                                  AuthContext* out_ctx) const = 0;
-    }; 
+};
 
 class AuthContext {
 public:
@@ -573,7 +573,7 @@ public:
 
 server的验证是基于连接的。当server收到连接上的第一个请求时，会尝试解析出其中的身份信息部分（如baidu_std里的auth字段、HTTP协议里的Authorization头），然后附带client地址信息一起调用`VerifyCredential`。若返回0，表示验证成功，用户可以把验证后的信息填入`AuthContext`，后续可通过`controller->auth_context()`获取，用户不需要关心其分配和释放。否则表示验证失败，连接会被直接关闭，client访问失败。
 
-后续请求默认通过验证么，没有认证开销。
+后续请求默认通过验证，没有认证开销。
 
 把实现的`Authenticator`实例赋值到`ServerOptions.auth`，即开启验证功能，需要保证该实例在整个server运行周期内都有效，不能被析构。
 
@@ -675,7 +675,7 @@ server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 
 pthread模式可以让一些老代码快速尝试brpc，但我们仍然建议逐渐地把代码改造为使用bthread local或最好不用TLS，从而最终能关闭这个开关。
 
-## 安全模式
+## 安全
 
 如果你的服务流量来自外部（包括经过nginx等转发），你需要注意一些安全因素：
 
@@ -713,6 +713,10 @@ curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service |
 ### 不返回内部server地址
 
 可以考虑对server地址做签名。比如在设置ServerOptions.internal_port后，server返回的错误信息中的IP信息是其MD5签名，而不是明文。
+
+### 不以root用户启动brpc进程
+
+由于brpc在运行过程中会写入各种文件（如server pid文件、rpcz、rpc dump、profiling等），如果brpc以root用户运行，攻击者可能利用这一特性进行文件的越权写入。因此，无论brpc是否对外提供网络服务，都不建议以root用户启动brpc进程。
 
 ## 定制/health页面
 

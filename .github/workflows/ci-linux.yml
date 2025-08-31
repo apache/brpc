@@ -191,7 +191,7 @@ jobs:
     - uses: ./.github/actions/install-essential-dependencies
     - uses: ./.github/actions/init-ut-make-config
       with:
-        options: --cc=clang-12 --cxx=clang++-12 --with-bthread-tracer
+        options: --with-bthread-tracer
     - name: compile tests
       run: |
         cat config.mk
@@ -209,7 +209,7 @@ jobs:
     - uses: ./.github/actions/install-essential-dependencies
     - uses: ./.github/actions/init-ut-make-config
       with:
-        options: --cc=clang-12 --cxx=clang++-12 --with-bthread-tracer --with-asan
+        options: --with-bthread-tracer --with-asan
     - name: compile tests
       run: |
         cat config.mk

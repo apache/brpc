@@ -20,8 +20,12 @@
 #include "butil/logging.h"
 #include "butil/string_printf.h"
 #include "brpc/redis_reply.h"
+#include "gflags/gflags.h"
 
 namespace brpc {
+
+DEFINE_int32(redis_max_allocation_size, 64 * 1024 * 1024, 
+             "Maximum memory allocation size in bytes for a single redis request or reply (64MB by default)");
 
 //BAIDU_CASSERT(sizeof(RedisReply) == 24, size_match);
 const int RedisReply::npos = -1;
@@ -175,9 +179,9 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
                 _data.integer = 0;
                 return PARSE_OK;
             }
-            if (len > (int64_t)std::numeric_limits<uint32_t>::max()) {
-                LOG(ERROR) << "bulk string is too long! max length=2^32-1,"
-                    " actually=" << len;
+            if (len > FLAGS_redis_max_allocation_size) {
+                LOG(ERROR) << "bulk string exceeds max allocation size! max=" 
+                           << FLAGS_redis_max_allocation_size << ", actually=" << len;
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // We provide c_str(), thus even if bulk string is started with
@@ -229,9 +233,10 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
                 _data.array.replies = NULL;
                 return PARSE_OK;
             }
-            if (count > (int64_t)std::numeric_limits<uint32_t>::max()) {
-                LOG(ERROR) << "Too many sub replies! max count=2^32-1,"
-                    " actually=" << count;
+            int64_t max_count = FLAGS_redis_max_allocation_size / sizeof(RedisReply);
+            if (count > max_count) {
+                LOG(ERROR) << "array allocation exceeds max allocation size! max=" 
+                           << max_count << ", actually=" << count;
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // FIXME(gejun): Call allocate_aligned instead.

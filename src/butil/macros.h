@@ -20,8 +20,11 @@
 // There must be many copy-paste versions of these macros which are same
 // things, undefine them to avoid conflict.
 #undef DISALLOW_COPY
+#undef DISALLOW_MOVE
 #undef DISALLOW_ASSIGN
+#undef DISALLOW_MOVE_ASSIGN
 #undef DISALLOW_COPY_AND_ASSIGN
+#undef DISALLOW_COPY_AND_MOVE
 #undef DISALLOW_EVIL_CONSTRUCTORS
 #undef DISALLOW_IMPLICIT_CONSTRUCTORS
 
@@ -31,19 +34,37 @@
 #define BUTIL_DELETE_FUNCTION(decl) decl = delete
 #endif
 
-// Put this in the private: declarations for a class to be uncopyable.
+// Declarations for a class to be uncopyable.
 #define DISALLOW_COPY(TypeName)                         \
     BUTIL_DELETE_FUNCTION(TypeName(const TypeName&))
 
-// Put this in the private: declarations for a class to be unassignable.
-#define DISALLOW_ASSIGN(TypeName)                               \
+// Declarations for a class to be unmovable.
+#define DISALLOW_MOVE(TypeName)                         \
+    BUTIL_DELETE_FUNCTION(TypeName(TypeName&&))
+
+// Declarations for a class to be unassignable.
+#define DISALLOW_ASSIGN(TypeName)                        \
     BUTIL_DELETE_FUNCTION(void operator=(const TypeName&))
 
-// A macro to disallow the copy constructor and operator= functions
-// This should be used in the private: declarations for a class
-#define DISALLOW_COPY_AND_ASSIGN(TypeName)                      \
-    BUTIL_DELETE_FUNCTION(TypeName(const TypeName&));            \
-    BUTIL_DELETE_FUNCTION(void operator=(const TypeName&))
+// Declarations for a class to be move-unassignable.
+#define DISALLOW_MOVE_ASSIGN(TypeName)                   \
+    BUTIL_DELETE_FUNCTION(void operator=(TypeName&&))
+
+// A macro to disallow the copy constructor and operator= functions.
+#define DISALLOW_COPY_AND_ASSIGN(TypeName)               \
+    DISALLOW_COPY(TypeName);                             \
+    DISALLOW_ASSIGN(TypeName)
+
+// A macro to disallow the move constructor and operator= functions.
+#define DISALLOW_MOVE_AND_ASSIGN(TypeName)               \
+    DISALLOW_MOVE(TypeName);                             \
+    DISALLOW_MOVE_ASSIGN(TypeName)
+
+// A macro to disallow the copy constructor,
+// the move constructor and operator= functions.
+#define DISALLOW_COPY_AND_MOVE(TypeName)                 \
+    DISALLOW_COPY_AND_ASSIGN(TypeName);                  \
+    DISALLOW_MOVE(TypeName)
 
 // An older, deprecated, politically incorrect name for the above.
 // NOTE: The usage of this macro was banned from our code base, but some
