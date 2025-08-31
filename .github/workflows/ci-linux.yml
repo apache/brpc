@@ -180,7 +180,6 @@ jobs:
     runs-on: ubuntu-22.04  
     steps:
     - uses: actions/checkout@v2
-    - uses: bazelbuild/setup-bazelisk@v2
     - name: run bazel tests
       run: bazel test --test_output=errors --verbose_failures --action_env=CC=clang -- //test/... //...
 
