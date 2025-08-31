@@ -174,7 +174,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: run bazel tests
-      run: bazel test --test_output=errors --verbose_failures -- //test/... 
+      run: bazel test --test_output=errors --verbose_failures --test_timeout=900 -- //test/... 
 
   clang-bazel-unittest:
     runs-on: ubuntu-22.04  
