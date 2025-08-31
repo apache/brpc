@@ -14,7 +14,7 @@ env:
   proc_num: $(sysctl -n hw.logicalcpu)
 
 jobs:
-  compile:
+  compile-with-make-cmake-protobuf21:
     runs-on: macos-latest # https://github.com/actions/runner-images
 
     steps:
@@ -22,8 +22,7 @@ jobs:
     
     - name: install dependences
       run: |
-           brew install ./homebrew-formula/protobuf.rb 
-           brew install openssl gnu-getopt coreutils gflags leveldb
+           brew install openssl gnu-getopt coreutils gflags leveldb protobuf@21
 
     - name: compile with make
       run: |
@@ -34,10 +33,11 @@ jobs:
 
     - name: compile with cmake
       run: |
-        mkdir build && cd build && cmake ..
+        echo "CMAKE_PREFIX_PATH=$(brew --prefix protobuf@21)"
+        mkdir build && cd build && cmake -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@21) ..
         make -j ${{env.proc_num}} && make clean
 
-  compile-with-make-protobuf23:
+  compile-with-make-cmake-protobuf29:
     runs-on: macos-latest # https://github.com/actions/runner-images
 
     steps:
@@ -45,12 +45,7 @@ jobs:
 
       - name: install dependences
         run: |
-          brew install openssl gnu-getopt coreutils gflags leveldb
-          # abseil 20230125.3
-          curl -o abseil.rb   https://raw.githubusercontent.com/Homebrew/homebrew-core/b85b8dbf23ad509f163677a88ac72268f31e9c4a/Formula/abseil.rb
-          # protobuf 23.3
-          curl -o protobuf.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/b85b8dbf23ad509f163677a88ac72268f31e9c4a/Formula/protobuf.rb
-          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install --formula --ignore-dependencies ./abseil.rb ./protobuf.rb
+          brew install openssl gnu-getopt coreutils gflags leveldb protobuf@29
 
       - name: compile with make
         run: |
@@ -59,7 +54,14 @@ jobs:
            ./config_brpc.sh --header="$(brew --prefix)/include" --libs="$(brew --prefix)/lib"
           make -j ${{env.proc_num}} && make clean
 
-      - name: compile with make
+      - name: compile with cmake
         run: |
-          mkdir build && cd build && cmake ..
+          mkdir build && cd build && cmake -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@29) ..
           make -j ${{env.proc_num}} && make clean
+
+  compile-with-bazel:
+    runs-on: macos-latest # https://github.com/actions/runner-images
+
+    steps:
+      - uses: actions/checkout@v2
+      - run: bazel build --verbose_failures -- //:brpc -//example/...
