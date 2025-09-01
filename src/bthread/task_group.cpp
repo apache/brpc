@@ -515,7 +515,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
         // NOSIGNAL affects current task, not the new task.
         RemainedFn fn = NULL;
         auto& cur_attr = g->_cur_meta->attr;
-        if (cur_attr.flags & BTHREAD_GLOBAL_PRIORITY) {
+        if (g->_control->_enable_priority_queue && cur_attr.flags & BTHREAD_GLOBAL_PRIORITY) {
             fn = priority_to_run;
         } else if (g->current_task()->about_to_quit) {
             fn = ready_to_run_in_worker_ignoresignal;
