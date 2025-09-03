@@ -1869,7 +1869,7 @@ bool IOBufAsZeroCopyInputStream::Skip(int count) {
     return false;
 }
 
-google::protobuf::int64 IOBufAsZeroCopyInputStream::ByteCount() const {
+int64_t IOBufAsZeroCopyInputStream::ByteCount() const {
     return _byte_count;
 }
 
@@ -1990,7 +1990,7 @@ void IOBufAsZeroCopyOutputStream::BackUp(int count) {
     LOG_IF(FATAL, count != 0) << "BackUp an empty IOBuf";
 }
 
-google::protobuf::int64 IOBufAsZeroCopyOutputStream::ByteCount() const {
+int64_t IOBufAsZeroCopyOutputStream::ByteCount() const {
     return _byte_count;
 }
 
