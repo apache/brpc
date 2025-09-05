@@ -743,6 +743,7 @@ END_OF_RPC:
         bthread_t bt;
         bthread_attr_t attr = (FLAGS_usercode_in_pthread ?
                                BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
+        bthread_attr_set_name(&attr, "RunEndRPC");
         _tmp_completion_info = info;
         if (bthread_start_background(&bt, &attr, RunEndRPC, this) != 0) {
             LOG(FATAL) << "Fail to start bthread";

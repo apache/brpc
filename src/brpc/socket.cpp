@@ -1491,8 +1491,10 @@ void Socket::AfterAppConnected(int err, void* data) {
         // requests are not setup yet. check the comment on Setup() in Write()
         req->Setup(s);
         bthread_t th;
+        bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+        bthread_attr_set_name(&attr, "KeepWrite");
         if (bthread_start_background(
-                &th, &BTHREAD_ATTR_NORMAL, KeepWrite, req) != 0) {
+                &th, &attr, KeepWrite, req) != 0) {
             PLOG(WARNING) << "Fail to start KeepWrite";
             KeepWrite(req);
         }
@@ -1532,7 +1534,9 @@ int Socket::KeepWriteIfConnected(int fd, int err, void* data) {
         bthread_t th;
         std::unique_ptr<google::protobuf::Closure> thrd_func(brpc::NewCallback(
                 Socket::CheckConnectedAndKeepWrite, fd, err, data));
-        if ((err = bthread_start_background(&th, &BTHREAD_ATTR_NORMAL,
+        bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+        bthread_attr_set_name(&attr, "CheckConnectedAndKeepWrite");
+        if ((err = bthread_start_background(&th, &attr,
                                             RunClosure, thrd_func.get())) == 0) {
             thrd_func.release();
             return 0;
@@ -1705,6 +1709,8 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
 
     int saved_errno = 0;
     bthread_t th;
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    bthread_attr_set_name(&attr, "KeepWrite");
     SocketUniquePtr ptr_for_keep_write;
     ssize_t nw = 0;
     int ret = 0;
@@ -1779,7 +1785,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
 KEEPWRITE_IN_BACKGROUND:
     ReAddress(&ptr_for_keep_write);
     req->set_socket(ptr_for_keep_write.release());
-    if (bthread_start_background(&th, &BTHREAD_ATTR_NORMAL,
+    if (bthread_start_background(&th, &attr,
                                  KeepWrite, req) != 0) {
         LOG(FATAL) << "Fail to start KeepWrite";
         KeepWrite(req);
@@ -2266,6 +2272,7 @@ int Socket::OnInputEvent(void* user_data, uint32_t events,
         bthread_attr_t attr = thread_attr;
         attr.keytable_pool = p->_keytable_pool;
         attr.tag = bthread_self_tag();
+        bthread_attr_set_name(&attr, "ProcessEvent");
         if (FLAGS_usercode_in_coroutine) {
             ProcessEvent(p);
 #if BRPC_WITH_RDMA
