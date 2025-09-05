@@ -331,7 +331,12 @@ int InputMessenger::ProcessNewMessage(
                     "destroyed when authentication failed";
             }
         }
-        if (!m->is_read_progressive()) {
+#if BRPC_WITH_RDMA
+        if (!m->is_read_progressive() && !rdma::FLAGS_rdma_use_polling)
+#else
+        if (!m->is_read_progressive())
+#endif
+        {
             // Transfer ownership to last_msg
             last_msg.reset(msg.release());
         } else {
