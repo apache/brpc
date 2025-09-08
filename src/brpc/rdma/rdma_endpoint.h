@@ -36,6 +36,7 @@ namespace brpc {
 class Socket;
 namespace rdma {
 
+DECLARE_bool(rdma_use_polling);
 DECLARE_int32(rdma_poller_num);
 DECLARE_bool(rdma_edisp_unsched);
 DECLARE_bool(rdma_disable_bthread);
