@@ -40,7 +40,7 @@ if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW)
 endif()
 
-set(BRPC_VERSION 1.14.0)
+set(BRPC_VERSION 1.14.1)
 
 SET(CPACK_GENERATOR "DEB")
 SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "brpc authors")
@@ -475,6 +475,7 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/crc32c.cc
     ${PROJECT_SOURCE_DIR}/src/butil/containers/case_ignored_flat_map.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/iobuf.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/single_iobuf.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/iobuf_profiler.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/binary_printer.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/recordio.cc

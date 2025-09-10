@@ -233,14 +233,14 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
                 _data.array.replies = NULL;
                 return PARSE_OK;
             }
-            int64_t array_size = sizeof(RedisReply) * count;
-            if (array_size > FLAGS_redis_max_allocation_size) {
+            int64_t max_count = FLAGS_redis_max_allocation_size / sizeof(RedisReply);
+            if (count > max_count) {
                 LOG(ERROR) << "array allocation exceeds max allocation size! max=" 
-                           << FLAGS_redis_max_allocation_size << ", actually=" << array_size;
+                           << max_count << ", actually=" << count;
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // FIXME(gejun): Call allocate_aligned instead.
-            RedisReply* subs = (RedisReply*)_arena->allocate(array_size);
+            RedisReply* subs = (RedisReply*)_arena->allocate(sizeof(RedisReply) * count);
             if (subs == NULL) {
                 LOG(FATAL) << "Fail to allocate RedisReply[" << count << "]";
                 return PARSE_ERROR_ABSOLUTELY_WRONG;

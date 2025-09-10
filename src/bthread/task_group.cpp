@@ -515,7 +515,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
         // NOSIGNAL affects current task, not the new task.
         RemainedFn fn = NULL;
         auto& cur_attr = g->_cur_meta->attr;
-        if (cur_attr.flags & BTHREAD_GLOBAL_PRIORITY) {
+        if (g->_control->_enable_priority_queue && cur_attr.flags & BTHREAD_GLOBAL_PRIORITY) {
             fn = priority_to_run;
         } else if (g->current_task()->about_to_quit) {
             fn = ready_to_run_in_worker_ignoresignal;
@@ -1107,7 +1107,7 @@ void print_task(std::ostream& os, bthread_t tid) {
     TaskStatistics stat = {0, 0, 0};
     TaskStatus status = TASK_STATUS_UNKNOWN;
     bool traced = false;
-    pid_t worker_tid = 0;
+    pthread_t worker_tid{};
     {
         BAIDU_SCOPED_LOCK(m->version_lock);
         if (given_ver == *m->version_butex) {

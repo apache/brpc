@@ -99,7 +99,7 @@ public:
     virtual ~EventDispatcher();
 
     // Start this dispatcher in a bthread.
-    // Use |*consumer_thread_attr| (if it's not NULL) as the attribute to
+    // Use |*thread_attr| (if it's not NULL) as the attribute to
     // create bthreads running user callbacks.
     // Returns 0 on success, -1 otherwise.
     virtual int Start(const bthread_attr_t* thread_attr);

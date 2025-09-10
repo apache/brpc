@@ -29,7 +29,7 @@
 //    // Interfaces of ZeroCopyOutputStream
 //    bool Next(void** data, int* size);
 //    void BackUp(int count);
-//    google::protobuf::int64 ByteCount() const;
+//    int64_t ByteCount() const;
 //
 //private:
 //    IOBuf* _buf;

@@ -615,6 +615,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     cntl->set_request_content_type(meta.content_type());
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     cntl->set_request_checksum_type((ChecksumType)meta.checksum_type());
+    cntl->set_rpc_received_us(msg->received_us());
     accessor.set_checksum_value(meta.checksum_value());
     accessor.set_server(server)
         .set_security_mode(security_mode)
@@ -943,6 +944,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         }
     }
 
+    cntl->set_rpc_received_us(msg->received_us());
     Span* span = accessor.span();
     if (span) {
         span->set_base_real_us(msg->base_real_us());

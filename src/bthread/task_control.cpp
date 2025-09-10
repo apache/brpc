@@ -19,6 +19,7 @@
 
 // Date: Tue Jul 10 17:40:58 CST 2012
 
+#include <pthread.h>
 #include <sys/syscall.h>                   // SYS_gettid
 #include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "butil/errno.h"                   // berror
@@ -44,8 +45,14 @@ DEFINE_bool(task_group_set_worker_name, true,
 
 namespace bthread {
 
+DEFINE_bool(parking_lot_no_signal_when_no_waiter, false,
+            "ParkingLot doesn't signal when there is no waiter. "
+            "In busy worker scenarios, signal overhead can be reduced.");
+DEFINE_bool(enable_bthread_priority_queue, false, "Whether to enable priority queue");
+
 DECLARE_int32(bthread_concurrency);
 DECLARE_int32(bthread_min_concurrency);
+DECLARE_int32(bthread_parking_lot_of_each_tag);
 
 extern pthread_mutex_t g_task_control_mutex;
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
@@ -90,7 +97,7 @@ void* TaskControl::worker_thread(void* arg) {
         return NULL;
     }
 
-    g->_tid = syscall(SYS_gettid);
+    g->_tid = pthread_self();
 
     if (FLAGS_task_group_set_worker_name) {
         std::string worker_thread_name = butil::string_printf(
@@ -186,7 +193,8 @@ TaskControl::TaskControl()
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
     , _priority_queues(FLAGS_task_group_ntags)
-    , _pl(FLAGS_task_group_ntags)
+    , _pl_num_of_each_tag(FLAGS_bthread_parking_lot_of_each_tag)
+    , _tagged_pl(FLAGS_task_group_ntags)
 {}
 
 int TaskControl::init(int concurrency) {
@@ -326,7 +334,7 @@ void TaskControl::stop_and_join() {
             [](butil::atomic<size_t>& index) { index.store(0, butil::memory_order_relaxed); });
     }
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
-        for (auto& pl : _pl[i]) {
+        for (auto& pl : _tagged_pl[i]) {
             pl.stop();
         }
     }
@@ -367,7 +375,7 @@ int TaskControl::_add_group(TaskGroup* g, bthread_tag_t tag) {
         return -1;
     }
     g->set_tag(tag);
-    g->set_pl(&_pl[tag][butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM]);
+    g->set_pl(&_tagged_pl[tag][butil::fmix64(pthread_numeric_id()) % _pl_num_of_each_tag]);
     size_t ngroup = _tagged_ngroup[tag].load(butil::memory_order_relaxed);
     if (ngroup < (size_t)BTHREAD_MAX_CONCURRENCY) {
         _tagged_groups[tag][ngroup] = g;
@@ -482,14 +490,11 @@ void TaskControl::signal_task(int num_task, bthread_tag_t tag) {
         num_task = 2;
     }
     auto& pl = tag_pl(tag);
-    int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
-    num_task -= pl[start_index].signal(1);
-    if (num_task > 0) {
-        for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
-            if (++start_index >= PARKING_LOT_NUM) {
-                start_index = 0;
-            }
-            num_task -= pl[start_index].signal(1);
+    size_t start_index = butil::fmix64(pthread_numeric_id()) % _pl_num_of_each_tag;
+    for (size_t i = 0; i < _pl_num_of_each_tag && num_task > 0; ++i) {
+        num_task -= pl[start_index].signal(1);
+        if (++start_index >= _pl_num_of_each_tag) {
+            start_index = 0;
         }
     }
     if (num_task > 0 &&

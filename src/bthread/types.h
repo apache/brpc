@@ -138,10 +138,6 @@ static const bthread_attr_t BTHREAD_ATTR_NORMAL = {BTHREAD_STACKTYPE_NORMAL, 0, 
 static const bthread_attr_t BTHREAD_ATTR_LARGE = {BTHREAD_STACKTYPE_LARGE, 0, NULL,
                                                   BTHREAD_TAG_INVALID};
 
-// epoll bthread
-static const bthread_attr_t BTHREAD_ATTR_EPOLL = {
-    BTHREAD_STACKTYPE_NORMAL, BTHREAD_GLOBAL_PRIORITY, NULL, BTHREAD_TAG_INVALID};
-
 // bthreads created with this attribute will print log when it's started,
 // context-switched, finished.
 static const bthread_attr_t BTHREAD_ATTR_DEBUG = {
@@ -154,6 +150,9 @@ static const bthread_t BTHREAD_ATOMIC_INIT = 0;
 // Min/Max number of work pthreads.
 static const int BTHREAD_MIN_CONCURRENCY = 3 + BTHREAD_EPOLL_THREAD_NUM;
 static const int BTHREAD_MAX_CONCURRENCY = 1024;
+// Min/max number of ParkingLot.
+static const int BTHREAD_MIN_PARKINGLOT = 4;
+static const int BTHREAD_MAX_PARKINGLOT = 1024;
 
 typedef struct {
     void* impl;

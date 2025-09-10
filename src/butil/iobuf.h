@@ -23,7 +23,7 @@
 #define BUTIL_IOBUF_H
 
 #include <sys/uio.h>                             // iovec
-#include <stdint.h>                              // uint32_t
+#include <stdint.h>                              // uint32_t, int64_t
 #include <functional>
 #include <string>                                // std::string
 #include <ostream>                               // std::ostream
@@ -64,6 +64,8 @@ friend class IOBufAsZeroCopyInputStream;
 friend class IOBufAsZeroCopyOutputStream;
 friend class IOBufBytesIterator;
 friend class IOBufCutter;
+friend class SingleIOBuf;
+
 public:
     static const size_t DEFAULT_BLOCK_SIZE = 8192;
     static const size_t INITIAL_CAP = 32; // must be power of 2
@@ -562,12 +564,12 @@ public:
     bool Next(const void** data, int* size) override;
     void BackUp(int count) override;
     bool Skip(int count) override;
-    google::protobuf::int64 ByteCount() const override;
+    int64_t ByteCount() const override;
 
 private:
     int _ref_index;
     int _add_offset;
-    google::protobuf::int64 _byte_count;
+    int64_t _byte_count;
     const IOBuf* _buf;
 };
 
@@ -593,7 +595,7 @@ public:
 
     bool Next(void** data, int* size) override;
     void BackUp(int count) override; // `count' can be as long as ByteCount()
-    google::protobuf::int64 ByteCount() const override;
+    int64_t ByteCount() const override;
 
 private:
     void _release_block();
@@ -601,7 +603,7 @@ private:
     IOBuf* _buf;
     uint32_t _block_size;
     IOBuf::Block *_cur_block;
-    google::protobuf::int64 _byte_count;
+    int64_t _byte_count;
 };
 
 // Wrap IOBuf into input of snappy compression.

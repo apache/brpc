@@ -29,6 +29,7 @@
 #include <butil/time.h>                 // Timer
 #include <butil/fd_utility.h>           // make_non_blocking
 #include <butil/iobuf.h>
+#include <butil/single_iobuf.h>
 #include <butil/logging.h>
 #include <butil/fd_guard.h>
 #include <butil/errno.h>
@@ -1888,6 +1889,61 @@ TEST_F(IOBufTest, reserve_aligned) {
         ASSERT_EQ(total_size, 3145728);
         ASSERT_EQ(ss.str(), buf.to_string());
     }
+}
+
+TEST_F(IOBufTest, single_iobuf) {
+    butil::IOBuf buf1;
+    // It will be freed by IOBuf.
+    char *usr_str = (char *)malloc(16);
+    memset(usr_str, 0, 16);
+    char src_str[] = "abcdefgh12345678";
+    size_t total_len = sizeof(src_str);
+    strncpy(usr_str, src_str + 8, total_len - 8);
+    buf1.append(src_str, 8);
+    buf1.append_user_data(usr_str, total_len - 8, NULL);
+    ASSERT_EQ(2, buf1.backing_block_num());
+    butil::SingleIOBuf sbuf;
+    ASSERT_EQ(0, sbuf.backing_block_num());
+    sbuf.assign(buf1, total_len);
+    ASSERT_EQ(1, sbuf.backing_block_num());
+    size_t s_len = sbuf.get_length();
+    ASSERT_EQ(s_len, total_len);
+    const char* str = (const char*) sbuf.get_begin();
+    int ret = strcmp(str, src_str);
+    ASSERT_EQ(0, ret);
+    butil::IOBuf buf2;
+    sbuf.append_to(&buf2);
+    ASSERT_EQ(buf2.length(), total_len);
+    butil::SingleIOBuf sbuf2;
+    sbuf2.swap(sbuf);
+    ASSERT_EQ(sbuf.get_length(), 0);
+    ASSERT_EQ(sbuf2.get_length(), total_len);
+    sbuf2.reset();
+    ASSERT_EQ(0, sbuf2.get_length());
+    
+    void* buf = sbuf.allocate(1024);
+    ASSERT_TRUE(NULL != buf);
+    buf = sbuf.reallocate_downward(16384, 0, 0);
+    ASSERT_TRUE(NULL != buf);
+    s_len = sbuf.get_length();
+    ASSERT_EQ(16384, s_len);
+
+    butil::IOBuf::BlockRef ref = sbuf.get_cur_ref();
+    butil::SingleIOBuf sbuf3(ref);
+    s_len = sbuf3.get_length();
+    ASSERT_EQ(16384, s_len);
+    sbuf.deallocate(buf);
+
+    errno = 0;
+    void *null_buf = sbuf3.reallocate_downward(s_len - 1, 0, 0);
+    ASSERT_EQ(null_buf, nullptr);
+
+    uint32_t old_size = sbuf3.get_length();
+    void *p = sbuf3.reallocate_downward(old_size + 16, 0, old_size); 
+    ASSERT_TRUE(p != nullptr);
+    old_size = sbuf3.get_length();
+    p = sbuf3.reallocate_downward(old_size + 16, old_size, 0);
+    ASSERT_TRUE(p != nullptr);
 }
 
 } // namespace

@@ -127,6 +127,8 @@ bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
 
 Formatting is compatible with hiredis, namely `%b` corresponds to binary data (pointer + length), others are similar to those in `printf`. Some improvements have been made such as characters enclosed by single or double quotes are recognized as one field regardless of the spaces inside. For example, `AddCommand("Set 'a key with space' 'a value with space as well'")` sets value `a value with space as well` to key `a key with space`, while in hiredis the command must be written as `redisvCommand(..., "SET% s% s", "a key with space", "a value with space as well");`
 
+> Note that if the `fmt` parameter of `AddCommand` and `AddCommandV` is set incorrectly, it may cause the program to crash or lead to data leakage. Please set it with caution. Should not use user input-influenced content as the `fmt` parameter!
+
 `AddCommandByComponents` is similar to `redisCommandArgv` in hiredis. Users specify each part of the command in an array, which is immune to escaping issues often occurring in `AddCommand` and `AddCommandV`. If you encounter errors such as "Unmatched quote" or "invalid format" when using `AddCommand` and `AddCommandV`, try this method.
 
 If `AddCommand*` fails, subsequent `AddCommand*` and `CallMethod` also fail. In general, there is no need to check return value of `AddCommand*`, since the RPC fails directly anyway.
