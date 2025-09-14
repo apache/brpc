@@ -28,6 +28,7 @@
 #include <signal.h>
 #include <stddef.h>                             // size_t
 #include <vector>
+#include <set>
 #include <array>
 #include <memory>
 #include "butil/atomicops.h"                     // butil::atomic
@@ -39,6 +40,71 @@
 
 DECLARE_int32(task_group_ntags);
 namespace bthread {
+
+#ifdef BRPC_BTHREAD_TRACER
+class ShardedBthreadSet {
+public:
+    explicit ShardedBthreadSet(size_t shard_count = 16)
+        : _shard_count(shard_count), _shards(shard_count) {}
+
+    void add(bthread_t id) {
+        get_shard(id).add(id);
+    }
+
+    void remove(bthread_t id) {
+        get_shard(id).remove(id);
+    }
+
+    std::set<bthread_t> get_all() {
+        std::set<bthread_t> result;
+        for (auto& shard : _shards) {
+            shard.copy_to(result);
+        }
+        return result;
+    }
+
+private:
+    class Shard {
+    public:
+        Shard() {
+            pthread_spin_init(&_spinlock, PTHREAD_PROCESS_PRIVATE);
+        }
+
+        ~Shard() {
+            pthread_spin_destroy(&_spinlock);
+        }
+
+        Shard(const Shard&) = delete;
+        Shard& operator=(const Shard&) = delete;
+
+        void add(bthread_t id) {
+            BAIDU_SCOPED_LOCK(_spinlock);
+            _bthread_ids.insert(id);
+        }
+
+        void remove(bthread_t id) {
+            BAIDU_SCOPED_LOCK(_spinlock);
+            _bthread_ids.erase(id);
+        }
+
+        void copy_to(std::set<bthread_t>& target) {
+            BAIDU_SCOPED_LOCK(_spinlock);
+            target.insert(_bthread_ids.begin(), _bthread_ids.end());
+        }
+
+    private:
+        pthread_spinlock_t _spinlock;
+        std::set<bthread_t> _bthread_ids;
+    };
+
+    Shard& get_shard(bthread_t id) {
+        return _shards[id % _shard_count];
+    }
+
+    const size_t _shard_count;
+    std::vector<Shard> _shards;
+};
+#endif // BRPC_BTHREAD_TRACER
 
 class TaskGroup;
 
@@ -95,6 +161,9 @@ public:
     // A stacktrace of bthread can be helpful in debugging.
     void stack_trace(std::ostream& os, bthread_t tid);
     std::string stack_trace(bthread_t tid);
+    std::set<bthread_t> get_living_bthreads() {
+        return _living_bthreads.get_all();
+    }
 #endif // BRPC_BTHREAD_TRACER
 
     void push_priority_queue(bthread_tag_t tag, bthread_t tid) {
@@ -129,6 +198,16 @@ private:
     bvar::LatencyRecorder* create_exposed_pending_time();
     bvar::Adder<int64_t>& tag_nworkers(bthread_tag_t tag);
     bvar::Adder<int64_t>& tag_nbthreads(bthread_tag_t tag);
+
+#ifdef BRPC_BTHREAD_TRACER
+    void record_bthread_start(bthread_t tid) {
+        _living_bthreads.add(tid);
+    }
+
+    void record_bthread_finish(bthread_t tid) {
+        _living_bthreads.remove(tid);
+    }
+#endif // BRPC_BTHREAD_TRACER
 
     std::vector<butil::atomic<size_t>> _tagged_ngroup;
     std::vector<TaggedGroups> _tagged_groups;
@@ -165,6 +244,7 @@ private:
 
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer _task_tracer;
+    ShardedBthreadSet _living_bthreads;
 #endif // BRPC_BTHREAD_TRACER
 
 };
