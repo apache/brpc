@@ -107,7 +107,8 @@ struct TaskMeta {
     // DO NOT use this field directly, use tls_bls instead.
     LocalStorage local_storage{};
 
-    // Only used when TaskTracer is enabled.
+    // Mainly used when TaskTracer is enabled. Otherwise used to just indicate
+    // if a bthread is alive.
     // Bthread status.
     TaskStatus status{TASK_STATUS_UNKNOWN};
     // Whether bthread is traced？

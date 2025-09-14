@@ -132,6 +132,12 @@ template <typename T> ResourcePoolInfo describe_resources() {
     return ResourcePool<T>::singleton()->describe_resources();
 }
 
+// List all allocated resources typed T.
+// This function is possibly slow because it iterates internal structures.
+// It's currently used to list all living bthreads for debug usage.
+template <typename T> std::list<T*> list_resources() {
+    return ResourcePool<T>::singleton()->list_resources();
+}
 }  // namespace butil
 
 #endif  // BUTIL_RESOURCE_POOL_H

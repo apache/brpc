@@ -31,6 +31,7 @@
 #include "butil/thread_local.h"          // thread_atexit
 #include "butil/memory/aligned_memory.h" // butil::AlignedMemory
 #include <vector>
+#include <list>
 
 #ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
 #define BAIDU_RESOURCE_POOL_FREE_ITEM_NUM_ADD1                \
@@ -306,6 +307,28 @@ public:
     static inline size_t free_chunk_nitem() {
         const size_t n = ResourcePoolFreeChunkMaxItem<T>::value();
         return n < FREE_CHUNK_NITEM ? n : FREE_CHUNK_NITEM;
+    }
+
+    std::list<T*> list_resources() const {
+        std::list<T*> res;
+        for (size_t i = 0; i < _ngroup.load(butil::memory_order_acquire); ++i) {
+            BlockGroup* bg = _block_groups[i].load(butil::memory_order_consume);
+            if (NULL == bg) {
+                break;
+            }
+            size_t nblock = std::min(bg->nblock.load(butil::memory_order_relaxed),
+                                     RP_GROUP_NBLOCK);
+            for (size_t j = 0; j < nblock; ++j) {
+                Block* b = bg->blocks[j].load(butil::memory_order_consume);
+                if (NULL != b) {
+                    for (size_t k = 0; k < b->nitem; ++k) {
+                        auto item = b->items + k;
+                        res.push_back((T*)item->void_data());
+                    }
+                }
+            }
+        }
+        return res;
     }
     
     // Number of all allocated objects, including being used and free.
