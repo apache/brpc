@@ -307,6 +307,28 @@ public:
         const size_t n = ResourcePoolFreeChunkMaxItem<T>::value();
         return n < FREE_CHUNK_NITEM ? n : FREE_CHUNK_NITEM;
     }
+
+    template <typename F>
+    void for_each_resource(F const& f) {
+        for (size_t i = 0; i < _ngroup.load(butil::memory_order_acquire); ++i) {
+            BlockGroup* bg = _block_groups[i].load(butil::memory_order_consume);
+            if (NULL == bg) {
+                break;
+            }
+            size_t nblock = std::min(bg->nblock.load(butil::memory_order_relaxed),
+                                     RP_GROUP_NBLOCK);
+            for (size_t j = 0; j < nblock; ++j) {
+                Block* b = bg->blocks[j].load(butil::memory_order_consume);
+                if (NULL != b) {
+                    for (size_t k = 0; k < b->nitem; ++k) {
+                        auto item = b->items + k;
+                        T* obj = (T*)item->void_data();
+                        f(obj);
+                    }
+                }
+            }
+        }
+    }
     
     // Number of all allocated objects, including being used and free.
     ResourcePoolInfo describe_resources() const {

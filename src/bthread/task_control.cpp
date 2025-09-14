@@ -192,6 +192,7 @@ TaskControl::TaskControl()
     , _signal_per_second(&_cumulated_signal_count)
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
+    , _enable_priority_queue(FLAGS_enable_bthread_priority_queue)
     , _priority_queues(FLAGS_task_group_ntags)
     , _pl_num_of_each_tag(FLAGS_bthread_parking_lot_of_each_tag)
     , _tagged_pl(FLAGS_task_group_ntags)
@@ -585,6 +586,25 @@ bvar::LatencyRecorder* TaskControl::create_exposed_pending_time() {
         pt->expose("bthread_creation");
     }
     return pt;
+}
+
+std::vector<bthread_t> TaskControl::get_living_bthreads() {
+    std::vector<bthread_t> living_bthread_ids;
+    living_bthread_ids.reserve(1024);
+    butil::for_each_resource<TaskMeta>([&living_bthread_ids](TaskMeta* m) {
+        // filter out those bthreads created by bthread_start* functions,
+        // i.e. not those created internally to run main task as they are
+        // opaque to user.
+        if (m && m->fn) {
+            // determine whether the bthread is living by checking version
+            const uint32_t given_ver = get_version(m->tid);
+            BAIDU_SCOPED_LOCK(m->version_lock);
+            if (given_ver == *m->version_butex) {
+                living_bthread_ids.push_back(m->tid);
+            }
+        }
+    });
+    return living_bthread_ids;
 }
 
 }  // namespace bthread

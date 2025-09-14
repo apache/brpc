@@ -147,7 +147,7 @@ void TaskTracer::set_status(TaskStatus s, TaskMeta* m) {
 
         tracing = m->traced;
         // bthread is scheduled for the first time.
-        if (TASK_STATUS_READY == s || NULL == m->stack) {
+        if (TASK_STATUS_READY == s && NULL == m->stack) {
             m->status = TASK_STATUS_FIRST_READY;
         } else {
             m->status = s;

@@ -101,6 +101,7 @@ public:
         _priority_queues[tag].push(tid);
     }
 
+    std::vector<bthread_t> get_living_bthreads();
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
     typedef std::array<ParkingLot, BTHREAD_MAX_PARKINGLOT> TaggedParkingLot;
