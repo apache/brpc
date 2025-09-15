@@ -139,6 +139,18 @@ public:
             new (d->sub_done(i)) SubDone;
             d->sub_done(i)->cntl.ApplyClientSettings(settings);
             d->sub_done(i)->cntl.allow_done_to_run_in_place();
+
+            // Propagate all HTTP headers from parent controller to sub-controllers.
+            // This preserves application-set headers (e.g., Authorization) on each sub-call.
+            if (cntl->has_http_request()) {
+                auto& parent_hdr = cntl->http_request();
+                if (parent_hdr.HeaderBegin() != parent_hdr.HeaderEnd()) {
+                    auto& sub_hdr = d->sub_done(i)->cntl.http_request();
+                    for (auto it = parent_hdr.HeaderBegin(); it != parent_hdr.HeaderEnd(); ++it) {
+                        sub_hdr.AppendHeader(it->first, it->second);
+                    }
+                }
+            }
         }
         // Setup the map for finding sub_done of i-th sub_channel
         if (ndone != nchan) {
