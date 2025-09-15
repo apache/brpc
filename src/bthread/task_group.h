@@ -56,7 +56,7 @@ private:
 // Otherwise, use mutex to guarantee atomicity.
 class AtomicInteger128 {
 public:
-    struct Value {
+    struct BAIDU_CACHELINE_ALIGNMENT Value {
         int64_t v1;
         int64_t v2;
     };
@@ -72,7 +72,7 @@ public:
     void store(Value value);
 
 private:
-    Value BAIDU_CACHELINE_ALIGNMENT _value{};
+    Value _value{};
     // Used to protect `_cpu_time_stat' when __x86_64__ and __ARM_NEON is not defined.
     FastPthreadMutex _mutex;
 };
