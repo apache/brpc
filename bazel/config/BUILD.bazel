@@ -137,3 +137,9 @@ config_setting(
         "with_bthread_tracer": "true",
     },
 )
+
+config_setting(
+    name = "brpc_with_no_pthread_mutex_hook",
+    define_values = {"BRPC_WITH_NO_PTHREAD_MUTEX_HOOK": "true"},
+    visibility = ["//visibility:public"],
+)

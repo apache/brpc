@@ -53,6 +53,9 @@ COPTS = [
 }) + select({
     "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
     "//conditions:default": [""],
+}) + select({
+    "//bazel/config:brpc_with_no_pthread_mutex_hook": ["-DNO_PTHREAD_MUTEX_HOOK"],
+    "//conditions:default": [""],
 })
 
 LINKOPTS = [
