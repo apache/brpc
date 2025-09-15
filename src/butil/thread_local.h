@@ -46,6 +46,22 @@
     var_name = v;                                                              \
   }
 
+ #define STATIC_MEMBER_BAIDU_VOLATILE_THREAD_LOCAL(type, var_name)              \
+   static BAIDU_THREAD_LOCAL type var_name;                                     \
+   static __attribute__((noinline, unused)) type get_##var_name(void) {         \
+     asm volatile("");                                                          \
+     return var_name;                                                           \
+   }                                                                            \
+   static __attribute__((noinline, unused)) type *get_ptr_##var_name(void) {    \
+     type *ptr = &var_name;                                                     \
+     asm volatile("" : "+rm"(ptr));                                             \
+     return ptr;                                                                \
+   }                                                                            \
+   static __attribute__((noinline, unused)) void set_##var_name(type v) {       \
+     asm volatile("");                                                          \
+     var_name = v;                                                              \
+   }
+
 #if (defined (__aarch64__) && defined (__GNUC__)) || defined(__clang__)
 // GNU compiler under aarch and Clang compiler is incorrectly caching the 
 // address of thread_local variables across a suspend-point. The following
