@@ -10,7 +10,6 @@
 #include "brpc/pb_compat.h"
 
 namespace brpc {
-    static uint32_t hash_crc32(const char *key, size_t key_length);
     class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
         private:
             int _pipelined_count;
@@ -26,6 +25,7 @@ namespace brpc {
             bool Store(uint8_t command, const butil::StringPiece& key,
                     const butil::StringPiece& value,
                     uint32_t flags, uint32_t exptime, uint64_t cas_value);
+            uint32_t hash_crc32(const char *key, size_t key_length);
         public:
             CouchbaseRequest();
             ~CouchbaseRequest() override;

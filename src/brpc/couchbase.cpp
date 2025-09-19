@@ -27,7 +27,7 @@
 
 namespace brpc {
 
-static uint32_t hash_crc32(const char *key, size_t key_length)
+uint32_t CouchbaseRequest::hash_crc32(const char *key, size_t key_length)
 {
 
     static const uint32_t crc32tab[256] = {
