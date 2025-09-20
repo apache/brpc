@@ -36,13 +36,14 @@ class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
   void SharedCtor();
   void SharedDtor();
   void SetCachedSize(int size) const PB_425_OVERRIDE;
-  bool GetOrDelete(uint8_t command, const butil::StringPiece& key);
+  bool GetOrDelete(uint8_t command, const butil::StringPiece& key,
+                   uint8_t coll_id = 0);
   bool Counter(uint8_t command, const butil::StringPiece& key, uint64_t delta,
                uint64_t initial_value, uint32_t exptime);
 
   bool Store(uint8_t command, const butil::StringPiece& key,
              const butil::StringPiece& value, uint32_t flags, uint32_t exptime,
-             uint64_t cas_value);
+             uint64_t cas_value, uint8_t coll_id = 0);
   uint32_t hash_crc32(const char* key, size_t key_length);
 
  public:
@@ -59,48 +60,45 @@ class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
                     const butil::StringPiece& password);
   bool HelloRequest();
 
-  // Collection Management Methods
-  bool GetCollectionsManifest();
+  // Collection Management Method
   bool GetCollectionId(const butil::StringPiece& scope_name,
                        const butil::StringPiece& collection_name);
 
   bool GetScopeId(const butil::StringPiece& scope_name);
 
   // Collection-aware document operations
-  bool Get(const butil::StringPiece& key);
-  bool GetFromCollection(const butil::StringPiece& key,
-                         const butil::StringPiece& scope_name,
-                         const butil::StringPiece& collection_name);
+  bool Get(const butil::StringPiece& key, uint8_t coll_id = 0);
 
   bool Upsert(const butil::StringPiece& key, const butil::StringPiece& value,
-              uint32_t flags, uint32_t exptime, uint64_t cas_value);
-  bool UpsertToCollection(const butil::StringPiece& key,
-                          const butil::StringPiece& value, uint32_t flags,
-                          uint32_t exptime, uint64_t cas_value,
-                          const butil::StringPiece& scope_name,
-                          const butil::StringPiece& collection_name);
+              uint32_t flags, uint32_t exptime, uint64_t cas_value,
+              uint8_t coll_id = 0);
 
   bool Add(const butil::StringPiece& key, const butil::StringPiece& value,
-           uint32_t flags, uint32_t exptime, uint64_t cas_value);
+           uint32_t flags, uint32_t exptime, uint64_t cas_value,
+           uint8_t coll_id = 0);
 
   bool Replace(const butil::StringPiece& key, const butil::StringPiece& value,
-               uint32_t flags, uint32_t exptime, uint64_t cas_value);
+               uint32_t flags, uint32_t exptime, uint64_t cas_value,
+               uint8_t coll_id = 0);
 
   bool Append(const butil::StringPiece& key, const butil::StringPiece& value,
-              uint32_t flags, uint32_t exptime, uint64_t cas_value);
+              uint32_t flags, uint32_t exptime, uint64_t cas_value,
+              uint8_t coll_id = 0);
 
   bool Prepend(const butil::StringPiece& key, const butil::StringPiece& value,
-               uint32_t flags, uint32_t exptime, uint64_t cas_value);
+               uint32_t flags, uint32_t exptime, uint64_t cas_value,
+               uint8_t coll_id = 0);
 
-  bool Delete(const butil::StringPiece& key);
+  bool Delete(const butil::StringPiece& key, uint8_t coll_id = 0);
   bool Flush(uint32_t timeout);
 
   bool Increment(const butil::StringPiece& key, uint64_t delta,
-                 uint64_t initial_value, uint32_t exptime);
+                 uint64_t initial_value, uint32_t exptime, uint8_t coll_id = 0);
   bool Decrement(const butil::StringPiece& key, uint64_t delta,
-                 uint64_t initial_value, uint32_t exptime);
+                 uint64_t initial_value, uint32_t exptime, uint8_t coll_id = 0);
 
-  bool Touch(const butil::StringPiece& key, uint32_t exptime);
+  bool Touch(const butil::StringPiece& key, uint32_t exptime,
+             uint8_t coll_id = 0);
 
   bool Version();
 
@@ -200,7 +198,7 @@ class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
     STATUS_SUBDOC_DELETED_DOCUMENT_CANT_HAVE_VALUE = 0xd7,
     STATUS_XATTR_EINVAL = 0xe0
   };
-
+  const char* couchbase_binary_command_to_string(uint8_t cmd);
   void MergeFrom(const CouchbaseResponse& from) override;
   void Clear() override;
   bool IsInitialized() const PB_527_OVERRIDE;
@@ -233,15 +231,10 @@ class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
   bool PopReplace(uint64_t* cas_value);
   bool PopAppend(uint64_t* cas_value);
   bool PopPrepend(uint64_t* cas_value);
+  bool PopSelectBucket(uint64_t* cas_value);
 
   // Collection-related response methods
-  bool PopCollectionsManifest(std::string* manifest_json);
-  bool PopCollectionId(uint32_t* collection_id);
-
-  // Collection-aware response methods (same as regular but for documentation)
-  bool PopGetFromCollection(butil::IOBuf* value, uint32_t* flags,
-                            uint64_t* cas_value);
-  bool PopUpsertToCollection(uint64_t* cas_value);
+  bool PopCollectionId(uint8_t* collection_id);
 
   bool PopDelete();
   bool PopFlush();

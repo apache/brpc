@@ -24,7 +24,6 @@
 #include <butil/string_printf.h>
 #include <gflags/gflags.h>
 
-#include <chrono>
 #include <iomanip>
 #include <mutex>
 
@@ -56,92 +55,7 @@ butil::static_atomic<int> g_sender_count = BUTIL_STATIC_ATOMIC_INIT(0);
 std::vector<double> thread_response_times;
 std::mutex timing_mutex;
 
-// static void* sender(void* arg) {
-//     google::protobuf::RpcChannel* channel =
-//         static_cast<google::protobuf::RpcChannel*>(arg);
-//     const int base_index = g_sender_count.fetch_add(1,
-//     butil::memory_order_relaxed);
-
-//     std::string value;
-//     std::string key = "test_brpc_";
-//  // Example batch size, can be parameterized
-
-//     brpc::CouchbaseRequest request;
-//     for (int i = 0; i < batch_size; ++i) {
-//         CHECK(request.Get(butil::string_printf("%s%d", key.c_str(), i)));
-//     }
-
-//     // Start timing for this thread
-//     auto start_time = std::chrono::high_resolution_clock::now();
-
-//     while (!brpc::IsAskedToQuit()) {
-//         // We will receive response synchronously, safe to put variables
-//         // on stack.
-//         brpc::CouchbaseResponse response;
-//         brpc::Controller cntl;
-
-//         // Because `done'(last parameter) is NULL, this function waits until
-//         // the response comes back or error occurs(including timedout).
-//         channel->CallMethod(NULL, &cntl, &request, &response, NULL);
-//         const int64_t elp = cntl.latency_us();
-//         if (!cntl.Failed()) {
-//             int i = 0;
-//             g_latency_recorder << cntl.latency_us();
-//             for (i = 0; i < batch_size; ++i) {
-//                 uint32_t flags;
-//                 if (!response.PopGet(&value, &flags, NULL)) {
-//                     LOG(INFO) << "Fail to GET the key, " <<
-//                     response.LastError(); std::cout<<"thread id "<<
-//                     bthread_self() << " failed to get key: " <<
-//                     butil::string_printf("%s%d", key.c_str(), i) <<
-//                     std::endl; break;
-//                 }
-//                 std::cout<<"thread id "<< bthread_self() <<"Key: " <<
-//                 butil::string_printf("%s%d", key.c_str(), i) << ", Value: "
-//                 << value << std::endl;
-//             }
-
-//             // End timing and calculate response time for this thread
-//             auto end_time = std::chrono::high_resolution_clock::now();
-//             auto duration =
-//             std::chrono::duration_cast<std::chrono::microseconds>(end_time -
-//             start_time); double response_time_ms = duration.count() / 1000.0;
-//             // Convert to milliseconds
-
-//             std::cout << "Thread " << bthread_self() << " GET request took: "
-//             << response_time_ms << " ms" << std::endl;
-
-//             // Store the response time in thread-safe manner
-//             {
-//                 std::lock_guard<std::mutex> lock(timing_mutex);
-//                 thread_response_times.push_back(response_time_ms);
-//             }
-
-//             bthread_usleep(5000000); // Sleep for 50ms before exiting
-//             return NULL;
-
-//         } else {
-//             g_error_count << 1;
-
-//             // End timing even for failed requests
-//             auto end_time = std::chrono::high_resolution_clock::now();
-//             auto duration =
-//             std::chrono::duration_cast<std::chrono::microseconds>(end_time -
-//             start_time); double response_time_ms = duration.count() / 1000.0;
-
-//             std::cout << "Thread " << bthread_self() << " GET request failed
-//             after: " << response_time_ms << " ms" << std::endl;
-
-//             bthread_usleep(5000000);
-//             return NULL;
-//         }
-//     }
-//     return NULL;
-// }
-
 int main() {
-  std::vector<std::pair<std::string, long long>> operation_times;
-
   brpc::Channel channel;
 
   // Initialize the channel, NULL means using default options.
@@ -189,32 +103,19 @@ int main() {
     return -1;
   }
 
-  // Start timing for authentication
-  auto auth_start_time = std::chrono::high_resolution_clock::now();
-
   channel.CallMethod(NULL, &cntl, &auth_request, &auth_response, NULL);
+
   if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access Couchbase, " << cntl.ErrorText();
     return -1;
   }
 
-  // Check authentication response status
-  if (!auth_response.LastError().empty()) {
-    LOG(ERROR) << "Authentication failed: " << auth_response.LastError();
-    return -1;
-  }
-
-  // End timing for authentication
-  auto auth_end_time = std::chrono::high_resolution_clock::now();
-  auto auth_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-      auth_end_time - auth_start_time);
-  double auth_time_ms = auth_duration.count() / 1000.0;
-
   cntl.Reset();
 
-  std::cout << GREEN << "Authentication successful (took " << auth_time_ms
-            << " ms), proceeding with Couchbase operations..." << RESET
-            << std::endl;
+  std::cout
+      << GREEN
+      << "Authentication successful, proceeding with Couchbase operations..."
+      << RESET << std::endl;
 
   // Select bucket
   std::string bucket_name;
@@ -234,143 +135,25 @@ int main() {
     return -1;
   }
 
-  // Start timing for bucket selection
-  auto bucket_start_time = std::chrono::high_resolution_clock::now();
-
   channel.CallMethod(NULL, &cntl, &select_bucket_request,
                      &select_bucket_response, NULL);
+
   if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access Couchbase, " << cntl.ErrorText();
     return -1;
+  } else {
+    // Check ADD operation response status
+    uint64_t cas_value;
+    if (select_bucket_response.PopSelectBucket(&cas_value)) {
+      std::cout << GREEN << "Bucket Selection Successful, CAS: " << cas_value
+                << RESET << std::endl;
+    } else {
+      std::cout << RED << select_bucket_response.LastError() << RESET
+                << std::endl;
+    }
   }
-
-  // Check bucket selection response status
-  if (!select_bucket_response.LastError().empty()) {
-    LOG(ERROR) << "Bucket selection failed: "
-               << select_bucket_response.LastError();
-    return -1;
-  }
-
-  // End timing for bucket selection
-  auto bucket_end_time = std::chrono::high_resolution_clock::now();
-  auto bucket_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-      bucket_end_time - bucket_start_time);
-  double bucket_time_ms = bucket_duration.count() / 1000.0;
 
   cntl.Reset();
-
-  if (select_bucket_response.LastError().empty()) {
-    std::cout << GREEN << "Bucket selected successfully: " << bucket_name
-              << " (took " << bucket_time_ms << " ms)" << RESET << std::endl;
-  } else {
-    std::cout << RED << "Failed to select bucket: "
-              << select_bucket_response.LastError() << RESET << std::endl;
-    return -1;
-  }
-
-  // enter batch size
-  //  std::cout << "Enter batch size for operations (e.g., 10): ";
-  //  std::cin >> batch_size;
-
-  // // Add operation
-  // brpc::CouchbaseRequest add_request;
-  // brpc::CouchbaseResponse add_response;
-
-  // for(int i = 0;i<batch_size;i++) {
-  //     if (!add_request.Add(butil::string_printf("test_brpc_%d", i),
-  //     "{\"hello\":\"world\"}", 0xdeadbeef , FLAGS_exptime, 0)) {
-  //         LOG(ERROR) << "Fail to ADD request";
-  //         return -1;
-  //     }
-  // }
-
-  // // Start timing for ADD operations
-  // auto add_start_time = std::chrono::high_resolution_clock::now();
-
-  // channel.CallMethod(NULL, &cntl, &add_request, &add_response, NULL);
-  // if (cntl.Failed()) {
-  //     LOG(ERROR) << "Fail to access Couchbase, " << cntl.ErrorText();
-  //     return -1;
-  // }
-
-  // for (int i = 0; i < batch_size; ++i) {
-  //     if (!add_response.PopAdd(NULL)) {
-  //         LOG(ERROR) << "Fail to ADD memcache, i=" << i
-  //                    << ", " << add_response.LastError();
-  //     }
-  // }
-
-  // // End timing for ADD operations
-  // auto add_end_time = std::chrono::high_resolution_clock::now();
-  // auto add_duration =
-  // std::chrono::duration_cast<std::chrono::microseconds>(add_end_time -
-  // add_start_time); double add_time_ms = add_duration.count() / 1000.0;
-
-  // std::cout << "Added " << batch_size << " documents (took " << add_time_ms
-  // << " ms)" << std::endl;
-
-  // cntl.Reset();
-
-  // std::vector<bthread_t> bids;
-  // std::vector<pthread_t> pids;
-  // if (!FLAGS_use_bthread) {
-  //     pids.resize( batch_size);
-  //     for (int i = 0; i <  batch_size; ++i) {
-  //         if (pthread_create(&pids[i], NULL, sender, &channel) != 0) {
-  //             LOG(ERROR) << "Fail to create pthread";
-  //             return -1;
-  //         }
-  //     }
-  // } else {
-  //     bids.resize( batch_size);
-  //     for (int i = 0; i <  batch_size; ++i) {
-  //         if (bthread_start_background(
-  //                 &bids[i], NULL, sender, &channel) != 0) {
-  //             LOG(ERROR) << "Fail to create bthread";
-  //             return -1;
-  //         }
-  //     }
-  // }
-
-  // LOG(INFO) << "couchbase_client is going to quit";
-  // for (int i = 0; i <  batch_size; ++i) {
-  //     if (!FLAGS_use_bthread) {
-  //         pthread_join(pids[i], NULL);
-  //     } else {
-  //         bthread_join(bids[i], NULL);
-  //     }
-  // }
-
-  // // Calculate and print average response time
-  // if (!thread_response_times.empty()) {
-  //     double total_time = 0.0;
-  //     for (double time : thread_response_times) {
-  //         total_time += time;
-  //     }
-  //     double average_response_time = total_time /
-  //     thread_response_times.size();
-
-  //     std::cout << "\n=== Performance Summary ===" << std::endl;
-  //     std::cout << "Authentication time: " << auth_time_ms << " ms" <<
-  //     std::endl; std::cout << "Bucket selection time: " << bucket_time_ms <<
-  //     " ms" << std::endl; std::cout << "ADD operations time: " << add_time_ms
-  //     << " ms" << std::endl; std::cout << "Total threads: " <<
-  //     thread_response_times.size() << std::endl; std::cout << "Average GET
-  //     response time: " << average_response_time << " ms" << std::endl;
-  //     std::cout << "Total time for all GET requests: " << total_time << " ms"
-  //     << std::endl; std::cout << "Total authorization time: " <<
-  //     (auth_time_ms + bucket_time_ms) << " ms" << std::endl; std::cout <<
-  //     "=========================" << std::endl;
-  // } else {
-  //     std::cout << "\n=== Performance Summary ===" << std::endl;
-  //     std::cout << "Authentication time: " << auth_time_ms << " ms" <<
-  //     std::endl; std::cout << "Bucket selection time: " << bucket_time_ms <<
-  //     " ms" << std::endl; std::cout << "ADD operations time: " << add_time_ms
-  //     << " ms" << std::endl; std::cout << "Total authorization time: " <<
-  //     (auth_time_ms + bucket_time_ms) << " ms" << std::endl; std::cout << "No
-  //     successful GET requests completed." << std::endl; std::cout <<
-  //     "=========================" << std::endl;
-  // }
 
   // Add operation
   brpc::CouchbaseRequest add_request;
@@ -382,13 +165,9 @@ int main() {
     LOG(ERROR) << "Fail to ADD request";
     return -1;
   }
-  auto add_start_time = std::chrono::high_resolution_clock::now();
+
   channel.CallMethod(NULL, &cntl, &add_request, &add_response, NULL);
-  auto add_end_time = std::chrono::high_resolution_clock::now();
-  auto add_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-      add_end_time - add_start_time);
-  operation_times.push_back(
-      {"Add user data (first attempt) in microsecond", add_duration.count()});
+
   if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access Couchbase, " << cntl.ErrorText();
     return -1;
@@ -412,14 +191,7 @@ int main() {
     LOG(ERROR) << "Fail to ADD request";
     return -1;
   }
-  add_start_time = std::chrono::high_resolution_clock::now();
   channel.CallMethod(NULL, &cntl, &add_request, &add_response, NULL);
-  add_end_time = std::chrono::high_resolution_clock::now();
-  add_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-      add_end_time - add_start_time);
-  operation_times.push_back(
-      {"Add user data (Second attempt - expected failure) in microsecond ",
-       add_duration.count()});
 
   // Check second ADD operation response status (should fail with key exists)
   if (cntl.Failed()) {
@@ -444,13 +216,7 @@ int main() {
     LOG(ERROR) << "Fail to GET request";
     return -1;
   }
-  add_start_time = std::chrono::high_resolution_clock::now();
   channel.CallMethod(NULL, &cntl, &get_request, &get_response, NULL);
-  add_end_time = std::chrono::high_resolution_clock::now();
-  add_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-      add_end_time - add_start_time);
-  operation_times.push_back(
-      {"Get user data in microsecond ", add_duration.count()});
   if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access Couchbase, " << cntl.ErrorText();
     return -1;
@@ -488,13 +254,7 @@ int main() {
   }
   std::cout << "Sending ADD request for binprot_item1, pipelined count: "
             << add_request1.pipelined_count() << std::endl;
-  add_start_time = std::chrono::high_resolution_clock::now();
   channel.CallMethod(NULL, &cntl, &add_request1, &add_response1, NULL);
-  add_end_time = std::chrono::high_resolution_clock::now();
-  add_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-      add_end_time - add_start_time);
-  operation_times.push_back(
-      {"Add binprot item1 in microsecond", add_duration.count()});
   if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access Couchbase, " << cntl.ErrorText();
     return -1;
@@ -524,13 +284,7 @@ int main() {
   }
   std::cout << "Sending ADD request for binprot_item2, pipelined count: "
             << add_request2.pipelined_count() << std::endl;
-  add_start_time = std::chrono::high_resolution_clock::now();
   channel.CallMethod(NULL, &cntl, &add_request2, &add_response2, NULL);
-  add_end_time = std::chrono::high_resolution_clock::now();
-  add_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-      add_end_time - add_start_time);
-  operation_times.push_back(
-      {"Add binprot item2 in microsecond", add_duration.count()});
   if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access Couchbase, " << cntl.ErrorText();
     return -1;
@@ -559,13 +313,7 @@ int main() {
   }
   std::cout << "Sending ADD request for binprot_item3, pipelined count: "
             << add_request3.pipelined_count() << std::endl;
-  add_start_time = std::chrono::high_resolution_clock::now();
   channel.CallMethod(NULL, &cntl, &add_request3, &add_response3, NULL);
-  add_end_time = std::chrono::high_resolution_clock::now();
-  add_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-      add_end_time - add_start_time);
-  operation_times.push_back(
-      {"Add binprot item3 in microsecond", add_duration.count()});
   if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access Couchbase, " << cntl.ErrorText();
     return -1;
@@ -835,18 +583,177 @@ int main() {
 
   cntl.Reset();
 
-  // Print operation times
-  long long total_time = 0;
-  for (const auto& op : operation_times) {
-    std::cout << std::left << std::setw(40) << op.first << ": ";
-    if (op.second >= 1000) {
-      std::cout << std::right << std::setw(8) << (op.second / 1000.0) << " ms"
-                << std::endl;
+  // Retrieve Collection ID for scope `_default` and collection
+  // `testing_collection`
+
+  brpc::CouchbaseRequest get_collection_request;
+  brpc::CouchbaseResponse get_collection_response;
+  uint8_t testing_collection_id = 0;  // will hold the numeric collection id
+  const std::string scope_name = "_default";           // default scope
+  std::string collection_name = "testing_collection";  // target collection
+  // enter collection name as user input
+  std::cout << "Enter collection name (default 'testing_collection'): ";
+  std::string user_input;
+  std::cin >> user_input;
+  if (!user_input.empty()) {
+    collection_name = user_input;
+  }
+
+  if (!get_collection_request.GetCollectionId(scope_name.c_str(),
+                                              collection_name.c_str())) {
+    LOG(ERROR) << "Fail to build GetCollectionId request for scope '"
+               << scope_name << "' collection '" << collection_name << "'";
+    return -1;
+  }
+
+  channel.CallMethod(NULL, &cntl, &get_collection_request,
+                     &get_collection_response, NULL);
+
+  if (cntl.Failed()) {
+    LOG(ERROR) << "Fail to access Couchbase for GetCollectionId, "
+               << cntl.ErrorText();
+    return -1;
+  }
+
+  if (get_collection_response.PopCollectionId(&testing_collection_id)) {
+    std::cout << GREEN << "Retrieved collection id for _default."
+              << collection_name << " = "
+              << static_cast<unsigned int>(testing_collection_id)
+              << " dec=" << static_cast<unsigned int>(testing_collection_id)
+              << ", hex=0x" << std::hex
+              << static_cast<unsigned int>(testing_collection_id) << RESET
+              << std::endl;
+  } else {
+    std::cout << RED << "Failed to retrieve collection id for _default."
+              << collection_name << ": " << get_collection_response.LastError()
+              << RESET << std::endl;
+    // We continue, but subsequent collection operations will skip if id=0
+  }
+  cntl.Reset();
+  // ------------------------------------------------------------------
+  // Collection-scoped CRUD operations (only if collection id was retrieved)
+  // ------------------------------------------------------------------
+  if (testing_collection_id != 0) {
+    // 1. ADD in collection
+    brpc::CouchbaseRequest coll_add_req;
+    brpc::CouchbaseResponse coll_add_resp;
+    const std::string coll_key = "user::collection_doc";
+    if (!coll_add_req.Add(
+            coll_key.c_str(), R"({"type":"collection","op":"add","v":1})",
+            0xabcddcba, FLAGS_exptime, 0, (uint8_t)testing_collection_id)) {
+      LOG(ERROR) << "Fail to build collection ADD request";
     } else {
-      std::cout << std::right << std::setw(8) << op.second << " μs"
-                << std::endl;
+      channel.CallMethod(NULL, &cntl, &coll_add_req, &coll_add_resp, NULL);
+      if (cntl.Failed()) {
+        LOG(ERROR) << "Collection ADD RPC failed: " << cntl.ErrorText();
+      } else {
+        uint64_t ccas;
+        if (coll_add_resp.PopAdd(&ccas)) {
+          std::cout << GREEN << "Collection ADD success, CAS=" << ccas << RESET
+                    << std::endl;
+        } else {
+          std::cout << RED
+                    << "Collection ADD failed: " << coll_add_resp.LastError()
+                    << RESET << std::endl;
+        }
+      }
+      cntl.Reset();
     }
-    total_time += op.second;
+
+    // 2. GET from collection
+    brpc::CouchbaseRequest coll_get_req;
+    brpc::CouchbaseResponse coll_get_resp;
+    if (!coll_get_req.Get(coll_key.c_str(), (uint8_t)testing_collection_id)) {
+      LOG(ERROR) << "Fail to build collection GET request";
+    } else {
+      channel.CallMethod(NULL, &cntl, &coll_get_req, &coll_get_resp, NULL);
+      if (cntl.Failed()) {
+        LOG(ERROR) << "Collection GET RPC failed: " << cntl.ErrorText();
+      } else {
+        std::string v;
+        uint32_t f = 0;
+        uint64_t ccas = 0;
+        if (coll_get_resp.PopGet(&v, &f, &ccas)) {
+          std::cout << GREEN << "Collection GET success value=" << v
+                    << ", CAS=" << ccas << RESET << std::endl;
+        } else {
+          std::cout << RED
+                    << "Collection GET failed: " << coll_get_resp.LastError()
+                    << RESET << std::endl;
+        }
+      }
+      cntl.Reset();
+    }
+
+    // 3. UPSERT in collection
+    brpc::CouchbaseRequest coll_upsert_req;
+    brpc::CouchbaseResponse coll_upsert_resp;
+    if (!coll_upsert_req.Upsert(
+            coll_key.c_str(), R"({"type":"collection","op":"upsert","v":2})", 0,
+            FLAGS_exptime, 0, (uint8_t)testing_collection_id)) {
+      LOG(ERROR) << "Fail to build collection UPSERT request";
+    } else {
+      channel.CallMethod(NULL, &cntl, &coll_upsert_req, &coll_upsert_resp,
+                         NULL);
+      if (cntl.Failed()) {
+        LOG(ERROR) << "Collection UPSERT RPC failed: " << cntl.ErrorText();
+      } else {
+        uint64_t ccas;
+        if (coll_upsert_resp.PopUpsert(&ccas)) {
+          std::cout << GREEN << "Collection UPSERT success, CAS=" << ccas
+                    << RESET << std::endl;
+        } else {
+          std::cout << RED << "Collection UPSERT failed: "
+                    << coll_upsert_resp.LastError() << RESET << std::endl;
+        }
+      }
+      cntl.Reset();
+    }
+
+    // 4. GET again to verify upsert
+    brpc::CouchbaseRequest coll_get2_req;
+    brpc::CouchbaseResponse coll_get2_resp;
+    if (coll_get2_req.Get(coll_key.c_str(), (uint8_t)testing_collection_id)) {
+      channel.CallMethod(NULL, &cntl, &coll_get2_req, &coll_get2_resp, NULL);
+      if (!cntl.Failed()) {
+        std::string v;
+        uint32_t f = 0;
+        uint64_t ccas = 0;
+        if (coll_get2_resp.PopGet(&v, &f, &ccas)) {
+          std::cout << GREEN << "Collection GET(after upsert) value=" << v
+                    << RESET << std::endl;
+        }
+      }
+      cntl.Reset();
+    }
+
+    // 5. DELETE from collection
+    brpc::CouchbaseRequest coll_del_req;
+    brpc::CouchbaseResponse coll_del_resp;
+    if (!coll_del_req.Delete(coll_key.c_str(),
+                             (uint8_t)testing_collection_id)) {
+      LOG(ERROR) << "Fail to build collection DELETE request";
+    } else {
+      channel.CallMethod(NULL, &cntl, &coll_del_req, &coll_del_resp, NULL);
+      if (cntl.Failed()) {
+        LOG(ERROR) << "Collection DELETE RPC failed: " << cntl.ErrorText();
+      } else {
+        if (coll_del_resp.PopDelete()) {
+          std::cout << GREEN << "Collection DELETE success" << RESET
+                    << std::endl;
+        } else {
+          std::cout << RED
+                    << "Collection DELETE failed: " << coll_del_resp.LastError()
+                    << RESET << std::endl;
+        }
+      }
+      cntl.Reset();
+    }
+  } else {
+    std::cout << RED
+              << "Skipping collection-scoped CRUD operations (collection id "
+                 "not available)"
+              << RESET << std::endl;
   }
   return 0;
 }

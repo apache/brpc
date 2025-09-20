@@ -434,8 +434,6 @@ size_t CouchbaseResponse::ByteSizeLong() const {
 void CouchbaseResponse::MergeFrom(const CouchbaseResponse& from) {
   CHECK_NE(&from, this);
   _err = from._err;
-  // responses of memcached according to their binary layout, should be
-  // directly concatenatible.
   _buf.append(from._buf);
 }
 
@@ -594,9 +592,10 @@ std::string CouchbaseResponse::format_error_message(
 // MUST have key.
 // MUST NOT have value.
 bool CouchbaseRequest::GetOrDelete(uint8_t command,
-                                   const butil::StringPiece& key) {
+                                   const butil::StringPiece& key,
+                                   uint8_t coll_id) {
   // Collection ID
-  uint8_t collection_id = 0;
+  uint8_t collection_id = coll_id;
   uint16_t VBucket_id = hash_crc32(key.data(), key.size());
   const policy::CouchbaseRequestHeader header = {
       policy::CB_MAGIC_REQUEST, command,
@@ -623,12 +622,12 @@ bool CouchbaseRequest::GetOrDelete(uint8_t command,
   return true;
 }
 
-bool CouchbaseRequest::Get(const butil::StringPiece& key) {
-  return GetOrDelete(policy::CB_BINARY_GET, key);
+bool CouchbaseRequest::Get(const butil::StringPiece& key, uint8_t coll_id) {
+  return GetOrDelete(policy::CB_BINARY_GET, key, coll_id);
 }
 
-bool CouchbaseRequest::Delete(const butil::StringPiece& key) {
-  return GetOrDelete(policy::CB_BINARY_DELETE, key);
+bool CouchbaseRequest::Delete(const butil::StringPiece& key, uint8_t coll_id) {
+  return GetOrDelete(policy::CB_BINARY_DELETE, key, coll_id);
 }
 
 struct FlushHeaderWithExtras {
@@ -795,18 +794,19 @@ const size_t STORE_EXTRAS =
 //   Total 8 bytes
 bool CouchbaseRequest::Store(uint8_t command, const butil::StringPiece& key,
                              const butil::StringPiece& value, uint32_t flags,
-                             uint32_t exptime, uint64_t cas_value) {
+                             uint32_t exptime, uint64_t cas_value,
+                             uint8_t coll_id) {
   // add collection id
   //  uint16_t collection_id = 0x00;
-  uint8_t collection_id = 0x00;
+  uint8_t collection_id = coll_id;
   uint16_t vBucket_id = hash_crc32(key.data(), key.size());
   StoreHeaderWithExtras header_with_extras = {
       {policy::CB_MAGIC_REQUEST, command,
-       butil::HostToNet16(
-           key.size() +
-           1),  // collection id is part of key, so including it in key length.
+       butil::HostToNet16(key.size() +
+                          1),  // collection id is not included in part of key,
+                               // so not including it in key length.
        STORE_EXTRAS, policy::CB_JSON, butil::HostToNet16(vBucket_id),
-       butil::HostToNet32(STORE_EXTRAS + sizeof(uint8_t) + key.size() +
+       butil::HostToNet32(STORE_EXTRAS + sizeof(collection_id) + key.size() +
                           value.size()),  // total body length
        0, butil::HostToNet64(cas_value)},
       butil::HostToNet32(flags),
@@ -814,7 +814,7 @@ bool CouchbaseRequest::Store(uint8_t command, const butil::StringPiece& key,
   if (_buf.append(&header_with_extras, sizeof(header_with_extras))) {
     return false;
   }
-  if (_buf.append(&collection_id, sizeof(uint8_t))) {
+  if (_buf.append(&collection_id, sizeof(collection_id))) {
     return false;
   }
   if (_buf.append(key.data(), key.size())) {
@@ -857,9 +857,12 @@ bool CouchbaseResponse::PopStore(uint8_t command, uint64_t* cas_value) {
     if (value_size > 0) {
       std::string error_msg;
       _buf.cutn(&error_msg, value_size);
-      _err = format_error_message(header.status, "STORE operation", error_msg);
+      _err = format_error_message(header.status,
+                                  couchbase_binary_command_to_string(command),
+                                  error_msg);
     } else {
-      _err = format_error_message(header.status, "STORE operation");
+      _err = format_error_message(header.status,
+                                  couchbase_binary_command_to_string(command));
     }
     return false;
   }
@@ -867,39 +870,110 @@ bool CouchbaseResponse::PopStore(uint8_t command, uint64_t* cas_value) {
       << "STORE response must not have value, actually=" << value_size;
   _buf.pop_front(sizeof(header) + header.total_body_length);
   if (cas_value) {
-    CHECK(header.cas_value);
     *cas_value = header.cas_value;
   }
   _err.clear();
   return true;
 }
 
+const char* CouchbaseResponse::couchbase_binary_command_to_string(uint8_t cmd) {
+  switch (cmd) {
+    case 0x1f:
+      return "CB_HELLO_SELECT_FEATURES";
+    case 0x89:
+      return "CB_SELECT_BUCKET";
+    case 0xBC:
+      return "CB_GET_SCOPE_ID";
+    case 0x00:
+      return "CB_BINARY_GET";
+    case 0x01:
+      return "CB_BINARY_SET";
+    case 0x02:
+      return "CB_BINARY_ADD";
+    case 0x03:
+      return "CB_BINARY_REPLACE";
+    case 0x04:
+      return "CB_BINARY_DELETE";
+    case 0x05:
+      return "CB_BINARY_INCREMENT";
+    case 0x06:
+      return "CB_BINARY_DECREMENT";
+    case 0x07:
+      return "CB_BINARY_QUIT";
+    case 0x08:
+      return "CB_BINARY_FLUSH";
+    case 0x09:
+      return "CB_BINARY_GETQ";
+    case 0x0a:
+      return "CB_BINARY_NOOP";
+    case 0x0b:
+      return "CB_BINARY_VERSION";
+    case 0x0c:
+      return "CB_BINARY_GETK";
+    case 0x0d:
+      return "CB_BINARY_GETKQ";
+    case 0x0e:
+      return "CB_BINARY_APPEND";
+    case 0x0f:
+      return "CB_BINARY_PREPEND";
+    case 0x10:
+      return "CB_BINARY_STAT";
+    case 0x11:
+      return "CB_BINARY_SETQ";
+    case 0x12:
+      return "CB_BINARY_ADDQ";
+    case 0x13:
+      return "CB_BINARY_REPLACEQ";
+    case 0x14:
+      return "CB_BINARY_DELETEQ";
+    case 0x15:
+      return "CB_BINARY_INCREMENTQ";
+    case 0x16:
+      return "CB_BINARY_DECREMENTQ";
+    case 0x17:
+      return "CB_BINARY_QUITQ";
+    case 0x18:
+      return "CB_BINARY_FLUSHQ";
+    case 0x19:
+      return "CB_BINARY_APPENDQ";
+    case 0x1a:
+      return "CB_BINARY_PREPENDQ";
+    case 0x1c:
+      return "CB_BINARY_TOUCH";
+    case 0x1d:
+      return "CB_BINARY_GAT";
+    case 0x1e:
+      return "CB_BINARY_GATQ";
+    case 0x23:
+      return "CB_BINARY_GATK";
+    case 0x24:
+      return "CB_BINARY_GATKQ";
+    case 0x20:
+      return "CB_BINARY_SASL_LIST_MECHS";
+    case 0x21:
+      return "CB_BINARY_SASL_AUTH";
+    case 0x22:
+      return "CB_BINARY_SASL_STEP";
+    case 0xb5:
+      return "CB_GET_CLUSTER_CONFIG";
+    case 0xba:
+      return "CB_GET_COLLECTIONS_MANIFEST";
+    case 0xbb:
+      return "CB_COLLECTIONS_GET_CID";
+    default:
+      return "UNKNOWN_COMMAND";
+  }
+}
+
 bool CouchbaseRequest::Upsert(const butil::StringPiece& key,
                               const butil::StringPiece& value, uint32_t flags,
-                              uint32_t exptime, uint64_t cas_value) {
-  return Store(policy::CB_BINARY_SET, key, value, flags, exptime, cas_value);
+                              uint32_t exptime, uint64_t cas_value,
+                              uint8_t coll_id) {
+  return Store(policy::CB_BINARY_SET, key, value, flags, exptime, cas_value,
+               coll_id);
 }
 
-// Collection Management Methods
-bool CouchbaseRequest::GetCollectionsManifest() {
-  const policy::CouchbaseRequestHeader header = {
-      policy::CB_MAGIC_REQUEST,
-      policy::CB_GET_COLLECTIONS_MANIFEST,
-      0,  // no key
-      0,  // no extras
-      policy::CB_BINARY_RAW_BYTES,
-      0,  // no vbucket
-      0,  // no body
-      0,  // opaque
-      0   // no CAS
-  };
-  if (_buf.append(&header, sizeof(header))) {
-    return false;
-  }
-  ++_pipelined_count;
-  return true;
-}
-
+// collection id and manifest are both returned when you call GetCollectionId
 bool CouchbaseRequest::GetCollectionId(
     const butil::StringPiece& scope_name,
     const butil::StringPiece& collection_name) {
@@ -928,58 +1002,44 @@ bool CouchbaseRequest::GetCollectionId(
   return true;
 }
 
-// Collection-aware document operations
-bool CouchbaseRequest::GetFromCollection(
-    const butil::StringPiece& key, const butil::StringPiece& scope_name,
-    const butil::StringPiece& collection_name) {
-  // Construct a collection-aware key: collection::key
-  std::string scoped_key = collection_name.as_string() + "::" + key.as_string();
-  return GetOrDelete(policy::CB_BINARY_GET, butil::StringPiece(scoped_key));
-}
-
-bool CouchbaseRequest::UpsertToCollection(
-    const butil::StringPiece& key, const butil::StringPiece& value,
-    uint32_t flags, uint32_t exptime, uint64_t cas_value,
-    const butil::StringPiece& scope_name,
-    const butil::StringPiece& collection_name) {
-  // Construct a collection-aware key: collection::key
-  std::string scoped_key = collection_name.as_string() + "::" + key.as_string();
-  return Store(policy::CB_BINARY_SET, butil::StringPiece(scoped_key), value,
-               flags, exptime, cas_value);
-}
-
 bool CouchbaseRequest::Add(const butil::StringPiece& key,
                            const butil::StringPiece& value, uint32_t flags,
-                           uint32_t exptime, uint64_t cas_value) {
-  return Store(policy::CB_BINARY_ADD, key, value, flags, exptime, cas_value);
+                           uint32_t exptime, uint64_t cas_value,
+                           uint8_t coll_id) {
+  return Store(policy::CB_BINARY_ADD, key, value, flags, exptime, cas_value,
+               coll_id);
 }
 
 bool CouchbaseRequest::Replace(const butil::StringPiece& key,
                                const butil::StringPiece& value, uint32_t flags,
-                               uint32_t exptime, uint64_t cas_value) {
-  return Store(policy::CB_BINARY_REPLACE, key, value, flags, exptime,
-               cas_value);
+                               uint32_t exptime, uint64_t cas_value,
+                               uint8_t coll_id) {
+  return Store(policy::CB_BINARY_REPLACE, key, value, flags, exptime, cas_value,
+               coll_id);
 }
 
 bool CouchbaseRequest::Append(const butil::StringPiece& key,
                               const butil::StringPiece& value, uint32_t flags,
-                              uint32_t exptime, uint64_t cas_value) {
+                              uint32_t exptime, uint64_t cas_value,
+                              uint8_t coll_id) {
   if (value.empty()) {
     LOG(ERROR) << "value to append must be non-empty";
     return false;
   }
-  return Store(policy::CB_BINARY_APPEND, key, value, flags, exptime, cas_value);
+  return Store(policy::CB_BINARY_APPEND, key, value, flags, exptime, cas_value,
+               coll_id);
 }
 
 bool CouchbaseRequest::Prepend(const butil::StringPiece& key,
                                const butil::StringPiece& value, uint32_t flags,
-                               uint32_t exptime, uint64_t cas_value) {
+                               uint32_t exptime, uint64_t cas_value,
+                               uint8_t coll_id) {
   if (value.empty()) {
     LOG(ERROR) << "value to prepend must be non-empty";
     return false;
   }
-  return Store(policy::CB_BINARY_PREPEND, key, value, flags, exptime,
-               cas_value);
+  return Store(policy::CB_BINARY_PREPEND, key, value, flags, exptime, cas_value,
+               coll_id);
 }
 
 bool CouchbaseResponse::PopUpsert(uint64_t* cas_value) {
@@ -997,57 +1057,11 @@ bool CouchbaseResponse::PopAppend(uint64_t* cas_value) {
 bool CouchbaseResponse::PopPrepend(uint64_t* cas_value) {
   return PopStore(policy::CB_BINARY_PREPEND, cas_value);
 }
-
-// Collection-related response methods
-bool CouchbaseResponse::PopCollectionsManifest(std::string* manifest_json) {
-  const size_t n = _buf.size();
-  policy::CouchbaseResponseHeader header;
-  if (n < sizeof(header)) {
-    butil::string_printf(&_err, "buffer is too small to contain a header");
-    return false;
-  }
-  _buf.copy_to(&header, sizeof(header));
-  if (header.command != policy::CB_GET_COLLECTIONS_MANIFEST) {
-    butil::string_printf(&_err, "Not a collections manifest response");
-    return false;
-  }
-  if (n < sizeof(header) + header.total_body_length) {
-    butil::string_printf(&_err, "Not enough data");
-    return false;
-  }
-  if (header.status != 0) {
-    _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-    int value_size = (int)header.total_body_length - (int)header.extras_length -
-                     (int)header.key_length;
-    if (value_size > 0) {
-      std::string error_msg;
-      _buf.cutn(&error_msg, value_size);
-      _err = format_error_message(header.status, "Collections manifest request",
-                                  error_msg);
-    } else {
-      _err =
-          format_error_message(header.status, "Collections manifest request");
-    }
-    return false;
-  }
-
-  // Skip header and extras/key if any
-  _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-
-  // Get the manifest JSON
-  int value_size = (int)header.total_body_length - (int)header.extras_length -
-                   (int)header.key_length;
-  if (manifest_json && value_size > 0) {
-    _buf.cutn(manifest_json, value_size);
-  } else {
-    _buf.pop_front(value_size);
-  }
-
-  _err.clear();
-  return true;
+bool CouchbaseResponse::PopSelectBucket(uint64_t* cas_value) {
+  return PopStore(policy::CB_SELECT_BUCKET, cas_value);
 }
-
-bool CouchbaseResponse::PopCollectionId(uint32_t* collection_id) {
+// Collection-related response method
+bool CouchbaseResponse::PopCollectionId(uint8_t* collection_id) {
   const size_t n = _buf.size();
   policy::CouchbaseResponseHeader header;
   if (n < sizeof(header)) {
@@ -1055,59 +1069,79 @@ bool CouchbaseResponse::PopCollectionId(uint32_t* collection_id) {
     return false;
   }
   _buf.copy_to(&header, sizeof(header));
+
   if (header.command != policy::CB_COLLECTIONS_GET_CID) {
     butil::string_printf(&_err, "Not a collection ID response");
     return false;
   }
+
+  // Making sure buffer has the whole body (extras + key + value)
   if (n < sizeof(header) + header.total_body_length) {
     butil::string_printf(&_err, "Not enough data");
     return false;
   }
+
   if (header.status != 0) {
+    // handle error case
     _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-    int value_size = (int)header.total_body_length - (int)header.extras_length -
-                     (int)header.key_length;
+    // Possibly read error message from value if present
+    size_t value_size =
+        header.total_body_length - header.extras_length - header.key_length;
     if (value_size > 0) {
-      std::string error_msg;
-      _buf.cutn(&error_msg, value_size);
-      _err = format_error_message(header.status, "Collection ID request",
-                                  error_msg);
+      std::string err_msg;
+      _buf.cutn(&err_msg, value_size);
+      _err =
+          format_error_message(header.status, "Collection ID request", err_msg);
     } else {
       _err = format_error_message(header.status, "Collection ID request");
     }
     return false;
   }
 
-  // Skip header and extras/key if any
-  _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-
-  // Get the collection ID (typically 4 bytes)
-  int value_size = (int)header.total_body_length - (int)header.extras_length -
-                   (int)header.key_length;
-  if (collection_id && value_size >= 4) {
-    uint32_t cid;
-    _buf.copy_to(&cid, 4);
-    *collection_id = butil::NetToHost32(cid);
-    _buf.pop_front(value_size);
-  } else {
-    _buf.pop_front(value_size);
+  // Success case: we expect extras_length >= 12 (8 bytes manifest + 4 bytes
+  // collection id)
+  if (header.extras_length < 12) {
+    butil::string_printf(&_err, "Extras too small to contain collection ID");
+    // remove the response from buffer so you don't re‐process
+    _buf.pop_front(sizeof(header) + header.total_body_length);
+    return false;
   }
 
+  // Skip header
+  _buf.pop_front(sizeof(header));
+
+  //   LOG(INFO) << "Total body length: " << header.total_body_length;
+  //   LOG(INFO) << "Extras length: " << header.extras_length;
+
+  // size_t remaining_size = _buf.size();
+  // std::vector<uint8_t> remaining_data(remaining_size);
+  // _buf.copy_to(remaining_data.data(), remaining_size);
+
+  // // Print the remaining data
+  // for (size_t i = 0; i < remaining_size; ++i) {
+  //     LOG(INFO) << "Byte " << i << ": " <<
+  //     static_cast<int>(remaining_data[i]);
+  // }
+
+  // return true;
+  uint64_t manifest_id_net = 0;
+  _buf.copy_to(reinterpret_cast<uint64_t*>(&manifest_id_net),
+               sizeof(manifest_id_net));
+  // You may convert this if needed:
+  uint64_t manifest_id = butil::NetToHost64(manifest_id_net);
+  LOG(INFO) << "Manifest ID: " << manifest_id;
+  _buf.pop_front(sizeof(manifest_id_net));
+
+  // Next 1 bytes → collection ID (u8)
+  uint32_t cid_net = 0;
+  _buf.copy_to(reinterpret_cast<uint8_t*>(&cid_net), sizeof(cid_net));
+  uint8_t cid_host = butil::NetToHost32(cid_net);
+  *collection_id = static_cast<int>(cid_host);
+  _buf.pop_front(sizeof(cid_net));
+
+  _buf.pop_front(header.total_body_length);
   _err.clear();
   return true;
-}
-
-// Collection-aware response methods
-bool CouchbaseResponse::PopGetFromCollection(butil::IOBuf* value,
-                                             uint32_t* flags,
-                                             uint64_t* cas_value) {
-  // Same implementation as PopGet, just aliased for clarity
-  return PopGet(value, flags, cas_value);
-}
-
-bool CouchbaseResponse::PopUpsertToCollection(uint64_t* cas_value) {
-  // Same implementation as PopSet, just aliased for clarity
-  return PopUpsert(cas_value);
 }
 
 struct IncrHeaderWithExtras {
@@ -1159,13 +1193,15 @@ bool CouchbaseRequest::Counter(uint8_t command, const butil::StringPiece& key,
 }
 
 bool CouchbaseRequest::Increment(const butil::StringPiece& key, uint64_t delta,
-                                 uint64_t initial_value, uint32_t exptime) {
+                                 uint64_t initial_value, uint32_t exptime,
+                                 uint8_t coll_id) {
   return Counter(policy::CB_BINARY_INCREMENT, key, delta, initial_value,
                  exptime);
 }
 
 bool CouchbaseRequest::Decrement(const butil::StringPiece& key, uint64_t delta,
-                                 uint64_t initial_value, uint32_t exptime) {
+                                 uint64_t initial_value, uint32_t exptime,
+                                 uint8_t coll_id) {
   return Counter(policy::CB_BINARY_DECREMENT, key, delta, initial_value,
                  exptime);
 }
@@ -1266,7 +1302,8 @@ const size_t TOUCH_EXTRAS =
 //     0| Expiration                                                    |
 //      +---------------+---------------+---------------+---------------+
 //    Total 4 bytes
-bool CouchbaseRequest::Touch(const butil::StringPiece& key, uint32_t exptime) {
+bool CouchbaseRequest::Touch(const butil::StringPiece& key, uint32_t exptime,
+                             uint8_t coll_id) {
   TouchHeaderWithExtras header_with_extras = {
       {policy::CB_MAGIC_REQUEST, policy::CB_BINARY_TOUCH,
        butil::HostToNet16(key.size()), TOUCH_EXTRAS,
