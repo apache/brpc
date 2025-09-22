@@ -104,7 +104,7 @@ public:
     explicit PbToJsonConverter(const Pb2JsonOptions& opt) : _option(opt) {}
 
     template <typename Handler>
-    bool Convert(const google::protobuf::Message& message, Handler& handler, bool root_msg = false, int depth = 0);
+    bool Convert(const google::protobuf::Message& message, Handler& handler, int depth = 0);
 
     const std::string& ErrorText() const { return _error; }
 
@@ -119,7 +119,7 @@ private:
 };
 
 template <typename Handler>
-bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handler& handler, bool root_msg, int depth) {
+bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handler& handler, int depth) {
     if (depth > FLAGS_json2pb_max_recursion_depth) {
         _error = "Exceeded maximum recursion depth";
         return false;
@@ -157,7 +157,7 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
         }
     }
 
-    if (root_msg && _option.single_repeated_to_array) {
+    if (depth == 0 && _option.single_repeated_to_array) {
         if (map_fields.empty() && fields.size() == 1 && fields.front()->is_repeated()) {
             return _PbFieldToJson(message, fields.front(), handler, depth);
         }
@@ -336,14 +336,14 @@ bool PbToJsonConverter::_PbFieldToJson(
             handler.StartArray();
             for (int index = 0; index < field_size; ++index) {
                 if (!Convert(reflection->GetRepeatedMessage(
-                        message, field, index), handler, false, depth + 1)) {
+                        message, field, index), handler, depth + 1)) {
                     return false;
                 }
             }
             handler.EndArray(field_size);
             
         } else {
-            if (!Convert(reflection->GetMessage(message, field), handler, false, depth + 1)) {
+            if (!Convert(reflection->GetMessage(message, field), handler, depth + 1)) {
                 return false;
             }
         }
@@ -361,10 +361,10 @@ bool ProtoMessageToJsonStream(const google::protobuf::Message& message,
     bool succ = false;
     if (options.pretty_json) {
         BUTIL_RAPIDJSON_NAMESPACE::PrettyWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer, true);
+        succ = converter.Convert(message, writer);
     } else {
         BUTIL_RAPIDJSON_NAMESPACE::OptimizedWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer, true);
+        succ = converter.Convert(message, writer);
     }
     if (!succ && error) {
         error->clear();

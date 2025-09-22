@@ -62,7 +62,7 @@ namespace json2pb {
 
 // Use iterative parsing to avoid stack overflow.
 const int RAPIDJSON_PARSE_FLAG_DEFAULT = BUTIL_RAPIDJSON_NAMESPACE::kParseIterativeFlag;
-const int RAPIDJSON_PARSE_FLAG_STOP_WHEN_DONE = BUTIL_RAPIDJSON_NAMESPACE::kParseStopWhenDoneFlag|RAPIDJSON_PARSE_FLAG_DEFAULT;
+const int RAPIDJSON_PARSE_FLAG_STOP_WHEN_DONE = BUTIL_RAPIDJSON_NAMESPACE::kParseStopWhenDoneFlag | RAPIDJSON_PARSE_FLAG_DEFAULT;
 
 DEFINE_int32(json2pb_max_recursion_depth, 100, "Maximum recursion depth of JSON parser");
 
@@ -291,9 +291,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
                              google::protobuf::Message* message,
                              const Json2PbOptions& options,
                              std::string* err,
-                             int depth,
-                             bool root_val = false);
-
+                             int depth);
 //Json value to protobuf convert rules for type:
 //Json value type                 Protobuf type                convert rules
 //int                             int uint int64 uint64        valid convert is available
@@ -536,15 +534,14 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
                              google::protobuf::Message* message,
                              const Json2PbOptions& options,
                              std::string* err,
-                             int depth,
-                             bool root_val) {
+                             int depth) {
     if (depth > FLAGS_json2pb_max_recursion_depth) {
         J2PERROR_WITH_PB(message, err, "Exceeded maximum recursion depth");
         return false;
     }
     const google::protobuf::Descriptor* descriptor = message->GetDescriptor();
     if (!json_value.IsObject() &&
-        !(json_value.IsArray() && options.array_to_single_repeated && root_val)) {
+        !(json_value.IsArray() && options.array_to_single_repeated && depth == 0)) {
         J2PERROR_WITH_PB(message, err, "The input is not a json object");
         return false;
     }
@@ -657,7 +654,7 @@ inline bool JsonToProtoMessageInline(const std::string& json_string,
         J2PERROR_WITH_PB(message, error, "Invalid json: %s", BUTIL_RAPIDJSON_NAMESPACE::GetParseError_En(d.GetParseError()));
         return false;
     }
-    return JsonValueToProtoMessage(d, message, options, error, 0, true);
+    return JsonValueToProtoMessage(d, message, options, error, 0);
 }
 
 bool JsonToProtoMessage(const std::string& json_string,
@@ -705,7 +702,7 @@ bool JsonToProtoMessage(ZeroCopyStreamReader* reader,
         J2PERROR_WITH_PB(message, error, "Invalid json: %s", BUTIL_RAPIDJSON_NAMESPACE::GetParseError_En(d.GetParseError()));
         return false;
     }
-    return JsonValueToProtoMessage(d, message, options, error, 0, true);
+    return JsonValueToProtoMessage(d, message, options, error, 0);
 }
 
 bool JsonToProtoMessage(const std::string& json_string, 
