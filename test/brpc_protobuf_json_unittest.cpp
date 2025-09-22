@@ -499,11 +499,13 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
     ASSERT_STREQ("Invalid value `23' for optional field `Content.uid' which SHOULD be string, Missing required field: Ext.databyte", error.data());
 }
 
+const int DEEP_RECURSION_TEST_DEPTH = 140000;
+
 TEST_F(ProtobufJsonTest, json_to_pb_unbounded_recursion) {
     test::RecursiveMessage msg;
 
     // Generate a deeply nested JSON string to trigger unbounded recursion.
-    const int recursion_depth = 140000;
+    const int recursion_depth = DEEP_RECURSION_TEST_DEPTH;
     std::string nested_json = "";
     for (int i = 0; i < recursion_depth; ++i) {
         nested_json += "{\"child\":";
@@ -532,7 +534,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_unbounded_recursion) {
     test::RecursiveMessage msg;
 
     // Create a deeply nested protobuf message.
-    const int recursion_depth = 140000;
+    const int recursion_depth = DEEP_RECURSION_TEST_DEPTH;
     test::RecursiveMessage* current = &msg;
     std::vector<test::RecursiveMessage*> nodes;
     nodes.reserve(recursion_depth);
@@ -636,7 +638,7 @@ TEST_F(ProtobufJsonTest, pb_parse_unbounded_recursion) {
     }
     {
         test::RecursiveMessage msg;
-        std::string binary_data = generate_binary(140000);
+        std::string binary_data = generate_binary(DEEP_RECURSION_TEST_DEPTH);
         bool ret = msg.ParseFromString(binary_data);
         ASSERT_FALSE(ret);
     }

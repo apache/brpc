@@ -37,7 +37,7 @@ namespace json2pb {
 
 DECLARE_int32(json2pb_max_recursion_depth);
 
-// Helper function to calculate the maximum depth of a message.
+// Helper function to check if the maximum depth of a message is exceeded.
 bool ExceedMaxDepth(const google::protobuf::Message& message, int current_depth) {
     if (current_depth > FLAGS_json2pb_max_recursion_depth) {
         return true;
