@@ -166,6 +166,13 @@ static int JeProfileReset(size_t lg_sample) {
     return 0;
 }
 
+// https://github.com/jemalloc/jemalloc/blob/5.3.0/bin/jeprof.in#L211-L222
+static std::unordered_set<std::string> g_extra_options_set = {
+    "inuse_space", "inuse_objects", "alloc_space",
+    "alloc_objects", "show_bytes", "drop_negative",
+    "total_delay", "contentions", "mean_delay"
+};
+
 void JeControlProfile(Controller* cntl) {
     const brpc::URI& uri = cntl->http_request().uri();
     // http:ip:port/pprof/heap?display=(text|svg|stats|flamegraph)&extra_options=(inuse_space|inuse_objects..)
@@ -228,13 +235,15 @@ void JeControlProfile(Controller* cntl) {
     }
     const std::string process_file(process_path, len);
 
-    std::string cmd_str = jeprof + " " + process_file + " " + prof_name;
+    std::string cmd_str = butil::string_printf(
+        "%s %s %s", jeprof.c_str(), process_file.c_str(), prof_name.c_str());
 
     // https://github.com/jemalloc/jemalloc/blob/5.3.0/bin/jeprof.in#L211-L222
     // e.g: inuse_space, contentions
     const std::string* uri_extra_options = uri.GetQuery("extra_options");
-    if (uri_extra_options != nullptr && !uri_extra_options->empty()) {
-        cmd_str += " --" + *uri_extra_options + " ";
+    if (uri_extra_options != nullptr && !uri_extra_options->empty() &&
+        g_extra_options_set.find(*uri_extra_options) != g_extra_options_set.end()) {
+        butil::string_appendf(&cmd_str, " --%s", uri_extra_options->c_str());
     }
 
     bool display_img = false;
@@ -244,12 +253,14 @@ void JeControlProfile(Controller* cntl) {
     } else if (*uri_display == "flamegraph") {
         const char* flamegraph_tool = getenv("FLAMEGRAPH_PL_PATH");
         if (!flamegraph_tool) {
-            LOG(WARNING) << " display: " << *uri_display << " invalid, env FLAMEGRAPH_PL_PATH invalid";
+            LOG(WARNING) << " display: " << *uri_display
+                         << " invalid, env FLAMEGRAPH_PL_PATH invalid";
             buf.append("\ndisplay:" + *uri_display + " invalid, env FLAMEGRAPH_PL_PATH invalid"); 
             return;
         }
         const int width_size = FLAGS_max_flame_graph_width > 0 ? FLAGS_max_flame_graph_width : 1200;
-        cmd_str += " --collapsed | " + std::string(flamegraph_tool) + " --colors mem --width " + std::to_string(width_size);
+        butil::string_appendf(&cmd_str, " --collapsed | %s --colors mem --width %d",
+                              flamegraph_tool, width_size);
         display_img = true;
     } else if (*uri_display == "text") {
         cmd_str += " --text ";
