@@ -167,11 +167,21 @@ static int JeProfileReset(size_t lg_sample) {
 }
 
 // https://github.com/jemalloc/jemalloc/blob/5.3.0/bin/jeprof.in#L211-L222
-static std::unordered_set<std::string> g_extra_options_set = {
+static const std::unordered_set<const char*> g_extra_options_set = {
     "inuse_space", "inuse_objects", "alloc_space",
     "alloc_objects", "show_bytes", "drop_negative",
     "total_delay", "contentions", "mean_delay"
 };
+
+std::string GlobalExtraOptionsString() {
+    std::string result;
+    result.reserve(64);
+    for (const auto& option : g_extra_options_set) {
+        result.append(option);
+        result.append(" ");
+    }
+    return result;
+}
 
 void JeControlProfile(Controller* cntl) {
     const brpc::URI& uri = cntl->http_request().uri();
@@ -241,9 +251,14 @@ void JeControlProfile(Controller* cntl) {
     // https://github.com/jemalloc/jemalloc/blob/5.3.0/bin/jeprof.in#L211-L222
     // e.g: inuse_space, contentions
     const std::string* uri_extra_options = uri.GetQuery("extra_options");
-    if (uri_extra_options != nullptr && !uri_extra_options->empty() &&
-        g_extra_options_set.find(*uri_extra_options) != g_extra_options_set.end()) {
-        butil::string_appendf(&cmd_str, " --%s", uri_extra_options->c_str());
+    if (uri_extra_options != nullptr && !uri_extra_options->empty()) {
+        if (g_extra_options_set.count(uri_extra_options->c_str()) > 0) {
+            butil::string_appendf(&cmd_str, " --%s", uri_extra_options->c_str());
+        } else {
+            static std::string g_options_str = GlobalExtraOptionsString();
+            LOG(WARNING) << "Unsupported jemalloc options=" << *uri_extra_options
+                         << ", only support [" << g_options_str << "]";
+        }
     }
 
     bool display_img = false;
