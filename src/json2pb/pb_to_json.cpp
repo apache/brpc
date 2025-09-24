@@ -23,6 +23,7 @@
 #include <time.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
+#include <gflags/gflags.h>
 #include "json2pb/zero_copy_stream_writer.h"
 #include "json2pb/encode_decode.h"
 #include "json2pb/protobuf_map.h"
@@ -33,6 +34,57 @@
 #include "butil/base64.h"
 
 namespace json2pb {
+
+DECLARE_int32(json2pb_max_recursion_depth);
+
+// Helper function to check if the maximum depth of a message is exceeded.
+bool ExceedMaxDepth(const google::protobuf::Message& message, int current_depth) {
+    if (current_depth > FLAGS_json2pb_max_recursion_depth) {
+        return true;
+    }
+
+    const google::protobuf::Descriptor* descriptor = message.GetDescriptor();
+    const google::protobuf::Reflection* reflection = message.GetReflection();
+
+    std::vector<const google::protobuf::FieldDescriptor*> fields;
+    // Collect declared fields.
+    for (int i = 0; i < descriptor->field_count(); ++i) {
+        fields.push_back(descriptor->field(i));
+    }
+    // Collect extension fields (if any).
+    {
+        std::vector<const google::protobuf::FieldDescriptor*> ext_fields;
+        descriptor->file()->pool()->FindAllExtensions(descriptor, &ext_fields);
+        fields.insert(fields.end(), ext_fields.begin(), ext_fields.end());
+    }
+
+    for (const auto* field : fields) {
+        if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+            continue;
+        }
+
+        if (field->is_repeated()) {
+            const int count = reflection->FieldSize(message, field);
+            for (int j = 0; j < count; ++j) {
+                const google::protobuf::Message& sub_message =
+                    reflection->GetRepeatedMessage(message, field, j);
+                if (ExceedMaxDepth(sub_message, current_depth + 1)) {
+                    return true;
+                }
+            }
+        } else {
+            if (reflection->HasField(message, field)) {
+                const google::protobuf::Message& sub_message =
+                    reflection->GetMessage(message, field);
+                if (ExceedMaxDepth(sub_message, current_depth + 1)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 Pb2JsonOptions::Pb2JsonOptions()
     : enum_option(OUTPUT_ENUM_BY_NAME)
     , pretty_json(false)
@@ -52,7 +104,7 @@ public:
     explicit PbToJsonConverter(const Pb2JsonOptions& opt) : _option(opt) {}
 
     template <typename Handler>
-    bool Convert(const google::protobuf::Message& message, Handler& handler, bool root_msg = false);
+    bool Convert(const google::protobuf::Message& message, Handler& handler, int depth = 0);
 
     const std::string& ErrorText() const { return _error; }
 
@@ -60,14 +112,18 @@ private:
     template <typename Handler>
     bool _PbFieldToJson(const google::protobuf::Message& message,
                         const google::protobuf::FieldDescriptor* field,
-                        Handler& handler);
+                        Handler& handler, int depth);
 
     std::string _error;
     Pb2JsonOptions _option;
 };
 
 template <typename Handler>
-bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handler& handler, bool root_msg) {
+bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handler& handler, int depth) {
+    if (depth > FLAGS_json2pb_max_recursion_depth) {
+        _error = "Exceeded maximum recursion depth";
+        return false;
+    }
     const google::protobuf::Reflection* reflection = message.GetReflection();
     const google::protobuf::Descriptor* descriptor = message.GetDescriptor();
 
@@ -101,9 +157,9 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
         }
     }
 
-    if (root_msg && _option.single_repeated_to_array) {
+    if (depth == 0 && _option.single_repeated_to_array) {
         if (map_fields.empty() && fields.size() == 1 && fields.front()->is_repeated()) {
-            return _PbFieldToJson(message, fields.front(), handler);
+            return _PbFieldToJson(message, fields.front(), handler, depth);
         }
     }
 
@@ -134,7 +190,7 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
         bool decoded = decode_name(orig_name, field_name_str); 
         const std::string& name = decoded ? field_name_str : orig_name;
         handler.Key(name.data(), name.size(), false);
-        if (!_PbFieldToJson(message, field, handler)) {
+        if (!_PbFieldToJson(message, field, handler, depth)) {
             return false;
         }
     }
@@ -164,7 +220,7 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
             handler.Key(entry_name.data(), entry_name.size(), false);
 
             // Fill in entries into this json object
-            if (!_PbFieldToJson(entry, value_desc, handler)) {
+            if (!_PbFieldToJson(entry, value_desc, handler, depth)) {
                 return false;
             }
         }
@@ -180,7 +236,7 @@ template <typename Handler>
 bool PbToJsonConverter::_PbFieldToJson(
     const google::protobuf::Message& message,
     const google::protobuf::FieldDescriptor* field,
-    Handler& handler) {
+    Handler& handler, int depth) {
     const google::protobuf::Reflection* reflection = message.GetReflection();
     switch (field->cpp_type()) {
 #define CASE_FIELD_TYPE(cpptype, method, valuetype, handle)             \
@@ -280,14 +336,14 @@ bool PbToJsonConverter::_PbFieldToJson(
             handler.StartArray();
             for (int index = 0; index < field_size; ++index) {
                 if (!Convert(reflection->GetRepeatedMessage(
-                        message, field, index), handler)) {
+                        message, field, index), handler, depth + 1)) {
                     return false;
                 }
             }
             handler.EndArray(field_size);
             
         } else {
-            if (!Convert(reflection->GetMessage(message, field), handler)) {
+            if (!Convert(reflection->GetMessage(message, field), handler, depth + 1)) {
                 return false;
             }
         }
@@ -305,10 +361,10 @@ bool ProtoMessageToJsonStream(const google::protobuf::Message& message,
     bool succ = false;
     if (options.pretty_json) {
         BUTIL_RAPIDJSON_NAMESPACE::PrettyWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer, true);
+        succ = converter.Convert(message, writer);
     } else {
         BUTIL_RAPIDJSON_NAMESPACE::OptimizedWriter<OutputStream> writer(os);
-        succ = converter.Convert(message, writer, true);
+        succ = converter.Convert(message, writer);
     }
     if (!succ && error) {
         error->clear();
@@ -352,6 +408,12 @@ bool ProtoMessageToJson(const google::protobuf::Message& message,
 bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
                              google::protobuf::io::ZeroCopyOutputStream* json,
                              const Pb2ProtoJsonOptions& options, std::string* error) {
+    if (ExceedMaxDepth(message, 0)) {
+        if (error) {
+            *error = "Exceeded maximum recursion depth";
+        }
+        return false;
+    }
     butil::IOBuf buf;
     butil::IOBufAsZeroCopyOutputStream output_stream(&buf);
     if (!message.SerializeToZeroCopyStream(&output_stream)) {
