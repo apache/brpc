@@ -2049,7 +2049,12 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
             }
 
             _ssl_state = SSL_CONNECTED;
-            AddBIOBuffer(_ssl_session, fd, FLAGS_ssl_bio_buffer_size);
+            // Adding a BIO layer requires calling BIO_flush manually after SSL_write,
+            // which could trigger EAGAIN for large packets. However, it's very tedious
+            // to handle EAGAIN from both SSL_write and BIO_flush under current implementation.
+            // Also, BIO is a bit outdated for modern TCP as it already contains buffering.
+            // We decide to disable BIO.
+            // AddBIOBuffer(_ssl_session, fd, FLAGS_ssl_bio_buffer_size);
             return 0;
         }
 
