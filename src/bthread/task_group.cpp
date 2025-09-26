@@ -36,6 +36,7 @@
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
 #include "bthread/timer_thread.h"
+#include "bthread/bthread.h"
 
 #ifdef __x86_64__
 #include <x86intrin.h>
@@ -442,6 +443,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             g->_control->_task_tracer.WaitForTracing(m);
         }
         g->_control->_task_tracer.set_status(TASK_STATUS_UNKNOWN, m);
+        g->_control->record_bthread_finish(m->tid);
 #endif // BRPC_BTHREAD_TRACER
 
         g->_control->_nbthreads << -1;
@@ -507,6 +509,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     g->_control->tag_nbthreads(g->tag()) << 1;
 #ifdef BRPC_BTHREAD_TRACER
     g->_control->_task_tracer.set_status(TASK_STATUS_CREATED, m);
+    g->_control->record_bthread_start(*th);
 #endif // BRPC_BTHREAD_TRACER
     if (g->is_current_pthread_task()) {
         // never create foreground task in pthread.
@@ -570,6 +573,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     _control->tag_nbthreads(tag()) << 1;
 #ifdef BRPC_BTHREAD_TRACER
     _control->_task_tracer.set_status(TASK_STATUS_CREATED, m);
+    _control->record_bthread_start(*th);
 #endif // BRPC_BTHREAD_TRACER
     if (REMOTE) {
         ready_to_run_remote(m, (using_attr.flags & BTHREAD_NOSIGNAL));
@@ -1088,10 +1092,10 @@ void TaskGroup::yield(TaskGroup** pg) {
     sched(pg);
 }
 
-void print_task(std::ostream& os, bthread_t tid) {
+void print_task(std::ostream& os, bthread_t tid, bool enable_trace) {
     TaskMeta* const m = TaskGroup::address_meta(tid);
     if (m == NULL) {
-        os << "bthread=" << tid << " : never existed";
+        os << "bthread=" << tid << " : never existed\n";
         return;
     }
     const uint32_t given_ver = get_version(tid);
@@ -1127,7 +1131,7 @@ void print_task(std::ostream& os, bthread_t tid) {
         }
     }
     if (!matched) {
-        os << "bthread=" << tid << " : not exist now";
+        os << "bthread=" << tid << " : not exist now\n";
     } else {
         os << "bthread=" << tid << " :\nstop=" << stop
            << "\ninterrupted=" << interrupted
@@ -1136,6 +1140,7 @@ void print_task(std::ostream& os, bthread_t tid) {
            << "\narg=" << (void*)arg
            << "\nattr={stack_type=" << attr.stack_type
            << " flags=" << attr.flags
+           << " specified tag=" << attr.tag
            << " keytable_pool=" << attr.keytable_pool
            << "}\nhas_tls=" << has_tls
            << "\nuptime_ns=" << butil::cpuwide_time_ns() - cpuwide_start_ns
@@ -1145,8 +1150,15 @@ void print_task(std::ostream& os, bthread_t tid) {
            << "\nstatus=" << status
            << "\ntraced=" << traced
            << "\nworker_tid=" << worker_tid;
-#else
-           ;
+        if (enable_trace) {
+            os << "\nbthread call stack:\n";
+            stack_trace(os, tid);
+            os << "\n";
+        } else {
+            os << "\n\n";
+        }
+ #else
+           << "\n\n";
            (void)status;(void)traced;(void)worker_tid;
 #endif // BRPC_BTHREAD_TRACER
     }
