@@ -19,6 +19,7 @@
 #include <gflags/gflags.h>
 #include "brpc/reloadable_flags.h"
 #include "brpc/load_balancer.h"
+#include "brpc/socket.h"
 
 
 namespace brpc {
@@ -33,6 +34,15 @@ BRPC_VALIDATE_GFLAG(show_lb_in_vars, PassValidate);
 
 // For assigning unique names for lb.
 static butil::static_atomic<int> g_lb_counter = BUTIL_STATIC_ATOMIC_INIT(0);
+
+bool LoadBalancer::IsServerAvailable(SocketId id, SocketUniquePtr* out) {
+    SocketUniquePtr ptr;
+    bool res = Socket::Address(id, &ptr) == 0 && ptr->IsAvailable();
+    if (res) {
+        *out = std::move(ptr);
+    }
+    return res;
+}
 
 void SharedLoadBalancer::DescribeLB(std::ostream& os, void* arg) {
     (static_cast<SharedLoadBalancer*>(arg))->Describe(os, DescribeOptions());

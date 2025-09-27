@@ -120,8 +120,7 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         const SocketId id = s->server_list[tls.offset].id;
         if (((i + 1) == n  // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, id))
-            && Socket::Address(id, out->ptr) == 0
-            && (*out->ptr)->IsAvailable()) {
+            && IsServerAvailable(id, out->ptr)) {
             s.tls() = tls;
             return 0;
         }

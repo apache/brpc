@@ -117,10 +117,6 @@ size_t WeightedRandomizedLoadBalancer::RemoveServersInBatch(
     return _db_servers.Modify(BatchRemove, servers);
 }
 
-bool WeightedRandomizedLoadBalancer::IsServerAvailable(SocketId id, SocketUniquePtr* out) {
-    return Socket::Address(id, out) == 0 && (*out)->IsAvailable();
-}
-
 int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
@@ -144,13 +140,13 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
             continue;
         }
         random_traversed.insert(id);
-        if (0 == IsServerAvailable(id, out->ptr)) {
+        if (IsServerAvailable(id, out->ptr)) {
             // An available server is found.
             return 0;
         }
     }
 
-    if (random_traversed.size() == n) {
+    if (random_traversed.size() < n) {
         // Try to traverse the remaining servers to find an available server.
         uint32_t offset = butil::fast_rand_less_than(n);
         uint32_t stride = bthread::prime_offset();
@@ -161,19 +157,18 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
                 continue;
             }
             if (IsServerAvailable(id, out->ptr)) {
-                // An available server is found.
-                return 0;
+                if (!ExcludedServers::IsExcluded(in.excluded, id)) {
+                    // Prioritize servers that are not excluded.
+                    return 0;
+                }
             }
         }
     }
 
-    if (NULL != out->ptr) {
-        // Use the excluded but available server.
-        return 0;
-    }
-
-    // After traversing the whole server list, no available server is found.
-    return EHOSTDOWN;
+    // Returns EHOSTDOWN, if no available server is found
+    // after traversing the whole server list.
+    // Otherwise, returns 0 with a available excluded server.
+    return NULL == out->ptr ? EHOSTDOWN : 0;
 }
 
 LoadBalancer* WeightedRandomizedLoadBalancer::New(
