@@ -323,8 +323,7 @@ int ConsistentHashingLoadBalancer::SelectServer(
     for (size_t i = 0; i < s->size(); ++i) {
         if (((i + 1) == s->size() // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
-            && Socket::Address(choice->server_sock.id, out->ptr) == 0 
-            && (*out->ptr)->IsAvailable()) {
+            && IsServerAvailable(choice->server_sock.id, out->ptr)) {
             return 0;
         } else {
             if (++choice == s->end()) {
