@@ -405,7 +405,7 @@ cc_library(
     ]),
     defines = [] + select({
         "//bazel/config:brpc_with_bthread_tracer": [
-            "-DBRPC_BTHREAD_TRACER",
+            "BRPC_BTHREAD_TRACER",
         ],
         "//conditions:default": [],
     }),

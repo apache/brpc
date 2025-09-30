@@ -47,3 +47,9 @@ CTestTestfile.cmake
 
 # Ignore protoc-gen-mcpack files
 /protoc-gen-mcpack*/
+
+# Ignore bazel files
+bazel-bin
+bazel-out
+bazel-testlogs
+bazel-brpc
