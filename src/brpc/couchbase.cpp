@@ -28,6 +28,103 @@
 
 namespace brpc {
 
+// Couchbase protocol constants
+namespace {
+  constexpr uint32_t APPLE_VBUCKET_COUNT = 64;
+  constexpr uint32_t DEFAULT_VBUCKET_COUNT = 1024;
+  constexpr uint8_t COLLECTION_ID_SIZE = 1;
+  constexpr size_t MANIFEST_ID_SIZE = 8;
+  constexpr size_t CONNECTION_ID_SIZE = 33;
+  constexpr size_t RANDOM_ID_HEX_SIZE = 67; // 33 bytes * 2 + null terminator
+}
+
+// Static member definitions
+CouchbaseMetadataTracking* CouchbaseRequest::metadata_tracking = &common_metadata_tracking;
+CouchbaseMetadataTracking* CouchbaseResponse::metadata_tracking = &common_metadata_tracking;
+
+bool CouchbaseMetadataTracking::set_channel_info_for_thread(uint64_t thread_id, brpc::Channel* channel, const string &server) {
+  std::unique_lock<shared_mutex> write_lock(rw_thread_to_channel_info_mutex);
+  auto it = thread_to_channel_info.find(thread_id);
+  if (it != thread_to_channel_info.end()) {
+    LOG(WARNING) << "Channel already exists for thread_id: " << thread_id;
+    return false;
+  }
+  ChannelInfo ch_info;
+  ch_info.channel = channel;
+  ch_info.server = server;
+  thread_to_channel_info[thread_id] = ch_info;
+  return true;
+}
+
+bool CouchbaseMetadataTracking::set_current_bucket_for_thread(uint64_t thread_id, const string& bucket){
+  std::unique_lock<shared_mutex> write_lock(rw_thread_to_channel_info_mutex);
+  auto it = thread_to_channel_info.find(thread_id);
+  if(it == thread_to_channel_info.end()){
+    LOG(ERROR) << "No channel exists for thread_id: " << thread_id << ", establish a connection(with authentication) first.";
+    return false;
+  }
+  it->second.selected_bucket = bucket;
+  return true;
+}
+
+bool CouchbaseMetadataTracking::set_bucket_to_collection_map(uint64_t thread_id, const string& collection, uint8_t collection_id){
+  string server, selected_bucket;
+  
+  // First, get the server and bucket info with proper locking
+  {
+    std::shared_lock<shared_mutex> read_lock(rw_thread_to_channel_info_mutex);
+    auto it = thread_to_channel_info.find(thread_id);
+    if(it == thread_to_channel_info.end()){
+      LOG(ERROR) << "No channel exists for thread_id: " << thread_id << ", establish a connection(with authentication) first.";
+      return false;
+    }
+    server = it->second.server;
+    selected_bucket = it->second.selected_bucket;
+    if(selected_bucket.empty()){
+      LOG(ERROR) << "No bucket selected for thread_id: " << thread_id << ", select a bucket first.";
+      return false;
+    }
+  }
+
+  // key for inner map is bucket.scope.collection
+  // for now scope is always _default
+  string bucket_scope_collection = selected_bucket+"._default."+collection;
+
+  // Then update the collection map with proper locking
+  {
+    std::unique_lock<shared_mutex> write_lock(rw_bucket_to_collection_map_mutex);
+    bucket_to_collection_map[server][bucket_scope_collection] = collection_id;
+  }
+  
+  return true;
+}
+
+bool CouchbaseMetadataTracking::get_channel_info_for_thread(uint64_t thread_id, ChannelInfo *channel_info){
+  std::shared_lock<shared_mutex> read_lock(rw_thread_to_channel_info_mutex);
+  auto it = thread_to_channel_info.find(thread_id);
+  if(it == thread_to_channel_info.end()){
+    LOG(WARNING) << "No channel info exists for thread_id: " << thread_id;
+    return false;
+  }
+  *channel_info = it->second;
+  return true;
+}
+
+bool CouchbaseMetadataTracking::get_bucket_to_collection_map(uint64_t thread_id, string server, string bucket, string scope, string collection, uint8_t *collection_id){
+  string bucket_scope_collection = bucket+"."+scope+"."+collection;
+  std::shared_lock<shared_mutex> read_lock(rw_bucket_to_collection_map_mutex);
+  auto it1 = bucket_to_collection_map.find(server);
+  if(it1 == bucket_to_collection_map.end()){
+    return false;
+  }
+  auto it2 = it1->second.find(bucket_scope_collection);
+  if(it2 == it1->second.end()){
+    return false;
+  }
+  *collection_id = it2->second;
+  return true;
+}
+
 uint32_t CouchbaseRequest::hash_crc32(const char* key, size_t key_length) {
   static const uint32_t crc32tab[256] = {
       0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
@@ -82,15 +179,16 @@ uint32_t CouchbaseRequest::hash_crc32(const char* key, size_t key_length) {
     crc = (crc >> 8) ^ crc32tab[(crc ^ (uint64_t)key[x]) & 0xff];
 
 #ifdef __APPLE__
-  return ((~crc) >> 16) % 64;
+  return ((~crc) >> 16) % APPLE_VBUCKET_COUNT;
 #else
-  return ((~crc) >> 16) % 1024;
+  return ((~crc) >> 16) % DEFAULT_VBUCKET_COUNT;
 #endif
 }
 
 // redefinition
 CouchbaseRequest::CouchbaseRequest()
     : NonreflectableMessage<CouchbaseRequest>() {
+  metadata_tracking = &common_metadata_tracking;
   SharedCtor();
 }
 
@@ -116,33 +214,34 @@ void CouchbaseRequest::Clear() {
   _pipelined_count = 0;
 }
 
+// Support for scope level collections will be added in future.
 // Get the Scope ID for a given scope name
-bool CouchbaseRequest::GetScopeId(const butil::StringPiece& scope_name) {
-  if (scope_name.empty()) {
-    LOG(ERROR) << "Empty scope name";
-    return false;
-  }
-  // Opcode 0xBC for Get Scope ID (see Collections.md)
-  const policy::CouchbaseRequestHeader header = {
-      policy::CB_MAGIC_REQUEST,
-      policy::CB_GET_SCOPE_ID,
-      butil::HostToNet16(scope_name.size()),
-      0,  // no extras
-      policy::CB_BINARY_RAW_BYTES,
-      0,  // no vbucket
-      butil::HostToNet32(scope_name.size()),
-      0,  // opaque
-      0   // no CAS
-  };
-  if (_buf.append(&header, sizeof(header))) {
-    return false;
-  }
-  if (_buf.append(scope_name.data(), scope_name.size())) {
-    return false;
-  }
-  ++_pipelined_count;
-  return true;
-}
+// bool CouchbaseRequest::GetScopeId(const butil::StringPiece& scope_name) {
+//   if (scope_name.empty()) {
+//     LOG(ERROR) << "Empty scope name";
+//     return false;
+//   }
+//   // Opcode 0xBC for Get Scope ID (see Collections.md)
+//   const policy::CouchbaseRequestHeader header = {
+//       policy::CB_MAGIC_REQUEST,
+//       policy::CB_GET_SCOPE_ID,
+//       butil::HostToNet16(scope_name.size()),
+//       0,  // no extras
+//       policy::CB_BINARY_RAW_BYTES,
+//       0,  // no vbucket
+//       butil::HostToNet32(scope_name.size()),
+//       0,  // opaque
+//       0   // no CAS
+//   };
+//   if (_buf.append(&header, sizeof(header))) {
+//     return false;
+//   }
+//   if (_buf.append(scope_name.data(), scope_name.size())) {
+//     return false;
+//   }
+//   ++_pipelined_count;
+//   return true;
+// }
 
 bool CouchbaseRequest::SelectBucket(const butil::StringPiece& bucket_name) {
   if (bucket_name.empty()) {
@@ -161,11 +260,11 @@ bool CouchbaseRequest::SelectBucket(const butil::StringPiece& bucket_name) {
       0,
       0};
   if (_buf.append(&header, sizeof(header))) {
-    std::cout << "Failed to append header to buffer" << std::endl;
+    LOG(ERROR) << "Failed to append header to buffer";
     return false;
   }
   if (_buf.append(bucket_name.data(), bucket_name.size())) {
-    std::cout << "Failed to append bucket name to buffer" << std::endl;
+    LOG(ERROR) << "Failed to append bucket name to buffer";
     return false;
   }
   ++_pipelined_count;
@@ -195,17 +294,17 @@ bool CouchbaseRequest::HelloRequest() {
 #endif
   agent += ";bssl/0x1010107f)";
 
-  // Generate a random 33-byte connection id as hex string (66 hex chars)
-  unsigned char raw_id[33];
+  // Generate a random connection ID as hex string
+  unsigned char raw_id[CONNECTION_ID_SIZE];
   FILE* urandom = fopen("/dev/urandom", "rb");
-  if (!urandom || fread(raw_id, 1, 33, urandom) != 33) {
+  if (!urandom || fread(raw_id, 1, CONNECTION_ID_SIZE, urandom) != CONNECTION_ID_SIZE) {
     if (urandom) fclose(urandom);
-    std::cout << "Failed to generate random connection id" << std::endl;
+    LOG(ERROR) << "Failed to generate random connection id";
     return false;
   }
   fclose(urandom);
-  char hex_id[67] = {0};
-  for (int i = 0; i < 33; ++i) {
+  char hex_id[RANDOM_ID_HEX_SIZE] = {0};
+  for (int i = 0; i < CONNECTION_ID_SIZE; ++i) {
     sprintf(hex_id + i * 2, "%02x", raw_id[i]);
   }
 
@@ -238,15 +337,15 @@ bool CouchbaseRequest::HelloRequest() {
   };
 
   if (_buf.append(&header, sizeof(header))) {
-    std::cout << "Failed to append Hello header to buffer" << std::endl;
+    LOG(ERROR) << "Failed to append Hello header to buffer";
     return false;
   }
   if (_buf.append(key.data(), key_len)) {
-    std::cout << "Failed to append Hello JSON key to buffer" << std::endl;
+    LOG(ERROR) << "Failed to append Hello JSON key to buffer";
     return false;
   }
   if (_buf.append(reinterpret_cast<const char*>(features), value_len)) {
-    std::cout << "Failed to append Hello features to buffer" << std::endl;
+    LOG(ERROR) << "Failed to append Hello features to buffer";
     return false;
   }
   ++_pipelined_count;
@@ -254,7 +353,9 @@ bool CouchbaseRequest::HelloRequest() {
 }
 
 bool CouchbaseRequest::Authenticate(const butil::StringPiece& username,
-                                    const butil::StringPiece& password) {
+                                    const butil::StringPiece& password, 
+                                    brpc::Channel *channel, 
+                                    const string server) {
   if (username.empty() || password.empty()) {
     LOG(ERROR) << "Empty username or password";
     return false;
@@ -279,21 +380,30 @@ bool CouchbaseRequest::Authenticate(const butil::StringPiece& username,
                          password.length()),
       0,
       0};
-  std::string* auth_str = new std::string();
-  auth_str->clear();
-  auth_str->append(reinterpret_cast<const char*>(&header), sizeof(header));
-  auth_str->append(kPlainAuthCommand, sizeof(kPlainAuthCommand) - 1);
-  auth_str->append(username.data());
-  auth_str->append(kPadding, sizeof(kPadding));
-  auth_str->append(username.data());
-  auth_str->append(kPadding, sizeof(kPadding));
-  auth_str->append(password.data());
-  if (_buf.append(auth_str->data(), auth_str->size())) {
-    std::cout << "Failed to append auth string to buffer" << std::endl;
-    delete auth_str;
+  std::string auth_str;
+  auth_str.reserve(sizeof(header) + sizeof(kPlainAuthCommand) - 1 + 
+                   username.size() * 2 + password.size() + 2);
+  auth_str.append(reinterpret_cast<const char*>(&header), sizeof(header));
+  auth_str.append(kPlainAuthCommand, sizeof(kPlainAuthCommand) - 1);
+  auth_str.append(username.data(), username.size());
+  auth_str.append(kPadding, sizeof(kPadding));
+  auth_str.append(username.data(), username.size());
+  auth_str.append(kPadding, sizeof(kPadding));
+  auth_str.append(password.data(), password.size());
+  if (_buf.append(auth_str.data(), auth_str.size())) {
+    LOG(ERROR) << "Failed to append auth string to buffer";
     return false;
   }
   ++_pipelined_count;
+
+  // Store the bRPC channel and the server address for future use related to current thread
+  uint64_t bthread_id = bthread_self();
+  if(!metadata_tracking->set_channel_info_for_thread(bthread_id, channel, server)){
+    LOG(ERROR) << "Channel for this thread already exists, only one channel per thread is allowed.";
+    _buf.pop_back(auth_str.size());
+    --_pipelined_count;
+    return false;
+  }
   return true;
 }
 
@@ -383,6 +493,7 @@ CouchbaseResponse::CouchbaseResponse()
 // redifinition
 CouchbaseResponse::CouchbaseResponse(const CouchbaseResponse& from)
     : NonreflectableMessage<CouchbaseResponse>(from) {
+  metadata_tracking = &common_metadata_tracking;
   SharedCtor();
   MergeFrom(from);
 }
@@ -622,11 +733,72 @@ bool CouchbaseRequest::GetOrDelete(uint8_t command,
   return true;
 }
 
-bool CouchbaseRequest::Get(const butil::StringPiece& key, uint8_t coll_id) {
+bool get_cached_or_fetch_collection_id(string collection_name, uint8_t *coll_id, CouchbaseMetadataTracking *metadata_tracking){
+  if(collection_name.empty()){
+    LOG(ERROR) << "Empty collection name";
+    return false;
+  }
+  CouchbaseMetadataTracking::ChannelInfo channel_info;
+  if(!metadata_tracking->get_channel_info_for_thread(bthread_self(), &channel_info)){
+    LOG(ERROR) << "No channel found for this thread, make sure to call Authenticate() first";
+    return false;
+  }
+  if(channel_info.server.empty()){
+      LOG(ERROR) << "Server is empty for this thread, make sure to call Authenticate() first";
+      return false;
+    }
+  if(channel_info.selected_bucket.empty()){
+      LOG(ERROR) << "No bucket selected for this thread, make sure to call SelectBucket() first";
+      return false;
+    }
+  bool result = metadata_tracking->get_bucket_to_collection_map(bthread_self(), channel_info.server, channel_info.selected_bucket, "_default", collection_name, coll_id);
+  if(!result){
+    CouchbaseRequest temp_get_collectionID_request;
+    CouchbaseResponse temp_get_collectionID_response;
+    brpc::Controller temp_cntl;
+    brpc::Channel *channel = channel_info.channel;
+    temp_get_collectionID_request.GetCollectionId("_default", collection_name);
+    channel->CallMethod(NULL, &temp_cntl, &temp_get_collectionID_request,
+                          &temp_get_collectionID_response, NULL);
+    if (temp_cntl.Failed()) {
+      LOG(ERROR) << "Failed to get collection ID for collection " << collection_name << " in bucket " << channel_info.selected_bucket << " on server " << channel_info.server
+                   << ": " << temp_cntl.ErrorText();
+      return false;
+    }
+    if (!temp_get_collectionID_response.PopCollectionId(coll_id)) {
+      LOG(ERROR) << "Failed to parse collection ID response for collection " << collection_name << " in bucket " << channel_info.selected_bucket << " on server " << channel_info.server
+                 << ": " << temp_get_collectionID_response.LastError();
+      return false;
+    }
+    else{
+      // Cache the collection ID for future use
+      if(!metadata_tracking->set_bucket_to_collection_map(bthread_self(), collection_name, *coll_id)){
+        LOG(ERROR) << "Failed to cache collection ID for collection " << collection_name << " in bucket " << channel_info.selected_bucket << " on server " << channel_info.server;
+        return false;
+      }
+      return true;
+      }
+  }
+  return true;
+}
+
+bool CouchbaseRequest::Get(const butil::StringPiece& key, string collection_name) {
+  uint8_t coll_id = 0; // default collection ID
+  if(collection_name != "_default"){
+    if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
+      return false;
+    }
+  }
   return GetOrDelete(policy::CB_BINARY_GET, key, coll_id);
 }
 
-bool CouchbaseRequest::Delete(const butil::StringPiece& key, uint8_t coll_id) {
+bool CouchbaseRequest::Delete(const butil::StringPiece& key, string collection_name) {
+  uint8_t coll_id = 0; // default collection ID
+  if(collection_name != "_default"){
+    if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
+      return false;
+    }
+  }
   return GetOrDelete(policy::CB_BINARY_DELETE, key, coll_id);
 }
 
@@ -968,7 +1140,13 @@ const char* CouchbaseResponse::couchbase_binary_command_to_string(uint8_t cmd) {
 bool CouchbaseRequest::Upsert(const butil::StringPiece& key,
                               const butil::StringPiece& value, uint32_t flags,
                               uint32_t exptime, uint64_t cas_value,
-                              uint8_t coll_id) {
+                              string collection_name) {
+  uint8_t coll_id = 0; // default collection ID
+  if(collection_name != "_default"){
+    if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
+      return false;
+    }
+  }
   return Store(policy::CB_BINARY_SET, key, value, flags, exptime, cas_value,
                coll_id);
 }
@@ -1005,7 +1183,13 @@ bool CouchbaseRequest::GetCollectionId(
 bool CouchbaseRequest::Add(const butil::StringPiece& key,
                            const butil::StringPiece& value, uint32_t flags,
                            uint32_t exptime, uint64_t cas_value,
-                           uint8_t coll_id) {
+                           string collection_name) {
+  uint8_t coll_id = 0; // default collection ID
+  if(collection_name != "_default"){
+    if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
+      return false;
+    } 
+  }
   return Store(policy::CB_BINARY_ADD, key, value, flags, exptime, cas_value,
                coll_id);
 }
@@ -1013,7 +1197,13 @@ bool CouchbaseRequest::Add(const butil::StringPiece& key,
 bool CouchbaseRequest::Replace(const butil::StringPiece& key,
                                const butil::StringPiece& value, uint32_t flags,
                                uint32_t exptime, uint64_t cas_value,
-                               uint8_t coll_id) {
+                               string collection_name) {
+  uint8_t coll_id = 0; // default collection ID
+  if(collection_name != "_default"){
+    if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
+      return false;
+    }
+  }
   return Store(policy::CB_BINARY_REPLACE, key, value, flags, exptime, cas_value,
                coll_id);
 }
@@ -1021,10 +1211,16 @@ bool CouchbaseRequest::Replace(const butil::StringPiece& key,
 bool CouchbaseRequest::Append(const butil::StringPiece& key,
                               const butil::StringPiece& value, uint32_t flags,
                               uint32_t exptime, uint64_t cas_value,
-                              uint8_t coll_id) {
+                              string collection_name) {
   if (value.empty()) {
     LOG(ERROR) << "value to append must be non-empty";
     return false;
+  }
+  uint8_t coll_id = 0; // default collection ID
+  if(collection_name != "_default"){
+    if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
+      return false;
+    }
   }
   return Store(policy::CB_BINARY_APPEND, key, value, flags, exptime, cas_value,
                coll_id);
@@ -1033,10 +1229,16 @@ bool CouchbaseRequest::Append(const butil::StringPiece& key,
 bool CouchbaseRequest::Prepend(const butil::StringPiece& key,
                                const butil::StringPiece& value, uint32_t flags,
                                uint32_t exptime, uint64_t cas_value,
-                               uint8_t coll_id) {
+                               string collection_name) {
   if (value.empty()) {
     LOG(ERROR) << "value to prepend must be non-empty";
     return false;
+  }
+  uint8_t coll_id = 0; // default collection ID
+  if(collection_name != "_default"){
+    if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
+      return false;
+    }
   }
   return Store(policy::CB_BINARY_PREPEND, key, value, flags, exptime, cas_value,
                coll_id);
@@ -1057,8 +1259,17 @@ bool CouchbaseResponse::PopAppend(uint64_t* cas_value) {
 bool CouchbaseResponse::PopPrepend(uint64_t* cas_value) {
   return PopStore(policy::CB_BINARY_PREPEND, cas_value);
 }
-bool CouchbaseResponse::PopSelectBucket(uint64_t* cas_value) {
-  return PopStore(policy::CB_SELECT_BUCKET, cas_value);
+bool CouchbaseResponse::PopSelectBucket(uint64_t* cas_value, std::string bucket_name) {
+  if(PopStore(policy::CB_SELECT_BUCKET, cas_value) == false){
+    LOG(ERROR) << "Failed to select bucket: " << _err;
+    return false;
+  }
+  uint64_t bthread_id = bthread_self();
+  if(metadata_tracking->set_current_bucket_for_thread(bthread_id, bucket_name) == false){
+    LOG(FATAL) << "Failed to set current bucket for thread_id: " << bthread_id << ". This shouldn't happen normally.";
+    return false;
+  }
+  return true;
 }
 // Collection-related response method
 bool CouchbaseResponse::PopCollectionId(uint8_t* collection_id) {
@@ -1194,14 +1405,14 @@ bool CouchbaseRequest::Counter(uint8_t command, const butil::StringPiece& key,
 
 bool CouchbaseRequest::Increment(const butil::StringPiece& key, uint64_t delta,
                                  uint64_t initial_value, uint32_t exptime,
-                                 uint8_t coll_id) {
+                                 string collection_name) {
   return Counter(policy::CB_BINARY_INCREMENT, key, delta, initial_value,
                  exptime);
 }
 
 bool CouchbaseRequest::Decrement(const butil::StringPiece& key, uint64_t delta,
                                  uint64_t initial_value, uint32_t exptime,
-                                 uint8_t coll_id) {
+                                 string collection_name) {
   return Counter(policy::CB_BINARY_DECREMENT, key, delta, initial_value,
                  exptime);
 }
@@ -1303,7 +1514,7 @@ const size_t TOUCH_EXTRAS =
 //      +---------------+---------------+---------------+---------------+
 //    Total 4 bytes
 bool CouchbaseRequest::Touch(const butil::StringPiece& key, uint32_t exptime,
-                             uint8_t coll_id) {
+                             string collection_name) {
   TouchHeaderWithExtras header_with_extras = {
       {policy::CB_MAGIC_REQUEST, policy::CB_BINARY_TOUCH,
        butil::HostToNet16(key.size()), TOUCH_EXTRAS,

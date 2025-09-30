@@ -23,13 +23,44 @@
 #include <string>
 
 #include "brpc/nonreflectable_message.h"
+#include <brpc/channel.h>
 #include "brpc/pb_compat.h"
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
+#include <shared_mutex>
+#include <unordered_map>
+using namespace std;
 
 namespace brpc {
+class CouchbaseMetadataTracking{
+  public:
+    struct ChannelInfo {
+      brpc::Channel* channel;
+      string server;
+      string selected_bucket;
+    };
+  private:
+    unordered_map<uint64_t /*thread_id*/, ChannelInfo> thread_to_channel_info;
+    shared_mutex rw_thread_to_channel_info_mutex;
+    unordered_map<string /*server*/, unordered_map<string /*bucket.scope.collection*/, uint8_t /*collection_id*/>> bucket_to_collection_map;
+    shared_mutex rw_bucket_to_collection_map_mutex;
+
+  public:
+    CouchbaseMetadataTracking() {}
+    ~CouchbaseMetadataTracking() {
+      bucket_to_collection_map.clear();
+      thread_to_channel_info.clear();
+    }
+  bool set_channel_info_for_thread(uint64_t thread_id, brpc::Channel* channel, const string& server);
+  bool set_current_bucket_for_thread(uint64_t thread_id, const string& bucket);
+  bool set_bucket_to_collection_map(uint64_t thread_id, const string& collection, uint8_t collection_id);
+  bool get_channel_info_for_thread(uint64_t thread_id, ChannelInfo *channel_info);
+  bool get_bucket_to_collection_map(uint64_t thread_id, string server, string bucket, string scope, string collection, uint8_t *collection_id);
+} static common_metadata_tracking;
+
 class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
  private:
+  static CouchbaseMetadataTracking *metadata_tracking;
   int _pipelined_count;
   butil::IOBuf _buf;
   mutable int _cached_size_;
@@ -57,7 +88,9 @@ class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
 
   bool SelectBucket(const butil::StringPiece& bucket_name);
   bool Authenticate(const butil::StringPiece& username,
-                    const butil::StringPiece& password);
+                    const butil::StringPiece& password,
+                    brpc::Channel* channel,
+                    const string server);
   bool HelloRequest();
 
   // Collection Management Method
@@ -67,38 +100,38 @@ class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
   bool GetScopeId(const butil::StringPiece& scope_name);
 
   // Collection-aware document operations
-  bool Get(const butil::StringPiece& key, uint8_t coll_id = 0);
+  bool Get(const butil::StringPiece& key, string collection_name = "_default");
 
   bool Upsert(const butil::StringPiece& key, const butil::StringPiece& value,
               uint32_t flags, uint32_t exptime, uint64_t cas_value,
-              uint8_t coll_id = 0);
+              string collection_name = "_default");
 
   bool Add(const butil::StringPiece& key, const butil::StringPiece& value,
            uint32_t flags, uint32_t exptime, uint64_t cas_value,
-           uint8_t coll_id = 0);
+           string collection_name = "_default");
 
   bool Replace(const butil::StringPiece& key, const butil::StringPiece& value,
                uint32_t flags, uint32_t exptime, uint64_t cas_value,
-               uint8_t coll_id = 0);
+               string collection_name = "_default");
 
   bool Append(const butil::StringPiece& key, const butil::StringPiece& value,
               uint32_t flags, uint32_t exptime, uint64_t cas_value,
-              uint8_t coll_id = 0);
+              string collection_name = "_default");
 
   bool Prepend(const butil::StringPiece& key, const butil::StringPiece& value,
                uint32_t flags, uint32_t exptime, uint64_t cas_value,
-               uint8_t coll_id = 0);
+               string collection_name = "_default");
 
-  bool Delete(const butil::StringPiece& key, uint8_t coll_id = 0);
+  bool Delete(const butil::StringPiece& key, string collection_name = "_default");
   bool Flush(uint32_t timeout);
 
   bool Increment(const butil::StringPiece& key, uint64_t delta,
-                 uint64_t initial_value, uint32_t exptime, uint8_t coll_id = 0);
+                 uint64_t initial_value, uint32_t exptime, string collection_name = "_default");
   bool Decrement(const butil::StringPiece& key, uint64_t delta,
-                 uint64_t initial_value, uint32_t exptime, uint8_t coll_id = 0);
+                 uint64_t initial_value, uint32_t exptime, string collection_name = "_default");
 
   bool Touch(const butil::StringPiece& key, uint32_t exptime,
-             uint8_t coll_id = 0);
+             string collection_name = "_default");
 
   bool Version();
 
@@ -122,7 +155,8 @@ class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
 
 class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
  private:
-  std::string _err;
+  string _err;
+  static CouchbaseMetadataTracking *metadata_tracking;
   butil::IOBuf _buf;
   mutable int _cached_size_;
   bool PopCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
@@ -217,21 +251,21 @@ class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
   static const char* status_str(Status);
 
   // Helper method to format error messages with status codes
-  static std::string format_error_message(uint16_t status_code,
-                                          const std::string& operation,
-                                          const std::string& error_msg = "");
+  static string format_error_message(uint16_t status_code,
+                                          const string& operation,
+                                          const string& error_msg = "");
 
   // Add methods to handle response parsing
   void Swap(CouchbaseResponse* other);
   bool PopGet(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
-  bool PopGet(std::string* value, uint32_t* flags, uint64_t* cas_value);
-  const std::string& LastError() const { return _err; }
+  bool PopGet(string* value, uint32_t* flags, uint64_t* cas_value);
+  const string& LastError() const { return _err; }
   bool PopUpsert(uint64_t* cas_value);
   bool PopAdd(uint64_t* cas_value);
   bool PopReplace(uint64_t* cas_value);
   bool PopAppend(uint64_t* cas_value);
   bool PopPrepend(uint64_t* cas_value);
-  bool PopSelectBucket(uint64_t* cas_value);
+  bool PopSelectBucket(uint64_t* cas_value, std::string bucket_name);
 
   // Collection-related response methods
   bool PopCollectionId(uint8_t* collection_id);
@@ -241,6 +275,6 @@ class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
   bool PopIncrement(uint64_t* new_value, uint64_t* cas_value);
   bool PopDecrement(uint64_t* new_value, uint64_t* cas_value);
   bool PopTouch();
-  bool PopVersion(std::string* version);
+  bool PopVersion(string* version);
 };
 }  // namespace brpc
