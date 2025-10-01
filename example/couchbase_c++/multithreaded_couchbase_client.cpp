@@ -21,7 +21,6 @@
 #include <butil/logging.h>
 #include <butil/string_printf.h>
 #include <butil/time.h>
-#include <gflags/gflags.h>
 
 #include <iostream>
 #include <vector>
