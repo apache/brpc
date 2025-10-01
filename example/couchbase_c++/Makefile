@@ -25,8 +25,11 @@ LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA=,
 SOPATHS=$(addprefix -Wl$(COMMA)-rpath$(COMMA), $(LIBS))
 
-SOURCES = $(wildcard *.cpp)
-OBJS = $(addsuffix .o, $(basename $(SOURCES))) 
+# Define targets and their sources
+TARGETS = couchbase_client multithreaded_couchbase_client
+COUCHBASE_CLIENT_OBJS = couchbase_client.o
+MULTITHREADED_CLIENT_OBJS = multithreaded_couchbase_client.o
+ALL_OBJS = $(COUCHBASE_CLIENT_OBJS) $(MULTITHREADED_CLIENT_OBJS) 
 
 ifeq ($(SYSTEM),Darwin)
  ifneq ("$(LINK_SO)", "")
@@ -43,15 +46,17 @@ else ifeq ($(SYSTEM),Linux)
 	LINK_OPTIONS = -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 endif
 
-.PHONY:all
-all: couchbase_client
+.PHONY: all clean couchbase_client multithreaded_couchbase_client help
 
-.PHONY:clean
+# Default target builds both clients
+all: $(TARGETS)
+
 clean:
 	@echo "> Cleaning"
-	rm -rf couchbase_client $(OBJS)
+	rm -rf $(TARGETS) $(ALL_OBJS)
 
-couchbase_client:$(OBJS)
+# Build rules for individual targets
+couchbase_client: $(COUCHBASE_CLIENT_OBJS)
 	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
 	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
@@ -59,10 +64,19 @@ else
 	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
-%.o:%.cpp
+multithreaded_couchbase_client: $(MULTITHREADED_CLIENT_OBJS)
+	@echo "> Linking $@"
+ifneq ("$(LINK_SO)", "")
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+else
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+endif
+
+# Compilation rules
+couchbase_client.o: couchbase_client.cpp
 	@echo "> Compiling $@"
 	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
-%.o:%.cc
+multithreaded_couchbase_client.o: multithreaded_couchbase_client.cpp
 	@echo "> Compiling $@"
 	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

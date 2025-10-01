@@ -98,7 +98,7 @@ int main() {
     }
   }
 
-  if (!auth_request.Authenticate(username.c_str(), password.c_str())) {
+  if (!auth_request.Authenticate(username.c_str(), password.c_str(), &channel, FLAGS_server)) {
     LOG(ERROR) << "Fail to create authentication request";
     return -1;
   }
@@ -144,7 +144,7 @@ int main() {
   } else {
     // Check ADD operation response status
     uint64_t cas_value;
-    if (select_bucket_response.PopSelectBucket(&cas_value)) {
+    if (select_bucket_response.PopSelectBucket(&cas_value, bucket_name.c_str())) {
       std::cout << GREEN << "Bucket Selection Successful, CAS: " << cas_value
                 << RESET << std::endl;
     } else {
@@ -640,7 +640,7 @@ int main() {
     const std::string coll_key = "user::collection_doc";
     if (!coll_add_req.Add(
             coll_key.c_str(), R"({"type":"collection","op":"add","v":1})",
-            0xabcddcba, FLAGS_exptime, 0, (uint8_t)testing_collection_id)) {
+            0xabcddcba, FLAGS_exptime, 0, collection_name)) {
       LOG(ERROR) << "Fail to build collection ADD request";
     } else {
       channel.CallMethod(NULL, &cntl, &coll_add_req, &coll_add_resp, NULL);
@@ -663,7 +663,7 @@ int main() {
     // 2. GET from collection
     brpc::CouchbaseRequest coll_get_req;
     brpc::CouchbaseResponse coll_get_resp;
-    if (!coll_get_req.Get(coll_key.c_str(), (uint8_t)testing_collection_id)) {
+    if (!coll_get_req.Get(coll_key.c_str(), collection_name)) {
       LOG(ERROR) << "Fail to build collection GET request";
     } else {
       channel.CallMethod(NULL, &cntl, &coll_get_req, &coll_get_resp, NULL);
@@ -690,7 +690,7 @@ int main() {
     brpc::CouchbaseResponse coll_upsert_resp;
     if (!coll_upsert_req.Upsert(
             coll_key.c_str(), R"({"type":"collection","op":"upsert","v":2})", 0,
-            FLAGS_exptime, 0, (uint8_t)testing_collection_id)) {
+            FLAGS_exptime, 0, collection_name)) {
       LOG(ERROR) << "Fail to build collection UPSERT request";
     } else {
       channel.CallMethod(NULL, &cntl, &coll_upsert_req, &coll_upsert_resp,
@@ -713,7 +713,7 @@ int main() {
     // 4. GET again to verify upsert
     brpc::CouchbaseRequest coll_get2_req;
     brpc::CouchbaseResponse coll_get2_resp;
-    if (coll_get2_req.Get(coll_key.c_str(), (uint8_t)testing_collection_id)) {
+    if (coll_get2_req.Get(coll_key.c_str(), collection_name)) {
       channel.CallMethod(NULL, &cntl, &coll_get2_req, &coll_get2_resp, NULL);
       if (!cntl.Failed()) {
         std::string v;
@@ -730,8 +730,7 @@ int main() {
     // 5. DELETE from collection
     brpc::CouchbaseRequest coll_del_req;
     brpc::CouchbaseResponse coll_del_resp;
-    if (!coll_del_req.Delete(coll_key.c_str(),
-                             (uint8_t)testing_collection_id)) {
+    if (!coll_del_req.Delete(coll_key.c_str(), collection_name)) {
       LOG(ERROR) << "Fail to build collection DELETE request";
     } else {
       channel.CallMethod(NULL, &cntl, &coll_del_req, &coll_del_resp, NULL);

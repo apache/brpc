@@ -39,23 +39,33 @@ class CouchbaseMetadataTracking{
       string server;
       string selected_bucket;
     };
+
+    struct CollectionManifest{
+      string uid; //uid of the manifest, it can be used to track if the manifest is updated
+      unordered_map<string, unordered_map<string, uint8_t>> scope_to_collectionID_map;  //scope -> (collection -> collection_id)
+    };
   private:
     unordered_map<uint64_t /*thread_id*/, ChannelInfo> thread_to_channel_info;
     shared_mutex rw_thread_to_channel_info_mutex;
-    unordered_map<string /*server*/, unordered_map<string /*bucket.scope.collection*/, uint8_t /*collection_id*/>> bucket_to_collection_map;
-    shared_mutex rw_bucket_to_collection_map_mutex;
+
+    unordered_map<string /*server*/, unordered_map<string /*bucket*/, CollectionManifest>> bucket_to_collection_manifest;
+    shared_mutex rw_bucket_to_collection_manifest_mutex;
 
   public:
     CouchbaseMetadataTracking() {}
     ~CouchbaseMetadataTracking() {
-      bucket_to_collection_map.clear();
+      bucket_to_collection_manifest.clear();
       thread_to_channel_info.clear();
     }
-  bool set_channel_info_for_thread(uint64_t thread_id, brpc::Channel* channel, const string& server);
-  bool set_current_bucket_for_thread(uint64_t thread_id, const string& bucket);
-  bool set_bucket_to_collection_map(uint64_t thread_id, const string& collection, uint8_t collection_id);
-  bool get_channel_info_for_thread(uint64_t thread_id, ChannelInfo *channel_info);
-  bool get_bucket_to_collection_map(uint64_t thread_id, string server, string bucket, string scope, string collection, uint8_t *collection_id);
+    bool set_channel_info_for_thread(uint64_t thread_id, brpc::Channel* channel, const string& server);
+    bool set_current_bucket_for_thread(uint64_t thread_id, const string& bucket);
+    bool set_bucket_to_collection_manifest(uint64_t thread_id, CollectionManifest manifest);
+    
+    bool get_channel_info_for_thread(uint64_t thread_id, ChannelInfo *channel_info);
+    bool get_bucket_to_collection_manifest(uint64_t thread_id, string server, string bucket, CollectionManifest *manifest);
+    bool get_manifest_to_collection_id(CollectionManifest *manifest, string scope, string collection, uint8_t *collection_id);
+
+    bool json_to_collection_manifest(const string& json, CollectionManifest *manifest);
 } static common_metadata_tracking;
 
 class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
@@ -98,6 +108,8 @@ class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
                        const butil::StringPiece& collection_name);
 
   bool GetScopeId(const butil::StringPiece& scope_name);
+
+  bool GetCollectionManifest();
 
   // Collection-aware document operations
   bool Get(const butil::StringPiece& key, string collection_name = "_default");
@@ -269,6 +281,8 @@ class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
 
   // Collection-related response methods
   bool PopCollectionId(uint8_t* collection_id);
+
+  bool PopManifest(std::string* manifest_json);
 
   bool PopDelete();
   bool PopFlush();

@@ -25,6 +25,8 @@
 #include "butil/macros.h"
 #include "butil/string_printf.h"
 #include "butil/sys_byteorder.h"
+#include "butil/third_party/rapidjson/document.h"
+#include "butil/third_party/rapidjson/rapidjson.h"
 
 namespace brpc {
 
@@ -32,9 +34,7 @@ namespace brpc {
 namespace {
   constexpr uint32_t APPLE_VBUCKET_COUNT = 64;
   constexpr uint32_t DEFAULT_VBUCKET_COUNT = 1024;
-  constexpr uint8_t COLLECTION_ID_SIZE = 1;
-  constexpr size_t MANIFEST_ID_SIZE = 8;
-  constexpr size_t CONNECTION_ID_SIZE = 33;
+  constexpr int CONNECTION_ID_SIZE = 33;
   constexpr size_t RANDOM_ID_HEX_SIZE = 67; // 33 bytes * 2 + null terminator
 }
 
@@ -42,7 +42,7 @@ namespace {
 CouchbaseMetadataTracking* CouchbaseRequest::metadata_tracking = &common_metadata_tracking;
 CouchbaseMetadataTracking* CouchbaseResponse::metadata_tracking = &common_metadata_tracking;
 
-bool CouchbaseMetadataTracking::set_channel_info_for_thread(uint64_t thread_id, brpc::Channel* channel, const string &server) {
+bool brpc::CouchbaseMetadataTracking::set_channel_info_for_thread(uint64_t thread_id, brpc::Channel* channel, const string &server) {
   std::unique_lock<shared_mutex> write_lock(rw_thread_to_channel_info_mutex);
   auto it = thread_to_channel_info.find(thread_id);
   if (it != thread_to_channel_info.end()) {
@@ -56,7 +56,7 @@ bool CouchbaseMetadataTracking::set_channel_info_for_thread(uint64_t thread_id, 
   return true;
 }
 
-bool CouchbaseMetadataTracking::set_current_bucket_for_thread(uint64_t thread_id, const string& bucket){
+bool brpc::CouchbaseMetadataTracking::set_current_bucket_for_thread(uint64_t thread_id, const string& bucket){
   std::unique_lock<shared_mutex> write_lock(rw_thread_to_channel_info_mutex);
   auto it = thread_to_channel_info.find(thread_id);
   if(it == thread_to_channel_info.end()){
@@ -67,7 +67,7 @@ bool CouchbaseMetadataTracking::set_current_bucket_for_thread(uint64_t thread_id
   return true;
 }
 
-bool CouchbaseMetadataTracking::set_bucket_to_collection_map(uint64_t thread_id, const string& collection, uint8_t collection_id){
+bool brpc::CouchbaseMetadataTracking::set_bucket_to_collection_manifest(uint64_t thread_id, CouchbaseMetadataTracking::CollectionManifest manifest){
   string server, selected_bucket;
   
   // First, get the server and bucket info with proper locking
@@ -86,20 +86,16 @@ bool CouchbaseMetadataTracking::set_bucket_to_collection_map(uint64_t thread_id,
     }
   }
 
-  // key for inner map is bucket.scope.collection
-  // for now scope is always _default
-  string bucket_scope_collection = selected_bucket+"._default."+collection;
-
-  // Then update the collection map with proper locking
+  // Then update the collection manifest with proper locking
   {
-    std::unique_lock<shared_mutex> write_lock(rw_bucket_to_collection_map_mutex);
-    bucket_to_collection_map[server][bucket_scope_collection] = collection_id;
+    std::unique_lock<shared_mutex> write_lock(rw_bucket_to_collection_manifest_mutex);
+    bucket_to_collection_manifest[server][selected_bucket] = manifest;
   }
   
   return true;
 }
 
-bool CouchbaseMetadataTracking::get_channel_info_for_thread(uint64_t thread_id, ChannelInfo *channel_info){
+bool brpc::CouchbaseMetadataTracking::get_channel_info_for_thread(uint64_t thread_id, ChannelInfo *channel_info){
   std::shared_lock<shared_mutex> read_lock(rw_thread_to_channel_info_mutex);
   auto it = thread_to_channel_info.find(thread_id);
   if(it == thread_to_channel_info.end()){
@@ -110,18 +106,152 @@ bool CouchbaseMetadataTracking::get_channel_info_for_thread(uint64_t thread_id, 
   return true;
 }
 
-bool CouchbaseMetadataTracking::get_bucket_to_collection_map(uint64_t thread_id, string server, string bucket, string scope, string collection, uint8_t *collection_id){
-  string bucket_scope_collection = bucket+"."+scope+"."+collection;
-  std::shared_lock<shared_mutex> read_lock(rw_bucket_to_collection_map_mutex);
-  auto it1 = bucket_to_collection_map.find(server);
-  if(it1 == bucket_to_collection_map.end()){
+bool brpc::CouchbaseMetadataTracking::get_bucket_to_collection_manifest(uint64_t thread_id, string server, string bucket, CouchbaseMetadataTracking::CollectionManifest *manifest){
+  std::shared_lock<shared_mutex> read_lock(rw_bucket_to_collection_manifest_mutex);
+  auto it1 = bucket_to_collection_manifest.find(server);
+  if(it1 == bucket_to_collection_manifest.end()){
     return false;
   }
-  auto it2 = it1->second.find(bucket_scope_collection);
+  auto it2 = it1->second.find(bucket);
   if(it2 == it1->second.end()){
     return false;
   }
+  *manifest = it2->second;
+  return true;
+}
+
+bool brpc::CouchbaseMetadataTracking::get_manifest_to_collection_id(CouchbaseMetadataTracking::CollectionManifest *manifest, string scope, string collection, uint8_t *collection_id){
+  if(manifest == nullptr || collection_id == nullptr){
+    LOG(ERROR) << "Invalid input: manifest or collection_id is null";
+    return false;
+  }
+  auto it1 = manifest->scope_to_collectionID_map.find(scope);
+  if(it1 == manifest->scope_to_collectionID_map.end()){
+    LOG(ERROR) << "Scope: " << scope << " not found in manifest";
+    return false;
+  }
+  auto it2 = it1->second.find(collection);
+  if(it2 == it1->second.end()){
+    LOG(ERROR) << "Collection: " << collection << " not found in scope: " << scope;
+    return false;
+  }
   *collection_id = it2->second;
+  return true;
+}
+
+bool brpc::CouchbaseMetadataTracking::json_to_collection_manifest(const string& json, CouchbaseMetadataTracking::CollectionManifest *manifest) {
+  if(manifest == nullptr){
+    LOG(ERROR) << "Invalid input: manifest is null";
+    return false;
+  }
+  
+  // Clear existing data
+  manifest->uid.clear();
+  manifest->scope_to_collectionID_map.clear();
+  
+  if (json.empty()) {
+    LOG(ERROR) << "JSON string is empty";
+    return false;
+  }
+  
+  // Parse JSON using RapidJSON
+  BUTIL_RAPIDJSON_NAMESPACE::Document document;
+  document.Parse(json.c_str());
+  
+  if (document.HasParseError()) {
+    LOG(ERROR) << "Failed to parse JSON: " << document.GetParseError();
+    return false;
+  }
+  
+  if (!document.IsObject()) {
+    LOG(ERROR) << "JSON root is not an object";
+    return false;
+  }
+  
+  // Extract uid
+  if (document.HasMember("uid") && document["uid"].IsString()) {
+    manifest->uid = document["uid"].GetString();
+  } else {
+    LOG(ERROR) << "Missing or invalid 'uid' field in JSON";
+    return false;
+  }
+  
+  // Extract scopes
+  if (!document.HasMember("scopes") || !document["scopes"].IsArray()) {
+    LOG(ERROR) << "Missing or invalid 'scopes' field in JSON";
+    return false;
+  }
+  
+  const BUTIL_RAPIDJSON_NAMESPACE::Value& scopes = document["scopes"];
+  for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < scopes.Size(); ++i) {
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& scope = scopes[i];
+    
+    if (!scope.IsObject()) {
+      LOG(ERROR) << "Scope at index " << i << " is not an object";
+      return false;
+    }
+    
+    // Extract scope name
+    if (!scope.HasMember("name") || !scope["name"].IsString()) {
+      LOG(ERROR) << "Missing or invalid 'name' field in scope at index " << i;
+      return false;
+    }
+    string scope_name = scope["name"].GetString();
+    
+    // Extract collections
+    if (!scope.HasMember("collections") || !scope["collections"].IsArray()) {
+      LOG(ERROR) << "Missing or invalid 'collections' field in scope '" << scope_name << "'";
+      return false;
+    }
+    
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& collections = scope["collections"];
+    unordered_map<string, uint8_t> collection_map;
+    
+    for (BUTIL_RAPIDJSON_NAMESPACE::SizeType j = 0; j < collections.Size(); ++j) {
+      const BUTIL_RAPIDJSON_NAMESPACE::Value& collection = collections[j];
+      
+      if (!collection.IsObject()) {
+        LOG(ERROR) << "Collection at index " << j << " in scope '" << scope_name << "' is not an object";
+        return false;
+      }
+      
+      // Extract collection name
+      if (!collection.HasMember("name") || !collection["name"].IsString()) {
+        LOG(ERROR) << "Missing or invalid 'name' field in collection at index " << j << " in scope '" << scope_name << "'";
+        return false;
+      }
+      string collection_name = collection["name"].GetString();
+      
+      // Extract collection uid (hex string)
+      if (!collection.HasMember("uid") || !collection["uid"].IsString()) {
+        LOG(ERROR) << "Missing or invalid 'uid' field in collection '" << collection_name << "' in scope '" << scope_name << "'";
+        return false;
+      }
+      string collection_uid_str = collection["uid"].GetString();
+      
+      // Convert hex string to uint8_t
+      uint8_t collection_id = 0;
+      try {
+        // Convert hex string to integer
+        unsigned long uid_val = std::stoul(collection_uid_str, nullptr, 16);
+        if (uid_val > 255) {
+          LOG(ERROR) << "Collection uid '" << collection_uid_str << "' exceeds uint8_t range in collection '" << collection_name << "' in scope '" << scope_name << "'";
+          return false;
+        }
+        collection_id = static_cast<uint8_t>(uid_val);
+      } catch (const std::exception& e) {
+        LOG(ERROR) << "Failed to parse collection uid '" << collection_uid_str << "' as hex in collection '" << collection_name << "' in scope '" << scope_name << "': " << e.what();
+        return false;
+      }
+      
+      // Add to collection map
+      collection_map[collection_name] = collection_id;
+    }
+    
+    // Add scope and its collections to manifest
+    manifest->scope_to_collectionID_map[scope_name] = std::move(collection_map);
+  }
+  
   return true;
 }
 
@@ -744,42 +874,55 @@ bool get_cached_or_fetch_collection_id(string collection_name, uint8_t *coll_id,
     return false;
   }
   if(channel_info.server.empty()){
-      LOG(ERROR) << "Server is empty for this thread, make sure to call Authenticate() first";
-      return false;
-    }
+    LOG(ERROR) << "Server is empty for this thread, make sure to call Authenticate() first";
+    return false;
+  }
   if(channel_info.selected_bucket.empty()){
-      LOG(ERROR) << "No bucket selected for this thread, make sure to call SelectBucket() first";
-      return false;
-    }
-  bool result = metadata_tracking->get_bucket_to_collection_map(bthread_self(), channel_info.server, channel_info.selected_bucket, "_default", collection_name, coll_id);
-  if(!result){
-    CouchbaseRequest temp_get_collectionID_request;
-    CouchbaseResponse temp_get_collectionID_response;
+    LOG(ERROR) << "No bucket selected for this thread, make sure to call SelectBucket() first";
+    return false;
+  }
+  CouchbaseMetadataTracking::CollectionManifest manifest;
+  if(!metadata_tracking->get_bucket_to_collection_manifest(bthread_self(), channel_info.server, channel_info.selected_bucket, &manifest)){
+    LOG(INFO) << "No cached collection manifest found for bucket " << channel_info.selected_bucket << " on server " << channel_info.server << ", fetching from server";
+    // No cached manifest found, fetch from server
+    CouchbaseRequest temp_get_manifest_request;
+    CouchbaseResponse temp_get_manifest_response;
     brpc::Controller temp_cntl;
     brpc::Channel *channel = channel_info.channel;
-    temp_get_collectionID_request.GetCollectionId("_default", collection_name);
-    channel->CallMethod(NULL, &temp_cntl, &temp_get_collectionID_request,
-                          &temp_get_collectionID_response, NULL);
+    temp_get_manifest_request.GetCollectionManifest();
+    channel->CallMethod(NULL, &temp_cntl, &temp_get_manifest_request,
+                          &temp_get_manifest_response, NULL);
     if (temp_cntl.Failed()) {
-      LOG(ERROR) << "Failed to get collection ID for collection " << collection_name << " in bucket " << channel_info.selected_bucket << " on server " << channel_info.server
+      LOG(ERROR) << "Failed to get collection manifest for bucket " << channel_info.selected_bucket << " on server " << channel_info.server
                    << ": " << temp_cntl.ErrorText();
       return false;
     }
-    if (!temp_get_collectionID_response.PopCollectionId(coll_id)) {
-      LOG(ERROR) << "Failed to parse collection ID response for collection " << collection_name << " in bucket " << channel_info.selected_bucket << " on server " << channel_info.server
-                 << ": " << temp_get_collectionID_response.LastError();
+    string manifest_json;
+    if (!temp_get_manifest_response.PopManifest(&manifest_json)) {
+      LOG(ERROR) << "Failed to parse response for collection Manifest in bucket " << channel_info.selected_bucket << " on server " << channel_info.server
+                 << ": " << temp_get_manifest_response.LastError();
       return false;
     }
     else{
-      // Cache the collection ID for future use
-      if(!metadata_tracking->set_bucket_to_collection_map(bthread_self(), collection_name, *coll_id)){
+      // convert JSON to manifest structure
+      if(!metadata_tracking->json_to_collection_manifest(manifest_json, &manifest)){
+        LOG(ERROR) << "Failed to parse collection manifest JSON for bucket " << channel_info.selected_bucket << " on server " << channel_info.server;
+        return false;
+      }
+      // Cache the collection manifest
+      if(!metadata_tracking->set_bucket_to_collection_manifest(bthread_self(), manifest)){
         LOG(ERROR) << "Failed to cache collection ID for collection " << collection_name << " in bucket " << channel_info.selected_bucket << " on server " << channel_info.server;
         return false;
       }
       return true;
       }
   }
-  return true;
+  else{
+    if(!metadata_tracking->get_manifest_to_collection_id(&manifest, "_default", collection_name, coll_id)){
+      return false;
+    }
+    return true;
+  }
 }
 
 bool CouchbaseRequest::Get(const butil::StringPiece& key, string collection_name) {
@@ -1180,6 +1323,25 @@ bool CouchbaseRequest::GetCollectionId(
   return true;
 }
 
+bool CouchbaseRequest::GetCollectionManifest() {
+  const policy::CouchbaseRequestHeader header = {
+      policy::CB_MAGIC_REQUEST,
+      policy::CB_GET_COLLECTIONS_MANIFEST,
+      0,  // no key
+      0,  // no extras
+      policy::CB_BINARY_RAW_BYTES,
+      0,  // no vbucket
+      0,  // no body (no key, no extras, no value)
+      0,  // opaque
+      0   // no CAS
+  };
+  if (_buf.append(&header, sizeof(header))) {
+    return false;
+  }
+  ++_pipelined_count;
+  return true;
+}
+
 bool CouchbaseRequest::Add(const butil::StringPiece& key,
                            const butil::StringPiece& value, uint32_t flags,
                            uint32_t exptime, uint64_t cas_value,
@@ -1321,19 +1483,6 @@ bool CouchbaseResponse::PopCollectionId(uint8_t* collection_id) {
   // Skip header
   _buf.pop_front(sizeof(header));
 
-  //   LOG(INFO) << "Total body length: " << header.total_body_length;
-  //   LOG(INFO) << "Extras length: " << header.extras_length;
-
-  // size_t remaining_size = _buf.size();
-  // std::vector<uint8_t> remaining_data(remaining_size);
-  // _buf.copy_to(remaining_data.data(), remaining_size);
-
-  // // Print the remaining data
-  // for (size_t i = 0; i < remaining_size; ++i) {
-  //     LOG(INFO) << "Byte " << i << ": " <<
-  //     static_cast<int>(remaining_data[i]);
-  // }
-
   // return true;
   uint64_t manifest_id_net = 0;
   _buf.copy_to(reinterpret_cast<uint64_t*>(&manifest_id_net),
@@ -1351,6 +1500,66 @@ bool CouchbaseResponse::PopCollectionId(uint8_t* collection_id) {
   _buf.pop_front(sizeof(cid_net));
 
   _buf.pop_front(header.total_body_length);
+  _err.clear();
+  return true;
+}
+
+bool CouchbaseResponse::PopManifest(std::string* manifest_json) {
+  const size_t n = _buf.size();
+  policy::CouchbaseResponseHeader header;
+  if (n < sizeof(header)) {
+    butil::string_printf(&_err, "buffer is too small to contain a header");
+    return false;
+  }
+  _buf.copy_to(&header, sizeof(header));
+
+  if (header.command != policy::CB_GET_COLLECTIONS_MANIFEST) {
+    butil::string_printf(&_err, "Not a get collections manifest response");
+    return false;
+  }
+
+  // Making sure buffer has the whole body (extras + key + value)
+  if (n < sizeof(header) + header.total_body_length) {
+    butil::string_printf(&_err, "Not enough data");
+    return false;
+  }
+
+  if (header.status != 0) {
+    // handle error case
+    if(header.extras_length != 0){
+      LOG(ERROR) << "Get Collections Manifest response must not have extras";
+    }
+    if(header.key_length != 0){
+      LOG(ERROR) << "Get Collections Manifest response must not have key";
+    }
+    _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
+    // Possibly read error message from value if present
+    size_t value_size =
+        header.total_body_length - header.extras_length - header.key_length;
+    if (value_size > 0) {
+      std::string err_msg;
+      _buf.cutn(&err_msg, value_size);
+      _err = format_error_message(header.status, "Get Collections Manifest", err_msg);
+    } else {
+      _err = format_error_message(header.status, "Get Collections Manifest");
+    }
+    return false;
+  }
+
+  // Success case: the manifest should be in the value section
+  size_t value_size = header.total_body_length - header.extras_length - header.key_length;
+  if (value_size == 0) {
+    butil::string_printf(&_err, "No manifest data in response");
+    _buf.pop_front(sizeof(header) + header.total_body_length);
+    return false;
+  }
+
+  // Skip header and any extras/key
+  _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
+
+  // Read the manifest JSON from the value section
+  _buf.cutn(manifest_json, value_size);
+  
   _err.clear();
   return true;
 }
