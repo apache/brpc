@@ -41,7 +41,7 @@ public:
     void Describe(std::ostream& os, const DescribeOptions&) override;
 
     struct Server {
-        Server(SocketId s_id = 0, uint32_t s_w = 0, uint64_t s_c_w_s = 0)
+        explicit Server(SocketId s_id = 0, uint32_t s_w = 0, uint64_t s_c_w_s = 0)
             : id(s_id), weight(s_w), current_weight_sum(s_c_w_s) {}
         SocketId id;
         uint32_t weight;
@@ -61,7 +61,6 @@ private:
     static bool Remove(Servers& bg, const ServerId& id);
     static size_t BatchAdd(Servers& bg, const std::vector<ServerId>& servers);
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
-    static bool IsServerAvailable(SocketId id, SocketUniquePtr* out);
 
     butil::DoublyBufferedData<Servers> _db_servers;
 };

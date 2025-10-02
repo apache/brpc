@@ -105,6 +105,10 @@ public:
 
 protected:
     virtual ~LoadBalancer() { }
+
+    // Returns true and set `out' if the server is available (not failed, not logoff).
+    // Otherwise, returns false.
+    static bool IsServerAvailable(SocketId id, SocketUniquePtr* out);
 };
 
 DECLARE_bool(show_lb_in_vars);

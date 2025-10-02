@@ -929,16 +929,17 @@ ssize_t IOBuf::cut_multiple_into_SSL_channel(SSL* ssl, IOBuf* const* pieces,
     }
 
 #ifndef USE_MESALINK
-    // Flush remaining data inside the BIO buffer layer
-    BIO* wbio = SSL_get_wbio(ssl);
-    if (BIO_wpending(wbio) > 0) {
-        int rc = BIO_flush(wbio);
-        if (rc <= 0 && BIO_fd_non_fatal_error(errno) == 0) {
-            // Fatal error during BIO_flush
-            *ssl_error = SSL_ERROR_SYSCALL;
-            return rc;
-        }
-    }
+    // BIO is disabled for now (see socket.cpp) and the following implementation is
+    // NOT correct since it doesn't handle the EAGAIN event of BIO_flush
+//    BIO* wbio = SSL_get_wbio(ssl);
+//    if (BIO_wpending(wbio) > 0) {
+//        int rc = BIO_flush(wbio);
+//        if (rc <= 0 && BIO_fd_non_fatal_error(errno) == 0) {
+//            // Fatal error during BIO_flush
+//            *ssl_error = SSL_ERROR_SYSCALL;
+//            return rc;
+//        }
+//    }
 #else
     int rc = SSL_flush(ssl);
     if (rc <= 0) {

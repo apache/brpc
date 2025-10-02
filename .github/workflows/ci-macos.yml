@@ -34,7 +34,7 @@ jobs:
     - name: compile with cmake
       run: |
         echo "CMAKE_PREFIX_PATH=$(brew --prefix protobuf@21)"
-        mkdir build && cd build && cmake -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@21) ..
+        mkdir build && cd build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@21) ..
         make -j ${{env.proc_num}} && make clean
 
   compile-with-make-cmake-protobuf29:
@@ -56,7 +56,7 @@ jobs:
 
       - name: compile with cmake
         run: |
-          mkdir build && cd build && cmake -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@29) ..
+          mkdir build && cd build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@29) ..
           make -j ${{env.proc_num}} && make clean
 
   compile-with-bazel:

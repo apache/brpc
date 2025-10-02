@@ -415,7 +415,7 @@ private:
     }
 
     inline LocalPool* get_or_new_local_pool() {
-        LocalPool* lp = _local_pool;
+	    LocalPool* lp = BAIDU_GET_VOLATILE_THREAD_LOCAL(_local_pool);
         if (BAIDU_LIKELY(lp != NULL)) {
             return lp;
         }
@@ -424,7 +424,7 @@ private:
             return NULL;
         }
         BAIDU_SCOPED_LOCK(_change_thread_mutex); //avoid race with clear()
-        _local_pool = lp;
+	    BAIDU_SET_VOLATILE_THREAD_LOCAL(_local_pool, lp);
         butil::thread_atexit(LocalPool::delete_local_pool, lp);
         _nlocal.fetch_add(1, butil::memory_order_relaxed);
         return lp;
@@ -523,7 +523,7 @@ private:
     
     static butil::static_atomic<ObjectPool*> _singleton;
     static pthread_mutex_t _singleton_mutex;
-    static BAIDU_THREAD_LOCAL LocalPool* _local_pool;
+    STATIC_MEMBER_BAIDU_VOLATILE_THREAD_LOCAL(LocalPool*, _local_pool);
     static butil::static_atomic<long> _nlocal;
     static butil::static_atomic<size_t> _ngroup;
     static pthread_mutex_t _block_group_mutex;
