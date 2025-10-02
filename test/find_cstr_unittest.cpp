@@ -16,6 +16,7 @@
 // under the License.
 
 #include <algorithm>
+#include <random>
 #include <gtest/gtest.h>
 #include "butil/find_cstr.h"
 #include "butil/time.h"
@@ -75,7 +76,9 @@ TEST_F(FindCstrTest, perf) {
             j = 0;
         }
     }
-    std::random_shuffle(all_keys.begin(), all_keys.end());
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(all_keys.begin(), all_keys.end(), g);
     int sum = 0;
     butil::Timer tm;
     tm.start();

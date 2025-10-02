@@ -20,7 +20,6 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <cstddef>
-#include <google/protobuf/stubs/logging.h>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -1128,7 +1127,7 @@ public:
 private:
     void check_header(brpc::Controller* cntl) {
         const std::string* test_header = cntl->http_request().GetHeader(TEST_PROGRESSIVE_HEADER);
-        GOOGLE_CHECK_NOTNULL(test_header);
+        CHECK_NE(test_header, nullptr);
         CHECK_EQ(*test_header, TEST_PROGRESSIVE_HEADER_VAL);
     }
 };

@@ -18,6 +18,8 @@
 #include <gtest/gtest.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <algorithm>
+#include <random>
 #include <map>
 #include <unordered_map>
 #include <vector>
@@ -874,7 +876,9 @@ TEST_F(FlatMapTest, perf_cmp_with_map_storing_pointers) {
     ASSERT_EQ(m1.size(), m2.size());
     ASSERT_EQ(m1.size(), m3.size());
 
-    std::random_shuffle(r.begin(), r.end());
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(r.begin(), r.end(), g);
 
     sum = 0;
     tm.start();
@@ -1253,7 +1257,9 @@ void perf_insert_erase(bool random, const T& value) {
         }
 
         if (random) {
-            random_shuffle(keys.begin(), keys.end());
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(keys.begin(), keys.end(), g);
         }
 
         id_map.clear();
@@ -1318,7 +1324,9 @@ void perf_insert_erase(bool random, const T& value) {
                   << "/" << hash_tm.n_elapsed() / keys.size();
         
         if (random) {
-            random_shuffle(keys.begin(), keys.end());
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(keys.begin(), keys.end(), g);
         }
         
         id_tm.start();
@@ -1438,7 +1446,9 @@ void perf_seek(const T& value) {
             hash_map[keys[i]] = value;
         }
         
-        random_shuffle(keys.begin(), keys.end());
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::shuffle(keys.begin(), keys.end(), g);
         
         long sum = 0;
         id_tm.start();
