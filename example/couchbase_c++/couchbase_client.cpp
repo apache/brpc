@@ -27,7 +27,7 @@
 #define RED "\033[31m"
 #define RESET "\033[0m"
 
-DEFINE_string(server, "cb.WXYZ.cloud.couchbase.com:11207", "IP Address of server");
+DEFINE_string(server, "cb.dqklxewecglohzwb.cloud.couchbase.com:11207", "IP Address of server");
 
 int main() {
   // Create CouchbaseOperations instance for high-level operations
@@ -256,5 +256,118 @@ int main() {
     } else {
       std::cout << RED << "Collection DELETE failed: " << coll_del_result.error_message << RESET << std::endl;
     }
+
+  // ------------------------------------------------------------------
+  // Pipeline Operations Demo
+  // ------------------------------------------------------------------
+  std::cout << GREEN << "\n=== Pipeline Operations Demo ===" << RESET << std::endl;
+  
+  // Begin a new pipeline
+  if (!couchbase_ops.BeginPipeline()) {
+    std::cout << RED << "Failed to begin pipeline" << RESET << std::endl;
+    return -1;
+  }
+  
+  std::cout << "Pipeline started. Adding multiple operations..." << std::endl;
+  
+  // Add multiple operations to the pipeline
+  std::string pipeline_key1 = "pipeline::doc1";
+  std::string pipeline_key2 = "pipeline::doc2";
+  std::string pipeline_key3 = "pipeline::doc3";
+  std::string pipeline_value1 = R"({"operation": "pipeline_add", "id": 1})";
+  std::string pipeline_value2 = R"({"operation": "pipeline_upsert", "id": 2})";
+  std::string pipeline_value3 = R"({"operation": "pipeline_add", "id": 3})";
+  
+  // Pipeline operations - all prepared but not yet executed
+  bool pipeline_success = true;
+  pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, pipeline_key1, pipeline_value1);
+  pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::UPSERT, pipeline_key2, pipeline_value2);
+  pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, pipeline_key3, pipeline_value3);
+  pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::GET, pipeline_key1);
+  pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::GET, pipeline_key2);
+  
+  if (!pipeline_success) {
+    std::cout << RED << "Failed to add operations to pipeline" << RESET << std::endl;
+    couchbase_ops.ClearPipeline();
+    return -1;
+  }
+  
+  std::cout << "Added " << couchbase_ops.GetPipelineSize() << " operations to pipeline" << std::endl;
+  
+  // Execute all operations in a single network call
+  std::cout << "Executing pipeline operations..." << std::endl;
+  std::vector<brpc::CouchbaseOperations::Result> pipeline_results = couchbase_ops.ExecutePipeline();
+  
+  // Process results in order
+  std::cout << GREEN << "Pipeline execution completed. Results:" << RESET << std::endl;
+  for (size_t i = 0; i < pipeline_results.size(); ++i) {
+    const auto& result = pipeline_results[i];
+    if (result.success) {
+      if (!result.value.empty()) {
+        std::cout << GREEN << "  Operation " << (i+1) << " SUCCESS - Value: " << result.value << RESET << std::endl;
+      } else {
+        std::cout << GREEN << "  Operation " << (i+1) << " SUCCESS" << RESET << std::endl;
+      }
+    } else {
+      std::cout << RED << "  Operation " << (i+1) << " FAILED: " << result.error_message << RESET << std::endl;
+    }
+  }
+  
+  // Demonstrate pipeline with collection operations
+  std::cout << GREEN << "\n=== Pipeline with Collection Operations ===" << RESET << std::endl;
+  
+  if (!couchbase_ops.BeginPipeline()) {
+    std::cout << RED << "Failed to begin collection pipeline" << RESET << std::endl;
+    return -1;
+  }
+  
+  std::string coll_pipeline_key1 = "coll_pipeline::doc1";
+  std::string coll_pipeline_key2 = "coll_pipeline::doc2";
+  std::string coll_pipeline_value1 = R"({"collection_operation": "pipeline_add", "id": 1})";
+  std::string coll_pipeline_value2 = R"({"collection_operation": "pipeline_upsert", "id": 2})";
+  
+  // Add collection-scoped operations to pipeline
+  bool coll_pipeline_success = true;
+  coll_pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, coll_pipeline_key1, coll_pipeline_value1, collection_name);
+  coll_pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::UPSERT, coll_pipeline_key2, coll_pipeline_value2, collection_name);
+  coll_pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::GET, coll_pipeline_key1, "", collection_name);
+  coll_pipeline_success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE, coll_pipeline_key1, "", collection_name);
+  
+  if (!coll_pipeline_success) {
+    std::cout << RED << "Failed to add collection operations to pipeline" << RESET << std::endl;
+    couchbase_ops.ClearPipeline();
+    return -1;
+  }
+  
+  // Execute collection pipeline
+  std::vector<brpc::CouchbaseOperations::Result> coll_pipeline_results = couchbase_ops.ExecutePipeline();
+  
+  std::cout << GREEN << "Collection pipeline execution completed. Results:" << RESET << std::endl;
+  for (size_t i = 0; i < coll_pipeline_results.size(); ++i) {
+    const auto& result = coll_pipeline_results[i];
+    if (result.success) {
+      if (!result.value.empty()) {
+        std::cout << GREEN << "  Collection Operation " << (i+1) << " SUCCESS - Value: " << result.value << RESET << std::endl;
+      } else {
+        std::cout << GREEN << "  Collection Operation " << (i+1) << " SUCCESS" << RESET << std::endl;
+      }
+    } else {
+      std::cout << RED << "  Collection Operation " << (i+1) << " FAILED: " << result.error_message << RESET << std::endl;
+    }
+  }
+  
+  // Clean up remaining pipeline documents
+  std::cout << GREEN << "\n=== Cleanup Pipeline Demo ===" << RESET << std::endl;
+  if (couchbase_ops.BeginPipeline()) {
+    couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE, pipeline_key1);
+    couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE, pipeline_key2);
+    couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE, pipeline_key3);
+    couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE, coll_pipeline_key2, "", collection_name);
+    
+    std::vector<brpc::CouchbaseOperations::Result> cleanup_results = couchbase_ops.ExecutePipeline();
+    std::cout << "Cleanup completed (" << cleanup_results.size() << " operations)" << std::endl;
+  }
+  
+  std::cout << GREEN << "\n=== All operations completed successfully! ===" << RESET << std::endl;
   return 0;
 }
