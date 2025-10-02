@@ -19,7 +19,7 @@ NEED_GPERFTOOLS=1
 NEED_GTEST=1
 include ../config.mk
 CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES --include sstream_workaround.h
-CXXFLAGS+=$(CPPFLAGS) -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++17
+CXXFLAGS+=$(CPPFLAGS) -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 
 # On Darwin, only gtest library is needed, other libraries have been linked in `brpc.dbg.dylib`
 ifeq ($(SYSTEM),Darwin)

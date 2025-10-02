@@ -16,8 +16,6 @@
 // under the License.
 
 #include <gtest/gtest.h>
-#include <algorithm>
-#include <random>
 #include "butil/time.h"
 #include "butil/macros.h"
 
@@ -270,9 +268,7 @@ void* get_and_return_int(void*) {
         }
         tm1.stop();
 
-        std::random_device rd;
-        std::mt19937 g(rd());
-        std::shuffle(v.begin(), v.end(), g);
+        std::random_shuffle(v.begin(), v.end());
 
         tm2.start();
         for (size_t i = 0; i < v.size(); ++i) {
@@ -312,9 +308,7 @@ void* new_and_delete_int(void*) {
         }
         tm1.stop();
 
-        std::random_device rd;
-        std::mt19937 g(rd());
-        std::shuffle(v2.begin(), v2.end(), g);
+        std::random_shuffle(v2.begin(), v2.end());
 
         tm2.start();
         for (size_t i = 0; i < v2.size(); ++i) {

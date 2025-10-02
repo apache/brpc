@@ -28,7 +28,9 @@
 #include "brpc/pb_compat.h"
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
-#include <shared_mutex>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <unordered_map>
 using namespace std;
 
@@ -44,6 +46,74 @@ namespace policy {
   void SerializeCouchbaseRequest(butil::IOBuf* buf, Controller* cntl, const google::protobuf::Message* request);
 }
 
+// Simple C++11 compatible reader-writer lock
+class ReaderWriterLock {
+private:
+    std::mutex mutex_;
+    std::condition_variable reader_cv_;
+    std::condition_variable writer_cv_;
+    std::atomic<int> reader_count_;
+    std::atomic<bool> writer_active_;
+    std::atomic<int> waiting_writers_;
+
+public:
+    ReaderWriterLock() : reader_count_(0), writer_active_(false), waiting_writers_(0) {}
+
+    void lock_shared() {
+        std::unique_lock<std::mutex> lock(mutex_);
+        reader_cv_.wait(lock, [this] { return !writer_active_.load() && waiting_writers_.load() == 0; });
+        reader_count_.fetch_add(1);
+    }
+
+    void unlock_shared() {
+        reader_count_.fetch_sub(1);
+        if (reader_count_.load() == 0) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            writer_cv_.notify_one();
+        }
+    }
+
+    void lock() {
+        std::unique_lock<std::mutex> lock(mutex_);
+        waiting_writers_.fetch_add(1);
+        writer_cv_.wait(lock, [this] { return !writer_active_.load() && reader_count_.load() == 0; });
+        waiting_writers_.fetch_sub(1);
+        writer_active_.store(true);
+    }
+
+    void unlock() {
+        writer_active_.store(false);
+        std::lock_guard<std::mutex> lock(mutex_);
+        writer_cv_.notify_one();
+        reader_cv_.notify_all();
+    }
+};
+
+// RAII helper classes
+class SharedLock {
+private:
+    ReaderWriterLock& lock_;
+public:
+    explicit SharedLock(ReaderWriterLock& lock) : lock_(lock) {
+        lock_.lock_shared();
+    }
+    ~SharedLock() {
+        lock_.unlock_shared();
+    }
+};
+
+class UniqueLock {
+private:
+    ReaderWriterLock& lock_;
+public:
+    explicit UniqueLock(ReaderWriterLock& lock) : lock_(lock) {
+        lock_.lock();
+    }
+    ~UniqueLock() {
+        lock_.unlock();
+    }
+};
+
 class CouchbaseMetadataTracking{
   public:
     struct CollectionManifest{
@@ -52,7 +122,7 @@ class CouchbaseMetadataTracking{
     };
   private:
     unordered_map<string /*server*/, unordered_map<string /*bucket*/, CollectionManifest>> bucket_to_collection_manifest;
-    shared_mutex rw_bucket_to_collection_manifest_mutex;
+    ReaderWriterLock rw_bucket_to_collection_manifest_mutex;
 
   public:
     CouchbaseMetadataTracking() {}

@@ -21,8 +21,6 @@
 
 #include <sys/types.h>
 #include <map>
-#include <algorithm>
-#include <random>
 #include <gtest/gtest.h>
 #include "bthread/bthread.h"
 #include "gperftools_helper.h"
@@ -407,9 +405,7 @@ TEST_F(LoadBalancerTest, la_sanity) {
         ValidateLALB(lalb, cur_count);
 
         const size_t before_removal = cur_count;
-        std::random_device rd;
-        std::mt19937 g(rd());
-        std::shuffle(ids.begin(), ids.end(), g);
+        std::random_shuffle(ids.begin(), ids.end());
         for (size_t i = 0; i < N / 2; ++i) {
             const brpc::ServerId id = ids.back();
             ids.pop_back();
@@ -542,9 +538,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
             } else {
                 removed.assign(ids.begin(), ids.begin() + 255);
             }
-            std::random_device rd;
-            std::mt19937 g(rd());
-            std::shuffle(removed.begin(), removed.end(), g);
+            std::random_shuffle(removed.begin(), removed.end());
             removed.pop_back();
             ASSERT_EQ(removed.size(), lb->RemoveServersInBatch(removed));
             ASSERT_EQ(removed.size(), lb->AddServersInBatch(removed));

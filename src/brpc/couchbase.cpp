@@ -46,7 +46,7 @@ CouchbaseMetadataTracking* CouchbaseOperations::CouchbaseResponse::metadata_trac
 bool brpc::CouchbaseMetadataTracking::set_bucket_to_collection_manifest(string server, string bucket, CouchbaseMetadataTracking::CollectionManifest manifest){
   // Then update the collection manifest with proper locking
   {
-    std::unique_lock<shared_mutex> write_lock(rw_bucket_to_collection_manifest_mutex);
+    UniqueLock write_lock(rw_bucket_to_collection_manifest_mutex);
     bucket_to_collection_manifest[server][bucket] = manifest;
   }
   
@@ -54,7 +54,7 @@ bool brpc::CouchbaseMetadataTracking::set_bucket_to_collection_manifest(string s
 }
 
 bool brpc::CouchbaseMetadataTracking::get_bucket_to_collection_manifest(string server, string bucket, CouchbaseMetadataTracking::CollectionManifest *manifest){
-  std::shared_lock<shared_mutex> read_lock(rw_bucket_to_collection_manifest_mutex);
+  SharedLock read_lock(rw_bucket_to_collection_manifest_mutex);
   auto it1 = bucket_to_collection_manifest.find(server);
   if(it1 == bucket_to_collection_manifest.end()){
     return false;
