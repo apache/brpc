@@ -625,7 +625,7 @@ This implementation provides both high-level and low-level APIs for Couchbase KV
 >
 >**Each thread can have multiple `CouchbaseOperations` instances.**
 > 
-> **For thread safe design please use couchbase-cxx-SDK version of bRPC, [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).**
+> **For thread safe design please use couchbase-cxx-SDK version of bRPC, While it does not leverage many of the bRPC features around memory management and IO, it does provide a more complete set of Couchbase features and may be useful to those who have apps using bRPC with either memcached binprot or Couchbase and need some of the additional services and can be accessed at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).**
 >
 > **✅ CORRECT:**
 > ```cpp

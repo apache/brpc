@@ -1678,13 +1678,13 @@ bool CouchbaseOperations::CouchbaseResponse::PopCounter(uint8_t command, uint64_
 // MUST have extras.
 // MUST have key.
 // MUST NOT have value.
-struct TouchHeaderWithExtras {
-  policy::CouchbaseRequestHeader header;
-  uint32_t exptime;
-} __attribute__((packed));
-BAIDU_CASSERT(sizeof(TouchHeaderWithExtras) == 28, must_match);
-const size_t TOUCH_EXTRAS =
-    sizeof(TouchHeaderWithExtras) - sizeof(policy::CouchbaseRequestHeader);
+// struct TouchHeaderWithExtras {
+//   policy::CouchbaseRequestHeader header;
+//   uint32_t exptime;
+// } __attribute__((packed));
+// BAIDU_CASSERT(sizeof(TouchHeaderWithExtras) == 28, must_match);
+// const size_t TOUCH_EXTRAS =
+//     sizeof(TouchHeaderWithExtras) - sizeof(policy::CouchbaseRequestHeader);
 
 // MAY have extras.
 // MUST NOT have key.
