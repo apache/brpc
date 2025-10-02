@@ -39,8 +39,8 @@ namespace {
 }
 
 // Static member definitions
-CouchbaseMetadataTracking* CouchbaseRequest::metadata_tracking = &common_metadata_tracking;
-CouchbaseMetadataTracking* CouchbaseResponse::metadata_tracking = &common_metadata_tracking;
+CouchbaseMetadataTracking* CouchbaseOperations::CouchbaseRequest::metadata_tracking = &common_metadata_tracking;
+CouchbaseMetadataTracking* CouchbaseOperations::CouchbaseResponse::metadata_tracking = &common_metadata_tracking;
 
 bool brpc::CouchbaseMetadataTracking::set_channel_info_for_thread(uint64_t thread_id, brpc::Channel* channel, const string &server) {
   std::unique_lock<shared_mutex> write_lock(rw_thread_to_channel_info_mutex);
@@ -255,7 +255,7 @@ bool brpc::CouchbaseMetadataTracking::json_to_collection_manifest(const string& 
   return true;
 }
 
-uint32_t CouchbaseRequest::hash_crc32(const char* key, size_t key_length) {
+uint32_t CouchbaseOperations::CouchbaseRequest::hash_crc32(const char* key, size_t key_length) {
   static const uint32_t crc32tab[256] = {
       0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
       0xe963a535, 0x9e6495a3, 0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988,
@@ -315,38 +315,23 @@ uint32_t CouchbaseRequest::hash_crc32(const char* key, size_t key_length) {
 #endif
 }
 
-// redefinition
-CouchbaseRequest::CouchbaseRequest()
-    : NonreflectableMessage<CouchbaseRequest>() {
-  metadata_tracking = &common_metadata_tracking;
-  SharedCtor();
-}
-
-CouchbaseRequest::CouchbaseRequest(const CouchbaseRequest& from)
-    : NonreflectableMessage<CouchbaseRequest>(from) {
-  SharedCtor();
-  MergeFrom(from);
-}
-
-void CouchbaseRequest::SharedCtor() {
+void CouchbaseOperations::CouchbaseRequest::SharedCtor() {
   _pipelined_count = 0;
   _cached_size_ = 0;
 }
 
-CouchbaseRequest::~CouchbaseRequest() { SharedDtor(); }
+void CouchbaseOperations::CouchbaseRequest::SharedDtor() {}
 
-void CouchbaseRequest::SharedDtor() {}
+void CouchbaseOperations::CouchbaseRequest::SetCachedSize(int size) const { _cached_size_ = size; }
 
-void CouchbaseRequest::SetCachedSize(int size) const { _cached_size_ = size; }
-
-void CouchbaseRequest::Clear() {
+void CouchbaseOperations::CouchbaseRequest::Clear() {
   _buf.clear();
   _pipelined_count = 0;
 }
 
 // Support for scope level collections will be added in future.
 // Get the Scope ID for a given scope name
-// bool CouchbaseRequest::GetScopeId(const butil::StringPiece& scope_name) {
+// bool CouchbaseOperations::CouchbaseRequest::GetScopeId(const butil::StringPiece& scope_name) {
 //   if (scope_name.empty()) {
 //     LOG(ERROR) << "Empty scope name";
 //     return false;
@@ -373,7 +358,7 @@ void CouchbaseRequest::Clear() {
 //   return true;
 // }
 
-bool CouchbaseRequest::SelectBucket(const butil::StringPiece& bucket_name) {
+bool CouchbaseOperations::CouchbaseRequest::SelectBucketRequest(const butil::StringPiece& bucket_name) {
   if (bucket_name.empty()) {
     LOG(ERROR) << "Empty bucket name";
     return false;
@@ -406,7 +391,7 @@ bool CouchbaseRequest::SelectBucket(const butil::StringPiece& bucket_name) {
 //  This is typically the first request sent after connecting to the server.
 //  It includes the agent name and a randomly generated connection ID in JSON
 //  format.
-bool CouchbaseRequest::HelloRequest() {
+bool CouchbaseOperations::CouchbaseRequest::HelloRequest() {
   std::string agent = "brpc/1.0.0 (";
 #ifdef __APPLE__
   agent += "Darwin/";
@@ -482,7 +467,7 @@ bool CouchbaseRequest::HelloRequest() {
   return true;
 }
 
-bool CouchbaseRequest::Authenticate(const butil::StringPiece& username,
+bool CouchbaseOperations::CouchbaseRequest::AuthenticateRequest(const butil::StringPiece& username,
                                     const butil::StringPiece& password, 
                                     brpc::Channel *channel, 
                                     const string server) {
@@ -537,7 +522,7 @@ bool CouchbaseRequest::Authenticate(const butil::StringPiece& username,
   return true;
 }
 
-bool CouchbaseRequest::MergePartialFromCodedStream(
+bool CouchbaseOperations::CouchbaseRequest::MergePartialFromCodedStream(
     ::google::protobuf::io::CodedInputStream* input) {
   LOG(WARNING) << "You're not supposed to parse a CouchbaseRequest";
 
@@ -573,7 +558,7 @@ bool CouchbaseRequest::MergePartialFromCodedStream(
   return true;
 }
 
-void CouchbaseRequest::SerializeWithCachedSizes(
+void CouchbaseOperations::CouchbaseRequest::SerializeWithCachedSizes(
     ::google::protobuf::io::CodedOutputStream* output) const {
   LOG(WARNING) << "You're not supposed to serialize a CouchbaseRequest";
 
@@ -586,21 +571,21 @@ void CouchbaseRequest::SerializeWithCachedSizes(
   }
 }
 
-size_t CouchbaseRequest::ByteSizeLong() const {
+size_t CouchbaseOperations::CouchbaseRequest::ByteSizeLong() const {
   int total_size = static_cast<int>(_buf.size());
   _cached_size_ = total_size;
   return total_size;
 }
 
-void CouchbaseRequest::MergeFrom(const CouchbaseRequest& from) {
+void CouchbaseOperations::CouchbaseRequest::MergeFrom(const CouchbaseRequest& from) {
   CHECK_NE(&from, this);
   _buf.append(from._buf);
   _pipelined_count += from._pipelined_count;
 }
 
-bool CouchbaseRequest::IsInitialized() const { return _pipelined_count != 0; }
+bool CouchbaseOperations::CouchbaseRequest::IsInitialized() const { return _pipelined_count != 0; }
 
-void CouchbaseRequest::Swap(CouchbaseRequest* other) {
+void CouchbaseOperations::CouchbaseRequest::Swap(CouchbaseRequest* other) {
   if (other != this) {
     _buf.swap(other->_buf);
     std::swap(_pipelined_count, other->_pipelined_count);
@@ -608,38 +593,23 @@ void CouchbaseRequest::Swap(CouchbaseRequest* other) {
   }
 }
 
-::google::protobuf::Metadata CouchbaseRequest::GetMetadata() const {
+::google::protobuf::Metadata CouchbaseOperations::CouchbaseRequest::GetMetadata() const {
   ::google::protobuf::Metadata metadata{};
   metadata.descriptor = CouchbaseRequestBase::descriptor();
   metadata.reflection = nullptr;
   return metadata;
 }
-// redifinition
-CouchbaseResponse::CouchbaseResponse()
-    : NonreflectableMessage<CouchbaseResponse>() {
-  SharedCtor();
-}
 
-// redifinition
-CouchbaseResponse::CouchbaseResponse(const CouchbaseResponse& from)
-    : NonreflectableMessage<CouchbaseResponse>(from) {
-  metadata_tracking = &common_metadata_tracking;
-  SharedCtor();
-  MergeFrom(from);
-}
+void CouchbaseOperations::CouchbaseResponse::SharedCtor() { _cached_size_ = 0; }
 
-void CouchbaseResponse::SharedCtor() { _cached_size_ = 0; }
 
-// redifinition
-CouchbaseResponse::~CouchbaseResponse() { SharedDtor(); }
+void CouchbaseOperations::CouchbaseResponse::SharedDtor() {}
 
-void CouchbaseResponse::SharedDtor() {}
+void CouchbaseOperations::CouchbaseResponse::SetCachedSize(int size) const { _cached_size_ = size; }
 
-void CouchbaseResponse::SetCachedSize(int size) const { _cached_size_ = size; }
+void CouchbaseOperations::CouchbaseResponse::Clear() {}
 
-void CouchbaseResponse::Clear() {}
-
-bool CouchbaseResponse::MergePartialFromCodedStream(
+bool CouchbaseOperations::CouchbaseResponse::MergePartialFromCodedStream(
     ::google::protobuf::io::CodedInputStream* input) {
   LOG(WARNING) << "You're not supposed to parse a CouchbaseResponse";
 
@@ -653,7 +623,7 @@ bool CouchbaseResponse::MergePartialFromCodedStream(
   return true;
 }
 
-void CouchbaseResponse::SerializeWithCachedSizes(
+void CouchbaseOperations::CouchbaseResponse::SerializeWithCachedSizes(
     ::google::protobuf::io::CodedOutputStream* output) const {
   LOG(WARNING) << "You're not supposed to serialize a CouchbaseResponse";
 
@@ -666,28 +636,28 @@ void CouchbaseResponse::SerializeWithCachedSizes(
   }
 }
 
-size_t CouchbaseResponse::ByteSizeLong() const {
+size_t CouchbaseOperations::CouchbaseResponse::ByteSizeLong() const {
   int total_size = static_cast<int>(_buf.size());
   _cached_size_ = total_size;
   return total_size;
 }
 
-void CouchbaseResponse::MergeFrom(const CouchbaseResponse& from) {
+void CouchbaseOperations::CouchbaseResponse::MergeFrom(const CouchbaseResponse& from) {
   CHECK_NE(&from, this);
   _err = from._err;
   _buf.append(from._buf);
 }
 
-bool CouchbaseResponse::IsInitialized() const { return !_buf.empty(); }
+bool CouchbaseOperations::CouchbaseResponse::IsInitialized() const { return !_buf.empty(); }
 
-void CouchbaseResponse::Swap(CouchbaseResponse* other) {
+void CouchbaseOperations::CouchbaseResponse::Swap(CouchbaseResponse* other) {
   if (other != this) {
     _buf.swap(other->_buf);
     std::swap(_cached_size_, other->_cached_size_);
   }
 }
 
-::google::protobuf::Metadata CouchbaseResponse::GetMetadata() const {
+::google::protobuf::Metadata CouchbaseOperations::CouchbaseResponse::GetMetadata() const {
   ::google::protobuf::Metadata metadata{};
   metadata.descriptor = CouchbaseResponseBase::descriptor();
   metadata.reflection = nullptr;
@@ -696,7 +666,7 @@ void CouchbaseResponse::Swap(CouchbaseResponse* other) {
 
 // ===================================================================
 
-const char* CouchbaseResponse::status_str(Status st) {
+const char* CouchbaseOperations::CouchbaseResponse::status_str(Status st) {
   switch (st) {
     case STATUS_SUCCESS:
       return "SUCCESS";
@@ -815,7 +785,7 @@ const char* CouchbaseResponse::status_str(Status st) {
 }
 
 // Helper method to format error messages with status codes
-std::string CouchbaseResponse::format_error_message(
+std::string CouchbaseOperations::CouchbaseResponse::format_error_message(
     uint16_t status_code, const std::string& operation,
     const std::string& error_msg) {
   if (error_msg.empty()) {
@@ -832,7 +802,7 @@ std::string CouchbaseResponse::format_error_message(
 // MUST NOT have extras.
 // MUST have key.
 // MUST NOT have value.
-bool CouchbaseRequest::GetOrDelete(uint8_t command,
+bool CouchbaseOperations::CouchbaseRequest::GetOrDelete(uint8_t command,
                                    const butil::StringPiece& key,
                                    uint8_t coll_id) {
   // Collection ID
@@ -863,7 +833,7 @@ bool CouchbaseRequest::GetOrDelete(uint8_t command,
   return true;
 }
 
-bool get_cached_or_fetch_collection_id(string collection_name, uint8_t *coll_id, CouchbaseMetadataTracking *metadata_tracking){
+bool get_cached_or_fetch_collection_id(string collection_name, uint8_t *coll_id, brpc::CouchbaseMetadataTracking *metadata_tracking){
   if(collection_name.empty()){
     LOG(ERROR) << "Empty collection name";
     return false;
@@ -881,12 +851,12 @@ bool get_cached_or_fetch_collection_id(string collection_name, uint8_t *coll_id,
     LOG(ERROR) << "No bucket selected for this thread, make sure to call SelectBucket() first";
     return false;
   }
-  CouchbaseMetadataTracking::CollectionManifest manifest;
+  brpc::CouchbaseMetadataTracking::CollectionManifest manifest;
   if(!metadata_tracking->get_bucket_to_collection_manifest(bthread_self(), channel_info.server, channel_info.selected_bucket, &manifest)){
     LOG(INFO) << "No cached collection manifest found for bucket " << channel_info.selected_bucket << " on server " << channel_info.server << ", fetching from server";
     // No cached manifest found, fetch from server
-    CouchbaseRequest temp_get_manifest_request;
-    CouchbaseResponse temp_get_manifest_response;
+    CouchbaseOperations::CouchbaseRequest temp_get_manifest_request;
+    CouchbaseOperations::CouchbaseResponse temp_get_manifest_response;
     brpc::Controller temp_cntl;
     brpc::Channel *channel = channel_info.channel;
     temp_get_manifest_request.GetCollectionManifest();
@@ -925,7 +895,7 @@ bool get_cached_or_fetch_collection_id(string collection_name, uint8_t *coll_id,
   }
 }
 
-bool CouchbaseRequest::Get(const butil::StringPiece& key, string collection_name) {
+bool CouchbaseOperations::CouchbaseRequest::GetRequest(const butil::StringPiece& key, string collection_name) {
   uint8_t coll_id = 0; // default collection ID
   if(collection_name != "_default"){
     if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
@@ -935,7 +905,7 @@ bool CouchbaseRequest::Get(const butil::StringPiece& key, string collection_name
   return GetOrDelete(policy::CB_BINARY_GET, key, coll_id);
 }
 
-bool CouchbaseRequest::Delete(const butil::StringPiece& key, string collection_name) {
+bool CouchbaseOperations::CouchbaseRequest::DeleteRequest(const butil::StringPiece& key, string collection_name) {
   uint8_t coll_id = 0; // default collection ID
   if(collection_name != "_default"){
     if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
@@ -962,7 +932,7 @@ BAIDU_CASSERT(sizeof(FlushHeaderWithExtras) == 28, must_match);
 //     0| Expiration                                                    |
 //      +---------------+---------------+---------------+---------------+
 //    Total 4 bytes
-bool CouchbaseRequest::Flush(uint32_t timeout) {
+bool CouchbaseOperations::CouchbaseRequest::FlushRequest(uint32_t timeout) {
   const uint8_t FLUSH_EXTRAS = (timeout == 0 ? 0 : 4);
   FlushHeaderWithExtras header_with_extras = {
       {policy::CB_MAGIC_REQUEST, policy::CB_BINARY_FLUSH, 0, FLUSH_EXTRAS,
@@ -994,7 +964,7 @@ bool CouchbaseRequest::Flush(uint32_t timeout) {
 //  0| Flags                                                         |
 //   +---------------+---------------+---------------+---------------+
 //   Total 4 bytes
-bool CouchbaseResponse::PopGet(butil::IOBuf* value, uint32_t* flags,
+bool CouchbaseOperations::CouchbaseResponse::PopGet(butil::IOBuf* value, uint32_t* flags,
                                uint64_t* cas_value) {
   const size_t n = _buf.size();
   policy::CouchbaseResponseHeader header;
@@ -1066,7 +1036,7 @@ bool CouchbaseResponse::PopGet(butil::IOBuf* value, uint32_t* flags,
   return true;
 }
 
-bool CouchbaseResponse::PopGet(std::string* value, uint32_t* flags,
+bool CouchbaseOperations::CouchbaseResponse::PopGet(std::string* value, uint32_t* flags,
                                uint64_t* cas_value) {
   butil::IOBuf tmp;
   if (PopGet(&tmp, flags, cas_value)) {
@@ -1079,10 +1049,10 @@ bool CouchbaseResponse::PopGet(std::string* value, uint32_t* flags,
 // MUST NOT have extras
 // MUST NOT have key
 // MUST NOT have value
-bool CouchbaseResponse::PopDelete() {
+bool CouchbaseOperations::CouchbaseResponse::PopDelete() {
   return PopStore(policy::CB_BINARY_DELETE, NULL);
 }
-bool CouchbaseResponse::PopFlush() {
+bool CouchbaseOperations::CouchbaseResponse::PopFlush() {
   return PopStore(policy::CB_BINARY_FLUSH, NULL);
 }
 
@@ -1107,7 +1077,7 @@ const size_t STORE_EXTRAS =
 //  4| Expiration                                                    |
 //   +---------------+---------------+---------------+---------------+
 //   Total 8 bytes
-bool CouchbaseRequest::Store(uint8_t command, const butil::StringPiece& key,
+bool CouchbaseOperations::CouchbaseRequest::Store(uint8_t command, const butil::StringPiece& key,
                              const butil::StringPiece& value, uint32_t flags,
                              uint32_t exptime, uint64_t cas_value,
                              uint8_t coll_id) {
@@ -1146,7 +1116,7 @@ bool CouchbaseRequest::Store(uint8_t command, const butil::StringPiece& key,
 // MUST NOT have extras
 // MUST NOT have key
 // MUST NOT have value
-bool CouchbaseResponse::PopStore(uint8_t command, uint64_t* cas_value) {
+bool CouchbaseOperations::CouchbaseResponse::PopStore(uint8_t command, uint64_t* cas_value) {
   const size_t n = _buf.size();
   policy::CouchbaseResponseHeader header;
   if (n < sizeof(header)) {
@@ -1191,7 +1161,7 @@ bool CouchbaseResponse::PopStore(uint8_t command, uint64_t* cas_value) {
   return true;
 }
 
-const char* CouchbaseResponse::couchbase_binary_command_to_string(uint8_t cmd) {
+const char* CouchbaseOperations::CouchbaseResponse::couchbase_binary_command_to_string(uint8_t cmd) {
   switch (cmd) {
     case 0x1f:
       return "CB_HELLO_SELECT_FEATURES";
@@ -1280,7 +1250,7 @@ const char* CouchbaseResponse::couchbase_binary_command_to_string(uint8_t cmd) {
   }
 }
 
-bool CouchbaseRequest::Upsert(const butil::StringPiece& key,
+bool CouchbaseOperations::CouchbaseRequest::UpsertRequest(const butil::StringPiece& key,
                               const butil::StringPiece& value, uint32_t flags,
                               uint32_t exptime, uint64_t cas_value,
                               string collection_name) {
@@ -1294,36 +1264,36 @@ bool CouchbaseRequest::Upsert(const butil::StringPiece& key,
                coll_id);
 }
 
-// collection id and manifest are both returned when you call GetCollectionId
-bool CouchbaseRequest::GetCollectionId(
-    const butil::StringPiece& scope_name,
-    const butil::StringPiece& collection_name) {
-  // Format the collection path as "scope.collection"
-  std::string collection_path =
-      scope_name.as_string() + "." + collection_name.as_string();
+// Using GetCollectionManifest instead of fetching collection ID directly
+// bool CouchbaseOperations::CouchbaseRequest::GetCollectionId(
+//     const butil::StringPiece& scope_name,
+//     const butil::StringPiece& collection_name) {
+//   // Format the collection path as "scope.collection"
+//   std::string collection_path =
+//       scope_name.as_string() + "." + collection_name.as_string();
 
-  const policy::CouchbaseRequestHeader header = {
-      policy::CB_MAGIC_REQUEST,
-      policy::CB_COLLECTIONS_GET_CID,
-      butil::HostToNet16(collection_path.size()),
-      0,  // no extras
-      policy::CB_BINARY_RAW_BYTES,
-      0,  // no vbucket
-      butil::HostToNet32(collection_path.size()),
-      0,  // opaque
-      0   // no CAS
-  };
-  if (_buf.append(&header, sizeof(header))) {
-    return false;
-  }
-  if (_buf.append(collection_path.data(), collection_path.size())) {
-    return false;
-  }
-  ++_pipelined_count;
-  return true;
-}
+//   const policy::CouchbaseRequestHeader header = {
+//       policy::CB_MAGIC_REQUEST,
+//       policy::CB_COLLECTIONS_GET_CID,
+//       butil::HostToNet16(collection_path.size()),
+//       0,  // no extras
+//       policy::CB_BINARY_RAW_BYTES,
+//       0,  // no vbucket
+//       butil::HostToNet32(collection_path.size()),
+//       0,  // opaque
+//       0   // no CAS
+//   };
+//   if (_buf.append(&header, sizeof(header))) {
+//     return false;
+//   }
+//   if (_buf.append(collection_path.data(), collection_path.size())) {
+//     return false;
+//   }
+//   ++_pipelined_count;
+//   return true;
+// }
 
-bool CouchbaseRequest::GetCollectionManifest() {
+bool CouchbaseOperations::CouchbaseRequest::GetCollectionManifest() {
   const policy::CouchbaseRequestHeader header = {
       policy::CB_MAGIC_REQUEST,
       policy::CB_GET_COLLECTIONS_MANIFEST,
@@ -1342,21 +1312,76 @@ bool CouchbaseRequest::GetCollectionManifest() {
   return true;
 }
 
-bool CouchbaseRequest::Add(const butil::StringPiece& key,
+// bool RefreshCollectionManifest(brpc::Channel* channel) {
+//   // first fetch the manifest 
+//   // then compare the UID with the cached one
+//   CouchbaseRequest temp_get_manifest_request;
+//   CouchbaseResponse temp_get_manifest_response;
+//   brpc::Controller temp_cntl;
+//   temp_get_manifest_request.GetCollectionManifest();
+//   channel->CallMethod(NULL, &temp_cntl, &temp_get_manifest_request,
+//                         &temp_get_manifest_response, NULL);
+//   if (temp_cntl.Failed()) {
+//     LOG(ERROR) << "Failed to get collection manifest: " << temp_cntl.ErrorText();
+//     return false;
+//   }
+//   string manifest_json;
+//   if (!temp_get_manifest_response.PopManifest(&manifest_json)) {
+//     LOG(ERROR) << "Failed to parse response for collection Manifest: " << temp_get_manifest_response.LastError();
+//     return false;
+//   }
+//   // Compare the UID with the cached one
+//   // If they are different, refresh the cache
+//   brpc::CouchbaseMetadataTracking::CollectionManifest manifest;
+//   if(!common_metadata_tracking.json_to_collection_manifest(manifest_json, &manifest)){
+//     LOG(ERROR) << "Failed to parse collection manifest JSON";
+//     return false;
+//   }
+//   brpc::CouchbaseMetadataTracking::ChannelInfo temp_channel_info;
+//   common_metadata_tracking.get_channel_info_for_thread(bthread_self(), &temp_channel_info);
+//   if(temp_channel_info.server.empty() || temp_channel_info.selected_bucket.empty()){
+//     LOG(ERROR) << "No channel info found for this thread, make sure to call Authenticate() and SelectBucket() first";
+//     return false;
+//   }
+//   brpc::CouchbaseMetadataTracking::CollectionManifest cached_manifest;
+//   if(!common_metadata_tracking.get_bucket_to_collection_manifest(bthread_self(), temp_channel_info.server, temp_channel_info.selected_bucket, &cached_manifest)){
+//     // No cached manifest found, set the new one
+//     if(!common_metadata_tracking.set_bucket_to_collection_manifest(bthread_self(), manifest)){
+//       LOG(ERROR) << "Failed to cache collection manifest for bucket " << temp_channel_info.selected_bucket << " on server " << temp_channel_info.server;
+//       return false;
+//     }
+//     LOG(INFO) << "Cached collection manifest for bucket " << temp_channel_info.selected_bucket << " on server " << temp_channel_info.server;
+//     return true;
+//   }
+//   if(manifest.uid != cached_manifest.uid) {
+//     LOG(INFO) << "Collection manifest has changed for bucket " << temp_channel_info.selected_bucket << " on server " << temp_channel_info.server;
+//     if(!common_metadata_tracking.set_bucket_to_collection_manifest(bthread_self(), manifest)){
+//       LOG(ERROR) << "Failed to update cached collection manifest for bucket " << temp_channel_info.selected_bucket << " on server " << temp_channel_info.server;
+//       return false;
+//     }
+//     LOG(INFO) << "Updated cached collection manifest for bucket " << temp_channel_info.selected_bucket << " on server " << temp_channel_info.server;  
+//   }
+//   else{
+//     LOG(INFO) << "Collection manifest is up-to-date for bucket " << temp_channel_info.selected_bucket << " on server " << temp_channel_info.server;
+//   }
+//   return true;
+// }
+
+bool CouchbaseOperations::CouchbaseRequest::AddRequest(const butil::StringPiece& key,
                            const butil::StringPiece& value, uint32_t flags,
                            uint32_t exptime, uint64_t cas_value,
                            string collection_name) {
   uint8_t coll_id = 0; // default collection ID
-  if(collection_name != "_default"){
-    if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
-      return false;
-    } 
-  }
+  // if(collection_name != "_default"){
+  //   if(!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking)){
+  //     return false;
+  //   } 
+  // }
   return Store(policy::CB_BINARY_ADD, key, value, flags, exptime, cas_value,
                coll_id);
 }
 
-bool CouchbaseRequest::Replace(const butil::StringPiece& key,
+bool CouchbaseOperations::CouchbaseRequest::ReplaceRequest(const butil::StringPiece& key,
                                const butil::StringPiece& value, uint32_t flags,
                                uint32_t exptime, uint64_t cas_value,
                                string collection_name) {
@@ -1370,7 +1395,7 @@ bool CouchbaseRequest::Replace(const butil::StringPiece& key,
                coll_id);
 }
 
-bool CouchbaseRequest::Append(const butil::StringPiece& key,
+bool CouchbaseOperations::CouchbaseRequest::AppendRequest(const butil::StringPiece& key,
                               const butil::StringPiece& value, uint32_t flags,
                               uint32_t exptime, uint64_t cas_value,
                               string collection_name) {
@@ -1388,7 +1413,7 @@ bool CouchbaseRequest::Append(const butil::StringPiece& key,
                coll_id);
 }
 
-bool CouchbaseRequest::Prepend(const butil::StringPiece& key,
+bool CouchbaseOperations::CouchbaseRequest::PrependRequest(const butil::StringPiece& key,
                                const butil::StringPiece& value, uint32_t flags,
                                uint32_t exptime, uint64_t cas_value,
                                string collection_name) {
@@ -1406,22 +1431,22 @@ bool CouchbaseRequest::Prepend(const butil::StringPiece& key,
                coll_id);
 }
 
-bool CouchbaseResponse::PopUpsert(uint64_t* cas_value) {
+bool CouchbaseOperations::CouchbaseResponse::PopUpsert(uint64_t* cas_value) {
   return PopStore(policy::CB_BINARY_SET, cas_value);
 }
-bool CouchbaseResponse::PopAdd(uint64_t* cas_value) {
+bool CouchbaseOperations::CouchbaseResponse::PopAdd(uint64_t* cas_value) {
   return PopStore(policy::CB_BINARY_ADD, cas_value);
 }
-bool CouchbaseResponse::PopReplace(uint64_t* cas_value) {
+bool CouchbaseOperations::CouchbaseResponse::PopReplace(uint64_t* cas_value) {
   return PopStore(policy::CB_BINARY_REPLACE, cas_value);
 }
-bool CouchbaseResponse::PopAppend(uint64_t* cas_value) {
+bool CouchbaseOperations::CouchbaseResponse::PopAppend(uint64_t* cas_value) {
   return PopStore(policy::CB_BINARY_APPEND, cas_value);
 }
-bool CouchbaseResponse::PopPrepend(uint64_t* cas_value) {
+bool CouchbaseOperations::CouchbaseResponse::PopPrepend(uint64_t* cas_value) {
   return PopStore(policy::CB_BINARY_PREPEND, cas_value);
 }
-bool CouchbaseResponse::PopSelectBucket(uint64_t* cas_value, std::string bucket_name) {
+bool CouchbaseOperations::CouchbaseResponse::PopSelectBucket(uint64_t* cas_value, std::string bucket_name) {
   if(PopStore(policy::CB_SELECT_BUCKET, cas_value) == false){
     LOG(ERROR) << "Failed to select bucket: " << _err;
     return false;
@@ -1434,7 +1459,7 @@ bool CouchbaseResponse::PopSelectBucket(uint64_t* cas_value, std::string bucket_
   return true;
 }
 // Collection-related response method
-bool CouchbaseResponse::PopCollectionId(uint8_t* collection_id) {
+bool CouchbaseOperations::CouchbaseResponse::PopCollectionId(uint8_t* collection_id) {
   const size_t n = _buf.size();
   policy::CouchbaseResponseHeader header;
   if (n < sizeof(header)) {
@@ -1504,7 +1529,7 @@ bool CouchbaseResponse::PopCollectionId(uint8_t* collection_id) {
   return true;
 }
 
-bool CouchbaseResponse::PopManifest(std::string* manifest_json) {
+bool CouchbaseOperations::CouchbaseResponse::PopManifest(std::string* manifest_json) {
   const size_t n = _buf.size();
   policy::CouchbaseResponseHeader header;
   if (n < sizeof(header)) {
@@ -1592,7 +1617,7 @@ const size_t INCR_EXTRAS =
 // 16| Expiration                                                    |
 //   +---------------+---------------+---------------+---------------+
 //   Total 20 bytes
-bool CouchbaseRequest::Counter(uint8_t command, const butil::StringPiece& key,
+bool CouchbaseOperations::CouchbaseRequest::Counter(uint8_t command, const butil::StringPiece& key,
                                uint64_t delta, uint64_t initial_value,
                                uint32_t exptime) {
   IncrHeaderWithExtras header_with_extras = {
@@ -1612,14 +1637,14 @@ bool CouchbaseRequest::Counter(uint8_t command, const butil::StringPiece& key,
   return true;
 }
 
-bool CouchbaseRequest::Increment(const butil::StringPiece& key, uint64_t delta,
+bool CouchbaseOperations::CouchbaseRequest::IncrementRequest(const butil::StringPiece& key, uint64_t delta,
                                  uint64_t initial_value, uint32_t exptime,
                                  string collection_name) {
   return Counter(policy::CB_BINARY_INCREMENT, key, delta, initial_value,
                  exptime);
 }
 
-bool CouchbaseRequest::Decrement(const butil::StringPiece& key, uint64_t delta,
+bool CouchbaseOperations::CouchbaseRequest::DecrementRequest(const butil::StringPiece& key, uint64_t delta,
                                  uint64_t initial_value, uint32_t exptime,
                                  string collection_name) {
   return Counter(policy::CB_BINARY_DECREMENT, key, delta, initial_value,
@@ -1637,7 +1662,7 @@ bool CouchbaseRequest::Decrement(const butil::StringPiece& key, uint64_t delta,
 //   |                                                               |
 //   +---------------+---------------+---------------+---------------+
 //   Total 8 bytes
-bool CouchbaseResponse::PopCounter(uint8_t command, uint64_t* new_value,
+bool CouchbaseOperations::CouchbaseResponse::PopCounter(uint8_t command, uint64_t* new_value,
                                    uint64_t* cas_value) {
   const size_t n = _buf.size();
   policy::CouchbaseResponseHeader header;
@@ -1693,10 +1718,10 @@ bool CouchbaseResponse::PopCounter(uint8_t command, uint64_t* new_value,
   return true;
 }
 
-bool CouchbaseResponse::PopIncrement(uint64_t* new_value, uint64_t* cas_value) {
+bool CouchbaseOperations::CouchbaseResponse::PopIncrement(uint64_t* new_value, uint64_t* cas_value) {
   return PopCounter(policy::CB_BINARY_INCREMENT, new_value, cas_value);
 }
-bool CouchbaseResponse::PopDecrement(uint64_t* new_value, uint64_t* cas_value) {
+bool CouchbaseOperations::CouchbaseResponse::PopDecrement(uint64_t* new_value, uint64_t* cas_value) {
   return PopCounter(policy::CB_BINARY_DECREMENT, new_value, cas_value);
 }
 
@@ -1722,7 +1747,7 @@ const size_t TOUCH_EXTRAS =
 //     0| Expiration                                                    |
 //      +---------------+---------------+---------------+---------------+
 //    Total 4 bytes
-bool CouchbaseRequest::Touch(const butil::StringPiece& key, uint32_t exptime,
+bool CouchbaseOperations::CouchbaseRequest::TouchRequest(const butil::StringPiece& key, uint32_t exptime,
                              string collection_name) {
   TouchHeaderWithExtras header_with_extras = {
       {policy::CB_MAGIC_REQUEST, policy::CB_BINARY_TOUCH,
@@ -1743,7 +1768,7 @@ bool CouchbaseRequest::Touch(const butil::StringPiece& key, uint32_t exptime,
 // MUST NOT have extras.
 // MUST NOT have key.
 // MUST NOT have value.
-bool CouchbaseRequest::Version() {
+bool CouchbaseOperations::CouchbaseRequest::VersionRequest() {
   const policy::CouchbaseRequestHeader header = {policy::CB_MAGIC_REQUEST,
                                                  policy::CB_BINARY_VERSION,
                                                  0,
@@ -1763,11 +1788,11 @@ bool CouchbaseRequest::Version() {
 // MUST NOT have extras.
 // MUST NOT have key.
 // MUST have value.
-bool CouchbaseResponse::PopTouch() {
+bool CouchbaseOperations::CouchbaseResponse::PopTouch() {
   return PopStore(policy::CB_BINARY_TOUCH, NULL);
 }
 
-bool CouchbaseResponse::PopVersion(std::string* version) {
+bool CouchbaseOperations::CouchbaseResponse::PopVersion(std::string* version) {
   const size_t n = _buf.size();
   policy::CouchbaseResponseHeader header;
   if (n < sizeof(header)) {
@@ -1813,4 +1838,226 @@ bool CouchbaseResponse::PopVersion(std::string* version) {
   return true;
 }
 
-}  // namespace brpc
+CouchbaseOperations::Result CouchbaseOperations::Get(const string& key, string collection_name) {
+  //create CouchbaseRequest and CouchbaseResponse objects and then using the channel which is created for this thread in authenticate() use it to call()
+  CouchbaseRequest request;
+  CouchbaseResponse response;
+  brpc::CouchbaseMetadataTracking::ChannelInfo ch_info;
+  common_metadata_tracking.get_channel_info_for_thread(bthread_self(), &ch_info);
+  brpc::Channel *channel = ch_info.channel;
+  brpc::Controller cntl;
+  CouchbaseOperations::Result result;
+  if(request.GetRequest(key, collection_name) == false){
+    LOG(ERROR) << "Failed to create Get request for key: " << key;
+    result.success = false;
+    result.value = "";
+    return result;
+  }
+  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+  if (cntl.Failed()) {
+    LOG(ERROR) << "Failed to get key: " << key << " from Couchbase: " << cntl.ErrorText();
+    result.success = false;
+    result.value = "";
+    result.error_message = cntl.ErrorText();
+    return result;
+  }
+  string value;
+  uint32_t flags = 0;
+  uint64_t cas = 0;
+  if(response.PopGet(&value, &flags, &cas) == false){
+    result.success = false;
+    result.value = "";
+    result.error_message = response.LastError();
+    return result;
+  }
+  // Successfully got the value
+  result.success = true;
+  result.value = value;
+  return result;
+}
+
+CouchbaseOperations::Result CouchbaseOperations::Upsert(const string& key, const string& value, string collection_name) {
+  CouchbaseRequest request;
+  CouchbaseResponse response;
+  brpc::CouchbaseMetadataTracking::ChannelInfo ch_info;
+  common_metadata_tracking.get_channel_info_for_thread(bthread_self(), &ch_info);
+  brpc::Channel *channel = ch_info.channel;
+  brpc::Controller cntl;
+  CouchbaseOperations::Result result;
+  if(request.UpsertRequest(key, value, 0, 0, 0, collection_name) == false){
+    LOG(ERROR) << "Failed to create Upsert request for key: " << key;
+    result.success = false;
+    result.value = "";
+    return result;
+  }
+  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+  if (cntl.Failed()) {
+    LOG(ERROR) << "Failed to upsert key: " << key << " to Couchbase: " << cntl.ErrorText();
+    result.success = false;
+    result.value = "";
+    result.error_message = cntl.ErrorText();
+    return result;
+  }
+  if(response.PopUpsert(NULL) == false){
+    result.success = false;
+    result.value = "";
+    result.error_message = response.LastError();
+    return result;
+  }
+  // Successfully upserted the value
+  result.success = true;
+  result.value = "";
+  return result;
+}
+
+CouchbaseOperations::Result CouchbaseOperations::Delete(const string& key, string collection_name) {
+  CouchbaseRequest request;
+  CouchbaseResponse response;
+  brpc::CouchbaseMetadataTracking::ChannelInfo ch_info;
+  common_metadata_tracking.get_channel_info_for_thread(bthread_self(), &ch_info);
+  brpc::Channel *channel = ch_info.channel;
+  brpc::Controller cntl;
+  CouchbaseOperations::Result result;
+  if(request.DeleteRequest(key, collection_name) == false){
+    LOG(ERROR) << "Failed to create Delete request for key: " << key;
+    result.success = false;
+    result.value = "";
+    return result;
+  }
+  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+  if (cntl.Failed()) {
+    LOG(ERROR) << "Failed to delete key: " << key << " from Couchbase: " << cntl.ErrorText();
+    result.success = false;
+    result.value = "";
+    result.error_message = cntl.ErrorText();
+    return result;
+  }
+  if(response.PopDelete() == false){
+    result.success = false;
+    result.value = "";
+    result.error_message = response.LastError();
+    return result;
+  }
+  // Successfully deleted the value
+  result.success = true;
+  result.value = "";
+  return result;
+}
+
+CouchbaseOperations::Result CouchbaseOperations::Add(const string& key, const string& value, string collection_name) {
+  CouchbaseRequest request;
+  CouchbaseResponse response;
+  brpc::CouchbaseMetadataTracking::ChannelInfo ch_info;
+  common_metadata_tracking.get_channel_info_for_thread(bthread_self(), &ch_info);
+  brpc::Channel *channel = ch_info.channel;
+  brpc::Controller cntl;
+  CouchbaseOperations::Result result;
+  if(request.AddRequest(key, value, 0, 0, 0, collection_name) == false){
+    LOG(ERROR) << "Failed to create Add request for key: " << key;
+    result.success = false;
+    result.value = "";
+    return result;
+  }
+  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+  if (cntl.Failed()) {
+    LOG(ERROR) << "Failed to add key: " << key << " to Couchbase: " << cntl.ErrorText();
+    result.success = false;
+    result.value = "";
+    result.error_message = cntl.ErrorText();
+    return result;
+  }
+  if(response.PopAdd(NULL) == false){
+    result.success = false;
+    result.value = "";
+    result.error_message = response.LastError();
+    return result;
+  }
+  // Successfully added the value
+  result.success = true;
+  result.value = "";
+  return result;
+}
+
+CouchbaseOperations::Result CouchbaseOperations::Authenticate(const string& username, const string& password, const string& server_address, bool enable_ssl, string path_to_cert) {
+  // Create a channel to the Couchbase server
+  brpc::ChannelOptions options;
+  options.protocol = brpc::PROTOCOL_COUCHBASE;
+  options.connection_type = "single";
+  options.timeout_ms = 1000; // 1 second
+  options.max_retry = 3;
+
+  //enable_ssl
+  if(enable_ssl){
+    brpc::ChannelSSLOptions* ssl_options = options.mutable_ssl_options();
+    ssl_options->sni_name = server_address;     
+    ssl_options->verify.verify_depth = 1;                                     // Enable certificate verification, to disable SSL set it to 0
+    ssl_options->verify.ca_file_path = path_to_cert;            // Path to your downloaded TLS certificate
+  }
+  CouchbaseOperations::Result result;
+  brpc::Channel* channel = new brpc::Channel();
+  if (channel->Init(server_address.c_str(), &options) != 0) {
+    LOG(ERROR) << "Failed to initialize Couchbase channel to " << server_address;
+    delete channel;
+    result.success = false;
+    result.value = "";
+    result.error_message = "Failed to initialize Couchbase channel";
+    return result;
+  }
+  // Create a CouchbaseRequest and CouchbaseResponse for authentication
+  CouchbaseRequest request;
+  CouchbaseResponse response;
+  brpc::Controller cntl;
+  if(request.AuthenticateRequest(username.c_str(), password.c_str(), channel, server_address) == false){
+    LOG(ERROR) << "Failed to create Authenticate request for user: " << username;
+    delete channel;
+    result.success = false;
+    return result;
+  }
+  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+  if (cntl.Failed()) {
+    LOG(ERROR) << "Failed to access Couchbase: " << cntl.ErrorText();
+    delete channel;
+    result.success = false;
+    result.value = "";
+    result.error_message = cntl.ErrorText();
+    return result;
+  }
+  // Successfully authenticated
+  result.success = true;
+  return result;
+}
+
+CouchbaseOperations::Result CouchbaseOperations::SelectBucket(const string& bucket_name) {
+  CouchbaseRequest request;
+  CouchbaseResponse response;
+  brpc::CouchbaseMetadataTracking::ChannelInfo ch_info;
+  common_metadata_tracking.get_channel_info_for_thread(bthread_self(), &ch_info);
+  brpc::Channel *channel = ch_info.channel;
+  brpc::Controller cntl;
+  CouchbaseOperations::Result result;
+  if(request.SelectBucketRequest(bucket_name.c_str()) == false){
+    LOG(ERROR) << "Failed to create Select Bucket request for bucket: " << bucket_name;
+    result.success = false;
+    result.value = "";
+    return result;
+  }
+  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+  if (cntl.Failed()) {
+    LOG(ERROR) << "Failed to select bucket: " << bucket_name << " from Couchbase: " << cntl.ErrorText();
+    result.success = false;
+    result.value = "";
+    result.error_message = cntl.ErrorText();
+    return result;
+  }
+  if(response.PopSelectBucket(NULL, bucket_name) == false){
+    result.success = false;
+    result.value = "";
+    result.error_message = response.LastError();
+    return result;
+  }
+  // Successfully selected the bucket
+  result.success = true;
+  result.value = "";
+  return result;
+}
+}// namespace brpc

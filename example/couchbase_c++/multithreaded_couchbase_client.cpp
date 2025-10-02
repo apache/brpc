@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <brpc/channel.h>
 #include <brpc/couchbase.h>
 #include <bthread/bthread.h>
 #include <butil/logging.h>
 #include <butil/string_printf.h>
 #include <butil/time.h>
+#include <gflags/gflags.h>
 
 #include <iostream>
 #include <vector>
@@ -57,82 +57,37 @@ struct ThreadArgs {
     std::string bucket_name;
 };
 
-// Simple operation function
-bool perform_operation(brpc::Channel& channel, const std::string& key, const std::string& collection = "") {
-    brpc::Controller cntl;
-    brpc::CouchbaseRequest request;
-    brpc::CouchbaseResponse response;
-    
+// Simple operation function using high-level API
+bool perform_operation(brpc::CouchbaseOperations& couchbase_ops, const std::string& key, const std::string& collection = "_default") {
     // Simple ADD operation
-    std::string value = butil::string_printf(R"({"thread_id": %d, "timestamp": %lld})", 
-                                           bthread_self(), butil::gettimeofday_us());
+    std::string value = butil::string_printf(R"({"thread_id": %llu, "timestamp": %lld})", 
+                                           (unsigned long long)bthread_self(), butil::gettimeofday_us());
     
-    bool success = collection.empty() ? 
-        request.Add(key.c_str(), value.c_str(), 0xdeadbeef, 300, 0) :
-        request.Add(key.c_str(), value.c_str(), 0xdeadbeef, 300, 0, collection);
-    
-    if (!success) return false;
-    
-    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
-    if (cntl.Failed()) return false;
-    
-    uint64_t cas_value;
-    return response.PopAdd(&cas_value);
+    brpc::CouchbaseOperations::Result result = couchbase_ops.Add(key, value, collection);
+    return result.success;
 }
 
-// Thread worker function - very simple
+// Thread worker function using high-level API
 void* thread_worker(void* arg) {
     ThreadArgs* args = static_cast<ThreadArgs*>(arg);
     
     LOG(INFO) << "Thread " << args->thread_id << " starting on bucket " << args->bucket_name;
     
-    // One channel per thread as requested
-    brpc::Channel channel;
-    brpc::ChannelOptions options;
-    options.protocol = brpc::PROTOCOL_COUCHBASE;
-    options.connection_type = FLAGS_connection_type;
-    options.timeout_ms = 5000;
+    // Create CouchbaseOperations instance for this thread
+    brpc::CouchbaseOperations couchbase_ops;
     
-    if (channel.Init(FLAGS_server.c_str(), "", &options) != 0) {
-        LOG(ERROR) << "Thread " << args->thread_id << ": Failed to init channel";
+    // Authentication using high-level method
+    brpc::CouchbaseOperations::Result auth_result = couchbase_ops.Authenticate(
+        g_config.username, g_config.password, FLAGS_server, false, "");
+    if (!auth_result.success) {
+        LOG(ERROR) << "Thread " << args->thread_id << ": Auth failed - " << auth_result.error_message;
         return NULL;
     }
     
-    // Simple authentication
-    brpc::Controller auth_cntl;
-    brpc::CouchbaseRequest auth_request;
-    brpc::CouchbaseResponse auth_response;
-    
-    if (!auth_request.Authenticate(g_config.username.c_str(), g_config.password.c_str(), &channel, FLAGS_server)) {
-        LOG(ERROR) << "Thread " << args->thread_id << ": Auth request failed";
-        return NULL;
-    }
-    
-    channel.CallMethod(NULL, &auth_cntl, &auth_request, &auth_response, NULL);
-    if (auth_cntl.Failed()) {
-        LOG(ERROR) << "Thread " << args->thread_id << ": Auth failed";
-        return NULL;
-    }
-    
-    // Select bucket
-    brpc::Controller bucket_cntl;
-    brpc::CouchbaseRequest bucket_request;
-    brpc::CouchbaseResponse bucket_response;
-    
-    if (!bucket_request.SelectBucket(args->bucket_name.c_str())) {
-        LOG(ERROR) << "Thread " << args->thread_id << ": Bucket request failed";
-        return NULL;
-    }
-    
-    channel.CallMethod(NULL, &bucket_cntl, &bucket_request, &bucket_response, NULL);
-    if (bucket_cntl.Failed()) {
-        LOG(ERROR) << "Thread " << args->thread_id << ": Bucket selection failed";
-        return NULL;
-    }
-
-    if (!bucket_response.PopSelectBucket(NULL, args->bucket_name.c_str())) {
-        LOG(ERROR) << "Thread " << args->thread_id << ": Bucket selection failed";
-        LOG(ERROR) << bucket_response.LastError();
+    // Select bucket using high-level method
+    brpc::CouchbaseOperations::Result bucket_result = couchbase_ops.SelectBucket(args->bucket_name);
+    if (!bucket_result.success) {
+        LOG(ERROR) << "Thread " << args->thread_id << ": Bucket selection failed - " << bucket_result.error_message;
         return NULL;
     }
     
@@ -143,13 +98,13 @@ void* thread_worker(void* arg) {
     for (int i = 0; i < FLAGS_operations_per_thread; ++i) {
         std::string key = butil::string_printf("thread_%d_op_%d", args->thread_id, i);
         
-        // Choose collection randomly if available
-        std::string collection = "";
+        // Choose collection if available, otherwise use default
+        std::string collection = "_default";
         if (!g_config.collection_names.empty()) {
             collection = g_config.collection_names[i % g_config.collection_names.size()];
         }
         
-        if (perform_operation(channel, key, collection)) {
+        if (perform_operation(couchbase_ops, key, collection)) {
             success_count++;
         }
         
@@ -194,7 +149,7 @@ void get_config() {
 }
 
 int main(int argc, char* argv[]) {
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    gflags::ParseCommandLineFlags(&argc, &argv, true);
     
     std::cout << GREEN << "Starting 16 bthreads (4 per bucket)" << RESET << std::endl;
     

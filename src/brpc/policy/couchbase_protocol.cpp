@@ -183,11 +183,11 @@ void ProcessCouchbaseResponse(InputMessageBase* msg_base) {
   if (cntl->response() == NULL) {
     cntl->SetFailed(ERESPONSE, "response is NULL!");
   } else if (cntl->response()->GetDescriptor() !=
-             CouchbaseResponse::descriptor()) {
+             CouchbaseOperations::CouchbaseResponse::descriptor()) {
     cntl->SetFailed(ERESPONSE, "Must be CouchbaseResponse");
   } else {
     // We work around ParseFrom of pb which is just a placeholder.
-    ((CouchbaseResponse*)cntl->response())->raw_buffer() = msg->meta.movable();
+    ((CouchbaseOperations::CouchbaseResponse*)cntl->response())->raw_buffer() = msg->meta.movable();
     if (msg->pi.count != accessor.pipelined_count()) {
       cntl->SetFailed(ERESPONSE,
                       "pipelined_count=%d of response does "
@@ -206,10 +206,10 @@ void SerializeCouchbaseRequest(butil::IOBuf* buf, Controller* cntl,
   if (request == NULL) {
     return cntl->SetFailed(EREQUEST, "request is NULL");
   }
-  if (request->GetDescriptor() != CouchbaseRequest::descriptor()) {
+  if (request->GetDescriptor() != CouchbaseOperations::CouchbaseRequest::descriptor()) {
     return cntl->SetFailed(EREQUEST, "Must be CouchbaseRequest");
   }
-  const CouchbaseRequest* mr = (const CouchbaseRequest*)request;
+  const CouchbaseOperations::CouchbaseRequest* mr = (const CouchbaseOperations::CouchbaseRequest*)request;
   // We work around SerializeTo of pb which is just a placeholder.
   *buf = mr->raw_buffer();
   ControllerPrivateAccessor(cntl).set_pipelined_count(mr->pipelined_count());
