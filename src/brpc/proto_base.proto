@@ -25,6 +25,9 @@ message RedisResponseBase {}
 
 message EspMessageBase {}
 
+message CouchbaseRequestBase {}
+message CouchbaseResponseBase {}
+
 message MemcacheRequestBase {}
 message MemcacheResponseBase {}
 
