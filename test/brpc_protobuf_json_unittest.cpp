@@ -26,6 +26,7 @@
 #include "butil/strings/string_util.h"
 #include "butil/third_party/rapidjson/rapidjson.h"
 #include "butil/time.h"
+#include "butil/memory/scope_guard.h"
 #include "gperftools_helper.h"
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
@@ -36,6 +37,7 @@
 #include "addressbook.pb.h"
 #include "addressbook_encode_decode.pb.h"
 #include "addressbook_map.pb.h"
+#include "echo.pb.h"
 
 namespace {  // just for coding-style check
 
@@ -495,6 +497,151 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
     ret = json2pb::JsonToProtoMessage(info3, &data9, &error);
     ASSERT_FALSE(ret);
     ASSERT_STREQ("Invalid value `23' for optional field `Content.uid' which SHOULD be string, Missing required field: Ext.databyte", error.data());
+}
+
+const int DEEP_RECURSION_TEST_DEPTH = 140000;
+
+TEST_F(ProtobufJsonTest, json_to_pb_unbounded_recursion) {
+    test::RecursiveMessage msg;
+
+    // Generate a deeply nested JSON string to trigger unbounded recursion.
+    const int recursion_depth = DEEP_RECURSION_TEST_DEPTH;
+    std::string nested_json = "";
+    for (int i = 0; i < recursion_depth; ++i) {
+        nested_json += "{\"child\":";
+    }
+    nested_json += "{\"data\":\"leaf\"}";
+    for (int i = 0; i < recursion_depth; ++i) {
+        nested_json += "}";
+    }
+
+    {
+        std::string error;
+        bool ret = json2pb::JsonToProtoMessage(nested_json, &msg, &error);
+        ASSERT_FALSE(ret);
+        ASSERT_EQ("Exceeded maximum recursion depth [RecursiveMessage]", error);
+    }
+    {
+        json2pb::ProtoJson2PbOptions options;
+        std::string error;
+        bool ret = json2pb::ProtoJsonToProtoMessage(nested_json, &msg, options, &error);
+        ASSERT_FALSE(ret);
+        ASSERT_EQ("INVALID_ARGUMENT:Message too deep. Max recursion depth reached for key 'child'", error);
+    }
+}
+
+TEST_F(ProtobufJsonTest, pb_to_json_unbounded_recursion) {
+    test::RecursiveMessage msg;
+
+    // Create a deeply nested protobuf message.
+    const int recursion_depth = DEEP_RECURSION_TEST_DEPTH;
+    test::RecursiveMessage* current = &msg;
+    std::vector<test::RecursiveMessage*> nodes;
+    nodes.reserve(recursion_depth);
+    for (int i = 0; i < recursion_depth; ++i) {
+        nodes.push_back(current);
+        current = current->mutable_child();
+    }
+    current->set_data("leaf");
+
+    BRPC_SCOPE_EXIT {
+        // Release msg memory from end to start to avoid stack overflow.
+        for (size_t i = nodes.size() - 1; i > 0; --i) {
+            delete nodes[i]->release_child();
+        }
+    };
+
+    {
+        std::string json_output;
+        std::string error;
+        bool ret = json2pb::ProtoMessageToJson(msg, &json_output, &error);
+        ASSERT_FALSE(ret);
+        ASSERT_EQ("Exceeded maximum recursion depth", error);
+    }
+    {
+        std::string json_output;
+        std::string error;
+        json2pb::Pb2ProtoJsonOptions options;
+        bool ret = json2pb::ProtoMessageToProtoJson(msg, &json_output, options, &error);
+        ASSERT_FALSE(ret);
+        ASSERT_EQ("Exceeded maximum recursion depth", error);
+    }
+}
+
+TEST_F(ProtobufJsonTest, pb_parse_unbounded_recursion) {
+    auto generate_binary = [](int recursion_depth) {
+        // Innermost message: { data: "leaf" }
+        // data field: tag = (2<<3)|2 = 0x12, len=4, bytes "leaf"
+        const char kLeafRaw[] = "\x12\x04" "leaf";
+        const std::string leaf_msg(kLeafRaw, sizeof(kLeafRaw) - 1);
+
+        // Precompute sizes:
+        // S[0] = leaf size
+        // S[i] = 1 (tag 0x0A) + varint_len(S[i-1]) + S[i-1]
+        auto varint_len = [](size_t v) {
+            int n = 1;
+            while (v >= 128) { v >>= 7; ++n; }
+            return n;
+        };
+
+        std::vector<size_t> sizes;
+        sizes.reserve(recursion_depth + 1);
+        sizes.push_back(leaf_msg.size());
+        for (int i = 1; i <= recursion_depth; ++i) {
+            size_t inner = sizes[i-1];
+            sizes.push_back(1 + varint_len(inner) + inner);
+        }
+        const size_t final_size = sizes.back();
+
+        std::string out;
+        out.resize(final_size);
+        size_t off = 0;
+
+        // Emit outermost -> innermost wrappers: tag(0x0A) + varint(len(inner))
+        for (int depth = recursion_depth; depth >= 1; --depth) {
+            out[off++] = static_cast<char>(0x0A);  // tag for child
+            size_t len = sizes[depth - 1];
+            while (true) {
+                uint8_t byte = static_cast<uint8_t>(len & 0x7F);
+                len >>= 7;
+                if (len) byte |= 0x80;
+                out[off++] = static_cast<char>(byte);
+                if (!len) break;
+            }
+        }
+
+        // Copy leaf payload
+        memcpy(&out[off], leaf_msg.data(), leaf_msg.size());
+        off += leaf_msg.size();
+        return out;
+    };
+
+    // Test protobuf max depth limit (100).
+    {
+        test::RecursiveMessage msg;
+        std::string binary_data = generate_binary(100);
+        bool ret = msg.ParseFromString(binary_data);
+        ASSERT_TRUE(ret);
+        ASSERT_TRUE(msg.IsInitialized());
+
+        std::string error;
+        std::string json_output;
+        ret = json2pb::ProtoMessageToJson(msg, &json_output, &error);
+        ASSERT_TRUE(ret);
+        ASSERT_EQ("", error);
+    }
+    {
+        test::RecursiveMessage msg;
+        std::string binary_data = generate_binary(101);
+        bool ret = msg.ParseFromString(binary_data);
+        ASSERT_FALSE(ret);
+    }
+    {
+        test::RecursiveMessage msg;
+        std::string binary_data = generate_binary(DEEP_RECURSION_TEST_DEPTH);
+        bool ret = msg.ParseFromString(binary_data);
+        ASSERT_FALSE(ret);
+    }
 }
 
 TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {

@@ -110,3 +110,8 @@ message Message1 {
 message Message2 {
     required State1 stat = 1;
 };
+
+message RecursiveMessage {
+  optional RecursiveMessage child = 1;
+  optional string data = 2;
+}

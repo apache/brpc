@@ -431,7 +431,7 @@ struct SelectArg {
 };
 
 void* select_server(void* arg) {
-    SelectArg *sa = (SelectArg *)arg;
+    SelectArg *sa = (SelectArg*)arg;
     brpc::LoadBalancer* c = sa->lb;
     brpc::SocketUniquePtr ptr;
     CountMap *selected_count = new CountMap;
@@ -951,6 +951,7 @@ TEST_F(LoadBalancerTest, weighted_randomized) {
     brpc::policy::WeightedRandomizedLoadBalancer wrlb;
     size_t valid_weight_num = 4;
 
+    std::vector<brpc::SocketId> ids;
     // Add server to selected list. The server with invalid weight will be skipped.
     for (size_t i = 0;  i < ARRAY_SIZE(servers); ++i) {
         const char *addr = servers[i];
@@ -961,6 +962,7 @@ TEST_F(LoadBalancerTest, weighted_randomized) {
         options.remote_side = dummy;
         options.user = new SaveRecycle;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
+        ids.emplace_back(id.id);
         id.tag = weight[i];
         if (i < valid_weight_num) {
             int weight_num = 0;
@@ -1009,6 +1011,16 @@ TEST_F(LoadBalancerTest, weighted_randomized) {
         ASSERT_GE(actual_rate, expect_rate / 2);
         // actual_rate <= expect_rate * 2
         ASSERT_LE(actual_rate, expect_rate * 2);
+    }
+
+    for (size_t i = 1; i < ids.size(); ++i) {
+        brpc::Socket::SetFailed(ids[i]);
+    }
+    select_result.clear();
+    for (int i = 0; i < run_times; ++i) {
+        EXPECT_EQ(0, wrlb.SelectServer(in, &out));
+        // The only choice is servers[0].
+        ASSERT_STREQ(butil::endpoint2str(ptr->remote_side()).c_str(), servers[0]);
     }
 }
 
