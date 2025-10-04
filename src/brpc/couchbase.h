@@ -35,12 +35,6 @@
 #include "butil/strings/string_piece.h"
 using namespace std;
 
-namespace google {
-namespace protobuf {
-class Message;
-}
-}  // namespace google
-
 namespace brpc {
 
 // Forward declarations for friend functions
@@ -152,7 +146,7 @@ class CouchbaseMetadataTracking {
 } static common_metadata_tracking;
 class CouchbaseOperations {
  public:
-  enum pipeline_operation_type {
+  enum operation_type {
     GET = 1,
     UPSERT = 2,
     ADD = 3,
@@ -165,6 +159,7 @@ class CouchbaseOperations {
     bool success;
     string error_message;
     string value;
+    uint16_t status_code; // 0x00 if success
   };
   Result Get(const string& key, string collection_name = "_default");
   Result Upsert(const string& key, const string& value,
@@ -188,13 +183,13 @@ class CouchbaseOperations {
   // Flush(uint32_t timeout = 0);
   Result Version();
   Result Authenticate(const string& username, const string& password,
-                      const string& server_address, bool enable_ssl,
-                      string path_to_cert);
+                      const string& server_address, bool enable_ssl=false,
+                      string path_to_cert="");
   Result SelectBucket(const string& bucket_name);
 
   // Pipeline management
   bool BeginPipeline();
-  bool PipelineRequest(pipeline_operation_type op_type, const string& key,
+  bool PipelineRequest(operation_type op_type, const string& key,
                        const string& value = "",
                        string collection_name = "_default");
   vector<Result> ExecutePipeline();  // Return by value instead of pointer
@@ -206,22 +201,19 @@ class CouchbaseOperations {
 
   CouchbaseOperations() : pipeline_active(false) {}
   ~CouchbaseOperations() {}
+  bool get_local_cached_collection_id(const string& bucket, const string& scope,
+                                       const string& collection, uint8_t* coll_id);
 
  private:
-  // Friend functions to allow access to private nested classes
-  friend bool get_cached_or_fetch_collection_id(
-      string collection_name, uint8_t* coll_id,
-      brpc::CouchbaseMetadataTracking* metadata_tracking,
-      brpc::Channel* channel, const string& server,
-      const string& selected_bucket);
   friend void policy::ProcessCouchbaseResponse(InputMessageBase* msg);
   friend void policy::SerializeCouchbaseRequest(
       butil::IOBuf* buf, Controller* cntl,
       const google::protobuf::Message* request);
-
   brpc::Channel* channel;
   string server_address;
   string selected_bucket;
+
+  unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> local_bucket_to_collection_manifest;
 
   class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
    private:
@@ -241,8 +233,13 @@ class CouchbaseOperations {
                const butil::StringPiece& value, uint32_t flags,
                uint32_t exptime, uint64_t cas_value, uint8_t coll_id = 0);
     uint32_t hash_crc32(const char* key, size_t key_length);
-
+    unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> *local_collection_manifest_cache;
    public:
+    CouchbaseRequest(unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> *local_cache_reference) : NonreflectableMessage<CouchbaseRequest>() {
+      metadata_tracking = &common_metadata_tracking;
+      local_collection_manifest_cache = local_cache_reference;
+      SharedCtor();
+    }
     CouchbaseRequest() : NonreflectableMessage<CouchbaseRequest>() {
       metadata_tracking = &common_metadata_tracking;
       SharedCtor();
@@ -272,7 +269,18 @@ class CouchbaseOperations {
 
     bool GetCollectionManifest();
 
-    bool RefreshCollectionManifest();
+    bool getLocalCachedCollectionId(const string& bucket, const string& scope,
+                                       const string& collection, uint8_t* coll_id);
+
+    bool get_cached_or_fetch_collection_id(
+      string collection_name, uint8_t* coll_id,
+      brpc::CouchbaseMetadataTracking* metadata_tracking,
+      brpc::Channel* channel, const string& server,
+      const string& selected_bucket);
+    
+    bool RefreshCollectionManifest(brpc::Channel* channel,
+                                         const string& server,
+                                         const string& bucket);
 
     // Collection-aware document operations
     bool GetRequest(const butil::StringPiece& key,
@@ -374,6 +382,8 @@ class CouchbaseOperations {
     void SetCachedSize(int size) const PB_425_OVERRIDE;
 
    public:
+    uint16_t _status_code;
+
     CouchbaseResponse() : NonreflectableMessage<CouchbaseResponse>() {
       SharedCtor();
     }
@@ -500,8 +510,15 @@ class CouchbaseOperations {
     bool PopVersion(string* version);
   };
 
+  friend bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key, 
+                         const string& value, string collection_name,
+                         CouchbaseOperations::Result *result, brpc::Channel *channel, 
+                         const string& server, const string& bucket,
+                         CouchbaseRequest *request,
+                         CouchbaseResponse *response);
+
   // Pipeline management - per instance
-  queue<pipeline_operation_type> pipeline_operations_queue;
+  queue<operation_type> pipeline_operations_queue;
   CouchbaseRequest pipeline_request;
   CouchbaseResponse pipeline_response;
   bool pipeline_active;

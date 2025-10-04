@@ -804,7 +804,8 @@ bool CouchbaseOperations::CouchbaseRequest::GetOrDelete(
   return true;
 }
 
-bool get_cached_or_fetch_collection_id(
+// collectionID fetching either from the metadata cache or if doesn't exist then fetch from the server.
+bool CouchbaseOperations::CouchbaseRequest::get_cached_or_fetch_collection_id(
     string collection_name, uint8_t* coll_id,
     brpc::CouchbaseMetadataTracking* metadata_tracking, brpc::Channel* channel,
     const string& server, const string& selected_bucket) {
@@ -812,7 +813,6 @@ bool get_cached_or_fetch_collection_id(
     LOG(ERROR) << "Empty collection name";
     return false;
   }
-
   if (channel == nullptr) {
     LOG(ERROR) << "No channel found, make sure to call Authenticate() first";
     return false;
@@ -827,6 +827,7 @@ bool get_cached_or_fetch_collection_id(
   }
 
   brpc::CouchbaseMetadataTracking::CollectionManifest manifest;
+  //check if the server/bucket exists in the cached collection manifest
   if (!metadata_tracking->get_bucket_to_collection_manifest(
           server, selected_bucket, &manifest)) {
     LOG(INFO) << "No cached collection manifest found for bucket "
@@ -860,7 +861,7 @@ bool get_cached_or_fetch_collection_id(
                    << selected_bucket << " on server " << server;
         return false;
       }
-      // Cache the collection manifest
+      // Cache the collection manifest in global cache
       if (!metadata_tracking->set_bucket_to_collection_manifest(
               server, selected_bucket, manifest)) {
         LOG(ERROR) << "Failed to cache collection ID for collection "
@@ -868,26 +869,58 @@ bool get_cached_or_fetch_collection_id(
                    << " on server " << server;
         return false;
       }
+      //copy the data to the local cache of the CouchbaseOperations instance which called this.
+      (*local_collection_manifest_cache)[selected_bucket] = manifest;
+      if( !metadata_tracking->get_manifest_to_collection_id(
+              &manifest, "_default", collection_name, coll_id)) {
+        return false;
+      }
+      // Collection does exist and the collection id is stored in coll_id
       return true;
     }
   } else {
+    // check if collection name to id mapping exists.
     if (!metadata_tracking->get_manifest_to_collection_id(
             &manifest, "_default", collection_name, coll_id)) {
-      return false;
+      // Just to verify that the collectionID does not exist in the manifest
+      // refresh manifest from server and try again
+      if(!RefreshCollectionManifest(channel, server, selected_bucket)) {
+        return false;
+      }
+      // get the reference to latest manifest fetched from server
+      if (!metadata_tracking->get_bucket_to_collection_manifest(
+              server, selected_bucket, &manifest)) {
+        return false;
+      }
+      // re-verify the collectionID in the latest manifest.
+      if( !metadata_tracking->get_manifest_to_collection_id(
+              &manifest, "_default", collection_name, coll_id)) {
+        return false; 
+      }
     }
     return true;
   }
 }
+
 
 bool CouchbaseOperations::CouchbaseRequest::GetRequest(
     const butil::StringPiece& key, string collection_name,
     brpc::Channel* channel, const string& server, const string& bucket) {
   uint8_t coll_id = 0;  // default collection ID
   if (collection_name != "_default") {
-    if (!get_cached_or_fetch_collection_id(collection_name, &coll_id,
-                                           metadata_tracking, channel, server,
-                                           bucket)) {
-      return false;
+    // check if the local cache is empty or not.
+    if(local_collection_manifest_cache->empty()){
+      // if local cache is empty, goto global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
+    }
+    // check if the collection id is available in the local cache 
+    else if (!getLocalCachedCollectionId(bucket, "_default", collection_name, &coll_id)) {
+      // if not check in the global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
     }
   }
   return GetOrDelete(policy::CB_BINARY_GET, key, coll_id);
@@ -898,10 +931,19 @@ bool CouchbaseOperations::CouchbaseRequest::DeleteRequest(
     brpc::Channel* channel, const string& server, const string& bucket) {
   uint8_t coll_id = 0;  // default collection ID
   if (collection_name != "_default") {
-    if (!get_cached_or_fetch_collection_id(collection_name, &coll_id,
-                                           metadata_tracking, channel, server,
-                                           bucket)) {
-      return false;
+    // check if the local cache is empty or not.
+    if(local_collection_manifest_cache->empty()){
+      // if local cache is empty, goto global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
+    }
+    // check if the collection id is available in the local cache 
+    else if (!getLocalCachedCollectionId(bucket, "_default", collection_name, &coll_id)) {
+      // if not check in the global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
     }
   }
   return GetOrDelete(policy::CB_BINARY_DELETE, key, coll_id);
@@ -984,6 +1026,7 @@ bool CouchbaseOperations::CouchbaseResponse::PopGet(butil::IOBuf* value,
     LOG_IF(ERROR, header.key_length != 0) << "GET response must not have key";
     const int value_size = (int)header.total_body_length -
                            (int)header.extras_length - (int)header.key_length;
+    _status_code = header.status;
     if (value_size < 0) {
       butil::string_printf(&_err, "value_size=%d is non-negative", value_size);
       return false;
@@ -1137,6 +1180,7 @@ bool CouchbaseOperations::CouchbaseResponse::PopStore(uint8_t command,
                    (int)header.key_length;
   if (header.status != (uint16_t)STATUS_SUCCESS) {
     _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
+    _status_code = header.status;
     if (value_size > 0) {
       std::string error_msg;
       _buf.cutn(&error_msg, value_size);
@@ -1257,10 +1301,19 @@ bool CouchbaseOperations::CouchbaseRequest::UpsertRequest(
     const string& bucket) {
   uint8_t coll_id = 0;  // default collection ID
   if (collection_name != "_default") {
-    if (!get_cached_or_fetch_collection_id(collection_name, &coll_id,
-                                           metadata_tracking, channel, server,
-                                           bucket)) {
-      return false;
+    // check if the local cache is empty or not.
+    if(local_collection_manifest_cache->empty()){
+      // if local cache is empty, goto global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
+    }
+    // check if the collection id is available in the local cache 
+    else if (!getLocalCachedCollectionId(bucket, "_default", collection_name, &coll_id)) {
+      // if not check in the global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
     }
   }
   return Store(policy::CB_BINARY_SET, key, value, flags, exptime, cas_value,
@@ -1315,75 +1368,76 @@ bool CouchbaseOperations::CouchbaseRequest::GetCollectionManifest() {
   return true;
 }
 
-// bool RefreshCollectionManifest(brpc::Channel* channel) {
-//   // first fetch the manifest
-//   // then compare the UID with the cached one
-//   CouchbaseRequest temp_get_manifest_request;
-//   CouchbaseResponse temp_get_manifest_response;
-//   brpc::Controller temp_cntl;
-//   temp_get_manifest_request.GetCollectionManifest();
-//   channel->CallMethod(NULL, &temp_cntl, &temp_get_manifest_request,
-//                         &temp_get_manifest_response, NULL);
-//   if (temp_cntl.Failed()) {
-//     LOG(ERROR) << "Failed to get collection manifest: " <<
-//     temp_cntl.ErrorText(); return false;
-//   }
-//   string manifest_json;
-//   if (!temp_get_manifest_response.PopManifest(&manifest_json)) {
-//     LOG(ERROR) << "Failed to parse response for collection Manifest: " <<
-//     temp_get_manifest_response.LastError(); return false;
-//   }
-//   // Compare the UID with the cached one
-//   // If they are different, refresh the cache
-//   brpc::CouchbaseMetadataTracking::CollectionManifest manifest;
-//   if(!common_metadata_tracking.json_to_collection_manifest(manifest_json,
-//   &manifest)){
-//     LOG(ERROR) << "Failed to parse collection manifest JSON";
-//     return false;
-//   }
-//   brpc::CouchbaseMetadataTracking::ChannelInfo temp_channel_info;
-//   common_metadata_tracking.get_channel_info_for_thread(bthread_self(),
-//   &temp_channel_info); if(temp_channel_info.server.empty() ||
-//   temp_channel_info.selected_bucket.empty()){
-//     LOG(ERROR) << "No channel info found for this thread, make sure to call
-//     Authenticate() and SelectBucket() first"; return false;
-//   }
-//   brpc::CouchbaseMetadataTracking::CollectionManifest cached_manifest;
-//   if(!common_metadata_tracking.get_bucket_to_collection_manifest(bthread_self(),
-//   temp_channel_info.server, temp_channel_info.selected_bucket,
-//   &cached_manifest)){
-//     // No cached manifest found, set the new one
-//     if(!common_metadata_tracking.set_bucket_to_collection_manifest(bthread_self(),
-//     manifest)){
-//       LOG(ERROR) << "Failed to cache collection manifest for bucket " <<
-//       temp_channel_info.selected_bucket << " on server " <<
-//       temp_channel_info.server; return false;
-//     }
-//     LOG(INFO) << "Cached collection manifest for bucket " <<
-//     temp_channel_info.selected_bucket << " on server " <<
-//     temp_channel_info.server; return true;
-//   }
-//   if(manifest.uid != cached_manifest.uid) {
-//     LOG(INFO) << "Collection manifest has changed for bucket " <<
-//     temp_channel_info.selected_bucket << " on server " <<
-//     temp_channel_info.server;
-//     if(!common_metadata_tracking.set_bucket_to_collection_manifest(bthread_self(),
-//     manifest)){
-//       LOG(ERROR) << "Failed to update cached collection manifest for bucket "
-//       << temp_channel_info.selected_bucket << " on server " <<
-//       temp_channel_info.server; return false;
-//     }
-//     LOG(INFO) << "Updated cached collection manifest for bucket " <<
-//     temp_channel_info.selected_bucket << " on server " <<
-//     temp_channel_info.server;
-//   }
-//   else{
-//     LOG(INFO) << "Collection manifest is up-to-date for bucket " <<
-//     temp_channel_info.selected_bucket << " on server " <<
-//     temp_channel_info.server;
-//   }
-//   return true;
-// }
+bool CouchbaseOperations::CouchbaseRequest::RefreshCollectionManifest(brpc::Channel* channel, const string& server, const string& bucket) {
+  // first fetch the manifest
+  // then compare the UID with the cached one
+    if (channel == nullptr) {
+    LOG(ERROR) << "No channel found, make sure to call Authenticate() first";
+    return false;
+  }
+  if (server.empty()) {
+    LOG(ERROR) << "Server is empty, make sure to call Authenticate() first";
+    return false;
+  }
+  if (bucket.empty()) {
+    LOG(ERROR) << "No bucket selected, make sure to call SelectBucket() first";
+    return false;
+  }
+  CouchbaseOperations::CouchbaseRequest temp_get_manifest_request;
+  CouchbaseOperations::CouchbaseResponse temp_get_manifest_response;
+  brpc::Controller temp_cntl;
+  temp_get_manifest_request.GetCollectionManifest();
+  channel->CallMethod(NULL, &temp_cntl, &temp_get_manifest_request,
+                        &temp_get_manifest_response, NULL);
+  if (temp_cntl.Failed()) {
+    LOG(ERROR) << "Failed to get collection manifest: bRPC controller error" <<
+    temp_cntl.ErrorText(); return false;
+  }
+  string manifest_json;
+  if (!temp_get_manifest_response.PopManifest(&manifest_json)) {
+    LOG(ERROR) << "Failed to parse response for refreshing collection Manifest: " <<
+    temp_get_manifest_response.LastError(); return false;
+  }
+  // Compare the UID with the cached one
+  // If they are different, refresh the cache
+  brpc::CouchbaseMetadataTracking::CollectionManifest manifest;
+  if(!common_metadata_tracking.json_to_collection_manifest(manifest_json,
+  &manifest)){
+    LOG(ERROR) << "Failed to parse collection manifest JSON";
+    return false;
+  }
+  brpc::CouchbaseMetadataTracking::CollectionManifest cached_manifest;
+  if(!common_metadata_tracking.get_bucket_to_collection_manifest(server, bucket,
+  &cached_manifest)){
+    // No cached manifest found, set the new one
+    if(!common_metadata_tracking.set_bucket_to_collection_manifest(server, bucket,
+    manifest)){
+      LOG(ERROR) << "Failed to cache collection manifest for bucket " <<
+      bucket << " on server " << server; return false;
+    }
+    LOG(INFO) << "Cached collection manifest for bucket " <<
+    bucket << " on server " << server; return true;
+  }
+  if(manifest.uid != cached_manifest.uid) {
+    LOG(INFO) << "Collection manifest has changed for bucket " <<
+    bucket << " on server " << server;
+    if(!common_metadata_tracking.set_bucket_to_collection_manifest(server, bucket,
+    manifest)){
+      LOG(ERROR) << "Failed to update cached collection manifest for bucket "
+      << bucket << " on server " << server; return false;
+    }
+    LOG(INFO) << "Updated cached collection manifest for bucket " <<
+    bucket << " on server " << server;
+    // also update the local cache 
+    (*local_collection_manifest_cache)[bucket] = manifest;
+    return true;
+  }
+  else{
+    LOG(INFO) << "Collection manifest is already up-to-date for bucket " <<
+    bucket << " on server " << server;
+    return false;
+  }
+}
 
 bool CouchbaseOperations::CouchbaseRequest::AddRequest(
     const butil::StringPiece& key, const butil::StringPiece& value,
@@ -1392,10 +1446,19 @@ bool CouchbaseOperations::CouchbaseRequest::AddRequest(
     const string& bucket) {
   uint8_t coll_id = 0;  // default collection ID
   if (collection_name != "_default") {
-    if (!get_cached_or_fetch_collection_id(collection_name, &coll_id,
-                                           metadata_tracking, channel, server,
-                                           bucket)) {
-      return false;
+    // check if the local cache is empty or not.
+    if(local_collection_manifest_cache->empty()){
+      // if local cache is empty, goto global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
+    }
+    // check if the collection id is available in the local cache 
+    else if (!getLocalCachedCollectionId(bucket, "_default", collection_name, &coll_id)) {
+      // if not check in the global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
     }
   }
   return Store(policy::CB_BINARY_ADD, key, value, flags, exptime, cas_value,
@@ -1433,10 +1496,19 @@ bool CouchbaseOperations::CouchbaseRequest::AppendRequest(
   }
   uint8_t coll_id = 0;  // default collection ID
   if (collection_name != "_default") {
-    if (!get_cached_or_fetch_collection_id(collection_name, &coll_id,
-                                           metadata_tracking, channel, server,
-                                           bucket)) {
-      return false;
+    // check if the local cache is empty or not.
+    if(!local_collection_manifest_cache->empty()){
+      // if local cache is empty, goto global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
+    }
+    // check if the collection id is available in the local cache 
+    else if (!getLocalCachedCollectionId(bucket, "_default", collection_name, &coll_id)) {
+      // if not check in the global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
     }
   }
   return Store(policy::CB_BINARY_APPEND, key, value, flags, exptime, cas_value,
@@ -1454,10 +1526,19 @@ bool CouchbaseOperations::CouchbaseRequest::PrependRequest(
   }
   uint8_t coll_id = 0;  // default collection ID
   if (collection_name != "_default") {
-    if (!get_cached_or_fetch_collection_id(collection_name, &coll_id,
-                                           metadata_tracking, channel, server,
-                                           bucket)) {
-      return false;
+    // check if the local cache is empty or not.
+    if(!local_collection_manifest_cache->empty()){
+      // if local cache is empty, goto global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
+    }
+    // check if the collection id is available in the local cache 
+    else if (!getLocalCachedCollectionId(bucket, "_default", collection_name, &coll_id)) {
+      // if not check in the global cache or fetch from server
+      if (!get_cached_or_fetch_collection_id(collection_name, &coll_id, metadata_tracking, channel, server, bucket)) {
+        return false;
+      }
     }
   }
   return Store(policy::CB_BINARY_PREPEND, key, value, flags, exptime, cas_value,
@@ -1895,145 +1976,272 @@ bool CouchbaseOperations::CouchbaseResponse::PopVersion(std::string* version) {
   return true;
 }
 
+bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key, 
+                  const string& value, string collection_name, 
+                  CouchbaseOperations::Result *result, brpc::Channel *channel, 
+                  const string& server, const string& bucket, 
+                  CouchbaseOperations::CouchbaseRequest *request, 
+                  CouchbaseOperations::CouchbaseResponse *response) {
+  if(channel == nullptr){
+    LOG(ERROR)<< "No channel found, make sure to call Authenticate() first";
+    result->error_message = "No channel found, make sure to call Authenticate() first";
+    return false;
+  }
+  if(server.empty()){
+    LOG(ERROR)<< "Server is empty, make sure to call Authenticate() first";
+    result->error_message = "Server is empty, make sure to call Authenticate() first";
+    return false;
+  }
+  if(bucket.empty()){
+    LOG(ERROR)<< "No bucket selected, make sure to call SelectBucket() first";
+    result->error_message = "No bucket selected, make sure to call SelectBucket() first";
+    return false;
+  }
+  brpc::Controller cntl;
+  switch(op_type){
+    case CouchbaseOperations::GET:
+      request->GetRequest(key, collection_name, channel, server, bucket);
+      break;
+    case CouchbaseOperations::UPSERT:
+      request->UpsertRequest(key, value, 0, 0, 0, collection_name, channel, server, bucket);
+      break;
+    case CouchbaseOperations::ADD:
+      request->AddRequest(key, value, 0, 0, 0, collection_name, channel, server, bucket);
+      break;
+    case CouchbaseOperations::APPEND:
+      request->AppendRequest(key, value, 0, 0, 0, collection_name, channel, server, bucket);
+      break;
+    case CouchbaseOperations::PREPEND:
+      request->PrependRequest(key, value, 0, 0, 0, collection_name, channel, server, bucket);
+      break;
+    case CouchbaseOperations::DELETE:
+      request->DeleteRequest(key, collection_name, channel, server, bucket);
+      break;
+    default:
+      LOG(ERROR) << "Unsupported operation type";
+      result->success = false;
+      result->value = "";
+      result->error_message = "Unsupported operation type";
+      return false;
+  }
+  channel->CallMethod(NULL, &cntl, request, response, NULL);
+  if (cntl.Failed()) {
+    LOG(ERROR) << "Failed to perform operation on key: " << key
+               << " to Couchbase: " << cntl.ErrorText();
+    result->success = false;
+    result->value = "";
+    result->error_message = cntl.ErrorText();
+    return false;
+  }
+  if(op_type == CouchbaseOperations::GET) {
+    string value;
+    uint32_t flags = 0;
+    uint64_t cas = 0;
+    if (response->PopGet(&value, &flags, &cas) == false) {
+      result->success = false;
+      result->value = "";
+      result->error_message = response->LastError();
+      result->status_code = response->_status_code;
+      return false;
+    }
+    // Successfully got the value
+    result->success = true;
+    result->value = value;
+    result->status_code = 0;
+    return true;
+  }
+  else{
+    // For other operations, just check if it was successful
+    if (response->LastError().empty() && response->_status_code == 0) {
+      result->success = true;
+      result->value = "";
+      result->status_code = 0;
+      return true;
+    } else {
+      result->success = false;
+      result->value = "";
+      result->error_message = response->LastError();
+      result->status_code = response->_status_code;
+      return false;
+    }
+  }
+}
 CouchbaseOperations::Result CouchbaseOperations::Get(const string& key,
                                                      string collection_name) {
   // create CouchbaseRequest and CouchbaseResponse objects and then using the
   // channel which is created for this thread in authenticate() use it to call()
-  CouchbaseRequest request;
+  CouchbaseRequest request(&local_bucket_to_collection_manifest);
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if (request.GetRequest(key, collection_name, channel, server_address,
-                         selected_bucket) == false) {
-    LOG(ERROR) << "Failed to create Get request for key: " << key;
-    result.success = false;
-    result.value = "";
+  if(!sendRequest(CouchbaseOperations::GET, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
+    if(result.status_code == 0x88) { 
+      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
+      // and the client have a stale copy of collection manifest.
+      // In this case, we need to refresh the collection manifest and retry the operation.
+      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
+        LOG(ERROR) << "Failed to refresh collection manifest";
+        result.success = false;
+        result.value = "";
+        result.error_message = "Failed to refresh collection manifest";
+        return result;
+      }
+      // check if the colelction id is available in the local cache now.
+      uint8_t coll_id = 0;  // default collection ID
+      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
+        LOG(ERROR) << "Collection name not found in local cache after manifest refresh: " << collection_name;
+        result.success = false;
+        result.value = "";
+        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
+        return result;
+      }
+      // only reachable if the collection manifest now has the collectionID
+      sendRequest(CouchbaseOperations::GET, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response);
+      return result;
+    }
     return result;
   }
-  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
-  if (cntl.Failed()) {
-    LOG(ERROR) << "Failed to get key: " << key
-               << " from Couchbase: " << cntl.ErrorText();
-    result.success = false;
-    result.value = "";
-    result.error_message = cntl.ErrorText();
-    return result;
-  }
-  string value;
-  uint32_t flags = 0;
-  uint64_t cas = 0;
-  if (response.PopGet(&value, &flags, &cas) == false) {
-    result.success = false;
-    result.value = "";
-    result.error_message = response.LastError();
-    return result;
-  }
-  // Successfully got the value
-  result.success = true;
-  result.value = value;
   return result;
+}
+
+bool CouchbaseOperations::CouchbaseRequest::getLocalCachedCollectionId(const string& bucket, const string& scope,
+                                                     const string& collection,
+                                                     uint8_t* collection_id) {
+  if (bucket.empty() || scope.empty() || collection.empty()) {
+    LOG(ERROR) << "Bucket, scope, and collection names must be non-empty";
+    return false;
+  }
+  auto it = local_collection_manifest_cache->find(bucket);
+  if(it != local_collection_manifest_cache->end()) {
+    CouchbaseMetadataTracking::CollectionManifest& manifest = it->second;
+    if(manifest.scope_to_collectionID_map.find(scope)!= manifest.scope_to_collectionID_map.end()){
+      auto& collection_map = manifest.scope_to_collectionID_map[scope];
+      if(collection_map.find(collection) != collection_map.end()){
+        *collection_id = collection_map[collection];
+        return true;
+      }
+      else{
+        LOG(ERROR) << "Collection name not found in local cache: " << collection;
+        return false;
+      }
+    }
+    else{
+      LOG(ERROR) << "Scope name not found in local cache: " << scope;
+      return false;
+    }
+  }
+  else{
+    LOG(ERROR) << "Bucket name not found in local cache: " << bucket;
+    return false;
+  }
 }
 
 CouchbaseOperations::Result CouchbaseOperations::Upsert(
     const string& key, const string& value, string collection_name) {
-  CouchbaseRequest request;
+  CouchbaseRequest request(&local_bucket_to_collection_manifest);
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if (request.UpsertRequest(key, value, 0, 0, 0, collection_name, channel,
-                            server_address, selected_bucket) == false) {
-    LOG(ERROR) << "Failed to create Upsert request for key: " << key;
-    result.success = false;
-    result.value = "";
+  if(!sendRequest(CouchbaseOperations::UPSERT, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
+    if(result.status_code == 0x88) { 
+      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
+      // and the client have a stale copy of collection manifest.
+      // In this case, we need to refresh the collection manifest and retry the operation.
+      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
+        LOG(ERROR) << "Failed to refresh collection manifest";
+        result.success = false;
+        result.value = "";
+        result.error_message = "Failed to refresh collection manifest";
+        return result;
+      }
+      // check if the colelction id is available in the local cache now.
+      uint8_t coll_id = 0;  // default collection ID
+      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
+        LOG(ERROR) << "Collection name not found in local cache after manifest refresh: " << collection_name;
+        result.success = false;
+        result.value = "";
+        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
+        return result;
+      }
+      // only reachable if the collection manifest now has the collectionID
+      sendRequest(CouchbaseOperations::UPSERT, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
+      return result;
+    }
     return result;
   }
-  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
-  if (cntl.Failed()) {
-    LOG(ERROR) << "Failed to upsert key: " << key
-               << " to Couchbase: " << cntl.ErrorText();
-    result.success = false;
-    result.value = "";
-    result.error_message = cntl.ErrorText();
-    return result;
-  }
-  if (response.PopUpsert(NULL) == false) {
-    result.success = false;
-    result.value = "";
-    result.error_message = response.LastError();
-    return result;
-  }
-  // Successfully upserted the value
-  result.success = true;
-  result.value = "";
   return result;
 }
 
 CouchbaseOperations::Result CouchbaseOperations::Delete(
     const string& key, string collection_name) {
-  CouchbaseRequest request;
+  CouchbaseRequest request(&local_bucket_to_collection_manifest);
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if (request.DeleteRequest(key, collection_name, channel, server_address,
-                            selected_bucket) == false) {
-    LOG(ERROR) << "Failed to create Delete request for key: " << key;
-    result.success = false;
-    result.value = "";
+  if(!sendRequest(CouchbaseOperations::DELETE, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
+    if(result.status_code == 0x88) { 
+      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
+      // and the client have a stale copy of collection manifest.
+      // In this case, we need to refresh the collection manifest and retry the operation.
+      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
+        LOG(ERROR) << "Failed to refresh collection manifest";
+        result.success = false;
+        result.value = "";
+        result.error_message = "Failed to refresh collection manifest";
+        return result;
+      }
+      // check if the colelction id is available in the local cache now.
+      uint8_t coll_id = 0;  // default collection ID
+      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
+        LOG(ERROR) << "Collection name not found in local cache after manifest refresh: " << collection_name;
+        result.success = false;
+        result.value = "";
+        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
+        return result;
+      }
+      // only reachable if the collection manifest now has the collectionID
+      sendRequest(CouchbaseOperations::DELETE, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response);
+      return result;
+    }
     return result;
   }
-  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
-  if (cntl.Failed()) {
-    LOG(ERROR) << "Failed to delete key: " << key
-               << " from Couchbase: " << cntl.ErrorText();
-    result.success = false;
-    result.value = "";
-    result.error_message = cntl.ErrorText();
-    return result;
-  }
-  if (response.PopDelete() == false) {
-    result.success = false;
-    result.value = "";
-    result.error_message = response.LastError();
-    return result;
-  }
-  // Successfully deleted the value
-  result.success = true;
-  result.value = "";
   return result;
 }
 
 CouchbaseOperations::Result CouchbaseOperations::Add(const string& key,
                                                      const string& value,
                                                      string collection_name) {
-  CouchbaseRequest request;
+  CouchbaseRequest request(&local_bucket_to_collection_manifest);
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if (request.AddRequest(key, value, 0, 0, 0, collection_name, channel,
-                         server_address, selected_bucket) == false) {
-    LOG(ERROR) << "Failed to create Add request for key: " << key;
-    result.success = false;
-    result.value = "";
+  if(!sendRequest(CouchbaseOperations::ADD, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
+    if(result.status_code == 0x88) { 
+      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
+      // and the client have a stale copy of collection manifest.
+      // In this case, we need to refresh the collection manifest and retry the operation.
+      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
+        LOG(ERROR) << "Failed to refresh collection manifest";
+        result.success = false;
+        result.value = "";
+        result.error_message = "Failed to refresh collection manifest";
+        return result;
+      }
+      // check if the colelction id is available in the local cache now.
+      uint8_t coll_id = 0;  // default collection ID
+      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
+        LOG(ERROR) << "Collection name not found in local cache after manifest refresh: " << collection_name;
+        result.success = false;
+        result.value = "";
+        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
+        return result;
+      }
+      // only reachable if the collection manifest now has the collectionID
+      sendRequest(CouchbaseOperations::ADD, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
+      return result;
+    }
     return result;
   }
-  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
-  if (cntl.Failed()) {
-    LOG(ERROR) << "Failed to add key: " << key
-               << " to Couchbase: " << cntl.ErrorText();
-    result.success = false;
-    result.value = "";
-    result.error_message = cntl.ErrorText();
-    return result;
-  }
-  if (response.PopAdd(NULL) == false) {
-    result.success = false;
-    result.value = "";
-    result.error_message = response.LastError();
-    return result;
-  }
-  // Successfully added the value
-  result.success = true;
-  result.value = "";
   return result;
 }
 
@@ -2092,6 +2300,7 @@ CouchbaseOperations::Result CouchbaseOperations::Authenticate(
   channel = new_channel;
   this->server_address = server_address;
   result.success = true;
+  result.status_code = 0;
   return result;
 }
 
@@ -2121,12 +2330,14 @@ CouchbaseOperations::Result CouchbaseOperations::SelectBucket(
     result.success = false;
     result.value = "";
     result.error_message = response.LastError();
+    result.status_code = response._status_code;
     return result;
   }
   // Successfully selected the bucket
   selected_bucket = bucket_name;
   result.success = true;
   result.value = "";
+  result.status_code = 0;
   return result;
 }
 
@@ -2166,71 +2377,73 @@ CouchbaseOperations::Result CouchbaseOperations::SelectBucket(
 
 CouchbaseOperations::Result CouchbaseOperations::Append(
     const string& key, const string& value, string collection_name) {
-  CouchbaseRequest request;
+  CouchbaseRequest request(&local_bucket_to_collection_manifest);
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if (request.AppendRequest(key, value, 0, 0, 0, collection_name, channel,
-                            server_address, selected_bucket) == false) {
-    LOG(ERROR) << "Failed to create Append request for key: " << key;
-    result.success = false;
-    result.value = "";
+  if(!sendRequest(CouchbaseOperations::APPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
+    if(result.status_code == 0x88) { 
+      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
+      // and the client have a stale copy of collection manifest.
+      // In this case, we need to refresh the collection manifest and retry the operation.
+      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
+        LOG(ERROR) << "Failed to refresh collection manifest";
+        result.success = false;
+        result.value = "";
+        result.error_message = "Failed to refresh collection manifest";
+        return result;
+      }
+      // check if the colelction id is available in the local cache now.
+      uint8_t coll_id = 0;  // default collection ID
+      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
+        LOG(ERROR) << "Collection name not found in local cache after manifest refresh: " << collection_name;
+        result.success = false;
+        result.value = "";
+        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
+        return result;
+      }
+      // only reachable if the collection manifest now has the collectionID
+      sendRequest(CouchbaseOperations::APPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
+      return result;
+    }
     return result;
   }
-  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
-  if (cntl.Failed()) {
-    LOG(ERROR) << "Failed to append to key: " << key
-               << " to Couchbase: " << cntl.ErrorText();
-    result.success = false;
-    result.value = "";
-    result.error_message = cntl.ErrorText();
-    return result;
-  }
-  uint64_t cas_value;
-  if (response.PopAppend(&cas_value) == false) {
-    result.success = false;
-    result.value = "";
-    result.error_message = response.LastError();
-    return result;
-  }
-  // Successfully appended the value
-  result.success = true;
-  result.value = "";
   return result;
 }
 
 CouchbaseOperations::Result CouchbaseOperations::Prepend(
     const string& key, const string& value, string collection_name) {
-  CouchbaseRequest request;
+  CouchbaseRequest request(&local_bucket_to_collection_manifest);
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if (request.PrependRequest(key, value, 0, 0, 0, collection_name, channel,
-                             server_address, selected_bucket) == false) {
-    LOG(ERROR) << "Failed to create Prepend request for key: " << key;
-    result.success = false;
-    result.value = "";
+  if(!sendRequest(CouchbaseOperations::PREPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
+    if(result.status_code == 0x88) { 
+      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
+      // and the client have a stale copy of collection manifest.
+      // In this case, we need to refresh the collection manifest and retry the operation.
+      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
+        LOG(ERROR) << "Failed to refresh collection manifest";
+        result.success = false;
+        result.value = "";
+        result.error_message = "Failed to refresh collection manifest";
+        return result;
+      }
+      // check if the colelction id is available in the local cache now.
+      uint8_t coll_id = 0;  // default collection ID
+      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
+        LOG(ERROR) << "Collection name not found in local cache after manifest refresh: " << collection_name;
+        result.success = false;
+        result.value = "";
+        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
+        return result;
+      }
+      // only reachable if the collection manifest now has the collectionID
+      sendRequest(CouchbaseOperations::PREPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
+      return result;
+    }
     return result;
   }
-  channel->CallMethod(NULL, &cntl, &request, &response, NULL);
-  if (cntl.Failed()) {
-    LOG(ERROR) << "Failed to prepend to key: " << key
-               << " to Couchbase: " << cntl.ErrorText();
-    result.success = false;
-    result.value = "";
-    result.error_message = cntl.ErrorText();
-    return result;
-  }
-  uint64_t cas_value;
-  if (response.PopPrepend(&cas_value) == false) {
-    result.success = false;
-    result.value = "";
-    result.error_message = response.LastError();
-    return result;
-  }
-  // Successfully prepended the value
-  result.success = true;
-  result.value = "";
   return result;
 }
 
@@ -2393,11 +2606,13 @@ CouchbaseOperations::Result CouchbaseOperations::Version() {
     result.success = false;
     result.value = "";
     result.error_message = response.LastError();
+    result.status_code = response._status_code;
     return result;
   }
   // Successfully got version
   result.success = true;
   result.value = version;
+  result.status_code = 0;
   return result;
 }
 
@@ -2417,7 +2632,7 @@ bool CouchbaseOperations::BeginPipeline() {
   return true;
 }
 
-bool CouchbaseOperations::PipelineRequest(pipeline_operation_type op_type,
+bool CouchbaseOperations::PipelineRequest(operation_type op_type,
                                           const string& key,
                                           const string& value,
                                           string collection_name) {
@@ -2514,7 +2729,7 @@ vector<CouchbaseOperations::Result> CouchbaseOperations::ExecutePipeline() {
   CouchbaseOperations::CouchbaseResponse* response = &pipeline_response;
   while (!pipeline_operations_queue.empty()) {
     CouchbaseOperations::Result result;
-    pipeline_operation_type op_type = pipeline_operations_queue.front();
+    operation_type op_type = pipeline_operations_queue.front();
     pipeline_operations_queue.pop();
     switch (op_type) {
       case GET: {
@@ -2525,6 +2740,7 @@ vector<CouchbaseOperations::Result> CouchbaseOperations::ExecutePipeline() {
           result.success = false;
           result.value = "";
           result.error_message = response->LastError();
+          result.status_code = response->_status_code;
         } else {
           result.success = true;
           result.value = value;
@@ -2537,6 +2753,7 @@ vector<CouchbaseOperations::Result> CouchbaseOperations::ExecutePipeline() {
           result.success = false;
           result.value = "";
           result.error_message = response->LastError();
+          result.status_code = response->_status_code;
         } else {
           result.success = true;
           result.value = "";
@@ -2549,6 +2766,7 @@ vector<CouchbaseOperations::Result> CouchbaseOperations::ExecutePipeline() {
           result.success = false;
           result.value = "";
           result.error_message = response->LastError();
+          result.status_code = response->_status_code;
         } else {
           result.success = true;
           result.value = "";
@@ -2562,6 +2780,7 @@ vector<CouchbaseOperations::Result> CouchbaseOperations::ExecutePipeline() {
           result.success = false;
           result.value = "";
           result.error_message = response->LastError();
+          result.status_code = response->_status_code;
         } else {
           result.success = true;
           result.value = "";
@@ -2575,6 +2794,7 @@ vector<CouchbaseOperations::Result> CouchbaseOperations::ExecutePipeline() {
           result.success = false;
           result.value = "";
           result.error_message = response->LastError();
+          result.status_code = response->_status_code;
         } else {
           result.success = true;
           result.value = "";
@@ -2587,6 +2807,7 @@ vector<CouchbaseOperations::Result> CouchbaseOperations::ExecutePipeline() {
           result.success = false;
           result.value = "";
           result.error_message = response->LastError();
+          result.status_code = response->_status_code;
         } else {
           result.success = true;
           result.value = "";

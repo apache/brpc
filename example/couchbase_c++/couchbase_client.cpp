@@ -27,7 +27,7 @@
 #define RED "\033[31m"
 #define RESET "\033[0m"
 
-DEFINE_string(server, "cb.dqklxewecglohzwb.cloud.couchbase.com:11207",
+DEFINE_string(server, "localhost:11210",
               "IP Address of server");
 
 int main() {
@@ -38,8 +38,8 @@ int main() {
             << RESET << std::endl;
 
   // Ask username and password for authentication
-  std::string username;
-  std::string password;
+  std::string username="Administrator";
+  std::string password="password";
   while (username.empty() || password.empty()) {
     std::cout << "Enter Couchbase username: ";
     std::cin >> username;
@@ -56,8 +56,9 @@ int main() {
   }
 
   // Use high-level authentication method
+  // when connecting to capella use couchbase_ops.Authenticate(username, password, FLAGS_server, true, "path/to/cert.txt");
   brpc::CouchbaseOperations::Result auth_result = couchbase_ops.Authenticate(
-      username, password, FLAGS_server, true, "couchbase-cloud-cert.txt");
+      username, password, FLAGS_server);
   if (!auth_result.success) {
     LOG(ERROR) << "Authentication failed: " << auth_result.error_message;
     return -1;
@@ -69,7 +70,7 @@ int main() {
       << RESET << std::endl;
 
   // Select bucket
-  std::string bucket_name;
+  std::string bucket_name="testing";
   while (bucket_name.empty()) {
     std::cout << "Enter Couchbase bucket name: ";
     std::cin >> bucket_name;
@@ -233,12 +234,12 @@ int main() {
   const std::string scope_name = "_default";           // default scope
   std::string collection_name = "testing_collection";  // target collection
   // enter collection name as user input
-  std::cout << "Enter collection name (default 'testing_collection'): ";
-  std::string user_input;
-  std::cin >> user_input;
-  if (!user_input.empty()) {
-    collection_name = user_input;
-  }
+  // std::cout << "Enter collection name (default 'testing_collection'): ";
+  // std::string user_input;
+  // std::cin >> user_input;
+  // if (!user_input.empty()) {
+  //   collection_name = user_input;
+  // }
   // ------------------------------------------------------------------
   // Collection-scoped CRUD operations (only if collection id was retrieved)
   // ------------------------------------------------------------------
@@ -254,7 +255,8 @@ int main() {
               << "Collection ADD failed: " << coll_add_result.error_message
               << RESET << std::endl;
   }
-
+  // std::cout << "Delete the collection.";
+  // std::cin >> collection_name;
   // 2. GET from collection using high-level method
   brpc::CouchbaseOperations::Result coll_get_result =
       couchbase_ops.Get(coll_key, collection_name);
