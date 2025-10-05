@@ -19,12 +19,10 @@
 #include <bthread/bthread.h>
 #include <butil/logging.h>
 #include <butil/string_printf.h>
-#include <butil/time.h>
-#include <gflags/gflags.h>
-
 #include <iostream>
 #include <string>
 #include <vector>
+#include <atomic>
 
 // ANSI color codes
 #define GREEN "\033[32m"
@@ -34,166 +32,270 @@
 #define CYAN "\033[36m"
 #define RESET "\033[0m"
 
-DEFINE_string(server, "127.0.0.1:11210", "IP Address of server");
-DEFINE_string(connection_type, "single", "Connection type");
-DEFINE_int32(operations_per_thread, 50,
-             "Number of operations each thread should perform");
-DEFINE_int32(sleep_ms, 100, "Sleep time between operations in milliseconds");
-
-const int NUM_THREADS = 16;
-const int THREADS_PER_BUCKET = 4;
+const int NUM_THREADS = 20;
+const int THREADS_PER_BUCKET = 5;
 
 // Simple global config
 struct {
-  std::string username;
-  std::string password;
-  std::vector<std::string> bucket_names;
-  std::vector<std::string> collection_names;
+  std::string username = "Administrator";
+  std::string password = "password";
+  std::vector<std::string> bucket_names = {"testing0", "testing1", "testing2", "testing3"};
 } g_config;
 
-// Thread arguments
+// Simple thread statistics
+struct ThreadStats {
+  std::atomic<int> operations_attempted{0};
+  std::atomic<int> operations_successful{0};
+  std::atomic<int> operations_failed{0};
+  
+  void reset() {
+    operations_attempted = 0;
+    operations_successful = 0;
+    operations_failed = 0;
+  }
+};
+
+// Global statistics
+struct GlobalStats {
+  ThreadStats total;
+  std::vector<ThreadStats> per_thread_stats;
+  
+  GlobalStats() : per_thread_stats(NUM_THREADS) {}
+  
+  void aggregate_stats() {
+    total.reset();
+    for (const auto& stats : per_thread_stats) {
+      total.operations_attempted += stats.operations_attempted.load();
+      total.operations_successful += stats.operations_successful.load();
+      total.operations_failed += stats.operations_failed.load();
+    }
+  }
+} g_stats;
+
+// Simple thread arguments
 struct ThreadArgs {
   int thread_id;
   int bucket_id;
   std::string bucket_name;
+  ThreadStats* stats;
 };
 
-// Simple operation function using high-level API
-bool perform_operation(brpc::CouchbaseOperations& couchbase_ops,
-                       const std::string& key,
-                       const std::string& collection = "_default") {
-  // Simple ADD operation
-  std::string value = butil::string_printf(
-      R"({"thread_id": %llu, "timestamp": %lld})",
-      (unsigned long long)bthread_self(), butil::gettimeofday_us());
-
-  brpc::CouchbaseOperations::Result result =
-      couchbase_ops.Add(key, value, collection);
-  return result.success;
+// Simple CRUD operations on default collection
+void perform_crud_operations_default(brpc::CouchbaseOperations& couchbase_ops,
+                                    const std::string& base_key,
+                                    ThreadStats* stats) {
+  std::string key = base_key + "_default";
+  std::string value = butil::string_printf(R"({"thread_id": %d, "collection": "default"})", 
+                                          (int)bthread_self());
+  
+  stats->operations_attempted++;
+  
+  // UPSERT
+  brpc::CouchbaseOperations::Result result = couchbase_ops.Upsert(key, value);
+  if (result.success) {
+    stats->operations_successful++;
+  } else {
+    stats->operations_failed++;
+    return;
+  }
+  
+  stats->operations_attempted++;
+  
+  // GET
+  result = couchbase_ops.Get(key);
+  if (result.success) {
+    stats->operations_successful++;
+  } else {
+    stats->operations_failed++;
+    return;
+  }
+  
+  stats->operations_attempted++;
+  
+  // DELETE
+  result = couchbase_ops.Delete(key);
+  if (result.success) {
+    stats->operations_successful++;
+  } else {
+    stats->operations_failed++;
+  }
 }
 
-// Thread worker function using high-level API
+// Simple CRUD operations on col1 collection
+void perform_crud_operations_col1(brpc::CouchbaseOperations& couchbase_ops,
+                                 const std::string& base_key,
+                                 ThreadStats* stats) {
+  std::string key = base_key + "_col1";
+  std::string value = butil::string_printf(R"({"thread_id": %d, "collection": "col1"})", 
+                                          (int)bthread_self());
+  
+  stats->operations_attempted++;
+  
+  // UPSERT
+  brpc::CouchbaseOperations::Result result = couchbase_ops.Upsert(key, value, "col1");
+  if (result.success) {
+    stats->operations_successful++;
+  } else {
+    stats->operations_failed++;
+    return;
+  }
+  
+  stats->operations_attempted++;
+  
+  // GET
+  result = couchbase_ops.Get(key, "col1");
+  if (result.success) {
+    stats->operations_successful++;
+  } else {
+    stats->operations_failed++;
+    return;
+  }
+  
+  stats->operations_attempted++;
+  
+  // DELETE
+  result = couchbase_ops.Delete(key, "col1");
+  if (result.success) {
+    stats->operations_successful++;
+  } else {
+    stats->operations_failed++;
+  }
+}
+
+// Simple thread worker function
 void* thread_worker(void* arg) {
   ThreadArgs* args = static_cast<ThreadArgs*>(arg);
 
-  LOG(INFO) << "Thread " << args->thread_id << " starting on bucket "
-            << args->bucket_name;
+  std::cout << CYAN << "Thread " << args->thread_id << " starting on bucket "
+            << args->bucket_name << RESET << std::endl;
 
   // Create CouchbaseOperations instance for this thread
   brpc::CouchbaseOperations couchbase_ops;
 
-  // Authentication using high-level method
+  // Authentication
   brpc::CouchbaseOperations::Result auth_result = couchbase_ops.Authenticate(
-      g_config.username, g_config.password, FLAGS_server, false, "");
+      g_config.username, g_config.password, "127.0.0.1:11210", false, "");
+  
   if (!auth_result.success) {
-    LOG(ERROR) << "Thread " << args->thread_id << ": Auth failed - "
-               << auth_result.error_message;
+    std::cout << RED << "Thread " << args->thread_id << ": Auth failed - " 
+              << auth_result.error_message << RESET << std::endl;
     return NULL;
   }
 
-  // Select bucket using high-level method
-  brpc::CouchbaseOperations::Result bucket_result =
-      couchbase_ops.SelectBucket(args->bucket_name);
+  // Select bucket
+  brpc::CouchbaseOperations::Result bucket_result = couchbase_ops.SelectBucket(args->bucket_name);
+  
   if (!bucket_result.success) {
-    LOG(ERROR) << "Thread " << args->thread_id << ": Bucket selection failed - "
-               << bucket_result.error_message;
+    std::cout << RED << "Thread " << args->thread_id << ": Bucket selection failed - " 
+              << bucket_result.error_message << RESET << std::endl;
     return NULL;
   }
 
-  LOG(INFO) << "Thread " << args->thread_id << " connected to bucket "
-            << args->bucket_name;
+  std::cout << GREEN << "Thread " << args->thread_id << " connected to bucket "
+            << args->bucket_name << RESET << std::endl;
 
-  // Perform operations
-  int success_count = 0;
-  for (int i = 0; i < FLAGS_operations_per_thread; ++i) {
-    std::string key =
-        butil::string_printf("thread_%d_op_%d", args->thread_id, i);
-
-    // Choose collection if available, otherwise use default
-    std::string collection = "_default";
-    if (!g_config.collection_names.empty()) {
-      collection =
-          g_config.collection_names[i % g_config.collection_names.size()];
-    }
-
-    if (perform_operation(couchbase_ops, key, collection)) {
-      success_count++;
-    }
-
-    if (FLAGS_sleep_ms > 0) {
-      bthread_usleep(FLAGS_sleep_ms * 1000);
-    }
+  // Perform operations - 10 times on default collection, 10 times on col1 collection
+  for (int i = 0; i < 10; ++i) {
+    std::string base_key = butil::string_printf("thread_%d_op_%d", args->thread_id, i);
+    
+    // CRUD operations on default collection
+    perform_crud_operations_default(couchbase_ops, base_key, args->stats);
+    
+    // CRUD operations on col1 collection
+    perform_crud_operations_col1(couchbase_ops, base_key, args->stats);
+    
+    // Small delay between operations
+    bthread_usleep(10000); // 10ms
   }
 
-  LOG(INFO) << "Thread " << args->thread_id << " completed: " << success_count
-            << "/" << FLAGS_operations_per_thread << " operations successful";
+  int successful = args->stats->operations_successful.load();
+  int attempted = args->stats->operations_attempted.load();
+  int failed = args->stats->operations_failed.load();
+  
+  std::cout << GREEN << "Thread " << args->thread_id << " completed: "
+            << successful << "/" << attempted << " operations successful, "
+            << failed << " failed" << RESET << std::endl;
 
   return NULL;
 }
 
-// Simple config function
-void get_config() {
-  std::cout << CYAN << "=== Simple Multithreaded Couchbase Client ===" << RESET
-            << std::endl;
-
-  std::cout << "Username: ";
-  std::cin >> g_config.username;
-  std::cout << "Password: ";
-  std::cin >> g_config.password;
-
-  std::cout << "Enter 4 bucket names:" << std::endl;
-  for (int i = 0; i < 4; ++i) {
-    std::string bucket;
-    std::cout << "Bucket " << (i + 1) << ": ";
-    std::cin >> bucket;
-    g_config.bucket_names.push_back(bucket);
+// Print simple statistics
+void print_stats() {
+  g_stats.aggregate_stats();
+  
+  std::cout << std::endl;
+  std::cout << CYAN << "=== TEST RESULTS ===" << RESET << std::endl;
+  
+  int total_attempted = g_stats.total.operations_attempted.load();
+  int total_successful = g_stats.total.operations_successful.load();
+  int total_failed = g_stats.total.operations_failed.load();
+  
+  double success_rate = total_attempted > 0 ? (double)total_successful / total_attempted * 100.0 : 0.0;
+  
+  std::cout << GREEN << "Overall Performance:" << RESET << std::endl;
+  std::cout << "  Total Operations: " << total_attempted << std::endl;
+  std::cout << "  Successful: " << total_successful << " (" << success_rate << "%)" << std::endl;
+  std::cout << "  Failed: " << total_failed << std::endl;
+  std::cout << std::endl;
+  
+  // Per-thread breakdown
+  std::cout << YELLOW << "Per-Thread Performance:" << RESET << std::endl;
+  for (int i = 0; i < NUM_THREADS; ++i) {
+    const auto& stats = g_stats.per_thread_stats[i];
+    int attempted = stats.operations_attempted.load();
+    int successful = stats.operations_successful.load();
+    int failed = stats.operations_failed.load();
+    
+    std::cout << "  Thread " << i << ": " << attempted << " ops, " 
+              << successful << " success, " << failed << " failed" << std::endl;
   }
-
-  int num_collections;
-  std::cout << "Number of collections (0 for none): ";
-  std::cin >> num_collections;
-
-  for (int i = 0; i < num_collections; ++i) {
-    std::string collection;
-    std::cout << "Collection " << (i + 1) << ": ";
-    std::cin >> collection;
-    g_config.collection_names.push_back(collection);
-  }
+  std::cout << std::endl;
 }
 
 int main(int argc, char* argv[]) {
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  std::cout << GREEN << "Starting Simple Multithreaded Couchbase Client" << RESET << std::endl;
+  std::cout << YELLOW << "20 threads: 5 per bucket (testing0, testing1, testing2, testing3)" << RESET << std::endl;
+  std::cout << BLUE << "Each thread performs CRUD operations on default collection and col1 collection" << RESET << std::endl;
 
-  std::cout << GREEN << "Starting 16 bthreads (4 per bucket)" << RESET
-            << std::endl;
-
-  get_config();
-
-  // Create bthreads
+  // Create threads and arguments
   std::vector<bthread_t> threads(NUM_THREADS);
   std::vector<ThreadArgs> args(NUM_THREADS);
 
+  // Assign threads to buckets
   for (int i = 0; i < NUM_THREADS; ++i) {
     args[i].thread_id = i;
     args[i].bucket_id = i / THREADS_PER_BUCKET;
     args[i].bucket_name = g_config.bucket_names[args[i].bucket_id];
-
-    if (bthread_start_background(&threads[i], NULL, thread_worker, &args[i]) !=
-        0) {
-      LOG(ERROR) << "Failed to create thread " << i;
-      return -1;
-    }
-
-    bthread_usleep(50000);  // 50ms delay between thread starts
+    args[i].stats = &g_stats.per_thread_stats[i];
   }
 
-  std::cout << "All 16 threads started!" << std::endl;
+  // Print thread assignments
+  std::cout << "Thread Assignments:" << RESET << std::endl;
+  for (int i = 0; i < NUM_THREADS; ++i) {
+    std::cout << "Thread " << i << " -> Bucket: " << args[i].bucket_name << std::endl;
+  }
+  std::cout << std::endl;
 
-  // Wait for all threads
+  // Start all threads
+  for (int i = 0; i < NUM_THREADS; ++i) {
+    if (bthread_start_background(&threads[i], NULL, thread_worker, &args[i]) != 0) {
+      std::cout << RED << "Failed to create thread " << i << RESET << std::endl;
+      return -1;
+    }
+  }
+
+  std::cout << GREEN << "All 20 threads started!" << RESET << std::endl;
+
+  // Wait for all threads to complete
+  std::cout << YELLOW << "Waiting for all threads to complete..." << RESET << std::endl;
   for (int i = 0; i < NUM_THREADS; ++i) {
     bthread_join(threads[i], NULL);
   }
 
   std::cout << GREEN << "All threads completed!" << RESET << std::endl;
+
+  // Print statistics
+  print_stats();
+
   return 0;
 }

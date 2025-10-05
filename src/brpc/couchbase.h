@@ -199,7 +199,7 @@ class CouchbaseOperations {
   bool IsPipelineActive() const { return pipeline_active; }
   size_t GetPipelineSize() const { return pipeline_operations_queue.size(); }
 
-  CouchbaseOperations() : pipeline_active(false) {}
+  CouchbaseOperations() : pipeline_request_couchbase_req(&local_bucket_to_collection_manifest), pipeline_active(false) {}
   ~CouchbaseOperations() {}
   bool get_local_cached_collection_id(const string& bucket, const string& scope,
                                        const string& collection, uint8_t* coll_id);
@@ -233,9 +233,12 @@ class CouchbaseOperations {
                const butil::StringPiece& value, uint32_t flags,
                uint32_t exptime, uint64_t cas_value, uint8_t coll_id = 0);
     uint32_t hash_crc32(const char* key, size_t key_length);
-    unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> *local_collection_manifest_cache;
+
    public:
-    CouchbaseRequest(unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> *local_cache_reference) : NonreflectableMessage<CouchbaseRequest>() {
+
+   unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> *local_collection_manifest_cache;
+   
+   CouchbaseRequest(unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> *local_cache_reference) : NonreflectableMessage<CouchbaseRequest>() {
       metadata_tracking = &common_metadata_tracking;
       local_collection_manifest_cache = local_cache_reference;
       SharedCtor();
@@ -519,8 +522,8 @@ class CouchbaseOperations {
 
   // Pipeline management - per instance
   queue<operation_type> pipeline_operations_queue;
-  CouchbaseRequest pipeline_request;
-  CouchbaseResponse pipeline_response;
+  CouchbaseRequest pipeline_request_couchbase_req;
+  CouchbaseResponse pipeline_response_couchbase_resp;
   bool pipeline_active;
 };
 
