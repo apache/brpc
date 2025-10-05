@@ -227,7 +227,7 @@ class CouchbaseOperations {
     mutable int _cached_size_;
     void sharedCtor();
     void sharedDtor();
-    void setCachedSize(int size) const PB_425_OVERRIDE;
+    void setCachedSize(int size) const;
     bool getOrDelete(uint8_t command, const butil::StringPiece& key,
                      uint8_t coll_id = 0);
     bool counter(uint8_t command, const butil::StringPiece& key, uint64_t delta,
@@ -364,19 +364,11 @@ class CouchbaseOperations {
     int pipelinedCount() const { return _pipelined_count; }
 
     butil::IOBuf& rawBuffer() { return _buf; }
-    const butil::IOBuf& rawBuffer() const { return _buf; }
+    const butil::IOBuf& rawBuffer() const { return _buf; } // used in couchbase_protocol serialization.
     void Swap(CouchbaseRequest* other);
     void MergeFrom(const CouchbaseRequest& from) override;
     void Clear() override;
     bool IsInitialized() const PB_527_OVERRIDE;
-    size_t ByteSizeLong() const override;
-    bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
-    void SerializeWithCachedSizes(::google::protobuf::io::CodedOutputStream*
-                                      output) const PB_310_OVERRIDE;
-    int GetCachedSize() const PB_425_OVERRIDE { return _cached_size_; }
-
-    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
   };
 
   class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
@@ -390,7 +382,7 @@ class CouchbaseOperations {
 
     void sharedCtor();
     void sharedDtor();
-    void setCachedSize(int size) const PB_425_OVERRIDE;
+    void setCachedSize(int size) const;
 
    public:
     uint16_t _status_code;
@@ -476,17 +468,7 @@ class CouchbaseOperations {
     void Clear() override;
     bool IsInitialized() const PB_527_OVERRIDE;
 
-    size_t ByteSizeLong() const override;
-    bool MergePartialFromCodedStream(
-        ::google::protobuf::io::CodedInputStream* input) PB_310_OVERRIDE;
-    void SerializeWithCachedSizes(::google::protobuf::io::CodedOutputStream*
-                                      output) const PB_310_OVERRIDE;
-    int GetCachedSize() const PB_425_OVERRIDE { return _cached_size_; }
-
-    ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
-
     butil::IOBuf& rawBuffer() { return _buf; }
-    const butil::IOBuf& rawBuffer() const { return _buf; }
     static const char* statusStr(Status);
 
     // Helper method to format error messages with status codes

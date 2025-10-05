@@ -498,61 +498,6 @@ bool CouchbaseOperations::CouchbaseRequest::authenticateRequest(
   return true;
 }
 
-bool CouchbaseOperations::CouchbaseRequest::MergePartialFromCodedStream(
-    ::google::protobuf::io::CodedInputStream* input) {
-  DEBUG_PRINT("You're not supposed to parse a CouchbaseRequest");
-
-  // simple approach just making it work.
-  butil::IOBuf tmp;
-  const void* data = NULL;
-  int size = 0;
-  while (input->GetDirectBufferPointer(&data, &size)) {
-    tmp.append(data, size);
-    input->Skip(size);
-  }
-  const butil::IOBuf saved = tmp;
-  int count = 0;
-  for (; !tmp.empty(); ++count) {
-    char aux_buf[sizeof(policy::CouchbaseRequestHeader)];
-    const policy::CouchbaseRequestHeader* header =
-        (const policy::CouchbaseRequestHeader*)tmp.fetch(aux_buf,
-                                                         sizeof(aux_buf));
-    if (header == NULL) {
-      return false;
-    }
-    if (header->magic != (uint8_t)policy::CB_MAGIC_REQUEST) {
-      return false;
-    }
-    uint32_t total_body_length = butil::NetToHost32(header->total_body_length);
-    if (tmp.size() < sizeof(*header) + total_body_length) {
-      return false;
-    }
-    tmp.pop_front(sizeof(*header) + total_body_length);
-  }
-  _buf.append(saved);
-  _pipelined_count += count;
-  return true;
-}
-
-void CouchbaseOperations::CouchbaseRequest::SerializeWithCachedSizes(
-    ::google::protobuf::io::CodedOutputStream* output) const {
-  DEBUG_PRINT("You're not supposed to serialize a CouchbaseRequest");
-
-  // simple approach just making it work.
-  butil::IOBufAsZeroCopyInputStream wrapper(_buf);
-  const void* data = NULL;
-  int size = 0;
-  while (wrapper.Next(&data, &size)) {
-    output->WriteRaw(data, size);
-  }
-}
-
-size_t CouchbaseOperations::CouchbaseRequest::ByteSizeLong() const {
-  int total_size = static_cast<int>(_buf.size());
-  _cached_size_ = total_size;
-  return total_size;
-}
-
 void CouchbaseOperations::CouchbaseRequest::MergeFrom(
     const CouchbaseRequest& from) {
   CHECK_NE(&from, this);
@@ -572,14 +517,6 @@ void CouchbaseOperations::CouchbaseRequest::Swap(CouchbaseRequest* other) {
   }
 }
 
-::google::protobuf::Metadata
-CouchbaseOperations::CouchbaseRequest::GetMetadata() const {
-  ::google::protobuf::Metadata metadata{};
-  metadata.descriptor = CouchbaseRequestBase::descriptor();
-  metadata.reflection = nullptr;
-  return metadata;
-}
-
 void CouchbaseOperations::CouchbaseResponse::sharedCtor() { _cached_size_ = 0; }
 
 void CouchbaseOperations::CouchbaseResponse::sharedDtor() {}
@@ -590,38 +527,6 @@ void CouchbaseOperations::CouchbaseResponse::setCachedSize(int size) const {
 
 void CouchbaseOperations::CouchbaseResponse::Clear() {}
 
-bool CouchbaseOperations::CouchbaseResponse::MergePartialFromCodedStream(
-    ::google::protobuf::io::CodedInputStream* input) {
-  DEBUG_PRINT("You're not supposed to parse a CouchbaseResponse");
-
-  // simple approach just making it work.
-  const void* data = NULL;
-  int size = 0;
-  while (input->GetDirectBufferPointer(&data, &size)) {
-    _buf.append(data, size);
-    input->Skip(size);
-  }
-  return true;
-}
-
-void CouchbaseOperations::CouchbaseResponse::SerializeWithCachedSizes(
-    ::google::protobuf::io::CodedOutputStream* output) const {
-  DEBUG_PRINT("You're not supposed to serialize a CouchbaseResponse");
-
-  // simple approach just making it work.
-  butil::IOBufAsZeroCopyInputStream wrapper(_buf);
-  const void* data = NULL;
-  int size = 0;
-  while (wrapper.Next(&data, &size)) {
-    output->WriteRaw(data, size);
-  }
-}
-
-size_t CouchbaseOperations::CouchbaseResponse::ByteSizeLong() const {
-  int total_size = static_cast<int>(_buf.size());
-  _cached_size_ = total_size;
-  return total_size;
-}
 
 void CouchbaseOperations::CouchbaseResponse::MergeFrom(
     const CouchbaseResponse& from) {
@@ -639,14 +544,6 @@ void CouchbaseOperations::CouchbaseResponse::swap(CouchbaseResponse* other) {
     _buf.swap(other->_buf);
     std::swap(_cached_size_, other->_cached_size_);
   }
-}
-
-::google::protobuf::Metadata
-CouchbaseOperations::CouchbaseResponse::GetMetadata() const {
-  ::google::protobuf::Metadata metadata{};
-  metadata.descriptor = CouchbaseResponseBase::descriptor();
-  metadata.reflection = nullptr;
-  return metadata;
 }
 
 // ===================================================================
@@ -796,7 +693,7 @@ bool CouchbaseOperations::CouchbaseRequest::getOrDelete(
       policy::CB_MAGIC_REQUEST, command,
       butil::HostToNet16(
           key.size() +
-          1),  // collection id is part of key, so adding it in the key length
+          1),  // Key
       0,       // extras length
       policy::CB_BINARY_RAW_BYTES,  // data type
       butil::HostToNet16(VBucket_id),
