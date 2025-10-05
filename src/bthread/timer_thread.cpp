@@ -19,6 +19,7 @@
 
 
 #include <queue>                           // heap functions
+#include <gflags/gflags.h>
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h"   // fmix64
@@ -30,6 +31,8 @@
 #include "bthread/log.h"
 
 namespace bthread {
+
+DEFINE_uint32(brpc_timer_num_buckets, 13, "brpc timer num buckets");
 
 // Defined in task_control.cpp
 void run_worker_startfn();
@@ -469,6 +472,7 @@ static void init_global_timer_thread() {
     }
     TimerThreadOptions options;
     options.bvar_prefix = "bthread_timer";
+    options.num_buckets = FLAGS_brpc_timer_num_buckets;
     const int rc = g_timer_thread->start(&options);
     if (rc != 0) {
         LOG(FATAL) << "Fail to start timer_thread, " << berror(rc);
