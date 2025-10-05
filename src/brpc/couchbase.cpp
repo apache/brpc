@@ -2046,11 +2046,11 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key,
       return false;
   }
   if(!request_created){
-    DEBUG_PRINT("Failed to create request for operation type: " << op_type);
+    DEBUG_PRINT("CollectionID does not exist." << op_type);
     result->success = false;
     result->value = "";
-    result->error_message = "Failed to create request for operation type: " + std::to_string(op_type);
-    result->status_code = 0x88; // using 0x88 as the only possible failure code that indicates either the collectionID is not found or the there is some issue with the collection manifest either locally or on server
+    result->error_message = "CollectionID does not exist." + std::to_string(op_type);
+    result->status_code = 0x88; // using 0x88 as the only possible failure code that indicates the collectionID is not found
     return false;
   }
   channel->CallMethod(NULL, &cntl, request, response, NULL);
@@ -2070,6 +2070,54 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key,
       result->value = "";
       result->error_message = response->LastError();
       result->status_code = response->_status_code;
+      if(result->status_code == 0x88) { 
+        DEBUG_PRINT("CollectionID does not exist on server, need to refresh collection manifest from server");
+        // could have called sendRequest recursively, 
+        // but if somehow the collectionID keeps on chaning, it would lead to infinite recursion and stack overflow in the end.
+        // so we retry once here instead and return failure if it still fails.
+
+        // (0x88) unknown collection, this means that the collection_manifest has been updated on the server side.
+        // The collectionID present in the local cache/global cache is no longer valid.
+        // This can happen if a collection is deleted and recreated with the same name.
+        if (!request->RefreshCollectionManifest(channel, server, bucket)) {
+          DEBUG_PRINT("Failed to refresh collection manifest");
+          result->error_message = "Failed to refresh collection manifest";
+        } else {
+          DEBUG_PRINT("Successfully refreshed collection manifest");
+          //retry the request;
+          request->Clear();
+          response->Clear();
+          cntl.Reset();
+          if(!request->GetRequest(key, collection_name, channel, server, bucket)){
+            DEBUG_PRINT("CollectionID does not exist.");
+            result->success = false;
+            result->value = "";
+            result->error_message = "CollectionID does not exist.";
+            result->status_code = 0x88; // using 0x88 as the only possible failure code that indicates the collectionID is not found
+            return false;
+          }
+          channel->CallMethod(NULL, &cntl, request, response, NULL);
+          if (cntl.Failed()) {
+            DEBUG_PRINT("Failed to perform operation on key: " << key << " to Couchbase: " << cntl.ErrorText());
+            result->success = false;
+            result->value = "";
+            result->error_message = cntl.ErrorText();
+            return false; // return on failure
+          }
+          if (response->PopGet(&value, &flags, &cas) == false) {
+            result->success = false;
+            result->value = "";
+            result->error_message = response->LastError();
+            result->status_code = response->_status_code;
+            return false; // return on failure
+          }
+          // Successfully got the value after retry
+          result->success = true;
+          result->value = value;
+          result->status_code = 0;
+          return true;
+        }
+      }
       return false;
     }
     // Successfully got the value
@@ -2079,19 +2127,130 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key,
     return true;
   }
   else{
-    // For other operations, just check if it was successful
-    if (response->LastError().empty() && response->_status_code == 0) {
-      result->success = true;
-      result->value = "";
-      result->status_code = 0;
-      return true;
-    } else {
+    uint64_t cas_value = 0;
+    //pop response on the basis of operation type
+    bool pop_success = false;
+    switch(op_type){
+      case CouchbaseOperations::UPSERT:
+        pop_success = response->PopUpsert(&cas_value);
+        break;
+      case CouchbaseOperations::ADD:
+        pop_success = response->PopAdd(&cas_value);
+        break;
+      case CouchbaseOperations::APPEND:
+        pop_success = response->PopAppend(&cas_value);
+        break;
+      case CouchbaseOperations::PREPEND:
+        pop_success = response->PopPrepend(&cas_value);
+        break;
+      case CouchbaseOperations::DELETE:
+        pop_success = response->PopDelete();
+        break;
+      default:
+        DEBUG_PRINT("Unsupported operation type in response pop");
+        result->success = false;
+        result->value = "";
+        result->error_message = "Unsupported operation type in response pop";
+        return false;
+    }
+    if(!pop_success){
       result->success = false;
       result->value = "";
       result->error_message = response->LastError();
       result->status_code = response->_status_code;
+      if(result->status_code == 0x88) { 
+        // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
+        // and the client have a stale copy of collection manifest.
+        // In this case, we need to refresh the collection manifest and retry the operation.
+        if (!request->RefreshCollectionManifest(channel, server, bucket)) {
+          DEBUG_PRINT("Failed to refresh collection manifest");
+          result->error_message = "Failed to refresh collection manifest";
+          return false;
+        }
+        // could have called sendRequest recursively, 
+        // but if somehow the collectionID keeps on chaning, it would lead to infinite recursion and stack overflow in the end.
+        // so we retry once here instead and return failure if it still fails.
+        DEBUG_PRINT("Successfully refreshed collection manifest");
+        //retry the request;
+        request->Clear();
+        response->Clear();
+        switch(op_type){
+          case CouchbaseOperations::UPSERT:
+            request->UpsertRequest(key, value, 0, 0, 0, collection_name, channel, server, bucket);
+            break;
+          case CouchbaseOperations::ADD:
+            request->AddRequest(key, value, 0, 0, 0, collection_name, channel, server, bucket);
+            break;
+          case CouchbaseOperations::APPEND:
+            request->AppendRequest(key, value, 0, 0, 0, collection_name, channel, server, bucket);
+            break;
+          case CouchbaseOperations::PREPEND:
+            request->PrependRequest(key, value, 0, 0, 0, collection_name, channel, server, bucket);
+            break;
+          case CouchbaseOperations::DELETE:
+            request->DeleteRequest(key, collection_name, channel, server, bucket);
+            break;
+          default:
+            DEBUG_PRINT("Unsupported operation type in response pop");
+            result->success = false;
+            result->value = "";
+            result->error_message = "Unsupported operation type in response pop";
+            return false;
+        }
+        channel->CallMethod(NULL, &cntl, request, response, NULL);
+        if (cntl.Failed()) {
+          DEBUG_PRINT("Failed to perform operation on key: " << key << " to Couchbase: " << cntl.ErrorText());
+          result->success = false;
+          result->value = "";
+          result->error_message = cntl.ErrorText();
+          return false; // return on failure
+        }
+        pop_success = false;
+        switch(op_type){
+          case CouchbaseOperations::UPSERT:
+            pop_success = response->PopUpsert(&cas_value);
+            break;
+          case CouchbaseOperations::ADD:
+            pop_success = response->PopAdd(&cas_value);
+            break;
+          case CouchbaseOperations::APPEND:
+            pop_success = response->PopAppend(&cas_value);
+            break;
+          case CouchbaseOperations::PREPEND:
+            pop_success = response->PopPrepend(&cas_value);
+            break;
+          case CouchbaseOperations::DELETE:
+            pop_success = response->PopDelete();
+            break;
+          default:
+            DEBUG_PRINT("Unsupported operation type in response pop");
+            result->success = false;
+            result->value = "";
+            result->error_message = "Unsupported operation type in response pop";
+            return false;
+        }
+        if(!pop_success){
+          result->success = false;
+          result->value = "";
+          result->error_message = response->LastError();
+          result->status_code = response->_status_code;
+          return false; // return on failure
+        }
+        // Successfully performed the operation after retry
+        result->success = true;
+        result->value = "";
+        result->status_code = 0;
+        return true;
+      }
       return false;
     }
+    // Successfully performed the operation
+    // Note: For operations other than GET, we don't have a value to return
+    // so we return empty string for value.
+    result->success = true;
+    result->value = "";
+    result->status_code = 0;
+    return true;
   }
 }
 CouchbaseOperations::Result CouchbaseOperations::Get(const string& key,
@@ -2102,33 +2261,7 @@ CouchbaseOperations::Result CouchbaseOperations::Get(const string& key,
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if(!sendRequest(CouchbaseOperations::GET, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
-    if(result.status_code == 0x88) { 
-      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
-      // and the client have a stale copy of collection manifest.
-      // In this case, we need to refresh the collection manifest and retry the operation.
-      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
-        DEBUG_PRINT("Either the collection name " << collection_name << " is invalid and doesn't exist or the collection manifest is invalid.");
-        result.success = false;
-        result.value = "";
-        result.error_message =  "Either the collection name " + collection_name + " is invalid and doesn't exist or the collection manifest is invalid.";
-        return result;
-      }
-      // check if the collection id is available in the local cache now.
-      uint8_t coll_id = 0;  // default collection ID
-      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
-        DEBUG_PRINT("Collection name not found in local cache after manifest refresh: " << collection_name);
-        result.success = false;
-        result.value = "";
-        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
-        return result;
-      }
-      // only reachable if the collection manifest now has the collectionID
-      sendRequest(CouchbaseOperations::GET, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response);
-      return result;
-    }
-    return result;
-  }
+  sendRequest(CouchbaseOperations::GET, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response);
   return result;
 }
 
@@ -2170,33 +2303,7 @@ CouchbaseOperations::Result CouchbaseOperations::Upsert(
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if(!sendRequest(CouchbaseOperations::UPSERT, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
-    if(result.status_code == 0x88) { 
-      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
-      // and the client have a stale copy of collection manifest.
-      // In this case, we need to refresh the collection manifest and retry the operation.
-      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
-        DEBUG_PRINT("Failed to refresh collection manifest");
-        result.success = false;
-        result.value = "";
-        result.error_message = "Failed to refresh collection manifest";
-        return result;
-      }
-      // check if the colelction id is available in the local cache now.
-      uint8_t coll_id = 0;  // default collection ID
-      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
-        DEBUG_PRINT("Collection name not found in local cache after manifest refresh: " << collection_name);
-        result.success = false;
-        result.value = "";
-        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
-        return result;
-      }
-      // only reachable if the collection manifest now has the collectionID
-      sendRequest(CouchbaseOperations::UPSERT, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
-      return result;
-    }
-    return result;
-  }
+  sendRequest(CouchbaseOperations::UPSERT, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
   return result;
 }
 
@@ -2207,30 +2314,6 @@ CouchbaseOperations::Result CouchbaseOperations::Delete(
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
   if(!sendRequest(CouchbaseOperations::DELETE, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
-    if(result.status_code == 0x88) { 
-      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
-      // and the client have a stale copy of collection manifest.
-      // In this case, we need to refresh the collection manifest and retry the operation.
-      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
-        DEBUG_PRINT("Failed to refresh collection manifest");
-        result.success = false;
-        result.value = "";
-        result.error_message = "Failed to refresh collection manifest";
-        return result;
-      }
-      // check if the colelction id is available in the local cache now.
-      uint8_t coll_id = 0;  // default collection ID
-      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
-        DEBUG_PRINT("Collection name not found in local cache after manifest refresh: " << collection_name);
-        result.success = false;
-        result.value = "";
-        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
-        return result;
-      }
-      // only reachable if the collection manifest now has the collectionID
-      sendRequest(CouchbaseOperations::DELETE, key, "", collection_name, &result, channel, server_address, selected_bucket, &request, &response);
-      return result;
-    }
     return result;
   }
   return result;
@@ -2243,33 +2326,7 @@ CouchbaseOperations::Result CouchbaseOperations::Add(const string& key,
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if(!sendRequest(CouchbaseOperations::ADD, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
-    if(result.status_code == 0x88) { 
-      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
-      // and the client have a stale copy of collection manifest.
-      // In this case, we need to refresh the collection manifest and retry the operation.
-      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
-        DEBUG_PRINT("Failed to refresh collection manifest");
-        result.success = false;
-        result.value = "";
-        result.error_message = "Failed to refresh collection manifest";
-        return result;
-      }
-      // check if the colelction id is available in the local cache now.
-      uint8_t coll_id = 0;  // default collection ID
-      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
-        DEBUG_PRINT("Collection name not found in local cache after manifest refresh: " << collection_name);
-        result.success = false;
-        result.value = "";
-        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
-        return result;
-      }
-      // only reachable if the collection manifest now has the collectionID
-      sendRequest(CouchbaseOperations::ADD, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
-      return result;
-    }
-    return result;
-  }
+  sendRequest(CouchbaseOperations::ADD, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
   return result;
 }
 
@@ -2429,33 +2486,7 @@ CouchbaseOperations::Result CouchbaseOperations::Append(
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if(!sendRequest(CouchbaseOperations::APPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
-    if(result.status_code == 0x88) { 
-      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
-      // and the client have a stale copy of collection manifest.
-      // In this case, we need to refresh the collection manifest and retry the operation.
-      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
-        DEBUG_PRINT("Failed to refresh collection manifest");
-        result.success = false;
-        result.value = "";
-        result.error_message = "Failed to refresh collection manifest";
-        return result;
-      }
-      // check if the colelction id is available in the local cache now.
-      uint8_t coll_id = 0;  // default collection ID
-      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
-        DEBUG_PRINT("Collection name not found in local cache after manifest refresh: " << collection_name);
-        result.success = false;
-        result.value = "";
-        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
-        return result;
-      }
-      // only reachable if the collection manifest now has the collectionID
-      sendRequest(CouchbaseOperations::APPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
-      return result;
-    }
-    return result;
-  }
+  sendRequest(CouchbaseOperations::APPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
   return result;
 }
 
@@ -2465,33 +2496,7 @@ CouchbaseOperations::Result CouchbaseOperations::Prepend(
   CouchbaseResponse response;
   brpc::Controller cntl;
   CouchbaseOperations::Result result;
-  if(!sendRequest(CouchbaseOperations::PREPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response)){
-    if(result.status_code == 0x88) { 
-      // (0x88) unknown collection, this typically means that the collection_manifest has been updated on the server side.
-      // and the client have a stale copy of collection manifest.
-      // In this case, we need to refresh the collection manifest and retry the operation.
-      if (!request.RefreshCollectionManifest(channel, server_address, selected_bucket)) {
-        DEBUG_PRINT("Failed to refresh collection manifest");
-        result.success = false;
-        result.value = "";
-        result.error_message = "Failed to refresh collection manifest";
-        return result;
-      }
-      // check if the colelction id is available in the local cache now.
-      uint8_t coll_id = 0;  // default collection ID
-      if(!request.getLocalCachedCollectionId(selected_bucket, "_default", collection_name, &coll_id)){
-        DEBUG_PRINT("Collection name not found in local cache after manifest refresh: " << collection_name);
-        result.success = false;
-        result.value = "";
-        result.error_message = "Collection name not found in local cache after manifest refresh: " + collection_name;
-        return result;
-      }
-      // only reachable if the collection manifest now has the collectionID
-      sendRequest(CouchbaseOperations::PREPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
-      return result;
-    }
-    return result;
-  }
+  sendRequest(CouchbaseOperations::PREPEND, key, value, collection_name, &result, channel, server_address, selected_bucket, &request, &response);
   return result;
 }
 
