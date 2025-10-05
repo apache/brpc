@@ -49,9 +49,6 @@ constexpr size_t RANDOM_ID_HEX_SIZE = 67;  // 33 bytes * 2 + null terminator
 CouchbaseMetadataTracking*
     CouchbaseOperations::CouchbaseRequest::metadata_tracking =
         &common_metadata_tracking;
-CouchbaseMetadataTracking*
-    CouchbaseOperations::CouchbaseResponse::metadata_tracking =
-        &common_metadata_tracking;
 
 bool brpc::CouchbaseMetadataTracking::set_bucket_to_collection_manifest(
     string server, string bucket,
