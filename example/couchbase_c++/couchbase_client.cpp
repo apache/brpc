@@ -27,8 +27,7 @@
 #define RED "\033[31m"
 #define RESET "\033[0m"
 
-DEFINE_string(server, "localhost:11210",
-              "IP Address of server");
+DEFINE_string(server, "localhost:11210", "IP Address of server");
 
 int main() {
   // Create CouchbaseOperations instance for high-level operations
@@ -38,8 +37,8 @@ int main() {
             << RESET << std::endl;
 
   // Ask username and password for authentication
-  std::string username="Administrator";
-  std::string password="password";
+  std::string username = "Administrator";
+  std::string password = "password";
   while (username.empty() || password.empty()) {
     std::cout << "Enter Couchbase username: ";
     std::cin >> username;
@@ -56,9 +55,10 @@ int main() {
   }
 
   // Use high-level authentication method
-  // when connecting to capella use couchbase_ops.Authenticate(username, password, FLAGS_server, true, "path/to/cert.txt");
-  brpc::CouchbaseOperations::Result auth_result = couchbase_ops.Authenticate(
-      username, password, FLAGS_server);
+  // when connecting to capella use couchbase_ops.authenticate(username,
+  // password, FLAGS_server, true, "path/to/cert.txt");
+  brpc::CouchbaseOperations::Result auth_result =
+      couchbase_ops.authenticate(username, password, FLAGS_server);
   if (!auth_result.success) {
     LOG(ERROR) << "Authentication failed: " << auth_result.error_message;
     return -1;
@@ -70,7 +70,7 @@ int main() {
       << RESET << std::endl;
 
   // Select bucket
-  std::string bucket_name="testing";
+  std::string bucket_name = "testing";
   while (bucket_name.empty()) {
     std::cout << "Enter Couchbase bucket name: ";
     std::cin >> bucket_name;
@@ -83,7 +83,7 @@ int main() {
 
   // Use high-level bucket selection method
   brpc::CouchbaseOperations::Result bucket_result =
-      couchbase_ops.SelectBucket(bucket_name);
+      couchbase_ops.selectBucket(bucket_name);
   if (!bucket_result.success) {
     LOG(ERROR) << "Bucket selection failed: " << bucket_result.error_message;
     return -1;
@@ -97,7 +97,7 @@ int main() {
       R"({"name": "John Doe", "age": 30, "email": "john@example.com"})";
 
   brpc::CouchbaseOperations::Result add_result =
-      couchbase_ops.Add(add_key, add_value);
+      couchbase_ops.add(add_key, add_value);
   if (add_result.success) {
     std::cout << GREEN << "ADD operation successful" << RESET << std::endl;
   } else {
@@ -107,7 +107,7 @@ int main() {
 
   // Try to ADD the same key again (should fail with key exists)
   brpc::CouchbaseOperations::Result add_result2 =
-      couchbase_ops.Add(add_key, add_value);
+      couchbase_ops.add(add_key, add_value);
   if (add_result2.success) {
     std::cout << GREEN << "Second ADD operation unexpectedly successful"
               << RESET << std::endl;
@@ -116,7 +116,7 @@ int main() {
               << add_result2.error_message << RESET << std::endl;
   }
   // Get operation using high-level method
-  brpc::CouchbaseOperations::Result get_result = couchbase_ops.Get(add_key);
+  brpc::CouchbaseOperations::Result get_result = couchbase_ops.get(add_key);
   if (get_result.success) {
     std::cout << GREEN << "GET operation successful" << RESET << std::endl;
     std::cout << "GET value: " << get_result.value << std::endl;
@@ -128,7 +128,7 @@ int main() {
   // Add binprot item1 using high-level method
   std::string item1_key = "binprot_item1";
   brpc::CouchbaseOperations::Result item1_result =
-      couchbase_ops.Add(item1_key, add_value);
+      couchbase_ops.add(item1_key, add_value);
   if (item1_result.success) {
     std::cout << GREEN << "ADD binprot item1 successful" << RESET << std::endl;
   } else {
@@ -140,7 +140,7 @@ int main() {
   // Add binprot item2 using high-level method
   std::string item2_key = "binprot_item2";
   brpc::CouchbaseOperations::Result item2_result =
-      couchbase_ops.Add(item2_key, add_value);
+      couchbase_ops.add(item2_key, add_value);
   if (item2_result.success) {
     std::cout << GREEN << "ADD binprot item2 successful" << RESET << std::endl;
   } else {
@@ -152,7 +152,7 @@ int main() {
   // Add binprot item3 using high-level method
   std::string item3_key = "binprot_item3";
   brpc::CouchbaseOperations::Result item3_result =
-      couchbase_ops.Add(item3_key, add_value);
+      couchbase_ops.add(item3_key, add_value);
   if (item3_result.success) {
     std::cout << GREEN << "ADD binprot item3 successful" << RESET << std::endl;
   } else {
@@ -166,7 +166,7 @@ int main() {
   std::string upsert_value =
       R"({"name": "Upserted Jane Doe", "age": 28, "email": "upserted.doe@example.com"})";
   brpc::CouchbaseOperations::Result upsert_result =
-      couchbase_ops.Upsert(upsert_key, upsert_value);
+      couchbase_ops.upsert(upsert_key, upsert_value);
   if (upsert_result.success) {
     std::cout
         << GREEN
@@ -183,7 +183,7 @@ int main() {
   std::string new_upsert_value =
       R"({"name": "Jane Doe", "age": 28, "email": "jane.doe@example.com"})";
   brpc::CouchbaseOperations::Result new_upsert_result =
-      couchbase_ops.Upsert(new_upsert_key, new_upsert_value);
+      couchbase_ops.upsert(new_upsert_key, new_upsert_value);
   if (new_upsert_result.success) {
     std::cout << GREEN
               << "UPSERT operation successful when the document doesn't exist "
@@ -198,7 +198,7 @@ int main() {
 
   // Check the upserted data using high-level method
   std::string check_key = "user::test_brpc_new_upsert";
-  brpc::CouchbaseOperations::Result check_result = couchbase_ops.Get(check_key);
+  brpc::CouchbaseOperations::Result check_result = couchbase_ops.get(check_key);
   if (check_result.success) {
     std::cout << GREEN << "GET after UPSERT operation successful - Value: "
               << check_result.value << RESET << std::endl;
@@ -210,7 +210,7 @@ int main() {
   // Delete a non-existent key using high-level method
   std::string delete_key = "Nonexistent_key";
   brpc::CouchbaseOperations::Result delete_result =
-      couchbase_ops.Delete(delete_key);
+      couchbase_ops.delete_(delete_key);
   if (delete_result.success) {
     std::cout << GREEN << "DELETE operation successful" << RESET << std::endl;
   } else {
@@ -221,7 +221,7 @@ int main() {
   // Delete the existing key using high-level method
   std::string delete_existing_key = "user::test_brpc_binprot";
   brpc::CouchbaseOperations::Result delete_existing_result =
-      couchbase_ops.Delete(delete_existing_key);
+      couchbase_ops.delete_(delete_existing_key);
   if (delete_existing_result.success) {
     std::cout << GREEN << "DELETE operation successful" << RESET << std::endl;
   } else {
@@ -231,8 +231,8 @@ int main() {
 
   // Retrieve Collection ID for scope `_default` and collection
   // `testing_collection`
-  const std::string scope_name = "_default";           // default scope
-  std::string collection_name = "testing_collection";  // target collection
+  const std::string scope_name = "_default";                // default scope
+  std::string collection_name = "non_existent_collection";  // target collection
   // enter collection name as user input
   // std::cout << "Enter collection name (default 'testing_collection'): ";
   // std::string user_input;
@@ -247,7 +247,7 @@ int main() {
   std::string coll_key = "user::collection_doc";
   std::string coll_value = R"({"type":"collection","op":"add","v":1})";
   brpc::CouchbaseOperations::Result coll_add_result =
-      couchbase_ops.Add(coll_key, coll_value, collection_name);
+      couchbase_ops.add(coll_key, coll_value, collection_name);
   if (coll_add_result.success) {
     std::cout << GREEN << "Collection ADD success" << RESET << std::endl;
   } else {
@@ -255,11 +255,12 @@ int main() {
               << "Collection ADD failed: " << coll_add_result.error_message
               << RESET << std::endl;
   }
-  // std::cout << "Delete the collection.";
+  // Prompt user to delete the collection to test collection operations
+  // std::cout << "Delete & re-create the collection.";
   // std::cin >> collection_name;
   // 2. GET from collection using high-level method
   brpc::CouchbaseOperations::Result coll_get_result =
-      couchbase_ops.Get(coll_key, collection_name);
+      couchbase_ops.get(coll_key, collection_name);
   if (coll_get_result.success) {
     std::cout << GREEN
               << "Collection GET success value=" << coll_get_result.value
@@ -274,7 +275,7 @@ int main() {
   std::string coll_upsert_value =
       R"({"type":"collection","op":"upsert","v":2})";
   brpc::CouchbaseOperations::Result coll_upsert_result =
-      couchbase_ops.Upsert(coll_key, coll_upsert_value, collection_name);
+      couchbase_ops.upsert(coll_key, coll_upsert_value, collection_name);
   if (coll_upsert_result.success) {
     std::cout << GREEN << "Collection UPSERT success" << RESET << std::endl;
   } else {
@@ -284,7 +285,7 @@ int main() {
 
   // 4. GET again to verify upsert using high-level method
   brpc::CouchbaseOperations::Result coll_get2_result =
-      couchbase_ops.Get(coll_key, collection_name);
+      couchbase_ops.get(coll_key, collection_name);
   if (coll_get2_result.success) {
     std::cout << GREEN
               << "Collection GET(after upsert) value=" << coll_get2_result.value
@@ -293,7 +294,7 @@ int main() {
 
   // 5. DELETE from collection using high-level method
   brpc::CouchbaseOperations::Result coll_del_result =
-      couchbase_ops.Delete(coll_key, collection_name);
+      couchbase_ops.delete_(coll_key, collection_name);
   if (coll_del_result.success) {
     std::cout << GREEN << "Collection DELETE success" << RESET << std::endl;
   } else {
@@ -309,7 +310,7 @@ int main() {
             << std::endl;
 
   // Begin a new pipeline
-  if (!couchbase_ops.BeginPipeline()) {
+  if (!couchbase_ops.beginPipeline()) {
     std::cout << RED << "Failed to begin pipeline" << RESET << std::endl;
     return -1;
   }
@@ -326,31 +327,31 @@ int main() {
 
   // Pipeline operations - all prepared but not yet executed
   bool pipeline_success = true;
-  pipeline_success &= couchbase_ops.PipelineRequest(
+  pipeline_success &= couchbase_ops.pipelineRequest(
       brpc::CouchbaseOperations::ADD, pipeline_key1, pipeline_value1);
-  pipeline_success &= couchbase_ops.PipelineRequest(
+  pipeline_success &= couchbase_ops.pipelineRequest(
       brpc::CouchbaseOperations::UPSERT, pipeline_key2, pipeline_value2);
-  pipeline_success &= couchbase_ops.PipelineRequest(
+  pipeline_success &= couchbase_ops.pipelineRequest(
       brpc::CouchbaseOperations::ADD, pipeline_key3, pipeline_value3);
-  pipeline_success &= couchbase_ops.PipelineRequest(
+  pipeline_success &= couchbase_ops.pipelineRequest(
       brpc::CouchbaseOperations::GET, pipeline_key1);
-  pipeline_success &= couchbase_ops.PipelineRequest(
+  pipeline_success &= couchbase_ops.pipelineRequest(
       brpc::CouchbaseOperations::GET, pipeline_key2);
 
   if (!pipeline_success) {
     std::cout << RED << "Failed to add operations to pipeline" << RESET
               << std::endl;
-    couchbase_ops.ClearPipeline();
+    couchbase_ops.clearPipeline();
     return -1;
   }
 
-  std::cout << "Added " << couchbase_ops.GetPipelineSize()
+  std::cout << "Added " << couchbase_ops.getPipelineSize()
             << " operations to pipeline" << std::endl;
 
   // Execute all operations in a single network call
   std::cout << "Executing pipeline operations..." << std::endl;
   std::vector<brpc::CouchbaseOperations::Result> pipeline_results =
-      couchbase_ops.ExecutePipeline();
+      couchbase_ops.executePipeline();
 
   // Process results in order
   std::cout << GREEN << "Pipeline execution completed. Results:" << RESET
@@ -375,7 +376,7 @@ int main() {
   std::cout << GREEN << "\n=== Pipeline with Collection Operations ===" << RESET
             << std::endl;
 
-  if (!couchbase_ops.BeginPipeline()) {
+  if (!couchbase_ops.beginPipeline()) {
     std::cout << RED << "Failed to begin collection pipeline" << RESET
               << std::endl;
     return -1;
@@ -390,28 +391,28 @@ int main() {
 
   // Add collection-scoped operations to pipeline
   bool coll_pipeline_success = true;
-  coll_pipeline_success &= couchbase_ops.PipelineRequest(
+  coll_pipeline_success &= couchbase_ops.pipelineRequest(
       brpc::CouchbaseOperations::ADD, coll_pipeline_key1, coll_pipeline_value1,
       collection_name);
-  coll_pipeline_success &= couchbase_ops.PipelineRequest(
+  coll_pipeline_success &= couchbase_ops.pipelineRequest(
       brpc::CouchbaseOperations::UPSERT, coll_pipeline_key2,
       coll_pipeline_value2, collection_name);
-  coll_pipeline_success &= couchbase_ops.PipelineRequest(
+  coll_pipeline_success &= couchbase_ops.pipelineRequest(
       brpc::CouchbaseOperations::GET, coll_pipeline_key1, "", collection_name);
   coll_pipeline_success &=
-      couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE,
+      couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::DELETE,
                                     coll_pipeline_key1, "", collection_name);
 
   if (!coll_pipeline_success) {
     std::cout << RED << "Failed to add collection operations to pipeline"
               << RESET << std::endl;
-    couchbase_ops.ClearPipeline();
+    couchbase_ops.clearPipeline();
     return -1;
   }
 
   // Execute collection pipeline
   std::vector<brpc::CouchbaseOperations::Result> coll_pipeline_results =
-      couchbase_ops.ExecutePipeline();
+      couchbase_ops.executePipeline();
 
   std::cout << GREEN
             << "Collection pipeline execution completed. Results:" << RESET
@@ -434,18 +435,18 @@ int main() {
 
   // Clean up remaining pipeline documents
   std::cout << GREEN << "\n=== Cleanup Pipeline Demo ===" << RESET << std::endl;
-  if (couchbase_ops.BeginPipeline()) {
-    couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE,
+  if (couchbase_ops.beginPipeline()) {
+    couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::DELETE,
                                   pipeline_key1);
-    couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE,
+    couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::DELETE,
                                   pipeline_key2);
-    couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE,
+    couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::DELETE,
                                   pipeline_key3);
-    couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE,
+    couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::DELETE,
                                   coll_pipeline_key2, "", collection_name);
 
     std::vector<brpc::CouchbaseOperations::Result> cleanup_results =
-        couchbase_ops.ExecutePipeline();
+        couchbase_ops.executePipeline();
     std::cout << "Cleanup completed (" << cleanup_results.size()
               << " operations)" << std::endl;
   }

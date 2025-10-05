@@ -121,28 +121,28 @@ class CouchbaseMetadataTracking {
     string uid;  // uid of the manifest, it can be used to track if the manifest
                  // is updated
     unordered_map<string, unordered_map<string, uint8_t>>
-        scope_to_collectionID_map;  // scope -> (collection -> collection_id)
+        scope_to_collection_id_map;  // scope -> (collection -> collection_id)
   };
 
  private:
   unordered_map<string /*server*/,
                 unordered_map<string /*bucket*/, CollectionManifest>>
-      bucket_to_collection_manifest;
-  ReaderWriterLock rw_bucket_to_collection_manifest_mutex;
+      bucket_to_collection_manifest_;
+  ReaderWriterLock rw_bucket_to_collection_manifest_mutex_;
 
  public:
   CouchbaseMetadataTracking() {}
-  ~CouchbaseMetadataTracking() { bucket_to_collection_manifest.clear(); }
-  bool set_bucket_to_collection_manifest(string server, string bucket,
-                                         CollectionManifest manifest);
+  ~CouchbaseMetadataTracking() { bucket_to_collection_manifest_.clear(); }
+  bool setBucketToCollectionManifest(string server, string bucket,
+                                     CollectionManifest manifest);
 
-  bool get_bucket_to_collection_manifest(string server, string bucket,
-                                         CollectionManifest* manifest);
-  bool get_manifest_to_collection_id(CollectionManifest* manifest, string scope,
-                                     string collection, uint8_t* collection_id);
+  bool getBucketToCollectionManifest(string server, string bucket,
+                                     CollectionManifest* manifest);
+  bool getManifestToCollectionId(CollectionManifest* manifest, string scope,
+                                 string collection, uint8_t* collection_id);
 
-  bool json_to_collection_manifest(const string& json,
-                                   CollectionManifest* manifest);
+  bool jsonToCollectionManifest(const string& json,
+                                CollectionManifest* manifest);
 } static common_metadata_tracking;
 class CouchbaseOperations {
  public:
@@ -159,21 +159,21 @@ class CouchbaseOperations {
     bool success;
     string error_message;
     string value;
-    uint16_t status_code; // 0x00 if success
+    uint16_t status_code;  // 0x00 if success
   };
-  Result Get(const string& key, string collection_name = "_default");
-  Result Upsert(const string& key, const string& value,
+  Result get(const string& key, string collection_name = "_default");
+  Result upsert(const string& key, const string& value,
                 string collection_name = "_default");
-  Result Add(const string& key, const string& value,
+  Result add(const string& key, const string& value,
              string collection_name = "_default");
   // Warning: Not tested
-  // Result Replace(const string& key, const string& value, string
+  // Result replace(const string& key, const string& value, string
   // collection_name = "_default");
-  Result Append(const string& key, const string& value,
+  Result append(const string& key, const string& value,
                 string collection_name = "_default");
-  Result Prepend(const string& key, const string& value,
+  Result prepend(const string& key, const string& value,
                  string collection_name = "_default");
-  Result Delete(const string& key, string collection_name = "_default");
+  Result delete_(const string& key, string collection_name = "_default");
   // Warning: Not tested
   // Result Increment(const string& key, uint64_t delta, uint64_t initial_value,
   // uint32_t exptime, string collection_name = "_default"); Result
@@ -181,39 +181,43 @@ class CouchbaseOperations {
   // uint32_t exptime, string collection_name = "_default"); Result Touch(const
   // string& key, uint32_t exptime, string collection_name = "_default"); Result
   // Flush(uint32_t timeout = 0);
-  Result Version();
-  Result Authenticate(const string& username, const string& password,
-                      const string& server_address, bool enable_ssl=false,
-                      string path_to_cert="");
-  Result SelectBucket(const string& bucket_name);
+  Result version();
+  Result authenticate(const string& username, const string& password,
+                      const string& server_address, bool enable_ssl = false,
+                      string path_to_cert = "");
+  Result selectBucket(const string& bucket_name);
 
   // Pipeline management
-  bool BeginPipeline();
-  bool PipelineRequest(operation_type op_type, const string& key,
+  bool beginPipeline();
+  bool pipelineRequest(operation_type op_type, const string& key,
                        const string& value = "",
                        string collection_name = "_default");
-  vector<Result> ExecutePipeline();  // Return by value instead of pointer
-  bool ClearPipeline();
+  vector<Result> executePipeline();  // Return by value instead of pointer
+  bool clearPipeline();
 
   // Pipeline status
-  bool IsPipelineActive() const { return pipeline_active; }
-  size_t GetPipelineSize() const { return pipeline_operations_queue.size(); }
+  bool isPipelineActive() const { return pipeline_active; }
+  size_t getPipelineSize() const { return pipeline_operations_queue.size(); }
 
-  CouchbaseOperations() : pipeline_request_couchbase_req(&local_bucket_to_collection_manifest), pipeline_active(false) {}
+  CouchbaseOperations()
+      : pipeline_request_couchbase_req(&local_bucket_to_collection_manifest_),
+        pipeline_active(false) {}
   ~CouchbaseOperations() {}
-  bool get_local_cached_collection_id(const string& bucket, const string& scope,
-                                       const string& collection, uint8_t* coll_id);
+  bool getLocalCachedCollectionId(const string& bucket, const string& scope,
+                                  const string& collection, uint8_t* coll_id);
 
  private:
   friend void policy::ProcessCouchbaseResponse(InputMessageBase* msg);
   friend void policy::SerializeCouchbaseRequest(
       butil::IOBuf* buf, Controller* cntl,
       const google::protobuf::Message* request);
-  brpc::Channel* channel;
-  string server_address;
-  string selected_bucket;
+  brpc::Channel* channel_;
+  string server_address_;
+  string selected_bucket_;
 
-  unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> local_bucket_to_collection_manifest;
+  unordered_map<string /*bucket*/,
+                CouchbaseMetadataTracking::CollectionManifest>
+      local_bucket_to_collection_manifest_;
 
   class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
    private:
@@ -221,36 +225,41 @@ class CouchbaseOperations {
     int _pipelined_count;
     butil::IOBuf _buf;
     mutable int _cached_size_;
-    void SharedCtor();
-    void SharedDtor();
-    void SetCachedSize(int size) const PB_425_OVERRIDE;
-    bool GetOrDelete(uint8_t command, const butil::StringPiece& key,
+    void sharedCtor();
+    void sharedDtor();
+    void setCachedSize(int size) const PB_425_OVERRIDE;
+    bool getOrDelete(uint8_t command, const butil::StringPiece& key,
                      uint8_t coll_id = 0);
-    bool Counter(uint8_t command, const butil::StringPiece& key, uint64_t delta,
+    bool counter(uint8_t command, const butil::StringPiece& key, uint64_t delta,
                  uint64_t initial_value, uint32_t exptime);
 
-    bool Store(uint8_t command, const butil::StringPiece& key,
+    bool store(uint8_t command, const butil::StringPiece& key,
                const butil::StringPiece& value, uint32_t flags,
                uint32_t exptime, uint64_t cas_value, uint8_t coll_id = 0);
-    uint32_t hash_crc32(const char* key, size_t key_length);
+    uint32_t hashCrc32(const char* key, size_t key_length);
 
    public:
+    unordered_map<string /*bucket*/,
+                  CouchbaseMetadataTracking::CollectionManifest>*
+        local_collection_manifest_cache;
 
-   unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> *local_collection_manifest_cache;
-   
-   CouchbaseRequest(unordered_map<string /*bucket*/, CouchbaseMetadataTracking::CollectionManifest> *local_cache_reference) : NonreflectableMessage<CouchbaseRequest>() {
+    CouchbaseRequest(
+        unordered_map<string /*bucket*/,
+                      CouchbaseMetadataTracking::CollectionManifest>*
+            local_cache_reference)
+        : NonreflectableMessage<CouchbaseRequest>() {
       metadata_tracking = &common_metadata_tracking;
       local_collection_manifest_cache = local_cache_reference;
-      SharedCtor();
+      sharedCtor();
     }
     CouchbaseRequest() : NonreflectableMessage<CouchbaseRequest>() {
       metadata_tracking = &common_metadata_tracking;
-      SharedCtor();
+      sharedCtor();
     }
-    ~CouchbaseRequest() { SharedDtor(); }
+    ~CouchbaseRequest() { sharedDtor(); }
     CouchbaseRequest(const CouchbaseRequest& from)
         : NonreflectableMessage<CouchbaseRequest>(from) {
-      SharedCtor();
+      sharedCtor();
       MergeFrom(from);
     }
 
@@ -259,46 +268,45 @@ class CouchbaseOperations {
       return *this;
     }
 
-    bool SelectBucketRequest(const butil::StringPiece& bucket_name);
-    bool AuthenticateRequest(const butil::StringPiece& username,
+    bool selectBucketRequest(const butil::StringPiece& bucket_name);
+    bool authenticateRequest(const butil::StringPiece& username,
                              const butil::StringPiece& password);
-    bool HelloRequest();
+    bool helloRequest();
 
     // Using GetCollectionManifest instead of fetching collection ID directly
     // bool GetCollectionId(const butil::StringPiece& scope_name,
     //                      const butil::StringPiece& collection_name);
 
-    bool GetScopeId(const butil::StringPiece& scope_name);
+    bool getScopeId(const butil::StringPiece& scope_name);
 
-    bool GetCollectionManifest();
+    bool getCollectionManifest();
 
     bool getLocalCachedCollectionId(const string& bucket, const string& scope,
-                                       const string& collection, uint8_t* coll_id);
+                                    const string& collection, uint8_t* coll_id);
 
-    bool get_cached_or_fetch_collection_id(
-      string collection_name, uint8_t* coll_id,
-      brpc::CouchbaseMetadataTracking* metadata_tracking,
-      brpc::Channel* channel, const string& server,
-      const string& selected_bucket);
-    
-    bool RefreshCollectionManifest(brpc::Channel* channel,
-                                         const string& server,
-                                         const string& bucket);
+    bool getCachedOrFetchCollectionId(
+        string collection_name, uint8_t* coll_id,
+        brpc::CouchbaseMetadataTracking* metadata_tracking,
+        brpc::Channel* channel, const string& server,
+        const string& selected_bucket);
+
+    bool refreshCollectionManifest(brpc::Channel* channel, const string& server,
+                                   const string& bucket);
 
     // Collection-aware document operations
-    bool GetRequest(const butil::StringPiece& key,
+    bool getRequest(const butil::StringPiece& key,
                     string collection_name = "_default",
                     brpc::Channel* channel = nullptr, const string& server = "",
                     const string& bucket = "");
 
-    bool UpsertRequest(const butil::StringPiece& key,
+    bool upsertRequest(const butil::StringPiece& key,
                        const butil::StringPiece& value, uint32_t flags,
                        uint32_t exptime, uint64_t cas_value,
                        string collection_name = "_default",
                        brpc::Channel* channel = nullptr,
                        const string& server = "", const string& bucket = "");
 
-    bool AddRequest(const butil::StringPiece& key,
+    bool addRequest(const butil::StringPiece& key,
                     const butil::StringPiece& value, uint32_t flags,
                     uint32_t exptime, uint64_t cas_value,
                     string collection_name = "_default",
@@ -313,21 +321,21 @@ class CouchbaseOperations {
     //             brpc::Channel* channel = nullptr, const string& server = "",
     //             const string& bucket = "");
 
-    bool AppendRequest(const butil::StringPiece& key,
+    bool appendRequest(const butil::StringPiece& key,
                        const butil::StringPiece& value, uint32_t flags,
                        uint32_t exptime, uint64_t cas_value,
                        string collection_name = "_default",
                        brpc::Channel* channel = nullptr,
                        const string& server = "", const string& bucket = "");
 
-    bool PrependRequest(const butil::StringPiece& key,
+    bool prependRequest(const butil::StringPiece& key,
                         const butil::StringPiece& value, uint32_t flags,
                         uint32_t exptime, uint64_t cas_value,
                         string collection_name = "_default",
                         brpc::Channel* channel = nullptr,
                         const string& server = "", const string& bucket = "");
 
-    bool DeleteRequest(const butil::StringPiece& key,
+    bool deleteRequest(const butil::StringPiece& key,
                        string collection_name = "_default",
                        brpc::Channel* channel = nullptr,
                        const string& server = "", const string& bucket = "");
@@ -351,12 +359,12 @@ class CouchbaseOperations {
     //           brpc::Channel* channel = nullptr, const string& server = "",
     //           const string& bucket = "");
 
-    bool VersionRequest();
+    bool versionRequest();
 
-    int pipelined_count() const { return _pipelined_count; }
+    int pipelinedCount() const { return _pipelined_count; }
 
-    butil::IOBuf& raw_buffer() { return _buf; }
-    const butil::IOBuf& raw_buffer() const { return _buf; }
+    butil::IOBuf& rawBuffer() { return _buf; }
+    const butil::IOBuf& rawBuffer() const { return _buf; }
     void Swap(CouchbaseRequest* other);
     void MergeFrom(const CouchbaseRequest& from) override;
     void Clear() override;
@@ -377,24 +385,24 @@ class CouchbaseOperations {
     static brpc::CouchbaseMetadataTracking* metadata_tracking;
     butil::IOBuf _buf;
     mutable int _cached_size_;
-    bool PopCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
-    bool PopStore(uint8_t command, uint64_t* cas_value);
+    bool popCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
+    bool popStore(uint8_t command, uint64_t* cas_value);
 
-    void SharedCtor();
-    void SharedDtor();
-    void SetCachedSize(int size) const PB_425_OVERRIDE;
+    void sharedCtor();
+    void sharedDtor();
+    void setCachedSize(int size) const PB_425_OVERRIDE;
 
    public:
     uint16_t _status_code;
 
     CouchbaseResponse() : NonreflectableMessage<CouchbaseResponse>() {
-      SharedCtor();
+      sharedCtor();
     }
-    ~CouchbaseResponse() { SharedDtor(); }
+    ~CouchbaseResponse() { sharedDtor(); }
     CouchbaseResponse(const CouchbaseResponse& from)
         : NonreflectableMessage<CouchbaseResponse>(from) {
       metadata_tracking = &common_metadata_tracking;
-      SharedCtor();
+      sharedCtor();
       MergeFrom(from);
     }
     inline CouchbaseResponse& operator=(const CouchbaseResponse& from) {
@@ -463,7 +471,7 @@ class CouchbaseOperations {
       STATUS_SUBDOC_DELETED_DOCUMENT_CANT_HAVE_VALUE = 0xd7,
       STATUS_XATTR_EINVAL = 0xe0
     };
-    const char* couchbase_binary_command_to_string(uint8_t cmd);
+    const char* couchbaseBinaryCommandToString(uint8_t cmd);
     void MergeFrom(const CouchbaseResponse& from) override;
     void Clear() override;
     bool IsInitialized() const PB_527_OVERRIDE;
@@ -477,48 +485,49 @@ class CouchbaseOperations {
 
     ::google::protobuf::Metadata GetMetadata() const PB_527_OVERRIDE;
 
-    butil::IOBuf& raw_buffer() { return _buf; }
-    const butil::IOBuf& raw_buffer() const { return _buf; }
-    static const char* status_str(Status);
+    butil::IOBuf& rawBuffer() { return _buf; }
+    const butil::IOBuf& rawBuffer() const { return _buf; }
+    static const char* statusStr(Status);
 
     // Helper method to format error messages with status codes
-    static string format_error_message(uint16_t status_code,
-                                       const string& operation,
-                                       const string& error_msg = "");
+    static string formatErrorMessage(uint16_t status_code,
+                                     const string& operation,
+                                     const string& error_msg = "");
 
     // Add methods to handle response parsing
-    void Swap(CouchbaseResponse* other);
-    bool PopGet(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
-    bool PopGet(string* value, uint32_t* flags, uint64_t* cas_value);
-    const string& LastError() const { return _err; }
-    bool PopUpsert(uint64_t* cas_value);
-    bool PopAdd(uint64_t* cas_value);
+    void swap(CouchbaseResponse* other);
+    bool popGet(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
+    bool popGet(string* value, uint32_t* flags, uint64_t* cas_value);
+    const string& lastError() const { return _err; }
+    bool popUpsert(uint64_t* cas_value);
+    bool popAdd(uint64_t* cas_value);
     // Warning: Not tested
-    // bool PopReplace(uint64_t* cas_value);
-    bool PopAppend(uint64_t* cas_value);
-    bool PopPrepend(uint64_t* cas_value);
-    bool PopSelectBucket(uint64_t* cas_value, std::string bucket_name);
+    // bool popReplace(uint64_t* cas_value);
+    bool popAppend(uint64_t* cas_value);
+    bool popPrepend(uint64_t* cas_value);
+    bool popSelectBucket(uint64_t* cas_value, std::string bucket_name);
 
     // Collection-related response methods
-    bool PopCollectionId(uint8_t* collection_id);
+    bool popCollectionId(uint8_t* collection_id);
 
-    bool PopManifest(std::string* manifest_json);
+    bool popManifest(std::string* manifest_json);
 
-    bool PopDelete();
+    bool popDelete();
     // Warning: Not tested
-    // bool PopFlush();
-    // bool PopIncrement(uint64_t* new_value, uint64_t* cas_value);
-    // bool PopDecrement(uint64_t* new_value, uint64_t* cas_value);
-    // bool PopTouch();
-    bool PopVersion(string* version);
+    // bool popFlush();
+    // bool popIncrement(uint64_t* new_value, uint64_t* cas_value);
+    // bool popDecrement(uint64_t* new_value, uint64_t* cas_value);
+    // bool popTouch();
+    bool popVersion(string* version);
   };
 
-  friend bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key, 
-                         const string& value, string collection_name,
-                         CouchbaseOperations::Result *result, brpc::Channel *channel, 
-                         const string& server, const string& bucket,
-                         CouchbaseRequest *request,
-                         CouchbaseResponse *response);
+  friend bool sendRequest(CouchbaseOperations::operation_type op_type,
+                          const string& key, const string& value,
+                          string collection_name,
+                          CouchbaseOperations::Result* result,
+                          brpc::Channel* channel, const string& server,
+                          const string& bucket, CouchbaseRequest* request,
+                          CouchbaseResponse* response);
 
   // Pipeline management - per instance
   queue<operation_type> pipeline_operations_queue;
