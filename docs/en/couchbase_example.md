@@ -608,7 +608,7 @@ int main() {
 
 ---
 ### 12. Summary and References
-This implementation provides both high-level and low-level APIs for Couchbase KV and collection operations. Couchbase (the company) contributed to this implementation, but it is not officially supported; it is "[Community Supported](https://docs.couchbase.com/server/current/third-party/integrations.html#support-model)".
+This implementation provides high-level APIs for Couchbase KV and collection operations. Couchbase (the company) contributed to this implementation, but it is not officially supported; it is "[Community Supported](https://docs.couchbase.com/server/current/third-party/integrations.html#support-model)".
 
 - **High-level API**: Recommended for most applications - simple, with built-in SSL support
 - **SSL Support**: Essential for Couchbase Capella and secure local deployments
