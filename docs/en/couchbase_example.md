@@ -93,7 +93,7 @@ Overall packet structure:-
 ---
 ### 4. High-Level API (`CouchbaseOperations`)
 
-**Recommended Approach**: Use the `CouchbaseOperations` class for simple, thread-safe operations.
+**Approach**: Use the `CouchbaseOperations` class for operations. It shall be noted that the instances of `CouchbaseOperations` should not be shared between threads, for some cases it might work but not recommended.
 
 #### Basic Usage:
 ```cpp
