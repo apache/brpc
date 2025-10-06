@@ -36,11 +36,10 @@ Design goals:
 | Collections | Collection-scoped CRUD operations | Pass collection name as optional parameter (defaults to "_default") |
 | Error Handling | `Result.success` + `Result.error_message` | Human-readable error messages with status codes |
 
-**Key Differences from Low-Level API:**
 - **Simplified**: No need to manage channels, controllers, or response parsing
 - **Thread-Safe Per Instance**: Each `CouchbaseOperations` instance can be used independently ⚠️ **BUT NEVER SHARE BETWEEN THREADS**
-- **Error Handling**: Simple boolean success with descriptive error messages
-- **SSL Built-in**: Automatic SSL handling for secure connections
+- **Error Handling**: Simple boolean success with descriptive error messages and error codes
+- **SSL Built-in**: SSL handling for secure connections
 
 
 ---
