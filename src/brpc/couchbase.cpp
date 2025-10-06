@@ -2711,7 +2711,7 @@ bool CouchbaseOperations::pipelineRequest(operation_type op_type,
                                           const string& value,
                                           string collection_name) {
   if (!pipeline_active) {
-    DEBUG_PRINT("Pipeline not active. Call BeginPipeline() first.");
+    DEBUG_PRINT("Pipeline not active. Call beginPipeline() first.");
     return false;
   }
 

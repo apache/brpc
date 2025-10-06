@@ -30,9 +30,9 @@ Design goals:
 | **High-Level API** | `CouchbaseOperations` class | **Recommended**: Simple methods returning `Result` structs |
 | **SSL/TLS Support** | Built-in SSL encryption | **Required** for Couchbase Capella, optional for local clusters |
 | Authentication | SASL `PLAIN` with SSL | Each `CouchbaseOperations` instance requires authentication |
-| Bucket selection | `SelectBucket()` method | Required before document operations |
-| Basic KV | `Add()`, `Upsert()`, `Delete()`, `Get()` | Clean API with `Result` struct error handling |
-| **Pipeline Operations** | `BeginPipeline()`, `PipelineRequest()`, `ExecutePipeline()` | **NEW**: Batch multiple operations in single network call for improved performance |
+| Bucket selection | `selectBucket()` method | Required before document operations |
+| Basic KV | `add()`, `upsert()`, `delete_()`, `get()` | Clean API with `Result` struct error handling |
+| **Pipeline Operations** | `beginPipeline()`, `pipelineRequest()`, `executePipeline()` | **NEW**: Batch multiple operations in single network call for improved performance |
 | Collections | Collection-scoped CRUD operations | Pass collection name as optional parameter (defaults to "_default") |
 | Error Handling | `Result.success` + `Result.error_message` | Human-readable error messages with status codes |
 
@@ -102,7 +102,7 @@ Overall packet structure:-
 brpc::CouchbaseOperations couchbase_ops;
 
 // 1. Authenticate (REQUIRED for each instance)
-brpc::CouchbaseOperations::Result auth_result = couchbase_ops.Authenticate(
+brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticate(
     username, password, server_address, enable_ssl, cert_path);
 if (!auth_result.success) {
     LOG(ERROR) << "Auth failed: " << auth_result.error_message;
@@ -110,14 +110,14 @@ if (!auth_result.success) {
 }
 
 // 2. Select bucket (REQUIRED)
-brpc::CouchbaseOperations::Result bucket_result = couchbase_ops.SelectBucket("my_bucket");
+brpc::CouchbaseOperations::Result bucket_result = couchbase_ops.selectBucket("my_bucket");
 if (!bucket_result.success) {
     LOG(ERROR) << "Bucket selection failed: " << bucket_result.error_message;
     return -1;
 }
 
 // 3. Perform operations
-brpc::CouchbaseOperations::Result add_result = couchbase_ops.Add("user::123", json_value);
+brpc::CouchbaseOperations::Result add_result = couchbase_ops.add("user::123", json_value);
 if (add_result.success) {
     std::cout << "Document added successfully!" << std::endl;
 } else {
@@ -128,7 +128,7 @@ if (add_result.success) {
 #### SSL Authentication (Essential for Couchbase Capella):
 ```cpp
 // For Couchbase Capella (cloud) - SSL is REQUIRED
-brpc::CouchbaseOperations::Result auth_result = couchbase_ops.Authenticate(
+brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticate(
     username, 
     password, 
     "cluster.cloud.couchbase.com:11207",  // SSL port
@@ -140,11 +140,11 @@ brpc::CouchbaseOperations::Result auth_result = couchbase_ops.Authenticate(
 #### Collection Operations:
 ```cpp
 // Default collection
-auto result = couchbase_ops.Get("doc::1");
+auto result = couchbase_ops.get("doc::1");
 
 // Specific collection
-auto result = couchbase_ops.Get("doc::1", "my_collection");
-auto add_result = couchbase_ops.Add("doc::2", value, "my_collection");
+auto result = couchbase_ops.get("doc::1", "my_collection");
+auto add_result = couchbase_ops.add("doc::2", value, "my_collection");
 ```
 
 #### Pipeline Operations (Performance Optimization):
@@ -152,25 +152,25 @@ The pipeline API allows batching multiple operations into a single network call,
 
 ```cpp
 // Begin a new pipeline
-if (!couchbase_ops.BeginPipeline()) {
+if (!couchbase_ops.beginPipeline()) {
     LOG(ERROR) << "Failed to begin pipeline";
     return -1;
 }
 
 // Add multiple operations to the pipeline (not executed yet)
 bool success = true;
-success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, "key1", "value1");
-success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::UPSERT, "key2", "value2");
-success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::GET, "key1");
-success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE, "key3");
+success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "key1", "value1");
+success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::UPSERT, "key2", "value2");
+success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "key1");
+success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::DELETE, "key3");
 
 if (!success) {
-    couchbase_ops.ClearPipeline();  // Clean up on error
+    couchbase_ops.clearPipeline();  // Clean up on error
     return -1;
 }
 
 // Execute all operations in a single network call
-std::vector<brpc::CouchbaseOperations::Result> results = couchbase_ops.ExecutePipeline();
+std::vector<brpc::CouchbaseOperations::Result> results = couchbase_ops.executePipeline();
 
 // Process results in the same order as requests
 for (size_t i = 0; i < results.size(); ++i) {
@@ -188,19 +188,19 @@ for (size_t i = 0; i < results.size(); ++i) {
 **Pipeline with Collections**:
 ```cpp
 // Pipeline operations can also use collections
-couchbase_ops.BeginPipeline();
-couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, "doc1", "value1", "my_collection");
-couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::GET, "doc1", "", "my_collection");
-auto results = couchbase_ops.ExecutePipeline();
+couchbase_ops.beginPipeline();
+couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "doc1", "value1", "my_collection");
+couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "doc1", "", "my_collection");
+auto results = couchbase_ops.executePipeline();
 ```
 
 **Pipeline Management Methods**:
-- `BeginPipeline()` - Start a new pipeline session
-- `PipelineRequest(op_type, key, value, collection)` - Add operation to pipeline
-- `ExecutePipeline()` - Execute all operations and return results
-- `ClearPipeline()` - Clear pipeline without executing (cleanup)
-- `IsPipelineActive()` - Check if pipeline is active
-- `GetPipelineSize()` - Get number of queued operations
+- `beginPipeline()` - Start a new pipeline session
+- `pipelineRequest(op_type, key, value, collection)` - Add operation to pipeline
+- `executePipeline()` - Execute all operations and return results
+- `clearPipeline()` - Clear pipeline without executing (cleanup)
+- `isPipelineActive()` - Check if pipeline is active
+- `getPipelineSize()` - Get number of queued operations
 
 **Performance Benefits**:
 - **Reduced Network Overhead**: Multiple operations in single network round-trip
@@ -210,10 +210,11 @@ auto results = couchbase_ops.ExecutePipeline();
 
 #### Error Handling Pattern:
 ```cpp
-brpc::CouchbaseOperations::Result result = couchbase_ops.SomeOperation(...);
+brpc::CouchbaseOperations::Result result = couchbase_ops.someOperation(...);
 if (!result.success) {
     // Handle error
     LOG(ERROR) << "Operation failed: " << result.error_message;
+    LOG(ERROR) << "Error Code: "<< result.status_code;  //what is the error code received.
 } else {
     // Use result.value if applicable (for Get operations)
     std::cout << "Retrieved value: " << result.value << std::endl;
@@ -229,8 +230,8 @@ These classses are private to the `CouchbaseOpeartions` and is not exposed to th
 ```cpp
 CouchbaseRequest req;
 req.Authenticate(user, pass);       // SASL PLAIN
-req.SelectBucket("travel-sample");
-req.Add("doc::1", json_body, flags, exptime, /*cas*/0);
+req.selectBucketRequest("travel-sample");
+req.addRequest("doc::1", json_body, flags, exptime, /*cas*/0);
 req.Get("doc::1");                 // Pipeline GET after ADD
 
 channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
@@ -352,7 +353,7 @@ Create collections (7.0+):
 **SSL Configuration (Optional for Local)**:
 ```cpp
 // Local without SSL
-auto result = couchbase_ops.Authenticate(username, password, "localhost:11210", false, "");
+auto result = couchbase_ops.authenticate(username, password, "localhost:11210", false, "");
 ```
 
 #### B. Couchbase Capella (Cloud) - **SSL Required**
@@ -372,7 +373,7 @@ auto result = couchbase_ops.Authenticate(username, password, "localhost:11210", 
 **Capella SSL Authentication Example**:
 ```cpp
 // Couchbase Capella - SSL is MANDATORY
-auto result = couchbase_ops.Authenticate(
+auto result = couchbase_ops.authenticate(
     "your_username", 
     "your_password", 
     "your-cluster.cloud.couchbase.com:11207",    // SSL port
@@ -403,12 +404,12 @@ Pipeline operations allow you to batch multiple Couchbase operations into a sing
 
 | Method | Description | Usage |
 |--------|-------------|-------|
-| `BeginPipeline()` | Start a new pipeline session | Must call before adding operations |
-| `PipelineRequest(op_type, key, value, collection)` | Add operation to pipeline | Supports all CRUD operations |
-| `ExecutePipeline()` | Execute all queued operations | Returns `vector<Result>` in request order |
-| `ClearPipeline()` | Clear pipeline without executing | Use for cleanup on errors |
-| `IsPipelineActive()` | Check if pipeline is active | Returns `bool` |
-| `GetPipelineSize()` | Get number of queued operations | Returns `size_t` |
+| `beginPipeline()` | Start a new pipeline session | Must call before adding operations |
+| `pipelineRequest(op_type, key, value, collection)` | Add operation to pipeline | Supports all CRUD operations |
+| `executePipeline()` | Execute all queued operations | Returns `vector<Result>` in request order |
+| `clearPipeline()` | Clear pipeline without executing | Use for cleanup on errors |
+| `isPipelineActive()` | Check if pipeline is active | Returns `bool` |
+| `getPipelineSize()` | Get number of queued operations | Returns `size_t` |
 
 #### Basic Pipeline Example
 
@@ -419,25 +420,25 @@ brpc::CouchbaseOperations couchbase_ops;
 // ... authenticate and select bucket ...
 
 // 1. Begin pipeline
-if (!couchbase_ops.BeginPipeline()) {
+if (!couchbase_ops.beginPipeline()) {
     LOG(ERROR) << "Failed to begin pipeline";
     return -1;
 }
 
 // 2. Add operations to pipeline (not executed yet)
 bool success = true;
-success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, "user1", "{\"name\":\"John\"}");
-success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, "user2", "{\"name\":\"Jane\"}");
-success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::GET, "user1");
-success &= couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::UPSERT, "user3", "{\"name\":\"Bob\"}");
+success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "user1", "{\"name\":\"John\"}");
+success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "user2", "{\"name\":\"Jane\"}");
+success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "user1");
+success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::UPSERT, "user3", "{\"name\":\"Bob\"}");
 
 if (!success) {
-    couchbase_ops.ClearPipeline();
+    couchbase_ops.clearPipeline();
     return -1;
 }
 
 // 3. Execute all operations in single network call
-std::vector<brpc::CouchbaseOperations::Result> results = couchbase_ops.ExecutePipeline();
+std::vector<brpc::CouchbaseOperations::Result> results = couchbase_ops.executePipeline();
 
 // 4. Process results (same order as requests)
 for (size_t i = 0; i < results.size(); ++i) {
@@ -458,14 +459,14 @@ for (size_t i = 0; i < results.size(); ++i) {
 
 ```cpp
 // Pipeline with collection operations
-couchbase_ops.BeginPipeline();
+couchbase_ops.beginPipeline();
 
 // Add operations to specific collection
-couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, "doc1", "value1", "my_collection");
-couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::GET, "doc1", "", "my_collection");
-couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::DELETE, "doc2", "", "my_collection");
+couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "doc1", "value1", "my_collection");
+couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "doc1", "", "my_collection");
+couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::DELETE, "doc2", "", "my_collection");
 
-auto results = couchbase_ops.ExecutePipeline();
+auto results = couchbase_ops.executePipeline();
 // Process results...
 ```
 
@@ -474,14 +475,14 @@ auto results = couchbase_ops.ExecutePipeline();
 Pipeline operations provide granular error handling - each operation can succeed or fail independently:
 
 ```cpp
-couchbase_ops.BeginPipeline();
+couchbase_ops.beginPipeline();
 
 // Some operations may succeed, others may fail
-couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::ADD, "existing_key", "value");  // May fail if key exists
-couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::GET, "nonexistent_key");        // May fail if key doesn't exist
-couchbase_ops.PipelineRequest(brpc::CouchbaseOperations::UPSERT, "new_key", "value");    // Should succeed
+couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "existing_key", "value");  // May fail if key exists
+couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "nonexistent_key");        // May fail if key doesn't exist
+couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::UPSERT, "new_key", "value");    // Should succeed
 
-auto results = couchbase_ops.ExecutePipeline();
+auto results = couchbase_ops.executePipeline();
 
 // Check each result individually
 for (size_t i = 0; i < results.size(); ++i) {
@@ -501,7 +502,7 @@ for (size_t i = 0; i < results.size(); ++i) {
 
 1. **Batch Related Operations**: Group logically related operations together
 2. **Handle Partial Failures**: Individual operations can fail while others succeed
-3. **Clear on Errors**: Use `ClearPipeline()` if pipeline setup fails
+3. **Clear on Errors**: Use `clearPipeline()` if pipeline setup fails
 5. **Mixed Operations**: Combine different operation types (GET, ADD, UPSERT, DELETE) as needed
 
 #### When to Use Pipelines
@@ -533,7 +534,7 @@ struct Result {
 
 **Recommended Pattern**:
 ```cpp
-auto result = couchbase_ops.Add("key", "value");
+auto result = couchbase_ops.add("key", "value");
 if (!result.success) {
     LOG(ERROR) << "Add failed: " << result.error_message;
     // Handle error appropriately
@@ -587,14 +588,14 @@ int main() {
     }
     
     // Select bucket
-    auto bucket_result = couchbase_ops.SelectBucket(bucket_name);
+    auto bucket_result = couchbase_ops.selectBucket(bucket_name);
     if (!bucket_result.success) {
         LOG(ERROR) << "Bucket selection failed: " << bucket_result.error_message;
         return -1;
     }
     
     // Perform operations with error handling
-    auto result = couchbase_ops.Add("key", "value", "collection_name");
+    auto result = couchbase_ops.add("key", "value", "collection_name");
     if (result.success) {
         std::cout << "Success!" << std::endl;
     } else {
