@@ -1341,8 +1341,6 @@ bool CouchbaseOperations::CouchbaseRequest::refreshCollectionManifest(
                 << temp_get_manifest_response.lastError());
     return false;
   }
-  // Compare the UID with the cached one
-  // If they are different, refresh the cache
   brpc::CouchbaseMetadataTracking::CollectionManifest manifest;
   if (!common_metadata_tracking.jsonToCollectionManifest(manifest_json,
                                                          &manifest)) {
@@ -1364,7 +1362,10 @@ bool CouchbaseOperations::CouchbaseRequest::refreshCollectionManifest(
     // also update the local cache
     (*local_collection_manifest_cache)[bucket] = manifest;
     return true;
-  } else if (manifest.uid != cached_manifest.uid) {
+  }
+    // Compare the UID with the cached one
+    // If they are different, refresh the cache
+   else if (manifest.uid != cached_manifest.uid) {
     DEBUG_PRINT("Collection manifest has changed for bucket "
                 << bucket << " on server " << server);
     if (!common_metadata_tracking.setBucketToCollectionManifest(server, bucket,
