@@ -1,6 +1,6 @@
 ## Couchbase bRPC Binary Protocol Integration
 
-This document explains the implementation of Couchbase Binary Protocol support added to this branch of bRPC, the available high-level operations, collection support, SSL authentication, and how to run the provided example client against either a local Couchbase Server cluster or a Couchbase Capella (cloud) deployment. However, the couchbase binary protocol implementation in bRPC requires us to do fine-grained optimizations which has been already done in the couchbase-cxx-client SDK, so we also added the support of couchbase using couchbase-cxx-SDK in bRPC and is available at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).
+This document explains the implementation of Couchbase Binary Protocol support added to this branch of bRPC, the available high-level operations, collection support, SSL authentication, and how to run the provided example client against either a local Couchbase Server cluster or a Couchbase Capella (cloud) deployment. However, the couchbase binary protocol implementation in bRPC currently do not have fine-grained optimizations which has been already done in the couchbase-cxx-client SDK which also have query support, better error handling and much more optimized operations. So, we also added the support of couchbase using couchbase-cxx-SDK in bRPC and is available at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).
 
 ---
 ### 1. Overview
