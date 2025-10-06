@@ -633,8 +633,8 @@ This implementation provides high-level APIs for Couchbase KV and collection ope
 > // Each thread creates its own instance
 > void worker_thread() {
 >     brpc::CouchbaseOperations ops;  // ✅ Thread-local instance
->     ops.Authenticate(...);
->     ops.Get("key");  // Safe
+>     ops.authenticate(...);
+>     ops.get("key");  // Safe
 > }
 > ```
 > 
@@ -642,7 +642,7 @@ This implementation provides high-level APIs for Couchbase KV and collection ope
 > ```cpp
 > brpc::CouchbaseOperations global_ops;  // ❌ Shared instance
 > void worker_thread() {
->     global_ops.Get("key");  // ❌ RACE CONDITION - WILL CRASH!
+>     global_ops.get("key");  // ❌ RACE CONDITION - WILL CRASH!
 > }
 > ```
 > 
