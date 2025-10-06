@@ -1376,22 +1376,10 @@ bool CouchbaseOperations::CouchbaseRequest::refreshCollectionManifest(
     }
     DEBUG_PRINT("Updated cached collection manifest for bucket "
                 << bucket << " on server " << server);
-    // also update the local cache if needed.
-    if (local_collection_manifest_cache->find(bucket) !=
-        local_collection_manifest_cache->end()) {
-      // if the bucket already exists in the local cache, check the UID
-      if ((*local_collection_manifest_cache)[bucket].uid != manifest.uid) {
-        // if the UID is different, update the local cache
-        (*local_collection_manifest_cache)[bucket] = manifest;
-        DEBUG_PRINT("Updated local collection manifest cache for bucket "
-                    << bucket << " on server " << server);
-      }
-    } else {
-      // if the bucket does not exist in the local cache, add it
-      (*local_collection_manifest_cache)[bucket] = manifest;
-      DEBUG_PRINT("Added to local collection manifest cache for bucket "
-                  << bucket << " on server " << server);
-    }
+    // update the local cache as well
+    (*local_collection_manifest_cache)[bucket] = manifest;
+    DEBUG_PRINT("Added to local collection manifest cache for bucket "
+                << bucket << " on server " << server);
     return true;
   } else {
     DEBUG_PRINT("Collection manifest is already up-to-date for bucket "
