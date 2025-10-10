@@ -158,7 +158,7 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
        << Path("/health", html_addr) << " : Test healthy" << NL
        << Path("/vlog", html_addr) << " : List all VLOG callsites" << NL
        << Path("/sockets", html_addr) << " : Check status of a Socket" << NL
-       << Path("/bthreads", html_addr) << " : Check status of a bthread" << NL
+       << Path("/bthreads", html_addr) << " : Check status of a bthread or all living bthreads" << NL
        << Path("/ids", html_addr) << " : Check status of a bthread_id" << NL
        << Path("/protobufs", html_addr) << " : List all protobuf services and messages" << NL
        << Path("/list", html_addr) << " : json signature of methods" << NL

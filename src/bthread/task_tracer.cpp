@@ -236,10 +236,22 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
     {
         BAIDU_SCOPED_LOCK(m->version_lock);
         if (given_version == *m->version_butex) {
-            // Start tracing.
-            m->traced = true;
-            worker_tid = m->worker_tid;
             status = m->status;
+            if (TASK_STATUS_UNKNOWN == status) {
+                return Result::MakeErrorResult("bthread=%d not exist now", tid);
+            } else if (TASK_STATUS_CREATED == status) {
+                return Result::MakeErrorResult("bthread=%d has just been created", tid);
+            } else if (TASK_STATUS_FIRST_READY == status) {
+                return Result::MakeErrorResult("bthread=%d is scheduled for the first time", tid);
+            } else if (TASK_STATUS_END == status) {
+                return Result::MakeErrorResult("bthread=%d has ended", tid);
+            } else if (TASK_STATUS_JUMPING == status) {
+                return Result::MakeErrorResult("bthread=%d is jumping stack and not traceable", tid);
+            } else {
+                // Start tracing.
+                m->traced = true;
+                worker_tid = m->worker_tid;
+            }
         } else {
             return Result::MakeErrorResult("bthread=%d not exist now", tid);
         }
@@ -255,19 +267,6 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
         // Wake up the waiting worker thread to jump.
         _cond.Signal();
     };
-
-    if (TASK_STATUS_UNKNOWN == status) {
-        return Result::MakeErrorResult("bthread=%d not exist now", tid);
-    } else if (TASK_STATUS_CREATED == status) {
-        return Result::MakeErrorResult("bthread=%d has just been created", tid);
-    } else if (TASK_STATUS_FIRST_READY == status) {
-        return Result::MakeErrorResult("bthread=%d is scheduled for the first time", tid);
-    } else if (TASK_STATUS_END == status) {
-        return Result::MakeErrorResult("bthread=%d has ended", tid);
-    } else if (TASK_STATUS_JUMPING == status) {
-        // Wait for jumping completion.
-        status = WaitForJumping(m);
-    }
 
     // After jumping, the status may be RUNNING, SUSPENDED, or READY, which is traceable.
     if (TASK_STATUS_RUNNING == status) {

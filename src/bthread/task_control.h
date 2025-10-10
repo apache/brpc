@@ -28,6 +28,7 @@
 #include <signal.h>
 #include <stddef.h>                             // size_t
 #include <vector>
+#include <set>
 #include <array>
 #include <memory>
 #include "butil/atomicops.h"                     // butil::atomic
@@ -101,6 +102,7 @@ public:
         _priority_queues[tag].push(tid);
     }
 
+    std::list<bthread_t> get_living_bthreads();
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
     typedef std::array<ParkingLot, BTHREAD_MAX_PARKINGLOT> TaggedParkingLot;

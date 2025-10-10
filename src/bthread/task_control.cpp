@@ -587,4 +587,15 @@ bvar::LatencyRecorder* TaskControl::create_exposed_pending_time() {
     return pt;
 }
 
+std::list<bthread_t> TaskControl::get_living_bthreads() {
+    std::list<bthread_t> living_bthread_t;
+    std::list<TaskMeta*> all_tasks = butil::list_resources<TaskMeta>();
+    for (TaskMeta* task : all_tasks) {
+        if (task && task->status !=  TASK_STATUS_UNKNOWN) {
+            living_bthread_t.push_back(task->tid);
+        }
+    }
+    return living_bthread_t;
+}
+
 }  // namespace bthread
