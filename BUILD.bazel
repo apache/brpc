@@ -126,9 +126,6 @@ BUTIL_SRCS = [
     "src/butil/third_party/modp_b64/modp_b64.cc",
     "src/butil/third_party/symbolize/demangle.cc",
     "src/butil/third_party/symbolize/symbolize.cc",
-    "src/butil/third_party/snappy/snappy-sinksource.cc",
-    "src/butil/third_party/snappy/snappy-stubs-internal.cc",
-    "src/butil/third_party/snappy/snappy.cc",
     "src/butil/third_party/murmurhash3/murmurhash3.cpp",
     "src/butil/arena.cpp",
     "src/butil/at_exit.cc",
@@ -346,6 +343,7 @@ cc_library(
         "@com_github_gflags_gflags//:gflags",
         "@com_github_madler_zlib//:zlib",
         "@com_google_protobuf//:protobuf",
+        "@snappy"
     ] + select({
         "//bazel/config:brpc_with_glog": ["@com_github_google_glog//:glog"],
         "//conditions:default": [],
