@@ -112,6 +112,8 @@ struct TaskMeta {
     TaskStatus status{TASK_STATUS_UNKNOWN};
     // Whether bthread is traced？
     bool traced{false};
+    // [Not Reset] guarantee tracing completion before jumping.
+    pthread_mutex_t trace_lock{};
     // Worker thread id.
     pthread_t worker_tid{};
 
@@ -122,9 +124,11 @@ public:
         pthread_spin_init(&version_lock, 0);
         version_butex = butex_create_checked<uint32_t>();
         *version_butex = 1;
+        pthread_mutex_init(&trace_lock, NULL);
     }
         
     ~TaskMeta() {
+        pthread_mutex_destroy(&trace_lock);
         butex_destroy(version_butex);
         version_butex = NULL;
         pthread_spin_destroy(&version_lock);
