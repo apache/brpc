@@ -38,7 +38,7 @@ typedef Window<Percentile, SERIES_IN_SECOND> PercentileWindow;
 class CDF : public Variable {
 public:
     explicit CDF(PercentileWindow* w);
-    ~CDF();
+    ~CDF() override;
     void describe(std::ostream& os, bool quote_string) const override;
     int describe_series(std::ostream& os, const SeriesOptions& options) const override;
 private:
@@ -77,7 +77,7 @@ class LatencyRecorder : public detail::LatencyRecorderBase {
 public:
     LatencyRecorder() : Base(-1) {}
     explicit LatencyRecorder(time_t window_size) : Base(window_size) {}
-    explicit LatencyRecorder(const butil::StringPiece& prefix) : Base(-1) {
+    LatencyRecorder(const butil::StringPiece& prefix) : Base(-1) {
         expose(prefix);
     }
     LatencyRecorder(const butil::StringPiece& prefix,

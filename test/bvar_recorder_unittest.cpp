@@ -29,6 +29,7 @@
 #include <gtest/gtest.h>
 
 namespace {
+#if !WITH_BABYLON_COUNTER
 TEST(RecorderTest, test_complement) {
     LOG(INFO) << "sizeof(LatencyRecorder)=" << sizeof(bvar::LatencyRecorder)
               << " " << sizeof(bvar::detail::Percentile)
@@ -61,6 +62,7 @@ TEST(RecorderTest, test_compress_negtive_number) {
         ASSERT_EQ(a, bvar::IntRecorder::_extend_sign_bit(bvar::IntRecorder::_get_sum(compressed)));
     }
 }
+#endif // !WITH_BABYLON_COUNTER
 
 TEST(RecorderTest, sanity) {
     {

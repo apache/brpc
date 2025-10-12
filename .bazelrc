@@ -20,6 +20,7 @@ common --registry=https://bcr.bazel.build
 common --registry=https://baidu.github.io/babylon/registry
 
 build --cxxopt="-std=c++17"
+build --copt="-fno-omit-frame-pointer"
 # Use gnu17 for asm keyword.
 build --conlyopt="-std=gnu17"
 
@@ -33,8 +34,8 @@ build --features=per_object_debug_info
 build --define absl=1
 
 # For brpc.
-build --define=BRPC_WITH_GLOG=true
 test --define=BRPC_BUILD_FOR_UNITTEST=true
+test --test_output=streamed
 
 # Pass PATH, CC, CXX and LLVM_CONFIG variables from the environment.
 build --action_env=CC

@@ -61,7 +61,6 @@ jobs:
 
   compile-with-bazel:
     runs-on: macos-latest # https://github.com/actions/runner-images
-
     steps:
       - uses: actions/checkout@v2
       - run: bazel build --verbose_failures -- //:brpc -//example/...

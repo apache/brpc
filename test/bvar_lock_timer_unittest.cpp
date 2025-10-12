@@ -197,8 +197,12 @@ TEST_F(LockTimerTest, double_lock_time) {
     ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads), (size_t)r1.count());
     LOG(INFO) << r0;
     LOG(INFO) << r1._latency;
+#if !WITH_BABYLON_COUNTER
+    // reset() of IntRecorder with babylon counter does not work,
+    // should never call reset().
     r0.reset();
     r1._latency.reset();
+#endif // !WITH_BABYLON_COUNTER
     DoubleLockArg<M1, M0> arg1;
     arg1.m0.set_recorder(r1);
     arg1.m1.set_recorder(r0);
@@ -209,8 +213,13 @@ TEST_F(LockTimerTest, double_lock_time) {
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
         pthread_join(threads[i], NULL);
     }
+#if !WITH_BABYLON_COUNTER
     ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads), (size_t)r0.get_value().num);
     ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads), (size_t)r1.count());
+#else
+    ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads) * 2, (size_t)r0.get_value().num);
+    ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads) * 2, (size_t)r1.count());
+#endif // !WITH_BABYLON_COUNTER
     LOG(INFO) << r0;
     LOG(INFO) << r1._latency;
 }

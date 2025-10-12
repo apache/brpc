@@ -99,7 +99,7 @@ static int64_t double_to_random_int(double dval) {
 }
 
 static int64_t get_window_recorder_qps(void* arg) {
-    detail::Sample<Stat> s;
+    Sample<Stat> s;
     static_cast<RecorderWindow*>(arg)->get_span(&s);
     // Use floating point to avoid overflow.
     if (s.time_us <= 0) {

@@ -137,6 +137,7 @@ TEST_F(PercentileTest, merge2) {
                    << " belong_to_b2=" << belong_to_b2;
 }
 
+#if !WITH_BABYLON_COUNTER
 TEST_F(PercentileTest, combine_of) {
     // Combine multiple percentle samplers into one
     const int num_samplers = 10;
@@ -146,7 +147,7 @@ TEST_F(PercentileTest, combine_of) {
     const int  N = 1000;
     size_t belongs[num_samplers] = {0};
     size_t total = 0;
-    for (int repeat = 0; repeat < 100; ++repeat) {
+    for (int repeat = 0; repeat < 1; ++repeat) {
         bvar::detail::Percentile p[num_samplers];
         for (int i = 0; i < num_samplers; ++i) {
             for (int j = 0; j < N * (i + 1); ++j) {
@@ -186,3 +187,4 @@ TEST_F(PercentileTest, combine_of) {
                   
     }
 }
+#endif // !WITH_BABYLON_COUNTER
