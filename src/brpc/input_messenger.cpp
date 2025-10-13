@@ -331,12 +331,7 @@ int InputMessenger::ProcessNewMessage(
                     "destroyed when authentication failed";
             }
         }
-#if BRPC_WITH_RDMA
-        if (!m->is_read_progressive() && !rdma::FLAGS_rdma_use_polling)
-#else
-        if (!m->is_read_progressive())
-#endif
-        {
+        if (!m->is_read_progressive()) {
             // Transfer ownership to last_msg
             last_msg.reset(msg.release());
         } else {
@@ -346,6 +341,16 @@ int InputMessenger::ProcessNewMessage(
             num_bthread_created = 0;
         }
     }
+#if BRPC_WITH_RDMA
+    // In RDMA polling mode, all messages must be executed in a new bthread and
+    // not in the bthread where the polling bthread is located, because the
+    // method for processing messages may call synchronization primitives,
+    // causing the polling bthread to be scheduled out.
+    if (rdma::FLAGS_rdma_use_polling) {
+        QueueMessage(last_msg.release(), &num_bthread_created,
+                     m->_keytable_pool);
+    }
+#endif
     if (num_bthread_created) {
         bthread_flush();
     }
