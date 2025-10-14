@@ -1701,9 +1701,9 @@ TEST_F(HttpTest, spring_protobuf_content_type) {
     res.Clear();
     cntl2.http_request().set_content_type("application/x-protobuf");
     stub.Echo(&cntl2, &req, &res, nullptr);
-    ASSERT_FALSE(cntl.Failed());
+    ASSERT_FALSE(cntl2.Failed());
     ASSERT_EQ(EXP_RESPONSE, res.message());
-    ASSERT_EQ("application/x-protobuf", cntl.http_response().content_type());
+    ASSERT_EQ("application/x-protobuf", cntl2.http_response().content_type());
 }
 
 TEST_F(HttpTest, dump_http_request) {

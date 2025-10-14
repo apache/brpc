@@ -47,7 +47,7 @@ public:
     void Trace(std::ostream& os, bthread_t tid);
 
     // When the worker is jumping stack from a bthread to another,
-    void WaitForTracing(TaskMeta* m);
+    static void WaitForTracing(TaskMeta* m);
 
 private:
     // Error number guard used in signal handler.
@@ -94,7 +94,6 @@ private:
         Result result;
     };
 
-    static TaskStatus WaitForJumping(TaskMeta* m);
     Result TraceImpl(bthread_t tid);
 
     unw_cursor_t MakeCursor(bthread_fcontext_t fcontext);
@@ -107,11 +106,6 @@ private:
 
     // Make sure only one bthread is traced at a time.
     Mutex _trace_request_mutex;
-
-    // For signal trace.
-    // Make sure bthread does not jump stack when it is being traced.
-    butil::Mutex _mutex;
-    butil::ConditionVariable _cond{&_mutex};
 
     // For context trace.
     unw_context_t _context{};
