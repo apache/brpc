@@ -19,8 +19,10 @@
 
 #include <zlib.h>  //for crc32 Vbucket_id
 
+#define CB_ADD(a,b) (a+b)
+
 // Debug flag for enabling debug statements
-static bool DBUG = true;  // Set to true to enable debug logs
+static bool DBUG = false;  // Set to true to enable debug logs
 
 // Debug print macro
 #define DEBUG_PRINT(msg)                           \
@@ -52,13 +54,13 @@ constexpr size_t RANDOM_ID_HEX_SIZE = 67;  // 33 bytes * 2 + null terminator
 }  // namespace
 
 // Static member definitions
-CouchbaseMetadataTracking*
+CouchbaseManifestManager*
     CouchbaseOperations::CouchbaseRequest::metadata_tracking =
         &common_metadata_tracking;
 
-bool brpc::CouchbaseMetadataTracking::setBucketToCollectionManifest(
+bool brpc::CouchbaseManifestManager::setBucketToCollectionManifest(
     string server, string bucket,
-    CouchbaseMetadataTracking::CollectionManifest manifest) {
+    CouchbaseManifestManager::CollectionManifest manifest) {
   // Then update the collection manifest with proper locking
   {
     UniqueLock write_lock(rw_bucket_to_collection_manifest_mutex_);
@@ -68,9 +70,9 @@ bool brpc::CouchbaseMetadataTracking::setBucketToCollectionManifest(
   return true;
 }
 
-bool brpc::CouchbaseMetadataTracking::getBucketToCollectionManifest(
+bool brpc::CouchbaseManifestManager::getBucketToCollectionManifest(
     string server, string bucket,
-    CouchbaseMetadataTracking::CollectionManifest* manifest) {
+    CouchbaseManifestManager::CollectionManifest* manifest) {
   SharedLock read_lock(rw_bucket_to_collection_manifest_mutex_);
   auto it1 = bucket_to_collection_manifest_.find(server);
   if (it1 == bucket_to_collection_manifest_.end()) {
@@ -84,8 +86,8 @@ bool brpc::CouchbaseMetadataTracking::getBucketToCollectionManifest(
   return true;
 }
 
-bool brpc::CouchbaseMetadataTracking::getManifestToCollectionId(
-    CouchbaseMetadataTracking::CollectionManifest* manifest, string scope,
+bool brpc::CouchbaseManifestManager::getManifestToCollectionId(
+    CouchbaseManifestManager::CollectionManifest* manifest, string scope,
     string collection, uint8_t* collection_id) {
   if (manifest == nullptr || collection_id == nullptr) {
     DEBUG_PRINT("Invalid input: manifest or collection_id is null");
@@ -106,9 +108,9 @@ bool brpc::CouchbaseMetadataTracking::getManifestToCollectionId(
   return true;
 }
 
-bool CouchbaseMetadataTracking::jsonToCollectionManifest(
+bool CouchbaseManifestManager::jsonToCollectionManifest(
     const string& json,
-    CouchbaseMetadataTracking::CollectionManifest* manifest) {
+    CouchbaseManifestManager::CollectionManifest* manifest) {
   if (manifest == nullptr) {
     DEBUG_PRINT("Invalid input: manifest is null");
     return false;
@@ -234,6 +236,108 @@ bool CouchbaseMetadataTracking::jsonToCollectionManifest(
   }
 
   return true;
+}
+
+bool CouchbaseManifestManager::refreshCollectionManifest(
+    brpc::Channel* channel, const string& server, const string& bucket,
+    unordered_map<string, CollectionManifest>* local_collection_manifest_cache) {
+  // first fetch the manifest
+  // then compare the UID with the cached one
+  if (channel == nullptr) {
+    DEBUG_PRINT("No channel found, make sure to call Authenticate() first");
+    return false;
+  }
+  if (server.empty()) {
+    DEBUG_PRINT("Server is empty, make sure to call Authenticate() first");
+    return false;
+  }
+  if (bucket.empty()) {
+    DEBUG_PRINT("No bucket selected, make sure to call SelectBucket() first");
+    return false;
+  }
+  CouchbaseOperations::CouchbaseRequest temp_get_manifest_request;
+  CouchbaseOperations::CouchbaseResponse temp_get_manifest_response;
+  brpc::Controller temp_cntl;
+  temp_get_manifest_request.getCollectionManifest();
+  channel->CallMethod(NULL, &temp_cntl, &temp_get_manifest_request,
+                      &temp_get_manifest_response, NULL);
+  if (temp_cntl.Failed()) {
+    DEBUG_PRINT("Failed to get collection manifest: bRPC controller error "
+                << temp_cntl.ErrorText());
+    return false;
+  }
+  string manifest_json;
+  if (!temp_get_manifest_response.popManifest(&manifest_json)) {
+    DEBUG_PRINT("Failed to parse response for refreshing collection Manifest: "
+                << temp_get_manifest_response.lastError());
+    return false;
+  }
+  brpc::CouchbaseManifestManager::CollectionManifest manifest;
+  if (!common_metadata_tracking.jsonToCollectionManifest(manifest_json,
+                                                         &manifest)) {
+    DEBUG_PRINT("Failed to parse collection manifest JSON");
+    return false;
+  }
+  brpc::CouchbaseManifestManager::CollectionManifest cached_manifest;
+  if (!common_metadata_tracking.getBucketToCollectionManifest(
+          server, bucket, &cached_manifest)) {
+    // No cached manifest found, set the new one
+    if (!common_metadata_tracking.setBucketToCollectionManifest(server, bucket,
+                                                                manifest)) {
+      DEBUG_PRINT("Failed to cache collection manifest for bucket "
+                  << bucket << " on server " << server);
+      return false;
+    }
+    DEBUG_PRINT("Cached collection manifest for bucket "
+                << bucket << " on server " << server);
+    // also update the local cache
+    if (local_collection_manifest_cache != nullptr) {
+      (*local_collection_manifest_cache)[bucket] = manifest;
+    }
+    return true;
+  }
+    // Compare the UID with the cached one
+    // If they are different, refresh the cache
+   else if (manifest.uid != cached_manifest.uid) {
+    DEBUG_PRINT("Collection manifest has changed for bucket "
+                << bucket << " on server " << server);
+    if (!common_metadata_tracking.setBucketToCollectionManifest(server, bucket,
+                                                                manifest)) {
+      DEBUG_PRINT("Failed to update cached collection manifest for bucket "
+                  << bucket << " on server " << server);
+      return false;
+    }
+    DEBUG_PRINT("Updated cached collection manifest for bucket "
+                << bucket << " on server " << server);
+    // update the local cache as well
+    if (local_collection_manifest_cache != nullptr) {
+      (*local_collection_manifest_cache)[bucket] = manifest;
+      DEBUG_PRINT("Added to local collection manifest cache for bucket "
+                  << bucket << " on server " << server);
+    }
+    return true;
+  } else {
+    DEBUG_PRINT("Collection manifest is already up-to-date for bucket "
+                << bucket << " on server " << server);
+    if (local_collection_manifest_cache != nullptr) {
+      if (local_collection_manifest_cache->find(bucket) !=
+          local_collection_manifest_cache->end()) {
+        // if the bucket already exists in the local cache, check the UID
+        if ((*local_collection_manifest_cache)[bucket].uid != manifest.uid) {
+          // if the UID is different, update the local cache
+          (*local_collection_manifest_cache)[bucket] = manifest;
+          DEBUG_PRINT("Updated local collection manifest cache for bucket "
+                      << bucket << " on server " << server);
+        }
+      } else {
+        // if the bucket does not exist in the local cache, add it
+        (*local_collection_manifest_cache)[bucket] = manifest;
+        DEBUG_PRINT("Added to local collection manifest cache for bucket "
+                    << bucket << " on server " << server);
+      }
+    }
+    return false;
+  }
 }
 
 uint32_t CouchbaseOperations::CouchbaseRequest::hashCrc32(const char* key,
@@ -718,8 +822,9 @@ bool CouchbaseOperations::CouchbaseRequest::getOrDelete(
 // fetch from the server.
 bool CouchbaseOperations::CouchbaseRequest::getCachedOrFetchCollectionId(
     string collection_name, uint8_t* coll_id,
-    brpc::CouchbaseMetadataTracking* metadata_tracking, brpc::Channel* channel,
-    const string& server, const string& selected_bucket) {
+    brpc::CouchbaseManifestManager* metadata_tracking, brpc::Channel* channel,
+    const string& server, const string& selected_bucket,
+    unordered_map<string, CouchbaseManifestManager::CollectionManifest>* local_cache) {
   if (collection_name.empty()) {
     DEBUG_PRINT("Empty collection name");
     return false;
@@ -737,7 +842,7 @@ bool CouchbaseOperations::CouchbaseRequest::getCachedOrFetchCollectionId(
     return false;
   }
 
-  brpc::CouchbaseMetadataTracking::CollectionManifest manifest;
+  brpc::CouchbaseManifestManager::CollectionManifest manifest;
   // check if the server/bucket exists in the cached collection manifest
   if (!metadata_tracking->getBucketToCollectionManifest(server, selected_bucket,
                                                         &manifest)) {
@@ -745,7 +850,7 @@ bool CouchbaseOperations::CouchbaseRequest::getCachedOrFetchCollectionId(
                 << selected_bucket << " on server " << server
                 << ", fetching from server");
     // No cached manifest found, fetch from server
-    if (!refreshCollectionManifest(channel, server, selected_bucket)) {
+    if (!metadata_tracking->refreshCollectionManifest(channel, server, selected_bucket, local_cache)) {
       return false;
     }
     // local cache will also be updated in refreshCollectionManifest
@@ -764,7 +869,7 @@ bool CouchbaseOperations::CouchbaseRequest::getCachedOrFetchCollectionId(
             &manifest, "_default", collection_name, coll_id)) {
       // Just to verify that the collectionID does not exist in the manifest
       // refresh manifest from server and try again
-      if (!refreshCollectionManifest(channel, server, selected_bucket)) {
+      if (!metadata_tracking->refreshCollectionManifest(channel, server, selected_bucket, local_cache)) {
         return false;
       }
       // local cache will also be updated in refreshCollectionManifest
@@ -799,7 +904,7 @@ bool CouchbaseOperations::CouchbaseRequest::getRequest(
       // if local cache is empty, goto global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         DEBUG_PRINT(
             "Failed to get collection id from global cache or server in "
             "getRequest");
@@ -813,7 +918,7 @@ bool CouchbaseOperations::CouchbaseRequest::getRequest(
       // if not check in the global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         DEBUG_PRINT(
             "Failed to get collection id from global cache or server in "
             "getRequest");
@@ -839,7 +944,7 @@ bool CouchbaseOperations::CouchbaseRequest::deleteRequest(
       // if local cache is empty, goto global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         DEBUG_PRINT(
             "Failed to get collection id from global cache or server in "
             "deleteRequest");
@@ -853,7 +958,7 @@ bool CouchbaseOperations::CouchbaseRequest::deleteRequest(
       // if not check in the global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         DEBUG_PRINT(
             "Failed to get collection id from global cache or server in "
             "deleteRequest");
@@ -1233,7 +1338,7 @@ bool CouchbaseOperations::CouchbaseRequest::upsertRequest(
       // if local cache is empty, goto global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         DEBUG_PRINT(
             "Failed to get collection id from global cache or server in "
             "upsertRequest");
@@ -1247,7 +1352,7 @@ bool CouchbaseOperations::CouchbaseRequest::upsertRequest(
       // if not check in the global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         DEBUG_PRINT(
             "Failed to get collection id from global cache or server in "
             "upsertRequest");
@@ -1308,101 +1413,6 @@ bool CouchbaseOperations::CouchbaseRequest::getCollectionManifest() {
   return true;
 }
 
-bool CouchbaseOperations::CouchbaseRequest::refreshCollectionManifest(
-    brpc::Channel* channel, const string& server, const string& bucket) {
-  // first fetch the manifest
-  // then compare the UID with the cached one
-  if (channel == nullptr) {
-    DEBUG_PRINT("No channel found, make sure to call Authenticate() first");
-    return false;
-  }
-  if (server.empty()) {
-    DEBUG_PRINT("Server is empty, make sure to call Authenticate() first");
-    return false;
-  }
-  if (bucket.empty()) {
-    DEBUG_PRINT("No bucket selected, make sure to call SelectBucket() first");
-    return false;
-  }
-  CouchbaseOperations::CouchbaseRequest temp_get_manifest_request;
-  CouchbaseOperations::CouchbaseResponse temp_get_manifest_response;
-  brpc::Controller temp_cntl;
-  temp_get_manifest_request.getCollectionManifest();
-  channel->CallMethod(NULL, &temp_cntl, &temp_get_manifest_request,
-                      &temp_get_manifest_response, NULL);
-  if (temp_cntl.Failed()) {
-    DEBUG_PRINT("Failed to get collection manifest: bRPC controller error "
-                << temp_cntl.ErrorText());
-    return false;
-  }
-  string manifest_json;
-  if (!temp_get_manifest_response.popManifest(&manifest_json)) {
-    DEBUG_PRINT("Failed to parse response for refreshing collection Manifest: "
-                << temp_get_manifest_response.lastError());
-    return false;
-  }
-  brpc::CouchbaseMetadataTracking::CollectionManifest manifest;
-  if (!common_metadata_tracking.jsonToCollectionManifest(manifest_json,
-                                                         &manifest)) {
-    DEBUG_PRINT("Failed to parse collection manifest JSON");
-    return false;
-  }
-  brpc::CouchbaseMetadataTracking::CollectionManifest cached_manifest;
-  if (!common_metadata_tracking.getBucketToCollectionManifest(
-          server, bucket, &cached_manifest)) {
-    // No cached manifest found, set the new one
-    if (!common_metadata_tracking.setBucketToCollectionManifest(server, bucket,
-                                                                manifest)) {
-      DEBUG_PRINT("Failed to cache collection manifest for bucket "
-                  << bucket << " on server " << server);
-      return false;
-    }
-    DEBUG_PRINT("Cached collection manifest for bucket "
-                << bucket << " on server " << server);
-    // also update the local cache
-    (*local_collection_manifest_cache)[bucket] = manifest;
-    return true;
-  }
-    // Compare the UID with the cached one
-    // If they are different, refresh the cache
-   else if (manifest.uid != cached_manifest.uid) {
-    DEBUG_PRINT("Collection manifest has changed for bucket "
-                << bucket << " on server " << server);
-    if (!common_metadata_tracking.setBucketToCollectionManifest(server, bucket,
-                                                                manifest)) {
-      DEBUG_PRINT("Failed to update cached collection manifest for bucket "
-                  << bucket << " on server " << server);
-      return false;
-    }
-    DEBUG_PRINT("Updated cached collection manifest for bucket "
-                << bucket << " on server " << server);
-    // update the local cache as well
-    (*local_collection_manifest_cache)[bucket] = manifest;
-    DEBUG_PRINT("Added to local collection manifest cache for bucket "
-                << bucket << " on server " << server);
-    return true;
-  } else {
-    DEBUG_PRINT("Collection manifest is already up-to-date for bucket "
-                << bucket << " on server " << server);
-    if (local_collection_manifest_cache->find(bucket) !=
-        local_collection_manifest_cache->end()) {
-      // if the bucket already exists in the local cache, check the UID
-      if ((*local_collection_manifest_cache)[bucket].uid != manifest.uid) {
-        // if the UID is different, update the local cache
-        (*local_collection_manifest_cache)[bucket] = manifest;
-        DEBUG_PRINT("Updated local collection manifest cache for bucket "
-                    << bucket << " on server " << server);
-      }
-    } else {
-      // if the bucket does not exist in the local cache, add it
-      (*local_collection_manifest_cache)[bucket] = manifest;
-      DEBUG_PRINT("Added to local collection manifest cache for bucket "
-                  << bucket << " on server " << server);
-    }
-    return false;
-  }
-}
-
 bool CouchbaseOperations::CouchbaseRequest::addRequest(
     const butil::StringPiece& key, const butil::StringPiece& value,
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
@@ -1420,7 +1430,7 @@ bool CouchbaseOperations::CouchbaseRequest::addRequest(
       // if local cache is empty, goto global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         DEBUG_PRINT(
             "Failed to get collection id from global cache or server in "
             "addRequest");
@@ -1434,7 +1444,7 @@ bool CouchbaseOperations::CouchbaseRequest::addRequest(
       // if not check in the global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         DEBUG_PRINT(
             "Failed to get collection id from global cache or server in "
             "addRequest");
@@ -1458,7 +1468,7 @@ bool CouchbaseOperations::CouchbaseRequest::addRequest(
 //   uint8_t coll_id = 0; // default collection ID
 //   if(collection_name != "_default"){
 //     if(!getCachedOrFetchCollectionId(collection_name, &coll_id,
-//     metadata_tracking, channel, server, bucket)){
+//     metadata_tracking, channel, server, bucket, local_collection_manifest_cache)){
 //       return false;
 //     }
 //   }
@@ -1483,7 +1493,7 @@ bool CouchbaseOperations::CouchbaseRequest::appendRequest(
       // if local cache is empty, goto global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         return false;
       }
     }
@@ -1493,7 +1503,7 @@ bool CouchbaseOperations::CouchbaseRequest::appendRequest(
       // if not check in the global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         return false;
       }
     }
@@ -1518,7 +1528,7 @@ bool CouchbaseOperations::CouchbaseRequest::prependRequest(
       // if local cache is empty, goto global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         return false;
       }
     }
@@ -1528,7 +1538,7 @@ bool CouchbaseOperations::CouchbaseRequest::prependRequest(
       // if not check in the global cache or fetch from server
       if (!getCachedOrFetchCollectionId(collection_name, &coll_id,
                                         metadata_tracking, channel, server,
-                                        bucket)) {
+                                        bucket, local_collection_manifest_cache)) {
         return false;
       }
     }
@@ -1537,6 +1547,12 @@ bool CouchbaseOperations::CouchbaseRequest::prependRequest(
                coll_id);
 }
 
+bool CouchbaseOperations::CouchbaseResponse::popAuthenticate(uint64_t* cas_value) {
+  return popStore(policy::CB_BINARY_SASL_AUTH, cas_value);
+}
+bool CouchbaseOperations::CouchbaseResponse::popHello(uint64_t* cas_value) {
+  return popStore(policy::CB_HELLO_SELECT_FEATURES, cas_value);
+}
 bool CouchbaseOperations::CouchbaseResponse::popUpsert(uint64_t* cas_value) {
   return popStore(policy::CB_BINARY_SET, cas_value);
 }
@@ -2072,7 +2088,7 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key,
         // has been updated on the server side. The collectionID present in the
         // local cache/global cache is no longer valid. This can happen if a
         // collection is deleted and recreated with the same name.
-        if (!request->refreshCollectionManifest(channel, server, bucket)) {
+        if (!request->metadata_tracking->refreshCollectionManifest(channel, server, bucket, request->local_collection_manifest_cache)) {
           DEBUG_PRINT("Failed to refresh collection manifest");
           result->error_message = "Failed to refresh collection manifest";
         } else {
@@ -2159,7 +2175,7 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key,
         // collection_manifest has been updated on the server side. and the
         // client have a stale copy of collection manifest. In this case, we
         // need to refresh the collection manifest and retry the operation.
-        if (!request->refreshCollectionManifest(channel, server, bucket)) {
+        if (!request->metadata_tracking->refreshCollectionManifest(channel, server, bucket, request->local_collection_manifest_cache)) {
           DEBUG_PRINT("Failed to refresh collection manifest");
           result->error_message = "Failed to refresh collection manifest";
           return false;
@@ -2281,7 +2297,7 @@ bool CouchbaseOperations::CouchbaseRequest::getLocalCachedCollectionId(
   }
   auto it = local_collection_manifest_cache->find(bucket);
   if (it != local_collection_manifest_cache->end()) {
-    CouchbaseMetadataTracking::CollectionManifest& manifest = it->second;
+    CouchbaseManifestManager::CollectionManifest& manifest = it->second;
     if (manifest.scope_to_collection_id_map.find(scope) !=
         manifest.scope_to_collection_id_map.end()) {
       auto& collection_map = manifest.scope_to_collection_id_map[scope];
@@ -2341,13 +2357,32 @@ CouchbaseOperations::Result CouchbaseOperations::add(const string& key,
 
 CouchbaseOperations::Result CouchbaseOperations::authenticate(
     const string& username, const string& password,
-    const string& server_address, bool enable_ssl, string path_to_cert) {
+    const string& server_address, const string& bucket_name) {
+  return authenticateAll(username, password, server_address, bucket_name, false,
+                      "");
+}
+
+CouchbaseOperations::Result CouchbaseOperations::authenticateSSL(
+    const string& username, const string& password,
+    const string& server_address, const string& bucket_name,
+    string path_to_cert) {
+  return authenticateAll(username, password, server_address, bucket_name, true,
+                      path_to_cert);
+}
+
+CouchbaseOperations::Result CouchbaseOperations::authenticateAll(
+    const string& username, const string& password,
+    const string& server_address, const string& bucket_name, bool enable_ssl, string path_to_cert) {
   // Create a channel to the Couchbase server
   brpc::ChannelOptions options;
   options.protocol = brpc::PROTOCOL_COUCHBASE;
   options.connection_type = "single";
   options.timeout_ms = 1000;  // 1 second
   options.max_retry = 3;
+  
+  // CRITICAL: Set unique connection_group to prevent connection sharing
+  // Each CouchbaseOperations instance connected to same bucket gets its own connection group
+  options.connection_group = server_address + bucket_name;
 
   // enable_ssl
   if (enable_ssl) {
@@ -2388,11 +2423,38 @@ CouchbaseOperations::Result CouchbaseOperations::authenticate(
     result.error_message = cntl.ErrorText();
     return result;
   }
+  uint64_t cas;
+  if(response.popHello(&cas) == false) {
+    DEBUG_PRINT("Failed to receive HELO response from Couchbase: "
+                << response.lastError());
+    delete new_channel;
+    result.success = false;
+    result.value = "";
+    result.error_message = response.lastError();
+    result.status_code = response._status_code;
+    return result;
+  }
+  if (response.popAuthenticate(&cas) == false) {
+    DEBUG_PRINT("Failed to authenticate user: "
+                << username << " to Couchbase: " << response.lastError());
+    result.success = false;
+    result.value = "";
+    result.error_message = response.lastError();
+    result.status_code = response._status_code;
+    return result;
+  }
   // Successfully authenticated
   channel_ = new_channel;
   this->server_address_ = server_address;
   result.success = true;
   result.status_code = 0;
+  
+  DEBUG_PRINT("Instance " << reinterpret_cast<uintptr_t>(this) 
+              << " authenticated with unique connection_group:" 
+              << server_address_ + bucket_name);
+  
+  // select the bucket
+  result = selectBucket(bucket_name);
   return result;
 }
 
@@ -2435,7 +2497,7 @@ CouchbaseOperations::Result CouchbaseOperations::selectBucket(
   if (request.local_collection_manifest_cache->find(bucket_name) ==
       request.local_collection_manifest_cache->end()) {
     // only fetch if not already present in the local cache
-    CouchbaseMetadataTracking::CollectionManifest manifest;
+    CouchbaseManifestManager::CollectionManifest manifest;
     if (!common_metadata_tracking.getBucketToCollectionManifest(
             server_address_, bucket_name, &manifest)) {
       DEBUG_PRINT("Collection manifest for bucket: "
@@ -2445,7 +2507,7 @@ CouchbaseOperations::Result CouchbaseOperations::selectBucket(
       // manifest for this bucket/server is not cached yet, will fetch it from
       // server now. refresh will also update the local cache with the fetched
       // manifest
-      request.refreshCollectionManifest(channel_, server_address_, bucket_name);
+      request.metadata_tracking->refreshCollectionManifest(channel_, server_address_, bucket_name, request.local_collection_manifest_cache);
       // We simply try once to prefetch the manifest, before any collection
       // operation. If it fails, it will be lazily updated when a collection
       // operation is performed.

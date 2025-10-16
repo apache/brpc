@@ -115,7 +115,8 @@ class UniqueLock {
   ~UniqueLock() { lock_.unlock(); }
 };
 
-class CouchbaseMetadataTracking {
+// manager
+class CouchbaseManifestManager {
  public:
   struct CollectionManifest {
     string uid;  // uid of the manifest, it can be used to track if the manifest
@@ -131,8 +132,8 @@ class CouchbaseMetadataTracking {
   ReaderWriterLock rw_bucket_to_collection_manifest_mutex_;
 
  public:
-  CouchbaseMetadataTracking() {}
-  ~CouchbaseMetadataTracking() { bucket_to_collection_manifest_.clear(); }
+  CouchbaseManifestManager() {}
+  ~CouchbaseManifestManager() { bucket_to_collection_manifest_.clear(); }
   bool setBucketToCollectionManifest(string server, string bucket,
                                      CollectionManifest manifest);
 
@@ -143,6 +144,9 @@ class CouchbaseMetadataTracking {
 
   bool jsonToCollectionManifest(const string& json,
                                 CollectionManifest* manifest);
+  bool refreshCollectionManifest(brpc::Channel* channel, const string& server,
+                                const string& bucket,
+                                unordered_map<string, CollectionManifest>* local_cache = nullptr);
 } static common_metadata_tracking;
 class CouchbaseOperations {
  public:
@@ -182,9 +186,11 @@ class CouchbaseOperations {
   // string& key, uint32_t exptime, string collection_name = "_default"); Result
   // Flush(uint32_t timeout = 0);
   Result version();
-  Result authenticate(const string& username, const string& password,
-                      const string& server_address, bool enable_ssl = false,
+  Result authenticateSSL(const string& username, const string& password,
+                      const string& server_address, const string& bucket_name,
                       string path_to_cert = "");
+  Result authenticate(const string& username, const string& password,
+                      const string& server_address, const string& bucket_name);
   Result selectBucket(const string& bucket_name);
 
   // Pipeline management
@@ -207,6 +213,9 @@ class CouchbaseOperations {
                                   const string& collection, uint8_t* coll_id);
 
  private:
+  CouchbaseOperations::Result authenticateAll(
+    const string& username, const string& password,
+    const string& server_address, const string& bucket_name, bool enable_ssl, string path_to_cert);
   friend void policy::ProcessCouchbaseResponse(InputMessageBase* msg);
   friend void policy::SerializeCouchbaseRequest(
       butil::IOBuf* buf, Controller* cntl,
@@ -216,12 +225,14 @@ class CouchbaseOperations {
   string selected_bucket_;
 
   unordered_map<string /*bucket*/,
-                CouchbaseMetadataTracking::CollectionManifest>
+                CouchbaseManifestManager::CollectionManifest>
       local_bucket_to_collection_manifest_;
 
+ public:
+ // these classes have been made public so that normal user can also create advanced bRPC programs as per their requirements.
   class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
-   private:
-    static brpc::CouchbaseMetadataTracking* metadata_tracking;
+   public:
+    static brpc::CouchbaseManifestManager* metadata_tracking;
     int _pipelined_count;
     butil::IOBuf _buf;
     mutable int _cached_size_;
@@ -240,12 +251,12 @@ class CouchbaseOperations {
 
    public:
     unordered_map<string /*bucket*/,
-                  CouchbaseMetadataTracking::CollectionManifest>*
+                  CouchbaseManifestManager::CollectionManifest>*
         local_collection_manifest_cache;
 
     CouchbaseRequest(
         unordered_map<string /*bucket*/,
-                      CouchbaseMetadataTracking::CollectionManifest>*
+                      CouchbaseManifestManager::CollectionManifest>*
             local_cache_reference)
         : NonreflectableMessage<CouchbaseRequest>() {
       metadata_tracking = &common_metadata_tracking;
@@ -258,13 +269,16 @@ class CouchbaseOperations {
     }
     ~CouchbaseRequest() { sharedDtor(); }
     CouchbaseRequest(const CouchbaseRequest& from)
-        : NonreflectableMessage<CouchbaseRequest>(from) {
+        : NonreflectableMessage<CouchbaseRequest>() {
+      metadata_tracking = &common_metadata_tracking;
       sharedCtor();
       MergeFrom(from);
     }
 
     inline CouchbaseRequest& operator=(const CouchbaseRequest& from) {
-      CopyFrom(from);
+      if (this != &from) {
+        MergeFrom(from);
+      }
       return *this;
     }
 
@@ -286,12 +300,10 @@ class CouchbaseOperations {
 
     bool getCachedOrFetchCollectionId(
         string collection_name, uint8_t* coll_id,
-        brpc::CouchbaseMetadataTracking* metadata_tracking,
+        brpc::CouchbaseManifestManager* metadata_tracking,
         brpc::Channel* channel, const string& server,
-        const string& selected_bucket);
-
-    bool refreshCollectionManifest(brpc::Channel* channel, const string& server,
-                                   const string& bucket);
+        const string& selected_bucket,
+        unordered_map<string, CouchbaseManifestManager::CollectionManifest>* local_cache);
 
     // Collection-aware document operations
     bool getRequest(const butil::StringPiece& key,
@@ -372,9 +384,10 @@ class CouchbaseOperations {
   };
 
   class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
+   public:
+    static brpc::CouchbaseManifestManager* metadata_tracking;
    private:
     string _err;
-    static brpc::CouchbaseMetadataTracking* metadata_tracking;
     butil::IOBuf _buf;
     mutable int _cached_size_;
     bool popCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
@@ -392,13 +405,15 @@ class CouchbaseOperations {
     }
     ~CouchbaseResponse() { sharedDtor(); }
     CouchbaseResponse(const CouchbaseResponse& from)
-        : NonreflectableMessage<CouchbaseResponse>(from) {
+        : NonreflectableMessage<CouchbaseResponse>() {
       metadata_tracking = &common_metadata_tracking;
       sharedCtor();
       MergeFrom(from);
     }
     inline CouchbaseResponse& operator=(const CouchbaseResponse& from) {
-      CopyFrom(from);
+      if (this != &from) {
+        MergeFrom(from);
+      }
       return *this;
     }
 
@@ -488,6 +503,8 @@ class CouchbaseOperations {
     bool popAppend(uint64_t* cas_value);
     bool popPrepend(uint64_t* cas_value);
     bool popSelectBucket(uint64_t* cas_value, std::string bucket_name);
+    bool popAuthenticate(uint64_t* cas_value);
+    bool popHello(uint64_t* cas_value);
 
     // Collection-related response methods
     bool popCollectionId(uint8_t* collection_id);
