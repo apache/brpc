@@ -1,6 +1,6 @@
 ## Couchbase bRPC Binary Protocol Integration
 
-This document explains the implementation of Couchbase Binary Protocol support added to this branch of bRPC, the available high-level operations, collection support, SSL authentication, and how to run the provided example client against either a local Couchbase Server cluster or a Couchbase Capella (cloud) deployment. However, the couchbase binary protocol implementation in bRPC requires us to do fine-grained optimizations which has been already done in the couchbase-cxx-client SDK, so we also added the support of couchbase using couchbase-cxx-SDK in bRPC and is available at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).
+This document explains the implementation of Couchbase Binary Protocol support added to this branch of bRPC, the available high-level operations, collection support, SSL authentication, and how to run the provided example client against either a local Couchbase Server cluster or a Couchbase Capella (cloud) deployment. However, the couchbase binary protocol implementation in bRPC currently do not have fine-grained optimizations which has been already done in the couchbase-cxx-client SDK which also have query support, better error handling and much more optimized operations. So, we also added the support of couchbase using couchbase-cxx-SDK in bRPC and is available at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).
 
 ---
 ### 1. Overview
@@ -36,11 +36,10 @@ Design goals:
 | Collections | Collection-scoped CRUD operations | Pass collection name as optional parameter (defaults to "_default") |
 | Error Handling | `Result.success` + `Result.error_message` | Human-readable error messages with status codes |
 
-**Key Differences from Low-Level API:**
 - **Simplified**: No need to manage channels, controllers, or response parsing
 - **Thread-Safe Per Instance**: Each `CouchbaseOperations` instance can be used independently ⚠️ **BUT NEVER SHARE BETWEEN THREADS**
-- **Error Handling**: Simple boolean success with descriptive error messages
-- **SSL Built-in**: Automatic SSL handling for secure connections
+- **Error Handling**: Simple boolean success with descriptive error messages and error codes
+- **SSL Built-in**: SSL handling for secure connections
 
 
 ---
@@ -150,6 +149,24 @@ auto add_result = couchbase_ops.add("doc::2", value, "my_collection");
 #### Pipeline Operations (Performance Optimization):
 The pipeline API allows batching multiple operations into a single network call, significantly improving performance for bulk operations:
 
+#### How Pipeline Operations Work
+
+1. **Begin Pipeline**: Start a new pipeline session
+2. **Add Operations**: Queue multiple operations without executing them
+3. **Execute Pipeline**: Send all operations in a single network call
+4. **Process Results**: Handle results in the same order as requests
+
+#### Pipeline API Methods
+
+| Method | Description | Usage |
+|--------|-------------|-------|
+| `beginPipeline()` | Start a new pipeline session | Must call before adding operations |
+| `pipelineRequest(op_type, key, value, collection)` | Add operation to pipeline | Supports all CRUD operations |
+| `executePipeline()` | Execute all queued operations | Returns `vector<Result>` in request order |
+| `clearPipeline()` | Clear pipeline without executing | Use for cleanup on errors |
+| `isPipelineActive()` | Check if pipeline is active | Returns `bool` |
+| `getPipelineSize()` | Get number of queued operations | Returns `size_t` |
+
 ```cpp
 // Begin a new pipeline
 if (!couchbase_ops.beginPipeline()) {
@@ -193,20 +210,6 @@ couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "doc1", "value1", 
 couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "doc1", "", "my_collection");
 auto results = couchbase_ops.executePipeline();
 ```
-
-**Pipeline Management Methods**:
-- `beginPipeline()` - Start a new pipeline session
-- `pipelineRequest(op_type, key, value, collection)` - Add operation to pipeline
-- `executePipeline()` - Execute all operations and return results
-- `clearPipeline()` - Clear pipeline without executing (cleanup)
-- `isPipelineActive()` - Check if pipeline is active
-- `getPipelineSize()` - Get number of queued operations
-
-**Performance Benefits**:
-- **Reduced Network Overhead**: Multiple operations in single network round-trip
-- **Better Throughput**: Especially beneficial for bulk operations
-- **Preserved Order**: Results returned in same order as requests
-- **Error Isolation**: Individual operation failures don't affect others
 
 #### Error Handling Pattern:
 ```cpp
@@ -389,137 +392,8 @@ auto result = couchbase_ops.authenticate(
 - Ensure firewall allows outbound connections on port 11207
 
 ---
-### 9. Pipeline Operations (Performance Optimization)
 
-Pipeline operations allow you to batch multiple Couchbase operations into a single network call, significantly improving performance for bulk operations.
-
-#### How Pipeline Operations Work
-
-1. **Begin Pipeline**: Start a new pipeline session
-2. **Add Operations**: Queue multiple operations without executing them
-3. **Execute Pipeline**: Send all operations in a single network call
-4. **Process Results**: Handle results in the same order as requests
-
-#### Pipeline API Methods
-
-| Method | Description | Usage |
-|--------|-------------|-------|
-| `beginPipeline()` | Start a new pipeline session | Must call before adding operations |
-| `pipelineRequest(op_type, key, value, collection)` | Add operation to pipeline | Supports all CRUD operations |
-| `executePipeline()` | Execute all queued operations | Returns `vector<Result>` in request order |
-| `clearPipeline()` | Clear pipeline without executing | Use for cleanup on errors |
-| `isPipelineActive()` | Check if pipeline is active | Returns `bool` |
-| `getPipelineSize()` | Get number of queued operations | Returns `size_t` |
-
-#### Basic Pipeline Example
-
-```cpp
-#include <brpc/couchbase.h>
-
-brpc::CouchbaseOperations couchbase_ops;
-// ... authenticate and select bucket ...
-
-// 1. Begin pipeline
-if (!couchbase_ops.beginPipeline()) {
-    LOG(ERROR) << "Failed to begin pipeline";
-    return -1;
-}
-
-// 2. Add operations to pipeline (not executed yet)
-bool success = true;
-success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "user1", "{\"name\":\"John\"}");
-success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "user2", "{\"name\":\"Jane\"}");
-success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "user1");
-success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::UPSERT, "user3", "{\"name\":\"Bob\"}");
-
-if (!success) {
-    couchbase_ops.clearPipeline();
-    return -1;
-}
-
-// 3. Execute all operations in single network call
-std::vector<brpc::CouchbaseOperations::Result> results = couchbase_ops.executePipeline();
-
-// 4. Process results (same order as requests)
-for (size_t i = 0; i < results.size(); ++i) {
-    const auto& result = results[i];
-    if (result.success) {
-        std::cout << "Operation " << i << " succeeded";
-        if (!result.value.empty()) {
-            std::cout << " - Value: " << result.value;
-        }
-        std::cout << std::endl;
-    } else {
-        std::cout << "Operation " << i << " failed: " << result.error_message << std::endl;
-    }
-}
-```
-
-#### Collection-Scoped Pipeline Operations
-
-```cpp
-// Pipeline with collection operations
-couchbase_ops.beginPipeline();
-
-// Add operations to specific collection
-couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "doc1", "value1", "my_collection");
-couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "doc1", "", "my_collection");
-couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::DELETE, "doc2", "", "my_collection");
-
-auto results = couchbase_ops.executePipeline();
-// Process results...
-```
-
-#### Pipeline Error Handling
-
-Pipeline operations provide granular error handling - each operation can succeed or fail independently:
-
-```cpp
-couchbase_ops.beginPipeline();
-
-// Some operations may succeed, others may fail
-couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "existing_key", "value");  // May fail if key exists
-couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "nonexistent_key");        // May fail if key doesn't exist
-couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::UPSERT, "new_key", "value");    // Should succeed
-
-auto results = couchbase_ops.executePipeline();
-
-// Check each result individually
-for (size_t i = 0; i < results.size(); ++i) {
-    if (!results[i].success) {
-        LOG(WARNING) << "Operation " << i << " failed: " << results[i].error_message;
-        // Handle individual failures as needed
-    }
-}
-```
-
-#### Performance Benefits
-
-- **Reduced Network Latency**: Multiple operations in single round-trip
-- **Better Throughput**: Especially beneficial for bulk operations
-
-#### Pipeline Best Practices
-
-1. **Batch Related Operations**: Group logically related operations together
-2. **Handle Partial Failures**: Individual operations can fail while others succeed
-3. **Clear on Errors**: Use `clearPipeline()` if pipeline setup fails
-5. **Mixed Operations**: Combine different operation types (GET, ADD, UPSERT, DELETE) as needed
-
-#### When to Use Pipelines
-
-**Ideal Use Cases**:
-- Bulk data loading/migration
-- Batch processing workflows
-- Multi-document transactions (where order matters)
-- Performance-critical applications with multiple operations
-
-**Not Recommended For**:
-- Single operations (use regular methods)
-- Operations requiring immediate results for decision making
-- Very large batches that might timeout
-
----
-### 10. Error Handling Patterns
+### 9. Error Handling Patterns
 
 #### High-Level API (Recommended)
 The `CouchbaseOperations` class uses a simple `Result` struct:
@@ -552,7 +426,7 @@ if (get_result.success) {
 ```
 
 ---
-### 11. Best Practices
+### 10. Best Practices
 
 #### Thread Safety
 > ⚠️ **: THREAD SAFETY REQUIREMENTS**
@@ -607,7 +481,7 @@ int main() {
 ```
 
 ---
-### 12. Summary and References
+### 11. Summary and References
 This implementation provides high-level APIs for Couchbase KV and collection operations. Couchbase (the company) contributed to this implementation, but it is not officially supported; it is "[Community Supported](https://docs.couchbase.com/server/current/third-party/integrations.html#support-model)".
 
 - **High-level API**: Recommended for most applications - simple, with built-in SSL support
