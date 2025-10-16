@@ -28,71 +28,8 @@
 #define RESET "\033[0m"
 
 DEFINE_string(server, "localhost:11210", "IP Address of server");
-
-int main() {
-  // Create CouchbaseOperations instance for high-level operations
-  brpc::CouchbaseOperations couchbase_ops;
-
-  std::cout << GREEN << "Using high-level CouchbaseOperations interface"
-            << RESET << std::endl;
-
-  // Ask username and password for authentication
-  std::string username = "Administrator";
-  std::string password = "password";
-  while (username.empty() || password.empty()) {
-    std::cout << "Enter Couchbase username: ";
-    std::cin >> username;
-    if (username.empty()) {
-      std::cout << "Username cannot be empty. Please enter again." << std::endl;
-      continue;
-    }
-    std::cout << "Enter Couchbase password: ";
-    std::cin >> password;
-    if (password.empty()) {
-      std::cout << "Password cannot be empty. Please enter again." << std::endl;
-      continue;
-    }
-  }
-
-  // Use high-level authentication method
-  // when connecting to capella use couchbase_ops.authenticate(username,
-  // password, FLAGS_server, true, "path/to/cert.txt");
-  brpc::CouchbaseOperations::Result auth_result =
-      couchbase_ops.authenticate(username, password, FLAGS_server);
-  if (!auth_result.success) {
-    LOG(ERROR) << "Authentication failed: " << auth_result.error_message;
-    return -1;
-  }
-
-  std::cout
-      << GREEN
-      << "Authentication successful, proceeding with Couchbase operations..."
-      << RESET << std::endl;
-
-  // Select bucket
-  std::string bucket_name = "testing";
-  while (bucket_name.empty()) {
-    std::cout << "Enter Couchbase bucket name: ";
-    std::cin >> bucket_name;
-    if (bucket_name.empty()) {
-      std::cout << "Bucket name cannot be empty. Please enter again."
-                << std::endl;
-      continue;
-    }
-  }
-
-  // Use high-level bucket selection method
-  brpc::CouchbaseOperations::Result bucket_result =
-      couchbase_ops.selectBucket(bucket_name);
-  if (!bucket_result.success) {
-    LOG(ERROR) << "Bucket selection failed: " << bucket_result.error_message;
-    return -1;
-  } else {
-    std::cout << GREEN << "Bucket Selection Successful" << RESET << std::endl;
-  }
-
-  // Add operation using high-level method
-  std::string add_key = "user::test_brpc_binprot";
+int performOperations(brpc::CouchbaseOperations& couchbase_ops){
+    std::string add_key = "user::test_brpc_binprot";
   std::string add_value =
       R"({"name": "John Doe", "age": 30, "email": "john@example.com"})";
 
@@ -232,7 +169,7 @@ int main() {
   // Retrieve Collection ID for scope `_default` and collection
   // `testing_collection`
   const std::string scope_name = "_default";                // default scope
-  std::string collection_name = "non_existent_collection";  // target collection
+  std::string collection_name = "col1";  // target collection
   // enter collection name as user input
   // std::cout << "Enter collection name (default 'testing_collection'): ";
   // std::string user_input;
@@ -454,5 +391,72 @@ int main() {
   std::cout << GREEN
             << "\n=== All operations completed successfully! ===" << RESET
             << std::endl;
+}
+int main() {
+  // Create CouchbaseOperations instance for high-level operations
+  brpc::CouchbaseOperations couchbase_ops;
+
+  // std::cout << GREEN << "Using high-level CouchbaseOperations interface"
+  //           << RESET << std::endl;
+
+  // Ask username and password for authentication
+  std::string username = "Administrator";
+  std::string password = "password";
+  while (username.empty() || password.empty()) {
+    std::cout << "Enter Couchbase username: ";
+    std::cin >> username;
+    if (username.empty()) {
+      std::cout << "Username cannot be empty. Please enter again." << std::endl;
+      continue;
+    }
+    std::cout << "Enter Couchbase password: ";
+    std::cin >> password;
+    if (password.empty()) {
+      std::cout << "Password cannot be empty. Please enter again." << std::endl;
+      continue;
+    }
+  }
+
+  // Use high-level authentication method
+  // when connecting to capella use couchbase_ops.authenticate(username,
+  // password, FLAGS_server, true, "path/to/cert.txt");
+  brpc::CouchbaseOperations::Result auth_result =
+      couchbase_ops.authenticate(username, password, FLAGS_server, "testing");
+  if (!auth_result.success) {
+    LOG(ERROR) << "Authentication failed: " << auth_result.error_message;
+    return -1;
+  }
+
+  std::cout
+      << GREEN
+      << "Authentication successful, proceeding with Couchbase operations..."
+      << RESET << std::endl;
+
+  performOperations(couchbase_ops);
+
+  // Change bucket Selection
+  std::string bucket_name = "testing";
+  while (bucket_name.empty()) {
+    std::cout << "Enter Couchbase bucket name: ";
+    std::cin >> bucket_name;
+    if (bucket_name.empty()) {
+      std::cout << "Bucket name cannot be empty. Please enter again."
+                << std::endl;
+      continue;
+    }
+  }
+
+  // Use high-level bucket selection method
+  brpc::CouchbaseOperations::Result bucket_result =
+      couchbase_ops.selectBucket(bucket_name);
+  if (!bucket_result.success) {
+    LOG(ERROR) << "Bucket selection failed: " << bucket_result.error_message;
+    return -1;
+  } else {
+    std::cout << GREEN << "Bucket Selection Successful" << RESET << std::endl;
+  }
+  performOperations(couchbase_ops);
+  // Add operation using high-level method
+
   return 0;
 }

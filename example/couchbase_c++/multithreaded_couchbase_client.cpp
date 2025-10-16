@@ -40,8 +40,7 @@ const int THREADS_PER_BUCKET = 5;
 struct {
   std::string username = "Administrator";
   std::string password = "password";
-  std::vector<std::string> bucket_names = {"testing0", "testing1", "testing2",
-                                           "testing3"};
+  std::vector<std::string> bucket_names = {"t0", "t1", "t2", "t3"};
 } g_config;
 
 // Simple thread statistics
@@ -79,6 +78,7 @@ struct ThreadArgs {
   int thread_id;
   int bucket_id;
   std::string bucket_name;
+  brpc::CouchbaseOperations* couchbase_ops;
   ThreadStats* stats;
 };
 
@@ -140,6 +140,7 @@ void perform_crud_operations_col1(brpc::CouchbaseOperations& couchbase_ops,
     stats->operations_successful++;
   } else {
     stats->operations_failed++;
+    cout << "UPSERT failed: " << result.error_message << std::endl;
     return;
   }
 
@@ -151,6 +152,7 @@ void perform_crud_operations_col1(brpc::CouchbaseOperations& couchbase_ops,
     stats->operations_successful++;
   } else {
     stats->operations_failed++;
+    cout << "GET failed: " << result.error_message << std::endl;
     return;
   }
 
@@ -177,24 +179,26 @@ void* thread_worker(void* arg) {
 
   // Authentication
   brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticate(
-      g_config.username, g_config.password, "127.0.0.1:11210", false, "");
-
+      g_config.username, g_config.password, "127.0.0.1:11210", args->bucket_name);
+  // for SSL authentication use below line instead
+  // brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticateSSL(username, password, "127.0.0.1:11210", args->bucket_name, "/path/to/cert.txt");
+  
   if (!auth_result.success) {
     std::cout << RED << "Thread " << args->thread_id << ": Auth failed - "
               << auth_result.error_message << RESET << std::endl;
     return NULL;
   }
 
-  // Select bucket
-  brpc::CouchbaseOperations::Result bucket_result =
-      couchbase_ops.selectBucket(args->bucket_name);
+    // // Select bucket
+    // brpc::CouchbaseOperations::Result bucket_result =
+    //     couchbase_ops.selectBucket(args->bucket_name);
 
-  if (!bucket_result.success) {
-    std::cout << RED << "Thread " << args->thread_id
-              << ": Bucket selection failed - " << bucket_result.error_message
-              << RESET << std::endl;
-    return NULL;
-  }
+    // if (!bucket_result.success) {
+    //   std::cout << RED << "Thread " << args->thread_id
+    //             << ": Bucket selection failed - " << bucket_result.error_message
+    //             << RESET << std::endl;
+    //   return NULL;
+    // }
 
   std::cout << GREEN << "Thread " << args->thread_id << " connected to bucket "
             << args->bucket_name << RESET << std::endl;
@@ -225,6 +229,24 @@ void* thread_worker(void* arg) {
             << std::endl;
 
   return NULL;
+}
+
+void* shared_object_thread_worker(void *arg){
+    ThreadArgs* shared_args = static_cast<ThreadArgs*>(arg);
+    brpc::CouchbaseOperations* shared_couchbase_ops = shared_args->couchbase_ops;
+    // Perform operations - 10 times on default collection, 10 times on col1
+    // collection
+    for (int i = 0; i < 10; ++i) {
+        std::string base_key =
+            butil::string_printf("shared_thread_op_%d_thread_id_%d", i, shared_args->thread_id);
+        // CRUD operations on default collection
+        perform_crud_operations_default(*shared_couchbase_ops, base_key, shared_args->stats);
+        // CRUD operations on col1 collection
+        perform_crud_operations_col1(*shared_couchbase_ops, base_key, shared_args->stats);
+        // Small delay between operations
+        bthread_usleep(10000);  // 10ms
+    }
+    return NULL;
 }
 
 // Print simple statistics
@@ -314,6 +336,37 @@ int main(int argc, char* argv[]) {
   }
 
   std::cout << GREEN << "All threads completed!" << RESET << std::endl;
+  // create a shared CouchbaseOperations instance
+  brpc::CouchbaseOperations shared_couchbase_ops;
+  brpc::CouchbaseOperations::Result result;
+  result = shared_couchbase_ops.authenticate(
+      g_config.username, g_config.password, "127.0.0.1:11210", "t0");
+  if(result.success){
+      std::cout << GREEN << "Shared CouchbaseOperations instance authenticated successfully!" << RESET << std::endl;
+  } else {
+      std::cout << RED << "Shared CouchbaseOperations instance authentication failed: " << result.error_message << RESET << std::endl;
+      return -1;
+  }
+
+  for (int i = 0; i < NUM_THREADS; ++i) {
+    args[i].thread_id = i;
+    args[i].couchbase_ops = &shared_couchbase_ops;
+    args[i].bucket_id = 0;
+    args[i].bucket_name = "t0";
+    // args[i].stats = &g_stats.per_thread_stats[i];
+  }
+
+  for(int i = 0; i < NUM_THREADS; ++i){
+      if (bthread_start_background(&threads[i], NULL, shared_object_thread_worker, &args[i]) !=
+        0) {
+      std::cout << RED << "Failed to create shared object thread " << i << RESET << std::endl;
+      return -1;
+    }
+  }
+  for(int i = 0; i < NUM_THREADS; ++i){
+      bthread_join(threads[i], NULL);
+  }
+  std::cout << GREEN << "All shared object threads completed!" << RESET << std::endl;
 
   // Print statistics
   print_stats();
