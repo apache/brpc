@@ -1,23 +1,21 @@
 ## Couchbase bRPC Binary Protocol Integration
 
-This document explains the implementation of Couchbase Binary Protocol support added to this branch of bRPC, the available high-level operations, collection support, SSL authentication, and how to run the provided example client against either a local Couchbase Server cluster or a Couchbase Capella (cloud) deployment. However, the couchbase binary protocol implementation in bRPC currently do not have fine-grained optimizations which has been already done in the couchbase-cxx-client SDK which also have query support, better error handling and much more optimized operations. So, we also added the support of couchbase using couchbase-cxx-SDK in bRPC and is available at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).
+This document explains the implementation of Couchbase Binary Protocol support added to bRPC, and the available high-level operations, collection support, SSL authentication, and how to run the provided example client against either a local Couchbase Server cluster or a Couchbase Capella (cloud) deployment. However, the couchbase binary protocol implementation in bRPC currently do not have fine-grained optimizations which has been already done in the couchbase-cxx-client SDK also having query support, better error handling and much more optimized/reliable operations. So, we also added the support of couchbase using couchbase-cxx-SDK in bRPC and is available at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).
 
 ---
 ### 1. Overview
 
 The integration provides high-level APIs for communicating with Couchbase Server using its Binary Protocol, using the high-level `CouchbaseOperations` class which provides a simplified interface.
 
-> Each thread must create and use its own `CouchbaseOperations` instance. Sharing instances will cause race conditions and unpredictable behavior.
-
 The core pieces are:
 * `src/brpc/policy/couchbase_protocol.[h|cpp]` – framing + parse loop for binary responses, and request serialization.
-* `src/brpc/couchbase.[h|cpp]` – high-level `CouchbaseOperations` class with simple methods, plus low-level request/response builders (`CouchbaseRequest`), parsers (`CouchbaseResponse`) and error-handlers.
+* `src/brpc/couchbase.[h|cpp]` – high-level `CouchbaseOperations` class with request (`CouchbaseRequest`) and response (`CouchbaseResponse`) builders, parsers and error-handlers.
 * `example/couchbase_c++/couchbase_client.cpp` – an end‑to‑end example using the high-level API for authentication, bucket selection, CRUD operations, and collection‑scoped operations.
-* `example/couchbase_c++/multithreaded_couchbase_client.cpp` – a multithreaded example showing how each thread creates its own `CouchbaseOperations` instance.
+* `example/couchbase_c++/multithreaded_couchbase_client.cpp` – a multithreaded example where an instance of `CouchbaseOperations` is shared across the threads operating on same bucket. An another block of code where multiple threads have their own `CouchbaseOperations` instance as the threads operate on different buckets.
 
 Design goals:
 * **SSL Support**: Built-in SSL/TLS support for secure connections to Couchbase Capella.
-* **Per-instance Authentication**: Each `CouchbaseOperations` object maintains its own authenticated session.
+* **Per-instance Authentication**: Each `CouchbaseOperations` object maintains its own authenticated session if each instance connects to a different bucket, when multiple instances connect/operate on the same bucket then a single TCP socket is shared for these `CouchbaseOperations` instances because separate `connection_groups` are created on the basis of `server_name+bucket`.
 * **Collection Support**: Native support for collection-scoped operations.
 * Keep wire structs identical to the binary protocol (24‑byte header, network order numeric fields).
 * Future extensions for advanced features.
@@ -27,17 +25,17 @@ Design goals:
 
 | Category | Supported Operations | Notes |
 |----------|----------------------|-------|
-| **High-Level API** | `CouchbaseOperations` class | **Recommended**: Simple methods returning `Result` structs |
+| **High-Level API** | `CouchbaseOperations` class | **Recommended**: Simple methods returning `Result` struct |
 | **SSL/TLS Support** | Built-in SSL encryption | **Required** for Couchbase Capella, optional for local clusters |
-| Authentication | SASL `PLAIN` with SSL | Each `CouchbaseOperations` instance requires authentication |
-| Bucket selection | `selectBucket()` method | Required before document operations |
-| Basic KV | `add()`, `upsert()`, `delete_()`, `get()` | Clean API with `Result` struct error handling |
+| Authentication | SASL `PLAIN` with/without SSL | `authenticate()` for non-SSL, `authenticateSSL()` for SSL connections |
+| Bucket selection | Integrated with authentication | Bucket specified during authentication; `selectBucket()` also available separately |
+| Basic KV | `add()`, `upsert()`, `delete_()`, `get()` | Clean API with `Result` struct error handling; |
 | **Pipeline Operations** | `beginPipeline()`, `pipelineRequest()`, `executePipeline()` | **NEW**: Batch multiple operations in single network call for improved performance |
 | Collections | Collection-scoped CRUD operations | Pass collection name as optional parameter (defaults to "_default") |
-| Error Handling | `Result.success` + `Result.error_message` | Human-readable error messages with status codes |
+| Error Handling | `Result.success` + `Result.error_message` + `Result.status_code` | Human-readable error messages with Couchbase status codes |
 
 - **Simplified**: No need to manage channels, controllers, or response parsing
-- **Thread-Safe Per Instance**: Each `CouchbaseOperations` instance can be used independently ⚠️ **BUT NEVER SHARE BETWEEN THREADS**
+- **Flexible Threading**: Share instances across threads for same bucket/server, or create separate instances for different buckets/servers
 - **Error Handling**: Simple boolean success with descriptive error messages and error codes
 - **SSL Built-in**: SSL handling for secure connections
 
@@ -92,7 +90,7 @@ Overall packet structure:-
 ---
 ### 4. High-Level API (`CouchbaseOperations`)
 
-**Approach**: Use the `CouchbaseOperations` class for operations. It shall be noted that the instances of `CouchbaseOperations` should not be shared between threads, for some cases it might work but not recommended.
+**Approach**: Use the `CouchbaseOperations` class for operations. Instances can be shared across threads when connecting to the same bucket, or you can create separate instances in multi-threading where each thread is connecting to a separate bucket.
 
 #### Basic Usage:
 ```cpp
@@ -100,39 +98,36 @@ Overall packet structure:-
 
 brpc::CouchbaseOperations couchbase_ops;
 
-// 1. Authenticate (REQUIRED for each instance)
+// 1. Authenticate with bucket selection (REQUIRED for each instance)
 brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticate(
-    username, password, server_address, enable_ssl, cert_path);
+    username, password, server_address, bucket_name);
 if (!auth_result.success) {
     LOG(ERROR) << "Auth failed: " << auth_result.error_message;
     return -1;
 }
 
-// 2. Select bucket (REQUIRED)
-brpc::CouchbaseOperations::Result bucket_result = couchbase_ops.selectBucket("my_bucket");
-if (!bucket_result.success) {
-    LOG(ERROR) << "Bucket selection failed: " << bucket_result.error_message;
-    return -1;
-}
-
-// 3. Perform operations
+// 2. Perform operations (bucket is already selected during authentication)
 brpc::CouchbaseOperations::Result add_result = couchbase_ops.add("user::123", json_value);
 if (add_result.success) {
     std::cout << "Document added successfully!" << std::endl;
 } else {
     std::cout << "Add failed: " << add_result.error_message << std::endl;
 }
+
+// Optional: Switch to a different bucket (if needed)
+// brpc::CouchbaseOperations::Result bucket_result = couchbase_ops.selectBucket("another_bucket");
+```
 ```
 
 #### SSL Authentication (Essential for Couchbase Capella):
 ```cpp
 // For Couchbase Capella (cloud) - SSL is REQUIRED
-brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticate(
+brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticateSSL(
     username, 
     password, 
     "cluster.cloud.couchbase.com:11207",  // SSL port
-    true,                                   // enable_ssl = true
-    "path/to/certificate.pem"             // certificate path
+    bucket_name,                          // bucket name
+    "path/to/certificate.txt"             // certificate path
 );
 ```
 
@@ -217,7 +212,7 @@ brpc::CouchbaseOperations::Result result = couchbase_ops.someOperation(...);
 if (!result.success) {
     // Handle error
     LOG(ERROR) << "Operation failed: " << result.error_message;
-    LOG(ERROR) << "Error Code: "<< result.status_code;  //what is the error code received.
+    LOG(ERROR) << "Error Code: " << result.status_code;  // Couchbase status code
 } else {
     // Use result.value if applicable (for Get operations)
     std::cout << "Retrieved value: " << result.value << std::endl;
@@ -225,23 +220,24 @@ if (!result.success) {
 ```
 
 ---
-### 5. Request/Response Class (`CouchbaseRequest`/`CouchbaseResponse`)
+### 5. Request/Response Classes (`CouchbaseRequest`/`CouchbaseResponse`)
 
-These classses are private to the `CouchbaseOpeartions` and is not exposed to the user. These classes are responsible for building the request that needs to be sent and received over the channel. A basic overview of how the request/response classes works internally has been shown below.
+These classes are public in `CouchbaseOperations` and can be used for advanced bRPC programs. The high-level API uses these classes internally. They are responsible for building the request that needs to be sent and received over the channel.
 
-#### Request Building:
+#### Request Building (Advanced Usage):
 ```cpp
 CouchbaseRequest req;
-req.Authenticate(user, pass);       // SASL PLAIN
+req.helloRequest();                     // HELLO negotiation
+req.authenticateRequest(user, pass);    // SASL PLAIN authentication  
 req.selectBucketRequest("travel-sample");
 req.addRequest("doc::1", json_body, flags, exptime, /*cas*/0);
-req.Get("doc::1");                 // Pipeline GET after ADD
+req.getRequest("doc::1");               // Pipeline GET after ADD
 
 channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 ```
 
 #### Response Parsing:
-Each `Pop*` method consumes the front of the internal response buffer, validating:
+Each `pop*` method consumes the front of the internal response buffer, validating:
 1. Header present.
 2. Opcode matches expected operation.
 3. Status == success (otherwise `_err` filled with formatted message).
@@ -254,37 +250,550 @@ Each `Pop*` method consumes the front of the internal response buffer, validatin
 Uses the **high-level `CouchbaseOperations` API**:
 
 1. **Create `CouchbaseOperations` instance** - can create more than one per thread.
+```cpp
+brpc::CouchbaseOperations couchbase_ops;
+```
+
 2. **Prompt for credentials** - username/password for authentication.
-3. **SSL Authentication** - with support for Couchbase Capella certificate-based SSL.
-4. **Select bucket** - required before any document operations.
-5. **Basic CRUD operations**:
+```cpp
+std::string username = "Administrator";
+std::string password = "password";
+while (username.empty() || password.empty()) {
+    std::cout << "Enter Couchbase username: ";
+    std::cin >> username;
+    std::cout << "Enter Couchbase password: ";
+    std::cin >> password;
+}
+```
+
+3. **Authentication with bucket selection** - `authenticate()` for local, `authenticateSSL()` for Capella.
+
+**Function Signatures:**
+```cpp
+// Non-SSL authentication
+Result authenticate(const string& username,     // Couchbase username 
+                   const string& password,     // Couchbase password
+                   const string& server_address, // Server host:port (e.g., "localhost:11210")
+                   const string& bucket_name);   // Target bucket name
+
+// SSL authentication  
+Result authenticateSSL(const string& username,     // Couchbase username
+                      const string& password,     // Couchbase password  
+                      const string& server_address, // Server host:port (e.g., "cluster.cloud.couchbase.com:11207")
+                      const string& bucket_name,   // Target bucket name
+                      string path_to_cert);        // Path to SSL certificate file
+```
+
+**Usage Examples:**
+```cpp
+// For local Couchbase (non-SSL)
+brpc::CouchbaseOperations::Result auth_result = 
+    couchbase_ops.authenticate(username, password, FLAGS_server, "testing");
+
+// For Couchbase Capella (SSL)
+// brpc::CouchbaseOperations::Result auth_result = 
+//     couchbase_ops.authenticateSSL(username, password, "cluster.cloud.couchbase.com:11207", 
+//                                   "bucket_name", "path/to/cert.txt");
+
+if (!auth_result.success) {
+    LOG(ERROR) << "Authentication failed: " << auth_result.error_message;
+    return -1;
+}
+```
+
+4. **Basic CRUD operations**:
    - Add document (should succeed)
    - Try adding same key again (should fail with "key exists")
    - Get document (retrieve the added document)
-6. **Multiple document operations** - Add several documents with different keys.
-7. **Upsert operations**:
+
+**Function Signatures:**
+```cpp
+// ADD operation - creates new document, fails if key exists
+Result add(const string& key,                    // Document key/ID
+          const string& value,                  // Document value (JSON string)
+          string collection_name = "_default"); // Collection name (optional, defaults to "_default")
+
+// GET operation - retrieves document by key
+Result get(const string& key,                    // Document key/ID to retrieve
+          string collection_name = "_default"); // Collection name (optional, defaults to "_default")
+```
+
+**Usage Examples:**
+```cpp
+std::string add_key = "user::test_brpc_binprot";
+std::string add_value = R"({"name": "John Doe", "age": 30, "email": "john@example.com"})";
+
+// First ADD operation (should succeed)
+brpc::CouchbaseOperations::Result add_result = couchbase_ops.add(add_key, add_value);
+if (add_result.success) {
+    std::cout << "ADD operation successful" << std::endl;
+} else {
+    std::cout << "ADD operation failed: " << add_result.error_message << std::endl;
+}
+
+// Second ADD operation (should fail - key exists)
+brpc::CouchbaseOperations::Result add_result2 = couchbase_ops.add(add_key, add_value);
+if (!add_result2.success) {
+    std::cout << "Second ADD failed as expected: " << add_result2.error_message << std::endl;
+}
+
+// GET operation
+brpc::CouchbaseOperations::Result get_result = couchbase_ops.get(add_key);
+if (get_result.success) {
+    std::cout << "GET operation successful" << std::endl;
+    std::cout << "GET value: " << get_result.value << std::endl;
+}
+```
+
+5. **Multiple document operations** - Add several documents with different keys.
+```cpp
+std::string item1_key = "binprot_item1";
+std::string item2_key = "binprot_item2";
+std::string item3_key = "binprot_item3";
+
+couchbase_ops.add(item1_key, add_value);
+couchbase_ops.add(item2_key, add_value);
+couchbase_ops.add(item3_key, add_value);
+```
+
+6. **Upsert operations**:
    - Upsert existing document (should update)
    - Upsert new document (should create)
    - Verify with Get operations
-8. **Delete operations**:
+
+**Function Signature:**
+```cpp
+// UPSERT operation - creates new document or updates existing one
+Result upsert(const string& key,                    // Document key/ID
+             const string& value,                  // Document value (JSON string)
+             string collection_name = "_default"); // Collection name (optional, defaults to "_default")
+```
+
+**Usage Examples:**
+```cpp
+std::string upsert_key = "upsert_test";
+std::string upsert_value = R"({"operation": "upsert", "version": 1})";
+
+// Upsert new document (will create)
+brpc::CouchbaseOperations::Result upsert_result = couchbase_ops.upsert(upsert_key, upsert_value);
+
+// Upsert existing document (will update)
+std::string updated_value = R"({"operation": "upsert", "version": 2})";
+brpc::CouchbaseOperations::Result update_result = couchbase_ops.upsert(upsert_key, updated_value);
+
+// Verify with GET
+brpc::CouchbaseOperations::Result check_result = couchbase_ops.get(upsert_key);
+```
+
+7. **Delete operations**:
    - Delete non-existent key (should fail gracefully)
    - Delete existing key (should succeed)
-9. **Collection-scoped operations** - Add/Get/Upsert/Delete in specific collections.
-10. **Pipeline operations demo**:
-    - Begin pipeline and add multiple operations
-    - Execute batch operations in single network call
-    - Process results in order
-    - Collection-scoped pipeline operations
-    - Error handling and cleanup
+
+**Function Signature:**
+```cpp
+// DELETE operation - removes document by key
+Result delete_(const string& key,                   // Document key/ID to delete
+              string collection_name = "_default"); // Collection name (optional, defaults to "_default")
+```
+
+**Usage Examples:**
+```cpp
+// Delete non-existent key
+std::string delete_key = "non_existent_key";
+brpc::CouchbaseOperations::Result delete_result = couchbase_ops.delete_(delete_key);
+if (!delete_result.success) {
+    std::cout << "Delete failed as expected: " << delete_result.error_message << std::endl;
+}
+
+// Delete existing key
+std::string delete_existing_key = "binprot_item1";
+brpc::CouchbaseOperations::Result delete_existing_result = couchbase_ops.delete_(delete_existing_key);
+if (delete_existing_result.success) {
+    std::cout << "Delete existing key successful" << std::endl;
+}
+```
+
+8. **Collection-scoped operations** - Add/Get/Upsert/Delete in specific collections.
+
+**Note:** All CRUD operations support an optional collection parameter. When not specified, operations default to the "_default" collection.
+
+**Usage Examples:**
+```cpp
+std::string collection_name = "testing_collection";  // Target collection name
+std::string coll_key = "collection::doc1";           // Document key
+std::string coll_value = R"({"collection_operation": "add", "scope": "custom"})";  // Document value
+
+// Collection-scoped ADD (key, value, collection_name)
+brpc::CouchbaseOperations::Result coll_add_result = 
+    couchbase_ops.add(coll_key, coll_value, collection_name);
+
+// Collection-scoped GET (key, collection_name)
+brpc::CouchbaseOperations::Result coll_get_result = 
+    couchbase_ops.get(coll_key, collection_name);
+
+// Collection-scoped UPSERT (key, value, collection_name)
+brpc::CouchbaseOperations::Result coll_upsert_result = 
+    couchbase_ops.upsert(coll_key, coll_value, collection_name);
+
+// Collection-scoped DELETE (key, collection_name)
+brpc::CouchbaseOperations::Result coll_delete_result = 
+    couchbase_ops.delete_(coll_key, collection_name);
+```
+
+9. **Pipeline operations demo**:
+   - Begin pipeline and add multiple operations
+   - Execute batch operations in single network call
+   - Process results in order
+   - Collection-scoped pipeline operations
+   - Error handling and cleanup
+
+**Function Signatures:**
+```cpp
+// Pipeline management functions
+bool beginPipeline();                               // Start a new pipeline session
+
+bool pipelineRequest(operation_type op_type,        // Operation type (ADD, UPSERT, GET, DELETE, etc.)
+                    const string& key,             // Document key/ID
+                    const string& value = "",       // Document value (empty for GET/DELETE operations)
+                    string collection_name = "_default"); // Collection name (optional)
+
+vector<Result> executePipeline();                   // Execute all queued operations and return results
+
+bool clearPipeline();                              // Clear pipeline without executing (cleanup)
+
+// Pipeline status functions
+bool isPipelineActive() const;                      // Check if pipeline is active
+size_t getPipelineSize() const;                    // Get number of queued operations
+```
+
+**Usage Examples:**
+```cpp
+// Begin pipeline
+if (!couchbase_ops.beginPipeline()) {
+    std::cout << "Failed to begin pipeline" << std::endl;
+    return -1;
+}
+
+// Add multiple operations to pipeline
+std::string pipeline_key1 = "pipeline::doc1";
+std::string pipeline_key2 = "pipeline::doc2";
+std::string pipeline_value1 = R"({"operation": "pipeline_add", "id": 1})";
+std::string pipeline_value2 = R"({"operation": "pipeline_upsert", "id": 2})";
+
+bool pipeline_success = true;
+// pipelineRequest(operation_type, key, value, collection_name)
+pipeline_success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, pipeline_key1, pipeline_value1);
+pipeline_success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::UPSERT, pipeline_key2, pipeline_value2);
+pipeline_success &= couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, pipeline_key1);  // Empty value for GET
+
+if (!pipeline_success) {
+    couchbase_ops.clearPipeline();  // Clean up on error
+    return -1;
+}
+
+// Execute pipeline - returns results in same order as requests
+std::vector<brpc::CouchbaseOperations::Result> pipeline_results = couchbase_ops.executePipeline();
+
+// Process results
+for (size_t i = 0; i < pipeline_results.size(); ++i) {
+    if (pipeline_results[i].success) {
+        std::cout << "Operation " << (i + 1) << " SUCCESS";
+        if (!pipeline_results[i].value.empty()) {
+            std::cout << " - Value: " << pipeline_results[i].value;
+        }
+        std::cout << std::endl;
+    } else {
+        std::cout << "Operation " << (i + 1) << " FAILED: " 
+                  << pipeline_results[i].error_message << std::endl;
+    }
+}
+
+// Collection-scoped pipeline operations
+if (couchbase_ops.beginPipeline()) {
+    // pipelineRequest(operation_type, key, value, collection_name)
+    couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::ADD, "coll_pipeline::doc1", 
+                                  R"({"collection_operation": "pipeline_add", "id": 1})", collection_name);
+    couchbase_ops.pipelineRequest(brpc::CouchbaseOperations::GET, "coll_pipeline::doc1", "", collection_name);
+    auto coll_results = couchbase_ops.executePipeline();
+}
+```
+
+10. **Bucket switching** - Demonstrate changing bucket selection.
+
+**Function Signature:**
+```cpp
+// SELECTBUCKET operation - switch to a different bucket on the same server
+Result selectBucket(const string& bucket_name);    // Target bucket name to switch to
+```
+
+**Usage Example:**
+```cpp
+std::string bucket_name = "testing";
+std::cout << "Enter Couchbase bucket name: ";
+std::cin >> bucket_name;
+
+// selectBucket(bucket_name) - switches to the specified bucket
+brpc::CouchbaseOperations::Result bucket_result = couchbase_ops.selectBucket(bucket_name);
+if (!bucket_result.success) {
+    LOG(ERROR) << "Bucket selection failed: " << bucket_result.error_message;
+    return -1;
+} else {
+    std::cout << "Bucket Selection Successful" << std::endl;
+}
+
+// Perform operations on new bucket
+performOperations(couchbase_ops);
+```
 
 #### Multithreaded Example (`multithreaded_couchbase_client.cpp`)
 Demonstrates:
-- **16 bthreads** (4 threads per bucket across 4 buckets)
-- **Each thread creates its own `CouchbaseOperations` instance**
-- **Independent authentication** per thread
+- **20 bthreads** (5 threads per bucket across 4 buckets)
+- **Multiple threading patterns**: Each thread can create its own instance or share instances
 - **Concurrent operations** across multiple buckets and collections
+- **Thread-safe statistics tracking** for operations
+- **Collection-scoped operations** across threads
 
-Key difference from single-threaded: Each thread must authenticate independently.
+**Global Configuration**:
+```cpp
+const int NUM_THREADS = 20;
+const int THREADS_PER_BUCKET = 5;
+
+// Global config structure
+struct {
+    std::string username = "Administrator";
+    std::string password = "password";
+    std::vector<std::string> bucket_names = {"t0", "t1", "t2", "t3"};
+} g_config;
+
+// Thread statistics tracking
+struct ThreadStats {
+    std::atomic<int> operations_attempted{0};
+    std::atomic<int> operations_successful{0};
+    std::atomic<int> operations_failed{0};
+};
+
+struct GlobalStats {
+    ThreadStats total;
+    std::vector<ThreadStats> per_thread_stats;
+    GlobalStats() : per_thread_stats(NUM_THREADS) {}
+} g_stats;
+```
+
+**Thread Worker Function**:
+```cpp
+struct ThreadArgs {
+    int thread_id;
+    int bucket_id;
+    std::string bucket_name;
+    ThreadStats* stats;
+};
+
+void* thread_worker(void* arg) {
+    ThreadArgs* args = static_cast<ThreadArgs*>(arg);
+    
+    // Create CouchbaseOperations instance for this thread
+    brpc::CouchbaseOperations couchbase_ops;
+    
+    // Authentication with assigned bucket
+    brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticate(
+        g_config.username, g_config.password, "127.0.0.1:11210", args->bucket_name);
+    
+    // For SSL authentication:
+    // brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticateSSL(
+    //     g_config.username, g_config.password, "127.0.0.1:11207", args->bucket_name, "/path/to/cert.txt");
+    
+    if (!auth_result.success) {
+        std::cout << "Thread " << args->thread_id << ": Auth failed - " 
+                  << auth_result.error_message << std::endl;
+        return NULL;
+    }
+    
+    // Perform CRUD operations on default collection
+    std::string base_key = "thread_" + std::to_string(args->thread_id);
+    perform_crud_operations_default(couchbase_ops, base_key, args->stats);
+    
+    // Perform collection-scoped operations
+    perform_crud_operations_collection(couchbase_ops, base_key, "my_collection", args->stats);
+    
+    return NULL;
+}
+```
+
+**CRUD Operations Functions**:
+```cpp
+void perform_crud_operations_default(brpc::CouchbaseOperations& couchbase_ops,
+                                   const std::string& base_key, ThreadStats* stats) {
+    std::string key = base_key + "_default";
+    std::string value = R"({"thread_id": %d, "collection": "default"})";
+    
+    stats->operations_attempted++;
+    
+    // UPSERT operation
+    brpc::CouchbaseOperations::Result result = couchbase_ops.upsert(key, value);
+    if (result.success) {
+        stats->operations_successful++;
+    } else {
+        stats->operations_failed++;
+    }
+    
+    // GET operation
+    stats->operations_attempted++;
+    result = couchbase_ops.get(key);
+    if (result.success) {
+        stats->operations_successful++;
+    } else {
+        stats->operations_failed++;
+    }
+    
+    // DELETE operation
+    stats->operations_attempted++;
+    result = couchbase_ops.delete_(key);
+    if (result.success) {
+        stats->operations_successful++;
+    } else {
+        stats->operations_failed++;
+    }
+}
+
+void perform_crud_operations_collection(brpc::CouchbaseOperations& couchbase_ops,
+                                      const std::string& base_key,
+                                      const std::string& collection_name,
+                                      ThreadStats* stats) {
+    std::string key = base_key + "_collection";
+    std::string value = R"({"thread_id": %d, "collection": ")" + collection_name + R"("})";
+    
+    // Collection-scoped operations
+    stats->operations_attempted++;
+    brpc::CouchbaseOperations::Result result = couchbase_ops.upsert(key, value, collection_name);
+    if (result.success) {
+        stats->operations_successful++;
+    } else {
+        stats->operations_failed++;
+    }
+    
+    stats->operations_attempted++;
+    result = couchbase_ops.get(key, collection_name);
+    if (result.success) {
+        stats->operations_successful++;
+    } else {
+        stats->operations_failed++;
+    }
+}
+```
+
+**Main Function - Thread Management**:
+```cpp
+int main(int argc, char* argv[]) {
+    std::vector<bthread_t> threads(NUM_THREADS);
+    std::vector<ThreadArgs> thread_args(NUM_THREADS);
+    
+    // Create threads - 5 threads per bucket across 4 buckets
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        thread_args[i].thread_id = i;
+        thread_args[i].bucket_id = i / THREADS_PER_BUCKET;
+        thread_args[i].bucket_name = g_config.bucket_names[thread_args[i].bucket_id];
+        thread_args[i].stats = &g_stats.per_thread_stats[i];
+        
+        if (bthread_start_background(&threads[i], NULL, thread_worker, &thread_args[i]) != 0) {
+            LOG(ERROR) << "Failed to create thread " << i;
+            return -1;
+        }
+    }
+    
+    // Wait for all threads to complete
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        bthread_join(threads[i], NULL);
+    }
+    
+    // Aggregate and display statistics
+    g_stats.aggregate_stats();
+    std::cout << "Total operations attempted: " << g_stats.total.operations_attempted.load() << std::endl;
+    std::cout << "Total operations successful: " << g_stats.total.operations_successful.load() << std::endl;
+    std::cout << "Total operations failed: " << g_stats.total.operations_failed.load() << std::endl;
+    
+    return 0;
+}
+```
+
+**Alternative Pattern - Shared Instance Demo**:
+```cpp
+// Shared instance worker function
+void* shared_object_thread_worker(void *arg) {
+    ThreadArgs* shared_args = static_cast<ThreadArgs*>(arg);
+    brpc::CouchbaseOperations* shared_couchbase_ops = shared_args->couchbase_ops;
+    
+    // Perform operations - 10 times on default collection, 10 times on col1 collection
+    for (int i = 0; i < 10; ++i) {
+        std::string base_key = butil::string_printf("shared_thread_op_%d_thread_id_%d", 
+                                                   i, shared_args->thread_id);
+        
+        // CRUD operations on default collection using shared instance
+        perform_crud_operations_default(*shared_couchbase_ops, base_key, shared_args->stats);
+        
+        // CRUD operations on col1 collection using shared instance
+        perform_crud_operations_col1(*shared_couchbase_ops, base_key, shared_args->stats);
+        
+        // Small delay between operations
+        bthread_usleep(10000);  // 10ms
+    }
+    return NULL;
+}
+
+// Main function demonstrates shared instance pattern
+int main_shared_demo() {
+    // Create a shared CouchbaseOperations instance
+    brpc::CouchbaseOperations shared_couchbase_ops;
+    brpc::CouchbaseOperations::Result result;
+    
+    // Authenticate shared instance
+    result = shared_couchbase_ops.authenticate(
+        g_config.username, g_config.password, "127.0.0.1:11210", "t0");
+    
+    if (result.success) {
+        std::cout << GREEN << "Shared CouchbaseOperations instance authenticated successfully!" 
+                  << RESET << std::endl;
+    } else {
+        std::cout << RED << "Shared CouchbaseOperations instance authentication failed: " 
+                  << result.error_message << RESET << std::endl;
+        return -1;
+    }
+    
+    // Configure all threads to use the shared instance
+    std::vector<bthread_t> threads(NUM_THREADS);
+    std::vector<ThreadArgs> args(NUM_THREADS);
+    
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        args[i].thread_id = i;
+        args[i].couchbase_ops = &shared_couchbase_ops;  // Point to shared instance
+        args[i].bucket_id = 0;
+        args[i].bucket_name = "t0";  // All threads use same bucket via shared instance
+        args[i].stats = &g_stats.per_thread_stats[i];
+    }
+    
+    // Start all threads using shared instance
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        if (bthread_start_background(&threads[i], NULL, shared_object_thread_worker, &args[i]) != 0) {
+            std::cout << RED << "Failed to create shared object thread " << i << RESET << std::endl;
+            return -1;
+        }
+    }
+    
+    // Wait for all threads to complete
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        bthread_join(threads[i], NULL);
+    }
+    
+    std::cout << GREEN << "All shared object threads completed!" << RESET << std::endl;
+    return 0;
+}
+```
+
+Key features:
+- Demonstrates different connection patterns for multithreaded scenarios
+- Shows concurrent access to different buckets and collections
+- Proper resource management in multithreaded environments
+- Statistics tracking across all threads
+- Both separate instance and shared instance patterns
 
 ---
 ### 7. Building and Running the Examples
@@ -302,38 +811,8 @@ make
 
 #### Run Multithreaded Example:
 ```bash
-./multithreaded_couchbase_client --operations_per_thread=20 --sleep_ms=100
+./multithreaded_couchbase_client
 ```
-
-#### Interactive Prompts:
-Both examples will prompt for:
-```
-Enter Couchbase username: your_username
-Enter Couchbase password: ********
-Enter Couchbase bucket name: your_bucket
-```
-
-For multithreaded example, additional prompts:
-```
-Enter 4 bucket names:
-Bucket 1: bucket1
-Bucket 2: bucket2
-Bucket 3: bucket3  
-Bucket 4: bucket4
-Number of collections (0 for none): 2
-Collection 1: collection1
-Collection 2: collection2
-```
-
-#### SSL Configuration:
-- **Local Couchbase**: SSL is optional, set `enable_ssl = false`
-- **Couchbase Capella**: SSL is **required**, download the certificate from Capella console
-- Update the server address in the code or use command line flags:
-  ```bash
-  ./couchbase_client --server="your-cluster.cloud.couchbase.com:11207"
-  ```
-
-Ensure buckets/collections exist before testing collection‑scoped operations.
 
 ---
 ### 8. Setting Up Couchbase
@@ -355,8 +834,8 @@ Create collections (7.0+):
 
 **SSL Configuration (Optional for Local)**:
 ```cpp
-// Local without SSL
-auto result = couchbase_ops.authenticate(username, password, "localhost:11210", false, "");
+// Local without SSL - authenticate with bucket selection
+auto result = couchbase_ops.authenticate(username, password, "localhost:11210", bucket_name);
 ```
 
 #### B. Couchbase Capella (Cloud) - **SSL Required**
@@ -376,11 +855,11 @@ auto result = couchbase_ops.authenticate(username, password, "localhost:11210", 
 **Capella SSL Authentication Example**:
 ```cpp
 // Couchbase Capella - SSL is MANDATORY
-auto result = couchbase_ops.authenticate(
+auto result = couchbase_ops.authenticateSSL(
     "your_username", 
     "your_password", 
     "your-cluster.cloud.couchbase.com:11207",    // SSL port
-    true,                                        // enable_ssl = true
+    "your_bucket_name",                          // bucket name
     "couchbase-cloud-cert.pem"                   // certificate file
 );
 ```
@@ -403,6 +882,7 @@ struct Result {
     bool success;           // true if operation succeeded
     string error_message;   // human-readable error description
     string value;          // returned value (for Get operations)
+    uint16_t status_code;   // Couchbase status code (0x00 if success)
 };
 ```
 
@@ -411,29 +891,31 @@ struct Result {
 auto result = couchbase_ops.add("key", "value");
 if (!result.success) {
     LOG(ERROR) << "Add failed: " << result.error_message;
+    LOG(ERROR) << "Status code: " << result.status_code;
     // Handle error appropriately
 } else {
     std::cout << "Add succeeded!" << std::endl;
 }
 
 // For Get operations, check both success and value
-auto get_result = couchbase_ops.Get("key");
+auto get_result = couchbase_ops.get("key");
 if (get_result.success) {
     std::cout << "Retrieved: " << get_result.value << std::endl;
 } else {
     LOG(ERROR) << "Get failed: " << get_result.error_message;
+    LOG(ERROR) << "Status code: " << get_result.status_code;
 }
 ```
 
 ---
 ### 10. Best Practices
 
-#### Thread Safety
-> ⚠️ **: THREAD SAFETY REQUIREMENTS**
-> - **Each thread MUST create its own `CouchbaseOperations` instance**
-> - **Each instance MUST authenticate independently**  
-> - **NEVER share `CouchbaseOperations` objects between threads**
-> - **Sharing instances will cause race conditions, data corruption, and crashes**
+#### Threading Patterns
+> **💡 FLEXIBLE THREADING OPTIONS**
+> - **Same bucket/server**: Share a single `CouchbaseOperations` instance across threads
+> - **Different buckets**: Create separate instances for each bucket within the same server
+> - **Different servers**: Create separate instances for each server connection
+> - **Connection isolation**: Each instance uses unique connection groups based on server+bucket combination
 
 #### SSL Security
 - **Always use SSL for Couchbase Capella** (cloud deployments)
@@ -446,80 +928,82 @@ if (get_result.success) {
 - **Use pipeline operations for bulk operations** 
 - **Pipeline operations preserve order** - results correspond to request order
 
-#### Code Example Template
+#### Threading Examples
 ```cpp
-#include <brpc/couchbase.h>
+// Option 1: Shared instance for same bucket
+brpc::CouchbaseOperations shared_ops;
+shared_ops.authenticate(username, password, server_address, bucket_name);
 
-int main() {
-    brpc::CouchbaseOperations couchbase_ops;
-    
-    // Authenticate (adjust SSL settings as needed)
-    auto auth_result = couchbase_ops.Authenticate(
-        username, password, server_address, enable_ssl, cert_path);
-    if (!auth_result.success) {
-        LOG(ERROR) << "Authentication failed: " << auth_result.error_message;
-        return -1;
-    }
-    
-    // Select bucket
-    auto bucket_result = couchbase_ops.selectBucket(bucket_name);
-    if (!bucket_result.success) {
-        LOG(ERROR) << "Bucket selection failed: " << bucket_result.error_message;
-        return -1;
-    }
-    
-    // Perform operations with error handling
-    auto result = couchbase_ops.add("key", "value", "collection_name");
-    if (result.success) {
-        std::cout << "Success!" << std::endl;
-    } else {
-        LOG(ERROR) << "Operation failed: " << result.error_message;
-    }
-    
-    return 0;
+void worker_thread_1() {
+    shared_ops.add("key1", "value1");  // Safe to share
 }
+void worker_thread_2() {
+    shared_ops.get("key2");  // Safe to share
+}
+
+// Option 2: Separate instances for different buckets
+brpc::CouchbaseOperations ops_bucket1;
+brpc::CouchbaseOperations ops_bucket2;
+ops_bucket1.authenticate(username, password, server_address, "bucket1");
+ops_bucket2.authenticate(username, password, server_address, "bucket2");
+
+// Option 3: Separate instances for different servers
+brpc::CouchbaseOperations ops_server1;
+brpc::CouchbaseOperations ops_server2;
+ops_server1.authenticate(username, password, "server1:11210", bucket_name);
+ops_server2.authenticate(username, password, "server2:11210", bucket_name);
 ```
 
 ---
 ### 11. Summary and References
-This implementation provides high-level APIs for Couchbase KV and collection operations. Couchbase (the company) contributed to this implementation, but it is not officially supported; it is "[Community Supported](https://docs.couchbase.com/server/current/third-party/integrations.html#support-model)".
-
-- **High-level API**: Recommended for most applications - simple, with built-in SSL support
-- **SSL Support**: Essential for Couchbase Capella and secure local deployments
-- **Thread Safety**: Each thread should create its own authenticated `CouchbaseOperations` instance
-- **Collection Support**: Native support for collection-scoped operations
-
+This implementation provides high-level APIs for Couchbase KV operations. Couchbase (the company) contributed to this implementation, but it is not officially supported; it is "[Community Supported](https://docs.couchbase.com/server/current/third-party/integrations.html#support-model)".
 
 ---
 
-## ⚠️ **CRITICAL THREAD SAFETY WARNING** ⚠️
+## 💡 **THREADING USAGE PATTERNS** 💡
+> 
+> **✅ PATTERN 1: Shared instance when multiple threads operating on the same bucket**
+> ```cpp
+> brpc::CouchbaseOperations shared_ops;
+> shared_ops.authenticate(username, password, "server:11210", "my_bucket");
+> 
+> void worker_thread_1() {
+>     shared_ops.add("key1", "value1");  // ✅ Safe to share
+> }
+> void worker_thread_2() {
+>     shared_ops.get("key2");  // ✅ Safe to share
+> }
+> ```
+> 
+> **✅ PATTERN 2: Separate instances when different threads will be operating on different buckets**
+> ```cpp
+> void worker_thread1() {
+>     brpc::CouchbaseOperations ops_bucket1;
+>     ops_bucket1.authenticate(username, password, "server:11210", "bucket1");
+>     ops_bucket1.add("key1", "value1");
+> }
+> void worker_thread2() {
+>     brpc::CouchbaseOperations ops_bucket2;
+>     ops_bucket2.authenticate(username, password, "server:11210", "bucket2");
+>     ops_bucket2.add("key1", "value1"); 
+> }
+> ```
+> 
+> **✅ PATTERN 3: Separate instances when threads are operating on different servers.**
+> ```cpp
+> void worker_thread1() {
+>     brpc::CouchbaseOperations ops_bucket1;
+>     ops_server1.authenticate(username, password, "server1:11210", "bucket1");
+>     ops_server1.add("key1", "value1");
+> }
+> void worker_thread2() {
+>     brpc::CouchbaseOperations ops_server2;
+>     ops_server2.authenticate(username, password, "server2:11210", "bucket2");
+>     ops_server2.add("key1", "value1"); 
+> }
+> ```
+>
+> **For additional Couchbase features, consider the couchbase-cxx-SDK version of bRPC, which provides a more complete set of Couchbase features and can be accessed at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).**
 
-> **🚨 NEVER SHARE `CouchbaseOperations` INSTANCES BETWEEN THREADS! 🚨**
-> 
-> **Each thread MUST create its own `CouchbaseOperations` instance.**
->
->**Each thread can have multiple `CouchbaseOperations` instances.**
-> 
-> **For thread safe design please use couchbase-cxx-SDK version of bRPC, While it does not leverage many of the bRPC features around memory management and IO, it does provide a more complete set of Couchbase features and may be useful to those who have apps using bRPC with either memcached binprot or Couchbase and need some of the additional services and can be accessed at [Couchbaselabs-cb-brpc](https://github.com/couchbaselabs/cb_brpc/tree/couchbase_sdk_brpc).**
->
-> **✅ CORRECT:**
-> ```cpp
-> // Each thread creates its own instance
-> void worker_thread() {
->     brpc::CouchbaseOperations ops;  // ✅ Thread-local instance
->     ops.authenticate(...);
->     ops.get("key");  // Safe
-> }
-> ```
-> 
-> **❌ WRONG - WILL CAUSE CRASHES:**
-> ```cpp
-> brpc::CouchbaseOperations global_ops;  // ❌ Shared instance
-> void worker_thread() {
->     global_ops.get("key");  // ❌ RACE CONDITION - WILL CRASH!
-> }
-> ```
-> 
-> **Why?** `CouchbaseOperations` contains mutable state (pipeline queues, buffers, connection state) that is NOT thread-safe. Sharing instances will cause data corruption, pipeline interference, and application crashes.
 
 Contributions and issue reports are welcome!
