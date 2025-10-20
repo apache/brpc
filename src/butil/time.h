@@ -254,6 +254,13 @@ inline uint64_t clock_cycles() {
         : "=r" (stable_counter), "=r" (counter_id)
         );
     return stable_counter;
+#elif defined(__mips64) // 新增对 MIPS64 的支持
+    uint64_t count;
+    __asm__ __volatile__ (
+        "dmfc0 %0, $9"
+        : "=r" (count)
+        );
+    return count;
 #else
   #error "unsupported arch"
 #endif

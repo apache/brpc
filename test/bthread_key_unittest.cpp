@@ -28,8 +28,8 @@
 #include "bthread/unstable.h"
 using namespace bthread;
 namespace bthread {
-DECLARE_uint32(key_table_list_size);
-DECLARE_uint32(borrow_from_globle_size);
+DECLARE_uint64(key_table_list_size);
+DECLARE_uint64(borrow_from_globle_size);
 class KeyTable;
 // defined in bthread/key.cpp
 extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);

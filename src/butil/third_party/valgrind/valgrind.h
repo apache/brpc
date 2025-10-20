@@ -692,14 +692,14 @@ typedef
        _zzq_default, _zzq_request,                                \
        _zzq_arg1, _zzq_arg2, _zzq_arg3, _zzq_arg4, _zzq_arg5)     \
   __extension__                                                   \
-  ({ volatile unsigned int _zzq_args[6];                          \
-    volatile unsigned int _zzq_result;                            \
-    _zzq_args[0] = (unsigned int)(_zzq_request);                  \
-    _zzq_args[1] = (unsigned int)(_zzq_arg1);                     \
-    _zzq_args[2] = (unsigned int)(_zzq_arg2);                     \
-    _zzq_args[3] = (unsigned int)(_zzq_arg3);                     \
-    _zzq_args[4] = (unsigned int)(_zzq_arg4);                     \
-    _zzq_args[5] = (unsigned int)(_zzq_arg5);                     \
+  ({ volatile unsigned long long _zzq_args[6];                          \
+    volatile unsigned long long _zzq_result;                            \
+    _zzq_args[0] = (unsigned long long)(_zzq_request);                  \
+    _zzq_args[1] = (unsigned long long)(_zzq_arg1);                     \
+    _zzq_args[2] = (unsigned long long)(_zzq_arg2);                     \
+    _zzq_args[3] = (unsigned long long)(_zzq_arg3);                     \
+    _zzq_args[4] = (unsigned long long)(_zzq_arg4);                     \
+    _zzq_args[5] = (unsigned long long)(_zzq_arg5);                     \
         __asm__ volatile("move $11, %1\n\t" /*default*/           \
                      "move $12, %2\n\t" /*ptr*/                   \
                      __SPECIAL_INSTRUCTION_PREAMBLE               \
@@ -872,8 +872,8 @@ typedef
 #define CALL_FN_W_W(lval, orig, arg1)                             \
    do {                                                           \
       volatile OrigFn        _orig = (orig);                      \
-      volatile unsigned long _argvec[2];                          \
-      volatile unsigned long _res;                                \
+      volatile unsigned long long _argvec[2];                          \
+      volatile unsigned long long _res;                                \
       _argvec[0] = (unsigned long)_orig.nraddr;                   \
       _argvec[1] = (unsigned long)(arg1);                         \
       __asm__ volatile(                                           \
@@ -1569,8 +1569,8 @@ typedef
                                  arg7)                                 \
    do {                                                                \
       volatile OrigFn        _orig = (orig);                           \
-      volatile unsigned long _argvec[8];                               \
-      volatile unsigned long _res;                                     \
+      volatile unsigned long long _argvec[8];                               \
+      volatile unsigned long long _res;                                     \
       _argvec[0] = (unsigned long)_orig.nraddr;                        \
       _argvec[1] = (unsigned long)(arg1);                              \
       _argvec[2] = (unsigned long)(arg2);                              \
@@ -2260,8 +2260,8 @@ typedef
                                 arg7,arg8,arg9,arg10,arg11,arg12) \
    do {                                                           \
       volatile OrigFn        _orig = (orig);                      \
-      volatile unsigned long _argvec[13];                         \
-      volatile unsigned long _res;                                \
+      volatile unsigned long long _argvec[13];                         \
+      volatile unsigned long long _res;                                \
       _argvec[0] = (unsigned long)_orig.nraddr;                   \
       _argvec[1] = (unsigned long)arg1;                           \
       _argvec[2] = (unsigned long)arg2;                           \

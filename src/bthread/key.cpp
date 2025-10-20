@@ -34,12 +34,12 @@
 
 namespace bthread {
 
-DEFINE_uint32(key_table_list_size, 4000,
+DEFINE_uint64(key_table_list_size, 4000,
               "The maximum length of the KeyTableList. Once this value is "
               "exceeded, a portion of the KeyTables will be moved to the "
               "global free_keytables list.");
 
-DEFINE_uint32(borrow_from_globle_size, 200,
+DEFINE_uint64(borrow_from_globle_size, 200,
               "The maximum number of KeyTables retrieved in a single operation "
               "from the global free_keytables when no KeyTable exists in the "
               "current thread's keytable_list.");

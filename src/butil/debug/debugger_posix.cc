@@ -45,10 +45,7 @@
 #include "butil/third_party/symbolize/symbolize.h"
 #endif
 
-#if defined(OS_ANDROID)
 #include "butil/threading/platform_thread.h"
-#endif
-
 namespace butil {
 namespace debug {
 
