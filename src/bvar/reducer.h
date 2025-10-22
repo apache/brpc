@@ -70,7 +70,7 @@ public:
 
     ~BabylonVariable() override {
         hide();
-        if (NULL!= _sampler) {
+        if (NULL != _sampler) {
             _sampler->destroy();
         }
         if (NULL != _series_sampler) {
