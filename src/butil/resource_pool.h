@@ -132,6 +132,11 @@ template <typename T> ResourcePoolInfo describe_resources() {
     return ResourcePool<T>::singleton()->describe_resources();
 }
 
+// Traverse all allocated resources typed T and apply specified operation
+template <typename T, typename F>
+void for_each_resource(F const& f) {
+    ResourcePool<T>::singleton()->for_each_resource(f);
+}
 }  // namespace butil
 
 #endif  // BUTIL_RESOURCE_POOL_H

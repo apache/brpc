@@ -56,7 +56,7 @@ inline void TaskGroup::exchange(TaskGroup** pg, TaskMeta* next_meta) {
                      ? ready_to_run_in_worker_ignoresignal
                      : ready_to_run_in_worker),
                     &args);
-    TaskGroup::sched_to(pg, next_meta, false);
+    TaskGroup::sched_to(pg, next_meta);
 }
 
 inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
@@ -79,7 +79,7 @@ inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
         }
     }
     // Update now_ns only when wait_task did yield.
-    sched_to(pg, next_meta, false);
+    sched_to(pg, next_meta);
 }
 
 inline void TaskGroup::push_rq(bthread_t tid) {

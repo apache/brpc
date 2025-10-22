@@ -32,6 +32,8 @@
 #include "bthread/bthread.h"
 
 namespace bthread {
+extern void print_task(std::ostream& os, bthread_t tid, bool enable_trace,
+                       bool ignore_not_matched = false);
 
 static bool validate_bthread_concurrency(const char*, int32_t val) {
     // bthread_setconcurrency sets the flag on success path which should
@@ -192,7 +194,25 @@ std::string stack_trace(bthread_t tid) {
     }
     return c->stack_trace(tid);
 }
+
 #endif // BRPC_BTHREAD_TRACER
+
+// Print all living (started and not finished) bthreads
+void print_living_tasks(std::ostream& os, bool enable_trace) {
+    TaskControl* c = get_task_control();
+    if (NULL == c) {
+        os << "TaskControl has not been created";
+        return;
+    }
+    auto tids = c->get_living_bthreads();
+    if (tids.empty()) {
+        os << "No living bthreads\n";
+        return;
+    }
+    for (auto tid : tids) {
+        print_task(os, tid, enable_trace, true);
+    }
+}
 
 static int add_workers_for_each_tag(int num) {
     int added = 0;

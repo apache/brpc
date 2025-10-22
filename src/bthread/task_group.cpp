@@ -36,6 +36,7 @@
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
 #include "bthread/timer_thread.h"
+#include "bthread/bthread.h"
 
 #ifdef __x86_64__
 #include <x86intrin.h>
@@ -678,7 +679,7 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
             }
         }
     }
-    sched_to(pg, next_meta, true);
+    sched_to(pg, next_meta);
 }
 
 void TaskGroup::sched(TaskGroup** pg) {
@@ -699,7 +700,7 @@ void TaskGroup::sched(TaskGroup** pg) {
 
 extern void CheckBthreadScheSafety();
 
-void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta, bool cur_ending) {
+void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     TaskGroup* g = *pg;
 #ifndef NDEBUG
     if ((++g->_sched_recursive_guard) > 1) {
@@ -1088,10 +1089,11 @@ void TaskGroup::yield(TaskGroup** pg) {
     sched(pg);
 }
 
-void print_task(std::ostream& os, bthread_t tid) {
+void print_task(std::ostream& os, bthread_t tid, bool enable_trace,
+                bool ignore_not_matched = false) {
     TaskMeta* const m = TaskGroup::address_meta(tid);
     if (m == NULL) {
-        os << "bthread=" << tid << " : never existed";
+        os << "bthread=" << tid << " : never existed\n";
         return;
     }
     const uint32_t given_ver = get_version(tid);
@@ -1127,7 +1129,9 @@ void print_task(std::ostream& os, bthread_t tid) {
         }
     }
     if (!matched) {
-        os << "bthread=" << tid << " : not exist now";
+        if (!ignore_not_matched) {
+            os << "bthread=" << tid << " : not exist now\n";
+        }
     } else {
         os << "bthread=" << tid << " :\nstop=" << stop
            << "\ninterrupted=" << interrupted
@@ -1136,6 +1140,7 @@ void print_task(std::ostream& os, bthread_t tid) {
            << "\narg=" << (void*)arg
            << "\nattr={stack_type=" << attr.stack_type
            << " flags=" << attr.flags
+           << " specified_tag=" << attr.tag
            << " keytable_pool=" << attr.keytable_pool
            << "}\nhas_tls=" << has_tls
            << "\nuptime_ns=" << butil::cpuwide_time_ns() - cpuwide_start_ns
@@ -1145,8 +1150,13 @@ void print_task(std::ostream& os, bthread_t tid) {
            << "\nstatus=" << status
            << "\ntraced=" << traced
            << "\nworker_tid=" << worker_tid;
-#else
-           ;
+        if (enable_trace) {
+            os << "\nbthread call stack:\n";
+            stack_trace(os, tid);
+        }
+        os << "\n\n";
+ #else
+           << "\n\n";
            (void)status;(void)traced;(void)worker_tid;
 #endif // BRPC_BTHREAD_TRACER
     }

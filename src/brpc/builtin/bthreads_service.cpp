@@ -23,7 +23,9 @@
 #include "brpc/builtin/bthreads_service.h"
 
 namespace bthread {
-extern void print_task(std::ostream& os, bthread_t tid);
+extern void print_task(std::ostream& os, bthread_t tid, bool enable_trace,
+                       bool ignore_not_matched = false);
+extern void print_living_tasks(std::ostream& os, bool enable_trace);
 }
 
 
@@ -38,30 +40,34 @@ void BthreadsService::default_method(::google::protobuf::RpcController* cntl_bas
     cntl->http_response().set_content_type("text/plain");
     butil::IOBufBuilder os;
     const std::string& constraint = cntl->http_request().unresolved_path();
-    
     if (constraint.empty()) {
 #ifdef BRPC_BTHREAD_TRACER
-        os << "Use /bthreads/<bthread_id> or /bthreads/<bthread_id>?st=1 for stack trace";
+        os << "Use /bthreads/<bthread_id> or /bthreads/<bthread_id>?st=1 for stack trace\n";
+        os << "To check all living bthread, use /bthreads/all or /bthreads/all?st=1 for stack trace\n";
 #else
-        os << "Use /bthreads/<bthread_id>";
+        os << "Use /bthreads/<bthread_id>\n";
+        os << "To check all living bthread, use /bthreads/all\n";
 #endif // BRPC_BTHREAD_TRACER
     } else {
-        char* endptr = NULL;
-        bthread_t tid = strtoull(constraint.c_str(), &endptr, 10);
-        if (*endptr == '\0' || *endptr == '/' || *endptr == '?') {
-            ::bthread::print_task(os, tid);
-
+        bool enable_trace = false;
 #ifdef BRPC_BTHREAD_TRACER
             const std::string* st = cntl->http_request().uri().GetQuery("st");
             if (NULL != st && *st == "1") {
-                os << "\nbthread call stack:\n";
-                ::bthread::stack_trace(os, tid);
+                enable_trace = true;
             }
 #endif // BRPC_BTHREAD_TRACER
-        } else {
-            cntl->SetFailed(ENOMETHOD, "path=%s is not a bthread id",
-                            constraint.c_str());
+        char* endptr = NULL;
+        bthread_t tid = strtoull(constraint.c_str(), &endptr, 10);
+        if (*endptr == '\0' || *endptr == '/' || *endptr == '?') {
+            ::bthread::print_task(os, tid, enable_trace);
         }
+        else if (constraint != "all" && constraint != "all?st=1") {
+            cntl->SetFailed(ENOMETHOD, "path=%s is not a bthread id or all, or all?st=1\n",
+                            constraint.c_str());
+        } else {
+            ::bthread::print_living_tasks(os, enable_trace);
+        }
+
     }
     os.move_to(cntl->response_attachment());
 }
