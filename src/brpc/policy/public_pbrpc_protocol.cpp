@@ -19,7 +19,7 @@
 #include <google/protobuf/descriptor.h>            // MethodDescriptor
 #include <google/protobuf/message.h>               // Message
 #include <gflags/gflags.h>
-#include "butil/third_party/snappy/snappy.h"        // snappy::Compress
+#include "snappy.h"                                // snappy::Compress
 #include "butil/time.h"
 #include "brpc/controller.h"                       // Controller
 #include "brpc/socket.h"                           // Socket
@@ -136,7 +136,7 @@ void PublicPbrpcServiceAdaptor::SerializeResponseToIOBuf(
         }
         if (cntl->response_compress_type() == COMPRESS_TYPE_SNAPPY) {
             std::string tmp;
-            butil::snappy::Compress(response_str->data(), response_str->size(), &tmp);
+            snappy::Compress(response_str->data(), response_str->size(), &tmp);
             response_str->swap(tmp);
             head->set_compress_type(COMPRESS_TYPE);
         }
