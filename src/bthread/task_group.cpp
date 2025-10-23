@@ -100,7 +100,8 @@ AtomicInteger128::Value AtomicInteger128::load() const {
 #endif // __x86_64__
     return {value[0], value[1]};
 #else // __x86_64__ || __ARM_NEON
-    BAIDU_SCOPED_LOCK(_mutex);
+    // RISC-V and other architectures use mutex fallback
+    BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
     return _value;
 #endif // __x86_64__ || __ARM_NEON
 }
@@ -113,7 +114,8 @@ void AtomicInteger128::store(Value value) {
     int64x2_t v = vld1q_s64(reinterpret_cast<int64_t*>(&value));
     vst1q_s64(reinterpret_cast<int64_t*>(&_value), v);
 #else
-    BAIDU_SCOPED_LOCK(_mutex);
+    // RISC-V and other architectures use mutex fallback
+    BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
     _value = value;
 #endif // __x86_64__ || __ARM_NEON
 }
