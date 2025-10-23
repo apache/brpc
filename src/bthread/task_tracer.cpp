@@ -35,6 +35,10 @@ namespace bthread {
 
 DEFINE_uint32(signal_trace_timeout_ms, 50, "Timeout for signal trace in ms");
 BUTIL_VALIDATE_GFLAG(signal_trace_timeout_ms, butil::PositiveInteger<uint32_t>);
+// Note that SIGURG handler may be registered by some library such as cgo
+// so let the signal number be configurable
+DEFINE_int32(signal_number_for_trace, SIGURG,
+             "signal number used for stack trace, default to SIGURG");
 
 extern BAIDU_THREAD_LOCAL TaskMeta* pthread_fake_meta;
 
@@ -315,17 +319,19 @@ TaskTracer::Result TaskTracer::TraceByLibunwind(unw_cursor_t& cursor) {
 
 bool TaskTracer::RegisterSignalHandler() {
     // Set up the signal handler.
+    _signal_num = FLAGS_signal_number_for_trace;
     struct sigaction old_sa{};
     struct sigaction sa{};
     sa.sa_sigaction = SignalHandler;
     sa.sa_flags = SA_SIGINFO;
     sigfillset(&sa.sa_mask);
-    if (sigaction(SIGURG, &sa, &old_sa) != 0) {
+    if (sigaction(_signal_num, &sa, &old_sa) != 0) {
         PLOG(ERROR) << "Failed to sigaction";
         return false;
     }
     if (NULL != old_sa.sa_handler || NULL != old_sa.sa_sigaction) {
-        LOG(ERROR) << "Signal handler of SIGURG is already registered";
+        LOG(ERROR) << "Signal handler of signal number "
+                   << _signal_num << " is already registered";
         return false;
     }
 
@@ -403,7 +409,7 @@ TaskTracer::Result TaskTracer::SignalTrace(pthread_t worker_tid) {
     sigval value{};
     value.sival_ptr = signal_sync.get();
     size_t sigqueue_try = 0;
-    while (pthread_sigqueue(worker_tid, SIGURG, value) != 0) {
+    while (pthread_sigqueue(worker_tid, _signal_num, value) != 0) {
         if (errno != EAGAIN || sigqueue_try++ >= 3) {
             // Remove reference for SignalHandler.
             signal_sync->RemoveRefManually();
