@@ -410,7 +410,6 @@ TaskTracer::Result TaskTracer::SignalTrace(pthread_t worker_tid) {
             return Result::MakeErrorResult("Fail to pthread_sigqueue: %s", berror());
         }
     }
-    _inuse_signal_syncs.push_back(signal_sync);
 
     // Wait for the signal handler to complete.
     butil::Timer timer;
@@ -435,13 +434,14 @@ TaskTracer::Result TaskTracer::SignalTrace(pthread_t worker_tid) {
             if (EINTR == errno) {
                 continue;
             }
+            // Extend the lifetime of `signal_sync' to
+            // avoid it being destroyed in the signal handler.
+            _inuse_signal_syncs.push_back(signal_sync);
             return Result::MakeErrorResult("Fail to poll: %s", berror());
         }
         break;
     }
-    // Remove the successful SignalSync.
-    _inuse_signal_syncs.pop_back();
-    
+
     return signal_sync->result;
 }
 
