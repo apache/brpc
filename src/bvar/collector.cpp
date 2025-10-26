@@ -77,13 +77,13 @@ private:
                             int64_t interval_us);
 
     static void* run_grab_thread(void* arg) {
-        butil::PlatformThread::SetName("bvar_collector_grabber");
+        butil::PlatformThread::SetNameSimple("bvar_collector_grabber");
         static_cast<Collector*>(arg)->grab_thread();
         return NULL;
     }
 
     static void* run_dump_thread(void* arg) {
-        butil::PlatformThread::SetName("bvar_collector_dumper");
+        butil::PlatformThread::SetNameSimple("bvar_collector_dumper");
         static_cast<Collector*>(arg)->dump_thread();
         return NULL;
     }

@@ -121,7 +121,7 @@ inline bool task_greater(const TimerThread::Task* a, const TimerThread::Task* b)
 }
 
 void* TimerThread::run_this(void* arg) {
-    butil::PlatformThread::SetName("brpc_timer");
+    butil::PlatformThread::SetNameSimple("brpc_timer");
     static_cast<TimerThread*>(arg)->run();
     return NULL;
 }

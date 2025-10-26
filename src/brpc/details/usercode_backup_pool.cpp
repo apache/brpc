@@ -92,7 +92,7 @@ UserCodeBackupPool::UserCodeBackupPool()
 }
 
 static void* UserCodeRunner(void* args) {
-    butil::PlatformThread::SetName("brpc_user_code_runner");
+    butil::PlatformThread::SetNameSimple("brpc_user_code_runner");
     static_cast<UserCodeBackupPool*>(args)->UserCodeRunningLoop();
     return NULL;
 }

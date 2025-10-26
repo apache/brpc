@@ -103,7 +103,7 @@ void* TaskControl::worker_thread(void* arg) {
         std::string worker_thread_name = butil::string_printf(
             "brpc_wkr:%d-%d", g->tag(),
             c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
-        butil::PlatformThread::SetName(worker_thread_name.c_str());
+        butil::PlatformThread::SetNameSimple(worker_thread_name.c_str());
     }
     BT_VLOG << "Created worker=" << pthread_self() << " tid=" << g->_tid
             << " bthread=" << g->main_tid() << " tag=" << g->tag();

@@ -208,7 +208,7 @@ void* ExecutionQueueBase::_execute_tasks(void* arg) {
 }
 
 void* ExecutionQueueBase::_execute_tasks_pthread(void* arg) {
-    butil::PlatformThread::SetName("ExecutionQueue");
+    butil::PlatformThread::SetNameSimple("ExecutionQueue");
     auto head = (TaskNode*)arg;
     auto m = (ExecutionQueueBase*)head->q;
     m->_current_head = head;
