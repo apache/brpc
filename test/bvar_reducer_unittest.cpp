@@ -248,8 +248,8 @@ void ReducerTest_window() {
 }
 
 TEST_F(ReducerTest, window) {
-#if !BRPC_WITH_GLOG
     ReducerTest_window();
+#if !BRPC_WITH_GLOG
     logging::StringSink log_str;
     logging::LogSink* old_sink = logging::SetLogSink(&log_str);
     sleep(1);

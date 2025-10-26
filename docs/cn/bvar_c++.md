@@ -650,3 +650,9 @@ static bvar::GFlag s_gflag_my_flag_that_matters("my_flag_that_matters");
 // Expose the gflag as a bvar named "foo_bar_my_flag_that_matters".
 static bvar::GFlag s_gflag_my_flag_that_matters_with_prefix("foo_bar", "my_flag_that_matters");
 ```
+# babylon counter bvar
+
+原理和性能见[babylon介绍](https://github.com/baidu/babylon/tree/main/example/use-counter-with-bvar)。
+
+目前只支持bazel编译方式：`--define with_babylon_counter=true`，babylon版本要求：>= 1.4.4。打开开关后，即可使用基于babylon counter实现的更高性能的bvar，无需修改代码。
+

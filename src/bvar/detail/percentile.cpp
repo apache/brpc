@@ -22,7 +22,7 @@
 
 namespace bvar {
 namespace detail {
-
+#if !WITH_BABYLON_COUNTER
 inline uint32_t ones32(uint32_t x) {
     /* 32-bit recursive reduction using SWAR...
      * but first step is mapping 2-bit values
@@ -127,6 +127,41 @@ Percentile &Percentile::operator<<(int64_t latency) {
     agent->merge_global(AddLatency(latency), _combiner);
     return *this;
 }
+#else
+Percentile::value_type Percentile::reset() {
+    constexpr static size_t SAMPLE_SIZE = value_type::SAMPLE_SIZE;
+    value_type result;
+    _concurrent_sampler.for_each([&](
+        size_t index, const babylon::ConcurrentSampler::SampleBucket& bucket) {
+        result.merge(bucket, index);
+        auto capacity = _concurrent_sampler.bucket_capacity(index);
+        auto num_added = bucket.record_num.load(::std::memory_order_relaxed);
+        if (capacity < SAMPLE_SIZE && num_added > capacity) {
+            capacity = std::min<size_t>(SAMPLE_SIZE, num_added * 1.5);
+            _concurrent_sampler.set_bucket_capacity(index, capacity);
+        }
+    });
+    _concurrent_sampler.reset();
+    return result;
+}
 
+Percentile& Percentile::operator<<(int64_t value) {
+    if (BAIDU_UNLIKELY(value < 0)) {
+        // we don't check overflow(of uint32) in percentile because the
+        // overflowed value which is included in last range does not affect
+        // overall distribution of other values too much.
+        if (!_debug_name.empty()) {
+            LOG_EVERY_SECOND(WARNING) << "Input=" << value << " to `" << _debug_name
+                                      << "' is negative, drop";
+        } else {
+            LOG_EVERY_SECOND(WARNING) << "Input=" << value << " to Percentile("
+                                      << (void*)this << ") is negative, drop";
+        }
+    } else {
+        _concurrent_sampler << value;
+    }
+    return *this;
+}
+#endif // WITH_BABYLON_COUNTER
 }  // namespace detail
 }  // namespace bvar

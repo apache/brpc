@@ -39,6 +39,16 @@ namespace bvar {
 
 DECLARE_bool(save_series);
 
+#define COMMON_VARIABLE_CONSTRUCTOR(TypeName)                                    \
+    TypeName() = default;                                                        \
+    TypeName(const butil::StringPiece& name) {                                   \
+        this->expose(name);                                                      \
+    }                                                                            \
+    TypeName(const butil::StringPiece& prefix, const butil::StringPiece& name) { \
+        this->expose_as(prefix, name);                                           \
+    }                                                                            \
+
+
 // Bitwise masks of displayable targets 
 enum DisplayFilter {
     DISPLAY_ON_HTML = 1,

@@ -378,7 +378,7 @@ private:
 
 namespace butil {
 
-// Lock both lck1 and lck2 without the dead lock issue
+// Lock both lck1 and lck2 without the deadlock issue.
 template <typename Mutex1, typename Mutex2>
 void double_lock(std::unique_lock<Mutex1> &lck1, std::unique_lock<Mutex2> &lck2) {
     DCHECK(!lck1.owns_lock());

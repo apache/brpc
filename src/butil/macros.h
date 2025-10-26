@@ -44,11 +44,11 @@
 
 // Declarations for a class to be unassignable.
 #define DISALLOW_ASSIGN(TypeName)                        \
-    BUTIL_DELETE_FUNCTION(void operator=(const TypeName&))
+    BUTIL_DELETE_FUNCTION(TypeName& operator=(const TypeName&))
 
 // Declarations for a class to be move-unassignable.
 #define DISALLOW_MOVE_ASSIGN(TypeName)                   \
-    BUTIL_DELETE_FUNCTION(void operator=(TypeName&&))
+    BUTIL_DELETE_FUNCTION(TypeName& operator=(TypeName&&))
 
 // A macro to disallow the copy constructor and operator= functions.
 #define DISALLOW_COPY_AND_ASSIGN(TypeName)               \

@@ -143,3 +143,9 @@ config_setting(
     define_values = {"BRPC_WITH_NO_PTHREAD_MUTEX_HOOK": "true"},
     visibility = ["//visibility:public"],
 )
+
+config_setting(
+    name = "with_babylon_counter",
+    define_values = {"with_babylon_counter": "true"},
+    visibility = ["//visibility:public"],
+)

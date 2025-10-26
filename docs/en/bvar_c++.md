@@ -490,3 +490,9 @@ static bvar::GFlag s_gflag_my_flag_that_matters("my_flag_that_matters");
 // Expose the gflag as a bvar named "foo_bar_my_flag_that_matters".
 static bvar::GFlag s_gflag_my_flag_that_matters_with_prefix("foo_bar", "my_flag_that_matters");
 ```
+
+# babylon counter bvar
+
+For details on the principles and performance, see [Use concurrent counter optimize bvar](https://github.com/baidu/babylon/tree/main/example/use-counter-with-bvar).
+
+Currently, this feature is only supported by the Bazel compilation method: `--define with_babylon_counter=true`. The required Babylon version is 1.4.4 or higher. Once enabled, you can use the higher-performance bvar implementation based on the babylon counter without modifying your code.

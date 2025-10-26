@@ -225,3 +225,12 @@ jobs:
       run: |
         cd test
         sh ./run_tests.sh
+
+  bazel-bvar-unittest:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v2
+    - run: bazel test --verbose_failures //test:bvar_test
+    - run: bazel test --verbose_failures --define with_babylon_counter=true //test:bvar_test
+    - run: bazel test --verbose_failures --action_env=CC=clang //test:bvar_test
+    - run: bazel test --verbose_failures --action_env=CC=clang --define with_babylon_counter=true //test:bvar_test
