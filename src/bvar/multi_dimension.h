@@ -42,6 +42,7 @@ namespace bvar {
 // `delete_stats' and `clear_stats' are not thread safe.
 // If `Shared' is true, `get_stats` returns a shared_ptr,
 // `delete_stats' and `clear_stats' are thread safe.
+// Note: The shared mode may be less performant than the non-shared mode.
 template <typename T, typename KeyType = std::list<std::string>, bool Shared = false>
 class MultiDimension : public MVariable<KeyType> {
     typedef std::shared_ptr<T> shared_value_type;
