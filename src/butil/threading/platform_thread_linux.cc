@@ -54,6 +54,10 @@ int ThreadNiceValue(ThreadPriority priority) {
 void PlatformThread::SetName(const char* name) {
   ThreadIdNameManager::GetInstance()->SetName(CurrentId(), name);
 
+  SetNameSimple(name);
+}
+// static
+void PlatformThread::SetNameSimple(const char* name) {
 #if !defined(OS_NACL)
   // On linux we can get the thread names to show up in the debugger by setting
   // the process name for the LWP.  We don't want to do this for the main

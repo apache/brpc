@@ -154,6 +154,7 @@ class BUTIL_EXPORT PlatformThread {
   // otherwise. This name pointer is not copied internally. Thus, it must stay
   // valid until the thread ends.
   static void SetName(const char* name);
+  static void SetNameSimple(const char* name);
 
   // Gets the thread name, if previously set by SetName.
   static const char* GetName();

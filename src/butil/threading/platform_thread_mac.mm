@@ -46,6 +46,11 @@ void PlatformThread::SetName(const char* name) {
   // TODO: add tracked_objects related headers
   //tracked_objects::ThreadData::InitializeThreadContext(name);
 
+  SetNameSimple(name);
+}
+
+// static
+void PlatformThread::SetNameSimple(const char* name) {
   // Mac OS X does not expose the length limit of the name, so
   // hardcode it.
   const int kMaxNameLength = 63;
