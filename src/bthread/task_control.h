@@ -106,23 +106,6 @@ public:
         (void)r;
     }
 
-    static inline std::vector<unsigned> get_current_cpus() {
-        cpu_set_t cs;
-        auto r = pthread_getaffinity_np(pthread_self(), sizeof(cs), &cs);
-        if (r != 0) {
-            LOG(ERROR) << "get thread affinity failed";
-            exit(1);
-        }
-        std::vector<unsigned> cpus;
-        unsigned nr = CPU_COUNT(&cs);
-        for (int cpu = 0; cpu < CPU_SETSIZE && cpus.size() < nr; cpu++) {
-            if (CPU_ISSET(cpu, &cs)) {
-                cpus.push_back(cpu);
-            }
-        }
-        return cpus;
-    }
-
 #ifdef BRPC_BTHREAD_TRACER
     // A stacktrace of bthread can be helpful in debugging.
     void stack_trace(std::ostream& os, bthread_t tid);

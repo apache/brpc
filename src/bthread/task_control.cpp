@@ -42,7 +42,6 @@ DEFINE_int32(task_group_runqueue_capacity, 4096,
 DEFINE_int32(task_group_ntags, 1, "TaskGroup will be grouped by number ntags");
 DEFINE_bool(task_group_set_worker_name, true,
             "Whether to set the name of the worker thread");
-DEFINE_bool(thread_affinity, false, "Whether to Bind Cores");
 DEFINE_string(cpu_set, "",
               "Set of CPUs to which cores are bound, for example, 0-3,5,6-7; default: all");
 
@@ -79,13 +78,6 @@ void run_tagged_worker_startfn(bthread_tag_t tag) {
 struct WorkerThreadArgs {
     WorkerThreadArgs(TaskControl* _c, bthread_tag_t _t) : c(_c), tag(_t) {}
 
-    WorkerThreadArgs* set_cpuId(unsigned _cpuId) {
-        if (FLAGS_thread_affinity) {
-            cpuId = _cpuId;
-        }
-        return this;
-    }
-
     TaskControl* c;
     bthread_tag_t tag;
     unsigned cpuId;
@@ -100,8 +92,14 @@ void* TaskControl::worker_thread(void* arg) {
     auto dummy = static_cast<WorkerThreadArgs*>(arg);
     auto c = dummy->c;
     auto tag = dummy->tag;
-    if (FLAGS_thread_affinity) {
-        bind_thread(pthread_self(), _cpus[dummy->cpuId]);
+    if (!_cpus.empty()) {
+        if (dummy->cpuId < _cpus.size()) {
+            bind_thread(pthread_self(), _cpus[dummy->cpuId]);
+        } else {
+            LOG(ERROR) << "Failed to bind cpuId=" << dummy->cpuId 
+                       << " is out of bounds for _cpus (size=" 
+                       << _cpus.size() << ")";
+        }
     }
     delete dummy;
     run_tagged_worker_startfn(tag);
@@ -225,8 +223,8 @@ int TaskControl::init(int concurrency) {
     }
     _concurrency = concurrency;
 
-    if (FLAGS_thread_affinity) {
-        if (parse_cpuset(FLAGS_cpu_set, _cpus) == -1 || _cpus.empty()) {
+    if (!FLAGS_cpu_set.empty()) {
+        if (parse_cpuset(FLAGS_cpu_set, _cpus) == -1) {
             LOG(ERROR) << "invalid cpuset=" << FLAGS_cpu_set;
             return -1;
         }
@@ -264,7 +262,9 @@ int TaskControl::init(int concurrency) {
     _workers.resize(_concurrency);   
     for (int i = 0; i < _concurrency; ++i) {
         auto arg = new WorkerThreadArgs(this, i % FLAGS_task_group_ntags);
-        arg->set_cpuId(i % _cpus.size());
+        if (!_cpus.empty()) {
+            arg->cpuId = i % _cpus.size();
+        }
         const int rc = pthread_create(&_workers[i], NULL, worker_thread, arg);
         if (rc) {
             delete arg;
@@ -308,7 +308,9 @@ int TaskControl::add_workers(int num, bthread_tag_t tag) {
         // _concurrency before create a worker.
         _concurrency.fetch_add(1);
         auto arg = new WorkerThreadArgs(this, tag);
-        arg->set_cpuId((i + old_concurency) % _cpus.size());
+        if (!_cpus.empty()) {
+            arg->cpuId = (i + old_concurency) % _cpus.size();
+        }
         const int rc = pthread_create(
                 &_workers[i + old_concurency], NULL, worker_thread, arg);
         if (rc) {
@@ -339,8 +341,7 @@ int TaskControl::parse_cpuset(std::string value, std::vector<unsigned>& cpus) {
     std::smatch match;
     std::set<unsigned> cpuset;
     if (value.empty()) {
-        cpus = get_current_cpus();
-        return 0;
+        return -1;
     }
     if (std::regex_match(value, match, r)) {
         for (butil::StringSplitter split(value.data(), ','); split; ++split) {
