@@ -42,6 +42,9 @@ DEFINE_int32(task_group_runqueue_capacity, 4096,
 DEFINE_int32(task_group_ntags, 1, "TaskGroup will be grouped by number ntags");
 DEFINE_bool(task_group_set_worker_name, true,
             "Whether to set the name of the worker thread");
+DEFINE_bool(thread_affinity, false, "Whether to Bind Cores");
+DEFINE_string(cpu_set, "",
+              "Set of CPUs to which cores are bound, for example, 0-3,5,6-7; default: all");
 
 namespace bthread {
 
@@ -58,6 +61,7 @@ extern pthread_mutex_t g_task_control_mutex;
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 void (*g_worker_startfn)() = NULL;
 void (*g_tagged_worker_startfn)(bthread_tag_t) = NULL;
+std::vector<unsigned> TaskControl::_cpus;
 
 // May be called in other modules to run startfn in non-worker pthreads.
 void run_worker_startfn() {
@@ -74,8 +78,17 @@ void run_tagged_worker_startfn(bthread_tag_t tag) {
 
 struct WorkerThreadArgs {
     WorkerThreadArgs(TaskControl* _c, bthread_tag_t _t) : c(_c), tag(_t) {}
+
+    WorkerThreadArgs* set_cpuId(unsigned _cpuId) {
+        if (FLAGS_thread_affinity) {
+            cpuId = _cpuId;
+        }
+        return this;
+    }
+
     TaskControl* c;
     bthread_tag_t tag;
+    unsigned cpuId;
 };
 
 void* TaskControl::worker_thread(void* arg) {
@@ -87,6 +100,9 @@ void* TaskControl::worker_thread(void* arg) {
     auto dummy = static_cast<WorkerThreadArgs*>(arg);
     auto c = dummy->c;
     auto tag = dummy->tag;
+    if (FLAGS_thread_affinity) {
+        bind_thread(pthread_self(), _cpus[dummy->cpuId]);
+    }
     delete dummy;
     run_tagged_worker_startfn(tag);
 
@@ -209,6 +225,13 @@ int TaskControl::init(int concurrency) {
     }
     _concurrency = concurrency;
 
+    if (FLAGS_thread_affinity) {
+        if (parse_cpuset(FLAGS_cpu_set, _cpus) == -1 || _cpus.empty()) {
+            LOG(ERROR) << "invalid cpuset=" << FLAGS_cpu_set;
+            return -1;
+        }
+    }
+
     // task group group by tags
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
         _tagged_ngroup[i].store(0, std::memory_order_relaxed);
@@ -241,6 +264,7 @@ int TaskControl::init(int concurrency) {
     _workers.resize(_concurrency);   
     for (int i = 0; i < _concurrency; ++i) {
         auto arg = new WorkerThreadArgs(this, i % FLAGS_task_group_ntags);
+        arg->set_cpuId(i % _cpus.size());
         const int rc = pthread_create(&_workers[i], NULL, worker_thread, arg);
         if (rc) {
             delete arg;
@@ -284,6 +308,7 @@ int TaskControl::add_workers(int num, bthread_tag_t tag) {
         // _concurrency before create a worker.
         _concurrency.fetch_add(1);
         auto arg = new WorkerThreadArgs(this, tag);
+        arg->set_cpuId((i + old_concurency) % _cpus.size());
         const int rc = pthread_create(
                 &_workers[i + old_concurency], NULL, worker_thread, arg);
         if (rc) {
@@ -307,6 +332,43 @@ TaskGroup* TaskControl::choose_one_group(bthread_tag_t tag) {
     }
     CHECK(false) << "Impossible: ngroup is 0";
     return NULL;
+}
+
+int TaskControl::parse_cpuset(std::string value, std::vector<unsigned>& cpus) {
+    static std::regex r("(\\d+-)?(\\d+)(,(\\d+-)?(\\d+))*");
+    std::smatch match;
+    std::set<unsigned> cpuset;
+    if (value.empty()) {
+        cpus = get_current_cpus();
+        return 0;
+    }
+    if (std::regex_match(value, match, r)) {
+        for (butil::StringSplitter split(value.data(), ','); split; ++split) {
+            butil::StringPiece cpuIds(split.field(), split.length());
+            cpuIds.trim_spaces();
+            butil::StringPiece begin = cpuIds;
+            butil::StringPiece end = cpuIds;
+            auto dash = cpuIds.find('-');
+            if (dash != cpuIds.npos) {
+                begin = cpuIds.substr(0, dash);
+                end = cpuIds.substr(dash + 1);
+            }
+            unsigned first = UINT_MAX;
+            unsigned last = 0;
+            int ret;
+            ret = butil::StringSplitter(begin, '\t').to_uint(&first);
+            ret = ret | butil::StringSplitter(end, '\t').to_uint(&last);
+            if (ret != 0 || first > last) {
+                return -1;
+            }
+            for (auto i = first; i <= last; ++i) {
+                cpuset.insert(i);
+            }
+        }
+        cpus.assign(cpuset.begin(), cpuset.end());
+        return 0;
+    }
+    return -1;
 }
 
 #ifdef BRPC_BTHREAD_TRACER

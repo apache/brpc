@@ -30,6 +30,8 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include <set>
+#include <regex>
 #include "butil/atomicops.h"                     // butil::atomic
 #include "bvar/bvar.h"                          // bvar::PassiveStatus
 #include "bthread/task_tracer.h"
@@ -91,6 +93,36 @@ public:
     // If this method is called after init(), it never returns NULL.
     TaskGroup* choose_one_group(bthread_tag_t tag);
 
+    static int parse_cpuset(std::string value, std::vector<unsigned>& cpus);
+
+    static inline void bind_thread(pthread_t pthread, unsigned cpuId) {
+        cpu_set_t cs;
+        CPU_ZERO(&cs);
+        CPU_SET(cpuId, &cs);
+        auto r = pthread_setaffinity_np(pthread, sizeof(cs), &cs);
+        if (r != 0) {
+            LOG(WARNING) << "Failed to bind thread to cpu: " << cpuId;
+        }
+        (void)r;
+    }
+
+    static inline std::vector<unsigned> get_current_cpus() {
+        cpu_set_t cs;
+        auto r = pthread_getaffinity_np(pthread_self(), sizeof(cs), &cs);
+        if (r != 0) {
+            LOG(ERROR) << "get thread affinity failed";
+            exit(1);
+        }
+        std::vector<unsigned> cpus;
+        unsigned nr = CPU_COUNT(&cs);
+        for (int cpu = 0; cpu < CPU_SETSIZE && cpus.size() < nr; cpu++) {
+            if (CPU_ISSET(cpu, &cs)) {
+                cpus.push_back(cpu);
+            }
+        }
+        return cpus;
+    }
+
 #ifdef BRPC_BTHREAD_TRACER
     // A stacktrace of bthread can be helpful in debugging.
     void stack_trace(std::ostream& os, bthread_t tid);
@@ -139,6 +171,7 @@ private:
     bool _stop;
     butil::atomic<int> _concurrency;
     std::vector<pthread_t> _workers;
+    static std::vector<unsigned> _cpus;
     butil::atomic<int> _next_worker_id;
 
     bvar::Adder<int64_t> _nworkers;
