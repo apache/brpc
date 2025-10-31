@@ -78,7 +78,7 @@ static void StringAppendVT(StringType* dst,
       // wrong and no amount of buffer-doubling is going to fix it.
       return;
 #else
-      if (errno != 0 && errno != EOVERFLOW)
+      if (errno != 0 && errno != EOVERFLOW && errno != E2BIG)
         return;
       // Try doubling the buffer size.
       mem_length *= 2;

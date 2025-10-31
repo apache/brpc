@@ -23,6 +23,7 @@
 #include "butil/macros.h"
 #include "butil/time.h"     // gettimeofday_us()
 #include "butil/fast_rand.h"
+#include "butil/numerics/safe_conversions.h" // safe_abs
 
 namespace butil {
 
@@ -110,20 +111,31 @@ int64_t fast_rand_in_64(int64_t min, int64_t max) {
     if (need_init(_tls_seed)) {
         init_fast_rand_seed(&_tls_seed);
     }
-    if (min >= max) {
+    if (BAIDU_UNLIKELY(min >= max)) {
         if (min == max) {
             return min;
         }
-        const int64_t tmp = min;
-        min = max;
-        max = tmp;
+        std::swap(min, max);
     }
-    int64_t range = max - min + 1;
+    uint64_t range;
+    if (min >= 0) {
+        // Always safe to do subtraction.
+        range = (uint64_t)(max - min) + 1;
+        return min + (int64_t)fast_rand_impl(range, &_tls_seed);
+    }
+
+    uint64_t abs_min = safe_abs(min);
+    if (max >= 0) {
+        range = abs_min + (uint64_t)(max) + 1;
+    } else {
+        range = abs_min - safe_abs(max) + 1;
+    }
     if (range == 0) {
         // max = INT64_MAX, min = INT64_MIN
         return (int64_t)xorshift128_next(&_tls_seed);
     }
-    return min + (int64_t)fast_rand_impl(max - min + 1, &_tls_seed);
+    uint64_t r = fast_rand_impl(range, &_tls_seed);
+    return r >= abs_min ? (int64_t)(r - abs_min) : -((int64_t)(abs_min - r));
 }
 
 uint64_t fast_rand_in_u64(uint64_t min, uint64_t max) {
