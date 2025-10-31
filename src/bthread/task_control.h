@@ -30,8 +30,6 @@
 #include <vector>
 #include <array>
 #include <memory>
-#include <set>
-#include <regex>
 #include "butil/atomicops.h"                     // butil::atomic
 #include "bvar/bvar.h"                          // bvar::PassiveStatus
 #include "bthread/task_tracer.h"
@@ -95,16 +93,7 @@ public:
 
     static int parse_cpuset(std::string value, std::vector<unsigned>& cpus);
 
-    static inline void bind_thread(pthread_t pthread, unsigned cpuId) {
-        cpu_set_t cs;
-        CPU_ZERO(&cs);
-        CPU_SET(cpuId, &cs);
-        auto r = pthread_setaffinity_np(pthread, sizeof(cs), &cs);
-        if (r != 0) {
-            LOG(WARNING) << "Failed to bind thread to cpu: " << cpuId;
-        }
-        (void)r;
-    }
+    static void bind_thread_to_cpu(pthread_t pthread, unsigned cpu_id);
 
 #ifdef BRPC_BTHREAD_TRACER
     // A stacktrace of bthread can be helpful in debugging.
@@ -154,7 +143,7 @@ private:
     bool _stop;
     butil::atomic<int> _concurrency;
     std::vector<pthread_t> _workers;
-    static std::vector<unsigned> _cpus;
+    std::vector<unsigned> _cpus;
     butil::atomic<int> _next_worker_id;
 
     bvar::Adder<int64_t> _nworkers;

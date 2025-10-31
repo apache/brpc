@@ -20,6 +20,8 @@
 // Date: Tue Jul 10 17:40:58 CST 2012
 
 #include <pthread.h>
+#include <set>
+#include <regex>
 #include <sys/syscall.h>                   // SYS_gettid
 #include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "butil/errno.h"                   // berror
@@ -34,6 +36,9 @@
 #include "bthread/timer_thread.h"         // global_timer_thread
 #include <gflags/gflags.h>
 #include "bthread/log.h"
+#if defined(OS_MACOSX)
+#include <mach/mach.h>
+#endif
 
 DEFINE_int32(task_group_delete_delay, 1,
              "delay deletion of TaskGroup for so many seconds");
@@ -43,7 +48,8 @@ DEFINE_int32(task_group_ntags, 1, "TaskGroup will be grouped by number ntags");
 DEFINE_bool(task_group_set_worker_name, true,
             "Whether to set the name of the worker thread");
 DEFINE_string(cpu_set, "",
-              "Set of CPUs to which cores are bound, for example, 0-3,5,6-7; default: all");
+              "Set of CPUs to which cores are bound. "
+              "for example, 0-3,5,7; default: disable");
 
 namespace bthread {
 
@@ -60,7 +66,6 @@ extern pthread_mutex_t g_task_control_mutex;
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 void (*g_worker_startfn)() = NULL;
 void (*g_tagged_worker_startfn)(bthread_tag_t) = NULL;
-std::vector<unsigned> TaskControl::_cpus;
 
 // May be called in other modules to run startfn in non-worker pthreads.
 void run_worker_startfn() {
@@ -77,10 +82,8 @@ void run_tagged_worker_startfn(bthread_tag_t tag) {
 
 struct WorkerThreadArgs {
     WorkerThreadArgs(TaskControl* _c, bthread_tag_t _t) : c(_c), tag(_t) {}
-
     TaskControl* c;
     bthread_tag_t tag;
-    unsigned cpuId;
 };
 
 void* TaskControl::worker_thread(void* arg) {
@@ -92,15 +95,6 @@ void* TaskControl::worker_thread(void* arg) {
     auto dummy = static_cast<WorkerThreadArgs*>(arg);
     auto c = dummy->c;
     auto tag = dummy->tag;
-    if (!_cpus.empty()) {
-        if (dummy->cpuId < _cpus.size()) {
-            bind_thread(pthread_self(), _cpus[dummy->cpuId]);
-        } else {
-            LOG(ERROR) << "Failed to bind cpuId=" << dummy->cpuId 
-                       << " is out of bounds for _cpus (size=" 
-                       << _cpus.size() << ")";
-        }
-    }
     delete dummy;
     run_tagged_worker_startfn(tag);
 
@@ -113,10 +107,14 @@ void* TaskControl::worker_thread(void* arg) {
 
     g->_tid = pthread_self();
 
+    int worker_id = c->_next_worker_id.fetch_add(
+                        1, butil::memory_order_relaxed);
+    if (!c->_cpus.empty()) {
+        bind_thread_to_cpu(pthread_self(), c->_cpus[worker_id % c->_cpus.size()]);
+    }
     if (FLAGS_task_group_set_worker_name) {
         std::string worker_thread_name = butil::string_printf(
-            "brpc_wkr:%d-%d", g->tag(),
-            c->_next_worker_id.fetch_add(1, butil::memory_order_relaxed));
+            "brpc_wkr:%d-%d", g->tag(), worker_id);
         butil::PlatformThread::SetNameSimple(worker_thread_name.c_str());
     }
     BT_VLOG << "Created worker=" << pthread_self() << " tid=" << g->_tid
@@ -262,9 +260,6 @@ int TaskControl::init(int concurrency) {
     _workers.resize(_concurrency);   
     for (int i = 0; i < _concurrency; ++i) {
         auto arg = new WorkerThreadArgs(this, i % FLAGS_task_group_ntags);
-        if (!_cpus.empty()) {
-            arg->cpuId = i % _cpus.size();
-        }
         const int rc = pthread_create(&_workers[i], NULL, worker_thread, arg);
         if (rc) {
             delete arg;
@@ -308,9 +303,6 @@ int TaskControl::add_workers(int num, bthread_tag_t tag) {
         // _concurrency before create a worker.
         _concurrency.fetch_add(1);
         auto arg = new WorkerThreadArgs(this, tag);
-        if (!_cpus.empty()) {
-            arg->cpuId = (i + old_concurency) % _cpus.size();
-        }
         const int rc = pthread_create(
                 &_workers[i + old_concurency], NULL, worker_thread, arg);
         if (rc) {
@@ -345,14 +337,14 @@ int TaskControl::parse_cpuset(std::string value, std::vector<unsigned>& cpus) {
     }
     if (std::regex_match(value, match, r)) {
         for (butil::StringSplitter split(value.data(), ','); split; ++split) {
-            butil::StringPiece cpuIds(split.field(), split.length());
-            cpuIds.trim_spaces();
-            butil::StringPiece begin = cpuIds;
-            butil::StringPiece end = cpuIds;
-            auto dash = cpuIds.find('-');
-            if (dash != cpuIds.npos) {
-                begin = cpuIds.substr(0, dash);
-                end = cpuIds.substr(dash + 1);
+            butil::StringPiece cpu_ids(split.field(), split.length());
+            cpu_ids.trim_spaces();
+            butil::StringPiece begin = cpu_ids;
+            butil::StringPiece end = cpu_ids;
+            auto dash = cpu_ids.find('-');
+            if (dash != cpu_ids.npos) {
+                begin = cpu_ids.substr(0, dash);
+                end = cpu_ids.substr(dash + 1);
             }
             unsigned first = UINT_MAX;
             unsigned last = 0;
@@ -370,6 +362,34 @@ int TaskControl::parse_cpuset(std::string value, std::vector<unsigned>& cpus) {
         return 0;
     }
     return -1;
+}
+
+void TaskControl::bind_thread_to_cpu(pthread_t pthread, unsigned cpu_id) {
+#if defined(OS_LINUX)
+        cpu_set_t cs;
+        CPU_ZERO(&cs);
+        CPU_SET(cpu_id, &cs);
+        auto r = pthread_setaffinity_np(pthread, sizeof(cs), &cs);
+        if (r != 0) {
+            LOG(WARNING) << "Failed to bind thread to cpu: " << cpu_id;
+        }
+        (void)r;
+#elif defined(OS_MACOSX)
+        thread_port_t mach_thread = pthread_mach_thread_np(pthread);
+        if (mach_thread != MACH_PORT_NULL) {
+            LOG(WARNING) << "mach_thread is null"
+                         << "Failed to bind thread to cpu: " << cpu_id;
+            return;
+        }
+        thread_affinity_policy_data_t policy;
+        policy.affinity_tag = cpu_id;
+        if (thread_policy_set(mach_thread,
+                THREAD_AFFINITY_POLICY,
+                (thread_policy_t)&policy,
+                THREAD_AFFINITY_POLICY_COUNT) != KERN_SUCCESS) {
+            LOG(WARNING) << "Failed to bind thread to cpu: " << cpu_id;
+        }
+#endif
 }
 
 #ifdef BRPC_BTHREAD_TRACER
