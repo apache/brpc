@@ -91,6 +91,10 @@ public:
     // If this method is called after init(), it never returns NULL.
     TaskGroup* choose_one_group(bthread_tag_t tag);
 
+    static int parse_cpuset(std::string value, std::vector<unsigned>& cpus);
+
+    static void bind_thread_to_cpu(pthread_t pthread, unsigned cpu_id);
+
 #ifdef BRPC_BTHREAD_TRACER
     // A stacktrace of bthread can be helpful in debugging.
     void stack_trace(std::ostream& os, bthread_t tid);
@@ -139,6 +143,7 @@ private:
     bool _stop;
     butil::atomic<int> _concurrency;
     std::vector<pthread_t> _workers;
+    std::vector<unsigned> _cpus;
     butil::atomic<int> _next_worker_id;
 
     bvar::Adder<int64_t> _nworkers;
