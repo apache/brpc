@@ -412,6 +412,7 @@ public:
 ```
 
 ### get_stats
+
 根据指定label获取对应的单维度统计项bvar。
 
 get_stats除了支持（默认）std::list<std::string>参数类型，也支持自定义参数类型，满足以下条件：
@@ -420,6 +421,12 @@ get_stats除了支持（默认）std::list<std::string>参数类型，也支持�
 3. K::value_type支持和std::string进行比较。
 
 推荐使用不需要分配内存的容器（例如，std::array、absl::InlinedVector）和不需要拷贝字符串的数据结构（例如，const char*、std::string_view、butil::StringPieces），可以提高性能。
+
+bvar::MultiDimension的模板参数Shared，默认为false：
+1. 如果Shared等于false，get_stats返回模板参数T的指针，例如bvar::Adder<int>*。
+2. 如果Shared等于true，get_stats返回模板参数T的shared_ptr，例如std::shared_ptr\<bvar::Adder<int>\>。
+
+**注意**：因为shared_ptr的开销，Shared等于true的性能会比Shared等于false的性能差一些。
 
 ```c++
 #include <bvar/bvar.h>
@@ -522,6 +529,20 @@ int request_count = get_request_count(request_label_list);
     * new bvar()
     * store(bvar)
     * return bvar
+
+### delete_stats
+
+根据指定label删除对应的单维度统计项bvar。
+
+bvar::MultiDimension的模板参数Shared，默认为false：
+1. 如果Shared等于false，get_stats返回的是模板参数T的指针，delete_stats无法保证没有使用者，所以无法安全删除bvar。
+2. 如果Shared等于true，get_stats返回的是模板参数T的shared_ptr，delete_stats可以安全删除bvar。
+
+### clear_stats
+
+清理所有单维度统计项bvar。
+
+安全性同样受bvar::MultiDimension的模板参数Shared的影响，见delete_stats一节说明。
 
 **bvar的生命周期**
 

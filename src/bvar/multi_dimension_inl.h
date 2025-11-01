@@ -21,6 +21,7 @@
 #define BVAR_MULTI_DIMENSION_INL_H
 
 #include <gflags/gflags_declare.h>
+#include "butil/compiler_specific.h"
 
 namespace bvar {
 
@@ -34,43 +35,43 @@ static const std::string ALLOW_UNUSED METRIC_TYPE_SUMMARY = "summary";
 static const std::string ALLOW_UNUSED METRIC_TYPE_HISTOGRAM = "histogram";
 static const std::string ALLOW_UNUSED METRIC_TYPE_GAUGE = "gauge";
 
-template <typename T, typename KeyType>
-MultiDimension<T, KeyType>::MultiDimension(const key_type& labels)
+template <typename T, typename KeyType, bool Shared>
+MultiDimension<T, KeyType, Shared>::MultiDimension(const key_type& labels)
     : Base(labels)
     , _max_stats_count(FLAGS_max_multi_dimension_stats_count) {
     _metric_map.Modify(init_flatmap);
 }
 
-template <typename T, typename KeyType>
-MultiDimension<T, KeyType>::MultiDimension(const butil::StringPiece& name,
+template <typename T, typename KeyType, bool Shared>
+MultiDimension<T, KeyType, Shared>::MultiDimension(const butil::StringPiece& name,
                                            const key_type& labels)
     : MultiDimension(labels) {
     this->expose(name);
 }
 
-template <typename T, typename KeyType>
-MultiDimension<T, KeyType>::MultiDimension(const butil::StringPiece& prefix,
+template <typename T, typename KeyType, bool Shared>
+MultiDimension<T, KeyType, Shared>::MultiDimension(const butil::StringPiece& prefix,
                                            const butil::StringPiece& name,
                                            const key_type& labels)
     : MultiDimension(labels) {
     this->expose_as(prefix, name);
 }
 
-template <typename T, typename KeyType>
-MultiDimension<T, KeyType>::~MultiDimension() {
+template <typename T, typename KeyType, bool Shared>
+MultiDimension<T, KeyType, Shared>::~MultiDimension() {
     this->hide();
     delete_stats();
 }
 
-template <typename T, typename KeyType>
-size_t MultiDimension<T, KeyType>::init_flatmap(MetricMap& bg) {
+template <typename T, typename KeyType, bool Shared>
+size_t MultiDimension<T, KeyType, Shared>::init_flatmap(MetricMap& bg) {
     // size = 1 << 13
     CHECK_EQ(0, bg.init(8192, 80));
-    return (size_t)1;
+    return 1;
 }
 
-template <typename T, typename KeyType>
-size_t MultiDimension<T, KeyType>::count_stats() {
+template <typename T, typename KeyType, bool Shared>
+size_t MultiDimension<T, KeyType, Shared>::count_stats() {
     MetricMapScopedPtr metric_map_ptr;
     if (_metric_map.Read(&metric_map_ptr) != 0) {
         LOG(ERROR) << "Fail to read dbd";
@@ -79,9 +80,9 @@ size_t MultiDimension<T, KeyType>::count_stats() {
     return metric_map_ptr->size();
 }
 
-template <typename T, typename KeyType>
+template <typename T, typename KeyType, bool Shared>
 template <typename K>
-void MultiDimension<T, KeyType>::delete_stats(const K& labels_value) {
+void MultiDimension<T, KeyType, Shared>::delete_stats(const K& labels_value) {
     if (is_valid_lables_value(labels_value)) {
         // Because there are two copies(foreground and background) in DBD,
         // we need to use an empty tmp_metric, get the deleted value of
@@ -93,35 +94,35 @@ void MultiDimension<T, KeyType>::delete_stats(const K& labels_value) {
         };
         _metric_map.Modify(erase_fn);
         if (tmp_metric) {
-            delete tmp_metric;
+            delete_value(tmp_metric);
         }
     }
 }
 
-template <typename T, typename KeyType>
-void MultiDimension<T, KeyType>::delete_stats() {
+template <typename T, typename KeyType, bool Shared>
+void MultiDimension<T, KeyType, Shared>::delete_stats() {
     // Because there are two copies(foreground and background) in DBD, we need to use an empty tmp_map,
     // swap two copies with empty, and get the value of second copy into tmp_map,
     // then traversal tmp_map and delete bvar object,
     // which can prevent the bvar object from being deleted twice.
     MetricMap tmp_map;
     CHECK_EQ(0, tmp_map.init(8192, 80));
-    auto clear_fn = [&tmp_map](MetricMap& map) {
+    auto clear_fn = [&tmp_map](MetricMap& map) -> size_t {
         if (!tmp_map.empty()) {
             tmp_map.clear();
         }
         tmp_map.swap(map);
-        return (size_t)1;
+        return 1;
     };
     int ret = _metric_map.Modify(clear_fn);
     CHECK_EQ(1, ret);
-    for (auto &kv : tmp_map) {
-        delete kv.second;
+    for (auto& kv : tmp_map) {
+        delete_value(kv.second);
     }
 }
 
-template <typename T, typename KeyType>
-void MultiDimension<T, KeyType>::list_stats(std::vector<key_type>* names) {
+template <typename T, typename KeyType, bool Shared>
+void MultiDimension<T, KeyType, Shared>::list_stats(std::vector<key_type>* names) {
     if (names == NULL) {
         return;
     }
@@ -137,58 +138,60 @@ void MultiDimension<T, KeyType>::list_stats(std::vector<key_type>* names) {
     }
 }
 
-template <typename T, typename KeyType>
+template <typename T, typename KeyType, bool Shared>
 template <typename K>
-T* MultiDimension<T, KeyType>::get_stats_impl(const K& labels_value) {
+typename MultiDimension<T, KeyType, Shared>::value_ptr_type
+MultiDimension<T, KeyType, Shared>::get_stats_impl(const K& labels_value) {
     if (!is_valid_lables_value(labels_value)) {
-        return nullptr;
+        return NULL;
     }
     MetricMapScopedPtr metric_map_ptr;
     if (_metric_map.Read(&metric_map_ptr) != 0) {
         LOG(ERROR) << "Fail to read dbd";
-        return nullptr;
+        return NULL;
     }
 
     auto it = metric_map_ptr->seek(labels_value);
-    if (it == nullptr) {
-        return nullptr;
+    if (NULL == it) {
+        return NULL;
     }
     return (*it);
 }
 
-template <typename T, typename KeyType>
+template <typename T, typename KeyType, bool Shared>
 template <typename K>
-T* MultiDimension<T, KeyType>::get_stats_impl(
+typename MultiDimension<T, KeyType, Shared>::value_ptr_type
+MultiDimension<T, KeyType, Shared>::get_stats_impl(
     const K& labels_value, STATS_OP stats_op, bool* do_write) {
     if (!is_valid_lables_value(labels_value)) {
-        return nullptr;
+        return NULL;
     }
     {
         MetricMapScopedPtr metric_map_ptr;
         if (0 != _metric_map.Read(&metric_map_ptr)) {
             LOG(ERROR) << "Fail to read dbd";
-            return nullptr;
+            return NULL;
         }
 
         auto it = metric_map_ptr->seek(labels_value);
         if (NULL != it) {
             return (*it);
         } else if (READ_ONLY == stats_op) {
-            return nullptr;
+            return NULL;
         }
 
         if (metric_map_ptr->size() > _max_stats_count) {
             LOG(ERROR) << "Too many stats seen, overflow detected, max stats count="
                        << _max_stats_count;
-            return nullptr;
+            return NULL;
         }
     }
 
-    // Because DBD has two copies(foreground and background) MetricMap, both copies need to be modify,
+    // Because DBD has two copies(foreground and background) MetricMap, both copies need to be modified,
     // In order to avoid new duplicate bvar object, need use cache_metric to cache the new bvar object,
     // In this way, when modifying the second copy, can directly use the cache_metric bvar object.
     op_value_type cache_metric = NULL;
-    auto insert_fn = [&labels_value, &cache_metric, &do_write](MetricMap& bg) {
+    auto insert_fn = [this, &labels_value, &cache_metric, &do_write](MetricMap& bg) {
         auto bg_metric = bg.seek(labels_value);
         if (NULL != bg_metric) {
             cache_metric = *bg_metric;
@@ -199,7 +202,7 @@ T* MultiDimension<T, KeyType>::get_stats_impl(
         }
 
         if (NULL == cache_metric) {
-            cache_metric = new T();
+            cache_metric = new_value();
         }
         insert_metrics_map(bg, labels_value, cache_metric);
         return 1;
@@ -208,21 +211,21 @@ T* MultiDimension<T, KeyType>::get_stats_impl(
     return cache_metric;
 }
 
-template <typename T, typename KeyType>
-void MultiDimension<T, KeyType>::clear_stats() {
+template <typename T, typename KeyType, bool Shared>
+void MultiDimension<T, KeyType, Shared>::clear_stats() {
     delete_stats();
 }
 
-template <typename T, typename KeyType>
+template <typename T, typename KeyType, bool Shared>
 template <typename K>
-bool MultiDimension<T, KeyType>::has_stats(const K& labels_value) {
-    return get_stats_impl(labels_value) != nullptr;
+bool MultiDimension<T, KeyType, Shared>::has_stats(const K& labels_value) {
+    return get_stats_impl(labels_value) != NULL;
 }
 
-template <typename T, typename KeyType>
+template <typename T, typename KeyType, bool Shared>
 template <typename U>
 typename std::enable_if<!butil::is_same<LatencyRecorder, U>::value, size_t>::type
-MultiDimension<T, KeyType>::dump_impl(Dumper* dumper, const DumpOptions* options) {
+MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions* options) {
     std::vector<key_type> label_names;
     list_stats(&label_names);
     if (label_names.empty() || !dumper->dump_comment(this->name(), METRIC_TYPE_GAUGE)) {
@@ -230,8 +233,8 @@ MultiDimension<T, KeyType>::dump_impl(Dumper* dumper, const DumpOptions* options
     }
     size_t n = 0;
     for (auto &label_name : label_names) {
-        T* bvar = get_stats_impl(label_name);
-        if (!bvar) {
+        value_ptr_type bvar = get_stats_impl(label_name);
+        if (NULL == bvar) {
             continue;
         }
         std::ostringstream oss;
@@ -246,10 +249,10 @@ MultiDimension<T, KeyType>::dump_impl(Dumper* dumper, const DumpOptions* options
     return n;
 }
 
-template <typename T, typename KeyType>
+template <typename T, typename KeyType, bool Shared>
 template <typename U>
 typename std::enable_if<butil::is_same<LatencyRecorder, U>::value, size_t>::type
-MultiDimension<T, KeyType>::dump_impl(Dumper* dumper, const DumpOptions*) {
+MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*) {
     std::vector<key_type> label_names;
     list_stats(&label_names);
     if (label_names.empty()) {
@@ -299,8 +302,8 @@ MultiDimension<T, KeyType>::dump_impl(Dumper* dumper, const DumpOptions*) {
     // max_latency comment
     dumper->dump_comment(this->name() + "_max_latency", METRIC_TYPE_GAUGE);
     for (auto &label_name : label_names) {
-        bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
-        if (!bvar) {
+        LatencyRecorder* bvar = get_stats_impl(label_name);
+        if (NULL == bvar) {
             continue;
         }
         std::ostringstream oss_max_latency_key;
@@ -313,8 +316,8 @@ MultiDimension<T, KeyType>::dump_impl(Dumper* dumper, const DumpOptions*) {
     // qps comment
     dumper->dump_comment(this->name() + "_qps", METRIC_TYPE_GAUGE);
     for (auto &label_name : label_names) {
-        bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
-        if (!bvar) {
+        LatencyRecorder* bvar = get_stats_impl(label_name);
+        if (NULL == bvar) {
             continue;
         }
         std::ostringstream oss_qps_key;
@@ -327,8 +330,8 @@ MultiDimension<T, KeyType>::dump_impl(Dumper* dumper, const DumpOptions*) {
     // count comment
     dumper->dump_comment(this->name() + "_count", METRIC_TYPE_COUNTER);
     for (auto &label_name : label_names) {
-        bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
-        if (!bvar) {
+        LatencyRecorder* bvar = get_stats_impl(label_name);
+        if (NULL == bvar) {
             continue;
         }
         std::ostringstream oss_count_key;
@@ -340,8 +343,8 @@ MultiDimension<T, KeyType>::dump_impl(Dumper* dumper, const DumpOptions*) {
     return n;
 }
 
-template <typename T, typename KeyType>
-void MultiDimension<T, KeyType>::make_dump_key(std::ostream& os, const key_type& labels_value,
+template <typename T, typename KeyType, bool Shared>
+void MultiDimension<T, KeyType, Shared>::make_dump_key(std::ostream& os, const key_type& labels_value,
                                                const std::string& suffix, int quantile) {
     os << this->name();
     if (!suffix.empty()) {
@@ -350,8 +353,8 @@ void MultiDimension<T, KeyType>::make_dump_key(std::ostream& os, const key_type&
     make_labels_kvpair_string(os, labels_value, quantile);
 }
 
-template <typename T, typename KeyType>
-void MultiDimension<T, KeyType>::make_labels_kvpair_string(
+template <typename T, typename KeyType, bool Shared>
+void MultiDimension<T, KeyType, Shared>::make_labels_kvpair_string(
     std::ostream& os, const key_type& labels_value, int quantile) {
     os << "{";
     auto label_key = this->_labels.cbegin();
@@ -368,9 +371,9 @@ void MultiDimension<T, KeyType>::make_labels_kvpair_string(
     os << "}";
 }
 
-template <typename T, typename KeyType>
+template <typename T, typename KeyType, bool Shared>
 template <typename K>
-bool MultiDimension<T, KeyType>::is_valid_lables_value(const K& labels_value) const {
+bool MultiDimension<T, KeyType, Shared>::is_valid_lables_value(const K& labels_value) const {
     if (this->count_labels() != labels_value.size()) {
         LOG(ERROR) << "Invalid labels count" << this->count_labels()
                    << " != " << labels_value.size();
@@ -379,8 +382,8 @@ bool MultiDimension<T, KeyType>::is_valid_lables_value(const K& labels_value) co
     return true;
 }
 
-template <typename T, typename KeyType>
-void MultiDimension<T, KeyType>::describe(std::ostream& os) {
+template <typename T, typename KeyType, bool Shared>
+void MultiDimension<T, KeyType, Shared>::describe(std::ostream& os) {
     os << "{\"name\" : \"" << this->name() << "\", \"labels\" : [";
     char comma[3] = {'\0', ' ', '\0'};
     for (auto& label : this->_labels) {

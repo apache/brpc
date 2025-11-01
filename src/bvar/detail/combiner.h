@@ -205,12 +205,10 @@ friend class GlobalValue<self_type>;
         // 
         // NOTE: Only available to non-atomic types.
         template <typename Op>
-        void merge_global(const Op &op, self_shared_type c = NULL) {
-            if (NULL == c) {
-                c = combiner.lock();
-            }
-            if (NULL != c) {
-                GlobalValue<self_type> g(this, c.get());
+        void merge_global(const Op &op, self_shared_type& c) {
+            const self_shared_type& c_ref = NULL != c ? c : combiner.lock();
+            if (NULL != c_ref) {
+                GlobalValue<self_type> g(this, c_ref.get());
                 element.merge_global(op, g);
             }
         }
