@@ -49,6 +49,9 @@ public:
     // When the worker is jumping stack from a bthread to another,
     static void WaitForTracing(TaskMeta* m);
 
+    int get_trace_signal() const {
+        return _signal_num;
+    }
 private:
     // Error number guard used in signal handler.
     class ErrnoGuard {
@@ -100,7 +103,7 @@ private:
     Result ContextTrace(bthread_fcontext_t fcontext);
     static Result TraceByLibunwind(unw_cursor_t& cursor);
 
-    static bool RegisterSignalHandler();
+    bool RegisterSignalHandler();
     static void SignalHandler(int sig, siginfo_t* info, void* context);
     Result SignalTrace(pthread_t worker_tid);
 
@@ -115,6 +118,7 @@ private:
     std::vector<butil::intrusive_ptr<SignalSync>> _inuse_signal_syncs;
 
     bvar::LatencyRecorder _trace_time{"bthread_trace_time"};
+    int _signal_num{SIGURG};
 };
 
 } // namespace bthread
