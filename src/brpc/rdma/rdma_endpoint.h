@@ -261,6 +261,10 @@ private:
     butil::atomic<uint16_t> _window_size;
     // The number of new WRs posted in the local Recv Queue
     butil::atomic<uint16_t> _new_rq_wrs;
+    // The number of pending signaled send WRs
+    butil::atomic<uint16_t> _pending_signaled_wrs;
+    // The number of pending acks
+    uint16_t _pending_acks;
 
     // butex for inform read events on TCP fd during handshake
     butil::atomic<int> *_read_butex;
