@@ -19,8 +19,6 @@
 
 #include <zlib.h>  //for crc32 Vbucket_id
 
-#define CB_ADD(a,b) (a+b)
-
 // Debug flag for enabling debug statements
 static bool DBUG = false;  // Set to true to enable debug logs
 
