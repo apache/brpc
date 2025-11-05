@@ -219,7 +219,9 @@ if(Protobuf_VERSION GREATER 4.21)
         absl::variant
     )
 else()
-    use_cxx11()
+    # Use C++17 for shared_mutex support and modern features
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 find_package(Threads REQUIRED)
 
