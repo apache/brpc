@@ -117,9 +117,9 @@ if (add_result.success) {
 // Optional: Switch to a different bucket (if needed)
 // brpc::CouchbaseOperations::Result bucket_result = couchbase_ops.selectBucket("another_bucket");
 ```
-```
 
 #### SSL Authentication (Essential for Couchbase Capella):
+To know how to download the security certificate [click here](https://docs.couchbase.com/cloud/security/security-certificates.html).
 ```cpp
 // For Couchbase Capella (cloud) - SSL is REQUIRED
 brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticateSSL(
@@ -127,7 +127,7 @@ brpc::CouchbaseOperations::Result auth_result = couchbase_ops.authenticateSSL(
     password, 
     "cluster.cloud.couchbase.com:11207",  // SSL port
     bucket_name,                          // bucket name
-    "path/to/certificate.txt"             // certificate path
+    "path/to/certificate.txt"             // certificate path(can be downloaded from capella UI)
 );
 ```
 

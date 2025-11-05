@@ -134,16 +134,6 @@ ParseResult ParseCouchbaseMessage(butil::IOBuf* source, Socket* socket,
     msg->meta.append(&local_header, sizeof(local_header));
     source->pop_front(sizeof(*header));
     source->cutn(&msg->meta, total_body_length);
-    // if (header->command == CB_BINARY_SASL_AUTH) {
-    //   if (header->status != 0) {
-    //     LOG(ERROR) << "Failed to authenticate the couchbase Server.";
-    //     return MakeParseError(PARSE_ERROR_NO_RESOURCE,
-    //                           "Fail to authenticate with the couchbase Server");
-    //   }
-    //   msg = static_cast<MostCommonMessage*>(socket->release_parsing_context());
-    //   msg->pi = pi;
-    //   return MakeMessage(msg);
-    // } else {
       if (++msg->pi.count >= pi.count) {
         CHECK_EQ(msg->pi.count, pi.count);
         msg =
@@ -153,7 +143,6 @@ ParseResult ParseCouchbaseMessage(butil::IOBuf* source, Socket* socket,
       } else {
         socket->GivebackPipelinedInfo(pi);
       }
-    // }
   }
 }
 
