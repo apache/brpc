@@ -426,8 +426,7 @@ void TaskControl::stop_and_join() {
     for (auto worker: _workers) {
         // Interrupt blocking operations.
 #ifdef BRPC_BTHREAD_TRACER
-        // TaskTracer has registered signal handler for SIGURG.
-        pthread_kill(worker, SIGURG);
+        pthread_kill(worker, _task_tracer.get_trace_signal());
 #else
         interrupt_pthread(worker);
 #endif // BRPC_BTHREAD_TRACER

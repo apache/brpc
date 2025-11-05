@@ -66,9 +66,19 @@ DECLARE_bool(rpcz_hex_log_id);
 DECLARE_int32(idle_timeout_second);
 } // namespace rpc
 
+#ifdef BRPC_BTHREAD_TRACER
+namespace bthread {
+DECLARE_int32(signal_number_for_trace);
+}
+#endif
+
 int main(int argc, char* argv[]) {
     brpc::FLAGS_idle_timeout_second = 0;
     testing::InitGoogleTest(&argc, argv);
+#ifdef BRPC_BTHREAD_TRACER
+    // test using signal number other than SIGURG
+    bthread::FLAGS_signal_number_for_trace = SIGUSR2;
+#endif
     return RUN_ALL_TESTS();
 }
 
