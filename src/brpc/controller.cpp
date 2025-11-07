@@ -232,6 +232,7 @@ void Controller::ResetNonPods() {
     }
     delete _remote_stream_settings;
     _thrift_method_name.clear();
+    _checksum_value.clear();
     _after_rpc_resp_fn = nullptr;
 
     CHECK(_unfinished_call == NULL);
