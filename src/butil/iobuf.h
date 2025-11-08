@@ -141,6 +141,12 @@ public:
     size_t cutn(IOBuf* out, size_t n);
     size_t cutn(void* out, size_t n);
     size_t cutn(std::string* out, size_t n);
+
+#if BRPC_WITH_GDR
+    size_t cutn_from_gpu(IOBuf* out, size_t n);
+    size_t copy_from_gpu(void* d, size_t n, size_t pos = 0, bool to_gpu = false) const;
+#endif  // BRPC_WITH_GDR
+
     // Cut off 1 byte from the front side and set to *c
     // Return true on cut, false otherwise.
     bool cut1(void* c);
@@ -259,6 +265,7 @@ public:
     // The meta is specified with append_user_data_with_meta before.
     // 0 means the meta is invalid.
     uint64_t get_first_data_meta();
+    void* get_first_data_ptr();
 
     // Resizes the buf to a length of n characters.
     // If n is smaller than the current length, all bytes after n will be

@@ -20,6 +20,7 @@
 #include <gflags/gflags.h>
 #include "butil/fd_utility.h"
 #include "butil/logging.h"                   // CHECK, LOG
+#include "butil/gpu/gpu_block_pool.h"
 #include "butil/sys_byteorder.h"             // HostToNet,NetToHost
 #include "bthread/bthread.h"
 #include "brpc/errno.pb.h"
@@ -30,6 +31,7 @@
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma/rdma_endpoint.h"
+#include "brpc/traceprintf.h"
 
 DECLARE_int32(task_group_ntags);
 
@@ -48,15 +50,15 @@ extern int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_at
 extern int (*IbvDestroyQp)(ibv_qp*);
 extern bool g_skip_rdma_init;
 
-DEFINE_int32(rdma_sq_size, 128, "SQ size for RDMA");
-DEFINE_int32(rdma_rq_size, 128, "RQ size for RDMA");
+DEFINE_int32(rdma_sq_size, 64, "SQ size for RDMA");
+DEFINE_int32(rdma_rq_size, 64, "RQ size for RDMA");
 DEFINE_bool(rdma_recv_zerocopy, true, "Enable zerocopy for receive side");
 DEFINE_int32(rdma_zerocopy_min_size, 512, "The minimal size for receive zerocopy");
 DEFINE_string(rdma_recv_block_type, "default", "Default size type for recv WR: "
               "default(8KB - 32B)/large(64KB - 32B)/huge(2MB - 32B)");
 DEFINE_int32(rdma_cqe_poll_once, 32, "The maximum of cqe number polled once.");
 DEFINE_int32(rdma_prepared_qp_size, 128, "SQ and RQ size for prepared QP.");
-DEFINE_int32(rdma_prepared_qp_cnt, 1024, "Initial count of prepared QP.");
+DEFINE_int32(rdma_prepared_qp_cnt, 256, "Initial count of prepared QP.");
 DEFINE_bool(rdma_trace_verbose, false, "Print log message verbosely");
 BRPC_VALIDATE_GFLAG(rdma_trace_verbose, brpc::PassValidate);
 DEFINE_bool(rdma_use_polling, false, "Use polling mode for RDMA.");
@@ -98,6 +100,7 @@ static const uint16_t MIN_QP_SIZE = 16;
 static const uint16_t MAX_QP_SIZE = 4096;
 static const uint16_t MIN_BLOCK_SIZE = 1024;
 static const uint32_t ACK_MSG_RDMA_OK = 0x1;
+static const uint64_t FIXED_ACK_WR_ID = 1;
 
 static butil::Mutex* g_rdma_resource_mutex = NULL;
 static RdmaResource* g_rdma_resource_list = NULL;
@@ -191,6 +194,7 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     , _remote_window_capacity(0)
     , _window_size(0)
     , _new_rq_wrs(0)
+    , _remote_recv_window(0)
 {
     if (_sq_size < MIN_QP_SIZE) {
         _sq_size = MIN_QP_SIZE;
@@ -208,6 +212,7 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
 }
 
 RdmaEndpoint::~RdmaEndpoint() {
+    // LOG(INFO) << _window_size << " " << _remote_recv_window << " " <<  _sq_unsignaled;
     Reset();
     bthread::butex_destroy(_read_butex);
 }
@@ -231,6 +236,7 @@ void RdmaEndpoint::Reset() {
     _new_rq_wrs = 0;
     _sq_sent = 0;
     _rq_received = 0;
+    _remote_recv_window.store(0, butil::memory_order_relaxed);
 }
 
 void RdmaConnect::StartConnect(const Socket* socket,
@@ -514,7 +520,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         ep->_remote_window_capacity = 
             std::min(ep->_rq_size, remote_msg.sq_size) - RESERVED_WR_NUM,
         ep->_window_size.store(ep->_local_window_capacity, butil::memory_order_relaxed);
-
+        ep->_remote_recv_window.store(ep->_remote_window_capacity, butil::memory_order_relaxed);
         ep->_state = C_BRINGUP_QP;
         if (ep->BringUpQp(remote_msg.lid, remote_msg.gid, remote_msg.qp_num) < 0) {
             LOG(WARNING) << "Fail to bringup QP, fallback to tcp:" << s->description();
@@ -622,7 +628,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->_remote_window_capacity = 
             std::min(ep->_rq_size, remote_msg.sq_size) - RESERVED_WR_NUM,
         ep->_window_size.store(ep->_local_window_capacity, butil::memory_order_relaxed);
-
+        ep->_remote_recv_window.store(ep->_remote_window_capacity, butil::memory_order_relaxed);
         ep->_state = S_ALLOC_QPCQ;
         if (ep->AllocateResources() < 0) {
             LOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
@@ -716,7 +722,7 @@ bool RdmaEndpoint::IsWritable() const {
         return false;
     }
 
-    return _window_size.load(butil::memory_order_relaxed) > 0;
+    return _window_size.load(butil::memory_order_relaxed) > 0 && _remote_recv_window.load(butil::memory_order_relaxed) > 0;
 }
 
 // RdmaIOBuf inherits from IOBuf to provide a new function.
@@ -787,12 +793,14 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
     size_t total_len = 0;
     size_t current = 0;
     uint32_t window = 0;
+    uint32_t recv_window = 0;
     ibv_send_wr wr;
     int max_sge = GetRdmaMaxSge();
     ibv_sge sglist[max_sge];
     while (current < ndata) {
-        window = _window_size.load(butil::memory_order_relaxed);
-        if (window == 0) {
+        window = _window_size.load(butil::memory_order_acquire);
+        recv_window = _remote_recv_window.load(butil::memory_order_acquire);
+        if (window == 0 || recv_window == 0) {
             if (total_len > 0) {
                 break;
             } else {
@@ -883,6 +891,8 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             // We use other way to guarantee the Send Queue is not full.
             // So we just consider this error as an unrecoverable error.
             LOG(WARNING) << "Fail to ibv_post_send: " << berror(err)
+                         << ", window_size:" <<  _window_size
+                         << ", emote_recv_window: " << _remote_recv_window
                          << ", window=" << window
                          << ", sq_current=" << _sq_current;
             errno = err;
@@ -898,7 +908,8 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         // Because there is at most one thread can enter this function for each
         // Socket, and the other thread of HandleCompletion can only add this
         // counter.
-        _window_size.fetch_sub(1, butil::memory_order_relaxed);
+        _window_size.fetch_sub(1, butil::memory_order_release);
+        _remote_recv_window.fetch_sub(1, butil::memory_order_release);
     }
 
     return total_len;
@@ -922,13 +933,16 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
     wr.imm_data = butil::HostToNet32(imm);
     wr.send_flags |= IBV_SEND_SOLICITED;
     wr.send_flags |= IBV_SEND_SIGNALED;
+    wr.wr_id = FIXED_ACK_WR_ID;
 
     ibv_send_wr* bad = NULL;
     int err = ibv_post_send(_resource->qp, &wr, &bad);
     if (err != 0) {
         // We use other way to guarantee the Send Queue is not full.
         // So we just consider this error as an unrecoverable error.
-        LOG(WARNING) << "Fail to ibv_post_send: " << berror(err);
+        LOG(WARNING) << "Fail to ibv_post_send: " << berror(err)
+                     << ", window_size:" <<  _window_size
+                     << ", emote_recv_window: " << _remote_recv_window;
         return -1;
     }
     return 0;
@@ -936,17 +950,40 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
 
 ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
     bool zerocopy = FLAGS_rdma_recv_zerocopy;
+    //LOG(INFO) << "Handle Completion: " << wc.opcode;
     switch (wc.opcode) {
     case IBV_WC_SEND: {  // send completion
-        // Do nothing
+        if (wc.wr_id == 0) {
+            uint16_t wnd_to_update = _local_window_capacity / 4;
+            uint32_t num = wnd_to_update;
+            while(num > 0) {
+                _sbuf[_sq_sent++].clear();
+                if (_sq_sent == _sq_size - RESERVED_WR_NUM) {
+                    _sq_sent = 0;
+                }
+                --num;
+            }
+            butil::subtle::MemoryBarrier();
+            uint32_t wnd_thresh = _local_window_capacity / 8;
+            _window_size.fetch_add(wnd_to_update, butil::memory_order_release);
+            //if ((_remote_recv_window.load(butil::memory_order_relaxed) >= wnd_thresh)) {
+             // Do not wake up writing thread right after _window_size > 0.
+            // Otherwise the writing thread may switch to background too quickly.
+            _socket->WakeAsEpollOut();
+        //}
+        }
         break;
     }
     case IBV_WC_RECV: {  // recv completion
         // Please note that only the first wc.byte_len bytes is valid
         if (wc.byte_len > 0) {
+#if BRPC_WITH_GDR
+            zerocopy = true;
+#else
             if (wc.byte_len < (uint32_t)FLAGS_rdma_zerocopy_min_size) {
                 zerocopy = false;
             }
+#endif // BRPC_WITH_GDR
             CHECK(_state != FALLBACK_TCP);
             if (zerocopy) {
                 butil::IOBuf tmp;
@@ -958,24 +995,10 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
             }
         }
         if (wc.imm_data > 0) {
-            // Clear sbuf here because we ignore event wakeup for send completions
             uint32_t acks = butil::NetToHost32(wc.imm_data);
-            uint32_t num = acks;
-            while (num > 0) {
-                _sbuf[_sq_sent++].clear();
-                if (_sq_sent == _sq_size - RESERVED_WR_NUM) {
-                    _sq_sent = 0;
-                }
-                --num;
-            }
-            butil::subtle::MemoryBarrier();
-
-            // Update window
             uint32_t wnd_thresh = _local_window_capacity / 8;
-            if (_window_size.fetch_add(acks, butil::memory_order_relaxed) >= wnd_thresh
-                    || acks >= wnd_thresh) {
-                // Do not wake up writing thread right after _window_size > 0.
-                // Otherwise the writing thread may switch to background too quickly.
+            if(_remote_recv_window.fetch_add(acks, butil::memory_order_release) >= wnd_thresh ||
+                    acks >= wnd_thresh) {
                 _socket->WakeAsEpollOut();
             }
         }
@@ -1017,11 +1040,43 @@ int RdmaEndpoint::DoPostRecv(void* block, size_t block_size) {
     return 0;
 }
 
+int RdmaEndpoint::DoPostRecvGDR(void* block, size_t block_size, uint32_t lkey) {
+    ibv_recv_wr wr;
+    memset(&wr, 0, sizeof(wr));
+    ibv_sge sge;
+    sge.addr = (uint64_t)block;
+    sge.length = block_size;
+    sge.lkey = lkey;
+    wr.num_sge = 1;
+    wr.sg_list = &sge;
+    //LOG(INFO) << "POST recv: addr=0x" << std::hex << sge.addr
+    //      << std::dec  << " length=0x" << sge.length
+    //      << " lkey=0x" << sge.lkey;
+    //LOG(INFO) << block << " " << _device_allocator->get_lkey();
+    ibv_recv_wr* bad = NULL;
+    int err = ibv_post_recv(_resource->qp, &wr, &bad);
+    if (err != 0) {
+        LOG(WARNING) << "Fail to ibv_post_recv: " << berror(err);
+        return -1;
+    }
+    return 0;
+}
+
 int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
     // We do the post repeatedly from the _rbuf[_rq_received].
     while (num > 0) {
+        uint32_t lkey = 0;
         if (zerocopy) {
             _rbuf[_rq_received].clear();
+
+#if BRPC_WITH_GDR
+            butil::gdr::BlockPoolAllocator* device_allocator = butil::gdr::BlockPoolAllocators::singleton()->get_gpu_allocator();
+            void* device_ptr = device_allocator->AllocateRaw(g_rdma_recv_block_size);
+            auto deleter = [device_allocator](void* data) { device_allocator->DeallocateRaw(data); };
+            lkey = device_allocator->get_lkey(device_ptr);
+            _rbuf[_rq_received].append_user_data_with_meta(device_ptr, g_rdma_recv_block_size, deleter , lkey);
+            _rbuf_data[_rq_received] = device_ptr;
+#else
             butil::IOBufAsZeroCopyOutputStream os(&_rbuf[_rq_received],
                     g_rdma_recv_block_size + IOBUF_BLOCK_HEADER_LEN);
             int size = 0;
@@ -1032,11 +1087,20 @@ int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
             } else {
                 CHECK(static_cast<uint32_t>(size) == g_rdma_recv_block_size) << size;
             }
+#endif  // if BRPC_WITH_GDR
         }
+#if BRPC_WITH_GDR
+        if (DoPostRecvGDR(_rbuf_data[_rq_received], g_rdma_recv_block_size, lkey) < 0) {
+            _rbuf[_rq_received].clear();
+            return -1;
+        }
+#else
         if (DoPostRecv(_rbuf_data[_rq_received], g_rdma_recv_block_size) < 0) {
             _rbuf[_rq_received].clear();
             return -1;
         }
+#endif  // if BRPC_WITH_GDR
+
         --num;
         ++_rq_received;
         if (_rq_received == _rq_size) {
@@ -1504,6 +1568,10 @@ void RdmaEndpoint::DebugInfo(std::ostream& os) const {
 }
 
 int RdmaEndpoint::GlobalInitialize() {
+#if BRPC_WITH_GDR
+    LOG(INFO) << ", gdr_block_size_kb: " << butil::gdr::gdr_block_size_kb;
+    g_rdma_recv_block_size = butil::gdr::gdr_block_size_kb * 1024 - IOBUF_BLOCK_HEADER_LEN;
+#else
     if (FLAGS_rdma_recv_block_type == "default") {
         g_rdma_recv_block_size = GetBlockSize(0) - IOBUF_BLOCK_HEADER_LEN;
     } else if (FLAGS_rdma_recv_block_type == "large") {
@@ -1514,6 +1582,15 @@ int RdmaEndpoint::GlobalInitialize() {
         errno = EINVAL;
         return -1;
     }
+#endif // BRPC_WITH_GDR
+
+    LOG(INFO) << "rdma_use_polling :" << FLAGS_rdma_use_polling
+      << ", rdma_poller_num : " << FLAGS_rdma_poller_num
+      << ", rdma_poller_yield : " << FLAGS_rdma_poller_yield
+      << ", rdma_sq_size: " << FLAGS_rdma_sq_size
+      << ", rdma_rq_size: " << FLAGS_rdma_rq_size
+      << ", rdma_zerocopy_min_size: " << FLAGS_rdma_zerocopy_min_size
+      << ", g_rdma_recv_block_size: " << g_rdma_recv_block_size;
 
     g_rdma_resource_mutex = new butil::Mutex;
     for (int i = 0; i < FLAGS_rdma_prepared_qp_cnt; ++i) {

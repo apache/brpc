@@ -55,6 +55,9 @@ COPTS = [
     "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
     "//conditions:default": [""],
 }) + select({
+    ":brpc_with_gdr": ["-DBRPC_WITH_GDR=1"],
+    "//conditions:default": [""],
+}) + select({
     "//bazel/config:brpc_with_no_pthread_mutex_hook": ["-DNO_PTHREAD_MUTEX_HOOK"],
     "//conditions:default": [""],
 })
@@ -232,6 +235,7 @@ BUTIL_SRCS = [
     "src/butil/iobuf.cpp",
     "src/butil/single_iobuf.cpp",
     "src/butil/iobuf_profiler.cpp",
+    "src/butil/gpu/gpu_block_pool.cpp",
     "src/butil/binary_printer.cpp",
     "src/butil/recordio.cc",
     "src/butil/popen.cpp",
@@ -337,6 +341,9 @@ cc_library(
             "-DUNIT_TEST",
         ],
         "//conditions:default": [],
+    }) + select({
+        ":brpc_with_gdr": ["@local_config_cuda//cuda:cuda_headers"],
+        "//conditions:default": [],
     }),
     includes = [
         "src/",
@@ -356,6 +363,9 @@ cc_library(
     }) + select({
         "//bazel/config:brpc_with_boringssl": ["@boringssl//:ssl", "@boringssl//:crypto"],
         "//conditions:default": ["@openssl//:ssl", "@openssl//:crypto"],
+    }) + select({
+        ":brpc_with_gdr": ["@local_config_cuda//cuda:cuda_headers"],
+        "//conditions:default": [],
     }),
 )
 
@@ -572,6 +582,9 @@ cc_library(
         "//bazel/config:brpc_with_thrift": [
             "@org_apache_thrift//:thrift",
         ],
+        "//conditions:default": [],
+    }) + select({
+        ":brpc_with_gdr": ["@local_config_cuda//cuda:cuda_headers"],
         "//conditions:default": [],
     }),
 )
