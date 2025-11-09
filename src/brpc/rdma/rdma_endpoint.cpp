@@ -102,6 +102,11 @@ static const uint32_t ACK_MSG_RDMA_OK = 0x1;
 static butil::Mutex* g_rdma_resource_mutex = NULL;
 static RdmaResource* g_rdma_resource_list = NULL;
 
+enum SendType {
+    SEND_TYPE_RDMA_DATA = 0,
+    SEND_TYPE_RDMA_IMM,
+};
+
 struct HelloMessage {
     void Serialize(void* data) const;
     void Deserialize(void* data);
@@ -189,7 +194,8 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     , _rq_received(0)
     , _local_window_capacity(0)
     , _remote_window_capacity(0)
-    , _window_size(0)
+    , _remote_rq_window_size(0)
+    , _sq_window_size(0)
     , _new_rq_wrs(0)
 {
     if (_sq_size < MIN_QP_SIZE) {
@@ -227,7 +233,8 @@ void RdmaEndpoint::Reset() {
     _sq_unsignaled = 0;
     _local_window_capacity = 0;
     _remote_window_capacity = 0;
-    _window_size.store(0, butil::memory_order_relaxed);
+    _remote_rq_window_size.store(0, butil::memory_order_relaxed);
+    _sq_window_size.store(0, butil::memory_order_relaxed);
     _new_rq_wrs = 0;
     _sq_sent = 0;
     _rq_received = 0;
@@ -517,7 +524,10 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
             std::min(ep->_sq_size, remote_msg.rq_size) - RESERVED_WR_NUM;
         ep->_remote_window_capacity = 
             std::min(ep->_rq_size, remote_msg.sq_size) - RESERVED_WR_NUM,
-        ep->_window_size.store(ep->_local_window_capacity, butil::memory_order_relaxed);
+        ep->_remote_rq_window_size.store(
+            ep->_local_window_capacity, butil::memory_order_relaxed);
+        ep->_sq_window_size.store(
+            ep->_local_window_capacity, butil::memory_order_relaxed);
 
         ep->_state = C_BRINGUP_QP;
         if (ep->BringUpQp(remote_msg.lid, remote_msg.gid, remote_msg.qp_num) < 0) {
@@ -548,11 +558,11 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     if (s->_rdma_state == Socket::RDMA_ON) {
         ep->_state = ESTABLISHED;
         LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
-            << "Handshake ends (use rdma) on " << s->description();
+            << "Client handshake ends (use rdma) on " << s->description();
     } else {
         ep->_state = FALLBACK_TCP;
         LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
-            << "Handshake ends (use tcp) on " << s->description();
+            << "Client handshake ends (use tcp) on " << s->description();
     }
 
     errno = 0;
@@ -625,7 +635,10 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
             std::min(ep->_sq_size, remote_msg.rq_size) - RESERVED_WR_NUM;
         ep->_remote_window_capacity = 
             std::min(ep->_rq_size, remote_msg.sq_size) - RESERVED_WR_NUM,
-        ep->_window_size.store(ep->_local_window_capacity, butil::memory_order_relaxed);
+        ep->_remote_rq_window_size.store(
+            ep->_local_window_capacity, butil::memory_order_relaxed);
+        ep->_sq_window_size.store(
+            ep->_local_window_capacity, butil::memory_order_relaxed);
 
         ep->_state = S_ALLOC_QPCQ;
         if (ep->AllocateResources() < 0) {
@@ -701,13 +714,13 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
             s->_rdma_state = Socket::RDMA_ON;
             ep->_state = ESTABLISHED;
             LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
-                << "Handshake ends (use rdma) on " << s->description();
+                << "Server handshake ends (use rdma) on " << s->description();
         }
     } else {
         s->_rdma_state = Socket::RDMA_OFF;
         ep->_state = FALLBACK_TCP;
         LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
-            << "Handshake ends (use tcp) on " << s->description();
+            << "Server handshake ends (use tcp) on " << s->description();
     }
     ep->TryReadOnTcp();
 
@@ -720,7 +733,8 @@ bool RdmaEndpoint::IsWritable() const {
         return false;
     }
 
-    return _window_size.load(butil::memory_order_relaxed) > 0;
+    return _remote_rq_window_size.load(butil::memory_order_relaxed) > 0 &&
+           _sq_window_size.load(butil::memory_order_relaxed) > 0;
 }
 
 // RdmaIOBuf inherits from IOBuf to provide a new function.
@@ -790,13 +804,16 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
 
     size_t total_len = 0;
     size_t current = 0;
-    uint32_t window = 0;
+    uint32_t remote_rq_window_size =
+        _remote_rq_window_size.load(butil::memory_order_relaxed);
+    uint32_t sq_window_size =
+        _sq_window_size.load(butil::memory_order_relaxed);
     ibv_send_wr wr;
     int max_sge = GetRdmaMaxSge();
     ibv_sge sglist[max_sge];
     while (current < ndata) {
-        window = _window_size.load(butil::memory_order_relaxed);
-        if (window == 0) {
+        if (remote_rq_window_size == 0 || sq_window_size == 0) {
+            // There is no space left in SQ or remote RQ.
             if (total_len > 0) {
                 break;
             } else {
@@ -815,7 +832,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         size_t sge_index = 0;
         while (sge_index < (uint32_t)max_sge &&
                 this_len < _remote_recv_block_size) {
-            if (data->size() == 0) {
+            if (data->empty()) {
                 // The current IOBuf is empty, find next one
                 ++current;
                 if (current == ndata) {
@@ -845,7 +862,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         wr.imm_data = butil::HostToNet32(imm);
         // Avoid too much recv completion event to reduce the cpu overhead
         bool solicited = false;
-        if (window == 1 || current + 1 >= ndata) {
+        if (remote_rq_window_size == 1 || sq_window_size == 1 || current + 1 >= ndata) {
             // Only last message in the write queue or last message in the
             // current window will be flagged as solicited.
             solicited = true;
@@ -878,6 +895,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             // Refer to:
             // http::www.rdmamojo.com/2014/06/30/working-unsignaled-completions/
             wr.send_flags |= IBV_SEND_SIGNALED;
+            wr.wr_id = SEND_TYPE_RDMA_DATA;
             _sq_unsignaled = 0;
         }
 
@@ -887,7 +905,8 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             // We use other way to guarantee the Send Queue is not full.
             // So we just consider this error as an unrecoverable error.
             LOG(WARNING) << "Fail to ibv_post_send: " << berror(err)
-                         << ", window=" << window
+                         << ", remote_rq_window_size=" << remote_rq_window_size
+                         << ", sq_window_size=" << sq_window_size
                          << ", sq_current=" << _sq_current;
             errno = err;
             return -1;
@@ -898,11 +917,14 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             _sq_current = 0;
         }
 
-        // Update _window_size. Note that _window_size will never be negative.
+        // Update `_remote_rq_window_size' and `_sq_window_size'. Note that
+        // `_remote_rq_window_size' and `_sq_window_size' will never be negative.
         // Because there is at most one thread can enter this function for each
-        // Socket, and the other thread of HandleCompletion can only add this
-        // counter.
-        _window_size.fetch_sub(1, butil::memory_order_relaxed);
+        // Socket, and the other thread of HandleCompletion can only add these
+        // counters.
+        remote_rq_window_size =
+            _remote_rq_window_size.fetch_sub(1, butil::memory_order_relaxed) - 1;
+        sq_window_size = _sq_window_size.fetch_sub(1, butil::memory_order_relaxed) - 1;
     }
 
     return total_len;
@@ -926,6 +948,7 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
     wr.imm_data = butil::HostToNet32(imm);
     wr.send_flags |= IBV_SEND_SOLICITED;
     wr.send_flags |= IBV_SEND_SIGNALED;
+    wr.wr_id = SEND_TYPE_RDMA_IMM;
 
     ibv_send_wr* bad = NULL;
     int err = ibv_post_send(_resource->qp, &wr, &bad);
@@ -942,8 +965,16 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
     bool zerocopy = FLAGS_rdma_recv_zerocopy;
     switch (wc.opcode) {
     case IBV_WC_SEND: {  // send completion
-        // Do nothing
-        break;
+        if (SEND_TYPE_RDMA_IMM == wc.wr_id) {
+            // Do nothing for imm.
+            return 0;
+        }
+        // Update window
+        uint16_t wnd_to_update = _local_window_capacity / 4;
+        _sq_window_size.fetch_add(wnd_to_update, butil::memory_order_relaxed);
+        // Wake up writing thread right after every signaled sending cqe.
+        _socket->WakeAsEpollOut();
+        return 0;
     }
     case IBV_WC_RECV: {  // recv completion
         // Please note that only the first wc.byte_len bytes is valid
@@ -953,9 +984,7 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
             }
             CHECK(_state != FALLBACK_TCP);
             if (zerocopy) {
-                butil::IOBuf tmp;
-                _rbuf[_rq_received].cutn(&tmp, wc.byte_len);
-                _socket->_read_buf.append(tmp);
+                _rbuf[_rq_received].cutn(&_socket->_read_buf, wc.byte_len);
             } else {
                 // Copy data when the receive data is really small
                 _socket->_read_buf.append(_rbuf_data[_rq_received], wc.byte_len);
@@ -976,9 +1005,9 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
 
             // Update window
             uint32_t wnd_thresh = _local_window_capacity / 8;
-            if (_window_size.fetch_add(acks, butil::memory_order_relaxed) >= wnd_thresh
+            if (_remote_rq_window_size.fetch_add(acks, butil::memory_order_relaxed) >= wnd_thresh
                     || acks >= wnd_thresh) {
-                // Do not wake up writing thread right after _window_size > 0.
+                // Do not wake up writing thread right after _remote_rq_window_size > 0.
                 // Otherwise the writing thread may switch to background too quickly.
                 _socket->WakeAsEpollOut();
             }
@@ -1494,7 +1523,9 @@ std::string RdmaEndpoint::GetStateStr() const {
 void RdmaEndpoint::DebugInfo(std::ostream& os) const {
     os << "\nrdma_state=ON"
        << "\nhandshake_state=" << GetStateStr()
-       << "\nrdma_window_size=" << _window_size.load(butil::memory_order_relaxed)
+       << "\nrdma_remote_rq_window_size="
+       << _remote_rq_window_size.load(butil::memory_order_relaxed)
+       << "\nrdma_sq_window_size=" << _sq_window_size.load(butil::memory_order_relaxed)
        << "\nrdma_local_window_capacity=" << _local_window_capacity
        << "\nrdma_remote_window_capacity=" << _remote_window_capacity
        << "\nrdma_sbuf_head=" << _sq_current
