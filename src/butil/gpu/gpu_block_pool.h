@@ -192,7 +192,6 @@ private:
     BlockPoolAllocator* cpu_mem_alloc {nullptr};
     GPUStreamPool*      gpu_stream_pool {nullptr};
 };
-
 }
 }
 

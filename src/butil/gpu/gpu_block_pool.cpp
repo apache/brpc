@@ -82,7 +82,7 @@ BlockPoolAllocators* BlockPoolAllocators::singleton() {
     static std::mutex mutex;
     if (instance_ == nullptr) {
         std::lock_guard<std::mutex> l(mutex);
-        if(instance_ == nullptr) {
+        if (instance_ == nullptr) {
             instance_ = new BlockPoolAllocators();
             std::atomic_thread_fence(std::memory_order_release);
         }

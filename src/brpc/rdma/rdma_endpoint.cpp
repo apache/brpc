@@ -892,7 +892,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             // So we just consider this error as an unrecoverable error.
             LOG(WARNING) << "Fail to ibv_post_send: " << berror(err)
                          << ", window_size:" <<  _window_size
-                         << ", emote_recv_window: " << _remote_recv_window
+                         << ", remote_recv_window: " << _remote_recv_window
                          << ", window=" << window
                          << ", sq_current=" << _sq_current;
             errno = err;
@@ -942,7 +942,7 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
         // So we just consider this error as an unrecoverable error.
         LOG(WARNING) << "Fail to ibv_post_send: " << berror(err)
                      << ", window_size:" <<  _window_size
-                     << ", emote_recv_window: " << _remote_recv_window;
+                     << ", remote_recv_window: " << _remote_recv_window;
         return -1;
     }
     return 0;
@@ -997,7 +997,7 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
         if (wc.imm_data > 0) {
             uint32_t acks = butil::NetToHost32(wc.imm_data);
             uint32_t wnd_thresh = _local_window_capacity / 8;
-            if(_remote_recv_window.fetch_add(acks, butil::memory_order_release) >= wnd_thresh ||
+            if (_remote_recv_window.fetch_add(acks, butil::memory_order_release) >= wnd_thresh ||
                     acks >= wnd_thresh) {
                 _socket->WakeAsEpollOut();
             }

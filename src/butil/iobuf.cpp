@@ -739,7 +739,7 @@ size_t IOBuf::cutn_from_gpu(IOBuf* out, size_t n) {
     }
 
     if (mem == NULL) {
-        return -1;
+        return 0;
     }
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
