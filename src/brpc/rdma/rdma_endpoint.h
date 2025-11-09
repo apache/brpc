@@ -257,8 +257,10 @@ private:
     uint16_t _local_window_capacity;
     // The capacity of remote window: min(local RQ, remote SQ)
     uint16_t _remote_window_capacity;
+    // The number of WRs we can send to remote side.
+    butil::atomic<uint16_t> _remote_rq_window_size;
     // The number of WRs we can post to the local Send Queue
-    butil::atomic<uint16_t> _window_size;
+    butil::atomic<uint16_t> _sq_window_size;
     // The number of new WRs posted in the local Recv Queue
     butil::atomic<uint16_t> _new_rq_wrs;
 
