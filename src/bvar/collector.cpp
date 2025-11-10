@@ -410,6 +410,11 @@ void Collector::dump_thread() {
     }
 }
 
+// Submit a sample for asynchronous dumping. The Collector holds only the Collected*
+// pointer (e.g., SpanContainer*). Regardless of which branch is taken below, the
+// sample will eventually be destroyed via either dump_and_destroy() or destroy(),
+// both of which call 'delete this' to release the container and decrement the
+// reference count of any managed resources (e.g., shared_ptr<Span>).
 void Collected::submit(int64_t cpuwide_us) {
     Collector* d = butil::get_leaky_singleton<Collector>();
     // Destroy the sample in-place if the grab_thread did not run for twice

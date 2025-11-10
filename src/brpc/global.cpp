@@ -54,6 +54,7 @@
 // Span
 #include "brpc/span.h"
 #include "bthread/unstable.h"
+#include "bthread/bthread.h"
 
 // Compress handlers
 #include "brpc/compress.h"
@@ -343,8 +344,11 @@ static void GlobalInitializeOrDieImpl() {
     SetLogHandler(&BaiduStreamingLogHandler);
 #endif
 
-    // Set bthread create span function
-    bthread_set_create_span_func(CreateBthreadSpan);
+    if (bthread_set_span_funcs(CreateBthreadSpanAsVoid,
+                                DestroyRpczParentSpan,
+                                EndBthreadSpan) != 0) {
+        LOG(FATAL) << "Failed to register span callbacks to bthread";
+    }
 
     // Setting the variable here does not work, the profiler probably check
     // the variable before main() for only once.

@@ -47,13 +47,15 @@ namespace brpc {
 DECLARE_int32(idle_timeout_second);
 DECLARE_int32(max_connection_pool_size);
 class Server;
+class Span;
 class MethodStatus;
 namespace policy {
 void SendRpcResponse(int64_t correlation_id,
                      Controller* cntl,
                      RpcPBMessages* messages,
                      const Server* server_raw,
-                     MethodStatus *, int64_t);
+                     MethodStatus *, int64_t,
+                     std::shared_ptr<Span> span);
 } // policy
 } // brpc
 
@@ -279,9 +281,10 @@ protected:
             int64_t, brpc::Controller*,
             brpc::RpcPBMessages*,
             const brpc::Server*,
-            brpc::MethodStatus*, int64_t>(&brpc::policy::SendRpcResponse,
-                                          meta.correlation_id(), cntl,
-                                          messages, &ts->_dummy, NULL, -1);
+            brpc::MethodStatus*, int64_t, std::shared_ptr<brpc::Span>>(
+                &brpc::policy::SendRpcResponse,
+                meta.correlation_id(), cntl,
+                messages, &ts->_dummy, NULL, -1, nullptr);
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }
 

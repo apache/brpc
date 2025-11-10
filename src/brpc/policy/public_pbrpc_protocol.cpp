@@ -174,8 +174,7 @@ void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
     }
     
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_base_real_us(msg->base_real_us());
         span->set_received_us(msg->received_us());
         span->set_response_size(msg->meta.size() + msg->payload.size());
@@ -269,7 +268,7 @@ void PackPublicPbrpcRequest(butil::IOBuf* buf,
     nshead.body_len = GetProtobufByteSize(pbreq);
     buf->append(&nshead, sizeof(nshead));
 
-    Span* span = ControllerPrivateAccessor(controller).span();
+    auto span = ControllerPrivateAccessor(controller).span();
     if (span) {
         // TODO: Nowhere to set tracing ids.
         // request_meta->set_trace_id(span->trace_id());

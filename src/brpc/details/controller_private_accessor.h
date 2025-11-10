@@ -90,7 +90,7 @@ public:
         return *this;
     }
 
-    ControllerPrivateAccessor &set_span(Span* span) {
+    ControllerPrivateAccessor &set_span(std::shared_ptr<Span> span) {
         _cntl->_span = span;
         return *this;
     }
@@ -100,7 +100,7 @@ public:
         return *this;
     }
     
-    Span* span() const { return _cntl->_span; }
+    std::shared_ptr<Span> span() const { return _cntl->_span.lock(); }
 
     uint32_t pipelined_count() const { return _cntl->_pipelined_count; }
     void set_pipelined_count(uint32_t count) {  _cntl->_pipelined_count = count; }

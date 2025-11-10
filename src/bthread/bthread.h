@@ -429,6 +429,34 @@ extern int bthread_once(bthread_once_t* once_control, void (*init_routine)());
  */
 extern uint64_t bthread_cpu_clock_ns(void);
 
+// Span callback function types for tracing bthread lifecycle.
+// These callbacks are typically set by upper-layer frameworks (e.g., brpc)
+// to integrate distributed tracing with bthread execution.
+typedef void* (*bthread_create_span_fn)(void);
+typedef void (*bthread_destroy_span_fn)(void*);
+typedef void (*bthread_end_span_fn)(void);
+
+// Set span-related callbacks for bthread tracing.
+// This should be called during framework initialization (e.g., in GlobalInitializeOrDie).
+//
+// Parameters:
+//   create_fn  - Called when creating a bthread with BTHREAD_INHERIT_SPAN flag.
+//                Should return a heap-allocated span context (e.g., weak_ptr<Span>*).
+//                Returns NULL if span creation is disabled or fails.
+//   destroy_fn - Called to destroy the span context when bthread exits or cleans up.
+//                Receives the pointer returned by create_fn.
+//   end_fn     - Called when bthread ends to finalize the span (e.g., set end time).
+//
+// All three callbacks must be provided together, or all NULL to disable span tracking.
+// This function should only be called once during initialization.
+//
+// Returns:
+//   0 on success
+//   -1 if parameters are invalid (sets errno to EINVAL)
+extern int bthread_set_span_funcs(bthread_create_span_fn create_fn,
+                                   bthread_destroy_span_fn destroy_fn,
+                                   bthread_end_span_fn end_fn);
+
 __END_DECLS
 
 #endif  // BTHREAD_BTHREAD_H

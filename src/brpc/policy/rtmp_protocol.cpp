@@ -3540,8 +3540,7 @@ void OnServerStreamCreated::Run(bool error,
             break;
         }
     } while (0);
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_base_real_us(base_realtime);
         span->set_received_us(received_us);
         span->set_response_size(istream->popped_bytes());
