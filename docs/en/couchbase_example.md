@@ -12,6 +12,7 @@ The core pieces are:
 * `src/brpc/couchbase.[h|cpp]` – high-level `CouchbaseOperations` class with request (`CouchbaseRequest`) and response (`CouchbaseResponse`) builders, parsers and error-handlers.
 * `example/couchbase_c++/couchbase_client.cpp` – an end‑to‑end example using the high-level API for authentication, bucket selection, CRUD operations, and collection‑scoped operations.
 * `example/couchbase_c++/multithreaded_couchbase_client.cpp` – a multithreaded example where an instance of `CouchbaseOperations` is shared across the threads operating on same bucket. An another block of code where multiple threads have their own `CouchbaseOperations` instance as the threads operate on different buckets.
+* `example/couchbase_c++/traditional_brpc_couchbase_client.cpp` – demonstrates the traditional bRPC approach with manual channel, controller, and request/response management for advanced users who need fine-grained control.
 
 Design goals:
 * **SSL Support**: Built-in SSL/TLS support for secure connections to Couchbase Capella.
@@ -26,6 +27,7 @@ Design goals:
 | Category | Supported Operations | Notes |
 |----------|----------------------|-------|
 | **High-Level API** | `CouchbaseOperations` class | **Recommended**: Simple methods returning `Result` struct |
+| **Traditional API** | Manual channel/controller management | **Advanced**: Direct bRPC access for custom configurations |
 | **SSL/TLS Support** | Built-in SSL encryption | **Required** for Couchbase Capella, optional for local clusters |
 | Authentication | SASL `PLAIN` with/without SSL | `authenticate()` for non-SSL, `authenticateSSL()` for SSL connections |
 | Bucket selection | Integrated with authentication | Bucket specified during authentication; `selectBucket()` also available separately |
@@ -220,21 +222,214 @@ if (!result.success) {
 ```
 
 ---
-### 5. Request/Response Classes (`CouchbaseRequest`/`CouchbaseResponse`)
+### 5. Traditional bRPC Couchbase Client (`traditional_brpc_couchbase_client.cpp`)
 
-These classes are public in `CouchbaseOperations` and can be used for advanced bRPC programs. The high-level API uses these classes internally. They are responsible for building the request that needs to be sent and received over the channel.
+For developers who need fine-grained control over the bRPC framework or want to understand the low-level implementation, we provide a traditional bRPC client example. This approach requires manual management of channels, controllers, and response parsing.
 
-#### Request Building (Advanced Usage):
+**When to use Traditional API:**
+- Advanced bRPC users who need custom channel configurations
+- Fine-grained control over connection pooling and retry logic
+- Direct access to underlying bRPC controller for debugging
+- Learning the internal workings of the high-level API
+
+**When to use High-Level API (Recommended):**
+- Standard CRUD operations and authentication
+- Simpler error handling and cleaner code
+- Collection based operations with minimal boilerplate
+- Pipeline operations for batch processing while also available in traditional approach it is easier to do using High-Level API.
+
+#### Traditional Client Example Walkthrough
+
+The traditional client (`example/couchbase_c++/traditional_brpc_couchbase_client.cpp`) demonstrates the low-level bRPC approach:
+
+**1. Channel Setup and Configuration**
 ```cpp
-CouchbaseRequest req;
-req.helloRequest();                     // HELLO negotiation
-req.authenticateRequest(user, pass);    // SASL PLAIN authentication  
-req.selectBucketRequest("travel-sample");
-req.addRequest("doc::1", json_body, flags, exptime, /*cas*/0);
-req.getRequest("doc::1");               // Pipeline GET after ADD
+brpc::Channel channel;
+brpc::ChannelOptions options;
+options.protocol = brpc::PROTOCOL_COUCHBASE;    // Set Couchbase protocol
+options.connection_type = "single";              // Single persistent connection
+options.timeout_ms = 1000;                       // 1 second timeout
+options.max_retry = 3;                          // Retry up to 3 times
 
-channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
+if (channel.Init("localhost:11210", &options) != 0) {
+    LOG(ERROR) << "Failed to initialize channel";
+    return -1;
+}
 ```
+
+**2. Authentication with Manual Request/Response Handling**
+```cpp
+brpc::Controller cntl;
+brpc::CouchbaseOperations::CouchbaseRequest req;
+brpc::CouchbaseOperations::CouchbaseResponse res;
+uint64_t cas;
+
+// Build authentication request
+req.authenticateRequest("Administrator", "password");
+
+// Execute the request
+channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+
+// Check controller status
+if (cntl.Failed()) {
+    LOG(ERROR) << "Unable to authenticate: " << cntl.ErrorText();
+    return -1;
+}
+
+// Parse response - must call popHello() and popAuthenticate() in order
+if (res.popHello(&cas) && res.popAuthenticate(&cas)) {
+    std::cout << "Authentication Successful" << std::endl;
+} else {
+    std::cout << "Authentication Failed with status code: " 
+              << std::hex << res._status_code << std::endl;
+    return -1;
+}
+```
+
+**3. Bucket Selection**
+```cpp
+// IMPORTANT: Reset controller and clear request/response before each operation
+cntl.Reset();
+req.Clear();
+res.Clear();
+
+// Build bucket selection request
+req.selectBucketRequest("testing");
+
+// Execute the request
+channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+
+if (cntl.Failed()) {
+    LOG(ERROR) << "Unable to select bucket: " << cntl.ErrorText();
+    return -1;
+}
+
+// Parse response - status_code only updated AFTER calling pop function
+if (res.popSelectBucket(&cas)) {
+    std::cout << "Bucket Selection Successful" << std::endl;
+} else {
+    std::cout << "Bucket Selection Failed with status code: " 
+              << std::hex << res._status_code << std::endl;
+    std::cout << "Error Message: " << res.lastError() << std::endl;
+    return -1;
+}
+```
+
+**4. ADD Operation (Create Document)**
+```cpp
+// Reset for new operation
+cntl.Reset();
+req.Clear();
+res.Clear();
+
+// Build ADD request
+req.addRequest(
+    "sample_key",                                           // key
+    R"({"name": "John Doe", "age": 30, "email": "john@example.com"})",  // value
+    0,      // flags
+    0,      // exptime (0 = no expiration)
+    0       // cas (0 for new document)
+);
+
+// Execute the request
+channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+
+if (cntl.Failed()) {
+    LOG(ERROR) << "Unable to add key-value: " << cntl.ErrorText();
+    return -1;
+}
+
+// Parse response
+if (res.popAdd(&cas)) {
+    std::cout << "Key-Value Addition Successful" << std::endl;
+} else {
+    std::cout << "Key-Value Addition Failed with status code: " 
+              << std::hex << res._status_code << std::endl;
+    std::cout << "Error Message: " << res.lastError() << std::endl;
+    return -1;
+}
+```
+
+**5. GET Operation (Retrieve Document)**
+```cpp
+// Reset for new operation
+cntl.Reset();
+req.Clear();
+res.Clear();
+
+// Build GET request
+req.getRequest("sample_key");
+
+// Execute the request
+channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+
+if (cntl.Failed()) {
+    LOG(ERROR) << "Unable to get value for key: " << cntl.ErrorText();
+    return -1;
+}
+
+// Parse response - GET returns value and flags
+std::string value;
+uint32_t flags;
+if (res.popGet(&value, &flags, &cas)) {
+    std::cout << "Key-Value Retrieval Successful" << std::endl;
+    std::cout << "Retrieved Value: " << value << std::endl;
+} else {
+    std::cout << "Key-Value Retrieval Failed with status code: " 
+              << std::hex << res._status_code << std::endl;
+    std::cout << "Error Message: " << res.lastError() << std::endl;
+    return -1;
+}
+```
+
+**6. DELETE Operation (Remove Document)**
+```cpp
+// Reset for new operation
+cntl.Reset();
+req.Clear();
+res.Clear();
+
+// Build DELETE request
+req.deleteRequest("sample_key");
+
+// Execute the request
+channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+
+if (cntl.Failed()) {
+    LOG(ERROR) << "Unable to delete key-value: " << cntl.ErrorText();
+    return -1;
+}
+
+// Parse response
+if (res.popDelete()) {
+    std::cout << "Key-Value Deletion Successful" << std::endl;
+} else {
+    std::cout << "Key-Value Deletion Failed with status code: " 
+              << std::hex << res._status_code << std::endl;
+    std::cout << "Error Message: " << res.lastError() << std::endl;
+    return -1;
+}
+```
+
+#### Key Differences: Traditional vs High-Level API
+
+| Aspect | Traditional API | High-Level API |
+|--------|----------------|----------------|
+| **Setup** | Manual channel, controller, request/response management | Single `CouchbaseOperations` instance |
+| **Error Handling** | Check both `cntl.Failed()` and response status | Simple `Result.success` boolean |
+| **Resource Management** | Must call `cntl.Reset()`, `req.Clear()`, `res.Clear()` | Automatic |
+| **Response Parsing** | Manual `pop*()` calls with CAS handling | Transparent |
+| **Code Verbosity** | ~15-20 lines per operation | ~2-3 lines per operation |
+| **Collections** | Manual collection ID retrieval and management | Automatic with collection name parameter |
+| **Pipeline Operations** | Complex manual request building | Simple `beginPipeline()`, `pipelineRequest()`, `executePipeline()` |
+| **SSL Support** | Manual SSL configuration in channel options | Built-in `authenticateSSL()` method |
+| **Threading** | Manual connection pooling management | Automatic connection group management |
+
+---
+### 6. Request/Response Classes (`CouchbaseRequest`/`CouchbaseResponse`)
+
+These classes are public in `CouchbaseOperations` and can be used for advanced bRPC programs. The high-level API uses these classes internally, and the traditional client example demonstrates their direct usage. They are responsible for building the request that needs to be sent and received over the channel.
+
 
 #### Response Parsing:
 Each `pop*` method consumes the front of the internal response buffer, validating:
@@ -244,7 +439,7 @@ Each `pop*` method consumes the front of the internal response buffer, validatin
 4. Body length sufficient.
 
 ---
-### 6. Example Client Walkthrough
+### 7. Example Client Walkthrough
 
 #### Single-Threaded Example (`couchbase_client.cpp`)
 Uses the **high-level `CouchbaseOperations` API**:
@@ -796,7 +991,7 @@ Key features:
 - Both separate instance and shared instance patterns
 
 ---
-### 7. Building and Running the Examples
+### 8. Building and Running the Examples
 
 #### Build both examples:
 ```bash
@@ -804,18 +999,23 @@ cd example/couchbase_c++/
 make
 ```
 
-#### Run Single-Threaded Example:
+#### Run Single-Threaded Example (High-Level API):
 ```bash
 ./couchbase_client
 ```
 
-#### Run Multithreaded Example:
+#### Run Multithreaded Example (High-Level API):
 ```bash
 ./multithreaded_couchbase_client
 ```
 
+#### Run Traditional bRPC Client (Low-Level API):
+```bash
+./traditional_brpc_couchbase_client
+```
+
 ---
-### 8. Setting Up Couchbase
+### 9. Setting Up Couchbase
 
 #### A. Local Install (Non‑Docker)
 Download from: https://www.couchbase.com/downloads/ (Community or Enterprise) and Install.
@@ -872,7 +1072,7 @@ auto result = couchbase_ops.authenticateSSL(
 
 ---
 
-### 9. Error Handling Patterns
+### 10. Error Handling Patterns
 
 #### High-Level API (Recommended)
 The `CouchbaseOperations` class uses a simple `Result` struct:
@@ -908,7 +1108,7 @@ if (get_result.success) {
 ```
 
 ---
-### 10. Best Practices
+### 11. Best Practices
 
 #### Threading Patterns
 > **💡 FLEXIBLE THREADING OPTIONS**
@@ -955,7 +1155,7 @@ ops_server2.authenticate(username, password, "server2:11210", bucket_name);
 ```
 
 ---
-### 11. Summary and References
+### 12. Summary and References
 This implementation provides high-level APIs for Couchbase KV operations. Couchbase (the company) contributed to this implementation, but it is not officially supported; it is "[Community Supported](https://docs.couchbase.com/server/current/third-party/integrations.html#support-model)".
 
 ---
