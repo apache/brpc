@@ -28,8 +28,8 @@
 #define RESET "\033[0m"
 
 DEFINE_string(server, "localhost:11210", "IP Address of server");
-int performOperations(brpc::CouchbaseOperations& couchbase_ops){
-    std::string add_key = "user::test_brpc_binprot";
+int performOperations(brpc::CouchbaseOperations& couchbase_ops) {
+  std::string add_key = "user::test_brpc_binprot";
   std::string add_value =
       R"({"name": "John Doe", "age": 30, "email": "john@example.com"})";
 
@@ -167,16 +167,9 @@ int performOperations(brpc::CouchbaseOperations& couchbase_ops){
   }
 
   // Retrieve Collection ID for scope `_default` and collection
-  // `testing_collection`
-  const std::string scope_name = "_default";                // default scope
-  std::string collection_name = "col1";  // target collection
-  // enter collection name as user input
-  // std::cout << "Enter collection name (default 'testing_collection'): ";
-  // std::string user_input;
-  // std::cin >> user_input;
-  // if (!user_input.empty()) {
-  //   collection_name = user_input;
-  // }
+  // `col1`
+  const std::string scope_name = "_default";  // default scope
+  std::string collection_name = "col1";       // target collection
   // ------------------------------------------------------------------
   // Collection-scoped CRUD operations (only if collection id was retrieved)
   // ------------------------------------------------------------------
@@ -192,9 +185,6 @@ int performOperations(brpc::CouchbaseOperations& couchbase_ops){
               << "Collection ADD failed: " << coll_add_result.error_message
               << RESET << std::endl;
   }
-  // Prompt user to delete the collection to test collection operations
-  // std::cout << "Delete & re-create the collection.";
-  // std::cin >> collection_name;
   // 2. GET from collection using high-level method
   brpc::CouchbaseOperations::Result coll_get_result =
       couchbase_ops.get(coll_key, collection_name);
@@ -455,8 +445,7 @@ int main() {
   } else {
     std::cout << GREEN << "Bucket Selection Successful" << RESET << std::endl;
   }
-  performOperations(couchbase_ops);
   // Add operation using high-level method
-
+  performOperations(couchbase_ops);
   return 0;
 }

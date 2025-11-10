@@ -26,10 +26,11 @@ COMMA=,
 SOPATHS=$(addprefix -Wl$(COMMA)-rpath$(COMMA), $(LIBS))
 
 # Define targets and their sources
-TARGETS = couchbase_client multithreaded_couchbase_client
+TARGETS = couchbase_client multithreaded_couchbase_client traditional_brpc_couchbase_client
 COUCHBASE_CLIENT_OBJS = couchbase_client.o
 MULTITHREADED_CLIENT_OBJS = multithreaded_couchbase_client.o
-ALL_OBJS = $(COUCHBASE_CLIENT_OBJS) $(MULTITHREADED_CLIENT_OBJS) 
+TRADITIONAL_CLIENT_OBJS = traditional_brpc_couchbase_client.o
+ALL_OBJS = $(COUCHBASE_CLIENT_OBJS) $(MULTITHREADED_CLIENT_OBJS) $(TRADITIONAL_CLIENT_OBJS)
 
 ifeq ($(SYSTEM),Darwin)
  ifneq ("$(LINK_SO)", "")
@@ -72,11 +73,23 @@ else
 	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
+traditional_brpc_couchbase_client: $(TRADITIONAL_CLIENT_OBJS)
+	@echo "> Linking $@"
+ifneq ("$(LINK_SO)", "")
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+else
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+endif
+
 # Compilation rules
 couchbase_client.o: couchbase_client.cpp
 	@echo "> Compiling $@"
 	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 multithreaded_couchbase_client.o: multithreaded_couchbase_client.cpp
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+
+traditional_brpc_couchbase_client.o: traditional_brpc_couchbase_client.cpp
 	@echo "> Compiling $@"
 	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

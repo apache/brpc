@@ -144,9 +144,9 @@ class CouchbaseManifestManager {
 
   bool jsonToCollectionManifest(const string& json,
                                 CollectionManifest* manifest);
-  bool refreshCollectionManifest(brpc::Channel* channel, const string& server,
-                                const string& bucket,
-                                unordered_map<string, CollectionManifest>* local_cache = nullptr);
+  bool refreshCollectionManifest(
+      brpc::Channel* channel, const string& server, const string& bucket,
+      unordered_map<string, CollectionManifest>* local_cache = nullptr);
 } static common_metadata_tracking;
 class CouchbaseOperations {
  public:
@@ -187,8 +187,8 @@ class CouchbaseOperations {
   // Flush(uint32_t timeout = 0);
   Result version();
   Result authenticateSSL(const string& username, const string& password,
-                      const string& server_address, const string& bucket_name,
-                      string path_to_cert = "");
+                         const string& server_address,
+                         const string& bucket_name, string path_to_cert = "");
   Result authenticate(const string& username, const string& password,
                       const string& server_address, const string& bucket_name);
   Result selectBucket(const string& bucket_name);
@@ -213,9 +213,12 @@ class CouchbaseOperations {
                                   const string& collection, uint8_t* coll_id);
 
  private:
-  CouchbaseOperations::Result authenticateAll(
-    const string& username, const string& password,
-    const string& server_address, const string& bucket_name, bool enable_ssl, string path_to_cert);
+  CouchbaseOperations::Result authenticateAll(const string& username,
+                                              const string& password,
+                                              const string& server_address,
+                                              const string& bucket_name,
+                                              bool enable_ssl,
+                                              string path_to_cert);
   friend void policy::ProcessCouchbaseResponse(InputMessageBase* msg);
   friend void policy::SerializeCouchbaseRequest(
       butil::IOBuf* buf, Controller* cntl,
@@ -224,12 +227,12 @@ class CouchbaseOperations {
   string server_address_;
   string selected_bucket_;
 
-  unordered_map<string /*bucket*/,
-                CouchbaseManifestManager::CollectionManifest>
+  unordered_map<string /*bucket*/, CouchbaseManifestManager::CollectionManifest>
       local_bucket_to_collection_manifest_;
 
  public:
- // these classes have been made public so that normal user can also create advanced bRPC programs as per their requirements.
+  // these classes have been made public so that normal user can also create
+  // advanced bRPC programs as per their requirements.
   class CouchbaseRequest : public NonreflectableMessage<CouchbaseRequest> {
    public:
     static brpc::CouchbaseManifestManager* metadata_tracking;
@@ -303,7 +306,8 @@ class CouchbaseOperations {
         brpc::CouchbaseManifestManager* metadata_tracking,
         brpc::Channel* channel, const string& server,
         const string& selected_bucket,
-        unordered_map<string, CouchbaseManifestManager::CollectionManifest>* local_cache);
+        unordered_map<string, CouchbaseManifestManager::CollectionManifest>*
+            local_cache);
 
     // Collection-aware document operations
     bool getRequest(const butil::StringPiece& key,
@@ -376,7 +380,9 @@ class CouchbaseOperations {
     int pipelinedCount() const { return _pipelined_count; }
 
     butil::IOBuf& rawBuffer() { return _buf; }
-    const butil::IOBuf& rawBuffer() const { return _buf; } // used in couchbase_protocol serialization.
+    const butil::IOBuf& rawBuffer() const {
+      return _buf;
+    }  // used in couchbase_protocol serialization.
     void Swap(CouchbaseRequest* other);
     void MergeFrom(const CouchbaseRequest& from) override;
     void Clear() override;
@@ -386,6 +392,7 @@ class CouchbaseOperations {
   class CouchbaseResponse : public NonreflectableMessage<CouchbaseResponse> {
    public:
     static brpc::CouchbaseManifestManager* metadata_tracking;
+
    private:
     string _err;
     butil::IOBuf _buf;
@@ -502,7 +509,7 @@ class CouchbaseOperations {
     // bool popReplace(uint64_t* cas_value);
     bool popAppend(uint64_t* cas_value);
     bool popPrepend(uint64_t* cas_value);
-    bool popSelectBucket(uint64_t* cas_value, std::string bucket_name);
+    bool popSelectBucket(uint64_t* cas_value);
     bool popAuthenticate(uint64_t* cas_value);
     bool popHello(uint64_t* cas_value);
 

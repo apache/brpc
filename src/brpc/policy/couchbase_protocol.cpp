@@ -134,15 +134,14 @@ ParseResult ParseCouchbaseMessage(butil::IOBuf* source, Socket* socket,
     msg->meta.append(&local_header, sizeof(local_header));
     source->pop_front(sizeof(*header));
     source->cutn(&msg->meta, total_body_length);
-      if (++msg->pi.count >= pi.count) {
-        CHECK_EQ(msg->pi.count, pi.count);
-        msg =
-            static_cast<MostCommonMessage*>(socket->release_parsing_context());
-        msg->pi = pi;
-        return MakeMessage(msg);
-      } else {
-        socket->GivebackPipelinedInfo(pi);
-      }
+    if (++msg->pi.count >= pi.count) {
+      CHECK_EQ(msg->pi.count, pi.count);
+      msg = static_cast<MostCommonMessage*>(socket->release_parsing_context());
+      msg->pi = pi;
+      return MakeMessage(msg);
+    } else {
+      socket->GivebackPipelinedInfo(pi);
+    }
   }
 }
 
@@ -213,7 +212,6 @@ void PackCouchbaseRequest(butil::IOBuf* buf, SocketMessage**,
                           Controller* cntl, const butil::IOBuf& request,
                           const Authenticator* auth) {
   if (auth) {
-    std::cout << "Appending authentication data to request" << std::endl;
     std::string auth_str;
     if (auth->GenerateCredential(&auth_str) != 0) {
       return cntl->SetFailed(EREQUEST, "Fail to generate credential");
