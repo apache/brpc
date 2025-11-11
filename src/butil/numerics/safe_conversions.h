@@ -58,6 +58,31 @@ inline Dst saturated_cast(Src value) {
   return static_cast<Dst>(value);
 }
 
+inline uint64_t safe_abs(uint64_t x) {
+  return x;
+}
+
+inline uint64_t safe_abs(int64_t x) {
+  return (x >= 0) ? (uint64_t)x : ((~(uint64_t)(x)) + 1);
+}
+
+inline uint32_t safe_abs(uint32_t x) {
+  return x;
+}
+
+inline uint32_t safe_abs(int32_t x) {
+  return (uint32_t)safe_abs((int64_t)x);
+}
+
+#if defined(__APPLE__)
+inline unsigned long safe_abs(unsigned long x) {
+  return x;
+}
+inline unsigned long safe_abs(long x) {
+  return (x >= 0) ? (unsigned long)x : ((~(unsigned long)(x)) + 1);
+}
+#endif
+
 }  // namespace butil
 
 #endif  // BUTIL_SAFE_CONVERSIONS_H_
