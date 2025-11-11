@@ -30,8 +30,19 @@ class Message;
 }
 }
 
-
 namespace brpc {
+
+class Span;
+
+#ifndef BRPC_SPAN_ENABLE_SHARED_PTR_API
+#define BRPC_SPAN_ENABLE_SHARED_PTR_API 0
+#endif
+
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
+using SpanPtr = std::shared_ptr<Span>;
+#else
+using SpanPtr = Span*;
+#endif
 
 class AuthContext;
 
@@ -90,17 +101,18 @@ public:
         return *this;
     }
 
-    ControllerPrivateAccessor &set_span(std::shared_ptr<Span> span) {
-        _cntl->_span = span;
-        return *this;
-    }
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
+    ControllerPrivateAccessor &set_span(std::shared_ptr<Span> span);
+#else
+    ControllerPrivateAccessor &set_span(Span* span);
+#endif
     
     ControllerPrivateAccessor &set_request_protocol(ProtocolType protocol) {
         _cntl->_request_protocol = protocol;
         return *this;
     }
     
-    std::shared_ptr<Span> span() const { return _cntl->_span.lock(); }
+    SpanPtr span() const;
 
     uint32_t pipelined_count() const { return _cntl->_pipelined_count; }
     void set_pipelined_count(uint32_t count) {  _cntl->_pipelined_count = count; }

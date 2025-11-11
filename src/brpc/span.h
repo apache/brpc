@@ -42,7 +42,42 @@ extern __thread bthread::LocalStorage tls_bls;
 
 namespace brpc {
 
+// ============================================================================
+// Span Lifecycle Management API Compatibility Layer
+// ============================================================================
+//
+// COMPATIBILITY NOTE:
+// brpc uses std::shared_ptr<Span> internally
+// to prevent use-after-free bugs in async RPC callbacks.
+//
+// For backward compatibility with existing protocol extensions, external APIs
+// can return raw pointers (Span*) by default. To enable the modern shared_ptr
+// API, compile with -DBRPC_SPAN_ENABLE_SHARED_PTR_API=1.
+//
+// MIGRATION GUIDE:
+// - Legacy mode (default): SpanPtr = Span*
+//   Users must ensure the Span outlives their usage (typically by keeping
+//   the Controller alive).
+//
+// - Modern mode (recommended): SpanPtr = std::shared_ptr<Span>
+//   Automatic lifetime management, safer for async operations.
+//
+// ============================================================================
+
+#ifndef BRPC_SPAN_ENABLE_SHARED_PTR_API
+#define BRPC_SPAN_ENABLE_SHARED_PTR_API 0  // Default: legacy mode for compatibility
+#endif
+
 class Span;
+
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
+// Modern API: Return shared_ptr for safe lifecycle management
+using SpanPtr = std::shared_ptr<Span>;
+#else
+// Legacy API: Return raw pointer for backward compatibility
+// WARNING: Users must ensure the Span outlives their usage
+using SpanPtr = Span*;
+#endif
 
 void SetTlsParentSpan(std::shared_ptr<Span> span);
 std::shared_ptr<Span> GetTlsParentSpan();
@@ -252,7 +287,7 @@ private:
 
 class SpanContainer : public bvar::Collected {
 public:
-    explicit SpanContainer(std::shared_ptr<Span> span) : _span(span) {}
+    explicit SpanContainer(const std::shared_ptr<Span>& span) : _span(span) {}
     ~SpanContainer() {}
 
     // Implementations of bvar::Collected

@@ -510,7 +510,11 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
             span->set_base_cid(correlation_id);
             span->set_protocol(_options.protocol);
             span->set_start_send_us(start_send_us);
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
             accessor.set_span(span);
+#else
+            accessor.set_span(span.get());
+#endif
         }
     }
     // Override some options if they haven't been set by Controller

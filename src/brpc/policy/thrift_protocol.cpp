@@ -518,7 +518,11 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     std::shared_ptr<Span> span;
     if (IsTraceable(false)) {
         span = Span::CreateServerSpan(0, 0, 0, msg->base_real_us());
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
         accessor.set_span(span);
+#else
+        accessor.set_span(span.get());
+#endif
         span->set_log_id(seq_id);
         span->set_remote_side(cntl->remote_side());
         span->set_protocol(PROTOCOL_THRIFT);

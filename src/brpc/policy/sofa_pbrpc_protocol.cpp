@@ -376,7 +376,11 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         span = Span::CreateServerSpan(
             0/*meta.trace_id()*/, 0/*meta.span_id()*/,
             0/*meta.parent_span_id()*/, msg->base_real_us());
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
         accessor.set_span(span);
+#else
+        accessor.set_span(span.get());
+#endif
         span->set_remote_side(cntl->remote_side());
         span->set_protocol(PROTOCOL_SOFA_PBRPC);
         span->set_received_us(msg->received_us());

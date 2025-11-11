@@ -416,7 +416,11 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         span = Span::CreateServerSpan(
             meta.trace_id(), meta.span_id(), meta.parent_span_id(),
             msg->base_real_us());
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
         accessor.set_span(span);
+#else
+        accessor.set_span(span.get());
+#endif
         span->set_log_id(meta.log_id());
         span->set_remote_side(cntl->remote_side());
         span->set_protocol(PROTOCOL_HULU_PBRPC);

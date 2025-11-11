@@ -1727,4 +1727,31 @@ void Controller::DoPrintLogPrefix(std::ostream& os) const {
     }
 }
 
+
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
+ControllerPrivateAccessor& ControllerPrivateAccessor::set_span(
+    std::shared_ptr<Span> span) {
+    _cntl->_span = span;
+    return *this;
+}
+#else
+ControllerPrivateAccessor& ControllerPrivateAccessor::set_span(Span* span) {
+    if (span) {
+        _cntl->_span = span->shared_from_this();
+    } else {
+        _cntl->_span.reset();
+    }
+    return *this;
+}
+#endif
+
+SpanPtr ControllerPrivateAccessor::span() const {
+    std::shared_ptr<Span> span_internal = _cntl->_span.lock();
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
+    return span_internal;
+#else
+    return span_internal.get();
+#endif
+}
+
 } // namespace brpc

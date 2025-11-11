@@ -1506,7 +1506,11 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
         span = Span::CreateServerSpan(
             path, trace_id, span_id, parent_span_id, msg->base_real_us());
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
         accessor.set_span(span);
+#else
+        accessor.set_span(span.get());
+#endif
         span->set_log_id(cntl->log_id());
         span->set_remote_side(user_addr);
         span->set_received_us(msg->received_us());

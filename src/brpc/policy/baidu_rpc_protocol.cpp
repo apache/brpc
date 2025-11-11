@@ -647,7 +647,11 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         span = Span::CreateServerSpan(
             request_meta.trace_id(), request_meta.span_id(),
             request_meta.parent_span_id(), msg->base_real_us());
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
         accessor.set_span(span);
+#else
+        accessor.set_span(span.get());
+#endif
         span->set_log_id(request_meta.log_id());
         span->set_remote_side(cntl->remote_side());
         span->set_protocol(PROTOCOL_BAIDU_STD);
