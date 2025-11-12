@@ -33,7 +33,6 @@
 #include "brpc/pb_compat.h"
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
-using namespace std;
 
 namespace brpc {
 
@@ -119,34 +118,34 @@ class UniqueLock {
 class CouchbaseManifestManager {
  public:
   struct CollectionManifest {
-    string uid;  // uid of the manifest, it can be used to track if the manifest
+    std::string uid;  // uid of the manifest, it can be used to track if the manifest
                  // is updated
-    unordered_map<string, unordered_map<string, uint8_t>>
+    std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>>
         scope_to_collection_id_map;  // scope -> (collection -> collection_id)
   };
 
  private:
-  unordered_map<string /*server*/,
-                unordered_map<string /*bucket*/, CollectionManifest>>
+  std::unordered_map<std::string /*server*/,
+                std::unordered_map<std::string /*bucket*/, CollectionManifest>>
       bucket_to_collection_manifest_;
   ReaderWriterLock rw_bucket_to_collection_manifest_mutex_;
 
  public:
   CouchbaseManifestManager() {}
   ~CouchbaseManifestManager() { bucket_to_collection_manifest_.clear(); }
-  bool setBucketToCollectionManifest(string server, string bucket,
+  bool setBucketToCollectionManifest(std::string server, std::string bucket,
                                      CollectionManifest manifest);
 
-  bool getBucketToCollectionManifest(string server, string bucket,
+  bool getBucketToCollectionManifest(std::string server, std::string bucket,
                                      CollectionManifest* manifest);
-  bool getManifestToCollectionId(CollectionManifest* manifest, string scope,
-                                 string collection, uint8_t* collection_id);
+  bool getManifestToCollectionId(CollectionManifest* manifest, std::string scope,
+                                 std::string collection, uint8_t* collection_id);
 
-  bool jsonToCollectionManifest(const string& json,
+  bool jsonToCollectionManifest(const std::string& json,
                                 CollectionManifest* manifest);
   bool refreshCollectionManifest(
-      brpc::Channel* channel, const string& server, const string& bucket,
-      unordered_map<string, CollectionManifest>* local_cache = nullptr);
+      brpc::Channel* channel, const std::string& server, const std::string& bucket,
+      std::unordered_map<std::string, CollectionManifest>* local_cache = nullptr);
 } static common_metadata_tracking;
 class CouchbaseOperations {
  public:
@@ -161,23 +160,23 @@ class CouchbaseOperations {
   };
   struct Result {
     bool success;
-    string error_message;
-    string value;
+    std::string error_message;
+    std::string value;
     uint16_t status_code;  // 0x00 if success
   };
-  Result get(const string& key, string collection_name = "_default");
-  Result upsert(const string& key, const string& value,
-                string collection_name = "_default");
-  Result add(const string& key, const string& value,
-             string collection_name = "_default");
+  Result get(const std::string& key, std::string collection_name = "_default");
+  Result upsert(const std::string& key, const std::string& value,
+                std::string collection_name = "_default");
+  Result add(const std::string& key, const std::string& value,
+             std::string collection_name = "_default");
   // Warning: Not tested
-  // Result replace(const string& key, const string& value, string
+  // Result replace(const std::string& key, const std::string& value, std::string
   // collection_name = "_default");
-  Result append(const string& key, const string& value,
-                string collection_name = "_default");
-  Result prepend(const string& key, const string& value,
-                 string collection_name = "_default");
-  Result delete_(const string& key, string collection_name = "_default");
+  Result append(const std::string& key, const std::string& value,
+                std::string collection_name = "_default");
+  Result prepend(const std::string& key, const std::string& value,
+                 std::string collection_name = "_default");
+  Result delete_(const std::string& key, std::string collection_name = "_default");
   // Warning: Not tested
   // Result Increment(const string& key, uint64_t delta, uint64_t initial_value,
   // uint32_t exptime, string collection_name = "_default"); Result
@@ -186,19 +185,19 @@ class CouchbaseOperations {
   // string& key, uint32_t exptime, string collection_name = "_default"); Result
   // Flush(uint32_t timeout = 0);
   Result version();
-  Result authenticateSSL(const string& username, const string& password,
-                         const string& server_address,
-                         const string& bucket_name, string path_to_cert = "");
-  Result authenticate(const string& username, const string& password,
-                      const string& server_address, const string& bucket_name);
-  Result selectBucket(const string& bucket_name);
+  Result authenticateSSL(const std::string& username, const std::string& password,
+                         const std::string& server_address,
+                         const std::string& bucket_name, std::string path_to_cert = "");
+  Result authenticate(const std::string& username, const std::string& password,
+                      const std::string& server_address, const std::string& bucket_name);
+  Result selectBucket(const std::string& bucket_name);
 
   // Pipeline management
   bool beginPipeline();
-  bool pipelineRequest(operation_type op_type, const string& key,
-                       const string& value = "",
-                       string collection_name = "_default");
-  vector<Result> executePipeline();  // Return by value instead of pointer
+  bool pipelineRequest(operation_type op_type, const std::string& key,
+                       const std::string& value = "",
+                       std::string collection_name = "_default");
+  std::vector<Result> executePipeline();  // Return by value instead of pointer
   bool clearPipeline();
 
   // Pipeline status
@@ -209,25 +208,25 @@ class CouchbaseOperations {
       : pipeline_request_couchbase_req(&local_bucket_to_collection_manifest_),
         pipeline_active(false) {}
   ~CouchbaseOperations() {}
-  bool getLocalCachedCollectionId(const string& bucket, const string& scope,
-                                  const string& collection, uint8_t* coll_id);
+  bool getLocalCachedCollectionId(const std::string& bucket, const std::string& scope,
+                                  const std::string& collection, uint8_t* coll_id);
 
  private:
-  CouchbaseOperations::Result authenticateAll(const string& username,
-                                              const string& password,
-                                              const string& server_address,
-                                              const string& bucket_name,
+  CouchbaseOperations::Result authenticateAll(const std::string& username,
+                                              const std::string& password,
+                                              const std::string& server_address,
+                                              const std::string& bucket_name,
                                               bool enable_ssl,
-                                              string path_to_cert);
+                                              std::string path_to_cert);
   friend void policy::ProcessCouchbaseResponse(InputMessageBase* msg);
   friend void policy::SerializeCouchbaseRequest(
       butil::IOBuf* buf, Controller* cntl,
       const google::protobuf::Message* request);
   brpc::Channel* channel_;
-  string server_address_;
-  string selected_bucket_;
+  std::string server_address_;
+  std::string selected_bucket_;
 
-  unordered_map<string /*bucket*/, CouchbaseManifestManager::CollectionManifest>
+  std::unordered_map<std::string /*bucket*/, CouchbaseManifestManager::CollectionManifest>
       local_bucket_to_collection_manifest_;
 
  public:
@@ -253,12 +252,12 @@ class CouchbaseOperations {
     uint32_t hashCrc32(const char* key, size_t key_length);
 
    public:
-    unordered_map<string /*bucket*/,
+    std::unordered_map<std::string /*bucket*/,
                   CouchbaseManifestManager::CollectionManifest>*
         local_collection_manifest_cache;
 
     CouchbaseRequest(
-        unordered_map<string /*bucket*/,
+        std::unordered_map<std::string /*bucket*/,
                       CouchbaseManifestManager::CollectionManifest>*
             local_cache_reference)
         : NonreflectableMessage<CouchbaseRequest>() {
@@ -297,83 +296,56 @@ class CouchbaseOperations {
     bool getScopeId(const butil::StringPiece& scope_name);
 
     bool getCollectionManifest();
-
-    bool getLocalCachedCollectionId(const string& bucket, const string& scope,
-                                    const string& collection, uint8_t* coll_id);
+      
+    bool getLocalCachedCollectionId(const std::string& bucket, const std::string& scope,
+                                    const std::string& collection, uint8_t* coll_id);
 
     bool getCachedOrFetchCollectionId(
-        string collection_name, uint8_t* coll_id,
+        std::string collection_name, uint8_t* coll_id,
         brpc::CouchbaseManifestManager* metadata_tracking,
-        brpc::Channel* channel, const string& server,
-        const string& selected_bucket,
-        unordered_map<string, CouchbaseManifestManager::CollectionManifest>*
+        brpc::Channel* channel, const std::string& server,
+        const std::string& selected_bucket,
+        std::unordered_map<std::string, CouchbaseManifestManager::CollectionManifest>*
             local_cache);
 
     // Collection-aware document operations
     bool getRequest(const butil::StringPiece& key,
-                    string collection_name = "_default",
-                    brpc::Channel* channel = nullptr, const string& server = "",
-                    const string& bucket = "");
+                    std::string collection_name = "_default",
+                    brpc::Channel* channel = nullptr, const std::string& server = "",
+                    const std::string& bucket = "");
 
     bool upsertRequest(const butil::StringPiece& key,
                        const butil::StringPiece& value, uint32_t flags,
                        uint32_t exptime, uint64_t cas_value,
-                       string collection_name = "_default",
+                       std::string collection_name = "_default",
                        brpc::Channel* channel = nullptr,
-                       const string& server = "", const string& bucket = "");
+                       const std::string& server = "", const std::string& bucket = "");
 
     bool addRequest(const butil::StringPiece& key,
                     const butil::StringPiece& value, uint32_t flags,
                     uint32_t exptime, uint64_t cas_value,
-                    string collection_name = "_default",
-                    brpc::Channel* channel = nullptr, const string& server = "",
-                    const string& bucket = "");
-
-    // Warning: Not tested
-    // bool ReplaceRequest(const butil::StringPiece& key, const
-    // butil::StringPiece& value,
-    //             uint32_t flags, uint32_t exptime, uint64_t cas_value,
-    //             string collection_name = "_default",
-    //             brpc::Channel* channel = nullptr, const string& server = "",
-    //             const string& bucket = "");
+                    std::string collection_name = "_default",
+                    brpc::Channel* channel = nullptr, const std::string& server = "",
+                    const std::string& bucket = "");
 
     bool appendRequest(const butil::StringPiece& key,
                        const butil::StringPiece& value, uint32_t flags,
                        uint32_t exptime, uint64_t cas_value,
-                       string collection_name = "_default",
+                       std::string collection_name = "_default",
                        brpc::Channel* channel = nullptr,
-                       const string& server = "", const string& bucket = "");
+                       const std::string& server = "", const std::string& bucket = "");
 
     bool prependRequest(const butil::StringPiece& key,
                         const butil::StringPiece& value, uint32_t flags,
                         uint32_t exptime, uint64_t cas_value,
-                        string collection_name = "_default",
+                        std::string collection_name = "_default",
                         brpc::Channel* channel = nullptr,
-                        const string& server = "", const string& bucket = "");
+                        const std::string& server = "", const std::string& bucket = "");
 
     bool deleteRequest(const butil::StringPiece& key,
-                       string collection_name = "_default",
+                       std::string collection_name = "_default",
                        brpc::Channel* channel = nullptr,
-                       const string& server = "", const string& bucket = "");
-
-    // Warning: Not tested
-    // bool FlushRequest(uint32_t timeout);
-
-    // bool IncrementRequest(const butil::StringPiece& key, uint64_t delta,
-    //               uint64_t initial_value, uint32_t exptime, string
-    //               collection_name = "_default", brpc::Channel* channel =
-    //               nullptr, const string& server = "", const string& bucket =
-    //               "");
-    // bool DecrementRequest(const butil::StringPiece& key, uint64_t delta,
-    //               uint64_t initial_value, uint32_t exptime, string
-    //               collection_name = "_default", brpc::Channel* channel =
-    //               nullptr, const string& server = "", const string& bucket =
-    //               "");
-
-    // bool TouchRequest(const butil::StringPiece& key, uint32_t exptime,
-    //           string collection_name = "_default",
-    //           brpc::Channel* channel = nullptr, const string& server = "",
-    //           const string& bucket = "");
+                       const std::string& server = "", const std::string& bucket = "");
 
     bool versionRequest();
 
@@ -394,7 +366,7 @@ class CouchbaseOperations {
     static brpc::CouchbaseManifestManager* metadata_tracking;
 
    private:
-    string _err;
+    std::string _err;
     butil::IOBuf _buf;
     mutable int _cached_size_;
     bool popCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
@@ -494,15 +466,15 @@ class CouchbaseOperations {
     static const char* statusStr(Status);
 
     // Helper method to format error messages with status codes
-    static string formatErrorMessage(uint16_t status_code,
-                                     const string& operation,
-                                     const string& error_msg = "");
+    static std::string formatErrorMessage(uint16_t status_code,
+                                     const std::string& operation,
+                                     const std::string& error_msg = "");
 
     // Add methods to handle response parsing
     void swap(CouchbaseResponse* other);
     bool popGet(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
-    bool popGet(string* value, uint32_t* flags, uint64_t* cas_value);
-    const string& lastError() const { return _err; }
+    bool popGet(std::string* value, uint32_t* flags, uint64_t* cas_value);
+    const std::string& lastError() const { return _err; }
     bool popUpsert(uint64_t* cas_value);
     bool popAdd(uint64_t* cas_value);
     // Warning: Not tested
@@ -524,19 +496,19 @@ class CouchbaseOperations {
     // bool popIncrement(uint64_t* new_value, uint64_t* cas_value);
     // bool popDecrement(uint64_t* new_value, uint64_t* cas_value);
     // bool popTouch();
-    bool popVersion(string* version);
+    bool popVersion(std::string* version);
   };
 
   friend bool sendRequest(CouchbaseOperations::operation_type op_type,
-                          const string& key, const string& value,
-                          string collection_name,
+                          const std::string& key, const std::string& value,
+                          std::string collection_name,
                           CouchbaseOperations::Result* result,
-                          brpc::Channel* channel, const string& server,
-                          const string& bucket, CouchbaseRequest* request,
+                          brpc::Channel* channel, const std::string& server,
+                          const std::string& bucket, CouchbaseRequest* request,
                           CouchbaseResponse* response);
 
   // Pipeline management - per instance
-  queue<operation_type> pipeline_operations_queue;
+  std::queue<operation_type> pipeline_operations_queue;
   CouchbaseRequest pipeline_request_couchbase_req;
   CouchbaseResponse pipeline_response_couchbase_resp;
   bool pipeline_active;

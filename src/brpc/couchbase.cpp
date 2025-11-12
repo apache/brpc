@@ -57,7 +57,7 @@ CouchbaseManifestManager*
         &common_metadata_tracking;
 
 bool brpc::CouchbaseManifestManager::setBucketToCollectionManifest(
-    string server, string bucket,
+    std::string server, std::string bucket,
     CouchbaseManifestManager::CollectionManifest manifest) {
   // Then update the collection manifest with proper locking
   {
@@ -69,7 +69,7 @@ bool brpc::CouchbaseManifestManager::setBucketToCollectionManifest(
 }
 
 bool brpc::CouchbaseManifestManager::getBucketToCollectionManifest(
-    string server, string bucket,
+    std::string server, std::string bucket,
     CouchbaseManifestManager::CollectionManifest* manifest) {
   SharedLock read_lock(rw_bucket_to_collection_manifest_mutex_);
   auto it1 = bucket_to_collection_manifest_.find(server);
@@ -85,8 +85,8 @@ bool brpc::CouchbaseManifestManager::getBucketToCollectionManifest(
 }
 
 bool brpc::CouchbaseManifestManager::getManifestToCollectionId(
-    CouchbaseManifestManager::CollectionManifest* manifest, string scope,
-    string collection, uint8_t* collection_id) {
+    CouchbaseManifestManager::CollectionManifest* manifest, std::string scope,
+    std::string collection, uint8_t* collection_id) {
   if (manifest == nullptr || collection_id == nullptr) {
     DEBUG_PRINT("Invalid input: manifest or collection_id is null");
     return false;
@@ -107,7 +107,7 @@ bool brpc::CouchbaseManifestManager::getManifestToCollectionId(
 }
 
 bool CouchbaseManifestManager::jsonToCollectionManifest(
-    const string& json,
+    const std::string& json,
     CouchbaseManifestManager::CollectionManifest* manifest) {
   if (manifest == nullptr) {
     DEBUG_PRINT("Invalid input: manifest is null");
@@ -119,7 +119,7 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
   manifest->scope_to_collection_id_map.clear();
 
   if (json.empty()) {
-    DEBUG_PRINT("JSON string is empty");
+    DEBUG_PRINT("JSON std::string is empty");
     return false;
   }
 
@@ -165,7 +165,7 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
       DEBUG_PRINT("Missing or invalid 'name' field in scope at index " << i);
       return false;
     }
-    string scope_name = scope["name"].GetString();
+    std::string scope_name = scope["name"].GetString();
 
     // Extract collections
     if (!scope.HasMember("collections") || !scope["collections"].IsArray()) {
@@ -175,7 +175,7 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
     }
 
     const BUTIL_RAPIDJSON_NAMESPACE::Value& collections = scope["collections"];
-    unordered_map<string, uint8_t> collection_map;
+    std:: unordered_map<std::string, uint8_t> collection_map;
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType j = 0; j < collections.Size();
          ++j) {
@@ -193,20 +193,20 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
                     << j << " in scope '" << scope_name << "'");
         return false;
       }
-      string collection_name = collection["name"].GetString();
+      std::string collection_name = collection["name"].GetString();
 
-      // Extract collection uid (hex string)
+      // Extract collection uid (hex std::string)
       if (!collection.HasMember("uid") || !collection["uid"].IsString()) {
         DEBUG_PRINT("Missing or invalid 'uid' field in collection '"
                     << collection_name << "' in scope '" << scope_name << "'");
         return false;
       }
-      string collection_uid_str = collection["uid"].GetString();
+      std::string collection_uid_str = collection["uid"].GetString();
 
-      // Convert hex string to uint8_t
+      // Convert hex std::string to uint8_t
       uint8_t collection_id = 0;
       try {
-        // Convert hex string to integer
+        // Convert hex std::string to integer
         unsigned long uid_val = std::stoul(collection_uid_str, nullptr, 16);
         if (uid_val > 255) {
           DEBUG_PRINT(
@@ -237,8 +237,8 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
 }
 
 bool CouchbaseManifestManager::refreshCollectionManifest(
-    brpc::Channel* channel, const string& server, const string& bucket,
-    unordered_map<string, CollectionManifest>*
+    brpc::Channel* channel, const std::string& server, const std::string& bucket,
+    std:: unordered_map<std::string, CollectionManifest>*
         local_collection_manifest_cache) {
   // first fetch the manifest
   // then compare the UID with the cached one
@@ -265,7 +265,7 @@ bool CouchbaseManifestManager::refreshCollectionManifest(
                 << temp_cntl.ErrorText());
     return false;
   }
-  string manifest_json;
+  std::string manifest_json;
   if (!temp_get_manifest_response.popManifest(&manifest_json)) {
     DEBUG_PRINT("Failed to parse response for refreshing collection Manifest: "
                 << temp_get_manifest_response.lastError());
@@ -498,7 +498,7 @@ bool CouchbaseOperations::CouchbaseRequest::helloRequest() {
 #endif
   agent += ";bssl/0x1010107f)";
 
-  // Generate a random connection ID as hex string
+  // Generate a random connection ID as hex std::string
   unsigned char raw_id[CONNECTION_ID_SIZE];
   FILE* urandom = fopen("/dev/urandom", "rb");
   if (!urandom ||
@@ -594,7 +594,7 @@ bool CouchbaseOperations::CouchbaseRequest::authenticateRequest(
   auth_str.append(kPadding, sizeof(kPadding));
   auth_str.append(password.data(), password.size());
   if (_buf.append(auth_str.data(), auth_str.size())) {
-    DEBUG_PRINT("Failed to append auth string to buffer");
+    DEBUG_PRINT("Failed to append auth std::string to buffer");
     return false;
   }
   ++_pipelined_count;
@@ -817,10 +817,10 @@ bool CouchbaseOperations::CouchbaseRequest::getOrDelete(
 // collectionID fetching either from the metadata cache or if doesn't exist then
 // fetch from the server.
 bool CouchbaseOperations::CouchbaseRequest::getCachedOrFetchCollectionId(
-    string collection_name, uint8_t* coll_id,
+    std::string collection_name, uint8_t* coll_id,
     brpc::CouchbaseManifestManager* metadata_tracking, brpc::Channel* channel,
-    const string& server, const string& selected_bucket,
-    unordered_map<string, CouchbaseManifestManager::CollectionManifest>*
+    const std::string& server, const std::string& selected_bucket,
+    std:: unordered_map<std::string, CouchbaseManifestManager::CollectionManifest>*
         local_cache) {
   if (collection_name.empty()) {
     DEBUG_PRINT("Empty collection name");
@@ -890,8 +890,8 @@ bool CouchbaseOperations::CouchbaseRequest::getCachedOrFetchCollectionId(
 }
 
 bool CouchbaseOperations::CouchbaseRequest::getRequest(
-    const butil::StringPiece& key, string collection_name,
-    brpc::Channel* channel, const string& server, const string& bucket) {
+    const butil::StringPiece& key, std::string collection_name,
+    brpc::Channel* channel, const std::string& server, const std::string& bucket) {
   DEBUG_PRINT("getRequest called with key: "
               << key << ", collection_name: " << collection_name
               << ", server: " << server << ", bucket: " << bucket);
@@ -930,8 +930,8 @@ bool CouchbaseOperations::CouchbaseRequest::getRequest(
 }
 
 bool CouchbaseOperations::CouchbaseRequest::deleteRequest(
-    const butil::StringPiece& key, string collection_name,
-    brpc::Channel* channel, const string& server, const string& bucket) {
+    const butil::StringPiece& key, std::string collection_name,
+    brpc::Channel* channel, const std::string& server, const std::string& bucket) {
   DEBUG_PRINT("deleteRequest called with key: "
               << key << ", collection_name: " << collection_name
               << ", server: " << server << ", bucket: " << bucket);
@@ -1274,8 +1274,8 @@ CouchbaseOperations::CouchbaseResponse::couchbaseBinaryCommandToString(
 bool CouchbaseOperations::CouchbaseRequest::upsertRequest(
     const butil::StringPiece& key, const butil::StringPiece& value,
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
-    string collection_name, brpc::Channel* channel, const string& server,
-    const string& bucket) {
+    std::string collection_name, brpc::Channel* channel, const std::string& server,
+    const std::string& bucket) {
   DEBUG_PRINT("upsertRequest called with key: "
               << key << ", value: " << value
               << ", collection_name: " << collection_name
@@ -1337,8 +1337,8 @@ bool CouchbaseOperations::CouchbaseRequest::getCollectionManifest() {
 bool CouchbaseOperations::CouchbaseRequest::addRequest(
     const butil::StringPiece& key, const butil::StringPiece& value,
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
-    string collection_name, brpc::Channel* channel, const string& server,
-    const string& bucket) {
+    std::string collection_name, brpc::Channel* channel, const std::string& server,
+    const std::string& bucket) {
   DEBUG_PRINT("addRequest called with key: "
               << key << ", value: " << value
               << ", collection_name: " << collection_name
@@ -1381,8 +1381,8 @@ bool CouchbaseOperations::CouchbaseRequest::addRequest(
 bool CouchbaseOperations::CouchbaseRequest::appendRequest(
     const butil::StringPiece& key, const butil::StringPiece& value,
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
-    string collection_name, brpc::Channel* channel, const string& server,
-    const string& bucket) {
+    std::string collection_name, brpc::Channel* channel, const std::string& server,
+    const std::string& bucket) {
   if (value.empty()) {
     DEBUG_PRINT("value to append must be non-empty");
     return false;
@@ -1416,8 +1416,8 @@ bool CouchbaseOperations::CouchbaseRequest::appendRequest(
 bool CouchbaseOperations::CouchbaseRequest::prependRequest(
     const butil::StringPiece& key, const butil::StringPiece& value,
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
-    string collection_name, brpc::Channel* channel, const string& server,
-    const string& bucket) {
+    std::string collection_name, brpc::Channel* channel, const std::string& server,
+    const std::string& bucket) {
   if (value.empty()) {
     DEBUG_PRINT("value to prepend must be non-empty");
     return false;
@@ -1804,10 +1804,10 @@ bool CouchbaseOperations::CouchbaseResponse::popVersion(std::string* version) {
   return true;
 }
 
-bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key,
-                 const string& value, string collection_name,
+bool sendRequest(CouchbaseOperations::operation_type op_type, const std::string& key,
+                 const std::string& value, std::string collection_name,
                  CouchbaseOperations::Result* result, brpc::Channel* channel,
-                 const string& server, const string& bucket,
+                 const std::string& server, const std::string& bucket,
                  CouchbaseOperations::CouchbaseRequest* request,
                  CouchbaseOperations::CouchbaseResponse* response) {
   if (channel == nullptr) {
@@ -1882,7 +1882,7 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key,
     return false;
   }
   if (op_type == CouchbaseOperations::GET) {
-    string value;
+    std::string value;
     uint32_t flags = 0;
     uint64_t cas = 0;
     if (response->popGet(&value, &flags, &cas) == false) {
@@ -2087,15 +2087,15 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const string& key,
     }
     // Successfully performed the operation
     // Note: For operations other than GET, we don't have a value to return
-    // so we return empty string for value.
+    // so we return empty std::string for value.
     result->success = true;
     result->value = "";
     result->status_code = 0;
     return true;
   }
 }
-CouchbaseOperations::Result CouchbaseOperations::get(const string& key,
-                                                     string collection_name) {
+CouchbaseOperations::Result CouchbaseOperations::get(const std::string& key,
+                                                     std::string collection_name) {
   // create CouchbaseRequest and CouchbaseResponse objects and then using the
   // channel which is created for this thread in authenticate() use it to call()
   CouchbaseRequest request(&local_bucket_to_collection_manifest_);
@@ -2108,7 +2108,7 @@ CouchbaseOperations::Result CouchbaseOperations::get(const string& key,
 }
 
 bool CouchbaseOperations::CouchbaseRequest::getLocalCachedCollectionId(
-    const string& bucket, const string& scope, const string& collection,
+    const std::string& bucket, const std::string& scope, const std::string& collection,
     uint8_t* collection_id) {
   if (bucket.empty() || scope.empty() || collection.empty()) {
     DEBUG_PRINT("Bucket, scope, and collection names must be non-empty");
@@ -2138,7 +2138,7 @@ bool CouchbaseOperations::CouchbaseRequest::getLocalCachedCollectionId(
 }
 
 CouchbaseOperations::Result CouchbaseOperations::upsert(
-    const string& key, const string& value, string collection_name) {
+    const std::string& key, const std::string& value, std::string collection_name) {
   CouchbaseRequest request(&local_bucket_to_collection_manifest_);
   CouchbaseResponse response;
   brpc::Controller cntl;
@@ -2149,7 +2149,7 @@ CouchbaseOperations::Result CouchbaseOperations::upsert(
 }
 
 CouchbaseOperations::Result CouchbaseOperations::delete_(
-    const string& key, string collection_name) {
+    const std::string& key, std::string collection_name) {
   CouchbaseRequest request(&local_bucket_to_collection_manifest_);
   CouchbaseResponse response;
   brpc::Controller cntl;
@@ -2162,9 +2162,9 @@ CouchbaseOperations::Result CouchbaseOperations::delete_(
   return result;
 }
 
-CouchbaseOperations::Result CouchbaseOperations::add(const string& key,
-                                                     const string& value,
-                                                     string collection_name) {
+CouchbaseOperations::Result CouchbaseOperations::add(const std::string& key,
+                                                     const std::string& value,
+                                                     std::string collection_name) {
   CouchbaseRequest request(&local_bucket_to_collection_manifest_);
   CouchbaseResponse response;
   brpc::Controller cntl;
@@ -2175,24 +2175,24 @@ CouchbaseOperations::Result CouchbaseOperations::add(const string& key,
 }
 
 CouchbaseOperations::Result CouchbaseOperations::authenticate(
-    const string& username, const string& password,
-    const string& server_address, const string& bucket_name) {
+    const std::string& username, const std::string& password,
+    const std::string& server_address, const std::string& bucket_name) {
   return authenticateAll(username, password, server_address, bucket_name, false,
                          "");
 }
 
 CouchbaseOperations::Result CouchbaseOperations::authenticateSSL(
-    const string& username, const string& password,
-    const string& server_address, const string& bucket_name,
-    string path_to_cert) {
+    const std::string& username, const std::string& password,
+    const std::string& server_address, const std::string& bucket_name,
+    std::string path_to_cert) {
   return authenticateAll(username, password, server_address, bucket_name, true,
                          path_to_cert);
 }
 
 CouchbaseOperations::Result CouchbaseOperations::authenticateAll(
-    const string& username, const string& password,
-    const string& server_address, const string& bucket_name, bool enable_ssl,
-    string path_to_cert) {
+    const std::string& username, const std::string& password,
+    const std::string& server_address, const std::string& bucket_name, bool enable_ssl,
+    std::string path_to_cert) {
   // Create a channel to the Couchbase server
   brpc::ChannelOptions options;
   options.protocol = brpc::PROTOCOL_COUCHBASE;
@@ -2280,7 +2280,7 @@ CouchbaseOperations::Result CouchbaseOperations::authenticateAll(
 }
 
 CouchbaseOperations::Result CouchbaseOperations::selectBucket(
-    const string& bucket_name) {
+    const std::string& bucket_name) {
   CouchbaseRequest request(&local_bucket_to_collection_manifest_);
   CouchbaseResponse response;
   brpc::Controller cntl;
@@ -2350,7 +2350,7 @@ CouchbaseOperations::Result CouchbaseOperations::selectBucket(
 }
 
 CouchbaseOperations::Result CouchbaseOperations::append(
-    const string& key, const string& value, string collection_name) {
+    const std::string& key, const std::string& value, std::string collection_name) {
   CouchbaseRequest request(&local_bucket_to_collection_manifest_);
   CouchbaseResponse response;
   brpc::Controller cntl;
@@ -2361,7 +2361,7 @@ CouchbaseOperations::Result CouchbaseOperations::append(
 }
 
 CouchbaseOperations::Result CouchbaseOperations::prepend(
-    const string& key, const string& value, string collection_name) {
+    const std::string& key, const std::string& value, std::string collection_name) {
   CouchbaseRequest request(&local_bucket_to_collection_manifest_);
   CouchbaseResponse response;
   brpc::Controller cntl;
@@ -2391,7 +2391,7 @@ CouchbaseOperations::Result CouchbaseOperations::version() {
     result.error_message = cntl.ErrorText();
     return result;
   }
-  string version;
+  std::string version;
   if (response.popVersion(&version) == false) {
     result.success = false;
     result.value = "";
@@ -2423,9 +2423,9 @@ bool CouchbaseOperations::beginPipeline() {
 }
 
 bool CouchbaseOperations::pipelineRequest(operation_type op_type,
-                                          const string& key,
-                                          const string& value,
-                                          string collection_name) {
+                                          const std::string& key,
+                                          const std::string& value,
+                                          std::string collection_name) {
   if (!pipeline_active) {
     DEBUG_PRINT("Pipeline not active. Call beginPipeline() first.");
     return false;
@@ -2486,8 +2486,8 @@ bool CouchbaseOperations::pipelineRequest(operation_type op_type,
   }
   return true;
 }
-vector<CouchbaseOperations::Result> CouchbaseOperations::executePipeline() {
-  vector<CouchbaseOperations::Result> results;
+std::vector<CouchbaseOperations::Result> CouchbaseOperations::executePipeline() {
+  std::vector<CouchbaseOperations::Result> results;
 
   if (!pipeline_active || pipeline_operations_queue.empty()) {
     DEBUG_PRINT("No pipeline active or no operations queued");
@@ -2525,7 +2525,7 @@ vector<CouchbaseOperations::Result> CouchbaseOperations::executePipeline() {
     pipeline_operations_queue.pop();
     switch (op_type) {
       case GET: {
-        string value;
+        std::string value;
         uint32_t flags = 0;
         uint64_t cas = 0;
         if (response->popGet(&value, &flags, &cas) == false) {

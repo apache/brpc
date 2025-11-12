@@ -140,7 +140,7 @@ void perform_crud_operations_col1(brpc::CouchbaseOperations& couchbase_ops,
     stats->operations_successful++;
   } else {
     stats->operations_failed++;
-    cout << "UPSERT failed: " << result.error_message << std::endl;
+    std::cout << "UPSERT failed: " << result.error_message << std::endl;
     return;
   }
 
@@ -152,7 +152,7 @@ void perform_crud_operations_col1(brpc::CouchbaseOperations& couchbase_ops,
     stats->operations_successful++;
   } else {
     stats->operations_failed++;
-    cout << "GET failed: " << result.error_message << std::endl;
+    std::cout << "GET failed: " << result.error_message << std::endl;
     return;
   }
 
