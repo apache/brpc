@@ -263,7 +263,6 @@ private:
     // The number of new WRs posted in the local Recv Queue
     butil::atomic<uint16_t> _new_rq_wrs;
 
-    butil::atomic<uint16_t> _remote_recv_window;
     // butex for inform read events on TCP fd during handshake
     butil::atomic<int> *_read_butex;
 
