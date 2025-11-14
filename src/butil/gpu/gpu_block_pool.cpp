@@ -298,7 +298,7 @@ void BlockPoolAllocator::extendRegion() {
     int64_t aligned_bytes = REGION_SIZE;
     if (ptr != aligned_ptr) {
         uintptr_t region_end = uintptr_t(ptr) + REGION_SIZE;
-        uintptr_t aligned_end_ptr = (region_end + alignment - 1) & ~(alignment - 1);
+        uintptr_t aligned_end_ptr = region_end & ~(alignment - 1);
         aligned_bytes = uintptr_t(aligned_end_ptr) - uintptr_t(aligned_ptr);
         LOG(WARNING) << "addr is not aligned with 4096: " << ptr << ", aligned_bytes: " << aligned_bytes
             << ", region_size: " << REGION_SIZE;
