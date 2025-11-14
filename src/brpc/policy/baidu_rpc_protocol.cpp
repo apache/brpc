@@ -109,9 +109,12 @@ ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
 
     char header_buf[12];
     size_t n = 0;
+    uint32_t body_size;
+    uint32_t meta_size;
+    ParseError pe = PARSE_OK;
+
 #if BRPC_WITH_GDR
     void* prefetch_d2h_data = NULL;
-
     uint64_t data_meta = source->get_first_data_meta();
     bool is_gpu_memory = (data_meta > 0 && data_meta <= UINT_MAX);
     butil::gdr::BlockPoolAllocator* host_allocator = butil::gdr::BlockPoolAllocators::singleton()->get_cpu_allocator();
@@ -129,74 +132,58 @@ ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
 #else
     n = source->copy_to(header_buf, sizeof(header_buf));
 #endif  // BRPC_WITH_GDR
-    if (n >= 4) {
-        void* dummy = header_buf;
-        if (*(const uint32_t*)dummy != *(const uint32_t*)"PRPC") {
-#if BRPC_WITH_GDR
-            if (is_gpu_memory) {
-                host_allocator->DeallocateRaw(prefetch_d2h_data);
+
+    do {
+        if (n >= 4) {
+            void* dummy = header_buf;
+            if (*(const uint32_t*)dummy != *(const uint32_t*)"PRPC") {
+                pe = PARSE_ERROR_TRY_OTHERS;
+                break;
             }
-#endif  // BRPC_WITH_GDR
-            return MakeParseError(PARSE_ERROR_TRY_OTHERS);
-        }
-    } else {
-        if (memcmp(header_buf, "PRPC", n) != 0) {
-#if BRPC_WITH_GDR
-            if (is_gpu_memory) {
-                host_allocator->DeallocateRaw(prefetch_d2h_data);
+        } else {
+            if (memcmp(header_buf, "PRPC", n) != 0) {
+                pe = PARSE_ERROR_TRY_OTHERS;
+                break;
             }
-#endif  // BRPC_WITH_GDR
-            return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
-    }
-    if (n < sizeof(header_buf)) {
+        if (n < sizeof(header_buf)) {
+            pe = PARSE_ERROR_NOT_ENOUGH_DATA;
+            break;
+        }
+        butil::RawUnpacker(header_buf + 4).unpack32(body_size).unpack32(meta_size);
+        if (body_size > FLAGS_max_body_size) {
+            // We need this log to report the body_size to give users some clues
+            // which is not printed in InputMessenger.
+            LOG(ERROR) << "body_size=" << body_size << " from "
+                       << socket->remote_side() << " is too large";
+            pe = PARSE_ERROR_TOO_BIG_DATA;
+            break;
+        } else if (source->length() < sizeof(header_buf) + body_size) {
+            pe = PARSE_ERROR_NOT_ENOUGH_DATA;
+            break;
+        }
+        if (meta_size > body_size) {
+            LOG(ERROR) << "meta_size=" << meta_size << " is bigger than body_size="
+                       << body_size;
+            // Pop the message
+            source->pop_front(sizeof(header_buf) + body_size);
+            pe = PARSE_ERROR_TRY_OTHERS;
+            break;
+        }
+    } while (0);
+
+    if (pe != PARSE_OK) {
 #if BRPC_WITH_GDR
         if (is_gpu_memory) {
             host_allocator->DeallocateRaw(prefetch_d2h_data);
         }
 #endif  // BRPC_WITH_GDR
-        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
+        return MakeParseError(pe);
     }
-    uint32_t body_size;
-    uint32_t meta_size;
-    butil::RawUnpacker(header_buf + 4).unpack32(body_size).unpack32(meta_size);
-    if (body_size > 128 * 1024 * 1024) {
-        LOG(ERROR) << "body_size=" << body_size << " from "
-                   << socket->remote_side() << " is too large";
-    }
-    if (body_size > FLAGS_max_body_size) {
-        // We need this log to report the body_size to give users some clues
-        // which is not printed in InputMessenger.
-        LOG(ERROR) << "body_size=" << body_size << " from "
-                   << socket->remote_side() << " is too large";
-#if BRPC_WITH_GDR
-        if (is_gpu_memory) {
-            host_allocator->DeallocateRaw(prefetch_d2h_data);
-        }
-#endif  // BRPC_WITH_GDR
-        return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
-    } else if (source->length() < sizeof(header_buf) + body_size) {
-#if BRPC_WITH_GDR
-        if (is_gpu_memory) {
-            host_allocator->DeallocateRaw(prefetch_d2h_data);
-        }
-#endif  // BRPC_WITH_GDR
-        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
-    }
-    if (meta_size > body_size) {
-        LOG(ERROR) << "meta_size=" << meta_size << " is bigger than body_size="
-                   << body_size;
-        // Pop the message
-        source->pop_front(sizeof(header_buf) + body_size);
-#if BRPC_WITH_GDR
-        if (is_gpu_memory) {
-            host_allocator->DeallocateRaw(prefetch_d2h_data);
-        }
-#endif  // BRPC_WITH_GDR
-        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
-    }
+
     source->pop_front(sizeof(header_buf));
     MostCommonMessage* msg = MostCommonMessage::Get();
+
 #if BRPC_WITH_GDR
     if (is_gpu_memory) {
         if (header_size + meta_size <= n) {
