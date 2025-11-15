@@ -377,27 +377,50 @@ size_t RedisCommandParser::ParsedArgsSize() {
 ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
                                        std::vector<butil::StringPiece>* args,
                                        butil::Arena* arena) {
+    ParseError err = PARSE_OK;
+    do {
+        RedisCommandConsumeState state = ConsumeImpl(buf, arena, &err);
+        if (state == CONSUME_STATE_CONTINUE) {
+            continue;
+        } else if (state == CONSUME_STATE_DONE) {
+            break;
+        } else {
+            return err;
+        }
+    } while (true);
+    
+    args->swap(_args);
+    Reset();
+    return PARSE_OK;
+}
+
+RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
+                                                         butil::Arena* arena,
+                                                         ParseError* err) {
     const auto pfc = static_cast<const char *>(buf.fetch1());
     if (pfc == NULL) {
-        return PARSE_ERROR_NOT_ENOUGH_DATA;
+        *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+        return CONSUME_STATE_ERROR;
     }
     // '*' stands for array "*<size>\r\n<sub-reply1><sub-reply2>..."
     if (!_parsing_array && *pfc != '*') {
         if (!std::isalpha(static_cast<unsigned char>(*pfc))) {
-            return PARSE_ERROR_TRY_OTHERS;
+            *err = PARSE_ERROR_TRY_OTHERS;
+            return CONSUME_STATE_ERROR;
         }
         const size_t buf_size = buf.size();
         const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
         buf.copy_to(copy_str, buf_size);
         if (*copy_str == ' ') {
-            return PARSE_ERROR_ABSOLUTELY_WRONG;
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
         }
         copy_str[buf_size] = '\0';
         const size_t crlf_pos = butil::StringPiece(copy_str, buf_size).find("\r\n");
         if (crlf_pos == butil::StringPiece::npos) {  // not enough data
-            return PARSE_ERROR_NOT_ENOUGH_DATA;
+            *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+            return CONSUME_STATE_ERROR;
         }
-        args->clear();
         size_t offset = 0;
         while (offset < crlf_pos && copy_str[offset] != ' ') {
             ++offset;
@@ -407,11 +430,11 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         for (size_t i = 0; i < offset; ++i) {
             first_arg[i] = tolower(first_arg[i]);
         }
-        args->push_back(butil::StringPiece(first_arg, offset));
+        _args.push_back(butil::StringPiece(first_arg, offset));
         if (offset == crlf_pos) {
             // only one argument, directly return
             buf.pop_front(crlf_pos + 2);
-            return PARSE_OK;
+            return CONSUME_STATE_DONE;
         }
         size_t arg_start_pos = ++offset;
 
@@ -422,7 +445,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
             const auto arg_length = offset - arg_start_pos;
             const auto arg = static_cast<char *>(arena->allocate(arg_length));
             memcpy(arg, copy_str + arg_start_pos, arg_length);
-            args->push_back(butil::StringPiece(arg, arg_length));
+            _args.push_back(butil::StringPiece(arg, arg_length));
             arg_start_pos = ++offset;
         }
 
@@ -431,61 +454,69 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
             const auto arg_length = crlf_pos - arg_start_pos;
             const auto arg = static_cast<char *>(arena->allocate(arg_length));
             memcpy(arg, copy_str + arg_start_pos, arg_length);
-            args->push_back(butil::StringPiece(arg, arg_length));
+            _args.push_back(butil::StringPiece(arg, arg_length));
         }
 
         buf.pop_front(crlf_pos + 2);
-        return PARSE_OK;
+        return CONSUME_STATE_DONE;
     }
     // '$' stands for bulk string "$<length>\r\n<string>\r\n"
     if (_parsing_array && *pfc != '$') {
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
     }
     char intbuf[32];  // enough for fc + 64-bit decimal + \r\n
     const size_t ncopied = buf.copy_to(intbuf, sizeof(intbuf) - 1);
     intbuf[ncopied] = '\0';
     const size_t crlf_pos = butil::StringPiece(intbuf, ncopied).find("\r\n");
     if (crlf_pos == butil::StringPiece::npos) {  // not enough data
-        return PARSE_ERROR_NOT_ENOUGH_DATA;
+        *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+        return CONSUME_STATE_ERROR;
     }
     char* endptr = NULL;
     int64_t value = strtoll(intbuf + 1/*skip fc*/, &endptr, 10);
     if (endptr != intbuf + crlf_pos) {
         LOG(ERROR) << '`' << intbuf + 1 << "' is not a valid 64-bit decimal";
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
     }
     if (value < 0) {
         LOG(ERROR) << "Invalid len=" << value << " in redis command";
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
     }
     if (!_parsing_array) {
         if (value > (int64_t)(FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece))) {
-            LOG(ERROR) << "command array size exceeds limit! max=" 
-                       << (FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece)) 
+            LOG(ERROR) << "command array size exceeds limit! max="
+                       << (FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece))
                        << ", actually=" << value;
-            return PARSE_ERROR_ABSOLUTELY_WRONG;
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
         }
         buf.pop_front(crlf_pos + 2/*CRLF*/);
         _parsing_array = true;
         _length = value;
         _index = 0;
         _args.resize(value);
-        return Consume(buf, args, arena);
+        return CONSUME_STATE_CONTINUE;
     }
     CHECK(_index < _length) << "a complete command has been parsed. "
-            "impl of RedisCommandParser::Parse is buggy";
+                               "impl of RedisCommandParser::Parse is buggy";
     const int64_t len = value;  // `value' is length of the string
     if (len < 0) {
         LOG(ERROR) << "string in command is nil!";
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
     }
     if (len > FLAGS_redis_max_allocation_size) {
-        LOG(ERROR) << "command string exceeds max allocation size! max=" 
+        LOG(ERROR) << "command string exceeds max allocation size! max="
                    << FLAGS_redis_max_allocation_size << ", actually=" << len;
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
     }
     if (buf.size() < crlf_pos + 2 + (size_t)len + 2/*CRLF*/) {
-        return PARSE_ERROR_NOT_ENOUGH_DATA;
+        *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+        return CONSUME_STATE_ERROR;
     }
     buf.pop_front(crlf_pos + 2/*CRLF*/);
     char* d = (char*)arena->allocate((len/8 + 1) * 8);
@@ -502,14 +533,13 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     buf.cutn(crlf, sizeof(crlf));
     if (crlf[0] != '\r' || crlf[1] != '\n') {
         LOG(ERROR) << "string in command is not ended with CRLF";
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
     }
-    if (++_index < _length) {
-        return Consume(buf, args, arena);
+    if (++_index == _length) {
+        return CONSUME_STATE_DONE;
     }
-    args->swap(_args);
-    Reset();
-    return PARSE_OK;
+    return CONSUME_STATE_CONTINUE;
 }
 
 void RedisCommandParser::Reset() {
