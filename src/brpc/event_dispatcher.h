@@ -226,6 +226,7 @@ public:
     int AddConsumer(int fd) {
         if (!_init) {
             LOG(ERROR) << "IOEvent has not been initialized";
+            errno = EINVAL;
             return -1;
         }
         return GetGlobalEventDispatcher(fd, _bthread_tag)

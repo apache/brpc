@@ -278,7 +278,7 @@ static void TryReadOnTcpDuringRdmaEst(Socket* s) {
                 return;
             }
             if (!s->MoreReadEvents(&progress)) {
-                break;
+                return;
             }
         } else if (nr == 0) {
             s->SetEOF();
@@ -332,7 +332,7 @@ void RdmaEndpoint::OnNewDataFromTcp(Socket* m) {
             return;
         }
         if (!m->MoreReadEvents(&progress)) {
-            break;
+            return;
         }
     }
 }
@@ -1418,7 +1418,7 @@ void RdmaEndpoint::PollCq(Socket* m) {
                 continue;
             }
             if (!m->MoreReadEvents(&progress)) {
-                break;
+                return;
             }
             if (ep->GetAndAckEvents() < 0) {
                 s->SetFailed(errno, "Fail to ack CQ event on %s",
