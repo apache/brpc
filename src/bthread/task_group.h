@@ -73,7 +73,7 @@ public:
 
 private:
     Value _value{};
-    // Used to protect `_cpu_time_stat' when __x86_64__ and __ARM_NEON is not defined.
+    // Used to protect `_cpu_time_stat' when __x86_64__, __ARM_NEON, and __riscv is not defined.
     FastPthreadMutex _mutex;
 };
 
