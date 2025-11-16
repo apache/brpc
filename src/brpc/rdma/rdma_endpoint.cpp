@@ -152,24 +152,24 @@ void HelloMessage::Deserialize(void* data) {
     qp_num = butil::NetToHost32(*(uint32_t*)((char*)current_pos + 16));
 }
 
-RdmaResource::RdmaResource() 
-    : qp(NULL)
-    , cq(NULL)
-    , comp_channel(NULL)
-    , next(NULL) { }
-
 RdmaResource::~RdmaResource() {
-    if (qp) {
+    if (NULL != qp) {
         IbvDestroyQp(qp);
-        qp = NULL;
     }
-    if (cq) {
-        IbvDestroyCq(cq);
-        cq = NULL;
+    if (NULL != polling_cq) {
+        IbvDestroyCq(polling_cq);
     }
-    if (comp_channel) {
-        IbvDestroyCompChannel(comp_channel);
-        comp_channel = NULL;
+    if (NULL != send_cq) {
+        IbvDestroyCq(send_cq);
+    }
+    if (NULL != send_comp_channel) {
+        IbvDestroyCompChannel(send_comp_channel);
+    }
+    if (NULL != recv_cq) {
+        IbvDestroyCq(recv_cq);
+    }
+    if (NULL != recv_comp_channel) {
+        IbvDestroyCompChannel(recv_comp_channel);
     }
 }
 
@@ -177,13 +177,13 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     : _socket(s)
     , _state(UNINIT)
     , _resource(NULL)
-    , _cq_events(0)
-    , _cq_sid(INVALID_SOCKET_ID)
+    , _send_cq_events(0)
+    , _recv_cq_events(0)
+    , _send_cq_sid(INVALID_SOCKET_ID)
+    , _recv_cq_sid(INVALID_SOCKET_ID)
+    , _polling_cq_sid(INVALID_SOCKET_ID)
     , _sq_size(FLAGS_rdma_sq_size)
     , _rq_size(FLAGS_rdma_rq_size)
-    , _sbuf()
-    , _rbuf()
-    , _rbuf_data()
     , _remote_recv_block_size(0)
     , _accumulated_ack(0)
     , _unsolicited(0)
@@ -221,23 +221,29 @@ RdmaEndpoint::~RdmaEndpoint() {
 void RdmaEndpoint::Reset() {
     DeallocateResources();
 
-    _cq_events = 0;
-    _cq_sid = INVALID_SOCKET_ID;
     _state = UNINIT;
+    _resource = NULL;
+    _send_cq_events = 0;
+    _recv_cq_events = 0;
+    _send_cq_sid = INVALID_SOCKET_ID;
+    _recv_cq_sid = INVALID_SOCKET_ID;
+    _polling_cq_sid = INVALID_SOCKET_ID;
     _sbuf.clear();
     _rbuf.clear();
     _rbuf_data.clear();
+    _remote_recv_block_size = 0;
     _accumulated_ack = 0;
     _unsolicited = 0;
+    _unsolicited_bytes = 0;
     _sq_current = 0;
     _sq_unsignaled = 0;
+    _sq_sent = 0;
+    _rq_received = 0;
     _local_window_capacity = 0;
     _remote_window_capacity = 0;
     _remote_rq_window_size.store(0, butil::memory_order_relaxed);
     _sq_window_size.store(0, butil::memory_order_relaxed);
     _new_rq_wrs = 0;
-    _sq_sent = 0;
-    _rq_received = 0;
 }
 
 void RdmaConnect::StartConnect(const Socket* socket,
@@ -262,6 +268,7 @@ void RdmaConnect::StartConnect(const Socket* socket,
     if (bthread_start_background(&tid, &attr,
                 RdmaEndpoint::ProcessHandshakeAtClient, socket->_rdma_ep) < 0) {
         LOG(FATAL) << "Fail to start handshake bthread";
+        Run();
     } else {
         s.release();
     }
@@ -1079,71 +1086,100 @@ int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
     return 0;
 }
 
-static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
-    RdmaResource* res = new (std::nothrow) RdmaResource;
-    if (!res) {
-        return NULL;
+static bool AllocateCq(ibv_comp_channel*& comp_channel, ibv_cq*& cq) {
+    comp_channel = IbvCreateCompChannel(GetRdmaContext());
+    if (NULL == comp_channel) {
+        PLOG(WARNING) << "Fail to create comp channel for CQ";
+        return false;
     }
 
-    if (!FLAGS_rdma_use_polling) {
-        res->comp_channel = IbvCreateCompChannel(GetRdmaContext());
-        if (!res->comp_channel) {
-            PLOG(WARNING) << "Fail to create comp channel for CQ";
-            delete res;
-            return NULL;
-        }
-
-        butil::make_close_on_exec(res->comp_channel->fd);
-        if (butil::make_non_blocking(res->comp_channel->fd) < 0) {
-            PLOG(WARNING) << "Fail to set comp channel nonblocking";
-            delete res;
-            return NULL;
-        }
-
-        res->cq = IbvCreateCq(GetRdmaContext(), 2 * FLAGS_rdma_prepared_qp_size,
-                              NULL, res->comp_channel, GetRdmaCompVector());
-        if (!res->cq) {
-            PLOG(WARNING) << "Fail to create CQ";
-            delete res;
-            return NULL;
-        }
-    } else {
-        res->cq = IbvCreateCq(GetRdmaContext(), 2 * FLAGS_rdma_prepared_qp_size,
-                              NULL, NULL, 0);
-        if (!res->cq) {
-            PLOG(WARNING) << "Fail to create CQ";
-            delete res;
-            return NULL;
-        }
+    if (butil::make_close_on_exec(comp_channel->fd) < 0) {
+        PLOG(WARNING) << "Fail to set comp channel close-on-exec";
+        return false;
+    }
+    if (butil::make_non_blocking(comp_channel->fd) < 0) {
+        PLOG(WARNING) << "Fail to set comp channel nonblocking";
+        return false;
     }
 
+    cq = IbvCreateCq(GetRdmaContext(), FLAGS_rdma_prepared_qp_size,
+                               NULL, comp_channel, GetRdmaCompVector());
+    if (NULL == cq) {
+        PLOG(WARNING) << "Fail to create CQ";
+        return false;
+    }
+
+    return true;
+}
+
+static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size, uint32_t rq_size) {
     ibv_qp_init_attr attr;
     memset(&attr, 0, sizeof(attr));
-    attr.send_cq = res->cq;
-    attr.recv_cq = res->cq;
-    // NOTE: Since we hope to reduce send completion events, we set signaled
-    // send_wr every 1/4 of the total wnd. The wnd will increase when the ack
-    // is received, which means the receive side has already received the data
-    // in the corresponding send_wr. However, the ack does not mean the send_wr
-    // has been removed from SQ if it is set unsignaled. The reason is that
-    // the unsignaled send_wr is removed from SQ only after the CQE of next
-    // signaled send_wr is polled. Thus in a rare case, a new send_wr cannot be
-    // posted to SQ even in the wnd is not empty. In order to solve this
-    // problem, we enlarge the size of SQ to contain redundant 1/4 of the wnd,
-    // which is the maximum number of unsignaled send_wrs.
-    attr.cap.max_send_wr = sq_size * 5 / 4; /*NOTE*/
+    attr.send_cq = send_cq;
+    attr.recv_cq = recv_cq;
+    attr.cap.max_send_wr = sq_size;
     attr.cap.max_recv_wr = rq_size;
     attr.cap.max_send_sge = GetRdmaMaxSge();
     attr.cap.max_recv_sge = 1;
     attr.qp_type = IBV_QPT_RC;
-    res->qp = IbvCreateQp(GetRdmaPd(), &attr);
-    if (!res->qp) {
-        PLOG(WARNING) << "Fail to create QP";
-        delete res;
-        return NULL;
+    return IbvCreateQp(GetRdmaPd(), &attr);
+}
+
+static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
+    std::unique_ptr<RdmaResource> resource(new RdmaResource);
+    if (!FLAGS_rdma_use_polling) {
+        if (!AllocateCq(resource->send_comp_channel, resource->send_cq)) {
+            PLOG(WARNING) << "Fail to create send CQ";
+            return NULL;
+        }
+
+        if (!AllocateCq(resource->recv_comp_channel, resource->recv_cq)) {
+            PLOG(WARNING) << "Fail to create recv CQ";
+            return NULL;
+        }
+
+        resource->qp = AllocateQp(resource->send_cq, resource->recv_cq, sq_size, rq_size);
+        if (NULL == resource->qp) {
+            PLOG(WARNING) << "Fail to create QP";
+            return NULL;
+        }
+    } else {
+        resource->polling_cq =
+            IbvCreateCq(GetRdmaContext(), 2 * FLAGS_rdma_prepared_qp_size, NULL, NULL, 0);
+        if (NULL == resource->polling_cq) {
+            PLOG(WARNING) << "Fail to create polling CQ";
+            return NULL;
+        }
+        resource->qp = AllocateQp(resource->polling_cq,
+                                  resource->polling_cq,
+                                  sq_size, rq_size);
+        if (NULL == resource->qp) {
+            PLOG(WARNING) << "Fail to create QP";
+            return NULL;
+        }
     }
 
-    return res;
+    return resource.release();
+}
+
+SocketId RdmaEndpoint::CreateSocket(int fd, ibv_cq* cq, int solicited_only) {
+    SocketId socket_id = INVALID_SOCKET_ID;
+    int err = ibv_req_notify_cq(cq, solicited_only);
+    if (err != 0) {
+        LOG(WARNING) << "Fail to arm CQ comp channel: " << berror(err);
+        return socket_id;
+    }
+
+    SocketOptions options;
+    options.user = this;
+    options.keytable_pool = _socket->_keytable_pool;
+    options.fd = fd;
+    options.on_edge_triggered_events = PollCq;
+    if (Socket::Create(options, &socket_id) < 0) {
+        PLOG(WARNING) << "Fail to create socket for cq";
+    }
+
+    return socket_id;
 }
 
 int RdmaEndpoint::AllocateResources() {
@@ -1172,26 +1208,22 @@ int RdmaEndpoint::AllocateResources() {
     }
 
     if (!FLAGS_rdma_use_polling) {
-        SocketOptions options;
-        options.user = this;
-        options.keytable_pool = _socket->_keytable_pool;
-        options.fd = _resource->comp_channel->fd;
-        options.on_edge_triggered_events = PollCq;
-        if (Socket::Create(options, &_cq_sid) < 0) {
-            PLOG(WARNING) << "Fail to create socket for cq";
+        _send_cq_sid = CreateSocket(_resource->send_comp_channel->fd,
+                                    _resource->send_cq, 0);
+        if (INVALID_SOCKET_ID == _send_cq_sid) {
             return -1;
         }
 
-        int err = ibv_req_notify_cq(_resource->cq, 1);
-        if (err != 0) {
-            LOG(WARNING) << "Fail to arm CQ comp channel: " << berror(err);
+        _recv_cq_sid = CreateSocket(_resource->recv_comp_channel->fd,
+                                    _resource->recv_cq, 1);
+        if (INVALID_SOCKET_ID == _recv_cq_sid) {
             return -1;
         }
     } else {
         SocketOptions options;
         options.user = this;
         options.keytable_pool = _socket->_keytable_pool;
-        if (Socket::Create(options, &_cq_sid) < 0) {
+        if (Socket::Create(options, &_polling_cq_sid) < 0) {
             PLOG(WARNING) << "Fail to create socket for cq";
             return -1;
         }
@@ -1292,6 +1324,40 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
     return 0;
 }
 
+void RdmaEndpoint::DeallocateCq(ibv_cq* cq, ibv_comp_channel* comp_channel,
+                                unsigned int cq_events, bthread_tag_t tag) {
+    if (NULL != cq) {
+        if (cq_events > 0) {
+            IbvAckCqEvents(cq, cq_events);
+        }
+        int err = IbvDestroyCq(cq);
+        LOG_IF(WARNING, 0 != err) << "Fail to destroy CQ: " << berror(err);
+    }
+    if (NULL != comp_channel) {
+        // Destroy send_comp_channel will destroy this fd,
+        // so that we should remove it from epoll fd first
+        GetGlobalEventDispatcher(comp_channel->fd, tag).RemoveConsumer(comp_channel->fd);
+        int err = IbvDestroyCompChannel(comp_channel);
+        LOG_IF(WARNING, 0 != err) << "Fail to destroy CQ channel: " << berror(err);
+
+    }
+}
+
+void RdmaEndpoint::SetSocketFailed(SocketId socket_id, bool remove_consumer) {
+    if (INVALID_SOCKET_ID == socket_id) {
+        return;
+    }
+    SocketUniquePtr s;
+    if (Socket::Address(socket_id, &s) == 0) {
+        if (remove_consumer) {
+            s->_io_event.RemoveConsumer(s->_fd);
+        }
+        s->_user = NULL;  // Do not release user (this RdmaEndpoint).
+        s->_fd = -1;  // Already remove fd from epoll fd.
+        s->SetFailed();
+    }
+}
+
 void RdmaEndpoint::DeallocateResources() {
     if (!_resource) {
         return;
@@ -1309,73 +1375,48 @@ void RdmaEndpoint::DeallocateResources() {
             move_to_rdma_resource_list = true;
         }
     }
-    int fd = -1;
-    if (_resource->comp_channel) {
-        fd = _resource->comp_channel->fd;
-    }
-    int err;
     if (!move_to_rdma_resource_list) {
-        if (_resource->qp) {
-            err = IbvDestroyQp(_resource->qp);
-            if (err != 0) {
-                LOG(WARNING) << "Fail to destroy QP: " << berror(err);
-            }
+        if (NULL != _resource->qp) {
+            int err = IbvDestroyQp(_resource->qp);
+            LOG_IF(WARNING, 0 != err) << "Fail to destroy QP: " << berror(err);
             _resource->qp = NULL;
         }
-        if (_resource->cq) {
-            IbvAckCqEvents(_resource->cq, _cq_events);
-            err = IbvDestroyCq(_resource->cq);
-            if (err != 0) {
-                PLOG(WARNING) << "Fail to destroy CQ: " << berror(err);
-            }
-            _resource->cq = NULL;
-        }
-        if (_resource->comp_channel) {
-            // destroy comp_channel will destroy this fd
-            // so that we should remove it from epoll fd first
-            _socket->_io_event.RemoveConsumer(fd);
-            fd = -1;
-            err = IbvDestroyCompChannel(_resource->comp_channel);
-            if (err != 0) {
-                LOG(WARNING) << "Fail to destroy CQ channel: " << berror(err);
-            }
-            _resource->comp_channel = NULL;
-        }
+
+        DeallocateCq(_resource->send_cq, _resource->send_comp_channel,
+                     _send_cq_events, _socket->_io_event.bthread_tag());
+        DeallocateCq(_resource->recv_cq, _resource->recv_comp_channel,
+                     _recv_cq_events, _socket->_io_event.bthread_tag());
+        _resource->send_cq = NULL;
+        _resource->recv_cq = NULL;
+        _resource->send_comp_channel = NULL;
+        _resource->recv_comp_channel = NULL;
         delete _resource;
-        _resource = NULL;
     }
 
-    SocketUniquePtr s;
-    if (_cq_sid != INVALID_SOCKET_ID) {
-        if (Socket::Address(_cq_sid, &s) == 0) {
-            s->_user = NULL;  // do not release user (this RdmaEndpoint)
-            if (fd >= 0) {
-                _socket->_io_event.RemoveConsumer(fd);
-            }
-            s->_fd = -1;  // already remove fd from epoll fd
-            s->SetFailed();
-        }
-        _cq_sid = INVALID_SOCKET_ID;
-    }
+    SetSocketFailed(_send_cq_sid, move_to_rdma_resource_list);
+    SetSocketFailed(_recv_cq_sid, move_to_rdma_resource_list);
+    SetSocketFailed(_polling_cq_sid, false);
 
     if (move_to_rdma_resource_list) {
-        if (_resource->cq) {
-            IbvAckCqEvents(_resource->cq, _cq_events);
+        if (NULL != _resource->send_cq) {
+            IbvAckCqEvents(_resource->send_cq, _send_cq_events);
+        }
+        if (NULL != _resource->recv_cq) {
+            IbvAckCqEvents(_resource->recv_cq, _recv_cq_events);
         }
         BAIDU_SCOPED_LOCK(*g_rdma_resource_mutex);
         _resource->next = g_rdma_resource_list;
         g_rdma_resource_list = _resource;
     }
-
-    _resource = NULL;
 }
 
 static const int MAX_CQ_EVENTS = 128;
 
-int RdmaEndpoint::GetAndAckEvents() {
+int RdmaEndpoint::GetAndAckEvents(ibv_comp_channel* comp_channel,
+                                  ibv_cq* cq, unsigned int* cq_events) {
     int events = 0; void* context = NULL;
-    while (1) {
-        if (IbvGetCqEvent(_resource->comp_channel, &_resource->cq, &context) != 0) {
+    while (true) {
+        if (IbvGetCqEvent(comp_channel, &cq, &context) != 0) {
             if (errno != EAGAIN) {
                 return -1;
             }
@@ -1386,10 +1427,10 @@ int RdmaEndpoint::GetAndAckEvents() {
     if (events == 0) {
         return 0;
     }
-    _cq_events += events;
-    if (_cq_events >= MAX_CQ_EVENTS) {
-        IbvAckCqEvents(_resource->cq, _cq_events);
-        _cq_events = 0;
+    *cq_events += events;
+    if (*cq_events >= MAX_CQ_EVENTS) {
+        IbvAckCqEvents(cq, *cq_events);
+        *cq_events = 0;
     }
     return 0;
 }
@@ -1406,14 +1447,31 @@ void RdmaEndpoint::PollCq(Socket* m) {
     }
     CHECK(ep == s->_rdma_ep);
 
+    bool send = false;
+    ibv_comp_channel* comp_channel = NULL;
+    ibv_cq* cq = NULL;
+    int solicited_only = 0;
+    unsigned int* cq_events = NULL;
+
     if (!FLAGS_rdma_use_polling) {
-        if (ep->GetAndAckEvents() < 0) {
+        send = ep->_resource->send_comp_channel->fd == m->_fd;
+        comp_channel = send ?
+            ep->_resource->send_comp_channel : ep->_resource->recv_comp_channel;
+        cq = send ? ep->_resource->send_cq : ep->_resource->recv_cq;
+        solicited_only = send ? 0 : 1;
+        cq_events = send ? &ep->_send_cq_events : &ep->_recv_cq_events;
+
+        if (ep->GetAndAckEvents(comp_channel, cq, cq_events) < 0) {
             const int saved_errno = errno;
-            PLOG(ERROR) << "Fail to get cq event: " << s->description();
+            PLOG(ERROR) << "Fail to get cq event from " << s->description();
             s->SetFailed(saved_errno, "Fail to get cq event from %s: %s",
                          s->description().c_str(), berror(saved_errno));
             return;
         }
+    } else {
+        // Polling is considered as non-send, so no need to change `send'.
+        // Only need to poll polling_cq.
+        cq = ep->_resource->polling_cq;
     }
 
     int progress = Socket::PROGRESS_INIT;
@@ -1421,7 +1479,7 @@ void RdmaEndpoint::PollCq(Socket* m) {
     InputMessenger::InputMessageClosure last_msg;
     ibv_wc wc[FLAGS_rdma_cqe_poll_once];
     while (true) {
-        int cnt = ibv_poll_cq(ep->_resource->cq, FLAGS_rdma_cqe_poll_once, wc);
+        int cnt = ibv_poll_cq(cq, FLAGS_rdma_cqe_poll_once, wc);
         if (cnt < 0) {
             const int saved_errno = errno;
             PLOG(WARNING) << "Fail to poll cq: " << s->description();
@@ -1439,10 +1497,10 @@ void RdmaEndpoint::PollCq(Socket* m) {
                 // that the event arrives after the poll but before the notify,
                 // we should re-poll the CQ once after the notify to check if
                 // there is an available CQE.
-                errno = ibv_req_notify_cq(ep->_resource->cq, 1);
+                errno = ibv_req_notify_cq(cq, solicited_only);
                 if (errno != 0) {
                     const int saved_errno = errno;
-                    PLOG(WARNING) << "Fail to arm CQ comp channel: " << s->description();
+                    PLOG(WARNING) << "Fail to arm CQ comp channel from " << s->description();
                     s->SetFailed(saved_errno, "Fail to arm cq channel from %s: %s",
                             s->description().c_str(), berror(saved_errno));
                     return;
@@ -1453,7 +1511,7 @@ void RdmaEndpoint::PollCq(Socket* m) {
             if (!m->MoreReadEvents(&progress)) {
                 break;
             }
-            if (ep->GetAndAckEvents() < 0) {
+            if (ep->GetAndAckEvents(comp_channel, cq, cq_events) < 0) {
                 s->SetFailed(errno, "Fail to ack CQ event on %s",
                     s->description().c_str());
                 return;
@@ -1486,6 +1544,10 @@ void RdmaEndpoint::PollCq(Socket* m) {
             } else if (nr > 0) {
                 bytes += nr;
             }
+        }
+        // Send CQE has no messages to process.
+        if (send) {
+            continue;
         }
 
         // Just call PrcessNewMessage once for all of these CQEs.
@@ -1546,6 +1608,8 @@ int RdmaEndpoint::GlobalInitialize() {
     } else if (FLAGS_rdma_recv_block_type == "huge") {
         g_rdma_recv_block_size = GetBlockSize(2) - IOBUF_BLOCK_HEADER_LEN;
     } else {
+        LOG(ERROR) << "rdma_recv_block_type incorrect "
+                   << "(valid value: default/large/huge)";
         errno = EINVAL;
         return -1;
     }
@@ -1589,9 +1653,9 @@ void RdmaEndpoint::GlobalRelease() {
 std::vector<RdmaEndpoint::PollerGroup> RdmaEndpoint::_poller_groups;
 
 int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
-                                        std::function<void(void)> callback,
-                                        std::function<void(void)> init_fn,
-                                        std::function<void(void)> release_fn) {
+                                        std::function<void()> callback,
+                                        std::function<void()> init_fn,
+                                        std::function<void()> release_fn) {
     if (!FLAGS_rdma_use_polling) {
         return 0;
     }
@@ -1673,27 +1737,27 @@ void RdmaEndpoint::PollingModeRelease(bthread_tag_t tag) {
     auto& running = group.running;
     running.store(false, std::memory_order_relaxed);
     for (int i = 0; i < FLAGS_rdma_poller_num; ++i) {
-        bthread_join(pollers[i].tid, nullptr);
+        bthread_join(pollers[i].tid, NULL);
     }
 }
 
 void RdmaEndpoint::PollerAddCqSid() {
-    auto index = butil::fmix32(_cq_sid) % FLAGS_rdma_poller_num;
+    auto index = butil::fmix32(_polling_cq_sid) % FLAGS_rdma_poller_num;
     auto& group = _poller_groups[bthread_self_tag()];
     auto& pollers = group.pollers;
     auto& poller = pollers[index];
-    if (_cq_sid != INVALID_SOCKET_ID) {
-        poller.op_queue.Enqueue(CqSidOp{_cq_sid, CqSidOp::ADD});
+    if (INVALID_SOCKET_ID != _polling_cq_sid) {
+        poller.op_queue.Enqueue(CqSidOp{_polling_cq_sid, CqSidOp::ADD});
     }
 }
 
 void RdmaEndpoint::PollerRemoveCqSid() {
-    auto index = butil::fmix32(_cq_sid) % FLAGS_rdma_poller_num;
+    auto index = butil::fmix32(_polling_cq_sid) % FLAGS_rdma_poller_num;
     auto& group = _poller_groups[bthread_self_tag()];
     auto& pollers = group.pollers;
     auto& poller = pollers[index];
-    if (_cq_sid != INVALID_SOCKET_ID) {
-        poller.op_queue.Enqueue(CqSidOp{_cq_sid, CqSidOp::REMOVE});
+    if (INVALID_SOCKET_ID != _polling_cq_sid) {
+        poller.op_queue.Enqueue(CqSidOp{_polling_cq_sid, CqSidOp::REMOVE});
     }
 }
 

@@ -54,26 +54,29 @@ public:
 
 private:
     void Run();
-    void (*_done)(int, void*);
-    void* _data;
+    void (*_done)(int, void*){NULL};
+    void* _data{NULL};
 };
 
 struct RdmaResource {
-    ibv_qp* qp;
-    ibv_cq* cq;
-    ibv_comp_channel* comp_channel;
-    RdmaResource* next;
-    RdmaResource();
+    ibv_qp* qp{NULL};
+    ibv_cq* polling_cq{NULL};
+    ibv_cq* send_cq{NULL};
+    ibv_cq* recv_cq{NULL};
+    ibv_comp_channel* send_comp_channel{NULL};
+    ibv_comp_channel* recv_comp_channel{NULL};
+    RdmaResource* next{NULL};
+    RdmaResource() = default;
     ~RdmaResource();
     DISALLOW_COPY_AND_ASSIGN(RdmaResource);
 };
 
 class BAIDU_CACHELINE_ALIGNMENT RdmaEndpoint : public SocketUser {
 friend class RdmaConnect;
-friend class brpc::Socket;
+friend class Socket;
 public:
-    RdmaEndpoint(Socket* s);
-    ~RdmaEndpoint();
+    explicit RdmaEndpoint(Socket* s);
+    ~RdmaEndpoint() override;
 
     // Global initialization
     // Return 0 if success, -1 if failed and errno set
@@ -128,6 +131,17 @@ private:
 
     // Process handshake at the server
     static void* ProcessHandshakeAtServer(void* arg);
+
+    // Create a socket which wrap the comp channel of CQ.
+    SocketId CreateSocket(int fd, ibv_cq* cq, int solicited_only);
+
+    // Deallocate CQ resource.
+    static void DeallocateCq(ibv_cq* cq, ibv_comp_channel* comp_channel,
+                             unsigned int cq_events, bthread_tag_t tag);
+
+    // Release a socket which wrap the comp channel of CQ.
+    static void SetSocketFailed(SocketId socket_id, bool remove_consumer);
+
 
     // Allocate resources
     // Return 0 if success, -1 if failed and errno set
@@ -195,7 +209,8 @@ private:
     int BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num);
 
     // Get event from comp channel and ack the events
-    int GetAndAckEvents();
+    int GetAndAckEvents(ibv_comp_channel* comp_channel,
+                        ibv_cq* cq, unsigned int* cq_events);
 
     // Poll CQ and get the work completion
     static void PollCq(Socket* m);
@@ -221,11 +236,15 @@ private:
     // rdma resource
     RdmaResource* _resource;
 
-    // the number of events requiring ack
-    int _cq_events;
+    // The number of events requiring ack.
+    unsigned int _send_cq_events;
+    unsigned int _recv_cq_events;
 
-    // the SocketId which wrap the comp channel of CQ
-    SocketId _cq_sid;
+    // The SocketId which wrap the comp channel of CQ.
+    SocketId _send_cq_sid;
+    SocketId _recv_cq_sid;
+    // The SocketId which is for polling CQ.
+    SocketId _polling_cq_sid;
 
     // Capacity of local Send Queue and local Recv Queue
     uint16_t _sq_size;
@@ -284,9 +303,9 @@ private:
         butil::MPSCQueue<CqSidOp, butil::ObjectPoolAllocator<CqSidOp>> op_queue;
         // Callback used for io_uring/spdk etc
         std::function<void()> callback;
-        // Init and Destory function
-        std::function<void(void)> init_fn;
-        std::function<void(void)> release_fn;
+        // Init and Destroy function
+        std::function<void()> init_fn;
+        std::function<void()> release_fn;
     };
     // Poller group
     struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {
