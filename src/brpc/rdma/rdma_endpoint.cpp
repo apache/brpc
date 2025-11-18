@@ -102,11 +102,6 @@ static const uint32_t ACK_MSG_RDMA_OK = 0x1;
 static butil::Mutex* g_rdma_resource_mutex = NULL;
 static RdmaResource* g_rdma_resource_list = NULL;
 
-enum SendType {
-    SEND_TYPE_RDMA_DATA = 0,
-    SEND_TYPE_RDMA_IMM,
-};
-
 struct HelloMessage {
     void Serialize(void* data) const;
     void Deserialize(void* data);
@@ -902,7 +897,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             // Refer to:
             // http::www.rdmamojo.com/2014/06/30/working-unsignaled-completions/
             wr.send_flags |= IBV_SEND_SIGNALED;
-            wr.wr_id = SEND_TYPE_RDMA_DATA;
+            wr.wr_id = _sq_unsignaled;
             _sq_unsignaled = 0;
         }
 
@@ -955,7 +950,6 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
     wr.imm_data = butil::HostToNet32(imm);
     wr.send_flags |= IBV_SEND_SOLICITED;
     wr.send_flags |= IBV_SEND_SIGNALED;
-    wr.wr_id = SEND_TYPE_RDMA_IMM;
 
     ibv_send_wr* bad = NULL;
     int err = ibv_post_send(_resource->qp, &wr, &bad);
@@ -972,14 +966,13 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
     bool zerocopy = FLAGS_rdma_recv_zerocopy;
     switch (wc.opcode) {
     case IBV_WC_SEND: {  // send completion
-        if (SEND_TYPE_RDMA_IMM == wc.wr_id) {
+        if (0 == wc.wr_id) {
             // Do nothing for imm.
             return 0;
         }
-        // Update window
-        uint16_t wnd_to_update = _local_window_capacity / 4;
-        _sq_window_size.fetch_add(wnd_to_update, butil::memory_order_relaxed);
-        // Wake up writing thread right after every signaled sending cqe.
+        // Update SQ window.
+        _sq_window_size.fetch_add(wc.wr_id, butil::memory_order_relaxed);
+        // Wake up writing thread right after every signaled send WC.
         _socket->WakeAsEpollOut();
         return 0;
     }
@@ -1182,6 +1175,21 @@ SocketId RdmaEndpoint::CreateSocket(int fd, ibv_cq* cq, int solicited_only) {
     return socket_id;
 }
 
+void RdmaEndpoint::SetSocketFailed(SocketId socket_id, bool remove_consumer) {
+    if (INVALID_SOCKET_ID == socket_id) {
+        return;
+    }
+    SocketUniquePtr s;
+    if (Socket::Address(socket_id, &s) == 0) {
+        if (remove_consumer) {
+            s->_io_event.RemoveConsumer(s->_fd);
+        }
+        s->_user = NULL;  // Do not release user (this RdmaEndpoint).
+        s->_fd = -1;  // Already remove fd from epoll fd.
+        s->SetFailed();
+    }
+}
+
 int RdmaEndpoint::AllocateResources() {
     if (BAIDU_UNLIKELY(g_skip_rdma_init)) {
         // For UT
@@ -1340,21 +1348,6 @@ void RdmaEndpoint::DeallocateCq(ibv_cq* cq, ibv_comp_channel* comp_channel,
         int err = IbvDestroyCompChannel(comp_channel);
         LOG_IF(WARNING, 0 != err) << "Fail to destroy CQ channel: " << berror(err);
 
-    }
-}
-
-void RdmaEndpoint::SetSocketFailed(SocketId socket_id, bool remove_consumer) {
-    if (INVALID_SOCKET_ID == socket_id) {
-        return;
-    }
-    SocketUniquePtr s;
-    if (Socket::Address(socket_id, &s) == 0) {
-        if (remove_consumer) {
-            s->_io_event.RemoveConsumer(s->_fd);
-        }
-        s->_user = NULL;  // Do not release user (this RdmaEndpoint).
-        s->_fd = -1;  // Already remove fd from epoll fd.
-        s->SetFailed();
     }
 }
 

@@ -135,12 +135,12 @@ private:
     // Create a socket which wrap the comp channel of CQ.
     SocketId CreateSocket(int fd, ibv_cq* cq, int solicited_only);
 
+    // Release a socket which wrap the comp channel of CQ.
+    static void SetSocketFailed(SocketId socket_id, bool remove_consumer);
+
     // Deallocate CQ resource.
     static void DeallocateCq(ibv_cq* cq, ibv_comp_channel* comp_channel,
                              unsigned int cq_events, bthread_tag_t tag);
-
-    // Release a socket which wrap the comp channel of CQ.
-    static void SetSocketFailed(SocketId socket_id, bool remove_consumer);
 
 
     // Allocate resources
