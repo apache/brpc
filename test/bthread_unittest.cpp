@@ -17,6 +17,7 @@
 
 #include <execinfo.h>
 #include <gtest/gtest.h>
+#include <memory>
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
@@ -566,6 +567,13 @@ void* create_span_func() {
     return (void*)targets[idx];
 }
 
+void destroy_span_func(void* span) {
+    LOG(INFO) << "Destroy span " << (uint64_t)span;
+}
+
+void end_span_func() {
+}
+
 TEST_F(BthreadTest, test_span) {
     uint64_t p1 = 0;
     uint64_t p2 = 0;
@@ -587,7 +595,7 @@ TEST_F(BthreadTest, test_span) {
 
     LOG(INFO) << "Test bthread create span";
 
-    bthread_set_create_span_func(create_span_func);
+    ASSERT_EQ(0, bthread_set_span_funcs(create_span_func, destroy_span_func, end_span_func));
 
     bthread_t multi_th1;
     bthread_t multi_th2;
@@ -602,6 +610,8 @@ TEST_F(BthreadTest, test_span) {
     ASSERT_NE(multi_p1, multi_p2);
     ASSERT_NE(std::find(targets, targets + 4, multi_p1), targets + 4);
     ASSERT_NE(std::find(targets, targets + 4, multi_p2), targets + 4);
+
+    ASSERT_EQ(0, bthread_set_span_funcs(NULL, NULL, NULL));
 }
 
 void* dummy_thread(void*) {
