@@ -78,6 +78,7 @@ int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
     if (idle_timeout_sec > 0) {
         bthread_attr_t tmp = BTHREAD_ATTR_NORMAL;
         tmp.tag = _bthread_tag;
+        bthread_attr_set_name(&tmp, "CloseIdleConnections");
         if (bthread_start_background(&_close_idle_tid, &tmp, CloseIdleConnections, this) != 0) {
             LOG(FATAL) << "Fail to start bthread";
             return -1;

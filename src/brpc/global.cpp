@@ -635,7 +635,9 @@ static void GlobalInitializeOrDieImpl() {
 
     // We never join GlobalUpdate, let it quit with the process.
     bthread_t th;
-    CHECK(bthread_start_background(&th, NULL, GlobalUpdate, NULL) == 0)
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    bthread_attr_set_name(&attr, "GlobalUpdate");
+    CHECK(bthread_start_background(&th, &attr, GlobalUpdate, NULL) == 0)
         << "Fail to start GlobalUpdate";
 }
 
