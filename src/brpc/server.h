@@ -714,7 +714,7 @@ friend class Controller;
 
     template <typename T>
     int SetServiceMaxConcurrency(T* service) {
-        if (NULL != service) {
+        if (NULL != service && NULL != service->_status) {
             const AdaptiveMaxConcurrency* amc = &service->_max_concurrency;
             if (amc->type() == AdaptiveMaxConcurrency::UNLIMITED) {
                 amc = &_options.method_max_concurrency;

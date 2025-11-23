@@ -26,15 +26,13 @@ namespace brpc {
 BAIDU_CASSERT(sizeof(nshead_t) == 36, sizeof_nshead_must_be_36);
 
 NsheadService::NsheadService() : _additional_space(0) {
-    _status = new (std::nothrow) MethodStatus;
-    LOG_IF(FATAL, _status == NULL) << "Fail to new MethodStatus";
+    _status = new MethodStatus;
 }
 
 NsheadService::NsheadService(const NsheadServiceOptions& options)
     : _status(NULL), _additional_space(options.additional_space) {
     if (options.generate_status) {
-        _status = new (std::nothrow) MethodStatus;
-        LOG_IF(FATAL, _status == NULL) << "Fail to new MethodStatus";
+        _status = new MethodStatus;
     }
 }
 
