@@ -105,7 +105,7 @@ public:
 
             // sleep a while to send another part.
             bthread_usleep(10000);
-            if (FLAGS_enable_progressive_timout && i > 50) {
+            if (FLAGS_enable_progressive_timeout && i > 50) {
                 bthread_usleep(100000000UL);
             }
         }
@@ -198,7 +198,7 @@ public:
 
             // sleep a while to send another part.
             bthread_usleep(10000 * 10);
-            if (FLAGS_enable_progressive_timout && i > 50) {
+            if (FLAGS_enable_progressive_timeout && i > 50) {
                 bthread_usleep(100000000UL);
             }
         }
