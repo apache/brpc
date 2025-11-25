@@ -95,7 +95,8 @@ DEFINE_bool(graceful_quit_on_sigterm, false,
             "Register SIGTERM handle func to quit graceful");
 DEFINE_bool(graceful_quit_on_sighup, false,
             "Register SIGHUP handle func to quit graceful");            
-
+DEFINE_bool(log_idle_progressive_read_close, false,
+            "Print log when an idle progressive read is closed");     
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
 const IdlNames idl_multi_req_single_res = { "", "res" };
@@ -329,6 +330,15 @@ void Controller::Call::Reset() {
     begin_time_us = 0;
     sending_sock.reset(NULL);
     stream_user_data = NULL;
+}
+
+void Controller::set_progressive_read_timeout_ms(int32_t progressive_read_timeout_ms){
+    if(progressive_read_timeout_ms <= 0x7fffffff){
+        _progressive_read_timeout_ms = progressive_read_timeout_ms;
+    } else {
+        _progressive_read_timeout_ms = 0x7fffffff;
+        LOG(WARNING) << "progressive_read_timeout_seconds is limited to 0x7fffffff";
+    }
 }
 
 void Controller::set_timeout_ms(int64_t timeout_ms) {
@@ -1027,6 +1037,43 @@ void Controller::SubmitSpan() {
     _span = NULL;
 }
 
+void* Controller::HandleIdleProgressiveReader(void* arg) {
+    auto* cntl = static_cast<Controller*>(arg);
+    const uint64_t CHECK_INTERVAL_US = 1000000UL;
+    auto log_idle = FLAGS_log_idle_progressive_read_close;
+    std::vector<SocketId> remove_socket_ids;
+    while (bthread_usleep(CHECK_INTERVAL_US) == 0) {
+        // TODO: this is not efficient for a lot of connections(>100K)
+        auto socketIds = cntl->_checking_progressive_read_fds;
+        int64_t progressive_read_timeout_us = cntl->_progressive_read_timeout_ms * 1000;
+        for (auto socket_id :  socketIds){
+            SocketUniquePtr s;
+            if (Socket::Address(socket_id, &s) == 0) {
+                auto cpuwide_time_us = butil::cpuwide_time_us();
+                const int64_t last_active_us = s->last_active_time_us();
+                if (cpuwide_time_us - last_active_us <= progressive_read_timeout_us) {
+                    continue;
+                }
+                LOG_IF(INFO, log_idle) << "progressive read timeout socket id : " << socket_id
+                << " progressive read timeout us : " << progressive_read_timeout_us
+                << " progressive read idle duration : " << cpuwide_time_us - last_active_us;
+                if (s->parsing_context() != NULL) {
+                    s->parsing_context()->Destroy();
+                }
+                s->ReleaseReferenceIfIdle(0xffffffff);
+                remove_socket_ids.push_back(socket_id);
+            } else {
+                LOG(ERROR) << "not found the socket id : " << socket_id;
+                remove_socket_ids.push_back(socket_id);
+            }
+        }
+        for (auto remove_socket_id : remove_socket_ids) {
+            socketIds.erase(remove_socket_id);
+        }
+    }
+    return NULL;
+}
+
 void Controller::HandleSendFailed() {
     if (!FailedInline()) {
         SetFailed("Must be SetFailed() before calling HandleSendFailed()");
@@ -1179,6 +1226,11 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         // Tag the socket so that when the response comes back, the parser will
         // stop before reading all body.
         _current_call.sending_sock->read_will_be_progressive(_connection_type);
+        auto socket_id = _current_call.sending_sock->id();
+        if (_progressive_read_timeout_ms > 0 && _checking_progressive_read_fds.seek(socket_id) == NULL) {
+            _checking_progressive_read_fds.insert(socket_id);
+            LOG(INFO) << "insert the progressive read fd : " << socket_id << " socket fds size : " << _checking_progressive_read_fds.size();
+        }
     }
 
     // Handle authentication
