@@ -369,8 +369,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
 
     ControllerPrivateAccessor accessor(cntl);
 
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_base_real_us(msg->base_real_us());
         span->set_received_us(msg->received_us());
         // TODO: changing when imsg_guard->read_body_progressively() is true
@@ -717,8 +716,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         hreq.uri().set_path(path);
     }
 
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         hreq.SetHeader("x-bd-trace-id", butil::string_printf(
                            "%llu", (unsigned long long)span->trace_id()));
         hreq.SetHeader("x-bd-span-id", butil::string_printf(
@@ -834,7 +832,7 @@ HttpResponseSender::~HttpResponseSender() {
         return;
     }
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
+    auto span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
@@ -1487,7 +1485,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    std::shared_ptr<Span> span;
     const std::string& path = req_header.uri().path();
     const std::string* trace_id_str = req_header.GetHeader("x-bd-trace-id");
     if (IsTraceable(trace_id_str)) {
@@ -1508,7 +1506,11 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
         span = Span::CreateServerSpan(
             path, trace_id, span_id, parent_span_id, msg->base_real_us());
+#if BRPC_SPAN_ENABLE_SHARED_PTR_API
         accessor.set_span(span);
+#else
+        accessor.set_span(span.get());
+#endif
         span->set_log_id(cntl->log_id());
         span->set_remote_side(user_addr);
         span->set_received_us(msg->received_us());
