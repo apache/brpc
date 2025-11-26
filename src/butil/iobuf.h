@@ -70,6 +70,11 @@ public:
     static const size_t DEFAULT_BLOCK_SIZE = 8192;
     static const size_t INITIAL_CAP = 32; // must be power of 2
 
+    enum MemoryMeta {
+        HOST_MEMORY = 0,
+        GPU_MEMORY = 1
+    };
+
     struct Block;
 
     // can't directly use `struct iovec' here because we also need to access the
@@ -265,6 +270,11 @@ public:
     // The meta is specified with append_user_data_with_meta before.
     // 0 means the meta is invalid.
     uint64_t get_first_data_meta();
+
+    // Get the high 32 bits of the data meta of the first byte in this IOBuf.
+    // The meta is specified with append_user_data_with_meta before.
+    // we use 0 to specify host memory, 1 to specify GPU memory
+    uint32_t get_first_data_meta_high32();
     void* get_first_data_ptr();
 
     // Resizes the buf to a length of n characters.

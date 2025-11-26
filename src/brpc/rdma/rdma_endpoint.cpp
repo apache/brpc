@@ -1056,7 +1056,8 @@ int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
             void* device_ptr = device_allocator->AllocateRaw(g_rdma_recv_block_size);
             auto deleter = [device_allocator](void* data) { device_allocator->DeallocateRaw(data); };
             lkey = device_allocator->get_lkey(device_ptr);
-            _rbuf[_rq_received].append_user_data_with_meta(device_ptr, g_rdma_recv_block_size, deleter , lkey);
+            uint64_t data_meta = (static_cast<uint64_t>(butil::IOBuf::GPU_MEMORY) << 32) | lkey;
+            _rbuf[_rq_received].append_user_data_with_meta(device_ptr, g_rdma_recv_block_size, deleter , data_meta);
             _rbuf_data[_rq_received] = device_ptr;
 #else
             butil::IOBufAsZeroCopyOutputStream os(&_rbuf[_rq_received],

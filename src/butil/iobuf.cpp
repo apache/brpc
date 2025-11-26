@@ -1193,7 +1193,21 @@ uint64_t IOBuf::get_first_data_meta() {
     if (!(r.block->flags & IOBUF_BLOCK_FLAGS_USER_DATA)) {
         return 0;
     }
-    return r.block->u.data_meta;
+    return (r.block->u.data_meta & 0x00000000FFFFFFFF);
+}
+
+// only when user use append_user_data_with_meta(), lkey is stored in data_meta
+// We add this function for GDR, we want to know whether the data is in Host memory or GPU memory
+// since lkey is uint32_t type, thus we use the high 32 bit to store
+uint32_t IOBuf::get_first_data_meta_high32() {
+    if (_ref_num() == 0) {
+        return 0;
+    }
+    IOBuf::BlockRef const& r = _ref_at(0);
+    if (!(r.block->flags & IOBUF_BLOCK_FLAGS_USER_DATA)) {
+        return 0;
+    }
+    return (uint32_t)(r.block->u.data_meta >> 32);
 }
 
 void* IOBuf::get_first_data_ptr() {
