@@ -162,7 +162,7 @@ public:
         uint64_t log_id;
         std::string request_id;
     };
-    static void* HandleIdleProgressiveReader(void* arg);
+    static void HandleIdleProgressiveReader(void* arg);
 public:
     Controller();
     Controller(const Inheritable& parent_ctx);
@@ -326,16 +326,6 @@ public:
     // Make the RPC end when the HTTP response has complete headers and let
     // user read the remaining body by using ReadProgressiveAttachmentBy().
     void response_will_be_read_progressively() { 
-        if(has_flag(FLAGS_READ_PROGRESSIVELY) && _progressive_read_idle_tid > 0) {
-            return;
-        }
-        bthread_attr_t tmp = BTHREAD_ATTR_NORMAL;
-        tmp.tag = _bthread_tag;
-        if(bthread_start_background(&_progressive_read_idle_tid, &tmp, HandleIdleProgressiveReader, this) != 0){
-            LOG(FATAL) << "Failed to start controller bthread id : " << _progressive_read_idle_tid;
-        }
-        LOG(INFO) << "Start Response progressive reader idle checker close idle_tid : " << _progressive_read_idle_tid
-        << " _bthread_tag : " << _bthread_tag;
         add_flag(FLAGS_READ_PROGRESSIVELY); 
     }
     // Make the RPC end when the HTTP request has complete headers and let
@@ -853,9 +843,7 @@ private:
     int32_t _backup_request_ms;
     int32_t _progressive_read_timeout_ms;
     butil::FlatSet<SocketId> _checking_progressive_read_fds;
-    bthread_t _progressive_read_idle_tid;
-    // Controller belongs to this tag
-    bthread_tag_t _bthread_tag = bthread_self_tag();
+    mutable butil::Lock _progressive_read_lock;
     // Priority: `_backup_request_policy' > `_backup_request_ms'.
     BackupRequestPolicy* _backup_request_policy;
     // If this rpc call has retry/backup request,this var save the real timeout for current call
