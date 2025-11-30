@@ -49,7 +49,7 @@
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
-    BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_INVALID };
+    BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_INVALID, {0} };
 
 DEFINE_bool(show_bthread_creation_in_vars, false, "When this flags is on, The time "
             "from bthread creation to first run will be recorded and shown in /vars");
@@ -1141,6 +1141,7 @@ void print_task(std::ostream& os, bthread_t tid, bool enable_trace,
            << "\nattr={stack_type=" << attr.stack_type
            << " flags=" << attr.flags
            << " specified_tag=" << attr.tag
+           << " name=" << attr.name
            << " keytable_pool=" << attr.keytable_pool
            << "}\nhas_tls=" << has_tls
            << "\nuptime_ns=" << butil::cpuwide_time_ns() - cpuwide_start_ns

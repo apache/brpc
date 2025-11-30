@@ -197,6 +197,13 @@ static void QueueMessage(InputMessageBase* to_run_msg,
     if (!to_run_msg) {
         return;
     }
+
+#if BRPC_WITH_RDMA
+    if (rdma::FLAGS_rdma_disable_bthread) {
+        ProcessInputMessage(to_run_msg);
+        return;
+    }
+#endif
     // Create bthread for last_msg. The bthread is not scheduled
     // until bthread_flush() is called (in the worse case).
                 
@@ -207,14 +214,8 @@ static void QueueMessage(InputMessageBase* to_run_msg,
                           BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
     tmp.keytable_pool = keytable_pool;
     tmp.tag = bthread_self_tag();
-
-#if BRPC_WITH_RDMA
-    if (rdma::FLAGS_rdma_disable_bthread) {
-        ProcessInputMessage(to_run_msg);
-        return;
-    }
-#endif
-
+    bthread_attr_set_name(&tmp, "ProcessInputMessage");
+    
     if (!FLAGS_usercode_in_coroutine && bthread_start_background(
             &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
         ++*num_bthread_created;

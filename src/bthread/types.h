@@ -97,12 +97,14 @@ typedef struct {
     size_t nfree;
 } bthread_keytable_pool_stat_t;
 
+static const size_t BTHREAD_NAME_MAX_LENGTH = 31;
 // Attributes for thread creation.
 typedef struct bthread_attr_t {
     bthread_stacktype_t stack_type;
     bthread_attrflags_t flags;
     bthread_keytable_pool_t* keytable_pool;
     bthread_tag_t tag;
+    char name[BTHREAD_NAME_MAX_LENGTH + 1]; // do not use std::string to keep POD
 
 #if defined(__cplusplus)
     void operator=(unsigned stacktype_and_flags) {
@@ -120,6 +122,8 @@ typedef struct bthread_attr_t {
 #endif  // __cplusplus
 } bthread_attr_t;
 
+void bthread_attr_set_name(bthread_attr_t* attr, const char* name);
+
 // bthreads started with this attribute will run on stack of worker pthread and
 // all bthread functions that would block the bthread will block the pthread.
 // The bthread will not allocate its own stack, simply occupying a little meta
@@ -127,22 +131,22 @@ typedef struct bthread_attr_t {
 // obvious drawback is that you need more worker pthreads when you have a lot
 // of such bthreads.
 static const bthread_attr_t BTHREAD_ATTR_PTHREAD =
-{ BTHREAD_STACKTYPE_PTHREAD, 0, NULL, BTHREAD_TAG_INVALID };
+{ BTHREAD_STACKTYPE_PTHREAD, 0, NULL, BTHREAD_TAG_INVALID, {0} };
 
 // bthreads created with following attributes will have different size of
 // stacks. Default is BTHREAD_ATTR_NORMAL.
 static const bthread_attr_t BTHREAD_ATTR_SMALL = {BTHREAD_STACKTYPE_SMALL, 0, NULL,
-                                                  BTHREAD_TAG_INVALID};
+                                                  BTHREAD_TAG_INVALID, {0}};
 static const bthread_attr_t BTHREAD_ATTR_NORMAL = {BTHREAD_STACKTYPE_NORMAL, 0, NULL,
-                                                   BTHREAD_TAG_INVALID};
+                                                   BTHREAD_TAG_INVALID, {0}};
 static const bthread_attr_t BTHREAD_ATTR_LARGE = {BTHREAD_STACKTYPE_LARGE, 0, NULL,
-                                                  BTHREAD_TAG_INVALID};
+                                                  BTHREAD_TAG_INVALID, {0}};
 
 // bthreads created with this attribute will print log when it's started,
 // context-switched, finished.
 static const bthread_attr_t BTHREAD_ATTR_DEBUG = {
     BTHREAD_STACKTYPE_NORMAL, BTHREAD_LOG_START_AND_FINISH | BTHREAD_LOG_CONTEXT_SWITCH, NULL,
-    BTHREAD_TAG_INVALID};
+    BTHREAD_TAG_INVALID, {0}};
 
 static const size_t BTHREAD_EPOLL_THREAD_NUM = 1;
 static const bthread_t BTHREAD_ATOMIC_INIT = 0;
