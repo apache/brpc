@@ -669,3 +669,10 @@ uint64_t bthread_cpu_clock_ns(void) {
 }
 
 }  // extern "C"
+
+void bthread_attr_set_name(bthread_attr_t* attr, const char* name) {
+    if (attr) {
+        strncpy(attr->name, name, BTHREAD_NAME_MAX_LENGTH);
+        attr->name[BTHREAD_NAME_MAX_LENGTH] = '\0';
+    }
+}

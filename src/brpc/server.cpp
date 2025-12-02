@@ -1236,6 +1236,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     CHECK_EQ(INVALID_BTHREAD, _derivative_thread);
     bthread_attr_t tmp = BTHREAD_ATTR_NORMAL;
     tmp.tag = _options.bthread_tag;
+    bthread_attr_set_name(&tmp, "UpdateDerivedVars");
     if (bthread_start_background(&_derivative_thread, &tmp,
                                  UpdateDerivedVars, this) != 0) {
         LOG(ERROR) << "Fail to create _derivative_thread";

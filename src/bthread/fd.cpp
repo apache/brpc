@@ -141,8 +141,10 @@ public:
             PLOG(FATAL) << "Fail to epoll_create/kqueue";
             return -1;
         }
+        bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+        bthread_attr_set_name(&attr, "EpollThread::run_this");
         if (bthread_start_background(
-                &_tid, NULL, EpollThread::run_this, this) != 0) {
+                &_tid, &attr, EpollThread::run_this, this) != 0) {
             close(_epfd);
             _epfd = -1;
             LOG(FATAL) << "Fail to create epoll bthread";
