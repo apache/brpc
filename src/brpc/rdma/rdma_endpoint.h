@@ -59,13 +59,14 @@ private:
 };
 
 struct RdmaResource {
+    RdmaResource* next{NULL};
     ibv_qp* qp{NULL};
+    // For polling mode.
     ibv_cq* polling_cq{NULL};
+    // For event mode.
     ibv_cq* send_cq{NULL};
     ibv_cq* recv_cq{NULL};
-    ibv_comp_channel* send_comp_channel{NULL};
-    ibv_comp_channel* recv_comp_channel{NULL};
-    RdmaResource* next{NULL};
+    ibv_comp_channel* comp_channel{NULL};
     RdmaResource() = default;
     ~RdmaResource();
     DISALLOW_COPY_AND_ASSIGN(RdmaResource);
@@ -95,7 +96,8 @@ public:
     bool IsWritable() const;
 
     // For debug
-    void DebugInfo(std::ostream& os) const;
+    void DebugInfo(std::ostream& os,
+                   butil::StringPiece connector = "\n") const;
 
     // Callback when there is new epollin event on TCP fd
     static void OnNewDataFromTcp(Socket* m);
@@ -132,16 +134,8 @@ private:
     // Process handshake at the server
     static void* ProcessHandshakeAtServer(void* arg);
 
-    // Create a socket which wrap the comp channel of CQ.
-    SocketId CreateSocket(int fd, ibv_cq* cq, int solicited_only);
-
-    // Release a socket which wrap the comp channel of CQ.
-    static void SetSocketFailed(SocketId socket_id, bool remove_consumer);
-
     // Deallocate CQ resource.
-    static void DeallocateCq(ibv_cq* cq, ibv_comp_channel* comp_channel,
-                             unsigned int cq_events, bthread_tag_t tag);
-
+    static void DeallocateCq(ibv_cq* cq, unsigned int cq_events);
 
     // Allocate resources
     // Return 0 if success, -1 if failed and errno set
@@ -209,8 +203,10 @@ private:
     int BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num);
 
     // Get event from comp channel and ack the events
-    int GetAndAckEvents(ibv_comp_channel* comp_channel,
-                        ibv_cq* cq, unsigned int* cq_events);
+    int GetAndAckEvents(SocketUniquePtr& s);
+
+    // Request completion notification on a send/recv CQ.
+    int ReqNotifyCq(bool send_cq);
 
     // Poll CQ and get the work completion
     static void PollCq(Socket* m);
@@ -241,10 +237,7 @@ private:
     unsigned int _recv_cq_events;
 
     // The SocketId which wrap the comp channel of CQ.
-    SocketId _send_cq_sid;
-    SocketId _recv_cq_sid;
-    // The SocketId which is for polling CQ.
-    SocketId _polling_cq_sid;
+    SocketId _cq_sid;
 
     // Capacity of local Send Queue and local Recv Queue
     uint16_t _sq_size;
@@ -282,6 +275,8 @@ private:
     butil::atomic<uint16_t> _sq_window_size;
     // The number of new WRs posted in the local Recv Queue
     butil::atomic<uint16_t> _new_rq_wrs;
+    // The number of inflight send IMM.
+    butil::atomic<uint16_t> _imm_inflight;
 
     // butex for inform read events on TCP fd during handshake
     butil::atomic<int> *_read_butex;
