@@ -80,8 +80,7 @@ bool InitBlockPool(RegisterCallback cb);
 // FLAGS_rdma_memory_pool_user_specified_memory is true, user is  responsibility
 // of extending memory blocks , this ensuring flexibility for advanced use
 // cases.
-void* ExtendBlockPoolByUser(void* region_base, size_t region_size,
-                            int block_type);
+void* ExtendBlockPoolByUser(void* region_base, size_t region_size, int block_type);
 
 // Allocate a buf with length at least @a size (require: size>0)
 // Return the address allocated, NULL if failed and errno is set.

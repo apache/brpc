@@ -104,4 +104,6 @@ operator+(ScopeExitHelper, Callback&& callback) {
   auto BRPC_ANONYMOUS_VARIABLE(SCOPE_EXIT) =                \
       ::butil::internal::ScopeExitHelper() + [&]() noexcept
 
+#define BUTIL_SCOPE_EXIT BRPC_SCOPE_EXIT
+
 #endif // BUTIL_SCOPED_GUARD_H

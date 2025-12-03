@@ -190,7 +190,9 @@ int SocketMap::Init(const SocketMapOptions& options) {
     }
     if (_options.idle_timeout_second_dynamic != NULL ||
         _options.idle_timeout_second > 0) {
-        if (bthread_start_background(&_close_idle_thread, NULL,
+        bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+        bthread_attr_set_name(&attr, "RunWatchConnections");
+        if (bthread_start_background(&_close_idle_thread, &attr,
                                      RunWatchConnections, this) != 0) {
             LOG(FATAL) << "Fail to start bthread";
             return -1;

@@ -250,7 +250,9 @@ void RdmaConnect::StartConnect(const Socket* socket,
     _done = done;
     _data = data;
     bthread_t tid;
-    if (bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    bthread_attr_set_name(&attr, "RdmaProcessHandshakeAtClient");
+    if (bthread_start_background(&tid, &attr,
                 RdmaEndpoint::ProcessHandshakeAtClient, socket->_rdma_ep) < 0) {
         LOG(FATAL) << "Fail to start handshake bthread";
     } else {
@@ -309,7 +311,9 @@ void RdmaEndpoint::OnNewDataFromTcp(Socket* m) {
                 ep->_state = S_HELLO_WAIT;
                 SocketUniquePtr s;
                 m->ReAddress(&s);
-                if (bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+                bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+                bthread_attr_set_name(&attr, "RdmaProcessHandshakeAtServer");
+                if (bthread_start_background(&tid, &attr,
                             ProcessHandshakeAtServer, ep) < 0) {
                     ep->_state = UNINIT;
                     LOG(FATAL) << "Fail to start handshake bthread";
@@ -1616,6 +1620,7 @@ int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
         auto attr = FLAGS_rdma_disable_bthread ? BTHREAD_ATTR_PTHREAD
                                                : BTHREAD_ATTR_NORMAL;
         attr.tag = tag;
+        bthread_attr_set_name(&attr, "RdmaPolling");
         pollers[i].callback = callback;
         pollers[i].init_fn = init_fn;
         pollers[i].release_fn = release_fn;
