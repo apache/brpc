@@ -17,6 +17,7 @@
 
 
 
+#include "brpc/ssl_options.h"
 #include <openssl/bio.h>
 #ifndef USE_MESALINK
 
@@ -412,8 +413,18 @@ static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
 
     // TODO: Verify the CNAME in certificate matches the requesting host
     if (verify.verify_depth > 0) {
-        SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
-                                 | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
+        if (verify.verify_mode == VerifyMode::VERIFY_FAIL_IF_NO_PEER_CERT) {
+            SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
+                                     | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
+        } else if (verify.verify_mode == VerifyMode::VERIFY_PEER) {
+            SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+        } else if (verify.verify_mode == VerifyMode::VERIFY_NONE) {
+            SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+        } else {
+            // for forward compatibility
+            SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
+                                     | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
+        }
         SSL_CTX_set_verify_depth(ctx, verify.verify_depth);
         std::string cafile = verify.ca_file_path;
         if (cafile.empty()) {
