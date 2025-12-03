@@ -842,8 +842,6 @@ private:
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
     int32_t _progressive_read_timeout_ms;
-    butil::FlatSet<SocketId> _checking_progressive_read_fds;
-    mutable butil::Lock _progressive_read_lock;
     // Priority: `_backup_request_policy' > `_backup_request_ms'.
     BackupRequestPolicy* _backup_request_policy;
     // If this rpc call has retry/backup request,this var save the real timeout for current call

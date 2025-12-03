@@ -175,10 +175,16 @@ public:
     void OnEndOfMessage(const butil::Status&) {}
 };
 
-class ProgressiveTimeoutRead : public ProgressiveReader {
+class ProgressiveTimeoutReader : public ProgressiveReader {
 public:
-    explicit ProgressiveTimeoutRead(Controller* cntl, ProgressiveReader* reader):
-    _cntl(cntl), _reader(reader), _timeout_id(0), _latest_add_timer_ms(0), _add_timer_delay_ms(1000) {
+    explicit ProgressiveTimeoutReader(SocketId id, int32_t read_timeout_ms, ProgressiveReader* reader):
+    _socket_id(id), 
+    _read_timeout_ms(read_timeout_ms), 
+    _reader(reader), 
+    _timeout_id(0), 
+    _latest_add_timer_ms(0), 
+    _add_timer_delay_ms(1000),
+    _is_read_timeout(false) {
         AddIdleReadTimeoutMonitor();
     }
     butil::Status OnReadOnePart(const void* data, size_t length) {
@@ -187,28 +193,45 @@ public:
         return status;
     }
     void OnEndOfMessage(const butil::Status& status) {
-        _reader->OnEndOfMessage(status);
+        if (_is_read_timeout) {
+            _reader->OnEndOfMessage(butil::Status(ECONNRESET, "The progressive read timeout"));
+        } else {
+            _reader->OnEndOfMessage(status);
+        }
         if(_timeout_id > 0) {
             bthread_timer_del(_timeout_id);
         }
     }
+
+    SocketId GetSocketId() {
+        return _socket_id;
+    }
+
+    int32_t read_timeout_ms() {
+        return _read_timeout_ms;
+    }
+
+    void set_read_timeout(bool read_timeout = true) {
+        _is_read_timeout = read_timeout;
+    }
+
 private:
     void AddToTimer() {
         if (_timeout_id > 0) {
             bthread_timer_del(_timeout_id);
         }
         bthread_timer_add(&_timeout_id,
-            butil::milliseconds_from_now(_cntl->progressive_read_timeout_ms()),
+            butil::milliseconds_from_now(_read_timeout_ms),
             Controller::HandleIdleProgressiveReader,
-            _cntl
+            this
         );
     }
 
     void AddIdleReadTimeoutMonitor() {
-        if (_cntl->progressive_read_timeout_ms() <= 0) {
+        if (_read_timeout_ms <= 0) {
             return;
         }
-        if(_cntl->progressive_read_timeout_ms() < _add_timer_delay_ms) {
+        if(_read_timeout_ms < _add_timer_delay_ms) {
             AddToTimer();
             return;
         }
@@ -221,13 +244,15 @@ private:
     }
 
 private:
-    Controller* _cntl;
+    SocketId _socket_id;
+    int32_t _read_timeout_ms;
     ProgressiveReader* _reader;
     // Timer registered to trigger progressive timeout event
     bthread_timer_t _timeout_id;
     int64_t _latest_add_timer_ms;
     // avoid frequently add timer for idle handler
     int32_t _add_timer_delay_ms;
+    bool _is_read_timeout;
 };
 
 static IgnoreAllRead* s_ignore_all_read = NULL;
@@ -1097,47 +1122,37 @@ void Controller::HandleIdleProgressiveReader(void* arg) {
         LOG(ERROR) << "Controller::HandleIdleProgressiveReader arg is null.";
         return;
     }
-    auto* cntl = static_cast<Controller*>(arg);
+    ProgressiveTimeoutReader* reader = static_cast<ProgressiveTimeoutReader*>(arg);
+    SocketUniquePtr s;
+    if (Socket::Address(reader->GetSocketId(), &s) != 0) {
+        LOG(ERROR) << "not found the socket id : " << reader->GetSocketId();
+        return;
+    }
     auto log_idle = FLAGS_log_idle_progressive_read_close;
-    int64_t progressive_read_timeout_us = cntl->_progressive_read_timeout_ms * 1000;
-    std::vector<SocketId> remove_socket_ids;
-    butil::AutoLock guard(cntl->_progressive_read_lock);
-    auto socketIds = cntl->_checking_progressive_read_fds;
-    for (auto socket_id :  socketIds){
-        SocketUniquePtr s;
-        if (Socket::Address(socket_id, &s) == 0) {
-            int64_t pre_idle_duration_us = 0;
-            int64_t idle_duration_us = butil::cpuwide_time_us() - s->last_active_time_us();
-            while (progressive_read_timeout_us > idle_duration_us && idle_duration_us > pre_idle_duration_us) {
-                auto sleep_ms = (progressive_read_timeout_us - idle_duration_us) / 1000;
-                bthread_usleep(sleep_ms > 0 ? sleep_ms : 1);
-                pre_idle_duration_us = idle_duration_us;
-                idle_duration_us = butil::cpuwide_time_us() - s->last_active_time_us();
-            }
-            if (idle_duration_us <= pre_idle_duration_us) {
-                LOG_IF(INFO, log_idle) << "stop pgressive read timeout checking process!"
-                << " progressive_read_timeout_us : " << progressive_read_timeout_us
-                << " idle_duration_us : " << idle_duration_us
-                << " pre_idle_duration_us : " << pre_idle_duration_us;
-                return;
-            }
-            LOG_IF(INFO, log_idle) << "progressive read timeout socket id : " << socket_id
-            << " progressive read timeout us : " << progressive_read_timeout_us
-            << " progressive read idle duration : " << idle_duration_us;
-            if (s->parsing_context() != NULL) {
-                s->parsing_context()->Destroy();
-            }
-            s->ReleaseReferenceIfIdle(0);
-            cntl->CloseConnection("progressive read timeout");
-            remove_socket_ids.push_back(socket_id);
-        } else {
-            LOG(ERROR) << "not found the socket id : " << socket_id;
-            remove_socket_ids.push_back(socket_id);
-        }
+    int64_t progressive_read_timeout_us = reader->read_timeout_ms() * 1000;
+    int64_t pre_idle_duration_us = 0;
+    int64_t idle_duration_us = butil::cpuwide_time_us() - s->last_active_time_us();
+    while (progressive_read_timeout_us > idle_duration_us && idle_duration_us > pre_idle_duration_us) {
+        auto sleep_ms = (progressive_read_timeout_us - idle_duration_us) / 1000;
+        bthread_usleep(sleep_ms > 0 ? sleep_ms : 1);
+        pre_idle_duration_us = idle_duration_us;
+        idle_duration_us = butil::cpuwide_time_us() - s->last_active_time_us();
     }
-    for (auto remove_socket_id : remove_socket_ids) {
-        socketIds.erase(remove_socket_id);
+    if (idle_duration_us <= pre_idle_duration_us) {
+        LOG_IF(INFO, log_idle) << "stop progressive read timeout checking process!"
+        << " progressive_read_timeout_us : " << progressive_read_timeout_us
+        << " idle_duration_us : " << idle_duration_us
+        << " pre_idle_duration_us : " << pre_idle_duration_us;
+        return;
     }
+    reader->set_read_timeout();
+    LOG_IF(INFO, log_idle) << "progressive read timeout socket id : " << reader->GetSocketId()
+    << " progressive read timeout us : " << progressive_read_timeout_us
+    << " progressive read idle duration : " << idle_duration_us;
+    if (s->parsing_context() != NULL) {
+        s->parsing_context()->Destroy();
+    }
+    s->ReleaseReferenceIfIdle(0);
 }
 
 void Controller::HandleSendFailed() {
@@ -1292,11 +1307,6 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         // Tag the socket so that when the response comes back, the parser will
         // stop before reading all body.
         _current_call.sending_sock->read_will_be_progressive(_connection_type);
-        auto socket_id = _current_call.sending_sock->id();
-        butil::AutoLock guard(_progressive_read_lock);
-        if (_progressive_read_timeout_ms > 0 && _checking_progressive_read_fds.seek(socket_id) == NULL) {
-            _checking_progressive_read_fds.insert(socket_id);
-        }
     }
 
     // Handle authentication
@@ -1661,7 +1671,8 @@ void Controller::ReadProgressiveAttachmentBy(ProgressiveReader* r) {
     }
     add_flag(FLAGS_PROGRESSIVE_READER);
     if (progressive_read_timeout_ms() > 0) {
-        return  _rpa->ReadProgressiveAttachmentBy(new ProgressiveTimeoutRead(this, r));
+        auto reader = new ProgressiveTimeoutReader(_rpa->GetSocketId(), _progressive_read_timeout_ms, r);
+        return  _rpa->ReadProgressiveAttachmentBy(reader);
     }
     return _rpa->ReadProgressiveAttachmentBy(r);
 }
