@@ -87,6 +87,14 @@ class HttpContext : public ReadableProgressiveAttachment
                   , public InputMessageBase
                   , public HttpMessage {
 public:
+    SocketId GetSocketId() override {
+        return _socket_id;
+    }
+
+    void SetSocketId(SocketId id) override {
+        _socket_id = id;
+    }
+
     explicit HttpContext(bool read_body_progressively,
                          HttpMethod request_method = HTTP_METHOD_GET)
         : InputMessageBase()
@@ -122,6 +130,7 @@ public:
 
 private:
     bool _is_stage2;
+    SocketId _socket_id;
 };
 
 // Implement functions required in protocol.h
