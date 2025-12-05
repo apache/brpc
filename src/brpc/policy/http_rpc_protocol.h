@@ -91,7 +91,7 @@ public:
         return _socket_id;
     }
 
-    void SetSocketId(SocketId id) override {
+    void SetSocketId(SocketId id) {
         _socket_id = id;
     }
 
@@ -99,7 +99,8 @@ public:
                          HttpMethod request_method = HTTP_METHOD_GET)
         : InputMessageBase()
         , HttpMessage(read_body_progressively, request_method)
-        , _is_stage2(false) {
+        , _is_stage2(false)
+        , _socket_id(0) {
         // add one ref for Destroy
         butil::intrusive_ptr<HttpContext>(this).detach();
     }

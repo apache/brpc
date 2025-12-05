@@ -86,7 +86,6 @@ public:
     // r->Destroy() should be guaranteed to be called once and only once.
     virtual void ReadProgressiveAttachmentBy(ProgressiveReader* r) = 0;
     virtual SocketId GetSocketId() = 0;
-    virtual void SetSocketId(SocketId id) = 0;
 };
 
 } // namespace brpc
