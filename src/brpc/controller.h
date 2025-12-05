@@ -162,7 +162,6 @@ public:
         uint64_t log_id;
         std::string request_id;
     };
-    static void HandleIdleProgressiveReader(void* arg);
 public:
     Controller();
     Controller(const Inheritable& parent_ctx);
