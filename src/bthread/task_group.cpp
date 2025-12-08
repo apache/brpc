@@ -78,15 +78,6 @@ BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
-void* (*g_create_span_func)() = NULL;
-
-void* run_create_span_func() {
-    if (g_create_span_func) {
-        return g_create_span_func();
-    }
-    return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
-}
-
 AtomicInteger128::Value AtomicInteger128::load() const {
 #if __x86_64__ || __ARM_NEON
     // Supress compiler warning.
@@ -393,6 +384,12 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             thread_return = e.value();
         }
 
+        if (m->attr.flags & BTHREAD_INHERIT_SPAN) {
+            if (g_end_bthread_span) {
+                g_end_bthread_span();
+            }
+        }
+
         // TODO: Save thread_return
         (void)thread_return;
 
@@ -495,7 +492,11 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
     if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
-        m->local_storage.rpcz_parent_span = run_create_span_func();
+        if (g_create_bthread_span) {
+            m->local_storage.rpcz_parent_span = g_create_bthread_span();
+        } else {
+            m->local_storage.rpcz_parent_span = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
+        }
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
@@ -560,7 +561,11 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
     if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
-        m->local_storage.rpcz_parent_span = run_create_span_func();
+        if (g_create_bthread_span) {
+            m->local_storage.rpcz_parent_span = g_create_bthread_span();
+        } else {
+            m->local_storage.rpcz_parent_span = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
+        }
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
