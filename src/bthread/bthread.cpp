@@ -90,6 +90,8 @@ extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 extern void (*g_worker_startfn)();
 extern void (*g_tagged_worker_startfn)(bthread_tag_t);
+extern bool (*g_worker_idle_fn)(void);
+extern timespec g_worker_idle_timeout;
 extern void* (*g_create_span_func)();
 
 inline TaskControl* get_task_control() {
@@ -594,6 +596,24 @@ int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t)) {
         return EINVAL;
     }
     bthread::g_tagged_worker_startfn = start_fn;
+    return 0;
+}
+
+int bthread_set_worker_idle_callback(bool (*fn)(void), uint64_t timeout_us) {
+    // Allow clearing the callback by passing NULL
+    if (fn == NULL) {
+        bthread::g_worker_idle_fn = NULL;
+        bthread::g_worker_idle_timeout = {0, 0};
+        return 0;
+    }
+    if (timeout_us == 0) {
+        return EINVAL;
+    }
+    timespec wait_time;
+    wait_time.tv_sec = timeout_us / 1000000;
+    wait_time.tv_nsec = (timeout_us % 1000000) * 1000;
+    bthread::g_worker_idle_fn = fn;
+    bthread::g_worker_idle_timeout = wait_time;
     return 0;
 }
 

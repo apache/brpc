@@ -78,6 +78,11 @@ BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
+// Defined in task_control.cpp
+extern bool run_worker_idle_fn();
+extern bool (*g_worker_idle_fn)(void);
+extern timespec g_worker_idle_timeout;
+
 void* (*g_create_span_func)() = NULL;
 
 void* run_create_span_func() {
@@ -167,7 +172,17 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (_last_pl_state.stopped()) {
             return false;
         }
-        _pl->wait(_last_pl_state);
+        // Instead of waiting for signal, we shall wake up if there's a user idle task here.
+        // To avoid the current task never wake and missed the user's idle task.
+        if (g_worker_idle_fn) {
+            // If we successfuly finished the task, we shall not wait, and start next loop.
+            if (run_worker_idle_fn()) {
+                return true;
+            }
+            _pl->wait(_last_pl_state, &g_worker_idle_timeout);
+        } else {
+            _pl->wait(_last_pl_state);
+        }
         if (steal_task(tid)) {
             return true;
         }
@@ -179,7 +194,17 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (steal_task(tid)) {
             return true;
         }
-        _pl->wait(st);
+        // Instead of waiting for signal, we shall wake up if there's a user idle task here.
+        // To avoid the current task never wake and missed the user's idle task.
+        if (g_worker_idle_fn) {
+            if (run_worker_idle_fn()) {
+                // If we successfuly finished the task, we shall not wait, and start next loop.
+                return true;
+            }
+            _pl->wait(st, &g_worker_idle_timeout);
+        } else {
+            _pl->wait(st);
+        }
 #endif
     } while (true);
 }
