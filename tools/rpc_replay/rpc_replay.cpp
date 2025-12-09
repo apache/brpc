@@ -181,11 +181,23 @@ static void* replay_thread(void* arg) {
                 memcpy(&nshead_req.head, sample->meta.nshead().c_str(), sample->meta.nshead().length());
                 nshead_req.body = sample->request;
                 req_ptr = &nshead_req;
-            } else if (sample->meta.attachment_size() > 0) {
-                sample->request.cutn(
-                    &req.serialized_data(),
-                    sample->request.size() - sample->meta.attachment_size());
-                cntl->request_attachment() = sample->request.movable();
+            } else {
+                // Get attachment size with backward compatibility
+                int64_t attachment_size = 0;
+                if (sample->meta.has_attachment_size_long()) {
+                    attachment_size = sample->meta.attachment_size_long();
+                } else if (sample->meta.has_attachment_size()) {
+                    attachment_size = static_cast<int64_t>(sample->meta.attachment_size());
+                }
+                if (attachment_size > 0 && 
+                    static_cast<size_t>(attachment_size) < sample->request.size()) {
+                    sample->request.cutn(
+                        &req.serialized_data(),
+                        sample->request.size() - static_cast<size_t>(attachment_size));
+                    cntl->request_attachment() = sample->request.movable();
+                } else {
+                    req.serialized_data() = sample->request.movable();
+                }
             } else {
                 req.serialized_data() = sample->request.movable();
             }
