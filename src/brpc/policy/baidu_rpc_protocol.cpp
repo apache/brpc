@@ -16,6 +16,8 @@
 // under the License.
 
 
+#include <cinttypes>                            // PRId64, PRIu64
+#include <cstdint>                               // UINT32_MAX
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -69,16 +71,29 @@ DECLARE_bool(pb_enum_as_number);
 // 5. Not supported: chunk_info
 
 // Pack header into `buf'
-inline void PackRpcHeader(char* rpc_header, uint32_t meta_size, int payload_size) {
+inline void PackRpcHeader(char* rpc_header, uint32_t meta_size, size_t payload_size) {
     uint32_t* dummy = (uint32_t*)rpc_header;  // suppress strict-alias warning
     *dummy = *(uint32_t*)"PRPC";
-    butil::RawPacker(rpc_header + 4)
-        .pack32(meta_size + payload_size)
-        .pack32(meta_size);
+    // Check for overflow: meta_size + payload_size must fit in uint32_t
+    const uint64_t total_size = static_cast<uint64_t>(meta_size) + payload_size;
+    if (total_size > UINT32_MAX) {
+        LOG(ERROR) << "Total size (meta_size=" << meta_size 
+                   << " + payload_size=" << payload_size 
+                   << " = " << total_size 
+                   << ") exceeds uint32_t maximum (" << UINT32_MAX << ")";
+        // Truncate to maximum, but this will cause protocol error
+        butil::RawPacker(rpc_header + 4)
+            .pack32(UINT32_MAX)
+            .pack32(meta_size);
+    } else {
+        butil::RawPacker(rpc_header + 4)
+            .pack32(static_cast<uint32_t>(total_size))
+            .pack32(meta_size);
+    }
 }
 
 static void SerializeRpcHeaderAndMeta(
-    butil::IOBuf* out, const RpcMeta& meta, int payload_size) {
+    butil::IOBuf* out, const RpcMeta& meta, size_t payload_size) {
     const uint32_t meta_size = GetProtobufByteSize(meta);
     if (meta_size <= 244) { // most common cases
         char header_and_meta[12 + meta_size];
@@ -676,12 +691,13 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             break;
         }
 
-        const int req_size = static_cast<int>(msg->payload.size());
+        const size_t req_size = msg->payload.size();
         if (meta.has_attachment_size()) {
-            if (req_size < meta.attachment_size()) {
+            const int64_t attachment_size = meta.attachment_size();
+            if (attachment_size < 0 || static_cast<size_t>(attachment_size) > req_size) {
                 cntl->SetFailed(EREQUEST,
-                    "attachment_size=%d is larger than request_size=%d",
-                    meta.attachment_size(), req_size);
+                    "attachment_size=%" PRId64 " is larger than request_size=%zu",
+                    attachment_size, req_size);
                 break;
             }
         }
@@ -723,9 +739,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             messages = BaiduProxyPBMessages::Get();
+            const int64_t attachment_size = meta.has_attachment_size() ? meta.attachment_size() : 0;
             msg->payload.cutn(
                 &((SerializedRequest*)messages->Request())->serialized_data(),
-                req_size - meta.attachment_size());
+                req_size - static_cast<size_t>(attachment_size));
             if (!msg->payload.empty()) {
                 cntl->request_attachment().swap(msg->payload);
             }
@@ -792,9 +809,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             butil::IOBuf req_buf;
-            int body_without_attachment_size = req_size - meta.attachment_size();
+            const int64_t attachment_size = meta.has_attachment_size() ? meta.attachment_size() : 0;
+            const size_t body_without_attachment_size = req_size - static_cast<size_t>(attachment_size);
             msg->payload.cutn(&req_buf, body_without_attachment_size);
-            if (meta.attachment_size() > 0) {
+            if (attachment_size > 0) {
                 cntl->request_attachment().swap(msg->payload);
             }
 
@@ -963,16 +981,17 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         } 
         // Parse response message iff error code from meta is 0
         butil::IOBuf res_buf;
-        const int res_size = msg->payload.length();
+        const size_t res_size = msg->payload.length();
         butil::IOBuf* res_buf_ptr = &msg->payload;
         if (meta.has_attachment_size()) {
-            if (meta.attachment_size() > res_size) {
+            const int64_t attachment_size = meta.attachment_size();
+            if (attachment_size < 0 || static_cast<size_t>(attachment_size) > res_size) {
                 cntl->SetFailed(
-                    ERESPONSE, "attachment_size=%d is larger than response_size=%d",
-                    meta.attachment_size(), res_size);
+                    ERESPONSE, "attachment_size=%" PRId64 " is larger than response_size=%zu",
+                    attachment_size, res_size);
                 break;
             }
-            int body_without_attachment_size = res_size - meta.attachment_size();
+            const size_t body_without_attachment_size = res_size - static_cast<size_t>(attachment_size);
             msg->payload.cutn(&res_buf, body_without_attachment_size);
             res_buf_ptr = &res_buf;
             cntl->response_attachment().swap(msg->payload);

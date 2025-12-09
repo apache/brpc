@@ -30,7 +30,7 @@ message NsheadMeta {
     
     optional int64 correlation_id = 2;
     optional int64 log_id = 3;
-    optional int32 attachment_size = 4;
+    optional int64 attachment_size = 4;
     optional CompressType compress_type = 5;
 
     optional int64 trace_id = 6;
