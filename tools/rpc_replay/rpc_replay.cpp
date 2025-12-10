@@ -198,8 +198,6 @@ static void* replay_thread(void* arg) {
                 } else {
                     req.serialized_data() = sample->request.movable();
                 }
-            } else {
-                req.serialized_data() = sample->request.movable();
             }
             g_sent_count << 1;
             const int64_t start_time = butil::gettimeofday_us();
