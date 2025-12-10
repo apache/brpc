@@ -17,7 +17,8 @@
 
 
 #include <cinttypes>                            // PRId64, PRIu64
-#include <cstdint>                               // UINT32_MAX
+#include <cstdint>                               // UINT32_MAX, INT32_MAX
+#include <climits>                               // INT32_MAX
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -86,8 +87,8 @@ static int64_t GetAttachmentSize(const RpcMeta& meta) {
 
 // Helper function to set attachment size in RpcMeta, with backward compatibility
 static void SetAttachmentSize(RpcMeta* meta, size_t size) {
-    const int32_t INT32_MAX_VALUE = 0x7FFFFFFF;
-    if (size > static_cast<size_t>(INT32_MAX_VALUE)) {
+    const size_t INT32_MAX_VALUE = static_cast<size_t>(INT32_MAX);
+    if (size > INT32_MAX_VALUE) {
         meta->set_attachment_size_long(static_cast<int64_t>(size));
     } else {
         meta->set_attachment_size(static_cast<int32_t>(size));
@@ -107,8 +108,8 @@ static int64_t GetAttachmentSizeFromDump(const RpcDumpMeta& meta) {
 
 // Helper function to set attachment size in RpcDumpMeta, with backward compatibility
 static void SetAttachmentSizeInDump(RpcDumpMeta* meta, size_t size) {
-    const int32_t INT32_MAX_VALUE = 0x7FFFFFFF;
-    if (size > static_cast<size_t>(INT32_MAX_VALUE)) {
+    const size_t INT32_MAX_VALUE = static_cast<size_t>(INT32_MAX);
+    if (size > INT32_MAX_VALUE) {
         meta->set_attachment_size_long(static_cast<int64_t>(size));
     } else {
         meta->set_attachment_size(static_cast<int32_t>(size));
@@ -905,7 +906,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 cntl->SetFailed(
                     EREQUEST,
                     "Fail to parse request=%s, ContentType=%s, "
-                    "CompressType=%s, ChecksumType=%s, request_size=%d",
+                    "CompressType=%s, ChecksumType=%s, request_size=%zu",
                     messages->Request()->GetDescriptor()->full_name().c_str(),
                     ContentTypeToCStr(content_type),
                     CompressTypeToCStr(compress_type),
@@ -1090,7 +1091,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                 cntl->SetFailed(
                     EREQUEST,
                     "Fail to parse response=%s, ContentType=%s, "
-                    "CompressType=%s, ChecksumType=%s, request_size=%d",
+                    "CompressType=%s, ChecksumType=%s, response_size=%zu",
                     cntl->response()->GetDescriptor()->full_name().c_str(),
                     ContentTypeToCStr(content_type),
                     CompressTypeToCStr(compress_type),
