@@ -198,7 +198,7 @@ public:
 
     void OnEndOfMessage(const butil::Status& status) {
         if (_is_read_timeout) {
-            _reader->OnEndOfMessage(butil::Status(ECONNRESET, "The progressive read timeout"));
+            _reader->OnEndOfMessage(butil::Status(EPROGREADTIMEOUT, "The progressive read timeout"));
         } else {
             _reader->OnEndOfMessage(status);
         }
