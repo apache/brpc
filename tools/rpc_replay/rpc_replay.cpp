@@ -189,8 +189,10 @@ static void* replay_thread(void* arg) {
                 } else if (sample->meta.has_attachment_size()) {
                     attachment_size = static_cast<int64_t>(sample->meta.attachment_size());
                 }
+                // Validate attachment_size: check for negative values and size overflow
+                // Explicitly validate the range before casting to size_t
                 if (attachment_size > 0 && 
-                    static_cast<size_t>(attachment_size) < sample->request.size()) {
+                    attachment_size < static_cast<int64_t>(sample->request.size())) {
                     sample->request.cutn(
                         &req.serialized_data(),
                         sample->request.size() - static_cast<size_t>(attachment_size));

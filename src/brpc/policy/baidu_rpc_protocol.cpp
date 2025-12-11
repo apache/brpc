@@ -96,7 +96,8 @@ static void SetAttachmentSize(RpcMeta* meta, size_t size) {
 }
 
 // Helper function to get attachment size from RpcDumpMeta, with backward compatibility
-static int64_t GetAttachmentSizeFromDump(const RpcDumpMeta& meta) {
+// Marked unused to avoid -Werror-unused-function when not referenced.
+static __attribute__((unused)) int64_t GetAttachmentSizeFromDump(const RpcDumpMeta& meta) {
     if (meta.has_attachment_size_long()) {
         return meta.attachment_size_long();
     }
@@ -675,8 +676,13 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         sample->meta.set_compress_type((CompressType)meta.compress_type());
         sample->meta.set_protocol_type(PROTOCOL_BAIDU_STD);
         const int64_t attachment_size = GetAttachmentSize(meta);
+        // Only set attachment_size if it's valid (non-negative)
         if (attachment_size > 0) {
-            SetAttachmentSizeInDump(&sample->meta, attachment_size);
+            SetAttachmentSizeInDump(&sample->meta, static_cast<size_t>(attachment_size));
+        } else if (attachment_size < 0) {
+            // Log warning for invalid negative attachment_size in sampling
+            LOG(WARNING) << "Invalid negative attachment_size=" << attachment_size 
+                         << " in sampled request, ignoring";
         }
         sample->meta.set_authentication_data(meta.authentication_data());
         sample->request = msg->payload;
@@ -770,13 +776,11 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
         const size_t req_size = msg->payload.size();
         const int64_t attachment_size = GetAttachmentSize(meta);
-        if (attachment_size > 0) {
-            if (static_cast<size_t>(attachment_size) > req_size) {
-                cntl->SetFailed(EREQUEST,
-                    "attachment_size=%" PRId64 " is larger than request_size=%zu",
-                    attachment_size, req_size);
-                break;
-            }
+        if (attachment_size < 0 || static_cast<size_t>(attachment_size) > req_size) {
+            cntl->SetFailed(EREQUEST,
+                "attachment_size=%" PRId64 " is invalid or larger than request_size=%zu",
+                attachment_size, req_size);
+            break;
         }
 
         google::protobuf::Service* svc = NULL;
@@ -816,7 +820,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             messages = BaiduProxyPBMessages::Get();
-            // attachment_size already retrieved and validated at line 772
+            // attachment_size already retrieved and validated at line 777
             msg->payload.cutn(
                 &((SerializedRequest*)messages->Request())->serialized_data(),
                 req_size - static_cast<size_t>(attachment_size));
@@ -1061,13 +1065,14 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         const size_t res_size = msg->payload.length();
         butil::IOBuf* res_buf_ptr = &msg->payload;
         const int64_t attachment_size = GetAttachmentSize(meta);
+        // Validate attachment_size: check for negative values and size overflow
+        if (attachment_size < 0 || static_cast<size_t>(attachment_size) > res_size) {
+            cntl->SetFailed(
+                ERESPONSE, "attachment_size=%" PRId64 " is invalid or larger than response_size=%zu",
+                attachment_size, res_size);
+            break;
+        }
         if (attachment_size > 0) {
-            if (static_cast<size_t>(attachment_size) > res_size) {
-                cntl->SetFailed(
-                    ERESPONSE, "attachment_size=%" PRId64 " is larger than response_size=%zu",
-                    attachment_size, res_size);
-                break;
-            }
             const size_t body_without_attachment_size = res_size - static_cast<size_t>(attachment_size);
             msg->payload.cutn(&res_buf, body_without_attachment_size);
             res_buf_ptr = &res_buf;
