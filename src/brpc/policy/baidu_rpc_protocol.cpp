@@ -816,7 +816,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             messages = BaiduProxyPBMessages::Get();
-            const int64_t attachment_size = GetAttachmentSize(meta);
+            // attachment_size already retrieved and validated at line 772
             msg->payload.cutn(
                 &((SerializedRequest*)messages->Request())->serialized_data(),
                 req_size - static_cast<size_t>(attachment_size));
@@ -886,7 +886,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             butil::IOBuf req_buf;
-            const int64_t attachment_size = GetAttachmentSize(meta);
+            // attachment_size already retrieved and validated at line 772
             const size_t body_without_attachment_size = req_size - static_cast<size_t>(attachment_size);
             msg->payload.cutn(&req_buf, body_without_attachment_size);
             if (attachment_size > 0) {
