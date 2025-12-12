@@ -35,7 +35,8 @@ message RpcDumpMeta {
   optional ProtocolType protocol_type = 5;
 
   // baidu_std, hulu_pbrpc
-  optional int32 attachment_size = 6;
+  optional int32 attachment_size = 6;  // For compatibility, use attachment_size_long if size > INT32_MAX
+  optional int64 attachment_size_long = 10;  // For attachment size > INT32_MAX
 
   // baidu_std
   optional bytes authentication_data = 7;
