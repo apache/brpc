@@ -40,6 +40,7 @@
 #include "butil/fd_guard.h"                 // butil::fd_guard
 #include "butil/iobuf.h"
 #include "butil/iobuf_profiler.h"
+#include "butil/gpu/gpu_block_pool.h"
 
 namespace butil {
 namespace iobuf {
@@ -722,6 +723,46 @@ size_t IOBuf::cutn(IOBuf* out, size_t n) {
     return saved_n;
 }
 
+#if BRPC_WITH_GDR
+size_t IOBuf::cutn_from_gpu(IOBuf* out, size_t n) {
+    if (n == 0) {
+      return 0;
+    }
+
+    butil::gdr::BlockPoolAllocator* host_allocator = butil::gdr::BlockPoolAllocators::singleton()->get_cpu_allocator();
+    bool alloc_from_host_alloc = (n <= host_allocator->get_block_size());
+    void* mem = NULL;
+    if (alloc_from_host_alloc) {
+      mem = host_allocator->AllocateRaw(n);
+    } else {
+      mem = malloc(n);
+    }
+
+    if (mem == NULL) {
+        return 0;
+    }
+    size_t saved_n = copy_from_gpu(mem, n, 0, false);
+    if (saved_n > 0) {
+      if (alloc_from_host_alloc) {
+        auto deleter = [host_allocator](void* data) { host_allocator->DeallocateRaw(data); };
+        out->append_user_data(mem, saved_n, deleter);
+      } else {
+        auto deleter = [](void* data) { free(data); };
+        out->append_user_data(mem, saved_n, deleter);
+      }
+      pop_front(saved_n);
+    } else {
+      if (alloc_from_host_alloc) {
+        host_allocator->DeallocateRaw(mem);
+      } else {
+        free(mem);
+      }
+    }
+
+    return saved_n;
+}
+#endif  // BRPC_WITH_GDR
+
 size_t IOBuf::cutn(void* out, size_t n) {
     const size_t len = length();
     if (n > len) {
@@ -1152,8 +1193,31 @@ uint64_t IOBuf::get_first_data_meta() {
     if (!(r.block->flags & IOBUF_BLOCK_FLAGS_USER_DATA)) {
         return 0;
     }
-    return r.block->u.data_meta;
+    return (r.block->u.data_meta & 0x00000000FFFFFFFF);
 }
+
+// only when user use append_user_data_with_meta(), lkey is stored in data_meta
+// We add this function for GDR, we want to know whether the data is in Host memory or GPU memory
+// since lkey is uint32_t type, thus we use the high 32 bit to store
+uint32_t IOBuf::get_first_data_meta_high32() {
+    if (_ref_num() == 0) {
+        return 0;
+    }
+    IOBuf::BlockRef const& r = _ref_at(0);
+    if (!(r.block->flags & IOBUF_BLOCK_FLAGS_USER_DATA)) {
+        return 0;
+    }
+    return (uint32_t)(r.block->u.data_meta >> 32);
+}
+
+void* IOBuf::get_first_data_ptr() {
+    if (_ref_num() == 0) {
+        return 0;
+    }
+    IOBuf::BlockRef const& r = _ref_at(0);
+    return r.block->data;
+}
+
 
 int IOBuf::resize(size_t n, char c) {
     const size_t saved_len = length();
@@ -1316,6 +1380,46 @@ size_t IOBuf::copy_to(void* d, size_t n, size_t pos) const {
     // If nref == 0, here returns 0 correctly
     return n - m;
 }
+
+#if BRPC_WITH_GDR
+size_t IOBuf::copy_from_gpu(void* d, size_t n, size_t pos, bool to_gpu) const {
+    if (n == 0) {
+        return 0;
+    }
+    const size_t nref = _ref_num();
+    // Skip `pos' bytes. `offset' is the starting position in starting BlockRef.
+    size_t offset = pos;
+    size_t i = 0;
+    for (; offset != 0 && i < nref; ++i) {
+        IOBuf::BlockRef const& r = _ref_at(i);
+        if (offset < (size_t)r.length) {
+            break;
+        }
+        offset -= r.length;
+    }
+
+    butil::gdr::GPUStreamPool* gpu_stream_pool = butil::gdr::BlockPoolAllocators::singleton()->get_gpu_stream_pool();
+    size_t m = n;
+    std::vector<void*> src_list;
+    std::vector<int64_t> length_list;
+    for (; m != 0 && i < nref; ++i) {
+        IOBuf::BlockRef const& r = _ref_at(i);
+        const size_t nc = std::min(m, (size_t)r.length - offset);
+        void* gpu_src = r.block->data + r.offset + offset;
+        src_list.push_back(gpu_src);
+        length_list.push_back(nc);
+        offset = 0;
+        m -= nc;
+    }
+    if (to_gpu) {
+        gpu_stream_pool->fast_d2d(src_list, length_list, d);
+    } else {
+        gpu_stream_pool->fast_d2h(src_list, length_list, d);
+    }
+    // If nref == 0, here returns 0 correctly
+    return n - m;
+}
+#endif  // BRPC_WITH_GDR
 
 size_t IOBuf::copy_to(std::string* s, size_t n, size_t pos) const {
     const size_t len = length();
