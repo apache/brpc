@@ -67,6 +67,10 @@ extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 void (*g_worker_startfn)() = NULL;
 void (*g_tagged_worker_startfn)(bthread_tag_t) = NULL;
 
+// Worker idle callback configuration
+bool (*g_worker_idle_fn)(void) = NULL;
+timespec g_worker_idle_timeout = {0, 0};
+
 // May be called in other modules to run startfn in non-worker pthreads.
 void run_worker_startfn() {
     if (g_worker_startfn) {
@@ -78,6 +82,16 @@ void run_tagged_worker_startfn(bthread_tag_t tag) {
     if (g_tagged_worker_startfn) {
         g_tagged_worker_startfn(tag);
     }
+}
+
+// Run the idle callback if registered.
+// Returns true if callback returned true (work was done), false otherwise.
+// The callback should access per-worker resources (e.g., io_uring) via TLS.
+bool run_worker_idle_fn() {
+    if (g_worker_idle_fn) {
+        return g_worker_idle_fn();
+    }
+    return false;
 }
 
 struct WorkerThreadArgs {
