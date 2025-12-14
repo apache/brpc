@@ -184,10 +184,10 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     , _rq_received(0)
     , _local_window_capacity(0)
     , _remote_window_capacity(0)
+    , _sq_imm_window_size(0)
     , _remote_rq_window_size(0)
     , _sq_window_size(0)
     , _new_rq_wrs(0)
-    , _imm_inflight(0)
 {
     if (_sq_size < MIN_QP_SIZE) {
         _sq_size = MIN_QP_SIZE;
@@ -233,7 +233,6 @@ void RdmaEndpoint::Reset() {
     _remote_rq_window_size.store(0, butil::memory_order_relaxed);
     _sq_window_size.store(0, butil::memory_order_relaxed);
     _new_rq_wrs.store(0, butil::memory_order_relaxed);
-    _imm_inflight.store(0, butil::memory_order_relaxed);
 }
 
 void RdmaConnect::StartConnect(const Socket* socket,
@@ -520,7 +519,8 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         ep->_local_window_capacity = 
             std::min(ep->_sq_size, remote_msg.rq_size) - RESERVED_WR_NUM;
         ep->_remote_window_capacity = 
-            std::min(ep->_rq_size, remote_msg.sq_size) - RESERVED_WR_NUM,
+            std::min(ep->_rq_size, remote_msg.sq_size) - RESERVED_WR_NUM;
+        ep->_sq_imm_window_size = RESERVED_WR_NUM;
         ep->_remote_rq_window_size.store(
             ep->_local_window_capacity, butil::memory_order_relaxed);
         ep->_sq_window_size.store(
@@ -631,7 +631,8 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->_local_window_capacity = 
             std::min(ep->_sq_size, remote_msg.rq_size) - RESERVED_WR_NUM;
         ep->_remote_window_capacity = 
-            std::min(ep->_rq_size, remote_msg.sq_size) - RESERVED_WR_NUM,
+            std::min(ep->_rq_size, remote_msg.sq_size) - RESERVED_WR_NUM;
+        ep->_sq_imm_window_size = RESERVED_WR_NUM;
         ep->_remote_rq_window_size.store(
             ep->_local_window_capacity, butil::memory_order_relaxed);
         ep->_sq_window_size.store(
@@ -927,7 +928,8 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
 }
 
 int RdmaEndpoint::SendAck(int num) {
-    if (_new_rq_wrs.fetch_add(num, butil::memory_order_relaxed) > _remote_window_capacity / 2) {
+    if (_new_rq_wrs.fetch_add(num, butil::memory_order_relaxed) > _remote_window_capacity / 2 &&
+        _sq_imm_window_size > 0) {
         return SendImm(_new_rq_wrs.exchange(0, butil::memory_order_relaxed));
     }
     return 0;
@@ -955,7 +957,7 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
         LOG(WARNING) << "Fail to ibv_post_send: " << berror(err) << " " << oss.str();
         return -1;
     }
-    _imm_inflight.fetch_add(1, butil::memory_order_relaxed);
+    _sq_imm_window_size -= 1;
     return 0;
 }
 
@@ -964,8 +966,8 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
     switch (wc.opcode) {
     case IBV_WC_SEND: {  // send completion
         if (0 == wc.wr_id) {
-            // Do nothing for imm.
-            _imm_inflight.fetch_sub(1, butil::memory_order_relaxed);
+            _sq_imm_window_size += 1;
+            SendAck(0);
             return 0;
         }
         // Update SQ window.
@@ -1096,9 +1098,6 @@ static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size, ui
 
 static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
     std::unique_ptr<RdmaResource> resource(new RdmaResource);
-    // NOTE: we enlarge the size of SQ to contain redundant 1/4 of the wnd,
-    // which is for unexpected Imm.
-    sq_size = sq_size * 5 / 4;  /* NOTE */
     if (!FLAGS_rdma_use_polling) {
         resource->comp_channel = IbvCreateCompChannel(GetRdmaContext());
         if (NULL == resource->comp_channel) {
@@ -1578,6 +1577,7 @@ std::string RdmaEndpoint::GetStateStr() const {
 void RdmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece connector) const {
     os << "rdma_state=ON"
        << connector << "handshake_state=" << GetStateStr()
+       << connector << "rdma__sq_imm_window_size=" << _sq_imm_window_size
        << connector << "rdma_remote_rq_window_size=" << _remote_rq_window_size.load(butil::memory_order_relaxed)
        << connector << "rdma_sq_window_size=" << _sq_window_size.load(butil::memory_order_relaxed)
        << connector << "rdma_local_window_capacity=" << _local_window_capacity
@@ -1590,7 +1590,6 @@ void RdmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece connector) con
        << connector << "rdma_unsolicited_sent=" << _unsolicited
        << connector << "rdma_unsignaled_sq_wr=" << _sq_unsignaled
        << connector << "rdma_new_rq_wrs=" << _new_rq_wrs.load(butil::memory_order_relaxed)
-       << connector << "rdma_imm_inflight=" << _imm_inflight.load(butil::memory_order_relaxed)
        << connector << "";
 }
 
