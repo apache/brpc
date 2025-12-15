@@ -26,6 +26,7 @@
 #include <google/protobuf/text_format.h>
 #include "butil/logging.h"                       // LOG()
 #include "butil/iobuf.h"                         // butil::IOBuf
+#include "butil/macros.h"                        // ALLOW_UNUSED
 #include "butil/raw_pack.h"                      // RawPacker RawUnpacker
 #include "butil/memory/scope_guard.h"
 #include "json2pb/json_to_pb.h"
@@ -97,7 +98,7 @@ static void SetAttachmentSize(RpcMeta* meta, size_t size) {
 
 // Helper function to get attachment size from RpcDumpMeta, with backward compatibility
 // Marked unused to avoid -Werror-unused-function when not referenced.
-static __attribute__((unused)) int64_t GetAttachmentSizeFromDump(const RpcDumpMeta& meta) {
+static int64_t ALLOW_UNUSED GetAttachmentSizeFromDump(const RpcDumpMeta& meta) {
     if (meta.has_attachment_size_long()) {
         return meta.attachment_size_long();
     }
