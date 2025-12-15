@@ -230,6 +230,7 @@ void RdmaEndpoint::Reset() {
     _rq_received = 0;
     _local_window_capacity = 0;
     _remote_window_capacity = 0;
+    _sq_imm_window_size = 0;
     _remote_rq_window_size.store(0, butil::memory_order_relaxed);
     _sq_window_size.store(0, butil::memory_order_relaxed);
     _new_rq_wrs.store(0, butil::memory_order_relaxed);
@@ -841,8 +842,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             }
 
             ssize_t len = data->cut_into_sglist_and_iobuf(
-                sglist, &sge_index, to, max_sge,
-                _remote_recv_block_size - this_len);
+                sglist, &sge_index, to, max_sge, _remote_recv_block_size - this_len);
             if (len < 0) {
                 return -1;
             }
@@ -957,6 +957,10 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
         LOG(WARNING) << "Fail to ibv_post_send: " << berror(err) << " " << oss.str();
         return -1;
     }
+
+    // `_sq_imm_window_size' will never be negative.
+    // Because IMM can only be sent if
+    // `_sq_imm_window_size` is greater than 0.
     _sq_imm_window_size -= 1;
     return 0;
 }
@@ -967,6 +971,7 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
     case IBV_WC_SEND: {  // send completion
         if (0 == wc.wr_id) {
             _sq_imm_window_size += 1;
+            // If there are any unacknowledged recvs, send an ack.
             SendAck(0);
             return 0;
         }
@@ -1298,14 +1303,11 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
     return 0;
 }
 
-void RdmaEndpoint::DeallocateCq(ibv_cq* cq, unsigned int cq_events) {
+static void DeallocateCq(ibv_cq* cq) {
     if (NULL == cq) {
         return;
     }
 
-    if (cq_events > 0) {
-        IbvAckCqEvents(cq, cq_events);
-    }
     int err = IbvDestroyCq(cq);
     LOG_IF(WARNING, 0 != err) << "Fail to destroy CQ: " << berror(err);
 }
@@ -1328,6 +1330,13 @@ void RdmaEndpoint::DeallocateResources() {
         }
     }
 
+    if (NULL != _resource->send_cq) {
+        IbvAckCqEvents(_resource->send_cq, _send_cq_events);
+    }
+    if (NULL != _resource->recv_cq) {
+        IbvAckCqEvents(_resource->recv_cq, _recv_cq_events);
+    }
+
     bool remove_consumer = true;
     if (!move_to_rdma_resource_list) {
         if (NULL != _resource->qp) {
@@ -1336,8 +1345,9 @@ void RdmaEndpoint::DeallocateResources() {
             _resource->qp = NULL;
         }
 
-        DeallocateCq(_resource->send_cq, _send_cq_events);
-        DeallocateCq(_resource->recv_cq, _recv_cq_events);
+        DeallocateCq(_resource->polling_cq);
+        DeallocateCq(_resource->send_cq);
+        DeallocateCq(_resource->recv_cq);
 
         if (NULL != _resource->comp_channel) {
             // Destroy send_comp_channel will destroy this fd,
@@ -1350,10 +1360,12 @@ void RdmaEndpoint::DeallocateResources() {
 
         }
 
+        _resource->polling_cq = NULL;
         _resource->send_cq = NULL;
         _resource->recv_cq = NULL;
         _resource->comp_channel = NULL;
         delete _resource;
+        _resource = NULL;
     }
 
     if (INVALID_SOCKET_ID != _cq_sid) {
@@ -1369,12 +1381,6 @@ void RdmaEndpoint::DeallocateResources() {
     }
 
     if (move_to_rdma_resource_list) {
-        if (NULL != _resource->send_cq) {
-            IbvAckCqEvents(_resource->send_cq, _send_cq_events);
-        }
-        if (NULL != _resource->recv_cq) {
-            IbvAckCqEvents(_resource->recv_cq, _recv_cq_events);
-        }
         BAIDU_SCOPED_LOCK(*g_rdma_resource_mutex);
         _resource->next = g_rdma_resource_list;
         g_rdma_resource_list = _resource;
@@ -1399,8 +1405,16 @@ int RdmaEndpoint::GetAndAckEvents(SocketUniquePtr& s) {
         }
         if (cq == _resource->send_cq) {
             ++_send_cq_events;
-        } else {
+        } else if (cq == _resource->recv_cq) {
             ++_recv_cq_events;
+        } else {
+            // Unexpected CQ event that does not belong to
+            // this endpoint's send/recv CQs.
+            LOG(WARNING) << "Unexpected CQ event from cq=" << cq
+                         << " of " << s->description();
+            // Acknowledge this single event immediately
+            // to avoid leaking unacknowledged events.
+            IbvAckCqEvents(cq, 1);
         }
     }
     if (_send_cq_events >= MAX_CQ_EVENTS) {
@@ -1414,14 +1428,13 @@ int RdmaEndpoint::GetAndAckEvents(SocketUniquePtr& s) {
     return 0;
 }
 
-
-
 int RdmaEndpoint::ReqNotifyCq(bool send_cq) {
     errno = ibv_req_notify_cq(
-        send_cq ? _resource->send_cq : _resource->recv_cq, send_cq ? 0 : 1);
+        send_cq ? _resource->send_cq : _resource->recv_cq,
+        send_cq ? 0 : 1);
     if (0 != errno) {
         const int saved_errno = errno;
-        PLOG(WARNING) << "Fail to arm" << (send_cq ? "send" : "recv")
+        PLOG(WARNING) << "Fail to arm " << (send_cq ? "send" : "recv")
                       << " CQ comp channel from " << _socket->description();
         _socket->SetFailed(saved_errno, "Fail to arm %s CQ channel from %s: %s",
                            send_cq ? "send" : "recv", _socket->description().c_str(),
@@ -1577,7 +1590,7 @@ std::string RdmaEndpoint::GetStateStr() const {
 void RdmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece connector) const {
     os << "rdma_state=ON"
        << connector << "handshake_state=" << GetStateStr()
-       << connector << "rdma__sq_imm_window_size=" << _sq_imm_window_size
+       << connector << "rdma_sq_imm_window_size=" << _sq_imm_window_size
        << connector << "rdma_remote_rq_window_size=" << _remote_rq_window_size.load(butil::memory_order_relaxed)
        << connector << "rdma_sq_window_size=" << _sq_window_size.load(butil::memory_order_relaxed)
        << connector << "rdma_local_window_capacity=" << _local_window_capacity
@@ -1585,12 +1598,10 @@ void RdmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece connector) con
        << connector << "rdma_sbuf_head=" << _sq_current
        << connector << "rdma_sbuf_tail=" << _sq_sent
        << connector << "rdma_rbuf_head=" << _rq_received
-       << connector << "rdma_unacked_rq_wr=" << _new_rq_wrs
+       << connector << "rdma_unacked_rq_wr=" << _new_rq_wrs.load(butil::memory_order_relaxed)
        << connector << "rdma_received_ack=" << _accumulated_ack
        << connector << "rdma_unsolicited_sent=" << _unsolicited
-       << connector << "rdma_unsignaled_sq_wr=" << _sq_unsignaled
-       << connector << "rdma_new_rq_wrs=" << _new_rq_wrs.load(butil::memory_order_relaxed)
-       << connector << "";
+       << connector << "rdma_unsignaled_sq_wr=" << _sq_unsignaled;
 }
 
 int RdmaEndpoint::GlobalInitialize() {

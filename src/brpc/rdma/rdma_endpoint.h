@@ -134,9 +134,6 @@ private:
     // Process handshake at the server
     static void* ProcessHandshakeAtServer(void* arg);
 
-    // Deallocate CQ resource.
-    static void DeallocateCq(ibv_cq* cq, unsigned int cq_events);
-
     // Allocate resources
     // Return 0 if success, -1 if failed and errno set
     int AllocateResources();
@@ -277,8 +274,6 @@ private:
     butil::atomic<uint16_t> _sq_window_size;
     // The number of new WRs posted in the local Recv Queue
     butil::atomic<uint16_t> _new_rq_wrs;
-    // The number of inflight send IMM.
-    butil::atomic<uint16_t> _imm_inflight;
 
     // butex for inform read events on TCP fd during handshake
     butil::atomic<int> *_read_butex;

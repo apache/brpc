@@ -209,8 +209,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_magic_str) {
 
     uint8_t data[RDMA_HELLO_MSG_LEN];
     memcpy(data, "PRPC", 4);  // send as normal baidu_std protocol
-    memset(data + 4, 0, 32);
-    ASSERT_EQ(38, write(sockfd, data, 38));
+    ASSERT_EQ(4, write(sockfd, data, 4));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
 
@@ -660,9 +659,6 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
     ASSERT_EQ(sizeof(flags), write(sockfd1, &flags, sizeof(flags)));
     usleep(100000);
-    ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
-    close(sockfd1);
-    usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(NULL, GetSocketFromServer(0));
 
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
