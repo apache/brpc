@@ -92,6 +92,17 @@ extern int bthread_set_worker_startfn(void (*start_fn)());
 // Add a startup function with tag
 extern int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t));
 
+// Set a callback to run when a worker has no task to run.
+// If the callback returns true, it means some work is done and the worker
+// should check the runqueue again immediately.
+// The callback should access per-worker resources (e.g., io_uring) via TLS.
+// Users can initialize per-worker resources in bthread_set_worker_startfn().
+// |fn|: The callback function. Pass NULL to clear the callback.
+// |timeout_us|: The timeout for waiting if the callback returns false.
+//               0 is not acceptable when setting a callback (but ignored when clearing).
+// Returns 0 on success, error code otherwise.
+extern int bthread_set_worker_idle_callback(bool (*fn)(void), uint64_t timeout_us);
+
 // Add a create span function
 extern int bthread_set_create_span_func(void* (*func)());
 
