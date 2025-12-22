@@ -35,7 +35,7 @@ RDMA与TCP不同，不使用socket接口进行通信。但是在实现上仍然�
 
 brpc内部使用RDMA RC模式，每个RdmaEndpoint对应一个QP。RDMA连接建立依赖于前置TCP建连，TCP建连后双方交换必要参数，如GID、QPN等，再发起RDMA连接并实现数据传输。这个过程我们称为握手（参见RdmaEndpoint）。因为握手需要TCP连接，因此RdmaEndpoint所在的Socket类中，原本的TCP fd仍然有效。握手过程采用了brpc中已有的AppConnect逻辑。注意，握手用的TCP连接在后续数据传输阶段并不会收发数据，但仍保持为EST状态。一旦TCP连接中断，其上对应的RDMA连接同样会置错。
 
-RdmaEndpoint数据传输逻辑的第一个重要特性是零拷贝。要发送的所有数据默认都存放在IOBuf的Block中，因此所发送的Block需要等到对端确认接收完成后才可以释放，这些Block的引用被存放于RdmaEndpoint::_sbuf中。而要实现接收零拷贝，则需要确保接受端所预提交的接收缓冲区必须直接在IOBuf的Block里面，被存放于RdmaEndpoint::_rbuf。注意，接收端预提交的每一段Block，有一个固定的大小（recv_block_size）。发送端发送时，一个请求最多只能有这么大，否则接收端则无法成功接收。
+RdmaEndpoint数据传输逻辑的第一个重要特性是零拷贝。要发送的所有数据默认都存放在IOBuf的Block中，因此所发送的Block需要等到发送CQE触发后才可以释放，这些Block的引用被存放于RdmaEndpoint::_sbuf中。而要实现接收零拷贝，则需要确保接受端所预提交的接收缓冲区必须直接在IOBuf的Block里面，被存放于RdmaEndpoint::_rbuf。注意，接收端预提交的每一段Block，有一个固定的大小（recv_block_size）。发送端发送时，一个请求最多只能有这么大，否则接收端则无法成功接收。
 
 RdmaEndpoint数据传输逻辑的第二个重要特性是滑动窗口流控。这一流控机制是为了避免发送端持续在发送，其速度超过了接收端处理的速度。TCP传输中也有类似的逻辑，但是是由内核协议栈来实现的。RdmaEndpoint内实现了这一流控机制，通过接收端显式回复ACK来确认接收端处理完毕。为了减少ACK本身的开销，让ACK以立即数形式返回，可以被附在数据消息里。
 
@@ -52,26 +52,26 @@ RDMA支持事件驱动和轮询两种模式，默认是事件驱动模式，通�
 # 参数
 
 可配置参数说明：
-* rdma_trace_verbose: 日志中打印RDMA建连相关信息，默认false
-* rdma_recv_zerocopy: 是否启用接收零拷贝，默认true
-* rdma_zerocopy_min_size: 接收零拷贝最小的msg大小，默认512B
-* rdma_recv_block_type: 为接收数据预准备的block类型，分为三类default(8KB)/large(64KB)/huge(2MB)，默认为default
-* rdma_prepared_qp_size: 程序启动预生成的QP的大小，默认128
-* rdma_prepared_qp_cnt: 程序启动预生成的QP的数量，默认1024
-* rdma_max_sge: 允许的最大发送SGList长度，默认为0，即采用硬件所支持的最大长度
-* rdma_sq_size: SQ大小，默认128
-* rdma_rq_size: RQ大小，默认128
-* rdma_cqe_poll_once: 从CQ中一次性poll出的CQE数量，默认32
-* rdma_gid_index: 使用本地GID表中的Index，默认为-1，即选用最大的可用GID Index
-* rdma_port: 使用IB设备的port number，默认为1
-* rdma_device: 使用IB设备的名称，默认为空，即使用第一个active的设备
-* rdma_memory_pool_initial_size_mb: 内存池的初始大小，单位MB，默认1024
-* rdma_memory_pool_increase_size_mb: 内存池每次动态增长的大小，单位MB，默认1024
-* rdma_memory_pool_max_regions: 最大的内存池块数，默认16
-* rdma_memory_pool_buckets: 内存池中为避免竞争采用的bucket数目，默认为4
-* rdma_memory_pool_tls_cache_num: 内存池中thread local的缓存block数目，默认为128
-* rdma_use_polling: 是否使用RDMA的轮询模式，默认false
-* rdma_poller_num: 轮询模式下的poller数目，默认1
-* rdma_poller_yield: 轮询模式下的poller是否主动放弃CPU，默认是false
-* rdma_edisp_unsched: 让事件驱动器不可以被调度，默认是false
-* rdma_disable_bthread: 禁用bthread，默认是false
+* rdma_trace_verbose: 日志中打印RDMA建连相关信息，默认false。
+* rdma_recv_zerocopy: 是否启用接收零拷贝，默认true。
+* rdma_zerocopy_min_size: 接收零拷贝最小的msg大小，默认512B。
+* rdma_recv_block_type: 为接收数据预准备的block类型，分为三类default(8KB)/large(64KB)/huge(2MB)，默认为default。
+* rdma_prepared_qp_size: 程序启动预生成的QP的大小，默认128。
+* rdma_prepared_qp_cnt: 程序启动预生成的QP的数量，默认1024。
+* rdma_max_sge: 允许的最大发送SGList长度，默认为0，即采用硬件所支持的最大长度。
+* rdma_sq_size: SQ大小，默认128。
+* rdma_rq_size: RQ大小，默认128。
+* rdma_cqe_poll_once: 从CQ中一次性poll出的CQE数量，默认32。
+* rdma_gid_index: 使用本地GID表中的Index，默认为-1，即选用最大的可用GID Index。
+* rdma_port: 使用IB设备的port number，默认为1。
+* rdma_device: 使用IB设备的名称，默认为空，即使用第一个active的设备。
+* rdma_memory_pool_initial_size_mb: 内存池的初始大小，单位MB，默认1024。
+* rdma_memory_pool_increase_size_mb: 内存池每次动态增长的大小，单位MB，默认1024。
+* rdma_memory_pool_max_regions: 最大的内存池块数，默认3。
+* rdma_memory_pool_buckets: 内存池中为避免竞争采用的bucket数目，默认为4。
+* rdma_memory_pool_tls_cache_num: 内存池中thread local的缓存block数目，默认为128。
+* rdma_use_polling: 是否使用RDMA的轮询模式，默认false。
+* rdma_poller_num: 轮询模式下的poller数目，默认1。
+* rdma_poller_yield: 轮询模式下的poller是否主动放弃CPU，默认是false。
+* rdma_edisp_unsched: 让事件驱动器不可以被调度，默认是false。
+* rdma_disable_bthread: 禁用bthread，默认是false。
