@@ -31,7 +31,6 @@
 #include "butil/containers/mpsc_queue.h"
 #include "brpc/socket.h"
 
-
 namespace brpc {
 class Socket;
 namespace rdma {
@@ -178,6 +177,8 @@ private:
     //     -1:  failed, errno set
     int DoPostRecv(void* block, size_t block_size);
 
+
+    int DoPostRecvGDR(void* block, size_t block_size, uint32_t lkey);
     // Read at most len bytes from fd in _socket to data
     // wait for _read_butex if encounter EAGAIN
     // return -1 if encounter other errno (including EOF)
