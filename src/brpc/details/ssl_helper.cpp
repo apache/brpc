@@ -18,6 +18,7 @@
 
 
 #include "brpc/ssl_options.h"
+#include "butil/files/scoped_file.h"
 #include <openssl/bio.h>
 #ifndef USE_MESALINK
 
@@ -197,20 +198,24 @@ static void InitSSLKeyLogFile() {
     if (path == NULL || path[0] == '\0') {
         return;
     }
-    g_ssl_keylog_file = fopen(path, "a");
+    g_ssl_keylog_file = fopen(path, "ae");
     if (g_ssl_keylog_file == NULL) {
         PLOG(WARNING) << "Fail to open SSLKEYLOGFILE=" << path;
+    } else {
+        setvbuf(g_ssl_keylog_file, NULL, _IOLBF, 0);
+        LOG(WARNING) << "SSLKEYLOGFILE is enabled (path: " << path << "). "
+                     << "Sensitive TLS session keys will be written to this file. "
+                     << "This feature is intended for debugging only and should NOT be used in production environments.";
     }
 }
 
 static void SSLKeyLogCallback(const SSL* ssl, const char* line) {
     (void)ssl;
-    if (line == NULL) {
+    if (line == NULL || g_ssl_keylog_file == NULL) {
         return;
     }
     // Write the full key log line with newline in one call to keep output atomic.
     fprintf(g_ssl_keylog_file, "%s\n", line);
-    fflush(g_ssl_keylog_file);
 }
 
 static void MaybeSetKeyLogCallback(SSL_CTX* ctx) {
