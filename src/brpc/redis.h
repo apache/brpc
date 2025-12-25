@@ -217,10 +217,7 @@ class RedisCommandParser;
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
-    explicit RedisConnContext(const RedisService* rs)
-        : redis_service(rs)
-        , batched_size(0)
-        , session(nullptr) {}
+    explicit RedisConnContext(const RedisService* rs);
 
     ~RedisConnContext();
     // @Destroyable
