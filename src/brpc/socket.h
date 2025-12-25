@@ -250,6 +250,7 @@ struct SocketOptions {
     // user->BeforeRecycle() before recycling.
     int fd{-1};
     butil::EndPoint remote_side;
+    butil::EndPoint local_side;
     // If `connect_on_create' is true and `fd' is less than 0,
     // a client connection will be established to remote_side()
     // regarding deadline `connect_abstime' when Socket is being created.

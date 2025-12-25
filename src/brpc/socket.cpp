@@ -728,7 +728,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _keytable_pool = options.keytable_pool;
     _tos = 0;
     _remote_side = options.remote_side;
-    _local_side = butil::EndPoint();
+    _local_side = options.local_side;
     _on_edge_triggered_events = options.on_edge_triggered_events;
     _user = options.user;
     _conn = options.conn;
@@ -1283,8 +1283,10 @@ int Socket::Connect(const timespec* abstime,
         _ssl_state = SSL_OFF;
     }
     struct sockaddr_storage serv_addr;
+    struct sockaddr_storage cli_addr;
     socklen_t addr_size = 0;
-    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &addr_size) != 0) {
+    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &addr_size) != 0 ||
+        butil::endpoint2sockaddr(local_side(), &cli_addr, &addr_size) != 0) {
         PLOG(ERROR) << "Fail to get sockaddr";
         return -1;
     }
@@ -1297,6 +1299,10 @@ int Socket::Connect(const timespec* abstime,
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
     
+    if (::bind(sockfd, (struct sockaddr*)& cli_addr, addr_size) != 0) {
+        LOG(FATAL) << "Fail to bind socket, errno=" << strerror(errno);
+        return -1;
+    }
     const int rc = ::connect(
         sockfd, (struct sockaddr*)&serv_addr, addr_size);
     if (rc != 0 && errno != EINPROGRESS) {
@@ -2811,6 +2817,7 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
     if (socket_pool == NULL) {
         SocketOptions opt;
         opt.remote_side = remote_side();
+        opt.local_side = local_side();
         opt.user = user();
         opt.on_edge_triggered_events = _on_edge_triggered_events;
         opt.initial_ssl_ctx = _ssl_ctx;

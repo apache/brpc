@@ -148,6 +148,10 @@ struct ChannelOptions {
     // Its priority is higher than FLAGS_health_check_path and FLAGS_health_check_timeout_ms.
     // When it is not set, FLAGS_health_check_path and FLAGS_health_check_timeout_ms will take effect.
     HealthCheckOption hc_option;
+
+    // IP address or host name of the client
+    // Default: ""
+    std::string client_host;
 private:
     // SSLOptions is large and not often used, allocate it on heap to
     // prevent ChannelOptions from being bloated in most cases.
