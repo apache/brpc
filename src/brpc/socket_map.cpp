@@ -93,8 +93,8 @@ int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                     bool use_rdma,
                     const HealthCheckOption& hc_option,
-                    butil::EndPoint& client_end_point) {
-    return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx, use_rdma, hc_option, client_end_point);
+                    const butil::EndPoint& client_endpoint) {
+    return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx, use_rdma, hc_option, client_endpoint);
 }    
 
 int SocketMapFind(const SocketMapKey& key, SocketId* id) {
@@ -231,7 +231,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
                       const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                       bool use_rdma,
                       const HealthCheckOption& hc_option,
-                      butil::EndPoint& client_end_point) {
+                      const butil::EndPoint& client_endpoint) {
     ShowSocketMapInBvarIfNeed();
 
     std::unique_lock<butil::Mutex> mu(_mutex);
@@ -253,7 +253,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     SocketId tmp_id;
     SocketOptions opt;
     opt.remote_side = key.peer.addr;
-    opt.local_side = client_end_point;
+    opt.local_side = client_endpoint;
     opt.initial_ssl_ctx = ssl_ctx;
     opt.use_rdma = use_rdma;
     opt.hc_option = hc_option;

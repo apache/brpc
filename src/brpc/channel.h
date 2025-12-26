@@ -149,7 +149,8 @@ struct ChannelOptions {
     // When it is not set, FLAGS_health_check_path and FLAGS_health_check_timeout_ms will take effect.
     HealthCheckOption hc_option;
 
-    // IP address or host name of the client
+    // IP address or host name of the client.
+    // if the client_host is "", the client IP address is determined by the OS.
     // Default: ""
     std::string client_host;
 private:

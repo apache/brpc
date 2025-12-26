@@ -83,7 +83,7 @@ int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                     bool use_rdma,
                     const HealthCheckOption& hc_option,
-                    butil::EndPoint& client_end_point);
+                    const butil::EndPoint& client_endpoint);
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
@@ -159,7 +159,7 @@ public:
                const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                bool use_rdma,
                const HealthCheckOption& hc_option,
-               butil::EndPoint& client_end_point);
+               const butil::EndPoint& client_endpoint);
 
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx) {

@@ -367,10 +367,10 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
         LOG(ERROR) << "Invalid port=" << port;
         return -1;
     }
-    butil::EndPoint client_end_point;
+    butil::EndPoint client_endpoint;
     if (!_options.client_host.empty() &&
-        butil::str2ip(_options.client_host.c_str(), &client_end_point.ip) != 0 &&
-        butil::hostname2ip(_options.client_host.c_str(), &client_end_point.ip) != 0) {
+        butil::str2ip(_options.client_host.c_str(), &client_endpoint.ip) != 0 &&
+        butil::hostname2ip(_options.client_host.c_str(), &client_endpoint.ip) != 0) {
         LOG(ERROR) << "Invalid client host=`" << _options.client_host << '\'';
         return -1;
     }
@@ -382,7 +382,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     }
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
                         &_server_id, ssl_ctx, _options.use_rdma,
-                        _options.hc_option, client_end_point) != 0) {
+                        _options.hc_option, client_endpoint) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -410,10 +410,10 @@ int Channel::Init(const char* ns_url,
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
-    butil::EndPoint client_end_point;
+    butil::EndPoint client_endpoint;
     if (!_options.client_host.empty() &&
-        butil::str2ip(_options.client_host.c_str(), &client_end_point.ip) != 0 &&
-        butil::hostname2ip(_options.client_host.c_str(), &client_end_point.ip) != 0) {
+        butil::str2ip(_options.client_host.c_str(), &client_endpoint.ip) != 0 &&
+        butil::hostname2ip(_options.client_host.c_str(), &client_endpoint.ip) != 0) {
         LOG(ERROR) << "Invalid client host=`" << _options.client_host << '\'';
         return -1;
     }
@@ -429,7 +429,7 @@ int Channel::Init(const char* ns_url,
     ns_opt.use_rdma = _options.use_rdma;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
     ns_opt.hc_option =  _options.hc_option;
-    ns_opt.client_end_point = client_end_point;
+    ns_opt.client_endpoint = client_endpoint;
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
         return -1;
     }

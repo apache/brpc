@@ -1283,10 +1283,8 @@ int Socket::Connect(const timespec* abstime,
         _ssl_state = SSL_OFF;
     }
     struct sockaddr_storage serv_addr;
-    struct sockaddr_storage cli_addr;
     socklen_t addr_size = 0;
-    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &addr_size) != 0 ||
-        butil::endpoint2sockaddr(local_side(), &cli_addr, &addr_size) != 0) {
+    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &addr_size) != 0) {
         PLOG(ERROR) << "Fail to get sockaddr";
         return -1;
     }
@@ -1298,10 +1296,16 @@ int Socket::Connect(const timespec* abstime,
     CHECK_EQ(0, butil::make_close_on_exec(sockfd));
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
-    
-    if (::bind(sockfd, (struct sockaddr*)& cli_addr, addr_size) != 0) {
-        LOG(FATAL) << "Fail to bind socket, errno=" << strerror(errno);
-        return -1;
+    if (local_side().ip != butil::IP_ANY) {
+        struct sockaddr_storage cli_addr;
+        if (butil::endpoint2sockaddr(local_side(), &cli_addr, &addr_size) != 0) {
+            PLOG(ERROR) << "Fail to get client sockaddr";
+            return -1;
+        }
+        if (::bind(sockfd, (struct sockaddr*)&cli_addr, addr_size) != 0) {
+            PLOG(ERROR) << "Fail to bind client socket, errno=" << strerror(errno);
+            return -1;
+        }
     }
     const int rc = ::connect(
         sockfd, (struct sockaddr*)&serv_addr, addr_size);
@@ -2817,7 +2821,7 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
     if (socket_pool == NULL) {
         SocketOptions opt;
         opt.remote_side = remote_side();
-        opt.local_side = local_side();
+        opt.local_side = butil::EndPoint(local_side().ip, 0);
         opt.user = user();
         opt.on_edge_triggered_events = _on_edge_triggered_events;
         opt.initial_ssl_ctx = _ssl_ctx;
@@ -2919,6 +2923,7 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     SocketId id;
     SocketOptions opt;
     opt.remote_side = remote_side();
+    opt.local_side = butil::EndPoint(local_side().ip, 0);
     opt.user = user();
     opt.on_edge_triggered_events = _on_edge_triggered_events;
     opt.initial_ssl_ctx = _ssl_ctx;
