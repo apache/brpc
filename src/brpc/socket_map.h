@@ -82,18 +82,21 @@ struct SocketMapKeyHasher {
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                     bool use_rdma,
-                    const HealthCheckOption& hc_option);
+                    const HealthCheckOption& hc_option,
+                    const butil::EndPoint& client_endpoint);
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     HealthCheckOption hc_option;
-    return SocketMapInsert(key, id, ssl_ctx, false, hc_option);
+    butil::EndPoint endpoint;
+    return SocketMapInsert(key, id, ssl_ctx, false, hc_option, endpoint);
 }
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id) {
     std::shared_ptr<SocketSSLContext> empty_ptr;
     HealthCheckOption hc_option;
-    return SocketMapInsert(key, id, empty_ptr, false, hc_option);
+    butil::EndPoint endpoint;
+    return SocketMapInsert(key, id, empty_ptr, false, hc_option, endpoint);
 }
 
 // Find the SocketId associated with `key'.
@@ -155,17 +158,20 @@ public:
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                bool use_rdma,
-               const HealthCheckOption& hc_option);
+               const HealthCheckOption& hc_option,
+               const butil::EndPoint& client_endpoint);
 
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
         HealthCheckOption hc_option;
-        return Insert(key, id, ssl_ctx, false, hc_option);   
+        butil::EndPoint endpoint;
+        return Insert(key, id, ssl_ctx, false, hc_option, endpoint);   
     }
     int Insert(const SocketMapKey& key, SocketId* id) {
         std::shared_ptr<SocketSSLContext> empty_ptr;
         HealthCheckOption hc_option;
-        return Insert(key, id, empty_ptr, false, hc_option);
+        butil::EndPoint endpoint;
+        return Insert(key, id, empty_ptr, false, hc_option, endpoint);
     }
 
     void Remove(const SocketMapKey& key, SocketId expected_id);

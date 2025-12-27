@@ -126,7 +126,8 @@ void NamingServiceThread::Actions::ResetServers(
         //       to pick those Sockets with the right settings during OnAddedServers
         const SocketMapKey key(_added[i], _owner->_options.channel_signature);
         CHECK_EQ(0, SocketMapInsert(key, &tagged_id.id, _owner->_options.ssl_ctx,
-                                    _owner->_options.use_rdma, _owner->_options.hc_option));
+                                    _owner->_options.use_rdma, _owner->_options.hc_option,
+                                    _owner->_options.client_endpoint));
         _added_sockets.push_back(tagged_id);
     }
 
