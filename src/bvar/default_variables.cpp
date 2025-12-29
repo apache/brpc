@@ -22,6 +22,8 @@
 #include <sys/resource.h>                  // getrusage
 #include <dirent.h>                        // dirent
 #include <iomanip>                         // setw
+#include <stdio.h>
+#include <errno.h>
 #if defined(__APPLE__)
 #include <libproc.h>
 #include <sys/resource.h>
@@ -430,7 +432,12 @@ static bool read_proc_io(ProcIO* s) {
 #if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/self/io", "r");
     if (NULL == fp) {
-        PLOG_ONCE(WARNING) << "Fail to open /proc/self/io";
+        static bool ever_printed_io_err = false;
+        if (!ever_printed_io_err) {
+            fprintf(stderr, "WARNING: Fail to open /proc/self/io, errno=%d. "
+                            "I/O related bvars will be unavailable.\n", errno);
+            ever_printed_io_err = true;
+        }
         return false;
     }
     errno = 0;
