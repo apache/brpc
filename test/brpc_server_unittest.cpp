@@ -2070,4 +2070,48 @@ TEST_F(ServerTest, auth) {
     ASSERT_EQ(0, server.Join());
 }
 
+void TestClientHost(const butil::EndPoint& ep,
+                  brpc::Controller& cntl,
+                  int error_code, bool failed,
+                  brpc::ChannelOptions& copt) {
+    brpc::Channel chan;
+    copt.max_retry = 0;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&chan);
+    stub.Echo(&cntl, &req, &res, NULL);
+    ASSERT_EQ(cntl.Failed(), failed) << cntl.ErrorText();
+    ASSERT_EQ(cntl.ErrorCode(), error_code);
+}
+
+TEST_F(ServerTest, client_host) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+    brpc::Server server;
+    EchoServiceImpl service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    ASSERT_EQ(0, server.Start(ep, &opt));
+
+    brpc::Controller cntl;
+    brpc::ChannelOptions copt;
+    copt.client_host = "localhost";
+    std::vector<brpc::ConnectionType> connection_types = {
+        brpc::CONNECTION_TYPE_SINGLE,
+        brpc::CONNECTION_TYPE_POOLED,
+        brpc::CONNECTION_TYPE_SHORT
+    };
+    for (auto connect_type : connection_types) {
+        copt.connection_type = connect_type;
+        TestClientHost(ep, cntl, 0, false, copt);
+        cntl.Reset();
+    }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
 } //namespace
