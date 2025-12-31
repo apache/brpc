@@ -74,6 +74,9 @@ int GetRdmaCompVector();
 // Return current port number used
 uint8_t GetRdmaPortNum();
 
+// Get GPU index used
+int GetGPUIndex();
+
 // Get max_sge supported by the device
 int GetRdmaMaxSge();
 

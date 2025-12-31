@@ -25,6 +25,7 @@
 #include "butil/containers/flat_map.h"            // butil::FlatMap
 #include "butil/fd_guard.h"
 #include "butil/fd_utility.h"                     // butil::make_non_blocking
+#include "butil/gpu/gpu_block_pool.h"
 #include "butil/logging.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/block_pool.h"
@@ -84,6 +85,8 @@ static uint16_t g_lid;
 static int g_max_sge = 0;
 static uint8_t g_port_num = 1;
 
+static int g_gpu_index = 0;
+
 static int g_comp_vector_index = 0;
 
 butil::atomic<bool> g_rdma_available(false);
@@ -93,7 +96,7 @@ DEFINE_string(rdma_device, "", "The name of the HCA device used "
                                "(Empty means using the first active device)");
 DEFINE_int32(rdma_port, 1, "The port number to use. For RoCE, it is always 1.");
 DEFINE_int32(rdma_gid_index, -1, "The GID index to use. -1 means using the last one.");
-
+DEFINE_int32(gpu_index, 0, "The GPU device index to use. In GDR, we suggest to use the GPU that is connected to the same PCIe switch with rdma devices");
 // static const size_t SYSFS_SIZE = 4096;
 static ibv_device** g_devices = NULL;
 static ibv_context* g_context = NULL;
@@ -477,6 +480,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
         ExitWithError();
     }
 
+    g_gpu_index = FLAGS_gpu_index;
     // Find the first active port
     g_port_num = FLAGS_rdma_port;
     int available_devices;
@@ -551,6 +555,13 @@ static void GlobalRdmaInitializeOrDieImpl() {
         PLOG(ERROR) << "Fail to initialize RDMA memory pool";
         ExitWithError();
     }
+
+#if BRPC_WITH_GDR
+    if (!butil::gdr::InitGPUBlockPool(g_gpu_index, GetRdmaPd())) {
+        PLOG(ERROR) << "Fail to initialize RDMA GPU memory pool";
+        ExitWithError();
+    }
+#endif  // if BRPC_WITH_GDR
 
     if (RdmaEndpoint::GlobalInitialize() < 0) {
         LOG(ERROR) << "rdma_recv_block_type incorrect "
@@ -678,6 +689,11 @@ uint8_t GetRdmaGidIndex() {
 uint8_t GetRdmaPortNum() {
     return g_port_num;
 }
+
+int GetGPUIndex() {
+    return g_gpu_index;
+}
+
 
 bool IsRdmaAvailable() {
     return g_rdma_available.load(butil::memory_order_acquire);
