@@ -20,7 +20,10 @@
 #include <google/protobuf/message.h>             // Message
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/io/coded_stream.h>
+
 #include "butil/time.h"
+#include "butil/strings/string_util.h"
+
 #include "brpc/controller.h"                // Controller
 #include "brpc/socket.h"                    // Socket
 #include "brpc/server.h"                    // Server
@@ -424,7 +427,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             int rejected_cc = 0;
             if (!method_status->OnRequested(&rejected_cc)) {
                 cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                                sp->method->full_name().c_str(), rejected_cc);
+                                butil::EnsureString(sp->method->full_name()).c_str(), rejected_cc);
                 break;
             }
         }
@@ -437,7 +440,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         }
 
         if (span) {
-            span->ResetServerSpanName(method->full_name());
+            span->ResetServerSpanName(butil::EnsureString(method->full_name()));
         }
         req.reset(svc->GetRequestPrototype(method).New());
         if (!ParseFromCompressedData(msg->payload, req.get(), req_cmp_type)) {

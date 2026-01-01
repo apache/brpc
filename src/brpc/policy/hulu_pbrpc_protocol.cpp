@@ -20,7 +20,10 @@
 #include <google/protobuf/message.h>             // Message
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/io/coded_stream.h>
+
+#include "butil/strings/string_util.h"
 #include "butil/time.h"
+
 #include "brpc/controller.h"                     // Controller
 #include "brpc/socket.h"                         // Socket
 #include "brpc/server.h"                         // Server
@@ -469,17 +472,18 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         // Switch to service-specific error.
         non_service_error.release();
         method_status = sp->status;
+        const google::protobuf::MethodDescriptor* method = sp->method;
+        const std::string method_full_name = butil::EnsureString(method->full_name());
         if (method_status) {
             int rejected_cc = 0;
             if (!method_status->OnRequested(&rejected_cc)) {
                 cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                                sp->method->full_name().c_str(), rejected_cc);
+                                method_full_name.c_str(), rejected_cc);
                 break;
             }
         }
         
         google::protobuf::Service* svc = sp->service;
-        const google::protobuf::MethodDescriptor* method = sp->method;
         accessor.set_method(method);
 
         if (!server->AcceptRequest(cntl.get())) {
@@ -487,7 +491,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         }
 
         if (span) {
-            span->ResetServerSpanName(method->full_name());
+            span->ResetServerSpanName(method_full_name);
         }
         const int reqsize = msg->payload.length();
         butil::IOBuf req_buf;

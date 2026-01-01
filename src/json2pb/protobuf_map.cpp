@@ -38,12 +38,12 @@ bool IsProtobufMap(const FieldDescriptor* field) {
     if (NULL == key_desc
         || key_desc->is_repeated()
         || key_desc->cpp_type() != FieldDescriptor::CPPTYPE_STRING
-        || strcmp(KEY_NAME, key_desc->name().c_str()) != 0) {
+        || key_desc->name() != KEY_NAME) {
         return false;
     }
     const FieldDescriptor* value_desc = entry_desc->field(VALUE_INDEX);
     if (NULL == value_desc
-        || strcmp(VALUE_NAME, value_desc->name().c_str()) != 0) {
+        || value_desc->name() != VALUE_NAME) {
         return false;
     }
     return true;

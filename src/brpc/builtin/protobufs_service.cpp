@@ -17,13 +17,16 @@
 
 
 #include <google/protobuf/descriptor.h>     // ServiceDescriptor
+
+#include "protobufs_service.h"
+
 #include "brpc/controller.h"           // Controller
 #include "brpc/server.h"               // Server
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/details/method_status.h"// MethodStatus
-#include "brpc/builtin/protobufs_service.h"
 #include "brpc/builtin/common.h"
 
+#include "butil/strings/string_util.h"
 
 namespace brpc {
 
@@ -42,7 +45,7 @@ int ProtobufsService::Init() {
         }
         const google::protobuf::ServiceDescriptor* d =
             iter->second.service->GetDescriptor();
-        _map[d->full_name()] = d->DebugString();
+        _map[butil::EnsureString(d->full_name())] = d->DebugString();
         const int method_count = d->method_count();
         for (int j = 0; j < method_count; ++j) {
             const google::protobuf::MethodDescriptor* md = d->method(j);
@@ -53,13 +56,13 @@ int ProtobufsService::Init() {
     while (!stack.empty()) {
         const google::protobuf::Descriptor* d = stack.back();
         stack.pop_back();
-        _map[d->full_name()] = d->DebugString();
+        _map[butil::EnsureString(d->full_name())] = d->DebugString();
         for (int i = 0; i < d->field_count(); ++i) {
             const google::protobuf::FieldDescriptor* f = d->field(i);
             if (f->type() == google::protobuf::FieldDescriptor::TYPE_MESSAGE ||
                 f->type() == google::protobuf::FieldDescriptor::TYPE_GROUP) {
                 const google::protobuf::Descriptor* sub_d = f->message_type();
-                if (sub_d != d && _map.find(sub_d->full_name()) == _map.end()) {
+                if (sub_d != d && _map.find(butil::EnsureString(sub_d->full_name())) == _map.end()) {
                     stack.push_back(sub_d);
                 }
             }

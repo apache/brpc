@@ -19,8 +19,7 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 
-#include "butil/time.h" 
-#include "butil/iobuf.h"                         // butil::IOBuf
+#include "nshead_pb_service_adaptor.h"
 
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
@@ -28,8 +27,11 @@
 #include "brpc/span.h"
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/details/controller_private_accessor.h"
-#include "brpc/nshead_pb_service_adaptor.h"
 #include "brpc/policy/most_common_message.h"
+
+#include "butil/iobuf.h"                         // butil::IOBuf
+#include "butil/strings/string_util.h"
+#include "butil/time.h"
 
 
 namespace brpc {
@@ -126,7 +128,7 @@ void NsheadPbServiceAdaptor::ProcessNsheadRequest(
         google::protobuf::Service* svc = sp->service;
         const google::protobuf::MethodDescriptor* method = sp->method;
         ControllerPrivateAccessor(controller).set_method(method);
-        done->SetMethodName(method->full_name());
+        done->SetMethodName(butil::EnsureString(method->full_name()));
         pbdone->pbreq.reset(svc->GetRequestPrototype(method).New());
         pbdone->pbres.reset(svc->GetResponsePrototype(method).New());
 

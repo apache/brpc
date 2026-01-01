@@ -24,16 +24,18 @@
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/compiler/code_generator.h>
 #include <google/protobuf/compiler/plugin.h>
-#include "butil/string_printf.h"
+
 #include "butil/file_util.h"
-#include "mcpack2pb/mcpack2pb.h"
+#include "butil/string_printf.h"
+#include "butil/strings/string_util.h"
 #include "idl_options.pb.h"
+#include "mcpack2pb/mcpack2pb.h"
 
 namespace mcpack2pb {
 
-const std::string& get_idl_name(const google::protobuf::FieldDescriptor* f) {
-    const std::string& real_name = f->options().GetExtension(idl_name);
-    return real_name.empty() ? f->name() : real_name;
+const std::string get_idl_name(const google::protobuf::FieldDescriptor* f) {
+    const std::string real_name = butil::EnsureString(f->options().GetExtension(idl_name));
+    return real_name.empty() ? butil::EnsureString(f->name()) : real_name;
 }
 
 bool is_integral_type(ConvertibleIdlType type) {
@@ -52,7 +54,7 @@ bool is_integral_type(ConvertibleIdlType type) {
     }
 }
 
-const char* field_to_string(const google::protobuf::FieldDescriptor* f) {
+const std::string field_to_string(const google::protobuf::FieldDescriptor* f) {
     switch (f->type()) {
     case google::protobuf::FieldDescriptor::TYPE_DOUBLE:   return "double";
     case google::protobuf::FieldDescriptor::TYPE_FLOAT:    return "float";
@@ -65,11 +67,11 @@ const char* field_to_string(const google::protobuf::FieldDescriptor* f) {
     case google::protobuf::FieldDescriptor::TYPE_STRING:   return "string";
     case google::protobuf::FieldDescriptor::TYPE_GROUP:
     case google::protobuf::FieldDescriptor::TYPE_MESSAGE:
-        return f->message_type()->name().c_str();
+        return butil::EnsureString(f->message_type()->name());
     case google::protobuf::FieldDescriptor::TYPE_BYTES:    return "bytes";
     case google::protobuf::FieldDescriptor::TYPE_UINT32:   return "uint32";
     case google::protobuf::FieldDescriptor::TYPE_ENUM:
-        return f->enum_type()->name().c_str();
+        return butil::EnsureString(f->enum_type()->name());
     case google::protobuf::FieldDescriptor::TYPE_SFIXED32: return "sfixed32";
     case google::protobuf::FieldDescriptor::TYPE_SFIXED64: return "sfixed64";
     case google::protobuf::FieldDescriptor::TYPE_SINT32:   return "sint32";
@@ -269,8 +271,8 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                              std::set<std::string> & ref_msgs,
                              std::set<std::string> & ref_maps,
                              google::protobuf::io::Printer& impl) {
-    std::string var_name = mcpack2pb::to_var_name(d->full_name());
-    std::string cpp_name = mcpack2pb::to_cpp_name(d->full_name());
+    std::string var_name = mcpack2pb::to_var_name(butil::EnsureString(d->full_name()));
+    std::string cpp_name = mcpack2pb::to_cpp_name(butil::EnsureString(d->full_name()));
     ref_msgs.insert(var_name);
 
     impl.Print("\n// $msg$ from mcpack\n", "msg", d->full_name());
@@ -338,7 +340,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "  return false;\n"                                                 
                     "}\n"
                     , "msg", cpp_name
-                    , "enum", to_cpp_name(f->enum_type()->full_name())
+                    , "enum", to_cpp_name(butil::EnsureString(f->enum_type()->full_name()))
                     , "lcfield", f->lowercase_name());
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT:
@@ -380,8 +382,8 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     , "lcfield", f->lowercase_name());
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE: {
-                std::string var_name2 = mcpack2pb::to_var_name(f->message_type()->full_name());
-                std::string cpp_name2 = mcpack2pb::to_cpp_name(f->message_type()->full_name());
+                std::string var_name2 = mcpack2pb::to_var_name(butil::EnsureString(f->message_type()->full_name()));
+                std::string cpp_name2 = mcpack2pb::to_cpp_name(butil::EnsureString(f->message_type()->full_name()));
                 if (is_map_entry(f->message_type())) {
                     ref_maps.insert(var_name2);
                     impl.Print(
@@ -544,7 +546,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "  return value.stream()->good();\n"
                     "}\n"
                     , "msg", cpp_name
-                    , "enum", to_cpp_name(f->enum_type()->full_name())
+                    , "enum", to_cpp_name(butil::EnsureString(f->enum_type()->full_name()))
                     , "lcfield", f->lowercase_name());
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
@@ -566,7 +568,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     , "lcfield", f->lowercase_name());
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE: {
-                std::string var_name2 = mcpack2pb::to_var_name(f->message_type()->full_name());
+                std::string var_name2 = mcpack2pb::to_var_name(butil::EnsureString(f->message_type()->full_name()));
                 ref_msgs.insert(var_name2);
                 impl.Print(
                     "{\n"
@@ -858,8 +860,8 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                                  std::set<std::string> & ref_msgs,
                                  std::set<std::string> & ref_maps,
                                  google::protobuf::io::Printer & impl) {
-    std::string var_name = mcpack2pb::to_var_name(d->full_name());
-    std::string cpp_name = mcpack2pb::to_cpp_name(d->full_name());
+    std::string var_name = mcpack2pb::to_var_name(butil::EnsureString(d->full_name()));
+    std::string cpp_name = mcpack2pb::to_cpp_name(butil::EnsureString(d->full_name()));
     ref_msgs.insert(var_name);
     impl.Print(
         "void serialize_$vmsg$_body(\n"
@@ -946,8 +948,8 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                     return false;
                 }
                 const google::protobuf::Descriptor* msg2 = f->message_type();
-                std::string var_name2 = mcpack2pb::to_var_name(msg2->full_name());
-                std::string cpp_name2 = mcpack2pb::to_cpp_name(msg2->full_name());
+                std::string var_name2 = mcpack2pb::to_var_name(butil::EnsureString(msg2->full_name()));
+                std::string cpp_name2 = mcpack2pb::to_cpp_name(butil::EnsureString(msg2->full_name()));
                 if (is_map_entry(msg2)) {
                     ref_maps.insert(var_name2);
                     impl.Print(
@@ -988,7 +990,7 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                         break;
                     case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE: {
                         std::string var_name3 = mcpack2pb::to_var_name(
-                            value_desc->message_type()->full_name());
+                            butil::EnsureString(value_desc->message_type()->full_name()));
                         ref_msgs.insert(var_name3);
                         impl.Print(
                             "  serializer.begin_object(pair.key());\n"
@@ -1048,7 +1050,7 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                                        << to_mcpack_typestr(cit2, f2) << " (idl)";
                             return false;
                         }
-                        std::string var_name3 = mcpack2pb::to_var_name(f2->message_type()->full_name());
+                        std::string var_name3 = mcpack2pb::to_var_name(butil::EnsureString(f2->message_type()->full_name()));
                         ref_msgs.insert(var_name3);
                         if (f2->is_repeated()) {
                             impl.Print(
@@ -1091,7 +1093,7 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                         }
                     } else if (f2->is_repeated()) {
                         const std::string msgstr = butil::string_printf(
-                            "msg.%s(i)", f->lowercase_name().c_str());
+                            "msg.%s(i)", butil::EnsureString(f->lowercase_name()).c_str());
                         switch (f2->cpp_type()) {
                         case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
                         case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
@@ -1141,7 +1143,7 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                         }
                     } else {
                         const std::string msgstr = butil::string_printf(
-                            "msg.%s(i)", f->lowercase_name().c_str());
+                            "msg.%s(i)", butil::EnsureString(f->lowercase_name()).c_str());
                         switch (f2->cpp_type()) {
                         case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
                         case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
@@ -1239,7 +1241,7 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                                << to_mcpack_typestr(cit, f) << " (idl)";
                     return false;
                 }
-                std::string var_name2 = mcpack2pb::to_var_name(f->message_type()->full_name());
+                std::string var_name2 = mcpack2pb::to_var_name(butil::EnsureString(f->message_type()->full_name()));
                 ref_msgs.insert(var_name2);
                 impl.Print("if (msg.has_$lcfield$()) {\n"
                            "  serializer.begin_object(\"$field$\");\n"
@@ -1298,8 +1300,8 @@ static std::string protobuf_style_normalize_filename(const std::string & fname) 
 static bool generate_registration(
     const google::protobuf::FileDescriptor* file,
     google::protobuf::io::Printer & impl) {
-    const std::string cpp_ns = to_cpp_name(file->package());
-    std::string norm_fname = protobuf_style_normalize_filename(file->name());
+    const std::string cpp_ns = to_cpp_name(butil::EnsureString(file->package()));
+    std::string norm_fname = protobuf_style_normalize_filename(butil::EnsureString(file->name()));
     impl.Print(
         "\n// register all message handlers\n"
         "struct RegisterMcpackFunctions_$norm_fname$ {\n"
@@ -1309,7 +1311,7 @@ static bool generate_registration(
     impl.Indent();
     for (int i = 0; i < file->message_type_count(); ++i) {
         const google::protobuf::Descriptor* d = file->message_type(i);
-        std::string var_name = mcpack2pb::to_var_name(d->full_name());
+        std::string var_name = mcpack2pb::to_var_name(butil::EnsureString(d->full_name()));
 
         impl.Print(
             "\n"
@@ -1359,8 +1361,8 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
         // skip the file.
         return true;
     }
-    
-    std::string cpp_name = file->name();
+
+    std::string cpp_name = butil::EnsureString(file->name());
     const size_t pos = cpp_name.find_last_of('.');
     if (pos == std::string::npos) {
         ::butil::string_printf(error, "Bad filename=%s", cpp_name.c_str());
@@ -1391,16 +1393,16 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
         if (!generate_parsing(d, ref_msgs, ref_maps, gimpl_printer)) {
             ::butil::string_printf(
                 error, "Fail to generate parsing code for %s",
-                d->full_name().c_str());
+                butil::EnsureString(d->full_name()).c_str());
             return false;
         }
         if (!generate_serializing(d, ref_msgs, ref_maps, gimpl_printer)) {
             ::butil::string_printf(
                 error, "Fail to generate serializing code for %s",
-                d->full_name().c_str());
+                butil::EnsureString(d->full_name()).c_str());
             return false;
         }
-        std::string var_name = mcpack2pb::to_var_name(d->full_name());
+        std::string var_name = mcpack2pb::to_var_name(butil::EnsureString(d->full_name()));
         gdecl_printer.Print(
             "::mcpack2pb::FieldMap* g_$vmsg$_fields = NULL;\n"
             , "vmsg", var_name);

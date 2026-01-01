@@ -30,8 +30,10 @@
 #include "json2pb/rapidjson.h"
 #include "json2pb/pb_to_json.h"
 #include "json2pb/protobuf_type_resolver.h"
-#include "butil/iobuf.h"
+
 #include "butil/base64.h"
+#include "butil/iobuf.h"
+#include "butil/strings/string_util.h"
 
 namespace json2pb {
 
@@ -172,7 +174,7 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
         if (!field->is_repeated() && !reflection->HasField(message, field)) {
             // Field that has not been set
             if (field->is_required()) {
-                _error = "Missing required field: " + field->full_name();
+                _error = "Missing required field: " + butil::EnsureString(field->full_name());
                 return false;
             }
             // Whether dumps default fields
@@ -186,7 +188,7 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
             continue;
         }
 
-        const std::string& orig_name = field->name();
+        const std::string orig_name = butil::EnsureString(field->name());
         bool decoded = decode_name(orig_name, field_name_str); 
         const std::string& name = decoded ? field_name_str : orig_name;
         handler.Key(name.data(), name.size(), false);
@@ -205,7 +207,7 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
 
         // Write a json object corresponding to hold protobuf map
         // such as {"key": value, ...}
-        const std::string& orig_name = map_desc->name();
+        const std::string orig_name = butil::EnsureString(map_desc->name());
         bool decoded = decode_name(orig_name, field_name_str);
         const std::string& name = decoded ? field_name_str : orig_name;
         handler.Key(name.data(), name.size(), false);
@@ -306,8 +308,8 @@ bool PbToJsonConverter::_PbFieldToJson(
             handler.StartArray();
             if (_option.enum_option == OUTPUT_ENUM_BY_NAME) {
                 for (int index = 0; index < field_size; ++index) { 
-                    const std::string& enum_name = reflection->GetRepeatedEnum(
-                        message, field, index)->name();
+                    const std::string enum_name = butil::EnsureString(reflection->GetRepeatedEnum(
+                        message, field, index)->name());
                     handler.String(enum_name.data(), enum_name.size(), false);
                 }
             } else {
@@ -321,7 +323,7 @@ bool PbToJsonConverter::_PbFieldToJson(
         } else {
             if (_option.enum_option == OUTPUT_ENUM_BY_NAME) {
                 const std::string& enum_name =
-                        reflection->GetEnum(message, field)->name();
+                        butil::EnsureString(reflection->GetEnum(message, field)->name());
                 handler.String(enum_name.data(), enum_name.size(), false);
             } else {
                 handler.AddInt(reflection->GetEnum(message, field)->number());

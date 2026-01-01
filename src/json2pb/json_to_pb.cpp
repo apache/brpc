@@ -28,6 +28,7 @@
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <gflags/gflags.h>
 #include "butil/strings/string_number_conversions.h"
+#include "butil/strings/string_util.h"
 #include "butil/third_party/rapidjson/error/error.h"
 #include "butil/third_party/rapidjson/rapidjson.h"
 #include "json2pb/json_to_pb.h"
@@ -53,8 +54,9 @@
             perr->append(", ", 2);                                      \
         }                                                               \
         butil::string_appendf(perr, fmt, ##__VA_ARGS__);                \
-        if ((pb) != nullptr) {                                            \
-            butil::string_appendf(perr, " [%s]", (pb)->GetDescriptor()->name().c_str());  \
+        if ((pb) != nullptr) {                                          \
+            butil::string_appendf(perr, " [%s]",                        \
+                    butil::EnsureString((pb)->GetDescriptor()->name()).c_str()); \
         }                                                               \
     } else { }
 
@@ -126,7 +128,7 @@ inline bool value_invalid(const google::protobuf::FieldDescriptor* field, const 
         string_append_value(value, err);
         butil::string_appendf(err, "' for %sfield `%s' which SHOULD be %s",
                        optional ? "optional " : "",
-                       field->full_name().c_str(), type);
+                       butil::EnsureString(field->full_name()).c_str(), type);
     }
     if (!optional) {
         return false;                                           
@@ -324,7 +326,7 @@ static bool JsonValueToProtoField(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
                                   int depth) {
     if (value.IsNull()) {
         if (field->is_required()) {
-            J2PERROR(err, "Missing required field: %s", field->full_name().c_str());
+            J2PERROR(err, "Missing required field: %s", butil::EnsureString(field->full_name()).c_str());
             return false;
         }
         return true;
@@ -333,7 +335,7 @@ static bool JsonValueToProtoField(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
     if (field->is_repeated()) {
         if (!value.IsArray()) {
             J2PERROR(err, "Invalid value for repeated field: %s",
-                     field->full_name().c_str());
+                     butil::EnsureString(field->full_name()).c_str());
             return false;
         }
     } 
@@ -506,7 +508,7 @@ bool JsonMapToProtoMap(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
                        int depth) {
     if (!value.IsObject()) {
         J2PERROR(err, "Non-object value for map field: %s",
-                 map_desc->full_name().c_str());
+                 butil::EnsureString(map_desc->full_name()).c_str());
         return false;
     }
 
@@ -584,7 +586,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
     for (size_t i = 0; i < fields.size(); ++i) {
         const google::protobuf::FieldDescriptor* field = fields[i];
         
-        const std::string& orig_name = field->name();
+        const std::string orig_name = butil::EnsureString(field->name());
         bool res = decode_name(orig_name, field_name_str_temp); 
         const std::string& field_name_str = (res ? field_name_str_temp : orig_name);
 
@@ -593,7 +595,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
                 json_value.FindMember(field_name_str.data());
         if (member == json_value.MemberEnd()) {
             if (field->is_required()) {
-                J2PERROR(err, "Missing required field: %s", field->full_name().c_str());
+                J2PERROR(err, "Missing required field: %s", butil::EnsureString(field->full_name()).c_str());
                 return false;
             }
             continue; 
@@ -604,7 +606,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
                 json_value.FindMember(field_name_str.data());
         if (member == NULL) {
             if (field->is_required()) {
-                J2PERROR(err, "Missing required field: %s", field->full_name().c_str());
+                J2PERROR(err, "Missing required field: %s", butil::EnsureString(field->full_name()).c_str());
                 return false;
             }
             continue; 
