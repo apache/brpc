@@ -28,7 +28,8 @@ message RpcMeta {
     optional RpcResponseMeta response = 2;
     optional int32 compress_type = 3;
     optional int64 correlation_id = 4;
-    optional int32 attachment_size = 5;
+    optional int32 attachment_size = 5;  // For compatibility, use attachment_size_long if size > INT32_MAX
+    optional int64 attachment_size_long = 13;  // For attachment size > INT32_MAX
     optional ChunkInfo chunk_info = 6;
     optional bytes authentication_data = 7;
     optional StreamSettings stream_settings = 8;

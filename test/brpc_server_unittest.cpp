@@ -21,11 +21,13 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <cstdint>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/raw_pack.h"
 #include "butil/fd_guard.h"
 #include "butil/files/scoped_file.h"
 #include "brpc/socket.h"
@@ -53,6 +55,9 @@
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
 #include "brpc/compress.h"
+#include "brpc/policy/baidu_rpc_meta.pb.h"
+#include "brpc/policy/baidu_rpc_protocol.h"
+#include "brpc/policy/most_common_message.h"
 #include "echo.pb.h"
 #include "v1.pb.h"
 #include "v2.pb.h"
@@ -2068,6 +2073,45 @@ TEST_F(ServerTest, auth) {
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
+}
+
+TEST_F(ServerTest, baidu_extended_header_parse) {
+    brpc::policy::RpcMeta meta;
+    meta.set_correlation_id(123);
+    std::string meta_buf;
+    ASSERT_TRUE(meta.SerializeToString(&meta_buf));
+
+    const std::string payload = "extended-format-payload";
+    const uint64_t body_size = meta_buf.size() + payload.size();
+
+    char header[20];
+    memcpy(header, "PRPC", 4);
+    butil::RawPacker(header + 4)
+        .pack32(UINT32_MAX)
+        .pack32(static_cast<uint32_t>(meta_buf.size()))
+        .pack64(body_size);
+
+    butil::IOBuf buf;
+    buf.append(header, sizeof(header));
+    buf.append(meta_buf);
+    buf.append(payload);
+
+    brpc::ParseResult result = brpc::policy::ParseRpcMessage(&buf, NULL, false, NULL);
+    ASSERT_TRUE(result.is_ok());
+
+    brpc::policy::MostCommonMessage* msg =
+        static_cast<brpc::policy::MostCommonMessage*>(result.message());
+    std::string parsed_payload;
+    msg->payload.copy_to(&parsed_payload);
+    EXPECT_EQ(payload, parsed_payload);
+
+    std::string parsed_meta;
+    msg->meta.copy_to(&parsed_meta);
+    brpc::policy::RpcMeta parsed_meta_pb;
+    ASSERT_TRUE(parsed_meta_pb.ParseFromString(parsed_meta));
+    EXPECT_EQ(meta.correlation_id(), parsed_meta_pb.correlation_id());
+
+    msg->Destroy();
 }
 
 } //namespace

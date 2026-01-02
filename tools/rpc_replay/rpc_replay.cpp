@@ -181,13 +181,25 @@ static void* replay_thread(void* arg) {
                 memcpy(&nshead_req.head, sample->meta.nshead().c_str(), sample->meta.nshead().length());
                 nshead_req.body = sample->request;
                 req_ptr = &nshead_req;
-            } else if (sample->meta.attachment_size() > 0) {
-                sample->request.cutn(
-                    &req.serialized_data(),
-                    sample->request.size() - sample->meta.attachment_size());
-                cntl->request_attachment() = sample->request.movable();
             } else {
-                req.serialized_data() = sample->request.movable();
+                // Get attachment size with backward compatibility
+                int64_t attachment_size = 0;
+                if (sample->meta.has_attachment_size_long()) {
+                    attachment_size = sample->meta.attachment_size_long();
+                } else if (sample->meta.has_attachment_size()) {
+                    attachment_size = static_cast<int64_t>(sample->meta.attachment_size());
+                }
+                // Validate attachment_size: check for negative values and size overflow
+                // Explicitly validate the range before casting to size_t
+                if (attachment_size > 0 && 
+                    attachment_size < static_cast<int64_t>(sample->request.size())) {
+                    sample->request.cutn(
+                        &req.serialized_data(),
+                        sample->request.size() - static_cast<size_t>(attachment_size));
+                    cntl->request_attachment() = sample->request.movable();
+                } else {
+                    req.serialized_data() = sample->request.movable();
+                }
             }
             g_sent_count << 1;
             const int64_t start_time = butil::gettimeofday_us();
