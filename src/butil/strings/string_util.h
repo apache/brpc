@@ -21,10 +21,6 @@
 #include "butil/strings/string16.h"
 #include "butil/strings/string_piece.h"  // For implicit conversions.
 
-#ifdef BRPC_HAS_ABSL
-#include <absl/strings/string_view.h>
-#endif
-
 namespace butil {
 
 // C standard-library functions like "strncasecmp" and "snprintf" that aren't
@@ -263,13 +259,6 @@ BUTIL_EXPORT bool ContainsOnlyChars(const StringPiece16& input,
 BUTIL_EXPORT bool IsStringUTF8(const StringPiece& str);
 BUTIL_EXPORT bool IsStringASCII(const StringPiece& str);
 BUTIL_EXPORT bool IsStringASCII(const string16& str);
-
-#if defined(BRPC_HAS_ABSL)
-// Wrap absl::string_view with std::string
-inline std::string EnsureString(const absl::string_view& v) {
-    return std::string(v.data(), v.size());
-}
-#endif
 
 inline std::string EnsureString(const std::string& s) {
     return s;
