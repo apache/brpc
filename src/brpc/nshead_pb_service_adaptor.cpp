@@ -19,7 +19,7 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 
-#include "nshead_pb_service_adaptor.h"
+#include "brpc/nshead_pb_service_adaptor.h"
 
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket

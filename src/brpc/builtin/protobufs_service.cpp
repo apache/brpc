@@ -18,7 +18,7 @@
 
 #include <google/protobuf/descriptor.h>     // ServiceDescriptor
 
-#include "protobufs_service.h"
+#include "brpc/builtin/protobufs_service.h"
 
 #include "brpc/controller.h"           // Controller
 #include "brpc/server.h"               // Server
