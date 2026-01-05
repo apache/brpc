@@ -77,7 +77,7 @@ ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
 static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
     if (opt.auth == NULL &&
         !opt.has_ssl_options() &&
-        opt.client_host.empty() &&
+        opt.device_name.empty() &&
         opt.connection_group.empty() &&
         opt.hc_option.health_check_path.empty()) {
         // Returning zeroized result by default is more intuitive for users.
@@ -95,9 +95,9 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
             buf.append("|conng=");
             buf.append(opt.connection_group);
         }
-        if (!opt.client_host.empty()) {
-            buf.append("|clih=");
-            buf.append(opt.client_host);
+        if (!opt.device_name.empty()) {
+            buf.append("|devn=");
+            buf.append(opt.device_name);
         }
         if (opt.auth) {
             buf.append("|auth=");
@@ -367,13 +367,6 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
         LOG(ERROR) << "Invalid port=" << port;
         return -1;
     }
-    butil::EndPoint client_endpoint;
-    if (!_options.client_host.empty() &&
-        butil::str2ip(_options.client_host.c_str(), &client_endpoint.ip) != 0 &&
-        butil::hostname2ip(_options.client_host.c_str(), &client_endpoint.ip) != 0) {
-        LOG(ERROR) << "Invalid client host=`" << _options.client_host << '\'';
-        return -1;
-    }
     _server_address = server_addr_and_port;
     const ChannelSignature sig = ComputeChannelSignature(_options);
     std::shared_ptr<SocketSSLContext> ssl_ctx;
@@ -382,7 +375,7 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     }
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
                         &_server_id, ssl_ctx, _options.use_rdma,
-                        _options.hc_option, client_endpoint) != 0) {
+                        _options.hc_option, _options.device_name) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -410,13 +403,6 @@ int Channel::Init(const char* ns_url,
             _options.mutable_ssl_options()->sni_name = _service_name;
         }
     }
-    butil::EndPoint client_endpoint;
-    if (!_options.client_host.empty() &&
-        butil::str2ip(_options.client_host.c_str(), &client_endpoint.ip) != 0 &&
-        butil::hostname2ip(_options.client_host.c_str(), &client_endpoint.ip) != 0) {
-        LOG(ERROR) << "Invalid client host=`" << _options.client_host << '\'';
-        return -1;
-    }
     std::unique_ptr<LoadBalancerWithNaming> lb(new (std::nothrow)
                                                    LoadBalancerWithNaming);
     if (NULL == lb) {
@@ -429,7 +415,7 @@ int Channel::Init(const char* ns_url,
     ns_opt.use_rdma = _options.use_rdma;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
     ns_opt.hc_option =  _options.hc_option;
-    ns_opt.client_endpoint = client_endpoint;
+    ns_opt.device_name = _options.device_name;
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
         return -1;
     }

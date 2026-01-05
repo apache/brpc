@@ -53,7 +53,7 @@ struct GetNamingServiceThreadOptions {
     HealthCheckOption hc_option;
     ChannelSignature channel_signature;
     std::shared_ptr<SocketSSLContext> ssl_ctx;
-    butil::EndPoint client_endpoint;
+    std::string device_name;
 };
 
 // A dedicated thread to map a name to ServerIds
