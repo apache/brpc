@@ -862,7 +862,7 @@ void Controller::Call::OnComplete(
         }
     }
 
-    if (need_feedback) {
+    if (need_feedback && c->_lb) {
         const LoadBalancer::CallInfo info =
             { begin_time_us, peer_id, error_code, c };
         c->_lb->Feedback(info);
