@@ -115,6 +115,19 @@ TEST(EndPointTest, endpoint) {
     ASSERT_EQ(289, p6.port);
 #endif
 }
+TEST(EndPointTest, endpoint_reject_trailing_characters_after_port) {
+    butil::EndPoint ep;
+
+    // invalid: non-whitespace after port
+    ASSERT_EQ(-1, butil::str2endpoint("127.0.0.1:8000a", &ep));
+    ASSERT_EQ(-1, butil::str2endpoint("127.0.0.1:8000#", &ep));
+    ASSERT_EQ(-1, butil::str2endpoint("127.0.0.1:8000abc", &ep));
+
+    // valid: only whitespace after port
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:8000 ", &ep));
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:8000\t", &ep));
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:8000\n", &ep));
+}
 
 TEST(EndPointTest, hash_table) {
     butil::hash_map<butil::EndPoint, int> m;
