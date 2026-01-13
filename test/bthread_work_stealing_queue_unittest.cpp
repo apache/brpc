@@ -21,6 +21,7 @@
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "bthread/work_stealing_queue.h"
+#include "bthread/processor.h"
 
 namespace {
 typedef size_t value_type;
@@ -39,13 +40,7 @@ void* steal_thread(void* arg) {
         if (q->steal(&val)) {
             stolen->push_back(val);
         } else {
-#if defined(ARCH_CPU_ARM_FAMILY)
-            asm volatile("yield\n": : :"memory");
-#elif defined(ARCH_CPU_LOONGARCH64_FAMILY)
-            asm volatile("nop\n": : :"memory");
-#else
-            asm volatile("pause\n": : :"memory");
-#endif
+            cpu_relax();
         }
     }
     return stolen;

@@ -17,10 +17,15 @@
 
 
 
+#include "brpc/ssl_options.h"
+#include "butil/files/scoped_file.h"
 #include <openssl/bio.h>
 #ifndef USE_MESALINK
 
 #include <sys/socket.h>                // recv
+#include <pthread.h>                   // pthread_once
+#include <stdio.h>                     // fopen
+#include <stdlib.h>                    // getenv
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
@@ -183,6 +188,47 @@ static void SSLMessageCallback(int write_p, int version, int content_type,
     }
 #endif // TLS1_RT_HEARTBEAT
 }
+
+#if defined(OPENSSL_IS_BORINGSSL) || (OPENSSL_VERSION_NUMBER >= 0x10101000L)
+static pthread_once_t g_ssl_keylog_once = PTHREAD_ONCE_INIT;
+static FILE* g_ssl_keylog_file = NULL;
+
+static void InitSSLKeyLogFile() {
+    const char* path = getenv("SSLKEYLOGFILE");
+    if (path == NULL || path[0] == '\0') {
+        return;
+    }
+    g_ssl_keylog_file = fopen(path, "ae");
+    if (g_ssl_keylog_file == NULL) {
+        PLOG(WARNING) << "Fail to open SSLKEYLOGFILE=" << path;
+    } else {
+        setvbuf(g_ssl_keylog_file, NULL, _IOLBF, 0);
+        LOG(WARNING) << "SSLKEYLOGFILE is enabled (path: " << path << "). "
+                     << "Sensitive TLS session keys will be written to this file. "
+                     << "This feature is intended for debugging only and should NOT be used in production environments.";
+    }
+}
+
+static void SSLKeyLogCallback(const SSL* ssl, const char* line) {
+    (void)ssl;
+    if (line == NULL || g_ssl_keylog_file == NULL) {
+        return;
+    }
+    // Write the full key log line with newline in one call to keep output atomic.
+    fprintf(g_ssl_keylog_file, "%s\n", line);
+}
+
+static void MaybeSetKeyLogCallback(SSL_CTX* ctx) {
+    pthread_once(&g_ssl_keylog_once, InitSSLKeyLogFile);
+    if (ctx != NULL && g_ssl_keylog_file != NULL) {
+        SSL_CTX_set_keylog_callback(ctx, SSLKeyLogCallback);
+    }
+}
+#else
+static void MaybeSetKeyLogCallback(SSL_CTX* ctx) {
+    (void)ctx;
+}
+#endif
 
 #ifndef OPENSSL_NO_DH
 static DH* SSLGetDHCallback(SSL* ssl, int exp, int keylen) {
@@ -412,8 +458,18 @@ static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
 
     // TODO: Verify the CNAME in certificate matches the requesting host
     if (verify.verify_depth > 0) {
-        SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
-                                 | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
+        if (verify.verify_mode == VerifyMode::VERIFY_FAIL_IF_NO_PEER_CERT) {
+            SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
+                                     | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
+        } else if (verify.verify_mode == VerifyMode::VERIFY_PEER) {
+            SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+        } else if (verify.verify_mode == VerifyMode::VERIFY_NONE) {
+            SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+        } else {
+            // for forward compatibility
+            SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
+                                     | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
+        }
         SSL_CTX_set_verify_depth(ctx, verify.verify_depth);
         std::string cafile = verify.ca_file_path;
         if (cafile.empty()) {
@@ -483,6 +539,7 @@ SSL_CTX* CreateClientSSLContext(const ChannelSSLOptions& options) {
         LOG(ERROR) << "Fail to new SSL_CTX: " << SSLError(ERR_get_error());
         return NULL;
     }
+    MaybeSetKeyLogCallback(ssl_ctx.get());
 
     if (!options.client_cert.certificate.empty()
         && LoadCertificate(ssl_ctx.get(),
@@ -521,6 +578,7 @@ SSL_CTX* CreateServerSSLContext(const std::string& certificate,
         LOG(ERROR) << "Fail to new SSL_CTX: " << SSLError(ERR_get_error());
         return NULL;
     }
+    MaybeSetKeyLogCallback(ssl_ctx.get());
 
     if (LoadCertificate(ssl_ctx.get(), certificate,
                         private_key, hostnames) != 0) {

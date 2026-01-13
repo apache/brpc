@@ -35,7 +35,7 @@ RDMA does not use socket API like TCP. However, the brpc::Socket class is still 
 
 brpc uses RDMA RC mode. Every RdmaEndpoint has its own QP. Before establishing RDMA connection, a TCP connection is necessary to exchange some information such as GID and QPN. We call this procedure handshake. Since handshake needs TCP connection, the TCP fd in the corresponding Socket is still valid. The handshake procedure is completed in the AppConnect way in brpc. The TCP connection will keep in EST state but not be used for data transmission after RDMA connection is established. Once the TCP connection is closed, the corresponding RDMA connection will be set error.
 
-The first key feature in RdmaEndpoint data transmission is zero copy. All data which need to transmit is in the Blocks of IOBuf. Thus all the Blocks need to be released after the remote side completes the receiving. The reference of these Blocks are stored in RdmaEndpoint::_sbuf. In order to realize receiving zero copy, the receive side must post receive buffers in Blocks of IOBuf, which are stored in RdmaEndpoint::_rbuf. Note that all the Blocks posted in the receive side has a fixed size (recv_block_size). The transmit side can only send message smaller than that. Otherwise the receive side cannot receive data successfully.
+The first key feature in RdmaEndpoint data transmission is zero copy. All data which need to transmit is in the Blocks of IOBuf. Thus all the Blocks need to be released after the sent CQEs are triggered. The reference of these Blocks are stored in RdmaEndpoint::_sbuf. In order to realize receiving zero copy, the receive side must post receive buffers in Blocks of IOBuf, which are stored in RdmaEndpoint::_rbuf. Note that all the Blocks posted in the receive side has a fixed size (recv_block_size). The transmit side can only send message smaller than that. Otherwise the receive side cannot receive data successfully.
 
 The second key feature in RdmaEndpoint data transmission is sliding window flow control. The flow control is to avoid fast transmit side overwhelming slow receive side. TCP has similar mechanism in kernel TCP stack. RdmaEndpoint implements this mechanism with explicit ACKs from receive side. to reduce the overhead of ACKs, the ACK number can be piggybacked in ordinary data message as immediate data.
 
@@ -50,21 +50,26 @@ RDMA is hardware-related. It has some different concepts such as device, port, G
 # Parameters
 
 Configurable parameters:
-* rdma_trace_verbose: to print RDMA connection information in log，default is false
-* rdma_recv_zerocopy: enable zero copy in receive side，default is true
-* rdma_zerocopy_min_size: the min message size for receive zero copy (in Byte)，default is 512
-* rdma_recv_block_type: the block type used for receiving, can be default(8KB)/large(64KB)/huge(2MB)，default is default
-* rdma_prepared_qp_size: the size of QPs created at the beginning of the application，default is 128
-* rdma_prepared_qp_cnt: the number of QPs created at the beginning of the application，default is 1024
-* rdma_max_sge: the max length of sglist, default is 0, which is the max length allowed by the device
-* rdma_sq_size: the size of SQ，default is 128
-* rdma_rq_size: the size of RQ，default is 128
-* rdma_cqe_poll_once: the number of CQE pooled from CQ once，default is 32
-* rdma_gid_index: the index of local GID table used，default is -1，which is the maximum GID index
-* rdma_port: the port number used，default is 1
-* rdma_device: the IB device name，default is empty，which is the first active device
-* rdma_memory_pool_initial_size_mb: the initial region size of RDMA memory pool (in MB)，default is 1024
-* rdma_memory_pool_increase_size_mb: the step increase region size of RDMA memory pool (in MB)，default is 1024
-* rdma_memory_pool_max_regions: the max number of regions in RDMA memory pool，default is 16
-* rdma_memory_pool_buckets: the number of buckets for avoiding mutex contention in RDMA memory pool，default is 4
-* rdma_memory_pool_tls_cache_num: the number of thread local cached blocks in RDMA memory pool，default is 128
+* rdma_trace_verbose: to print RDMA connection information in log，default is false.
+* rdma_recv_zerocopy: enable zero copy in receive side，default is true.
+* rdma_zerocopy_min_size: the min message size for receive zero copy (in Byte)，default is 512.
+* rdma_recv_block_type: the block type used for receiving, can be default(8KB)/large(64KB)/huge(2MB)，default is default.
+* rdma_prepared_qp_size: the size of QPs created at the beginning of the application，default is 128.
+* rdma_prepared_qp_cnt: the number of QPs created at the beginning of the application，default is 1024.
+* rdma_max_sge: the max length of sglist, default is 0, which is the max length allowed by the device.
+* rdma_sq_size: the size of SQ，default is 128.
+* rdma_rq_size: the size of RQ，default is 128.
+* rdma_cqe_poll_once: the number of CQE pooled from CQ once，default is 32.
+* rdma_gid_index: the index of local GID table used，default is -1，which is the maximum GID index.
+* rdma_port: the port number used，default is 1.
+* rdma_device: the IB device name，default is empty，which is the first active device.
+* rdma_memory_pool_initial_size_mb: the initial region size of RDMA memory pool (in MB)，default is 1024.
+* rdma_memory_pool_increase_size_mb: the step increase region size of RDMA memory pool (in MB)，default is 1024.
+* rdma_memory_pool_max_regions: the max number of regions in RDMA memory pool，default is 3.
+* rdma_memory_pool_buckets: the number of buckets for avoiding mutex contention in RDMA memory pool，default is 4.
+* rdma_memory_pool_tls_cache_num: the number of thread local cached blocks in RDMA memory pool，default is 128.
+* rdma_use_polling: Whether to use RDMA polling mode, default is false.
+* rdma_poller_num: The number of pollers in polling mode, default is 1.
+* rdma_poller_yield: Whether pollers in polling mode voluntarily relinquish the CPU, default is false.
+* rdma_edisp_unsched`: Prevents the event driver from being scheduled, default is false.
+* rdma_disable_bthread: Disables bthread, default is false.

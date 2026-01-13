@@ -54,26 +54,30 @@ public:
 
 private:
     void Run();
-    void (*_done)(int, void*);
-    void* _data;
+    void (*_done)(int, void*){NULL};
+    void* _data{NULL};
 };
 
 struct RdmaResource {
-    ibv_qp* qp;
-    ibv_cq* cq;
-    ibv_comp_channel* comp_channel;
-    RdmaResource* next;
-    RdmaResource();
+    RdmaResource* next{NULL};
+    ibv_qp* qp{NULL};
+    // For polling mode.
+    ibv_cq* polling_cq{NULL};
+    // For event mode.
+    ibv_cq* send_cq{NULL};
+    ibv_cq* recv_cq{NULL};
+    ibv_comp_channel* comp_channel{NULL};
+    RdmaResource() = default;
     ~RdmaResource();
     DISALLOW_COPY_AND_ASSIGN(RdmaResource);
 };
 
 class BAIDU_CACHELINE_ALIGNMENT RdmaEndpoint : public SocketUser {
 friend class RdmaConnect;
-friend class brpc::Socket;
+friend class Socket;
 public:
-    RdmaEndpoint(Socket* s);
-    ~RdmaEndpoint();
+    explicit RdmaEndpoint(Socket* s);
+    ~RdmaEndpoint() override;
 
     // Global initialization
     // Return 0 if success, -1 if failed and errno set
@@ -92,7 +96,8 @@ public:
     bool IsWritable() const;
 
     // For debug
-    void DebugInfo(std::ostream& os) const;
+    void DebugInfo(std::ostream& os,
+                   butil::StringPiece connector = "\n") const;
 
     // Callback when there is new epollin event on TCP fd
     static void OnNewDataFromTcp(Socket* m);
@@ -195,7 +200,10 @@ private:
     int BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num);
 
     // Get event from comp channel and ack the events
-    int GetAndAckEvents();
+    int GetAndAckEvents(SocketUniquePtr& s);
+
+    // Request completion notification on a send/recv CQ.
+    int ReqNotifyCq(bool send_cq);
 
     // Poll CQ and get the work completion
     static void PollCq(Socket* m);
@@ -221,10 +229,11 @@ private:
     // rdma resource
     RdmaResource* _resource;
 
-    // the number of events requiring ack
-    int _cq_events;
+    // The number of events requiring ack.
+    unsigned int _send_cq_events;
+    unsigned int _recv_cq_events;
 
-    // the SocketId which wrap the comp channel of CQ
+    // The SocketId which wrap the comp channel of CQ.
     SocketId _cq_sid;
 
     // Capacity of local Send Queue and local Recv Queue
@@ -257,8 +266,12 @@ private:
     uint16_t _local_window_capacity;
     // The capacity of remote window: min(local RQ, remote SQ)
     uint16_t _remote_window_capacity;
+    // The number of IMM WRs we can post to the local Send Queue.
+    uint16_t _sq_imm_window_size;
+    // The number of WRs we can send to remote side.
+    butil::atomic<uint16_t> _remote_rq_window_size;
     // The number of WRs we can post to the local Send Queue
-    butil::atomic<uint16_t> _window_size;
+    butil::atomic<uint16_t> _sq_window_size;
     // The number of new WRs posted in the local Recv Queue
     butil::atomic<uint16_t> _new_rq_wrs;
 
@@ -282,9 +295,9 @@ private:
         butil::MPSCQueue<CqSidOp, butil::ObjectPoolAllocator<CqSidOp>> op_queue;
         // Callback used for io_uring/spdk etc
         std::function<void()> callback;
-        // Init and Destory function
-        std::function<void(void)> init_fn;
-        std::function<void(void)> release_fn;
+        // Init and Destroy function
+        std::function<void()> init_fn;
+        std::function<void()> release_fn;
     };
     // Poller group
     struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {

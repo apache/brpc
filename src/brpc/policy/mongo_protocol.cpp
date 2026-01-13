@@ -18,8 +18,11 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
-#include "butil/time.h" 
+
 #include "butil/iobuf.h"                         // butil::IOBuf
+#include "butil/strings/string_util.h"
+#include "butil/time.h"
+
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
 #include "brpc/server.h"                   // Server
@@ -249,7 +252,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
             if (!method_status->OnRequested(&rejected_cc)) {
                 mongo_done->cntl.SetFailed(
                     ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                    mp->method->full_name().c_str(), rejected_cc);
+                    butil::EnsureString(mp->method->full_name()).c_str(), rejected_cc);
                 break;
             }
         }

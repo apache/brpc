@@ -391,7 +391,7 @@ public:
             return !is_builtin_service && !restful_map;
         }
 
-        const std::string& service_name() const;
+        const std::string service_name() const;
     };
     typedef butil::FlatMap<std::string, ServiceProperty> ServiceMap;
 

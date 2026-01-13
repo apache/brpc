@@ -21,10 +21,13 @@
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/text_format.h>
-#include "butil/logging.h"                       // LOG()
+
 #include "butil/iobuf.h"                         // butil::IOBuf
-#include "butil/raw_pack.h"                      // RawPacker RawUnpacker
+#include "butil/logging.h"                       // LOG()
 #include "butil/memory/scope_guard.h"
+#include "butil/raw_pack.h"                      // RawPacker RawUnpacker
+#include "butil/strings/string_util.h"
+
 #include "json2pb/json_to_pb.h"
 #include "json2pb/pb_to_json.h"
 #include "brpc/controller.h"                    // Controller
@@ -233,7 +236,7 @@ static bool SerializeResponse(const google::protobuf::Message& res,
         cntl.SetFailed(ERESPONSE,
                        "Fail to serialize response=%s, "
                        "ContentType=%s, CompressType=%s, ChecksumType=%s",
-                       res.GetDescriptor()->full_name().c_str(),
+                       butil::EnsureString(res.GetDescriptor()->full_name()).c_str(),
                        ContentTypeToCStr(content_type),
                        CompressTypeToCStr(compress_type),
                        ChecksumTypeToCStr(checksum_type));
@@ -775,7 +778,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                     cntl->SetFailed(
                         ELIMIT,
                         "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                        mp->method->full_name().c_str(), rejected_cc);
+                        butil::EnsureString(mp->method->full_name()).c_str(), rejected_cc);
                     break;
                 }
             }
@@ -784,7 +787,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             accessor.set_method(method);
 
             if (span) {
-                span->ResetServerSpanName(method->full_name());
+                span->ResetServerSpanName(butil::EnsureString(method->full_name()));
             }
 
             if (!server->AcceptRequest(cntl.get())) {
@@ -812,7 +815,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                     EREQUEST,
                     "Fail to parse request=%s, ContentType=%s, "
                     "CompressType=%s, ChecksumType=%s, request_size=%d",
-                    messages->Request()->GetDescriptor()->full_name().c_str(),
+                    butil::EnsureString(messages->Request()->GetDescriptor()->full_name()).c_str(),
                     ContentTypeToCStr(content_type),
                     CompressTypeToCStr(compress_type),
                     ChecksumTypeToCStr(checksum_type), req_size);
@@ -996,7 +999,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                     EREQUEST,
                     "Fail to parse response=%s, ContentType=%s, "
                     "CompressType=%s, ChecksumType=%s, request_size=%d",
-                    cntl->response()->GetDescriptor()->full_name().c_str(),
+                    butil::EnsureString(cntl->response()->GetDescriptor()->full_name()).c_str(),
                     ContentTypeToCStr(content_type),
                     CompressTypeToCStr(compress_type),
                     ChecksumTypeToCStr(checksum_type), res_size);
@@ -1033,7 +1036,7 @@ void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
             EREQUEST,
             "Fail to compress request=%s, "
             "ContentType=%s, CompressType=%s, ChecksumType=%s",
-            request->GetDescriptor()->full_name().c_str(),
+            butil::EnsureString(request->GetDescriptor()->full_name()).c_str(),
             ContentTypeToCStr(content_type), CompressTypeToCStr(compress_type),
             ChecksumTypeToCStr(checksum_type));
     }

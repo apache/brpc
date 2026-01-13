@@ -254,6 +254,13 @@ inline uint64_t clock_cycles() {
         : "=r" (stable_counter), "=r" (counter_id)
         );
     return stable_counter;
+#elif defined(__riscv)
+    uint64_t cycles;
+    __asm__ __volatile__ (
+        "rdcycle %0"
+        : "=r" (cycles)
+        );
+    return cycles;
 #else
   #error "unsupported arch"
 #endif

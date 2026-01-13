@@ -30,6 +30,7 @@
 #include "butil/time.h"
 #include "butil/class_name.h"
 #include "butil/string_printf.h"
+#include "butil/strings/string_util.h"
 #include "butil/debug/leak_annotations.h"
 #include "brpc/log.h"
 #include "brpc/compress.h"
@@ -411,9 +412,9 @@ void* Server::UpdateDerivedVars(void* arg) {
     }
 }
 
-const std::string& Server::ServiceProperty::service_name() const {
+const std::string Server::ServiceProperty::service_name() const {
     if (service) {
-        return service->GetDescriptor()->full_name();
+        return butil::EnsureString(service->GetDescriptor()->full_name());
     } else if (restful_map) {
         return restful_map->service_name();
     }
@@ -1439,7 +1440,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         mp.service = service;
         mp.method = md;
         mp.status = new MethodStatus;
-        _method_map[md->full_name()] = mp;
+        _method_map[butil::EnsureString(md->full_name())] = mp;
         if (is_idl_support && sd->name() != sd->full_name()/*has ns*/) {
             MethodProperty mp2 = mp;
             mp2.own_method_status = false;
@@ -1462,8 +1463,8 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
 
     const ServiceProperty ss = {
         is_builtin_service, svc_opt.ownership, service, NULL };
-    _fullname_service_map[sd->full_name()] = ss;
-    _service_map[sd->name()] = ss;
+    _fullname_service_map[butil::EnsureString(sd->full_name())] = ss;
+    _service_map[butil::EnsureString(sd->name())] = ss;
     if (is_builtin_service) {
         ++_builtin_service_count;
     } else {
@@ -1505,7 +1506,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         // handling is not affected.
         for (size_t i = 0; i < mappings.size(); ++i) {
             const std::string full_method_name =
-                sd->full_name() + "." + mappings[i].method_name;
+                butil::EnsureString(sd->full_name()) + "." + mappings[i].method_name;
             MethodProperty* mp = _method_map.seek(full_method_name);
             if (mp == NULL) {
                 LOG(ERROR) << "Unknown method=`" << full_method_name << '\'';
@@ -1730,9 +1731,9 @@ int Server::RemoveService(google::protobuf::Service* service) {
     }
 
     const google::protobuf::ServiceDescriptor* sd = service->GetDescriptor();
-    ServiceProperty* ss = _fullname_service_map.seek(sd->full_name());
+    ServiceProperty* ss = _fullname_service_map.seek(butil::EnsureString(sd->full_name()));
     if (ss == NULL) {
-        RPC_VLOG << "Fail to find service=" << sd->full_name().c_str();
+        RPC_VLOG << "Fail to find service=" << sd->full_name();
         return -1;
     }
     RemoveMethodsOf(service);

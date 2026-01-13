@@ -492,17 +492,17 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
 
     if (cntl->_sender == NULL && IsTraceable(Span::tls_parent())) {
         const int64_t start_send_us = butil::cpuwide_time_us();
-        const std::string* method_name = NULL;
+        std::string method_name;
         if (_get_method_name) {
-            method_name = &_get_method_name(method, cntl);
+            method_name = butil::EnsureString(_get_method_name(method, cntl));
         } else if (method) {
-            method_name = &method->full_name();
+            method_name = butil::EnsureString(method->full_name());
         } else {
             const static std::string NULL_METHOD_STR = "null-method";
-            method_name = &NULL_METHOD_STR;
+            method_name = NULL_METHOD_STR;
         }
         Span* span = Span::CreateClientSpan(
-            *method_name, start_send_real_us - start_send_us);
+            method_name, start_send_real_us - start_send_us);
         span->set_log_id(cntl->log_id());
         span->set_base_cid(correlation_id);
         span->set_protocol(_options.protocol);

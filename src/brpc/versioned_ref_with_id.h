@@ -504,10 +504,9 @@ int VersionedRefWithId<T>::ReleaseAdditionalReference() {
     do {
         AdditionalRefStatus expect = ADDITIONAL_REF_USING;
         if (_additional_ref_status.compare_exchange_strong(
-            expect, ADDITIONAL_REF_RECYCLED,
-            butil::memory_order_relaxed,
-            butil::memory_order_relaxed)) {
-            BeforeAdditionalRefReleasedWrapper();
+                expect, ADDITIONAL_REF_RECYCLED,
+                butil::memory_order_relaxed,
+                butil::memory_order_relaxed)) {
             WRAPPER_CALL(BeforeAdditionalRefReleased, static_cast<T*>(this));
             return Dereference();
         }
@@ -591,7 +590,7 @@ void VersionedRefWithId<T>::Revive(int32_t at_least_nref) {
 
         int32_t nref = NRefOfVRef(vref);
         if (nref < at_least_nref) {
-            // Set the status to REF_RECYLED since no one uses this socket
+            // Set the status to REF_RECYCLED since no one uses this socket
             _additional_ref_status.store(
                 ADDITIONAL_REF_RECYCLED, butil::memory_order_relaxed);
             CHECK_EQ(1, nref);
