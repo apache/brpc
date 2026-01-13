@@ -2087,7 +2087,7 @@ void TestClientHost(const butil::EndPoint& ep,
     ASSERT_EQ(cntl.ErrorCode(), error_code);
 }
 
-TEST_F(ServerTest, network_device_name) {
+TEST_F(ServerTest, bind_client_host_and_network_device) {
     butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
     brpc::Server server;
@@ -2098,6 +2098,7 @@ TEST_F(ServerTest, network_device_name) {
 
     brpc::Controller cntl;
     brpc::ChannelOptions copt;
+    copt.client_host = "localhost";
     copt.device_name = "lo";
     std::vector<brpc::ConnectionType> connection_types = {
         brpc::CONNECTION_TYPE_SINGLE,

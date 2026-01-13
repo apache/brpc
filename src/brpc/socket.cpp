@@ -728,7 +728,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _keytable_pool = options.keytable_pool;
     _tos = 0;
     _remote_side = options.remote_side;
-    _local_side = butil::EndPoint();
+    _local_side = options.local_side;
     _device_name = options.device_name;
     _on_edge_triggered_events = options.on_edge_triggered_events;
     _user = options.user;
@@ -1302,6 +1302,17 @@ int Socket::Connect(const timespec* abstime,
                        _device_name.c_str(), _device_name.size()) < 0) {
             PLOG(ERROR) << "Fail to set SO_BINDTODEVICE of fd=" << sockfd
                         << " to device_name=" << _device_name;
+            return -1;
+        }
+    }
+    if (local_side().ip != butil::IP_ANY) {
+        struct sockaddr_storage cli_addr;
+        if (butil::endpoint2sockaddr(local_side(), &cli_addr, &addr_size) != 0) {
+            PLOG(ERROR) << "Fail to get client sockaddr";
+            return -1;
+        }
+        if (::bind(sockfd, (struct sockaddr*)&cli_addr, addr_size) != 0) {
+            PLOG(ERROR) << "Fail to bind client socket, errno=" << strerror(errno);
             return -1;
         }
     }
@@ -2819,6 +2830,7 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
     if (socket_pool == NULL) {
         SocketOptions opt;
         opt.remote_side = remote_side();
+        opt.local_side = butil::EndPoint(local_side().ip, 0);
         opt.user = user();
         opt.on_edge_triggered_events = _on_edge_triggered_events;
         opt.initial_ssl_ctx = _ssl_ctx;
@@ -2920,6 +2932,7 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     SocketId id;
     SocketOptions opt;
     opt.remote_side = remote_side();
+    opt.local_side = butil::EndPoint(local_side().ip, 0);
     opt.user = user();
     opt.on_edge_triggered_events = _on_edge_triggered_events;
     opt.initial_ssl_ctx = _ssl_ctx;
