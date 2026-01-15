@@ -152,7 +152,8 @@ void ProcessNovaResponse(InputMessageBase* msg_base) {
 } 
 
 void SerializeNovaRequest(butil::IOBuf* buf, Controller* cntl,
-                          const google::protobuf::Message* request) {
+                          const void* request_obj) {
+    const google::protobuf::Message* request = static_cast<const google::protobuf::Message*>(request_obj);
     CompressType type = cntl->request_compress_type();
     if (type != COMPRESS_TYPE_NONE && type != COMPRESS_TYPE_SNAPPY) {
         cntl->SetFailed(EREQUEST, "nova_pbrpc protocol doesn't support "
@@ -165,10 +166,11 @@ void SerializeNovaRequest(butil::IOBuf* buf, Controller* cntl,
 void PackNovaRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
-                     const google::protobuf::MethodDescriptor* method,
+                     const void* method_obj,
                      Controller* controller,
                      const butil::IOBuf& request,
                      const Authenticator* /*not supported*/) {
+    const google::protobuf::MethodDescriptor* method = static_cast<const google::protobuf::MethodDescriptor*>(method_obj);
     ControllerPrivateAccessor accessor(controller);
     if (controller->connection_type() == CONNECTION_TYPE_SINGLE) {
         return controller->SetFailed(

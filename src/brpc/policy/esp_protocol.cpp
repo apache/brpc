@@ -65,8 +65,8 @@ ParseResult ParseEspMessage(
 void SerializeEspRequest(
         butil::IOBuf* request_buf, 
         Controller* cntl,
-        const google::protobuf::Message* req_base) {
-
+        const void* req_obj) {
+    const google::protobuf::Message* req_base = static_cast<const google::protobuf::Message*>(req_obj);
     if (req_base == NULL) {
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
@@ -89,7 +89,7 @@ void SerializeEspRequest(
 void PackEspRequest(butil::IOBuf* packet_buf,
                     SocketMessage**,
                     uint64_t correlation_id,
-                    const google::protobuf::MethodDescriptor*,
+                    const void*,
                     Controller* cntl,
                     const butil::IOBuf& request,
                     const Authenticator* auth) {

@@ -30,13 +30,13 @@ namespace policy {
 void ProcessNovaResponse(InputMessageBase* msg);
 
 void SerializeNovaRequest(butil::IOBuf* buf, Controller* cntl,
-                                 const google::protobuf::Message* request);
+                                 const void* request_obj);
 
 // Pack `request' to `method' into `buf'.
 void PackNovaRequest(butil::IOBuf* buf,
                      SocketMessage** user_message_out,
                      uint64_t correlation_id,
-                     const google::protobuf::MethodDescriptor* method,
+                     const void* method,
                      Controller* controller,
                      const butil::IOBuf& request,
                      const Authenticator* auth);

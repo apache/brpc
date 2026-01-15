@@ -566,7 +566,8 @@ void ProcessHttpResponse(InputMessageBase* msg) {
 
 void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                           Controller* cntl,
-                          const google::protobuf::Message* pbreq) {
+                          const void* msg) {
+    const google::protobuf::Message* pbreq = static_cast<const google::protobuf::Message*>(msg);
     HttpHeader& hreq = cntl->http_request();
     const bool is_http2 = (cntl->request_protocol() == PROTOCOL_H2);
     bool is_grpc = false;
@@ -735,7 +736,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
 void PackHttpRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
-                     const google::protobuf::MethodDescriptor*,
+                     const void*,
                      Controller* cntl,
                      const butil::IOBuf& /*unused*/,
                      const Authenticator* auth) {

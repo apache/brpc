@@ -1784,7 +1784,7 @@ void H2UnsentResponse::Print(std::ostream& os) const {
 void PackH2Request(butil::IOBuf*,
                    SocketMessage** user_message,
                    uint64_t correlation_id,
-                   const google::protobuf::MethodDescriptor*,
+                   const void*,
                    Controller* cntl,
                    const butil::IOBuf&,
                    const Authenticator* auth) {

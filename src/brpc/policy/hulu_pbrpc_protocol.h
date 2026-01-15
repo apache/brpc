@@ -41,7 +41,7 @@ bool VerifyHuluRequest(const InputMessageBase* msg);
 void PackHuluRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
-                     const google::protobuf::MethodDescriptor* method,
+                     const void* method_obj,
                      Controller* controller,
                      const butil::IOBuf& request,
                      const Authenticator* auth);

@@ -67,6 +67,7 @@
 // Protocols
 #include "brpc/protocol.h"
 #include "brpc/policy/baidu_rpc_protocol.h"
+#include "brpc/policy/flatbuffers_protocol.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/policy/hulu_pbrpc_protocol.h"
@@ -420,6 +421,15 @@ static void GlobalInitializeOrDieImpl() {
                                 VerifyRpcRequest, NULL, NULL,
                                 CONNECTION_TYPE_ALL, "baidu_std" };
     if (RegisterProtocol(PROTOCOL_BAIDU_STD, baidu_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol fb_protocol = { ParseFlatBuffersMessage,
+                                SerializeFlatBuffersRequest, PackFlatBuffersRequest,
+                                ProcessFlatBuffersRequest, ProcessFlatBuffersResponse,
+                                NULL, NULL, NULL,
+                                CONNECTION_TYPE_SINGLE, "fb_rpc" };
+    if (RegisterProtocol(PROTOCOL_FLATBUFFERS_RPC, fb_protocol) != 0) {
         exit(1);
     }
 

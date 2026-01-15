@@ -137,7 +137,8 @@ void ProcessNsheadMcpackResponse(InputMessageBase* msg_base) {
 } 
 
 void SerializeNsheadMcpackRequest(butil::IOBuf* buf, Controller* cntl,
-                          const google::protobuf::Message* pb_req) {
+                          const void* request_obj) {
+    const google::protobuf::Message* pb_req = static_cast<const google::protobuf::Message*>(request_obj);
     CompressType type = cntl->request_compress_type();
     if (type != COMPRESS_TYPE_NONE) {
         cntl->SetFailed(EREQUEST,
@@ -155,7 +156,7 @@ void SerializeNsheadMcpackRequest(butil::IOBuf* buf, Controller* cntl,
 void PackNsheadMcpackRequest(butil::IOBuf* buf,
                              SocketMessage**,
                              uint64_t correlation_id,
-                             const google::protobuf::MethodDescriptor*,
+                             const void*,
                              Controller* controller,
                              const butil::IOBuf& request,
                              const Authenticator* /*not supported*/) {

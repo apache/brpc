@@ -131,7 +131,8 @@ void ListProtocols(std::vector<std::pair<ProtocolType, Protocol> >* vec) {
 }
 
 void SerializeRequestDefault(butil::IOBuf* buf, Controller* cntl,
-                             const google::protobuf::Message* request) {
+                             const void* request_obj) {
+    const google::protobuf::Message* request = static_cast<const google::protobuf::Message*>(request_obj);
     // Check sanity of request.
     if (!request) {
         return cntl->SetFailed(EREQUEST, "`request' is NULL");

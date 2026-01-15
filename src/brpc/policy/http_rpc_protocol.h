@@ -132,11 +132,11 @@ void ProcessHttpResponse(InputMessageBase* msg);
 bool VerifyHttpRequest(const InputMessageBase* msg);
 void SerializeHttpRequest(butil::IOBuf* request_buf,
                           Controller* cntl,
-                          const google::protobuf::Message* msg);
+                          const void* msg);
 void PackHttpRequest(butil::IOBuf* buf,
                      SocketMessage** user_message_out,
                      uint64_t correlation_id,
-                     const google::protobuf::MethodDescriptor* method,
+                     const void* method,
                      Controller* controller,
                      const butil::IOBuf& request,
                      const Authenticator* auth);

@@ -551,7 +551,7 @@ void ProcessRtmpMessage(InputMessageBase* msg);
 void PackRtmpRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
-                     const google::protobuf::MethodDescriptor* method,
+                     const void* method,
                      Controller* controller,
                      const butil::IOBuf& request,
                      const Authenticator* auth);
@@ -559,7 +559,7 @@ void PackRtmpRequest(butil::IOBuf* buf,
 // Serialize createStream message
 void SerializeRtmpRequest(butil::IOBuf* buf,
                           Controller* cntl,
-                          const google::protobuf::Message* request);
+                          const void* request);
 
 // ============== inline impl. =================
 // TODO(gejun): impl. do not work for big-endian machines.
