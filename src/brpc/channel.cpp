@@ -385,10 +385,14 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     if (CreateSocketSSLContext(_options, &ssl_ctx) != 0) {
         return -1;
     }
+    SocketOptions opt;
+    opt.local_side = client_endpoint;
+    opt.initial_ssl_ctx = ssl_ctx;
+    opt.use_rdma = _options.use_rdma;
+    opt.hc_option = _options.hc_option;
+    opt.device_name = _options.device_name;
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
-                        &_server_id, ssl_ctx, _options.use_rdma,
-                        _options.hc_option, client_endpoint,
-                        _options.device_name) != 0) {
+                        &_server_id, opt) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -432,12 +436,13 @@ int Channel::Init(const char* ns_url,
     GetNamingServiceThreadOptions ns_opt;
     ns_opt.succeed_without_server = _options.succeed_without_server;
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
-    ns_opt.use_rdma = _options.use_rdma;
+    ns_opt.socket_option.use_rdma = _options.use_rdma;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
-    ns_opt.hc_option =  _options.hc_option;
-    ns_opt.client_endpoint = client_endpoint;
-    ns_opt.device_name = _options.device_name;
-    if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
+    ns_opt.socket_option.hc_option =  _options.hc_option;
+    ns_opt.socket_option.local_side = client_endpoint;
+    ns_opt.socket_option.device_name = _options.device_name;
+    if (CreateSocketSSLContext(_options,
+                               &ns_opt.socket_option.initial_ssl_ctx) != 0) {
         return -1;
     }
     if (lb->Init(ns_url, lb_name, _options.ns_filter, &ns_opt) != 0) {

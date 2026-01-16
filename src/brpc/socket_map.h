@@ -80,24 +80,30 @@ struct SocketMapKeyHasher {
 // successfully, SocketMapRemove() MUST be called when the Socket is not needed.
 // Return 0 on success, -1 otherwise.
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
+                    SocketOptions& opt);
+
+inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                     bool use_rdma,
-                    const HealthCheckOption& hc_option,
-                    const butil::EndPoint& client_endpoint,
-                    const std::string& device_name);
+                    const HealthCheckOption& hc_option) {
+    SocketOptions opt;
+    opt.remote_side = key.peer.addr;
+    opt.initial_ssl_ctx = ssl_ctx;
+    opt.use_rdma = use_rdma;
+    opt.hc_option = hc_option;
+    return SocketMapInsert(key, id, opt);
+}
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     HealthCheckOption hc_option;
-    butil::EndPoint endpoint;
-    return SocketMapInsert(key, id, ssl_ctx, false, hc_option, endpoint, "");
+    return SocketMapInsert(key, id, ssl_ctx, false, hc_option);
 }
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id) {
     std::shared_ptr<SocketSSLContext> empty_ptr;
     HealthCheckOption hc_option;
-    butil::EndPoint endpoint;
-    return SocketMapInsert(key, id, empty_ptr, false, hc_option, endpoint, "");
+    return SocketMapInsert(key, id, empty_ptr, false, hc_option);
 }
 
 // Find the SocketId associated with `key'.
@@ -159,22 +165,26 @@ public:
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                bool use_rdma,
-               const HealthCheckOption& hc_option,
-               const butil::EndPoint& client_endpoint,
-               const std::string& device_name);
+               const HealthCheckOption& hc_option) {
+        SocketOptions opt;
+        opt.remote_side = key.peer.addr;
+        opt.initial_ssl_ctx = ssl_ctx;
+        opt.use_rdma = use_rdma;
+        opt.hc_option = hc_option;
+        return Insert(key, id, opt);
+}
 
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
         HealthCheckOption hc_option;
-        butil::EndPoint endpoint;
-        return Insert(key, id, ssl_ctx, false, hc_option, endpoint, "");   
+        return Insert(key, id, ssl_ctx, false, hc_option);   
     }
     int Insert(const SocketMapKey& key, SocketId* id) {
         std::shared_ptr<SocketSSLContext> empty_ptr;
         HealthCheckOption hc_option;
-        butil::EndPoint endpoint;
-        return Insert(key, id, empty_ptr, false, hc_option, endpoint, "");
+        return Insert(key, id, empty_ptr, false, hc_option);
     }
+    int Insert(const SocketMapKey& key, SocketId* id, SocketOptions& opt);
 
     void Remove(const SocketMapKey& key, SocketId expected_id);
     int Find(const SocketMapKey& key, SocketId* id);
