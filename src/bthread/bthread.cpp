@@ -659,6 +659,21 @@ uint64_t bthread_cpu_clock_ns(void) {
     return 0;
 }
 
+int bthread_set_span_funcs(bthread_create_span_fn create_fn,
+                            bthread_destroy_span_fn destroy_fn,
+                            bthread_end_span_fn end_fn) {
+    if ((create_fn && destroy_fn && end_fn) ||
+        (!create_fn && !destroy_fn && !end_fn)) {
+        bthread::g_create_bthread_span = create_fn;
+        bthread::g_rpcz_parent_span_dtor = destroy_fn;
+        bthread::g_end_bthread_span = end_fn;
+        return 0;
+    }
+
+    errno = EINVAL;
+    return -1;
+}
+
 }  // extern "C"
 
 void bthread_attr_set_name(bthread_attr_t* attr, const char* name) {

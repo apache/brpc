@@ -125,6 +125,7 @@ public:
     void set_log_id(uint64_t cid) { _log_id = cid; }
     void set_base_cid(bthread_id_t id) { _base_cid = id; }
     void set_ending_cid(bthread_id_t id) { _ending_cid = id; }
+    void set_ending_tid(bthread_t tid) { _ending_tid = tid; }
     void set_remote_side(const butil::EndPoint& pt) { _remote_side = pt; }
     void set_protocol(ProtocolType p) { _protocol = p; }
     void set_error_code(int error_code) { _error_code = error_code; }
@@ -144,7 +145,12 @@ public:
     void set_sent_us(int64_t tm)
     { _sent_real_us = tm + _base_real_us; }
 
-    bool is_active() const { return _ending_cid == INVALID_BTHREAD_ID; }
+    bool is_active() const {
+        if (_type == SPAN_TYPE_BTHREAD) {
+            return _ending_tid == INVALID_BTHREAD;
+        }
+        return _ending_cid == INVALID_BTHREAD_ID;
+    }
 
     std::weak_ptr<Span> local_parent() const { return _local_parent; }
     static std::shared_ptr<Span> tls_parent() {
@@ -161,6 +167,7 @@ public:
     uint64_t log_id() const { return _log_id; }
     bthread_id_t base_cid() const { return _base_cid; }
     bthread_id_t ending_cid() const { return _ending_cid; }
+    bthread_t ending_tid() const { return _ending_tid; }
     const butil::EndPoint& remote_side() const { return _remote_side; }
     SpanType type() const { return _type; }
     ProtocolType protocol() const { return _protocol; }
@@ -215,6 +222,7 @@ private:
     uint64_t _log_id;
     bthread_id_t _base_cid;
     bthread_id_t _ending_cid;
+    bthread_t _ending_tid;  // Used for bthread span to store the ending bthread tid
     butil::EndPoint _remote_side;
     SpanType _type;
     bool _async;
@@ -252,7 +260,7 @@ private:
 
 class SpanContainer : public bvar::Collected {
 public:
-    explicit SpanContainer(std::shared_ptr<Span> span) : _span(span) {}
+    explicit SpanContainer(const std::shared_ptr<Span>& span) : _span(span) {}
     ~SpanContainer() {}
 
     // Implementations of bvar::Collected

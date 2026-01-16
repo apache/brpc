@@ -211,7 +211,15 @@ static void PrintAnnotations(
             PrintElapse(os, anno_time, last_time);
             os << ' ';
             if (span) {
-                os << '[' << span_type_str << ' ' << SPAN_ID_STR << '=' << Hex(span->span_id()) << "] ";
+                const char* short_type = "SPAN";
+                if (span->type() == SPAN_TYPE_SERVER) {
+                    short_type = "Server";
+                } else if (span->type() == SPAN_TYPE_CLIENT) {
+                    short_type = "Client";
+                } else if (span->type() == SPAN_TYPE_BTHREAD) {
+                    short_type = "Bthread";
+                }
+                os << '[' << short_type << " SPAN#" << Hex(span->span_id()) << "] ";
             }
             os << WebEscape(a);
             if (a.empty() || butil::back_char(a) != '\n') {
@@ -292,11 +300,11 @@ static void PrintClientSpan(
 
     if (PrintAnnotationsAndRealTimeSpan(os, span.sent_real_us(),
                                         last_time, extr, num_extr, &span)) {
-        os << " [ClientSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] Requested(" << span.request_size() << ") [1]" << std::endl;
+        os << " [Client SPAN#" << Hex(span.span_id()) << "] Requested(" << span.request_size() << ") [1]" << std::endl;
     }
     if (PrintAnnotationsAndRealTimeSpan(os, span.received_real_us(),
                                         last_time, extr, num_extr, &span)) {
-        os << " [ClientSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] Received response(" << span.response_size() << ")";
+        os << " [Client SPAN#" << Hex(span.span_id()) << "] Received response(" << span.response_size() << ")";
         if (span.base_cid() != 0 && span.ending_cid() != 0) {
             int64_t ver = span.ending_cid() - span.base_cid();
             if (ver >= 1) {
@@ -310,13 +318,13 @@ static void PrintClientSpan(
 
     if (PrintAnnotationsAndRealTimeSpan(os, span.start_parse_real_us(),
                                         last_time, extr, num_extr, &span)) {
-        os << " [ClientSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] Processing the response in a new bthread" << std::endl;
+        os << " [Client SPAN#" << Hex(span.span_id()) << "] Processing the response in a new bthread" << std::endl;
     }
 
     if (PrintAnnotationsAndRealTimeSpan(
             os, span.start_callback_real_us(),
             last_time, extr, num_extr, &span)) {
-        os << " [ClientSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] " << (span.async() ? " Enter user's done" : " Back to user's callsite") << std::endl;
+        os << " [Client SPAN#" << Hex(span.span_id()) << "] " << (span.async() ? " Enter user's done" : " Back to user's callsite") << std::endl;
     }
 
     PrintAnnotations(os, std::numeric_limits<int64_t>::max(),
@@ -340,9 +348,9 @@ static void PrintBthreadSpan(std::ostream& os, const RpczSpan& span, int64_t* la
     extr[num_extr++] = &client_extr;
 
     // Print span id for bthread span context identification
-    os << " [BthreadSpan " << SPAN_ID_STR << '=' << Hex(span.span_id());
+    os << " [Bthread SPAN#" << Hex(span.span_id());
     if (span.parent_span_id() != 0) {
-        os << " parent_span=" << Hex(span.parent_span_id());
+        os << " parent#" << Hex(span.parent_span_id());
     }
     os << "] ";
 
@@ -377,7 +385,7 @@ static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
     if (PrintAnnotationsAndRealTimeSpan(
             os, span.start_parse_real_us(),
             &last_time, extr, ARRAY_SIZE(extr), &span)) {
-        os << " [ServerSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] Processing the request in a new bthread" << std::endl;
+        os << " [Server SPAN#" << Hex(span.span_id()) << "] Processing the request in a new bthread" << std::endl;
     }
 
     bool entered_user_method = false;
@@ -385,7 +393,7 @@ static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
             os, span.start_callback_real_us(),
             &last_time, extr, ARRAY_SIZE(extr), &span)) {
         entered_user_method = true;
-        os << " [ServerSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] Enter " << WebEscape(span.full_method_name()) << std::endl;
+        os << " [Server SPAN#" << Hex(span.span_id()) << "] Enter " << WebEscape(span.full_method_name()) << std::endl;
     }
 
     const int nclient = span.client_spans_size();
@@ -402,16 +410,16 @@ static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
             os, span.start_send_real_us(),
             &last_time, extr, ARRAY_SIZE(extr), &span)) {
         if (entered_user_method) {
-            os << " [ServerSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] Leave " << WebEscape(span.full_method_name()) << std::endl;
+            os << " [Server SPAN#" << Hex(span.span_id()) << "] Leave " << WebEscape(span.full_method_name()) << std::endl;
         } else {
-            os << " [ServerSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] Responding" << std::endl;
+            os << " [Server SPAN#" << Hex(span.span_id()) << "] Responding" << std::endl;
         }
     }
     
     if (PrintAnnotationsAndRealTimeSpan(
             os, span.sent_real_us(),
             &last_time, extr, ARRAY_SIZE(extr), &span)) {
-        os << " [ServerSpan " << SPAN_ID_STR << '=' << Hex(span.span_id()) << "] Responded(" << span.response_size() << ')' << std::endl;
+        os << " [Server SPAN#" << Hex(span.span_id()) << "] Responded(" << span.response_size() << ')' << std::endl;
     }
 
     PrintAnnotations(os, std::numeric_limits<int64_t>::max(),

@@ -62,8 +62,7 @@ void DestroyRpczParentSpan(void* ptr) {
 void EndBthreadSpan() {
     std::shared_ptr<Span> span = GetTlsParentSpan();
     if (span) {
-        bthread_id_t id = {bthread_self()};
-        span->set_ending_cid(id);
+        span->set_ending_tid(bthread_self());
     }
 
     ClearTlsParentSpan();
@@ -73,10 +72,11 @@ void SetTlsParentSpan(std::shared_ptr<Span> span) {
     using namespace bthread;
     LocalStorage ls = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
     if (ls.rpcz_parent_span) {
-        delete static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span);
+        *static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span) = span;
+    } else {
+        ls.rpcz_parent_span = new std::weak_ptr<Span>(span);
+        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, ls);
     }
-    ls.rpcz_parent_span = new std::weak_ptr<Span>(span);
-    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, ls);
 }
 
 std::shared_ptr<Span> GetTlsParentSpan() {
@@ -94,9 +94,7 @@ void ClearTlsParentSpan() {
     using namespace bthread;
     LocalStorage ls = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
     if (ls.rpcz_parent_span) {
-        delete static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span);
-        ls.rpcz_parent_span = nullptr;
-        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, ls);
+        static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span)->reset();
     }
 }
 
@@ -122,9 +120,6 @@ void SpanDeleter::operator()(Span* r) const {
     // children.
     r->_client_list.clear();
     r->_info.clear();
-    // Destroy the spinlocks, as the destructor might not be invoked.
-    pthread_spin_destroy(&r->_client_list_spinlock);
-    pthread_spin_destroy(&r->_info_spinlock);
     butil::return_object(r);
 }
 
@@ -200,7 +195,8 @@ Span::Span(Forbidden) {
 }
 
 Span::~Span() {
-    // The destruction of the spinlock has been handled in SpanDeleter.
+    pthread_spin_destroy(&_client_list_spinlock);
+    pthread_spin_destroy(&_info_spinlock);
 }
 
 std::shared_ptr<Span> Span::CreateClientSpan(const std::string& full_method_name,
@@ -212,7 +208,7 @@ std::shared_ptr<Span> Span::CreateClientSpan(const std::string& full_method_name
     std::shared_ptr<Span> span(span_raw, SpanDeleter());
     span->_log_id = 0;
     span->_base_cid = INVALID_BTHREAD_ID;
-    span->_ending_cid = INVALID_BTHREAD_ID;
+    span->_ending_cid = INVALID_BTHREAD_ID;  // Client Span uses ending_cid
     span->_type = SPAN_TYPE_CLIENT;
     span->_async = false;
     span->_protocol = PROTOCOL_UNKNOWN;
@@ -254,7 +250,7 @@ std::shared_ptr<Span> Span::CreateBthreadSpan(const std::string& full_method_nam
     std::shared_ptr<Span> span(span_raw, SpanDeleter());
     span->_log_id = 0;
     span->_base_cid = INVALID_BTHREAD_ID;
-    span->_ending_cid = INVALID_BTHREAD_ID;
+    span->_ending_tid = INVALID_BTHREAD;  // Bthread Span uses ending_tid
     span->_type = SPAN_TYPE_BTHREAD;
     span->_async = false;
     span->_protocol = PROTOCOL_UNKNOWN;
@@ -307,7 +303,7 @@ std::shared_ptr<Span> Span::CreateServerSpan(
     span->_parent_span_id = parent_span_id;
     span->_log_id = 0;
     span->_base_cid = INVALID_BTHREAD_ID;
-    span->_ending_cid = INVALID_BTHREAD_ID;
+    span->_ending_cid = INVALID_BTHREAD_ID;  // Server Span uses ending_cid
     span->_type = SPAN_TYPE_SERVER;
     span->_async = false;
     span->_protocol = PROTOCOL_UNKNOWN;

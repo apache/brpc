@@ -48,6 +48,12 @@
 
 namespace bthread {
 
+// Global span function pointers for bthread lifecycle tracing.
+// These are set by brpc layer via bthread_set_span_funcs().
+void* (*g_create_bthread_span)() = NULL;
+void (*g_rpcz_parent_span_dtor)(void*) = NULL;
+void (*g_end_bthread_span)() = NULL;
+
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
     BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_INVALID, {0} };
 
@@ -412,6 +418,15 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
             tls_bls_ptr->keytable = NULL;
             m->local_storage.keytable = NULL; // optional
+        }
+
+        // Clean up span if it exists. This must be done after keytable cleanup
+        // because span cleanup may use bthread local storage.
+        tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+        if (tls_bls_ptr->rpcz_parent_span && g_rpcz_parent_span_dtor) {
+            g_rpcz_parent_span_dtor(tls_bls_ptr->rpcz_parent_span);
+            tls_bls_ptr->rpcz_parent_span = NULL;
+            m->local_storage.rpcz_parent_span = NULL;
         }
 
         // During running the function in TaskMeta and deleting the KeyTable in

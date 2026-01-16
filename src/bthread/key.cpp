@@ -35,12 +35,6 @@
 
 namespace bthread {
 
-void* (*g_create_bthread_span)() = NULL;
-
-void (*g_rpcz_parent_span_dtor)(void*) = NULL;
-
-void (*g_end_bthread_span)() = NULL;
-
 DEFINE_uint32(key_table_list_size, 4000,
               "The maximum length of the KeyTableList. Once this value is "
               "exceeded, a portion of the KeyTables will be moved to the "
@@ -252,11 +246,6 @@ public:
         if (g) {
             g->current_task()->local_storage.keytable = old_kt;
         }
-
-        if (tls_bls.rpcz_parent_span && g_rpcz_parent_span_dtor) {
-            g_rpcz_parent_span_dtor(tls_bls.rpcz_parent_span);
-            tls_bls.rpcz_parent_span = NULL;
-        }
     }
 
     void append(KeyTable* keytable) {
@@ -417,11 +406,6 @@ static void cleanup_pthread(void* arg) {
         delete kt;
         // After deletion: tls may be set during deletion.
         tls_bls.keytable = NULL;
-
-        if (tls_bls.rpcz_parent_span && g_rpcz_parent_span_dtor) {
-            g_rpcz_parent_span_dtor(tls_bls.rpcz_parent_span);
-            tls_bls.rpcz_parent_span = NULL;
-        }
     }
 }
 
@@ -499,11 +483,6 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
     bthread::tls_bls.keytable = old_kt;
     if (g) {
         g->current_task()->local_storage.keytable = old_kt;
-    }
-
-    if (bthread::tls_bls.rpcz_parent_span && bthread::g_rpcz_parent_span_dtor) {
-        bthread::g_rpcz_parent_span_dtor(bthread::tls_bls.rpcz_parent_span);
-        bthread::tls_bls.rpcz_parent_span = NULL;
     }
     // TODO: return_keytable may race with this function, we don't destroy
     // the mutex right now.
@@ -692,21 +671,6 @@ void bthread_assign_data(void* data) {
 
 void* bthread_get_assigned_data() {
     return bthread::tls_bls.assigned_data;
-}
-
-int bthread_set_span_funcs(bthread_create_span_fn create_fn,
-                            bthread_destroy_span_fn destroy_fn,
-                            bthread_end_span_fn end_fn) {
-    if ((create_fn && destroy_fn && end_fn) ||
-        (!create_fn && !destroy_fn && !end_fn)) {
-        bthread::g_create_bthread_span = create_fn;
-        bthread::g_rpcz_parent_span_dtor = destroy_fn;
-        bthread::g_end_bthread_span = end_fn;
-        return 0;
-    }
-
-    errno = EINVAL;
-    return -1;
 }
 
 }  // extern "C"
