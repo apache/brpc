@@ -1397,6 +1397,7 @@ uint64_t Controller::trace_id() const {
     }
     return 0;
 }
+
 uint64_t Controller::span_id() const {
     if (auto span = _span.lock()) {
         return span->span_id();
@@ -1726,6 +1727,26 @@ void Controller::DoPrintLogPrefix(std::ostream& os) const {
     if (FLAGS_log_as_json) {
         os << "\"M\":\"";
     }
+}
+
+
+ControllerPrivateAccessor& ControllerPrivateAccessor::set_span(
+    const std::shared_ptr<Span>& span) {
+    _cntl->_span = span;
+    return *this;
+}
+
+ControllerPrivateAccessor& ControllerPrivateAccessor::set_span(Span* span) {
+    if (span) {
+        _cntl->_span = span->shared_from_this();
+    } else {
+        _cntl->_span.reset();
+    }
+    return *this;
+}
+
+std::shared_ptr<Span> ControllerPrivateAccessor::span() const {
+    return _cntl->_span.lock();
 }
 
 } // namespace brpc

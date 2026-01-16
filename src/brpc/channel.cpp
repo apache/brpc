@@ -503,7 +503,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
             method_name = NULL_METHOD_STR;
         }
         std::shared_ptr<Span> span = Span::CreateClientSpan(
-            *method_name, start_send_real_us - start_send_us);
+            method_name, start_send_real_us - start_send_us);
         if (span) {
             ControllerPrivateAccessor accessor(cntl);
             span->set_log_id(cntl->log_id());

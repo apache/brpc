@@ -73,10 +73,11 @@ void SetTlsParentSpan(std::shared_ptr<Span> span) {
     using namespace bthread;
     LocalStorage ls = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
     if (ls.rpcz_parent_span) {
-        delete static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span);
+        *static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span) = span;
+    } else {
+        ls.rpcz_parent_span = new std::weak_ptr<Span>(span);
+        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, ls);
     }
-    ls.rpcz_parent_span = new std::weak_ptr<Span>(span);
-    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, ls);
 }
 
 std::shared_ptr<Span> GetTlsParentSpan() {
@@ -94,9 +95,7 @@ void ClearTlsParentSpan() {
     using namespace bthread;
     LocalStorage ls = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
     if (ls.rpcz_parent_span) {
-        delete static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span);
-        ls.rpcz_parent_span = nullptr;
-        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, ls);
+        static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span)->reset();
     }
 }
 

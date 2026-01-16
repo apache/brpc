@@ -252,7 +252,7 @@ private:
 
 class SpanContainer : public bvar::Collected {
 public:
-    explicit SpanContainer(std::shared_ptr<Span> span) : _span(span) {}
+    explicit SpanContainer(const std::shared_ptr<Span>& span) : _span(span) {}
     ~SpanContainer() {}
 
     // Implementations of bvar::Collected
