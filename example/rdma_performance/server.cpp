@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
     g_last_time.store(0, butil::memory_order_relaxed);
 
     brpc::ServerOptions options;
-    options.use_rdma = FLAGS_use_rdma;
+    options.socket_mode = FLAGS_use_rdma? RDMA : TCP;
     if (server.Start(FLAGS_port, &options) != 0) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;

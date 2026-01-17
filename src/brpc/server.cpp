@@ -81,6 +81,7 @@
 #include "brpc/details/tcmalloc_extension.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/baidu_master_service.h"
+#include "brpc/transport_factory.h"
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -146,7 +147,7 @@ ServerOptions::ServerOptions()
     , internal_port(-1)
     , has_builtin_services(true)
     , force_ssl(false)
-    , use_rdma(false)
+    , socket_mode(TCP)
     , baidu_master_service(NULL)
     , http_master_service(NULL)
     , health_reporter(NULL)
@@ -772,27 +773,6 @@ bool Server::CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
     return true;
 }
 
-#if BRPC_WITH_RDMA
-static bool OptionsAvailableOverRdma(const ServerOptions* opt) {
-    if (opt->rtmp_service) {
-        LOG(WARNING) << "RTMP is not supported by RDMA";
-        return false;
-    }
-    if (opt->has_ssl_options()) {
-        LOG(WARNING) << "SSL is not supported by RDMA";
-        return false;
-    }
-    if (opt->nshead_service) {
-        LOG(WARNING) << "NSHEAD is not supported by RDMA";
-        return false;
-    }
-    if (opt->mongo_service_adaptor) {
-        LOG(WARNING) << "MONGO is not supported by RDMA";
-        return false;
-    }
-    return true;
-}
-#endif
 
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 static bool g_default_ignore_eovercrowded(false);
@@ -889,21 +869,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                    << FLAGS_task_group_ntags << ")";
         return -1;
     }
-
-    if (_options.use_rdma) {
-#if BRPC_WITH_RDMA
-        if (!OptionsAvailableOverRdma(&_options)) {
-            return -1;
-        }
-        rdma::GlobalRdmaInitializeOrDie();
-        if (!rdma::InitPollingModeWithTag(_options.bthread_tag)) {
-            return -1;
-        }
-#else
-        LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
-        return -1;
-#endif
-    }
+    auto ret = TransportFactory::ContextInitOrDie(_options.socket_mode, true, &_options);
+    CHECK(ret == 0);
 
     if (_options.http_master_service) {
         // Check requirements for http_master_service:
@@ -1170,7 +1137,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 LOG(ERROR) << "Fail to build acceptor";
                 return -1;
             }
-            _am->_use_rdma = _options.use_rdma;
+            _am->socket_mode = _options.socket_mode;
             _am->_bthread_tag = _options.bthread_tag;
         }
         // Set `_status' to RUNNING before accepting connections

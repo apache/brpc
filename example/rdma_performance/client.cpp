@@ -102,7 +102,7 @@ public:
 
     int Init() {
         brpc::ChannelOptions options;
-        options.use_rdma = FLAGS_use_rdma;
+        options.socket_mode = FLAGS_use_rdma? RDMA : TCP;
         options.protocol = FLAGS_protocol;
         options.connection_type = FLAGS_connection_type;
         options.timeout_ms = FLAGS_rpc_timeout_ms;
