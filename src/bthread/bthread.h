@@ -30,6 +30,7 @@
 #if defined(__cplusplus)
 #include <iostream>
 #include "bthread/mutex.h"        // use bthread_mutex_t in the RAII way
+#include "bthread/condition_variable.h"        // use bthread_cond_t in the RAII way
 #endif // __cplusplus
 
 #include "bthread/id.h"
