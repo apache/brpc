@@ -1256,7 +1256,11 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
     }
 
     attr.qp_state = IBV_QPS_RTR;
+#if BRPC_WITH_GDR
+    attr.path_mtu = IBV_MTU_4096;  // TODO: detect mtu automatically
+#else
     attr.path_mtu = IBV_MTU_1024;  // TODO: support more mtu in future
+#endif  // if BRPC_WITH_GDR
     attr.ah_attr.grh.dgid = gid;
     attr.ah_attr.grh.flow_label = 0;
     attr.ah_attr.grh.sgid_index = GetRdmaGidIndex();
