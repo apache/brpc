@@ -22,7 +22,7 @@
 #include "butil/synchronization/condition_variable.h"
 #include "butil/containers/flat_map.h"
 #include "brpc/input_messenger.h"
-#include "brpc/common.h"
+#include "brpc/socket_mode.h"
 
 
 namespace brpc {
@@ -112,7 +112,7 @@ private:
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
     // Choose to use a certain socket: 0 TCP, 1 RDMA
-    Mode socket_mode;
+    SocketMode socket_mode;
 
     // Acceptor belongs to this tag
     bthread_tag_t _bthread_tag;

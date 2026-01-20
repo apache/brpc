@@ -37,7 +37,7 @@
 #include "brpc/backup_request_policy.h"
 #include "brpc/naming_service_filter.h"
 #include "brpc/health_check_option.h"
-#include "brpc/common.h"
+#include "brpc/socket_mode.h"
 
 namespace brpc {
 
@@ -106,9 +106,9 @@ struct ChannelOptions {
     const ChannelSSLOptions& ssl_options() const { return *_ssl_options; }
     ChannelSSLOptions* mutable_ssl_options();
 
-    // Let this channel Choose to use a certain socket: 0 TCP, 1 RDMA.
-    // Default: TCP
-    Mode socket_mode;
+    // Let this channel Choose to use a certain socket: 0 SOCKET_MODE_TCP, 1 SOCKET_MODE_RDMA.
+    // Default: SOCKET_MODE_TCP
+    SocketMode socket_mode;
 
     // Turn on authentication for this channel if `auth' is not NULL.
     // Note `auth' will not be deleted by channel and must remain valid when

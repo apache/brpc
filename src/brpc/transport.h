@@ -28,9 +28,9 @@ namespace brpc {
     public:
         static void* OnEdge(void* arg) {
             // the enclosed Socket is valid and free to access inside this function.
-            Socket* socket = static_cast<Socket*>(arg);
-            const OnEdgeTrigger on_edge_trigger = socket->_transport->GetOnEdgeTrigger();
-            on_edge_trigger(socket);
+            SocketUniquePtr s(static_cast<Socket*>(arg));
+            const OnEdgeTrigger on_edge_trigger = s->_transport->GetOnEdgeTrigger();
+            on_edge_trigger(s.get());
             return NULL;
         }
 

@@ -45,7 +45,7 @@
 #include "brpc/concurrency_limiter.h"
 #include "brpc/baidu_master_service.h"
 #include "brpc/rpc_pb_message_factory.h"
-#include "brpc/common.h"
+#include "brpc/socket_mode.h"
 
 namespace brpc {
 
@@ -225,8 +225,8 @@ struct ServerOptions {
     bool force_ssl;
 
     // the server socket mode uses tcp or rdma or other
-    // Default: TCP
-    Mode socket_mode;
+    // Default: SOCKET_MODE_TCP
+    SocketMode socket_mode;
 
     // [CAUTION] This option is for implementing specialized baidu-std proxies,
     // most users don't need it. Don't change this option unless you fully

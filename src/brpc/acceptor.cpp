@@ -21,7 +21,6 @@
 #include "butil/fd_guard.h"                 // fd_guard 
 #include "butil/fd_utility.h"               // make_close_on_exec
 #include "butil/time.h"                     // gettimeofday_us
-#include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/acceptor.h"
 #include "brpc/transport_factory.h"
 
@@ -41,7 +40,7 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _empty_cond(&_map_mutex)
     , _force_ssl(false)
     , _ssl_ctx(NULL) 
-    , socket_mode(TCP)
+    , socket_mode(SOCKET_MODE_TCP)
     , _bthread_tag(BTHREAD_TAG_DEFAULT) {
 }
 

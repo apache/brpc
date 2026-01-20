@@ -42,7 +42,7 @@
 #include "brpc/event_dispatcher.h"
 #include "brpc/versioned_ref_with_id.h"
 #include "brpc/health_check_option.h"
-#include "brpc/common.h"
+#include "brpc/socket_mode.h"
 
 namespace brpc {
 namespace policy {
@@ -268,15 +268,20 @@ struct SocketOptions {
     // until new data arrives. The callback will not be called from more than
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*){NULL};
-    // If on_edge_triggered_events is NULL and actually need `on_edge_triggered_events`
-    // it should delegate to the transport subclass to assign default trigger function.
+    // Indicates that this socket requires an edge-triggered event handler even
+    // if `on_edge_triggered_events` is left as NULL by the caller. When this
+    // flag is true and `on_edge_triggered_events` is NULL, the underlying
+    // transport-specific implementation (e.g. a transport subclass) is allowed
+    // to install a suitable default `on_edge_triggered_events` callback on
+    // behalf of the user. Typical usage is by transports/protocols that rely
+    // on edge-triggered I/O semantics but want the framework to provide the
+    // actual event handler.
     bool need_on_edge_trigger{false};
     int health_check_interval_s{-1};
     // Only accept ssl connection.
     bool force_ssl{false};
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
-    //bool use_rdma{false};
-    Mode socket_mode{TCP};
+    SocketMode socket_mode{SOCKET_MODE_TCP};
     bthread_keytable_pool_t* keytable_pool{NULL};
     SocketConnection* conn{NULL};
     std::shared_ptr<AppConnect> app_connect;
@@ -658,13 +663,6 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
 
-    // The on/off state of RDMA
-    // enum RdmaState {
-    //    RDMA_ON,
-    //    RDMA_OFF,
-    //    RDMA_UNKNOWN
-    // };
-
     int ConductError(bthread_id_t);
     int StartWrite(WriteRequest*, const WriteOptions&);
 
@@ -922,11 +920,8 @@ private:
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
-    //    // The RdmaEndpoint
-    //    rdma::RdmaEndpoint* _rdma_ep;
-    //    // Should use RDMA or not
-    //    RdmaState _rdma_state;
-    Mode _socket_mode{TCP};
+    // Should use SOCKET_MODE_RDMA or SOCKET_MODE_TCP or Other, default is SOCKET_MODE_TCP Transport
+    SocketMode _socket_mode{SOCKET_MODE_TCP};
     std::shared_ptr<Transport> _transport;
 
     // Pass from controller, for progressive reading.

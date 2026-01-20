@@ -147,7 +147,7 @@ ServerOptions::ServerOptions()
     , internal_port(-1)
     , has_builtin_services(true)
     , force_ssl(false)
-    , socket_mode(TCP)
+    , socket_mode(SOCKET_MODE_TCP)
     , baidu_master_service(NULL)
     , http_master_service(NULL)
     , health_reporter(NULL)
@@ -869,8 +869,11 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                    << FLAGS_task_group_ntags << ")";
         return -1;
     }
-    auto ret = TransportFactory::ContextInitOrDie(_options.socket_mode, true, &_options);
-    CHECK(ret == 0);
+    int ret = TransportFactory::ContextInitOrDie(_options.socket_mode, true, &_options);
+    if (ret != 0) {
+        LOG(ERROR) << "Fail to initialize transport context for server, ret=" << ret;
+        return -1;
+    }
 
     if (_options.http_master_service) {
         // Check requirements for http_master_service:

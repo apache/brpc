@@ -30,7 +30,7 @@ namespace brpc {
 
     void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
         CHECK(_rdma_ep == NULL);
-        if (options.socket_mode == RDMA) {
+        if (options.socket_mode == SOCKET_MODE_RDMA) {
             _rdma_ep = new(std::nothrow)rdma::RdmaEndpoint(socket);
             if (!_rdma_ep) {
                 const int saved_errno = errno;
@@ -41,7 +41,7 @@ namespace brpc {
             _rdma_state = RDMA_UNKNOWN;
         } else {
             _rdma_state = RDMA_OFF;
-            socket->_socket_mode = TCP;
+            socket->_socket_mode = SOCKET_MODE_TCP;
         }
         _socket = socket;
         _default_connect = options.app_connect;
@@ -91,8 +91,6 @@ namespace brpc {
         }
         return butil::IOBuf::cut_multiple_into_file_descriptor(_socket->fd(), buf, ndata);
     }
-
-    static const size_t DATA_LIST_MAX = 256;
 
     int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                                         bool pollin, const timespec duetime) {
@@ -175,11 +173,11 @@ namespace brpc {
         bthread_attr_set_name(&tmp, "ProcessInputMessage");
 
         if (!FLAGS_usercode_in_coroutine && bthread_start_background(
-                            &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
+                &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
             ++*num_bthread_created;
-                            } else {
-                                ProcessInputMessage(to_run_msg);
-                            }
+        } else {
+            ProcessInputMessage(to_run_msg);
+        }
     }
 
     void RdmaTransport::Debug(std::ostream &os, Socket* ptr) {
@@ -189,7 +187,7 @@ namespace brpc {
     }
 
     int RdmaTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
-        if(serverOrNot) {
+        if (serverOrNot) {
             if (!OptionsAvailableOverRdma(static_cast<const ServerOptions *>(_options))) {
                 return -1;
             }

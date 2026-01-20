@@ -61,7 +61,7 @@ ChannelOptions::ChannelOptions()
     , connection_type(CONNECTION_TYPE_UNKNOWN)
     , succeed_without_server(true)
     , log_succeed_without_server(true)
-    , socket_mode(TCP)
+    , socket_mode(SOCKET_MODE_TCP)
     , auth(NULL)
     , backup_request_policy(NULL)
     , retry_policy(NULL)
@@ -121,7 +121,7 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         } else {
             // All disabled ChannelSSLOptions are the same
         }
-        if (opt.socket_mode == RDMA) {
+        if (opt.socket_mode == SOCKET_MODE_RDMA) {
             buf.append("|rdma");
         }
         butil::MurmurHash3_x64_128_Update(&mm_ctx, buf.data(), buf.size());
@@ -178,8 +178,11 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
         _options.hc_option.health_check_path = FLAGS_health_check_path;
         _options.hc_option.health_check_timeout_ms = FLAGS_health_check_timeout_ms;
     }
-    auto ret = TransportFactory::ContextInitOrDie(options->socket_mode, false, &_options);
-    CHECK(ret == 0);
+    auto ret = TransportFactory::ContextInitOrDie(_options.socket_mode, false, &_options);
+    if (ret != 0) {
+        LOG(ERROR) << "Fail to initialize transport context for channel, ret=" << ret;
+        return -1;
+    }
 
     _serialize_request = protocol->serialize_request;
     _pack_request = protocol->pack_request;

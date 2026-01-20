@@ -84,11 +84,11 @@ namespace brpc {
         tmp.tag = bthread_self_tag();
         bthread_attr_set_name(&tmp, "ProcessInputMessage");
         if (!FLAGS_usercode_in_coroutine && bthread_start_background(
-                            &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
+                &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
             ++*num_bthread_created;
-                            } else {
-                                ProcessInputMessage(to_run_msg);
-                            }
+        } else {
+            ProcessInputMessage(to_run_msg);
+        }
     }
     void TcpTransport::Debug(std::ostream &os, Socket* ptr) {}
 }

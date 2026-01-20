@@ -269,7 +269,6 @@ int InputMessenger::ProcessNewMessage(
         // This unique_ptr prevents msg to be lost before transfering
         // ownership to last_msg
         DestroyingPtr<InputMessageBase> msg(pr.message());
-        // QueueMessage(last_msg.release(), &num_bthread_created, m->_keytable_pool, m->socket_mode);
         m->_transport->QueueMessage(last_msg, &num_bthread_created, false);
         if (_handlers[index].process == NULL) {
             LOG(ERROR) << "process of index=" << index << " is NULL";
@@ -313,7 +312,7 @@ int InputMessenger::ProcessNewMessage(
     // not in the bthread where the polling bthread is located, because the
     // method for processing messages may call synchronization primitives,
     // causing the polling bthread to be scheduled out.
-    if (m->_socket_mode == RDMA) {
+    if (m->_socket_mode == SOCKET_MODE_RDMA) {
         m->_transport->QueueMessage(last_msg, &num_bthread_created, true);
     }
     if (num_bthread_created) {

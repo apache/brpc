@@ -91,7 +91,7 @@ SocketMap* get_or_new_client_side_socket_map() {
 
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-                    Mode socket_mode,
+                    SocketMode socket_mode,
                     const HealthCheckOption& hc_option) {
     return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx, socket_mode, hc_option);
 }    
@@ -228,7 +228,7 @@ void SocketMap::ShowSocketMapInBvarIfNeed() {
 
 int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
                       const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-                      Mode socket_mode,
+                      SocketMode socket_mode,
                       const HealthCheckOption& hc_option) {
     ShowSocketMapInBvarIfNeed();
 
