@@ -34,7 +34,7 @@ namespace brpc {
         int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) override;
         void ProcessEvent(bthread_attr_t attr) override;
         void QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) override;
-        void Debug(std::ostream &os, Socket* ptr) override;
+        void Debug(std::ostream &os) override;
     };
 }
 

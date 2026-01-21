@@ -118,15 +118,7 @@ namespace brpc {
                                                             }
             }
         } else {
-            g_vars->nwaitepollout << 1;
-            const int rc = _socket->WaitEpollOut(_socket->fd(), pollin, &duetime);
-            if (rc < 0 && errno != ETIMEDOUT) {
-                const int saved_errno = errno;
-                PLOG(WARNING) << "Fail to wait epollout of " << _socket;
-                _socket->SetFailed(saved_errno, "Fail to wait epollout of %s: %s",
-                                                 _socket->description().c_str(), berror(saved_errno));
-                return 1;
-            }
+            return _tcp_transport->WaitEpollOut(_epollout_butex, pollin, duetime);
         }
         return 0;
     }
@@ -180,7 +172,7 @@ namespace brpc {
         }
     }
 
-    void RdmaTransport::Debug(std::ostream &os, Socket* ptr) {
+    void RdmaTransport::Debug(std::ostream &os) {
         if (_rdma_state == RDMA_ON && _rdma_ep) {
             _rdma_ep->DebugInfo(os);
         }

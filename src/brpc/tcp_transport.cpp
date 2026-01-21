@@ -90,5 +90,5 @@ namespace brpc {
             ProcessInputMessage(to_run_msg);
         }
     }
-    void TcpTransport::Debug(std::ostream &os, Socket* ptr) {}
+    void TcpTransport::Debug(std::ostream &os) {}
 }

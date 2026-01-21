@@ -2493,7 +2493,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
            << "\n}";
     }
 #endif
-    ptr->_transport->Debug(os, ptr.get());
+    ptr->_transport->Debug(os);
     { os << "\nbthread_tag=" << ptr->_io_event.bthread_tag(); }
 }
 
