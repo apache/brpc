@@ -23,8 +23,11 @@
 
 #include <stdint.h>
 #include <string>
+#include <list>
 #include <deque>
 #include <ostream>
+#include <memory>
+#include <pthread.h>
 #include "butil/macros.h"
 #include "butil/endpoint.h"
 #include "butil/string_splitter.h"
@@ -37,28 +40,48 @@ namespace bthread {
 extern __thread bthread::LocalStorage tls_bls;
 }
 
-
 namespace brpc {
+
+class Span;
+
+void SetTlsParentSpan(std::shared_ptr<Span> span);
+std::shared_ptr<Span> GetTlsParentSpan();
+void ClearTlsParentSpan();
+bool HasTlsParentSpan();
+
+void* CreateBthreadSpanAsVoid();
+void DestroyRpczParentSpan(void* ptr);
+void EndBthreadSpan();
 
 DECLARE_bool(enable_rpcz);
 
+class Span;
+class SpanContainer;
+
+// Deleter for Span.
+struct SpanDeleter {
+    void operator()(Span* r) const;
+};
+
 // Collect information required by /rpcz and tracing system whose idea is
 // described in http://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36356.pdf
-class Span : public bvar::Collected {
+class Span : public std::enable_shared_from_this<Span> {
 friend class SpanDB;
-    struct Forbidden {};
+friend struct SpanDeleter;
+friend class SpanContainer;
 public:
+    struct Forbidden {};
     // Call CreateServerSpan/CreateClientSpan instead.
-    Span(Forbidden) {}
-    ~Span() {}
+    Span(Forbidden);
+    ~Span();
 
     // Create a span to track a request inside server.
-    static Span* CreateServerSpan(
+    static std::shared_ptr<Span> CreateServerSpan(
         const std::string& full_method_name,
         uint64_t trace_id, uint64_t span_id, uint64_t parent_span_id,
         int64_t base_real_us);
     // Create a span without name to track a request inside server.
-    static Span* CreateServerSpan(
+    static std::shared_ptr<Span> CreateServerSpan(
         uint64_t trace_id, uint64_t span_id, uint64_t parent_span_id,
         int64_t base_real_us);
 
@@ -66,18 +89,24 @@ public:
     void ResetServerSpanName(const std::string& name);
 
     // Create a span to track a request inside channel.
-    static Span* CreateClientSpan(const std::string& full_method_name,
-                                  int64_t base_real_us);
+    static std::shared_ptr<Span> CreateClientSpan(const std::string& full_method_name,
+                                                  int64_t base_real_us);
 
     // Create a span to track start bthread
-    static Span* CreateBthreadSpan(const std::string& full_method_name, 
-                                   int64_t base_real_us);
+    static std::shared_ptr<Span> CreateBthreadSpan(const std::string& full_method_name,
+                                                   int64_t base_real_us);
 
-    static void Submit(Span* span, int64_t cpuwide_time_us);
+    static void Submit(std::shared_ptr<Span> span, int64_t cpuwide_time_us);
 
-    // Set tls parent.
+    // Set this span as the TLS parent for subsequent child span creation.
+    // Typical flow:
+    // 1. Server span calls AsParent() before user callback to enable tracing
+    // 2. Client spans created in user code automatically link to this parent
+    // 3. When client RPC completes, it restores its own parent via AsParent()
+    //    to maintain the trace chain (see Controller::SubmitSpan)
+    // 4. Server span calls EndAsParent() when submitting to clear TLS parent
     void AsParent() {
-        bthread::tls_bls.rpcz_parent_span = this;
+        SetTlsParentSpan(shared_from_this());
     }
 
     // Add log with time.
@@ -115,9 +144,15 @@ public:
     void set_sent_us(int64_t tm)
     { _sent_real_us = tm + _base_real_us; }
 
-    Span* local_parent() const { return _local_parent; }
-    static Span* tls_parent() {
-        return static_cast<Span*>(bthread::tls_bls.rpcz_parent_span);
+    bool is_active() const { return _ending_cid == INVALID_BTHREAD_ID; }
+
+    std::weak_ptr<Span> local_parent() const { return _local_parent; }
+    static std::shared_ptr<Span> tls_parent() {
+        auto parent = GetTlsParentSpan();
+        if (parent && parent->is_active()) {
+            return parent;
+        }
+        return nullptr;
     }
 
     uint64_t trace_id() const { return _trace_id; }
@@ -139,20 +174,38 @@ public:
     int64_t sent_real_us() const { return _sent_real_us; }
     bool async() const { return _async; }
     const std::string& full_method_name() const { return _full_method_name; }
-    const std::string& info() const { return _info; }
+    
+    // Returns a copy instead of a reference for thread safety.
+    // 
+    // Current usage: Only called by Span2Proto() which immediately passes the result
+    // to protobuf's set_info(). In this specific scenario, returning a reference would
+    // also be safe because set_info() copies the string before the reference could be
+    // invalidated by concurrent Annotate() calls.
+    //
+    // However, returning by value is more robust: it prevents potential data races if
+    // future code holds the reference longer, and has no performance penalty due to
+    // C++11 move semantics (the temporary is moved, not copied, into protobuf).
+    std::string info() const { 
+        BAIDU_SCOPED_LOCK(_info_spinlock);
+        return _info; 
+    }
     
 private:
     DISALLOW_COPY_AND_ASSIGN(Span);
 
-    void dump_and_destroy(size_t round_index);
-    void destroy();
-    void traversal(Span*, const std::function<void(Span*)>&) const;
+    void dump_to_db();
+    void submit(int64_t cpuwide_us);
     bvar::CollectorSpeedLimit* speed_limit();
     bvar::CollectorPreprocessor* preprocessor();
 
+    // Clear this span from TLS parent if it's currently set as the parent.
+    // Called when server span is being submitted to prevent subsequent spans
+    // from incorrectly linking to an ended span. Only clears if the current
+    // TLS parent is this span (avoids clearing if another span has taken over).
     void EndAsParent() {
-        if (this == static_cast<Span*>(bthread::tls_bls.rpcz_parent_span)) {
-            bthread::tls_bls.rpcz_parent_span = NULL;
+        std::shared_ptr<Span> current_parent = GetTlsParentSpan();
+        if (current_parent.get() == this) {
+            ClearTlsParentSpan();
         }
     }
 
@@ -181,11 +234,38 @@ private:
     //   time2_us \s annotation2 <SEP>
     //   ...
     std::string _info;
+    // Protects _info from concurrent modifications.
+    // Multiple threads may call Annotate() simultaneously (e.g., retry logic,
+    // network layer, user code via TRACEPRINTF), causing data corruption in
+    // string concatenation without synchronization.
+    mutable pthread_spinlock_t _info_spinlock;
 
-    Span* _local_parent;
-    Span* _next_client;
-    Span* _client_list;
-    Span* _tls_next;
+    std::weak_ptr<Span> _local_parent;
+    std::list<std::shared_ptr<Span>> _client_list;
+    // Protects _client_list from concurrent modifications.
+    // In some scenarios, multiple bthreads may simultaneously create child spans
+    // (e.g.,raft leader parallel RPCs to followers) and push_back to parent's _client_list.
+    // Also protects against concurrent iteration (e.g., CountClientSpans, SpanDB::Index)
+    // while the list is being modified.
+    mutable pthread_spinlock_t _client_list_spinlock;
+};
+
+class SpanContainer : public bvar::Collected {
+public:
+    explicit SpanContainer(const std::shared_ptr<Span>& span) : _span(span) {}
+    ~SpanContainer() {}
+
+    // Implementations of bvar::Collected
+    void dump_and_destroy(size_t round_index) override;
+    void destroy() override;
+    bvar::CollectorSpeedLimit* speed_limit() override;
+
+    void submit(int64_t cpuwide_us);
+
+    const std::shared_ptr<Span>& span() const { return _span; }
+
+private:
+    std::shared_ptr<Span> _span;
 };
 
 // Extract name and annotations from Span::info()
@@ -198,10 +278,13 @@ private:
     butil::StringSplitter _sp;
 };
 
-// These two functions can be used for composing TRACEPRINT as well as hiding
-// span implementations.
-bool CanAnnotateSpan();
+// These two functions can be used for composing TRACEPRINT// Add an annotation to the current span.
+// If current bthread is not tracing, this function does nothing.
 void AnnotateSpan(const char* fmt, ...);
+
+// Add an annotation to the given span.
+// If the span is NULL, this function does nothing.
+void AnnotateSpanEx(std::shared_ptr<Span> span, const char* fmt, ...);
 
 
 class SpanFilter {
@@ -238,12 +321,6 @@ inline bool IsTraceable(bool is_upstream_traced) {
     extern bvar::CollectorSpeedLimit g_span_sl;
     return is_upstream_traced ||
         (FLAGS_enable_rpcz && bvar::is_collectable(&g_span_sl));
-}
-
-inline void* CreateBthreadSpan() {
-    const int64_t received_us = butil::cpuwide_time_us();
-    const int64_t base_realtime = butil::gettimeofday_us() - received_us;
-    return Span::CreateBthreadSpan("Bthread", base_realtime);
 }
 
 } // namespace brpc

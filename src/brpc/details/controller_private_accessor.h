@@ -30,8 +30,9 @@ class Message;
 }
 }
 
-
 namespace brpc {
+
+class Span;
 
 class AuthContext;
 
@@ -90,17 +91,16 @@ public:
         return *this;
     }
 
-    ControllerPrivateAccessor &set_span(Span* span) {
-        _cntl->_span = span;
-        return *this;
-    }
+    // Overloaded set_span methods to support both shared_ptr and raw pointer
+    ControllerPrivateAccessor &set_span(const std::shared_ptr<Span>& span);
+    ControllerPrivateAccessor &set_span(Span* span);
     
     ControllerPrivateAccessor &set_request_protocol(ProtocolType protocol) {
         _cntl->_request_protocol = protocol;
         return *this;
     }
     
-    Span* span() const { return _cntl->_span; }
+    std::shared_ptr<Span> span() const;
 
     uint32_t pipelined_count() const { return _cntl->_pipelined_count; }
     void set_pipelined_count(uint32_t count) {  _cntl->_pipelined_count = count; }

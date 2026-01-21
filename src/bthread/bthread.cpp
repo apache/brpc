@@ -90,7 +90,6 @@ extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 extern void (*g_worker_startfn)();
 extern void (*g_tagged_worker_startfn)(bthread_tag_t);
-extern void* (*g_create_span_func)();
 
 inline TaskControl* get_task_control() {
     return g_task_control;
@@ -597,14 +596,6 @@ int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t)) {
     return 0;
 }
 
-int bthread_set_create_span_func(void* (*func)()) {
-    if (func == NULL) {
-        return EINVAL;
-    }
-    bthread::g_create_span_func = func;
-    return 0;
-}
-
 void bthread_stop_world() {
     bthread::TaskControl* c = bthread::get_task_control();
     if (c != NULL) {
@@ -666,6 +657,21 @@ uint64_t bthread_cpu_clock_ns(void) {
         return g->current_task_cpu_clock_ns();
     }
     return 0;
+}
+
+int bthread_set_span_funcs(bthread_create_span_fn create_fn,
+                            bthread_destroy_span_fn destroy_fn,
+                            bthread_end_span_fn end_fn) {
+    if ((create_fn && destroy_fn && end_fn) ||
+        (!create_fn && !destroy_fn && !end_fn)) {
+        bthread::g_create_bthread_span = create_fn;
+        bthread::g_rpcz_parent_span_dtor = destroy_fn;
+        bthread::g_end_bthread_span = end_fn;
+        return 0;
+    }
+
+    errno = EINVAL;
+    return -1;
 }
 
 }  // extern "C"
