@@ -22,20 +22,20 @@
 #include "brpc/socket.h"
 
 namespace brpc {
-    class TcpTransport : public Transport {
-        friend class TransportFactory;
-    public:
-        void Init(Socket* socket, const SocketOptions& options) override;
-        void Release() override;
-        int Reset(int32_t expected_nref) override;
-        std::shared_ptr<AppConnect> Connect() override;
-        int CutFromIOBuf(butil::IOBuf* buf) override;
-        ssize_t CutFromIOBufList(butil::IOBuf** buf, size_t ndata) override;
-        int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) override;
-        void ProcessEvent(bthread_attr_t attr) override;
-        void QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) override;
-        void Debug(std::ostream &os) override;
-    };
+class TcpTransport : public Transport {
+    friend class TransportFactory;
+public:
+    void Init(Socket* socket, const SocketOptions& options) override;
+    void Release() override;
+    int Reset(int32_t expected_nref) override;
+    std::shared_ptr<AppConnect> Connect() override;
+    int CutFromIOBuf(butil::IOBuf* buf) override;
+    ssize_t CutFromIOBufList(butil::IOBuf** buf, size_t ndata) override;
+    int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) override;
+    void ProcessEvent(bthread_attr_t attr) override;
+    void QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) override;
+    void Debug(std::ostream &os) override;
+};
 }
 
 #endif //BRPC_TCP_TRANSPORT_H

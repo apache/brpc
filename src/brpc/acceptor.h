@@ -112,7 +112,7 @@ private:
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
     // Choose to use a certain socket: 0 TCP, 1 RDMA
-    SocketMode socket_mode;
+    SocketMode _socket_mode;
 
     // Acceptor belongs to this tag
     bthread_tag_t _bthread_tag;

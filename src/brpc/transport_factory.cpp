@@ -19,34 +19,34 @@
 #include "brpc/tcp_transport.h"
 #include "brpc/rdma_transport.h"
 namespace brpc {
-    int TransportFactory::ContextInitOrDie(SocketMode mode, bool serverOrNot, const void* _options) {
-        if (mode == SOCKET_MODE_TCP) {
-            return 0;
-        }
-#if BRPC_WITH_RDMA
-        else if (mode == SOCKET_MODE_RDMA) {
-            return RdmaTransport::ContextInitOrDie(serverOrNot, _options);
-        }
-#endif
-        else {
-            LOG(ERROR) << "unknown transport type  " << mode;
-            return 1;
-        }
+int TransportFactory::ContextInitOrDie(SocketMode mode, bool serverOrNot, const void* _options) {
+    if (mode == SOCKET_MODE_TCP) {
+        return 0;
     }
+#if BRPC_WITH_RDMA
+    else if (mode == SOCKET_MODE_RDMA) {
+        return RdmaTransport::ContextInitOrDie(serverOrNot, _options);
+    }
+#endif
+    else {
+        LOG(ERROR) << "unknown transport type  " << mode;
+        return 1;
+    }
+}
 
-        std::shared_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
-        if (mode == SOCKET_MODE_TCP) {
-            // 使用共享指针创建对象
-            return std::make_shared<TcpTransport>();
-        }
-#if BRPC_WITH_RDMA
-        else if (mode == SOCKET_MODE_RDMA) {
-            return std::make_shared<RdmaTransport>();
-        }
-#endif
-        else {
-            LOG(ERROR) << "socket_mode set error";
-            return nullptr;
-        }
+std::shared_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
+    if (mode == SOCKET_MODE_TCP) {
+        // 使用共享指针创建对象
+        return std::make_shared<TcpTransport>();
     }
+#if BRPC_WITH_RDMA
+    else if (mode == SOCKET_MODE_RDMA) {
+        return std::make_shared<RdmaTransport>();
+    }
+#endif
+    else {
+        LOG(ERROR) << "socket_mode set error";
+        return nullptr;
+    }
+}
 } // namespace brpc

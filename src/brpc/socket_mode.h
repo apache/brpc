@@ -18,9 +18,9 @@
 #ifndef BRPC_COMMON_H
 #define BRPC_COMMON_H
 namespace brpc {
-    enum SocketMode {
-        SOCKET_MODE_TCP = 0,
-        SOCKET_MODE_RDMA = 1
-    };
+enum SocketMode {
+    SOCKET_MODE_TCP = 0,
+    SOCKET_MODE_RDMA = 1
+};
 }
 #endif //BRPC_COMMON_H

@@ -1140,7 +1140,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 LOG(ERROR) << "Fail to build acceptor";
                 return -1;
             }
-            _am->socket_mode = _options.socket_mode;
+            _am->_socket_mode = _options.socket_mode;
             _am->_bthread_tag = _options.bthread_tag;
         }
         // Set `_status' to RUNNING before accepting connections

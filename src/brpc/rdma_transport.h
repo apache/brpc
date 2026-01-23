@@ -24,42 +24,42 @@
 #include "brpc/transport.h"
 
 namespace brpc {
-    class RdmaTransport : public Transport {
-        friend class TransportFactory;
-        friend class rdma::RdmaEndpoint;
-        friend class rdma::RdmaConnect;
-    public:
-        void Init(Socket* socket, const SocketOptions& options) override;
-        void Release() override;
-        int Reset(int32_t expected_nref) override;
-        std::shared_ptr<AppConnect> Connect() override;
-        int CutFromIOBuf(butil::IOBuf* buf) override;
-        ssize_t CutFromIOBufList(butil::IOBuf** buf, size_t ndata) override;
-        int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) override;
-        void ProcessEvent(bthread_attr_t attr) override;
-        void QueueMessage(InputMessageClosure& inputMsg, int* num_bthread_created, bool last_msg) override;
-        void Debug(std::ostream &os) override;
-        rdma::RdmaEndpoint* GetRdmaEp() {
-            CHECK(_rdma_ep != NULL);
-            return _rdma_ep;
-        }
-        static int ContextInitOrDie(bool serverOrNot, const void* _options);
-    private:
-        static bool OptionsAvailableForRdma(const ChannelOptions* opt);
-        static bool OptionsAvailableOverRdma(const ServerOptions* opt);
-    private:
-        // The on/off state of RDMA
-        enum RdmaState {
-            RDMA_ON,
-            RDMA_OFF,
-            RDMA_UNKNOWN
-        };
-        // The RdmaEndpoint
-        rdma::RdmaEndpoint* _rdma_ep = NULL;
-        // Should use RDMA or not
-        RdmaState _rdma_state;
-        std::shared_ptr<TcpTransport>  _tcp_transport;
+class RdmaTransport : public Transport {
+    friend class TransportFactory;
+    friend class rdma::RdmaEndpoint;
+    friend class rdma::RdmaConnect;
+public:
+    void Init(Socket* socket, const SocketOptions& options) override;
+    void Release() override;
+    int Reset(int32_t expected_nref) override;
+    std::shared_ptr<AppConnect> Connect() override;
+    int CutFromIOBuf(butil::IOBuf* buf) override;
+    ssize_t CutFromIOBufList(butil::IOBuf** buf, size_t ndata) override;
+    int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) override;
+    void ProcessEvent(bthread_attr_t attr) override;
+    void QueueMessage(InputMessageClosure& inputMsg, int* num_bthread_created, bool last_msg) override;
+    void Debug(std::ostream &os) override;
+    rdma::RdmaEndpoint* GetRdmaEp() {
+        CHECK(_rdma_ep != NULL);
+        return _rdma_ep;
+    }
+    static int ContextInitOrDie(bool serverOrNot, const void* _options);
+private:
+    static bool OptionsAvailableForRdma(const ChannelOptions* opt);
+    static bool OptionsAvailableOverRdma(const ServerOptions* opt);
+private:
+    // The on/off state of RDMA
+    enum RdmaState {
+        RDMA_ON,
+        RDMA_OFF,
+        RDMA_UNKNOWN
     };
+    // The RdmaEndpoint
+    rdma::RdmaEndpoint* _rdma_ep = NULL;
+    // Should use RDMA or not
+    RdmaState _rdma_state;
+    std::shared_ptr<TcpTransport>  _tcp_transport;
+};
 }
 #endif // BRPC_WITH_RDMA
 #endif //BRPC_RDMA_TRANSPORT_H

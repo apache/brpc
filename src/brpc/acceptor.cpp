@@ -40,7 +40,7 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _empty_cond(&_map_mutex)
     , _force_ssl(false)
     , _ssl_ctx(NULL) 
-    , socket_mode(SOCKET_MODE_TCP)
+    , _socket_mode(SOCKET_MODE_TCP)
     , _bthread_tag(BTHREAD_TAG_DEFAULT) {
 }
 
@@ -285,7 +285,7 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.need_on_edge_trigger = true;
         options.force_ssl = am->_force_ssl;
         options.initial_ssl_ctx = am->_ssl_ctx;
-        options.socket_mode = am->socket_mode;
+        options.socket_mode = am->_socket_mode;
         options.bthread_tag = am->_bthread_tag;
         if (Socket::Create(options, &socket_id) != 0) {
             LOG(ERROR) << "Fail to create Socket";
