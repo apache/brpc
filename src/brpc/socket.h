@@ -250,6 +250,8 @@ struct SocketOptions {
     // user->BeforeRecycle() before recycling.
     int fd{-1};
     butil::EndPoint remote_side;
+    butil::EndPoint local_side;
+    std::string device_name;
     // If `connect_on_create' is true and `fd' is less than 0,
     // a client connection will be established to remote_side()
     // regarding deadline `connect_abstime' when Socket is being created.
@@ -829,6 +831,9 @@ private:
 
     // Address of self. Initialized in ResetFileDescriptor().
     butil::EndPoint _local_side;
+
+    // The device name of the client's network adapter.
+    std::string _device_name;
 
     // Called when edge-triggered events happened on `_fd'. Read comments
     // of EventDispatcher::AddConsumer (event_dispatcher.h)
