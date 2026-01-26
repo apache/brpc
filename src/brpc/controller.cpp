@@ -285,6 +285,7 @@ void Controller::ResetPods() {
     _accessed = NULL;
     _pack_request = NULL;
     _method = NULL;
+    _fb_method = NULL;
     _auth = NULL;
     _idl_names = idl_single_req_single_res;
     _idl_result = IDL_VOID_RESULT;
@@ -1200,7 +1201,9 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     // Make request
     butil::IOBuf packet;
     SocketMessage* user_packet = NULL;
-    _pack_request(&packet, &user_packet, cid.value, _method, this,
+    const void *method_desc = is_use_flatbuffer()? (const void*)_fb_method :
+                                                    (const void*)_method;
+    _pack_request(&packet, &user_packet, cid.value, method_desc, this,
                   _request_buf, using_auth);
     // TODO: PackRequest may accept SocketMessagePtr<>?
     SocketMessagePtr<> user_packet_guard(user_packet);

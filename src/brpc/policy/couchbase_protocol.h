@@ -151,12 +151,12 @@ void ProcessCouchbaseResponse(InputMessageBase* msg);
 
 // Serialize a couchbase request.
 void SerializeCouchbaseRequest(butil::IOBuf* buf, Controller* cntl,
-                               const google::protobuf::Message* request);
+                               const void* request);
 
 // Pack `request' to `method' into `buf'.
 void PackCouchbaseRequest(butil::IOBuf* buf, SocketMessage**,
                           uint64_t correlation_id,
-                          const google::protobuf::MethodDescriptor* method,
+                          const void* method,
                           Controller* controller, const butil::IOBuf& request,
                           const Authenticator* auth);
 

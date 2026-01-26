@@ -101,7 +101,7 @@ struct Protocol {
     typedef void (*SerializeRequest)(
         butil::IOBuf* request_buf,
         Controller* cntl,
-        const google::protobuf::Message* request);
+        const void* request_obj);
     SerializeRequest serialize_request;
     
     // [Required by client]
@@ -113,7 +113,7 @@ struct Protocol {
         butil::IOBuf* iobuf_out,
         SocketMessage** user_message_out,
         uint64_t correlation_id,
-        const google::protobuf::MethodDescriptor* method,
+        const void* method_descriptor,
         Controller* controller,
         const butil::IOBuf& request_buf,
         const Authenticator* auth);
@@ -198,7 +198,7 @@ void ListProtocols(std::vector<std::pair<ProtocolType, Protocol> >* vec);
 // The common serialize_request implementation used by many protocols.
 void SerializeRequestDefault(butil::IOBuf* buf,
                              Controller* cntl,
-                             const google::protobuf::Message* request);
+                             const void* request_obj);
 
 // Replacements for msg->ParseFromXXX() to make the bytes limit in pb
 // consistent with -max_body_size

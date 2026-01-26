@@ -214,7 +214,8 @@ void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
 }
 
 void SerializePublicPbrpcRequest(butil::IOBuf* buf, Controller* cntl,
-                                 const google::protobuf::Message* request) {
+                                 const void* request_obj) {
+    const google::protobuf::Message* request = static_cast<const google::protobuf::Message*>(request_obj);
     CompressType type = cntl->request_compress_type();
     if (type != COMPRESS_TYPE_NONE && type != COMPRESS_TYPE_SNAPPY) {
         cntl->SetFailed(EREQUEST, "public_pbrpc doesn't support "
@@ -227,10 +228,12 @@ void SerializePublicPbrpcRequest(butil::IOBuf* buf, Controller* cntl,
 void PackPublicPbrpcRequest(butil::IOBuf* buf,
                             SocketMessage**,
                             uint64_t correlation_id,
-                            const google::protobuf::MethodDescriptor* method,
+                            const void* method_descriptor,
                             Controller* controller,
                             const butil::IOBuf& request,
                             const Authenticator* /*not supported*/) {
+    const google::protobuf::MethodDescriptor* method = 
+            static_cast<const google::protobuf::MethodDescriptor*>(method_descriptor);
     PublicPbrpcRequest pbreq;
     RequestHead* head = pbreq.mutable_requesthead();
     RequestBody* body = pbreq.add_requestbody();

@@ -3627,7 +3627,7 @@ RtmpCreateStreamMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
 void PackRtmpRequest(butil::IOBuf* /*buf*/,
                      SocketMessage** user_message,
                      uint64_t /*correlation_id*/,
-                     const google::protobuf::MethodDescriptor* /*NULL*/,
+                     const void* /*NULL*/,
                      Controller* cntl,
                      const butil::IOBuf& /*request*/,
                      const Authenticator*) {
@@ -3671,7 +3671,7 @@ void PackRtmpRequest(butil::IOBuf* /*buf*/,
 
 void SerializeRtmpRequest(butil::IOBuf* /*buf*/,
                           Controller* /*cntl*/,
-                          const google::protobuf::Message* /*NULL*/) {
+                          const void* /*NULL*/) {
 }
 
 }  // namespace policy

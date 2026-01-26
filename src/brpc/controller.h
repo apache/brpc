@@ -47,6 +47,7 @@
 #include "brpc/grpc.h"
 #include "brpc/kvmap.h"
 #include "brpc/rpc_dump.h"
+#include "brpc/details/flatbuffers_common.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -151,6 +152,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_SINGLE_REPEATED_TO_ARRAY = (1 << 20);
     static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
     static const uint32_t FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND = (1 << 22);
+    static const uint32_t FLAGS_USE_FLATBUFFER = (1 << 23);
 
 public:
     struct Inheritable {
@@ -219,6 +221,8 @@ public:
 
     // Response of the RPC call (passed to CallMethod)
     google::protobuf::Message* response() const { return _response; }
+
+    brpc::flatbuffers::Message* fb_response() const { return _fb_response; }
 
     // An identifier to send to server along with request. This is widely used
     // throughout baidu's servers to tag a searching session (a series of
@@ -292,6 +296,7 @@ public:
     // Get the called method. May-be NULL for non-pb services.
     const google::protobuf::MethodDescriptor* method() const { return _method; }
 
+    const brpc::flatbuffers::MethodDescriptor* fb_method() const { return _fb_method; }
     // Get the controllers for accessing sub channels in combo channels.
     // Ordinary channel:
     //   sub_count() is 0 and sub() is always NULL.
@@ -649,6 +654,9 @@ public:
     // the received time of RPC is not recorded in the controller.
     int64_t get_rpc_received_us() const { return _rpc_received_us; }
 
+    void set_use_flatbuffer() { add_flag(FLAGS_USE_FLATBUFFER); }
+    bool is_use_flatbuffer() const { return has_flag(FLAGS_USE_FLATBUFFER); }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -860,6 +868,7 @@ private:
     Inheritable _inheritable;
     int _pchan_sub_count;
     google::protobuf::Message* _response;
+    brpc::flatbuffers::Message* _fb_response;
     google::protobuf::Closure* _done;
     RPCSender* _sender;
     uint64_t _request_code;
@@ -878,6 +887,7 @@ private:
     // Fields will be used when making requests
     Protocol::PackRequest _pack_request;
     const google::protobuf::MethodDescriptor* _method;
+    const brpc::flatbuffers::MethodDescriptor* _fb_method;
     const Authenticator* _auth;
     butil::IOBuf _request_buf;
     IdlNames _idl_names;

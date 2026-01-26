@@ -193,7 +193,8 @@ void ProcessMemcacheResponse(InputMessageBase* msg_base) {
 
 void SerializeMemcacheRequest(butil::IOBuf* buf,
                               Controller* cntl,
-                              const google::protobuf::Message* request) {
+                              const void* request_obj) {
+    const google::protobuf::Message* request = static_cast<const google::protobuf::Message*>(request_obj);
     if (request == NULL) {
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
@@ -209,7 +210,7 @@ void SerializeMemcacheRequest(butil::IOBuf* buf,
 void PackMemcacheRequest(butil::IOBuf* buf,
                          SocketMessage**,
                          uint64_t /*correlation_id*/,
-                         const google::protobuf::MethodDescriptor*,
+                         const void*,
                          Controller* cntl,
                          const butil::IOBuf& request,
                          const Authenticator* auth) {

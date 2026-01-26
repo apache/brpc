@@ -36,12 +36,12 @@ ParseResult ParseEspMessage(
 void SerializeEspRequest(
         butil::IOBuf* request_buf, 
         Controller* controller,
-        const google::protobuf::Message* request);
+        const void* request_obj);
 
 void PackEspRequest(butil::IOBuf* packet_buf,
                     SocketMessage**,
                     uint64_t correlation_id,
-                    const google::protobuf::MethodDescriptor*,
+                    const void*,
                     Controller* controller,
                     const butil::IOBuf&,
                     const Authenticator*);

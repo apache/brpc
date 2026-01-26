@@ -132,8 +132,8 @@ inline H2Bvars* get_h2_bvars() {
 
 class H2UnsentRequest : public SocketMessage, public StreamUserData {
 friend void PackH2Request(butil::IOBuf*, SocketMessage**,
-                          uint64_t, const google::protobuf::MethodDescriptor*,
-                          Controller*, const butil::IOBuf&, const Authenticator*);
+                          uint64_t, const void*,Controller*,
+                          const butil::IOBuf&, const Authenticator*);
 public:
     static H2UnsentRequest* New(Controller* c);
     void Print(std::ostream& os) const;
@@ -285,7 +285,7 @@ ParseResult ParseH2Message(butil::IOBuf *source, Socket *socket,
 void PackH2Request(butil::IOBuf* buf,
                    SocketMessage** user_message_out,
                    uint64_t correlation_id,
-                   const google::protobuf::MethodDescriptor* method,
+                   const void* method,
                    Controller* controller,
                    const butil::IOBuf& request,
                    const Authenticator* auth);

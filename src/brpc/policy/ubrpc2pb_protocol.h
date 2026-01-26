@@ -30,14 +30,14 @@ namespace policy {
 void ProcessUbrpcResponse(InputMessageBase* msg);
 
 void SerializeUbrpcCompackRequest(butil::IOBuf* buf, Controller* cntl,
-                                  const google::protobuf::Message* request);
+                                  const void* request_obj);
 void SerializeUbrpcMcpack2Request(butil::IOBuf* buf, Controller* cntl,
-                                  const google::protobuf::Message* request);
+                                  const void* request_obj);
 
 void PackUbrpcRequest(butil::IOBuf* buf,
                       SocketMessage**,
                       uint64_t correlation_id,
-                      const google::protobuf::MethodDescriptor* method,
+                      const void* method_descriptor,
                       Controller* controller,
                       const butil::IOBuf& request,
                       const Authenticator* auth);

@@ -666,10 +666,11 @@ void ProcessHuluResponse(InputMessageBase* msg_base) {
 void PackHuluRequest(butil::IOBuf* req_buf,
                      SocketMessage**,
                      uint64_t correlation_id,
-                     const google::protobuf::MethodDescriptor* method,
+                     const void* method_obj,
                      Controller* cntl,
                      const butil::IOBuf& req_body,
                      const Authenticator* auth) {
+    const google::protobuf::MethodDescriptor* method = static_cast<const google::protobuf::MethodDescriptor*>(method_obj);
     HuluRpcRequestMeta meta;
     if (auth != NULL && auth->GenerateCredential(
                 meta.mutable_credential_data()) != 0) {

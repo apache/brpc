@@ -35,13 +35,13 @@ void ProcessMemcacheResponse(InputMessageBase* msg);
 // Serialize a memcache request.
 void SerializeMemcacheRequest(butil::IOBuf* buf,
                               Controller* cntl,
-                              const google::protobuf::Message* request);
+                              const void* request_obj);
 
 // Pack `request' to `method' into `buf'.
 void PackMemcacheRequest(butil::IOBuf* buf,
                          SocketMessage**,
                          uint64_t correlation_id,
-                         const google::protobuf::MethodDescriptor* method,
+                         const void* method,
                          Controller* controller,
                          const butil::IOBuf& request,
                          const Authenticator* auth);

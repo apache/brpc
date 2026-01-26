@@ -528,19 +528,21 @@ static void SerializeUbrpcRequest(butil::IOBuf* buf, Controller* cntl,
 }
 
 void SerializeUbrpcCompackRequest(butil::IOBuf* buf, Controller* cntl,
-                                  const google::protobuf::Message* request) {
+                                  const void* request_obj) {
+    const google::protobuf::Message* request = static_cast<const google::protobuf::Message*>(request_obj);
     return SerializeUbrpcRequest(buf, cntl, request, mcpack2pb::FORMAT_COMPACK);
 }
 
 void SerializeUbrpcMcpack2Request(butil::IOBuf* buf, Controller* cntl,
-                                  const google::protobuf::Message* request) {
+                                  const void* request_obj) {
+    const google::protobuf::Message* request = static_cast<const google::protobuf::Message*>(request_obj);
     return SerializeUbrpcRequest(buf, cntl, request, mcpack2pb::FORMAT_MCPACK_V2);
 }
 
 void PackUbrpcRequest(butil::IOBuf* buf,
                       SocketMessage**,
                       uint64_t correlation_id,
-                      const google::protobuf::MethodDescriptor*,
+                      const void*,
                       Controller* controller,
                       const butil::IOBuf& request,
                       const Authenticator* /*not supported*/) {

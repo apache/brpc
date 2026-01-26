@@ -552,10 +552,12 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
 void PackSofaRequest(butil::IOBuf* req_buf,
                      SocketMessage**,
                      uint64_t correlation_id,
-                     const google::protobuf::MethodDescriptor* method,
+                     const void* method_descriptor,
                      Controller* cntl,
                      const butil::IOBuf& req_body,
                      const Authenticator* /*not supported*/) {
+    const google::protobuf::MethodDescriptor* method = 
+            static_cast<const google::protobuf::MethodDescriptor*>(method_descriptor);
     if (!cntl->request_attachment().empty()) {
         LOG(WARNING) << "sofa-pbrpc does not support attachment, "
             "your request_attachment will not be sent";

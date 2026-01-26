@@ -496,7 +496,7 @@ const Controller* GetSubControllerOfSelectiveChannel(
 }
 
 static void PassSerializeRequest(butil::IOBuf*, Controller*,
-                                 const google::protobuf::Message*) {
+                                 const void*) {
 }
 
 SelectiveChannel::SelectiveChannel() {}

@@ -400,7 +400,8 @@ bool VerifyNsheadRequest(const InputMessageBase* msg_base) {
 }
 
 void SerializeNsheadRequest(butil::IOBuf* request_buf, Controller* cntl,
-                            const google::protobuf::Message* req_base) {
+                            const void* request_obj) {
+    const google::protobuf::Message* req_base = static_cast<const google::protobuf::Message*>(request_obj);
     if (req_base == NULL) {
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
@@ -426,7 +427,7 @@ void PackNsheadRequest(
     butil::IOBuf* packet_buf,
     SocketMessage**,
     uint64_t correlation_id,
-    const google::protobuf::MethodDescriptor*,
+    const void*,
     Controller* cntl,
     const butil::IOBuf& request,
     const Authenticator*) {

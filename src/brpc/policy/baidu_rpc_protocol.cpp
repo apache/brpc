@@ -1013,7 +1013,8 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
 }
 
 void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
-                         const google::protobuf::Message* request) {
+                         const void* request_obj) {
+    const google::protobuf::Message* request = static_cast<const google::protobuf::Message*>(request_obj);
     // Check sanity of request.
     if (NULL == request) {
         return cntl->SetFailed(EREQUEST, "`request' is NULL");
@@ -1045,10 +1046,12 @@ void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
 void PackRpcRequest(butil::IOBuf* req_buf,
                     SocketMessage**,
                     uint64_t correlation_id,
-                    const google::protobuf::MethodDescriptor* method,
+                    const void* method_descriptor,
                     Controller* cntl,
                     const butil::IOBuf& request_body,
                     const Authenticator* auth) {
+    const google::protobuf::MethodDescriptor* method = 
+            static_cast<const google::protobuf::MethodDescriptor*>(method_descriptor);
     RpcMeta meta;
     if (auth && auth->GenerateCredential(
             meta.mutable_authentication_data()) != 0) {

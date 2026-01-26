@@ -15,31 +15,31 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#ifndef BRPC_POLICY_FLATBUFFERS_PROTOCOL_H
+#define BRPC_POLICY_FLATBUFFERS_PROTOCOL_H
 
-#ifndef BRPC_POLICY_SOFA_PBRPC_PROTOCOL_H
-#define BRPC_POLICY_SOFA_PBRPC_PROTOCOL_H
-
-#include "brpc/policy/sofa_pbrpc_meta.pb.h"
-#include "brpc/protocol.h"             
-
+#include "brpc/protocol.h"
+#include "brpc/details/flatbuffers_impl.h"
 
 namespace brpc {
 namespace policy {
 
-// Parse binary format of sofa-pbrpc.
-ParseResult ParseSofaMessage(butil::IOBuf* source, Socket *socket, bool read_eof, const void *arg);
+// Parse binary format of flatbuffers-pbrpc.
+ParseResult ParseFlatBuffersMessage(butil::IOBuf* source, Socket *socket, bool read_eof, const void *arg);
 
-// Actions to a (client) request in sofa-pbrpc format.
-void ProcessSofaRequest(InputMessageBase* msg);
+// Actions to a (client) request in flatbuffers-pbrpc format.
+void ProcessFlatBuffersRequest(InputMessageBase* msg_base);
 
-// Actions to a (server) response in sofa-pbrpc format.
-void ProcessSofaResponse(InputMessageBase* msg);
+// Actions to a (server) response in flatbuffers-pbrpc format.
+void ProcessFlatBuffersResponse(InputMessageBase* msg);
 
-// Verify authentication information in sofa-pbrpc format
-bool VerifySofaRequest(const InputMessageBase* msg);
+// The serialize_request implementation used by flatbuffers protocol.
+void SerializeFlatBuffersRequest(butil::IOBuf* buf,
+                             Controller* cntl,
+                             const void* request_obj);
 
 // Pack `request' to `method' into `buf'.
-void PackSofaRequest(butil::IOBuf* buf,
+void PackFlatBuffersRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
                      const void* method_descriptor,
@@ -48,7 +48,6 @@ void PackSofaRequest(butil::IOBuf* buf,
                      const Authenticator* auth);
 
 }  // namespace policy
-} // namespace brpc
+}  // namespace brpc
 
-
-#endif  // BRPC_POLICY_SOFA_PBRPC_PROTOCOL_H
+#endif  // BRPC_POLICY_FLATBUFFERS_PROTOCOL_H

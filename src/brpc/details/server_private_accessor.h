@@ -86,6 +86,11 @@ public:
         return _server->FindServicePropertyByName(name);
     }
 
+    const Server::FlatBuffersMethodProperty* FindFlatBufferMethodPropertyByIndex(
+        uint32_t server_index, int method_index) const {
+        return _server->FindFlatBufferMethodPropertyByIndex(server_index, method_index);
+    }
+
     const Server::ServiceProperty*
     FindServicePropertyAdaptively(const butil::StringPiece& service_name) const {
         if (service_name.find('.') == butil::StringPiece::npos) {
