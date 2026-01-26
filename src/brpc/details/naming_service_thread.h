@@ -45,15 +45,14 @@ public:
 struct GetNamingServiceThreadOptions {
     GetNamingServiceThreadOptions()
         : succeed_without_server(false)
-        , log_succeed_without_server(true)
-        , socket_mode(SOCKET_MODE_TCP) {}
-
+        , log_succeed_without_server(true) {
+    socket_option.socket_mode = SOCKET_MODE_TCP;
+}
+    
     bool succeed_without_server;
     bool log_succeed_without_server;
-    SocketMode socket_mode;
-    HealthCheckOption hc_option;
     ChannelSignature channel_signature;
-    std::shared_ptr<SocketSSLContext> ssl_ctx;
+    SocketOptions socket_option;
 };
 
 // A dedicated thread to map a name to ServerIds

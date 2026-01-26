@@ -80,9 +80,19 @@ struct SocketMapKeyHasher {
 // successfully, SocketMapRemove() MUST be called when the Socket is not needed.
 // Return 0 on success, -1 otherwise.
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
+                    SocketOptions& opt);
+
+inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                     SocketMode socket_mode,
-                    const HealthCheckOption& hc_option);
+                    const HealthCheckOption& hc_option) {
+    SocketOptions opt;
+    opt.remote_side = key.peer.addr;
+    opt.initial_ssl_ctx = ssl_ctx;
+    opt.socket_mode = socket_mode;
+    opt.hc_option = hc_option;
+    return SocketMapInsert(key, id, opt);
+}
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
@@ -155,7 +165,14 @@ public:
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                SocketMode socket_mode,
-               const HealthCheckOption& hc_option);
+               const HealthCheckOption& hc_option) {
+        SocketOptions opt;
+        opt.remote_side = key.peer.addr;
+        opt.initial_ssl_ctx = ssl_ctx;
+        opt.socket_mode = socket_mode;
+        opt.hc_option = hc_option;
+        return Insert(key, id, opt);
+}
 
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
@@ -167,6 +184,7 @@ public:
         HealthCheckOption hc_option;
         return Insert(key, id, empty_ptr, SOCKET_MODE_TCP, hc_option);
     }
+    int Insert(const SocketMapKey& key, SocketId* id, SocketOptions& opt);
 
     void Remove(const SocketMapKey& key, SocketId expected_id);
     int Find(const SocketMapKey& key, SocketId* id);
