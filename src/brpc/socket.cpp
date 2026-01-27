@@ -474,7 +474,7 @@ Socket::Socket(Forbidden f)
     , _ssl_state(SSL_UNKNOWN)
     , _ssl_session(NULL)
     , _socket_mode(SOCKET_MODE_TCP)
-    , _transport(NULL)
+    , _transport(nullptr)
     , _connection_type_for_progressive_read(CONNECTION_TYPE_UNKNOWN)
     , _controller_released_socket(false)
     , _overcrowded(false)
@@ -2203,7 +2203,7 @@ int Socket::OnInputEvent(void* user_data, uint32_t events,
         g_vars->neventthread << 1;
 
         // transfer ownership as well, don't use s anymore!
-        Socket *const p = s.release();
+        Socket* const p = s.release();
 
         bthread_attr_t attr = thread_attr;
         attr.keytable_pool = p->_keytable_pool;

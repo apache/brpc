@@ -78,6 +78,8 @@ ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
 static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
     if (opt.auth == NULL &&
         !opt.has_ssl_options() &&
+        opt.client_host.empty() &&
+        opt.device_name.empty() &&
         opt.connection_group.empty() &&
         opt.hc_option.health_check_path.empty()) {
         // Returning zeroized result by default is more intuitive for users.
@@ -94,6 +96,14 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         if (!opt.connection_group.empty()) {
             buf.append("|conng=");
             buf.append(opt.connection_group);
+        }
+        if (!opt.client_host.empty()) {
+            buf.append("|clih=");
+            buf.append(opt.client_host);
+        }
+        if (!opt.device_name.empty()) {
+            buf.append("|devn=");
+            buf.append(opt.device_name);
         }
         if (opt.auth) {
             buf.append("|auth=");

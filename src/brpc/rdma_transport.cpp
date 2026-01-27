@@ -89,7 +89,7 @@ ssize_t RdmaTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
     if (_rdma_ep && _rdma_state != RDMA_OFF) {
         return _rdma_ep->CutFromIOBufList(buf, ndata);
     }
-    return butil::IOBuf::cut_multiple_into_file_descriptor(_socket->fd(), buf, ndata);
+    return _tcp_transport->CutFromIOBufList(buf, ndata);
 }
 
 int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
@@ -104,8 +104,10 @@ int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                 if (errno != EAGAIN && errno != ETIMEDOUT) {
                     const int saved_errno = errno;
                     PLOG(WARNING) << "Fail to wait rdma window of " << _socket;
-                    _socket->SetFailed(saved_errno, "Fail to wait rdma window of %s: %s",
-                                                             _socket->description().c_str(), berror(saved_errno));
+                    _socket->SetFailed(saved_errno,
+                                "Fail to wait rdma window of %s: %s",
+                                _socket->description().c_str(),
+                                berror(saved_errno));
                 }
                 if (_socket->Failed()) {
                     // NOTE:
@@ -114,7 +116,7 @@ int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                     // is already failed here.
                     return 1;
                 }
-                                                        }
+            }
         }
     } else {
         return _tcp_transport->WaitEpollOut(_epollout_butex, pollin, duetime);

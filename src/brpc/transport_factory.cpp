@@ -36,12 +36,11 @@ int TransportFactory::ContextInitOrDie(SocketMode mode, bool serverOrNot, const 
 
 std::shared_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
     if (mode == SOCKET_MODE_TCP) {
-        // 使用共享指针创建对象
-        return std::make_shared<TcpTransport>();
+        return std::unique_ptr<TcpTransport>(new TcpTransport());
     }
 #if BRPC_WITH_RDMA
     else if (mode == SOCKET_MODE_RDMA) {
-        return std::make_shared<RdmaTransport>();
+        return std::unique_ptr<RdmaTransport>(new RdmaTransport());
     }
 #endif
     else {
