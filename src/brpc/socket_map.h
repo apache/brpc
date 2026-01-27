@@ -84,12 +84,12 @@ int SocketMapInsert(const SocketMapKey& key, SocketId* id,
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-                    bool use_rdma,
+                    SocketMode socket_mode,
                     const HealthCheckOption& hc_option) {
     SocketOptions opt;
     opt.remote_side = key.peer.addr;
     opt.initial_ssl_ctx = ssl_ctx;
-    opt.use_rdma = use_rdma;
+    opt.socket_mode = socket_mode;
     opt.hc_option = hc_option;
     return SocketMapInsert(key, id, opt);
 }
@@ -97,13 +97,13 @@ inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     HealthCheckOption hc_option;
-    return SocketMapInsert(key, id, ssl_ctx, false, hc_option);
+    return SocketMapInsert(key, id, ssl_ctx, SOCKET_MODE_TCP, hc_option);
 }
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id) {
     std::shared_ptr<SocketSSLContext> empty_ptr;
     HealthCheckOption hc_option;
-    return SocketMapInsert(key, id, empty_ptr, false, hc_option);
+    return SocketMapInsert(key, id, empty_ptr, SOCKET_MODE_TCP, hc_option);
 }
 
 // Find the SocketId associated with `key'.
@@ -164,12 +164,12 @@ public:
     int Init(const SocketMapOptions&);
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-               bool use_rdma,
+               SocketMode socket_mode,
                const HealthCheckOption& hc_option) {
         SocketOptions opt;
         opt.remote_side = key.peer.addr;
         opt.initial_ssl_ctx = ssl_ctx;
-        opt.use_rdma = use_rdma;
+        opt.socket_mode = socket_mode;
         opt.hc_option = hc_option;
         return Insert(key, id, opt);
 }
@@ -177,12 +177,12 @@ public:
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
         HealthCheckOption hc_option;
-        return Insert(key, id, ssl_ctx, false, hc_option);   
+        return Insert(key, id, ssl_ctx, SOCKET_MODE_TCP, hc_option);
     }
     int Insert(const SocketMapKey& key, SocketId* id) {
         std::shared_ptr<SocketSSLContext> empty_ptr;
         HealthCheckOption hc_option;
-        return Insert(key, id, empty_ptr, false, hc_option);
+        return Insert(key, id, empty_ptr, SOCKET_MODE_TCP, hc_option);
     }
     int Insert(const SocketMapKey& key, SocketId* id, SocketOptions& opt);
 
