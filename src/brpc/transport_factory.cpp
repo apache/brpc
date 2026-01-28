@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "transport_factory.h"
+#include "brpc/transport_factory.h"
 #include "brpc/tcp_transport.h"
 #include "brpc/rdma_transport.h"
+
 namespace brpc {
 int TransportFactory::ContextInitOrDie(SocketMode mode, bool serverOrNot, const void* _options) {
     if (mode == SOCKET_MODE_TCP) {
@@ -34,7 +35,7 @@ int TransportFactory::ContextInitOrDie(SocketMode mode, bool serverOrNot, const 
     }
 }
 
-std::shared_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
+std::unique_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
     if (mode == SOCKET_MODE_TCP) {
         return std::unique_ptr<TcpTransport>(new TcpTransport());
     }

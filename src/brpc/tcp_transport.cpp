@@ -15,7 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "tcp_transport.h"
+#include "brpc/tcp_transport.h"
+
 namespace brpc {
 DECLARE_bool(usercode_in_coroutine);
 DECLARE_bool(usercode_in_pthread);
@@ -49,14 +50,15 @@ ssize_t TcpTransport::CutFromIOBufList(butil::IOBuf** buf, size_t ndata) {
     return butil::IOBuf::cut_multiple_into_file_descriptor(_socket->fd(), buf, ndata);
 }
 
-int TcpTransport::WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) {
+int TcpTransport::WaitEpollOut(butil::atomic<int>* _epollout_butex,
+                               bool pollin, timespec duetime) {
     g_vars->nwaitepollout << 1;
     const int rc = _socket->WaitEpollOut(_socket->fd(), pollin, &duetime);
     if (rc < 0 && errno != ETIMEDOUT) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to wait epollout of " << _socket;
         _socket->SetFailed(saved_errno, "Fail to wait epollout of %s: %s",
-                                         _socket->description().c_str(), berror(saved_errno));
+                           _socket->description().c_str(), berror(saved_errno));
         return 1;
     }
     return 0;
@@ -71,7 +73,8 @@ void TcpTransport::ProcessEvent(bthread_attr_t attr) {
         OnEdge(_socket);
     }
 }
-void TcpTransport::QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) {
+void TcpTransport::QueueMessage(InputMessageClosure& input_msg,
+                                int* num_bthread_created, bool) {
     InputMessageBase* to_run_msg = input_msg.release();
     if (!to_run_msg) {
         return;
@@ -79,7 +82,9 @@ void TcpTransport::QueueMessage(InputMessageClosure& input_msg, int* num_bthread
     // Create bthread for last_msg. The bthread is not scheduled
     // until bthread_flush() is called (in the worse case).
     bthread_t th;
-    bthread_attr_t tmp = (FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
+    bthread_attr_t tmp =
+        (FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) |
+        BTHREAD_NOSIGNAL;
     tmp.keytable_pool = _socket->keytable_pool();
     tmp.tag = bthread_self_tag();
     bthread_attr_set_name(&tmp, "ProcessInputMessage");
@@ -90,5 +95,5 @@ void TcpTransport::QueueMessage(InputMessageClosure& input_msg, int* num_bthread
         ProcessInputMessage(to_run_msg);
     }
 }
-void TcpTransport::Debug(std::ostream &os) {}
-}
+
+} // namespace brpc

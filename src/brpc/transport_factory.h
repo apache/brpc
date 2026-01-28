@@ -18,23 +18,17 @@
 #ifndef BRPC_TRANSPORT_FACTORY_H
 #define BRPC_TRANSPORT_FACTORY_H
 
-#include "brpc/errno.pb.h"
 #include "brpc/socket_mode.h"
 #include "brpc/transport.h"
-
-#if BRPC_WITH_RDMA
-BAIDU_REGISTER_ERRNO(brpc::ERDMA, "RDMA verbs error");
-BAIDU_REGISTER_ERRNO(brpc::ERDMAMEM, "Memory not registered for RDMA");
-#endif
 
 namespace brpc {
 // TransportFactory to create transport instance with socket_mode {TCP, RDMA}
 class TransportFactory {
 public:
     static int ContextInitOrDie(SocketMode mode, bool serverOrNot, const void* _options);
-    // create transport instance with socket mode
-    static std::shared_ptr<Transport> CreateTransport(SocketMode mode);
+    // Create transport instance with socket mode.
+    static std::unique_ptr<Transport> CreateTransport(SocketMode mode);
 };
-}
+} // namespace brpc
 
 #endif //BRPC_TRANSPORT_FACTORY_H

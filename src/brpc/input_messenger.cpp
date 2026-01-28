@@ -377,7 +377,8 @@ void InputMessenger::OnNewMessages(Socket* m) {
             }
         }
 
-        if (messenger->ProcessNewMessage(m, nr, read_eof, received_us, base_realtime, last_msg) < 0) {
+        if (messenger->ProcessNewMessage(m, nr, read_eof, received_us,
+                                         base_realtime, last_msg) < 0) {
             return;
         } 
     }
