@@ -926,8 +926,8 @@ private:
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
     // Should use SOCKET_MODE_RDMA or SOCKET_MODE_TCP or Other, default is SOCKET_MODE_TCP Transport
-    SocketMode _socket_mode{SOCKET_MODE_TCP};
-    std::shared_ptr<Transport> _transport;
+    SocketMode _socket_mode;
+    std::unique_ptr<Transport> _transport;
 
     // Pass from controller, for progressive reading.
     ConnectionType _connection_type_for_progressive_read;

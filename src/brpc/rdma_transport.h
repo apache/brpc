@@ -60,6 +60,6 @@ private:
     RdmaState _rdma_state;
     std::shared_ptr<TcpTransport>  _tcp_transport;
 };
-}
+} // namespace brpc
 #endif // BRPC_WITH_RDMA
 #endif //BRPC_RDMA_TRANSPORT_H

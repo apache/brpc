@@ -35,8 +35,8 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
         if (!_rdma_ep) {
             const int saved_errno = errno;
             PLOG(ERROR) << "Fail to create RdmaEndpoint";
-            socket->SetFailed(saved_errno, "Fail to create RdmaEndpoint: %s",
-                                                  berror(saved_errno));
+            socket->SetFailed(
+                saved_errno, "Fail to create RdmaEndpoint: %s", berror(saved_errno));
         }
         _rdma_state = RDMA_UNKNOWN;
     } else {
@@ -95,8 +95,7 @@ ssize_t RdmaTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
 int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                                     bool pollin, const timespec duetime) {
     if (_rdma_state == RDMA_ON) {
-        const int expected_val = _epollout_butex
-                ->load(butil::memory_order_acquire);
+        const int expected_val = _epollout_butex->load(butil::memory_order_acquire);
         CHECK(_rdma_ep != NULL);
         if (!_rdma_ep->IsWritable()) {
             g_vars->nwaitepollout << 1;
@@ -105,9 +104,9 @@ int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                     const int saved_errno = errno;
                     PLOG(WARNING) << "Fail to wait rdma window of " << _socket;
                     _socket->SetFailed(saved_errno,
-                                "Fail to wait rdma window of %s: %s",
-                                _socket->description().c_str(),
-                                berror(saved_errno));
+                                       "Fail to wait rdma window of %s: %s",
+                                       _socket->description().c_str(),
+                                       berror(saved_errno));
                 }
                 if (_socket->Failed()) {
                     // NOTE:
@@ -140,7 +139,8 @@ void RdmaTransport::ProcessEvent(bthread_attr_t attr) {
     }
 }
 
-void RdmaTransport::QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) {
+void RdmaTransport::QueueMessage(InputMessageClosure& input_msg,
+                                 int* num_bthread_created, bool last_msg) {
     if (last_msg && !rdma::FLAGS_rdma_use_polling) {
         return;
     }
@@ -234,5 +234,5 @@ bool RdmaTransport::OptionsAvailableOverRdma(const ServerOptions* opt) {
     }
     return true;
 }
-}
+} // namespace brpc
 #endif

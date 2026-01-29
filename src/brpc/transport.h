@@ -46,7 +46,7 @@ public:
     virtual std::shared_ptr<AppConnect> Connect() = 0;
     virtual int CutFromIOBuf(butil::IOBuf* buf) = 0;
     virtual ssize_t CutFromIOBufList(butil::IOBuf** buf, size_t ndata) = 0;
-    virtual int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) = 0;
+    virtual int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, timespec duetime) = 0;
     virtual void ProcessEvent(bthread_attr_t attr) = 0;
     virtual void QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) = 0;
     virtual void Debug(std::ostream &os) = 0;
