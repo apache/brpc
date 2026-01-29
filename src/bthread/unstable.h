@@ -92,6 +92,46 @@ extern int bthread_set_worker_startfn(void (*start_fn)());
 // Add a startup function with tag
 extern int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t));
 
+// Registers a per-worker init function and an idle function.
+//
+// The init function is called at most once per worker thread, before the first
+// invocation of idle_fn in that worker.
+//
+// The idle function is called when a worker has no task to run.
+// The return value of idle_fn is ignored.
+// If no idle function is registered, the worker waits indefinitely. Otherwise
+// the worker waits for at most the minimal timeout among registered functions
+// before trying again.
+//
+// This function is thread-safe.
+//
+// Args:
+//   init_fn: Optional. Called once per worker thread. Return 0 on success. A
+//            non-zero return value disables idle_fn for that worker thread.
+//   idle_fn: Required. Must not be NULL. Return true if any work is done.
+//   timeout_us: Required. Must be > 0. Maximum waiting time when worker is idle.
+//   handle: Optional output. On success, set to a positive handle for later
+//           unregistration.
+//
+// Returns:
+//   0 on success, error code otherwise.
+extern int bthread_register_worker_idle_function(int (*init_fn)(void),
+                                                 bool (*idle_fn)(void),
+                                                 uint64_t timeout_us,
+                                                 int* handle);
+
+// Unregisters an idle function by handle returned by
+// bthread_register_worker_idle_function().
+//
+// This function is thread-safe.
+//
+// Args:
+//   handle: Handle returned by bthread_register_worker_idle_function().
+//
+// Returns:
+//   0 on success, error code otherwise.
+extern int bthread_unregister_worker_idle_function(int handle);
+
 // Add a create span function
 extern int bthread_set_create_span_func(void* (*func)());
 

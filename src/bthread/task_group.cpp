@@ -37,6 +37,7 @@
 #include "bthread/task_group.h"
 #include "bthread/timer_thread.h"
 #include "bthread/bthread.h"
+#include "bthread/worker_idle.h"
 
 #ifdef __x86_64__
 #include <x86intrin.h>
@@ -167,7 +168,10 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (_last_pl_state.stopped()) {
             return false;
         }
-        _pl->wait(_last_pl_state);
+        run_worker_idle_functions();
+        const timespec timeout = get_worker_idle_timeout();
+        const bool empty_time = (timeout.tv_sec == 0 && timeout.tv_nsec == 0);
+        _pl->wait(_last_pl_state, empty_time ? NULL : &timeout);
         if (steal_task(tid)) {
             return true;
         }
@@ -176,10 +180,13 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (st.stopped()) {
             return false;
         }
+        run_worker_idle_functions();
         if (steal_task(tid)) {
             return true;
         }
-        _pl->wait(st);
+        const timespec timeout = get_worker_idle_timeout();
+        const bool empty_time = (timeout.tv_sec == 0 && timeout.tv_nsec == 0);
+        _pl->wait(st, empty_time ? NULL : &timeout);
 #endif
     } while (true);
 }
