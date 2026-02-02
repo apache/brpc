@@ -724,6 +724,9 @@ void ParallelChannel::CallMethod(
             ParallelChannelDone::SubDone* sd = d->sub_done(j++);
             // Forward the attachment to each sub call
             sd->cntl.request_attachment().append(cntl->request_attachment());
+            if (PROTOCOL_HTTP == cntl->request_protocol()) {
+                sd->cntl.http_request() = cntl->http_request();
+            }
             _chans[i].chan->CallMethod(sd->ap.method, &sd->cntl,
                                        sd->ap.request, sd->ap.response, sd);
         }
