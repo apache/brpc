@@ -77,6 +77,14 @@ DEFINE_int32(auto_cl_latency_fluctuation_correction_factor, 1,
              "the value, the higher the tolerance for the fluctuation of the "
              "latency. If the value is too large, the latency will be higher "
              "when the server is overloaded.");
+DEFINE_double(auto_cl_error_rate_punish_threshold, 0,
+              "Threshold for error-rate-based punishment attenuation. "
+              "0 (default): no effect, original punishment logic is used. "
+              "> 0 (e.g. 0.1): error rates below this threshold produce zero "
+              "punishment; above it the punishment scales linearly from 0 to "
+              "full strength. Only effective when auto_cl_enable_error_punish "
+              "is true. Example: 0.1 means error rates below 10%% are not "
+              "punished.");
 
 AutoConcurrencyLimiter::AutoConcurrencyLimiter()
     : _max_concurrency(FLAGS_auto_cl_initial_max_concurrency)
@@ -236,7 +244,27 @@ void AutoConcurrencyLimiter::AdjustMaxConcurrency(int next_max_concurrency) {
 void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     int32_t total_succ_req = _total_succ_req.load(butil::memory_order_relaxed);
     double failed_punish = _sw.total_failed_us * FLAGS_auto_cl_fail_punish_ratio;
-    int64_t avg_latency = 
+
+    // Threshold-based attenuation: when auto_cl_error_rate_punish_threshold > 0,
+    // attenuate punishment based on error rate. Inspired by Sentinel's threshold-
+    // based circuit breaker: low error rates should not inflate avg_latency.
+    // Above threshold, punishment scales linearly from 0 to full strength.
+    // When threshold is 0 (default), this block is skipped entirely.
+    if (FLAGS_auto_cl_error_rate_punish_threshold > 0 && _sw.failed_count > 0) {
+        double threshold = FLAGS_auto_cl_error_rate_punish_threshold;
+        double error_rate = static_cast<double>(_sw.failed_count) /
+            (_sw.succ_count + _sw.failed_count);
+        if (error_rate <= threshold) {
+            // Error rate within dead zone, cancel punishment.
+            failed_punish = 0;
+        } else {
+            // Linear ramp: 0 at threshold, 1.0 at 100% error rate.
+            double punish_factor = (error_rate - threshold) / (1.0 - threshold);
+            failed_punish *= punish_factor;
+        }
+    }
+
+    int64_t avg_latency =
         std::ceil((failed_punish + _sw.total_succ_us) / _sw.succ_count);
     double qps = 1000000.0 * total_succ_req / (sampling_time_us - _sw.start_time_us);
     UpdateMinLatency(avg_latency);
