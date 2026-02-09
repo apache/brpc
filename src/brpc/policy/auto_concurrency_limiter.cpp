@@ -79,12 +79,11 @@ DEFINE_int32(auto_cl_latency_fluctuation_correction_factor, 1,
              "when the server is overloaded.");
 DEFINE_double(auto_cl_error_rate_punish_threshold, 0,
               "Threshold for error-rate-based punishment attenuation. "
-              "0 (default): no effect, original punishment logic is used. "
-              "> 0 (e.g. 0.1): error rates below this threshold produce zero "
-              "punishment; above it the punishment scales linearly from 0 to "
-              "full strength. Only effective when auto_cl_enable_error_punish "
-              "is true. Example: 0.1 means error rates below 10%% are not "
-              "punished.");
+              "Valid range: [0, 1). 0 (default) disables the feature. "
+              "Values >= 1 are ignored and treated as 0. "
+              "e.g. 0.1: error rates below 10%% produce zero punishment; "
+              "above it the punishment scales linearly from 0 to full strength. "
+              "Only effective when auto_cl_enable_error_punish is true.");
 
 AutoConcurrencyLimiter::AutoConcurrencyLimiter()
     : _max_concurrency(FLAGS_auto_cl_initial_max_concurrency)
@@ -245,12 +244,14 @@ void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     int32_t total_succ_req = _total_succ_req.load(butil::memory_order_relaxed);
     double failed_punish = _sw.total_failed_us * FLAGS_auto_cl_fail_punish_ratio;
 
-    // Threshold-based attenuation: when auto_cl_error_rate_punish_threshold > 0,
-    // attenuate punishment based on error rate. Inspired by Sentinel's threshold-
-    // based circuit breaker: low error rates should not inflate avg_latency.
-    // Above threshold, punishment scales linearly from 0 to full strength.
-    // When threshold is 0 (default), this block is skipped entirely.
-    if (FLAGS_auto_cl_error_rate_punish_threshold > 0 && _sw.failed_count > 0) {
+    // Threshold-based attenuation: when 0 < threshold < 1, attenuate punishment
+    // based on error rate. Inspired by Sentinel's threshold-based circuit breaker:
+    // low error rates should not inflate avg_latency. Above threshold, punishment
+    // scales linearly from 0 to full strength.
+    // Invalid values (<=0 or >=1) skip this block entirely, preserving original behavior.
+    if (FLAGS_auto_cl_error_rate_punish_threshold > 0 &&
+        FLAGS_auto_cl_error_rate_punish_threshold < 1.0 &&
+        _sw.failed_count > 0) {
         double threshold = FLAGS_auto_cl_error_rate_punish_threshold;
         double error_rate = static_cast<double>(_sw.failed_count) /
             (_sw.succ_count + _sw.failed_count);

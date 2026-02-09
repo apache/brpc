@@ -17,7 +17,6 @@
 
 #include "brpc/policy/auto_concurrency_limiter.h"
 #include "butil/time.h"
-#include "bthread/bthread.h"
 #include <gtest/gtest.h>
 
 namespace brpc {
@@ -156,9 +155,9 @@ TEST_F(AutoConcurrencyLimiterTest, AboveThresholdLinearScaling) {
     }
 
     // Case B: 90% error rate (near full punishment)
-    // punish_factor = (0.9 - 0.1) / (1.0 - 0.1) = 0.889
-    // failed_punish = 90 * 1000 * 0.889 = 80000us
-    // avg_latency = (80000 + 10*100) / 10 = 8100us
+    // punish_factor = (0.9 - 0.1) / (1.0 - 0.1) = 8/9 ≈ 0.889
+    // failed_punish = 90 * 1000 * (8/9) = 80000us
+    // avg_latency = ceil((80000 + 10*100) / 10) = ceil(8100) = 8100us
     {
         brpc::policy::AutoConcurrencyLimiter limiter;
         AddSamplesAndTriggerWindow(limiter, 10, 100, 90, 1000);

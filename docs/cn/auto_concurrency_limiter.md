@@ -155,46 +155,20 @@ netflix中的gradient算法公式为：max_concurrency = min_latency / latency *
 min_latency前，若所有latency都小于min_latency，那么max_concurrency会不断下降甚至到0；但按照本算法，max_qps和min_latency仍然是稳定的，它们计算出的max_concurrency也不会剧烈变动。究其本质，gradient算法在迭代max_concurrency时，latency并不能代表实际并发为max_concurrency时的延时，两者是脱节的，所以max_concurrency / latency的实际物理含义不明，与qps可能差异甚大，最后导致了很大的偏差。
 * gradient算法的queue_size推荐为sqrt(max_concurrency)，这是不合理的。netflix对queue_size的理解大概是代表各种不可控环节的缓存，比如socket里的，和max_concurrency存在一定的正向关系情有可原。但在我们的理解中，这部分queue_size作用微乎其微，没有或用常量即可。我们关注的queue_size是给concurrency上升留出的探索空间: max_concurrency的更新是有延迟的，在并发从低到高的增长过程中，queue_size的作用就是在max_concurrency更新前不限制qps上升。而当concurrency高时，服务可能已经过载了，queue_size就应该小一点，防止进一步恶化延时。这里的queue_size和并发是反向关系。
 
-## 参数配置
-
-### 错误请求惩罚
-
-自适应限流在计算平均延时时，默认会将失败请求的延时也计入统计，以避免在下游服务异常时过度放大max_concurrency。相关参数如下：
-
-| GFlag | 默认值 | 说明 |
-|-------|--------|------|
-| auto_cl_enable_error_punish | true | 是否开启错误请求惩罚。关闭后失败请求不计入延时统计 |
-| auto_cl_fail_punish_ratio | 1.0 | 惩罚系数。值越大惩罚越激进，失败请求对平均延时的影响越大 |
-| auto_cl_error_rate_punish_threshold | 0 | 错误率惩罚阈值。见下文详细说明 |
-
-#### 错误率惩罚阈值
+## 错误率惩罚阈值
 
 `auto_cl_error_rate_punish_threshold`用于设置错误率"死区"，低于该阈值的错误率不会产生惩罚，避免少量错误请求对max_concurrency的过度影响。
 
-- **默认值为0**：保持原有行为，所有失败请求都会产生惩罚
-- **设置为正值（如0.1）**：
-  - 错误率 ≤ 阈值时：惩罚为0，平均延时仅由成功请求决定
-  - 错误率 > 阈值时：惩罚线性增长，从0逐步恢复到完整惩罚
+| GFlag | 默认值 | 有效范围 | 说明 |
+|-------|--------|----------|------|
+| auto_cl_error_rate_punish_threshold | 0 | [0, 1) | 错误率惩罚阈值，0表示禁用 |
 
-线性衰减公式：`punish_factor = (error_rate - threshold) / (1.0 - threshold)`
-
-**使用场景**：当服务存在少量固有错误（如个别请求参数异常）时，这些错误不应影响对服务处理能力的判断。通过设置合理的阈值（如0.05或0.1），可以过滤掉这部分噪声。
+- **默认值为0**：禁用该功能，保持原有行为
+- **设置为有效值（如0.1）**：错误率 ≤ 阈值时惩罚为0；错误率 > 阈值时惩罚线性增长
+- **无效值处理**：≥1 的值会被忽略，等同于0
 
 **示例**：
 ```
 # 错误率低于10%时不惩罚，高于10%时线性增加惩罚
 --auto_cl_error_rate_punish_threshold=0.1
 ```
-
-### 其他参数
-
-| GFlag | 默认值 | 说明 |
-|-------|--------|------|
-| auto_cl_sample_window_size_ms | 1000 | 采样窗口时长（毫秒） |
-| auto_cl_min_sample_count | 100 | 采样窗口内的最小样本数，不足则丢弃该窗口 |
-| auto_cl_max_sample_count | 200 | 采样窗口内的最大样本数，超过则提前提交窗口 |
-| auto_cl_initial_max_concurrency | 40 | 初始最大并发数 |
-| auto_cl_alpha_factor_for_ema | 0.1 | EMA平滑系数，值越小单次采样窗口对结果影响越小 |
-| auto_cl_max_explore_ratio | 0.3 | 最大探索比例，值越大对延时波动的容忍度越高 |
-| auto_cl_min_explore_ratio | 0.06 | 最小探索比例，用于判断服务负载情况 |
-| auto_cl_noload_latency_remeasure_interval_ms | 50000 | 重测noload_latency的间隔（毫秒） |
