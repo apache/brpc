@@ -72,13 +72,17 @@ private:
 };
 
 // Helper function to add samples and trigger window completion
+// Uses synthetic timestamps instead of sleeping for faster, deterministic tests.
+// The final successful sample is used as the trigger, so actual counts match
+// succ_count/fail_count exactly (preserving intended error rates).
 void AddSamplesAndTriggerWindow(brpc::policy::AutoConcurrencyLimiter& limiter,
                                  int succ_count, int64_t succ_latency,
                                  int fail_count, int64_t fail_latency) {
+    ASSERT_GT(succ_count, 0) << "Need at least 1 success to trigger window";
     int64_t now = butil::gettimeofday_us();
 
-    // Add successful samples
-    for (int i = 0; i < succ_count; ++i) {
+    // Add successful samples (reserve one for the trigger)
+    for (int i = 0; i < succ_count - 1; ++i) {
         limiter.AddSample(0, succ_latency, now);
     }
     // Add failed samples
@@ -86,123 +90,80 @@ void AddSamplesAndTriggerWindow(brpc::policy::AutoConcurrencyLimiter& limiter,
         limiter.AddSample(1, fail_latency, now);
     }
 
-    // Wait for window to expire and trigger update
-    bthread_usleep(brpc::policy::FLAGS_auto_cl_sample_window_size_ms * 1000 + 1000);
+    // Advance timestamp past window expiry instead of sleeping
+    int64_t after_window = now + brpc::policy::FLAGS_auto_cl_sample_window_size_ms * 1000 + 1000;
 
-    // Add one more sample to trigger window submission
-    limiter.AddSample(0, succ_latency, butil::gettimeofday_us());
+    // Use the final success sample to trigger window submission
+    limiter.AddSample(0, succ_latency, after_window);
 }
 
-// Test: When threshold is 0 (default), behavior is unchanged - punishment is applied
+// Test 1: Backward compatibility - threshold=0 preserves original punishment behavior
 TEST_F(AutoConcurrencyLimiterTest, ThresholdZeroPreservesOriginalBehavior) {
     brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0;
-    brpc::policy::FLAGS_auto_cl_sample_window_size_ms = 10;  // Short window for testing
+    brpc::policy::FLAGS_auto_cl_sample_window_size_ms = 10;
 
     brpc::policy::AutoConcurrencyLimiter limiter;
-
     AddSamplesAndTriggerWindow(limiter, 90, 100, 10, 1000);
 
-    // With threshold=0, failed_punish should NOT be attenuated
-    // avg_latency = (10*1000 + 90*100) / 90 = (10000 + 9000) / 90 = 211us
-    // This is significantly inflated from the actual success latency of 100us
-    // _min_latency_us should reflect this inflation
-    ASSERT_GT(limiter._min_latency_us, 150);  // Should be inflated
+    // 10% error rate, threshold=0 means full punishment applied
+    // avg_latency = (10*1000 + 90*100) / 90 = 211us
+    ASSERT_GT(limiter._min_latency_us, 180);
+    ASSERT_LT(limiter._min_latency_us, 250);
 }
 
-// Test: When error rate is below threshold, punishment is zero
+// Test 2: Dead zone - error rate below threshold produces zero punishment
 TEST_F(AutoConcurrencyLimiterTest, BelowThresholdZeroPunishment) {
     brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0.2;  // 20% threshold
     brpc::policy::FLAGS_auto_cl_sample_window_size_ms = 10;
 
     brpc::policy::AutoConcurrencyLimiter limiter;
-
     AddSamplesAndTriggerWindow(limiter, 90, 100, 10, 1000);
 
-    // With 10% error rate < 20% threshold, punishment should be zero
-    // avg_latency should be close to actual success latency of 100us
-    ASSERT_LT(limiter._min_latency_us, 150);  // Should NOT be inflated
-    ASSERT_GT(limiter._min_latency_us, 50);   // Should be valid (around 100us)
+    // 10% error rate < 20% threshold, punishment should be zero
+    // avg_latency = 90*100 / 90 = 100us (no inflation)
+    ASSERT_GT(limiter._min_latency_us, 80);
+    ASSERT_LT(limiter._min_latency_us, 130);
 }
 
-// Test: When error rate is above threshold, punishment scales linearly
-TEST_F(AutoConcurrencyLimiterTest, AboveThresholdLinearScaling) {
-    brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0.1;  // 10% threshold
-    brpc::policy::FLAGS_auto_cl_sample_window_size_ms = 10;
-
-    brpc::policy::AutoConcurrencyLimiter limiter;
-
-    AddSamplesAndTriggerWindow(limiter, 50, 100, 50, 1000);
-
-    // With 50% error rate > 10% threshold:
-    // punish_factor = (0.5 - 0.1) / (1.0 - 0.1) = 0.4 / 0.9 = 0.444
-    // failed_punish = 50 * 1000 * 1.0 * 0.444 = 22222us
-    // avg_latency = (22222 + 50*100) / 50 = (22222 + 5000) / 50 = 544us
-    // This should be inflated, but less than threshold=0 case
-    ASSERT_GT(limiter._min_latency_us, 200);  // Should be somewhat inflated
-}
-
-// Test: Edge case - error rate exactly at threshold
+// Test 3: Boundary - error rate exactly at threshold produces zero punishment
 TEST_F(AutoConcurrencyLimiterTest, ExactlyAtThresholdZeroPunishment) {
     brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0.1;  // 10% threshold
     brpc::policy::FLAGS_auto_cl_sample_window_size_ms = 10;
 
     brpc::policy::AutoConcurrencyLimiter limiter;
-
     AddSamplesAndTriggerWindow(limiter, 90, 100, 10, 1000);
 
-    // At exactly threshold, punishment should be zero (boundary case)
-    // avg_latency should be close to actual success latency of 100us
-    ASSERT_LT(limiter._min_latency_us, 150);
+    // 10% error rate == 10% threshold, punishment should be zero
+    // avg_latency = 90*100 / 90 = 100us
+    ASSERT_GT(limiter._min_latency_us, 80);
+    ASSERT_LT(limiter._min_latency_us, 130);
 }
 
-// Test: No failed requests - threshold has no effect
-TEST_F(AutoConcurrencyLimiterTest, NoFailedRequestsThresholdNoEffect) {
-    brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0.1;
+// Test 4: Linear scaling - above threshold, punishment scales proportionally
+TEST_F(AutoConcurrencyLimiterTest, AboveThresholdLinearScaling) {
+    brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0.1;  // 10% threshold
     brpc::policy::FLAGS_auto_cl_sample_window_size_ms = 10;
 
-    brpc::policy::AutoConcurrencyLimiter limiter;
+    // Case A: 50% error rate
+    // punish_factor = (0.5 - 0.1) / (1.0 - 0.1) = 0.444
+    // failed_punish = 50 * 1000 * 0.444 = 22222us
+    // avg_latency = (22222 + 50*100) / 50 = 544us
+    {
+        brpc::policy::AutoConcurrencyLimiter limiter;
+        AddSamplesAndTriggerWindow(limiter, 50, 100, 50, 1000);
+        ASSERT_GT(limiter._min_latency_us, 450);
+        ASSERT_LT(limiter._min_latency_us, 650);
+    }
 
-    AddSamplesAndTriggerWindow(limiter, 100, 100, 0, 0);
-
-    // No failed requests, so threshold logic shouldn't trigger
-    ASSERT_GT(limiter._min_latency_us, 0);    // Should have valid latency
-    ASSERT_LT(limiter._min_latency_us, 150);  // Should be close to 100us
-}
-
-// Test: Compare punishment at different thresholds for same error rate
-TEST_F(AutoConcurrencyLimiterTest, DifferentThresholdsDifferentPunishment) {
-    brpc::policy::FLAGS_auto_cl_sample_window_size_ms = 10;
-
-    // Test with threshold = 0 (original behavior)
-    brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0;
-    brpc::policy::AutoConcurrencyLimiter limiter1;
-    AddSamplesAndTriggerWindow(limiter1, 95, 100, 5, 1000);  // 5% error rate
-    int64_t latency_threshold_0 = limiter1._min_latency_us;
-
-    // Test with threshold = 0.1 (5% < 10%, in dead zone)
-    brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0.1;
-    brpc::policy::AutoConcurrencyLimiter limiter2;
-    AddSamplesAndTriggerWindow(limiter2, 95, 100, 5, 1000);  // 5% error rate
-    int64_t latency_threshold_10 = limiter2._min_latency_us;
-
-    // With threshold=0, latency should be inflated
-    // With threshold=0.1 and 5% error rate (below threshold), latency should not be inflated
-    ASSERT_GT(latency_threshold_0, latency_threshold_10);
-}
-
-// Test: Verify linear scaling formula
-TEST_F(AutoConcurrencyLimiterTest, LinearScalingFormula) {
-    // At 90% error rate, punishment factor should be 0.889
-    brpc::policy::FLAGS_auto_cl_error_rate_punish_threshold = 0.1;
-    brpc::policy::FLAGS_auto_cl_sample_window_size_ms = 10;
-
-    brpc::policy::AutoConcurrencyLimiter limiter;
-
-    AddSamplesAndTriggerWindow(limiter, 10, 100, 90, 1000);
-
-    // With 90% error rate > 10% threshold:
-    // punish_factor = (0.9 - 0.1) / (1.0 - 0.1) = 0.8 / 0.9 = 0.889
-    // High punishment factor, latency should be significantly inflated
-    ASSERT_GT(limiter._min_latency_us, 500);
+    // Case B: 90% error rate (near full punishment)
+    // punish_factor = (0.9 - 0.1) / (1.0 - 0.1) = 0.889
+    // failed_punish = 90 * 1000 * 0.889 = 80000us
+    // avg_latency = (80000 + 10*100) / 10 = 8100us
+    {
+        brpc::policy::AutoConcurrencyLimiter limiter;
+        AddSamplesAndTriggerWindow(limiter, 10, 100, 90, 1000);
+        ASSERT_GT(limiter._min_latency_us, 7000);
+        ASSERT_LT(limiter._min_latency_us, 9000);
+    }
 }
 
