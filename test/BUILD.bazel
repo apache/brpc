@@ -269,6 +269,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "brpc_auto_concurrency_limiter_test",
+    srcs = [
+        "brpc_auto_concurrency_limiter_unittest.cpp",
+    ],
+    copts = COPTS,
+    deps = [
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 refresh_compile_commands(
     name = "brpc_test_compdb",
     # Specify the targets of interest.
