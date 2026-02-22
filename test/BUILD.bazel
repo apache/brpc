@@ -282,6 +282,21 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "brpc_redis_cluster_test",
+    srcs = [
+        "brpc_redis_cluster_unittest.cpp",
+    ],
+    copts = COPTS,
+    deps = [
+        ":sstream_workaround",
+        ":gperftools_helper",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 refresh_compile_commands(
     name = "brpc_test_compdb",
     # Specify the targets of interest.
