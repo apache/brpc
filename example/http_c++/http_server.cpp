@@ -31,6 +31,7 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
 DEFINE_string(certificate, "cert.pem", "Certificate file path to enable SSL");
 DEFINE_string(private_key, "key.pem", "Private key file path to enable SSL");
 DEFINE_string(ciphers, "", "Cipher suite used for SSL connections");
+DEFINE_bool(enable_progressive_timeout, false, "whether or not trigger progressive write attachement data timeout");
 
 namespace example {
 
@@ -104,6 +105,9 @@ public:
 
             // sleep a while to send another part.
             bthread_usleep(10000);
+            if (FLAGS_enable_progressive_timeout && i > 50) {
+                bthread_usleep(100000000UL);
+            }
         }
         return NULL;
     }
@@ -194,6 +198,9 @@ public:
 
             // sleep a while to send another part.
             bthread_usleep(10000 * 10);
+            if (FLAGS_enable_progressive_timeout && i > 50) {
+                bthread_usleep(100000000UL);
+            }
         }
         return NULL;
     }

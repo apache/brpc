@@ -1203,6 +1203,7 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             LOG(FATAL) << "Fail to new HttpContext";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
+        http_imsg->SetSocketId(socket->id());
         // Parsing http is costly, parsing an incomplete http message from the
         // beginning repeatedly should be avoided, otherwise the cost may reach
         // O(n^2) in the worst case. Save incomplete http messages in sockets

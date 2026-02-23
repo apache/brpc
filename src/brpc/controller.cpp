@@ -95,7 +95,8 @@ DEFINE_bool(graceful_quit_on_sigterm, false,
             "Register SIGTERM handle func to quit graceful");
 DEFINE_bool(graceful_quit_on_sighup, false,
             "Register SIGHUP handle func to quit graceful");            
-
+DEFINE_bool(log_idle_progressive_read_close, false,
+            "Print log when an idle progressive read is closed");     
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
 const IdlNames idl_multi_req_single_res = { "", "res" };
@@ -172,6 +173,80 @@ public:
         return butil::Status::OK();
     }
     void OnEndOfMessage(const butil::Status&) {}
+};
+
+class ProgressiveTimeoutReader : public ProgressiveReader {
+public:
+    explicit ProgressiveTimeoutReader(SocketId id, int32_t read_timeout_ms, ProgressiveReader* reader):
+    _socket_id(id), 
+    _read_timeout_ms(read_timeout_ms), 
+    _reader(reader), 
+    _timeout_id(0), 
+    _is_read_timeout(false) {
+        AddIdleReadTimeoutMonitor();
+    }
+
+    ~ProgressiveTimeoutReader() {
+        if(_timeout_id > 0) {
+            bthread_timer_del(_timeout_id);
+        }
+    }
+
+    butil::Status OnReadOnePart(const void* data, size_t length) {
+        return _reader->OnReadOnePart(data, length);
+    }
+
+    void OnEndOfMessage(const butil::Status& status) {
+        if (_is_read_timeout) {
+            _reader->OnEndOfMessage(butil::Status(EPROGREADTIMEOUT, "The progressive read timeout"));
+        } else {
+            _reader->OnEndOfMessage(status);
+        }
+        if(_timeout_id > 0) {
+            bthread_timer_del(_timeout_id);
+            _timeout_id = 0;
+        }
+    }
+
+private:
+    static void HandleIdleProgressiveReader(void* arg) {
+        if(arg == nullptr){
+            LOG(ERROR) << "Controller::HandleIdleProgressiveReader arg is null.";
+            return;
+        }
+        ProgressiveTimeoutReader* reader = static_cast<ProgressiveTimeoutReader*>(arg);
+        SocketUniquePtr s;
+        if (Socket::Address(reader->_socket_id, &s) != 0) {
+            LOG(ERROR) << "not found the socket id : " << reader->_socket_id;
+            return;
+        }
+        auto log_idle = FLAGS_log_idle_progressive_read_close;
+        reader->_is_read_timeout = true;
+        LOG_IF(INFO, log_idle) << "progressive read timeout socket id : " << reader->_socket_id
+        << " progressive read timeout us : " << reader->_read_timeout_ms;
+        if (s->parsing_context() != NULL) {
+            s->parsing_context()->Destroy();
+        }
+        s->ReleaseReferenceIfIdle(0);
+    }
+    void AddIdleReadTimeoutMonitor() {
+        if (_read_timeout_ms <= 0) {
+            return;
+        }
+        bthread_timer_add(&_timeout_id,
+            butil::milliseconds_from_now(_read_timeout_ms),
+            HandleIdleProgressiveReader,
+            this
+        );
+    }
+
+private:
+    SocketId _socket_id;
+    int32_t _read_timeout_ms;
+    ProgressiveReader* _reader;
+    // Timer registered to trigger progressive timeout event
+    bthread_timer_t _timeout_id;
+    butil::atomic<bool> _is_read_timeout;
 };
 
 static IgnoreAllRead* s_ignore_all_read = NULL;
@@ -260,6 +335,7 @@ void Controller::ResetPods() {
     _backup_request_ms = UNSET_MAGIC_NUM;
     _backup_request_policy = NULL;
     _connect_timeout_ms = UNSET_MAGIC_NUM;
+    _progressive_read_timeout_ms = UNSET_MAGIC_NUM;
     _real_timeout_ms = UNSET_MAGIC_NUM;
     _deadline_us = -1;
     _timeout_id = 0;
@@ -329,6 +405,15 @@ void Controller::Call::Reset() {
     begin_time_us = 0;
     sending_sock.reset(NULL);
     stream_user_data = NULL;
+}
+
+void Controller::set_progressive_read_timeout_ms(int32_t progressive_read_timeout_ms){
+    if(progressive_read_timeout_ms <= 0x7fffffff){
+        _progressive_read_timeout_ms = progressive_read_timeout_ms;
+    } else {
+        _progressive_read_timeout_ms = 0x7fffffff;
+        LOG(WARNING) << "progressive_read_timeout_seconds is limited to 0x7fffffff";
+    }
 }
 
 void Controller::set_timeout_ms(int64_t timeout_ms) {
@@ -1028,6 +1113,7 @@ void Controller::SubmitSpan() {
     _span = NULL;
 }
 
+
 void Controller::HandleSendFailed() {
     if (!FailedInline()) {
         SetFailed("Must be SetFailed() before calling HandleSendFailed()");
@@ -1544,6 +1630,10 @@ void Controller::ReadProgressiveAttachmentBy(ProgressiveReader* r) {
                          __FUNCTION__));
     }
     add_flag(FLAGS_PROGRESSIVE_READER);
+    if (progressive_read_timeout_ms() > 0) {
+        auto reader = new ProgressiveTimeoutReader(_rpa->GetSocketId(), _progressive_read_timeout_ms, r);
+        return  _rpa->ReadProgressiveAttachmentBy(reader);
+    }
     return _rpa->ReadProgressiveAttachmentBy(r);
 }
 
