@@ -431,7 +431,11 @@ bool RedisClusterChannel::ExecuteSingleCommand(const std::vector<std::string>& a
             next_endpoint = redirect.endpoint;
             GetOrCreateChannel(next_endpoint);
         }
-        if (redirect.slot >= 0 && static_cast<size_t>(redirect.slot) < _slot_to_endpoint.size() &&
+        // ASK is a temporary redirection during slot migration and should not
+        // overwrite the stable slot map. Only persist MOVED target.
+        if (!redirect.asking &&
+            redirect.slot >= 0 &&
+            static_cast<size_t>(redirect.slot) < _slot_to_endpoint.size() &&
             !redirect.endpoint.empty()) {
             BAIDU_SCOPED_LOCK(_mutex);
             _slot_to_endpoint[redirect.slot] = redirect.endpoint;

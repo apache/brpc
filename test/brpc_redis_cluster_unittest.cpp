@@ -581,6 +581,32 @@ TEST_F(RedisClusterChannelTest, ask_redirection) {
     ASSERT_EQ("ask-value", resp.reply(0).data());
 }
 
+TEST_F(RedisClusterChannelTest, ask_redirection_does_not_override_slot_cache) {
+    brpc::RedisClusterChannel channel;
+    InitChannel(&channel);
+
+    _meta->enable_ask = true;
+    _meta->ask_from = 0;
+    _meta->ask_to = 1;
+    _meta->ask_key = FindKeyForNode(0);
+    {
+        BAIDU_SCOPED_LOCK(_node[1].mutex);
+        _node[1].kv[_meta->ask_key] = "ask-value";
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        brpc::RedisRequest req;
+        brpc::RedisResponse resp;
+        brpc::Controller cntl;
+        ASSERT_TRUE(req.AddCommand("get %s", _meta->ask_key.c_str()));
+        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(1, resp.reply_size());
+        ASSERT_TRUE(resp.reply(0).is_string());
+        ASSERT_EQ("ask-value", resp.reply(0).data());
+    }
+}
+
 TEST_F(RedisClusterChannelTest, cluster_nodes_fallback) {
     _meta->fail_slots = true;
     brpc::RedisClusterChannel channel;
