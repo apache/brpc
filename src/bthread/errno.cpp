@@ -35,7 +35,7 @@ extern int *__errno_location() __attribute__((__const__));
 int *bthread_errno_location() {
     return __errno_location();
 }
-#elif defined(OS_MACOSX)
+#elif defined(OS_MACOSX) || defined(OS_FREEBSD)
 
 extern int * __error(void);
 

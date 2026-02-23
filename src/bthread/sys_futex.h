@@ -53,7 +53,7 @@ inline int futex_requeue_private(void* addr1, int nwake, void* addr2) {
 
 }  // namespace bthread
 
-#elif defined(OS_MACOSX)
+#elif defined(OS_MACOSX) || defined(OS_FREEBSD)
 
 namespace bthread {
 
