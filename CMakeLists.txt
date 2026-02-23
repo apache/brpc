@@ -64,6 +64,13 @@ set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
     set(BRPC_WITH_GLOG 1)
+    # glog >= 0.7 requires GLOG_USE_GLOG_EXPORT to define GLOG_EXPORT/GLOG_NO_EXPORT.
+    # glog/export.h only exists in glog >= 0.7, so use it as a version check.
+    include(CheckIncludeFileCXX)
+    check_include_file_cxx("glog/export.h" GLOG_HAS_EXPORT_H)
+    if(GLOG_HAS_EXPORT_H)
+        add_definitions(-DGLOG_USE_GLOG_EXPORT)
+    endif()
 endif()
 
 if(WITH_DEBUG_SYMBOLS)
