@@ -152,7 +152,7 @@ int64_t read_invariant_cpu_frequency() {
     return freq;
 }
 
-int64_t invariant_cpu_freq = -1;
+butil::atomic<int64_t> invariant_cpu_freq(-1);
 }  // namespace detail
 
 }  // namespace butil
