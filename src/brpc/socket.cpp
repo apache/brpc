@@ -896,8 +896,7 @@ void Socket::OnFailed(int error_code, const std::string& error_text) {
     // comes online.
     if (HCEnabled()) {
         GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
-        StartHealthCheck(id(),
-            GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
+        StartHealthCheck(id(), GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
     }
     // Wake up all threads waiting on EPOLLOUT when closing fd
     _epollout_butex->fetch_add(1, butil::memory_order_relaxed);

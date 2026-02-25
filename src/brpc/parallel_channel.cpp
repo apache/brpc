@@ -612,6 +612,7 @@ void ParallelChannel::CallMethod(
     int ndone = nchan;
     int fail_limit = 1;
     int success_limit = 1;
+    Controller::ClientSettings settings{};
     DEFINE_SMALL_ARRAY(SubCall, aps, nchan, 64);
 
     if (cntl->FailedInline()) {
@@ -718,15 +719,28 @@ void ParallelChannel::CallMethod(
     d->SaveThreadInfoOfCallsite();
     CHECK_EQ(0, bthread_id_unlock(cid));
     // Don't touch `cntl' and `d' again (for async RPC)
-    
+
+    // Apply client settings of _cntl to controllers of sub calls, except
+    // timeout. If we let sub channel do their timeout separately, when
+    // timeout happens, we get ETOOMANYFAILS rather than ERPCTIMEDOUT.
+    cntl->SaveClientSettings(&settings);
+    settings.timeout_ms = -1;
     for (int i = 0, j = 0; i < nchan; ++i) {
         if (!aps[i].is_skip()) {
             ParallelChannelDone::SubDone* sd = d->sub_done(j++);
-            // Forward the attachment to each sub call
-            sd->cntl.request_attachment().append(cntl->request_attachment());
-            if (PROTOCOL_HTTP == cntl->request_protocol()) {
-                sd->cntl.http_request() = cntl->http_request();
+            if (NULL != _chans[i].call_mapper) {
+                _chans[i].call_mapper->MapController(i, nchan, cntl, &sd->cntl);
+            } else {
+                // Forward the attachment to each sub call.
+                sd->cntl.request_attachment().append(cntl->request_attachment());
             }
+            sd->cntl.ApplyClientSettings(settings);
+            sd->cntl.allow_done_to_run_in_place();
+        }
+    }
+    for (int i = 0, j = 0; i < nchan; ++i) {
+        if (!aps[i].is_skip()) {
+            ParallelChannelDone::SubDone* sd = d->sub_done(j++);
             _chans[i].chan->CallMethod(sd->ap.method, &sd->cntl,
                                        sd->ap.request, sd->ap.response, sd);
         }
