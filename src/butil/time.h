@@ -25,7 +25,6 @@
 #include <time.h>                            // timespec, clock_gettime
 #include <sys/time.h>                        // timeval, gettimeofday
 #include <stdint.h>                          // int64_t, uint64_t
-#include "butil/macros.h"
 
 #if defined(NO_CLOCK_GETTIME_IN_MAC)
 #include <mach/mach.h>
@@ -270,7 +269,7 @@ extern int64_t read_invariant_cpu_frequency();
 // Be positive iff:
 // 1 Intel x86_64 CPU (multiple cores) supporting constant_tsc and
 // nonstop_tsc(check flags in /proc/cpuinfo)
-extern butil::atomic<int64_t> invariant_cpu_freq;
+extern int64_t invariant_cpu_freq;
 }  // namespace detail
 
 // ---------------------------------------------------------------
@@ -302,17 +301,6 @@ inline int64_t cpuwide_time_ns() {
     } else if (!cpu_freq) {
         // Lack of necessary features, return system-wide monotonic time instead.
         return monotonic_time_ns();
-    } else {
-        // support thread-safe method to initialize the freq
-#if defined(__aarch64__)
-        int64_t ullBase;
-        __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(ullBase));
-#else
-        int64_t ullBase;
-        ullBase = detail::read_invariant_cpu_frequency();
-#enfif
-        detail::invariant_cpu_freq.store(ullBase, butil::memory_order_relaxed);
-        return cpuwide_time_ns();
     }
 #endif // defined(BAIDU_INTERNAL)
 }

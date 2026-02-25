@@ -152,7 +152,19 @@ int64_t read_invariant_cpu_frequency() {
     return freq;
 }
 
-butil::atomic<int64_t> invariant_cpu_freq(-1);
+int64_t invariant_cpu_freq = -1;
+
+static void __attribute__((constructor)) init_invariant_cpu_freq() {
+    int64_t baseFreq = -1;
+#if defined(__aarch64__)
+    __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(baseFreq));
+#else
+    baseFreq = detail::read_invariant_cpu_frequency();
+#enfif
+
+    detail::invariant_cpu_freq = baseFreq;
+}
+
 }  // namespace detail
 
 }  // namespace butil
