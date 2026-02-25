@@ -143,16 +143,22 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
 }
 
 // Return value must be >= 0
-int64_t read_invariant_cpu_frequency() {
+static int64_t read_invariant_cpu_frequency() {
     bool invariant_tsc = false;
-    const int64_t freq = read_cpu_frequency(&invariant_tsc);
+    int64_t freq = -1;
+#if defined(__aarch64__)
+    __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));
+#else
+    freq = read_cpu_frequency(&invariant_tsc);
     if (!invariant_tsc || freq < 0) {
         return 0;
     }
+#endif
+
     return freq;
 }
 
-int64_t invariant_cpu_freq = -1;
+int64_t invariant_cpu_freq = read_invariant_cpu_frequency();
 }  // namespace detail
 
 }  // namespace butil
