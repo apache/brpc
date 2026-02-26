@@ -58,6 +58,7 @@
 // Compress handlers
 #include "brpc/compress.h"
 #include "brpc/policy/gzip_compress.h"
+#include "brpc/policy/lz4_compress.h"
 #include "brpc/policy/snappy_compress.h"
 
 // Checksum handlers
@@ -403,6 +404,11 @@ static void GlobalInitializeOrDieImpl() {
     }
     CompressHandler snappy_compress = { SnappyCompress, SnappyDecompress, "snappy" };
     if (RegisterCompressHandler(COMPRESS_TYPE_SNAPPY, snappy_compress) != 0) {
+        exit(1);
+    }
+    const CompressHandler lz4_compress =
+        { Lz4Compress, Lz4Decompress, "lz4s" };
+    if (RegisterCompressHandler(COMPRESS_TYPE_LZ4, lz4_compress) != 0) {
         exit(1);
     }
 

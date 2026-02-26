@@ -28,6 +28,7 @@
 #include "snappy_message.pb.h"
 #include "brpc/policy/snappy_compress.h"
 #include "brpc/policy/gzip_compress.h"
+#include "brpc/policy/lz4_compress.h"
 
 typedef bool (*Compress)(const google::protobuf::Message&, butil::IOBuf*);
 typedef bool (*Decompress)(const butil::IOBuf&, google::protobuf::Message*);
@@ -163,6 +164,63 @@ TEST_F(test_compress_method, snappy_test) {
     delete [] text;
 }
 
+TEST_F(test_compress_method, lz4) {
+    snappy_message::SnappyMessageProto old_msg;
+    old_msg.set_text("Hello World!");
+    old_msg.add_numbers(2);
+    old_msg.add_numbers(7);
+    old_msg.add_numbers(45);
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::policy::Lz4Compress(old_msg, &buf));
+    snappy_message::SnappyMessageProto new_msg;
+    ASSERT_TRUE(brpc::policy::Lz4Decompress(buf, &new_msg));
+    ASSERT_TRUE(strcmp(new_msg.text().c_str(), "Hello World!") == 0);
+    ASSERT_TRUE(new_msg.numbers_size() == 3);
+    ASSERT_EQ(new_msg.numbers(0), 2);
+    ASSERT_EQ(new_msg.numbers(1), 7);
+    ASSERT_EQ(new_msg.numbers(2), 45);
+}
+
+TEST_F(test_compress_method, lz4_iobuf) {
+    butil::IOBuf buf, output_buf, check_buf; 
+    const char* test = "this is a test";
+    buf.append(test, strlen(test));
+    ASSERT_TRUE(brpc::policy::Lz4Compress(buf, &output_buf)); 
+    ASSERT_TRUE(brpc::policy::Lz4Decompress(output_buf, &check_buf));
+    ASSERT_STREQ(check_buf.to_string().c_str(), test);
+}
+
+TEST_F(test_compress_method, mass_lz4) {
+    snappy_message::SnappyMessageProto old_msg;
+    int len = 12435; 
+    char* text = new char[len + 1];
+    for (int j = 0; j < len;) {
+        for (int i = 0; i < 26 && j < len; i++) {
+            text[j++] = 'a' + i;
+        }
+        for (int i = 0; i < 10 && j < len; i++) {
+            text[j++] = '0' + i;
+        }
+    }
+    text[len] = '\0';
+    old_msg.set_text(text);
+    old_msg.add_numbers(2);
+    old_msg.add_numbers(7);
+    old_msg.add_numbers(45);
+    butil::IOBuf buf;
+    ProfilerStart("./snappy_compress.prof");
+    ASSERT_TRUE(brpc::policy::Lz4Compress(old_msg, &buf));
+    snappy_message::SnappyMessageProto new_msg;
+    ASSERT_TRUE(brpc::policy::Lz4Decompress(buf, &new_msg));
+    ProfilerStop();
+    ASSERT_TRUE(strcmp(new_msg.text().c_str(), text) == 0);
+    ASSERT_TRUE(new_msg.numbers_size() == 3);
+    ASSERT_EQ(new_msg.numbers(0), 2);
+    ASSERT_EQ(new_msg.numbers(1), 7);
+    ASSERT_EQ(new_msg.numbers(2), 45);
+    delete [] text;
+}
+
 TEST_F(test_compress_method, throughput_compare) {
     int len = 0;
     int len_subs[] = {128, 1024, 16*1024, 32*1024, 512*1024}; 
@@ -194,6 +252,9 @@ TEST_F(test_compress_method, throughput_compare) {
         CompressMessage("Zlib", k, old_msg, len, 
                          brpc::policy::ZlibCompress, 
                          brpc::policy::ZlibDecompress);
+        CompressMessage("Lz4", k, old_msg, len, 
+                         brpc::policy::Lz4Compress, 
+                         brpc::policy::Lz4Decompress);
         printf("\n");
         delete [] text;
     }
@@ -228,6 +289,9 @@ TEST_F(test_compress_method, throughput_compare_complete_random) {
         CompressMessage("Zlib", k, old_msg, len, 
                          brpc::policy::ZlibCompress, 
                          brpc::policy::ZlibDecompress);
+        CompressMessage("Lz4", k, old_msg, len, 
+                         brpc::policy::Lz4Compress, 
+                         brpc::policy::Lz4Decompress);
         printf("\n");
         delete [] text;
     }
