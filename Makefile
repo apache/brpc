@@ -50,8 +50,8 @@ ifeq ($(shell uname -m),riscv64)
 endif
 #not solved yet
 ifeq ($(CC),gcc)
-  ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
-    CXXFLAGS+=-Wno-aligned-new
+  ifeq ($(shell test $(GCC_VERSION) -gt 70000; echo $$?),0)
+    CXXFLAGS+=-faligned-new
   endif
 endif
 
