@@ -38,6 +38,7 @@ You can use it to:
     * [bthread or not](docs/cn/bthread_or_not.md)
     * [thread-local](docs/cn/thread_local.md)
     * [Execution Queue](docs/cn/execution_queue.md)
+    * [Active Task (experimental)](docs/cn/bthread_active_task.md)
   * Client
     * [Basics](docs/en/client.md)
     * [Error code](docs/en/error_code.md)

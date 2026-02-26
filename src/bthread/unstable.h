@@ -22,6 +22,7 @@
 #ifndef BTHREAD_UNSTABLE_H
 #define BTHREAD_UNSTABLE_H
 
+#include <stddef.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include "bthread/types.h"
@@ -99,6 +100,79 @@ extern int bthread_set_create_span_func(void* (*func)());
 // You should avoid calling this function which may cause bthread after main()
 // suspend indefinitely.
 extern void bthread_stop_world();
+
+// Active task callback context. This structure is only valid during callbacks
+// registered by bthread_register_active_task_type().
+typedef struct bthread_active_task_ctx_t {
+    size_t struct_size;
+    bthread_tag_t tag;
+    uint32_t worker_index;
+    pthread_t worker_pthread;
+    int32_t bound_cpu;  // -1 when unknown or not bound.
+    uint32_t reserved0;
+    void* impl;  // internal opaque pointer, pass only to active-task within APIs.
+} bthread_active_task_ctx_t;
+
+typedef struct bthread_active_task_type_t {
+    size_t struct_size;
+    const char* name;
+    void* user_data;
+
+    // Called once for each worker pthread after TaskGroup is created and
+    // tls_task_group is set, before entering the worker scheduling loop.
+    int (*worker_init)(void** worker_local,
+                       const bthread_active_task_ctx_t* ctx,
+                       void* user_data);
+
+    // Called once for each worker pthread before the worker exits.
+    void (*worker_destroy)(void* worker_local,
+                           const bthread_active_task_ctx_t* ctx,
+                           void* user_data);
+
+    // Called by the worker scheduler loop as a non-blocking maintenance hook to
+    // harvest completions and wake local waiters. The runtime may call this
+    // hook in multiple places (for example before parking, after wakeup and
+    // periodic busy-loop polling). Return 1 to ask the worker loop to retry
+    // without entering ParkingLot wait in the current iteration, return 0
+    // otherwise.
+    int (*harvest)(
+        void* worker_local, const bthread_active_task_ctx_t* ctx);
+} bthread_active_task_type_t;
+
+// Register an active-task type. This function must be called before bthread
+// TaskControl is initialized.
+extern int bthread_register_active_task_type(
+    const bthread_active_task_type_t* type);
+
+// Active-task callbacks are constrained to simple non-blocking maintenance
+// logic (for example completion harvesting + local waiter wakeup). Creating
+// new bthreads from active-task callbacks is intentionally unsupported.
+//
+// Wake the single waiter on `butex' from inside the current active-task
+// callback and enqueue the resumed bthread into the current hook worker's
+// local queue explicitly (nosignal=true, no immediate switch inside hook).
+//
+// This API is designed for per-request private butex usage:
+// - 0 waiter on `butex': return 0
+// - 1 waiter and it is a same-TaskControl/same-tag bthread waiter: return 1
+// - otherwise (multiple waiters / pthread waiter / cross-tag / cross-control):
+//   return -1 and set errno=EINVAL
+//
+// Calling this API outside active-task harvest callbacks returns -1 and sets
+// errno=EPERM.
+extern int bthread_butex_wake_within(const bthread_active_task_ctx_t* ctx,
+                                     void* butex);
+
+// Wait on butex with an implicit wait-scope local pin. Semantics are the same
+// as butex_wait (including timeout/interruption), but the runtime temporarily
+// pins the current bthread to the current worker for this wait operation so the
+// resumed bthread is routed back to the home worker and is not stealable before
+// bthread_butex_wait_local() returns.
+//
+// Returns 0 on success, -1 otherwise and errno is set.
+// - EPERM: not running inside a normal bthread worker task
+extern int bthread_butex_wait_local(void* butex, int expected_value,
+                                    const struct timespec* abstime);
 
 // Create a bthread_key_t with an additional arg to destructor.
 // Generally the dtor_arg is for passing the creator of data so that we can

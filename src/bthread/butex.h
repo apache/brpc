@@ -29,6 +29,8 @@
 
 namespace bthread {
 
+class TaskGroup;
+
 // If a thread would suspend for less than so many microseconds, return
 // ETIMEDOUT directly.
 // Use 1: sleeping for less than 2 microsecond is inefficient and useless.
@@ -66,6 +68,12 @@ int butex_wake_all(void* butex, bool nosignal = false);
 // is |excluded_bthread|. This function does not yield.
 // Returns # of threads woken up.
 int butex_wake_except(void* butex, bthread_t excluded_bthread);
+
+// Internal helper used by active-task within wake APIs. Explicitly enqueue the
+// single resumed bthread into `target_group` local queue with nosignal.
+// Returns 0 when there is no waiter, 1 when one waiter is woken, -1 on
+// failure and sets errno.
+int butex_wake_to_task_group(void* butex, TaskGroup* target_group);
 
 // Wake up at most 1 thread waiting on |butex1|, let all other threads wait
 // on |butex2| instead.

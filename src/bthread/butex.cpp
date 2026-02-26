@@ -95,6 +95,7 @@ struct ButexBthreadWaiter : public ButexWaiter {
     WaiterState waiter_state;
     int expected_value;
     Butex* initial_butex;
+    TaskGroup* home_group;
     TaskControl* control;
     const timespec* abstime;
     bthread_tag_t tag;
@@ -295,11 +296,55 @@ inline TaskGroup* get_task_group(TaskControl* c, bthread_tag_t tag) {
 }
 
 inline void run_in_local_task_group(TaskGroup* g, TaskMeta* next_meta, bool nosignal) {
+    // Pinned tasks must go through pin-aware routing even on same-tag local fast
+    // paths, otherwise TaskGroup::exchange() may resume them on the wrong worker.
+    if (next_meta->local_pin_enabled && next_meta->local_pin_depth > 0) {
+        g->ready_to_run(next_meta, nosignal);
+        return;
+    }
     if (!nosignal) {
         TaskGroup::exchange(&g, next_meta);
     } else {
         g->ready_to_run(next_meta, nosignal);
     }
+}
+
+int butex_wake_to_task_group(void* arg, TaskGroup* target_group) {
+    if (arg == NULL || target_group == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
+    ButexBthreadWaiter* bbw = NULL;
+    {
+        BAIDU_SCOPED_LOCK(b->waiter_lock);
+        if (b->waiters.empty()) {
+            return 0;
+        }
+        butil::LinkNode<ButexWaiter>* head = b->waiters.head();
+        if (head->next() != b->waiters.end()) {
+            errno = EINVAL;
+            return -1;
+        }
+        ButexWaiter* bw = head->value();
+        if (bw->tid == 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        bbw = static_cast<ButexBthreadWaiter*>(bw);
+        if (bbw->home_group != target_group ||
+            bbw->control != target_group->control() ||
+            bbw->tag != target_group->tag()) {
+            errno = EINVAL;
+            return -1;
+        }
+        bw->RemoveFromList();
+        bw->container.store(NULL, butil::memory_order_relaxed);
+    }
+
+    unsleep_if_necessary(bbw, get_global_timer_thread());
+    target_group->ready_to_run(bbw->task_meta, true);
+    return 1;
 }
 
 int butex_wake(void* arg, bool nosignal) {
@@ -490,10 +535,10 @@ int butex_requeue(void* arg, void* arg2) {
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
     auto g = is_same_tag(bbw->tag) ? tls_task_group : NULL;
-    if (g) {
+    if (g && !(bbw->task_meta->local_pin_enabled && bbw->task_meta->local_pin_depth > 0)) {
         TaskGroup::exchange(&g, bbw->task_meta);
     } else {
-        bbw->control->choose_one_group(bbw->tag)->ready_to_run_remote(bbw->task_meta);
+        get_task_group(bbw->control, bbw->tag)->ready_to_run_general(bbw->task_meta);
     }
     return 1;
 }
@@ -566,6 +611,9 @@ void wait_for_butex(void* arg) {
     // value.
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
+        if (bw->task_meta->local_pin_enabled && bw->task_meta->local_pin_depth > 0) {
+            DCHECK_EQ(bw->task_meta->local_pin_home_group, bw->home_group);
+        }
         if (b->value.load(butil::memory_order_relaxed) != bw->expected_value) {
             bw->waiter_state = WAITER_STATE_UNMATCHEDVALUE;
         } else if (bw->waiter_state == WAITER_STATE_READY/*1*/ &&
@@ -680,15 +728,27 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime, bool prep
     if (NULL == g || g->is_current_pthread_task()) {
         return butex_wait_from_pthread(g, b, expected_value, abstime, prepend);
     }
+    TaskMeta* current = g->current_task();
+    if (current->local_pin_enabled && current->local_pin_depth > 0) {
+        if (current->local_pin_home_group != g ||
+            current->local_pin_home_control != g->control() ||
+            current->local_pin_home_tag != g->tag()) {
+            errno = EPERM;
+            return -1;
+        }
+    }
     ButexBthreadWaiter bbw;
     // tid is 0 iff the thread is non-bthread
     bbw.tid = g->current_tid();
     bbw.container.store(NULL, butil::memory_order_relaxed);
-    bbw.task_meta = g->current_task();
+    bbw.task_meta = current;
     bbw.sleep_id = 0;
     bbw.waiter_state = WAITER_STATE_READY;
     bbw.expected_value = expected_value;
     bbw.initial_butex = b;
+    bbw.home_group = (current->local_pin_enabled && current->local_pin_depth > 0)
+                         ? current->local_pin_home_group
+                         : g;
     bbw.control = g->control();
     bbw.abstime = abstime;
     bbw.tag = g->tag();
