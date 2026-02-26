@@ -267,6 +267,11 @@ GFLAGS_HDR=$(find_dir_of_header_or_die gflags/gflags.h)
 PROTOBUF_HDR=$(find_dir_of_header_or_die google/protobuf/message.h)
 PROTOBUF_VERSION=$(grep '#define GOOGLE_PROTOBUF_VERSION [0-9]\+' $PROTOBUF_HDR/google/protobuf/stubs/common.h | awk '{print $3}')
 if [ "$PROTOBUF_VERSION" -ge 4022000 ]; then
+    # from v22, utf8_validity should be explicitly linked
+    # https://github.com/protocolbuffers/protobuf/blob/a847a8dc4ba1d99e7ba917146c84438b4de7d085/cmake/libprotobuf.cmake#L47
+    UTF8_VALIDITY_LIB=$(find_dir_of_lib utf8_validity)
+    append_linking "$UTF8_VALIDITY_LIB" utf8_validity
+
     ABSL_HDR=$(find_dir_of_header_or_die absl/base/config.h)
     ABSL_LIB=$(find_dir_of_lib_or_die absl_strings)
     ABSL_TARGET_NAMES="
