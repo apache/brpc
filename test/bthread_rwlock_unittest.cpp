@@ -85,25 +85,26 @@ TEST(RWLockTest, used_in_pthread) {
 }
 
 void* do_timedrdlock(void *arg) {
-    struct timespec t = { -2, 0 };
+    struct timespec t = { 0, 100 };
     EXPECT_EQ(ETIMEDOUT, bthread_rwlock_timedrdlock((bthread_rwlock_t*)arg, &t));
     return NULL;
 }
 
 void* do_timedwrlock(void *arg) {
-    struct timespec t = { -2, 0 };
+    struct timespec t = { 0, 100 };
     EXPECT_EQ(ETIMEDOUT, bthread_rwlock_timedwrlock((bthread_rwlock_t*)arg, &t));
-    LOG(INFO) << 10;
     return NULL;
 }
 
 TEST(RWLockTest, timedlock) {
     bthread_rwlock_t rw;
     ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    bthread_t th;
 
     ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
-    bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedwrlock, &rw));
+    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, rdlocker, &rw));
     ASSERT_EQ(0, bthread_join(th, NULL));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
 
@@ -113,6 +114,21 @@ TEST(RWLockTest, timedlock) {
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedrdlock, &rw));
     ASSERT_EQ(0, bthread_join(th, NULL));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+
+    ASSERT_EQ(0, bthread_rwlock_wrlock(&rw));
+    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedrdlock, &rw));
+    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedwrlock, &rw));
+    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+
+    ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
+    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedwrlock, &rw));
+    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, rdlocker, &rw));
+    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
 }
 
