@@ -171,10 +171,8 @@ struct PinnedWaitCtx {
 ActiveTaskTestState g_state;
 std::atomic<int> g_register_rc(-1);
 std::atomic<int> g_register_once(0);
-bthread::TaskControl* g_shared_single_worker_tc = NULL;
-std::atomic<int> g_shared_single_worker_tc_once(0);
-bthread::TaskControl* g_shared_two_worker_tc = NULL;
-std::atomic<int> g_shared_two_worker_tc_once(0);
+bthread::TaskControl* g_shared_tc = NULL;
+std::atomic<int> g_shared_tc_once(0);
 
 void ResetState() {
     g_state.mode.store(TEST_MODE_IDLE, std::memory_order_release);
@@ -244,30 +242,28 @@ void PrepareForCase() {
     ResetState();
 }
 
-bthread::TaskControl& GetSharedSingleWorkerTaskControl() {
+bthread::TaskControl& GetSharedTaskControl() {
     int expected = 0;
-    if (g_shared_single_worker_tc_once.compare_exchange_strong(
+    if (g_shared_tc_once.compare_exchange_strong(
             expected, 1, std::memory_order_relaxed)) {
-        g_shared_single_worker_tc = new bthread::TaskControl();
-        CHECK(g_shared_single_worker_tc != NULL);
-        CHECK_EQ(0, g_shared_single_worker_tc->init(1));
-        CHECK(WaitAtomicAtLeast(g_state.init_calls, 1, 5000));
+        g_shared_tc = new bthread::TaskControl();
+        CHECK(g_shared_tc != NULL);
+        // Keep one TaskControl instance in this process. Multiple TaskControl
+        // instances expose fixed-name bvars and conflict in CI builds with
+        // BRPC_BTHREAD_TRACER enabled.
+        CHECK_EQ(0, g_shared_tc->init(2));
+        CHECK(WaitAtomicAtLeast(g_state.init_calls, 2, 5000));
     }
-    CHECK(g_shared_single_worker_tc != NULL);
-    return *g_shared_single_worker_tc;
+    CHECK(g_shared_tc != NULL);
+    return *g_shared_tc;
+}
+
+bthread::TaskControl& GetSharedSingleWorkerTaskControl() {
+    return GetSharedTaskControl();
 }
 
 bthread::TaskControl& GetSharedTwoWorkerTaskControl() {
-    int expected = 0;
-    if (g_shared_two_worker_tc_once.compare_exchange_strong(
-            expected, 1, std::memory_order_relaxed)) {
-        g_shared_two_worker_tc = new bthread::TaskControl();
-        CHECK(g_shared_two_worker_tc != NULL);
-        CHECK_EQ(0, g_shared_two_worker_tc->init(2));
-        CHECK(WaitAtomicAtLeast(g_state.init_calls, 2, 5000));
-    }
-    CHECK(g_shared_two_worker_tc != NULL);
-    return *g_shared_two_worker_tc;
+    return GetSharedTaskControl();
 }
 
 void* TestButexWaitTask(void*) {
@@ -329,7 +325,7 @@ void* TestRequestWaitTask(void* arg) {
                                      std::memory_order_relaxed);
     req->waiter_ready.store(1, std::memory_order_release);
     errno = 0;
-    const int rc = bthread::butex_wait(req->butex, 0, NULL);
+    const int rc = bthread_butex_wait_local(req->butex, 0, NULL);
     const int err = errno;
     req->wait_rc.store(rc, std::memory_order_relaxed);
     req->wait_errno.store(err, std::memory_order_relaxed);
@@ -647,6 +643,8 @@ void RunButexWakeWithinCase(int waiter_count,
                             int expected_wake_errno) {
     ASSERT_EQ(0, g_register_rc.load(std::memory_order_relaxed));
     bthread::TaskControl& tc = GetSharedSingleWorkerTaskControl();
+    bthread::TaskGroup* tg = tc.choose_one_group(BTHREAD_TAG_DEFAULT);
+    ASSERT_NE(static_cast<bthread::TaskGroup*>(NULL), tg);
     ASSERT_GT(waiter_count, 0);
     const bool allow_setup_race_retry = (waiter_count > 1 && expected_wake_rc < 0);
     const int max_attempts = allow_setup_race_retry ? 10 : 1;
@@ -663,15 +661,35 @@ void RunButexWakeWithinCase(int waiter_count,
 
         std::vector<bthread_t> tids(waiter_count, INVALID_BTHREAD);
         bool retry_case = false;
-        g_state.mode.store(TEST_MODE_BUTEX_WAKE_WITHIN, std::memory_order_release);
 
         for (int i = 0; i < waiter_count; ++i) {
-            ASSERT_EQ(0, bthread_start_background(&tids[i], NULL,
-                                                  TestButexWaitTask, NULL));
+            ASSERT_EQ(0, tg->start_background<true>(&tids[i], NULL,
+                                                    TestButexWaitTask, NULL));
         }
+        tg->flush_nosignal_tasks();
         ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_waiter_ready_count, waiter_count, 5000));
-        tc.signal_task(1, BTHREAD_TAG_DEFAULT);
+        if (waiter_count == 1) {
+            const uint64_t waiter_worker =
+                g_state.butex_waiter_worker_pthread.load(std::memory_order_relaxed);
+            ASSERT_NE(0u, waiter_worker);
+            g_state.target_hook_worker_pthread.store(waiter_worker,
+                                                     std::memory_order_relaxed);
+        }
+        g_state.mode.store(TEST_MODE_BUTEX_WAKE_WITHIN, std::memory_order_release);
+        tc.signal_task(2, BTHREAD_TAG_DEFAULT);
         ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_wake_started, 1, 5000));
+        int observed_wake_rc = g_state.butex_wake_rc.load(std::memory_order_relaxed);
+        int observed_wake_errno = g_state.butex_wake_errno.load(std::memory_order_relaxed);
+        if (expected_wake_rc < 0) {
+            ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_wake_completed, 1, 5000))
+                << "waiters=" << waiter_count
+                << " ready=" << g_state.butex_waiter_ready_count.load(std::memory_order_relaxed)
+                << " started=" << g_state.butex_wake_started.load(std::memory_order_relaxed)
+                << " rc=" << g_state.butex_wake_rc.load(std::memory_order_relaxed)
+                << " errno=" << g_state.butex_wake_errno.load(std::memory_order_relaxed);
+            observed_wake_rc = g_state.butex_wake_rc.load(std::memory_order_relaxed);
+            observed_wake_errno = g_state.butex_wake_errno.load(std::memory_order_relaxed);
+        }
         if (expected_wake_rc < 0) {
             static_cast<butil::atomic<int>*>(butex)->store(1, butil::memory_order_release);
             for (int kick = 0;
@@ -682,12 +700,10 @@ void RunButexWakeWithinCase(int waiter_count,
                 usleep(1000);
             }
         }
-        const int wake_rc = g_state.butex_wake_rc.load(std::memory_order_relaxed);
-        const int wake_errno = g_state.butex_wake_errno.load(std::memory_order_relaxed);
 
         ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_waiter_done_count, waiter_count, 5000))
-            << "wake_rc=" << wake_rc
-            << " wake_errno=" << wake_errno
+            << "wake_rc=" << observed_wake_rc
+            << " wake_errno=" << observed_wake_errno
             << " ready=" << g_state.butex_waiter_ready_count.load(std::memory_order_relaxed)
             << " resumed=" << g_state.butex_waiter_resume_count.load(std::memory_order_relaxed)
             << " harvest_calls=" << g_state.harvest_calls.load(std::memory_order_relaxed)
@@ -698,16 +714,18 @@ void RunButexWakeWithinCase(int waiter_count,
         ASSERT_EQ(waiter_count,
                   g_state.butex_waiter_resume_count.load(std::memory_order_relaxed));
         g_state.mode.store(TEST_MODE_IDLE, std::memory_order_release);
+        g_state.target_hook_worker_pthread.store(0, std::memory_order_relaxed);
         QuiesceHookActionsAfterModeIdle();
         const int final_wake_rc = g_state.butex_wake_rc.load(std::memory_order_relaxed);
-        const int final_wake_errno = g_state.butex_wake_errno.load(std::memory_order_relaxed);
 
-        if (allow_setup_race_retry && final_wake_rc == 1 && attempt < max_attempts) {
+        if (allow_setup_race_retry && observed_wake_rc == 1 && attempt < max_attempts) {
             retry_case = true;
         } else {
-            ASSERT_EQ(expected_wake_rc, final_wake_rc);
             if (expected_wake_rc < 0) {
-                ASSERT_EQ(expected_wake_errno, final_wake_errno);
+                ASSERT_EQ(expected_wake_rc, observed_wake_rc);
+                ASSERT_EQ(expected_wake_errno, observed_wake_errno);
+            } else {
+                ASSERT_EQ(expected_wake_rc, final_wake_rc);
             }
         }
         bthread::butex_destroy(butex);
@@ -791,7 +809,8 @@ struct ScopedPollEveryNSwitch {
 void RunBusyPeriodicPollWakeCase() {
     ASSERT_EQ(0, g_register_rc.load(std::memory_order_relaxed));
     bthread::TaskControl& tc = GetSharedSingleWorkerTaskControl();
-    (void)tc;
+    bthread::TaskGroup* tg = tc.choose_one_group(BTHREAD_TAG_DEFAULT);
+    ASSERT_NE(static_cast<bthread::TaskGroup*>(NULL), tg);
     PrepareForCase();
 
     void* butex = bthread::butex_create();
@@ -804,12 +823,18 @@ void RunBusyPeriodicPollWakeCase() {
     ScopedPollEveryNSwitch guard(1);
     bthread_t busy_tid = INVALID_BTHREAD;
     bthread_t waiter_tid = INVALID_BTHREAD;
-    g_state.mode.store(TEST_MODE_BUSY_PERIODIC_POLL_WAKE, std::memory_order_release);
 
-    ASSERT_EQ(0, bthread_start_background(&busy_tid, NULL, TestBusyYieldTask, NULL));
+    ASSERT_EQ(0, tg->start_background<true>(&busy_tid, NULL, TestBusyYieldTask, NULL));
+    tg->flush_nosignal_tasks();
     ASSERT_TRUE(WaitAtomicAtLeast(g_state.busy_task_started, 1, 5000));
-    ASSERT_EQ(0, bthread_start_background(&waiter_tid, NULL, TestButexWaitTask, NULL));
+    ASSERT_EQ(0, tg->start_background<true>(&waiter_tid, NULL, TestButexWaitTask, NULL));
+    tg->flush_nosignal_tasks();
     ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_waiter_ready_count, 1, 5000));
+    const uint64_t waiter_worker =
+        g_state.butex_waiter_worker_pthread.load(std::memory_order_relaxed);
+    ASSERT_NE(0u, waiter_worker);
+    g_state.target_hook_worker_pthread.store(waiter_worker, std::memory_order_relaxed);
+    g_state.mode.store(TEST_MODE_BUSY_PERIODIC_POLL_WAKE, std::memory_order_release);
 
     ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_wake_started, 1, 5000));
     ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_waiter_done_count, 1, 5000));
@@ -822,6 +847,7 @@ void RunBusyPeriodicPollWakeCase() {
     ASSERT_EQ(0, bthread_join(waiter_tid, NULL));
     ASSERT_EQ(0, bthread_join(busy_tid, NULL));
     g_state.mode.store(TEST_MODE_IDLE, std::memory_order_release);
+    g_state.target_hook_worker_pthread.store(0, std::memory_order_relaxed);
     QuiesceHookActionsAfterModeIdle();
 
     bthread::butex_destroy(butex);
