@@ -101,6 +101,9 @@ struct ClusterMeta {
     bool fail_slots;
     bool fail_nodes;
     bool slots_empty_host;
+    std::atomic<int> slots_override_slot;
+    std::atomic<int> slots_override_owner;
+    std::atomic<bool> accept_requests_on_wrong_owner;
     std::unordered_map<std::string, int> owner_override;
     std::unordered_map<std::string, std::string> forced_error_by_key;
     std::atomic<int> slots_calls;
@@ -120,6 +123,9 @@ struct ClusterMeta {
         : fail_slots(false)
         , fail_nodes(false)
         , slots_empty_host(false)
+        , slots_override_slot(-1)
+        , slots_override_owner(-1)
+        , accept_requests_on_wrong_owner(false)
         , slots_calls(0)
         , nodes_calls(0)
         , moved_error_calls(0)
@@ -207,6 +213,51 @@ public:
                 output->SetError("ERR cluster slots disabled for test");
                 return brpc::REDIS_CMD_HANDLED;
             }
+
+            const int override_slot = _meta->slots_override_slot.load(std::memory_order_relaxed);
+            const int override_owner = _meta->slots_override_owner.load(std::memory_order_relaxed);
+            const int default_owner = (override_slot >= 0 && override_slot <= 16383)
+                                          ? OwnerBySlot(override_slot)
+                                          : -1;
+            if (default_owner != -1 &&
+                (override_owner == 0 || override_owner == 1) &&
+                override_owner != default_owner) {
+                struct SlotRange {
+                    int start;
+                    int end;
+                    int owner;
+                    SlotRange(int s, int e, int o) : start(s), end(e), owner(o) {}
+                };
+
+                std::vector<SlotRange> ranges;
+                if (override_slot <= kSplitSlot) {
+                    if (override_slot > 0) {
+                        ranges.push_back(SlotRange(0, override_slot - 1, 0));
+                    }
+                    ranges.push_back(SlotRange(override_slot, override_slot, override_owner));
+                    if (override_slot < kSplitSlot) {
+                        ranges.push_back(SlotRange(override_slot + 1, kSplitSlot, 0));
+                    }
+                    ranges.push_back(SlotRange(kSplitSlot + 1, 16383, 1));
+                } else {
+                    ranges.push_back(SlotRange(0, kSplitSlot, 0));
+                    if (override_slot > kSplitSlot + 1) {
+                        ranges.push_back(SlotRange(kSplitSlot + 1, override_slot - 1, 1));
+                    }
+                    ranges.push_back(SlotRange(override_slot, override_slot, override_owner));
+                    if (override_slot < 16383) {
+                        ranges.push_back(SlotRange(override_slot + 1, 16383, 1));
+                    }
+                }
+
+                output->SetArray(ranges.size());
+                for (size_t i = 0; i < ranges.size(); ++i) {
+                    FillSlotEntry((*output)[i], ranges[i].start, ranges[i].end,
+                                  _meta->endpoint[ranges[i].owner], _meta->slots_empty_host);
+                }
+                return brpc::REDIS_CMD_HANDLED;
+            }
+
             output->SetArray(2);
             FillSlotEntry((*output)[0], 0, kSplitSlot, _meta->endpoint[0],
                           _meta->slots_empty_host);
@@ -324,7 +375,9 @@ public:
             }
         }
 
-        if (!bypass_owner_check && owner != _data->node_id) {
+        const bool enforce_owner =
+            !_data->meta->accept_requests_on_wrong_owner.load(std::memory_order_relaxed);
+        if (!bypass_owner_check && enforce_owner && owner != _data->node_id) {
             _data->meta->moved_error_calls.fetch_add(1, std::memory_order_relaxed);
             output->FormatError("MOVED %d %s", slot, _data->meta->endpoint[owner].c_str());
             return brpc::REDIS_CMD_HANDLED;
@@ -1404,6 +1457,64 @@ TEST_F(RedisClusterChannelTest, periodic_refresh_fallbacks_to_nodes_when_slots_f
         bthread_usleep(100000);
     }
     ASSERT_TRUE(nodes_used);
+}
+
+TEST_F(RedisClusterChannelTest, periodic_refresh_updates_slot_cache_on_topology_change) {
+    brpc::RedisClusterChannel channel;
+    brpc::RedisClusterChannelOptions options;
+    options.enable_periodic_refresh = true;
+    options.refresh_interval_s = 1;
+    options.max_redirect = 5;
+    ASSERT_EQ(0, channel.Init(SeedList(), &options));
+
+    _meta->accept_requests_on_wrong_owner.store(true, std::memory_order_relaxed);
+
+    const std::string key = FindKeyForNode(0);
+    const int slot = static_cast<int>(HashSlot(key));
+    const std::string value_by_owner[2] = {"value-on-node0", "value-on-node1"};
+    {
+        BAIDU_SCOPED_LOCK(_node[0].mutex);
+        _node[0].kv[key] = value_by_owner[0];
+    }
+    {
+        BAIDU_SCOPED_LOCK(_node[1].mutex);
+        _node[1].kv[key] = value_by_owner[1];
+    }
+
+    brpc::RedisRequest req;
+    brpc::RedisResponse resp;
+    brpc::Controller cntl;
+    ASSERT_TRUE(req.AddCommand("get %s", key.c_str()));
+    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(1, resp.reply_size());
+    ASSERT_TRUE(resp.reply(0).is_string());
+    ASSERT_EQ(value_by_owner[0], resp.reply(0).data());
+
+    const int before_slots = _meta->slots_calls.load(std::memory_order_relaxed);
+    const int target_owner = 1 - OwnerBySlot(slot);
+    _meta->slots_override_slot.store(slot, std::memory_order_relaxed);
+    _meta->slots_override_owner.store(target_owner, std::memory_order_relaxed);
+
+    bool updated = false;
+    for (int i = 0; i < 50; ++i) {
+        brpc::RedisRequest req2;
+        brpc::RedisResponse resp2;
+        brpc::Controller cntl2;
+        ASSERT_TRUE(req2.AddCommand("get %s", key.c_str()));
+        channel.CallMethod(NULL, &cntl2, &req2, &resp2, NULL);
+        ASSERT_FALSE(cntl2.Failed()) << cntl2.ErrorText();
+        ASSERT_EQ(1, resp2.reply_size());
+        ASSERT_TRUE(resp2.reply(0).is_string());
+        if (resp2.reply(0).data() == value_by_owner[target_owner]) {
+            updated = true;
+            break;
+        }
+        bthread_usleep(100000);
+    }
+    ASSERT_TRUE(updated);
+    ASSERT_GT(_meta->slots_calls.load(std::memory_order_relaxed), before_slots);
+    ASSERT_EQ(0, _meta->moved_error_calls.load(std::memory_order_relaxed));
 }
 
 TEST_F(RedisClusterChannelTest, async_pipeline_mixed_commands) {

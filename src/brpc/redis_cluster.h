@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "bthread/bthread.h"
+#include "butil/containers/doubly_buffered_data.h"
 #include "butil/synchronization/lock.h"
 #include "brpc/channel.h"
 #include "brpc/channel_base.h"
@@ -169,7 +170,7 @@ private:
     RedisClusterChannelOptions _options;
 
     mutable butil::Mutex _mutex;
-    std::vector<std::string> _slot_to_endpoint;
+    mutable butil::DoublyBufferedData<std::vector<std::string> > _db_slot_to_endpoint;
     std::vector<std::string> _seed_endpoints;
     std::unordered_map<std::string, std::unique_ptr<Channel> > _channels;
 

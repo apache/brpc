@@ -166,7 +166,10 @@ RedisClusterChannel::RedisClusterChannel()
     : _stop_refresh(false)
     , _refresh_started(false)
     , _refresh_tid(0) {
-    _slot_to_endpoint.resize(kRedisClusterSlotCount);
+    _db_slot_to_endpoint.Modify([](std::vector<std::string>& bg) -> size_t {
+        bg.assign(kRedisClusterSlotCount, std::string());
+        return 1;
+    });
 }
 
 RedisClusterChannel::~RedisClusterChannel() {
@@ -435,10 +438,18 @@ bool RedisClusterChannel::ExecuteSingleCommand(const std::vector<std::string>& a
         // overwrite the stable slot map. Only persist MOVED target.
         if (!redirect.asking &&
             redirect.slot >= 0 &&
-            static_cast<size_t>(redirect.slot) < _slot_to_endpoint.size() &&
+            redirect.slot < static_cast<int>(kRedisClusterSlotCount) &&
             !redirect.endpoint.empty()) {
-            BAIDU_SCOPED_LOCK(_mutex);
-            _slot_to_endpoint[redirect.slot] = redirect.endpoint;
+            _db_slot_to_endpoint.Modify(
+                [](std::vector<std::string>& bg, int slot,
+                   const std::string& endpoint) -> size_t {
+                    if (bg[slot] == endpoint) {
+                        return 0;
+                    }
+                    bg[slot] = endpoint;
+                    return 1;
+                },
+                redirect.slot, redirect.endpoint);
         }
 
         if (!redirect.asking) {
@@ -598,11 +609,15 @@ bool RedisClusterChannel::PickEndpointForKey(const std::string& key,
                                              std::string* endpoint,
                                              int* slot) const {
     const int key_slot = HashSlot(key);
-    BAIDU_SCOPED_LOCK(_mutex);
-    if (key_slot < 0 || static_cast<size_t>(key_slot) >= _slot_to_endpoint.size()) {
+    if (key_slot < 0 || key_slot >= static_cast<int>(kRedisClusterSlotCount)) {
         return false;
     }
-    const std::string& mapped = _slot_to_endpoint[key_slot];
+    butil::DoublyBufferedData<std::vector<std::string> >::ScopedPtr s;
+    if (_db_slot_to_endpoint.Read(&s) != 0 ||
+        static_cast<size_t>(key_slot) >= s->size()) {
+        return false;
+    }
+    const std::string& mapped = (*s)[key_slot];
     if (mapped.empty()) {
         return false;
     }
@@ -935,8 +950,15 @@ void RedisClusterChannel::ApplyTopology(
         GetOrCreateChannel(*it);
     }
 
+    _db_slot_to_endpoint.Modify(
+        [](std::vector<std::string>& bg,
+           const std::vector<std::string>& src) -> size_t {
+            bg = src;
+            return 1;
+        },
+        slot_to_endpoint);
+
     BAIDU_SCOPED_LOCK(_mutex);
-    _slot_to_endpoint = slot_to_endpoint;
     for (std::set<std::string>::const_iterator it = unique_eps.begin();
          it != unique_eps.end(); ++it) {
         if (std::find(_seed_endpoints.begin(), _seed_endpoints.end(), *it) ==
@@ -1182,10 +1204,13 @@ int RedisClusterChannel::CheckHealth() {
 
 int RedisClusterChannel::Weight() {
     std::set<std::string> unique;
-    BAIDU_SCOPED_LOCK(_mutex);
-    for (size_t i = 0; i < _slot_to_endpoint.size(); ++i) {
-        if (!_slot_to_endpoint[i].empty()) {
-            unique.insert(_slot_to_endpoint[i]);
+    butil::DoublyBufferedData<std::vector<std::string> >::ScopedPtr s;
+    if (_db_slot_to_endpoint.Read(&s) != 0) {
+        return 0;
+    }
+    for (size_t i = 0; i < s->size(); ++i) {
+        if (!(*s)[i].empty()) {
+            unique.insert((*s)[i]);
         }
     }
     return static_cast<int>(unique.size());
