@@ -191,6 +191,7 @@ public:
     // Push a bthread into the runqueue from another non-worker thread.
     void ready_to_run_remote(TaskMeta* meta, bool nosignal = false);
     void flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex);
+    void flush_nosignal_tasks_pinned_remote_locked(butil::Mutex& locked_mutex);
     void flush_nosignal_tasks_remote();
 
     // Automatically decide the caller is remote or local, and call
@@ -331,10 +332,19 @@ friend class TaskControl;
     static void ready_to_run_in_worker(void*);
     static void ready_to_run_in_worker_ignoresignal(void*);
     static void priority_to_run(void*);
+    void on_local_ready_enqueued(bool nosignal);
+    void on_remote_ready_enqueued(TaskMeta* meta,
+                                  RemoteTaskQueue* rq,
+                                  int* num_nosignal,
+                                  int* nsignaled,
+                                  bool nosignal,
+                                  const char* rq_name,
+                                  void (TaskGroup::*flush_locked)(butil::Mutex&));
     void ready_to_run_local_raw(TaskMeta* meta, bool nosignal);
     void ready_to_run_remote_raw(TaskMeta* meta, bool nosignal);
     void ready_to_run_pinned_local(TaskMeta* meta, bool nosignal);
     void ready_to_run_pinned_remote(TaskMeta* meta, bool nosignal);
+    bool route_to_pinned_home(TaskMeta* meta, bool nosignal);
     void ready_to_run_ignoresignal_pinaware(TaskMeta* meta);
     static bool is_locally_pinned_task(const TaskMeta* meta);
 
@@ -348,13 +358,6 @@ friend class TaskControl;
         _last_pl_state = _pl->get_state();
 #endif
         return _control->steal_task(tid, &_steal_seed, _steal_offset);
-    }
-
-    bool steal_task(bthread_t* tid) {
-        if (_remote_rq.pop(tid)) {
-            return true;
-        }
-        return steal_task_from_others(tid);
     }
 
     void set_tag(bthread_tag_t tag) { _tag = tag; }
@@ -408,6 +411,8 @@ friend class TaskControl;
     RemoteTaskQueue _pinned_remote_rq;
     int _remote_num_nosignal{0};
     int _remote_nsignaled{0};
+    int _pinned_remote_num_nosignal{0};
+    int _pinned_remote_nsignaled{0};
 
     int _sched_recursive_guard{0};
     // tag of this taskgroup
@@ -417,6 +422,7 @@ friend class TaskControl;
     pthread_t _tid{};
     uint32_t _worker_index{0};
     int32_t _bound_cpu{-1};
+    bool _has_active_task_harvest{false};
     std::vector<ActiveTaskInstance> _active_task_instances;
 };
 

@@ -53,11 +53,15 @@ void butex_destroy(void* butex);
 
 // Wake up at most 1 thread waiting on |butex|.
 // Returns # of threads woken up.
+// Returns -1 and sets errno=EINVAL when the selected waiter is in
+// bthread_butex_wait_local() strict pinned scope.
 int butex_wake(void* butex, bool nosignal = false);
 
 // Wake up all threads waiting on |butex| if n is zero,
 // Otherwise, wake up at most n thread waiting on |butex|.
 // Returns # of threads woken up.
+// Returns -1 and sets errno=EINVAL when selected waiters include strict
+// pinned waiters from bthread_butex_wait_local().
 int butex_wake_n(void* butex, size_t n, bool nosignal = false);
 
 // Wake up all threads waiting on |butex|.
@@ -67,6 +71,8 @@ int butex_wake_all(void* butex, bool nosignal = false);
 // Wake up all threads waiting on |butex| except a bthread whose identifier
 // is |excluded_bthread|. This function does not yield.
 // Returns # of threads woken up.
+// Returns -1 and sets errno=EINVAL when selected waiters include strict
+// pinned waiters from bthread_butex_wait_local().
 int butex_wake_except(void* butex, bthread_t excluded_bthread);
 
 // Internal helper used by active-task within wake APIs. Explicitly enqueue the
@@ -78,6 +84,8 @@ int butex_wake_to_task_group(void* butex, TaskGroup* target_group);
 // Wake up at most 1 thread waiting on |butex1|, let all other threads wait
 // on |butex2| instead.
 // Returns # of threads woken up.
+// Returns -1 and sets errno=EINVAL when source queue contains strict pinned
+// waiters from bthread_butex_wait_local().
 int butex_requeue(void* butex1, void* butex2);
 
 // Atomically wait on |butex| if *butex equals |expected_value|, until the

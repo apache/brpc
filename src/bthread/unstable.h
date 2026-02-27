@@ -169,6 +169,10 @@ extern int bthread_butex_wake_within(const bthread_active_task_ctx_t* ctx,
 // resumed bthread is routed back to the home worker and is not stealable before
 // bthread_butex_wait_local() returns.
 //
+// Strict mode: external wakeup for this waiter must use
+// bthread_butex_wake_within(). Generic butex_wake* APIs do not provide a
+// fallback path for pinned waiters and may fail with EINVAL.
+//
 // Returns 0 on success, -1 otherwise and errno is set.
 // - EPERM: not running inside a normal bthread worker task
 extern int bthread_butex_wait_local(void* butex, int expected_value,

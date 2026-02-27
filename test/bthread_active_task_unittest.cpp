@@ -59,6 +59,13 @@ enum TestMode {
     TEST_MODE_BUTEX_WAKE_WITHIN_STRICT_CROSS_WORKER_REJECT = 9,
 };
 
+enum GenericWakeVariant {
+    GENERIC_WAKE = 0,
+    GENERIC_WAKE_N = 1,
+    GENERIC_WAKE_EXCEPT = 2,
+    GENERIC_REQUEUE = 3,
+};
+
 struct PerWorkerState {
 };
 
@@ -1102,7 +1109,25 @@ void WaitJoinPinnedWaitTaskAndAssert(PinnedWaitCtx* ctx,
               ctx->resume_worker_pthread.load(std::memory_order_relaxed));
 }
 
-void RunPinnedGenericWakeCase() {
+int CallGenericWakeVariant(GenericWakeVariant variant, void* butex,
+                           void* requeue_target) {
+    switch (variant) {
+    case GENERIC_WAKE:
+        return bthread::butex_wake(butex, true);
+    case GENERIC_WAKE_N:
+        return bthread::butex_wake_n(butex, 1, true);
+    case GENERIC_WAKE_EXCEPT:
+        return bthread::butex_wake_except(butex, INVALID_BTHREAD);
+    case GENERIC_REQUEUE:
+        CHECK(requeue_target != NULL);
+        return bthread::butex_requeue(butex, requeue_target);
+    default:
+        CHECK(false) << "unknown generic wake variant=" << variant;
+        return -1;
+    }
+}
+
+void RunPinnedGenericWakeRejectedCase(GenericWakeVariant variant) {
     ASSERT_EQ(0, g_register_rc.load(std::memory_order_relaxed));
     bthread::TaskControl& tc = GetSharedTwoWorkerTaskControl();
     bthread::TaskGroup* g1 = NULL;
@@ -1114,26 +1139,46 @@ void RunPinnedGenericWakeCase() {
     ctx.butex = bthread::butex_create();
     ASSERT_NE(static_cast<void*>(NULL), ctx.butex);
     static_cast<butil::atomic<int>*>(ctx.butex)->store(0, butil::memory_order_relaxed);
+    void* requeue_butex = NULL;
+    if (variant == GENERIC_REQUEUE) {
+        requeue_butex = bthread::butex_create();
+        ASSERT_NE(static_cast<void*>(NULL), requeue_butex);
+        static_cast<butil::atomic<int>*>(requeue_butex)->store(
+            0, butil::memory_order_relaxed);
+    }
 
     bthread_t tid = INVALID_BTHREAD;
     uint64_t home = 0;
     StartPinnedWaitTaskAndWaitReady(g1, &ctx, &tid, &home);
-    bool woke = false;
+    bool rejected = false;
     for (int i = 0; i < 50; ++i) {
-        const int rc = bthread::butex_wake(ctx.butex, true);
-        ASSERT_GE(rc, 0);
-        if (rc == 1) {
-            woke = true;
+        errno = 0;
+        const int rc = CallGenericWakeVariant(variant, ctx.butex, requeue_butex);
+        const int err = errno;
+        if (rc == -1 && err == EINVAL) {
+            rejected = true;
             break;
         }
-        if (ctx.done.load(std::memory_order_acquire) == 1) {
-            break;
-        }
+        ASSERT_EQ(0, rc);
         usleep(1000);
     }
-    ASSERT_TRUE(woke) << "pinned generic butex_wake did not observe waiter in queue";
-    WaitJoinPinnedWaitTaskAndAssert(&ctx, tid, 0, 0, home);
+    ASSERT_TRUE(rejected);
+    ASSERT_EQ(0, ctx.done.load(std::memory_order_acquire));
 
+    bool interrupt_sent = false;
+    for (int i = 0; i < 20 && ctx.done.load(std::memory_order_acquire) == 0; ++i) {
+        ASSERT_EQ(0, bthread_interrupt(tid));
+        interrupt_sent = true;
+        if (WaitAtomicAtLeast(ctx.done, 1, 50)) {
+            break;
+        }
+    }
+    ASSERT_TRUE(interrupt_sent);
+    WaitJoinPinnedWaitTaskAndAssert(&ctx, tid, -1, EINTR, home);
+
+    if (requeue_butex != NULL) {
+        bthread::butex_destroy(requeue_butex);
+    }
     bthread::butex_destroy(ctx.butex);
 }
 
@@ -1233,7 +1278,7 @@ void RunPinnedTimeoutThenWithinWakeReturnsZeroCase() {
     bthread::butex_destroy(ctx.butex);
 }
 
-void RunPinnedGenericWakeThenWithinWakeReturnsZeroCase() {
+void RunPinnedGenericWakeRejectedThenWithinWakeCase() {
     ASSERT_EQ(0, g_register_rc.load(std::memory_order_relaxed));
     bthread::TaskControl& tc = GetSharedTwoWorkerTaskControl();
     bthread::TaskGroup* g1 = NULL;
@@ -1241,32 +1286,50 @@ void RunPinnedGenericWakeThenWithinWakeReturnsZeroCase() {
     ASSERT_TRUE(ChooseTwoDistinctGroups(tc, &g1, &g2));
     PrepareForCase();
 
-    PinnedWaitCtx ctx;
-    ctx.butex = bthread::butex_create();
-    ASSERT_NE(static_cast<void*>(NULL), ctx.butex);
-    static_cast<butil::atomic<int>*>(ctx.butex)->store(0, butil::memory_order_relaxed);
+    void* butex = bthread::butex_create();
+    ASSERT_NE(static_cast<void*>(NULL), butex);
+    static_cast<butil::atomic<int>*>(butex)->store(0, butil::memory_order_relaxed);
+    g_state.butex_ptr.store(reinterpret_cast<uintptr_t>(butex), std::memory_order_relaxed);
+    g_state.butex_expected_waiters.store(1, std::memory_order_relaxed);
 
-    bthread_t tid = INVALID_BTHREAD;
-    uint64_t home = 0;
-    StartPinnedWaitTaskAndWaitReady(g1, &ctx, &tid, &home);
-    bool woke = false;
+    bthread_t waiter_tid = INVALID_BTHREAD;
+    StartTaskOnGroupAndFlush(g1, &waiter_tid, TestPinnedButexLocalWaitTask, NULL);
+    ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_waiter_ready_count, 1, 5000));
+    const uint64_t waiter_worker =
+        g_state.butex_waiter_worker_pthread.load(std::memory_order_relaxed);
+    ASSERT_NE(0u, waiter_worker);
+
+    bool rejected = false;
     for (int i = 0; i < 50; ++i) {
-        const int rc = bthread::butex_wake(ctx.butex, true);
-        ASSERT_GE(rc, 0);
-        if (rc == 1) {
-            woke = true;
+        errno = 0;
+        const int rc = bthread::butex_wake(butex, true);
+        const int err = errno;
+        if (rc == -1 && err == EINVAL) {
+            rejected = true;
             break;
         }
-        if (ctx.done.load(std::memory_order_acquire) == 1) {
-            break;
-        }
+        ASSERT_EQ(0, rc);
         usleep(1000);
     }
-    ASSERT_TRUE(woke);
-    WaitJoinPinnedWaitTaskAndAssert(&ctx, tid, 0, 0, home);
+    ASSERT_TRUE(rejected);
+    ASSERT_EQ(0, g_state.butex_waiter_done_count.load(std::memory_order_relaxed));
 
-    RunHookOnlyWakeCase(TEST_MODE_BUTEX_WAKE_WITHIN_NO_WAITER, ctx.butex, 0, 0);
-    bthread::butex_destroy(ctx.butex);
+    g_state.target_hook_worker_pthread.store(waiter_worker, std::memory_order_relaxed);
+    g_state.mode.store(TEST_MODE_BUTEX_WAKE_WITHIN, std::memory_order_release);
+    tc.signal_task(2, BTHREAD_TAG_DEFAULT);
+    ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_wake_completed, 1, 5000));
+    ASSERT_EQ(1, g_state.butex_wake_rc.load(std::memory_order_relaxed));
+    ASSERT_TRUE(WaitAtomicAtLeast(g_state.butex_waiter_done_count, 1, 5000));
+    ASSERT_EQ(1, g_state.butex_waiter_resume_count.load(std::memory_order_relaxed));
+    ASSERT_EQ(waiter_worker,
+              g_state.butex_waiter_resume_worker_pthread.load(std::memory_order_relaxed));
+
+    ASSERT_EQ(0, bthread_join(waiter_tid, NULL));
+    g_state.mode.store(TEST_MODE_IDLE, std::memory_order_release);
+    g_state.target_hook_worker_pthread.store(0, std::memory_order_relaxed);
+    QuiesceHookActionsAfterModeIdle();
+    g_state.butex_ptr.store(0, std::memory_order_relaxed);
+    bthread::butex_destroy(butex);
 }
 
 void RunPinnedInterruptThenWithinWakeReturnsZeroCase() {
@@ -1479,8 +1542,20 @@ TEST(BthreadActiveTaskTest, pinned_waiter_interrupt_resumes_on_home_worker) {
     RunPinnedInterruptCase();
 }
 
-TEST(BthreadActiveTaskTest, generic_butex_wake_on_pinned_waiter_routes_to_home_worker) {
-    RunPinnedGenericWakeCase();
+TEST(BthreadActiveTaskTest, generic_butex_wake_on_pinned_waiter_is_rejected) {
+    RunPinnedGenericWakeRejectedCase(GENERIC_WAKE);
+}
+
+TEST(BthreadActiveTaskTest, generic_butex_wake_n_on_pinned_waiter_is_rejected) {
+    RunPinnedGenericWakeRejectedCase(GENERIC_WAKE_N);
+}
+
+TEST(BthreadActiveTaskTest, generic_butex_wake_except_on_pinned_waiter_is_rejected) {
+    RunPinnedGenericWakeRejectedCase(GENERIC_WAKE_EXCEPT);
+}
+
+TEST(BthreadActiveTaskTest, generic_butex_requeue_on_pinned_waiter_is_rejected) {
+    RunPinnedGenericWakeRejectedCase(GENERIC_REQUEUE);
 }
 
 TEST(BthreadActiveTaskTest, wake_within_returns_zero_after_timeout_competition) {
@@ -1491,6 +1566,6 @@ TEST(BthreadActiveTaskTest, wake_within_returns_zero_after_interrupt_competition
     RunPinnedInterruptThenWithinWakeReturnsZeroCase();
 }
 
-TEST(BthreadActiveTaskTest, wake_within_returns_zero_after_generic_wake_competition) {
-    RunPinnedGenericWakeThenWithinWakeReturnsZeroCase();
+TEST(BthreadActiveTaskTest, within_wake_succeeds_after_generic_wake_rejected) {
+    RunPinnedGenericWakeRejectedThenWithinWakeCase();
 }

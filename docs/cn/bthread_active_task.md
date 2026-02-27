@@ -38,7 +38,7 @@
 - `harvest` 返回值语义：`0` 表示正常；`1` 表示本轮 worker loop 跳过一次 `ParkingLot::wait`（立即重试）。
 - `bthread_butex_wake_within(ctx, butex)` 只允许在 active-task `harvest` 回调中调用。
 - `bthread_butex_wait_local(...)` 内部会对本次 wait 启用 **隐式 wait-scope 本地化 pin**：
-  - 从进入 wait 到返回（成功/超时/中断/被普通 `butex_wake*` 唤醒）这一段，恢复会被路由回 home worker
+  - 从进入 wait 到返回（成功/超时/中断）这一段，恢复会被路由回 home worker
   - 恢复前不会被 steal
   - 返回后 task 恢复默认调度行为（后续 `yield` 仍可能迁移）
 - `bthread_butex_wake_within` 只适用于“每请求私有 butex（单 waiter）”模型：
@@ -258,7 +258,10 @@ Active-task `harvest` 回调会在 worker 调度循环的多个内部时机被�
 - active-task `bthread_butex_wake_within(...)`
 - timeout（TimerThread）
 - interruption（`bthread_interrupt` / `bthread_stop`）
-- 普通 `butex_wake*`（即使误用普通 wake，也会按 pin 语义回 home worker）
+- `bthread_butex_wake_within(...)` 是外部允许的唯一正常唤醒路径（strict 模式）
+- timeout / interruption 是 runtime 内部路径
+
+strict 模式下，普通 `butex_wake*` 命中 pinned waiter 会返回 `-1/EINVAL`（不做隐式回退）。
 
 因此在这次 `bthread_butex_wait_local(...)` 调用的生命周期内：
 
@@ -293,7 +296,14 @@ Active-task `harvest` 回调会在 worker 调度循环的多个内部时机被�
   - 检查是否误用了多 waiter butex
   - 检查是否在 pthread waiter 上使用了 within wake
   - 检查 tag / `TaskControl` 是否匹配
+  - 检查是否对 `bthread_butex_wait_local` 的 waiter 误用了普通 `butex_wake*`
   - 检查 completion 是否被错误 worker 的 `harvest` 收割（ownership/routing 问题）
+
+可观测计数（累计 bvar）：
+
+- `bthread_butex_strict_reject_count`：普通 `butex_wake*` 命中 pinned waiter 被 strict 拒绝次数
+- `bthread_butex_within_no_waiter_count`：`bthread_butex_wake_within` 返回 `0`（无 waiter）次数
+- `bthread_butex_within_invalid_count`：`bthread_butex_wake_within` 返回 `-1/EINVAL` 次数
 
 ## 注意事项（务必遵守）
 

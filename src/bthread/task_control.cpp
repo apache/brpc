@@ -662,7 +662,8 @@ int64_t TaskControl::get_cumulated_signal_count() {
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     for_each_task_group([&](TaskGroup* g) {
         if (g) {
-            c += g->_nsignaled + g->_remote_nsignaled;
+            c += g->_nsignaled + g->_remote_nsignaled +
+                 g->_pinned_remote_nsignaled;
         }
     });
     return c;

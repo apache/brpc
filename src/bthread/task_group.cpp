@@ -235,6 +235,7 @@ int TaskGroup::butex_wake_within_active_task(const bthread_active_task_ctx_t* ct
 
 int TaskGroup::init_active_tasks_for_worker() {
     _active_task_instances.clear();
+    _has_active_task_harvest = false;
     if (_control == NULL || _control->_active_task_types.empty()) {
         return 0;
     }
@@ -284,6 +285,9 @@ int TaskGroup::init_active_tasks_for_worker() {
             inst.worker_local = worker_local;
         }
         inst.initialized = true;
+        if (inst.type.harvest != NULL) {
+            _has_active_task_harvest = true;
+        }
     }
     return 0;
 }
@@ -306,6 +310,7 @@ void TaskGroup::destroy_active_tasks_for_worker() {
         inst.worker_local = NULL;
     }
     _active_task_instances.clear();
+    _has_active_task_harvest = false;
 }
 
 void TaskGroup::run_active_tasks_harvest(bool* skip_park) {
@@ -340,7 +345,7 @@ void TaskGroup::run_active_tasks_harvest(bool* skip_park) {
 }
 
 bool TaskGroup::wait_task(bthread_t* tid) {
-    if (__builtin_expect(_active_task_instances.empty(), 1)) {
+    if (__builtin_expect(!_has_active_task_harvest, 1)) {
         do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
             if (_last_pl_state.stopped()) {
@@ -364,6 +369,9 @@ bool TaskGroup::wait_task(bthread_t* tid) {
     }
 
     do {
+        if (_pl->get_state().stopped()) {
+            return false;
+        }
         if (pop_next_task_local_first(tid)) {
             return true;
         }
@@ -374,6 +382,9 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         }
         const int64_t idle_wait_ns = FLAGS_bthread_active_task_idle_wait_ns;
         if (harvest_skip_park || idle_wait_ns == 0) {
+            if (_pl->get_state().stopped()) {
+                return false;
+            }
             continue;
         }
         timespec timeout_ts{};
@@ -429,7 +440,7 @@ void TaskGroup::run_main_task() {
         if (_cur_meta->tid != _main_tid) {
             task_runner(1/*skip remained*/);
         }
-        if (!_active_task_instances.empty()) {
+        if (_has_active_task_harvest) {
             const int every_nswitch = FLAGS_bthread_active_task_poll_every_nswitch;
             if (every_nswitch > 0 &&
                 _nswitch - last_active_task_periodic_poll_nswitch >=
@@ -901,6 +912,23 @@ bool TaskGroup::is_locally_pinned_task(const TaskMeta* meta) {
            meta->local_pin_home_group != NULL;
 }
 
+bool TaskGroup::route_to_pinned_home(TaskMeta* meta, bool nosignal) {
+    if (!is_locally_pinned_task(meta)) {
+        return false;
+    }
+    TaskGroup* home = meta->local_pin_home_group;
+    if (home == NULL) {
+        LOG(FATAL) << "Pinned task " << meta->tid << " has NULL home_group";
+        return true;
+    }
+    if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == home) {
+        home->ready_to_run_pinned_local(meta, nosignal);
+    } else {
+        home->ready_to_run_pinned_remote(meta, nosignal);
+    }
+    return true;
+}
+
 bool TaskGroup::pop_next_task_local_first(bthread_t* tid) {
     if (_pinned_rq.pop(tid)) {
         return true;
@@ -1093,14 +1121,7 @@ void TaskGroup::ready_to_run_local_raw(TaskMeta* meta, bool nosignal) {
     _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
 #endif // BRPC_BTHREAD_TRACER
     push_rq(meta->tid);
-    if (nosignal) {
-        ++_num_nosignal;
-    } else {
-        const int additional_signal = _num_nosignal;
-        _num_nosignal = 0;
-        _nsignaled += 1 + additional_signal;
-        _control->signal_task(1 + additional_signal, _tag);
-    }
+    on_local_ready_enqueued(nosignal);
 }
 
 void TaskGroup::ready_to_run_pinned_local(TaskMeta* meta, bool nosignal) {
@@ -1108,6 +1129,10 @@ void TaskGroup::ready_to_run_pinned_local(TaskMeta* meta, bool nosignal) {
     _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
 #endif // BRPC_BTHREAD_TRACER
     push_pinned_rq(meta->tid);
+    on_local_ready_enqueued(nosignal);
+}
+
+void TaskGroup::on_local_ready_enqueued(bool nosignal) {
     if (nosignal) {
         ++_num_nosignal;
     } else {
@@ -1119,17 +1144,7 @@ void TaskGroup::ready_to_run_pinned_local(TaskMeta* meta, bool nosignal) {
 }
 
 void TaskGroup::ready_to_run(TaskMeta* meta, bool nosignal) {
-    if (is_locally_pinned_task(meta)) {
-        TaskGroup* home = meta->local_pin_home_group;
-        if (home == NULL) {
-            LOG(FATAL) << "Pinned task " << meta->tid << " has NULL home_group";
-            return;
-        }
-        if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == home) {
-            home->ready_to_run_pinned_local(meta, nosignal);
-        } else {
-            home->ready_to_run_pinned_remote(meta, nosignal);
-        }
+    if (route_to_pinned_home(meta, nosignal)) {
         return;
     }
     ready_to_run_local_raw(meta, nosignal);
@@ -1144,59 +1159,54 @@ void TaskGroup::flush_nosignal_tasks() {
     }
 }
 
-void TaskGroup::ready_to_run_remote_raw(TaskMeta* meta, bool nosignal) {
+void TaskGroup::on_remote_ready_enqueued(
+        TaskMeta* meta,
+        RemoteTaskQueue* rq,
+        int* num_nosignal,
+        int* nsignaled,
+        bool nosignal,
+        const char* rq_name,
+        void (TaskGroup::*flush_locked)(butil::Mutex&)) {
 #ifdef BRPC_BTHREAD_TRACER
     _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
 #endif // BRPC_BTHREAD_TRACER
-    _remote_rq._mutex.lock();
-    while (!_remote_rq.push_locked(meta->tid)) {
-        flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
-        LOG_EVERY_SECOND(ERROR) << "_remote_rq is full, capacity="
-                                << _remote_rq.capacity();
+    rq->_mutex.lock();
+    while (!rq->push_locked(meta->tid)) {
+        (this->*flush_locked)(rq->_mutex);
+        LOG_EVERY_SECOND(ERROR) << rq_name << " is full, capacity="
+                                << rq->capacity();
         ::usleep(1000);
-        _remote_rq._mutex.lock();
+        rq->_mutex.lock();
     }
     if (nosignal) {
-        ++_remote_num_nosignal;
-        _remote_rq._mutex.unlock();
+        ++*num_nosignal;
+        rq->_mutex.unlock();
     } else {
-        const int additional_signal = _remote_num_nosignal;
-        _remote_num_nosignal = 0;
-        _remote_nsignaled += 1 + additional_signal;
-        _remote_rq._mutex.unlock();
+        const int additional_signal = *num_nosignal;
+        *num_nosignal = 0;
+        *nsignaled += 1 + additional_signal;
+        rq->_mutex.unlock();
         _control->signal_task(1 + additional_signal, _tag);
     }
 }
 
+void TaskGroup::ready_to_run_remote_raw(TaskMeta* meta, bool nosignal) {
+    on_remote_ready_enqueued(meta, &_remote_rq,
+                             &_remote_num_nosignal, &_remote_nsignaled,
+                             nosignal, "_remote_rq",
+                             &TaskGroup::flush_nosignal_tasks_remote_locked);
+}
+
 void TaskGroup::ready_to_run_pinned_remote(TaskMeta* meta, bool nosignal) {
-#ifdef BRPC_BTHREAD_TRACER
-    _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
-#endif // BRPC_BTHREAD_TRACER
-    (void)nosignal;  // correctness first for pinned cross-thread wakeups.
-    _pinned_remote_rq._mutex.lock();
-    while (!_pinned_remote_rq.push_locked(meta->tid)) {
-        _pinned_remote_rq._mutex.unlock();
-        LOG_EVERY_SECOND(ERROR) << "_pinned_remote_rq is full, capacity="
-                                << _pinned_remote_rq.capacity();
-        ::usleep(1000);
-        _pinned_remote_rq._mutex.lock();
-    }
-    _pinned_remote_rq._mutex.unlock();
-    _control->signal_task(1, _tag);
+    on_remote_ready_enqueued(meta, &_pinned_remote_rq,
+                             &_pinned_remote_num_nosignal,
+                             &_pinned_remote_nsignaled,
+                             nosignal, "_pinned_remote_rq",
+                             &TaskGroup::flush_nosignal_tasks_pinned_remote_locked);
 }
 
 void TaskGroup::ready_to_run_remote(TaskMeta* meta, bool nosignal) {
-    if (is_locally_pinned_task(meta)) {
-        TaskGroup* home = meta->local_pin_home_group;
-        if (home == NULL) {
-            LOG(FATAL) << "Pinned task " << meta->tid << " has NULL home_group";
-            return;
-        }
-        if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == home) {
-            home->ready_to_run_pinned_local(meta, nosignal);
-        } else {
-            home->ready_to_run_pinned_remote(meta, nosignal);
-        }
+    if (route_to_pinned_home(meta, nosignal)) {
         return;
     }
     ready_to_run_remote_raw(meta, nosignal);
@@ -1214,24 +1224,28 @@ void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
     _control->signal_task(val, _tag);
 }
 
+void TaskGroup::flush_nosignal_tasks_pinned_remote_locked(butil::Mutex& locked_mutex) {
+    const int val = _pinned_remote_num_nosignal;
+    if (!val) {
+        locked_mutex.unlock();
+        return;
+    }
+    _pinned_remote_num_nosignal = 0;
+    _pinned_remote_nsignaled += val;
+    locked_mutex.unlock();
+    _control->signal_task(val, _tag);
+}
+
 void TaskGroup::ready_to_run_general(TaskMeta* meta, bool nosignal) {
-    if (is_locally_pinned_task(meta)) {
-        TaskGroup* home = meta->local_pin_home_group;
-        if (home == NULL) {
-            LOG(FATAL) << "Pinned task " << meta->tid << " has NULL home_group";
-            return;
-        }
-        if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == home) {
-            home->ready_to_run_pinned_local(meta, nosignal);
-        } else {
-            home->ready_to_run_pinned_remote(meta, nosignal);
-        }
+    if (route_to_pinned_home(meta, nosignal)) {
         return;
     }
     if (tls_task_group == this) {
-        return ready_to_run(meta, nosignal);
+        // route_to_pinned_home() is already checked above.
+        return ready_to_run_local_raw(meta, nosignal);
     }
-    return ready_to_run_remote(meta, nosignal);
+    // route_to_pinned_home() is already checked above.
+    return ready_to_run_remote_raw(meta, nosignal);
 }
 
 void TaskGroup::flush_nosignal_tasks_general() {
@@ -1252,23 +1266,13 @@ void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
 }
 
 void TaskGroup::ready_to_run_ignoresignal_pinaware(TaskMeta* meta) {
+    if (route_to_pinned_home(meta, true)) {
+        return;
+    }
 #ifdef BRPC_BTHREAD_TRACER
     _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
 #endif // BRPC_BTHREAD_TRACER
-    if (!is_locally_pinned_task(meta)) {
-        push_rq(meta->tid);
-        return;
-    }
-    TaskGroup* home = meta->local_pin_home_group;
-    if (home == NULL) {
-        LOG(FATAL) << "Pinned task " << meta->tid << " has NULL home_group";
-        return;
-    }
-    if (this == home) {
-        push_pinned_rq(meta->tid);
-        return;
-    }
-    home->ready_to_run_pinned_remote(meta, true);
+    push_rq(meta->tid);
 }
 
 void TaskGroup::priority_to_run(void* args_in) {

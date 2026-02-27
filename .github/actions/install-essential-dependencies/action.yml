@@ -3,5 +3,23 @@ runs:
   steps:
     - run: ulimit -c unlimited -S && sudo bash -c "echo 'core.%e.%p' > /proc/sys/kernel/core_pattern"
       shell: bash
-    - run: sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+    - run: |
+        set -euo pipefail
+        retry() {
+          local max_retries=3
+          local attempt=1
+          while true; do
+            if "$@"; then
+              return 0
+            fi
+            if [ "${attempt}" -ge "${max_retries}" ]; then
+              return 1
+            fi
+            sleep $((attempt * 10))
+            attempt=$((attempt + 1))
+          done
+        }
+        retry sudo apt-get -o Acquire::Retries=3 update
+        retry sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
       shell: bash
