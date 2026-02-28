@@ -157,6 +157,8 @@ extern int bthread_register_active_task_type(
 // - 1 waiter and it is a same-TaskControl/same-tag bthread waiter: return 1
 // - otherwise (multiple waiters / pthread waiter / cross-tag / cross-control):
 //   return -1 and set errno=EINVAL
+// - owner-local pinned runqueue is full: return -1 and set errno=EAGAIN.
+//   Caller should retry in a later harvest round.
 //
 // Calling this API outside active-task harvest callbacks returns -1 and sets
 // errno=EPERM.

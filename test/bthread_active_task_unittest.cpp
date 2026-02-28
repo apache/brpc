@@ -43,6 +43,7 @@ namespace bthread {
 DECLARE_int32(bthread_active_task_poll_every_nswitch);
 DECLARE_int64(bthread_active_task_idle_wait_ns);
 }
+DECLARE_int32(task_group_runqueue_capacity);
 
 namespace {
 
@@ -57,6 +58,7 @@ enum TestMode {
     TEST_MODE_SCENARIO_REQ_WAKE = 7,
     TEST_MODE_SCENARIO_REQ_WAKE_BUSY_PERIODIC = 8,
     TEST_MODE_BUTEX_WAKE_WITHIN_STRICT_CROSS_WORKER_REJECT = 9,
+    TEST_MODE_BUTEX_WAKE_WITHIN_EAGAIN_WHEN_PINNED_RQ_FULL = 10,
 };
 
 enum GenericWakeVariant {
@@ -107,6 +109,8 @@ struct ActiveTaskTestState {
         , destroy_calls(0)
         , harvest_calls(0)
         , butex_ptr(0)
+        , butex_ptr_aux1(0)
+        , butex_ptr_aux2(0)
         , pending_req_ptr(0)
         , target_hook_worker_pthread(0)
         , butex_expected_waiters(0)
@@ -114,6 +118,10 @@ struct ActiveTaskTestState {
         , butex_wake_completed(0)
         , butex_wake_rc(0)
         , butex_wake_errno(0)
+        , butex_wake_rc_aux1(0)
+        , butex_wake_errno_aux1(0)
+        , butex_wake_rc_aux2(0)
+        , butex_wake_errno_aux2(0)
         , hook_wake_harvest_calls(0)
         , hook_action_inflight(0)
         , butex_waiter_ready_count(0)
@@ -131,6 +139,8 @@ struct ActiveTaskTestState {
     std::atomic<int> destroy_calls;
     std::atomic<int> harvest_calls;
     std::atomic<uintptr_t> butex_ptr;
+    std::atomic<uintptr_t> butex_ptr_aux1;
+    std::atomic<uintptr_t> butex_ptr_aux2;
     std::atomic<uintptr_t> pending_req_ptr;
     std::atomic<uint64_t> target_hook_worker_pthread;
     std::atomic<int> butex_expected_waiters;
@@ -138,6 +148,10 @@ struct ActiveTaskTestState {
     std::atomic<int> butex_wake_completed;
     std::atomic<int> butex_wake_rc;
     std::atomic<int> butex_wake_errno;
+    std::atomic<int> butex_wake_rc_aux1;
+    std::atomic<int> butex_wake_errno_aux1;
+    std::atomic<int> butex_wake_rc_aux2;
+    std::atomic<int> butex_wake_errno_aux2;
     std::atomic<int> hook_wake_harvest_calls;
     std::atomic<int> hook_action_inflight;
     std::atomic<int> butex_waiter_ready_count;
@@ -187,6 +201,8 @@ void ResetState() {
     g_state.destroy_calls.store(0, std::memory_order_relaxed);
     g_state.harvest_calls.store(0, std::memory_order_relaxed);
     g_state.butex_ptr.store(0, std::memory_order_relaxed);
+    g_state.butex_ptr_aux1.store(0, std::memory_order_relaxed);
+    g_state.butex_ptr_aux2.store(0, std::memory_order_relaxed);
     g_state.pending_req_ptr.store(0, std::memory_order_relaxed);
     g_state.target_hook_worker_pthread.store(0, std::memory_order_relaxed);
     g_state.butex_expected_waiters.store(0, std::memory_order_relaxed);
@@ -194,6 +210,10 @@ void ResetState() {
     g_state.butex_wake_completed.store(0, std::memory_order_relaxed);
     g_state.butex_wake_rc.store(0, std::memory_order_relaxed);
     g_state.butex_wake_errno.store(0, std::memory_order_relaxed);
+    g_state.butex_wake_rc_aux1.store(0, std::memory_order_relaxed);
+    g_state.butex_wake_errno_aux1.store(0, std::memory_order_relaxed);
+    g_state.butex_wake_rc_aux2.store(0, std::memory_order_relaxed);
+    g_state.butex_wake_errno_aux2.store(0, std::memory_order_relaxed);
     g_state.hook_wake_harvest_calls.store(0, std::memory_order_relaxed);
     g_state.butex_waiter_ready_count.store(0, std::memory_order_relaxed);
     g_state.butex_waiter_done_count.store(0, std::memory_order_relaxed);
@@ -231,6 +251,23 @@ bool WaitAtomicEqual(const std::atomic<int>& value, int expected, int timeout_ms
         usleep(1000);
     }
     return value.load(std::memory_order_relaxed) == expected;
+}
+
+bool WaitPinnedButexQueued(void* butex, int timeout_ms) {
+    for (int i = 0; i < timeout_ms; ++i) {
+        errno = 0;
+        const int rc = bthread::butex_wake(butex, true);
+        const int err = errno;
+        if (rc == -1 && err == EINVAL) {
+            return true;
+        }
+        if (rc == 0) {
+            usleep(1000);
+            continue;
+        }
+        return false;
+    }
+    return false;
 }
 
 void DrainHookActions() {
@@ -414,7 +451,8 @@ bool MaybeRunWithinWakeFromHook(const bthread_active_task_ctx_t* ctx,
         mode != TEST_MODE_BUSY_PERIODIC_POLL_WAKE &&
         mode != TEST_MODE_SCENARIO_REQ_WAKE &&
         mode != TEST_MODE_SCENARIO_REQ_WAKE_BUSY_PERIODIC &&
-        mode != TEST_MODE_BUTEX_WAKE_WITHIN_STRICT_CROSS_WORKER_REJECT) {
+        mode != TEST_MODE_BUTEX_WAKE_WITHIN_STRICT_CROSS_WORKER_REJECT &&
+        mode != TEST_MODE_BUTEX_WAKE_WITHIN_EAGAIN_WHEN_PINNED_RQ_FULL) {
         return false;
     }
 
@@ -430,6 +468,7 @@ bool MaybeRunWithinWakeFromHook(const bthread_active_task_ctx_t* ctx,
 
     if (mode == TEST_MODE_BUTEX_WAKE_WITHIN ||
         mode == TEST_MODE_BUTEX_WAKE_WITHIN_STRICT_CROSS_WORKER_REJECT ||
+        mode == TEST_MODE_BUTEX_WAKE_WITHIN_EAGAIN_WHEN_PINNED_RQ_FULL ||
         mode == TEST_MODE_BUSY_PERIODIC_POLL_WAKE) {
         const int expected_waiters =
             g_state.butex_expected_waiters.load(std::memory_order_relaxed);
@@ -461,6 +500,42 @@ bool MaybeRunWithinWakeFromHook(const bthread_active_task_ctx_t* ctx,
 
     void* butex = NULL;
     MockReqCtx* req = NULL;
+    if (mode == TEST_MODE_BUTEX_WAKE_WITHIN_EAGAIN_WHEN_PINNED_RQ_FULL) {
+        void* butex0 = reinterpret_cast<void*>(
+            g_state.butex_ptr.load(std::memory_order_relaxed));
+        void* butex1 = reinterpret_cast<void*>(
+            g_state.butex_ptr_aux1.load(std::memory_order_relaxed));
+        void* butex2 = reinterpret_cast<void*>(
+            g_state.butex_ptr_aux2.load(std::memory_order_relaxed));
+        errno = 0;
+        const int rc0 = bthread_butex_wake_within(ctx, butex0);
+        const int err0 = errno;
+        errno = 0;
+        const int rc1 = bthread_butex_wake_within(ctx, butex1);
+        const int err1 = errno;
+        errno = 0;
+        const int rc2 = bthread_butex_wake_within(ctx, butex2);
+        const int err2 = errno;
+
+        g_state.butex_wake_rc.store(rc0, std::memory_order_relaxed);
+        g_state.butex_wake_errno.store(err0, std::memory_order_relaxed);
+        g_state.butex_wake_rc_aux1.store(rc1, std::memory_order_relaxed);
+        g_state.butex_wake_errno_aux1.store(err1, std::memory_order_relaxed);
+        g_state.butex_wake_rc_aux2.store(rc2, std::memory_order_relaxed);
+        g_state.butex_wake_errno_aux2.store(err2, std::memory_order_relaxed);
+
+        if (!(rc0 == 1 && rc1 == 1 && rc2 == -1 && err2 == EAGAIN)) {
+            // setup race: retry in next harvest round.
+            g_state.butex_wake_started.store(0, std::memory_order_relaxed);
+            return true;
+        }
+        g_state.butex_wake_completed.fetch_add(1, std::memory_order_relaxed);
+        if (skip_park_out) {
+            *skip_park_out = true;
+        }
+        return true;
+    }
+
     if (is_scenario_req_wake) {
         req = reinterpret_cast<MockReqCtx*>(
             g_state.pending_req_ptr.load(std::memory_order_acquire));
@@ -616,6 +691,128 @@ int ChildCheckLocalWorkerInitDestroyAndIdleWaitInterval() {
         }
     }
     return (g_state.destroy_calls.load(std::memory_order_relaxed) == 2 ? 0 : 24);
+}
+
+int ChildCheckWakeWithinEagainWhenPinnedRqFull() {
+    if (g_register_rc.load(std::memory_order_relaxed) != 0) {
+        return 30;
+    }
+    const int32_t old_runqueue_capacity = FLAGS_task_group_runqueue_capacity;
+    FLAGS_task_group_runqueue_capacity = 2;
+
+    int ret = 0;
+    PrepareForCase();
+    {
+        bthread::TaskControl tc;
+        if (tc.init(1) != 0) {
+            ret = 31;
+        } else if (!WaitAtomicAtLeast(g_state.init_calls, 1, 5000)) {
+            ret = 32;
+        } else {
+            bthread::TaskGroup* tg = tc.choose_one_group(BTHREAD_TAG_DEFAULT);
+            if (tg == NULL) {
+                ret = 33;
+            } else {
+                PinnedWaitCtx ctx[3];
+                bthread_t tids[3] = {
+                    INVALID_BTHREAD, INVALID_BTHREAD, INVALID_BTHREAD };
+                void* butexes[3] = { NULL, NULL, NULL };
+                for (int i = 0; i < 3; ++i) {
+                    butexes[i] = bthread::butex_create();
+                    if (butexes[i] == NULL) {
+                        ret = 34;
+                        break;
+                    }
+                    static_cast<butil::atomic<int>*>(butexes[i])->store(
+                        0, butil::memory_order_relaxed);
+                    ctx[i].butex = butexes[i];
+                    if (tg->start_background<true>(&tids[i], NULL,
+                                                   TestPinnedWaitTask, &ctx[i]) != 0) {
+                        ret = 35;
+                        break;
+                    }
+                    tg->flush_nosignal_tasks();
+                    if (!WaitAtomicAtLeast(ctx[i].ready, 1, 5000)) {
+                        ret = 36;
+                        break;
+                    }
+                    if (!WaitPinnedButexQueued(butexes[i], 5000)) {
+                        ret = 37;
+                        break;
+                    }
+                }
+
+                if (ret == 0) {
+                    const uint64_t home = ctx[0].pinned_worker_pthread.load(
+                        std::memory_order_relaxed);
+                    if (home == 0) {
+                        ret = 38;
+                    } else {
+                        g_state.butex_ptr.store(reinterpret_cast<uintptr_t>(butexes[0]),
+                                                std::memory_order_relaxed);
+                        g_state.butex_ptr_aux1.store(reinterpret_cast<uintptr_t>(butexes[1]),
+                                                     std::memory_order_relaxed);
+                        g_state.butex_ptr_aux2.store(reinterpret_cast<uintptr_t>(butexes[2]),
+                                                     std::memory_order_relaxed);
+                        g_state.butex_expected_waiters.store(0, std::memory_order_relaxed);
+                        g_state.target_hook_worker_pthread.store(home,
+                                                                 std::memory_order_relaxed);
+                        g_state.mode.store(
+                            TEST_MODE_BUTEX_WAKE_WITHIN_EAGAIN_WHEN_PINNED_RQ_FULL,
+                            std::memory_order_release);
+                        tc.signal_task(1, BTHREAD_TAG_DEFAULT);
+                        if (!WaitAtomicAtLeast(g_state.butex_wake_completed, 1, 5000)) {
+                            ret = 39;
+                        } else if (g_state.butex_wake_rc.load(std::memory_order_relaxed) != 1 ||
+                                   g_state.butex_wake_rc_aux1.load(std::memory_order_relaxed) != 1 ||
+                                   g_state.butex_wake_rc_aux2.load(std::memory_order_relaxed) != -1 ||
+                                   g_state.butex_wake_errno_aux2.load(std::memory_order_relaxed) != EAGAIN) {
+                            ret = 40;
+                        } else {
+                            g_state.mode.store(TEST_MODE_IDLE, std::memory_order_release);
+                            QuiesceHookActionsAfterModeIdle();
+                            g_state.butex_wake_started.store(0, std::memory_order_relaxed);
+                            g_state.butex_wake_completed.store(0, std::memory_order_relaxed);
+                            g_state.butex_wake_rc.store(0, std::memory_order_relaxed);
+                            g_state.butex_wake_errno.store(0, std::memory_order_relaxed);
+                            g_state.target_hook_worker_pthread.store(home,
+                                                                     std::memory_order_relaxed);
+                            g_state.butex_ptr.store(
+                                reinterpret_cast<uintptr_t>(butexes[2]),
+                                std::memory_order_relaxed);
+                            g_state.mode.store(TEST_MODE_BUTEX_WAKE_WITHIN,
+                                               std::memory_order_release);
+                            tc.signal_task(1, BTHREAD_TAG_DEFAULT);
+                            if (!WaitAtomicAtLeast(g_state.butex_wake_completed, 1, 5000)) {
+                                ret = 41;
+                            } else if (g_state.butex_wake_rc.load(std::memory_order_relaxed) != 1) {
+                                ret = 42;
+                            }
+                        }
+                    }
+                }
+
+                g_state.mode.store(TEST_MODE_IDLE, std::memory_order_release);
+                g_state.target_hook_worker_pthread.store(0, std::memory_order_relaxed);
+                QuiesceHookActionsAfterModeIdle();
+                for (int i = 0; i < 3; ++i) {
+                    if (tids[i] != INVALID_BTHREAD) {
+                        if (bthread_join(tids[i], NULL) != 0 && ret == 0) {
+                            ret = 43;
+                        }
+                    }
+                    if (butexes[i] != NULL) {
+                        bthread::butex_destroy(butexes[i]);
+                    }
+                }
+                g_state.butex_ptr.store(0, std::memory_order_relaxed);
+                g_state.butex_ptr_aux1.store(0, std::memory_order_relaxed);
+                g_state.butex_ptr_aux2.store(0, std::memory_order_relaxed);
+            }
+        }
+    }
+    FLAGS_task_group_runqueue_capacity = old_runqueue_capacity;
+    return ret;
 }
 
 int RunChildMode(const char* mode) {
@@ -1426,6 +1623,9 @@ public:
             if (strcmp(child_mode, "local_worker_init_destroy_and_idle_wait_interval") == 0) {
                 _exit(ChildCheckLocalWorkerInitDestroyAndIdleWaitInterval());
             }
+            if (strcmp(child_mode, "wake_within_eagain_when_pinned_rq_full") == 0) {
+                _exit(ChildCheckWakeWithinEagainWhenPinnedRqFull());
+            }
             _exit(100);
         }
     }
@@ -1466,6 +1666,10 @@ TEST(BthreadActiveTaskTest, butex_wake_within_no_waiter_returns_zero_in_hook) {
     static_cast<butil::atomic<int>*>(butex)->store(0, butil::memory_order_relaxed);
     RunHookOnlyWakeCase(TEST_MODE_BUTEX_WAKE_WITHIN_NO_WAITER, butex, 0, 0);
     bthread::butex_destroy(butex);
+}
+
+TEST(BthreadActiveTaskTest, butex_wake_within_returns_eagain_when_pinned_rq_full) {
+    ASSERT_EQ(0, RunChildMode("wake_within_eagain_when_pinned_rq_full"));
 }
 
 TEST(BthreadActiveTaskTest, butex_wake_within_multiple_waiters_rejected) {

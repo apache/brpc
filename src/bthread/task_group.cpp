@@ -912,6 +912,10 @@ bool TaskGroup::is_locally_pinned_task(const TaskMeta* meta) {
            meta->local_pin_home_group != NULL;
 }
 
+bool TaskGroup::pinned_rq_full() const {
+    return _pinned_rq.volatile_size() >= _pinned_rq.capacity();
+}
+
 bool TaskGroup::route_to_pinned_home(TaskMeta* meta, bool nosignal) {
     if (!is_locally_pinned_task(meta)) {
         return false;

@@ -396,6 +396,14 @@ int butex_wake_to_task_group(void* arg, TaskGroup* target_group) {
             errno = EINVAL;
             return -1;
         }
+        // wake_within() runs on target_group's owner worker. For pinned waiters,
+        // if owner-local pinned runqueue is already full, report EAGAIN and
+        // keep waiter on butex list for next harvest retry, instead of
+        // blocking/spinning here.
+        if (is_pinned_waiter(bw) && target_group->pinned_rq_full()) {
+            errno = EAGAIN;
+            return -1;
+        }
         bw->RemoveFromList();
         bw->container.store(NULL, butil::memory_order_relaxed);
     }

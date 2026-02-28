@@ -44,6 +44,7 @@
 - `bthread_butex_wake_within` 只适用于“每请求私有 butex（单 waiter）”模型：
   - 0 waiter -> 返回 `0`
   - 1 waiter（同 `TaskControl`、同 tag 的 bthread waiter）-> 返回 `1`
+  - 当前 worker 的 pinned local runqueue 已满 -> 返回 `-1` 且 `errno=EAGAIN`（应在下一轮 `harvest` 重试）
   - 否则返回 `-1` 且 `errno=EINVAL`（多 waiter / pthread waiter / 跨 tag / 跨 `TaskControl`）
 
 ## 快速上手（推荐接入顺序）
@@ -214,12 +215,14 @@ static int IoHarvest(
 - 返回 `0`：当前 butex 上没有 waiter（例如 timeout/取消竞争后已无人等待）
 - 返回 `-1`：
   - `EPERM`：不在 active-task `harvest` 回调里调用
+  - `EAGAIN`：当前 worker 的 pinned local runqueue 满，当前轮无法安全入队，应下一轮重试
   - `EINVAL`：butex 不满足 within 语义（多 waiter / pthread waiter / 跨 tag / 跨 `TaskControl`），或 wrong-worker invariant 被触发
 
 建议：
 
 - `wake_rc == 0` 当作**合法分支**处理（不是异常）
-- `wake_rc < 0` 视为**用法/所有权错误**并记录错误日志或计数
+- `wake_rc < 0 && errno == EAGAIN` 视为**背压信号**，本轮放弃，下一轮 `harvest` 重试
+- 其他 `wake_rc < 0` 视为**用法/所有权错误**并记录错误日志或计数
 
 ## 调用时机与可调间隔（busy/idle）
 

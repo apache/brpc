@@ -221,6 +221,10 @@ public:
     size_t rq_size() const {
         return _rq.volatile_size();
     }
+    // Returns true when owner-local pinned runqueue is full.
+    // This is intended for non-blocking wake paths that must not spin
+    // inside active-task hook callbacks.
+    bool pinned_rq_full() const;
 
     bthread_tag_t tag() const { return _tag; }
 
