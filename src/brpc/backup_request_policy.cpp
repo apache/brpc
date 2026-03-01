@@ -45,7 +45,9 @@ public:
 
     // All atomic operations use relaxed ordering intentionally.
     // This is best-effort rate limiting: a slightly stale ratio is
-    // acceptable for approximate throttling.
+    // acceptable for approximate throttling. Within a single update interval,
+    // the cached ratio is not updated, so bursts up to update_interval_seconds
+    // in duration can exceed the configured max_backup_ratio transiently.
     bool ShouldAllow() const {
         const int64_t now_us = butil::cpuwide_time_us();
         int64_t last_us = _last_update_us.load(butil::memory_order_relaxed);

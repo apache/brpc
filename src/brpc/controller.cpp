@@ -354,7 +354,9 @@ int64_t Controller::backup_request_ms() const {
     int timeout_ms = _backup_request_ms;
     if (NULL != _backup_request_policy) {
         const int32_t policy_ms = _backup_request_policy->GetBackupRequestMs(this);
-        // -1 means the policy defers to the channel-level backup_request_ms.
+        // Any negative value means the policy defers to the channel-level
+        // backup_request_ms (set from ChannelOptions). The canonical sentinel
+        // is -1, but all negative values are treated the same way.
         if (policy_ms >= 0) {
             timeout_ms = policy_ms;
         }
