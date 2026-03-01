@@ -60,15 +60,14 @@ opts.window_size_seconds = 10;     // sliding window width in seconds
 opts.update_interval_seconds = 5;  // how often the cached ratio is refreshed
 
 // The caller owns the returned pointer.
-// Use unique_ptr to manage the lifetime; ensure the policy outlives the channel.
+// The policy must outlive the channel — destroy the channel before the policy.
 std::unique_ptr<brpc::BackupRequestPolicy> policy(
     brpc::CreateRateLimitedBackupPolicy(opts));
 
 brpc::ChannelOptions options;
 options.backup_request_policy = policy.get(); // NOT owned by channel
 channel.Init(..., &options);
-// policy is released automatically when unique_ptr goes out of scope,
-// as long as it outlives the channel.
+// channel must be destroyed before policy goes out of scope.
 ```
 
 `RateLimitedBackupPolicyOptions` fields:

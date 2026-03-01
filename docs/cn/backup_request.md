@@ -60,14 +60,14 @@ opts.window_size_seconds = 10;     // 滑动窗口宽度（秒）
 opts.update_interval_seconds = 5;  // 缓存比例的刷新间隔（秒）
 
 // CreateRateLimitedBackupPolicy返回的指针由调用方负责释放。
-// 推荐使用unique_ptr管理生命周期，确保policy在Channel销毁后才释放。
+// policy的生命周期必须长于channel——先销毁channel，再销毁policy。
 std::unique_ptr<brpc::BackupRequestPolicy> policy(
     brpc::CreateRateLimitedBackupPolicy(opts));
 
 brpc::ChannelOptions options;
 options.backup_request_policy = policy.get(); // Channel不拥有该对象
 channel.Init(..., &options);
-// policy在unique_ptr析构时自动释放，确保其生命周期长于channel即可。
+// channel必须在policy析构之前销毁。
 ```
 
 参数说明（`RateLimitedBackupPolicyOptions`）：
