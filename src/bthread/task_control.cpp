@@ -109,7 +109,9 @@ void* TaskControl::worker_thread(void* arg) {
 
     int worker_id = c->_next_worker_id.fetch_add(
                         1, butil::memory_order_relaxed);
+    int bound_cpu = -1;
     if (!c->_cpus.empty()) {
+        bound_cpu = static_cast<int>(c->_cpus[worker_id % c->_cpus.size()]);
         bind_thread_to_cpu(pthread_self(), c->_cpus[worker_id % c->_cpus.size()]);
     }
     if (FLAGS_task_group_set_worker_name) {
@@ -119,11 +121,19 @@ void* TaskControl::worker_thread(void* arg) {
     }
     BT_VLOG << "Created worker=" << pthread_self() << " tid=" << g->_tid
             << " bthread=" << g->main_tid() << " tag=" << g->tag();
+    g->_worker_index = worker_id;
+    g->_bound_cpu = bound_cpu;
     tls_task_group = g;
+    if (g->init_active_tasks_for_worker() != 0) {
+        LOG(FATAL) << "Fail to init active tasks in pthread=" << pthread_self();
+        return NULL;
+    }
     c->_nworkers << 1;
     c->tag_nworkers(g->tag()) << 1;
 
     g->run_main_task();
+
+    g->destroy_active_tasks_for_worker();
 
     stat = g->main_stat();
     BT_VLOG << "Destroying worker=" << pthread_self() << " bthread="
@@ -227,6 +237,8 @@ int TaskControl::init(int concurrency) {
             return -1;
         }
     }
+
+    get_active_task_types_snapshot(&_active_task_types);
 
     // task group group by tags
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
@@ -627,7 +639,9 @@ double TaskControl::get_cumulated_worker_time(bthread_tag_t tag) {
     const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_relaxed);
     auto& groups = tag_group(tag);
     for (size_t i = 0; i < ngroup; ++i) {
-        cputime_ns += groups[i]->cumulated_cputime_ns();
+        if (groups[i]) {
+            cputime_ns += groups[i]->cumulated_cputime_ns();
+        }
     }
     return cputime_ns / 1000000000.0;
 }
@@ -648,7 +662,8 @@ int64_t TaskControl::get_cumulated_signal_count() {
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     for_each_task_group([&](TaskGroup* g) {
         if (g) {
-            c += g->_nsignaled + g->_remote_nsignaled;
+            c += g->_nsignaled + g->_remote_nsignaled +
+                 g->_pinned_remote_nsignaled;
         }
     });
     return c;

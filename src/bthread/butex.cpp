@@ -24,11 +24,12 @@
 #include "butil/macros.h"
 #include "butil/containers/flat_map.h"
 #include "butil/containers/linked_list.h"   // LinkNode
-#ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
 #include "butil/memory/singleton_on_pthread_once.h"
+#ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
 #endif
 #include "butil/logging.h"
 #include "butil/object_pool.h"
+#include "bvar/bvar.h"
 #include "bthread/errno.h"                 // EWOULDBLOCK
 #include "bthread/sys_futex.h"             // futex_*
 #include "bthread/processor.h"             // cpu_relax
@@ -68,6 +69,60 @@ inline bvar::Adder<int64_t>& butex_waiter_count() {
 }
 #endif
 
+struct ButexStrictRejectCount : public bvar::Adder<int64_t> {
+    ButexStrictRejectCount()
+        : bvar::Adder<int64_t>("bthread_butex_strict_reject_count") {}
+};
+
+struct ButexWithinNoWaiterCount : public bvar::Adder<int64_t> {
+    ButexWithinNoWaiterCount()
+        : bvar::Adder<int64_t>("bthread_butex_within_no_waiter_count") {}
+};
+
+struct ButexWithinInvalidCount : public bvar::Adder<int64_t> {
+    ButexWithinInvalidCount()
+        : bvar::Adder<int64_t>("bthread_butex_within_invalid_count") {}
+};
+
+struct ButexWithinSuccessCount : public bvar::Adder<int64_t> {
+    ButexWithinSuccessCount()
+        : bvar::Adder<int64_t>("bthread_butex_within_success_count") {}
+};
+
+struct ButexWithinEagainCount : public bvar::Adder<int64_t> {
+    ButexWithinEagainCount()
+        : bvar::Adder<int64_t>("bthread_butex_within_eagain_count") {}
+};
+
+struct ButexWithinPinnedSuccessCount : public bvar::Adder<int64_t> {
+    ButexWithinPinnedSuccessCount()
+        : bvar::Adder<int64_t>("bthread_butex_within_pinned_success_count") {}
+};
+
+inline bvar::Adder<int64_t>& butex_strict_reject_count() {
+    return *butil::get_leaky_singleton<ButexStrictRejectCount>();
+}
+
+inline bvar::Adder<int64_t>& butex_within_no_waiter_count() {
+    return *butil::get_leaky_singleton<ButexWithinNoWaiterCount>();
+}
+
+inline bvar::Adder<int64_t>& butex_within_invalid_count() {
+    return *butil::get_leaky_singleton<ButexWithinInvalidCount>();
+}
+
+inline bvar::Adder<int64_t>& butex_within_success_count() {
+    return *butil::get_leaky_singleton<ButexWithinSuccessCount>();
+}
+
+inline bvar::Adder<int64_t>& butex_within_eagain_count() {
+    return *butil::get_leaky_singleton<ButexWithinEagainCount>();
+}
+
+inline bvar::Adder<int64_t>& butex_within_pinned_success_count() {
+    return *butil::get_leaky_singleton<ButexWithinPinnedSuccessCount>();
+}
+
 enum WaiterState {
     WAITER_STATE_NONE,
     WAITER_STATE_READY,
@@ -95,6 +150,7 @@ struct ButexBthreadWaiter : public ButexWaiter {
     WaiterState waiter_state;
     int expected_value;
     Butex* initial_butex;
+    TaskGroup* home_group;
     TaskControl* control;
     const timespec* abstime;
     bthread_tag_t tag;
@@ -295,11 +351,100 @@ inline TaskGroup* get_task_group(TaskControl* c, bthread_tag_t tag) {
 }
 
 inline void run_in_local_task_group(TaskGroup* g, TaskMeta* next_meta, bool nosignal) {
+    // Pinned tasks must go through pin-aware routing even on same-tag local fast
+    // paths, otherwise TaskGroup::exchange() may resume them on the wrong worker.
+    if (next_meta->local_pin_enabled && next_meta->local_pin_depth > 0) {
+        g->ready_to_run(next_meta, nosignal);
+        return;
+    }
     if (!nosignal) {
         TaskGroup::exchange(&g, next_meta);
     } else {
         g->ready_to_run(next_meta, nosignal);
     }
+}
+
+inline bool is_pinned_waiter(const ButexWaiter* bw) {
+    if (bw == NULL || bw->tid == 0) {
+        return false;
+    }
+    const ButexBthreadWaiter* bbw = static_cast<const ButexBthreadWaiter*>(bw);
+    const TaskMeta* meta = bbw->task_meta;
+    return meta != NULL && meta->local_pin_enabled && meta->local_pin_depth > 0;
+}
+
+template <typename ShouldCheck>
+inline bool reject_if_selected_contains_pinned(ButexWaiterList* waiters,
+                                                const ShouldCheck& should_check) {
+    size_t index = 0;
+    for (butil::LinkNode<ButexWaiter>* p = waiters->head();
+         p != waiters->end(); p = p->next(), ++index) {
+        ButexWaiter* bw = p->value();
+        if (should_check(bw, index) && is_pinned_waiter(bw)) {
+            butex_strict_reject_count() << 1;
+            errno = EINVAL;
+            return true;
+        }
+    }
+    return false;
+}
+
+int butex_wake_to_task_group(void* arg, TaskGroup* target_group) {
+    if (arg == NULL || target_group == NULL) {
+        butex_within_invalid_count() << 1;
+        errno = EINVAL;
+        return -1;
+    }
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
+    ButexBthreadWaiter* bbw = NULL;
+    bool pinned_waiter = false;
+    {
+        BAIDU_SCOPED_LOCK(b->waiter_lock);
+        if (b->waiters.empty()) {
+            butex_within_no_waiter_count() << 1;
+            return 0;
+        }
+        butil::LinkNode<ButexWaiter>* head = b->waiters.head();
+        if (head->next() != b->waiters.end()) {
+            butex_within_invalid_count() << 1;
+            errno = EINVAL;
+            return -1;
+        }
+        ButexWaiter* bw = head->value();
+        if (bw->tid == 0) {
+            butex_within_invalid_count() << 1;
+            errno = EINVAL;
+            return -1;
+        }
+        bbw = static_cast<ButexBthreadWaiter*>(bw);
+        if (bbw->home_group != target_group ||
+            bbw->control != target_group->control() ||
+            bbw->tag != target_group->tag()) {
+            butex_within_invalid_count() << 1;
+            errno = EINVAL;
+            return -1;
+        }
+        pinned_waiter = is_pinned_waiter(bw);
+        // wake_within() runs on target_group's owner worker. For pinned waiters,
+        // if owner-local pinned runqueue is already full, report EAGAIN and
+        // keep waiter on butex list for next harvest retry, instead of
+        // blocking/spinning here.
+        if (pinned_waiter && target_group->pinned_rq_full()) {
+            butex_within_eagain_count() << 1;
+            errno = EAGAIN;
+            return -1;
+        }
+        bw->RemoveFromList();
+        bw->container.store(NULL, butil::memory_order_relaxed);
+    }
+
+    unsleep_if_necessary(bbw, get_global_timer_thread());
+    target_group->ready_to_run(bbw->task_meta, true);
+    butex_within_success_count() << 1;
+    if (pinned_waiter) {
+        butex_within_pinned_success_count() << 1;
+    }
+    return 1;
 }
 
 int butex_wake(void* arg, bool nosignal) {
@@ -311,6 +456,11 @@ int butex_wake(void* arg, bool nosignal) {
             return 0;
         }
         front = b->waiters.head()->value();
+        if (is_pinned_waiter(front)) {
+            butex_strict_reject_count() << 1;
+            errno = EINVAL;
+            return -1;
+        }
         front->RemoveFromList();
         front->container.store(NULL, butil::memory_order_relaxed);
     }
@@ -336,6 +486,13 @@ int butex_wake_n(void* arg, size_t n, bool nosignal) {
     ButexWaiterList pthread_waiters;
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
+        if (reject_if_selected_contains_pinned(
+                    &b->waiters,
+                    [n](const ButexWaiter*, size_t index) {
+                        return n == 0 || index < n;
+                    })) {
+            return -1;
+        }
         for (size_t i = 0; (n == 0 || i < n) && !b->waiters.empty(); ++i) {
             ButexWaiter* bw = b->waiters.head()->value();
             bw->RemoveFromList();
@@ -405,6 +562,13 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
     {
         ButexWaiter* excluded_waiter = NULL;
         BAIDU_SCOPED_LOCK(b->waiter_lock);
+        if (reject_if_selected_contains_pinned(
+                    &b->waiters,
+                    [excluded_bthread](const ButexWaiter* bw, size_t) {
+                        return bw->tid != 0 && bw->tid != excluded_bthread;
+                    })) {
+            return -1;
+        }
         while (!b->waiters.empty()) {
             ButexWaiter* bw = b->waiters.head()->value();
             bw->RemoveFromList();
@@ -470,6 +634,11 @@ int butex_requeue(void* arg, void* arg2) {
         if (b->waiters.empty()) {
             return 0;
         }
+        if (reject_if_selected_contains_pinned(
+                    &b->waiters,
+                    [](const ButexWaiter*, size_t) { return true; })) {
+            return -1;
+        }
 
         front = b->waiters.head()->value();
         front->RemoveFromList();
@@ -490,10 +659,10 @@ int butex_requeue(void* arg, void* arg2) {
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
     auto g = is_same_tag(bbw->tag) ? tls_task_group : NULL;
-    if (g) {
+    if (g && !(bbw->task_meta->local_pin_enabled && bbw->task_meta->local_pin_depth > 0)) {
         TaskGroup::exchange(&g, bbw->task_meta);
     } else {
-        bbw->control->choose_one_group(bbw->tag)->ready_to_run_remote(bbw->task_meta);
+        get_task_group(bbw->control, bbw->tag)->ready_to_run_general(bbw->task_meta);
     }
     return 1;
 }
@@ -566,6 +735,9 @@ void wait_for_butex(void* arg) {
     // value.
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
+        if (bw->task_meta->local_pin_enabled && bw->task_meta->local_pin_depth > 0) {
+            DCHECK_EQ(bw->task_meta->local_pin_home_group, bw->home_group);
+        }
         if (b->value.load(butil::memory_order_relaxed) != bw->expected_value) {
             bw->waiter_state = WAITER_STATE_UNMATCHEDVALUE;
         } else if (bw->waiter_state == WAITER_STATE_READY/*1*/ &&
@@ -680,15 +852,27 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime, bool prep
     if (NULL == g || g->is_current_pthread_task()) {
         return butex_wait_from_pthread(g, b, expected_value, abstime, prepend);
     }
+    TaskMeta* current = g->current_task();
+    if (current->local_pin_enabled && current->local_pin_depth > 0) {
+        if (current->local_pin_home_group != g ||
+            current->local_pin_home_control != g->control() ||
+            current->local_pin_home_tag != g->tag()) {
+            errno = EPERM;
+            return -1;
+        }
+    }
     ButexBthreadWaiter bbw;
     // tid is 0 iff the thread is non-bthread
     bbw.tid = g->current_tid();
     bbw.container.store(NULL, butil::memory_order_relaxed);
-    bbw.task_meta = g->current_task();
+    bbw.task_meta = current;
     bbw.sleep_id = 0;
     bbw.waiter_state = WAITER_STATE_READY;
     bbw.expected_value = expected_value;
     bbw.initial_butex = b;
+    bbw.home_group = (current->local_pin_enabled && current->local_pin_depth > 0)
+                         ? current->local_pin_home_group
+                         : g;
     bbw.control = g->control();
     bbw.abstime = abstime;
     bbw.tag = g->tag();

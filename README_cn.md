@@ -38,6 +38,7 @@
     * [bthread or not](docs/cn/bthread_or_not.md)
     * [thread-local](docs/cn/thread_local.md)
     * [Execution Queue](docs/cn/execution_queue.md)
+    * [Active Task（实验性）](docs/cn/bthread_active_task.md)
     * [bthread tracer](docs/cn/bthread_tracer.md)
   * Client
     * [基础功能](docs/cn/client.md)
