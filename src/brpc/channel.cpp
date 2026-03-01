@@ -242,6 +242,7 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
     if (!cg.empty() && (::isspace(cg.front()) || ::isspace(cg.back()))) {
         butil::TrimWhitespace(cg, butil::TRIM_ALL, &cg);
     }
+
     return 0;
 }
 

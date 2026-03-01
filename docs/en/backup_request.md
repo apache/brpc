@@ -39,6 +39,80 @@ my_func_latency << tm.u_elapsed();  // u represents for microsecond, and s_elaps
 // All work is done here. My_func_qps, my_func_latency, my_func_latency_cdf and many other counters would be shown in /vars.
 ```
 
+## Rate-limited backup requests
+
+To limit the ratio of backup requests sent, use the built-in factory function or implement the `BackupRequestPolicy` interface yourself.
+
+Priority order: `backup_request_policy` > `backup_request_ms`.
+
+### Using the built-in rate-limiting policy
+
+Call `CreateRateLimitedBackupPolicy` and set the result on `ChannelOptions.backup_request_policy`:
+
+```c++
+#include "brpc/backup_request_policy.h"
+#include <memory>
+
+brpc::RateLimitedBackupPolicyOptions opts;
+opts.backup_request_ms = 10;       // send backup if RPC does not complete within 10ms
+opts.max_backup_ratio = 0.3;       // cap backup requests at 30% of total
+opts.window_size_seconds = 10;     // sliding window width in seconds
+opts.update_interval_seconds = 5;  // how often the cached ratio is refreshed
+
+// The caller owns the returned pointer.
+// The policy must outlive the channel — destroy the channel before the policy.
+std::unique_ptr<brpc::BackupRequestPolicy> policy(
+    brpc::CreateRateLimitedBackupPolicy(opts));
+
+brpc::ChannelOptions options;
+options.backup_request_policy = policy.get(); // NOT owned by channel
+channel.Init(..., &options);
+// channel must be destroyed before policy goes out of scope.
+```
+
+`RateLimitedBackupPolicyOptions` fields:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `backup_request_ms` | -1 | Timeout threshold in ms. -1 means inherit from `ChannelOptions.backup_request_ms` (only works when the policy is set via `ChannelOptions.backup_request_policy`; at controller level there is no channel-level fallback, so set an explicit >= 0 value instead). Must be >= -1. |
+| `max_backup_ratio` | 0.1 | Max backup ratio; range (0, 1] |
+| `window_size_seconds` | 10 | Sliding window width in seconds; range [1, 3600] |
+| `update_interval_seconds` | 5 | Cached-ratio refresh interval in seconds; must be >= 1 |
+
+`CreateRateLimitedBackupPolicy` returns `NULL` if any parameter is invalid.
+
+### Using a custom BackupRequestPolicy
+
+For full control, implement the `BackupRequestPolicy` interface and set it on `ChannelOptions.backup_request_policy`:
+
+```c++
+#include "brpc/backup_request_policy.h"
+
+class MyBackupPolicy : public brpc::BackupRequestPolicy {
+public:
+    int32_t GetBackupRequestMs(const brpc::Controller*) const override {
+        return 10; // send backup after 10ms
+    }
+    bool DoBackup(const brpc::Controller*) const override {
+        return should_allow_backup(); // your logic here
+    }
+    void OnRPCEnd(const brpc::Controller*) override {
+        // called on every RPC completion; update stats if needed
+    }
+};
+
+MyBackupPolicy my_policy;
+brpc::ChannelOptions options;
+options.backup_request_policy = &my_policy; // NOT owned by channel; must outlive channel
+channel.Init(..., &options);
+```
+
+### Implementation notes
+
+- The ratio is computed over a sliding time window using bvar counters. The cached value is refreshed at most once per `update_interval_seconds` using a lock-free CAS election, so the overhead per RPC is very low (two atomic loads in the common path).
+- Backup decisions are counted immediately at decision time (before the RPC completes) to provide faster feedback during latency spikes. Total RPCs are counted on completion. This means the ratio may transiently lag during a spike, but this is intentional — the limiter is designed for approximate, best-effort throttling, not exact enforcement.
+- Each channel using rate limiting maintains two `bvar::Window` sampler tasks. Keep this in mind in deployments with a very large number of channels.
+
 # When backend servers cannot be hung in a naming service
 
 [Recommended] Define a SelectiveChannel that sets backup request, in which contains two sub channel. The visiting process of this SelectiveChannel is similar to the above situation. It will visit one sub channel first. If the response is not returned after channelOptions.backup_request_ms ms, then another sub channel is visited. If a sub channel corresponds to a cluster, this method does backups between two clusters. An example of SelectiveChannel can be found in [example/selective_echo_c++](https://github.com/apache/brpc/tree/master/example/selective_echo_c++). More details please refer to the above program.

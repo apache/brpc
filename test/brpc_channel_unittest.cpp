@@ -3078,4 +3078,141 @@ TEST_F(ChannelTest, adaptive_protocol_type) {
     ASSERT_EQ("", ptype.param());
 }
 
+class RateLimitedBackupPolicyTest : public ::testing::Test {};
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidBackupRequestMs) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = -2;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidMaxBackupRatioZero) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.max_backup_ratio = 0.0;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidMaxBackupRatioNegative) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.max_backup_ratio = -0.1;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidMaxBackupRatioAboveOne) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.max_backup_ratio = 1.001;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidWindowSizeTooSmall) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.window_size_seconds = 0;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidWindowSizeTooLarge) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.window_size_seconds = 3601;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidUpdateIntervalTooSmall) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.update_interval_seconds = 0;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, ValidMinusOneBackupRequestMsInherits) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = -1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    ASSERT_EQ(-1, p->GetBackupRequestMs(NULL));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, ValidMaxRatioAtBoundary) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 50;
+    opts.max_backup_ratio = 1.0;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    // With max_backup_ratio=1.0 and true cold start (total==0, backup==0),
+    // ShouldAllow() sets ratio=0.0 (free pass). The conservative ratio=1.0
+    // path only applies when backup>0 but total==0 (latency spike with no
+    // completions yet). At absolute cold start DoBackup() must return true.
+    ASSERT_TRUE(p->DoBackup(NULL));   // cold start: ratio=0.0 < 1.0, allow
+}
+
+TEST_F(RateLimitedBackupPolicyTest, ColdStartAllowsBackup) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 10;
+    opts.max_backup_ratio = 0.1;
+    opts.update_interval_seconds = 1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    ASSERT_TRUE(p->DoBackup(NULL));
+}
+
+// After the first backup fires (backup_count=1, total_count=0), once the
+// update interval elapses the ratio is refreshed via the conservative path
+// (total==0 → ratio=1.0), which exceeds max_backup_ratio < 1.0, so
+// subsequent DoBackup() calls are suppressed until an RPC leg completes.
+TEST_F(RateLimitedBackupPolicyTest, AfterColdStartBackupSuppressedUntilRpcCompletes) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 10;
+    opts.max_backup_ratio = 0.1;
+    opts.window_size_seconds = 1;
+    opts.update_interval_seconds = 1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    // First call fires (cold start: total=0, backup=0 → ratio=0.0 → allow).
+    ASSERT_TRUE(p->DoBackup(NULL));
+    // Wait for the update interval to elapse so the ratio refreshes.
+    // After refresh: total=0 but backup=1 → conservative path sets ratio=1.0,
+    // which is >= max_backup_ratio (0.1), so DoBackup() must return false.
+    bthread_usleep(1200000); // 1.2s > update_interval_seconds=1
+    ASSERT_FALSE(p->DoBackup(NULL));
+}
+
+// After the ratio rises above the threshold, calling OnRPCEnd() many times
+// drives total_count up relative to backup_count. Once the ratio refreshes
+// below max_backup_ratio, DoBackup() should allow backups again.
+TEST_F(RateLimitedBackupPolicyTest, OnRPCEndDrivesRatioDownAndReAllows) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 10;
+    opts.max_backup_ratio = 0.5;
+    opts.window_size_seconds = 1;
+    opts.update_interval_seconds = 1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    // Fire many backup decisions so backup_count >> total_count,
+    // pushing the ratio above max_backup_ratio.
+    for (int i = 0; i < 20; ++i) {
+        p->DoBackup(NULL);
+    }
+    // Wait for update interval so the ratio is refreshed above threshold.
+    bthread_usleep(1200000); // 1.2s
+    ASSERT_FALSE(p->DoBackup(NULL));
+    // Now complete many more RPCs than backups fired to bring ratio below 0.5.
+    // 20 backup decisions already counted; need total_count > 20/0.5 = 40.
+    for (int i = 0; i < 50; ++i) {
+        p->OnRPCEnd(NULL);
+    }
+    // Wait for the ratio cache to refresh.
+    bthread_usleep(1200000); // 1.2s
+    // Ratio is now ~20/50 = 0.4 < max_backup_ratio (0.5), so backup is re-allowed.
+    ASSERT_TRUE(p->DoBackup(NULL));
+}
+
 } //namespace
