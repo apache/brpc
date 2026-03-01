@@ -32,6 +32,7 @@
 #include <gflags/gflags.h>
 
 #include "butil/atomicops.h"
+#include "butil/process_util.h"
 #include "butil/time.h"
 #include "bthread/bthread.h"
 #include "bthread/butex.h"
@@ -815,6 +816,30 @@ int ChildCheckWakeWithinEagainWhenPinnedRqFull() {
     return ret;
 }
 
+bool GetSelfExecutablePath(char* buf, size_t len) {
+    if (buf == NULL || len == 0) {
+        return false;
+    }
+    const ssize_t n = butil::GetProcessAbsolutePath(buf, len);
+    if (n <= 0 || static_cast<size_t>(n) >= len) {
+        return false;
+    }
+    buf[n] = '\0';
+    return true;
+}
+
+bool GetArgv0Fallback(char* buf, size_t len) {
+    if (buf == NULL || len == 0) {
+        return false;
+    }
+    const ssize_t n = butil::ReadCommandLine(buf, len, false);
+    if (n <= 0 || static_cast<size_t>(n) >= len) {
+        return false;
+    }
+    buf[n] = '\0';
+    return true;
+}
+
 int RunChildMode(const char* mode) {
     pid_t pid = fork();
     if (pid < 0) {
@@ -822,14 +847,21 @@ int RunChildMode(const char* mode) {
     }
     if (pid == 0) {
         char self_path[PATH_MAX];
-        const ssize_t n = readlink("/proc/self/exe", self_path, sizeof(self_path) - 1);
-        if (n <= 0) {
+        char argv0[PATH_MAX];
+        const bool have_self_path = GetSelfExecutablePath(self_path, sizeof(self_path));
+        const bool have_argv0 = GetArgv0Fallback(argv0, sizeof(argv0));
+        if (!have_self_path && !have_argv0) {
             _exit(4);
         }
-        self_path[n] = '\0';
         setenv("BRPC_ACTIVE_TASK_UT_CHILD_MODE", mode, 1);
-        char* const argv[] = { self_path, NULL };
-        execv(self_path, argv);
+        if (have_self_path) {
+            char* const argv[] = { self_path, NULL };
+            execv(self_path, argv);
+        }
+        if (have_argv0) {
+            char* const argv[] = { argv0, NULL };
+            execvp(argv0, argv);
+        }
         _exit(5);
     }
     int status = 0;

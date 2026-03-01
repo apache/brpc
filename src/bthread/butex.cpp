@@ -84,6 +84,21 @@ struct ButexWithinInvalidCount : public bvar::Adder<int64_t> {
         : bvar::Adder<int64_t>("bthread_butex_within_invalid_count") {}
 };
 
+struct ButexWithinSuccessCount : public bvar::Adder<int64_t> {
+    ButexWithinSuccessCount()
+        : bvar::Adder<int64_t>("bthread_butex_within_success_count") {}
+};
+
+struct ButexWithinEagainCount : public bvar::Adder<int64_t> {
+    ButexWithinEagainCount()
+        : bvar::Adder<int64_t>("bthread_butex_within_eagain_count") {}
+};
+
+struct ButexWithinPinnedSuccessCount : public bvar::Adder<int64_t> {
+    ButexWithinPinnedSuccessCount()
+        : bvar::Adder<int64_t>("bthread_butex_within_pinned_success_count") {}
+};
+
 inline bvar::Adder<int64_t>& butex_strict_reject_count() {
     return *butil::get_leaky_singleton<ButexStrictRejectCount>();
 }
@@ -94,6 +109,18 @@ inline bvar::Adder<int64_t>& butex_within_no_waiter_count() {
 
 inline bvar::Adder<int64_t>& butex_within_invalid_count() {
     return *butil::get_leaky_singleton<ButexWithinInvalidCount>();
+}
+
+inline bvar::Adder<int64_t>& butex_within_success_count() {
+    return *butil::get_leaky_singleton<ButexWithinSuccessCount>();
+}
+
+inline bvar::Adder<int64_t>& butex_within_eagain_count() {
+    return *butil::get_leaky_singleton<ButexWithinEagainCount>();
+}
+
+inline bvar::Adder<int64_t>& butex_within_pinned_success_count() {
+    return *butil::get_leaky_singleton<ButexWithinPinnedSuccessCount>();
 }
 
 enum WaiterState {
@@ -370,6 +397,7 @@ int butex_wake_to_task_group(void* arg, TaskGroup* target_group) {
     }
     Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
     ButexBthreadWaiter* bbw = NULL;
+    bool pinned_waiter = false;
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
         if (b->waiters.empty()) {
@@ -396,11 +424,13 @@ int butex_wake_to_task_group(void* arg, TaskGroup* target_group) {
             errno = EINVAL;
             return -1;
         }
+        pinned_waiter = is_pinned_waiter(bw);
         // wake_within() runs on target_group's owner worker. For pinned waiters,
         // if owner-local pinned runqueue is already full, report EAGAIN and
         // keep waiter on butex list for next harvest retry, instead of
         // blocking/spinning here.
-        if (is_pinned_waiter(bw) && target_group->pinned_rq_full()) {
+        if (pinned_waiter && target_group->pinned_rq_full()) {
+            butex_within_eagain_count() << 1;
             errno = EAGAIN;
             return -1;
         }
@@ -410,6 +440,10 @@ int butex_wake_to_task_group(void* arg, TaskGroup* target_group) {
 
     unsleep_if_necessary(bbw, get_global_timer_thread());
     target_group->ready_to_run(bbw->task_meta, true);
+    butex_within_success_count() << 1;
+    if (pinned_waiter) {
+        butex_within_pinned_success_count() << 1;
+    }
     return 1;
 }
 

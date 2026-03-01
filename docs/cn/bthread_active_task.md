@@ -14,9 +14,9 @@
 
 1. worker 初始化时创建本地 reactor/ring。
 2. 提交异步 IO 后，在私有 `butex` 上通过 `bthread_butex_wait_local` 挂起。
-4. worker 的 active-task hook 收割 completion。
-5. hook 内调用 `bthread_butex_wake_within(ctx, req->butex)` 唤醒 waiter。
-6. waiter bthread 在同一个 worker 上恢复执行（不会被 steal）。
+3. worker 的 active-task hook 收割 completion。
+4. hook 内调用 `bthread_butex_wake_within(ctx, req->butex)` 唤醒 waiter。
+5. waiter bthread 在同一个 worker 上恢复执行（不会被 steal）。
 
 ## 当前提供的接口（UNSTABLE）
 
@@ -302,11 +302,68 @@ strict 模式下，普通 `butex_wake*` 命中 pinned waiter 会返回 `-1/EINVA
   - 检查是否对 `bthread_butex_wait_local` 的 waiter 误用了普通 `butex_wake*`
   - 检查 completion 是否被错误 worker 的 `harvest` 收割（ownership/routing 问题）
 
-可观测计数（累计 bvar）：
+## 监控与排障（建议上线前梳理）
 
-- `bthread_butex_strict_reject_count`：普通 `butex_wake*` 命中 pinned waiter 被 strict 拒绝次数
-- `bthread_butex_within_no_waiter_count`：`bthread_butex_wake_within` 返回 `0`（无 waiter）次数
-- `bthread_butex_within_invalid_count`：`bthread_butex_wake_within` 返回 `-1/EINVAL` 次数
+### 监控入口
+
+- `/vars`：查看单个或批量 bvar
+  - 例如：`/vars/bthread_butex_within*`
+- `/brpc_metrics`：Prometheus 抓取入口
+  - 例如抓取后查询 `bthread_butex_within_success_count`
+
+### 可观测计数（累计 bvar）
+
+以下指标均为**累计计数器**（进程内单调递增，进程重启后归零）：
+
+- `bthread_butex_within_success_count`
+  - `bthread_butex_wake_within` 成功唤醒并入队 waiter（返回 `1`）次数
+- `bthread_butex_within_pinned_success_count`
+  - `within_success_count` 的 pinned waiter 子集（同样返回 `1`）
+- `bthread_butex_within_eagain_count`
+  - 因 pinned local runqueue 已满而返回 `-1/EAGAIN` 次数（应在后续 `harvest` 重试）
+- `bthread_butex_within_no_waiter_count`
+  - `bthread_butex_wake_within` 返回 `0`（当前无 waiter）次数
+- `bthread_butex_within_invalid_count`
+  - `bthread_butex_wake_within` 返回 `-1/EINVAL` 次数（多 waiter / pthread waiter / 跨 tag / 跨 `TaskControl` / wrong-worker invariant 等）
+- `bthread_butex_strict_reject_count`
+  - 普通 `butex_wake*` 命中 pinned waiter 被 strict 拒绝次数
+
+### 判读建议（推荐看速率和比例）
+
+建议在监控系统里看 `rate()/increase()`，不要直接按绝对值判定健康度。
+
+- `within_success_qps = rate(bthread_butex_within_success_count[1m])`
+  - 反映 `within` 主路径吞吐；长期为 0 通常说明未走该路径或流量不足
+- `within_eagain_qps = rate(bthread_butex_within_eagain_count[1m])`
+  - 反映 pinned 队列背压；持续升高说明局部拥塞在加重
+- `within_eagain_ratio = rate(bthread_butex_within_eagain_count[5m]) / clamp_min(rate(bthread_butex_within_success_count[5m]), 1)`
+  - 建议重点观察；上升代表“每次成功唤醒对应的重试压力”在变大
+- `within_pinned_share = rate(bthread_butex_within_pinned_success_count[5m]) / clamp_min(rate(bthread_butex_within_success_count[5m]), 1)`
+  - 反映 pinned 路径占比；在 per-worker 本地 reactor 场景通常应较高
+- `within_invalid_qps = rate(bthread_butex_within_invalid_count[5m])`
+  - 该值应接近 0；升高优先排查接口使用与 ownership/routing
+
+### 告警起点（可按业务再收敛）
+
+- `within_invalid_qps > 0` 持续一段时间（例如 5~10 分钟）可作为高优先级告警
+- `within_eagain_ratio` 持续抬升可作为容量/背压预警（结合延迟和业务重试率判断）
+- `within_success_qps` 在有流量时异常跌到接近 0，可作为路径失效告警信号
+
+### Prometheus 查询示例
+
+```promql
+sum(rate(bthread_butex_within_success_count[1m]))
+sum(rate(bthread_butex_within_eagain_count[1m]))
+sum(rate(bthread_butex_within_eagain_count[5m])) / clamp_min(sum(rate(bthread_butex_within_success_count[5m])), 1)
+sum(rate(bthread_butex_within_pinned_success_count[5m])) / clamp_min(sum(rate(bthread_butex_within_success_count[5m])), 1)
+sum(rate(bthread_butex_within_invalid_count[5m]))
+```
+
+### 基本关系校验（用于自检）
+
+- `bthread_butex_within_pinned_success_count <= bthread_butex_within_success_count`
+- `eagain` 上升时通常会看到业务重试路径变活跃（同一请求在后续 `harvest` 成功唤醒）
+- `within_no_waiter_count` 小幅增长通常是 timeout/取消竞争下的正常现象，不应单独作为故障依据
 
 ## 注意事项（务必遵守）
 

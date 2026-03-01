@@ -22,6 +22,7 @@
 #include <sys/syscall.h>
 #include <limits>
 #include <string.h>
+#include <vector>
 #include <gflags/gflags.h>
 #include "butil/macros.h"                       // BAIDU_CASSERT
 #include "butil/logging.h"
