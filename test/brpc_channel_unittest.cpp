@@ -176,6 +176,16 @@ class MyEchoService : public ::test::EchoService {
             res->add_code_list(req->code());
         }
         res->set_receiving_socket_id(cntl->_current_call.sending_sock->id());
+
+        brpc::ProtocolType protocol = cntl->request_protocol();
+        if ((brpc::PROTOCOL_HTTP == protocol || brpc::PROTOCOL_H2 == protocol) &&
+            !req->http_header().empty()) {
+            ASSERT_FALSE(req->http_header().empty());
+            const std::string* val = cntl->http_request().GetHeader(req->http_header());
+            ASSERT_TRUE(val);
+            ASSERT_FALSE(val->empty());
+            cntl->http_response().SetHeader(req->http_header(), *val);
+        }
     }
     static void CallAfterRpc(std::shared_ptr<CallAfterRpcObject> str,
                         brpc::Controller* cntl,
@@ -310,8 +320,10 @@ protected:
                       bool short_connection,
                       const brpc::Authenticator* auth = NULL,
                       std::string connection_group = std::string(),
-                      bool use_backup_request_policy = false) {
+                      bool use_backup_request_policy = false,
+                      brpc::ProtocolType protocol = brpc::PROTOCOL_BAIDU_STD) {
         brpc::ChannelOptions opt;
+        opt.protocol = protocol;
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
@@ -526,7 +538,7 @@ protected:
             int channel_index,
             const google::protobuf::MethodDescriptor* method,
             const google::protobuf::Message* req_base,
-            google::protobuf::Message* response) {
+            google::protobuf::Message* response) override {
             test::EchoRequest* req = brpc::Clone<test::EchoRequest>(req_base);
             req->set_code(channel_index + 1/*non-zero*/);
             return brpc::SubCall(method, req, response->New(),
@@ -540,7 +552,7 @@ protected:
             int channel_index,
             const google::protobuf::MethodDescriptor* method,
             const google::protobuf::Message* req_base,
-            google::protobuf::Message* response) {
+            google::protobuf::Message* response) override {
             if (channel_index % 2) {
                 return brpc::SubCall::Skip();
             }
@@ -554,7 +566,7 @@ protected:
             int channel_index,
             const google::protobuf::MethodDescriptor* method,
             const google::protobuf::Message* req_base,
-            google::protobuf::Message* res_base) {
+            google::protobuf::Message* res_base) override {
             const test::ComboRequest* req =
                 dynamic_cast<const test::ComboRequest*>(req_base);
             test::ComboResponse* res = dynamic_cast<test::ComboResponse*>(res_base);
@@ -1334,7 +1346,7 @@ protected:
             int /*channel_index*/,
             const google::protobuf::MethodDescriptor* method,
             const google::protobuf::Message* req_base,
-            google::protobuf::Message* response) {
+            google::protobuf::Message* response) override {
             test::EchoRequest* req = brpc::Clone<test::EchoRequest>(req_base);
             req->set_sleep_us(70000); // 70ms
             return brpc::SubCall(method, req, response->New(),
@@ -2357,7 +2369,7 @@ class BadCall : public brpc::CallMapper {
     brpc::SubCall Map(int,
                      const google::protobuf::MethodDescriptor*,
                      const google::protobuf::Message*,
-                     google::protobuf::Message*) {
+                     google::protobuf::Message*) override {
         return brpc::SubCall::Bad();
     }
 };
@@ -2384,7 +2396,7 @@ class SkipCall : public brpc::CallMapper {
     brpc::SubCall Map(int,
                      const google::protobuf::MethodDescriptor*,
                      const google::protobuf::Message*,
-                     google::protobuf::Message*) {
+                     google::protobuf::Message*) override {
         return brpc::SubCall::Skip();
     }
 };
@@ -2409,6 +2421,55 @@ TEST_F(ChannelTest, skip_all_channels) {
     EXPECT_EQ((int)NCHANS, cntl.sub_count());
     for (int i = 0; i < cntl.sub_count(); ++i) {
         EXPECT_TRUE(NULL == cntl.sub(i)) << "i=" << i;
+    }
+}
+
+static const std::string ECHO_HTTP_HEADER = "echo-http-header";
+
+class EchoHttpHeader : public brpc::CallMapper {
+public:
+    brpc::SubCall Map(int channel_index, int channel_count,
+                      const google::protobuf::MethodDescriptor* method,
+                      const google::protobuf::Message* request,
+                      google::protobuf::Message* response) override {
+        return brpc::SubCall(method, request, response->New(), brpc::DELETE_RESPONSE);
+    }
+
+    void MapController(int channel_index, int,
+                       const brpc::Controller* main_cntl,
+                       brpc::Controller* sub_cntl) override {
+        sub_cntl->http_request().SetHeader(ECHO_HTTP_HEADER, std::to_string(channel_index));
+    }
+};
+
+TEST_F(ChannelTest, http_header_parallel_channels) {
+    brpc::Server server;
+    MyEchoService service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    ASSERT_EQ(0, server.Start(_ep, &opt));
+
+    const size_t NCHANS = 5;
+    brpc::ParallelChannel channel;
+    for (size_t i = 0; i < NCHANS; ++i) {
+        brpc::Channel* sub_chan = new brpc::Channel();
+        SetUpChannel(sub_chan, true, false, NULL, "", false, brpc::PROTOCOL_HTTP);
+        ASSERT_EQ(0, channel.AddChannel(sub_chan, brpc::OWNS_CHANNEL, new EchoHttpHeader, NULL));
+    }
+
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(__FUNCTION__);
+    *req.mutable_http_header() = ECHO_HTTP_HEADER;
+    CallMethod(&channel, &cntl, &req, &res, false);
+
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ((int)NCHANS, cntl.sub_count());
+    for (int i = 0; i < cntl.sub_count(); ++i) {
+        const brpc::Controller* sub_cntl = cntl.sub(i);
+        ASSERT_TRUE(NULL != sub_cntl) << "i=" << i;
+        ASSERT_EQ(std::to_string(i), *sub_cntl->http_response().GetHeader(ECHO_HTTP_HEADER));
     }
 }
 
