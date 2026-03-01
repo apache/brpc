@@ -6,7 +6,7 @@ Channel开启backup request。这个Channel会先向其中一个server发送请�
 
 示例代码见[example/backup_request_c++](https://github.com/apache/brpc/blob/master/example/backup_request_c++)。这个例子中，client设定了在2ms后发送backup request，server在碰到偶数位的请求后会故意睡眠20ms以触发backup request。
 
-运行后，client端和server端的日志分别如下，“index”是请求的编号。可以看到server端在收到第一个请求后会故意sleep 20ms，client端之后发送另一个同样index的请求，最终的延时并没有受到故意sleep的影响。
+运行后，client端和server端的日志分别如下，"index"是请求的编号。可以看到server端在收到第一个请求后会故意sleep 20ms，client端之后发送另一个同样index的请求，最终的延时并没有受到故意sleep的影响。
 
 ![img](../images/backup_request_1.png)
 
@@ -38,6 +38,58 @@ my_func_latency << tm.u_elapsed();  // u代表微秒，还有s_elapsed(), m_elap
  
 // 好了，在/vars中会显示my_func_qps, my_func_latency, my_func_latency_cdf等很多计数器。
 ```
+
+## Backup Request 限流
+
+如需限制 backup request 的发送比例，可实现 `BackupRequestPolicy` 接口或直接使用内置工厂函数。
+
+### 使用自定义 BackupRequestPolicy
+
+如需完全控制，可实现 `BackupRequestPolicy` 接口并设置到 `ChannelOptions.backup_request_policy`：
+
+```c++
+#include "brpc/backup_request_policy.h"
+
+class MyBackupPolicy : public brpc::BackupRequestPolicy {
+public:
+    int32_t GetBackupRequestMs(const brpc::Controller*) const override {
+        return 10; // 10ms后发送backup
+    }
+    bool DoBackup(const brpc::Controller*) const override {
+        return should_allow_backup(); // 自定义逻辑
+    }
+    void OnRPCEnd(const brpc::Controller*) override {
+        // 每次RPC结束时调用，可在此更新统计
+    }
+};
+
+MyBackupPolicy my_policy;
+brpc::ChannelOptions options;
+options.backup_request_policy = &my_policy; // Channel不拥有该对象，需保证其生命周期长于Channel
+channel.Init(..., &options);
+```
+
+完整优先级顺序：`backup_request_policy` > `backup_request_ms`。
+
+如需使用内置限流逻辑但想自定义参数，也可直接调用工厂函数：
+
+```c++
+// 返回的指针由调用方负责释放。
+brpc::RateLimitedBackupPolicyOptions opts;
+opts.backup_request_ms = 10;
+opts.max_backup_ratio = 0.3;
+opts.window_size_seconds = 10;
+opts.update_interval_seconds = 5;
+brpc::BackupRequestPolicy* policy = brpc::CreateRateLimitedBackupPolicy(opts);
+options.backup_request_policy = policy;
+// ... Channel销毁后记得delete policy
+```
+
+### 实现说明
+
+- 比例通过bvar计数器在滑动时间窗口内统计。缓存值通过无锁CAS选举最多每 `update_interval_seconds` 刷新一次，因此每次RPC的开销极低（公共路径仅有两次原子读）。
+- Backup决策在做出时立即计数（RPC完成前），以便在延迟抖动期间更快地反馈。总RPC数在完成时统计。这意味着比例在抖动期间可能短暂滞后，这是设计有意为之——限流器的目标是近似的尽力而为的节流，而非精确执行。
+- 每个使用限流的Channel会维护两个 `bvar::Window` 采样任务，在Channel数量极多的部署中请留意此开销。
 
 # 当后端server不能挂在一个命名服务内时
 
