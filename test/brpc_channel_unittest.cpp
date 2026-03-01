@@ -3162,10 +3162,10 @@ TEST_F(RateLimitedBackupPolicyTest, ColdStartAllowsBackup) {
     ASSERT_TRUE(p->DoBackup(NULL));
 }
 
-// After the first backup fires (backup_count=1, total_count=0), a refresh
-// will compute ratio=1.0 via the conservative path (total==0 guard) which
-// exceeds any max_backup_ratio < 1.0, so subsequent calls are suppressed
-// until at least one RPC leg completes.
+// After the first backup fires (backup_count=1, total_count=0), once the
+// update interval elapses the ratio is refreshed via the conservative path
+// (total==0 → ratio=1.0), which exceeds max_backup_ratio < 1.0, so
+// subsequent DoBackup() calls are suppressed until an RPC leg completes.
 TEST_F(RateLimitedBackupPolicyTest, AfterColdStartBackupSuppressedUntilRpcCompletes) {
     brpc::RateLimitedBackupPolicyOptions opts;
     opts.backup_request_ms = 10;
@@ -3175,15 +3175,13 @@ TEST_F(RateLimitedBackupPolicyTest, AfterColdStartBackupSuppressedUntilRpcComple
     std::unique_ptr<brpc::BackupRequestPolicy> p(
         brpc::CreateRateLimitedBackupPolicy(opts));
     ASSERT_TRUE(p != NULL);
-    // First call fires (cold start).
+    // First call fires (cold start: total=0, backup=0 → ratio=0.0 → allow).
     ASSERT_TRUE(p->DoBackup(NULL));
-    // Simulate a ratio refresh by calling DoBackup many times without any
-    // OnRPCEnd — eventually the interval elapses and the cached ratio is
-    // refreshed to 1.0 (conservative path). For a unit test we cannot
-    // sleep, so we verify the documented invariant: the policy object was
-    // successfully created and is usable.
-    // The behavioral guarantee (suppression after cold-start) is verified
-    // through the conservative-ratio code path in BackupRateLimiter::ShouldAllow().
+    // Wait for the update interval to elapse so the ratio refreshes.
+    // After refresh: total=0 but backup=1 → conservative path sets ratio=1.0,
+    // which is >= max_backup_ratio (0.1), so DoBackup() must return false.
+    bthread_usleep(1200000); // 1.2s > update_interval_seconds=1
+    ASSERT_FALSE(p->DoBackup(NULL));
 }
 
 } //namespace

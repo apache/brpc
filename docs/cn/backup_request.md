@@ -74,7 +74,7 @@ channel.Init(..., &options);
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
-| `backup_request_ms` | 0 | 超时阈值（毫秒），必须 >= 0 |
+| `backup_request_ms` | -1 | 超时阈值（毫秒）；-1 表示继承 `ChannelOptions.backup_request_ms`，必须 >= -1。**仅在通过 `ChannelOptions.backup_request_policy` 设置策略时有效；通过 Controller 注入时必须显式指定 >= 0 的值。** |
 | `max_backup_ratio` | 0.1 | backup比例上限，取值范围 (0, 1] |
 | `window_size_seconds` | 10 | 滑动窗口宽度（秒），取值范围 [1, 3600] |
 | `update_interval_seconds` | 5 | 缓存刷新间隔（秒），必须 >= 1 |
