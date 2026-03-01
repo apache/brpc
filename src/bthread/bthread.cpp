@@ -30,6 +30,7 @@
 #include "bthread/timer_thread.h"
 #include "bthread/list_of_abafree_id.h"
 #include "bthread/bthread.h"
+#include "bthread/worker_idle.h"
 
 namespace bthread {
 extern void print_task(std::ostream& os, bthread_t tid, bool enable_trace,
@@ -595,6 +596,17 @@ int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t)) {
     }
     bthread::g_tagged_worker_startfn = start_fn;
     return 0;
+}
+
+int bthread_register_worker_idle_function(int (*init_fn)(void),
+                                          bool (*idle_fn)(void),
+                                          uint64_t timeout_us,
+                                          int* handle) {
+    return bthread::register_worker_idle_function(init_fn, idle_fn, timeout_us, handle);
+}
+
+int bthread_unregister_worker_idle_function(int handle) {
+    return bthread::unregister_worker_idle_function(handle);
 }
 
 int bthread_set_create_span_func(void* (*func)()) {
