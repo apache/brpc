@@ -88,11 +88,11 @@ public:
     }
 
     void OnRPCEnd(const Controller* /*controller*/) {
-        // Count all completed RPC legs (both original and backup RPCs).
+        // Count each completed user-level RPC (called once per RPC, not per leg).
         // Backup decisions are counted in ShouldAllow() at decision time for
         // faster feedback. As a result, the effective suppression threshold is
-        // (backup_count / total_legs), where total_legs includes both original
-        // and backup completions.
+        // (backup_count / total_count), where total_count is the number of
+        // user RPCs that have completed.
         _total_count << 1;
     }
 

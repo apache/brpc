@@ -354,10 +354,10 @@ int64_t Controller::backup_request_ms() const {
     int timeout_ms = _backup_request_ms;
     if (NULL != _backup_request_policy) {
         const int32_t policy_ms = _backup_request_policy->GetBackupRequestMs(this);
-        // Any negative value means the policy defers to the channel-level
-        // backup_request_ms (set from ChannelOptions). The canonical sentinel
-        // is -1, but all negative values are treated the same way.
-        if (policy_ms >= 0) {
+        // -1 is the designated sentinel: the policy defers to the channel-level
+        // backup_request_ms (set from ChannelOptions). Any other negative value
+        // disables backup for this RPC. Values >= 0 override directly.
+        if (policy_ms != -1) {
             timeout_ms = policy_ms;
         }
     }

@@ -29,6 +29,8 @@ public:
 
     // Return the time in milliseconds in which another request
     // will be sent if RPC does not finish.
+    // Returning -1 means "inherit the backup_request_ms from ChannelOptions".
+    // Returning any other negative value disables backup for this RPC.
     virtual int32_t GetBackupRequestMs(const Controller* controller) const = 0;
 
     // Return true if the backup request should be sent.

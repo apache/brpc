@@ -75,7 +75,7 @@ channel.Init(..., &options);
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `backup_request_ms` | -1 | Timeout threshold in ms; -1 means inherit from `ChannelOptions.backup_request_ms`; must be >= -1. **Only effective when the policy is set via `ChannelOptions.backup_request_policy`; controller-level injection always requires an explicit >= 0 value.** |
+| `backup_request_ms` | -1 | Timeout threshold in ms. -1 means inherit from `ChannelOptions.backup_request_ms` (only works when the policy is set via `ChannelOptions.backup_request_policy`; at controller level there is no channel-level fallback, so set an explicit >= 0 value instead). Must be >= -1. |
 | `max_backup_ratio` | 0.1 | Max backup ratio; range (0, 1] |
 | `window_size_seconds` | 10 | Sliding window width in seconds; range [1, 3600] |
 | `update_interval_seconds` | 5 | Cached-ratio refresh interval in seconds; must be >= 1 |

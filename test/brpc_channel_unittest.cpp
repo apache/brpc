@@ -3184,4 +3184,35 @@ TEST_F(RateLimitedBackupPolicyTest, AfterColdStartBackupSuppressedUntilRpcComple
     ASSERT_FALSE(p->DoBackup(NULL));
 }
 
+// After the ratio rises above the threshold, calling OnRPCEnd() many times
+// drives total_count up relative to backup_count. Once the ratio refreshes
+// below max_backup_ratio, DoBackup() should allow backups again.
+TEST_F(RateLimitedBackupPolicyTest, OnRPCEndDrivesRatioDownAndReAllows) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 10;
+    opts.max_backup_ratio = 0.5;
+    opts.window_size_seconds = 1;
+    opts.update_interval_seconds = 1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    // Fire many backup decisions so backup_count >> total_count,
+    // pushing the ratio above max_backup_ratio.
+    for (int i = 0; i < 20; ++i) {
+        p->DoBackup(NULL);
+    }
+    // Wait for update interval so the ratio is refreshed above threshold.
+    bthread_usleep(1200000); // 1.2s
+    ASSERT_FALSE(p->DoBackup(NULL));
+    // Now complete many more RPCs than backups fired to bring ratio below 0.5.
+    // 20 backup decisions already counted; need total_count > 20/0.5 = 40.
+    for (int i = 0; i < 50; ++i) {
+        p->OnRPCEnd(NULL);
+    }
+    // Wait for the ratio cache to refresh.
+    bthread_usleep(1200000); // 1.2s
+    // Ratio is now ~20/50 = 0.4 < max_backup_ratio (0.5), so backup is re-allowed.
+    ASSERT_TRUE(p->DoBackup(NULL));
+}
+
 } //namespace
