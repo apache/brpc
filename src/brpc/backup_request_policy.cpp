@@ -166,6 +166,9 @@ BackupRequestPolicy* CreateRateLimitedBackupPolicy(
                      << " exceeds window_size_seconds=" << options.window_size_seconds
                      << "; the ratio window will rarely refresh within its own period";
     }
+    // Plain new (without std::nothrow): brpc follows the project-wide convention
+    // of letting OOM throw/abort rather than returning NULL. NULL return from
+    // this factory already signals invalid parameters, not allocation failure.
     return new RateLimitedBackupPolicy(
         options.backup_request_ms, options.max_backup_ratio,
         options.window_size_seconds, options.update_interval_seconds);
