@@ -34,7 +34,7 @@ public:
     // Return true if the backup request should be sent.
     virtual bool DoBackup(const Controller* controller) const = 0;
 
-    // Called  when a rpc is end, user can collect call information to adjust policy.
+    // Called when an RPC ends; user can collect call information to adjust policy.
     virtual void OnRPCEnd(const Controller* controller) = 0;
 };
 
@@ -42,9 +42,11 @@ public:
 // All fields have defaults matching the recommended starting values.
 struct RateLimitedBackupPolicyOptions {
     // Time in milliseconds after which a backup request is sent if the RPC
-    // has not completed. Must be >= 0.
-    // Default: 0
-    int32_t backup_request_ms = 0;
+    // has not completed.
+    // Use -1 (the default) to inherit the value from ChannelOptions.backup_request_ms.
+    // Use >= 0 to override it explicitly.
+    // Default: -1
+    int32_t backup_request_ms = -1;
 
     // Maximum ratio of backup requests to total requests in the sliding
     // window. Must be in (0, 1].

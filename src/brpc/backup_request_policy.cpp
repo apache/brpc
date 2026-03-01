@@ -56,13 +56,27 @@ public:
                     last_us, now_us, butil::memory_order_relaxed)) {
                 int64_t total = _total_window.get_value();
                 int64_t backup = _backup_window.get_value();
-                ratio = (total > 0) ? static_cast<double>(backup) / total : 0.0;
+                // Fall back to cumulative counts when the window has no
+                // sampled data yet (cold-start within the first few seconds).
+                if (total <= 0) {
+                    total = _total_count.get_value();
+                    backup = _backup_count.get_value();
+                }
+                if (total > 0) {
+                    ratio = static_cast<double>(backup) / total;
+                } else if (backup > 0) {
+                    // Backups issued but no completions in window yet (latency spike).
+                    // Be conservative to prevent backup storms.
+                    ratio = 1.0;
+                } else {
+                    // True cold-start: no traffic yet. Allow freely.
+                    ratio = 0.0;
+                }
                 _cached_ratio.store(ratio, butil::memory_order_relaxed);
             }
         }
 
-        // max_backup_ratio >= 1.0 means no limit (ratio cannot exceed 1.0).
-        bool allow = _max_backup_ratio >= 1.0 || ratio < _max_backup_ratio;
+        bool allow = ratio < _max_backup_ratio;
         if (allow) {
             // Count backup decisions immediately for faster feedback
             // during latency spikes (before RPCs complete).
@@ -72,8 +86,11 @@ public:
     }
 
     void OnRPCEnd(const Controller* /*controller*/) {
-        // Count all completed RPCs. Backup decisions are counted
-        // in ShouldAllow() at decision time for faster feedback.
+        // Count all completed RPC legs (both original and backup RPCs).
+        // Backup decisions are counted in ShouldAllow() at decision time for
+        // faster feedback. As a result, the effective suppression threshold is
+        // (backup_count / total_legs), where total_legs includes both original
+        // and backup completions.
         _total_count << 1;
     }
 
@@ -122,9 +139,9 @@ private:
 
 BackupRequestPolicy* CreateRateLimitedBackupPolicy(
     const RateLimitedBackupPolicyOptions& options) {
-    if (options.backup_request_ms < 0) {
+    if (options.backup_request_ms < -1) {
         LOG(ERROR) << "Invalid backup_request_ms=" << options.backup_request_ms
-                   << ", must be >= 0";
+                   << ", must be >= -1 (-1 means inherit from ChannelOptions)";
         return NULL;
     }
     if (options.max_backup_ratio <= 0 || options.max_backup_ratio > 1.0) {
@@ -141,6 +158,11 @@ BackupRequestPolicy* CreateRateLimitedBackupPolicy(
         LOG(ERROR) << "Invalid update_interval_seconds="
                    << options.update_interval_seconds << ", must be >= 1";
         return NULL;
+    }
+    if (options.update_interval_seconds > options.window_size_seconds) {
+        LOG(WARNING) << "update_interval_seconds=" << options.update_interval_seconds
+                     << " exceeds window_size_seconds=" << options.window_size_seconds
+                     << "; the ratio window will rarely refresh within its own period";
     }
     return new RateLimitedBackupPolicy(
         options.backup_request_ms, options.max_backup_ratio,
