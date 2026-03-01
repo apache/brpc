@@ -717,8 +717,9 @@ Another solution is setting gflag -defer_close_second
 | Name               | Value | Description                              | Defined At              |
 | ------------------ | ----- | ---------------------------------------- | ----------------------- |
 | defer_close_second | 0     | Defer close of connections for so many seconds even if the connection is not used by anyone. Close immediately for non-positive values | src/brpc/socket_map.cpp |
+| defer_close_respect_idle | false | When defer_close_second > 0, close a connection immediately when the last reference is removed and the socket has already been idle for longer than defer_close_second | src/brpc/socket_map.cpp |
 
-After setting, connection is not closed immediately after last referential count, instead it will be closed after so many seconds. If a channel references the connection again during the wait, the connection resumes to normal. No matter how frequent channels are created, this flag limits the frequency of closing connections. Side effect of the flag is that file descriptors are not closed immediately after destroying of channels, if the flag is wrongly set to be large, number of active file descriptors in the process may be large as well.
+After setting, connection is not closed immediately after last referential count, instead it will be closed after so many seconds. If a channel references the connection again during the wait, the connection resumes to normal. No matter how frequent channels are created, this flag limits the frequency of closing connections. Side effect of the flag is that file descriptors are not closed immediately after destroying of channels, if the flag is wrongly set to be large, number of active file descriptors in the process may be large as well. When -defer_close_respect_idle is enabled, a connection that has already been idle for longer than defer_close_second may be closed when the last reference is removed.
 
 ## Buffer size of connections
 
