@@ -3144,11 +3144,11 @@ TEST_F(RateLimitedBackupPolicyTest, ValidMaxRatioAtBoundary) {
     std::unique_ptr<brpc::BackupRequestPolicy> p(
         brpc::CreateRateLimitedBackupPolicy(opts));
     ASSERT_TRUE(p != NULL);
-    // With max_backup_ratio=1.0, backup is allowed until backup_count/total
-    // reaches 1.0. At cold start (total=0) the conservative path applies:
-    // ratio is treated as 1.0, so DoBackup() returns false only after the
-    // first backup is counted.
-    ASSERT_TRUE(p->DoBackup(NULL));   // cold start: no total yet, allow first
+    // With max_backup_ratio=1.0 and true cold start (total==0, backup==0),
+    // ShouldAllow() sets ratio=0.0 (free pass). The conservative ratio=1.0
+    // path only applies when backup>0 but total==0 (latency spike with no
+    // completions yet). At absolute cold start DoBackup() must return true.
+    ASSERT_TRUE(p->DoBackup(NULL));   // cold start: ratio=0.0 < 1.0, allow
 }
 
 TEST_F(RateLimitedBackupPolicyTest, ColdStartAllowsBackup) {
