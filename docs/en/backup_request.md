@@ -41,7 +41,46 @@ my_func_latency << tm.u_elapsed();  // u represents for microsecond, and s_elaps
 
 ## Rate-limited backup requests
 
-To limit the ratio of backup requests sent, implement the `BackupRequestPolicy` interface or use the built-in factory function directly.
+To limit the ratio of backup requests sent, use the built-in factory function or implement the `BackupRequestPolicy` interface yourself.
+
+Priority order: `backup_request_policy` > `backup_request_ms`.
+
+### Using the built-in rate-limiting policy
+
+Call `CreateRateLimitedBackupPolicy` and set the result on `ChannelOptions.backup_request_policy`:
+
+```c++
+#include "brpc/backup_request_policy.h"
+#include <memory>
+
+brpc::RateLimitedBackupPolicyOptions opts;
+opts.backup_request_ms = 10;       // send backup if RPC does not complete within 10ms
+opts.max_backup_ratio = 0.3;       // cap backup requests at 30% of total
+opts.window_size_seconds = 10;     // sliding window width in seconds
+opts.update_interval_seconds = 5;  // how often the cached ratio is refreshed
+
+// The caller owns the returned pointer.
+// Use unique_ptr to manage the lifetime; ensure the policy outlives the channel.
+std::unique_ptr<brpc::BackupRequestPolicy> policy(
+    brpc::CreateRateLimitedBackupPolicy(opts));
+
+brpc::ChannelOptions options;
+options.backup_request_policy = policy.get(); // NOT owned by channel
+channel.Init(..., &options);
+// policy is released automatically when unique_ptr goes out of scope,
+// as long as it outlives the channel.
+```
+
+`RateLimitedBackupPolicyOptions` fields:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `backup_request_ms` | 0 | Timeout threshold in ms; must be >= 0 |
+| `max_backup_ratio` | 0.1 | Max backup ratio; range (0, 1] |
+| `window_size_seconds` | 10 | Sliding window width in seconds; range [1, 3600] |
+| `update_interval_seconds` | 5 | Cached-ratio refresh interval in seconds; must be >= 1 |
+
+`CreateRateLimitedBackupPolicy` returns `NULL` if any parameter is invalid.
 
 ### Using a custom BackupRequestPolicy
 
@@ -67,22 +106,6 @@ MyBackupPolicy my_policy;
 brpc::ChannelOptions options;
 options.backup_request_policy = &my_policy; // NOT owned by channel; must outlive channel
 channel.Init(..., &options);
-```
-
-The full priority order is: `backup_request_policy` > `backup_request_ms`.
-
-If you want rate limiting with custom parameters rather than the channel-level defaults, you can also use the built-in factory directly:
-
-```c++
-// Caller owns the returned pointer.
-brpc::RateLimitedBackupPolicyOptions opts;
-opts.backup_request_ms = 10;
-opts.max_backup_ratio = 0.3;
-opts.window_size_seconds = 10;
-opts.update_interval_seconds = 5;
-brpc::BackupRequestPolicy* policy = brpc::CreateRateLimitedBackupPolicy(opts);
-options.backup_request_policy = policy;
-// ... remember to delete policy after the channel is destroyed
 ```
 
 ### Implementation notes

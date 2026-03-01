@@ -41,7 +41,45 @@ my_func_latency << tm.u_elapsed();  // u代表微秒，还有s_elapsed(), m_elap
 
 ## Backup Request 限流
 
-如需限制 backup request 的发送比例，可实现 `BackupRequestPolicy` 接口或直接使用内置工厂函数。
+如需限制 backup request 的发送比例，可使用内置工厂函数创建限流策略，也可自行实现 `BackupRequestPolicy` 接口。
+
+优先级顺序：`backup_request_policy` > `backup_request_ms`。
+
+### 使用内置限流策略
+
+调用 `CreateRateLimitedBackupPolicy` 创建限流策略，并将其设置到 `ChannelOptions.backup_request_policy`：
+
+```c++
+#include "brpc/backup_request_policy.h"
+#include <memory>
+
+brpc::RateLimitedBackupPolicyOptions opts;
+opts.backup_request_ms = 10;       // 超过10ms未返回时发送backup请求
+opts.max_backup_ratio = 0.3;       // backup请求比例上限30%
+opts.window_size_seconds = 10;     // 滑动窗口宽度（秒）
+opts.update_interval_seconds = 5;  // 缓存比例的刷新间隔（秒）
+
+// CreateRateLimitedBackupPolicy返回的指针由调用方负责释放。
+// 推荐使用unique_ptr管理生命周期，确保policy在Channel销毁后才释放。
+std::unique_ptr<brpc::BackupRequestPolicy> policy(
+    brpc::CreateRateLimitedBackupPolicy(opts));
+
+brpc::ChannelOptions options;
+options.backup_request_policy = policy.get(); // Channel不拥有该对象
+channel.Init(..., &options);
+// policy在unique_ptr析构时自动释放，确保其生命周期长于channel即可。
+```
+
+参数说明（`RateLimitedBackupPolicyOptions`）：
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `backup_request_ms` | 0 | 超时阈值（毫秒），必须 >= 0 |
+| `max_backup_ratio` | 0.1 | backup比例上限，取值范围 (0, 1] |
+| `window_size_seconds` | 10 | 滑动窗口宽度（秒），取值范围 [1, 3600] |
+| `update_interval_seconds` | 5 | 缓存刷新间隔（秒），必须 >= 1 |
+
+参数不合法时 `CreateRateLimitedBackupPolicy` 返回 `NULL`。
 
 ### 使用自定义 BackupRequestPolicy
 
@@ -67,22 +105,6 @@ MyBackupPolicy my_policy;
 brpc::ChannelOptions options;
 options.backup_request_policy = &my_policy; // Channel不拥有该对象，需保证其生命周期长于Channel
 channel.Init(..., &options);
-```
-
-完整优先级顺序：`backup_request_policy` > `backup_request_ms`。
-
-如需使用内置限流逻辑但想自定义参数，也可直接调用工厂函数：
-
-```c++
-// 返回的指针由调用方负责释放。
-brpc::RateLimitedBackupPolicyOptions opts;
-opts.backup_request_ms = 10;
-opts.max_backup_ratio = 0.3;
-opts.window_size_seconds = 10;
-opts.update_interval_seconds = 5;
-brpc::BackupRequestPolicy* policy = brpc::CreateRateLimitedBackupPolicy(opts);
-options.backup_request_policy = policy;
-// ... Channel销毁后记得delete policy
 ```
 
 ### 实现说明
