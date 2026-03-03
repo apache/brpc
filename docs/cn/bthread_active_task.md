@@ -152,9 +152,14 @@ SubmitAsyncIo(&req);
 // 挂起当前 bthread，等待 active-task hook 唤醒。
 // bthread_butex_wait_local 内部会对本次 wait 启用 wait-scope 本地化 pin，
 // 保证恢复在同一个 worker 上，且恢复前不会被 steal。
-int rc = bthread_butex_wait_local(req.done_butex, 0, NULL);
-if (rc != 0 && errno != EWOULDBLOCK) {
-    // 处理错误/中断/超时（如果设置了超时）
+// 注意：返回 0 只表示“被唤醒”，不代表条件一定满足；要按谓词循环等待。
+while (static_cast<butil::atomic<int>*>(req.done_butex)
+           ->load(butil::memory_order_acquire) == 0) {
+    const int rc = bthread_butex_wait_local(req.done_butex, 0, NULL);
+    if (rc != 0 && errno != EWOULDBLOCK && errno != EINTR) {
+        // 处理错误/中断/超时（如果设置了超时）
+        break;
+    }
 }
 
 // 被唤醒后继续执行（返回点在同一个 worker 上）
@@ -167,7 +172,7 @@ bthread::butex_destroy(req.done_butex);
 核心点：
 
 - 在 hook 中通过 completion 找回 `ReqCtx*`
-- 写结果
+- 先写结果/状态（包括 butex 状态位），再 wake
 - 调 `bthread_butex_wake_within(ctx, req->done_butex)`，显式本地唤醒
 
 ```cpp
@@ -187,6 +192,8 @@ static bool HarvestCompletions(
 
         // “做点什么事”：写 completion 结果
         req->result = 123;  // 示例
+        static_cast<butil::atomic<int>*>(req->done_butex)
+            ->store(1, butil::memory_order_release);
         req->done.store(1, std::memory_order_release);
 
         errno = 0;

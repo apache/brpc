@@ -160,6 +160,12 @@ extern int bthread_register_active_task_type(
 // - owner-local pinned runqueue is full: return -1 and set errno=EAGAIN.
 //   Caller should retry in a later harvest round.
 //
+// Ordering rule:
+//   publish result/state first, then call bthread_butex_wake_within().
+//   Typical pattern:
+//     ((butil::atomic<int>*)butex)->store(new_value, butil::memory_order_release);
+//     bthread_butex_wake_within(ctx, butex);
+//
 // Calling this API outside active-task harvest callbacks returns -1 and sets
 // errno=EPERM.
 extern int bthread_butex_wake_within(const bthread_active_task_ctx_t* ctx,
@@ -174,6 +180,10 @@ extern int bthread_butex_wake_within(const bthread_active_task_ctx_t* ctx,
 // Strict mode: external wakeup for this waiter must use
 // bthread_butex_wake_within(). Generic butex_wake* APIs do not provide a
 // fallback path for pinned waiters and may fail with EINVAL.
+//
+// IMPORTANT:
+//   returning 0 only means the waiter was woken from butex queue.
+//   Caller still needs to re-check user predicate after each return.
 //
 // Returns 0 on success, -1 otherwise and errno is set.
 // - EPERM: not running inside a normal bthread worker task
