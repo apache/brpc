@@ -51,6 +51,18 @@ template <typename T> T* butex_create_checked() {
 // Destroy the butex.
 void butex_destroy(void* butex);
 
+// Usage contract for butex wait/wake on the same state variable:
+// 1) The waker must publish state transition first, then call butex_wake*().
+//    Typical pattern: store(..., memory_order_release) -> butex_wake*().
+// 2) A successful wakeup does NOT mean the user predicate is true.
+//    Waiters must re-check predicate after every butex_wait() return.
+//
+// Example:
+//   while (state.load(memory_order_acquire) == expected) {
+//       if (butex_wait(&state, expected, NULL) < 0 && errno != EWOULDBLOCK &&
+//           errno != EINTR) { ... }
+//   }
+//
 // Wake up at most 1 thread waiting on |butex|.
 // Returns # of threads woken up.
 // Returns -1 and sets errno=EINVAL when the selected waiter is in
@@ -91,6 +103,9 @@ int butex_requeue(void* butex1, void* butex2);
 // Atomically wait on |butex| if *butex equals |expected_value|, until the
 // butex is woken up by butex_wake*, or CLOCK_REALTIME reached |abstime| if
 // abstime is not NULL.
+// IMPORTANT:
+//   Returning 0 only means the waiter was woken from butex queue.
+//   It does NOT imply user predicate is satisfied.
 // About |abstime|:
 //   Different from FUTEX_WAIT, butex_wait uses absolute time.
 // About |prepend|:
