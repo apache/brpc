@@ -176,6 +176,7 @@ class MyEchoService : public ::test::EchoService {
             res->add_code_list(req->code());
         }
         res->set_receiving_socket_id(cntl->_current_call.sending_sock->id());
+        if (mockfunc_) mockfunc_(cntl_base, req, res, done);
 
         brpc::ProtocolType protocol = cntl->request_protocol();
         if ((brpc::PROTOCOL_HTTP == protocol || brpc::PROTOCOL_H2 == protocol) &&
@@ -198,6 +199,17 @@ class MyEchoService : public ::test::EchoService {
         EXPECT_TRUE(nullptr != request);
         EXPECT_TRUE(nullptr != response);
     }
+
+public:
+    using MockFuncType = void(google::protobuf::RpcController*,
+                    const ::test::EchoRequest*, ::test::EchoResponse*,
+                    google::protobuf::Closure*);
+    void SetMockFunc(std::function<MockFuncType>&& mockfunc) {
+        mockfunc_ = std::move(mockfunc);
+    }
+
+private:
+    std::function<MockFuncType> mockfunc_;
 };
 
 pthread_once_t register_mock_protocol = PTHREAD_ONCE_INIT;
@@ -1408,7 +1420,7 @@ protected:
             SetUpChannel(subchan, single_server, short_connection);
             ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1425,6 +1437,55 @@ protected:
         EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         EXPECT_EQ(-1, cntl.sub(0)->_timeout_ms);
         EXPECT_EQ(17, cntl.sub(0)->_real_timeout_ms);
+        StopAndJoin();
+    }
+
+    void TestBackupRequestSelective(
+        bool single_server, bool async, bool short_connection) {
+        std::cout << " *** single=" << single_server
+                  << " async=" << async
+                  << " short=" << short_connection << std::endl;
+        ASSERT_EQ(0, StartAccept(_ep));
+
+        const size_t NCHANS = 8;
+        brpc::SelectiveChannel channel;
+        ASSERT_EQ(0, channel.Init("rr", NULL));
+        for (size_t i = 0; i < NCHANS; ++i) {
+            brpc::Channel* subchan = new brpc::Channel;
+            SetUpChannel(subchan, single_server, short_connection);
+            ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
+        }
+
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(__FUNCTION__);
+        cntl.set_backup_request_ms(20);
+        cntl.set_timeout_ms(100);
+        std::atomic<int> call_cnt(0);
+        _svc.SetMockFunc([&call_cnt](google::protobuf::RpcController* cntl_base,
+                                     const ::test::EchoRequest*,
+                                     ::test::EchoResponse*,
+                                     google::protobuf::Closure*) {
+            brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+            int see_cnt = call_cnt.fetch_add(1, std::memory_order_relaxed);
+            if (see_cnt == 0) {
+                LOG(INFO) << "slow node";
+                bthread_usleep(30 * 1000);
+            } else {
+                LOG(INFO) << "normal node ";
+                butil::IOBuf iobuf;
+                iobuf.append("123");
+                cntl->response_attachment().swap(iobuf);
+            }
+        });
+        butil::Timer tm;
+        tm.start();
+        CallMethod(&channel, &cntl, &req, &res, async);
+        tm.stop();
+        EXPECT_FALSE(cntl.Failed());
+        EXPECT_EQ(call_cnt.load(std::memory_order_relaxed), 2);
+        EXPECT_EQ(cntl.response_attachment().to_string(), "123");
         StopAndJoin();
     }
     
@@ -2708,6 +2769,16 @@ TEST_F(ChannelTest, timeout_selective) {
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRPCTimeoutSelective(i, j, k);
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, backuprequest_selective) {
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+        for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
+            for (int k = 0; k <=1; ++k) { // Flag ShortConnection
+                TestBackupRequestSelective(i, j, k);
             }
         }
     }
