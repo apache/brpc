@@ -364,12 +364,6 @@ void SubDone::Run() {
                    << _cid.value << ": " << berror(rc);
         return;
     }
-    // NOTE: Copying gettable-but-settable fields which are generally set
-    // during the RPC to reflect details.
-    main_cntl->_remote_side = _cntl._remote_side;
-    // connection_type may be changed during CallMethod. 
-    main_cntl->set_connection_type(_cntl.connection_type());
-    main_cntl->response_attachment().swap(_cntl.response_attachment());
     Resource r;
     r.response = _cntl._response;
     r.sub_done = this;
@@ -377,6 +371,13 @@ void SubDone::Run() {
         return;
     }
     const int saved_error = main_cntl->ErrorCode();
+
+    // NOTE: Copying gettable-but-settable fields which are generally set
+    // during the RPC to reflect details.
+    main_cntl->_remote_side = _cntl._remote_side;
+    // connection_type may be changed during CallMethod. 
+    main_cntl->set_connection_type(_cntl.connection_type());
+    main_cntl->response_attachment().swap(_cntl.response_attachment());
     
     if (_cntl.Failed()) {
         if (_cntl.ErrorCode() == ENODATA || _cntl.ErrorCode() == EHOSTDOWN) {
