@@ -214,8 +214,8 @@ bool SingleIOBuf::assign(const IOBuf& buf, uint32_t msg_size) {
     }
     
     const IOBuf::BlockRef& ref = buf._front_ref();
+    reset();
     if (ref.length >= msg_size) {
-        reset();
         _cur_ref.offset = ref.offset;
         _cur_ref.length = msg_size;
         _cur_ref.block = ref.block;
@@ -226,7 +226,6 @@ bool SingleIOBuf::assign(const IOBuf& buf, uint32_t msg_size) {
         if (!b) {
             return false;
         }
-        reset();
         char* out = b->data + b->size;
         const size_t nref = buf.backing_block_num();
         uint32_t last_len = msg_size;
