@@ -118,9 +118,10 @@ struct ChannelOptions {
 
     // Customize the backup request time and whether to send backup request.
     // Priority: `backup_request_policy' > `backup_request_ms'.
-    // Overridable by Controller.set_backup_request_ms() or
+    // Overridable per-RPC by Controller.set_backup_request_ms() or
     // Controller.set_backup_request_policy().
-    // This object is NOT owned by channel and should remain valid when channel is used.
+    // This object is NOT owned by channel and should remain valid during
+    // channel's lifetime.
     // Default: NULL
     BackupRequestPolicy* backup_request_policy;
 
