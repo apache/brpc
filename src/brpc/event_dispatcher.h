@@ -19,12 +19,15 @@
 #ifndef BRPC_EVENT_DISPATCHER_H
 #define BRPC_EVENT_DISPATCHER_H
 
+#include <gflags/gflags_declare.h>          // DECLARE_bool
 #include "butil/macros.h"                     // DISALLOW_COPY_AND_ASSIGN
 #include "bthread/types.h"                   // bthread_t, bthread_attr_t
 #include "brpc/versioned_ref_with_id.h"
 
 
 namespace brpc {
+
+DECLARE_bool(event_dispatcher_edisp_unsched);
 
 // Unique identifier of a IOEventData.
 // Users shall store EventDataId instead of EventData and call EventData::Address()
@@ -187,6 +190,11 @@ private:
 };
 
 EventDispatcher& GetGlobalEventDispatcher(int fd, bthread_tag_t tag);
+
+// Unified unsched switch for transport layer.
+// false -> background start (allowing schedule away),
+// true  -> urgent start (foreground scheduling before caller continues).
+bool EventDispatcherUnsched();
 
 // IOEvent class manages the IO events of a file descriptor conveniently.
 template <typename T>
