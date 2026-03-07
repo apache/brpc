@@ -49,6 +49,10 @@ RDMA is hardware-related. It has some different concepts such as device, port, G
 
 `event_dispatcher_edisp_unsched` is a global flag and affects EventDispatcher scheduling in both normal mode (TCP) and RDMA mode. For backward compatibility, `rdma_edisp_unsched` is still kept, but it is deprecated and will be removed in a future release.
 
+Historical notes:
+1. In an earlier implementation, the RDMA path had an `if` condition bug where branch behavior did not match flag semantics (`unsched=true` could still enter the schedulable branch). This has been fixed.
+2. `event_dispatcher_edisp_unsched` is intended to replace `rdma_edisp_unsched`; the old flag remains only for compatibility. Their semantics are consistent: `true` means unschedulable, `false` means schedulable.
+
 The effective unsched condition is unified as:
 `event_dispatcher_edisp_unsched || rdma_edisp_unsched`
 
@@ -61,8 +65,8 @@ Recommended usage:
 
 Examples:
 1. Only `-rdma_edisp_unsched=true`: `rdma_edisp_unsched=true`, `event_dispatcher_edisp_unsched=false`; both TCP and RDMA are unschedulable.
-2. Only `-event_dispatcher_edisp_unsched=true`: both flags are `true`; both TCP and RDMA are unschedulable.
-3. Both `-rdma_edisp_unsched=true -event_dispatcher_edisp_unsched=false`: `rdma_edisp_unsched=true`, `event_dispatcher_edisp_unsched=false`; both TCP and RDMA are unschedulable.
+2. Only `-event_dispatcher_edisp_unsched=true`: `rdma_edisp_unsched=false`, `event_dispatcher_edisp_unsched=true`; both TCP and RDMA are unschedulable.
+3. Both `-rdma_edisp_unsched=true -event_dispatcher_edisp_unsched=true`: both flags are `true`; both TCP and RDMA are unschedulable.
 
 # Parameters
 
