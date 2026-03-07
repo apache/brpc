@@ -63,7 +63,6 @@ BRPC_VALIDATE_GFLAG(rdma_trace_verbose, brpc::PassValidate);
 DEFINE_bool(rdma_use_polling, false, "Use polling mode for RDMA.");
 DEFINE_int32(rdma_poller_num, 1, "Poller number in RDMA polling mode.");
 DEFINE_bool(rdma_poller_yield, false, "Yield thread in RDMA polling mode.");
-DEFINE_bool(rdma_edisp_unsched, false, "Disable event dispatcher schedule");
 DEFINE_bool(rdma_disable_bthread, false, "Disable bthread in RDMA");
 
 static const size_t IOBUF_BLOCK_HEADER_LEN = 32; // implementation-dependent
