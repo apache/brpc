@@ -154,6 +154,9 @@ public:
     static void set_stopped(bthread_t tid);
     static bool is_stopped(bthread_t tid);
 
+    static int butex_wake_within_active_task(const bthread_active_task_ctx_t* ctx,
+                                             void* butex);
+
     // The bthread running run_main_task();
     bthread_t main_tid() const { return _main_tid; }
     TaskStatistics main_stat() const;
@@ -188,6 +191,7 @@ public:
     // Push a bthread into the runqueue from another non-worker thread.
     void ready_to_run_remote(TaskMeta* meta, bool nosignal = false);
     void flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex);
+    void flush_nosignal_tasks_pinned_remote_locked(butil::Mutex& locked_mutex);
     void flush_nosignal_tasks_remote();
 
     // Automatically decide the caller is remote or local, and call
@@ -211,11 +215,16 @@ public:
     // Push a task into _rq, if _rq is full, retry after some time. This
     // process make go on indefinitely.
     void push_rq(bthread_t tid);
+    void push_pinned_rq(bthread_t tid);
 
     // Returns size of local run queue.
     size_t rq_size() const {
         return _rq.volatile_size();
     }
+    // Returns true when owner-local pinned runqueue is full.
+    // This is intended for non-blocking wake paths that must not spin
+    // inside active-task hook callbacks.
+    bool pinned_rq_full() const;
 
     bthread_tag_t tag() const { return _tag; }
 
@@ -301,6 +310,11 @@ friend class TaskControl;
     explicit TaskGroup(TaskControl* c);
 
     int init(size_t runqueue_capacity);
+    static TaskGroup* validate_active_task_hook_ctx(
+        const bthread_active_task_ctx_t* ctx, int* err);
+    int init_active_tasks_for_worker();
+    void destroy_active_tasks_for_worker();
+    void run_active_tasks_harvest(bool* skip_park);
 
     // You shall call destroy_selfm() instead of destructor because deletion
     // of groups are postponed to avoid race.
@@ -322,16 +336,28 @@ friend class TaskControl;
     static void ready_to_run_in_worker(void*);
     static void ready_to_run_in_worker_ignoresignal(void*);
     static void priority_to_run(void*);
+    void on_local_ready_enqueued(bool nosignal);
+    void on_remote_ready_enqueued(TaskMeta* meta,
+                                  RemoteTaskQueue* rq,
+                                  int* num_nosignal,
+                                  int* nsignaled,
+                                  bool nosignal,
+                                  const char* rq_name,
+                                  void (TaskGroup::*flush_locked)(butil::Mutex&));
+    void ready_to_run_local_raw(TaskMeta* meta, bool nosignal);
+    void ready_to_run_remote_raw(TaskMeta* meta, bool nosignal);
+    void ready_to_run_pinned_local(TaskMeta* meta, bool nosignal);
+    void ready_to_run_pinned_remote(TaskMeta* meta, bool nosignal);
+    bool route_to_pinned_home(TaskMeta* meta, bool nosignal);
+    void ready_to_run_ignoresignal_pinaware(TaskMeta* meta);
+    static bool is_locally_pinned_task(const TaskMeta* meta);
 
     // Wait for a task to run.
     // Returns true on success, false is treated as permanent error and the
     // loop calling this function should end.
     bool wait_task(bthread_t* tid);
-
-    bool steal_task(bthread_t* tid) {
-        if (_remote_rq.pop(tid)) {
-            return true;
-        }
+    bool pop_next_task_local_first(bthread_t* tid);
+    bool steal_task_from_others(bthread_t* tid) {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         _last_pl_state = _pl->get_state();
 #endif
@@ -345,6 +371,21 @@ friend class TaskControl;
     static bool is_main_task(TaskGroup* g, bthread_t tid) {
         return g->_main_tid == tid;
     }
+
+    struct ActiveTaskCtxImpl {
+        static const uint64_t MAGIC = 0x4252504341544b31ULL;      // "BRPCATK1"
+        static const uint64_t DEAD_MAGIC = 0x4252504341544b30ULL; // "BRPCATK0"
+        uint64_t magic{DEAD_MAGIC};
+        TaskGroup* group{NULL};
+    };
+
+    struct ActiveTaskInstance {
+        bthread_active_task_type_t type{};
+        void* worker_local{NULL};
+        bool initialized{false};
+        ActiveTaskCtxImpl impl;
+        bthread_active_task_ctx_t public_ctx{};
+    };
 
     TaskMeta* _cur_meta{NULL};
     
@@ -369,9 +410,13 @@ friend class TaskControl;
     ContextualStack* _main_stack{NULL};
     bthread_t _main_tid{INVALID_BTHREAD};
     WorkStealingQueue<bthread_t> _rq;
+    WorkStealingQueue<bthread_t> _pinned_rq;
     RemoteTaskQueue _remote_rq;
+    RemoteTaskQueue _pinned_remote_rq;
     int _remote_num_nosignal{0};
     int _remote_nsignaled{0};
+    int _pinned_remote_num_nosignal{0};
+    int _pinned_remote_nsignaled{0};
 
     int _sched_recursive_guard{0};
     // tag of this taskgroup
@@ -379,6 +424,10 @@ friend class TaskControl;
 
     // Worker thread id.
     pthread_t _tid{};
+    uint32_t _worker_index{0};
+    int32_t _bound_cpu{-1};
+    bool _has_active_task_harvest{false};
+    std::vector<ActiveTaskInstance> _active_task_instances;
 };
 
 }  // namespace bthread

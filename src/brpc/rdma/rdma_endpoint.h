@@ -38,6 +38,9 @@ namespace rdma {
 
 DECLARE_bool(rdma_use_polling);
 DECLARE_int32(rdma_poller_num);
+// Deprecated compatibility flag.
+// Kept as declaration for source compatibility. Use
+// event_dispatcher_edisp_unsched instead.
 DECLARE_bool(rdma_edisp_unsched);
 DECLARE_bool(rdma_disable_bthread);
 

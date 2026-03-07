@@ -16,6 +16,7 @@
 /output
 /test/output
 build/
+.cache
 
 # Ignore hidden files
 .*
