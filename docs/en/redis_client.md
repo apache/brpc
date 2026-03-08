@@ -162,6 +162,55 @@ Create a `Channel` using the consistent hashing as the load balancing algorithm(
 
 Another choice is to use the common [twemproxy](https://github.com/twitter/twemproxy) solution, which makes clients access the cluster just like accessing a single server, although the solution needs to deploy proxies and adds more latency.
 
+For native Redis Cluster (slot based routing, MOVED/ASK redirection and topology refresh from `CLUSTER SLOTS`/`CLUSTER NODES`), use `brpc::RedisClusterChannel`:
+
+```c++
+#include <brpc/redis_cluster.h>
+
+brpc::RedisClusterChannel channel;
+brpc::RedisClusterChannelOptions options;
+options.max_redirect = 5;
+if (channel.Init("127.0.0.1:7000,127.0.0.1:7001", &options) != 0) {
+    LOG(ERROR) << "Fail to init redis cluster channel";
+}
+```
+
+`RedisClusterChannel` supports synchronous/asynchronous `CallMethod`, automatic redirection retries and periodic topology refresh. Multi-key support includes `MGET/MSET/DEL/EXISTS/UNLINK/EVAL/EVALSHA`. `MULTI/EXEC` is currently not supported.
+
+## RedisClusterChannel example
+
+`example/redis_c++/redis_cluster_client.cpp` demonstrates:
+
+- bootstrap from multiple seed nodes.
+- MOVED/ASK auto-redirection and retry.
+- topology refresh from `CLUSTER SLOTS` with `CLUSTER NODES` fallback.
+- sync pipeline and async calls using one channel.
+
+Build and run:
+
+```bash
+cd example/redis_c++
+make redis_cluster_client
+./redis_cluster_client \
+  --seeds=127.0.0.1:7000,127.0.0.1:7001 \
+  --max_redirect=5 \
+  --timeout_ms=1000
+```
+
+Frequently used options:
+
+- `RedisClusterChannelOptions::max_redirect`: max redirects per command.
+- `RedisClusterChannelOptions::refresh_interval_s`: interval of periodic topology refresh.
+- `RedisClusterChannelOptions::topology_refresh_timeout_ms`: timeout for topology commands.
+- `RedisClusterChannelOptions::channel_options`: normal brpc channel options for each redis node.
+- `RedisClusterChannelOptions::enable_periodic_refresh`: disable this when your app controls refresh explicitly.
+
+Notes:
+
+- `MGET/MSET/DEL/EXISTS/UNLINK` are executed per key and merged in request order.
+- `EVAL/EVALSHA` requires all declared keys to be in one slot.
+- `MULTI/EXEC` returns an error reply by design.
+
 # Debug
 
 Turn on [-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose) to print contents of all redis requests and responses. Note that this should only be used for debugging rather than online services.
@@ -242,6 +291,8 @@ We can see a tremendous drop of QPS compared to the one using single connection 
 # Command Line Interface
 
 [example/redis_c++/redis_cli](https://github.com/apache/brpc/blob/master/example/redis_c%2B%2B/redis_cli.cpp) is a command line tool similar to the official CLI, demostrating brpc's capability to talk with redis servers. When unexpected results are got from a redis-server using a brpc client, you can debug with this tool interactively as well.
+
+For native Redis Cluster, you can start from [example/redis_c++/redis_cluster_client.cpp](https://github.com/apache/brpc/blob/master/example/redis_c%2B%2B/redis_cluster_client.cpp).
 
 Like the official CLI, `redis_cli <command>` runs the command directly, and `-server` which is address of the redis-server can be specified.
 
