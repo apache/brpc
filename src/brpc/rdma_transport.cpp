@@ -18,6 +18,7 @@
 #if BRPC_WITH_RDMA
 
 #include "brpc/rdma_transport.h"
+#include "brpc/event_dispatcher.h"
 #include "brpc/tcp_transport.h"
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rdma_helper.h"
@@ -127,13 +128,13 @@ void RdmaTransport::ProcessEvent(bthread_attr_t attr) {
     bthread_t tid;
     if (FLAGS_usercode_in_coroutine) {
         OnEdge(_socket);
-    } else if (rdma::FLAGS_rdma_edisp_unsched == false) {
-        auto rc = bthread_start_background(&tid, &attr, OnEdge, _socket);
+    } else if (!EventDispatcherUnsched()) {
+        auto rc = bthread_start_urgent(&tid, &attr, OnEdge, _socket);
         if (rc != 0) {
             LOG(FATAL) << "Fail to start ProcessEvent";
             OnEdge(_socket);
         }
-    } else if (bthread_start_urgent(&tid, &attr, OnEdge, _socket) != 0) {
+    } else if (bthread_start_background(&tid, &attr, OnEdge, _socket) != 0) {
         LOG(FATAL) << "Fail to start ProcessEvent";
         OnEdge(_socket);
     }
