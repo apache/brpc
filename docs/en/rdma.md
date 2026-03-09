@@ -47,26 +47,18 @@ The application can manage memory by itself and send data with IOBuf::append_use
 
 RDMA is hardware-related. It has some different concepts such as device, port, GID, LID, MaxSge and so on. These parameters can be read from NICs at initialization, and brpc will make the default choice (see src/brpc/rdma/rdma_helper.cpp). Sometimes the default choice is not the expectation, then it can be changed in the flag way.
 
-`event_dispatcher_edisp_unsched` is a global flag and affects EventDispatcher scheduling in both normal mode (TCP) and RDMA mode. For backward compatibility, `rdma_edisp_unsched` is still kept, but it is deprecated and will be removed in a future release.
+`event_dispatcher_edisp_unsched` is a global flag and affects EventDispatcher scheduling in both normal mode (TCP) and RDMA mode.
+`true` means EventDispatcher is unschedulable, and `false` means schedulable (default).
 
-Historical notes:
-1. In an earlier implementation, the RDMA path had an `if` condition bug where branch behavior did not match flag semantics (`unsched=true` could still enter the schedulable branch). This has been fixed.
-2. `event_dispatcher_edisp_unsched` is intended to replace `rdma_edisp_unsched`; the old flag remains only for compatibility. Their semantics are consistent: `true` means unschedulable, `false` means schedulable.
-
-The effective unsched condition is unified as:
-`event_dispatcher_edisp_unsched || rdma_edisp_unsched`
-
-No startup synchronization rewrites user flags. Runtime behavior is determined directly from user-provided values.
+Runtime behavior is determined directly from user-provided values.
 
 Recommended usage:
-1. New deployment: set only `event_dispatcher_edisp_unsched`.
-2. Existing deployment: keep `rdma_edisp_unsched` temporarily, but migrate to `event_dispatcher_edisp_unsched`.
-3. Avoid conflicting values in scripts; with unified OR semantics, either flag being `true` makes EventDispatcher unschedulable.
+1. Keep the default `false` when unsched is not needed.
+2. Set `-event_dispatcher_edisp_unsched=true` when unsched behavior is required.
 
 Examples:
-1. Only `-rdma_edisp_unsched=true`: `rdma_edisp_unsched=true`, `event_dispatcher_edisp_unsched=false`; both TCP and RDMA are unschedulable.
-2. Only `-event_dispatcher_edisp_unsched=true`: `rdma_edisp_unsched=false`, `event_dispatcher_edisp_unsched=true`; both TCP and RDMA are unschedulable.
-3. Both `-rdma_edisp_unsched=true -event_dispatcher_edisp_unsched=true`: both flags are `true`; both TCP and RDMA are unschedulable.
+1. `-event_dispatcher_edisp_unsched=false`: both TCP and RDMA are schedulable.
+2. `-event_dispatcher_edisp_unsched=true`: both TCP and RDMA are unschedulable.
 
 # Parameters
 
@@ -93,5 +85,4 @@ Configurable parameters:
 * rdma_poller_num: The number of pollers in polling mode, default is 1.
 * rdma_poller_yield: Whether pollers in polling mode voluntarily relinquish the CPU, default is false.
 * event_dispatcher_edisp_unsched: Global switch for EventDispatcher scheduling (true means unschedulable), default is false.
-* rdma_edisp_unsched: Deprecated compatibility flag (planned removal in a future release). It still participates in unified unsched condition, default is false.
 * rdma_disable_bthread: Disables bthread, default is false.

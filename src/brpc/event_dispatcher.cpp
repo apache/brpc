@@ -33,14 +33,6 @@ DEFINE_int32(event_dispatcher_num, 1, "Number of event dispatcher");
 DEFINE_bool(event_dispatcher_edisp_unsched, false,
             "Disable event dispatcher schedule");
 
-#if BRPC_WITH_RDMA
-namespace rdma {
-DEFINE_bool(rdma_edisp_unsched, false,
-            "Deprecated and will be removed in a future release, "
-            "use event_dispatcher_edisp_unsched instead");
-}  // namespace rdma
-#endif
-
 DEFINE_bool(usercode_in_pthread, false, 
             "Call user's callback in pthreads, use bthreads otherwise");
 DEFINE_bool(usercode_in_coroutine, false,
@@ -52,12 +44,7 @@ static bvar::LatencyRecorder* g_edisp_write_lantency = NULL;
 static pthread_once_t g_edisp_once = PTHREAD_ONCE_INIT;
 
 bool EventDispatcherUnsched() {
-#if BRPC_WITH_RDMA
-    return FLAGS_event_dispatcher_edisp_unsched ||
-           rdma::FLAGS_rdma_edisp_unsched;
-#else
     return FLAGS_event_dispatcher_edisp_unsched;
-#endif
 }
 
 static void StopAndJoinGlobalDispatchers() {

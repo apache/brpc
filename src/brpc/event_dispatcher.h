@@ -91,8 +91,8 @@ class RdmaEndpoint;
 }
 
 // Dispatch edge-triggered events of file descriptors to consumers.
-// Consumer callbacks are typically executed in separate bthreads, and may
-// run inline in coroutine mode.
+// By default callbacks run in spawned bthreads; when usercode-in-coroutine is
+// enabled, the callback may run inline in the current coroutine.
 class EventDispatcher {
 friend class Socket;
 friend class rdma::RdmaEndpoint;
@@ -193,8 +193,8 @@ private:
 EventDispatcher& GetGlobalEventDispatcher(int fd, bthread_tag_t tag);
 
 // Unified unsched switch for transport layer.
-// false -> urgent start (handoff to the event task ASAP),
-// true  -> background start (do not force immediate handoff).
+// false -> urgent start (foreground scheduling before caller continues),
+// true  -> background start (allowing schedule away).
 bool EventDispatcherUnsched();
 
 // IOEvent class manages the IO events of a file descriptor conveniently.
