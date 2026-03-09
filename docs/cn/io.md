@@ -14,7 +14,7 @@ linux一般使用non-blocking IO提高IO并发度。当IO并发度很低时，no
 
 由于epoll的[一个bug](https://web.archive.org/web/20150423184820/https://patchwork.kernel.org/patch/1970231/)(开发brpc时仍有)及epoll_ctl较大的开销，EDISP使用Edge triggered模式。当收到事件时，EDISP给一个原子变量加1，只有当加1前的值是0时启动一个bthread处理对应fd上的数据。在背后，EDISP把所在的pthread让给了新建的bthread，使其有更好的cache locality，可以尽快地读取fd上的数据。而EDISP所在的bthread会被偷到另外一个pthread继续执行，这个过程即是bthread的work stealing调度。要准确理解那个原子变量的工作方式可以先阅读[atomic instructions](atomic_instructions.md)，再看[Socket::StartInputEvent](https://github.com/apache/brpc/blob/master/src/brpc/socket.cpp)。这些方法使得brpc读取同一个fd时产生的竞争是[wait-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom)的。
 
-在当前实现里，`Transport::ProcessEvent` 会按 `EventDispatcherUnsched()` 选择启动方式：返回 `false` 时走 `bthread_start_urgent`，返回 `true` 时走 `bthread_start_background`。此外，RDMA 在轮询模式与事件模式对 `last_msg` 的处理不同：`rdma_use_polling=false` 时不会在 `RdmaTransport::QueueMessage` 里处理 `last_msg`，轮询模式下会继续处理。
+在当前实现里，`Transport::ProcessEvent` 会按 `EventDispatcherUnsched()` 选择启动方式：返回 `false` 时走 `bthread_start_urgent`，返回 `true` 时走 `bthread_start_background`。此外，RDMA 在轮询模式与事件模式对 `last_msg` 的处理不同：`rdma_use_polling=false` 时不会在 `RdmaTransport::QueueMessage` 里处理 `last_msg`，轮询模式下会继续处理。并且在 `EventDispatcherUnsched()` 返回 `true` 时，`last_msg` 不会在当前执行流里直接处理，而是在新的 bthread 中执行。用户可以通过 `event_dispatcher_edisp_unsched` 来控制这一行为。
 
 [InputMessenger](https://github.com/apache/brpc/blob/master/src/brpc/input_messenger.h)负责从fd上切割和处理消息，它通过用户回调函数理解不同的格式。Parse一般是把消息从二进制流上切割下来，运行时间较固定；Process则是进一步解析消息(比如反序列化为protobuf)后调用用户回调，时间不确定。若一次从某个fd读取出n个消息(n > 1)，InputMessenger会启动n-1个bthread分别处理前n-1个消息，最后一个消息则会在原地被Process。InputMessenger会逐一尝试多种协议，由于一个连接上往往只有一种消息格式，InputMessenger会记录下上次的选择，而避免每次都重复尝试。
 
