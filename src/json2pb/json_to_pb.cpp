@@ -119,7 +119,7 @@ static void string_append_value(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
 //otherwise will append error into error message and return false.
 inline bool value_invalid(const google::protobuf::FieldDescriptor* field, const char* type,
                           const BUTIL_RAPIDJSON_NAMESPACE::Value& value, std::string* err) {
-    bool optional = field->is_optional();
+    bool optional = !field->is_required() && !field->is_repeated();
     if (err) {
         if (!err->empty()) {
             err->append(", ");
