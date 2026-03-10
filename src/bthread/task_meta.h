@@ -31,6 +31,9 @@
 
 namespace bthread {
 
+class TaskControl;
+class TaskGroup;
+
 struct TaskStatistics {
     int64_t cputime_ns;
     int64_t nswitch;
@@ -116,6 +119,15 @@ struct TaskMeta {
     pthread_mutex_t trace_lock{};
     // Worker thread id.
     pthread_t worker_tid{};
+
+    // Pin current task to a specific worker(TaskGroup). When enabled, runnable
+    // transitions must route back to local_pin_home_group and must not be
+    // stealable until local_pin_depth drops to 0.
+    TaskGroup* local_pin_home_group{NULL};
+    TaskControl* local_pin_home_control{NULL};
+    bthread_tag_t local_pin_home_tag{BTHREAD_TAG_INVALID};
+    uint16_t local_pin_depth{0};
+    bool local_pin_enabled{false};
 
 public:
     // Only initialize [Not Reset] fields, other fields will be reset in

@@ -65,6 +65,11 @@ public:
     // Wait for tasks.
     // If the `expected_state' does not match, wait() may finish directly.
     void wait(const State& expected_state) {
+        wait(expected_state, NULL);
+    }
+
+    // Wait for tasks with an optional relative timeout.
+    void wait(const State& expected_state, const timespec* timeout) {
         if (get_state().val != expected_state.val) {
             // Fast path, no need to futex_wait.
             return;
@@ -72,7 +77,7 @@ public:
         if (_no_signal_when_no_waiter) {
             _waiter_num.fetch_add(1, butil::memory_order_relaxed);
         }
-        futex_wait_private(&_pending_signal, expected_state.val, NULL);
+        futex_wait_private(&_pending_signal, expected_state.val, timeout);
         if (_no_signal_when_no_waiter) {
             _waiter_num.fetch_sub(1, butil::memory_order_relaxed);
         }
