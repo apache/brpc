@@ -190,6 +190,23 @@ jobs:
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
                     -- //... -//example/...
 
+  gcc-bazel-unittest:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: run bazel tests
+      run: bazel test --test_output=errors --verbose_failures --test_timeout=900 --define=with_glog=false --define=BRPC_WITH_GLOG=false -- //test/... 
+
+  clang-bazel-unittest:
+    runs-on: ubuntu-22.04  
+    steps:
+    - uses: actions/checkout@v2
+    - run: |
+        sudo apt-get update && sudo apt-get install -y clang-12 lldb-12 lld-12 libgtest-dev cmake gdb libstdc++6-11-dbg
+      shell: bash
+    - name: run bazel tests
+      run: bazel test --test_output=errors --verbose_failures --action_env=CC=clang-12 --define=with_glog=false --define=BRPC_WITH_GLOG=false -- //test/...
+
   clang-unittest:
     runs-on: ubuntu-22.04
     steps:
