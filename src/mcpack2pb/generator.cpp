@@ -482,7 +482,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
             } break;
             } // switch
         } else {
-            if (f->is_optional()) {
+            if (!f->is_required() && !f->is_repeated()) {
                 impl.Print("// optional $type$ $name$ = $number$;\n"
                            , "type", field_to_string(f)
                            , "name", f->name()
@@ -888,12 +888,12 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
             butil::string_printf(&comment_template,
                                 "// %s $type$ $name$ = $number$;\n",
                                 (f->is_repeated() ? "repeated" :
-                                 (f->is_optional() ? "optional" : "required")));
+                                 (f->is_required() ? "required" : "optional")));
         } else {
             butil::string_printf(&comment_template,
                                 "// %s $type$ $name$ = $number$ [(idl_type)=%s];\n",
                                 (f->is_repeated() ? "repeated" :
-                                 (f->is_optional() ? "optional" : "required")),
+                                 (f->is_required() ? "required" : "optional")),
                                 describe_idl_type(cit));
         }
         impl.Print(comment_template.c_str()
