@@ -1849,9 +1849,14 @@ void IOBufAsZeroCopyInputStream::BackUp(int count) {
     }
 }
 
-// Skips a number of bytes. Return false if some input error occurred.
-// In the end-of-stream case, the stream is advanced to the end of the
-// stream (so ByteCount() will return the total size of the stream).
+// Skips `count` number of bytes.
+// Returns true on success, or false if some input error occurred, or `count`
+// exceeds the end of the stream. This function may skip up to `count - 1`
+// bytes in case of failure.
+//
+// Preconditions:
+// * `count` is non-negative.
+//
 bool IOBufAsZeroCopyInputStream::Skip(int count) {
     const IOBuf::BlockRef* cur_ref = _buf->_pref_at(_ref_index);
     while (cur_ref) {
