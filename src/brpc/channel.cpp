@@ -61,6 +61,7 @@ ChannelOptions::ChannelOptions()
     , succeed_without_server(true)
     , log_succeed_without_server(true)
     , use_rdma(false)
+    , use_gdr(false)
     , auth(NULL)
     , backup_request_policy(NULL)
     , retry_policy(NULL)
@@ -122,6 +123,9 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         }
         if (opt.use_rdma) {
             buf.append("|rdma");
+        }
+        if (opt.use_gdr) {
+            buf.append("|gdr");
         }
         butil::MurmurHash3_x64_128_Update(&mm_ctx, buf.data(), buf.size());
         buf.clear();
@@ -197,6 +201,11 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
+#if BRPC_WITH_GDR
+        if (_options.use_gdr) {
+            rdma::GlobalGdrInitializeOrDie();
+        }
+#endif // BRPC_WITH_GDR
         if (!rdma::InitPollingModeWithTag(bthread_self_tag())) {
             return -1;
         }
@@ -369,7 +378,8 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
         return -1;
     }
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
-                        &_server_id, ssl_ctx, _options.use_rdma, _options.hc_option) != 0) {
+                        &_server_id, ssl_ctx, _options.use_rdma, _options.use_gdr,
+                        _options.hc_option) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -407,6 +417,7 @@ int Channel::Init(const char* ns_url,
     ns_opt.succeed_without_server = _options.succeed_without_server;
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
     ns_opt.use_rdma = _options.use_rdma;
+    ns_opt.use_gdr = _options.use_gdr;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
     ns_opt.hc_option =  _options.hc_option;
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {

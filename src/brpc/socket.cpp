@@ -759,7 +759,7 @@ int Socket::OnCreated(const SocketOptions& options) {
 #if BRPC_WITH_RDMA
     CHECK(_rdma_ep == NULL);
     if (options.use_rdma) {
-        _rdma_ep = new (std::nothrow)rdma::RdmaEndpoint(this);
+        _rdma_ep = new (std::nothrow)rdma::RdmaEndpoint(this, options.use_gdr);
         if (!_rdma_ep) {
             const int saved_errno = errno;
             PLOG(ERROR) << "Fail to create RdmaEndpoint";
@@ -2811,6 +2811,7 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
         opt.keytable_pool = _keytable_pool;
         opt.app_connect = _app_connect;
         opt.use_rdma =  (_rdma_ep) ? true : false;
+        opt.use_gdr =  (_rdma_ep) ? _rdma_ep->use_gdr() : false;
         socket_pool = new SocketPool(opt);
         SocketPool* expected = NULL;
         if (!main_sp->socket_pool.compare_exchange_strong(
@@ -2912,6 +2913,7 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     opt.keytable_pool = _keytable_pool;
     opt.app_connect = _app_connect;
     opt.use_rdma =  (_rdma_ep) ? true : false;
+    opt.use_gdr =  (_rdma_ep) ? _rdma_ep->use_gdr() : false;
     if (get_client_side_messenger()->Create(opt, &id) != 0 ||
         Socket::Address(id, short_socket) != 0) {
         return -1;

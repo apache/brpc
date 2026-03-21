@@ -146,6 +146,7 @@ ServerOptions::ServerOptions()
     , has_builtin_services(true)
     , force_ssl(false)
     , use_rdma(false)
+    , use_gdr(false)
     , baidu_master_service(NULL)
     , http_master_service(NULL)
     , health_reporter(NULL)
@@ -895,6 +896,11 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
+#if BRPC_WITH_GDR
+        if (_options.use_gdr) {
+            rdma::GlobalGdrInitializeOrDie();
+        }
+#endif // BRPC_WITH_GDR
         if (!rdma::InitPollingModeWithTag(_options.bthread_tag)) {
             return -1;
         }
@@ -1170,6 +1176,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 return -1;
             }
             _am->_use_rdma = _options.use_rdma;
+            _am->_use_gdr = _options.use_gdr;
             _am->_bthread_tag = _options.bthread_tag;
         }
         // Set `_status' to RUNNING before accepting connections

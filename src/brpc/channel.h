@@ -109,6 +109,10 @@ struct ChannelOptions {
     // Default: false
     bool use_rdma;
 
+    // Let this channel use gdu direct rdma.
+    // Default: false
+    bool use_gdr;
+
     // Turn on authentication for this channel if `auth' is not NULL.
     // Note `auth' will not be deleted by channel and must remain valid when
     // the channel is being used.

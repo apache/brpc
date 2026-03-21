@@ -71,17 +71,22 @@ class BAIDU_CACHELINE_ALIGNMENT RdmaEndpoint : public SocketUser {
 friend class RdmaConnect;
 friend class brpc::Socket;
 public:
-    RdmaEndpoint(Socket* s);
+    RdmaEndpoint(Socket* s, bool use_gdr);
     ~RdmaEndpoint();
 
     // Global initialization
     // Return 0 if success, -1 if failed and errno set
     static int GlobalInitialize();
 
+    // Global initialization for gdr
+    static int GlobalGdrInitialize();
+
     static void GlobalRelease();
 
     // Reset the endpoint (for next use)
     void Reset();
+
+    bool use_gdr() { return _use_gdr; }
 
     // Cut data from the given IOBuf list and use RDMA to send
     // Return bytes cut if success, -1 if failed and errno set
@@ -294,6 +299,8 @@ private:
         std::atomic<bool> running;
     };
     static std::vector<PollerGroup> _poller_groups;
+ 
+    bool _use_gdr;
 };
 
 }  // namespace rdma

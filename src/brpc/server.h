@@ -227,6 +227,10 @@ struct ServerOptions {
     // Default: false
     bool use_rdma;
 
+    // Whether the server uses gdr or not
+    // Default: false
+    bool use_gdr;
+
     // [CAUTION] This option is for implementing specialized baidu-std proxies,
     // most users don't need it. Don't change this option unless you fully
     // understand the description below.

@@ -271,6 +271,7 @@ struct SocketOptions {
     bool force_ssl{false};
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bool use_rdma{false};
+    bool use_gdr{false};
     bthread_keytable_pool_t* keytable_pool{NULL};
     SocketConnection* conn{NULL};
     std::shared_ptr<AppConnect> app_connect;

@@ -25,7 +25,9 @@
 #include "butil/containers/flat_map.h"            // butil::FlatMap
 #include "butil/fd_guard.h"
 #include "butil/fd_utility.h"                     // butil::make_non_blocking
+#if BRPC_WITH_GDR
 #include "butil/gpu/gpu_block_pool.h"
+#endif // BRPC_WITH_GDR
 #include "butil/logging.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/block_pool.h"
@@ -556,13 +558,6 @@ static void GlobalRdmaInitializeOrDieImpl() {
         ExitWithError();
     }
 
-#if BRPC_WITH_GDR
-    if (!butil::gdr::InitGPUBlockPool(g_gpu_index, GetRdmaPd())) {
-        PLOG(ERROR) << "Fail to initialize RDMA GPU memory pool";
-        ExitWithError();
-    }
-#endif  // if BRPC_WITH_GDR
-
     if (RdmaEndpoint::GlobalInitialize() < 0) {
         LOG(ERROR) << "rdma_recv_block_type incorrect "
                    << "(valid value: default/large/huge)";
@@ -591,12 +586,34 @@ static void GlobalRdmaInitializeOrDieImpl() {
     g_rdma_available.store(true, butil::memory_order_relaxed);
 }
 
+static void GlobalGdrInitializeOrDieImpl() {
+#if BRPC_WITH_GDR
+    if (!butil::gdr::InitGPUBlockPool(g_gpu_index, GetRdmaPd())) {
+        PLOG(ERROR) << "Fail to initialize RDMA GPU memory pool";
+        ExitWithError();
+    }
+    if (RdmaEndpoint::GlobalGdrInitialize() < 0) {
+        LOG(ERROR) << "g_gdr_recv_block_size incorrect.";
+        ExitWithError();
+    }
+#endif  // if BRPC_WITH_GDR
+}
+
 static pthread_once_t initialize_rdma_once = PTHREAD_ONCE_INIT;
+static pthread_once_t initialize_gdr_once = PTHREAD_ONCE_INIT;
 
 void GlobalRdmaInitializeOrDie() {
     if (pthread_once(&initialize_rdma_once,
                      GlobalRdmaInitializeOrDieImpl) != 0) {
         LOG(FATAL) << "Fail to pthread_once GlobalRdmaInitializeOrDie";
+        exit(1);
+    }
+}
+
+void GlobalGdrInitializeOrDie() {
+    if (pthread_once(&initialize_gdr_once,
+                     GlobalGdrInitializeOrDieImpl) != 0) {
+        LOG(FATAL) << "Fail to pthread_once GlobalGdrInitializeOrDie";
         exit(1);
     }
 }

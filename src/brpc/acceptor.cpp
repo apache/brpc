@@ -41,6 +41,7 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _force_ssl(false)
     , _ssl_ctx(NULL) 
     , _use_rdma(false)
+    , _use_gdr(false)
     , _bthread_tag(BTHREAD_TAG_DEFAULT) {
 }
 

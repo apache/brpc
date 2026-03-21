@@ -45,11 +45,13 @@ struct GetNamingServiceThreadOptions {
     GetNamingServiceThreadOptions()
         : succeed_without_server(false)
         , log_succeed_without_server(true)
-        , use_rdma(false) {}
+        , use_rdma(false)
+        , use_gdr(false) {}
     
     bool succeed_without_server;
     bool log_succeed_without_server;
     bool use_rdma;
+    bool use_gdr;
     HealthCheckOption hc_option;
     ChannelSignature channel_signature;
     std::shared_ptr<SocketSSLContext> ssl_ctx;
