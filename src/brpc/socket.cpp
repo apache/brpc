@@ -2106,12 +2106,14 @@ ssize_t Socket::DoRead(size_t size_hint) {
                          << ": " << SSLError(e);
             errno = ESSL;
         } else {
+            int saved_errno = errno;
             // System error with corresponding errno set.
             bool is_fatal_error = (ssl_error != SSL_ERROR_ZERO_RETURN &&
                                    ssl_error != SSL_ERROR_SYSCALL) ||
-                                   BIO_fd_non_fatal_error(errno) != 0 ||
+                                   BIO_fd_non_fatal_error(saved_errno) != 0 ||
                                   nr < 0;
             PLOG_IF(WARNING, is_fatal_error) << "Fail to read from ssl_fd=" << fd();
+            errno = saved_errno;
         }
         break;
     }
