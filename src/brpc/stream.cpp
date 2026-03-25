@@ -19,6 +19,7 @@
 #include "brpc/stream.h"
 
 #include <gflags/gflags.h>
+#include "butil/string_printf.h"
 #include "butil/time.h"
 #include "butil/object_pool.h"
 #include "butil/unique_ptr.h"
@@ -57,6 +58,7 @@ Stream::Stream()
     , _pending_buf(NULL)
     , _start_idle_timer_us(0)
     , _idle_timer(0)
+    , _set_host_socket_ec(0)
 {
     _connect_meta.on_connect = NULL;
     CHECK_EQ(0, bthread_mutex_init(&_connect_mutex, NULL));
@@ -665,13 +667,16 @@ int Stream::SetHostSocket(Socket *host_socket) {
     std::call_once(_set_host_socket_flag, [this, host_socket]() {
         SocketUniquePtr ptr;
         host_socket->ReAddress(&ptr);
-        // TODO add *this to host socke
         if (ptr->AddStream(id()) != 0) {
-            CHECK(false) << id() << " fail to add stream to host socket";
+            _set_host_socket_ec = errno ? errno : ptr->non_zero_error_code();
             return;
         }
         _host_socket = ptr.release();
     });
+    if (_host_socket == NULL) {
+        errno = _set_host_socket_ec ? _set_host_socket_ec : EFAILEDSOCKET;
+        return -1;
+    }
     return 0;
 }
 
@@ -731,27 +736,35 @@ void Stream::Close(int error_code, const char* reason_fmt, ...) {
     return TriggerOnConnectIfNeed();
 }
 
-int Stream::SetFailed(StreamId id, int error_code, const char* reason_fmt, ...) {
+int Stream::SetFailedWithReason(StreamId id, int error_code,
+                                const std::string& reason) {
     SocketUniquePtr ptr;
     if (Socket::AddressFailedAsWell(id, &ptr) == -1) {
-        // Don't care recycled stream
         return 0;
     }
     Stream* s = (Stream*)ptr->conn();
+    s->Close(error_code, "%s", reason.c_str());
+    return 0;
+}
+
+int Stream::SetFailed(StreamId id, int error_code, const char* reason_fmt, ...) {
     va_list ap;
     va_start(ap, reason_fmt);
-    s->Close(error_code, reason_fmt, ap);
+    std::string reason;
+    butil::string_vprintf(&reason, reason_fmt, ap);
     va_end(ap);
-    return 0;
+    return SetFailedWithReason(id, error_code, reason);
 }
 
 int Stream::SetFailed(const StreamIds& ids, int error_code, const char* reason_fmt, ...) {
     va_list ap;
     va_start(ap, reason_fmt);
-    for(size_t i = 0; i< ids.size(); ++i) {
-        Stream::SetFailed(ids[i], error_code, reason_fmt, ap);
-    }
+    std::string reason;
+    butil::string_vprintf(&reason, reason_fmt, ap);
     va_end(ap);
+    for (size_t i = 0; i < ids.size(); ++i) {
+        Stream::SetFailedWithReason(ids[i], error_code, reason);
+    }
     return 0;
 }
 
