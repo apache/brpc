@@ -32,6 +32,7 @@
 #include <memory>
 #include "butil/atomicops.h"                     // butil::atomic
 #include "bvar/bvar.h"                          // bvar::PassiveStatus
+#include "bthread/unstable.h"                   // active task types
 #include "bthread/task_tracer.h"
 #include "bthread/task_meta.h"                  // TaskMeta
 #include "bthread/work_stealing_queue.h"        // WorkStealingQueue
@@ -41,6 +42,10 @@ DECLARE_int32(task_group_ntags);
 namespace bthread {
 
 class TaskGroup;
+
+// Internal helper implemented in bthread.cpp. TaskControl snapshots active-task
+// registrations during init so worker threads can access a stable list.
+void get_active_task_types_snapshot(std::vector<bthread_active_task_type_t>* out);
 
 // Control all task groups
 class TaskControl {
@@ -165,6 +170,8 @@ private:
 
     bool _enable_priority_queue;
     std::vector<WorkStealingQueue<bthread_t>> _priority_queues;
+
+    std::vector<bthread_active_task_type_t> _active_task_types;
 
     size_t _pl_num_of_each_tag;
     std::vector<TaggedParkingLot> _tagged_pl;

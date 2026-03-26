@@ -101,10 +101,23 @@ inline void TaskGroup::push_rq(bthread_t tid) {
     }
 }
 
+inline void TaskGroup::push_pinned_rq(bthread_t tid) {
+    while (!_pinned_rq.push(tid)) {
+        flush_nosignal_tasks();
+        LOG_EVERY_SECOND(ERROR) << "_pinned_rq is full, capacity="
+                                << _pinned_rq.capacity();
+        ::usleep(1000);
+    }
+}
+
 inline void TaskGroup::flush_nosignal_tasks_remote() {
     if (_remote_num_nosignal) {
         _remote_rq._mutex.lock();
         flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
+    }
+    if (_pinned_remote_num_nosignal) {
+        _pinned_remote_rq._mutex.lock();
+        flush_nosignal_tasks_pinned_remote_locked(_pinned_remote_rq._mutex);
     }
 }
 

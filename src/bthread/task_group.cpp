@@ -63,6 +63,26 @@ DEFINE_bool(bthread_enable_cpu_clock_stat, false,
             "Enable CPU clock statistics for bthread");
 BUTIL_VALIDATE_GFLAG(bthread_enable_cpu_clock_stat, butil::PassValidate);
 
+DEFINE_int32(bthread_active_task_poll_every_nswitch, 1,
+             "Run active-task maintenance poll in worker main loop every N "
+             "task switches when active tasks are registered. Set to 0 to "
+             "disable periodic polling on busy workers.");
+static bool validate_bthread_active_task_poll_every_nswitch(const char*, int32_t val) {
+    return val >= 0;
+}
+BUTIL_VALIDATE_GFLAG(bthread_active_task_poll_every_nswitch,
+                     validate_bthread_active_task_poll_every_nswitch);
+
+DEFINE_int64(bthread_active_task_idle_wait_ns, 1000 * 1000,
+             "Active-task worker idle wait interval in nanoseconds when no "
+             "tasks are runnable. <0 waits indefinitely (only signals), 0 "
+             "skips parking, >0 uses timed ParkingLot wait.");
+static bool validate_bthread_active_task_idle_wait_ns(const char*, int64_t val) {
+    return val >= -1;
+}
+BUTIL_VALIDATE_GFLAG(bthread_active_task_idle_wait_ns,
+                     validate_bthread_active_task_idle_wait_ns);
+
 BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, NULL);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
@@ -79,6 +99,9 @@ BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
 void* (*g_create_span_func)() = NULL;
+
+static __thread const bthread_active_task_ctx_t* tls_active_task_hook_ctx = NULL;
+static __thread TaskGroup* tls_active_task_hook_group = NULL;
 
 void* run_create_span_func() {
     if (g_create_span_func) {
@@ -161,26 +184,230 @@ bool TaskGroup::is_stopped(bthread_t tid) {
     return true;
 }
 
+TaskGroup* TaskGroup::validate_active_task_hook_ctx(
+        const bthread_active_task_ctx_t* ctx, int* err) {
+    if (ctx == NULL) {
+        if (err) {
+            *err = EINVAL;
+        }
+        return NULL;
+    }
+    if (ctx != tls_active_task_hook_ctx || tls_active_task_hook_group == NULL) {
+        if (err) {
+            *err = EPERM;
+        }
+        return NULL;
+    }
+    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    if (g == NULL || g != tls_active_task_hook_group || !g->is_current_main_task()) {
+        if (err) {
+            *err = EPERM;
+        }
+        return NULL;
+    }
+    const ActiveTaskCtxImpl* impl = static_cast<const ActiveTaskCtxImpl*>(ctx->impl);
+    if (impl == NULL || impl->magic != ActiveTaskCtxImpl::MAGIC || impl->group != g) {
+        if (err) {
+            *err = EPERM;
+        }
+        return NULL;
+    }
+    if (err) {
+        *err = 0;
+    }
+    return g;
+}
+
+int TaskGroup::butex_wake_within_active_task(const bthread_active_task_ctx_t* ctx,
+                                             void* butex) {
+    if (butex == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    int err = 0;
+    TaskGroup* g = validate_active_task_hook_ctx(ctx, &err);
+    if (g == NULL) {
+        errno = err;
+        return -1;
+    }
+    return butex_wake_to_task_group(butex, g);
+}
+
+int TaskGroup::init_active_tasks_for_worker() {
+    _active_task_instances.clear();
+    _has_active_task_harvest = false;
+    if (_control == NULL || _control->_active_task_types.empty()) {
+        return 0;
+    }
+    try {
+        _active_task_instances.resize(_control->_active_task_types.size());
+    } catch (...) {
+        return ENOMEM;
+    }
+    for (size_t i = 0; i < _active_task_instances.size(); ++i) {
+        ActiveTaskInstance& inst = _active_task_instances[i];
+        inst.type = _control->_active_task_types[i];
+        inst.worker_local = NULL;
+        inst.initialized = false;
+        inst.impl.magic = ActiveTaskCtxImpl::DEAD_MAGIC;
+        inst.impl.group = this;
+        inst.public_ctx.struct_size = sizeof(inst.public_ctx);
+        inst.public_ctx.tag = _tag;
+        inst.public_ctx.worker_index = _worker_index;
+        inst.public_ctx.worker_pthread = _tid;
+        inst.public_ctx.bound_cpu = _bound_cpu;
+        inst.public_ctx.reserved0 = 0;
+        inst.public_ctx.impl = &inst.impl;
+        inst.impl.magic = ActiveTaskCtxImpl::MAGIC;
+        if (inst.type.worker_init) {
+            void* worker_local = NULL;
+            const int rc = inst.type.worker_init(
+                &worker_local, &inst.public_ctx, inst.type.user_data);
+            if (rc != 0) {
+                inst.impl.magic = ActiveTaskCtxImpl::DEAD_MAGIC;
+                for (size_t j = i; j > 0; --j) {
+                    ActiveTaskInstance& rollback = _active_task_instances[j - 1];
+                    if (!rollback.initialized) {
+                        continue;
+                    }
+                    if (rollback.type.worker_destroy) {
+                        rollback.type.worker_destroy(rollback.worker_local,
+                                                    &rollback.public_ctx,
+                                                    rollback.type.user_data);
+                    }
+                    rollback.initialized = false;
+                    rollback.public_ctx.impl = NULL;
+                    rollback.impl.magic = ActiveTaskCtxImpl::DEAD_MAGIC;
+                }
+                _active_task_instances.clear();
+                return rc;
+            }
+            inst.worker_local = worker_local;
+        }
+        inst.initialized = true;
+        if (inst.type.harvest != NULL) {
+            _has_active_task_harvest = true;
+        }
+    }
+    return 0;
+}
+
+void TaskGroup::destroy_active_tasks_for_worker() {
+    for (size_t i = _active_task_instances.size(); i > 0; --i) {
+        ActiveTaskInstance& inst = _active_task_instances[i - 1];
+        if (!inst.initialized) {
+            continue;
+        }
+        if (inst.type.worker_destroy) {
+            inst.type.worker_destroy(inst.worker_local,
+                                     &inst.public_ctx,
+                                     inst.type.user_data);
+        }
+        inst.initialized = false;
+        inst.public_ctx.impl = NULL;
+        inst.impl.magic = ActiveTaskCtxImpl::DEAD_MAGIC;
+        inst.impl.group = this;
+        inst.worker_local = NULL;
+    }
+    _active_task_instances.clear();
+    _has_active_task_harvest = false;
+}
+
+void TaskGroup::run_active_tasks_harvest(bool* skip_park) {
+    if (skip_park) {
+        *skip_park = false;
+    }
+    if (_active_task_instances.empty()) {
+        return;
+    }
+    for (size_t i = 0; i < _active_task_instances.size(); ++i) {
+        ActiveTaskInstance& inst = _active_task_instances[i];
+        if (!inst.initialized || inst.type.harvest == NULL) {
+            continue;
+        }
+        const bthread_active_task_ctx_t* saved_ctx = tls_active_task_hook_ctx;
+        TaskGroup* saved_group = tls_active_task_hook_group;
+        tls_active_task_hook_ctx = &inst.public_ctx;
+        tls_active_task_hook_group = this;
+        const int cb_ret = inst.type.harvest(inst.worker_local, &inst.public_ctx);
+        tls_active_task_hook_ctx = saved_ctx;
+        tls_active_task_hook_group = saved_group;
+        if (skip_park) {
+            if (cb_ret == 1) {
+                *skip_park = true;
+            } else if (cb_ret != 0) {
+                LOG_EVERY_SECOND(ERROR)
+                    << "active-task harvest returned invalid value=" << cb_ret
+                    << " (expected 0 or 1), treating as 0";
+            }
+        }
+    }
+}
+
 bool TaskGroup::wait_task(bthread_t* tid) {
+    if (__builtin_expect(!_has_active_task_harvest, 1)) {
+        do {
+#ifndef BTHREAD_DONT_SAVE_PARKING_STATE
+            if (_last_pl_state.stopped()) {
+                return false;
+            }
+            _pl->wait(_last_pl_state);
+            if (pop_next_task_local_first(tid)) {
+                return true;
+            }
+#else
+            const ParkingLot::State st = _pl->get_state();
+            if (st.stopped()) {
+                return false;
+            }
+            if (pop_next_task_local_first(tid)) {
+                return true;
+            }
+            _pl->wait(st);
+#endif
+        } while (true);
+    }
+
     do {
+        if (_pl->get_state().stopped()) {
+            return false;
+        }
+        if (pop_next_task_local_first(tid)) {
+            return true;
+        }
+        bool harvest_skip_park = false;
+        run_active_tasks_harvest(&harvest_skip_park);
+        if (pop_next_task_local_first(tid)) {
+            return true;
+        }
+        const int64_t idle_wait_ns = FLAGS_bthread_active_task_idle_wait_ns;
+        if (harvest_skip_park || idle_wait_ns == 0) {
+            if (_pl->get_state().stopped()) {
+                return false;
+            }
+            continue;
+        }
+        timespec timeout_ts{};
+        const timespec* ptimeout = NULL;
+        if (idle_wait_ns > 0) {
+            timeout_ts = butil::nanoseconds_to_timespec(idle_wait_ns);
+            ptimeout = &timeout_ts;
+        }
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
             return false;
         }
-        _pl->wait(_last_pl_state);
-        if (steal_task(tid)) {
-            return true;
-        }
+        _pl->wait(_last_pl_state, ptimeout);
 #else
         const ParkingLot::State st = _pl->get_state();
         if (st.stopped()) {
             return false;
         }
-        if (steal_task(tid)) {
-            return true;
-        }
-        _pl->wait(st);
+        _pl->wait(st, ptimeout);
 #endif
+        if (_pl->get_state().stopped()) {
+            return false;
+        }
     } while (true);
 }
 
@@ -202,6 +429,7 @@ void TaskGroup::run_main_task() {
     bvar::PassiveStatus<double> cumulated_cputime(
         get_cumulated_cputime_from_this, this);
     std::unique_ptr<bvar::PerSecond<bvar::PassiveStatus<double> > > usage_bvar;
+    size_t last_active_task_periodic_poll_nswitch = 0;
 
     TaskGroup* dummy = this;
     bthread_t tid;
@@ -211,6 +439,17 @@ void TaskGroup::run_main_task() {
         DCHECK_EQ(_cur_meta->stack, _main_stack);
         if (_cur_meta->tid != _main_tid) {
             task_runner(1/*skip remained*/);
+        }
+        if (_has_active_task_harvest) {
+            const int every_nswitch = FLAGS_bthread_active_task_poll_every_nswitch;
+            if (every_nswitch > 0 &&
+                _nswitch - last_active_task_periodic_poll_nswitch >=
+                    static_cast<size_t>(every_nswitch)) {
+                // Busy workers may avoid wait_task() for a long time. Poll
+                // the unified harvest hook periodically in the worker loop.
+                last_active_task_periodic_poll_nswitch = _nswitch;
+                run_active_tasks_harvest(NULL);
+            }
         }
         if (FLAGS_show_per_worker_usage_in_vars && !usage_bvar) {
             char name[32];
@@ -277,8 +516,16 @@ int TaskGroup::init(size_t runqueue_capacity) {
         LOG(FATAL) << "Fail to init _rq";
         return -1;
     }
+    if (_pinned_rq.init(runqueue_capacity) != 0) {
+        LOG(FATAL) << "Fail to init _pinned_rq";
+        return -1;
+    }
     if (_remote_rq.init(runqueue_capacity / 2) != 0) {
         LOG(FATAL) << "Fail to init _remote_rq";
+        return -1;
+    }
+    if (_pinned_remote_rq.init(runqueue_capacity / 2) != 0) {
+        LOG(FATAL) << "Fail to init _pinned_remote_rq";
         return -1;
     }
 
@@ -311,6 +558,11 @@ int TaskGroup::init(size_t runqueue_capacity) {
     m->cpuwide_start_ns = butil::cpuwide_time_ns();
     m->stat = EMPTY_STAT;
     m->attr = BTHREAD_ATTR_TASKGROUP;
+    m->local_pin_home_group = NULL;
+    m->local_pin_home_control = NULL;
+    m->local_pin_home_tag = BTHREAD_TAG_INVALID;
+    m->local_pin_depth = 0;
+    m->local_pin_enabled = false;
     m->tid = make_tid(*m->version_butex, slot);
     m->set_stack(stk);
 
@@ -421,6 +673,15 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // return_KeyTable, the group is probably changed.
         g =  BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 
+        if (m->local_pin_enabled || m->local_pin_depth != 0 ||
+            m->local_pin_home_group != NULL || m->local_pin_home_control != NULL) {
+            m->local_pin_enabled = false;
+            m->local_pin_depth = 0;
+            m->local_pin_home_group = NULL;
+            m->local_pin_home_control = NULL;
+            m->local_pin_home_tag = BTHREAD_TAG_INVALID;
+        }
+
         // Increase the version and wake up all joiners, if resulting version
         // is 0, change it to 1 to make bthread_t never be 0. Any access
         // or join to the bthread after changing version will be rejected.
@@ -499,6 +760,11 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
+    m->local_pin_home_group = NULL;
+    m->local_pin_home_control = NULL;
+    m->local_pin_home_tag = BTHREAD_TAG_INVALID;
+    m->local_pin_depth = 0;
+    m->local_pin_enabled = false;
     m->tid = make_tid(*m->version_butex, slot);
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
@@ -564,6 +830,11 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
+    m->local_pin_home_group = NULL;
+    m->local_pin_home_control = NULL;
+    m->local_pin_home_tag = BTHREAD_TAG_INVALID;
+    m->local_pin_depth = 0;
+    m->local_pin_enabled = false;
     m->tid = make_tid(*m->version_butex, slot);
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
@@ -636,19 +907,59 @@ TaskStatistics TaskGroup::main_stat() const {
     return m ? m->stat : EMPTY_STAT;
 }
 
+bool TaskGroup::is_locally_pinned_task(const TaskMeta* meta) {
+    return meta != NULL && meta->local_pin_enabled && meta->local_pin_depth > 0 &&
+           meta->local_pin_home_group != NULL;
+}
+
+bool TaskGroup::pinned_rq_full() const {
+    return _pinned_rq.volatile_size() >= _pinned_rq.capacity();
+}
+
+bool TaskGroup::route_to_pinned_home(TaskMeta* meta, bool nosignal) {
+    if (!is_locally_pinned_task(meta)) {
+        return false;
+    }
+    TaskGroup* home = meta->local_pin_home_group;
+    if (home == NULL) {
+        LOG(FATAL) << "Pinned task " << meta->tid << " has NULL home_group";
+        return true;
+    }
+    if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == home) {
+        home->ready_to_run_pinned_local(meta, nosignal);
+    } else {
+        home->ready_to_run_pinned_remote(meta, nosignal);
+    }
+    return true;
+}
+
+bool TaskGroup::pop_next_task_local_first(bthread_t* tid) {
+    if (_pinned_rq.pop(tid)) {
+        return true;
+    }
+    if (_pinned_remote_rq.pop(tid)) {
+        return true;
+    }
+#ifndef BTHREAD_FAIR_WSQ
+    if (_rq.pop(tid)) {
+        return true;
+    }
+#else
+    if (_rq.steal(tid)) {
+        return true;
+    }
+#endif
+    if (_remote_rq.pop(tid)) {
+        return true;
+    }
+    return steal_task_from_others(tid);
+}
+
 void TaskGroup::ending_sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
-#ifndef BTHREAD_FAIR_WSQ
-    // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
-    // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
-    // to 2.9%
-    const bool popped = g->_rq.pop(&next_tid);
-#else
-    const bool popped = g->_rq.steal(&next_tid);
-#endif
-    if (!popped && !g->steal_task(&next_tid)) {
+    if (!g->pop_next_task_local_first(&next_tid)) {
         // Jump to main task if there's no task to run.
         next_tid = g->_main_tid;
     }
@@ -688,12 +999,7 @@ void TaskGroup::sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
-#ifndef BTHREAD_FAIR_WSQ
-    const bool popped = g->_rq.pop(&next_tid);
-#else
-    const bool popped = g->_rq.steal(&next_tid);
-#endif
-    if (!popped && !g->steal_task(&next_tid)) {
+    if (!g->pop_next_task_local_first(&next_tid)) {
         // Jump to main task if there's no task to run.
         next_tid = g->_main_tid;
     }
@@ -814,11 +1120,23 @@ void TaskGroup::destroy_self() {
 }
 
 
-void TaskGroup::ready_to_run(TaskMeta* meta, bool nosignal) {
+void TaskGroup::ready_to_run_local_raw(TaskMeta* meta, bool nosignal) {
 #ifdef BRPC_BTHREAD_TRACER
     _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
 #endif // BRPC_BTHREAD_TRACER
     push_rq(meta->tid);
+    on_local_ready_enqueued(nosignal);
+}
+
+void TaskGroup::ready_to_run_pinned_local(TaskMeta* meta, bool nosignal) {
+#ifdef BRPC_BTHREAD_TRACER
+    _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
+#endif // BRPC_BTHREAD_TRACER
+    push_pinned_rq(meta->tid);
+    on_local_ready_enqueued(nosignal);
+}
+
+void TaskGroup::on_local_ready_enqueued(bool nosignal) {
     if (nosignal) {
         ++_num_nosignal;
     } else {
@@ -827,6 +1145,13 @@ void TaskGroup::ready_to_run(TaskMeta* meta, bool nosignal) {
         _nsignaled += 1 + additional_signal;
         _control->signal_task(1 + additional_signal, _tag);
     }
+}
+
+void TaskGroup::ready_to_run(TaskMeta* meta, bool nosignal) {
+    if (route_to_pinned_home(meta, nosignal)) {
+        return;
+    }
+    ready_to_run_local_raw(meta, nosignal);
 }
 
 void TaskGroup::flush_nosignal_tasks() {
@@ -838,28 +1163,57 @@ void TaskGroup::flush_nosignal_tasks() {
     }
 }
 
-void TaskGroup::ready_to_run_remote(TaskMeta* meta, bool nosignal) {
+void TaskGroup::on_remote_ready_enqueued(
+        TaskMeta* meta,
+        RemoteTaskQueue* rq,
+        int* num_nosignal,
+        int* nsignaled,
+        bool nosignal,
+        const char* rq_name,
+        void (TaskGroup::*flush_locked)(butil::Mutex&)) {
 #ifdef BRPC_BTHREAD_TRACER
     _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
 #endif // BRPC_BTHREAD_TRACER
-    _remote_rq._mutex.lock();
-    while (!_remote_rq.push_locked(meta->tid)) {
-        flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
-        LOG_EVERY_SECOND(ERROR) << "_remote_rq is full, capacity="
-                                << _remote_rq.capacity();
+    rq->_mutex.lock();
+    while (!rq->push_locked(meta->tid)) {
+        (this->*flush_locked)(rq->_mutex);
+        LOG_EVERY_SECOND(ERROR) << rq_name << " is full, capacity="
+                                << rq->capacity();
         ::usleep(1000);
-        _remote_rq._mutex.lock();
+        rq->_mutex.lock();
     }
     if (nosignal) {
-        ++_remote_num_nosignal;
-        _remote_rq._mutex.unlock();
+        ++*num_nosignal;
+        rq->_mutex.unlock();
     } else {
-        const int additional_signal = _remote_num_nosignal;
-        _remote_num_nosignal = 0;
-        _remote_nsignaled += 1 + additional_signal;
-        _remote_rq._mutex.unlock();
+        const int additional_signal = *num_nosignal;
+        *num_nosignal = 0;
+        *nsignaled += 1 + additional_signal;
+        rq->_mutex.unlock();
         _control->signal_task(1 + additional_signal, _tag);
     }
+}
+
+void TaskGroup::ready_to_run_remote_raw(TaskMeta* meta, bool nosignal) {
+    on_remote_ready_enqueued(meta, &_remote_rq,
+                             &_remote_num_nosignal, &_remote_nsignaled,
+                             nosignal, "_remote_rq",
+                             &TaskGroup::flush_nosignal_tasks_remote_locked);
+}
+
+void TaskGroup::ready_to_run_pinned_remote(TaskMeta* meta, bool nosignal) {
+    on_remote_ready_enqueued(meta, &_pinned_remote_rq,
+                             &_pinned_remote_num_nosignal,
+                             &_pinned_remote_nsignaled,
+                             nosignal, "_pinned_remote_rq",
+                             &TaskGroup::flush_nosignal_tasks_pinned_remote_locked);
+}
+
+void TaskGroup::ready_to_run_remote(TaskMeta* meta, bool nosignal) {
+    if (route_to_pinned_home(meta, nosignal)) {
+        return;
+    }
+    ready_to_run_remote_raw(meta, nosignal);
 }
 
 void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
@@ -874,11 +1228,28 @@ void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
     _control->signal_task(val, _tag);
 }
 
-void TaskGroup::ready_to_run_general(TaskMeta* meta, bool nosignal) {
-    if (tls_task_group == this) {
-        return ready_to_run(meta, nosignal);
+void TaskGroup::flush_nosignal_tasks_pinned_remote_locked(butil::Mutex& locked_mutex) {
+    const int val = _pinned_remote_num_nosignal;
+    if (!val) {
+        locked_mutex.unlock();
+        return;
     }
-    return ready_to_run_remote(meta, nosignal);
+    _pinned_remote_num_nosignal = 0;
+    _pinned_remote_nsignaled += val;
+    locked_mutex.unlock();
+    _control->signal_task(val, _tag);
+}
+
+void TaskGroup::ready_to_run_general(TaskMeta* meta, bool nosignal) {
+    if (route_to_pinned_home(meta, nosignal)) {
+        return;
+    }
+    if (tls_task_group == this) {
+        // route_to_pinned_home() is already checked above.
+        return ready_to_run_local_raw(meta, nosignal);
+    }
+    // route_to_pinned_home() is already checked above.
+    return ready_to_run_remote_raw(meta, nosignal);
 }
 
 void TaskGroup::flush_nosignal_tasks_general() {
@@ -895,15 +1266,24 @@ void TaskGroup::ready_to_run_in_worker(void* args_in) {
 
 void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    return tls_task_group->ready_to_run_ignoresignal_pinaware(args->meta);
+}
+
+void TaskGroup::ready_to_run_ignoresignal_pinaware(TaskMeta* meta) {
+    if (route_to_pinned_home(meta, true)) {
+        return;
+    }
 #ifdef BRPC_BTHREAD_TRACER
-    tls_task_group->_control->_task_tracer.set_status(
-        TASK_STATUS_READY, args->meta);
+    _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
 #endif // BRPC_BTHREAD_TRACER
-    return tls_task_group->push_rq(args->meta->tid);
+    push_rq(meta->tid);
 }
 
 void TaskGroup::priority_to_run(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    if (is_locally_pinned_task(args->meta)) {
+        return tls_task_group->ready_to_run_ignoresignal_pinaware(args->meta);
+    }
 #ifdef BRPC_BTHREAD_TRACER
     tls_task_group->_control->_task_tracer.set_status(
         TASK_STATUS_READY, args->meta);
