@@ -106,7 +106,7 @@ int DomainNamingService::GetServers(const char* dns_name,
         
     }
 
-#if defined(OS_MACOSX)
+#if defined(OS_MACOSX) || defined(OS_FREEBSD)
     _aux_buf_len = 0; // suppress unused warning
     // gethostbyname on MAC is thread-safe (with current usage) since the
     // returned hostent is TLS. Check following link for the ref:
