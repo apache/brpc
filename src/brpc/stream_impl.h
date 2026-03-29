@@ -20,6 +20,7 @@
 #define  BRPC_STREAM_IMPL_H
 
 #include <mutex>
+#include <string>
 #include "bthread/bthread.h"
 #include "bthread/execution_queue.h"
 #include "brpc/socket.h"
@@ -91,6 +92,8 @@ friend struct butil::DefaultDeleter<Stream>;
     static int TriggerOnWritable(bthread_id_t id, void *data, int error_code);
     static void *RunOnWritable(void* arg);
     static void* RunOnConnect(void* arg);
+    static int SetFailedWithReason(StreamId id, int error_code,
+                                   const std::string& reason);
 
     struct ConnectMeta {
         int (*on_connect)(int, int, void*);
@@ -136,6 +139,7 @@ friend struct butil::DefaultDeleter<Stream>;
     int64_t _start_idle_timer_us;
     bthread_timer_t _idle_timer;
     std::once_flag _set_host_socket_flag;
+    int _set_host_socket_ec;
 };
 
 } // namespace brpc
