@@ -46,6 +46,8 @@ extern ibv_qp* (*IbvCreateQp)(ibv_pd*, ibv_qp_init_attr*);
 extern int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask);
 extern int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_attr*);
 extern int (*IbvDestroyQp)(ibv_qp*);
+extern int (*IbvQueryEce)(ibv_qp*, ibv_ece*);
+extern int (*IbvSetEce)(ibv_qp*, ibv_ece*);
 extern bool g_skip_rdma_init;
 
 DEFINE_int32(rdma_sq_size, 128, "SQ size for RDMA");
@@ -64,6 +66,7 @@ DEFINE_int32(rdma_poller_num, 1, "Poller number in RDMA polling mode.");
 DEFINE_bool(rdma_poller_yield, false, "Yield thread in RDMA polling mode.");
 DEFINE_bool(rdma_edisp_unsched, false, "Disable event dispatcher schedule");
 DEFINE_bool(rdma_disable_bthread, false, "Disable bthread in RDMA");
+DEFINE_bool(rdma_ece, false, "Open ece in RDMA, should use this feature when rdma nics are from the same merchant.");
 
 static const size_t IOBUF_BLOCK_HEADER_LEN = 32; // implementation-dependent
 
@@ -1201,6 +1204,21 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
     if (err != 0) {
         LOG(WARNING) << "Fail to modify QP from RESET to INIT: " << berror(err);
         return -1;
+    }
+
+    if (FLAGS_rdma_ece) {
+        struct ibv_ece ece;
+        int err = IbvQueryEce(_resource->qp, &ece);
+        if (err != 0) {
+            LOG(WARNING) << "Fail to IbvQueryEce: " << berror(err);
+            return -1;
+        }
+        // ToDo: should check if remote qp support ece
+        err = IbvSetEce(_resource->qp, &ece);
+        if (err != 0) {
+            LOG(WARNING) << "Fail to IbvSetEce: " << berror(err);
+            return -1;
+        }
     }
 
     if (PostRecv(_rq_size, true) < 0) {
