@@ -34,7 +34,10 @@ cmake \
 # https://github.com/google/oss-fuzz/pull/10898
 make \
     fuzz_butil fuzz_esp fuzz_hpack fuzz_http fuzz_hulu fuzz_json \
-    fuzz_redis fuzz_shead fuzz_sofa fuzz_uri --ignore-errors -j$(nproc)
+    fuzz_redis fuzz_shead fuzz_sofa fuzz_uri \
+    fuzz_baidu_rpc fuzz_mongo fuzz_memcache \
+    fuzz_couchbase fuzz_streaming fuzz_http_parser \
+    fuzz_amf --ignore-errors -j$(nproc)
 
 cp test/fuzz_* $OUT/
 

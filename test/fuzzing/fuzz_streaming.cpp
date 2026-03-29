@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "brpc/policy/esp_protocol.h"
+#include "brpc/policy/streaming_rpc_protocol.h"
 #include "fuzz_common.h"
 
 #define kMinInputLength 5
-#define kMaxInputLength 1024
+#define kMaxInputLength 4096
 
 extern "C" int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
@@ -29,12 +29,10 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     }
 
     std::string input(reinterpret_cast<const char*>(data), size);
-
     butil::IOBuf buf;
     buf.append(input);
 
     brpc::Socket* sock = get_fuzz_socket();
-    brpc::policy::ParseEspMessage(&buf, sock, false, NULL);
-
+    brpc::policy::ParseStreamingMessage(&buf, sock, false, NULL);
     return 0;
 }
