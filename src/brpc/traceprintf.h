@@ -19,6 +19,7 @@
 #ifndef BRPC_TRACEPRINTF_H
 #define BRPC_TRACEPRINTF_H
 
+#include <memory>
 #include "butil/macros.h"
 
 // To brpc developers: This is a header included by user, don't depend
@@ -27,8 +28,14 @@
 
 namespace brpc {
 
+// Forward declaration
+class Span;
+
 bool CanAnnotateSpan();
 void AnnotateSpan(const char* fmt, ...);
+
+// Declarations for AnnotateSpanEx used by TRACEPRINTF_SPAN macro
+void AnnotateSpanEx(std::shared_ptr<Span> span, const char* fmt, ...);
 
 } // namespace brpc
 
@@ -40,6 +47,16 @@ void AnnotateSpan(const char* fmt, ...);
     do {                                                                \
         if (::brpc::CanAnnotateSpan()) {                          \
             ::brpc::AnnotateSpan("[" __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__) "] " fmt, ##args);           \
+        }                                                               \
+    } while (0)
+
+
+// Use this macro to print log to a specific span.
+// If span_ptr is NULL, arguments to this macro is NOT evaluated.
+#define TRACEPRINTF_SPAN(span_ptr, fmt, args...)                        \
+    do {                                                                \
+        if ((span_ptr)) {                                               \
+            ::brpc::AnnotateSpanEx((span_ptr), "[" __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__) "] " fmt, ##args); \
         }                                                               \
     } while (0)
 

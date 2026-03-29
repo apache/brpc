@@ -230,7 +230,7 @@ static void SendHuluResponse(int64_t correlation_id,
                              MethodStatus* method_status,
                              int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
+    auto span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
@@ -414,7 +414,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    std::shared_ptr<Span> span;
     if (IsTraceable(meta.has_trace_id())) {
         span = Span::CreateServerSpan(
             meta.trace_id(), meta.span_id(), meta.parent_span_id(),
@@ -612,8 +612,7 @@ void ProcessHuluResponse(InputMessageBase* msg_base) {
     }
     
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_base_real_us(msg->base_real_us());
         span->set_received_us(msg->received_us());
         span->set_response_size(msg->meta.size() + msg->payload.size() + 12);
@@ -715,7 +714,7 @@ void PackHuluRequest(butil::IOBuf* req_buf,
     } // else don't set user_mesage_size when there's no attachment, otherwise
     // existing hulu-pbrpc server may complain about empty attachment.
 
-    Span* span = ControllerPrivateAccessor(cntl).span();
+    auto span = ControllerPrivateAccessor(cntl).span();
     if (span) {
         meta.set_trace_id(span->trace_id());
         meta.set_span_id(span->span_id());
