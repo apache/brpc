@@ -113,6 +113,12 @@ void SendMongoResponse::Run() {
 ParseResult ParseMongoMessage(butil::IOBuf* source,
                               Socket* socket, bool /*read_eof*/, const void *arg) {
     const Server* server = static_cast<const Server*>(arg);
+    // arg may be NULL when the parser is invoked outside of a full Server
+    // context (e.g. during protocol probing or fuzz testing).  Without this
+    // guard, server->options() dereferences a null pointer and crashes.
+    if (NULL == server) {
+        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+    }
     const MongoServiceAdaptor* adaptor = server->options().mongo_service_adaptor;
     if (NULL == adaptor) {
         // The server does not enable mongo adaptor.

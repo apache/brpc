@@ -410,6 +410,11 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         }
         const size_t buf_size = buf.size();
         const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
+        // arena->allocate() may return NULL on allocation failure
+        if (copy_str == NULL) {
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
+        }
         buf.copy_to(copy_str, buf_size);
         if (*copy_str == ' ') {
             *err = PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -520,6 +525,11 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     }
     buf.pop_front(crlf_pos + 2/*CRLF*/);
     char* d = (char*)arena->allocate((len/8 + 1) * 8);
+    // Guard against allocation failure
+    if (d == NULL) {
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
+    }
     buf.cutn(d, len);
     d[len] = '\0';
     _args[_index].set(d, len);
