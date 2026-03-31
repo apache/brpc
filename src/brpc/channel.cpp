@@ -38,6 +38,7 @@
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/policy/esp_authenticator.h"
 #include "brpc/transport_factory.h"
+#include "brpc/details/controller_private_accessor.h"
 
 namespace brpc {
 
@@ -502,7 +503,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     }
     cntl->set_used_by_rpc();
 
-    if (cntl->_sender == NULL && IsTraceable(Span::tls_parent())) {
+    if (cntl->_sender == NULL && IsTraceable(Span::tls_parent().get())) {
         const int64_t start_send_us = butil::cpuwide_time_us();
         std::string method_name;
         if (_get_method_name) {
@@ -513,13 +514,16 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
             const static std::string NULL_METHOD_STR = "null-method";
             method_name = NULL_METHOD_STR;
         }
-        Span* span = Span::CreateClientSpan(
+        std::shared_ptr<Span> span = Span::CreateClientSpan(
             method_name, start_send_real_us - start_send_us);
-        span->set_log_id(cntl->log_id());
-        span->set_base_cid(correlation_id);
-        span->set_protocol(_options.protocol);
-        span->set_start_send_us(start_send_us);
-        cntl->_span = span;
+        if (span) {
+            ControllerPrivateAccessor accessor(cntl);
+            span->set_log_id(cntl->log_id());
+            span->set_base_cid(correlation_id);
+            span->set_protocol(_options.protocol);
+            span->set_start_send_us(start_send_us);
+            accessor.set_span(span);
+        }
     }
     // Override some options if they haven't been set by Controller
     if (cntl->timeout_ms() == UNSET_MAGIC_NUM) {
@@ -620,9 +624,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // be woken up by callback when RPC finishes (succeeds or still
         // fails after retry)
         Join(correlation_id);
-        if (cntl->_span) {
-            cntl->SubmitSpan();
-        }
+        cntl->SubmitSpan();
         cntl->OnRPCEnd(butil::gettimeofday_us());
     }
 }

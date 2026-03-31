@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <gflags/gflags.h>
 
+#include "bthread/bthread.h"     // bthread_create_span_fn and related types
 #include "bthread/errno.h"       // EAGAIN
 #include "bthread/task_group.h"  // TaskGroup
 #include "butil/atomicops.h"
