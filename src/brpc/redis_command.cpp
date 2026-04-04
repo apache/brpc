@@ -412,6 +412,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
         // arena->allocate() may return NULL on allocation failure
         if (copy_str == NULL) {
+            LOG(FATAL) << "Arena failed allocation";
             *err = PARSE_ERROR_ABSOLUTELY_WRONG;
             return CONSUME_STATE_ERROR;
         }
@@ -527,6 +528,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     char* d = (char*)arena->allocate((len/8 + 1) * 8);
     // Guard against allocation failure
     if (d == NULL) {
+        LOG(FATAL) << "Arena failed allocation";
         *err = PARSE_ERROR_ABSOLUTELY_WRONG;
         return CONSUME_STATE_ERROR;
     }

@@ -117,6 +117,7 @@ ParseResult ParseMongoMessage(butil::IOBuf* source,
     // context (e.g. during protocol probing or fuzz testing).  Without this
     // guard, server->options() dereferences a null pointer and crashes.
     if (NULL == server) {
+        LOG(FATAL) << "Failed creating server";
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
     const MongoServiceAdaptor* adaptor = server->options().mongo_service_adaptor;

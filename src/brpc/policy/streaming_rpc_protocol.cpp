@@ -122,6 +122,7 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
         // testing).  Calling OnReceived on a null pointer would crash.
         Stream* stream_conn = (Stream*)ptr->conn();
         if (stream_conn == NULL) {
+            LOG(FATAL) << "No stream object found";
             break;
         }
         stream_conn->OnReceived(fm, &payload, socket);
