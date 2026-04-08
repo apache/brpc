@@ -15,6 +15,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+print_info() {
+    printf "${CYAN}[INFO]${NC} %s\n" "$1"
+}
+print_success() {
+    printf "${GREEN}[OK]${NC}   %s\n" "$1"
+}
+print_step() {
+    printf "${BOLD}==> %s${NC}\n" "$1"
+}
+
 SYSTEM=$(uname -s)
 if [ "$SYSTEM" = "Darwin" ]; then
     if [ -z "$BASH" ] || [ "$BASH" = "/bin/sh" ] ; then
@@ -83,6 +99,10 @@ while true; do
     esac
 done
 
+print_step "Configuring brpc (${SYSTEM})"
+print_info "Headers path: ${HDRS_IN}"
+print_info "Libs path:    ${LIBS_IN}"
+
 if [ -z "$CC" ]; then
     if [ ! -z "$CXX" ]; then
         >&2 $ECHO "--cc and --cxx must be both set or unset"
@@ -98,6 +118,8 @@ elif [ -z "$CXX" ]; then
     >&2 $ECHO "--cc and --cxx must be both set or unset"
     exit 1
 fi
+
+print_info "CC=$CC, CXX=$CXX"
 
 GCC_VERSION=$(CXX=$CXX tools/print_gcc_version.sh)
 if [ $GCC_VERSION -gt 0 ] && [ $GCC_VERSION -lt 40800 ]; then
@@ -175,11 +197,14 @@ if [ "$SYSTEM" = "Darwin" ]; then
     fi
 fi
 
+print_step "Checking dependencies"
+
 # User specified path of openssl, if not given it's empty
 OPENSSL_LIB=$(find_dir_of_lib ssl)
 # Inconvenient to check these headers in baidu-internal
 #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
 OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h mesalink/openssl/ssl.h)
+print_success "Found openssl: lib=${OPENSSL_LIB:-system}, hdr=${OPENSSL_HDR}"
 
 if [ $WITH_MESALINK != 0 ]; then
     MESALINK_HDR=$(find_dir_of_header_or_die mesalink/openssl/ssl.h)
@@ -228,11 +253,14 @@ append_linking() {
 
 GFLAGS_LIB=$(find_dir_of_lib_or_die gflags)
 append_linking $GFLAGS_LIB gflags
+print_success "Found gflags: $GFLAGS_LIB"
 
 PROTOBUF_LIB=$(find_dir_of_lib_or_die protobuf)
 append_linking $PROTOBUF_LIB protobuf
+print_success "Found protobuf: $PROTOBUF_LIB"
 
 LEVELDB_LIB=$(find_dir_of_lib_or_die leveldb)
+print_success "Found leveldb: $LEVELDB_LIB"
 # required by leveldb
 if [ -f $LEVELDB_LIB/libleveldb.a ]; then
     if [ -f $LEVELDB_LIB/libleveldb.$SO ]; then
@@ -261,6 +289,7 @@ else
 fi
 
 PROTOC=$(find_bin_or_die protoc)
+print_success "Found protoc: $PROTOC"
 
 GFLAGS_HDR=$(find_dir_of_header_or_die gflags/gflags.h)
 
@@ -348,8 +377,10 @@ if [ "$PROTOBUF_VERSION" -ge 4022000 ]; then
         fi
     done
     CXXFLAGS="-std=c++17"
+    print_success "Found protobuf version $PROTOBUF_VERSION (>= v22, using C++17 with abseil)"
 else
     CXXFLAGS="-std=c++0x"
+    print_success "Found protobuf version $PROTOBUF_VERSION"
 fi
 
 CPPFLAGS=
@@ -606,5 +637,22 @@ cat << EOF > src/butil/config.h
 #endif  // BUTIL_CONFIG_H
 EOF
 
+print_step "Generating output files"
+
 # write to config.mk
 $ECHO "$OUTPUT_CONTENT" > config.mk
+print_success "Generated config.mk"
+print_success "Generated src/butil/config.h"
+
+printf "\n"
+print_step "Configuration complete"
+print_info "Compiler:  $CC / $CXX"
+print_info "C++ std:   $CXXFLAGS"
+print_info "System:    $SYSTEM"
+if [ $WITH_GLOG -ne 0 ]; then print_info "With glog: yes"; fi
+if [ $WITH_THRIFT -ne 0 ]; then print_info "With thrift: yes"; fi
+if [ $WITH_RDMA -ne 0 ]; then print_info "With RDMA: yes"; fi
+if [ $WITH_MESALINK -ne 0 ]; then print_info "With MesaLink: yes"; fi
+if [ $WITH_BTHREAD_TRACER -ne 0 ]; then print_info "With bthread tracer: yes"; fi
+if [ $WITH_ASAN -ne 0 ]; then print_info "With ASAN: yes"; fi
+printf "\n${GREEN}brpc is now configured. You can build it with 'make'.${NC}\n"
