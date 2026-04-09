@@ -83,6 +83,7 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
+#include "brpc/policy/flatbuffers_protocol.h"
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 # include "brpc/policy/thrift_protocol.h"
 #endif
@@ -424,6 +425,15 @@ static void GlobalInitializeOrDieImpl() {
                                 VerifyRpcRequest, NULL, NULL,
                                 CONNECTION_TYPE_ALL, "baidu_std" };
     if (RegisterProtocol(PROTOCOL_BAIDU_STD, baidu_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol fb_protocol = { ParseFlatBuffersMessage,
+                                SerializeFlatBuffersRequest, PackFlatBuffersRequest,
+                                ProcessFlatBuffersRequest, ProcessFlatBuffersResponse,
+                                NULL, NULL, NULL,
+                                CONNECTION_TYPE_SINGLE, "fb_rpc" };
+    if (RegisterProtocol(PROTOCOL_FLATBUFFERS_RPC, fb_protocol) != 0) {
         exit(1);
     }
 

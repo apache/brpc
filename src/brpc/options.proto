@@ -65,6 +65,7 @@ enum ProtocolType {
     PROTOCOL_ESP = 25;                 // Client side only
     PROTOCOL_H2 = 26;
     PROTOCOL_COUCHBASE = 27;
+    PROTOCOL_FLATBUFFERS_RPC = 28;
 }
 
 enum CompressType {

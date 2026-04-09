@@ -125,6 +125,9 @@ public:
     void set_method(const google::protobuf::MethodDescriptor* method) 
     { _cntl->_method = method; }
 
+    void set_fb_method(const brpc::flatbuffers::MethodDescriptor* method) 
+    { _cntl->_fb_method = method; }
+
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)
     { _cntl->_rpa.reset(s); }
 

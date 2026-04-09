@@ -38,6 +38,7 @@
 #include "brpc/naming_service_filter.h"
 #include "brpc/health_check_option.h"
 #include "brpc/socket_mode.h"
+#include "brpc/details/flatbuffers_impl.h"  // Flatbuffers Protocol
 
 namespace brpc {
 
@@ -175,7 +176,8 @@ private:
 //   channel.Init("bns://rdev.matrix.all", "rr", NULL/*default options*/);
 //   MyService_Stub stub(&channel);
 //   stub.MyMethod(&controller, &request, &response, NULL);
-class Channel : public ChannelBase {
+class Channel : public ChannelBase,
+                public brpc::flatbuffers::RpcChannel {
 friend class Controller;
 friend class SelectiveChannel;
 public:
@@ -225,6 +227,12 @@ public:
                     google::protobuf::Closure* done);
 
     // Get current options.
+    void FBCallMethod(const brpc::flatbuffers::MethodDescriptor* method,
+                    google::protobuf::RpcController* controller_base,
+                    const brpc::flatbuffers::Message* request,
+                    brpc::flatbuffers::Message* response,
+                    google::protobuf::Closure* done);
+
     const ChannelOptions& options() const { return _options; }
 
     void Describe(std::ostream&, const DescribeOptions&) const;
@@ -250,6 +258,19 @@ protected:
                    const char* raw_server_address,
                    const ChannelOptions* options,
                    int raw_port = -1);
+    
+    template <bool is_pb>
+    inline void CallMethodInternal(const typename std::conditional<is_pb,
+                        google::protobuf::MethodDescriptor,
+                        brpc::flatbuffers::MethodDescriptor>::type* method,
+                    google::protobuf::RpcController* controller_base,
+                    const typename std::conditional<is_pb,
+                        google::protobuf::Message,
+                        brpc::flatbuffers::Message>::type* request,
+                    typename std::conditional<is_pb,
+                        google::protobuf::Message,
+                        brpc::flatbuffers::Message>::type* response,
+                    google::protobuf::Closure* done);
 
     std::string _service_name;
     std::string _scheme;
