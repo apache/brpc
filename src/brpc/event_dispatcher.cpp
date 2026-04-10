@@ -54,13 +54,11 @@ static void StopAndJoinGlobalDispatchers() {
             g_edisp[i * FLAGS_event_dispatcher_num + j].Join();
         }
     }
-    delete g_edisp_read_lantency;
-    delete g_edisp_write_lantency;
 }
 
 void InitializeGlobalDispatchers() {
-    g_edisp_read_lantency = new bvar::LatencyRecorder("event_dispatcher_read_latency");
-    g_edisp_write_lantency = new bvar::LatencyRecorder("event_dispatcher_write_latency");
+    g_edisp_read_lantency = new bvar::LatencyRecorder("event_dispatcher_read");
+    g_edisp_write_lantency = new bvar::LatencyRecorder("event_dispatcher_write");
 
     g_edisp = new EventDispatcher[FLAGS_task_group_ntags * FLAGS_event_dispatcher_num];
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
