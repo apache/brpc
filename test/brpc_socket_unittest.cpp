@@ -37,7 +37,6 @@
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/policy/http_rpc_protocol.h"
-#include "brpc/nshead.h"
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
@@ -399,10 +398,10 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
                 my_connect->MakeConnectDone();
                 ASSERT_LT(0, called); // serialized
             }
-            int64_t start_time = butil::gettimeofday_us();
+            int64_t start_time = butil::cpuwide_time_us();
             while (s->fd() < 0) {
                 bthread_usleep(1000);
-                ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L) << "Too long!";
+                ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L) << "Too long!";
             }
 #if defined(OS_LINUX)
             ASSERT_EQ(0, bthread_fd_wait(s->fd(), EPOLLIN));
@@ -502,10 +501,10 @@ TEST_F(SocketTest, fail_to_connect) {
         ASSERT_EQ(-1, s->fd());
     }
     // KeepWrite is possibly still running.
-    int64_t start_time = butil::gettimeofday_us();
+    int64_t start_time = butil::cpuwide_time_us();
     while (global_sock != NULL) {
         bthread_usleep(1000);
-        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L) << "Too long!";
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L) << "Too long!";
     }
     ASSERT_EQ(-1, brpc::Socket::Status(id));
     // The id is invalid.
@@ -567,10 +566,10 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
     // is NULL(set in CheckRecycle::BeforeRecycle). Notice that you should
     // not spin until Socket::Status(id) becomes -1 and assert global_sock
     // to be NULL because invalidating id happens before calling BeforeRecycle.
-    const int64_t start_time = butil::gettimeofday_us();
+    const int64_t start_time = butil::cpuwide_time_us();
     while (global_sock != NULL) {
         bthread_usleep(1000);
-        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L);
     }
     ASSERT_EQ(-1, brpc::Socket::Status(id));
 }
@@ -751,11 +750,11 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
 
-    int64_t start_time = butil::gettimeofday_us();
+    int64_t start_time = butil::cpuwide_time_us();
     nref = -1;
     while (brpc::Socket::Status(id, &nref) != 0) {
         bthread_usleep(1000);
-        ASSERT_LT(butil::gettimeofday_us(),
+        ASSERT_LT(butil::cpuwide_time_us(),
                   start_time + kCheckInteval * 1000000L + 100000L/*100ms*/);
     }
     //ASSERT_EQ(2, nref);
@@ -772,10 +771,10 @@ TEST_F(SocketTest, health_check) {
     // SetFailed again, should reconnect and succeed soon.
     ASSERT_EQ(0, s->SetFailed());
     ASSERT_EQ(fd, s->fd());
-    start_time = butil::gettimeofday_us();
+    start_time = butil::cpuwide_time_us();
     while (brpc::Socket::Status(id) != 0) {
         bthread_usleep(1000);
-        ASSERT_LT(butil::gettimeofday_us(), start_time + 1200000L);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1200000L);
     }
     ASSERT_TRUE(global_sock);
 
@@ -797,10 +796,10 @@ TEST_F(SocketTest, health_check) {
 
     ASSERT_EQ(0, brpc::Socket::SetFailed(id));
     // StartHealthCheck is possibly still addressing the Socket.
-    start_time = butil::gettimeofday_us();
+    start_time = butil::cpuwide_time_us();
     while (global_sock != NULL) {
         bthread_usleep(1000);
-        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L);
     }
     nref = 0;
     ASSERT_EQ(-1, brpc::Socket::Status(id, &nref)) << "nref=" << nref;
@@ -879,7 +878,7 @@ TEST_F(SocketTest, multi_threaded_write) {
         }
         
         butil::IOPortal dest;
-        const int64_t start_time = butil::gettimeofday_us();
+        const int64_t start_time = butil::cpuwide_time_us();
         for (;;) {
             ssize_t nr = dest.append_from_file_descriptor(fds[0], 32768);
             if (nr < 0) {
@@ -890,7 +889,7 @@ TEST_F(SocketTest, multi_threaded_write) {
                     ASSERT_EQ(EAGAIN, errno) << berror();
                 }
                 bthread_usleep(1000);
-                if (butil::gettimeofday_us() >= start_time + 2000000L) {
+                if (butil::cpuwide_time_us() >= start_time + 2000000L) {
                     LOG(FATAL) << "Wait too long!";
                     break;
                 }

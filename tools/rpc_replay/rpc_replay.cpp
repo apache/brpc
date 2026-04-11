@@ -119,7 +119,7 @@ static void handle_response(brpc::Controller* cntl, int64_t start_time,
     // TODO(gejun): some bthreads are starved when new bthreads are created 
     // continuously, which happens when server is down and RPC keeps failing.
     // Sleep a while on error to avoid that now.
-    const int64_t end_time = butil::gettimeofday_us();
+    const int64_t end_time = butil::cpuwide_time_us();
     const int64_t elp = end_time - start_time;
     if (!cntl->Failed()) {
         g_latency_recorder << elp;
@@ -190,7 +190,7 @@ static void* replay_thread(void* arg) {
                 req.serialized_data() = sample->request.movable();
             }
             g_sent_count << 1;
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             if (FLAGS_qps <= 0) {
                 chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
                         cntl, req_ptr, NULL/*ignore response*/, NULL);

@@ -572,7 +572,7 @@ int Socket::ResetFileDescriptor(int fd) {
     // MUST store `_fd' before adding itself into epoll device to avoid
     // race conditions with the callback function inside epoll
     _fd.store(fd, butil::memory_order_release);
-    _reset_fd_real_us = butil::gettimeofday_us();
+    _reset_fd_real_us = butil::cpuwide_time_us();
     if (!ValidFileDescriptor(fd)) {
         return 0;
     }
@@ -2316,7 +2316,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nnevent=" << ptr->_nevent.load(butil::memory_order_relaxed)
        << "\nfd=" << fd
        << "\ntos=" << ptr->_tos
-       << "\nreset_fd_to_now=" << butil::gettimeofday_us() - ptr->_reset_fd_real_us << "us"
+       << "\nreset_fd_to_now=" << butil::cpuwide_time_us() - ptr->_reset_fd_real_us << "us"
        << "\nremote_side=" << ptr->_remote_side
        << "\nlocal_side=" << ptr->_local_side
        << "\non_et_events=" << (void*)ptr->_on_edge_triggered_events

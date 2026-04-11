@@ -40,7 +40,7 @@ struct CollectorSpeedLimit {
     size_t sampling_range;
     bool ever_grabbed;
     butil::static_atomic<int> count_before_grabbed;
-    int64_t first_sample_real_us;
+    int64_t first_sample_us;
 };
 
 static const size_t COLLECTOR_SAMPLING_BASE = 16384;

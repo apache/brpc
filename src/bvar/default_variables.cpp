@@ -144,7 +144,7 @@ public:
     template <typename ReadFn>
     static const T& get_value(const ReadFn& fn) {
         CachedReader* p = butil::get_leaky_singleton<CachedReader>();
-        const int64_t now = butil::gettimeofday_us();
+        const int64_t now = butil::cpuwide_time_us();
         if (now > p->_mtime_us + CACHED_INTERVAL_US) {
             pthread_mutex_lock(&p->_mutex);
             if (now > p->_mtime_us + CACHED_INTERVAL_US) {
@@ -625,10 +625,10 @@ static void get_kernel_version(std::ostream& os, void*) {
 
 // ======================================
 
-static int64_t g_starting_time = butil::gettimeofday_us();
+static int64_t g_starting_time = butil::cpuwide_time_us();
 
 static timeval get_uptime(void*) {
-    int64_t uptime_us = butil::gettimeofday_us() - g_starting_time;
+    int64_t uptime_us = butil::cpuwide_time_us() - g_starting_time;
     timeval tm;
     tm.tv_sec = uptime_us / 1000000L;
     tm.tv_usec = uptime_us - tm.tv_sec * 1000000L;

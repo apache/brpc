@@ -195,7 +195,7 @@ void RpcPress::handle_response(brpc::Controller* cntl,
                                Message* response, 
                                int64_t start_time){
     if (!cntl->Failed()){
-        int64_t rpc_call_time_us = butil::gettimeofday_us() - start_time;
+        int64_t rpc_call_time_us = butil::cpuwide_time_us() - start_time;
         _latency_recorder << rpc_call_time_us;
 
         if (_output_json) {
@@ -235,7 +235,7 @@ void RpcPress::sync_client() {
         msg_index = (msg_index + _options.test_thread_num) % _msgs.size();
         Message* request = _msgs[msg_index];
         Message* response = _pbrpc_client->get_output_message();
-        const int64_t start_time = butil::gettimeofday_us();
+        const int64_t start_time = butil::cpuwide_time_us();
         google::protobuf::Closure* done = brpc::NewCallback<
             RpcPress, 
             RpcPress*, 

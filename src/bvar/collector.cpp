@@ -305,8 +305,8 @@ void Collector::update_speed_limit(CollectorSpeedLimit* sl,
     size_t new_sampling_range = 0;
     const size_t old_sampling_range = sl->sampling_range;
     if (!sl->ever_grabbed) {
-        if (sl->first_sample_real_us) {
-            interval_us = butil::gettimeofday_us() - sl->first_sample_real_us;
+        if (sl->first_sample_us) {
+            interval_us = butil::cpuwide_time_us() - sl->first_sample_us;
             if (interval_us < 0) {
                 interval_us = 0;
             }
@@ -350,7 +350,7 @@ size_t is_collectable_before_first_time_grabbed(CollectorSpeedLimit* sl) {
         int before_add = sl->count_before_grabbed.fetch_add(
             1, butil::memory_order_relaxed);
         if (before_add == 0) {
-            sl->first_sample_real_us = butil::gettimeofday_us();
+            sl->first_sample_us = butil::cpuwide_time_us();
         } else if (before_add >= FLAGS_bvar_collector_expected_per_second) {
             butil::get_leaky_singleton<Collector>()->wakeup_grab_thread();
         }

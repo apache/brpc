@@ -26,7 +26,7 @@
 #include "butil/logging.h"               // LOG()
 #include "butil/containers/bounded_queue.h"// BoundedQueue
 #include "butil/type_traits.h"           // is_same
-#include "butil/time.h"                  // gettimeofday_us
+#include "butil/time.h"                  // cpuwide_time_us
 #include "butil/class_name.h"
 
 namespace bvar {
@@ -136,7 +136,7 @@ public:
             // get_value() of _reducer can still be called.
             latest.data = _reducer->get_value();
         }
-        latest.time_us = butil::gettimeofday_us();
+        latest.time_us = butil::cpuwide_time_us();
         _q.elim_push(latest);
     }
 
