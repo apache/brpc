@@ -47,6 +47,19 @@ The application can manage memory by itself and send data with IOBuf::append_use
 
 RDMA is hardware-related. It has some different concepts such as device, port, GID, LID, MaxSge and so on. These parameters can be read from NICs at initialization, and brpc will make the default choice (see src/brpc/rdma/rdma_helper.cpp). Sometimes the default choice is not the expectation, then it can be changed in the flag way.
 
+`event_dispatcher_edisp_unsched` is a global flag and affects EventDispatcher scheduling in both normal mode (TCP) and RDMA mode.
+`true` means EventDispatcher is unschedulable, and `false` means schedulable (default).
+
+Runtime behavior is determined directly from user-provided values.
+
+Recommended usage:
+1. Keep the default `false` when unsched is not needed.
+2. Set `-event_dispatcher_edisp_unsched=true` when unsched behavior is required.
+
+Examples:
+1. `-event_dispatcher_edisp_unsched=false`: both TCP and RDMA are schedulable.
+2. `-event_dispatcher_edisp_unsched=true`: both TCP and RDMA are unschedulable.
+
 # Parameters
 
 Configurable parameters:
@@ -71,5 +84,5 @@ Configurable parameters:
 * rdma_use_polling: Whether to use RDMA polling mode, default is false.
 * rdma_poller_num: The number of pollers in polling mode, default is 1.
 * rdma_poller_yield: Whether pollers in polling mode voluntarily relinquish the CPU, default is false.
-* rdma_edisp_unsched`: Prevents the event driver from being scheduled, default is false.
+* event_dispatcher_edisp_unsched: Global switch for EventDispatcher scheduling (true means unschedulable), default is false.
 * rdma_disable_bthread: Disables bthread, default is false.

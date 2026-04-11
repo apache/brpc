@@ -29,14 +29,51 @@ public:
 
     // Return the time in milliseconds in which another request
     // will be sent if RPC does not finish.
+    // Returning -1 means "inherit the backup_request_ms from ChannelOptions".
+    // Returning any other negative value disables backup for this RPC.
     virtual int32_t GetBackupRequestMs(const Controller* controller) const = 0;
 
     // Return true if the backup request should be sent.
     virtual bool DoBackup(const Controller* controller) const = 0;
 
-    // Called  when a rpc is end, user can collect call information to adjust policy.
+    // Called when an RPC ends; user can collect call information to adjust policy.
     virtual void OnRPCEnd(const Controller* controller) = 0;
 };
+
+// Options for CreateRateLimitedBackupPolicy().
+// All fields have defaults matching the recommended starting values.
+struct RateLimitedBackupPolicyOptions {
+    // Time in milliseconds after which a backup request is sent if the RPC
+    // has not completed.
+    // Use -1 (the default) to inherit the value from ChannelOptions.backup_request_ms.
+    // Use >= 0 to override it explicitly.
+    // Default: -1
+    int32_t backup_request_ms = -1;
+
+    // Maximum ratio of backup requests to total requests in the sliding
+    // window. Must be in (0, 1].
+    // Default: 0.1
+    double max_backup_ratio = 0.1;
+
+    // Width of the sliding time window in seconds. Must be in [1, 3600].
+    // Default: 10
+    int window_size_seconds = 10;
+
+    // Interval in seconds between cached-ratio refreshes. Must be >= 1.
+    // Default: 5
+    int update_interval_seconds = 5;
+};
+
+// Create a BackupRequestPolicy that limits the ratio of backup requests
+// to total requests within a sliding time window. When the ratio reaches
+// or exceeds options.max_backup_ratio, DoBackup() returns false.
+// NOTE: Backup decisions are counted immediately at DoBackup() time for
+// fast feedback. Total RPCs are counted on completion (OnRPCEnd). During
+// latency spikes the ratio may temporarily lag until RPCs complete.
+// Returns NULL on invalid parameters.
+// The caller owns the returned pointer.
+BackupRequestPolicy* CreateRateLimitedBackupPolicy(
+    const RateLimitedBackupPolicyOptions& options);
 
 }
 

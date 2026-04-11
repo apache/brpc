@@ -30,6 +30,7 @@
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma/rdma_endpoint.h"
+#include "brpc/rdma_transport.h"
 
 DECLARE_int32(task_group_ntags);
 
@@ -62,7 +63,6 @@ BRPC_VALIDATE_GFLAG(rdma_trace_verbose, brpc::PassValidate);
 DEFINE_bool(rdma_use_polling, false, "Use polling mode for RDMA.");
 DEFINE_int32(rdma_poller_num, 1, "Poller number in RDMA polling mode.");
 DEFINE_bool(rdma_poller_yield, false, "Yield thread in RDMA polling mode.");
-DEFINE_bool(rdma_edisp_unsched, false, "Disable event dispatcher schedule");
 DEFINE_bool(rdma_disable_bthread, false, "Disable bthread in RDMA");
 
 static const size_t IOBUF_BLOCK_HEADER_LEN = 32; // implementation-dependent
@@ -239,14 +239,15 @@ void RdmaEndpoint::Reset() {
 void RdmaConnect::StartConnect(const Socket* socket,
                                void (*done)(int err, void* data),
                                void* data) {
-    CHECK(socket->_rdma_ep != NULL);
+    auto* rdma_transport = static_cast<RdmaTransport*>(socket->_transport.get());
+    CHECK(rdma_transport->_rdma_ep != NULL);
     SocketUniquePtr s;
     if (Socket::Address(socket->id(), &s) != 0) {
         return;
     }
     if (!IsRdmaAvailable()) {
-        socket->_rdma_ep->_state = RdmaEndpoint::FALLBACK_TCP;
-        s->_rdma_state = Socket::RDMA_OFF;
+        rdma_transport->_rdma_ep->_state = RdmaEndpoint::FALLBACK_TCP;
+        rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         done(0, data);
         return;
     }
@@ -256,7 +257,7 @@ void RdmaConnect::StartConnect(const Socket* socket,
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     bthread_attr_set_name(&attr, "RdmaProcessHandshakeAtClient");
     if (bthread_start_background(&tid, &attr,
-                RdmaEndpoint::ProcessHandshakeAtClient, socket->_rdma_ep) < 0) {
+                RdmaEndpoint::ProcessHandshakeAtClient, rdma_transport->_rdma_ep) < 0) {
         LOG(FATAL) << "Fail to start handshake bthread";
         Run();
     } else {
@@ -299,7 +300,8 @@ static void TryReadOnTcpDuringRdmaEst(Socket* s) {
 }
 
 void RdmaEndpoint::OnNewDataFromTcp(Socket* m) {
-    RdmaEndpoint* ep = m->_rdma_ep;
+    auto* rdma_transport = static_cast<RdmaTransport*>(m->_transport.get());
+    RdmaEndpoint* ep = rdma_transport->GetRdmaEp();
     CHECK(ep != NULL);
 
     int progress = Socket::PROGRESS_INIT;
@@ -308,7 +310,7 @@ void RdmaEndpoint::OnNewDataFromTcp(Socket* m) {
             if (!m->CreatedByConnect()) {
                 if (!IsRdmaAvailable()) {
                     ep->_state = FALLBACK_TCP;
-                    m->_rdma_state = Socket::RDMA_OFF;
+                    rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
                     continue;
                 }
                 bthread_t tid;
@@ -433,9 +435,10 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
 
     // First initialize CQ and QP resources
     ep->_state = C_ALLOC_QPCQ;
+    auto* rdma_transport = static_cast<RdmaTransport*>(s->_transport.get());
     if (ep->AllocateResources() < 0) {
         LOG(WARNING) << "Fallback to tcp:" << s->description();
-        s->_rdma_state = Socket::RDMA_OFF;
+        rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         ep->_state = FALLBACK_TCP;
         return NULL;
     }
@@ -514,7 +517,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     if (!HelloNegotiationValid(remote_msg)) {
         LOG(WARNING) << "Fail to negotiate with server, fallback to tcp:"
                      << s->description();
-        s->_rdma_state = Socket::RDMA_OFF;
+        rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
     } else {
         ep->_remote_recv_block_size = remote_msg.block_size;
         ep->_local_window_capacity = 
@@ -530,16 +533,16 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         ep->_state = C_BRINGUP_QP;
         if (ep->BringUpQp(remote_msg.lid, remote_msg.gid, remote_msg.qp_num) < 0) {
             LOG(WARNING) << "Fail to bringup QP, fallback to tcp:" << s->description();
-            s->_rdma_state = Socket::RDMA_OFF;
+            rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         } else {
-            s->_rdma_state = Socket::RDMA_ON;
+            rdma_transport->_rdma_state = RdmaTransport::RDMA_ON;
         }
     }
 
     // Send ACK message to server
     ep->_state = C_ACK_SEND;
     uint32_t flags = 0;
-    if (s->_rdma_state != Socket::RDMA_OFF) {
+    if (rdma_transport->_rdma_state != RdmaTransport::RDMA_OFF) {
         flags |= ACK_MSG_RDMA_OK;
     }
     uint32_t* tmp = (uint32_t*)data;  // avoid GCC warning on strict-aliasing
@@ -553,7 +556,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         return NULL;
     }
 
-    if (s->_rdma_state == Socket::RDMA_ON) {
+    if (rdma_transport->_rdma_state == RdmaTransport::RDMA_ON) {
         ep->_state = ESTABLISHED;
         LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
             << "Client handshake ends (use rdma) on " << s->description();
@@ -586,7 +589,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->_state = FAILED;
         return NULL;
     }
-
+    auto* rdma_transport = static_cast<RdmaTransport*>(s->_transport.get());
     if (memcmp(data, MAGIC_STR, MAGIC_STR_LEN) != 0) {
         LOG_IF(INFO, FLAGS_rdma_trace_verbose) << "It seems that the "
             << "client does not use RDMA, fallback to TCP:"
@@ -594,7 +597,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         // we need to copy data read back to _socket->_read_buf
         s->_read_buf.append(data, MAGIC_STR_LEN);
         ep->_state = FALLBACK_TCP;
-        s->_rdma_state = Socket::RDMA_OFF;
+        rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         ep->TryReadOnTcp();
         return NULL;
     }
@@ -626,7 +629,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     if (!HelloNegotiationValid(remote_msg)) {
         LOG(WARNING) << "Fail to negotiate with client, fallback to tcp:"
                      << s->description();
-        s->_rdma_state = Socket::RDMA_OFF;
+        rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
     } else {
         ep->_remote_recv_block_size = remote_msg.block_size;
         ep->_local_window_capacity = 
@@ -643,13 +646,13 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         if (ep->AllocateResources() < 0) {
             LOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
                          << s->description();
-            s->_rdma_state = Socket::RDMA_OFF;
+            rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         } else {
             ep->_state = S_BRINGUP_QP;
             if (ep->BringUpQp(remote_msg.lid, remote_msg.gid, remote_msg.qp_num) < 0) {
                 LOG(WARNING) << "Fail to bringup QP, fallback to tcp:"
                              << s->description();
-                s->_rdma_state = Socket::RDMA_OFF;
+                rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
             }
         }
     }
@@ -658,7 +661,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     ep->_state = S_HELLO_SEND;
     HelloMessage local_msg;
     local_msg.msg_len = g_rdma_hello_msg_len;
-    if (s->_rdma_state == Socket::RDMA_OFF) {
+    if (rdma_transport->_rdma_state == RdmaTransport::RDMA_OFF) {
         local_msg.impl_ver = 0;
         local_msg.hello_ver = 0;
     } else {
@@ -702,7 +705,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     uint32_t* tmp = (uint32_t*)data;  // avoid GCC warning on strict-aliasing
     uint32_t flags = butil::NetToHost32(*tmp);
     if (flags & ACK_MSG_RDMA_OK) {
-        if (s->_rdma_state == Socket::RDMA_OFF) {
+        if (rdma_transport->_rdma_state == RdmaTransport::RDMA_OFF) {
             LOG(WARNING) << "Fail to parse Hello Message length from client:"
                          << s->description();
             s->SetFailed(EPROTO, "Fail to complete rdma handshake from %s: %s",
@@ -710,13 +713,13 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
             ep->_state = FAILED;
             return NULL;
         } else {
-            s->_rdma_state = Socket::RDMA_ON;
+            rdma_transport->_rdma_state = RdmaTransport::RDMA_ON;
             ep->_state = ESTABLISHED;
             LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
                 << "Server handshake ends (use rdma) on " << s->description();
         }
     } else {
-        s->_rdma_state = Socket::RDMA_OFF;
+        rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         ep->_state = FALLBACK_TCP;
         LOG_IF(INFO, FLAGS_rdma_trace_verbose) 
             << "Server handshake ends (use tcp) on " << s->description();
@@ -1455,7 +1458,8 @@ void RdmaEndpoint::PollCq(Socket* m) {
     if (Socket::Address(ep->_socket->id(), &s) < 0) {
         return;
     }
-    CHECK(ep == s->_rdma_ep);
+    auto* rdma_transport = static_cast<RdmaTransport*>(s->_transport.get());
+    CHECK(ep == rdma_transport->_rdma_ep);
 
     bool send = false;
     ibv_cq* cq = ep->_resource->recv_cq;
@@ -1472,7 +1476,7 @@ void RdmaEndpoint::PollCq(Socket* m) {
 
     int progress = Socket::PROGRESS_INIT;
     bool notified = false;
-    InputMessenger::InputMessageClosure last_msg;
+    InputMessageClosure last_msg;
     ibv_wc wc[FLAGS_rdma_cqe_poll_once];
     while (true) {
         int cnt = ibv_poll_cq(cq, FLAGS_rdma_cqe_poll_once, wc);

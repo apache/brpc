@@ -275,7 +275,10 @@ if(BUILD_FUZZ_TESTS)
     endif()
 
     set(FUZZ_TARGETS fuzz_butil fuzz_esp fuzz_hpack fuzz_http
-        fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri)
+        fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri
+        fuzz_baidu_rpc fuzz_mongo fuzz_memcache
+        fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf)
+
 
     foreach(target ${FUZZ_TARGETS})
         add_executable(${target} fuzzing/${target}.cpp $<TARGET_OBJECTS:TEST_PROTO_LIB>)

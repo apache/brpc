@@ -47,13 +47,15 @@ namespace brpc {
 DECLARE_int32(idle_timeout_second);
 DECLARE_int32(max_connection_pool_size);
 class Server;
+class Span;
 class MethodStatus;
 namespace policy {
 void SendRpcResponse(int64_t correlation_id,
                      Controller* cntl,
                      RpcPBMessages* messages,
                      const Server* server_raw,
-                     MethodStatus *, int64_t);
+                     MethodStatus *, int64_t,
+                     std::shared_ptr<Span> span);
 } // policy
 } // brpc
 
@@ -176,6 +178,17 @@ class MyEchoService : public ::test::EchoService {
             res->add_code_list(req->code());
         }
         res->set_receiving_socket_id(cntl->_current_call.sending_sock->id());
+        if (mockfunc_) mockfunc_(cntl_base, req, res, done);
+
+        brpc::ProtocolType protocol = cntl->request_protocol();
+        if ((brpc::PROTOCOL_HTTP == protocol || brpc::PROTOCOL_H2 == protocol) &&
+            !req->http_header().empty()) {
+            ASSERT_FALSE(req->http_header().empty());
+            const std::string* val = cntl->http_request().GetHeader(req->http_header());
+            ASSERT_TRUE(val);
+            ASSERT_FALSE(val->empty());
+            cntl->http_response().SetHeader(req->http_header(), *val);
+        }
     }
     static void CallAfterRpc(std::shared_ptr<CallAfterRpcObject> str,
                         brpc::Controller* cntl,
@@ -188,6 +201,17 @@ class MyEchoService : public ::test::EchoService {
         EXPECT_TRUE(nullptr != request);
         EXPECT_TRUE(nullptr != response);
     }
+
+public:
+    using MockFuncType = void(google::protobuf::RpcController*,
+                    const ::test::EchoRequest*, ::test::EchoResponse*,
+                    google::protobuf::Closure*);
+    void SetMockFunc(std::function<MockFuncType>&& mockfunc) {
+        mockfunc_ = std::move(mockfunc);
+    }
+
+private:
+    std::function<MockFuncType> mockfunc_;
 };
 
 pthread_once_t register_mock_protocol = PTHREAD_ONCE_INIT;
@@ -279,9 +303,10 @@ protected:
             int64_t, brpc::Controller*,
             brpc::RpcPBMessages*,
             const brpc::Server*,
-            brpc::MethodStatus*, int64_t>(&brpc::policy::SendRpcResponse,
-                                          meta.correlation_id(), cntl,
-                                          messages, &ts->_dummy, NULL, -1);
+            brpc::MethodStatus*, int64_t, std::shared_ptr<brpc::Span>>(
+                &brpc::policy::SendRpcResponse,
+                meta.correlation_id(), cntl,
+                messages, &ts->_dummy, NULL, -1, nullptr);
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }
 
@@ -310,8 +335,10 @@ protected:
                       bool short_connection,
                       const brpc::Authenticator* auth = NULL,
                       std::string connection_group = std::string(),
-                      bool use_backup_request_policy = false) {
+                      bool use_backup_request_policy = false,
+                      brpc::ProtocolType protocol = brpc::PROTOCOL_BAIDU_STD) {
         brpc::ChannelOptions opt;
+        opt.protocol = protocol;
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
@@ -526,7 +553,7 @@ protected:
             int channel_index,
             const google::protobuf::MethodDescriptor* method,
             const google::protobuf::Message* req_base,
-            google::protobuf::Message* response) {
+            google::protobuf::Message* response) override {
             test::EchoRequest* req = brpc::Clone<test::EchoRequest>(req_base);
             req->set_code(channel_index + 1/*non-zero*/);
             return brpc::SubCall(method, req, response->New(),
@@ -540,7 +567,7 @@ protected:
             int channel_index,
             const google::protobuf::MethodDescriptor* method,
             const google::protobuf::Message* req_base,
-            google::protobuf::Message* response) {
+            google::protobuf::Message* response) override {
             if (channel_index % 2) {
                 return brpc::SubCall::Skip();
             }
@@ -554,7 +581,7 @@ protected:
             int channel_index,
             const google::protobuf::MethodDescriptor* method,
             const google::protobuf::Message* req_base,
-            google::protobuf::Message* res_base) {
+            google::protobuf::Message* res_base) override {
             const test::ComboRequest* req =
                 dynamic_cast<const test::ComboRequest*>(req_base);
             test::ComboResponse* res = dynamic_cast<test::ComboResponse*>(res_base);
@@ -1334,7 +1361,7 @@ protected:
             int /*channel_index*/,
             const google::protobuf::MethodDescriptor* method,
             const google::protobuf::Message* req_base,
-            google::protobuf::Message* response) {
+            google::protobuf::Message* response) override {
             test::EchoRequest* req = brpc::Clone<test::EchoRequest>(req_base);
             req->set_sleep_us(70000); // 70ms
             return brpc::SubCall(method, req, response->New(),
@@ -1396,7 +1423,7 @@ protected:
             SetUpChannel(subchan, single_server, short_connection);
             ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
         }
-                
+
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
@@ -1413,6 +1440,55 @@ protected:
         EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         EXPECT_EQ(-1, cntl.sub(0)->_timeout_ms);
         EXPECT_EQ(17, cntl.sub(0)->_real_timeout_ms);
+        StopAndJoin();
+    }
+
+    void TestBackupRequestSelective(
+        bool single_server, bool async, bool short_connection) {
+        std::cout << " *** single=" << single_server
+                  << " async=" << async
+                  << " short=" << short_connection << std::endl;
+        ASSERT_EQ(0, StartAccept(_ep));
+
+        const size_t NCHANS = 8;
+        brpc::SelectiveChannel channel;
+        ASSERT_EQ(0, channel.Init("rr", NULL));
+        for (size_t i = 0; i < NCHANS; ++i) {
+            brpc::Channel* subchan = new brpc::Channel;
+            SetUpChannel(subchan, single_server, short_connection);
+            ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
+        }
+
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(__FUNCTION__);
+        cntl.set_backup_request_ms(20);
+        cntl.set_timeout_ms(100);
+        std::atomic<int> call_cnt(0);
+        _svc.SetMockFunc([&call_cnt](google::protobuf::RpcController* cntl_base,
+                                     const ::test::EchoRequest*,
+                                     ::test::EchoResponse*,
+                                     google::protobuf::Closure*) {
+            brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+            int see_cnt = call_cnt.fetch_add(1, std::memory_order_relaxed);
+            if (see_cnt == 0) {
+                LOG(INFO) << "slow node";
+                bthread_usleep(30 * 1000);
+            } else {
+                LOG(INFO) << "normal node ";
+                butil::IOBuf iobuf;
+                iobuf.append("123");
+                cntl->response_attachment().swap(iobuf);
+            }
+        });
+        butil::Timer tm;
+        tm.start();
+        CallMethod(&channel, &cntl, &req, &res, async);
+        tm.stop();
+        EXPECT_FALSE(cntl.Failed());
+        EXPECT_EQ(call_cnt.load(std::memory_order_relaxed), 2);
+        EXPECT_EQ(cntl.response_attachment().to_string(), "123");
         StopAndJoin();
     }
     
@@ -2357,7 +2433,7 @@ class BadCall : public brpc::CallMapper {
     brpc::SubCall Map(int,
                      const google::protobuf::MethodDescriptor*,
                      const google::protobuf::Message*,
-                     google::protobuf::Message*) {
+                     google::protobuf::Message*) override {
         return brpc::SubCall::Bad();
     }
 };
@@ -2384,7 +2460,7 @@ class SkipCall : public brpc::CallMapper {
     brpc::SubCall Map(int,
                      const google::protobuf::MethodDescriptor*,
                      const google::protobuf::Message*,
-                     google::protobuf::Message*) {
+                     google::protobuf::Message*) override {
         return brpc::SubCall::Skip();
     }
 };
@@ -2409,6 +2485,55 @@ TEST_F(ChannelTest, skip_all_channels) {
     EXPECT_EQ((int)NCHANS, cntl.sub_count());
     for (int i = 0; i < cntl.sub_count(); ++i) {
         EXPECT_TRUE(NULL == cntl.sub(i)) << "i=" << i;
+    }
+}
+
+static const std::string ECHO_HTTP_HEADER = "echo-http-header";
+
+class EchoHttpHeader : public brpc::CallMapper {
+public:
+    brpc::SubCall Map(int channel_index, int channel_count,
+                      const google::protobuf::MethodDescriptor* method,
+                      const google::protobuf::Message* request,
+                      google::protobuf::Message* response) override {
+        return brpc::SubCall(method, request, response->New(), brpc::DELETE_RESPONSE);
+    }
+
+    void MapController(int channel_index, int,
+                       const brpc::Controller* main_cntl,
+                       brpc::Controller* sub_cntl) override {
+        sub_cntl->http_request().SetHeader(ECHO_HTTP_HEADER, std::to_string(channel_index));
+    }
+};
+
+TEST_F(ChannelTest, http_header_parallel_channels) {
+    brpc::Server server;
+    MyEchoService service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    ASSERT_EQ(0, server.Start(_ep, &opt));
+
+    const size_t NCHANS = 5;
+    brpc::ParallelChannel channel;
+    for (size_t i = 0; i < NCHANS; ++i) {
+        brpc::Channel* sub_chan = new brpc::Channel();
+        SetUpChannel(sub_chan, true, false, NULL, "", false, brpc::PROTOCOL_HTTP);
+        ASSERT_EQ(0, channel.AddChannel(sub_chan, brpc::OWNS_CHANNEL, new EchoHttpHeader, NULL));
+    }
+
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(__FUNCTION__);
+    *req.mutable_http_header() = ECHO_HTTP_HEADER;
+    CallMethod(&channel, &cntl, &req, &res, false);
+
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ((int)NCHANS, cntl.sub_count());
+    for (int i = 0; i < cntl.sub_count(); ++i) {
+        const brpc::Controller* sub_cntl = cntl.sub(i);
+        ASSERT_TRUE(NULL != sub_cntl) << "i=" << i;
+        ASSERT_EQ(std::to_string(i), *sub_cntl->http_response().GetHeader(ECHO_HTTP_HEADER));
     }
 }
 
@@ -2647,6 +2772,16 @@ TEST_F(ChannelTest, timeout_selective) {
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestRPCTimeoutSelective(i, j, k);
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, backuprequest_selective) {
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+        for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
+            for (int k = 0; k <=1; ++k) { // Flag ShortConnection
+                TestBackupRequestSelective(i, j, k);
             }
         }
     }
@@ -3015,6 +3150,143 @@ TEST_F(ChannelTest, adaptive_protocol_type) {
     ASSERT_STREQ("baidu_std", ptype.name());
     ASSERT_FALSE(ptype.has_param());
     ASSERT_EQ("", ptype.param());
+}
+
+class RateLimitedBackupPolicyTest : public ::testing::Test {};
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidBackupRequestMs) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = -2;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidMaxBackupRatioZero) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.max_backup_ratio = 0.0;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidMaxBackupRatioNegative) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.max_backup_ratio = -0.1;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidMaxBackupRatioAboveOne) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.max_backup_ratio = 1.001;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidWindowSizeTooSmall) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.window_size_seconds = 0;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidWindowSizeTooLarge) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.window_size_seconds = 3601;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, InvalidUpdateIntervalTooSmall) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 100;
+    opts.update_interval_seconds = 0;
+    ASSERT_EQ(NULL, brpc::CreateRateLimitedBackupPolicy(opts));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, ValidMinusOneBackupRequestMsInherits) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = -1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    ASSERT_EQ(-1, p->GetBackupRequestMs(NULL));
+}
+
+TEST_F(RateLimitedBackupPolicyTest, ValidMaxRatioAtBoundary) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 50;
+    opts.max_backup_ratio = 1.0;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    // With max_backup_ratio=1.0 and true cold start (total==0, backup==0),
+    // ShouldAllow() sets ratio=0.0 (free pass). The conservative ratio=1.0
+    // path only applies when backup>0 but total==0 (latency spike with no
+    // completions yet). At absolute cold start DoBackup() must return true.
+    ASSERT_TRUE(p->DoBackup(NULL));   // cold start: ratio=0.0 < 1.0, allow
+}
+
+TEST_F(RateLimitedBackupPolicyTest, ColdStartAllowsBackup) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 10;
+    opts.max_backup_ratio = 0.1;
+    opts.update_interval_seconds = 1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    ASSERT_TRUE(p->DoBackup(NULL));
+}
+
+// After the first backup fires (backup_count=1, total_count=0), once the
+// update interval elapses the ratio is refreshed via the conservative path
+// (total==0 → ratio=1.0), which exceeds max_backup_ratio < 1.0, so
+// subsequent DoBackup() calls are suppressed until an RPC leg completes.
+TEST_F(RateLimitedBackupPolicyTest, AfterColdStartBackupSuppressedUntilRpcCompletes) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 10;
+    opts.max_backup_ratio = 0.1;
+    opts.window_size_seconds = 1;
+    opts.update_interval_seconds = 1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    // First call fires (cold start: total=0, backup=0 → ratio=0.0 → allow).
+    ASSERT_TRUE(p->DoBackup(NULL));
+    // Wait for the update interval to elapse so the ratio refreshes.
+    // After refresh: total=0 but backup=1 → conservative path sets ratio=1.0,
+    // which is >= max_backup_ratio (0.1), so DoBackup() must return false.
+    bthread_usleep(1200000); // 1.2s > update_interval_seconds=1
+    ASSERT_FALSE(p->DoBackup(NULL));
+}
+
+// After the ratio rises above the threshold, calling OnRPCEnd() many times
+// drives total_count up relative to backup_count. Once the ratio refreshes
+// below max_backup_ratio, DoBackup() should allow backups again.
+TEST_F(RateLimitedBackupPolicyTest, OnRPCEndDrivesRatioDownAndReAllows) {
+    brpc::RateLimitedBackupPolicyOptions opts;
+    opts.backup_request_ms = 10;
+    opts.max_backup_ratio = 0.5;
+    opts.window_size_seconds = 1;
+    opts.update_interval_seconds = 1;
+    std::unique_ptr<brpc::BackupRequestPolicy> p(
+        brpc::CreateRateLimitedBackupPolicy(opts));
+    ASSERT_TRUE(p != NULL);
+    // Fire many backup decisions so backup_count >> total_count,
+    // pushing the ratio above max_backup_ratio.
+    for (int i = 0; i < 20; ++i) {
+        p->DoBackup(NULL);
+    }
+    // Wait for update interval so the ratio is refreshed above threshold.
+    bthread_usleep(1200000); // 1.2s
+    ASSERT_FALSE(p->DoBackup(NULL));
+    // Now complete many more RPCs than backups fired to bring ratio below 0.5.
+    // 20 backup decisions already counted; need total_count > 20/0.5 = 40.
+    for (int i = 0; i < 50; ++i) {
+        p->OnRPCEnd(NULL);
+    }
+    // Wait for the ratio cache to refresh.
+    bthread_usleep(1200000); // 1.2s
+    // Ratio is now ~20/50 = 0.4 < max_backup_ratio (0.5), so backup is re-allowed.
+    ASSERT_TRUE(p->DoBackup(NULL));
 }
 
 } //namespace

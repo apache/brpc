@@ -27,6 +27,7 @@
 #include "brpc/naming_service.h"                // NamingService
 #include "brpc/naming_service_filter.h"         // NamingServiceFilter
 #include "brpc/socket_map.h"
+#include "brpc/socket_mode.h"
 
 namespace brpc {
 
@@ -45,7 +46,7 @@ struct GetNamingServiceThreadOptions {
     GetNamingServiceThreadOptions()
         : succeed_without_server(false)
         , log_succeed_without_server(true) {
-    socket_option.use_rdma = false;
+    socket_option.socket_mode = SOCKET_MODE_TCP;
 }
     
     bool succeed_without_server;

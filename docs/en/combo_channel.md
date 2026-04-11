@@ -63,6 +63,8 @@ public:
 };
 ```
 
+### Map
+
 `channel_index`: The position of the sub channel inside `ParallelChannel`, starting from zero.
 
 `channel_count`: The sub channel count inside `ParallelChannel`.
@@ -130,6 +132,18 @@ Common implementations of `Map()` are listed below:
     }
   };
 ```
+
+### MapController
+
+`channel_index`: The position of the sub channel inside `ParallelChannel`, starting from zero.
+
+`channel_count`: The sub channel count inside `ParallelChannel`.
+
+`main_cntl`：Parameters to `ParallelChannel::CallMethod()`.
+
+`sub_cntl`：The controller corresponding to the sub-channel's requests. Default implementation: Copy the http_request and request_attachment of `main_cntl` to the `sub_cntl`.
+
+Note: Modifying `ClientSettings` configurations (such as timeout and retries) is ineffective because all sub controllers use the `ClientSettings` configuration of `main_cntl`.
 
 ## ResponseMerger
 

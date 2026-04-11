@@ -119,7 +119,7 @@ static void string_append_value(const BUTIL_RAPIDJSON_NAMESPACE::Value& value,
 //otherwise will append error into error message and return false.
 inline bool value_invalid(const google::protobuf::FieldDescriptor* field, const char* type,
                           const BUTIL_RAPIDJSON_NAMESPACE::Value& value, std::string* err) {
-    bool optional = field->is_optional();
+    bool optional = !field->is_required() && !field->is_repeated();
     if (err) {
         if (!err->empty()) {
             err->append(", ");
@@ -555,7 +555,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
     for (int i = 0; i < descriptor->extension_range_count(); ++i) {
         const google::protobuf::Descriptor::ExtensionRange*
             ext_range = descriptor->extension_range(i);
-#if GOOGLE_PROTOBUF_VERSION < 4025000
+#if GOOGLE_PROTOBUF_VERSION < 4024000
         for (int tag_number = ext_range->start; tag_number < ext_range->end; ++tag_number)
 #else
         for (int tag_number = ext_range->start_number(); tag_number < ext_range->end_number(); ++tag_number)

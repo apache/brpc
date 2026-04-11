@@ -29,7 +29,7 @@ namespace brpc {
 namespace rdma {
 class RdmaEndpoint;
 }
-
+class TcpTransport;
 struct InputMessageHandler {
     // The callback to cut a message from `source'.
     // Returned message will be passed to process_request or process_response
@@ -70,9 +70,28 @@ struct InputMessageHandler {
     const char* name;
 };
 
+class InputMessageClosure {
+public:
+    InputMessageClosure() : _msg(NULL) { }
+    ~InputMessageClosure() noexcept(false);
+
+    InputMessageBase* release() {
+        InputMessageBase* m = _msg;
+        _msg = NULL;
+        return m;
+    }
+
+    void reset(InputMessageBase* m);
+
+private:
+    InputMessageBase* _msg;
+};
+
 // Process messages from connections.
 // `Message' corresponds to a client's request or a server's response.
 class InputMessenger : public SocketUser {
+friend class Socket;
+friend class TcpTransport;
 friend class rdma::RdmaEndpoint;
 public:
     explicit InputMessenger(size_t capacity = 128);
@@ -111,22 +130,6 @@ protected:
     static void OnNewMessages(Socket* m);
     
 private:
-    class InputMessageClosure {
-    public:
-        InputMessageClosure() : _msg(NULL) { }
-        ~InputMessageClosure() noexcept(false);
-
-        InputMessageBase* release() {
-            InputMessageBase* m = _msg;
-            _msg = NULL;
-            return m;
-        }
-
-        void reset(InputMessageBase* m);
-
-    private:
-        InputMessageBase* _msg;
-    };
 
     // Find a valid scissor from `handlers' to cut off `header' and `payload'
     // from m->read_buf, save index of the scissor into `index'.

@@ -25,6 +25,7 @@
 #include <functional>                          // std::function
 #include <gflags/gflags.h>                     // Users often need gflags
 #include <string>
+#include <memory>
 #include "butil/intrusive_ptr.hpp"             // butil::intrusive_ptr
 #include "bthread/errno.h"                     // Redefine errno
 #include "butil/endpoint.h"                    // butil::EndPoint
@@ -806,7 +807,7 @@ private:
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
-    Span* _span;
+    std::weak_ptr<Span> _span;
     uint32_t _flags; // all boolean fields inside Controller
     int32_t _error_code;
     std::string _error_text;

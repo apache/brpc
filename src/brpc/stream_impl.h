@@ -81,7 +81,7 @@ friend struct butil::DefaultDeleter<Stream>;
     void TriggerOnConnectIfNeed();
     void Wait(void (*on_writable)(StreamId, void*, int), void* arg, 
               const timespec* due_time, bool new_thread, bthread_id_t *join_id);
-    void SendFeedback();
+    void SendFeedback(int64_t _consumed_bytes);
     void StartIdleTimer();
     void StopIdleTimer();
     void HandleRpcResponse(butil::IOBuf* response_buffer);
@@ -115,7 +115,7 @@ friend struct butil::DefaultDeleter<Stream>;
 
     bthread_mutex_t     _connect_mutex;
     ConnectMeta         _connect_meta;
-    bool                _connected;
+    butil::atomic<bool> _connected;
     bool                _closed;
     int                 _error_code;
     std::string         _error_text;
@@ -127,7 +127,8 @@ friend struct butil::DefaultDeleter<Stream>;
     bthread_id_list_t _writable_wait_list;
 
     int64_t _local_consumed;
-    StreamSettings _remote_settings;   
+    butil::atomic<int64_t> _atomic_local_consumed;
+    StreamSettings _remote_settings;
 
     bool _parse_rpc_response;
     bthread::ExecutionQueueId<butil::IOBuf*> _consumer_queue;

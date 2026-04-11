@@ -344,13 +344,13 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
     sub_cntl->set_request_code(_main_cntl->request_code());
     // Forward request attachment to the subcall
     sub_cntl->request_attachment().append(_main_cntl->request_attachment());
-    sub_cntl->http_request() = _main_cntl->http_request();
+    ProtocolType protocol = _main_cntl->request_protocol();
+    if (PROTOCOL_HTTP == protocol || PROTOCOL_H2 == protocol) {
+        sub_cntl->http_request() = _main_cntl->http_request();
+    }
 
-    sel_out.channel()->CallMethod(_main_cntl->_method,
-                                  &r.sub_done->_cntl,
-                                  _request,
-                                  r.response,
-                                  r.sub_done);
+    sel_out.channel()->CallMethod(_main_cntl->_method, &r.sub_done->_cntl,
+                                  _request, r.response, r.sub_done);
     return 0;
 }
 
@@ -364,12 +364,6 @@ void SubDone::Run() {
                    << _cid.value << ": " << berror(rc);
         return;
     }
-    // NOTE: Copying gettable-but-settable fields which are generally set
-    // during the RPC to reflect details.
-    main_cntl->_remote_side = _cntl._remote_side;
-    // connection_type may be changed during CallMethod. 
-    main_cntl->set_connection_type(_cntl.connection_type());
-    main_cntl->response_attachment().swap(_cntl.response_attachment());
     Resource r;
     r.response = _cntl._response;
     r.sub_done = this;
@@ -377,6 +371,13 @@ void SubDone::Run() {
         return;
     }
     const int saved_error = main_cntl->ErrorCode();
+
+    // NOTE: Copying gettable-but-settable fields which are generally set
+    // during the RPC to reflect details.
+    main_cntl->_remote_side = _cntl._remote_side;
+    // connection_type may be changed during CallMethod. 
+    main_cntl->set_connection_type(_cntl.connection_type());
+    main_cntl->response_attachment().swap(_cntl.response_attachment());
     
     if (_cntl.Failed()) {
         if (_cntl.ErrorCode() == ENODATA || _cntl.ErrorCode() == EHOSTDOWN) {
