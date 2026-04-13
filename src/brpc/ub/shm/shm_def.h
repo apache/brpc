@@ -1,0 +1,46 @@
+#ifndef BRPC_SHM_DEF_H
+#define BRPC_SHM_DEF_H
+#include <stdint.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+#define PROT_READ 0x1 /* Page can be read.  */
+#define PROT_WRITE 0x2 /* Page can be written.  */
+#define PROT_EXEC 0x4 /* Page can be executed.  */
+#define PROT_NONE 0x0 /* Page can not be accessed.  */
+#define PROT_GROWSDOWN 0x01000000 /* Extend change to start of growsdown vma (mprotect only).  */
+#define PROT_GROWSUP 0x02000000 /* Extend change to start of growsup vma (mprotect only).  */
+/* Sharing types (must choose one and only one of these).  */
+#define MAP_SHARED 0x01 /* Share changes.  */
+#define MAP_PRIVATE 0x02 /* Changes are private.  */
+#define SHM_MAX_NAME_BUFF_LEN 48 // byte, buffer size, ubsm_sdk need name to be below 48byte
+#define SHM_MAX_NAME_LEN (SHM_MAX_NAME_BUFF_LEN - 1) // byte, string length
+#define SHM_ALLOC_UNIT_SIZE (4 * 1024 * 1024) // 4MB
+
+namespace brpc {
+    namespace ub {
+        typedef enum { SHM_TYPE_UB, SHM_TYPE_IPC, SHM_TYPE_UBS, SHM_TYPE_UNSUPPORT } SHM_TYPE;
+
+        typedef struct {
+            uint8_t *addr;
+            size_t len;
+            uint64_t memid;
+            char name[SHM_MAX_NAME_BUFF_LEN];
+            uint32_t fd;
+        } SHM;
+
+        typedef struct ShmListNode {
+            SHM shm;
+            struct ShmListNode *next;
+            struct ShmListNode *prev;
+        } ShmListNode;
+
+        typedef struct {
+            ShmListNode* head;
+            ShmListNode* tail;
+            size_t size;
+            pthread_mutex_t shmLock;
+        } ShmList;
+    }
+}
+#endif //BRPC_SHM_DEF_H

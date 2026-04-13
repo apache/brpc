@@ -57,7 +57,10 @@ namespace rdma {
 class RdmaEndpoint;
 class RdmaConnect;
 }
-
+namespace ub {
+    class UBShmEndpoint;
+    class UBConnect;
+}
 class Socket;
 class AuthContext;
 class EventDispatcher;

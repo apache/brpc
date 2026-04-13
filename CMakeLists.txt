@@ -27,6 +27,7 @@ option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
+option(WITH_UBRING "With UB" OFF)
 option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" OFF)
 option(WITH_DEBUG_LOCK "With debugging lock" OFF)
 option(WITH_ASAN "With AddressSanitizer" OFF)
@@ -104,6 +105,11 @@ if(WITH_RDMA)
     set(WITH_RDMA_VAL "1")
 endif()
 
+set(WITH_UBRING_VAL "0")
+if(WITH_UBRING)
+        set(WITH_UBRING_VAL "1")
+endif()
+
 set(WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL "0")
 if(WITH_DEBUG_BTHREAD_SCHE_SAFETY)
     set(WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL "1")
@@ -136,7 +142,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -Wno-deprecated-declarations -Wno-inconsistent-missing-override")
 endif()
 
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DBRPC_WITH_RDMA=${WITH_RDMA_VAL} -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL} -DBRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}")
+set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DBRPC_WITH_RDMA=${WITH_RDMA_VAL} -DBRPC_WITH_UBRING=${WITH_UBRING_VAL} -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL} -DBRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}")
 if (WITH_ASAN)
     set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -fsanitize=address")
     set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -fsanitize=address")
@@ -270,6 +276,15 @@ if(WITH_RDMA)
     endif()
 endif()
 
+if(WITH_UBRING)
+    message("brpc compile with ub")
+    # find_path(RDMA_INCLUDE_PATH NAMES infiniband/verbs.h)
+    # find_library(UB_LIB NAMES ibverbs)
+    # if((NOT RDMA_INCLUDE_PATH) OR (NOT UB_LIB))
+    #     message(FATAL_ERROR "Fail to find ibverbs")
+    # endif()
+endif()
+
 find_library(PROTOC_LIB NAMES protoc)
 if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
@@ -320,6 +335,10 @@ endif()
 
 if(WITH_RDMA)
     list(APPEND DYNAMIC_LIB ${RDMA_LIB})
+endif()
+
+if(WITH_UBRING)
+    list(APPEND DYNAMIC_LIB ${UB_LIB})
 endif()
 
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
@@ -564,6 +583,7 @@ set(SOURCES
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
     ${THRIFT_SOURCES}
+    ${BRPC_C_SOURCES}
     )
 
 add_subdirectory(src)

@@ -34,6 +34,7 @@
 #include "butil/macros.h"
 #include "butil/reader_writer.h"
 #include "butil/binary_printer.h"
+#include "brpc/ub/ub_ring.h"
 
 // For IOBuf::appendv(const const_iovec*, size_t). The only difference of this
 // struct from iovec (defined in sys/uio.h) is that iov_base is `const void*'
@@ -465,6 +466,8 @@ public:
     // offset and append to self. The file offset is not changed.
     // If `offset' is negative, does exactly what append_from_file_descriptor does.
     ssize_t pappend_from_file_descriptor(int fd, off_t offset, size_t max_count);
+
+    ssize_t pappend_from_ub_ring(brpc::ub::UBRing* _ub_ring, size_t max_count);
 
     // Read as many bytes as possible from SSL channel `ssl', and stop until `max_count'.
     // Returns total bytes read and the ssl error code will be filled into `ssl_error'

@@ -93,6 +93,7 @@ class InputMessenger : public SocketUser {
 friend class Socket;
 friend class TcpTransport;
 friend class rdma::RdmaEndpoint;
+friend class ub::UBShmEndpoint;
 public:
     explicit InputMessenger(size_t capacity = 128);
     ~InputMessenger();
