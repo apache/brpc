@@ -1,0 +1,40 @@
+#ifndef HLC_MK_UBSM
+#error Do not include this file unless you know what you are doing.
+#endif
+
+#ifndef HLC_MK_UBSM_OPTIONAL
+#define HLC_MK_UBSM_OPTIONAL HLC_MK_UBSM
+#endif
+
+HLC_MK_UBSM(int, ubsmem_init_attributes, (ubsmem_options_t *ubsm_shmem_opts));
+
+HLC_MK_UBSM(int, ubsmem_initialize, (const ubsmem_options_t *ubsm_shmem_opts));
+
+HLC_MK_UBSM(int, ubsmem_finalize, (void));
+
+HLC_MK_UBSM(int, ubsmem_set_logger_level, (int level));
+
+HLC_MK_UBSM(int, ubsmem_set_extern_logger, (void (*func)(int level, const char *msg)));
+
+HLC_MK_UBSM(int, ubsmem_lookup_regions, (ubsmem_regions_t* regions));
+
+HLC_MK_UBSM(int, ubsmem_create_region, (const char *region_name, size_t size, const ubsmem_region_attributes_t *reg_attr));
+
+HLC_MK_UBSM(int, ubsmem_destroy_region, (const char *region_name));
+
+HLC_MK_UBSM(int, ubsmem_shmem_allocate,(const char *region_name, const char *name, size_t size, mode_t mode,
+    uint64_t flags));
+
+HLC_MK_UBSM(int, ubsmem_shmem_deallocate, (const char *name));
+
+HLC_MK_UBSM(int, ubsmem_shmem_map, (void *addr, size_t length, int prot, int flags, const char *name, off_t offset,
+    void **local_ptr));
+
+HLC_MK_UBSM(int, ubsmem_shmem_unmap, (void *local_ptr, size_t length));
+
+HLC_MK_UBSM(int, ubsmem_shmem_faults_register, (shmem_faults_func registerFunc));
+
+HLC_MK_UBSM(int, ubsmem_local_nid_query, (uint32_t *nid));
+
+#undef HLC_MK_UBSM_OPTIONAL
+#undef HLC_MK_UBSM
