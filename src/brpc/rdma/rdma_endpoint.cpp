@@ -1200,6 +1200,7 @@ int RdmaEndpoint::AllocateResources() {
         options.on_edge_triggered_events = PollCq;
         if (Socket::Create(options, &_cq_sid) < 0) {
             PLOG(WARNING) << "Fail to create socket for cq";
+            return -1;
         }
     } else {
         SocketOptions options;

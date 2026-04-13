@@ -324,6 +324,18 @@ TEST_F(VariableTest, latency_recorder) {
     ASSERT_EQ(-1, rec.expose("latency"));
     ASSERT_EQ(-1, rec.expose("Latency"));
 
+    std::string saved_bvar_latency_p1;
+    std::string saved_bvar_latency_p2;
+    std::string saved_bvar_latency_p3;
+
+    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p1", &saved_bvar_latency_p1);
+    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p2", &saved_bvar_latency_p2);
+    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p3", &saved_bvar_latency_p3);
+
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", "80");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p2", "90");
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p3", "99");
+
     
     ASSERT_EQ(0, rec.expose("FooBar__latency"));
     std::vector<std::string> names;
@@ -373,6 +385,10 @@ TEST_F(VariableTest, latency_recorder) {
     ASSERT_EQ("ba_na_na_latency_percentiles", names[8]);
     ASSERT_EQ("ba_na_na_max_latency", names[9]);
     ASSERT_EQ("ba_na_na_qps", names[10]);
+
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", saved_bvar_latency_p1.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p2", saved_bvar_latency_p2.c_str());
+    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p3", saved_bvar_latency_p3.c_str());
 }
 
 TEST_F(VariableTest, recursive_mutex) {
