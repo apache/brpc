@@ -170,9 +170,9 @@ static inline size_t Aligned64Offset(uint8_t *addr) {
     return ((ALIGN_BYTES - (((size_t)(addr)) & CHECKED_ALIGN_BITS)) & CHECKED_ALIGN_BITS);
 }
 
-static inline RETURN_CODE HasTimedOut(const uint64_t startTime, const uint32_t timeout) {
-    uint64_t endTime = startTime + (uint64_t)timeout * SEC_TO_NSEC;
-    if (GetCurNanoSeconds() > endTime) {
+static inline RETURN_CODE HasTimedOut(const uint64_t start_time, const uint32_t timeout) {
+    uint64_t end_time = start_time + (uint64_t)timeout * SEC_TO_NSEC;
+    if (GetCurNanoSeconds() > end_time) {
         LOG(ERROR) << "task time out " << timeout << " seconds.";
         return UBRING_ERR;
     }

@@ -192,10 +192,10 @@ SHMEM_API int ubsmem_lookup_cluster_statistic(ubsmem_cluster_info_t *info);
 
 /**
  * Subscribes to shared memory UB Event.
- * @param registerFunc - Shared Memory UB Event Response Handling Function.
+ * @param register_func - Shared Memory UB Event Response Handling Function.
  * @return - 0 on success and other on failure
  */
-SHMEM_API int ubsmem_shmem_faults_register(shmem_faults_func registerFunc);
+SHMEM_API int ubsmem_shmem_faults_register(shmem_faults_func register_func);
 
 /**
  * Query the supernode ID of this node within the supernode domain.

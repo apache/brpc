@@ -41,11 +41,11 @@ RETURN_CODE UbsShmLocalMmap(SHM *shm, int prot);
 void UbsMemLoggerPrint(int level, const char *msg);
 
 void *UbsShmCallback(void* args);
-RETURN_CODE UbsShmAddTimer(ShmList *shmList);
-RETURN_CODE InitShmTimer(ShmList **shmList);
-RETURN_CODE DestroyShmTimer(ShmList *shmList);
-RETURN_CODE AddShmToList(ShmList *shmList, SHM *shm);
-RETURN_CODE IsExistInShmList(ShmList *shmList, const SHM *shm);
+RETURN_CODE UbsShmAddTimer(ShmList *shm_list);
+RETURN_CODE InitShmTimer(ShmList **shm_list);
+RETURN_CODE DestroyShmTimer(ShmList *shm_list);
+RETURN_CODE AddShmToList(ShmList *shm_list, SHM *shm);
+RETURN_CODE IsExistInShmList(ShmList *shm_list, const SHM *shm);
 }
 }
 #endif //BRPC_SHM_UBS_H

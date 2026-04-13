@@ -56,7 +56,7 @@ typedef struct {
     ShmListNode* head;
     ShmListNode* tail;
     size_t size;
-    pthread_mutex_t shmLock;
+    pthread_mutex_t shm_lock;
 } ShmList;
 }
 }

@@ -78,10 +78,10 @@ static void GlobalUBInitializeOrDieImpl() {
     g_ub_available.store(true, butil::memory_order_relaxed);
 }
 
-static pthread_once_t initialize_UB_once = PTHREAD_ONCE_INIT;
+static pthread_once_t initialize_ub_once = PTHREAD_ONCE_INIT;
 
 void GlobalUBInitializeOrDie() {
-    if (pthread_once(&initialize_UB_once,
+    if (pthread_once(&initialize_ub_once,
                      GlobalUBInitializeOrDieImpl) != 0) {
         LOG(FATAL) << "Fail to pthread_once GlobalUBInitializeOrDie";
         exit(1);

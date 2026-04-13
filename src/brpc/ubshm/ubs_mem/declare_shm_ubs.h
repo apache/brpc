@@ -49,7 +49,7 @@ UBRING_MK_UBSM(int, ubsmem_shmem_map, (void *addr, size_t length, int prot, int 
 
 UBRING_MK_UBSM(int, ubsmem_shmem_unmap, (void *local_ptr, size_t length));
 
-UBRING_MK_UBSM(int, ubsmem_shmem_faults_register, (shmem_faults_func registerFunc));
+UBRING_MK_UBSM(int, ubsmem_shmem_faults_register, (shmem_faults_func register_func));
 
 UBRING_MK_UBSM(int, ubsmem_local_nid_query, (uint32_t *nid));
 

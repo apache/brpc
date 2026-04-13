@@ -28,7 +28,7 @@
 namespace brpc {
 namespace ubring {
 DEFINE_int32(ub_shm_type, 1, "shm type: 1-ipc; 2-ub_ring");
-static SHM_TYPE g_shmType;
+static SHM_TYPE g_shm_type;
 
 static bool CheckInputShmParam(SHM *shm) {
     if (shm == NULL) {
@@ -36,8 +36,8 @@ static bool CheckInputShmParam(SHM *shm) {
         return false;
     }
 
-    size_t nameLen = strlen(shm->name);
-    if (nameLen <= 0 || nameLen > SHM_MAX_NAME_LEN) {
+    size_t name_len = strlen(shm->name);
+    if (name_len <= 0 || name_len > SHM_MAX_NAME_LEN) {
         LOG(ERROR) << "Shm name=" << shm->name << ", length=" << shm->len 
                    << ", which is not between 1 and " << SHM_MAX_NAME_LEN;
         return false;
@@ -62,29 +62,29 @@ RETURN_CODE ShmMgrInit(void) {
         return UBRING_ERR;
     }
 
-    g_shmType = (SHM_TYPE)FLAGS_ub_shm_type;
-    if (g_shmType == SHM_TYPE_UBS) {
+    g_shm_type = (SHM_TYPE)FLAGS_ub_shm_type;
+    if (g_shm_type == SHM_TYPE_UBS) {
         if (UbsShmInit() != UBRING_OK) {
             LOG(ERROR) << "Init beiming ubs shm failed.";
             return UBRING_ERR;
         }
     }
-    LOG(INFO) << "shm mgr init success, shm type=" << g_shmType;
+    LOG(INFO) << "shm mgr init success, shm type=" << g_shm_type;
     return UBRING_OK;
 }
 
 void ShmMgrFini(void) {
-    if (g_shmType == SHM_TYPE_UBS) {
+    if (g_shm_type == SHM_TYPE_UBS) {
         if (UbsShmFini() != UBRING_OK) {
             LOG(ERROR) << "Fini beiming ubs shm failed.";
             return;
         }
     }
-    LOG(INFO) << "shm mgr fini success, shm type=" << g_shmType;
+    LOG(INFO) << "shm mgr fini success, shm type=" << g_shm_type;
 }
 
 void SetShmType(SHM_TYPE type) {
-    g_shmType = type;
+    g_shm_type = type;
 }
 
 RETURN_CODE ShmLocalMalloc(SHM *shm) {
@@ -94,7 +94,7 @@ RETURN_CODE ShmLocalMalloc(SHM *shm) {
     }
 
     RETURN_CODE rc = UBRING_OK;
-    switch (g_shmType) {
+    switch (g_shm_type) {
         case SHM_TYPE_IPC:
             rc = IpcShmLocalMalloc(shm);
             break;
@@ -130,7 +130,7 @@ RETURN_CODE ShmLocalFree(SHM *shm) {
     }
 
     RETURN_CODE rc = UBRING_OK;
-    switch (g_shmType) {
+    switch (g_shm_type) {
         case SHM_TYPE_IPC:
             rc = IpcShmLocalFree(shm);
             break;
@@ -151,7 +151,7 @@ RETURN_CODE ShmRemoteMalloc(SHM *shm) {
     }
 
     RETURN_CODE rc = UBRING_OK;
-    switch (g_shmType) {
+    switch (g_shm_type) {
         case SHM_TYPE_IPC:
             rc = IpcShmRemoteMalloc(shm);
             break;
@@ -172,7 +172,7 @@ RETURN_CODE ShmRemoteFree(SHM *shm) {
     }
 
     RETURN_CODE rc = UBRING_OK;
-    switch (g_shmType) {
+    switch (g_shm_type) {
         case SHM_TYPE_IPC:
             rc = IpcShmRemoteFree(shm);
             break;
@@ -193,7 +193,7 @@ RETURN_CODE ShmLocalMmap(SHM *shm, int prot) {
     }
 
     RETURN_CODE rc = UBRING_OK;
-    switch (g_shmType) {
+    switch (g_shm_type) {
         case SHM_TYPE_IPC:
             rc = IpcShmLocalMmap(shm, prot);
             break;
@@ -214,7 +214,7 @@ RETURN_CODE ShmMunmap(SHM *shm) {
     }
 
     RETURN_CODE rc = UBRING_OK;
-    switch (g_shmType) {
+    switch (g_shm_type) {
         case SHM_TYPE_IPC:
             rc = IpcShmMunmap(shm);
             break;
@@ -235,7 +235,7 @@ RETURN_CODE ShmFree(SHM *shm) {
     }
 
     RETURN_CODE rc = UBRING_OK;
-    switch (g_shmType) {
+    switch (g_shm_type) {
         case SHM_TYPE_IPC:
             rc = IpcShmFree(shm);
             break;

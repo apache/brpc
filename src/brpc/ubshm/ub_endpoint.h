@@ -172,9 +172,9 @@ private:
     int WriteToFd(void* data, size_t len);
 
     // Poll CQ and get the work completion
-    static void PollIn(UBShmEndpoint* ep, uint32_t epEvent);
+    static void PollIn(UBShmEndpoint* ep, uint32_t ep_event);
 
-    static void PollOut(UBShmEndpoint* ep, uint32_t epEvent);
+    static void PollOut(UBShmEndpoint* ep, uint32_t ep_event);
 
     // Try to read data on TCP fd in _socket
     inline void TryReadOnTcp();

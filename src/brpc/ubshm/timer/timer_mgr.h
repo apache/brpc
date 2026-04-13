@@ -54,7 +54,7 @@ typedef struct {
     uint32_t fd;
     TimerFdCtxStatus status;
     uint32_t periodical;
-    pthread_spinlock_t spinLock;
+    pthread_spinlock_t spin_lock;
 } TimerFdCtx;
 
 RETURN_CODE TimerInit(void);

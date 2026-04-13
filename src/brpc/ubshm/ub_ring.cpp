@@ -28,7 +28,7 @@
 
 namespace brpc {
 namespace ubring {
-uint32_t g_sleepTime[UBR_TASK_STEP_NUM] = {0};
+uint32_t g_sleep_time[UBR_TASK_STEP_NUM] = {0};
 #define TIME_COVERSION 1000
 DEFINE_int32(ub_disconnect_timeout, 5, "Ubshm disconnection timeout.");
 DEFINE_int32(ub_connect_timeout, 1, "Ubshm connection timeout.");
@@ -41,14 +41,14 @@ UBRing::UBRing()
 UBRing::~UBRing()
 {}
 
-RETURN_CODE UBRing::UbrTrxMapShm(SHM *localShm, SHM *remoteShm)
+RETURN_CODE UBRing::UbrTrxMapShm(SHM *local_shm, SHM *remote_shm)
 {
-    RETURN_CODE rc = UbrTrxMapLocalShm(localShm);
+    RETURN_CODE rc = UbrTrxMapLocalShm(local_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx map local shared memory failed.";
         return rc;
     }
-    rc = UbrTrxMapRemoteShm(remoteShm);
+    rc = UbrTrxMapRemoteShm(remote_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx map remote shared memory failed.";
         return rc;
@@ -57,66 +57,66 @@ RETURN_CODE UBRing::UbrTrxMapShm(SHM *localShm, SHM *remoteShm)
 }
 
 RETURN_CODE UBRing::UbrTrxClose() {
-    RETURN_CODE closeCheckRc = UbrTrxCloseCheck(_trx);
-    if (UNLIKELY(closeCheckRc != UBRING_OK)) {
-        if (closeCheckRc == UBRING_REENTRY) {
-            LOG(INFO) << "Trx close skipped, already closing, local name=" << _trx->localShm.name;
+    RETURN_CODE close_check_rc = UbrTrxCloseCheck(_trx);
+    if (UNLIKELY(close_check_rc != UBRING_OK)) {
+        if (close_check_rc == UBRING_REENTRY) {
+            LOG(INFO) << "Trx close skipped, already closing, local name=" << _trx->local_shm.name;
             return UBRING_OK;
         }
         return UBRING_ERR;
     }
-    if (_trx->ubrRx.remoteTxEventQ.addr != nullptr) {
-        ((UbrEventQMsg *)_trx->ubrRx.remoteTxEventQ.addr)->flag = UBR_STATE_CLOSING;
+    if (_trx->ubr_rx.remote_tx_event_q.addr != nullptr) {
+        ((UbrEventQMsg *)_trx->ubr_rx.remote_tx_event_q.addr)->flag = UBR_STATE_CLOSING;
     }
 
-    uint32_t disconnectTimeout = FLAGS_ub_disconnect_timeout;
-    uint64_t startTime = GetCurNanoSeconds();
+    uint32_t disconnect_timeout = FLAGS_ub_disconnect_timeout;
+    uint64_t start_time = GetCurNanoSeconds();
 
-    if (_trx->ubrTx.localTxEventQ.addr != nullptr && ((UbrEventQMsg *)_trx->ubrTx.localTxEventQ.addr)->flag == UBR_STATE_CONNECTED) {
-        ((UbrEventQMsg *)_trx->ubrTx.localTxEventQ.addr)->flag = UBR_STATE_CLOSED;
-        _trx->ubrTx.trxState = UBR_STATE_CLOSED;
+    if (_trx->ubr_tx.local_tx_event_q.addr != nullptr && ((UbrEventQMsg *)_trx->ubr_tx.local_tx_event_q.addr)->flag == UBR_STATE_CONNECTED) {
+        ((UbrEventQMsg *)_trx->ubr_tx.local_tx_event_q.addr)->flag = UBR_STATE_CLOSED;
+        _trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
     }
 
-    if (_trx->ubrTx.remoteRxEventQ.addr != nullptr) {
-        ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->flag = UBR_STATE_CLOSED;
+    if (_trx->ubr_tx.remote_rx_event_q.addr != nullptr) {
+        ((UbrEventQMsg *)_trx->ubr_tx.remote_rx_event_q.addr)->flag = UBR_STATE_CLOSED;
     }
-    while (_trx->ubrRx.localRxEventQ.addr != nullptr && ((UbrEventQMsg *)_trx->ubrRx.localRxEventQ.addr)->flag != UBR_STATE_CLOSED) {
+    while (_trx->ubr_rx.local_rx_event_q.addr != nullptr && ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->flag != UBR_STATE_CLOSED) {
         UbrSetSleepTask(UBR_TASK_CLOSE);
-        if (HasTimedOut(startTime, disconnectTimeout) != UBRING_OK) {
-            LOG(WARNING) << "Local shm " << _trx->localShm.name
+        if (HasTimedOut(start_time, disconnect_timeout) != UBRING_OK) {
+            LOG(WARNING) << "Local shm " << _trx->local_shm.name
             << " wait for the peer to close timed out, force cleanup.";
-            _trx->ubrRx.trxState = UBR_STATE_CLOSED;
+            _trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
             // Force synchronous cleanup instead of relying on async timer
-            DeleteTimerSafe((uint32_t)_trx->timerFd);
-            DeleteTimerSafe((uint32_t)_trx->hbTimerFd);
-            if (_trx->ubrTx.remoteRxEventQ.addr != nullptr) {
-                ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->flag = UBR_STATE_CLOSED;
+            DeleteTimerSafe((uint32_t)_trx->timer_fd);
+            DeleteTimerSafe((uint32_t)_trx->hb_timer_fd);
+            if (_trx->ubr_tx.remote_rx_event_q.addr != nullptr) {
+                ((UbrEventQMsg *)_trx->ubr_tx.remote_rx_event_q.addr)->flag = UBR_STATE_CLOSED;
             }
             if (UNLIKELY(UbrTrxFreeShm(_trx) != UBRING_OK)) {
-                LOG(WARNING) << "Force close, local shm " << _trx->localShm.name << " free failed.";
+                LOG(WARNING) << "Force close, local shm " << _trx->local_shm.name << " free failed.";
             }
             if (UNLIKELY(UBRingManager::ReleaseUbrTrxFromMgr(_trx) != UBRING_OK)) {
-                LOG(WARNING) << "Force close, release trx " << _trx->localShm.name << " failed.";
+                LOG(WARNING) << "Force close, release trx " << _trx->local_shm.name << " failed.";
             }
             return UBRING_ERR_TIMEOUT;
         }
         bthread_usleep(1000);  // 1ms, yield to other bthreads
     }
-    _trx->ubrRx.trxState = UBR_STATE_CLOSED;
+    _trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
     RETURN_CODE rc;
-    if (UNLIKELY((rc = ClearTrxResource(_trx, startTime, UBR_SEND_CLOSE)) != UBRING_OK)) {
+    if (UNLIKELY((rc = ClearTrxResource(_trx, start_time, UBR_SEND_CLOSE)) != UBRING_OK)) {
         if (rc == UBRING_REENTRY) {
-            LOG(INFO) << "Trx close, peer is closing, trx local name=" << _trx->localShm.name;
+            LOG(INFO) << "Trx close, peer is closing, trx local name=" << _trx->local_shm.name;
             return UBRING_OK;
         }
-        LOG(ERROR) << "Trx close, clear trx resource failed, trx local name=" << _trx->localShm.name;
+        LOG(ERROR) << "Trx close, clear trx resource failed, trx local name=" << _trx->local_shm.name;
         return UBRING_ERR;
     }
     // Unlink local shm name immediately so process exit does not leave visible leftovers.
-    RETURN_CODE unlinkRc = ShmFree(&_trx->localShm);
-    if (unlinkRc != UBRING_OK && unlinkRc != SHM_ERR_NOT_FOUND && unlinkRc != SHM_ERR_RESOURCE_ATTACHED) {
-        LOG(WARNING) << "Trx close, unlink local shm failed, trx local name=" << _trx->localShm.name
-                     << ", rc=" << unlinkRc;
+    RETURN_CODE unlink_rc = ShmFree(&_trx->local_shm);
+    if (unlink_rc != UBRING_OK && unlink_rc != SHM_ERR_NOT_FOUND && unlink_rc != SHM_ERR_RESOURCE_ATTACHED) {
+        LOG(WARNING) << "Trx close, unlink local shm failed, trx local name=" << _trx->local_shm.name
+                     << ", rc=" << unlink_rc;
     }
     return UBRING_OK;
 }
@@ -127,29 +127,29 @@ RETURN_CODE UBRing::UbrAddCloseTimer() {
         return UBRING_ERR;
     }
 
-    uint32_t eventQTimerInterval = FLAGS_ub_event_queue_timer_interval * TIME_COVERSION;
-    itimerspec timeSpec = {
-            .it_interval = {.tv_sec = 0, .tv_nsec = eventQTimerInterval},
+    uint32_t event_q_timer_interval = FLAGS_ub_event_queue_timer_interval * TIME_COVERSION;
+    itimerspec time_spec = {
+            .it_interval = {.tv_sec = 0, .tv_nsec = event_q_timer_interval},
             .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
-    int timerFd = TimerStart(&timeSpec, UbrTrxCloseCallback, (void*)_trx);
-    if (UNLIKELY(timerFd == -1)) {
-        LOG(ERROR) << "Start ubr close timer failed, trx local name=" << _trx->localShm.name;
+    int timer_fd = TimerStart(&time_spec, UbrTrxCloseCallback, (void*)_trx);
+    if (UNLIKELY(timer_fd == -1)) {
+        LOG(ERROR) << "Start ubr close timer failed, trx local name=" << _trx->local_shm.name;
         return UBRING_ERR;
     }
-    _trx->timerFd = timerFd;
+    _trx->timer_fd = timer_fd;
     return UBRING_OK;
 }
 
 RETURN_CODE UBRing::UbrAddTimer() {
     if (UNLIKELY(UbrAddCloseTimer() != UBRING_OK)) {
-        LOG(ERROR) << "Ubr " << _trx->localShm.name << " add closed timer failed.";
+        LOG(ERROR) << "Ubr " << _trx->local_shm.name << " add closed timer failed.";
         return UBRING_ERR;
     }
 
     if (UNLIKELY(UbrAddHBTimer() != UBRING_OK)) {
-        DeleteTimerSafe((uint32_t)_trx->timerFd);
-        LOG(ERROR) << "Ubr " << _trx->localShm.name << " add heartbeat timer failed.";
+        DeleteTimerSafe((uint32_t)_trx->timer_fd);
+        LOG(ERROR) << "Ubr " << _trx->local_shm.name << " add heartbeat timer failed.";
         return UBRING_ERR;
     }
     return UBRING_OK;
@@ -161,34 +161,34 @@ void* UBRing::UbrTrxCloseCallback(void* args) {
         return nullptr;
     }
 
-    auto* localRxEventQ = (UbrEventQMsg *)trx->ubrRx.localRxEventQ.addr;
-    auto* localTxEventQ = (UbrEventQMsg *)trx->ubrTx.localTxEventQ.addr;
-    if (localRxEventQ->flag != UBR_STATE_CLOSED || localTxEventQ->flag == UBR_STATE_CLOSED) {
+    auto* local_rx_event_q = (UbrEventQMsg *)trx->ubr_rx.local_rx_event_q.addr;
+    auto* local_tx_event_q = (UbrEventQMsg *)trx->ubr_tx.local_tx_event_q.addr;
+    if (local_rx_event_q->flag != UBR_STATE_CLOSED || local_tx_event_q->flag == UBR_STATE_CLOSED) {
         return nullptr;
     }
-    trx->ubrRx.trxState = UBR_STATE_CLOSED;
-    int fd = (int)trx->localShm.fd;
+    trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
+    int fd = (int)trx->local_shm.fd;
     do {
-        if (ATOMIC_LOAD(trx->closeCnt) == 0) {
+        if (ATOMIC_LOAD(trx->close_cnt) == 0) {
             break;
         }
-        ATOMIC_SUB(trx->closeCnt, 1);
+        ATOMIC_SUB(trx->close_cnt, 1);
 
-        uint64_t startTime = GetCurNanoSeconds();
+        uint64_t start_time = GetCurNanoSeconds();
 
-        if (localTxEventQ->flag == UBR_STATE_CONNECTED || ATOMIC_LOAD(trx->closeCnt) == 1) {
-            localTxEventQ->flag = UBR_STATE_CLOSED;
-            trx->ubrTx.trxState = UBR_STATE_CLOSED;
+        if (local_tx_event_q->flag == UBR_STATE_CONNECTED || ATOMIC_LOAD(trx->close_cnt) == 1) {
+            local_tx_event_q->flag = UBR_STATE_CLOSED;
+            trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
         }
-        UbrEventQMsg* remoteRxEventQ = (UbrEventQMsg *)trx->ubrTx.remoteRxEventQ.addr;
-        if (remoteRxEventQ == nullptr) {
-            LOG(ERROR) << "Trx close callback failed, " << trx->localShm.name << " remoteRxEventQ is NULL.";
+        UbrEventQMsg* remote_rx_event_q = (UbrEventQMsg *)trx->ubr_tx.remote_rx_event_q.addr;
+        if (remote_rx_event_q == nullptr) {
+            LOG(ERROR) << "Trx close callback failed, " << trx->local_shm.name << " remote_rx_event_q is NULL.";
             break;
         }
-        remoteRxEventQ->flag = UBR_STATE_CLOSED;
-        RETURN_CODE clearRc = ClearTrxResource(trx, startTime, UBR_CALL_BACK_CLOSE, 1);
-        if (UNLIKELY(clearRc != UBRING_OK && clearRc != UBRING_REENTRY)) {
-            LOG(ERROR) << "Trx close callback failed, " << trx->localShm.name << " clear trx resource failed.";
+        remote_rx_event_q->flag = UBR_STATE_CLOSED;
+        RETURN_CODE clear_rc = ClearTrxResource(trx, start_time, UBR_CALL_BACK_CLOSE, 1);
+        if (UNLIKELY(clear_rc != UBRING_OK && clear_rc != UBRING_REENTRY)) {
+            LOG(ERROR) << "Trx close callback failed, " << trx->local_shm.name << " clear trx resource failed.";
             break;
         }
     } while (0);
@@ -201,49 +201,49 @@ RETURN_CODE UBRing::UbrAddHBTimer() {
         return UBRING_ERR;
     }
 
-    itimerspec timeSpec = {
+    itimerspec time_spec = {
             .it_interval = {.tv_sec = FLAGS_ub_hb_timer_interval, .tv_nsec = 0},
             .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
-    int timerFd = TimerStart(&timeSpec, UbrTrxHBCallback, (void*)_trx);
-    if (UNLIKELY(timerFd == -1)) {
+    int timer_fd = TimerStart(&time_spec, UbrTrxHBCallback, (void*)_trx);
+    if (UNLIKELY(timer_fd == -1)) {
         LOG(ERROR) << "Start ubr heartbeat timer failed.";
         return UBRING_ERR;
     }
-    _trx->hbTimerFd = timerFd;
+    _trx->hb_timer_fd = timer_fd;
     return UBRING_OK;
 }
 
 RETURN_CODE UBRing::UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE type) {
-    RETURN_CODE passiveCloseCheckRc = UbrTrxCloseCheck(trx);
-    if (UNLIKELY(passiveCloseCheckRc != UBRING_OK)) {
-        if (passiveCloseCheckRc == UBRING_REENTRY) {
-            LOG(INFO) << "Passive close skipped, active close in progress, name=" << trx->localShm.name;
-            uint64_t startTime = GetCurNanoSeconds();
-            return ClearTrxResource(trx, startTime, UBR_CALL_BACK_CLOSE);
+    RETURN_CODE passive_close_check_rc = UbrTrxCloseCheck(trx);
+    if (UNLIKELY(passive_close_check_rc != UBRING_OK)) {
+        if (passive_close_check_rc == UBRING_REENTRY) {
+            LOG(INFO) << "Passive close skipped, active close in progress, name=" << trx->local_shm.name;
+            uint64_t start_time = GetCurNanoSeconds();
+            return ClearTrxResource(trx, start_time, UBR_CALL_BACK_CLOSE);
         }
         return UBRING_ERR;
     }
-    trx->ubrTx.trxState = UBR_STATE_CLOSED;
-    trx->ubrRx.trxState = UBR_STATE_CLOSED;
-    DeleteTimerSafe((uint32_t)trx->timerFd);
-    const char *typeName = NULL;
+    trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
+    trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
+    DeleteTimerSafe((uint32_t)trx->timer_fd);
+    const char *type_name = NULL;
     if (type == UBR_HEARTBEAT) {
-        DeleteTimer((uint32_t)trx->hbTimerFd);
-        typeName = "Trx heartbeat";
+        DeleteTimer((uint32_t)trx->hb_timer_fd);
+        type_name = "Trx heartbeat";
     } else if (type == UBR_UB_EVENT) {
-        DeleteTimerSafe((uint32_t)trx->hbTimerFd);
-        typeName = "Ub event callback";
+        DeleteTimerSafe((uint32_t)trx->hb_timer_fd);
+        type_name = "Ub event callback";
     }
     bthread_usleep(FLAGS_ub_flying_io_timeout * 1000000LL);  // yield-friendly sleep
 
-    int rc = ShmLocalFree(&trx->remoteShm);
+    int rc = ShmLocalFree(&trx->remote_shm);
     if (rc != UBRING_OK) {
-        LOG(ERROR) << typeName << ", delete remote shm failed. ret=" << rc;
+        LOG(ERROR) << type_name << ", delete remote shm failed. ret=" << rc;
     }
-    rc = ShmLocalFree(&trx->localShm);
+    rc = ShmLocalFree(&trx->local_shm);
     if (rc != UBRING_OK) {
-        LOG(ERROR) << typeName << ", delete local shm failed. ret=" << rc;
+        LOG(ERROR) << type_name << ", delete local shm failed. ret=" << rc;
     }
 
     UBRingManager::ReleaseUbrTrxFromMgr(trx);
@@ -256,32 +256,32 @@ void* UBRing::UbrTrxHBCallback(void* args) {
         return NULL;
     }
 
-    auto* localDataStatus = (UbrDataStatusQMsg *)trx->ubrTx.localDataStatusQ.addr;
-    auto* remoteDataStatus = (UbrDataStatusQMsg *)trx->ubrRx.remoteDataStatusQ.addr;
-    if (UNLIKELY(localDataStatus == NULL || remoteDataStatus == NULL)) {
+    auto* local_data_status = (UbrDataStatusQMsg *)trx->ubr_tx.local_data_status_q.addr;
+    auto* remote_data_status = (UbrDataStatusQMsg *)trx->ubr_rx.remote_data_status_q.addr;
+    if (UNLIKELY(local_data_status == NULL || remote_data_status == NULL)) {
         LOG(ERROR) << "Heartbeat error, datastatus is NULL.";
         return NULL;
     }
 
-    if (trx->ubrTx.trxState != UBR_STATE_CONNECTED || trx->ubrRx.trxState != UBR_STATE_CONNECTED) {
+    if (trx->ubr_tx.trx_state != UBR_STATE_CONNECTED || trx->ubr_rx.trx_state != UBR_STATE_CONNECTED) {
         LOG_EVERY_SECOND(INFO) << "Heartbeat cannot be started, wait connected state.";
         return NULL;
     }
 
-    remoteDataStatus->heartBeat = 1;
-    if (localDataStatus->heartBeat == 1) {
-        localDataStatus->heartBeat = 0;
-        trx->ubrTx.hbRetryCnt = 0;
+    remote_data_status->heart_beat = 1;
+    if (local_data_status->heart_beat == 1) {
+        local_data_status->heart_beat = 0;
+        trx->ubr_tx.hb_retry_cnt = 0;
         return NULL;
     }
 
-    ++trx->ubrTx.hbRetryCnt;
-    if (trx->ubrTx.hbRetryCnt <= FLAGS_ub_hb_retry_cnt) {
+    ++trx->ubr_tx.hb_retry_cnt;
+    if (trx->ubr_tx.hb_retry_cnt <= FLAGS_ub_hb_retry_cnt) {
         return NULL;
     }
 
-    int fd = (int)trx->localShm.fd;
-    LOG(INFO) << "Hlc heartbeat, start to clear trx resource. hbTimerFd=" << fd << ", shmName=" << trx->localShm.name;
+    int fd = (int)trx->local_shm.fd;
+    LOG(INFO) << "Hlc heartbeat, start to clear trx resource. hb_timer_fd=" << fd << ", shm_name=" << trx->local_shm.name;
     UbrPassiveClearTrx(trx, fd, UBR_HEARTBEAT);
     LOG(INFO) << "Hlc heartbeat clear trx resource finish.";
     return NULL;
@@ -293,21 +293,21 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
         return UBRING_ERR;
     }
 
-    if (trx->clearTimerFd > 0) {
+    if (trx->clear_timer_fd > 0) {
         return UBRING_OK;
     }
 
-    itimerspec timeSpec = {
+    itimerspec time_spec = {
             .it_interval = {.tv_sec = 0, .tv_nsec = 0},
             .it_value = {.tv_sec = FLAGS_ub_flying_io_timeout, .tv_nsec = 0}
     };
 
-    int timerFd = TimerStart(&timeSpec, UbrAsynClearCallback, (void*)trx);
-    if (UNLIKELY(timerFd == -1)) {
-        LOG(ERROR) << "Start ubr close timer failed, trx name=%s.", trx->localShm.name;
+    int timer_fd = TimerStart(&time_spec, UbrAsynClearCallback, (void*)trx);
+    if (UNLIKELY(timer_fd == -1)) {
+        LOG(ERROR) << "Start ubr close timer failed, trx name=%s.", trx->local_shm.name;
         return UBRING_ERR;
     }
-    trx->clearTimerFd = timerFd;
+    trx->clear_timer_fd = timer_fd;
     return UBRING_OK;
 }
 
@@ -320,122 +320,122 @@ void *UBRing::UbrAsynClearCallback(void *args)
     }
 
     if (UNLIKELY(UbrTrxFreeShm(trx) != UBRING_OK)) {
-        LOG(ERROR) << "Trx close, wait for local shm " << trx->localShm.name << " free fail.";
+        LOG(ERROR) << "Trx close, wait for local shm " << trx->local_shm.name << " free fail.";
     }
 
     if (UNLIKELY(UBRingManager::ReleaseUbrTrxFromMgr(trx) != UBRING_OK)) {
-        LOG(ERROR) << "Trx close, release shm " << trx->localShm.name << " trx failed.";
+        LOG(ERROR) << "Trx close, release shm " << trx->local_shm.name << " trx failed.";
     }
     return NULL;
 }
 
-int UBRing::UbrTrxSend(const void *buf, uint32_t bufLen)
+int UBRing::UbrTrxSend(const void *buf, uint32_t buf_len)
 {
     if (UNLIKELY(CheckTrxSendPreCheck(_trx) != UBRING_OK)) {
         return UBRING_ERR;
     }
     // 1.2 Calculate space
-    auto *dataStatusMsg = (UbrDataStatusQMsg *)_trx->ubrTx.localDataStatusQ.addr;
-    auto *dataMsg = (UbrMsgFormat *)_trx->ubrTx.remoteDataQ.addr;
-    uint32_t cap = _trx->ubrTx.capacity;
-    uint32_t tail = dataStatusMsg->tail;
-    uint32_t remainChunkNum =
-        (_trx->ubrTx.writePos > tail) ? (tail + cap - _trx->ubrTx.writePos) : (tail - _trx->ubrTx.writePos);
-    uint32_t needMsgChunkNum = CalcUbrMsgChunkCnt(bufLen);
-    if (needMsgChunkNum >= cap) {
-        LOG(ERROR) << "Ubr send failed, payload length=" << bufLen
-                   << " needs " << needMsgChunkNum << " chunks, capacity=" << cap << ".";
+    auto *data_status_msg = (UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr;
+    auto *data_msg = (UbrMsgFormat *)_trx->ubr_tx.remote_data_q.addr;
+    uint32_t cap = _trx->ubr_tx.capacity;
+    uint32_t tail = data_status_msg->tail;
+    uint32_t remain_chunk_num =
+        (_trx->ubr_tx.write_pos > tail) ? (tail + cap - _trx->ubr_tx.write_pos) : (tail - _trx->ubr_tx.write_pos);
+    uint32_t need_msg_chunk_num = CalcUbrMsgChunkCnt(buf_len);
+    if (need_msg_chunk_num >= cap) {
+        LOG(ERROR) << "Ubr send failed, payload length=" << buf_len
+                   << " needs " << need_msg_chunk_num << " chunks, capacity=" << cap << ".";
         errno = EMSGSIZE;
         return UBRING_ERR;
     }
-    if (remainChunkNum < needMsgChunkNum) {
+    if (remain_chunk_num < need_msg_chunk_num) {
         return UBRING_RETRY;
     }
-    UbrMsgFormat *msg = &(_trx->ubrTx.localMsgSpace);
-    uint32_t totalSendLen = 0;
-    uint32_t remainBufLen = bufLen;
-    uint8_t isLastPkt = 0;
-    _trx->ubrTx.outIoId++;
-    ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->ioId = _trx->ubrTx.outIoId;
-    while (remainBufLen > 0) {
-        isLastPkt = (uint8_t)(remainBufLen <= UBR_MSG_PAYLOAD_LEN);
-        msg->header[UBR_MSG_FLAG_INDEX] = isLastPkt ? UBR_MSG_CHUNK_EOF : UBR_MSG_CHUNK_EXIST;
-        msg->header[UBR_MSG_LEN_INDEX] = isLastPkt ? (uint8_t)remainBufLen : UBR_MSG_PAYLOAD_LEN;
+    UbrMsgFormat *msg = &(_trx->ubr_tx.local_msg_space);
+    uint32_t total_send_len = 0;
+    uint32_t remain_buf_len = buf_len;
+    uint8_t is_last_pkt = 0;
+    _trx->ubr_tx.out_io_id++;
+    ((UbrEventQMsg *)_trx->ubr_tx.remote_rx_event_q.addr)->io_id = _trx->ubr_tx.out_io_id;
+    while (remain_buf_len > 0) {
+        is_last_pkt = (uint8_t)(remain_buf_len <= UBR_MSG_PAYLOAD_LEN);
+        msg->header[UBR_MSG_FLAG_INDEX] = is_last_pkt ? UBR_MSG_CHUNK_EOF : UBR_MSG_CHUNK_EXIST;
+        msg->header[UBR_MSG_LEN_INDEX] = is_last_pkt ? (uint8_t)remain_buf_len : UBR_MSG_PAYLOAD_LEN;
         msg->header[UBR_MSG_CUR_INDEX] = 0;
-        memcpy(msg->payload.inner, (const uint8_t *)buf + totalSendLen, msg->header[UBR_MSG_LEN_INDEX]);
-        Copy64Byte((int8_t *)&dataMsg[_trx->ubrTx.writePos], (int8_t *)msg);
-        _trx->ubrTx.writePos = (_trx->ubrTx.writePos + 1) % cap;
-        totalSendLen += msg->header[UBR_MSG_LEN_INDEX];
-        remainBufLen -= msg->header[UBR_MSG_LEN_INDEX];
+        memcpy(msg->payload.inner, (const uint8_t *)buf + total_send_len, msg->header[UBR_MSG_LEN_INDEX]);
+        Copy64Byte((int8_t *)&data_msg[_trx->ubr_tx.write_pos], (int8_t *)msg);
+        _trx->ubr_tx.write_pos = (_trx->ubr_tx.write_pos + 1) % cap;
+        total_send_len += msg->header[UBR_MSG_LEN_INDEX];
+        remain_buf_len -= msg->header[UBR_MSG_LEN_INDEX];
     }
-    return (int)totalSendLen;
+    return (int)total_send_len;
 }
 
-int UBRing::UbrTrxRecv(void *buf, uint32_t bufLen)
+int UBRing::UbrTrxRecv(void *buf, uint32_t buf_len)
 {
     RETURN_CODE rc = UBRING_OK;
-    if (UNLIKELY((rc = CheckTrxRecvParam(_trx, buf, bufLen)) != UBRING_OK)) {
+    if (UNLIKELY((rc = CheckTrxRecvParam(_trx, buf, buf_len)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
     }
-    UbrMsgFormat *dataMsg = (UbrMsgFormat *)_trx->ubrRx.localDataQ.addr;
-    uint32_t readPosEnd = _trx->ubrRx.readPos;
-    uint8_t flag = dataMsg[readPosEnd].header[UBR_MSG_FLAG_INDEX];
+    UbrMsgFormat *data_msg = (UbrMsgFormat *)_trx->ubr_rx.local_data_q.addr;
+    uint32_t read_pos_end = _trx->ubr_rx.read_pos;
+    uint8_t flag = data_msg[read_pos_end].header[UBR_MSG_FLAG_INDEX];
     if (flag == UBR_MSG_CHUNK_NONE) {
         return UBRING_RETRY;
     }
-    return UbrTrxRecvBlockMode(static_cast<uint8_t *>(buf), bufLen);
+    return UbrTrxRecvBlockMode(static_cast<uint8_t *>(buf), buf_len);
 }
 
-int UBRing::UbrTrxRecvBlockMode(uint8_t *dest, uint32_t bufLen)
+int UBRing::UbrTrxRecvBlockMode(uint8_t *dest, uint32_t buf_len)
 {
     RETURN_CODE rc = UBRING_OK;
-    if (UNLIKELY((rc = CheckTrxRecvParam(_trx, dest, bufLen)) != UBRING_OK)) {
+    if (UNLIKELY((rc = CheckTrxRecvParam(_trx, dest, buf_len)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
     }
 
-    int32_t totalCopied = 0;
-    int32_t remainingLen = (int32_t)bufLen;
-    bool notEofEncountered = true;
+    int32_t total_copied = 0;
+    int32_t remaining_len = (int32_t)buf_len;
+    bool not_eof_encountered = true;
 
-    UbrRx *ubrRx = &_trx->ubrRx;
-    UbrMsgFormat *dataMsg = (UbrMsgFormat *)ubrRx->localDataQ.addr;
-    bool needUpdateEpollEofPos = ubrRx->readPos == ubrRx->epEofPos;
+    UbrRx *ubr_rx = &_trx->ubr_rx;
+    UbrMsgFormat *data_msg = (UbrMsgFormat *)ubr_rx->local_data_q.addr;
+    bool need_update_epoll_eof_pos = ubr_rx->read_pos == ubr_rx->ep_eof_pos;
 
-    while (notEofEncountered && remainingLen > 0) {
+    while (not_eof_encountered && remaining_len > 0) {
         if (UNLIKELY(CheckTrxRecvPreCheck(_trx) != UBRING_OK)) {
             return UBRING_ERR;
         }
-        UbrMsgFormat *currentChunk = &dataMsg[ubrRx->readPos];
-        uint8_t flag = currentChunk->header[UBR_MSG_FLAG_INDEX];
+        UbrMsgFormat *current_chunk = &data_msg[ubr_rx->read_pos];
+        uint8_t flag = current_chunk->header[UBR_MSG_FLAG_INDEX];
         if (flag == UBR_MSG_CHUNK_NONE) {
-            if (totalCopied > 0) {
+            if (total_copied > 0) {
                 break;
             }
             errno = EAGAIN;
             return -1;
         }
         if (flag == UBR_MSG_CHUNK_EOF) {
-            notEofEncountered = false;
+            not_eof_encountered = false;
         }
-        uint8_t chunkMsgLen = currentChunk->header[UBR_MSG_LEN_INDEX];
-        uint8_t curIndex = currentChunk->header[UBR_MSG_CUR_INDEX];
-        uint8_t availableData = chunkMsgLen - curIndex;
+        uint8_t chunk_msg_len = current_chunk->header[UBR_MSG_LEN_INDEX];
+        uint8_t cur_index = current_chunk->header[UBR_MSG_CUR_INDEX];
+        uint8_t available_data = chunk_msg_len - cur_index;
 
-        int32_t copyLen = (remainingLen < availableData) ? remainingLen : availableData;
-        memcpy(dest + totalCopied, dataMsg[ubrRx->readPos].payload.inner + curIndex, (size_t)copyLen);
-        totalCopied += copyLen;
-        remainingLen -= copyLen;
-        currentChunk->header[UBR_MSG_CUR_INDEX] += (uint8_t)copyLen;
-        if (LIKELY(currentChunk->header[UBR_MSG_CUR_INDEX] == chunkMsgLen)) {
-            currentChunk->header[UBR_MSG_FLAG_INDEX] = UBR_MSG_CHUNK_NONE;
+        int32_t copy_len = (remaining_len < available_data) ? remaining_len : available_data;
+        memcpy(dest + total_copied, data_msg[ubr_rx->read_pos].payload.inner + cur_index, (size_t)copy_len);
+        total_copied += copy_len;
+        remaining_len -= copy_len;
+        current_chunk->header[UBR_MSG_CUR_INDEX] += (uint8_t)copy_len;
+        if (LIKELY(current_chunk->header[UBR_MSG_CUR_INDEX] == chunk_msg_len)) {
+            current_chunk->header[UBR_MSG_FLAG_INDEX] = UBR_MSG_CHUNK_NONE;
             UpdateDataQTail(_trx);
-            ubrRx->readPos = (ubrRx->readPos + 1) % ubrRx->capacity;
+            ubr_rx->read_pos = (ubr_rx->read_pos + 1) % ubr_rx->capacity;
         }
     }
-    if (needUpdateEpollEofPos) {
-        ubrRx->epEofPos = ubrRx->readPos;
+    if (need_update_epoll_eof_pos) {
+        ubr_rx->ep_eof_pos = ubr_rx->read_pos;
     }
-    return (int)totalCopied;
+    return (int)total_copied;
 }
 
 ssize_t UBRing::UbrTrxWritev(const struct iovec *iov, int iovcnt)
@@ -444,54 +444,54 @@ ssize_t UBRing::UbrTrxWritev(const struct iovec *iov, int iovcnt)
         return UBRING_ERR;
     }
 
-    size_t bufLen = 0;
+    size_t buf_len = 0;
     for (int i = 0; i < iovcnt; i++) {
-        bufLen += iov[i].iov_len;
+        buf_len += iov[i].iov_len;
     }
-    RETURN_CODE rc = WritevHasEnoughSpace(bufLen);
+    RETURN_CODE rc = WritevHasEnoughSpace(buf_len);
     if (rc != UBRING_OK) {
         return rc;
     }
 
-    UbrMsgFormat *dataMsg = (UbrMsgFormat *)_trx->ubrTx.remoteDataQ.addr;
-    UbrMsgFormat *msg = &(_trx->ubrTx.localMsgSpace);
-    int curIov = 0;
-    size_t curIovPos = 0;
-    ssize_t totalSendLen = 0;
-    size_t pktRemainN = 0;
-    size_t iovRemain = 0;
+    UbrMsgFormat *data_msg = (UbrMsgFormat *)_trx->ubr_tx.remote_data_q.addr;
+    UbrMsgFormat *msg = &(_trx->ubr_tx.local_msg_space);
+    int cur_iov = 0;
+    size_t cur_iov_pos = 0;
+    ssize_t total_send_len = 0;
+    size_t pkt_remain_n = 0;
+    size_t iov_remain = 0;
     size_t fulled = 0;
-    uint8_t isLastPkt = 0;
-    uint8_t curPktLen = 0;
-    _trx->ubrTx.outIoId++;
-    ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->ioId = _trx->ubrTx.outIoId;
-    while (bufLen > 0) {
-        isLastPkt = (uint8_t)(bufLen <= UBR_MSG_PAYLOAD_LEN);
-        curPktLen = isLastPkt ? (uint8_t)bufLen : UBR_MSG_PAYLOAD_LEN;
-        msg->header[UBR_MSG_FLAG_INDEX] = isLastPkt ? UBR_MSG_CHUNK_EOF : UBR_MSG_CHUNK_EXIST;
-        msg->header[UBR_MSG_LEN_INDEX] = curPktLen;
+    uint8_t is_last_pkt = 0;
+    uint8_t cur_pkt_len = 0;
+    _trx->ubr_tx.out_io_id++;
+    ((UbrEventQMsg *)_trx->ubr_tx.remote_rx_event_q.addr)->io_id = _trx->ubr_tx.out_io_id;
+    while (buf_len > 0) {
+        is_last_pkt = (uint8_t)(buf_len <= UBR_MSG_PAYLOAD_LEN);
+        cur_pkt_len = is_last_pkt ? (uint8_t)buf_len : UBR_MSG_PAYLOAD_LEN;
+        msg->header[UBR_MSG_FLAG_INDEX] = is_last_pkt ? UBR_MSG_CHUNK_EOF : UBR_MSG_CHUNK_EXIST;
+        msg->header[UBR_MSG_LEN_INDEX] = cur_pkt_len;
         msg->header[UBR_MSG_CUR_INDEX] = 0;
-        pktRemainN = curPktLen;
-        while (curIov < iovcnt && pktRemainN > 0) {
-            iovRemain = (iov[curIov].iov_len - curIovPos);
-            fulled = iovRemain > pktRemainN ? pktRemainN : iovRemain;
-            memcpy((msg->payload.inner + (curPktLen - (uint8_t)pktRemainN)),
-                (uint8_t *)(iov[curIov].iov_base) + curIovPos,
+        pkt_remain_n = cur_pkt_len;
+        while (cur_iov < iovcnt && pkt_remain_n > 0) {
+            iov_remain = (iov[cur_iov].iov_len - cur_iov_pos);
+            fulled = iov_remain > pkt_remain_n ? pkt_remain_n : iov_remain;
+            memcpy((msg->payload.inner + (cur_pkt_len - (uint8_t)pkt_remain_n)),
+                (uint8_t *)(iov[cur_iov].iov_base) + cur_iov_pos,
                 fulled);
-            pktRemainN -= fulled;
-            curIovPos += fulled;
-            if (curIovPos == iov[curIov].iov_len) {
-                curIov++;
-                curIovPos = 0;
+            pkt_remain_n -= fulled;
+            cur_iov_pos += fulled;
+            if (cur_iov_pos == iov[cur_iov].iov_len) {
+                cur_iov++;
+                cur_iov_pos = 0;
             }
         }
 
-        Copy64Byte((int8_t *)&dataMsg[_trx->ubrTx.writePos], (int8_t *)msg);
-        _trx->ubrTx.writePos = (_trx->ubrTx.writePos + 1) % _trx->ubrTx.capacity;
-        totalSendLen += (ssize_t)curPktLen;
-        bufLen -= (int)curPktLen;
+        Copy64Byte((int8_t *)&data_msg[_trx->ubr_tx.write_pos], (int8_t *)msg);
+        _trx->ubr_tx.write_pos = (_trx->ubr_tx.write_pos + 1) % _trx->ubr_tx.capacity;
+        total_send_len += (ssize_t)cur_pkt_len;
+        buf_len -= (int)cur_pkt_len;
     }
-    return totalSendLen;
+    return total_send_len;
 }
 
 ssize_t UBRing::UbrTrxReadv(const struct iovec *iov, int iovcnt)
@@ -500,9 +500,9 @@ ssize_t UBRing::UbrTrxReadv(const struct iovec *iov, int iovcnt)
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, iov, (uint32_t)iovcnt)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
     }
-    UbrMsgFormat *dataMsg = (UbrMsgFormat *)_trx->ubrRx.localDataQ.addr;
-    uint32_t readPosEnd = _trx->ubrRx.readPos;
-    uint8_t flag = dataMsg[readPosEnd].header[UBR_MSG_FLAG_INDEX];
+    UbrMsgFormat *data_msg = (UbrMsgFormat *)_trx->ubr_rx.local_data_q.addr;
+    uint32_t read_pos_end = _trx->ubr_rx.read_pos;
+    uint8_t flag = data_msg[read_pos_end].header[UBR_MSG_FLAG_INDEX];
     if (flag == UBR_MSG_CHUNK_NONE) {
         errno = EAGAIN;
         return -1;
@@ -523,106 +523,106 @@ ssize_t UBRing::UbrTrxReadvBlockMode(const struct iovec *iov, int iovcnt)
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
     }
 
-    size_t remainBufLen = 0;
+    size_t remain_buf_len = 0;
     for (int i = 0; i < iovcnt; i++) {
-        remainBufLen += iov[i].iov_len;
+        remain_buf_len += iov[i].iov_len;
     }
 
-    bool needUpdateEpollEofPos = _trx->ubrRx.readPos == _trx->ubrRx.epEofPos;
-    ssize_t totalRecvLen = StartReadv(_trx, iov, iovcnt, remainBufLen);
+    bool need_update_epoll_eof_pos = _trx->ubr_rx.read_pos == _trx->ubr_rx.ep_eof_pos;
+    ssize_t total_recv_len = StartReadv(_trx, iov, iovcnt, remain_buf_len);
 
-    if (needUpdateEpollEofPos) {
-        _trx->ubrRx.epEofPos = _trx->ubrRx.readPos;
+    if (need_update_epoll_eof_pos) {
+        _trx->ubr_rx.ep_eof_pos = _trx->ubr_rx.read_pos;
     }
-    return totalRecvLen;
+    return total_recv_len;
 }
 
-RETURN_CODE UBRing::IsUbrTrxReadable(uint32_t epEvent)
+RETURN_CODE UBRing::IsUbrTrxReadable(uint32_t ep_event)
 {
     if (UNLIKELY(_trx == NULL)) {
         LOG(ERROR) << "The trx to be checked is NULL.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(_trx->localShm.addr == NULL)) {
-        LOG(ERROR) << "The trx localShm to be checked is NULL.";
+    if (UNLIKELY(_trx->local_shm.addr == NULL)) {
+        LOG(ERROR) << "The trx local_shm to be checked is NULL.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(_trx->ubrTx.trxState != UBR_STATE_CONNECTED)) {
+    if (UNLIKELY(_trx->ubr_tx.trx_state != UBR_STATE_CONNECTED)) {
         return UBRING_ERR;
     }
 
-    uint64_t ioId = ((UbrEventQMsg *)_trx->ubrRx.localRxEventQ.addr)->ioId;
-    if ((epEvent & EPOLLET) && ioId == _trx->ubrRx.inIoId) {
+    uint64_t io_id = ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->io_id;
+    if ((ep_event & EPOLLET) && io_id == _trx->ubr_rx.in_io_id) {
         return MPA_MUXER_NOT_READY;
     }
 
-    uint32_t readPosEnd = _trx->ubrRx.readPos;
-    if (epEvent & EPOLLET) {
-        readPosEnd = _trx->ubrRx.epEofPos;
+    uint32_t read_pos_end = _trx->ubr_rx.read_pos;
+    if (ep_event & EPOLLET) {
+        read_pos_end = _trx->ubr_rx.ep_eof_pos;
     }
 
-    UbrMsgFormat *dataMsg = (UbrMsgFormat *)_trx->ubrRx.localDataQ.addr;
-    uint8_t flag = dataMsg[readPosEnd].header[UBR_MSG_FLAG_INDEX];
+    UbrMsgFormat *data_msg = (UbrMsgFormat *)_trx->ubr_rx.local_data_q.addr;
+    uint8_t flag = data_msg[read_pos_end].header[UBR_MSG_FLAG_INDEX];
     if (flag == UBR_MSG_CHUNK_NONE) {
         return MPA_MUXER_NOT_READY;
     }
-    if (epEvent & EPOLLET) {
-        _trx->ubrRx.inIoId = ioId;
+    if (ep_event & EPOLLET) {
+        _trx->ubr_rx.in_io_id = io_id;
     }
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::IsUbrTrxWriteable(uint32_t epEvent)
+RETURN_CODE UBRing::IsUbrTrxWriteable(uint32_t ep_event)
 {
     if (UNLIKELY(_trx == NULL)) {
         LOG(ERROR) << "The trx to be checked is NULL.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(_trx->localShm.addr == NULL)) {
-        LOG(ERROR) << "The trx localShm to be checked is NULL.";
+    if (UNLIKELY(_trx->local_shm.addr == NULL)) {
+        LOG(ERROR) << "The trx local_shm to be checked is NULL.";
         return UBRING_ERR;
     }
-    if (UNLIKELY((UbrEventQMsg *)_trx->ubrTx.localTxEventQ.addr == NULL)) {
-        LOG(ERROR) << "The trx localTxEventQ addr is NULL.";
+    if (UNLIKELY((UbrEventQMsg *)_trx->ubr_tx.local_tx_event_q.addr == NULL)) {
+        LOG(ERROR) << "The trx local_tx_event_q addr is NULL.";
         return UBRING_ERR;
     }
-    if (UNLIKELY((UbrEventQMsg *)_trx->ubrTx.localDataStatusQ.addr == NULL)) {
-        LOG(ERROR) << "The trx localDataStatusQ addr is NULL.";
+    if (UNLIKELY((UbrEventQMsg *)_trx->ubr_tx.local_data_status_q.addr == NULL)) {
+        LOG(ERROR) << "The trx local_data_status_q addr is NULL.";
         return UBRING_ERR;
     }
 
-    if (UNLIKELY(_trx->ubrTx.trxState != UBR_STATE_CONNECTED)) {
+    if (UNLIKELY(_trx->ubr_tx.trx_state != UBR_STATE_CONNECTED)) {
         LOG(ERROR) << "The trx is not connected state.";
         return UBRING_ERR;
     }
 
-    UbrDataStatusQMsg *dataStatusMsg = (UbrDataStatusQMsg *)_trx->ubrTx.localDataStatusQ.addr;
-    uint32_t cap = _trx->ubrTx.capacity;
-    uint32_t tail = dataStatusMsg->tail;
-    uint32_t remainChunkNum =
-        (_trx->ubrTx.writePos > tail) ? (tail + cap - _trx->ubrTx.writePos) : (tail - _trx->ubrTx.writePos);
-    if (remainChunkNum == 0) {
-        _trx->ubrTx.epLastCap = remainChunkNum;
+    UbrDataStatusQMsg *data_status_msg = (UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr;
+    uint32_t cap = _trx->ubr_tx.capacity;
+    uint32_t tail = data_status_msg->tail;
+    uint32_t remain_chunk_num =
+        (_trx->ubr_tx.write_pos > tail) ? (tail + cap - _trx->ubr_tx.write_pos) : (tail - _trx->ubr_tx.write_pos);
+    if (remain_chunk_num == 0) {
+        _trx->ubr_tx.ep_last_cap = remain_chunk_num;
         return MPA_MUXER_NOT_READY;
     }
 
-    if ((epEvent & EPOLLET) && (_trx->ubrTx.epLastCap >= remainChunkNum)) {
-        _trx->ubrTx.epLastCap = remainChunkNum;
+    if ((ep_event & EPOLLET) && (_trx->ubr_tx.ep_last_cap >= remain_chunk_num)) {
+        _trx->ubr_tx.ep_last_cap = remain_chunk_num;
         return MPA_MUXER_NOT_READY;
     }
-    _trx->ubrTx.epLastCap = remainChunkNum;
+    _trx->ubr_tx.ep_last_cap = remain_chunk_num;
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrSetTimeout(UbrTaskStep taskType, int timeout)
+RETURN_CODE UBRing::UbrSetTimeout(UbrTaskStep task_type, int timeout)
 {
-    if (taskType >= UBR_TASK_STEP_NUM || timeout < 0) {
+    if (task_type >= UBR_TASK_STEP_NUM || timeout < 0) {
         LOG(ERROR) << "Set timeout failed, invalid task type.";
         return UBRING_ERR;
     }
 
-    g_sleepTime[taskType] = (uint32_t)timeout;
-    LOG(INFO) << "Set timeout success, taskType=" << taskType << ", timeout=" << timeout;
+    g_sleep_time[task_type] = (uint32_t)timeout;
+    LOG(INFO) << "Set timeout success, task_type=" << task_type << ", timeout=" << timeout;
     return UBRING_OK;
 }
 
@@ -634,27 +634,27 @@ RETURN_CODE UBRing::UbrTrxFreeShm(UbrTrx *trx)
     }
 
     RETURN_CODE rc = UBRING_OK;
-    rc = ShmMunmap(&trx->localShm);
+    rc = ShmMunmap(&trx->local_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
-        LOG(ERROR) << "Trx close, local unmap " << trx->localShm.name << " shm fail.";
+        LOG(ERROR) << "Trx close, local unmap " << trx->local_shm.name << " shm fail.";
         return UBRING_ERR;
     }
 
-    rc = ShmFree(&trx->localShm);
+    rc = ShmFree(&trx->local_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         if (rc != SHM_ERR_RESOURCE_ATTACHED && rc != SHM_ERR_NOT_FOUND) {
-            LOG(ERROR) << "Wait for " << trx->localShm.name << " local shm free fail.";
+            LOG(ERROR) << "Wait for " << trx->local_shm.name << " local shm free fail.";
             return UBRING_ERR;
         }
-        LOG(INFO) << "Local shm " << trx->localShm.name << " already freed, continue to free remote shm.";
+        LOG(INFO) << "Local shm " << trx->local_shm.name << " already freed, continue to free remote shm.";
     }
 
-    RETURN_CODE remoteRc = UBRING_OK;
-    if (trx->remoteShm.addr != NULL) {
-        remoteRc = ShmRemoteFree(&trx->remoteShm);
+    RETURN_CODE remote_rc = UBRING_OK;
+    if (trx->remote_shm.addr != NULL) {
+        remote_rc = ShmRemoteFree(&trx->remote_shm);
     }
-    if (remoteRc != UBRING_OK) {
-        LOG(WARNING) << "Free remote shm " << trx->remoteShm.name << " failed, rc=" << remoteRc;
+    if (remote_rc != UBRING_OK) {
+        LOG(WARNING) << "Free remote shm " << trx->remote_shm.name << " failed, rc=" << remote_rc;
     }
 
     return UBRING_OK;
@@ -665,9 +665,9 @@ RETURN_CODE UBRing::UbrUnlinkLocalShm()
     if (UNLIKELY(_trx == NULL)) {
         return UBRING_ERR;
     }
-    RETURN_CODE rc = ShmFree(&_trx->localShm);
+    RETURN_CODE rc = ShmFree(&_trx->local_shm);
     if (rc != UBRING_OK && rc != SHM_ERR_NOT_FOUND && rc != SHM_ERR_RESOURCE_ATTACHED) {
-        LOG(WARNING) << "Unlink local shm " << _trx->localShm.name << " failed, rc=" << rc;
+        LOG(WARNING) << "Unlink local shm " << _trx->local_shm.name << " failed, rc=" << rc;
         return rc;
     }
     return UBRING_OK;
@@ -702,7 +702,7 @@ void UBRing::PrewriteUbrTx(UbrTx *tx)
     if (tx == NULL) {
         return;
     }
-    PreWriteAddr(tx->remoteDataQ.addr, tx->capacity * sizeof(UbrMsgFormat));
+    PreWriteAddr(tx->remote_data_q.addr, tx->capacity * sizeof(UbrMsgFormat));
 }
 
 void UBRing::PrewriteUbrRx(UbrRx *rx)
@@ -710,90 +710,90 @@ void UBRing::PrewriteUbrRx(UbrRx *rx)
     if (rx == NULL) {
         return;
     }
-    PreWriteAddr(rx->localDataQ.addr, rx->capacity * sizeof(UbrMsgFormat));
+    PreWriteAddr(rx->local_data_q.addr, rx->capacity * sizeof(UbrMsgFormat));
 }
 
-RETURN_CODE UBRing::UbrTrxMapLocalShm(SHM *localShm)
+RETURN_CODE UBRing::UbrTrxMapLocalShm(SHM *local_shm)
 {
     if (UNLIKELY(_trx == NULL)) {
         LOG(ERROR) << "Trx map Shared memory failed, trx is null.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(localShm == NULL || localShm->addr == NULL)) {
-        LOG(ERROR) << "Trx map Shared memory failed, localShm is null or addr is NULL.";
+    if (UNLIKELY(local_shm == NULL || local_shm->addr == NULL)) {
+        LOG(ERROR) << "Trx map Shared memory failed, local_shm is null or addr is NULL.";
         return UBRING_ERR;
     }
-    _trx->localShm = *localShm;
-    _trx->ubrTx.localTxEventQ.addr = localShm->addr + TX_EVENTQ_ADDR_OFFSET;
-    _trx->ubrTx.localTxEventQ.len = UBR_EVENTQ_LEN;
-    _trx->ubrRx.localRxEventQ.addr = localShm->addr + RX_EVENTQ_ADDR_OFFSET;
-    _trx->ubrRx.localRxEventQ.len = UBR_EVENTQ_LEN;
-    _trx->ubrTx.localDataStatusQ.addr = localShm->addr + DATASTATUSQ_ADDR_OFFSET;
-    _trx->ubrTx.localDataStatusQ.len = UBR_DATASTATUSQ_LEN;
-    size_t addrAlignedOffset = Aligned64Offset(localShm->addr + DATAQ_ADDR_OFFSET);
-    _trx->ubrRx.localDataQ.addr = localShm->addr + DATAQ_ADDR_OFFSET + addrAlignedOffset;
-    _trx->ubrRx.localDataQ.len = localShm->len - DATAQ_ADDR_OFFSET - addrAlignedOffset;
+    _trx->local_shm = *local_shm;
+    _trx->ubr_tx.local_tx_event_q.addr = local_shm->addr + TX_EVENTQ_ADDR_OFFSET;
+    _trx->ubr_tx.local_tx_event_q.len = UBR_EVENTQ_LEN;
+    _trx->ubr_rx.local_rx_event_q.addr = local_shm->addr + RX_EVENTQ_ADDR_OFFSET;
+    _trx->ubr_rx.local_rx_event_q.len = UBR_EVENTQ_LEN;
+    _trx->ubr_tx.local_data_status_q.addr = local_shm->addr + DATASTATUSQ_ADDR_OFFSET;
+    _trx->ubr_tx.local_data_status_q.len = UBR_DATASTATUSQ_LEN;
+    size_t addr_aligned_offset = Aligned64Offset(local_shm->addr + DATAQ_ADDR_OFFSET);
+    _trx->ubr_rx.local_data_q.addr = local_shm->addr + DATAQ_ADDR_OFFSET + addr_aligned_offset;
+    _trx->ubr_rx.local_data_q.len = local_shm->len - DATAQ_ADDR_OFFSET - addr_aligned_offset;
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrTrxMapRemoteShm(SHM *remoteShm)
+RETURN_CODE UBRing::UbrTrxMapRemoteShm(SHM *remote_shm)
 {
     if (UNLIKELY(_trx == NULL)) {
         LOG(ERROR) << "Trx map Shared memory failed, trx is null.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(remoteShm == NULL || remoteShm->addr == NULL)) {
-        LOG(ERROR) << "Trx map Shared memory failed, remoteShm is null or addr is NULL.";
+    if (UNLIKELY(remote_shm == NULL || remote_shm->addr == NULL)) {
+        LOG(ERROR) << "Trx map Shared memory failed, remote_shm is null or addr is NULL.";
         return UBRING_ERR;
     }
-    _trx->remoteShm = *remoteShm;
-    _trx->ubrRx.remoteTxEventQ.addr = remoteShm->addr + TX_EVENTQ_ADDR_OFFSET;
-    _trx->ubrRx.remoteTxEventQ.len = UBR_EVENTQ_LEN;
-    _trx->ubrTx.remoteRxEventQ.addr = remoteShm->addr + RX_EVENTQ_ADDR_OFFSET;
-    _trx->ubrTx.remoteRxEventQ.len = UBR_EVENTQ_LEN;
-    _trx->ubrRx.remoteDataStatusQ.addr = remoteShm->addr + DATASTATUSQ_ADDR_OFFSET;
-    _trx->ubrRx.remoteDataStatusQ.len = UBR_DATASTATUSQ_LEN;
-    size_t addrAlignedOffset = Aligned64Offset(remoteShm->addr + DATAQ_ADDR_OFFSET);
-    _trx->ubrTx.remoteDataQ.addr = remoteShm->addr + DATAQ_ADDR_OFFSET + addrAlignedOffset;
-    _trx->ubrTx.remoteDataQ.len = remoteShm->len - DATAQ_ADDR_OFFSET - addrAlignedOffset;
+    _trx->remote_shm = *remote_shm;
+    _trx->ubr_rx.remote_tx_event_q.addr = remote_shm->addr + TX_EVENTQ_ADDR_OFFSET;
+    _trx->ubr_rx.remote_tx_event_q.len = UBR_EVENTQ_LEN;
+    _trx->ubr_tx.remote_rx_event_q.addr = remote_shm->addr + RX_EVENTQ_ADDR_OFFSET;
+    _trx->ubr_tx.remote_rx_event_q.len = UBR_EVENTQ_LEN;
+    _trx->ubr_rx.remote_data_status_q.addr = remote_shm->addr + DATASTATUSQ_ADDR_OFFSET;
+    _trx->ubr_rx.remote_data_status_q.len = UBR_DATASTATUSQ_LEN;
+    size_t addr_aligned_offset = Aligned64Offset(remote_shm->addr + DATAQ_ADDR_OFFSET);
+    _trx->ubr_tx.remote_data_q.addr = remote_shm->addr + DATAQ_ADDR_OFFSET + addr_aligned_offset;
+    _trx->ubr_tx.remote_data_q.len = remote_shm->len - DATAQ_ADDR_OFFSET - addr_aligned_offset;
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrServerTrxInit(SHM *localShm, SHM *remoteShm)
+RETURN_CODE UBRing::UbrServerTrxInit(SHM *local_shm, SHM *remote_shm)
 {
-    RETURN_CODE rc = UbrTrxMapShm(localShm, remoteShm);
+    RETURN_CODE rc = UbrTrxMapShm(local_shm, remote_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) <<"Trx map shared memory failed.";
         return rc;
     }
 
-    uint32_t localDataMsgCap = (uint32_t)(_trx->ubrRx.localDataQ.len / UBR_MSG_LEN);
-    uint32_t remoteDataMsgCap = (uint32_t)(_trx->ubrTx.remoteDataQ.len / UBR_MSG_LEN);
-    _trx->ubrRx.capacity = localDataMsgCap;
-    _trx->ubrTx.capacity = remoteDataMsgCap;
-    rc = UBRingManager::GetUbrDealMsgMaxCnt(_trx->ubrRx.capacity, &_trx->ubrRx.dealMsgMaxCnt);
+    uint32_t local_data_msg_cap = (uint32_t)(_trx->ubr_rx.local_data_q.len / UBR_MSG_LEN);
+    uint32_t remote_data_msg_cap = (uint32_t)(_trx->ubr_tx.remote_data_q.len / UBR_MSG_LEN);
+    _trx->ubr_rx.capacity = local_data_msg_cap;
+    _trx->ubr_tx.capacity = remote_data_msg_cap;
+    rc = UBRingManager::GetUbrDealMsgMaxCnt(_trx->ubr_rx.capacity, &_trx->ubr_rx.deal_msg_max_cnt);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Get ubring deal msg max cnt.";
         return rc;
     }
-    PrewriteUbrRx(&_trx->ubrRx);
-    PrewriteUbrTx(&_trx->ubrTx);
+    PrewriteUbrRx(&_trx->ubr_rx);
+    PrewriteUbrTx(&_trx->ubr_tx);
 
-    ((UbrDataStatusQMsg *)(_trx->ubrTx.localDataStatusQ.addr))->tail = remoteDataMsgCap - 1;
-    ((UbrDataStatusQMsg *)(_trx->ubrRx.remoteDataStatusQ.addr))->tail = localDataMsgCap - 1;
+    ((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->tail = remote_data_msg_cap - 1;
+    ((UbrDataStatusQMsg *)(_trx->ubr_rx.remote_data_status_q.addr))->tail = local_data_msg_cap - 1;
 
     if (UNLIKELY(UbrAddTimer() != UBRING_OK)) {
-        LOG(ERROR) << "Ubr add timer failed, localName=" << localShm->name;
+        LOG(ERROR) << "Ubr add timer failed, local_name=" << local_shm->name;
         return UBRING_ERR;
     }
 
-    ((UbrDataStatusQMsg *)(_trx->ubrTx.localDataStatusQ.addr))->timeout = FLAGS_ub_connect_timeout;
-    ((UbrDataStatusQMsg *)(_trx->ubrRx.remoteDataStatusQ.addr))->timeout = FLAGS_ub_connect_timeout;
+    ((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->timeout = FLAGS_ub_connect_timeout;
+    ((UbrDataStatusQMsg *)(_trx->ubr_rx.remote_data_status_q.addr))->timeout = FLAGS_ub_connect_timeout;
 
-    ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->flag = UBR_STATE_CONNECTED;
-    ((UbrEventQMsg *)_trx->ubrRx.localRxEventQ.addr)->flag = UBR_STATE_CONNECTED;
-    _trx->ubrTx.trxState = UBR_STATE_CONNECTED;
-    _trx->ubrRx.trxState = UBR_STATE_CONNECTED;
+    ((UbrEventQMsg *)_trx->ubr_tx.remote_rx_event_q.addr)->flag = UBR_STATE_CONNECTED;
+    ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->flag = UBR_STATE_CONNECTED;
+    _trx->ubr_tx.trx_state = UBR_STATE_CONNECTED;
+    _trx->ubr_rx.trx_state = UBR_STATE_CONNECTED;
     return UBRING_OK;
 }
 
@@ -810,8 +810,8 @@ int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm) {
         return -1;
     }
 
-    UbrTrx **ubrTrxPtr = &_trx;
-    if (UNLIKELY((UBRingManager::AcquireUbrTrxFromMgr(ubrTrxPtr)) != UBRING_OK)) {
+    UbrTrx **ubr_trx_ptr = &_trx;
+    if (UNLIKELY((UBRingManager::AcquireUbrTrxFromMgr(ubr_trx_ptr)) != UBRING_OK)) {
         LOG(ERROR) << "Acquire ubrtrx failed.";
         ShmRemoteFree(remote_trx_shm);
         ShmLocalFree(local_trx_shm);
@@ -831,13 +831,13 @@ int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm) {
 int UBRing::UbrAllocateLocalShm(SHM *local_trx_shm, const char *shm_name)
 {
     if (UNLIKELY((UBRingManager::AcquireUbrTrxFromMgr(&(_trx))) != UBRING_OK)) {
-        LOG(ERROR) << "Acquire ubrtrx failed, localName=" << shm_name;
+        LOG(ERROR) << "Acquire ubrtrx failed, local_name=" << shm_name;
         return -1;
     }
 
     _trx->type = TCP_TRX;
     if (UNLIKELY((ApplyAndMapLocalShm(local_trx_shm, shm_name)) != UBRING_OK)) {
-        LOG(ERROR) << "Trx apply or map local shared memory failed, localName=" << shm_name;
+        LOG(ERROR) << "Trx apply or map local shared memory failed, local_name=" << shm_name;
         _trx = nullptr;
         return -1;
     }
@@ -851,178 +851,178 @@ int UBRing::UbrMapRemoteShm(SHM *local_trx_shm, const char *local_name)
         LOG(ERROR) << "Connect Trx failed, local shm name=" << local_trx_shm->name;
         return -1;
     }
-    PrewriteUbrRx(&_trx->ubrRx);
-    PrewriteUbrTx(&_trx->ubrTx);
-    ((UbrEventQMsg *)_trx->ubrRx.remoteTxEventQ.addr)->flag = UBR_STATE_CONNECTED;
-    ((UbrEventQMsg *)_trx->ubrRx.localRxEventQ.addr)->flag = UBR_STATE_CONNECTED;
-    _trx->ubrTx.trxState = UBR_STATE_CONNECTED;
-    _trx->ubrRx.trxState = UBR_STATE_CONNECTED;
+    PrewriteUbrRx(&_trx->ubr_rx);
+    PrewriteUbrTx(&_trx->ubr_tx);
+    ((UbrEventQMsg *)_trx->ubr_rx.remote_tx_event_q.addr)->flag = UBR_STATE_CONNECTED;
+    ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->flag = UBR_STATE_CONNECTED;
+    _trx->ubr_tx.trx_state = UBR_STATE_CONNECTED;
+    _trx->ubr_rx.trx_state = UBR_STATE_CONNECTED;
     return 0;
 }
 
-RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *localTrxShm, const char *localName)
+RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *local_name)
 {
-    uint64_t startTime = GetCurNanoSeconds();
+    uint64_t start_time = GetCurNanoSeconds();
 
-    size_t remoteServerLen = UBR_MSG_LEN * (((UbrDataStatusQMsg *)(_trx->ubrTx.localDataStatusQ.addr))->tail + 1) +
+    size_t remote_server_len = UBR_MSG_LEN * (((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->tail + 1) +
                              UBR_MSG_LEN * ((DATAQ_ADDR_OFFSET / UBR_MSG_LEN) + 1);
-    SHM remoteTrxShm = {NULL, remoteServerLen, 0, {0}, localTrxShm->fd};
-    int result = snprintf(remoteTrxShm.name,
+    SHM remote_trx_shm = {NULL, remote_server_len, 0, {0}, local_trx_shm->fd};
+    int result = snprintf(remote_trx_shm.name,
         SHM_MAX_NAME_BUFF_LEN,
         "%s_%s_%s",
         SHM_NAME_PREFIX,
-        localName,
+        local_name,
         SERVER_SHM_NAME_SUFFIX);
     if (UNLIKELY(result < 0)) {
-        LOG(ERROR) << "Copy server shared memory name failed, localName=%s, ret=%d.", localName, result;
+        LOG(ERROR) << "Copy server shared memory name failed, local_name=%s, ret=%d.", local_name, result;
         return UBRING_ERR;
     }
     UbrSetSleepTask(UBR_TASK_CONNECT_MAP_FRONT);
-    RETURN_CODE rc = ApplyAndMapRemoteShm(&remoteTrxShm);
+    RETURN_CODE rc = ApplyAndMapRemoteShm(&remote_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
-        LOG(ERROR) << "Connect Trx map shared memory failed, remote shm=" << remoteTrxShm.name;
+        LOG(ERROR) << "Connect Trx map shared memory failed, remote shm=" << remote_trx_shm.name;
         return rc;
     }
 
     if (UNLIKELY(UbrAddTimer() != UBRING_OK)) {
-        LOG(ERROR) << "Ubr add timer failed, localName=" << localName;
-        ShmRemoteFree(&_trx->remoteShm);
+        LOG(ERROR) << "Ubr add timer failed, local_name=" << local_name;
+        ShmRemoteFree(&_trx->remote_shm);
         return UBRING_ERR;
     }
 
     UbrSetSleepTask(UBR_TASK_CONNECT_MAP_AFTER);
 
-    uint32_t timeout = ((UbrDataStatusQMsg *)(_trx->ubrTx.localDataStatusQ.addr))->timeout;
-    if (HasTimedOut(startTime, timeout) != UBRING_OK) {
-        LOG(ERROR) << "Local shm " << localTrxShm->name << " wait for connect remote map timeout.";
-        DeleteTimerSafe((uint32_t)_trx->hbTimerFd);
-        DeleteTimerSafe((uint32_t)_trx->timerFd);
-        ShmRemoteFree(&_trx->remoteShm);
+    uint32_t timeout = ((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->timeout;
+    if (HasTimedOut(start_time, timeout) != UBRING_OK) {
+        LOG(ERROR) << "Local shm " << local_trx_shm->name << " wait for connect remote map timeout.";
+        DeleteTimerSafe((uint32_t)_trx->hb_timer_fd);
+        DeleteTimerSafe((uint32_t)_trx->timer_fd);
+        ShmRemoteFree(&_trx->remote_shm);
         return UBRING_ERR_TIMEOUT;
     }
 
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *localTrxShm, const char *localName)
+RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_name)
 {
-    if (UNLIKELY(_trx == NULL || localTrxShm == NULL)) {
-        LOG(ERROR) << "Trx map Shared memory failed, trx is null, localName=" << localName;
+    if (UNLIKELY(_trx == NULL || local_trx_shm == NULL)) {
+        LOG(ERROR) << "Trx map Shared memory failed, trx is null, local_name=" << local_name;
         return UBRING_ERR;
     }
-    int result = snprintf(localTrxShm->name,
+    int result = snprintf(local_trx_shm->name,
         SHM_MAX_NAME_BUFF_LEN,
         "%s_%s_%s",
         SHM_NAME_PREFIX,
-        localName,
+        local_name,
         CLIENT_SHM_NAME_SUFFIX);
     if (UNLIKELY(result < 0)) {
-        LOG(ERROR) << "Copy client localTrx shared memory name failed, localName=" << localName << ", ret=" << result;
+        LOG(ERROR) << "Copy client localTrx shared memory name failed, local_name=" << local_name << ", ret=" << result;
         return UBRING_ERR;
     }
 
-    RETURN_CODE rc = ShmLocalCalloc(localTrxShm);
+    RETURN_CODE rc = ShmLocalCalloc(local_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
-        LOG(ERROR) << "Trx apply local shared memory failed, local shm name=" << localTrxShm->name << ", rc=" << rc;
+        LOG(ERROR) << "Trx apply local shared memory failed, local shm name=" << local_trx_shm->name << ", rc=" << rc;
         if (rc == SHM_ERR_EXIST || rc == SHM_ERR_NOT_FOUND) {
             rc = UBR_ERR_ADDR_IN_USE;
         }
         UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return rc;
     }
-    rc = UbrTrxMapLocalShm(localTrxShm);
+    rc = UbrTrxMapLocalShm(local_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
-        LOG(ERROR) << "Trx map local shared memory failed, local shm name=" << localTrxShm->name;
-        ShmLocalFree(localTrxShm);
+        LOG(ERROR) << "Trx map local shared memory failed, local shm name=" << local_trx_shm->name;
+        ShmLocalFree(local_trx_shm);
         UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return rc;
     }
-    ((UbrDataStatusQMsg *)_trx->ubrTx.localDataStatusQ.addr)->timeout = FLAGS_ub_connect_timeout;
-    _trx->ubrRx.capacity = (uint32_t)(_trx->ubrRx.localDataQ.len / UBR_MSG_LEN);
-    rc = UBRingManager::GetUbrDealMsgMaxCnt(_trx->ubrRx.capacity, &_trx->ubrRx.dealMsgMaxCnt);
+    ((UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr)->timeout = FLAGS_ub_connect_timeout;
+    _trx->ubr_rx.capacity = (uint32_t)(_trx->ubr_rx.local_data_q.len / UBR_MSG_LEN);
+    rc = UBRingManager::GetUbrDealMsgMaxCnt(_trx->ubr_rx.capacity, &_trx->ubr_rx.deal_msg_max_cnt);
     if (rc != UBRING_OK) {
-        LOG(ERROR) << "Get ubring deal msg max cnt, local shm name=" << localTrxShm->name;
-        ShmLocalFree(localTrxShm);
+        LOG(ERROR) << "Get ubring deal msg max cnt, local shm name=" << local_trx_shm->name;
+        ShmLocalFree(local_trx_shm);
         UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return rc;
     }
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::ApplyAndMapRemoteShm(SHM *remoteTrxShm)
+RETURN_CODE UBRing::ApplyAndMapRemoteShm(SHM *remote_trx_shm)
 {
-    RETURN_CODE rc = ShmRemoteMalloc(remoteTrxShm);
+    RETURN_CODE rc = ShmRemoteMalloc(remote_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx apply remote shared memory failed.";
         return rc;
     }
-    rc = UbrTrxMapRemoteShm(remoteTrxShm);
+    rc = UbrTrxMapRemoteShm(remote_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx map shared memory failed.";
-        ShmRemoteFree(remoteTrxShm);
+        ShmRemoteFree(remote_trx_shm);
         return rc;
     }
-    _trx->ubrTx.capacity = (uint32_t)(_trx->ubrTx.remoteDataQ.len / UBR_MSG_LEN);
+    _trx->ubr_tx.capacity = (uint32_t)(_trx->ubr_tx.remote_data_q.len / UBR_MSG_LEN);
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::WritevHasEnoughSpace(size_t bufLen)
+RETURN_CODE UBRing::WritevHasEnoughSpace(size_t buf_len)
 {
-    UbrDataStatusQMsg *dataStatusMsg = (UbrDataStatusQMsg *)_trx->ubrTx.localDataStatusQ.addr;
-    uint32_t cap = _trx->ubrTx.capacity;
-    uint32_t tail = dataStatusMsg->tail;
-    uint32_t remainChunkNum =
-        (_trx->ubrTx.writePos > tail) ? (tail + cap - _trx->ubrTx.writePos) : (tail - _trx->ubrTx.writePos);
-    uint32_t needMsgChunkNum = CalcUbrMsgChunkCnt((uint32_t)bufLen);
-    if (needMsgChunkNum >= cap) {
-        LOG(ERROR) << "Ubr write failed, payload length=" << bufLen
-                   << " needs " << needMsgChunkNum << " chunks, capacity=" << cap << ".";
+    UbrDataStatusQMsg *data_status_msg = (UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr;
+    uint32_t cap = _trx->ubr_tx.capacity;
+    uint32_t tail = data_status_msg->tail;
+    uint32_t remain_chunk_num =
+        (_trx->ubr_tx.write_pos > tail) ? (tail + cap - _trx->ubr_tx.write_pos) : (tail - _trx->ubr_tx.write_pos);
+    uint32_t need_msg_chunk_num = CalcUbrMsgChunkCnt((uint32_t)buf_len);
+    if (need_msg_chunk_num >= cap) {
+        LOG(ERROR) << "Ubr write failed, payload length=" << buf_len
+                   << " needs " << need_msg_chunk_num << " chunks, capacity=" << cap << ".";
         errno = EMSGSIZE;
         return UBRING_ERR;
     }
-    if (remainChunkNum < needMsgChunkNum) {
+    if (remain_chunk_num < need_msg_chunk_num) {
         return UBRING_RETRY;
     }
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, uint64_t startTime, UbrCloseType closeType)
+RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type)
 {
     if (UNLIKELY(trx == NULL)) {
         LOG(ERROR) << "Trx close failed, trx is null.";
         return UBRING_ERR;
     }
 
-    UbrEventQMsg* localTxEventQ = (UbrEventQMsg *)trx->ubrTx.localTxEventQ.addr;
-    if (localTxEventQ->flag == UBR_STATE_CONNECTED) {
-        localTxEventQ->flag = UBR_STATE_CLOSING;
+    UbrEventQMsg* local_tx_event_q = (UbrEventQMsg *)trx->ubr_tx.local_tx_event_q.addr;
+    if (local_tx_event_q->flag == UBR_STATE_CONNECTED) {
+        local_tx_event_q->flag = UBR_STATE_CLOSING;
     }
 
-    if (closeType == UBR_SEND_CLOSE) {
-        DeleteTimerSafe((uint32_t)trx->timerFd);
+    if (close_type == UBR_SEND_CLOSE) {
+        DeleteTimerSafe((uint32_t)trx->timer_fd);
     } else {
-        DeleteTimer((uint32_t)trx->timerFd);
+        DeleteTimer((uint32_t)trx->timer_fd);
     }
-    DeleteTimerSafe((uint32_t)trx->hbTimerFd);
+    DeleteTimerSafe((uint32_t)trx->hb_timer_fd);
 
-    if (localTxEventQ->flag == UBR_STATE_CLOSING) {
-        localTxEventQ->flag = UBR_STATE_CLOSED;
-        trx->ubrTx.trxState = UBR_STATE_CLOSED;
+    if (local_tx_event_q->flag == UBR_STATE_CLOSING) {
+        local_tx_event_q->flag = UBR_STATE_CLOSED;
+        trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
     }
 
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::ClearTrxResource(UbrTrx *trx, uint64_t startTime, UbrCloseType closeType, int op)
+RETURN_CODE UBRing::ClearTrxResource(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type, int op)
 {
-    RETURN_CODE rc = UbrClearResourceCheck(trx, startTime, closeType);
+    RETURN_CODE rc = UbrClearResourceCheck(trx, start_time, close_type);
     if (rc != UBRING_OK) {
         return rc;
     }
 
     rc = UbrAddAsynClearTimer(trx);
     if (rc != UBRING_OK) {
-        LOG(ERROR) << "Trx close, add " << trx->localShm.name << " close clear timer failed.";
+        LOG(ERROR) << "Trx close, add " << trx->local_shm.name << " close clear timer failed.";
         return UBRING_ERR;
     }
 
@@ -1036,67 +1036,67 @@ RETURN_CODE UBRing::UbrTrxCloseCheck(UbrTrx *trx)
         return UBRING_ERR;
     }
     int expected = MAX_CLOSE_COUNT;
-    if (!ATOMIC_COMPARE_EXCHANGE_STRONG(trx->closeCnt, expected, MAX_CLOSE_COUNT - 1)) {
-        LOG(INFO) << "Trx close skipped, already closing, trx local name=" << trx->localShm.name;
+    if (!ATOMIC_COMPARE_EXCHANGE_STRONG(trx->close_cnt, expected, MAX_CLOSE_COUNT - 1)) {
+        LOG(INFO) << "Trx close skipped, already closing, trx local name=" << trx->local_shm.name;
         return UBRING_REENTRY;
     }
 
-    if (UNLIKELY(trx->ubrTx.localTxEventQ.addr == nullptr)) {
-        LOG(ERROR) << "Trx close failed, localTxEventQ addr is NULL, trx local name=" << trx->localShm.name;
+    if (UNLIKELY(trx->ubr_tx.local_tx_event_q.addr == nullptr)) {
+        LOG(ERROR) << "Trx close failed, local_tx_event_q addr is NULL, trx local name=" << trx->local_shm.name;
         return UBRING_ERR;
     }
     return UBRING_OK;
 }
 
-ssize_t UBRing::StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, size_t remainBufLen)
+ssize_t UBRing::StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, size_t remain_buf_len)
 {
-    ssize_t totalRecvLen = 0;
-    int iovIndex = 0;
-    size_t iovPos = 0;
-    UbrMsgFormat *dataMsg = (UbrMsgFormat *)trx->ubrRx.localDataQ.addr;
-    bool notEofEncountered = true;
-    while (notEofEncountered && remainBufLen > 0) {
+    ssize_t total_recv_len = 0;
+    int iov_index = 0;
+    size_t iov_pos = 0;
+    UbrMsgFormat *data_msg = (UbrMsgFormat *)trx->ubr_rx.local_data_q.addr;
+    bool not_eof_encountered = true;
+    while (not_eof_encountered && remain_buf_len > 0) {
         if (UNLIKELY(CheckTrxRecvPreCheck(trx) != UBRING_OK)) {
             return UBRING_ERR;
         }
-        UbrMsgFormat *currentChunk = &dataMsg[trx->ubrRx.readPos];
-        uint8_t flag = currentChunk->header[UBR_MSG_FLAG_INDEX];
+        UbrMsgFormat *current_chunk = &data_msg[trx->ubr_rx.read_pos];
+        uint8_t flag = current_chunk->header[UBR_MSG_FLAG_INDEX];
         if (flag == UBR_MSG_CHUNK_NONE) {
-            if (totalRecvLen > 0) {
+            if (total_recv_len > 0) {
                 break;
             }
             errno = EAGAIN;
             return -1;
         }
         if (flag == UBR_MSG_CHUNK_EOF) {
-            notEofEncountered = false;
+            not_eof_encountered = false;
         }
-        uint8_t chunkMsgLen = currentChunk->header[UBR_MSG_LEN_INDEX];
-        uint8_t curIndex = currentChunk->header[UBR_MSG_CUR_INDEX];
-        uint8_t recvLen =
-            remainBufLen > (size_t)(chunkMsgLen - curIndex) ? (chunkMsgLen - curIndex) : (uint8_t)remainBufLen;
-        while (iovIndex < iovcnt && recvLen > 0) {
-            size_t copyLen =
-                recvLen > (iov[iovIndex].iov_len - iovPos) ? iov[iovIndex].iov_len - iovPos : (size_t)recvLen;
-            memcpy((uint8_t *)iov[iovIndex].iov_base + iovPos, currentChunk->payload.inner + curIndex, copyLen);
-            recvLen -= (uint8_t)copyLen;
-            iovPos += copyLen;
-            curIndex += (uint8_t)copyLen;
-            if (iovPos == iov[iovIndex].iov_len) {
-                iovIndex++;
-                iovPos = 0;
+        uint8_t chunk_msg_len = current_chunk->header[UBR_MSG_LEN_INDEX];
+        uint8_t cur_index = current_chunk->header[UBR_MSG_CUR_INDEX];
+        uint8_t recv_len =
+            remain_buf_len > (size_t)(chunk_msg_len - cur_index) ? (chunk_msg_len - cur_index) : (uint8_t)remain_buf_len;
+        while (iov_index < iovcnt && recv_len > 0) {
+            size_t copy_len =
+                recv_len > (iov[iov_index].iov_len - iov_pos) ? iov[iov_index].iov_len - iov_pos : (size_t)recv_len;
+            memcpy((uint8_t *)iov[iov_index].iov_base + iov_pos, current_chunk->payload.inner + cur_index, copy_len);
+            recv_len -= (uint8_t)copy_len;
+            iov_pos += copy_len;
+            cur_index += (uint8_t)copy_len;
+            if (iov_pos == iov[iov_index].iov_len) {
+                iov_index++;
+                iov_pos = 0;
             }
-            remainBufLen -= copyLen;
-            totalRecvLen += (ssize_t)copyLen;
+            remain_buf_len -= copy_len;
+            total_recv_len += (ssize_t)copy_len;
         }
-        currentChunk->header[UBR_MSG_CUR_INDEX] = curIndex;
-        if (currentChunk->header[UBR_MSG_CUR_INDEX] == chunkMsgLen) {
-            currentChunk->header[UBR_MSG_FLAG_INDEX] = UBR_MSG_CHUNK_NONE;
+        current_chunk->header[UBR_MSG_CUR_INDEX] = cur_index;
+        if (current_chunk->header[UBR_MSG_CUR_INDEX] == chunk_msg_len) {
+            current_chunk->header[UBR_MSG_FLAG_INDEX] = UBR_MSG_CHUNK_NONE;
             UpdateDataQTail(trx);
-            trx->ubrRx.readPos = (trx->ubrRx.readPos + 1) % trx->ubrRx.capacity;
+            trx->ubr_rx.read_pos = (trx->ubr_rx.read_pos + 1) % trx->ubr_rx.capacity;
         }
     }
-    return totalRecvLen;
+    return total_recv_len;
 }
 }  // namespace ubring
 }  // namespace brpc

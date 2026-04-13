@@ -37,10 +37,10 @@ static inline void UnlockMutex(pthread_mutex_t **mtx)
     }
 }
 
-#define LOCK_GUARD(mtxPtr)                                              \
-    pthread_mutex_t *__attribute__((cleanup(UnlockMutex))) _mtxPtr = ({ \
-        pthread_mutex_lock(&(mtxPtr));                                  \
-        &(mtxPtr);                                                      \
+#define LOCK_GUARD(mtx_ptr)                                             \
+    pthread_mutex_t *__attribute__((cleanup(UnlockMutex))) _mtx_ptr = ({ \
+        pthread_mutex_lock(&(mtx_ptr));                                 \
+        &(mtx_ptr);                                                     \
     })
 
 #ifdef __cplusplus

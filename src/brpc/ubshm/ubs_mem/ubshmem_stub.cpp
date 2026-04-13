@@ -96,7 +96,7 @@ int ubsmem_shmem_unmap(void *local_ptr, size_t length)
     return UBSM_OK;
 }
 
-int ubsmem_shmem_faults_register(shmem_faults_func registerFunc)
+int ubsmem_shmem_faults_register(shmem_faults_func register_func)
 {
     return UBSM_OK;
 }

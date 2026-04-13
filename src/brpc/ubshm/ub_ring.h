@@ -29,7 +29,7 @@
 namespace brpc {
 namespace ubring {
 DECLARE_int32(ub_flying_io_timeout);
-extern uint32_t g_sleepTime[UBR_TASK_STEP_NUM];
+extern uint32_t g_sleep_time[UBR_TASK_STEP_NUM];
 
 class UBRing : public butil::IReader {
 public:
@@ -41,7 +41,7 @@ public:
         return UbrTrxReadv(iov, iovcnt);
     }
 
-    RETURN_CODE UbrTrxMapShm(SHM *localShm, SHM *remoteShm);
+    RETURN_CODE UbrTrxMapShm(SHM *local_shm, SHM *remote_shm);
 
     RETURN_CODE UbrTrxClose();
 
@@ -61,21 +61,21 @@ public:
 
     static void *UbrAsynClearCallback(void *args);
 
-    int UbrTrxSend(const void *buf, uint32_t bufLen);
+    int UbrTrxSend(const void *buf, uint32_t buf_len);
 
-    int UbrTrxRecv(void *buf, uint32_t bufLen);
+    int UbrTrxRecv(void *buf, uint32_t buf_len);
 
-    int UbrTrxRecvBlockMode(uint8_t *dest, uint32_t bufLen);
+    int UbrTrxRecvBlockMode(uint8_t *dest, uint32_t buf_len);
 
     ssize_t UbrTrxWritev(const struct iovec *iov, int iovcnt);
     ssize_t UbrTrxReadv(const struct iovec *iov, int iovcnt);
     ssize_t UbrTrxReadvBlockMode(const struct iovec *iov, int iovcnt);
 
-    RETURN_CODE IsUbrTrxReadable(uint32_t epEvent);
+    RETURN_CODE IsUbrTrxReadable(uint32_t ep_event);
 
-    RETURN_CODE IsUbrTrxWriteable(uint32_t epEvent);
+    RETURN_CODE IsUbrTrxWriteable(uint32_t ep_event);
 
-    RETURN_CODE UbrSetTimeout(UbrTaskStep taskType, int timeout);
+    RETURN_CODE UbrSetTimeout(UbrTaskStep task_type, int timeout);
 
     static RETURN_CODE UbrTrxFreeShm(UbrTrx *trx);
 
@@ -84,23 +84,23 @@ public:
     void PrewriteUbrTx(UbrTx *tx);
     void PrewriteUbrRx(UbrRx *rx);
 
-    static inline void UbrSetSleepTask(UbrTaskStep taskType)
+    static inline void UbrSetSleepTask(UbrTaskStep task_type)
     {
-        if (taskType >= UBR_TASK_STEP_NUM || taskType < 0) {
+        if (task_type >= UBR_TASK_STEP_NUM || task_type < 0) {
             return;
         }
-        uint32_t type = (uint32_t)taskType;
-        sleep(g_sleepTime[type]);
+        uint32_t type = (uint32_t)task_type;
+        sleep(g_sleep_time[type]);
         return;
     }
 
-    static inline RETURN_CODE CheckTrxConnectParam(const char *listenerName, const char *localName)
+    static inline RETURN_CODE CheckTrxConnectParam(const char *listener_name, const char *local_name)
     {
-        if (UNLIKELY(listenerName == NULL)) {
+        if (UNLIKELY(listener_name == NULL)) {
             LOG(ERROR) << "The request listener name is null.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(localName == NULL)) {
+        if (UNLIKELY(local_name == NULL)) {
             LOG(ERROR) << "The request trx shared memory name is null.";
             return UBRING_ERR;
         }
@@ -113,39 +113,39 @@ public:
 
     int UbrAllocateLocalShm(SHM *local_trx_shm, const char *shm_name);
 
-    RETURN_CODE UbrMapRemoteShmAddTimer(SHM *localTrxShm, const char *localName);
+    RETURN_CODE UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *local_name);
 
     static inline RETURN_CODE CheckTrxSendPreCheck(UbrTrx *trx)
     {
-        if (UNLIKELY(trx->ubrTx.trxState != UBR_STATE_CONNECTED)) {
+        if (UNLIKELY(trx->ubr_tx.trx_state != UBR_STATE_CONNECTED)) {
             LOG(ERROR) << "Trx send failed, trx is not connected state.";
             return UBRING_ERR;
         }
 
         return UBRING_OK;
     }
-    static RETURN_CODE CheckTrxRecvParam(UbrTrx *trx, const void *buf, uint32_t bufLen)
+    static RETURN_CODE CheckTrxRecvParam(UbrTrx *trx, const void *buf, uint32_t buf_len)
     {
         if (UNLIKELY(trx == NULL)) {
             LOG(ERROR) << "Trx recv failed, trx is null.";
             return UBRING_ERR;
         }
 
-        if (UNLIKELY((UbrEventQMsg *)trx->ubrRx.localRxEventQ.addr == NULL)) {
-            LOG(ERROR) << "Trx send failed, localTxEventQ addr is NULL.";
+        if (UNLIKELY((UbrEventQMsg *)trx->ubr_rx.local_rx_event_q.addr == NULL)) {
+            LOG(ERROR) << "Trx send failed, local_tx_event_q addr is NULL.";
             return UBRING_ERR;
         }
 
-        if (UNLIKELY(trx->ubrRx.trxState != UBR_STATE_CONNECTED)) {
-            LOG(ERROR) << "Trx recv failed, trx is not connected statep=" << trx->ubrRx.trxState;
+        if (UNLIKELY(trx->ubr_rx.trx_state != UBR_STATE_CONNECTED)) {
+            LOG(ERROR) << "Trx recv failed, trx is not connected statep=" << trx->ubr_rx.trx_state;
             return UBR_NOT_CONNECTED;
         }
         if (UNLIKELY(buf == NULL)) {
             LOG(ERROR) << "Trx recv failed, buf is null.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(bufLen == 0)) {
-            LOG(ERROR) << "Trx recv failed, bufLen is 0.";
+        if (UNLIKELY(buf_len == 0)) {
+            LOG(ERROR) << "Trx recv failed, buf_len is 0.";
             return UBRING_ERR;
         }
         return UBRING_OK;
@@ -153,7 +153,7 @@ public:
 
     static inline RETURN_CODE CheckTrxRecvPreCheck(UbrTrx *trx)
     {
-        if (UNLIKELY(trx->ubrRx.trxState != UBR_STATE_CONNECTED)) {
+        if (UNLIKELY(trx->ubr_rx.trx_state != UBR_STATE_CONNECTED)) {
             LOG(ERROR) << "Trx recv failed, trx is not connected state.";
             return UBRING_ERR;
         }
@@ -162,7 +162,7 @@ public:
 
     static inline void UpdateDataQTail(UbrTrx *trx)
     {
-        ((UbrDataStatusQMsg *)trx->ubrRx.remoteDataStatusQ.addr)->tail = trx->ubrRx.readPos;
+        ((UbrDataStatusQMsg *)trx->ubr_rx.remote_data_status_q.addr)->tail = trx->ubr_rx.read_pos;
     }
 
     static RETURN_CODE UbrTrxCallbackCheck(UbrTrx *trx)
@@ -171,34 +171,34 @@ public:
             LOG(ERROR) << "Trx close callback failed, trx is null.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->localShm.addr == NULL)) {
-            LOG(ERROR) << "Trx close failed, localShm addr is NULL.";
+        if (UNLIKELY(trx->local_shm.addr == NULL)) {
+            LOG(ERROR) << "Trx close failed, local_shm addr is NULL.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->ubrRx.localRxEventQ.addr == NULL)) {
-            LOG(ERROR) << "Trx close failed, localRxEventQ addr is NULL.";
+        if (UNLIKELY(trx->ubr_rx.local_rx_event_q.addr == NULL)) {
+            LOG(ERROR) << "Trx close failed, local_rx_event_q addr is NULL.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->ubrTx.localTxEventQ.addr == NULL)) {
-            LOG(ERROR) << "Trx close failed, localTxEventQ addr is NULL.";
+        if (UNLIKELY(trx->ubr_tx.local_tx_event_q.addr == NULL)) {
+            LOG(ERROR) << "Trx close failed, local_tx_event_q addr is NULL.";
             return UBRING_ERR;
         }
         return UBRING_OK;
     }
 
 private:
-    RETURN_CODE UbrTrxMapLocalShm(SHM *localShm);
-    RETURN_CODE UbrTrxMapRemoteShm(SHM *remoteShm);
-    RETURN_CODE ApplyAndMapLocalShm(SHM *localTrxShm, const char *localName);
-    RETURN_CODE ApplyAndMapRemoteShm(SHM *remoteTrxShm);
+    RETURN_CODE UbrTrxMapLocalShm(SHM *local_shm);
+    RETURN_CODE UbrTrxMapRemoteShm(SHM *remote_shm);
+    RETURN_CODE ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_name);
+    RETURN_CODE ApplyAndMapRemoteShm(SHM *remote_trx_shm);
     static RETURN_CODE UbrTrxCloseCheck(UbrTrx *trx);
-    void ReleaseFileLock(int lockFd);
-    ssize_t StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, size_t remainBufLen);
+    void ReleaseFileLock(int lock_fd);
+    ssize_t StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, size_t remain_buf_len);
     void PreWriteAddr(uint8_t *addr, size_t len);
-    RETURN_CODE WritevHasEnoughSpace(size_t bufLen);
-    RETURN_CODE UbrServerTrxInit(SHM *localShm, SHM *remoteShm);
-    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx, uint64_t startTime, UbrCloseType closeType);
-    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t startTime, UbrCloseType closeType, int op=0);
+    RETURN_CODE WritevHasEnoughSpace(size_t buf_len);
+    RETURN_CODE UbrServerTrxInit(SHM *local_shm, SHM *remote_shm);
+    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type);
+    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type, int op=0);
 
     UbrTrx* _trx{nullptr};
 };
