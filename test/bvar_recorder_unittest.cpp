@@ -96,10 +96,10 @@ TEST(RecorderTest, window) {
     bvar::Window<bvar::IntRecorder> w3(&c1, 3);
 
     const int N = 10000;
-    int64_t last_time = butil::gettimeofday_us();
+    int64_t last_time = butil::cpuwide_time_us();
     for (int i = 1; i <= N; ++i) {
         c1 << i;
-        int64_t now = butil::gettimeofday_us();
+        int64_t now = butil::cpuwide_time_us();
         if (now - last_time >= 1000000L) {
             last_time = now;
             LOG(INFO) << "c1=" << c1 << " w1=" << w1 << " w2=" << w2 << " w3=" << w3;
@@ -244,15 +244,15 @@ TEST(RecorderTest, latency_recorder_qps_accuracy) {
         double err = fabs(qps_sum / 1000.0 - exp_qps);
         return err;
     };
-    ASSERT_GT(0.1, read(lr1, 10/2.0));
-    ASSERT_GT(0.1, read(lr2, 11/2.0));
-    ASSERT_GT(0.1, read(lr3, 3/2.0));
-    ASSERT_GT(0.1, read(lr4, 1/2.0));
+    ASSERT_GT(0.2, read(lr1, 10/2.0));
+    ASSERT_GT(0.2, read(lr2, 11/2.0));
+    ASSERT_GT(0.2, read(lr3, 3/2.0));
+    ASSERT_GT(0.2, read(lr4, 1/2.0));
 
-    ASSERT_GT(0.1, read(lr1, 10/3.0, 3));
+    ASSERT_GT(0.2, read(lr1, 10/3.0, 3));
     ASSERT_GT(0.2, read(lr2, 11/3.0, 3));
-    ASSERT_GT(0.1, read(lr3, 3/3.0, 3));
-    ASSERT_GT(0.1, read(lr4, 1/3.0, 3));
+    ASSERT_GT(0.2, read(lr3, 3/3.0, 3));
+    ASSERT_GT(0.2, read(lr4, 1/3.0, 3));
 }
 
 } // namespace

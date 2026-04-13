@@ -91,7 +91,7 @@ void TimeoutConcurrencyLimiter::OnResponded(int error_code,
         return;
     }
 
-    const int64_t now_time_us = butil::gettimeofday_us();
+    const int64_t now_time_us = butil::cpuwide_time_us();
     int64_t last_sampling_time_us =
         _last_sampling_time_us.load(butil::memory_order_relaxed);
 

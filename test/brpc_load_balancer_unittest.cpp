@@ -174,8 +174,8 @@ void DBDMultiBthread() {
     }
 
     // Modify during reading.
-    int64_t start = butil::gettimeofday_ms();
-    while (butil::gettimeofday_ms() - start < 10 * 1000) {
+    int64_t start = butil::cpuwide_time_ms();
+    while (butil::cpuwide_time_ms() - start < 10 * 1000) {
         d.Modify(AddN, 1);
         typename DBD::ScopedPtr ptr;
         d.Read(&ptr);
@@ -277,9 +277,9 @@ void PerfTest(int thread_num, bool modify_during_reading) {
     ProfilerStart(prof_name);
     int64_t run_ms = 5 * 1000;
     if (modify_during_reading) {
-        int64_t start = butil::gettimeofday_ms();
+        int64_t start = butil::cpuwide_time_ms();
         int i = 1;
-        while (butil::gettimeofday_ms() - start < run_ms) {
+        while (butil::cpuwide_time_ms() - start < run_ms) {
             ASSERT_TRUE(dbd.Modify(AddMapN, i++));
             usleep(1000);
         }
@@ -1276,8 +1276,8 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     ASSERT_EQ(0, server2.AddService(&service2, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server2.Start(point2, NULL));
     
-    int64_t start_ms = butil::gettimeofday_ms();
-    while ((butil::gettimeofday_ms() - start_ms) < 3500) {
+    int64_t start_ms = butil::cpuwide_time_ms();
+    while ((butil::cpuwide_time_ms() - start_ms) < 3500) {
         Done* done = new Done;
         done->req.set_message("123");
         stub.Echo(&done->cntl, &done->req, &done->res, done);

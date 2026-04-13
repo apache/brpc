@@ -155,7 +155,7 @@ void SamplerCollector::run() {
     butil::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
     while (!_stop) {
-        int64_t abstime = butil::gettimeofday_us();
+        int64_t abstime = butil::cpuwide_time_ns();
         Sampler* s = this->reset();
         if (s) {
             s->InsertBeforeAsList(&root);
@@ -176,13 +176,13 @@ void SamplerCollector::run() {
             p = saved_next;
         }
         bool slept = false;
-        int64_t now = butil::gettimeofday_us();
+        int64_t now = butil::cpuwide_time_ns();
         _cumulated_time_us += now - abstime;
         abstime += 1000000L;
         while (abstime > now) {
             ::usleep(abstime - now);
             slept = true;
-            now = butil::gettimeofday_us();
+            now = butil::cpuwide_time_ns();
         }
         if (slept) {
             consecutive_nosleep = 0;

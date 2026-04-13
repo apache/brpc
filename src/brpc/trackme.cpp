@@ -225,7 +225,7 @@ void TrackMe() {
     if (FLAGS_trackme_server.empty()) {
         return;
     }
-    int64_t now = butil::gettimeofday_us();
+    int64_t now = butil::cpuwide_time_us();
     std::unique_lock<pthread_mutex_t> mu(s_trackme_mutex);
     if (s_trackme_last_time == 0) {
         // Delay the first ping randomly within s_trackme_interval. This
