@@ -579,11 +579,11 @@ ssize_t UBShmEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
     size_t nvec = 0;
     for (size_t i = 0; i < ndata; ++i) {
         const butil::IOBuf* p = from[i];
-        const size_t nref = p->_ref_num();
+        const size_t nref = p->backing_block_num();
         for (size_t j = 0; j < nref && nvec < IOBUF_IOV_MAX; ++j, ++nvec) {
-            butil::IOBuf::BlockRef const& r = p->_ref_at(j);
-            vec[nvec].iov_base = r.block->data + r.offset;
-            vec[nvec].iov_len = r.length;
+            butil::StringPiece sp = p->backing_block(j);
+            vec[nvec].iov_base = const_cast<char*>(sp.data());
+            vec[nvec].iov_len = sp.size();
         }
     }
 

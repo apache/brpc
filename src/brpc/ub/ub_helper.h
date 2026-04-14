@@ -3,7 +3,6 @@
 
 #if BRPC_WITH_UBRING
 
-#include <infiniband/verbs.h>
 #include <string>
 #include <functional>
 #include "bthread/types.h"

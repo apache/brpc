@@ -12,7 +12,6 @@
 #include <string>
 #include <vector>
 #include <functional>
-#include <infiniband/verbs.h>
 #include "butil/atomicops.h"
 #include "butil/iobuf.h"
 #include "butil/macros.h"
