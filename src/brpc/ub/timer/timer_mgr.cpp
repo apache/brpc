@@ -154,21 +154,27 @@ RETURN_CODE TimerInit(void)
 void *UnifiedCallback(void *args)
 {
     TimerFdCtx *ctx = (TimerFdCtx *)args;
-    if (pthread_spin_trylock(&ctx->spinLock) == 0) {
-        if (ctx->status == TIMER_CONTEXT_NOT_USING) {
-            pthread_spin_unlock(&ctx->spinLock);
+    // Try to lock with a small delay if initial try fails
+    int retry = 0;
+    while (pthread_spin_trylock(&ctx->spinLock) != 0) {
+        if (retry >= 3) {
+            LOG_EVERY_SECOND(WARNING) << "Failed to acquire spin lock after multiple attempts, context status is " << ctx->status;
             return NULL;
         }
-        ctx->status = TIMER_CONTEXT_CALLBACK_ONGOING;
-        ctx->cb(ctx->args);
-        if (ctx->periodical != 1) {
-            DeleteTimerInner((uint32_t)ctx->fd);
-        }
+        usleep(100); // Small delay before retry
+        retry++;
+    }
+    
+    if (ctx->status == TIMER_CONTEXT_NOT_USING) {
         pthread_spin_unlock(&ctx->spinLock);
-    } else {
-        LOG_EVERY_SECOND(WARNING) << "The context status is " << ctx->status;
         return NULL;
     }
+    ctx->status = TIMER_CONTEXT_CALLBACK_ONGOING;
+    ctx->cb(ctx->args);
+    if (ctx->periodical != 1) {
+        DeleteTimerInner((uint32_t)ctx->fd);
+    }
+    pthread_spin_unlock(&ctx->spinLock);
     return NULL;
 }
 
