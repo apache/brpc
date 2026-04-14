@@ -37,46 +37,46 @@ static inline void UnlockMutex(pthread_mutex_t **mtx)
     }
 }
 
-#define LOCK_GUARD(mtxPtr)                                              \
-    pthread_mutex_t *__attribute__((cleanup(UnlockMutex))) _mtxPtr = ({ \
-        pthread_mutex_lock(&(mtxPtr));                                  \
-        &(mtxPtr);                                                      \
+#define LOCK_GUARD(mtx_ptr)                                              \
+    pthread_mutex_t *__attribute__((cleanup(UnlockMutex))) _mtx_ptr = ({ \
+        pthread_mutex_lock(&(mtx_ptr));                                  \
+        &(mtx_ptr);                                                      \
     })
 
-static inline void UnlockSpinLock(pthread_spinlock_t **spinLock)
+static inline void UnlockSpinLock(pthread_spinlock_t **spin_lock)
 {
-    if (LIKELY(spinLock != NULL && *spinLock != NULL)) {
-        pthread_spin_unlock(*spinLock);
+    if (LIKELY(spin_lock != NULL && *spin_lock != NULL)) {
+        pthread_spin_unlock(*spin_lock);
     } else {
-        LOG(ERROR) << "Invalid input for spinLock.";
+        LOG(ERROR) << "Invalid input for spin_lock.";
     }
 }
 
-#define SPIN_LOCK_GUARD(spinLockPtr)                                               \
-    pthread_spinlock_t *__attribute__((cleanup(UnlockSpinLock))) _spinLockPtr = ({ \
-        pthread_spin_lock(&(spinLockPtr));                                         \
-        &(spinLockPtr);                                                            \
+#define SPIN_LOCK_GUARD(spin_lock_ptr)                                               \
+    pthread_spinlock_t *__attribute__((cleanup(UnlockSpinLock))) _spin_lock_ptr = ({ \
+        pthread_spin_lock(&(spin_lock_ptr));                                         \
+        &(spin_lock_ptr);                                                            \
     })
 
-static inline void UnlockRWLock(pthread_rwlock_t **rwLock)
+static inline void UnlockRWLock(pthread_rwlock_t **rw_lock)
 {
-    if (LIKELY(rwLock != NULL && *rwLock != NULL)) {
-        pthread_rwlock_unlock(*rwLock);
+    if (LIKELY(rw_lock != NULL && *rw_lock != NULL)) {
+        pthread_rwlock_unlock(*rw_lock);
     } else {
-        LOG(ERROR) << "Invalid input for rwLock.";
+        LOG(ERROR) << "Invalid input for rw_lock.";
     }
 }
 
-#define R_LOCK_GUARD(readLockPtr)                                               \
-    pthread_rwlock_t *__attribute__((cleanup(UnlockRWLock))) _readLockPtr = ({ \
-        pthread_rwlock_rdlock(&(readLockPtr));                                         \
-        &(readLockPtr);                                                            \
+#define R_LOCK_GUARD(read_lock_ptr)                                               \
+    pthread_rwlock_t *__attribute__((cleanup(UnlockRWLock))) _read_lock_ptr = ({ \
+        pthread_rwlock_rdlock(&(read_lock_ptr));                                         \
+        &(read_lock_ptr);                                                            \
     })
 
-#define W_LOCK_GUARD(writeLockPtr)                                               \
-    pthread_rwlock_t *__attribute__((cleanup(UnlockRWLock))) _writeLockPtr = ({ \
-        pthread_rwlock_wrlock(&(writeLockPtr));                                         \
-        &(writeLockPtr);                                                            \
+#define W_LOCK_GUARD(write_lock_ptr)                                               \
+    pthread_rwlock_t *__attribute__((cleanup(UnlockRWLock))) _write_lock_ptr = ({ \
+        pthread_rwlock_wrlock(&(write_lock_ptr));                                         \
+        &(write_lock_ptr);                                                            \
     })
 
 static inline void PostSemWithClose(sem_t **sem)
@@ -100,16 +100,16 @@ static inline void PostSem(sem_t **sem)
     }
 }
 
-#define SEMAPHORE_WAIT_GUARD_WITH_CLOSE(semPtr)                        \
-    sem_t *__attribute__((cleanup(PostSemWithClose))) _semPtr = ({    \
-        sem_wait(semPtr);                                               \
-        semPtr;                                                         \
+#define SEMAPHORE_WAIT_GUARD_WITH_CLOSE(sem_ptr)                        \
+    sem_t *__attribute__((cleanup(PostSemWithClose))) _sem_ptr = ({    \
+        sem_wait(sem_ptr);                                               \
+        sem_ptr;                                                         \
     })
 
-#define SEMAPHORE_WAIT_GUARD(semPtr)                                   \
-    sem_t *__attribute__((cleanup(PostSem))) _semPtr = ({    \
-        sem_wait(semPtr);                                               \
-        semPtr;                                                         \
+#define SEMAPHORE_WAIT_GUARD(sem_ptr)                                   \
+    sem_t *__attribute__((cleanup(PostSem))) _sem_ptr = ({    \
+        sem_wait(sem_ptr);                                               \
+        sem_ptr;                                                         \
     })
 
 #ifdef __cplusplus

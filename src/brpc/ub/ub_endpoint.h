@@ -148,16 +148,15 @@ private:
     // return -1 if encounter other errno (including EOF)
     int ReadFromFd(void* data, size_t len);
 
-
     // Write at most len bytes from data to fd in _socket
     // wait for _epollout_butex if encounter EAGAIN
     // return -1 if encounter other errno
     int WriteToFd(void* data, size_t len);
 
     // Poll CQ and get the work completion
-    static void PollIn(UBShmEndpoint* ep, uint32_t epEvent);
+    static void PollIn(UBShmEndpoint* ep, uint32_t ep_event);
 
-    static void PollOut(UBShmEndpoint* ep, uint32_t epEvent);
+    static void PollOut(UBShmEndpoint* ep, uint32_t ep_event);
 
     // Try to read data on TCP fd in _socket
     inline void TryReadOnTcp();

@@ -235,7 +235,7 @@ bool HelloNegotiationValid(HelloMessage& msg) {
     return false;
 }
 
-static const int WAIT_TIMEOUT_MS = 50;
+static const int wait_timeout_ms = 50;
 
 int UBShmEndpoint::ReadFromFd(void* data, size_t len) {
     CHECK(data != NULL);
@@ -243,7 +243,7 @@ int UBShmEndpoint::ReadFromFd(void* data, size_t len) {
     size_t received = 0;
     do {
         const int expected_val = _read_butex->load(butil::memory_order_acquire);
-        const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
+        const timespec duetime = butil::milliseconds_from_now(wait_timeout_ms);
         nr = read(_socket->fd(), (uint8_t*)data + received, len - received);
         if (nr < 0) {
             if (errno == EAGAIN) {
@@ -270,7 +270,7 @@ int UBShmEndpoint::WriteToFd(void* data, size_t len) {
     int nw = 0;
     size_t written = 0;
     do {
-        const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
+        const timespec duetime = butil::milliseconds_from_now(wait_timeout_ms);
         nw = write(_socket->fd(), (uint8_t*)data + written, len - written);
         if (nw < 0) {
             if (errno == EAGAIN) {
@@ -491,15 +491,15 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         size_t local_shm_len = (size_t)(FLAGS_data_queue_size) * MB_TO_BYTE;
         // server端共享内存名称
         SHM local_trx_shm = {NULL, local_shm_len, 0, {0}, (uint8_t)ep->_socket->fd()};
-        char clientName[SHM_MAX_NAME_BUFF_LEN];
-        strncpy(clientName, remote_msg.shm_name, SHM_MAX_NAME_BUFF_LEN);
+        char client_name[SHM_MAX_NAME_BUFF_LEN];
+        strncpy(client_name, remote_msg.shm_name, SHM_MAX_NAME_BUFF_LEN);
 
-        char *clientIpPort = strrchr(clientName, '_');
-        if (clientIpPort != NULL) {
-            *clientIpPort = '\0';
+        char *client_ip_port = strrchr(client_name, '_');
+        if (client_ip_port != NULL) {
+            *client_ip_port = '\0';
         }
         int result = snprintf(local_trx_shm.name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
-            clientName, SERVER_SHM_NAME_SUFFIX);
+            client_name, SERVER_SHM_NAME_SUFFIX);
         if (UNLIKELY(result < 0)) {
             LOG(WARNING) << "Copy client shared memory name failed, ret=" << result;
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
@@ -693,7 +693,7 @@ void UBShmEndpoint::DeallocateResources() {
     }
 }
 
-void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t epEvent) {
+void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t ep_event) {
     SocketUniquePtr s;
     if (Socket::Address(ep->_socket->id(), &s) < 0) {
         return;
@@ -703,7 +703,7 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t epEvent) {
 
     InputMessageClosure last_msg;
     while (true) {
-        int ret = ep->_ub_ring->IsUbrTrxReadable(epEvent);
+        int ret = ep->_ub_ring->IsUbrTrxReadable(ep_event);
         if (ret < 0) {
             return;
         }
@@ -755,7 +755,7 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t epEvent) {
     }
 }
 
-void UBShmEndpoint::PollOut(UBShmEndpoint* ep, uint32_t epEvent) {
+void UBShmEndpoint::PollOut(UBShmEndpoint* ep, uint32_t ep_event) {
     SocketUniquePtr s;
     if (Socket::Address(ep->_socket->id(), &s) < 0) {
         return;

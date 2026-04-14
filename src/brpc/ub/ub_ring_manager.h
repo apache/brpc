@@ -31,21 +31,21 @@ typedef enum {
 } UbrMgrUnitStatus;
 
 typedef struct TagUbrMgr {
-    uint32_t trxNum;
-    uint32_t trxCap;
-    UbrTrx *trxMgr;
-    UbrMgrUnitStatus *trxMgrUnitStatus;
+    uint32_t trx_num;
+    uint32_t trx_cap;
+    UbrTrx *trx_mgr;
+    UbrMgrUnitStatus *trx_mgr_unit_status;
 } UbrMgr;
 
 typedef struct TagUbrLinkInfo {
-    char connectName[SHM_MAX_NAME_BUFF_LEN];
-    char listenerName[SHM_MAX_NAME_BUFF_LEN];
+    char connect_name[SHM_MAX_NAME_BUFF_LEN];
+    char listener_name[SHM_MAX_NAME_BUFF_LEN];
 } UbrLinkInfo;
 
 typedef struct TagUbrLinkInfoMgr {
-    uint32_t linkNum;
-    UbrLinkInfo* allLinkInfo;
-    UbrMgrUnitStatus *linkMgrUnitStatus;
+    uint32_t link_num;
+    UbrLinkInfo* all_link_info;
+    UbrMgrUnitStatus *link_mgr_unit_status;
 } UbrLinkInfoMgr;
 
 class UBRingManager {
@@ -54,7 +54,7 @@ public:
         UbrMgrFini();
     }
 
-    static RETURN_CODE GetHlcDealMsgMaxCnt(const uint32_t capacity, uint32_t *dealMsgMaxCnt);
+    static RETURN_CODE GetHlcDealMsgMaxCnt(const uint32_t capacity, uint32_t *deal_msg_max_cnt);
 
     static RETURN_CODE UbrMgrDefault();
 
@@ -68,19 +68,19 @@ public:
 
     static void LinkInfoInit(void);
     static void LinkInfoFini(void);
-    static void AcquireLinkInfoToMgr(const char* listenerName, UbrTrx *trx);
+    static void AcquireLinkInfoToMgr(const char* listener_name, UbrTrx *trx);
     static void ReleaseLinkInfoFromMgr(UbrTrx* trx);
-    static int32_t UbEventCallback(const char *shmName);
+    static int32_t UbEventCallback(const char *shm_name);
 
 private:
     UBRingManager() {
     }
 
-    static UbrMgr g_ubrMgr;
-    static UbrLinkInfoMgr g_linkInfoMgr;
-    static pthread_mutex_t g_ubrTrxMgrMtx;
-    static pthread_mutex_t g_ubrListenerMgrMtx;
-    static pthread_mutex_t g_linkInfoMgrMtx;
+    static UbrMgr g_ubr_mgr;
+    static UbrLinkInfoMgr g_link_info_mgr;
+    static pthread_mutex_t g_ubr_trx_mgr_mtx;
+    static pthread_mutex_t g_ubr_listener_mgr_mtx;
+    static pthread_mutex_t g_link_info_mgr_mtx;
 };
 }
 }
