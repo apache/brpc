@@ -41,7 +41,7 @@ namespace brpc {
         typedef struct {
             uint8_t *addr;
             size_t len;
-            uint64_t memid;
+            uint64_t mem_id;
             char name[SHM_MAX_NAME_BUFF_LEN];
             uint32_t fd;
         } SHM;
@@ -56,7 +56,7 @@ namespace brpc {
             ShmListNode* head;
             ShmListNode* tail;
             size_t size;
-            pthread_mutex_t shmLock;
+            pthread_mutex_t shm_lock;
         } ShmList;
     }
 }

@@ -28,43 +28,43 @@
 
 namespace brpc {
 namespace ub {
-int32_t g_epollFd = -1;
-std::atomic<uint32_t> g_totalTimerNum;
-TimerFdCtx *g_timerFdCtxMap = NULL;
-uint32_t maxSystemFd;
-static pthread_t g_epollExecuteThread;
-static int32_t g_timerModuleInitialized;
+int32_t g_epoll_fd = -1;
+std::atomic<uint32_t> g_total_timer_num;
+TimerFdCtx *g_timer_fd_ctx_map = NULL;
+uint32_t max_system_fd;
+static pthread_t g_epoll_execute_thread;
+static int32_t g_timer_module_initialized;
 
 static RETURN_CODE DeleteTimerInner(uint32_t fd)
 {
-    if (g_timerFdCtxMap == NULL) {
+    if (g_timer_fd_ctx_map == NULL) {
         LOG(WARNING) << "The timer is not initialized.";
         return HLC_OK;
     }
 
-    if (g_timerFdCtxMap[fd].status == TIMER_CONTEXT_NOT_USING) {
+    if (g_timer_fd_ctx_map[fd].status == TIMER_CONTEXT_NOT_USING) {
         LOG(WARNING) << "The timer is not using, timerFd=" << fd;
         return HLC_OK;
     }
 
-    if (epoll_ctl(g_epollFd, EPOLL_CTL_DEL, (int)fd, NULL) != 0) {
+    if (epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, (int)fd, NULL) != 0) {
         LOG(ERROR) << "Failed to delete the timer fd=" << fd << " with errno=" << errno;
     }
 
     CloseTimerFd(fd);
-    atomic_fetch_sub(&g_totalTimerNum, 1);
+    atomic_fetch_sub(&g_total_timer_num, 1);
     return HLC_OK;
 }
 
 static RETURN_CODE StartTimeEpoll(void)
 {
-    g_epollFd = epoll_create1(0);
-    if (UNLIKELY(g_epollFd == -1)) {
+    g_epoll_fd = epoll_create1(0);
+    if (UNLIKELY(g_epoll_fd == -1)) {
         LOG(ERROR) << "Failed to create epoll. errno=" << errno;
         return HLC_ERR;
     }
 
-    int ret = pthread_create(&g_epollExecuteThread, NULL, TimerEpoll, NULL);
+    int ret = pthread_create(&g_epoll_execute_thread, NULL, TimerEpoll, NULL);
     if (UNLIKELY(ret != 0)) {
         LOG(ERROR) << "Failed to create thread err=" << ret;
         return HLC_ERR;
@@ -74,17 +74,17 @@ static RETURN_CODE StartTimeEpoll(void)
 
 static RETURN_CODE TimerSpinLocksInit(void)
 {
-    if (g_timerFdCtxMap == NULL) {
+    if (g_timer_fd_ctx_map == NULL) {
         LOG(ERROR) << "Timer module is not fully initialized.";
         return HLC_ERR;
     }
 
-    for (uint32_t fd = 0; fd < maxSystemFd; fd++) {
-        int ret = pthread_spin_init(&g_timerFdCtxMap[fd].spinLock, PTHREAD_PROCESS_PRIVATE);
+    for (uint32_t fd = 0; fd < max_system_fd; fd++) {
+        int ret = pthread_spin_init(&g_timer_fd_ctx_map[fd].spin_lock, PTHREAD_PROCESS_PRIVATE);
         if (ret != EOK) {
             LOG(ERROR) << "Failed to initialize spin lock for fd=" << fd;
-            for (uint32_t cleanupFd = 0; cleanupFd < fd; cleanupFd++) {
-                pthread_spin_destroy(&g_timerFdCtxMap[cleanupFd].spinLock);
+            for (uint32_t cleanup_fd = 0; cleanup_fd < fd; cleanup_fd++) {
+                pthread_spin_destroy(&g_timer_fd_ctx_map[cleanup_fd].spin_lock);
             }
             return HLC_ERR;
         }
@@ -92,7 +92,7 @@ static RETURN_CODE TimerSpinLocksInit(void)
     return HLC_OK;
 }
 
-static RETURN_CODE ExecuteCallback(int32_t timerFd)
+static RETURN_CODE ExecuteCallback(int32_t timer_fd)
 {
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -101,8 +101,8 @@ static RETURN_CODE ExecuteCallback(int32_t timerFd)
         LOG(ERROR) << "Failed to set thread detach status when executing callback";
     }
 
-    pthread_t cbThread;
-    err = pthread_create(&cbThread, &attr, UnifiedCallback, (void *)(&g_timerFdCtxMap[timerFd]));
+    pthread_t cb_thread;
+    err = pthread_create(&cb_thread, &attr, UnifiedCallback, (void *)(&g_timer_fd_ctx_map[timer_fd]));
     if (err != 0) {
         pthread_attr_destroy(&attr);
         LOG(ERROR) << "Failed to create thread while executing callback due to errno=" << err;
@@ -114,8 +114,8 @@ static RETURN_CODE ExecuteCallback(int32_t timerFd)
 
 static RETURN_CODE TimerCtxMapCompletion(void)
 {
-    memset(g_timerFdCtxMap, 0,
-        sizeof(TimerFdCtx) * maxSystemFd);
+    memset(g_timer_fd_ctx_map, 0,
+        sizeof(TimerFdCtx) * max_system_fd);
 
     RETURN_CODE ret = TimerSpinLocksInit();
     if (ret != HLC_OK) {
@@ -127,22 +127,22 @@ static RETURN_CODE TimerCtxMapCompletion(void)
 
 RETURN_CODE TimerInit(void)
 {
-    if (g_timerModuleInitialized > 0) {
+    if (g_timer_module_initialized > 0) {
         return HLC_OK;
     }
 
-    g_totalTimerNum.store(0);
+    g_total_timer_num.store(0);
 
     struct rlimit rlim;
     if (getrlimit(RLIMIT_NOFILE, &rlim) != HLC_OK) {
         LOG(ERROR) << "Failed to get fd";
         return HLC_ERR;
     }
-    maxSystemFd = (uint32_t)rlim.rlim_cur;
+    max_system_fd = (uint32_t)rlim.rlim_cur;
 
-    if (g_timerFdCtxMap == NULL) {
-        g_timerFdCtxMap = (TimerFdCtx *)malloc(sizeof(TimerFdCtx) * maxSystemFd);
-        if (UNLIKELY(!g_timerFdCtxMap)) {
+    if (g_timer_fd_ctx_map == NULL) {
+        g_timer_fd_ctx_map = (TimerFdCtx *)malloc(sizeof(TimerFdCtx) * max_system_fd);
+        if (UNLIKELY(!g_timer_fd_ctx_map)) {
             LOG(ERROR) << "Fail to malloc space for timer modules. errno=%d", errno;
             return HLC_ERR;
         }
@@ -150,8 +150,8 @@ RETURN_CODE TimerInit(void)
         RETURN_CODE ret = TimerCtxMapCompletion();
         if (ret != HLC_OK) {
             LOG(ERROR) << "Failed to init main data structure of Time Module. ret=" << ret;
-            free(g_timerFdCtxMap);
-            g_timerFdCtxMap = NULL;
+            free(g_timer_fd_ctx_map);
+            g_timer_fd_ctx_map = NULL;
             return HLC_ERR;
         }
     }
@@ -159,54 +159,48 @@ RETURN_CODE TimerInit(void)
     RETURN_CODE ret = StartTimeEpoll();
     if (ret != HLC_OK) {
         LOG(ERROR) << "Failed to start Timer Epoll. ret=" << ret;
-        if (LIKELY(g_timerFdCtxMap != NULL)) {
-            FREE_PTR(g_timerFdCtxMap);
+        if (LIKELY(g_timer_fd_ctx_map != NULL)) {
+            FREE_PTR(g_timer_fd_ctx_map);
         }
         return HLC_ERR;
     }
-    g_timerModuleInitialized = 1;
+    g_timer_module_initialized = 1;
     return HLC_OK;
 }
 
 void *UnifiedCallback(void *args)
 {
     TimerFdCtx *ctx = (TimerFdCtx *)args;
-    // Try to lock with a small delay if initial try fails
-    int retry = 0;
-    while (pthread_spin_trylock(&ctx->spinLock) != 0) {
-        if (retry >= 3) {
-            LOG_EVERY_SECOND(WARNING) << "Failed to acquire spin lock after multiple attempts, context status is " << ctx->status;
+    if (pthread_spin_trylock(&ctx->spin_lock) == 0) {
+        if (ctx->status == TIMER_CONTEXT_NOT_USING) {
+            pthread_spin_unlock(&ctx->spin_lock);
             return NULL;
         }
-        usleep(100); // Small delay before retry
-        retry++;
-    }
-    
-    if (ctx->status == TIMER_CONTEXT_NOT_USING) {
-        pthread_spin_unlock(&ctx->spinLock);
+        ctx->status = TIMER_CONTEXT_CALLBACK_ONGOING;
+        ctx->cb(ctx->args);
+        if (ctx->periodical != 1) {
+            DeleteTimerInner((uint32_t)ctx->fd);
+        }
+        pthread_spin_unlock(&ctx->spin_lock);
+    } else {
+        LOG_EVERY_SECOND(WARNING) << "The context status is " << ctx->status;
         return NULL;
     }
-    ctx->status = TIMER_CONTEXT_CALLBACK_ONGOING;
-    ctx->cb(ctx->args);
-    if (ctx->periodical != 1) {
-        DeleteTimerInner((uint32_t)ctx->fd);
-    }
-    pthread_spin_unlock(&ctx->spinLock);
     return NULL;
 }
 
 void *TimerEpoll(void *args)
 {
     UNREFERENCE_PARAM(args);
-    struct epoll_event readyEvents[MAX_TIMER];
+    struct epoll_event ready_events[MAX_TIMER];
     while (1) {
-        if (g_timerModuleInitialized <= 0) {
+        if (g_timer_module_initialized <= 0) {
             LOG(ERROR) << "The Timer module is not initialized.";
             break;
         }
         
-        int32_t readyNum = epoll_wait(g_epollFd, readyEvents, MAX_TIMER, TIMER_EPOLL_WAIT_TIMEOUT);
-        if (UNLIKELY(readyNum == -1)) {
+        int32_t ready_num = epoll_wait(g_epoll_fd, ready_events, MAX_TIMER, TIMER_EPOLL_WAIT_TIMEOUT);
+        if (UNLIKELY(ready_num == -1)) {
             error_t err = errno;
             if (err == EINTR) {
                 LOG_EVERY_SECOND(WARNING) << "Epoll wait was interrupted. errno=" << err;
@@ -219,23 +213,23 @@ void *TimerEpoll(void *args)
             break;
         }
 
-        for (int32_t i = 0; i < readyNum; i++) {
-            struct epoll_event *event = &readyEvents[i];
-            int32_t timerFd = event->data.fd;
+        for (int32_t i = 0; i < ready_num; i++) {
+            struct epoll_event *event = &ready_events[i];
+            int32_t timer_fd = event->data.fd;
             uint64_t exp = 0;
-            if (read(timerFd, &exp, sizeof(exp)) < 0) {
-                LOG(ERROR) << "Failed to read timerfd=" << timerFd << " errno=" << errno;
+            if (read(timer_fd, &exp, sizeof(exp)) < 0) {
+                LOG(ERROR) << "Failed to read timerfd=" << timer_fd << " errno=" << errno;
                 continue;
             }
-            if (TimerFdCtxValidate((uint32_t)timerFd) != HLC_OK) {
-                LOG(ERROR) << "Timer ctx is not valid=" << timerFd;
+            if (TimerFdCtxValidate((uint32_t)timer_fd) != HLC_OK) {
+                LOG(ERROR) << "Timer ctx is not valid=" << timer_fd;
                 continue;
             }
 
-            RETURN_CODE ret = ExecuteCallback(timerFd);
+            RETURN_CODE ret = ExecuteCallback(timer_fd);
             if (ret != HLC_OK) {
                 LOG(ERROR) << "Failed execute callback ret=" << ret;
-                DeleteTimerInner((uint32_t)timerFd);
+                DeleteTimerInner((uint32_t)timer_fd);
                 continue;
             }
         }
@@ -245,103 +239,103 @@ void *TimerEpoll(void *args)
 
 void DeleteTimerSafe(uint32_t fd)
 {
-    if (g_timerFdCtxMap == NULL) {
+    if (g_timer_fd_ctx_map == NULL) {
         LOG(WARNING) << "The timer is not initialized.";
         return;
     }
 
-    if (pthread_spin_lock(&g_timerFdCtxMap[fd].spinLock) != 0) {
+    if (pthread_spin_lock(&g_timer_fd_ctx_map[fd].spin_lock) != 0) {
         LOG(ERROR) << "Failed to lock while deleting timer=" << fd << " errno=" << errno;
         return;
     }
 
-    if (g_timerFdCtxMap[fd].status == TIMER_CONTEXT_NOT_USING) {
+    if (g_timer_fd_ctx_map[fd].status == TIMER_CONTEXT_NOT_USING) {
         LOG(WARNING) << "The timer is not using, timerFd=" << fd;
-        pthread_spin_unlock(&g_timerFdCtxMap[fd].spinLock);
+        pthread_spin_unlock(&g_timer_fd_ctx_map[fd].spin_lock);
         return;
     }
 
-    if (epoll_ctl(g_epollFd, EPOLL_CTL_DEL, (int)fd, NULL) != 0) {
+    if (epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, (int)fd, NULL) != 0) {
         LOG(ERROR) << "Failed to delete the timer fd=" << fd << " with errno=" << errno;
     }
 
     CloseTimerFd(fd);
-    atomic_fetch_sub(&g_totalTimerNum, 1);
+    atomic_fetch_sub(&g_total_timer_num, 1);
 
-    pthread_spin_unlock(&g_timerFdCtxMap[fd].spinLock);
+    pthread_spin_unlock(&g_timer_fd_ctx_map[fd].spin_lock);
 }
 void DeleteTimer(uint32_t fd)
 {
-    if (g_timerFdCtxMap == NULL) {
+    if (g_timer_fd_ctx_map == NULL) {
         LOG(WARNING) << "The timer is not initialized.";
         return;
     }
 
-    g_timerFdCtxMap[fd].periodical = 0;
+    g_timer_fd_ctx_map[fd].periodical = 0;
 }
 
 int32_t TimerStart(const struct itimerspec *time, void *(*cb)(void *), void *args)
 {
-    if (g_epollFd == -1) {
+    if (g_epoll_fd == -1) {
         LOG(ERROR) << "Timer epoll encountered internal error.";
         return -1;
     }
 
-    int timerFd = timerfd_create(CLOCK_MONOTONIC, 0);
-    if (UNLIKELY(timerFd >= (int)maxSystemFd || timerFd == -1)) {
-        LOG(ERROR) << "Failed to create timerfd=" << timerFd << " errno=" << errno;
+    int timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
+    if (UNLIKELY(timer_fd >= (int)max_system_fd || timer_fd == -1)) {
+        LOG(ERROR) << "Failed to create timerfd=" << timer_fd << " errno=" << errno;
         return -1;
     }
 
-    g_timerFdCtxMap[timerFd].status = TIMER_CONTEXT_EPOLL_WAITING;
-    g_timerFdCtxMap[timerFd].cb = cb;
-    g_timerFdCtxMap[timerFd].args = args;
-    g_timerFdCtxMap[timerFd].fd = (uint32_t)timerFd;
+    g_timer_fd_ctx_map[timer_fd].status = TIMER_CONTEXT_EPOLL_WAITING;
+    g_timer_fd_ctx_map[timer_fd].cb = cb;
+    g_timer_fd_ctx_map[timer_fd].args = args;
+    g_timer_fd_ctx_map[timer_fd].fd = (uint32_t)timer_fd;
     
     if (LIKELY(time->it_interval.tv_sec > 0 || time->it_interval.tv_nsec > 0)) {
-        g_timerFdCtxMap[timerFd].periodical = 1;
+        g_timer_fd_ctx_map[timer_fd].periodical = 1;
     }
 
     struct epoll_event event = {
         .events = EPOLLIN,
-        .data = {.fd = timerFd}
+        .data = {.fd = timer_fd}
     };
 
-    int32_t ret = epoll_ctl(g_epollFd, EPOLL_CTL_ADD, timerFd, &event);
+    int32_t ret = epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, timer_fd, &event);
     if (UNLIKELY(ret != 0)) {
-        CloseTimerFd((uint32_t)timerFd);
+        CloseTimerFd((uint32_t)timer_fd);
         LOG(ERROR) << "Failed to add event to epoll. errno=" << errno;
         return -1;
     }
 
-    atomic_fetch_add(&g_totalTimerNum, 1);
+    atomic_fetch_add(&g_total_timer_num, 1);
 
-    ret = timerfd_settime(timerFd, 0, time, NULL);
+    ret = timerfd_settime(timer_fd, 0, time, NULL);
     if (UNLIKELY(ret != 0)) {
-        if (epoll_ctl(g_epollFd, EPOLL_CTL_DEL, timerFd, NULL) != 0) {
-            LOG(ERROR) << "Failed to delete the timer fd=" << timerFd << " with errno=" << errno;
+        if (epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, timer_fd, NULL) != 0) {
+            LOG(ERROR) << "Failed to delete the timer fd=" << timer_fd << " with errno=" << errno;
         }
-        CloseTimerFd((uint32_t)timerFd);
-        atomic_fetch_sub(&g_totalTimerNum, 1);
+        CloseTimerFd((uint32_t)timer_fd);
+        atomic_fetch_sub(&g_total_timer_num, 1);
         LOG(ERROR) << "Failed to set timer";
         return -1;
     }
 
-    return timerFd;
+    return timer_fd;
 }
 
 uint32_t GetActiveTimerNum(void)
 {
-    return atomic_load(&g_totalTimerNum);
+    return atomic_load(&g_total_timer_num);
 }
 
 void CloseTimerFd(uint32_t fd)
 {
-    g_timerFdCtxMap[fd].cb = NULL;
-    g_timerFdCtxMap[fd].args = NULL;
-    g_timerFdCtxMap[fd].status = TIMER_CONTEXT_NOT_USING;
-    g_timerFdCtxMap[fd].fd = 0;
-    g_timerFdCtxMap[fd].periodical = 0;
+    g_timer_fd_ctx_map[fd].cb = NULL;
+    g_timer_fd_ctx_map[fd].args = NULL;
+    g_timer_fd_ctx_map[fd].status = TIMER_CONTEXT_NOT_USING;
+    g_timer_fd_ctx_map[fd].fd = 0;
+    g_timer_fd_ctx_map[fd].periodical = 0;
     if (close((int)fd) != 0) {
         LOG(ERROR) << "Failed to close timer fd=" << fd << " errno=" << errno;
         return;
@@ -350,19 +344,19 @@ void CloseTimerFd(uint32_t fd)
 
 void TimerModuleDestroy(void)
 {
-    uint32_t maxFd = maxSystemFd;
-    if (g_timerFdCtxMap) {
-        for (uint32_t fd = 0; fd < maxFd; fd++) {
-            if (g_timerFdCtxMap[fd].status != TIMER_CONTEXT_NOT_USING) {
+    uint32_t max_fd = max_system_fd;
+    if (g_timer_fd_ctx_map) {
+        for (uint32_t fd = 0; fd < max_fd; fd++) {
+            if (g_timer_fd_ctx_map[fd].status != TIMER_CONTEXT_NOT_USING) {
                 DeleteTimerSafe(fd);
             }
         }
     }
-    close(g_epollFd);
-    g_epollFd = -1;
-    g_totalTimerNum = 0;
-    g_timerModuleInitialized = 0;
-    int32_t ret = pthread_join(g_epollExecuteThread, NULL);
+    close(g_epoll_fd);
+    g_epoll_fd = -1;
+    g_total_timer_num = 0;
+    g_timer_module_initialized = 0;
+    int32_t ret = pthread_join(g_epoll_execute_thread, NULL);
     if (ret != EOK) {
         LOG(ERROR) << "Failed to join pthread, during destroying timer module. ret=" << ret;
         return;
@@ -371,15 +365,15 @@ void TimerModuleDestroy(void)
 
 RETURN_CODE TimerFdCtxValidate(uint32_t fd)
 {
-    if (fd >= maxSystemFd) {
-        LOG(ERROR) << "TimerFd=" << fd << " is out of range=" << maxSystemFd;
+    if (fd >= max_system_fd) {
+        LOG(ERROR) << "TimerFd=" << fd << " is out of range=" << max_system_fd;
         return HLC_ERR;
     }
-    if (g_timerFdCtxMap[fd].status == TIMER_CONTEXT_NOT_USING) {
-        LOG(ERROR) << "TimerFd=" << fd << " has wrong status=" << g_timerFdCtxMap[fd].status;
+    if (g_timer_fd_ctx_map[fd].status == TIMER_CONTEXT_NOT_USING) {
+        LOG(ERROR) << "TimerFd=" << fd << " has wrong status=" << g_timer_fd_ctx_map[fd].status;
         return HLC_ERR;
     }
-    if (g_timerFdCtxMap[fd].cb == NULL) {
+    if (g_timer_fd_ctx_map[fd].cb == NULL) {
         LOG(ERROR) << "The callback is not set.";
         return HLC_ERR;
     }

@@ -43,10 +43,10 @@ typedef struct __attribute__((aligned(64))) TagUbrMsgFormat {
     uint8_t header[UBR_MSG_HEADER_LEN];
 } UbrMsgFormat;
 
-static inline uint32_t CalcUbrMsgChunkCnt(uint32_t bufLen)
+static inline uint32_t CalcUbrMsgChunkCnt(uint32_t buf_len)
 {
-    uint32_t msgChunkNum = (bufLen + UBR_MSG_PAYLOAD_LEN - 1) / UBR_MSG_PAYLOAD_LEN;
-    return msgChunkNum;
+    uint32_t msg_chunk_num = (buf_len + UBR_MSG_PAYLOAD_LEN - 1) / UBR_MSG_PAYLOAD_LEN;
+    return msg_chunk_num;
 }
 }
 }
