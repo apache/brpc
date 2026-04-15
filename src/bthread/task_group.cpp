@@ -526,6 +526,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
+    m->priority_index = pg ? (*pg)->_cur_meta->priority_index : -1;
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
         LOG(INFO) << "Started bthread " << m->tid;
@@ -595,6 +596,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
+    m->priority_index = _cur_meta->priority_index;
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
         LOG(INFO) << "Started bthread " << m->tid;
@@ -674,6 +676,7 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
+
 #ifndef BTHREAD_FAIR_WSQ
     // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
     // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
@@ -942,7 +945,11 @@ void TaskGroup::priority_to_run(void* args_in) {
     tls_task_group->_control->_task_tracer.set_status(
         TASK_STATUS_READY, args->meta);
 #endif // BRPC_BTHREAD_TRACER
-    return tls_task_group->control()->push_priority_queue(args->tag, args->meta->tid);
+    if (args->meta->priority_index < 0) {
+        return tls_task_group->push_rq(args->meta->tid);
+    }
+    return tls_task_group->control()->push_priority_queue(
+        args->tag, args->meta->priority_index, args->meta->tid);
 }
 
 struct SleepArgs {

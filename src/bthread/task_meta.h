@@ -91,6 +91,8 @@ struct TaskMeta {
     // simplified if they can get tid from TaskMeta.
     bthread_t tid{INVALID_BTHREAD};
 
+    int priority_index{-1};
+
     // User function and argument
     void* (*fn)(void*){NULL};
     void* arg{NULL};
