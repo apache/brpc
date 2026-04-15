@@ -377,6 +377,9 @@ friend class TaskControl;
     // tag of this taskgroup
     bthread_tag_t _tag{BTHREAD_TAG_DEFAULT};
 
+    // Index of the priority shard this TaskGroup owns (-1 = not bound)
+    int _priority_shard_index{-1};
+
     // Worker thread id.
     pthread_t _tid{};
 };

@@ -35,12 +35,29 @@
 #include "bthread/task_tracer.h"
 #include "bthread/task_meta.h"                  // TaskMeta
 #include "bthread/work_stealing_queue.h"        // WorkStealingQueue
+#include "butil/containers/mpsc_queue.h"        // MPSCQueue
 #include "bthread/parking_lot.h"
 
 DECLARE_int32(task_group_ntags);
 namespace bthread {
 
 class TaskGroup;
+
+// A sharded priority queue slot. Each shard has:
+// - wsq: WorkStealingQueue owned by exactly one TaskGroup (push/pop by owner, steal by others)
+// - inbound: MPSC queue for external producers (event dispatchers) to submit tasks
+// - owner: the TaskGroup that owns this shard (does flush + pop)
+// - draining: set during owner teardown to prevent new owner binding
+struct BAIDU_CACHELINE_ALIGNMENT PriorityShard {
+    WorkStealingQueue<bthread_t> wsq;
+
+    butil::MPSCQueue<bthread_t> inbound;
+
+    butil::atomic<TaskGroup*> owner;
+    butil::atomic<bool> draining;
+
+    PriorityShard() : owner(NULL), draining(false) {}
+};
 
 // Control all task groups
 class TaskControl {
@@ -101,9 +118,7 @@ public:
     std::string stack_trace(bthread_t tid);
 #endif // BRPC_BTHREAD_TRACER
 
-    void push_priority_queue(bthread_tag_t tag, bthread_t tid) {
-        _priority_queues[tag].push(tid);
-    }
+    void push_priority_queue(bthread_tag_t tag, bthread_t tid);
 
     std::vector<bthread_t> get_living_bthreads();
 private:
@@ -164,7 +179,13 @@ private:
     std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
 
     bool _enable_priority_queue;
-    std::vector<WorkStealingQueue<bthread_t>> _priority_queues;
+    std::vector<std::vector<std::unique_ptr<PriorityShard>>> _priority_shards; // [tag][shard]
+
+    // B2 priority queue helpers
+    void bind_priority_owner(TaskGroup* g, bthread_tag_t tag);
+    void unbind_priority_owner(TaskGroup* g, bthread_tag_t tag);
+    void flush_priority_inbound(PriorityShard* shard, size_t max_batch);
+    void fallback_enqueue(bthread_tag_t tag, bthread_t tid);
 
     size_t _pl_num_of_each_tag;
     std::vector<TaggedParkingLot> _tagged_pl;
