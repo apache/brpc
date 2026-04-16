@@ -21,8 +21,8 @@
 #include <vector>
 #include <set>
 #include <mutex>
+#include <sched.h>
 #include "bthread/bthread.h"
-#include "bthread/processor.h"
 
 namespace {
 
@@ -152,8 +152,8 @@ TEST_F(PriorityQueueTest, concurrent_producers_no_task_loss) {
         ProducerArg* pa = static_cast<ProducerArg*>(arg);
         pa->started->fetch_add(1);
         // Spin until all producers are ready
-        while (pa->started->load() < 4) {
-            cpu_relax();
+        while (pa->started->load() < NUM_PRODUCERS) {
+            sched_yield();
         }
         pa->tids->resize(pa->tasks_per_producer);
         for (int i = 0; i < pa->tasks_per_producer; ++i) {
@@ -188,13 +188,9 @@ TEST_F(PriorityQueueTest, concurrent_producers_no_task_loss) {
     ASSERT_EQ((size_t)TOTAL, g_executed_ids.size());
 }
 
-// Test 4: Priority tasks submitted with only 1 shard (degenerate case).
-// Verifies correctness when nshard=1.
-TEST_F(PriorityQueueTest, single_shard_correctness) {
-    // This test relies on FLAGS_priority_queue_shards being set before
-    // TaskControl init. Since TaskControl is already initialized by the
-    // time we run, we test with whatever shard count is configured.
-    // The key verification is no task loss.
+// Test 4: Priority tasks submitted with configured shard count.
+// Verifies correctness with the current shard configuration.
+TEST_F(PriorityQueueTest, configured_shards_correctness) {
     const int N = 100;
 
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;

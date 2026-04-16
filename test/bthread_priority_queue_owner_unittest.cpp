@@ -27,6 +27,8 @@
 #include <set>
 #include <mutex>
 #include <thread>
+#include <unistd.h>
+#include <sched.h>
 #include "bthread/bthread.h"
 
 namespace {

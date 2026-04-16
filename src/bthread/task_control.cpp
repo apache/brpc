@@ -582,13 +582,29 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
         for (size_t i = 0; i < nshard; ++i) {
             size_t idx = (start + i) % nshard;
             PriorityShard* shard = shards[idx].get();
-            if (shard->owner.load(butil::memory_order_relaxed) == NULL &&
-                !shard->draining.load(butil::memory_order_relaxed)) {
-                bthread_t salvaged;
-                if (shard->inbound.Dequeue(salvaged)) {
-                    fallback_enqueue(tag, salvaged);
-                }
+            if (shard->owner.load(butil::memory_order_relaxed) != NULL) {
+                continue;
             }
+            bool expected = false;
+            // Use CAS on draining to ensure only one thread dequeues at a time,
+            // preserving the MPSC single-consumer.
+            if (!shard->draining.compare_exchange_strong(
+                    expected, true,
+                    butil::memory_order_acquire,
+                    butil::memory_order_relaxed)) {
+                continue;  // Already draining
+            }
+            // Re-check owner after acquiring draining
+            // a new owner may have bound between first check and the CAS.
+            if (shard->owner.load(butil::memory_order_acquire) != NULL) {
+                shard->draining.store(false, butil::memory_order_release);
+                continue;
+            }
+            bthread_t salvaged;
+            while (shard->inbound.Dequeue(salvaged)) {
+                fallback_enqueue(tag, salvaged);
+            }
+            shard->draining.store(false, butil::memory_order_release);
         }
     }
 
@@ -771,8 +787,8 @@ void TaskControl::push_priority_queue(bthread_tag_t tag, bthread_t tid) {
         }
     }
 
-    // All shards ownerless, fallback to round-robin pick
-    shards[start]->inbound.Enqueue(tid);
+    // All shards ownerless, no consumer will drain inbound so just fallback
+    fallback_enqueue(tag, tid);
 }
 
 void TaskControl::bind_priority_owner(TaskGroup* g, bthread_tag_t tag) {
@@ -854,11 +870,11 @@ void TaskControl::fallback_enqueue(bthread_tag_t tag, bthread_t tid) {
     if (m) {
         m->attr.flags &= ~BTHREAD_GLOBAL_PRIORITY;
     }
-    // Enqueue to a random group's remote_rq, thenormal scheduling path
+    // Enqueue via ready_to_run_remote which retries on queue-full,
+    // preventing silent task loss.
     TaskGroup* g = choose_one_group(tag);
     if (g) {
-        g->_remote_rq.push(tid);
-        signal_task(1, tag);
+        g->ready_to_run_remote(m);
     }
 }
 
