@@ -147,6 +147,11 @@ endif()
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__=__unused__ -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL} ${THRIFT_CPP_FLAG}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} ${CMAKE_CXX_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
+
+if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_PTHREAD_MUTEX_HOOK")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DNO_PTHREAD_MUTEX_HOOK")
+endif()
 set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
 
 macro(use_cxx11)
@@ -342,6 +347,9 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(DYNAMIC_LIB ${DYNAMIC_LIB} rt)
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lrt")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} execinfo)
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lexecinfo")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(DYNAMIC_LIB ${DYNAMIC_LIB}
         pthread
@@ -500,6 +508,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         ${PROJECT_SOURCE_DIR}/src/butil/strings/sys_string_conversions_mac.mm
         ${PROJECT_SOURCE_DIR}/src/butil/time/time_mac.cc
         ${PROJECT_SOURCE_DIR}/src/butil/mac/scoped_mach_port.cc)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    set(BUTIL_SOURCES ${BUTIL_SOURCES}
+        ${PROJECT_SOURCE_DIR}/src/butil/threading/platform_thread_freebsd.cc
+        ${PROJECT_SOURCE_DIR}/src/butil/strings/sys_string_conversions_posix.cc)
 endif()
 
 file(GLOB_RECURSE BVAR_SOURCES "${PROJECT_SOURCE_DIR}/src/bvar/*.cpp")

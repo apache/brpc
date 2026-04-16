@@ -1600,7 +1600,7 @@ void Controller::CallAfterRpcResp(const google::protobuf::Message* req, const go
     }
 }
 
-#if defined(OS_MACOSX)
+#if defined(OS_MACOSX) || defined(OS_FREEBSD)
 typedef sig_t SignalHandler;
 #else
 typedef sighandler_t SignalHandler;
