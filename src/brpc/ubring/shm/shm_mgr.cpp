@@ -21,13 +21,13 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "brpc/ub/common/common.h"
-#include "brpc/ub/shm/shm_ipc.h"
-#include "brpc/ub/shm/shm_ubs.h"
-#include "brpc/ub/shm/shm_mgr.h"
+#include "brpc/ubring/common/common.h"
+#include "brpc/ubring/shm/shm_ipc.h"
+#include "brpc/ubring/shm/shm_ubs.h"
+#include "brpc/ubring/shm/shm_mgr.h"
 
 namespace brpc {
-namespace ub {
+namespace ubring {
 DEFINE_int32(ub_shm_type, 1, "shm type: 1-ipc; 2-ub_ring");
 static SHM_TYPE g_shmType;
 
@@ -61,24 +61,24 @@ RETURN_CODE ShmMgrInit(void)
 {
     if (UNLIKELY(FLAGS_ub_shm_type >= (uint32_t)SHM_TYPE_UNSUPPORT)) {
         LOG(ERROR) << "Shm type config=" << FLAGS_ub_shm_type << " is not supported.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
     g_shmType = (SHM_TYPE)FLAGS_ub_shm_type;
     if (g_shmType == SHM_TYPE_UBS) {
-        if (UbsShmInit() != HLC_OK) {
+        if (UbsShmInit() != UBRING_OK) {
             LOG(ERROR) << "Init beiming ubs shm failed.";
-            return HLC_ERR;
+            return UBRING_ERR;
         }
     }
     LOG(DEBUG) << "shm mgr init success, shm type=" << g_shmType;
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 void ShmMgrFini(void)
 {
     if (g_shmType == SHM_TYPE_UBS) {
-        if (UbsShmFini() != HLC_OK) {
+        if (UbsShmFini() != UBRING_OK) {
             LOG(ERROR) << "Fini beiming ubs shm failed.";
             return;
         }
@@ -98,7 +98,7 @@ RETURN_CODE ShmLocalMalloc(SHM *shm)
         return SHM_ERR_INPUT_INVALID;
     }
 
-    RETURN_CODE rc = HLC_OK;
+    RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:
             rc = IpcShmLocalMalloc(shm);
@@ -116,12 +116,12 @@ RETURN_CODE ShmLocalMalloc(SHM *shm)
 RETURN_CODE ShmLocalCalloc(SHM *shm)
 {
     RETURN_CODE rc = ShmLocalMalloc(shm);
-    if (UNLIKELY(rc != HLC_OK)) {
+    if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Failed to alloc local shm.";
         return rc;
     }
     memset(shm->addr, 0, shm->len);
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE ShmLocalFree(SHM *shm)
@@ -131,7 +131,7 @@ RETURN_CODE ShmLocalFree(SHM *shm)
         return SHM_ERR_INPUT_INVALID;
     }
 
-    RETURN_CODE rc = HLC_OK;
+    RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:
             rc = IpcShmLocalFree(shm);
@@ -153,7 +153,7 @@ RETURN_CODE ShmRemoteMalloc(SHM *shm)
         return SHM_ERR_INPUT_INVALID;
     }
 
-    RETURN_CODE rc = HLC_OK;
+    RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:
             rc = IpcShmRemoteMalloc(shm);
@@ -175,7 +175,7 @@ RETURN_CODE ShmRemoteFree(SHM *shm)
         return SHM_ERR_INPUT_INVALID;
     }
 
-    RETURN_CODE rc = HLC_OK;
+    RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:
             rc = IpcShmRemoteFree(shm);
@@ -197,7 +197,7 @@ RETURN_CODE ShmLocalMmap(SHM *shm, int prot)
         return SHM_ERR_INPUT_INVALID;
     }
 
-    RETURN_CODE rc = HLC_OK;
+    RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:
             rc = IpcShmLocalMmap(shm, prot);
@@ -219,7 +219,7 @@ RETURN_CODE ShmMunmap(SHM *shm)
         return SHM_ERR_INPUT_INVALID;
     }
  
-    RETURN_CODE rc = HLC_OK;
+    RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:
             rc = IpcShmMunmap(shm);
@@ -241,7 +241,7 @@ RETURN_CODE ShmFree(SHM *shm)
         return SHM_ERR_INPUT_INVALID;
     }
  
-    RETURN_CODE rc = HLC_OK;
+    RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:
             rc = IpcShmFree(shm);

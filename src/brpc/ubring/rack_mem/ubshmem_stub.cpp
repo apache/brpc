@@ -53,7 +53,7 @@ int ubsmem_set_extern_logger(void (*func)(int level, const char *msg))
     return UBSM_OK;
 }
 
-int ubsmem_lookup_regions(ubsmem_regions_t *regions)
+int ubsmem_lookup_regions(ubsmem_regions_t* regions)
 {
     regions->num = 1;
     regions->region[0].host_num = 1;
@@ -96,7 +96,7 @@ int ubsmem_shmem_unmap(void *local_ptr, size_t length)
     return UBSM_OK;
 }
 
-int ubsmem_shmem_faults_register(shmem_faults_func register_func)
+int ubsmem_shmem_faults_register(shmem_faults_func registerFunc)
 {
     return UBSM_OK;
 }

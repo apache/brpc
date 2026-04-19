@@ -25,8 +25,8 @@
 namespace brpc {
     class UBShmTransport : public Transport {
         friend class TransportFactory;
-        friend class ub::UBShmEndpoint;
-        friend class ub::UBConnect;
+        friend class ubring::UBShmEndpoint;
+    friend class ubring::UBConnect;
     public:
         void Init(Socket* socket, const SocketOptions& options) override;
         void Release() override;
@@ -38,7 +38,7 @@ namespace brpc {
         void ProcessEvent(bthread_attr_t attr) override;
         void QueueMessage(InputMessageClosure& inputMsg, int* num_bthread_created, bool last_msg) override;
         void Debug(std::ostream &os) override;
-        ub::UBShmEndpoint* GetUBShmEp() {
+        ubring::UBShmEndpoint* GetUBShmEp() {
             CHECK(_ub_ep != NULL);
             return _ub_ep;
         }
@@ -54,7 +54,7 @@ namespace brpc {
             UB_UNKNOWN
         };
         // The UBShmEndpoint
-        ub::UBShmEndpoint* _ub_ep = NULL;
+        ubring::UBShmEndpoint* _ub_ep = NULL;
         // Should use UB or not
         UBState _ub_state;
         std::shared_ptr<TcpTransport>  _tcp_transport;

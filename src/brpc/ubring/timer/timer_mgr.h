@@ -20,13 +20,13 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <pthread.h>
-#include "brpc/ub/common/common.h"
+#include "brpc/ubring/common/common.h"
 
 #define MAX_TIMER 1024
 #define TIMER_EPOLL_WAIT_TIMEOUT 1000
 
 namespace brpc {
-namespace ub {
+namespace ubring {
 typedef enum {
     TIMER_CONTEXT_NOT_USING,
     TIMER_CONTEXT_EPOLL_WAITING,
@@ -39,7 +39,7 @@ typedef struct {
     uint32_t fd;
     TimerFdCtxStatus status;
     uint32_t periodical;
-    pthread_spinlock_t spin_lock;
+    pthread_spinlock_t spinLock;
 } TimerFdCtx;
 
 RETURN_CODE TimerInit(void);

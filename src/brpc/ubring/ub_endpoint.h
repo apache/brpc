@@ -30,13 +30,14 @@
 #include "butil/macros.h"
 #include "butil/containers/mpsc_queue.h"
 #include "brpc/socket.h"
-#include "brpc/ub/ub_helper.h"
-#include "brpc/ub/ub_ring.h"
+#include "brpc/ubring/ub_helper.h"
+#include "brpc/ubring/ub_ring.h"
+#include "brpc/ubring/shm/shm_def.h"
 
 
 namespace brpc {
 class Socket;
-namespace ub {
+namespace ubring {
 
 DECLARE_int32(ub_poller_num);
 DECLARE_bool(ub_edisp_unsched);
@@ -75,7 +76,7 @@ public:
     // Reset the endpoint (for next use)
     void Reset();
 
-    // Cut data from the given IOBuf list and use RDMA to send
+    // Cut data from the given IOBuf list and use UBRING to send
     // Return bytes cut if success, -1 if failed and errno set
     ssize_t CutFromIOBufList(butil::IOBuf** data, size_t ndata);
 
@@ -148,15 +149,16 @@ private:
     // return -1 if encounter other errno (including EOF)
     int ReadFromFd(void* data, size_t len);
 
+
     // Write at most len bytes from data to fd in _socket
     // wait for _epollout_butex if encounter EAGAIN
     // return -1 if encounter other errno
     int WriteToFd(void* data, size_t len);
 
     // Poll CQ and get the work completion
-    static void PollIn(UBShmEndpoint* ep, uint32_t ep_event);
+    static void PollIn(UBShmEndpoint* ep, uint32_t epEvent);
 
-    static void PollOut(UBShmEndpoint* ep, uint32_t ep_event);
+    static void PollOut(UBShmEndpoint* ep, uint32_t epEvent);
 
     // Try to read data on TCP fd in _socket
     inline void TryReadOnTcp();
@@ -167,7 +169,7 @@ private:
     State _state;
 
     // ub resource
-    UBRing* _ub_ring{nullptr};
+    ubring::UBRing* _ub_ring{nullptr};
 
     SocketId _cq_sid;
 
@@ -220,7 +222,7 @@ private:
     void PollerRegisterEvent(CqSidOp::OpType op, uint32_t events = EPOLLET);
 };
 
-}  // namespace ub
+}  // namespace ubring
 }  // namespace brpc
 
 #else  // if BRPC_WITH_UBRING

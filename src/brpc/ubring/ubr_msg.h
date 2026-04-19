@@ -15,37 +15,39 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_SHM_MGR_H
-#define BRPC_SHM_MGR_H
+#ifndef BRPC_UBR_MSG_H
+#define BRPC_UBR_MSG_H
+#define UBR_MSG_HEADER_LEN 4
+#define UBR_MSG_PAYLOAD_LEN 60
+#define UBR_MSG_LEN (UBR_MSG_HEADER_LEN + UBR_MSG_PAYLOAD_LEN)
 
-#include <stdint.h>
-#include "brpc/ub/common/common.h"
-#include "brpc/ub/shm/shm_def.h"
+#define UBR_MSG_FLAG_INDEX 0
+#define UBR_MSG_LEN_INDEX 1
+#define UBR_MSG_CUR_INDEX 2
 
 namespace brpc {
-namespace ub {
-void SetShmType(SHM_TYPE type);
+namespace ubring {
+typedef enum {
+    UBR_MSG_CHUNK_NONE = 0,
+    UBR_MSG_CHUNK_EXIST = 1,
+    UBR_MSG_CHUNK_EOF = 2
+} UbrMsgHdrFlag;
 
-RETURN_CODE ShmMgrInit(void);
+typedef struct TagUbrMsgPayload {
+    uint8_t inner[UBR_MSG_PAYLOAD_LEN];
+} UbrMsgPayload;
 
-void ShmMgrFini(void);
+typedef struct __attribute__((aligned(64))) TagUbrMsgFormat {
+    UbrMsgPayload payload;
 
-RETURN_CODE ShmLocalMalloc(SHM *shm);
+    uint8_t header[UBR_MSG_HEADER_LEN];
+} UbrMsgFormat;
 
-RETURN_CODE ShmLocalCalloc(SHM *shm);
-
-RETURN_CODE ShmLocalFree(SHM *shm);
-
-RETURN_CODE ShmRemoteMalloc(SHM *shm);
-
-RETURN_CODE ShmRemoteFree(SHM *shm);
-
-RETURN_CODE ShmLocalMmap(SHM *shm, int prot);
-
-RETURN_CODE ShmMunmap(SHM *shm);
-
-RETURN_CODE ShmFree(SHM *shm);
+static inline uint32_t CalcUbrMsgChunkCnt(uint32_t bufLen)
+{
+    uint32_t msgChunkNum = (bufLen + UBR_MSG_PAYLOAD_LEN - 1) / UBR_MSG_PAYLOAD_LEN;
+    return msgChunkNum;
 }
 }
-
-#endif //BRPC_SHM_MGR_H
+}
+#endif //BRPC_UBR_MSG_H

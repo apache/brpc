@@ -1541,7 +1541,7 @@ ssize_t IOPortal::pappend_from_file_descriptor(
 }
 
 ssize_t IOPortal::pappend_from_ub_ring(
-    brpc::ub::UBRing* _ub_ring,
+    brpc::ubring::UBRing* _ub_ring,
     size_t max_count) {
     iovec vec[MAX_APPEND_IOVEC];
     int nvec = 0;

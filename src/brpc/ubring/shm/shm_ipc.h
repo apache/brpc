@@ -24,7 +24,7 @@
 #define SHM_IPC_MODE 0666
 
 namespace brpc {
-    namespace ub {
+    namespace ubring {
         RETURN_CODE IpcShmLocalMalloc(SHM *shm);
         RETURN_CODE IpcShmMunmap(SHM *shm);
         RETURN_CODE IpcShmFree(SHM *shm);

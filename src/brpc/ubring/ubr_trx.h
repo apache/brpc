@@ -20,10 +20,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/uio.h>
-#include "brpc/ub/shm/shm_def.h"
-#include "brpc/ub/common/common.h"
-#include "brpc/ub/common/thread_lock.h"
-#include "brpc/ub/ubr_msg.h"
+#include "brpc/ubring/shm/shm_def.h"
+#include "brpc/ubring/common/common.h"
+#include "brpc/ubring/common/thread_lock.h"
+#include "brpc/ubring/ubr_msg.h"
 
 /* +----------------------------------------------------------------------------+
    │                                 UbrTrx shm                                 │
@@ -41,14 +41,14 @@
 #define MB_TO_BYTE (1024 * 1024)
 #define MAX_CLOSE_COUNT 2
 
-#define SHM_NAME_PREFIX "HLC"
+#define SHM_NAME_PREFIX "UBRING"
 #define SERVER_SHM_NAME_SUFFIX "S"
 #define CLIENT_SHM_NAME_SUFFIX "C"
 
 namespace brpc {
-namespace ub {
-extern RETURN_CODE(*g_before_tcp_close)(int);
-extern RETURN_CODE(*g_after_tcp_close)(int);
+namespace ubring {
+extern RETURN_CODE(*g_BeforeTcpClose)(int);
+extern RETURN_CODE(*g_AfterTcpClose)(int);
 
 typedef enum {
     UBR_STATE_NONE,
@@ -86,11 +86,11 @@ typedef enum {
 typedef struct TagUbrDataStatusQMsg {
     uint32_t tail;
     uint32_t timeout;
-    uint8_t heart_beat;
+    uint8_t heartBeat;
 } UbrDataStatusQMsg;
 
 typedef struct TagUbrEventQMsg {
-    uint64_t io_id;
+    uint64_t ioId;
     EventQState flag;
 } UbrEventQMsg;
 
@@ -100,62 +100,62 @@ typedef struct TagUbrAddrInfo {
 } UbrAddrInfo;
 
 typedef struct TagUbrTx {
-    UbrAddrInfo remote_data_q;
-    UbrAddrInfo remote_rx_event_q;
-    UbrAddrInfo local_data_status_q;
-    UbrAddrInfo local_tx_event_q;
-    uint64_t out_io_id;
-    uint32_t write_pos;
+    UbrAddrInfo remoteDataQ;
+    UbrAddrInfo remoteRxEventQ;
+    UbrAddrInfo localDataStatusQ;
+    UbrAddrInfo localTxEventQ;
+    uint64_t outIoId;
+    uint32_t writePos;
     uint32_t capacity;
-    UbrMsgFormat local_msg_space;
-    uint32_t hb_retry_cnt;
-    uint32_t ep_last_cap;
-    volatile EventQState trx_state;
+    UbrMsgFormat localMsgSpace;
+    uint32_t hbRetryCnt;
+    uint32_t epLastCap;
+    volatile EventQState trxState;
 } UbrTx;
 
 typedef struct TagUbrRx {
-    UbrAddrInfo local_data_q;
-    UbrAddrInfo local_rx_event_q;
-    UbrAddrInfo remote_data_status_q;
-    UbrAddrInfo remote_tx_event_q;
-    uint64_t in_io_id;
-    uint32_t read_pos;
+    UbrAddrInfo localDataQ;
+    UbrAddrInfo localRxEventQ;
+    UbrAddrInfo remoteDataStatusQ;
+    UbrAddrInfo remoteTxEventQ;
+    uint64_t inIoId;
+    uint32_t readPos;
     uint32_t capacity;
-    uint32_t deal_msg_num;
-    uint32_t deal_msg_max_cnt;
-    uint32_t ep_eof_pos;
-    volatile EventQState trx_state;
+    uint32_t dealMsgNum;
+    uint32_t dealMsgMaxCnt;
+    uint32_t epEofPos;
+    volatile EventQState trxState;
 } UbrRx;
 
 typedef struct TagUbrTrx {
-    UbrTx ubr_tx;
-    UbrRx ubr_rx;
-    uint64_t ubr_id;
-    uint32_t trx_mgr_index;
+    UbrTx ubrTx;
+    UbrRx ubrRx;
+    uint64_t ubrId;
+    uint32_t trxMgrIndex;
     UbrTrxType type;
-    SHM local_shm;
-    SHM remote_shm;
-    int timer_fd;
-    int hb_timer_fd;
-    int clear_timer_fd;
-    AtomicInt close_cnt;
-    AtomicInt close_state;
+    SHM localShm;
+    SHM remoteShm;
+    int timerFd;
+    int hbTimerFd;
+    int clearTimerFd;
+    AtomicInt closeCnt;
+    AtomicInt closeState;
 } UbrTrx;
 
 typedef struct TagFileLock {
-    int lock_fd;
-    char* lock_path;
+    int lockFd;
+    char* lockPath;
 } FileLock;
 
 typedef struct TagUbrLinkLock {
-    int file_lock_num;
-    FileLock* file_lock;
+    int fileLockNum;
+    FileLock* fileLock;
 } UbrLinkLock;
 
 typedef enum {
     UBR_UB_EVENT,
     UBR_HEARTBEAT,
-} PASSIVE_DISC_TYPE;
+}PASSIVE_DISC_TYPE;
 
 }
 }

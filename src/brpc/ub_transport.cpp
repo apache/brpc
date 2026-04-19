@@ -19,8 +19,8 @@
 
 #include "brpc/ub_transport.h"
 #include "brpc/tcp_transport.h"
-#include "brpc/ub/ub_endpoint.h"
-#include "brpc/ub/ub_helper.h"
+#include "brpc/ubring/ub_endpoint.h"
+#include "brpc/ubring/ub_helper.h"
 
 namespace brpc {
 DECLARE_bool(usercode_in_coroutine);
@@ -31,7 +31,7 @@ extern SocketVarsCollector *g_vars;
 void UBShmTransport::Init(Socket *socket, const SocketOptions &options) {
     CHECK(_ub_ep == NULL);
     if (options.socket_mode == SOCKET_MODE_UBRING) {
-        _ub_ep = new(std::nothrow)ub::UBShmEndpoint(socket);
+        _ub_ep = new(std::nothrow)ubring::UBShmEndpoint(socket);
         if (!_ub_ep) {
             const int saved_errno = errno;
             PLOG(ERROR) << "Fail to create UBShmEndpoint";
@@ -47,7 +47,7 @@ void UBShmTransport::Init(Socket *socket, const SocketOptions &options) {
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
     if (options.need_on_edge_trigger && _on_edge_trigger == NULL) {
-        _on_edge_trigger = ub::UBShmEndpoint::OnNewDataFromTcp;
+        _on_edge_trigger = ubring::UBShmEndpoint::OnNewDataFromTcp;
     }
     _tcp_transport = std::unique_ptr<TcpTransport>(new TcpTransport());
     _tcp_transport->Init(socket, options);
@@ -71,7 +71,7 @@ int UBShmTransport::Reset(int32_t expected_nref) {
 
 std::shared_ptr<AppConnect> UBShmTransport::Connect() {
     if (_default_connect == nullptr) {
-        return  std::make_shared<ub::UBConnect>();
+        return  std::make_shared<ubring::UBConnect>();
     }
     return _default_connect;
 }
@@ -134,7 +134,7 @@ void UBShmTransport::ProcessEvent(bthread_attr_t attr) {
     bthread_t tid;
     if (FLAGS_usercode_in_coroutine) {
         OnEdge(_socket);
-    } else if (ub::FLAGS_ub_edisp_unsched == false) {
+    } else if (ubring::FLAGS_ub_edisp_unsched == false) {
         auto rc = bthread_start_background(&tid, &attr, OnEdge, _socket);
         if (rc != 0) {
             LOG(FATAL) << "Fail to start ProcessEvent";
@@ -156,7 +156,7 @@ void UBShmTransport::QueueMessage(InputMessageClosure& input_msg,
         return;
     }
 
-    if (ub::FLAGS_ub_disable_bthread) {
+    if (ubring::FLAGS_ub_disable_bthread) {
         ProcessInputMessage(to_run_msg);
         return;
     }
@@ -187,16 +187,16 @@ int UBShmTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
         if (!OptionsAvailableOverUB(static_cast<const ServerOptions *>(_options))) {
             return -1;
         }
-        ub::GlobalUBInitializeOrDie();
-        if (!ub::InitPollingModeWithTag(static_cast<const ServerOptions *>(_options)->bthread_tag)) {
+        ubring::GlobalUBInitializeOrDie();
+        if (!ubring::InitPollingModeWithTag(static_cast<const ServerOptions *>(_options)->bthread_tag)) {
             return -1;
         }
     } else {
         if (!OptionsAvailableForUB(static_cast<const ChannelOptions *>(_options))) {
             return -1;
         }
-        ub::GlobalUBInitializeOrDie();
-        if (!ub::InitPollingModeWithTag(bthread_self_tag())) {
+        ubring::GlobalUBInitializeOrDie();
+        if (!ubring::InitPollingModeWithTag(bthread_self_tag())) {
             return -1;
         }
         return 0;
@@ -210,7 +210,7 @@ bool UBShmTransport::OptionsAvailableForUB(const ChannelOptions* opt) {
         LOG(WARNING) << "Cannot use SSL and UB at the same time";
         return false;
     }
-    if (!ub::SupportedByUB(opt->protocol.name())) {
+    if (!ubring::SupportedByUB(opt->protocol.name())) {
         LOG(WARNING) << "Cannot use " << opt->protocol.name()
                      << " over UB";
         return false;

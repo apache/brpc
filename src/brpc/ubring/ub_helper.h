@@ -26,7 +26,7 @@
 
 
 namespace brpc {
-    namespace ub {
+    namespace ubring {
 
         void GlobalRelease();
 
@@ -46,11 +46,11 @@ namespace brpc {
         // If the given protocol supported by UB
         bool SupportedByUB(std::string protocol);
 
-    }  // namespace ub
+    }  // namespace ubring
 }  // namespace brpc
 #else
 namespace brpc {
-    namespace ub {
+    namespace ubring {
 
         void GlobalRelease();
 
@@ -58,7 +58,7 @@ namespace brpc {
         // Exit if failed
         void GlobalUBInitializeOrDie();
 
-    }  // namespace ub
+    }  // namespace ubring
 }  // namespace brpc
 #endif  // if BRPC_WITH_UBRING
 
