@@ -275,6 +275,9 @@ void Test(int thread_num, int attachment_size) {
     for (int k = 0; k < thread_num; ++k) {
         bthread_start_background(&tid[k], &BTHREAD_ATTR_NORMAL, DeleteTest, tests[k]);
     }
+    for (int k = 0; k < thread_num; ++k) {
+        bthread_join(tid[k], NULL);
+    }
 }
 
 int main(int argc, char* argv[]) {

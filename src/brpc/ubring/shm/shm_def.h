@@ -35,13 +35,13 @@
 #define SHM_ALLOC_UNIT_SIZE (4 * 1024 * 1024) // 4MB
 
 namespace brpc {
-    namespace ub {
+    namespace ubring {
         typedef enum { SHM_TYPE_UB, SHM_TYPE_IPC, SHM_TYPE_UBS, SHM_TYPE_UNSUPPORT } SHM_TYPE;
 
         typedef struct {
             uint8_t *addr;
             size_t len;
-            uint64_t mem_id;
+            uint64_t memid;
             char name[SHM_MAX_NAME_BUFF_LEN];
             uint32_t fd;
         } SHM;
@@ -56,7 +56,7 @@ namespace brpc {
             ShmListNode* head;
             ShmListNode* tail;
             size_t size;
-            pthread_mutex_t shm_lock;
+            pthread_mutex_t shmLock;
         } ShmList;
     }
 }

@@ -23,12 +23,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
-#include "brpc/ub/common/common.h"
-#include "brpc/ub/shm/shm_def.h"
-#include "brpc/ub/shm/shm_ipc.h"
+#include "brpc/ubring/common/common.h"
+#include "brpc/ubring/shm/shm_def.h"
+#include "brpc/ubring/shm/shm_ipc.h"
 
 namespace brpc {
-namespace ub {
+namespace ubring {
 RETURN_CODE IpcShmLocalMalloc(SHM *shm)
 {
     int fd = shm_open(shm->name, O_CREAT | O_EXCL | O_RDWR, SHM_IPC_MODE);
@@ -60,7 +60,7 @@ RETURN_CODE IpcShmLocalMalloc(SHM *shm)
 
     close(fd);
     LOG(DEBUG) << "IPC Create shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE IpcShmMunmap(SHM *shm)
@@ -71,13 +71,13 @@ RETURN_CODE IpcShmMunmap(SHM *shm)
     }
 
     int ret = munmap(shm->addr, shm->len);
-    if (ret != HLC_OK) {
+    if (ret != UBRING_OK) {
         LOG(ERROR) << "IPC unmap shm=" << shm->name << " failed, errno=" << errno;
         return SHM_ERR;
     }
 
     LOG(DEBUG) << "IPC unmap shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE IpcShmFree(SHM *shm)
@@ -89,7 +89,7 @@ RETURN_CODE IpcShmFree(SHM *shm)
 
     // free
     int ret = shm_unlink(shm->name);
-    if (ret != HLC_OK) {
+    if (ret != UBRING_OK) {
         if (errno == EBUSY) {
             LOG_EVERY_SECOND(ERROR) << "IPC free shm=" << shm->name << " failed, errno=" << errno;
             return SHM_ERR_RESOURCE_ATTACHED;
@@ -99,7 +99,7 @@ RETURN_CODE IpcShmFree(SHM *shm)
     }
     shm->addr = NULL;
     LOG(DEBUG) << "IPC free shm=" << shm->name << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE IpcShmLocalFree(SHM *shm)
@@ -110,12 +110,12 @@ RETURN_CODE IpcShmLocalFree(SHM *shm)
     }
 
     int ret = munmap(shm->addr, shm->len);
-    if (ret != HLC_OK) {
+    if (ret != UBRING_OK) {
         LOG(WARNING) << "IPC unmap shm=" << shm->name << " failed, ret=" << ret;
     }
 
     ret = shm_unlink(shm->name);
-    if (ret != HLC_OK) {
+    if (ret != UBRING_OK) {
         if (errno == EBUSY) {
             LOG_EVERY_SECOND(ERROR) << "IPC delete shm=" << shm->name << " failed, ret=" << ret;
             return SHM_ERR_RESOURCE_ATTACHED;
@@ -125,7 +125,7 @@ RETURN_CODE IpcShmLocalFree(SHM *shm)
     }
     shm->addr = NULL;
     LOG(DEBUG) << "IPC free local shm=" << shm->name << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE IpcShmRemoteMalloc(SHM *shm)
@@ -145,7 +145,7 @@ RETURN_CODE IpcShmRemoteMalloc(SHM *shm)
 
     close(fd);
     LOG(DEBUG) << "IPC malloc remote shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE IpcShmLocalMmap(SHM *shm, int prot)
@@ -165,7 +165,7 @@ RETURN_CODE IpcShmLocalMmap(SHM *shm, int prot)
 
     close(fd);
     LOG(DEBUG) << "IPC mmap remote shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE IpcShmRemoteFree(SHM *shm)
@@ -176,13 +176,13 @@ RETURN_CODE IpcShmRemoteFree(SHM *shm)
     }
 
     int ret = munmap(shm->addr, shm->len);
-    if (ret != HLC_OK) {
+    if (ret != UBRING_OK) {
         LOG(ERROR) << "IPC unmap shm=" << shm->name << " failed, ret=" << ret;
         return SHM_ERR;
     }
 
     LOG(DEBUG) << "IPC free remote shm=" << shm->name << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 }
 }

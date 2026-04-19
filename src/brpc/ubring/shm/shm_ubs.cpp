@@ -22,102 +22,102 @@
 #include <dlfcn.h>
 #include <time.h>
 #include <gflags/gflags.h>
-#include "brpc/ub/timer/timer_mgr.h"
-#include "brpc/ub/common/thread_lock.h"
-#include "brpc/ub/common/common.h"
-#include "brpc/ub/shm/shm_def.h"
-#include "brpc/ub/ub_ring_manager.h"
-#include "brpc/ub/rack_mem/ubs_mem.h"
-#include "brpc/ub/rack_mem/ubs_mem_def.h"
+#include "brpc/ubring/timer/timer_mgr.h"
+#include "brpc/ubring/common/thread_lock.h"
+#include "brpc/ubring/common/common.h"
+#include "brpc/ubring/shm/shm_def.h"
+#include "brpc/ubring/ub_ring_manager.h"
+#include "brpc/ubring/rack_mem/ubs_mem.h"
+#include "brpc/ubring/rack_mem/ubs_mem_def.h"
 #ifdef UT
 #include "ubs_mem.h"
 #endif
 #include "shm_ubs.h"
 
 namespace brpc {
-namespace ub {
-#define HLC_MK_UBSM(ret, fn, args) ret (*fn) args = NULL
-#include "brpc/ub/rack_mem/declare_shm_ubs.h.tmpl"
+namespace ubring {
+#define UBRING_MK_UBSM(ret, fn, args) ret (*fn) args = NULL
+#include "brpc/ubring/rack_mem/declare_shm_ubs.h.tmpl"
 #define SHM_RIGHT_MODE 0666
-#define HLC_REGION_NAME_PREFIX "HlcONE2ALLRegion"
+#define UBRING_REGION_NAME_PREFIX "UbrONE2ALLRegion"
 DEFINE_uint32(node_location, 1, "Location of the ub machine.");
 DEFINE_bool(shm_wr_delay_comp, true, "Indicates whether to enable the write relay."
             "0: relay; 1: non-relay.");
 DEFINE_int32(ub_flying_io_timeout, 1, "Waiting time for stopping data"
             "sending and receiving when the link is disconnected.");
-char g_region_name[MAX_REGION_NAME_DESC_LENGTH] = {0};
-int g_shm_timer_fd = 0;
-ShmList *g_shm_list = NULL;
+char g_regionName[MAX_REGION_NAME_DESC_LENGTH] = {0};
+int g_shmTimerFd = 0;
+ShmList *g_shmList = NULL;
 static RETURN_CODE UbsShmInterfacesLoad(void);
 char hostname[MAX_HOST_NAME_DESC_LENGTH];
 
 RETURN_CODE UbsShmInterfacesLoad(void)
 {
 #ifndef UT
-    const char *ubsm_sdk_location = "/usr/local/ubs_mem/lib/libubsm_sdk.so";
-    void* dlhandler = dlmopen(LM_ID_NEWLM, ubsm_sdk_location, RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE | RTLD_DEEPBIND);
+    const char *ubsmSdkLocation = "/usr/local/ubs_mem/lib/libubsm_sdk.so";
+    void* dlhandler = dlmopen(LM_ID_NEWLM, ubsmSdkLocation, RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE | RTLD_DEEPBIND);
     if (dlhandler == NULL) {
-        LOG(ERROR) << "Dlmopen libubsm_sdk.so in " << ubsm_sdk_location << " failed, error:" << dlerror();
-        return HLC_ERR;
+        LOG(ERROR) << "Dlmopen libubsm_sdk.so in " << ubsmSdkLocation << " failed, error:" << dlerror();
+        return UBRING_ERR;
     }
 
-#define HLC_MK_UBSM_OPTIONAL(ret, fn, args)                                          \
+#define UBRING_MK_UBSM_OPTIONAL(ret, fn, args)                                          \
     do {                                                                             \
         fn = (decltype(fn))dlsym(dlhandler, #fn);                                                  \
     } while (0)
 
-#define HLC_MK_UBSM(ret, fn, args)                                                   \
+#define UBRING_MK_UBSM(ret, fn, args)                                                   \
     do {                                                                             \
         if ((fn) != NULL) {                                                          \
             break;                                                                   \
         }                                                                            \
-        HLC_MK_UBSM_OPTIONAL(ret, fn, args);                                         \
+        UBRING_MK_UBSM_OPTIONAL(ret, fn, args);                                         \
         if ((fn) == NULL) {                                                          \
             LOG(ERROR) << "Fail load ubs_mem func " << #fn <<" error:" << dlerror(); \
-            return HLC_ERR;                                                          \
+            return UBRING_ERR;                                                          \
         }                                                                            \
     } while (0)
-#include "brpc/ub/rack_mem/declare_shm_ubs.h.tmpl"
+#include "brpc/ubring/rack_mem/declare_shm_ubs.h.tmpl"
 
     dlclose(dlhandler);
     dlhandler = NULL;
 #endif
-    return HLC_OK;
+    return UBRING_OK;
 }
 
-static RETURN_CODE CreateUbsShmRegion(const char *region_name)
+static RETURN_CODE CreateUbsShmRegion(const char *regionName)
 {
-    int ret = snprintf(g_region_name, MAX_REGION_NAME_DESC_LENGTH, "%s_%u",
-        HLC_REGION_NAME_PREFIX, FLAGS_node_location);
+    int ret = snprintf(g_regionName, MAX_REGION_NAME_DESC_LENGTH, "%s_%u",
+        UBRING_REGION_NAME_PREFIX, FLAGS_node_location);
     if (ret < 0) {
         LOG(ERROR) << "Snprintf_s region name failed, ret=" << ret;
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
     ubsmem_regions_t regions = {0}; // 16 * (48 + 1) bytes, 约0.8k
     ret = ubsmem_lookup_regions(&regions);
     if (ret != UBSM_OK || regions.region[0].host_num <= 0) {
         LOG(ERROR) << "Ubs lookup share region failed, ret=" << ret << ", region.num=" << regions.region[0].host_num;
-        return HLC_ERR;
+        return UBRING_ERR;
     }
-    ubsmem_region_attributes_t region_attr = {0};
-    region_attr.host_num = regions.region[0].host_num;
-    for (int i = 0; i < region_attr.host_num; i++) {
-        strcpy(region_attr.hosts[i].host_name, regions.region[0].hosts[i].host_name);
-        region_attr.hosts[i].affinity = (strcmp(region_attr.hosts[i].host_name, hostname) == 0) ?
+    ubsmem_region_attributes_t regionAttr = {0};
+    regionAttr.host_num = regions.region[0].host_num;
+    for (int i = 0; i < regionAttr.host_num; i++) {
+        strcpy(regionAttr.hosts[i].host_name, regions.region[0].hosts[i].host_name);
+        regionAttr.hosts[i].affinity = (strcmp(regionAttr.hosts[i].host_name, hostname) == 0) ?
             true : false;
     }
 
-    ret = ubsmem_create_region(region_name, 0, &region_attr);
+    ret = ubsmem_create_region(regionName, 0, &regionAttr);
     if (ret == UBSM_ERR_ALREADY_EXIST) {
-        LOG(WARNING) << "Ubs region exists, region_name=" << region_name;
-        return HLC_OK;
+        LOG(WARNING) << "Ubs region exists, region_name=" << regionName;
+        return UBRING_OK;
     } else if (ret != UBSM_OK) {
         LOG(ERROR) << "Ubsmem create region failed, ret=" << ret;
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 static uint64_t AquireFlagIfWrDelayComp(const uint64_t flag)
@@ -130,7 +130,7 @@ static uint64_t AquireFlagIfWrDelayComp(const uint64_t flag)
 
 RETURN_CODE UbsShmLocalMalloc(SHM *shm)
 {
-    int ret = ubsmem_shmem_allocate(g_region_name, shm->name, shm->len, SHM_RIGHT_MODE,
+    int ret = ubsmem_shmem_allocate(g_regionName, shm->name, shm->len, SHM_RIGHT_MODE,
         AquireFlagIfWrDelayComp(UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS));
 do {
     if (ret == UBSM_ERR_ALREADY_EXIST) {
@@ -139,7 +139,7 @@ do {
             return SHM_ERR_EXIST;
         }
         LOG(INFO) << "Ubs delete shm name=" << shm->name << " success, try to recreate.";
-        ret = ubsmem_shmem_allocate(g_region_name, shm->name, shm->len, SHM_RIGHT_MODE,
+        ret = ubsmem_shmem_allocate(g_regionName, shm->name, shm->len, SHM_RIGHT_MODE,
             AquireFlagIfWrDelayComp(UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS));
         if (ret != UBSM_OK) {
             LOG(ERROR) << "Ubs recreate shm name=" << shm->name << " failed, ret=" << ret;
@@ -162,9 +162,9 @@ do {
     }
 
     // 通过MXE获取memid
-    shm->mem_id = 1; // 暂时打桩
-    LOG(DEBUG) << "Ubs malloc local shm=" << shm->name << " length=" << shm->len << " mem_id=" << shm->mem_id << " success.";
-    return HLC_OK;
+    shm->memid = 1; // 暂时打桩
+    LOG(DEBUG) << "Ubs malloc local shm=" << shm->name << " length=" << shm->len << " memid=" << shm->memid << " success.";
+    return UBRING_OK;
 }
 
 RETURN_CODE UbsShmMunmap(SHM *shm)
@@ -179,7 +179,7 @@ RETURN_CODE UbsShmMunmap(SHM *shm)
     if (ret != UBSM_OK) {
         if (ret == UBSM_ERR_NET) {
             LOG(ERROR) << "Ubs unmap shm=" << shm->name << " failed, ubsm net err=" << ret;
-            AddShmToList(g_shm_list, shm);
+            AddShmToList(g_shmList, shm);
             return SHM_ERR_UBSM_NET_ERR;
         }
         LOG(ERROR) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " failed, ret=" << ret;
@@ -187,7 +187,7 @@ RETURN_CODE UbsShmMunmap(SHM *shm)
     }
 
     LOG(DEBUG) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE UbsShmFree(SHM *shm)
@@ -212,7 +212,7 @@ RETURN_CODE UbsShmFree(SHM *shm)
     }
     shm->addr = NULL;
     LOG(DEBUG) << "Ubs free shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE UbsShmLocalFree(SHM *shm)
@@ -227,7 +227,7 @@ RETURN_CODE UbsShmLocalFree(SHM *shm)
     if (ret != UBSM_OK) {
         if (ret == UBSM_ERR_NET) {
             LOG(ERROR) << "Ubs unmap shm=" << shm->name << " failed, ubsm net err=" << ret;
-            AddShmToList(g_shm_list, shm);
+            AddShmToList(g_shmList, shm);
             return SHM_ERR_UBSM_NET_ERR;
         }
         LOG(WARNING) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " failed, ret=" << ret;
@@ -245,7 +245,7 @@ RETURN_CODE UbsShmLocalFree(SHM *shm)
     }
     shm->addr = NULL;
     LOG(DEBUG) << "Ubs free local shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE UbsShmRemoteMalloc(SHM *shm)
@@ -257,7 +257,7 @@ RETURN_CODE UbsShmRemoteMalloc(SHM *shm)
     }
 
     LOG(INFO) << "Ubs malloc remote shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE UbsShmLocalMmap(SHM *shm, int prot)
@@ -269,7 +269,7 @@ RETURN_CODE UbsShmLocalMmap(SHM *shm, int prot)
     }
 
     LOG(DEBUG) << "Ubs mmap remote shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE UbsShmRemoteFree(SHM *shm)
@@ -284,7 +284,7 @@ RETURN_CODE UbsShmRemoteFree(SHM *shm)
     if (ret != UBSM_OK) {
         if (ret == UBSM_ERR_NET) {
             LOG(ERROR) << "Ubs unmap shm=" << shm->name << " failed, ubsm net err=" << ret;
-            AddShmToList(g_shm_list, shm);
+            AddShmToList(g_shmList, shm);
             return SHM_ERR_UBSM_NET_ERR;
         }
         LOG(ERROR) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " failed, ret=" << ret;
@@ -292,7 +292,7 @@ RETURN_CODE UbsShmRemoteFree(SHM *shm)
     }
 
     LOG(DEBUG) << "Ubs free Remote shm=" << shm->name << " length=" << shm->len << " success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 void UbsMemLoggerPrint(int level, const char *msg)
@@ -309,64 +309,65 @@ void UbsMemLoggerPrint(int level, const char *msg)
 
 RETURN_CODE UbsShmInit(void)
 {
-    RETURN_CODE ret_code = UbsShmInterfacesLoad();
-    if (ret_code != HLC_OK) {
-        LOG(ERROR) << "Load ubs shm functions failed, ret=" << ret_code;
-        return HLC_ERR;
+    // 加载libubsm_sdk.so函数指针
+    RETURN_CODE retCode = UbsShmInterfacesLoad();
+    if (retCode != UBRING_OK) {
+        LOG(ERROR) << "Load ubs shm functions failed, ret=" << retCode;
+        return UBRING_ERR;
     }
 
     if (gethostname(hostname, MAX_HOST_NAME_DESC_LENGTH) != 0) {
-        LOG(ERROR) << "hlc config gethostname failed, errno=" << errno;
-        return HLC_ERR;
+        LOG(ERROR) << "ubring config gethostname failed, errno=" << errno;
+        return UBRING_ERR;
     }
 
     int ret = ubsmem_set_extern_logger(UbsMemLoggerPrint);
     if (ret != UBSM_OK) {
         LOG(ERROR) << "Ubs set logger failed, ret=" << ret;
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
     ret = ubsmem_set_logger_level(UBSM_LOG_INFO_LEVEL);
     if (ret != UBSM_OK) {
         LOG(ERROR) << "Ubs set logger level failed, ret=" << ret;
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
     ubsmem_options_t options = {};
     ret = ubsmem_init_attributes(&options);
     if (ret != UBSM_OK) {
         LOG(ERROR) << "Ubs shm init attributes failed, ret=" << ret;
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
     ret = ubsmem_initialize(&options);
     if (ret != UBSM_OK) {
         LOG(ERROR) << "Ubs shm initialize failed, ret=" << ret;
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
     if (UNLIKELY(ubsmem_local_nid_query(&FLAGS_node_location) != UBSM_OK)) {
         LOG(ERROR) << "Get local nid failed.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    if (UNLIKELY(ubsmem_shmem_faults_register(brpc::ub::UBRingManager::UbEventCallback) != UBSM_OK)) {
+    if (UNLIKELY(ubsmem_shmem_faults_register(brpc::ubring::UBRingManager::UbEventCallback) != UBSM_OK)) {
         LOG(ERROR) << "Failed to register the ub event callback function.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    if (CreateUbsShmRegion(g_region_name) != HLC_OK) {
+    if (CreateUbsShmRegion(g_regionName) != UBRING_OK) {
         LOG(ERROR) << "Create Ubs region failed.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    if (InitShmTimer(&g_shm_list) != HLC_OK) {
+    if (InitShmTimer(&g_shmList) != UBRING_OK) {
         LOG(ERROR) << "Ubs shm list init failed.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
     LOG(INFO) << "Ubs shm init success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
 RETURN_CODE UbsShmFini(void)
@@ -374,47 +375,47 @@ RETURN_CODE UbsShmFini(void)
     int ret = ubsmem_finalize();
     if (ret != UBSM_OK) {
         LOG(ERROR) << "Ubs shm finalize fail, ret=" << ret;
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    if (UNLIKELY(DestroyShmTimer(g_shm_list) != HLC_OK)) {
+    if (UNLIKELY(DestroyShmTimer(g_shmList) != UBRING_OK)) {
         LOG(ERROR) << "Ubs shm list finalize failed.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
     LOG(INFO) << "Ubs shm finalize success.";
-    return HLC_OK;
+    return UBRING_OK;
 }
 
-static void DeleteShmToList(ShmList* shm_list)
+static void DeleteShmToList(ShmList* shmList)
 {
-    if (shm_list == NULL || shm_list->head == NULL) {
+    if (shmList == NULL || shmList->head == NULL) {
         return;
     }
 
-    ShmListNode *cur_node = shm_list->head;
-    shm_list->head = cur_node->next;
-    if (shm_list->head != NULL) {
-        shm_list->head->prev = NULL;
+    ShmListNode *curNode = shmList->head;
+    shmList->head = curNode->next;
+    if (shmList->head != NULL) {
+        shmList->head->prev = NULL;
     } else {
-        shm_list->tail = NULL;
+        shmList->tail = NULL;
     }
-    LOG(DEBUG) << "Delete shm to list, name=" << cur_node->shm.name << " size=" << shm_list->size;
-    FREE_PTR(cur_node);
-    shm_list->size--;
+    LOG(DEBUG) << "Delete shm to list, name=" << curNode->shm.name << " size=" << shmList->size;
+    FREE_PTR(curNode);
+    shmList->size--;
 }
 
 void *UbsShmCallback(void* args)
 {
-    ShmList *shm_list = (ShmList*)args;
-    if (UNLIKELY(shm_list == NULL)) {
+    ShmList *shmList = (ShmList*)args;
+    if (UNLIKELY(shmList == NULL)) {
         LOG(ERROR) << "Shm list is null.";
         return NULL;
     }
 
-    LOCK_GUARD(shm_list->shm_lock);
-    while (shm_list->head != NULL) {
-        SHM shm = shm_list->head->shm;
+    LOCK_GUARD(shmList->shmLock);
+    while (shmList->head != NULL) {
+        SHM shm = shmList->head->shm;
         if (shm.addr == NULL) {
             LOG(ERROR) << "Ubs input shm param is invalid, addr is NULL.";
             return NULL;
@@ -432,67 +433,67 @@ void *UbsShmCallback(void* args)
 
         ret = ubsmem_shmem_deallocate(shm.name);
         if (ret != UBSM_OK) {
-            DeleteShmToList(shm_list);
+            DeleteShmToList(shmList);
             LOG(ERROR) << "Ubs delete shm=" << shm.name << " failed, ret=" << ret;
             return NULL;
         }
-        DeleteShmToList(shm_list);
+        DeleteShmToList(shmList);
         LOG(DEBUG) << "Ubs free local shm=" << shm.name << " length=" << shm.len << " success.";
     }
 
     return NULL;
 }
 
-RETURN_CODE UbsShmAddTimer(ShmList *shm_list)
+RETURN_CODE UbsShmAddTimer(ShmList *shmList)
 {
-    uint32_t timer_interval = FLAGS_ub_flying_io_timeout;
-    struct itimerspec time_spec = {
-        .it_interval = {.tv_sec = timer_interval, .tv_nsec = 0},
+    uint32_t timerInterval = FLAGS_ub_flying_io_timeout;
+    struct itimerspec timeSpec = {
+        .it_interval = {.tv_sec = timerInterval, .tv_nsec = 0},
         .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
-    int timer_fd = TimerStart(&time_spec, UbsShmCallback, (void*)shm_list);
-    if (UNLIKELY(timer_fd == -1)) {
+    int timerFd = TimerStart(&timeSpec, UbsShmCallback, (void*)shmList);
+    if (UNLIKELY(timerFd == -1)) {
         LOG(ERROR) << "Start shm timer failed.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
-    g_shm_timer_fd = timer_fd;
+    g_shmTimerFd = timerFd;
 
-    return HLC_OK;
+    return UBRING_OK;
 }
 
-RETURN_CODE InitShmTimer(ShmList **shm_list)
+RETURN_CODE InitShmTimer(ShmList **shmList)
 {
-    *shm_list = (ShmList *)malloc(sizeof(ShmList));
-    if (*shm_list == NULL) {
+    *shmList = (ShmList *)malloc(sizeof(ShmList));
+    if (*shmList == NULL) {
         LOG(ERROR) << "Malloc shm list failed.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
-    (*shm_list)->head = NULL;
-    (*shm_list)->tail = NULL;
-    (*shm_list)->size = 0;
+    (*shmList)->head = NULL;
+    (*shmList)->tail = NULL;
+    (*shmList)->size = 0;
 
-    if (pthread_mutex_init(&(*shm_list)->shm_lock, NULL) != 0) {
+    if (pthread_mutex_init(&(*shmList)->shmLock, NULL) != 0) {
         LOG(ERROR) << "Init shm list mutex failed.";
-        FREE_PTR(*shm_list);
-        return HLC_ERR;
+        FREE_PTR(*shmList);
+        return UBRING_ERR;
     }
 
-    if (UbsShmAddTimer(*shm_list) == HLC_ERR) {
+    if (UbsShmAddTimer(*shmList) == UBRING_ERR) {
         LOG(ERROR) << "Ubs add timer failed.";
-        FREE_PTR(*shm_list);
-        return HLC_ERR;
+        FREE_PTR(*shmList);
+        return UBRING_ERR;
     }
-    return HLC_OK;
+    return UBRING_OK;
 }
 
-RETURN_CODE DestroyShmTimer(ShmList *shm_list)
+RETURN_CODE DestroyShmTimer(ShmList *shmList)
 {
-    DeleteTimerSafe((uint32_t)g_shm_timer_fd);
-    if (shm_list == NULL) {
+    DeleteTimerSafe((uint32_t)g_shmTimerFd);
+    if (shmList == NULL) {
         LOG(WARNING) << "Shm list is null.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
-    ShmListNode* current = shm_list->head;
+    ShmListNode* current = shmList->head;
     ShmListNode* next;
 
     while (current != NULL) {
@@ -500,61 +501,61 @@ RETURN_CODE DestroyShmTimer(ShmList *shm_list)
         free(current);
         current = next;
     }
-    pthread_mutex_destroy(&shm_list->shm_lock);
-    FREE_PTR(shm_list);
-    return HLC_OK;
+    pthread_mutex_destroy(&shmList->shmLock);
+    FREE_PTR(shmList);
+    return UBRING_OK;
 }
 
-RETURN_CODE IsExistInShmList(ShmList *shm_list, const SHM *shm)
+RETURN_CODE IsExistInShmList(ShmList *shmList, const SHM *shm)
 {
-    LOCK_GUARD(shm_list->shm_lock);
-    if (UNLIKELY(shm_list == NULL)) {
+    LOCK_GUARD(shmList->shmLock);
+    if (UNLIKELY(shmList == NULL)) {
         LOG(ERROR) << "Shm list is null.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    ShmListNode *cur_node = shm_list->head;
-    while (cur_node != NULL) {
-        if (strcmp(cur_node->shm.name, shm->name) == 0 && cur_node->shm.len == shm->len) {
-            return HLC_OK;
+    ShmListNode *curNode = shmList->head;
+    while (curNode != NULL) {
+        if (strcmp(curNode->shm.name, shm->name) == 0 && curNode->shm.len == shm->len) {
+            return UBRING_OK;
         }
-        cur_node = cur_node->next;
+        curNode = curNode->next;
     }
-    return HLC_ERR;
+    return UBRING_ERR;
 }
 
-RETURN_CODE AddShmToList(ShmList *shm_list, SHM *shm)
+RETURN_CODE AddShmToList(ShmList *shmList, SHM *shm)
 {
-    if (shm_list == NULL || shm == NULL) {
+    if (shmList == NULL || shm == NULL) {
         LOG(ERROR) << "Shm list or shm is null.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    if (IsExistInShmList(shm_list, shm) == HLC_OK) {
+    if (IsExistInShmList(shmList, shm) == UBRING_OK) {
         LOG(ERROR) << "Shm name=" << shm->name << " is exist in shm list.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    ShmListNode *new_shm_node = (ShmListNode *)malloc(sizeof(ShmListNode));
-    if (new_shm_node == NULL) {
+    ShmListNode *newShmNode = (ShmListNode *)malloc(sizeof(ShmListNode));
+    if (newShmNode == NULL) {
         LOG(ERROR) << "Malloc shm node failed.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
 
-    memcpy(&new_shm_node->shm, shm, sizeof(SHM));
-    LOCK_GUARD(shm_list->shm_lock);
-    new_shm_node->next = NULL;
-    new_shm_node->prev = shm_list->tail;
-    if (shm_list->tail) {
-        shm_list->tail->next = new_shm_node;
-        shm_list->tail = new_shm_node;
+    memcpy(&newShmNode->shm, shm, sizeof(SHM));
+    LOCK_GUARD(shmList->shmLock);
+    newShmNode->next = NULL;
+    newShmNode->prev = shmList->tail;
+    if (shmList->tail) {
+        shmList->tail->next = newShmNode;
+        shmList->tail = newShmNode;
     } else {
-        shm_list->head = new_shm_node;
-        shm_list->tail = new_shm_node;
+        shmList->head = newShmNode;
+        shmList->tail = newShmNode;
     }
-    shm_list->size++;
-    LOG(DEBUG) << "Add shm to list success, shm name=" << shm->name << " size=" << shm_list->size;
-    return HLC_OK;
+    shmList->size++;
+    LOG(DEBUG) << "Add shm to list success, shm name=" << shm->name << " size=" << shmList->size;
+    return UBRING_OK;
 }
 }
 }

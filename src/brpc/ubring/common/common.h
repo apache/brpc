@@ -33,12 +33,13 @@
 #ifdef UT
 #define STATIC
 #define INLINE
-#define HLC_STATISTICS_PATH ROOT_PATH "/hlc/run"
+#define UBRING_STATISTICS_PATH ROOT_PATH "/ubring/run"
 #else
 #define STATIC static
 #define INLINE inline
-#define HLC_STATISTICS_PATH "/opt/hlc/run"
+#define UBRING_STATISTICS_PATH "/opt/ubring/run"
 #endif
+
 #ifdef __cplusplus
 #include <atomic>
 using AtomicInt = std::atomic<int>;
@@ -126,11 +127,11 @@ static inline uint64_t GetCurNanoSeconds(void)
     } while (0)
 
 typedef enum {
-    HLC_OK = 0,
-    HLC_ERR = -1,
-    HLC_RETRY = -2,
-    HLC_REENTRY = -3,
-    HLC_ERR_TIMEOUT = -4,
+    UBRING_OK = 0,
+    UBRING_ERR = -1,
+    UBRING_RETRY = -2,
+    UBRING_REENTRY = -3,
+    UBRING_ERR_TIMEOUT = -4,
     // SHM Module
     SHM_ERR = -100,
     SHM_ERR_INPUT_INVALID = -101,
@@ -163,13 +164,13 @@ static inline size_t Aligned64Offset(uint8_t *addr)
     return ((ALIGN_BYTES - (((size_t)(addr)) & CHECKED_ALIGN_BITS)) & CHECKED_ALIGN_BITS);
 }
 
-static inline RETURN_CODE HasTimedOut(const uint64_t start_time, const uint32_t timeout)
+static inline RETURN_CODE HasTimedOut(const uint64_t startTime, const uint32_t timeout)
 {
-    uint64_t end_time = start_time + (uint64_t)timeout * SEC_TO_NSEC;
-    if (GetCurNanoSeconds() > end_time) {
+    uint64_t endTime = startTime + (uint64_t)timeout * SEC_TO_NSEC;
+    if (GetCurNanoSeconds() > endTime) {
         LOG(ERROR) << "task time out " << timeout << " seconds.";
-        return HLC_ERR;
+        return UBRING_ERR;
     }
-    return HLC_OK;
+    return UBRING_OK;
 }
 #endif //BRPC_COMMON_H

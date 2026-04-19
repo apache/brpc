@@ -24,12 +24,12 @@
 #include <gflags/gflags.h>
 #include "butil/logging.h"
 #include "brpc/socket.h"
-#include "brpc/ub/ub_endpoint.h"
-#include "brpc/ub/ub_helper.h"
-#include "ub_ring_manager.h"
+#include "brpc/ubring/ub_endpoint.h"
+#include "brpc/ubring/ub_helper.h"
+#include "brpc/ubring/ub_ring_manager.h"
 
 namespace brpc {
-namespace ub {
+namespace ubring {
 
 void* g_handle_ub = NULL;
 bool g_skip_ub_init = false;
@@ -70,7 +70,7 @@ static void GlobalUBInitializeOrDieImpl() {
     }
 
     if (UBShmEndpoint::GlobalInitialize() < 0) {
-        LOG(ERROR) << "rdma_recv_block_type incorrect "
+        LOG(ERROR) << "ubring_recv_block_type incorrect "
                    << "(valid value: default/large/huge)";
         ExitWithError();
     }
@@ -78,10 +78,10 @@ static void GlobalUBInitializeOrDieImpl() {
     g_ub_available.store(true, butil::memory_order_relaxed);
 }
 
-static pthread_once_t initialize_ub_once = PTHREAD_ONCE_INIT;
+static pthread_once_t initialize_UB_once = PTHREAD_ONCE_INIT;
 
 void GlobalUBInitializeOrDie() {
-    if (pthread_once(&initialize_ub_once,
+    if (pthread_once(&initialize_UB_once,
                      GlobalUBInitializeOrDieImpl) != 0) {
         LOG(FATAL) << "Fail to pthread_once GlobalUBInitializeOrDie";
         exit(1);
@@ -116,7 +116,7 @@ bool InitPollingModeWithTag(bthread_tag_t tag,
     return false;
 }
 
-}  // namespace ub
+}  // namespace ubring
 }  // namespace brpc
 
 #else
@@ -125,10 +125,10 @@ bool InitPollingModeWithTag(bthread_tag_t tag,
 #include "butil/logging.h"
 
 namespace brpc {
-namespace ub {
+namespace ubring {
 void GlobalUBInitializeOrDie() {
-    LOG(ERROR) << "brpc is not compiled with rdma. To enable it, please refer to "
-               << "https://github.com/apache/brpc/blob/master/docs/en/rdma.md";
+    LOG(ERROR) << "brpc is not compiled with ubring. To enable it, please refer to "
+               << "https://github.com/apache/brpc/blob/master/docs/en/ubring.md";
     exit(1);
 }
 }
