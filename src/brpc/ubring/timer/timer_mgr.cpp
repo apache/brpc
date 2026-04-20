@@ -38,20 +38,33 @@ static int32_t g_timerModuleInitialized;
 static RETURN_CODE DeleteTimerInner(uint32_t fd)
 {
     if (g_timerFdCtxMap == NULL) {
-        LOG(WARNING) << "The timer is not initialized.";
         return UBRING_OK;
+    }
+
+    if (pthread_spin_lock(&g_timerFdCtxMap[fd].spinLock) != 0) {
+        return UBRING_ERR;
     }
 
     if (g_timerFdCtxMap[fd].status == TIMER_CONTEXT_NOT_USING) {
-        LOG(WARNING) << "The timer is not using, timerFd=" << fd;
+        pthread_spin_unlock(&g_timerFdCtxMap[fd].spinLock);
         return UBRING_OK;
     }
 
-    if (epoll_ctl(g_epollFd, EPOLL_CTL_DEL, (int)fd, NULL) != 0) {
-        LOG(ERROR) << "Failed to delete the timer fd=" << fd << " with errno=" << errno;
-    }
+    g_timerFdCtxMap[fd].status = TIMER_CONTEXT_NOT_USING;
+    g_timerFdCtxMap[fd].cb = NULL;
+    g_timerFdCtxMap[fd].args = NULL;
+    g_timerFdCtxMap[fd].periodical = 0;
+    g_timerFdCtxMap[fd].fd = 0;
 
-    CloseTimerFd(fd);
+    pthread_spin_unlock(&g_timerFdCtxMap[fd].spinLock);
+
+    // I/O outside lock
+    epoll_ctl(g_epollFd, EPOLL_CTL_DEL, (int)fd, NULL);
+
+    uint64_t exp = 0;
+    read((int)fd, &exp, sizeof(exp));
+
+    close((int)fd);
     atomic_fetch_sub(&g_totalTimerNum, 1);
     return UBRING_OK;
 }
@@ -92,23 +105,13 @@ static RETURN_CODE TimerSpinLocksInit(void)
     return UBRING_OK;
 }
 
+// Execute callback directly in the epoll thread.
+// Previously this spawned a new pthread per timer firing, which caused EAGAIN
+// under high load. Since callbacks are lightweight (just setting flags or
+// scheduling bthreads), running them inline is safe and avoids thread exhaustion.
 static RETURN_CODE ExecuteCallback(int32_t timerFd)
 {
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    error_t err = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    if (err != 0) {
-        LOG(ERROR) << "Failed to set thread detach status when executing callback";
-    }
-
-    pthread_t cbThread;
-    err = pthread_create(&cbThread, &attr, UnifiedCallback, (void *)(&g_timerFdCtxMap[timerFd]));
-    if (err != 0) {
-        pthread_attr_destroy(&attr);
-        LOG(ERROR) << "Failed to create thread while executing callback due to errno=" << err;
-        return UBRING_ERR;
-    }
-    pthread_attr_destroy(&attr);
+    UnifiedCallback((void *)(&g_timerFdCtxMap[timerFd]));
     return UBRING_OK;
 }
 
@@ -171,27 +174,30 @@ RETURN_CODE TimerInit(void)
 void *UnifiedCallback(void *args)
 {
     TimerFdCtx *ctx = (TimerFdCtx *)args;
-    // Try to lock with a small delay if initial try fails
-    int retry = 0;
-    while (pthread_spin_trylock(&ctx->spinLock) != 0) {
-        if (retry >= 3) {
-            LOG_EVERY_SECOND(WARNING) << "Failed to acquire spin lock after multiple attempts, context status is " << ctx->status;
-            return NULL;
-        }
-        usleep(100); // Small delay before retry
-        retry++;
+    if (pthread_spin_lock(&ctx->spinLock) != 0) {
+        return NULL;
     }
-    
+
     if (ctx->status == TIMER_CONTEXT_NOT_USING) {
         pthread_spin_unlock(&ctx->spinLock);
         return NULL;
     }
+
+    // Snapshot callback info under lock, then release before executing
+    void *(*cb)(void *) = ctx->cb;
+    void *cbArgs = ctx->args;
+    uint32_t fd = ctx->fd;
+    int isPeriodical = ctx->periodical;
     ctx->status = TIMER_CONTEXT_CALLBACK_ONGOING;
-    ctx->cb(ctx->args);
-    if (ctx->periodical != 1) {
-        DeleteTimerInner((uint32_t)ctx->fd);
-    }
+
     pthread_spin_unlock(&ctx->spinLock);
+
+    // Execute callback OUTSIDE the spinlock
+    cb(cbArgs);
+
+    if (!isPeriodical) {
+        DeleteTimerInner(fd);
+    }
     return NULL;
 }
 
@@ -224,11 +230,13 @@ void *TimerEpoll(void *args)
             int32_t timerFd = event->data.fd;
             uint64_t exp = 0;
             if (read(timerFd, &exp, sizeof(exp)) < 0) {
-                LOG(ERROR) << "Failed to read timerfd=" << timerFd << " errno=" << errno;
+                // EBADF means the fd was already closed by DeleteTimerSafe, skip silently
+                if (errno != EBADF) {
+                    LOG(ERROR) << "Failed to read timerfd=" << timerFd << " errno=" << errno;
+                }
                 continue;
             }
             if (TimerFdCtxValidate((uint32_t)timerFd) != UBRING_OK) {
-                LOG(ERROR) << "Timer ctx is not valid=" << timerFd;
                 continue;
             }
 
@@ -246,29 +254,36 @@ void *TimerEpoll(void *args)
 void DeleteTimerSafe(uint32_t fd)
 {
     if (g_timerFdCtxMap == NULL) {
-        LOG(WARNING) << "The timer is not initialized.";
         return;
     }
 
     if (pthread_spin_lock(&g_timerFdCtxMap[fd].spinLock) != 0) {
-        LOG(ERROR) << "Failed to lock while deleting timer=" << fd << " errno=" << errno;
         return;
     }
 
     if (g_timerFdCtxMap[fd].status == TIMER_CONTEXT_NOT_USING) {
-        LOG(WARNING) << "The timer is not using, timerFd=" << fd;
         pthread_spin_unlock(&g_timerFdCtxMap[fd].spinLock);
         return;
     }
 
-    if (epoll_ctl(g_epollFd, EPOLL_CTL_DEL, (int)fd, NULL) != 0) {
-        LOG(ERROR) << "Failed to delete the timer fd=" << fd << " with errno=" << errno;
-    }
-
-    CloseTimerFd(fd);
-    atomic_fetch_sub(&g_totalTimerNum, 1);
+    // Mark as not-using under lock so no new callbacks get dispatched
+    g_timerFdCtxMap[fd].status = TIMER_CONTEXT_NOT_USING;
+    g_timerFdCtxMap[fd].cb = NULL;
+    g_timerFdCtxMap[fd].args = NULL;
+    g_timerFdCtxMap[fd].periodical = 0;
+    g_timerFdCtxMap[fd].fd = 0;
 
     pthread_spin_unlock(&g_timerFdCtxMap[fd].spinLock);
+
+    // I/O operations outside the spin lock to avoid blocking other threads
+    epoll_ctl(g_epollFd, EPOLL_CTL_DEL, (int)fd, NULL);
+
+    // Drain any pending data so the epoll thread won't read a closed fd
+    uint64_t exp = 0;
+    read((int)fd, &exp, sizeof(exp));
+
+    close((int)fd);
+    atomic_fetch_sub(&g_totalTimerNum, 1);
 }
 void DeleteTimer(uint32_t fd)
 {

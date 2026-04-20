@@ -43,7 +43,7 @@ namespace ubring {
 DEFINE_uint32(node_location, 1, "Location of the ub machine.");
 DEFINE_bool(shm_wr_delay_comp, true, "Indicates whether to enable the write relay."
             "0: relay; 1: non-relay.");
-DEFINE_int32(ub_flying_io_timeout, 1, "Waiting time for stopping data"
+DEFINE_int32(ub_flying_io_timeout, 5, "Waiting time for stopping data"
             "sending and receiving when the link is disconnected.");
 char g_regionName[MAX_REGION_NAME_DESC_LENGTH] = {0};
 int g_shmTimerFd = 0;

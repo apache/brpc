@@ -66,8 +66,8 @@ RETURN_CODE IpcShmLocalMalloc(SHM *shm)
 RETURN_CODE IpcShmMunmap(SHM *shm)
 {
     if (shm->addr == NULL) {
-        LOG(ERROR) << "Input shm param is invalid, addr is NULL.";
-        return SHM_ERR_INPUT_INVALID;
+        LOG(DEBUG) << "IPC unmap shm=" << shm->name << " already unmapped.";
+        return UBRING_OK;
     }
 
     int ret = munmap(shm->addr, shm->len);
@@ -82,11 +82,6 @@ RETURN_CODE IpcShmMunmap(SHM *shm)
 
 RETURN_CODE IpcShmFree(SHM *shm)
 {
-    if (shm->addr == NULL) {
-        LOG(ERROR) << "Input shm param is invalid, addr is NULL.";
-        return SHM_ERR_INPUT_INVALID;
-    }
-
     // free
     int ret = shm_unlink(shm->name);
     if (ret != UBRING_OK) {
@@ -94,10 +89,14 @@ RETURN_CODE IpcShmFree(SHM *shm)
             LOG_EVERY_SECOND(ERROR) << "IPC free shm=" << shm->name << " failed, errno=" << errno;
             return SHM_ERR_RESOURCE_ATTACHED;
         }
+        if (errno == ENOENT) {
+            LOG(DEBUG) << "IPC free shm=" << shm->name << " already deleted.";
+            shm->addr = NULL;
+            return SHM_ERR_NOT_FOUND;
+        }
         LOG_EVERY_SECOND(ERROR) << "IPC free shm=" << shm->name << " failed, errno=" << errno;
         return SHM_ERR;
     }
-    shm->addr = NULL;
     LOG(DEBUG) << "IPC free shm=" << shm->name << " success.";
     return UBRING_OK;
 }
@@ -105,8 +104,8 @@ RETURN_CODE IpcShmFree(SHM *shm)
 RETURN_CODE IpcShmLocalFree(SHM *shm)
 {
     if (shm->addr == NULL) {
-        LOG(ERROR) << "Input shm param is invalid, addr is NULL.";
-        return SHM_ERR_INPUT_INVALID;
+        LOG(DEBUG) << "IPC free local shm=" << shm->name << " already freed.";
+        return SHM_ERR_NOT_FOUND;
     }
 
     int ret = munmap(shm->addr, shm->len);
@@ -119,6 +118,11 @@ RETURN_CODE IpcShmLocalFree(SHM *shm)
         if (errno == EBUSY) {
             LOG_EVERY_SECOND(ERROR) << "IPC delete shm=" << shm->name << " failed, ret=" << ret;
             return SHM_ERR_RESOURCE_ATTACHED;
+        }
+        if (errno == ENOENT) {
+            LOG(DEBUG) << "IPC delete shm=" << shm->name << " already deleted by peer.";
+            shm->addr = NULL;
+            return SHM_ERR_NOT_FOUND;
         }
         LOG_EVERY_SECOND(ERROR) << "IPC delete shm=" << shm->name << " failed, ret=" << ret;
         return SHM_ERR;
@@ -136,7 +140,7 @@ RETURN_CODE IpcShmRemoteMalloc(SHM *shm)
         return SHM_ERR;
     }
 
-    shm->addr = (uint8_t*)mmap(NULL, shm->len, PROT_WRITE, MAP_SHARED, fd, 0);
+    shm->addr = (uint8_t*)mmap(NULL, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (shm->addr == (uint8_t*)MAP_FAILED) {
         LOG(ERROR) << "IPC map shm=" << shm->name << " failed, ret=" << errno;
         close(fd);
@@ -171,8 +175,8 @@ RETURN_CODE IpcShmLocalMmap(SHM *shm, int prot)
 RETURN_CODE IpcShmRemoteFree(SHM *shm)
 {
     if (shm->addr == NULL) {
-        LOG(ERROR) << "Input shm param is invalid, addr is NULL.";
-        return SHM_ERR_INPUT_INVALID;
+        LOG(DEBUG) << "IPC free remote shm=" << shm->name << " already freed.";
+        return UBRING_OK;
     }
 
     int ret = munmap(shm->addr, shm->len);
