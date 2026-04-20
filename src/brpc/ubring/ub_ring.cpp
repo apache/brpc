@@ -19,17 +19,19 @@
 #include <gflags/gflags.h>
 #include <unistd.h>
 #include <ctime>
+#include "bthread/bthread.h"
 #include "butil/logging.h"
 #include "brpc/ubring/ub_ring.h"
+#include "brpc/ubring/shm/shm_ipc.h"
 
 namespace brpc {
 namespace ubring {
 uint32_t g_sleepTime[UBR_TASK_STEP_NUM] = {0};
 #define TIME_COVERSION 1000
-DEFINE_int32(ub_disconnect_timeout, 1, "Ubshm disconnection timeout.");
+DEFINE_int32(ub_disconnect_timeout, 5, "Ubshm disconnection timeout.");
 DEFINE_int32(ub_connect_timeout, 1, "Ubshm connection timeout.");
-DEFINE_int32(ub_hb_timer_interval, 1, "Heartbeat timer interval.");
-DEFINE_int32(ub_hb_retry_cnt, 3, "Heartbeat retry times.");
+DEFINE_int32(ub_hb_timer_interval, 5, "Heartbeat timer interval.");
+DEFINE_int32(ub_hb_retry_cnt, 10, "Heartbeat retry times.");
 DEFINE_int32(ub_event_queue_timer_interval, 100, "Interval of the disconnection timer.");
 
 UBRing::UBRing()
@@ -53,10 +55,17 @@ RETURN_CODE UBRing::UbrTrxMapShm(SHM *localShm, SHM *remoteShm)
 }
 
 RETURN_CODE UBRing::UbrTrxClose() {
-    if (UNLIKELY(UbrTrxCloseCheck(_trx) != UBRING_OK)) {
+    RETURN_CODE closeCheckRc = UbrTrxCloseCheck(_trx);
+    if (UNLIKELY(closeCheckRc != UBRING_OK)) {
+        if (closeCheckRc == UBRING_REENTRY) {
+            LOG(INFO) << "Trx close skipped, already closing, local name=" << _trx->localShm.name;
+            return UBRING_OK;
+        }
         return UBRING_ERR;
     }
-    ((UbrEventQMsg *)_trx->ubrRx.remoteTxEventQ.addr)->flag = UBR_STATE_CLOSING;
+    if (_trx->ubrRx.remoteTxEventQ.addr != nullptr) {
+        ((UbrEventQMsg *)_trx->ubrRx.remoteTxEventQ.addr)->flag = UBR_STATE_CLOSING;
+    }
 
     uint32_t disconnectTimeout = FLAGS_ub_disconnect_timeout;
     uint64_t startTime = GetCurNanoSeconds();
@@ -66,25 +75,51 @@ RETURN_CODE UBRing::UbrTrxClose() {
         _trx->ubrTx.trxState = UBR_STATE_CLOSED;
     }
 
-    ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->flag = UBR_STATE_CLOSED;
+    if (_trx->ubrTx.remoteRxEventQ.addr != nullptr) {
+        ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->flag = UBR_STATE_CLOSED;
+    }
     while (_trx->ubrRx.localRxEventQ.addr != nullptr && ((UbrEventQMsg *)_trx->ubrRx.localRxEventQ.addr)->flag != UBR_STATE_CLOSED) {
         UbrSetSleepTask(UBR_TASK_CLOSE);
         if (HasTimedOut(startTime, disconnectTimeout) != UBRING_OK) {
-            LOG(ERROR) << "Local shm " << _trx->localShm.name
-            << " wait for the peer to close the connection failed.";
+            LOG(WARNING) << "Local shm " << _trx->localShm.name
+            << " wait for the peer to close timed out, force cleanup.";
             _trx->ubrRx.trxState = UBR_STATE_CLOSED;
-            ClearTrxResource(_trx, startTime, UBR_SEND_CLOSE);
+            // Force synchronous cleanup instead of relying on async timer
+            DeleteTimerSafe((uint32_t)_trx->timerFd);
+            DeleteTimerSafe((uint32_t)_trx->hbTimerFd);
+            if (_trx->ubrTx.remoteRxEventQ.addr != nullptr) {
+                ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->flag = UBR_STATE_CLOSED;
+            }
+            if (UNLIKELY(ShmRemoteFree(&_trx->remoteShm) != UBRING_OK)) {
+                LOG(WARNING) << "Force close, remote shm " << _trx->remoteShm.name << " free failed.";
+            }
+            if (UNLIKELY(UbrTrxFreeShm(_trx) != UBRING_OK)) {
+                LOG(WARNING) << "Force close, local shm " << _trx->localShm.name << " free failed.";
+            }
+            if (UNLIKELY(UBRingManager::ReleaseUbrTrxFromMgr(_trx) != UBRING_OK)) {
+                LOG(WARNING) << "Force close, release trx " << _trx->localShm.name << " failed.";
+            }
             return UBRING_ERR_TIMEOUT;
         }
-        usleep(1);
+        bthread_usleep(1000);  // 1ms, yield to other bthreads
     }
     _trx->ubrRx.trxState = UBR_STATE_CLOSED;
     RETURN_CODE rc;
     if (UNLIKELY((rc = ClearTrxResource(_trx, startTime, UBR_SEND_CLOSE)) != UBRING_OK)) {
+        if (rc == UBRING_REENTRY) {
+            LOG(INFO) << "Trx close, peer is closing, trx local name=" << _trx->localShm.name;
+            return UBRING_OK;
+        }
         LOG(ERROR) << "Trx close, clear trx resource failed, trx local name=" << _trx->localShm.name;
         return UBRING_ERR;
     }
-    LOG(INFO) << "The peer is closed, local name=" << _trx->localShm.name;
+    // Unlink local shm name immediately so process exit does not leave visible leftovers.
+    RETURN_CODE unlinkRc = ShmFree(&_trx->localShm);
+    if (unlinkRc != UBRING_OK && unlinkRc != SHM_ERR_NOT_FOUND && unlinkRc != SHM_ERR_RESOURCE_ATTACHED) {
+        LOG(WARNING) << "Trx close, unlink local shm failed, trx local name=" << _trx->localShm.name
+                     << ", rc=" << unlinkRc;
+    }
+    LOG(DEBUG) << "The peer is closed, local name=" << _trx->localShm.name;
     return UBRING_OK;
 }
 
@@ -137,7 +172,7 @@ void* UBRing::UbrTrxCloseCallback(void* args) {
     int fd = (int)trx->localShm.fd;
     do {
         if (ATOMIC_LOAD(trx->closeCnt) == 0) {
-            LOG(ERROR) << "Trx close callback failed, exist other closing call, name=" << trx->localShm.name;
+            LOG(DEBUG) << "Trx close callback skipped, already closed, name=" << trx->localShm.name;
             break;
         }
         ATOMIC_SUB(trx->closeCnt, 1);
@@ -154,7 +189,8 @@ void* UBRing::UbrTrxCloseCallback(void* args) {
             break;
         }
         remoteRxEventQ->flag = UBR_STATE_CLOSED;
-        if (UNLIKELY(ClearTrxResource(trx, startTime, UBR_CALL_BACK_CLOSE, 1) != UBRING_OK)) {
+        RETURN_CODE clearRc = ClearTrxResource(trx, startTime, UBR_CALL_BACK_CLOSE, 1);
+        if (UNLIKELY(clearRc != UBRING_OK && clearRc != UBRING_REENTRY)) {
             LOG(ERROR) << "Trx close callback failed, " << trx->localShm.name << " clear trx resource failed.";
             break;
         }
@@ -182,7 +218,13 @@ RETURN_CODE UBRing::UbrAddHBTimer() {
 }
 
 RETURN_CODE UBRing::UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE type) {
-    if (UNLIKELY(UbrTrxCloseCheck(trx) != UBRING_OK)) {
+    RETURN_CODE passiveCloseCheckRc = UbrTrxCloseCheck(trx);
+    if (UNLIKELY(passiveCloseCheckRc != UBRING_OK)) {
+        if (passiveCloseCheckRc == UBRING_REENTRY) {
+            LOG(INFO) << "Passive close skipped, active close in progress, name=" << trx->localShm.name;
+            uint64_t startTime = GetCurNanoSeconds();
+            return ClearTrxResource(trx, startTime, UBR_CALL_BACK_CLOSE);
+        }
         return UBRING_ERR;
     }
     trx->ubrTx.trxState = UBR_STATE_CLOSED;
@@ -196,7 +238,7 @@ RETURN_CODE UBRing::UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE ty
         DeleteTimerSafe((uint32_t)trx->hbTimerFd);
         typeName = "Ub event callback";
     }
-    sleep(FLAGS_ub_flying_io_timeout);
+    bthread_usleep(FLAGS_ub_flying_io_timeout * 1000000LL);  // yield-friendly sleep
 
     int rc = ShmLocalFree(&trx->remoteShm);
     if (rc != UBRING_OK) {
@@ -252,6 +294,11 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
     if (UNLIKELY(trx == NULL)) {
         LOG(ERROR) << "Trx add close timer failed, trx is null.";
         return UBRING_ERR;
+    }
+
+    if (trx->clearTimerFd > 0) {
+        LOG(DEBUG) << "Trx close timer already added, name=" << trx->localShm.name;
+        return UBRING_OK;
     }
 
     struct itimerspec timeSpec = {
@@ -363,7 +410,11 @@ int UBRing::UbrTrxRecvBlockMode(uint8_t *dest, uint32_t bufLen)
         UbrMsgFormat *currentChunk = &dataMsg[ubrRx->readPos];
         uint8_t flag = currentChunk->header[UBR_MSG_FLAG_INDEX];
         if (flag == UBR_MSG_CHUNK_NONE) {
-            continue;
+            if (totalCopied > 0) {
+                break;
+            }
+            errno = EAGAIN;
+            return -1;
         }
         if (flag == UBR_MSG_CHUNK_EOF) {
             notEofEncountered = false;
@@ -595,25 +646,19 @@ RETURN_CODE UBRing::UbrTrxFreeShm(UbrTrx *trx)
 
     rc = ShmFree(&trx->localShm);
     if (UNLIKELY(rc != UBRING_OK)) {
-        if (UNLIKELY(rc == SHM_ERR_RESOURCE_ATTACHED || rc == SHM_ERR_NOT_FOUND)) {
-            LOG(INFO) << "Wait for " << trx->remoteShm.name << " remote free shm.";
-            return UBRING_OK;
+        if (rc != SHM_ERR_RESOURCE_ATTACHED && rc != SHM_ERR_NOT_FOUND) {
+            LOG(ERROR) << "Wait for " << trx->localShm.name << " local shm free fail.";
+            return UBRING_ERR;
         }
-        LOG(ERROR) << "Wait for " << trx->localShm.name << " local shm free fail.";
-        return UBRING_ERR;
+        LOG(INFO) << "Local shm " << trx->localShm.name << " already freed, continue to free remote shm.";
     }
 
-    size_t nameLen = strlen(trx->remoteShm.name);
-    if (!(nameLen <= 0 || nameLen > SHM_MAX_NAME_LEN || trx->remoteShm.len <= 0)) {
-        rc = ShmFree(&trx->remoteShm);
+    RETURN_CODE remoteRc = UBRING_OK;
+    if (trx->remoteShm.addr != NULL) {
+        remoteRc = IpcShmRemoteFree(&trx->remoteShm);
     }
-    if (rc != UBRING_OK) {
-        if (rc == SHM_ERR_RESOURCE_ATTACHED || rc == SHM_ERR_NOT_FOUND) {
-            LOG(INFO) << "Wait for " << trx->remoteShm.name << " remote free shm.";
-            return UBRING_OK;
-        }
-        LOG(ERROR) << "Wait for " << trx->remoteShm.name << " remote shm free fail.";
-        return UBRING_ERR;
+    if (remoteRc != UBRING_OK) {
+        LOG(WARNING) << "Free remote shm " << trx->remoteShm.name << " failed, rc=" << remoteRc;
     }
 
     return UBRING_OK;
@@ -934,23 +979,8 @@ RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, uint64_t startTime, UbrCl
     }
 
     UbrEventQMsg* localTxEventQ = (UbrEventQMsg *)trx->ubrTx.localTxEventQ.addr;
-    while (ATOMIC_LOAD(trx->closeCnt) == 1 && localTxEventQ->flag == UBR_STATE_CLOSING) {
-        if (HasTimedOut(startTime, FLAGS_ub_disconnect_timeout) != UBRING_OK) {
-            LOG(ERROR) << "Trx close failed, wait close time out.";
-            break;
-        }
-        usleep(1);
-    }
-    int firstClearExpected = UBR_CLOSE_FIRST;
-    int secondClearExpected = UBR_CLOSE_SECOND;
-    if (localTxEventQ->flag == UBR_STATE_CLOSING) {
-        if (ATOMIC_COMPARE_EXCHANGE_STRONG(trx->closeState, firstClearExpected, UBR_CLOSE_SECOND)) {
-            LOG(ERROR) << "Trx close, exist process is closing, name=" << trx->localShm.name;
-            return UBRING_REENTRY;
-        } else if (ATOMIC_COMPARE_EXCHANGE_STRONG(trx->closeState, secondClearExpected, UBR_CLOSE_END)) {
-            localTxEventQ->flag = UBR_STATE_CLOSED;
-            trx->ubrTx.trxState = UBR_STATE_CLOSED;
-        }
+    if (localTxEventQ->flag == UBR_STATE_CONNECTED) {
+        localTxEventQ->flag = UBR_STATE_CLOSING;
     }
 
     if (closeType == UBR_SEND_CLOSE) {
@@ -959,12 +989,17 @@ RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, uint64_t startTime, UbrCl
         DeleteTimer((uint32_t)trx->timerFd);
     }
     DeleteTimerSafe((uint32_t)trx->hbTimerFd);
+
+    if (localTxEventQ->flag == UBR_STATE_CLOSING) {
+        localTxEventQ->flag = UBR_STATE_CLOSED;
+        trx->ubrTx.trxState = UBR_STATE_CLOSED;
+    }
+
     return UBRING_OK;
 }
 
 RETURN_CODE UBRing::ClearTrxResource(UbrTrx *trx, uint64_t startTime, UbrCloseType closeType, int op)
 {
-    UbrEventQMsg* localTxEventQ = (UbrEventQMsg *)trx->ubrTx.localTxEventQ.addr;
     RETURN_CODE rc = UbrClearResourceCheck(trx, startTime, closeType);
     if (rc != UBRING_OK) {
         return rc;
@@ -987,8 +1022,8 @@ RETURN_CODE UBRing::UbrTrxCloseCheck(UbrTrx *trx)
     }
     int expected = MAX_CLOSE_COUNT;
     if (!ATOMIC_COMPARE_EXCHANGE_STRONG(trx->closeCnt, expected, MAX_CLOSE_COUNT - 1)) {
-        LOG(ERROR) << "Trx close failed, exist other close acquire, trx local name=" << trx->localShm.name;
-        return UBRING_ERR;
+        LOG(INFO) << "Trx close skipped, already closing, trx local name=" << trx->localShm.name;
+        return UBRING_REENTRY;
     }
 
     if (UNLIKELY(trx->ubrTx.localTxEventQ.addr == nullptr)) {
@@ -1012,7 +1047,11 @@ ssize_t UBRing::StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, siz
         UbrMsgFormat *currentChunk = &dataMsg[trx->ubrRx.readPos];
         uint8_t flag = currentChunk->header[UBR_MSG_FLAG_INDEX];
         if (flag == UBR_MSG_CHUNK_NONE) {
-            continue;
+            if (totalRecvLen > 0) {
+                break;
+            }
+            errno = EAGAIN;
+            return -1;
         }
         if (flag == UBR_MSG_CHUNK_EOF) {
             notEofEncountered = false;

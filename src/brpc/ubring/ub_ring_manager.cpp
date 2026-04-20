@@ -78,7 +78,6 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
     memset(g_ubrMgr.trxMgrUnitStatus, UBR_MGR_UNIT_FREE, trxMgrStatusSize);
     LinkInfoInit();
     return UBRING_OK;
-    return UBR_NOT_CONNECTED;
 }
 
 void UBRingManager::UbrMgrFini() {
@@ -147,16 +146,17 @@ RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx) {
     }
 
     LOCK_GUARD(g_ubrTrxMgrMtx);
+    uint32_t idx = trx->trxMgrIndex;
+    if (g_ubrMgr.trxMgrUnitStatus[idx] == UBR_MGR_UNIT_FREE) {
+        LOG(DEBUG) << "Release trx already freed, name=" << trx->localShm.name;
+        return UBRING_OK;
+    }
+
     if (g_ubrMgr.trxNum == 0) {
         LOG(ERROR) << "Release trx failed, trx number is 0.";
         return UBRING_ERR;
     }
 
-    uint32_t idx = trx->trxMgrIndex;
-    if (g_ubrMgr.trxMgrUnitStatus[idx] == UBR_MGR_UNIT_FREE) {
-        LOG(ERROR) << "Release trx failed, trx is not in manager.";
-        return UBRING_ERR;
-    }
     g_ubrMgr.trxMgrUnitStatus[idx] = UBR_MGR_UNIT_FREE;
     --g_ubrMgr.trxNum;
     return UBRING_OK;
