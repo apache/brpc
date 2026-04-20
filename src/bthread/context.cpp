@@ -576,6 +576,7 @@ __asm (
 ".size bthread_jump_fcontext,.-bthread_jump_fcontext\n"
 "@ Mark that we don't need executable stack.\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
@@ -607,6 +608,7 @@ __asm (
 ".size bthread_make_fcontext,.-bthread_make_fcontext\n"
 "@ Mark that we don't need executable stack.\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
@@ -678,6 +680,7 @@ __asm (
 ".size   bthread_jump_fcontext,.-bthread_jump_fcontext\n"
 "# Mark that we don't need executable stack.\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
@@ -710,6 +713,7 @@ __asm (
 ".size   bthread_make_fcontext,.-bthread_make_fcontext\n"
 "# Mark that we don't need executable stack.\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
