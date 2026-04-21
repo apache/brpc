@@ -635,6 +635,12 @@ int TaskGroup::join(bthread_t tid, void** return_value) {
             return errno;
         }
     }
+#if defined(__aarch64__) || defined(__arm__)
+    // On ARM's weak memory model, ensure all memory writes made by the
+    // joined bthread are visible to the joining thread after join returns.
+    // This matches the semantic guarantee provided by pthread_join().
+    butil::atomic_thread_fence(butil::memory_order_acquire);
+#endif
     if (return_value) {
         *return_value = NULL;
     }
