@@ -501,7 +501,6 @@ static void GlobalRdmaInitializeOrDieImpl() {
     } else {
         LOG(INFO) << "RDMA GID Index: " << (int)g_gid_index;
     }
-    IbvCreateCompChannel(g_context);
 
     // Create protection domain
     g_pd = IbvAllocPd(g_context);

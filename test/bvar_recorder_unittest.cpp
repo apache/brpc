@@ -244,15 +244,15 @@ TEST(RecorderTest, latency_recorder_qps_accuracy) {
         double err = fabs(qps_sum / 1000.0 - exp_qps);
         return err;
     };
-    ASSERT_GT(0.2, read(lr1, 10/2.0));
-    ASSERT_GT(0.2, read(lr2, 11/2.0));
-    ASSERT_GT(0.2, read(lr3, 3/2.0));
-    ASSERT_GT(0.2, read(lr4, 1/2.0));
+    ASSERT_GT(0.1, read(lr1, 10/2.0));
+    ASSERT_GT(0.1, read(lr2, 11/2.0));
+    ASSERT_GT(0.1, read(lr3, 3/2.0));
+    ASSERT_GT(0.1, read(lr4, 1/2.0));
 
-    ASSERT_GT(0.2, read(lr1, 10/3.0, 3));
-    ASSERT_GT(0.2, read(lr2, 11/3.0, 3));
-    ASSERT_GT(0.2, read(lr3, 3/3.0, 3));
-    ASSERT_GT(0.2, read(lr4, 1/3.0, 3));
+    ASSERT_GT(0.1, read(lr1, 10/3.0, 3));
+    ASSERT_GT(0.1, read(lr2, 11/3.0, 3));
+    ASSERT_GT(0.1, read(lr3, 3/3.0, 3));
+    ASSERT_GT(0.1, read(lr4, 1/3.0, 3));
 }
 
 } // namespace
