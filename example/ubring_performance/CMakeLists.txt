@@ -106,6 +106,7 @@ set(DYNAMIC_LIB
     ${OPENSSL_SSL_LIBRARY}
     ${THRIFT_LIB}
     dl
+    z
     )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")

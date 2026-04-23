@@ -68,6 +68,7 @@ static butil::Mutex* g_ubring_resource_mutex = NULL;
 struct HelloMessage {
     void Serialize(void* data) const;
     void Deserialize(void* data);
+    std::string toString() const;
 
     uint16_t msg_len;
     uint16_t hello_ver;
@@ -95,6 +96,21 @@ void HelloMessage::Deserialize(void* data) {
     len = butil::NetToHost64(*(uint64_t*)current_pos);
     current_pos += 4; // move forward 4 Bytes
     memcpy(shm_name, current_pos, SHM_MAX_NAME_BUFF_LEN);
+}
+
+std::string HelloMessage::toString() const {
+    constexpr size_t MAX_LEN = 16 + 6 + 16 + 6 + 16 + 6 + 20 + 6 + SHM_MAX_NAME_BUFF_LEN + 32;
+    std::array<char, MAX_LEN> buf;
+    int n = snprintf(buf.data(), buf.size(),
+        "msg_len=%u, hello_ver=%u, impl_ver=%u, len=%lu, shm_name=%.*s",
+        msg_len,
+        hello_ver,
+        impl_ver,
+        static_cast<unsigned long>(len),  // 兼容32/64位
+        static_cast<int>(SHM_MAX_NAME_BUFF_LEN),  // 限制最大输出长度
+        shm_name
+    );
+    return std::string(buf.data(), static_cast<size_t>(n));
 }
 
 UBShmEndpoint::UBShmEndpoint(Socket* s)
@@ -340,6 +356,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         ep->_state = FAILED;
         return NULL;
     }
+    LOG_IF(INFO, FLAGS_ub_trace_verbose) << "client handshake message : " << local_msg.toString();
 
     ep->_state = C_HELLO_WAIT;
     if (ep->ReadFromFd(data, MAGIC_STR_LEN) < 0) {
@@ -468,6 +485,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
 
     HelloMessage remote_msg;
     remote_msg.Deserialize(data);
+    LOG_IF(INFO, FLAGS_ub_trace_verbose) << "server receive handshake message : " << remote_msg.toString();
     if (remote_msg.msg_len < HELLO_MSG_LEN_MIN) {
         LOG(WARNING) << "Fail to parse Hello Message length from client:"
                      << s->description();
