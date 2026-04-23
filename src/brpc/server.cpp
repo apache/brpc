@@ -743,6 +743,12 @@ struct RevertServerStatus {
     }
 };
 
+struct DummyServerStopper {
+    ~DummyServerStopper() {
+        StopDummyServer();
+    }
+};
+
 static int get_port_from_fd(int fd) {
     struct sockaddr_in addr;
     socklen_t size = sizeof(addr);
@@ -1925,16 +1931,18 @@ void Server::PrintTabsBody(std::ostream& os,
 }
 
 static pthread_mutex_t g_dummy_server_mutex = PTHREAD_MUTEX_INITIALIZER;
-static Server* g_dummy_server = NULL;
+static std::atomic<Server*> g_dummy_server{nullptr};
+static DummyServerStopper g_dummy_server_stopper;
 
 int StartDummyServerAt(int port, ProfilerLinker) {
     if (port < 0 || port >= 65536) {
         LOG(ERROR) << "Invalid port=" << port;
         return -1;
     }
-    if (g_dummy_server == NULL) {  // (1)
+
+    if (g_dummy_server.load(std::memory_order_acquire) == nullptr) {
         BAIDU_SCOPED_LOCK(g_dummy_server_mutex);
-        if (g_dummy_server == NULL) {
+        if (g_dummy_server.load(std::memory_order_acquire) == nullptr) {
             Server* dummy_server = new Server;
             dummy_server->set_version(butil::string_printf(
                         "DummyServerOf(%s)", GetProgramName()));
@@ -1945,20 +1953,27 @@ int StartDummyServerAt(int port, ProfilerLinker) {
                 LOG(ERROR) << "Fail to start dummy_server at port=" << port;
                 return -1;
             }
-            // (1) may see uninitialized dummy_server due to relaxed memory
-            // fencing, but we only expose a function to test existence
-            // of g_dummy_server, everything should be fine.
-            g_dummy_server = dummy_server;
+
+            g_dummy_server.store(dummy_server, std::memory_order_release);
             return 0;
         }
     }
     LOG(ERROR) << "Already have dummy_server at port="
-               << g_dummy_server->listen_address().port;
+               << g_dummy_server.load()->listen_address().port;
     return -1;
 }
 
+int StopDummyServer() {
+    if (auto p = g_dummy_server.load(std::memory_order_acquire)) {
+        p->Stop(0);
+        p->Join();
+        g_dummy_server = nullptr;
+    }
+    return 0;
+}
+
 bool IsDummyServerRunning() {
-    return g_dummy_server != NULL;
+    return g_dummy_server != nullptr;
 }
 
 const Server::MethodProperty*

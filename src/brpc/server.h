@@ -813,6 +813,9 @@ bool IsDummyServerRunning();
 // Returns 0 on success, -1 otherwise.
 int StartDummyServerAt(int port, ProfilerLinker = ProfilerLinker());
 
+// Stop the dummy server.
+int StopDummyServer();
+
 } // namespace brpc
 
 #endif  // BRPC_SERVER_H
