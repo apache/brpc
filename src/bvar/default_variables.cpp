@@ -81,7 +81,12 @@ static bool read_proc_status(ProcStat &stat) {
     // see http://man7.org/linux/man-pages/man5/proc.5.html
     butil::ScopedFILE fp("/proc/self/stat", "r");
     if (NULL == fp) {
-        PLOG_ONCE(WARNING) << "Fail to open /proc/self/stat";
+        static bool ever_printed_stat_err = false;
+        if (!ever_printed_stat_err) {
+            fprintf(stderr, "WARNING: Fail to open /proc/self/stat, errno=%d. "
+                            "Process status related bvars will be unavailable.\n", errno);
+            ever_printed_stat_err = true;
+        }
         return false;
     }
     if (fscanf(fp, "%d %*s %c "
@@ -94,7 +99,8 @@ static bool read_proc_status(ProcStat &stat) {
                &stat.flags, &stat.minflt, &stat.cminflt, &stat.majflt,
                &stat.cmajflt, &stat.utime, &stat.stime, &stat.cutime, &stat.cstime,
                &stat.priority, &stat.nice, &stat.num_threads) != 19) {
-        PLOG(WARNING) << "Fail to fscanf";
+        fprintf(stderr, "WARNING: Fail to fscanf /proc/self/stat, errno=%d. "
+                        "Process status related bvars will be unavailable.\n", errno);
         return false;
     }
     return true;
