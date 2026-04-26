@@ -635,6 +635,10 @@ int TaskGroup::join(bthread_t tid, void** return_value) {
             return errno;
         }
     }
+    // Ensure all memory writes made by the joined bthread are visible to
+    // the joining thread after join returns. This matches the semantic
+    // guarantee provided by pthread_join() across supported architectures.
+    butil::atomic_thread_fence(butil::memory_order_acquire);
     if (return_value) {
         *return_value = NULL;
     }
