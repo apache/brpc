@@ -1473,7 +1473,15 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
             if(!ptrs[i]) continue;
             Stream* extra_stream = (Stream *) ptrs[i]->conn();
             _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
-            s->SetHostSocket(host_socket);
+            if (s->SetHostSocket(host_socket) != 0) {
+                const int ec = errno;
+                Stream::SetFailed(_request_streams, ec,
+                                  "Fail to bind response stream to %s",
+                                  host_socket->description().c_str());
+                SetFailed(ec, "Fail to bind response stream to %s",
+                          host_socket->description().c_str());
+                return;
+            }
             extra_stream->SetConnected(_remote_stream_settings);
         }
     }
