@@ -18,7 +18,7 @@
 
 #include <limits>                                            // numeric_limits
 #include <gflags/gflags.h>
-#include "butil/time.h"                                      // cpuwide_time_us
+#include "butil/time.h"                                       // gettimeofday_us
 #include "butil/fast_rand.h"
 #include "brpc/log.h"
 #include "brpc/socket.h"
@@ -376,7 +376,7 @@ void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {
 
 int64_t LocalityAwareLoadBalancer::Weight::Update(
     const CallInfo& ci, size_t index) {
-    const int64_t end_time_us = butil::cpuwide_time_us();
+    const int64_t end_time_us = butil::gettimeofday_us();
     const int64_t latency = end_time_us - ci.begin_time_us;
     BAIDU_SCOPED_LOCK(_mutex);
     if (Disabled()) {
@@ -524,7 +524,7 @@ void LocalityAwareLoadBalancer::Describe(
     if (_db_servers.Read(&s) != 0) {
         os << "fail to read _db_servers";
     } else {
-        const int64_t now = butil::cpuwide_time_us();
+        const int64_t now = butil::gettimeofday_us();
         const size_t n = s->weight_tree.size();
         os << '[';
         for (size_t i = 0; i < n; ++i) {
