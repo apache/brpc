@@ -57,6 +57,7 @@ DEFINE_bool(parking_lot_no_signal_when_no_waiter, false,
             "ParkingLot doesn't signal when there is no waiter. "
             "In busy worker scenarios, signal overhead can be reduced.");
 DEFINE_bool(enable_bthread_priority_queue, false, "Whether to enable priority queue");
+DEFINE_int32(priority_queue_shards, 4, "Number of priority queue shards per tag");
 
 DECLARE_int32(bthread_concurrency);
 DECLARE_int32(bthread_min_concurrency);
@@ -151,6 +152,9 @@ TaskGroup* TaskControl::create_group(bthread_tag_t tag) {
         delete g;
         return NULL;
     }
+    if (_enable_priority_queue) {
+        bind_priority_owner(g, tag);
+    }
     return g;
 }
 
@@ -205,7 +209,7 @@ TaskControl::TaskControl()
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
     , _enable_priority_queue(FLAGS_enable_bthread_priority_queue)
-    , _priority_queues(FLAGS_task_group_ntags)
+    , _priority_shards(FLAGS_task_group_ntags)
     , _pl_num_of_each_tag(FLAGS_bthread_parking_lot_of_each_tag)
     , _tagged_pl(FLAGS_task_group_ntags)
 {}
@@ -238,9 +242,23 @@ int TaskControl::init(int concurrency) {
         _tagged_worker_usage_second.push_back(new bvar::PerSecond<bvar::PassiveStatus<double>>(
             "bthread_worker_usage", tag_str, _tagged_cumulated_worker_time[i], 1));
         _tagged_nbthreads.push_back(new bvar::Adder<int64_t>("bthread_count", tag_str));
-        if (_priority_queues[i].init(BTHREAD_MAX_CONCURRENCY) != 0) {
-            LOG(ERROR) << "Fail to init _priority_q";
-            return -1;
+        if (_enable_priority_queue) {
+            const int workers_per_tag = concurrency / FLAGS_task_group_ntags;
+            int nshard = std::min(workers_per_tag, FLAGS_priority_queue_shards);
+            if (nshard < 1) {
+                nshard = 1;
+            }
+            _priority_shards[i].reserve(nshard);
+            const size_t wsq_cap = BTHREAD_MAX_CONCURRENCY;
+            for (int s = 0; s < nshard; ++s) {
+                std::unique_ptr<PriorityShard> shard(new PriorityShard);
+                if (shard->wsq.init(wsq_cap) != 0) {
+                    LOG(ERROR) << "Fail to init priority shard wsq, tag=" << i << " shard=" << s;
+                    return -1;
+                }
+                // inbound is butil::MPSCQueue
+                _priority_shards[i].push_back(std::move(shard));
+            }
         }
     }
 
@@ -489,6 +507,9 @@ int TaskControl::_destroy_group(TaskGroup* g) {
     {
         BAIDU_SCOPED_LOCK(_modify_group_mutex);
         auto tag = g->tag();
+        if (_enable_priority_queue) {
+            unbind_priority_owner(g, tag);
+        }
         auto& groups = tag_group(tag);
         const size_t ngroup = tag_ngroup(tag).load(butil::memory_order_relaxed);
         for (size_t i = 0; i < ngroup; ++i) {
@@ -528,8 +549,63 @@ int TaskControl::_destroy_group(TaskGroup* g) {
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     auto tag = tls_task_group->tag();
 
-    if (_priority_queues[tag].steal(tid)) {
-        return true;
+    // priority queue: owner-first, then steal from other shards
+    if (_enable_priority_queue && !_priority_shards[tag].empty()) {
+        auto& shards = _priority_shards[tag];
+        const size_t nshard = shards.size();
+
+        // Owner-first: if current TaskGroup owns a shard, flush and pop
+        const int my_shard = tls_task_group->_priority_shard_index;
+        if (my_shard >= 0 && (size_t)my_shard < nshard) {
+            PriorityShard* shard = shards[my_shard].get();
+            if (shard->owner.load(butil::memory_order_relaxed) == tls_task_group) {
+                static const size_t kFlushBatch = 8;
+                flush_priority_inbound(shard, kFlushBatch);
+                if (shard->wsq.pop(tid)) {
+                    return true;
+                }
+            }
+        }
+
+        // Steal from all shards (random start to avoid hot spot)
+        size_t start = butil::fast_rand() % nshard;
+        for (size_t i = 0; i < nshard; ++i) {
+            size_t idx = (start + i) % nshard;
+            if (shards[idx]->wsq.steal(tid)) {
+                return true;
+            }
+        }
+
+        // Salvage: drain ownerless shards' inbound to prevent task starvation.
+        // This handles the TOCTOU race where a producer enqueues after unbind
+        // finishes draining but before a new owner binds.
+        for (size_t i = 0; i < nshard; ++i) {
+            size_t idx = (start + i) % nshard;
+            PriorityShard* shard = shards[idx].get();
+            if (shard->owner.load(butil::memory_order_relaxed) != NULL) {
+                continue;
+            }
+            bool expected = false;
+            // Use CAS on draining to ensure only one thread dequeues at a time,
+            // preserving the MPSC single-consumer.
+            if (!shard->draining.compare_exchange_strong(
+                    expected, true,
+                    butil::memory_order_acquire,
+                    butil::memory_order_relaxed)) {
+                continue;  // Already draining
+            }
+            // Re-check owner after acquiring draining
+            // a new owner may have bound between first check and the CAS.
+            if (shard->owner.load(butil::memory_order_acquire) != NULL) {
+                shard->draining.store(false, butil::memory_order_release);
+                continue;
+            }
+            bthread_t salvaged;
+            while (shard->inbound.Dequeue(salvaged)) {
+                fallback_enqueue(tag, salvaged);
+            }
+            shard->draining.store(false, butil::memory_order_release);
+        }
     }
 
     // 1: Acquiring fence is paired with releasing fence in _add_group to
@@ -687,6 +763,119 @@ std::vector<bthread_t> TaskControl::get_living_bthreads() {
         }
     });
     return living_bthread_ids;
+}
+
+void TaskControl::push_priority_queue(bthread_tag_t tag, bthread_t tid) {
+    if (!_enable_priority_queue || _priority_shards[tag].empty()) {
+        fallback_enqueue(tag, tid);
+        return;
+    }
+    auto& shards = _priority_shards[tag];
+    const size_t nshard = shards.size();
+
+    // thread_local round-robin, zero contention
+    static BAIDU_THREAD_LOCAL size_t tl_rr = 0;
+    size_t start = tl_rr++ % nshard;
+
+    // Prefer shards that have an active owner (not draining)
+    for (size_t i = 0; i < nshard; ++i) {
+        size_t idx = (start + i) % nshard;
+        if (shards[idx]->owner.load(butil::memory_order_relaxed) != NULL &&
+            !shards[idx]->draining.load(butil::memory_order_relaxed)) {
+            shards[idx]->inbound.Enqueue(tid);
+            return;
+        }
+    }
+
+    // All shards ownerless, no consumer will drain inbound so just fallback
+    fallback_enqueue(tag, tid);
+}
+
+void TaskControl::bind_priority_owner(TaskGroup* g, bthread_tag_t tag) {
+    auto& shards = _priority_shards[tag];
+    if (shards.empty()) {
+        return;
+    }
+    const size_t nshard = shards.size();
+    size_t start = butil::fast_rand() % nshard;
+    for (size_t i = 0; i < nshard; ++i) {
+        size_t idx = (start + i) % nshard;
+        // Skip shards being drained
+        if (shards[idx]->draining.load(butil::memory_order_acquire)) {
+            continue;
+        }
+        TaskGroup* expected = NULL;
+        if (shards[idx]->owner.compare_exchange_strong(
+                expected, g,
+                butil::memory_order_release,
+                butil::memory_order_relaxed)) {
+            g->_priority_shard_index = static_cast<int>(idx);
+            return;
+        }
+    }
+    // All shards occupied, this group won't own a shard (will only steal)
+}
+
+void TaskControl::unbind_priority_owner(TaskGroup* g, bthread_tag_t tag) {
+    const int idx = g->_priority_shard_index;
+    if (idx < 0) {
+        return;
+    }
+    auto& shards = _priority_shards[tag];
+    if ((size_t)idx >= shards.size()) {
+        return;
+    }
+    PriorityShard* shard = shards[idx].get();
+    if (shard->owner.load(butil::memory_order_relaxed) != g) {
+        g->_priority_shard_index = -1;
+        return;
+    }
+
+    // Mark draining to prevent new owner from binding
+    shard->draining.store(true, butil::memory_order_release);
+    shard->owner.store(NULL, butil::memory_order_release);
+
+    // Drain inbound
+    bthread_t tid;
+    while (shard->inbound.Dequeue(tid)) {
+        fallback_enqueue(tag, tid);
+    }
+    // Drain wsq, steal since we're no longer the owner
+    while (shard->wsq.steal(&tid)) {
+        fallback_enqueue(tag, tid);
+    }
+
+    // Allow new owner to bind
+    shard->draining.store(false, butil::memory_order_release);
+    g->_priority_shard_index = -1;
+}
+
+void TaskControl::flush_priority_inbound(PriorityShard* shard, size_t max_batch) {
+    bthread_t tid;
+    for (size_t i = 0; i < max_batch; ++i) {
+        if (!shard->inbound.Dequeue(tid)) {
+            break;
+        }
+        if (!shard->wsq.push(tid)) {
+            // wsq full, push back won't work; fallback this task
+            fallback_enqueue(tls_task_group->tag(), tid);
+            break;
+        }
+    }
+}
+
+void TaskControl::fallback_enqueue(bthread_tag_t tag, bthread_t tid) {
+    // Clear BTHREAD_GLOBAL_PRIORITY flag to prevent re-entering priority queue
+    TaskMeta* m = TaskGroup::address_meta(tid);
+    if (m) {
+        m->attr.flags &= ~BTHREAD_GLOBAL_PRIORITY;
+    }
+    // Enqueue via ready_to_run_remote which retries on queue-full,
+    // preventing silent task loss.
+    TaskGroup* g = choose_one_group(tag);
+    if (g) {
+        g->ready_to_run_remote(m);
+    }
 }
 
 }  // namespace bthread
