@@ -443,11 +443,18 @@ static void HandleBackupRequest(void* arg) {
     bthread_id_error(correlation_id, EBACKUPREQUEST);
 }
 
-void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
-                         google::protobuf::RpcController* controller_base,
-                         const google::protobuf::Message* request,
-                         google::protobuf::Message* response,
-                         google::protobuf::Closure* done) {
+template <bool is_pb>
+void Channel::CallMethodInternal(const typename std::conditional<is_pb,
+                        google::protobuf::MethodDescriptor,
+                        brpc::flatbuffers::MethodDescriptor>::type* method,
+                    google::protobuf::RpcController* controller_base,
+                    const typename std::conditional<is_pb,
+                        google::protobuf::Message,
+                        brpc::flatbuffers::Message>::type* request,
+                    typename std::conditional<is_pb,
+                        google::protobuf::Message,
+                        brpc::flatbuffers::Message>::type* response,
+                    google::protobuf::Closure* done) {
     const int64_t start_send_real_us = butil::gettimeofday_us();
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->OnRPCBegin(start_send_real_us);
@@ -507,22 +514,38 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         const int64_t start_send_us = butil::cpuwide_time_us();
         std::string method_name;
         if (_get_method_name) {
-            method_name = butil::EnsureString(_get_method_name(method, cntl));
+            if (is_pb) {
+                auto pb_method = reinterpret_cast<const google::protobuf::MethodDescriptor*>(method);
+                method_name = butil::EnsureString(_get_method_name(pb_method, cntl));
+            } else {
+                // FlatBuffers doesn't support _get_method_name yet
+                method_name = "";
+            }
+            
         } else if (method) {
-            method_name = butil::EnsureString(method->full_name());
+            if (is_pb) {
+                auto pb_method = reinterpret_cast<const google::protobuf::MethodDescriptor*>(method);
+                method_name = butil::EnsureString(pb_method->full_name());
+            } else {
+                auto fb_method = reinterpret_cast<const brpc::flatbuffers::MethodDescriptor*>(method);
+                method_name = butil::EnsureString(fb_method->full_name());
+            }
+            
         } else {
             const static std::string NULL_METHOD_STR = "null-method";
             method_name = NULL_METHOD_STR;
         }
-        std::shared_ptr<Span> span = Span::CreateClientSpan(
+        if (!method_name.empty()) {
+            std::shared_ptr<Span> span = Span::CreateClientSpan(
             method_name, start_send_real_us - start_send_us);
-        if (span) {
-            ControllerPrivateAccessor accessor(cntl);
-            span->set_log_id(cntl->log_id());
-            span->set_base_cid(correlation_id);
-            span->set_protocol(_options.protocol);
-            span->set_start_send_us(start_send_us);
-            accessor.set_span(span);
+            if (span) {
+                ControllerPrivateAccessor accessor(cntl);
+                span->set_log_id(cntl->log_id());
+                span->set_base_cid(correlation_id);
+                span->set_protocol(_options.protocol);
+                span->set_start_send_us(start_send_us);
+                accessor.set_span(span);
+            }
         }
     }
     // Override some options if they haven't been set by Controller
@@ -541,11 +564,20 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     if (cntl->connection_type() == CONNECTION_TYPE_UNKNOWN) {
         cntl->set_connection_type(_options.connection_type);
     }
-    cntl->_response = response;
+    
     cntl->_done = done;
     cntl->_pack_request = _pack_request;
-    cntl->_method = method;
     cntl->_auth = _options.auth;
+    // Use reinterpret_cast to avoid template instantiation errors
+    // The actual type is guaranteed by the is_pb parameter
+    if (is_pb) {
+        cntl->_method = reinterpret_cast<const google::protobuf::MethodDescriptor*>(method);
+        cntl->_response = reinterpret_cast<google::protobuf::Message*>(response);
+    } else {
+        cntl->_fb_method = reinterpret_cast<const brpc::flatbuffers::MethodDescriptor*>(method);
+        cntl->_fb_response = reinterpret_cast<brpc::flatbuffers::Message*>(response);
+        cntl->set_use_flatbuffer();
+    }
 
     if (SingleServer()) {
         cntl->_single_server_id = _server_id;
@@ -629,6 +661,22 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     }
 }
 
+void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
+                         google::protobuf::RpcController* controller_base,
+                         const google::protobuf::Message* request,
+                         google::protobuf::Message* response,
+                         google::protobuf::Closure* done) {
+    CallMethodInternal<true>(method, controller_base, request, response, done);
+}
+
+void Channel::FBCallMethod(const brpc::flatbuffers::MethodDescriptor* method,
+                    google::protobuf::RpcController* controller_base,
+                    const brpc::flatbuffers::Message* request,
+                    brpc::flatbuffers::Message* response,
+                    google::protobuf::Closure* done) {
+    CallMethodInternal<false>(method, controller_base, request, response, done);
+}
+
 void Channel::Describe(std::ostream& os, const DescribeOptions& opt) const {
     os << "Channel[";
     if (SingleServer()) {
@@ -657,5 +705,25 @@ int Channel::CheckHealth() {
         return _lb->SelectServer(sel_in, &sel_out);
     }
 }
+
+// CallMethodInternal instance for pb and fb
+template
+void Channel::CallMethodInternal<true>(
+    const google::protobuf::MethodDescriptor* method,
+    google::protobuf::RpcController* controller_base,
+    const google::protobuf::Message* request,
+    google::protobuf::Message* response,
+    google::protobuf::Closure* done
+);
+
+// CallMethodInternal instance for pb and fb
+template
+void Channel::CallMethodInternal<false>(
+    const brpc::flatbuffers::MethodDescriptor* method,
+    google::protobuf::RpcController* controller_base,
+    const brpc::flatbuffers::Message* request,
+    brpc::flatbuffers::Message* response,
+    google::protobuf::Closure* done
+);
 
 } // namespace brpc
