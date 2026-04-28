@@ -341,7 +341,7 @@ void TaskGroup::asan_task_runner(intptr_t) {
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
     //       different groups.
-    TaskGroup* g = tls_task_group;
+    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer::set_running_status(g->tid(), g->_cur_meta);
 #endif // BRPC_BTHREAD_TRACER
@@ -732,7 +732,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
 #endif
     // Save errno so that errno is bthread-specific.
     int saved_errno = errno;
-    void* saved_unique_user_ptr = tls_unique_user_ptr;
+    void* saved_unique_user_ptr = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr);
 
     TaskMeta* const cur_meta = g->_cur_meta;
     int64_t now = butil::cpuwide_time_ns();
@@ -910,7 +910,7 @@ void TaskGroup::flush_nosignal_tasks_general() {
 
 void TaskGroup::ready_to_run_in_worker(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
-    return tls_task_group->ready_to_run(args->meta, args->nosignal);
+    return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)->ready_to_run(args->meta, args->nosignal);
 }
 
 void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
@@ -919,7 +919,7 @@ void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
     tls_task_group->_control->_task_tracer.set_status(
         TASK_STATUS_READY, args->meta);
 #endif // BRPC_BTHREAD_TRACER
-    return tls_task_group->push_rq(args->meta->tid);
+    return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)->push_rq(args->meta->tid);
 }
 
 void TaskGroup::priority_to_run(void* args_in) {
