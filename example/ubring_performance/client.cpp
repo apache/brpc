@@ -107,8 +107,8 @@ public:
         options.connection_type = FLAGS_connection_type;
         options.timeout_ms = FLAGS_rpc_timeout_ms;
         options.max_retry = 0;
-        // Prevent reusing stale sockets from previous test rounds.
-        options.connection_group = std::to_string(reinterpret_cast<uintptr_t>(this));
+        // TODO A bug exists when the connection_group parameter is used.
+        // options.connection_group = std::to_string(reinterpret_cast<uintptr_t>(this));
         std::string server = g_servers[(rr_index++) % g_servers.size()];
         _channel = new brpc::Channel();
         if (_channel->Init(server.c_str(), &options) != 0) {
