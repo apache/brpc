@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 #include "butil/macros.h"
+#include "butil/reader_writer.h"
 #include "brpc/ubring/ubr_trx.h"
 #include "brpc/ubring/ub_ring_manager.h"
 #include "brpc/ubring/shm/shm_mgr.h"
@@ -31,11 +32,15 @@ namespace ubring {
 DECLARE_int32(ub_flying_io_timeout);
 extern uint32_t g_sleepTime[UBR_TASK_STEP_NUM];
 
-class UBRing {
+class UBRing : public butil::IReader {
 public:
     UBRing();
     ~UBRing();
     DISALLOW_COPY_AND_ASSIGN(UBRing);
+    
+    ssize_t ReadV(const iovec* iov, int iovcnt) override {
+        return UbrTrxReadv(iov, iovcnt);
+    }
 
     RETURN_CODE UbrTrxMapShm(SHM *localShm, SHM *remoteShm);
 

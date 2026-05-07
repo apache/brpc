@@ -742,7 +742,7 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t epEvent) {
                 once_read = MAX_ONCE_READ;
             }
 
-            const ssize_t nr = s->_read_buf.pappend_from_ub_ring(ep->_ub_ring, once_read);
+            const ssize_t nr = s->_read_buf.append_from_reader(ep->_ub_ring, once_read);
             if (nr <= 0) {
                 if (0 == nr) {
                     // Set `read_eof' flag and proceed to feed EOF into `Protocol'
