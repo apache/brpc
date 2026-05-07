@@ -115,6 +115,7 @@ std::string HelloMessage::toString() const {
 
 UBShmEndpoint::UBShmEndpoint(Socket* s)
     : _socket(s)
+    , _state(UNINIT)
     , _ub_ring(nullptr)
     , _cq_sid(INVALID_SOCKET_ID)
 {
@@ -132,6 +133,7 @@ void UBShmEndpoint::Reset() {
     delete _ub_ring;
     _ub_ring = nullptr;
     _cq_sid = INVALID_SOCKET_ID;
+    _state = UNINIT;
 }
 
 void UBConnect::StartConnect(const Socket* socket,
@@ -260,11 +262,11 @@ int UBShmEndpoint::ReadFromFd(void* data, size_t len) {
     int nr = 0;
     size_t received = 0;
     do {
-        const int expected_val = _read_butex->load(butil::memory_order_acquire);
         const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
         nr = read(_socket->fd(), (uint8_t*)data + received, len - received);
         if (nr < 0) {
             if (errno == EAGAIN) {
+                const int expected_val = _read_butex->load(butil::memory_order_acquire);
                 if (bthread::butex_wait(_read_butex, expected_val, &duetime) < 0) {
                     if (errno != EWOULDBLOCK && errno != ETIMEDOUT) {
                         return -1;
