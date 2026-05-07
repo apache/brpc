@@ -165,7 +165,7 @@ public:
         std::unique_ptr<brpc::Controller> cntl_guard(closure->cntl);
         std::unique_ptr<test::PerfTestResponse> response_guard(closure->resp);
         if (closure->cntl->Failed()) {
-            LOG(WARNING) << "RPC call failed: " << closure->cntl->ErrorText();
+            LOG(DEBUG) << "RPC call failed: " << closure->cntl->ErrorText();
             // Don't stop the test immediately, just log the error and continue
         } else {
             g_latency_recorder << closure->cntl->latency_us();
