@@ -1540,64 +1540,6 @@ ssize_t IOPortal::pappend_from_file_descriptor(
     return nr;
 }
 
-ssize_t IOPortal::pappend_from_ub_ring(
-    brpc::ubring::UBRing* _ub_ring,
-    size_t max_count) {
-    iovec vec[MAX_APPEND_IOVEC];
-    int nvec = 0;
-    size_t space = 0;
-    Block* prev_p = NULL;
-    Block* p = _block;
-    // Prepare at most MAX_APPEND_IOVEC blocks or space of blocks >= max_count
-    do {
-        if (p == NULL) {
-            p = iobuf::acquire_tls_block();
-            if (BAIDU_UNLIKELY(!p)) {
-                errno = ENOMEM;
-                return -1;
-            }
-            if (prev_p != NULL) {
-                prev_p->u.portal_next = p;
-            } else {
-                _block = p;
-            }
-        }
-        vec[nvec].iov_base = p->data + p->size;
-        vec[nvec].iov_len = std::min(p->left_space(), max_count - space);
-        space += vec[nvec].iov_len;
-        ++nvec;
-        if (space >= max_count || nvec >= MAX_APPEND_IOVEC) {
-            break;
-        }
-        prev_p = p;
-        p = p->u.portal_next;
-    } while (1);
-
-    ssize_t nr = 0;
-    nr = _ub_ring->UbrTrxReadv(vec, nvec);
-    if (nr <= 0) {  // -1 or 0
-        if (empty()) {
-            return_cached_blocks();
-        }
-        return nr;
-    }
-
-    size_t total_len = nr;
-    do {
-        const size_t len = std::min(total_len, _block->left_space());
-        total_len -= len;
-        const IOBuf::BlockRef r = { _block->size, (uint32_t)len, _block };
-        _push_back_ref(r);
-        _block->size += len;
-        if (_block->full()) {
-            Block* const saved_next = _block->u.portal_next;
-            _block->dec_ref();  // _block may be deleted
-            _block = saved_next;
-        }
-    } while (total_len);
-    return nr;
-}
-
 ssize_t IOPortal::append_from_reader(IReader* reader, size_t max_count) {
     iovec vec[MAX_APPEND_IOVEC];
     int nvec = 0;
