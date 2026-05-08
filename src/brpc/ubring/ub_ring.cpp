@@ -129,7 +129,7 @@ RETURN_CODE UBRing::UbrAddCloseTimer() {
     }
 
     uint32_t eventQTimerInterval = FLAGS_ub_event_queue_timer_interval * TIME_COVERSION;
-    struct itimerspec timeSpec = {
+    ::itimerspec timeSpec = {
             .it_interval = {.tv_sec = 0, .tv_nsec = eventQTimerInterval},
             .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
@@ -202,7 +202,7 @@ RETURN_CODE UBRing::UbrAddHBTimer() {
         return UBRING_ERR;
     }
 
-    struct itimerspec timeSpec = {
+    ::itimerspec timeSpec = {
             .it_interval = {.tv_sec = FLAGS_ub_hb_timer_interval, .tv_nsec = 0},
             .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
@@ -298,7 +298,7 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
         return UBRING_OK;
     }
 
-    struct itimerspec timeSpec = {
+    ::itimerspec timeSpec = {
             .it_interval = {.tv_sec = 0, .tv_nsec = 0},
             .it_value = {.tv_sec = FLAGS_ub_flying_io_timeout, .tv_nsec = 0}
     };

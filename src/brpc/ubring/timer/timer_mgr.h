@@ -54,7 +54,7 @@ RETURN_CODE TimerInit(void);
 void TimerModuleDestroy(void);
 void *UnifiedCallback(void *args);
 void *TimerEpoll(void *args);
-int32_t TimerStart(const struct itimerspec *time, void *(*cb)(void *), void *args);
+int32_t TimerStart(const ::itimerspec *time, void *(*cb)(void *), void *args);
 uint32_t GetActiveTimerNum(void);
 void CloseTimerFd(uint32_t fd);
 
