@@ -71,7 +71,7 @@ RETURN_CODE ShmMgrInit(void)
             return UBRING_ERR;
         }
     }
-    LOG(DEBUG) << "shm mgr init success, shm type=" << g_shmType;
+    LOG(INFO) << "shm mgr init success, shm type=" << g_shmType;
     return UBRING_OK;
 }
 
@@ -83,7 +83,7 @@ void ShmMgrFini(void)
             return;
         }
     }
-    LOG(DEBUG) << "shm mgr fini success, shm type=" << g_shmType;
+    LOG(INFO) << "shm mgr fini success, shm type=" << g_shmType;
 }
 
 void SetShmType(SHM_TYPE type)

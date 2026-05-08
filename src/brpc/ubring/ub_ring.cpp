@@ -119,7 +119,6 @@ RETURN_CODE UBRing::UbrTrxClose() {
         LOG(WARNING) << "Trx close, unlink local shm failed, trx local name=" << _trx->localShm.name
                      << ", rc=" << unlinkRc;
     }
-    LOG(DEBUG) << "The peer is closed, local name=" << _trx->localShm.name;
     return UBRING_OK;
 }
 
@@ -172,7 +171,6 @@ void* UBRing::UbrTrxCloseCallback(void* args) {
     int fd = (int)trx->localShm.fd;
     do {
         if (ATOMIC_LOAD(trx->closeCnt) == 0) {
-            LOG(DEBUG) << "Trx close callback skipped, already closed, name=" << trx->localShm.name;
             break;
         }
         ATOMIC_SUB(trx->closeCnt, 1);
@@ -297,7 +295,6 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
     }
 
     if (trx->clearTimerFd > 0) {
-        LOG(DEBUG) << "Trx close timer already added, name=" << trx->localShm.name;
         return UBRING_OK;
     }
 
@@ -722,7 +719,6 @@ RETURN_CODE UBRing::UbrTrxMapLocalShm(SHM *localShm)
     _trx->ubrTx.localDataStatusQ.addr = localShm->addr + DATASTATUSQ_ADDR_OFFSET;
     _trx->ubrTx.localDataStatusQ.len = UBR_DATASTATUSQ_LEN;
     size_t addrAlignedOffset = Aligned64Offset(localShm->addr + DATAQ_ADDR_OFFSET);
-    LOG(DEBUG) << "UbrRx's localDataQ address will aligned with offset=" << addrAlignedOffset;
     _trx->ubrRx.localDataQ.addr = localShm->addr + DATAQ_ADDR_OFFSET + addrAlignedOffset;
     _trx->ubrRx.localDataQ.len = localShm->len - DATAQ_ADDR_OFFSET - addrAlignedOffset;
     return UBRING_OK;
@@ -746,7 +742,6 @@ RETURN_CODE UBRing::UbrTrxMapRemoteShm(SHM *remoteShm)
     _trx->ubrRx.remoteDataStatusQ.addr = remoteShm->addr + DATASTATUSQ_ADDR_OFFSET;
     _trx->ubrRx.remoteDataStatusQ.len = UBR_DATASTATUSQ_LEN;
     size_t addrAlignedOffset = Aligned64Offset(remoteShm->addr + DATAQ_ADDR_OFFSET);
-    LOG(DEBUG) << "UbrTx's remoteDataQ will aligned with offset=" << addrAlignedOffset;
     _trx->ubrTx.remoteDataQ.addr = remoteShm->addr + DATAQ_ADDR_OFFSET + addrAlignedOffset;
     _trx->ubrTx.remoteDataQ.len = remoteShm->len - DATAQ_ADDR_OFFSET - addrAlignedOffset;
     return UBRING_OK;

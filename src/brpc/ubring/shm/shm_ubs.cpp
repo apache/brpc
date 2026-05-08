@@ -163,7 +163,7 @@ do {
 
     // 通过MXE获取memid
     shm->memid = 1; // 暂时打桩
-    LOG(DEBUG) << "Ubs malloc local shm=" << shm->name << " length=" << shm->len << " memid=" << shm->memid << " success.";
+    LOG(INFO) << "Ubs malloc local shm=" << shm->name << " length=" << shm->len << " memid=" << shm->memid << " success.";
     return UBRING_OK;
 }
 
@@ -186,7 +186,7 @@ RETURN_CODE UbsShmMunmap(SHM *shm)
         return SHM_ERR;
     }
 
-    LOG(DEBUG) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
@@ -201,17 +201,17 @@ RETURN_CODE UbsShmFree(SHM *shm)
     int ret = ubsmem_shmem_deallocate(shm->name);
     if (ret != UBSM_OK) {
         if (ret == UBSM_ERR_IN_USING) {
-            LOG(DEBUG) << "Ubs free shm=" << shm->name << " failed, resource attached=" << ret;
+            LOG(INFO) << "Ubs free shm=" << shm->name << " failed, resource attached=" << ret;
             return SHM_ERR_RESOURCE_ATTACHED;
         } else if (ret == UBSM_ERR_NOT_FOUND) {
-            LOG(DEBUG) << "Ubs free shm=" << shm->name << " failed, resource not found=" << ret;
+            LOG(INFO) << "Ubs free shm=" << shm->name << " failed, resource not found=" << ret;
             return SHM_ERR_NOT_FOUND;
         }
         LOG(ERROR) << "Ubs free shm="<< shm->name << " failed, ret=" << ret;
         return SHM_ERR;
     }
     shm->addr = NULL;
-    LOG(DEBUG) << "Ubs free shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "Ubs free shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
@@ -244,7 +244,7 @@ RETURN_CODE UbsShmLocalFree(SHM *shm)
         return SHM_ERR;
     }
     shm->addr = NULL;
-    LOG(DEBUG) << "Ubs free local shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "Ubs free local shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
@@ -268,7 +268,7 @@ RETURN_CODE UbsShmLocalMmap(SHM *shm, int prot)
         return SHM_ERR;
     }
 
-    LOG(DEBUG) << "Ubs mmap remote shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "Ubs mmap remote shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
@@ -291,7 +291,7 @@ RETURN_CODE UbsShmRemoteFree(SHM *shm)
         return SHM_ERR;
     }
 
-    LOG(DEBUG) << "Ubs free Remote shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "Ubs free Remote shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
@@ -400,7 +400,7 @@ static void DeleteShmToList(ShmList* shmList)
     } else {
         shmList->tail = NULL;
     }
-    LOG(DEBUG) << "Delete shm to list, name=" << curNode->shm.name << " size=" << shmList->size;
+    LOG(INFO) << "Delete shm to list, name=" << curNode->shm.name << " size=" << shmList->size;
     FREE_PTR(curNode);
     shmList->size--;
 }
@@ -429,7 +429,7 @@ void *UbsShmCallback(void* args)
             LOG(ERROR) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " failed, ret=" << ret;
             return NULL;
         }
-        LOG(DEBUG) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " success.";
+        LOG(INFO) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " success.";
 
         ret = ubsmem_shmem_deallocate(shm.name);
         if (ret != UBSM_OK) {
@@ -438,7 +438,7 @@ void *UbsShmCallback(void* args)
             return NULL;
         }
         DeleteShmToList(shmList);
-        LOG(DEBUG) << "Ubs free local shm=" << shm.name << " length=" << shm.len << " success.";
+        LOG(INFO) << "Ubs free local shm=" << shm.name << " length=" << shm.len << " success.";
     }
 
     return NULL;
@@ -554,7 +554,7 @@ RETURN_CODE AddShmToList(ShmList *shmList, SHM *shm)
         shmList->tail = newShmNode;
     }
     shmList->size++;
-    LOG(DEBUG) << "Add shm to list success, shm name=" << shm->name << " size=" << shmList->size;
+    LOG(INFO) << "Add shm to list success, shm name=" << shm->name << " size=" << shmList->size;
     return UBRING_OK;
 }
 }
