@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 #include <gflags/gflags.h>
 #include <stdio.h>
 #include <string.h>
@@ -31,8 +30,7 @@ namespace ubring {
 DEFINE_int32(ub_shm_type, 1, "shm type: 1-ipc; 2-ub_ring");
 static SHM_TYPE g_shmType;
 
-static bool CheckInputShmParam(SHM *shm)
-{
+static bool CheckInputShmParam(SHM *shm) {
     if (shm == NULL) {
         LOG(ERROR) << "Input Param shm is NULL.";
         return false;
@@ -40,7 +38,8 @@ static bool CheckInputShmParam(SHM *shm)
 
     size_t nameLen = strlen(shm->name);
     if (nameLen <= 0 || nameLen > SHM_MAX_NAME_LEN) {
-        LOG(ERROR) << "Shm name=" << shm->name << ", length=" << shm->len << ", which is not between 1 and " << SHM_MAX_NAME_LEN;
+        LOG(ERROR) << "Shm name=" << shm->name << ", length=" << shm->len 
+                   << ", which is not between 1 and " << SHM_MAX_NAME_LEN;
         return false;
     }
 
@@ -57,8 +56,7 @@ static bool CheckInputShmParam(SHM *shm)
     return true;
 }
 
-RETURN_CODE ShmMgrInit(void)
-{
+RETURN_CODE ShmMgrInit(void) {
     if (UNLIKELY(FLAGS_ub_shm_type >= (uint32_t)SHM_TYPE_UNSUPPORT)) {
         LOG(ERROR) << "Shm type config=" << FLAGS_ub_shm_type << " is not supported.";
         return UBRING_ERR;
@@ -75,8 +73,7 @@ RETURN_CODE ShmMgrInit(void)
     return UBRING_OK;
 }
 
-void ShmMgrFini(void)
-{
+void ShmMgrFini(void) {
     if (g_shmType == SHM_TYPE_UBS) {
         if (UbsShmFini() != UBRING_OK) {
             LOG(ERROR) << "Fini beiming ubs shm failed.";
@@ -86,13 +83,11 @@ void ShmMgrFini(void)
     LOG(INFO) << "shm mgr fini success, shm type=" << g_shmType;
 }
 
-void SetShmType(SHM_TYPE type)
-{
+void SetShmType(SHM_TYPE type) {
     g_shmType = type;
 }
 
-RETURN_CODE ShmLocalMalloc(SHM *shm)
-{
+RETURN_CODE ShmLocalMalloc(SHM *shm) {
     if (UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
@@ -113,8 +108,7 @@ RETURN_CODE ShmLocalMalloc(SHM *shm)
     return rc;
 }
 
-RETURN_CODE ShmLocalCalloc(SHM *shm)
-{
+RETURN_CODE ShmLocalCalloc(SHM *shm) {
     RETURN_CODE rc = ShmLocalMalloc(shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Failed to alloc local shm.";
@@ -124,8 +118,7 @@ RETURN_CODE ShmLocalCalloc(SHM *shm)
     return UBRING_OK;
 }
 
-RETURN_CODE ShmLocalFree(SHM *shm)
-{
+RETURN_CODE ShmLocalFree(SHM *shm) {
     if (UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
@@ -146,8 +139,7 @@ RETURN_CODE ShmLocalFree(SHM *shm)
     return rc;
 }
 
-RETURN_CODE ShmRemoteMalloc(SHM *shm)
-{
+RETURN_CODE ShmRemoteMalloc(SHM *shm) {
     if (UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
@@ -168,8 +160,7 @@ RETURN_CODE ShmRemoteMalloc(SHM *shm)
     return rc;
 }
 
-RETURN_CODE ShmRemoteFree(SHM *shm)
-{
+RETURN_CODE ShmRemoteFree(SHM *shm) {
     if (UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
@@ -190,8 +181,7 @@ RETURN_CODE ShmRemoteFree(SHM *shm)
     return rc;
 }
 
-RETURN_CODE ShmLocalMmap(SHM *shm, int prot)
-{
+RETURN_CODE ShmLocalMmap(SHM *shm, int prot) {
     if (UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
@@ -212,13 +202,12 @@ RETURN_CODE ShmLocalMmap(SHM *shm, int prot)
     return rc;
 }
 
-RETURN_CODE ShmMunmap(SHM *shm)
-{
+RETURN_CODE ShmMunmap(SHM *shm) {
     if (UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }
- 
+
     RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:
@@ -233,14 +222,13 @@ RETURN_CODE ShmMunmap(SHM *shm)
     }
     return rc;
 }
- 
-RETURN_CODE ShmFree(SHM *shm)
-{
+
+RETURN_CODE ShmFree(SHM *shm) {
     if (UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }
- 
+
     RETURN_CODE rc = UBRING_OK;
     switch (g_shmType) {
         case SHM_TYPE_IPC:

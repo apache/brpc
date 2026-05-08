@@ -82,6 +82,10 @@ typedef int errno_t;
 #define IPV4_FIRST_BYTE_OFFSET 24
 #define COPY_ALIGNED_DATA_BYTES 64
 
+#if defined(OS_MACOSX)
+#define EPOLLET 0x80000000
+#endif
+
 static inline int Copy64Byte(int8_t *dst, int8_t *src) {
 #ifdef LS64
     asm volatile (
