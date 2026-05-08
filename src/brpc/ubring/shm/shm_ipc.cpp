@@ -59,7 +59,6 @@ RETURN_CODE IpcShmLocalMalloc(SHM *shm)
     }
 
     close(fd);
-    LOG(INFO) << "IPC Create shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
@@ -97,7 +96,6 @@ RETURN_CODE IpcShmFree(SHM *shm)
         LOG_EVERY_SECOND(ERROR) << "IPC free shm=" << shm->name << " failed, errno=" << errno;
         return SHM_ERR;
     }
-    LOG(INFO) << "IPC free shm=" << shm->name << " success.";
     return UBRING_OK;
 }
 
@@ -148,7 +146,6 @@ RETURN_CODE IpcShmRemoteMalloc(SHM *shm)
     }
 
     close(fd);
-    LOG(INFO) << "IPC malloc remote shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 

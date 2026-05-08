@@ -17,10 +17,17 @@
 
 #ifndef BRPC_TIMER_MGR_H
 #define BRPC_TIMER_MGR_H
-#include <sys/epoll.h>
-#include <sys/timerfd.h>
 #include <pthread.h>
 #include "brpc/ubring/common/common.h"
+
+#if defined(OS_LINUX)
+#include <sys/epoll.h>
+#include <sys/timerfd.h>
+#elif defined(OS_MACOSX)
+#include <sys/types.h>
+#include <sys/event.h>
+#include <sys/time.h>
+#endif
 
 #define MAX_TIMER 1024
 #define TIMER_EPOLL_WAIT_TIMEOUT 1000
