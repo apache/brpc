@@ -55,9 +55,13 @@ RETURN_CODE UbsShmInterfacesLoad(void)
 {
 #ifndef UT
     const char *ubsmSdkLocation = "/usr/local/ubs_mem/lib/libubsm_sdk.so";
+#if defined(OS_LINUX)
     void* dlhandler = dlmopen(LM_ID_NEWLM, ubsmSdkLocation, RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE | RTLD_DEEPBIND);
+#elif defined(OS_MACOSX)
+    void* dlhandler = dlopen(ubsmSdkLocation, RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
+#endif
     if (dlhandler == NULL) {
-        LOG(ERROR) << "Dlmopen libubsm_sdk.so in " << ubsmSdkLocation << " failed, error:" << dlerror();
+        LOG(ERROR) << "Dlopen libubsm_sdk.so in " << ubsmSdkLocation << " failed, error:" << dlerror();
         return UBRING_ERR;
     }
 

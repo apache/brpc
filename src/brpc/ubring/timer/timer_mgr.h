@@ -18,6 +18,7 @@
 #ifndef BRPC_TIMER_MGR_H
 #define BRPC_TIMER_MGR_H
 #include <pthread.h>
+#include <time.h>
 #include "brpc/ubring/common/common.h"
 
 #if defined(OS_LINUX)

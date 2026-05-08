@@ -228,7 +228,7 @@ void *TimerEpoll(void *args) {
 #endif
 
         if (UNLIKELY(readyNum == -1)) {
-            error_t err = errno;
+            errno_t err = errno;
             if (err == EINTR) {
                 LOG_EVERY_SECOND(WARNING) << "Epoll/Kqueue wait was interrupted. errno=" << err;
                 continue;
