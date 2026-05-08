@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 #include "gperftools_helper.h"
+#include "butil/atomicops.h"
 #include <bthread/rwlock.h>
 
 namespace {
@@ -286,6 +287,253 @@ TEST(RWLockTest, mix_thread_types) {
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
 }
 
+// Tests below verify the writer-priority semantics and the cleanup path
+// guarded by the design notes in bthread/rwlock.cpp.
+struct WriterPriorityArgs {
+    bthread_rwlock_t* rw;
+    butil::atomic<int>* order;
+    int my_order; // sequence number captured inside the critical section
+    int hold_us;
+};
+
+void* wp_writer_fn(void* arg) {
+    auto* a = (WriterPriorityArgs*)arg;
+    EXPECT_EQ(0, bthread_rwlock_wrlock(a->rw));
+    a->my_order = a->order->fetch_add(1, butil::memory_order_relaxed);
+    bthread_usleep(a->hold_us);
+    EXPECT_EQ(0, bthread_rwlock_unlock(a->rw));
+    return NULL;
+}
+
+void* wp_reader_fn(void* arg) {
+    auto* a = (WriterPriorityArgs*)arg;
+    EXPECT_EQ(0, bthread_rwlock_rdlock(a->rw));
+    a->my_order = a->order->fetch_add(1, butil::memory_order_relaxed);
+    bthread_usleep(a->hold_us);
+    EXPECT_EQ(0, bthread_rwlock_unlock(a->rw));
+    return NULL;
+}
+
+// Verifies the writer-priority invariant guarded by the order
+// "unlock writer_queue_mutex BEFORE fetch_sub(writer_wait_count)" in
+// rwlock_unwrlock(): once a writer is queued, any new reader arriving
+// later MUST yield to that writer.
+TEST(RWLockTest, writer_priority) {
+    bthread_setconcurrency(8);
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+
+    // (1) Main thread holds the read lock first.
+    ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
+
+    butil::atomic<int> order(0);
+    WriterPriorityArgs warg  {&rw, &order, -1, 5000};
+    WriterPriorityArgs r2arg {&rw, &order, -1, 0};
+
+    // (2) Start a writer; it should park inside wrlock() because the read
+    //     lock is held. Sleep long enough for it to fetch_add into
+    //     writer_wait_count and reach the butex_wait on `lock_word'.
+    bthread_t wth;
+    ASSERT_EQ(0, bthread_start_urgent(&wth, NULL, wp_writer_fn, &warg));
+    bthread_usleep(50 * 1000);
+
+    // (3) Now spawn a fresh reader. By writer-priority it MUST observe
+    //     writer_wait_count > 0 and park on it (NOT join the active read
+    //     lock).
+    bthread_t r2th;
+    ASSERT_EQ(0, bthread_start_urgent(&r2th, NULL, wp_reader_fn, &r2arg));
+    bthread_usleep(50 * 1000);
+
+    // (4) Release the original read lock. The writer should win the race
+    //     and complete BEFORE the queued reader.
+    ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+
+    bthread_join(wth, NULL);
+    bthread_join(r2th, NULL);
+
+    EXPECT_GE(warg.my_order, 0);
+    EXPECT_GE(r2arg.my_order, 0);
+    EXPECT_LT(warg.my_order, r2arg.my_order)
+        << "Writer-priority violated: writer entered with order="
+        << warg.my_order << " but late reader entered with order="
+        << r2arg.my_order;
+
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
+void* wp_timed_wrlock_short(void* arg) {
+    auto* rw = (bthread_rwlock_t*)arg;
+    timespec ts = butil::milliseconds_from_now(50);
+    EXPECT_EQ(ETIMEDOUT, bthread_rwlock_timedwrlock(rw, &ts));
+    return NULL;
+}
+
+// Verifies the cleanup path of rwlock_wrlock_cleanup(): after multiple
+// writers fail with ETIMEDOUT, writer_wait_count must be back to 0 so
+// that subsequent readers are not blocked by leftover "ghost shares".
+TEST(RWLockTest, wrlock_failure_does_not_leak_writer_count) {
+    bthread_setconcurrency(8);
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+
+    // Hold the read lock so every wrlock attempt must block on `lock_word'.
+    ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
+
+    const int N = 8;
+    bthread_t wth[N];
+    for (int i = 0; i < N; ++i) {
+        ASSERT_EQ(0, bthread_start_urgent(&wth[i], NULL, wp_timed_wrlock_short, &rw));
+    }
+    // Wait for all timed wrlock attempts to time out and run cleanup.
+    for (int i = 0; i < N; ++i) {
+        bthread_join(wth[i], NULL);
+    }
+
+    // Release the read lock; from this point on no writer is in flight,
+    // so a new reader MUST acquire the lock immediately.
+    ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+
+    timespec ts = butil::milliseconds_from_now(500);
+    butil::Timer t;
+    t.start();
+    ASSERT_EQ(0, bthread_rwlock_timedrdlock(&rw, &ts));
+    t.stop();
+    EXPECT_LT(t.m_elapsed(), 100)
+        << "Reader was blocked for " << t.m_elapsed() << "ms; "
+        << "writer_wait_count was likely leaked by the cleanup path.";
+
+    ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
+struct DataConsistencyArgs {
+    bthread_rwlock_t* rw;
+    int64_t* shared;       // protected by rw
+    int64_t local_inc;     // writer: number of increments this thread did
+    int64_t observed_max;  // reader: max value observed
+    bool is_writer;
+};
+
+void* dc_worker(void* arg) {
+    auto* a = (DataConsistencyArgs*)arg;
+    while (!g_stopped) {
+        if (a->is_writer) {
+            EXPECT_EQ(0, bthread_rwlock_wrlock(a->rw));
+            ++(*a->shared);
+            ++a->local_inc;
+            EXPECT_EQ(0, bthread_rwlock_unlock(a->rw));
+        } else {
+            EXPECT_EQ(0, bthread_rwlock_rdlock(a->rw));
+            int64_t v = *a->shared;
+            if (v > a->observed_max) {
+                a->observed_max = v;
+            }
+            EXPECT_EQ(0, bthread_rwlock_unlock(a->rw));
+        }
+    }
+    return NULL;
+}
+
+// Verifies the release/acquire memory ordering pair on `lock_word'.
+// If the CAS in unwrlock()/unrdlock() weren't release-ordered, or the
+// CAS in rdlock()/wrlock() weren't acquire-ordered, writes done inside
+// the critical section could appear lost or inconsistent to other
+// threads, causing the final counter to disagree with total writer ops.
+TEST(RWLockTest, data_consistency) {
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+
+    g_stopped = false;
+    const int W = 4;
+    const int R = 8;
+    bthread_setconcurrency(W + R + 4);
+
+    int64_t shared = 0;
+    std::vector<DataConsistencyArgs> args(W + R);
+    std::vector<bthread_t> threads(W + R);
+    for (int i = 0; i < W + R; ++i) {
+        args[i].rw = &rw;
+        args[i].shared = &shared;
+        args[i].local_inc = 0;
+        args[i].observed_max = -1;
+        args[i].is_writer = (i < W);
+        ASSERT_EQ(0, bthread_start_urgent(&threads[i], NULL, dc_worker, &args[i]));
+    }
+
+    bthread_usleep(500 * 1000);
+    g_stopped = true;
+
+    int64_t total_inc = 0;
+    for (int i = 0; i < W + R; ++i) {
+        bthread_join(threads[i], NULL);
+        if (args[i].is_writer) {
+            total_inc += args[i].local_inc;
+        }
+    }
+
+    // No lost updates: every writer's increment is reflected in `shared'.
+    EXPECT_EQ(total_inc, shared)
+        << "Lost updates: total writer ops=" << total_inc
+        << " but shared counter=" << shared;
+    // No reader saw a value greater than the final counter.
+    for (int i = W; i < W + R; ++i) {
+        EXPECT_LE(args[i].observed_max, shared)
+            << "Reader " << i << " observed_max=" << args[i].observed_max
+            << " > final shared=" << shared;
+    }
+
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
+void* ws_reader_loop(void* arg) {
+    auto* rw = (bthread_rwlock_t*)arg;
+    while (!g_stopped) {
+        EXPECT_EQ(0, bthread_rwlock_rdlock(rw));
+        // Hold the read lock briefly to keep the lock continuously busy.
+        bthread_usleep(100);
+        EXPECT_EQ(0, bthread_rwlock_unlock(rw));
+    }
+    return NULL;
+}
+
+// Verifies that under a continuous read load, a writer can still acquire
+// the lock in bounded time. This is the end-to-end guarantee of the
+// writer-priority strategy: any reader arriving AFTER the writer entered
+// wrlock() must yield, ensuring the writer never starves.
+TEST(RWLockTest, no_writer_starvation) {
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+
+    g_stopped = false;
+    const int R = 16;
+    bthread_setconcurrency(R + 4);
+    bthread_t rth[R];
+    for (int i = 0; i < R; ++i) {
+        ASSERT_EQ(0, bthread_start_urgent(&rth[i], NULL, ws_reader_loop, &rw));
+    }
+
+    // Let the readers ramp up and saturate the lock.
+    bthread_usleep(50 * 1000);
+
+    // A single writer must succeed within a generous budget.
+    butil::Timer t;
+    t.start();
+    ASSERT_EQ(0, bthread_rwlock_wrlock(&rw));
+    t.stop();
+
+    EXPECT_LT(t.m_elapsed(), 1000)
+        << "Writer starved for " << t.m_elapsed() << "ms under "
+        << R << " concurrent readers; writer-priority is broken.";
+
+    ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+
+    g_stopped = true;
+    for (int i = 0; i < R; ++i) {
+        bthread_join(rth[i], NULL);
+    }
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
 struct BAIDU_CACHELINE_ALIGNMENT PerfArgs {
     bthread_rwlock_t* rw;
     int64_t counter;
@@ -386,13 +634,14 @@ void PerfTest(uint32_t writer_ratio, ThreadId* /*dummy*/, int thread_num,
               << " writer_ratio=" << writer_ratio
               << " reader_num=" << reader_num
               << " read_count=" << read_count
-              << " read_average_time=" << (read_count == 0 ? 0 : read_wait_time / (double)read_count)
+              << " read_average_time=" << (read_count == 0 ? 0 : read_wait_time / (double)read_count) << "ns"
               << " writer_num=" << writer_num
               << " write_count=" << write_count
-              << " write_average_time=" << (write_count == 0 ? 0 : write_wait_time / (double)write_count);
+              << " write_average_time=" << (write_count == 0 ? 0 : write_wait_time / (double)write_count) << "ns";
 }
 
 TEST(RWLockTest, performance) {
+    bthread_setconcurrency(16);
     const int thread_num = 12;
     PerfTest(0, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
     PerfTest(0, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
