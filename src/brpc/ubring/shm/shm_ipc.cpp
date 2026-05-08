@@ -59,14 +59,14 @@ RETURN_CODE IpcShmLocalMalloc(SHM *shm)
     }
 
     close(fd);
-    LOG(DEBUG) << "IPC Create shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "IPC Create shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
 RETURN_CODE IpcShmMunmap(SHM *shm)
 {
     if (shm->addr == NULL) {
-        LOG(DEBUG) << "IPC unmap shm=" << shm->name << " already unmapped.";
+        LOG(INFO) << "IPC unmap shm=" << shm->name << " already unmapped.";
         return UBRING_OK;
     }
 
@@ -76,7 +76,7 @@ RETURN_CODE IpcShmMunmap(SHM *shm)
         return SHM_ERR;
     }
 
-    LOG(DEBUG) << "IPC unmap shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "IPC unmap shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
@@ -90,21 +90,21 @@ RETURN_CODE IpcShmFree(SHM *shm)
             return SHM_ERR_RESOURCE_ATTACHED;
         }
         if (errno == ENOENT) {
-            LOG(DEBUG) << "IPC free shm=" << shm->name << " already deleted.";
+            LOG(INFO) << "IPC free shm=" << shm->name << " already deleted.";
             shm->addr = NULL;
             return SHM_ERR_NOT_FOUND;
         }
         LOG_EVERY_SECOND(ERROR) << "IPC free shm=" << shm->name << " failed, errno=" << errno;
         return SHM_ERR;
     }
-    LOG(DEBUG) << "IPC free shm=" << shm->name << " success.";
+    LOG(INFO) << "IPC free shm=" << shm->name << " success.";
     return UBRING_OK;
 }
 
 RETURN_CODE IpcShmLocalFree(SHM *shm)
 {
     if (shm->addr == NULL) {
-        LOG(DEBUG) << "IPC free local shm=" << shm->name << " already freed.";
+        LOG(INFO) << "IPC free local shm=" << shm->name << " already freed.";
         return SHM_ERR_NOT_FOUND;
     }
 
@@ -120,7 +120,7 @@ RETURN_CODE IpcShmLocalFree(SHM *shm)
             return SHM_ERR_RESOURCE_ATTACHED;
         }
         if (errno == ENOENT) {
-            LOG(DEBUG) << "IPC delete shm=" << shm->name << " already deleted by peer.";
+            LOG(INFO) << "IPC delete shm=" << shm->name << " already deleted by peer.";
             shm->addr = NULL;
             return SHM_ERR_NOT_FOUND;
         }
@@ -128,7 +128,7 @@ RETURN_CODE IpcShmLocalFree(SHM *shm)
         return SHM_ERR;
     }
     shm->addr = NULL;
-    LOG(DEBUG) << "IPC free local shm=" << shm->name << " success.";
+    LOG(INFO) << "IPC free local shm=" << shm->name << " success.";
     return UBRING_OK;
 }
 
@@ -148,7 +148,7 @@ RETURN_CODE IpcShmRemoteMalloc(SHM *shm)
     }
 
     close(fd);
-    LOG(DEBUG) << "IPC malloc remote shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "IPC malloc remote shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
@@ -168,14 +168,14 @@ RETURN_CODE IpcShmLocalMmap(SHM *shm, int prot)
     }
 
     close(fd);
-    LOG(DEBUG) << "IPC mmap remote shm=" << shm->name << " length=" << shm->len << " success.";
+    LOG(INFO) << "IPC mmap remote shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
 
 RETURN_CODE IpcShmRemoteFree(SHM *shm)
 {
     if (shm->addr == NULL) {
-        LOG(DEBUG) << "IPC free remote shm=" << shm->name << " already freed.";
+        LOG(INFO) << "IPC free remote shm=" << shm->name << " already freed.";
         return UBRING_OK;
     }
 
@@ -185,7 +185,7 @@ RETURN_CODE IpcShmRemoteFree(SHM *shm)
         return SHM_ERR;
     }
 
-    LOG(DEBUG) << "IPC free remote shm=" << shm->name << " success.";
+    LOG(INFO) << "IPC free remote shm=" << shm->name << " success.";
     return UBRING_OK;
 }
 }

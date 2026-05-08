@@ -148,7 +148,7 @@ RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx) {
     LOCK_GUARD(g_ubrTrxMgrMtx);
     uint32_t idx = trx->trxMgrIndex;
     if (g_ubrMgr.trxMgrUnitStatus[idx] == UBR_MGR_UNIT_FREE) {
-        LOG(DEBUG) << "Release trx already freed, name=" << trx->localShm.name;
+        LOG(INFO) << "Release trx already freed, name=" << trx->localShm.name;
         return UBRING_OK;
     }
 
@@ -242,7 +242,7 @@ int32_t UBRingManager::UbEventCallback(const char *shmName)
         LOG(ERROR) << "Ub event callback failed, trx mgr is null.";
         return UBRING_ERR;
     }
-    LOG(DEBUG) << "Ub event callback is processing. shm_name=" << shmName;
+    LOG(INFO) << "Ub event callback is processing. shm_name=" << shmName;
 
     for (uint32_t i = 0; i < g_ubrMgr.trxCap; ++i) {
         if (g_ubrMgr.trxMgrUnitStatus[i] == UBR_MGR_UNIT_FREE) {
@@ -253,7 +253,7 @@ int32_t UBRingManager::UbEventCallback(const char *shmName)
             strcmp(g_ubrMgr.trxMgr[i].remoteShm.name, shmName) == 0) {  // 故障链路为该trx的对端shm
             ++g_ubEventCnt;
             int fd = (int)g_ubrMgr.trxMgr[i].localShm.fd;
-            LOG(INFO) << "Ub event callback, the fd of the faulty link is " << fd;
+            LOG(WARNING) << "Ub event callback, the fd of the faulty link is " << fd;
             return UBRing::UbrPassiveClearTrx(&g_ubrMgr.trxMgr[i], fd, UBR_UB_EVENT);
         }
     }
