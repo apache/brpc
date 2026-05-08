@@ -37,7 +37,7 @@
 namespace brpc {
 namespace ubring {
 #define UBRING_MK_UBSM(ret, fn, args) ret (*fn) args = NULL
-#include "brpc/ubring/rack_mem/declare_shm_ubs.h.tmpl"
+#include "brpc/ubring/rack_mem/declare_shm_ubs.h"
 #define SHM_RIGHT_MODE 0666
 #define UBRING_REGION_NAME_PREFIX "UbrONE2ALLRegion"
 DEFINE_uint32(node_location, 1, "Location of the ub machine.");
@@ -77,7 +77,7 @@ RETURN_CODE UbsShmInterfacesLoad(void)
             return UBRING_ERR;                                                          \
         }                                                                            \
     } while (0)
-#include "brpc/ubring/rack_mem/declare_shm_ubs.h.tmpl"
+#include "brpc/ubring/rack_mem/declare_shm_ubs.h"
 
     dlclose(dlhandler);
     dlhandler = NULL;
