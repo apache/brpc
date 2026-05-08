@@ -39,8 +39,8 @@ static int32_t g_timerModuleInitialized;
 #if defined(OS_MACOSX)
 static int timerfd_create_macosx(int clockid, int flags);
 static int timerfd_settime_macosx(int fd, int flags,
-                                   const struct itimerspec *new_value,
-                                   struct itimerspec *old_value);
+                                   const ::itimerspec *new_value,
+                                   ::itimerspec *old_value);
 #endif
 
 static RETURN_CODE DeleteTimerInner(uint32_t fd) {
@@ -317,7 +317,7 @@ void DeleteTimer(uint32_t fd) {
     g_timerFdCtxMap[fd].periodical = 0;
 }
 
-int32_t TimerStart(const struct itimerspec *time, void *(*cb)(void *), void *args) {
+int32_t TimerStart(const ::itimerspec *time, void *(*cb)(void *), void *args) {
     if (g_epollFd == -1) {
         LOG(ERROR) << "Timer epoll/kqueue encountered internal error.";
         return -1;
@@ -455,10 +455,10 @@ static int timerfd_create_macosx(int clockid, int flags) {
 }
 
 static int timerfd_settime_macosx(int fd, int flags,
-                                   const struct itimerspec *new_value,
-                                   struct itimerspec *old_value) {
+                                   const ::itimerspec *new_value,
+                                   ::itimerspec *old_value) {
     if (old_value != NULL) {
-        memset(old_value, 0, sizeof(struct itimerspec));
+        memset(old_value, 0, sizeof(::itimerspec));
     }
     return 0;
 }
