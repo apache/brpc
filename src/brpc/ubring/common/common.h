@@ -51,7 +51,8 @@ using AtomicUintFast8 = std::atomic<uint_fast8_t>;
 #define ATOMIC_LOAD(var) var.load()
 #define ATOMIC_ADD(var, value) var.fetch_add(value)
 #define ATOMIC_SUB(var, value) var.fetch_sub(value)
-#define ATOMIC_COMPARE_EXCHANGE_STRONG(var, expected, desired) var.compare_exchange_strong((expected), (desired))
+#define ATOMIC_COMPARE_EXCHANGE_STRONG(var, expected, desired) \
+    var.compare_exchange_strong((expected), (desired))
 #else
 #include <stdatomic.h>
 typedef atomic_int AtomicInt;
@@ -66,6 +67,7 @@ typedef atomic_uint_fast8_t AtomicUintFast8;
 #define ATOMIC_COMPARE_EXCHANGE_STRONG(var, expected, desired) \
     atomic_compare_exchange_strong(&(var), &(expected), (desired))
 #endif
+
 #define ISB() __asm__ __volatile__("isb" ::: "memory")
 #define DSB() __asm__ __volatile__("dsb sy" ::: "memory")
 
@@ -75,11 +77,12 @@ typedef int errno_t;
 #ifndef EOK
 #define EOK 0
 #endif
+
 #define MAX_NODE_NUM 8
 #define IPV4_FIRST_BYTE_OFFSET 24
 #define COPY_ALIGNED_DATA_BYTES 64
-static inline int Copy64Byte(int8_t *dst, int8_t *src)
-{
+
+static inline int Copy64Byte(int8_t *dst, int8_t *src) {
 #ifdef LS64
     asm volatile (
         "mov x12, %0\n"
@@ -110,8 +113,8 @@ static inline int Copy64Byte(int8_t *dst, int8_t *src)
 #define MSEC_TO_SEC 1000
 #define MAX_IP_PORT_STR_LEN 23
 #define DECIMAL_BASE 10
-static inline uint64_t GetCurNanoSeconds(void)
-{
+
+static inline uint64_t GetCurNanoSeconds(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     uint64_t timestamp = (uint64_t)ts.tv_sec * SEC_TO_NSEC + (uint64_t)ts.tv_nsec;
@@ -132,15 +135,12 @@ typedef enum {
     UBRING_RETRY = -2,
     UBRING_REENTRY = -3,
     UBRING_ERR_TIMEOUT = -4,
-    // SHM Module
     SHM_ERR = -100,
     SHM_ERR_INPUT_INVALID = -101,
     SHM_ERR_EXIST = -102,
     SHM_ERR_RESOURCE_ATTACHED = -103,
     SHM_ERR_NOT_FOUND = -104,
     SHM_ERR_UBSM_NET_ERR = -105,
-
-    // MPA模块
     MPA_UDP_ERR = -200,
     MPA_UDP_NO_TRX = -201,
     MPA_UDP_STATUS_NOT_JOINED = -202,
@@ -152,20 +152,18 @@ typedef enum {
     MPA_UDP_STATUS_ALREADY_CONNECTED = -208,
     MPA_UDP_OLD_RDLIST = -209,
     MPA_UDP_RDLIST_FULL = -210,
-    // ubr模块
     UBR_NOT_CONNECTED = -300,
     UBR_ERR_ADDR_IN_USE = -301,
 } RETURN_CODE;
 
 #define ALIGN_BYTES 0x40
 #define CHECKED_ALIGN_BITS (ALIGN_BYTES - 1)
-static inline size_t Aligned64Offset(uint8_t *addr)
-{
+
+static inline size_t Aligned64Offset(uint8_t *addr) {
     return ((ALIGN_BYTES - (((size_t)(addr)) & CHECKED_ALIGN_BITS)) & CHECKED_ALIGN_BITS);
 }
 
-static inline RETURN_CODE HasTimedOut(const uint64_t startTime, const uint32_t timeout)
-{
+static inline RETURN_CODE HasTimedOut(const uint64_t startTime, const uint32_t timeout) {
     uint64_t endTime = startTime + (uint64_t)timeout * SEC_TO_NSEC;
     if (GetCurNanoSeconds() > endTime) {
         LOG(ERROR) << "task time out " << timeout << " seconds.";
@@ -173,4 +171,5 @@ static inline RETURN_CODE HasTimedOut(const uint64_t startTime, const uint32_t t
     }
     return UBRING_OK;
 }
-#endif //BRPC_COMMON_H
+
+#endif // BRPC_COMMON_H

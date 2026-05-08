@@ -24,42 +24,39 @@
 #include <functional>
 #include "bthread/types.h"
 
-
 namespace brpc {
-    namespace ubring {
+namespace ubring {
 
-        void GlobalRelease();
+void GlobalRelease();
 
-        void GlobalUBInitializeOrDie();
+void GlobalUBInitializeOrDie();
 
-        bool InitPollingModeWithTag(bthread_tag_t tag,
-                                    std::function<void(void)> callback = nullptr,
-                                    std::function<void(void)> init_fn = nullptr,
-                                    std::function<void(void)> release_fn = nullptr);
+bool InitPollingModeWithTag(bthread_tag_t tag,
+                            std::function<void(void)> callback = nullptr,
+                            std::function<void(void)> init_fn = nullptr,
+                            std::function<void(void)> release_fn = nullptr);
 
-        // If the UB environment is available
-        bool IsUBAvailable();
+bool IsUBAvailable();
 
-        // Disable UB in the remaining lifetime of the process
-        void GlobalDisableUb();
+void GlobalDisableUb();
 
-        // If the given protocol supported by UB
-        bool SupportedByUB(std::string protocol);
+bool SupportedByUB(std::string protocol);
 
-    }  // namespace ubring
+}  // namespace ubring
 }  // namespace brpc
+
 #else
+
 namespace brpc {
-    namespace ubring {
+namespace ubring {
 
-        void GlobalRelease();
+void GlobalRelease();
 
-        // Initialize UB environment
-        // Exit if failed
-        void GlobalUBInitializeOrDie();
+void GlobalUBInitializeOrDie();
 
-    }  // namespace ubring
+}  // namespace ubring
 }  // namespace brpc
+
 #endif  // if BRPC_WITH_UBRING
 
-#endif //BRPC_UB_HELPER_H
+#endif // BRPC_UB_HELPER_H
