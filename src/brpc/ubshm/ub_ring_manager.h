@@ -18,9 +18,9 @@
 #ifndef BRPC_UB_RING_MANAGER_H
 #define BRPC_UB_RING_MANAGER_H
 
-#include "brpc/ubring/ubr_trx.h"
-#include "brpc/ubring/shm/shm_def.h"
-#include "brpc/ubring/common/common.h"
+#include "brpc/ubshm/ubr_trx.h"
+#include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/common/common.h"
 
 namespace brpc {
 namespace ubring {

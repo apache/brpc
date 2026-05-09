@@ -17,10 +17,10 @@
 
 #if BRPC_WITH_UBRING
 
-#include "brpc/ub_transport.h"
+#include "brpc/ubshm_transport.h"
 #include "brpc/tcp_transport.h"
-#include "brpc/ubring/ub_endpoint.h"
-#include "brpc/ubring/ub_helper.h"
+#include "brpc/ubshm/ub_endpoint.h"
+#include "brpc/ubshm/ub_helper.h"
 
 namespace brpc {
 DECLARE_bool(usercode_in_coroutine);

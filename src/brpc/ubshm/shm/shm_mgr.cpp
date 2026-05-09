@@ -20,10 +20,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "brpc/ubring/common/common.h"
-#include "brpc/ubring/shm/shm_ipc.h"
-#include "brpc/ubring/shm/shm_ubs.h"
-#include "brpc/ubring/shm/shm_mgr.h"
+#include "brpc/ubshm/common/common.h"
+#include "brpc/ubshm/shm/shm_ipc.h"
+#include "brpc/ubshm/shm/shm_ubs.h"
+#include "brpc/ubshm/shm/shm_mgr.h"
 
 namespace brpc {
 namespace ubring {

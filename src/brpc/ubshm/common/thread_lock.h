@@ -22,7 +22,7 @@
 #include <fcntl.h>
 #include <semaphore.h>
 #include <pthread.h>
-#include "brpc/ubring/common/common.h"
+#include "brpc/ubshm/common/common.h"
 
 #ifdef __cplusplus
 extern "C" {

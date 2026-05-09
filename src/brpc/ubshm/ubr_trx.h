@@ -20,10 +20,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/uio.h>
-#include "brpc/ubring/shm/shm_def.h"
-#include "brpc/ubring/common/common.h"
-#include "brpc/ubring/common/thread_lock.h"
-#include "brpc/ubring/ubr_msg.h"
+#include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/common/common.h"
+#include "brpc/ubshm/common/thread_lock.h"
+#include "brpc/ubshm/ubr_msg.h"
 
 /* +----------------------------------------------------------------------------+
    │                                 UbrTrx shm                                 │

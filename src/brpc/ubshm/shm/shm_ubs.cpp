@@ -22,13 +22,13 @@
 #include <dlfcn.h>
 #include <time.h>
 #include <gflags/gflags.h>
-#include "brpc/ubring/timer/timer_mgr.h"
-#include "brpc/ubring/common/thread_lock.h"
-#include "brpc/ubring/common/common.h"
-#include "brpc/ubring/shm/shm_def.h"
-#include "brpc/ubring/ub_ring_manager.h"
-#include "brpc/ubring/rack_mem/ubs_mem.h"
-#include "brpc/ubring/rack_mem/ubs_mem_def.h"
+#include "brpc/ubshm/timer/timer_mgr.h"
+#include "brpc/ubshm/common/thread_lock.h"
+#include "brpc/ubshm/common/common.h"
+#include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/ub_ring_manager.h"
+#include "brpc/ubshm/ubs_mem/ubs_mem.h"
+#include "brpc/ubshm/ubs_mem/ubs_mem_def.h"
 #ifdef UT
 #include "ubs_mem.h"
 #endif
@@ -37,7 +37,7 @@
 namespace brpc {
 namespace ubring {
 #define UBRING_MK_UBSM(ret, fn, args) ret (*fn) args = NULL
-#include "brpc/ubring/rack_mem/declare_shm_ubs.h"
+#include "brpc/ubshm/ubs_mem/declare_shm_ubs.h"
 #define SHM_RIGHT_MODE 0666
 #define UBRING_REGION_NAME_PREFIX "UbrONE2ALLRegion"
 DEFINE_uint32(node_location, 1, "Location of the ub machine.");
@@ -81,7 +81,7 @@ RETURN_CODE UbsShmInterfacesLoad(void)
             return UBRING_ERR;                                                          \
         }                                                                            \
     } while (0)
-#include "brpc/ubring/rack_mem/declare_shm_ubs.h"
+#include "brpc/ubshm/ubs_mem/declare_shm_ubs.h"
 
     dlclose(dlhandler);
     dlhandler = NULL;
