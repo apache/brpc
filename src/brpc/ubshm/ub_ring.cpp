@@ -21,9 +21,9 @@
 #include <ctime>
 #include "bthread/bthread.h"
 #include "butil/logging.h"
-#include "brpc/ubring/ub_ring.h"
-#include "brpc/ubring/ub_ring_manager.h"
-#include "brpc/ubring/shm/shm_ipc.h"
+#include "brpc/ubshm/ub_ring.h"
+#include "brpc/ubshm/ub_ring_manager.h"
+#include "brpc/ubshm/shm/shm_ipc.h"
 
 namespace brpc {
 namespace ubring {

@@ -23,9 +23,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
-#include "brpc/ubring/common/common.h"
-#include "brpc/ubring/shm/shm_def.h"
-#include "brpc/ubring/shm/shm_ipc.h"
+#include "brpc/ubshm/common/common.h"
+#include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/shm/shm_ipc.h"
 
 namespace brpc {
 namespace ubring {

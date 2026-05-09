@@ -24,7 +24,7 @@
 #include <unistd.h>
 #include <atomic>
 #include <sys/resource.h>
-#include "brpc/ubring/timer/timer_mgr.h"
+#include "brpc/ubshm/timer/timer_mgr.h"
 
 namespace brpc {
 namespace ubring {

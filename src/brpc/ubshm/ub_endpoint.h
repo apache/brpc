@@ -30,9 +30,9 @@
 #include "butil/macros.h"
 #include "butil/containers/mpsc_queue.h"
 #include "brpc/socket.h"
-#include "brpc/ubring/ub_helper.h"
-#include "brpc/ubring/ub_ring.h"
-#include "brpc/ubring/shm/shm_def.h"
+#include "brpc/ubshm/ub_helper.h"
+#include "brpc/ubshm/ub_ring.h"
+#include "brpc/ubshm/shm/shm_def.h"
 
 
 namespace brpc {

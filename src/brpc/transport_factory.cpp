@@ -18,7 +18,7 @@
 #include "brpc/transport_factory.h"
 #include "brpc/tcp_transport.h"
 #include "brpc/rdma_transport.h"
-#include "brpc/ub_transport.h"
+#include "brpc/ubshm_transport.h"
 
 namespace brpc {
 int TransportFactory::ContextInitOrDie(SocketMode mode, bool serverOrNot, const void* _options) {

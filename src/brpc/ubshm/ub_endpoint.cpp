@@ -27,12 +27,12 @@
 #include "brpc/input_messenger.h"
 #include "brpc/socket.h"
 #include "brpc/reloadable_flags.h"
-#include "brpc/ubring/ub_helper.h"
-#include "brpc/ubring/ub_endpoint.h"
-#include "brpc/ubring/shm/shm_def.h"
-#include "brpc/ubring/common/common.h"
-#include "brpc/ub_transport.h"
-#include "brpc/ubring/ubr_trx.h"
+#include "brpc/ubshm/ub_helper.h"
+#include "brpc/ubshm/ub_endpoint.h"
+#include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/common/common.h"
+#include "brpc/ubshm_transport.h"
+#include "brpc/ubshm/ubr_trx.h"
 
 DECLARE_int32(task_group_ntags);
 

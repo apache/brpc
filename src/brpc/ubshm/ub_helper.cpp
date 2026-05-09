@@ -24,9 +24,9 @@
 #include <gflags/gflags.h>
 #include "butil/logging.h"
 #include "brpc/socket.h"
-#include "brpc/ubring/ub_endpoint.h"
-#include "brpc/ubring/ub_helper.h"
-#include "brpc/ubring/ub_ring_manager.h"
+#include "brpc/ubshm/ub_endpoint.h"
+#include "brpc/ubshm/ub_helper.h"
+#include "brpc/ubshm/ub_ring_manager.h"
 
 namespace brpc {
 namespace ubring {
