@@ -18,9 +18,8 @@
 #ifndef BRPC_UB_RING_MANAGER_H
 #define BRPC_UB_RING_MANAGER_H
 
-#include <mutex>
-#include <cstring>
-#include "brpc/ubring/ub_ring.h"
+#include "brpc/ubring/ubr_trx.h"
+#include "brpc/ubring/shm/shm_def.h"
 #include "brpc/ubring/common/common.h"
 
 namespace brpc {

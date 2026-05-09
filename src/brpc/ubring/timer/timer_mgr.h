@@ -33,6 +33,13 @@
 #define MAX_TIMER 1024
 #define TIMER_EPOLL_WAIT_TIMEOUT 1000
 
+#if defined(OS_MACOSX)
+struct itimerspec
+{
+    struct timespec it_interval;
+    struct timespec it_value;
+};
+#endif
 namespace brpc {
 namespace ubring {
 typedef enum {
@@ -54,7 +61,7 @@ RETURN_CODE TimerInit(void);
 void TimerModuleDestroy(void);
 void *UnifiedCallback(void *args);
 void *TimerEpoll(void *args);
-int32_t TimerStart(const ::itimerspec *time, void *(*cb)(void *), void *args);
+int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args);
 uint32_t GetActiveTimerNum(void);
 void CloseTimerFd(uint32_t fd);
 

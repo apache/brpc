@@ -16,6 +16,7 @@
 // under the License.
 
 #include <gflags/gflags.h>
+#include "brpc/ubring/ub_ring.h"
 #include "brpc/ubring/ub_ring_manager.h"
 #include "butil/logging.h"
 
