@@ -276,15 +276,6 @@ if(WITH_RDMA)
     endif()
 endif()
 
-if(WITH_UBRING)
-    message("brpc compile with ub")
-    # find_path(RDMA_INCLUDE_PATH NAMES infiniband/verbs.h)
-    # find_library(UB_LIB NAMES ibverbs)
-    # if((NOT RDMA_INCLUDE_PATH) OR (NOT UB_LIB))
-    #     message(FATAL_ERROR "Fail to find ibverbs")
-    # endif()
-endif()
-
 find_library(PROTOC_LIB NAMES protoc)
 if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
@@ -338,6 +329,7 @@ if(WITH_RDMA)
 endif()
 
 if(WITH_UBRING)
+    message(STATUS "brpc compile with ubring")
     list(APPEND DYNAMIC_LIB ${UB_LIB})
 endif()
 
