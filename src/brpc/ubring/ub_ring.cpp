@@ -22,6 +22,7 @@
 #include "bthread/bthread.h"
 #include "butil/logging.h"
 #include "brpc/ubring/ub_ring.h"
+#include "brpc/ubring/ub_ring_manager.h"
 #include "brpc/ubring/shm/shm_ipc.h"
 
 namespace brpc {
@@ -129,7 +130,7 @@ RETURN_CODE UBRing::UbrAddCloseTimer() {
     }
 
     uint32_t eventQTimerInterval = FLAGS_ub_event_queue_timer_interval * TIME_COVERSION;
-    ::itimerspec timeSpec = {
+    itimerspec timeSpec = {
             .it_interval = {.tv_sec = 0, .tv_nsec = eventQTimerInterval},
             .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
@@ -202,7 +203,7 @@ RETURN_CODE UBRing::UbrAddHBTimer() {
         return UBRING_ERR;
     }
 
-    ::itimerspec timeSpec = {
+    itimerspec timeSpec = {
             .it_interval = {.tv_sec = FLAGS_ub_hb_timer_interval, .tv_nsec = 0},
             .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
@@ -298,7 +299,7 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
         return UBRING_OK;
     }
 
-    ::itimerspec timeSpec = {
+    itimerspec timeSpec = {
             .it_interval = {.tv_sec = 0, .tv_nsec = 0},
             .it_value = {.tv_sec = FLAGS_ub_flying_io_timeout, .tv_nsec = 0}
     };

@@ -23,7 +23,6 @@
 #include "butil/macros.h"
 #include "butil/reader_writer.h"
 #include "brpc/ubring/ubr_trx.h"
-#include "brpc/ubring/ub_ring_manager.h"
 #include "brpc/ubring/shm/shm_mgr.h"
 #include "brpc/ubring/timer/timer_mgr.h"
 
