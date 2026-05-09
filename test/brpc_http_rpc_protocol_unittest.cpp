@@ -2008,14 +2008,14 @@ void ReadOneResponse(brpc::SocketUniquePtr& sock,
 #endif
 
     butil::IOPortal read_buf;
-    int64_t start_time = butil::gettimeofday_us();
+    int64_t start_time = butil::cpuwide_time_us();
     while (true) {
         const ssize_t nr = read_buf.append_from_file_descriptor(sock->fd(), 4096);
         LOG(INFO) << "nr=" << nr;
         LOG(INFO) << butil::ToPrintableString(read_buf);
         ASSERT_TRUE(nr > 0 || (nr < 0 && errno == EAGAIN));
         if (errno == EAGAIN) {
-            ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L) << "Too long!";
+            ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L) << "Too long!";
             bthread_usleep(1000);
             continue;
         }
@@ -2059,10 +2059,10 @@ TEST_F(HttpTest, http_expect) {
     request_buf.append(content);
 
     ASSERT_EQ(0, sock->Write(&header_buf));
-    int64_t start_time = butil::gettimeofday_us();
+    int64_t start_time = butil::cpuwide_time_us();
     while (sock->fd() < 0) {
         bthread_usleep(1000);
-        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L) << "Too long!";
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L) << "Too long!";
     }
     // 100 Continue
     brpc::DestroyingPtr<brpc::policy::HttpContext> imsg_guard;

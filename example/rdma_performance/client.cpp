@@ -176,7 +176,7 @@ public:
         }
         --closure->test->_iterations;
         uint64_t last = g_last_time.load(butil::memory_order_relaxed);
-        uint64_t now = butil::gettimeofday_us();
+        uint64_t now = butil::cpuwide_time_us();
         if (now > last && now - last > 100000) {
             if (g_last_time.exchange(now, butil::memory_order_relaxed) == last) {
                 g_client_cpu_recorder << 
@@ -192,7 +192,7 @@ public:
 
     static void* RunTest(void* arg) {
         PerformanceTest* test = (PerformanceTest*)arg;
-        test->_start_time = butil::gettimeofday_us();
+        test->_start_time = butil::cpuwide_time_us();
         test->_iterations = FLAGS_test_iterations;
         
         for (int i = 0; i < FLAGS_queue_depth; ++i) {
@@ -235,7 +235,7 @@ void Test(int thread_num, int attachment_size) {
         }
         tests.push_back(t);
     }
-    uint64_t start_time = butil::gettimeofday_us();
+    uint64_t start_time = butil::cpuwide_time_us();
     bthread_t tid[thread_num];
     if (FLAGS_expected_qps > 0) {
         bthread_t tid;
@@ -250,7 +250,7 @@ void Test(int thread_num, int attachment_size) {
             bthread_usleep(10000);
         }
     }
-    uint64_t end_time = butil::gettimeofday_us();
+    uint64_t end_time = butil::cpuwide_time_us();
     double throughput = g_total_bytes / 1.048576 / (end_time - start_time);
     if (FLAGS_test_iterations == 0) {
         std::cout << "Avg-Latency: " << g_latency_recorder.latency(10)

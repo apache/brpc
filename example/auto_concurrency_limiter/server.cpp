@@ -96,7 +96,7 @@ public:
     void SetTestCase(const test::TestCase& test_case) {
         _test_case = test_case;
         _next_stage_start = _test_case.latency_stage_list(0).duration_sec() + 
-            butil::gettimeofday_s();
+            butil::cpuwide_time_s();
         _stage_index = 0;
         _running_case = false;
         DisplayStage(_test_case.latency_stage_list(_stage_index));
@@ -137,7 +137,7 @@ public:
 
     void ComputeLatency() {
         if (_stage_index < _test_case.latency_stage_list_size() &&
-            butil::gettimeofday_s() > _next_stage_start) {
+            butil::cpuwide_time_s() > _next_stage_start) {
             ++_stage_index;
             if (_stage_index < _test_case.latency_stage_list_size()) {
                 _next_stage_start += _test_case.latency_stage_list(_stage_index).duration_sec();
@@ -167,7 +167,7 @@ public:
             int latency = lower_bound + (upper_bound - lower_bound) / 
                 double(latency_stage.duration_sec()) * 
                 (latency_stage.duration_sec() - _next_stage_start + 
-                butil::gettimeofday_s());
+                butil::cpuwide_time_s());
             _latency.store(latency, butil::memory_order_relaxed);
         } else {
             LOG(FATAL) << "Wrong Type:" << latency_stage.type();

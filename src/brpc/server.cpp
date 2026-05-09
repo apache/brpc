@@ -372,10 +372,10 @@ void* Server::UpdateDerivedVars(void* arg) {
     }
 #endif
 
-    int64_t last_time = butil::gettimeofday_us();
+    int64_t last_time = butil::cpuwide_time_us();
     int consecutive_nosleep = 0;
     while (1) {
-        const int64_t sleep_us = 1000000L + last_time - butil::gettimeofday_us();
+        const int64_t sleep_us = 1000000L + last_time - butil::cpuwide_time_us();
         if (sleep_us < 1000L) {
             if (++consecutive_nosleep >= 2) {
                 consecutive_nosleep = 0;
@@ -388,7 +388,7 @@ void* Server::UpdateDerivedVars(void* arg) {
                 return NULL;
             }
         }
-        last_time = butil::gettimeofday_us();
+        last_time = butil::cpuwide_time_us();
 
         // Update stats of accepted sockets.
         if (server->_am) {

@@ -495,9 +495,9 @@ protected:
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -655,9 +655,9 @@ protected:
         }
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -707,9 +707,9 @@ protected:
         }
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -751,9 +751,9 @@ protected:
         
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -800,9 +800,9 @@ protected:
         }
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -861,9 +861,9 @@ protected:
         }
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -914,9 +914,9 @@ protected:
         ASSERT_EQ((int)1, res.code_list(0));
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -1215,9 +1215,9 @@ protected:
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -1672,9 +1672,9 @@ protected:
         EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-        const int64_t start_time = butil::gettimeofday_us();
+        const int64_t start_time = butil::cpuwide_time_us();
         while (_messenger.ConnectionCount() != 0) {
-            EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+            EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
             bthread_usleep(1000);
         }
 
@@ -1705,9 +1705,9 @@ protected:
         EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-        const int64_t start_time = butil::gettimeofday_us();
+        const int64_t start_time = butil::cpuwide_time_us();
         while (_messenger.ConnectionCount() != 0) {
-            EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+            EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
             bthread_usleep(1000);
         }
         StopAndJoin();
@@ -1741,9 +1741,9 @@ protected:
         ASSERT_EQ(0, cntl.sub(0)->ErrorCode());
 
         // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-        const int64_t start_time = butil::gettimeofday_us();
+        const int64_t start_time = butil::cpuwide_time_us();
         while (_messenger.ConnectionCount() != 0) {
-            EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+            EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
             bthread_usleep(1000);
         }
         StopAndJoin();
@@ -1938,9 +1938,9 @@ protected:
             EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
             EXPECT_EQ(1, cntl.retried_count());
 
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -2096,9 +2096,9 @@ protected:
 
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = butil::gettimeofday_us();
+            const int64_t start_time = butil::cpuwide_time_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -2156,9 +2156,9 @@ protected:
 
             if (short_connection) {
                 // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-                const int64_t start_time = butil::gettimeofday_us();
+                const int64_t start_time = butil::cpuwide_time_us();
                 while (_messenger.ConnectionCount() != 0) {
-                    ASSERT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                    ASSERT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
                     bthread_usleep(1000);
                 }
             } else {
