@@ -119,13 +119,13 @@ struct TestCaseContext {
         , stage_index(0)
         , test_case(tc)
         , next_stage_sec(test_case.qps_stage_list(0).duration_sec() + 
-                         butil::gettimeofday_s()) {
+                         butil::cpuwide_time_s()) {
         DisplayStage(test_case.qps_stage_list(stage_index));
         Update();
     }
 
     bool Update() {
-        if (butil::gettimeofday_s() >= next_stage_sec) {
+        if (butil::cpuwide_time_s() >= next_stage_sec) {
             ++stage_index;
             if (stage_index < test_case.qps_stage_list_size()) {
                 next_stage_sec += test_case.qps_stage_list(stage_index).duration_sec(); 
@@ -144,7 +144,7 @@ struct TestCaseContext {
         } else if (qps_stage.type() == test::SMOOTH) {
             qps = lower_bound + (upper_bound - lower_bound) / 
                 double(qps_stage.duration_sec()) * (qps_stage.duration_sec() - next_stage_sec
-                + butil::gettimeofday_s());
+                + butil::cpuwide_time_s());
         }
         interval_us.store(1.0 / qps * 1000000, butil::memory_order_relaxed);
         return true;

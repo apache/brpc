@@ -69,8 +69,8 @@ public:
                 }
             }
             if (FLAGS_spin) {
-                int64_t end_time = butil::gettimeofday_us() + (int64_t)delay;
-                while (butil::gettimeofday_us() < end_time) {}
+                int64_t end_time = butil::cpuwide_time_us() + (int64_t)delay;
+                while (butil::cpuwide_time_us() < end_time) {}
             } else {
                 bthread_usleep((int64_t)delay);
             }

@@ -238,13 +238,13 @@ static void* GlobalUpdate(void*) {
     }
 
     std::vector<SocketId> conns;
-    const int64_t start_time_us = butil::gettimeofday_us();
+    const int64_t start_time_us = butil::cpuwide_time_us();
     const int WARN_NOSLEEP_THRESHOLD = 2;
     int64_t last_time_us = start_time_us;
     int consecutive_nosleep = 0;
     int64_t last_return_free_memory_time = start_time_us;
     while (1) {
-        const int64_t sleep_us = 1000000L + last_time_us - butil::gettimeofday_us();
+        const int64_t sleep_us = 1000000L + last_time_us - butil::cpuwide_time_us();
         if (sleep_us > 0) {
             if (bthread_usleep(sleep_us) < 0) {
                 PLOG_IF(FATAL, errno != ESTOP) << "Fail to sleep";
@@ -257,7 +257,7 @@ static void* GlobalUpdate(void*) {
                 LOG(WARNING) << __FUNCTION__ << " is too busy!";
             }
         }
-        last_time_us = butil::gettimeofday_us();
+        last_time_us = butil::cpuwide_time_us();
 
         TrackMe();
 

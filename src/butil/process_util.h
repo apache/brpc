@@ -28,12 +28,12 @@ namespace butil {
 
 // Read command line of this program. If `with_args' is true, args are
 // included and separated with spaces.
-// Returns length of the command line on sucess, -1 otherwise.
+// Returns length of the command line on success, -1 otherwise.
 // NOTE: `buf' does not end with zero.
 ssize_t ReadCommandLine(char* buf, size_t len, bool with_args);
 
 // Get absolute path of this program.
-// Returns length of the absolute path on sucess, -1 otherwise.
+// Returns length of the absolute path on success, -1 otherwise.
 // NOTE: `buf' does not end with zero.
 ssize_t GetProcessAbsolutePath(char* buf, size_t len);
 

@@ -78,7 +78,7 @@ void AddSamplesAndTriggerWindow(brpc::policy::AutoConcurrencyLimiter& limiter,
                                  int succ_count, int64_t succ_latency,
                                  int fail_count, int64_t fail_latency) {
     ASSERT_GT(succ_count, 0) << "Need at least 1 success to trigger window";
-    int64_t now = butil::gettimeofday_us();
+    int64_t now = butil::cpuwide_time_us();
 
     // Add successful samples (reserve one for the trigger)
     for (int i = 0; i < succ_count - 1; ++i) {

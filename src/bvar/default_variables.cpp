@@ -81,7 +81,12 @@ static bool read_proc_status(ProcStat &stat) {
     // see http://man7.org/linux/man-pages/man5/proc.5.html
     butil::ScopedFILE fp("/proc/self/stat", "r");
     if (NULL == fp) {
-        PLOG_ONCE(WARNING) << "Fail to open /proc/self/stat";
+        static bool ever_printed_stat_err = false;
+        if (!ever_printed_stat_err) {
+            fprintf(stderr, "WARNING: Fail to open /proc/self/stat, errno=%d. "
+                            "Process status related bvars will be unavailable.\n", errno);
+            ever_printed_stat_err = true;
+        }
         return false;
     }
     if (fscanf(fp, "%d %*s %c "
@@ -94,7 +99,8 @@ static bool read_proc_status(ProcStat &stat) {
                &stat.flags, &stat.minflt, &stat.cminflt, &stat.majflt,
                &stat.cmajflt, &stat.utime, &stat.stime, &stat.cutime, &stat.cstime,
                &stat.priority, &stat.nice, &stat.num_threads) != 19) {
-        PLOG(WARNING) << "Fail to fscanf";
+        fprintf(stderr, "WARNING: Fail to fscanf /proc/self/stat, errno=%d. "
+                        "Process status related bvars will be unavailable.\n", errno);
         return false;
     }
     return true;
@@ -144,7 +150,7 @@ public:
     template <typename ReadFn>
     static const T& get_value(const ReadFn& fn) {
         CachedReader* p = butil::get_leaky_singleton<CachedReader>();
-        const int64_t now = butil::gettimeofday_us();
+        const int64_t now = butil::cpuwide_time_us();
         if (now > p->_mtime_us + CACHED_INTERVAL_US) {
             pthread_mutex_lock(&p->_mutex);
             if (now > p->_mtime_us + CACHED_INTERVAL_US) {
@@ -625,10 +631,10 @@ static void get_kernel_version(std::ostream& os, void*) {
 
 // ======================================
 
-static int64_t g_starting_time = butil::gettimeofday_us();
+static int64_t g_starting_time = butil::cpuwide_time_us();
 
 static timeval get_uptime(void*) {
-    int64_t uptime_us = butil::gettimeofday_us() - g_starting_time;
+    int64_t uptime_us = butil::cpuwide_time_us() - g_starting_time;
     timeval tm;
     tm.tv_sec = uptime_us / 1000000L;
     tm.tv_usec = uptime_us - tm.tv_sec * 1000000L;

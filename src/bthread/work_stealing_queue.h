@@ -128,7 +128,7 @@ public:
                 return false;
             }
             *val = _buffer[t & (_capacity - 1)];
-        } while (!_top.compare_exchange_strong(t, t + 1,
+        } while (!_top.compare_exchange_weak(t, t + 1,
                                                butil::memory_order_seq_cst,
                                                butil::memory_order_relaxed));
         return true;

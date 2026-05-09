@@ -218,14 +218,14 @@ void ReducerTest_window() {
     const int N = 6000;
     int count = 0;
     int total_count = 0;
-    int64_t last_time = butil::gettimeofday_us();
+    int64_t last_time = butil::cpuwide_time_us();
     for (int i = 1; i <= N; ++i) {
         c1 << 1;
         c2 << N - i;
         c3 << i;
         ++count;
         ++total_count;
-        int64_t now = butil::gettimeofday_us();
+        int64_t now = butil::cpuwide_time_us();
         if (now - last_time >= 1000000L) {
             last_time = now;
             ASSERT_EQ(total_count, c1.get_value());
