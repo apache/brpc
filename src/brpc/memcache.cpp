@@ -17,6 +17,7 @@
 
 #include "brpc/memcache.h"
 
+#include <google/protobuf/io/coded_stream.h>
 #include "brpc/policy/memcache_binary_header.h"
 #include "brpc/proto_base.pb.h"
 #include "butil/logging.h"

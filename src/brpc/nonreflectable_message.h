@@ -163,9 +163,19 @@ public:
 #endif
 
     // Size of bytes after serialization.
+#if GOOGLE_PROTOBUF_VERSION < 3004000
+    virtual size_t ByteSizeLong() const {
+        return 0;
+    }
+
+    int ByteSize() const override {
+        return static_cast<int>(ByteSizeLong());
+    }
+#else
     size_t ByteSizeLong() const override {
         return 0;
     }
+#endif
 
 #if GOOGLE_PROTOBUF_VERSION >= 3007000 && GOOGLE_PROTOBUF_VERSION < 3010000
     void SerializeWithCachedSizes(::google::protobuf::io::CodedOutputStream*) const override {}
