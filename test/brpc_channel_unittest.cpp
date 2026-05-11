@@ -298,14 +298,10 @@ protected:
         cntl->_current_call.sending_sock.reset(ptr.release());
         cntl->_server = &ts->_dummy;
 
-        google::protobuf::Closure* done =
-              brpc::NewCallback<
-            int64_t, brpc::Controller*,
-            brpc::RpcPBMessages*,
-            const brpc::Server*,
+        google::protobuf::Closure* done = brpc::NewCallback<
+            int64_t, brpc::Controller*, brpc::RpcPBMessages*, const brpc::Server*,
             brpc::MethodStatus*, int64_t, std::shared_ptr<brpc::Span>>(
-                &brpc::policy::SendRpcResponse,
-                meta.correlation_id(), cntl,
+                &brpc::policy::SendRpcResponse, meta.correlation_id(), cntl,
                 messages, &ts->_dummy, NULL, -1, nullptr);
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }

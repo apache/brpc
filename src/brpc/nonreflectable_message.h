@@ -129,7 +129,7 @@ public:
     void DiscardUnknownFields() override {}
 #endif
 
-#if GOOGLE_PROTOBUF_VERSION < 5026000
+#if GOOGLE_PROTOBUF_VERSION >= 3004000 && GOOGLE_PROTOBUF_VERSION < 5026000
     // Unsupported by default.
     size_t SpaceUsedLong() const override {
         return 0;
