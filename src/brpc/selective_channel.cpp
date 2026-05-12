@@ -419,9 +419,13 @@ void Sender::Clear() {
     if (_main_cntl == NULL) {
         return;
     }
-    delete _alloc_resources[1].response;
-    delete _alloc_resources[1].sub_done;
-    _alloc_resources[1] = Resource();
+    for (int i = 0; i < _nalloc; ++i) {
+        delete _alloc_resources[i].response;
+        if (_alloc_resources[i].sub_done != &_sub_done0) {
+            delete _alloc_resources[i].sub_done;
+        }
+        _alloc_resources[i] = Resource();
+    }
     const CallId cid = _main_cntl->call_id();
     _main_cntl = NULL;
     if (_user_done) {
@@ -434,7 +438,7 @@ inline Resource Sender::PopFree() {
     if (_nfree == 0) {
         if (_nalloc == 0) {
             Resource r;
-            r.response = _response;
+            r.response = _response->New();
             r.sub_done = &_sub_done0;
             _alloc_resources[_nalloc++] = r;
             return r;

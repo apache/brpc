@@ -1487,6 +1487,57 @@ protected:
         EXPECT_EQ(cntl.response_attachment().to_string(), "123");
         StopAndJoin();
     }
+
+    void TestBackupRequestSelectiveResponseRace() {
+        ASSERT_EQ(0, StartAccept(_ep));
+
+        const size_t NCHANS = 8;
+        brpc::SelectiveChannel channel;
+        ASSERT_EQ(0, channel.Init("rr", NULL));
+        for (size_t i = 0; i < NCHANS; ++i) {
+            brpc::Channel* subchan = new brpc::Channel;
+            SetUpChannel(subchan, false, false);
+            ASSERT_EQ(0, channel.AddChannel(subchan, NULL)) << "i=" << i;
+        }
+
+        const int kRounds = 150;
+        const int kCodeListSize = 20000;
+        std::atomic<int> call_cnt(0);
+        _svc.SetMockFunc([&call_cnt](google::protobuf::RpcController*,
+                                     const ::test::EchoRequest*,
+                                     ::test::EchoResponse* res,
+                                     google::protobuf::Closure*) {
+            const int seen = call_cnt.fetch_add(1, std::memory_order_relaxed);
+            const bool slow = ((seen & 1) == 0);
+            if (slow) {
+                bthread_usleep(1500);
+            }
+            res->clear_code_list();
+            const int base = slow ? 1000000 : 2000000;
+            for (int i = 0; i < kCodeListSize; ++i) {
+                res->add_code_list(base + i);
+            }
+            res->set_message(slow ? "slow" : "fast");
+        });
+
+        for (int round = 0; round < kRounds; ++round) {
+            brpc::Controller cntl;
+            test::EchoRequest req;
+            test::EchoResponse res;
+            req.set_message(__FUNCTION__);
+            cntl.set_backup_request_ms(1);
+            cntl.set_timeout_ms(3000);
+            CallMethod(&channel, &cntl, &req, &res, true);
+            ASSERT_FALSE(cntl.Failed()) << "round=" << round
+                                        << " err=" << cntl.ErrorText();
+            ASSERT_EQ(kCodeListSize, res.code_list_size()) << "round=" << round;
+            ASSERT_TRUE(res.message() == "slow" || res.message() == "fast")
+                << "round=" << round;
+        }
+
+        EXPECT_EQ(kRounds * 2, call_cnt.load(std::memory_order_relaxed));
+        StopAndJoin();
+    }
     
     void TestCloseFD(bool single_server, bool async, bool short_connection) {
         std::cout << " *** single=" << single_server
@@ -2781,6 +2832,10 @@ TEST_F(ChannelTest, backuprequest_selective) {
             }
         }
     }
+}
+
+TEST_F(ChannelTest, backuprequest_selective_response_race) {
+    TestBackupRequestSelectiveResponseRace();
 }
 
 TEST_F(ChannelTest, close_fd) {
