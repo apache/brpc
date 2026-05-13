@@ -41,7 +41,7 @@ DEFINE_bool(echo_attachment, false, "Select whether attachment should be echo");
 DEFINE_string(connection_type, "single", "Connection type of the channel");
 DEFINE_string(protocol, "baidu_std", "Protocol type.");
 DEFINE_string(servers, "0.0.0.0:8002+0.0.0.0:8002", "IP Address of servers");
-DEFINE_bool(use_ubring, true, "Use UBRING or not");
+DEFINE_bool(use_ubring, false, "Use UBRING or not");
 DEFINE_int32(rpc_timeout_ms, 5000, "RPC call timeout");
 DEFINE_int32(test_seconds, 20, "Test running time");
 DEFINE_int32(test_iterations, 0, "Test iterations");

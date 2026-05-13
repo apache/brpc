@@ -212,9 +212,6 @@ public:
     // In client side it gets latency of the RPC call. While in server side,
     // it gets queue time before server processes the RPC call.
     int64_t latency_us() const {
-        if (_begin_time_us == 0) {
-            return 0;
-        }
         if (_end_time_us == UNSET_MAGIC_NUM) {
             return butil::cpuwide_time_us() - _begin_time_us;
         }

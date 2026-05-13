@@ -49,7 +49,7 @@ void UBShmTransport::Init(Socket *socket, const SocketOptions &options) {
     if (options.need_on_edge_trigger && _on_edge_trigger == NULL) {
         _on_edge_trigger = ubring::UBShmEndpoint::OnNewDataFromTcp;
     }
-    _tcp_transport = std::unique_ptr<TcpTransport>(new TcpTransport());
+    _tcp_transport = std::make_shared<TcpTransport>();
     _tcp_transport->Init(socket, options);
 }
 

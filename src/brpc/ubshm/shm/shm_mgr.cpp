@@ -57,7 +57,7 @@ static bool CheckInputShmParam(SHM *shm) {
 }
 
 RETURN_CODE ShmMgrInit(void) {
-    if (UNLIKELY(FLAGS_ub_shm_type >= (uint32_t)SHM_TYPE_UNSUPPORT)) {
+    if (UNLIKELY(FLAGS_ub_shm_type >= (int32_t)SHM_TYPE_UNSUPPORT || FLAGS_ub_shm_type <= (int32_t)SHM_TYPE_UB)) {
         LOG(ERROR) << "Shm type config=" << FLAGS_ub_shm_type << " is not supported.";
         return UBRING_ERR;
     }

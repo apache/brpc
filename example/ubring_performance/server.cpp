@@ -27,7 +27,7 @@
 #ifdef BRPC_WITH_UBRING
 
 DEFINE_int32(port, 8002, "TCP Port of this server");
-DEFINE_bool(use_ubring, true, "Use UBRING or not");
+DEFINE_bool(use_ubring, false, "Use UBRING or not");
 
 butil::atomic<uint64_t> g_last_time(0);
 

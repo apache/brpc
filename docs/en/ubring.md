@@ -26,6 +26,21 @@ This mode uses ubs-mem (Unified Block Storage Memory), an open-source remote sha
 
 **UBS-Mem Open Source**: https://atomgit.com/openeuler/ubs-mem
 
+**Required Libraries**:
+- `libubsm_sdk.so` - UBS-Mem SDK library (installed at `/usr/local/ubs_mem/lib/libubsm_sdk.so`)
+- UBS-Mem dynamically loads the library via `dlopen()` and uses functions like `ubsmem_initialize()`, `ubsmem_create_region()`, `ubsmem_shmem_allocate()`, `ubsmem_shmem_map()`, etc.
+
+**UBS-Mem Key Functions**:
+- `ubsmem_init_attributes()` - Initialize UBS-Mem attributes
+- `ubsmem_initialize()` - Initialize UBS-Mem library
+- `ubsmem_finalize()` - Finalize UBS-Mem library
+- `ubsmem_create_region()` - Create a shared memory region
+- `ubsmem_shmem_allocate()` - Allocate shared memory
+- `ubsmem_shmem_map()` - Map shared memory to local address space
+- `ubsmem_shmem_unmap()` - Unmap shared memory
+- `ubsmem_shmem_deallocate()` - Deallocate shared memory
+- `ubsmem_destroy_region()` - Destroy a shared memory region
+
 ### Future Expansion
 
 The architecture is designed to support CXL (Compute Express Link) based remote shared memory in the future, enabling even more flexible distributed memory sharing.

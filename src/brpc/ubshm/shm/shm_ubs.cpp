@@ -512,11 +512,11 @@ RETURN_CODE DestroyShmTimer(ShmList *shmList)
 
 RETURN_CODE IsExistInShmList(ShmList *shmList, const SHM *shm)
 {
-    LOCK_GUARD(shmList->shmLock);
-    if (UNLIKELY(shmList == NULL)) {
-        LOG(ERROR) << "Shm list is null.";
-        return UBRING_ERR;
-    }
+     if (UNLIKELY(shmList == NULL || shm == NULL)) {
+         LOG(ERROR) << "Shm list or shm is null.";
+         return UBRING_ERR;
+     }
+     LOCK_GUARD(shmList->shmLock);
 
     ShmListNode *curNode = shmList->head;
     while (curNode != NULL) {

@@ -78,23 +78,40 @@ struct HelloMessage {
 };
 
 void HelloMessage::Serialize(void* data) const {
-    uint16_t* current_pos = (uint16_t*)data;
-    *(current_pos++) = butil::HostToNet16(msg_len);
-    *(current_pos++) = butil::HostToNet16(hello_ver);
-    *(current_pos++) = butil::HostToNet16(impl_ver);
-    uint64_t* len_pos = (uint64_t*)current_pos;
-    *len_pos = butil::HostToNet64(len);
-    current_pos += 4;
+    char* current_pos = static_cast<char*>(data);
+    const uint16_t net_msg_len = butil::HostToNet16(msg_len);
+    memcpy(current_pos, &net_msg_len, sizeof(net_msg_len));
+    current_pos += sizeof(net_msg_len);
+    const uint16_t net_hello_ver = butil::HostToNet16(hello_ver);
+    memcpy(current_pos, &net_hello_ver, sizeof(net_hello_ver));
+    current_pos += sizeof(net_hello_ver);
+    const uint16_t net_impl_ver = butil::HostToNet16(impl_ver);
+    memcpy(current_pos, &net_impl_ver, sizeof(net_impl_ver));
+    current_pos += sizeof(net_impl_ver);
+    const uint64_t net_len = butil::HostToNet64(len);
+    memcpy(current_pos, &net_len, sizeof(net_len));
+    current_pos += sizeof(net_len);
     memcpy(current_pos, shm_name, SHM_MAX_NAME_BUFF_LEN);
 }
 
 void HelloMessage::Deserialize(void* data) {
-    uint16_t* current_pos = (uint16_t*)data;
-    msg_len = butil::NetToHost16(*current_pos++);
-    hello_ver = butil::NetToHost16(*current_pos++);
-    impl_ver = butil::NetToHost16(*current_pos++);
-    len = butil::NetToHost64(*(uint64_t*)current_pos);
-    current_pos += 4; // move forward 4 Bytes
+    char* current_pos = static_cast<char*>(data);
+    uint16_t net_msg_len;
+    memcpy(&net_msg_len, current_pos, sizeof(net_msg_len));
+    msg_len = butil::NetToHost16(net_msg_len);
+    current_pos += sizeof(net_msg_len);
+    uint16_t net_hello_ver;
+    memcpy(&net_hello_ver, current_pos, sizeof(net_hello_ver));
+    hello_ver = butil::NetToHost16(net_hello_ver);
+    current_pos += sizeof(net_hello_ver);
+    uint16_t net_impl_ver;
+    memcpy(&net_impl_ver, current_pos, sizeof(net_impl_ver));
+    impl_ver = butil::NetToHost16(net_impl_ver);
+    current_pos += sizeof(net_impl_ver);
+    uint64_t net_len;
+    memcpy(&net_len, current_pos, sizeof(net_len));
+    len = butil::NetToHost64(net_len);
+    current_pos += sizeof(net_len);
     memcpy(shm_name, current_pos, SHM_MAX_NAME_BUFF_LEN);
 }
 
@@ -333,7 +350,8 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     auto* ub_transport = static_cast<UBShmTransport*>(s->_transport.get());
     size_t local_shm_len = (size_t)(FLAGS_data_queue_size) * MB_TO_BYTE;
     SHM local_trx_shm = {NULL, local_shm_len, 0, {0}, (uint32_t)s->fd()};
-    const char* shm_name = butil::endpoint2str(s->local_side()).c_str();
+    auto shm_name_str = butil::endpoint2str(s->local_side());
+    const char* shm_name = shm_name_str.c_str();
     if (ep->AllocateClientResources(&local_trx_shm, shm_name) < 0) {
         LOG(WARNING) << "Fallback to tcp:" << s->description();
         ub_transport->_ub_state = UBShmTransport::UB_OFF;

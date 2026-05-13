@@ -27,6 +27,21 @@ UBRing 支持两种共享内存后端，通过 `ub_shm_type` 参数控制：
 
 **UBS-Mem 开源地址**: <https://atomgit.com/openeuler/ubs-mem>
 
+**所需库文件**:
+- `libubsm_sdk.so` - UBS-Mem SDK 库（安装路径：`/usr/local/ubs_mem/lib/libubsm_sdk.so`）
+- UBS-Mem 通过 `dlopen()` 动态加载该库，并使用 `ubsmem_initialize()`、`ubsmem_create_region()`、`ubsmem_shmem_allocate()`、`ubsmem_shmem_map()` 等函数
+
+**UBS-Mem 关键函数**:
+- `ubsmem_init_attributes()` - 初始化 UBS-Mem 属性
+- `ubsmem_initialize()` - 初始化 UBS-Mem 库
+- `ubsmem_finalize()` - 释放 UBS-Mem 库
+- `ubsmem_create_region()` - 创建共享内存区域
+- `ubsmem_shmem_allocate()` - 分配共享内存
+- `ubsmem_shmem_map()` - 将共享内存映射到本地地址空间
+- `ubsmem_shmem_unmap()` - 解除共享内存映射
+- `ubsmem_shmem_deallocate()` - 释放共享内存
+- `ubsmem_destroy_region()` - 销毁共享内存区域
+
 ### 未来扩展
 
 该架构设计支持未来扩展 CXL（Compute Express Link）基于的远端共享内存，实现更灵活的分布式内存共享。
