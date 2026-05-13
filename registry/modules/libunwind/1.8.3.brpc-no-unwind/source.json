@@ -1,0 +1,9 @@
+{
+    "url": "https://github.com/libunwind/libunwind/releases/download/v1.8.3/libunwind-1.8.3.tar.gz",
+    "strip_prefix": "libunwind-1.8.3",
+    "overlay": {
+        "BUILD.bazel": "sha256-ozAABv0I3+tacve4z2m+lAh/lhJWh7t7L3unh8FSfp8=",
+        "MODULE.bazel": "sha256-EtBEsSDMJgdmCs7ByJxVP2SSVc+E7kUVLgpI3TEh/9M="
+    },
+    "integrity": "sha256-vjDZEOZ/WNgudTIx8TV/MmoaCIrPEmsh/3fmCqsZuQs="
+}

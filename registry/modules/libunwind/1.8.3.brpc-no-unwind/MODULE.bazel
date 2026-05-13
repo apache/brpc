@@ -1,0 +1,21 @@
+# Forked from the Bazel Central Registry:
+#   https://github.com/bazelbuild/bazel-central-registry/blob/main/modules/libunwind/1.8.3/MODULE.bazel
+# Distributed under the Apache License, Version 2.0. See the `registry/modules/
+# libunwind/**` entry near the bottom of brpc's LICENSE file.
+#
+# brpc modification (Apache License 2.0 §4(b)):
+#   - `version` suffixed with `.brpc-no-unwind` to distinguish this brpc
+#     variant from the upstream BCR version.
+
+module(
+    name = "libunwind",
+    version = "1.8.3.brpc-no-unwind",
+    bazel_compatibility = [">=7.2.1"],  # need support for "overlay" directory
+    compatibility_level = 0,
+)
+
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "rules_cc", version = "0.1.1")
+bazel_dep(name = "xz", version = "5.4.5.bcr.8")
+bazel_dep(name = "zlib", version = "1.3.1.bcr.8")
