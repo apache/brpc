@@ -1,6 +1,7 @@
 [English version](README.md)
 
-[![Build Status](https://api.travis-ci.com/apache/brpc.svg?branch=master)](https://travis-ci.com/github/apache/brpc)
+[![Linux Build Status](https://github.com/apache/brpc/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-linux.yml)
+[![MacOs Build Status](https://github.com/apache/brpc/actions/workflows/ci-macos.yml/badge.svg)](https://github.com/apache/brpc/actions/workflows/ci-macos.yml)
 
 ![brpc logo (light)](docs/images/logo.png#gh-light-mode-only)
 ![brpc logo (dark)](docs/images/logo-white.png#gh-dark-mode-only)
@@ -39,6 +40,7 @@
     * [thread-local](docs/cn/thread_local.md)
     * [Execution Queue](docs/cn/execution_queue.md)
     * [bthread tracer](docs/cn/bthread_tracer.md)
+    * [bthread tagged task group](docs/cn/bthread_tagged_task_group.md)
   * Client
     * [基础功能](docs/cn/client.md)
     * [错误码](docs/cn/error_code.md)
@@ -83,6 +85,11 @@
     * [IOBuf](docs/cn/iobuf.md)
     * [Streaming Log](docs/cn/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
+    * [协程](docs/cn/coroutine.md)
+    * [熔断](docs/cn/circuit_breaker.md)
+    * [RDMA](docs/cn/rdma.md)
+    * [Bazel构建支持](docs/cn/bazel_support.md)
+    * [Wireshark baidu_std协议解析插件](docs/cn/wireshark_baidu_std.md)
     * [bRPC外功修炼宝典](docs/cn/brpc_intro.pptx)(培训材料)
     * [搭建大型服务入门](docs/en/tutorial_on_building_services.pptx)(培训材料)
     * [bRPC内功修炼宝典](docs/en/brpc_internal.pptx)(培训材料)

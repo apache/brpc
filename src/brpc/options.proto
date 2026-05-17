@@ -64,6 +64,7 @@ enum ProtocolType {
     PROTOCOL_CDS_AGENT = 24;           // Client side only
     PROTOCOL_ESP = 25;                 // Client side only
     PROTOCOL_H2 = 26;
+    PROTOCOL_COUCHBASE = 27;
 }
 
 enum CompressType {

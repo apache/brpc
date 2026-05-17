@@ -51,7 +51,7 @@ bool DefaultClusterRecoverPolicy::StopRecoverIfNecessary() {
     if (!_recovering) {
         return false;
     }
-    int64_t now_ms = butil::gettimeofday_ms();
+    int64_t now_ms = butil::cpuwide_time_ms();
     std::unique_lock<butil::Mutex> mu(_mutex);
     if (_last_usable_change_time_ms != 0 && _last_usable != 0 &&
             (now_ms - _last_usable_change_time_ms > _hold_seconds * 1000)) {
@@ -92,7 +92,7 @@ bool DefaultClusterRecoverPolicy::DoReject(const std::vector<ServerId>& server_l
     if (!_recovering) {
         return false;
     }
-    int64_t now_ms = butil::gettimeofday_ms();
+    int64_t now_ms = butil::cpuwide_time_ms();
     uint64_t usable = GetUsableServerCount(now_ms, server_list);
     if (_last_usable != usable) {
         std::unique_lock<butil::Mutex> mu(_mutex);

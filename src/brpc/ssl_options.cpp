@@ -20,7 +20,10 @@
 
 namespace brpc {
 
-VerifyOptions::VerifyOptions() : verify_depth(0) {}
+VerifyOptions::VerifyOptions()
+    : verify_depth(0)
+    , verify_mode(VerifyMode::NOT_SET)
+{}
 
 ChannelSSLOptions::ChannelSSLOptions()
     : ciphers("DEFAULT")

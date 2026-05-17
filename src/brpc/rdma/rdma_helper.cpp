@@ -72,6 +72,8 @@ void (*IbvAckCqEvents)(ibv_cq*, unsigned int) = NULL;
 int (*IbvGetAsyncEvent)(ibv_context*, ibv_async_event*) = NULL;
 void (*IbvAckAsyncEvent)(ibv_async_event*) = NULL;
 const char* (*IbvEventTypeStr)(ibv_event_type) = NULL;
+int (*IbvQueryEce)(ibv_qp*, ibv_ece*) = NULL;
+int (*IbvSetEce)(ibv_qp*, ibv_ece*) = NULL;
 
 // NOTE:
 // ibv_post_send, ibv_post_recv, ibv_poll_cq, ibv_req_notify_cq are all inline function
@@ -386,6 +388,8 @@ static int ReadRdmaDynamicLib() {
     LoadSymbol(g_handle_ibverbs, IbvGetAsyncEvent, "ibv_get_async_event");
     LoadSymbol(g_handle_ibverbs, IbvAckAsyncEvent, "ibv_ack_async_event");
     LoadSymbol(g_handle_ibverbs, IbvEventTypeStr, "ibv_event_type_str");
+    LoadSymbol(g_handle_ibverbs, IbvQueryEce, "ibv_query_ece");
+    LoadSymbol(g_handle_ibverbs, IbvSetEce, "ibv_set_ece");
 
     return 0;
 }
@@ -501,7 +505,6 @@ static void GlobalRdmaInitializeOrDieImpl() {
     } else {
         LOG(INFO) << "RDMA GID Index: " << (int)g_gid_index;
     }
-    IbvCreateCompChannel(g_context);
 
     // Create protection domain
     g_pd = IbvAllocPd(g_context);

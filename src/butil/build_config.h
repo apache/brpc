@@ -138,6 +138,16 @@
 #define ARCH_CPU_LOONGARCH64 1
 #define ARCH_CPU_64_BITS 1
 #define ARCH_CPU_LITTLE_ENDIAN 1
+#elif defined(__riscv)
+#define ARCH_CPU_RISCV_FAMILY 1
+#if defined(__riscv_xlen) && (__riscv_xlen == 64)
+#define ARCH_CPU_RISCV64 1
+#define ARCH_CPU_64_BITS 1
+#else
+#define ARCH_CPU_RISCV32 1
+#define ARCH_CPU_32_BITS 1
+#endif
+#define ARCH_CPU_LITTLE_ENDIAN 1
 #else
 #error Please add support for your architecture in butil/build_config.h
 #endif

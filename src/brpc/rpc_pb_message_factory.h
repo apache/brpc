@@ -65,7 +65,7 @@ namespace internal {
 // For more details, see `google::protobuf::ArenaOptions'.
 template<size_t StartBlockSize, size_t MaxBlockSize>
 struct ArenaRpcPBMessages : public RpcPBMessages {
-    struct ArenaOptionsWrapper {
+    class ArenaOptionsWrapper {
     public:
         ArenaOptionsWrapper() {
             options.start_block_size = StartBlockSize;

@@ -1000,7 +1000,7 @@ void WriteAMFObject(const google::protobuf::Message& message,
                 continue;
             }
         }
-        const std::string& name = field->name();
+        const auto& name = field->name();
         if (name.size() >= 65536u) {
             LOG(ERROR) << "name is too long!";
             return stream->set_bad();

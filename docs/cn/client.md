@@ -820,8 +820,9 @@ brpc支持[Streaming RPC](streaming_rpc.md)，这是一种应用层的连接，�
 | Name               | Value | Description                              | Defined At              |
 | ------------------ | ----- | ---------------------------------------- | ----------------------- |
 | defer_close_second | 0     | Defer close of connections for so many seconds even if the connection is not used by anyone. Close immediately for non-positive values | src/brpc/socket_map.cpp |
+| defer_close_respect_idle | false | 当 defer_close_second > 0 时，如果连接在最后一个引用释放时已经闲置超过 defer_close_second，则立刻关闭连接（默认关闭以保持兼容） | src/brpc/socket_map.cpp |
 
-设置后引用计数清0时连接并不会立刻被关闭，而是会等待这么多秒再关闭，如果在这段时间内又有channel引用了这个连接，它会恢复正常被使用的状态。不管channel创建析构有多频率，这个选项使得关闭连接的频率有上限。这个选项的副作用是一些fd不会被及时关闭，如果延时被误设为一个大数值，程序占据的fd个数可能会很大。
+设置后引用计数清0时连接并不会立刻被关闭，而是会等待这么多秒再关闭，如果在这段时间内又有channel引用了这个连接，它会恢复正常被使用的状态。不管channel创建析构有多频率，这个选项使得关闭连接的频率有上限。这个选项的副作用是一些fd不会被及时关闭，如果延时被误设为一个大数值，程序占据的fd个数可能会很大。开启 -defer_close_respect_idle 后，如果连接在最后一个引用释放时已经闲置超过 defer_close_second，则可能会被关闭。
 
 ## 连接的缓冲区大小
 

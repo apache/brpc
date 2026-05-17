@@ -41,6 +41,13 @@ struct CertInfo {
     std::vector<std::string> sni_filters;
 };
 
+enum class VerifyMode {
+    NOT_SET,
+    VERIFY_NONE,
+    VERIFY_PEER,
+    VERIFY_FAIL_IF_NO_PEER_CERT,
+};
+
 struct VerifyOptions {
     // Constructed with default options
     VerifyOptions();
@@ -49,6 +56,11 @@ struct VerifyOptions {
     // If 0, turn off the verification
     // Default: 0
     int verify_depth;
+
+    // Set ssl verify mode for openssl
+    // If VERIFY_FAIL_IF_NO_PEER_CERT, it will set `SSL_VERIFY_FAIL_IF_NO_PEER_CERT | SSL_VERIFY_PEER`
+    // Default: NOT_SET
+    VerifyMode verify_mode;
 
     // Set the trusted CA file to verify the peer's certificate
     // If empty, use the system default CA files

@@ -43,6 +43,12 @@ butil::Status RedisCommandByComponents(butil::IOBuf* buf,
                                       const butil::StringPiece* components,
                                       size_t num_components);
 
+enum RedisCommandConsumeState {
+    CONSUME_STATE_CONTINUE,
+    CONSUME_STATE_DONE,
+    CONSUME_STATE_ERROR,
+};
+
 // A parser used to parse redis raw command.
 class RedisCommandParser {
 public:
@@ -58,6 +64,14 @@ public:
 private:
     // Reset parser to the initial state.
     void Reset();
+
+    // Consume one arg from `buf'. 
+    // Return CONSUME_STATE_CONTINUE if the parser needs more data. 
+    // Return CONSUME_STATE_DONE if the parser has parsed a complete command.
+    // Return CONSUME_STATE_ERROR if the parser meets an error.
+    RedisCommandConsumeState ConsumeImpl(butil::IOBuf& buf,
+                                         butil::Arena* arena,
+                                         ParseError* err);
 
     bool _parsing_array;            // if the parser has met array indicator '*'
     int _length;                    // array length

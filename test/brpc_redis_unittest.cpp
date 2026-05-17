@@ -1423,6 +1423,25 @@ TEST_F(RedisTest, memory_allocation_limits) {
         brpc::ParseError err = parser.Consume(buf, &args, &arena);
         ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
     }
+
+    {
+        // Test large command array work
+        int32_t original_limit_tmp = brpc::FLAGS_redis_max_allocation_size;
+        brpc::FLAGS_redis_max_allocation_size = 1024 * 1024;
+        brpc::RedisCommandParser parser;
+        butil::IOBuf buf;
+        int32_t large_array_size = brpc::FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece);
+        std::string large_array_cmd = "*" + std::to_string(large_array_size) + "\r\n";
+        for(int i = 0; i < large_array_size; i++){
+            large_array_cmd.append("$1\r\n1\r\n");
+        }
+        buf.append(large_array_cmd);
+
+        std::vector<butil::StringPiece> args;
+        brpc::ParseError err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_OK, err);
+        brpc::FLAGS_redis_max_allocation_size = original_limit_tmp;
+    }
     
     // Test valid cases within limits
     {

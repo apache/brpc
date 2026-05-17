@@ -73,7 +73,9 @@ bool IsIOBufProfilerEnabled() {
 }
 
 bool IsIOBufProfilerSamplable() {
-    pthread_once(&g_iobuf_profiler_info_once, InitGlobalIOBufProfilerInfo);
+    if (!IsIOBufProfilerEnabled()) {
+        return false;
+    }
     if (g_iobuf_profiler_sample_rate == 100) {
         return true;
     }

@@ -129,7 +129,7 @@ public:
     void DiscardUnknownFields() override {}
 #endif
 
-#if GOOGLE_PROTOBUF_VERSION < 5026000
+#if GOOGLE_PROTOBUF_VERSION >= 3004000 && GOOGLE_PROTOBUF_VERSION < 5026000
     // Unsupported by default.
     size_t SpaceUsedLong() const override {
         return 0;
@@ -163,9 +163,19 @@ public:
 #endif
 
     // Size of bytes after serialization.
+#if GOOGLE_PROTOBUF_VERSION < 3004000
+    virtual size_t ByteSizeLong() const {
+        return 0;
+    }
+
+    int ByteSize() const override {
+        return static_cast<int>(ByteSizeLong());
+    }
+#else
     size_t ByteSizeLong() const override {
         return 0;
     }
+#endif
 
 #if GOOGLE_PROTOBUF_VERSION >= 3007000 && GOOGLE_PROTOBUF_VERSION < 3010000
     void SerializeWithCachedSizes(::google::protobuf::io::CodedOutputStream*) const override {}
@@ -223,7 +233,20 @@ private:
     struct NonreflectableMessageClassData : ClassDataFull {
         constexpr NonreflectableMessageClassData()
                 : ClassDataFull(
-#    if GOOGLE_PROTOBUF_VERSION >= 5029000
+#    if GOOGLE_PROTOBUF_VERSION >= 7034000
+                        ClassData{
+                                &_instance, // prototype
+                                nullptr,    // tc_table
+                                nullptr,    // is_initialized
+                                nullptr,    // merge_to_from
+                                ::google::protobuf::internal::MessageCreator(), // message_creator
+                                0,     // cached_size_offset
+                                false, // is_lite
+                        },
+                        nullptr, // descriptor_methods
+                        nullptr, // descriptor_table
+                        nullptr  // get_metadata_tracker
+#    elif GOOGLE_PROTOBUF_VERSION >= 5029000
                         ClassData{
                                 &_instance, // prototype
                                 nullptr,    // tc_table

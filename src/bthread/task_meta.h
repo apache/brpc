@@ -28,6 +28,7 @@
 #include "bthread/types.h"           // bthread_attr_t
 #include "bthread/stack.h"           // ContextualStack
 #include "bthread/timer_thread.h"
+#include "butil/thread_local.h"
 
 namespace bthread {
 
@@ -43,12 +44,14 @@ struct ButexWaiter;
 struct LocalStorage {
     KeyTable* keytable;
     void* assigned_data;
-    void* rpcz_parent_span;
+    void* rpcz_parent_span;  // Points to std::weak_ptr<brpc::Span>* (managed by brpc)
 };
 
 #define BTHREAD_LOCAL_STORAGE_INITIALIZER { NULL, NULL, NULL }
 
 const static LocalStorage LOCAL_STORAGE_INIT = BTHREAD_LOCAL_STORAGE_INITIALIZER;
+
+EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(LocalStorage, tls_bls);
 
 enum TaskStatus {
     TASK_STATUS_UNKNOWN,
@@ -148,6 +151,24 @@ public:
         return static_cast<StackType>(attr.stack_type);
     }
 };
+
+// Global callback for creating a new bthread span when creating a new bthread.
+// This is set by brpc layer. When a bthread is created with BTHREAD_INHERIT_SPAN,
+// this callback is invoked to create a new span for the bthread.
+// The returned void* points to a heap-allocated weak_ptr<Span>* managed by brpc layer.
+// Returns NULL if span creation is disabled or fails.
+extern void* (*g_create_bthread_span)();
+
+// Global destructor callback for rpcz_parent_span.
+// This is set by brpc layer to clean up the heap-allocated weak_ptr.
+// bthread layer doesn't know the concrete type, it just calls this function
+// with the void* pointer when cleaning up LocalStorage.
+extern void (*g_rpcz_parent_span_dtor)(void*);
+
+// Global callback invoked when a bthread ends (used by higher layers to
+// observe and react to bthread end events, e.g., to finish spans). This
+// pointer is set by the upper layer during initialization.
+extern void (*g_end_bthread_span)();
 
 }  // namespace bthread
 

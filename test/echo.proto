@@ -27,6 +27,7 @@ message EchoRequest {
     optional bool close_fd = 3;
     optional int32 sleep_us = 4;
     optional int32 server_fail = 5;
+    optional string http_header = 6;
 };
 
 message EchoResponse {

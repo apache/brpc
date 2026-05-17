@@ -48,8 +48,14 @@
 
 namespace bthread {
 
+// Global span function pointers for bthread lifecycle tracing.
+// These are set by brpc layer via bthread_set_span_funcs().
+void* (*g_create_bthread_span)() = NULL;
+void (*g_rpcz_parent_span_dtor)(void*) = NULL;
+void (*g_end_bthread_span)() = NULL;
+
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
-    BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_INVALID };
+    BTHREAD_STACKTYPE_UNKNOWN, 0, NULL, BTHREAD_TAG_INVALID, {0} };
 
 DEFINE_bool(show_bthread_creation_in_vars, false, "When this flags is on, The time "
             "from bthread creation to first run will be recorded and shown in /vars");
@@ -78,15 +84,6 @@ BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
-void* (*g_create_span_func)() = NULL;
-
-void* run_create_span_func() {
-    if (g_create_span_func) {
-        return g_create_span_func();
-    }
-    return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
-}
-
 AtomicInteger128::Value AtomicInteger128::load() const {
 #if __x86_64__ || __ARM_NEON
     // Supress compiler warning.
@@ -101,7 +98,8 @@ AtomicInteger128::Value AtomicInteger128::load() const {
 #endif // __x86_64__
     return {value[0], value[1]};
 #else // __x86_64__ || __ARM_NEON
-    BAIDU_SCOPED_LOCK(_mutex);
+    // RISC-V and other architectures use mutex fallback
+    BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
     return _value;
 #endif // __x86_64__ || __ARM_NEON
 }
@@ -114,7 +112,8 @@ void AtomicInteger128::store(Value value) {
     int64x2_t v = vld1q_s64(reinterpret_cast<int64_t*>(&value));
     vst1q_s64(reinterpret_cast<int64_t*>(&_value), v);
 #else
-    BAIDU_SCOPED_LOCK(_mutex);
+    // RISC-V and other architectures use mutex fallback
+    BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
     _value = value;
 #endif // __x86_64__ || __ARM_NEON
 }
@@ -248,6 +247,12 @@ TaskGroup::~TaskGroup() {
 }
 
 #ifdef BUTIL_USE_ASAN
+// Returns the **highest** address of the calling pthread's stack and its
+// total size, matching brpc's `StackStorage::bottom` convention (see comment
+// in bthread/stack.h: "Assume stack grows upwards"). Note that on Linux
+// `pthread_attr_getstack(3)` returns the lowest address of the region, so
+// we have to translate it; on macOS `pthread_get_stackaddr_np(3)` already
+// returns the stack base (highest address), so we use it as-is.
 int PthreadAttrGetStack(void*& stack_addr, size_t& stack_size) {
 #if defined(OS_MACOSX)
     stack_addr = pthread_get_stackaddr_np(pthread_self());
@@ -260,9 +265,13 @@ int PthreadAttrGetStack(void*& stack_addr, size_t& stack_size) {
         LOG(ERROR) << "Fail to get pthread attributes: " << berror(rc);
         return rc;
     }
-    rc = pthread_attr_getstack(&attr, &stack_addr, &stack_size);
+    void* stack_lowest = NULL;
+    rc = pthread_attr_getstack(&attr, &stack_lowest, &stack_size);
     if (0 != rc) {
         LOG(ERROR) << "Fail to get pthread stack: " << berror(rc);
+    } else {
+        // Translate lowest -> highest to match StackStorage::bottom.
+        stack_addr = (char*)stack_lowest + stack_size;
     }
     pthread_attr_destroy(&attr);
     return rc;
@@ -391,6 +400,12 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             thread_return = e.value();
         }
 
+        if (m->attr.flags & BTHREAD_INHERIT_SPAN) {
+            if (g_end_bthread_span) {
+                g_end_bthread_span();
+            }
+        }
+
         // TODO: Save thread_return
         (void)thread_return;
 
@@ -413,6 +428,15 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
             tls_bls_ptr->keytable = NULL;
             m->local_storage.keytable = NULL; // optional
+        }
+
+        // Clean up span if it exists. This must be done after keytable cleanup
+        // because span cleanup may use bthread local storage.
+        tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+        if (tls_bls_ptr->rpcz_parent_span && g_rpcz_parent_span_dtor) {
+            g_rpcz_parent_span_dtor(tls_bls_ptr->rpcz_parent_span);
+            tls_bls_ptr->rpcz_parent_span = NULL;
+            m->local_storage.rpcz_parent_span = NULL;
         }
 
         // During running the function in TaskMeta and deleting the KeyTable in
@@ -493,7 +517,11 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
     if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
-        m->local_storage.rpcz_parent_span = run_create_span_func();
+        if (g_create_bthread_span) {
+            m->local_storage.rpcz_parent_span = g_create_bthread_span();
+        } else {
+            m->local_storage.rpcz_parent_span = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
+        }
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
@@ -558,7 +586,11 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
     if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
-        m->local_storage.rpcz_parent_span = run_create_span_func();
+        if (g_create_bthread_span) {
+            m->local_storage.rpcz_parent_span = g_create_bthread_span();
+        } else {
+            m->local_storage.rpcz_parent_span = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
+        }
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
@@ -613,6 +645,10 @@ int TaskGroup::join(bthread_t tid, void** return_value) {
             return errno;
         }
     }
+    // Ensure all memory writes made by the joined bthread are visible to
+    // the joining thread after join returns. This matches the semantic
+    // guarantee provided by pthread_join() across supported architectures.
+    butil::atomic_thread_fence(butil::memory_order_acquire);
     if (return_value) {
         *return_value = NULL;
     }
@@ -1141,6 +1177,7 @@ void print_task(std::ostream& os, bthread_t tid, bool enable_trace,
            << "\nattr={stack_type=" << attr.stack_type
            << " flags=" << attr.flags
            << " specified_tag=" << attr.tag
+           << " name=" << attr.name
            << " keytable_pool=" << attr.keytable_pool
            << "}\nhas_tls=" << has_tls
            << "\nuptime_ns=" << butil::cpuwide_time_ns() - cpuwide_start_ns

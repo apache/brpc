@@ -63,6 +63,20 @@ public:
         bthread_cond_wait(&_cond, lock.mutex());
     }
 
+    template<typename Predicate>
+    void wait(std::unique_lock<bthread::Mutex>& lock, Predicate p) {
+        while (!p()) {
+            bthread_cond_wait(&_cond, lock.mutex()->native_handler());
+        }
+    }
+
+    template<typename Predicate>
+    void wait(std::unique_lock<bthread_mutex_t>& lock, Predicate p) {
+        while (!p()) {
+            bthread_cond_wait(&_cond, lock.mutex());
+        }
+    }
+
     // Unlike std::condition_variable, we return ETIMEDOUT when time expires
     // rather than std::timeout
     int wait_for(std::unique_lock<bthread::Mutex>& lock,

@@ -51,7 +51,15 @@ namespace brpc {
 // in `done'.
 class SelectiveChannel : public ChannelBase/*non-copyable*/ {
 public:
-    typedef SocketId ChannelHandle;
+    struct ChannelHandle {
+        SocketId id;
+        std::string tag;
+    };
+
+    struct SubChannelOptions {
+        std::string tag;
+        ChannelOwnership ownership = OWNS_CHANNEL;
+    };
 
     SelectiveChannel();
     ~SelectiveChannel();
@@ -66,10 +74,19 @@ public:
     // On success, handle is set with the key for removal.
     // NOTE: Different from pchan, schan can add channels at any time.
     // Returns 0 on success, -1 otherwise.
-    int AddChannel(ChannelBase* sub_channel, ChannelHandle* handle);
+    int AddChannel(ChannelBase* sub_channel, ChannelHandle* handle) {
+        return AddChannel(sub_channel, SubChannelOptions(), handle);
+    }
+    int AddChannel(ChannelBase* sub_channel, const std::string& tag, ChannelHandle* handle) {
+        SubChannelOptions option;
+        option.tag = tag;
+        return AddChannel(sub_channel, option, handle);
+    }
+    int AddChannel(ChannelBase* sub_channel, const SubChannelOptions& option,
+                   ChannelHandle* handle);
 
     // Remove and destroy the sub_channel associated with `handle'.
-    void RemoveAndDestroyChannel(ChannelHandle handle);
+    void RemoveAndDestroyChannel(const ChannelHandle& handle);
 
     // Send request by a sub channel. schan may retry another sub channel
     // according to retrying/backup-request settings.

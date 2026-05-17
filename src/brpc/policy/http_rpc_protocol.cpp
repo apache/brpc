@@ -20,12 +20,16 @@
 #include <google/protobuf/text_format.h>
 #include <gflags/gflags.h>
 #include <string>
+
 #include "brpc/policy/http_rpc_protocol.h"
-#include "butil/unique_ptr.h"                       // std::unique_ptr
-#include "butil/string_splitter.h"                  // StringMultiSplitter
+
 #include "butil/string_printf.h"
-#include "butil/time.h"
+#include "butil/string_splitter.h"                  // StringMultiSplitter
+#include "butil/strings/string_util.h"
 #include "butil/sys_byteorder.h"
+#include "butil/time.h"
+#include "butil/unique_ptr.h"                       // std::unique_ptr
+
 #include "json2pb/pb_to_json.h"                     // ProtoMessageToJson
 #include "json2pb/json_to_pb.h"                     // JsonToProtoMessage
 #include "brpc/compress.h"
@@ -284,7 +288,7 @@ static bool JsonToProtoMessage(const butil::IOBuf& body,
     bool ok = json2pb::JsonToProtoMessage(&wrapper, message, options, &error);
     if (!ok) {
         cntl->SetFailed(error_code, "Fail to parse http json body as %s: %s",
-                        message->GetDescriptor()->full_name().c_str(),
+                        butil::EnsureString(message->GetDescriptor()->full_name()).c_str(),
                         error.c_str());
     }
     return ok;
@@ -305,7 +309,7 @@ static bool ProtoMessageToJson(const google::protobuf::Message& message,
     bool ok = json2pb::ProtoMessageToJson(message, wrapper, options, &error);
     if (!ok) {
         cntl->SetFailed(error_code, "Fail to convert %s to json: %s",
-                        message.GetDescriptor()->full_name().c_str(),
+                        butil::EnsureString(message.GetDescriptor()->full_name()).c_str(),
                         error.c_str());
     }
     return ok;
@@ -321,7 +325,7 @@ static bool ProtoJsonToProtoMessage(const butil::IOBuf& body,
     bool ok = json2pb::ProtoJsonToProtoMessage(&wrapper, message, options, &error);
     if (!ok) {
         cntl->SetFailed(error_code, "Fail to parse http proto-json body as %s: %s",
-                        message->GetDescriptor()->full_name().c_str(),
+                        butil::EnsureString(message->GetDescriptor()->full_name()).c_str(),
                         error.c_str());
     }
     return ok;
@@ -337,7 +341,7 @@ static bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
     bool ok = json2pb::ProtoMessageToProtoJson(message, wrapper, options, &error);
     if (!ok) {
         cntl->SetFailed(error_code, "Fail to convert %s to proto-json: %s",
-                        message.GetDescriptor()->full_name().c_str(), error.c_str());
+                        butil::EnsureString(message.GetDescriptor()->full_name()).c_str(), error.c_str());
     }
     return ok;
 }
@@ -369,8 +373,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
 
     ControllerPrivateAccessor accessor(cntl);
 
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_base_real_us(msg->base_real_us());
         span->set_received_us(msg->received_us());
         // TODO: changing when imsg_guard->read_body_progressively() is true
@@ -527,13 +530,13 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         if (content_type == HTTP_CONTENT_PROTO) {
             if (!ParsePbFromIOBuf(cntl->response(), res_body)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content as %s",
-                                cntl->response()->GetDescriptor()->full_name().c_str());
+                                butil::EnsureString(cntl->response()->GetDescriptor()->full_name()).c_str());
                 break;
             }
         } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
             if (!ParsePbTextFromIOBuf(cntl->response(), res_body)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse proto-text content as %s",
-                                cntl->response()->GetDescriptor()->full_name().c_str());
+                                butil::EnsureString(cntl->response()->GetDescriptor()->full_name()).c_str());
                 break;
             }
         } else if (content_type == HTTP_CONTENT_JSON) {
@@ -612,13 +615,13 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             if (!pbreq->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->request_attachment().clear();
                 return cntl->SetFailed(EREQUEST, "Fail to serialize %s",
-                                       pbreq->GetTypeName().c_str());
+                                       butil::EnsureString(pbreq->GetTypeName()).c_str());
             }
         } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
             if (!google::protobuf::TextFormat::Print(*pbreq, &wrapper)) {
                 cntl->request_attachment().clear();
                 return cntl->SetFailed(EREQUEST, "Fail to print %s as proto-text",
-                                       pbreq->GetTypeName().c_str());
+                                       butil::EnsureString(pbreq->GetTypeName()).c_str());
             }
         } else if (content_type == HTTP_CONTENT_PROTO_JSON) {
             if (!ProtoMessageToProtoJson(*pbreq, &wrapper, cntl, EREQUEST)) {
@@ -717,8 +720,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         hreq.uri().set_path(path);
     }
 
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         hreq.SetHeader("x-bd-trace-id", butil::string_printf(
                            "%llu", (unsigned long long)span->trace_id()));
         hreq.SetHeader("x-bd-span-id", butil::string_printf(
@@ -834,7 +836,7 @@ HttpResponseSender::~HttpResponseSender() {
         return;
     }
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
+    auto span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
@@ -880,11 +882,13 @@ HttpResponseSender::~HttpResponseSender() {
         butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
         if (content_type == HTTP_CONTENT_PROTO) {
             if (!res->SerializeToZeroCopyStream(&wrapper)) {
-                cntl->SetFailed(ERESPONSE, "Fail to serialize %s", res->GetTypeName().c_str());
+                cntl->SetFailed(ERESPONSE, "Fail to serialize %s",
+                                butil::EnsureString(res->GetTypeName()).c_str());
             }
         } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
             if (!google::protobuf::TextFormat::Print(*res, &wrapper)) {
-                cntl->SetFailed(ERESPONSE, "Fail to print %s as proto-text", res->GetTypeName().c_str());
+                cntl->SetFailed(ERESPONSE, "Fail to print %s as proto-text",
+                                butil::EnsureString(res->GetTypeName()).c_str());
             }
         } else if (content_type == HTTP_CONTENT_PROTO_JSON) {
             ProtoMessageToProtoJson(*res, &wrapper, cntl, ERESPONSE);
@@ -1487,7 +1491,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    std::shared_ptr<Span> span;
     const std::string& path = req_header.uri().path();
     const std::string* trace_id_str = req_header.GetHeader("x-bd-trace-id");
     if (IsTraceable(trace_id_str)) {
@@ -1535,7 +1539,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         cntl->request_attachment().swap(req_body);
         google::protobuf::Closure* done = new HttpResponseSenderAsDone(&resp_sender);
         if (span) {
-            span->ResetServerSpanName(md->full_name());
+            span->ResetServerSpanName(butil::EnsureString(md->full_name()));
             span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
         }
@@ -1565,18 +1569,19 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     // Switch to service-specific error.
     non_service_error.release();
     MethodStatus* method_status = mp->status;
+    const std::string method_full_name = butil::EnsureString(mp->method->full_name());
     resp_sender.set_method_status(method_status);
     if (method_status) {
         int rejected_cc = 0;
         if (!method_status->OnRequested(&rejected_cc)) {
             cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                            mp->method->full_name().c_str(), rejected_cc);
+                            method_full_name.c_str(), rejected_cc);
             return;
         }
     }
     
     if (span) {
-        span->ResetServerSpanName(mp->method->full_name());
+        span->ResetServerSpanName(method_full_name);
     }
     // NOTE: accesses to builtin services are not counted as part of
     // concurrency, therefore are not limited by ServerOptions.max_concurrency.
@@ -1616,6 +1621,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     google::protobuf::Message* req = messages->Request();
     google::protobuf::Message* res = messages->Response();
 
+    const std::string request_full_name = butil::EnsureString(req->GetDescriptor()->full_name());
+
     if (__builtin_expect(!req || !res, 0)) {
         PLOG(FATAL) << "Fail to new req or res";
         cntl->SetFailed("Fail to new req or res");
@@ -1632,7 +1639,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             if (!req->IsInitialized()) {
                 cntl->SetFailed(EREQUEST, "%s needs to be created from a"
                                 " non-empty json, it has required fields.",
-                                req->GetDescriptor()->full_name().c_str());
+                                request_full_name.c_str());
                 return;
             } // else all fields of the request are optional.
         } else {
@@ -1677,13 +1684,13 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             if (content_type == HTTP_CONTENT_PROTO) {
                 if (!ParsePbFromIOBuf(req, req_body)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s",
-                                    req->GetDescriptor()->full_name().c_str());
+                                    request_full_name.c_str());
                     return;
                 }
             } else if (content_type == HTTP_CONTENT_PROTO_TEXT) {
                 if (!ParsePbTextFromIOBuf(req, req_body)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http proto-text body as %s",
-                                    req->GetDescriptor()->full_name().c_str());
+                                    request_full_name.c_str());
                     return;
                 }
             } else if (content_type == HTTP_CONTENT_PROTO_JSON) {

@@ -77,33 +77,42 @@ TEST(NamingServiceTest, sanity) {
     ASSERT_EQ(0, bns.GetServers("qa-pbrpc.SAT.tjyx", &servers));
 #endif
 
+    auto collect_ips = [&servers]() {
+        std::set<butil::ip_t> ret;
+        for (auto& server : servers) {
+            ret.insert(server.addr.ip);
+        }
+        return ret;
+    };
     brpc::policy::DomainNamingService dns;
     ASSERT_EQ(0, dns.GetServers("baidu.com:1234", &servers));
-    ASSERT_EQ(2u, servers.size());
-    ASSERT_EQ(1234, servers[0].addr.port);
-    ASSERT_EQ(1234, servers[1].addr.port);
-    const std::set<butil::ip_t> expected_ips{servers[0].addr.ip, servers[1].addr.ip};
+    size_t server_size = servers.size();
+    ASSERT_GE(server_size, 1);
+    for (size_t i = 0; i < servers.size(); ++i) {
+        ASSERT_EQ(1234, servers[i].addr.port);
+    }
+    const auto expected_ips = collect_ips();
 
     ASSERT_EQ(0, dns.GetServers("baidu.com", &servers));
-    ASSERT_EQ(2u, servers.size());
-    const std::set<butil::ip_t> ip_list1{servers[0].addr.ip, servers[1].addr.ip};
-    ASSERT_TRUE(IsIPListEqual(expected_ips, ip_list1));
-    ASSERT_EQ(80, servers[0].addr.port);
-    ASSERT_EQ(80, servers[1].addr.port);
+    ASSERT_EQ(server_size, servers.size());
+    ASSERT_TRUE(IsIPListEqual(expected_ips, collect_ips()));
+    for (size_t i = 0; i < servers.size(); ++i) {
+        ASSERT_EQ(80, servers[i].addr.port);
+    }
 
     ASSERT_EQ(0, dns.GetServers("baidu.com:1234/useless1/useless2", &servers));
-    ASSERT_EQ(2u, servers.size());
-    const std::set<butil::ip_t> ip_list2{servers[0].addr.ip, servers[1].addr.ip};
-    ASSERT_TRUE(IsIPListEqual(expected_ips, ip_list2));
-    ASSERT_EQ(1234, servers[0].addr.port);
-    ASSERT_EQ(1234, servers[1].addr.port);
+    ASSERT_EQ(server_size, servers.size());
+    ASSERT_TRUE(IsIPListEqual(expected_ips, collect_ips()));
+    for (size_t i = 0; i < servers.size(); ++i) {
+        ASSERT_EQ(1234, servers[i].addr.port);
+    }
 
     ASSERT_EQ(0, dns.GetServers("baidu.com/useless1/useless2", &servers));
-    ASSERT_EQ(2u, servers.size());
-    const std::set<butil::ip_t> ip_list3{servers[0].addr.ip, servers[1].addr.ip};
-    ASSERT_TRUE(IsIPListEqual(expected_ips, ip_list3));
-    ASSERT_EQ(80, servers[0].addr.port);
-    ASSERT_EQ(80, servers[1].addr.port);
+    ASSERT_EQ(server_size, servers.size());
+    ASSERT_TRUE(IsIPListEqual(expected_ips, collect_ips()));
+    for (size_t i = 0; i < servers.size(); ++i) {
+        ASSERT_EQ(80, servers[i].addr.port);
+    }
 
     const char *address_list[] =  {
         "10.127.0.1:1234",

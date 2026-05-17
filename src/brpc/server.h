@@ -45,6 +45,7 @@
 #include "brpc/concurrency_limiter.h"
 #include "brpc/baidu_master_service.h"
 #include "brpc/rpc_pb_message_factory.h"
+#include "brpc/socket_mode.h"
 
 namespace brpc {
 
@@ -223,9 +224,9 @@ struct ServerOptions {
     // Force ssl for all connections of the port to Start().
     bool force_ssl;
 
-    // Whether the server uses rdma or not
-    // Default: false
-    bool use_rdma;
+    // the server socket mode uses tcp or rdma or other
+    // Default: SOCKET_MODE_TCP
+    SocketMode socket_mode;
 
     // [CAUTION] This option is for implementing specialized baidu-std proxies,
     // most users don't need it. Don't change this option unless you fully
@@ -391,7 +392,7 @@ public:
             return !is_builtin_service && !restful_map;
         }
 
-        const std::string& service_name() const;
+        const std::string service_name() const;
     };
     typedef butil::FlatMap<std::string, ServiceProperty> ServiceMap;
 
@@ -714,7 +715,7 @@ friend class Controller;
 
     template <typename T>
     int SetServiceMaxConcurrency(T* service) {
-        if (NULL != service) {
+        if (NULL != service && NULL != service->_status) {
             const AdaptiveMaxConcurrency* amc = &service->_max_concurrency;
             if (amc->type() == AdaptiveMaxConcurrency::UNLIMITED) {
                 amc = &_options.method_max_concurrency;

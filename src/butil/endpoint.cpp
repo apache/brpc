@@ -288,7 +288,7 @@ int str2endpoint(const char* str, EndPoint* point) {
     if (end == str + i) {
         return -1;
     } else if (*end) {
-        for (++end; isspace(*end); ++end);
+        for (; isspace(*end); ++end);
         if (*end) {
             return -1;
         }

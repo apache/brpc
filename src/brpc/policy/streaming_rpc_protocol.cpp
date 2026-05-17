@@ -116,7 +116,16 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
             break;
         }
         meta_buf.clear();  // to reduce memory resident
-        ((Stream*)ptr->conn())->OnReceived(fm, &payload, socket);
+        // ptr->conn() returns the connection-level context attached to the
+        // socket.  It may be NULL when the socket was found by ID but has no
+        // Stream object associated (e.g. during protocol probing or fuzz
+        // testing).  Calling OnReceived on a null pointer would crash.
+        Stream* stream_conn = (Stream*)ptr->conn();
+        if (stream_conn == NULL) {
+            LOG(FATAL) << "No stream object found";
+            break;
+        }
+        stream_conn->OnReceived(fm, &payload, socket);
     } while (0);
 
     // Hack input messenger

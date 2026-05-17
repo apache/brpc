@@ -30,6 +30,7 @@
 #include "butil/time.h"
 #include "butil/class_name.h"
 #include "butil/string_printf.h"
+#include "butil/strings/string_util.h"
 #include "butil/debug/leak_annotations.h"
 #include "brpc/log.h"
 #include "brpc/compress.h"
@@ -80,6 +81,7 @@
 #include "brpc/details/tcmalloc_extension.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/baidu_master_service.h"
+#include "brpc/transport_factory.h"
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -145,7 +147,7 @@ ServerOptions::ServerOptions()
     , internal_port(-1)
     , has_builtin_services(true)
     , force_ssl(false)
-    , use_rdma(false)
+    , socket_mode(SOCKET_MODE_TCP)
     , baidu_master_service(NULL)
     , http_master_service(NULL)
     , health_reporter(NULL)
@@ -370,10 +372,10 @@ void* Server::UpdateDerivedVars(void* arg) {
     }
 #endif
 
-    int64_t last_time = butil::gettimeofday_us();
+    int64_t last_time = butil::cpuwide_time_us();
     int consecutive_nosleep = 0;
     while (1) {
-        const int64_t sleep_us = 1000000L + last_time - butil::gettimeofday_us();
+        const int64_t sleep_us = 1000000L + last_time - butil::cpuwide_time_us();
         if (sleep_us < 1000L) {
             if (++consecutive_nosleep >= 2) {
                 consecutive_nosleep = 0;
@@ -386,7 +388,7 @@ void* Server::UpdateDerivedVars(void* arg) {
                 return NULL;
             }
         }
-        last_time = butil::gettimeofday_us();
+        last_time = butil::cpuwide_time_us();
 
         // Update stats of accepted sockets.
         if (server->_am) {
@@ -411,9 +413,9 @@ void* Server::UpdateDerivedVars(void* arg) {
     }
 }
 
-const std::string& Server::ServiceProperty::service_name() const {
+const std::string Server::ServiceProperty::service_name() const {
     if (service) {
-        return service->GetDescriptor()->full_name();
+        return butil::EnsureString(service->GetDescriptor()->full_name());
     } else if (restful_map) {
         return restful_map->service_name();
     }
@@ -771,27 +773,6 @@ bool Server::CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
     return true;
 }
 
-#if BRPC_WITH_RDMA
-static bool OptionsAvailableOverRdma(const ServerOptions* opt) {
-    if (opt->rtmp_service) {
-        LOG(WARNING) << "RTMP is not supported by RDMA";
-        return false;
-    }
-    if (opt->has_ssl_options()) {
-        LOG(WARNING) << "SSL is not supported by RDMA";
-        return false;
-    }
-    if (opt->nshead_service) {
-        LOG(WARNING) << "NSHEAD is not supported by RDMA";
-        return false;
-    }
-    if (opt->mongo_service_adaptor) {
-        LOG(WARNING) << "MONGO is not supported by RDMA";
-        return false;
-    }
-    return true;
-}
-#endif
 
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 static bool g_default_ignore_eovercrowded(false);
@@ -888,20 +869,10 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                    << FLAGS_task_group_ntags << ")";
         return -1;
     }
-
-    if (_options.use_rdma) {
-#if BRPC_WITH_RDMA
-        if (!OptionsAvailableOverRdma(&_options)) {
-            return -1;
-        }
-        rdma::GlobalRdmaInitializeOrDie();
-        if (!rdma::InitPollingModeWithTag(_options.bthread_tag)) {
-            return -1;
-        }
-#else
-        LOG(WARNING) << "Cannot use rdma since brpc does not compile with rdma";
+    int ret = TransportFactory::ContextInitOrDie(_options.socket_mode, true, &_options);
+    if (ret != 0) {
+        LOG(ERROR) << "Fail to initialize transport context for server, ret=" << ret;
         return -1;
-#endif
     }
 
     if (_options.http_master_service) {
@@ -1169,7 +1140,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 LOG(ERROR) << "Fail to build acceptor";
                 return -1;
             }
-            _am->_use_rdma = _options.use_rdma;
+            _am->_socket_mode = _options.socket_mode;
             _am->_bthread_tag = _options.bthread_tag;
         }
         // Set `_status' to RUNNING before accepting connections
@@ -1236,6 +1207,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     CHECK_EQ(INVALID_BTHREAD, _derivative_thread);
     bthread_attr_t tmp = BTHREAD_ATTR_NORMAL;
     tmp.tag = _options.bthread_tag;
+    bthread_attr_set_name(&tmp, "UpdateDerivedVars");
     if (bthread_start_background(&_derivative_thread, &tmp,
                                  UpdateDerivedVars, this) != 0) {
         LOG(ERROR) << "Fail to create _derivative_thread";
@@ -1438,7 +1410,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         mp.service = service;
         mp.method = md;
         mp.status = new MethodStatus;
-        _method_map[md->full_name()] = mp;
+        _method_map[butil::EnsureString(md->full_name())] = mp;
         if (is_idl_support && sd->name() != sd->full_name()/*has ns*/) {
             MethodProperty mp2 = mp;
             mp2.own_method_status = false;
@@ -1461,8 +1433,8 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
 
     const ServiceProperty ss = {
         is_builtin_service, svc_opt.ownership, service, NULL };
-    _fullname_service_map[sd->full_name()] = ss;
-    _service_map[sd->name()] = ss;
+    _fullname_service_map[butil::EnsureString(sd->full_name())] = ss;
+    _service_map[butil::EnsureString(sd->name())] = ss;
     if (is_builtin_service) {
         ++_builtin_service_count;
     } else {
@@ -1504,7 +1476,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         // handling is not affected.
         for (size_t i = 0; i < mappings.size(); ++i) {
             const std::string full_method_name =
-                sd->full_name() + "." + mappings[i].method_name;
+                butil::EnsureString(sd->full_name()) + "." + mappings[i].method_name;
             MethodProperty* mp = _method_map.seek(full_method_name);
             if (mp == NULL) {
                 LOG(ERROR) << "Unknown method=`" << full_method_name << '\'';
@@ -1729,9 +1701,9 @@ int Server::RemoveService(google::protobuf::Service* service) {
     }
 
     const google::protobuf::ServiceDescriptor* sd = service->GetDescriptor();
-    ServiceProperty* ss = _fullname_service_map.seek(sd->full_name());
+    ServiceProperty* ss = _fullname_service_map.seek(butil::EnsureString(sd->full_name()));
     if (ss == NULL) {
-        RPC_VLOG << "Fail to find service=" << sd->full_name().c_str();
+        RPC_VLOG << "Fail to find service=" << sd->full_name();
         return -1;
     }
     RemoveMethodsOf(service);

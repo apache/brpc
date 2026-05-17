@@ -23,8 +23,9 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/util/type_resolver.h>
 #include <google/protobuf/util/type_resolver_util.h>
-#include "butil/string_printf.h"
 #include "butil/memory/singleton_on_pthread_once.h"
+#include "butil/string_printf.h"
+#include "butil/strings/string_util.h"
 
 namespace json2pb {
 
@@ -32,7 +33,7 @@ namespace json2pb {
 
 inline std::string GetTypeUrl(const google::protobuf::Message& message) {
     return butil::string_printf(PROTOBUF_TYPE_URL_PREFIX"/%s",
-                                message.GetDescriptor()->full_name().c_str());
+                                butil::EnsureString(message.GetDescriptor()->full_name()).c_str());
 }
 
 // unique_ptr deleter for TypeResolver only deletes the object

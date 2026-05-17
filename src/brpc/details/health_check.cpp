@@ -99,7 +99,7 @@ void* HealthCheckManager::AppCheck(void* arg) {
     done->cntl.Reset();
     done->cntl.http_request().uri() = done->hc_option.health_check_path;
     ControllerPrivateAccessor(&done->cntl).set_health_check_call();
-    done->last_check_time_ms = butil::gettimeofday_ms();
+    done->last_check_time_ms = butil::cpuwide_time_ms();
     done->channel.CallMethod(NULL, &done->cntl, NULL, NULL, done);
     return NULL;
 }
@@ -126,7 +126,7 @@ void OnAppHealthCheckDone::Run() {
         << ", " << cntl.ErrorText();
 
     int64_t sleep_time_ms =
-        last_check_time_ms + interval_s * 1000 - butil::gettimeofday_ms();
+        last_check_time_ms + interval_s * 1000 - butil::cpuwide_time_ms();
     if (sleep_time_ms > 0) {
         // TODO(zhujiashun): we need to handle the case when timer fails
         // and bthread_usleep returns immediately. In most situations,

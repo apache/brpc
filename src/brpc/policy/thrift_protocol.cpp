@@ -243,7 +243,7 @@ void ThriftClosure::DoRun() {
     const Server* server = _controller.server();
 
     ControllerPrivateAccessor accessor(&_controller);
-    Span* span = accessor.span();
+    auto span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
@@ -515,7 +515,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    std::shared_ptr<Span> span;
     if (IsTraceable(false)) {
         span = Span::CreateServerSpan(0, 0, 0, msg->base_real_us());
         accessor.set_span(span);
@@ -584,8 +584,7 @@ void ProcessThriftResponse(InputMessageBase* msg_base) {
     }
 
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_base_real_us(msg->base_real_us());
         span->set_received_us(msg->received_us());
         span->set_response_size(msg->payload.length());
@@ -752,8 +751,7 @@ void PackThriftRequest(
     // pack the field.
     accessor.get_sending_socket()->set_correlation_id(correlation_id);
 
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_request_size(request.length());
         // TODO: Nowhere to set tracing ids.
         // request_meta->set_trace_id(span->trace_id());

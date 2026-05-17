@@ -11,6 +11,8 @@
 #include <stdarg.h>   // va_list
 
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "butil/base_export.h"
@@ -257,6 +259,24 @@ BUTIL_EXPORT bool ContainsOnlyChars(const StringPiece16& input,
 BUTIL_EXPORT bool IsStringUTF8(const StringPiece& str);
 BUTIL_EXPORT bool IsStringASCII(const StringPiece& str);
 BUTIL_EXPORT bool IsStringASCII(const string16& str);
+
+inline std::string EnsureString(const std::string& s) {
+    return s;
+}
+
+inline std::string EnsureString(std::string&& s) {
+    return std::move(s);
+}
+
+inline std::string EnsureString(const char* s) {
+    return s ? std::string(s) : std::string();
+}
+
+// Enabled only when std::string is constructible from T.
+template <typename T, typename = typename std::enable_if<std::is_constructible<std::string, T>::value>::type>
+inline std::string EnsureString(T&& v) {
+    return std::string(std::forward<T>(v));
+}
 
 }  // namespace butil
 

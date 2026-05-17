@@ -90,7 +90,6 @@ extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 extern void (*g_worker_startfn)();
 extern void (*g_tagged_worker_startfn)(bthread_tag_t);
-extern void* (*g_create_span_func)();
 
 inline TaskControl* get_task_control() {
     return g_task_control;
@@ -397,13 +396,6 @@ int bthread_equal(bthread_t t1, bthread_t t2) {
     return t1 == t2;
 }
 
-#ifdef BUTIL_USE_ASAN
-// Fixme!!!
-// The noreturn `bthread_exit' may cause a warning of ASan, but does not abort the program.
-//
-// ==94463==WARNING: ASan is ignoring requested __asan_handle_no_return: stack type: default top: 0x00016dd7f000; bottom 0x00010b1a4000; size: 0x000062bdb000 (1656598528)
-// False positive error reports may follow
-#endif // BUTIL_USE_ASAN
 void bthread_exit(void* retval) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g != NULL && !g->is_current_main_task()) {
@@ -597,14 +589,6 @@ int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t)) {
     return 0;
 }
 
-int bthread_set_create_span_func(void* (*func)()) {
-    if (func == NULL) {
-        return EINVAL;
-    }
-    bthread::g_create_span_func = func;
-    return 0;
-}
-
 void bthread_stop_world() {
     bthread::TaskControl* c = bthread::get_task_control();
     if (c != NULL) {
@@ -668,4 +652,26 @@ uint64_t bthread_cpu_clock_ns(void) {
     return 0;
 }
 
+int bthread_set_span_funcs(bthread_create_span_fn create_fn,
+                            bthread_destroy_span_fn destroy_fn,
+                            bthread_end_span_fn end_fn) {
+    if ((create_fn && destroy_fn && end_fn) ||
+        (!create_fn && !destroy_fn && !end_fn)) {
+        bthread::g_create_bthread_span = create_fn;
+        bthread::g_rpcz_parent_span_dtor = destroy_fn;
+        bthread::g_end_bthread_span = end_fn;
+        return 0;
+    }
+
+    errno = EINVAL;
+    return -1;
+}
+
 }  // extern "C"
+
+void bthread_attr_set_name(bthread_attr_t* attr, const char* name) {
+    if (attr) {
+        strncpy(attr->name, name, BTHREAD_NAME_MAX_LENGTH);
+        attr->name[BTHREAD_NAME_MAX_LENGTH] = '\0';
+    }
+}

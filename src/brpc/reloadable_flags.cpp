@@ -66,6 +66,10 @@ bool RegisterFlagValidatorOrDie(const int32_t* flag,
                                 bool (*validate_fn)(const char*, int32_t)) {
     return butil::RegisterFlagValidatorOrDieImpl(flag, validate_fn);
 }
+bool RegisterFlagValidatorOrDie(const uint32_t* flag,
+                                bool (*validate_fn)(const char*, uint32_t)) {
+    return butil::RegisterFlagValidatorOrDieImpl(flag, validate_fn);
+}
 bool RegisterFlagValidatorOrDie(const int64_t* flag,
                                 bool (*validate_fn)(const char*, int64_t)) {
     return butil::RegisterFlagValidatorOrDieImpl(flag, validate_fn);

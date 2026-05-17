@@ -21,10 +21,13 @@
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/text_format.h>
-#include "butil/logging.h"                       // LOG()
+
 #include "butil/iobuf.h"                         // butil::IOBuf
-#include "butil/raw_pack.h"                      // RawPacker RawUnpacker
+#include "butil/logging.h"                       // LOG()
 #include "butil/memory/scope_guard.h"
+#include "butil/raw_pack.h"                      // RawPacker RawUnpacker
+#include "butil/strings/string_util.h"
+
 #include "json2pb/json_to_pb.h"
 #include "json2pb/pb_to_json.h"
 #include "brpc/controller.h"                    // Controller
@@ -233,7 +236,7 @@ static bool SerializeResponse(const google::protobuf::Message& res,
         cntl.SetFailed(ERESPONSE,
                        "Fail to serialize response=%s, "
                        "ContentType=%s, CompressType=%s, ChecksumType=%s",
-                       res.GetDescriptor()->full_name().c_str(),
+                       butil::EnsureString(res.GetDescriptor()->full_name()).c_str(),
                        ContentTypeToCStr(content_type),
                        CompressTypeToCStr(compress_type),
                        ChecksumTypeToCStr(checksum_type));
@@ -269,9 +272,9 @@ struct BaiduProxyPBMessages : public RpcPBMessages {
 // Used by UT, can't be static.
 void SendRpcResponse(int64_t correlation_id, Controller* cntl,
                      RpcPBMessages* messages, const Server* server,
-                     MethodStatus* method_status, int64_t received_us) {
+                     MethodStatus* method_status, int64_t received_us,
+                     std::shared_ptr<Span> span) {
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
@@ -642,7 +645,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    std::shared_ptr<Span> span;
     if (IsTraceable(request_meta.has_trace_id())) {
         span = Span::CreateServerSpan(
             request_meta.trace_id(), request_meta.span_id(),
@@ -775,7 +778,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                     cntl->SetFailed(
                         ELIMIT,
                         "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                        mp->method->full_name().c_str(), rejected_cc);
+                        butil::EnsureString(mp->method->full_name()).c_str(), rejected_cc);
                     break;
                 }
             }
@@ -784,7 +787,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             accessor.set_method(method);
 
             if (span) {
-                span->ResetServerSpanName(method->full_name());
+                span->ResetServerSpanName(butil::EnsureString(method->full_name()));
             }
 
             if (!server->AcceptRequest(cntl.get())) {
@@ -812,7 +815,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                     EREQUEST,
                     "Fail to parse request=%s, ContentType=%s, "
                     "CompressType=%s, ChecksumType=%s, request_size=%d",
-                    messages->Request()->GetDescriptor()->full_name().c_str(),
+                    butil::EnsureString(messages->Request()->GetDescriptor()->full_name()).c_str(),
                     ContentTypeToCStr(content_type),
                     CompressTypeToCStr(compress_type),
                     ChecksumTypeToCStr(checksum_type), req_size);
@@ -824,9 +827,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, RpcPBMessages*,
-            const Server*, MethodStatus*, int64_t>(
+            const Server*, MethodStatus*, int64_t, std::shared_ptr<Span>>(
                 &SendRpcResponse, meta.correlation_id(),cntl.get(),
-                messages, server, method_status, msg->received_us());
+                messages, server, method_status, msg->received_us(), span);
 
         // optional, just release resource ASAP
         msg.reset();
@@ -855,10 +858,11 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     
     // `cntl', `req' and `res' will be deleted inside `SendRpcResponse'
     // `socket' will be held until response has been sent
+
     SendRpcResponse(meta.correlation_id(),
                     cntl.release(), messages,
                     server, method_status,
-                    msg->received_us());
+                    msg->received_us(), span);
 }
 
 bool VerifyRpcRequest(const InputMessageBase* msg_base) {
@@ -945,8 +949,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
     }
 
     cntl->set_rpc_received_us(msg->received_us());
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_base_real_us(msg->base_real_us());
         span->set_received_us(msg->received_us());
         span->set_response_size(msg->meta.size() + msg->payload.size() + 12);
@@ -996,7 +999,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                     EREQUEST,
                     "Fail to parse response=%s, ContentType=%s, "
                     "CompressType=%s, ChecksumType=%s, request_size=%d",
-                    cntl->response()->GetDescriptor()->full_name().c_str(),
+                    butil::EnsureString(cntl->response()->GetDescriptor()->full_name()).c_str(),
                     ContentTypeToCStr(content_type),
                     CompressTypeToCStr(compress_type),
                     ChecksumTypeToCStr(checksum_type), res_size);
@@ -1033,7 +1036,7 @@ void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
             EREQUEST,
             "Fail to compress request=%s, "
             "ContentType=%s, CompressType=%s, ChecksumType=%s",
-            request->GetDescriptor()->full_name().c_str(),
+            butil::EnsureString(request->GetDescriptor()->full_name()).c_str(),
             ContentTypeToCStr(content_type), CompressTypeToCStr(compress_type),
             ChecksumTypeToCStr(checksum_type));
     }
@@ -1116,8 +1119,7 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     }
     meta.set_content_type(cntl->request_content_type());
 
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         request_meta->set_trace_id(span->trace_id());
         request_meta->set_span_id(span->span_id());
         request_meta->set_parent_span_id(span->parent_span_id());

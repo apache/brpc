@@ -80,20 +80,30 @@ struct SocketMapKeyHasher {
 // successfully, SocketMapRemove() MUST be called when the Socket is not needed.
 // Return 0 on success, -1 otherwise.
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
+                    SocketOptions& opt);
+
+inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-                    bool use_rdma,
-                    const HealthCheckOption& hc_option);
+                    SocketMode socket_mode,
+                    const HealthCheckOption& hc_option) {
+    SocketOptions opt;
+    opt.remote_side = key.peer.addr;
+    opt.initial_ssl_ctx = ssl_ctx;
+    opt.socket_mode = socket_mode;
+    opt.hc_option = hc_option;
+    return SocketMapInsert(key, id, opt);
+}
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     HealthCheckOption hc_option;
-    return SocketMapInsert(key, id, ssl_ctx, false, hc_option);
+    return SocketMapInsert(key, id, ssl_ctx, SOCKET_MODE_TCP, hc_option);
 }
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id) {
     std::shared_ptr<SocketSSLContext> empty_ptr;
     HealthCheckOption hc_option;
-    return SocketMapInsert(key, id, empty_ptr, false, hc_option);
+    return SocketMapInsert(key, id, empty_ptr, SOCKET_MODE_TCP, hc_option);
 }
 
 // Find the SocketId associated with `key'.
@@ -144,6 +154,14 @@ struct SocketMapOptions {
     // Default: 0 (disabled)
     const int* defer_close_second_dynamic;
     int defer_close_second;
+
+    // When defer_close_second > 0 and this flag is true, close a connection
+    // immediately when the last reference is removed and the socket has already
+    // been idle for longer than defer_close_second.
+    // If defer_close_respect_idle_dynamic is not NULL, use the dereferenced
+    // value each time.
+    // Default: NULL (treated as false)
+    const bool* defer_close_respect_idle_dynamic;
 };
 
 // Share sockets to the same EndPoint.
@@ -154,19 +172,27 @@ public:
     int Init(const SocketMapOptions&);
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx,
-               bool use_rdma,
-               const HealthCheckOption& hc_option);
+               SocketMode socket_mode,
+               const HealthCheckOption& hc_option) {
+        SocketOptions opt;
+        opt.remote_side = key.peer.addr;
+        opt.initial_ssl_ctx = ssl_ctx;
+        opt.socket_mode = socket_mode;
+        opt.hc_option = hc_option;
+        return Insert(key, id, opt);
+}
 
     int Insert(const SocketMapKey& key, SocketId* id,
                const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
         HealthCheckOption hc_option;
-        return Insert(key, id, ssl_ctx, false, hc_option);   
+        return Insert(key, id, ssl_ctx, SOCKET_MODE_TCP, hc_option);
     }
     int Insert(const SocketMapKey& key, SocketId* id) {
         std::shared_ptr<SocketSSLContext> empty_ptr;
         HealthCheckOption hc_option;
-        return Insert(key, id, empty_ptr, false, hc_option);
+        return Insert(key, id, empty_ptr, SOCKET_MODE_TCP, hc_option);
     }
+    int Insert(const SocketMapKey& key, SocketId* id, SocketOptions& opt);
 
     void Remove(const SocketMapKey& key, SocketId expected_id);
     int Find(const SocketMapKey& key, SocketId* id);

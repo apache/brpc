@@ -17,6 +17,7 @@
 #include "brpc/policy/public_pbrpc_meta.pb.h"
 #include "brpc/policy/public_pbrpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
+#include "fuzz_common.h"
 
 #define kMinInputLength 5
 #define kMaxInputLength 1024
@@ -32,7 +33,8 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     butil::IOBuf buf;
     buf.append(input);
 
-    brpc::policy::ParseNsheadMessage(&buf, NULL, false, NULL);
+    brpc::Socket* sock = get_fuzz_socket();
+    brpc::policy::ParseNsheadMessage(&buf, sock, false, NULL);
 
     return 0;
 }

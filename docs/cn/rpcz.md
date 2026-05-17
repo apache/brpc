@@ -66,4 +66,14 @@ bthread_attr_t attr = { BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, NULL };
 bthread_start_urgent(&tid, &attr, thread_proc, arg);
 ```
 
-注意：使用这种方式创建子bthread来发送rpc，请确保rpc在server返回response之前完成，否则可能导致使用被释放的Span对象而出core。
+### Span生命周期管理
+
+brpc使用智能指针（`std::shared_ptr`/`std::weak_ptr`）管理Span对象的生命周期，并通过自旋锁保护并发访问，解决了以下问题：
+
+1. **Use-after-free防护**：父Span通过`shared_ptr`持有子Span的强引用，TLS中使用`weak_ptr`存储，确保Span对象在被访问时仍然有效。即使server在子bthread完成前返回response，也不会导致访问已释放的Span对象。
+
+2. **线程安全**：使用自旋锁保护`_client_list`和`_info`的并发修改，支持多个bthread同时创建子span或添加annotation。
+
+3. **自动生命周期管理**：当父Span销毁时，会自动清理所有子Span（通过`_client_list.clear()`），无需手动管理。
+
+使用`BTHREAD_INHERIT_SPAN`创建子bthread时，不再需要担心Span对象的生命周期问题，可以安全地在异步场景中使用。

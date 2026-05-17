@@ -12,6 +12,7 @@
 #include <limits>
 
 #include "butil/logging.h"
+#include "butil/numerics/safe_conversions.h" // safe_abs
 #include "butil/scoped_clear_errno.h"
 #include "butil/strings/utf_string_conversions.h"
 #include "butil/third_party/dmg_fp/dmg_fp.h"
@@ -22,30 +23,6 @@ namespace {
 
 template <typename STR, typename INT, typename UINT, bool NEG>
 struct IntToStringT {
-  // This is to avoid a compiler warning about unary minus on unsigned type.
-  // For example, say you had the following code:
-  //   template <typename INT>
-  //   INT abs(INT value) { return value < 0 ? -value : value; }
-  // Even though if INT is unsigned, it's impossible for value < 0, so the
-  // unary minus will never be taken, the compiler will still generate a
-  // warning.  We do a little specialization dance...
-  template <typename INT2, typename UINT2, bool NEG2>
-  struct ToUnsignedT {};
-
-  template <typename INT2, typename UINT2>
-  struct ToUnsignedT<INT2, UINT2, false> {
-    static UINT2 ToUnsigned(INT2 value) {
-      return static_cast<UINT2>(value);
-    }
-  };
-
-  template <typename INT2, typename UINT2>
-  struct ToUnsignedT<INT2, UINT2, true> {
-    static UINT2 ToUnsigned(INT2 value) {
-      return static_cast<UINT2>(value < 0 ? -value : value);
-    }
-  };
-
   // This set of templates is very similar to the above templates, but
   // for testing whether an integer is negative.
   template <typename INT2, bool NEG2>
@@ -74,9 +51,7 @@ struct IntToStringT {
     STR outbuf(kOutputBufSize, 0);
 
     bool is_neg = TestNegT<INT, NEG>::TestNeg(value);
-    // Even though is_neg will never be true when INT is parameterized as
-    // unsigned, even the presence of the unary operation causes a warning.
-    UINT res = ToUnsignedT<INT, UINT, NEG>::ToUnsigned(value);
+    UINT res = safe_abs(value);
 
     typename STR::iterator it(outbuf.end());
     do {

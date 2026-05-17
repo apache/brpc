@@ -23,8 +23,7 @@
 namespace brpc {
 
 ThriftService::ThriftService() {
-    _status = new (std::nothrow) MethodStatus;
-    LOG_IF(FATAL, _status == NULL) << "Fail to new MethodStatus";
+    _status = new MethodStatus;
 }
 
 ThriftService::~ThriftService() {

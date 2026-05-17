@@ -42,7 +42,9 @@
 #include "echo.pb.h"
 
 static const int PORT = 8713;
-static const size_t RDMA_HELLO_MSG_LEN = 40; 
+static const size_t RDMA_HELLO_MSG_LEN = 40;
+static uint16_t RDMA_HELLO_VERSION = 2;
+static uint16_t RDMA_IMPL_VERSION = 1;
 
 using namespace brpc;
 
@@ -61,9 +63,10 @@ struct HelloMessage {
     uint16_t msg_len;
     uint16_t hello_ver;
     uint16_t impl_ver;
-    uint16_t block_size;
+    uint32_t block_size;
     uint16_t sq_size;
     uint16_t rq_size;
+    uint16_t lid;
     ibv_gid gid;
     uint32_t qp_num;
 };
@@ -137,7 +140,7 @@ private:
     void StartServer(bool use_rdma = true) {
         ServerOptions options;
         options.use_rdma = use_rdma;
-        options.idle_timeout_sec = 5;
+        options.idle_timeout_sec = 10;
         options.max_concurrency = 0;
         options.internal_port = -1;
         EXPECT_EQ(0, _server.Start(PORT, &options));
@@ -206,8 +209,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_magic_str) {
 
     uint8_t data[RDMA_HELLO_MSG_LEN];
     memcpy(data, "PRPC", 4);  // send as normal baidu_std protocol
-    memset(data + 4, 0, 32);
-    ASSERT_EQ(38, write(sockfd, data, 38));
+    ASSERT_EQ(4, write(sockfd, data, 4));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
 
@@ -287,8 +289,11 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
     memcpy(data, "RDMA", 4);
-    memset(data + 4, 0, 34);
-    ASSERT_EQ(38, write(sockfd1, data, 38));  // write invalid length
+    ASSERT_EQ(4, write(sockfd1, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    memset(data + 4, 0, 36);
+    ASSERT_EQ(36, write(sockfd1, data + 4, 36));  // Write invalid length.
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(NULL, GetSocketFromServer(0));
 
@@ -299,10 +304,13 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
     memcpy(data, "RDMA", 4);
+    ASSERT_EQ(4, write(sockfd2, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
     uint16_t len = butil::HostToNet16(35);
-    memcpy(data + 4, &len, 2);
-    memset(data + 6, 0, 32);
-    ASSERT_EQ(38, write(sockfd2, data, 38));  // write invalid length
+    memcpy(data + 4, &len, sizeof(len));
+    memset(data + 6, 0, 34);
+    ASSERT_EQ(36, write(sockfd2, data + 4, 36));  // write invalid length
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(NULL, GetSocketFromServer(0));
 
@@ -318,7 +326,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     addr.sin_port = htons(PORT);
     Socket* s = NULL;
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    uint16_t len = butil::HostToNet16(38);
+    uint16_t len = butil::HostToNet16(RDMA_HELLO_MSG_LEN);
     uint16_t ver = butil::HostToNet16(1);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
@@ -328,18 +336,22 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
     memcpy(data, "RDMA", 4);
+    ASSERT_EQ(4, write(sockfd1, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
     memcpy(data + 4, &len, 2);
-    memset(data + 6, 0, 32);
+    memset(data + 6, 0, 34);
     memcpy(data + 6, &ver, 2);  // hello_ver == 1, impl_ver == 0
-    ASSERT_EQ(38, write(sockfd1, data, 38));
+    ASSERT_EQ(36, write(sockfd1, data, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
-    memset(data, 0, 4);
-    ASSERT_EQ(4, write(sockfd1, data, 4));
+    ASSERT_EQ(Socket::RDMA_OFF, s->_rdma_state);
+    uint32_t flags = 0;
+    ASSERT_EQ(sizeof(flags), write(sockfd1, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
-    close(sockfd1);
-    usleep(100000);
+    sockfd1.reset(-1);
+    usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(NULL, GetSocketFromServer(0));
 
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
@@ -349,15 +361,21 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
     memcpy(data, "RDMA", 4);
+    ASSERT_EQ(4, write(sockfd2, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
     memcpy(data + 4, &len, 2);
     memset(data + 6, 0, 32);
     memcpy(data + 8, &ver, 2);  // hello_ver == 0, impl_ver == 1
-    ASSERT_EQ(38, write(sockfd2, data, 38));
+    ASSERT_EQ(36, write(sockfd2, data, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
-    uint32_t flag = butil::HostToNet32(1);
-    ASSERT_EQ(4, write(sockfd2, &flag, 4));
-    usleep(100000);
+    ASSERT_EQ(Socket::RDMA_OFF, s->_rdma_state);
+    ASSERT_EQ(sizeof(flags), write(sockfd2, &flags, sizeof(flags)));
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
+    sockfd2.reset(-1);
+    usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(NULL, GetSocketFromServer(0));
 
     StopServer();
@@ -371,11 +389,12 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
     Socket* s = NULL;
-    rdma::HelloMessage msg;
+    uint32_t flags = butil::HostToNet32(0);
+    rdma::HelloMessage msg{};
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = 38;
-    msg.hello_ver = 1;
-    msg.impl_ver = 1;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.hello_ver = RDMA_HELLO_VERSION;
+    msg.impl_ver = RDMA_IMPL_VERSION;
 
     msg.sq_size = 10;
     msg.rq_size = 16;
@@ -388,14 +407,19 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd1, data, 38));
+    ASSERT_EQ(4, write(sockfd1, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(36, write(sockfd1, data + 4, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
-    memset(data, 0, 4);
-    ASSERT_EQ(4, write(sockfd1, data, 4));
+    ASSERT_EQ(Socket::RDMA_OFF, s->_rdma_state);
+    ASSERT_EQ(sizeof(flags), write(sockfd1, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
-    close(sockfd1);
+    sockfd1.reset(-1);
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(NULL, GetSocketFromServer(0));
 
     msg.sq_size = 16;
     msg.rq_size = 10;
@@ -408,14 +432,19 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd2, data, 38));
+    ASSERT_EQ(4, write(sockfd2, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(36, write(sockfd2, data + 4, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
-    memset(data, 0, 4);
-    ASSERT_EQ(4, write(sockfd1, data, 4));
+    ASSERT_EQ(Socket::RDMA_OFF, s->_rdma_state);
+    ASSERT_EQ(sizeof(flags), write(sockfd2, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
-    close(sockfd2);
+    sockfd2.reset(-1);
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(NULL, GetSocketFromServer(0));
 
     msg.sq_size = 16;
     msg.rq_size = 16;
@@ -428,13 +457,19 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd3, data, 38));
+    ASSERT_EQ(4, write(sockfd3, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(36, write(sockfd3, data + 4, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
-    memset(data, 0, 4);
-    ASSERT_EQ(4, write(sockfd3, data, 4));
+    ASSERT_EQ(Socket::RDMA_OFF, s->_rdma_state);
+    ASSERT_EQ(sizeof(flags), write(sockfd3, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
+    sockfd3.reset(-1);
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(NULL, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -449,9 +484,9 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
     Socket* s = NULL;
     rdma::HelloMessage msg;
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = 38;
-    msg.hello_ver = 1;
-    msg.impl_ver = 1;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.hello_ver = RDMA_HELLO_VERSION;
+    msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
     msg.rq_size = 16;
     msg.block_size = 8192;
@@ -466,7 +501,7 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd1, data, 38));
+    ASSERT_EQ(40, write(sockfd1, data, 40));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
     close(sockfd1);
@@ -486,9 +521,9 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
     Socket* s = NULL;
     rdma::HelloMessage msg;
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = 38;
-    msg.hello_ver = 1;
-    msg.impl_ver = 1;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.hello_ver = RDMA_HELLO_VERSION;
+    msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
     msg.rq_size = 16;
     msg.block_size = 8192;
@@ -503,13 +538,16 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd1, data, 38));
+    ASSERT_EQ(4, write(sockfd1, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(36, write(sockfd1, data + 4, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
-    uint32_t flags = butil::HostToNet32(0);
-    ASSERT_EQ(2, write(sockfd1, &flags, 2));
+    uint32_t flags = butil::HostToNet32(1);
+    ASSERT_EQ(sizeof(flags), write(sockfd1, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
     close(sockfd1);
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(NULL, GetSocketFromServer(0));
@@ -527,9 +565,9 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     Socket* s = NULL;
     rdma::HelloMessage msg;
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = 38;
-    msg.hello_ver = 1;
-    msg.impl_ver = 1;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.hello_ver = RDMA_HELLO_VERSION;
+    msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
     msg.rq_size = 16;
     msg.block_size = 8192;
@@ -544,13 +582,17 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd1, data, 38));
+    ASSERT_EQ(4, write(sockfd1, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(36, write(sockfd1, data + 4, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
     uint32_t flags = butil::HostToNet32(0);
-    ASSERT_EQ(4, write(sockfd1, &flags, 4));
+    ASSERT_EQ(sizeof(flags), write(sockfd1, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
+    ASSERT_EQ(Socket::RDMA_OFF, s->_rdma_state);
     close(sockfd1);
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(NULL, GetSocketFromServer(0));
@@ -561,11 +603,14 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd2, data, 38));
+    ASSERT_EQ(4, write(sockfd2, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(36, write(sockfd2, data + 4, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
     flags = butil::HostToNet32(1);
-    ASSERT_EQ(4, write(sockfd2, &flags, 4));
+    ASSERT_EQ(sizeof(flags), write(sockfd2, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
     close(sockfd2);
@@ -585,9 +630,9 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     Socket* s = NULL;
     rdma::HelloMessage msg;
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = 38;
-    msg.hello_ver = 1;
-    msg.impl_ver = 1;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.hello_ver = RDMA_HELLO_VERSION;
+    msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
     msg.rq_size = 16;
     msg.block_size = 8192;
@@ -602,18 +647,18 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd1, data, 38));
+    ASSERT_EQ(4, write(sockfd1, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(36, write(sockfd1, data + 4, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
     uint32_t flags = butil::HostToNet32(0);
-    ASSERT_EQ(4, write(sockfd1, &flags, 4));
+    ASSERT_EQ(sizeof(flags), write(sockfd1, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
-    ASSERT_EQ(4, write(sockfd1, &flags, 4));
+    ASSERT_EQ(sizeof(flags), write(sockfd1, &flags, sizeof(flags)));
     usleep(100000);
-    ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
-    close(sockfd1);
-    usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(NULL, GetSocketFromServer(0));
 
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
@@ -622,14 +667,17 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     usleep(100000);  // wait for server to handle the msg
     s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(sockfd2, data, 38));
+    ASSERT_EQ(4, write(sockfd2, data, 4)); // Write magic string.
+    usleep(100000);  // wait for server to handle the msg
+    ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, s->_rdma_ep->_state);
+    ASSERT_EQ(36, write(sockfd2, data + 4, 36));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, s->_rdma_ep->_state);
     flags = butil::HostToNet32(1);
-    ASSERT_EQ(4, write(sockfd2, &flags, 4));
+    ASSERT_EQ(sizeof(flags), write(sockfd2, &flags, sizeof(flags)));
     usleep(100000);  // wait for server to handle the msg
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
-    ASSERT_EQ(4, write(sockfd1, &flags, 4));
+    ASSERT_EQ(sizeof(flags), write(sockfd2, &flags, sizeof(flags)));
     usleep(100000);
     ASSERT_EQ(NULL, GetSocketFromServer(0));
 
@@ -694,7 +742,7 @@ TEST_F(RdmaTest, server_close_before_hello_send) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
     close(acc_fd);
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FAILED, s->_rdma_ep->_state);
@@ -730,7 +778,7 @@ TEST_F(RdmaTest, server_miss_during_magic_str) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
     ASSERT_EQ(2, write(acc_fd, "RD", 2));
     usleep(100000);
     bthread_id_join(cntl.call_id());
@@ -765,8 +813,9 @@ TEST_F(RdmaTest, server_close_during_magic_str) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
     ASSERT_EQ(2, write(acc_fd, "RD", 2));
+    usleep(100000);
     close(acc_fd);
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FAILED, s->_rdma_ep->_state);
@@ -802,7 +851,7 @@ TEST_F(RdmaTest, server_hello_invalid_magic_str) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
     ASSERT_EQ(4, write(acc_fd, "ABCD", 4));
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FAILED, s->_rdma_ep->_state);
@@ -838,7 +887,7 @@ TEST_F(RdmaTest, server_miss_during_hello_msg) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
     ASSERT_EQ(4, write(acc_fd, "RDMA", 4));
     ASSERT_EQ(2, write(acc_fd, "00", 2));
     bthread_id_join(cntl.call_id());
@@ -873,7 +922,7 @@ TEST_F(RdmaTest, server_close_during_hello_msg) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
     ASSERT_EQ(4, write(acc_fd, "RDMA", 4));
     ASSERT_EQ(2, write(acc_fd, "00", 2));
     close(acc_fd);
@@ -911,12 +960,12 @@ TEST_F(RdmaTest, server_hello_invalid_msg_len) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
     memcpy(data, "RDMA", 4);
     uint16_t len = butil::HostToNet16(35);
     memcpy(data + 4, &len, 2);
     memset(data + 6, 0, 32);
-    ASSERT_EQ(38, write(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FAILED, s->_rdma_ep->_state);
     bthread_id_join(cntl.call_id());
@@ -951,12 +1000,12 @@ TEST_F(RdmaTest, server_hello_invalid_version) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
     memcpy(data, "RDMA", 4);
-    uint16_t len = butil::HostToNet16(38);
+    uint16_t len = butil::HostToNet16(RDMA_HELLO_MSG_LEN);
     memcpy(data + 4, &len, 2);
     memset(data + 6, 0, 32);
-    ASSERT_EQ(38, write(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
     ASSERT_EQ(4, read(acc_fd, data, 4));
@@ -994,10 +1043,10 @@ TEST_F(RdmaTest, server_hello_invalid_sq_rq_size) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
 
     rdma::HelloMessage msg;
-    msg.msg_len = 38;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
     msg.hello_ver = 1;
     msg.impl_ver = 1;
     msg.sq_size = 0;
@@ -1007,7 +1056,7 @@ TEST_F(RdmaTest, server_hello_invalid_sq_rq_size) {
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
     msg.Serialize(data + 4);
-    ASSERT_EQ(38, write(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
 
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
@@ -1046,12 +1095,12 @@ TEST_F(RdmaTest, server_miss_after_ack) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
 
     rdma::HelloMessage msg;
-    msg.msg_len = 38;
-    msg.hello_ver = 1;
-    msg.impl_ver = 1;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.hello_ver = RDMA_HELLO_VERSION;
+    msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
     msg.rq_size = 16;
     msg.block_size = 8192;
@@ -1059,7 +1108,7 @@ TEST_F(RdmaTest, server_miss_after_ack) {
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
     msg.Serialize(data + 4);
-    ASSERT_EQ(38, write(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
 
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
@@ -1098,12 +1147,12 @@ TEST_F(RdmaTest, server_close_after_ack) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
 
     rdma::HelloMessage msg;
-    msg.msg_len = 38;
-    msg.hello_ver = 1;
-    msg.impl_ver = 1;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.hello_ver = RDMA_HELLO_VERSION;
+    msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
     msg.rq_size = 16;
     msg.block_size = 8192;
@@ -1111,7 +1160,7 @@ TEST_F(RdmaTest, server_close_after_ack) {
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
     msg.Serialize(data + 4);
-    ASSERT_EQ(38, write(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
 
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
@@ -1151,12 +1200,12 @@ TEST_F(RdmaTest, server_send_data_on_tcp_after_ack) {
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(38, read(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
 
     rdma::HelloMessage msg;
-    msg.msg_len = 38;
-    msg.hello_ver = 1;
-    msg.impl_ver = 1;
+    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.hello_ver = RDMA_HELLO_VERSION;
+    msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
     msg.rq_size = 16;
     msg.block_size = 8192;
@@ -1164,11 +1213,11 @@ TEST_F(RdmaTest, server_send_data_on_tcp_after_ack) {
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
     msg.Serialize(data + 4);
-    ASSERT_EQ(38, write(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
 
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
-    ASSERT_EQ(38, write(acc_fd, data, 38));
+    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
     bthread_id_join(cntl.call_id());
 
     ASSERT_EQ(EPROTO, cntl.ErrorCode());
@@ -1407,7 +1456,7 @@ TEST_F(RdmaTest, send_rpcs_in_one_qp) {
     ChannelOptions chan_options;
     chan_options.use_rdma = true;
     chan_options.connect_timeout_ms = 500;
-    chan_options.timeout_ms = 3000;
+    chan_options.timeout_ms = 5000;
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
     Controller cntl[RPC_NUM];
@@ -1467,8 +1516,8 @@ TEST_F(RdmaTest, send_rpcs_in_one_qp) {
             Socket* m = GetSocketFromServer(0);
             DumpRdmaEndpointInfo(s.get(), m);
         }
-        ASSERT_TRUE(0 == cntl[i].ErrorCode() ||
-                    EOVERCROWDED == cntl[i].ErrorCode()) << "req[" << i << "]";
+        ASSERT_TRUE(0 == cntl[i].ErrorCode() || EOVERCROWDED == cntl[i].ErrorCode())
+            << "req[" << i << "] " << berror(cntl[i].ErrorCode());
     }
 
     StopServer();

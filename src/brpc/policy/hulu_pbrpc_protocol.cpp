@@ -20,7 +20,10 @@
 #include <google/protobuf/message.h>             // Message
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/io/coded_stream.h>
+
+#include "butil/strings/string_util.h"
 #include "butil/time.h"
+
 #include "brpc/controller.h"                     // Controller
 #include "brpc/socket.h"                         // Socket
 #include "brpc/server.h"                         // Server
@@ -227,7 +230,7 @@ static void SendHuluResponse(int64_t correlation_id,
                              MethodStatus* method_status,
                              int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
+    auto span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
@@ -411,7 +414,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
 
-    Span* span = NULL;
+    std::shared_ptr<Span> span;
     if (IsTraceable(meta.has_trace_id())) {
         span = Span::CreateServerSpan(
             meta.trace_id(), meta.span_id(), meta.parent_span_id(),
@@ -469,17 +472,18 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         // Switch to service-specific error.
         non_service_error.release();
         method_status = sp->status;
+        const google::protobuf::MethodDescriptor* method = sp->method;
+        const std::string method_full_name = butil::EnsureString(method->full_name());
         if (method_status) {
             int rejected_cc = 0;
             if (!method_status->OnRequested(&rejected_cc)) {
                 cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                                sp->method->full_name().c_str(), rejected_cc);
+                                method_full_name.c_str(), rejected_cc);
                 break;
             }
         }
         
         google::protobuf::Service* svc = sp->service;
-        const google::protobuf::MethodDescriptor* method = sp->method;
         accessor.set_method(method);
 
         if (!server->AcceptRequest(cntl.get())) {
@@ -487,7 +491,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         }
 
         if (span) {
-            span->ResetServerSpanName(method->full_name());
+            span->ResetServerSpanName(method_full_name);
         }
         const int reqsize = msg->payload.length();
         butil::IOBuf req_buf;
@@ -608,8 +612,7 @@ void ProcessHuluResponse(InputMessageBase* msg_base) {
     }
     
     ControllerPrivateAccessor accessor(cntl);
-    Span* span = accessor.span();
-    if (span) {
+    if (auto span = accessor.span()) {
         span->set_base_real_us(msg->base_real_us());
         span->set_received_us(msg->received_us());
         span->set_response_size(msg->meta.size() + msg->payload.size() + 12);
@@ -711,7 +714,7 @@ void PackHuluRequest(butil::IOBuf* req_buf,
     } // else don't set user_mesage_size when there's no attachment, otherwise
     // existing hulu-pbrpc server may complain about empty attachment.
 
-    Span* span = ControllerPrivateAccessor(cntl).span();
+    auto span = ControllerPrivateAccessor(cntl).span();
     if (span) {
         meta.set_trace_id(span->trace_id());
         meta.set_span_id(span->span_id());

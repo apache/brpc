@@ -54,6 +54,7 @@
 // Span
 #include "brpc/span.h"
 #include "bthread/unstable.h"
+#include "bthread/bthread.h"
 
 // Compress handlers
 #include "brpc/compress.h"
@@ -75,6 +76,7 @@
 #include "brpc/policy/ubrpc2pb_protocol.h"
 #include "brpc/policy/sofa_pbrpc_protocol.h"
 #include "brpc/policy/memcache_binary_protocol.h"
+#include "brpc/policy/couchbase_protocol.h"
 #include "brpc/policy/streaming_rpc_protocol.h"
 #include "brpc/policy/mongo_protocol.h"
 #include "brpc/policy/redis_protocol.h"
@@ -236,13 +238,13 @@ static void* GlobalUpdate(void*) {
     }
 
     std::vector<SocketId> conns;
-    const int64_t start_time_us = butil::gettimeofday_us();
+    const int64_t start_time_us = butil::cpuwide_time_us();
     const int WARN_NOSLEEP_THRESHOLD = 2;
     int64_t last_time_us = start_time_us;
     int consecutive_nosleep = 0;
     int64_t last_return_free_memory_time = start_time_us;
     while (1) {
-        const int64_t sleep_us = 1000000L + last_time_us - butil::gettimeofday_us();
+        const int64_t sleep_us = 1000000L + last_time_us - butil::cpuwide_time_us();
         if (sleep_us > 0) {
             if (bthread_usleep(sleep_us) < 0) {
                 PLOG_IF(FATAL, errno != ESTOP) << "Fail to sleep";
@@ -255,7 +257,7 @@ static void* GlobalUpdate(void*) {
                 LOG(WARNING) << __FUNCTION__ << " is too busy!";
             }
         }
-        last_time_us = butil::gettimeofday_us();
+        last_time_us = butil::cpuwide_time_us();
 
         TrackMe();
 
@@ -342,8 +344,11 @@ static void GlobalInitializeOrDieImpl() {
     SetLogHandler(&BaiduStreamingLogHandler);
 #endif
 
-    // Set bthread create span function
-    bthread_set_create_span_func(CreateBthreadSpan);
+    if (bthread_set_span_funcs(CreateBthreadSpanAsVoid,
+                                DestroyRpczParentSpan,
+                                EndBthreadSpan) != 0) {
+        LOG(FATAL) << "Failed to register span callbacks to bthread";
+    }
 
     // Setting the variable here does not work, the profiler probably check
     // the variable before main() for only once.
@@ -518,6 +523,16 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
+    Protocol couchbase_protocol = { ParseCouchbaseMessage,
+                                    SerializeCouchbaseRequest,
+                                    PackCouchbaseRequest,
+                                    NULL, ProcessCouchbaseResponse,
+                                    NULL, NULL, GetCouchbaseMethodName,
+                                    CONNECTION_TYPE_ALL, "couchbase" };
+    if (RegisterProtocol(PROTOCOL_COUCHBASE, couchbase_protocol) != 0) {
+        exit(1);
+    }
+
     Protocol redis_protocol = { ParseRedisMessage,
                                 SerializeRedisRequest,
                                 PackRedisRequest,
@@ -635,7 +650,9 @@ static void GlobalInitializeOrDieImpl() {
 
     // We never join GlobalUpdate, let it quit with the process.
     bthread_t th;
-    CHECK(bthread_start_background(&th, NULL, GlobalUpdate, NULL) == 0)
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    bthread_attr_set_name(&attr, "GlobalUpdate");
+    CHECK(bthread_start_background(&th, &attr, GlobalUpdate, NULL) == 0)
         << "Fail to start GlobalUpdate";
 }
 
