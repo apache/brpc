@@ -701,6 +701,36 @@ bool SupportedByRdma(std::string protocol) {
     return false;
 }
 
+uint16_t detect_mtu(struct ibv_context* ctx, int port_num) {
+    struct ibv_port_attr port_attr;
+    
+    if (ibv_query_port(ctx, port_num, &port_attr)) {
+        LOG(ERROR) << "ibv_query_port failed";
+        return 0;
+    }
+
+    LOG(INFO) << "local active mtu type:" << port_attr.active_mtu
+              << ", max mtu type:" << port_attr.max_mtu;
+
+    ibv_mtu local_mtu_type = port_attr.active_mtu;
+    if (local_mtu_type == IBV_MTU_256) {
+        LOG(INFO) << "local mtu is 256";
+    } else if (local_mtu_type == IBV_MTU_512) {
+        LOG(INFO) << "local mtu is 512";
+    } else if (local_mtu_type == IBV_MTU_1024) {
+        LOG(INFO) << "local mtu is 1024";
+    } else if (local_mtu_type == IBV_MTU_2048) {
+        LOG(INFO) << "local mtu is 2048";
+    } else if (local_mtu_type == IBV_MTU_4096) {
+        LOG(INFO) << "local mtu is 4096";
+    } else {
+        LOG(ERROR) << "unknown mtu " << local_mtu_type;
+        return 0;
+    }
+
+    return local_mtu_type;
+}
+
 bool InitPollingModeWithTag(bthread_tag_t tag,
                             std::function<void(void)> callback,
                             std::function<void(void)> init_fn,
