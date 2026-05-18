@@ -180,8 +180,12 @@ uint32_t RdmaRegisterMemory(void* buf, size_t size) {
     // The thread-safety should be guaranteed by the caller
     ibv_mr* mr = IbvRegMr(g_pd, buf, size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_RELAXED_ORDERING);
     if (!mr) {
-        PLOG(ERROR) << "Fail to register memory";
-        return 0;
+        PLOG(WARNING) << "Do not support IBV_ACCESS_RELAXED_ORDERING for RDMA!!!";
+        mr = IbvRegMr(g_pd, buf, size, IBV_ACCESS_LOCAL_WRITE);
+        if (!mr) {
+            PLOG(ERROR) << "Fail to register memory";
+            return 0;
+        }
     }
     g_mrs->push_back(mr);
     return mr->lkey;
@@ -596,8 +600,12 @@ void GlobalRdmaInitializeOrDie() {
 uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
     ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE |IBV_ACCESS_RELAXED_ORDERING);
     if (!mr) {
-        PLOG(ERROR) << "Fail to register memory";
-        return 0;
+        PLOG(WARNING) << "Do not support IBV_ACCESS_RELAXED_ORDERING for RDMA!!!";
+        mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
+        if (!mr) {
+            PLOG(ERROR) << "Fail to register memory";
+            return 0;
+        }
     }
     {
         BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
