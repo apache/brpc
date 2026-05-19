@@ -360,7 +360,19 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
             Stream* s = (Stream *) stream_ptr->conn();
             StreamSettings *stream_settings = meta.mutable_stream_settings();
             s->FillSettings(stream_settings);
-            s->SetHostSocket(sock);
+            if (s->SetHostSocket(sock) != 0) {
+                const int errcode = errno;
+                LOG_IF(WARNING, errcode != EPIPE)
+                    << "Fail to bind response stream=" << response_stream_id
+                    << " to " << sock->description() << ": "
+                    << berror(errcode);
+                cntl->SetFailed(errcode, "Fail to bind response stream to %s",
+                                sock->description().c_str());
+                Stream::SetFailed(response_stream_ids, errcode,
+                                  "Fail to bind response stream to %s",
+                                  sock->description().c_str());
+                return;
+            }
             for (size_t i = 1; i < response_stream_ids.size(); ++i) {
                 stream_settings->mutable_extra_stream_ids()->Add(response_stream_ids[i]);
             }
@@ -390,6 +402,15 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 
     ResponseWriteInfo args;
     bthread_id_t response_id = INVALID_BTHREAD_ID;
+    auto response_write_guard = butil::MakeScopeGuard([&response_id, &args, span] {
+        if (response_id == INVALID_BTHREAD_ID) {
+            return;
+        }
+        bthread_id_join(response_id);
+        // Do not care about the result of background writing.
+        // TODO: this is not sent
+        span->set_sent_us(args.sent_us);
+    });
     if (span) {
         span->set_response_size(res_buf.size());
         CHECK_EQ(0, bthread_id_create(&response_id, &args, HandleResponseWritten));
@@ -426,7 +447,21 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
             SocketUniquePtr extra_stream_ptr;
             if (Socket::Address(extra_stream_id, &extra_stream_ptr) == 0) {
                 Stream* extra_stream = (Stream *) extra_stream_ptr->conn();
-                extra_stream->SetHostSocket(sock);
+                if (extra_stream->SetHostSocket(sock) != 0) {
+                    const int errcode = errno;
+                    LOG_IF(WARNING, errcode != EPIPE)
+                        << "Fail to bind response stream=" << extra_stream_id
+                        << " to " << sock->description() << ": "
+                        << berror(errcode);
+                    cntl->SetFailed(errcode, "Fail to bind response stream to %s",
+                                    sock->description().c_str());
+                    StreamIds remaining_stream_ids(response_stream_ids.begin() + i,
+                                                   response_stream_ids.end());
+                    Stream::SetFailed(remaining_stream_ids, errcode,
+                                      "Fail to bind response stream to %s",
+                                      sock->description().c_str());
+                    return;
+                }
                 extra_stream->SetConnected();
             } else {
                 LOG(WARNING) << "Stream=" << extra_stream_id
@@ -451,12 +486,6 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         }
     }
 
-    if (span) {
-        bthread_id_join(response_id);
-        // Do not care about the result of background writing.
-        // TODO: this is not sent
-        span->set_sent_us(args.sent_us);
-    }
 }
 
 namespace {
