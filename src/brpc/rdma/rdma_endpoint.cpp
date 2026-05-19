@@ -81,10 +81,10 @@ static const size_t RESERVED_WR_NUM = 3;
 // block size (4B)
 // sq size (2B)
 // rq size (2B)
-// mtu type (2B)
 // lid size (2B)
 // GID (16B)
 // QP number (4B)
+// mtu type (2B)
 static const char* MAGIC_STR = "RDMA";
 static const size_t MAGIC_STR_LEN = 4;
 static const size_t HELLO_MSG_LEN_MIN = 42;
@@ -117,10 +117,10 @@ struct HelloMessage {
     uint32_t block_size;
     uint16_t sq_size;
     uint16_t rq_size;
-    uint16_t mtu_type;
     uint16_t lid;
     ibv_gid gid;
     uint32_t qp_num;
+    uint16_t mtu_type;
 };
 
 void HelloMessage::Serialize(void* data) const {
@@ -133,11 +133,13 @@ void HelloMessage::Serialize(void* data) const {
     current_pos += 2; // move forward 4 Bytes
     *(current_pos++) = butil::HostToNet16(sq_size);
     *(current_pos++) = butil::HostToNet16(rq_size);
-    *(current_pos++) = butil::HostToNet16(mtu_type);
     *(current_pos++) = butil::HostToNet16(lid);
     memcpy(current_pos, gid.raw, 16);
-    uint32_t* qp_num_pos = (uint32_t*)((char*)current_pos + 16);
+    current_pos += 8;
+    uint32_t* qp_num_pos = (uint32_t*)(current_pos);
     *qp_num_pos = butil::HostToNet32(qp_num);
+    current_pos += 2;
+    *(current_pos) = butil::HostToNet16(mtu_type);
 }
 
 void HelloMessage::Deserialize(void* data) {
@@ -149,10 +151,12 @@ void HelloMessage::Deserialize(void* data) {
     current_pos += 2; // move forward 4 Bytes
     sq_size = butil::NetToHost16(*current_pos++);
     rq_size = butil::NetToHost16(*current_pos++);
-    mtu_type = butil::NetToHost16(*current_pos++);
     lid = butil::NetToHost16(*current_pos++);
     memcpy(gid.raw, current_pos, 16);
-    qp_num = butil::NetToHost32(*(uint32_t*)((char*)current_pos + 16));
+    current_pos += 8;
+    qp_num = butil::NetToHost32(*(uint32_t*)(current_pos));
+    current_pos += 2;
+    mtu_type = butil::NetToHost16(*current_pos);
 }
 
 RdmaResource::~RdmaResource() {
@@ -440,7 +444,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         << "Start handshake on " << s->_local_side;
 
     uint8_t data[g_rdma_hello_msg_len];
-    uint16_t local_mtu_type = detect_mtu(GetRdmaContext(), GetRdmaPortNum());
+    uint16_t local_mtu_type = GetLocalMtuType();
 
     // First initialize CQ and QP resources
     ep->_state = C_ALLOC_QPCQ;
@@ -461,7 +465,6 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     local_msg.block_size = g_rdma_recv_block_size;
     local_msg.sq_size = ep->_sq_size;
     local_msg.rq_size = ep->_rq_size;
-    local_msg.mtu_type = local_mtu_type;
     local_msg.lid = GetRdmaLid();
     local_msg.gid = GetRdmaGid();
     if (BAIDU_LIKELY(ep->_resource)) {
@@ -470,6 +473,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         // Only happens in UT
         local_msg.qp_num = 0;
     }
+    local_msg.mtu_type = local_mtu_type;
     memcpy(data, MAGIC_STR, 4);
     local_msg.Serialize((char*)data + 4);
     if (ep->WriteToFd(data, g_rdma_hello_msg_len) < 0) {
@@ -591,7 +595,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         << "Start handshake on " << s->description();
 
     uint8_t data[g_rdma_hello_msg_len];
-    uint16_t local_mtu_type = detect_mtu(GetRdmaContext(), GetRdmaPortNum());
+    uint16_t local_mtu_type = GetLocalMtuType();
 
     ep->_state = S_HELLO_WAIT;
     if (ep->ReadFromFd(data, MAGIC_STR_LEN) < 0) {
@@ -685,7 +689,6 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         local_msg.block_size = g_rdma_recv_block_size;
         local_msg.sq_size = ep->_sq_size;
         local_msg.rq_size = ep->_rq_size;
-        local_msg.mtu_type = local_mtu_type;
         local_msg.hello_ver = g_rdma_hello_version;
         local_msg.impl_ver = g_rdma_impl_version;
         if (BAIDU_LIKELY(ep->_resource)) {
@@ -694,6 +697,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
             // Only happens in UT
             local_msg.qp_num = 0;
         }
+        local_msg.mtu_type = local_mtu_type;
     }
     memcpy(data, MAGIC_STR, 4);
     local_msg.Serialize((char*)data + 4);
