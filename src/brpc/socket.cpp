@@ -81,6 +81,13 @@ DEFINE_int32(socket_send_buffer_size, -1,
 
 DEFINE_int32(ssl_bio_buffer_size, 16*1024, "Set buffer size for SSL read/write");
 
+DEFINE_int32(ssl_handshake_timeout_ms, 5000,
+             "Max duration of one SSL handshake on a socket. Zero or negative "
+             "disables the limit and falls back to waiting forever, which can "
+             "leak ESTABLISHED sockets if the peer never finishes the TLS "
+             "handshake (e.g. server not actually listening with SSL).");
+BRPC_VALIDATE_GFLAG(ssl_handshake_timeout_ms, PassValidate);
+
 DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
              "Max unwritten bytes in each socket, if the limit is reached,"
              " Socket.Write fails with EOVERCROWDED");
@@ -1956,9 +1963,23 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
 
     _ssl_state = SSL_CONNECTING;
 
+    // Bound the handshake by a deadline; without it, a peer that completes
+    // the TCP handshake but never returns a TLS Hello (e.g. server not
+    // configured for SSL) would park this bthread on bthread_fd_wait
+    // forever. That bthread holds a Socket reference via WriteRequest, so
+    // the underlying fd would never be recycled and the connection would
+    // remain ESTABLISHED indefinitely.
+    const int handshake_timeout_ms = FLAGS_ssl_handshake_timeout_ms;
+    timespec abstime_storage;
+    const timespec* abstime = NULL;
+    if (handshake_timeout_ms > 0) {
+        abstime_storage = butil::milliseconds_from_now(handshake_timeout_ms);
+        abstime = &abstime_storage;
+    }
+
     // Loop until SSL handshake has completed. For SSL_ERROR_WANT_READ/WRITE,
-    // we use bthread_fd_wait as polling mechanism instead of EventDispatcher
-    // as it may confuse the origin event processing code.
+    // we use bthread_fd_timedwait as polling mechanism instead of
+    // EventDispatcher as it may confuse the origin event processing code.
     while (true) {
         ERR_clear_error();
         int rc = SSL_do_handshake(_ssl_session);
@@ -2004,20 +2025,32 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         switch (ssl_error) {
         case SSL_ERROR_WANT_READ:
 #if defined(OS_LINUX)
-            if (bthread_fd_wait(fd, EPOLLIN) != 0) {
+            if (bthread_fd_timedwait(fd, EPOLLIN, abstime) != 0) {
 #elif defined(OS_MACOSX)
-            if (bthread_fd_wait(fd, EVFILT_READ) != 0) {
+            if (bthread_fd_timedwait(fd, EVFILT_READ, abstime) != 0) {
 #endif
+                if (errno == ETIMEDOUT) {
+                    LOG(WARNING) << "SSL handshake timed out after "
+                                 << handshake_timeout_ms
+                                 << "ms while waiting for peer data on fd="
+                                 << fd << " remote_side=" << _remote_side;
+                }
                 return -1;
             }
             break;
 
         case SSL_ERROR_WANT_WRITE:
 #if defined(OS_LINUX)
-            if (bthread_fd_wait(fd, EPOLLOUT) != 0) {
+            if (bthread_fd_timedwait(fd, EPOLLOUT, abstime) != 0) {
 #elif defined(OS_MACOSX)
-            if (bthread_fd_wait(fd, EVFILT_WRITE) != 0) {
+            if (bthread_fd_timedwait(fd, EVFILT_WRITE, abstime) != 0) {
 #endif
+                if (errno == ETIMEDOUT) {
+                    LOG(WARNING) << "SSL handshake timed out after "
+                                 << handshake_timeout_ms
+                                 << "ms while waiting to send on fd=" << fd
+                                 << " remote_side=" << _remote_side;
+                }
                 return -1;
             }
             break;
