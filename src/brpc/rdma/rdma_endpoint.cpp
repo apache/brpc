@@ -107,6 +107,9 @@ static const uint32_t ACK_MSG_RDMA_OK = 0x1;
 static butil::Mutex* g_rdma_resource_mutex = NULL;
 static RdmaResource* g_rdma_resource_list = NULL;
 
+// The HelloMessage should have all base fields, and the new versions of HelloMessage
+// maybe have some extern fields.
+
 struct HelloMessage {
     void BaseSerialize(void* data) const;
     void ExtSerialize(void* data) const;
@@ -170,16 +173,17 @@ uint16_t HelloMessage::ExtDeserialize(void* data, uint16_t ext_len) {
         return 0;
     }
 
+    uint16_t remain_ext_len = ext_len;
+
     // try to deserialize mtu_type
-    if (ext_len < 2) {
-        LOG(FATAL) << "illegal HelloMessage, ext len is " << ext_len << ", should not be less than 2!!!";
+    if (remain_ext_len < 2) {
+        LOG(FATAL) << "illegal HelloMessage, remain ext len is " << remain_ext_len << ", should not be less than 2!!!";
     }
     uint16_t* current_pos = (uint16_t*)data;
     mtu_type = butil::NetToHost16(*current_pos++);
+    remain_ext_len -= 2;
 
-    ext_len -= 2;
-
-    return ext_len;
+    return remain_ext_len;
 }
 
 RdmaResource::~RdmaResource() {
