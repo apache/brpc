@@ -87,7 +87,7 @@ static const size_t RESERVED_WR_NUM = 3;
 // mtu type (2B)
 static const char* MAGIC_STR = "RDMA";
 static const size_t MAGIC_STR_LEN = 4;
-static const size_t HELLO_MSG_LEN_MIN = 42;
+static const size_t HELLO_MSG_LEN_MIN = 40;
 // static const size_t HELLO_MSG_LEN_MAX = 4096;
 static const size_t ACK_MSG_LEN = 4;
 static uint16_t g_rdma_hello_msg_len = 42;  // In Byte
@@ -108,9 +108,12 @@ static butil::Mutex* g_rdma_resource_mutex = NULL;
 static RdmaResource* g_rdma_resource_list = NULL;
 
 struct HelloMessage {
-    void Serialize(void* data) const;
-    void Deserialize(void* data);
+    void BaseSerialize(void* data) const;
+    void ExtSerialize(void* data) const;
+    void BaseDeserialize(void* data);
+    void ExtDeserialize(void* data, uint16_t ext_len);
 
+    // base fields
     uint16_t msg_len;
     uint16_t hello_ver;
     uint16_t impl_ver;
@@ -120,10 +123,12 @@ struct HelloMessage {
     uint16_t lid;
     ibv_gid gid;
     uint32_t qp_num;
+
+    // extern fields
     uint16_t mtu_type;
 };
 
-void HelloMessage::Serialize(void* data) const {
+void HelloMessage::BaseSerialize(void* data) const {
     uint16_t* current_pos = (uint16_t*)data;
     *(current_pos++) = butil::HostToNet16(msg_len);
     *(current_pos++) = butil::HostToNet16(hello_ver);
@@ -138,11 +143,14 @@ void HelloMessage::Serialize(void* data) const {
     current_pos += 8;
     uint32_t* qp_num_pos = (uint32_t*)(current_pos);
     *qp_num_pos = butil::HostToNet32(qp_num);
-    current_pos += 2;
+}
+
+void HelloMessage::ExtSerialize(void* data) const {
+    uint16_t* current_pos = (uint16_t*)data;
     *(current_pos) = butil::HostToNet16(mtu_type);
 }
 
-void HelloMessage::Deserialize(void* data) {
+void HelloMessage::BaseDeserialize(void* data) {
     uint16_t* current_pos = (uint16_t*)data;
     msg_len = butil::NetToHost16(*current_pos++);
     hello_ver = butil::NetToHost16(*current_pos++);
@@ -155,8 +163,23 @@ void HelloMessage::Deserialize(void* data) {
     memcpy(gid.raw, current_pos, 16);
     current_pos += 8;
     qp_num = butil::NetToHost32(*(uint32_t*)(current_pos));
-    current_pos += 2;
-    mtu_type = butil::NetToHost16(*current_pos);
+}
+
+uint16_t HelloMessage::ExtDeserialize(void* data, uint16_t ext_len) {
+    if (ext_len == 0) {
+        return 0;
+    }
+
+    // try to deserialize mtu_type
+    if (ext_len < 2) {
+        LOG(FATAL) << "illegal HelloMessage, ext len is " << ext_len << ", should not be less than 2!!!";
+    }
+    uint16_t* current_pos = (uint16_t*)data;
+    mtu_type = butil::NetToHost16(*current_pos++);
+
+    ext_len -= 2;
+
+    return ext_len;
 }
 
 RdmaResource::~RdmaResource() {
@@ -475,7 +498,8 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
     local_msg.mtu_type = local_mtu_type;
     memcpy(data, MAGIC_STR, 4);
-    local_msg.Serialize((char*)data + 4);
+    local_msg.BaseSerialize((char*)data + 4);
+    local_msg.ExtSerialize((char*)data + HELLO_MSG_LEN_MIN);
     if (ep->WriteToFd(data, g_rdma_hello_msg_len) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to send hello message to server:" << s->description();
@@ -513,7 +537,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         return NULL;
     }
     HelloMessage remote_msg;
-    remote_msg.Deserialize(data);
+    remote_msg.BaseDeserialize(data);
     if (remote_msg.msg_len < HELLO_MSG_LEN_MIN) {
         LOG(WARNING) << "Fail to parse Hello Message length from server:"
                      << s->description();
@@ -523,9 +547,27 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         return NULL;
     }
 
+    // In older versions of brpc, IBV_MTU_1024 is the default mtu type,
+    // So we set remote_mtu IBV_MTU_1024 at default to be ompatible with older versions.
+    uint16_t remote_mtu_type = IBV_MTU_1024;
     if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
-        // TODO: Read Hello Message customized data
-        // Just for future use, should not happen now
+        // Read Hello Message customized data
+        uint16_t remote_msg_ext_len = remote_msg.msg_len - HELLO_MSG_LEN_MIN;
+        uint8_t ext_data[remote_msg_ext_len];
+        if (ep->ReadFromFd(ext_data, remote_msg_ext_len) < 0) {
+            const int saved_errno = errno;
+            PLOG(WARNING) << "Fail to get Hello Message ext fields from server:" << s->description();
+            s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
+                    s->description().c_str(), berror(saved_errno));
+            ep->_state = FAILED;
+            return NULL;
+        }
+        remote_msg.ExtDeserialize(ext_data, remote_msg_ext_len);
+        if (remote_msg_ext_len >= 2) {
+            // mtu_type field is valid
+            remote_mtu_type = remote_msg.mtu_type;
+        }
+        // TODO: other extern fields
     }
 
     if (!HelloNegotiationValid(remote_msg)) {
@@ -546,7 +588,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
 
         ep->_state = C_BRINGUP_QP;
         // use the minimum of local mtu type and remote mtu type
-        uint16_t min_mtu_type = std::min(local_mtu_type, remote_msg.mtu_type);
+        uint16_t min_mtu_type = std::min(local_mtu_type, remote_mtu_type);
         if (ep->BringUpQp(remote_msg.lid, remote_msg.gid, remote_msg.qp_num, min_mtu_type) < 0) {
             LOG(WARNING) << "Fail to bringup QP, fallback to tcp:" << s->description();
             rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
@@ -619,7 +661,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         return NULL;
     }
 
-    if (ep->ReadFromFd(data, g_rdma_hello_msg_len - MAGIC_STR_LEN) < 0) {
+    if (ep->ReadFromFd(data, HELLO_MSG_LEN_MIN - MAGIC_STR_LEN) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to read Hello Message from client:" << s->description();
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
@@ -629,7 +671,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     }
 
     HelloMessage remote_msg;
-    remote_msg.Deserialize(data);
+    remote_msg.BaseDeserialize(data);
     if (remote_msg.msg_len < HELLO_MSG_LEN_MIN) {
         LOG(WARNING) << "Fail to parse Hello Message length from client:"
                      << s->description();
@@ -638,9 +680,28 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->_state = FAILED;
         return NULL;
     }
+
+    // In older versions of brpc, IBV_MTU_1024 is the default mtu type,
+    // So we set remote_mtu IBV_MTU_1024 at default to be ompatible with older versions.
+    uint16_t remote_mtu_type = IBV_MTU_1024;
     if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
-        // TODO: Read Hello Message customized header
-        // Just for future use, should not happen now
+        // Read Hello Message customized data
+        uint16_t remote_msg_ext_len = remote_msg.msg_len - HELLO_MSG_LEN_MIN;
+        uint8_t ext_data[remote_msg_ext_len];
+        if (ep->ReadFromFd(ext_data, remote_msg_ext_len) < 0) {
+            const int saved_errno = errno;
+            PLOG(WARNING) << "Fail to get Hello Message ext fields from client:" << s->description();
+            s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
+                    s->description().c_str(), berror(saved_errno));
+            ep->_state = FAILED;
+            return NULL;
+        }
+        remote_msg.ExtDeserialize(ext_data, remote_msg_ext_len);
+        if (remote_msg_ext_len >= 2) {
+            // mtu_type field is valid
+            remote_mtu_type = remote_msg.mtu_type;
+        }
+        // TODO: other extern fields
     }
 
     if (!HelloNegotiationValid(remote_msg)) {
@@ -667,7 +728,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         } else {
             ep->_state = S_BRINGUP_QP;
             // use the minimum of local mtu type and remote mtu type
-            uint16_t min_mtu_type = std::min(local_mtu_type, remote_msg.mtu_type);
+            uint16_t min_mtu_type = std::min(local_mtu_type, remote_mtu_type);
             if (ep->BringUpQp(remote_msg.lid, remote_msg.gid, remote_msg.qp_num, min_mtu_type) < 0) {
                 LOG(WARNING) << "Fail to bringup QP, fallback to tcp:"
                              << s->description();
@@ -700,7 +761,8 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         local_msg.mtu_type = local_mtu_type;
     }
     memcpy(data, MAGIC_STR, 4);
-    local_msg.Serialize((char*)data + 4);
+    local_msg.BaseSerialize((char*)data + 4);
+    local_msg.ExtSerialize((char*)data + HELLO_MSG_LEN_MIN);
     if (ep->WriteToFd(data, g_rdma_hello_msg_len) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to send Hello Message to client:" << s->description();
