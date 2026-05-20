@@ -111,7 +111,7 @@ struct HelloMessage {
     void BaseSerialize(void* data) const;
     void ExtSerialize(void* data) const;
     void BaseDeserialize(void* data);
-    void ExtDeserialize(void* data, uint16_t ext_len);
+    uint16_t ExtDeserialize(void* data, uint16_t ext_len);
 
     // base fields
     uint16_t msg_len;
