@@ -460,8 +460,8 @@ static ibv_context* OpenDevice(int num_total, int* num_available_devices) {
 static uint16_t detect_mtu(struct ibv_context* ctx, int port_num) {
     struct ibv_port_attr port_attr;
     
-    if (ibv_query_port(ctx, port_num, &port_attr)) {
-        LOG(ERROR) << "ibv_query_port failed";
+    if (IbvQueryPort(ctx, port_num, &port_attr)) {
+        LOG(ERROR) << "IbvQueryPort failed";
         return 0;
     }
 
