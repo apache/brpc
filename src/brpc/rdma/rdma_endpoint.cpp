@@ -67,6 +67,7 @@ DEFINE_int32(rdma_poller_num, 1, "Poller number in RDMA polling mode.");
 DEFINE_bool(rdma_poller_yield, false, "Yield thread in RDMA polling mode.");
 DEFINE_bool(rdma_disable_bthread, false, "Disable bthread in RDMA");
 DEFINE_bool(rdma_ece, false, "Open ece in RDMA, should use this feature when rdma nics are from the same merchant.");
+DEFINE_bool(rdma_extend, false, "Use the extend fields to negotiate the advance feature of rdma, such as mtu.");
 
 static const size_t IOBUF_BLOCK_HEADER_LEN = 32; // implementation-dependent
 
@@ -503,8 +504,12 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     local_msg.mtu_type = local_mtu_type;
     memcpy(data, MAGIC_STR, 4);
     local_msg.BaseSerialize((char*)data + 4);
-    local_msg.ExtSerialize((char*)data + HELLO_MSG_LEN_MIN);
-    if (ep->WriteToFd(data, g_rdma_hello_msg_len) < 0) {
+    // If FLAGS_rdma_extend is not open, only send base fields of HelloMessage
+    if (FLAGS_rdma_extend) {
+        local_msg.ExtSerialize((char*)data + HELLO_MSG_LEN_MIN);
+    }
+    size_t msg_len = FLAGS_rdma_extend ? g_rdma_hello_msg_len : HELLO_MSG_LEN_MIN;
+    if (ep->WriteToFd(data, msg_len) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to send hello message to server:" << s->description();
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
@@ -554,7 +559,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     // In older versions of brpc, IBV_MTU_1024 is the default mtu type,
     // So we set remote_mtu IBV_MTU_1024 at default to be ompatible with older versions.
     uint16_t remote_mtu_type = IBV_MTU_1024;
-    if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
+    if (FLAGS_rdma_extend && remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
         // Read Hello Message customized data
         uint16_t remote_msg_ext_len = remote_msg.msg_len - HELLO_MSG_LEN_MIN;
         uint8_t ext_data[remote_msg_ext_len];
@@ -688,7 +693,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     // In older versions of brpc, IBV_MTU_1024 is the default mtu type,
     // So we set remote_mtu IBV_MTU_1024 at default to be ompatible with older versions.
     uint16_t remote_mtu_type = IBV_MTU_1024;
-    if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
+    if (FLAGS_rdma_extend && remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
         // Read Hello Message customized data
         uint16_t remote_msg_ext_len = remote_msg.msg_len - HELLO_MSG_LEN_MIN;
         uint8_t ext_data[remote_msg_ext_len];
@@ -766,8 +771,12 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     }
     memcpy(data, MAGIC_STR, 4);
     local_msg.BaseSerialize((char*)data + 4);
-    local_msg.ExtSerialize((char*)data + HELLO_MSG_LEN_MIN);
-    if (ep->WriteToFd(data, g_rdma_hello_msg_len) < 0) {
+    // If FLAGS_rdma_extend is not open, only send base fields of HelloMessage
+    if (FLAGS_rdma_extend) {
+        local_msg.ExtSerialize((char*)data + HELLO_MSG_LEN_MIN);
+    }
+    size_t msg_len = FLAGS_rdma_extend ? g_rdma_hello_msg_len : HELLO_MSG_LEN_MIN;
+    if (ep->WriteToFd(data, msg_len) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to send Hello Message to client:" << s->description();
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
