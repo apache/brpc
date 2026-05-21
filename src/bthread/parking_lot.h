@@ -26,6 +26,8 @@
 #include "butil/atomicops.h"
 #include "bthread/sys_futex.h"
 
+#include <limits>
+
 namespace bthread {
 
 DECLARE_bool(parking_lot_no_signal_when_no_waiter);
@@ -81,7 +83,7 @@ public:
     // Wakeup suspended wait() and make them unwaitable ever. 
     void stop() {
         _pending_signal.fetch_or(1);
-        futex_wake_private(&_pending_signal, 10000);
+        futex_wake_private(&_pending_signal, std::numeric_limits<int>::max());
     }
 
 private:
