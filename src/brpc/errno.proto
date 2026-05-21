@@ -41,7 +41,8 @@ enum Errno {
     ESSL                    = 1016;  // SSL related error
     EH2RUNOUTSTREAMS        = 1017;  // The H2 socket was run out of streams
     EREJECT                 = 1018;  // The Request is rejected
-
+    EPROGREADTIMEOUT        = 1019;  // The Progressive read timeout
+    
     // Errno caused by server
     EINTERNAL               = 2001;  // Internal Server Error
     ERESPONSE               = 2002;  // Bad Response
