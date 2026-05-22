@@ -83,6 +83,8 @@ typedef int errno_t;
 #define COPY_ALIGNED_DATA_BYTES 64
 
 #if defined(OS_MACOSX)
+#define EPOLLIN 0x001
+#define EPOLLOUT 0x004
 #define EPOLLET 0x80000000
 #endif
 
