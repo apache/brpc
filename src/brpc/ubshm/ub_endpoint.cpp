@@ -18,6 +18,7 @@
 #if BRPC_WITH_UBRING
 
 #include <gflags/gflags.h>
+#include <array>
 #include "butil/fd_utility.h"
 #include "butil/logging.h"                   // CHECK, LOG
 #include "butil/sys_byteorder.h"             // HostToNet,NetToHost
