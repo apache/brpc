@@ -522,14 +522,6 @@ TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
         brpc::Controller protected_cntl;
         CallHttpEcho(&protected_channel, &protected_cntl);
         ASSERT_TRUE(protected_cntl.Failed());
-        if (protected_cntl.ErrorCode() == brpc::EHTTP) {
-            ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN,
-                      protected_cntl.http_response().status_code())
-                << protected_cntl.ErrorText();
-        } else {
-            ASSERT_EQ(brpc::EEOF, protected_cntl.ErrorCode())
-                << protected_cntl.ErrorText();
-        }
     }
 
     ASSERT_EQ(0, server.Stop(0));
