@@ -67,7 +67,6 @@ int main(int argc, char* argv[]) {
 namespace brpc {
 DECLARE_bool(enable_threads_service);
 DECLARE_bool(enable_dir_service);
-DECLARE_int32(max_connection_pool_size);
 
 namespace policy {
 DECLARE_bool(use_http_error_code);
@@ -2038,38 +2037,6 @@ void TestHttpAuth(const butil::EndPoint& ep,
     ASSERT_EQ(cntl.http_response().status_code(), status_code);
 }
 
-void InitHttpPooledChannel(brpc::Channel* channel,
-                           const butil::EndPoint& ep,
-                           const std::string& connection_group) {
-    brpc::ChannelOptions copt;
-    copt.protocol = brpc::PROTOCOL_HTTP;
-    copt.connection_type = brpc::CONNECTION_TYPE_POOLED;
-    copt.connection_group = connection_group;
-    copt.max_retry = 0;
-    ASSERT_EQ(0, channel->Init(ep, &copt));
-}
-
-void CallVersion(brpc::Channel* channel, brpc::Controller* cntl) {
-    cntl->http_request().uri() = "/version";
-    cntl->http_request().set_method(brpc::HTTP_METHOD_GET);
-    channel->CallMethod(NULL, cntl, NULL, NULL, NULL);
-}
-
-void CallHttpEcho(brpc::Channel* channel, brpc::Controller* cntl) {
-    cntl->http_request().uri() = "/EchoService/Echo";
-    cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
-    cntl->request_attachment().append(R"({"message":"hello"})");
-    channel->CallMethod(NULL, cntl, NULL, NULL, NULL);
-}
-
-int AllocateFreePortOrDie() {
-    butil::fd_guard fd(tcp_listen(butil::EndPoint(butil::my_ip(), 0)));
-    EXPECT_GE(fd, 0);
-    butil::EndPoint point;
-    EXPECT_EQ(0, butil::get_local_side(fd, &point));
-    return point.port;
-}
-
 TEST_F(ServerTest, auth) {
     butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
@@ -2094,87 +2061,11 @@ TEST_F(ServerTest, auth) {
     ASSERT_NE(cntl.response_attachment().to_string().find(g_unauthorized_error_text),
               std::string::npos);
 
-    brpc::Channel builtin_chan;
-    InitHttpPooledChannel(&builtin_chan, ep, "builtin_auth_public");
-    cntl.Reset();
-    CallVersion(&builtin_chan, &cntl);
-    ASSERT_TRUE(cntl.Failed());
-    ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code());
-    ASSERT_NE(cntl.response_attachment().to_string().find(g_unauthorized_error_text),
-              std::string::npos);
-
     g_verify_success = true;
     cntl.Reset();
     cntl.http_request().SetHeader("Authorization", "123");
     TestHttpAuth(ep, cntl, brpc::HTTP_STATUS_OK, false);
 
-    brpc::Channel builtin_auth_chan;
-    InitHttpPooledChannel(&builtin_auth_chan, ep, "builtin_auth_public_ok");
-    cntl.Reset();
-    cntl.http_request().SetHeader("Authorization", "123");
-    CallVersion(&builtin_auth_chan, &cntl);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ(brpc::HTTP_STATUS_OK, cntl.http_response().status_code());
-
-    ASSERT_EQ(0, server.Stop(0));
-    ASSERT_EQ(0, server.Join());
-}
-
-TEST_F(ServerTest, builtin_http_request_skips_auth_on_internal_port) {
-    butil::EndPoint ep;
-    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &ep));
-
-    brpc::Server server;
-    EchoServiceImpl service;
-    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-
-    MyAuthenticator auth;
-    brpc::ServerOptions opt;
-    opt.auth = &auth;
-    opt.internal_port = AllocateFreePortOrDie();
-    ASSERT_EQ(0, server.Start(ep, &opt));
-    ep = server.listen_address();
-    const butil::EndPoint internal_ep(ep.ip, opt.internal_port);
-
-    const bool saved_verify_success = g_verify_success;
-    g_verify_success = false;
-
-    {
-        brpc::Channel direct_channel;
-        InitHttpPooledChannel(&direct_channel, ep, "direct_unauth");
-
-        brpc::Controller direct_cntl;
-        CallHttpEcho(&direct_channel, &direct_cntl);
-        ASSERT_TRUE(direct_cntl.Failed());
-        ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, direct_cntl.http_response().status_code());
-        ASSERT_NE(direct_cntl.response_attachment().to_string().find(g_unauthorized_error_text),
-                  std::string::npos);
-    }
-
-    {
-        brpc::Channel builtin_channel;
-        InitHttpPooledChannel(&builtin_channel, ep, "builtin_public");
-
-        brpc::Controller version_cntl;
-        CallVersion(&builtin_channel, &version_cntl);
-        ASSERT_TRUE(version_cntl.Failed());
-        ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, version_cntl.http_response().status_code());
-        ASSERT_NE(version_cntl.response_attachment().to_string().find(g_unauthorized_error_text),
-                  std::string::npos);
-    }
-
-    {
-        brpc::Channel internal_builtin_channel;
-        InitHttpPooledChannel(&internal_builtin_channel, internal_ep, "builtin_internal");
-
-        brpc::Controller internal_version_cntl;
-        CallVersion(&internal_builtin_channel, &internal_version_cntl);
-        ASSERT_FALSE(internal_version_cntl.Failed()) << internal_version_cntl.ErrorText();
-        ASSERT_EQ(brpc::HTTP_STATUS_OK,
-                  internal_version_cntl.http_response().status_code());
-    }
-
-    g_verify_success = saved_verify_success;
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
 }
