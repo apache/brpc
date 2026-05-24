@@ -261,10 +261,13 @@ protected:
     }
 
     void CallHttpEcho(brpc::Channel* channel, brpc::Controller* cntl) {
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
         cntl->http_request().uri() = "/EchoService/Echo";
         cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
-        cntl->request_attachment().append(R"({"message":"hello"})");
-        channel->CallMethod(NULL, cntl, NULL, NULL, NULL);
+        cntl->http_request().set_content_type("application/json");
+        channel->CallMethod(NULL, cntl, &req, &res, NULL);
     }
 
 
@@ -449,7 +452,7 @@ TEST_F(HttpTest, verify_builtin_request_on_internal_port) {
     }
 }
 
-TEST(HttpProtocolAuthTest, builtin_auth_policy_on_public_and_internal_port) {
+TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
     const int saved_max_connection_pool_size = brpc::FLAGS_max_connection_pool_size;
     brpc::FLAGS_max_connection_pool_size = 1;
 
@@ -479,6 +482,7 @@ TEST(HttpProtocolAuthTest, builtin_auth_policy_on_public_and_internal_port) {
         cntl.http_request().set_method(brpc::HTTP_METHOD_GET);
         chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
         ASSERT_TRUE(cntl.Failed());
+        ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode()) << cntl.ErrorText();
         ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code());
     }
 
@@ -510,19 +514,22 @@ TEST(HttpProtocolAuthTest, builtin_auth_policy_on_public_and_internal_port) {
         ASSERT_EQ(0, protected_channel.Init(ep, &copt));
 
         brpc::Controller builtin_cntl;
-        builtin_cntl.http_request().uri() = "/status";
-        builtin_cntl.http_request().set_method(brpc::HTTP_METHOD_GET);
-        builtin_channel.CallMethod(NULL, &builtin_cntl, NULL, NULL, NULL);
+        CallVersion(&builtin_channel, &builtin_cntl);
         ASSERT_TRUE(builtin_cntl.Failed());
+        ASSERT_EQ(brpc::EHTTP, builtin_cntl.ErrorCode()) << builtin_cntl.ErrorText();
         ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, builtin_cntl.http_response().status_code());
 
         brpc::Controller protected_cntl;
-        protected_cntl.http_request().uri() = "/EchoService/Echo";
-        protected_cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
-        protected_cntl.request_attachment().append(R"({"message":"hello"})");
-        protected_channel.CallMethod(NULL, &protected_cntl, NULL, NULL, NULL);
+        CallHttpEcho(&protected_channel, &protected_cntl);
         ASSERT_TRUE(protected_cntl.Failed());
-        ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, protected_cntl.http_response().status_code());
+        if (protected_cntl.ErrorCode() == brpc::EHTTP) {
+            ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN,
+                      protected_cntl.http_response().status_code())
+                << protected_cntl.ErrorText();
+        } else {
+            ASSERT_EQ(brpc::EEOF, protected_cntl.ErrorCode())
+                << protected_cntl.ErrorText();
+        }
     }
 
     ASSERT_EQ(0, server.Stop(0));
