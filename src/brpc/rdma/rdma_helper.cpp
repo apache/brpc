@@ -598,7 +598,7 @@ void GlobalRdmaInitializeOrDie() {
 }
 
 uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
-    ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE |IBV_ACCESS_RELAXED_ORDERING);
+    ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_RELAXED_ORDERING);
     if (!mr) {
         PLOG(WARNING) << "Do not support IBV_ACCESS_RELAXED_ORDERING for RDMA!!!";
         mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
