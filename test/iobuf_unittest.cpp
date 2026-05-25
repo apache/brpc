@@ -58,7 +58,7 @@ extern IOBuf::Block* get_portal_next(IOBuf::Block const* b);
 namespace {
 
 const size_t BLOCK_OVERHEAD = 32; //impl dependent
-const size_t DEFAULT_PAYLOAD = butil::IOBuf::DEFAULT_BLOCK_SIZE - BLOCK_OVERHEAD;
+const size_t DEFAULT_PAYLOAD = butil::GetDefaultBlockSize() - BLOCK_OVERHEAD;
 
 void check_tls_block() {
     ASSERT_EQ((butil::IOBuf::Block*)NULL, butil::iobuf::get_tls_block_head());
@@ -534,7 +534,7 @@ TEST_F(IOBufTest, iobuf_sanity) {
 TEST_F(IOBufTest, copy_and_assign) {
     install_debug_allocator();
 
-    const size_t TARGET_SIZE = butil::IOBuf::DEFAULT_BLOCK_SIZE * 2;
+    const size_t TARGET_SIZE = butil::GetDefaultBlockSize() * 2;
     butil::IOBuf buf0;
     buf0.append("hello");
     ASSERT_EQ(1u, buf0._ref_num());
@@ -1115,7 +1115,7 @@ TEST_F(IOBufTest, extended_backup) {
         // Consume the left TLS block so that cases are easier to check.
         butil::iobuf::remove_tls_block_chain();
         butil::IOBuf src;
-        const int BLKSIZE = (i == 0 ? 1024 : butil::IOBuf::DEFAULT_BLOCK_SIZE);
+        const int BLKSIZE = (i == 0 ? 1024 : butil::GetDefaultBlockSize());
         const int PLDSIZE = BLKSIZE - BLOCK_OVERHEAD;
         butil::IOBufAsZeroCopyOutputStream out_stream1(&src, BLKSIZE);
         butil::IOBufAsZeroCopyOutputStream out_stream2(&src);
