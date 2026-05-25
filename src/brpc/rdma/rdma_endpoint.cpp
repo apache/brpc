@@ -557,7 +557,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
 
     // In older versions of brpc, IBV_MTU_1024 is the default mtu type,
-    // So we set remote_mtu IBV_MTU_1024 at default to be ompatible with older versions.
+    // So we set remote_mtu IBV_MTU_1024 at default to be compatible with older versions.
     uint16_t remote_mtu_type = IBV_MTU_1024;
     if (FLAGS_rdma_extend && remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
         // Read Hello Message customized data
@@ -691,7 +691,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
     }
 
     // In older versions of brpc, IBV_MTU_1024 is the default mtu type,
-    // So we set remote_mtu IBV_MTU_1024 at default to be ompatible with older versions.
+    // So we set remote_mtu IBV_MTU_1024 at default to be compatible with older versions.
     uint16_t remote_mtu_type = IBV_MTU_1024;
     if (FLAGS_rdma_extend && remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
         // Read Hello Message customized data
