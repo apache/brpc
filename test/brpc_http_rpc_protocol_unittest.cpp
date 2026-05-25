@@ -60,6 +60,7 @@ DECLARE_bool(rpc_dump);
 DECLARE_string(rpc_dump_dir);
 DECLARE_int32(rpc_dump_max_requests_in_one_file);
 DECLARE_bool(allow_chunked_length);
+DECLARE_int32(max_connection_pool_size);
 extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
 }
 
@@ -163,6 +164,23 @@ protected:
         EXPECT_EQ(expect, brpc::policy::VerifyHttpRequest(msg));
     }
 
+    void VerifyMessageFromLocalPort(brpc::InputMessageBase* msg,
+                                    bool expect,
+                                    int local_port) {
+        brpc::SocketId id;
+        brpc::SocketOptions options;
+        options.fd = dup(_pipe_fds[1]);
+        EXPECT_GE(options.fd, 0);
+        options.local_side = butil::EndPoint(butil::my_ip(), local_port);
+        EXPECT_EQ(0, brpc::Socket::Create(options, &id));
+
+        brpc::SocketUniquePtr socket;
+        EXPECT_EQ(0, brpc::Socket::Address(id, &socket));
+        socket->ReAddress(&msg->_socket);
+        msg->_arg = &_server;
+        EXPECT_EQ(expect, brpc::policy::VerifyHttpRequest(msg));
+    }
+
     void ProcessMessage(void (*process)(brpc::InputMessageBase*),
                         brpc::InputMessageBase* msg, bool set_eof) {
         if (msg->_socket == NULL) {
@@ -223,6 +241,33 @@ protected:
         msg->header().uri().set_path(path);
         msg->header().set_method(brpc::HTTP_METHOD_GET);
         return msg;
+    }
+
+    void InitHttpPooledChannel(brpc::Channel* channel,
+                               const butil::EndPoint& ep,
+                               const std::string& connection_group) {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_HTTP;
+        options.connection_type = brpc::CONNECTION_TYPE_POOLED;
+        options.connection_group = connection_group;
+        options.max_retry = 0;
+        ASSERT_EQ(0, channel->Init(ep, &options));
+    }
+
+    void CallVersion(brpc::Channel* channel, brpc::Controller* cntl) {
+        cntl->http_request().uri() = "/status";
+        cntl->http_request().set_method(brpc::HTTP_METHOD_GET);
+        channel->CallMethod(NULL, cntl, NULL, NULL, NULL);
+    }
+
+    void CallHttpEcho(brpc::Channel* channel, brpc::Controller* cntl) {
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
+        cntl->http_request().uri() = "/EchoService/Echo";
+        cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl->http_request().set_content_type("application/json");
+        channel->CallMethod(NULL, cntl, &req, &res, NULL);
     }
 
 
@@ -300,6 +345,14 @@ protected:
     MyAuthenticator _auth;
 };
 
+int AllocateFreePortOrDie() {
+    butil::fd_guard fd(tcp_listen(butil::EndPoint(butil::my_ip(), 0)));
+    EXPECT_GE(fd, 0);
+    butil::EndPoint point;
+    EXPECT_EQ(0, butil::get_local_side(fd, &point));
+    return point.port;
+}
+
 TEST_F(HttpTest, indenting_ostream) {
     std::ostringstream os1;
     brpc::IndentingOStream is1(os1, 2);
@@ -355,6 +408,12 @@ TEST_F(HttpTest, verify_request) {
     }
     {
         brpc::policy::HttpContext* msg = MakeGetRequestMessage("/status");
+        VerifyMessage(msg, false);
+        msg->Destroy();
+    }
+    {
+        brpc::policy::HttpContext* msg = MakeGetRequestMessage("/status");
+        msg->header().SetHeader("Authorization", MOCK_CREDENTIAL);
         VerifyMessage(msg, true);
         msg->Destroy();
     }
@@ -377,6 +436,97 @@ TEST_F(HttpTest, verify_request) {
         VerifyMessage(msg, false);
         msg->Destroy();
     }
+}
+
+TEST_F(HttpTest, verify_builtin_request_on_internal_port) {
+    _server._options.internal_port = 9527;
+    {
+        brpc::policy::HttpContext* msg = MakeGetRequestMessage("/status");
+        VerifyMessage(msg, false);
+        msg->Destroy();
+    }
+    {
+        brpc::policy::HttpContext* msg = MakeGetRequestMessage("/status");
+        VerifyMessageFromLocalPort(msg, true, _server._options.internal_port);
+        msg->Destroy();
+    }
+}
+
+TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
+    const int saved_max_connection_pool_size = brpc::FLAGS_max_connection_pool_size;
+    brpc::FLAGS_max_connection_pool_size = 1;
+
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &ep));
+
+    brpc::Server server;
+    MyEchoService svc;
+    MyAuthenticator auth;
+    brpc::ServerOptions options;
+    options.auth = &auth;
+    options.internal_port = AllocateFreePortOrDie();
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(ep, &options));
+    ep = server.listen_address();
+    const butil::EndPoint internal_ep(ep.ip, options.internal_port);
+
+    {
+        brpc::Channel chan;
+        brpc::ChannelOptions copt;
+        copt.protocol = brpc::PROTOCOL_HTTP;
+        copt.max_retry = 0;
+        ASSERT_EQ(0, chan.Init(ep, &copt));
+
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/status";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_GET);
+        chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        ASSERT_TRUE(cntl.Failed());
+        ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode()) << cntl.ErrorText();
+        ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code());
+    }
+
+    {
+        brpc::Channel chan;
+        brpc::ChannelOptions copt;
+        copt.protocol = brpc::PROTOCOL_HTTP;
+        copt.max_retry = 0;
+        ASSERT_EQ(0, chan.Init(internal_ep, &copt));
+
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/status";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_GET);
+        chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(brpc::HTTP_STATUS_OK, cntl.http_response().status_code());
+    }
+
+    {
+        const std::string connection_group = "builtin-auth-policy";
+        brpc::Channel builtin_channel;
+        brpc::Channel protected_channel;
+        brpc::ChannelOptions copt;
+        copt.protocol = brpc::PROTOCOL_HTTP;
+        copt.connection_type = brpc::CONNECTION_TYPE_POOLED;
+        copt.connection_group = connection_group;
+        copt.max_retry = 0;
+        ASSERT_EQ(0, builtin_channel.Init(ep, &copt));
+        ASSERT_EQ(0, protected_channel.Init(ep, &copt));
+
+        brpc::Controller builtin_cntl;
+        CallVersion(&builtin_channel, &builtin_cntl);
+        ASSERT_TRUE(builtin_cntl.Failed());
+        ASSERT_EQ(brpc::EHTTP, builtin_cntl.ErrorCode()) << builtin_cntl.ErrorText();
+        ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, builtin_cntl.http_response().status_code());
+
+        brpc::Controller protected_cntl;
+        CallHttpEcho(&protected_channel, &protected_cntl);
+        ASSERT_TRUE(protected_cntl.Failed());
+    }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+    brpc::FLAGS_max_connection_pool_size = saved_max_connection_pool_size;
 }
 
 TEST_F(HttpTest, process_request_failed_socket) {

@@ -1387,10 +1387,12 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
         http_request->header().uri().path(), server, NULL);
     if (mp != NULL && mp->is_builtin_service &&
         mp->service->GetDescriptor() != BadMethodService::descriptor()) {
-        // BuiltinService doesn't need authentication
-        // TODO: Fix backdoor that sends BuiltinService at first
-        // and then sends other requests without authentication
-        return true;
+        // Builtin services on internal_port doesn't need authentication
+        // Builtin services on the public listener must pass authentication
+        if (server->options().internal_port >= 0 &&
+            socket->local_side().port == server->options().internal_port) {
+            return true;
+        }
     }
 
     const std::string *authorization 
