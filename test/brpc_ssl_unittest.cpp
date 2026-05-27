@@ -311,6 +311,11 @@ TEST_F(SSLTest, connect_on_create) {
         brpc::Join(correlation_id);
         ASSERT_EQ(EXP_RESPONSE, res.message());
     }
+
+    ptr->SetFailed();
+    ptr.reset();
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
 }
 
 void CheckCert(const char* cname, const char* cert) {
