@@ -959,3 +959,41 @@ copyright The Chromium Authors and licensed under the 3-clause BSD license:
   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+registry/modules/libunwind/**: licensed under the following terms:
+
+  Forked from the Bazel Central Registry (BCR):
+    https://github.com/bazelbuild/bazel-central-registry/tree/main/modules/libunwind
+
+  The upstream files are distributed under the Apache License, Version 2.0,
+  the same license as brpc itself (the full text of which is reproduced at
+  the top of this LICENSE file). brpc has modified the forked files; per the
+  Apache License 2.0 §4(b), the modifications are summarized below:
+
+    - registry/modules/libunwind/<version>/MODULE.bazel
+    - registry/modules/libunwind/<version>/overlay/MODULE.bazel
+        Append the suffix `.brpc-no-unwind` to the `version` field, marking
+        these as brpc's variant of the libunwind module.
+
+    - registry/modules/libunwind/<version>/overlay/BUILD.bazel
+        Add the `hide_unwind_symbols` config_setting (gated by
+        `--define=libunwind_hide_unwind_symbols=true`); when the switch is
+        on, drop `src/unwind/*.c` (the GCC `_Unwind_*` ABI compatibility
+        layer) from `unwind_srcs` so the resulting libunwind does not export
+        `_Unwind_*` symbols. See docs/cn/bthread_tracer.md for the
+        rationale.
+
+    - registry/modules/libunwind/<version>/source.json
+        Update overlay file SHA-256 hashes to match the modified
+        BUILD.bazel / MODULE.bazel.
+
+    - registry/modules/libunwind/metadata.json
+        Replace the `versions` array with brpc's renamed versions.
+
+  The above only governs the build/source files brpc redistributes inside
+  registry/modules/libunwind/. The libunwind source code itself, downloaded
+  by Bazel from the URL pinned in source.json, remains governed by the
+  libunwind project's own license; see https://github.com/libunwind/libunwind
+  for details.

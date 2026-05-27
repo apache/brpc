@@ -1,0 +1,18 @@
+matrix:
+  platform:
+    - debian11
+    - ubuntu2004
+    - ubuntu2204
+    - ubuntu2404
+  bazel: [7.x, 8.x, rolling]
+tasks:
+  verify_targets:
+    platform: ${{ platform }}
+    bazel: ${{ bazel }}
+    build_targets:
+      - "@libunwind//:libunwind"
+      - "@libunwind//:libunwind_coredump"
+      - "@libunwind//:libunwind_ptrace"
+      - "@libunwind//:libunwind_setjmp"
+    test_targets:
+      - "@libunwind//..."
