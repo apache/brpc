@@ -251,7 +251,7 @@ foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
 endforeach()
 
 # brpc tests
-file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
+file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp" "mysql/brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
