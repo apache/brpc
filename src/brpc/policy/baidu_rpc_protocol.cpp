@@ -62,6 +62,11 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
 DEFINE_bool(baidu_std_protocol_deliver_timeout_ms, false,
             "If this flag is true, baidu_std puts timeout_ms in requests.");
 
+DEFINE_bool(concurrency_remover_manages_after_rpc_resp, false,
+            "If this flag is true, ConcurrencyRemover will manage the lifecycle "
+            "of CallAfterRpcResp, ensuring concurrency control covers the entire "
+            "response processing including after-response callbacks.");
+
 DECLARE_bool(pb_enum_as_number);
 
 // Notes:
@@ -285,9 +290,14 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 
     // Recycle resources at the end of this function.
     BRPC_SCOPE_EXIT {
-        {
-            // Remove concurrency and record latency at first.
-            ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+        std::unique_ptr<ConcurrencyRemover> concurrency_remover_ptr(
+            new ConcurrencyRemover(method_status, cntl, received_us));
+
+        // Only manage CallAfterRpcResp lifecycle if the flag is set
+        // (which happens when set_after_rpc_resp_fn is called with the gflag enabled)
+        if (!cntl->concurrency_remover_manages_after_rpc_resp()) {
+            // Original behavior: remove concurrency before CallAfterRpcResp
+            concurrency_remover_ptr.reset();
         }
 
         std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
@@ -302,6 +312,8 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         } else {
             BaiduProxyPBMessages::Return(static_cast<BaiduProxyPBMessages*>(messages));
         }
+        // If concurrency_remover_manages_after_rpc_resp() is true,
+        // concurrency_remover_ptr will be destroyed here
     };
     
     StreamIds response_stream_ids = accessor.response_streams();

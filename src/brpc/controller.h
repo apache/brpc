@@ -621,9 +621,14 @@ public:
                                                const google::protobuf::Message* req,
                                                const google::protobuf::Message* res)>;
 
-    void set_after_rpc_resp_fn(AfterRpcRespFnType&& fn) { _after_rpc_resp_fn = fn; }
+    void set_after_rpc_resp_fn(AfterRpcRespFnType&& fn);
 
     void CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res);
+
+    // Check whether ConcurrencyRemover should manage the lifecycle of CallAfterRpcResp.
+    bool concurrency_remover_manages_after_rpc_resp() const {
+        return _concurrency_remover_manages_after_rpc_resp;
+    }
 
     void set_request_content_type(ContentType type) {
         _request_content_type = type;
@@ -921,6 +926,7 @@ private:
     uint32_t _auth_flags;
 
     AfterRpcRespFnType _after_rpc_resp_fn;
+    bool _concurrency_remover_manages_after_rpc_resp;
 
     // The point in time when the rpc is read from the socket
     int64_t _rpc_received_us;

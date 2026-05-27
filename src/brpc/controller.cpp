@@ -127,6 +127,7 @@ const Controller* GetSubControllerOfSelectiveChannel(
 
 DECLARE_bool(usercode_in_pthread);
 DECLARE_bool(usercode_in_coroutine);
+DECLARE_bool(concurrency_remover_manages_after_rpc_resp);
 static const int MAX_RETRY_COUNT = 1000;
 static bvar::Adder<int64_t>* g_ncontroller = NULL;
 
@@ -298,6 +299,7 @@ void Controller::ResetPods() {
     _response_streams.clear();
     _remote_stream_settings = NULL;
     _auth_flags = 0;
+    _concurrency_remover_manages_after_rpc_resp = false;
     _rpc_received_us = 0;
 }
 
@@ -1591,6 +1593,12 @@ int Controller::GetSockOption(int level, int optname, void* optval, socklen_t* o
         errno = EBADF;
         return -1;
     }
+}
+
+void Controller::set_after_rpc_resp_fn(AfterRpcRespFnType&& fn) {
+    _after_rpc_resp_fn = fn;
+    // Set the flag from global gflag when after_rpc_resp_fn is set
+    _concurrency_remover_manages_after_rpc_resp = FLAGS_concurrency_remover_manages_after_rpc_resp;
 }
 
 void Controller::CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res) {
