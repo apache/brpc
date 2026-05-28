@@ -421,7 +421,187 @@ uint32_t ExtendImpl(uint32_t crc, const char* buf, size_t size) {
   return static_cast<uint32_t>(l ^ 0xffffffffu);
 }
 
-// Detect if SS42 or not.
+#if defined(__riscv) && (__riscv_xlen == 64) && defined(__riscv_zbc)
+#include <stdio.h>
+
+// RISC-V Zbc carry-less multiplication inline helpers
+static inline uint64_t rv_clmul(uint64_t a, uint64_t b) {
+  uint64_t result;
+  __asm__ volatile ("clmul %0, %1, %2" : "=r"(result) : "r"(a), "r"(b));
+  return result;
+}
+
+static inline uint64_t rv_clmulh(uint64_t a, uint64_t b) {
+  uint64_t result;
+  __asm__ volatile ("clmulh %0, %1, %2" : "=r"(result) : "r"(a), "r"(b));
+  return result;
+}
+
+// Bitwise CRC32C fallback for small chunks
+static inline uint32_t rv_crc32c_bitwise(uint32_t crc, const uint8_t* buf,
+                                         size_t len) {
+  uint32_t c = crc;
+  for (size_t i = 0; i < len; ++i) {
+    c ^= buf[i];
+    for (int k = 0; k < 8; ++k) {
+      c = (c >> 1) ^ ((c & 1) ? 0x82F63B78U : 0);
+    }
+  }
+  return c;
+}
+
+// Fold a 128-bit CRC state (lo:hi) with fold constants and XOR in new data
+static inline void rv_fold_pair_xor_data(uint64_t* lo, uint64_t* hi,
+                                         uint64_t k0, uint64_t k1,
+                                         uint64_t d0, uint64_t d1) {
+  uint64_t l = rv_clmul(*lo, k0) ^ rv_clmul(*hi, k1);
+  uint64_t h = rv_clmulh(*lo, k0) ^ rv_clmulh(*hi, k1);
+  *lo = l ^ d0;
+  *hi = h ^ d1;
+}
+
+// Fold a 128-bit CRC state with fold constants and XOR in another state
+static inline void rv_fold_pair_xor_state(uint64_t* lo, uint64_t* hi,
+                                          uint64_t k0, uint64_t k1,
+                                          uint64_t s0, uint64_t s1) {
+  uint64_t l = rv_clmul(*lo, k0) ^ rv_clmul(*hi, k1);
+  uint64_t h = rv_clmulh(*lo, k0) ^ rv_clmulh(*hi, k1);
+  *lo = l ^ s0;
+  *hi = h ^ s1;
+}
+
+// Folding constants for CRC32C (Castagnoli polynomial 0x1EDC6F41)
+// x^(64*i+64) mod P(x) for i=1..4, in bit-reflected form
+static const uint64_t crc32c_fold_const[4] __attribute__((aligned(16))) = {
+  0x00000000740eef02ULL,  // k1: fold 512->256
+  0x000000009e4addf8ULL,  // k2: fold 512->256
+  0x00000000f20c0dfeULL,  // k3: fold 256->128
+  0x00000000493c7d27ULL   // k4: fold 256->128
+};
+
+// Barrett reduction constants for CRC32C finalization
+#define RV_CRC32C_CONST_0    0x00000000dd45aab8ULL  // x^64 mod P
+#define RV_CRC32C_CONST_1    0x00000000493c7d27ULL  // x^96 mod P
+#define RV_CRC32C_CONST_QUO  0x0000000dea713f1ULL   // floor(x^64 / P)
+#define RV_CRC32C_CONST_POLY 0x0000000105ec76f1ULL  // P(x) true LE full
+#define RV_CRC32_MASK32      0x00000000FFFFFFFFULL
+
+// Hardware-accelerated CRC32C using RISC-V Zbc carry-less multiplication.
+// Processes data in 64-byte chunks with 128-bit folding, then Barrett reduces.
+static uint32_t rv_crc32c_clmul(uint32_t crc, const char* buf, size_t len) {
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(buf);
+  size_t n = len;
+
+  // Small data: use bitwise fallback
+  if (n < 64) {
+    return rv_crc32c_bitwise(crc, p, n);
+  }
+
+  // Align to 16-byte boundary
+  uintptr_t mis = (uintptr_t)p & 0xF;
+  if (mis) {
+    size_t pre = 16 - mis;
+    if (pre > n) pre = n;
+    crc = rv_crc32c_bitwise(crc, p, pre);
+    p += pre;
+    n -= pre;
+    if (n < 64) {
+      return rv_crc32c_bitwise(crc, p, n);
+    }
+  }
+
+  // Load first 64 bytes and XOR CRC into the first 8 bytes
+  uint64_t x0, x1, y0, y1, z0, z1, w0, w1;
+  memcpy(&x0, p + 0, 8);
+  memcpy(&x1, p + 8, 8);
+  memcpy(&y0, p + 16, 8);
+  memcpy(&y1, p + 24, 8);
+  memcpy(&z0, p + 32, 8);
+  memcpy(&z1, p + 40, 8);
+  memcpy(&w0, p + 48, 8);
+  memcpy(&w1, p + 56, 8);
+
+  x0 ^= (uint64_t)crc;
+  p += 64;
+  n -= 64;
+
+  const uint64_t k1 = crc32c_fold_const[0];
+  const uint64_t k2 = crc32c_fold_const[1];
+  const uint64_t k3 = crc32c_fold_const[2];
+  const uint64_t k4 = crc32c_fold_const[3];
+
+  // Main loop: fold 64 bytes per iteration using 128-bit folding
+  while (n >= 64) {
+    uint64_t d0, d1;
+    memcpy(&d0, p + 0, 8);
+    memcpy(&d1, p + 8, 8);
+    rv_fold_pair_xor_data(&x0, &x1, k1, k2, d0, d1);
+    memcpy(&d0, p + 16, 8);
+    memcpy(&d1, p + 24, 8);
+    rv_fold_pair_xor_data(&y0, &y1, k1, k2, d0, d1);
+    memcpy(&d0, p + 32, 8);
+    memcpy(&d1, p + 40, 8);
+    rv_fold_pair_xor_data(&z0, &z1, k1, k2, d0, d1);
+    memcpy(&d0, p + 48, 8);
+    memcpy(&d1, p + 56, 8);
+    rv_fold_pair_xor_data(&w0, &w1, k1, k2, d0, d1);
+    p += 64;
+    n -= 64;
+  }
+
+  // Reduce 4x128-bit to 1x128-bit
+  rv_fold_pair_xor_state(&x0, &x1, k3, k4, y0, y1);
+  rv_fold_pair_xor_state(&x0, &x1, k3, k4, z0, z1);
+  rv_fold_pair_xor_state(&x0, &x1, k3, k4, w0, w1);
+
+  // Barrett reduction: 128-bit -> 32-bit CRC
+  uint64_t t4 = rv_clmul(x0, RV_CRC32C_CONST_1);
+  uint64_t t3 = rv_clmulh(x0, RV_CRC32C_CONST_1);
+  uint64_t t1 = x1 ^ t4;
+  t4 = t1 & RV_CRC32_MASK32;
+  t1 >>= 32;
+  uint64_t t0 = rv_clmul(t4, RV_CRC32C_CONST_0);
+  t3 = (t3 << 32) ^ t1 ^ t0;
+
+  t4 = t3 & RV_CRC32_MASK32;
+  t4 = rv_clmul(t4, RV_CRC32C_CONST_QUO);
+  t4 &= RV_CRC32_MASK32;
+  t4 = rv_clmul(t4, RV_CRC32C_CONST_POLY);
+  t4 ^= t3;
+
+  uint32_t c = (uint32_t)((t4 >> 32) & RV_CRC32_MASK32);
+  // Handle remaining bytes
+  if (n) {
+    c = rv_crc32c_bitwise(c, p, n);
+  }
+  return c;
+}
+
+// Runtime detection: check if RISC-V CPU supports Zbc extension
+static bool isZbc() {
+  static int zbc_supported = -1;
+  if (zbc_supported >= 0) return zbc_supported;
+  zbc_supported = 0;
+  FILE* f = fopen("/proc/cpuinfo", "r");
+  if (!f) return false;
+  char line[1024];
+  while (fgets(line, sizeof(line), f)) {
+    if (strstr(line, "isa") || strstr(line, "hart isa")) {
+      char* colon = strchr(line, ':');
+      if (colon) {
+        if (strstr(colon, "_zbc") || strstr(colon, "zbc")) {
+          zbc_supported = 1;
+          break;
+        }
+      }
+    }
+  }
+  fclose(f);
+  return zbc_supported;
+}
+#endif  // __riscv && __riscv_xlen == 64
+
+// Detect if SSE4.2 or not.
 static bool isSSE42() {
 #if defined(__GNUC__) && defined(__x86_64__) && !defined(IOS_CROSS_COMPILE)
   uint32_t c_;
@@ -436,16 +616,27 @@ static bool isSSE42() {
 typedef uint32_t (*Function)(uint32_t, const char*, size_t);
 
 static inline Function Choose_Extend() {
-  return isSSE42() ? (Function)ExtendImpl<FastCRC32Functor> : 
-                    (Function)ExtendImpl<SlowCRC32Functor>;
+#ifdef __SSE4_2__
+  if (isSSE42()) {
+    return (Function)ExtendImpl<FastCRC32Functor>;
+  }
+#endif
+#if defined(__riscv) && (__riscv_xlen == 64) && defined(__riscv_zbc)
+  if (isZbc()) {
+    return (Function)rv_crc32c_clmul;
+  }
+#endif
+  return (Function)ExtendImpl<SlowCRC32Functor>;
 }
 
 bool IsFastCrc32Supported() {
 #ifdef __SSE4_2__
-  return isSSE42();
-#else
-  return false;
+  if (isSSE42()) return true;
 #endif
+#if defined(__riscv) && (__riscv_xlen == 64) && defined(__riscv_zbc)
+  if (isZbc()) return true;
+#endif
+  return false;
 }
 
 uint32_t Extend(uint32_t crc, const char* buf, size_t size) {
