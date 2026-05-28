@@ -633,7 +633,9 @@ TEST_F(StreamingRpcTest, failed_when_rst) {
         ASSERT_EQ(0, brpc::StreamWrite(request_stream, out)) << "i=" << i;
     }
 
-    usleep(1000 * 10);
+    while (handler._expected_next_value != N) {
+        usleep(100);
+    }
     {
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(request_stream, &ptr));

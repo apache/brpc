@@ -122,7 +122,7 @@ libunwind 的 `src/unwind/*.c` 实现了 GCC 的 `_Unwind_*` ABI 兼容层（`_U
 | `cmake` | 从源码编译并安装 libunwind，把头文件与库目录显式传给 `cmake` |
 | `bazel`（Bzlmod） | 直接使用 brpc 仓库自维护的 libunwind 版本 |
 
-### `make`（`config_brpc.sh`）
+### make (config_brpc.sh)
 
 源码编译并安装 libunwind 到一个独立目录（避免污染系统目录），然后让 `config_brpc.sh` 显式从该目录查找 libunwind。
 
@@ -153,7 +153,7 @@ nm -D /libunwind/lib/libunwind.so | grep ' T _Unwind_' \
     || echo "OK: _Unwind_* hidden"
 ```
 
-### `cmake`
+### cmake
 
 [`CMakeLists.txt`](../../CMakeLists.txt:90-100) 通过 `find_library(... NAMES unwind unwind-x86_64)` 查找 libunwind。同样需要先源码编译 libunwind 到独立前缀，再用 `CMAKE_PREFIX_PATH` 让 cmake 优先在该前缀下查找：
 
@@ -173,7 +173,7 @@ make -j$(nproc)
 > `-DLIBUNWIND_LIB=/libunwind/lib/libunwind.so -DLIBUNWIND_X86_64_LIB=/libunwind/lib/libunwind-x86_64.so -DLIBUNWIND_INCLUDE_PATH=/libunwind/include`
 > 强制走自编译版本，避免系统包混入。
 
-### `bazel`（Bzlmod）
+### bazel (Bzlmod)
 
 bRPC 仓库已经在 [`registry/modules/libunwind/`](../../registry/modules/libunwind/) 维护了一份 libunwind 的 Bzlmod overlay，并通过 [`.bazelrc`](../../.bazelrc) 中的 `--registry=https://github.com/apache/brpc/registry` 使用 bRPC 维护的 overlay。版本号采用 `<base>.brpc-no-unwind` 后缀（例如 `1.8.3.brpc-no-unwind`），用以区别于 BCR 上的同基版本。该 overlay 增加了一个开关：
 

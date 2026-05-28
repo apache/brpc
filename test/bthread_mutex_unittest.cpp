@@ -328,7 +328,6 @@ TEST(MutexTest, fast_pthread_mutex) {
 void* do_pthread_timedlock(void *arg) {
     struct timespec t = { -2, 0 };
     EXPECT_EQ(ETIMEDOUT, pthread_mutex_timedlock((pthread_mutex_t*)arg, &t));
-    EXPECT_EQ(ETIMEDOUT, errno);
     return NULL;
 }
 #endif
@@ -347,7 +346,7 @@ TEST(MutexTest, pthread_mutex) {
         struct timespec t = { -2, 0 };
         ASSERT_EQ(ETIMEDOUT, pthread_mutex_timedlock(&mutex, &t));
         pthread_t th;
-        ASSERT_EQ(0, pthread_create(&th, NULL, do_fast_pthread_timedlock, &mutex));
+        ASSERT_EQ(0, pthread_create(&th, NULL, do_pthread_timedlock, &mutex));
         ASSERT_EQ(0, pthread_join(th, NULL));
 #endif
     }

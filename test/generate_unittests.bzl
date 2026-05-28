@@ -13,18 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 2.8.12)
+def generate_unittests(name, srcs, deps, copts, linkopts = [], data = []):
+    tests = []
+    for s in srcs:
+        ut_name = s.replace(".cpp", "")
+        native.cc_test(
+            name = ut_name,
+            srcs = [s],
+            copts = copts,
+            deps = deps,
+            linkopts = linkopts,
+            data = data,
+        )
+        tests.append(":" + ut_name)
 
-project(googletest-download NONE)
-
-include(ExternalProject)
-ExternalProject_Add(googletest
-  GIT_REPOSITORY    https://github.com/google/googletest.git
-  GIT_TAG           release-1.12.0
-  SOURCE_DIR        "${PROJECT_BINARY_DIR}/googletest-src"
-  BINARY_DIR        "${PROJECT_BINARY_DIR}/googletest-build"
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND     ""
-  INSTALL_COMMAND   ""
-  TEST_COMMAND      ""
-)
+    native.test_suite(
+        name  = name,
+        tests = tests,
+    )

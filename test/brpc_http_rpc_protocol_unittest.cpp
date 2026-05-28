@@ -20,7 +20,6 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <cstddef>
-#include <google/protobuf/stubs/logging.h>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -1278,7 +1277,7 @@ public:
 private:
     void check_header(brpc::Controller* cntl) {
         const std::string* test_header = cntl->http_request().GetHeader(TEST_PROGRESSIVE_HEADER);
-        GOOGLE_CHECK_NOTNULL(test_header);
+        CHECK(test_header != NULL);
         CHECK_EQ(*test_header, TEST_PROGRESSIVE_HEADER_VAL);
     }
 };
@@ -1958,9 +1957,11 @@ TEST_F(HttpTest, proto_text_content_type) {
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.http_request().uri() = "/EchoService/Echo";
     cntl.http_request().set_content_type("application/proto-text");
-    cntl.request_attachment().append(req.Utf8DebugString());
+    std::string req_text;
+    ASSERT_TRUE(google::protobuf::TextFormat::PrintToString(req, &req_text));
+    cntl.request_attachment().append(req_text);
     channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed());
+    ASSERT_FALSE(cntl.Failed()) << req_text;
     ASSERT_EQ("application/proto-text", cntl.http_response().content_type());
     ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
             cntl.response_attachment().to_string(), &res));
