@@ -602,6 +602,7 @@ static bool isZbc() {
 #endif  // __riscv && __riscv_xlen == 64
 
 // Detect if SSE4.2 or not.
+#ifdef __SSE4_2__
 static bool isSSE42() {
 #if defined(__GNUC__) && defined(__x86_64__) && !defined(IOS_CROSS_COMPILE)
   uint32_t c_;
@@ -612,6 +613,7 @@ static bool isSSE42() {
   return false;
 #endif
 }
+#endif
 
 typedef uint32_t (*Function)(uint32_t, const char*, size_t);
 
