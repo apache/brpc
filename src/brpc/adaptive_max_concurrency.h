@@ -65,9 +65,17 @@ public:
     // "unlimited", "constant" or "user-defined"
     const std::string& type() const;
 
-    // Get strings filled with "unlimited" and "constant"
-    static const std::string UNLIMITED;// = "unlimited";
-    static const std::string CONSTANT;// = "constant";
+    // Use Meyers' Singleton to avoid static initialization order fiasco:
+    // global AdaptiveMaxConcurrency objects in other translation units may
+    // depend on these strings during their construction.
+    static const std::string& UNLIMITED() {
+        static const std::string s_unlimited = "unlimited";
+        return s_unlimited;
+    }
+    static const std::string& CONSTANT() {
+        static const std::string s_constant = "constant";
+        return s_constant;
+    }
 
     void SetConcurrencyLimiter(ConcurrencyLimiter* cl) { _cl = cl; }
 
