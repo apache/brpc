@@ -17,6 +17,8 @@
 
 #if BRPC_WITH_UBRING
 
+#include <errno.h>
+
 #include <gflags/gflags.h>
 #include <array>
 #include "butil/fd_utility.h"
@@ -526,12 +528,12 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         ub_transport->_ub_state = UBShmTransport::UB_OFF;
     } else {
         ep->_state = S_ALLOC_SHM;
-        ubring::SHM remote_trx_shm = {NULL, remote_msg.len, 0, {0}, (uint8_t)ep->_socket->fd()};
+        ubring::SHM remote_trx_shm = {NULL, remote_msg.len, 0, {0}, (uint32_t)ep->_socket->fd()};
         strncpy(remote_trx_shm.name, remote_msg.shm_name, SHM_MAX_NAME_BUFF_LEN);
 
         size_t local_shm_len = (size_t)(FLAGS_data_queue_size) * MB_TO_BYTE;
         // server端共享内存名称
-        ubring::SHM local_trx_shm = {NULL, local_shm_len, 0, {0}, (uint8_t)ep->_socket->fd()};
+        ubring::SHM local_trx_shm = {NULL, local_shm_len, 0, {0}, (uint32_t)ep->_socket->fd()};
         char clientName[SHM_MAX_NAME_BUFF_LEN];
         strncpy(clientName, remote_msg.shm_name, SHM_MAX_NAME_BUFF_LEN);
 
@@ -646,10 +648,15 @@ ssize_t UBShmEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
     }
 
     ssize_t nw = 0;
+    errno = 0;
     nw = _ub_ring->UbrTrxWritev(vec, nvec);
     if (UNLIKELY(nw == -1)) {
-        LOG(ERROR) << "Non-blocking send msg in failed, connection has been closed.";
-        errno = EPIPE;
+        if (errno == EMSGSIZE) {
+            LOG(ERROR) << "Non-blocking send msg failed, message is larger than ubring capacity.";
+        } else {
+            LOG(ERROR) << "Non-blocking send msg in failed, connection has been closed.";
+            errno = EPIPE;
+        }
     } else if (UNLIKELY(nw == UBRING_RETRY)) {
         errno = EAGAIN;
         nw = -1;

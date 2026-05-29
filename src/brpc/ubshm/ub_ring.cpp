@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <errno.h>
 #include <iostream>
 #include <gflags/gflags.h>
 #include <unistd.h>
@@ -90,9 +91,6 @@ RETURN_CODE UBRing::UbrTrxClose() {
             DeleteTimerSafe((uint32_t)_trx->hbTimerFd);
             if (_trx->ubrTx.remoteRxEventQ.addr != nullptr) {
                 ((UbrEventQMsg *)_trx->ubrTx.remoteRxEventQ.addr)->flag = UBR_STATE_CLOSED;
-            }
-            if (UNLIKELY(ShmRemoteFree(&_trx->remoteShm) != UBRING_OK)) {
-                LOG(WARNING) << "Force close, remote shm " << _trx->remoteShm.name << " free failed.";
             }
             if (UNLIKELY(UbrTrxFreeShm(_trx) != UBRING_OK)) {
                 LOG(WARNING) << "Force close, local shm " << _trx->localShm.name << " free failed.";
@@ -321,10 +319,6 @@ void *UBRing::UbrAsynClearCallback(void *args)
         return NULL;
     }
 
-    if (UNLIKELY(ShmRemoteFree(&trx->remoteShm) != UBRING_OK)) {
-        LOG(ERROR) << "Trx close, remote shm " << trx->remoteShm.name << " free failed.";
-    }
-
     if (UNLIKELY(UbrTrxFreeShm(trx) != UBRING_OK)) {
         LOG(ERROR) << "Trx close, wait for local shm " << trx->localShm.name << " free fail.";
     }
@@ -348,6 +342,12 @@ int UBRing::UbrTrxSend(const void *buf, uint32_t bufLen)
     uint32_t remainChunkNum =
         (_trx->ubrTx.writePos > tail) ? (tail + cap - _trx->ubrTx.writePos) : (tail - _trx->ubrTx.writePos);
     uint32_t needMsgChunkNum = CalcUbrMsgChunkCnt(bufLen);
+    if (needMsgChunkNum >= cap) {
+        LOG(ERROR) << "Ubr send failed, payload length=" << bufLen
+                   << " needs " << needMsgChunkNum << " chunks, capacity=" << cap << ".";
+        errno = EMSGSIZE;
+        return UBRING_ERR;
+    }
     if (remainChunkNum < needMsgChunkNum) {
         return UBRING_RETRY;
     }
@@ -653,7 +653,7 @@ RETURN_CODE UBRing::UbrTrxFreeShm(UbrTrx *trx)
 
     RETURN_CODE remoteRc = UBRING_OK;
     if (trx->remoteShm.addr != NULL) {
-        remoteRc = IpcShmRemoteFree(&trx->remoteShm);
+        remoteRc = ShmRemoteFree(&trx->remoteShm);
     }
     if (remoteRc != UBRING_OK) {
         LOG(WARNING) << "Free remote shm " << trx->remoteShm.name << " failed, rc=" << remoteRc;
@@ -795,6 +795,7 @@ int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm) {
 
     if (UNLIKELY((ShmLocalCalloc(local_trx_shm)) != UBRING_OK)) {
         LOG(ERROR) << "Trx apply local shared memory failed.";
+        ShmRemoteFree(remote_trx_shm);
         return -1;
     }
 
@@ -808,9 +809,9 @@ int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm) {
     _trx->type = TCP_TRX;
     if (UNLIKELY((UbrServerTrxInit(local_trx_shm, remote_trx_shm)) != UBRING_OK)) {
         LOG(ERROR) << "Server trx init failed.";
-        ShmRemoteFree(remote_trx_shm);
         UbrTrxFreeShm(_trx);
         UBRingManager::ReleaseUbrTrxFromMgr(_trx);
+        _trx = nullptr;
         return -1;
     }
     return 0;
@@ -826,6 +827,7 @@ int UBRing::UbrAllocateLocalShm(SHM *local_trx_shm, const char *shm_name)
     _trx->type = TCP_TRX;
     if (UNLIKELY((ApplyAndMapLocalShm(local_trx_shm, shm_name)) != UBRING_OK)) {
         LOG(ERROR) << "Trx apply or map local shared memory failed, localName=" << shm_name;
+        _trx = nullptr;
         return -1;
     }
     return 0;
@@ -873,7 +875,7 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *localTrxShm, const char *localN
 
     if (UNLIKELY(UbrAddTimer() != UBRING_OK)) {
         LOG(ERROR) << "Ubr add timer failed, localName=" << localName;
-        ShmRemoteFree(&remoteTrxShm);
+        ShmRemoteFree(&_trx->remoteShm);
         return UBRING_ERR;
     }
 
@@ -884,7 +886,7 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *localTrxShm, const char *localN
         LOG(ERROR) << "Local shm " << localTrxShm->name << " wait for connect remote map timeout.";
         DeleteTimerSafe((uint32_t)_trx->hbTimerFd);
         DeleteTimerSafe((uint32_t)_trx->timerFd);
-        ShmRemoteFree(&remoteTrxShm);
+        ShmRemoteFree(&_trx->remoteShm);
         return UBRING_ERR_TIMEOUT;
     }
 
@@ -961,6 +963,12 @@ RETURN_CODE UBRing::WritevHasEnoughSpace(size_t bufLen)
     uint32_t remainChunkNum =
         (_trx->ubrTx.writePos > tail) ? (tail + cap - _trx->ubrTx.writePos) : (tail - _trx->ubrTx.writePos);
     uint32_t needMsgChunkNum = CalcUbrMsgChunkCnt((uint32_t)bufLen);
+    if (needMsgChunkNum >= cap) {
+        LOG(ERROR) << "Ubr write failed, payload length=" << bufLen
+                   << " needs " << needMsgChunkNum << " chunks, capacity=" << cap << ".";
+        errno = EMSGSIZE;
+        return UBRING_ERR;
+    }
     if (remainChunkNum < needMsgChunkNum) {
         return UBRING_RETRY;
     }

@@ -29,6 +29,41 @@
 
 namespace brpc {
 namespace ubring {
+namespace {
+
+RETURN_CODE ReserveIpcShm(int fd, const SHM *shm)
+{
+#if defined(__linux__)
+    const int rc = posix_fallocate(fd, 0, (off_t)shm->len);
+    if (rc != 0) {
+        LOG(ERROR) << "IPC reserve shm=" << shm->name << " length=" << shm->len
+                   << " failed, ret(" << rc << ").";
+        return SHM_ERR;
+    }
+#else
+    UNREFERENCE_PARAM(fd);
+    UNREFERENCE_PARAM(shm);
+#endif
+    return UBRING_OK;
+}
+
+RETURN_CODE CheckIpcShmSize(int fd, const SHM *shm)
+{
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        LOG(ERROR) << "IPC stat shm=" << shm->name << " failed, ret(" << errno << ").";
+        return SHM_ERR;
+    }
+    if ((uint64_t)st.st_size < (uint64_t)shm->len) {
+        LOG(ERROR) << "IPC shm=" << shm->name << " actual length=" << st.st_size
+                   << " is shorter than requested length=" << shm->len << ".";
+        return SHM_ERR;
+    }
+    return UBRING_OK;
+}
+
+}  // namespace
+
 RETURN_CODE IpcShmLocalMalloc(SHM *shm)
 {
     int fd = shm_open(shm->name, O_CREAT | O_EXCL | O_RDWR, SHM_IPC_MODE);
@@ -50,9 +85,16 @@ RETURN_CODE IpcShmLocalMalloc(SHM *shm)
         return SHM_ERR;
     }
 
+    if (ReserveIpcShm(fd, shm) != UBRING_OK) {
+        close(fd);
+        shm_unlink(shm->name);
+        return SHM_ERR;
+    }
+
     shm->addr = (uint8_t*)mmap(NULL, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (shm->addr == (uint8_t*)MAP_FAILED) {
         LOG(ERROR) << "IPC map shm=" << shm->name << " length=" << shm->len << " failed, ret(" << errno << ").";
+        shm->addr = NULL;
         close(fd);
         shm_unlink(shm->name);
         return SHM_ERR;
@@ -75,6 +117,7 @@ RETURN_CODE IpcShmMunmap(SHM *shm)
         return SHM_ERR;
     }
 
+    shm->addr = NULL;
     LOG(INFO) << "IPC unmap shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
@@ -109,6 +152,8 @@ RETURN_CODE IpcShmLocalFree(SHM *shm)
     int ret = munmap(shm->addr, shm->len);
     if (ret != UBRING_OK) {
         LOG(WARNING) << "IPC unmap shm=" << shm->name << " failed, ret=" << ret;
+    } else {
+        shm->addr = NULL;
     }
 
     ret = shm_unlink(shm->name);
@@ -138,9 +183,15 @@ RETURN_CODE IpcShmRemoteMalloc(SHM *shm)
         return SHM_ERR;
     }
 
+    if (CheckIpcShmSize(fd, shm) != UBRING_OK) {
+        close(fd);
+        return SHM_ERR;
+    }
+
     shm->addr = (uint8_t*)mmap(NULL, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (shm->addr == (uint8_t*)MAP_FAILED) {
         LOG(ERROR) << "IPC map shm=" << shm->name << " failed, ret=" << errno;
+        shm->addr = NULL;
         close(fd);
         return SHM_ERR;
     }
@@ -157,9 +208,15 @@ RETURN_CODE IpcShmLocalMmap(SHM *shm, int prot)
         return SHM_ERR;
     }
 
+    if (CheckIpcShmSize(fd, shm) != UBRING_OK) {
+        close(fd);
+        return SHM_ERR;
+    }
+
     shm->addr = (uint8_t*)mmap(NULL, shm->len, prot, MAP_SHARED, fd, 0);
     if (shm->addr == (uint8_t*)MAP_FAILED) {
         LOG(ERROR) << "IPC map shm=" << shm->name << " failed, ret=" << errno;
+        shm->addr = NULL;
         close(fd);
         return SHM_ERR;
     }
@@ -182,6 +239,7 @@ RETURN_CODE IpcShmRemoteFree(SHM *shm)
         return SHM_ERR;
     }
 
+    shm->addr = NULL;
     LOG(INFO) << "IPC free remote shm=" << shm->name << " success.";
     return UBRING_OK;
 }

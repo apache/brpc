@@ -114,6 +114,11 @@ RETURN_CODE ShmLocalCalloc(SHM *shm) {
         LOG(ERROR) << "Failed to alloc local shm.";
         return rc;
     }
+    if (UNLIKELY(shm->addr == NULL)) {
+        LOG(ERROR) << "Local shm=" << shm->name << " allocated with NULL address.";
+        ShmFree(shm);
+        return SHM_ERR;
+    }
     memset(shm->addr, 0, shm->len);
     return UBRING_OK;
 }
