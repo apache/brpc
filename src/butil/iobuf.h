@@ -52,6 +52,10 @@ struct ssl_st;
 
 namespace butil {
 
+size_t GetDefaultBlockSize();
+
+void SetDefaultBlockSize(size_t block_size);
+
 // IOBuf is a non-continuous buffer that can be cut and combined w/o copying
 // payload. It can be read from or flushed into file descriptors as well.
 // IOBuf is [thread-compatible]. Namely using different IOBuf in different
@@ -67,7 +71,6 @@ friend class IOBufCutter;
 friend class SingleIOBuf;
 
 public:
-    static const size_t DEFAULT_BLOCK_SIZE = 8192;
     static const size_t INITIAL_CAP = 32; // must be power of 2
 
     struct Block;

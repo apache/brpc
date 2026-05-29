@@ -42,6 +42,24 @@
 #include "butil/iobuf_profiler.h"
 
 namespace butil {
+static size_t default_block_size = 8192;
+
+size_t GetDefaultBlockSize() {
+    return default_block_size;
+}
+
+// This is not thread safe
+void SetDefaultBlockSize(size_t block_size) {
+    if (block_size <= 0) {
+        LOG(FATAL) << "block_size " << block_size << " should be bigger than 0!!!";
+    }
+    if (block_size / 4096 * 4096 != block_size) {
+        LOG(FATAL) << "block_size " << block_size << " should be multiply of 4096!!!";
+    }
+    LOG(INFO) << "Update default_block_size from " << default_block_size << " to " << block_size;
+    default_block_size = block_size;
+}
+
 namespace iobuf {
 
 DEFINE_int32(iobuf_aligned_buf_block_size, 0, "iobuf aligned buf block size");
@@ -398,9 +416,6 @@ size_t IOBuf::block_count_hit_tls_threshold() {
 
 BAIDU_CASSERT(sizeof(IOBuf::SmallView) == sizeof(IOBuf::BigView),
               sizeof_small_and_big_view_should_equal);
-
-BAIDU_CASSERT(IOBuf::DEFAULT_BLOCK_SIZE/4096*4096 == IOBuf::DEFAULT_BLOCK_SIZE,
-              sizeof_block_should_be_multiply_of_4096);
 
 const IOBuf::Area IOBuf::INVALID_AREA;
 

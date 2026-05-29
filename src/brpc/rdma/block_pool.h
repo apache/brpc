@@ -95,10 +95,14 @@ int DeallocBlock(void* buf);
 uint32_t GetRegionId(const void* buf);
 
 // Return the block size of given block type
-// type=1: BLOCK_DEFAULT(8KB)
-// type=2: BLOCK_LARGE(64KB)
-// type=3: BLOCK_HUGE(2MB)
+// type=0: BLOCK_DEFAULT(8KB)
+// type=1: BLOCK_LARGE(64KB)
+// type=2: BLOCK_HUGE(2MB)
 size_t GetBlockSize(int type);
+
+size_t GetRdmaBlockSize();
+
+int GetRdmaBlockType();
 
 // Dump memory pool information
 void DumpMemoryPoolInfo(std::ostream& os);

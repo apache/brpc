@@ -554,6 +554,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     // Initialize RDMA memory pool (block_pool)
+    butil::SetDefaultBlockSize(GetRdmaBlockSize());
     if (!InitBlockPool(RdmaRegisterMemory)) {
         PLOG(ERROR) << "Fail to initialize RDMA memory pool";
         ExitWithError();
