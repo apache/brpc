@@ -62,11 +62,6 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
 DEFINE_bool(baidu_std_protocol_deliver_timeout_ms, false,
             "If this flag is true, baidu_std puts timeout_ms in requests.");
 
-DEFINE_bool(concurrency_remover_manages_after_rpc_resp, false,
-            "If this flag is true, ConcurrencyRemover will manage the lifecycle "
-            "of CallAfterRpcResp, ensuring concurrency control covers the entire "
-            "response processing including after-response callbacks.");
-
 DECLARE_bool(pb_enum_as_number);
 
 // Notes:
@@ -279,6 +274,7 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
                      RpcPBMessages* messages, const Server* server,
                      MethodStatus* method_status, int64_t received_us,
                      std::shared_ptr<Span> span) {
+    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     ControllerPrivateAccessor accessor(cntl);
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
@@ -287,33 +283,20 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 
     const google::protobuf::Message* req = NULL == messages ? NULL : messages->Request();
     const google::protobuf::Message* res = NULL == messages ? NULL : messages->Response();
+    const bool has_after_rpc_resp_fn = accessor.has_after_rpc_resp_fn();
+    const bool manages_after_rpc_resp = accessor.manages_after_rpc_resp();
+    std::unique_ptr<ConcurrencyRemover> concurrency_remover(
+        new ConcurrencyRemover(method_status, cntl, received_us));
 
-    // Recycle resources at the end of this function.
     BRPC_SCOPE_EXIT {
-        std::unique_ptr<ConcurrencyRemover> concurrency_remover_ptr(
-            new ConcurrencyRemover(method_status, cntl, received_us));
-
-        // Only manage CallAfterRpcResp lifecycle if the flag is set
-        // (which happens when set_after_rpc_resp_fn is called with the gflag enabled)
-        if (!cntl->concurrency_remover_manages_after_rpc_resp()) {
-            // Original behavior: remove concurrency before CallAfterRpcResp
-            concurrency_remover_ptr.reset();
-        }
-
-        std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-
         if (NULL == messages) {
             return;
         }
-
-        cntl->CallAfterRpcResp(req, res);
         if (NULL == server->options().baidu_master_service) {
             server->options().rpc_pb_message_factory->Return(messages);
         } else {
             BaiduProxyPBMessages::Return(static_cast<BaiduProxyPBMessages*>(messages));
         }
-        // If concurrency_remover_manages_after_rpc_resp() is true,
-        // concurrency_remover_ptr will be destroyed here
     };
     
     StreamIds response_stream_ids = accessor.response_streams();
@@ -402,8 +385,11 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 
     ResponseWriteInfo args;
     bthread_id_t response_id = INVALID_BTHREAD_ID;
+    const bool wait_for_response = (span || has_after_rpc_resp_fn);
     if (span) {
         span->set_response_size(res_buf.size());
+    }
+    if (wait_for_response) {
         CHECK_EQ(0, bthread_id_create(&response_id, &args, HandleResponseWritten));
     }
 
@@ -463,12 +449,25 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         }
     }
 
-    if (span) {
+    if (wait_for_response) {
         bthread_id_join(response_id);
-        // Do not care about the result of background writing.
-        // TODO: this is not sent
-        span->set_sent_us(args.sent_us);
+        if (span) {
+            // Do not care about the result of background writing.
+            // TODO: this is not sent
+            span->set_sent_us(args.sent_us);
+        }
     }
+    const int responded_error_code = cntl->ErrorCode();
+    if (!manages_after_rpc_resp) {
+        concurrency_remover.reset();
+    }
+    if (has_after_rpc_resp_fn) {
+        cntl->CallAfterRpcResp(req, res);
+    }
+    if (manages_after_rpc_resp) {
+        concurrency_remover->OnResponded(responded_error_code);
+    }
+    concurrency_remover.reset();
 }
 
 namespace {

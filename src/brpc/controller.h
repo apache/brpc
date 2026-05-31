@@ -152,6 +152,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_SINGLE_REPEATED_TO_ARRAY = (1 << 20);
     static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
     static const uint32_t FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND = (1 << 22);
+    static const uint32_t FLAGS_MANAGE_AFTER_RPC_RESP = (1 << 23);
 
 public:
     struct Inheritable {
@@ -621,14 +622,14 @@ public:
                                                const google::protobuf::Message* req,
                                                const google::protobuf::Message* res)>;
 
-    void set_after_rpc_resp_fn(AfterRpcRespFnType&& fn);
+    void set_after_rpc_resp_fn(AfterRpcRespFnType&& fn,
+                               bool manage_concurrency_remover = false) {
+        _after_rpc_resp_fn = fn;
+        set_flag(FLAGS_MANAGE_AFTER_RPC_RESP,
+                 manage_concurrency_remover && !!_after_rpc_resp_fn);
+    }
 
     void CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res);
-
-    // Check whether ConcurrencyRemover should manage the lifecycle of CallAfterRpcResp.
-    bool concurrency_remover_manages_after_rpc_resp() const {
-        return _concurrency_remover_manages_after_rpc_resp;
-    }
 
     void set_request_content_type(ContentType type) {
         _request_content_type = type;
@@ -926,7 +927,6 @@ private:
     uint32_t _auth_flags;
 
     AfterRpcRespFnType _after_rpc_resp_fn;
-    bool _concurrency_remover_manages_after_rpc_resp;
 
     // The point in time when the rpc is read from the socket
     int64_t _rpc_received_us;

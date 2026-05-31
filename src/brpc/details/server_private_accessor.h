@@ -50,10 +50,14 @@ public:
                 <= _server->options().max_concurrency);
     }
 
-    void RemoveConcurrency(const Controller* c) {
-        if (c->has_flag(Controller::FLAGS_ADDED_CONCURRENCY)) {
+    void RemoveConcurrency(bool added_concurrency) {
+        if (added_concurrency) {
             butil::subtle::NoBarrier_AtomicIncrement(&_server->_concurrency, -1);
         }
+    }
+
+    void RemoveConcurrency(const Controller* c) {
+        RemoveConcurrency(c->has_flag(Controller::FLAGS_ADDED_CONCURRENCY));
     }
 
     // Find by MethodDescriptor::full_name
