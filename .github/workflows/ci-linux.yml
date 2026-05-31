@@ -196,6 +196,17 @@ jobs:
         cat config.mk
         cd test
         make -j ${{env.proc_num}}
+    - name: install mysql-server
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y mysql-server
+        # The distro packages mysqld under /usr/sbin; expose it on PATH so
+        # the handshake integration test's `which mysqld` probe finds it.
+        # The test spins up its own throwaway instance, so stop the system
+        # service to free the default port.
+        sudo ln -sf /usr/sbin/mysqld /usr/local/bin/mysqld
+        sudo service mysql stop || true
+        mysqld --version
     - name: run tests
       run: |
         cd test
@@ -214,6 +225,17 @@ jobs:
         cat config.mk
         cd test
         make NEED_GPERFTOOLS=0 -j ${{env.proc_num}}
+    - name: install mysql-server
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y mysql-server
+        # The distro packages mysqld under /usr/sbin; expose it on PATH so
+        # the handshake integration test's `which mysqld` probe finds it.
+        # The test spins up its own throwaway instance, so stop the system
+        # service to free the default port.
+        sudo ln -sf /usr/sbin/mysqld /usr/local/bin/mysqld
+        sudo service mysql stop || true
+        mysqld --version
     - name: run tests
       run: |
         cd test
