@@ -86,3 +86,4 @@ Configurable parameters:
 * rdma_poller_yield: Whether pollers in polling mode voluntarily relinquish the CPU, default is false.
 * event_dispatcher_edisp_unsched: Global switch for EventDispatcher scheduling (true means unschedulable), default is false.
 * rdma_disable_bthread: Disables bthread, default is false.
+* rdma_extend: server and client can negotiate the advance feature of rdma(such as mtu), default is false.

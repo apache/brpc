@@ -42,7 +42,7 @@
 #include "echo.pb.h"
 
 static const int PORT = 8713;
-static const size_t RDMA_HELLO_MSG_LEN = 40;
+static const size_t RDMA_HELLO_MSG_BASE_LEN = 40;
 static uint16_t RDMA_HELLO_VERSION = 2;
 static uint16_t RDMA_IMPL_VERSION = 1;
 
@@ -57,9 +57,12 @@ DEFINE_bool(rdma_test_enable, false, "Enable tests requring rdma runtime.");
 namespace rdma {
 
 struct HelloMessage {
-    void Serialize(void* data) const;
-    void Deserialize(void* data);
+    void BaseSerialize(void* data) const;
+    void ExtSerialize(void* data) const;
+    void BaseDeserialize(void* data);
+    uint16_t ExtDeserialize(void* data, uint16_t ext_len);
 
+    // base fields
     uint16_t msg_len;
     uint16_t hello_ver;
     uint16_t impl_ver;
@@ -69,6 +72,9 @@ struct HelloMessage {
     uint16_t lid;
     ibv_gid gid;
     uint32_t qp_num;
+
+    // extern fields
+    uint16_t mtu_type;
 };
 
 DECLARE_bool(rdma_trace_verbose);
@@ -207,7 +213,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_magic_str) {
     Socket* s = GetSocketFromServer(0);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, s->_rdma_ep->_state);
 
-    uint8_t data[RDMA_HELLO_MSG_LEN];
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
     memcpy(data, "PRPC", 4);  // send as normal baidu_std protocol
     ASSERT_EQ(4, write(sockfd, data, 4));
     usleep(100000);  // wait for server to handle the msg
@@ -280,7 +286,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
     Socket* s = NULL;
-    uint8_t data[RDMA_HELLO_MSG_LEN];
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -325,8 +331,8 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
     Socket* s = NULL;
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    uint16_t len = butil::HostToNet16(RDMA_HELLO_MSG_LEN);
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    uint16_t len = butil::HostToNet16(RDMA_HELLO_MSG_BASE_LEN);
     uint16_t ver = butil::HostToNet16(1);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
@@ -391,8 +397,8 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     Socket* s = NULL;
     uint32_t flags = butil::HostToNet32(0);
     rdma::HelloMessage msg{};
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = RDMA_HELLO_VERSION;
     msg.impl_ver = RDMA_IMPL_VERSION;
 
@@ -400,7 +406,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     msg.rq_size = 16;
     msg.block_size = 8192;
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
+    msg.BaseSerialize(data + 4);
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
     ASSERT_EQ(0, connect(sockfd1, (sockaddr*)&addr, sizeof(sockaddr)));
@@ -425,7 +431,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     msg.rq_size = 10;
     msg.block_size = 8192;
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
+    msg.BaseSerialize(data + 4);
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd2 >= 0);
     ASSERT_EQ(0, connect(sockfd2, (sockaddr*)&addr, sizeof(sockaddr)));
@@ -450,7 +456,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     msg.rq_size = 16;
     msg.block_size = 1000;
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
+    msg.BaseSerialize(data + 4);
     butil::fd_guard sockfd3(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd3 >= 0);
     ASSERT_EQ(0, connect(sockfd3, (sockaddr*)&addr, sizeof(sockaddr)));
@@ -483,8 +489,8 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
     addr.sin_port = htons(PORT);
     Socket* s = NULL;
     rdma::HelloMessage msg;
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = RDMA_HELLO_VERSION;
     msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
@@ -493,7 +499,7 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
+    msg.BaseSerialize(data + 4);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -520,8 +526,8 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
     addr.sin_port = htons(PORT);
     Socket* s = NULL;
     rdma::HelloMessage msg;
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = RDMA_HELLO_VERSION;
     msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
@@ -530,7 +536,7 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
+    msg.BaseSerialize(data + 4);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -564,8 +570,8 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     addr.sin_port = htons(PORT);
     Socket* s = NULL;
     rdma::HelloMessage msg;
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = RDMA_HELLO_VERSION;
     msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
@@ -574,7 +580,7 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
+    msg.BaseSerialize(data + 4);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -629,8 +635,8 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     addr.sin_port = htons(PORT);
     Socket* s = NULL;
     rdma::HelloMessage msg;
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = RDMA_HELLO_VERSION;
     msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
@@ -639,7 +645,7 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
+    msg.BaseSerialize(data + 4);
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
@@ -741,8 +747,8 @@ TEST_F(RdmaTest, server_close_before_hello_send) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     close(acc_fd);
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FAILED, s->_rdma_ep->_state);
@@ -777,8 +783,8 @@ TEST_F(RdmaTest, server_miss_during_magic_str) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     ASSERT_EQ(2, write(acc_fd, "RD", 2));
     usleep(100000);
     bthread_id_join(cntl.call_id());
@@ -812,8 +818,8 @@ TEST_F(RdmaTest, server_close_during_magic_str) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     ASSERT_EQ(2, write(acc_fd, "RD", 2));
     usleep(100000);
     close(acc_fd);
@@ -850,8 +856,8 @@ TEST_F(RdmaTest, server_hello_invalid_magic_str) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     ASSERT_EQ(4, write(acc_fd, "ABCD", 4));
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FAILED, s->_rdma_ep->_state);
@@ -886,8 +892,8 @@ TEST_F(RdmaTest, server_miss_during_hello_msg) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     ASSERT_EQ(4, write(acc_fd, "RDMA", 4));
     ASSERT_EQ(2, write(acc_fd, "00", 2));
     bthread_id_join(cntl.call_id());
@@ -921,8 +927,8 @@ TEST_F(RdmaTest, server_close_during_hello_msg) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     ASSERT_EQ(4, write(acc_fd, "RDMA", 4));
     ASSERT_EQ(2, write(acc_fd, "00", 2));
     close(acc_fd);
@@ -959,13 +965,13 @@ TEST_F(RdmaTest, server_hello_invalid_msg_len) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     memcpy(data, "RDMA", 4);
     uint16_t len = butil::HostToNet16(35);
     memcpy(data + 4, &len, 2);
     memset(data + 6, 0, 32);
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, write(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FAILED, s->_rdma_ep->_state);
     bthread_id_join(cntl.call_id());
@@ -999,13 +1005,13 @@ TEST_F(RdmaTest, server_hello_invalid_version) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     memcpy(data, "RDMA", 4);
-    uint16_t len = butil::HostToNet16(RDMA_HELLO_MSG_LEN);
+    uint16_t len = butil::HostToNet16(RDMA_HELLO_MSG_BASE_LEN);
     memcpy(data + 4, &len, 2);
     memset(data + 6, 0, 32);
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, write(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
     ASSERT_EQ(4, read(acc_fd, data, 4));
@@ -1042,11 +1048,11 @@ TEST_F(RdmaTest, server_hello_invalid_sq_rq_size) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
 
     rdma::HelloMessage msg;
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = 1;
     msg.impl_ver = 1;
     msg.sq_size = 0;
@@ -1055,8 +1061,8 @@ TEST_F(RdmaTest, server_hello_invalid_sq_rq_size) {
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    msg.BaseSerialize(data + 4);
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, write(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
 
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, s->_rdma_ep->_state);
@@ -1094,11 +1100,11 @@ TEST_F(RdmaTest, server_miss_after_ack) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
 
     rdma::HelloMessage msg;
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = RDMA_HELLO_VERSION;
     msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
@@ -1107,8 +1113,8 @@ TEST_F(RdmaTest, server_miss_after_ack) {
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    msg.BaseSerialize(data + 4);
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, write(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
 
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
@@ -1146,11 +1152,11 @@ TEST_F(RdmaTest, server_close_after_ack) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
 
     rdma::HelloMessage msg;
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = RDMA_HELLO_VERSION;
     msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
@@ -1159,8 +1165,8 @@ TEST_F(RdmaTest, server_close_after_ack) {
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    msg.BaseSerialize(data + 4);
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, write(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
 
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
@@ -1199,11 +1205,11 @@ TEST_F(RdmaTest, server_send_data_on_tcp_after_ack) {
 
     butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
     ASSERT_TRUE(acc_fd >= 0);
-    uint8_t data[RDMA_HELLO_MSG_LEN];
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, read(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    uint8_t data[RDMA_HELLO_MSG_BASE_LEN];
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, read(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
 
     rdma::HelloMessage msg;
-    msg.msg_len = RDMA_HELLO_MSG_LEN;
+    msg.msg_len = RDMA_HELLO_MSG_BASE_LEN;
     msg.hello_ver = RDMA_HELLO_VERSION;
     msg.impl_ver = RDMA_IMPL_VERSION;
     msg.sq_size = 16;
@@ -1212,12 +1218,12 @@ TEST_F(RdmaTest, server_send_data_on_tcp_after_ack) {
     msg.qp_num = 0;
     msg.gid = rdma::GetRdmaGid();
     memcpy(data, "RDMA", 4);
-    msg.Serialize(data + 4);
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    msg.BaseSerialize(data + 4);
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, write(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
 
     usleep(100000);
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, s->_rdma_ep->_state);
-    ASSERT_EQ(RDMA_HELLO_MSG_LEN, write(acc_fd, data, RDMA_HELLO_MSG_LEN));
+    ASSERT_EQ(RDMA_HELLO_MSG_BASE_LEN, write(acc_fd, data, RDMA_HELLO_MSG_BASE_LEN));
     bthread_id_join(cntl.call_id());
 
     ASSERT_EQ(EPROTO, cntl.ErrorCode());

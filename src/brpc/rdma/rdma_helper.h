@@ -89,6 +89,7 @@ void GlobalDisableRdma();
 // If the given protocol supported by RDMA
 bool SupportedByRdma(std::string protocol);
 
+uint16_t GetLocalMtuType();
 }  // namespace rdma
 }  // namespace brpc
 #else

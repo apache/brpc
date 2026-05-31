@@ -193,10 +193,11 @@ private:
     //     lid: remote LID
     //     gid: remote GID
     //     qp_num: remote QP number
+    //     mtu_type: the minimum of local mtu_type and remote mtu_type
     // Return:
     //     0:   success
     //     -1:  failed, errno set
-    int BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num);
+    int BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num, uint16_t mtu_type);
 
     // Get event from comp channel and ack the events
     int GetAndAckEvents(SocketUniquePtr& s);

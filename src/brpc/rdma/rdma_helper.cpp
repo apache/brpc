@@ -90,6 +90,8 @@ static int g_comp_vector_index = 0;
 
 butil::atomic<bool> g_rdma_available(false);
 
+static uint16_t local_mtu_type = IBV_MTU_4096;
+
 DEFINE_int32(rdma_max_sge, 0, "Max SGE num in a WR");
 DEFINE_string(rdma_device, "", "The name of the HCA device used "
                                "(Empty means using the first active device)");
@@ -459,6 +461,36 @@ static ibv_context* OpenDevice(int num_total, int* num_available_devices) {
     return ret_context;
 }
 
+static uint16_t detect_mtu(struct ibv_context* ctx, int port_num) {
+    struct ibv_port_attr port_attr;
+    
+    if (IbvQueryPort(ctx, port_num, &port_attr)) {
+        LOG(ERROR) << "IbvQueryPort failed";
+        return 0;
+    }
+
+    LOG(INFO) << "local active mtu type:" << port_attr.active_mtu
+              << ", max mtu type:" << port_attr.max_mtu;
+
+    uint16_t mtu_type = port_attr.active_mtu;
+    if (mtu_type == IBV_MTU_256) {
+        LOG(INFO) << "local mtu is 256";
+    } else if (mtu_type == IBV_MTU_512) {
+        LOG(INFO) << "local mtu is 512";
+    } else if (mtu_type == IBV_MTU_1024) {
+        LOG(INFO) << "local mtu is 1024";
+    } else if (mtu_type == IBV_MTU_2048) {
+        LOG(INFO) << "local mtu is 2048";
+    } else if (mtu_type == IBV_MTU_4096) {
+        LOG(INFO) << "local mtu is 4096";
+    } else {
+        LOG(ERROR) << "unknown mtu type " << mtu_type;
+        return 0;
+    }
+
+    return mtu_type;
+}
+
 static void GlobalRdmaInitializeOrDieImpl() {
     if (BAIDU_UNLIKELY(g_skip_rdma_init)) {
         // Just for UT
@@ -553,6 +585,11 @@ static void GlobalRdmaInitializeOrDieImpl() {
         g_max_sge = attr.max_sge;
     }
 
+    local_mtu_type = detect_mtu(g_context, g_port_num);
+    if (!local_mtu_type) {
+        PLOG(ERROR) << "Fail to get local mtu type";
+        ExitWithError();
+    }
     // Initialize RDMA memory pool (block_pool)
     butil::SetDefaultBlockSize(GetRdmaBlockSize());
     if (!InitBlockPool(RdmaRegisterMemory)) {
@@ -708,6 +745,10 @@ bool SupportedByRdma(std::string protocol) {
         return true;
     }
     return false;
+}
+
+uint16_t GetLocalMtuType() {
+    return local_mtu_type;
 }
 
 bool InitPollingModeWithTag(bthread_tag_t tag,
