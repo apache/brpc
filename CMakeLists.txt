@@ -206,11 +206,13 @@ if(Protobuf_VERSION GREATER 4.21)
         absl::hash
         absl::layout
         absl::log_initialize
+        absl::log_globals
         absl::log_severity
         absl::memory
         absl::node_hash_map
         absl::node_hash_set
-        absl::optional
+        absl::random_distributions
+        absl::random_random
         absl::span
         absl::status
         absl::statusor

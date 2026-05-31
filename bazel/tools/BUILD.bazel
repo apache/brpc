@@ -13,18 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 2.8.12)
+# This BUILD file marks bazel/tools/ as a Bazel package so that loads
+# of the form `//bazel/tools:xxx.bzl` are valid. The directory only
+# hosts .bzl files (brpc_proto_library.bzl / proto_gen.bzl) and does
+# not define any build targets.
 
-project(googletest-download NONE)
+package(default_visibility = ["//visibility:public"])
 
-include(ExternalProject)
-ExternalProject_Add(googletest
-  GIT_REPOSITORY    https://github.com/google/googletest.git
-  GIT_TAG           release-1.12.0
-  SOURCE_DIR        "${PROJECT_BINARY_DIR}/googletest-src"
-  BINARY_DIR        "${PROJECT_BINARY_DIR}/googletest-build"
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND     ""
-  INSTALL_COMMAND   ""
-  TEST_COMMAND      ""
-)
+exports_files(glob(["*.bzl"]))

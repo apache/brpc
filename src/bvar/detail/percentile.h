@@ -561,7 +561,23 @@ public:
     typedef VoidOp InvOp;
     typedef ReducerSampler<Percentile, value_type, Op, InvOp> sampler_type;
 
-    Percentile() = default;
+    Percentile() {
+        // babylon::ConcurrentSampler defaults every per-value-range
+        // bucket to capacity 30 (see _bucket_capacity[32] in
+        // babylon/concurrent/counter.h) and only grows it inside
+        // Percentile::reset() after observing how many samples
+        // arrived. That means the *first* collection round always
+        // observes badly under-sampled buckets, which destabilises
+        // mid-quantile estimates (e.g. p60/p70 on a uniform 1..10000
+        // stream can land at ~5482/~6284 instead of ~6000/~7000 and
+        // make PercentileTest.add fail). Pre-size every bucket to the
+        // full SAMPLE_SIZE on construction so the very first reset()
+        // already sees representative samples.
+        for (size_t i = 0; i < NUM_INTERVALS; ++i) {
+            _concurrent_sampler.set_bucket_capacity(i, value_type::SAMPLE_SIZE);
+        }
+    }
+
     DISALLOW_COPY_AND_MOVE(Percentile);
     ~Percentile() noexcept {
         if (NULL != _sampler) {

@@ -103,33 +103,28 @@ jobs:
         protobuf-install-dir: /protobuf-3.21.12
         config-brpc-options: --cc=gcc --cxx=g++ --werror
 
-  gcc-compile-with-bazel:
+  gcc-unittest-with-bazel:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel build --verbose_failures -- //... -//example/...
-
-  gcc-compile-with-boringssl:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-    - run: bazel build --verbose_failures --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
+    - run: bazel test //test/...
 
   gcc-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - run: |
-        bazel build --verbose_failures \
-                    --define with_mesalink=false \
+        bazel build --define with_mesalink=false \
                     --define with_glog=true \
                     --define with_thrift=true \
+                    --define BRPC_WITH_BORINGSSL=true \
                     --define with_debug_bthread_sche_safety=true \
                     --define with_debug_lock=true \
                     --define with_asan=true \
                     --define with_bthread_tracer=true \
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
-                    -- //... -//example/...
+                    --define with_babylon_counter=true \
+                    -- //:brpc
 
   clang-compile-with-make-protobuf:
     runs-on: ubuntu-22.04
@@ -161,34 +156,32 @@ jobs:
         protobuf-install-dir: /protobuf-3.21.12
         config-brpc-options: --cc=clang --cxx=clang++ --werror
 
-  clang-compile-with-bazel:
+  clang-unittest-with-bazel:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: bazel build --verbose_failures --action_env=CC=clang -- //... -//example/...
-
-  clang-compile-with-boringssl:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-    - run: bazel build --verbose_failures --action_env=CC=clang --define with_mesalink=false --define with_glog=true --define with_thrift=true --define BRPC_WITH_BORINGSSL=true -- //... -//example/...
+    - run: |
+        bazel test --test_output=streamed \
+                   --action_env=CC=clang \
+                   //test/...
 
   clang-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - run: |
-        bazel build --verbose_failures \
-                    --action_env=CC=clang \
+        bazel build --action_env=CC=clang \
                     --define with_mesalink=false \
                     --define with_glog=true \
                     --define with_thrift=true \
+                    --define BRPC_WITH_BORINGSSL=true \
                     --define with_debug_bthread_sche_safety=true \
                     --define with_debug_lock=true \
                     --define with_asan=true \
                     --define with_bthread_tracer=true \
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
-                    -- //... -//example/...
+                    --define with_babylon_counter=true \
+                    -- //:brpc
 
   clang-unittest:
     runs-on: ubuntu-22.04
@@ -226,11 +219,25 @@ jobs:
         cd test
         sh ./run_tests.sh
 
-  bazel-bvar-unittest:
+  clang-unittest-bazel-with-babylon-and-new-pb:
     runs-on: ubuntu-22.04
+    env:
+      TEST_PROTOBUF_VERSION: "34.1"
+      # protobuf >= 34.x uses new ProtoInfo fields (option_deps,
+      # extension_declarations) introduced in Bazel 8.x. The repo's
+      # .bazelversion (7.2.1) is too old. bazelisk honors USE_BAZEL_VERSION.
+      USE_BAZEL_VERSION: "8.3.1"
     steps:
     - uses: actions/checkout@v2
-    - run: bazel test --verbose_failures //test:bvar_test
-    - run: bazel test --verbose_failures --define with_babylon_counter=true //test:bvar_test
-    - run: bazel test --verbose_failures --action_env=CC=clang //test:bvar_test
-    - run: bazel test --verbose_failures --action_env=CC=clang --define with_babylon_counter=true //test:bvar_test
+    - name: Override protobuf version for testing
+      run: |
+        sed -i -E "s/(bazel_dep\(name = ['\"]protobuf['\"], version = ['\"])[^'\"]+/\1${TEST_PROTOBUF_VERSION}/" MODULE.bazel
+        echo "After override:"
+        grep -E "bazel_dep\(name = ['\"]protobuf['\"]" MODULE.bazel
+        grep -qE "bazel_dep\(name = ['\"]protobuf['\"], version = ['\"]${TEST_PROTOBUF_VERSION}['\"]" MODULE.bazel \
+          || { echo "ERROR: failed to override protobuf version in MODULE.bazel to ${TEST_PROTOBUF_VERSION}"; exit 1; }
+    - run: | 
+        bazel test --action_env=CC=clang  \
+                   --define with_babylon_counter=true \
+                   --define with_babylon_counter=true \
+                   //test:brpc_unittests

@@ -13,30 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_proto_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("//bazel/tools:brpc_proto_library.bzl", "brpc_proto_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
+load("//test:generate_unittests.bzl", "generate_unittests")
+load("//test:root_runfiles.bzl", "root_runfiles")
 
 COPTS = [
-    "-D__STDC_FORMAT_MACROS",
-    "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
-    "-D__const__=__unused__",
-    "-D_GNU_SOURCE",
-    "-DUSE_SYMBOLIZE",
-    "-DNO_TCMALLOC",
-    "-D__STDC_LIMIT_MACROS",
-    "-D__STDC_CONSTANT_MACROS",
     "-fPIC",
     "-Wno-unused-parameter",
     "-fno-omit-frame-pointer",
     "-fno-access-control",
-    "-DBAZEL_TEST=1",
-    "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
-    "-DUNIT_TEST",
-] + select({
-    "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
-    "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
-})
+]
 
 TEST_BUTIL_SOURCES = [
     "at_exit_unittest.cc",
@@ -148,26 +136,11 @@ TEST_BUTIL_SOURCES = [
     ],
 })
 
-proto_library(
-    name = "test_proto",
-    srcs = glob(
-        [
-            "*.proto",
-        ],
-    ),
-    strip_import_prefix = "/test",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//:brpc_idl_options_proto",
-    ]
-)
-
-cc_proto_library(
+brpc_proto_library(
     name = "cc_test_proto",
+    srcs = glob(["*.proto"]),
+    deps = ["//:brpc_idl_options_cc_proto"],
     visibility = ["//visibility:public"],
-    deps = [
-        ":test_proto",
-    ],
 )
 
 cc_library(
@@ -184,8 +157,22 @@ cc_library(
     ],
 )
 
+# tcmalloc and AddressSanitizer both intercept malloc/free, so linking
+# both produces undefined behaviour at runtime (typically a hard hang
+# at process start, or random allocator errors). When `brpc_with_asan`
+# is active we drop the @gperftools//:tcmalloc dep entirely; the
+# gperftools_helper header above already no-ops gracefully when
+# BRPC_ENABLE_CPU_PROFILER is not defined.
+#
+# Activation: `--config=asan` in .bazelrc also sets
+# `--define=with_asan=true`, which flips this config_setting.
+TCMALLOC_DEP_UNLESS_ASAN = select({
+    "//bazel/config:brpc_with_asan": [],
+    "//conditions:default": ["@gperftools//:tcmalloc"],
+})
+
 cc_test(
-    name = "butil_test",
+    name = "butil_unittests",
     srcs = TEST_BUTIL_SOURCES + [
         "scoped_locale.h",
         "multiprocess_func_list.h",
@@ -196,104 +183,73 @@ cc_test(
         ":cc_test_proto",
         ":sstream_workaround",
         ":gperftools_helper",
-        "//:brpc",
+        "//:butil",
+        "//:bthread",
         "@com_google_googletest//:gtest",
     ],
 )
 
-
 cc_test(
-    name = "bvar_test",
-    srcs = glob(
-        [
-            "bvar_*_unittest.cpp",
-        ],
-        exclude = [
-            "bvar_lock_timer_unittest.cpp",
-            "bvar_recorder_unittest.cpp",
-        ],
-    ),
-    copts = COPTS,
+    name = "bvar_unittests",
+    srcs = glob(["bvar_*_unittest.cpp"]),
     deps = [
         ":sstream_workaround",
         ":gperftools_helper",
         "//:bvar",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ] + TCMALLOC_DEP_UNLESS_ASAN,
+    copts = COPTS,
+)
+
+generate_unittests(
+    name = "bthread_unittests",
+    srcs = glob([
+        "bthread*_unittest.cpp",
+    ]),
+    deps = [
+        ":sstream_workaround",
+        ":gperftools_helper",
+        "//:bthread",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ] + TCMALLOC_DEP_UNLESS_ASAN,
+    copts = COPTS,
+)
+
+# Expose unit-test data files (cert*, jsonout) at the runfiles workspace root
+# so that tests can open them via plain relative paths like "cert1.crt".
+# See test/root_runfiles.bzl for why a genrule does NOT work here.
+root_runfiles(
+    name = "test_runfiles_root_data",
+    srcs = [
+        "cert1.crt",
+        "cert1.key",
+        "cert2.crt",
+        "cert2.key",
+        "jsonout",
     ],
 )
 
-cc_test(
-    name = "bthread_test",
-    srcs = glob(
-        [
-            "bthread_*_unittest.cpp",
-        ],
-        exclude = [
-            "bthread_cond_unittest.cpp",
-            "bthread_execution_queue_unittest.cpp",
-            "bthread_dispatcher_unittest.cpp",
-            "bthread_fd_unittest.cpp",
-            "bthread_mutex_unittest.cpp",
-            "bthread_setconcurrency_unittest.cpp",
-            # glog CHECK die with a fatal error
-            "bthread_key_unittest.cpp",
-            "bthread_butex_multi_tag_unittest.cpp",
-            "bthread_rwlock_unittest.cpp",
-            "bthread_semaphore_unittest.cpp",
-        ],
-    ),
-    copts = COPTS,
+generate_unittests(
+    name = "brpc_unittests",
+    srcs = glob([
+        "brpc_*_unittest.cpp",
+    ]),
     deps = [
         ":sstream_workaround",
         ":gperftools_helper",
         "//:brpc",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "brpc_prometheus_test",
-    srcs = glob(
-        [
-            "brpc_prometheus_*_unittest.cpp",
-        ],
-    ),
-    copts = COPTS,
-    deps = [
         ":cc_test_proto",
-        ":sstream_workaround",
-        "//:brpc",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "brpc_auto_concurrency_limiter_test",
-    srcs = [
-        "brpc_auto_concurrency_limiter_unittest.cpp",
-    ],
+    ] + TCMALLOC_DEP_UNLESS_ASAN,
     copts = COPTS,
-    deps = [
-        "//:brpc",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "brpc_redis_cluster_test",
-    srcs = [
-        "brpc_redis_cluster_unittest.cpp",
-    ],
-    copts = COPTS,
-    deps = [
-        ":sstream_workaround",
-        ":gperftools_helper",
-        "//:brpc",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+    # Place cert*/jsonout at <runfiles>/_main/<file> (the cwd of `bazel test`)
+    # via :test_runfiles_root_data so test code can open them with plain
+    # relative paths like "cert1.crt".
+    data = [
+        ":test_runfiles_root_data",
     ],
 )
 
@@ -303,9 +259,10 @@ refresh_compile_commands(
     # For example, specify a dict of targets and their arguments:
     targets = {
         "//:brpc": "",
-        ":bvar_test": "",
-        ":bthread_test": "",
-        ":butil_test": "",
+        ":butil_unittests": "",
+        ":bvar_unittests": "",
+        ":bthread_unittests": "",
+        ":brpc_unittests": "",
     },
     # For more details, feel free to look into refresh_compile_commands.bzl if you want.
 )

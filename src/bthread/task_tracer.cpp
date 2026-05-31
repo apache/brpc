@@ -17,6 +17,13 @@
 
 #ifdef BRPC_BTHREAD_TRACER
 
+#include <inttypes.h>
+#include <signal.h>
+#include <unistd.h>
+#include <poll.h>
+#include <pthread.h>
+#include <iomanip>
+#include <gflags/gflags.h>
 #include "bthread/task_tracer.h"
 #include "bthread/processor.h"
 #include "bthread/task_group.h"
@@ -25,11 +32,6 @@
 #include "butil/reloadable_flags.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
-#include <csignal>
-#include <gflags/gflags.h>
-#include <poll.h>
-#include <pthread.h>
-#include <unistd.h>
 
 namespace bthread {
 
@@ -77,7 +79,8 @@ std::string TaskTracer::Result::OutputToString() const {
     char unknown_symbol_name[] = "<unknown>";
     if (frame_count > 0) {
         for (size_t i = 0; i < frame_count; ++i) {
-            butil::string_appendf(&str, "#%zu 0x%16p ", i, ips[i]);
+            butil::string_appendf(&str, "#%zu 0x%016" PRIxPTR " ", i,
+                                  reinterpret_cast<uintptr_t>(ips[i]));
             if (absl::Symbolize(ips[i], symbol_name, arraysize(symbol_name))) {
                 str.append(symbol_name);
             } else {
@@ -103,7 +106,10 @@ void TaskTracer::Result::OutputToStream(std::ostream& os) const {
     char unknown_symbol_name[] = "<unknown>";
     if (frame_count > 0) {
         for (size_t i = 0; i < frame_count; ++i) {
-            os << "# " << i << " 0x" << std::hex << ips[i] << std::dec << " ";
+            os << "#" << i << " 0x"
+               << std::hex << std::setw(16) << std::setfill('0')
+               << reinterpret_cast<uintptr_t>(ips[i])
+               << std::dec << std::setfill(' ') << " ";
             if (absl::Symbolize(ips[i], symbol_name, arraysize(symbol_name))) {
                 os << symbol_name;
             } else {

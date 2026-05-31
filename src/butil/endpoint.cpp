@@ -394,13 +394,38 @@ int endpoint2hostname(const EndPoint& point, std::string* host) {
 
 #if defined(OS_LINUX)
 static short epoll_to_poll_events(uint32_t epoll_events) {
-    // Most POLL* and EPOLL* are same values.
+    // Most POLL* and EPOLL* share the same numeric values for the basic
+    // event bits, so a plain mask is enough to translate them.
     short poll_events = (epoll_events &
                          (EPOLLIN | EPOLLPRI | EPOLLOUT |
                           EPOLLRDNORM | EPOLLRDBAND |
                           EPOLLWRNORM | EPOLLWRBAND |
                           EPOLLMSG | EPOLLERR | EPOLLHUP));
-    CHECK_EQ((uint32_t)poll_events, epoll_events);
+    // epoll-only modifier bits (EPOLLET / EPOLLONESHOT / EPOLLRDHUP / ...)
+    // have no poll(2) counterpart and MUST be silently dropped here:
+    //   * poll(2) is already level-triggered and reports events per call,
+    //     so EPOLLET / EPOLLONESHOT degrade naturally to "no-op".
+    //   * `short` cannot even represent EPOLLET (bit 31 = 0x80000000).
+    // Without this filtering, a caller invoking bthread_fd_wait(fd,
+    // EPOLLIN | EPOLLET) from a pthread context would CHECK-fail here.
+    const uint32_t epoll_modifier_bits = 0u
+#ifdef EPOLLET
+        | EPOLLET
+#endif
+#ifdef EPOLLONESHOT
+        | EPOLLONESHOT
+#endif
+#ifdef EPOLLRDHUP
+        | EPOLLRDHUP
+#endif
+#ifdef EPOLLEXCLUSIVE
+        | EPOLLEXCLUSIVE
+#endif
+#ifdef EPOLLWAKEUP
+        | EPOLLWAKEUP
+#endif
+        ;
+    CHECK_EQ((uint32_t)poll_events, epoll_events & ~epoll_modifier_bits);
     return poll_events;
 }
 #elif defined(OS_MACOSX)
