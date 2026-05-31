@@ -489,12 +489,15 @@ static const uint64_t crc32c_fold_const[4] __attribute__((aligned(16))) = {
 // Hardware-accelerated CRC32C using RISC-V Zbc carry-less multiplication.
 // Processes data in 64-byte chunks with 128-bit folding, then Barrett reduces.
 static uint32_t rv_crc32c_clmul(uint32_t crc, const char* buf, size_t len) {
+  // Convert external CRC to internal register state
+  crc ^= 0xFFFFFFFF;
+
   const uint8_t* p = reinterpret_cast<const uint8_t*>(buf);
   size_t n = len;
 
   // Small data: use bitwise fallback
   if (n < 64) {
-    return rv_crc32c_bitwise(crc, p, n);
+    return rv_crc32c_bitwise(crc, p, n) ^ 0xFFFFFFFF;
   }
 
   // Align to 16-byte boundary
@@ -506,7 +509,7 @@ static uint32_t rv_crc32c_clmul(uint32_t crc, const char* buf, size_t len) {
     p += pre;
     n -= pre;
     if (n < 64) {
-      return rv_crc32c_bitwise(crc, p, n);
+      return rv_crc32c_bitwise(crc, p, n) ^ 0xFFFFFFFF;
     }
   }
 
@@ -574,7 +577,8 @@ static uint32_t rv_crc32c_clmul(uint32_t crc, const char* buf, size_t len) {
   if (n) {
     c = rv_crc32c_bitwise(c, p, n);
   }
-  return c;
+  // Convert internal register state to external CRC
+  return c ^ 0xFFFFFFFF;
 }
 
 // Runtime detection: check if RISC-V CPU supports Zbc extension
