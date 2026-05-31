@@ -579,25 +579,27 @@ static uint32_t rv_crc32c_clmul(uint32_t crc, const char* buf, size_t len) {
 
 // Runtime detection: check if RISC-V CPU supports Zbc extension
 static bool isZbc() {
-  static int zbc_supported = -1;
-  if (zbc_supported >= 0) return zbc_supported;
-  zbc_supported = 0;
-  FILE* f = fopen("/proc/cpuinfo", "r");
-  if (!f) return false;
-  char line[1024];
-  while (fgets(line, sizeof(line), f)) {
-    if (strstr(line, "isa") || strstr(line, "hart isa")) {
-      char* colon = strchr(line, ':');
-      if (colon) {
-        if (strstr(colon, "_zbc") || strstr(colon, "zbc")) {
-          zbc_supported = 1;
-          break;
+  static const bool zbc_supported = []() {
+    FILE* f = fopen("/proc/cpuinfo", "r");
+    if (!f) return false;
+    bool supported = false;
+    char line[1024];
+    while (fgets(line, sizeof(line), f)) {
+      if (strstr(line, "isa") || strstr(line, "hart isa")) {
+        char* colon = strchr(line, ':');
+        if (colon) {
+          if (strstr(colon, "_zbc") || strstr(colon, "zbc")) {
+            supported = true;
+            break;
+          }
         }
       }
     }
-  }
-  fclose(f);
+    fclose(f);
+    return supported;
+  }();
   return zbc_supported;
+}
 }
 #endif  // __riscv && __riscv_xlen == 64
 
