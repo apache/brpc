@@ -1272,12 +1272,18 @@ int Socket::Connect(const timespec* abstime,
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
     if (!_device_name.empty()) {
+#ifdef SO_BINDTODEVICE
         if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE,
                        _device_name.c_str(), _device_name.size()) < 0) {
             PLOG(ERROR) << "Fail to set SO_BINDTODEVICE of fd=" << sockfd
                         << " to device_name=" << _device_name;
             return -1;
         }
+#else
+        LOG(ERROR) << "SO_BINDTODEVICE (device_name=" << _device_name
+                   << ") is not supported on this platform";
+        return -1;
+#endif
     }
     if (local_side().ip != butil::IP_ANY) {
         struct sockaddr_storage cli_addr;
