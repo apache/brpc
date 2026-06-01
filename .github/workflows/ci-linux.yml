@@ -140,6 +140,7 @@ jobs:
                     --define with_bthread_tracer=true \
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
                     --define with_babylon_counter=true \
+                    --define BRPC_WITH_IOURING=true \
                     -- //:brpc
 
   clang-compile-with-make-protobuf:
@@ -200,6 +201,7 @@ jobs:
                     --define with_bthread_tracer=true \
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
                     --define with_babylon_counter=true \
+                    --define BRPC_WITH_IOURING=true \
                     -- //:brpc
 
   clang-unittest:

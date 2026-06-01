@@ -28,6 +28,7 @@ option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
 option(WITH_UBRING "With UB" OFF)
+option(WITH_IOURING "With io_uring" OFF)
 option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" OFF)
 option(WITH_DEBUG_LOCK "With debugging lock" OFF)
 option(WITH_ASAN "With AddressSanitizer" OFF)
@@ -117,6 +118,9 @@ endif()
 set(WITH_UBRING_VAL "0")
 if(WITH_UBRING)
         set(WITH_UBRING_VAL "1")
+set(WITH_IOURING_VAL "0")
+if(WITH_IOURING)
+    set(WITH_IOURING_VAL "1")
 endif()
 
 set(WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL "0")
@@ -154,6 +158,7 @@ list(APPEND BRPC_COMMON_DEFINITIONS
     BRPC_WITH_GLOG=${WITH_GLOG_VAL}
     BRPC_WITH_RDMA=${WITH_RDMA_VAL}
     BRPC_WITH_UBRING=${WITH_UBRING_VAL}
+    BRPC_WITH_IOURING=${WITH_IOURING_VAL}
     BRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL}
     BRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}
     BTHREAD_USE_FAST_PTHREAD_MUTEX
@@ -309,6 +314,39 @@ if(WITH_RDMA)
     list(APPEND BRPC_COMMON_INCLUDE_DIRS ${RDMA_INCLUDE_PATH})
 endif()
 
+if(WITH_IOURING)
+    message("brpc compile with io_uring")
+    # Search for the header in standard paths and common source-tree locations.
+    find_path(IOURING_INCLUDE_PATH NAMES liburing.h
+              PATHS
+                  /usr/include
+                  /usr/local/include
+              NO_DEFAULT_PATH)
+    if(NOT IOURING_INCLUDE_PATH)
+        find_path(IOURING_INCLUDE_PATH NAMES liburing.h)
+    endif()
+
+    find_library(IOURING_LIB NAMES uring liburing.a
+                 PATHS
+                     /usr/lib
+                     /usr/lib64
+                     /usr/local/lib
+                     /usr/local/lib64
+                 NO_DEFAULT_PATH)
+    if(NOT IOURING_LIB)
+        find_library(IOURING_LIB NAMES uring)
+    endif()
+
+    if((NOT IOURING_INCLUDE_PATH) OR (NOT IOURING_LIB))
+        message(FATAL_ERROR "Fail to find liburing. "
+                            "Please install liburing-dev / liburing-devel, or "
+                            "build from source at https://github.com/axboe/liburing "
+                            "and set CMAKE_PREFIX_PATH accordingly.")
+    endif()
+    include_directories(${IOURING_INCLUDE_PATH})
+    message(STATUS "Found liburing: include=${IOURING_INCLUDE_PATH} lib=${IOURING_LIB}")
+endif()
+
 find_library(PROTOC_LIB NAMES protoc)
 if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
@@ -364,6 +402,10 @@ endif()
 if(WITH_UBRING)
     message(STATUS "brpc compile with ubring")
     list(APPEND DYNAMIC_LIB ${UB_LIB})
+    
+if(WITH_IOURING)
+    list(APPEND DYNAMIC_LIB ${IOURING_LIB})
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -luring")
 endif()
 
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
