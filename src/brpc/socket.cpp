@@ -611,6 +611,19 @@ int Socket::ResetFileDescriptor(int fd) {
 
     SetSocketOptions(fd);
 
+    // Notify the transport that a valid, connected fd is now available,
+    // BEFORE checking HasOnEdgeTrigger() below. Transports whose I/O
+    // submission does not go through the epoll edge-trigger (e.g.
+    // TcpTransport's io_uring path) rely on this callback to defer resource
+    // allocation until now, instead of eagerly acting on the placeholder
+    // fd==-1 that lazily-connected Sockets carry right after creation. Some
+    // of these transports only decide whether they need the edge-trigger
+    // (i.e. what HasOnEdgeTrigger() below will return) once they know a
+    // real fd exists, so this call must happen first -- otherwise a fd could
+    // transiently be registered with both epoll and io_uring, racing to
+    // read the same bytes. See Transport::OnFdReady() for details.
+    _transport->OnFdReady();
+
     if (_transport->HasOnEdgeTrigger()) {
         if (_io_event.AddConsumer(fd) != 0) {
             PLOG(ERROR) << "Fail to add SocketId=" << id() 

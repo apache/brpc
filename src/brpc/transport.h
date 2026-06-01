@@ -51,6 +51,26 @@ public:
     virtual void QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) = 0;
     virtual void Debug(std::ostream &os) = 0;
 
+    // Called by Socket::ResetFileDescriptor() right after the underlying fd
+    // transitions from invalid (e.g. -1, as is the case for a lazily
+    // connected Socket right after Init()) to a valid, connected fd -- and
+    // BEFORE ResetFileDescriptor() consults HasOnEdgeTrigger() to decide
+    // whether to add the fd to epoll.
+    //
+    // Some transports (e.g. TcpTransport's io_uring path) must not submit
+    // any I/O before a real fd exists: unlike the epoll path (which simply
+    // waits until AddConsumer(fd) is called), io_uring resource allocation
+    // eagerly issues the first SubmitRead, so doing it against fd==-1 makes
+    // the kernel return -EBADF and the Socket gets SetFailed() before the
+    // connection is even established. Transports that need to defer
+    // resource allocation until a valid fd is available should override
+    // this method -- and may also flip _on_edge_trigger to nullptr here
+    // (instead of at Init() time) once they know they will own the read
+    // path, since HasOnEdgeTrigger() is checked right after this call
+    // returns. Default implementation is a no-op so transports that don't
+    // care (the common epoll/RDMA/UBRING paths) need not change.
+    virtual void OnFdReady() {}
+
     bool HasOnEdgeTrigger() {
         return _on_edge_trigger != NULL;
     }

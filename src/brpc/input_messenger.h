@@ -32,8 +32,10 @@ class RdmaEndpoint;
 namespace ubring {
 class UBShmEndpoint;
 }
+namespace iouring {
+class IouringEndpoint;
+}
 class TcpTransport;
-class RdmaTransport;
 struct InputMessageHandler {
     // The callback to cut a message from `source'.
     // Returned message will be passed to process_request or process_response
@@ -99,6 +101,7 @@ friend class TcpTransport;
 friend class RdmaTransport;
 friend class rdma::RdmaEndpoint;
 friend class ubring::UBShmEndpoint;
+friend class iouring::IouringEndpoint;
 public:
     explicit InputMessenger(size_t capacity = 128);
     ~InputMessenger();
