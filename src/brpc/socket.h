@@ -61,6 +61,9 @@ class RdmaHandshakeServerV2;
 class RdmaHandshakeClientV3;
 class RdmaHandshakeServerV3;
 }
+namespace iouring {
+class IouringEndpoint;
+}
 
 class Socket;
 class AuthContext;
@@ -325,6 +328,7 @@ friend class rdma::RdmaHandshakeClientV2;
 friend class rdma::RdmaHandshakeServerV2;
 friend class rdma::RdmaHandshakeClientV3;
 friend class rdma::RdmaHandshakeServerV3;
+friend class iouring::IouringEndpoint;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
@@ -335,6 +339,7 @@ friend void DereferenceSocket(Socket*);
 friend class Transport;
 friend class TcpTransport;
 friend class RdmaTransport;
+friend class IouringTransport;
 friend class TransportFactory;
     class SharedPart;
     struct WriteRequest;
