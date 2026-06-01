@@ -196,6 +196,12 @@ jobs:
         cat config.mk
         cd test
         make -j ${{env.proc_num}}
+    - name: install redis-server and mysql-server
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y redis-server mysql-server
+        redis-server --version
+        mysqld --version
     - name: run tests
       run: |
         cd test
@@ -214,6 +220,12 @@ jobs:
         cat config.mk
         cd test
         make NEED_GPERFTOOLS=0 -j ${{env.proc_num}}
+    - name: install redis-server and mysql-server
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y redis-server mysql-server
+        redis-server --version
+        mysqld --version
     - name: run tests
       run: |
         cd test
