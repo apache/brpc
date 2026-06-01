@@ -50,7 +50,10 @@ DEFINES = [
      "//conditions:default": ["THRIFT_STDCXX=std"],
  }) + select({
      "//bazel/config:brpc_with_rdma": ["BRPC_WITH_RDMA=1"],
-     "//conditions:default": [],
+     "//conditions:default": ["BRPC_WITH_RDMA=0"],
+ }) + select({
+     "//bazel/config:brpc_with_iouring": ["BRPC_WITH_IOURING=1"],
+     "//conditions:default": ["BRPC_WITH_IOURING=0"],
  }) + select({
      "//bazel/config:brpc_with_debug_bthread_sche_safety": ["BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1"],
      "//conditions:default": ["BRPC_DEBUG_BTHREAD_SCHE_SAFETY=0"],
@@ -531,10 +534,16 @@ cc_library(
         "src/brpc/policy/thrift_protocol.cpp",
         "src/brpc/event_dispatcher_epoll.cpp",
         "src/brpc/event_dispatcher_kqueue.cpp",
+        "src/brpc/iouring/*.cpp",
     ]) + select({
         "//bazel/config:brpc_with_thrift": glob([
             "src/brpc/thrift*.cpp",
             "src/brpc/**/thrift*.cpp",
+        ]),
+        "//conditions:default": [],
+    }) + select({
+        "//bazel/config:brpc_with_iouring": glob([
+            "src/brpc/iouring/*.cpp",
         ]),
         "//conditions:default": [],
     }),
@@ -561,6 +570,11 @@ cc_library(
     ] + select({
         "//bazel/config:brpc_with_thrift": [
             "@org_apache_thrift//:thrift",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//bazel/config:brpc_with_iouring": [
+            "@com_github_axboe_liburing//:liburing",
         ],
         "//conditions:default": [],
     }),
