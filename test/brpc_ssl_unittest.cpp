@@ -35,6 +35,7 @@
 #include "brpc/channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
+#include "brpc/details/ssl_helper.h"
 #include "echo.pb.h"
 
 namespace brpc {
@@ -497,3 +498,67 @@ TEST_F(SSLTest, ssl_perf) {
     close(clifd);
     close(servfd);
 }
+
+
+#ifdef TLS1_3_VERSION
+
+TEST_F(SSLTest, tls13_protocol_string) {
+    brpc::Server server;
+    brpc::ServerOptions options;
+    brpc::CertInfo cert;
+    cert.certificate = "cert1.crt";
+    cert.private_key = "cert1.key";
+    options.mutable_ssl_options()->default_cert = cert;
+
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(
+        &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::PortRange pr(8613, 8623);
+    ASSERT_EQ(0, server.Start(pr, &options));
+    const int port = server.listen_address().port;
+
+    brpc::Channel channel;
+    brpc::ChannelOptions coptions;
+    coptions.mutable_ssl_options()->protocols = "TLSv1.3";
+    ASSERT_EQ(0, channel.Init("127.0.0.1", port, &coptions));
+
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &req, &res, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(EXP_RESPONSE, res.message());
+    // Client Controller::is_ssl() checks sending_sock which is cleared after
+    // RPC finishes, so verify SSL on the underlying socket instead.
+
+    std::vector<brpc::SocketId> ids;
+    brpc::SocketMap2List(&ids);
+    ASSERT_EQ(1u, ids.size());
+    brpc::SocketUniquePtr sock;
+    ASSERT_EQ(0, brpc::Socket::Address(ids[0], &sock));
+    ASSERT_EQ(brpc::SSL_CONNECTED, sock->ssl_state());
+    {
+        BAIDU_SCOPED_LOCK(sock->_ssl_session_mutex);
+        ASSERT_TRUE(sock->_ssl_session != NULL);
+        const char* version = SSL_get_version(sock->_ssl_session);
+        ASSERT_TRUE(version != NULL);
+        EXPECT_STREQ("TLSv1.3", version) << "negotiated protocol=" << version;
+    }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+#else  // TLS1_3_VERSION
+
+TEST_F(SSLTest, tls13_protocol_string) {
+    brpc::ChannelSSLOptions opt;
+    opt.protocols = "TLSv1.3";
+    SSL_CTX* ctx = brpc::CreateClientSSLContext(opt);
+    ASSERT_TRUE(ctx != NULL);
+    SSL_CTX_free(ctx);
+}
+
+#endif  // TLS1_3_VERSION

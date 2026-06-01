@@ -27,7 +27,7 @@ VerifyOptions::VerifyOptions()
 
 ChannelSSLOptions::ChannelSSLOptions()
     : ciphers("DEFAULT")
-    , protocols("TLSv1, TLSv1.1, TLSv1.2")
+    , protocols("TLSv1, TLSv1.1, TLSv1.2, TLSv1.3")
 {}
 
 ServerSSLOptions::ServerSSLOptions()
