@@ -28,6 +28,7 @@ protected:
     void TearDown() {}
 };
 
+#if !WITH_BABYLON_COUNTER
 TEST_F(PercentileTest, add) {
     bvar::detail::Percentile p;
     for (int j = 0; j < 10; ++j) {
@@ -51,6 +52,7 @@ TEST_F(PercentileTest, add) {
         b.describe(out);
     }
 }
+#endif // !WITH_BABYLON_COUNTER
 
 TEST_F(PercentileTest, merge1) {
     // Merge 2 PercentileIntervals b1 and b2. b2 has double SAMPLE_SIZE

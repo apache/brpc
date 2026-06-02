@@ -855,25 +855,36 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         return -1;
     }
 
-    copy_and_fill_server_options(_options, opt ? *opt : ServerOptions());
+    // Validate the user-provided ServerOptions BEFORE
+    // copy_and_fill_server_options below. This is important:
+    // copy_and_fill_server_options unconditionally transfers ownership of
+    // user-provided pointers (nshead_service, thrift_service, ...) into
+    // _options. If we instead validated against _options after the copy,
+    // a failed Start() would leave fake/invalid pointers behind in
+    // _options, and the NEXT Start() would attempt to `delete` them via
+    // FREE_PTR_IF_NOT_REUSED, crashing (see RdmaTest.server_option_invalid).
+    const ServerOptions default_opt;
+    const ServerOptions& real_opt = opt ? *opt : default_opt;
 
-    if (!_options.h2_settings.IsValid(true/*log_error*/)) {
+    if (!real_opt.h2_settings.IsValid(true/*log_error*/)) {
         LOG(ERROR) << "Invalid h2_settings";
         return -1;
     }
 
-    if (_options.bthread_tag < BTHREAD_TAG_DEFAULT ||
-        _options.bthread_tag >= FLAGS_task_group_ntags) {
-        LOG(ERROR) << "Fail to set tag " << _options.bthread_tag
+    if (real_opt.bthread_tag < BTHREAD_TAG_DEFAULT ||
+        real_opt.bthread_tag >= FLAGS_task_group_ntags) {
+        LOG(ERROR) << "Fail to set tag " << real_opt.bthread_tag
                    << ", tag range is [" << BTHREAD_TAG_DEFAULT << ":"
                    << FLAGS_task_group_ntags << ")";
         return -1;
     }
-    int ret = TransportFactory::ContextInitOrDie(_options.socket_mode, true, &_options);
+    int ret = TransportFactory::ContextInitOrDie(real_opt.socket_mode, true, &real_opt);
     if (ret != 0) {
         LOG(ERROR) << "Fail to initialize transport context for server, ret=" << ret;
         return -1;
     }
+
+    copy_and_fill_server_options(_options, real_opt);
 
     if (_options.http_master_service) {
         // Check requirements for http_master_service:

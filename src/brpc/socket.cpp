@@ -1560,8 +1560,7 @@ void Socket::CheckConnectedAndKeepWrite(int fd, int err, void* data) {
             g_vars->channel_conn << 1;
         }
         if (s->_app_connect) {
-            s->_app_connect->StartConnect(req->get_socket(),
-                                          AfterAppConnected, req);
+            s->_app_connect->StartConnect(req->get_socket(), AfterAppConnected, req);
         } else {
             // Successfully created a connection
             AfterAppConnected(0, req);

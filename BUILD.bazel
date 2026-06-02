@@ -506,6 +506,7 @@ filegroup(
     srcs = glob([
         "src/brpc/*.proto",
         "src/brpc/policy/*.proto",
+        "src/brpc/rdma/*.proto",
     ]),
     visibility = ["//visibility:public"],
 )

@@ -25,9 +25,10 @@
 
 namespace brpc {
 class RdmaTransport : public Transport {
-    friend class TransportFactory;
-    friend class rdma::RdmaEndpoint;
-    friend class rdma::RdmaConnect;
+friend class TransportFactory;
+friend class rdma::RdmaEndpoint;
+friend class rdma::RdmaConnect;
+friend class rdma::RdmaHandshakeServerV2;
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;
@@ -47,7 +48,7 @@ public:
 private:
     static bool OptionsAvailableForRdma(const ChannelOptions* opt);
     static bool OptionsAvailableOverRdma(const ServerOptions* opt);
-private:
+
     // The on/off state of RDMA
     enum RdmaState {
         RDMA_ON,

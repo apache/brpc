@@ -40,6 +40,24 @@ DECLARE_bool(rdma_use_polling);
 DECLARE_int32(rdma_poller_num);
 DECLARE_bool(rdma_disable_bthread);
 
+class RdmaHandshakeClientV2;
+class RdmaHandshakeServerV2;
+class RdmaHandshakeClientV3;
+class RdmaHandshakeServerV3;
+struct ParsedHello;
+class RdmaHello;
+class RdmaEndpoint;
+namespace v2_wire {
+    int ReadBodyAndNegotiate(RdmaEndpoint* ep, ParsedHello* remote, bool* negotiated);
+    int DrainBytes(RdmaEndpoint* ep, size_t n);
+}  // namespace v2_wire
+
+namespace v3_wire {
+    void FillLocalRdmaHello(const RdmaEndpoint* ep, RdmaHello* msg);
+    int  ReadAndParseV3Hello(RdmaEndpoint* ep, RdmaHello* out);
+    int  WriteV3Hello(RdmaEndpoint* ep, const RdmaHello& msg);
+}  // namespace v3_wire
+
 class RdmaConnect : public AppConnect {
 public:
     void StartConnect(const Socket* socket, 
@@ -74,6 +92,15 @@ struct RdmaResource {
 class BAIDU_CACHELINE_ALIGNMENT RdmaEndpoint : public SocketUser {
 friend class RdmaConnect;
 friend class Socket;
+friend class RdmaHandshakeClientV2;
+friend class RdmaHandshakeServerV2;
+friend class RdmaHandshakeClientV3;
+friend class RdmaHandshakeServerV3;
+friend int v2_wire::ReadBodyAndNegotiate(RdmaEndpoint*, ParsedHello*, bool*);
+friend int v2_wire::DrainBytes(RdmaEndpoint*, size_t);
+friend void v3_wire::FillLocalRdmaHello(const RdmaEndpoint*, RdmaHello*);
+friend int  v3_wire::ReadAndParseV3Hello(RdmaEndpoint*, RdmaHello*);
+friend int  v3_wire::WriteV3Hello(RdmaEndpoint*, const RdmaHello&);
 public:
     explicit RdmaEndpoint(Socket* s);
     ~RdmaEndpoint() override;
@@ -181,12 +208,24 @@ private:
     // wait for _read_butex if encounter EAGAIN
     // return -1 if encounter other errno (including EOF)
     int ReadFromFd(void* data, size_t len);
+    int ReadFromFd(butil::IOPortal* data, size_t len);
 
 
     // Write at most len bytes from data to fd in _socket
     // wait for _epollout_butex if encounter EAGAIN
     // return -1 if encounter other errno
     int WriteToFd(void* data, size_t len);
+
+    // Write data to fd in _socket.
+    // wait for _epollout_butex if encounter EAGAIN.
+    // return -1 if encounter other errno.
+    int WriteToFd(butil::IOBuf* data);
+
+    // Copy negotiated remote parameters into the endpoint and compute
+    // the SQ/RQ window capacities. Called by both
+    // ProcessHandshakeAtClient and ProcessHandshakeAtServer after the
+    // peer's hello has been validated.
+    void ApplyRemoteHello(const ParsedHello& remote);
 
     // Bringup the QP from RESET state to RTS state
     // Arguments:
@@ -224,6 +263,13 @@ private:
 
     // State of Handshake
     State _state;
+
+    // Wire-level handshake protocol version (set by dispatch in
+    // ProcessHandshakeAtClient/Server). Aligned with the protocol code:
+    //   0 = unnegotiated
+    //   2 = v2 "RDMA"
+    //   3 = v3 "RDM3"
+    int _handshake_version;
 
     // rdma resource
     RdmaResource* _resource;
