@@ -105,6 +105,12 @@ config_setting(
 )
 
 config_setting(
+    name = "brpc_with_gdr",
+    define_values = {"BRPC_WITH_GDR": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "brpc_with_boringssl",
     define_values = {"BRPC_WITH_BORINGSSL": "true"},
     visibility = ["//visibility:public"],
