@@ -229,7 +229,10 @@ jobs:
     - name: run tests
       run: |
         cd test
-        sh ./run_tests.sh
+        # brpc_redis_unittest forks a real redis-server and waits a fixed 50ms before
+        # connecting; under ASan redis starts too slowly, so the redis client tests are
+        # flaky here (connection refused). Skip them in ASan; they run in clang-unittest.
+        GTEST_FILTER='-RedisTest.*' sh ./run_tests.sh
 
   clang-unittest-bazel-with-babylon-and-new-pb:
     runs-on: ubuntu-22.04
