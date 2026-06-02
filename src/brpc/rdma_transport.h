@@ -31,6 +31,7 @@ friend class rdma::RdmaConnect;
 friend class rdma::RdmaHandshakeServerV2;
 friend class rdma::RdmaHandshakeServerV3;
 public:
+    void DoInit(Socket* socket, const SocketOptions& options, bool use_gdr);
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;
     int Reset(int32_t expected_nref) override;
