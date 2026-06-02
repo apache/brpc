@@ -29,6 +29,7 @@ class RdmaTransport : public Transport {
     friend class rdma::RdmaEndpoint;
     friend class rdma::RdmaConnect;
 public:
+    void DoInit(Socket* socket, const SocketOptions& options, bool use_gdr);
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;
     int Reset(int32_t expected_nref) override;

@@ -104,6 +104,12 @@ static void SerializeRpcHeaderAndMeta(
 
 ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
                             bool /*read_eof*/, const void*) {
+#if BRPC_WITH_GDR
+    bool is_gpu_memory = source->is_gpu_memory();
+    if (is_gpu_memory) {
+        return ParseRpcMessageGpu(source, socket, false /* not use */, nullptr /* not use */);
+    }
+#endif  // BRPC_WITH_GDR
     char header_buf[12];
     const size_t n = source->copy_to(header_buf, sizeof(header_buf));
     if (n >= 4) {
@@ -796,7 +802,15 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
             butil::IOBuf req_buf;
             int body_without_attachment_size = req_size - meta.attachment_size();
-            msg->payload.cutn(&req_buf, body_without_attachment_size);
+#if BRPC_WITH_GDR
+            bool is_gpu_memory = msg->payload.is_gpu_memory();
+            if (is_gpu_memory) {
+                FillReqBufGpu(&req_buf, msg.get(), body_without_attachment_size);
+            } else
+#endif  // BRPC_WITH_GDR
+            {
+                msg->payload.cutn(&req_buf, body_without_attachment_size);
+            }
             if (meta.attachment_size() > 0) {
                 cntl->request_attachment().swap(msg->payload);
             }
@@ -968,17 +982,25 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         butil::IOBuf res_buf;
         const int res_size = msg->payload.length();
         butil::IOBuf* res_buf_ptr = &msg->payload;
-        if (meta.has_attachment_size()) {
-            if (meta.attachment_size() > res_size) {
-                cntl->SetFailed(
-                    ERESPONSE, "attachment_size=%d is larger than response_size=%d",
-                    meta.attachment_size(), res_size);
-                break;
+#if BRPC_WITH_GDR
+        bool is_gpu_memory = msg->payload.is_gpu_memory();
+        if (is_gpu_memory) {
+            FillResBufGpu(&res_buf, msg.get(), meta, &res_buf_ptr, cntl);
+        } else
+#endif  // BRPC_WITH_GDR
+        {
+            if (meta.has_attachment_size()) {
+                if (meta.attachment_size() > res_size) {
+                    cntl->SetFailed(
+                            ERESPONSE, "attachment_size=%d is larger than response_size=%d",
+                            meta.attachment_size(), res_size);
+                    break;
+                }
+                int body_without_attachment_size = res_size - meta.attachment_size();
+                msg->payload.cutn(&res_buf, body_without_attachment_size);
+                res_buf_ptr = &res_buf;
+                cntl->response_attachment().swap(msg->payload);
             }
-            int body_without_attachment_size = res_size - meta.attachment_size();
-            msg->payload.cutn(&res_buf, body_without_attachment_size);
-            res_buf_ptr = &res_buf;
-            cntl->response_attachment().swap(msg->payload);
         }
 
         ContentType content_type = meta.content_type();

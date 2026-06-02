@@ -15,13 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_SOCKET_MODE_H
-#define BRPC_SOCKET_MODE_H
+#if BRPC_WITH_GDR
+
+#include "brpc/gdr_transport.h"
+#include "brpc/rdma/rdma_helper.h"
+
 namespace brpc {
-enum SocketMode {
-    SOCKET_MODE_TCP = 0,
-    SOCKET_MODE_RDMA = 1,
-    SOCKET_MODE_GDR = 2
-};
+
+void GdrTransport::Init(Socket *socket, const SocketOptions &options) {
+    DoInit(socket, options, true);
+}
+
+int GdrTransport::GdrContextInitOrDie() {
+    rdma::GlobalGdrInitializeOrDie();
+    return 0;
+}
+
 } // namespace brpc
-#endif //BRPC_SOCKET_MODE_H
+#endif

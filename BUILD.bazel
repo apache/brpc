@@ -51,6 +51,9 @@ DEFINES = [
  }) + select({
      "//bazel/config:brpc_with_rdma": ["BRPC_WITH_RDMA=1"],
      "//conditions:default": [],
+}) + select({
+    "//bazel/config:brpc_with_gdr": ["-DBRPC_WITH_GDR=1"],
+    "//conditions:default": [],
  }) + select({
      "//bazel/config:brpc_with_debug_bthread_sche_safety": ["BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1"],
      "//conditions:default": ["BRPC_DEBUG_BTHREAD_SCHE_SAFETY=0"],
@@ -92,6 +95,11 @@ LINKOPTS = [
 }) + select({
     "//bazel/config:brpc_with_rdma": [
         "-libverbs",
+    ],
+    "//conditions:default": [],
+}) + select({
+    "//bazel/config:brpc_with_gdr": [
+        "-lcuda -lcudart",
     ],
     "//conditions:default": [],
 }) + select({
@@ -235,6 +243,7 @@ BUTIL_SRCS = [
     "src/butil/iobuf.cpp",
     "src/butil/single_iobuf.cpp",
     "src/butil/iobuf_profiler.cpp",
+    "src/butil/gpu/gpu_block_pool.cpp",
     "src/butil/binary_printer.cpp",
     "src/butil/recordio.cc",
     "src/butil/popen.cpp",

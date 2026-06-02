@@ -31,7 +31,6 @@
 #include "butil/containers/mpsc_queue.h"
 #include "brpc/socket.h"
 
-
 namespace brpc {
 class Socket;
 namespace rdma {
@@ -75,14 +74,20 @@ class BAIDU_CACHELINE_ALIGNMENT RdmaEndpoint : public SocketUser {
 friend class RdmaConnect;
 friend class Socket;
 public:
-    explicit RdmaEndpoint(Socket* s);
+    explicit RdmaEndpoint(Socket* s, bool use_gdr = false);
     ~RdmaEndpoint() override;
 
-    // Global initialization
+    // Global Rdma initialization
     // Return 0 if success, -1 if failed and errno set
     static int GlobalInitialize();
 
+    // Global Gdr initialization
+    // Return 0 if success, -1 if failed and errno set
+    static int GlobalGdrInitialize();
+
     static void GlobalRelease();
+
+    bool use_gdr() { return _use_gdr; }
 
     // Reset the endpoint (for next use)
     void Reset();
@@ -177,6 +182,16 @@ private:
     //     -1:  failed, errno set
     int DoPostRecv(void* block, size_t block_size);
 
+    // Post a WR pointing to the gpu block to the local Recv Queue
+    // Arguments:
+    //     block: the gpu addr to receive data (ibv_sge.addr)
+    //     block_size: the maximum length can be received (ibv_sge.length)
+    //     lkey: the lkey of block
+    // Return:
+    //     0:   success
+    //     -1:  failed, errno set
+    int DoPostRecvGDR(void* block, size_t block_size, uint32_t lkey);
+
     // Read at most len bytes from fd in _socket to data
     // wait for _read_butex if encounter EAGAIN
     // return -1 if encounter other errno (including EOF)
@@ -221,6 +236,9 @@ private:
 
     // Not owner
     Socket* _socket;
+
+    // whether open gpu direct rdma
+    bool _use_gdr;
 
     // State of Handshake
     State _state;
