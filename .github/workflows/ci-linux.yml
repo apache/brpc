@@ -196,12 +196,6 @@ jobs:
         cat config.mk
         cd test
         make -j ${{env.proc_num}}
-    - name: install redis-server and mysql-server
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y redis-server mysql-server
-        redis-server --version
-        mysqld --version
     - name: run tests
       run: |
         cd test
@@ -220,19 +214,14 @@ jobs:
         cat config.mk
         cd test
         make NEED_GPERFTOOLS=0 -j ${{env.proc_num}}
-    - name: install redis-server and mysql-server
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y redis-server mysql-server
-        redis-server --version
-        mysqld --version
     - name: run tests
       run: |
         cd test
-        # brpc_redis_unittest forks a real redis-server and waits a fixed 50ms before
-        # connecting; under ASan redis starts too slowly, so the redis client tests are
-        # flaky here (connection refused). Skip them in ASan; they run in clang-unittest.
-        GTEST_FILTER='-RedisTest.*' sh ./run_tests.sh
+        # The redis integration tests (sanity/keys_with_spaces/incr_and_decr/by_components/auth)
+        # fork a real redis-server and connect after a fixed 50ms wait; under ASan redis starts
+        # too slowly, so they flake here (connection refused). Skip just those under ASan; the
+        # redis codec/server tests still run, and the full suite runs in clang-unittest.
+        GTEST_FILTER='-RedisTest.sanity:RedisTest.keys_with_spaces:RedisTest.incr_and_decr:RedisTest.by_components:RedisTest.auth' sh ./run_tests.sh
 
   clang-unittest-bazel-with-babylon-and-new-pb:
     runs-on: ubuntu-22.04
