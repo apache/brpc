@@ -107,6 +107,17 @@ enum StopStyle {
 
 const int32_t UNSET_MAGIC_NUM = -123456789;
 
+// If a controller wants to reserve the sending socket after the RPC (e.g. mysql
+// transactions/prepared statements that need connection affinity), set
+// BIND_SOCK_RESERVE; later RPCs reuse it via BIND_SOCK_USE.
+enum BindSockAction {
+    BIND_SOCK_RESERVE,
+    BIND_SOCK_USE,
+    BIND_SOCK_NONE,
+};
+// mysql prepared statement, defined in mysql.h
+class MysqlStatementStub;
+
 typedef butil::FlatMap<std::string, std::string> UserFieldsMap;
 
 // A Controller mediates a single method call. The primary purpose of
@@ -762,6 +773,7 @@ private:
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
         // socket fetched from socket pool
         SocketUniquePtr sending_sock;
+        BindSockAction bind_sock_action;
         StreamUserData* stream_user_data;
     };
 
@@ -914,6 +926,14 @@ private:
     StreamIds _response_streams;
     // Defined at both sides
     StreamSettings *_remote_stream_settings;
+
+    // Whether/how to reserve the sending socket after the RPC (mysql tx/stmt).
+    BindSockAction _bind_sock_action;
+    // The socket reserved by a previous RPC and reused when _bind_sock_action
+    // is BIND_SOCK_USE.
+    SocketUniquePtr _bind_sock;
+    // mysql prepared statement bound to this RPC, owned elsewhere.
+    MysqlStatementStub* _mysql_stmt;
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;

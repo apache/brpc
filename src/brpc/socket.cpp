@@ -461,6 +461,7 @@ Socket::Socket(Forbidden f)
     , _fd(-1)
     , _tos(0)
     , _reset_fd_real_us(-1)
+    , _fd_version(0)
     , _on_edge_triggered_events(NULL)
     , _need_on_edge_trigger(false)
     , _user(NULL)
@@ -578,6 +579,8 @@ int Socket::ResetFileDescriptor(int fd) {
     _avg_msg_size = 0;
     // MUST store `_fd' before adding itself into epoll device to avoid
     // race conditions with the callback function inside epoll
+    static butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT fd_version(0);
+    _fd_version = fd_version.fetch_add(1, butil::memory_order_relaxed);
     _fd.store(fd, butil::memory_order_release);
     _reset_fd_real_us = butil::cpuwide_time_us();
     if (!ValidFileDescriptor(fd)) {
@@ -1613,7 +1616,10 @@ int Socket::Write(butil::IOBuf* data, const WriteOptions* options_in) {
     if (options_in) {
         opt = *options_in;
     }
-    if (data->empty()) {
+    // An auth write (opt.auth_flags != 0) may carry an empty data buffer: some
+    // protocols (e.g. mysql) read the server greeting first and send their real
+    // bytes from the connection-phase handler, not from `data` here.
+    if (data->empty() && !opt.auth_flags) {
         return SetError(opt.id_wait, EINVAL);
     }
     if (opt.pipelined_count > MAX_PIPELINED_COUNT) {
