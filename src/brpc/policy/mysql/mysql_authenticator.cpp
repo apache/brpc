@@ -1,16 +1,19 @@
-// Copyright (c) 2019 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 //
 // Author(s): Yang,Liming <yangliming01@baidu.com>
 
@@ -94,6 +97,15 @@ void MysqlParseAuthenticator(const butil::StringPiece& raw,
          p = raw.find(auth_param_delim, p + 1)) {
         idx.push_back(p);
     }
+    if (idx.size() < 4) {
+        LOG(ERROR) << "malformed mysql authentication string, expected at least 4 '\\t' "
+                      "delimiters but found " << idx.size();
+        user->clear();
+        password->clear();
+        schema->clear();
+        collation->clear();
+        return;
+    }
     user->assign(raw.data(), 0, idx[0]);
     password->assign(raw.data(), idx[0] + 1, idx[1] - idx[0] - 1);
     schema->assign(raw.data(), idx[1] + 1, idx[2] - idx[1] - 1);
@@ -160,7 +172,7 @@ int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
     payload.push_back(0x00);
     payload.push_back(0x00);
     payload.push_back(0x00);
-    auto iter = MysqlCollations.find(collation.data());
+    auto iter = MysqlCollations.find(std::string(collation.data(), collation.size()));
     if (iter == MysqlCollations.end()) {
         LOG(ERROR) << "wrong collation [" << collation << "]";
         return 1;
@@ -168,12 +180,12 @@ int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
     payload.append(&iter->second, 1);
     const std::string stuff(23, '\0');
     payload.append(stuff);
-    payload.append(user.data());
+    payload.append(user.data(), user.size());
     payload.push_back('\0');
     payload.append(pack_encode_length(salt.size()));
     payload.append(salt);
     if (schema != "") {
-        payload.append(schema.data());
+        payload.append(schema.data(), schema.size());
         payload.push_back('\0');
     }
     if (auth.auth_plugin() == mysql_native_password) {

@@ -580,7 +580,8 @@ int Socket::ResetFileDescriptor(int fd) {
     // MUST store `_fd' before adding itself into epoll device to avoid
     // race conditions with the callback function inside epoll
     static butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT fd_version(0);
-    _fd_version = fd_version.fetch_add(1, butil::memory_order_relaxed);
+    _fd_version.store(fd_version.fetch_add(1, butil::memory_order_relaxed),
+                      butil::memory_order_relaxed);
     _fd.store(fd, butil::memory_order_release);
     _reset_fd_real_us = butil::cpuwide_time_us();
     if (!ValidFileDescriptor(fd)) {

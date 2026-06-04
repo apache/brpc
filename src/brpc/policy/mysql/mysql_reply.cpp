@@ -1,16 +1,19 @@
-// Copyright (c) 2019 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
@@ -70,6 +73,22 @@ const char* digits01 =
 const char* digits10 =
     "0000000000111111111122222222223333333333444444444455555555556666666666777777777788888888889999"
     "999999";
+
+// Emit a zero fractional-second part ".000..." for a column that declares
+// `decimal` digits but whose binary value carries no microsecond bytes on the
+// wire (e.g. DATETIME(3) with a zero fraction is sent with len==7, TIME(3)
+// with len==8). Keeps the formatted string length consistent with dstlen.
+inline void write_zero_microsecs(uint8_t decimal, char* d) {
+    if (decimal == 0 || decimal == 0x1f) {
+        return;
+    }
+    uint8_t n = decimal > 6 ? 6 : decimal;
+    size_t i = 0;
+    d[i++] = '.';
+    for (uint8_t k = 0; k < n; ++k) {
+        d[i++] = '0';
+    }
+}
 }  // namespace
 
 const char* MysqlRspTypeToString(MysqlRspType type) {
@@ -477,6 +496,9 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         _salt2.set(d, salt2.size());
     }
     {
+        if (_auth_plugin_length > buf.size()) {
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
         char* d = NULL;
         MY_ALLOC_CHECK(my_alloc_check(arena, _auth_plugin_length, d));
         buf.cutn(d, _auth_plugin_length);
@@ -523,6 +545,14 @@ ParseError MysqlReply::ResultSetHeader::Parse(butil::IOBuf& buf) {
     uint64_t old_size, new_size;
     old_size = buf.size();
     _column_count = parse_encode_length(buf);
+    // Guard against an absurd/malicious column count driving unbounded
+    // allocations downstream (per-column arrays and the row NULL-bitmap).
+    // MySQL's hard limit is 4096 columns per table; 65535 is a generous cap
+    // that no legitimate result set exceeds.
+    if (_column_count > 65535) {
+        LOG(ERROR) << "illegal column count " << _column_count;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     new_size = buf.size();
     if (old_size - new_size < header.payload_size) {
         _extra_msg = parse_encode_length(buf);
@@ -542,37 +572,58 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
 
+    // Each length-encoded string must fit within the remaining buffer; an
+    // oversized length would otherwise drive my_alloc_check/cutn/.set past the
+    // packet (mirrors the hardened auth_plugin path above).
     uint64_t len = parse_encode_length(buf);
+    if (len > buf.size()) {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     char* catalog = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, catalog));
     buf.cutn(catalog, len);
     _catalog.set(catalog, len);
 
     len = parse_encode_length(buf);
+    if (len > buf.size()) {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     char* database = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, database));
     buf.cutn(database, len);
     _database.set(database, len);
 
     len = parse_encode_length(buf);
+    if (len > buf.size()) {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     char* table = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, table));
     buf.cutn(table, len);
     _table.set(table, len);
 
     len = parse_encode_length(buf);
+    if (len > buf.size()) {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     char* origin_table = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, origin_table));
     buf.cutn(origin_table, len);
     _origin_table.set(origin_table, len);
 
     len = parse_encode_length(buf);
+    if (len > buf.size()) {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     char* name = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, name));
     buf.cutn(name, len);
     _name.set(name, len);
 
     len = parse_encode_length(buf);
+    if (len > buf.size()) {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     char* origin_name = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, origin_name));
     buf.cutn(origin_name, len);
@@ -615,8 +666,16 @@ ParseError MysqlReply::Ok::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     _affect_row = parse_encode_length(buf);
     _index = parse_encode_length(buf);
-    buf.cutn(&_status, 2);
-    buf.cutn(&_warning, 2);
+    {
+        uint8_t tmp[2];
+        buf.cutn(tmp, sizeof(tmp));
+        _status = mysql_uint2korr(tmp);
+    }
+    {
+        uint8_t tmp[2];
+        buf.cutn(tmp, sizeof(tmp));
+        _warning = mysql_uint2korr(tmp);
+    }
 
     new_size = buf.size();
     if (old_size - new_size < header.payload_size) {
@@ -640,8 +699,16 @@ ParseError MysqlReply::Eof::Parse(butil::IOBuf& buf) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     buf.pop_front(1);
-    buf.cutn(&_warning, 2);
-    buf.cutn(&_status, 2);
+    {
+        uint8_t tmp[2];
+        buf.cutn(tmp, sizeof(tmp));
+        _warning = mysql_uint2korr(tmp);
+    }
+    {
+        uint8_t tmp[2];
+        buf.cutn(tmp, sizeof(tmp));
+        _status = mysql_uint2korr(tmp);
+    }
     set_parsed();
     return PARSE_OK;
 }
@@ -666,7 +733,13 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
     buf.cutn(status, 5);
     _status.set(status, 5);
-    // error message, Null-Terminated string
+    // error message, Null-Terminated string.
+    // payload layout consumed so far: 0xFF(1) + errcode(2) + '#'(1) +
+    // sql_state(5) = 9 bytes; guard against a malformed short packet to avoid
+    // an unsigned underflow producing a huge length.
+    if (header.payload_size < 9) {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     uint64_t len = header.payload_size - 9;
     char* msg = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
@@ -700,10 +773,14 @@ ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
         if (hdr != 0x00) {
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
-        // NULL-bitmap, [(column-count + 7 + 2) / 8 bytes]
+        // NULL-bitmap, [(column-count + 7 + 2) / 8 bytes]. Allocate from the
+        // arena instead of a stack VLA: column_count is attacker-controlled
+        // (length-encoded in the result-set header), so a large value would
+        // otherwise be an unbounded stack allocation / stack overflow.
         const uint64_t size = ((column_count + 7 + 2) >> 3);
-        uint8_t null_mask[size];
-        for (size_t i = 0; i < sizeof(null_mask); ++i) {
+        uint8_t* null_mask = NULL;
+        MY_ALLOC_CHECK(my_alloc_check(arena, (size_t)size, null_mask));
+        for (uint64_t i = 0; i < size; ++i) {
             null_mask[i] = 0;
         }
         buf.cutn(null_mask, size);
@@ -905,6 +982,9 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
                 return PARSE_OK;
             }
             // field is not null
+            if (len > buf.size()) {
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
+            }
             char* d = NULL;
             MY_ALLOC_CHECK(my_alloc_check(arena, len, d));
             buf.cutn(d, len);
@@ -939,21 +1019,29 @@ ParseError MysqlReply::Field::ParseBinaryTime(butil::IOBuf& buf,
                                               butil::Arena* arena) {
 
     const uint64_t len = parse_encode_length(buf);
-    if (len == 0) {
-        _is_nil = true;
-        return PARSE_OK;
-    }
-
-    if (len != 8 && len != 12) {
+    // A length of 0, 8 or 12 are the only legal binary TIME encodings. Anything
+    // else is a malformed packet -- reject it rather than reading past the value.
+    // NOTE: len == 0 is NOT a NULL value (NULL is signalled by the row
+    // NULL-bitmap, handled by the caller before we are reached); it is the zero
+    // TIME value "00:00:00" with no field bytes on the wire.
+    if (len != 0 && len != 8 && len != 12) {
         LOG(ERROR) << "invalid TIME packet length " << len;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
+    // Never read more value bytes than the packet actually carries.
+    if (len > buf.size()) {
+        LOG(ERROR) << "TIME value length " << len << " exceeds buffer size " << buf.size();
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
 
+    // Base "HH:MM:SS" is 8 bytes, but MySQL binary TIME spans up to 838 hours
+    // and may be negative, so reserve 2 extra bytes for a leading sign and a
+    // possible 3rd hour digit ("-838:59:59[.ffffff]").
     uint8_t dstlen;
     switch (column->_decimal) {
         case 0x00:
         case 0x1f:
-            dstlen = 8;
+            dstlen = 8 + 2;
             break;
         case 1:
         case 2:
@@ -961,7 +1049,7 @@ ParseError MysqlReply::Field::ParseBinaryTime(butil::IOBuf& buf,
         case 4:
         case 5:
         case 6:
-            dstlen = 8 + 1 + column->_decimal;
+            dstlen = 8 + 2 + 1 + column->_decimal;
             break;
         default:
             LOG(ERROR) << "protocol error, illegal decimals value " << column->_decimal;
@@ -973,32 +1061,54 @@ ParseError MysqlReply::Field::ParseBinaryTime(butil::IOBuf& buf,
     MY_ALLOC_CHECK(my_alloc_check(arena, dstlen + 2, d));
     d[dstlen] = '\0';
     d[dstlen + 1] = '\0';
-    uint32_t day;
-    uint8_t neg, hour, min, sec;
+    // Read only the fields that are present for this `len`; absent fields are 0.
+    // len == 0  -> no bytes: "00:00:00".
+    // len == 8  -> is_negative(1) days(4 LE) hour(1) min(1) sec(1), no micros.
+    // len == 12 -> + micros(4 LE).
+    uint32_t day = 0;
+    uint8_t neg = 0, hour = 0, min = 0, sec = 0;
 
-    buf.cut1((char*)&neg);
+    if (len >= 8) {
+        buf.cut1((char*)&neg);
+        buf.cutn(&day, 4);
+        day = mysql_uint4korr((uint8_t*)&day);
+        buf.cut1((char*)&hour);
+        buf.cut1((char*)&min);
+        buf.cut1((char*)&sec);
+    }
+
+    // Validate field ranges so the formatted output cannot overflow the buffer
+    // and so we never index past digits01/digits10. MySQL caps TIME at 838
+    // hours and 59 min/sec; total_hour is at most 3 digits, which dstlen sizes
+    // for. A larger total_hour would emit >3 hour digits and overrun `d`.
+    if (neg > 1 || min > 59 || sec > 59) {
+        LOG(ERROR) << "invalid TIME field value";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    // MySQL binary TIME spans up to 838 hours, so the total can exceed 255 and
+    // must be accumulated in a wider type than the 1-byte wire field.
+    uint32_t total_hour = (uint32_t)hour + day * 24;
+    if (total_hour > 838) {
+        LOG(ERROR) << "TIME total hours " << total_hour << " exceeds MySQL max 838";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+
     if (neg == 1) {
         d[i++] = '-';
     }
-
-    buf.cutn(&day, 4);
-    day = mysql_uint4korr((uint8_t*)&day);
-    buf.cut1((char*)&hour);
-    hour += day * 24;
-    if (hour >= 100) {
-        std::ostringstream os;
-        os << hour;
-        std::string s = os.str();
-        for (const auto& v : s) {
-            d[i++] = v;
-        }
+    if (total_hour >= 100) {
+        // total_hour is in [100, 838]: exactly 3 digits, which dstlen reserves
+        // space for. Emit hundreds/tens/units directly; the digits01/digits10
+        // lookup tables only cover 0..99 so they cannot be indexed by the full
+        // value here.
+        d[i++] = (char)('0' + total_hour / 100);
+        const uint32_t rem = total_hour % 100;
+        d[i++] = digits10[rem];
+        d[i++] = digits01[rem];
     } else {
-        d[i++] = digits10[hour];
-        d[i++] = digits01[hour];
+        d[i++] = digits10[total_hour];
+        d[i++] = digits01[total_hour];
     }
-
-    buf.cut1((char*)&min);
-    buf.cut1((char*)&sec);
 
     d[i++] = ':';
     d[i++] = digits10[min];
@@ -1007,9 +1117,24 @@ ParseError MysqlReply::Field::ParseBinaryTime(butil::IOBuf& buf,
     d[i++] = digits10[sec];
     d[i++] = digits01[sec];
 
-    ParseError rc = ParseMicrosecs(buf, column->_decimal, d + i);
+    // Microseconds are only present on the wire when len == 12; for len == 0 or
+    // len == 8 there are no microsecond bytes even if the column declares
+    // decimals.
+    ParseError rc;
+    if (len == 12) {
+        rc = ParseMicrosecs(buf, column->_decimal, d + i);
+    } else {
+        write_zero_microsecs(column->_decimal, d + i);
+        rc = PARSE_OK;
+    }
     if (rc == PARSE_OK) {
-        str.set(d, dstlen + 2);
+        // TIME is variable-width (optional sign, 2- or 3+-digit hour), so report
+        // the EXACT bytes actually written: i (through ":SS") plus the
+        // fractional part -- '.' + decimal digits when decimal is 1..6, else
+        // nothing (decimal 0 or 0x1f writes no fractional bytes).
+        const size_t micros_len =
+            (column->_decimal >= 1 && column->_decimal <= 6) ? (size_t)column->_decimal + 1 : 0;
+        str.set(d, i + micros_len);
     }
     return rc;
 }
@@ -1019,18 +1144,32 @@ ParseError MysqlReply::Field::ParseBinaryDataTime(butil::IOBuf& buf,
                                                   butil::StringPiece& str,
                                                   butil::Arena* arena) {
     const uint64_t len = parse_encode_length(buf);
-    if (len == 0) {
-        _is_nil = true;
-        return PARSE_OK;
-    }
-
-    if (len != 4 && len != 7 && len != 11) {
+    // A length of 0, 4, 7 or 11 are the only legal binary DATE/DATETIME/
+    // TIMESTAMP encodings. Reject anything else rather than over-reading.
+    // NOTE: len == 0 is NOT a NULL value (NULL is signalled by the row
+    // NULL-bitmap, handled by the caller before we are reached); it is the zero
+    // value "0000-00-00 00:00:00" (or "0000-00-00" for DATE) with no field
+    // bytes on the wire.
+    if (len != 0 && len != 4 && len != 7 && len != 11) {
         LOG(ERROR) << "illegal date time length " << len;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    // Never read more value bytes than the packet actually carries.
+    if (len > buf.size()) {
+        LOG(ERROR) << "DATETIME value length " << len << " exceeds buffer size " << buf.size();
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    // A DATE column carries only the date part; a time-of-day part on the wire
+    // would not fit its 10-byte output buffer, so reject those packets.
+    const bool is_date = (column->_type == MYSQL_FIELD_TYPE_DATE ||
+                          column->_type == MYSQL_FIELD_TYPE_NEWDATE);
+    if (is_date && len != 0 && len != 4) {
+        LOG(ERROR) << "illegal DATE length " << len;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
 
     uint8_t dstlen;
-    if (column->_type == MYSQL_FIELD_TYPE_DATE) {
+    if (is_date) {
         dstlen = 10;
     } else {
         switch (column->_decimal) {
@@ -1055,60 +1194,101 @@ ParseError MysqlReply::Field::ParseBinaryDataTime(butil::IOBuf& buf,
     size_t i = 0;
     char* d = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, dstlen, d));
-    uint16_t year;
-    uint8_t pt, p1, p2, p3;
-    buf.cutn(&year, 2);  // year
-    year = mysql_uint2korr((uint8_t*)&year);
-    pt = year / 100;
-    p1 = year - (100 * pt);
-    buf.cut1((char*)&p2);
-    buf.cut1((char*)&p3);
+    // Read only the fields present for this `len`; absent fields are 0.
+    // len == 0  -> no bytes (all-zero value).
+    // len == 4  -> year(2 LE) month(1) day(1) only -> "YYYY-MM-DD".
+    // len == 7  -> + hour(1) min(1) sec(1) -> "YYYY-MM-DD HH:MM:SS".
+    // len == 11 -> + micros(4 LE).
+    uint16_t year = 0;
+    uint8_t month = 0, day = 0, hour = 0, min = 0, sec = 0;
+    if (len >= 4) {
+        buf.cutn(&year, 2);
+        year = mysql_uint2korr((uint8_t*)&year);
+        buf.cut1((char*)&month);
+        buf.cut1((char*)&day);
+    }
+    if (len >= 7) {
+        buf.cut1((char*)&hour);
+        buf.cut1((char*)&min);
+        buf.cut1((char*)&sec);
+    }
 
+    // Validate field ranges: year < 10000 keeps the 4-digit year within bounds
+    // and keeps every two-digit component inside the digits01/digits10 tables
+    // (which only cover 0..99), preventing both buffer overrun and OOB reads.
+    if (year > 9999 || month > 99 || day > 99 || hour > 99 || min > 59 || sec > 59) {
+        LOG(ERROR) << "invalid DATE/DATETIME field value";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+
+    const uint8_t pt = year / 100;
+    const uint8_t p1 = year - (100 * pt);
     d[i++] = digits10[pt];
     d[i++] = digits01[pt];
     d[i++] = digits10[p1];
     d[i++] = digits01[p1];
     d[i++] = '-';
-    d[i++] = digits10[p2];
-    d[i++] = digits01[p2];
+    d[i++] = digits10[month];
+    d[i++] = digits01[month];
     d[i++] = '-';
-    d[i++] = digits10[p3];
-    d[i++] = digits01[p3];
+    d[i++] = digits10[day];
+    d[i++] = digits01[day];
 
-    if (len == 4) {
-        str.set(d, dstlen);
+    if (is_date) {
+        // DATE column: only "YYYY-MM-DD" (10 bytes) is meaningful. Report the
+        // EXACT bytes written -- reporting dstlen here would be fine (dstlen==10)
+        // but we set it explicitly for clarity and to never over-report.
+        str.set(d, i);
         return PARSE_OK;
     }
 
+    // DATETIME/TIMESTAMP column: always emit the full "YYYY-MM-DD HH:MM:SS"
+    // form. When len == 4 the time-of-day fields were absent on the wire and
+    // default to zero ("00:00:00"); we still write those bytes here so the
+    // reported length matches what was actually written (the historical bug
+    // reported dstlen==19 while writing only the 10 date bytes, leaking
+    // uninitialized heap).
     d[i++] = ' ';
-    buf.cut1((char*)&p1);  // hour
-    buf.cut1((char*)&p2);  // min
-    buf.cut1((char*)&p3);  // sec
-    d[i++] = digits10[p1];
-    d[i++] = digits01[p1];
+    d[i++] = digits10[hour];
+    d[i++] = digits01[hour];
     d[i++] = ':';
-    d[i++] = digits10[p2];
-    d[i++] = digits01[p2];
+    d[i++] = digits10[min];
+    d[i++] = digits01[min];
     d[i++] = ':';
-    d[i++] = digits10[p3];
-    d[i++] = digits01[p3];
+    d[i++] = digits10[sec];
+    d[i++] = digits01[sec];
 
-    ParseError rc = ParseMicrosecs(buf, column->_decimal, d + i);
+    // Microseconds are only present on the wire when len == 11; for len == 7
+    // there are no microsecond bytes even if the column declares decimals.
+    ParseError rc;
+    if (len == 11) {
+        rc = ParseMicrosecs(buf, column->_decimal, d + i);
+    } else {
+        write_zero_microsecs(column->_decimal, d + i);
+        rc = PARSE_OK;
+    }
     if (rc == PARSE_OK) {
-        str.set(d, dstlen);
+        // Report the EXACT bytes written: "YYYY-MM-DD HH:MM:SS" (i == 19) plus
+        // the fractional part -- '.' + decimal digits when decimal is 1..6, else
+        // nothing.
+        const size_t micros_len =
+            (column->_decimal >= 1 && column->_decimal <= 6) ? (size_t)column->_decimal + 1 : 0;
+        str.set(d, i + micros_len);
     }
     return rc;
 }
 
 ParseError MysqlReply::Field::ParseMicrosecs(butil::IOBuf& buf, uint8_t decimal, char* d) {
-    if (decimal <= 0) {
-        return PARSE_OK;
-    }
-
     size_t i = 0;
     uint32_t microsecs;
     uint8_t p1, p2, p3;
+    // Always consume the 4 microsecond bytes present on the wire (the caller
+    // only invokes this when the value length includes them); format them only
+    // when the column declares 1..6 fractional digits (0 / 0x1f == no fraction).
     buf.cutn((char*)&microsecs, 4);
+    if (decimal == 0 || decimal > 6) {
+        return PARSE_OK;
+    }
     microsecs = mysql_uint4korr((uint8_t*)&microsecs);
     p1 = microsecs / 10000;
     microsecs -= 10000 * p1;

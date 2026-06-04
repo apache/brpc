@@ -1,16 +1,19 @@
-// Copyright (c) 2019 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
@@ -114,7 +117,11 @@ void MysqlRequest::Clear() {
     _buf.clear();
     _has_command = false;
     _tx = NULL;
-    _stmt = NULL;
+    if (_stmt) {
+        delete _stmt;
+        _stmt = NULL;
+    }
+    _param_index = 0;
 }
 
 size_t MysqlRequest::ByteSizeLong() const {
@@ -124,28 +131,26 @@ size_t MysqlRequest::ByteSizeLong() const {
 }
 
 void MysqlRequest::MergeFrom(const MysqlRequest& from) {
-    // TODO: maybe need to optimize
-    // GOOGLE_CHECK_NE(&from, this);
-    // const int header_size = 4;
-    // const uint32_t size_l = from._buf.size() - header_size - 1;  // payload - type
-    // const uint32_t size_r = _buf.size() - header_size + 1;       // payload + seqno
-    // const uint32_t payload_size = butil::ByteSwapToLE32(size_l + size_r);
-    // if (payload_size > mysql_max_package_size) {
-    //     CHECK(false)
-    //         << "[MysqlRequest::MergeFrom] statement size is too big, merge from do nothing";
-    //     return;
-    // }
-    // butil::IOBuf buf;
-    // butil::IOBuf result;
-    // _has_error = _has_error || from._has_error;
-    // buf.append(from._buf);
-    // buf.pop_front(header_size + 1);
-    // _buf.pop_front(header_size - 1);
-    // result.append(&payload_size, 3);
-    // result.append(_buf);
-    // result.append(buf);
-    // _buf = result;
-    // _has_command = _has_command || from._has_command;
+    if (&from == this) {
+        return;
+    }
+    // Copy all members so CopyFrom/copy-construct yields an equivalent request
+    // instead of an empty one.
+    _has_command = from._has_command;
+    _has_error = from._has_error;
+    _buf = from._buf;
+    _cached_size_ = from._cached_size_;
+    _param_index = from._param_index;
+    // _tx is a non-owning pointer (never deleted by MysqlRequest): shallow copy.
+    _tx = from._tx;
+    // _stmt is owned (deleted in the dtor): deep-copy to avoid double free.
+    if (_stmt != NULL) {
+        delete _stmt;
+        _stmt = NULL;
+    }
+    if (from._stmt != NULL) {
+        _stmt = new MysqlStatementStub(*from._stmt);
+    }
 }
 
 void MysqlRequest::Swap(MysqlRequest* other) {
@@ -154,6 +159,9 @@ void MysqlRequest::Swap(MysqlRequest* other) {
         std::swap(_has_error, other->_has_error);
         std::swap(_cached_size_, other->_cached_size_);
         std::swap(_has_command, other->_has_command);
+        std::swap(_tx, other->_tx);
+        std::swap(_stmt, other->_stmt);
+        std::swap(_param_index, other->_param_index);
     }
 }
 
@@ -190,6 +198,10 @@ bool MysqlRequest::AddParam(int8_t p) {
     if (_has_error) {
         return false;
     }
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_TINY);
     if (st.ok()) {
         ++_param_index;
@@ -201,6 +213,10 @@ bool MysqlRequest::AddParam(int8_t p) {
     }
 }
 bool MysqlRequest::AddParam(uint8_t p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st =
         MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_TINY, true);
     if (st.ok()) {
@@ -213,6 +229,10 @@ bool MysqlRequest::AddParam(uint8_t p) {
     }
 }
 bool MysqlRequest::AddParam(int16_t p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_SHORT);
     if (st.ok()) {
         ++_param_index;
@@ -224,6 +244,10 @@ bool MysqlRequest::AddParam(int16_t p) {
     }
 }
 bool MysqlRequest::AddParam(uint16_t p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st =
         MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_SHORT, true);
     if (st.ok()) {
@@ -236,6 +260,10 @@ bool MysqlRequest::AddParam(uint16_t p) {
     }
 }
 bool MysqlRequest::AddParam(int32_t p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONG);
     if (st.ok()) {
         ++_param_index;
@@ -247,6 +275,10 @@ bool MysqlRequest::AddParam(int32_t p) {
     }
 }
 bool MysqlRequest::AddParam(uint32_t p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st =
         MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONG, true);
     if (st.ok()) {
@@ -259,6 +291,10 @@ bool MysqlRequest::AddParam(uint32_t p) {
     }
 }
 bool MysqlRequest::AddParam(int64_t p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st =
         MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONGLONG);
     if (st.ok()) {
@@ -271,6 +307,10 @@ bool MysqlRequest::AddParam(int64_t p) {
     }
 }
 bool MysqlRequest::AddParam(uint64_t p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st =
         MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONGLONG, true);
     if (st.ok()) {
@@ -283,6 +323,10 @@ bool MysqlRequest::AddParam(uint64_t p) {
     }
 }
 bool MysqlRequest::AddParam(float p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_FLOAT);
     if (st.ok()) {
         ++_param_index;
@@ -294,6 +338,10 @@ bool MysqlRequest::AddParam(float p) {
     }
 }
 bool MysqlRequest::AddParam(double p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_DOUBLE);
     if (st.ok()) {
         ++_param_index;
@@ -305,6 +353,10 @@ bool MysqlRequest::AddParam(double p) {
     }
 }
 bool MysqlRequest::AddParam(const butil::StringPiece& p) {
+    if (_stmt == NULL || _stmt->stmt() == NULL) {
+        _has_error = true;
+        return false;
+    }
     const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_STRING);
     if (st.ok()) {
         ++_param_index;
@@ -373,7 +425,16 @@ void MysqlResponse::SetCachedSize(int size) const {
     _cached_size_ = size;
 }
 
-void MysqlResponse::Clear() {}
+void MysqlResponse::Clear() {
+    // Reset all response state so a reused MysqlResponse does not return
+    // stale replies. Mirror what SharedCtor()/ctor initialize.
+    MysqlReply empty_reply;
+    _first_reply.Swap(empty_reply);
+    _other_replies.clear();
+    _arena.clear();
+    _nreply = 0;
+    _cached_size_ = 0;
+}
 
 size_t MysqlResponse::ByteSizeLong() const {
     return _cached_size_;

@@ -298,6 +298,7 @@ void Controller::ResetPods() {
     _response_streams.clear();
     _remote_stream_settings = NULL;
     _bind_sock_action = BIND_SOCK_NONE;
+    _bind_sock.reset();
     _session_data = NULL;
     _auth_flags = 0;
     _rpc_received_us = 0;
@@ -829,8 +830,7 @@ void Controller::Call::OnComplete(
         if (sending_sock != NULL && (error_code == 0 || responded)) {
             if (bind_sock_action == BIND_SOCK_RESERVE) {
                 // Reserve this socket on the controller for a following RPC
-                // (mysql transaction connection affinity; prepared statements
-                // do NOT reserve -- they use a per-socket stmt_id map + re-prepare).
+                // (used by mysql transactions for connection affinity).
                 c->_bind_sock.reset(sending_sock.release());
             } else if (bind_sock_action == BIND_SOCK_USE) {
                 // Socket is owned by the binder; do not return it to the pool.

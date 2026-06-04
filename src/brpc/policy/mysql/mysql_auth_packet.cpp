@@ -119,7 +119,7 @@ size_t DecodeLengthEncodedString(const butil::StringPiece& buf,
         }
         return prefix;
     }
-    if (buf.size() < prefix + len) {
+    if (prefix > buf.size() || len > buf.size() - prefix) {
         return 0;
     }
     out_value->assign(buf.data() + prefix, len);

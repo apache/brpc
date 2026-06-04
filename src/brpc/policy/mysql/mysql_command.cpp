@@ -1,16 +1,19 @@
-// Copyright (c) 2015 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
@@ -28,23 +31,29 @@ const uint32_t max_packet_size = 16777215;
 
 template <class H, class F, class D>
 butil::Status MakePacket(butil::IOBuf* outbuf, const H& head, const F& func, const D& data) {
-    long pkg_len = head.size() + data.size();
+    int64_t pkg_len = (int64_t)head.size() + (int64_t)data.size();
     if (pkg_len > max_allowed_packet) {
         return butil::Status(
             EINVAL,
-            "[MakePacket] statement size is too big, maxAllowedPacket = %d, pkg_len = %ld",
+            "[MakePacket] statement size is too big, maxAllowedPacket = %d, pkg_len = %lld",
             max_allowed_packet,
-            pkg_len);
+            (long long)pkg_len);
     }
     uint32_t size, header;
     uint8_t seq = 0;
     size_t offset = 0;
-    for (; pkg_len > 0; pkg_len -= max_packet_size, ++seq) {
+    // When the payload length is an exact multiple of max_packet_size, the
+    // MySQL multi-packet protocol requires a trailing 0-length packet to mark
+    // the end. Loop while pkg_len > 0, plus one extra pass emitting an empty
+    // packet when the previous chunk exactly filled max_packet_size.
+    bool need_trailing = false;
+    for (; pkg_len > 0 || need_trailing; pkg_len -= max_packet_size, ++seq) {
         if (pkg_len > max_packet_size) {
             size = max_packet_size;
         } else {
             size = pkg_len;
         }
+        need_trailing = (size == max_packet_size);
         header = butil::ByteSwapToLE32(size);
         ((uint8_t*)&header)[3] = seq;
         outbuf->append(&header, 4);
@@ -124,7 +133,7 @@ butil::Status MysqlMakeExecuteData(MysqlStatementStub* stmt,
         null_mask.mask.resize(mask_len, 0);
         null_mask.area = buf.reserve(mask_len);
         buf.push_back((char)0x01);
-        param_types.types.reserve(types_len);
+        param_types.types.resize(types_len, 0);
         param_types.area = buf.reserve(types_len);
     }
     // pack param value
@@ -233,19 +242,22 @@ butil::Status MysqlMakeLongDataPacket(butil::IOBuf* outbuf,
     butil::IOBuf head;
     head.push_back(MYSQL_COM_STMT_SEND_LONG_DATA);
     const uint32_t si = butil::ByteSwapToLE32(stmt_id);
-    outbuf->append(&si, 4);
+    head.append(&si, 4);
     const uint16_t pi = butil::ByteSwapToLE16(param_id);
-    outbuf->append(&pi, 2);
+    head.append(&pi, 2);
+    // Cap each chunk so that head.size() + len never exceeds max_allowed_packet,
+    // otherwise MakePacket rejects (EINVAL) an exact-limit-multiple payload.
+    const size_t max_chunk = max_allowed_packet - head.size();
     size_t len, pos = 0;
-    for (size_t pkg_len = ldata.size(); pkg_len > 0; pkg_len -= max_allowed_packet) {
-        if (pkg_len < max_allowed_packet) {
+    for (size_t pkg_len = ldata.size(); pkg_len > 0; pkg_len -= len) {
+        if (pkg_len < max_chunk) {
             len = pkg_len;
         } else {
-            len = max_allowed_packet;
+            len = max_chunk;
         }
         butil::IOBuf data;
         ldata.append_to(&data, len, pos);
-        pos += pkg_len;
+        pos += len;
         auto func = [](butil::IOBuf* outbuf, const butil::IOBuf& data, size_t size, size_t offset) {
             data.append_to(outbuf, size, offset);
         };

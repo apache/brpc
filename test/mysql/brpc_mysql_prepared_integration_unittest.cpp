@@ -47,6 +47,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 
@@ -662,6 +663,98 @@ TEST_F(MysqlPreparedTest, StatementReuseAndIndependentStatement) {
     ASSERT_GE(response.reply_size(), 1u);
     ASSERT_TRUE(response.reply(0).is_resultset());
     EXPECT_EQ(1u, response.reply(0).row_count());
+}
+
+// ---------------------------------------------------------------------------
+// BINARY-protocol TIME and DATETIME column parsing
+// (MysqlReply::Field::ParseBinaryTime / ParseBinaryDataTime).
+//
+// These code paths are ONLY reached over the prepared-statement (binary)
+// result protocol -- a plain text Query would return the value pre-formatted
+// by the server and never touch ParseBinaryTime/ParseBinaryDataTime.  So every
+// case here PREPAREs a SELECT and executes it, forcing brpc to decode the
+// packed wire bytes itself.
+//
+// TIME and DATETIME columns are surfaced as STRINGS: MysqlReply::Field's only
+// text accessor is string() (returning a butil::StringPiece), and
+// is_string() returns true for MYSQL_FIELD_TYPE_TIME and
+// MYSQL_FIELD_TYPE_DATETIME (see mysql_reply.h).  The parser writes the
+// formatted text into _data.str via str.set(ptr, len) with an explicitly
+// computed length, so comparing the FULL string (length included) against the
+// exact expected text catches any trailing-garbage / wrong-length bug -- in
+// particular the variable-width TIME path (optional sign, 2- vs 3+-digit
+// hour) that has historically mis-sized its output.
+//
+// We use CAST(literal AS TIME/DATETIME[(N)]) so the exact value (and the
+// column's declared fractional-second precision, which drives the wire
+// length) is fully under our control.
+// ---------------------------------------------------------------------------
+TEST_F(MysqlPreparedTest, BinaryTimeAndDateTimeParsing) {
+    SKIP_IF_NO_SERVER();
+
+    struct Case {
+        const char* sql;       // prepared SELECT producing one TIME/DATETIME field
+        const char* expected;  // exact string the field must equal
+    };
+    const Case cases[] = {
+        // TIME, ordinary 2-digit hour.
+        {"SELECT CAST('12:34:56' AS TIME)", "12:34:56"},
+        // TIME, 3-digit hour: the variable-width hour path (total_hour >= 100).
+        {"SELECT CAST('300:00:00' AS TIME)", "300:00:00"},
+        // TIME, the documented maximum magnitude.
+        {"SELECT CAST('838:59:59' AS TIME)", "838:59:59"},
+        // TIME, negative: leading '-' sign byte on the wire.
+        {"SELECT CAST('-12:30:45' AS TIME)", "-12:30:45"},
+        // TIME with fractional seconds (decimal=3 -> 12-byte wire packet).
+        {"SELECT CAST('01:02:03.456' AS TIME(3))", "01:02:03.456"},
+        // DATETIME with no sub-second part (7-byte wire packet).
+        {"SELECT CAST('2021-03-04 05:06:07' AS DATETIME)", "2021-03-04 05:06:07"},
+        // DATETIME with microseconds (decimal=6 -> 11-byte wire packet).
+        {"SELECT CAST('2021-03-04 05:06:07.123456' AS DATETIME(6))",
+         "2021-03-04 05:06:07.123456"},
+        // DATETIME at exact midnight: MySQL omits the time-of-day part, so this
+        // arrives as a 4-byte (len==4) wire packet. The parser must emit the
+        // full "YYYY-MM-DD 00:00:00" form and report EXACTLY 19 bytes -- the
+        // historical bug reported dstlen (19) while writing only the 10 date
+        // bytes, disclosing uninitialized heap. (len==4 DATETIME BLOCKER.)
+        {"SELECT CAST('2021-03-04 00:00:00' AS DATETIME)",
+         "2021-03-04 00:00:00"},
+        // DATE column: only the date part on the wire (len==4) -> "YYYY-MM-DD".
+        {"SELECT CAST('2021-03-04' AS DATE)", "2021-03-04"},
+        // TIME zero value: encoded with len==0 (no field bytes on the wire).
+        // This must surface as the zero string "00:00:00", NOT as NULL.
+        {"SELECT CAST('00:00:00' AS TIME)", "00:00:00"},
+    };
+
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.sql);
+        PREPARE_OR_FAIL(s, c.sql);
+        EXPECT_EQ(0u, s->param_count());
+        brpc::MysqlRequest request(s.get());
+        brpc::MysqlResponse response;
+        brpc::Controller cntl;
+        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_GE(response.reply_size(), 1u);
+        const brpc::MysqlReply& r = response.reply(0);
+        ASSERT_TRUE(r.is_resultset()) << "expected a result set, got: " << r;
+        ASSERT_EQ(1u, r.column_count());
+        ASSERT_EQ(1u, r.row_count());
+        const brpc::MysqlReply::Field& f = r.next().field(0);
+        // The binary TIME/DATETIME value must be surfaced as a string (this is
+        // the ParseBinaryTime / ParseBinaryDataTime output).
+        ASSERT_TRUE(f.is_string())
+            << "TIME/DATETIME field should be exposed as a string";
+        // Compare the FULL string, including its length: a trailing-garbage or
+        // off-by-one length bug in the parser would make this exact compare
+        // fail even if the visible prefix looks right.
+        const std::string got = f.string().as_string();
+        EXPECT_EQ(c.expected, got)
+            << "binary-parsed value mismatch (got length " << got.size()
+            << ", expected length " << strlen(c.expected) << ")";
+        EXPECT_EQ(strlen(c.expected), got.size())
+            << "binary-parsed value has wrong length";
+    }
 }
 
 }  // namespace

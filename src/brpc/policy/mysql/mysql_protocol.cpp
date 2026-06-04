@@ -1,16 +1,19 @@
-// Copyright (c) 2019 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
@@ -57,8 +60,10 @@ int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
 int MysqlPackParams(const butil::StringPiece& params, std::string* param_cmd);
 
 namespace {
-// I really don't want to add a variable in controller, so I use AuthContext group to mark auth
-// step.
+// The connection-phase handshake spans several packets, so it needs per-connection
+// (not per-RPC) scratch state. Rather than add a field to the shared Controller, we
+// reuse the per-connection AuthContext: group() tracks the auth step, and (for
+// caching_sha2_password below) roles() stashes the salt across the RSA round trip.
 const char* auth_step[] = {"AUTH_OK", "PARAMS_OK"};
 
 // Extra AuthContext group/state markers for the caching_sha2_password
@@ -161,7 +166,12 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
             0) {
             butil::IOBuf buf;
             buf.append(auth_cmd);
-            buf.cut_into_file_descriptor(socket->fd());
+            const ssize_t nw = buf.cut_into_file_descriptor(socket->fd());
+            if (nw < 0 || !buf.empty()) {
+                LOG(WARNING) << "[MYSQL PARSE] failed to write auth command to fd="
+                             << socket->fd() << ", nw=" << nw
+                             << ", remaining=" << buf.size();
+            }
             const bool is_caching_sha2 = (reply.auth().auth_plugin() == "caching_sha2_password");
             if (is_caching_sha2) {
                 // caching_sha2_password is a multi-round-trip exchange: stash
@@ -284,8 +294,15 @@ ParseError HandlePrepareStatement(const InputResponse* msg,
     ParseError parseCode = PARSE_OK;
     butil::IOBuf buf;
     butil::Status st;
-    auto stub = static_cast<MysqlStatementStub*>(ControllerPrivateAccessor(cntl).session_data());
-    auto stmt = stub->stmt();
+    MysqlStatementStub* stub = NULL;
+    MysqlStatement* stmt = NULL;
+    stub = static_cast<MysqlStatementStub*>(ControllerPrivateAccessor(cntl).session_data());
+    if (stub == NULL) {
+        LOG(ERROR) << "[MYSQL PACK] get prepare statement with NULL";
+        parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+        goto END_OF_PREPARE;
+    }
+    stmt = stub->stmt();
     if (stmt == NULL || stmt->param_count() != ok.param_count()) {
         LOG(ERROR) << "[MYSQL PACK] stmt can't be NULL";
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -304,7 +321,14 @@ ParseError HandlePrepareStatement(const InputResponse* msg,
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
         goto END_OF_PREPARE;
     }
-    buf.cut_into_file_descriptor(socket->fd());
+    {
+        const ssize_t nw = buf.cut_into_file_descriptor(socket->fd());
+        if (nw < 0 || !buf.empty()) {
+            LOG(WARNING) << "[MYSQL PARSE] failed to write execute command to fd="
+                         << socket->fd() << ", nw=" << nw
+                         << ", remaining=" << buf.size();
+        }
+    }
     pi->count = MYSQL_PREPARED_STATEMENT;
 END_OF_PREPARE:
     if (bthread_id_unlock(cid) != 0) {

@@ -107,10 +107,9 @@ enum StopStyle {
 
 const int32_t UNSET_MAGIC_NUM = -123456789;
 
-// If a controller wants to reserve the sending socket after the RPC (e.g. mysql
-// transactions that need connection affinity), set BIND_SOCK_RESERVE; later RPCs
-// reuse it via BIND_SOCK_USE. (Prepared statements do NOT reserve -- they use a
-// per-socket stmt_id map + re-prepare instead of pinning a connection.)
+// If a controller wants to reserve the sending socket after the RPC (used by
+// mysql transactions for connection affinity), set BIND_SOCK_RESERVE; later RPCs
+// reuse it via BIND_SOCK_USE.
 enum BindSockAction {
     BIND_SOCK_RESERVE,
     BIND_SOCK_USE,
