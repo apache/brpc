@@ -78,14 +78,14 @@ The following scenarios or threats are not protected by the bRPC threat model. M
 
 ### Threats explicitly out of scope
 
-8. Attackers who control the calling process, can read/write process memory, or can call arbitrary bRPC APIs.
-9. Attackers who control the compiler, dependencies, build environment, or supply chain.
-10. Side channels such as timing, cache, power, and RowHammer.
-11. Raw socket-layer DoS: SYN flood, slowloris, half-open connection exhaustion, and kernel table exhaustion.
-12. Resource exhaustion in `bvar`/`bthread`/`butil` caused purely by in-process call patterns.
-13. Performance loss caused by an operator intentionally enabling expensive tracing/profiling.
-14. Compromise of the naming-service backend; bRPC trusts the backend configured by the operator.
-15. Vulnerabilities in application handlers, such as SQL injection or missing business authorization.
+1. Attackers who control the calling process, can read/write process memory, or can call arbitrary bRPC APIs.
+2. Attackers who control the compiler, dependencies, build environment, or supply chain.
+3. Side channels such as timing, cache, power, and RowHammer.
+4. Raw socket-layer DoS: SYN flood, slowloris, half-open connection exhaustion, and kernel table exhaustion.
+5. Resource exhaustion in `bvar`/`bthread`/`butil` caused purely by in-process call patterns.
+6. Performance loss caused by an operator intentionally enabling expensive tracing/profiling.
+7. Compromise of the naming-service backend; bRPC trusts the backend configured by the operator.
+8. Vulnerabilities in application handlers, such as SQL injection or missing business authorization.
 
 ### Code shipped in the repo but out of scope
 
