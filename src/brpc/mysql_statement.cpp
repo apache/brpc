@@ -69,6 +69,12 @@ void MysqlStatement::Init(const Channel& channel) {
     _connection_type = ConnectionType(opts.connection_type);
     if (_connection_type != CONNECTION_TYPE_SHORT) {
         _id_map.Modify(my_init_kv);
+    } else {
+        LOG_EVERY_SECOND(WARNING)
+            << "Prepared statement on a 'short' connection re-prepares on every "
+               "execute (a new TCP connection per request cannot cache the "
+               "server stmt_id); use connection_type='pooled' for prepared "
+               "statements.";
     }
 }
 

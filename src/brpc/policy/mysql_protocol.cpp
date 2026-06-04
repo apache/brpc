@@ -107,7 +107,7 @@ bool PackRequest(butil::IOBuf* buf,
             LOG(ERROR) << "[MYSQL PACK] get sending socket with NULL";
             return false;
         }
-        auto stub = accessor.mysql_stmt();
+        auto stub = static_cast<MysqlStatementStub*>(accessor.session_data());
         if (stub == NULL) {
             LOG(ERROR) << "[MYSQL PACK] get prepare statement with NULL";
             return false;
@@ -284,7 +284,7 @@ ParseError HandlePrepareStatement(const InputResponse* msg,
     ParseError parseCode = PARSE_OK;
     butil::IOBuf buf;
     butil::Status st;
-    auto stub = ControllerPrivateAccessor(cntl).mysql_stmt();
+    auto stub = static_cast<MysqlStatementStub*>(ControllerPrivateAccessor(cntl).session_data());
     auto stmt = stub->stmt();
     if (stmt == NULL || stmt->param_count() != ok.param_count()) {
         LOG(ERROR) << "[MYSQL PACK] stmt can't be NULL";
@@ -359,6 +359,16 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     if (stmt_type == MYSQL_NEED_PREPARE) {
+        // A failed PREPARE (e.g. ER_PARSE_ERROR 1064) comes back as a normal
+        // ERR packet. Deliver it to the caller like any other error response
+        // and keep the connection open -- matching the command path and other
+        // protocols (redis, baidu_std). Only a successful prepare proceeds to
+        // pack and send the COM_STMT_EXECUTE.
+        if (!msg->response.reply(0).is_prepare_ok()) {
+            msg->id_wait = pi.id_wait;
+            socket->release_parsing_context();
+            return MakeMessage(msg);
+        }
         // store stmt_id, make execute header.
         ParseError err = HandlePrepareStatement(msg, socket, &pi);
         if (err != PARSE_OK) {
@@ -426,10 +436,11 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     if (!rr->SerializeTo(buf)) {
         return cntl->SetFailed(EREQUEST, "Fail to serialize MysqlRequest");
     }
-    // mysql protocol don't use pipelined count to verify the end of a response, so pipelined count
-    // is meanless, but we can use it help us to distinguish mysql reply type. In mysql protocol, we
-    // can't distinguish OK and PreparedOk, so we set pipelined count to 2 to let parse function to
-    // parse PreparedOk reply
+    // mysql doesn't use pipelined_count to verify the end of a response; instead we
+    // reuse it as a MysqlStmtType tag so the parse function knows which reply shape
+    // to expect (OK and PrepareOk are otherwise indistinguishable). Default to
+    // MYSQL_NORMAL_STATEMENT (1); it is upgraded to MYSQL_PREPARED_STATEMENT (2)
+    // below when the request carries a prepared statement.
     ControllerPrivateAccessor accessor(cntl);
     accessor.set_pipelined_count(MYSQL_NORMAL_STATEMENT);
 
@@ -439,7 +450,7 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     }
     auto st = rr->get_stmt();
     if (st != NULL) {
-        accessor.set_mysql_stmt(st);
+        accessor.set_session_data(rr->get_stmt());
         accessor.set_pipelined_count(MYSQL_PREPARED_STATEMENT);
     }
     if (FLAGS_mysql_verbose) {

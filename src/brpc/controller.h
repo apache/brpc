@@ -108,15 +108,14 @@ enum StopStyle {
 const int32_t UNSET_MAGIC_NUM = -123456789;
 
 // If a controller wants to reserve the sending socket after the RPC (e.g. mysql
-// transactions/prepared statements that need connection affinity), set
-// BIND_SOCK_RESERVE; later RPCs reuse it via BIND_SOCK_USE.
+// transactions that need connection affinity), set BIND_SOCK_RESERVE; later RPCs
+// reuse it via BIND_SOCK_USE. (Prepared statements do NOT reserve -- they use a
+// per-socket stmt_id map + re-prepare instead of pinning a connection.)
 enum BindSockAction {
     BIND_SOCK_RESERVE,
     BIND_SOCK_USE,
     BIND_SOCK_NONE,
 };
-// mysql prepared statement, defined in mysql.h
-class MysqlStatementStub;
 
 typedef butil::FlatMap<std::string, std::string> UserFieldsMap;
 
@@ -927,13 +926,15 @@ private:
     // Defined at both sides
     StreamSettings *_remote_stream_settings;
 
-    // Whether/how to reserve the sending socket after the RPC (mysql tx/stmt).
+    // Whether/how to reserve the sending socket after the RPC (mysql transactions).
     BindSockAction _bind_sock_action;
     // The socket reserved by a previous RPC and reused when _bind_sock_action
     // is BIND_SOCK_USE.
     SocketUniquePtr _bind_sock;
-    // mysql prepared statement bound to this RPC, owned elsewhere.
-    MysqlStatementStub* _mysql_stmt;
+    // Opaque per-RPC slot a protocol codec may use to carry typed state from
+    // serialize_request to pack_request/parse (e.g. the mysql prepared-statement
+    // stub). Not owned by Controller.
+    void* _session_data;
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;

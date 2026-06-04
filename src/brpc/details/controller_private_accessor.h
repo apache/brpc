@@ -134,7 +134,7 @@ public:
 
     void clear_auth_flags() { _cntl->_auth_flags = 0; }
 
-    // Set how the sending socket is reserved after the RPC (mysql tx/stmt).
+    // Set how the sending socket is reserved after the RPC (mysql transactions).
     void set_bind_sock_action(BindSockAction action) { _cntl->_bind_sock_action = action; }
     // Transfer ownership of the reserved socket to `ptr`.
     void get_bind_sock(SocketUniquePtr* ptr) {
@@ -147,10 +147,8 @@ public:
         _cntl->_bind_sock_action = BIND_SOCK_USE;
         Socket::Address(sock_id, &_cntl->_bind_sock);
     }
-    // Set the mysql prepared statement bound to this RPC.
-    void set_mysql_stmt(MysqlStatementStub* stmt) { _cntl->_mysql_stmt = stmt; }
-    // Get the mysql prepared statement bound to this RPC.
-    MysqlStatementStub* mysql_stmt() { return _cntl->_mysql_stmt; }
+    void set_session_data(void* d) { _cntl->_session_data = d; }
+    void* session_data() const { return _cntl->_session_data; }
 
     std::string& protocol_param() { return _cntl->protocol_param(); }
     const std::string& protocol_param() const { return _cntl->protocol_param(); }
