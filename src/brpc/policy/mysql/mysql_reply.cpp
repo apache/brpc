@@ -14,8 +14,8 @@
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
-#include "brpc/mysql_common.h"
-#include "brpc/mysql_reply.h"
+#include "brpc/policy/mysql/mysql_common.h"
+#include "brpc/policy/mysql/mysql_reply.h"
 
 namespace brpc {
 

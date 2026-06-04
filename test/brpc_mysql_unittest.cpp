@@ -5,11 +5,11 @@
 #include <sstream>
 #include <vector>
 #include "butil/time.h"
-#include <brpc/mysql.h>
+#include "brpc/policy/mysql/mysql.h"
 #include <brpc/channel.h>
 #include "butil/logging.h"  // LOG()
 #include "butil/strings/string_piece.h"
-#include <brpc/policy/mysql_authenticator.h>
+#include "brpc/policy/mysql/mysql_authenticator.h"
 #include <gtest/gtest.h>
 
 namespace brpc {

@@ -16,8 +16,8 @@
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <brpc/channel.h>
-#include <brpc/mysql.h>
-#include <brpc/policy/mysql_authenticator.h>
+#include "brpc/policy/mysql/mysql.h"
+#include "brpc/policy/mysql/mysql_authenticator.h"
 
 DEFINE_string(connection_type, "pooled", "Connection type. Available values: pooled, short");
 DEFINE_string(server, "127.0.0.1", "IP Address of server");

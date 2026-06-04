@@ -18,8 +18,8 @@
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <brpc/channel.h>
-#include <brpc/mysql.h>
-#include <brpc/policy/mysql_authenticator.h>
+#include "brpc/policy/mysql/mysql.h"
+#include "brpc/policy/mysql/mysql_authenticator.h"
 #include <bvar/bvar.h>
 #include <bthread/bthread.h>
 #include <brpc/server.h>

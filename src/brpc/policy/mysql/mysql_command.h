@@ -20,7 +20,7 @@
 #include <vector>
 #include "butil/iobuf.h"
 #include "butil/status.h"
-#include "brpc/mysql_common.h"
+#include "brpc/policy/mysql/mysql_common.h"
 
 namespace brpc {
 // mysql command types

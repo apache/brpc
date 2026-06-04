@@ -15,8 +15,8 @@
 创建一个访问mysql的Channel：
 
 ```c++
-# include <brpc/mysql.h>
-# include <brpc/policy/mysql_authenticator.h>
+# include <brpc/policy/mysql/mysql.h>
+# include <brpc/policy/mysql/mysql_authenticator.h>
 # include <brpc/channel.h>
 
 brpc::ChannelOptions options;
@@ -550,12 +550,6 @@ qps=26516 latency=2017
 ```
 
 这个结果就和brpc框架启动100个bthread访问mysql的效果类似了。
-
-##### 内存使用
-
-在内存占用上，mysql_press和mysqlclient_press都运行了一个晚上，两个程序的内存占用
-
-![libmysqlclient](../images/mysql_memory.png)
 
 
 

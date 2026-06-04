@@ -17,7 +17,7 @@
 #include <vector>
 #include <gflags/gflags.h>
 #include "brpc/socket.h"
-#include "brpc/mysql_statement.h"
+#include "brpc/policy/mysql/mysql_statement.h"
 
 namespace brpc {
 DEFINE_int32(mysql_statment_map_size,

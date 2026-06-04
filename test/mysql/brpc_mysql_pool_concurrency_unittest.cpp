@@ -94,9 +94,9 @@
 
 #include "brpc/channel.h"
 #include "brpc/controller.h"
-#include "brpc/mysql.h"
-#include "brpc/mysql_transaction.h"
-#include "brpc/policy/mysql_authenticator.h"
+#include "brpc/policy/mysql/mysql.h"
+#include "brpc/policy/mysql/mysql_transaction.h"
+#include "brpc/policy/mysql/mysql_authenticator.h"
 #include "bthread/bthread.h"
 #include "butil/logging.h"
 #include "butil/string_printf.h"

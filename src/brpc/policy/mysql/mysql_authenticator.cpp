@@ -15,11 +15,11 @@
 // Author(s): Yang,Liming <yangliming01@baidu.com>
 
 #include <vector>
-#include "brpc/policy/mysql_authenticator.h"
+#include "brpc/policy/mysql/mysql_authenticator.h"
 #include "brpc/policy/mysql/mysql_auth_scramble.h"
-#include "brpc/mysql_command.h"
-#include "brpc/mysql_reply.h"
-#include "brpc/mysql_common.h"
+#include "brpc/policy/mysql/mysql_command.h"
+#include "brpc/policy/mysql/mysql_reply.h"
+#include "brpc/policy/mysql/mysql_common.h"
 #include "butil/base64.h"
 #include "butil/iobuf.h"
 #include "butil/logging.h"  // LOG()

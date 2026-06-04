@@ -83,7 +83,7 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
-#include "brpc/policy/mysql_protocol.h"
+#include "brpc/policy/mysql/mysql_protocol.h"
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 # include "brpc/policy/thrift_protocol.h"
 #endif

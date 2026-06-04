@@ -16,8 +16,8 @@
 
 #include <sstream>
 #include "butil/logging.h"  // LOG()
-#include "brpc/mysql_transaction.h"
-#include "brpc/mysql.h"
+#include "brpc/policy/mysql/mysql_transaction.h"
+#include "brpc/policy/mysql/mysql.h"
 #include "brpc/socket.h"
 #include "brpc/details/controller_private_accessor.h"
 

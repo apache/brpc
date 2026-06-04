@@ -16,9 +16,9 @@
 
 #include "butil/sys_byteorder.h"
 #include "butil/logging.h"  // LOG()
-#include "brpc/mysql_command.h"
-#include "brpc/mysql_common.h"
-#include "brpc/mysql.h"
+#include "brpc/policy/mysql/mysql_command.h"
+#include "brpc/policy/mysql/mysql_common.h"
+#include "brpc/policy/mysql/mysql.h"
 
 namespace brpc {
 

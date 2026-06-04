@@ -22,7 +22,7 @@
 #include "butil/sys_byteorder.h"
 #include "butil/logging.h"  // LOG()
 #include "brpc/parse_result.h"
-#include "brpc/mysql_common.h"
+#include "brpc/policy/mysql/mysql_common.h"
 
 namespace brpc {
 

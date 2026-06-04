@@ -25,11 +25,11 @@
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
-#include "parse_result.h"
-#include "mysql_command.h"
-#include "mysql_reply.h"
-#include "mysql_transaction.h"
-#include "mysql_statement.h"
+#include "brpc/parse_result.h"
+#include "brpc/policy/mysql/mysql_command.h"
+#include "brpc/policy/mysql/mysql_reply.h"
+#include "brpc/policy/mysql/mysql_transaction.h"
+#include "brpc/policy/mysql/mysql_statement.h"
 
 namespace brpc {
 // Request to mysql.

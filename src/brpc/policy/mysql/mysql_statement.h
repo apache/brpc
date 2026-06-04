@@ -19,7 +19,7 @@
 #include <string>
 #include <bthread/bthread.h>
 #include "brpc/channel.h"
-#include "brpc/mysql_statement_inl.h"
+#include "brpc/policy/mysql/mysql_statement_inl.h"
 
 namespace brpc {
 // mysql prepared statement Unique Ptr

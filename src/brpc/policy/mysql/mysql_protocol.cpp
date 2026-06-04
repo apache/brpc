@@ -28,9 +28,9 @@
 #include "brpc/server.h"  // Server
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/span.h"
-#include "brpc/mysql.h"
-#include "brpc/policy/mysql_authenticator.h"
-#include "brpc/policy/mysql_protocol.h"
+#include "brpc/policy/mysql/mysql.h"
+#include "brpc/policy/mysql/mysql_authenticator.h"
+#include "brpc/policy/mysql/mysql_protocol.h"
 #include "brpc/policy/mysql/mysql_auth_scramble.h"
 
 namespace brpc {

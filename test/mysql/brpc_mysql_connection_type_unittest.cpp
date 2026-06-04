@@ -72,9 +72,9 @@
 
 #include "brpc/channel.h"
 #include "brpc/controller.h"
-#include "brpc/mysql.h"
-#include "brpc/mysql_statement.h"
-#include "brpc/policy/mysql_authenticator.h"
+#include "brpc/policy/mysql/mysql.h"
+#include "brpc/policy/mysql/mysql_statement.h"
+#include "brpc/policy/mysql/mysql_authenticator.h"
 #include "butil/logging.h"
 
 // Flags mirror the sibling integration files so one command line drives them

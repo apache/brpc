@@ -20,8 +20,8 @@
 #include "butil/string_printf.h"
 #include "butil/macros.h"
 #include "brpc/controller.h"
-#include "brpc/mysql.h"
-#include "brpc/mysql_common.h"
+#include "brpc/policy/mysql/mysql.h"
+#include "brpc/policy/mysql/mysql_common.h"
 
 namespace brpc {
 

@@ -19,7 +19,7 @@
 
 #include "butil/iobuf.h"
 #include "brpc/authenticator.h"
-#include "brpc/mysql_reply.h"
+#include "brpc/policy/mysql/mysql_reply.h"
 
 namespace brpc {
 namespace policy {
