@@ -29,7 +29,9 @@ jobs:
     - name: gcc with all options
       uses: ./.github/actions/compile-with-make
       with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=gcc --cxx=g++ --werror --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer --with-asan
+        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=gcc --cxx=g++ --werror \
+                 --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety \
+                 --with-debug-lock --with-bthread-tracer --with-asan
 
     - name: clang with default options
       uses: ./.github/actions/compile-with-make
@@ -39,7 +41,9 @@ jobs:
     - name: clang with all options
       uses: ./.github/actions/compile-with-make
       with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=clang --cxx=clang++ --werror --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety --with-debug-lock --with-bthread-tracer --with-asan
+        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=clang --cxx=clang++ --werror \
+                 --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety \
+                 --with-debug-lock --with-bthread-tracer --with-asan
 
   compile-with-cmake:
     runs-on: ubuntu-22.04
@@ -57,7 +61,9 @@ jobs:
       run: |
         export CC=gcc && export CXX=g++
         mkdir gcc_build_all && cd gcc_build_all
-        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON \
+              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON \
+              -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
         make -j ${{env.proc_num}} && make clean
 
     - name: clang with default options
@@ -70,7 +76,9 @@ jobs:
       run: |
         export CC=clang && export CXX=clang++
         mkdir clang_build_all && cd clang_build_all
-        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON \
+              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON \
+              -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
         make -j ${{env.proc_num}} && make clean
 
   gcc-compile-with-make-protobuf:
@@ -250,8 +258,7 @@ jobs:
         grep -E "bazel_dep\(name = ['\"]protobuf['\"]" MODULE.bazel
         grep -qE "bazel_dep\(name = ['\"]protobuf['\"], version = ['\"]${TEST_PROTOBUF_VERSION}['\"]" MODULE.bazel \
           || { echo "ERROR: failed to override protobuf version in MODULE.bazel to ${TEST_PROTOBUF_VERSION}"; exit 1; }
-    - run: |
-        bazel test --action_env=CC=clang  \
+    - run: | 
+        bazel test --action_env=CC=clang --config=rdma \
                    --define with_babylon_counter=true \
-                   --define with_babylon_counter=true \
-                   //test:brpc_unittests
+                   //test/... --test_arg=--gtest_filter=-RdmaRpcTest.*

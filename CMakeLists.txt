@@ -555,7 +555,8 @@ set(PROTO_FILES idl_options.proto
                 brpc/policy/mongo.proto
                 brpc/trackme.proto
                 brpc/streaming_rpc_meta.proto
-                brpc/proto_base.proto)
+                brpc/proto_base.proto
+                brpc/rdma/rdma_handshake.proto)
 file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/output/include/brpc)
 set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROTOBUF_INCLUDE_DIR})
 compile_proto(PROTO_HDRS PROTO_SRCS ${PROJECT_BINARY_DIR}
