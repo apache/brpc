@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-def generate_unittests(name, srcs, deps, copts, linkopts = [], data = []):
+def generate_unittests(name, srcs, deps, copts, linkopts = [], data = [], per_test_tags = {}):
     tests = []
     for s in srcs:
         ut_name = s.replace(".cpp", "")
@@ -24,6 +24,11 @@ def generate_unittests(name, srcs, deps, copts, linkopts = [], data = []):
             deps = deps,
             linkopts = linkopts,
             data = data,
+            # Integration tests that fork a real server binary (e.g. redis-server)
+            # need extra tags: "external" forces a real run instead of a cached
+            # pass, and "local" runs them outside the sandbox so the PATH-located
+            # server binary is visible and loopback works.
+            tags = per_test_tags.get(s, []),
         )
         tests.append(":" + ut_name)
 
