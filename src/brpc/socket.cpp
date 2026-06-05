@@ -2133,7 +2133,14 @@ ssize_t Socket::DoRead(size_t size_hint) {
     default: {
         const unsigned long e = ERR_get_error();
         if (nr == 0) {
-            // Socket EOF or SSL session EOF
+            if (ssl_error != SSL_ERROR_ZERO_RETURN) {
+                // Unexpected EOF without proper SSL shutdown (close_notify)
+                LOG(WARNING) << "Fail to read from ssl_fd=" << fd()
+                             << ": unexpected ssl_error=" << ssl_error;
+                errno = ESSL;
+                return -1;
+            }
+            // Clean SSL shutdown (close_notify received)
         } else if (e != 0) {
             LOG(WARNING) << "Fail to read from ssl_fd=" << fd()
                          << ": " << SSLError(e);
