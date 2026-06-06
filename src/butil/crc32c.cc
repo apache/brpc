@@ -597,7 +597,7 @@ static bool isZbc() {
       if (strstr(line, "isa") || strstr(line, "hart isa")) {
         char* colon = strchr(line, ':');
         if (colon) {
-          if (strstr(colon, "_zbc") || strstr(colon, "zbc")) {
+          if (strstr(colon, "_zbc")) {
             supported = true;
             break;
           }
@@ -639,7 +639,11 @@ static uint32_t rv_crc32c_vclmul(uint32_t crc, const char* buf, size_t len) {
   }
 
   // Set up RVV for 64-bit elements: vl = min(VLEN/64, 2) = 2 for VLEN=128
+  // If VLEN < 128, vl will be 1 and the vector path cannot be used; fall back.
   size_t vl = __riscv_vsetvl_e64m1(2);
+  if (vl < 2) {
+    return rv_crc32c_bitwise(crc, p, n) ^ 0xFFFFFFFF;
+  }
 
   // Construct fold constant vectors: {k1, k2} and {k3, k4}
   // Each element gets the appropriate constant for its position:
@@ -651,10 +655,16 @@ static uint32_t rv_crc32c_vclmul(uint32_t crc, const char* buf, size_t len) {
 
   // Load first 64 bytes into 4 vector registers.
   // Each vector = one 128-bit lane: {lo_64, hi_64}
-  vuint64m1_t lane1 = __riscv_vle64_v_u64m1((const uint64_t*)(p + 0), vl);
-  vuint64m1_t lane2 = __riscv_vle64_v_u64m1((const uint64_t*)(p + 16), vl);
-  vuint64m1_t lane3 = __riscv_vle64_v_u64m1((const uint64_t*)(p + 32), vl);
-  vuint64m1_t lane4 = __riscv_vle64_v_u64m1((const uint64_t*)(p + 48), vl);
+  // Use memcpy to avoid strict-aliasing violations when loading uint8_t* as uint64_t*
+  uint64_t lane1_buf[2], lane2_buf[2], lane3_buf[2], lane4_buf[2];
+  memcpy(lane1_buf, p + 0,  16);
+  memcpy(lane2_buf, p + 16, 16);
+  memcpy(lane3_buf, p + 32, 16);
+  memcpy(lane4_buf, p + 48, 16);
+  vuint64m1_t lane1 = __riscv_vle64_v_u64m1(lane1_buf, vl);
+  vuint64m1_t lane2 = __riscv_vle64_v_u64m1(lane2_buf, vl);
+  vuint64m1_t lane3 = __riscv_vle64_v_u64m1(lane3_buf, vl);
+  vuint64m1_t lane4 = __riscv_vle64_v_u64m1(lane4_buf, vl);
 
   // XOR CRC into element 0 of first lane
   uint64_t tmp[2];
@@ -683,10 +693,15 @@ static uint32_t rv_crc32c_vclmul(uint32_t crc, const char* buf, size_t len) {
   // scalar extraction for the cross-element XOR since there's no vector
   // permute instruction for just 2 elements that's more efficient.
   while (n >= 64) {
-    vuint64m1_t d1 = __riscv_vle64_v_u64m1((const uint64_t*)(p + 0), vl);
-    vuint64m1_t d2 = __riscv_vle64_v_u64m1((const uint64_t*)(p + 16), vl);
-    vuint64m1_t d3 = __riscv_vle64_v_u64m1((const uint64_t*)(p + 32), vl);
-    vuint64m1_t d4 = __riscv_vle64_v_u64m1((const uint64_t*)(p + 48), vl);
+    uint64_t d1_buf[2], d2_buf[2], d3_buf[2], d4_buf[2];
+    memcpy(d1_buf, p + 0,  16);
+    memcpy(d2_buf, p + 16, 16);
+    memcpy(d3_buf, p + 32, 16);
+    memcpy(d4_buf, p + 48, 16);
+    vuint64m1_t d1 = __riscv_vle64_v_u64m1(d1_buf, vl);
+    vuint64m1_t d2 = __riscv_vle64_v_u64m1(d2_buf, vl);
+    vuint64m1_t d3 = __riscv_vle64_v_u64m1(d3_buf, vl);
+    vuint64m1_t d4 = __riscv_vle64_v_u64m1(d4_buf, vl);
 
     // Fold each lane using vector clmul with {k1, k2}
     uint64_t lo_r[2], hi_r[2], d_r[2];
@@ -783,7 +798,7 @@ static bool isZvbc() {
       if (strstr(line, "isa") || strstr(line, "hart isa")) {
         char* colon = strchr(line, ':');
         if (colon) {
-          if (strstr(colon, "_zvbc") || strstr(colon, "zvbc")) {
+          if (strstr(colon, "_zvbc")) {
             supported = true;
             break;
           }
