@@ -1,6 +1,6 @@
 [MySQL](https://www.mysql.com/)是著名的开源的关系型数据库，为了使用户更快捷地访问mysql并充分利用bthread的并发能力，brpc直接支持mysql协议。示例程序：[example/mysql_c++](https://github.com/brpc/brpc/tree/master/example/mysql_c++/)
 
-**注意**：只支持MySQL 4.1 及之后的版本的文本协议，支持事务，不支持Prepared statement。目前支持的鉴权方式为mysql_native_password，使用事务的时候不支持single模式。
+**注意**：只支持MySQL 4.1 及之后的版本的文本协议，支持事务，支持Prepared statement。目前支持的鉴权方式为mysql_native_password，使用事务的时候不支持single模式。
 
 相比使用[libmysqlclient](https://dev.mysql.com/downloads/connector/c/)(官方client)的优势有：
 

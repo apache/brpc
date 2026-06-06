@@ -25,7 +25,7 @@
 #include "brpc/socket_id.h"
 
 namespace brpc {
-DECLARE_int32(mysql_statment_map_size);
+DECLARE_int32(mysql_statement_map_size);
 
 struct MysqlStatementId {
     uint32_t stmt_id;  // statement id
@@ -36,10 +36,10 @@ typedef butil::FlatMap<SocketId, MysqlStatementId> MysqlStatementKVMap;
 typedef butil::DoublyBufferedData<MysqlStatementKVMap> MysqlStatementDBD;
 
 inline size_t my_init_kv(MysqlStatementKVMap& m) {
-    if (FLAGS_mysql_statment_map_size < 100) {
-        FLAGS_mysql_statment_map_size = 100;
+    if (FLAGS_mysql_statement_map_size < 100) {
+        FLAGS_mysql_statement_map_size = 100;
     }
-    m.init(FLAGS_mysql_statment_map_size);
+    m.init(FLAGS_mysql_statement_map_size);
     return 1;
 }
 

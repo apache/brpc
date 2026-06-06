@@ -34,13 +34,17 @@
 //
 // CONNECTION_TYPE_SHORT opens a brand-new TCP connection for every request and
 // closes it afterwards, so there is no connection affinity across requests.
-// Consequently an execute under SHORT cannot land on the connection that holds
-// the prepared handle -- the prepare/execute affinity is broken by design.
+// To keep prepared statements usable under SHORT, the brpc MySQL client keys
+// each cached stmt_id by (SocketId, fd_version) and, when it finds no valid
+// handle for the fresh connection, transparently RE-PREPARES the statement on
+// that connection before executing.  So execute under SHORT SUCCEEDS -- at the
+// cost of an extra prepare round-trip per request.
 //
-//   * PreparedStatementUnderShortMustError (PRIMARY):
+//   * PreparedStatementUnderShortRePreparesAndSucceeds (PRIMARY):
 //       build a SHORT channel, prepare "SELECT ? AS v", bind one INT param,
-//       CallMethod.  Must ERROR (cntl.Failed() OR reply(0).is_error()); must
-//       NOT return a correct result set; must NOT crash.  Looped a few times.
+//       CallMethod.  Must SUCCEED (NOT cntl.Failed(), NOT reply(0).is_error())
+//       and return the bound value as a 1-row result set; must NOT crash.
+//       Looped a few times so each iteration exercises a fresh connection.
 //
 //   * PlainQueryUnderShortMustSucceed (POSITIVE CONTROL):
 //       same SHORT channel; a stateless COM_QUERY "SELECT 7 AS v" must SUCCEED
@@ -336,7 +340,8 @@ TEST_F(MysqlConnectionTypeTest, PreparedStatementUnderShortRePreparesAndSucceeds
 // POSITIVE CONTROL: a plain (non-prepared) query under CONNECTION_TYPE_SHORT
 // must SUCCEED.  A stateless COM_QUERY carries no connection-scoped handle, so
 // a fresh connection per request is perfectly fine.  This proves SHORT itself
-// is healthy and that only the prepared-statement path breaks above.
+// is healthy: prepared statements work under SHORT only via the re-prepare path
+// above, while plain queries need no special handling at all.
 // ===========================================================================
 TEST_F(MysqlConnectionTypeTest, PlainQueryUnderShortMustSucceed) {
     brpc::MysqlRequest req;

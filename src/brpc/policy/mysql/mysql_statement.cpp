@@ -23,7 +23,7 @@
 #include "brpc/policy/mysql/mysql_statement.h"
 
 namespace brpc {
-DEFINE_int32(mysql_statment_map_size,
+DEFINE_int32(mysql_statement_map_size,
              100,
              "Mysql statement map size, usually equal to max bthread number");
 
