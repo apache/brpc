@@ -41,6 +41,8 @@ DEFINE_int32(rdma_memory_pool_tls_cache_num, 128, "Number of cached block in tls
 DEFINE_bool(rdma_memory_pool_user_specified_memory, false,
             "If true, the user must call UserExtendBlockPool() to extend "
             "memory. bRPC will not handle memory extension.");
+DEFINE_string(rdma_recv_block_type, "default", "Default size type for recv WR: "
+              "default(8KB - 32B)/large(64KB - 32B)/huge(2MB - 32B)");
 
 static RegisterCallback g_cb = NULL;
 
@@ -48,8 +50,8 @@ static RegisterCallback g_cb = NULL;
 static const size_t BYTES_IN_MB = 1048576;
 
 static const int BLOCK_DEFAULT = 0; // 8KB
-// static const int BLOCK_LARGE = 1;  // 64KB
-// static const int BLOCK_HUGE = 2;  // 2MB
+static const int BLOCK_LARGE = 1;  // 64KB
+static const int BLOCK_HUGE = 2;  // 2MB
 static const int BLOCK_SIZE_COUNT = 3;
 static size_t g_block_size[BLOCK_SIZE_COUNT] = { 8192, 65536, 2 * BYTES_IN_MB };
 
@@ -183,7 +185,7 @@ static void* ExtendBlockPoolImpl(void* region_base, size_t region_size, int bloc
 
 // Extend the block pool with a new region (with different region ID)
 static void* ExtendBlockPool(size_t region_size, int block_type) {
-    if (region_size < 1) {
+    if (region_size < 1 || block_type < 0) {
         errno = EINVAL;
         return NULL;
     }
@@ -325,7 +327,7 @@ bool InitBlockPool(RegisterCallback cb) {
     }
 
     if (ExtendBlockPool(FLAGS_rdma_memory_pool_initial_size_mb,
-                        BLOCK_DEFAULT) != NULL) {
+                        GetRdmaBlockType()) != NULL) {
         return true;
     }
     return false;
@@ -539,6 +541,34 @@ int DeallocBlock(void* buf) {
 
 size_t GetBlockSize(int type) {
     return g_block_size[type];
+}
+
+size_t GetRdmaBlockSize() {
+    if (FLAGS_rdma_recv_block_type == "default") {
+        return GetBlockSize(0);
+    } else if (FLAGS_rdma_recv_block_type == "large") {
+        return GetBlockSize(1);
+    } else if (FLAGS_rdma_recv_block_type == "huge") {
+        return GetBlockSize(2);
+    } else {
+        LOG(ERROR) << "rdma_recv_block_type incorrect "
+                   << "(valid value: default/large/huge)";
+        return 0;
+    }
+}
+
+int GetRdmaBlockType() {
+    if (FLAGS_rdma_recv_block_type == "default") {
+        return BLOCK_DEFAULT;
+    } else if (FLAGS_rdma_recv_block_type == "large") {
+        return BLOCK_LARGE;
+    } else if (FLAGS_rdma_recv_block_type == "huge") {
+        return BLOCK_HUGE;
+    } else {
+        LOG(ERROR) << "rdma_recv_block_type incorrect "
+                   << "(valid value: default/large/huge)";
+        return -1;
+    }
 }
 
 void DumpMemoryPoolInfo(std::ostream& os) {

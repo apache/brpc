@@ -1,0 +1,781 @@
+# This file is forked from the Bazel Central Registry:
+#   https://github.com/bazelbuild/bazel-central-registry/blob/main/modules/libunwind/1.8.1/overlay/BUILD.bazel
+#
+# The original file is distributed under the Apache License, Version 2.0
+# (https://www.apache.org/licenses/LICENSE-2.0). See the `registry/modules/
+# libunwind/**` entry near the bottom of brpc's LICENSE file for the full
+# notice and the list of brpc's modifications.
+#
+# Modifications by brpc maintainers (Apache License 2.0 §4(b)):
+#   - Add the `hide_unwind_symbols` config_setting (gated by
+#     `--define=libunwind_hide_unwind_symbols=true`).
+#   - When the switch is on, drop `src/unwind/*.c` (the GCC `_Unwind_*` ABI
+#     compatibility layer) from `unwind_srcs` so the resulting libunwind
+#     does not export `_Unwind_*` symbols. See docs/cn/bthread_tracer.md
+#     for the rationale.
+
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+# Targets in this file are based off configure.ac, Makefile.am, and
+# src/Makefile.am with the default configurations.
+#
+# Only supports aarch64, arm, and x86_64 on Linux for now.
+
+### Config settings ############################################################
+
+# Bazel does not support nested selects, so we need config settings with the
+# various combinations of OS and CPU.
+
+# Switch to drop the GCC `_Unwind_*` ABI compatibility layer (src/unwind/*.c)
+# from the build. These sources implement `_Unwind_GetLanguageSpecificData`,
+# `_Unwind_ForcedUnwind`, `_Unwind_Resume`, etc. - the very symbols that
+# libgcc_s also provides. When Bazel builds libunwind as a dylib (its default
+# behavior in fastbuild), these symbols get exported and at runtime the dynamic
+# loader resolves the libstdc++ / pthread_exit unwinding paths to libunwind's
+# DWARF-based implementations instead of libgcc_s's, causing crashes such as:
+#   _Unwind_ForcedUnwind -> __gxx_personality_v0 ->
+#     __libunwind_Unwind_GetLanguageSpecificData -> SEGV in
+#     _ULx86_64_dwarf_find_proc_info.
+#
+# brpc only consumes libunwind's native `unw_*` API (provided by src/mi/), so
+# omitting src/unwind/*.c is safe and is the same effect autoconf gets via
+# `--version-script` in the upstream Makefile (the make-built libunwind.so does
+# not export `_Unwind_*` either - see CI's init-ut-make-config action).
+#
+# Enable with: --define=libunwind_hide_unwind_symbols=true
+config_setting(
+    name = "hide_unwind_symbols",
+    values = {"define": "libunwind_hide_unwind_symbols=true"},
+)
+
+selects.config_setting_group(
+    name = "linux_arm64",
+    match_all = [
+        "@platforms//os:linux",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+selects.config_setting_group(
+    name = "linux_arm",
+    match_all = [
+        "@platforms//os:linux",
+        "@platforms//cpu:arm",
+    ],
+)
+
+selects.config_setting_group(
+    name = "linux_x86_64",
+    match_all = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+### Common defines #############################################################
+
+libunwind_defines = [
+    # Defaults based on configure.ac assuming we're on a modern Linux OS.
+    "_GNU_SOURCE",
+    "CONFIG_BLOCK_SIGNALS",
+    "CONFIG_WEAK_BACKTRACE",
+    "CONSERVATIVE_CHECKS",
+    "HAVE__BUILTIN___CLEAR_CACHE",
+    "HAVE__BUILTIN_UNREACHABLE",
+    "HAVE_ELF_H",
+    "HAVE_LINK_H",
+    "HAVE_LZMA",
+    "HAVE_ZLIB",
+]
+
+### Common source files ########################################################
+
+dwarf_srcs = glob(["src/dwarf/*.c"])
+
+dwarf_textual_hdrs = glob(["src/dwarf/G*.c"])
+
+mi_srcs = glob(
+    ["src/mi/*.c"],
+    exclude = [
+        # Only included if Linux.
+        "src/mi/_ReadSLEB.c",
+        "src/mi/_ReadULEB.c",
+        # The Makefile does not include this, it's also broken as it can include
+        # Gdyn-remote.c in certain situations, which uses WSIZE, which will not
+        # be defined in the situations Gdyn-remote.c is included.
+        "src/mi/Ldyn-remote.c",
+        # TODO: for some reason these complain about duplicate definitions if
+        # included.
+        "src/mi/Gaddress_validator.c",
+        "src/mi/Gget_accessors.c",
+    ],
+)
+
+mi_textual_hdrs = glob(["src/mi/G*.c"])
+
+# When `--define=libunwind_hide_unwind_symbols=true`, drop src/unwind/ entirely
+# so libunwind does not provide its own `_Unwind_*` implementations. See the
+# comment on `:hide_unwind_symbols` config_setting above.
+unwind_srcs = select({
+    ":hide_unwind_symbols": [],
+    "//conditions:default": glob([
+        "src/unwind/*.c",
+        "src/unwind/*.h",
+    ]),
+})
+
+### Features source files ######################################################
+
+coredump_srcs = glob(
+    [
+        "src/coredump/*.c",
+        "src/coredump/*.h",
+    ],
+    exclude = [
+        "src/coredump/_UCD_access_reg_freebsd.c",
+        "src/coredump/_UCD_access_reg_linux.c",
+        "src/coredump/_UCD_access_reg_qnx.c",
+        "src/coredump/_UCD_get_mapinfo_generic.c",
+        "src/coredump/_UCD_get_mapinfo_linux.c",
+        "src/coredump/_UCD_get_mapinfo_qnx.c",
+        "src/coredump/_UCD_get_threadinfo_prstatus.c",
+    ],
+) + select({
+    "@platforms//os:linux": [
+        "src/coredump/_UCD_access_reg_linux.c",
+        "src/coredump/_UCD_get_mapinfo_linux.c",
+        "src/coredump/_UCD_get_threadinfo_prstatus.c",
+    ],
+    "//conditions:default": [],
+})
+
+ptrace_srcs = glob([
+    "src/ptrace/*.c",
+    "src/ptrace/*.h",
+])
+
+setjmp_srcs = glob([
+    "src/setjmp/*.c",
+    "src/setjmp/*.h",
+]) + select({
+    "@platforms//cpu:aarch64": [
+        "src/aarch64/longjmp.S",
+        "src/aarch64/siglongjmp.S",
+    ],
+    "@platforms//cpu:arm": [
+        "src/arm/siglongjmp.S",
+    ],
+    "@platforms//cpu:x86_64": [
+        "src/x86_64/longjmp.S",
+        "src/x86_64/siglongjmp.S",
+    ],
+})
+
+### Arch specific source files #################################################
+
+arm64_srcs = select({
+    "@platforms//cpu:aarch64": glob(
+        [
+            "src/aarch64/*.c",
+            "src/aarch64/*.h",
+        ],
+        exclude = [
+            "src/aarch64/Los-freebsd.c",
+            "src/aarch64/Los-linux.c",
+            "src/aarch64/Los-qnx.c",
+            "src/aarch64/Gos-freebsd.c",
+            "src/aarch64/Gos-linux.c",
+            "src/aarch64/Gos-qnx.c",
+        ],
+    ) + [
+        # The Makefile doesn't include this and only includes it if the OS
+        # is FreeBSD. This is inconsistent with the other archs, not sure
+        # whether this is intended.
+        # "src/aarch64/setcontext.S",
+        "src/aarch64/getcontext.S",
+        "src/elf64.h",
+    ],
+    "//conditions:default": [],
+})
+
+arm64_textual_hdrs = select({
+    "@platforms//cpu:aarch64": glob(
+        [
+            "src/aarch64/G*.c",
+        ],
+        exclude = [
+            "src/aarch64/Gos-freebsd.c",
+            "src/aarch64/Gos-linux.c",
+            "src/aarch64/Gos-qnx.c",
+        ],
+    ) + [
+        "src/elf64.c",
+    ],
+    "//conditions:default": [],
+})
+
+arm_srcs = select({
+    "@platforms//cpu:arm": glob(
+        [
+            "src/arm/*.c",
+            "src/arm/*.h",
+        ],
+        exclude = [
+            "src/arm/Los-freebsd.c",
+            "src/arm/Los-linux.c",
+            "src/arm/Los-other.c",
+            "src/arm/Gos-freebsd.c",
+            "src/arm/Gos-linux.c",
+            "src/arm/Gos-other.c",
+        ],
+    ) + [
+        "src/arm/getcontext.S",
+        "src/elf32.h",
+    ],
+    "//conditions:default": [],
+})
+
+arm_textual_hdrs = select({
+    "@platforms//cpu:arm": glob(
+        [
+            "src/arm/G*.c",
+        ],
+        exclude = [
+            "src/arm/Gos-freebsd.c",
+            "src/arm/Gos-linux.c",
+            "src/arm/Gos-other.c",
+        ],
+    ) + [
+        "src/elf32.c",
+    ],
+    "//conditions:default": [],
+})
+
+x86_64_srcs = select({
+    "@platforms//cpu:x86_64": glob(
+        [
+            "src/x86_64/*.c",
+            "src/x86_64/*.h",
+        ],
+        exclude = [
+            "src/x86_64/Los-freebsd.c",
+            "src/x86_64/Los-linux.c",
+            "src/x86_64/Los-qnx.c",
+            "src/x86_64/Los-solaris.c",
+            "src/x86_64/Gos-freebsd.c",
+            "src/x86_64/Gos-linux.c",
+            "src/x86_64/Gos-qnx.c",
+            "src/x86_64/Gos-solaris.c",
+        ],
+    ) + [
+        "src/elf64.h",
+        "src/x86_64/getcontext.S",
+        "src/x86_64/setcontext.S",
+    ],
+    "//conditions:default": [],
+})
+
+x86_64_textual_hdrs = select({
+    "@platforms//cpu:x86_64": glob(
+        [
+            "src/x86_64/G*.c",
+        ],
+        exclude = [
+            "src/x86_64/Gos-freebsd.c",
+            "src/x86_64/Gos-linux.c",
+            "src/x86_64/Gos-qnx.c",
+            "src/x86_64/Gos-solaris.c",
+        ],
+    ) + [
+        "src/elf64.c",
+    ],
+    "//conditions:default": [],
+})
+
+### OS specific source files ###################################################
+
+linux_srcs = select({
+    "@platforms//os:linux": [
+        "src/dl-iterate-phdr.c",
+        "src/mi/_ReadSLEB.c",
+        "src/mi/_ReadULEB.c",
+        "src/os-linux.c",
+        "src/os-linux.h",
+    ],
+    "//conditions:default": [],
+}) + select({
+    ":linux_arm64": [
+        "src/aarch64/Los-linux.c",
+        "src/aarch64/Gos-linux.c",
+    ],
+    "//conditions:default": [],
+}) + select({
+    ":linux_arm": [
+        "src/arm/Los-linux.c",
+        "src/arm/Gos-linux.c",
+    ],
+    "//conditions:default": [],
+}) + select({
+    ":linux_x86_64": [
+        "src/x86_64/Los-linux.c",
+        "src/x86_64/Gos-linux.c",
+    ],
+    "//conditions:default": [],
+})
+
+linux_textual_hdrs = select({
+    ":linux_arm64": ["src/aarch64/Gos-linux.c"],
+    "//conditions:default": [],
+}) + select({
+    ":linux_arm": ["src/arm/Gos-linux.c"],
+    "//conditions:default": [],
+}) + select({
+    ":linux_x86_64": ["src/x86_64/Gos-linux.c"],
+    "//conditions:default": [],
+})
+
+### libunwind ##################################################################
+
+libunwind_srcs = [
+    "src/elfxx.h",
+    "src/elfxx.c",
+] + dwarf_srcs + mi_srcs + unwind_srcs + arm64_srcs + arm_srcs + x86_64_srcs + linux_srcs
+
+libunwind_textual_hdrs = [
+    "src/elfxx.c",
+] + dwarf_textual_hdrs + mi_textual_hdrs + arm64_textual_hdrs + arm_textual_hdrs + x86_64_textual_hdrs + linux_textual_hdrs
+
+expand_template(
+    name = "libunwind_common_h",
+    out = "include/libunwind-common.h",
+    substitutions = {
+        "@PKG_MAJOR@": "1",
+        "@PKG_MINOR@": "8",
+        "@PKG_EXTRA@": "1",
+    },
+    template = "include/libunwind-common.h.in",
+)
+
+cc_library(
+    name = "unwind",
+    srcs = libunwind_srcs,
+    hdrs = glob(["include/tdep/*.h"]) + [
+        "include/compiler.h",
+        "include/dwarf.h",
+        "include/dwarf-eh.h",
+        "include/dwarf_i.h",
+        "include/libunwind.h",
+        "include/libunwind-dynamic.h",
+        "include/libunwind_i.h",
+        "include/mempool.h",
+        "include/remote.h",
+        "include/unwind.h",
+        ":libunwind_common_h",
+    ] + select({
+        "@platforms//cpu:arm64": glob(["include/tdep-aarch64/*.h"]) + ["include/libunwind-aarch64.h"],
+        "@platforms//cpu:arm": glob(["include/tdep-arm/*.h"]) + ["include/libunwind-arm.h"],
+        "@platforms//cpu:x86_64": ["include/libunwind-x86_64.h"] + glob(["include/tdep-x86_64/*.h"]),
+    }),
+    includes = [
+        "include",
+        "src",
+    ] + select({
+        "@platforms//cpu:arm64": [
+            "include/tdep-aarch64",
+        ],
+        "@platforms//cpu:arm": [
+            "include/tdep-arm",
+        ],
+        "@platforms//cpu:x86_64": [
+            "include/tdep-x86_64",
+        ],
+    }),
+    local_defines = libunwind_defines + ["HAVE_DL_ITERATE_PHDR"],
+    textual_hdrs = libunwind_textual_hdrs,
+    deps = [
+        "@xz//:lzma",
+        "@zlib",
+    ],
+)
+
+cc_library(
+    name = "unwind_coredump",
+    srcs = coredump_srcs + ["src/mi/init.c"],
+    hdrs = ["include/libunwind-coredump.h"],
+    includes = ["include"],
+    local_defines = libunwind_defines + [
+        "HAVE_STRUCT_ELF_PRSTATUS",
+        "HAVE_SYS_PROCFS_H",
+    ] + select({
+        "@platforms//cpu:arm64": [
+            "CONFIG_DEBUG_FRAME",
+            "SIZEOF_OFF_T=8",
+        ],
+        "@platforms//cpu:arm": [
+            "CONFIG_DEBUG_FRAME",
+            "SIZEOF_OFF_T=4",
+        ],
+        "@platforms//cpu:x86_64": [
+            "SIZEOF_OFF_T=8",
+        ],
+    }),
+    deps = [
+        ":unwind",
+        "@xz//:lzma",
+        "@zlib",
+    ],
+)
+
+cc_library(
+    name = "unwind_ptrace",
+    srcs = ptrace_srcs + ["src/mi/init.c"],
+    hdrs = ["include/libunwind-ptrace.h"],
+    includes = ["include"],
+    local_defines = libunwind_defines + ["HAVE_TTRACE"],
+    deps = [
+        ":unwind",
+        "@xz//:lzma",
+        "@zlib",
+    ],
+)
+
+cc_library(
+    name = "unwind_setjmp",
+    srcs = setjmp_srcs + ["src/mi/init.c"],
+    local_defines = libunwind_defines,
+    deps = [
+        ":unwind",
+        "@xz//:lzma",
+        "@zlib",
+    ],
+)
+
+alias(
+    name = "libunwind",
+    actual = ":unwind",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "libunwind_coredump",
+    actual = ":unwind_coredump",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "libunwind_ptrace",
+    actual = ":unwind_ptrace",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "libunwind_setjmp",
+    actual = ":unwind_setjmp",
+    visibility = ["//visibility:public"],
+)
+
+### Tests #####################################################################
+
+# TODO: the following tests currently do not work:
+#   crasher.c
+#   forker.c
+#   test-coredump-unwind.c
+#   test-init-remote.c
+#   test-proc-info.c
+#   test-ptrace-misc.c
+#   test-ptrace.c
+#   test-setjmp.c
+
+# Some tests require these test helper files.
+cc_library(
+    name = "unwind_test_helpers",
+    testonly = True,
+    srcs = [
+        "tests/flush-cache.S",
+        "tests/ident.c",
+    ],
+    hdrs = glob(["tests/*G*.c"]) + [
+        "tests/Gtest-init.cxx",
+        "tests/flush-cache.h",
+        "tests/ident.h",
+    ],
+    defines = ["_GNU_SOURCE"],
+)
+
+cc_test(
+    name = "frame_record_test",
+    srcs = ["tests/aarch64-test-frame-record.c"],
+    target_compatible_with = ["@platforms//cpu:arm64"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "plt_test",
+    srcs = ["tests/aarch64-test-plt.c"],
+    target_compatible_with = ["@platforms//cpu:arm64"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "arm64_sve_signal_test",
+    srcs = ["tests/Larm64-test-sve-signal.c"],
+    target_compatible_with = ["@platforms//cpu:arm64"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "perf_simple_test",
+    srcs = ["tests/Lperf-simple.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "perf_trace_test",
+    srcs = ["tests/Lperf-trace.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "rs_race_test",
+    srcs = ["tests/Lrs-race.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "bt_test",
+    srcs = ["tests/Ltest-bt.c"],
+    local_defines = ["UNW_LOCAL_ONLY"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "concurrent_test",
+    srcs = ["tests/Ltest-concurrent.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "cxx_exceptions_test",
+    srcs = ["tests/Ltest-cxx-exceptions.cxx"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+# TODO: fails on Debian 11 and Ubuntu 20.04.
+# cc_test(
+#     name = "dyn1_test",
+#     srcs = ["tests/Ltest-dyn1.c"],
+#     deps = [
+#         ":unwind",
+#         ":unwind_test_helpers",
+#     ],
+#     linkopts = ["-ldl"],
+# )
+
+cc_test(
+    name = "exc_test",
+    srcs = ["tests/Ltest-exc.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "init_local_signal_test",
+    srcs = [
+        "tests/Ltest-init-local-signal.c",
+        "tests/Ltest-init-local-signal-lib.c",
+    ],
+    local_defines = ["UNW_LOCAL_ONLY"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "init_test",
+    srcs = ["tests/Ltest-init.cxx"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "mem_validate_test",
+    srcs = ["tests/Ltest-mem-validate.c"],
+    local_defines = ["UNW_LOCAL_ONLY"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "nocalloc_test",
+    srcs = ["tests/Ltest-nocalloc.c"],
+    linkopts = ["-ldl"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "nomalloc_test",
+    srcs = ["tests/Ltest-nomalloc.c"],
+    linkopts = ["-ldl"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "resume_sig_rt_test",
+    srcs = ["tests/Ltest-resume-sig-rt.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "resume_sig_test",
+    srcs = ["tests/Ltest-resume-sig.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "trace_test",
+    srcs = ["tests/Ltest-trace.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "varargs_test",
+    srcs = ["tests/Ltest-varargs.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "dwarf_expressions_test",
+    srcs = [
+        "tests/Lx64-test-dwarf-expressions.c",
+        "tests/x64-test-dwarf-expressions.S",
+    ],
+    target_compatible_with = ["@platforms//cpu:x86_64"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "async_sig_test",
+    srcs = ["tests/test-async-sig.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "flush_cache_test",
+    srcs = ["tests/test-flush-cache.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "mem_test",
+    srcs = ["tests/test-mem.c"],
+    local_defines = ["UNW_LOCAL_ONLY"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "reg_state_test",
+    srcs = ["tests/test-reg-state.c"],
+    local_defines = ["UNW_LOCAL_ONLY"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "static_link_loc_test",
+    srcs = [
+        "tests/test-static-link-gen.c",
+        "tests/test-static-link-loc.c",
+    ],
+    local_defines = ["UNW_LOCAL_ONLY"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "strerror_test",
+    srcs = ["tests/test-strerror.c"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)
+
+cc_test(
+    name = "unwind_badjmp_signal_frame_test",
+    srcs = ["tests/x64-unwind-badjmp-signal-frame.c"],
+    target_compatible_with = ["@platforms//cpu:x86_64"],
+    deps = [
+        ":unwind",
+        ":unwind_test_helpers",
+    ],
+)

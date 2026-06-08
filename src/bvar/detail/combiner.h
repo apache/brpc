@@ -233,7 +233,38 @@ friend class GlobalValue<self_type>;
 
     ~AgentCombiner() {
         if (_id >= 0) {
-            clear_all_agents();
+            // NOTE: We intentionally do NOT walk `_agents` here (e.g. via the
+            // previously existed `clear_all_agents()`).
+            //
+            // `Agent` instances live inside per-thread `ThreadBlock`s owned by
+            // `AgentGroup` and are destroyed when their owning thread exits
+            // (via `_destroy_tls_blocks`). At that point `~Agent` calls
+            // `combiner.lock()`; if the combiner has already started its
+            // destruction the `weak_ptr` is expired and the agent will skip
+            // `commit_and_erase`, leaving its `LinkNode` linked to this
+            // combiner's `_agents`. If we tried to traverse `_agents` here we
+            // could touch agent nodes whose `ThreadBlock` was just freed by
+            // a concurrent thread-exit, causing heap-use-after-free
+            // (see issue #2937 follow-up).
+            //
+            // It is safe to leave the list "dirty" because:
+            //   * `butil::LinkedList` / `butil::LinkNode` have trivial
+            //     destructors and never traverse on destruction, so tearing
+            //     down `_agents` here does not dereference any agent node.
+            //   * After this combiner is gone, every still-alive `Agent` will
+            //     observe `combiner.expired() == true` in `~Agent` and skip
+            //     `commit_and_erase`, so the dangling `prev_/next_` pointers
+            //     in those agents are never read.
+            //   * If the freed `_id` is later reused by a new combiner and the
+            //     same TLS slot is taken, `get_or_create_tls_agent` will call
+            //     `Agent::reset` and `Append` the agent into the new
+            //     combiner's `_agents`. `LinkNode::InsertBefore` only writes
+            //     `prev_/next_` (never reads their stale values), so the
+            //     dangling pointers are safely overwritten.
+            //   * `Agent::element` is destroyed together with the `ThreadBlock`,
+            //     so any non-POD resource it holds is still released; if the
+            //     agent slot is reused, `Agent::reset` will overwrite the
+            //     element value before it is observed again.
             AgentGroup::destroy_agent(_id);
             _id = -1;
         }
@@ -319,18 +350,31 @@ friend class GlobalValue<self_type>;
         return agent;
     }
 
-    void clear_all_agents() {
-        butil::AutoLock guard(_lock);
-        // Resting agents is must because the agent object may be reused.
-        // Set element to be default-constructed so that if it's non-pod,
-        // internal allocations should be released.
-        for (butil::LinkNode<Agent>* node = _agents.head(); node != _agents.end();) {
-            node->value()->reset(ElementTp(), NULL);
-            butil::LinkNode<Agent>* const saved_next =  node->next();
-            node->RemoveFromList();
-            node = saved_next;
-        }
-    }
+    // NOTE: `clear_all_agents()` is intentionally kept but no longer called
+    // from `~AgentCombiner` (see the long comment in `~AgentCombiner`).
+    //
+    // Calling it from the destructor is unsafe: by the time the destructor
+    // runs, agent weak_ptrs have already expired and `~Agent` will skip
+    // `commit_and_erase`; a concurrent thread-exit can therefore free the
+    // `ThreadBlock` (and the agents inside it) while we are still walking
+    // `_agents` here, which is a heap-use-after-free.
+    //
+    // The body is left around (commented out) for reference / future use --
+    // do NOT re-enable it from `~AgentCombiner`.
+    //
+    // void clear_all_agents() {
+    //     butil::AutoLock guard(_lock);
+    //     // Resetting agents is a must because the agent object may be
+    //     // reused. Set element to be default-constructed so that if it's
+    //     // non-pod, internal allocations should be released.
+    //     for (butil::LinkNode<Agent>* node = _agents.head();
+    //          node != _agents.end();) {
+    //         node->value()->reset(ElementTp(), NULL);
+    //         butil::LinkNode<Agent>* const saved_next = node->next();
+    //         node->RemoveFromList();
+    //         node = saved_next;
+    //     }
+    // }
 
     const BinaryOp& op() const { return _op; }
 

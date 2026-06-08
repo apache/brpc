@@ -1,0 +1,19 @@
+{
+    "homepage": "https://www.nongnu.org/libunwind/",
+    "maintainers": [
+        {
+            "email": "vtsao@openai.com",
+            "github": "vtsao-openai",
+            "github_user_id": 176426301,
+            "name": "Vincent Tsao"
+        }
+    ],
+    "repository": [
+        "github:libunwind/libunwind"
+    ],
+    "versions": [
+        "1.8.1.brpc-no-unwind",
+        "1.8.3.brpc-no-unwind"
+    ],
+    "yanked_versions": {}
+}

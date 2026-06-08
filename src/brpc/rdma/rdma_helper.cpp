@@ -65,7 +65,7 @@ int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_attr*) = 
 int (*IbvDestroyQp)(ibv_qp*) = NULL;
 ibv_comp_channel* (*IbvCreateCompChannel)(ibv_context*) = NULL;
 int (*IbvDestroyCompChannel)(ibv_comp_channel*) = NULL;
-ibv_mr* (*IbvRegMr)(ibv_pd*, void*, size_t, ibv_access_flags) = NULL;
+ibv_mr* (*IbvRegMr)(ibv_pd*, void*, size_t, int) = NULL;
 int (*IbvDeregMr)(ibv_mr*) = NULL;
 int (*IbvGetCqEvent)(ibv_comp_channel*, ibv_cq**, void**) = NULL;
 void (*IbvAckCqEvents)(ibv_cq*, unsigned int) = NULL;
@@ -178,10 +178,14 @@ void* UserExtendBlockPool(void* region_base, size_t region_size,
 uint32_t RdmaRegisterMemory(void* buf, size_t size) {
     // Register the memory as callback in block_pool
     // The thread-safety should be guaranteed by the caller
-    ibv_mr* mr = IbvRegMr(g_pd, buf, size, IBV_ACCESS_LOCAL_WRITE);
+    ibv_mr* mr = IbvRegMr(g_pd, buf, size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_RELAXED_ORDERING);
     if (!mr) {
-        PLOG(ERROR) << "Fail to register memory";
-        return 0;
+        PLOG(WARNING) << "Do not support IBV_ACCESS_RELAXED_ORDERING for RDMA!!!";
+        mr = IbvRegMr(g_pd, buf, size, IBV_ACCESS_LOCAL_WRITE);
+        if (!mr) {
+            PLOG(ERROR) << "Fail to register memory";
+            return 0;
+        }
     }
     g_mrs->push_back(mr);
     return mr->lkey;
@@ -550,6 +554,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     // Initialize RDMA memory pool (block_pool)
+    butil::SetDefaultBlockSize(GetRdmaBlockSize());
     if (!InitBlockPool(RdmaRegisterMemory)) {
         PLOG(ERROR) << "Fail to initialize RDMA memory pool";
         ExitWithError();
@@ -594,10 +599,14 @@ void GlobalRdmaInitializeOrDie() {
 }
 
 uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
-    ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
+    ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_RELAXED_ORDERING);
     if (!mr) {
-        PLOG(ERROR) << "Fail to register memory";
-        return 0;
+        PLOG(WARNING) << "Do not support IBV_ACCESS_RELAXED_ORDERING for RDMA!!!";
+        mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
+        if (!mr) {
+            PLOG(ERROR) << "Fail to register memory";
+            return 0;
+        }
     }
     {
         BAIDU_SCOPED_LOCK(*g_user_mrs_lock);

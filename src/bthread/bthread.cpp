@@ -396,13 +396,6 @@ int bthread_equal(bthread_t t1, bthread_t t2) {
     return t1 == t2;
 }
 
-#ifdef BUTIL_USE_ASAN
-// Fixme!!!
-// The noreturn `bthread_exit' may cause a warning of ASan, but does not abort the program.
-//
-// ==94463==WARNING: ASan is ignoring requested __asan_handle_no_return: stack type: default top: 0x00016dd7f000; bottom 0x00010b1a4000; size: 0x000062bdb000 (1656598528)
-// False positive error reports may follow
-#endif // BUTIL_USE_ASAN
 void bthread_exit(void* retval) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g != NULL && !g->is_current_main_task()) {

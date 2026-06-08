@@ -333,10 +333,18 @@ FindSymbol(uint64_t pc, const int fd, char *out, int out_size,
 // both regular and dynamic symbol tables if necessary.  On success,
 // write the symbol name to "out" and return true.  Otherwise, return
 // false.
+// `base_address` is the runtime VA that corresponds to ELF VA 0 of the
+// object identified by `fd`. For ET_EXEC binaries it is ignored
+// (symbols already hold absolute runtime addresses); for ET_DYN
+// objects (PIE executables and shared libraries) the caller must
+// supply a precise value (see
+// OpenObjectFileContainingPcAndGetStartAddress() below, which derives
+// it from the object's PT_LOAD program headers rather than from the
+// /proc/self/maps file_offset field).
 static bool GetSymbolFromObjectFile(const int fd, uint64_t pc,
                                     char *out, int out_size,
                                     uint64_t *out_saddr,
-                                    uint64_t map_start_address) {
+                                    uint64_t base_address) {
   // Read the ELF header.
   ElfW(Ehdr) elf_header;
   if (!ReadFromOffsetExact(fd, &elf_header, sizeof(elf_header), 0)) {
@@ -345,7 +353,7 @@ static bool GetSymbolFromObjectFile(const int fd, uint64_t pc,
 
   uint64_t symbol_offset = 0;
   if (elf_header.e_type == ET_DYN) {  // DSO needs offset adjustment.
-    symbol_offset = map_start_address;
+    symbol_offset = base_address;
   }
 
   ElfW(Shdr) symtab, strtab;
@@ -528,13 +536,26 @@ OpenObjectFileContainingPcAndGetStartAddress(uint64_t pc,
     return -1;
   }
 
+  // Also open /proc/self/mem so we can read ELF headers / program
+  // headers directly out of the mapped binary, which is the only
+  // reliable way to compute the runtime ELF base address for PIE
+  // executables and shared libraries (the file_offset reported by
+  // /proc/self/maps is per-mapping and does not necessarily match the
+  // ELF base when modern toolchains use `-z separate-code` or when
+  // the first PT_LOAD has a non-zero p_vaddr). Mirrors the
+  // implementation in glog upstream.
+  int mem_fd;
+  NO_INTR(mem_fd = open("/proc/self/mem", O_RDONLY));
+  FileDescriptor wrapped_mem_fd(mem_fd);
+  if (wrapped_mem_fd.get() < 0) {
+    return -1;
+  }
+
   // Iterate over maps and look for the map containing the pc.  Then
   // look into the symbol tables inside.
   char buf[1024];  // Big enough for line of sane /proc/self/maps
-  int num_maps = 0;
   LineReader reader(wrapped_maps_fd.get(), buf, sizeof(buf));
   while (true) {
-    num_maps++;
     const char *cursor;
     const char *eol;
     if (!reader.ReadLine(&cursor, &eol)) {  // EOF or malformed line.
@@ -563,11 +584,6 @@ OpenObjectFileContainingPcAndGetStartAddress(uint64_t pc,
     }
     ++cursor;  // Skip ' '.
 
-    // Check start and end addresses.
-    if (!(start_address <= pc && pc < end_address)) {
-      continue;  // We skip this map.  PC isn't in this map.
-    }
-
     // Read flags.  Skip flags until we encounter a space or eol.
     const char * const flags_start = cursor;
     while (cursor < eol && *cursor != ' ') {
@@ -578,32 +594,74 @@ OpenObjectFileContainingPcAndGetStartAddress(uint64_t pc,
       return -1;  // Malformed line.
     }
 
+    // Determine the base address by reading ELF headers in process
+    // memory. We must do this for *every* readable map, not just the
+    // r-x map that contains PC, because a PIE binary or shared
+    // library's ELF header is typically mapped by an earlier r-- map
+    // (separate-code layout). Once we encounter the r-- map carrying
+    // the ELF magic, we record base_address for the whole object.
+    // When we later reach the r-x map containing PC, base_address is
+    // already correct.
+    if (flags_start[0] == 'r') {
+      ElfW(Ehdr) ehdr;
+      if (ReadFromOffsetExact(wrapped_mem_fd.get(), &ehdr, sizeof(ehdr),
+                              start_address) &&
+          memcmp(ehdr.e_ident, ELFMAG, SELFMAG) == 0) {
+        switch (ehdr.e_type) {
+          case ET_EXEC:
+            base_address = 0;
+            break;
+          case ET_DYN:
+            // Find the PT_LOAD segment with p_offset == 0 (i.e. the
+            // segment that contains the ELF header). Its p_vaddr is
+            // the ELF VA that corresponds to the bytes we just read
+            // at `start_address`, so base_address = start_address -
+            // p_vaddr. Normally p_vaddr is 0 and base_address ==
+            // start_address, but some non-standard linker scripts
+            // place the first LOAD at a non-zero VA. Fall back to
+            // start_address if no such PT_LOAD is found.
+            base_address = start_address;
+            for (unsigned i = 0; i != ehdr.e_phnum; ++i) {
+              ElfW(Phdr) phdr;
+              if (ReadFromOffsetExact(wrapped_mem_fd.get(), &phdr,
+                                      sizeof(phdr),
+                                      start_address + ehdr.e_phoff +
+                                          i * sizeof(phdr)) &&
+                  phdr.p_type == PT_LOAD && phdr.p_offset == 0) {
+                base_address = start_address - phdr.p_vaddr;
+                break;
+              }
+            }
+            break;
+          default:
+            // ET_REL or ET_CORE. Not directly executable, leave
+            // base_address untouched.
+            break;
+        }
+      }
+    }
+
+    // Check start and end addresses.
+    if (!(start_address <= pc && pc < end_address)) {
+      continue;  // We skip this map.  PC isn't in this map.
+    }
+
     // Check flags.  We are only interested in "r-x" maps.
     if (memcmp(flags_start, "r-x", 3) != 0) {  // Not a "r-x" map.
       continue;  // We skip this map.
     }
     ++cursor;  // Skip ' '.
 
-    // Read file offset.
+    // Read file offset (parsed but no longer used for base_address;
+    // base_address is now computed from PT_LOAD program headers
+    // above. Keep the parse so the cursor advances to the file name).
     uint64_t file_offset;
     cursor = GetHex(cursor, eol, &file_offset);
     if (cursor == eol || *cursor != ' ') {
       return -1;  // Malformed line.
     }
     ++cursor;  // Skip ' '.
-
-    // Don't subtract 'start_address' from the first entry:
-    // * If a binary is compiled w/o -pie, then the first entry in
-    //   process maps is likely the binary itself (all dynamic libs
-    //   are mapped higher in address space). For such a binary,
-    //   instruction offset in binary coincides with the actual
-    //   instruction address in virtual memory (as code section
-    //   is mapped to a fixed memory range).
-    // * If a binary is compiled with -pie, all the modules are
-    //   mapped high at address space (in particular, higher than
-    //   shadow memory of the tool), so the module can't be the
-    //   first entry.
-    base_address = ((num_maps == 1) ? 0U : start_address) - file_offset;
+    (void)file_offset;
 
     // Skip to file name.  "cursor" now points to dev.  We need to
     // skip at least two spaces for dev and inode.
@@ -794,9 +852,18 @@ static ATTRIBUTE_NOINLINE bool SymbolizeAndDemangle(void *pc, char *out,
       out_size -= num_bytes_written;
     }
   }
+  // Use `base_address` (computed by
+  // OpenObjectFileContainingPcAndGetStartAddress() via the object's
+  // PT_LOAD program headers) as the relocation offset, NOT
+  // `start_address`. For ET_DYN objects produced by modern toolchains
+  // (binutils >= 2.31, lld) using `-z separate-code`, the r-x mapping
+  // starts at a non-zero file offset and `start_address` no longer
+  // equals the ELF base; only `base_address` is the correct value
+  // such that `symbol.st_value + base_address` recovers the runtime
+  // VA of a symbol.
   if (!GetSymbolFromObjectFile(wrapped_object_fd.get(), pc0,
                                out, out_size, out_saddr,
-                               start_address)) {
+                               base_address)) {
     return false;
   }
 

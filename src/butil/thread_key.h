@@ -18,6 +18,7 @@
 #ifndef  BUTIL_THREAD_KEY_H
 #define  BUTIL_THREAD_KEY_H
 
+#include <algorithm>
 #include <limits>
 #include <pthread.h>
 #include <stdlib.h>

@@ -640,7 +640,7 @@ inline IOBuf::Block* create_block(const size_t block_size) {
 }
 
 inline IOBuf::Block* create_block() {
-    return create_block(IOBuf::DEFAULT_BLOCK_SIZE);
+    return create_block(butil::GetDefaultBlockSize());
 }
 
 void* cp(void *__restrict dest, const void *__restrict src, size_t n);

@@ -311,6 +311,11 @@ TEST_F(SSLTest, connect_on_create) {
         brpc::Join(correlation_id);
         ASSERT_EQ(EXP_RESPONSE, res.message());
     }
+
+    ptr->SetFailed();
+    ptr.reset();
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
 }
 
 void CheckCert(const char* cname, const char* cert) {
@@ -491,4 +496,80 @@ TEST_F(SSLTest, ssl_perf) {
     ASSERT_EQ(0, pthread_join(spid, NULL));
     close(clifd);
     close(servfd);
+}
+
+struct AbruptCloseArgs { int listenfd; };
+
+static void* abrupt_close_server(void* arg) {
+    AbruptCloseArgs* a = (AbruptCloseArgs*)arg;
+    int connfd = accept(a->listenfd, NULL, NULL);
+    if (connfd < 0) return NULL;
+    SSL_CTX* ctx = brpc::CreateServerSSLContext(
+        "cert1.crt", "cert1.key", brpc::SSLOptions(), NULL, NULL);
+    SSL* ssl = brpc::CreateSSLSession(ctx, 0, connfd, true);
+    if (ssl) { SSL_do_handshake(ssl); SSL_free(ssl); }
+    close(connfd);
+    return NULL;
+}
+
+TEST_F(SSLTest, ssl_unexpected_eof) {
+    // Verify that Socket::DoRead() returns -1 with errno=ESSL when the
+    // remote side closes the TCP connection without sending close_notify.
+    // Without the fix, DoRead() returns 0, causing error_code=0 to
+    // propagate to Controller::SetFailed() which triggers CHECK(false).
+
+    const int port = 5962;
+    butil::EndPoint ep(butil::IP_ANY, port);
+    butil::fd_guard listenfd(butil::tcp_listen(ep));
+    ASSERT_GT(listenfd, 0);
+
+    AbruptCloseArgs server_args = { listenfd };
+    pthread_t server_tid;
+    ASSERT_EQ(0, pthread_create(&server_tid, NULL, abrupt_close_server,
+                                &server_args));
+
+    brpc::Protocol dummy_protocol = {
+        brpc::policy::ParseRpcMessage, brpc::SerializeRequestDefault,
+        brpc::policy::PackRpcRequest, NULL, ProcessResponse,
+        NULL, NULL, NULL, brpc::CONNECTION_TYPE_ALL, "ssl_ut_eof"
+    };
+    ASSERT_EQ(0, RegisterProtocol((brpc::ProtocolType)31, dummy_protocol));
+
+    brpc::InputMessageHandler dummy_handler = {
+        dummy_protocol.parse, dummy_protocol.process_response,
+        NULL, NULL, dummy_protocol.name
+    };
+    brpc::InputMessenger messenger;
+    ASSERT_EQ(0, messenger.AddHandler(dummy_handler));
+
+    brpc::SocketOptions socket_options;
+    butil::EndPoint server_ep(butil::IP_ANY, port);
+    socket_options.remote_side = server_ep;
+    socket_options.connect_on_create = true;
+    // Do NOT set on_edge_triggered_events — we will call DoRead manually.
+    socket_options.user = &messenger;
+
+    brpc::ChannelSSLOptions ssl_options;
+    SSL_CTX* raw_ctx = brpc::CreateClientSSLContext(ssl_options);
+    ASSERT_NE(nullptr, raw_ctx);
+    std::shared_ptr<brpc::SocketSSLContext> ssl_ctx =
+        std::make_shared<brpc::SocketSSLContext>();
+    ssl_ctx->raw_ctx = raw_ctx;
+    socket_options.initial_ssl_ctx = ssl_ctx;
+
+    brpc::SocketId socket_id;
+    ASSERT_EQ(0, brpc::Socket::Create(socket_options, &socket_id));
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &ptr));
+
+    // Wait for server to close the connection without close_notify.
+    pthread_join(server_tid, NULL);
+    usleep(50000);
+
+    // DoRead should detect the unexpected EOF and return -1 with errno=ESSL.
+    ssize_t nr = ptr->DoRead(1024);
+    EXPECT_EQ(-1, nr);
+    EXPECT_EQ(brpc::ESSL, errno);
+
+    ptr->SetFailed();
 }

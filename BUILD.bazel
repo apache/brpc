@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "objc_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "objc_library")
+load("//bazel/tools:brpc_proto_library.bzl", "brpc_proto_library")
 
 licenses(["notice"])  # Apache v2
 
@@ -22,42 +22,45 @@ exports_files(["LICENSE"])
 
 COPTS = [
     "-fno-omit-frame-pointer",
-    "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
-    "-D__const__=__unused__",
-    "-D_GNU_SOURCE",
-    "-DUSE_SYMBOLIZE",
-    "-DNO_TCMALLOC",
-    "-D__STDC_FORMAT_MACROS",
-    "-D__STDC_LIMIT_MACROS",
-    "-D__STDC_CONSTANT_MACROS",
 ] + select({
-    "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
-    "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
-}) + select({
-    "//bazel/config:brpc_with_mesalink": ["-DUSE_MESALINK"],
-    "//conditions:default": [""],
-}) + select({
-    "//bazel/config:brpc_with_thrift": ["-DENABLE_THRIFT_FRAMED_PROTOCOL=1"],
-    "//conditions:default": [""],
-}) + select({
-    "//bazel/config:brpc_with_thrift_legacy_version": [],
-    "//conditions:default": ["-DTHRIFT_STDCXX=std"],
-}) + select({
-    "//bazel/config:brpc_with_rdma": ["-DBRPC_WITH_RDMA=1"],
-    "//conditions:default": [""],
-}) + select({
-    "//bazel/config:brpc_with_debug_bthread_sche_safety": ["-DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=1"],
-    "//conditions:default": ["-DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=0"],
-}) + select({
-    "//bazel/config:brpc_with_debug_lock": ["-DBRPC_DEBUG_LOCK=1"],
-    "//conditions:default": ["-DBRPC_DEBUG_LOCK=0"],
-}) + select({
     "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
-    "//conditions:default": [""],
-}) + select({
-    "//bazel/config:brpc_with_no_pthread_mutex_hook": ["-DNO_PTHREAD_MUTEX_HOOK"],
-    "//conditions:default": [""],
+    "//conditions:default": [],
 })
+
+DEFINES = [
+    "BTHREAD_USE_FAST_PTHREAD_MUTEX",
+    "__const__=__unused__",
+    "_GNU_SOURCE",
+    "USE_SYMBOLIZE",
+    "NO_TCMALLOC",
+    "__STDC_FORMAT_MACROS",
+    "__STDC_LIMIT_MACROS",
+    "__STDC_CONSTANT_MACROS",
+] + select({
+     "//bazel/config:brpc_with_glog": ["BRPC_WITH_GLOG=1"],
+     "//conditions:default": ["BRPC_WITH_GLOG=0"],
+ }) + select({
+     "//bazel/config:brpc_with_mesalink": ["USE_MESALINK"],
+     "//conditions:default": [],
+ }) + select({
+     "//bazel/config:brpc_with_thrift": ["ENABLE_THRIFT_FRAMED_PROTOCOL=1"],
+     "//conditions:default": [],
+ }) + select({
+     "//bazel/config:brpc_with_thrift_legacy_version": [],
+     "//conditions:default": ["THRIFT_STDCXX=std"],
+ }) + select({
+     "//bazel/config:brpc_with_rdma": ["BRPC_WITH_RDMA=1"],
+     "//conditions:default": [],
+ }) + select({
+     "//bazel/config:brpc_with_debug_bthread_sche_safety": ["BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1"],
+     "//conditions:default": ["BRPC_DEBUG_BTHREAD_SCHE_SAFETY=0"],
+ }) + select({
+     "//bazel/config:brpc_with_debug_lock": ["BRPC_DEBUG_LOCK=1"],
+     "//conditions:default": ["BRPC_DEBUG_LOCK=0"],
+ }) + select({
+     "//bazel/config:brpc_with_no_pthread_mutex_hook": ["NO_PTHREAD_MUTEX_HOOK"],
+     "//conditions:default": [],
+ })
 
 LINKOPTS = [
     "-pthread",
@@ -93,7 +96,7 @@ LINKOPTS = [
     "//conditions:default": [],
 }) + select({
         "//bazel/config:brpc_with_asan": ["-fsanitize=address"],
-        "//conditions:default": [""],
+        "//conditions:default": [],
   })
 
 genrule(
@@ -331,13 +334,13 @@ cc_library(
         "src/butil/third_party/dmg_fp/dtoa.cc",
         ":config_h",
     ],
-    copts = COPTS + select({
+    defines = DEFINES + select({
         "//bazel/config:brpc_build_for_unittest": [
-            "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
-            "-DUNIT_TEST",
+            "UNIT_TEST",
         ],
         "//conditions:default": [],
     }),
+    copts = COPTS,
     includes = [
         "src/",
     ],
@@ -354,8 +357,14 @@ cc_library(
         "@bazel_tools//src/conditions:darwin": [":macos_lib"],
         "//conditions:default": [],
     }) + select({
-        "//bazel/config:brpc_with_boringssl": ["@boringssl//:ssl", "@boringssl//:crypto"],
-        "//conditions:default": ["@openssl//:ssl", "@openssl//:crypto"],
+        "//bazel/config:brpc_with_boringssl": [
+            "@boringssl//:ssl",
+            "@boringssl//:crypto"
+        ],
+        "//conditions:default": [
+            "@openssl//:ssl",
+            "@openssl//:crypto"
+        ],
     }),
 )
 
@@ -381,14 +390,13 @@ cc_library(
     defines = [] + select({
         "//bazel/config:with_babylon_counter": ["WITH_BABYLON_COUNTER=1"],
         "//conditions:default": [],
-    }),
-    copts = COPTS + select({
+    }) + select({
         "//bazel/config:brpc_build_for_unittest": [
-            "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
-            "-DUNIT_TEST",
+            "BVAR_NOT_LINK_DEFAULT_VARIABLES",
         ],
         "//conditions:default": [],
     }),
+    copts = COPTS,
     includes = [
         "src/",
     ],
@@ -475,7 +483,6 @@ cc_library(
     deps = [
         ":brpc_idl_options_cc_proto",
         ":butil",
-        "@com_google_protobuf//src/google/protobuf/compiler:code_generator",
     ],
 )
 
@@ -487,20 +494,11 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-proto_library(
-    name = "brpc_idl_options_proto",
-    srcs = [":brpc_idl_options_proto_srcs"],
-    strip_import_prefix = "src",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_protobuf//:descriptor_proto",
-    ],
-)
-
-cc_proto_library(
+brpc_proto_library(
     name = "brpc_idl_options_cc_proto",
+    srcs = [":brpc_idl_options_proto_srcs"],
+    include = "src",
     visibility = ["//visibility:public"],
-    deps = [":brpc_idl_options_proto"],
 )
 
 filegroup(
@@ -508,25 +506,17 @@ filegroup(
     srcs = glob([
         "src/brpc/*.proto",
         "src/brpc/policy/*.proto",
+        "src/brpc/rdma/*.proto",
     ]),
     visibility = ["//visibility:public"],
 )
 
-proto_library(
-    name = "brpc_internal_proto",
-    srcs = [":brpc_internal_proto_srcs"],
-    strip_import_prefix = "src",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":brpc_idl_options_proto",
-        "@com_google_protobuf//:descriptor_proto",
-    ],
-)
-
-cc_proto_library(
+brpc_proto_library(
     name = "brpc_internal_cc_proto",
+    srcs = [":brpc_internal_proto_srcs"],
+    include = "src",
+    deps = [":brpc_idl_options_cc_proto"],
     visibility = ["//visibility:public"],
-    deps = [":brpc_internal_proto"],
 )
 
 cc_library(
@@ -587,5 +577,6 @@ cc_binary(
     deps = [
         ":brpc",
         ":brpc_idl_options_cc_proto",
+        "@com_google_protobuf//:protoc_lib",
     ],
 )

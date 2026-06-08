@@ -34,6 +34,9 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     buf.append(input);
 
     brpc::Socket* sock = get_fuzz_socket();
+    if (sock == NULL) {
+        return 0;
+    }
     brpc::policy::ParseNsheadMessage(&buf, sock, false, NULL);
 
     return 0;

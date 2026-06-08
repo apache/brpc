@@ -56,6 +56,10 @@ class ChannelBalancer;
 namespace rdma {
 class RdmaEndpoint;
 class RdmaConnect;
+class RdmaHandshakeClientV2;
+class RdmaHandshakeServerV2;
+class RdmaHandshakeClientV3;
+class RdmaHandshakeServerV3;
 }
 namespace ubring {
     class UBShmEndpoint;
@@ -323,6 +327,10 @@ friend class rdma::RdmaConnect;
 friend class ubring::UBShmEndpoint;
 friend class ubring::UBConnect;
 friend class UBShmTransport;
+friend class rdma::RdmaHandshakeClientV2;
+friend class rdma::RdmaHandshakeServerV2;
+friend class rdma::RdmaHandshakeClientV3;
+friend class rdma::RdmaHandshakeServerV3;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;

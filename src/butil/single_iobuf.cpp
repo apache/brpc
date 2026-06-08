@@ -111,7 +111,7 @@ IOBuf::Block* SingleIOBuf::alloc_block_by_size(uint32_t data_size) {
         }
     }
     uint32_t total_size = data_size + sizeof(IOBuf::Block);
-    if (total_size <= IOBuf::DEFAULT_BLOCK_SIZE) {
+    if (total_size <= butil::GetDefaultBlockSize()) {
         _cur_block = iobuf::acquire_tls_block();
         if (_cur_block != NULL) {
             if (_cur_block->left_space() >= data_size) {

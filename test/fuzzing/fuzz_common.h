@@ -32,10 +32,10 @@ inline brpc::Socket* get_fuzz_socket() {
     if (!initialized) {
         brpc::SocketOptions options;
         options.remote_side = butil::EndPoint(butil::IP_ANY, 7777);
-        if (brpc::Socket::Create(options, &sid) == 0) {
-            brpc::Socket::Address(sid, &sock_ptr);
+        if (brpc::Socket::Create(options, &sid) == 0 &&
+            brpc::Socket::Address(sid, &sock_ptr) == 0) {
+            initialized = true;
         }
-        initialized = true;
     }
 
     return sock_ptr.get();
