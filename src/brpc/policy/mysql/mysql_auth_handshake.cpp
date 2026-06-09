@@ -57,11 +57,17 @@ void WriteLE(T value, size_t n, std::string* out) {
 }  // namespace
 
 bool ParseHandshakeV10(const butil::StringPiece& payload, HandshakeV10* out) {
-    if (payload.empty()) return false;
+    if (payload.empty()) {
+        LOG(ERROR) << "ParseHandshakeV10: empty payload";
+        return false;
+    }
 
     size_t off = 0;
     out->protocol_version = static_cast<uint8_t>(payload[off++]);
     if (out->protocol_version != kHandshakeV10Tag) {
+        LOG(ERROR) << "ParseHandshakeV10: unexpected protocol_version="
+                   << static_cast<int>(out->protocol_version) << ", expected "
+                   << static_cast<int>(kHandshakeV10Tag);
         return false;
     }
 
@@ -71,55 +77,91 @@ bool ParseHandshakeV10(const butil::StringPiece& payload, HandshakeV10* out) {
         const butil::StringPiece rest(payload.data() + off,
                                       payload.size() - off);
         const size_t consumed = DecodeNullTerminatedString(rest, &version);
-        if (consumed == 0) return false;
+        if (consumed == 0) {
+            LOG(ERROR) << "ParseHandshakeV10: unterminated server_version string";
+            return false;
+        }
         off += consumed;
     }
     out->server_version = std::move(version);
 
     // connection_id: 4 LE bytes
-    if (!ReadLE<uint32_t>(payload, off, 4, &out->connection_id)) return false;
+    if (!ReadLE<uint32_t>(payload, off, 4, &out->connection_id)) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before connection_id";
+        return false;
+    }
     off += 4;
 
     // auth-plugin-data-part-1: 8 bytes
-    if (off + kAuthPluginDataPart1Len > payload.size()) return false;
+    if (off + kAuthPluginDataPart1Len > payload.size()) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before "
+                      "auth-plugin-data-part-1";
+        return false;
+    }
     std::string salt(payload.data() + off, kAuthPluginDataPart1Len);
     off += kAuthPluginDataPart1Len;
 
     // filler 0x00
-    if (off + kFillerAfterPart1Len > payload.size()) return false;
+    if (off + kFillerAfterPart1Len > payload.size()) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before filler after "
+                      "auth-plugin-data-part-1";
+        return false;
+    }
     off += kFillerAfterPart1Len;
 
     // capability flags (lower 2 bytes)
     uint16_t caps_lo = 0;
-    if (!ReadLE<uint16_t>(payload, off, 2, &caps_lo)) return false;
+    if (!ReadLE<uint16_t>(payload, off, 2, &caps_lo)) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before capability flags "
+                      "(lower 2 bytes)";
+        return false;
+    }
     off += 2;
     out->capability_flags = caps_lo;
 
     if (off == payload.size()) {
         // Pre-4.1 server.  We don't support these — bail.
+        LOG(ERROR) << "ParseHandshakeV10: pre-4.1 server not supported";
         return false;
     }
 
     // character_set
-    if (off >= payload.size()) return false;
+    if (off >= payload.size()) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before character_set";
+        return false;
+    }
     out->character_set = static_cast<uint8_t>(payload[off++]);
 
     // status_flags
-    if (!ReadLE<uint16_t>(payload, off, 2, &out->status_flags)) return false;
+    if (!ReadLE<uint16_t>(payload, off, 2, &out->status_flags)) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before status_flags";
+        return false;
+    }
     off += 2;
 
     // capability flags upper 2 bytes
     uint16_t caps_hi = 0;
-    if (!ReadLE<uint16_t>(payload, off, 2, &caps_hi)) return false;
+    if (!ReadLE<uint16_t>(payload, off, 2, &caps_hi)) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before capability flags "
+                      "(upper 2 bytes)";
+        return false;
+    }
     off += 2;
     out->capability_flags |= static_cast<uint32_t>(caps_hi) << 16;
 
     // length of auth-plugin-data (or 0x00 when CLIENT_PLUGIN_AUTH is absent)
-    if (off >= payload.size()) return false;
+    if (off >= payload.size()) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before "
+                      "auth-plugin-data length";
+        return false;
+    }
     const uint8_t apd_total_len = static_cast<uint8_t>(payload[off++]);
 
     // 10 reserved bytes (all 0x00)
-    if (off + kReservedAfterCapsLen > payload.size()) return false;
+    if (off + kReservedAfterCapsLen > payload.size()) {
+        LOG(ERROR) << "ParseHandshakeV10: truncated before 10 reserved bytes";
+        return false;
+    }
     off += kReservedAfterCapsLen;
 
     if (out->capability_flags & CLIENT_SECURE_CONNECTION) {
@@ -129,7 +171,12 @@ bool ParseHandshakeV10(const butil::StringPiece& payload, HandshakeV10* out) {
             ? static_cast<size_t>(apd_total_len) - kAuthPluginDataPart1Len
             : static_cast<size_t>(13);
         const size_t want = part2_len < 13 ? 13 : part2_len;
-        if (off + want > payload.size()) return false;
+        if (off + want > payload.size()) {
+            LOG(ERROR) << "ParseHandshakeV10: truncated auth-plugin-data-part-2,"
+                          " want " << want << " bytes, have "
+                       << (payload.size() - off);
+            return false;
+        }
         // Concat salt parts; trim trailing NUL filler so callers see the
         // raw 20-byte salt.
         salt.append(payload.data() + off, want);
@@ -139,6 +186,8 @@ bool ParseHandshakeV10(const butil::StringPiece& payload, HandshakeV10* out) {
         }
     }
     if (salt.size() != kSaltLen) {
+        LOG(ERROR) << "ParseHandshakeV10: auth-plugin-data length mismatch, got "
+                   << salt.size() << " expected " << kSaltLen;
         return false;
     }
     out->auth_plugin_data = std::move(salt);
@@ -216,13 +265,19 @@ bool ParseAuthSwitchRequest(const butil::StringPiece& payload,
                             AuthSwitchRequest* out) {
     if (payload.empty() ||
         static_cast<uint8_t>(payload[0]) != kAuthSwitchRequestTag) {
+        LOG(ERROR) << "ParseAuthSwitchRequest: empty payload or missing "
+                      "AuthSwitchRequest tag";
         return false;
     }
     size_t off = 1;
     std::string name;
     const butil::StringPiece rest(payload.data() + off, payload.size() - off);
     const size_t consumed = DecodeNullTerminatedString(rest, &name);
-    if (consumed == 0) return false;
+    if (consumed == 0) {
+        LOG(ERROR) << "ParseAuthSwitchRequest: unterminated auth_plugin_name "
+                      "string";
+        return false;
+    }
     off += consumed;
     out->auth_plugin_name = std::move(name);
 
@@ -237,6 +292,8 @@ bool ParseAuthSwitchRequest(const butil::StringPiece& payload,
 bool ParseAuthMoreData(const butil::StringPiece& payload, AuthMoreData* out) {
     if (payload.empty() ||
         static_cast<uint8_t>(payload[0]) != kAuthMoreDataTag) {
+        LOG(ERROR) << "ParseAuthMoreData: empty payload or missing "
+                      "AuthMoreData tag";
         return false;
     }
     out->data.assign(payload.data() + 1, payload.size() - 1);
