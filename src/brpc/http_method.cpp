@@ -102,7 +102,7 @@ const char *HttpMethod2Str(HttpMethod method) {
 }
 
 bool Str2HttpMethod(const char* method_str, HttpMethod* method) {
-    const char fc = ::toupper(*method_str);
+    const char fc = ::toupper(static_cast<unsigned char>(*method_str));
     if (fc == 'G') {
         if (strcasecmp(method_str + 1, /*G*/"ET") == 0) {
             *method = HTTP_METHOD_GET;
