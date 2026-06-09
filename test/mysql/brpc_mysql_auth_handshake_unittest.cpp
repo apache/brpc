@@ -490,7 +490,7 @@ struct AuthCase {
     std::string label;
     std::string user;
     std::string password;
-    bool use_ssl = false;  // drive the login over a SSL connection
+    bool use_ssl;  // drive the login over a SSL connection (set at every init site)
 };
 static std::vector<AuthCase> g_auth_cases;
 
