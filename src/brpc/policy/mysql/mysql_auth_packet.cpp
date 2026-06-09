@@ -34,7 +34,7 @@ size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
         *is_null = false;
     }
     if (buf.empty()) {
-        LOG(ERROR) << "DecodeLengthEncodedInt: empty buffer";
+        LOG(WARNING) << "DecodeLengthEncodedInt: empty buffer";
         return 0;
     }
     const unsigned char first = static_cast<unsigned char>(buf[0]);
@@ -52,7 +52,7 @@ size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
     }
     if (first == 0xfc) {
         if (buf.size() < 3) {
-            LOG(ERROR) << "DecodeLengthEncodedInt: truncated 0xFC value, need 3 bytes";
+            LOG(WARNING) << "DecodeLengthEncodedInt: truncated 0xFC value, need 3 bytes";
             return 0;
         }
         *out = static_cast<unsigned char>(buf[1])
@@ -61,7 +61,7 @@ size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
     }
     if (first == 0xfd) {
         if (buf.size() < 4) {
-            LOG(ERROR) << "DecodeLengthEncodedInt: truncated 0xFD value, need 4 bytes";
+            LOG(WARNING) << "DecodeLengthEncodedInt: truncated 0xFD value, need 4 bytes";
             return 0;
         }
         *out = static_cast<unsigned char>(buf[1])
@@ -71,7 +71,7 @@ size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
     }
     if (first == 0xfe) {
         if (buf.size() < 9) {
-            LOG(ERROR) << "DecodeLengthEncodedInt: truncated 0xFE value, need 9 bytes";
+            LOG(WARNING) << "DecodeLengthEncodedInt: truncated 0xFE value, need 9 bytes";
             return 0;
         }
         uint64_t v = 0;
@@ -83,7 +83,7 @@ size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
         return 9;
     }
     // 0xff is reserved for error packet marker; not a valid lenenc-int.
-    LOG(ERROR) << "DecodeLengthEncodedInt: reserved 0xFF marker";
+    LOG(WARNING) << "DecodeLengthEncodedInt: reserved 0xFF marker";
     return 0;
 }
 
@@ -122,7 +122,7 @@ size_t DecodeLengthEncodedString(const butil::StringPiece& buf,
     bool len_is_null = false;
     const size_t prefix = DecodeLengthEncodedInt(buf, &len, &len_is_null);
     if (prefix == 0) {
-        LOG(ERROR) << "DecodeLengthEncodedString: failed to decode length prefix";
+        LOG(WARNING) << "DecodeLengthEncodedString: failed to decode length prefix";
         return 0;
     }
     if (len_is_null) {
@@ -134,7 +134,7 @@ size_t DecodeLengthEncodedString(const butil::StringPiece& buf,
         return prefix;
     }
     if (prefix > buf.size() || len > buf.size() - prefix) {
-        LOG(ERROR) << "DecodeLengthEncodedString: declared length " << len
+        LOG(WARNING) << "DecodeLengthEncodedString: declared length " << len
                    << " exceeds buffer";
         return 0;
     }
@@ -150,7 +150,7 @@ void EncodeLengthEncodedString(const butil::StringPiece& value,
 
 bool DecodePacketHeader(const butil::StringPiece& buf, PacketHeader* out) {
     if (buf.size() < kPacketHeaderLen) {
-        LOG(ERROR) << "DecodePacketHeader: buffer smaller than packet header";
+        LOG(WARNING) << "DecodePacketHeader: buffer smaller than packet header";
         return false;
     }
     out->payload_len =
@@ -173,7 +173,7 @@ size_t DecodeNullTerminatedString(const butil::StringPiece& buf,
     const char* nul = static_cast<const char*>(
         memchr(buf.data(), '\0', buf.size()));
     if (nul == nullptr) {
-        LOG(ERROR) << "DecodeNullTerminatedString: no NUL terminator found";
+        LOG(WARNING) << "DecodeNullTerminatedString: no NUL terminator found";
         return 0;
     }
     const size_t len = static_cast<size_t>(nul - buf.data());
