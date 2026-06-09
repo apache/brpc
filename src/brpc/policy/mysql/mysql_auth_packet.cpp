@@ -23,13 +23,28 @@ namespace brpc {
 namespace policy {
 namespace mysql {
 
-size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out) {
+size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
+                              bool* is_null) {
+    // Define *out and *is_null on every path so a caller that forgets to
+    // check the return value can never read an uninitialized result.
+    *out = 0;
+    if (is_null != nullptr) {
+        *is_null = false;
+    }
     if (buf.empty()) {
         return 0;
     }
     const unsigned char first = static_cast<unsigned char>(buf[0]);
     if (first < 0xfb) {
         *out = first;
+        return 1;
+    }
+    if (first == 0xfb) {
+        // 0xFB is the lenenc NULL marker, not a length prefix.  Report NULL
+        // (one byte consumed) instead of folding it into the failure path.
+        if (is_null != nullptr) {
+            *is_null = true;
+        }
         return 1;
     }
     if (first == 0xfc) {
@@ -84,13 +99,27 @@ void EncodeLengthEncodedInt(uint64_t value, std::string* out) {
 }
 
 size_t DecodeLengthEncodedString(const butil::StringPiece& buf,
-                                 std::string* out_value) {
+                                 std::string* out_value,
+                                 bool* is_null) {
+    out_value->clear();
+    if (is_null != nullptr) {
+        *is_null = false;
+    }
     uint64_t len = 0;
-    const size_t prefix = DecodeLengthEncodedInt(buf, &len);
+    bool len_is_null = false;
+    const size_t prefix = DecodeLengthEncodedInt(buf, &len, &len_is_null);
     if (prefix == 0) {
         return 0;
     }
-    if (buf.size() < prefix + len) {
+    if (len_is_null) {
+        // Leading 0xFB: the string itself is NULL.  Only the marker byte is
+        // consumed; there is no payload to read.
+        if (is_null != nullptr) {
+            *is_null = true;
+        }
+        return prefix;
+    }
+    if (prefix > buf.size() || len > buf.size() - prefix) {
         return 0;
     }
     out_value->assign(buf.data() + prefix, len);

@@ -48,19 +48,36 @@ static const size_t kPacketHeaderLen = 4;
 static const uint32_t kMaxPayloadLen = (1u << 24) - 1;
 
 // Decodes a length-encoded integer (lenenc-int) from |buf|.
-// On success, stores the value in *out and returns the number of
-// bytes consumed (1, 3, 4, or 9).  Returns 0 on truncation or on the
-// reserved 0xff marker.
-size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out);
+//
+// On success stores the value in *out and returns the number of bytes
+// consumed (1, 3, 4, or 9).
+//
+// 0xFB is the protocol's NULL marker (a NULL column value in a result
+// row), NOT an ordinary integer: when |buf| begins with 0xFB the value is
+// NULL, *out is set to 0, *is_null (when non-NULL) is set to true, and 1
+// (the single byte consumed) is returned.  For every non-NULL result
+// *is_null is set to false.
+//
+// Returns 0 on failure: an empty buffer, a truncated multi-byte value, or
+// the reserved 0xFF marker.  On failure *out is set to 0 and *is_null
+// (when non-NULL) to false, so a caller that forgets to check the return
+// value never reads an uninitialized result.  |is_null| may be NULL when
+// the caller does not need to distinguish NULL from 0.
+size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
+                              bool* is_null = nullptr);
 
 // Appends a length-encoded integer encoding of |value| to |out|.
 void EncodeLengthEncodedInt(uint64_t value, std::string* out);
 
 // Decodes a length-encoded string into |out_value| and returns the
-// number of bytes consumed.  Returns 0 if the leading lenenc-int is
-// invalid or the declared payload is truncated.
+// number of bytes consumed.  A leading 0xFB encodes the protocol NULL
+// value: when present *out_value is cleared, *is_null (when non-NULL) is
+// set to true, and 1 (the marker byte) is returned.  For a non-NULL
+// string *is_null is set to false.  Returns 0 if the leading lenenc-int
+// is invalid or the declared payload is truncated.  |is_null| may be NULL.
 size_t DecodeLengthEncodedString(const butil::StringPiece& buf,
-                                 std::string* out_value);
+                                 std::string* out_value,
+                                 bool* is_null = nullptr);
 
 // Appends a length-encoded string encoding of |value| to |out|.
 void EncodeLengthEncodedString(const butil::StringPiece& value,

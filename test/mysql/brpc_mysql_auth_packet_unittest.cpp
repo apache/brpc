@@ -97,6 +97,48 @@ TEST(LenencIntTest, Decode_Truncated_ReturnsZero) {
     EXPECT_EQ(DecodeLengthEncodedInt(butil::StringPiece(buf, 0), &v), 0u);
 }
 
+TEST(LenencIntTest, Decode_NullMarkerFB_ReportsNull) {
+    const char buf[] = {static_cast<char>(0xfb)};
+    uint64_t v = 0xdead;
+    bool is_null = false;
+    // 0xFB is the NULL marker: 1 byte consumed, value NULL, *out defined to 0.
+    EXPECT_EQ(DecodeLengthEncodedInt(butil::StringPiece(buf, 1), &v, &is_null),
+              1u);
+    EXPECT_TRUE(is_null);
+    EXPECT_EQ(v, 0u);
+}
+
+TEST(LenencIntTest, Decode_NonNull_SetsIsNullFalse) {
+    const char buf[] = {0x05};
+    uint64_t v = 0;
+    bool is_null = true;
+    EXPECT_EQ(DecodeLengthEncodedInt(butil::StringPiece(buf, 1), &v, &is_null),
+              1u);
+    EXPECT_FALSE(is_null);
+    EXPECT_EQ(v, 5u);
+}
+
+TEST(LenencIntTest, Decode_Failure_DefinesOutAndIsNull) {
+    // Reserved 0xFF marker -> failure; *out reset to 0, *is_null to false even
+    // though both held stale values, so a careless caller can't read garbage.
+    const char buf[] = {static_cast<char>(0xff)};
+    uint64_t v = 0xdead;
+    bool is_null = true;
+    EXPECT_EQ(DecodeLengthEncodedInt(butil::StringPiece(buf, 1), &v, &is_null),
+              0u);
+    EXPECT_FALSE(is_null);
+    EXPECT_EQ(v, 0u);
+}
+
+TEST(LenencIntTest, Decode_NullMarker_WithoutIsNullArg) {
+    // |is_null| is optional; 0xFB without it must not crash and still
+    // consumes the single marker byte.
+    const char buf[] = {static_cast<char>(0xfb)};
+    uint64_t v = 0xdead;
+    EXPECT_EQ(DecodeLengthEncodedInt(butil::StringPiece(buf, 1), &v), 1u);
+    EXPECT_EQ(v, 0u);
+}
+
 TEST(LenencIntTest, Encode_RoundTrip_AllRanges) {
     const uint64_t values[] = {
         0, 1, 250, 251, 0xffff, 0x10000, 0xffffff, 0x1000000, 0xffffffffULL
@@ -148,6 +190,41 @@ TEST(LenencStringTest, TruncatedPayload_ReturnsZero) {
     buf.append("abc");
     std::string out;
     EXPECT_EQ(DecodeLengthEncodedString(buf, &out), 0u);
+}
+
+TEST(LenencStringTest, NullMarkerFB_ReportsNull) {
+    // A length-encoded string whose leading lenenc-int is 0xFB is NULL,
+    // distinct from the empty string (lenenc 0x00).  Only the marker byte is
+    // consumed and out_value is cleared.
+    const char buf[] = {static_cast<char>(0xfb), 'x', 'y'};
+    std::string out = "stale";
+    bool is_null = false;
+    EXPECT_EQ(DecodeLengthEncodedString(butil::StringPiece(buf, 3), &out,
+                                        &is_null),
+              1u);
+    EXPECT_TRUE(is_null);
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(LenencStringTest, NonNull_SetsIsNullFalse) {
+    std::string buf;
+    EncodeLengthEncodedString(butil::StringPiece("hi"), &buf);
+    std::string out;
+    bool is_null = true;
+    EXPECT_EQ(DecodeLengthEncodedString(buf, &out, &is_null), 3u);
+    EXPECT_FALSE(is_null);
+    EXPECT_EQ(out, "hi");
+}
+
+TEST(LenencStringTest, EmptyIsNotNull) {
+    // Empty string (lenenc 0x00) must NOT be reported as NULL.
+    std::string buf;
+    EncodeLengthEncodedString(butil::StringPiece(""), &buf);
+    std::string out = "stale";
+    bool is_null = true;
+    EXPECT_EQ(DecodeLengthEncodedString(buf, &out, &is_null), 1u);
+    EXPECT_FALSE(is_null);
+    EXPECT_TRUE(out.empty());
 }
 
 // ----------------------------------------------------------------------

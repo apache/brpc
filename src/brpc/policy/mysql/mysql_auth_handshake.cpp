@@ -21,6 +21,7 @@
 
 #include "brpc/policy/mysql/mysql_auth_packet.h"
 #include "brpc/policy/mysql/mysql_auth_scramble.h"
+#include "butil/logging.h"
 
 namespace brpc {
 namespace policy {
@@ -159,7 +160,27 @@ bool ParseHandshakeV10(const butil::StringPiece& payload, HandshakeV10* out) {
     return true;
 }
 
-void BuildHandshakeResponse41(const HandshakeResponse41& req, std::string* out) {
+bool BuildHandshakeResponse41(const HandshakeResponse41& req, std::string* out) {
+    // The CLIENT_SECURE_CONNECTION encoding prefixes auth_response with a
+    // single length byte, so it cannot represent a payload larger than 255
+    // bytes.  Validate this FIRST and fail hard rather than silently
+    // truncating: a truncated auth_response is invalid and would
+    // desynchronize the packet stream.  Larger payloads (e.g. RSA
+    // ciphertext) require the caller to negotiate
+    // CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA, which has no such limit.
+    const bool lenenc_client_data =
+        req.capability_flags & CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA;
+    if (!lenenc_client_data &&
+        (req.capability_flags & CLIENT_SECURE_CONNECTION) &&
+        req.auth_response.size() > 0xff) {
+        LOG(ERROR) << "Cannot build HandshakeResponse41: auth_response is "
+                   << req.auth_response.size() << " bytes, exceeding the "
+                      "255-byte CLIENT_SECURE_CONNECTION length prefix; "
+                      "negotiate CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA for "
+                      "larger payloads";
+        return false;
+    }
+
     WriteLE<uint32_t>(req.capability_flags, 4, out);
     WriteLE<uint32_t>(req.max_packet_size, 4, out);
     out->push_back(static_cast<char>(req.character_set));
@@ -167,16 +188,13 @@ void BuildHandshakeResponse41(const HandshakeResponse41& req, std::string* out) 
     out->append(req.username);
     out->push_back('\0');
 
-    if (req.capability_flags & CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
+    if (lenenc_client_data) {
         EncodeLengthEncodedString(req.auth_response, out);
     } else if (req.capability_flags & CLIENT_SECURE_CONNECTION) {
-        // Auth response length must fit in one byte under this scheme.
-        // Callers using payloads >255 bytes (e.g., RSA ciphertext) must
-        // set CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA instead.
-        const uint8_t len = static_cast<uint8_t>(
-            req.auth_response.size() > 0xff ? 0xff : req.auth_response.size());
+        // Length validated above to fit in a single byte.
+        const uint8_t len = static_cast<uint8_t>(req.auth_response.size());
         out->push_back(static_cast<char>(len));
-        out->append(req.auth_response.data(), len);
+        out->append(req.auth_response.data(), req.auth_response.size());
     } else {
         out->append(req.auth_response);
         out->push_back('\0');
@@ -191,6 +209,7 @@ void BuildHandshakeResponse41(const HandshakeResponse41& req, std::string* out) 
         out->append(req.auth_plugin_name);
         out->push_back('\0');
     }
+    return true;
 }
 
 bool ParseAuthSwitchRequest(const butil::StringPiece& payload,

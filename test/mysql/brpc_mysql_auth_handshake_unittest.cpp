@@ -247,7 +247,7 @@ TEST(HandshakeResponse41Test, BuildsExpectedLayout) {
     req.auth_plugin_name = "mysql_native_password";
 
     std::string payload;
-    BuildHandshakeResponse41(req, &payload);
+    ASSERT_TRUE(BuildHandshakeResponse41(req, &payload));
 
     // 4 caps + 4 max_pkt + 1 charset + 23 reserved = 32 bytes fixed prefix
     ASSERT_GE(payload.size(), 32u);
@@ -282,7 +282,7 @@ TEST(HandshakeResponse41Test, OmitsDatabaseWhenFlagAbsent) {
     req.auth_plugin_name = "mysql_native_password";
 
     std::string payload;
-    BuildHandshakeResponse41(req, &payload);
+    ASSERT_TRUE(BuildHandshakeResponse41(req, &payload));
     EXPECT_EQ(payload.find("mydb"), std::string::npos);
 }
 
@@ -299,7 +299,7 @@ TEST(HandshakeResponse41Test, IncludesDatabaseWhenFlagSet) {
     req.auth_plugin_name = "mysql_native_password";
 
     std::string payload;
-    BuildHandshakeResponse41(req, &payload);
+    ASSERT_TRUE(BuildHandshakeResponse41(req, &payload));
     EXPECT_NE(payload.find("mydb"), std::string::npos);
 }
 
@@ -316,10 +316,48 @@ TEST(HandshakeResponse41Test, HandlesLargeAuthResponseViaLenEncoding) {
     req.auth_plugin_name = "caching_sha2_password";
 
     std::string payload;
-    BuildHandshakeResponse41(req, &payload);
+    ASSERT_TRUE(BuildHandshakeResponse41(req, &payload));
     // lenenc 256 -> 0xfc 0x00 0x01
     const std::string lenenc("\xfc\x00\x01", 3);
     EXPECT_NE(payload.find(lenenc), std::string::npos);
+}
+
+TEST(HandshakeResponse41Test, RejectsOversizeAuthResponseWithoutLenEnc) {
+    // CLIENT_SECURE_CONNECTION without the lenenc flag uses a 1-byte length
+    // prefix, so a >255-byte auth_response cannot be represented.  The builder
+    // must hard-fail (return false) and write nothing, rather than silently
+    // truncating to 255 bytes.
+    HandshakeResponse41 req;
+    req.capability_flags = CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
+                         | CLIENT_PLUGIN_AUTH;  // deliberately no LENENC flag
+    req.max_packet_size = 1u << 24;
+    req.character_set = 0x21;
+    req.username = "u";
+    req.auth_response = std::string(256, '\xAA');  // 256 > 255
+    req.auth_plugin_name = "caching_sha2_password";
+
+    std::string payload;
+    EXPECT_FALSE(BuildHandshakeResponse41(req, &payload));
+    EXPECT_TRUE(payload.empty())
+        << "no bytes must be written to out on failure";
+}
+
+// Exactly 255 bytes is the boundary that still fits the 1-byte length prefix.
+TEST(HandshakeResponse41Test, AcceptsMaxSizeAuthResponseWithoutLenEnc) {
+    HandshakeResponse41 req;
+    req.capability_flags = CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
+                         | CLIENT_PLUGIN_AUTH;
+    req.max_packet_size = 1u << 24;
+    req.character_set = 0x21;
+    req.username = "u";
+    req.auth_response = std::string(255, '\xAA');  // fits in one byte
+    req.auth_plugin_name = "caching_sha2_password";
+
+    std::string payload;
+    ASSERT_TRUE(BuildHandshakeResponse41(req, &payload));
+    // After "u\0" we expect length byte 0xFF (255) then 255 payload bytes.
+    const size_t u_end = payload.find('u') + 2;
+    EXPECT_EQ(static_cast<unsigned char>(payload[u_end]), 255u);
 }
 
 TEST(HandshakeResponse41Test, UsesSingleByteLengthWithoutLenEncFlag) {
@@ -333,7 +371,7 @@ TEST(HandshakeResponse41Test, UsesSingleByteLengthWithoutLenEncFlag) {
     req.auth_plugin_name = "mysql_native_password";
 
     std::string payload;
-    BuildHandshakeResponse41(req, &payload);
+    ASSERT_TRUE(BuildHandshakeResponse41(req, &payload));
     // After username "u\0", we expect 1-byte length 0x14 (20).
     const size_t u_end = payload.find('u') + 2;  // skip 'u' + NUL
     EXPECT_EQ(static_cast<unsigned char>(payload[u_end]), 20u);
@@ -878,7 +916,10 @@ static LoginTrace PerformSha2Login(int fd, const std::string& user,
         }
 
         std::string resp_payload;
-        BuildHandshakeResponse41(resp, &resp_payload);
+        if (!BuildHandshakeResponse41(resp, &resp_payload)) {
+            t.err = "failed to build HandshakeResponse41";
+            goto done;
+        }
         if (!WritePacket(fd, resp_payload, next_seq, ssl)) {
             t.err = "failed to write HandshakeResponse41";
             goto done;

@@ -97,12 +97,18 @@ struct HandshakeResponse41 {
                                       // is in capability_flags
 };
 
-// Appends a HandshakeResponse41 payload (no header) to |out|.
-// auth_response encoding obeys capability_flags:
+// Appends a HandshakeResponse41 payload (no header) to |out| and returns
+// true.  auth_response encoding obeys capability_flags:
 //   - CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA  -> length-encoded string
 //   - CLIENT_SECURE_CONNECTION               -> 1-byte length + data
 //   - neither                                -> NUL-terminated
-void BuildHandshakeResponse41(const HandshakeResponse41& req, std::string* out);
+// The 1-byte-length scheme cannot represent an auth_response longer than
+// 255 bytes.  Rather than silently truncating it (which produces an
+// invalid response and desynchronizes the packet stream), the function
+// logs an error and returns false WITHOUT writing to |out|.  Callers with
+// larger payloads (e.g. RSA ciphertext) must negotiate
+// CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA.
+bool BuildHandshakeResponse41(const HandshakeResponse41& req, std::string* out);
 
 // Parsed AuthSwitchRequest (server asks client to switch plugins).
 struct AuthSwitchRequest {
