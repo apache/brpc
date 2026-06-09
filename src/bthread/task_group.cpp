@@ -948,7 +948,7 @@ void TaskGroup::priority_to_run(void* args_in) {
     if (args->meta->priority_index < 0) {
         return tls_task_group->push_rq(args->meta->tid);
     }
-    return tls_task_group->control()->push_priority_queue(
+    return tls_task_group->control()->push_ed_priority_queue(
         args->tag, args->meta->priority_index, args->meta->tid);
 }
 

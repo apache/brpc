@@ -207,19 +207,22 @@ TaskControl::TaskControl()
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
     , _enable_priority_queue(FLAGS_enable_bthread_priority_queue)
-    , _pq_num_of_each_tag(FLAGS_event_dispatcher_num)
-    , _priority_queues(FLAGS_task_group_ntags * FLAGS_event_dispatcher_num)
+    , _ed_priority_queue_num_of_each_tag(FLAGS_event_dispatcher_num)
+    , _ed_priority_queues(
+        FLAGS_task_group_ntags * FLAGS_event_dispatcher_num)
     , _pl_num_of_each_tag(FLAGS_bthread_parking_lot_of_each_tag)
     , _tagged_pl(FLAGS_task_group_ntags)
 {}
 
-int TaskControl::init_priority_queues() {
+int TaskControl::init_ed_priority_queues() {
     if (!_enable_priority_queue) {
         return 0;
     }
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
-        for (int j = 0; j < _pq_num_of_each_tag; ++j) {
-            if (priority_queue(i, j).init(BTHREAD_MAX_CONCURRENCY) != 0) {
+        for (int j = 0;
+             j < _ed_priority_queue_num_of_each_tag; ++j) {
+            if (ed_priority_queue(i, j).init(
+                    BTHREAD_MAX_CONCURRENCY) != 0) {
                 LOG(ERROR) << "Fail to init priority queue for tag=" << i
                            << " ed=" << j;
                 return -1;
@@ -259,7 +262,7 @@ int TaskControl::init(int concurrency) {
         _tagged_nbthreads.push_back(new bvar::Adder<int64_t>("bthread_count", tag_str));
     }
 
-    if (init_priority_queues() != 0) {
+    if (init_ed_priority_queues() != 0) {
         return -1;
     }
 
@@ -548,8 +551,9 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     auto tag = tls_task_group->tag();
 
     if (_enable_priority_queue) {
-        for (int i = 0; i < _pq_num_of_each_tag; ++i) {
-            if (priority_queue(tag, i).steal(tid)) {
+        for (int i = 0;
+             i < _ed_priority_queue_num_of_each_tag; ++i) {
+            if (ed_priority_queue(tag, i).steal(tid)) {
                 return true;
             }
         }
