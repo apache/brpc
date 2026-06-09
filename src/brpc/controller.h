@@ -154,6 +154,11 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_BYTES_TO_BASE64 = (1 << 11);
     static const uint32_t FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE = (1 << 12);
     static const uint32_t FLAGS_USED_BY_RPC = (1 << 13);
+    // Reserve/reuse the sending socket after the RPC (mysql transactions).
+    // The two bits encode BindSockAction: neither=BIND_SOCK_NONE,
+    // RESERVE bit=BIND_SOCK_RESERVE, USE bit=BIND_SOCK_USE.
+    static const uint32_t FLAGS_BIND_SOCK_RESERVE = (1 << 14);
+    static const uint32_t FLAGS_BIND_SOCK_USE = (1 << 15);
     static const uint32_t FLAGS_PB_JSONIFY_EMPTY_ARRAY = (1 << 16);
     static const uint32_t FLAGS_ENABLED_CIRCUIT_BREAKER = (1 << 17);
     static const uint32_t FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS = (1 << 18);
@@ -799,6 +804,26 @@ private:
     { return t ? add_flag(f) : clear_flag(f); }
     inline bool has_flag(uint32_t f) const { return _flags & f; }
 
+    // BindSockAction stored in the FLAGS_BIND_SOCK_* bits of _flags instead
+    // of a dedicated member.
+    void set_bind_sock_action(BindSockAction action) {
+        clear_flag(FLAGS_BIND_SOCK_RESERVE | FLAGS_BIND_SOCK_USE);
+        if (action == BIND_SOCK_RESERVE) {
+            add_flag(FLAGS_BIND_SOCK_RESERVE);
+        } else if (action == BIND_SOCK_USE) {
+            add_flag(FLAGS_BIND_SOCK_USE);
+        }
+    }
+    BindSockAction bind_sock_action() const {
+        if (has_flag(FLAGS_BIND_SOCK_RESERVE)) {
+            return BIND_SOCK_RESERVE;
+        }
+        if (has_flag(FLAGS_BIND_SOCK_USE)) {
+            return BIND_SOCK_USE;
+        }
+        return BIND_SOCK_NONE;
+    }
+
     void set_used_by_rpc() { add_flag(FLAGS_USED_BY_RPC); }
     bool is_used_by_rpc() const { return has_flag(FLAGS_USED_BY_RPC); }
 
@@ -925,10 +950,10 @@ private:
     // Defined at both sides
     StreamSettings *_remote_stream_settings;
 
-    // Whether/how to reserve the sending socket after the RPC (mysql transactions).
-    BindSockAction _bind_sock_action;
-    // The socket reserved by a previous RPC and reused when _bind_sock_action
-    // is BIND_SOCK_USE.
+    // Whether/how to reserve the sending socket after the RPC (mysql
+    // transactions) is stored in the FLAGS_BIND_SOCK_* bits of _flags; see
+    // set_bind_sock_action()/bind_sock_action(). The socket reserved by a
+    // previous RPC and reused when the action is BIND_SOCK_USE:
     SocketUniquePtr _bind_sock;
     // Opaque per-RPC slot a protocol codec may use to carry typed state from
     // serialize_request to pack_request/parse (e.g. the mysql prepared-statement

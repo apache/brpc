@@ -105,6 +105,10 @@ public:
     uint32_t pipelined_count() const { return _cntl->_pipelined_count; }
     void set_pipelined_count(uint32_t count) {  _cntl->_pipelined_count = count; }
 
+    // The mysql protocol stores its statement type (MYSQL_NORMAL_STATEMENT /
+    // MYSQL_PREPARED_STATEMENT) in the pipelined_count slot.
+    void set_mysql_statement_type(uint32_t type) { set_pipelined_count(type); }
+
     ControllerPrivateAccessor& set_server(const Server* server) {
         _cntl->_server = server;
         return *this;
@@ -135,7 +139,7 @@ public:
     void clear_auth_flags() { _cntl->_auth_flags = 0; }
 
     // Set how the sending socket is reserved after the RPC (mysql transactions).
-    void set_bind_sock_action(BindSockAction action) { _cntl->_bind_sock_action = action; }
+    void set_bind_sock_action(BindSockAction action) { _cntl->set_bind_sock_action(action); }
     // Transfer ownership of the reserved socket to `ptr`.
     void get_bind_sock(SocketUniquePtr* ptr) {
         if (_cntl->_bind_sock) {
@@ -144,7 +148,7 @@ public:
     }
     // Reuse an externally-reserved socket for the next RPC.
     void use_bind_sock(SocketId sock_id) {
-        _cntl->_bind_sock_action = BIND_SOCK_USE;
+        _cntl->set_bind_sock_action(BIND_SOCK_USE);
         Socket::Address(sock_id, &_cntl->_bind_sock);
     }
     void set_session_data(void* d) { _cntl->_session_data = d; }

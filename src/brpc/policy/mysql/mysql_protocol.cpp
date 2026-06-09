@@ -127,7 +127,7 @@ bool PackRequest(butil::IOBuf* buf,
                 LOG(ERROR) << "[MYSQL PACK] make prepare statement error " << st;
                 return false;
             }
-            accessor.set_pipelined_count(MYSQL_NEED_PREPARE);
+            accessor.set_mysql_statement_type(MYSQL_NEED_PREPARE);
             buf->append(b);
             return true;
         }
@@ -470,16 +470,16 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     // MYSQL_NORMAL_STATEMENT (1); it is upgraded to MYSQL_PREPARED_STATEMENT (2)
     // below when the request carries a prepared statement.
     ControllerPrivateAccessor accessor(cntl);
-    accessor.set_pipelined_count(MYSQL_NORMAL_STATEMENT);
+    accessor.set_mysql_statement_type(MYSQL_NORMAL_STATEMENT);
 
-    auto tx = rr->get_tx();
+    auto tx = rr->tx();
     if (tx != NULL) {
         accessor.use_bind_sock(tx->GetSocketId());
     }
-    auto st = rr->get_stmt();
+    auto st = rr->stmt();
     if (st != NULL) {
-        accessor.set_session_data(rr->get_stmt());
-        accessor.set_pipelined_count(MYSQL_PREPARED_STATEMENT);
+        accessor.set_session_data(rr->stmt());
+        accessor.set_mysql_statement_type(MYSQL_PREPARED_STATEMENT);
     }
     if (FLAGS_mysql_verbose) {
         LOG(INFO) << "\n[MYSQL REQUEST] " << *rr;

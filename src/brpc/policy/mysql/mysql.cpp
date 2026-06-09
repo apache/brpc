@@ -416,12 +416,6 @@ MysqlResponse::MysqlResponse()
     SharedCtor();
 }
 
-MysqlResponse::MysqlResponse(const MysqlResponse& from)
-    : NonreflectableMessage<MysqlResponse>(from) {
-    SharedCtor();
-    MergeFrom(from);
-}
-
 void MysqlResponse::SharedCtor() {
     _nreply = 0;
     _cached_size_ = 0;
@@ -453,8 +447,8 @@ size_t MysqlResponse::ByteSizeLong() const {
     return _cached_size_;
 }
 
-void MysqlResponse::MergeFrom(const MysqlResponse& from) {
-    CHECK_NE(&from, this);
+void MysqlResponse::MergeFrom(const MysqlResponse&) {
+    CHECK(false) << "MysqlResponse does not support MergeFrom/CopyFrom";
 }
 
 bool MysqlResponse::IsInitialized() const {

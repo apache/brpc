@@ -155,11 +155,11 @@ public:
         return _has_error;
     }
 
-    const MysqlTransaction* get_tx() const {
+    const MysqlTransaction* tx() const {
         return _tx;
     }
 
-    MysqlStatementStub* get_stmt() const {
+    MysqlStatementStub* stmt() const {
         return _stmt;
     }
 
@@ -186,11 +186,11 @@ class MysqlResponse : public NonreflectableMessage<MysqlResponse> {
 public:
     MysqlResponse();
     ~MysqlResponse() override;
-    MysqlResponse(const MysqlResponse& from);
-    inline MysqlResponse& operator=(const MysqlResponse& from) {
-        CopyFrom(from);
-        return *this;
-    }
+    // MysqlResponse does not support deep copy: MergeFrom() is a CHECK-fail
+    // (see mysql.cpp), so CopyFrom()/copy-construction would silently drop all
+    // parsed replies. Make the class explicitly non-copyable.
+    MysqlResponse(const MysqlResponse& from) = delete;
+    MysqlResponse& operator=(const MysqlResponse& from) = delete;
     void Swap(MysqlResponse* other);
     // Parse and consume intact replies from the buf, actual reply size may less then max_count, if
     // some command execute failed

@@ -297,7 +297,7 @@ void Controller::ResetPods() {
     _request_streams.clear();
     _response_streams.clear();
     _remote_stream_settings = NULL;
-    _bind_sock_action = BIND_SOCK_NONE;
+    set_bind_sock_action(BIND_SOCK_NONE);
     _bind_sock.reset();
     _session_data = NULL;
     _auth_flags = 0;
@@ -924,7 +924,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
         HandleStreamConnection(_current_call.sending_sock.get());
         // Propagate the reserve action; OnComplete only actually reserves the
         // socket when the RPC succeeded (its error_code==0 || responded guard).
-        _current_call.bind_sock_action = _bind_sock_action;
+        _current_call.bind_sock_action = bind_sock_action();
         _current_call.OnComplete(this, _error_code, info.responded, true);
     } else {
         // Even if _unfinished_call succeeded, we don't use EBACKUPREQUEST
@@ -1110,7 +1110,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
     if ((_connection_type & CONNECTION_TYPE_POOLED_AND_SHORT) &&
-        _bind_sock_action == BIND_SOCK_USE) {
+        bind_sock_action() == BIND_SOCK_USE) {
         // Reuse the socket reserved by a previous RPC (mysql transaction affinity).
         tmp_sock.reset(_bind_sock.release());
         if (!tmp_sock || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
@@ -1186,7 +1186,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
     } else {
         int rc = 0;
-        if (_bind_sock_action == BIND_SOCK_USE) {
+        if (bind_sock_action() == BIND_SOCK_USE) {
             // Already holding the reserved socket; use it directly.
             _current_call.sending_sock.reset(tmp_sock.release());
         } else if (_connection_type == CONNECTION_TYPE_POOLED) {
