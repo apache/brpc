@@ -179,8 +179,8 @@ TEST_BVAR_OBJS = $(addsuffix .o, $(basename $(TEST_BVAR_SOURCES)))
 TEST_BTHREAD_SOURCES = $(wildcard bthread_*unittest.cpp)
 TEST_BTHREAD_OBJS = $(addsuffix .o, $(basename $(TEST_BTHREAD_SOURCES))) 
 
-TEST_BRPC_SOURCES = $(wildcard brpc_*unittest.cpp)
-TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES))) 
+TEST_BRPC_SOURCES = $(wildcard brpc_*unittest.cpp) $(wildcard mysql/brpc_*unittest.cpp)
+TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES)))
 
 TEST_PROTO_SOURCES = $(wildcard *.proto)
 TEST_PROTO_OBJS = $(TEST_PROTO_SOURCES:.proto=.pb.o)
@@ -235,6 +235,16 @@ else ifeq ($(SYSTEM),Darwin)
 endif
 
 brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o | libbrpc.dbg.$(SOEXT)
+	@echo "> Linking $@"
+ifeq ($(SYSTEM),Linux)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Darwin)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(GTEST_STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
+endif
+
+# Tests under subdirectories (e.g. mysql/) need their own link rule because the
+# pattern above anchors on a literal "brpc_" prefix and won't match "mysql/brpc_...".
+mysql/brpc_%_unittest:$(TEST_PROTO_OBJS) mysql/brpc_%_unittest.o | libbrpc.dbg.$(SOEXT)
 	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
