@@ -583,7 +583,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     // packet (mirrors the hardened auth_plugin path above).
     uint64_t len = parse_encode_length(buf);
     if (len > buf.size()) {
-        LOG(ERROR) << "MysqlReply::Column::Parse: catalog length " << len
+        LOG(WARNING) << "MysqlReply::Column::Parse: catalog length " << len
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -594,7 +594,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
-        LOG(ERROR) << "MysqlReply::Column::Parse: database length " << len
+        LOG(WARNING) << "MysqlReply::Column::Parse: database length " << len
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -605,7 +605,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
-        LOG(ERROR) << "MysqlReply::Column::Parse: table length " << len
+        LOG(WARNING) << "MysqlReply::Column::Parse: table length " << len
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -616,7 +616,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
-        LOG(ERROR) << "MysqlReply::Column::Parse: origin_table length " << len
+        LOG(WARNING) << "MysqlReply::Column::Parse: origin_table length " << len
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -627,7 +627,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
-        LOG(ERROR) << "MysqlReply::Column::Parse: name length " << len
+        LOG(WARNING) << "MysqlReply::Column::Parse: name length " << len
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -638,7 +638,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
-        LOG(ERROR) << "MysqlReply::Column::Parse: origin_name length " << len
+        LOG(WARNING) << "MysqlReply::Column::Parse: origin_name length " << len
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -756,7 +756,7 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     // sql_state(5) = 9 bytes; guard against a malformed short packet to avoid
     // an unsigned underflow producing a huge length.
     if (header.payload_size < 9) {
-        LOG(ERROR) << "MysqlReply::Error::Parse: truncated ERR packet, payload_size "
+        LOG(WARNING) << "MysqlReply::Error::Parse: truncated ERR packet, payload_size "
                    << header.payload_size << " < 9 (0xFF+errcode+'#'+sql_state)";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -791,7 +791,7 @@ ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
         uint8_t hdr = 0;
         buf.cut1((char*)&hdr);
         if (hdr != 0x00) {
-            LOG(ERROR) << "MysqlReply::Row::Parse: binary row packet header byte is "
+            LOG(WARNING) << "MysqlReply::Row::Parse: binary row packet header byte is "
                        << unsigned(hdr) << ", expected 0x00";
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
@@ -1005,7 +1005,7 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
             }
             // field is not null
             if (len > buf.size()) {
-                LOG(ERROR) << "MysqlReply::Field::Parse (binary): string field length " << len
+                LOG(WARNING) << "MysqlReply::Field::Parse (binary): string field length " << len
                            << " exceeds remaining buffer size " << buf.size();
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
