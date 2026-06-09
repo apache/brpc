@@ -1281,9 +1281,3 @@ TEST_F(MysqlHandshakeServerTest, SwitchesFromNativePasswordToServerPlugin) {
 }
 
 }  // namespace
-
-int main(int argc, char* argv[]) {
-    testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
-    return RUN_ALL_TESTS();
-}
