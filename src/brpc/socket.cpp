@@ -1276,12 +1276,18 @@ int Socket::Connect(const timespec* abstime,
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
     if (!_device_name.empty()) {
+#ifdef SO_BINDTODEVICE
         if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE,
                        _device_name.c_str(), _device_name.size()) < 0) {
             PLOG(ERROR) << "Fail to set SO_BINDTODEVICE of fd=" << sockfd
                         << " to device_name=" << _device_name;
             return -1;
         }
+#else
+        LOG(ERROR) << "SO_BINDTODEVICE (device_name=" << _device_name
+                   << ") is not supported on this platform";
+        return -1;
+#endif
     }
     if (local_side().ip != butil::IP_ANY) {
         struct sockaddr_storage cli_addr;
@@ -1558,8 +1564,7 @@ void Socket::CheckConnectedAndKeepWrite(int fd, int err, void* data) {
             g_vars->channel_conn << 1;
         }
         if (s->_app_connect) {
-            s->_app_connect->StartConnect(req->get_socket(),
-                                          AfterAppConnected, req);
+            s->_app_connect->StartConnect(req->get_socket(), AfterAppConnected, req);
         } else {
             // Successfully created a connection
             AfterAppConnected(0, req);
@@ -2140,7 +2145,14 @@ ssize_t Socket::DoRead(size_t size_hint) {
     default: {
         const unsigned long e = ERR_get_error();
         if (nr == 0) {
-            // Socket EOF or SSL session EOF
+            if (ssl_error != SSL_ERROR_ZERO_RETURN) {
+                // Unexpected EOF without proper SSL shutdown (close_notify)
+                LOG(WARNING) << "Fail to read from ssl_fd=" << fd()
+                             << ": unexpected ssl_error=" << ssl_error;
+                errno = ESSL;
+                return -1;
+            }
+            // Clean SSL shutdown (close_notify received)
         } else if (e != 0) {
             LOG(WARNING) << "Fail to read from ssl_fd=" << fd()
                          << ": " << SSLError(e);
