@@ -433,6 +433,7 @@ void ProcessMysqlResponse(InputMessageBase* msg_base) {
     const int saved_error = cntl->ErrorCode();
     if (cntl->response() != NULL) {
         if (cntl->response()->GetDescriptor() != MysqlResponse::descriptor()) {
+            LOG(ERROR) << "[MYSQL PROCESS] response message is not a MysqlResponse";
             cntl->SetFailed(ERESPONSE, "Must be MysqlResponse");
         } else {
             // We work around ParseFrom of pb which is just a placeholder.
@@ -450,14 +451,17 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
                            Controller* cntl,
                            const google::protobuf::Message* request) {
     if (request == NULL) {
+        LOG(ERROR) << "[MYSQL SERIALIZE] request is NULL";
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
     if (request->GetDescriptor() != MysqlRequest::descriptor()) {
+        LOG(ERROR) << "[MYSQL SERIALIZE] request message is not a MysqlRequest";
         return cntl->SetFailed(EREQUEST, "The request is not a MysqlRequest");
     }
     const MysqlRequest* rr = (const MysqlRequest*)request;
     // We work around SerializeTo of pb which is just a placeholder.
     if (!rr->SerializeTo(buf)) {
+        LOG(ERROR) << "[MYSQL SERIALIZE] failed to serialize MysqlRequest to IOBuf";
         return cntl->SetFailed(EREQUEST, "Fail to serialize MysqlRequest");
     }
     // mysql doesn't use pipelined_count to verify the end of a response; instead we

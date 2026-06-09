@@ -19,6 +19,7 @@
 
 #include <vector>
 #include <gflags/gflags.h>
+#include "butil/logging.h"
 #include "brpc/socket.h"
 #include "brpc/policy/mysql/mysql_statement.h"
 
@@ -39,10 +40,17 @@ uint32_t MysqlStatement::StatementId(SocketId socket_id) const {
     {
         MysqlStatementDBD::ScopedPtr ptr;
         if (_id_map.Read(&ptr) != 0) {
+            LOG(ERROR) << "MysqlStatement::StatementId: failed to read the "
+                          "statement-id map (DoublyBufferedData::Read failed) "
+                          "for socket_id=" << socket_id << ", returning stmt_id=0";
             return 0;
         }
         const MysqlStatementId* p = ptr->seek(socket_id);
         if (p == NULL) {
+            LOG(ERROR) << "MysqlStatement::StatementId: no prepared statement id "
+                          "cached for socket_id=" << socket_id
+                       << " (statement not found / not prepared on this "
+                          "connection), returning stmt_id=0";
             return 0;
         }
         SocketUniquePtr socket;
@@ -62,6 +70,10 @@ uint32_t MysqlStatement::StatementId(SocketId socket_id) const {
     // Modify(), since DoublyBufferedData::Modify() blocks until all live
     // Read() references are gone -- holding `ptr` here would deadlock.
     _id_map.Modify(my_delete_k, socket_id);
+    LOG(ERROR) << "MysqlStatement::StatementId: cached statement id for "
+                  "socket_id=" << socket_id << " is stale (socket closed/recycled "
+                  "-- fd_version mismatch or Socket::Address failed); erased the "
+                  "entry and returning stmt_id=0 to force a re-prepare";
     return 0;
 }
 

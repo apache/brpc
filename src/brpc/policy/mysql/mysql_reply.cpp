@@ -19,6 +19,7 @@
 
 #include "brpc/policy/mysql/mysql_common.h"
 #include "brpc/policy/mysql/mysql_reply.h"
+#include "butil/logging.h"  // LOG()
 
 namespace brpc {
 
@@ -42,6 +43,8 @@ inline bool my_alloc_check(butil::Arena* arena, const size_t n, Type*& pointer) 
     if (pointer == NULL) {
         pointer = (Type*)arena->allocate(sizeof(Type) * n);
         if (pointer == NULL) {
+            LOG(ERROR) << "my_alloc_check: arena failed to allocate " << (sizeof(Type) * n)
+                       << " bytes (n=" << n << ")";
             return false;
         }
         for (size_t i = 0; i < n; ++i) {
@@ -56,6 +59,7 @@ inline bool my_alloc_check(butil::Arena* arena, const size_t n, char*& pointer) 
     if (pointer == NULL) {
         pointer = (char*)arena->allocate(sizeof(char) * n);
         if (pointer == NULL) {
+            LOG(ERROR) << "my_alloc_check: arena failed to allocate " << n << " char bytes";
             return false;
         }
     }
@@ -497,6 +501,8 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     }
     {
         if (_auth_plugin_length > buf.size()) {
+            LOG(ERROR) << "MysqlReply::Auth::Parse: auth_plugin length " << _auth_plugin_length
+                       << " exceeds remaining buffer size " << buf.size();
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
         char* d = NULL;
@@ -577,6 +583,8 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     // packet (mirrors the hardened auth_plugin path above).
     uint64_t len = parse_encode_length(buf);
     if (len > buf.size()) {
+        LOG(ERROR) << "MysqlReply::Column::Parse: catalog length " << len
+                   << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     char* catalog = NULL;
@@ -586,6 +594,8 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
+        LOG(ERROR) << "MysqlReply::Column::Parse: database length " << len
+                   << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     char* database = NULL;
@@ -595,6 +605,8 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
+        LOG(ERROR) << "MysqlReply::Column::Parse: table length " << len
+                   << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     char* table = NULL;
@@ -604,6 +616,8 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
+        LOG(ERROR) << "MysqlReply::Column::Parse: origin_table length " << len
+                   << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     char* origin_table = NULL;
@@ -613,6 +627,8 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
+        LOG(ERROR) << "MysqlReply::Column::Parse: name length " << len
+                   << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     char* name = NULL;
@@ -622,6 +638,8 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
     len = parse_encode_length(buf);
     if (len > buf.size()) {
+        LOG(ERROR) << "MysqlReply::Column::Parse: origin_name length " << len
+                   << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     char* origin_name = NULL;
@@ -738,6 +756,8 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     // sql_state(5) = 9 bytes; guard against a malformed short packet to avoid
     // an unsigned underflow producing a huge length.
     if (header.payload_size < 9) {
+        LOG(ERROR) << "MysqlReply::Error::Parse: truncated ERR packet, payload_size "
+                   << header.payload_size << " < 9 (0xFF+errcode+'#'+sql_state)";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     uint64_t len = header.payload_size - 9;
@@ -771,6 +791,8 @@ ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
         uint8_t hdr = 0;
         buf.cut1((char*)&hdr);
         if (hdr != 0x00) {
+            LOG(ERROR) << "MysqlReply::Row::Parse: binary row packet header byte is "
+                       << unsigned(hdr) << ", expected 0x00";
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
         // NULL-bitmap, [(column-count + 7 + 2) / 8 bytes]. Allocate from the
@@ -983,6 +1005,8 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
             }
             // field is not null
             if (len > buf.size()) {
+                LOG(ERROR) << "MysqlReply::Field::Parse (binary): string field length " << len
+                           << " exceeds remaining buffer size " << buf.size();
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             char* d = NULL;

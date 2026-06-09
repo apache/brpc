@@ -22,6 +22,7 @@
 #include <gflags/gflags.h>
 #include "butil/string_printf.h"
 #include "butil/macros.h"
+#include "butil/logging.h"
 #include "brpc/controller.h"
 #include "brpc/policy/mysql/mysql.h"
 #include "brpc/policy/mysql/mysql_common.h"
@@ -180,6 +181,7 @@ bool MysqlRequest::Query(const butil::StringPiece& command) {
     }
 
     if (_has_command) {
+        LOG(ERROR) << "MysqlRequest::Query: a command was already set on this request";
         return false;
     }
 
@@ -199,6 +201,7 @@ bool MysqlRequest::AddParam(int8_t p) {
         return false;
     }
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(int8_t): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -214,6 +217,7 @@ bool MysqlRequest::AddParam(int8_t p) {
 }
 bool MysqlRequest::AddParam(uint8_t p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(uint8_t): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -230,6 +234,7 @@ bool MysqlRequest::AddParam(uint8_t p) {
 }
 bool MysqlRequest::AddParam(int16_t p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(int16_t): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -245,6 +250,7 @@ bool MysqlRequest::AddParam(int16_t p) {
 }
 bool MysqlRequest::AddParam(uint16_t p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(uint16_t): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -261,6 +267,7 @@ bool MysqlRequest::AddParam(uint16_t p) {
 }
 bool MysqlRequest::AddParam(int32_t p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(int32_t): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -276,6 +283,7 @@ bool MysqlRequest::AddParam(int32_t p) {
 }
 bool MysqlRequest::AddParam(uint32_t p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(uint32_t): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -292,6 +300,7 @@ bool MysqlRequest::AddParam(uint32_t p) {
 }
 bool MysqlRequest::AddParam(int64_t p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(int64_t): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -308,6 +317,7 @@ bool MysqlRequest::AddParam(int64_t p) {
 }
 bool MysqlRequest::AddParam(uint64_t p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(uint64_t): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -324,6 +334,7 @@ bool MysqlRequest::AddParam(uint64_t p) {
 }
 bool MysqlRequest::AddParam(float p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(float): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -339,6 +350,7 @@ bool MysqlRequest::AddParam(float p) {
 }
 bool MysqlRequest::AddParam(double p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(double): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
@@ -354,6 +366,7 @@ bool MysqlRequest::AddParam(double p) {
 }
 bool MysqlRequest::AddParam(const butil::StringPiece& p) {
     if (_stmt == NULL || _stmt->stmt() == NULL) {
+        LOG(ERROR) << "MysqlRequest::AddParam(StringPiece): no prepared statement bound to request";
         _has_error = true;
         return false;
     }
