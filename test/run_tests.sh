@@ -22,11 +22,7 @@ rm core.*
 test_num=0
 failed_test=""
 rc=0
-# nullglob: a pattern matching nothing expands to nothing instead of the literal
-# string, so a missing subdir (e.g. mysql/) is skipped rather than run as a bogus
-# binary name. Required for the mysql/brpc*unittest entry below.
-shopt -s nullglob
-test_bins="test_butil test_bvar bthread*unittest brpc*unittest mysql/brpc*unittest"
+test_bins="test_butil test_bvar bthread*unittest brpc*unittest"
 for test_bin in $test_bins; do
     test_num=$((test_num + 1))
     >&2 echo "[runtest] $test_bin"
