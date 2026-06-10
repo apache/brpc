@@ -28,7 +28,7 @@
 // test boundaries reflect our own grouping of the client surface.
 //
 // HARNESS: Reuses the self-spawned / already-running mysqld pattern
-// documented in test/mysql/README.md and implemented in
+// documented in test/README_mysql_auth.md and implemented in
 // brpc_mysql_auth_handshake_unittest.cpp.  When -mysql_use_running_server
 // is set the tests connect to a server the caller started (neither started
 // nor stopped here); otherwise the fixture spawns a throwaway mysqld with

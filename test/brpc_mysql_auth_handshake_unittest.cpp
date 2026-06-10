@@ -457,7 +457,7 @@ TEST(AuthMoreDataTest, RejectsBadTag) {
 //     server you started yourself on -mysql_host:-mysql_port and do
 //     NOT start or stop it.  Run that server in a terminal with
 //     --log-error-verbosity=3 to watch the handshake; see
-//     test/mysql/README.md for the bring-up commands.  With a real
+//     test/README_mysql_auth.md for the bring-up commands.  With a real
 //     -mysql_password, caching_sha2_password takes its RSA full-auth
 //     path over plain TCP, exercising CachingSha2PasswordRsaEncrypt
 //     against a real server.
