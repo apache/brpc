@@ -251,19 +251,14 @@ generate_unittests(
     data = [
         ":test_runfiles_root_data",
     ],
-)
-
-cc_test(
-    name = "brpc_mysql_test",
-    srcs = glob([
-        "mysql/brpc_mysql_*_unittest.cpp",
-    ]),
-    copts = COPTS,
-    deps = [
-        "//:brpc",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-    ],
+    # brpc_redis_unittest forks a real redis-server located via PATH. Tag it
+    # "external" so bazel always re-runs it (never serves a cached pass that
+    # actually skipped) and "local" so it runs outside the sandbox, where the
+    # apt-installed redis-server is visible and loopback works. The CI bazel
+    # jobs install redis-server via the install-essential-dependencies action.
+    per_test_tags = {
+        "brpc_redis_unittest.cpp": ["external", "local"],
+    },
 )
 
 refresh_compile_commands(
