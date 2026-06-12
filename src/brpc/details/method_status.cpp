@@ -16,9 +16,8 @@
 // under the License.
 
 
-#include <limits>
-#include "butil/macros.h"
 #include "brpc/controller.h"
+#include "brpc/details/controller_private_accessor.h"
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/details/method_status.h"
 
@@ -156,12 +155,27 @@ int HandleResponseWritten(bthread_id_t id, void* data, int /*error_code*/) {
     return 0;
 }
 
-ConcurrencyRemover::~ConcurrencyRemover() {
+ConcurrencyRemover::ConcurrencyRemover(
+        MethodStatus* status, Controller* c, int64_t received_us)
+    : _status(status)
+    , _c(c)
+    , _server(c->server())
+    , _added_concurrency(ControllerPrivateAccessor(c).has_added_concurrency())
+    , _received_us(received_us) {
+}
+
+void ConcurrencyRemover::OnResponded(int error_code) {
     if (_status) {
-        _status->OnResponded(_c->ErrorCode(), butil::cpuwide_time_us() - _received_us);
+        _status->OnResponded(error_code, butil::cpuwide_time_us() - _received_us);
         _status = NULL;
     }
-    ServerPrivateAccessor(_c->server()).RemoveConcurrency(_c);
+}
+
+ConcurrencyRemover::~ConcurrencyRemover() {
+    OnResponded(_c->ErrorCode());
+    if (_server) {
+        ServerPrivateAccessor(_server).RemoveConcurrency(_added_concurrency);
+    }
 }
 
 }  // namespace brpc

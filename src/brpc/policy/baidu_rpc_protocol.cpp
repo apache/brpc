@@ -274,6 +274,7 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
                      RpcPBMessages* messages, const Server* server,
                      MethodStatus* method_status, int64_t received_us,
                      std::shared_ptr<Span> span) {
+    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     ControllerPrivateAccessor accessor(cntl);
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
@@ -282,21 +283,15 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 
     const google::protobuf::Message* req = NULL == messages ? NULL : messages->Request();
     const google::protobuf::Message* res = NULL == messages ? NULL : messages->Response();
+    const bool has_after_rpc_resp_fn = accessor.has_after_rpc_resp_fn();
+    const bool manages_after_rpc_resp = accessor.manages_after_rpc_resp();
+    std::unique_ptr<ConcurrencyRemover> concurrency_remover(
+        new ConcurrencyRemover(method_status, cntl, received_us));
 
-    // Recycle resources at the end of this function.
     BRPC_SCOPE_EXIT {
-        {
-            // Remove concurrency and record latency at first.
-            ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
-        }
-
-        std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-
         if (NULL == messages) {
             return;
         }
-
-        cntl->CallAfterRpcResp(req, res);
         if (NULL == server->options().baidu_master_service) {
             server->options().rpc_pb_message_factory->Return(messages);
         } else {
@@ -390,8 +385,11 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 
     ResponseWriteInfo args;
     bthread_id_t response_id = INVALID_BTHREAD_ID;
+    const bool wait_for_response = (span || has_after_rpc_resp_fn);
     if (span) {
         span->set_response_size(res_buf.size());
+    }
+    if (wait_for_response) {
         CHECK_EQ(0, bthread_id_create(&response_id, &args, HandleResponseWritten));
     }
 
@@ -451,12 +449,25 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         }
     }
 
-    if (span) {
+    if (wait_for_response) {
         bthread_id_join(response_id);
-        // Do not care about the result of background writing.
-        // TODO: this is not sent
-        span->set_sent_us(args.sent_us);
+        if (span) {
+            // Do not care about the result of background writing.
+            // TODO: this is not sent
+            span->set_sent_us(args.sent_us);
+        }
     }
+    const int responded_error_code = cntl->ErrorCode();
+    if (!manages_after_rpc_resp) {
+        concurrency_remover.reset();
+    }
+    if (has_after_rpc_resp_fn) {
+        cntl->CallAfterRpcResp(req, res);
+    }
+    if (manages_after_rpc_resp) {
+        concurrency_remover->OnResponded(responded_error_code);
+    }
+    concurrency_remover.reset();
 }
 
 namespace {

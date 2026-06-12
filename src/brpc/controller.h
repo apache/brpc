@@ -152,6 +152,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_SINGLE_REPEATED_TO_ARRAY = (1 << 20);
     static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
     static const uint32_t FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND = (1 << 22);
+    static const uint32_t FLAGS_MANAGE_AFTER_RPC_RESP = (1 << 23);
 
 public:
     struct Inheritable {
@@ -621,7 +622,12 @@ public:
                                                const google::protobuf::Message* req,
                                                const google::protobuf::Message* res)>;
 
-    void set_after_rpc_resp_fn(AfterRpcRespFnType&& fn) { _after_rpc_resp_fn = fn; }
+    void set_after_rpc_resp_fn(AfterRpcRespFnType&& fn,
+                               bool manage_concurrency_remover = false) {
+        _after_rpc_resp_fn = fn;
+        set_flag(FLAGS_MANAGE_AFTER_RPC_RESP,
+                 manage_concurrency_remover && !!_after_rpc_resp_fn);
+    }
 
     void CallAfterRpcResp(const google::protobuf::Message* req, const google::protobuf::Message* res);
 

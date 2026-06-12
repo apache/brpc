@@ -53,7 +53,8 @@ public:
         // optional: set a callback function which is called after response is sent
         // and before cntl/req/res is destructed.
         cntl->set_after_rpc_resp_fn(std::bind(&HttpServiceImpl::CallAfterRpc,
-            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
+            true);
 
         // Fill response.
         cntl->http_response().set_content_type("text/plain");
