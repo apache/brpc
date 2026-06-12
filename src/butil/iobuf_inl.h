@@ -603,12 +603,28 @@ void remove_tls_block_chain();
 
 IOBuf::Block* acquire_tls_block();
 
+static inline bool is_in_tls_block_chain(IOBuf::Block* head, IOBuf::Block* b) {
+    for (IOBuf::Block* p = head; p != NULL; p = p->u.portal_next) {
+        if (p == b) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Return one block to TLS.
 inline void release_tls_block(IOBuf::Block* b) {
     if (!b) {
         return;
     }
     TLSData *tls_data = get_g_tls_data();
+    // Guard against duplicate return anywhere in the TLS list.  Checking only
+    // block_head misses cases like H -> X where returning X again would create
+    // a 2-node cycle X -> H -> X.  The TLS list is short (soft-limited), so a
+    // linear scan is cheap here.
+    if (is_in_tls_block_chain(tls_data->block_head, b)) {
+        return;
+    }
     if (b->full()) {
         b->dec_ref();
     } else if (tls_data->num_blocks >= max_blocks_per_thread()) {

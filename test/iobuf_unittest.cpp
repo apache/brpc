@@ -1946,4 +1946,347 @@ TEST_F(IOBufTest, single_iobuf) {
     ASSERT_TRUE(p != nullptr);
 }
 
+// Regression tests for https://github.com/apache/brpc/issues/3243
+//
+// A duplicate return of a block that's already in the TLS free list can create
+// either a self-loop (when the block is block_head) or a longer cycle (when
+// the block already exists deeper in the list).  Any later traversal then
+// spins forever.  Run these tests in a dedicated pthread so the main thread's
+// TLS remains untouched.
+
+static bool tls_block_chain_has_cycle() {
+    butil::IOBuf::Block* slow = butil::iobuf::get_tls_block_head();
+    butil::IOBuf::Block* fast = slow;
+    while (fast != NULL) {
+        fast = butil::iobuf::get_portal_next(fast);
+        if (fast == NULL) {
+            return false;
+        }
+        slow = butil::iobuf::get_portal_next(slow);
+        fast = butil::iobuf::get_portal_next(fast);
+        if (slow == fast) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void dec_ref_distinct_blocks(butil::IOBuf::Block* b1,
+                                    butil::IOBuf::Block* b2,
+                                    butil::IOBuf::Block* b3 = NULL) {
+    if (b1 != NULL) {
+        b1->dec_ref();
+    }
+    if (b2 != NULL && b2 != b1) {
+        b2->dec_ref();
+    }
+    if (b3 != NULL && b3 != b1 && b3 != b2) {
+        b3->dec_ref();
+    }
+}
+
+static void cleanup_corrupted_tls_chain(int drain_times) {
+    butil::IOBuf::Block* b1 = NULL;
+    butil::IOBuf::Block* b2 = NULL;
+    butil::IOBuf::Block* b3 = NULL;
+    if (drain_times >= 1) {
+        b1 = butil::iobuf::acquire_tls_block();
+    }
+    if (drain_times >= 2) {
+        b2 = butil::iobuf::acquire_tls_block();
+    }
+    if (drain_times >= 3) {
+        b3 = butil::iobuf::acquire_tls_block();
+    }
+    dec_ref_distinct_blocks(b1, b2, b3);
+}
+
+struct CycleRegressionResult {
+    bool setup_ok;
+    bool has_cycle;
+};
+
+static void* double_return_release_tls_block_head_thread(void* arg) {
+    CycleRegressionResult* result = static_cast<CycleRegressionResult*>(arg);
+    result->setup_ok = false;
+    result->has_cycle = false;
+    butil::iobuf::remove_tls_block_chain();
+
+    butil::IOBuf::Block* b = butil::iobuf::acquire_tls_block();
+    if (!b) {
+        return NULL;
+    }
+    result->setup_ok = true;
+    butil::iobuf::release_tls_block(b);
+    butil::iobuf::release_tls_block(b);
+
+    if (tls_block_chain_has_cycle()) {
+        result->has_cycle = true;
+        cleanup_corrupted_tls_chain(2);
+    } else {
+        butil::iobuf::remove_tls_block_chain();
+    }
+    return NULL;
+}
+
+TEST_F(IOBufTest, regression_3243_release_tls_block_head_no_cycle) {
+    CycleRegressionResult result = {false, false};
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, NULL,
+                                double_return_release_tls_block_head_thread,
+                                &result));
+    ASSERT_EQ(0, pthread_join(tid, NULL));
+
+    ASSERT_TRUE(result.setup_ok)
+        << "Failed to allocate a TLS block for regression setup.";
+    EXPECT_FALSE(result.has_cycle)
+        << "release_tls_block() created a cycle when the same block was "
+           "returned twice while already cached in TLS.  (GitHub issue #3243)";
+}
+
+static void* double_return_release_tls_block_non_head_thread(void* arg) {
+    CycleRegressionResult* result = static_cast<CycleRegressionResult*>(arg);
+    result->setup_ok = false;
+    result->has_cycle = false;
+    butil::iobuf::remove_tls_block_chain();
+
+    butil::IOBuf::Block* tail = butil::iobuf::acquire_tls_block();
+    butil::IOBuf::Block* head = butil::iobuf::acquire_tls_block();
+    if (!tail || !head) {
+        dec_ref_distinct_blocks(tail, head);
+        return NULL;
+    }
+    result->setup_ok = true;
+
+    butil::iobuf::release_tls_block(tail);
+    butil::iobuf::release_tls_block(head);
+    // TLS: head -> tail -> NULL. Returning tail again used to create
+    // tail -> head -> tail.
+    butil::iobuf::release_tls_block(tail);
+
+    if (tls_block_chain_has_cycle()) {
+        result->has_cycle = true;
+        cleanup_corrupted_tls_chain(3);
+    } else {
+        butil::iobuf::remove_tls_block_chain();
+    }
+    return NULL;
+}
+
+TEST_F(IOBufTest, regression_3243_release_tls_block_non_head_no_cycle) {
+    CycleRegressionResult result = {false, false};
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, NULL,
+                                double_return_release_tls_block_non_head_thread,
+                                &result));
+    ASSERT_EQ(0, pthread_join(tid, NULL));
+
+    ASSERT_TRUE(result.setup_ok)
+        << "Failed to allocate TLS blocks for regression setup.";
+    EXPECT_FALSE(result.has_cycle)
+        << "release_tls_block() created a cycle when a block already present "
+           "deeper in the TLS list was returned again.  "
+           "(GitHub issue #3243)";
+}
+
+static void* double_return_release_tls_block_chain_head_thread(void* arg) {
+    CycleRegressionResult* result = static_cast<CycleRegressionResult*>(arg);
+    result->setup_ok = false;
+    result->has_cycle = false;
+    butil::iobuf::remove_tls_block_chain();
+
+    butil::IOBuf::Block* b = butil::iobuf::acquire_tls_block();
+    if (!b) {
+        return NULL;
+    }
+    result->setup_ok = true;
+    butil::iobuf::release_tls_block(b);
+    b->u.portal_next = NULL;
+    butil::iobuf::release_tls_block_chain(b);
+
+    if (tls_block_chain_has_cycle()) {
+        result->has_cycle = true;
+        cleanup_corrupted_tls_chain(2);
+    } else {
+        butil::iobuf::remove_tls_block_chain();
+    }
+    return NULL;
+}
+
+TEST_F(IOBufTest, regression_3243_release_tls_block_chain_head_no_cycle) {
+    CycleRegressionResult result = {false, false};
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, NULL,
+                                double_return_release_tls_block_chain_head_thread,
+                                &result));
+    ASSERT_EQ(0, pthread_join(tid, NULL));
+
+    ASSERT_TRUE(result.setup_ok)
+        << "Failed to allocate a TLS block for chain regression setup.";
+    EXPECT_FALSE(result.has_cycle)
+        << "release_tls_block_chain() created a cycle when the returned chain "
+           "overlapped the TLS head.  (GitHub issue #3243)";
+}
+
+static void* double_return_release_tls_block_chain_non_head_thread(void* arg) {
+    CycleRegressionResult* result = static_cast<CycleRegressionResult*>(arg);
+    result->setup_ok = false;
+    result->has_cycle = false;
+    butil::iobuf::remove_tls_block_chain();
+
+    butil::IOBuf::Block* tail = butil::iobuf::acquire_tls_block();
+    butil::IOBuf::Block* head = butil::iobuf::acquire_tls_block();
+    if (!tail || !head) {
+        dec_ref_distinct_blocks(tail, head);
+        return NULL;
+    }
+    result->setup_ok = true;
+
+    butil::iobuf::release_tls_block(tail);
+    butil::iobuf::release_tls_block(head);
+    // TLS: head -> tail -> NULL. Returning the single-node chain [tail]
+    // again used to create tail -> head -> tail.
+    tail->u.portal_next = NULL;
+    butil::iobuf::release_tls_block_chain(tail);
+
+    if (tls_block_chain_has_cycle()) {
+        result->has_cycle = true;
+        cleanup_corrupted_tls_chain(3);
+    } else {
+        butil::iobuf::remove_tls_block_chain();
+    }
+    return NULL;
+}
+
+TEST_F(IOBufTest, regression_3243_release_tls_block_chain_non_head_no_cycle) {
+    CycleRegressionResult result = {false, false};
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, NULL,
+                                double_return_release_tls_block_chain_non_head_thread,
+                                &result));
+    ASSERT_EQ(0, pthread_join(tid, NULL));
+
+    ASSERT_TRUE(result.setup_ok)
+        << "Failed to allocate TLS blocks for chain regression setup.";
+    EXPECT_FALSE(result.has_cycle)
+        << "release_tls_block_chain() created a cycle when the returned chain "
+           "contained a block already present deeper in TLS.  "
+           "(GitHub issue #3243)";
+}
+
+struct PartialOverlapResult {
+    bool setup_ok;
+    bool has_cycle;
+    int tls_block_count;
+};
+
+static void* partial_overlap_release_tls_block_chain_thread(void* arg) {
+    PartialOverlapResult* result = static_cast<PartialOverlapResult*>(arg);
+    result->setup_ok = false;
+    result->has_cycle = false;
+    result->tls_block_count = -1;
+    butil::iobuf::remove_tls_block_chain();
+
+    butil::IOBuf::Block* tail = butil::iobuf::acquire_tls_block();
+    butil::IOBuf::Block* head = butil::iobuf::acquire_tls_block();
+    butil::IOBuf::Block* prefix = butil::iobuf::acquire_tls_block();
+    if (!tail || !head || !prefix) {
+        dec_ref_distinct_blocks(tail, head, prefix);
+        return NULL;
+    }
+    result->setup_ok = true;
+
+    butil::iobuf::release_tls_block(tail);
+    butil::iobuf::release_tls_block(head);
+    // TLS: head -> tail -> NULL. Returning prefix -> tail should preserve
+    // prefix and avoid both the tail->head->tail cycle and leaking prefix.
+    prefix->u.portal_next = tail;
+    butil::iobuf::release_tls_block_chain(prefix);
+
+    result->has_cycle = tls_block_chain_has_cycle();
+    result->tls_block_count = butil::iobuf::get_tls_block_count();
+    if (result->has_cycle) {
+        cleanup_corrupted_tls_chain(3);
+    } else {
+        butil::iobuf::remove_tls_block_chain();
+    }
+    return NULL;
+}
+
+TEST_F(IOBufTest, regression_3243_release_tls_block_chain_partial_overlap_keeps_prefix) {
+    PartialOverlapResult result;
+    result.setup_ok = false;
+    result.has_cycle = false;
+    result.tls_block_count = -1;
+
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, NULL,
+                                partial_overlap_release_tls_block_chain_thread,
+                                &result));
+    ASSERT_EQ(0, pthread_join(tid, NULL));
+
+    ASSERT_TRUE(result.setup_ok)
+        << "Failed to allocate TLS blocks for partial-overlap regression setup.";
+    EXPECT_FALSE(result.has_cycle)
+        << "release_tls_block_chain() created a cycle when a unique prefix "
+           "was returned ahead of a block already cached in TLS.  "
+           "(GitHub issue #3243)";
+    EXPECT_EQ(3, result.tls_block_count)
+        << "release_tls_block_chain() dropped the unique prefix when the "
+           "returned chain overlapped the TLS list.  (GitHub issue #3243)";
+}
+
+// Reproduce the issue through IOBufAsZeroCopyOutputStream::BackUp().  BackUp()
+// eagerly returns _cur_block to TLS.  A subsequent release of the same pointer
+// used to create a self-loop at the head.
+static void* backup_double_return_thread(void* arg) {
+    CycleRegressionResult* result = static_cast<CycleRegressionResult*>(arg);
+    result->setup_ok = false;
+    result->has_cycle = false;
+    butil::iobuf::remove_tls_block_chain();
+
+    butil::IOBuf buf;
+    {
+        butil::IOBufAsZeroCopyOutputStream stream(&buf);
+        void* data = NULL;
+        int size = 0;
+        if (!stream.Next(&data, &size)) {
+            return NULL;
+        }
+        stream.BackUp(size);
+
+        butil::IOBuf::Block* head = butil::iobuf::get_tls_block_head();
+        if (head == NULL) {
+            return NULL;
+        }
+        result->setup_ok = true;
+        butil::iobuf::release_tls_block(head);
+
+        if (tls_block_chain_has_cycle()) {
+            result->has_cycle = true;
+            cleanup_corrupted_tls_chain(2);
+        }
+    }
+    if (!result->has_cycle) {
+        butil::iobuf::remove_tls_block_chain();
+    }
+    return NULL;
+}
+
+TEST_F(IOBufTest, regression_3243_backup_then_double_release_no_cycle) {
+    CycleRegressionResult result = {false, false};
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, NULL,
+                                backup_double_return_thread, &result));
+    ASSERT_EQ(0, pthread_join(tid, NULL));
+
+    ASSERT_TRUE(result.setup_ok)
+        << "Failed to set up IOBufAsZeroCopyOutputStream regression path.";
+
+    EXPECT_FALSE(result.has_cycle)
+        << "After IOBufAsZeroCopyOutputStream::BackUp() returned a block to "
+           "TLS, a second release_tls_block() created a cycle.  "
+           "(GitHub issue #3243)";
+}
+
 } // namespace
