@@ -1,0 +1,24 @@
+namespace test;
+
+table BenchmarkRequest {
+  opcode:int;
+  echo_attachment:int;
+  attachment_size:long;
+  request_id:long;
+  
+  reserved:long;
+  message:string;
+}
+
+table BenchmarkResponse {
+  opcode:int;
+  echo_attachment:int;
+  attachment_size:long;
+  request_id:long;
+  reserved:long;
+  message:string;
+}
+
+rpc_service BenchmarkService {
+  Test(BenchmarkRequest):BenchmarkResponse;
+}
