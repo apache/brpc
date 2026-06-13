@@ -256,8 +256,18 @@ generate_unittests(
     # actually skipped) and "local" so it runs outside the sandbox, where the
     # apt-installed redis-server is visible and loopback works. The CI bazel
     # jobs install redis-server via the install-essential-dependencies action.
+    #
+    # The mysql integration tests fork a real mysqld the same way (located via
+    # PATH, apt-installed by install-essential-dependencies); tag them the same
+    # so bazel never serves a cached pass that actually skipped and runs them
+    # outside the sandbox where mysqld and loopback are visible.
     per_test_tags = {
         "brpc_redis_unittest.cpp": ["external", "local"],
+        "brpc_mysql_auth_handshake_unittest.cpp": ["external", "local"],
+        "brpc_mysql_connection_type_unittest.cpp": ["external", "local"],
+        "brpc_mysql_prepared_integration_unittest.cpp": ["external", "local"],
+        "brpc_mysql_txn_integration_unittest.cpp": ["external", "local"],
+        "brpc_mysql_pool_concurrency_unittest.cpp": ["external", "local"],
     },
     # brpc_channel_unittest packs dozens of timing-sensitive TEST_F (backup
     # request, retry/backoff, timeouts) into one binary whose cumulative
