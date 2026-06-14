@@ -101,11 +101,13 @@ public:
     std::string stack_trace(bthread_t tid);
 #endif // BRPC_BTHREAD_TRACER
 
-    void push_priority_queue(bthread_tag_t tag, bthread_t tid) {
-        _priority_queues[tag].push(tid);
+    void push_ed_priority_queue(
+            bthread_tag_t tag, int priority_index, bthread_t tid) {
+        ed_priority_queue(tag, priority_index).push(tid);
     }
 
     std::vector<bthread_t> get_living_bthreads();
+
 private:
     typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
     typedef std::array<ParkingLot, BTHREAD_MAX_PARKINGLOT> TaggedParkingLot;
@@ -122,6 +124,15 @@ private:
 
     // Tag parking slot
     TaggedParkingLot& tag_pl(bthread_tag_t tag) { return _tagged_pl[tag]; }
+
+    // Priority queue for a specific ED within a tag
+    WorkStealingQueue<bthread_t>& ed_priority_queue(
+            bthread_tag_t tag, int index) {
+        return _ed_priority_queues[
+            tag * _ed_priority_queue_num_of_each_tag + index];
+    }
+
+    int init_ed_priority_queues();
 
     static void delete_task_group(void* arg);
 
@@ -164,7 +175,8 @@ private:
     std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
 
     bool _enable_priority_queue;
-    std::vector<WorkStealingQueue<bthread_t>> _priority_queues;
+    int _ed_priority_queue_num_of_each_tag;
+    std::vector<WorkStealingQueue<bthread_t>> _ed_priority_queues;
 
     size_t _pl_num_of_each_tag;
     std::vector<TaggedParkingLot> _tagged_pl;

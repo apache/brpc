@@ -23,13 +23,14 @@
 #include "butil/third_party/murmurhash3/murmurhash3.h"// fmix32
 #include "bvar/latency_recorder.h"                    // bvar::LatencyRecorder
 #include "bthread/bthread.h"                          // bthread_start_background
+#include "bthread/task_group.h"                        // TaskGroup::address_meta
 #include "brpc/event_dispatcher.h"
 
 DECLARE_int32(task_group_ntags);
 
-namespace brpc {
+DECLARE_int32(event_dispatcher_num);
 
-DEFINE_int32(event_dispatcher_num, 1, "Number of event dispatcher");
+namespace brpc {
 DEFINE_bool(event_dispatcher_edisp_unsched, false,
             "Disable event dispatcher schedule");
 
@@ -66,6 +67,7 @@ void InitializeGlobalDispatchers() {
             bthread_attr_t attr =
                 FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
             attr.tag = (BTHREAD_TAG_DEFAULT + i) % FLAGS_task_group_ntags;
+            g_edisp[i * FLAGS_event_dispatcher_num + j].set_priority_index(j);
             CHECK_EQ(0, g_edisp[i * FLAGS_event_dispatcher_num + j].Start(&attr));
         }
     }

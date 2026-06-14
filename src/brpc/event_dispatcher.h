@@ -114,6 +114,8 @@ public:
     // Stop bthread of this dispatcher.
     void Stop();
 
+    void set_priority_index(int idx) { _priority_index = idx; }
+
     // Suspend calling thread until bthread of this dispatcher stops.
     void Join();
 
@@ -188,6 +190,8 @@ private:
 
     // Pipe fds to wakeup EventDispatcher from `epoll_wait' in order to quit
     int _wakeup_fds[2];
+
+    int _priority_index{-1};
 };
 
 EventDispatcher& GetGlobalEventDispatcher(int fd, bthread_tag_t tag);
