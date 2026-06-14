@@ -1925,8 +1925,8 @@ bool RtmpChunkStream::OnSetPeerBandwidth(
 
 bool RtmpChunkStream::OnUserControlMessage(
     const RtmpMessageHeader& mh, butil::IOBuf* msg_body, Socket* socket) {
-    if (mh.message_length > 32) {
-        RTMP_ERROR(socket, mh) << "No user control message long as "
+    if (mh.message_length < 2 || mh.message_length > 32) {
+        RTMP_ERROR(socket, mh) << "Invalid user control message length="
                                << mh.message_length << " bytes";
         return false;
     }
