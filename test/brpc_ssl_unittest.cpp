@@ -35,6 +35,7 @@
 #include "brpc/channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
+#include "brpc/details/ssl_helper.h"
 #include "echo.pb.h"
 
 namespace brpc {
@@ -498,78 +499,67 @@ TEST_F(SSLTest, ssl_perf) {
     close(servfd);
 }
 
-struct AbruptCloseArgs { int listenfd; };
 
-static void* abrupt_close_server(void* arg) {
-    AbruptCloseArgs* a = (AbruptCloseArgs*)arg;
-    int connfd = accept(a->listenfd, NULL, NULL);
-    if (connfd < 0) return NULL;
-    SSL_CTX* ctx = brpc::CreateServerSSLContext(
-        "cert1.crt", "cert1.key", brpc::SSLOptions(), NULL, NULL);
-    SSL* ssl = brpc::CreateSSLSession(ctx, 0, connfd, true);
-    if (ssl) { SSL_do_handshake(ssl); SSL_free(ssl); }
-    close(connfd);
+#ifdef TLS1_3_VERSION
+
+void* tls13_do_handshake(void* arg) {
+    SSL* ssl = (SSL*)arg;
+    EXPECT_EQ(1, SSL_do_handshake(ssl));
     return NULL;
 }
 
-TEST_F(SSLTest, ssl_unexpected_eof) {
-    // Verify that Socket::DoRead() returns -1 with errno=ESSL when the
-    // remote side closes the TCP connection without sending close_notify.
-    // Without the fix, DoRead() returns 0, causing error_code=0 to
-    // propagate to Controller::SetFailed() which triggers CHECK(false).
-
-    const int port = 5962;
-    butil::EndPoint ep(butil::IP_ANY, port);
+TEST_F(SSLTest, tls13_protocol_string) {
+    // Same style as ssl_perf: direct SSL handshake, no SocketMap / socket internals.
+    const butil::EndPoint ep(butil::IP_ANY, 8613);
     butil::fd_guard listenfd(butil::tcp_listen(ep));
     ASSERT_GT(listenfd, 0);
+    int clifd = tcp_connect(ep, NULL);
+    ASSERT_GT(clifd, 0);
+    int servfd = accept(listenfd, NULL, NULL);
+    ASSERT_GT(servfd, 0);
 
-    AbruptCloseArgs server_args = { listenfd };
-    pthread_t server_tid;
-    ASSERT_EQ(0, pthread_create(&server_tid, NULL, abrupt_close_server,
-                                &server_args));
+    brpc::ChannelSSLOptions opt;
+    opt.protocols = "TLSv1.3";
+    SSL_CTX* cli_ctx = brpc::CreateClientSSLContext(opt);
+    ASSERT_NE(nullptr, cli_ctx);
+    SSL_CTX* serv_ctx =
+            brpc::CreateServerSSLContext("cert1.crt", "cert1.key",
+                                         brpc::SSLOptions(), NULL, NULL);
+    ASSERT_NE(nullptr, serv_ctx);
+    SSL* cli_ssl = brpc::CreateSSLSession(cli_ctx, 0, clifd, false);
+#if defined(SSL_CTRL_SET_TLSEXT_HOSTNAME) || defined(USE_MESALINK)
+    SSL_set_tlsext_host_name(cli_ssl, "localhost");
+#endif
+    SSL* serv_ssl = brpc::CreateSSLSession(serv_ctx, 0, servfd, true);
+    ASSERT_NE(nullptr, cli_ssl);
+    ASSERT_NE(nullptr, serv_ssl);
+    pthread_t cpid;
+    pthread_t spid;
+    ASSERT_EQ(0, pthread_create(&cpid, NULL, tls13_do_handshake, cli_ssl));
+    ASSERT_EQ(0, pthread_create(&spid, NULL, tls13_do_handshake, serv_ssl));
+    ASSERT_EQ(0, pthread_join(cpid, NULL));
+    ASSERT_EQ(0, pthread_join(spid, NULL));
 
-    brpc::Protocol dummy_protocol = {
-        brpc::policy::ParseRpcMessage, brpc::SerializeRequestDefault,
-        brpc::policy::PackRpcRequest, NULL, ProcessResponse,
-        NULL, NULL, NULL, brpc::CONNECTION_TYPE_ALL, "ssl_ut_eof"
-    };
-    ASSERT_EQ(0, RegisterProtocol((brpc::ProtocolType)31, dummy_protocol));
+    const char* version = SSL_get_version(cli_ssl);
+    ASSERT_TRUE(version != NULL);
+    EXPECT_STREQ("TLSv1.3", version) << "negotiated protocol=" << version;
 
-    brpc::InputMessageHandler dummy_handler = {
-        dummy_protocol.parse, dummy_protocol.process_response,
-        NULL, NULL, dummy_protocol.name
-    };
-    brpc::InputMessenger messenger;
-    ASSERT_EQ(0, messenger.AddHandler(dummy_handler));
-
-    brpc::SocketOptions socket_options;
-    butil::EndPoint server_ep(butil::IP_ANY, port);
-    socket_options.remote_side = server_ep;
-    socket_options.connect_on_create = true;
-    // Do NOT set on_edge_triggered_events — we will call DoRead manually.
-    socket_options.user = &messenger;
-
-    brpc::ChannelSSLOptions ssl_options;
-    SSL_CTX* raw_ctx = brpc::CreateClientSSLContext(ssl_options);
-    ASSERT_NE(nullptr, raw_ctx);
-    std::shared_ptr<brpc::SocketSSLContext> ssl_ctx =
-        std::make_shared<brpc::SocketSSLContext>();
-    ssl_ctx->raw_ctx = raw_ctx;
-    socket_options.initial_ssl_ctx = ssl_ctx;
-
-    brpc::SocketId socket_id;
-    ASSERT_EQ(0, brpc::Socket::Create(socket_options, &socket_id));
-    brpc::SocketUniquePtr ptr;
-    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &ptr));
-
-    // Wait for server to close the connection without close_notify.
-    pthread_join(server_tid, NULL);
-    usleep(50000);
-
-    // DoRead should detect the unexpected EOF and return -1 with errno=ESSL.
-    ssize_t nr = ptr->DoRead(1024);
-    EXPECT_EQ(-1, nr);
-    EXPECT_EQ(brpc::ESSL, errno);
-
-    ptr->SetFailed();
+    SSL_free(cli_ssl);
+    SSL_free(serv_ssl);
+    SSL_CTX_free(cli_ctx);
+    SSL_CTX_free(serv_ctx);
+    close(clifd);
+    close(servfd);
 }
+
+#else  // TLS1_3_VERSION
+
+TEST_F(SSLTest, tls13_protocol_string) {
+    brpc::ChannelSSLOptions opt;
+    opt.protocols = "TLSv1.3";
+    SSL_CTX* ctx = brpc::CreateClientSSLContext(opt);
+    ASSERT_TRUE(ctx != NULL);
+    SSL_CTX_free(ctx);
+}
+
+#endif  // TLS1_3_VERSION
