@@ -35,11 +35,38 @@
 #include "brpc/rtmp.h"
 #include "brpc/amf.h"
 
+namespace brpc {
+DECLARE_int32(amf_max_depth);
+}
+
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
+
+namespace {
+class ScopedAMFMaxDepth {
+public:
+    explicit ScopedAMFMaxDepth(int32_t depth) : _old_depth(brpc::FLAGS_amf_max_depth) {
+        brpc::FLAGS_amf_max_depth = depth;
+    }
+    ~ScopedAMFMaxDepth() {
+        brpc::FLAGS_amf_max_depth = _old_depth;
+    }
+
+private:
+    int32_t _old_depth;
+};
+
+void AppendAMFStrictArrayHeader(std::string* out, uint32_t count) {
+    out->push_back((char)brpc::AMF_MARKER_STRICT_ARRAY);
+    out->push_back((char)((count >> 24) & 0xFF));
+    out->push_back((char)((count >> 16) & 0xFF));
+    out->push_back((char)((count >> 8) & 0xFF));
+    out->push_back((char)(count & 0xFF));
+}
+}  // namespace
 
 class TestRtmpClientStream : public brpc::RtmpClientStream {
 public:
@@ -521,6 +548,32 @@ TEST(RtmpTest, amf) {
     ASSERT_EQ("foo", info3.code());
     ASSERT_EQ("bar", info3.level());
     ASSERT_EQ("heheda", info3.description());
+}
+
+TEST(RtmpTest, amf_rejects_deep_nested_arrays) {
+    ScopedAMFMaxDepth scoped_depth(4);
+
+    std::string req_buf;
+    for (int i = 0; i <= brpc::FLAGS_amf_max_depth + 1; ++i) {
+        AppendAMFStrictArrayHeader(&req_buf, 1);
+    }
+    req_buf.push_back((char)brpc::AMF_MARKER_NULL);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFArray arr;
+    EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
+
+    req_buf.clear();
+    for (int i = 0; i < brpc::FLAGS_amf_max_depth; ++i) {
+        AppendAMFStrictArrayHeader(&req_buf, 1);
+    }
+    req_buf.push_back((char)brpc::AMF_MARKER_NULL);
+
+    google::protobuf::io::ArrayInputStream zc_stream2(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream2(&zc_stream2);
+    brpc::AMFArray valid_arr;
+    EXPECT_TRUE(brpc::ReadAMFArray(&valid_arr, &istream2));
 }
 
 TEST(RtmpTest, successfully_play_streams) {
