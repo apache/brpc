@@ -701,6 +701,10 @@ H2ParseResult H2Context::OnData(
     uint32_t frag_size = frame_head.payload_size;
     uint8_t pad_length = 0;
     if (frame_head.flags & H2_FLAGS_PADDED) {
+        if (frag_size == 0) {
+            LOG(ERROR) << "Invalid payload_size=" << frame_head.payload_size;
+            return MakeH2Error(H2_FRAME_SIZE_ERROR);
+        }
         --frag_size;
         pad_length = LoadUint8(it);
     }
