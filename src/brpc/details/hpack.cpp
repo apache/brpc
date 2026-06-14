@@ -763,6 +763,8 @@ inline ssize_t HPacker::DecodeWithKnownPrefix(
 }
 
 ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
+    ssize_t skipped_bytes = 0;
+decode_next:
     if (iter == NULL) {
         return 0;
     }
@@ -791,7 +793,7 @@ ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
                 return -1;
             }
             *h = *indexed_header;
-            return index_bytes;
+            return skipped_bytes + index_bytes;
         }
         break;
     case 7:
@@ -806,7 +808,7 @@ ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
                 return -1;
             }
             _decode_table->AddHeader(*h);
-            return bytes_consumed;
+            return skipped_bytes + bytes_consumed;
         }
         break;
     case 3:
@@ -824,17 +826,24 @@ ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
                 return -1;
             }
             _decode_table->ResetMaxSize(max_size);
-            return Decode(iter, h);
+            skipped_bytes += read_bytes;
+            goto decode_next;
         }
     case 1:
         // (0001) Literal Header Field Never Indexed
         // https://tools.ietf.org/html/rfc7541#section-6.2.3
-        return DecodeWithKnownPrefix(iter, h, 4);
+        {
+            const ssize_t bytes_consumed = DecodeWithKnownPrefix(iter, h, 4);
+            return bytes_consumed > 0 ? skipped_bytes + bytes_consumed : bytes_consumed;
+        }
         // TODO: Expose NeverIndex to the caller.
     case 0:
         // (0000) Literal Header Field without Indexing
         // https://tools.ietf.org/html/rfc7541#section-6.2.1
-        return DecodeWithKnownPrefix(iter, h, 4);
+        {
+            const ssize_t bytes_consumed = DecodeWithKnownPrefix(iter, h, 4);
+            return bytes_consumed > 0 ? skipped_bytes + bytes_consumed : bytes_consumed;
+        }
         // TODO: Expose NeverIndex to the caller.
     default:
         CHECK(false) << "Can't reach here";
