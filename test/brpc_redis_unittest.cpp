@@ -658,6 +658,42 @@ TEST_F(RedisTest, command_parser) {
     }
 }
 
+// Regression test for issue #3109: the inline redis protocol must not consume
+// the HTTP/2 connection preface as a command, otherwise protocol auto-detection
+// never falls through to HTTP/2 and gRPC clients fail with "connection closed
+// before server preface received".
+TEST_F(RedisTest, inline_does_not_eat_h2_preface) {
+    brpc::RedisCommandParser parser;
+    butil::IOBuf buf;
+    std::vector<butil::StringPiece> command_out;
+    butil::Arena arena;
+    {
+        // Full HTTP/2 client connection preface: must defer to other protocols.
+        buf.append("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                  parser.Consume(buf, &command_out, &arena));
+        buf.clear();
+        parser.Reset();
+    }
+    {
+        // A not-yet-complete prefix of the preface must also defer, leaving the
+        // bytes intact for the HTTP/2 parser instead of being misparsed.
+        buf.append("PRI * HT");
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                  parser.Consume(buf, &command_out, &arena));
+        buf.clear();
+        parser.Reset();
+    }
+    {
+        // A genuine inline command sharing the leading 'P' must still parse.
+        buf.append("PING\r\n");
+        ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out, &arena));
+        ASSERT_EQ("ping", GetCompleteCommand(command_out));
+        buf.clear();
+        parser.Reset();
+    }
+}
+
 TEST_F(RedisTest, redis_reply_codec) {
     butil::Arena arena;
     // status
