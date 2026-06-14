@@ -30,6 +30,8 @@
 #include <fcntl.h>                         // O_RDONLY
 #include <errno.h>                         // errno
 #include <limits.h>                        // CHAR_BIT
+#include <algorithm>                       // std::min
+#include <limits>                          // std::numeric_limits
 #include <stdexcept>                       // std::invalid_argument
 #include <gflags/gflags.h>                 // gflags
 #include "butil/build_config.h"             // ARCH_CPU_X86_64
@@ -2023,6 +2025,130 @@ void IOBufAsZeroCopyOutputStream::_release_block() {
         iobuf::release_tls_block(_cur_block);
     }
     _cur_block = NULL;
+}
+
+std::streambuf::int_type IOBufAsInputStreamBuf::underflow() {
+    size_t block_num = _buf.backing_block_num();
+    StringPiece blk;
+    while (_block_index < block_num) {
+        blk = _buf.backing_block(_block_index++);
+        if (!blk.empty()) {
+            break;
+        }
+    }
+    if (blk.empty()) {
+        return traits_type::eof();
+    }
+    // const_cast is safe here: setg() takes char* by API contract, but this
+    // streambuf never writes through it (no overflow/sputc path).
+    char* p = const_cast<char*>(blk.data());
+    setg(p, p, p + blk.size());
+    return traits_type::to_int_type(*gptr());
+}
+
+std::streamsize IOBufAsInputStreamBuf::xsgetn(char* s, std::streamsize n) {
+    auto kIntMax = static_cast<std::streamsize>(std::numeric_limits<int>::max());
+    std::streamsize total = 0;
+    while (total < n) {
+        std::streamsize avail = egptr() - gptr();
+        if (avail == 0) {
+            if (underflow() == traits_type::eof()) {
+                break;
+            }
+            avail = egptr() - gptr();
+        }
+        // Cap step at INT_MAX so gbump(int) cannot overflow when a user-data
+        // block exceeds 2GB.
+        std::streamsize step =
+            std::min(std::min(avail, n - total), kIntMax);
+        iobuf::cp(s + total, gptr(), static_cast<size_t>(step));
+        gbump(static_cast<int>(step));
+        total += step;
+    }
+    return total;
+}
+
+std::streamsize IOBufAsInputStreamBuf::showmanyc() {
+    std::streamsize kMax = std::numeric_limits<std::streamsize>::max();
+    std::streamsize n = egptr() - gptr();
+    size_t block_num = _buf.backing_block_num();
+    for (size_t i = _block_index; i < block_num; ++i) {
+        const std::streamsize sz =
+            static_cast<std::streamsize>(_buf.backing_block(i).size());
+        // Saturate instead of overflowing on pathologically large IOBufs.
+        if (n > kMax - sz) {
+            return kMax;
+        }
+        n += sz;
+    }
+    return n;
+}
+
+IOBufAsOutputStreamBuf::~IOBufAsOutputStreamBuf() { shrink(); }
+
+void IOBufAsOutputStreamBuf::shrink() {
+    if (pbase() != NULL) {
+        std::streamsize unused = epptr() - pptr();
+        // _zc.BackUp takes int. A single put area never exceeds one block
+        // (Next() returns int size), so this fits in int by construction;
+        // the cap is purely defensive.
+        int kIntMax = std::numeric_limits<int>::max();
+        _zc.BackUp(unused > kIntMax ? kIntMax : static_cast<int>(unused));
+        setp(NULL, NULL);
+    }
+}
+
+std::streambuf::int_type IOBufAsOutputStreamBuf::overflow(int_type ch) {
+    if (traits_type::eq_int_type(ch, traits_type::eof())) {
+        return traits_type::not_eof(ch);
+    }
+    if (!refresh_put_area()) {
+        return traits_type::eof();
+    }
+    return sputc(traits_type::to_char_type(ch));
+}
+
+std::streamsize IOBufAsOutputStreamBuf::xsputn(
+        const char* s, std::streamsize n) {
+    auto kIntMax = static_cast<std::streamsize>(std::numeric_limits<int>::max());
+    std::streamsize total = 0;
+    while (total < n) {
+        std::streamsize avail = epptr() - pptr();
+        if (avail == 0) {
+            if (!refresh_put_area()) {
+                break;
+            }
+            avail = epptr() - pptr();
+            if (avail == 0) {
+                break;
+            }
+        }
+        // Cap step at INT_MAX so pbump(int) cannot overflow when a dedicated
+        // block exceeds 2GB.
+        std::streamsize step =
+            std::min(std::min(avail, n - total), kIntMax);
+        iobuf::cp(pptr(), s + total, static_cast<size_t>(step));
+        pbump(static_cast<int>(step));
+        total += step;
+    }
+    return total;
+}
+
+int IOBufAsOutputStreamBuf::sync() {
+    shrink();
+    return 0;
+}
+
+bool IOBufAsOutputStreamBuf::refresh_put_area() {
+    void* block = NULL;
+    int size = 0;
+    if (!_zc.Next(&block, &size)) {
+        setp(NULL, NULL);
+        return false;
+    }
+    char* p = static_cast<char*>(block);
+    setp(p, p + size);
+    return true;
 }
 
 IOBufAsSnappySink::IOBufAsSnappySink(butil::IOBuf& buf)

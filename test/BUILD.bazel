@@ -179,12 +179,14 @@ cc_test(
         "test_switches.h",
     ],
     copts = COPTS,
+    defines = ["HAS_NLOHMANN_JSON=1"],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
         ":gperftools_helper",
         "//:butil",
         "//:bthread",
+        "@nlohmann_json//:json",
         "@com_google_googletest//:gtest",
     ],
 )
