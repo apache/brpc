@@ -31,6 +31,7 @@
 namespace brpc {
 DECLARE_int32(idle_timeout_second);
 DECLARE_int32(redis_max_allocation_size);
+DECLARE_int32(redis_max_reply_depth);
 }
 
 int main(int argc, char* argv[]) {
@@ -97,6 +98,20 @@ static void RunRedisServer() {
     // Wait for redis to start.
     usleep(50000);
 }
+
+class ScopedRedisMaxReplyDepth {
+public:
+    explicit ScopedRedisMaxReplyDepth(int32_t depth)
+        : _old_depth(brpc::FLAGS_redis_max_reply_depth) {
+        brpc::FLAGS_redis_max_reply_depth = depth;
+    }
+    ~ScopedRedisMaxReplyDepth() {
+        brpc::FLAGS_redis_max_reply_depth = _old_depth;
+    }
+
+private:
+    int32_t _old_depth;
+};
 
 class RedisTest : public testing::Test {
 protected:
@@ -864,6 +879,30 @@ TEST_F(RedisTest, redis_reply_codec) {
         r.SetInteger(42);
         ASSERT_TRUE(r.is_integer());
     }
+}
+
+TEST_F(RedisTest, redis_reply_rejects_deep_nested_arrays) {
+    ScopedRedisMaxReplyDepth scoped_depth(4);
+
+    butil::IOBuf buf;
+    for (int i = 0; i <= brpc::FLAGS_redis_max_reply_depth; ++i) {
+        buf.append("*1\r\n");
+    }
+    buf.append(":0\r\n");
+
+    butil::Arena arena;
+    brpc::RedisReply reply(&arena);
+    EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, reply.ConsumePartialIOBuf(buf));
+
+    buf.clear();
+    for (int i = 0; i < brpc::FLAGS_redis_max_reply_depth; ++i) {
+        buf.append("*1\r\n");
+    }
+    buf.append(":0\r\n");
+
+    brpc::RedisReply valid_reply(&arena);
+    EXPECT_EQ(brpc::PARSE_OK, valid_reply.ConsumePartialIOBuf(buf));
+    EXPECT_TRUE(valid_reply.is_array());
 }
 
 butil::Mutex s_mutex;

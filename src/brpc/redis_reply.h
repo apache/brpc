@@ -146,6 +146,7 @@ private:
     // by calling CopyFrom[Different|Same]Arena.
     DISALLOW_COPY_AND_ASSIGN(RedisReply);
 
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, int depth);
     void FormatStringImpl(const char* fmt, va_list args, RedisReplyType type);
     void SetStringImpl(const butil::StringPiece& str, RedisReplyType type);
     
