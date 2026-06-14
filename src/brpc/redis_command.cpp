@@ -451,7 +451,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         const auto first_arg = static_cast<char*>(arena->allocate(offset));
         memcpy(first_arg, copy_str, offset);
         for (size_t i = 0; i < offset; ++i) {
-            first_arg[i] = tolower(first_arg[i]);
+            first_arg[i] = tolower(static_cast<unsigned char>(first_arg[i]));
         }
         _args.push_back(butil::StringPiece(first_arg, offset));
         if (offset == crlf_pos) {
@@ -555,7 +555,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     if (_index == 0) {
         // convert it to lowercase when it is command name
         for (int i = 0; i < len; ++i) {
-            d[i] = ::tolower(d[i]);
+            d[i] = ::tolower(static_cast<unsigned char>(d[i]));
         }
     }
     char crlf[2];
