@@ -20,11 +20,81 @@
 // Date: 2017/04/25 00:23:12
 
 #include <gtest/gtest.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include "brpc/details/hpack.h"
 #include "butil/logging.h"
 
 class HPackTest : public testing::Test {
 };
+
+static void* DecodeManyDynamicTableSizeUpdates(void*) {
+    brpc::HPacker p;
+    if (p.Init(4096) != 0) {
+        return (void*)1;
+    }
+
+    butil::IOBuf buf;
+    std::string updates(200000, '\x20');
+    buf.append(updates);
+
+    brpc::HPacker::Header h;
+    return (void*)(p.Decode(&buf, &h) != 0);
+}
+
+TEST_F(HPackTest, many_dynamic_table_size_updates) {
+    const pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0) {
+        if (freopen("/dev/null", "w", stdout) == NULL ||
+            freopen("/dev/null", "w", stderr) == NULL) {
+            exit(1);
+        }
+
+        pthread_attr_t attr;
+        if (pthread_attr_init(&attr) != 0) {
+            exit(2);
+        }
+        if (pthread_attr_setstacksize(&attr, 64 * 1024) != 0) {
+            exit(3);
+        }
+        pthread_t tid;
+        if (pthread_create(&tid, &attr, DecodeManyDynamicTableSizeUpdates, NULL) != 0) {
+            exit(4);
+        }
+        pthread_attr_destroy(&attr);
+        void* ret = NULL;
+        if (pthread_join(tid, &ret) != 0) {
+            exit(5);
+        }
+        exit(ret == NULL ? 0 : 6);
+    }
+    int status = 0;
+    ASSERT_EQ(pid, waitpid(pid, &status, 0));
+    ASSERT_TRUE(WIFEXITED(status));
+    ASSERT_EQ(0, WEXITSTATUS(status));
+}
+
+TEST_F(HPackTest, dynamic_table_size_update_before_header) {
+    brpc::HPacker p;
+    ASSERT_EQ(0, p.Init(4096));
+
+    butil::IOBuf buf;
+    uint8_t encoded[] = {
+        0x20,  // Dynamic table size update to 0.
+        0x82,  // Indexed :method: GET.
+    };
+    buf.append(encoded, sizeof(encoded));
+
+    brpc::HPacker::Header h;
+    ASSERT_EQ((ssize_t)sizeof(encoded), p.Decode(&buf, &h));
+    ASSERT_TRUE(buf.empty());
+    ASSERT_EQ(":method", h.name);
+    ASSERT_EQ("GET", h.value);
+}
 
 // Copied test cases from example of rfc7541
 TEST_F(HPackTest, header_with_indexing) {
