@@ -29,7 +29,11 @@ namespace brpc {
 namespace rdma {
 class RdmaEndpoint;
 }
+namespace iouring {
+class IouringEndpoint;
+}
 class TcpTransport;
+class IouringTransport;
 struct InputMessageHandler {
     // The callback to cut a message from `source'.
     // Returned message will be passed to process_request or process_response
@@ -92,7 +96,9 @@ private:
 class InputMessenger : public SocketUser {
 friend class Socket;
 friend class TcpTransport;
+friend class IouringTransport;
 friend class rdma::RdmaEndpoint;
+friend class iouring::IouringEndpoint;
 public:
     explicit InputMessenger(size_t capacity = 128);
     ~InputMessenger();
