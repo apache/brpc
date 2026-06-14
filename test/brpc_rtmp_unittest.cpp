@@ -66,6 +66,53 @@ void AppendAMFStrictArrayHeader(std::string* out, uint32_t count) {
     out->push_back((char)((count >> 8) & 0xFF));
     out->push_back((char)(count & 0xFF));
 }
+
+void AppendAMFObjectHeader(std::string* out) {
+    out->push_back((char)brpc::AMF_MARKER_OBJECT);
+}
+
+void AppendAMFEcmaArrayHeader(std::string* out, uint32_t count) {
+    out->push_back((char)brpc::AMF_MARKER_ECMA_ARRAY);
+    out->push_back((char)((count >> 24) & 0xFF));
+    out->push_back((char)((count >> 16) & 0xFF));
+    out->push_back((char)((count >> 8) & 0xFF));
+    out->push_back((char)(count & 0xFF));
+}
+
+void AppendAMFShortStringBody(std::string* out, const char* name) {
+    const uint16_t len = strlen(name);
+    out->push_back((char)((len >> 8) & 0xFF));
+    out->push_back((char)(len & 0xFF));
+    out->append(name, len);
+}
+
+void AppendAMFObjectEnd(std::string* out) {
+    AppendAMFShortStringBody(out, "");
+    out->push_back((char)brpc::AMF_MARKER_OBJECT_END);
+}
+
+std::string MakeNestedAMFObject(int depth) {
+    std::string out;
+    AppendAMFObjectHeader(&out);
+    for (int i = 0; i < depth; ++i) {
+        AppendAMFShortStringBody(&out, "x");
+        AppendAMFObjectHeader(&out);
+    }
+    for (int i = 0; i <= depth; ++i) {
+        AppendAMFObjectEnd(&out);
+    }
+    return out;
+}
+
+std::string MakeNestedAMFEcmaArray(int depth) {
+    std::string out;
+    AppendAMFEcmaArrayHeader(&out, depth == 0 ? 0 : 1);
+    for (int i = 0; i < depth; ++i) {
+        AppendAMFShortStringBody(&out, "x");
+        AppendAMFEcmaArrayHeader(&out, i + 1 == depth ? 0 : 1);
+    }
+    return out;
+}
 }  // namespace
 
 class TestRtmpClientStream : public brpc::RtmpClientStream {
@@ -574,6 +621,38 @@ TEST(RtmpTest, amf_rejects_deep_nested_arrays) {
     brpc::AMFInputStream istream2(&zc_stream2);
     brpc::AMFArray valid_arr;
     EXPECT_TRUE(brpc::ReadAMFArray(&valid_arr, &istream2));
+}
+
+TEST(RtmpTest, amf_rejects_deep_nested_objects) {
+    ScopedAMFMaxDepth scoped_depth(4);
+
+    std::string req_buf = MakeNestedAMFObject(brpc::FLAGS_amf_max_depth + 1);
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFObject obj;
+    EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+
+    req_buf = MakeNestedAMFObject(brpc::FLAGS_amf_max_depth);
+    google::protobuf::io::ArrayInputStream zc_stream2(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream2(&zc_stream2);
+    brpc::AMFObject valid_obj;
+    EXPECT_TRUE(brpc::ReadAMFObject(&valid_obj, &istream2));
+}
+
+TEST(RtmpTest, amf_rejects_deep_nested_ecma_arrays) {
+    ScopedAMFMaxDepth scoped_depth(4);
+
+    std::string req_buf = MakeNestedAMFEcmaArray(brpc::FLAGS_amf_max_depth + 1);
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFObject obj;
+    EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+
+    req_buf = MakeNestedAMFEcmaArray(brpc::FLAGS_amf_max_depth);
+    google::protobuf::io::ArrayInputStream zc_stream2(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream2(&zc_stream2);
+    brpc::AMFObject valid_obj;
+    EXPECT_TRUE(brpc::ReadAMFObject(&valid_obj, &istream2));
 }
 
 TEST(RtmpTest, successfully_play_streams) {
