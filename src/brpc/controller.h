@@ -776,7 +776,10 @@ private:
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
         // socket fetched from socket pool
         SocketUniquePtr sending_sock;
-        BindSockAction bind_sock_action;
+        // In-class default so every Call init path (default ctor, Reset(), and
+        // the Call(Call*) copy ctor used for backup/retry) is NONE unless set
+        // explicitly. A backup/retry never inherits transaction affinity.
+        BindSockAction bind_sock_action = BIND_SOCK_NONE;
         StreamUserData* stream_user_data;
     };
 
