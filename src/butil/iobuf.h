@@ -25,6 +25,8 @@
 #include <sys/uio.h>                             // iovec
 #include <stdint.h>                              // uint32_t, int64_t
 #include <functional>
+#include <istream>                               // std::istream
+#include <streambuf>                             // std::streambuf
 #include <string>                                // std::string
 #include <ostream>                               // std::ostream
 #include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyInputStream
@@ -607,6 +609,165 @@ private:
     uint32_t _block_size;
     IOBuf::Block *_cur_block;
     int64_t _byte_count;
+};
+
+// Wrap IOBuf into a std::streambuf for std::istream-based parsers
+// (e.g. nlohmann::json::parse(std::istream&)).
+//
+// Read-only view: the streambuf never writes to the source IOBuf. Forward-only
+// (seekoff/seekpos are not overridden).
+//
+// NOTE: The source IOBuf MUST NOT be modified during the lifetime of this
+// streambuf, otherwise the StringPieces returned by backing_block() may be
+// invalidated and the stream will read garbage or crash.
+class IOBufAsInputStreamBuf : public std::streambuf {
+public:
+    // `buf' must outlive this streambuf and must not be modified while the
+    // streambuf is in use.
+    explicit IOBufAsInputStreamBuf(const IOBuf& buf) : _buf(buf) {}
+
+protected:
+    int_type underflow() override;
+    std::streamsize xsgetn(char* s, std::streamsize n) override;
+    std::streamsize showmanyc() override;
+
+private:
+    const IOBuf& _buf;
+    size_t _block_index{0};
+};
+
+// std::istream view over an IOBuf. The IOBuf must outlive this stream and
+// must not be modified while the stream is in use. Forward-only — seeking
+// is not supported.
+//
+// Typical use is feeding an IOBuf to a parser that takes std::istream&,
+// e.g. nlohmann::json:
+//
+//     butil::IOBufInputStream in(request_body);
+//     auto j = nlohmann::json::parse(in);
+//
+// Or formatted extraction:
+//
+//     butil::IOBuf buf;
+//     buf.append("42 3.14 hello");
+//     butil::IOBufInputStream in(buf);
+//     int i; double d;
+//     std::string s;
+//     in >> i >> d >> s;
+//
+// Bulk read into a buffer (goes through xsgetn, copies one block at a time):
+//
+//     std::string out(buf.length(), '\0');
+//     butil::IOBufInputStream in(buf);
+//     in.read(&out[0], out.size());
+class IOBufInputStream : public std::istream {
+public:
+    // `buf' must outlive this stream and must not be modified while the
+    // stream is in use.
+    explicit IOBufInputStream(const IOBuf& buf)
+        : std::istream(NULL), _sb(buf) {
+        rdbuf(&_sb);
+    }
+
+private:
+    IOBufAsInputStreamBuf _sb;
+};
+
+// Wrap IOBuf into a std::streambuf for std::ostream-based serializers
+// (e.g. nlohmann::json's `os << j`). Bytes are appended directly into IOBuf
+// blocks with no intermediate string copy.
+//
+// Internally backed by IOBufAsZeroCopyOutputStream:
+//  - by default, blocks are taken from the per-thread TLS pool (8KB);
+//  - pass `block_size` to allocate dedicated blocks instead, which avoids
+//    fragmenting the TLS pool when many output streams coexist.
+//
+// Append-only — seekoff/seekpos are not overridden.
+//
+// IMPORTANT: The exact length of the source IOBuf only reflects what was
+// written AFTER shrink() / sync() / destruction — `Next()` over-claims the
+// remainder of each block and the unused tail is BackUp'd later. If you need
+// the precise length mid-stream, call sync() (e.g. via `os.flush()` or
+// `_sb.shrink()`).
+class IOBufAsOutputStreamBuf : public std::streambuf {
+public:
+    // `buf' must outlive this streambuf.
+    explicit IOBufAsOutputStreamBuf(IOBuf& buf) : _zc(&buf) {}
+    IOBufAsOutputStreamBuf(IOBuf& buf, uint32_t block_size)
+        : _zc(&buf, block_size) {}
+    ~IOBufAsOutputStreamBuf() override;
+
+    // Return the unused tail of the current put area to the underlying IOBuf
+    // so that the IOBuf length matches exactly what was written so far.
+    // Automatically invoked from sync() and the destructor.
+    void shrink();
+
+protected:
+    int_type overflow(int_type ch) override;
+    std::streamsize xsputn(const char* s, std::streamsize n) override;
+    int sync() override;
+
+private:
+    bool refresh_put_area();
+
+    IOBufAsZeroCopyOutputStream _zc;
+};
+
+// std::ostream view over an IOBuf. Appends written bytes to the referenced
+// IOBuf; the IOBuf must outlive this stream. Append-only — seeking is not
+// supported.
+//
+// The IOBuf's length only reflects bytes written AFTER flush()/destruction
+// (see IOBufAsOutputStreamBuf for details).
+//
+// Serialize with a library that writes to std::ostream&, e.g. nlohmann::json
+// (zero intermediate string copy — bytes flow straight into IOBuf blocks):
+//
+//     #include <nlohmann/json.hpp>
+//     using nlohmann::json;
+//
+//     json reply = {
+//         {"status", "ok"},
+//         {"items",  {1, 2, 3}},
+//     };
+//
+//     butil::IOBuf out;                          // e.g. controller->response_attachment()
+//     {
+//         butil::IOBufOutputStream os(out);
+//         os << reply;                           // compact:  {"items":[1,2,3],"status":"ok"}
+//         // os << std::setw(2) << reply;        // pretty-print with 2-space indent
+//     } // dtor runs shrink(); `out` now has the exact serialized bytes.
+//
+// Formatted insertion (works like any std::ostream):
+//
+//     butil::IOBuf out;
+//     butil::IOBufOutputStream os(out);
+//     os << "x=" << 42 << " y=" << 3.14;
+//     os.flush();                                // commit to `out` now
+//
+// Bulk write of a known-size buffer (goes through xsputn, memcpy per block):
+//
+//     butil::IOBufOutputStream os(out);
+//     os.write(payload.data(), payload.size());
+//
+// Pass `block_size` when many output streams coexist in one thread, to keep
+// each stream's allocations off the shared TLS block pool:
+//
+//     butil::IOBufOutputStream os(out, /*block_size=*/64 * 1024);
+class IOBufOutputStream : public std::ostream {
+public:
+    // `buf' must outlive this stream.
+    explicit IOBufOutputStream(IOBuf& buf)
+        : std::ostream(NULL), _sb(buf) {
+        rdbuf(&_sb);
+    }
+    IOBufOutputStream(IOBuf& buf, uint32_t block_size)
+        : std::ostream(NULL), _sb(buf, block_size) {
+        rdbuf(&_sb);
+    }
+
+private:
+    IOBufAsOutputStreamBuf _sb;
 };
 
 // Wrap IOBuf into input of snappy compression.

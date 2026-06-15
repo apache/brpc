@@ -408,6 +408,23 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
             *err = PARSE_ERROR_TRY_OTHERS;
             return CONSUME_STATE_ERROR;
         }
+        // The HTTP/2 connection preface ("PRI * HTTP/2.0\r\n...") is alpha-leading
+        // and would otherwise be consumed as an inline redis command (first token
+        // "PRI"), preventing protocol auto-detection from falling through to
+        // HTTP/2 (e.g. gRPC clients). Defer to other protocols when the input
+        // matches the preface, either fully or as a not-yet-complete prefix. No
+        // valid redis command begins with these bytes, so this is unambiguous.
+        // See issue #3109.
+        static const char h2_preface[] = "PRI * HTTP/2.0\r\n";
+        const size_t h2_preface_len = sizeof(h2_preface) - 1;
+        if (*pfc == h2_preface[0]) {
+            char head[h2_preface_len];
+            const size_t n = buf.copy_to(head, h2_preface_len);
+            if (memcmp(head, h2_preface, n) == 0) {
+                *err = PARSE_ERROR_TRY_OTHERS;
+                return CONSUME_STATE_ERROR;
+            }
+        }
         const size_t buf_size = buf.size();
         const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
         // arena->allocate() may return NULL on allocation failure
@@ -434,7 +451,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         const auto first_arg = static_cast<char*>(arena->allocate(offset));
         memcpy(first_arg, copy_str, offset);
         for (size_t i = 0; i < offset; ++i) {
-            first_arg[i] = tolower(first_arg[i]);
+            first_arg[i] = tolower(static_cast<unsigned char>(first_arg[i]));
         }
         _args.push_back(butil::StringPiece(first_arg, offset));
         if (offset == crlf_pos) {
@@ -538,7 +555,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     if (_index == 0) {
         // convert it to lowercase when it is command name
         for (int i = 0; i < len; ++i) {
-            d[i] = ::tolower(d[i]);
+            d[i] = ::tolower(static_cast<unsigned char>(d[i]));
         }
     }
     char crlf[2];

@@ -279,6 +279,24 @@ http_archive(
     urls = ["https://archive.apache.org/dist/thrift/0.15.0/thrift-0.15.0.tar.gz"],
 )
 
+# Header-only JSON library used by iobuf_unittest's IOBuf<->std::iostream
+# adapter tests. Keep version in sync with MODULE.bazel.
+http_archive(
+    name = "nlohmann_json",
+    build_file_content = """
+cc_library(
+    name = "json",
+    hdrs = ["single_include/nlohmann/json.hpp", "single_include/nlohmann/json_fwd.hpp"],
+    strip_include_prefix = "single_include",
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187",
+    strip_prefix = "json-3.12.0",
+    urls = ["https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz"],
+)
+
+
 #
 # Perl Dependencies
 #

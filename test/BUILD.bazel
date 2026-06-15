@@ -179,12 +179,14 @@ cc_test(
         "test_switches.h",
     ],
     copts = COPTS,
+    defines = ["HAS_NLOHMANN_JSON=1"],
     deps = [
         ":cc_test_proto",
         ":sstream_workaround",
         ":gperftools_helper",
         "//:butil",
         "//:bthread",
+        "@nlohmann_json//:json",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -268,6 +270,19 @@ generate_unittests(
         "brpc_mysql_prepared_integration_unittest.cpp": ["external", "local"],
         "brpc_mysql_txn_integration_unittest.cpp": ["external", "local"],
         "brpc_mysql_pool_concurrency_unittest.cpp": ["external", "local"],
+    },
+    # brpc_channel_unittest packs dozens of timing-sensitive TEST_F (backup
+    # request, retry/backoff, timeouts) into one binary whose cumulative
+    # real-time waits exceed Bazel's default per-test 300s (size=medium) limit
+    # on contended CI runners, causing TIMEOUT failures. Raise its limit to
+    # size=large (900s).
+    #
+    # NB: do NOT shard this binary. Its TEST_F share fixed loopback endpoints
+    # and global state; running shards as parallel processes makes a
+    # "connection should be refused" test observe another shard's live server
+    # on the same port and fail. size=large is the only safe lever here.
+    per_test_size = {
+        "brpc_channel_unittest.cpp": "large",
     },
 )
 

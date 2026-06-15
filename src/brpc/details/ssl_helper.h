@@ -53,6 +53,7 @@ enum SSLProtocol {
     TLSv1 = 1 << 1,
     TLSv1_1 = 1 << 2,
     TLSv1_2 = 1 << 3,
+    TLSv1_3 = 1 << 4,
 };
 
 struct FreeSSLCTX {

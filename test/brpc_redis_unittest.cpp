@@ -31,6 +31,7 @@
 namespace brpc {
 DECLARE_int32(idle_timeout_second);
 DECLARE_int32(redis_max_allocation_size);
+DECLARE_int32(redis_max_reply_depth);
 }
 
 int main(int argc, char* argv[]) {
@@ -97,6 +98,20 @@ static void RunRedisServer() {
     // Wait for redis to start.
     usleep(50000);
 }
+
+class ScopedRedisMaxReplyDepth {
+public:
+    explicit ScopedRedisMaxReplyDepth(int32_t depth)
+        : _old_depth(brpc::FLAGS_redis_max_reply_depth) {
+        brpc::FLAGS_redis_max_reply_depth = depth;
+    }
+    ~ScopedRedisMaxReplyDepth() {
+        brpc::FLAGS_redis_max_reply_depth = _old_depth;
+    }
+
+private:
+    int32_t _old_depth;
+};
 
 class RedisTest : public testing::Test {
 protected:
@@ -658,6 +673,42 @@ TEST_F(RedisTest, command_parser) {
     }
 }
 
+// Regression test for issue #3109: the inline redis protocol must not consume
+// the HTTP/2 connection preface as a command, otherwise protocol auto-detection
+// never falls through to HTTP/2 and gRPC clients fail with "connection closed
+// before server preface received".
+TEST_F(RedisTest, inline_does_not_eat_h2_preface) {
+    brpc::RedisCommandParser parser;
+    butil::IOBuf buf;
+    std::vector<butil::StringPiece> command_out;
+    butil::Arena arena;
+    {
+        // Full HTTP/2 client connection preface: must defer to other protocols.
+        buf.append("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                  parser.Consume(buf, &command_out, &arena));
+        buf.clear();
+        parser.Reset();
+    }
+    {
+        // A not-yet-complete prefix of the preface must also defer, leaving the
+        // bytes intact for the HTTP/2 parser instead of being misparsed.
+        buf.append("PRI * HT");
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                  parser.Consume(buf, &command_out, &arena));
+        buf.clear();
+        parser.Reset();
+    }
+    {
+        // A genuine inline command sharing the leading 'P' must still parse.
+        buf.append("PING\r\n");
+        ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out, &arena));
+        ASSERT_EQ("ping", GetCompleteCommand(command_out));
+        buf.clear();
+        parser.Reset();
+    }
+}
+
 TEST_F(RedisTest, redis_reply_codec) {
     butil::Arena arena;
     // status
@@ -828,6 +879,30 @@ TEST_F(RedisTest, redis_reply_codec) {
         r.SetInteger(42);
         ASSERT_TRUE(r.is_integer());
     }
+}
+
+TEST_F(RedisTest, redis_reply_rejects_deep_nested_arrays) {
+    ScopedRedisMaxReplyDepth scoped_depth(4);
+
+    butil::IOBuf buf;
+    for (int i = 0; i <= brpc::FLAGS_redis_max_reply_depth; ++i) {
+        buf.append("*1\r\n");
+    }
+    buf.append(":0\r\n");
+
+    butil::Arena arena;
+    brpc::RedisReply reply(&arena);
+    EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, reply.ConsumePartialIOBuf(buf));
+
+    buf.clear();
+    for (int i = 0; i < brpc::FLAGS_redis_max_reply_depth; ++i) {
+        buf.append("*1\r\n");
+    }
+    buf.append(":0\r\n");
+
+    brpc::RedisReply valid_reply(&arena);
+    EXPECT_EQ(brpc::PARSE_OK, valid_reply.ConsumePartialIOBuf(buf));
+    EXPECT_TRUE(valid_reply.is_array());
 }
 
 butil::Mutex s_mutex;

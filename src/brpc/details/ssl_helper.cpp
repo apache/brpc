@@ -86,6 +86,8 @@ static int ParseSSLProtocols(const std::string& str_protocol) {
             protocol_flag |= TLSv1_1;
         } else if (strncasecmp(protocol.data(), "TLSv1.2", protocol.size()) == 0) {
             protocol_flag |= TLSv1_2;
+        } else if (strncasecmp(protocol.data(), "TLSv1.3", protocol.size()) == 0) {
+            protocol_flag |= TLSv1_3;
         } else {
             LOG(ERROR) << "Unknown SSL protocol=" << protocol;
             return -1;
@@ -443,6 +445,12 @@ static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
         ssloptions |= SSL_OP_NO_TLSv1_2;
     }
 #endif  // SSL_OP_NO_TLSv1_2
+
+#ifdef SSL_OP_NO_TLSv1_3
+    if (!(protocols & TLSv1_3)) {
+        ssloptions |= SSL_OP_NO_TLSv1_3;
+    }
+#endif  // SSL_OP_NO_TLSv1_3
     SSL_CTX_set_options(ctx, ssloptions);
 
     long sslmode = SSL_MODE_ENABLE_PARTIAL_WRITE
@@ -585,7 +593,7 @@ SSL_CTX* CreateServerSSLContext(const std::string& certificate,
         return NULL;
     }
 
-    int protocols = TLSv1 | TLSv1_1 | TLSv1_2;
+    int protocols = TLSv1 | TLSv1_1 | TLSv1_2 | TLSv1_3;
     if (!options.disable_ssl3) {
         protocols |= SSLv3;
     }

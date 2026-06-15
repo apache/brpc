@@ -79,8 +79,8 @@ struct ChannelSSLOptions {
     std::string ciphers;
 
     // SSL protocols used for SSL handshake, separated by comma.
-    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2
-    // Default: TLSv1, TLSv1.1, TLSv1.2
+    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2, TLSv1.3
+    // Default: TLSv1, TLSv1.1, TLSv1.2, TLSv1.3
     std::string protocols;
 
     // When set, fill this into the SNI extension field during handshake,

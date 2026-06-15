@@ -13,6 +13,10 @@ on:
 env:
   proc_num: $(nproc)
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # https://github.com/actions/runner-images
 jobs:
   compile-with-make:
