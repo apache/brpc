@@ -297,6 +297,9 @@ void Controller::ResetPods() {
     _request_streams.clear();
     _response_streams.clear();
     _remote_stream_settings = NULL;
+    set_bind_sock_action(BIND_SOCK_NONE);
+    _bind_sock.reset();
+    _session_data = NULL;
     _auth_flags = 0;
     _rpc_received_us = 0;
 }
@@ -308,6 +311,12 @@ Controller::Call::Call(Controller::Call* rhs)
     , peer_id(rhs->peer_id)
     , begin_time_us(rhs->begin_time_us)
     , sending_sock(rhs->sending_sock.release())
+    // A backup/retry call must behave normally w.r.t. socket disposal; it never
+    // inherits the originating call's reserve/use affinity. Leaving this
+    // uninitialized lets OnComplete read indeterminate bits and (when they
+    // happen to match RESERVE/USE) hijack the socket away from the pool-return
+    // path, hanging the RPC. Initialize explicitly, matching Reset().
+    , bind_sock_action(BIND_SOCK_NONE)
     , stream_user_data(rhs->stream_user_data) {
     // NOTE: fields in rhs should be reset because RPC could fail before
     // setting all the fields to next call and _current_call.OnComplete
@@ -328,6 +337,7 @@ void Controller::Call::Reset() {
     peer_id = INVALID_SOCKET_ID;
     begin_time_us = 0;
     sending_sock.reset(NULL);
+    bind_sock_action = BIND_SOCK_NONE;
     stream_user_data = NULL;
 }
 
@@ -824,7 +834,13 @@ void Controller::Call::OnComplete(
         // assumption that one pooled connection cannot have more than one
         // message at the same time.
         if (sending_sock != NULL && (error_code == 0 || responded)) {
-            if (!sending_sock->is_read_progressive()) {
+            if (bind_sock_action == BIND_SOCK_RESERVE) {
+                // Reserve this socket on the controller for a following RPC
+                // (used by mysql transactions for connection affinity).
+                c->_bind_sock.reset(sending_sock.release());
+            } else if (bind_sock_action == BIND_SOCK_USE) {
+                // Socket is owned by the binder; do not return it to the pool.
+            } else if (!sending_sock->is_read_progressive()) {
                 // Normally-read socket which will not be used after RPC ends,
                 // safe to return. Notice that Socket::is_read_progressive may
                 // differ from Controller::is_response_read_progressively()
@@ -841,7 +857,11 @@ void Controller::Call::OnComplete(
     case CONNECTION_TYPE_SHORT:
         if (sending_sock != NULL) {
             // Check the comment in CONNECTION_TYPE_POOLED branch.
-            if (!sending_sock->is_read_progressive()) {
+            if (bind_sock_action == BIND_SOCK_RESERVE) {
+                c->_bind_sock.reset(sending_sock.release());
+            } else if (bind_sock_action == BIND_SOCK_USE) {
+                // Socket is owned by the binder; do not fail it.
+            } else if (!sending_sock->is_read_progressive()) {
                 if (c->_stream_creator == NULL) {
                     sending_sock->SetFailed();
                 }
@@ -908,6 +928,9 @@ void Controller::EndRPC(const CompletionInfo& info) {
         }
         // TODO: Replace this with stream_creator.
         HandleStreamConnection(_current_call.sending_sock.get());
+        // Propagate the reserve action; OnComplete only actually reserves the
+        // socket when the RPC succeeded (its error_code==0 || responded guard).
+        _current_call.bind_sock_action = bind_sock_action();
         _current_call.OnComplete(this, _error_code, info.responded, true);
     } else {
         // Even if _unfinished_call succeeded, we don't use EBACKUPREQUEST
@@ -1092,7 +1115,19 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.need_feedback = false;
     _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
-    if (SingleServer()) {
+    if ((_connection_type & CONNECTION_TYPE_POOLED_AND_SHORT) &&
+        bind_sock_action() == BIND_SOCK_USE) {
+        // Reuse the socket reserved by a previous RPC (mysql transaction affinity).
+        tmp_sock.reset(_bind_sock.release());
+        if (!tmp_sock || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
+            // NOTE: tmp_sock may be NULL here, so guard the id() deref.
+            SetFailed(EHOSTDOWN, "Not connected to bind socket yet, server_id=%" PRIu64,
+                      tmp_sock ? tmp_sock->id() : (SocketId)0);
+            tmp_sock.reset();  // Release ref ASAP
+            return HandleSendFailed();
+        }
+        _current_call.peer_id = tmp_sock->id();
+    } else if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
         const int rc = Socket::Address(_single_server_id, &tmp_sock);
@@ -1157,7 +1192,10 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
     } else {
         int rc = 0;
-        if (_connection_type == CONNECTION_TYPE_POOLED) {
+        if (bind_sock_action() == BIND_SOCK_USE) {
+            // Already holding the reserved socket; use it directly.
+            _current_call.sending_sock.reset(tmp_sock.release());
+        } else if (_connection_type == CONNECTION_TYPE_POOLED) {
             rc = tmp_sock->GetPooledSocket(&_current_call.sending_sock);
         } else if (_connection_type == CONNECTION_TYPE_SHORT) {
             rc = tmp_sock->GetShortSocket(&_current_call.sending_sock);
@@ -1179,7 +1217,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
         // Set preferred_index of main_socket as well to make it easier to
         // debug and observe from /connections.
-        if (tmp_sock->preferred_index() < 0) {
+        // NOTE: tmp_sock is NULL on the BIND_SOCK_USE path (released above).
+        if (tmp_sock && tmp_sock->preferred_index() < 0) {
             tmp_sock->set_preferred_index(_preferred_index);
         }
         tmp_sock.reset();
