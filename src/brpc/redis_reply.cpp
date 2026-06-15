@@ -26,6 +26,8 @@ namespace brpc {
 
 DEFINE_int32(redis_max_allocation_size, 64 * 1024 * 1024, 
              "Maximum memory allocation size in bytes for a single redis request or reply (64MB by default)");
+DEFINE_int32(redis_max_reply_depth, 128,
+             "Maximum nesting depth for redis array replies");
 
 //BAIDU_CASSERT(sizeof(RedisReply) == 24, size_match);
 const int RedisReply::npos = -1;
@@ -94,12 +96,21 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
 }
 
 ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
+    return ConsumePartialIOBuf(buf, 0);
+}
+
+ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth) {
+    if (depth > FLAGS_redis_max_reply_depth) {
+        LOG(ERROR) << "redis reply exceeds max depth! max="
+                   << FLAGS_redis_max_reply_depth << ", actually=" << depth;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     if (_type == REDIS_REPLY_ARRAY && _data.array.last_index >= 0) {
         // The parsing was suspended while parsing sub replies,
         // continue the parsing.
         RedisReply* subs = (RedisReply*)_data.array.replies;
         for (int i = _data.array.last_index; i < _length; ++i) {
-            ParseError err = subs[i].ConsumePartialIOBuf(buf);
+            ParseError err = subs[i].ConsumePartialIOBuf(buf, depth + 1);
             if (err != PARSE_OK) {
                 return err;
             }
@@ -257,7 +268,7 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
             // be continued in next calls by tracking _data.array.last_index.
             _data.array.last_index = 0;
             for (int64_t i = 0; i < count; ++i) {
-                ParseError err = subs[i].ConsumePartialIOBuf(buf);
+                ParseError err = subs[i].ConsumePartialIOBuf(buf, depth + 1);
                 if (err != PARSE_OK) {
                     return err;
                 }
