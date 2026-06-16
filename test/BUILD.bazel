@@ -144,13 +144,6 @@ brpc_proto_library(
 )
 
 cc_library(
-    name = "sstream_workaround",
-    hdrs = [
-        "sstream_workaround.h",
-    ],
-)
-
-cc_library(
     name = "gperftools_helper",
     hdrs = [
         "gperftools_helper.h",
@@ -182,7 +175,6 @@ cc_test(
     defines = ["HAS_NLOHMANN_JSON=1"],
     deps = [
         ":cc_test_proto",
-        ":sstream_workaround",
         ":gperftools_helper",
         "//:butil",
         "//:bthread",
@@ -195,7 +187,6 @@ cc_test(
     name = "bvar_unittests",
     srcs = glob(["bvar_*_unittest.cpp"]),
     deps = [
-        ":sstream_workaround",
         ":gperftools_helper",
         "//:bvar",
         "@com_google_googletest//:gtest",
@@ -210,7 +201,6 @@ generate_unittests(
         "bthread*_unittest.cpp",
     ]),
     deps = [
-        ":sstream_workaround",
         ":gperftools_helper",
         "//:bthread",
         "@com_google_googletest//:gtest",
@@ -239,7 +229,6 @@ generate_unittests(
         "brpc_*_unittest.cpp",
     ]),
     deps = [
-        ":sstream_workaround",
         ":gperftools_helper",
         "//:brpc",
         ":cc_test_proto",
