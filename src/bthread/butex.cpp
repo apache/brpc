@@ -97,7 +97,6 @@ struct ButexBthreadWaiter : public ButexWaiter {
     Butex* initial_butex;
     TaskControl* control;
     const timespec* abstime;
-    bthread_tag_t tag;
 };
 
 // pthread_task or main_task allocates this structure on stack and queue it
@@ -320,7 +319,7 @@ int butex_wake(void* arg, bool nosignal) {
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    TaskGroup* g = get_task_group(bbw->control, bbw->tag);
+    TaskGroup* g = get_task_group(bbw->control, bbw->task_meta->attr.tag);
     if (g == tls_task_group) {
         run_in_local_task_group(g, bbw->task_meta, nosignal);
     } else {
@@ -373,7 +372,7 @@ int butex_wake_n(void* arg, size_t n, bool nosignal) {
             bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
-        auto g = get_task_group(w->control, w->tag);
+        auto g = get_task_group(w->control, w->task_meta->attr.tag);
         g->ready_to_run_general(w->task_meta, true);
         nwakeups[g->tag()] = g;
         ++nwakeup;
@@ -384,7 +383,7 @@ int butex_wake_n(void* arg, size_t n, bool nosignal) {
             g->flush_nosignal_tasks_general();
         }
     }
-    auto g = get_task_group(next->control, next->tag);
+    auto g = get_task_group(next->control, next->task_meta->attr.tag);
     if (g == tls_task_group) {
         run_in_local_task_group(g, next->task_meta, nosignal);
     } else {
@@ -446,7 +445,7 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
         ButexBthreadWaiter* w = static_cast<ButexBthreadWaiter*>(bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
-        auto g = get_task_group(w->control, w->tag);
+        auto g = get_task_group(w->control, w->task_meta->attr.tag);
         g->ready_to_run_general(w->task_meta, true);
         nwakeups[g->tag()] = g;
         ++nwakeup;
@@ -489,11 +488,12 @@ int butex_requeue(void* arg, void* arg2) {
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    auto g = is_same_tag(bbw->tag) ? tls_task_group : NULL;
+    auto g = is_same_tag(bbw->task_meta->attr.tag) ? tls_task_group : NULL;
     if (g) {
         TaskGroup::exchange(&g, bbw->task_meta);
     } else {
-        bbw->control->choose_one_group(bbw->tag)->ready_to_run_remote(bbw->task_meta);
+        g = bbw->control->choose_one_group(bbw->task_meta->attr.tag);
+        g->ready_to_run_remote(bbw->task_meta);
     }
     return 1;
 }
@@ -531,7 +531,8 @@ inline bool erase_from_butex(ButexWaiter* bw, bool wakeup, WaiterState state) {
     if (erased && wakeup) {
         if (bw->tid) {
             ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(bw);
-            get_task_group(bbw->control, bbw->tag)->ready_to_run_general(bbw->task_meta);
+            auto g = get_task_group(bbw->control, bbw->task_meta->attr.tag);
+            g->ready_to_run_general(bbw->task_meta);
         } else {
             ButexPthreadWaiter* pw = static_cast<ButexPthreadWaiter*>(bw);
             wakeup_pthread(pw);
@@ -691,7 +692,6 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime, bool prep
     bbw.initial_butex = b;
     bbw.control = g->control();
     bbw.abstime = abstime;
-    bbw.tag = g->tag();
 
     if (abstime != NULL) {
         // Schedule timer before queueing. If the timer is triggered before

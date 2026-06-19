@@ -351,7 +351,7 @@ void TaskGroup::asan_task_runner(intptr_t) {
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
     //       different groups.
-    TaskGroup* g = tls_task_group;
+    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer::set_running_status(g->tid(), g->_cur_meta);
 #endif // BRPC_BTHREAD_TRACER
@@ -526,13 +526,15 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
-    m->priority_index = pg ? (*pg)->_cur_meta->priority_index : -1;
+
+    TaskGroup* g = *pg;
+    m->priority_index = g->_cur_meta->priority_index;
+    m->attr.tag = g->tag();
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
         LOG(INFO) << "Started bthread " << m->tid;
     }
 
-    TaskGroup* g = *pg;
     g->_control->_nbthreads << 1;
     g->_control->tag_nbthreads(g->tag()) << 1;
 #ifdef BRPC_BTHREAD_TRACER
@@ -601,6 +603,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
         LOG(INFO) << "Started bthread " << m->tid;
     }
+    m->attr.tag = tag();
     _control->_nbthreads << 1;
     _control->tag_nbthreads(tag()) << 1;
 #ifdef BRPC_BTHREAD_TRACER
@@ -635,7 +638,7 @@ int TaskGroup::join(bthread_t tid, void** return_value) {
         // The bthread is not created yet, this join is definitely wrong.
         return EINVAL;
     }
-    TaskGroup* g = tls_task_group;
+    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (g != NULL && g->current_tid() == tid) {
         // joining self causes indefinite waiting.
         return EINVAL;
@@ -912,14 +915,14 @@ void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
 }
 
 void TaskGroup::ready_to_run_general(TaskMeta* meta, bool nosignal) {
-    if (tls_task_group == this) {
+    if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == this) {
         return ready_to_run(meta, nosignal);
     }
     return ready_to_run_remote(meta, nosignal);
 }
 
 void TaskGroup::flush_nosignal_tasks_general() {
-    if (tls_task_group == this) {
+    if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == this) {
         return flush_nosignal_tasks();
     }
     return flush_nosignal_tasks_remote();
@@ -927,28 +930,30 @@ void TaskGroup::flush_nosignal_tasks_general() {
 
 void TaskGroup::ready_to_run_in_worker(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
-    return tls_task_group->ready_to_run(args->meta, args->nosignal);
+    return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)->
+        ready_to_run(args->meta, args->nosignal);
 }
 
 void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+
 #ifdef BRPC_BTHREAD_TRACER
-    tls_task_group->_control->_task_tracer.set_status(
-        TASK_STATUS_READY, args->meta);
+    g->_control->_task_tracer.set_status(TASK_STATUS_READY, args->meta);
 #endif // BRPC_BTHREAD_TRACER
-    return tls_task_group->push_rq(args->meta->tid);
+    return g->push_rq(args->meta->tid);
 }
 
 void TaskGroup::priority_to_run(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 #ifdef BRPC_BTHREAD_TRACER
-    tls_task_group->_control->_task_tracer.set_status(
-        TASK_STATUS_READY, args->meta);
+    g->_control->_task_tracer.set_status(TASK_STATUS_READY, args->meta);
 #endif // BRPC_BTHREAD_TRACER
     if (args->meta->priority_index < 0) {
-        return tls_task_group->push_rq(args->meta->tid);
+        return g->push_rq(args->meta->tid);
     }
-    return tls_task_group->control()->push_ed_priority_queue(
+    return g->control()->push_ed_priority_queue(
         args->tag, args->meta->priority_index, args->meta->tid);
 }
 
@@ -960,10 +965,10 @@ struct SleepArgs {
 };
 
 static void ready_to_run_from_timer_thread(void* arg) {
-    CHECK(tls_task_group == NULL);
+    CHECK(BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == NULL);
     const SleepArgs* e = static_cast<const SleepArgs*>(arg);
-    auto g = e->group;
-    auto tag = g->tag();
+    TaskGroup* g = e->group;
+    bthread_tag_t tag = g->tag();
     g->control()->choose_one_group(tag)->ready_to_run_remote(e->meta);
 }
 
@@ -1089,7 +1094,7 @@ static int set_butex_waiter(bthread_t tid, ButexWaiter* w) {
 // by race conditions.
 // TODO: bthreads created by BTHREAD_ATTR_PTHREAD blocking on bthread_usleep()
 // can't be interrupted.
-int TaskGroup::interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag) {
+int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
     // Consume current_waiter in the TaskMeta, wake it up then set it back.
     ButexWaiter* w = NULL;
     uint64_t sleep_id = 0;
@@ -1110,7 +1115,7 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag) {
         }
     } else if (sleep_id != 0) {
         if (get_global_timer_thread()->unschedule(sleep_id) == 0) {
-            TaskGroup* g = tls_task_group;
+            TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
             TaskMeta* m = address_meta(tid);
             if (g) {
                 g->ready_to_run(m);
@@ -1118,7 +1123,7 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c, bthread_tag_t tag) {
                 if (!c) {
                     return EINVAL;
                 }
-                c->choose_one_group(tag)->ready_to_run_remote(m);
+                c->choose_one_group(m->attr.tag)->ready_to_run_remote(m);
             }
         }
     }
