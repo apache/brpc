@@ -1445,8 +1445,9 @@ TEST_F(SocketTest, tcp_user_timeout) {
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
         CheckTCPUserTimeout(ptr->fd(), 0);
+        ASSERT_EQ(0, ptr->SetFailed());
     }
 
     {
@@ -1458,8 +1459,9 @@ TEST_F(SocketTest, tcp_user_timeout) {
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
         CheckTCPUserTimeout(ptr->fd(), tcp_user_timeout_ms);
+        ASSERT_EQ(0, ptr->SetFailed());
     }
 
     brpc::FLAGS_socket_tcp_user_timeout_ms = 2000;
@@ -1470,8 +1472,9 @@ TEST_F(SocketTest, tcp_user_timeout) {
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
         CheckTCPUserTimeout(ptr->fd(), brpc::FLAGS_socket_tcp_user_timeout_ms);
+        ASSERT_EQ(0, ptr->SetFailed());
     }
     {
         int tcp_user_timeout_ms = 3000;
@@ -1482,8 +1485,9 @@ TEST_F(SocketTest, tcp_user_timeout) {
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
         CheckTCPUserTimeout(ptr->fd(), tcp_user_timeout_ms);
+        ASSERT_EQ(0, ptr->SetFailed());
     }
 
     messenger->StopAccept(0);

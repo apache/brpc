@@ -265,4 +265,4 @@ jobs:
     - run: | 
         bazel test --action_env=CC=clang --config=rdma \
                    --define with_babylon_counter=true \
-                   //test/... --test_arg=--gtest_filter=-RdmaRpcTest.*
+                   //test/...

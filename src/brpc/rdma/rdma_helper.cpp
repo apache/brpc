@@ -340,12 +340,21 @@ static void OnRdmaAsyncEvent(Socket* m) {
     } while (true);
 }
 
-#define LoadSymbol(handle, func, symbol) \
-    *(void**)(&func) = dlsym(handle, symbol); \
-    if (!func) { \
+#define LoadSymbol(handle, func, symbol)                 \
+    *(void**)(&func) = dlsym(handle, symbol);            \
+    if (!func) {                                         \
         LOG(ERROR) << "Fail to find symbol: " << symbol; \
-        return -1; \
+        return -1;                                       \
     }
+
+// Soft-load an OPTIONAL symbol: if the symbol is missing (e.g. the
+// installed libibverbs predates rdma-core v35 which introduced the ECE
+// APIs), leave the function pointer NULL and continue instead of failing
+// the whole RDMA initialization. Callers MUST null-check before use.
+#define LoadSymbolOptional(handle, func, symbol) \
+    *(void**)(&func) = dlsym(handle, symbol);    \
+    LOG_IF(WARNING, func == NULL)                \
+        << "Optional symbol not found (feature disabled): " << symbol;
 
 static int ReadRdmaDynamicLib() {
     const static char* const kRdmaLibs[] = {
@@ -392,8 +401,12 @@ static int ReadRdmaDynamicLib() {
     LoadSymbol(g_handle_ibverbs, IbvGetAsyncEvent, "ibv_get_async_event");
     LoadSymbol(g_handle_ibverbs, IbvAckAsyncEvent, "ibv_ack_async_event");
     LoadSymbol(g_handle_ibverbs, IbvEventTypeStr, "ibv_event_type_str");
-    LoadSymbol(g_handle_ibverbs, IbvQueryEce, "ibv_query_ece");
-    LoadSymbol(g_handle_ibverbs, IbvSetEce, "ibv_set_ece");
+    // ECE APIs were introduced in symbol version IBVERBS_1.10.
+    // Load them optionally so that running against an older
+    // libibverbs keeps RDMA working (ECE simply stays disabled)
+    // instead of failing the whole initialization.
+    LoadSymbolOptional(g_handle_ibverbs, IbvQueryEce, "ibv_query_ece");
+    LoadSymbolOptional(g_handle_ibverbs, IbvSetEce, "ibv_set_ece");
 
     return 0;
 }

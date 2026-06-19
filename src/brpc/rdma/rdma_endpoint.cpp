@@ -65,7 +65,6 @@ DEFINE_bool(rdma_use_polling, false, "Use polling mode for RDMA.");
 DEFINE_int32(rdma_poller_num, 1, "Poller number in RDMA polling mode.");
 DEFINE_bool(rdma_poller_yield, false, "Yield thread in RDMA polling mode.");
 DEFINE_bool(rdma_disable_bthread, false, "Disable bthread in RDMA");
-DEFINE_bool(rdma_ece, false, "Open ece in RDMA, should use this feature when rdma nics are from the same merchant.");
 
 static const size_t IOBUF_BLOCK_HEADER_LEN = 32; // implementation-dependent
 
@@ -162,6 +161,8 @@ void RdmaEndpoint::Reset() {
     DeallocateResources();
 
     _state.store(UNINIT, butil::memory_order_relaxed);
+    _handshake_version = 0;
+    _outgoing_ece.reset();
     _resource = NULL;
     _send_cq_events = 0;
     _recv_cq_events = 0;
@@ -302,9 +303,9 @@ static const int WAIT_TIMEOUT_MS = 50;
 
 // Drive an EAGAIN-aware read loop to completion (exactly `len` bytes).
 // `read_once(offset, remaining)` performs ONE underlying read attempt:
-//   - returns > 0  : number of bytes consumed (added to running total);
-//   - returns = 0  : end-of-stream (the loop fails with EEOF);
-//   - returns < 0  : errno set; EAGAIN is handled here via butex_wait,
+//   returns > 0  : number of bytes consumed (added to running total);
+//   returns = 0  : end-of-stream (the loop fails with EEOF);
+//   returns < 0  : errno set; EAGAIN is handled here via butex_wait,
 //                   any other errno bubbles up.
 // `offset` is bytes already received in THIS call (initially 0); the
 // callable uses it to choose the next write target (e.g. `(char*)buf
@@ -519,7 +520,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     } else {
         ep->ApplyRemoteHello(remote);
         ep->_state.store(C_BRINGUP_QP, butil::memory_order_relaxed);
-        if (ep->BringUpQp(remote.lid, remote.gid, remote.qp_num) < 0) {
+        if (ep->BringUpQp(remote, /*is_server=*/false) < 0) {
             LOG(WARNING) << "Fail to bringup QP, fallback to tcp:"
                          << s->description();
             rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
@@ -638,7 +639,7 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
             rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         } else {
             ep->_state.store(S_BRINGUP_QP, butil::memory_order_relaxed);
-            if (ep->BringUpQp(remote.lid, remote.gid, remote.qp_num) < 0) {
+            if (ep->BringUpQp(remote, /*is_server=*/true) < 0) {
                 LOG(WARNING) << "Fail to bringup QP, fallback to tcp:"
                              << s->description();
                 rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
@@ -1200,7 +1201,7 @@ int RdmaEndpoint::AllocateResources() {
     return 0;
 }
 
-int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
+int RdmaEndpoint::BringUpQp(const ParsedHello& remote, bool is_server) {
     if (BAIDU_UNLIKELY(g_skip_rdma_init)) {
         // For UT
         return 0;
@@ -1222,18 +1223,23 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
         return -1;
     }
 
-    if (FLAGS_rdma_ece) {
-        struct ibv_ece ece;
-        int err = IbvQueryEce(_resource->qp, &ece);
+    // ECE negotiation, done while the QP is in INIT state (must be set
+    // before the RTR transition).
+    //
+    // End-to-end model:
+    //   Server: `remote->ece' is the client's queried ECE; set it here,
+    //           then after RTS we query the reduced/negotiated ECE and
+    //           send it back in the server hello.
+    //   Client: `remote->ece' is the server's reduced ECE;
+    //           just set it here.
+    bool use_ece = true;
+    if (IbvSetEce != NULL && remote.ece.has_value()) {
+        ibv_ece ece = *remote.ece;
+        int err = IbvSetEce(_resource->qp, &ece);
         if (err != 0) {
-            LOG(WARNING) << "Fail to IbvQueryEce: " << berror(err);
-            return -1;
-        }
-        // ToDo: should check if remote qp support ece
-        err = IbvSetEce(_resource->qp, &ece);
-        if (err != 0) {
-            LOG(WARNING) << "Fail to IbvSetEce: " << berror(err);
-            return -1;
+            use_ece = false;
+            LOG(WARNING) << "Fail to IbvSetEce, continue without ECE: "
+                         << berror(err);
         }
     }
 
@@ -1244,18 +1250,18 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
 
     attr.qp_state = IBV_QPS_RTR;
     attr.path_mtu = IBV_MTU_1024;  // TODO: support more mtu in future
-    attr.ah_attr.grh.dgid = gid;
+    attr.ah_attr.grh.dgid = remote.gid;
     attr.ah_attr.grh.flow_label = 0;
     attr.ah_attr.grh.sgid_index = GetRdmaGidIndex();
     attr.ah_attr.grh.hop_limit = MAX_HOP_LIMIT;
     attr.ah_attr.grh.traffic_class = 0;
-    attr.ah_attr.dlid = lid;
+    attr.ah_attr.dlid = remote.lid;
     attr.ah_attr.sl = 0;
     attr.ah_attr.src_path_bits = 0;
     attr.ah_attr.static_rate = 0;
     attr.ah_attr.is_global = 1;
     attr.ah_attr.port_num = GetRdmaPortNum();
-    attr.dest_qp_num = qp_num;
+    attr.dest_qp_num = remote.qp_num;
     attr.rq_psn = 0;
     attr.max_dest_rd_atomic = 0;
     attr.min_rnr_timer = 0;  // We do not allow rnr error
@@ -1288,6 +1294,20 @@ int RdmaEndpoint::BringUpQp(uint16_t lid, ibv_gid gid, uint32_t qp_num) {
     if (err != 0) {
         LOG(WARNING) << "Fail to modify QP from RTR to RTS: " << berror(err);
         return -1;
+    }
+
+    // On the server side, now that the QP reached RTS, query the reduced/negotiated
+    // ECE (the subset of enhancements supported by both peers) so it can be returned
+    // to the client in the server hello.
+    if (is_server && use_ece && IbvQueryEce != NULL && remote.ece.has_value()) {
+        ibv_ece ece;
+        int qerr = IbvQueryEce(_resource->qp, &ece);
+        if (qerr == 0) {
+            _outgoing_ece = ece;
+        } else {
+            LOG(WARNING) << "Fail to IbvQueryEce(negotiated), "
+                            "continue without ECE: " << berror(qerr);
+        }
     }
 
     return 0;
