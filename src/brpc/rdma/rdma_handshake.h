@@ -25,14 +25,12 @@
 #include <memory>
 #include <infiniband/verbs.h>
 #include "butil/macros.h"
+#include "brpc/rdma/rdma_handshake_constants.h"
 
 namespace brpc {
 namespace rdma {
 
 class RdmaEndpoint;
-
-// Length of the RDMA handshake magic string (e.g. "RDMA", "RDM3").
-static const size_t MAGIC_STR_LEN = 4;
 
 // Wire-format-agnostic representation of a peer's hello message.
 // Each protocol version (v2 binary, v3 protobuf) translates its own
@@ -49,17 +47,6 @@ struct ParsedHello {
 };
 
 namespace v2_wire {
-
-// Wire constants for the v2 hello.
-//
-// HELLO_MSG_LEN_MIN: total length of the base v2 hello (4B magic +
-// 36B HelloMessage). Anything shorter than this is malformed.
-// HELLO_MSG_LEN_MAX: upper bound for the entire v2 hello message
-// length declared by HelloMessage::msg_len. Anything beyond this is
-// treated as a protocol error and the connection is closed without
-// attempting to drain.
-static constexpr size_t HELLO_MSG_LEN_MIN = 40;
-static constexpr size_t HELLO_MSG_LEN_MAX = 4096;
 
 // v2 binary HelloMessage.
 struct HelloMessage {
@@ -183,7 +170,7 @@ std::unique_ptr<RdmaHandshake> CreateClientHandshake(RdmaEndpoint* ep);
 //   "RDMA" -> RdmaHandshakeServerV2
 //   "RDM3" -> RdmaHandshakeServerV3
 std::unique_ptr<RdmaHandshake> CreateServerHandshakeByMagic(
-    RdmaEndpoint* ep, const uint8_t magic[MAGIC_STR_LEN]);
+    RdmaEndpoint* ep, const uint8_t magic[HELLO_MAGIC_LEN]);
 
 }  // namespace rdma
 }  // namespace brpc

@@ -32,6 +32,7 @@
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma_transport.h"
 #include "brpc/rdma/rdma_handshake.h"
+#include "brpc/rdma/rdma_handshake_constants.h"
 
 DECLARE_int32(task_group_ntags);
 
@@ -83,14 +84,6 @@ static const uint8_t RETRY_CNT = 7;
 extern const uint16_t MIN_QP_SIZE = 16;
 static const uint16_t MAX_QP_SIZE = 4096;
 extern const uint16_t MIN_BLOCK_SIZE = 1024;
-
-// ACK message wire format (shared by all protocol versions): a single
-// 4B big-endian flags word; bit 0 (HELLO_ACK_RDMA_OK) indicates the
-// sender wants to use RDMA. The state machines in
-// ProcessHandshakeAt{Client,Server} inline the corresponding 4B
-// send/recv directly using ReadFromFd / WriteToFd.
-static const size_t HELLO_ACK_LEN = 4;
-static const uint32_t HELLO_ACK_RDMA_OK = 0x1;
 
 static butil::Mutex* g_rdma_resource_mutex = NULL;
 static RdmaResource* g_rdma_resource_list = NULL;
@@ -583,8 +576,8 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         << "Start handshake on " << s->description();
 
     ep->_state.store(S_HELLO_WAIT, butil::memory_order_relaxed);
-    uint8_t magic[MAGIC_STR_LEN];
-    if (ep->ReadFromFd(magic, MAGIC_STR_LEN) < 0) {
+    uint8_t magic[HELLO_MAGIC_LEN];
+    if (ep->ReadFromFd(magic, HELLO_MAGIC_LEN) < 0) {
         int saved_errno = errno;
         PLOG(WARNING) << "Fail to read Hello Message from client:"
                       << s->description() << " " << s->_remote_side;
@@ -601,7 +594,8 @@ void* RdmaEndpoint::ProcessHandshakeAtServer(void* arg) {
             << "It seems that the client does not use RDMA, fallback to TCP:"
             << s->description();
         // We need to copy data read back to _socket->_read_buf.
-        s->_read_buf.append(magic, MAGIC_STR_LEN);
+        s->_read_buf.append(magic, HELLO_MAGIC_LEN);
+        ep->_state = FALLBACK_TCP;
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         // Use release memory order to publish the magic bytes appended
         // above to whoever reads `_state == FALLBACK_TCP` (the event
