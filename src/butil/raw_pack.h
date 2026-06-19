@@ -18,6 +18,7 @@
 #ifndef BUTIL_RAW_PACK_H
 #define BUTIL_RAW_PACK_H
 
+#include <string.h>
 #include "butil/sys_byteorder.h"
 
 namespace butil {
@@ -44,10 +45,16 @@ class RawPacker {
 public:
     // Notice: User must guarantee `stream' is as long as the packed data.
     explicit RawPacker(void* stream) : _stream((char*)stream) {}
-    ~RawPacker() {}
 
     // Not using operator<< because some values may be packed differently from
     // its type.
+    RawPacker& pack16(uint16_t host_value) {
+        *(uint16_t*)_stream = HostToNet16(host_value);
+        _stream += 2;
+        return *this;
+    }
+
+
     RawPacker& pack32(uint32_t host_value) {
         *(uint32_t*)_stream = HostToNet32(host_value);
         _stream += 4;
@@ -62,6 +69,13 @@ public:
         return *this;
     }
 
+    // Pack `n' raw bytes from `data' as-is (no byte order conversion).
+    RawPacker& pack_bytes(const void* data, size_t n) {
+        memcpy(_stream, data, n);
+        _stream += n;
+        return *this;
+    }
+
 private:
     char* _stream;
 };
@@ -71,18 +85,30 @@ private:
 class RawUnpacker {
 public:
     explicit RawUnpacker(const void* stream) : _stream((const char*)stream) {}
-    ~RawUnpacker() {}
 
-    RawUnpacker& unpack32(uint32_t & host_value) {
+    RawUnpacker& unpack16(uint16_t& host_value) {
+        host_value = NetToHost16(*(const uint16_t*)_stream);
+        _stream += 2;
+        return *this;
+    }
+
+    RawUnpacker& unpack32(uint32_t& host_value) {
         host_value = NetToHost32(*(const uint32_t*)_stream);
         _stream += 4;
         return *this;
     }
 
-    RawUnpacker& unpack64(uint64_t & host_value) {
+    RawUnpacker& unpack64(uint64_t& host_value) {
         const uint32_t *p = (const uint32_t*)_stream;
         host_value = (((uint64_t)NetToHost32(p[0])) << 32) | NetToHost32(p[1]);
         _stream += 8;
+        return *this;
+    }
+
+    // Unpack `n' raw bytes into `data' as-is (no byte order conversion).
+    RawUnpacker& unpack_bytes(void* data, size_t n) {
+        memcpy(data, _stream, n);
+        _stream += n;
         return *this;
     }
 

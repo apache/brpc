@@ -607,11 +607,15 @@ int Server::AddBuiltinServices() {
     return 0;
 }
 
-bool is_http_protocol(const char* name) {
+BUTIL_FORCE_INLINE bool is_http_protocol(const char* name) {
     if (name[0] != 'h') {
         return false;
     }
     return strcmp(name, "http") == 0 || strcmp(name, "h2") == 0;
+}
+
+BUTIL_FORCE_INLINE bool is_rdma_handshake_protocol(const char* name) {
+    return strcmp(name, "rdma_handshake") == 0;
 }
 
 Acceptor* Server::BuildAcceptor() {
@@ -637,6 +641,7 @@ Acceptor* Server::BuildAcceptor() {
         }
         if (has_whitelist &&
             !is_http_protocol(protocols[i].name) &&
+            !is_rdma_handshake_protocol(protocols[i].name) &&
             !whitelist.erase(protocols[i].name)) {
             // the protocol is not allowed to serve.
             RPC_VLOG << "Skip protocol=" << protocols[i].name;

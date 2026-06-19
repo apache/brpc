@@ -20,19 +20,19 @@
 
 #if BRPC_WITH_RDMA
 
-#include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <infiniband/verbs.h>
 #include "butil/macros.h"
+#include "brpc/rdma/rdma_handshake_constants.h"
+
+namespace butil {
+class IOBuf;
+}
 
 namespace brpc {
 namespace rdma {
 
 class RdmaEndpoint;
-
-// Length of the RDMA handshake magic string (e.g. "RDMA", "RDM3").
-static const size_t MAGIC_STR_LEN = 4;
 
 // Wire-format-agnostic representation of a peer's hello message.
 // Each protocol version (v2 binary, v3 protobuf) translates its own
@@ -48,18 +48,19 @@ struct ParsedHello {
     uint32_t qp_num;
 };
 
-namespace v2_wire {
+// Result of reading/parsing a peer's hello (see ReceiveAndParseRemoteHello).
+enum class RemoteHelloResult {
+    // A full hello was read and negotiation succeeded.
+    NEGOTIATED,
+    // A full hello was read but negotiation failed.
+    FALLBACK,
+    // (server only) Not enough data yet.
+    NEED_MORE,
+    // IO/protocol error (errno set).
+    ERROR,
+};
 
-// Wire constants for the v2 hello.
-//
-// HELLO_MSG_LEN_MIN: total length of the base v2 hello (4B magic +
-// 36B HelloMessage). Anything shorter than this is malformed.
-// HELLO_MSG_LEN_MAX: upper bound for the entire v2 hello message
-// length declared by HelloMessage::msg_len. Anything beyond this is
-// treated as a protocol error and the connection is closed without
-// attempting to drain.
-static constexpr size_t HELLO_MSG_LEN_MIN = 40;
-static constexpr size_t HELLO_MSG_LEN_MAX = 4096;
+namespace v2_wire {
 
 // v2 binary HelloMessage.
 struct HelloMessage {
@@ -79,19 +80,16 @@ struct HelloMessage {
 
 }  // namespace v2_wire
 
-// Abstract base class of an RDMA handshake.
-//
-// Acts as the protocol-version dispatch point for the state machine
-// driven by RdmaEndpoint::ProcessHandshakeAt{Client,Server}.
+// Base class of an RDMA handshake, shared by both roles.
 class RdmaHandshake {
 public:
-    explicit RdmaHandshake(RdmaEndpoint* ep) : _ep(ep) {}
+    RdmaHandshake(RdmaEndpoint* ep, int version) : _ep(ep), _version(version) {}
     virtual ~RdmaHandshake() = default;
 
     DISALLOW_COPY_AND_ASSIGN(RdmaHandshake);
 
     // Wire-level protocol version (2 for "RDMA", 3 for "RDM3").
-    virtual int ProtocolVersion() const = 0;
+    int ProtocolVersion() const { return _version; }
 
     // Build and send the local hello (including the protocol magic).
     // Returns 0 on success, -1 on IO error (errno set).
@@ -104,68 +102,56 @@ public:
     //   - v3: qp_num==0 so the peer's ValidRdmaHello rejects it.
     virtual int SendLocalHello() = 0;
 
-    // Read the peer's hello, validate it, and translate into ParsedHello.
-    //
-    // Role-specific semantics:
-    //   - Client subclasses: read & verify the 4B magic first, then the
-    //     body. (The endpoint did NOT pre-read the magic on the client
-    //     side.)
-    //   - Server subclasses: read ONLY the body. The 4B magic was
-    //     already consumed by ProcessHandshakeAtServer and was used to
-    //     pick `this` from CreateServerHandshakeByMagic; re-reading
-    //     would deadlock.
-    //
-    // Outputs:
-    //   *negotiated -- true if the remote hello is structurally valid
-    //                  AND passes per-protocol negotiation checks;
-    //                  false means the peer asked for fallback or sent
-    //                  something we can't honor.
-    // Returns:
-    //    0 -- IO/parsing layer OK; check *negotiated and *remote.
-    //   -1 -- IO error or unrecoverable protocol error (errno set).
-    virtual int ReceiveAndParseRemoteHello(ParsedHello* remote, bool* negotiated) = 0;
+    // Read and parse the peer's hello into *remote.
+    virtual RemoteHelloResult ReceiveAndParseRemoteHello(ParsedHello* remote) = 0;
 
 protected:
     RdmaEndpoint* _ep;
+    int _version;
+};
+
+// Server-side handshake base: parses the remote hello non-blockingly out of
+// `_source` (an IOBuf filled by InputMessenger), never touching the fd.
+class ServerRdmaHandshake : public RdmaHandshake {
+public:
+    ServerRdmaHandshake(RdmaEndpoint* ep, butil::IOBuf* source, int version)
+        : RdmaHandshake(ep, version), _source(source) {}
+
+protected:
+    butil::IOBuf* _source;
 };
 
 // v2 handshake (legacy "RDMA" magic, 36B binary HelloMessage).
 class RdmaHandshakeClientV2 : public RdmaHandshake {
 public:
-    using RdmaHandshake::RdmaHandshake;
-    int ProtocolVersion() const override { return 2; }
-
+    explicit RdmaHandshakeClientV2(RdmaEndpoint* ep) : RdmaHandshake(ep, 2) {}
     int SendLocalHello() override;
-    int ReceiveAndParseRemoteHello(ParsedHello* remote, bool* negotiated) override;
+    RemoteHelloResult ReceiveAndParseRemoteHello(ParsedHello* remote) override;
 };
 
-class RdmaHandshakeServerV2 : public RdmaHandshake {
+class RdmaHandshakeServerV2 : public ServerRdmaHandshake {
 public:
-    using RdmaHandshake::RdmaHandshake;
-    int ProtocolVersion() const override { return 2; }
-
+    RdmaHandshakeServerV2(RdmaEndpoint* ep, butil::IOBuf* source)
+        : ServerRdmaHandshake(ep, source, 2) {}
     int SendLocalHello() override;
-    int ReceiveAndParseRemoteHello(ParsedHello* remote, bool* negotiated) override;
+    RemoteHelloResult ReceiveAndParseRemoteHello(ParsedHello* remote) override;
 };
 
 // v3 handshake (new "RDM3" magic, protobuf RdmaHello).
 // [ "RDM3" 4B ][ pb_size 4B (big-endian) ][ RdmaHello protobuf bytes ]
 class RdmaHandshakeClientV3 : public RdmaHandshake {
 public:
-    using RdmaHandshake::RdmaHandshake;
-    int ProtocolVersion() const override { return 3; }
-
+    explicit RdmaHandshakeClientV3(RdmaEndpoint* ep) : RdmaHandshake(ep, 3) {}
     int SendLocalHello() override;
-    int ReceiveAndParseRemoteHello(ParsedHello* remote, bool* negotiated) override;
+    RemoteHelloResult ReceiveAndParseRemoteHello(ParsedHello* remote) override;
 };
 
-class RdmaHandshakeServerV3 : public RdmaHandshake {
+class RdmaHandshakeServerV3 : public ServerRdmaHandshake {
 public:
-    using RdmaHandshake::RdmaHandshake;
-    int ProtocolVersion() const override { return 3; }
-
+    RdmaHandshakeServerV3(RdmaEndpoint* ep, butil::IOBuf* source)
+        : ServerRdmaHandshake(ep, source, 3) {}
     int SendLocalHello() override;
-    int ReceiveAndParseRemoteHello(ParsedHello* remote, bool* negotiated) override;
+    RemoteHelloResult ReceiveAndParseRemoteHello(ParsedHello* remote) override;
 };
 
 // Factory methods
@@ -183,7 +169,7 @@ std::unique_ptr<RdmaHandshake> CreateClientHandshake(RdmaEndpoint* ep);
 //   "RDMA" -> RdmaHandshakeServerV2
 //   "RDM3" -> RdmaHandshakeServerV3
 std::unique_ptr<RdmaHandshake> CreateServerHandshakeByMagic(
-    RdmaEndpoint* ep, const uint8_t magic[MAGIC_STR_LEN]);
+    RdmaEndpoint* ep, butil::IOBuf* source, const uint8_t magic[HELLO_MAGIC_LEN]);
 
 }  // namespace rdma
 }  // namespace brpc

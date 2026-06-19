@@ -19,6 +19,7 @@
 #ifndef BRPC_PARSE_RESULT_H
 #define BRPC_PARSE_RESULT_H
 
+#include <stddef.h>
 
 namespace brpc {
 

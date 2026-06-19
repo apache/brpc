@@ -29,6 +29,7 @@ friend class TransportFactory;
 friend class rdma::RdmaEndpoint;
 friend class rdma::RdmaConnect;
 friend class rdma::RdmaHandshakeServerV2;
+friend class rdma::RdmaHandshakeServerV3;
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;

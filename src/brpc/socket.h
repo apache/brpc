@@ -594,6 +594,9 @@ public:
     // True if this socket was created by Connect.
     bool CreatedByConnect() const;
 
+    // The socket mode decided at creation.
+    SocketMode socket_mode() const { return _socket_mode; }
+
     // Get an UNUSED socket connecting to the same place as this socket
     // from the SocketPool of this socket.
     int GetPooledSocket(SocketUniquePtr* pooled_socket);
