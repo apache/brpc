@@ -517,14 +517,22 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
             return CONSUME_STATE_ERROR;
         }
         buf.pop_front(crlf_pos + 2/*CRLF*/);
+        if (value == 0) {
+            LOG(ERROR) << "Empty redis command array";
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
+        }
         _parsing_array = true;
         _length = value;
         _index = 0;
         _args.resize(value);
         return CONSUME_STATE_CONTINUE;
     }
-    CHECK(_index < _length) << "a complete command has been parsed. "
-                               "impl of RedisCommandParser::Parse is buggy";
+    if (_index >= _length) {
+        LOG(ERROR) << "Too many bulk strings in redis command";
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
+    }
     const int64_t len = value;  // `value' is length of the string
     if (len < 0) {
         LOG(ERROR) << "string in command is nil!";

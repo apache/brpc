@@ -673,6 +673,19 @@ TEST_F(RedisTest, command_parser) {
     }
 }
 
+TEST(RedisCommandParserTest, reject_empty_resp_array_command) {
+    brpc::RedisCommandParser parser;
+    butil::IOBuf buf;
+    std::vector<butil::StringPiece> command_out;
+    butil::Arena arena;
+
+    // Empty RESP arrays are not valid commands and must not leave the parser in
+    // a state that accepts following bulk strings.
+    buf.append("*0\r\n$1\r\nx\r\n");
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+              parser.Consume(buf, &command_out, &arena));
+}
+
 // Regression test for issue #3109: the inline redis protocol must not consume
 // the HTTP/2 connection preface as a command, otherwise protocol auto-detection
 // never falls through to HTTP/2 and gRPC clients fail with "connection closed
