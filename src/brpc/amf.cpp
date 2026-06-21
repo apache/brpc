@@ -27,11 +27,35 @@
 namespace brpc {
 
 DEFINE_int32(amf_max_depth, 128, "Maximum nesting depth for AMF objects and arrays");
+DEFINE_int32(amf_max_string_size, 64 * 1024 * 1024,
+             "Maximum byte size for AMF strings");
+DEFINE_int32(amf_max_array_size, 1024 * 1024,
+             "Maximum element count for AMF arrays");
 
 static bool CheckAMFDepth(int depth) {
     if (depth > FLAGS_amf_max_depth) {
         LOG(ERROR) << "AMF exceeds max depth! max="
                    << FLAGS_amf_max_depth << ", actually=" << depth;
+        return false;
+    }
+    return true;
+}
+
+static bool CheckAMFStringSize(uint32_t len) {
+    if (FLAGS_amf_max_string_size < 0 ||
+        len > (uint32_t)FLAGS_amf_max_string_size) {
+        LOG(ERROR) << "AMF string exceeds max size! max="
+                   << FLAGS_amf_max_string_size << ", actually=" << len;
+        return false;
+    }
+    return true;
+}
+
+static bool CheckAMFArraySize(uint32_t count) {
+    if (FLAGS_amf_max_array_size < 0 ||
+        count > (uint32_t)FLAGS_amf_max_array_size) {
+        LOG(ERROR) << "AMF array exceeds max size! max="
+                   << FLAGS_amf_max_array_size << ", actually=" << count;
         return false;
     }
     return true;
@@ -268,8 +292,12 @@ static bool ReadAMFShortStringBody(std::string* str, AMFInputStream* stream) {
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
+    if (!CheckAMFStringSize(len)) {
+        return false;
+    }
     str->resize(len);
     if (len != 0 && stream->cutn(&(*str)[0], len) != len) {
+        str->clear();
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
@@ -282,8 +310,12 @@ static bool ReadAMFLongStringBody(std::string* str, AMFInputStream* stream) {
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
+    if (!CheckAMFStringSize(len)) {
+        return false;
+    }
     str->resize(len);
     if (len != 0 && stream->cutn(&(*str)[0], len) != len) {
+        str->clear();
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
@@ -584,6 +616,9 @@ static bool ReadAMFEcmaArrayBody(google::protobuf::Message* message,
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
+    if (!CheckAMFArraySize(count)) {
+        return false;
+    }
     const google::protobuf::Descriptor* desc = message->GetDescriptor();
     std::string name;
     for (uint32_t i = 0; i < count; ++i) {
@@ -760,6 +795,9 @@ static bool ReadAMFEcmaArrayBody(AMFObject* obj, AMFInputStream* stream, int dep
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
+    if (!CheckAMFArraySize(count)) {
+        return false;
+    }
     std::string name;
     for (uint32_t i = 0; i < count; ++i) {
         if (!ReadAMFShortStringBody(&name, stream)) {
@@ -890,6 +928,9 @@ static bool ReadAMFArrayBody(AMFArray* arr, AMFInputStream* stream, int depth) {
     uint32_t count = 0;
     if (stream->cut_u32(&count) != 4u) {
         LOG(ERROR) << "stream is not long enough";
+        return false;
+    }
+    if (!CheckAMFArraySize(count)) {
         return false;
     }
     for (uint32_t i = 0; i < count; ++i) {
