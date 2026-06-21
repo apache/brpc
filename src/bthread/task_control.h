@@ -91,7 +91,12 @@ public:
     // If this method is called after init(), it never returns NULL.
     TaskGroup* choose_one_group(bthread_tag_t tag);
 
-    static int parse_cpuset(std::string value, std::vector<unsigned>& cpus);
+    // Parse FLAGS_cpu_set into _tag_cpus.  Two formats are accepted:
+    //   Legacy (all tags share one set): "0-3,5,7"
+    //   Per-tag:  "0:0-3,5,7;1:6-9,4"
+    // Tags not mentioned get an empty cpu list (= no binding).
+    // Returns -1 on parse error.
+    int parse_cpuset(const std::string& value);
 
     static void bind_thread_to_cpu(pthread_t pthread, unsigned cpu_id);
 
@@ -154,9 +159,6 @@ private:
     bool _stop;
     butil::atomic<int> _concurrency;
     std::vector<pthread_t> _workers;
-    std::vector<unsigned> _cpus;
-    butil::atomic<int> _next_worker_id;
-
     bvar::Adder<int64_t> _nworkers;
     butil::Mutex _pending_time_mutex;
     butil::atomic<bvar::LatencyRecorder*> _pending_time;
@@ -180,6 +182,12 @@ private:
 
     size_t _pl_num_of_each_tag;
     std::vector<TaggedParkingLot> _tagged_pl;
+    // Per-tag CPU binding lists.  _tag_cpus[tag] is the round-robin list of
+    // CPU IDs to which workers of that tag are bound.  Empty means no binding.
+    std::vector<std::vector<unsigned>> _tag_cpus;
+    // Per-tag monotonic counter for round-robin CPU assignment.
+    // Incremented once per worker created for that tag (in worker_thread).
+    std::vector<butil::atomic<int>> _tag_next_worker_id;
 
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer _task_tracer;
