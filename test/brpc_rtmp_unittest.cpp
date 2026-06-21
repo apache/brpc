@@ -37,6 +37,8 @@
 
 namespace brpc {
 DECLARE_int32(amf_max_depth);
+DECLARE_int32(amf_max_string_size);
+DECLARE_int32(amf_max_array_size);
 }
 
 int main(int argc, char* argv[]) {
@@ -57,6 +59,20 @@ public:
 
 private:
     int32_t _old_depth;
+};
+
+class ScopedAMFLimit {
+public:
+    ScopedAMFLimit(int32_t* flag, int32_t value) : _flag(flag), _old_value(*flag) {
+        *_flag = value;
+    }
+    ~ScopedAMFLimit() {
+        *_flag = _old_value;
+    }
+
+private:
+    int32_t* _flag;
+    int32_t _old_value;
 };
 
 void AppendAMFStrictArrayHeader(std::string* out, uint32_t count) {
@@ -84,6 +100,14 @@ void AppendAMFShortStringBody(std::string* out, const char* name) {
     out->push_back((char)((len >> 8) & 0xFF));
     out->push_back((char)(len & 0xFF));
     out->append(name, len);
+}
+
+void AppendAMFLongStringHeader(std::string* out, uint32_t len) {
+    out->push_back((char)brpc::AMF_MARKER_LONG_STRING);
+    out->push_back((char)((len >> 24) & 0xFF));
+    out->push_back((char)((len >> 16) & 0xFF));
+    out->push_back((char)((len >> 8) & 0xFF));
+    out->push_back((char)(len & 0xFF));
 }
 
 void AppendAMFObjectEnd(std::string* out) {
@@ -595,6 +619,56 @@ TEST(RtmpTest, amf) {
     ASSERT_EQ("foo", info3.code());
     ASSERT_EQ("bar", info3.level());
     ASSERT_EQ("heheda", info3.description());
+}
+
+TEST(RtmpTest, amf_rejects_oversized_string_before_growing_output) {
+    std::string req_buf;
+    AppendAMFLongStringHeader(&req_buf, 16);
+    req_buf.append("short", 5);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    std::string result = "unchanged";
+    EXPECT_FALSE(brpc::ReadAMFString(&result, &istream));
+    EXPECT_TRUE(result.empty());
+
+    ScopedAMFLimit scoped_limit(&brpc::FLAGS_amf_max_string_size, 4);
+    std::string capped_buf;
+    AppendAMFLongStringHeader(&capped_buf, 5);
+    capped_buf.append("hello", 5);
+
+    google::protobuf::io::ArrayInputStream zc_stream2(capped_buf.data(),
+                                                     capped_buf.size());
+    brpc::AMFInputStream istream2(&zc_stream2);
+    EXPECT_FALSE(brpc::ReadAMFString(&result, &istream2));
+}
+
+TEST(RtmpTest, amf_rejects_oversized_ecma_array_count) {
+    ScopedAMFLimit scoped_limit(&brpc::FLAGS_amf_max_array_size, 1);
+
+    std::string req_buf;
+    AppendAMFEcmaArrayHeader(&req_buf, 2);
+    AppendAMFShortStringBody(&req_buf, "x");
+    req_buf.push_back((char)brpc::AMF_MARKER_NULL);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFObject obj;
+    EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+}
+
+TEST(RtmpTest, amf_rejects_oversized_strict_array_count) {
+    ScopedAMFLimit scoped_limit(&brpc::FLAGS_amf_max_array_size, 1);
+
+    std::string req_buf;
+    AppendAMFStrictArrayHeader(&req_buf, 2);
+    req_buf.push_back((char)brpc::AMF_MARKER_NULL);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFArray arr;
+    EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
+    EXPECT_EQ(0u, arr.size());
 }
 
 TEST(RtmpTest, amf_rejects_deep_nested_arrays) {
