@@ -348,7 +348,7 @@ int TaskControl::add_workers(int num, bthread_tag_t tag) {
 }
 
 TaskGroup* TaskControl::choose_one_group(bthread_tag_t tag) {
-    CHECK(tag >= BTHREAD_TAG_DEFAULT && tag < FLAGS_task_group_ntags);
+    CHECK(tag >= BTHREAD_TAG_DEFAULT && tag < FLAGS_task_group_ntags) << tag;
     auto& groups = tag_group(tag);
     const auto ngroup = tag_ngroup(tag).load(butil::memory_order_acquire);
     if (ngroup != 0) {

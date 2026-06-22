@@ -274,7 +274,7 @@ start_from_non_worker(bthread_t* __restrict tid,
     if (NULL == c) {
         return ENOMEM;
     }
-    auto tag = BTHREAD_TAG_DEFAULT;
+    bthread_tag_t tag = BTHREAD_TAG_DEFAULT;
     if (attr != NULL && attr->tag != BTHREAD_TAG_INVALID) {
         tag = attr->tag;
     }
@@ -283,7 +283,7 @@ start_from_non_worker(bthread_t* __restrict tid,
         // 1. NOSIGNAL is often for creating many bthreads in batch,
         //    inserting into the same TaskGroup maximizes the batch.
         // 2. bthread_flush() needs to know which TaskGroup to flush.
-        auto g = tls_task_group_nosignal;
+        TaskGroup* g = tls_task_group_nosignal;
         if (NULL == g) {
             g = c->choose_one_group(tag);
             tls_task_group_nosignal = g;
@@ -298,7 +298,7 @@ start_from_non_worker(bthread_t* __restrict tid,
 // tag equal to thread local
 // tag equal to BTHREAD_TAG_INVALID
 BUTIL_FORCE_INLINE bool can_run_thread_local(const bthread_attr_t* __restrict attr) {
-    return attr == nullptr || attr->tag == bthread::tls_task_group->tag() ||
+    return attr == nullptr || attr->tag == tls_task_group->tag() ||
            attr->tag == BTHREAD_TAG_INVALID;
 }
 
@@ -331,7 +331,7 @@ int bthread_start_urgent(bthread_t* __restrict tid,
                          const bthread_attr_t* __restrict attr,
                          void * (*fn)(void*),
                          void* __restrict arg) {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (g) {
         // if attribute is null use thread local task group
         if (bthread::can_run_thread_local(attr)) {
@@ -345,7 +345,7 @@ int bthread_start_background(bthread_t* __restrict tid,
                              const bthread_attr_t* __restrict attr,
                              void * (*fn)(void*),
                              void* __restrict arg) {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (g) {
         // if attribute is null use thread local task group
         if (bthread::can_run_thread_local(attr)) {
@@ -356,7 +356,7 @@ int bthread_start_background(bthread_t* __restrict tid,
 }
 
 void bthread_flush() {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (g) {
         return g->flush_nosignal_tasks();
     }
@@ -368,8 +368,8 @@ void bthread_flush() {
     }
 }
 
-int bthread_interrupt(bthread_t tid, bthread_tag_t tag) {
-    return bthread::TaskGroup::interrupt(tid, bthread::get_task_control(), tag);
+int bthread_interrupt(bthread_t tid, bthread_tag_t /*tag*/) {
+    return bthread::TaskGroup::interrupt(tid, bthread::get_task_control());
 }
 
 int bthread_stop(bthread_t tid) {
@@ -382,7 +382,7 @@ int bthread_stopped(bthread_t tid) {
 }
 
 bthread_t bthread_self(void) {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     // note: return 0 for main tasks now, which include main thread and
     // all work threads. So that we can identify main tasks from logs
     // more easily. This is probably questionable in the future.
@@ -397,7 +397,7 @@ int bthread_equal(bthread_t t1, bthread_t t2) {
 }
 
 void bthread_exit(void* retval) {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (g != NULL && !g->is_current_main_task()) {
         throw bthread::ExitException(retval);
     } else {
@@ -511,7 +511,7 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
 }
 
 int bthread_about_to_quit() {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (g != NULL) {
         bthread::TaskMeta* current_task = g->current_task();
         if(!(current_task->attr.flags & BTHREAD_NEVER_QUIT)) {
@@ -640,12 +640,12 @@ int bthread_list_join(bthread_list_t* list) {
 }
 
 bthread_tag_t bthread_self_tag(void) {
-    return bthread::tls_task_group != nullptr ? bthread::tls_task_group->tag()
-                                              : BTHREAD_TAG_DEFAULT;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    return g != NULL ? g->tag() : BTHREAD_TAG_DEFAULT;
 }
 
 uint64_t bthread_cpu_clock_ns(void) {
-     bthread::TaskGroup* g = bthread::tls_task_group;
+     bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (g != NULL && !g->is_current_main_task()) {
         return g->current_task_cpu_clock_ns();
     }
