@@ -73,8 +73,10 @@ public:
 
 private:
     Value _value{};
-    // Used to protect `_cpu_time_stat' when __x86_64__, __ARM_NEON, and __riscv is not defined.
+    // Used to protect `_cpu_time_stat' on architectures without lock-free 128-bit atomics.
     FastPthreadMutex _mutex;
+    // Sequence counter for RISC-V seqlock implementation.
+    uint64_t _seq = 0;
 };
 
 // Thread-local group of tasks.

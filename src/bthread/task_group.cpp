@@ -85,37 +85,100 @@ BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, NULL);
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
 AtomicInteger128::Value AtomicInteger128::load() const {
-#if __x86_64__ || __ARM_NEON
-    // Supress compiler warning.
-    (void)_mutex;
-#endif // __x86_64__ || __ARM_NEON
-
-#if __x86_64__ || __ARM_NEON
 #ifdef __x86_64__
+    (void)_mutex;
+    (void)_seq;
     __m128i value = _mm_load_si128(reinterpret_cast<const __m128i*>(&_value));
-#else // __ARM_NEON
-    int64x2_t value = vld1q_s64(reinterpret_cast<const int64_t*>(&_value));
-#endif // __x86_64__
     return {value[0], value[1]};
-#else // __x86_64__ || __ARM_NEON
-    // RISC-V and other architectures use mutex fallback
+#elif defined(__ARM_NEON)
+    (void)_mutex;
+    (void)_seq;
+    int64x2_t value = vld1q_s64(reinterpret_cast<const int64_t*>(&_value));
+    return {value[0], value[1]};
+#elif defined(__riscv) && __riscv_xlen == 64
+    (void)_mutex;
+    // RISC-V: Seqlock-based atomic 128-bit load.
+    int64_t v1, v2;
+    uint64_t seq0, seq1;
+    do {
+        __asm__ volatile(
+            "ld %0, %1\n\t"
+            : "=r"(seq0)
+            : "+m"(_seq)
+            : "memory"
+        );
+        if (seq0 & 1) continue;
+        __asm__ volatile("fence r, rw\n\t" ::: "memory");
+        __asm__ volatile(
+            "ld %0, %2\n\t"
+            "ld %1, %3\n\t"
+            : "=r"(v1), "=r"(v2)
+            : "+m"(_value.v1), "+m"(_value.v2)
+            : "memory"
+        );
+        __asm__ volatile("fence r, rw\n\t" ::: "memory");
+        __asm__ volatile(
+            "ld %0, %1\n\t"
+            : "=r"(seq1)
+            : "+m"(_seq)
+            : "memory"
+        );
+    } while (seq0 != seq1);
+    return {v1, v2};
+#else
     BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
     return _value;
-#endif // __x86_64__ || __ARM_NEON
+#endif
 }
 
 void AtomicInteger128::store(Value value) {
-#if __x86_64__
+#ifdef __x86_64__
+    (void)_seq;
     __m128i v = _mm_load_si128(reinterpret_cast<__m128i*>(&value));
     _mm_store_si128(reinterpret_cast<__m128i*>(&_value), v);
-#elif __ARM_NEON
+#elif defined(__ARM_NEON)
+    (void)_seq;
     int64x2_t v = vld1q_s64(reinterpret_cast<int64_t*>(&value));
     vst1q_s64(reinterpret_cast<int64_t*>(&_value), v);
+#elif defined(__riscv) && __riscv_xlen == 64
+    (void)_mutex;
+    // RISC-V: Seqlock-based atomic 128-bit store.
+    uint64_t old_seq;
+    __asm__ volatile(
+        "ld %0, %1\n\t"
+        : "=r"(old_seq)
+        : "+m"(_seq)
+        : "memory"
+    );
+    uint64_t new_seq = old_seq + 1;
+    __asm__ volatile(
+        "fence w, w\n\t"
+        "sd %0, %1\n\t"
+        :
+        : "r"(new_seq), "+m"(_seq)
+        : "memory"
+    );
+    __asm__ volatile("fence w, w\n\t" ::: "memory");
+    __asm__ volatile(
+        "sd %0, %2\n\t"
+        "sd %1, %3\n\t"
+        :
+        : "r"(value.v1), "r"(value.v2),
+          "+m"(_value.v1), "+m"(_value.v2)
+        : "memory"
+    );
+    __asm__ volatile("fence w, w\n\t" ::: "memory");
+    new_seq++;
+    __asm__ volatile(
+        "sd %0, %1\n\t"
+        :
+        : "r"(new_seq), "+m"(_seq)
+        : "memory"
+    );
 #else
-    // RISC-V and other architectures use mutex fallback
     BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
     _value = value;
-#endif // __x86_64__ || __ARM_NEON
+#endif
 }
 
 
