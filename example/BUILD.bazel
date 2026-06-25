@@ -34,12 +34,22 @@ COPTS = [
 }) + select({
     "//bazel/config:brpc_with_rdma": ["-DBRPC_WITH_RDMA=1"],
     "//conditions:default": [""],
+}) + select({
+    "//bazel/config:brpc_with_iouring": ["-DBRPC_WITH_IOURING=1"],
+    "//conditions:default": [""],
 })
 
 brpc_proto_library(
     name = "cc_echo_c++_proto",
     srcs = ["echo_c++/echo.proto"],
     include = "echo_c++",
+    proto_deps = [],
+)
+
+brpc_proto_library(
+    name = "cc_iouring_performance_proto",
+    srcs = ["iouring_performance/test.proto"],
+    include = "iouring_performance",
     proto_deps = [],
 )
 
@@ -111,6 +121,52 @@ cc_binary(
 )
 
 cc_binary(
+    name = "iouring_performance_server",
+    srcs = [
+        "iouring_performance/server.cpp",
+    ],
+    includes = [
+        "iouring_performance",
+    ],
+    copts = COPTS + select({
+        "//bazel/config:brpc_with_iouring": ["-DBRPC_WITH_IOURING=1"],
+        "//conditions:default": [""],
+    }),
+    deps = [
+        ":cc_iouring_performance_proto",
+        "//:brpc",
+    ] + select({
+        "//bazel/config:brpc_with_iouring": [
+            "@com_github_axboe_liburing//:liburing",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_binary(
+    name = "iouring_performance_client",
+    srcs = [
+        "iouring_performance/client.cpp",
+    ],
+    includes = [
+        "iouring_performance",
+    ],
+    copts = COPTS + select({
+        "//bazel/config:brpc_with_iouring": ["-DBRPC_WITH_IOURING=1"],
+        "//conditions:default": [""],
+    }),
+    deps = [
+        ":cc_iouring_performance_proto",
+        "//:brpc",
+    ] + select({
+        "//bazel/config:brpc_with_iouring": [
+            "@com_github_axboe_liburing//:liburing",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_binary(
     name = "redis_c++_server",
     srcs = [
         "redis_c++/redis_server.cpp",
@@ -119,4 +175,57 @@ cc_binary(
     deps = [
         "//:brpc",
     ],
+)
+
+brpc_proto_library(
+    name = "cc_iouring_echo_proto",
+    srcs = ["iouring_echo_c++/echo.proto"],
+    include = "iouring_echo_c++",
+    proto_deps = [],
+)
+
+cc_binary(
+    name = "iouring_echo_server",
+    srcs = [
+        "iouring_echo_c++/server.cpp",
+    ],
+    includes = [
+        "iouring_echo_c++",
+    ],
+    copts = COPTS + select({
+        "//bazel/config:brpc_with_iouring": ["-DBRPC_WITH_IOURING=1"],
+        "//conditions:default": [""],
+    }),
+    deps = [
+        ":cc_iouring_echo_proto",
+        "//:brpc",
+    ] + select({
+        "//bazel/config:brpc_with_iouring": [
+            "@com_github_axboe_liburing//:liburing",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_binary(
+    name = "iouring_echo_client",
+    srcs = [
+        "iouring_echo_c++/client.cpp",
+    ],
+    includes = [
+        "iouring_echo_c++",
+    ],
+    copts = COPTS + select({
+        "//bazel/config:brpc_with_iouring": ["-DBRPC_WITH_IOURING=1"],
+        "//conditions:default": [""],
+    }),
+    deps = [
+        ":cc_iouring_echo_proto",
+        "//:brpc",
+    ] + select({
+        "//bazel/config:brpc_with_iouring": [
+            "@com_github_axboe_liburing//:liburing",
+        ],
+        "//conditions:default": [],
+    }),
 )
