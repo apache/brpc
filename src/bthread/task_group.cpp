@@ -104,7 +104,7 @@ AtomicInteger128::Value AtomicInteger128::load() const {
         __asm__ volatile(
             "ld %0, %1\n\t"
             : "=r"(seq0)
-            : "+m"(_seq)
+            : "m"(_seq)
             : "memory"
         );
         if (seq0 & 1) continue;
@@ -113,14 +113,14 @@ AtomicInteger128::Value AtomicInteger128::load() const {
             "ld %0, %2\n\t"
             "ld %1, %3\n\t"
             : "=r"(v1), "=r"(v2)
-            : "+m"(_value.v1), "+m"(_value.v2)
+            : "m"(_value.v1), "m"(_value.v2)
             : "memory"
         );
         __asm__ volatile("fence r, rw\n\t" ::: "memory");
         __asm__ volatile(
             "ld %0, %1\n\t"
             : "=r"(seq1)
-            : "+m"(_seq)
+            : "m"(_seq)
             : "memory"
         );
     } while (seq0 != seq1);
@@ -147,32 +147,31 @@ void AtomicInteger128::store(Value value) {
     __asm__ volatile(
         "ld %0, %1\n\t"
         : "=r"(old_seq)
-        : "+m"(_seq)
+        : "m"(_seq)
         : "memory"
     );
     uint64_t new_seq = old_seq + 1;
     __asm__ volatile(
         "fence w, w\n\t"
-        "sd %0, %1\n\t"
-        :
-        : "r"(new_seq), "+m"(_seq)
+        "sd %1, %0\n\t"
+        : "=m"(_seq)
+        : "r"(new_seq)
         : "memory"
     );
     __asm__ volatile("fence w, w\n\t" ::: "memory");
     __asm__ volatile(
-        "sd %0, %2\n\t"
-        "sd %1, %3\n\t"
-        :
-        : "r"(value.v1), "r"(value.v2),
-          "+m"(_value.v1), "+m"(_value.v2)
+        "sd %2, %0\n\t"
+        "sd %3, %1\n\t"
+        : "=m"(_value.v1), "=m"(_value.v2)
+        : "r"(value.v1), "r"(value.v2)
         : "memory"
     );
     __asm__ volatile("fence w, w\n\t" ::: "memory");
     new_seq++;
     __asm__ volatile(
-        "sd %0, %1\n\t"
-        :
-        : "r"(new_seq), "+m"(_seq)
+        "sd %1, %0\n\t"
+        : "=m"(_seq)
+        : "r"(new_seq)
         : "memory"
     );
 #else
