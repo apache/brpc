@@ -102,6 +102,18 @@ public:
     
     std::shared_ptr<Span> span() const;
 
+    bool has_after_rpc_resp_fn() const {
+        return !!_cntl->_after_rpc_resp_fn;
+    }
+
+    bool has_added_concurrency() const {
+        return _cntl->has_flag(Controller::FLAGS_ADDED_CONCURRENCY);
+    }
+
+    bool manages_after_rpc_resp() const {
+        return _cntl->has_flag(Controller::FLAGS_MANAGE_AFTER_RPC_RESP);
+    }
+
     uint32_t pipelined_count() const { return _cntl->_pipelined_count; }
     void set_pipelined_count(uint32_t count) {  _cntl->_pipelined_count = count; }
 

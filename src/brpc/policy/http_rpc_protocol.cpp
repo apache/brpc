@@ -812,13 +812,7 @@ private:
 class HttpResponseSenderAsDone : public google::protobuf::Closure {
 public:
     explicit HttpResponseSenderAsDone(HttpResponseSender* s) : _sender(std::move(*s)) {}
-    void Run() override {
-        if (NULL != _sender._messages) {
-            _sender._cntl->CallAfterRpcResp(_sender._messages->Request(),
-                                            _sender._messages->Response());
-        }
-        delete this;
-    }
+    void Run() override { delete this; }
 
 private:
     HttpResponseSender _sender;
@@ -840,7 +834,10 @@ HttpResponseSender::~HttpResponseSender() {
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
-    ConcurrencyRemover concurrency_remover(_method_status, cntl, _received_us);
+    const bool has_after_rpc_resp_fn = accessor.has_after_rpc_resp_fn();
+    const bool manages_after_rpc_resp = accessor.manages_after_rpc_resp();
+    std::unique_ptr<ConcurrencyRemover> concurrency_remover(
+        new ConcurrencyRemover(_method_status, cntl, _received_us));
     Socket* socket = accessor.get_sending_socket();
     const google::protobuf::Message* res = NULL != _messages ? _messages->Response() : NULL;
     
@@ -851,6 +848,14 @@ HttpResponseSender::~HttpResponseSender() {
 
     const HttpHeader* req_header = &cntl->http_request();
     HttpHeader* res_header = &cntl->http_response();
+    HttpHeader original_response_header;
+    butil::IOBuf original_response_attachment;
+    if (has_after_rpc_resp_fn) {
+        original_response_header.Swap(*res_header);
+        original_response_attachment.swap(cntl->response_attachment());
+        res_header->Swap(original_response_header);
+        cntl->response_attachment().swap(original_response_attachment);
+    }
     res_header->set_version(req_header->major_version(),
                             req_header->minor_version());
 
@@ -1000,7 +1005,8 @@ HttpResponseSender::~HttpResponseSender() {
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     bthread_id_t response_id = INVALID_BTHREAD_ID;
-    if (span) {
+    const bool wait_for_response = (span || has_after_rpc_resp_fn);
+    if (wait_for_response) {
         CHECK_EQ(0, bthread_id_create(&response_id, &args, HandleResponseWritten));
         wopt.id_wait = response_id;
         wopt.notify_on_success = true;
@@ -1020,8 +1026,10 @@ HttpResponseSender::~HttpResponseSender() {
             if (FLAGS_http_verbose) {
                 LOG(INFO) << '\n' << *h2_response;
             }
-            if (span) {
-                span->set_response_size(h2_response->EstimatedByteSize());
+            if (span || has_after_rpc_resp_fn) {
+                if (span) {
+                    span->set_response_size(h2_response->EstimatedByteSize());
+                }
             }
             rc = socket->Write(h2_response, &wopt);
         }
@@ -1050,12 +1058,27 @@ HttpResponseSender::~HttpResponseSender() {
         return;
     }
 
-    if (span) {
+    if (wait_for_response) {
         bthread_id_join(response_id);
-        // Do not care about the result of background writing.
-        // TODO: this is not sent
-        span->set_sent_us(args.sent_us);
+        if (span) {
+            // Do not care about the result of background writing.
+            // TODO: this is not sent
+            span->set_sent_us(args.sent_us);
+        }
     }
+    const int responded_error_code = cntl->ErrorCode();
+    if (!manages_after_rpc_resp) {
+        concurrency_remover.reset();
+    }
+    if (has_after_rpc_resp_fn && NULL != _messages) {
+        cntl->http_response().Swap(original_response_header);
+        cntl->response_attachment().swap(original_response_attachment);
+        cntl->CallAfterRpcResp(_messages->Request(), _messages->Response());
+    }
+    if (manages_after_rpc_resp) {
+        concurrency_remover->OnResponded(responded_error_code);
+    }
+    concurrency_remover.reset();
 }
 
 // Normalize the sub string of `uri_path' covered by `splitter' and

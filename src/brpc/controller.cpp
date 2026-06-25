@@ -1597,6 +1597,7 @@ void Controller::CallAfterRpcResp(const google::protobuf::Message* req, const go
     if (_after_rpc_resp_fn) {
         _after_rpc_resp_fn(this, req, res);
         _after_rpc_resp_fn = nullptr;
+        clear_flag(FLAGS_MANAGE_AFTER_RPC_RESP);
     }
 }
 

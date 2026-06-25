@@ -83,14 +83,17 @@ int HandleResponseWritten(bthread_id_t id, void* data, int error_code);
 
 class ConcurrencyRemover {
 public:
-    ConcurrencyRemover(MethodStatus* status, Controller* c, int64_t received_us)
-        : _status(status) , _c(c) , _received_us(received_us) {}
+    ConcurrencyRemover(MethodStatus* status, Controller* c, int64_t received_us);
     ~ConcurrencyRemover();
+
+    void OnResponded(int error_code);
 
 private:
     DISALLOW_COPY_AND_ASSIGN(ConcurrencyRemover);
     MethodStatus* _status;
     Controller* _c;
+    const Server* _server;
+    bool _added_concurrency;
     int64_t _received_us;
 };
 

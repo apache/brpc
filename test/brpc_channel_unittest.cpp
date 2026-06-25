@@ -134,7 +134,7 @@ static bool VerifyMyRequest(const brpc::InputMessageBase* msg_base) {
 
 class CallAfterRpcObject {
 public:
-    explicit CallAfterRpcObject() {}
+    explicit CallAfterRpcObject() : reset_in_callback(false) {}
 
     ~CallAfterRpcObject() {
         EXPECT_EQ(str, "CallAfterRpcRespTest");
@@ -144,9 +144,13 @@ public:
         str.append(s);
     }
 
+    bool reset_in_callback;
+
 private:
     std::string str;
 };
+
+static bool g_reset_cntl_in_after_rpc_resp = false;
 
 class MyEchoService : public ::test::EchoService {
     void Echo(google::protobuf::RpcController* cntl_base,
@@ -156,8 +160,10 @@ class MyEchoService : public ::test::EchoService {
         brpc::Controller* cntl =
             static_cast<brpc::Controller*>(cntl_base);
         std::shared_ptr<CallAfterRpcObject> str_test(new CallAfterRpcObject());
+        str_test->reset_in_callback = g_reset_cntl_in_after_rpc_resp;
         cntl->set_after_rpc_resp_fn(std::bind(&MyEchoService::CallAfterRpc, str_test,
-            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
+            true);
         brpc::ClosureGuard done_guard(done);
         if (req->server_fail()) {
             cntl->SetFailed(req->server_fail(), "Server fail1");
@@ -200,6 +206,9 @@ class MyEchoService : public ::test::EchoService {
         EXPECT_TRUE(nullptr != cntl);
         EXPECT_TRUE(nullptr != request);
         EXPECT_TRUE(nullptr != response);
+        if (str->reset_in_callback) {
+            cntl->Reset();
+        }
     }
 
 public:
@@ -2605,13 +2614,35 @@ TEST_F(ChannelTest, connection_failed_selective) {
 }
 
 TEST_F(ChannelTest, success) {
-    for (int i = 0; i <= 1; ++i) { // Flag SingleServer 
+    for (int i = 0; i <= 1; ++i) { // Flag SingleServer
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <=1; ++k) { // Flag ShortConnection
                 TestSuccess(i, j, k);
             }
         }
     }
+}
+
+TEST_F(ChannelTest, reset_in_after_rpc_resp) {
+    brpc::Server server;
+    MyEchoService service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    ASSERT_EQ(0, server.Start(_ep, &opt));
+
+    brpc::Channel channel;
+    SetUpChannel(&channel, true, false);
+
+    g_reset_cntl_in_after_rpc_resp = true;
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(__FUNCTION__);
+    CallMethod(&channel, &cntl, &req, &res, false);
+    g_reset_cntl_in_after_rpc_resp = false;
+
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ("received reset_in_after_rpc_resp", res.message());
 }
 
 TEST_F(ChannelTest, success_parallel) {
