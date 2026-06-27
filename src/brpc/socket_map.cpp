@@ -22,6 +22,7 @@
 #include "butil/time.h"
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
+#include "butil/debug/leak_annotations.h"
 #include "brpc/log.h"
 #include "brpc/protocol.h"
 #include "brpc/input_messenger.h"
@@ -384,11 +385,19 @@ void* SocketMap::RunWatchConnections(void* arg) {
 }
 
 void SocketMap::WatchConnections() {
+    // This bthread of SocketMap Singleton runs for the whole process lifetime and
+    // never returns, so the local objects below live until the process exits and
+    // their destructors never run. They are reachable from this bthread's  stack,
+    // so the objects themselves are not reported as leaks, but the heap  buffers
+    // they allocate while exposing themselves (variable names, watched path) would
+    // be. Disable leak detection only around their construction and re-enable it
+    // right after
     std::vector<SocketId> main_sockets;
     std::vector<SocketId> pooled_sockets;
     std::vector<SocketMapKey> orphan_sockets;
     const uint64_t CHECK_INTERVAL_US = 1000000UL;
     while (bthread_usleep(CHECK_INTERVAL_US) == 0) {
+        ANNOTATE_SCOPED_MEMORY_LEAK;
         // NOTE: save the gflag which may be reloaded at any time.
         const int idle_seconds = _options.idle_timeout_second_dynamic ?
             *_options.idle_timeout_second_dynamic

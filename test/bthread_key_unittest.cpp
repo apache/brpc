@@ -16,6 +16,7 @@
 // under the License.
 
 #include <algorithm>                         // std::sort
+#include <memory>                            // std::unique_ptr
 #include <gflags/gflags.h>
 #include "butil/atomicops.h"
 #include <gtest/gtest.h>
@@ -447,7 +448,8 @@ static void usleep_thread_impl(PoolData2* data) {
 }
 
 static void* usleep_thread(void* args) {
-    usleep_thread_impl((PoolData2*)args);
+    std::unique_ptr<PoolData2> data((PoolData2*)args);
+    usleep_thread_impl(data.get());
     return NULL;
 }
 

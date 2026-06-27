@@ -424,20 +424,26 @@ private:
 
 class ClusterRedisService : public brpc::RedisService {
 public:
-    explicit ClusterRedisService(NodeData* data) {
-        AddCommandHandler("asking", new AskingHandler());
-        AddCommandHandler("cluster", new ClusterCommandHandler(data->meta));
-
-        KVCommandHandler* handler = new KVCommandHandler(data);
-        AddCommandHandler("ping", handler);
-        AddCommandHandler("get", handler);
-        AddCommandHandler("set", handler);
-        AddCommandHandler("del", handler);
-        AddCommandHandler("exists", handler);
-        AddCommandHandler("unlink", handler);
-        AddCommandHandler("eval", handler);
-        AddCommandHandler("evalsha", handler);
+    explicit ClusterRedisService(NodeData* data)
+        : _asking_handler(new AskingHandler())
+        , _cluster_handler(new ClusterCommandHandler(data->meta))
+        , _kv_handler(new KVCommandHandler(data)) {
+        AddCommandHandler("asking", _asking_handler.get());
+        AddCommandHandler("cluster", _cluster_handler.get());
+        AddCommandHandler("ping", _kv_handler.get());
+        AddCommandHandler("get", _kv_handler.get());
+        AddCommandHandler("set", _kv_handler.get());
+        AddCommandHandler("del", _kv_handler.get());
+        AddCommandHandler("exists", _kv_handler.get());
+        AddCommandHandler("unlink", _kv_handler.get());
+        AddCommandHandler("eval", _kv_handler.get());
+        AddCommandHandler("evalsha", _kv_handler.get());
     }
+
+private:
+    std::unique_ptr<AskingHandler> _asking_handler;
+    std::unique_ptr<ClusterCommandHandler> _cluster_handler;
+    std::unique_ptr<KVCommandHandler> _kv_handler;
 };
 
 class Done : public google::protobuf::Closure {

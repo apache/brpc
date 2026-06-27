@@ -339,6 +339,7 @@ void CheckCert(const char* cname, const char* cert) {
     std::vector<std::string> cnames;
     brpc::ExtractHostnames(x509, &cnames);
     ASSERT_EQ(cert, cnames[0]) << x509;
+    X509_free(x509);
 }
 
 std::string GetRawPemString(const char* fname) {
@@ -495,6 +496,11 @@ TEST_F(SSLTest, ssl_perf) {
     ASSERT_EQ(0, pthread_create(&spid, NULL, ssl_perf_server , serv_ssl));
     ASSERT_EQ(0, pthread_join(cpid, NULL));
     ASSERT_EQ(0, pthread_join(spid, NULL));
+
+    SSL_free(cli_ssl);
+    SSL_free(serv_ssl);
+    SSL_CTX_free(cli_ctx);
+    SSL_CTX_free(serv_ctx);
     close(clifd);
     close(servfd);
 }

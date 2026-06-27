@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <memory>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 
@@ -230,9 +231,12 @@ void* ThreadKeyFunc(void* arg) {
     auto thread_key_arg = (ThreadKeyArg*)arg;
     auto thread_keys = thread_key_arg->thread_keys;
     std::vector<int> expects(thread_keys.size(), 0);
+    std::vector<std::unique_ptr<int>> owned_data;
+    owned_data.reserve(thread_keys.size());
     for (auto key : thread_keys) {
         EXPECT_TRUE(butil::thread_getspecific(*key) == NULL);
-        EXPECT_EQ(0, butil::thread_setspecific(*key, new int(0)));
+        owned_data.emplace_back(new int(0));
+        EXPECT_EQ(0, butil::thread_setspecific(*key, owned_data.back().get()));
         EXPECT_EQ(*(static_cast<int*>(butil::thread_getspecific(*key))), 0);
     }
     while (!g_stopped) {
@@ -262,14 +266,17 @@ TEST(ThreadLocalTest, thread_key_multi_thread) {
     g_stopped = false;
     g_deleted = false;
     std::vector<ThreadKey*> thread_keys;
+    std::vector<std::unique_ptr<int>> owned_data;
     int key_num = 20480;
+    owned_data.reserve(key_num);
     for (int i = 0; i < key_num; ++i) {
         thread_keys.push_back(new ThreadKey());
         ASSERT_EQ(0, butil::thread_key_create(*thread_keys.back(), [](void* data) {
             delete static_cast<int*>(data);
         }));
         ASSERT_TRUE(butil::thread_getspecific(*thread_keys.back()) == NULL);
-        ASSERT_EQ(0, butil::thread_setspecific(*thread_keys.back(), new int(0)));
+        owned_data.emplace_back(new int(0));
+        ASSERT_EQ(0, butil::thread_setspecific(*thread_keys.back(), owned_data.back().get()));
         ASSERT_EQ(*(static_cast<int*>(butil::thread_getspecific(*thread_keys.back()))), 0);
     }
     const int thread_num = 8;

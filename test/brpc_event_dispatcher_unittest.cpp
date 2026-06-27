@@ -202,6 +202,10 @@ struct BAIDU_CACHELINE_ALIGNMENT SocketExtra : public brpc::SocketUser {
         times = 0;
     }
 
+    ~SocketExtra() {
+        free(buf);
+    }
+
     void BeforeRecycle(brpc::Socket* m) override {
         pthread_mutex_lock(&rel_fd_mutex);
         rel_fd.push_back(m->fd());
@@ -293,6 +297,7 @@ void* client_thread(void* arg) {
             }
         }
     }
+    free(buf);
     EXPECT_EQ(0, close(m->fd));
     return NULL;
 }
@@ -320,6 +325,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
     pthread_t cth[NCLIENT];
     ClientMeta* cm[NCLIENT];
     SocketExtra* sm[NCLIENT];
+    brpc::SocketId socket_ids[NCLIENT];
 
     for (size_t i = 0; i < NCLIENT; ++i) {
         ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds + 2 * i));
@@ -334,6 +340,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
         options.on_edge_triggered_events = SocketExtra::OnEdgeTriggeredEvents;
 
         ASSERT_EQ(0, brpc::Socket::Create(options, &socket_id));
+        socket_ids[i] = socket_id;
         cm[i] = new ClientMeta;
         cm[i]->fd = fds[i * 2 + 1];
         cm[i]->times = 0;
@@ -387,6 +394,16 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
 #ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     ASSERT_EQ(NCLIENT, info.free_item_num - old_info.free_item_num);
 #endif
+
+    // Release sockets (SocketExtra::BeforeRecycle deletes the user) and the
+    // per-client metadata to avoid leaking them.
+    for (size_t i = 0; i < NCLIENT; ++i) {
+        brpc::SocketUniquePtr s;
+        if (brpc::Socket::Address(socket_ids[i], &s) == 0) {
+            s->SetFailed();
+        }
+        delete cm[i];
+    }
 }
 
 // Unique identifier of a EventPipe.

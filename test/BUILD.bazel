@@ -262,6 +262,7 @@ generate_unittests(
     # on the same port and fail. size=large is the only safe lever here.
     per_test_size = {
         "brpc_channel_unittest.cpp": "large",
+        "brpc_load_balancer_unittest.cpp": "large",
     },
 )
 

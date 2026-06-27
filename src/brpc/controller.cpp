@@ -186,6 +186,7 @@ void Controller::ResetNonPods() {
     if (auto span = _span.lock()) {
         Span::Submit(span, butil::cpuwide_time_us());
     }
+    _span.reset();
     _error_text.clear();
     _remote_side = butil::EndPoint();
     _local_side = butil::EndPoint();
@@ -240,7 +241,6 @@ void Controller::ResetNonPods() {
 void Controller::ResetPods() {
     // NOTE: Make the sequence of assignments same with the order that they're
     // defined in header. Better for cpu cache and faster for lookup.
-    _span.reset();
     _flags = 0;
 #ifndef BAIDU_INTERNAL
     set_pb_bytes_to_base64(true);

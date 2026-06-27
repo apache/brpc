@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <pthread.h>
+#include <memory>
 #include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -252,7 +253,9 @@ TEST(FDTest, ping_pong) {
 #else
     pthread_t cth[NCLIENT];
 #endif
-    ClientMeta* cm[NCLIENT];
+    std::unique_ptr<ClientMeta> cm[NCLIENT];
+    std::unique_ptr<SocketMeta> sm[NCLIENT];
+    std::unique_ptr<EpollMeta> em_arr[NEPOLL];
 
     for (size_t i = 0; i < NEPOLL; ++i) {
 #if defined(OS_LINUX)
@@ -266,7 +269,8 @@ TEST(FDTest, ping_pong) {
     for (size_t i = 0; i < NCLIENT; ++i) {
         ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds + 2 * i));
         //printf("Created fd=%d,%d i=%lu\n", fds[2*i], fds[2*i+1], i);
-        SocketMeta* m = new SocketMeta;
+        sm[i].reset(new SocketMeta);
+        SocketMeta* m = sm[i].get();
         m->fd = fds[i * 2];
         m->epfd = epfd[fmix32(i) % NEPOLL];
         ASSERT_EQ(0, fcntl(m->fd, F_SETFL, fcntl(m->fd, F_GETFL, 0) | O_NONBLOCK));
@@ -293,15 +297,15 @@ TEST(FDTest, ping_pong) {
 #elif defined(OS_MACOSX)
         ASSERT_EQ(0, kevent(m->epfd, &kqueue_event, 1, NULL, 0, NULL));
 #endif
-        cm[i] = new ClientMeta;
+        cm[i].reset(new ClientMeta);
         cm[i]->fd = fds[i * 2 + 1];
         cm[i]->count = i;
         cm[i]->times = REP;
 #ifdef RUN_CLIENT_IN_BTHREAD
         butil::make_non_blocking(cm[i]->fd);
-        ASSERT_EQ(0, bthread_start_urgent(&cth[i], NULL, client_thread, cm[i]));
+        ASSERT_EQ(0, bthread_start_urgent(&cth[i], NULL, client_thread, cm[i].get()));
 #else
-        ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i]));
+        ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i].get()));
 #endif
     }
 
@@ -310,7 +314,8 @@ TEST(FDTest, ping_pong) {
     tm.start();
 
     for (size_t i = 0; i < NEPOLL; ++i) {
-        EpollMeta *em = new EpollMeta;
+        em_arr[i].reset(new EpollMeta);
+        EpollMeta* em = em_arr[i].get();
         em->epfd = epfd[i];
 #ifdef RUN_EPOLL_IN_BTHREAD
         ASSERT_EQ(0, bthread_start_urgent(&eth[i], epoll_thread, em, NULL);

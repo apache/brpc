@@ -216,6 +216,11 @@ if(BRPC_WITH_GLOG)
     target_link_libraries(brpc-shared-debug ${GLOG_LIB})
 endif()
 
+# AddressSanitizer is incompatible with tcmalloc/gperftools, do not link it when WITH_ASAN is on
+if(WITH_ASAN)
+    set(GPERFTOOLS_LIBRARIES "")
+endif()
+
 # test_butil
 add_executable(test_butil ${TEST_BUTIL_SOURCES}
                           ${CMAKE_CURRENT_BINARY_DIR}/iobuf.pb.cc)

@@ -1788,6 +1788,9 @@ TEST_F(IOBufTest, acquire_tls_block) {
     b = butil::iobuf::acquire_tls_block();
     ASSERT_EQ(0, butil::iobuf::get_tls_block_count());
     ASSERT_NE(butil::iobuf::block_cap(b), butil::iobuf::block_size(b));
+    // acquire_tls_block() transfers ownership of a non-full block to the
+    // caller; return it to TLS so it is not leaked.
+    butil::iobuf::release_tls_block_chain(b);
 }
 
 TEST_F(IOBufTest, reserve_aligned) {
