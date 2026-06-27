@@ -195,6 +195,9 @@ bool show_error_dialogs = false;
 // the debug message dialog and process termination.
 LogAssertHandler log_assert_handler = NULL;
 
+BAIDU_VOLATILE_THREAD_LOCAL(int32_t, tls_log_pid, 0);
+BAIDU_VOLATILE_THREAD_LOCAL(butil::PlatformThreadId, tls_log_tid, 0);
+
 // Helper functions to wrap platform differences.
 
 int32_t CurrentProcessId() {
@@ -865,10 +868,19 @@ void PrintLogPrefix(std::ostream& os, int severity,
     os << '.' << std::setw(6) << tv.tv_usec;
 #endif
     if (FLAGS_log_pid) {
-        os << ' ' << std::setfill(' ') << std::setw(5) << CurrentProcessId();
+        int32_t pid = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_log_pid);
+        if (pid == 0) {
+            pid = CurrentProcessId();
+            BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_log_pid, pid);
+        }
+        os << ' ' << std::setfill(' ') << std::setw(5) << pid;
     }
-    os << ' ' << std::setfill(' ') << std::setw(5)
-       << butil::PlatformThread::CurrentId() << std::setfill('0');
+    butil::PlatformThreadId tid = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_log_tid);
+    if (tid == 0) {
+        tid = butil::PlatformThread::CurrentId();
+        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_log_tid, tid);
+    }
+    os << ' ' << std::setfill(' ') << std::setw(5) << tid << std::setfill('0');
     if (FLAGS_log_bid && bthread_self) {
         os << ' ' << std::setfill(' ') << std::setw(5) << bthread_self();
     }

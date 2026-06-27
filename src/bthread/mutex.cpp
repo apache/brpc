@@ -515,7 +515,7 @@ int first_sys_pthread_mutex_unlock(pthread_mutex_t* mutex) {
     pthread_once(&init_sys_mutex_lock_once, init_sys_mutex_lock);
     return sys_pthread_mutex_unlock(mutex);
 }
-#endif
+#endif // NO_PTHREAD_MUTEX_HOOK
 
 template <typename Mutex>
 inline uint64_t hash_mutex_ptr(const Mutex* m) {
@@ -988,7 +988,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_timedlock_impl(pthread_mutex_t* mutex,
 BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
     return internal::pthread_mutex_unlock_impl(mutex);
 }
-#endif
+#endif // NO_PTHREAD_MUTEX_HOOK
 
 // Implement bthread_mutex_t related functions
 struct MutexInternal {
