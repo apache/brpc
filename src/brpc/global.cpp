@@ -28,6 +28,7 @@
 #include <signal.h>
 
 #include "butil/build_config.h"                  // OS_LINUX
+#include "butil/debug/leak_annotations.h"
 // Naming services
 #ifdef BAIDU_INTERNAL
 #include "brpc/policy/baidu_naming_service.h"
@@ -216,6 +217,14 @@ static int GetRunningServerCount(void*) {
 
 // Update global stuff periodically.
 static void* GlobalUpdate(void*) {
+    // This bthread runs for the whole process lifetime and never returns, so
+    // the local objects below live until the process exits and their
+    // destructors never run. They are reachable from this bthread's stack, so
+    // the objects themselves are not reported as leaks, but the heap buffers
+    // they allocate while exposing themselves (variable names, watched path)
+    // would be. Disable leak detection only around their construction and
+    // re-enable it right after.
+    ANNOTATE_MEMORY_LEAK_DISABLE();
     // Expose variables.
     bvar::PassiveStatus<int64_t> var_iobuf_block_count(
         "iobuf_block_count", GetIOBufBlockCount, NULL);
@@ -232,7 +241,9 @@ static void* GlobalUpdate(void*) {
         "rpc_server_count", GetRunningServerCount, NULL);
 
     butil::FileWatcher fw;
-    if (fw.init_from_not_exist(DUMMY_SERVER_PORT_FILE) < 0) {
+    const int fw_rc = fw.init_from_not_exist(DUMMY_SERVER_PORT_FILE);
+    ANNOTATE_MEMORY_LEAK_ENABLE();
+    if (fw_rc < 0) {
         LOG(FATAL) << "Fail to init FileWatcher on `" << DUMMY_SERVER_PORT_FILE << "'";
         return NULL;
     }
@@ -270,7 +281,11 @@ static void* GlobalUpdate(void*) {
             }
         }
 
-        SocketMapList(&conns);
+        {
+            // See detail above.
+            ANNOTATE_SCOPED_MEMORY_LEAK;
+            SocketMapList(&conns);
+        }
         const int64_t now_ms = butil::cpuwide_time_ms();
         for (size_t i = 0; i < conns.size(); ++i) {
             SocketUniquePtr ptr;

@@ -69,6 +69,7 @@ typedef pthread_mutex_t* MutexHandle;
 #include "butil/debug/alias.h"
 #include "butil/debug/debugger.h"
 #include "butil/debug/stack_trace.h"
+#include "butil/debug/leak_annotations.h"
 #include "butil/posix/eintr_wrapper.h"
 #include "butil/strings/string_util.h"
 #include "butil/strings/stringprintf.h"
@@ -622,6 +623,7 @@ void AsyncLogger::Log(LogInfo&& log_info) {
         DoLog(log_info);
         return;
     }
+    ANNOTATE_SCOPED_MEMORY_LEAK;
     log_req->log_info = std::move(log_info);
     LogImpl(log_req);
 }

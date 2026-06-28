@@ -143,6 +143,7 @@ void* client_thread(void* arg) {
             }
         }
     }
+    free(buf);
     return NULL;
 }
 
@@ -217,5 +218,8 @@ TEST_F(MessengerTest, dispatch_tasks) {
         messenger[i].StopAccept(0);
     }
     sleep(1);
+    for (size_t i = 0; i < NCLIENT; ++i) {
+        delete cm[i];
+    }
     LOG(WARNING) << "begin to exit!!!!";
 }

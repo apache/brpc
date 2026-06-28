@@ -417,10 +417,22 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
                       << m->stat.cputime_ns / 1000000.0 << "ms";
         }
 
+        // Clean up span if it exists. This must be done before keytable cleanup
+        // because span cleanup may use bthread local storage (e.g. logging,
+        // which allocates bthread-local stream arrays via bthread_setspecific).
+        // If span cleanup ran after keytable cleanup, such allocations would
+        // re-populate the keytable and never be reclaimed, causing memory leak.
+        LocalStorage* tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+        if (tls_bls_ptr->rpcz_parent_span && g_rpcz_parent_span_dtor) {
+            g_rpcz_parent_span_dtor(tls_bls_ptr->rpcz_parent_span);
+            tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+            tls_bls_ptr->rpcz_parent_span = NULL;
+            m->local_storage.rpcz_parent_span = NULL;
+        }
+
         // Clean tls variables, must be done before changing version_butex
         // otherwise another thread just joined this thread may not see side
         // effects of destructing tls variables.
-        LocalStorage* tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
         KeyTable* kt = tls_bls_ptr->keytable;
         if (kt != NULL) {
             return_keytable(m->attr.keytable_pool, kt);
@@ -428,15 +440,6 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
             tls_bls_ptr->keytable = NULL;
             m->local_storage.keytable = NULL; // optional
-        }
-
-        // Clean up span if it exists. This must be done after keytable cleanup
-        // because span cleanup may use bthread local storage.
-        tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
-        if (tls_bls_ptr->rpcz_parent_span && g_rpcz_parent_span_dtor) {
-            g_rpcz_parent_span_dtor(tls_bls_ptr->rpcz_parent_span);
-            tls_bls_ptr->rpcz_parent_span = NULL;
-            m->local_storage.rpcz_parent_span = NULL;
         }
 
         // During running the function in TaskMeta and deleting the KeyTable in

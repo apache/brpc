@@ -118,9 +118,18 @@ void* epoll_thread(void* arg) {
 
     while (!server_stop) {
 #if defined(OS_LINUX)
-        const int n = epoll_wait(em->epfd, e, ARRAY_SIZE(e), -1);
+        // Use a finite timeout so the loop can observe server_stop without
+        // relying on an external fd to wake up epoll_wait.
+        const int n = epoll_wait(em->epfd, e, ARRAY_SIZE(e), 100);
+        if (n == 0) {
+            continue;
+        }
 #elif defined(OS_MACOSX)
-        const int n = kevent(em->epfd, NULL, 0, e, ARRAY_SIZE(e), NULL);
+        timespec ts = { 0, 100L * 1000L * 1000L };
+        const int n = kevent(em->epfd, NULL, 0, e, ARRAY_SIZE(e), &ts);
+        if (n == 0) {
+            continue;
+        }
 #endif
         if (server_stop) {
             break;
@@ -298,15 +307,9 @@ TEST(DispatcherTest, dispatch_tasks) {
         pthread_join(cth[i], NULL);
     }
     server_stop = true;
+    // epoll_thread polls server_stop with a finite timeout, so it exits on its
+    // own without needing an external fd to wake up epoll_wait.
     for (size_t i = 0; i < NEPOLL; ++i) {
-#if defined(OS_LINUX)
-        epoll_event evt = { EPOLLOUT,  { NULL } };
-        ASSERT_EQ(0, epoll_ctl(epfd[i], EPOLL_CTL_ADD, 0, &evt));
-#elif defined(OS_MACOSX)
-        struct kevent kqueue_event;
-        EV_SET(&kqueue_event, 0, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, NULL);
-        ASSERT_EQ(0, kevent(epfd[i], &kqueue_event, 1, NULL, 0, NULL));
-#endif
 #ifdef RUN_EPOLL_IN_BTHREAD
         bthread_join(eth[i], NULL);
 #else
@@ -315,5 +318,18 @@ TEST(DispatcherTest, dispatch_tasks) {
     }
     bthread::stop_and_join_epoll_threads();
     bthread_usleep(100000);
+
+    for (size_t i = 0; i < NCLIENT; ++i) {
+        free(sm[i]->buf);
+        delete sm[i];
+        delete cm[i];
+    }
+    for (size_t i = 0; i < NEPOLL; ++i) {
+        delete em[i];
+        close(epfd[i]);
+    }
+    for (size_t i = 0; i < 2 * NCLIENT; ++i) {
+        close(fds[i]);
+    }
 }
 } // namespace

@@ -445,7 +445,9 @@ void TimerThread::run() {
 }
 
 void TimerThread::stop_and_join() {
-    _stop.store(true, butil::memory_order_relaxed);
+    if (_stop.exchange(true, butil::memory_order_relaxed)) {
+        return;
+    }
     if (_started) {
         {
             BAIDU_SCOPED_LOCK(_mutex);
