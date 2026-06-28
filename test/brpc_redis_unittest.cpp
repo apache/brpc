@@ -1526,6 +1526,28 @@ TEST_F(RedisTest, memory_allocation_limits) {
     }
 
     {
+        // A command line exactly at the limit may have CRLF split across reads.
+        brpc::RedisCommandParser parser;
+        butil::IOBuf buf;
+        std::string boundary_inline_cmd = "get ";
+        boundary_inline_cmd.append(brpc::FLAGS_redis_max_allocation_size -
+                                   boundary_inline_cmd.size(), 'k');
+        boundary_inline_cmd.push_back('\r');
+        buf.append(boundary_inline_cmd);
+
+        std::vector<butil::StringPiece> args;
+        brpc::ParseError err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, err);
+
+        buf.push_back('\n');
+        err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_OK, err);
+        ASSERT_EQ(2, (int)args.size());
+        ASSERT_EQ("get", args[0].as_string());
+        ASSERT_EQ(brpc::FLAGS_redis_max_allocation_size - 4, (int)args[1].size());
+    }
+
+    {
         // Test that only the current inline command line is limited and copied.
         brpc::RedisCommandParser parser;
         butil::IOBuf buf;

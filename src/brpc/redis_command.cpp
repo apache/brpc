@@ -451,6 +451,14 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
                 *err = PARSE_ERROR_NOT_ENOUGH_DATA;
                 return CONSUME_STATE_ERROR;
             }
+            if (buf.size() == max_inline_size + 1) {
+                char last_char = '\0';
+                buf.copy_to(&last_char, 1, max_inline_size);
+                if (last_char == '\r') {
+                    *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+                    return CONSUME_STATE_ERROR;
+                }
+            }
             LOG(ERROR) << "inline command exceeds max allocation size! max="
                        << FLAGS_redis_max_allocation_size << ", actually=" << buf.size();
             *err = PARSE_ERROR_ABSOLUTELY_WRONG;
