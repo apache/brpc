@@ -311,9 +311,10 @@ Controller::Call::Call(Controller::Call* rhs)
     , peer_id(rhs->peer_id)
     , begin_time_us(rhs->begin_time_us)
     , sending_sock(rhs->sending_sock.release())
-    // bind_sock_action intentionally omitted: its in-class default
-    // (BIND_SOCK_NONE) applies, so a backup/retry never inherits the source
-    // call's reserve/use affinity. See controller.h.
+    // Explicitly initialized (not via an in-class default initializer): a
+    // backup/retry must never inherit the source call's reserve/use affinity.
+    // Leaving this uninitialized was the cause of the backup/retry-request hang.
+    , bind_sock_action(BIND_SOCK_NONE)
     , stream_user_data(rhs->stream_user_data) {
     // NOTE: fields in rhs should be reset because RPC could fail before
     // setting all the fields to next call and _current_call.OnComplete
