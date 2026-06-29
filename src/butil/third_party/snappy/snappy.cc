@@ -98,9 +98,9 @@ static const uint32_t kMaximumTagLength = 5;  // COPY_4_BYTE_OFFSET plus the act
 static inline void IncrementalCopy(const char* src, char* op, ssize_t len) {
     assert(len > 0);
 #if defined(__riscv) && __riscv_xlen == 64
-    // RISC-V optimized: use 8-byte copies when possible
-    if (len >= 8 && (op - src >= 8 || src - op >= 8)) {
-        // Non-overlapping or safe overlap: copy 8 bytes at a time
+    // RISC-V optimized: use 8-byte copies when aligned and safe
+    if (len >= 8 && (op - src >= 8 || src - op >= 8) &&
+        (((uintptr_t)src | (uintptr_t)op) & 7) == 0) {
         do {
             uint64_t tmp;
             __asm__ volatile(
@@ -114,7 +114,6 @@ static inline void IncrementalCopy(const char* src, char* op, ssize_t len) {
             len -= 8;
         } while (len >= 8);
     }
-    // Copy remaining bytes
     while (len > 0) {
         *op++ = *src++;
         --len;

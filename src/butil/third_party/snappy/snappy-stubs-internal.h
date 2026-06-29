@@ -165,14 +165,19 @@ inline void UNALIGNED_STORE64(void *p, uint64_t v) {
 // on some platforms, in particular ARM.
 inline void UnalignedCopy64(const void *src, void *dst) {
 #if defined(__riscv) && __riscv_xlen == 64
-    // RISC-V optimized: single ld/sd pair for 8-byte copy
-    uint64_t tmp;
-    __asm__ volatile(
-        "ld %0, %1\n\t"
-        "sd %0, %2\n\t"
-        : "=&r"(tmp)
-        : "m"(*(const uint64_t*)src), "m"(*(uint64_t*)dst)
-        : "memory");
+    // RISC-V optimized: single ld/sd pair for 8-byte copy (aligned only)
+    if ((((uintptr_t)src | (uintptr_t)dst) & 7) == 0) {
+        uint64_t tmp;
+        __asm__ volatile(
+            "ld %0, %1\n\t"
+            "sd %0, %2\n\t"
+            : "=&r"(tmp)
+            : "m"(*(const uint64_t*)src), "m"(*(uint64_t*)dst)
+            : "memory");
+    } else {
+        // Unaligned: fall back to memcpy-based approach
+        memcpy(dst, src, 8);
+    }
 #else
     if (sizeof(void *) == 8) {
         UNALIGNED_STORE64(dst, UNALIGNED_LOAD64(src));
