@@ -74,6 +74,10 @@ void* RunClosure(void* arg) {
     return NULL;
 }
 
+void MarkCalled(bool* called) {
+    *called = true;
+}
+
 class DeleteOnlyOnceChannel : public brpc::Channel {
 public:
     DeleteOnlyOnceChannel() : _c(1) {
@@ -212,6 +216,21 @@ public:
 
 private:
     std::function<MockFuncType> mockfunc_;
+};
+
+class DelayedCloseEchoService : public ::test::EchoService {
+public:
+    void Echo(google::protobuf::RpcController* cntl_base,
+              const ::test::EchoRequest* req,
+              ::test::EchoResponse*,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        if (req->sleep_us() > 0) {
+            bthread_usleep(req->sleep_us());
+        }
+        static_cast<brpc::Controller*>(cntl_base)->CloseConnection(
+            "Close connection after delay");
+    }
 };
 
 pthread_once_t register_mock_protocol = PTHREAD_ONCE_INIT;
@@ -2464,6 +2483,25 @@ TEST_F(ChannelTest, empty_parallel_channel) {
     EXPECT_EQ(EPERM, cntl.ErrorCode()) << cntl.ErrorText();
 }
 
+TEST_F(ChannelTest, uninitialized_selective_channel) {
+    brpc::SelectiveChannel channel;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(__FUNCTION__);
+
+    brpc::Controller sync_cntl;
+    ::test::EchoService::Stub(&channel).Echo(&sync_cntl, &req, &res, NULL);
+    EXPECT_EQ(EINVAL, sync_cntl.ErrorCode()) << sync_cntl.ErrorText();
+
+    brpc::Controller async_cntl;
+    bool done_called = false;
+    google::protobuf::Closure* done =
+        brpc::NewCallback(&MarkCalled, &done_called);
+    ::test::EchoService::Stub(&channel).Echo(&async_cntl, &req, &res, done);
+    EXPECT_TRUE(done_called);
+    EXPECT_EQ(EINVAL, async_cntl.ErrorCode()) << async_cntl.ErrorText();
+}
+
 TEST_F(ChannelTest, empty_selective_channel) {
     brpc::SelectiveChannel channel;
     ASSERT_EQ(0, channel.Init("rr", NULL));
@@ -2987,6 +3025,48 @@ TEST_F(ChannelTest, backup_request_policy) {
             }
         }
     }
+}
+
+TEST_F(ChannelTest, selective_channel_ignores_late_subdone_after_timeout) {
+    DelayedCloseEchoService service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", NULL));
+
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", NULL));
+
+    brpc::ChannelOptions options;
+    options.timeout_ms = 100;
+    for (int i = 0; i < 2; ++i) {
+        brpc::Channel* sub_channel = new brpc::Channel;
+        ASSERT_EQ(0, sub_channel->Init(server.listen_address(), &options));
+        ASSERT_EQ(0, channel.AddChannel(sub_channel, NULL));
+    }
+
+    brpc::Controller cntl;
+    cntl.set_max_retry(3);
+    cntl.set_backup_request_ms(1);
+    cntl.set_timeout_ms(10);
+
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(__FUNCTION__);
+    req.set_sleep_us(50000);
+    CallMethod(&channel, &cntl, &req, &res, true);
+
+    ASSERT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
+    ASSERT_TRUE(cntl.has_backup_request());
+    ASSERT_GE(cntl.retried_count(), 1);
+
+    // Let the delayed sub-calls close their connections after the main RPC
+    // has already timed out. This used to re-enter retry/backup from
+    // SubDone::Run() on a partially torn-down controller.
+    bthread_usleep(120000);
+
+    EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
+    server.Stop(0);
+    server.Join();
 }
 
 TEST_F(ChannelTest, multiple_threads_single_channel) {

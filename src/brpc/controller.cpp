@@ -625,6 +625,16 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         return;
     }
 
+    if (is_ending_rpc()) {
+        // SelectiveChannel may still deliver late SubDone callbacks after the
+        // main RPC has entered EndRPC(). Ignore those callbacks instead of
+        // letting them re-enter retry/backup on partially torn-down state.
+        _error_code = saved_error;
+        response_attachment().clear();
+        CHECK_EQ(0, bthread_id_unlock(info.id));
+        return;
+    }
+
     if ((!_error_code && _retry_policy == NULL) ||
         _current_call.nretry >= _max_retry) {
         goto END_OF_RPC;
@@ -881,6 +891,8 @@ void Controller::Call::OnComplete(
 }
 
 void Controller::EndRPC(const CompletionInfo& info) {
+    add_flag(FLAGS_ENDING_RPC);
+
     if (_timeout_id != 0) {
         bthread_timer_del(_timeout_id);
         _timeout_id = 0;
