@@ -87,6 +87,7 @@
     * [FlatMap](docs/cn/flatmap.md)
     * [协程](docs/cn/coroutine.md)
     * [熔断](docs/cn/circuit_breaker.md)
+    * [UBRing](docs/cn/ubring.md)
     * [RDMA](docs/cn/rdma.md)
     * [Bazel构建支持](docs/cn/bazel_support.md)
     * [Wireshark baidu_std协议解析插件](docs/cn/wireshark_baidu_std.md)
