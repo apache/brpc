@@ -43,4 +43,23 @@ message RdmaHello {
     // Must be exactly 16 bytes (sizeof(ibv_gid)).
     required bytes  gid        = 5;
     required uint32 qp_num     = 6;
+
+    // ECE negotiation
+    // Optional: present only when both the local lib (rdma-core >= v35)
+    // and FLAGS_rdma_ece enable end-to-end ECE negotiation. When the
+    // field is absent the receiver falls back to no-ECE establishment.
+    //
+    // Semantics differ by sender role:
+    //   Client hello: carries the client's locally queried
+    //                   ECE capabilities.
+    //   Server hello: carries the REDUCED/negotiated ECE
+    //                   queried after the QP reached RTS.
+    optional RdmaEce ece = 7;
+}
+
+// Mirrors struct ibv_ece { uint32 vendor_id; uint32 options; uint32 comp_mask; }.
+message RdmaEce {
+    required uint32 vendor_id = 1;
+    required uint32 options   = 2;
+    required uint32 comp_mask = 3;
 }
