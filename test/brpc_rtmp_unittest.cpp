@@ -748,6 +748,63 @@ TEST(RtmpTest, avc_seq_header_sps_without_zero_byte) {
     avc.Create(buf);
 }
 
+static void AppendBigEndian3Bytes(std::string* s, uint32_t v) {
+    s->push_back((char)((v >> 16) & 0xFF));
+    s->push_back((char)((v >> 8) & 0xFF));
+    s->push_back((char)(v & 0xFF));
+}
+
+// Build an FLV stream header followed by a single tag of `tag_type' whose
+// DataSize field is set to `data_size'. No tag body is appended, so a valid
+// tag needs data_size==0 to be rejected before any body is consumed.
+static std::string MakeFlvTagWithDataSize(char tag_type, uint32_t data_size) {
+    std::string s;
+    const char header[] = { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 };
+    s.append(header, sizeof(header));
+    s.append(4, '\0');  // PreviousTagSize0
+    s.push_back(tag_type);
+    AppendBigEndian3Bytes(&s, data_size);  // DataSize
+    s.append(3, '\0');  // Timestamp
+    s.push_back('\0');  // TimestampExtended
+    s.append(3, '\0');  // StreamID
+    s.append(4, '\0');  // PreviousTagSize
+    return s;
+}
+
+TEST(RtmpTest, flv_reader_rejects_zero_datasize_video_tag) {
+    std::string flv = MakeFlvTagWithDataSize((char)brpc::FLV_TAG_VIDEO, 0);
+    butil::IOBuf buf;
+    buf.append(flv);
+
+    brpc::FlvReader reader(&buf);
+    brpc::FlvTagType type;
+    ASSERT_TRUE(reader.PeekMessageType(&type).ok());
+    ASSERT_EQ(brpc::FLV_TAG_VIDEO, type);
+    const size_t before = buf.size();
+
+    brpc::RtmpVideoMessage vmsg;
+    // A DataSize of 0 used to underflow `msg_size - 1' and drain the whole
+    // buffer; it must now be rejected without consuming the tag.
+    ASSERT_FALSE(reader.Read(&vmsg).ok());
+    ASSERT_EQ(before, buf.size());
+}
+
+TEST(RtmpTest, flv_reader_rejects_zero_datasize_audio_tag) {
+    std::string flv = MakeFlvTagWithDataSize((char)brpc::FLV_TAG_AUDIO, 0);
+    butil::IOBuf buf;
+    buf.append(flv);
+
+    brpc::FlvReader reader(&buf);
+    brpc::FlvTagType type;
+    ASSERT_TRUE(reader.PeekMessageType(&type).ok());
+    ASSERT_EQ(brpc::FLV_TAG_AUDIO, type);
+    const size_t before = buf.size();
+
+    brpc::RtmpAudioMessage amsg;
+    ASSERT_FALSE(reader.Read(&amsg).ok());
+    ASSERT_EQ(before, buf.size());
+}
+
 TEST(RtmpTest, successfully_play_streams) {
     PlayingDummyService rtmp_service;
     brpc::Server server;
