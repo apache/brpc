@@ -18,6 +18,7 @@
 #if BRPC_WITH_RDMA
 
 #include "brpc/rdma/rdma_handshake.h"
+#include "brpc/rdma/rdma_handshake_constants.h"
 
 #include <string.h>
 #include <algorithm>            // std::min
@@ -26,6 +27,7 @@
 #include <gflags/gflags.h>
 #include "butil/iobuf.h"        // IOBuf, IOPortal, IOBufAsZeroCopy*Stream
 #include "butil/sys_byteorder.h"
+#include "butil/raw_pack.h"      // RawPacker, RawUnpacker
 #include "brpc/socket.h"
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rdma_helper.h"
@@ -46,52 +48,39 @@ extern const uint16_t MIN_BLOCK_SIZE;
 extern uint32_t g_rdma_recv_block_size;
 extern bool g_skip_rdma_init;
 
-// Wire-level constants for the v2 handshake.
-static const char* MAGIC_STR = "RDMA";
-static constexpr uint16_t RDMA_HELLO_V2_MSG_LEN = 40;  // In Byte
-extern const uint16_t RDMA_HELLO_V2_VERSION = 2;
-extern const uint16_t RDMA_IMPL_V2_VERSION = 1;
-
-// Wire-level constants for the v3 handshake.
-static const char* MAGIC_STR_V3 = "RDM3";
-static const size_t RDMA_HELLO_V3_PB_SIZE_LEN = 4;
-static const size_t RDMA_HELLO_V3_MAX_PB_SIZE = 4096;
-
 namespace v2_wire {
 
 void HelloMessage::Serialize(void* data) const {
-    uint16_t* current_pos = (uint16_t*)data;
-    *(current_pos++) = butil::HostToNet16(msg_len);
-    *(current_pos++) = butil::HostToNet16(hello_ver);
-    *(current_pos++) = butil::HostToNet16(impl_ver);
-    uint32_t* block_size_pos = (uint32_t*)current_pos;
-    *block_size_pos = butil::HostToNet32(block_size);
-    current_pos += 2; // move forward 4 Bytes
-    *(current_pos++) = butil::HostToNet16(sq_size);
-    *(current_pos++) = butil::HostToNet16(rq_size);
-    *(current_pos++) = butil::HostToNet16(lid);
-    fast_memcpy(current_pos, gid.raw, 16);
-    uint32_t* qp_num_pos = (uint32_t*)((char*)current_pos + 16);
-    *qp_num_pos = butil::HostToNet32(qp_num);
+    butil::RawPacker(data)
+        .pack16(msg_len)
+        .pack16(hello_ver)
+        .pack16(impl_ver)
+        .pack32(block_size)
+        .pack16(sq_size)
+        .pack16(rq_size)
+        .pack16(lid)
+        // gid is a raw 16-byte identifier and must NOT be byte-swapped.
+        .pack_bytes(gid.raw, sizeof(gid.raw))
+        .pack32(qp_num);
 }
 
 void HelloMessage::Deserialize(void* data) {
-    uint16_t* current_pos = (uint16_t*)data;
-    msg_len = butil::NetToHost16(*current_pos++);
-    hello_ver = butil::NetToHost16(*current_pos++);
-    impl_ver = butil::NetToHost16(*current_pos++);
-    block_size = butil::NetToHost32(*(uint32_t*)current_pos);
-    current_pos += 2; // move forward 4 Bytes
-    sq_size = butil::NetToHost16(*current_pos++);
-    rq_size = butil::NetToHost16(*current_pos++);
-    lid = butil::NetToHost16(*current_pos++);
-    fast_memcpy(gid.raw, current_pos, 16);
-    qp_num = butil::NetToHost32(*(uint32_t*)((char*)current_pos + 16));
+    butil::RawUnpacker(data)
+        .unpack16(msg_len)
+        .unpack16(hello_ver)
+        .unpack16(impl_ver)
+        .unpack32(block_size)
+        .unpack16(sq_size)
+        .unpack16(rq_size)
+        .unpack16(lid)
+        // gid is a raw 16-byte identifier and must NOT be byte-swapped.
+        .unpack_bytes(gid.raw, sizeof(gid.raw))
+        .unpack32(qp_num);
 }
 
 static bool ValidHelloMessage(const HelloMessage& msg) {
-    return msg.hello_ver == RDMA_HELLO_V2_VERSION &&
-           msg.impl_ver == RDMA_IMPL_V2_VERSION &&
+    return msg.hello_ver == HELLO_V2_VERSION &&
+           msg.impl_ver == IMPL_V2_VERSION &&
            msg.block_size >= MIN_BLOCK_SIZE &&
            msg.sq_size >= MIN_QP_SIZE &&
            msg.rq_size >= MIN_QP_SIZE;
@@ -107,23 +96,23 @@ static void TranslateV2Hello(const HelloMessage& msg, ParsedHello* out) {
 }
 
 int ReadBodyAndNegotiate(RdmaEndpoint* ep, ParsedHello* remote, bool* negotiated) {
-    uint8_t data[HELLO_MSG_LEN_MIN];
-    if (ep->ReadFromFd(data, HELLO_MSG_LEN_MIN - MAGIC_STR_LEN) < 0) {
+    uint8_t data[HELLO_V2_MSG_LEN_MIN];
+    if (ep->ReadFromFd(data, HELLO_V2_MSG_LEN_MIN - HELLO_MAGIC_LEN) < 0) {
         return -1;
     }
     HelloMessage remote_msg{};
     remote_msg.Deserialize(data);
-    if (remote_msg.msg_len < HELLO_MSG_LEN_MIN ||
-        remote_msg.msg_len > HELLO_MSG_LEN_MAX) {
+    if (remote_msg.msg_len < HELLO_V2_MSG_LEN_MIN ||
+        remote_msg.msg_len > HELLO_V2_MSG_LEN_MAX) {
         errno = EPROTO;
         return -1;
     }
-    if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
+    if (remote_msg.msg_len > HELLO_V2_MSG_LEN_MIN) {
         // Drain unknown trailing bytes so they don't pollute subsequent
         // reads (e.g. the upcoming ACK message). v2 base fields already
         // carry enough information for negotiation; unknown trailing
         // bytes are treated as optional hints that v2 safely ignores.
-        size_t ext_len = remote_msg.msg_len - HELLO_MSG_LEN_MIN;
+        size_t ext_len = remote_msg.msg_len - HELLO_V2_MSG_LEN_MIN;
         if (DrainBytes(ep, ext_len) < 0) {
             return -1;
         }
@@ -153,12 +142,12 @@ int DrainBytes(RdmaEndpoint* ep, size_t n) {
 
 int RdmaHandshakeClientV2::SendLocalHello() {
     RdmaEndpoint* ep = _ep;
-    uint8_t data[RDMA_HELLO_V2_MSG_LEN];
+    uint8_t data[HELLO_V2_MSG_LEN_MIN];
 
     v2_wire::HelloMessage local_msg{};
-    local_msg.msg_len = RDMA_HELLO_V2_MSG_LEN;
-    local_msg.hello_ver = RDMA_HELLO_V2_VERSION;
-    local_msg.impl_ver = RDMA_IMPL_V2_VERSION;
+    local_msg.msg_len = HELLO_V2_MSG_LEN_MIN;
+    local_msg.hello_ver = HELLO_V2_VERSION;
+    local_msg.impl_ver = IMPL_V2_VERSION;
     local_msg.block_size = g_rdma_recv_block_size;
     local_msg.sq_size = ep->_sq_size;
     local_msg.rq_size = ep->_rq_size;
@@ -170,9 +159,9 @@ int RdmaHandshakeClientV2::SendLocalHello() {
         // Only happens in UT
         local_msg.qp_num = 0;
     }
-    fast_memcpy(data, MAGIC_STR, 4);
+    fast_memcpy(data, HELLO_MAGIC, 4);
     local_msg.Serialize((char*)data + 4);
-    return ep->WriteToFd(data, RDMA_HELLO_V2_MSG_LEN);
+    return ep->WriteToFd(data, HELLO_V2_MSG_LEN_MIN);
 }
 
 int RdmaHandshakeClientV2::ReceiveAndParseRemoteHello(ParsedHello* remote,
@@ -180,11 +169,11 @@ int RdmaHandshakeClientV2::ReceiveAndParseRemoteHello(ParsedHello* remote,
     RdmaEndpoint* ep = _ep;
 
     // Read and verify magic (the endpoint did NOT pre-read magic on the client side).
-    uint8_t magic[MAGIC_STR_LEN];
-    if (ep->ReadFromFd(magic, MAGIC_STR_LEN) < 0) {
+    uint8_t magic[HELLO_MAGIC_LEN];
+    if (ep->ReadFromFd(magic, HELLO_MAGIC_LEN) < 0) {
         return -1;
     }
-    if (memcmp(magic, MAGIC_STR, MAGIC_STR_LEN) != 0) {
+    if (memcmp(magic, HELLO_MAGIC, HELLO_MAGIC_LEN) != 0) {
         errno = EPROTO;
         return -1;
     }
@@ -197,9 +186,9 @@ int RdmaHandshakeServerV2::ReceiveAndParseRemoteHello(ParsedHello* remote, bool*
 }
 
 int RdmaHandshakeServerV2::SendLocalHello() {
-    uint8_t data[RDMA_HELLO_V2_MSG_LEN];
+    uint8_t data[HELLO_V2_MSG_LEN_MIN];
     v2_wire::HelloMessage local_msg{};
-    local_msg.msg_len = RDMA_HELLO_V2_MSG_LEN;
+    local_msg.msg_len = HELLO_V2_MSG_LEN_MIN;
     auto rdma_transport = static_cast<RdmaTransport*>(_ep->_socket->_transport.get());
     if (rdma_transport->_rdma_state == RdmaTransport::RDMA_OFF) {
         local_msg.hello_ver = 0;
@@ -211,8 +200,8 @@ int RdmaHandshakeServerV2::SendLocalHello() {
         memset(local_msg.gid.raw, 0, sizeof(local_msg.gid.raw));
         local_msg.qp_num     = 0;
     } else {
-        local_msg.hello_ver = RDMA_HELLO_V2_VERSION;
-        local_msg.impl_ver = RDMA_IMPL_V2_VERSION;
+        local_msg.hello_ver = HELLO_V2_VERSION;
+        local_msg.impl_ver = IMPL_V2_VERSION;
         local_msg.block_size = g_rdma_recv_block_size;
         local_msg.sq_size = _ep->_sq_size;
         local_msg.rq_size = _ep->_rq_size;
@@ -225,9 +214,9 @@ int RdmaHandshakeServerV2::SendLocalHello() {
             local_msg.qp_num = 0;
         }
     }
-    fast_memcpy(data, MAGIC_STR, 4);
+    fast_memcpy(data, HELLO_MAGIC, 4);
     local_msg.Serialize((char*)data + 4);
-    return _ep->WriteToFd(data, RDMA_HELLO_V2_MSG_LEN);
+    return _ep->WriteToFd(data, HELLO_V2_MSG_LEN_MIN);
 }
 
 namespace v3_wire {
@@ -274,13 +263,13 @@ void FillLocalRdmaHello(const RdmaEndpoint* ep, RdmaHello* msg) {
 }
 
 int ReadAndParseV3Hello(RdmaEndpoint* ep, RdmaHello* out) {
-    uint8_t size_buf[RDMA_HELLO_V3_PB_SIZE_LEN];
-    if (ep->ReadFromFd(size_buf, RDMA_HELLO_V3_PB_SIZE_LEN) < 0) {
+    uint8_t size_buf[HELLO_V3_PB_SIZE_LEN];
+    if (ep->ReadFromFd(size_buf, HELLO_V3_PB_SIZE_LEN) < 0) {
         return -1;
     }
     uint32_t pb_size = butil::NetToHost32(
         *reinterpret_cast<const uint32_t*>(size_buf));
-    if (pb_size == 0 || pb_size > RDMA_HELLO_V3_MAX_PB_SIZE) {
+    if (pb_size == 0 || pb_size > HELLO_V3_MAX_PB_SIZE) {
         errno = EPROTO;
         return -1;
     }
@@ -300,16 +289,16 @@ int ReadAndParseV3Hello(RdmaEndpoint* ep, RdmaHello* out) {
 
 int WriteV3Hello(RdmaEndpoint* ep, const RdmaHello& msg) {
     uint32_t pb_size = static_cast<uint32_t>(msg.ByteSizeLong());
-    if (pb_size > RDMA_HELLO_V3_MAX_PB_SIZE) {
+    if (pb_size > HELLO_V3_MAX_PB_SIZE) {
         errno = EPROTO;
         return -1;
     }
 
     // [ "RDM3" 4B ][ pb_size 4B (big-endian) ][ RdmaHello protobuf bytes ]
     butil::IOBuf packet;
-    packet.append(MAGIC_STR_V3, MAGIC_STR_LEN);
+    packet.append(HELLO_MAGIC_V3, HELLO_MAGIC_LEN);
     uint32_t pb_size_be = butil::HostToNet32(pb_size);
-    packet.append(&pb_size_be, RDMA_HELLO_V3_PB_SIZE_LEN);
+    packet.append(&pb_size_be, HELLO_V3_PB_SIZE_LEN);
     butil::IOBufAsZeroCopyOutputStream output(&packet);
     if (!msg.SerializeToZeroCopyStream(&output)) {
         LOG(ERROR) << "Failed to serialize RdmaHello";
@@ -338,11 +327,11 @@ int RdmaHandshakeClientV3::SendLocalHello() {
 
 int RdmaHandshakeClientV3::ReceiveAndParseRemoteHello(ParsedHello* remote,
                                                      bool* negotiated) {
-    uint8_t magic[MAGIC_STR_LEN];
-    if (_ep->ReadFromFd(magic, MAGIC_STR_LEN) < 0) {
+    uint8_t magic[HELLO_MAGIC_LEN];
+    if (_ep->ReadFromFd(magic, HELLO_MAGIC_LEN) < 0) {
         return -1;
     }
-    if (memcmp(magic, MAGIC_STR_V3, MAGIC_STR_LEN) != 0) {
+    if (memcmp(magic, HELLO_MAGIC_V3, HELLO_MAGIC_LEN) != 0) {
         errno = EPROTO;
         return -1;
     }
@@ -392,11 +381,11 @@ std::unique_ptr<RdmaHandshake> CreateClientHandshake(RdmaEndpoint* ep) {
 }
 
 std::unique_ptr<RdmaHandshake> CreateServerHandshakeByMagic(
-    RdmaEndpoint* ep, const uint8_t magic[MAGIC_STR_LEN]) {
-    if (memcmp(magic, MAGIC_STR, MAGIC_STR_LEN) == 0) {
+    RdmaEndpoint* ep, const uint8_t magic[HELLO_MAGIC_LEN]) {
+    if (memcmp(magic, HELLO_MAGIC, HELLO_MAGIC_LEN) == 0) {
         return std::unique_ptr<RdmaHandshake>(new RdmaHandshakeServerV2(ep));
     }
-    if (memcmp(magic, MAGIC_STR_V3, MAGIC_STR_LEN) == 0) {
+    if (memcmp(magic, HELLO_MAGIC_V3, HELLO_MAGIC_LEN) == 0) {
         return std::unique_ptr<RdmaHandshake>(new RdmaHandshakeServerV3(ep));
     }
     return nullptr;

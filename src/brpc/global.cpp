@@ -84,6 +84,7 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
+#include "brpc/policy/rdma_handshake_fallback_protocol.h"
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 # include "brpc/policy/thrift_protocol.h"
 #endif
@@ -629,6 +630,15 @@ static void GlobalInitializeOrDieImpl() {
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT, "esp"};
     if (RegisterProtocol(PROTOCOL_ESP, esp_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol rdma_handshake_fallback_protocol = {
+        ParseRdmaHandshake, NULL, NULL,
+        ProcessRdmaHandshake, NULL,
+        NULL, NULL, NULL,
+        CONNECTION_TYPE_ALL, "rdma_handshake" };
+    if (RegisterProtocol(PROTOCOL_RDMA_HANDSHAKE, rdma_handshake_fallback_protocol) != 0) {
         exit(1);
     }
 
