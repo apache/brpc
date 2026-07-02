@@ -258,6 +258,10 @@ Requirements of instance tag is the same as wrr.
 
 which is locality-aware. Perfer servers with lower latencies, until the latency is higher than others, no other settings. Check out [Locality-aware load balancing](lalb.md) for more details.
 
+### p2c
+
+which is power-of-two-choices with peak-EWMA latency scoring. Each selection samples two random servers and routes to the one with the lower `latency * (inflight + 1) / weight` score, where the latency is a peak-sensitive moving average: an upward spike takes effect immediately while recovery decays over `tau_ms`(default 10s). A slow or failing server is shed within one observation and selection cost is O(1) regardless of cluster size. Weight comes from the instance tag as in wrr(default 1). Optional parameters: `p2c:choices=4`(compare 4 sampled servers instead of 2, useful when many servers degrade at once), `p2c:tau_ms=5000`.
+
 ### c_murmurhash or c_md5
 
 which is consistent hashing. Adding or removing servers does not make destinations of requests change as dramatically as in simple hashing. It's especially suitable for caching services.

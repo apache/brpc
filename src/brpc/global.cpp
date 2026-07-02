@@ -46,6 +46,7 @@
 #include "brpc/policy/randomized_load_balancer.h"
 #include "brpc/policy/weighted_randomized_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
+#include "brpc/policy/p2c_ewma_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
 #include "brpc/policy/dynpart_load_balancer.h"
@@ -155,6 +156,7 @@ struct GlobalExtensions {
     RandomizedLoadBalancer randomized_lb;
     WeightedRandomizedLoadBalancer wr_lb;
     LocalityAwareLoadBalancer la_lb;
+    P2CEwmaLoadBalancer p2c_ewma_lb;
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
     ConsistentHashingLoadBalancer ch_ketama_lb;
@@ -391,6 +393,7 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("random", &g_ext->randomized_lb);
     LoadBalancerExtension()->RegisterOrDie("wr", &g_ext->wr_lb);
     LoadBalancerExtension()->RegisterOrDie("la", &g_ext->la_lb);
+    LoadBalancerExtension()->RegisterOrDie("p2c", &g_ext->p2c_ewma_lb);
     LoadBalancerExtension()->RegisterOrDie("c_murmurhash", &g_ext->ch_mh_lb);
     LoadBalancerExtension()->RegisterOrDie("c_md5", &g_ext->ch_md5_lb);
     LoadBalancerExtension()->RegisterOrDie("c_ketama", &g_ext->ch_ketama_lb);

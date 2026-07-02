@@ -260,6 +260,10 @@ int main() {
 
 locality-aware，优先选择延时低的下游，直到其延时高于其他机器，无需其他设置。实现原理请查看[Locality-aware load balancing](lalb.md)。
 
+### p2c
+
+即power-of-two-choices加peak-EWMA延时评分。每次选择随机采样两台服务器，把请求发给`延时 * (inflight + 1) / 权重`得分较低的那台。其中延时是对尖峰敏感的滑动平均：延时上升立即生效，恢复则按`tau_ms`（默认10秒）衰减。变慢或出错的服务器在一次观察内即被避开，且选择开销与集群规模无关，为O(1)。权重取自实例tag（同wrr，默认为1）。可选参数：`p2c:choices=4`（每次比较4台采样服务器，适合多台机器同时劣化的场景）、`p2c:tau_ms=5000`。
+
 ### c_murmurhash or c_md5
 
 一致性哈希，与简单hash的不同之处在于增加或删除机器时不会使分桶结果剧烈变化，特别适合cache类服务。
