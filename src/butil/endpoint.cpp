@@ -561,7 +561,7 @@ int tcp_connect(const EndPoint& server, int* self_port, int connect_timeout_ms) 
     return sockfd.release();
 }
 
-int tcp_listen(EndPoint point) {
+int tcp_listen(EndPoint point, BeforeListenCallback before_listen) {
     struct sockaddr_storage serv_addr;
     socklen_t serv_addr_size = 0;
     if (endpoint2sockaddr(point, &serv_addr, &serv_addr_size) != 0) {
@@ -602,6 +602,10 @@ int tcp_listen(EndPoint point) {
         ::unlink(((sockaddr_un*) &serv_addr)->sun_path);
     }
 
+    if (before_listen) {
+        before_listen(sockfd);
+    }
+
     if (::bind(sockfd, (struct sockaddr*)& serv_addr, serv_addr_size) != 0) {
         return -1;
     }
@@ -612,6 +616,10 @@ int tcp_listen(EndPoint point) {
         return -1;
     }
     return sockfd.release();
+}
+
+int tcp_listen(EndPoint point) {
+    return tcp_listen(point, BeforeListenCallback());
 }
 
 int get_local_side(int fd, EndPoint *out) {

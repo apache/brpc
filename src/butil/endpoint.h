@@ -24,6 +24,7 @@
 
 #include <netinet/in.h>                          // in_addr
 #include <sys/un.h>                              // sockaddr_un
+#include <functional>                            // std::function
 #include <iostream>                              // std::ostream
 #include "butil/containers/hash_tables.h"         // hashing functions
 
@@ -141,6 +142,9 @@ int tcp_connect(const EndPoint& server, int* self_port, int connect_timeout_ms);
 // To enable SO_REUSEPORT for the whole program, enable gflag -reuse_port
 // Returns the socket descriptor, -1 otherwise and errno is set.
 int tcp_listen(EndPoint ip_and_port);
+// If `before_listen' is set, it will be called before bind/listen.
+typedef std::function<void(int)> BeforeListenCallback;
+int tcp_listen(EndPoint ip_and_port, BeforeListenCallback before_listen);
 
 // Get the local end of a socket connection
 int get_local_side(int fd, EndPoint *out);

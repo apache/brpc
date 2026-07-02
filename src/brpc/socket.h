@@ -68,6 +68,9 @@ class EventDispatcher;
 class Stream;
 class Transport;
 
+// Set SO_SNDBUF/SO_RCVBUF according to socket_*_buffer_size flags.
+void SetSocketBufferOptions(int fd);
+
 // A special closure for processing the about-to-recycle socket. Socket does
 // not delete SocketUser, if you want, `delete this' at the end of
 // BeforeRecycle().
