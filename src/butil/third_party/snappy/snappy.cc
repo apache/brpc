@@ -97,9 +97,32 @@ static const uint32_t kMaximumTagLength = 5;  // COPY_4_BYTE_OFFSET plus the act
 // or memmove().
 static inline void IncrementalCopy(const char* src, char* op, ssize_t len) {
     assert(len > 0);
+#if defined(__riscv) && __riscv_xlen == 64
+    // RISC-V optimized: use 8-byte copies when aligned and safe
+    if (len >= 8 && (op - src >= 8 || src - op >= 8) &&
+        (((uintptr_t)src | (uintptr_t)op) & 7) == 0) {
+        do {
+            uint64_t tmp;
+            __asm__ volatile(
+                "ld %0, %1\n\t"
+                "sd %0, %2\n\t"
+                : "=&r"(tmp)
+                : "m"(*(const uint64_t*)src), "m"(*(uint64_t*)op)
+                : "memory");
+            src += 8;
+            op += 8;
+            len -= 8;
+        } while (len >= 8);
+    }
+    while (len > 0) {
+        *op++ = *src++;
+        --len;
+    }
+#else
     do {
         *op++ = *src++;
     } while (--len > 0);
+#endif
 }
 
 // Equivalent to IncrementalCopy except that it can write up to ten extra
