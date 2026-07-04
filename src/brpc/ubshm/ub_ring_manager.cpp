@@ -250,8 +250,8 @@ int32_t UBRingManager::UbEventCallback(const char *shmName)
             continue;
         }
 
-        if (strcmp(g_ubrMgr.trxMgr[i].localShm.name, shmName) == 0 ||   // 故障链路为该trx的本端shm
-            strcmp(g_ubrMgr.trxMgr[i].remoteShm.name, shmName) == 0) {  // 故障链路为该trx的对端shm
+        if (strcmp(g_ubrMgr.trxMgr[i].localShm.name, shmName) == 0 ||   // the failed link is this trx's local shm
+            strcmp(g_ubrMgr.trxMgr[i].remoteShm.name, shmName) == 0) {  // the failed link is this trx's remote shm
             ++g_ubEventCnt;
             int fd = (int)g_ubrMgr.trxMgr[i].localShm.fd;
             LOG(WARNING) << "Ub event callback, the fd of the faulty link is " << fd;

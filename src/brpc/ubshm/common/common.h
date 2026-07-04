@@ -21,10 +21,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <time.h>
+#include "butil/compiler_specific.h"
 #include "butil/logging.h"
 
-#define LIKELY(x) __builtin_expect(!!(x), 1)
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define LIKELY(x) BAIDU_LIKELY(x)
+#define UNLIKELY(x) BAIDU_UNLIKELY(x)
 
 #ifndef UNREFERENCE_PARAM
 #define UNREFERENCE_PARAM(x) ((void)(x))

@@ -30,7 +30,7 @@ extern "C" {
 #define SHMEM_API __attribute__((visibility("default")))
 #endif
 
-// 先修改为48，与旧版本对齐
+// Changed to 48 to align with the old version
 #define MAX_HOST_NUM 16
 #define MAX_NUMA_NUM 32
 #define MAX_NUMA_RESV_LEN 16
@@ -120,14 +120,14 @@ typedef struct {
 } ubsmem_region_desc_t;
 
 typedef struct {
-    uint32_t slot_id;            // 节点唯一标识, 采用slotid, 与lcne保持一致
+    uint32_t slot_id;            // unique node id, uses slot id, consistent with lcne
     uint32_t socket_id;          // socket id
-    uint32_t numa_id;            // 节点中的numa id
-    uint32_t mem_lend_ratio;     // 池化内存借出比例上限
-    uint64_t mem_total;          // 内存总量, 单位字节
-    uint64_t mem_free;           // 内存空闲量, 单位字节
-    uint64_t mem_borrow;         // 借用的内存，单位字节
-    uint64_t mem_lend;           // 借出的内存，单位字节
+    uint32_t numa_id;            // numa id within the node
+    uint32_t mem_lend_ratio;     // upper bound of pooled memory lend ratio
+    uint64_t mem_total;          // total memory, in bytes
+    uint64_t mem_free;           // free memory, in bytes
+    uint64_t mem_borrow;         // borrowed memory, in bytes
+    uint64_t mem_lend;           // lent memory, in bytes
     uint8_t resv[MAX_NUMA_RESV_LEN];
 } ubsmem_numa_mem_t;
 
@@ -138,7 +138,7 @@ typedef struct {
 } ubsmem_host_info_t;
 
 typedef struct {
-    int host_num;  // 集群可用节点数量
+    int host_num;  // number of available nodes in the cluster
     ubsmem_host_info_t host[MAX_HOST_NUM];
 } ubsmem_cluster_info_t;
 

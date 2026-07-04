@@ -17,6 +17,7 @@
 
 #ifndef BRPC_UBR_MSG_H
 #define BRPC_UBR_MSG_H
+#include "butil/compiler_specific.h"
 #define UBR_MSG_HEADER_LEN 4
 #define UBR_MSG_PAYLOAD_LEN 60
 #define UBR_MSG_LEN (UBR_MSG_HEADER_LEN + UBR_MSG_PAYLOAD_LEN)
@@ -37,7 +38,7 @@ typedef struct TagUbrMsgPayload {
     uint8_t inner[UBR_MSG_PAYLOAD_LEN];
 } UbrMsgPayload;
 
-typedef struct __attribute__((aligned(64))) TagUbrMsgFormat {
+typedef struct BAIDU_CACHELINE_ALIGNMENT TagUbrMsgFormat {
     UbrMsgPayload payload;
 
     uint8_t header[UBR_MSG_HEADER_LEN];

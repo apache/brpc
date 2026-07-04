@@ -43,6 +43,18 @@ DECLARE_int32(ub_poller_num);
 DECLARE_bool(ub_edisp_unsched);
 DECLARE_bool(ub_disable_bthread);
 
+struct HelloMessage {
+    void Serialize(void* data) const;
+    void Deserialize(void* data);
+    std::string toString() const;
+
+    uint16_t msg_len;
+    uint16_t hello_ver;
+    uint16_t impl_ver;
+    uint64_t len;
+    char shm_name[SHM_MAX_NAME_BUFF_LEN];
+};
+
 class UBConnect : public AppConnect {
 public:
     void StartConnect(const Socket* socket,
@@ -112,7 +124,11 @@ public:
 
     static void PollingModeRelease(bthread_tag_t tag);
 
+#ifdef UNIT_TEST
+public:
+#else
 private:
+#endif
     enum State {
         UNINIT = 0x0,
         C_ALLOC_SHM = 0x1,
@@ -165,6 +181,7 @@ private:
 
     // Not owner
     Socket* _socket;
+    SocketId _socket_id;
 
     State _state;
 

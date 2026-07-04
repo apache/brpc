@@ -60,7 +60,7 @@ int ubsmem_lookup_regions(ubsmem_regions_t* regions)
     regions->region[0].hosts[0].affinity = true;
     regions->region[0].hosts[0].host_name[0] = 'h';
     regions->region[0].hosts[0].host_name[1] = '1';
-    regions->region[0].hosts[0].host_name[2] = '\0'; // 2号位置使用\0
+    regions->region[0].hosts[0].host_name[2] = '\0'; // position 2 uses \0
     return UBSM_OK;
 }
 

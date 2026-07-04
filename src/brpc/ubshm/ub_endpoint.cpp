@@ -68,18 +68,6 @@ static const uint32_t ACK_MSG_UB_OK = 0x1;
 
 static butil::Mutex* g_ubring_resource_mutex = NULL;
 
-struct HelloMessage {
-    void Serialize(void* data) const;
-    void Deserialize(void* data);
-    std::string toString() const;
-
-    uint16_t msg_len;
-    uint16_t hello_ver;
-    uint16_t impl_ver;
-    uint64_t len;
-    char shm_name[SHM_MAX_NAME_BUFF_LEN];
-};
-
 void HelloMessage::Serialize(void* data) const {
     char* current_pos = static_cast<char*>(data);
     const uint16_t net_msg_len = butil::HostToNet16(msg_len);
@@ -126,8 +114,8 @@ std::string HelloMessage::toString() const {
         msg_len,
         hello_ver,
         impl_ver,
-        static_cast<unsigned long>(len),  // 兼容32/64位
-        static_cast<int>(SHM_MAX_NAME_BUFF_LEN),  // 限制最大输出长度
+        static_cast<unsigned long>(len),  // compatible with 32/64-bit
+        static_cast<int>(SHM_MAX_NAME_BUFF_LEN),  // limit max output length
         shm_name
     );
     return std::string(buf.data(), static_cast<size_t>(n));
@@ -135,6 +123,7 @@ std::string HelloMessage::toString() const {
 
 UBShmEndpoint::UBShmEndpoint(Socket* s)
     : _socket(s)
+    , _socket_id(s ? s->id() : INVALID_SOCKET_ID)
     , _state(UNINIT)
     , _ub_ring(nullptr)
     , _cq_sid(INVALID_SOCKET_ID)
@@ -454,6 +443,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
 
     if (ub_transport->_ub_state == UBShmTransport::UB_ON) {
         ep->_state = ESTABLISHED;
+        ep->_ub_ring->UbrUnlinkLocalShm();
         LOG_IF(INFO, FLAGS_ub_trace_verbose) 
             << "Client handshake ends (use ubring) on " << s->description();
     } else {
@@ -532,7 +522,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         strncpy(remote_trx_shm.name, remote_msg.shm_name, SHM_MAX_NAME_BUFF_LEN);
 
         size_t local_shm_len = (size_t)(FLAGS_data_queue_size) * MB_TO_BYTE;
-        // server端共享内存名称
+        // server-side shared memory name
         ubring::SHM local_trx_shm = {NULL, local_shm_len, 0, {0}, (uint32_t)ep->_socket->fd()};
         char clientName[SHM_MAX_NAME_BUFF_LEN];
         strncpy(clientName, remote_msg.shm_name, SHM_MAX_NAME_BUFF_LEN);
@@ -600,6 +590,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         } else {
             ub_transport->_ub_state = UBShmTransport::UB_ON;
             ep->_state = ESTABLISHED;
+            ep->_ub_ring->UbrUnlinkLocalShm();
             LOG_IF(INFO, FLAGS_ub_trace_verbose) 
                 << "Server handshake ends (use ubring) on " << s->description();
         }
@@ -720,7 +711,7 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm, ubring::
     if (ret != 0) {
         return ret;
     }
-    // TODO mwj 是否应该在连接之后再进行轮询?
+    // TODO mwj should polling start after the connection is established?
     PollerRegisterEvent(CqSidOp::ADD, EPOLLIN);
     return ret;
 }
@@ -743,7 +734,7 @@ void UBShmEndpoint::DeallocateResources() {
 
 void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t epEvent) {
     SocketUniquePtr s;
-    if (Socket::Address(ep->_socket->id(), &s) < 0) {
+    if (Socket::Address(ep->_socket_id, &s) < 0) {
         return;
     }
     auto* ub_transport = static_cast<UBShmTransport*>(s->_transport.get());
@@ -805,15 +796,15 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t epEvent) {
 
 void UBShmEndpoint::PollOut(UBShmEndpoint* ep, uint32_t epEvent) {
     SocketUniquePtr s;
-    if (Socket::Address(ep->_socket->id(), &s) < 0) {
+    if (Socket::Address(ep->_socket_id, &s) < 0) {
         return;
     }
     auto* ub_transport = static_cast<UBShmTransport*>(s->_transport.get());
     CHECK(ep == ub_transport->_ub_ep);
     if (ep->IsWritable()) {
-        ep->_socket->WakeAsEpollOut();
+        s->WakeAsEpollOut();
     }
-    
+
 }
 
 int UBShmEndpoint::GlobalInitialize() {

@@ -79,6 +79,8 @@ public:
 
     static RETURN_CODE UbrTrxFreeShm(UbrTrx *trx);
 
+    RETURN_CODE UbrUnlinkLocalShm();
+
     void PrewriteUbrTx(UbrTx *tx);
     void PrewriteUbrRx(UbrRx *rx);
 

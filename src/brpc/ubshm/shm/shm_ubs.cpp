@@ -98,7 +98,7 @@ static RETURN_CODE CreateUbsShmRegion(const char *regionName)
         return UBRING_ERR;
     }
 
-    ubsmem_regions_t regions = {0}; // 16 * (48 + 1) bytes, 约0.8k
+    ubsmem_regions_t regions = {0}; // 16 * (48 + 1) bytes, about 0.8k
     ret = ubsmem_lookup_regions(&regions);
     if (ret != UBSM_OK || regions.region[0].host_num <= 0) {
         LOG(ERROR) << "Ubs lookup share region failed, ret=" << ret << ", region.num=" << regions.region[0].host_num;
@@ -165,8 +165,8 @@ do {
         return SHM_ERR;
     }
 
-    // 通过MXE获取memid
-    shm->memid = 1; // 暂时打桩
+    // Obtain memid via MXE
+    shm->memid = 1; // temporarily stubbed
     LOG(INFO) << "Ubs malloc local shm=" << shm->name << " length=" << shm->len << " memid=" << shm->memid << " success.";
     return UBRING_OK;
 }
@@ -313,7 +313,7 @@ void UbsMemLoggerPrint(int level, const char *msg)
 
 RETURN_CODE UbsShmInit(void)
 {
-    // 加载libubsm_sdk.so函数指针
+    // load libubsm_sdk.so and get function pointer
     RETURN_CODE retCode = UbsShmInterfacesLoad();
     if (retCode != UBRING_OK) {
         LOG(ERROR) << "Load ubs shm functions failed, ret=" << retCode;
