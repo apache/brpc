@@ -729,6 +729,25 @@ TEST(RtmpTest, amf_rejects_deep_nested_ecma_arrays) {
     EXPECT_TRUE(brpc::ReadAMFObject(&valid_obj, &istream2));
 }
 
+// Create() copies the record into a non-NUL-terminated buffer, so the SPS must
+// be parsed with an explicitly-sized view. A crafted sequence header whose SPS
+// body has no zero byte used to make ParseSPS run strlen off the end of that
+// buffer (an out-of-bounds read, caught here under ASan).
+TEST(RtmpTest, avc_seq_header_sps_without_zero_byte) {
+    const uint16_t sps_length = 70; // keep the record above the small-array cap
+    butil::IOBuf buf;
+    const char head[6] = { 0x01, 0x64, 0x00, 0x28, (char)0xff, (char)0xe1 };
+    buf.append(head, sizeof(head)); // version/profile/level, lengthSizeMinus1=3, numSPS=1
+    const char len_be[2] = { (char)(sps_length >> 8), (char)(sps_length & 0xff) };
+    buf.append(len_be, sizeof(len_be));
+    std::string sps(sps_length, (char)0x67); // NAL header 0x67 then non-zero filler
+    buf.append(sps);
+
+    brpc::AVCDecoderConfigurationRecord avc;
+    // Only requirement: the call must not read past the copied record.
+    avc.Create(buf);
+}
+
 TEST(RtmpTest, successfully_play_streams) {
     PlayingDummyService rtmp_service;
     brpc::Server server;
