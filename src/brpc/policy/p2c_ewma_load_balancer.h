@@ -71,12 +71,6 @@ private:
         std::vector<ServerInfo> server_list;
         // Maps SocketId to index in server_list.
         butil::FlatMap<SocketId, size_t> server_map;
-
-        Servers() {
-            if (server_map.init(1024, 70) != 0) {
-                LOG(WARNING) << "Fail to init server_map";
-            }
-        }
     };
 
     static bool Add(Servers& bg, const Servers& fg, const ServerId& id);

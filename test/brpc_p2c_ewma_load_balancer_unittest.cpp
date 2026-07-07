@@ -15,16 +15,26 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <cstdlib>
 #include <map>
+#include <sstream>
 #include <vector>
+#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include <pthread.h>
+#include <unistd.h>
 #include "butil/macros.h"
 #include "butil/time.h"
 #include "brpc/socket.h"
 #include "brpc/controller.h"
 #include "brpc/excluded_servers.h"
 #include "brpc/policy/p2c_ewma_load_balancer.h"
+
+namespace brpc {
+namespace policy {
+DECLARE_int64(p2c_max_punish_ms);
+}
+}
 
 namespace {
 
@@ -341,6 +351,78 @@ TEST_F(P2CEwmaLoadBalancerTest, concurrent_select_with_churn) {
     }
     LOG(INFO) << "selected " << arg.nselected.load() << " times";
     ASSERT_GT(arg.nselected.load(), 0u);
+}
+
+TEST_F(P2CEwmaLoadBalancerTest, error_punish_is_capped) {
+    const brpc::ServerId id = CreateServer("127.0.0.1:7900");
+    ASSERT_TRUE(_lb->AddServer(id));
+    brpc::Controller cntl;
+    cntl.set_timeout_ms(100);
+    // Persistent failures double the punished EWMA per sample; without the
+    // cap 64 rounds would push it past 2^64.
+    for (int i = 0; i < 64; ++i) {
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, Select(&ptr));
+        FeedbackLatency(_lb, id.id, 1000, ETIMEDOUT, &cntl);
+    }
+    std::ostringstream os;
+    brpc::DescribeOptions options;
+    options.verbose = true;
+    _lb->Describe(os, options);
+    const std::string desc = os.str();
+    const size_t pos = desc.find("ewma_us=");
+    ASSERT_NE(std::string::npos, pos) << desc;
+    const int64_t ewma_us = strtoll(desc.c_str() + pos + 8, NULL, 10);
+    ASSERT_LE(ewma_us, brpc::policy::FLAGS_p2c_max_punish_ms * 1000L) << desc;
+}
+
+struct FeedbackBenchArg {
+    brpc::policy::P2CEwmaLoadBalancer* lb;
+    brpc::SocketId server_id;
+    butil::atomic<bool> stop;
+    butil::atomic<size_t> nfeedback;
+};
+
+void* FeedbackHammer(void* void_arg) {
+    FeedbackBenchArg* arg = static_cast<FeedbackBenchArg*>(void_arg);
+    size_t n = 0;
+    while (!arg->stop.load(butil::memory_order_relaxed)) {
+        FeedbackLatency(arg->lb, arg->server_id, 1000);
+        ++n;
+    }
+    arg->nfeedback.fetch_add(n, butil::memory_order_relaxed);
+    return NULL;
+}
+
+TEST_F(P2CEwmaLoadBalancerTest, feedback_lock_overhead) {
+    // All threads feed back to a single server so update_mutex sees
+    // worst-case contention.
+    const brpc::ServerId id = CreateServer("127.0.0.1:7901");
+    ASSERT_TRUE(_lb->AddServer(id));
+    for (size_t nthread = 1; nthread <= 4; nthread *= 2) {
+        FeedbackBenchArg arg;
+        arg.lb = _lb;
+        arg.server_id = id.id;
+        arg.stop.store(false);
+        arg.nfeedback.store(0);
+        pthread_t threads[4];
+        const int64_t begin_us = butil::gettimeofday_us();
+        for (size_t i = 0; i < nthread; ++i) {
+            ASSERT_EQ(0, pthread_create(
+                &threads[i], NULL, FeedbackHammer, &arg));
+        }
+        usleep(500 * 1000);
+        arg.stop.store(true);
+        for (size_t i = 0; i < nthread; ++i) {
+            ASSERT_EQ(0, pthread_join(threads[i], NULL));
+        }
+        const int64_t elapsed_us = butil::gettimeofday_us() - begin_us;
+        const size_t n = arg.nfeedback.load();
+        ASSERT_GT(n, 0u);
+        LOG(INFO) << "Feedback on 1 shared server, " << nthread
+                  << " thread(s): " << (elapsed_us * 1000L * nthread) / n
+                  << "ns/op (" << n << " ops in " << elapsed_us / 1000 << "ms)";
+    }
 }
 
 } // namespace

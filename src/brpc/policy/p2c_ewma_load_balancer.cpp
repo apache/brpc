@@ -17,6 +17,7 @@
 
 
 #include <cmath>                                       // std::exp
+#include <gflags/gflags.h>
 #include "butil/fast_rand.h"                           // fast_rand_less_than
 #include "butil/time.h"                                // gettimeofday_us
 #include "butil/string_splitter.h"                     // KeyValuePairsSplitter
@@ -28,11 +29,22 @@
 namespace brpc {
 namespace policy {
 
+DEFINE_uint32(p2c_default_choices, 2,
+              "Default number of servers sampled per selection in p2c, "
+              "overridable per channel with the `choices' parameter");
+DEFINE_int64(p2c_default_tau_ms, 10000,
+             "Default decay time(ms) of the peak-EWMA latency in p2c "
+             "(Finagle's PeakEwma default), overridable per channel with "
+             "the `tau_ms' parameter");
+DEFINE_int64(p2c_max_punish_ms, 30000,
+             "Cap(ms) on the punished latency recorded for a failed call in "
+             "p2c, bounding how long a persistently failing server takes to "
+             "recover after it turns healthy. 0 means no cap");
+
 namespace {
-const uint32_t DEFAULT_CHOICES = 2;
+// Upper bound of the `choices' parameter. Compile-time because it sizes the
+// sampling array on SelectServer's stack.
 const uint32_t MAX_CHOICES = 64;
-// Finagle's PeakEwma default decay time.
-const int64_t DEFAULT_TAU_US = 10 * 1000000L;
 // Floor of the latency term so that in-flight counts break ties between
 // servers that have no latency observation yet.
 const double MIN_LATENCY_TERM_US = 1.0;
@@ -51,8 +63,9 @@ uint32_t WeightOfTag(const std::string& tag) {
 }  // namespace
 
 P2CEwmaLoadBalancer::P2CEwmaLoadBalancer()
-    : _choices(DEFAULT_CHOICES)
-    , _tau_us(DEFAULT_TAU_US) {}
+    // Clamp so that broken flag values can not disable comparison or decay.
+    : _choices(std::min(std::max(FLAGS_p2c_default_choices, 2u), MAX_CHOICES))
+    , _tau_us(std::max<int64_t>(FLAGS_p2c_default_tau_ms, 1) * 1000L) {}
 
 bool P2CEwmaLoadBalancer::Add(Servers& bg, const Servers& fg,
                               const ServerId& id) {
@@ -277,6 +290,13 @@ void P2CEwmaLoadBalancer::Feedback(const CallInfo& info) {
         latency_us = std::max(latency_us, timeout_us);
         latency_us = std::max(
             latency_us, 2 * stat->ewma_us.load(butil::memory_order_relaxed));
+        // Cap the punishment: consecutive failures double the EWMA each
+        // time, which otherwise grows without bound and delays recovery
+        // after the server turns healthy.
+        const int64_t max_punish_us = FLAGS_p2c_max_punish_ms * 1000L;
+        if (max_punish_us > 0 && latency_us > max_punish_us) {
+            latency_us = max_punish_us;
+        }
     }
 
     BAIDU_SCOPED_LOCK(stat->update_mutex);
