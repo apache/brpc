@@ -31,8 +31,6 @@ namespace brpc {
 
 DEFINE_int32(mysql_multi_replies_size, 10, "multi replies size in one MysqlResponse");
 
-// ===================================================================
-
 butil::Status MysqlStatementStub::PackExecuteCommand(butil::IOBuf* outbuf, uint32_t stmt_id) {
     butil::Status st;
     // long data
@@ -135,8 +133,6 @@ void MysqlRequest::MergeFrom(const MysqlRequest& from) {
     if (&from == this) {
         return;
     }
-    // Copy all members so CopyFrom/copy-construct yields an equivalent request
-    // instead of an empty one.
     _has_command = from._has_command;
     _has_error = from._has_error;
     _buf = from._buf;
@@ -406,11 +402,6 @@ std::ostream& operator<<(std::ostream& os, const MysqlRequest& r) {
     return os;
 }
 
-// ===================================================================
-
-#ifndef _MSC_VER
-#endif  // !_MSC_VER
-
 MysqlResponse::MysqlResponse()
     : NonreflectableMessage<MysqlResponse>() {
     SharedCtor();
@@ -433,8 +424,6 @@ void MysqlResponse::SetCachedSize(int size) const {
 }
 
 void MysqlResponse::Clear() {
-    // Reset all response state so a reused MysqlResponse does not return
-    // stale replies. Mirror what SharedCtor()/ctor initialize.
     MysqlReply empty_reply;
     _first_reply.Swap(empty_reply);
     _other_replies.clear();
@@ -464,8 +453,6 @@ void MysqlResponse::Swap(MysqlResponse* other) {
         std::swap(_cached_size_, other->_cached_size_);
     }
 }
-
-// ===================================================================
 
 ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
                                               bool is_auth,

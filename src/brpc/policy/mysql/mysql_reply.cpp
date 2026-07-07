@@ -702,7 +702,6 @@ ParseError MysqlReply::Ok::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
         buf.cutn(msg, len);
         _msg.set(msg, len);
-        // buf.pop_front(1);  // Null
     }
     set_parsed();
     return PARSE_OK;
@@ -765,7 +764,6 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
     buf.cutn(msg, len);
     _msg.set(msg, len);
-    // buf.pop_front(1);  // Null
     set_parsed();
     return PARSE_OK;
 }
@@ -1259,9 +1257,7 @@ ParseError MysqlReply::Field::ParseBinaryDataTime(butil::IOBuf& buf,
     d[i++] = digits01[day];
 
     if (is_date) {
-        // DATE column: only "YYYY-MM-DD" (10 bytes) is meaningful. Report the
-        // EXACT bytes written -- reporting dstlen here would be fine (dstlen==10)
-        // but we set it explicitly for clarity and to never over-report.
+        // DATE column: only "YYYY-MM-DD" (10 bytes) is meaningful.
         str.set(d, i);
         return PARSE_OK;
     }
@@ -1269,9 +1265,7 @@ ParseError MysqlReply::Field::ParseBinaryDataTime(butil::IOBuf& buf,
     // DATETIME/TIMESTAMP column: always emit the full "YYYY-MM-DD HH:MM:SS"
     // form. When len == 4 the time-of-day fields were absent on the wire and
     // default to zero ("00:00:00"); we still write those bytes here so the
-    // reported length matches what was actually written (the historical bug
-    // reported dstlen==19 while writing only the 10 date bytes, leaking
-    // uninitialized heap).
+    // reported length matches what was actually written.
     d[i++] = ' ';
     d[i++] = digits10[hour];
     d[i++] = digits01[hour];

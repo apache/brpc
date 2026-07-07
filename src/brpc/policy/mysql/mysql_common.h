@@ -25,9 +25,8 @@
 #include "butil/logging.h"  // LOG()
 
 namespace brpc {
-// Msql Collation
+// Mysql collations
 extern const char* MysqlDefaultCollation;
-extern const char* MysqlBinaryCollation;
 extern const std::map<std::string, uint8_t> MysqlCollations;
 
 enum MysqlFieldType : uint8_t {

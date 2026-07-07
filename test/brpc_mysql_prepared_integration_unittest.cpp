@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// ---------------------------------------------------------------------------
 // Integration tests for the brpc MySQL client PREPARED-STATEMENT path,
 // exercised end to end against a real mysqld through brpc's PUBLIC API
 // (brpc::Channel + brpc::NewMysqlStatement + brpc::MysqlRequest /
@@ -34,7 +33,6 @@
 // nor stopped here); otherwise the fixture spawns a throwaway mysqld with
 // an empty-password root.  Every test GTEST_SKIP()s when no mysqld is
 // reachable, so the suite is safe to run in environments without MySQL.
-// ---------------------------------------------------------------------------
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -334,10 +332,8 @@ protected:
     auto var = brpc::NewMysqlStatement(channel_, (sql));                   \
     ASSERT_TRUE((var) != nullptr) << "prepare failed for: " << (sql)
 
-// ---------------------------------------------------------------------------
 // Parameter counting across statement shapes, plus executing a no-parameter
 // SELECT that returns the full seed result set.
-// ---------------------------------------------------------------------------
 TEST_F(MysqlPreparedTest, ParamCountsAndNoParamSelect) {
     SKIP_IF_NO_SERVER();
 
@@ -374,11 +370,9 @@ TEST_F(MysqlPreparedTest, ParamCountsAndNoParamSelect) {
     EXPECT_EQ(3u, r.row_count());
 }
 
-// ---------------------------------------------------------------------------
 // Bind and execute, all parameter flavors in one place: a single INT bind, a
 // single STRING bind, and a two-INT arithmetic expression each return their
 // own correct result.
-// ---------------------------------------------------------------------------
 TEST_F(MysqlPreparedTest, BindAndExecuteIntStringAndArithmetic) {
     SKIP_IF_NO_SERVER();
 
@@ -455,10 +449,8 @@ TEST_F(MysqlPreparedTest, BindAndExecuteIntStringAndArithmetic) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Re-execute one statement with new parameters, and fetch every column type
 // (INT, VARCHAR, BIGINT) of a single matched row through its typed accessor.
-// ---------------------------------------------------------------------------
 TEST_F(MysqlPreparedTest, ReExecuteAndTypedColumnFetch) {
     SKIP_IF_NO_SERVER();
 
@@ -525,10 +517,8 @@ TEST_F(MysqlPreparedTest, ReExecuteAndTypedColumnFetch) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // NULL handling both ways: a column whose value is SQL NULL (the seed row with
 // a NULL name) and a literal NULL in the SELECT list both surface as nil.
-// ---------------------------------------------------------------------------
 TEST_F(MysqlPreparedTest, NullColumnAndLiteralNullAreNil) {
     SKIP_IF_NO_SERVER();
 
@@ -565,11 +555,9 @@ TEST_F(MysqlPreparedTest, NullColumnAndLiteralNullAreNil) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Error paths must not crash the client: a malformed statement and a
 // parameter-count mismatch each surface either a failed RPC or an error reply,
 // never a silent success or a crash.
-// ---------------------------------------------------------------------------
 TEST_F(MysqlPreparedTest, MalformedAndParamMismatchSurfaceErrors) {
     SKIP_IF_NO_SERVER();
 
@@ -617,10 +605,8 @@ TEST_F(MysqlPreparedTest, MalformedAndParamMismatchSurfaceErrors) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // One statement re-used across executes agrees with itself, and a second,
 // independent statement on the same channel still works afterward.
-// ---------------------------------------------------------------------------
 TEST_F(MysqlPreparedTest, StatementReuseAndIndependentStatement) {
     SKIP_IF_NO_SERVER();
     PREPARE_OR_FAIL(s1, "SELECT COUNT(*) FROM ps_people");
@@ -665,7 +651,6 @@ TEST_F(MysqlPreparedTest, StatementReuseAndIndependentStatement) {
     EXPECT_EQ(1u, response.reply(0).row_count());
 }
 
-// ---------------------------------------------------------------------------
 // BINARY-protocol TIME and DATETIME column parsing
 // (MysqlReply::Field::ParseBinaryTime / ParseBinaryDataTime).
 //
@@ -688,7 +673,6 @@ TEST_F(MysqlPreparedTest, StatementReuseAndIndependentStatement) {
 // We use CAST(literal AS TIME/DATETIME[(N)]) so the exact value (and the
 // column's declared fractional-second precision, which drives the wire
 // length) is fully under our control.
-// ---------------------------------------------------------------------------
 TEST_F(MysqlPreparedTest, BinaryTimeAndDateTimeParsing) {
     SKIP_IF_NO_SERVER();
 
@@ -714,9 +698,7 @@ TEST_F(MysqlPreparedTest, BinaryTimeAndDateTimeParsing) {
          "2021-03-04 05:06:07.123456"},
         // DATETIME at exact midnight: MySQL omits the time-of-day part, so this
         // arrives as a 4-byte (len==4) wire packet. The parser must emit the
-        // full "YYYY-MM-DD 00:00:00" form and report EXACTLY 19 bytes -- the
-        // historical bug reported dstlen (19) while writing only the 10 date
-        // bytes, disclosing uninitialized heap. (len==4 DATETIME BLOCKER.)
+        // full "YYYY-MM-DD 00:00:00" form and report exactly 19 bytes.
         {"SELECT CAST('2021-03-04 00:00:00' AS DATETIME)",
          "2021-03-04 00:00:00"},
         // DATE column: only the date part on the wire (len==4) -> "YYYY-MM-DD".

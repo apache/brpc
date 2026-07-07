@@ -73,7 +73,6 @@ butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
 // mysql protocol stage, but building prepared statement need the statement id of a connection, so
 // we will need to building this fragment at PackXXXRequest stage.
 
-// maybe we can Add a wrapper function, call CallMethod many times use bind_sock
 class MysqlStatementStub;
 // prepared statement execute command header, will be called at PackXXXRequest stage.
 butil::Status MysqlMakeExecutePacket(butil::IOBuf* outbuf,

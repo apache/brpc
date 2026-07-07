@@ -776,11 +776,8 @@ private:
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
         // socket fetched from socket pool
         SocketUniquePtr sending_sock;
-        // Initialized explicitly in every Call constructor (and Call::Reset())
-        // rather than via an in-class default initializer, per review. Leaving
-        // this member uninitialized was the cause of the backup/retry-request
-        // hang, so every ctor path must set it; a backup/retry never inherits
-        // the source call's transaction affinity.
+        // How sending_sock is treated when this call completes, must be set
+        // in every constructor and Reset(). See BindSockAction.
         BindSockAction bind_sock_action;
         StreamUserData* stream_user_data;
     };

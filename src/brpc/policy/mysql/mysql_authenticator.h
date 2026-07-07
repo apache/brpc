@@ -88,4 +88,4 @@ inline const butil::StringPiece MysqlAuthenticator::collation() const {
 }  // namespace policy
 }  // namespace brpc
 
-#endif  // BRPC_POLICY_COUCHBASE_AUTHENTICATOR_H
+#endif  // BRPC_POLICY_MYSQL_AUTHENTICATOR_H

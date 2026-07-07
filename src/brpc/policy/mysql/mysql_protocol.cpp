@@ -42,7 +42,7 @@ DECLARE_bool(enable_rpcz);
 
 namespace policy {
 
-DEFINE_bool(mysql_verbose, false, "[DEBUG] Print EVERY mysql request/response");
+DEFINE_bool(mysql_verbose, false, "Print all mysql requests and responses");
 
 void MysqlParseAuthenticator(const butil::StringPiece& raw,
                              std::string* user,

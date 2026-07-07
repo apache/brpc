@@ -231,6 +231,7 @@ void Controller::ResetNonPods() {
         _rpa.reset(NULL);
     }
     delete _remote_stream_settings;
+    _bind_sock.reset();
     _thrift_method_name.clear();
     _after_rpc_resp_fn = nullptr;
 
@@ -297,8 +298,6 @@ void Controller::ResetPods() {
     _request_streams.clear();
     _response_streams.clear();
     _remote_stream_settings = NULL;
-    set_bind_sock_action(BIND_SOCK_NONE);
-    _bind_sock.reset();
     _session_data = NULL;
     _auth_flags = 0;
     _rpc_received_us = 0;
@@ -311,9 +310,7 @@ Controller::Call::Call(Controller::Call* rhs)
     , peer_id(rhs->peer_id)
     , begin_time_us(rhs->begin_time_us)
     , sending_sock(rhs->sending_sock.release())
-    // Explicitly initialized (not via an in-class default initializer): a
-    // backup/retry must never inherit the source call's reserve/use affinity.
-    // Leaving this uninitialized was the cause of the backup/retry-request hang.
+    // A backup/retry call never inherits the source call's bind-sock affinity.
     , bind_sock_action(BIND_SOCK_NONE)
     , stream_user_data(rhs->stream_user_data) {
     // NOTE: fields in rhs should be reset because RPC could fail before
@@ -1118,7 +1115,6 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         // Reuse the socket reserved by a previous RPC (mysql transaction affinity).
         tmp_sock.reset(_bind_sock.release());
         if (!tmp_sock || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
-            // NOTE: tmp_sock may be NULL here, so guard the id() deref.
             SetFailed(EHOSTDOWN, "Not connected to bind socket yet, server_id=%" PRIu64,
                       tmp_sock ? tmp_sock->id() : (SocketId)0);
             tmp_sock.reset();  // Release ref ASAP
@@ -1215,7 +1211,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
         // Set preferred_index of main_socket as well to make it easier to
         // debug and observe from /connections.
-        // NOTE: tmp_sock is NULL on the BIND_SOCK_USE path (released above).
+        // tmp_sock is NULL on the BIND_SOCK_USE path.
         if (tmp_sock && tmp_sock->preferred_index() < 0) {
             tmp_sock->set_preferred_index(_preferred_index);
         }

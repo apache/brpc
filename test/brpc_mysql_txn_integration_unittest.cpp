@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// ===========================================================================
 // MySQL client TRANSACTION integration tests, run through brpc's PUBLIC API
 // against a REAL mysqld.
 //
@@ -40,7 +39,6 @@
 // test/mysql/brpc_mysql_auth_handshake_unittest.cpp and, transitively,
 // test/brpc_redis_unittest.cpp's which-then-spawn pattern.  When mysqld is
 // absent every test GTEST_SKIP()s, so the file is CI-safe with no server.
-// ===========================================================================
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -83,11 +81,9 @@ DEFINE_string(mysql_schema, "brpc_txn_test",
 
 namespace {
 
-// --------------------------------------------------------------------------
 // Throwaway-server harness (mirrors brpc_mysql_auth_handshake_unittest.cpp,
 // which mirrors brpc_redis_unittest.cpp).  >0: forked pid; -2: external
 // running server reachable; -1: no server -> tests skip.
-// --------------------------------------------------------------------------
 #define MYSQLD_BIN "mysqld"
 
 static pthread_once_t s_start_once = PTHREAD_ONCE_INIT;
@@ -225,9 +221,7 @@ static void RunMysqlServer() {
     s_mysqld_pid = -1;
 }
 
-// --------------------------------------------------------------------------
 // Small helpers over the brpc MySQL public API.
-// --------------------------------------------------------------------------
 
 // Runs |sql| outside any transaction on |channel| (a fresh pooled
 // connection).  Returns false on transport failure.
@@ -285,10 +279,8 @@ static int64_t ResultRowCount(const brpc::MysqlResponse& resp) {
     return static_cast<int64_t>(r.row_count());
 }
 
-// --------------------------------------------------------------------------
 // Fixture: one channel + a scratch table per test (built in SetUp, dropped in
 // TearDown).  InnoDB so DML is transactional.
-// --------------------------------------------------------------------------
 class MysqlTxnIntegrationTest : public testing::Test {
 protected:
     static bool NoServer() { return s_mysqld_pid == -1; }
@@ -348,10 +340,8 @@ protected:
     std::unique_ptr<brpc::policy::MysqlAuthenticator> _auth;
 };
 
-// ===========================================================================
 // Test cases.  Each fat test chains several transactional behaviors so a single
 // TEST_F validates a whole group of related transaction guarantees together.
-// ===========================================================================
 
 // Transaction lifecycle: commit publishes a row to other connections, and a
 // rolled-back insert as well as a rolled-back delete leave the table exactly as

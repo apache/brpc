@@ -15,19 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// ===========================================================================
-// brpc MySQL-client CONNECTION-TYPE BOUNDARY integration test.
+// Tests how a MySQL prepared statement (whose server-side handle is
+// connection-scoped) interacts with brpc's CONNECTION_TYPE_SHORT (a fresh
+// TCP connection per request).
 //
-// PROVENANCE / CLEAN-ROOM NOTE
-// ----------------------------
-// This is NOT derived from any upstream MySQL/MariaDB test suite.  It asserts
-// a brpc-ARCHITECTURE boundary: how a MySQL prepared statement (whose
-// server-side handle is connection-scoped) interacts with brpc's
-// CONNECTION_TYPE_SHORT (a fresh TCP connection per request).  The data values
-// are this file's own; no upstream test code or structure was copied.
-//
-// THE BOUNDARY (spec fact, asserted -- not derived from our impl)
-// --------------------------------------------------------------
 // A MySQL prepared statement is created with COM_STMT_PREPARE on ONE TCP
 // connection; the server returns a `stmt_id` that is valid ONLY on that exact
 // connection.  COM_STMT_EXECUTE must therefore run on the SAME connection.
@@ -52,12 +43,10 @@
 //       connection-scoped prepared-statement handle breaks under SHORT.
 //
 // HARNESS
-// -------
 // Reuses the gflag-driven, self-spawning-mysqld harness from the sibling
 // integration files (flags -mysql_use_running_server / -mysql_host / -port /
 // -user / -password; MysqlAuthenticator-based channel).  When no mysqld is
 // reachable every test GTEST_SKIP()s, so the file is CI-safe.
-// ===========================================================================
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -108,11 +97,9 @@ namespace {
 
 static const char* kCollation = "utf8mb4_general_ci";
 
-// --------------------------------------------------------------------------
 // Throwaway-server harness (mirrors the sibling integration files, which
 // mirror brpc_redis_unittest.cpp).  >0: forked pid; -2: external running
 // server reachable; -1: no server -> tests skip.
-// --------------------------------------------------------------------------
 static pthread_once_t g_start_once = PTHREAD_ONCE_INIT;
 static pid_t g_mysqld_pid = -1;
 static std::string g_host = "127.0.0.1";
@@ -263,9 +250,7 @@ static int InitShortChannel(brpc::Channel* channel,
     return channel->Init(g_host.c_str(), g_port, &options);
 }
 
-// --------------------------------------------------------------------------
 // Fixture: one shared SHORT channel.
-// --------------------------------------------------------------------------
 class MysqlConnectionTypeTest : public testing::Test {
 protected:
     static bool NoServer() { return g_mysqld_pid == -1; }
@@ -287,7 +272,6 @@ protected:
     std::unique_ptr<brpc::policy::MysqlAuthenticator> _auth;
 };
 
-// ===========================================================================
 // PRIMARY: a prepared statement under CONNECTION_TYPE_SHORT SUCCEEDS.
 //
 // brpc transparently re-prepares the statement on each fresh short connection:
@@ -300,7 +284,6 @@ protected:
 // statement on every execute because the server stmt_id is connection-scoped;
 // use connection_type='pooled' for prepared statements to cache the handle.
 // Looped a few times for robustness.
-// ===========================================================================
 TEST_F(MysqlConnectionTypeTest, PreparedStatementUnderShortRePreparesAndSucceeds) {
     for (int iter = 0; iter < 5; ++iter) {
         brpc::MysqlStatementUniquePtr stmt =
@@ -336,13 +319,11 @@ TEST_F(MysqlConnectionTypeTest, PreparedStatementUnderShortRePreparesAndSucceeds
     }
 }
 
-// ===========================================================================
 // POSITIVE CONTROL: a plain (non-prepared) query under CONNECTION_TYPE_SHORT
 // must SUCCEED.  A stateless COM_QUERY carries no connection-scoped handle, so
 // a fresh connection per request is perfectly fine.  This proves SHORT itself
 // is healthy: prepared statements work under SHORT only via the re-prepare path
 // above, while plain queries need no special handling at all.
-// ===========================================================================
 TEST_F(MysqlConnectionTypeTest, PlainQueryUnderShortMustSucceed) {
     brpc::MysqlRequest req;
     ASSERT_TRUE(req.Query("SELECT 7 AS v"));

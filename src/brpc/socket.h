@@ -845,7 +845,7 @@ private:
     int64_t _reset_fd_real_us; // When _fd was reset, in microseconds.
     // ABA/version counter; written on fd reset and read via fd_version() from
     // other threads, so use relaxed atomics to avoid a data race.
-    butil::atomic<uint64_t> _fd_version;  // _fd_version, used only for mysql now.
+    butil::atomic<uint64_t> _fd_version;  // Only used by mysql for now.
 
     // Address of peer. Initialized by SocketOptions.remote_side.
     butil::EndPoint _remote_side;

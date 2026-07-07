@@ -15,38 +15,24 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// ===========================================================================
-// brpc MySQL-client FRAMEWORK-LEVEL CONCURRENCY STRESS TEST on a POOLED
-// channel.
-//
-// OVERVIEW
-// --------
-// This is NOT a new functional test suite and it does NOT invent new MySQL
-// behaviors.  It RE-RUNS, concurrently, the SAME self-checking work units that
-// the two sibling integration files already cover serially:
+// Concurrency stress test on a POOLED mysql channel: many bthreads hammering
+// ONE pooled Channel, re-running concurrently the self-checking work units
+// that the two sibling integration files cover serially:
 //
 //   * brpc_mysql_txn_integration_unittest.cpp       (transaction scenarios)
 //   * brpc_mysql_prepared_integration_unittest.cpp  (prepared-statement
 //                                                     scenarios)
 //
-// The work-unit bodies (SQL shape + the self-check) mirror those siblings;
-// only the literal DATA VALUES are changed (different ids/strings/numbers) so
-// this file does not duplicate any other file's data and so that cross-talk
-// between concurrent workers is detectable by value.
-//
-// The CONCURRENCY HARNESS itself -- many bthreads hammering ONE pooled Channel,
-// asserting connection affinity / isolation -- exercises brpc's own
-// connection-affinity model (a brpc POOLED Channel must check out / return
-// pooled sockets without races, must PIN one socket per MysqlTransaction, and
-// must keep concurrent transactions / prepared statements isolated).  It is
-// modeled on how brpc's other pooled/parallel-bthread unittests drive a pooled
-// Channel from several bthreads at once.
+// Only the literal data values differ from the siblings so that cross-talk
+// between concurrent workers is detectable by value.  A POOLED Channel must
+// check out / return pooled sockets without races, must PIN one socket per
+// MysqlTransaction, and must keep concurrent transactions / prepared
+// statements isolated.
 //
 // WHAT IT CHECKS
-// --------------
 // ConnectionType = POOLED, pool capped at FIVE connections via the gflag
 // `max_connection_pool_size` (DEFINE_int32 max_connection_pool_size in
-// src/brpc/socket.cpp:99).  FIVE (not 2) is deliberate: with more workers than
+// src/brpc/socket.cpp:99).  FIVE is deliberate: with more workers than
 // pooled sockets we exercise BOTH pooled-socket reuse AND the create-a-NEW-
 // connection-under-load path concurrently, surfacing checkout/return races,
 // transaction connection-affinity/pinning under contention, and fd_version ABA.
@@ -70,12 +56,10 @@
 // corruption, no interleaved/wrong replies, no crash.
 //
 // HARNESS
-// -------
 // Reuses the gflag-driven, self-spawning-mysqld harness from the two sibling
 // integration files (flags -mysql_use_running_server / -mysql_host / -port /
 // -user / -password / -schema; MysqlAuthenticator-based pooled Channel).  When
 // no mysqld is reachable every test GTEST_SKIP()s, so the file is CI-safe.
-// ===========================================================================
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -137,11 +121,9 @@ const int kWorkers = 24;
 const int kIterationsPerWorker = 50;
 const int kPoolCap = 5;
 
-// --------------------------------------------------------------------------
 // Throwaway-server harness (mirrors the two sibling integration files, which
 // mirror brpc_redis_unittest.cpp).  >0: forked pid; -2: external running
 // server reachable; -1: no server -> tests skip.
-// --------------------------------------------------------------------------
 static pthread_once_t g_start_once = PTHREAD_ONCE_INIT;
 static pid_t g_mysqld_pid = -1;
 static std::string g_host = "127.0.0.1";
@@ -276,9 +258,7 @@ static void StartServerOnce() {
     g_mysqld_pid = -1;
 }
 
-// --------------------------------------------------------------------------
 // Small helpers over the brpc MySQL public API.
-// --------------------------------------------------------------------------
 
 // Plain (no transaction / no statement) query on a fresh pooled connection.
 static bool RunPlain(brpc::Channel& channel, const std::string& sql,
@@ -373,11 +353,9 @@ static int InitPooledChannel(brpc::Channel* channel,
     return channel->Init(g_host.c_str(), g_port, &options);
 }
 
-// --------------------------------------------------------------------------
 // Fixture: one shared pooled channel, pool capped at FIVE.  Per-test scratch
 // tables are created by the tests themselves (per-worker, to keep row counts
 // exact under concurrency).
-// --------------------------------------------------------------------------
 class MysqlPoolConcurrencyTest : public testing::Test {
 protected:
     static bool NoServer() { return g_mysqld_pid == -1; }
@@ -418,16 +396,13 @@ protected:
     std::unique_ptr<brpc::policy::MysqlAuthenticator> _auth;
 };
 
-// ===========================================================================
 // WORK UNITS
-// ----------
 // Each work unit is a self-checking re-run of a sibling scenario, with its OWN
 // independent expected result so cross-talk/corruption is detectable.  Each
 // returns true on a correct result; on any failure it fills |err|.
 //
 // All work units use a PER-WORKER scratch table (passed in) so concurrent
 // workers never share rows, keeping row-count assertions exact.
-// ===========================================================================
 
 // WU1 -- txn commit makes rows visible.
 // (Transaction-commit-visibility check; uses its own per-worker id 71xxx
@@ -605,9 +580,7 @@ static bool WU_PreparedArithmetic(brpc::Channel& ch, int worker, int iter,
     return true;
 }
 
-// --------------------------------------------------------------------------
 // Worker driver for ManyWorkersMixedScenarios.
-// --------------------------------------------------------------------------
 struct MixWorkerArgs {
     brpc::Channel* channel;
     int worker_id;
@@ -643,12 +616,10 @@ void* MixWorker(void* p) {
     return NULL;
 }
 
-// ===========================================================================
 // TEST 1: many bthreads, each looping ~50x over a mix of the reused work
 // units, on ONE pooled channel capped at 5 sockets.  Surfaces checkout/return
 // races, affinity-under-contention bugs, fd_version ABA, and the new-connection
 // creation path.
-// ===========================================================================
 TEST_F(MysqlPoolConcurrencyTest, ManyWorkersMixedScenarios) {
     std::string err;
     std::vector<MixWorkerArgs> args(kWorkers);
@@ -689,10 +660,8 @@ TEST_F(MysqlPoolConcurrencyTest, ManyWorkersMixedScenarios) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Focused-check worker A: one transaction, per-worker table, INSERT + SELECT,
 // records its pinned SocketId and the value it read.
-// ---------------------------------------------------------------------------
 struct AffinityWorkerArgs {
     brpc::Channel* channel;
     std::string table;
@@ -742,10 +711,8 @@ void* AffinityWorker(void* p) {
     return NULL;
 }
 
-// ===========================================================================
 // TEST 2 (focused check a): two transactions in parallel must hold DIFFERENT
 // pinned SocketIds and must not see each other's rows.
-// ===========================================================================
 TEST_F(MysqlPoolConcurrencyTest, TwoTransactionsHoldDifferentPinnedSockets) {
     const std::string t0 = "pool_conc_affinity_a";
     const std::string t1 = "pool_conc_affinity_b";
@@ -796,10 +763,8 @@ TEST_F(MysqlPoolConcurrencyTest, TwoTransactionsHoldDifferentPinnedSockets) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Focused-check worker B: a prepared statement (SELECT ? + ?) run repeatedly
 // in parallel with a transaction; must return its own correct sum each time.
-// ---------------------------------------------------------------------------
 struct PreparedWorkerArgs {
     brpc::Channel* channel;
     int base;              // operand seed
@@ -822,11 +787,9 @@ void* PreparedWorker(void* p) {
     return NULL;
 }
 
-// ===========================================================================
 // TEST 3 (focused check b): one transaction + one prepared statement in
 // parallel each return correct independent results; the prepared path must not
 // disturb the transaction's pinned connection.
-// ===========================================================================
 TEST_F(MysqlPoolConcurrencyTest, TransactionPlusPreparedInParallel) {
     const std::string t = "pool_conc_txn_stmt";
     std::string err;
@@ -860,7 +823,6 @@ TEST_F(MysqlPoolConcurrencyTest, TransactionPlusPreparedInParallel) {
     RunPlain(_channel, "DROP TABLE IF EXISTS " + t, &resp, &err);
 }
 
-// ===========================================================================
 // OWNER-PRIORITY CONCURRENCY CHECKS (TEST A / B / C)
 //
 // These three tests intentionally cap the pool SMALL relative to the number of
@@ -875,19 +837,16 @@ TEST_F(MysqlPoolConcurrencyTest, TransactionPlusPreparedInParallel) {
 // body (tests may share a process, so the previous test's value must not leak
 // in).  No ASSERT_* runs inside a bthread; every worker records into its args
 // struct and the main thread asserts after join.
-// ===========================================================================
 
 static void SetPoolCap(int cap) {
     GFLAGS_NS::SetCommandLineOption("max_connection_pool_size",
                                     std::to_string(cap).c_str());
 }
 
-// ---------------------------------------------------------------------------
 // TEST A worker: one transaction running SEVERAL statements into its OWN
 // per-worker scratch table, recording the pinned SocketId seen BEFORE every
 // statement so the main thread can check intra-txn pinning and inter-txn
 // isolation.
-// ---------------------------------------------------------------------------
 struct PinnedTxnWorkerArgs {
     brpc::Channel* channel;
     std::string table;             // per-worker scratch table
@@ -958,7 +917,6 @@ void* PinnedTxnWorker(void* p) {
     return NULL;
 }
 
-// ===========================================================================
 // TEST A: ConcurrentTxnsStayPinned  (the most important check)
 //
 // kTxns overlapping transactions, each on its own bthread, on the POOLED
@@ -971,7 +929,6 @@ void* PinnedTxnWorker(void* p) {
 //   * INTER-txn: the live SocketIds are DISTINCT across the concurrent txns
 //     (no two simultaneously-open transactions share a pooled connection).
 // The whole thing loops a few times to shake scheduling.
-// ===========================================================================
 TEST_F(MysqlPoolConcurrencyTest, ConcurrentTxnsStayPinned) {
     const int kTxns = 8;
     SetPoolCap(4);  // SMALL vs kTxns=8: contend + force new connections.
@@ -1043,12 +1000,10 @@ TEST_F(MysqlPoolConcurrencyTest, ConcurrentTxnsStayPinned) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // TEST B workers: an aborting-transaction mix.  Mode 0 explicitly rollback()s
 // after an INSERT; mode 1 simply drops the MysqlTransactionUniquePtr WITHOUT
 // commit, so its destructor auto-rollbacks (see MysqlTransaction::~ in
 // mysql_transaction.h).  Either way the insert must NOT survive.
-// ---------------------------------------------------------------------------
 struct AbortWorkerArgs {
     brpc::Channel* channel;
     std::string table;   // shared abort table
@@ -1082,7 +1037,6 @@ void* AbortWorker(void* p) {
     return NULL;
 }
 
-// ===========================================================================
 // TEST B: ConcurrentTxnAbortAndAutoRollback
 //
 // Under the same small-pool contended setup, run a concurrent MIX of
@@ -1092,7 +1046,6 @@ void* AbortWorker(void* p) {
 // non-tx connection, assert NONE of the aborted inserts are visible, workers
 // saw no errors, and the channel is still healthy (a final pooled SELECT
 // succeeds -> reserved connections were returned to the pool cleanly).
-// ===========================================================================
 TEST_F(MysqlPoolConcurrencyTest, ConcurrentTxnAbortAndAutoRollback) {
     const int kWorkersB = 8;
     SetPoolCap(4);  // SMALL vs 8 workers: contend + force new connections.
@@ -1151,12 +1104,10 @@ TEST_F(MysqlPoolConcurrencyTest, ConcurrentTxnAbortAndAutoRollback) {
     RunPlain(_channel, "DROP TABLE IF EXISTS " + t, &resp, &err);
 }
 
-// ---------------------------------------------------------------------------
 // TEST C support: a transaction that RESERVES a pooled connection (pulls it out
 // of the pool) and holds it for the lifetime of the worker, so that the
 // prepared statement S is forced onto connections that may not have its
 // server-side stmt_id cached.
-// ---------------------------------------------------------------------------
 struct ReserveWorkerArgs {
     brpc::Channel* channel;
     std::string error;
@@ -1214,7 +1165,6 @@ void* StmtExecWorker(void* p) {
     return NULL;
 }
 
-// ===========================================================================
 // TEST C: PreparedRePreparesWhenConnectionStolen
 //
 // MECHANISM: a server-side prepared statement id is per-(SocketId, fd_version)
@@ -1234,7 +1184,6 @@ void* StmtExecWorker(void* p) {
 // connections it was not prepared on.  Every execute must still return the
 // correct bound value; per-worker errors are recorded and asserted empty after
 // join.
-// ===========================================================================
 TEST_F(MysqlPoolConcurrencyTest, PreparedRePreparesWhenConnectionStolen) {
     SetPoolCap(2);  // tiny pool: 2 sockets, easy to "steal" via reserving txns.
 
