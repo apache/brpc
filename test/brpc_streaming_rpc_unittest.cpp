@@ -21,6 +21,7 @@
 
 #include <gtest/gtest.h>
 #include <atomic>
+#include <unordered_map>
 #include "brpc/server.h"
 
 #include "brpc/controller.h"
@@ -899,4 +900,278 @@ TEST_F(StreamingRpcTest, create_request_stream_twice_on_same_controller_returns_
     brpc::StreamId second_stream = brpc::INVALID_STREAM_ID;
     ASSERT_EQ(-1, brpc::StreamCreate(&second_stream, cntl, NULL));
     ASSERT_EQ(brpc::INVALID_STREAM_ID, second_stream);
+}
+
+// Handler that tracks per-stream reception so a single handler instance can be
+// shared by all streams created in one batch (StreamCreate uses the same
+// StreamOptions, thus the same handler, for every stream).
+class MultiStreamHandler : public brpc::StreamInputHandler {
+public:
+    int on_received_messages(brpc::StreamId id,
+                             butil::IOBuf* const messages[],
+                             size_t size) override {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        for (size_t i = 0; i < size; ++i) {
+            if (messages[i]->length() != sizeof(int)) {
+                _error = true;
+                continue;
+            }
+            int network = 0;
+            messages[i]->cutn(&network, sizeof(int));
+            const int value = (int)ntohl(network);
+            // Each stream should receive a strictly increasing sequence 0..N-1.
+            if (value != _expected[id]) {
+                _error = true;
+            }
+            ++_expected[id];
+            ++_received[id];
+        }
+        return 0;
+    }
+
+    void on_idle_timeout(brpc::StreamId /*id*/) override {}
+
+    void on_closed(brpc::StreamId id) override {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        ++_closed[id];
+    }
+
+    void on_failed(brpc::StreamId /*id*/, int /*error_code*/,
+                   const std::string& /*error_text*/) override {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        _failed = true;
+    }
+
+    size_t received(brpc::StreamId id) {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        return _received[id];
+    }
+    size_t closed(brpc::StreamId id) {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        return _closed[id];
+    }
+    size_t total_received() {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        size_t sum = 0;
+        for (const auto& kv : _received) {
+            sum += kv.second;
+        }
+        return sum;
+    }
+    size_t num_streams() {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        return _received.size();
+    }
+    bool error() {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        return _error;
+    }
+    bool failed() {
+        std::unique_lock<bthread::Mutex> lck(_mu);
+        return _failed;
+    }
+
+private:
+    bthread::Mutex _mu;
+    std::unordered_map<brpc::StreamId, int> _expected;
+    std::unordered_map<brpc::StreamId, size_t> _received;
+    std::unordered_map<brpc::StreamId, size_t> _closed;
+    bool _error{false};
+    bool _failed{false};
+};
+
+// Server that accepts a batch of streams and sends N ordered ints on every
+// accepted stream, including the extra streams.
+class MyServiceWithExtraStream : public test::EchoService {
+public:
+    MyServiceWithExtraStream(const brpc::StreamOptions& options,
+                             size_t stream_count, int n)
+        : _options(options), _stream_count(stream_count), _n(n) {}
+
+    void Echo(::google::protobuf::RpcController* controller,
+              const ::test::EchoRequest* request,
+              ::test::EchoResponse* response,
+              ::google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
+        response->set_message(request->message());
+
+        brpc::StreamIds response_streams;
+        ASSERT_EQ(0, brpc::StreamAccept(response_streams, *cntl, &_options));
+        ASSERT_EQ(_stream_count, response_streams.size());
+
+        // Send ordered ints on each accepted stream.
+        for (size_t s = 0; s < response_streams.size(); ++s) {
+            for (int i = 0; i < _n; ++i) {
+                int network = htonl(i);
+                butil::IOBuf out;
+                out.append(&network, sizeof(network));
+                ASSERT_EQ(0, brpc::StreamWrite(response_streams[s], out))
+                    << "stream_index=" << s << " i=" << i;
+            }
+        }
+    }
+
+private:
+    brpc::StreamOptions _options;
+    size_t _stream_count;
+    int _n;
+};
+
+TEST_F(StreamingRpcTest, batch_create_extra_stream) {
+    const size_t STREAM_COUNT = 3;  // 1 first stream + 2 extra streams
+    const int N = 1000;
+
+    MultiStreamHandler handler;
+
+    brpc::StreamOptions server_stream_opt;
+    server_stream_opt.max_buf_size = -1;
+
+    brpc::Server server;
+    MyServiceWithExtraStream service(server_stream_opt, STREAM_COUNT, N);
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(9007, NULL));
+
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+
+    brpc::Controller cntl;
+    brpc::StreamOptions client_stream_opt;
+    client_stream_opt.handler = &handler;
+    brpc::StreamIds request_streams;
+    ASSERT_EQ(0, brpc::StreamCreate(request_streams, STREAM_COUNT, cntl,
+                                    &client_stream_opt));
+    ASSERT_EQ(STREAM_COUNT, request_streams.size());
+
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &request, &response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    // Every stream, including the extra streams, must end up connected with a valid host_socket.
+    for (size_t i = 0; i < request_streams.size(); ++i) {
+        const brpc::StreamId sid = request_streams[i];
+        ASSERT_TRUE(WaitForTrue([sid]() {
+            brpc::SocketUniquePtr ptr;
+            if (brpc::Socket::Address(sid, &ptr) != 0) {
+                return false;
+            }
+            brpc::Stream* s = static_cast<brpc::Stream*>(ptr->conn());
+            return s->_host_socket != NULL &&
+                   s->_connected.load(butil::memory_order_acquire);
+        }, 5000)) << "stream_index=" << i;
+    }
+
+    // Every stream (first + extra) should receive all N ordered messages.
+    for (size_t i = 0; i < request_streams.size(); ++i) {
+        const brpc::StreamId sid = request_streams[i];
+        ASSERT_TRUE(WaitForTrue([&handler, sid, N]() {
+            return handler.received(sid) >= N;
+        }, 5000))
+            << "stream_index=" << i << " received=" << handler.received(sid);
+        ASSERT_EQ(N, handler.received(sid)) << "stream_index=" << i;
+    }
+    ASSERT_FALSE(handler.error());
+    ASSERT_FALSE(handler.failed());
+
+    for (auto sid : request_streams) {
+        brpc::StreamClose(sid);
+    }
+    server.Stop(0);
+    server.Join();
+
+    // Wait for on_closed() of every stream so the handler outlives the
+    // asynchronous consumer bthreads.
+    for (size_t i = 0; i < request_streams.size(); ++i) {
+        const brpc::StreamId sid = request_streams[i];
+        ASSERT_TRUE(WaitForTrue([&handler, sid]() {
+            return handler.closed(sid) >= 1;
+        }, 2000));
+    }
+}
+
+// Regression test for extra streams that only carry *upstream* data: the server
+// accepts the batch of streams but never sends anything downstream, so the
+// client's extra streams can NOT obtain their host_socket via Stream::OnReceived.
+// This forces Controller::HandleStreamConnection to set the extra streams'
+// host_socket itself. If it (incorrectly) sets host_socket on the first stream
+// instead (s->SetHostSocket, which is a no-op because the first stream's
+// host_socket was already set while receiving the RPC response),
+// Stream::SetConnected() CHECK-fails on every extra stream here.
+TEST_F(StreamingRpcTest, batch_create_extra_stream_upstream_only) {
+    const size_t STREAM_COUNT = 3;  // 1 first stream + 2 extra streams
+    const int N = 1000;
+
+    MultiStreamHandler server_handler;
+
+    brpc::StreamOptions server_stream_opt;
+    server_stream_opt.handler = &server_handler;  // receive upstream data
+    server_stream_opt.max_buf_size = 0;
+
+    brpc::Server server;
+    // n = 0: server never sends downstream data on any accepted stream.
+    MyServiceWithExtraStream service(server_stream_opt, STREAM_COUNT, 0);
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(9007, NULL));
+
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+
+    brpc::Controller cntl;
+    // No downstream handler is needed on the client side.
+    brpc::StreamOptions client_stream_opt;
+    client_stream_opt.max_buf_size = -1;
+    brpc::StreamIds request_streams;
+    ASSERT_EQ(0, brpc::StreamCreate(request_streams, STREAM_COUNT, cntl,
+                                    &client_stream_opt));
+    ASSERT_EQ(STREAM_COUNT, request_streams.size());
+
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &request, &response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    // Without any downstream data, extra streams have no chance to get their
+    // host_socket set via OnReceived. They must still become connected, which
+    // only holds if HandleStreamConnection sets host_socket on the extra
+    // streams themselves.
+    for (size_t i = 0; i < request_streams.size(); ++i) {
+        const brpc::StreamId sid = request_streams[i];
+        ASSERT_TRUE(WaitForTrue([sid]() {
+            brpc::SocketUniquePtr ptr;
+            if (brpc::Socket::Address(sid, &ptr) != 0) {
+                return false;
+            }
+            brpc::Stream* s = static_cast<brpc::Stream*>(ptr->conn());
+            return s->_host_socket != NULL &&
+                   s->_connected.load(butil::memory_order_acquire);
+        }, 5000)) << "stream_index=" << i;
+    }
+
+    // Push ordered ints upstream on every stream (first + extra).
+    for (size_t i = 0; i < request_streams.size(); ++i) {
+        for (int j = 0; j < N; ++j) {
+            int network = htonl(j);
+            butil::IOBuf out;
+            out.append(&network, sizeof(network));
+            ASSERT_EQ(0, brpc::StreamWrite(request_streams[i], out))
+                << "stream_index=" << i << " j=" << j;
+        }
+    }
+
+    // The server must receive all N ordered messages on each of the accepted
+    // streams (kStreamCount streams in total). Server-side stream ids are not
+    // known here, so verify the aggregate.
+    const size_t TOTAL = STREAM_COUNT * N;
+    ASSERT_TRUE(WaitForTrue([&server_handler, TOTAL]() {
+        return server_handler.total_received() >= TOTAL;
+    }, 5000)) << "total_received=" << server_handler.total_received();
+    ASSERT_EQ(TOTAL, server_handler.total_received());
+    ASSERT_EQ(STREAM_COUNT, server_handler.num_streams());
+    ASSERT_FALSE(server_handler.error());
+    ASSERT_FALSE(server_handler.failed());
+
+    for (auto sid : request_streams) {
+        brpc::StreamClose(sid);
+    }
+    server.Stop(0);
+    server.Join();
 }
