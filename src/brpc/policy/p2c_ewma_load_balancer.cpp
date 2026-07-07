@@ -163,7 +163,10 @@ int P2CEwmaLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     if (n == 0) {
         return ENODATA;
     }
-    const int64_t now_us = butil::gettimeofday_us();
+    // Reuse the caller-provided timestamp to avoid an extra clock read per
+    // selection; only Channel::CheckHealth passes 0.
+    const int64_t now_us = in.begin_time_us > 0
+        ? in.begin_time_us : butil::gettimeofday_us();
 
     const ServerInfo* best = NULL;
     double best_score = 0;
