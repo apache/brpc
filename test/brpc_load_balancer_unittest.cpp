@@ -911,9 +911,11 @@ TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
         brpc::ServerId id(8888);
         brpc::SocketOptions options;
         options.remote_side = dummy;
-        options.user = new SaveRecycle;
         id.tag = weight[i];
         if (i < 2) {
+            // `user` is owned by the Socket; only allocate it when a Socket is
+            // actually created, otherwise it would leak.
+            options.user = new SaveRecycle;
             ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
         }
         EXPECT_TRUE(wrrlb.AddServer(id));
@@ -1107,14 +1109,14 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         "10.92.115.19:8832",
         "10.42.122.201:8833",
     };
-    brpc::LoadBalancer* lb = NULL;
+    std::unique_ptr<brpc::LoadBalancer> lb;
     int rand = butil::fast_rand_less_than(2);
     if (rand == 0) {
         brpc::policy::RandomizedLoadBalancer rlb;
-        lb = rlb.New("min_working_instances=2 hold_seconds=2");
+        lb.reset(rlb.New("min_working_instances=2 hold_seconds=2"));
     } else if (rand == 1) {
         brpc::policy::RoundRobinLoadBalancer rrlb;
-        lb = rrlb.New("min_working_instances=2 hold_seconds=2");
+        lb.reset(rrlb.New("min_working_instances=2 hold_seconds=2"));
     }
     brpc::SocketUniquePtr ptr[2];
     for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {

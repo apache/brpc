@@ -39,7 +39,6 @@
 
 #include "butil/atomicops.h"
 #include "butil/base_export.h"
-#include "butil/basictypes.h"
 #include "butil/debug/leak_annotations.h"
 #include "butil/logging.h"
 #include "butil/memory/aligned_memory.h"

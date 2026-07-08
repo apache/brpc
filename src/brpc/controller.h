@@ -152,6 +152,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_SINGLE_REPEATED_TO_ARRAY = (1 << 20);
     static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
     static const uint32_t FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND = (1 << 22);
+    static const uint32_t FLAGS_ENDING_RPC = (1 << 23);
 
 public:
     struct Inheritable {
@@ -795,6 +796,8 @@ private:
     bool has_enabled_circuit_breaker() const { 
         return has_flag(FLAGS_ENABLED_CIRCUIT_BREAKER); 
     }
+
+    bool is_ending_rpc() const { return has_flag(FLAGS_ENDING_RPC); }
 
     std::string& protocol_param() { return _thrift_method_name; }
     const std::string& protocol_param() const { return _thrift_method_name; }

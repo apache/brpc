@@ -19,6 +19,7 @@
 
 
 #include <gtest/gtest.h>
+#include <memory>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/dynamic_message.h>
@@ -58,7 +59,7 @@ TEST(ProtoTest, proto) {
     meta.set_correlation_id(123);
     std::string data;
     ASSERT_TRUE(meta.SerializeToString(&data));
-    Message *msg = factory.GetPrototype(new_desc)->New();
+    std::unique_ptr<Message> msg(factory.GetPrototype(new_desc)->New());
     ASSERT_TRUE(msg != NULL);
     ASSERT_TRUE(msg->ParseFromString(data));
     ASSERT_TRUE(msg->SerializeToString(&data));

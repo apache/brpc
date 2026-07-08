@@ -24,6 +24,7 @@
 #include <map>
 #include <algorithm>
 #include "butil/thread_local.h"
+#include "butil/debug/leak_annotations.h"
 
 // Find c-string in maps with std::string as keys without memory allocations.
 // Example:
@@ -57,6 +58,11 @@ struct StringMapThreadLocalTemp {
     }
 
     inline std::string* get_string(const char* key) {
+        // This thread-local string (and any buffer it reallocates) is reclaimed
+        // via thread_atexit when the thread exits. If a thread is still alive at
+        // leak-check time the allocation would be reported; it is a thread-local
+        // cache, so mark its allocations as intentional non-leaks.
+        ANNOTATE_SCOPED_MEMORY_LEAK;
         if (!initialized) {
             initialized = true;
             std::string* tmp = new (buf) std::string(key);
@@ -70,6 +76,8 @@ struct StringMapThreadLocalTemp {
     }
 
     inline std::string* get_string(const char* key, size_t length) {
+        // See the note in the other get_string overload.
+        ANNOTATE_SCOPED_MEMORY_LEAK;
         if (!initialized) {
             initialized = true;
             std::string* tmp = new (buf) std::string(key, length);

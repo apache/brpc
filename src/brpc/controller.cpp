@@ -186,6 +186,7 @@ void Controller::ResetNonPods() {
     if (auto span = _span.lock()) {
         Span::Submit(span, butil::cpuwide_time_us());
     }
+    _span.reset();
     _error_text.clear();
     _remote_side = butil::EndPoint();
     _local_side = butil::EndPoint();
@@ -240,7 +241,6 @@ void Controller::ResetNonPods() {
 void Controller::ResetPods() {
     // NOTE: Make the sequence of assignments same with the order that they're
     // defined in header. Better for cpu cache and faster for lookup.
-    _span.reset();
     _flags = 0;
 #ifndef BAIDU_INTERNAL
     set_pb_bytes_to_base64(true);
@@ -625,6 +625,16 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         return;
     }
 
+    if (is_ending_rpc()) {
+        // SelectiveChannel may still deliver late SubDone callbacks after the
+        // main RPC has entered EndRPC(). Ignore those callbacks instead of
+        // letting them re-enter retry/backup on partially torn-down state.
+        _error_code = saved_error;
+        response_attachment().clear();
+        CHECK_EQ(0, bthread_id_unlock(info.id));
+        return;
+    }
+
     if ((!_error_code && _retry_policy == NULL) ||
         _current_call.nretry >= _max_retry) {
         goto END_OF_RPC;
@@ -881,6 +891,8 @@ void Controller::Call::OnComplete(
 }
 
 void Controller::EndRPC(const CompletionInfo& info) {
+    add_flag(FLAGS_ENDING_RPC);
+
     if (_timeout_id != 0) {
         bthread_timer_del(_timeout_id);
         _timeout_id = 0;

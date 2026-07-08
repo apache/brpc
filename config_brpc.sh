@@ -54,13 +54,15 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
 WITH_RDMA=0
 WITH_MESALINK=0
 WITH_BTHREAD_TRACER=0
 WITH_ASAN=0
+WITH_RISCV_ZVBC=0
+WITH_RISCV_ZBC=0
 BRPC_DEBUG_BTHREAD_SCHE_SAFETY=0
 DEBUGSYMBOLS=-g
 WERROR=
@@ -92,6 +94,8 @@ while true; do
         --with-debug-bthread-sche-safety ) BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1; shift 1 ;;
         --with-debug-lock ) BRPC_DEBUG_LOCK=1; shift 1 ;;
         --with-asan) WITH_ASAN=1; shift 1 ;;
+        --with-riscv-zvbc) WITH_RISCV_ZVBC=1; shift 1 ;;
+        --with-riscv-zbc) WITH_RISCV_ZBC=1; shift 1 ;;
         --nodebugsymbols ) DEBUGSYMBOLS=; shift 1 ;;
         --werror ) WERROR=-Werror; shift 1 ;;
         -- ) shift; break ;;
@@ -539,11 +543,22 @@ fi
 append_to_output "CPPFLAGS=${CPPFLAGS}"
 append_to_output "# without the flag, linux+arm64 may crash due to folding on TLS.
 ifeq (\$(CC),gcc)
-  ifeq (\$(shell uname -p),aarch64) 
+  ifeq (\$(shell uname -p),aarch64)
     CPPFLAGS+=-fno-gcse
   endif
 endif
 "
+
+# RISC-V Zvbc/Zbc support
+if [ "$(uname -m)" = "riscv64" ]; then
+    if [ $WITH_RISCV_ZVBC != 0 ]; then
+        CXXFLAGS="${CXXFLAGS} -march=rv64gcv_zbc_zvbc"
+        print_success "RISC-V Zvbc enabled: -march=rv64gcv_zbc_zvbc"
+    elif [ $WITH_RISCV_ZBC != 0 ]; then
+        CXXFLAGS="${CXXFLAGS} -march=rv64gc_zbc"
+        print_success "RISC-V Zbc enabled: -march=rv64gc_zbc"
+    fi
+fi
 
 append_to_output "CXXFLAGS=${CXXFLAGS}"
 

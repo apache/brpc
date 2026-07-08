@@ -264,5 +264,6 @@ jobs:
           || { echo "ERROR: failed to override protobuf version in MODULE.bazel to ${TEST_PROTOBUF_VERSION}"; exit 1; }
     - run: | 
         bazel test --action_env=CC=clang --config=rdma \
+                   --define with_bthread_tracer=true \
                    --define with_babylon_counter=true \
                    //test/... --test_arg=--gtest_filter=-RdmaRpcTest.*

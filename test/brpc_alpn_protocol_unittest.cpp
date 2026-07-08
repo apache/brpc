@@ -99,13 +99,17 @@ public:
         // SSL handshake.
         SSL* ssl = brpc::CreateSSLSession(ssl_ctx, 0, cli_fd, false);
         EXPECT_NE(nullptr, ssl);
-        EXPECT_EQ(1, SSL_do_handshake(ssl)); 
+        EXPECT_EQ(1, SSL_do_handshake(ssl));
 
         // Get handshake result.
         const unsigned char* select_alpn = nullptr;
         unsigned int len = 0;
         SSL_get0_alpn_selected(ssl, &select_alpn, &len);
-        return std::string(reinterpret_cast<const char*>(select_alpn), len);
+        std::string result(reinterpret_cast<const char*>(select_alpn), len);
+
+        SSL_free(ssl);
+        SSL_CTX_free(ssl_ctx);
+        return result;
     }
 
 private:

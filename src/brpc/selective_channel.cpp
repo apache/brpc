@@ -135,6 +135,7 @@ public:
     Sender(Controller* cntl,
            const google::protobuf::Message* request,
            google::protobuf::Message* response,
+           const butil::intrusive_ptr<SharedLoadBalancer>& lb,
            google::protobuf::Closure* user_done);
     ~Sender() { Clear(); }
     int IssueRPC(int64_t start_realtime_us);
@@ -148,6 +149,7 @@ private:
     Controller* _main_cntl;
     const google::protobuf::Message* _request;
     google::protobuf::Message* _response;
+    butil::intrusive_ptr<SharedLoadBalancer> _lb;
     google::protobuf::Closure* _user_done;
     short _nfree;
     short _nalloc;
@@ -293,10 +295,12 @@ void ChannelBalancer::Describe(std::ostream& os,
 Sender::Sender(Controller* cntl,
                const google::protobuf::Message* request,
                google::protobuf::Message* response,
+               const butil::intrusive_ptr<SharedLoadBalancer>& lb,
                google::protobuf::Closure* user_done)
     : _main_cntl(cntl)
     , _request(request)
     , _response(response)
+    , _lb(lb)
     , _user_done(user_done)
     , _nfree(0)
     , _nalloc(0)
@@ -306,14 +310,20 @@ Sender::Sender(Controller* cntl,
 
 int Sender::IssueRPC(int64_t start_realtime_us) {
     _main_cntl->_current_call.need_feedback = false;
+    ChannelBalancer* balancer =
+        static_cast<ChannelBalancer*>(_lb.get());
+    if (balancer == NULL) {
+        _main_cntl->SetFailed(ECANCELED,
+                              "SelectiveChannel balancer is unavailable");
+        return -1;
+    }
     LoadBalancer::SelectIn sel_in = { start_realtime_us,
                                       true,
                                       _main_cntl->has_request_code(),
                                       _main_cntl->_request_code,
                                       _main_cntl->_accessed };
     ChannelBalancer::SelectOut sel_out;
-    const int rc = static_cast<ChannelBalancer*>(_main_cntl->_lb.get())
-        ->SelectChannel(sel_in, &sel_out);
+    const int rc = balancer->SelectChannel(sel_in, &sel_out);
     if (rc != 0) {
         _main_cntl->SetFailed(rc, "Fail to select channel, %s", berror(rc));
         return -1;
@@ -428,6 +438,7 @@ void Sender::Clear() {
     }
     const CallId cid = _main_cntl->call_id();
     _main_cntl = NULL;
+    _lb.reset(NULL);
     if (_user_done) {
         _user_done->Run();
     }
@@ -574,8 +585,15 @@ void SelectiveChannel::CallMethod(
     if (!initialized()) {
         cntl->SetFailed(EINVAL, "SelectiveChannel=%p is not initialized yet",
                         this);
+        // This is a branch only entered by wrongly-used RPC, just call done
+        // in-place. See comments in channel.cpp on deadlock concerns.
+        if (user_done) {
+            user_done->Run();
+        }
+        return;
     }
-    schan::Sender* sndr = new schan::Sender(cntl, request, response, user_done);
+    schan::Sender* sndr =
+        new schan::Sender(cntl, request, response, _chan._lb, user_done);
     cntl->_sender = sndr;
     cntl->add_flag(Controller::FLAGS_DESTROY_CID_IN_DONE);
     const CallId cid = cntl->call_id();

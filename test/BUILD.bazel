@@ -255,6 +255,7 @@ generate_unittests(
     # real-time waits exceed Bazel's default per-test 300s (size=medium) limit
     # on contended CI runners, causing TIMEOUT failures. Raise its limit to
     # size=large (900s).
+    # brpc_load_balancer_unittest.cpp also has the same problem.
     #
     # NB: do NOT shard this binary. Its TEST_F share fixed loopback endpoints
     # and global state; running shards as parallel processes makes a
@@ -262,6 +263,7 @@ generate_unittests(
     # on the same port and fail. size=large is the only safe lever here.
     per_test_size = {
         "brpc_channel_unittest.cpp": "large",
+        "brpc_load_balancer_unittest.cpp": "large",
     },
 )
 

@@ -26,6 +26,23 @@
 namespace {
 
 const size_t CTX_WIDTH = 5;
+const size_t CRLF_NOT_FOUND = (size_t)-1;
+
+size_t FindCRLF(const butil::IOBuf& buf, size_t max_scan_size) {
+    butil::IOBufBytesIterator it(buf);
+    bool prev_cr = false;
+    size_t pos = 0;
+    while (it && pos < max_scan_size) {
+        const char c = static_cast<char>(*it);
+        if (prev_cr && c == '\n') {
+            return pos - 1;
+        }
+        prev_cr = (c == '\r');
+        ++it;
+        ++pos;
+    }
+    return CRLF_NOT_FOUND;
+}
 
 } // namespace
 
@@ -425,7 +442,35 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
                 return CONSUME_STATE_ERROR;
             }
         }
-        const size_t buf_size = buf.size();
+        const size_t max_inline_size =
+            FLAGS_redis_max_allocation_size > 0 ?
+            static_cast<size_t>(FLAGS_redis_max_allocation_size) : 0;
+        const size_t crlf_pos = FindCRLF(buf, max_inline_size + 2);
+        if (crlf_pos == CRLF_NOT_FOUND) {
+            if (buf.size() <= max_inline_size) {
+                *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+                return CONSUME_STATE_ERROR;
+            }
+            if (buf.size() == max_inline_size + 1) {
+                char last_char = '\0';
+                buf.copy_to(&last_char, 1, max_inline_size);
+                if (last_char == '\r') {
+                    *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+                    return CONSUME_STATE_ERROR;
+                }
+            }
+            LOG(ERROR) << "inline command exceeds max allocation size! max="
+                       << FLAGS_redis_max_allocation_size << ", actually=" << buf.size();
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
+        }
+        if (crlf_pos > max_inline_size) {
+            LOG(ERROR) << "inline command exceeds max allocation size! max="
+                       << FLAGS_redis_max_allocation_size << ", actually=" << crlf_pos;
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
+        }
+        const size_t buf_size = crlf_pos;
         const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
         // arena->allocate() may return NULL on allocation failure
         if (copy_str == NULL) {
@@ -439,11 +484,6 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
             return CONSUME_STATE_ERROR;
         }
         copy_str[buf_size] = '\0';
-        const size_t crlf_pos = butil::StringPiece(copy_str, buf_size).find("\r\n");
-        if (crlf_pos == butil::StringPiece::npos) {  // not enough data
-            *err = PARSE_ERROR_NOT_ENOUGH_DATA;
-            return CONSUME_STATE_ERROR;
-        }
         size_t offset = 0;
         while (offset < crlf_pos && copy_str[offset] != ' ') {
             ++offset;

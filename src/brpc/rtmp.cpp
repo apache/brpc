@@ -612,7 +612,7 @@ butil::Status AVCDecoderConfigurationRecord::Create(const void* data, size_t len
             return butil::Status(EINVAL, "Not enough data to decode SPS");
         }
         if (sps_length > 0) {
-            butil::Status st = ParseSPS(buf.data() + 2, sps_length);
+            butil::Status st = ParseSPS(buf.substr(2, sps_length), sps_length);
             if (!st.ok()) {
                 return st;
             }

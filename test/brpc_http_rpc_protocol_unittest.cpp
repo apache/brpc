@@ -1772,6 +1772,9 @@ TEST_F(HttpTest, http2_goaway_sanity) {
     butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
     ASSERT_EQ(st.error_code(), brpc::ELOGOFF);
     ASSERT_TRUE(st.error_data().ends_with("the connection just issued GOAWAY"));
+    // Release the reference held by stream_user_data (which is normally released
+    // by Controller::Call::OnComplete) to avoid leaking the H2UnsentRequest.
+    h2_req->DestroyStreamUserData(_h2_client_sock, &cntl, 0, false);
 }
 
 class AfterRecevingGoAway : public ::google::protobuf::Closure {
