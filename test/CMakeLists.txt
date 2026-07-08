@@ -16,8 +16,18 @@
 # under the License.
 
 find_package(Gperftools)
-include_directories(${GPERFTOOLS_INCLUDE_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+add_library(brpc_test_config INTERFACE)
+target_link_libraries(brpc_test_config INTERFACE brpc_common_config)
+target_include_directories(brpc_test_config INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+target_compile_definitions(brpc_test_config INTERFACE
+    UNIT_TEST
+    BVAR_NOT_LINK_DEFAULT_VARIABLES
+)
+target_compile_options(brpc_test_config INTERFACE -fno-access-control)
+if(GPERFTOOLS_INCLUDE_DIR)
+    target_include_directories(brpc_test_config INTERFACE ${GPERFTOOLS_INCLUDE_DIR})
+endif()
 
 include(CompileProto)
 set(TEST_PROTO_FILES addressbook1.proto
@@ -41,30 +51,25 @@ compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}/test
                                     ${CMAKE_SOURCE_DIR}/test
                                     "${TEST_PROTO_FILES}")
 add_library(TEST_PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
+target_link_libraries(TEST_PROTO_LIB PRIVATE brpc_test_config)
 
 set(BRPC_SYSTEM_GTEST_SOURCE_DIR "" CACHE PATH "System googletest source directory.")
 
 if(DOWNLOAD_GTEST)
     include(SetupGtest)
+    set(BRPC_DOWNLOADED_GTEST_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/downloaded-googletest-include)
+    file(REMOVE_RECURSE ${BRPC_DOWNLOADED_GTEST_INCLUDE_DIR})
+    file(MAKE_DIRECTORY ${BRPC_DOWNLOADED_GTEST_INCLUDE_DIR})
+    file(COPY
+        ${PROJECT_BINARY_DIR}/googletest-src/googletest/include/
+        ${PROJECT_BINARY_DIR}/googletest-src/googlemock/include/
+        DESTINATION ${BRPC_DOWNLOADED_GTEST_INCLUDE_DIR})
+    target_include_directories(brpc_test_config BEFORE INTERFACE
+        ${BRPC_DOWNLOADED_GTEST_INCLUDE_DIR})
 elseif(BRPC_SYSTEM_GTEST_SOURCE_DIR)
     add_subdirectory("${BRPC_SYSTEM_GTEST_SOURCE_DIR}" "${PROJECT_BINARY_DIR}/system-googletest-build")
 else()
     message(FATAL_ERROR "Googletest is not available")
-endif()
-
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DBRPC_WITH_RDMA=${WITH_RDMA_VAL}")
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__=__unused__ -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -DBVAR_NOT_LINK_DEFAULT_VARIABLES -D__STRICT_ANSI__")
-set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -g -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -fno-access-control")
-use_cxx11()
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    #required by butil/crc32.cc to boost performance for 10x
-    if((CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)") AND NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
-    endif()
-    if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
-    endif()
 endif()
 
 file(COPY ${PROJECT_SOURCE_DIR}/test/cert1.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -199,6 +204,8 @@ endif()
 add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
 add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB)
+target_link_libraries(BUTIL_DEBUG_LIB PRIVATE brpc_test_config)
+target_link_libraries(SOURCES_DEBUG_LIB PRIVATE brpc_test_config)
 
 # shared library needs POSITION_INDEPENDENT_CODE
 set_property(TARGET ${BUTIL_DEBUG_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
@@ -211,9 +218,9 @@ add_library(brpc-shared-debug SHARED $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
 set_target_properties(brpc-shared-debug PROPERTIES
          LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/test)
 
-target_link_libraries(brpc-shared-debug ${DYNAMIC_LIB})
+target_link_libraries(brpc-shared-debug PUBLIC brpc_test_config ${DYNAMIC_LIB})
 if(BRPC_WITH_GLOG)
-    target_link_libraries(brpc-shared-debug ${GLOG_LIB})
+    target_link_libraries(brpc-shared-debug PUBLIC ${GLOG_LIB})
 endif()
 
 # AddressSanitizer is incompatible with tcmalloc/gperftools, do not link it when WITH_ASAN is on
@@ -224,9 +231,10 @@ endif()
 # test_butil
 add_executable(test_butil ${TEST_BUTIL_SOURCES}
                           ${CMAKE_CURRENT_BINARY_DIR}/iobuf.pb.cc)
-target_link_libraries(test_butil brpc-shared-debug
-                                 gtest
-                                 ${GPERFTOOLS_LIBRARIES})
+target_link_libraries(test_butil PRIVATE
+    brpc-shared-debug
+    gtest
+    ${GPERFTOOLS_LIBRARIES})
 
 add_test(NAME test_butil COMMAND test_butil)
 
@@ -235,13 +243,16 @@ add_test(NAME test_butil COMMAND test_butil)
 list(REMOVE_ITEM BVAR_SOURCES ${PROJECT_SOURCE_DIR}/src/bvar/default_variables.cpp)
 
 add_library(BVAR_DEBUG_LIB OBJECT ${BVAR_SOURCES})
+target_link_libraries(BVAR_DEBUG_LIB PRIVATE brpc_test_config)
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
 add_executable(test_bvar ${TEST_BVAR_SRCS}
                          $<TARGET_OBJECTS:BVAR_DEBUG_LIB>
                          $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>)
-target_link_libraries(test_bvar gtest
-                                ${GPERFTOOLS_LIBRARIES}
-                                ${DYNAMIC_LIB})
+target_link_libraries(test_bvar PRIVATE
+    gtest
+    brpc_test_config
+    ${GPERFTOOLS_LIBRARIES}
+    ${DYNAMIC_LIB})
 add_test(NAME test_bvar COMMAND test_bvar)
 
 # bthread tests
@@ -249,9 +260,10 @@ file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
     add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT})
-    target_link_libraries(${BTHREAD_UT_WE} gtest_main
-                                           brpc-shared-debug
-                                           ${GPERFTOOLS_LIBRARIES})
+    target_link_libraries(${BTHREAD_UT_WE} PRIVATE
+        gtest_main
+        brpc-shared-debug
+        ${GPERFTOOLS_LIBRARIES})
     add_test(NAME ${BTHREAD_UT_WE} COMMAND ${BTHREAD_UT_WE})
 endforeach()
 
@@ -260,9 +272,11 @@ file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
-    target_link_libraries(${BRPC_UT_WE} brpc-shared-debug
-                                        gtest_main
-                                        ${GPERFTOOLS_LIBRARIES})
+    target_link_libraries(${BRPC_UT_WE} PRIVATE
+        brpc-shared-debug
+        gtest_main
+        brpc_test_config
+        ${GPERFTOOLS_LIBRARIES})
     add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
 endforeach()
 
@@ -274,9 +288,9 @@ if(BUILD_FUZZ_TESTS)
     set_target_properties(brpc-static-debug PROPERTIES
             LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/test)
 
-    target_link_libraries(brpc-static-debug ${DYNAMIC_LIB})
+    target_link_libraries(brpc-static-debug PUBLIC brpc_test_config ${DYNAMIC_LIB})
     if(BRPC_WITH_GLOG)
-        target_link_libraries(brpc-static-debug ${GLOG_LIB})
+        target_link_libraries(brpc-static-debug PUBLIC ${GLOG_LIB})
     endif()
 
     set(FUZZ_TARGETS fuzz_butil fuzz_esp fuzz_hpack fuzz_http
@@ -287,7 +301,7 @@ if(BUILD_FUZZ_TESTS)
 
     foreach(target ${FUZZ_TARGETS})
         add_executable(${target} fuzzing/${target}.cpp $<TARGET_OBJECTS:TEST_PROTO_LIB>)
-        target_link_libraries(${target} brpc-static-debug ${LIB_FUZZING_ENGINE})
+        target_link_libraries(${target} PRIVATE brpc-static-debug ${LIB_FUZZING_ENGINE})
         set_target_properties(${target} PROPERTIES
             BUILD_WITH_INSTALL_RPATH TRUE
             INSTALL_RPATH "$ORIGIN/lib")

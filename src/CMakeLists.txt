@@ -15,17 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-if(NOT DEBUG)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNDEBUG")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DNDEBUG")
-endif()
-
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${PROJECT_SOURCE_DIR}/src)
-
 add_library(BUTIL_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_LIB OBJECT ${SOURCES})
 add_dependencies(SOURCES_LIB PROTO_LIB)
+target_link_libraries(BUTIL_LIB PRIVATE brpc_common_config)
+target_link_libraries(SOURCES_LIB PRIVATE brpc_common_config)
 
 # shared library needs POSITION_INDEPENDENT_CODE
 set_property(TARGET ${SOURCES_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
@@ -34,6 +28,7 @@ set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB>
                                $<TARGET_OBJECTS:SOURCES_LIB>
                                $<TARGET_OBJECTS:PROTO_LIB>)
+target_link_libraries(brpc-static PUBLIC brpc_common_config)
 
 function(check_thrift_version target_arg)
     #use thrift command to get version
@@ -52,7 +47,7 @@ function(check_thrift_version target_arg)
 
     if (THRIFT_MAJOR_VERSION EQUAL 0 AND THRIFT_MINOR_VERSION LESS 11)
         message(STATUS "Thrift version is less than 0.11.0")
-        target_compile_definitions($(target_arg) PRIVATE _THRIFT_VERSION_LOWER_THAN_0_11_0_)
+        target_compile_definitions(${target_arg} PRIVATE _THRIFT_VERSION_LOWER_THAN_0_11_0_)
     else()
         message(STATUS "Thrift version is equal to or greater than 0.11.0")
     endif()
@@ -60,7 +55,7 @@ endfunction()
 
 
 if(WITH_THRIFT)
-   target_link_libraries(brpc-static ${THRIFT_LIB})
+   target_link_libraries(brpc-static PRIVATE ${THRIFT_LIB})
    check_thrift_version(brpc-static)
 endif()
 
@@ -74,22 +69,24 @@ set(protoc_gen_mcpack_SOURCES
  )
     
 add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
+target_link_libraries(protoc-gen-mcpack PRIVATE brpc_common_config)
 
 if(BUILD_SHARED_LIBS)
     add_library(brpc-shared SHARED $<TARGET_OBJECTS:BUTIL_LIB> 
                                    $<TARGET_OBJECTS:SOURCES_LIB>
                                    $<TARGET_OBJECTS:PROTO_LIB>)
-    target_link_libraries(brpc-shared ${DYNAMIC_LIB})
+    target_link_libraries(brpc-shared PUBLIC brpc_common_config)
+    target_link_libraries(brpc-shared PRIVATE ${DYNAMIC_LIB})
     if(WITH_GLOG)
-        target_link_libraries(brpc-shared ${GLOG_LIB})
+        target_link_libraries(brpc-shared PRIVATE ${GLOG_LIB})
     endif()
     if(WITH_THRIFT)
-        target_link_libraries(brpc-shared ${THRIFT_LIB})
+        target_link_libraries(brpc-shared PRIVATE ${THRIFT_LIB})
         check_thrift_version(brpc-shared)
     endif()
     SET_TARGET_PROPERTIES(brpc-shared PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
 
-    target_link_libraries(protoc-gen-mcpack brpc-shared ${DYNAMIC_LIB} pthread)
+    target_link_libraries(protoc-gen-mcpack PRIVATE brpc-shared ${DYNAMIC_LIB} pthread)
 
     install(TARGETS brpc-shared
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -97,7 +94,7 @@ if(BUILD_SHARED_LIBS)
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             )
 else()
-    target_link_libraries(protoc-gen-mcpack brpc-static ${DYNAMIC_LIB} pthread)
+    target_link_libraries(protoc-gen-mcpack PRIVATE brpc-static ${DYNAMIC_LIB} pthread)
 endif()
 
 

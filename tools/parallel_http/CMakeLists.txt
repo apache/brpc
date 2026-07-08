@@ -16,5 +16,5 @@
 # under the License.
 
 add_executable(parallel_http parallel_http.cpp)
-target_link_libraries(parallel_http brpc-static ${DYNAMIC_LIB})
+target_link_libraries(parallel_http PRIVATE brpc-static ${DYNAMIC_LIB})
 install(TARGETS parallel_http RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
