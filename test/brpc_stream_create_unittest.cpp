@@ -27,6 +27,7 @@ TEST_F(StreamCreateBugTest, create_twice_on_same_controller_returns_error) {
 
     brpc::StreamId first_stream = brpc::INVALID_STREAM_ID;
     ASSERT_EQ(0, brpc::StreamCreate(&first_stream, cntl, NULL));
+    brpc::ScopedStream stream_guard(first_stream);
 
     brpc::StreamId second_stream = brpc::INVALID_STREAM_ID;
     ASSERT_EQ(-1, brpc::StreamCreate(&second_stream, cntl, NULL));
