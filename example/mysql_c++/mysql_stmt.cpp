@@ -57,7 +57,6 @@ static void* access_mysql(void* void_args) {
     const std::vector<std::string>& commands = args->commands;
 
     for (int i = 0; i < FLAGS_count; ++i) {
-        // for (;;) {
         brpc::MysqlRequest request(stmt);
         for (size_t i = 1; i < commands.size(); i += 2) {
             if (commands[i] == "int8") {
@@ -138,10 +137,7 @@ static void* access_mysql(void* void_args) {
             return NULL;
         }
 
-        // if (response.reply(0).is_error()) {
-        // check response
         std::cout << response << std::endl;
-        // }
     }
 
     return NULL;
