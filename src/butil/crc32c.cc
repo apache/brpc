@@ -587,7 +587,7 @@ static uint32_t rv_crc32c_clmul(uint32_t crc, const char* buf, size_t len) {
 #endif  // __riscv_zbc
 
 // Runtime detection: check if RISC-V CPU supports Zbc extension
-static bool isZbc() {
+static bool is_zbc() {
   static const bool zbc_supported = []() {
     FILE* f = fopen("/proc/cpuinfo", "r");
     if (!f) return false;
@@ -788,7 +788,7 @@ static uint32_t rv_crc32c_vclmul(uint32_t crc, const char* buf, size_t len) {
 }
 
 // Runtime detection: check if RISC-V CPU supports Zvbc extension
-static bool isZvbc() {
+static bool is_zvbc() {
   static const bool zvbc_supported = []() {
     FILE* f = fopen("/proc/cpuinfo", "r");
     if (!f) return false;
@@ -838,12 +838,12 @@ static inline Function Choose_Extend() {
 #endif
 #if defined(__riscv) && (__riscv_xlen == 64) && (defined(__riscv_zbc) || defined(__riscv_zvbc))
 #if defined(__riscv_zvbc)
-  if (isZvbc()) {
+  if (is_zvbc()) {
     return (Function)rv_crc32c_vclmul;
   }
 #endif
 #if defined(__riscv_zbc)
-  if (isZbc()) {
+  if (is_zbc()) {
     return (Function)rv_crc32c_clmul;
   }
 #endif
@@ -857,10 +857,10 @@ bool IsFastCrc32Supported() {
 #endif
 #if defined(__riscv) && (__riscv_xlen == 64) && (defined(__riscv_zbc) || defined(__riscv_zvbc))
 #if defined(__riscv_zvbc)
-  if (isZvbc()) return true;
+  if (is_zvbc()) return true;
 #endif
 #if defined(__riscv_zbc)
-  if (isZbc()) return true;
+  if (is_zbc()) return true;
 #endif
 #endif
   return false;
