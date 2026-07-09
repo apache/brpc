@@ -29,7 +29,14 @@
 #if defined(ARCH_CPU_ARM_FAMILY)
 # define cpu_relax() asm volatile("yield\n": : :"memory")
 #elif defined(ARCH_CPU_RISCV_FAMILY)
-# define cpu_relax() asm volatile("fence.i\n": : :"memory")
+// Use the pause hint (Zihintpause extension). Encoding 0x0100000F
+// (fence 0, 1) is a HINT on all RISC-V implementations: it never traps
+// and is ignored on CPUs without Zihintpause. On CPUs with Zihintpause
+// it provides a multi-cycle stall hint that reduces power and improves
+// resource fairness during spin-wait loops. Matches the Linux kernel's
+// RISC-V cpu_relax() behavior. .word is used instead of .insn or the
+// pause mnemonic for maximum assembler compatibility.
+# define cpu_relax() asm volatile(".word 0x0100000f\n": : :"memory")
 #elif defined(ARCH_CPU_LOONGARCH64_FAMILY)
 # define cpu_relax() asm volatile("nop\n": : :"memory");
 #else
