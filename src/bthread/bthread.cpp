@@ -86,7 +86,6 @@ pthread_mutex_t g_task_control_mutex = PTHREAD_MUTEX_INITIALIZER;
 // are not constructed before main().
 TaskControl* g_task_control = NULL;
 
-extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 extern void (*g_worker_startfn)();
 extern void (*g_tagged_worker_startfn)(bthread_tag_t);
@@ -263,7 +262,7 @@ static bool validate_bthread_concurrency_by_tag(const char*, int32_t val) {
     return bthread_setconcurrency_by_tag(val, FLAGS_bthread_current_tag) == 0;
 }
 
-__thread TaskGroup* tls_task_group_nosignal = NULL;
+BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group_nosignal, NULL);
 
 BUTIL_FORCE_INLINE int
 start_from_non_worker(bthread_t* __restrict tid,
@@ -283,10 +282,18 @@ start_from_non_worker(bthread_t* __restrict tid,
         // 1. NOSIGNAL is often for creating many bthreads in batch,
         //    inserting into the same TaskGroup maximizes the batch.
         // 2. bthread_flush() needs to know which TaskGroup to flush.
-        TaskGroup* g = tls_task_group_nosignal;
+        auto g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal);
         if (NULL == g) {
             g = c->choose_one_group(tag);
-            tls_task_group_nosignal = g;
+            BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal, g);
+        } else {
+            // tls_task_group_nosignal is not tag-aware: mixing different
+            // tags with BTHREAD_NOSIGNAL on the same non-worker thread is
+            // not supported, otherwise bthreads would be silently inserted
+            // into a TaskGroup of the wrong tag.
+            CHECK_EQ(g->tag(), tag) << "Mixing different tags with "
+                "BTHREAD_NOSIGNAL on the same thread is not supported, "
+                "expected tag=" << g->tag() << " but got tag=" << tag;
         }
         return g->start_background<true>(tid, attr, fn, arg);
     }
@@ -298,7 +305,8 @@ start_from_non_worker(bthread_t* __restrict tid,
 // tag equal to thread local
 // tag equal to BTHREAD_TAG_INVALID
 BUTIL_FORCE_INLINE bool can_run_thread_local(const bthread_attr_t* __restrict attr) {
-    return attr == nullptr || attr->tag == tls_task_group->tag() ||
+    return attr == nullptr ||
+           attr->tag == BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)->tag() ||
            attr->tag == BTHREAD_TAG_INVALID;
 }
 
@@ -360,10 +368,10 @@ void bthread_flush() {
     if (g) {
         return g->flush_nosignal_tasks();
     }
-    g = bthread::tls_task_group_nosignal;
+    g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal);
     if (g) {
         // NOSIGNAL tasks were created in this non-worker.
-        bthread::tls_task_group_nosignal = NULL;
+        bthread::BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal, NULL);
         return g->flush_nosignal_tasks_remote();
     }
 }

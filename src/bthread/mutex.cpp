@@ -524,11 +524,11 @@ inline uint64_t hash_mutex_ptr(const Mutex* m) {
 
 // Mark being inside locking so that pthread_mutex calls inside collecting
 // code are never sampled, otherwise deadlock may occur.
-static __thread bool tls_inside_lock = false;
+BAIDU_VOLATILE_THREAD_LOCAL(bool, tls_inside_lock, false);
 
 // Warn up some singleton objects used in contention profiler
 // to avoid deadlock in malloc call stack.
-static __thread bool tls_warn_up = false;
+BAIDU_VOLATILE_THREAD_LOCAL(bool, tls_warn_up, false);
 
 #if BRPC_DEBUG_BTHREAD_SCHE_SAFETY
 // ++tls_pthread_lock_count when pthread locking,
@@ -536,19 +536,22 @@ static __thread bool tls_warn_up = false;
 // Only when it is equal to 0, it is safe for the bthread to be scheduled.
 // Note: If a mutex is locked/unlocked in different thread,
 // `tls_pthread_lock_count' is inaccurate, so this feature cannot be used.
-static __thread int tls_pthread_lock_count = 0;
+BAIDU_VOLATILE_THREAD_LOCAL(int, tls_pthread_lock_count, 0);
 
-#define ADD_TLS_PTHREAD_LOCK_COUNT ++tls_pthread_lock_count
-#define SUB_TLS_PTHREAD_LOCK_COUNT --tls_pthread_lock_count
+#define ADD_TLS_PTHREAD_LOCK_COUNT \
+    ++(*BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count))
+#define SUB_TLS_PTHREAD_LOCK_COUNT \
+    --(*BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count))
 
 void CheckBthreadScheSafety() {
-    if (BAIDU_LIKELY(0 == tls_pthread_lock_count)) {
+    if (BAIDU_LIKELY(0 == BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count))) {
         return;
     }
 
     // It can only be checked once because the counter is messed up.
     LOG_BACKTRACE_ONCE(ERROR) << "bthread is suspended while holding "
-                              << tls_pthread_lock_count << " pthread locks.";
+                              << BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count)
+                              << " pthread locks.";
 }
 #else
 #define ADD_TLS_PTHREAD_LOCK_COUNT ((void)0)
@@ -576,7 +579,8 @@ struct TLSPthreadContentionSites {
     uint64_t cp_version;
     MutexAndContentionSite list[TLS_MAX_COUNT];
 };
-static __thread TLSPthreadContentionSites tls_csites = {0,0,{}};
+BAIDU_VOLATILE_THREAD_LOCAL(TLSPthreadContentionSites, tls_csites,
+                            TLSPthreadContentionSites());
 #endif  // DONT_SPEEDUP_PTHREAD_CONTENTION_PROFILER_WITH_TLS
 
 // Guaranteed in linux/win.
@@ -625,9 +629,9 @@ inline bool remove_pthread_contention_site(const Mutex* mutex,
 
 // Submit the contention along with the callsite('s stacktrace)
 void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
-    tls_inside_lock = true;
+    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_inside_lock, true);
     BRPC_SCOPE_EXIT {
-        tls_inside_lock = false;
+        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_inside_lock, false);
     };
 
     butil::debug::StackTrace stack(true); // May lock.
@@ -639,7 +643,8 @@ void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
     // 1. Warn up some singleton objects used in `submit_contention'
     // to avoid deadlock in malloc call stack.
     // 2. LocalPool is empty, GlobalPool may allocate memory by malloc.
-    if (!tls_warn_up || butil::local_pool_free_empty<SampledContention>()) {
+    if (!BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_warn_up) ||
+        butil::local_pool_free_empty<SampledContention>()) {
         // In malloc call stack, can not submit contention.
         if (stack.FindSymbol((void*)malloc)) {
             return;
@@ -656,7 +661,7 @@ void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
     sc->nframes = stack.CopyAddressTo(sc->stack, arraysize(sc->stack));
     sc->submit(now_ns / 1000);  // may lock
     // Once submit a contention, complete warn up.
-    tls_warn_up = true;
+    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_warn_up, true);
 }
 
 #if BRPC_DEBUG_LOCK
@@ -872,7 +877,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(Mutex* mutex, const struct timesp
     if (!g_cp ||
         // collecting code including backtrace() and submit() may call
         // pthread_mutex_lock and cause deadlock. Don't sample.
-        tls_inside_lock) {
+        BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_inside_lock)) {
         return pthread_mutex_lock_internal(mutex, abstime);
     }
     // Don't slow down non-contended locks.
@@ -885,7 +890,8 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(Mutex* mutex, const struct timesp
 
     bthread_contention_site_t* csite = NULL;
 #ifndef DONT_SPEEDUP_PTHREAD_CONTENTION_PROFILER_WITH_TLS
-    TLSPthreadContentionSites& fast_alt = tls_csites;
+    TLSPthreadContentionSites& fast_alt =
+        *BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_csites);
     if (fast_alt.cp_version != g_cp_version) {
         fast_alt.cp_version = g_cp_version;
         fast_alt.count = 0;
@@ -927,7 +933,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_trylock_impl(Mutex* mutex) {
 template <typename Mutex>
 BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(Mutex* mutex) {
     // Don't change behavior of unlock when profiler is off.
-    if (!g_cp || tls_inside_lock) {
+    if (!g_cp || BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_inside_lock)) {
         // This branch brings an issue that an entry created by
         // add_pthread_contention_site may not be cleared. Thus we add a
         // 16-bit rolling version in the entry to find out such entry.
@@ -937,7 +943,8 @@ BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(Mutex* mutex) {
     bool miss_in_tls = true;
     bthread_contention_site_t saved_csite = {0,0};
 #ifndef DONT_SPEEDUP_PTHREAD_CONTENTION_PROFILER_WITH_TLS
-    TLSPthreadContentionSites& fast_alt = tls_csites;
+    TLSPthreadContentionSites& fast_alt =
+        *BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_csites);
     for (int i = fast_alt.count - 1; i >= 0; --i) {
         if (fast_alt.list[i].mutex == mutex) {
             if (is_contention_site_valid(fast_alt.list[i].csite)) {
