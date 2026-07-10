@@ -888,3 +888,15 @@ TEST_F(StreamingRpcTest, segment_stream_data_automatically) {
     ASSERT_EQ(N, handler._expected_next_value);
     GFLAGS_NAMESPACE::SetCommandLineOption("stream_write_max_segment_size", "536870912");
 }
+
+TEST_F(StreamingRpcTest, create_request_stream_twice_on_same_controller_returns_error) {
+    brpc::Controller cntl;
+
+    brpc::StreamId first_stream = brpc::INVALID_STREAM_ID;
+    ASSERT_EQ(0, brpc::StreamCreate(&first_stream, cntl, NULL));
+    brpc::ScopedStream stream_guard(first_stream);
+
+    brpc::StreamId second_stream = brpc::INVALID_STREAM_ID;
+    ASSERT_EQ(-1, brpc::StreamCreate(&second_stream, cntl, NULL));
+    ASSERT_EQ(brpc::INVALID_STREAM_ID, second_stream);
+}
