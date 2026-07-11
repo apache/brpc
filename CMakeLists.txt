@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.16...3.28)
 project(brpc C CXX)
 
 option(WITH_GLOG "With glog" OFF)
@@ -51,7 +51,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
         message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++11")
     endif()
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # require at least clang 3.3
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.3)
         message(FATAL_ERROR "Clang is too old, please install a newer version supporting C++11")
@@ -60,6 +60,15 @@ else()
     message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
 endif()
 
+set(BRPC_COMMON_COMPILE_OPTIONS)
+set(BRPC_COMMON_DEFINITIONS)
+set(BRPC_COMMON_INCLUDE_DIRS
+    ${PROJECT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+set(BRPC_COMMON_LINK_OPTIONS)
+set(BRPC_CXX_STANDARD 11)
+
 set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
@@ -67,7 +76,7 @@ if(WITH_GLOG)
 endif()
 
 if(WITH_DEBUG_SYMBOLS)
-    set(DEBUG_SYMBOL "-g")
+    list(APPEND BRPC_COMMON_COMPILE_OPTIONS -g)
 endif()
 
 set(WITH_DEBUG_LOCK_VAL "0")
@@ -76,7 +85,7 @@ if(WITH_DEBUG_LOCK)
 endif()
 
 if(WITH_THRIFT)
-    set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
+    list(APPEND BRPC_COMMON_DEFINITIONS ENABLE_THRIFT_FRAMED_PROTOCOL)
     find_library(THRIFT_LIB NAMES thrift)
     if (NOT THRIFT_LIB)
         message(FATAL_ERROR "Fail to find Thrift")
@@ -95,8 +104,8 @@ if (WITH_BTHREAD_TRACER)
     endif()
     find_package(absl REQUIRED CONFIG)
     set(bthread_tracer_ABSL_USED_TARGETS absl::base absl::stacktrace absl::symbolize)
-    add_definitions(-DBRPC_BTHREAD_TRACER)
-    include_directories(${LIBUNWIND_INCLUDE_PATH})
+    list(APPEND BRPC_COMMON_DEFINITIONS BRPC_BTHREAD_TRACER)
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${LIBUNWIND_INCLUDE_PATH})
 endif ()
 
 set(WITH_RDMA_VAL "0")
@@ -117,80 +126,94 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 find_package(GFLAGS REQUIRED)
 
-include_directories(
-    ${PROJECT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
-
 execute_process(
     COMMAND bash -c "${PROJECT_SOURCE_DIR}/tools/get_brpc_revision.sh ${PROJECT_SOURCE_DIR} | tr -d '\n'"
     OUTPUT_VARIABLE BRPC_REVISION
 )
+string(REPLACE "\\|" "|" BRPC_REVISION "${BRPC_REVISION}")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     include(CheckFunctionExists)
     CHECK_FUNCTION_EXISTS(clock_gettime HAVE_CLOCK_GETTIME)
     if(NOT HAVE_CLOCK_GETTIME)
-        set(DEFINE_CLOCK_GETTIME "-DNO_CLOCK_GETTIME_IN_MAC")
+        list(APPEND BRPC_COMMON_DEFINITIONS NO_CLOCK_GETTIME_IN_MAC)
     endif()
-    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -Wno-deprecated-declarations -Wno-inconsistent-missing-override")
+    list(APPEND BRPC_COMMON_COMPILE_OPTIONS
+        -Wno-deprecated-declarations
+        -Wno-inconsistent-missing-override
+    )
 endif()
 
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DBRPC_WITH_RDMA=${WITH_RDMA_VAL} -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL} -DBRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}")
-if (WITH_ASAN)
-    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -fsanitize=address")
-    set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -fsanitize=address")
+list(APPEND BRPC_COMMON_DEFINITIONS
+    BRPC_WITH_GLOG=${WITH_GLOG_VAL}
+    BRPC_WITH_RDMA=${WITH_RDMA_VAL}
+    BRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL}
+    BRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}
+    BTHREAD_USE_FAST_PTHREAD_MUTEX
+    __const__=__unused__
+    _GNU_SOURCE
+    USE_SYMBOLIZE
+    NO_TCMALLOC
+    __STDC_FORMAT_MACROS
+    __STDC_LIMIT_MACROS
+    __STDC_CONSTANT_MACROS
+    __STRICT_ANSI__
+)
+if(NOT DEBUG)
+    list(APPEND BRPC_COMMON_DEFINITIONS NDEBUG)
+endif()
+if(WITH_ASAN)
+    list(APPEND BRPC_COMMON_COMPILE_OPTIONS -fsanitize=address)
+    list(APPEND BRPC_COMMON_LINK_OPTIONS -fsanitize=address)
 endif()
 if(WITH_MESALINK)
-    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DUSE_MESALINK")
+    list(APPEND BRPC_COMMON_DEFINITIONS USE_MESALINK)
 endif()
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__=__unused__ -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL} ${THRIFT_CPP_FLAG}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} ${CMAKE_CXX_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
-set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
 
-macro(use_cxx11)
-if(CMAKE_VERSION VERSION_LESS "3.1.3")
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-    endif()
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-    endif()
-else()
-    set(CMAKE_CXX_STANDARD 11)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-endif()
-endmacro(use_cxx11)
+list(APPEND BRPC_COMMON_COMPILE_OPTIONS
+    -O2
+    -pipe
+    -Wall
+    -W
+    -fPIC
+    -fstrict-aliasing
+    -Wno-unused-parameter
+    -fno-omit-frame-pointer
+    "-DBRPC_REVISION=\"${BRPC_REVISION}\""
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-invalid-offsetof>
+)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     #required by butil/crc32.cc to boost performance for 10x
     if((CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)") AND NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
+        list(APPEND BRPC_COMMON_COMPILE_OPTIONS
+            $<$<COMPILE_LANGUAGE:CXX>:-msse4>
+            $<$<COMPILE_LANGUAGE:CXX>:-msse4.2>
+        )
     elseif((CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64"))
         # segmentation fault in libcontext
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gcse")
+        list(APPEND BRPC_COMMON_COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CXX>:-fno-gcse>)
     elseif((CMAKE_SYSTEM_PROCESSOR MATCHES "riscv64"))
         # RISC-V specific optimizations
         option(WITH_RISCV_ZBC "Enable RISC-V Zbc carry-less multiplication for CRC32C acceleration" OFF)
         option(WITH_RISCV_ZVBC "Enable RISC-V Zvbc vector carry-less multiplication for CRC32C acceleration" OFF)
         if(WITH_RISCV_ZVBC)
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=rv64gcv_zbc_zvbc")
+            list(APPEND BRPC_COMMON_COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CXX>:-march=rv64gcv_zbc_zvbc>)
         elseif(WITH_RISCV_ZBC)
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=rv64gc_zbc")
+            list(APPEND BRPC_COMMON_COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CXX>:-march=rv64gc_zbc>)
         else()
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=rv64gc")
+            list(APPEND BRPC_COMMON_COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CXX>:-march=rv64gc>)
         endif()
     endif()
     if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
+        list(APPEND BRPC_COMMON_COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CXX>:-Wno-aligned-new>)
     endif()
 endif()
 
 find_package(Protobuf REQUIRED)
-if(Protobuf_VERSION GREATER 4.21)
+if(Protobuf_VERSION VERSION_GREATER 4.21)
     # required by absl
-    set(CMAKE_CXX_STANDARD 17)
+    set(BRPC_CXX_STANDARD 17)
 
     find_package(absl REQUIRED CONFIG)
     set(protobuf_ABSL_USED_TARGETS
@@ -231,8 +254,6 @@ if(Protobuf_VERSION GREATER 4.21)
         absl::utility
         absl::variant
     )
-else()
-    use_cxx11()
 endif()
 find_package(Threads REQUIRED)
 
@@ -248,7 +269,7 @@ if(WITH_SNAPPY)
     if ((NOT SNAPPY_INCLUDE_PATH) OR (NOT SNAPPY_LIB))
         message(FATAL_ERROR "Fail to find snappy")
     endif()
-    include_directories(${SNAPPY_INCLUDE_PATH})
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${SNAPPY_INCLUDE_PATH})
 endif()
 
 if(WITH_GLOG)
@@ -257,7 +278,7 @@ if(WITH_GLOG)
     if((NOT GLOG_INCLUDE_PATH) OR (NOT GLOG_LIB))
         message(FATAL_ERROR "Fail to find glog")
     endif()
-    include_directories(${GLOG_INCLUDE_PATH})
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${GLOG_INCLUDE_PATH})
 endif()
 
 if(WITH_MESALINK)
@@ -268,7 +289,7 @@ if(WITH_MESALINK)
     else()
         message(STATUS "Found MesaLink: ${MESALINK_LIB}")
     endif()
-    include_directories(${MESALINK_INCLUDE_PATH})
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${MESALINK_INCLUDE_PATH})
 endif()
 
 if(WITH_RDMA)
@@ -278,6 +299,7 @@ if(WITH_RDMA)
     if((NOT RDMA_INCLUDE_PATH) OR (NOT RDMA_LIB))
         message(FATAL_ERROR "Fail to find ibverbs")
     endif()
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${RDMA_INCLUDE_PATH})
 endif()
 
 find_library(PROTOC_LIB NAMES protoc)
@@ -287,7 +309,7 @@ endif()
 
 if(WITH_BORINGSSL)
     find_package(BoringSSL)
-    include_directories(${BORINGSSL_INCLUDE_DIR})
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${BORINGSSL_INCLUDE_DIR})
 else()
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT OPENSSL_ROOT_DIR)
         set(OPENSSL_ROOT_DIR
@@ -295,15 +317,15 @@ else()
         )
     endif()
 
-    find_package(OpenSSL)
-    include_directories(${OPENSSL_INCLUDE_DIR})
+    find_package(OpenSSL REQUIRED)
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${OPENSSL_INCLUDE_DIR})
 endif()
 
-include_directories(
-        ${GFLAGS_INCLUDE_PATH}
-        ${PROTOBUF_INCLUDE_DIRS}
-        ${LEVELDB_INCLUDE_PATH}
-        )
+list(APPEND BRPC_COMMON_INCLUDE_DIRS
+    ${GFLAGS_INCLUDE_PATH}
+    ${PROTOBUF_INCLUDE_DIRS}
+    ${LEVELDB_INCLUDE_PATH}
+)
 
 set(DYNAMIC_LIB
     ${GFLAGS_LIBRARY}
@@ -368,6 +390,17 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_mallctl"
         "-Wl,-U,_malloc_stats_print"
     )
+endif()
+
+list(REMOVE_DUPLICATES BRPC_COMMON_INCLUDE_DIRS)
+
+add_library(brpc_common_config INTERFACE)
+target_include_directories(brpc_common_config INTERFACE ${BRPC_COMMON_INCLUDE_DIRS})
+target_compile_definitions(brpc_common_config INTERFACE ${BRPC_COMMON_DEFINITIONS})
+target_compile_options(brpc_common_config INTERFACE ${BRPC_COMMON_COMPILE_OPTIONS})
+target_compile_features(brpc_common_config INTERFACE cxx_std_${BRPC_CXX_STANDARD})
+if(BRPC_COMMON_LINK_OPTIONS)
+    target_link_options(brpc_common_config INTERFACE ${BRPC_COMMON_LINK_OPTIONS})
 endif()
 
 # for *.so
@@ -512,12 +545,12 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         ${PROJECT_SOURCE_DIR}/src/butil/mac/scoped_mach_port.cc)
 endif()
 
-file(GLOB_RECURSE BVAR_SOURCES "${PROJECT_SOURCE_DIR}/src/bvar/*.cpp")
-file(GLOB_RECURSE BTHREAD_SOURCES "${PROJECT_SOURCE_DIR}/src/bthread/*.cpp")
-file(GLOB_RECURSE JSON2PB_SOURCES "${PROJECT_SOURCE_DIR}/src/json2pb/*.cpp")
-file(GLOB_RECURSE BRPC_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/*.cpp")
-file(GLOB_RECURSE THRIFT_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/thrift*.cpp")
-file(GLOB_RECURSE EXCLUDE_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/event_dispatcher_*.cpp")
+file(GLOB_RECURSE BVAR_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/bvar/*.cpp")
+file(GLOB_RECURSE BTHREAD_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/bthread/*.cpp")
+file(GLOB_RECURSE JSON2PB_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/json2pb/*.cpp")
+file(GLOB_RECURSE BRPC_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc/*.cpp")
+file(GLOB_RECURSE THRIFT_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc/thrift*.cpp")
+file(GLOB_RECURSE EXCLUDE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc/event_dispatcher_*.cpp")
 
 if(WITH_THRIFT)
     message("brpc compile with thrift protocol")
@@ -567,6 +600,7 @@ compile_proto(PROTO_HDRS PROTO_SRCS ${PROJECT_BINARY_DIR}
                                     ${PROJECT_SOURCE_DIR}/src
                                     "${PROTO_FILES}")
 add_library(PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
+target_link_libraries(PROTO_LIB PRIVATE brpc_common_config)
 
 set(SOURCES
     ${BVAR_SOURCES}

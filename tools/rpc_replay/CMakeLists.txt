@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-file(GLOB SOURCES "${PROJECT_SOURCE_DIR}/tools/rpc_replay/*.cpp")
+file(GLOB SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/tools/rpc_replay/*.cpp")
 add_executable(rpc_replay ${SOURCES})
-target_link_libraries(rpc_replay brpc-static ${DYNAMIC_LIB})
+target_link_libraries(rpc_replay PRIVATE brpc-static ${DYNAMIC_LIB})
 install(TARGETS rpc_replay RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
