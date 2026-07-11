@@ -830,6 +830,16 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
         set_parsed();
         return PARSE_OK;
     }
+    // The length-encoded value must fit in the remaining buffer. cutn clamps to
+    // what is available, so an oversized len leaves the tail of the len-byte
+    // allocation uninitialized while _data.str is published as len bytes,
+    // exposing uninitialized arena memory and desyncing the packet stream.
+    // The binary Field::Parse and Column::Parse paths already guard this.
+    if (len > buf.size()) {
+        LOG(WARNING) << "MysqlReply::Field::Parse: field length " << len
+                   << " exceeds remaining buffer size " << buf.size();
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     // field is not null
     butil::IOBuf str;
     buf.cutn(&str, len);
