@@ -21,6 +21,7 @@
 #include <butil/sys_byteorder.h>
 #include <butil/iobuf.h>
 #include <butil/logging.h>
+#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 namespace brpc {
@@ -40,7 +41,7 @@ namespace {
 class CouchbaseUnitTest : public testing::Test {};
 
 TEST_F(CouchbaseUnitTest, RejectOversizedResponseBeforeBufferingBody) {
-  const uint64_t saved_max_body_size = brpc::FLAGS_max_body_size;
+  GFLAGS_NAMESPACE::FlagSaver flag_saver;
   brpc::FLAGS_max_body_size = 1024;
 
   brpc::SocketId id;
@@ -58,7 +59,6 @@ TEST_F(CouchbaseUnitTest, RejectOversizedResponseBeforeBufferingBody) {
             brpc::policy::ParseCouchbaseMessage(
                 &couchbase_buf, socket.get(), false, NULL).error());
 
-  brpc::FLAGS_max_body_size = saved_max_body_size;
 }
 
 TEST_F(CouchbaseUnitTest, RequestBuilders) {

@@ -25,6 +25,7 @@
 #include <brpc/socket.h>
 #include <butil/iobuf.h>
 #include <butil/sys_byteorder.h>
+#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 namespace brpc {
@@ -41,7 +42,7 @@ int main(int argc, char* argv[]) {
 namespace {
 
 TEST(MemcacheParserTest, RejectOversizedResponseBeforeBufferingBody) {
-    const uint64_t saved_max_body_size = brpc::FLAGS_max_body_size;
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
     brpc::FLAGS_max_body_size = 1024;
 
     brpc::SocketId id;
@@ -59,7 +60,6 @@ TEST(MemcacheParserTest, RejectOversizedResponseBeforeBufferingBody) {
               brpc::policy::ParseMemcacheMessage(
                   &buf, socket.get(), false, NULL).error());
 
-    brpc::FLAGS_max_body_size = saved_max_body_size;
 }
 
 static pthread_once_t download_memcached_once = PTHREAD_ONCE_INIT;

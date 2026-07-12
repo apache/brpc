@@ -80,18 +80,6 @@ int main(int argc, char* argv[]) {
 
 namespace {
 
-class MaxBodySizeGuard {
-public:
-    explicit MaxBodySizeGuard(uint64_t value)
-        : _saved(brpc::FLAGS_max_body_size) {
-        brpc::FLAGS_max_body_size = value;
-    }
-    ~MaxBodySizeGuard() { brpc::FLAGS_max_body_size = _saved; }
-
-private:
-    uint64_t _saved;
-};
-
 static const std::string EXP_REQUEST = "hello";
 static const std::string EXP_RESPONSE = "world";
 static const std::string EXP_RESPONSE_CONTENT_LENGTH = "1024";
@@ -358,7 +346,8 @@ protected:
 };
 
 TEST_F(HttpTest, reject_oversized_http_body) {
-    MaxBodySizeGuard guard(4);
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 4;
     butil::IOBuf buf;
     buf.append("POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\nhello");
 
@@ -375,7 +364,8 @@ TEST_F(HttpTest, reject_oversized_http_body) {
 }
 
 TEST_F(HttpTest, reject_oversized_chunked_http_body) {
-    MaxBodySizeGuard guard(4);
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 4;
     butil::IOBuf buf;
     buf.append("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
                "3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n");
