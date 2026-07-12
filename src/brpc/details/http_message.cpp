@@ -39,6 +39,7 @@ DEFINE_bool(http_verbose, false,
 DEFINE_int32(http_verbose_max_body_length, 512,
              "[DEBUG] Max body length printed when -http_verbose is on");
 DECLARE_int64(socket_max_unwritten_bytes);
+DECLARE_uint64(max_body_size);
 
 // Implement callbacks for http parser
 
@@ -254,6 +255,14 @@ int HttpMessage::on_message_complete_cb(http_parser *parser) {
 }
 
 int HttpMessage::OnBody(const char *at, const size_t length) {
+    if (!_read_body_progressively) {
+        if (length > FLAGS_max_body_size ||
+            _body_size > FLAGS_max_body_size - length) {
+            _body_too_large = true;
+            return -1;
+        }
+        _body_size += length;
+    }
     if (_vmsgbuilder) {
         if (_stage != HTTP_ON_BODY) {
             // only add prefix at first entry.
