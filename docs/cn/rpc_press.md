@@ -33,7 +33,7 @@ json也可以写在文件中，假如./input.json包含了上述两个请求，-
 可选参数:
 
 - -inc: 包含被import的proto文件的路径。rpc_press默认支持import目录下的其他proto文件，但如果proto文件在其他目录，就要通过这个参数指定，多个路径用分号(;)分隔。
-- -lb_policy: 指定负载均衡算法，默认为空，可选项为: rr random la c_murmurhash c_md5，具体见[负载均衡](client.md#负载均衡)。
+- -lb_policy: 指定负载均衡算法，默认为空，可选项为: rr random la p2c c_murmurhash c_md5，具体见[负载均衡](client.md#负载均衡)。
 - -timeout_ms: 设定超时,单位是毫秒(milliseconds),默认是1000(1秒)
 - -max_retry: 最大的重试次数,默认是3, 一般无需修改. brpc的重试行为具体请见[这里](client.md#重试).
 - -protocol: 连接server使用的协议，可选项见[协议](client.md#协议), 默认是baidu_std
