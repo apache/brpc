@@ -237,6 +237,12 @@ butil::Status FlvReader::Read(RtmpVideoMessage* msg) {
     uint32_t msg_size = policy::ReadBigEndian3Bytes(p + 1);
     uint32_t timestamp = policy::ReadBigEndian3Bytes(p + 4);
     timestamp |= (*(p + 7) << 24);
+    // The tag body carries at least the 1-byte VideoTagHeader consumed below.
+    // A DataSize of 0 makes `msg_size - 1' wrap to 0xFFFFFFFF and the cutn()
+    // then swallows the whole remaining buffer as one message.
+    if (msg_size < 1) {
+        return butil::Status(EINVAL, "Invalid FLV video tag with DataSize=0");
+    }
     if (_buf->length() < 11 + msg_size + 4/*PreviousTagSize*/) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
@@ -265,6 +271,12 @@ butil::Status FlvReader::Read(RtmpAudioMessage* msg) {
     uint32_t msg_size = policy::ReadBigEndian3Bytes(p + 1);
     uint32_t timestamp = policy::ReadBigEndian3Bytes(p + 4);
     timestamp |= (*(p + 7) << 24);
+    // The tag body carries at least the 1-byte AudioTagHeader consumed below.
+    // A DataSize of 0 makes `msg_size - 1' wrap to 0xFFFFFFFF and the cutn()
+    // then swallows the whole remaining buffer as one message.
+    if (msg_size < 1) {
+        return butil::Status(EINVAL, "Invalid FLV audio tag with DataSize=0");
+    }
     if (_buf->length() < 11 + msg_size + 4/*PreviousTagSize*/) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
