@@ -739,6 +739,9 @@ H2ParseResult H2StreamContext::OnData(
     for (size_t i = 0; i < data.backing_block_num(); ++i) {
         const butil::StringPiece blk = data.backing_block(i);
         if (OnBody(blk.data(), blk.size()) != 0) {
+            if (body_too_large()) {
+                return MakeH2Error(H2_ENHANCE_YOUR_CALM, stream_id());
+            }
             LOG(ERROR) << "Fail to parse data";
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }

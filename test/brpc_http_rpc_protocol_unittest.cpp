@@ -60,6 +60,7 @@ DECLARE_string(rpc_dump_dir);
 DECLARE_int32(rpc_dump_max_requests_in_one_file);
 DECLARE_bool(allow_chunked_length);
 DECLARE_int32(max_connection_pool_size);
+DECLARE_uint64(max_body_size);
 extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
 }
 
@@ -343,6 +344,43 @@ protected:
     MyEchoService _svc;
     MyAuthenticator _auth;
 };
+
+TEST_F(HttpTest, reject_oversized_http_body) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 4;
+    butil::IOBuf buf;
+    buf.append("POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\nhello");
+
+    brpc::ParseResult result =
+        brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, NULL);
+    EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
+    int bytes_in_pipe = 0;
+    ASSERT_EQ(0, ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe));
+    ASSERT_GT(bytes_in_pipe, 0);
+    butil::IOPortal response;
+    ASSERT_EQ(bytes_in_pipe,
+              response.append_from_file_descriptor(_pipe_fds[0], bytes_in_pipe));
+    EXPECT_NE(std::string::npos, response.to_string().find(" 413 "));
+}
+
+TEST_F(HttpTest, reject_oversized_chunked_http_body) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 4;
+    butil::IOBuf buf;
+    buf.append("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+               "3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n");
+
+    brpc::ParseResult result =
+        brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, NULL);
+    EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
+    int bytes_in_pipe = 0;
+    ASSERT_EQ(0, ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe));
+    ASSERT_GT(bytes_in_pipe, 0);
+    butil::IOPortal response;
+    ASSERT_EQ(bytes_in_pipe,
+              response.append_from_file_descriptor(_pipe_fds[0], bytes_in_pipe));
+    EXPECT_NE(std::string::npos, response.to_string().find(" 413 "));
+}
 
 int AllocateFreePortOrDie() {
     butil::fd_guard fd(tcp_listen(butil::EndPoint(butil::my_ip(), 0)));
