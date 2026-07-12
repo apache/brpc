@@ -179,9 +179,40 @@ inline iov_function get_pwritev_func() {
 
 #endif  // ARCH_CPU_X86_64
 
+#if defined(__riscv) && defined(__riscv_vector) && __has_include(<riscv_vector.h>)
+#include <riscv_vector.h>
+
+// RVV-optimized memory copy using VL-agnostic intrinsics.
+// Uses largest available LMUL (e8m8) for maximum vector width.
+// Falls back to memcpy for small copies (< 64 bytes).
+static inline void* cp_rvv(void* __restrict dest, const void* __restrict src,
+                           size_t n) {
+    if (n < 64) {
+        return memcpy(dest, src, n);
+    }
+    char* d = static_cast<char*>(dest);
+    const char* s = static_cast<const char*>(src);
+    size_t vl;
+    for (size_t i = 0; i < n; i += vl) {
+        vl = __riscv_vsetvl_e8m8(n - i);
+        vuint8m8_t data =
+            __riscv_vle8_v_u8m8(
+                reinterpret_cast<const uint8_t*>(s + i), vl);
+        __riscv_vse8_v_u8m8(
+            reinterpret_cast<uint8_t*>(d + i), data, vl);
+    }
+    return dest;
+}
+#define HAS_RVV_CP
+#endif
+
 void* cp(void *__restrict dest, const void *__restrict src, size_t n) {
+#if defined(HAS_RVV_CP)
+    return cp_rvv(dest, src, n);
+#else
     // memcpy in gcc 4.8 seems to be faster enough.
     return memcpy(dest, src, n);
+#endif
 }
 
 // Function pointers to allocate or deallocate memory for a IOBuf::Block
