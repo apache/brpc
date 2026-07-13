@@ -245,6 +245,16 @@ TEST_F(FlatMapTest, to_lower) {
         ASSERT_EQ((char)::tolower(c), butil::ascii_tolower(c)) << "c=" << c;
     }
 
+    // Real callers (header names, HPACK) reach ascii_tolower with a `char`.
+    // On unsigned-char platforms a byte >= 0x80 promotes to 128..255, which
+    // would index past the +128-biased 256-entry map. Exercise every byte
+    // value as a `char` and check the result against a safe reference; this
+    // trips a buffer-overflow read under ASan without the signed-char fold.
+    for (int i = 0; i < 256; ++i) {
+        const char ch = (char)i;
+        ASSERT_EQ((char)::tolower(i), butil::ascii_tolower(ch)) << "i=" << i;
+    }
+
     const size_t input_len = 102;
     char input[input_len + 1];
     char input2[input_len + 1];
