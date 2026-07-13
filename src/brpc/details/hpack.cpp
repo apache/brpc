@@ -554,7 +554,8 @@ inline ssize_t DecodeInteger(butil::IOBufBytesIterator& iter,
         // once m reaches 64 the `<< m` shift is undefined behavior. Refuse the
         // over-long encoding before that happens.
         if (m >= 32) {
-            LOG(ERROR) << "Source stream is likely malformed";
+            LOG_EVERY_SECOND(ERROR) << "Over-long HPACK integer encoding, "
+                                       "continuation octets would overflow the shift";
             return -1;
         }
         cur_byte = *iter;
