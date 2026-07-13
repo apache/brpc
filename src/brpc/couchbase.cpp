@@ -46,7 +46,7 @@ namespace brpc {
 // Couchbase protocol constants
 namespace {
 [[maybe_unused]] constexpr uint32_t APPLE_VBUCKET_COUNT = 64;
-constexpr uint32_t DEFAULT_VBUCKET_COUNT = 1024;
+[[maybe_unused]] constexpr uint32_t DEFAULT_VBUCKET_COUNT = 1024;
 constexpr int CONNECTION_ID_SIZE = 33;
 constexpr size_t RANDOM_ID_HEX_SIZE = 67;  // 33 bytes * 2 + null terminator
 }  // namespace

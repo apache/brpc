@@ -188,21 +188,6 @@ static void PrintAnnotations(
     SpanInfoExtractor** extractors, int num_extr, const RpczSpan* span) {
     int64_t anno_time;
     std::string a;
-    const char* span_type_str = "Span";
-    if (span) {
-        switch (span->type()) {
-        case SPAN_TYPE_SERVER:
-            span_type_str = "ServerSpan";
-            break;
-        case SPAN_TYPE_CLIENT:
-            span_type_str = "ClientSpan";
-            break;
-        case SPAN_TYPE_BTHREAD:
-            span_type_str = "BthreadSpan";
-            break;
-        }
-    }
-
     // TODO: Going through all extractors is not strictly correct because 
     // later extractors may have earlier annotations.
     for (int i = 0; i < num_extr; ++i) {
