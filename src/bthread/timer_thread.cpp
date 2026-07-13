@@ -34,6 +34,31 @@ namespace bthread {
 
 DEFINE_uint32(brpc_timer_num_buckets, 13, "brpc timer num buckets");
 
+// Tasks unscheduled after being pulled into the timer thread's min-heap are
+// only recycled when popped at their run_time, which can be far in the future
+// for large timeouts. To bound the memory they occupy (~ qps * timeout), the
+// timer thread periodically sweeps the heap and drops unscheduled tasks. The
+// sweep only kicks in once the heap grows beyond this size, so that small
+// heaps (where the retained memory is negligible) never pay the O(N) cost.
+DEFINE_uint32(brpc_timer_heap_sweep_min_size, 4096,
+              "The timer thread sweeps unscheduled tasks out of its internal "
+              "heap only when the heap has at least this many tasks");
+
+// The timer thread only consumes buckets and reclaims unscheduled tasks when
+// it wakes up, which normally happens at the nearest task's run_time. If every
+// pending task has a far-future run_time (e.g. minutes away), the thread would
+// sleep that whole time while newly scheduled-then-unscheduled tasks pile up
+// in the buckets, occupying pooled slots for the entire duration. Capping the
+// sleep makes the thread wake up periodically to drain the buckets and sweep
+// the heap, bounding that latency regardless of the timeout distribution.
+// 0 (the default) disables the cap: sleep until the nearest run_time, the
+// legacy behavior. Set it to a positive value to bound reclaim latency when
+// tasks may have far-future run_times.
+DEFINE_uint32(brpc_timer_max_wakeup_interval_ms, 0,
+              "The timer thread wakes up at least this often (in milliseconds) "
+              "to reclaim unscheduled tasks even when all pending tasks are far "
+              "in the future; 0 means no periodic wakeup");
+
 // Defined in task_control.cpp
 void run_worker_startfn();
 
@@ -132,6 +157,7 @@ TimerThread::TimerThread()
     , _buckets(NULL)
     , _nearest_run_time(std::numeric_limits<int64_t>::max())
     , _nsignals(0)
+    , _npending(0)
     , _thread(0) {
 }
 
@@ -327,6 +353,11 @@ void TimerThread::run() {
     // min heap of tasks (ordered by run_time)
     std::vector<Task*> tasks;
     tasks.reserve(4096);
+    // Heap size at the last sweep. Used to trigger the next sweep only after
+    // the heap has roughly doubled, keeping the amortized cost of sweeping at
+    // O(1) per task. It also follows the heap down when tasks are run, so a
+    // regrowth (e.g. filled with newly-unscheduled tasks) triggers a sweep.
+    size_t last_sweep_size = 0;
 
     // vars
     size_t nscheduled = 0;
@@ -374,6 +405,29 @@ void TimerThread::run() {
             }
         }
 
+        // A task is only checked by try_delete() once, right when it is pulled
+        // out of its bucket. If it gets unscheduled afterwards, it lingers in
+        // the heap (occupying a pooled Task slot) until it is popped at its
+        // run_time. For large timeouts this keeps a lot of dead tasks around.
+        // Sweep them out here. The sweep is gated on the heap having grown to
+        // twice its post-sweep size (and past a minimum), so the O(N) pass is
+        // amortized O(1) per task and small heaps never pay for it.
+        if (tasks.size() >= FLAGS_brpc_timer_heap_sweep_min_size &&
+            tasks.size() >= last_sweep_size * 2) {
+            size_t j = 0;
+            for (size_t i = 0; i < tasks.size(); ++i) {
+                Task* task = tasks[i];
+                if (!task->try_delete()) {  // still scheduled, keep it
+                    tasks[j++] = task;
+                }
+            }
+            if (j != tasks.size()) {
+                tasks.resize(j);
+                std::make_heap(tasks.begin(), tasks.end(), task_greater);
+            }
+            last_sweep_size = tasks.size();
+        }
+
         bool pull_again = false;
         while (!tasks.empty()) {
             Task* task1 = tasks[0];  // the about-to-run task
@@ -404,9 +458,17 @@ void TimerThread::run() {
                 ++ntriggered;
             }
         }
+        // Publish the heap size before possibly looping back on pull_again,
+        // so the observability counter doesn't go stale during the retry spin.
+        _npending.store((int64_t)tasks.size(), butil::memory_order_relaxed);
         if (pull_again) {
             BT_VLOG << "pull again, tasks=" << tasks.size();
             continue;
+        }
+        // Let the sweep baseline follow the heap down as tasks are run, so
+        // that a heap refilled with (soon unscheduled) tasks is swept again.
+        if (tasks.size() < last_sweep_size) {
+            last_sweep_size = tasks.size();
         }
 
         // The realtime to wait for.
@@ -434,7 +496,18 @@ void TimerThread::run() {
         timespec next_timeout = { 0, 0 };
         const int64_t now = butil::gettimeofday_us();
         if (next_run_time != std::numeric_limits<int64_t>::max()) {
-            next_timeout = butil::microseconds_to_timespec(next_run_time - now);
+            int64_t wait_us = next_run_time - now;
+            // Cap the sleep so we periodically wake up to drain buckets and
+            // sweep the heap even when the nearest task is far in the future.
+            // Note: an empty heap keeps ptimeout NULL (sleep until woken by a
+            // schedule()), which is safe because the first task after the heap
+            // empties is always earlier than _nearest_run_time and wakes us.
+            const int64_t max_wakeup_us =
+                (int64_t)FLAGS_brpc_timer_max_wakeup_interval_ms * 1000;
+            if (max_wakeup_us > 0 && wait_us > max_wakeup_us) {
+                wait_us = max_wakeup_us;
+            }
+            next_timeout = butil::microseconds_to_timespec(wait_us);
             ptimeout = &next_timeout;
         }
         busy_seconds += (now - last_sleep_time) / 1000000.0;
