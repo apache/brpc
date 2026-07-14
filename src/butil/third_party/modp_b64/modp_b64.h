@@ -26,6 +26,10 @@
 
 #include <stddef.h>
 
+#if defined(__riscv) && defined(__riscv_vector)
+#include "modp_b64_rvv.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
