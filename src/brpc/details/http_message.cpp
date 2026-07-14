@@ -578,6 +578,16 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
 
 #define BRPC_CRLF "\r\n"
 
+// A header field-name or field-value carrying a raw CR or LF lets whoever
+// controls it close the current line and inject extra header fields (or a
+// body) into the serialized message, i.e. HTTP request/response splitting.
+// The inbound parser already refuses these bytes; the outbound path drops
+// such fields so a value forwarded from an untrusted source can't smuggle
+// headers.
+static bool HeaderHasCRLF(const std::string& s) {
+    return s.find_first_of("\r\n") != std::string::npos;
+}
+
 // Request format
 // Request       = Request-Line              ; Section 5.1
 //                 *(( general-header        ; Section 4.5
@@ -644,12 +654,17 @@ void MakeRawHttpRequest(butil::IOBuf* request,
         }
         os << BRPC_CRLF;
     }
-    if (!h->content_type().empty()) {
+    if (!h->content_type().empty() && !HeaderHasCRLF(h->content_type())) {
         os << "Content-Type: " << h->content_type()
            << BRPC_CRLF;
     }
     for (HttpHeader::HeaderIterator it = h->HeaderBegin();
          it != h->HeaderEnd(); ++it) {
+        if (HeaderHasCRLF(it->first) || HeaderHasCRLF(it->second)) {
+            LOG(ERROR) << "Skip header `" << it->first
+                       << "' containing CR/LF to avoid injection";
+            continue;
+        }
         os << it->first << ": " << it->second << BRPC_CRLF;
     }
     if (h->GetHeader("Accept") == NULL) {
@@ -733,12 +748,18 @@ void MakeRawHttpResponse(butil::IOBuf* response,
             }
         }
     }
-    if (!is_invalid_content && !h->content_type().empty()) {
+    if (!is_invalid_content && !h->content_type().empty() &&
+        !HeaderHasCRLF(h->content_type())) {
         os << "Content-Type: " << h->content_type()
            << BRPC_CRLF;
     }
     for (HttpHeader::HeaderIterator it = h->HeaderBegin();
          it != h->HeaderEnd(); ++it) {
+        if (HeaderHasCRLF(it->first) || HeaderHasCRLF(it->second)) {
+            LOG(ERROR) << "Skip header `" << it->first
+                       << "' containing CR/LF to avoid injection";
+            continue;
+        }
         os << it->first << ": " << it->second << BRPC_CRLF;
     }
     os << BRPC_CRLF;  // CRLF before content

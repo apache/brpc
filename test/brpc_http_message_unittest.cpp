@@ -703,6 +703,31 @@ TEST(HttpMessageTest, serialize_http_response) {
         << butil::ToPrintable(response);
 }
 
+TEST(HttpMessageTest, serialize_header_with_crlf_is_not_injected) {
+    // A header value carrying CR/LF must not terminate the current line and
+    // introduce extra header fields (HTTP request/response splitting).
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:1234", &ep));
+    butil::IOBuf content;
+    content.append("data");
+
+    brpc::HttpHeader req_header;
+    req_header.set_method(brpc::HTTP_METHOD_POST);
+    req_header.SetHeader("X-Evil", "a\r\nInjected: 1");
+    butil::IOBuf request;
+    MakeRawHttpRequest(&request, &req_header, ep, &content);
+    std::string request_str = request.to_string();
+    ASSERT_EQ(std::string::npos, request_str.find("Injected: 1")) << request_str;
+
+    brpc::HttpHeader res_header;
+    res_header.SetHeader("X-Evil", "a\r\nInjected: 1");
+    butil::IOBuf response;
+    content.append("data");
+    MakeRawHttpResponse(&response, &res_header, &content);
+    std::string response_str = response.to_string();
+    ASSERT_EQ(std::string::npos, response_str.find("Injected: 1")) << response_str;
+}
+
 TEST(HttpMessageTest, http_1_1_request_without_host) {
     brpc::FLAGS_allow_http_1_1_request_without_host = false;
     {
