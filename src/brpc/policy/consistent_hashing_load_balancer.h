@@ -47,6 +47,10 @@ public:
         uint32_t hash;
         ServerId server_sock;
         butil::EndPoint server_addr;  // To make sorting stable among all clients
+        // Time when the server was added, for the warm-up ramp. Not part
+        // of ordering/equality so that re-adding an existing server keeps
+        // its original stamp.
+        int64_t join_time_us;
         bool operator<(const Node &rhs) const {
             if (hash < rhs.hash) { return true; }
             if (hash > rhs.hash) { return false; }

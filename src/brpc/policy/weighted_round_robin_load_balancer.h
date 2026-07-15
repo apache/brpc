@@ -43,9 +43,12 @@ public:
 
 private:
     struct Server {
-        Server(SocketId s_id = 0, uint32_t s_w = 0): id(s_id), weight(s_w) {}
+        Server(SocketId s_id = 0, uint32_t s_w = 0, int64_t s_jt = 0)
+            : id(s_id), weight(s_w), join_time_us(s_jt) {}
         SocketId id;
         uint32_t weight;
+        // Time when the server was added, for the warm-up ramp.
+        int64_t join_time_us;
     };
     struct Servers {
         // The value is configured weight for each server.

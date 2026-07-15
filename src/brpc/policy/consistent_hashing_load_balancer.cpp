@@ -22,6 +22,7 @@
 #include <openssl/md5.h>
 #include "butil/containers/flat_map.h"
 #include "butil/errno.h"
+#include "butil/time.h"
 #include "butil/strings/string_number_conversions.h"
 #include "brpc/socket.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
@@ -71,6 +72,7 @@ bool DefaultReplicaPolicy::Build(ServerId server,
         return false;
     }
     replicas->clear();
+    const int64_t join_time_us = butil::gettimeofday_us();
     for (size_t i = 0; i < num_replicas; ++i) {
         char host[256];
         int len = 0;
@@ -85,6 +87,7 @@ bool DefaultReplicaPolicy::Build(ServerId server,
         node.hash = _hash_func(host, len);
         node.server_sock = server;
         node.server_addr = ptr->remote_side();
+        node.join_time_us = join_time_us;
         replicas->push_back(node);
     }
     return true;
@@ -107,6 +110,7 @@ bool KetamaReplicaPolicy::Build(ServerId server,
         return false;
     }
     replicas->clear();
+    const int64_t join_time_us = butil::gettimeofday_us();
     const size_t points_per_hash = 4;
     CHECK(num_replicas % points_per_hash == 0)
         << "Ketam hash replicas number(" << num_replicas << ") should be n*4";
@@ -126,6 +130,7 @@ bool KetamaReplicaPolicy::Build(ServerId server,
             ConsistentHashingLoadBalancer::Node node;
             node.server_sock = server;
             node.server_addr = ptr->remote_side();
+            node.join_time_us = join_time_us;
             node.hash = ((uint32_t) (digest[3 + j * 4] & 0xFF) << 24)
                       | ((uint32_t) (digest[2 + j * 4] & 0xFF) << 16)
                       | ((uint32_t) (digest[1 + j * 4] & 0xFF) << 8)
@@ -321,7 +326,8 @@ int ConsistentHashingLoadBalancer::SelectServer(
     }
     for (size_t i = 0; i < s->size(); ++i) {
         if (((i + 1) == s->size() // always take last chance
-             || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
+             || (!ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id)
+                 && WarmupAccept(choice->join_time_us, in.begin_time_us)))
             && IsServerAvailable(choice->server_sock.id, out->ptr)) {
             return 0;
         } else {

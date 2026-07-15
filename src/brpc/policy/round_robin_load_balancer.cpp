@@ -18,6 +18,7 @@
 
 #include "butil/macros.h"
 #include "butil/fast_rand.h"
+#include "butil/time.h"
 #include "bthread/prime_offset.h"
 #include "brpc/socket.h"
 #include "brpc/policy/round_robin_load_balancer.h"
@@ -36,6 +37,7 @@ bool RoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
     }
     bg.server_map[id] = bg.server_list.size();
     bg.server_list.push_back(id);
+    bg.join_times.push_back(butil::gettimeofday_us());
     return true;
 }
 
@@ -44,8 +46,10 @@ bool RoundRobinLoadBalancer::Remove(Servers& bg, const ServerId& id) {
     if (it != bg.server_map.end()) {
         const size_t index = it->second;
         bg.server_list[index] = bg.server_list.back();
+        bg.join_times[index] = bg.join_times.back();
         bg.server_map[bg.server_list[index]] = index;
         bg.server_list.pop_back();
+        bg.join_times.pop_back();
         bg.server_map.erase(it);
         return true;
     }
@@ -119,7 +123,8 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         tls.offset = (tls.offset + tls.stride) % n;
         const SocketId id = s->server_list[tls.offset].id;
         if (((i + 1) == n  // always take last chance
-             || !ExcludedServers::IsExcluded(in.excluded, id))
+             || (!ExcludedServers::IsExcluded(in.excluded, id)
+                 && WarmupAccept(s->join_times[tls.offset], in.begin_time_us)))
             && IsServerAvailable(id, out->ptr)) {
             s.tls() = tls;
             return 0;
