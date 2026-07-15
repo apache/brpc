@@ -23,6 +23,7 @@
 #include "butil/scoped_lock.h"
 #include "butil/endpoint.h"
 #include "butil/base64.h"
+#include "butil/binary_printer.h"                // ToPrintable
 #include "bthread/bthread.h"                    // bthread_usleep
 #include "brpc/log.h"
 #include "brpc/reloadable_flags.h"
@@ -38,6 +39,9 @@ DEFINE_bool(http_verbose, false,
             "[DEBUG] Print EVERY http request/response");
 DEFINE_int32(http_verbose_max_body_length, 512,
              "[DEBUG] Max body length printed when -http_verbose is on");
+DEFINE_bool(http_check_outbound_header_crlf, true,
+            "Skip outbound http header fields whose name or value contains "
+            "CR/LF to prevent request/response splitting.");
 DECLARE_int64(socket_max_unwritten_bytes);
 DECLARE_uint64(max_body_size);
 
@@ -583,9 +587,11 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
 // body) into the serialized message, i.e. HTTP request/response splitting.
 // The inbound parser already refuses these bytes; the outbound path drops
 // such fields so a value forwarded from an untrusted source can't smuggle
-// headers.
+// headers. Gated by -http_check_outbound_header_crlf so it can be turned
+// off on hot paths that never forward untrusted header values.
 static bool HeaderHasCRLF(const std::string& s) {
-    return s.find_first_of("\r\n") != std::string::npos;
+    return FLAGS_http_check_outbound_header_crlf &&
+        s.find_first_of("\r\n") != std::string::npos;
 }
 
 // Request format
@@ -654,15 +660,21 @@ void MakeRawHttpRequest(butil::IOBuf* request,
         }
         os << BRPC_CRLF;
     }
-    if (!h->content_type().empty() && !HeaderHasCRLF(h->content_type())) {
-        os << "Content-Type: " << h->content_type()
-           << BRPC_CRLF;
+    if (!h->content_type().empty()) {
+        if (HeaderHasCRLF(h->content_type())) {
+            LOG(WARNING) << "Skip Content-Type `"
+                         << butil::ToPrintable(h->content_type())
+                         << "' containing CR/LF to avoid injection";
+        } else {
+            os << "Content-Type: " << h->content_type()
+               << BRPC_CRLF;
+        }
     }
     for (HttpHeader::HeaderIterator it = h->HeaderBegin();
          it != h->HeaderEnd(); ++it) {
         if (HeaderHasCRLF(it->first) || HeaderHasCRLF(it->second)) {
-            LOG(ERROR) << "Skip header `" << it->first
-                       << "' containing CR/LF to avoid injection";
+            LOG(WARNING) << "Skip header `" << butil::ToPrintable(it->first)
+                         << "' containing CR/LF to avoid injection";
             continue;
         }
         os << it->first << ": " << it->second << BRPC_CRLF;
@@ -748,16 +760,21 @@ void MakeRawHttpResponse(butil::IOBuf* response,
             }
         }
     }
-    if (!is_invalid_content && !h->content_type().empty() &&
-        !HeaderHasCRLF(h->content_type())) {
-        os << "Content-Type: " << h->content_type()
-           << BRPC_CRLF;
+    if (!is_invalid_content && !h->content_type().empty()) {
+        if (HeaderHasCRLF(h->content_type())) {
+            LOG(WARNING) << "Skip Content-Type `"
+                         << butil::ToPrintable(h->content_type())
+                         << "' containing CR/LF to avoid injection";
+        } else {
+            os << "Content-Type: " << h->content_type()
+               << BRPC_CRLF;
+        }
     }
     for (HttpHeader::HeaderIterator it = h->HeaderBegin();
          it != h->HeaderEnd(); ++it) {
         if (HeaderHasCRLF(it->first) || HeaderHasCRLF(it->second)) {
-            LOG(ERROR) << "Skip header `" << it->first
-                       << "' containing CR/LF to avoid injection";
+            LOG(WARNING) << "Skip header `" << butil::ToPrintable(it->first)
+                         << "' containing CR/LF to avoid injection";
             continue;
         }
         os << it->first << ": " << it->second << BRPC_CRLF;

@@ -728,6 +728,32 @@ TEST(HttpMessageTest, serialize_header_with_crlf_is_not_injected) {
     ASSERT_EQ(std::string::npos, response_str.find("Injected: 1")) << response_str;
 }
 
+TEST(HttpMessageTest, serialize_content_type_with_crlf_is_not_injected) {
+    // Content-Type goes through the same emission path and must be dropped
+    // (not written) when it carries CR/LF.
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:1234", &ep));
+
+    brpc::HttpHeader req_header;
+    req_header.set_method(brpc::HTTP_METHOD_POST);
+    req_header.set_content_type("text/plain\r\nInjected: 1");
+    butil::IOBuf req_content;
+    req_content.append("data");
+    butil::IOBuf request;
+    MakeRawHttpRequest(&request, &req_header, ep, &req_content);
+    std::string request_str = request.to_string();
+    ASSERT_EQ(std::string::npos, request_str.find("Injected: 1")) << request_str;
+
+    brpc::HttpHeader res_header;
+    res_header.set_content_type("text/plain\r\nInjected: 1");
+    butil::IOBuf res_content;
+    res_content.append("data");
+    butil::IOBuf response;
+    MakeRawHttpResponse(&response, &res_header, &res_content);
+    std::string response_str = response.to_string();
+    ASSERT_EQ(std::string::npos, response_str.find("Injected: 1")) << response_str;
+}
+
 TEST(HttpMessageTest, http_1_1_request_without_host) {
     brpc::FLAGS_allow_http_1_1_request_without_host = false;
     {
