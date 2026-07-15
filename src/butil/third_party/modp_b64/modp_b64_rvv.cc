@@ -126,6 +126,7 @@ size_t rvv_modp_b64_encode(char* dest, const char* str, size_t len)
             break;
         }
 
+        *d = '\0';
         return (size_t)(d - (uint8_t*)dest);
     }
 }
@@ -147,6 +148,12 @@ size_t rvv_modp_b64_encode(char* dest, const char* str, size_t len)
 
 size_t rvv_modp_b64_decode(char* dest, const char* src, size_t len)
 {
+    if (len == 0) return 0;
+
+    /* Strip trailing '=' padding (up to 2 chars for valid base64) */
+    while (len > 0 && src[len-1] == '=') {
+        len--;
+    }
     if (len == 0) return 0;
 
     size_t i = 0;
@@ -218,21 +225,39 @@ size_t rvv_modp_b64_decode(char* dest, const char* src, size_t len)
         const uint8_t* s = (const uint8_t*)(src + i);
         uint8_t* d = p;
 
-        for (size_t si = 0; si + 4 <= remaining; si += 4) {
-            uint8_t c0 = s[si], c1 = s[si+1], c2 = s[si+2], c3 = s[si+3];
-            int d0, d1, d2, d3;
+        size_t si = 0;
 
 #define DECODE_CHAR(c, val)                                                       do {                                                                      if (c >= 'A' && c <= 'Z')       val = c - 'A';                       else if (c >= 'a' && c <= 'z')  val = c - 'a' + 26;                  else if (c >= '0' && c <= '9')  val = c - '0' + 52;                  else if (c == '+')              val = 62;                             else if (c == '/')              val = 63;                             else return MODP_B64_RVV_ERROR;                                   } while (0)
 
+        for (; si + 4 <= remaining; si += 4) {
+            uint8_t c0 = s[si], c1 = s[si+1], c2 = s[si+2], c3 = s[si+3];
+            int d0, d1, d2, d3;
+
             DECODE_CHAR(c0, d0); DECODE_CHAR(c1, d1);
             DECODE_CHAR(c2, d2); DECODE_CHAR(c3, d3);
-
-#undef DECODE_CHAR
 
             *d++ = (uint8_t)((d0 << 2) | (d1 >> 4));
             *d++ = (uint8_t)(((d1 & 0x0F) << 4) | (d2 >> 2));
             *d++ = (uint8_t)(((d2 & 0x03) << 6) | d3);
         }
+
+        /* Handle leftover 2 or 3 chars (from padding-stripped input) */
+        {
+            size_t left = remaining - si;
+            if (left == 2) {
+                int d0, d1;
+                DECODE_CHAR(s[si], d0); DECODE_CHAR(s[si+1], d1);
+                *d++ = (uint8_t)((d0 << 2) | (d1 >> 4));
+            } else if (left == 3) {
+                int d0, d1, d2;
+                DECODE_CHAR(s[si], d0); DECODE_CHAR(s[si+1], d1); DECODE_CHAR(s[si+2], d2);
+                *d++ = (uint8_t)((d0 << 2) | (d1 >> 4));
+                *d++ = (uint8_t)(((d1 & 0x0F) << 4) | (d2 >> 2));
+            }
+        }
+
+#undef DECODE_CHAR
+
         return (size_t)(d - (uint8_t*)dest);
     }
 }
