@@ -1858,8 +1858,7 @@ void* Socket::KeepWrite(void* void_arg) {
             // KeepWrite to check and setup pending WriteRequests periodically,
             // which may turn on _overcrowded to stop pending requests from
             // growing infinitely.
-            const timespec duetime =
-                                butil::milliseconds_from_now(WAIT_EPOLLOUT_TIMEOUT_MS);
+            const timespec duetime = butil::milliseconds_from_now(WAIT_EPOLLOUT_TIMEOUT_MS);
             bool pollin = s->_transport->HasOnEdgeTrigger();
             int ret = s->_transport->WaitEpollOut(s->_epollout_butex, pollin, duetime);
             if (ret == 1) {

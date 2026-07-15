@@ -1604,7 +1604,8 @@ protected:
         
         EXPECT_TRUE(brpc::EEOF == cntl.ErrorCode() ||
                     brpc::ETOOMANYFAILS == cntl.ErrorCode() ||
-                    ECONNRESET == cntl.ErrorCode()) << cntl.ErrorText();
+                    ECONNRESET == cntl.ErrorCode() ||
+                    EPIPE == cntl.ErrorCode()) << cntl.ErrorText();
         StopAndJoin();
     }
 

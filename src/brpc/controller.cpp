@@ -1518,7 +1518,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
             if(!ptrs[i]) continue;
             Stream* extra_stream = (Stream *) ptrs[i]->conn();
             _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
-            s->SetHostSocket(host_socket);
+            extra_stream->SetHostSocket(host_socket);
             extra_stream->SetConnected(_remote_stream_settings);
         }
     }
