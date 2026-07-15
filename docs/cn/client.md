@@ -277,9 +277,15 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
+每台服务器的虚拟节点数默认由-chash_num_replicas控制（默认100），可按channel覆盖：`c_murmurhash:replicas=300`。
+
 实现原理请查看[Consistent Hashing](consistent_hashing.md)。
 
 其他lb不需要设置Controller.set_request_code()，如果调用了request_code也不会被lb使用，例如：lb=rr调用了Controller.set_request_code()，即使所有RPC的request_code都相同，也依然是rr。
+
+### c_murmurhash_bl
+
+即带负载上限的一致性哈希（"Consistent Hashing with Bounded Loads"，Mirrokni等，CACM 2017）。哈希环与`c_murmurhash`完全相同，但每台服务器额外有容量上限`ceil(load_factor * 平均在途请求数)`。当哈希命中的服务器已达上限时，请求沿哈希环顺时针溢出到下一台有余量的服务器，因此热点key不再压垮单台服务器，且溢出请求总是落到环上固定的后继节点，对cache仍然友好。系数默认来自-chash_bounded_load_factor（默认1.25，必须大于1），可按channel覆盖：`c_murmurhash_bl:load_factor=1.5`。`replicas`参数与`c_murmurhash`相同。
 
 ### 从集群宕机后恢复时的客户端限流
 
