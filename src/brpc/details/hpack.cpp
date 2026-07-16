@@ -547,6 +547,17 @@ inline ssize_t DecodeInteger(butil::IOBufBytesIterator& iter,
         if (!iter) {
             return 0;
         }
+        // A well-formed integer below MAX_HPACK_INTEGER fits in a few
+        // continuation octets. A run of 0x80 octets (continuation bit set,
+        // payload bits zero) leaves tmp unchanged, so the `tmp <
+        // MAX_HPACK_INTEGER` guard below never trips while m keeps growing;
+        // once m reaches 64 the `<< m` shift is undefined behavior. Refuse the
+        // over-long encoding before that happens.
+        if (m >= 32) {
+            LOG_EVERY_SECOND(ERROR) << "Over-long HPACK integer encoding, "
+                                       "continuation octets would overflow the shift";
+            return -1;
+        }
         cur_byte = *iter;
         in_bytes++;
         tmp += static_cast<uint64_t>(cur_byte & 0x7f) << m;

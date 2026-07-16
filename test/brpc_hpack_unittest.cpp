@@ -96,6 +96,27 @@ TEST_F(HPackTest, dynamic_table_size_update_before_header) {
     ASSERT_EQ("GET", h.value);
 }
 
+TEST_F(HPackTest, integer_with_overlong_continuation) {
+    brpc::HPacker p;
+    ASSERT_EQ(0, p.Init(4096));
+
+    // Indexed header field whose index is encoded with a 7-bit prefix of all
+    // ones (0xFF) followed by a long run of 0x80 continuation octets. Each
+    // 0x80 carries a zero payload, so the decoded value never grows past its
+    // MAX_HPACK_INTEGER guard, but the per-octet shift amount does. Decode must
+    // reject this as malformed instead of shifting by 64+ bits.
+    butil::IOBuf buf;
+    uint8_t encoded[1 + 20];
+    encoded[0] = 0xFF;
+    for (size_t i = 1; i < sizeof(encoded); ++i) {
+        encoded[i] = 0x80;
+    }
+    buf.append(encoded, sizeof(encoded));
+
+    brpc::HPacker::Header h;
+    ASSERT_LT(p.Decode(&buf, &h), 0);
+}
+
 // Copied test cases from example of rfc7541
 TEST_F(HPackTest, header_with_indexing) {
     brpc::HPacker p1;
