@@ -168,7 +168,7 @@ int URI::SetHttpURL(const char* url) {
     bool need_scheme = true;
     bool need_user_info = true;
     for (; true; ++p) {
-        const char action = g_url_parsing_fast_action_map[(int)*p];
+        const char action = g_url_parsing_fast_action_map[(signed char)*p];
         if (action == URI_PARSE_CONTINUE) {
             continue;
         }
@@ -256,7 +256,7 @@ int ParseURL(const char* url,
     bool need_scheme = true;
     bool need_user_info = true;
     for (; true; ++p) {
-        const char action = g_url_parsing_fast_action_map[(int)*p];
+        const char action = g_url_parsing_fast_action_map[(signed char)*p];
         if (action == URI_PARSE_CONTINUE) {
             continue;
         }

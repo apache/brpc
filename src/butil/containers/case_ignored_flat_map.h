@@ -29,7 +29,11 @@ namespace butil {
 // note: using char caused crashes on ubuntu 20.04 aarch64 (VM on apple M1)
 inline char ascii_tolower(int/*note*/ c) {
     extern const signed char* const g_tolower_map;
-    return g_tolower_map[c];
+    // g_tolower_map is biased by +128 and sized for a signed-char index
+    // ([-128,127]). Callers pass a `char`; on platforms where `char` is
+    // unsigned (aarch64, riscv64) a byte >= 0x80 arrives here as 128..255 and
+    // indexes past the 256-entry table. Fold back into signed-char range.
+    return g_tolower_map[(signed char)c];
 }
 
 struct CaseIgnoredHasher {
