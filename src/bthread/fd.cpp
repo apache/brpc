@@ -44,7 +44,7 @@ extern int pthread_fd_wait(int fd, unsigned events, const timespec* abstime);
 
 namespace bthread {
 
-extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
+EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 
 template <typename T, size_t NBLOCK, size_t BLOCK_SIZE>
 class LazyArray {
@@ -446,7 +446,7 @@ int bthread_fd_wait(int fd, unsigned events) {
         errno = EINVAL;
         return -1;
     }
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (NULL != g && !g->is_current_pthread_task()) {
         return bthread::get_epoll_thread(fd).fd_wait(
             fd, events, NULL);
@@ -463,7 +463,7 @@ int bthread_fd_timedwait(int fd, unsigned events,
         errno = EINVAL;
         return -1;
     }
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (NULL != g && !g->is_current_pthread_task()) {
         return bthread::get_epoll_thread(fd).fd_wait(
             fd, events, abstime);
@@ -473,7 +473,7 @@ int bthread_fd_timedwait(int fd, unsigned events,
 
 int bthread_connect(int sockfd, const sockaddr* serv_addr,
                     socklen_t addrlen) {
-    bthread::TaskGroup* g = bthread::tls_task_group;
+    bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (NULL == g || g->is_current_pthread_task()) {
         return ::connect(sockfd, serv_addr, addrlen);
     }

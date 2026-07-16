@@ -484,10 +484,10 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // which allocates bthread-local stream arrays via bthread_setspecific).
         // If span cleanup ran after keytable cleanup, such allocations would
         // re-populate the keytable and never be reclaimed, causing memory leak.
-        LocalStorage* tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+        LocalStorage* tls_bls_ptr = bthread::tls_bls_ptr();
         if (tls_bls_ptr->rpcz_parent_span && g_rpcz_parent_span_dtor) {
             g_rpcz_parent_span_dtor(tls_bls_ptr->rpcz_parent_span);
-            tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+            tls_bls_ptr = bthread::tls_bls_ptr();
             tls_bls_ptr->rpcz_parent_span = NULL;
             m->local_storage.rpcz_parent_span = NULL;
         }
@@ -499,7 +499,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         if (kt != NULL) {
             return_keytable(m->attr.keytable_pool, kt);
             // After deletion: tls may be set during deletion.
-            tls_bls_ptr = BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+            tls_bls_ptr = bthread::tls_bls_ptr();
             tls_bls_ptr->keytable = NULL;
             m->local_storage.keytable = NULL; // optional
         }
