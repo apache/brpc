@@ -26,6 +26,23 @@
 namespace {
 
 const size_t CTX_WIDTH = 5;
+const size_t CRLF_NOT_FOUND = (size_t)-1;
+
+size_t FindCRLF(const butil::IOBuf& buf, size_t max_scan_size) {
+    butil::IOBufBytesIterator it(buf);
+    bool prev_cr = false;
+    size_t pos = 0;
+    while (it && pos < max_scan_size) {
+        const char c = static_cast<char>(*it);
+        if (prev_cr && c == '\n') {
+            return pos - 1;
+        }
+        prev_cr = (c == '\r');
+        ++it;
+        ++pos;
+    }
+    return CRLF_NOT_FOUND;
+}
 
 } // namespace
 
@@ -408,7 +425,52 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
             *err = PARSE_ERROR_TRY_OTHERS;
             return CONSUME_STATE_ERROR;
         }
-        const size_t buf_size = buf.size();
+        // The HTTP/2 connection preface ("PRI * HTTP/2.0\r\n...") is alpha-leading
+        // and would otherwise be consumed as an inline redis command (first token
+        // "PRI"), preventing protocol auto-detection from falling through to
+        // HTTP/2 (e.g. gRPC clients). Defer to other protocols when the input
+        // matches the preface, either fully or as a not-yet-complete prefix. No
+        // valid redis command begins with these bytes, so this is unambiguous.
+        // See issue #3109.
+        static const char h2_preface[] = "PRI * HTTP/2.0\r\n";
+        const size_t h2_preface_len = sizeof(h2_preface) - 1;
+        if (*pfc == h2_preface[0]) {
+            char head[h2_preface_len];
+            const size_t n = buf.copy_to(head, h2_preface_len);
+            if (memcmp(head, h2_preface, n) == 0) {
+                *err = PARSE_ERROR_TRY_OTHERS;
+                return CONSUME_STATE_ERROR;
+            }
+        }
+        const size_t max_inline_size =
+            FLAGS_redis_max_allocation_size > 0 ?
+            static_cast<size_t>(FLAGS_redis_max_allocation_size) : 0;
+        const size_t crlf_pos = FindCRLF(buf, max_inline_size + 2);
+        if (crlf_pos == CRLF_NOT_FOUND) {
+            if (buf.size() <= max_inline_size) {
+                *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+                return CONSUME_STATE_ERROR;
+            }
+            if (buf.size() == max_inline_size + 1) {
+                char last_char = '\0';
+                buf.copy_to(&last_char, 1, max_inline_size);
+                if (last_char == '\r') {
+                    *err = PARSE_ERROR_NOT_ENOUGH_DATA;
+                    return CONSUME_STATE_ERROR;
+                }
+            }
+            LOG(ERROR) << "inline command exceeds max allocation size! max="
+                       << FLAGS_redis_max_allocation_size << ", actually=" << buf.size();
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
+        }
+        if (crlf_pos > max_inline_size) {
+            LOG(ERROR) << "inline command exceeds max allocation size! max="
+                       << FLAGS_redis_max_allocation_size << ", actually=" << crlf_pos;
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
+        }
+        const size_t buf_size = crlf_pos;
         const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
         // arena->allocate() may return NULL on allocation failure
         if (copy_str == NULL) {
@@ -422,11 +484,6 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
             return CONSUME_STATE_ERROR;
         }
         copy_str[buf_size] = '\0';
-        const size_t crlf_pos = butil::StringPiece(copy_str, buf_size).find("\r\n");
-        if (crlf_pos == butil::StringPiece::npos) {  // not enough data
-            *err = PARSE_ERROR_NOT_ENOUGH_DATA;
-            return CONSUME_STATE_ERROR;
-        }
         size_t offset = 0;
         while (offset < crlf_pos && copy_str[offset] != ' ') {
             ++offset;
@@ -434,7 +491,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         const auto first_arg = static_cast<char*>(arena->allocate(offset));
         memcpy(first_arg, copy_str, offset);
         for (size_t i = 0; i < offset; ++i) {
-            first_arg[i] = tolower(first_arg[i]);
+            first_arg[i] = tolower(static_cast<unsigned char>(first_arg[i]));
         }
         _args.push_back(butil::StringPiece(first_arg, offset));
         if (offset == crlf_pos) {
@@ -500,14 +557,22 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
             return CONSUME_STATE_ERROR;
         }
         buf.pop_front(crlf_pos + 2/*CRLF*/);
+        if (value == 0) {
+            LOG(ERROR) << "Empty redis command array";
+            *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+            return CONSUME_STATE_ERROR;
+        }
         _parsing_array = true;
         _length = value;
         _index = 0;
         _args.resize(value);
         return CONSUME_STATE_CONTINUE;
     }
-    CHECK(_index < _length) << "a complete command has been parsed. "
-                               "impl of RedisCommandParser::Parse is buggy";
+    if (_index >= _length) {
+        LOG(ERROR) << "Too many bulk strings in redis command";
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
+    }
     const int64_t len = value;  // `value' is length of the string
     if (len < 0) {
         LOG(ERROR) << "string in command is nil!";
@@ -538,7 +603,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     if (_index == 0) {
         // convert it to lowercase when it is command name
         for (int i = 0; i < len; ++i) {
-            d[i] = ::tolower(d[i]);
+            d[i] = ::tolower(static_cast<unsigned char>(d[i]));
         }
     }
     char crlf[2];

@@ -53,6 +53,10 @@ const static LocalStorage LOCAL_STORAGE_INIT = BTHREAD_LOCAL_STORAGE_INITIALIZER
 
 EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(LocalStorage, tls_bls);
 
+inline LocalStorage* tls_bls_ptr() {
+    return BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+}
+
 enum TaskStatus {
     TASK_STATUS_UNKNOWN,
     TASK_STATUS_CREATED,
@@ -90,6 +94,8 @@ struct TaskMeta {
     // The identifier. It does not have to be here, however many code is
     // simplified if they can get tid from TaskMeta.
     bthread_t tid{INVALID_BTHREAD};
+
+    int priority_index{-1};
 
     // User function and argument
     void* (*fn)(void*){NULL};

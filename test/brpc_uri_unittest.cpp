@@ -303,6 +303,28 @@ TEST(URITest, invalid_query) {
     ASSERT_EQ("a-b-c:def", uri.query());
 }
 
+TEST(URITest, high_bit_bytes) {
+    // Bytes >= 0x80 (e.g. UTF-8 in the host/path) index the +128-biased
+    // action table. On unsigned-char platforms they would read past the
+    // 256-entry table; this trips a buffer-overflow read under ASan without
+    // the signed-char fold. They are ordinary characters for the parser.
+    brpc::URI uri;
+    const std::string url =
+        "http://user:passwd@\xc3\xa9.example.com/\xc3\xa9?k=\xc3\xa9#\xc3\xa9";
+    ASSERT_EQ(0, uri.SetHttpURL(url)) << uri.status();
+    ASSERT_EQ("\xc3\xa9.example.com", uri.host());
+    ASSERT_EQ("/\xc3\xa9", uri.path());
+    ASSERT_EQ("k=\xc3\xa9", uri.query());
+    ASSERT_EQ("\xc3\xa9", uri.fragment());
+
+    std::string scheme;
+    std::string host_out;
+    int port_out = -1;
+    ASSERT_EQ(0, brpc::ParseURL(url.c_str(), &scheme, &host_out, &port_out));
+    ASSERT_EQ("http", scheme);
+    ASSERT_EQ("\xc3\xa9.example.com", host_out);
+}
+
 TEST(URITest, print_url) {
     brpc::URI uri;
 

@@ -13,6 +13,10 @@ on:
 env:
   proc_num: $(sysctl -n hw.logicalcpu)
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   compile-with-make-cmake-protobuf21:
     runs-on: macos-latest # https://github.com/actions/runner-images

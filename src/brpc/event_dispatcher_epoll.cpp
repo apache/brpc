@@ -190,7 +190,13 @@ int EventDispatcher::RemoveConsumer(int fd) {
 }
 
 void* EventDispatcher::RunThis(void* arg) {
-    ((EventDispatcher*)arg)->Run();
+    EventDispatcher* ed = (EventDispatcher*)arg;
+    if (ed->_priority_index >= 0) {
+        bthread::TaskMeta* meta =
+            bthread::TaskGroup::address_meta(bthread_self());
+        meta->priority_index = ed->_priority_index;
+    }
+    ed->Run();
     return NULL;
 }
 

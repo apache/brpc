@@ -22,8 +22,44 @@
 #include "butil/find_cstr.h"
 #include "brpc/log.h"
 #include "brpc/amf.h"
+#include "gflags/gflags.h"
 
 namespace brpc {
+
+DEFINE_int32(amf_max_depth, 128, "Maximum nesting depth for AMF objects and arrays");
+DEFINE_int32(amf_max_string_size, 64 * 1024 * 1024,
+             "Maximum byte size for AMF strings");
+DEFINE_int32(amf_max_array_size, 1024 * 1024,
+             "Maximum element count for AMF arrays");
+
+static bool CheckAMFDepth(int depth) {
+    if (depth > FLAGS_amf_max_depth) {
+        LOG(ERROR) << "AMF exceeds max depth! max="
+                   << FLAGS_amf_max_depth << ", actually=" << depth;
+        return false;
+    }
+    return true;
+}
+
+static bool CheckAMFStringSize(uint32_t len) {
+    if (FLAGS_amf_max_string_size < 0 ||
+        len > (uint32_t)FLAGS_amf_max_string_size) {
+        LOG(ERROR) << "AMF string exceeds max size! max="
+                   << FLAGS_amf_max_string_size << ", actually=" << len;
+        return false;
+    }
+    return true;
+}
+
+static bool CheckAMFArraySize(uint32_t count) {
+    if (FLAGS_amf_max_array_size < 0 ||
+        count > (uint32_t)FLAGS_amf_max_array_size) {
+        LOG(ERROR) << "AMF array exceeds max size! max="
+                   << FLAGS_amf_max_array_size << ", actually=" << count;
+        return false;
+    }
+    return true;
+}
 
 const char* marker2str(AMFMarker marker) {
     switch (marker) {
@@ -256,8 +292,12 @@ static bool ReadAMFShortStringBody(std::string* str, AMFInputStream* stream) {
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
+    if (!CheckAMFStringSize(len)) {
+        return false;
+    }
     str->resize(len);
     if (len != 0 && stream->cutn(&(*str)[0], len) != len) {
+        str->clear();
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
@@ -270,8 +310,12 @@ static bool ReadAMFLongStringBody(std::string* str, AMFInputStream* stream) {
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
+    if (!CheckAMFStringSize(len)) {
+        return false;
+    }
     str->resize(len);
     if (len != 0 && stream->cutn(&(*str)[0], len) != len) {
+        str->clear();
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
@@ -378,12 +422,17 @@ bool ReadAMFUnsupported(AMFInputStream* stream) {
 }
 
 static bool ReadAMFObjectBody(google::protobuf::Message* message,
-                              AMFInputStream* stream);
-static bool SkipAMFObjectBody(AMFInputStream* stream);
+                              AMFInputStream* stream,
+                              int depth);
+static bool SkipAMFObjectBody(AMFInputStream* stream, int depth);
 
 static bool ReadAMFObjectField(AMFInputStream* stream,
                                google::protobuf::Message* message,
-                               const google::protobuf::FieldDescriptor* field) {
+                               const google::protobuf::FieldDescriptor* field,
+                               int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     const google::protobuf::Reflection* reflection = NULL;
     if (field) {
         reflection = message->GetReflection();
@@ -451,12 +500,12 @@ static bool ReadAMFObjectField(AMFInputStream* stream,
                 LOG(WARNING) << "Can't set object to " << field->full_name();
             } else {
                 google::protobuf::Message* m = reflection->MutableMessage(message, field);
-                if (!ReadAMFObjectBody(m, stream)) {
+                if (!ReadAMFObjectBody(m, stream, depth + 1)) {
                     return false;
                 }
             }
         } else {
-            if (!SkipAMFObjectBody(stream)) {
+            if (!SkipAMFObjectBody(stream, depth + 1)) {
                 return false;
             }
         }
@@ -499,7 +548,11 @@ static bool ReadAMFObjectField(AMFInputStream* stream,
 }
 
 static bool ReadAMFObjectBody(google::protobuf::Message* message,
-                              AMFInputStream* stream) {
+                              AMFInputStream* stream,
+                              int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     const google::protobuf::Descriptor* desc = message->GetDescriptor();
     std::string name;
     while (ReadAMFShortStringBody(&name, stream)) {
@@ -519,14 +572,17 @@ static bool ReadAMFObjectBody(google::protobuf::Message* message,
         const google::protobuf::FieldDescriptor* field = desc->FindFieldByName(name);
         RPC_VLOG_IF(field == NULL) << "Unknown field=" << desc->full_name()
                                    << "." << name;
-        if (!ReadAMFObjectField(stream, message, field)) {
+        if (!ReadAMFObjectField(stream, message, field, depth)) {
             return false;
         }
     }
     return true;
 }
 
-static bool SkipAMFObjectBody(AMFInputStream* stream) {
+static bool SkipAMFObjectBody(AMFInputStream* stream, int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     std::string name;
     while (ReadAMFShortStringBody(&name, stream)) {
         if (name.empty()) {
@@ -542,7 +598,7 @@ static bool SkipAMFObjectBody(AMFInputStream* stream) {
             }
             break;
         }
-        if (!ReadAMFObjectField(stream, NULL, NULL)) {
+        if (!ReadAMFObjectField(stream, NULL, NULL, depth)) {
             return false;
         }
     }
@@ -550,10 +606,17 @@ static bool SkipAMFObjectBody(AMFInputStream* stream) {
 }
 
 static bool ReadAMFEcmaArrayBody(google::protobuf::Message* message,
-                                 AMFInputStream* stream) {
+                                 AMFInputStream* stream,
+                                 int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     uint32_t count = 0;
     if (stream->cut_u32(&count) != 4u) {
         LOG(ERROR) << "stream is not long enough";
+        return false;
+    }
+    if (!CheckAMFArraySize(count)) {
         return false;
     }
     const google::protobuf::Descriptor* desc = message->GetDescriptor();
@@ -566,7 +629,7 @@ static bool ReadAMFEcmaArrayBody(google::protobuf::Message* message,
         const google::protobuf::FieldDescriptor* field = desc->FindFieldByName(name);
         RPC_VLOG_IF(field == NULL) << "Unknown field=" << desc->full_name()
                                    << "." << name;
-        if (!ReadAMFObjectField(stream, message, field)) {
+        if (!ReadAMFObjectField(stream, message, field, depth)) {
             return false;
         }
     }
@@ -580,11 +643,11 @@ bool ReadAMFObject(google::protobuf::Message* msg, AMFInputStream* stream) {
         return false;
     }
     if ((AMFMarker)marker == AMF_MARKER_OBJECT) {
-        if (!ReadAMFObjectBody(msg, stream)) {
+        if (!ReadAMFObjectBody(msg, stream, 0)) {
             return false;
         }
     } else if ((AMFMarker)marker == AMF_MARKER_ECMA_ARRAY) {
-        if (!ReadAMFEcmaArrayBody(msg, stream)) {
+        if (!ReadAMFEcmaArrayBody(msg, stream, 0)) {
             return false;
         }
     } else if ((AMFMarker)marker != AMF_MARKER_NULL) {
@@ -602,13 +665,17 @@ bool ReadAMFObject(google::protobuf::Message* msg, AMFInputStream* stream) {
 
 // [Reading AMFObject]
 
-static bool ReadAMFObjectBody(AMFObject* obj, AMFInputStream* stream);
-static bool ReadAMFEcmaArrayBody(AMFObject* obj, AMFInputStream* stream);
-static bool ReadAMFArrayBody(AMFArray* arr, AMFInputStream* stream);
+static bool ReadAMFObjectBody(AMFObject* obj, AMFInputStream* stream, int depth);
+static bool ReadAMFEcmaArrayBody(AMFObject* obj, AMFInputStream* stream, int depth);
+static bool ReadAMFArrayBody(AMFArray* arr, AMFInputStream* stream, int depth);
 
 static bool ReadAMFObjectField(AMFInputStream* stream,
                                AMFObject* obj,
-                               const std::string& name) {
+                               const std::string& name,
+                               int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     uint8_t marker;
     if (stream->cut_u8(&marker) != 1u) {
         LOG(ERROR) << "stream is not long enough";
@@ -647,17 +714,17 @@ static bool ReadAMFObjectField(AMFInputStream* stream,
     }
     // fall through
     case AMF_MARKER_OBJECT: {
-        if (!ReadAMFObjectBody(obj->MutableObject(name), stream)) {
+        if (!ReadAMFObjectBody(obj->MutableObject(name), stream, depth + 1)) {
             return false;
         }
     } break;
     case AMF_MARKER_ECMA_ARRAY: {
-        if (!ReadAMFEcmaArrayBody(obj->MutableObject(name), stream)) {
+        if (!ReadAMFEcmaArrayBody(obj->MutableObject(name), stream, depth + 1)) {
             return false;
         }
     } break;
     case AMF_MARKER_STRICT_ARRAY: {
-        if (!ReadAMFArrayBody(obj->MutableArray(name), stream)) {
+        if (!ReadAMFArrayBody(obj->MutableArray(name), stream, depth + 1)) {
             return false;
         }
     } break;
@@ -693,7 +760,10 @@ static bool ReadAMFObjectField(AMFInputStream* stream,
     return true;
 }
 
-static bool ReadAMFObjectBody(AMFObject* obj, AMFInputStream* stream) {
+static bool ReadAMFObjectBody(AMFObject* obj, AMFInputStream* stream, int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     std::string name;
     while (ReadAMFShortStringBody(&name, stream)) {
         if (name.empty()) {
@@ -709,17 +779,23 @@ static bool ReadAMFObjectBody(AMFObject* obj, AMFInputStream* stream) {
             }
             break;
         }
-        if (!ReadAMFObjectField(stream, obj, name)) {
+        if (!ReadAMFObjectField(stream, obj, name, depth)) {
             return false;
         }
     }
     return true;
 }
 
-static bool ReadAMFEcmaArrayBody(AMFObject* obj, AMFInputStream* stream) {
+static bool ReadAMFEcmaArrayBody(AMFObject* obj, AMFInputStream* stream, int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     uint32_t count = 0;
     if (stream->cut_u32(&count) != 4u) {
         LOG(ERROR) << "stream is not long enough";
+        return false;
+    }
+    if (!CheckAMFArraySize(count)) {
         return false;
     }
     std::string name;
@@ -728,7 +804,7 @@ static bool ReadAMFEcmaArrayBody(AMFObject* obj, AMFInputStream* stream) {
             LOG(ERROR) << "Fail to read name from the stream";
             return false;
         }
-        if (!ReadAMFObjectField(stream, obj, name)) {
+        if (!ReadAMFObjectField(stream, obj, name, depth)) {
             return false;
         }
     }
@@ -742,11 +818,11 @@ bool ReadAMFObject(AMFObject* obj, AMFInputStream* stream) {
         return false;
     }
     if ((AMFMarker)marker == AMF_MARKER_OBJECT) {
-        if (!ReadAMFObjectBody(obj, stream)) {
+        if (!ReadAMFObjectBody(obj, stream, 0)) {
             return false;
         }
     } else if ((AMFMarker)marker == AMF_MARKER_ECMA_ARRAY) {
-        if (!ReadAMFEcmaArrayBody(obj, stream)) {
+        if (!ReadAMFEcmaArrayBody(obj, stream, 0)) {
             return false;
         }
     } else if ((AMFMarker)marker != AMF_MARKER_NULL) {
@@ -757,7 +833,10 @@ bool ReadAMFObject(AMFObject* obj, AMFInputStream* stream) {
     return true;
 }
 
-static bool ReadAMFArrayItem(AMFInputStream* stream, AMFArray* arr) {
+static bool ReadAMFArrayItem(AMFInputStream* stream, AMFArray* arr, int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     uint8_t marker;
     if (stream->cut_u8(&marker) != 1u) {
         LOG(ERROR) << "stream is not long enough";
@@ -796,17 +875,17 @@ static bool ReadAMFArrayItem(AMFInputStream* stream, AMFArray* arr) {
     }
     // fall through
     case AMF_MARKER_OBJECT: {
-        if (!ReadAMFObjectBody(arr->AddObject(), stream)) {
+        if (!ReadAMFObjectBody(arr->AddObject(), stream, depth + 1)) {
             return false;
         }
     } break;
     case AMF_MARKER_ECMA_ARRAY: {
-        if (!ReadAMFEcmaArrayBody(arr->AddObject(), stream)) {
+        if (!ReadAMFEcmaArrayBody(arr->AddObject(), stream, depth + 1)) {
             return false;
         }
     } break;
     case AMF_MARKER_STRICT_ARRAY: {
-        if (!ReadAMFArrayBody(arr->AddArray(), stream)) {
+        if (!ReadAMFArrayBody(arr->AddArray(), stream, depth + 1)) {
             return false;
         }
     } break;
@@ -842,14 +921,20 @@ static bool ReadAMFArrayItem(AMFInputStream* stream, AMFArray* arr) {
     return true;
 }
 
-static bool ReadAMFArrayBody(AMFArray* arr, AMFInputStream* stream) {
+static bool ReadAMFArrayBody(AMFArray* arr, AMFInputStream* stream, int depth) {
+    if (!CheckAMFDepth(depth)) {
+        return false;
+    }
     uint32_t count = 0;
     if (stream->cut_u32(&count) != 4u) {
         LOG(ERROR) << "stream is not long enough";
         return false;
     }
+    if (!CheckAMFArraySize(count)) {
+        return false;
+    }
     for (uint32_t i = 0; i < count; ++i) {
-        if (!ReadAMFArrayItem(stream, arr)) {
+        if (!ReadAMFArrayItem(stream, arr, depth)) {
             return false;
         }
     }
@@ -863,7 +948,7 @@ bool ReadAMFArray(AMFArray* arr, AMFInputStream* stream) {
         return false;
     }
     if ((AMFMarker)marker == AMF_MARKER_STRICT_ARRAY) {
-        if (!ReadAMFArrayBody(arr, stream)) {
+        if (!ReadAMFArrayBody(arr, stream, 0)) {
             return false;
         }
     } else if ((AMFMarker)marker != AMF_MARKER_NULL) {

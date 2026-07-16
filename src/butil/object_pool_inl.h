@@ -26,6 +26,7 @@
 #include <pthread.h>                      // pthread_mutex_t
 #include <algorithm>                      // std::max, std::min
 #include <vector>
+
 #include "butil/atomicops.h"              // butil::atomic
 #include "butil/macros.h"                 // BAIDU_CACHELINE_ALIGNMENT
 #include "butil/scoped_lock.h"            // BAIDU_SCOPED_LOCK
@@ -357,11 +358,61 @@ private:
     ObjectPool() {
         _free_chunks.reserve(OP_INITIAL_FREE_LIST_SIZE);
         pthread_mutex_init(&_free_chunks_mutex, NULL);
+#if defined(BUTIL_USE_ASAN) && \
+    !defined(BAIDU_CLEAR_OBJECT_POOL_AFTER_ALL_THREADS_QUIT)
+        // Objects returned to the pool stay ASan-poisoned (see return_object()).
+        // LeakSanitizer skips poisoned memory when scanning for live pointers
+        // (its `use_poisoned' option is off by default), so heap memory that is
+        // only reachable through pointers stored inside pooled objects (e.g.
+        // std::string buffers owned by cached protobuf messages) would be
+        // falsely reported as leaked at process exit. Un-poison all pooled
+        // objects right before LSan runs. LSan registers its leak check via
+        // atexit() very early during sanitizer init, so this handler (registered
+        // lazily on the first singleton creation) runs before it because atexit
+        // handlers execute in LIFO order.
+        // Not needed when BAIDU_CLEAR_OBJECT_POOL_AFTER_ALL_THREADS_QUIT is
+        // defined: clear_from_destructor_of_local_pool() then destructs and
+        // frees all pooled objects after the last thread quits.
+        if (ObjectPoolWithASanPoison<T>::value) {
+            atexit(unpoison_all_objects_before_leak_check);
+        }
+#endif
     }
 
     ~ObjectPool() {
         pthread_mutex_destroy(&_free_chunks_mutex);
     }
+
+#if defined(BUTIL_USE_ASAN) && \
+    !defined(BAIDU_CLEAR_OBJECT_POOL_AFTER_ALL_THREADS_QUIT)
+    // Un-poison every constructed object still held by the pool so that
+    // LeakSanitizer can follow the pointers inside them. Only un-poisons, does
+    // not destruct: the pool intentionally keeps objects alive for reuse, and
+    // they remain reachable from the singleton, so they are not real leaks.
+    static void unpoison_all_objects_before_leak_check() {
+        if (NULL == _singleton.load(butil::memory_order_consume)) {
+            return;
+        }
+        const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
+        for (size_t i = 0; i < ngroup; ++i) {
+            BlockGroup* bg = _block_groups[i].load(butil::memory_order_consume);
+            if (NULL == bg) {
+                break;
+            }
+            const size_t nblock = std::min(
+                bg->nblock.load(butil::memory_order_relaxed), OP_GROUP_NBLOCK);
+            for (size_t j = 0; j < nblock; ++j) {
+                Block* b = bg->blocks[j].load(butil::memory_order_consume);
+                if (NULL == b) {
+                    continue;
+                }
+                for (size_t k = 0; k < b->nitem; ++k) {
+                    asan_unpoison_memory_region((T*)&b->items[k]);
+                }
+            }
+        }
+    }
+#endif
 
     // Create a Block and append it to right-most BlockGroup.
     static Block* add_block(size_t* index) {

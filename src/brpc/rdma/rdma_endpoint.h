@@ -250,7 +250,7 @@ private:
     std::string GetStateStr() const;
 
     // Try to read data on TCP fd in _socket
-    inline void TryReadOnTcp();
+    void TryReadOnTcp();
 
     // Add cq socket id to poller
     void PollerAddCqSid();
@@ -262,7 +262,7 @@ private:
     Socket* _socket;
 
     // State of Handshake
-    State _state;
+    butil::atomic<State> _state;
 
     // Wire-level handshake protocol version (set by dispatch in
     // ProcessHandshakeAtClient/Server). Aligned with the protocol code:

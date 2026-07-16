@@ -337,14 +337,11 @@ void Span::ResetServerSpanName(const std::string& full_method_name) {
 void Span::submit(int64_t cpuwide_us) {
     // Note: this method is not called for client-side spans.
     EndAsParent();
-    SpanContainer* container = new(std::nothrow) SpanContainer(shared_from_this());
     // If memory allocation fails, the server span will not be submitted for persistence.
     // The server span will be destroyed later when its shared_ptr refcount drops to zero
     // Child spans (held in _client_list) will also be destroyed when
     // their refcounts reach zero.
-    if (container) {
-        container->submit(cpuwide_us);
-    }
+    (new SpanContainer(shared_from_this()))->submit(cpuwide_us);
 }
 
 void Span::Annotate(const char* fmt, ...) {

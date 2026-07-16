@@ -672,7 +672,7 @@ int Stream::SetHostSocket(Socket *host_socket) {
         }
         _host_socket = ptr.release();
     });
-    return 0;
+    return _host_socket != NULL ? 0 : -1;
 }
 
 void Stream::FillSettings(StreamSettings *settings) {
@@ -837,7 +837,10 @@ int StreamCreate(StreamId *request_stream, Controller &cntl,
         return -1;
     }
     StreamIds request_streams;
-    StreamCreate(request_streams, 1, cntl, options);
+    const int rc = StreamCreate(request_streams, 1, cntl, options);
+    if (rc != 0) {
+        return rc;
+    }
     *request_stream = request_streams[0];
     return 0;
 }

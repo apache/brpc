@@ -26,16 +26,13 @@ extern "C" {
 void __lsan_disable();
 void __lsan_enable();
 void __lsan_ignore_object(const void *p);
-
-// Invoke leak detection immediately. If leaks are found, the process will exit.
-void __lsan_do_leak_check();
 }  // extern "C"
 
 class ScopedLeakSanitizerDisabler {
 public:
   ScopedLeakSanitizerDisabler() { __lsan_disable(); }
   ~ScopedLeakSanitizerDisabler() { __lsan_enable(); }
-private:
+
   DISALLOW_COPY_AND_ASSIGN(ScopedLeakSanitizerDisabler);
 };
 
@@ -44,11 +41,17 @@ private:
 
 #define ANNOTATE_LEAKING_OBJECT_PTR(X) __lsan_ignore_object(X)
 
+// Manually pair these to mark allocations made in between as intentional non-leaks.
+#define ANNOTATE_MEMORY_LEAK_DISABLE() __lsan_disable()
+#define ANNOTATE_MEMORY_LEAK_ENABLE() __lsan_enable()
+
 #else
 
 // If neither HeapChecker nor LSan are used, the annotations should be no-ops.
 #define ANNOTATE_SCOPED_MEMORY_LEAK ((void)0)
 #define ANNOTATE_LEAKING_OBJECT_PTR(X) ((void)(X))
+#define ANNOTATE_MEMORY_LEAK_DISABLE() ((void)0)
+#define ANNOTATE_MEMORY_LEAK_ENABLE() ((void)0)
 
 #endif
 

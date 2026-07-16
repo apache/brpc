@@ -16,11 +16,17 @@
 // under the License.
 
 #include <brpc/couchbase.h>
+#include <brpc/policy/couchbase_protocol.h>
+#include <brpc/socket.h>
+#include <butil/sys_byteorder.h>
+#include <butil/iobuf.h>
 #include <butil/logging.h>
+#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 namespace brpc {
 DECLARE_int32(idle_timeout_second);
+DECLARE_uint64(max_body_size);
 }
 
 int main(int argc, char* argv[]) {
@@ -33,6 +39,27 @@ namespace {
 
 // Unit Tests - No Server Required
 class CouchbaseUnitTest : public testing::Test {};
+
+TEST_F(CouchbaseUnitTest, RejectOversizedResponseBeforeBufferingBody) {
+  GFLAGS_NAMESPACE::FlagSaver flag_saver;
+  brpc::FLAGS_max_body_size = 1024;
+
+  brpc::SocketId id;
+  brpc::SocketOptions options;
+  ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+  brpc::SocketUniquePtr socket;
+  ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+
+  brpc::policy::CouchbaseResponseHeader couchbase_header = {};
+  couchbase_header.magic = brpc::policy::CB_MAGIC_RESPONSE;
+  couchbase_header.total_body_length = butil::HostToNet32(1025);
+  butil::IOBuf couchbase_buf;
+  couchbase_buf.append(&couchbase_header, sizeof(couchbase_header));
+  EXPECT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA,
+            brpc::policy::ParseCouchbaseMessage(
+                &couchbase_buf, socket.get(), false, NULL).error());
+
+}
 
 TEST_F(CouchbaseUnitTest, RequestBuilders) {
   brpc::CouchbaseOperations::CouchbaseRequest req;

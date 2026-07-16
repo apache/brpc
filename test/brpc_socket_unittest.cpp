@@ -28,6 +28,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
+#include "butil/debug/leak_annotations.h"
 #include <butil/fd_guard.h>
 #include "bthread/unstable.h"
 #include "bthread/task_control.h"
@@ -209,7 +210,9 @@ public:
     explicit MyErrorMessage(const butil::Status& st) : _status(st) {}
 private:
     butil::Status AppendAndDestroySelf(butil::IOBuf*, brpc::Socket*) {
-        return _status;
+        butil::Status st = _status;
+        delete this;
+        return st;
     };
     butil::Status _status;
 };
@@ -328,7 +331,9 @@ private:
 
 TEST_F(SocketTest, single_threaded_connect_and_write) {
     // FIXME(gejun): Messenger has to be new otherwise quitting may crash.
+    // It is intentionally never deleted; mark it so it is not a reported leak.
     brpc::Acceptor* messenger = new brpc::Acceptor;
+    ANNOTATE_LEAKING_OBJECT_PTR(messenger);
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage, 
           EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
@@ -659,7 +664,9 @@ TEST_F(SocketTest, app_level_health_check) {
 
 TEST_F(SocketTest, health_check) {
     // FIXME(gejun): Messenger has to be new otherwise quitting may crash.
+    // It is intentionally never deleted; mark it so it is not a reported leak.
     brpc::Acceptor* messenger = new brpc::Acceptor;
+    ANNOTATE_LEAKING_OBJECT_PTR(messenger);
 
     brpc::SocketId id = 8888;
     butil::EndPoint point(butil::IP_ANY, 7878);
@@ -976,13 +983,14 @@ void* reader(void* void_arg) {
         ssize_t nr = read(arg->fd, buf, LEN);
         if (nr < 0) {
             printf("Fail to read, %m\n");
-            return NULL;
+            break;
         } else if (nr == 0) {
             printf("Far end closed\n");
-            return NULL;
+            break;
         }
         arg->nread += nr;
     }
+    free(buf);
     return NULL;
 }
 
@@ -1233,7 +1241,9 @@ TEST_F(SocketTest, keepalive) {
 }
 
 TEST_F(SocketTest, keepalive_input_message) {
+    // It is intentionally never deleted; mark it so it is not a reported leak.
     brpc::Acceptor* messenger = new brpc::Acceptor;
+    ANNOTATE_LEAKING_OBJECT_PTR(messenger);
     int listening_fd = -1;
     butil::EndPoint point(butil::IP_ANY, 7878);
     for (int i = 0; i < 100; ++i) {
@@ -1424,7 +1434,9 @@ void CheckTCPUserTimeout(int fd, int expect_tcp_user_timeout) {
 }
 
 TEST_F(SocketTest, tcp_user_timeout) {
+    // It is intentionally never deleted; mark it so it is not a reported leak.
     brpc::Acceptor* messenger = new brpc::Acceptor;
+    ANNOTATE_LEAKING_OBJECT_PTR(messenger);
     int listening_fd = -1;
     butil::EndPoint point(butil::IP_ANY, 7878);
     for (int i = 0; i < 100; ++i) {

@@ -20,10 +20,17 @@
 #include "butil/logging.h"
 #include <brpc/memcache.h>
 #include <brpc/channel.h>
+#include <brpc/policy/memcache_binary_header.h>
+#include <brpc/policy/memcache_binary_protocol.h>
+#include <brpc/socket.h>
+#include <butil/iobuf.h>
+#include <butil/sys_byteorder.h>
+#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 namespace brpc {
 DECLARE_int32(idle_timeout_second);
+DECLARE_uint64(max_body_size);
 } 
 
 int main(int argc, char* argv[]) {
@@ -33,6 +40,28 @@ int main(int argc, char* argv[]) {
 }
 
 namespace {
+
+TEST(MemcacheParserTest, RejectOversizedResponseBeforeBufferingBody) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 1024;
+
+    brpc::SocketId id;
+    brpc::SocketOptions options;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+
+    brpc::policy::MemcacheResponseHeader header = {};
+    header.magic = brpc::policy::MC_MAGIC_RESPONSE;
+    header.total_body_length = butil::HostToNet32(1025);
+    butil::IOBuf buf;
+    buf.append(&header, sizeof(header));
+    EXPECT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA,
+              brpc::policy::ParseMemcacheMessage(
+                  &buf, socket.get(), false, NULL).error());
+
+}
+
 static pthread_once_t download_memcached_once = PTHREAD_ONCE_INIT;
 static pid_t g_mc_pid = -1;
 

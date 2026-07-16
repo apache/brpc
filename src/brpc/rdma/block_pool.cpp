@@ -615,10 +615,17 @@ void DestroyBlockPool() {
                 node = tmp;
             }
             g_info->idle_list[i][j] = NULL;
+            // Release the per-bucket mutexes allocated in InitBlockPool.
+            delete g_info->lock[i][j];
+            g_info->lock[i][j] = NULL;
         }
     }
     delete g_info;
     g_info = NULL;
+    delete g_dump_mutex;
+    g_dump_mutex = NULL;
+    delete g_tls_info_mutex;
+    g_tls_info_mutex = NULL;
     for (int i = 0; i < g_region_num; ++i) {
         if (g_regions[i].start == 0) {
             break;

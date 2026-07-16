@@ -51,7 +51,7 @@
 #include "bthread/task_group.h"
 
 namespace bthread {
-extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
+EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 }
 
 // This is the only place that both client/server must link, so we put
@@ -186,6 +186,7 @@ void Controller::ResetNonPods() {
     if (auto span = _span.lock()) {
         Span::Submit(span, butil::cpuwide_time_us());
     }
+    _span.reset();
     _error_text.clear();
     _remote_side = butil::EndPoint();
     _local_side = butil::EndPoint();
@@ -231,6 +232,7 @@ void Controller::ResetNonPods() {
         _rpa.reset(NULL);
     }
     delete _remote_stream_settings;
+    _bind_sock.reset();
     _thrift_method_name.clear();
     _after_rpc_resp_fn = nullptr;
 
@@ -240,7 +242,6 @@ void Controller::ResetNonPods() {
 void Controller::ResetPods() {
     // NOTE: Make the sequence of assignments same with the order that they're
     // defined in header. Better for cpu cache and faster for lookup.
-    _span.reset();
     _flags = 0;
 #ifndef BAIDU_INTERNAL
     set_pb_bytes_to_base64(true);
@@ -297,6 +298,7 @@ void Controller::ResetPods() {
     _request_streams.clear();
     _response_streams.clear();
     _remote_stream_settings = NULL;
+    _session_data = NULL;
     _auth_flags = 0;
     _rpc_received_us = 0;
 }
@@ -308,6 +310,8 @@ Controller::Call::Call(Controller::Call* rhs)
     , peer_id(rhs->peer_id)
     , begin_time_us(rhs->begin_time_us)
     , sending_sock(rhs->sending_sock.release())
+    // A backup/retry call never inherits the source call's bind-sock affinity.
+    , bind_sock_action(BIND_SOCK_NONE)
     , stream_user_data(rhs->stream_user_data) {
     // NOTE: fields in rhs should be reset because RPC could fail before
     // setting all the fields to next call and _current_call.OnComplete
@@ -328,6 +332,7 @@ void Controller::Call::Reset() {
     peer_id = INVALID_SOCKET_ID;
     begin_time_us = 0;
     sending_sock.reset(NULL);
+    bind_sock_action = BIND_SOCK_NONE;
     stream_user_data = NULL;
 }
 
@@ -625,6 +630,16 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         return;
     }
 
+    if (is_ending_rpc()) {
+        // SelectiveChannel may still deliver late SubDone callbacks after the
+        // main RPC has entered EndRPC(). Ignore those callbacks instead of
+        // letting them re-enter retry/backup on partially torn-down state.
+        _error_code = saved_error;
+        response_attachment().clear();
+        CHECK_EQ(0, bthread_id_unlock(info.id));
+        return;
+    }
+
     if ((!_error_code && _retry_policy == NULL) ||
         _current_call.nretry >= _max_retry) {
         goto END_OF_RPC;
@@ -699,7 +714,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
             response_attachment().clear();
 
             // Retry backoff.
-            bthread::TaskGroup* g = bthread::tls_task_group;
+            bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
             int64_t backoff_time_us = retry_policy->GetBackoffTimeMs(this) * 1000L;
             if (backoff_time_us > 0 &&
                 backoff_time_us < _deadline_us - butil::gettimeofday_us()) {
@@ -824,7 +839,13 @@ void Controller::Call::OnComplete(
         // assumption that one pooled connection cannot have more than one
         // message at the same time.
         if (sending_sock != NULL && (error_code == 0 || responded)) {
-            if (!sending_sock->is_read_progressive()) {
+            if (bind_sock_action == BIND_SOCK_RESERVE) {
+                // Reserve this socket on the controller for a following RPC
+                // (used by mysql transactions for connection affinity).
+                c->_bind_sock.reset(sending_sock.release());
+            } else if (bind_sock_action == BIND_SOCK_USE) {
+                // Socket is owned by the binder; do not return it to the pool.
+            } else if (!sending_sock->is_read_progressive()) {
                 // Normally-read socket which will not be used after RPC ends,
                 // safe to return. Notice that Socket::is_read_progressive may
                 // differ from Controller::is_response_read_progressively()
@@ -841,7 +862,11 @@ void Controller::Call::OnComplete(
     case CONNECTION_TYPE_SHORT:
         if (sending_sock != NULL) {
             // Check the comment in CONNECTION_TYPE_POOLED branch.
-            if (!sending_sock->is_read_progressive()) {
+            if (bind_sock_action == BIND_SOCK_RESERVE) {
+                c->_bind_sock.reset(sending_sock.release());
+            } else if (bind_sock_action == BIND_SOCK_USE) {
+                // Socket is owned by the binder; do not fail it.
+            } else if (!sending_sock->is_read_progressive()) {
                 if (c->_stream_creator == NULL) {
                     sending_sock->SetFailed();
                 }
@@ -881,6 +906,8 @@ void Controller::Call::OnComplete(
 }
 
 void Controller::EndRPC(const CompletionInfo& info) {
+    add_flag(FLAGS_ENDING_RPC);
+
     if (_timeout_id != 0) {
         bthread_timer_del(_timeout_id);
         _timeout_id = 0;
@@ -908,6 +935,9 @@ void Controller::EndRPC(const CompletionInfo& info) {
         }
         // TODO: Replace this with stream_creator.
         HandleStreamConnection(_current_call.sending_sock.get());
+        // Propagate the reserve action; OnComplete only actually reserves the
+        // socket when the RPC succeeded (its error_code==0 || responded guard).
+        _current_call.bind_sock_action = bind_sock_action();
         _current_call.OnComplete(this, _error_code, info.responded, true);
     } else {
         // Even if _unfinished_call succeeded, we don't use EBACKUPREQUEST
@@ -1092,7 +1122,18 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.need_feedback = false;
     _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
-    if (SingleServer()) {
+    if ((_connection_type & CONNECTION_TYPE_POOLED_AND_SHORT) &&
+        bind_sock_action() == BIND_SOCK_USE) {
+        // Reuse the socket reserved by a previous RPC (mysql transaction affinity).
+        tmp_sock.reset(_bind_sock.release());
+        if (!tmp_sock || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
+            SetFailed(EHOSTDOWN, "Not connected to bind socket yet, server_id=%" PRIu64,
+                      tmp_sock ? tmp_sock->id() : (SocketId)0);
+            tmp_sock.reset();  // Release ref ASAP
+            return HandleSendFailed();
+        }
+        _current_call.peer_id = tmp_sock->id();
+    } else if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
         const int rc = Socket::Address(_single_server_id, &tmp_sock);
@@ -1157,7 +1198,10 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
     } else {
         int rc = 0;
-        if (_connection_type == CONNECTION_TYPE_POOLED) {
+        if (bind_sock_action() == BIND_SOCK_USE) {
+            // Already holding the reserved socket; use it directly.
+            _current_call.sending_sock.reset(tmp_sock.release());
+        } else if (_connection_type == CONNECTION_TYPE_POOLED) {
             rc = tmp_sock->GetPooledSocket(&_current_call.sending_sock);
         } else if (_connection_type == CONNECTION_TYPE_SHORT) {
             rc = tmp_sock->GetShortSocket(&_current_call.sending_sock);
@@ -1179,7 +1223,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
         // Set preferred_index of main_socket as well to make it easier to
         // debug and observe from /connections.
-        if (tmp_sock->preferred_index() < 0) {
+        // tmp_sock is NULL on the BIND_SOCK_USE path.
+        if (tmp_sock && tmp_sock->preferred_index() < 0) {
             tmp_sock->set_preferred_index(_preferred_index);
         }
         tmp_sock.reset();
@@ -1473,7 +1518,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
             if(!ptrs[i]) continue;
             Stream* extra_stream = (Stream *) ptrs[i]->conn();
             _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
-            s->SetHostSocket(host_socket);
+            extra_stream->SetHostSocket(host_socket);
             extra_stream->SetConnected(_remote_stream_settings);
         }
     }

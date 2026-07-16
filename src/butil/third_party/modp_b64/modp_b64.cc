@@ -58,6 +58,12 @@
 
 #include "modp_b64_data.h"
 
+#if defined(__riscv) && defined(__riscv_vector)
+#define USE_RVV_BASE64 1
+#else
+#define USE_RVV_BASE64 0
+#endif
+
 #define BADCHAR 0x01FFFFFF
 
 /**
@@ -79,6 +85,9 @@
 
 size_t modp_b64_encode(char* dest, const char* str, size_t len)
 {
+#if USE_RVV_BASE64
+    return rvv_modp_b64_encode(dest, str, len);
+#endif
     size_t i = 0;
     uint8_t* p = (uint8_t*) dest;
 
@@ -188,6 +197,9 @@ int modp_b64_decode(char* dest, const char* src, int len)
 
 size_t modp_b64_decode(char* dest, const char* src, size_t len)
 {
+#if USE_RVV_BASE64
+    return rvv_modp_b64_decode(dest, src, len);
+#endif
     if (len == 0) return 0;
 
 #ifdef DOPAD

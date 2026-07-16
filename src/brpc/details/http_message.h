@@ -71,6 +71,7 @@ public:
     HttpHeader& header() { return _header; }
     const HttpHeader& header() const { return _header; }
     size_t parsed_length() const { return _parsed_length; }
+    bool body_too_large() const { return _body_too_large; }
     
     // Http parser callback functions
     static int on_message_begin(http_parser *);
@@ -115,6 +116,8 @@ private:
     // Read body progressively
     ProgressiveReader* _body_reader{NULL};
     butil::IOBuf _body;
+    size_t _body_size{0};
+    bool _body_too_large{false};
 
     // Store the IOBuf information in `ParseFromIOBuf'
     // for later zero-copy usage in `OnBody'.

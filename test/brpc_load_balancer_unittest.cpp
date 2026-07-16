@@ -911,9 +911,11 @@ TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
         brpc::ServerId id(8888);
         brpc::SocketOptions options;
         options.remote_side = dummy;
-        options.user = new SaveRecycle;
         id.tag = weight[i];
         if (i < 2) {
+            // `user` is owned by the Socket; only allocate it when a Socket is
+            // actually created, otherwise it would leak.
+            options.user = new SaveRecycle;
             ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
         }
         EXPECT_TRUE(wrrlb.AddServer(id));
@@ -1107,14 +1109,14 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         "10.92.115.19:8832",
         "10.42.122.201:8833",
     };
-    brpc::LoadBalancer* lb = NULL;
+    std::unique_ptr<brpc::LoadBalancer> lb;
     int rand = butil::fast_rand_less_than(2);
     if (rand == 0) {
         brpc::policy::RandomizedLoadBalancer rlb;
-        lb = rlb.New("min_working_instances=2 hold_seconds=2");
+        lb.reset(rlb.New("min_working_instances=2 hold_seconds=2"));
     } else if (rand == 1) {
         brpc::policy::RoundRobinLoadBalancer rrlb;
-        lb = rrlb.New("min_working_instances=2 hold_seconds=2");
+        lb.reset(rrlb.New("min_working_instances=2 hold_seconds=2"));
     }
     brpc::SocketUniquePtr ptr[2];
     for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
@@ -1146,10 +1148,17 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         dummy_ptr->Revive(2);
     }
     bthread_usleep(brpc::FLAGS_detect_available_server_interval_ms * 1000);
-    // After one server is revived, the reject rate should be 50%
+    // After one server is revived, the reject rate should be ~50%.
+    // This is a statistical assertion, so use a large number of
+    // samples to make the fluctuation negligible, otherwise it may
+    // flake. With n samples and p=0.5, the std of (num_ereject - num_ok)
+    // is sqrt(n); allowing a deviation of 20% of n keeps the test
+    // meaningful (~45%-55%) while making a false failure practically
+    // impossible (>6 sigma).
     int num_ereject = 0;
     int num_ok = 0;
-    for (int i = 0; i < 100; ++i) {
+    int num_sample = 1000;
+    for (int i = 0; i < num_sample; ++i) {
         int rc = lb->SelectServer(in, &out);
         if (rc == brpc::EREJECT) {
             num_ereject++;
@@ -1159,7 +1168,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
             ASSERT_TRUE(false);
         }
     }
-    ASSERT_TRUE(abs(num_ereject - num_ok) < 30);
+    ASSERT_LT(abs(num_ereject - num_ok), num_sample / 5);
     bthread_usleep((2000 /* hold_seconds */ + 10) * 1000);
 
     // After enough waiting time, traffic should be sent to all available servers.

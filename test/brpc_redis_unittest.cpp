@@ -17,6 +17,7 @@
 
 
 #include <iostream>
+#include <memory>
 #include <unordered_map>
 #include <butil/time.h>
 #include <butil/logging.h>
@@ -31,6 +32,7 @@
 namespace brpc {
 DECLARE_int32(idle_timeout_second);
 DECLARE_int32(redis_max_allocation_size);
+DECLARE_int32(redis_max_reply_depth);
 }
 
 int main(int argc, char* argv[]) {
@@ -97,6 +99,20 @@ static void RunRedisServer() {
     // Wait for redis to start.
     usleep(50000);
 }
+
+class ScopedRedisMaxReplyDepth {
+public:
+    explicit ScopedRedisMaxReplyDepth(int32_t depth)
+        : _old_depth(brpc::FLAGS_redis_max_reply_depth) {
+        brpc::FLAGS_redis_max_reply_depth = depth;
+    }
+    ~ScopedRedisMaxReplyDepth() {
+        brpc::FLAGS_redis_max_reply_depth = _old_depth;
+    }
+
+private:
+    int32_t _old_depth;
+};
 
 class RedisTest : public testing::Test {
 protected:
@@ -658,6 +674,55 @@ TEST_F(RedisTest, command_parser) {
     }
 }
 
+TEST(RedisCommandParserTest, reject_empty_resp_array_command) {
+    brpc::RedisCommandParser parser;
+    butil::IOBuf buf;
+    std::vector<butil::StringPiece> command_out;
+    butil::Arena arena;
+
+    // Empty RESP arrays are not valid commands and must not leave the parser in
+    // a state that accepts following bulk strings.
+    buf.append("*0\r\n$1\r\nx\r\n");
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+              parser.Consume(buf, &command_out, &arena));
+}
+
+// Regression test for issue #3109: the inline redis protocol must not consume
+// the HTTP/2 connection preface as a command, otherwise protocol auto-detection
+// never falls through to HTTP/2 and gRPC clients fail with "connection closed
+// before server preface received".
+TEST_F(RedisTest, inline_does_not_eat_h2_preface) {
+    brpc::RedisCommandParser parser;
+    butil::IOBuf buf;
+    std::vector<butil::StringPiece> command_out;
+    butil::Arena arena;
+    {
+        // Full HTTP/2 client connection preface: must defer to other protocols.
+        buf.append("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                  parser.Consume(buf, &command_out, &arena));
+        buf.clear();
+        parser.Reset();
+    }
+    {
+        // A not-yet-complete prefix of the preface must also defer, leaving the
+        // bytes intact for the HTTP/2 parser instead of being misparsed.
+        buf.append("PRI * HT");
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                  parser.Consume(buf, &command_out, &arena));
+        buf.clear();
+        parser.Reset();
+    }
+    {
+        // A genuine inline command sharing the leading 'P' must still parse.
+        buf.append("PING\r\n");
+        ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out, &arena));
+        ASSERT_EQ("ping", GetCompleteCommand(command_out));
+        buf.clear();
+        parser.Reset();
+    }
+}
+
 TEST_F(RedisTest, redis_reply_codec) {
     butil::Arena arena;
     // status
@@ -828,6 +893,30 @@ TEST_F(RedisTest, redis_reply_codec) {
         r.SetInteger(42);
         ASSERT_TRUE(r.is_integer());
     }
+}
+
+TEST_F(RedisTest, redis_reply_rejects_deep_nested_arrays) {
+    ScopedRedisMaxReplyDepth scoped_depth(4);
+
+    butil::IOBuf buf;
+    for (int i = 0; i <= brpc::FLAGS_redis_max_reply_depth; ++i) {
+        buf.append("*1\r\n");
+    }
+    buf.append(":0\r\n");
+
+    butil::Arena arena;
+    brpc::RedisReply reply(&arena);
+    EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, reply.ConsumePartialIOBuf(buf));
+
+    buf.clear();
+    for (int i = 0; i < brpc::FLAGS_redis_max_reply_depth; ++i) {
+        buf.append("*1\r\n");
+    }
+    buf.append(":0\r\n");
+
+    brpc::RedisReply valid_reply(&arena);
+    EXPECT_EQ(brpc::PARSE_OK, valid_reply.ConsumePartialIOBuf(buf));
+    EXPECT_TRUE(valid_reply.is_array());
 }
 
 butil::Mutex s_mutex;
@@ -1056,24 +1145,26 @@ private:
 
 TEST_F(RedisTest, server_sanity) {
     std::string password = GeneratePassword();
+    std::unique_ptr<brpc::policy::RedisAuthenticator> redis_auth_holder(
+        new brpc::policy::RedisAuthenticator(password));
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<GetCommandHandler> gh(new GetCommandHandler(rsimpl));
+    std::unique_ptr<SetCommandHandler> sh(new SetCommandHandler(rsimpl));
+    std::unique_ptr<AuthCommandHandler> ah(new AuthCommandHandler(rsimpl));
+    std::unique_ptr<IncrCommandHandler> ih(new IncrCommandHandler(rsimpl));
     brpc::Server server;
     brpc::ServerOptions server_options;
-    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
-    GetCommandHandler *gh = new GetCommandHandler(rsimpl);
-    SetCommandHandler *sh = new SetCommandHandler(rsimpl);
-    AuthCommandHandler *ah = new AuthCommandHandler(rsimpl);
-    IncrCommandHandler *ih = new IncrCommandHandler(rsimpl);
-    rsimpl->AddCommandHandler("get", gh);
-    rsimpl->AddCommandHandler("set", sh);
-    rsimpl->AddCommandHandler("incr", ih);
-    rsimpl->AddCommandHandler("auth", ah);
+    rsimpl->AddCommandHandler("get", gh.get());
+    rsimpl->AddCommandHandler("set", sh.get());
+    rsimpl->AddCommandHandler("incr", ih.get());
+    rsimpl->AddCommandHandler("auth", ah.get());
     server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
     ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
 
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
-    options.auth = new brpc::policy::RedisAuthenticator(password);
+    options.auth = redis_auth_holder.get();
     brpc::Channel channel;
     ASSERT_EQ(0, channel.Init("127.0.0.1", server.listen_address().port, &options));
 
@@ -1150,13 +1241,15 @@ void* incr_thread(void* arg) {
 TEST_F(RedisTest, server_concurrency) {
     std::string password = GeneratePassword();
     int N = 10;
+    std::unique_ptr<brpc::policy::RedisAuthenticator> redis_auth_holder(
+        new brpc::policy::RedisAuthenticator(password));
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<AuthCommandHandler> ah(new AuthCommandHandler(rsimpl));
+    std::unique_ptr<IncrCommandHandler> ih(new IncrCommandHandler(rsimpl));
     brpc::Server server;
     brpc::ServerOptions server_options;
-    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
-    AuthCommandHandler *ah = new AuthCommandHandler(rsimpl);
-    IncrCommandHandler *ih = new IncrCommandHandler(rsimpl);
-    rsimpl->AddCommandHandler("incr", ih);
-    rsimpl->AddCommandHandler("auth", ah);
+    rsimpl->AddCommandHandler("incr", ih.get());
+    rsimpl->AddCommandHandler("auth", ah.get());
     server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
     ASSERT_EQ(0, server.Start("0.0.0.0", pr, &server_options));
@@ -1164,7 +1257,7 @@ TEST_F(RedisTest, server_concurrency) {
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
     options.connection_type = "pooled";
-    options.auth = new brpc::policy::RedisAuthenticator(password);
+    options.auth = redis_auth_holder.get();
     std::vector<bthread_t> bths;
     std::vector<brpc::Channel*> channels;
     for (int i = 0; i < N; ++i) {
@@ -1236,21 +1329,28 @@ public:
 
 TEST_F(RedisTest, server_command_continue) {
     std::string password = GeneratePassword();
+    std::unique_ptr<brpc::policy::RedisAuthenticator> redis_auth_holder(
+        new brpc::policy::RedisAuthenticator(password));
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<AuthCommandHandler> ah(new AuthCommandHandler(rsimpl));
+    std::unique_ptr<GetCommandHandler> gh(new GetCommandHandler(rsimpl));
+    std::unique_ptr<SetCommandHandler> sh(new SetCommandHandler(rsimpl));
+    std::unique_ptr<IncrCommandHandler> ih(new IncrCommandHandler(rsimpl));
+    std::unique_ptr<MultiCommandHandler> mh(new MultiCommandHandler);
     brpc::Server server;
     brpc::ServerOptions server_options;
-    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
-    rsimpl->AddCommandHandler("auth", new AuthCommandHandler(rsimpl));
-    rsimpl->AddCommandHandler("get", new GetCommandHandler(rsimpl));
-    rsimpl->AddCommandHandler("set", new SetCommandHandler(rsimpl));
-    rsimpl->AddCommandHandler("incr", new IncrCommandHandler(rsimpl));
-    rsimpl->AddCommandHandler("multi", new MultiCommandHandler);
+    rsimpl->AddCommandHandler("auth", ah.get());
+    rsimpl->AddCommandHandler("get", gh.get());
+    rsimpl->AddCommandHandler("set", sh.get());
+    rsimpl->AddCommandHandler("incr", ih.get());
+    rsimpl->AddCommandHandler("multi", mh.get());
     server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
     ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
 
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
-    options.auth = new brpc::policy::RedisAuthenticator(password);
+    options.auth = redis_auth_holder.get();
     brpc::Channel channel;
     ASSERT_EQ(0, channel.Init("127.0.0.1", server.listen_address().port, &options));
     {
@@ -1313,23 +1413,26 @@ TEST_F(RedisTest, server_command_continue) {
 
 TEST_F(RedisTest, server_handle_pipeline) {
     std::string password = GeneratePassword();
+    std::unique_ptr<brpc::policy::RedisAuthenticator> redis_auth_holder(
+        new brpc::policy::RedisAuthenticator(password));
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<GetCommandHandler> getch(new GetCommandHandler(rsimpl, true));
+    std::unique_ptr<SetCommandHandler> setch(new SetCommandHandler(rsimpl, true));
+    std::unique_ptr<AuthCommandHandler> authch(new AuthCommandHandler(rsimpl));
+    std::unique_ptr<MultiCommandHandler> multich(new MultiCommandHandler);
     brpc::Server server;
     brpc::ServerOptions server_options;
-    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
-    GetCommandHandler* getch = new GetCommandHandler(rsimpl, true);
-    SetCommandHandler* setch = new SetCommandHandler(rsimpl, true);
-    AuthCommandHandler* authch = new AuthCommandHandler(rsimpl);
-    rsimpl->AddCommandHandler("auth", authch);
-    rsimpl->AddCommandHandler("get", getch);
-    rsimpl->AddCommandHandler("set", setch);
-    rsimpl->AddCommandHandler("multi", new MultiCommandHandler);
+    rsimpl->AddCommandHandler("auth", authch.get());
+    rsimpl->AddCommandHandler("get", getch.get());
+    rsimpl->AddCommandHandler("set", setch.get());
+    rsimpl->AddCommandHandler("multi", multich.get());
     server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
     ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
 
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
-    options.auth = new brpc::policy::RedisAuthenticator(password);
+    options.auth = redis_auth_holder.get();
     brpc::Channel channel;
     ASSERT_EQ(0, channel.Init("127.0.0.1", server.listen_address().port, &options));
 
@@ -1422,6 +1525,57 @@ TEST_F(RedisTest, memory_allocation_limits) {
         std::vector<butil::StringPiece> args;
         brpc::ParseError err = parser.Consume(buf, &args, &arena);
         ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+    }
+
+    {
+        // Test inline command exceeding limit before CRLF arrives.
+        brpc::RedisCommandParser parser;
+        butil::IOBuf buf;
+        std::string large_inline_cmd = "get ";
+        large_inline_cmd.append(brpc::FLAGS_redis_max_allocation_size + 1, 'k');
+        buf.append(large_inline_cmd);
+
+        std::vector<butil::StringPiece> args;
+        brpc::ParseError err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+    }
+
+    {
+        // A command line exactly at the limit may have CRLF split across reads.
+        brpc::RedisCommandParser parser;
+        butil::IOBuf buf;
+        std::string boundary_inline_cmd = "get ";
+        boundary_inline_cmd.append(brpc::FLAGS_redis_max_allocation_size -
+                                   boundary_inline_cmd.size(), 'k');
+        boundary_inline_cmd.push_back('\r');
+        buf.append(boundary_inline_cmd);
+
+        std::vector<butil::StringPiece> args;
+        brpc::ParseError err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, err);
+
+        buf.push_back('\n');
+        err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_OK, err);
+        ASSERT_EQ(2, (int)args.size());
+        ASSERT_EQ("get", args[0].as_string());
+        ASSERT_EQ(brpc::FLAGS_redis_max_allocation_size - 4, (int)args[1].size());
+    }
+
+    {
+        // Test that only the current inline command line is limited and copied.
+        brpc::RedisCommandParser parser;
+        butil::IOBuf buf;
+        std::string pipelined_inline_cmd = "PING\r\nget ";
+        pipelined_inline_cmd.append(brpc::FLAGS_redis_max_allocation_size + 1, 'k');
+        buf.append(pipelined_inline_cmd);
+
+        std::vector<butil::StringPiece> args;
+        brpc::ParseError err = parser.Consume(buf, &args, &arena);
+        ASSERT_EQ(brpc::PARSE_OK, err);
+        ASSERT_EQ(1, (int)args.size());
+        ASSERT_EQ("ping", args[0].as_string());
+        ASSERT_EQ(pipelined_inline_cmd.size() - 6, buf.size());
     }
 
     {

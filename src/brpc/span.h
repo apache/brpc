@@ -36,10 +36,6 @@
 #include "brpc/options.pb.h"                 // ProtocolType
 #include "brpc/span.pb.h"
 
-namespace bthread {
-extern __thread bthread::LocalStorage tls_bls;
-}
-
 namespace brpc {
 
 class Span;

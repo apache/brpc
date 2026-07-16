@@ -34,7 +34,6 @@ int main(int argc, char* argv[]) {
 }
 
 namespace bthread {
-extern __thread bthread::LocalStorage tls_bls;
 #ifdef BRPC_BTHREAD_TRACER
 extern std::string stack_trace(bthread_t tid);
 #endif // BRPC_BTHREAD_TRACER
@@ -536,21 +535,21 @@ static const bthread_attr_t BTHREAD_ATTR_NORMAL_WITH_SPAN =
 
 void* test_parent_span(void* p) {
     uint64_t *q = (uint64_t *)p;
-    *q = (uint64_t)(bthread::tls_bls.rpcz_parent_span);
+    *q = (uint64_t)(bthread::tls_bls_ptr()->rpcz_parent_span);
     LOG(INFO) << "span id in thread is " << *q;
     return NULL;
 }
 
 void* test_grandson_parent_span(void* p) {
     uint64_t* q = (uint64_t*)p;
-    *q = (uint64_t)(bthread::tls_bls.rpcz_parent_span);
+    *q = (uint64_t)(bthread::tls_bls_ptr()->rpcz_parent_span);
     LOG(INFO) << "parent span id in thread is " << *q;
     return NULL;
 }
 
 void* test_son_parent_span(void* p) {
     uint64_t* q = (uint64_t*)p;
-    *q = (uint64_t)(bthread::tls_bls.rpcz_parent_span);
+    *q = (uint64_t)(bthread::tls_bls_ptr()->rpcz_parent_span);
     LOG(INFO) << "parent span id in thread is " << *q;
     bthread_t th;
     uint64_t multi_p;
@@ -581,7 +580,7 @@ TEST_F(BthreadTest, test_span) {
     uint64_t target = 0xBADBEAFUL;
     LOG(INFO) << "target span id is " << target;
 
-    bthread::tls_bls.rpcz_parent_span = (void*)target;
+    bthread::tls_bls_ptr()->rpcz_parent_span = (void*)target;
     bthread_t th1;
     ASSERT_EQ(0, bthread_start_urgent(&th1, &BTHREAD_ATTR_NORMAL_WITH_SPAN, test_parent_span, &p1));
     ASSERT_EQ(0, bthread_join(th1, NULL));

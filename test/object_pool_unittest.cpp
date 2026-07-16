@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <memory>
 #include <gtest/gtest.h>
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -184,9 +185,13 @@ TEST_F(ObjectPoolTest, get_int) {
     tm.stop();
     printf("get a int takes %.1fns\n", tm.n_elapsed()/(double)N);
     
+    std::vector<std::unique_ptr<int>> new_ints;
+    new_ints.reserve(N);
     tm.start();
     for (size_t i = 0; i < N; ++i) {
-        *(new int) = i;
+        int* pi = new int;
+        *pi = i;
+        new_ints.emplace_back(pi);
     }    
     tm.stop();
     printf("new a int takes %" PRId64 "ns\n", tm.n_elapsed()/N);

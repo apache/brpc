@@ -1136,7 +1136,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
  
     person->set_id(100);
     char ch = 0x01;
-    char* name = new char[17];
+    char name[17];
     memcpy(name, "baidu ", 6);
     name[6] = ch;
     char c = 0x08;

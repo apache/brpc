@@ -547,6 +547,17 @@ inline ssize_t DecodeInteger(butil::IOBufBytesIterator& iter,
         if (!iter) {
             return 0;
         }
+        // A well-formed integer below MAX_HPACK_INTEGER fits in a few
+        // continuation octets. A run of 0x80 octets (continuation bit set,
+        // payload bits zero) leaves tmp unchanged, so the `tmp <
+        // MAX_HPACK_INTEGER` guard below never trips while m keeps growing;
+        // once m reaches 64 the `<< m` shift is undefined behavior. Refuse the
+        // over-long encoding before that happens.
+        if (m >= 32) {
+            LOG_EVERY_SECOND(ERROR) << "Over-long HPACK integer encoding, "
+                                       "continuation octets would overflow the shift";
+            return -1;
+        }
         cur_byte = *iter;
         in_bytes++;
         tmp += static_cast<uint64_t>(cur_byte & 0x7f) << m;
@@ -763,6 +774,8 @@ inline ssize_t HPacker::DecodeWithKnownPrefix(
 }
 
 ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
+    ssize_t skipped_bytes = 0;
+decode_next:
     if (iter == NULL) {
         return 0;
     }
@@ -791,7 +804,7 @@ ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
                 return -1;
             }
             *h = *indexed_header;
-            return index_bytes;
+            return skipped_bytes + index_bytes;
         }
         break;
     case 7:
@@ -806,7 +819,7 @@ ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
                 return -1;
             }
             _decode_table->AddHeader(*h);
-            return bytes_consumed;
+            return skipped_bytes + bytes_consumed;
         }
         break;
     case 3:
@@ -824,17 +837,24 @@ ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
                 return -1;
             }
             _decode_table->ResetMaxSize(max_size);
-            return Decode(iter, h);
+            skipped_bytes += read_bytes;
+            goto decode_next;
         }
     case 1:
         // (0001) Literal Header Field Never Indexed
         // https://tools.ietf.org/html/rfc7541#section-6.2.3
-        return DecodeWithKnownPrefix(iter, h, 4);
+        {
+            const ssize_t bytes_consumed = DecodeWithKnownPrefix(iter, h, 4);
+            return bytes_consumed > 0 ? skipped_bytes + bytes_consumed : bytes_consumed;
+        }
         // TODO: Expose NeverIndex to the caller.
     case 0:
         // (0000) Literal Header Field without Indexing
         // https://tools.ietf.org/html/rfc7541#section-6.2.1
-        return DecodeWithKnownPrefix(iter, h, 4);
+        {
+            const ssize_t bytes_consumed = DecodeWithKnownPrefix(iter, h, 4);
+            return bytes_consumed > 0 ? skipped_bytes + bytes_consumed : bytes_consumed;
+        }
         // TODO: Expose NeverIndex to the caller.
     default:
         CHECK(false) << "Can't reach here";

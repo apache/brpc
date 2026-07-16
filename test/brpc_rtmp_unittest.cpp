@@ -35,11 +35,109 @@
 #include "brpc/rtmp.h"
 #include "brpc/amf.h"
 
+namespace brpc {
+DECLARE_int32(amf_max_depth);
+DECLARE_int32(amf_max_string_size);
+DECLARE_int32(amf_max_array_size);
+}
+
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
+
+namespace {
+class ScopedAMFMaxDepth {
+public:
+    explicit ScopedAMFMaxDepth(int32_t depth) : _old_depth(brpc::FLAGS_amf_max_depth) {
+        brpc::FLAGS_amf_max_depth = depth;
+    }
+    ~ScopedAMFMaxDepth() {
+        brpc::FLAGS_amf_max_depth = _old_depth;
+    }
+
+private:
+    int32_t _old_depth;
+};
+
+class ScopedAMFLimit {
+public:
+    ScopedAMFLimit(int32_t* flag, int32_t value) : _flag(flag), _old_value(*flag) {
+        *_flag = value;
+    }
+    ~ScopedAMFLimit() {
+        *_flag = _old_value;
+    }
+
+private:
+    int32_t* _flag;
+    int32_t _old_value;
+};
+
+void AppendAMFStrictArrayHeader(std::string* out, uint32_t count) {
+    out->push_back((char)brpc::AMF_MARKER_STRICT_ARRAY);
+    out->push_back((char)((count >> 24) & 0xFF));
+    out->push_back((char)((count >> 16) & 0xFF));
+    out->push_back((char)((count >> 8) & 0xFF));
+    out->push_back((char)(count & 0xFF));
+}
+
+void AppendAMFObjectHeader(std::string* out) {
+    out->push_back((char)brpc::AMF_MARKER_OBJECT);
+}
+
+void AppendAMFEcmaArrayHeader(std::string* out, uint32_t count) {
+    out->push_back((char)brpc::AMF_MARKER_ECMA_ARRAY);
+    out->push_back((char)((count >> 24) & 0xFF));
+    out->push_back((char)((count >> 16) & 0xFF));
+    out->push_back((char)((count >> 8) & 0xFF));
+    out->push_back((char)(count & 0xFF));
+}
+
+void AppendAMFShortStringBody(std::string* out, const char* name) {
+    const uint16_t len = strlen(name);
+    out->push_back((char)((len >> 8) & 0xFF));
+    out->push_back((char)(len & 0xFF));
+    out->append(name, len);
+}
+
+void AppendAMFLongStringHeader(std::string* out, uint32_t len) {
+    out->push_back((char)brpc::AMF_MARKER_LONG_STRING);
+    out->push_back((char)((len >> 24) & 0xFF));
+    out->push_back((char)((len >> 16) & 0xFF));
+    out->push_back((char)((len >> 8) & 0xFF));
+    out->push_back((char)(len & 0xFF));
+}
+
+void AppendAMFObjectEnd(std::string* out) {
+    AppendAMFShortStringBody(out, "");
+    out->push_back((char)brpc::AMF_MARKER_OBJECT_END);
+}
+
+std::string MakeNestedAMFObject(int depth) {
+    std::string out;
+    AppendAMFObjectHeader(&out);
+    for (int i = 0; i < depth; ++i) {
+        AppendAMFShortStringBody(&out, "x");
+        AppendAMFObjectHeader(&out);
+    }
+    for (int i = 0; i <= depth; ++i) {
+        AppendAMFObjectEnd(&out);
+    }
+    return out;
+}
+
+std::string MakeNestedAMFEcmaArray(int depth) {
+    std::string out;
+    AppendAMFEcmaArrayHeader(&out, depth == 0 ? 0 : 1);
+    for (int i = 0; i < depth; ++i) {
+        AppendAMFShortStringBody(&out, "x");
+        AppendAMFEcmaArrayHeader(&out, i + 1 == depth ? 0 : 1);
+    }
+    return out;
+}
+}  // namespace
 
 class TestRtmpClientStream : public brpc::RtmpClientStream {
 public:
@@ -521,6 +619,190 @@ TEST(RtmpTest, amf) {
     ASSERT_EQ("foo", info3.code());
     ASSERT_EQ("bar", info3.level());
     ASSERT_EQ("heheda", info3.description());
+}
+
+TEST(RtmpTest, amf_rejects_oversized_string_before_growing_output) {
+    std::string req_buf;
+    AppendAMFLongStringHeader(&req_buf, 16);
+    req_buf.append("short", 5);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    std::string result = "unchanged";
+    EXPECT_FALSE(brpc::ReadAMFString(&result, &istream));
+    EXPECT_TRUE(result.empty());
+
+    ScopedAMFLimit scoped_limit(&brpc::FLAGS_amf_max_string_size, 4);
+    std::string capped_buf;
+    AppendAMFLongStringHeader(&capped_buf, 5);
+    capped_buf.append("hello", 5);
+
+    google::protobuf::io::ArrayInputStream zc_stream2(capped_buf.data(),
+                                                     capped_buf.size());
+    brpc::AMFInputStream istream2(&zc_stream2);
+    EXPECT_FALSE(brpc::ReadAMFString(&result, &istream2));
+}
+
+TEST(RtmpTest, amf_rejects_oversized_ecma_array_count) {
+    ScopedAMFLimit scoped_limit(&brpc::FLAGS_amf_max_array_size, 1);
+
+    std::string req_buf;
+    AppendAMFEcmaArrayHeader(&req_buf, 2);
+    AppendAMFShortStringBody(&req_buf, "x");
+    req_buf.push_back((char)brpc::AMF_MARKER_NULL);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFObject obj;
+    EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+}
+
+TEST(RtmpTest, amf_rejects_oversized_strict_array_count) {
+    ScopedAMFLimit scoped_limit(&brpc::FLAGS_amf_max_array_size, 1);
+
+    std::string req_buf;
+    AppendAMFStrictArrayHeader(&req_buf, 2);
+    req_buf.push_back((char)brpc::AMF_MARKER_NULL);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFArray arr;
+    EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
+    EXPECT_EQ(0u, arr.size());
+}
+
+TEST(RtmpTest, amf_rejects_deep_nested_arrays) {
+    ScopedAMFMaxDepth scoped_depth(4);
+
+    std::string req_buf;
+    for (int i = 0; i <= brpc::FLAGS_amf_max_depth + 1; ++i) {
+        AppendAMFStrictArrayHeader(&req_buf, 1);
+    }
+    req_buf.push_back((char)brpc::AMF_MARKER_NULL);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFArray arr;
+    EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
+
+    req_buf.clear();
+    for (int i = 0; i < brpc::FLAGS_amf_max_depth; ++i) {
+        AppendAMFStrictArrayHeader(&req_buf, 1);
+    }
+    req_buf.push_back((char)brpc::AMF_MARKER_NULL);
+
+    google::protobuf::io::ArrayInputStream zc_stream2(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream2(&zc_stream2);
+    brpc::AMFArray valid_arr;
+    EXPECT_TRUE(brpc::ReadAMFArray(&valid_arr, &istream2));
+}
+
+TEST(RtmpTest, amf_rejects_deep_nested_objects) {
+    ScopedAMFMaxDepth scoped_depth(4);
+
+    std::string req_buf = MakeNestedAMFObject(brpc::FLAGS_amf_max_depth + 1);
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFObject obj;
+    EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+
+    req_buf = MakeNestedAMFObject(brpc::FLAGS_amf_max_depth);
+    google::protobuf::io::ArrayInputStream zc_stream2(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream2(&zc_stream2);
+    brpc::AMFObject valid_obj;
+    EXPECT_TRUE(brpc::ReadAMFObject(&valid_obj, &istream2));
+}
+
+TEST(RtmpTest, amf_rejects_deep_nested_ecma_arrays) {
+    ScopedAMFMaxDepth scoped_depth(4);
+
+    std::string req_buf = MakeNestedAMFEcmaArray(brpc::FLAGS_amf_max_depth + 1);
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::AMFObject obj;
+    EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+
+    req_buf = MakeNestedAMFEcmaArray(brpc::FLAGS_amf_max_depth);
+    google::protobuf::io::ArrayInputStream zc_stream2(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream2(&zc_stream2);
+    brpc::AMFObject valid_obj;
+    EXPECT_TRUE(brpc::ReadAMFObject(&valid_obj, &istream2));
+}
+
+// Create() copies the record into a non-NUL-terminated buffer, so the SPS must
+// be parsed with an explicitly-sized view. A crafted sequence header whose SPS
+// body has no zero byte used to make ParseSPS run strlen off the end of that
+// buffer (an out-of-bounds read, caught here under ASan).
+TEST(RtmpTest, avc_seq_header_sps_without_zero_byte) {
+    const uint16_t sps_length = 70; // keep the record above the small-array cap
+    butil::IOBuf buf;
+    const char head[6] = { 0x01, 0x64, 0x00, 0x28, (char)0xff, (char)0xe1 };
+    buf.append(head, sizeof(head)); // version/profile/level, lengthSizeMinus1=3, numSPS=1
+    const char len_be[2] = { (char)(sps_length >> 8), (char)(sps_length & 0xff) };
+    buf.append(len_be, sizeof(len_be));
+    std::string sps(sps_length, (char)0x67); // NAL header 0x67 then non-zero filler
+    buf.append(sps);
+
+    brpc::AVCDecoderConfigurationRecord avc;
+    // Only requirement: the call must not read past the copied record.
+    avc.Create(buf);
+}
+
+static void AppendBigEndian3Bytes(std::string* s, uint32_t v) {
+    s->push_back((char)((v >> 16) & 0xFF));
+    s->push_back((char)((v >> 8) & 0xFF));
+    s->push_back((char)(v & 0xFF));
+}
+
+// Build an FLV stream header followed by a single tag of `tag_type' whose
+// DataSize field is set to `data_size'. No tag body is appended, so a valid
+// tag needs data_size==0 to be rejected before any body is consumed.
+static std::string MakeFlvTagWithDataSize(char tag_type, uint32_t data_size) {
+    std::string s;
+    const char header[] = { 'F', 'L', 'V', 0x01, 0x05, 0, 0, 0, 0x09 };
+    s.append(header, sizeof(header));
+    s.append(4, '\0');  // PreviousTagSize0
+    s.push_back(tag_type);
+    AppendBigEndian3Bytes(&s, data_size);  // DataSize
+    s.append(3, '\0');  // Timestamp
+    s.push_back('\0');  // TimestampExtended
+    s.append(3, '\0');  // StreamID
+    s.append(4, '\0');  // PreviousTagSize
+    return s;
+}
+
+TEST(RtmpTest, flv_reader_rejects_zero_datasize_video_tag) {
+    std::string flv = MakeFlvTagWithDataSize((char)brpc::FLV_TAG_VIDEO, 0);
+    butil::IOBuf buf;
+    buf.append(flv);
+
+    brpc::FlvReader reader(&buf);
+    brpc::FlvTagType type;
+    ASSERT_TRUE(reader.PeekMessageType(&type).ok());
+    ASSERT_EQ(brpc::FLV_TAG_VIDEO, type);
+    const size_t before = buf.size();
+
+    brpc::RtmpVideoMessage vmsg;
+    // A DataSize of 0 used to underflow `msg_size - 1' and drain the whole
+    // buffer; it must now be rejected without consuming the tag.
+    ASSERT_FALSE(reader.Read(&vmsg).ok());
+    ASSERT_EQ(before, buf.size());
+}
+
+TEST(RtmpTest, flv_reader_rejects_zero_datasize_audio_tag) {
+    std::string flv = MakeFlvTagWithDataSize((char)brpc::FLV_TAG_AUDIO, 0);
+    butil::IOBuf buf;
+    buf.append(flv);
+
+    brpc::FlvReader reader(&buf);
+    brpc::FlvTagType type;
+    ASSERT_TRUE(reader.PeekMessageType(&type).ok());
+    ASSERT_EQ(brpc::FLV_TAG_AUDIO, type);
+    const size_t before = buf.size();
+
+    brpc::RtmpAudioMessage amsg;
+    ASSERT_FALSE(reader.Read(&amsg).ok());
+    ASSERT_EQ(before, buf.size());
 }
 
 TEST(RtmpTest, successfully_play_streams) {

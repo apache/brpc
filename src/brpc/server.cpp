@@ -500,107 +500,107 @@ Server::~Server() {
 
 int Server::AddBuiltinServices() {
     // Firstly add services shown in tabs.
-    if (AddBuiltinService(new (std::nothrow) StatusService)) {
+    if (AddBuiltinService(new StatusService)) {
         LOG(ERROR) << "Fail to add StatusService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) VarsService)) {
+    if (AddBuiltinService(new VarsService)) {
         LOG(ERROR) << "Fail to add VarsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) ConnectionsService)) {
+    if (AddBuiltinService(new ConnectionsService)) {
         LOG(ERROR) << "Fail to add ConnectionsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) FlagsService)) {
+    if (AddBuiltinService(new FlagsService)) {
         LOG(ERROR) << "Fail to add FlagsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) RpczService)) {
+    if (AddBuiltinService(new RpczService)) {
         LOG(ERROR) << "Fail to add RpczService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) HotspotsService)) {
+    if (AddBuiltinService(new HotspotsService)) {
         LOG(ERROR) << "Fail to add HotspotsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) IndexService)) {
+    if (AddBuiltinService(new IndexService)) {
         LOG(ERROR) << "Fail to add IndexService";
         return -1;
     }
 
     // Add other services.
-    if (AddBuiltinService(new (std::nothrow) VersionService(this))) {
+    if (AddBuiltinService(new VersionService(this))) {
         LOG(ERROR) << "Fail to add VersionService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) HealthService)) {
+    if (AddBuiltinService(new HealthService)) {
         LOG(ERROR) << "Fail to add HealthService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) ProtobufsService(this))) {
+    if (AddBuiltinService(new ProtobufsService(this))) {
         LOG(ERROR) << "Fail to add ProtobufsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) BadMethodService)) {
+    if (AddBuiltinService(new BadMethodService)) {
         LOG(ERROR) << "Fail to add BadMethodService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) ListService(this))) {
+    if (AddBuiltinService(new ListService(this))) {
         LOG(ERROR) << "Fail to add ListService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) PrometheusMetricsService)) {
+    if (AddBuiltinService(new PrometheusMetricsService)) {
         LOG(ERROR) << "Fail to add MetricsService";
         return -1;
     }
     if (FLAGS_enable_threads_service &&
-        AddBuiltinService(new (std::nothrow) ThreadsService)) {
+        AddBuiltinService(new ThreadsService)) {
         LOG(ERROR) << "Fail to add ThreadsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) MemoryService)) {
+    if (AddBuiltinService(new MemoryService)) {
         LOG(ERROR) << "Fail to add MemoryService";
         return -1;
     }
 
 #if !BRPC_WITH_GLOG
-    if (AddBuiltinService(new (std::nothrow) VLogService)) {
+    if (AddBuiltinService(new VLogService)) {
         LOG(ERROR) << "Fail to add VLogService";
         return -1;
     }
 #endif
 
-    if (AddBuiltinService(new (std::nothrow) PProfService)) {
+    if (AddBuiltinService(new PProfService)) {
         LOG(ERROR) << "Fail to add PProfService";
         return -1;
     }
     if (FLAGS_enable_dir_service &&
-        AddBuiltinService(new (std::nothrow) DirService)) {
+        AddBuiltinService(new DirService)) {
         LOG(ERROR) << "Fail to add DirService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) BthreadsService)) {
+    if (AddBuiltinService(new BthreadsService)) {
         LOG(ERROR) << "Fail to add BthreadsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) IdsService)) {
+    if (AddBuiltinService(new IdsService)) {
         LOG(ERROR) << "Fail to add IdsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) SocketsService)) {
+    if (AddBuiltinService(new SocketsService)) {
         LOG(ERROR) << "Fail to add SocketsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) GetFaviconService)) {
+    if (AddBuiltinService(new GetFaviconService)) {
         LOG(ERROR) << "Fail to add GetFaviconService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) GetJsService)) {
+    if (AddBuiltinService(new GetJsService)) {
         LOG(ERROR) << "Fail to add GetJsService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) GrpcHealthCheckService)) {
+    if (AddBuiltinService(new GrpcHealthCheckService)) {
         LOG(ERROR) << "Fail to add GrpcHealthCheckService";
         return -1;
     }
@@ -927,18 +927,20 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         _session_local_data_pool->Reserve(_options.reserved_session_local_data);
     }
 
-    // Leak of `_keytable_pool' and others is by design.
-    // See comments in Server::Join() for details.
-    // Instruct LeakSanitizer to ignore the designated memory leak.
-    ANNOTATE_SCOPED_MEMORY_LEAK;
-    // Init _keytable_pool always. If the server was stopped before, the pool
-    // should be destroyed in Join().
-    _keytable_pool = new bthread_keytable_pool_t;
-    if (bthread_keytable_pool_init(_keytable_pool) != 0) {
-        LOG(ERROR) << "Fail to init _keytable_pool";
-        delete _keytable_pool;
-        _keytable_pool = NULL;
-        return -1;
+    {
+        // Leak of `_keytable_pool' and others is by design.
+        // See comments in Server::Join() for details.
+        // Instruct LeakSanitizer to ignore the designated memory leak.
+        ANNOTATE_SCOPED_MEMORY_LEAK;
+        // Init _keytable_pool always. If the server was stopped before, the pool
+        // should be destroyed in Join().
+        _keytable_pool = new bthread_keytable_pool_t;
+        if (bthread_keytable_pool_init(_keytable_pool) != 0) {
+            LOG(ERROR) << "Fail to init _keytable_pool";
+            delete _keytable_pool;
+            _keytable_pool = NULL;
+            return -1;
+        }
     }
 
     if (_options.thread_local_data_factory) {
@@ -1635,7 +1637,15 @@ int Server::AddService(google::protobuf::Service* service,
 int Server::AddBuiltinService(google::protobuf::Service* service) {
     ServiceOptions options;
     options.ownership = SERVER_OWNS_SERVICE;
-    return AddServiceInternal(service, true, options);
+    int rc = AddServiceInternal(service, true, options);
+    if (rc != 0) {
+        // AddServiceInternal does not take ownership of `service' on failure:
+        // for builtin services the only failure paths (name/fullname conflict)
+        // return before the service is inserted into any map. Delete it here to
+        // avoid leaking the object allocated by the caller.
+        delete service;
+    }
+    return rc;
 }
 
 void Server::RemoveMethodsOf(google::protobuf::Service* service) {
