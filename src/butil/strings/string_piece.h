@@ -43,6 +43,12 @@
 
 namespace butil {
 
+// RVV-accelerated byte comparison and search (implemented in string_compare_rvv.cc)
+#if defined(__riscv) && defined(__riscv_vector)
+int rvv_memcmp(const void* p1, const void* p2, size_t n);
+const void* rvv_memchr(const void* s, int c, size_t n);
+#endif
+
 template <typename STRING_TYPE> class BasicStringPiece;
 typedef BasicStringPiece<std::string> StringPiece;
 typedef BasicStringPiece<string16> StringPiece16;
@@ -286,6 +292,11 @@ template <typename STRING_TYPE> class BasicStringPiece {
   static int wordmemcmp(const value_type* p,
                         const value_type* p2,
                         size_type N) {
+#if defined(__riscv) && defined(__riscv_vector)
+    if (sizeof(value_type) == 1 && N >= 16) {
+      return rvv_memcmp(p, p2, N);
+    }
+#endif
     return STRING_TYPE::traits_type::compare(p, p2, N);
   }
 

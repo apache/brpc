@@ -189,6 +189,7 @@ BUTIL_SRCS = [
     "src/butil/strings/string_number_conversions.cc",
     "src/butil/strings/string_split.cc",
     "src/butil/strings/string_piece.cc",
+    "src/butil/string_compare_rvv.cc",
     "src/butil/strings/string_util.cc",
     "src/butil/strings/string_util_constants.cc",
     "src/butil/strings/stringprintf.cc",
