@@ -672,7 +672,7 @@ int Stream::SetHostSocket(Socket *host_socket) {
         }
         _host_socket = ptr.release();
     });
-    return 0;
+    return _host_socket != NULL ? 0 : -1;
 }
 
 void Stream::FillSettings(StreamSettings *settings) {
