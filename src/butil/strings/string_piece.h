@@ -43,10 +43,9 @@
 
 namespace butil {
 
-// RVV-accelerated byte comparison and search (implemented in string_compare_rvv.cc)
+// RVV-accelerated byte comparison (implemented in string_compare_rvv.cc)
 #if defined(__riscv) && defined(__riscv_vector)
-int rvv_memcmp(const void* p1, const void* p2, size_t n);
-const void* rvv_memchr(const void* s, int c, size_t n);
+BUTIL_EXPORT int rvv_memcmp(const void* p1, const void* p2, size_t n);
 #endif
 
 template <typename STRING_TYPE> class BasicStringPiece;
