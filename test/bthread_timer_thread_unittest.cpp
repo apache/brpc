@@ -17,6 +17,9 @@
 
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
+#include <algorithm>
+#include <string>
+#include <vector>
 #include "bthread/sys_futex.h"
 #include "bthread/timer_thread.h"
 #include "bthread/bthread.h"
@@ -252,6 +255,127 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     keeper3.expect_first_run(keeper3_addtime);
     keeper4.expect_first_run(test_task2._running_time);
     keeper5.expect_first_run();
+}
+
+static void noop_routine(void*) {}
+
+// RAII helper: set a gflag for the duration of a test and restore its previous
+// value on scope exit, so tests don't leak configuration into later tests and
+// cause order-dependent failures. Also asserts the flag exists and was set.
+class ScopedFlag {
+public:
+    ScopedFlag(const char* name, const char* value) : _name(name) {
+        EXPECT_TRUE(GFLAGS_NAMESPACE::GetCommandLineOption(name, &_old_value))
+            << "unknown gflag " << name;
+        EXPECT_FALSE(
+            GFLAGS_NAMESPACE::SetCommandLineOption(name, value).empty())
+            << "failed to set gflag " << name << "=" << value;
+    }
+    ~ScopedFlag() {
+        GFLAGS_NAMESPACE::SetCommandLineOption(_name.c_str(), _old_value.c_str());
+    }
+private:
+    std::string _name;
+    std::string _old_value;
+};
+
+// Tasks that are unscheduled after being pulled into the timer thread's
+// internal heap must not stay there (occupying a pooled Task slot) until
+// their run_time. With large timeouts that would let memory grow ~ qps *
+// timeout. The timer thread should sweep them out and keep the heap bounded.
+TEST(TimerThreadTest, sweep_unscheduled_tasks_in_heap) {
+    // Lower the sweep threshold so the test doesn't need a huge heap.
+    ScopedFlag sweep_flag("brpc_timer_heap_sweep_min_size", "512");
+
+    bthread::TimerThread timer_thread;
+    ASSERT_EQ(0, timer_thread.start(NULL));
+
+    // Run far enough in the future that these tasks never fire on their own.
+    const timespec far = butil::seconds_from_now(100000);
+    const size_t kBatch = 2000;
+    const size_t kRounds = 20;
+
+    int64_t max_pending = 0;
+    for (size_t r = 0; r < kRounds; ++r) {
+        std::vector<bthread::TimerThread::TaskId> ids;
+        ids.reserve(kBatch);
+        for (size_t i = 0; i < kBatch; ++i) {
+            ids.push_back(timer_thread.schedule(noop_routine, NULL, far));
+        }
+        // A near-term task forces the timer thread to wake up and consume the
+        // buckets, so the far tasks above land in the heap (alive).
+        timer_thread.schedule(noop_routine, NULL,
+                              butil::milliseconds_from_now(1));
+        usleep(20000);  // let the timer thread consume the buckets
+
+        // Now unschedule the far tasks: they become dead-in-heap, exactly the
+        // case that used to linger until run_time.
+        for (size_t i = 0; i < ids.size(); ++i) {
+            timer_thread.unschedule(ids[i]);
+        }
+        // Another near-term task wakes the timer thread again, triggering the
+        // sweep that reclaims the dead tasks.
+        timer_thread.schedule(noop_routine, NULL,
+                              butil::milliseconds_from_now(1));
+        usleep(20000);
+
+        // Read the internal heap size directly (brpc tests are built with
+        // -fno-access-control, so no public accessor is needed).
+        const int64_t pending =
+            timer_thread._npending.load(butil::memory_order_relaxed);
+        LOG(INFO) << "round=" << r << " pending=" << pending;
+        max_pending = std::max(max_pending, pending);
+    }
+
+    // Without the sweep, pending would grow to ~ kBatch * kRounds (40000).
+    // With it, the heap is bounded by roughly a couple of sweep thresholds.
+    EXPECT_LT(max_pending, (int64_t)(kBatch * kRounds) / 4)
+        << "dead tasks are not being reclaimed from the heap";
+
+    timer_thread.stop_and_join();
+}
+
+// When every pending task is far in the future, the nearest run_time never
+// arrives, so the timer thread used to sleep for the whole duration and never
+// consume the buckets. Tasks scheduled meanwhile (and the slots they occupy)
+// would then be stranded in the buckets until that far deadline. The capped
+// wakeup makes the timer thread wake up periodically to drain the buckets so
+// their tasks are consumed (and, if unscheduled, reclaimed) within the cap
+// rather than after the timeout.
+TEST(TimerThreadTest, periodic_wakeup_drains_buckets) {
+    ScopedFlag wakeup_flag("brpc_timer_max_wakeup_interval_ms", "50");
+
+    bthread::TimerThread timer_thread;
+    ASSERT_EQ(0, timer_thread.start(NULL));
+
+    // Anchor task an hour out: it becomes the nearest task, so the tasks below
+    // (with even later run_times) are never the "earliest" and thus never wake
+    // the timer via schedule() -- only the periodic wakeup can drain them.
+    timer_thread.schedule(noop_routine, NULL, butil::seconds_from_now(3600));
+    usleep(100000);  // let the anchor be consumed into the heap
+    // Only the anchor is in the heap so far.
+    ASSERT_EQ(1, timer_thread._npending.load(butil::memory_order_relaxed));
+
+    // Pile far tasks with strictly-increasing run_times into the buckets. None
+    // of these wake the timer.
+    const int kN = 2000;
+    for (int i = 0; i < kN; ++i) {
+        timer_thread.schedule(noop_routine, NULL,
+                              butil::seconds_from_now(3600 + 1 + i));
+    }
+
+    // Without the periodic wakeup the timer would stay asleep (nearest task is
+    // an hour away) and these would sit in the buckets, unconsumed. With it,
+    // they are pulled into the heap within a few wakeup intervals.
+    usleep(300000);  // several 50ms intervals
+    const int64_t pending =
+        timer_thread._npending.load(butil::memory_order_relaxed);
+    LOG(INFO) << "pending after bucket fill = " << pending << " (scheduled "
+              << kN << " + 1 anchor)";
+    EXPECT_GE(pending, (int64_t)kN)
+        << "buckets were not drained by the periodic wakeup";
+
+    timer_thread.stop_and_join();
 }
 
 } // end namespace
