@@ -817,7 +817,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
 #endif
     // Save errno so that errno is bthread-specific.
     int saved_errno = errno;
-    void* saved_unique_user_ptr = tls_unique_user_ptr;
+    void* saved_unique_user_ptr = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr);
 
     TaskMeta* const cur_meta = g->_cur_meta;
     int64_t now = butil::cpuwide_time_ns();
