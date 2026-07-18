@@ -39,6 +39,7 @@
 #include "brpc/policy/most_common_message.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/server.h"
+#include "brpc/details/server_private_accessor.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
 #include "health_check.pb.h"
@@ -59,6 +60,8 @@ DECLARE_bool(socket_keepalive);
 DECLARE_int32(socket_keepalive_idle_s);
 DECLARE_int32(socket_keepalive_interval_s);
 DECLARE_int32(socket_keepalive_count);
+DECLARE_int32(socket_recv_buffer_size);
+DECLARE_int32(socket_send_buffer_size);
 DECLARE_int32(socket_tcp_user_timeout_ms);
 }
 
@@ -1123,6 +1126,45 @@ void CheckKeepalive(int fd,
     ASSERT_EQ(expected_keepalive_count, keepalive_count);
 }
 
+struct SocketBufferValues {
+    int recv_buffer;
+    int send_buffer;
+
+    SocketBufferValues() : recv_buffer(0), send_buffer(0) {}
+};
+
+void GetSocketBufferValues(int fd, SocketBufferValues* values) {
+    socklen_t len = sizeof(values->recv_buffer);
+    ASSERT_EQ(0, getsockopt(fd, SOL_SOCKET, SO_RCVBUF,
+                            &values->recv_buffer, &len));
+    len = sizeof(values->send_buffer);
+    ASSERT_EQ(0, getsockopt(fd, SOL_SOCKET, SO_SNDBUF,
+                            &values->send_buffer, &len));
+}
+
+void GetExpectedSocketBufferValues(int buffer_size,
+                                   SocketBufferValues* expected) {
+    SocketBufferValues default_values;
+    butil::fd_guard default_fd(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_GT(default_fd, 0);
+    GetSocketBufferValues(default_fd, &default_values);
+
+    butil::fd_guard reference_fd(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_GT(reference_fd, 0);
+    ASSERT_EQ(0, setsockopt(reference_fd, SOL_SOCKET, SO_RCVBUF, &buffer_size,
+                            sizeof(buffer_size)));
+    ASSERT_EQ(0, setsockopt(reference_fd, SOL_SOCKET, SO_SNDBUF, &buffer_size,
+                            sizeof(buffer_size)));
+    GetSocketBufferValues(reference_fd, expected);
+}
+
+void CheckSocketBufferValues(int fd, const SocketBufferValues& expected) {
+    SocketBufferValues actual;
+    GetSocketBufferValues(fd, &actual);
+    ASSERT_EQ(expected.recv_buffer, actual.recv_buffer);
+    ASSERT_EQ(expected.send_buffer, actual.send_buffer);
+}
+
 TEST_F(SocketTest, keepalive) {
     int default_keepalive = 0;
     int default_keepalive_idle = 0;
@@ -1423,6 +1465,97 @@ TEST_F(SocketTest, keepalive_input_message) {
     ASSERT_EQ(-1, messenger->listened_fd());
     ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
     ASSERT_EQ(EBADF, errno);
+}
+
+TEST_F(SocketTest, socket_buffer_options_before_connect) {
+    gflags::FlagSaver flag_saver;
+    const int buffer_size = 256 * 1024;
+    brpc::FLAGS_socket_recv_buffer_size = buffer_size;
+    brpc::FLAGS_socket_send_buffer_size = buffer_size;
+
+    SocketBufferValues expected;
+    GetExpectedSocketBufferValues(buffer_size, &expected);
+
+    butil::EndPoint point;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &point));
+    butil::fd_guard listening_fd(tcp_listen(point));
+    ASSERT_GT(listening_fd, 0) << berror();
+    ASSERT_EQ(0, butil::get_local_side(listening_fd, &point));
+
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    brpc::SocketId id = brpc::INVALID_SOCKET_ID;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
+
+    const timespec duetime = butil::milliseconds_from_now(1000);
+    butil::fd_guard connected_fd(ptr->Connect(&duetime, NULL, NULL));
+    ASSERT_GT(connected_fd, 0);
+    CheckSocketBufferValues(connected_fd, expected);
+
+    ASSERT_EQ(0, ptr->SetFailed());
+}
+
+TEST_F(SocketTest, socket_buffer_options_before_accept) {
+    gflags::FlagSaver flag_saver;
+    const int buffer_size = 256 * 1024;
+    brpc::FLAGS_socket_recv_buffer_size = buffer_size;
+    brpc::FLAGS_socket_send_buffer_size = buffer_size;
+
+    SocketBufferValues expected;
+    GetExpectedSocketBufferValues(buffer_size, &expected);
+
+    butil::EndPoint point;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &point));
+    brpc::Server server;
+    ASSERT_EQ(0, server.Start(point, NULL));
+    point = server.listen_address();
+
+    brpc::Acceptor* messenger =
+        brpc::ServerPrivateAccessor(&server).acceptor();
+    ASSERT_TRUE(messenger != NULL);
+    ASSERT_GT(messenger->listened_fd(), 0);
+    CheckSocketBufferValues(messenger->listened_fd(), expected);
+
+    // Accepted sockets should inherit the listener's buffer sizes, not use
+    // the flags at accept time.
+    brpc::FLAGS_socket_recv_buffer_size = buffer_size / 2;
+    brpc::FLAGS_socket_send_buffer_size = buffer_size / 2;
+
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    options.connect_on_create = true;
+    brpc::SocketId id = brpc::INVALID_SOCKET_ID;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+
+    const int64_t start_time = butil::cpuwide_time_us();
+    while (messenger->ConnectionCount() < 1) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L)
+            << "Too long!";
+    }
+
+    std::vector<brpc::SocketId> connections;
+    messenger->ListConnections(&connections);
+    ASSERT_EQ(1ul, connections.size());
+
+    {
+        brpc::SocketUniquePtr accepted_socket;
+        ASSERT_EQ(0, brpc::Socket::Address(connections[0], &accepted_socket));
+        ASSERT_GT(accepted_socket->fd(), 0);
+        CheckSocketBufferValues(accepted_socket->fd(), expected);
+        ASSERT_EQ(0, accepted_socket->SetFailed());
+    }
+
+    {
+        brpc::SocketUniquePtr client_socket;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &client_socket));
+        ASSERT_EQ(0, client_socket->SetFailed());
+    }
+    server.Stop(0);
+    server.Join();
 }
 
 #if defined(OS_LINUX)

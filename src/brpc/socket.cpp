@@ -628,22 +628,6 @@ void Socket::SetSocketOptions(int fd) {
         PLOG(ERROR) << "Fail to set tos of fd=" << fd << " to " << _tos;
     }
 
-    if (FLAGS_socket_send_buffer_size > 0) {
-        int buff_size = FLAGS_socket_send_buffer_size;
-        if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buff_size, sizeof(buff_size)) != 0) {
-            PLOG(ERROR) << "Fail to set sndbuf of fd=" << fd << " to "
-                        << buff_size;
-        }
-    }
-
-    if (FLAGS_socket_recv_buffer_size > 0) {
-        int buff_size = FLAGS_socket_recv_buffer_size;
-        if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buff_size, sizeof(buff_size)) != 0) {
-            PLOG(ERROR) << "Fail to set rcvbuf of fd=" << fd << " to "
-                        << buff_size;
-        }
-    }
-
 #if defined(OS_LINUX)
     if (_tcp_user_timeout_ms > 0) {
         if (setsockopt(fd, IPPROTO_TCP, TCP_USER_TIMEOUT,
@@ -712,6 +696,24 @@ void Socket::SetSocketOptions(int fd) {
         }
     }
 #endif
+}
+
+void SetSocketBufferOptions(int fd) {
+    if (FLAGS_socket_send_buffer_size > 0) {
+        int buff_size = FLAGS_socket_send_buffer_size;
+        if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buff_size, sizeof(buff_size)) != 0) {
+            PLOG(ERROR) << "Fail to set sndbuf of fd=" << fd << " to "
+                        << buff_size;
+        }
+    }
+
+    if (FLAGS_socket_recv_buffer_size > 0) {
+        int buff_size = FLAGS_socket_recv_buffer_size;
+        if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buff_size, sizeof(buff_size)) != 0) {
+            PLOG(ERROR) << "Fail to set rcvbuf of fd=" << fd << " to "
+                        << buff_size;
+        }
+    }
 }
 
 // SocketId = 32-bit version + 32-bit slot.
@@ -1275,6 +1277,8 @@ int Socket::Connect(const timespec* abstime,
     CHECK_EQ(0, butil::make_close_on_exec(sockfd));
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
+    // Socket buffer sizes need to be set before connect.
+    brpc::SetSocketBufferOptions(sockfd);
     if (!_device_name.empty()) {
 #ifdef SO_BINDTODEVICE
         if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE,

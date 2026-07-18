@@ -1124,7 +1124,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     _listen_addr = endpoint;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
         _listen_addr.port = port;
-        butil::fd_guard sockfd(tcp_listen(_listen_addr));
+        butil::fd_guard sockfd(tcp_listen(_listen_addr,
+                                          SetSocketBufferOptions));
         if (sockfd < 0) {
             if (port != port_range.max_port) { // not the last port, try next
                 continue;
@@ -1192,7 +1193,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 
         butil::EndPoint internal_point = _listen_addr;
         internal_point.port = _options.internal_port;
-        butil::fd_guard sockfd(tcp_listen(internal_point));
+        butil::fd_guard sockfd(tcp_listen(internal_point,
+                                          SetSocketBufferOptions));
         if (sockfd < 0) {
             LOG(ERROR) << "Fail to listen " << internal_point << " (internal)";
             return -1;
