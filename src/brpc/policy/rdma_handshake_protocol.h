@@ -46,8 +46,8 @@ ParseResult ParseRdmaHandshake(butil::IOBuf* source, Socket* socket,
 
 // Actions to a rdma handshake request, which is left unimplemented.
 // All requests are processed in the parsing process. This function
-// must be declared since server only enables redis as a server-side
-// protocol when this function is declared.
+// must be declared since server only enables rdma handshake as a
+// server-side protocol when this function is declared.
 void ProcessRdmaHandshake(InputMessageBase* msg);
 
 }  // namespace policy
