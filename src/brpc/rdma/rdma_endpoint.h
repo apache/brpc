@@ -30,6 +30,7 @@
 #include "butil/macros.h"
 #include "butil/containers/mpsc_queue.h"
 #include "brpc/socket.h"
+#include "brpc/rdma/rdma_handshake_server.h"
 
 
 namespace brpc {
@@ -45,10 +46,11 @@ class RdmaHandshakeServerV2;
 class RdmaHandshakeClientV3;
 class RdmaHandshakeServerV3;
 struct ParsedHello;
+enum class RemoteHelloResult;
 class RdmaHello;
 class RdmaEndpoint;
 namespace v2_wire {
-    int ReadBodyAndNegotiate(RdmaEndpoint* ep, ParsedHello* remote, bool* negotiated);
+    RemoteHelloResult ReadBodyAndNegotiate(RdmaEndpoint* ep, ParsedHello* remote);
     int DrainBytes(RdmaEndpoint* ep, size_t n);
 }  // namespace v2_wire
 
@@ -96,7 +98,7 @@ friend class RdmaHandshakeClientV2;
 friend class RdmaHandshakeServerV2;
 friend class RdmaHandshakeClientV3;
 friend class RdmaHandshakeServerV3;
-friend int v2_wire::ReadBodyAndNegotiate(RdmaEndpoint*, ParsedHello*, bool*);
+friend RemoteHelloResult v2_wire::ReadBodyAndNegotiate(RdmaEndpoint*, ParsedHello*);
 friend int v2_wire::DrainBytes(RdmaEndpoint*, size_t);
 friend void v3_wire::FillLocalRdmaHello(const RdmaEndpoint*, RdmaHello*);
 friend int  v3_wire::ReadAndParseV3Hello(RdmaEndpoint*, RdmaHello*);
@@ -125,8 +127,12 @@ public:
     void DebugInfo(std::ostream& os,
                    butil::StringPiece connector = "\n") const;
 
-    // Callback when there is new epollin event on TCP fd
+    // Callback when there is new epollin event on TCP fd.
+    // Only used by client-side RDMA sockets.
     static void OnNewDataFromTcp(Socket* m);
+
+    // Real handshake for RDMA-mode sockets.
+    static ParseResult ExecuteServerHandshake(butil::IOBuf* source, Socket* socket);
 
     // Initialize polling mode
     static int PollingModeInitialize(bthread_tag_t tag,
@@ -156,9 +162,6 @@ private:
 
     // Process handshake at the client
     static void* ProcessHandshakeAtClient(void* arg);
-
-    // Process handshake at the server
-    static void* ProcessHandshakeAtServer(void* arg);
 
     // Allocate resources
     // Return 0 if success, -1 if failed and errno set
@@ -249,9 +252,6 @@ private:
     // Get the description of current handshake state
     std::string GetStateStr() const;
 
-    // Try to read data on TCP fd in _socket
-    void TryReadOnTcp();
-
     // Add cq socket id to poller
     void PollerAddCqSid();
 
@@ -261,8 +261,8 @@ private:
     // Not owner
     Socket* _socket;
 
-    // State of Handshake
-    butil::atomic<State> _state;
+    // State of Handshake.
+    State _state;
 
     // Wire-level handshake protocol version (set by dispatch in
     // ProcessHandshakeAtClient/Server). Aligned with the protocol code:

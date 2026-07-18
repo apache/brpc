@@ -69,6 +69,7 @@
 
 // Protocols
 #include "brpc/protocol.h"
+#include "brpc/policy/rdma_handshake_protocol.h"
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/policy/http2_rpc_protocol.h"
@@ -437,6 +438,15 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     // Protocols
+    Protocol rdma_handshake_protocol = {
+        ParseRdmaHandshake, NULL, NULL,
+        ProcessRdmaHandshake, NULL,
+        NULL, NULL, NULL,
+        CONNECTION_TYPE_ALL, "rdma_handshake" };
+    if (RegisterProtocol(PROTOCOL_RDMA_HANDSHAKE, rdma_handshake_protocol) != 0) {
+        exit(1);
+    }
+
     Protocol baidu_protocol = { ParseRpcMessage,
                                 SerializeRpcRequest, PackRpcRequest,
                                 ProcessRpcRequest, ProcessRpcResponse,

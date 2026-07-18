@@ -30,6 +30,7 @@ namespace rdma {
 class RdmaEndpoint;
 }
 class TcpTransport;
+class RdmaTransport;
 struct InputMessageHandler {
     // The callback to cut a message from `source'.
     // Returned message will be passed to process_request or process_response
@@ -92,6 +93,7 @@ private:
 class InputMessenger : public SocketUser {
 friend class Socket;
 friend class TcpTransport;
+friend class RdmaTransport;
 friend class rdma::RdmaEndpoint;
 public:
     explicit InputMessenger(size_t capacity = 128);

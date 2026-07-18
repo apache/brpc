@@ -20,6 +20,7 @@
 #include "brpc/rdma_transport.h"
 #include "brpc/event_dispatcher.h"
 #include "brpc/tcp_transport.h"
+#include "brpc/input_messenger.h"
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rdma_helper.h"
 
@@ -48,7 +49,16 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
     if (options.need_on_edge_trigger && _on_edge_trigger == NULL) {
-        _on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
+        // Server-side RDMA sockets drive the handshake through the standard
+        // InputMessenger path (ParseRdmaHandshake), so they use OnNewMessages
+        // just like TCP sockets. Only client-side sockets, whose handshake
+        // (ProcessHandshakeAtClient) is an active blocking bthread relying on
+        // _read_butex woken by OnNewDataFromTcp, still need OnNewDataFromTcp.
+        if (options.user == static_cast<SocketUser*>(get_client_side_messenger())) {
+            _on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
+        } else {
+            _on_edge_trigger = InputMessenger::OnNewMessages;
+        }
     }
     _tcp_transport = std::make_shared<TcpTransport>();
     _tcp_transport->Init(socket, options);
@@ -78,7 +88,12 @@ std::shared_ptr<AppConnect> RdmaTransport::Connect() {
 }
 
 int RdmaTransport::CutFromIOBuf(butil::IOBuf *buf) {
-    if (_rdma_ep && _rdma_state != RDMA_OFF) {
+    // Only send over the RDMA channel once the handshake has NEGOTIATED it
+    // (RDMA_ON). While the state is still RDMA_UNKNOWN (handshake in progress,
+    // or a server connection that turned out to be plain TCP and never
+    // handshook) or RDMA_OFF (fell back), the QP is not usable and everything
+    // must go over the TCP fd. Mirrors the RDMA_ON check in WaitEpollOut().
+    if (_rdma_ep && _rdma_state == RDMA_ON) {
         butil::IOBuf *data_arr[1] = {buf};
         return _rdma_ep->CutFromIOBufList(data_arr, 1);
     } else {
@@ -87,7 +102,7 @@ int RdmaTransport::CutFromIOBuf(butil::IOBuf *buf) {
 }
 
 ssize_t RdmaTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
-    if (_rdma_ep && _rdma_state != RDMA_OFF) {
+    if (_rdma_ep && _rdma_state == RDMA_ON) {
         return _rdma_ep->CutFromIOBufList(buf, ndata);
     }
     return _tcp_transport->CutFromIOBufList(buf, ndata);
