@@ -538,10 +538,13 @@ BAIDU_VOLATILE_THREAD_LOCAL(bool, tls_warn_up, false);
 // `tls_pthread_lock_count' is inaccurate, so this feature cannot be used.
 BAIDU_VOLATILE_THREAD_LOCAL(int, tls_pthread_lock_count, 0);
 
-#define ADD_TLS_PTHREAD_LOCK_COUNT \
-    ++(*BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count))
-#define SUB_TLS_PTHREAD_LOCK_COUNT \
-    --(*BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count))
+inline void AddTlsPthreadLockCount() {
+    ++(*BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count));
+}
+
+inline void SubTlsPthreadLockCount() {
+    --(*BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count));
+}
 
 void CheckBthreadScheSafety() {
     if (BAIDU_LIKELY(0 == BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_pthread_lock_count))) {
@@ -554,8 +557,8 @@ void CheckBthreadScheSafety() {
                               << " pthread locks.";
 }
 #else
-#define ADD_TLS_PTHREAD_LOCK_COUNT ((void)0)
-#define SUB_TLS_PTHREAD_LOCK_COUNT ((void)0)
+inline void AddTlsPthreadLockCount() {}
+inline void SubTlsPthreadLockCount() {}
 void CheckBthreadScheSafety() {}
 #endif // BRPC_DEBUG_BTHREAD_SCHE_SAFETY
 
@@ -817,7 +820,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(pthread_mutex_t* mutex,
         }
     }
     if (0 == rc) {
-        ADD_TLS_PTHREAD_LOCK_COUNT;
+        AddTlsPthreadLockCount();
     }
     return rc;
 }
@@ -829,7 +832,7 @@ BUTIL_FORCE_INLINE int pthread_mutex_lock_internal(pthread_mutex_t* mutex,
     int rc = sys_pthread_mutex_lock(mutex);
     if (0 == rc) {
         SYS_PTHREAD_MUTEX_SET_OWNER;
-        ADD_TLS_PTHREAD_LOCK_COUNT;
+        AddTlsPthreadLockCount();
     }
     return rc;
 }
@@ -840,14 +843,14 @@ BUTIL_FORCE_INLINE int pthread_mutex_trylock_internal(pthread_mutex_t* mutex) {
     if (0 == rc) {
         FIND_SYS_PTHREAD_MUTEX_OWNER_MAP_ENTRY(mutex);
         SYS_PTHREAD_MUTEX_SET_OWNER;
-        ADD_TLS_PTHREAD_LOCK_COUNT;
+        AddTlsPthreadLockCount();
     }
     return rc;
 }
 
 BUTIL_FORCE_INLINE int pthread_mutex_unlock_internal(pthread_mutex_t* mutex) {
     SYS_PTHREAD_MUTEX_RESET_OWNER(mutex);
-    SUB_TLS_PTHREAD_LOCK_COUNT;
+    SubTlsPthreadLockCount();
     return sys_pthread_mutex_unlock(mutex);
 }
 #endif // NO_PTHREAD_MUTEX_HOOK
@@ -1129,7 +1132,7 @@ int FastPthreadMutex::lock_contended(const struct timespec* abstime) {
         }
     }
     PTHREAD_MUTEX_SET_OWNER(_owner);
-    ADD_TLS_PTHREAD_LOCK_COUNT;
+    AddTlsPthreadLockCount();
     return 0;
 }
 
@@ -1147,7 +1150,7 @@ bool FastPthreadMutex::try_lock() {
     bool lock = !split->locked.exchange(1, butil::memory_order_acquire);
     if (lock) {
         PTHREAD_MUTEX_SET_OWNER(_owner);
-        ADD_TLS_PTHREAD_LOCK_COUNT;
+        AddTlsPthreadLockCount();
     }
     return lock;
 }
@@ -1160,7 +1163,7 @@ bool FastPthreadMutex::timed_lock(const struct timespec* abstime) {
 }
 
 void FastPthreadMutex::unlock() {
-    SUB_TLS_PTHREAD_LOCK_COUNT;
+    SubTlsPthreadLockCount();
     MUTEX_RESET_OWNER_COMMON(_owner);
     auto whole = (butil::atomic<unsigned>*)&_futex;
     const unsigned prev = whole->exchange(0, butil::memory_order_release);
