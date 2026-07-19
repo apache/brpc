@@ -1598,6 +1598,36 @@ TEST_F(HttpTest, http2_settings) {
     ASSERT_TRUE(ctx->_remote_settings.stream_window_size == (1u << 29) - 1);
 }
 
+TEST_F(HttpTest, http2_goaway_with_debug_data) {
+    // GOAWAY payload is Last-Stream-ID(4) | Error Code(4) | Debug Data(*).
+    const uint32_t payload_size = 16;
+    char goawaybuf[brpc::policy::FRAME_HEAD_SIZE + payload_size];
+    brpc::policy::SerializeFrameHead(goawaybuf, payload_size,
+                                     brpc::policy::H2_FRAME_GOAWAY, 0, 0);
+    char* p = goawaybuf + brpc::policy::FRAME_HEAD_SIZE;
+    // Last-Stream-ID=1, with the reserved bit set so it must be masked off.
+    p[0] = (char)0x80; p[1] = 0; p[2] = 0; p[3] = 1;
+    // Error Code = H2_NO_ERROR
+    p[4] = 0; p[5] = 0; p[6] = 0; p[7] = 0;
+    // Debug Data whose last 8 bytes would be read as the two fields above.
+    p[8] = (char)0xff; p[9] = (char)0xff; p[10] = (char)0xff; p[11] = (char)0xff;
+    p[12] = 0; p[13] = 0; p[14] = 0; p[15] = 0;
+
+    butil::IOBuf buf;
+    buf.append(goawaybuf, brpc::policy::FRAME_HEAD_SIZE + payload_size);
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_h2_client_sock.get(), NULL);
+    CHECK_EQ(ctx->Init(), 0);
+    _h2_client_sock->initialize_parsing_context(&ctx);
+    ctx->_conn_state = brpc::policy::H2_CONNECTION_READY;
+    brpc::policy::ParseH2Message(&buf, _h2_client_sock.get(), false, NULL);
+
+    // Reading the debug data instead would leave -1 here, which disables the
+    // `_goaway_stream_id >= 0' check in TryToInsertStream.
+    ASSERT_EQ(1, ctx->_goaway_stream_id);
+}
+
 TEST_F(HttpTest, http2_invalid_settings) {
     {
         brpc::Server server;

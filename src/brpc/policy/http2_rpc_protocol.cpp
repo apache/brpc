@@ -977,10 +977,12 @@ H2ParseResult H2Context::OnGoAway(
         LOG(ERROR) << "Invalid flags=" << h.flags;
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
+    // Last-Stream-ID and Error Code precede the Additional Debug Data.
+    // The reserved bit of Last-Stream-ID is ignored on receipt.
+    const int last_stream_id = static_cast<int>(LoadUint32(it) & 0x7FFFFFFF);
+    const H2Error ALLOW_UNUSED h2_error = static_cast<H2Error>(LoadUint32(it));
     // Skip Additional Debug Data
     it.forward(h.payload_size - 8);
-    const int last_stream_id = static_cast<int>(LoadUint32(it));
-    const H2Error ALLOW_UNUSED h2_error = static_cast<H2Error>(LoadUint32(it));
     // TODO(zhujiashun): client and server should unify the code.
     // Server Push is not supported so it works fine now.
     if (is_client_side()) {
