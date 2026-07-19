@@ -61,7 +61,10 @@ class RdmaHandshakeServerV2;
 class RdmaHandshakeClientV3;
 class RdmaHandshakeServerV3;
 }
-
+namespace ubring {
+    class UBShmEndpoint;
+    class UBConnect;
+}
 class Socket;
 class AuthContext;
 class EventDispatcher;
@@ -324,6 +327,9 @@ friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class rdma::RdmaEndpoint;
 friend class rdma::RdmaConnect;
+friend class ubring::UBShmEndpoint;
+friend class ubring::UBConnect;
+friend class UBShmTransport;
 friend class rdma::RdmaHandshakeClientV2;
 friend class rdma::RdmaHandshakeServerV2;
 friend class rdma::RdmaHandshakeClientV3;

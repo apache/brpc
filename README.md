@@ -86,6 +86,7 @@ You can use it to:
     * [FlatMap](docs/en/flatmap.md)
     * [Coroutine](docs/en/coroutine.md)
     * [Circuit Breaker](docs/en/circuit_breaker.md)
+    * [UBRing](docs/en/ubring.md)
     * [RDMA](docs/en/rdma.md)
     * [Bazel Support](docs/en/bazel_support.md)
     * [Wireshark baidu_std dissector plugin](docs/en/wireshark_baidu_std.md)

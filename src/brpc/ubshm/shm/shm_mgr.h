@@ -15,13 +15,37 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_SOCKET_MODE_H
-#define BRPC_SOCKET_MODE_H
+#ifndef BRPC_SHM_MGR_H
+#define BRPC_SHM_MGR_H
+
+#include <stdint.h>
+#include "brpc/ubshm/common/common.h"
+#include "brpc/ubshm/shm/shm_def.h"
+
 namespace brpc {
-enum SocketMode {
-    SOCKET_MODE_TCP = 0,
-    SOCKET_MODE_RDMA = 1,
-    SOCKET_MODE_UBRING = 2
-};
-} // namespace brpc
-#endif //BRPC_SOCKET_MODE_H
+namespace ubring {
+void SetShmType(SHM_TYPE type);
+
+RETURN_CODE ShmMgrInit(void);
+
+void ShmMgrFini(void);
+
+RETURN_CODE ShmLocalMalloc(SHM *shm);
+
+RETURN_CODE ShmLocalCalloc(SHM *shm);
+
+RETURN_CODE ShmLocalFree(SHM *shm);
+
+RETURN_CODE ShmRemoteMalloc(SHM *shm);
+
+RETURN_CODE ShmRemoteFree(SHM *shm);
+
+RETURN_CODE ShmLocalMmap(SHM *shm, int prot);
+
+RETURN_CODE ShmMunmap(SHM *shm);
+
+RETURN_CODE ShmFree(SHM *shm);
+}
+}
+
+#endif //BRPC_SHM_MGR_H

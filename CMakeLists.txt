@@ -27,6 +27,7 @@ option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
+option(WITH_UBRING "With UB" OFF)
 option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" OFF)
 option(WITH_DEBUG_LOCK "With debugging lock" OFF)
 option(WITH_ASAN "With AddressSanitizer" OFF)
@@ -113,6 +114,11 @@ if(WITH_RDMA)
     set(WITH_RDMA_VAL "1")
 endif()
 
+set(WITH_UBRING_VAL "0")
+if(WITH_UBRING)
+        set(WITH_UBRING_VAL "1")
+endif()
+
 set(WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL "0")
 if(WITH_DEBUG_BTHREAD_SCHE_SAFETY)
     set(WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL "1")
@@ -147,6 +153,7 @@ endif()
 list(APPEND BRPC_COMMON_DEFINITIONS
     BRPC_WITH_GLOG=${WITH_GLOG_VAL}
     BRPC_WITH_RDMA=${WITH_RDMA_VAL}
+    BRPC_WITH_UBRING=${WITH_UBRING_VAL}
     BRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL}
     BRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}
     BTHREAD_USE_FAST_PTHREAD_MUTEX
@@ -352,6 +359,11 @@ endif()
 
 if(WITH_RDMA)
     list(APPEND DYNAMIC_LIB ${RDMA_LIB})
+endif()
+
+if(WITH_UBRING)
+    message(STATUS "brpc compile with ubring")
+    list(APPEND DYNAMIC_LIB ${UB_LIB})
 endif()
 
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
