@@ -674,6 +674,7 @@ void MakeRawHttpRequest(butil::IOBuf* request,
          it != h->HeaderEnd(); ++it) {
         if (HeaderHasCRLF(it->first) || HeaderHasCRLF(it->second)) {
             LOG(WARNING) << "Skip header `" << butil::ToPrintable(it->first)
+                         << ": " << butil::ToPrintable(it->second)
                          << "' containing CR/LF to avoid injection";
             continue;
         }
@@ -774,6 +775,7 @@ void MakeRawHttpResponse(butil::IOBuf* response,
          it != h->HeaderEnd(); ++it) {
         if (HeaderHasCRLF(it->first) || HeaderHasCRLF(it->second)) {
             LOG(WARNING) << "Skip header `" << butil::ToPrintable(it->first)
+                         << ": " << butil::ToPrintable(it->second)
                          << "' containing CR/LF to avoid injection";
             continue;
         }
