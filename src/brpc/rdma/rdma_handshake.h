@@ -23,6 +23,7 @@
 #include <memory>
 #include <infiniband/verbs.h>
 #include "butil/macros.h"
+#include "butil/containers/optional.h"
 #include "brpc/rdma/rdma_handshake_constants.h"
 
 namespace butil {
@@ -46,6 +47,12 @@ struct ParsedHello {
     uint16_t lid;
     ibv_gid  gid;
     uint32_t qp_num;
+    // ECE (Enhanced Connection Establishment), v3 handshake only.
+    // nullopt means the peer did not advertise any ECE (either it disabled
+    // ECE, its lib does not support ECE, or it is a v2 peer). When engaged:
+    //   - on the server side: the client's queried ECE capabilities;
+    //   - on the client side: the server's reduced/negotiated ECE.
+    butil::optional<ibv_ece> ece;
 };
 
 // Result of reading/parsing a peer's hello (see ReceiveAndParseRemoteHello).

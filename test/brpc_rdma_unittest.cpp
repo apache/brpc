@@ -62,6 +62,7 @@ namespace rdma {
 DECLARE_bool(rdma_trace_verbose);
 DECLARE_int32(rdma_memory_pool_max_regions);
 DECLARE_int32(rdma_client_handshake_version);
+DECLARE_bool(rdma_ece);
 
 extern ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int);
 extern int (*IbvDestroyCq)(ibv_cq*);
@@ -1760,6 +1761,161 @@ TEST_F(RdmaTest, v3_server_invalid_sq_size_falls_back) {
     usleep(100000);
     ASSERT_EQ(NULL, GetSocketFromServer(0));
 
+    StopServer();
+}
+
+// RAII guard to toggle FLAGS_rdma_ece for a single test and restore it.
+class EceFlagGuard {
+public:
+    explicit EceFlagGuard(bool v) : _saved(rdma::FLAGS_rdma_ece) {
+        rdma::FLAGS_rdma_ece = v;
+    }
+    ~EceFlagGuard() {
+        rdma::FLAGS_rdma_ece = _saved;
+    }
+private:
+    bool _saved;
+};
+
+// Build a valid v3 hello that also carries an ECE block.
+rdma::RdmaHello MakeValidV3HelloWithEce(uint32_t vendor_id,
+                                        uint32_t options,
+                                        uint32_t comp_mask) {
+    rdma::RdmaHello msg = MakeValidV3Hello();
+    rdma::RdmaEce* ece = msg.mutable_ece();
+    ece->set_vendor_id(vendor_id);
+    ece->set_options(options);
+    ece->set_comp_mask(comp_mask);
+    return msg;
+}
+
+// Read the server's v3 reply hello (4B magic + 4B pb_size + body) and parse
+// it into `reply`. Asserts the framing along the way.
+static void ReadServerV3Reply(int fd, rdma::RdmaHello* reply) {
+    uint8_t reply_hdr[8];
+    ASSERT_EQ(8, read(fd, reply_hdr, 8));
+    ASSERT_EQ(0, memcmp(reply_hdr, "RDM3", 4));
+    uint32_t reply_pb_size = butil::NetToHost32(*reinterpret_cast<uint32_t*>(reply_hdr + 4));
+    ASSERT_GT(reply_pb_size, 0u);
+    ASSERT_LE(reply_pb_size, 4096u);
+    std::string reply_body(reply_pb_size, '\0');
+    ASSERT_EQ((ssize_t)reply_pb_size,
+              read(fd, &reply_body[0], reply_pb_size));
+    ASSERT_TRUE(reply->ParseFromString(reply_body));
+}
+
+// A client hello carrying ECE must not break the server handshake: with ECE
+// enabled the server still parses the hello and advances to S_ACK_WAIT.
+TEST_F(RdmaTest, v3_server_accepts_client_hello_with_ece) {
+    EceFlagGuard ece_flag_guard(true);
+    StartServer();
+
+    sockaddr_in addr;
+    bzero((char*)&addr, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+    butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_TRUE(sockfd >= 0);
+    ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
+    usleep(100000);
+    Socket* s = GetSocketFromServer(0);
+    ASSERT_TRUE(s != NULL);
+
+    rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
+    std::string packet = MakeV3Packet(msg);
+    ASSERT_EQ((ssize_t)packet.size(),
+              write(sockfd, packet.data(), packet.size()));
+    usleep(100000);
+
+    ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT,
+              static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
+
+    rdma::RdmaHello reply;
+    ReadServerV3Reply(sockfd, &reply);
+
+    // ACK flags=0 -> clean FALLBACK_TCP so the test ends without hardware.
+    uint32_t flags = butil::HostToNet32(0);
+    ASSERT_EQ((ssize_t)sizeof(flags), write(sockfd, &flags, sizeof(flags)));
+    usleep(100000);
+    ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP,
+              static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
+
+    sockfd.reset(-1);
+    usleep(100000);
+    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    StopServer();
+}
+
+// When ECE negotiation is disabled, the server reply must NOT advertise ECE,
+// even if the client advertised it (FillLocalRdmaHello degrade branch #1).
+TEST_F(RdmaTest, v3_server_reply_has_no_ece_when_disabled) {
+    EceFlagGuard ece_flag_guard(false);
+    StartServer();
+
+    sockaddr_in addr;
+    bzero((char*)&addr, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+    butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_TRUE(sockfd >= 0);
+    ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
+    usleep(100000);
+    Socket* s = GetSocketFromServer(0);
+    ASSERT_TRUE(s != NULL);
+
+    rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
+    std::string packet = MakeV3Packet(msg);
+    ASSERT_EQ((ssize_t)packet.size(),
+              write(sockfd, packet.data(), packet.size()));
+    usleep(100000);
+
+    rdma::RdmaHello reply;
+    ReadServerV3Reply(sockfd, &reply);
+    EXPECT_FALSE(reply.has_ece());
+
+    uint32_t flags = butil::HostToNet32(0);
+    ASSERT_EQ((ssize_t)sizeof(flags), write(sockfd, &flags, sizeof(flags)));
+    usleep(100000);
+
+    sockfd.reset(-1);
+    usleep(100000);
+    StopServer();
+}
+
+// When ECE is enabled but there is no negotiated result (UT skips the real QP
+// bring-up, so the server never fills _outgoing_ece), the server reply must
+// still NOT advertise ECE (FillLocalRdmaHello degrade branch #2 -> degrade-safe).
+TEST_F(RdmaTest, v3_server_reply_has_no_ece_without_hw_negotiation) {
+    EceFlagGuard ece_flag_guard(true);
+    StartServer();
+
+    sockaddr_in addr;
+    bzero((char*)&addr, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+    butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_TRUE(sockfd >= 0);
+    ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
+    usleep(100000);
+    Socket* s = GetSocketFromServer(0);
+    ASSERT_TRUE(s != NULL);
+
+    rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
+    std::string packet = MakeV3Packet(msg);
+    ASSERT_EQ((ssize_t)packet.size(),
+              write(sockfd, packet.data(), packet.size()));
+    usleep(100000);
+
+    rdma::RdmaHello reply;
+    ReadServerV3Reply(sockfd, &reply);
+    EXPECT_FALSE(reply.has_ece());
+
+    uint32_t flags = butil::HostToNet32(0);
+    ASSERT_EQ((ssize_t)sizeof(flags), write(sockfd, &flags, sizeof(flags)));
+    usleep(100000);
+
+    sockfd.reset(-1);
+    usleep(100000);
     StopServer();
 }
 

@@ -50,6 +50,15 @@ extern const uint16_t MIN_BLOCK_SIZE;
 extern uint32_t g_rdma_recv_block_size;
 extern bool g_skip_rdma_init;
 
+extern int (*IbvQueryEce)(ibv_qp*, ibv_ece*);
+
+DEFINE_bool(rdma_ece, false, "Enable end-to-end ECE (Enhanced Connection Establishment) "
+                             "negotiation in the RDMA v3 handshake. Automatically degrades "
+                             "to no-ECE when the peer, the local libibverbs, or set_ece "
+                             "does not support it. Acts as a kill switch (default off).");
+
+DECLARE_bool(rdma_trace_verbose);
+
 namespace v2_wire {
 
 void HelloMessage::Serialize(void* data) const {
@@ -293,6 +302,22 @@ void FillLocalRdmaHello(const RdmaEndpoint* ep, RdmaHello* msg) {
         // Only happens in UT
         msg->set_qp_num(0);
     }
+
+    // Advertise ECE only when enabled. Role-dependent payload:
+    //   Client hello: the locally queried ECE capabilities;
+    //   Server hello: the reduced/negotiated ECE queried after RTS.
+    // When the relevant ECE is not valid (disabled, unsupported, or query
+    // failed) the field is simply omitted and the peer degrades to no-ECE.
+    // Advertise ECE if there is anything to advertise. The endpoint pre-fills
+    // _outgoing_ece in a role-specific way: client side stores its locally
+    // queried capabilities; server side stores the reduced/negotiated ECE
+    // after RTS. nullopt -> omit the field (peer degrades to no-ECE).
+    if (FLAGS_rdma_ece && ep->_outgoing_ece.has_value()) {
+        RdmaEce* ece = msg->mutable_ece();
+        ece->set_vendor_id(ep->_outgoing_ece->vendor_id);
+        ece->set_options(ep->_outgoing_ece->options);
+        ece->set_comp_mask(ep->_outgoing_ece->comp_mask);
+    }
 }
 
 int ReadAndParseV3Hello(RdmaEndpoint* ep, RdmaHello* out) {
@@ -348,11 +373,33 @@ void TranslateHello(const RdmaHello& msg, ParsedHello* out) {
     out->lid = static_cast<uint16_t>(msg.lid());
     fast_memcpy(out->gid.raw, msg.gid().data(), sizeof(out->gid.raw));
     out->qp_num = msg.qp_num();
+    if (FLAGS_rdma_ece && msg.has_ece()) {
+        ibv_ece ece;
+        ece.vendor_id = msg.ece().vendor_id();
+        ece.options   = msg.ece().options();
+        ece.comp_mask = msg.ece().comp_mask();
+        out->ece = ece;
+    }
 }
 
 }  // namespace v3_wire
 
 int RdmaHandshakeClientV3::SendLocalHello() {
+    // Query local ECE capabilities so they can be advertised in the client
+    // hello. v3-only. Best-effort: any failure or missing API just means we
+    // won't advertise ECE (the peer then degrades to no-ECE establishment).
+    if (FLAGS_rdma_ece && IbvQueryEce != NULL &&
+        _ep->_resource && _ep->_resource->qp) {
+        ibv_ece ece;
+        if (IbvQueryEce(_ep->_resource->qp, &ece) == 0) {
+            _ep->_outgoing_ece = ece;
+        } else {
+            LOG_IF(WARNING, FLAGS_rdma_trace_verbose)
+                << "Fail to IbvQueryEce on client, ECE not advertised: "
+                << _ep->_socket->description();
+        }
+    }
+
     RdmaHello local_msg{};
     v3_wire::FillLocalRdmaHello(_ep, &local_msg);
     return v3_wire::WriteV3Hello(_ep, local_msg);
