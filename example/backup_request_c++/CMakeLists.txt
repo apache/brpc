@@ -22,84 +22,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/../cmake/BrpcExample.cmake)
 
 option(LINK_SO "Whether examples are linked dynamically" OFF)
 
-execute_process(
-    COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
-    OUTPUT_VARIABLE OUTPUT_PATH
-)
+brpc_example_find_common_deps(DYNAMIC_LIB)
 
-if(OUTPUT_PATH)
-    list(PREPEND CMAKE_PREFIX_PATH ${OUTPUT_PATH})
-endif()
-
-find_package(Threads REQUIRED)
-find_package(Protobuf REQUIRED)
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER echo.proto)
-
-# Search for libthrift* by best effort. If it is not found and brpc is
-# compiled with thrift protocol enabled, a link error would be reported.
-find_library(THRIFT_LIB NAMES thrift)
-if (NOT THRIFT_LIB)
-    set(THRIFT_LIB "")
-endif()
-
-find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
-if(LINK_SO)
-    find_library(BRPC_LIB NAMES brpc)
-else()
-    find_library(BRPC_LIB NAMES libbrpc.a brpc)
-endif()
-if((NOT BRPC_INCLUDE_PATH) OR (NOT BRPC_LIB))
-    message(FATAL_ERROR "Fail to find brpc")
-endif()
-
-find_path(GFLAGS_INCLUDE_PATH gflags/gflags.h)
-find_library(GFLAGS_LIBRARY NAMES gflags libgflags)
-if((NOT GFLAGS_INCLUDE_PATH) OR (NOT GFLAGS_LIBRARY))
-    message(FATAL_ERROR "Fail to find gflags")
-endif()
-
-find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
-find_library(LEVELDB_LIB NAMES leveldb)
-if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
-    message(FATAL_ERROR "Fail to find leveldb")
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT OPENSSL_ROOT_DIR)
-    set(OPENSSL_ROOT_DIR
-        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
-        )
-endif()
-
-find_package(OpenSSL REQUIRED)
-
-set(DYNAMIC_LIB
-    Threads::Threads
-    ${GFLAGS_LIBRARY}
-    ${PROTOBUF_LIBRARIES}
-    ${LEVELDB_LIB}
-    ${OPENSSL_CRYPTO_LIBRARY}
-    ${OPENSSL_SSL_LIBRARY}
-    ${THRIFT_LIB}
-    dl
-    )
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(DYNAMIC_LIB ${DYNAMIC_LIB}
-        pthread
-        "-framework CoreFoundation"
-        "-framework CoreGraphics"
-        "-framework CoreData"
-        "-framework CoreText"
-        "-framework Security"
-        "-framework Foundation"
-        "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
-        "-Wl,-U,_ProfilerStart"
-        "-Wl,-U,_ProfilerStop"
-        "-Wl,-U,__Z13GetStackTracePPvii"
-        "-Wl,-U,_mallctl"
-        "-Wl,-U,_malloc_stats_print"
-    )
-endif()
 
 add_executable(backup_request_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 brpc_example_configure_target(backup_request_client)
