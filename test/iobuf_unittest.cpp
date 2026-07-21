@@ -1952,6 +1952,34 @@ TEST_F(IOBufTest, single_iobuf) {
     ASSERT_TRUE(p != nullptr);
 }
 
+TEST_F(IOBufTest, single_iobuf_assign_large_multi_block) {
+    // The message spans more than one BlockRef of the source IOBuf and does
+    // not fit in a default-sized block, so assign() has to concatenate it
+    // into a dedicated block.
+    const uint32_t n1 = 5000;
+    const uint32_t n2 = 6000;
+    char* d1 = (char*)malloc(n1);
+    memset(d1, 'a', n1);
+    char* d2 = (char*)malloc(n2);
+    memset(d2, 'b', n2);
+    butil::IOBuf buf;
+    buf.append_user_data(d1, n1, NULL);
+    buf.append_user_data(d2, n2, NULL);
+    ASSERT_EQ(2, buf.backing_block_num());
+
+    butil::SingleIOBuf sbuf;
+    ASSERT_TRUE(sbuf.assign(buf, n1 + n2));
+    ASSERT_EQ(n1 + n2, sbuf.get_length());
+    ASSERT_EQ(std::string(n1, 'a') + std::string(n2, 'b'),
+              std::string((const char*)sbuf.get_begin(), n1 + n2));
+
+    // Assigning again on top of an already assigned SingleIOBuf.
+    ASSERT_TRUE(sbuf.assign(buf, n1 + n2));
+    ASSERT_EQ(n1 + n2, sbuf.get_length());
+    ASSERT_EQ(std::string(n1, 'a') + std::string(n2, 'b'),
+              std::string((const char*)sbuf.get_begin(), n1 + n2));
+}
+
 TEST_F(IOBufTest, as_input_stream_basic) {
     butil::IOBuf buf;
     buf.append("hello world");
