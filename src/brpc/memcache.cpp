@@ -501,14 +501,17 @@ bool MemcacheResponse::PopStore(uint8_t command, uint64_t* cas_value) {
     LOG_IF(ERROR, header.key_length != 0) << "STORE response must not have key";
     int value_size = (int)header.total_body_length - (int)header.extras_length
         - (int)header.key_length;
+    if (value_size < 0) {
+        // extras_length + key_length overrun the declared body. Drop exactly the
+        // declared message so that following pipelined responses stay aligned.
+        _buf.pop_front(sizeof(header) + header.total_body_length);
+        butil::string_printf(&_err, "value_size=%d is negative", value_size);
+        return false;
+    }
     if (header.status != (uint16_t)STATUS_SUCCESS) {
         _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-        if (value_size < 0) {
-            butil::string_printf(&_err, "value_size=%d is negative", value_size);
-        } else {
-            _err.clear();
-            _buf.cutn(&_err, value_size);
-        }
+        _err.clear();
+        _buf.cutn(&_err, value_size);
         return false;
     }
     LOG_IF(ERROR, value_size != 0) << "STORE response must not have value, actually="

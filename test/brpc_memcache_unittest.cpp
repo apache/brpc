@@ -87,6 +87,10 @@ TEST(MemcacheParserTest, PopStoreRejectsNegativeValueSize) {
     ASSERT_FALSE(response.PopSet(&cas_value));
     ASSERT_EQ("value_size=-1 is negative", response.LastError());
     ASSERT_EQ(std::string::npos, response.LastError().find("RESPONSE"));
+    // Only the declared message (header + total_body_length) is dropped, so the
+    // following pipelined response is still intact at the head of the buffer.
+    ASSERT_EQ(sizeof(next_response) - 1, response.raw_buffer().size());
+    ASSERT_EQ(next_response, response.raw_buffer().to_string());
 }
 
 static pthread_once_t download_memcached_once = PTHREAD_ONCE_INIT;
