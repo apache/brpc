@@ -62,6 +62,37 @@ TEST(MemcacheParserTest, RejectOversizedResponseBeforeBufferingBody) {
 
 }
 
+TEST(MemcacheParserTest, PopStoreRejectsNegativeValueSize) {
+    // A STORE error response whose extras_length + key_length exceeds
+    // total_body_length makes value_size negative. PopStore used to pass that
+    // straight to cutn(&_err, value_size); the negative value became a huge
+    // size_t and drained the rest of the (pipelined) buffer into the error
+    // string. The sibling parsers PopGet/PopCounter/PopVersion already guard
+    // value_size < 0; PopStore must do the same.
+    brpc::policy::MemcacheResponseHeader header = {};
+    header.magic = brpc::policy::MC_MAGIC_RESPONSE;
+    header.command = brpc::policy::MC_BINARY_SET;
+    header.status = 1;                 // non-zero: error response
+    header.extras_length = 1;          // claims extras...
+    header.key_length = 0;
+    header.total_body_length = 0;      // ...but body carries none -> value_size = -1
+
+    brpc::MemcacheResponse response;
+    response.raw_buffer().append(&header, sizeof(header));
+    // Bytes of a following pipelined response that must not leak into _err.
+    const char next_response[] = "SECRET-NEXT-RESPONSE";
+    response.raw_buffer().append(next_response, sizeof(next_response) - 1);
+
+    uint64_t cas_value = 0;
+    ASSERT_FALSE(response.PopSet(&cas_value));
+    ASSERT_EQ("value_size=-1 is negative", response.LastError());
+    ASSERT_EQ(std::string::npos, response.LastError().find("RESPONSE"));
+    // Only the declared message (header + total_body_length) is dropped, so the
+    // following pipelined response is still intact at the head of the buffer.
+    ASSERT_EQ(sizeof(next_response) - 1, response.raw_buffer().size());
+    ASSERT_EQ(next_response, response.raw_buffer().to_string());
+}
+
 static pthread_once_t download_memcached_once = PTHREAD_ONCE_INIT;
 static pid_t g_mc_pid = -1;
 
