@@ -617,7 +617,7 @@ __asm (
 __asm (
 ".cpu    generic+fp+simd\n"
 ".text\n"
-".align  2\n"
+".align  6\n"
 ".global bthread_jump_fcontext\n"
 ".type   bthread_jump_fcontext, %function\n"
 "bthread_jump_fcontext:\n"
@@ -689,7 +689,7 @@ __asm (
 __asm (
 ".cpu    generic+fp+simd\n"
 ".text\n"
-".align  2\n"
+".align  6\n"
 ".global bthread_make_fcontext\n"
 ".type   bthread_make_fcontext, %function\n"
 "bthread_make_fcontext:\n"
