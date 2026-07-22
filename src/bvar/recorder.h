@@ -124,7 +124,7 @@ public:
     typedef typename combiner_type::self_shared_type shared_combiner_type;
     typedef combiner_type::Agent agent_type;
 
-    IntRecorder() : _combiner(std::make_shared<combiner_type>()), _sampler(NULL) {}
+    IntRecorder() : _combiner(std::make_shared<combiner_type>()), _sampler(nullptr) {}
 
     IntRecorder(const butil::StringPiece& name) : IntRecorder() {
         expose(name);
@@ -139,7 +139,7 @@ public:
         hide();
         if (_sampler) {
             _sampler->destroy();
-            _sampler = NULL;
+            _sampler = nullptr;
         }
     }
 
@@ -172,7 +172,7 @@ public:
     bool valid() const { return _combiner->valid(); }
     
     sampler_type* get_sampler() {
-        if (NULL == _sampler) {
+        if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
             _sampler->schedule();
         }
@@ -246,7 +246,7 @@ private:
 
 inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
     if (BAIDU_UNLIKELY((int64_t)(int)sample != sample)) {
-        const char* reason = NULL;
+        const char* reason = nullptr;
         if (sample > std::numeric_limits<int>::max()) {
             reason = "overflows";
             sample = std::numeric_limits<int>::max();
@@ -308,7 +308,7 @@ public:
 
     ~IntRecorder() override {
         hide();
-        if (NULL != _sampler) {
+        if (nullptr != _sampler) {
             _sampler->destroy();
         }
     }
@@ -316,7 +316,7 @@ public:
     // Note: The input type is acutally int. Use int64_t to check overflow.
     IntRecorder& operator<<(int64_t value) {
         if (BAIDU_UNLIKELY((int64_t)(int)value != value)) {
-            const char* reason = NULL;
+            const char* reason = nullptr;
             if (value > std::numeric_limits<int>::max()) {
                 reason = "overflows";
                 value = std::numeric_limits<int>::max();
@@ -370,7 +370,7 @@ public:
     bool valid() const { return true; }
 
     sampler_type* get_sampler() {
-        if (NULL == _sampler) {
+        if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
             _sampler->schedule();
         }
@@ -384,7 +384,7 @@ public:
     }
 private:
     babylon::ConcurrentSummer _summer;
-    sampler_type* _sampler{NULL};
+    sampler_type* _sampler{nullptr};
     std::string _debug_name;
 };
 #endif // WITH_BABYLON_COUNTER

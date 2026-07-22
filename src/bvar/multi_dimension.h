@@ -104,7 +104,7 @@ public:
     }
 
     // Get real bvar pointer object
-    // Return real bvar pointer on success, NULL otherwise.
+    // Return real bvar pointer on success, nullptr otherwise.
     // K requirements:
     // 1. K must be a container type with iterator,
     //    e.g. std::vector, std::list, std::set, std::array.
@@ -143,7 +143,7 @@ public:
     
 #ifdef UNIT_TEST
     // Get real bvar pointer object 
-    // Return real bvar pointer if labels_name exist, NULL otherwise.
+    // Return real bvar pointer if labels_name exist, nullptr otherwise.
     // CAUTION!!! Just For Debug!!!
     template <typename K = key_type>
     value_ptr_type get_stats_read_only(const K& labels_value) {
@@ -154,7 +154,7 @@ public:
     // Return real bvar pointer if labels_name exist, otherwise(not exist) create bvar pointer.
     // CAUTION!!! Just For Debug!!!
     template <typename K = key_type>
-    value_ptr_type get_stats_read_or_insert(const K& labels_value, bool* do_write = NULL) {
+    value_ptr_type get_stats_read_or_insert(const K& labels_value, bool* do_write = nullptr) {
         return get_stats_impl(labels_value, READ_OR_INSERT, do_write);
     }
 #endif
@@ -165,7 +165,7 @@ private:
 
     template <typename K>
     value_ptr_type get_stats_impl(
-        const K& labels_value, STATS_OP stats_op, bool* do_write = NULL);
+        const K& labels_value, STATS_OP stats_op, bool* do_write = nullptr);
 
     template <typename K>
     static typename std::enable_if<butil::is_same<K, key_type>::value>::type

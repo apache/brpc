@@ -86,14 +86,14 @@ private:
 };
 
 Percentile::Percentile()
-    : _combiner(std::make_shared<combiner_type>()), _sampler(NULL) {}
+    : _combiner(std::make_shared<combiner_type>()), _sampler(nullptr) {}
 
 Percentile::~Percentile() {
     // Have to destroy sampler first to avoid the race between destruction and
     // sampler
-    if (_sampler != NULL) {
+    if (_sampler != nullptr) {
         _sampler->destroy();
-        _sampler = NULL;
+        _sampler = nullptr;
     }
 }
 

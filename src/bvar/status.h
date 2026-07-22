@@ -98,29 +98,29 @@ public:
         explicit SeriesSampler(Status* owner)
             : _owner(owner), _series(Op()) {}
         void take_sample() { _series.append(_owner->get_value()); }
-        void describe(std::ostream& os) { _series.describe(os, NULL); }
+        void describe(std::ostream& os) { _series.describe(os, nullptr); }
     private:
         Status* _owner;
         detail::Series<T, Op> _series;
     };
 
 public:
-    Status() : _series_sampler(NULL) {}
-    Status(const T& value) : _value(value), _series_sampler(NULL) { }
+    Status() : _series_sampler(nullptr) {}
+    Status(const T& value) : _value(value), _series_sampler(nullptr) { }
     Status(const butil::StringPiece& name, const T& value)
-        : _value(value), _series_sampler(NULL) {
+        : _value(value), _series_sampler(nullptr) {
         this->expose(name);
     }
     Status(const butil::StringPiece& prefix,
            const butil::StringPiece& name, const T& value)
-        : _value(value), _series_sampler(NULL) {
+        : _value(value), _series_sampler(nullptr) {
         this->expose_as(prefix, name);
     }
     ~Status() {
         hide();
         if (_series_sampler) {
             _series_sampler->destroy();
-            _series_sampler = NULL;
+            _series_sampler = nullptr;
         }
     }
 
@@ -143,7 +143,7 @@ public:
     }
 
     int describe_series(std::ostream& os, const SeriesOptions& options) const override {
-        if (_series_sampler == NULL) {
+        if (_series_sampler == nullptr) {
             return 1;
         }
         if (!options.test_only) {
@@ -158,7 +158,7 @@ protected:
                     DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (rc == 0 &&
-            _series_sampler == NULL &&
+            _series_sampler == nullptr &&
             FLAGS_save_series) {
             _series_sampler = new SeriesSampler(this);
             _series_sampler->schedule();
