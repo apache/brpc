@@ -42,7 +42,7 @@ public:
     SeriesSamplerImpl(O* owner, const Op& op)
         : _owner(owner), _series(op) {}
     void take_sample() override { _series.append(_owner->get_value()); }
-    void describe(std::ostream& os) { _series.describe(os, NULL); }
+    void describe(std::ostream& os) { _series.describe(os, nullptr); }
 
 private:
     O* _owner;
@@ -70,10 +70,10 @@ public:
 
     ~BabylonVariable() override {
         hide();
-        if (NULL != _sampler) {
+        if (nullptr != _sampler) {
             _sampler->destroy();
         }
-        if (NULL != _series_sampler) {
+        if (nullptr != _series_sampler) {
             _series_sampler->destroy();
         }
     }
@@ -84,7 +84,7 @@ public:
     }
 
     sampler_type* get_sampler() {
-        if (NULL == _sampler) {
+        if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
             _sampler->schedule();
         }
@@ -122,7 +122,7 @@ public:
     }
 
     int describe_series(std::ostream& os, const SeriesOptions& options) const override {
-        if (NULL == _series_sampler) {
+        if (nullptr == _series_sampler) {
             return 1;
         }
         if (!options.test_only) {
@@ -136,7 +136,7 @@ protected:
                     const butil::StringPiece& name,
                     DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
-        if (rc == 0 && NULL == _series_sampler &&
+        if (rc == 0 && nullptr == _series_sampler &&
             !butil::is_same<InvOp, VoidOp>::value &&
             !butil::is_same<T, std::string>::value &&
             FLAGS_save_series) {
@@ -148,8 +148,8 @@ protected:
 
 private:
     Counter _counter;
-    sampler_type* _sampler{NULL};
-    series_sampler_type* _series_sampler{NULL};
+    sampler_type* _sampler{nullptr};
+    series_sampler_type* _series_sampler{nullptr};
     Op _op;
     InvOp _inv_op;
 };
@@ -202,18 +202,18 @@ public:
     explicit Reducer(typename butil::add_cr_non_integral<T>::type identity = T(),
                      const Op& op = Op(), const InvOp& inv_op = InvOp())
         : _combiner(std::make_shared<combiner_type>(identity, identity, op))
-        , _sampler(NULL) , _series_sampler(NULL) , _inv_op(inv_op) {}
+        , _sampler(nullptr) , _series_sampler(nullptr) , _inv_op(inv_op) {}
 
     ~Reducer() override {
         // Calling hide() manually is a MUST required by Variable.
         hide();
         if (_sampler) {
             _sampler->destroy();
-            _sampler = NULL;
+            _sampler = nullptr;
         }
         if (_series_sampler) {
             _series_sampler->destroy();
-            _series_sampler = NULL;
+            _series_sampler = nullptr;
         }
     }
 
@@ -225,7 +225,7 @@ public:
     // Notice that this function walks through threads that ever add values
     // into this reducer. You should avoid calling it frequently.
     T get_value() const {
-        CHECK(!(butil::is_same<InvOp, detail::VoidOp>::value) || _sampler == NULL)
+        CHECK(!(butil::is_same<InvOp, detail::VoidOp>::value) || _sampler == nullptr)
             << "You should not call Reducer<" << butil::class_name_str<T>()
             << ", " << butil::class_name_str<Op>() << ">::get_value() when a"
             << " Window<> is used because the operator does not have inverse.";
@@ -257,7 +257,7 @@ public:
     const InvOp& inv_op() const { return _inv_op; }
     
     sampler_type* get_sampler() {
-        if (NULL == _sampler) {
+        if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
             _sampler->schedule();
         }
@@ -265,7 +265,7 @@ public:
     }
 
     int describe_series(std::ostream& os, const SeriesOptions& options) const override {
-        if (_series_sampler == NULL) {
+        if (_series_sampler == nullptr) {
             return 1;
         }
         if (!options.test_only) {
@@ -280,7 +280,7 @@ protected:
                     DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (rc == 0 &&
-            _series_sampler == NULL &&
+            _series_sampler == nullptr &&
             !butil::is_same<InvOp, detail::VoidOp>::value &&
             !butil::is_same<T, std::string>::value &&
             FLAGS_save_series) {

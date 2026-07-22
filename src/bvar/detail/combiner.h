@@ -167,7 +167,7 @@ friend class GlobalValue<self_type>;
     struct Agent : public butil::LinkNode<Agent> {
         ~Agent() {
             self_shared_type c = combiner.lock();
-            if (NULL != c) {
+            if (nullptr != c) {
                 c->commit_and_erase(this);
             }
         }
@@ -206,8 +206,8 @@ friend class GlobalValue<self_type>;
         // NOTE: Only available to non-atomic types.
         template <typename Op>
         void merge_global(const Op &op, self_shared_type& c) {
-            const self_shared_type& c_ref = NULL != c ? c : combiner.lock();
-            if (NULL != c_ref) {
+            const self_shared_type& c_ref = nullptr != c ? c : combiner.lock();
+            if (nullptr != c_ref) {
                 GlobalValue<self_type> g(this, c_ref.get());
                 element.merge_global(op, g);
             }
@@ -304,7 +304,7 @@ friend class GlobalValue<self_type>;
 
     // Always called from the thread owning the agent.
     void commit_and_erase(Agent* agent) {
-        if (NULL == agent) {
+        if (nullptr == agent) {
             return;
         }
         ElementTp local;
@@ -318,7 +318,7 @@ friend class GlobalValue<self_type>;
 
     // Always called from the thread owning the agent
     void commit_and_clear(Agent* agent) {
-        if (NULL == agent) {
+        if (nullptr == agent) {
             return;
         }
         ElementTp prev;
@@ -333,9 +333,9 @@ friend class GlobalValue<self_type>;
         if (!agent) {
             // Create the agent
             agent = AgentGroup::get_or_create_tls_agent(_id);
-            if (NULL == agent) {
+            if (nullptr == agent) {
                 LOG(FATAL) << "Fail to create agent";
-                return NULL;
+                return nullptr;
             }
         }
         if (!agent->combiner.expired()) {
@@ -369,7 +369,7 @@ friend class GlobalValue<self_type>;
     //     // non-pod, internal allocations should be released.
     //     for (butil::LinkNode<Agent>* node = _agents.head();
     //          node != _agents.end();) {
-    //         node->value()->reset(ElementTp(), NULL);
+    //         node->value()->reset(ElementTp(), nullptr);
     //         butil::LinkNode<Agent>* const saved_next = node->next();
     //         node->RemoveFromList();
     //         node = saved_next;
