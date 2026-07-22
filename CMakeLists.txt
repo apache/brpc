@@ -490,6 +490,7 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/strings/string_number_conversions.cc
     ${PROJECT_SOURCE_DIR}/src/butil/strings/string_split.cc
     ${PROJECT_SOURCE_DIR}/src/butil/strings/string_piece.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/string_compare_rvv.cc
     ${PROJECT_SOURCE_DIR}/src/butil/strings/string_util.cc
     ${PROJECT_SOURCE_DIR}/src/butil/strings/string_util_constants.cc
     ${PROJECT_SOURCE_DIR}/src/butil/strings/stringprintf.cc
