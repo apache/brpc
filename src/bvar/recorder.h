@@ -302,7 +302,13 @@ public:
     typedef detail::MinusStat InvOp;
     typedef detail::ReducerSampler<IntRecorder, value_type, Op, InvOp> sampler_type;
 
-    COMMON_VARIABLE_CONSTRUCTOR(IntRecorder);
+    IntRecorder() = default;
+    IntRecorder(const butil::StringPiece& name) {
+        this->expose(name);
+    }
+    IntRecorder(const butil::StringPiece& prefix, const butil::StringPiece& name) {
+        this->expose_as(prefix, name);
+    }
 
     DISALLOW_COPY_AND_MOVE(IntRecorder);
 
