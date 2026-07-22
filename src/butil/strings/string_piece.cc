@@ -134,7 +134,18 @@ size_t findT(const BasicStringPiece<STR>& self,
 }
 
 size_t find(const StringPiece& self, char c, size_t pos) {
+#if defined(__riscv) && defined(__riscv_vector)
+  if (pos < self.size()) {
+    const void* result = butil::rvv_memchr(self.data() + pos, c, self.size() - pos);
+    if (result != nullptr) {
+      return static_cast<size_t>(static_cast<const char*>(result) - self.data());
+    }
+    return BasicStringPiece<std::string>::npos;
+  }
+  return BasicStringPiece<std::string>::npos;
+#else
   return findT(self, c, pos);
+#endif
 }
 
 size_t find(const StringPiece16& self, char16 c, size_t pos) {
