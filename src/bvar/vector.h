@@ -27,31 +27,32 @@ namespace bvar {
 
 DECLARE_bool(quote_vector);
 
-// Data inside a Vector will be plotted in a same graph.
+// Fixed-size multi-metric value for co-plotting on the same /vars graph.
+// This is not std::vector: N is a compile-time constant with no heap growth.
 template <typename T, size_t N>
-class Vector {
+class FixedVector {
 public:
     static const size_t WIDTH = N;
 
-    Vector() {
+    FixedVector() {
         for (size_t i = 0; i < N; ++i) {
             _data[i] = T();
         }
     }
     
-    Vector(const T& initial_value) {
+    FixedVector(const T& initial_value) {
         for (size_t i = 0; i < N; ++i) {
             _data[i] = initial_value;
         }
     }
     
-    void operator+=(const Vector& rhs) {
+    void operator+=(const FixedVector& rhs) {
         for (size_t i = 0; i < N; ++i) {
             _data[i] += rhs._data[i];
         }
     }
     
-    void operator-=(const Vector& rhs) {
+    void operator-=(const FixedVector& rhs) {
         for (size_t i = 0; i < N; ++i) {
             _data[i] -= rhs._data[i];
         }
@@ -71,7 +72,7 @@ public:
         }
     }
 
-    bool operator==(const Vector& rhs) const {
+    bool operator==(const FixedVector& rhs) const {
         for (size_t i = 0; i < N; ++i) {
             if (!(_data[i] == rhs._data[i])) {
                 return false;
@@ -80,7 +81,7 @@ public:
         return true;
     }
 
-    bool operator!=(const Vector& rhs) const {
+    bool operator!=(const FixedVector& rhs) const {
         return !operator==(rhs);
     }
     
@@ -92,7 +93,7 @@ private:
 };
 
 template <typename T, size_t N>
-std::ostream& operator<<(std::ostream& os, const Vector<T, N>& vec) {
+std::ostream& operator<<(std::ostream& os, const FixedVector<T, N>& vec) {
     if (FLAGS_quote_vector) {
         os << '"';
     }
@@ -111,10 +112,17 @@ std::ostream& operator<<(std::ostream& os, const Vector<T, N>& vec) {
 }
 
 template <typename T>
-struct is_vector : public butil::false_type {};
+struct is_fixed_vector : public butil::false_type {};
 
 template <typename T, size_t N>
-struct is_vector<Vector<T,N> > : public butil::true_type {};
+struct is_fixed_vector<FixedVector<T,N> > : public butil::true_type {};
+
+// Compatibility aliases for the former Vector name.
+template <typename T, size_t N>
+using Vector = FixedVector<T, N>;
+
+template <typename T>
+struct is_vector : public is_fixed_vector<T> {};
 
 }  // namespace bvar
 

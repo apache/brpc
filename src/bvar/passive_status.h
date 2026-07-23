@@ -49,7 +49,7 @@ public:
     };
     static const bool ADDITIVE = (butil::is_integral<Tp>::value ||
                                   butil::is_floating_point<Tp>::value ||
-                                  is_vector<Tp>::value);
+                                  is_fixed_vector<Tp>::value);
     class SeriesSampler : public detail::Sampler {
     public:
         typedef typename butil::conditional<
