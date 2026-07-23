@@ -226,7 +226,13 @@ bool SingleIOBuf::assign(const IOBuf& buf, uint32_t msg_size) {
         if (!b) {
             return false;
         }
-        reset();
+        // Only drop the reference to the previously assigned data here.
+        // reset() would also release _cur_block, which alloc_block_by_size()
+        // has just set to `b', leaving `b' dangling.
+        if (_cur_ref.block != NULL) {
+            _cur_ref.block->dec_ref();
+            _cur_ref.block = NULL;
+        }
         char* out = b->data + b->size;
         const size_t nref = buf.backing_block_num();
         uint32_t last_len = msg_size;
