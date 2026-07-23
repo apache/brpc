@@ -141,6 +141,11 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth) {
             return PARSE_ERROR_NOT_ENOUGH_DATA;
         }
         const size_t len = str.size() - 1;
+        if (len > (size_t)FLAGS_redis_max_allocation_size) {
+            LOG(ERROR) << "simple string exceeds max allocation size! max="
+                       << FLAGS_redis_max_allocation_size << ", actually=" << len;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
         if (len < sizeof(_data.short_str)) {
             // SSO short strings, including empty string.
             _type = (fc == '-' ? REDIS_REPLY_ERROR : REDIS_REPLY_STATUS);
