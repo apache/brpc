@@ -153,7 +153,7 @@ RdmaEndpoint::~RdmaEndpoint() {
 void RdmaEndpoint::Reset() {
     DeallocateResources();
 
-    _state = UNINIT;
+    _state.store(UNINIT, butil::memory_order_relaxed);
     _handshake_version = 0;
     _outgoing_ece.reset();
     _resource = NULL;
@@ -189,8 +189,9 @@ void RdmaConnect::StartConnect(const Socket* socket,
         return;
     }
     if (!IsRdmaAvailable()) {
-        rdma_transport->_rdma_ep->_state = RdmaEndpoint::FALLBACK_TCP;
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
+        rdma_transport->_rdma_ep->_state.store(
+            RdmaEndpoint::FALLBACK_TCP, butil::memory_order_release);
         done(0, data);
         return;
     }
@@ -222,16 +223,19 @@ void RdmaEndpoint::OnNewDataFromTcp(Socket* m) {
 
     int progress = Socket::PROGRESS_INIT;
     while (true) {
-        if (ep->_state == UNINIT) {
+        // Pair with release stores of FALLBACK_TCP so RDMA_OFF is visible
+        // before normal TCP message processing starts.
+        const State state = ep->_state.load(butil::memory_order_acquire);
+        if (state == UNINIT) {
             // The connection may be closed or reset before the client starts
             // handshake. This will be handled by client handshake. Ignore here.
-        } else if (ep->_state < ESTABLISHED) {  // during handshake
+        } else if (state < ESTABLISHED) {  // during handshake
             ep->_read_butex->fetch_add(1, butil::memory_order_release);
             bthread::butex_wake(ep->_read_butex);
-        } else if (ep->_state == FALLBACK_TCP){  // handshake finishes
+        } else if (state == FALLBACK_TCP){  // handshake finishes
             InputMessenger::OnNewMessages(m);
             return;
-        } else if (ep->_state == ESTABLISHED) {
+        } else if (state == ESTABLISHED) {
             uint8_t tmp;
             ssize_t nr = read(ep->_socket->fd(), &tmp, 1);
             if (nr == 0) {
@@ -424,28 +428,28 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     ep->_handshake_version = handshake->ProtocolVersion();
 
     // First initialize CQ and QP resources.
-    ep->_state = C_ALLOC_QPCQ;
+    ep->_state.store(C_ALLOC_QPCQ, butil::memory_order_relaxed);
     if (ep->AllocateResources() < 0) {
         LOG(WARNING) << "Fallback to tcp:" << s->description();
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
-        ep->_state = FALLBACK_TCP;
+        ep->_state.store(FALLBACK_TCP, butil::memory_order_release);
         return NULL;
     }
 
     // Send hello message to server
-    ep->_state = C_HELLO_SEND;
+    ep->_state.store(C_HELLO_SEND, butil::memory_order_relaxed);
     if (handshake->SendLocalHello() < 0) {
         int saved_errno = errno;
         PLOG(WARNING) << "Fail to send hello message to server:"
                       << s->description();
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                      s->description().c_str(), berror(saved_errno));
-        ep->_state = FAILED;
+        ep->_state.store(FAILED, butil::memory_order_relaxed);
         return NULL;
     }
 
     // Receive and parse remote hello.
-    ep->_state = C_HELLO_WAIT;
+    ep->_state.store(C_HELLO_WAIT, butil::memory_order_relaxed);
     ParsedHello remote{};
     const RemoteHelloResult r = handshake->ReceiveAndParseRemoteHello(&remote);
     if (r == RemoteHelloResult::ERROR) {
@@ -454,7 +458,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
                       << s->description();
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                      s->description().c_str(), berror(saved_errno));
-        ep->_state = FAILED;
+        ep->_state.store(FAILED, butil::memory_order_relaxed);
         return NULL;
     }
 
@@ -464,7 +468,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
     } else {
         ep->ApplyRemoteHello(remote);
-        ep->_state = C_BRINGUP_QP;
+        ep->_state.store(C_BRINGUP_QP, butil::memory_order_relaxed);
         if (ep->BringUpQp(remote, /*is_server=*/false) < 0) {
             LOG(WARNING) << "Fail to bringup QP, fallback to tcp:"
                          << s->description();
@@ -475,7 +479,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
 
     // Send ACK message to server
-    ep->_state = C_ACK_SEND;
+    ep->_state.store(C_ACK_SEND, butil::memory_order_relaxed);
     bool rdma_on = rdma_transport->_rdma_state == RdmaTransport::RDMA_ON;
     uint32_t flags = rdma_on ? HELLO_ACK_RDMA_OK : 0;
     uint32_t flags_be = butil::HostToNet32(flags);
@@ -485,17 +489,17 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
                       << s->description();
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                      s->description().c_str(), berror(saved_errno));
-        ep->_state = FAILED;
+        ep->_state.store(FAILED, butil::memory_order_relaxed);
         return NULL;
     }
 
     if (rdma_transport->_rdma_state == RdmaTransport::RDMA_ON) {
-        ep->_state = ESTABLISHED;
+        ep->_state.store(ESTABLISHED, butil::memory_order_relaxed);
         LOG_IF(INFO, FLAGS_rdma_trace_verbose)
             << "Client handshake ends (use rdma v" << ep->_handshake_version
             << ") on " << s->description();
     } else {
-        ep->_state = FALLBACK_TCP;
+        ep->_state.store(FALLBACK_TCP, butil::memory_order_release);
         LOG_IF(INFO, FLAGS_rdma_trace_verbose)
             << "Client handshake ends (use tcp) on " << s->description();
     }
@@ -541,7 +545,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
         ep->_handshake_version = hs->ProtocolVersion();
-        ep->_state = S_HELLO_WAIT;
+        ep->_state.store(S_HELLO_WAIT, butil::memory_order_relaxed);
 
         ParsedHello remote{};
         const RemoteHelloResult r = hs->ReceiveAndParseRemoteHello(&remote);
@@ -549,7 +553,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
         if (r == RemoteHelloResult::ERROR) {
-            ep->_state = FAILED;
+            ep->_state.store(FAILED, butil::memory_order_relaxed);
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
 
@@ -557,13 +561,13 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         bool negotiated = r == RemoteHelloResult::NEGOTIATED;
         if (negotiated) {
             ep->ApplyRemoteHello(remote);
-            ep->_state = S_ALLOC_QPCQ;
+            ep->_state.store(S_ALLOC_QPCQ, butil::memory_order_relaxed);
             if (ep->AllocateResources() < 0) {
                 LOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
                              << s->description();
                 negotiated = false;
             } else {
-                ep->_state = S_BRINGUP_QP;
+                ep->_state.store(S_BRINGUP_QP, butil::memory_order_relaxed);
                 if (ep->BringUpQp(remote, /*is_server=*/true) < 0) {
                     LOG(WARNING) << "Fail to bringup QP, fallback to tcp:"
                                  << s->description();
@@ -578,10 +582,10 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         // Reply the server hello.
         // Emits a real hello when _rdma_state != RDMA_OFF;
         // an un-negotiable one otherwise.
-        ep->_state = S_HELLO_SEND;
+        ep->_state.store(S_HELLO_SEND, butil::memory_order_relaxed);
         if (hs->SendLocalHello() < 0) {
             PLOG(WARNING) << "Fail to send server hello to " << s->description();
-            ep->_state = FAILED;
+            ep->_state.store(FAILED, butil::memory_order_relaxed);
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
 
@@ -589,7 +593,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         // recorded in rdma_transport->_rdma_state (RDMA_OFF iff negotiation
         // failed), so the context itself needs no extra flag.
         s->reset_parsing_context(ServerHandshakeContext::Create());
-        ep->_state = S_ACK_WAIT;
+        ep->_state.store(S_ACK_WAIT, butil::memory_order_relaxed);
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
 
@@ -600,7 +604,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
     if (source->size() > HELLO_ACK_LEN) {
         LOG(WARNING) << "Too many bytes in handshake ACK, drop connection: "
                      << s->description();
-        ep->_state = FAILED;
+        ep->_state.store(FAILED, butil::memory_order_relaxed);
         s->reset_parsing_context(NULL);
         return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
@@ -613,7 +617,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         LOG_IF(INFO, FLAGS_rdma_trace_verbose)
             << "Server handshake ends (use tcp) on " << s->description();
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
-        ep->_state = FALLBACK_TCP;
+        ep->_state.store(FALLBACK_TCP, butil::memory_order_release);
         s->reset_parsing_context(NULL);
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
@@ -621,7 +625,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
     if (rdma_transport->_rdma_state == RdmaTransport::RDMA_OFF) {
         LOG(WARNING) << "Client wants RDMA in ACK but server fell back: "
                      << s->description();
-        ep->_state = FAILED;
+        ep->_state.store(FAILED, butil::memory_order_relaxed);
         s->reset_parsing_context(NULL);
         return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
@@ -630,7 +634,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         << "Server handshake ends (use rdma v" << ep->_handshake_version
         << ") on " << s->description();
     rdma_transport->_rdma_state = RdmaTransport::RDMA_ON;
-    ep->_state = ESTABLISHED;
+    ep->_state.store(ESTABLISHED, butil::memory_order_relaxed);
     s->reset_parsing_context(NULL);
     return MakeParseError(PARSE_ERROR_TRY_OTHERS);
 }
@@ -910,7 +914,7 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
             if (wc.byte_len < (uint32_t)FLAGS_rdma_zerocopy_min_size) {
                 zerocopy = false;
             }
-            CHECK_NE(_state, FALLBACK_TCP);
+            CHECK_NE(_state.load(butil::memory_order_relaxed), FALLBACK_TCP);
             if (zerocopy) {
                 _rbuf[_rq_received].cutn(&_socket->_read_buf, wc.byte_len);
             } else {
@@ -1548,7 +1552,7 @@ void RdmaEndpoint::PollCq(Socket* m) {
 }
 
 std::string RdmaEndpoint::GetStateStr() const {
-    switch (_state) {
+    switch (_state.load(butil::memory_order_relaxed)) {
     case UNINIT: return "UNINIT";
     case C_ALLOC_QPCQ: return "C_ALLOC_QPCQ";
     case C_HELLO_SEND: return "C_HELLO_SEND";

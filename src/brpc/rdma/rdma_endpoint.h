@@ -261,8 +261,11 @@ private:
     // Not owner
     Socket* _socket;
 
-    // State of Handshake.
-    State _state;
+    // State of Handshake. FALLBACK_TCP publishes RdmaTransport::_rdma_state
+    // with release ordering and is consumed by OnNewDataFromTcp with acquire
+    // ordering. Other state accesses do not publish data and use relaxed
+    // ordering.
+    butil::atomic<State> _state;
 
     // Wire-level handshake protocol version (set by dispatch in
     // ProcessHandshakeAtClient/Server). Aligned with the protocol code:
