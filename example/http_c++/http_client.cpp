@@ -25,8 +25,11 @@
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <brpc/channel.h>
+#include "bthread/countdown_event.h"
 
 DEFINE_string(d, "", "POST this data to the http server");
+DEFINE_bool(progressive, false, "whether or not progressive read data from server");
+DEFINE_int32(progressive_read_timeout_ms, 5000, "progressive read data idle timeout in milliseconds");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 2000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
@@ -35,6 +38,25 @@ DEFINE_string(protocol, "http", "Client-side protocol");
 namespace brpc {
 DECLARE_bool(http_verbose);
 }
+
+class PartDataReader: public brpc::ProgressiveReader {
+public:
+    explicit PartDataReader(bthread::CountdownEvent* done): _done(done){}
+
+    butil::Status OnReadOnePart(const void* data, size_t length) {
+        memcpy(_buffer, data, length);
+        LOG(INFO) << "data ： " << _buffer << " size : " << length;
+        return butil::Status::OK();
+    }
+
+    void OnEndOfMessage(const butil::Status& status) {
+        _done->signal();
+        LOG(INFO) << "progressive read data final status : " << status;
+    }
+private:
+    char _buffer[1024];
+    bthread::CountdownEvent* _done;
+};
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
@@ -71,12 +93,24 @@ int main(int argc, char* argv[]) {
         cntl.request_attachment().append(FLAGS_d);
     }
 
+    if (FLAGS_progressive) {
+        cntl.set_progressive_read_timeout_ms(FLAGS_progressive_read_timeout_ms);
+        cntl.response_will_be_read_progressively();
+    }
+
     // Because `done'(last parameter) is NULL, this function waits until
     // the response comes back or error occurs(including timedout).
     channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     if (cntl.Failed()) {
         std::cerr << cntl.ErrorText() << std::endl;
         return -1;
+    }
+
+    if (FLAGS_progressive) {
+        bthread::CountdownEvent done(1);
+        cntl.ReadProgressiveAttachmentBy(new PartDataReader(&done));
+        done.wait();
+        LOG(INFO) << "wait client progressive read done safely";
     }
     // If -http_verbose is on, brpc already prints the response to stderr.
     if (!brpc::FLAGS_http_verbose) {
