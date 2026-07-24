@@ -74,12 +74,14 @@ DECLARE_bool(use_http_error_code);
 extern bool SerializeRpcMessage(const google::protobuf::Message& serializer,
                                 Controller& cntl, ContentType content_type,
                                 CompressType compress_type,
-                                ChecksumType checksum_type, butil::IOBuf* buf);
+                                ChecksumType checksum_type, butil::IOBuf* buf,
+                                const butil::IOBuf* checksum_attachment = NULL);
 extern bool DeserializeRpcMessage(const butil::IOBuf& deserializer,
                                   Controller& cntl, ContentType content_type,
                                   CompressType compress_type,
                                   ChecksumType checksum_type,
-                                  google::protobuf::Message* message);
+                                  google::protobuf::Message* message,
+                                  const butil::IOBuf* checksum_attachment = NULL);
 }
 
 }
