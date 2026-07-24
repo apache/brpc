@@ -262,7 +262,7 @@ private:
     Socket* _socket;
 
     // State of Handshake.
-    State _state;
+    butil::atomic<State> _state;
 
     // Wire-level handshake protocol version (set by dispatch in
     // ProcessHandshakeAtClient/Server). Aligned with the protocol code:
