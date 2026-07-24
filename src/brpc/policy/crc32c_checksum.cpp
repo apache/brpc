@@ -25,33 +25,44 @@
 namespace brpc {
 namespace policy {
 
-void Crc32cCompute(const ChecksumIn& in) {
-    auto buf = in.buf;
-    auto cntl = in.cntl;
-    butil::IOBufAsZeroCopyInputStream wrapper(*buf);
+namespace {
+
+// Extends `crc' over every block of `buf'. Shared by Crc32cCompute and
+// Crc32cVerify to keep the byte range/order (`buf' then `attachment', see
+// ChecksumIn::attachment) identical on both call sites.
+uint32_t ExtendCrc32c(uint32_t crc, const butil::IOBuf& buf) {
+    butil::IOBufAsZeroCopyInputStream wrapper(buf);
     const void* data;
     int size;
-    uint32_t crc = 0;
     while (wrapper.Next(&data, &size)) {
         crc = butil::crc32c::Extend(crc, static_cast<const char*>(data), size);
     }
+    return crc;
+}
+
+// Computes the crc32c over `in.buf', and over `in.attachment' as well when
+// the caller opted in (ChecksumIn::attachment != NULL).
+uint32_t ComputeCrc32c(const ChecksumIn& in) {
+    uint32_t crc = ExtendCrc32c(0, *in.buf);
+    if (in.attachment != NULL) {
+        crc = ExtendCrc32c(crc, *in.attachment);
+    }
+    return crc;
+}
+
+}  // namespace
+
+void Crc32cCompute(const ChecksumIn& in) {
+    uint32_t crc = ComputeCrc32c(in);
     RPC_VLOG << "Crc32cCompute crc=" << crc;
     crc = butil::HostToNet32(butil::crc32c::Mask(crc));
-    ControllerPrivateAccessor(cntl).set_checksum_value(
+    ControllerPrivateAccessor(in.cntl).set_checksum_value(
         reinterpret_cast<char*>(&crc), sizeof(crc));
 }
 
 bool Crc32cVerify(const ChecksumIn& in) {
-    auto buf = in.buf;
-    auto cntl = in.cntl;
-    butil::IOBufAsZeroCopyInputStream wrapper(*buf);
-    const void* data;
-    int size;
-    uint32_t crc = 0;
-    while (wrapper.Next(&data, &size)) {
-        crc = butil::crc32c::Extend(crc, static_cast<const char*>(data), size);
-    }
-    auto& val = ControllerPrivateAccessor(const_cast<Controller*>(cntl))
+    uint32_t crc = ComputeCrc32c(in);
+    auto& val = ControllerPrivateAccessor(const_cast<Controller*>(in.cntl))
                     .checksum_value();
     CHECK_EQ(val.size(), sizeof(crc));
     auto expected = *reinterpret_cast<const uint32_t*>(val.data());
