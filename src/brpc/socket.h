@@ -65,6 +65,10 @@ namespace ubring {
     class UBShmEndpoint;
     class UBConnect;
 }
+namespace iouring {
+class IouringEndpoint;
+}
+
 class Socket;
 class AuthContext;
 class EventDispatcher;
@@ -334,6 +338,7 @@ friend class rdma::RdmaHandshakeClientV2;
 friend class rdma::RdmaHandshakeServerV2;
 friend class rdma::RdmaHandshakeClientV3;
 friend class rdma::RdmaHandshakeServerV3;
+friend class iouring::IouringEndpoint;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
