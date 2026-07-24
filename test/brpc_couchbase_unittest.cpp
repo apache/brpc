@@ -98,6 +98,36 @@ TEST_F(CouchbaseUnitTest, ResultStruct) {
   EXPECT_EQ(0x00, result.status_code);
 }
 
+// The header fields are attacker-controlled, extras_length + key_length may
+// exceed total_body_length. popManifest/popCollectionId must not treat the
+// underflowed remainder as a value size and drain the pipelined buffer.
+TEST_F(CouchbaseUnitTest, CollectionResponseWithInconsistentBodyLength) {
+  const std::string next_response(64, 'A');
+
+  brpc::policy::CouchbaseResponseHeader header = {};
+  header.magic = brpc::policy::CB_MAGIC_RESPONSE;
+  header.command = brpc::policy::CB_GET_COLLECTIONS_MANIFEST;
+  header.extras_length = 1;
+  header.total_body_length = 0;
+
+  brpc::CouchbaseOperations::CouchbaseResponse res;
+  res.rawBuffer().append(&header, sizeof(header));
+  res.rawBuffer().append(next_response);
+  std::string manifest = "untouched";
+  EXPECT_FALSE(res.popManifest(&manifest));
+  EXPECT_EQ("untouched", manifest);
+  EXPECT_EQ(sizeof(header) + next_response.size(), res.rawBuffer().size());
+
+  header.command = brpc::policy::CB_COLLECTIONS_GET_CID;
+  header.status = 1;
+  brpc::CouchbaseOperations::CouchbaseResponse res2;
+  res2.rawBuffer().append(&header, sizeof(header));
+  res2.rawBuffer().append(next_response);
+  uint8_t collection_id = 0;
+  EXPECT_FALSE(res2.popCollectionId(&collection_id));
+  EXPECT_EQ(sizeof(header) + next_response.size(), res2.rawBuffer().size());
+}
+
 TEST_F(CouchbaseUnitTest, EdgeCases) {
   brpc::CouchbaseOperations::CouchbaseRequest req;
   req.addRequest("", "value", 0, 0, 0);

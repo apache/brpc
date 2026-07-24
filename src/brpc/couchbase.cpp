@@ -1506,10 +1506,14 @@ bool CouchbaseOperations::CouchbaseResponse::popCollectionId(
 
   if (header.status != 0) {
     // handle error case
-    _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
     // Possibly read error message from value if present
-    size_t value_size =
-        header.total_body_length - header.extras_length - header.key_length;
+    const int value_size = (int)header.total_body_length -
+                           (int)header.extras_length - (int)header.key_length;
+    if (value_size < 0) {
+      butil::string_printf(&_err, "value_size=%d is negative", value_size);
+      return false;
+    }
+    _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
     if (value_size > 0) {
       std::string err_msg;
       _buf.cutn(&err_msg, value_size);
@@ -1583,10 +1587,14 @@ bool CouchbaseOperations::CouchbaseResponse::popManifest(
     if (header.key_length != 0) {
       DEBUG_PRINT("Get Collections Manifest response must not have key");
     }
-    _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
     // Possibly read error message from value if present
-    size_t value_size =
-        header.total_body_length - header.extras_length - header.key_length;
+    const int value_size = (int)header.total_body_length -
+                           (int)header.extras_length - (int)header.key_length;
+    if (value_size < 0) {
+      butil::string_printf(&_err, "value_size=%d is negative", value_size);
+      return false;
+    }
+    _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
     if (value_size > 0) {
       std::string err_msg;
       _buf.cutn(&err_msg, value_size);
@@ -1599,8 +1607,12 @@ bool CouchbaseOperations::CouchbaseResponse::popManifest(
   }
 
   // Success case: the manifest should be in the value section
-  size_t value_size =
-      header.total_body_length - header.extras_length - header.key_length;
+  const int value_size = (int)header.total_body_length -
+                         (int)header.extras_length - (int)header.key_length;
+  if (value_size < 0) {
+    butil::string_printf(&_err, "value_size=%d is negative", value_size);
+    return false;
+  }
   if (value_size == 0) {
     butil::string_printf(&_err, "No manifest data in response");
     _buf.pop_front(sizeof(header) + header.total_body_length);
