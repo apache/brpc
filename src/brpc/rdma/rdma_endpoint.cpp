@@ -189,8 +189,8 @@ void RdmaConnect::StartConnect(const Socket* socket,
         return;
     }
     if (!IsRdmaAvailable()) {
-        rdma_transport->_rdma_ep->_state = RdmaEndpoint::FALLBACK_TCP;
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
+        rdma_transport->_rdma_ep->_state = RdmaEndpoint::FALLBACK_TCP;
         done(0, data);
         return;
     }
@@ -910,7 +910,7 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
             if (wc.byte_len < (uint32_t)FLAGS_rdma_zerocopy_min_size) {
                 zerocopy = false;
             }
-            CHECK_NE(_state, FALLBACK_TCP);
+            CHECK_NE(_state.load(butil::memory_order_relaxed), FALLBACK_TCP);
             if (zerocopy) {
                 _rbuf[_rq_received].cutn(&_socket->_read_buf, wc.byte_len);
             } else {
