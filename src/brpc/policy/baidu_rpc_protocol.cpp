@@ -148,7 +148,8 @@ ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
 bool SerializeRpcMessage(const google::protobuf::Message& message,
                          Controller& cntl, ContentType content_type,
                          CompressType compress_type, ChecksumType checksum_type,
-                         butil::IOBuf* buf) {
+                         butil::IOBuf* buf,
+                         const butil::IOBuf* checksum_attachment) {
     auto serialize = [&](Serializer& serializer) -> bool {
         bool ok;
         if (COMPRESS_TYPE_NONE == compress_type) {
@@ -161,7 +162,7 @@ bool SerializeRpcMessage(const google::protobuf::Message& message,
             }
             ok = handler->Compress(serializer, buf);
         }
-        ChecksumIn checksum_in{buf, &cntl};
+        ChecksumIn checksum_in{buf, &cntl, checksum_attachment};
         ComputeDataChecksum(checksum_in, checksum_type);
         return ok;
     };
@@ -231,8 +232,16 @@ static bool SerializeResponse(const google::protobuf::Message& res,
     ContentType content_type = cntl.response_content_type();
     CompressType compress_type = cntl.response_compress_type();
     ChecksumType checksum_type = cntl.response_checksum_type();
+    const butil::IOBuf* checksum_attachment = NULL;
+    if (cntl.response_checksum_attachment()) {
+        // See the same check in SerializeRpcRequest() for the rationale;
+        // baidu_std never sets this flag itself but we defend anyway.
+        if (!cntl.is_response_read_progressively()) {
+            checksum_attachment = &cntl.response_attachment();
+        }
+    }
     if (!SerializeRpcMessage(res, cntl, content_type, compress_type,
-                             checksum_type, &buf)) {
+                             checksum_type, &buf, checksum_attachment)) {
         cntl.SetFailed(ERESPONSE,
                        "Fail to serialize response=%s, "
                        "ContentType=%s, CompressType=%s, ChecksumType=%s",
@@ -349,6 +358,9 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
     meta.set_content_type(cntl->response_content_type());
     meta.set_checksum_type(cntl->response_checksum_type());
     meta.set_checksum_value(accessor.checksum_value());
+    if (cntl->response_checksum_attachment()) {
+        meta.set_checksum_with_attachment(true);
+    }
     if (attached_size > 0) {
         meta.set_attachment_size(attached_size);
     }
@@ -498,9 +510,10 @@ void EndRunningCallMethodInPool(
 bool DeserializeRpcMessage(const butil::IOBuf& data, Controller& cntl,
                            ContentType content_type, CompressType compress_type,
                            ChecksumType checksum_type,
-                           google::protobuf::Message* message) {
+                           google::protobuf::Message* message,
+                           const butil::IOBuf* checksum_attachment) {
     auto deserialize = [&](Deserializer& deserializer) -> bool {
-        ChecksumIn checksum_in{&data, &cntl};
+        ChecksumIn checksum_in{&data, &cntl, checksum_attachment};
         bool ok = VerifyDataChecksum(checksum_in, checksum_type);
         if (!ok) {
             return ok;
@@ -618,6 +631,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     cntl->set_request_content_type(meta.content_type());
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     cntl->set_request_checksum_type((ChecksumType)meta.checksum_type());
+    cntl->set_request_checksum_attachment(meta.checksum_with_attachment());
     cntl->set_rpc_received_us(msg->received_us());
     accessor.set_checksum_value(meta.checksum_value());
     accessor.set_server(server)
@@ -808,9 +822,16 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 static_cast<ChecksumType>(meta.checksum_type());
             messages =
                 server->options().rpc_pb_message_factory->Get(*svc, *method);
+            // request_attachment() has already been filled in above (swapped
+            // out of msg->payload) before we get here, so it's safe to fold
+            // it into the checksum now when the client asked us to.
+            const butil::IOBuf* checksum_attachment =
+                cntl->request_checksum_attachment() ?
+                &cntl->request_attachment() : NULL;
             if (!DeserializeRpcMessage(req_buf, *cntl, content_type,
                                        compress_type, checksum_type,
-                                       messages->Request())) {
+                                       messages->Request(),
+                                       checksum_attachment)) {
                 cntl->SetFailed(
                     EREQUEST,
                     "Fail to parse request=%s, ContentType=%s, "
@@ -987,14 +1008,22 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         cntl->set_response_content_type(content_type);
         cntl->set_response_compress_type(compress_type);
         cntl->set_response_checksum_type(checksum_type);
+        cntl->set_response_checksum_attachment(meta.checksum_with_attachment());
         accessor.set_checksum_value(meta.checksum_value());
         if (cntl->response()) {
+            // response_attachment() has already been filled in above (swapped
+            // out of msg->payload) before we get here, so it's safe to fold
+            // it into the checksum now when the server told us to.
+            const butil::IOBuf* checksum_attachment =
+                cntl->response_checksum_attachment() ?
+                &cntl->response_attachment() : NULL;
             if (cntl->response()->GetDescriptor() == SerializedResponse::descriptor()) {
                 ((SerializedResponse*)cntl->response())->
                     serialized_data().append(*res_buf_ptr);
             } else if (!DeserializeRpcMessage(*res_buf_ptr, *cntl, content_type,
                                               compress_type, checksum_type,
-                                              cntl->response())) {
+                                              cntl->response(),
+                                              checksum_attachment)) {
                 cntl->SetFailed(
                     EREQUEST,
                     "Fail to parse response=%s, ContentType=%s, "
@@ -1030,8 +1059,19 @@ void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
     ContentType content_type = cntl->request_content_type();
     CompressType compress_type = cntl->request_compress_type();
     ChecksumType checksum_type = cntl->request_checksum_type();
+    const butil::IOBuf* checksum_attachment = NULL;
+    if (cntl->request_checksum_attachment()) {
+        // Progressive reading (HTTP-only feature) hands the attachment to
+        // the user piece by piece as it arrives, so there's no single,
+        // complete IOBuf to fold into the checksum here. baidu_std (this
+        // protocol) never sets FLAGS_READ_PROGRESSIVELY itself, but guard
+        // against a Controller that's reused/misconfigured across protocols.
+        if (!cntl->is_response_read_progressively()) {
+            checksum_attachment = &cntl->request_attachment();
+        }
+    }
     if (!SerializeRpcMessage(*request, *cntl, content_type, compress_type,
-                             checksum_type, request_buf)) {
+                             checksum_type, request_buf, checksum_attachment)) {
         return cntl->SetFailed(
             EREQUEST,
             "Fail to compress request=%s, "
@@ -1065,6 +1105,9 @@ void PackRpcRequest(butil::IOBuf* req_buf,
         meta.set_compress_type(cntl->request_compress_type());
         meta.set_checksum_type(cntl->request_checksum_type());
         meta.set_checksum_value(accessor.checksum_value());
+        if (cntl->request_checksum_attachment()) {
+            meta.set_checksum_with_attachment(true);
+        }
     } else if (NULL != cntl->sampled_request()) {
         // Replaying. Keep service-name as the one seen by server.
         request_meta->set_service_name(cntl->sampled_request()->meta.service_name());

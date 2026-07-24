@@ -260,6 +260,22 @@ public:
     // Set checksum type for request.
     void set_request_checksum_type(ChecksumType t) { _request_checksum_type = t; }
 
+    // Whether the request's checksum (see set_request_checksum_type) also
+    // covers the attachment, in addition to the serialized body. Defaults
+    // to false (checksum covers body only), preserving the pre-existing
+    // behavior. This setting is sent to the peer along with the request so
+    // that it recomputes the checksum over the same range; it is meaningless
+    // (and rejected, see baidu_rpc_protocol.cpp) together with
+    // request_will_be_read_progressively() since the attachment is not
+    // fully buffered before the checksum must be verified.
+    // NOTE: Only enable this if the peer is known to understand the
+    // checksum_with_attachment field (baidu_std protocol). An older peer
+    // silently ignores the field and verifies against the body only, which
+    // will then mismatch the body+attachment checksum computed here.
+    void set_request_checksum_attachment(bool with_attachment) {
+        _request_checksum_with_attachment = with_attachment;
+    }
+
     // Required by some load balancers.
     void set_request_code(uint64_t request_code) {
         add_flag(FLAGS_REQUEST_CODE);
@@ -486,6 +502,14 @@ public:
 
     // Set checksum type for response.
     void set_response_checksum_type(ChecksumType t) { _response_checksum_type = t; }
+
+    // Whether the response's checksum (see set_response_checksum_type) also
+    // covers the attachment, in addition to the serialized body. See
+    // set_request_checksum_attachment() for details; the same caveat about
+    // progressive attachment reading applies here.
+    void set_response_checksum_attachment(bool with_attachment) {
+        _response_checksum_with_attachment = with_attachment;
+    }
     
     // Non-zero when this RPC call is traced (by rpcz or rig).
     // NOTE: Only valid at server-side, always zero at client-side.
@@ -576,6 +600,8 @@ public:
     CompressType response_compress_type() const { return _response_compress_type; }
     ChecksumType request_checksum_type() const { return _request_checksum_type; }
     ChecksumType response_checksum_type() const { return _response_checksum_type; }
+    bool request_checksum_attachment() const { return _request_checksum_with_attachment; }
+    bool response_checksum_attachment() const { return _response_checksum_with_attachment; }
     const HttpHeader& http_request() const 
     { return _http_request != NULL ? *_http_request : DefaultHttpHeader(); }
     
@@ -729,6 +755,7 @@ private:
         ConnectionType connection_type;         
         CompressType request_compress_type;
         ChecksumType request_checksum_type;
+        bool request_checksum_with_attachment;
         uint64_t log_id;
         bool has_request_code;
         int64_t request_code;
@@ -897,6 +924,8 @@ private:
     CompressType _response_compress_type;
     ChecksumType _request_checksum_type;
     ChecksumType _response_checksum_type;
+    bool _request_checksum_with_attachment;
+    bool _response_checksum_with_attachment;
     std::string _checksum_value;
     Inheritable _inheritable;
     int _pchan_sub_count;
