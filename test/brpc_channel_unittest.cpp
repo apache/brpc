@@ -2425,10 +2425,17 @@ TEST_F(ChannelTest, parse_hostname) {
     ASSERT_EQ(0, channel.Init("http://www.baidu.com:8888", "rr", &opt));
     ASSERT_EQ("www.baidu.com:8888", channel._service_name);
 
+    opt.mutable_ssl_options()->verify.verify_mode = brpc::VerifyMode::VERIFY_PEER;
+    opt.mutable_ssl_options()->verify.verify_depth = 1;
+    opt.mutable_ssl_options()->verify.ca_file_path = "cert1.crt";
     ASSERT_EQ(0, channel.Init("https://www.baidu.com", &opt));
     ASSERT_EQ("www.baidu.com", channel._service_name);
+    ASSERT_EQ("www.baidu.com",
+              channel._options.ssl_options().verify.expected_peer_name);
     ASSERT_EQ(0, channel.Init("https://www.baidu.com:443", &opt));
     ASSERT_EQ("www.baidu.com:443", channel._service_name);
+    ASSERT_EQ("www.baidu.com",
+              channel._options.ssl_options().verify.expected_peer_name);
     ASSERT_EQ(0, channel.Init("https://www.baidu.com", 443, &opt));
     ASSERT_EQ("www.baidu.com:443", channel._service_name);
     ASSERT_EQ(0, channel.Init("https://www.baidu.com:1443", &opt));

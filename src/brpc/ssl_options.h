@@ -66,6 +66,10 @@ struct VerifyOptions {
     // If empty, use the system default CA files
     // Default: ""
     std::string ca_file_path;
+
+    // Set the expected DNS name or IP address in the peer's certificate
+    // Default: ""
+    std::string expected_peer_name;
 };
 
 // SSL options at client side

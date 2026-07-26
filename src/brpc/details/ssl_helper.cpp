@@ -23,6 +23,7 @@
 #ifndef USE_MESALINK
 
 #include <sys/socket.h>                // recv
+#include <arpa/inet.h>                 // inet_pton
 #include <pthread.h>                   // pthread_once
 #include <stdio.h>                     // fopen
 #include <stdlib.h>                    // getenv
@@ -464,8 +465,12 @@ static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
         return -1;
     }
 
-    // TODO: Verify the CNAME in certificate matches the requesting host
     if (verify.verify_depth > 0) {
+        if (!verify.expected_peer_name.empty() &&
+            verify.verify_mode == VerifyMode::VERIFY_NONE) {
+            LOG(ERROR) << "Expected peer name requires peer verification";
+            return -1;
+        }
         if (verify.verify_mode == VerifyMode::VERIFY_FAIL_IF_NO_PEER_CERT) {
             SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
                                      | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
@@ -493,7 +498,36 @@ static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
                 return -1;
             }
         }
+        if (!verify.expected_peer_name.empty()) {
+#if defined(OPENSSL_IS_BORINGSSL) || OPENSSL_VERSION_NUMBER >= 0x10002000L
+            X509_VERIFY_PARAM* param = SSL_CTX_get0_param(ctx);
+            unsigned char address[sizeof(struct in6_addr)];
+            int rc = 0;
+            if (inet_pton(AF_INET, verify.expected_peer_name.c_str(), address) == 1 ||
+                inet_pton(AF_INET6, verify.expected_peer_name.c_str(),
+                          address) == 1) {
+                rc = X509_VERIFY_PARAM_set1_ip_asc(
+                    param, verify.expected_peer_name.c_str());
+            } else {
+                rc = X509_VERIFY_PARAM_set1_host(
+                    param, verify.expected_peer_name.c_str(), 0);
+            }
+            if (rc != 1) {
+                LOG(ERROR) << "Fail to set expected peer name "
+                           << verify.expected_peer_name << ": "
+                           << SSLError(ERR_get_error());
+                return -1;
+            }
+#else
+            LOG(ERROR) << "Expected peer name verification requires OpenSSL 1.0.2+";
+            return -1;
+#endif
+        }
     } else {
+        if (!verify.expected_peer_name.empty()) {
+            LOG(ERROR) << "Expected peer name requires peer verification";
+            return -1;
+        }
         SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     }
 

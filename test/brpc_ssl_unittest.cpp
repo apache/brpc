@@ -229,6 +229,70 @@ TEST_F(SSLTest, force_ssl) {
     ASSERT_EQ(0, server.Join());
 }
 
+void CallServerWithExpectedPeerName(int port, const char* server_address,
+                                    const char* expected_peer_name,
+                                    bool expect_success) {
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_HTTP;
+    options.mutable_ssl_options()->verify.verify_mode =
+        brpc::VerifyMode::VERIFY_PEER;
+    options.mutable_ssl_options()->verify.verify_depth = 1;
+    options.mutable_ssl_options()->verify.ca_file_path = "cert1.crt";
+    if (expected_peer_name != NULL) {
+        options.mutable_ssl_options()->verify.expected_peer_name = expected_peer_name;
+    }
+    std::string url = server_address;
+    url.append(":").append(std::to_string(port));
+    ASSERT_EQ(0, channel.Init(url.c_str(), &options));
+
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    brpc::Controller cntl;
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &req, &res, NULL);
+    if (expect_success) {
+        EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        EXPECT_EQ(EXP_RESPONSE, res.message());
+    } else {
+        EXPECT_TRUE(cntl.Failed());
+    }
+}
+
+TEST_F(SSLTest, verify_peer_name) {
+    const int port = 8613;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    brpc::CertInfo cert;
+    cert.certificate = "cert1.crt";
+    cert.private_key = "cert1.key";
+    server_options.mutable_ssl_options()->default_cert = cert;
+
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(
+        &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, &server_options));
+
+    CallServerWithExpectedPeerName(port, "https://localhost", NULL, true);
+    CallServerWithExpectedPeerName(port, "https://127.0.0.1", NULL, false);
+    CallServerWithExpectedPeerName(
+        port, "https://localhost", "wrong.local", false);
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+TEST_F(SSLTest, expected_peer_name_requires_peer_verification) {
+    brpc::ChannelSSLOptions options;
+    options.verify.expected_peer_name = "localhost";
+    EXPECT_EQ(NULL, brpc::CreateClientSSLContext(options));
+
+    options.verify.verify_depth = 1;
+    options.verify.verify_mode = brpc::VerifyMode::VERIFY_NONE;
+    EXPECT_EQ(NULL, brpc::CreateClientSSLContext(options));
+}
+
 void ProcessResponse(brpc::InputMessageBase* msg_base) {
     brpc::DestroyingPtr<brpc::policy::MostCommonMessage> msg(
         static_cast<brpc::policy::MostCommonMessage*>(msg_base));

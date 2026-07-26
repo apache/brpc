@@ -240,6 +240,10 @@ static int LoadCertificate(SSL_CTX* ctx,
 
 static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
                          int protocols, const VerifyOptions& verify) {
+    if (!verify.expected_peer_name.empty()) {
+        LOG(ERROR) << "Expected peer name verification is not supported by MesaLink";
+        return -1;
+    }
     if (verify.verify_depth > 0) {
         std::string cafile = verify.ca_file_path;
         if (!cafile.empty()) {
