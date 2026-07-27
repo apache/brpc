@@ -245,7 +245,9 @@ list(REMOVE_ITEM BVAR_SOURCES ${PROJECT_SOURCE_DIR}/src/bvar/default_variables.c
 add_library(BVAR_DEBUG_LIB OBJECT ${BVAR_SOURCES})
 target_link_libraries(BVAR_DEBUG_LIB PRIVATE brpc_test_config)
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
+# Keep test_bvar independent of the bthread runtime and pthread interceptors.
 add_executable(test_bvar ${TEST_BVAR_SRCS}
+                         bvar_bthread_stubs.cpp
                          $<TARGET_OBJECTS:BVAR_DEBUG_LIB>
                          $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>)
 target_link_libraries(test_bvar PRIVATE
@@ -272,9 +274,14 @@ file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
+    if(BRPC_UT_WE STREQUAL "brpc_bvar_mutex_unittest")
+        set(BRPC_GTEST_LIBRARY gtest)
+    else()
+        set(BRPC_GTEST_LIBRARY gtest_main)
+    endif()
     target_link_libraries(${BRPC_UT_WE} PRIVATE
         brpc-shared-debug
-        gtest_main
+        ${BRPC_GTEST_LIBRARY}
         brpc_test_config
         ${GPERFTOOLS_LIBRARIES})
     add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})

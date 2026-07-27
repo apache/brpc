@@ -31,6 +31,7 @@
 #include "butil/file_util.h"                     // butil::FilePath
 #include "butil/threading/platform_thread.h"
 #include "butil/reloadable_flags.h"
+#include "bthread/mutex.h"
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
@@ -73,18 +74,12 @@ public:
 typedef butil::FlatMap<std::string, VarEntry> VarMap;
 
 struct VarMapWithLock : public VarMap {
-    pthread_mutex_t mutex;
+    bthread::RecursiveMutex mutex;
 
     VarMapWithLock() {
         if (init(1024) != 0) {
             LOG(WARNING) << "Fail to init VarMap";
         }
-
-        pthread_mutexattr_t attr;
-        pthread_mutexattr_init(&attr);
-        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-        pthread_mutex_init(&mutex, &attr);
-        pthread_mutexattr_destroy(&attr);
     }
 };
 
@@ -212,7 +207,7 @@ void Variable::list_exposed(std::vector<std::string>* names,
     VarMapWithLock* var_maps = get_var_maps();
     for (size_t i = 0; i < SUB_MAP_COUNT; ++i) {
         VarMapWithLock& m = var_maps[i];
-        std::unique_lock<pthread_mutex_t> mu(m.mutex);
+        std::unique_lock<bthread::RecursiveMutex> mu(m.mutex);
         size_t n = 0;
         for (VarMap::const_iterator it = m.begin(); it != m.end(); ++it) {
             if (++n >= 256/*max iterated one pass*/) {

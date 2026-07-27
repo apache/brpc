@@ -35,6 +35,11 @@ extern int bthread_mutex_lock(bthread_mutex_t* mutex);
 extern int bthread_mutex_timedlock(bthread_mutex_t* __restrict mutex,
                                    const struct timespec* __restrict abstime);
 extern int bthread_mutex_unlock(bthread_mutex_t* mutex);
+extern int bthread_recursive_mutex_init(bthread_recursive_mutex_t* mutex);
+extern int bthread_recursive_mutex_destroy(bthread_recursive_mutex_t* mutex);
+extern int bthread_recursive_mutex_trylock(bthread_recursive_mutex_t* mutex);
+extern int bthread_recursive_mutex_lock(bthread_recursive_mutex_t* mutex);
+extern int bthread_recursive_mutex_unlock(bthread_recursive_mutex_t* mutex);
 extern bthread_t bthread_self(void);
 __END_DECLS
 
@@ -71,6 +76,40 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(Mutex);
     bthread_mutex_t _mutex;   
+};
+
+class RecursiveMutex {
+public:
+    typedef bthread_recursive_mutex_t* native_handler_type;
+
+    RecursiveMutex() {
+        const int ec = bthread_recursive_mutex_init(&_mutex);
+        if (ec != 0) {
+            throw std::system_error(
+                std::error_code(ec, std::system_category()),
+                "RecursiveMutex constructor failed");
+        }
+    }
+    ~RecursiveMutex() {
+        CHECK_EQ(0, bthread_recursive_mutex_destroy(&_mutex));
+    }
+    native_handler_type native_handler() { return &_mutex; }
+    void lock() {
+        const int ec = bthread_recursive_mutex_lock(&_mutex);
+        if (ec != 0) {
+            throw std::system_error(
+                std::error_code(ec, std::system_category()),
+                "RecursiveMutex lock failed");
+        }
+    }
+    void unlock() { CHECK_EQ(0, bthread_recursive_mutex_unlock(&_mutex)); }
+    bool try_lock() {
+        return bthread_recursive_mutex_trylock(&_mutex) == 0;
+    }
+
+private:
+    DISALLOW_COPY_AND_ASSIGN(RecursiveMutex);
+    bthread_recursive_mutex_t _mutex;
 };
 
 namespace internal {
