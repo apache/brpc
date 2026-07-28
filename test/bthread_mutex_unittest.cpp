@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <atomic>
 #include <gtest/gtest.h>
 #include "butil/compat.h"
 #include "butil/time.h"
@@ -138,6 +139,129 @@ TEST(MutexTest, cpp_wrapper) {
     mutex.unlock();
     ASSERT_TRUE(mutex.timed_lock(&t));
     mutex.unlock();
+}
+
+struct RecursiveMutexArgs {
+    bthread_recursive_mutex_t* mutex;
+    std::atomic<bool>* completed;
+};
+
+void* lock_recursive_mutex_after_yield(void* arg) {
+    RecursiveMutexArgs* args = static_cast<RecursiveMutexArgs*>(arg);
+    EXPECT_EQ(0, bthread_recursive_mutex_lock(args->mutex));
+    bthread_usleep(1000);
+    EXPECT_EQ(0, bthread_recursive_mutex_trylock(args->mutex));
+    EXPECT_EQ(0, bthread_recursive_mutex_unlock(args->mutex));
+    EXPECT_EQ(0, bthread_recursive_mutex_unlock(args->mutex));
+    args->completed->store(true, std::memory_order_release);
+    return NULL;
+}
+
+TEST(MutexTest, recursive_mutex_tracks_bthread_across_yield) {
+    bthread_recursive_mutex_t mutex;
+    ASSERT_EQ(0, bthread_recursive_mutex_init(&mutex));
+    std::atomic<bool> completed(false);
+    RecursiveMutexArgs args = {&mutex, &completed};
+    bthread_t thread;
+    ASSERT_EQ(0, bthread_start_background(
+                     &thread, NULL, lock_recursive_mutex_after_yield, &args));
+    ASSERT_EQ(0, bthread_join(thread, NULL));
+    EXPECT_TRUE(completed.load(std::memory_order_acquire));
+    EXPECT_EQ(0, bthread_recursive_mutex_destroy(&mutex));
+}
+
+TEST(MutexTest, recursive_mutex_supports_pthread_and_cpp_wrapper) {
+    bthread_recursive_mutex_t mutex;
+    ASSERT_EQ(0, bthread_recursive_mutex_init(&mutex));
+    ASSERT_EQ(0, bthread_recursive_mutex_lock(&mutex));
+    ASSERT_EQ(0, bthread_recursive_mutex_trylock(&mutex));
+    ASSERT_EQ(0, bthread_recursive_mutex_unlock(&mutex));
+    ASSERT_EQ(0, bthread_recursive_mutex_unlock(&mutex));
+    ASSERT_EQ(0, bthread_recursive_mutex_destroy(&mutex));
+
+    bthread::RecursiveMutex cpp_mutex;
+    cpp_mutex.lock();
+    EXPECT_TRUE(cpp_mutex.try_lock());
+    cpp_mutex.unlock();
+    cpp_mutex.unlock();
+}
+
+struct RecursiveMutexStressArgs {
+    bthread_recursive_mutex_t* mutex;
+    std::atomic<int>* ready;
+    std::atomic<bool>* start;
+    std::atomic<int>* failures;
+    int64_t* counter;
+    std::atomic<int>* migrations;
+};
+
+void* stress_recursive_mutex(void* arg) {
+    RecursiveMutexStressArgs* args =
+        static_cast<RecursiveMutexStressArgs*>(arg);
+    args->ready->fetch_add(1, std::memory_order_release);
+    while (!args->start->load(std::memory_order_acquire)) {
+        bthread_usleep(1000);
+    }
+
+    const int kIterations = 10000;
+    const int kRecursionDepth = 4;
+    for (int i = 0; i < kIterations; ++i) {
+        for (int depth = 0; depth < kRecursionDepth; ++depth) {
+            if (bthread_recursive_mutex_lock(args->mutex) != 0) {
+                args->failures->fetch_add(1, std::memory_order_relaxed);
+                return NULL;
+            }
+        }
+
+        const uint64_t worker_before_yield = pthread_numeric_id();
+        bthread_yield();
+        if (pthread_numeric_id() != worker_before_yield) {
+            args->migrations->fetch_add(1, std::memory_order_relaxed);
+        }
+        ++*args->counter;
+
+        for (int depth = 0; depth < kRecursionDepth; ++depth) {
+            if (bthread_recursive_mutex_unlock(args->mutex) != 0) {
+                args->failures->fetch_add(1, std::memory_order_relaxed);
+                return NULL;
+            }
+        }
+    }
+    return NULL;
+}
+
+TEST(MutexTest, recursive_mutex_high_contention) {
+    const int kThreadCount = 64;
+    const int kIterations = 10000;
+    bthread_recursive_mutex_t mutex;
+    ASSERT_EQ(0, bthread_recursive_mutex_init(&mutex));
+
+    std::atomic<int> ready(0);
+    std::atomic<bool> start(false);
+    std::atomic<int> failures(0);
+    std::atomic<int> migrations(0);
+    int64_t counter = 0;
+    RecursiveMutexStressArgs args = {
+        &mutex, &ready, &start, &failures, &counter, &migrations};
+    bthread_t threads[kThreadCount];
+    for (int i = 0; i < kThreadCount; ++i) {
+        ASSERT_EQ(0, bthread_start_background(
+                         &threads[i], NULL, stress_recursive_mutex, &args));
+    }
+    while (ready.load(std::memory_order_acquire) != kThreadCount) {
+        usleep(1000);
+    }
+    start.store(true, std::memory_order_release);
+    for (int i = 0; i < kThreadCount; ++i) {
+        ASSERT_EQ(0, bthread_join(threads[i], NULL));
+    }
+
+    EXPECT_EQ(0, failures.load(std::memory_order_relaxed));
+    EXPECT_EQ(static_cast<int64_t>(kThreadCount) * kIterations, counter);
+    LOG(INFO) << "Recursive mutex stress observed "
+              << migrations.load(std::memory_order_relaxed)
+              << " cross-worker migrations";
+    EXPECT_EQ(0, bthread_recursive_mutex_destroy(&mutex));
 }
 
 bool g_started = false;

@@ -22,7 +22,7 @@
 #ifndef  BTHREAD_MUTEX_H
 #define  BTHREAD_MUTEX_H
 
-#include "bthread/types.h"
+#include "bthread/recursive_mutex.h"
 #include "butil/scoped_lock.h"
 #include "bvar/utils/lock_timer.h"
 

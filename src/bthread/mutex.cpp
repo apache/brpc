@@ -1190,6 +1190,46 @@ bool FastPthreadMutex::timed_lock(const struct timespec* abstime) {
 }
 #endif // BTHREAD_USE_FAST_PTHREAD_MUTEX HAS_PTHREAD_MUTEX_TIMEDLOCK
 
+enum RecursiveMutexOwnerKind {
+    RECURSIVE_MUTEX_UNOWNED = 0,
+    RECURSIVE_MUTEX_BTHREAD = 1,
+    RECURSIVE_MUTEX_PTHREAD = 2,
+};
+
+struct RecursiveMutexOwner {
+    uint64_t id;
+    uint32_t kind;
+};
+
+static __thread char tls_recursive_mutex_owner;
+
+static RecursiveMutexOwner current_recursive_mutex_owner() {
+    const bthread_t tid = bthread_self();
+    if (tid != INVALID_BTHREAD) {
+        return {tid, RECURSIVE_MUTEX_BTHREAD};
+    }
+    return {
+        static_cast<uint64_t>(
+            reinterpret_cast<uintptr_t>(&tls_recursive_mutex_owner)),
+        RECURSIVE_MUTEX_PTHREAD};
+}
+
+static bool recursive_mutex_owned_by(
+    const bthread_recursive_mutex_t* mutex,
+    const RecursiveMutexOwner& owner) {
+    return __atomic_load_n(&mutex->owner_kind, __ATOMIC_ACQUIRE) ==
+               owner.kind &&
+           __atomic_load_n(&mutex->owner, __ATOMIC_RELAXED) == owner.id;
+}
+
+static void set_recursive_mutex_owner(
+    bthread_recursive_mutex_t* mutex,
+    const RecursiveMutexOwner& owner) {
+    __atomic_store_n(&mutex->owner, owner.id, __ATOMIC_RELAXED);
+    mutex->recursion = 1;
+    __atomic_store_n(&mutex->owner_kind, owner.kind, __ATOMIC_RELEASE);
+}
+
 } // namespace bthread
 
 __BEGIN_DECLS
@@ -1286,6 +1326,69 @@ int bthread_mutex_unlock(bthread_mutex_t* m) {
     saved_csite.duration_ns += unlock_end_ns - unlock_start_ns;
     bthread::submit_contention(saved_csite, unlock_end_ns);
     return 0;
+}
+
+int bthread_recursive_mutex_init(bthread_recursive_mutex_t* mutex) {
+    mutex->owner = 0;
+    mutex->owner_kind = bthread::RECURSIVE_MUTEX_UNOWNED;
+    mutex->recursion = 0;
+    return bthread_mutex_init(&mutex->mutex, NULL);
+}
+
+int bthread_recursive_mutex_destroy(bthread_recursive_mutex_t* mutex) {
+    if (__atomic_load_n(&mutex->owner_kind, __ATOMIC_ACQUIRE) !=
+        bthread::RECURSIVE_MUTEX_UNOWNED) {
+        return EBUSY;
+    }
+    return bthread_mutex_destroy(&mutex->mutex);
+}
+
+int bthread_recursive_mutex_trylock(bthread_recursive_mutex_t* mutex) {
+    const bthread::RecursiveMutexOwner owner =
+        bthread::current_recursive_mutex_owner();
+    if (bthread::recursive_mutex_owned_by(mutex, owner)) {
+        if (mutex->recursion == UINT32_MAX) {
+            return EAGAIN;
+        }
+        ++mutex->recursion;
+        return 0;
+    }
+    const int rc = bthread_mutex_trylock(&mutex->mutex);
+    if (rc == 0) {
+        bthread::set_recursive_mutex_owner(mutex, owner);
+    }
+    return rc;
+}
+
+int bthread_recursive_mutex_lock(bthread_recursive_mutex_t* mutex) {
+    const bthread::RecursiveMutexOwner owner =
+        bthread::current_recursive_mutex_owner();
+    if (bthread::recursive_mutex_owned_by(mutex, owner)) {
+        if (mutex->recursion == UINT32_MAX) {
+            return EAGAIN;
+        }
+        ++mutex->recursion;
+        return 0;
+    }
+    const int rc = bthread_mutex_lock(&mutex->mutex);
+    if (rc == 0) {
+        bthread::set_recursive_mutex_owner(mutex, owner);
+    }
+    return rc;
+}
+
+int bthread_recursive_mutex_unlock(bthread_recursive_mutex_t* mutex) {
+    const bthread::RecursiveMutexOwner owner =
+        bthread::current_recursive_mutex_owner();
+    if (!bthread::recursive_mutex_owned_by(mutex, owner)) {
+        return EPERM;
+    }
+    if (--mutex->recursion != 0) {
+        return 0;
+    }
+    __atomic_store_n(&mutex->owner_kind, bthread::RECURSIVE_MUTEX_UNOWNED,
+                     __ATOMIC_RELEASE);
+    return bthread_mutex_unlock(&mutex->mutex);
 }
 
 int bthread_mutexattr_init(bthread_mutexattr_t* attr) {
