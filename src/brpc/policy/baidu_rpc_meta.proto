@@ -36,6 +36,7 @@ message RpcMeta {
     optional ContentType content_type = 10;
     optional int32 checksum_type = 11;
     optional bytes checksum_value = 12;
+    optional bool checksum_with_attachment = 13;
 }
 
 message RpcRequestMeta {

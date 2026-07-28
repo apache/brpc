@@ -145,6 +145,9 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_READ_PROGRESSIVELY = (1 << 3);
     static const uint32_t FLAGS_PROGRESSIVE_READER = (1 << 4);
     static const uint32_t FLAGS_BACKUP_REQUEST = (1 << 5);
+    // Whether set_request_checksum_type()'s checksum also covers the
+    // attachment. See set_request_checksum_attachment().
+    static const uint32_t FLAGS_REQUEST_CHECKSUM_WITH_ATTACHMENT = (1 << 6);
     // Let _done delete the correlation_id, used by combo channels to
     // make lifetime of the correlation_id more flexible.
     static const uint32_t FLAGS_DESTROY_CID_IN_DONE = (1 << 7);
@@ -167,6 +170,9 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_MANAGE_HTTP_BODY_ON_ERROR = (1 << 21);
     static const uint32_t FLAGS_WRITE_TO_SOCKET_IN_BACKGROUND = (1 << 22);
     static const uint32_t FLAGS_ENDING_RPC = (1 << 23);
+    // Whether set_response_checksum_type()'s checksum also covers the
+    // attachment. See set_response_checksum_attachment().
+    static const uint32_t FLAGS_RESPONSE_CHECKSUM_WITH_ATTACHMENT = (1 << 24);
 
 public:
     struct Inheritable {
@@ -259,6 +265,22 @@ public:
 
     // Set checksum type for request.
     void set_request_checksum_type(ChecksumType t) { _request_checksum_type = t; }
+
+    // Whether the request's checksum (see set_request_checksum_type) also
+    // covers the attachment, in addition to the serialized body. Defaults
+    // to false (checksum covers body only), preserving the pre-existing
+    // behavior. This setting is sent to the peer along with the request so
+    // that it recomputes the checksum over the same range; it is meaningless
+    // (and rejected, see baidu_rpc_protocol.cpp) together with
+    // request_will_be_read_progressively() since the attachment is not
+    // fully buffered before the checksum must be verified.
+    // NOTE: Only enable this if the peer is known to understand the
+    // checksum_with_attachment field (baidu_std protocol). An older peer
+    // silently ignores the field and verifies against the body only, which
+    // will then mismatch the body+attachment checksum computed here.
+    void set_request_checksum_attachment(bool with_attachment) {
+        set_flag(FLAGS_REQUEST_CHECKSUM_WITH_ATTACHMENT, with_attachment);
+    }
 
     // Required by some load balancers.
     void set_request_code(uint64_t request_code) {
@@ -486,6 +508,14 @@ public:
 
     // Set checksum type for response.
     void set_response_checksum_type(ChecksumType t) { _response_checksum_type = t; }
+
+    // Whether the response's checksum (see set_response_checksum_type) also
+    // covers the attachment, in addition to the serialized body. See
+    // set_request_checksum_attachment() for details; the same caveat about
+    // progressive attachment reading applies here.
+    void set_response_checksum_attachment(bool with_attachment) {
+        set_flag(FLAGS_RESPONSE_CHECKSUM_WITH_ATTACHMENT, with_attachment);
+    }
     
     // Non-zero when this RPC call is traced (by rpcz or rig).
     // NOTE: Only valid at server-side, always zero at client-side.
@@ -576,6 +606,8 @@ public:
     CompressType response_compress_type() const { return _response_compress_type; }
     ChecksumType request_checksum_type() const { return _request_checksum_type; }
     ChecksumType response_checksum_type() const { return _response_checksum_type; }
+    bool request_checksum_attachment() const { return has_flag(FLAGS_REQUEST_CHECKSUM_WITH_ATTACHMENT); }
+    bool response_checksum_attachment() const { return has_flag(FLAGS_RESPONSE_CHECKSUM_WITH_ATTACHMENT); }
     const HttpHeader& http_request() const 
     { return _http_request != NULL ? *_http_request : DefaultHttpHeader(); }
     
@@ -729,6 +761,7 @@ private:
         ConnectionType connection_type;         
         CompressType request_compress_type;
         ChecksumType request_checksum_type;
+        bool request_checksum_with_attachment;
         uint64_t log_id;
         bool has_request_code;
         int64_t request_code;
