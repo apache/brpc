@@ -24,6 +24,7 @@
 
 #include <gflags/gflags.h>
 #include "butil/atomicops.h"
+#include "bthread/types.h"    // bthread_tag_t
 #include "bthread/sys_futex.h"
 
 namespace bthread {

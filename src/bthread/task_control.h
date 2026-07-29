@@ -79,18 +79,24 @@ public:
     // Check if there are workers parked in wait() for the given tag.
     // Per-tag accounting avoids a tag-A ready_to_run() needlessly issuing a
     // signal_task() just because workers of a *different* tag B are parked.
+    // Returns true if the tag is valid AND at least one worker is parked.
     bool has_waiting_workers(bthread_tag_t tag) const {
-        return tag < (bthread_tag_t)_tagged_waiter_num.size()
+        return tag >= 0
+               && tag < (bthread_tag_t)_tagged_waiter_num.size()
                && _tagged_waiter_num[tag].load(butil::memory_order_relaxed) > 0;
     }
 
     // Called by ParkingLot (via parking_lot_waiter_add/sub) to track waiters
-    // entering/leaving wait() for a given tag.
+    // entering/leaving wait() for a given tag. No-op for invalid tags.
     void waiter_add(bthread_tag_t tag) {
-        _tagged_waiter_num[tag].fetch_add(1, butil::memory_order_relaxed);
+        if (tag >= 0 && tag < (bthread_tag_t)_tagged_waiter_num.size()) {
+            _tagged_waiter_num[tag].fetch_add(1, butil::memory_order_relaxed);
+        }
     }
     void waiter_sub(bthread_tag_t tag) {
-        _tagged_waiter_num[tag].fetch_sub(1, butil::memory_order_relaxed);
+        if (tag >= 0 && tag < (bthread_tag_t)_tagged_waiter_num.size()) {
+            _tagged_waiter_num[tag].fetch_sub(1, butil::memory_order_relaxed);
+        }
     }
 
     void print_rq_sizes(std::ostream& os);

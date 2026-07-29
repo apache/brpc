@@ -226,7 +226,13 @@ TaskControl::TaskControl()
     , _tagged_waiter_num(FLAGS_task_group_ntags)
     , _tag_cpus(FLAGS_task_group_ntags)
     , _tag_next_worker_id(FLAGS_task_group_ntags)
-{}
+{
+    // Explicitly zero-initialize all atomic counters. butil::atomic's
+    // default constructor does not guarantee a zero value.
+    for (size_t i = 0; i < _tagged_waiter_num.size(); ++i) {
+        _tagged_waiter_num[i].store(0, butil::memory_order_relaxed);
+    }
+}
 
 int TaskControl::init_ed_priority_queues() {
     if (!_enable_priority_queue) {
@@ -294,6 +300,19 @@ int TaskControl::init(int concurrency) {
 #endif // BRPC_BTHREAD_TRACER
     
     _workers.resize(_concurrency);
+
+    // Wire each ParkingLot back to this TaskControl so that ParkingLot::wait()
+    // can maintain the per-tag _tagged_waiter_num counter consulted by
+    // has_waiting_workers(tag). This MUST be done BEFORE creating worker
+    // threads, otherwise a worker could enter wait() with _tc == nullptr,
+    // causing has_waiting_workers() to return false and signal_task() to
+    // be skipped — permanently sleeping the worker (lost wakeup).
+    for (size_t i = 0; i < _tagged_pl.size(); ++i) {
+        for (size_t j = 0; j < _pl_num_of_each_tag; ++j) {
+            _tagged_pl[i][j].set_task_control(this, (bthread_tag_t)i);
+        }
+    }
+
     for (int i = 0; i < _concurrency; ++i) {
         auto arg = new WorkerThreadArgs(this, i % FLAGS_task_group_ntags);
         const int rc = pthread_create(&_workers[i], NULL, worker_thread, arg);
@@ -307,15 +326,6 @@ int TaskControl::init(int concurrency) {
     _switch_per_second.expose("bthread_switch_second");
     _signal_per_second.expose("bthread_signal_second");
     _status.expose("bthread_group_status");
-
-    // Wire each ParkingLot back to this TaskControl so that ParkingLot::wait()
-    // can maintain the per-tag _tagged_waiter_num counter consulted by
-    // has_waiting_workers(tag). The outer index `i' is the owning tag.
-    for (size_t i = 0; i < _tagged_pl.size(); ++i) {
-        for (size_t j = 0; j < _pl_num_of_each_tag; ++j) {
-            _tagged_pl[i][j].set_task_control(this, (bthread_tag_t)i);
-        }
-    }
 
     // Wait for at least one group is added so that choose_one_group()
     // never returns NULL.
