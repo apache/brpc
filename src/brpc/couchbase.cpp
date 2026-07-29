@@ -30,6 +30,7 @@ static bool DBUG = false;  // Set to true to enable debug logs
     }                                              \
   } while (0)
 
+#include <cinttypes>
 #include <iostream>
 
 #include "brpc/policy/couchbase_protocol.h"
@@ -1507,10 +1508,12 @@ bool CouchbaseOperations::CouchbaseResponse::popCollectionId(
   if (header.status != 0) {
     // handle error case
     // Possibly read error message from value if present
-    const int value_size = (int)header.total_body_length -
-                           (int)header.extras_length - (int)header.key_length;
+    const int64_t value_size = static_cast<int64_t>(header.total_body_length) -
+                               static_cast<int64_t>(header.extras_length) -
+                               static_cast<int64_t>(header.key_length);
     if (value_size < 0) {
-      butil::string_printf(&_err, "value_size=%d is negative", value_size);
+      butil::string_printf(&_err, "value_size=%" PRId64 " is negative",
+                           value_size);
       return false;
     }
     _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
@@ -1588,10 +1591,12 @@ bool CouchbaseOperations::CouchbaseResponse::popManifest(
       DEBUG_PRINT("Get Collections Manifest response must not have key");
     }
     // Possibly read error message from value if present
-    const int value_size = (int)header.total_body_length -
-                           (int)header.extras_length - (int)header.key_length;
+    const int64_t value_size = static_cast<int64_t>(header.total_body_length) -
+                               static_cast<int64_t>(header.extras_length) -
+                               static_cast<int64_t>(header.key_length);
     if (value_size < 0) {
-      butil::string_printf(&_err, "value_size=%d is negative", value_size);
+      butil::string_printf(&_err, "value_size=%" PRId64 " is negative",
+                           value_size);
       return false;
     }
     _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
@@ -1607,10 +1612,12 @@ bool CouchbaseOperations::CouchbaseResponse::popManifest(
   }
 
   // Success case: the manifest should be in the value section
-  const int value_size = (int)header.total_body_length -
-                         (int)header.extras_length - (int)header.key_length;
+  const int64_t value_size = static_cast<int64_t>(header.total_body_length) -
+                             static_cast<int64_t>(header.extras_length) -
+                             static_cast<int64_t>(header.key_length);
   if (value_size < 0) {
-    butil::string_printf(&_err, "value_size=%d is negative", value_size);
+    butil::string_printf(&_err, "value_size=%" PRId64 " is negative",
+                         value_size);
     return false;
   }
   if (value_size == 0) {
