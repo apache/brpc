@@ -73,8 +73,25 @@ public:
     int concurrency() const 
     { return _concurrency.load(butil::memory_order_acquire); }
 
-    int concurrency(bthread_tag_t tag) const 
+    int concurrency(bthread_tag_t tag) const
     { return _tagged_ngroup[tag].load(butil::memory_order_acquire); }
+
+    // Check if there are workers parked in wait() for the given tag.
+    // Per-tag accounting avoids a tag-A ready_to_run() needlessly issuing a
+    // signal_task() just because workers of a *different* tag B are parked.
+    bool has_waiting_workers(bthread_tag_t tag) const {
+        return tag < (bthread_tag_t)_tagged_waiter_num.size()
+               && _tagged_waiter_num[tag].load(butil::memory_order_relaxed) > 0;
+    }
+
+    // Called by ParkingLot (via parking_lot_waiter_add/sub) to track waiters
+    // entering/leaving wait() for a given tag.
+    void waiter_add(bthread_tag_t tag) {
+        _tagged_waiter_num[tag].fetch_add(1, butil::memory_order_relaxed);
+    }
+    void waiter_sub(bthread_tag_t tag) {
+        _tagged_waiter_num[tag].fetch_sub(1, butil::memory_order_relaxed);
+    }
 
     void print_rq_sizes(std::ostream& os);
 
@@ -182,6 +199,12 @@ private:
 
     size_t _pl_num_of_each_tag;
     std::vector<TaggedParkingLot> _tagged_pl;
+
+    // Signal optimization: per-tag count of workers currently parked in
+    // ParkingLot::wait(). Read (relaxed) by ready_to_run* to decide whether
+    // signal_task() can be skipped when no worker of that tag is waiting.
+    std::vector<butil::atomic<size_t>> _tagged_waiter_num;
+
     // Per-tag CPU binding lists.  _tag_cpus[tag] is the round-robin list of
     // CPU IDs to which workers of that tag are bound.  Empty means no binding.
     std::vector<std::vector<unsigned>> _tag_cpus;

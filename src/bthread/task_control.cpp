@@ -65,6 +65,11 @@ DEFINE_bool(parking_lot_no_signal_when_no_waiter, false,
             "In busy worker scenarios, signal overhead can be reduced.");
 DEFINE_bool(enable_bthread_priority_queue, false, "Whether to enable priority queue");
 
+// Out-of-line forwarders for ParkingLot per-tag waiter accounting, so that
+// parking_lot.h can stay free of the TaskControl definition.
+void parking_lot_waiter_add(TaskControl* tc, bthread_tag_t tag) { tc->waiter_add(tag); }
+void parking_lot_waiter_sub(TaskControl* tc, bthread_tag_t tag) { tc->waiter_sub(tag); }
+
 DECLARE_int32(bthread_concurrency);
 DECLARE_int32(bthread_min_concurrency);
 DECLARE_int32(bthread_parking_lot_of_each_tag);
@@ -218,6 +223,7 @@ TaskControl::TaskControl()
         FLAGS_task_group_ntags * FLAGS_event_dispatcher_num)
     , _pl_num_of_each_tag(FLAGS_bthread_parking_lot_of_each_tag)
     , _tagged_pl(FLAGS_task_group_ntags)
+    , _tagged_waiter_num(FLAGS_task_group_ntags)
     , _tag_cpus(FLAGS_task_group_ntags)
     , _tag_next_worker_id(FLAGS_task_group_ntags)
 {}
@@ -301,6 +307,15 @@ int TaskControl::init(int concurrency) {
     _switch_per_second.expose("bthread_switch_second");
     _signal_per_second.expose("bthread_signal_second");
     _status.expose("bthread_group_status");
+
+    // Wire each ParkingLot back to this TaskControl so that ParkingLot::wait()
+    // can maintain the per-tag _tagged_waiter_num counter consulted by
+    // has_waiting_workers(tag). The outer index `i' is the owning tag.
+    for (size_t i = 0; i < _tagged_pl.size(); ++i) {
+        for (size_t j = 0; j < _pl_num_of_each_tag; ++j) {
+            _tagged_pl[i][j].set_task_control(this, (bthread_tag_t)i);
+        }
+    }
 
     // Wait for at least one group is added so that choose_one_group()
     // never returns NULL.
