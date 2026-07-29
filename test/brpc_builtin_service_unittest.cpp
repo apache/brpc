@@ -697,15 +697,33 @@ TEST_F(BuiltinServiceTest, vars) {
     brpc::VarsService service;
     brpc::VarsRequest req;
     brpc::VarsResponse res;
+    bvar::Adder<int64_t> myvar;
+    myvar.expose("myvar");
+    myvar << 9;
     {
         ClosureChecker done;
         brpc::Controller cntl;
-        bvar::Adder<int64_t> myvar;
-        myvar.expose("myvar");
-        myvar << 9;
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
+        EXPECT_EQ("text/plain", cntl.http_response().content_type());
         CheckFieldInContent(cntl, "myvar : ", 9);
+        EXPECT_EQ(std::string::npos,
+                  cntl.response_attachment().to_string().find("<table"));
+    }
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        SetUpController(&cntl, true);
+        cntl.http_request()._unresolved_path = "myvar";
+        service.default_method(&cntl, &req, &res, &done);
+        EXPECT_FALSE(cntl.Failed());
+        EXPECT_EQ("text/html", cntl.http_response().content_type());
+        CheckContent(cntl,
+                     "<table class=\"gridtable\" border=\"1\"><tr><th>Name</th><th>Value</th></tr>");
+        CheckContent(cntl,
+                     "<tr class=\"variable\"><td>myvar</td><td><span id=\"value-myvar\">9</span></td></tr>");
+        CheckContent(cntl,
+                     "<tr class=\"detail-row\"><td colspan=\"2\"><div class=\"detail\"><div id=\"myvar\" class=\"flot-placeholder\"></div></div></td></tr>");
     }
     {
         ClosureChecker done;
