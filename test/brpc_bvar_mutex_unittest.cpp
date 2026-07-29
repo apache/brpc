@@ -21,6 +21,7 @@
 #include <atomic>
 #include <csignal>
 #include <cstring>
+#include <limits.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -29,6 +30,7 @@
 
 #include "bthread/bthread.h"
 #include "butil/compat.h"
+#include "butil/process_util.h"
 #include "butil/time.h"
 #include "bvar/bvar.h"
 
@@ -294,12 +296,22 @@ bool RunRecursiveDescribeScenario() {
 }
 
 bool RunChildAndWait(const char* child_argument, const char* failure_message) {
+    // proc_pidpath() may require PROC_PIDPATHINFO_MAXSIZE, which is
+    // 4 * PATH_MAX on macOS.
+    char executable_path[PATH_MAX * 4];
+    const ssize_t executable_path_length = butil::GetProcessAbsolutePath(
+        executable_path, sizeof(executable_path) - 1);
+    if (executable_path_length <= 0) {
+        return false;
+    }
+    executable_path[executable_path_length] = '\0';
+
     const pid_t pid = fork();
     if (pid == -1) {
         return false;
     }
     if (pid == 0) {
-        execl("/proc/self/exe", "brpc_bvar_mutex_unittest", child_argument,
+        execl(executable_path, "brpc_bvar_mutex_unittest", child_argument,
               nullptr);
         _exit(127);
     }
