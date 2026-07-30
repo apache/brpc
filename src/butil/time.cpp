@@ -146,7 +146,7 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
 static int64_t read_invariant_cpu_frequency() {
     bool invariant_tsc = false;
     int64_t freq = -1;
-#if defined(__aarch64__)
+#if defined(__aarch64__) && defined(BUTIL_USE_CPU_FREQUENCY)
     __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));
 #else
     freq = read_cpu_frequency(&invariant_tsc);
