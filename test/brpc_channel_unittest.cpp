@@ -2430,12 +2430,22 @@ TEST_F(ChannelTest, parse_hostname) {
     opt.mutable_ssl_options()->verify.ca_file_path = "cert1.crt";
     ASSERT_EQ(0, channel.Init("https://www.baidu.com", &opt));
     ASSERT_EQ("www.baidu.com", channel._service_name);
+#if defined(USE_MESALINK) || \
+    (!defined(OPENSSL_IS_BORINGSSL) && OPENSSL_VERSION_NUMBER < 0x10002000L)
+    ASSERT_TRUE(channel._options.ssl_options().verify.expected_peer_name.empty());
+#else
     ASSERT_EQ("www.baidu.com",
               channel._options.ssl_options().verify.expected_peer_name);
+#endif
     ASSERT_EQ(0, channel.Init("https://www.baidu.com:443", &opt));
     ASSERT_EQ("www.baidu.com:443", channel._service_name);
+#if defined(USE_MESALINK) || \
+    (!defined(OPENSSL_IS_BORINGSSL) && OPENSSL_VERSION_NUMBER < 0x10002000L)
+    ASSERT_TRUE(channel._options.ssl_options().verify.expected_peer_name.empty());
+#else
     ASSERT_EQ("www.baidu.com",
               channel._options.ssl_options().verify.expected_peer_name);
+#endif
     ASSERT_EQ(0, channel.Init("https://www.baidu.com", 443, &opt));
     ASSERT_EQ("www.baidu.com:443", channel._service_name);
     ASSERT_EQ(0, channel.Init("https://www.baidu.com:1443", &opt));

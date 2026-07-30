@@ -34,6 +34,10 @@
 
 namespace brpc {
 
+bool SupportsPeerNameVerification() {
+    return false;
+}
+
 static const char* const PEM_START = "-----BEGIN";
 
 static bool IsPemString(const std::string& input) {

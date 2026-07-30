@@ -40,6 +40,14 @@
 
 namespace brpc {
 
+bool SupportsPeerNameVerification() {
+#if defined(OPENSSL_IS_BORINGSSL) || OPENSSL_VERSION_NUMBER >= 0x10002000L
+    return true;
+#else
+    return false;
+#endif
+}
+
 #ifndef OPENSSL_NO_DH
 static DH* g_dh_1024 = NULL;
 static DH* g_dh_2048 = NULL;

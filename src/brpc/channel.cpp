@@ -39,6 +39,7 @@
 #include "brpc/policy/esp_authenticator.h"
 #include "brpc/transport_factory.h"
 #include "brpc/details/controller_private_accessor.h"
+#include "brpc/details/ssl_helper.h"
 
 namespace brpc {
 
@@ -338,7 +339,13 @@ static void SetHttpsPeerName(const std::string& host,
     if (verify.verify_depth > 0 &&
         verify.verify_mode != VerifyMode::VERIFY_NONE &&
         verify.expected_peer_name.empty()) {
-        verify.expected_peer_name = host;
+        if (SupportsPeerNameVerification()) {
+            verify.expected_peer_name = host;
+        } else {
+            LOG_ONCE(WARNING)
+                << "The TLS backend does not support server identity "
+                << "verification; only the certificate chain will be verified";
+        }
     }
 }
 

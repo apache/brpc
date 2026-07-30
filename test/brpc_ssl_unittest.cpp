@@ -293,6 +293,15 @@ TEST_F(SSLTest, expected_peer_name_requires_peer_verification) {
     EXPECT_EQ(NULL, brpc::CreateClientSSLContext(options));
 }
 
+TEST_F(SSLTest, peer_name_verification_capability) {
+#if defined(USE_MESALINK) || \
+    (!defined(OPENSSL_IS_BORINGSSL) && OPENSSL_VERSION_NUMBER < 0x10002000L)
+    EXPECT_FALSE(brpc::SupportsPeerNameVerification());
+#else
+    EXPECT_TRUE(brpc::SupportsPeerNameVerification());
+#endif
+}
+
 void ProcessResponse(brpc::InputMessageBase* msg_base) {
     brpc::DestroyingPtr<brpc::policy::MostCommonMessage> msg(
         static_cast<brpc::policy::MostCommonMessage*>(msg_base));
