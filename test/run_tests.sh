@@ -17,7 +17,7 @@
 
 # turn on coredumps
 ulimit -c unlimited
-rm core.*
+rm -f core.*
 
 test_num=0
 failed_test=""
@@ -27,6 +27,9 @@ export ASAN_OPTIONS="detect_leaks=1:detect_stack_use_after_return=1"
 for test_bin in $test_bins; do
     test_num=$((test_num + 1))
     >&2 echo "[runtest] $test_bin"
+    # A passing death test may leave a core behind. Keep only cores from the
+    # binary about to run so a later failure is symbolized against its core.
+    rm -f core.*
     ./$test_bin
     # If ASan abort without detailed call stack of new/delete,
     # try to disable fast_unwind_on_malloc, which would be a performance killer.
