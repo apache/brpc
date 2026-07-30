@@ -373,11 +373,11 @@ template <typename>
 struct result_of;
 template <typename F, typename... Args>
 struct result_of<F(Args...)> : std::invoke_result<F, Args...> {};
-#elif __cplusplus >= 201103L
+#elif __cplusplus >= 201402L
 template <typename F>
 using result_of = std::result_of<F>;
 #else
-#error Only C++11 or later is supported.
+#error Only C++14 or later is supported.
 #endif // __cplusplus
 
 template <typename F>
