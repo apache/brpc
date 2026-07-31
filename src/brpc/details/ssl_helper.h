@@ -56,6 +56,8 @@ enum SSLProtocol {
     TLSv1_3 = 1 << 4,
 };
 
+bool SupportsPeerNameVerification();
+
 struct FreeSSLCTX {
     inline void operator()(SSL_CTX* ctx) const {
         if (ctx != NULL) {

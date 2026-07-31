@@ -39,6 +39,7 @@
 #include "brpc/policy/esp_authenticator.h"
 #include "brpc/transport_factory.h"
 #include "brpc/details/controller_private_accessor.h"
+#include "brpc/details/ssl_helper.h"
 
 namespace brpc {
 
@@ -128,7 +129,11 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
             buf.push_back('|');
             buf.append((char*)&verify.verify_depth, sizeof(verify.verify_depth));
             buf.push_back('|');
+            buf.append((char*)&verify.verify_mode, sizeof(verify.verify_mode));
+            buf.push_back('|');
             buf.append(verify.ca_file_path);
+            buf.push_back('|');
+            buf.append(verify.expected_peer_name);
         } else {
             // All disabled ChannelSSLOptions are the same
         }
@@ -324,6 +329,26 @@ static int CreateSocketSSLContext(const ChannelOptions& options,
     return 0;
 }
 
+static void SetHttpsPeerName(const std::string& host,
+                             ChannelOptions* options) {
+    ChannelSSLOptions* ssl = options->mutable_ssl_options();
+    if (ssl->sni_name.empty()) {
+        ssl->sni_name = host;
+    }
+    VerifyOptions& verify = ssl->verify;
+    if (verify.verify_depth > 0 &&
+        verify.verify_mode != VerifyMode::VERIFY_NONE &&
+        verify.expected_peer_name.empty()) {
+        if (SupportsPeerNameVerification()) {
+            verify.expected_peer_name = host;
+        } else {
+            LOG_ONCE(WARNING)
+                << "The TLS backend does not support server identity "
+                << "verification; only the certificate chain will be verified";
+        }
+    }
+}
+
 int Channel::Init(butil::EndPoint server_addr_and_port,
                   const ChannelOptions* options) {
     return InitSingle(server_addr_and_port, "", options);
@@ -339,13 +364,12 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
     }
     int* port_out = raw_port == -1 ? &raw_port: NULL;
     ParseURL(raw_server_address, &_scheme, &_service_name, port_out);
+    const std::string host = _service_name;
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
     if (_options.protocol == brpc::PROTOCOL_HTTP && _scheme == "https") {
-        if (_options.mutable_ssl_options()->sni_name.empty()) {
-            _options.mutable_ssl_options()->sni_name = _service_name;
-        }
+        SetHttpsPeerName(host, &_options);
     }
     const int port = server_addr_and_port.port;
     if (port < 0) {
@@ -392,13 +416,12 @@ int Channel::Init(const char* ns_url,
     }
     int raw_port = -1;
     ParseURL(ns_url, &_scheme, &_service_name, &raw_port);
+    const std::string host = _service_name;
     if (raw_port != -1) {
         _service_name.append(":").append(std::to_string(raw_port));
     }
     if (_options.protocol == brpc::PROTOCOL_HTTP && _scheme == "https") {
-        if (_options.mutable_ssl_options()->sni_name.empty()) {
-            _options.mutable_ssl_options()->sni_name = _service_name;
-        }
+        SetHttpsPeerName(host, &_options);
     }
     butil::EndPoint client_endpoint;
     if (!_options.client_host.empty() &&
