@@ -192,11 +192,16 @@ public:
         }
     }
 
-    butil::Status OnReadOnePart(const void* data, size_t length) {
+    butil::Status OnReadOnePart(const void* data, size_t length) override {
+        if (_timeout_id > 0) {
+            bthread_timer_del(_timeout_id);
+            _timeout_id = 0;
+        }
+        AddIdleReadTimeoutMonitor();
         return _reader->OnReadOnePart(data, length);
     }
 
-    void OnEndOfMessage(const butil::Status& status) {
+    void OnEndOfMessage(const butil::Status& status) override {
         if (_is_read_timeout) {
             _reader->OnEndOfMessage(butil::Status(EPROGREADTIMEOUT, "The progressive read timeout"));
         } else {
@@ -229,6 +234,7 @@ private:
         }
         s->ReleaseReferenceIfIdle(0);
     }
+
     void AddIdleReadTimeoutMonitor() {
         if (_read_timeout_ms <= 0) {
             return;

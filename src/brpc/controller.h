@@ -48,6 +48,7 @@
 #include "brpc/grpc.h"
 #include "brpc/kvmap.h"
 #include "brpc/rpc_dump.h"
+
 // EAUTH is defined in MAC
 #ifndef EAUTH
 #define EAUTH ERPCAUTH
@@ -178,6 +179,7 @@ public:
         uint64_t log_id;
         std::string request_id;
     };
+
 public:
     Controller();
     Controller(const Inheritable& parent_ctx);
