@@ -183,8 +183,8 @@ static void CreateIgnoreAllRead() { s_ignore_all_read = new IgnoreAllRead; }
 // you don't have to set the fields to initial state after deletion since
 // they'll be set uniformly after this method is called.
 void Controller::ResetNonPods() {
-    if (auto span = _span.lock()) {
-        Span::Submit(span, butil::cpuwide_time_us());
+    if (_span) {
+        Span::Submit(_span, butil::cpuwide_time_us());
     }
     _span.reset();
     _error_text.clear();
@@ -463,9 +463,9 @@ void Controller::SetFailed(const std::string& reason) {
         AppendServerIdentiy();
     }
     _error_text.append(reason);
-    if (auto span = _span.lock()) {
-        span->set_error_code(_error_code);
-        span->Annotate(reason);
+    if (_span) {
+        _span->set_error_code(_error_code);
+        _span->Annotate(reason);
     }
     UpdateResponseHeader(this);
 }
@@ -492,9 +492,9 @@ void Controller::SetFailed(int error_code, const char* reason_fmt, ...) {
     va_start(ap, reason_fmt);
     butil::string_vappendf(&_error_text, reason_fmt, ap);
     va_end(ap);
-    if (auto span = _span.lock()) {
-        span->set_error_code(_error_code);
-        span->AnnotateCStr(_error_text.c_str() + old_size, 0);
+    if (_span) {
+        _span->set_error_code(_error_code);
+        _span->AnnotateCStr(_error_text.c_str() + old_size, 0);
     }
     UpdateResponseHeader(this);
 }
@@ -520,9 +520,9 @@ void Controller::CloseConnection(const char* reason_fmt, ...) {
     va_start(ap, reason_fmt);
     butil::string_vappendf(&_error_text, reason_fmt, ap);
     va_end(ap);
-    if (auto span = _span.lock()) {
-        span->set_error_code(_error_code);
-        span->AnnotateCStr(_error_text.c_str() + old_size, 0);
+    if (_span) {
+        _span->set_error_code(_error_code);
+        _span->AnnotateCStr(_error_text.c_str() + old_size, 0);
     }
     UpdateResponseHeader(this);
 }
@@ -982,9 +982,9 @@ void Controller::EndRPC(const CompletionInfo& info) {
     }
     // RPC finished, now it's safe to release `LoadBalancerWithNaming'
     _lb.reset();
-    if (auto span = _span.lock()) {
-        span->set_ending_cid(info.id);
-        span->set_async(_done);
+    if (_span) {
+        _span->set_ending_cid(info.id);
+        _span->set_async(_done);
         // Submit the span if we're in async RPC. For sync RPC, the span
         // is submitted after Join() to get a more accurate resuming timestamp.
         if (_done) {
@@ -1058,14 +1058,14 @@ void Controller::DoneInBackupThread() {
 
 void Controller::SubmitSpan() {
     const int64_t now = butil::cpuwide_time_us();
-    if (auto span = _span.lock()) {
-        span->set_start_callback_us(now);
-        if (auto parent_span = span->local_parent().lock()) {
+    if (_span) {
+        _span->set_start_callback_us(now);
+        if (auto parent_span = _span->local_parent().lock()) {
             if (parent_span->is_active()) {
                 parent_span->AsParent();
             }
         }
-        Span::Submit(span, now);
+        Span::Submit(_span, now);
         _span.reset();
     }
 }
@@ -1176,12 +1176,12 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         CHECK_EQ(_remote_side, tmp_sock->remote_side());
     }
 
-    if (auto span = _span.lock()) {
+    if (_span) {
         if (_current_call.nretry == 0) {
-            span->set_remote_side(_remote_side);
+            _span->set_remote_side(_remote_side);
         } else {
-            span->Annotate("Retrying %s",
-                           endpoint2str(_remote_side).c_str());
+            _span->Annotate("Retrying %s",
+                            endpoint2str(_remote_side).c_str());
         }
     }
     // Handle connection type
@@ -1292,7 +1292,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     int rc;
     size_t packet_size = 0;
     if (user_packet_guard) {
-        if (auto span = _span.lock()) {
+        if (_span) {
             packet_size = user_packet_guard->EstimatedByteSize();
         }
         rc = _current_call.sending_sock->Write(user_packet_guard, &wopt);
@@ -1300,13 +1300,13 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         packet_size = packet.size();
         rc = _current_call.sending_sock->Write(&packet, &wopt);
     }
-    if (auto span = _span.lock()) {
+    if (_span) {
         if (_current_call.nretry == 0) {
-            span->set_sent_us(butil::cpuwide_time_us());
-            span->set_request_size(packet_size);
+            _span->set_sent_us(butil::cpuwide_time_us());
+            _span->set_request_size(packet_size);
         } else {
-            span->Annotate("Requested(%lld) [%d]",
-                           (long long)packet_size, _current_call.nretry + 1);
+            _span->Annotate("Requested(%lld) [%d]",
+                            (long long)packet_size, _current_call.nretry + 1);
         }
     }
     if (using_auth) {
@@ -1447,15 +1447,15 @@ const Controller* Controller::sub(int index) const {
 }
 
 uint64_t Controller::trace_id() const {
-    if (auto span = _span.lock()) {
-        return span->trace_id();
+    if (_span) {
+        return _span->trace_id();
     }
     return 0;
 }
 
 uint64_t Controller::span_id() const {
-    if (auto span = _span.lock()) {
-        return span->span_id();
+    if (_span) {
+        return _span->span_id();
     }
     return 0;
 }
@@ -1802,7 +1802,7 @@ ControllerPrivateAccessor& ControllerPrivateAccessor::set_span(Span* span) {
 }
 
 std::shared_ptr<Span> ControllerPrivateAccessor::span() const {
-    return _cntl->_span.lock();
+    return _cntl->_span;
 }
 
 } // namespace brpc
