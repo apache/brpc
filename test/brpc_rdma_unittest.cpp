@@ -72,6 +72,7 @@ extern int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_at
 extern int (*IbvDestroyQp)(ibv_qp*);
 extern butil::atomic<bool> g_rdma_available;
 extern bool g_skip_rdma_init;
+extern bool g_fail_resource_alloc_for_test;
 } // namespace rdma
 } // namespace brpc
 
@@ -1916,6 +1917,112 @@ TEST_F(RdmaTest, v3_server_reply_has_no_ece_without_hw_negotiation) {
 
     sockfd.reset(-1);
     usleep(100000);
+    StopServer();
+}
+
+class ResourceAllocFailGuard {
+public:
+    explicit ResourceAllocFailGuard(bool v)
+        : _saved(rdma::g_fail_resource_alloc_for_test) {
+        rdma::g_fail_resource_alloc_for_test = v;
+    }
+    ~ResourceAllocFailGuard() {
+        rdma::g_fail_resource_alloc_for_test = _saved;
+    }
+private:
+    bool _saved;
+};
+
+TEST_F(RdmaTest, client_alloc_resource_fail_fallback_tcp) {
+    StartServer();
+    ResourceAllocFailGuard alloc_fail_guard(true);
+
+    Channel channel;
+    ChannelOptions chan_options;
+    chan_options.socket_mode = SOCKET_MODE_RDMA;
+    chan_options.connect_timeout_ms = 500;
+    chan_options.timeout_ms = 500;
+    chan_options.max_retry = 0;
+    ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
+
+    Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(__FUNCTION__);
+    req.set_sleep_us(200000);
+    google::protobuf::Closure* done = DoNothing();
+    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
+    usleep(100000);
+
+    SocketUniquePtr s;
+    ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
+    ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP,
+              static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
+    ASSERT_EQ(RdmaTransport::RDMA_OFF,
+              static_cast<RdmaTransport*>(s->_transport.get())->_rdma_state);
+    // The socket must not be failed, otherwise it can no longer carry TCP.
+    ASSERT_FALSE(s->Failed());
+
+    // The RPC still completes over TCP.
+    bthread_id_join(cntl.call_id());
+    ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+
+    StopServer();
+}
+
+TEST_F(RdmaTest, server_alloc_resource_fail_fallback_tcp) {
+    StartServer();
+    ResourceAllocFailGuard alloc_fail_guard(true);
+
+    sockaddr_in addr;
+    bzero((char*)&addr, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+    butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_TRUE(sockfd >= 0);
+    ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
+    usleep(100000);  // wait for server to handle the msg
+    Socket* s = GetSocketFromServer(0);
+    ASSERT_TRUE(s != NULL);
+    ASSERT_EQ(rdma::RdmaEndpoint::UNINIT,
+              static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
+
+    // Send a well-formed v2 hello: the negotiation succeeds
+    // but the resource allocation does not.
+    rdma::v2_wire::HelloMessage msg{};
+    msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
+    msg.hello_ver = rdma::HELLO_V2_VERSION;
+    msg.impl_ver = rdma::IMPL_V2_VERSION;
+    msg.sq_size = 16;
+    msg.rq_size = 16;
+    msg.block_size = 8192;
+    msg.qp_num = 0;
+    msg.gid = rdma::GetRdmaGid();
+
+    uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
+    memcpy(data, "RDMA", 4);
+    msg.Serialize(data + 4);
+    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN,
+              write(sockfd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    usleep(100000);
+    ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT,
+              static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
+    ASSERT_EQ(RdmaTransport::RDMA_OFF,
+              static_cast<RdmaTransport*>(s->_transport.get())->_rdma_state);
+    ASSERT_FALSE(s->Failed());
+
+    // Ack without RDMA so that the server finishes the handshake in TCP mode.
+    uint32_t flags = butil::HostToNet32(0);
+    ASSERT_EQ(sizeof(flags), write(sockfd, &flags, sizeof(flags)));
+    usleep(100000);
+    ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP,
+              static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
+    ASSERT_FALSE(s->Failed());
+
+    sockfd.reset(-1);
+    usleep(100000);
+    ASSERT_EQ(NULL, GetSocketFromServer(0));
+
     StopServer();
 }
 
