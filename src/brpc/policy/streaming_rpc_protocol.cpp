@@ -102,11 +102,11 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
             LOG(WARNING) << "Fail to Parse StreamFrameMeta from " << *socket;
             break;
         }
-        SocketUniquePtr ptr;
-        if (Socket::Address((SocketId)fm.stream_id(), &ptr) != 0) {
-            RPC_VLOG_IF(fm.frame_type() != FRAME_TYPE_RST 
-                            && fm.frame_type() != FRAME_TYPE_CLOSE
-                            && fm.frame_type() != FRAME_TYPE_FEEDBACK)
+        StreamUniquePtr sptr;
+        if (Stream::Address((StreamId)fm.stream_id(), &sptr) != 0) {
+            RPC_VLOG_IF(fm.frame_type() != FRAME_TYPE_RST &&
+                        fm.frame_type() != FRAME_TYPE_CLOSE &&
+                        fm.frame_type() != FRAME_TYPE_FEEDBACK)
                    << "Fail to find stream=" << fm.stream_id();
             // It's normal that the stream is closed before receiving feedback frames from peer.
             // In this case, RST frame should not be sent to peer, otherwise on-fly data can be lost.
@@ -116,16 +116,7 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
             break;
         }
         meta_buf.clear();  // to reduce memory resident
-        // ptr->conn() returns the connection-level context attached to the
-        // socket.  It may be NULL when the socket was found by ID but has no
-        // Stream object associated (e.g. during protocol probing or fuzz
-        // testing).  Calling OnReceived on a null pointer would crash.
-        Stream* stream_conn = (Stream*)ptr->conn();
-        if (stream_conn == NULL) {
-            LOG(FATAL) << "No stream object found";
-            break;
-        }
-        stream_conn->OnReceived(fm, &payload, socket);
+        sptr->OnReceived(fm, &payload, socket);
     } while (0);
 
     // Hack input messenger
@@ -136,7 +127,7 @@ void ProcessStreamingMessage(InputMessageBase* /*msg*/) {
     CHECK(false) << "Should never be called";
 }
 
-void SendStreamRst(Socket *sock, int64_t remote_stream_id) {
+void SendStreamRst(Socket* sock, int64_t remote_stream_id) {
     CHECK(sock != NULL);
     StreamFrameMeta fm;
     fm.set_stream_id(remote_stream_id);
@@ -148,7 +139,7 @@ void SendStreamRst(Socket *sock, int64_t remote_stream_id) {
     sock->Write(&out, &wopt);
 }
 
-void SendStreamClose(Socket *sock, int64_t remote_stream_id,
+void SendStreamClose(Socket* sock, int64_t remote_stream_id,
                      int64_t source_stream_id) {
     CHECK(sock != NULL);
     StreamFrameMeta fm;

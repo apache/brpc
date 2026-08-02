@@ -19,17 +19,18 @@
 #ifndef  BRPC_STREAM_H
 #define  BRPC_STREAM_H
 
+#include <vector>
 #include "butil/iobuf.h"
 #include "butil/scoped_generic.h"
-#include "brpc/socket_id.h"
+#include "brpc/versioned_ref_with_id.h"
 
 namespace brpc {
 
 class Controller;
 
-typedef SocketId StreamId;
+typedef VRefId StreamId;
 using StreamIds = std::vector<StreamId>;
-const StreamId INVALID_STREAM_ID = (StreamId)-1L;
+const StreamId INVALID_STREAM_ID = INVALID_VREF_ID;
 
 namespace detail {
 struct StreamIdTraits;
@@ -134,7 +135,7 @@ int StreamAccept(StreamIds& response_stream, Controller& cntl,
 //  - EAGAIN: |stream_id| is created with positive |max_buf_size| and buf size
 //            which the remote side hasn't consumed yet excceeds the number.
 //  - EINVAL: |stream_id| is invalied or has been closed
-int StreamWrite(StreamId stream_id, const butil::IOBuf &message,
+int StreamWrite(StreamId stream_id, const butil::IOBuf& message,
                 const StreamWriteOptions* options = NULL);
 
 // Write util the pending buffer size is less than |max_buf_size| or orrur

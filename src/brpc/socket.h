@@ -353,7 +353,7 @@ public:
     // NOTE: User cannot create Socket from constructor. Use Create()
     // instead. It's public just because of requirement of ResourcePool.
     explicit Socket(Forbidden);
-    ~Socket() override;
+    ~Socket();
 
     // Write `msg' into this Socket and clear it. The `msg' should be an
     // intact request or response. To prevent messages from interleaving
