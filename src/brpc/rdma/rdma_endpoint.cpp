@@ -1492,6 +1492,17 @@ void RdmaEndpoint::PollCq(Socket* m) {
                     return;
                 }
                 notified = true;
+                // Both CQs have just been re-armed, thus both of them must be
+                // re-polled. Note that `cq' is `send_cq' here, so we have to
+                // switch back to `recv_cq' explicitly. Otherwise only
+                // `send_cq' would be re-polled, and a recv CQE arriving in
+                // the window between the poll and the notify of `recv_cq'
+                // would be left in the CQ without any following event
+                // (one shot notification is not triggered by the CQE which
+                // is already in the CQ before the arming), which stalls the
+                // connection until the next CQE happens to come.
+                send = false;
+                cq = ep->_resource->recv_cq;
                 continue;
             }
             if (!m->MoreReadEvents(&progress)) {
