@@ -318,6 +318,15 @@ void FillLocalRdmaHello(const RdmaEndpoint* ep, RdmaHello* msg) {
         ece->set_options(ep->_outgoing_ece->options);
         ece->set_comp_mask(ep->_outgoing_ece->comp_mask);
     }
+
+    // Advertise MTU if the endpoint has a value to advertise.
+    // Client side: queried local active MTU (filled before C_HELLO_SEND).
+    // Server side: negotiated MTU = min(local_mtu, client_mtu)
+    //   (filled in BringUpQp).
+    // nullopt -> omit the field (peer falls back to IBV_MTU_1024).
+    if (ep->_outgoing_mtu.has_value()) {
+        msg->set_mtu(*ep->_outgoing_mtu);
+    }
 }
 
 int ReadAndParseV3Hello(RdmaEndpoint* ep, RdmaHello* out) {
@@ -380,6 +389,9 @@ void TranslateHello(const RdmaHello& msg, ParsedHello* out) {
         ece.comp_mask = msg.ece().comp_mask();
         out->ece = ece;
     }
+    if (msg.has_mtu()) {
+        out->path_mtu = msg.mtu();
+    }
 }
 
 }  // namespace v3_wire
@@ -398,6 +410,13 @@ int RdmaHandshakeClientV3::SendLocalHello() {
                 << "Fail to IbvQueryEce on client, ECE not advertised: "
                 << _ep->_socket->description();
         }
+    }
+
+    // Query local active MTU so it can be advertised in the client hello.
+    // Best-effort: any failure just means we won't advertise MTU
+    // (the peer falls back to IBV_MTU_1024).
+    if (!g_skip_rdma_init) {
+        _ep->_outgoing_mtu = GetRdmaActiveMtu();
     }
 
     RdmaHello local_msg{};

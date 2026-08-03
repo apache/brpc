@@ -83,6 +83,7 @@ static int g_gid_tbl_len = 0;
 static uint8_t g_gid_index = 0;
 static ibv_gid g_gid;
 static uint16_t g_lid;
+static uint32_t g_active_mtu = IBV_MTU_1024;
 static int g_max_sge = 0;
 static uint8_t g_port_num = 1;
 
@@ -458,6 +459,7 @@ static ibv_context* OpenDevice(int num_total, int* num_available_devices) {
                 ret_context = context.release();
                 g_gid_tbl_len = attr.gid_tbl_len;
                 g_lid = attr.lid;
+                g_active_mtu = attr.active_mtu;
             } else {
                 LOG(INFO) << "Device name not match: " << context->device->name
                           << " vs " << FLAGS_rdma_device;
@@ -467,6 +469,7 @@ static ibv_context* OpenDevice(int num_total, int* num_available_devices) {
             ret_context = context.release();
             g_gid_tbl_len = attr.gid_tbl_len;
             g_lid = attr.lid;
+            g_active_mtu = attr.active_mtu;
         }
     }
     return ret_context;
@@ -516,6 +519,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
         LOG(INFO) << "RDMA device: " << g_context->device->name;
     }
     LOG(INFO) << "RDMA LID: " << g_lid;
+    LOG(INFO) << "RDMA Active MTU: " << g_active_mtu;
     if (!FindRdmaGid(g_context)) {
         LOG(ERROR) << "Fail to find available RDMA GID";
         ExitWithError();
@@ -694,6 +698,10 @@ ibv_gid GetRdmaGid() {
 
 uint16_t GetRdmaLid() {
     return g_lid;
+}
+
+uint32_t GetRdmaActiveMtu() {
+    return g_active_mtu;
 }
 
 uint8_t GetRdmaGidIndex() {

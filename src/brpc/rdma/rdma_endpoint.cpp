@@ -1188,7 +1188,24 @@ int RdmaEndpoint::BringUpQp(const ParsedHello& remote, bool is_server) {
     }
 
     attr.qp_state = IBV_QPS_RTR;
-    attr.path_mtu = IBV_MTU_1024;  // TODO: support more mtu in future
+    // MTU negotiation: use the peer-advertised MTU if available, otherwise
+    // fall back to the legacy default (IBV_MTU_1024).
+    //   Server side: remote.path_mtu is the client's active MTU;
+    //     we compute min(local, client) here.
+    //   Client side: remote.path_mtu is already the server's negotiated
+    //     min(local, client) and we use it as-is.
+    uint32_t negotiated_mtu = IBV_MTU_1024;
+    if (remote.path_mtu.has_value()) {
+        if (is_server) {
+            uint32_t local_mtu = GetRdmaActiveMtu();
+            negotiated_mtu = std::min(local_mtu, *remote.path_mtu);
+            // Store the negotiated MTU for the server hello reply.
+            _outgoing_mtu = negotiated_mtu;
+        } else {
+            negotiated_mtu = *remote.path_mtu;
+        }
+    }
+    attr.path_mtu = static_cast<ibv_mtu>(negotiated_mtu);
     attr.ah_attr.grh.dgid = remote.gid;
     attr.ah_attr.grh.flow_label = 0;
     attr.ah_attr.grh.sgid_index = GetRdmaGidIndex();

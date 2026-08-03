@@ -53,6 +53,14 @@ struct ParsedHello {
     //   - on the server side: the client's queried ECE capabilities;
     //   - on the client side: the server's reduced/negotiated ECE.
     butil::optional<ibv_ece> ece;
+
+    // MTU negotiation, v3 handshake only.
+    // nullopt means the peer did not advertise an MTU (v2 peer or older v3
+    // peer that predates MTU negotiation). When engaged:
+    //   - on the server side: the client's active MTU;
+    //   - on the client side: the server's negotiated MTU
+    //     (= min(local_active_mtu, client_mtu)).
+    butil::optional<uint32_t> path_mtu;
 };
 
 // Result of reading/parsing a peer's hello (see ReceiveAndParseRemoteHello).
