@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <atomic>
 #include "butil/containers/hash_tables.h"
 #include "butil/logging.h"
 #include <cuda_runtime.h>
@@ -141,8 +142,8 @@ public:
     static BlockPoolAllocators* singleton();
     BlockPoolAllocators() {}
     virtual ~BlockPoolAllocators() {
-        CHECK_EQ(this, instance_);
-        instance_ = nullptr;
+        CHECK_EQ(this, instance_.load(std::memory_order_relaxed));
+        instance_.store(nullptr, std::memory_order_relaxed);
     }
 
     void init(int gpu_id, ibv_pd* pd);
@@ -160,7 +161,7 @@ public:
     }
 
 public:
-    static BlockPoolAllocators* instance_;
+    static std::atomic<BlockPoolAllocators*> instance_;
 
 private:
     BlockPoolAllocator* gpu_mem_alloc {nullptr};

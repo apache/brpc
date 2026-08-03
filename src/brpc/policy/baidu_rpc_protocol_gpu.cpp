@@ -83,11 +83,13 @@ ParseResult ParseRpcMessageGpu(butil::IOBuf* source, Socket* socket,
     bool is_gpu_memory = source->is_gpu_memory();
     if (!is_gpu_memory) {
         LOG(FATAL) << "RpcMessage is not in gpu!!!";
+        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
     butil::gdr::BlockPoolAllocator* host_allocator = butil::gdr::BlockPoolAllocators::singleton()->get_cpu_allocator();
     prefetch_d2h_data = host_allocator->AllocateRaw(prefetch_d2h_size);
     if (prefetch_d2h_data == NULL) {
         LOG(FATAL) << "alloc host data failed!!!";
+        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
 
     // n is the bytes we real frefetch, n maybe less than prefetch_d2h_size;

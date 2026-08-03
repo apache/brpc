@@ -43,17 +43,15 @@ size_t GetGdrBlockSize() {
 }
 
 bool verify_same_context() {
+  static std::once_flag init_flag;
   static int original_device = -1;
-  static bool first_call = true;
 
   int current_device;
   cudaGetDevice(&current_device);
 
-  if (first_call) {
+  std::call_once(init_flag, [&]() {
       original_device = current_device;
-      first_call = false;
-      return true;
-  }
+  });
 
   return (current_device == original_device);
 }
@@ -84,19 +82,20 @@ void* get_cpu_mem(int gpu_id, int64_t cpu_mem_size) {
 }
 
 
-BlockPoolAllocators* BlockPoolAllocators::instance_ = nullptr;
+std::atomic<BlockPoolAllocators*> BlockPoolAllocators::instance_{nullptr};
 
 BlockPoolAllocators* BlockPoolAllocators::singleton() {
-    static std::mutex mutex;
-    if (instance_ == nullptr) {
+    BlockPoolAllocators* tmp = instance_.load(std::memory_order_acquire);
+    if (tmp == nullptr) {
+        static std::mutex mutex;
         std::lock_guard<std::mutex> l(mutex);
-        if (instance_ == nullptr) {
-            instance_ = new BlockPoolAllocators();
-            std::atomic_thread_fence(std::memory_order_release);
+        tmp = instance_.load(std::memory_order_relaxed);
+        if (tmp == nullptr) {
+            tmp = new BlockPoolAllocators();
+            instance_.store(tmp, std::memory_order_release);
         }
     }
-    std::atomic_thread_fence(std::memory_order_acquire);
-    return instance_;
+    return tmp;
 }
 
 void BlockPoolAllocators::init(int gpu_id, ibv_pd* pd) {
@@ -191,7 +190,7 @@ BlockPoolAllocator::~BlockPoolAllocator() {
     for (int i = 0; i < FLAGS_max_gdr_regions; i++) {
         Region* r = &g_regions[i];
         if (!r->mr) {
-            return;
+            continue;
         }
 
         LOG(INFO) << "try to free " << r->size << " bytes from gpu " << gpu_id << ", on_gpu " << on_gpu;
