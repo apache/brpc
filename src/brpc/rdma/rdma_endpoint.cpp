@@ -1022,10 +1022,17 @@ int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
             if (_use_gdr) {
                 butil::gdr::BlockPoolAllocator* device_allocator = butil::gdr::BlockPoolAllocators::singleton()->get_gpu_allocator();
                 void* device_ptr = device_allocator->AllocateRaw(g_gdr_recv_block_size);
+                if (device_ptr == nullptr) {
+                    // GPU pool exhausted; abort this post, the caller will retry.
+                    PLOG(WARNING) << "Fail to allocate gpu rbuf";
+                    return -1;
+                }
                 auto deleter = [device_allocator](void* data) { device_allocator->DeallocateRaw(data); };
                 lkey = device_allocator->get_lkey(device_ptr);
-                // we keep lkey into the meta, and this is a thick. we also keep prefetch d2h size in meta too.
-                _rbuf[_rq_received].append_user_data_with_meta(device_ptr, g_gdr_recv_block_size, deleter, lkey);
+                // Tag the block as GPU memory so that IOBuf::is_gpu_memory()
+                // works deterministically. The lkey is carried via `data_meta'
+                // so the recv path can locate the correct memory region key.
+                _rbuf[_rq_received].append_user_data_gpu(device_ptr, g_gdr_recv_block_size, deleter, lkey);
                 _rbuf_data[_rq_received] = device_ptr;
             } else
 #endif  // if BRPC_WITH_GDR

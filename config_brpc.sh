@@ -539,8 +539,36 @@ if [ $WITH_RDMA != 0 ]; then
 fi
 
 if [ $WITH_GDR != 0 ]; then
-    CUDA_LIB="/usr/local/cuda/lib64"
-    CUDA_HDR="/usr/local/cuda/include"
+    # GDR is a special mode of RDMA and requires RDMA to be enabled as well.
+    if [ $WITH_RDMA -eq 0 ]; then
+        print_info "WITH_GDR implies WITH_RDMA, enabling RDMA"
+        WITH_RDMA=1
+        RDMA_LIB=$(find_dir_of_lib_or_die ibverbs)
+        RDMA_HDR=$(find_dir_of_header_or_die infiniband/verbs.h)
+        append_to_output_libs "$RDMA_LIB"
+        append_to_output_headers "$RDMA_HDR"
+        CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_RDMA"
+        append_to_output "DYNAMIC_LINKINGS+=-libverbs"
+        append_to_output "WITH_RDMA=1"
+    fi
+
+    # Locate the CUDA toolkit. Honor $CUDA_HOME when set, otherwise fall back to
+    # the well-known /usr/local/cuda installation path.
+    if [ -z "${CUDA_HOME}" ]; then
+        CUDA_HOME="/usr/local/cuda"
+    fi
+    if [ ! -d "${CUDA_HOME}" ]; then
+        echo "Fail to find CUDA toolkit at CUDA_HOME=${CUDA_HOME}." >&2
+        echo "Please install CUDA or set CUDA_HOME to point at your toolkit." >&2
+        exit 1
+    fi
+    CUDA_LIB="${CUDA_HOME}/lib64"
+    CUDA_HDR="${CUDA_HOME}/include"
+    if [ ! -f "${CUDA_HDR}/cuda_runtime.h" ]; then
+        echo "Fail to find cuda_runtime.h under ${CUDA_HDR}." >&2
+        echo "Please check CUDA_HOME=${CUDA_HOME}." >&2
+        exit 1
+    fi
     append_to_output_libs "$CUDA_LIB"
     append_to_output_headers "$CUDA_HDR"
 

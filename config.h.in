@@ -21,4 +21,10 @@
 #endif
 #cmakedefine BRPC_WITH_GLOG @WITH_GLOG_VAL@
 
+// Defined to 1 when brpc is built with GPU Direct RDMA support.
+#ifdef BRPC_WITH_GDR
+#undef BRPC_WITH_GDR
+#endif
+#cmakedefine BRPC_WITH_GDR @WITH_GDR_VAL@
+
 #endif  // BUTIL_CONFIG_H

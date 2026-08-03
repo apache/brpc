@@ -108,7 +108,10 @@ class BlockPoolAllocator {
     uint32_t get_lkey(const void* buf);
 
   private:
-    void extendRegion();
+    // Extend the pool by one region.
+    // Returns 0 on success; -1 on failure (e.g. allocation/registration error,
+    // or max regions reached) with errno/LOG set. Does NOT abort the process.
+    int extendRegion();
 };
 
 class GPUStreamPool {

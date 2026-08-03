@@ -150,6 +150,10 @@ public:
 #if BRPC_WITH_GDR
     size_t cutn_from_gpu(IOBuf* out, size_t n);
     size_t copy_from_gpu(void* d, size_t n, size_t pos = 0, bool to_gpu = false) const;
+    // Returns true iff the first block of this IOBuf was tagged as GPU memory
+    // via append_user_data_gpu(). This is deterministic and independent of the
+    // value of `data_meta' (which is reserved for user/RDMA metadata such as
+    // the lkey or the prefetch size).
     bool is_gpu_memory();
 #endif  // BRPC_WITH_GDR
 
@@ -266,6 +270,14 @@ public:
     // Append the user-data to back side WITHOUT copying.
     // The meta is associated with this piece of user-data.
     int append_user_data_with_meta(void* data, size_t size, std::function<void(void*)> deleter, uint64_t meta);
+
+#if BRPC_WITH_GDR
+    // Same as append_user_data_with_meta, but additionally tags the underlying
+    // block with the GPU-memory flag so that is_gpu_memory() can be answered
+    // deterministically (instead of guessing from `meta'). Used by the GDR
+    // receive path to attach device pointers received via RDMA.
+    int append_user_data_gpu(void* data, size_t size, std::function<void(void*)> deleter, uint64_t meta);
+#endif  // BRPC_WITH_GDR
 
     // Get the data meta of the first byte in this IOBuf.
     // The meta is specified with append_user_data_with_meta before.

@@ -88,7 +88,10 @@ ParseResult ParseRpcMessageGpu(butil::IOBuf* source, Socket* socket,
     butil::gdr::BlockPoolAllocator* host_allocator = butil::gdr::BlockPoolAllocators::singleton()->get_cpu_allocator();
     prefetch_d2h_data = host_allocator->AllocateRaw(prefetch_d2h_size);
     if (prefetch_d2h_data == NULL) {
-        LOG(FATAL) << "alloc host data failed!!!";
+        // Pool exhausted or single-block limit hit: ask the caller to retry
+        // instead of crashing the whole server.
+        LOG(ERROR) << "alloc host data for prefetch d2h failed, size="
+                   << prefetch_d2h_size;
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
 
@@ -146,8 +149,12 @@ ParseResult ParseRpcMessageGpu(butil::IOBuf* source, Socket* socket,
 
     if (header_size + meta_size <= n) {
         auto deleter = [host_allocator, prefetch_d2h_data](void* data) { host_allocator->DeallocateRaw(prefetch_d2h_data); };
-        // n is the bytes we real frefetch. We set n as the meta and n will be used in ProcessRpcRequest/ProcessRpcResponse.
-        // This is a trick, we should keep n in another better way.
+        // `n` is the number of bytes actually prefetched from GPU. It is stored
+        // in the meta's `data_meta' so that FillReqBufGpu/FillResBufGpu can
+        // decide whether the prefetched host buffer also covers the body (and
+        // thus avoid a second D2H copy). This block is host memory (prefetched),
+        // NOT GPU memory, so we deliberately use append_user_data_with_meta
+        // (not append_user_data_gpu) to keep is_gpu_memory() returning false.
         msg->meta.append_user_data_with_meta((char*)prefetch_d2h_data + header_size, meta_size, deleter, n);
         source->pop_front(meta_size);
     } else {

@@ -1233,6 +1233,37 @@ int IOBuf::append_user_data_with_meta(void* data,
     return 0;
 }
 
+#if BRPC_WITH_GDR
+// Same as append_user_data_with_meta, but also tags the block as GPU memory so
+// that is_gpu_memory() can report it deterministically.
+int IOBuf::append_user_data_gpu(void* data,
+                                size_t size,
+                                std::function<void(void*)> deleter,
+                                uint64_t meta) {
+    if (size > 0xFFFFFFFFULL - 100) {
+        LOG(FATAL) << "data_size=" << size << " is too large";
+        return -1;
+    }
+    if (!deleter) {
+        deleter = ::cudaFree;
+    }
+    if (!size) {
+        deleter(data);
+        return 0;
+    }
+    char* mem = (char*)malloc(sizeof(IOBuf::Block) + sizeof(UserDataExtension));
+    if (mem == NULL) {
+        return -1;
+    }
+    IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, std::move(deleter));
+    b->u.data_meta = meta;
+    b->flags |= IOBUF_BLOCK_FLAGS_GPU_MEMORY;
+    const IOBuf::BlockRef r = { 0, b->cap, b };
+    _move_back_ref(r);
+    return 0;
+}
+#endif  // BRPC_WITH_GDR
+
 uint64_t IOBuf::get_first_data_meta() {
     if (_ref_num() == 0) {
         return 0;
@@ -1602,12 +1633,17 @@ bool IOBuf::equals(const butil::IOBuf& other) const {
 }
 
 #if BRPC_WITH_GDR
-// when IOBuf is used for send, data_meta is set by user;
-// when IOBf is used for recv and gdr is open, data_meta is set by brpc
-//  and it is lkey.
+// Returns true iff the first block was explicitly tagged as GPU memory via
+// append_user_data_gpu() (done by the GDR receive path in RdmaEndpoint).
+// We deliberately check the block flag rather than guessing from `data_meta',
+// because `data_meta' is legitimately used by callers/users to carry non-zero
+// values (e.g. RDMA lkey, prefetch size) that must NOT be treated as a GPU hint.
 bool IOBuf::is_gpu_memory() {
-    uint64_t data_meta = get_first_data_meta();
-    return (data_meta > 0 && data_meta <= UINT_MAX);
+    if (_ref_num() == 0) {
+        return false;
+    }
+    IOBuf::BlockRef const& r = _ref_at(0);
+    return (r.block->flags & IOBUF_BLOCK_FLAGS_GPU_MEMORY) != 0;
 }
 #endif
 

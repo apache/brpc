@@ -179,7 +179,12 @@ BlockPoolAllocator::BlockPoolAllocator(int gpuId, bool onGpu, ibv_pd* ibvPd,
       << ", region_size=" << REGION_SIZE  << ", max_gdr_regions=" << FLAGS_max_gdr_regions
       << ", gpu_id=" << gpu_id << ", on_gpu=" << on_gpu << ", pd=" << pd;
 
-    extendRegion();
+    // The very first region is required at construction time; failure here is
+    // fatal because the pool would be unusable.
+    if (extendRegion() != 0) {
+        LOG(FATAL) << "Failed to initialize GDR memory pool (first region) on gpu "
+                   << gpu_id << ", on_gpu " << on_gpu;
+    }
 }
 
 BlockPoolAllocator::~BlockPoolAllocator() {
@@ -243,7 +248,12 @@ void* BlockPoolAllocator::AllocateRaw(size_t num_bytes) {
         return nullptr;
     }
     if (num_bytes > BLOCK_SIZE) {
-        LOG(FATAL) << "try to alloc " << num_bytes << " bytes, its bigger than block_size " << BLOCK_SIZE;
+        // A single block cannot satisfy the request; fail gracefully instead of
+        // aborting the whole server.
+        LOG(ERROR) << "try to alloc " << num_bytes
+                   << " bytes, bigger than block_size " << BLOCK_SIZE;
+        errno = ENOMEM;
+        return nullptr;
     }
 
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -251,7 +261,11 @@ void* BlockPoolAllocator::AllocateRaw(size_t num_bytes) {
     std::lock_guard<std::mutex> lock(poolMutex);
 
     if (!freeList) {
-        extendRegion();
+        if (extendRegion() != 0) {
+            // Out of regions or registration failed; let the caller handle it.
+            errno = ENOMEM;
+            return nullptr;
+        }
     }
 
     BlockHeader* block = freeList;
@@ -301,10 +315,11 @@ void BlockPoolAllocator::printStatistics() const {
         << "%";
 }
 
-void BlockPoolAllocator::extendRegion() {
+int BlockPoolAllocator::extendRegion() {
     if (g_region_num == FLAGS_max_gdr_regions) {
-        LOG(FATAL) << "Gdr Memory pool reaches max regions";
-        return ;
+        LOG(ERROR) << "Gdr Memory pool reaches max regions (" << FLAGS_max_gdr_regions << ")";
+        errno = ENOMEM;
+        return -1;
     }
 
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -316,6 +331,11 @@ void BlockPoolAllocator::extendRegion() {
         ptr = get_gpu_mem(gpu_id, REGION_SIZE);
     } else {
         ptr = get_cpu_mem(gpu_id, REGION_SIZE);
+    }
+    if (ptr == nullptr) {
+        LOG(ERROR) << "Failed to allocate region memory on gpu " << gpu_id
+                   << ", on_gpu " << on_gpu;
+        return -1;
     }
 
     aligned_ptr = (void*)(((uintptr_t)ptr + alignment - 1) & ~(alignment - 1));
@@ -330,15 +350,27 @@ void BlockPoolAllocator::extendRegion() {
     }
 
     LOG(INFO) << "reg_mr for ptr: " << aligned_ptr << ", size:" << aligned_bytes;
-    auto mr = ibv_reg_mr(pd, aligned_ptr, aligned_bytes,
+    // IBV_ACCESS_RELAXED_ORDERING is only available on newer libibverbs; guard
+    // it so the build does not break on older toolchains.
+    int access_flags =
             IBV_ACCESS_LOCAL_WRITE |
             IBV_ACCESS_REMOTE_READ |
-            IBV_ACCESS_REMOTE_WRITE |
-            IBV_ACCESS_RELAXED_ORDERING);
+            IBV_ACCESS_REMOTE_WRITE;
+#ifdef IBV_ACCESS_RELAXED_ORDERING
+    access_flags |= IBV_ACCESS_RELAXED_ORDERING;
+#endif
+    auto mr = ibv_reg_mr(pd, aligned_ptr, aligned_bytes, access_flags);
 
     if (!mr) {
-        LOG(FATAL) << "Failed to register MR: " << strerror(errno)
+        LOG(ERROR) << "Failed to register MR: " << strerror(errno)
             << ", pd " << pd << ", aligned_ptr:" << aligned_ptr;
+        // Free the region memory we just allocated so it is not leaked.
+        if (on_gpu) {
+            cudaFree(reinterpret_cast<void*>(ptr));
+        } else {
+            cudaFreeHost(reinterpret_cast<void*>(ptr));
+        }
+        return -1;
     } else {
         LOG(INFO) << "Success to register MR: "
             << ", pd " << pd << ", aligned_ptr:" << aligned_ptr;
@@ -378,6 +410,7 @@ void BlockPoolAllocator::extendRegion() {
     LOG(INFO) << "Extended region #" << g_region_num << ": " << blockCount 
         << " blocks (" << (REGION_SIZE / (1024 * 1024)) << " MB)" << ", on_gpu " << on_gpu
         << ", cost " << duration.count()  << " ns";
+    return 0;
 }
 
 GPUStreamPool::GPUStreamPool(int gpu_id) :
