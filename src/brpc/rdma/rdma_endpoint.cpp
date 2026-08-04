@@ -113,9 +113,9 @@ RdmaResource::~RdmaResource() {
 
 RdmaEndpoint::RdmaEndpoint(Socket* s, bool use_gdr)
     : _socket(s)
-    , _use_gdr(use_gdr)
     , _state(UNINIT)
     , _handshake_version(0)
+    , _use_gdr(use_gdr)
     , _resource(NULL)
     , _send_cq_events(0)
     , _recv_cq_events(0)
