@@ -1201,7 +1201,9 @@ struct RecursiveMutexOwner {
     uint32_t kind;
 };
 
-static __thread char tls_recursive_mutex_owner;
+// When bthread_self() is invalid, use the address of this per-pthread TLS
+// object as a stable owner token. The object's value is intentionally unused.
+static __thread char tls_recursive_mutex_owner_token;
 
 static RecursiveMutexOwner current_recursive_mutex_owner() {
     const bthread_t tid = bthread_self();
@@ -1210,7 +1212,7 @@ static RecursiveMutexOwner current_recursive_mutex_owner() {
     }
     return {
         static_cast<uint64_t>(
-            reinterpret_cast<uintptr_t>(&tls_recursive_mutex_owner)),
+            reinterpret_cast<uintptr_t>(&tls_recursive_mutex_owner_token)),
         RECURSIVE_MUTEX_PTHREAD};
 }
 
