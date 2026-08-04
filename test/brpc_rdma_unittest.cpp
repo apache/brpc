@@ -1968,8 +1968,9 @@ TEST_F(RdmaTest, v3_server_accepts_client_hello_with_mtu) {
 }
 
 // The server reply must carry a negotiated MTU when the client advertised one.
-// Since UT skips real QP bring-up, the server computes min(local, client) and
-// stores it in _outgoing_mtu; FillLocalRdmaHello then includes it in the reply.
+// The server computes min(local, client) at the start of BringUpQp (before the
+// g_skip_rdma_init early-return), so _outgoing_mtu is set even in UT mode;
+// FillLocalRdmaHello then includes it in the reply.
 TEST_F(RdmaTest, v3_server_reply_has_negotiated_mtu) {
     StartServer();
 
@@ -1997,7 +1998,8 @@ TEST_F(RdmaTest, v3_server_reply_has_negotiated_mtu) {
     // The server should advertise a negotiated MTU in its reply.
     EXPECT_TRUE(reply.has_mtu());
     // Negotiated MTU = min(local_active_mtu, client_mtu). Since
-    // g_skip_rdma_init is true in UT, local_mtu defaults to IBV_MTU_1024.
+    // g_skip_rdma_init is true in UT, OpenDevice is never called and
+    // g_active_mtu stays at the default IBV_MTU_1024.
     // So negotiated = min(1024, 4096) = 1024.
     EXPECT_EQ(IBV_MTU_1024, reply.mtu());
 
@@ -2049,6 +2051,52 @@ TEST_F(RdmaTest, v3_server_reply_has_no_mtu_without_client_mtu) {
     StopServer();
 }
 
+// A client hello with an out-of-range MTU (e.g., 0 or > IBV_MTU_4096) must be
+// rejected by ValidRdmaHello, causing the server to close the connection.
+TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
+    StartServer();
+
+    sockaddr_in addr;
+    bzero((char*)&addr, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+
+    // Test with MTU = 0 (below IBV_MTU_256).
+    butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_TRUE(sockfd1 >= 0);
+    ASSERT_EQ(0, connect(sockfd1, (sockaddr*)&addr, sizeof(sockaddr)));
+    usleep(100000);
+    ASSERT_TRUE(GetSocketFromServer(0) != NULL);
+
+    rdma::RdmaHello msg = MakeValidV3HelloWithMtu(0);
+    std::string packet = MakeV3Packet(msg);
+    ASSERT_EQ((ssize_t)packet.size(),
+              write(sockfd1, packet.data(), packet.size()));
+    usleep(100000);
+    // Server should have closed the connection (socket removed).
+    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    sockfd1.reset(-1);
+    usleep(100000);
+
+    // Test with MTU = 6 (above IBV_MTU_4096).
+    butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_TRUE(sockfd2 >= 0);
+    ASSERT_EQ(0, connect(sockfd2, (sockaddr*)&addr, sizeof(sockaddr)));
+    usleep(100000);
+    ASSERT_TRUE(GetSocketFromServer(0) != NULL);
+
+    msg = MakeValidV3HelloWithMtu(6);
+    packet = MakeV3Packet(msg);
+    ASSERT_EQ((ssize_t)packet.size(),
+              write(sockfd2, packet.data(), packet.size()));
+    usleep(100000);
+    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    sockfd2.reset(-1);
+    usleep(100000);
+
+    StopServer();
+}
+
 // Verify the client includes its local MTU in the v3 hello.
 TEST_F(RdmaTest, v3_client_hello_includes_mtu) {
     HandshakeVersionFlag _hsv(3);
@@ -2087,8 +2135,9 @@ TEST_F(RdmaTest, v3_client_hello_includes_mtu) {
     rdma::RdmaHello hello;
     ASSERT_TRUE(hello.ParseFromString(body));
 
-    // In UT mode (g_skip_rdma_init=true), GetRdmaActiveMtu() returns the
-    // default IBV_MTU_1024, so the client hello should include mtu=1024.
+    // In UT mode (g_skip_rdma_init=true), OpenDevice is never called so
+    // g_active_mtu stays at the default IBV_MTU_1024. SendLocalHello calls
+    // GetRdmaActiveMtu() unconditionally, so the client hello includes mtu=1024.
     EXPECT_TRUE(hello.has_mtu());
     EXPECT_EQ(IBV_MTU_1024, hello.mtu());
 

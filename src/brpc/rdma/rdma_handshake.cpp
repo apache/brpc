@@ -286,6 +286,12 @@ bool ValidRdmaHello(const RdmaHello& msg) {
     if (msg.qp_num() == 0 && !g_skip_rdma_init) {
         return false;
     }
+    // Validate MTU: must be a valid ibv_mtu enum value (IBV_MTU_256..IBV_MTU_4096)
+    // to prevent invalid values from being passed to ibv_modify_qp.
+    if (msg.has_mtu() &&
+        (msg.mtu() < IBV_MTU_256 || msg.mtu() > IBV_MTU_4096)) {
+        return false;
+    }
     return true;
 }
 
@@ -415,9 +421,10 @@ int RdmaHandshakeClientV3::SendLocalHello() {
     // Query local active MTU so it can be advertised in the client hello.
     // Best-effort: any failure just means we won't advertise MTU
     // (the peer falls back to IBV_MTU_1024).
-    if (!g_skip_rdma_init) {
-        _ep->_outgoing_mtu = GetRdmaActiveMtu();
-    }
+    // In UT mode (g_skip_rdma_init=true), GetRdmaActiveMtu() returns the
+    // default IBV_MTU_1024 (g_active_mtu is never overwritten by OpenDevice),
+    // so the client hello still includes a valid MTU.
+    _ep->_outgoing_mtu = GetRdmaActiveMtu();
 
     RdmaHello local_msg{};
     v3_wire::FillLocalRdmaHello(_ep, &local_msg);
