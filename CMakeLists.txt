@@ -27,6 +27,10 @@ option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
+option(WITH_URMA "With URMA (openEuler Unified Remote Memory Access)" OFF)
+option(DOWNLOAD_URMA_HEADERS
+       "Download UMDK headers when WITH_URMA is enabled and headers are absent"
+       ON)
 option(WITH_UBRING "With UB" OFF)
 option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" OFF)
 option(WITH_DEBUG_LOCK "With debugging lock" OFF)
@@ -114,6 +118,11 @@ if(WITH_RDMA)
     set(WITH_RDMA_VAL "1")
 endif()
 
+set(WITH_URMA_VAL "0")
+if(WITH_URMA)
+    set(WITH_URMA_VAL "1")
+endif()
+
 set(WITH_UBRING_VAL "0")
 if(WITH_UBRING)
         set(WITH_UBRING_VAL "1")
@@ -153,6 +162,7 @@ endif()
 list(APPEND BRPC_COMMON_DEFINITIONS
     BRPC_WITH_GLOG=${WITH_GLOG_VAL}
     BRPC_WITH_RDMA=${WITH_RDMA_VAL}
+    BRPC_WITH_URMA=${WITH_URMA_VAL}
     BRPC_WITH_UBRING=${WITH_UBRING_VAL}
     BRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL}
     BRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}
@@ -309,6 +319,56 @@ if(WITH_RDMA)
     list(APPEND BRPC_COMMON_INCLUDE_DIRS ${RDMA_INCLUDE_PATH})
 endif()
 
+if(WITH_URMA)
+    # UrmaTransport and its link-time mock both compile against the upstream
+    # UMDK API. Prefer installed headers; otherwise fetch a pinned upstream
+    # release, following Mooncake's URMA mock setup.
+    find_path(URMA_INCLUDE_PATH NAMES urma_api.h
+              HINTS ENV URMA_ROOT
+              PATHS /usr/include /usr/local/include
+              PATH_SUFFIXES ub/umdk/urma umdk/urma urma
+                            src/urma/lib/urma/core/include)
+    find_path(URMA_BOND_INCLUDE_PATH NAMES urma_ubagg.h
+              HINTS ENV URMA_ROOT
+              PATHS /usr/include /usr/local/include
+              PATH_SUFFIXES ub/umdk/urma umdk/urma urma
+                            src/urma/lib/urma/bond/include)
+    if(NOT URMA_INCLUDE_PATH AND DOWNLOAD_URMA_HEADERS)
+        include(FetchContent)
+        FetchContent_Declare(
+            urma_headers
+            GIT_REPOSITORY https://atomgit.com/openeuler/umdk.git
+            GIT_TAG v26.06.0_CAM
+            GIT_SHALLOW TRUE)
+        FetchContent_GetProperties(urma_headers)
+        if(NOT urma_headers_POPULATED)
+            FetchContent_Populate(urma_headers)
+        endif()
+        set(URMA_INCLUDE_PATH
+            "${urma_headers_SOURCE_DIR}/src/urma/lib/urma/core/include")
+        set(URMA_BOND_INCLUDE_PATH
+            "${urma_headers_SOURCE_DIR}/src/urma/lib/urma/bond/include")
+        message(STATUS "Using downloaded UMDK headers: ${URMA_INCLUDE_PATH}")
+    endif()
+    if(NOT URMA_INCLUDE_PATH)
+        message(FATAL_ERROR
+            "Fail to find urma_api.h. Install UMDK headers, set URMA_ROOT, "
+            "or enable DOWNLOAD_URMA_HEADERS.")
+    endif()
+
+    find_library(URMA_LIB NAMES urma
+                 HINTS ENV URMA_ROOT
+                 PATH_SUFFIXES lib lib64)
+    if(URMA_LIB)
+        message(STATUS "Found URMA library: ${URMA_LIB}")
+        set(URMA_USE_MOCK 0)
+    else()
+        message(STATUS
+            "liburma not found; building with the URMA link-time mock")
+        set(URMA_USE_MOCK 1)
+    endif()
+endif()
+
 find_library(PROTOC_LIB NAMES protoc)
 if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
@@ -333,6 +393,12 @@ list(APPEND BRPC_COMMON_INCLUDE_DIRS
     ${PROTOBUF_INCLUDE_DIRS}
     ${LEVELDB_INCLUDE_PATH}
 )
+if(WITH_URMA)
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${URMA_INCLUDE_PATH})
+    if(URMA_BOND_INCLUDE_PATH)
+        list(APPEND BRPC_COMMON_INCLUDE_DIRS ${URMA_BOND_INCLUDE_PATH})
+    endif()
+endif()
 
 set(DYNAMIC_LIB
     ${GFLAGS_LIBRARY}
@@ -359,6 +425,13 @@ endif()
 
 if(WITH_RDMA)
     list(APPEND DYNAMIC_LIB ${RDMA_LIB})
+endif()
+
+if(WITH_URMA)
+    message(STATUS "brpc compile with URMA (mock=${URMA_USE_MOCK})")
+    if(NOT URMA_USE_MOCK)
+        list(APPEND DYNAMIC_LIB ${URMA_LIB})
+    endif()
 endif()
 
 if(WITH_UBRING)
@@ -566,6 +639,14 @@ file(GLOB_RECURSE BRPC_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc
 file(GLOB_RECURSE THRIFT_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc/thrift*.cpp")
 file(GLOB_RECURSE EXCLUDE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc/event_dispatcher_*.cpp")
 
+# When building with the real liburma, exclude the link-time mock so its urma_*
+# symbols do not clash with the library. When liburma is absent, keep it so CI
+# can build and test UrmaTransport without URMA hardware.
+if(WITH_URMA AND NOT URMA_USE_MOCK)
+    list(REMOVE_ITEM BRPC_SOURCES
+         "${PROJECT_SOURCE_DIR}/src/brpc/urma/mock_urma.cpp")
+endif()
+
 if(WITH_THRIFT)
     message("brpc compile with thrift protocol")
 else()
@@ -606,7 +687,8 @@ set(PROTO_FILES idl_options.proto
                 brpc/trackme.proto
                 brpc/streaming_rpc_meta.proto
                 brpc/proto_base.proto
-                brpc/rdma/rdma_handshake.proto)
+                brpc/rdma/rdma_handshake.proto
+                brpc/urma/urma_handshake.proto)
 file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/output/include/brpc)
 set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROTOBUF_INCLUDE_DIR})
 compile_proto(PROTO_HDRS PROTO_SRCS ${PROJECT_BINARY_DIR}

@@ -52,3 +52,14 @@ git_override(
     remote = 'https://github.com/hedronvision/bazel-compile-commands-extractor.git',
     commit = '1e08f8e0507b6b6b1f4416a9a22cf5c28beaba93', # Jun 28, 2024
 )
+
+git_repository = use_repo_rule(
+    '@bazel_tools//tools/build_defs/repo:git.bzl',
+    'git_repository',
+)
+git_repository(
+    name = 'umdk',
+    build_file = '//bazel/third_party/umdk:umdk.BUILD',
+    remote = 'https://atomgit.com/openeuler/umdk.git',
+    tag = 'v26.06.0_CAM',
+)

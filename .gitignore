@@ -45,6 +45,10 @@ CTestTestfile.cmake
 /test/out.txt
 /test/recordio_ref.io
 
+# Local design notes and Graphify artifacts.
+docs/cn/urma_proposal.md
+graphify-out/
+
 # Ignore protoc-gen-mcpack files
 /protoc-gen-mcpack*/
 
