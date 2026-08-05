@@ -129,7 +129,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: |
+    - run: sudo apt-get update && sudo apt-get install -y  libibverbs-dev
+    - name: root
+      run: |
         bazel build --define with_mesalink=false \
                     --define with_glog=true \
                     --define with_thrift=true \
@@ -140,7 +142,21 @@ jobs:
                     --define with_bthread_tracer=true \
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
                     --define with_babylon_counter=true \
-                    -- //:brpc
+                    -- //:brpc //example/...
+    - name: external
+      run: |
+        cd example/build_with_bazel_module
+        bazel build --define with_mesalink=false \
+                    --define with_glog=true \
+                    --define with_thrift=true \
+                    --define BRPC_WITH_BORINGSSL=true \
+                    --define with_debug_bthread_sche_safety=true \
+                    --define with_debug_lock=true \
+                    --define with_asan=true \
+                    --define with_bthread_tracer=true \
+                    --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
+                    --define with_babylon_counter=true \
+                    -- //...
 
   clang-compile-with-make-protobuf:
     runs-on: ubuntu-22.04
@@ -188,7 +204,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: |
+    - run: sudo apt-get update && sudo apt-get install -y  libibverbs-dev
+    - name: root
+      run: |
         bazel build --action_env=CC=clang \
                     --define with_mesalink=false \
                     --define with_glog=true \
@@ -200,7 +218,22 @@ jobs:
                     --define with_bthread_tracer=true \
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
                     --define with_babylon_counter=true \
-                    -- //:brpc
+                    -- //:brpc //example/...
+    - name: external
+      run: |
+        cd example/build_with_bazel_module
+        bazel build --action_env=CC=clang \
+                    --define with_mesalink=false \
+                    --define with_glog=true \
+                    --define with_thrift=true \
+                    --define BRPC_WITH_BORINGSSL=true \
+                    --define with_debug_bthread_sche_safety=true \
+                    --define with_debug_lock=true \
+                    --define with_asan=true \
+                    --define with_bthread_tracer=true \
+                    --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
+                    --define with_babylon_counter=true \
+                    -- //...
 
   clang-unittest:
     runs-on: ubuntu-22.04
@@ -246,9 +279,9 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       TEST_PROTOBUF_VERSION: "34.1"
-      # protobuf >= 34.x uses new ProtoInfo fields (option_deps,
-      # extension_declarations) introduced in Bazel 8.x. The repo's
-      # .bazelversion (7.2.1) is too old. bazelisk honors USE_BAZEL_VERSION.
+      # protobuf >= 34.x uses new ProtoInfo fields (option_deps, extension_declarations)
+      # introduced in Bazel 8.x. The repo's .bazelversion (7.2.1) is too old. bazelisk
+      # honors USE_BAZEL_VERSION.
       USE_BAZEL_VERSION: "8.3.1"
     steps:
     - uses: actions/checkout@v2

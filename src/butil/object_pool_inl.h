@@ -470,10 +470,7 @@ private:
         if (BAIDU_LIKELY(lp != NULL)) {
             return lp;
         }
-        lp = new(std::nothrow) LocalPool(this);
-        if (NULL == lp) {
-            return NULL;
-        }
+        lp = new LocalPool(this);
         BAIDU_SCOPED_LOCK(_change_thread_mutex); //avoid race with clear()
 	    BAIDU_SET_VOLATILE_THREAD_LOCAL(_local_pool, lp);
         butil::thread_atexit(LocalPool::delete_local_pool, lp);

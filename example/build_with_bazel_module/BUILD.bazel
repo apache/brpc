@@ -13,11 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@apache_brpc//bazel/tools:brpc_proto_library.bzl", "brpc_proto_library")
+
+brpc_proto_library(
+    name = "cc_echo_c++_proto",
+    srcs = ["echo.proto"],
+)
 
 cc_binary(
-    name = "test",
-    srcs = ["test.cc"],
+    name = "echo_c++_server",
+    srcs = [
+        "server.cpp",
+    ],
     deps = [
+        ":cc_echo_c++_proto",
         "@apache_brpc//:brpc",
     ],
 )
