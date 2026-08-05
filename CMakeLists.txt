@@ -30,6 +30,7 @@ option(WITH_RDMA "With RDMA" OFF)
 option(WITH_UBRING "With UB" OFF)
 option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" OFF)
 option(WITH_DEBUG_LOCK "With debugging lock" OFF)
+option(WITH_CPU_FREQUENCY "Use CPU frequency for cpuwide_time" OFF)
 option(WITH_ASAN "With AddressSanitizer" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 option(BUILD_FUZZ_TESTS "Whether to build fuzz tests" OFF)
@@ -74,6 +75,12 @@ set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
     set(BRPC_WITH_GLOG 1)
+endif()
+
+set(WITH_CPU_FREQUENCY_VAL "0")
+if(WITH_CPU_FREQUENCY)
+    set(WITH_CPU_FREQUENCY_VAL "1")
+    set(BUTIL_USE_CPU_FREQUENCY 1)
 endif()
 
 if(WITH_DEBUG_SYMBOLS)
@@ -156,6 +163,7 @@ list(APPEND BRPC_COMMON_DEFINITIONS
     BRPC_WITH_UBRING=${WITH_UBRING_VAL}
     BRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL}
     BRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}
+    BUTIL_USE_CPU_FREQUENCY=${WITH_CPU_FREQUENCY_VAL}
     BTHREAD_USE_FAST_PTHREAD_MUTEX
     __const__=__unused__
     _GNU_SOURCE
@@ -166,12 +174,14 @@ list(APPEND BRPC_COMMON_DEFINITIONS
     __STDC_CONSTANT_MACROS
     __STRICT_ANSI__
 )
+
 if(NOT DEBUG)
     list(APPEND BRPC_COMMON_DEFINITIONS NDEBUG)
 endif()
 if(WITH_ASAN)
     list(APPEND BRPC_COMMON_COMPILE_OPTIONS -fsanitize=address)
     list(APPEND BRPC_COMMON_LINK_OPTIONS -fsanitize=address)
+
 endif()
 if(WITH_MESALINK)
     list(APPEND BRPC_COMMON_DEFINITIONS USE_MESALINK)

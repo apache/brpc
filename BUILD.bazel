@@ -60,7 +60,10 @@ DEFINES = [
  }) + select({
      "//bazel/config:brpc_with_no_pthread_mutex_hook": ["NO_PTHREAD_MUTEX_HOOK"],
      "//conditions:default": [],
- })
+ }) + select({
+    "//bazel/config:brpc_with_cpu_frequency": ["-DBUTIL_USE_CPU_FREQUENCY=1"],
+    "//conditions:default": ["-DBUTIL_USE_CPU_FREQUENCY=0"],
+})
 
 LINKOPTS = [
     "-pthread",
@@ -113,6 +116,14 @@ genrule(
 #endif
 #define BRPC_WITH_GLOG """ + select({
               "//bazel/config:brpc_with_glog": "1",
+              "//conditions:default": "0",
+          }) +
+          """
+#ifdef BUTIL_USE_CPU_FREQUENCY
+#undef BUTIL_USE_CPU_FREQUENCY
+#endif
+#define BUTIL_USE_CPU_FREQUENCY """ + select({
+              "//bazel/config:brpc_with_cpu_frequency": "1",
               "//conditions:default": "0",
           }) +
           """
