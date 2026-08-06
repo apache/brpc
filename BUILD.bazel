@@ -61,8 +61,8 @@ DEFINES = [
      "//bazel/config:brpc_with_no_pthread_mutex_hook": ["NO_PTHREAD_MUTEX_HOOK"],
      "//conditions:default": [],
  }) + select({
-    "//bazel/config:brpc_with_cpu_frequency": ["-DBUTIL_USE_CPU_FREQUENCY=1"],
-    "//conditions:default": ["-DBUTIL_USE_CPU_FREQUENCY=0"],
+    "//bazel/config:brpc_with_cpu_frequency": ["BUTIL_USE_CPU_FREQUENCY=1"],
+    "//conditions:default": ["BUTIL_USE_CPU_FREQUENCY=0"],
 })
 
 LINKOPTS = [

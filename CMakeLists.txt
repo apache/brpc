@@ -181,7 +181,6 @@ endif()
 if(WITH_ASAN)
     list(APPEND BRPC_COMMON_COMPILE_OPTIONS -fsanitize=address)
     list(APPEND BRPC_COMMON_LINK_OPTIONS -fsanitize=address)
-
 endif()
 if(WITH_MESALINK)
     list(APPEND BRPC_COMMON_DEFINITIONS USE_MESALINK)
