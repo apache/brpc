@@ -32,6 +32,9 @@ COPTS = [
     "//bazel/config:brpc_with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
 }) + select({
+    "//bazel/config:brpc_with_cpu_frequency": ["-DBUTIL_USE_CPU_FREQUENCY=1"],
+    "//conditions:default": ["-DBUTIL_USE_CPU_FREQUENCY=0"],
+}) + select({
     "//bazel/config:brpc_with_rdma": ["-DBRPC_WITH_RDMA=1"],
     "//conditions:default": [""],
 })

@@ -266,7 +266,7 @@ brew install gperftools
 
 If you need to run tests, googletest is required. Run `brew install googletest` first to see if it works. If not (old homebrew does not have googletest), you can download and compile googletest by your own:
 ```shell
-git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make
+git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++14" .. && make
 ```
 After the compilation, copy `include/` and `lib/` into `/usr/local/include` and `/usr/local/lib` respectively to expose gtest to all apps
 
@@ -320,11 +320,11 @@ Same with [here](#compile-brpc-with-cmake)
 
 # Supported deps
 
-## GCC: 4.8-11.2
+## GCC: 5.0-11.2
 
 **Prefer GCC 8.2+**
 
-c++11 is turned on by default to remove dependencies on boost (atomic).
+c++14 is turned on by default to remove dependencies on boost (atomic).
 
 The over-aligned issues in GCC7 is suppressed temporarily now.
 

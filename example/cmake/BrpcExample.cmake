@@ -39,7 +39,7 @@ macro(brpc_example_find_common_deps out_libs)
 
     find_package(Threads REQUIRED)
     find_package(Protobuf REQUIRED)
-    set(BRPC_EXAMPLE_CXX_STANDARD 11)
+    set(BRPC_EXAMPLE_CXX_STANDARD 14)
     set(_protobuf_absl_targets)
     if(Protobuf_VERSION VERSION_GREATER 4.21)
         # Protobuf 5+ exposes Abseil types from generated code and requires
@@ -173,7 +173,7 @@ function(brpc_example_configure_target target_name)
     endif()
 
     if(NOT BRPC_EXAMPLE_CXX_STANDARD)
-        set(BRPC_EXAMPLE_CXX_STANDARD 11)
+        set(BRPC_EXAMPLE_CXX_STANDARD 14)
     endif()
     target_compile_features(${target_name} PRIVATE
         cxx_std_${BRPC_EXAMPLE_CXX_STANDARD}
