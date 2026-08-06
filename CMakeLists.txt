@@ -49,14 +49,14 @@ SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "brpc authors")
 INCLUDE(CPack)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    # require at least gcc 4.8
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
-        message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++11")
+    # require at least gcc 5.0
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0)
+        message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++14")
     endif()
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    # require at least clang 3.3
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.3)
-        message(FATAL_ERROR "Clang is too old, please install a newer version supporting C++11")
+    # require at least clang 3.5
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.5)
+        message(FATAL_ERROR "Clang is too old, please install a newer version supporting C++14")
     endif()
 else()
     message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
@@ -69,7 +69,7 @@ set(BRPC_COMMON_INCLUDE_DIRS
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 set(BRPC_COMMON_LINK_OPTIONS)
-set(BRPC_CXX_STANDARD 11)
+set(BRPC_CXX_STANDARD 14)
 
 set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)

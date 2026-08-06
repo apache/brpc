@@ -19,7 +19,7 @@ BRPC_PATH = ../../
 include $(BRPC_PATH)/config.mk
 # Notes on the flags:
 # 1. Added -fno-omit-frame-pointer: perf/tcmalloc-profiler use frame pointers by default
-CXXFLAGS = $(CPPFLAGS) -std=c++0x -DNDEBUG -O2 -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
+CXXFLAGS = $(CPPFLAGS) -std=c++14 -DNDEBUG -O2 -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
 HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
 LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
 STATIC_LINKINGS += $(BRPC_PATH)/output/lib/libbrpc.a

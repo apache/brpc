@@ -128,8 +128,8 @@ fi
 print_info "CC=$CC, CXX=$CXX"
 
 GCC_VERSION=$(CXX=$CXX tools/print_gcc_version.sh)
-if [ $GCC_VERSION -gt 0 ] && [ $GCC_VERSION -lt 40800 ]; then
-    >&2 $ECHO "GCC is too old, please install a newer version supporting C++11"
+if [ $GCC_VERSION -eq 0 ] || [ $GCC_VERSION -lt 50000 ]; then
+    >&2 $ECHO "C++ compiler is too old, please install GCC 5.0+ or Clang 3.5+ with C++14 support"
     exit 1
 fi
 
@@ -385,7 +385,7 @@ if [ "$PROTOBUF_VERSION" -ge 4022000 ]; then
     CXXFLAGS="-std=c++17"
     print_success "Found protobuf version $PROTOBUF_VERSION (>= v22, using C++17 with abseil)"
 else
-    CXXFLAGS="-std=c++0x"
+    CXXFLAGS="-std=c++14"
     print_success "Found protobuf version $PROTOBUF_VERSION"
 fi
 

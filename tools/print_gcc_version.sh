@@ -17,7 +17,11 @@
 
 while read -r line; do
     val=$(echo "$line" | awk '{print $3}')
-    if   [[ $line =~ __clang__ ]]; then
+    if   [[ $line =~ __clang_major__ ]]; then
+        CLANG_MAJOR=${val}
+    elif [[ $line =~ __clang_minor__ ]]; then
+        CLANG_MINOR=${val}
+    elif [[ $line =~ __clang__ ]]; then
         CLANG=${val}
     elif [[ $line =~ __GNUC__ ]]; then
         GNUC=${val}
@@ -26,15 +30,19 @@ while read -r line; do
     elif [[ $line =~ __GNUC_PATCHLEVEL__ ]]; then
         GNUC_PATCHLEVEL=${val}
     fi
-done < <("${CXX:-c++}" -dM -E - < /dev/null | grep "__clang__\|__GNUC__\|__GNUC_MINOR__\|__GNUC_PATCHLEVEL__")
+done < <("${CXX:-c++}" -dM -E - < /dev/null | grep "__clang__\|__clang_major__\|__clang_minor__\|__GNUC__\|__GNUC_MINOR__\|__GNUC_PATCHLEVEL__")
 
-if [ -n "$GNUC" ] && [ -n "$GNUC_MINOR" ] && [ -n "$GNUC_PATCHLEVEL" ]; then
-    # Calculate GCC/Clang version
-    GCC_VERSION=$((GNUC * 10000 + GNUC_MINOR * 100 + GNUC_PATCHLEVEL))
-    if [ -n "$CLANG" ] && [ "40000" -lt $GCC_VERSION ] && [ $GCC_VERSION -lt "40800" ]; then
-        # Make version of clang >= 4.8 so that it's not rejected by config_brpc.sh
-        GCC_VERSION=40800
+if [ -n "$CLANG" ] && [ -n "$CLANG_MAJOR" ] && [ -n "$CLANG_MINOR" ]; then
+    if [ "$CLANG_MAJOR" -gt 3 ] || \
+       { [ "$CLANG_MAJOR" -eq 3 ] && [ "$CLANG_MINOR" -ge 5 ]; }; then
+        # config_brpc.sh uses the GCC-equivalent version threshold.
+        echo 50000
+    else
+        echo 0
     fi
+elif [ -n "$GNUC" ] && [ -n "$GNUC_MINOR" ] && [ -n "$GNUC_PATCHLEVEL" ]; then
+    # Calculate GCC version.
+    GCC_VERSION=$((GNUC * 10000 + GNUC_MINOR * 100 + GNUC_PATCHLEVEL))
     echo $GCC_VERSION
 else
     echo 0

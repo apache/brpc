@@ -260,7 +260,7 @@ brew install gperftools
 
 如果你要运行测试，需安装gtest。先运行`brew install googletest`看看homebrew是否支持（老版本没有），没有的话请下载和编译googletest：
 ```shell
-git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make
+git clone https://github.com/google/googletest -b release-1.10.0 && cd googletest/googletest && mkdir build && cd build && cmake -DCMAKE_CXX_FLAGS="-std=c++14" .. && make
 ```
 在编译完成后，复制`include/`和`lib/`目录到`/usr/local/include`和`/usr/local/lib`目录中，以便于让所有应用都能使用gtest。
 
@@ -324,13 +324,13 @@ $ docker run -it brpc:master /bin/bash
 
 # 支持的依赖
 
-## GCC: 4.8-11.2
+## GCC: 5.0-11.2
 
 **推荐 8.2 及以上版本。**
 
-默认启用 c++11，以去除对 boost 的依赖（比如 atomic）。
+默认启用 c++14，以去除对 boost 的依赖（比如 atomic）。
 
-理论支持 c++11 的编译器都应可以，但部分编译器版本对 c++11 的支持存在问题。目前 GCC 4.8 可支持编译的最高版本为 1.5.0。
+理论支持 c++14 的编译器都应可以，但部分编译器版本对 c++14 的支持存在问题。
 
 GCC7中over-aligned的问题暂时被禁止。
 

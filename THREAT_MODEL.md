@@ -153,7 +153,7 @@ bRPC is a C++ library that normally runs on Linux/macOS with POSIX sockets, Open
 ### OS / runtime / hardware
 
 - Linux and macOS are supported; Windows is not included in the security support scope for now.
-- A C++11 or newer toolchain is required.
+- A C++14 or newer toolchain is required.
 - POSIX sockets and Linux epoll or macOS kqueue are required.
 - TLS depends on OpenSSL; risks from old OpenSSL versions are managed by the operator.
 - gflags, protobuf, and leveldb are regular dependencies; tcmalloc/gperftools is optional.
@@ -624,4 +624,3 @@ Once the PMC publishes `SECURITY.md` or an official security policy, that artifa
 ---
 
 *End of v1 draft.*
-
