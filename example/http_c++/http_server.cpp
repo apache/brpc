@@ -31,7 +31,7 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
 DEFINE_string(certificate, "cert.pem", "Certificate file path to enable SSL");
 DEFINE_string(private_key, "key.pem", "Private key file path to enable SSL");
 DEFINE_string(ciphers, "", "Cipher suite used for SSL connections");
-DEFINE_bool(enable_progressive_timeout, false, "whether or not trigger progressive write attachement data timeout");
+DEFINE_bool(enable_progressive_timeout, false, "whether or not trigger progressive write attachment data timeout");
 
 namespace example {
 

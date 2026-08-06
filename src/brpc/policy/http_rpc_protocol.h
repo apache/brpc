@@ -100,7 +100,7 @@ public:
         : InputMessageBase()
         , HttpMessage(read_body_progressively, request_method)
         , _is_stage2(false)
-        , _socket_id(0) {
+        , _socket_id(INVALID_SOCKET_ID) {
         // add one ref for Destroy
         butil::intrusive_ptr<HttpContext>(this).detach();
     }

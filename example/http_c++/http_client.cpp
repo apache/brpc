@@ -22,6 +22,7 @@
 // - Access www.foo.com
 //   ./http_client www.foo.com
 
+#include <string>
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <brpc/channel.h>
@@ -44,17 +45,17 @@ public:
     explicit PartDataReader(bthread::CountdownEvent* done): _done(done){}
 
     butil::Status OnReadOnePart(const void* data, size_t length) {
-        memcpy(_buffer, data, length);
-        LOG(INFO) << "data ： " << _buffer << " size : " << length;
+        const std::string part(static_cast<const char*>(data), length);
+        LOG(INFO) << "data: " << part << " size: " << length;
         return butil::Status::OK();
     }
 
     void OnEndOfMessage(const butil::Status& status) {
-        _done->signal();
         LOG(INFO) << "progressive read data final status : " << status;
+        _done->signal();
+        delete this;
     }
 private:
-    char _buffer[1024];
     bthread::CountdownEvent* _done;
 };
 

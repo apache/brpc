@@ -20,7 +20,7 @@
 #define BRPC_PROGRESSIVE_READER_H
 
 #include "brpc/shared_object.h"
-#include "brpc/socket.h"
+#include "brpc/socket_id.h"
 
 
 namespace brpc {
