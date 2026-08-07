@@ -164,9 +164,15 @@ private:
     // Process handshake at the client
     static void* ProcessHandshakeAtClient(void* arg);
 
-    // Allocate resources
+    // Allocate resources. On failure the endpoint is left with no RDMA
+    // resource attached, so that the handshake can safely fall back to TCP.
     // Return 0 if success, -1 if failed and errno set
     int AllocateResources();
+
+    // The real implementation of AllocateResources(), which may return
+    // in the middle with resources partially allocated.
+    // Return 0 if success, -1 if failed and errno set
+    int DoAllocateResources();
 
     // Release resources
     void DeallocateResources();
@@ -244,7 +250,7 @@ private:
     int GetAndAckEvents(SocketUniquePtr& s);
 
     // Request completion notification on a send/recv CQ.
-    int ReqNotifyCq(bool send_cq);
+    int ReqNotifyCq(bool send_cq, bool fatal_on_error);
 
     // Poll CQ and get the work completion
     static void PollCq(Socket* m);
