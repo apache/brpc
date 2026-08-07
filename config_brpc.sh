@@ -635,8 +635,15 @@ else
     GTEST_HDR=$(find_dir_of_header_or_die gtest/gtest.h)
     append_to_output_libs $GTEST_LIB "    "
     append_to_output_headers $GTEST_HDR "    "
-    append_to_output_linkings $GTEST_LIB gtest "    "
+    # gtest_main.a's main() calls into libgtest.a (testing::InitGoogleTest /
+    # UnitTest::GetInstance / UnitTest::Run), so when only static archives
+    # are found (append_to_output_linkings routes them into
+    # *_STATIC_LINKINGS resp. DYNAMIC_LINKINGS -- see its ".a" branch) the
+    # dependent archive must be listed BEFORE the one it depends on for a
+    # single left-to-right ld pass to resolve those symbols. List
+    # gtest_main first, then gtest.
     append_to_output_linkings $GTEST_LIB gtest_main "    "
+    append_to_output_linkings $GTEST_LIB gtest "    "
 fi
 append_to_output "endif"
 

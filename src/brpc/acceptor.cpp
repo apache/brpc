@@ -22,6 +22,7 @@
 #include "butil/fd_utility.h"               // make_close_on_exec
 #include "butil/time.h"                     // gettimeofday_us
 #include "brpc/acceptor.h"
+#include "brpc/log.h"
 #include "brpc/transport_factory.h"
 
 
@@ -95,6 +96,12 @@ int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
     options.user = this;
     options.bthread_tag = _bthread_tag;
     options.on_edge_triggered_events = OnNewConnections;
+    // This Socket only ever accept(2)s new connections off `listened_fd' --
+    // it is never read/written as an application-data connection. Transports
+    // that offload the read path elsewhere (e.g. io_uring) must know this so
+    // they don't try to submit a read against it (see SocketOptions::
+    // is_listen_socket and TcpTransport::MaybeSetupIouring()).
+    options.is_listen_socket = true;
     if (Socket::Create(options, &_acception_id) != 0) {
         // Close-idle-socket thread will be stopped inside destructor
         LOG(FATAL) << "Fail to create _acception_id";
@@ -275,12 +282,15 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
             acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
             return;
         }
-        
+
         SocketId socket_id;
         SocketOptions options;
         options.keytable_pool = am->_keytable_pool;
         options.fd = in_fd;
         butil::sockaddr2endpoint(&in_addr, in_len, &options.remote_side);
+        RPC_VLOG << "Acceptor accepted new connection: listened_fd="
+                  << acception->fd() << " in_fd=" << in_fd
+                  << " remote_side=" << options.remote_side;
         options.user = acception->user();
         options.need_on_edge_trigger = true;
         options.force_ssl = am->_force_ssl;
@@ -292,6 +302,8 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
             continue;
         }
         in_fd.release(); // transfer ownership to socket_id
+        RPC_VLOG << "Acceptor created Socket id=" << socket_id
+                  << " for remote_side=" << options.remote_side;
 
         // There's a funny race condition here. After Socket::Create, messages
         // from the socket are already handled and a RPC is possibly done
@@ -327,6 +339,8 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
 }
 
 void Acceptor::OnNewConnections(Socket* acception) {
+    RPC_VLOG << "Acceptor::OnNewConnections triggered for listened_fd="
+              << acception->fd();
     int progress = Socket::PROGRESS_INIT;
     do {
         OnNewConnectionsUntilEAGAIN(acception);

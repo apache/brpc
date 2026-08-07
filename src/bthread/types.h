@@ -152,7 +152,14 @@ static const size_t BTHREAD_EPOLL_THREAD_NUM = 1;
 static const bthread_t BTHREAD_ATOMIC_INIT = 0;
 
 // Min/Max number of work pthreads.
+// When RDMA or io_uring is compiled in, their dedicated Poller threads handle
+// I/O directly, so the bare minimum drops to 1 worker + epoll thread.
+// Otherwise keep the traditional floor of 3 + epoll (1 epoll + 2 workers).
+#if BRPC_WITH_RDMA || BRPC_WITH_IOURING
+static const int BTHREAD_MIN_CONCURRENCY = 1 + BTHREAD_EPOLL_THREAD_NUM;
+#else
 static const int BTHREAD_MIN_CONCURRENCY = 3 + BTHREAD_EPOLL_THREAD_NUM;
+#endif
 static const int BTHREAD_MAX_CONCURRENCY = 1024;
 // Min/max number of ParkingLot.
 static const int BTHREAD_MIN_PARKINGLOT = 4;

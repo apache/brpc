@@ -77,7 +77,7 @@ static RETURN_CODE DeleteTimerInner(uint32_t fd) {
     read((int)fd, &exp, sizeof(exp));
 
     close((int)fd);
-    std::atomic_fetch_sub(&g_total_timer_num, 1);
+    std::atomic_fetch_sub(&g_total_timer_num, 1u);
     return UBRING_OK;
 }
 
@@ -305,7 +305,7 @@ void DeleteTimerSafe(uint32_t fd) {
     read((int)fd, &exp, sizeof(exp));
 
     close((int)fd);
-    std::atomic_fetch_sub(&g_total_timer_num, 1);
+    std::atomic_fetch_sub(&g_total_timer_num, 1u);
 }
 
 void DeleteTimer(uint32_t fd) {
@@ -365,7 +365,7 @@ int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args) {
         return -1;
     }
 
-    std::atomic_fetch_add(&g_total_timer_num, 1);
+    std::atomic_fetch_add(&g_total_timer_num, 1u);
 
 #if defined(OS_LINUX)
     ret = timerfd_settime(timer_fd, 0, time, NULL);
@@ -384,7 +384,7 @@ int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args) {
             LOG(ERROR) << "Failed to delete the timer fd=" << timer_fd << " with errno=" << errno;
         }
         CloseTimerFd(timer_fd);
-        std::atomic_fetch_sub(&g_total_timer_num, 1);
+        std::atomic_fetch_sub(&g_total_timer_num, 1u);
         LOG(ERROR) << "Failed to set timer";
         return -1;
     }

@@ -65,6 +65,10 @@ namespace ubring {
     class UBShmEndpoint;
     class UBConnect;
 }
+namespace iouring {
+class IouringEndpoint;
+}
+
 class Socket;
 class AuthContext;
 class EventDispatcher;
@@ -310,6 +314,17 @@ struct SocketOptions {
     // Tag of this socket
     bthread_tag_t bthread_tag{bthread_self_tag()};
     HealthCheckOption hc_option;
+    // True iff this Socket wraps a passively-listening fd (the one Acceptor
+    // creates over `listened_fd' in StartAccept(), used only to accept(2)
+    // new connections -- never to read/write application data on).
+    // Transports that offload I/O to a mechanism other than plain
+    // read()/write() (e.g. io_uring, which owns the read path and eagerly
+    // issues the first SubmitRead once resources are allocated) must check
+    // this and skip setting themselves up on such a Socket entirely:
+    // submitting a read against a listening fd is not a connection error,
+    // it's a programming error, and the kernel would correctly (but
+    // unhelpfully) return -ENOTCONN for it.
+    bool is_listen_socket{false};
 };
 
 // Abstractions on reading from and writing into file descriptors.
@@ -334,6 +349,7 @@ friend class rdma::RdmaHandshakeClientV2;
 friend class rdma::RdmaHandshakeServerV2;
 friend class rdma::RdmaHandshakeClientV3;
 friend class rdma::RdmaHandshakeServerV3;
+friend class iouring::IouringEndpoint;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
