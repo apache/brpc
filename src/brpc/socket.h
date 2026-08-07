@@ -61,10 +61,21 @@ class RdmaHandshakeServerV2;
 class RdmaHandshakeClientV3;
 class RdmaHandshakeServerV3;
 }
+
+namespace urma {
+class UrmaEndpoint;
+class UrmaConnect;
+class UrmaHandshakeClientV2;
+class UrmaHandshakeServerV2;
+class UrmaHandshakeClientV3;
+class UrmaHandshakeServerV3;
+}
+
 namespace ubring {
     class UBShmEndpoint;
     class UBConnect;
 }
+
 class Socket;
 class AuthContext;
 class EventDispatcher;
@@ -334,6 +345,12 @@ friend class rdma::RdmaHandshakeClientV2;
 friend class rdma::RdmaHandshakeServerV2;
 friend class rdma::RdmaHandshakeClientV3;
 friend class rdma::RdmaHandshakeServerV3;
+friend class urma::UrmaEndpoint;
+friend class urma::UrmaConnect;
+friend class urma::UrmaHandshakeClientV2;
+friend class urma::UrmaHandshakeServerV2;
+friend class urma::UrmaHandshakeClientV3;
+friend class urma::UrmaHandshakeServerV3;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
@@ -344,6 +361,7 @@ friend void DereferenceSocket(Socket*);
 friend class Transport;
 friend class TcpTransport;
 friend class RdmaTransport;
+friend class UrmaTransport;
 friend class TransportFactory;
     class SharedPart;
     struct WriteRequest;

@@ -54,10 +54,11 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,with-cpu-frequency,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-urma,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,with-cpu-frequency,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
 WITH_RDMA=0
+WITH_URMA=0
 WITH_MESALINK=0
 WITH_BTHREAD_TRACER=0
 WITH_ASAN=0
@@ -90,6 +91,7 @@ while true; do
         --with-glog ) WITH_GLOG=1; shift 1 ;;
         --with-thrift) WITH_THRIFT=1; shift 1 ;;
         --with-rdma) WITH_RDMA=1; shift 1 ;;
+        --with-urma) WITH_URMA=1; shift 1 ;;
         --with-mesalink) WITH_MESALINK=1; shift 1 ;;
         --with-bthread-tracer) WITH_BTHREAD_TRACER=1; shift 1 ;;
         --with-debug-bthread-sche-safety ) BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1; shift 1 ;;
@@ -538,6 +540,26 @@ if [ $WITH_RDMA != 0 ]; then
     append_to_output "WITH_RDMA=1"
 fi
 
+if [ $WITH_URMA != 0 ]; then
+    URMA_LIB=$(find_dir_of_lib urma)
+    URMA_HDR=$(find_dir_of_header_or_die urma_api.h)
+    URMA_BOND_HDR=$(find_dir_of_header urma_ubagg.h)
+    CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_URMA=1"
+    append_to_output "WITH_URMA=1"
+    append_to_output_headers "$URMA_HDR"
+    if [ -n "$URMA_BOND_HDR" ]; then
+        append_to_output_headers "$URMA_BOND_HDR"
+    fi
+    if [ -n "$URMA_LIB" ]; then
+        append_to_output_libs "$URMA_LIB"
+        append_to_output "DYNAMIC_LINKINGS+=-lurma"
+        append_to_output "URMA_USE_MOCK=0"
+    else
+        append_to_output "URMA_USE_MOCK=1"
+        print_info "liburma not found; using URMA link-time mock"
+    fi
+fi
+
 if [ $WITH_MESALINK != 0 ]; then
     CPPFLAGS="${CPPFLAGS} -DUSE_MESALINK"
 fi
@@ -674,6 +696,7 @@ print_info "System:    $SYSTEM"
 if [ $WITH_GLOG -ne 0 ]; then print_info "With glog: yes"; fi
 if [ $WITH_THRIFT -ne 0 ]; then print_info "With thrift: yes"; fi
 if [ $WITH_RDMA -ne 0 ]; then print_info "With RDMA: yes"; fi
+if [ $WITH_URMA -ne 0 ]; then print_info "With URMA: yes"; fi
 if [ $WITH_MESALINK -ne 0 ]; then print_info "With MesaLink: yes"; fi
 if [ $WITH_BTHREAD_TRACER -ne 0 ]; then print_info "With bthread tracer: yes"; fi
 if [ $WITH_ASAN -ne 0 ]; then print_info "With ASAN: yes"; fi

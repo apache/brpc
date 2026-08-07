@@ -15,15 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_SOCKET_MODE_H
-#define BRPC_SOCKET_MODE_H
-namespace brpc {
-enum SocketMode {
-    SOCKET_MODE_TCP = 0,
-    SOCKET_MODE_RDMA = 1,
-    SOCKET_MODE_UBRING = 2,
-    SOCKET_MODE_URMA = 3
-};
-}  // namespace brpc
+#ifndef BRPC_URMA_URMA_BONDING_H
+#define BRPC_URMA_URMA_BONDING_H
 
-#endif  // BRPC_SOCKET_MODE_H
+// urma_ubagg.h is a provider-private extension and is not shipped by every
+// UMDK installation. Keep the dependency optional so non-bonding devices and
+// mock builds continue to work.
+#if defined(__has_include)
+#if __has_include("urma_ubagg.h")
+#include "urma_ubagg.h"
+#define BRPC_URMA_HAS_BONDING_EXT 1
+#endif
+#endif
+
+#ifndef BRPC_URMA_HAS_BONDING_EXT
+#define BRPC_URMA_HAS_BONDING_EXT 0
+#endif
+
+#endif  // BRPC_URMA_URMA_BONDING_H
