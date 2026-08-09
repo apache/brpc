@@ -1480,7 +1480,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
         return;
     }
     size_t stream_num = _request_streams.size();
-    std::vector<SocketUniquePtr> ptrs(stream_num);
+    std::vector<StreamUniquePtr> ptrs(stream_num);
     if (!FailedInline()) {
         if (_remote_stream_settings == NULL) {
             if (!FailedInline()) {
@@ -1488,7 +1488,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
             }
         } else {
             for (size_t i = 0; i < stream_num; ++i) {
-                if (Socket::Address(_request_streams[i], &ptrs[i]) != 0) {
+                if (Stream::Address(_request_streams[i], &ptrs[i]) != 0) {
                     if (!FailedInline()) {
                         SetFailed(EREQUEST, "Request stream=%" PRIu64 " was closed before responded",
                                   _request_streams[i]);
@@ -1511,14 +1511,14 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
         }
         return;
     }
-    Stream* s = (Stream*)ptrs[0]->conn();
+    Stream* s = ptrs[0].get();
     s->SetConnected(_remote_stream_settings);
     if (stream_num > 1) {
         auto extra_stream_ids = std::move(*_remote_stream_settings->mutable_extra_stream_ids());
         _remote_stream_settings->clear_extra_stream_ids();
         for (size_t i = 1; i < stream_num; ++i) {
             if(!ptrs[i]) continue;
-            Stream* extra_stream = (Stream *) ptrs[i]->conn();
+            Stream* extra_stream = ptrs[i].get();
             _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
             extra_stream->SetHostSocket(host_socket);
             extra_stream->SetConnected(_remote_stream_settings);

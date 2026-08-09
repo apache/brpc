@@ -89,35 +89,74 @@ typename std::enable_if<!butil::is_void<Ret>::value, Ret>::type ReturnEmpty() {
 template <typename Ret>
 typename std::enable_if<butil::is_void<Ret>::value, Ret>::type ReturnEmpty() {}
 
-// Call func_name of class_type if class_type implements func_name,
-// otherwise call default function.
-#define WRAPPER_OF(class_type, func_name, return_type)                                      \
-    struct func_name ## Wrapper {                                                           \
-        template<typename V, typename... Args>                                              \
+// Detect whether a type implements the member function `func_name' callable
+// with Args..., exposing the result as a compile-time boolean:
+//   HasMember_<func_name><V, Args...>::value
+// The detector is decoupled from the caller so that it can also be reused in
+// standalone static_assert to enforce interface contracts.
+#define BRPC_DEFINE_MEMBER_DETECTOR(func_name)                                              \
+    template <typename V, typename... Args>                                                 \
+    struct HasMember##func_name {                                                          \
+        template <typename U>                                                               \
         static auto Test(int) -> decltype(                                                  \
-            std::declval<V>().func_name(std::declval<Args>()...), std::true_type());        \
-        template<typename>                                                                  \
+            std::declval<U>().func_name(std::declval<Args>()...), std::true_type());        \
+        template <typename>                                                                 \
         static auto Test(...) -> std::false_type;                                           \
-                                                                                            \
-        template<typename... Args>                                                          \
-        typename std::enable_if<decltype(                                                   \
-            Test<class_type, Args...>(0))::value, return_type>::type                        \
-        Call(class_type* obj, Args&&... args) {                                             \
+        static constexpr bool value = decltype(Test<V>(0))::value;                          \
+    }
+
+// Define a static caller `Call<func_name>' that invokes `obj->func_name(...)'
+// if the type implements it, otherwise returns a default-constructed value.
+// Requires the detector defined by BRPC_DEFINE_MEMBER_DETECTOR(func_name).
+// On C++20, an inline `requires' expression is used directly (no separate
+// detector needed);
+// On C++17, a single `if constexpr' branch with the detector;
+// on C++11/14, two SFINAE overloads so that the body referencing a
+// possibly-missing member is never instantiated.
+#if __cplusplus >= 202002L
+#define BRPC_DEFINE_OPTIONAL_CALLER(func_name, return_type)                                 \
+    template <typename U, typename... Args>                                                 \
+    static return_type Call##func_name(U* obj, Args&&... args) {                             \
+        if constexpr (requires { obj->func_name(std::forward<Args>(args)...); }) {          \
+            BAIDU_CASSERT((butil::is_result_same<                                            \
+                              return_type, decltype(&U::func_name), U, Args...>::value),     \
+                          "Params or return type mismatch");                                 \
+            return obj->func_name(std::forward<Args>(args)...);                              \
+        } else {                                                                             \
+            return ReturnEmpty<return_type>();                                               \
+        }                                                                                    \
+    }
+#elif __cplusplus >= 201703L
+#define BRPC_DEFINE_OPTIONAL_CALLER(func_name, return_type)                                 \
+    template <typename U, typename... Args>                                                 \
+    static return_type Call##func_name(U* obj, Args&&... args) {                           \
+        if constexpr (HasMember##func_name<U, Args...>::value) {                           \
             BAIDU_CASSERT((butil::is_result_same<                                           \
-                              return_type, decltype(&T::func_name), T, Args...>::value),    \
+                              return_type, decltype(&U::func_name), U, Args...>::value),    \
                           "Params or return type mismatch");                                \
-                return obj->func_name(std::forward<Args>(args)...);                         \
-        }                                                                                   \
-                                                                                            \
-        template<typename... Args>                                                          \
-        typename std::enable_if<!decltype(                                                  \
-            Test<class_type, Args...>(0))::value, return_type>::type                        \
-        Call(class_type* obj, Args&&...) {                                                  \
+            return obj->func_name(std::forward<Args>(args)...);                             \
+        } else {                                                                            \
             return ReturnEmpty<return_type>();                                              \
         }                                                                                   \
     }
-
-#define WRAPPER_CALL(func_name, obj, ...) func_name ## Wrapper().Call(obj, ## __VA_ARGS__)
+#else
+#define BRPC_DEFINE_OPTIONAL_CALLER(func_name, return_type)                                 \
+    template <typename U, typename... Args>                                                 \
+    static typename std::enable_if<                                                         \
+        HasMember##func_name<U, Args...>::value, return_type>::type                        \
+    Call##func_name(U* obj, Args&&... args) {                                              \
+        BAIDU_CASSERT((butil::is_result_same<                                               \
+                          return_type, decltype(&U::func_name), U, Args...>::value),        \
+                      "Params or return type mismatch");                                    \
+        return obj->func_name(std::forward<Args>(args)...);                                 \
+    }                                                                                       \
+    template <typename U, typename... Args>                                                 \
+    static typename std::enable_if<                                                         \
+        !HasMember##func_name<U, Args...>::value, return_type>::type                       \
+    Call##func_name(U*, Args&&...) {                                                        \
+        return ReturnEmpty<return_type>();                                                  \
+    }
+#endif
 
 // VersionedRefWithId is an efficient data structure, which can be find
 // in O(1)-time by VRefId.
@@ -205,7 +244,11 @@ public:
         , _this_id(0)
         , _additional_ref_status(ADDITIONAL_REF_USING) {}
 
-    virtual ~VersionedRefWithId() = default;
+    // Non-virtual on purpose: CRTP static polymorphism needs no vtable, and
+    // instances are always recycled via return_resource() (never deleted
+    // through a base pointer), so a virtual destructor would only add a
+    // useless vptr and hurt cacheline layout.
+    ~VersionedRefWithId() = default;
     DISALLOW_COPY_AND_ASSIGN(VersionedRefWithId);
 
     // Create a VersionedRefWithId, put the identifier into `id'.
@@ -219,14 +262,14 @@ public:
     // of scope (w/o explicit std::move). User can still access `ptr'
     // after calling ptr->SetFailed() before release of `ptr'.
     // This function is wait-free.
-    // Returns 0 on success, -1 when the Socket was SetFailed().
+    // Returns 0 on success, -1 when the object was SetFailed().
     static int Address(VRefId id, VersionedRefWithIdUniquePtr<T>* ptr);
 
-    // Returns 0 on success, 1 on failed socket, -1 on recycled.
+    // Returns 0 on success, 1 on failed object, -1 on recycled.
     static int AddressFailedAsWell(VRefId id, VersionedRefWithIdUniquePtr<T>* ptr);
 
     // Re-address current VersionedRefWithId into `ptr'.
-    // Always succeed even if this socket is failed.
+    // Always succeed even if this object is failed.
     void ReAddress(VersionedRefWithIdUniquePtr<T>* ptr);
 
     // Returns signed 32-bit referenced-count.
@@ -239,12 +282,12 @@ public:
     // Any later Address() of the identifier shall return NULL. The
     // VersionedRefWithId is NOT recycled after calling this function,
     // instead it will be recycled when no one references it. Internal
-    // fields of the Socket are still accessible after calling this
+    // fields of the object are still accessible after calling this
     // function. Calling SetFailed() of a VersionedRefWithId more than
     // once is OK.
     // T::OnFailed() will be called when SetFailed() successfully.
     // This function is lock-free.
-    // Returns -1 when the Socket was already SetFailed(), 0 otherwise.
+    // Returns -1 when the object was already SetFailed(), 0 otherwise.
     template<typename... Args>
     static int SetFailedById(VRefId id, Args&&... args);
 
@@ -301,7 +344,7 @@ friend void DereferenceVersionedRefWithId<>(T* r);
         _versioned_ref.fetch_add(1, butil::memory_order_release);
     }
 
-    // Make this socket addressable again.
+    // Make this object addressable again.
     // If nref is less than `at_least_nref', VersionedRefWithId was
     // abandoned during revival and cannot be revived.
     void Revive(int32_t at_least_nref);
@@ -310,17 +353,21 @@ private:
     typedef butil::ResourceId<T> resource_id_t;
 
     // 1. When `failed_as_well=true', returns 0 on success,
-    //    1 on failed socket, -1 on recycled.
+    //    1 on failed object, -1 on recycled.
     // 2. When `failed_as_well=true', returns 0 on success,
-    //    -1 when the Socket was SetFailed().
+    //    -1 when the object was SetFailed().
     static int AddressImpl(VRefId id, bool failed_as_well,
                            VersionedRefWithIdUniquePtr<T>* ptr);
 
-    // Callback wrapper of Derived classes.
-    WRAPPER_OF(T, OnFailed, void);
-    WRAPPER_OF(T, BeforeAdditionalRefReleased, void);
-    WRAPPER_OF(T, AfterRevived, void);
-    WRAPPER_OF(T, OnDescription, std::string);
+    // Detectors + static callers for optional Derived-class callbacks.
+    BRPC_DEFINE_MEMBER_DETECTOR(OnFailed);
+    BRPC_DEFINE_OPTIONAL_CALLER(OnFailed, void);
+    BRPC_DEFINE_MEMBER_DETECTOR(BeforeAdditionalRefReleased);
+    BRPC_DEFINE_OPTIONAL_CALLER(BeforeAdditionalRefReleased, void);
+    BRPC_DEFINE_MEMBER_DETECTOR(AfterRevived);
+    BRPC_DEFINE_OPTIONAL_CALLER(AfterRevived, void);
+    BRPC_DEFINE_MEMBER_DETECTOR(OnDescription);
+    BRPC_DEFINE_OPTIONAL_CALLER(OnDescription, std::string);
 
     // unsigned 32-bit version + signed 32-bit referenced-count.
     // Meaning of version:
@@ -329,14 +376,14 @@ private:
     //   of a VersionedRefWithId on the slot, the version is added with 1 twice.
     //   This is also the version encoded in VRefId.
     // * Failed version: = created version + 1, SetFailed()-ed but returned.
-    // * Other versions: the socket is already recycled.
+    // * Other versions: the object is already recycled.
     butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT _versioned_ref;
     // The unique identifier.
     VRefId _this_id;
     // Indicates whether additional reference has increased,
     // decreased, or is increasing.
     // additional ref status:
-    // `Socket'、`Create': REF_USING
+    // constructor / `Create': REF_USING
     // `SetFailed': REF_USING -> REF_RECYCLED
     // `Revive' REF_RECYCLED -> REF_REVIVING -> REF_USING
     butil::atomic<AdditionalRefStatus> _additional_ref_status;
@@ -444,7 +491,7 @@ int VersionedRefWithId<T>::AddressImpl(
                 // Addressed a free slot.
             }
         } else {
-            CHECK(false) << "Over dereferenced SocketId=" << id;
+            CHECK(false) << "Over dereferenced VRefId=" << id;
         }
     }
     return -1;
@@ -488,7 +535,7 @@ int VersionedRefWithId<T>::SetFailedImpl(Args&&... args) {
                 butil::memory_order_release,
                 butil::memory_order_relaxed)) {
             // Call T::OnFailed() to notify the failure of T.
-            WRAPPER_CALL(OnFailed, static_cast<T*>(this), std::forward<Args>(args)...);
+            CallOnFailed(static_cast<T*>(this), std::forward<Args>(args)...);
             // Deref additionally which is added at creation so that this
             // queue's reference will hit 0(recycle) when no one addresses it.
             ReleaseAdditionalReference();
@@ -507,7 +554,7 @@ int VersionedRefWithId<T>::ReleaseAdditionalReference() {
                 expect, ADDITIONAL_REF_RECYCLED,
                 butil::memory_order_relaxed,
                 butil::memory_order_relaxed)) {
-            WRAPPER_CALL(BeforeAdditionalRefReleased, static_cast<T*>(this));
+            CallBeforeAdditionalRefReleased(static_cast<T*>(this));
             return Dereference();
         }
 
@@ -529,7 +576,7 @@ int VersionedRefWithId<T>::Dereference() {
     if (nref > 1) {
         return 0;
     }
-    if (__builtin_expect(nref == 1, 1)) {
+    if (BAIDU_LIKELY(nref == 1)) {
         const uint32_t ver = VersionOfVRef(vref);
         const uint32_t id_ver = VersionOfVRefId(id);
         // Besides first successful SetFailed() adds 1 to version, one of
@@ -541,9 +588,9 @@ int VersionedRefWithId<T>::Dereference() {
         //
         // Note: `ver == id_ver' means this VersionedRefWithId has been `SetRecycle'
         // before rather than `SetFailed'; `ver == ide_ver+1' means we
-        // had `SetFailed' this socket before. We should destroy the
-        // socket under both situation
-        if (__builtin_expect(ver == id_ver || ver == id_ver + 1, 1)) {
+        // had `SetFailed' this object before. We should destroy the
+        // object under both situation
+        if (BAIDU_LIKELY(ver == id_ver || ver == id_ver + 1)) {
             // sees nref:1->0, try to set version=id_ver+2,--nref.
             // No retry: if version changes, the slot is already returned by
             // another one who sees nref:1->0 concurrently; if nref changes,
@@ -590,7 +637,7 @@ void VersionedRefWithId<T>::Revive(int32_t at_least_nref) {
 
         int32_t nref = NRefOfVRef(vref);
         if (nref < at_least_nref) {
-            // Set the status to REF_RECYCLED since no one uses this socket
+            // Set the status to REF_RECYCLED since no one uses this object
             _additional_ref_status.store(
                 ADDITIONAL_REF_RECYCLED, butil::memory_order_relaxed);
             CHECK_EQ(1, nref);
@@ -606,7 +653,7 @@ void VersionedRefWithId<T>::Revive(int32_t at_least_nref) {
             // Set the status to REF_USING since we add additional ref again
             _additional_ref_status.store(
                 ADDITIONAL_REF_USING, butil::memory_order_relaxed);
-            WRAPPER_CALL(AfterRevived, static_cast<T*>(this));
+            CallAfterRevived(static_cast<T*>(this));
             return;
         }
     }
@@ -617,8 +664,7 @@ std::string VersionedRefWithId<T>::description() const {
     std::string result;
     result.reserve(128);
     butil::string_appendf(&result, "%s{id=%" PRIu64 " ", butil::class_name<T>(), id());
-    result.append(WRAPPER_CALL(
-        OnDescription, const_cast<T*>(static_cast<const T*>(this))));
+    result.append(CallOnDescription(const_cast<T*>(static_cast<const T*>(this))));
     butil::string_appendf(&result, "} (%p)", this);
     return result;
 }

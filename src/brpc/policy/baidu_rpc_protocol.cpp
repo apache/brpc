@@ -365,11 +365,11 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         meta.set_attachment_size(attached_size);
     }
     StreamId response_stream_id = INVALID_STREAM_ID;
-    SocketUniquePtr stream_ptr;
+    StreamUniquePtr stream_ptr;
     if (!response_stream_ids.empty()) {
         response_stream_id = response_stream_ids[0];
-        if (Socket::Address(response_stream_id, &stream_ptr) == 0) {
-            Stream* s = (Stream *) stream_ptr->conn();
+        if (Stream::Address(response_stream_id, &stream_ptr) == 0) {
+            Stream* s = stream_ptr.get();
             StreamSettings *stream_settings = meta.mutable_stream_settings();
             s->FillSettings(stream_settings);
             s->SetHostSocket(sock);
@@ -431,13 +431,13 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         // written user data would follower the RPC response.
         // Reuse stream_ptr to avoid address first stream id again
         if (stream_ptr) {
-            ((Stream*)stream_ptr->conn())->SetConnected();
+            stream_ptr->SetConnected();
         }
         for (size_t i = 1; i < response_stream_ids.size(); ++i) {
             StreamId extra_stream_id = response_stream_ids[i];
-            SocketUniquePtr extra_stream_ptr;
-            if (Socket::Address(extra_stream_id, &extra_stream_ptr) == 0) {
-                Stream* extra_stream = (Stream *) extra_stream_ptr->conn();
+            StreamUniquePtr extra_stream_ptr;
+            if (Stream::Address(extra_stream_id, &extra_stream_ptr) == 0) {
+                Stream* extra_stream = extra_stream_ptr.get();
                 extra_stream->SetHostSocket(sock);
                 extra_stream->SetConnected();
             } else {
@@ -1129,12 +1129,12 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     if (!request_stream_ids.empty()) {
         StreamSettings* stream_settings = meta.mutable_stream_settings();
         StreamId request_stream_id = request_stream_ids[0];
-        SocketUniquePtr ptr;
-        if (Socket::Address(request_stream_id, &ptr) != 0) {
+        StreamUniquePtr ptr;
+        if (Stream::Address(request_stream_id, &ptr) != 0) {
             return cntl->SetFailed(EREQUEST, "Stream=%" PRIu64 " was closed",
                                    request_stream_id);
         }
-        Stream* s = (Stream*) ptr->conn();
+        Stream* s = ptr.get();
         s->FillSettings(stream_settings);
         for (size_t i = 1; i < request_stream_ids.size(); ++i) {
             stream_settings->mutable_extra_stream_ids()->Add(request_stream_ids[i]);

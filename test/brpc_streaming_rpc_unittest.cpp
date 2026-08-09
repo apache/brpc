@@ -143,10 +143,14 @@ static void* SendTwoMessagesOnServerExtraStream(void* arg) {
     const int64_t connect_deadline_us = butil::gettimeofday_us() + 2 * 1000 * 1000L;
     bool connected = false;
     while (butil::gettimeofday_us() < connect_deadline_us) {
-        brpc::SocketUniquePtr ptr;
-        if (brpc::Socket::Address(sid, &ptr) == 0) {
-            brpc::Stream* s = static_cast<brpc::Stream*>(ptr->conn());
-            if (s->_host_socket != NULL && s->_connected) {
+        brpc::StreamUniquePtr ptr;
+        if (brpc::Stream::Address(sid, &ptr) == 0) {
+            brpc::Stream* s = ptr.get();
+            // SetConnected() publishes _connected only after _host_socket and
+            // the remote settings are ready. Check the acquire flag first
+            // before reading the non-atomic host pointer.
+            if (s->_connected.load(butil::memory_order_acquire) &&
+                s->_host_socket != NULL) {
                 connected = true;
                 break;
             }
@@ -286,20 +290,6 @@ TEST_F(StreamingRpcTest, batch_create_stream_feedback_race) {
     ASSERT_EQ(2u, request_streams.size());
     state.client_extra_stream_id = request_streams[1];
 
-    // Block SetConnected() on the extra stream to enlarge the race window.
-    brpc::SocketUniquePtr client_extra_ptr;
-    ASSERT_EQ(0, brpc::Socket::Address(state.client_extra_stream_id, &client_extra_ptr));
-    brpc::Stream* client_extra_stream = static_cast<brpc::Stream*>(client_extra_ptr->conn());
-    bthread_mutex_lock(&client_extra_stream->_connect_mutex);
-    struct UnlockGuard {
-        bthread_mutex_t* m;
-        ~UnlockGuard() {
-            if (m) {
-                bthread_mutex_unlock(m);
-            }
-        }
-    } unlock_guard{&client_extra_stream->_connect_mutex};
-
     BRPC_SCOPE_EXIT {
         if (state.server_extra_stream_id != brpc::INVALID_STREAM_ID) {
             brpc::StreamClose(state.server_extra_stream_id);
@@ -317,13 +307,6 @@ TEST_F(StreamingRpcTest, batch_create_stream_feedback_race) {
         server.Stop(0);
         server.Join();
 
-        // Release the SocketUniquePtr held above so the fake socket can be
-        // recycled. Otherwise BeforeRecycle / on_closed for the extra stream
-        // is deferred until `client_extra_ptr` destructs at scope exit, which
-        // happens *after* `client_handler` and `state` are destroyed -> UAF
-        // inside Stream::Consume on Linux.
-        client_extra_ptr.reset();
-
         // on_closed() runs asynchronously on each client stream's consumer
         // bthread. Wait for both before letting handler/state go out of
         // scope, otherwise Stream::Consume will dereference freed memory.
@@ -338,12 +321,10 @@ TEST_F(StreamingRpcTest, batch_create_stream_feedback_race) {
     stub.Echo(&cntl, &request, &response, brpc::NewCallback(SetAtomicTrue, &state.rpc_done));
 
     // Wait until client consumes the first 64B payload on extra stream.
+    // This increases the chance that Consume() runs before SetConnected()
+    // finishes on the extra stream, exercising the SetConnected()/Consume()
+    // ordering relevant to FEEDBACK sending via the atomic _local_consumed.
     ASSERT_TRUE(WaitForTrue(state.client_got_first_msg, 2000));
-
-    // Unblock SetConnected(); the fix in PR 3215 should send the first FEEDBACK
-    // with consumed_size=64 here, making server-side stream writable again.
-    bthread_mutex_unlock(&client_extra_stream->_connect_mutex);
-    unlock_guard.m = NULL;
 
     ASSERT_TRUE(WaitForTrue(state.rpc_done, 2000));
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -587,11 +568,13 @@ TEST_F(StreamingRpcTest, auto_close_if_host_socket_closed) {
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
 
     {
-        brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(request_stream, &ptr));
-        brpc::Stream* s = (brpc::Stream*)ptr->conn();
-        ASSERT_TRUE(s->_host_socket != NULL);
-        s->_host_socket->SetFailed();
+        brpc::StreamUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Stream::Address(request_stream, &ptr));
+        brpc::Stream* s = ptr.get();
+        ASSERT_TRUE(s->_connected.load(butil::memory_order_acquire));
+        brpc::Socket* host_socket = s->_host_socket;
+        ASSERT_TRUE(host_socket != NULL);
+        host_socket->SetFailed();
     }
 
     usleep(100);
@@ -638,9 +621,10 @@ TEST_F(StreamingRpcTest, failed_when_rst) {
         usleep(100);
     }
     {
-        brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, brpc::Socket::Address(request_stream, &ptr));
-        brpc::Stream* s = (brpc::Stream*)ptr->conn();
+        brpc::StreamUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Stream::Address(request_stream, &ptr));
+        brpc::Stream* s = ptr.get();
+        ASSERT_TRUE(s->_connected.load(butil::memory_order_acquire));
         ASSERT_TRUE(s->_host_socket != NULL);
         brpc::policy::SendStreamRst(s->_host_socket,
                                     s->_remote_settings.stream_id());
@@ -866,11 +850,12 @@ TEST_F(StreamingRpcTest, segment_stream_data_automatically) {
 
     brpc::SocketUniquePtr host_socket_ptr;
     {
-      brpc::SocketUniquePtr ptr;
-      ASSERT_EQ(0, brpc::Socket::Address(request_stream, &ptr));
-      brpc::Stream *s = (brpc::Stream *)ptr->conn();
-      ASSERT_TRUE(s->_host_socket != NULL);
-      s->_host_socket->ReAddress(&host_socket_ptr);
+        brpc::StreamUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Stream::Address(request_stream, &ptr));
+        ASSERT_TRUE(ptr->_connected.load(butil::memory_order_acquire));
+        brpc::Socket* host_socket = ptr->_host_socket;
+        ASSERT_TRUE(host_socket != NULL);
+        host_socket->ReAddress(&host_socket_ptr);
     }
 
     ASSERT_EQ(0, brpc::StreamClose(request_stream));
@@ -883,7 +868,12 @@ TEST_F(StreamingRpcTest, segment_stream_data_automatically) {
     host_socket_ptr->UpdateStatsEverySecond(now_ms);
     brpc::SocketStat stat;
     host_socket_ptr->GetStat(&stat);
-    ASSERT_LT(N * sizeof(N), stat.out_num_messages_m);
+    // A whole message (with all its segments) is now written to the host socket
+    // in a single wait-free Socket::Write, so the number of host-socket messages
+    // no longer reflects the number of stream frames. Heavy segmentation still
+    // shows up as extra on-wire bytes: each 1-byte segment carries a full STRM
+    // frame header + meta, so out_size_m is far larger than the raw payload.
+    ASSERT_LT(N * sizeof(N), stat.out_size_m);
     ASSERT_FALSE(handler.failed());
     ASSERT_EQ(0, handler.idle_times());
     ASSERT_EQ(N, handler._expected_next_value);
@@ -1051,11 +1041,11 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream) {
     for (size_t i = 0; i < request_streams.size(); ++i) {
         const brpc::StreamId sid = request_streams[i];
         ASSERT_TRUE(WaitForTrue([sid]() {
-            brpc::SocketUniquePtr ptr;
-            if (brpc::Socket::Address(sid, &ptr) != 0) {
+            brpc::StreamUniquePtr ptr;
+            if (brpc::Stream::Address(sid, &ptr) != 0) {
                 return false;
             }
-            brpc::Stream* s = static_cast<brpc::Stream*>(ptr->conn());
+            brpc::Stream* s = ptr.get();
             return s->_host_socket != NULL &&
                    s->_connected.load(butil::memory_order_acquire);
         }, 5000)) << "stream_index=" << i;
@@ -1136,11 +1126,11 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream_upstream_only) {
     for (size_t i = 0; i < request_streams.size(); ++i) {
         const brpc::StreamId sid = request_streams[i];
         ASSERT_TRUE(WaitForTrue([sid]() {
-            brpc::SocketUniquePtr ptr;
-            if (brpc::Socket::Address(sid, &ptr) != 0) {
+            brpc::StreamUniquePtr ptr;
+            if (brpc::Stream::Address(sid, &ptr) != 0) {
                 return false;
             }
-            brpc::Stream* s = static_cast<brpc::Stream*>(ptr->conn());
+            brpc::Stream* s = ptr.get();
             return s->_host_socket != NULL &&
                    s->_connected.load(butil::memory_order_acquire);
         }, 5000)) << "stream_index=" << i;
@@ -1172,6 +1162,85 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream_upstream_only) {
     for (auto sid : request_streams) {
         brpc::StreamClose(sid);
     }
+    server.Stop(0);
+    server.Join();
+}
+
+TEST_F(StreamingRpcTest, unconsumed_bytes_reclaimed_on_stream_close) {
+    GFLAGS_NAMESPACE::SetCommandLineOption(
+        "socket_max_streams_unconsumed_bytes", "10485760");
+    BRPC_SCOPE_EXIT {
+        GFLAGS_NAMESPACE::SetCommandLineOption(
+            "socket_max_streams_unconsumed_bytes", "0");
+    };
+
+    class BlockingHandler : public brpc::StreamInputHandler {
+    public:
+        BlockingHandler() : blocked(true) {}
+
+        int on_received_messages(brpc::StreamId,
+                                 butil::IOBuf* const[], size_t) override {
+            while (blocked.load(std::memory_order_acquire)) {
+                usleep(100);
+            }
+            return 0;
+        }
+        void on_idle_timeout(brpc::StreamId) override {}
+        void on_closed(brpc::StreamId) override {}
+
+        std::atomic<bool> blocked;
+    } handler;
+
+    brpc::StreamOptions opt;
+    opt.handler = &handler;
+    opt.max_buf_size = 1024 * 1024;
+
+    brpc::Server server;
+    MyServiceWithStream service(opt);
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(9007, NULL));
+
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+
+    brpc::Controller cntl;
+    brpc::StreamId request_stream;
+    brpc::StreamOptions request_stream_options;
+    request_stream_options.max_buf_size = 1024 * 1024;
+    ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
+    brpc::ScopedStream stream_guard(request_stream);
+
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &request, &response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    brpc::SocketUniquePtr host_socket;
+    {
+        brpc::StreamUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Stream::Address(request_stream, &ptr));
+        ASSERT_TRUE(ptr->_connected.load(butil::memory_order_acquire));
+        ASSERT_TRUE(ptr->_host_socket != NULL);
+        ptr->_host_socket->ReAddress(&host_socket);
+    }
+    int64_t baseline = host_socket->_total_streams_unconsumed_size.load(
+        butil::memory_order_relaxed);
+
+    size_t write_size = 100 * 1024;
+    butil::IOBuf out;
+    out.append(std::string(write_size, 'x'));
+    ASSERT_EQ(0, brpc::StreamWrite(request_stream, out));
+    ASSERT_TRUE(WaitForTrue([&]() {
+        return host_socket->_total_streams_unconsumed_size.load(
+            butil::memory_order_relaxed) >= baseline + static_cast<int64_t>(write_size);
+    }, 2000));
+
+    ASSERT_EQ(0, brpc::StreamClose(request_stream));
+    ASSERT_TRUE(WaitForTrue([&]() {
+        return host_socket->_total_streams_unconsumed_size.load(
+            butil::memory_order_relaxed) == baseline;
+    }, 2000));
+
+    handler.blocked.store(false, std::memory_order_release);
     server.Stop(0);
     server.Join();
 }
