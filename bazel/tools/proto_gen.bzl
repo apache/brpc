@@ -60,31 +60,46 @@ def _resolve_include_dir(ctx):
       ctx.label.package = ""     + include = "src" -> "src"
       ctx.label.package = "test" + include = ""    -> "test"
       ctx.label.package = ""     + include = ""    -> "."
+
+    When the target is in an external repository, the returned path needs
+    to be prefixed with workspace_root.
     """
     pkg = ctx.label.package
     inc = ctx.attr.include.rstrip("/")
     if pkg and inc:
-        return pkg + "/" + inc
-    if pkg:
-        return pkg
-    if inc:
-        return inc
-    return "."
+        rel_path = pkg + "/" + inc
+    elif pkg:
+        rel_path = pkg
+    elif inc:
+        rel_path = inc
+    else:
+        rel_path = "."
+
+    workspace_root = ctx.label.workspace_root
+    if workspace_root:
+        if rel_path == ".":
+            return workspace_root
+        else:
+            return workspace_root + "/" + rel_path
+    return rel_path
 
 def _proto_gen_impl(ctx):
     srcs = ctx.files.srcs
     include_dir = _resolve_include_dir(ctx)
     bin_root = ctx.bin_dir.path
+    current_workspace_root = ctx.label.workspace_root
 
-    # `-I` flags for this target itself: the source-tree root plus
-    # the corresponding bin-dir root. The bin-dir entry is needed
-    # when a transitive dep generates .proto files into bazel-bin
-    # (e.g. via a custom code generator).
+    # Add both the source-tree include root and its bazel-bin counterpart.
+    # For external repositories, include_dir already starts with workspace_root,
+    # so appending it to bin_root addresses generated protos in that repository.
     own_imports = ["-I" + include_dir]
-    if include_dir == ".":
-        own_imports.append("-I" + bin_root)
-    else:
+    if current_workspace_root:
         own_imports.append("-I" + bin_root + "/" + include_dir)
+    else:
+        if include_dir == ".":
+            own_imports.append("-I" + bin_root)
+        else:
+            own_imports.append("-I" + bin_root + "/" + include_dir)
 
     # Collect transitive info from other `brpc_proto_gen` deps.
     dep_srcs_list = [d[BrpcProtoInfo].transitive_srcs for d in ctx.attr.deps]
@@ -120,12 +135,12 @@ def _proto_gen_impl(ctx):
         proto_dep_src_depsets.append(pi.transitive_sources)
         for path in pi.transitive_proto_path.to_list():
             proto_dep_imports.append("-I" + path)
-        wsroot = pd.label.workspace_root
-        if wsroot:
-            extra_pb_root_imports.append("-I" + wsroot)
-            extra_pb_root_imports.append("-I" + bin_root + "/" + wsroot)
-            extra_pb_root_imports.append("-I" + wsroot + "/src")
-            extra_pb_root_imports.append("-I" + bin_root + "/" + wsroot + "/src")
+        dep_workspace_root = pd.label.workspace_root
+        if dep_workspace_root:
+            extra_pb_root_imports.append("-I" + dep_workspace_root)
+            extra_pb_root_imports.append("-I" + bin_root + "/" + dep_workspace_root)
+            extra_pb_root_imports.append("-I" + dep_workspace_root + "/src")
+            extra_pb_root_imports.append("-I" + bin_root + "/" + dep_workspace_root + "/src")
     # Deduplicate the workspace-level `-I` entries so the same repo
     # is not listed multiple times when several proto_deps share it.
     proto_dep_imports.extend(depset(extra_pb_root_imports).to_list())
@@ -156,14 +171,16 @@ def _proto_gen_impl(ctx):
         outs.append(ctx.actions.declare_file(base + ".pb.h"))
         outs.append(ctx.actions.declare_file(base + ".pb.cc"))
 
-    # protoc's --cpp_out points at the include root under bin_root.
-    # After protoc organizes outputs by their import-relative path,
-    # the .pb.{h,cc} files land exactly where declare_file declared
-    # them above.
-    if include_dir == ".":
-        cpp_out_dir = bin_root
-    else:
+    # Point protoc at this target's include root under bazel-bin. For external
+    # repositories, include_dir includes workspace_root, which places generated
+    # files under the repository-specific portion of bazel-bin.
+    if current_workspace_root:
         cpp_out_dir = bin_root + "/" + include_dir
+    else:
+        if include_dir == ".":
+            cpp_out_dir = bin_root
+        else:
+            cpp_out_dir = bin_root + "/" + include_dir
 
     args = ctx.actions.args()
     args.add_all(all_imports.to_list())
