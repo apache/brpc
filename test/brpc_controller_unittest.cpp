@@ -28,6 +28,7 @@
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
+#include "brpc/span.h"
 
 class ControllerTest : public ::testing::Test{
 protected:
@@ -72,6 +73,48 @@ TEST_F(ControllerTest, notify_on_destruction) {
     // Trigger callback
     delete cntl;
     ASSERT_TRUE(cancel);
+}
+
+TEST_F(ControllerTest, root_client_span_kept_alive_until_reset) {
+    brpc::ClearTlsParentSpan();
+
+    brpc::Controller cntl;
+    std::weak_ptr<brpc::Span> weak_span;
+    {
+        std::shared_ptr<brpc::Span> span =
+            brpc::Span::CreateClientSpan("test.RootClient/Call", 0);
+        ASSERT_TRUE(span);
+        ASSERT_TRUE(span->local_parent().expired());
+        weak_span = span;
+        cntl._span = span;
+    }
+
+    ASSERT_FALSE(weak_span.expired());
+    ASSERT_TRUE(cntl._span);
+
+    cntl.Reset();
+    ASSERT_FALSE(cntl._span);
+}
+
+TEST_F(ControllerTest, root_client_span_released_by_submit_span) {
+    brpc::ClearTlsParentSpan();
+
+    brpc::Controller cntl;
+    std::weak_ptr<brpc::Span> weak_span;
+    {
+        std::shared_ptr<brpc::Span> span =
+            brpc::Span::CreateClientSpan("test.RootClient/Call", 0);
+        ASSERT_TRUE(span);
+        ASSERT_TRUE(span->local_parent().expired());
+        weak_span = span;
+        cntl._span = span;
+    }
+
+    ASSERT_FALSE(weak_span.expired());
+    ASSERT_TRUE(cntl._span);
+
+    cntl.SubmitSpan();
+    ASSERT_FALSE(cntl._span);
 }
 
 #if ! BRPC_WITH_GLOG

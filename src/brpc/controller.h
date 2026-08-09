@@ -877,7 +877,7 @@ private:
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
-    std::weak_ptr<Span> _span;
+    std::shared_ptr<Span> _span;
     uint32_t _flags; // all boolean fields inside Controller
     int32_t _error_code;
     std::string _error_text;

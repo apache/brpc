@@ -28,6 +28,7 @@
 #include <ostream>
 #include <memory>
 #include <pthread.h>
+#include "butil/atomicops.h"
 #include "butil/macros.h"
 #include "butil/endpoint.h"
 #include "butil/string_splitter.h"
@@ -198,6 +199,11 @@ private:
 
     void dump_to_db();
     void submit(int64_t cpuwide_us);
+    bool try_mark_submitted() const {
+        bool expected = false;
+        return _submitted.compare_exchange_strong(
+            expected, true, butil::memory_order_relaxed);
+    }
     bvar::CollectorSpeedLimit* speed_limit();
     bvar::CollectorPreprocessor* preprocessor();
 
@@ -252,6 +258,8 @@ private:
     // Also protects against concurrent iteration (e.g., CountClientSpans, SpanDB::Index)
     // while the list is being modified.
     mutable pthread_spinlock_t _client_list_spinlock;
+
+    mutable butil::atomic<bool> _submitted;
 };
 
 class SpanContainer : public bvar::Collected {
