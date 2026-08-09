@@ -278,7 +278,7 @@ jobs:
   clang-unittest-bazel-with-babylon-and-new-pb:
     runs-on: ubuntu-22.04
     env:
-      TEST_PROTOBUF_VERSION: "34.1"
+      TEST_PROTOBUF_VERSION: "35.1"
       # protobuf >= 34.x uses new ProtoInfo fields (option_deps, extension_declarations)
       # introduced in Bazel 8.x. The repo's .bazelversion (7.2.1) is too old. bazelisk
       # honors USE_BAZEL_VERSION.

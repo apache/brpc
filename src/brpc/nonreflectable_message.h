@@ -288,8 +288,13 @@ private:
 #    endif
                 ) {
             // Only can be used to determine whether the Types are the same.
-            descriptor = default_instance().GetMetadata().descriptor;
-            reflection = default_instance().GetMetadata().reflection;
+#    if GOOGLE_PROTOBUF_VERSION >= 7035000
+            set_descriptor(NonreflectableMessage<T>::default_instance().GetMetadata().descriptor);
+            set_reflection(NonreflectableMessage<T>::default_instance().GetMetadata().reflection);
+#    else
+            descriptor = NonreflectableMessage<T>::default_instance().GetMetadata().descriptor;
+            reflection = NonreflectableMessage<T>::default_instance().GetMetadata().reflection;
+#    endif
         }
     };
 
