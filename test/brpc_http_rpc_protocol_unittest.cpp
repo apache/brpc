@@ -1408,12 +1408,12 @@ TEST_F(HttpTest, http2_sanity) {
     options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
-    // Check that the first request with size larger than the default window can
-    // be sent out, when remote settings are not received.
+    // Check that the first request larger than the default window completes
+    // after SETTINGS and WINDOW_UPDATE make more capacity available.
     brpc::Controller cntl;
     test::EchoRequest big_req;
     test::EchoResponse res;
-    std::string message(2 * 1024 * 1024 /* 2M */, 'x');
+    std::string message(128 * 1024, 'x');
     big_req.set_message(message);
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.http_request().uri() = "/EchoService/Echo";

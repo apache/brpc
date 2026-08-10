@@ -54,8 +54,10 @@ brpc::policy::H2FrameHead PopFrame(butil::IOBuf* buf, std::string* payload) {
         (static_cast<uint8_t>(head[7]) << 8) |
         static_cast<uint8_t>(head[8]);
     payload->resize(frame.payload_size);
-    CHECK_EQ(frame.payload_size,
-             buf->cutn(&(*payload)[0], frame.payload_size));
+    if (frame.payload_size != 0) {
+        CHECK_EQ(frame.payload_size,
+                 buf->cutn(&(*payload)[0], frame.payload_size));
+    }
     return frame;
 }
 
@@ -80,12 +82,11 @@ TEST(H2UnsentMessage, split_request_data_by_remote_window) {
     brpc::policy::H2StreamContext* sctx =
         new brpc::policy::H2StreamContext(false);
     sctx->Init(ctx, 1);
-    ASSERT_EQ(0, ctx->TryToInsertStream(1, sctx));
 
     butil::IOBuf body;
     body.append("abcdefghij");
     butil::IOBuf out;
-    ctx->AppendClientRequestData(sctx, body, &out);
+    ASSERT_TRUE(ctx->TryToInsertClientStream(1, sctx, body, &out).ok());
 
     std::string payload;
     brpc::policy::H2FrameHead frame = PopFrame(&out, &payload);
@@ -209,26 +210,37 @@ TEST(H2UnsentMessage, clear_pending_data_releases_overcrowded_buffer) {
     sock->initialize_parsing_context(&ctx);
     ctx->_remote_window_left = 0;
 
-    brpc::policy::H2StreamContext* sctx =
-        new brpc::policy::H2StreamContext(false);
-    sctx->Init(ctx, 1);
-    ASSERT_EQ(0, ctx->TryToInsertStream(1, sctx));
-
     butil::IOBuf body;
     body.append("pending");
     butil::IOBuf out;
-    ctx->AppendClientRequestData(sctx, body, &out);
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_socket_max_unwritten_bytes = body.size();
+
+    std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+        new brpc::policy::H2StreamContext(false));
+    sctx->Init(ctx, 1);
+    ASSERT_TRUE(
+        ctx->TryToInsertClientStream(1, sctx.get(), body, &out).ok());
+    brpc::policy::H2StreamContext* inserted_sctx = sctx.release();
     ASSERT_TRUE(out.empty());
     ASSERT_EQ(body.size(), ctx->_pending_data_size);
-
-    const int64_t saved_limit = brpc::FLAGS_socket_max_unwritten_bytes;
-    brpc::FLAGS_socket_max_unwritten_bytes = body.size();
     EXPECT_TRUE(ctx->PendingDataOvercrowded());
+
+    std::unique_ptr<brpc::policy::H2StreamContext> rejected_sctx(
+        new brpc::policy::H2StreamContext(false));
+    rejected_sctx->Init(ctx, 3);
+    butil::IOBuf rejected_body;
+    rejected_body.append("x");
+    const butil::Status rejected = ctx->TryToInsertClientStream(
+        3, rejected_sctx.get(), rejected_body, &out);
+    EXPECT_EQ(brpc::EOVERCROWDED, rejected.error_code());
+    EXPECT_EQ(nullptr, ctx->FindStream(3));
+    EXPECT_EQ(body.size(), ctx->_pending_data_size);
+
     ctx->ClearPendingData(1);
     EXPECT_FALSE(ctx->PendingDataOvercrowded());
-    brpc::FLAGS_socket_max_unwritten_bytes = saved_limit;
 
-    EXPECT_TRUE(sctx->_pending_data.empty());
+    EXPECT_TRUE(inserted_sctx->_pending_data.empty());
     EXPECT_EQ(0u, ctx->_pending_data_size);
 }
 

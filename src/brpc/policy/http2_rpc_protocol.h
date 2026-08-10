@@ -378,8 +378,12 @@ friend void InitFrameHandlers();
     void RemoveGoAwayStreams(int goaway_stream_id, std::vector<H2StreamContext*>* out_streams);
 
     H2StreamContext* FindStream(int stream_id);
-    void AppendClientRequestData(H2StreamContext*, const butil::IOBuf&,
-                                 butil::IOBuf*);
+    // Atomically checks stream and pending-DATA limits, inserts the client
+    // stream, and appends DATA allowed by the current remote windows. On
+    // success, ownership of sctx is transferred to this context. On failure,
+    // no stream, window, or pending-DATA state is changed.
+    butil::Status TryToInsertClientStream(
+        int stream_id, H2StreamContext*, const butil::IOBuf&, butil::IOBuf*);
     void AppendPendingDataLocked(H2StreamContext*, butil::IOBuf*);
     void ClearPendingData(int stream_id);
     bool FlushPendingData(int stream_id);

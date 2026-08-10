@@ -289,13 +289,13 @@ TEST(GrpcProtocol, client_sends_large_request_with_small_remote_window) {
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
     brpc::ServerOptions server_options;
     server_options.h2_settings.stream_window_size = 32;
-    ASSERT_EQ(0, server.Start("127.0.0.1:8012", &server_options));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &server_options));
 
     brpc::Channel channel;
     brpc::ChannelOptions channel_options;
     channel_options.protocol = g_protocol;
     channel_options.timeout_ms = 10000;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:8012", "", &channel_options));
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &channel_options));
     test::GrpcService_Stub stub(&channel);
 
     // Establish the H2 connection and receive the server SETTINGS first.

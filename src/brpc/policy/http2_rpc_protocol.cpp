@@ -1444,14 +1444,57 @@ void H2Context::AppendPendingDataLocked(H2StreamContext* sctx,
     }
 }
 
-void H2Context::AppendClientRequestData(H2StreamContext* sctx,
-                                        const butil::IOBuf& data,
-                                        butil::IOBuf* out) {
+butil::Status H2Context::TryToInsertClientStream(
+    int stream_id, H2StreamContext* sctx, const butil::IOBuf& data,
+    butil::IOBuf* out) {
     std::unique_lock<butil::Mutex> mu(_stream_mutex);
-    CHECK(sctx->_pending_data.empty());
-    sctx->_pending_data = data;
-    _pending_data_size += data.size();
-    AppendPendingDataLocked(sctx, out);
+    if (_goaway_stream_id >= 0 && stream_id > _goaway_stream_id) {
+        return butil::Status(ELOGOFF, "the connection just issued GOAWAY");
+    }
+    if (_pending_streams.seek(stream_id) != nullptr) {
+        return butil::Status(EINTERNAL,
+                             "Fail to insert existing stream_id");
+    }
+    if (_pending_streams.size() >= _remote_settings.max_concurrent_streams) {
+        return butil::Status(
+            ELIMIT, "Pending Stream count exceeds max concurrent stream");
+    }
+
+    sctx->_remote_window_left.store(_remote_settings.stream_window_size,
+                                    butil::memory_order_relaxed);
+    const int64_t conn_window =
+        _remote_window_left.load(butil::memory_order_relaxed);
+    const int64_t stream_window =
+        sctx->_remote_window_left.load(butil::memory_order_relaxed);
+    size_t sendable_size = 0;
+    if (conn_window > 0 && stream_window > 0) {
+        sendable_size = std::min(
+            data.size(),
+            static_cast<size_t>(std::min(conn_window, stream_window)));
+    }
+    const size_t pending_size = data.size() - sendable_size;
+    if (FLAGS_socket_max_unwritten_bytes > 0) {
+        const auto limit =
+            static_cast<size_t>(FLAGS_socket_max_unwritten_bytes);
+        // Check and reserve pending bytes under the same lock. Otherwise,
+        // concurrent requests may all observe available capacity before any
+        // of them adds its unsent DATA.
+        if (_pending_data_size > limit ||
+            pending_size > limit - _pending_data_size) {
+            return butil::Status(EOVERCROWDED,
+                                 "Too much pending HTTP/2 request data");
+        }
+    }
+
+    // Mutate stream and window state only after all failure checks above.
+    _pending_streams[stream_id] = sctx;
+    if (!data.empty()) {
+        CHECK(sctx->_pending_data.empty());
+        sctx->_pending_data = data;
+        _pending_data_size += data.size();
+        AppendPendingDataLocked(sctx, out);
+    }
+    return butil::Status::OK();
 }
 
 void H2Context::ClearPendingData(int stream_id) {
@@ -1641,15 +1684,6 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         out->append(settingsbuf, nb);
     }
 
-    // TODO(zhujiashun): also check this in server push
-    if (ctx->VolatilePendingStreamSize() > ctx->remote_settings().max_concurrent_streams) {
-        return butil::Status(ELIMIT, "Pending Stream count exceeds max concurrent stream");
-    }
-    if (ctx->PendingDataOvercrowded()) {
-        return butil::Status(EOVERCROWDED,
-                             "Too much pending HTTP/2 request data");
-    }
-
     // Although the critical section looks huge, it should rarely be contended
     // since timeout of RPC is much larger than the delay of sending.
     std::unique_lock<butil::Mutex> mu(_mutex);
@@ -1668,16 +1702,7 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
 
     _sctx->Init(ctx, id);
-    const int rc = ctx->TryToInsertStream(id, _sctx.get());
-    if (rc < 0) {
-        return butil::Status(EINTERNAL, "Fail to insert existing stream_id");
-    } else if (rc > 0) {
-        return butil::Status(ELOGOFF, "the connection just issued GOAWAY");
-    }
     H2StreamContext* const sctx = _sctx.get();
-    _stream_id = sctx->stream_id();
-    // After calling TryToInsertStream, the ownership of _sctx is transferred to ctx
-    _sctx.release();
 
     HPacker& hpacker = ctx->hpacker();
     butil::IOBufAppender appender;
@@ -1703,11 +1728,16 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     butil::IOBuf frag;
     appender.move_to(frag);
     const butil::IOBuf& request_data = _cntl->request_attachment();
-    PackH2Headers(out, frag, _stream_id, remote_settings.max_frame_size,
+    PackH2Headers(out, frag, id, remote_settings.max_frame_size,
                   request_data.empty());
-    if (!request_data.empty()) {
-        ctx->AppendClientRequestData(sctx, request_data, out);
+    const butil::Status insert_status =
+        ctx->TryToInsertClientStream(id, sctx, request_data, out);
+    if (!insert_status.ok()) {
+        return insert_status;
     }
+    _stream_id = id;
+    // TryToInsertClientStream transfers ownership of _sctx to ctx on success.
+    _sctx.release();
     const int64_t conn_wu = ctx->ReleaseDeferredWindowUpdate();
     if (conn_wu > 0) {
         char winbuf[FRAME_HEAD_SIZE + 4];
