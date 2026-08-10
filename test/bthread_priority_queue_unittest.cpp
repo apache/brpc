@@ -138,8 +138,9 @@ TEST_F(PriorityQueueTest, start_foreground_priority_to_run) {
 
     struct EDSimArg {
         int n_tasks;
+        int error_code;
     };
-    EDSimArg ed_arg{N};
+    EDSimArg ed_arg{N, 0};
 
     auto ed_fn = [](void* arg) -> void* {
         EDSimArg* ea = static_cast<EDSimArg*>(arg);
@@ -147,10 +148,21 @@ TEST_F(PriorityQueueTest, start_foreground_priority_to_run) {
             bthread::TaskGroup::address_meta(bthread_self());
         meta->priority_index = 0;
 
+        std::vector<bthread_t> children;
+        children.reserve(ea->n_tasks);
         for (int i = 0; i < ea->n_tasks; ++i) {
             TaskArg* ta = new TaskArg{i};
             bthread_t child;
-            bthread_start_urgent(&child, NULL, priority_task_fn, ta);
+            int rc = bthread_start_urgent(&child, NULL, priority_task_fn, ta);
+            if (rc != 0) {
+                delete ta;
+                ea->error_code = rc;
+                break;
+            }
+            children.push_back(child);
+        }
+        for (auto child : children) {
+            bthread_join(child, NULL);
         }
         return NULL;
     };
@@ -161,7 +173,8 @@ TEST_F(PriorityQueueTest, start_foreground_priority_to_run) {
     bthread_t ed_tid;
     ASSERT_EQ(0, bthread_start_background(&ed_tid, &priority_attr,
                                            ed_fn, &ed_arg));
-    bthread_join(ed_tid, NULL);
+    ASSERT_EQ(0, bthread_join(ed_tid, NULL));
+    ASSERT_EQ(0, ed_arg.error_code);
 
     ASSERT_EQ(N, g_priority_count.load());
     std::lock_guard<std::mutex> lk(g_tid_mutex);
@@ -180,6 +193,7 @@ TEST_F(PriorityQueueTest, multiple_eds_concurrent_preempt) {
         int ed_index;
         int n_children;
         std::atomic<int>* resume_count;
+        int error_code;
     };
 
     auto ed_fn = [](void* arg) -> void* {
@@ -194,7 +208,13 @@ TEST_F(PriorityQueueTest, multiple_eds_concurrent_preempt) {
             int id = ea->ed_index * ea->n_children + i;
             TaskArg* ta = new TaskArg{id};
             bthread_t child;
-            bthread_start_urgent(&child, NULL, priority_task_fn, ta);
+            const int rc = bthread_start_urgent(
+                &child, NULL, priority_task_fn, ta);
+            if (rc != 0) {
+                delete ta;
+                ea->error_code = rc;
+                break;
+            }
             children.push_back(child);
             ea->resume_count->fetch_add(1, std::memory_order_relaxed);
         }
@@ -210,13 +230,14 @@ TEST_F(PriorityQueueTest, multiple_eds_concurrent_preempt) {
     std::vector<EDArg> ed_args(NUM_EDS);
     std::vector<bthread_t> ed_tids(NUM_EDS);
     for (int i = 0; i < NUM_EDS; ++i) {
-        ed_args[i] = {i, TASKS_PER_ED, &resume_count};
+        ed_args[i] = {i, TASKS_PER_ED, &resume_count, 0};
         ASSERT_EQ(0, bthread_start_background(&ed_tids[i], &priority_attr,
                                                ed_fn, &ed_args[i]));
     }
 
     for (int i = 0; i < NUM_EDS; ++i) {
-        bthread_join(ed_tids[i], NULL);
+        ASSERT_EQ(0, bthread_join(ed_tids[i], NULL));
+        ASSERT_EQ(0, ed_args[i].error_code);
     }
 
     ASSERT_EQ(TOTAL, g_priority_count.load());
