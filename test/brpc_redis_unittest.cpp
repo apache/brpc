@@ -1527,6 +1527,39 @@ TEST_F(RedisTest, memory_allocation_limits) {
         ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
     }
 
+    {
+        // Simple string exceeding limit before CRLF arrives. Without a cap on
+        // the waiting-for-CRLF path a peer that never sends the terminator
+        // could grow buf without bound.
+        butil::IOBuf buf;
+        std::string large_status = "+";
+        large_status.append(brpc::FLAGS_redis_max_allocation_size + 100, 'a');
+        buf.append(large_status);
+
+        brpc::RedisReply reply(&arena);
+        brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+    }
+
+    {
+        // A simple string exactly at the limit may have its CRLF split across
+        // reads; a lone trailing '\r' must not trip the cap early.
+        butil::IOBuf buf;
+        std::string boundary_status = "+";
+        boundary_status.append(brpc::FLAGS_redis_max_allocation_size, 'a');
+        boundary_status.push_back('\r');
+        buf.append(boundary_status);
+
+        brpc::RedisReply reply(&arena);
+        brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
+        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, err);
+
+        buf.push_back('\n');
+        err = reply.ConsumePartialIOBuf(buf);
+        ASSERT_EQ(brpc::PARSE_OK, err);
+        ASSERT_EQ(brpc::FLAGS_redis_max_allocation_size, (int)reply.size());
+    }
+
     // Test redis_command.cpp limits
     {
         // Test command string exceeding limit
