@@ -86,10 +86,16 @@ inline const char* SplitHostAndPort(const char* host_begin,
     uint64_t multiply = 1;
     for (const char* q = host_end - 1; q > host_begin; --q) {
         if (*q >= '0' && *q <= '9') {
-            port_raw += (*q - '0') * multiply;
-            multiply *= 10;
+            // Stop accumulating once out of range. This avoids uint64 overflow
+            // of port_raw/multiply and the narrowing to int below, which would
+            // otherwise turn an out-of-range port into a valid-looking wrong
+            // one (e.g. ":4294967377" truncating to 81).
+            if (port_raw <= 65535) {
+                port_raw += (*q - '0') * multiply;
+                multiply *= 10;
+            }
         } else if (*q == ':') {
-            *port = static_cast<int>(port_raw);
+            *port = (port_raw <= 65535) ? static_cast<int>(port_raw) : -1;
             return q;
         } else {
             break;

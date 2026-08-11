@@ -89,6 +89,37 @@ TEST(URITest, only_host) {
     ASSERT_EQ(0u, uri.QueryCount());
 }
 
+TEST(URITest, out_of_range_port) {
+    brpc::URI uri;
+    // 4294967377 == 2^32 + 81. Without a range check the accumulated value
+    // narrows to int and yields 81, so port() must not return the wrapped port.
+    ASSERT_EQ(0, uri.SetHttpURL("foo://www.baidu.com:4294967377/s"));
+    ASSERT_EQ(-1, uri.port());
+    ASSERT_EQ("www.baidu.com", uri.host());
+    ASSERT_EQ("/s", uri.path());
+
+    // Just above the valid range is rejected too.
+    ASSERT_EQ(0, uri.SetHttpURL("foo://www.baidu.com:65536/s"));
+    ASSERT_EQ(-1, uri.port());
+    ASSERT_EQ("www.baidu.com", uri.host());
+
+    // A very long run of digits must not overflow the accumulator.
+    ASSERT_EQ(0, uri.SetHttpURL("foo://www.baidu.com:999999999999999999999999/s"));
+    ASSERT_EQ(-1, uri.port());
+    ASSERT_EQ("www.baidu.com", uri.host());
+
+    // Boundaries of the valid range still parse.
+    ASSERT_EQ(0, uri.SetHttpURL("foo://www.baidu.com:65535/s"));
+    ASSERT_EQ(65535, uri.port());
+    ASSERT_EQ(0, uri.SetHttpURL("foo://www.baidu.com:0/s"));
+    ASSERT_EQ(0, uri.port());
+
+    // Host header path goes through the same helper.
+    uri.SetHostAndPort("www.baidu.com:4294967377");
+    ASSERT_EQ(-1, uri.port());
+    ASSERT_EQ("www.baidu.com", uri.host());
+}
+
 TEST(URITest, no_scheme) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL(" user:passwd2@www.baidu1.com/s?wd=uri2&nonkey=22#frag "));
