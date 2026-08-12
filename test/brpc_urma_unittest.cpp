@@ -198,7 +198,7 @@ TEST(UrmaHandshakeTest, client_handshake_factory_respects_flag) {
 // ---------------------------------------------------------------------------
 // 4-byte ACK: HELLO_ACK_URMA_OK bit.
 // ---------------------------------------------------------------------------
-TEST(UrmaHandshakeTest, ack_bit_is_rdma_ok) {
+TEST(UrmaHandshakeTest, ack_bit_is_urma_ok) {
     // The ACK is a 4-byte big-endian flags word; bit 0 means "I want URMA".
     // Verify the round-trip: host -> net -> host preserves the bit.
     uint32_t flags = 0x1;  // HELLO_ACK_URMA_OK

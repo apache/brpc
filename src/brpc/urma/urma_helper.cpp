@@ -100,7 +100,6 @@ DEFINE_bool(urma_poller_yield, false,
             "Yield (bthread_yield) in the busy poll loop to let other "
             "bthreads run");
 
-constexpr size_t kIOBufBlockHeaderLen = 32;
 
 // Set to true to skip real URMA hardware initialization (unit tests). When
 // true, GlobalUrmaInitializeOrDie() returns without touching liburma and the
@@ -581,7 +580,7 @@ static bool GlobalUrmaInitializeImpl() {
     }
     g_recv_block_size =
         static_cast<size_t>(FLAGS_urma_buffer_size) -
-        kIOBufBlockHeaderLen;
+        sizeof(butil::IOBuf::Block);
 
     // User-segment table.
     g_user_segs_lock = new (std::nothrow) butil::Mutex;

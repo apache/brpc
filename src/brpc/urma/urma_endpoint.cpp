@@ -72,7 +72,7 @@ DECLARE_bool(urma_poller_yield);
 static const int WAIT_TIMEOUT_MS = 50;
 static const size_t HELLO_ACK_LEN = 4;
 static const uint32_t HELLO_ACK_URMA_OK = 0x1;
-static const size_t IOBUF_BLOCK_HEADER_LEN = 32;  // matches butil IOBuf
+static const size_t IOBUF_BLOCK_HEADER_LEN = sizeof(butil::IOBuf::Block);
 
 // ---- Globals: prepared jetty pool + poller groups ----
 struct PreparedJetty {
