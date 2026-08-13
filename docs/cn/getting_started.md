@@ -121,6 +121,41 @@ $ ./echo_client
 $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
+### 使用bazel编译brpc
+
+brpc也可以直接使用[Bazel](https://bazel.build)编译，不需要先执行`config_brpc.sh`。`.bazelversion`中指定的版本已验证可用；使用[bzlmod](https://bazel.build/external/overview#bzlmod)（`MODULE.bazel`）的较新版本Bazel也可以使用。Bazel会自行解析protobuf/gflags/leveldb/openssl等依赖，不需要手动安装。
+
+git克隆brpc，进入到项目目录，然后运行：
+```shell
+$ bazel build -- //:brpc
+```
+
+如果需要一并编译样例：
+```shell
+$ bazel build -- //:brpc //example/...
+```
+
+修改编译器为clang，添加选项`--action_env=CC=clang --action_env=CXX=clang++`。
+
+可选功能通过`--define`开启，例如`--define with_glog=true`、`--define with_thrift=true`、`--define with_bthread_tracer=true`、`--define with_debug_lock=true`。完整的`--define`选项列表见`bazel/config/BUILD.bazel`。
+
+**用bazel运行样例**
+
+```shell
+$ bazel run //example:echo_c++_server &
+$ bazel run //example:echo_c++_client
+```
+
+**用bazel运行测试**
+
+```shell
+$ bazel test //test/...
+```
+
+**在自己的项目中把brpc作为bazel依赖**
+
+参考[Bazel Support](bazel_support.md)了解如何在其他Bazel项目中依赖brpc，`example/build_with_bazel_module`中有一个可运行的bzlmod样例。
+
 ## Fedora/CentOS
 
 ### 依赖准备
@@ -181,6 +216,9 @@ $ sh run_tests.sh
 
 ### 使用cmake编译brpc
 参考[这里](#使用cmake编译brpc)
+
+### 使用bazel编译brpc
+参考[这里](#使用bazel编译brpc)
 
 ### 使用vcpkg编译brpc
 
@@ -308,6 +346,9 @@ $ sh run_tests.sh
 
 ### 使用cmake编译brpc
 参考[这里](#使用cmake编译brpc)
+
+### 使用bazel编译brpc
+参考[这里](#使用bazel编译brpc)
 
 ## Docker
 使用docker 编译brpc：

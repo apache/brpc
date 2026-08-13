@@ -108,6 +108,41 @@ Examples link brpc statically, if you need to link the shared version, remove `C
 $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
+### Compile brpc with bazel
+
+brpc can also be built directly with [Bazel](https://bazel.build) without running `config_brpc.sh` first. The version pinned in `.bazelversion` is known to work; newer Bazel versions using [bzlmod](https://bazel.build/external/overview#bzlmod) (`MODULE.bazel`) also work. Bazel resolves protobuf/gflags/leveldb/openssl/... itself, so you don't need to install those deps manually.
+
+git clone brpc, cd into the repo and run:
+```shell
+$ bazel build -- //:brpc
+```
+
+To also build the examples:
+```shell
+$ bazel build -- //:brpc //example/...
+```
+
+To change compiler to clang, add `--action_env=CC=clang --action_env=CXX=clang++`.
+
+Optional features are toggled with `--define`, e.g. `--define with_glog=true`, `--define with_thrift=true`, `--define with_bthread_tracer=true`, `--define with_debug_lock=true`. See `bazel/config/BUILD.bazel` for the full list of `--define` switches.
+
+**Run example with bazel**
+
+```shell
+$ bazel run //example:echo_c++_server &
+$ bazel run //example:echo_c++_client
+```
+
+**Run tests with bazel**
+
+```shell
+$ bazel test //test/...
+```
+
+**Use brpc as a bazel dependency in your own project**
+
+See [Bazel Support](bazel_support.md) for how to depend on brpc from another Bazel project, and `example/build_with_bazel_module` for a runnable bzlmod example.
+
 ### Compile brpc with vcpkg
 
 [vcpkg](https://github.com/microsoft/vcpkg) is a package manager that supports all platforms,
@@ -185,6 +220,9 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 Same with [here](#compile-brpc-with-cmake)
+
+### Compile brpc with bazel
+Same with [here](#compile-brpc-with-bazel)
 
 ## Linux with self-built deps
 
@@ -317,6 +355,9 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 Same with [here](#compile-brpc-with-cmake)
+
+### Compile brpc with bazel
+Same with [here](#compile-brpc-with-bazel)
 
 # Supported deps
 
