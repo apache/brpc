@@ -123,9 +123,15 @@ $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 
 ### 使用bazel编译brpc
 
-brpc也可以直接使用[Bazel](https://bazel.build)编译，不需要先执行`config_brpc.sh`。`.bazelversion`中指定的版本已验证可用；使用[bzlmod](https://bazel.build/external/overview#bzlmod)（`MODULE.bazel`）的较新版本Bazel也可以使用。Bazel会自行解析protobuf/gflags/leveldb/openssl等依赖，不需要手动安装。
+brpc也可以直接使用[Bazel](https://bazel.build)编译，不需要先执行`config_brpc.sh`。推荐使用Bazelisk或`.bazelversion`中固定的Bazel版本（`7.2.1`），这是当前仓库默认验证的版本。bzlmod（`MODULE.bazel`）构建会拉取其中声明的第三方库，例如protobuf、gflags、leveldb、openssl，但仍需要可用的C++工具链和平台SDK。Bazel构建已在Linux和macOS CI流程中覆盖。
 
-git克隆brpc，进入到项目目录，然后运行：
+克隆brpc并进入项目目录：
+```shell
+$ git clone https://github.com/apache/brpc.git
+$ cd brpc
+```
+
+然后编译brpc库：
 ```shell
 $ bazel build -- //:brpc
 ```
