@@ -1,6 +1,6 @@
 ## bRPC 作为 Bazel 第三方依赖
 
-推荐在 Bazel 项目中使用 bzlmod（`MODULE.bazel`）依赖 bRPC。
+推荐在 Bazel 项目中使用 bzlmod（`MODULE.bazel`）依赖本地 bRPC 源码。
 `example/build_with_bazel_module` 中有一个可运行的示例。
 
 先在你的 `.bazelrc` 中添加 bRPC 使用的 registry：
@@ -11,7 +11,7 @@ common --registry=https://baidu.github.io/babylon/registry
 common --registry=https://raw.githubusercontent.com/apache/brpc/master/registry
 ```
 
-然后在 `MODULE.bazel` 中添加 bRPC：
+然后在 `MODULE.bazel` 中添加 bRPC，并指向本地 bRPC 源码：
 
 ```python
 module(
@@ -21,16 +21,14 @@ module(
 
 bazel_dep(name = "protobuf", version = "27.3", repo_name = "com_google_protobuf")
 bazel_dep(name = "brpc", version = "1.17.0", repo_name = "apache_brpc")
-```
 
-如果需要依赖本地的 bRPC 源码，可以添加本地覆盖：
-
-```python
 local_path_override(
     module_name = "brpc",
     path = "/path/to/brpc",
 )
 ```
+
+`bazel_dep` 用来声明模块名和仓库映射，`local_path_override` 让 Bazel 使用本地源码，而不是从 registry 解析 bRPC。
 
 之后在目标中链接 bRPC：
 

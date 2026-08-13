@@ -1,7 +1,8 @@
 ## bRPC as a Bazel third-party dependency
 
-The recommended way to depend on bRPC from a Bazel project is to use bzlmod
-(`MODULE.bazel`). See `example/build_with_bazel_module` for a runnable example.
+The recommended way to depend on a local bRPC checkout from a Bazel project is
+to use bzlmod (`MODULE.bazel`). See `example/build_with_bazel_module` for a
+runnable example.
 
 Add the registries used by bRPC to your `.bazelrc`:
 
@@ -11,7 +12,7 @@ common --registry=https://baidu.github.io/babylon/registry
 common --registry=https://raw.githubusercontent.com/apache/brpc/master/registry
 ```
 
-Add bRPC to your `MODULE.bazel`:
+Add bRPC to your `MODULE.bazel`, and point it to your local bRPC checkout:
 
 ```python
 module(
@@ -21,16 +22,16 @@ module(
 
 bazel_dep(name = "protobuf", version = "27.3", repo_name = "com_google_protobuf")
 bazel_dep(name = "brpc", version = "1.17.0", repo_name = "apache_brpc")
-```
 
-When developing against a local bRPC checkout, add a local override:
-
-```python
 local_path_override(
     module_name = "brpc",
     path = "/path/to/brpc",
 )
 ```
+
+The `bazel_dep` keeps the module name and repository mapping, while
+`local_path_override` makes Bazel use the local checkout instead of resolving
+bRPC from a registry.
 
 Then link bRPC from your targets:
 

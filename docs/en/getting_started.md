@@ -110,7 +110,7 @@ $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 
 ### Compile brpc with bazel
 
-brpc can also be built directly with [Bazel](https://bazel.build) without running `config_brpc.sh` first. Use Bazelisk or the Bazel version pinned in `.bazelversion` (`7.2.1`), which is the default version validated by this repository. The bzlmod (`MODULE.bazel`) build fetches the third-party libraries declared there, such as protobuf, gflags, leveldb, and openssl, but you still need a working C++ toolchain and platform SDK. Bazel builds are covered by the Linux and macOS CI workflows.
+brpc can also be built directly with [Bazel](https://bazel.build) without running `config_brpc.sh` first. Use Bazelisk or the Bazel version pinned in `.bazelversion` (`7.2.1`), which is the default version validated by this repository. The bzlmod (`MODULE.bazel`) build fetches the third-party libraries declared there, such as protobuf, gflags, leveldb, and openssl, but you still need a working C++ toolchain and platform SDK. Bazel builds are covered by Linux CI; the brpc library target is also covered by macOS CI.
 
 Clone brpc, cd into the repo and run:
 ```shell
