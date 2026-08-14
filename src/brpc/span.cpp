@@ -31,6 +31,7 @@
 #include "butil/fast_rand.h"
 #include "butil/file_util.h"
 #include "butil/files/file_enumerator.h"
+#include "butil/debug/leak_annotations.h"
 #include "brpc/shared_object.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/span.h"
@@ -201,6 +202,11 @@ Span::~Span() {
 
 std::shared_ptr<Span> Span::CreateClientSpan(const std::string& full_method_name,
                                              int64_t base_real_us) {
+    // Span objects are recycled via butil::object_pool and are never truly
+    // freed; the shared_ptr control block and other allocations made here are
+    // kept alive by that pool by design. Instruct LeakSanitizer to ignore
+    // these intentional "leaks".
+    ANNOTATE_SCOPED_MEMORY_LEAK;
     Span* span_raw = butil::get_object<Span>(Forbidden());
     if (__builtin_expect(span_raw == NULL, 0)) {
         return nullptr;
@@ -243,6 +249,11 @@ std::shared_ptr<Span> Span::CreateClientSpan(const std::string& full_method_name
 
 std::shared_ptr<Span> Span::CreateBthreadSpan(const std::string& full_method_name,
                                               int64_t base_real_us) {
+    // Span objects are recycled via butil::object_pool and are never truly
+    // freed; the shared_ptr control block and other allocations made here are
+    // kept alive by that pool by design. Instruct LeakSanitizer to ignore
+    // these intentional "leaks".
+    ANNOTATE_SCOPED_MEMORY_LEAK;
     std::shared_ptr<Span> parent = Span::tls_parent();
     Span* span_raw = butil::get_object<Span>(Forbidden());
     if (__builtin_expect(span_raw == NULL, 0)) {
@@ -291,10 +302,14 @@ inline const std::string& unknown_span_name() {
     return s_unknown_method_name;
 }
 
-std::shared_ptr<Span> Span::CreateServerSpan(
-    const std::string& full_method_name,
-    uint64_t trace_id, uint64_t span_id, uint64_t parent_span_id,
-    int64_t base_real_us) {
+std::shared_ptr<Span> Span::CreateServerSpan(const std::string& full_method_name,
+                                             uint64_t trace_id, uint64_t span_id,
+                                             uint64_t parent_span_id, int64_t base_real_us) {
+    // Span objects are recycled via butil::object_pool and are never truly
+    // freed; the shared_ptr control block and other allocations made here are
+    // kept alive by that pool by design. Instruct LeakSanitizer to ignore
+    // these intentional "leaks".
+    ANNOTATE_SCOPED_MEMORY_LEAK;
     Span* span_raw = butil::get_object<Span>(Forbidden());
     if (__builtin_expect(span_raw == NULL, 0)) {
         return nullptr;
