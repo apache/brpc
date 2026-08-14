@@ -81,22 +81,22 @@ const butil::IOBuf* Record::Meta(const char* name) const {
             return _metas[i].data.get();
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 butil::IOBuf* Record::MutableMeta(const char* name_cstr, bool null_on_found) {
     const butil::StringPiece name = name_cstr;
     for (size_t i = 0; i < _metas.size(); ++i) {
         if (_metas[i].name == name) {
-            return null_on_found ? NULL : _metas[i].data.get();
+            return null_on_found ? nullptr : _metas[i].data.get();
         }
     }
     if (name.size() > MAX_NAME_SIZE) {
         LOG(ERROR) << "Too long name=" << name;
-        return NULL;
+        return nullptr;
     } else if (name.empty()) {
         LOG(ERROR) << "Empty name";
-        return NULL;
+        return nullptr;
     }
     NamedMeta p;
     name.CopyToString(&p.name);
@@ -108,15 +108,15 @@ butil::IOBuf* Record::MutableMeta(const char* name_cstr, bool null_on_found) {
 butil::IOBuf* Record::MutableMeta(const std::string& name, bool null_on_found) {
     for (size_t i = 0; i < _metas.size(); ++i) {
         if (_metas[i].name == name) {
-            return null_on_found ? NULL : _metas[i].data.get();
+            return null_on_found ? nullptr : _metas[i].data.get();
         }
     }
     if (name.size() > MAX_NAME_SIZE) {
         LOG(ERROR) << "Too long name" << name;
-        return NULL;
+        return nullptr;
     } else if (name.empty()) {
         LOG(ERROR) << "Empty name";
-        return NULL;
+        return nullptr;
     }
     NamedMeta p;
     p.name = name;
@@ -278,7 +278,7 @@ int RecordReader::CutRecord(Record* rec) {
             return -1;
         }
         butil::IOBuf* meta = rec->MutableMeta(name, true/*null_on_found*/);
-        if (meta == NULL) {
+        if (meta == nullptr) {
             LOG(ERROR) << "Fail to add meta=" << name
                        << ", offset=" << offset();
             return -1;

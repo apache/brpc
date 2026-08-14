@@ -50,7 +50,7 @@ int launch_child_process(void* args) {
     dup2(cargs->pipe_fd1, STDOUT_FILENO);
     close(cargs->pipe_fd0);
     close(cargs->pipe_fd1);
-    execl("/bin/sh", "sh", "-c", cargs->cmd, NULL);
+    execl("/bin/sh", "sh", "-c", cargs->cmd, nullptr);
     _exit(1);
 }
 
@@ -67,7 +67,7 @@ int read_command_output_through_clone(std::ostream& os, const char* cmd) {
     ChildArgs args = { cmd, pipe_fd[0], pipe_fd[1] };
     char buffer[1024];
 
-    char* child_stack = NULL;
+    char* child_stack = nullptr;
     char* child_stack_mem = (char*)malloc(CHILD_STACK_SIZE);
     if (!child_stack_mem) {
         LOG(ERROR) << "Fail to alloc stack for the child process";
@@ -108,7 +108,7 @@ int read_command_output_through_clone(std::ostream& os, const char* cmd) {
             break;
         }
         if (wpid == 0) {
-            if (bthread_usleep != NULL) {
+            if (bthread_usleep != nullptr) {
                 bthread_usleep(1000);
             } else {
                 usleep(1000);
@@ -157,7 +157,7 @@ DEFINE_bool(run_command_through_clone, false,
 
 int read_command_output_through_popen(std::ostream& os, const char* cmd) {
     FILE* pipe = popen(cmd, "r");
-    if (pipe == NULL) {
+    if (pipe == nullptr) {
         return -1;
     }
     char buffer[1024];

@@ -62,7 +62,7 @@ int ComlogLayout::format(comspace::Event *evt) {
     }
 
     time_t t = evt->_print_time.tv_sec;
-    struct tm local_tm = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL};
+    struct tm local_tm = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr};
 #if _MSC_VER >= 1400
     localtime_s(&local_tm, &t);
 #else
@@ -148,7 +148,7 @@ ComlogSinkOptions::ComlogSinkOptions()
 }
 
 ComlogSink::ComlogSink() 
-    : _init(false), _dev(NULL) {
+    : _init(false), _dev(nullptr) {
 }
 
 int ComlogSink::SetupFromConfig(const std::string& conf_path_str) {
@@ -266,7 +266,7 @@ int ComlogSink::SetupDevice(com_device_t* dev, const char* type, const char* fil
     ComlogLayoutOptions layout_options;
     layout_options.shorter_log_level = _options.shorter_log_level;
     ComlogLayout* layout = new (std::nothrow) ComlogLayout(&layout_options);
-    if (layout == NULL) {
+    if (layout == nullptr) {
         LOG(FATAL) << "Fail to new layout";
         return -1;
     }
@@ -322,7 +322,7 @@ int ComlogSink::Setup(const ComlogSinkOptions* options) {
 
     int dev_num = (_options.enable_wf_device ? 2 : 1);
     _dev = new (std::nothrow) com_device_t[dev_num];
-    if (NULL == _dev) {
+    if (nullptr == _dev) {
         LOG(FATAL) << "Fail to new com_device_t";
         return -1;
     }
@@ -336,7 +336,7 @@ int ComlogSink::Setup(const ComlogSinkOptions* options) {
             return -1;
         }
     }
-    if (com_openlog(_options.process_name.c_str(), _dev, dev_num, NULL) != 0) {
+    if (com_openlog(_options.process_name.c_str(), _dev, dev_num, nullptr) != 0) {
         LOG(ERROR) << "Fail to com_openlog";
         return -1;
     }
@@ -354,7 +354,7 @@ void ComlogSink::Unload() {
         // reference the layout after com_closelog.
         //delete _dev->layout;
         delete [] _dev;
-        _dev = NULL;
+        _dev = nullptr;
     }
 }
 

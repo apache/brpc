@@ -35,7 +35,7 @@ class BUTIL_EXPORT Environment {
   // Returns false if the key is unset.
   virtual bool GetVar(const char* variable_name, std::string* result) = 0;
 
-  // Syntactic sugar for GetVar(variable_name, NULL);
+  // Syntactic sugar for GetVar(variable_name, nullptr);
   virtual bool HasVar(const char* variable_name);
 
   // Returns true on success, otherwise returns false.

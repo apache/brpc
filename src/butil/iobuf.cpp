@@ -280,11 +280,11 @@ uint32_t block_size(IOBuf::Block const* b) {
 inline IOBuf::Block* create_block_aligned(size_t block_size, size_t alignment) {
     if (block_size > 0xFFFFFFFFULL) {
         LOG(FATAL) << "block_size=" << block_size << " is too large";
-        return NULL;
+        return nullptr;
     }
     char* mem = (char*)iobuf::blockmem_allocate(block_size);
-    if (mem == NULL) {
-        return NULL;
+    if (mem == nullptr) {
+        return nullptr;
     }
     char* data = mem + sizeof(IOBuf::Block);
     // change data pointer & data size make align satisfied
@@ -296,7 +296,7 @@ inline IOBuf::Block* create_block_aligned(size_t block_size, size_t alignment) {
 
 // === Share TLS blocks between appending operations ===
 
-static __thread TLSData g_tls_data = { NULL, 0, false };
+static __thread TLSData g_tls_data = { nullptr, 0, false };
 
 // Used in release_tls_block()
 TLSData* get_g_tls_data() { return &g_tls_data; }
@@ -324,7 +324,7 @@ void remove_tls_block_chain() {
     if (!b) {
         return;
     }
-    tls_data.block_head = NULL;
+    tls_data.block_head = nullptr;
     int n = 0;
     do {
         IOBuf::Block* const saved_next = b->u.portal_next;
@@ -341,10 +341,10 @@ void remove_tls_block_chain() {
 IOBuf::Block* share_tls_block() {
     TLSData& tls_data = g_tls_data;
     IOBuf::Block* const b = tls_data.block_head;
-    if (b != NULL && !b->full()) {
+    if (b != nullptr && !b->full()) {
         return b;
     }
-    IOBuf::Block* new_block = NULL;
+    IOBuf::Block* new_block = nullptr;
     if (b) {
         new_block = b;
         while (new_block && new_block->full()) {
@@ -359,7 +359,7 @@ IOBuf::Block* share_tls_block() {
         butil::thread_atexit(remove_tls_block_chain);
     }
     if (!new_block) {
-        new_block = create_block(); // may be NULL
+        new_block = create_block(); // may be nullptr
         if (new_block) {
             ++tls_data.num_blocks;
         }
@@ -369,7 +369,7 @@ IOBuf::Block* share_tls_block() {
 }
 
 // Return chained blocks to TLS.
-// NOTE: b MUST be non-NULL and all blocks linked SHOULD not be full.
+// NOTE: b MUST be non-nullptr and all blocks linked SHOULD not be full.
 void release_tls_block_chain(IOBuf::Block* b) {
     TLSData& tls_data = g_tls_data;
     size_t n = 0;
@@ -384,11 +384,11 @@ void release_tls_block_chain(IOBuf::Block* b) {
         return;
     }
     IOBuf::Block* first_b = b;
-    IOBuf::Block* last_b = NULL;
+    IOBuf::Block* last_b = nullptr;
     do {
         ++n;
         CHECK(!b->full());
-        if (b->u.portal_next == NULL) {
+        if (b->u.portal_next == nullptr) {
             last_b = b;
             break;
         }
@@ -422,7 +422,7 @@ IOBuf::Block* acquire_tls_block() {
     }
     tls_data.block_head = b->u.portal_next;
     --tls_data.num_blocks;
-    b->u.portal_next = NULL;
+    b->u.portal_next = nullptr;
     return b;
 }
 
@@ -500,14 +500,14 @@ void IOBuf::operator=(const IOBuf& rhs) {
 template <bool MOVE>
 void IOBuf::_push_or_move_back_ref_to_smallview(const BlockRef& r) {
     BlockRef* const refs = _sv.refs;
-    if (NULL == refs[0].block) {
+    if (nullptr == refs[0].block) {
         refs[0] = r;
         if (!MOVE) {
             r.block->inc_ref();
         }
         return;
     }
-    if (NULL == refs[1].block) {
+    if (nullptr == refs[1].block) {
         if (refs[0].block == r.block &&
             refs[0].offset + refs[0].length == r.offset) { // Merge ref
             refs[0].length += r.length;
@@ -596,7 +596,7 @@ template void IOBuf::_push_or_move_back_ref_to_bigview<false>(const BlockRef&);
 template <bool MOVEOUT>
 int IOBuf::_pop_or_moveout_front_ref() {
     if (_small()) {
-        if (_sv.refs[0].block != NULL) {
+        if (_sv.refs[0].block != nullptr) {
             if (!MOVEOUT) {
                 _sv.refs[0].block->dec_ref();
             }
@@ -630,11 +630,11 @@ template int IOBuf::_pop_or_moveout_front_ref<false>();
 
 int IOBuf::_pop_back_ref() {
     if (_small()) {
-        if (_sv.refs[1].block != NULL) {
+        if (_sv.refs[1].block != nullptr) {
             _sv.refs[1].block->dec_ref();
             reset_block_ref(_sv.refs[1]);
             return 0;
-        } else if (_sv.refs[0].block != NULL) {
+        } else if (_sv.refs[0].block != nullptr) {
             _sv.refs[0].block->dec_ref();
             reset_block_ref(_sv.refs[0]);
             return 0;
@@ -660,11 +660,11 @@ int IOBuf::_pop_back_ref() {
 
 void IOBuf::clear() {
     if (_small()) {
-        if (_sv.refs[0].block != NULL) {
+        if (_sv.refs[0].block != nullptr) {
             _sv.refs[0].block->dec_ref();
             reset_block_ref(_sv.refs[0]);
                         
-            if (_sv.refs[1].block != NULL) {
+            if (_sv.refs[1].block != nullptr) {
                 _sv.refs[1].block->dec_ref();
                 reset_block_ref(_sv.refs[1]);
             }
@@ -1108,7 +1108,7 @@ int IOBuf::push_back(char c) {
 }
 
 int IOBuf::append(char const* s) {
-    if (BAIDU_LIKELY(s != NULL)) {
+    if (BAIDU_LIKELY(s != nullptr)) {
         return append(s, strlen(s));
     }
     return -1;
@@ -1180,7 +1180,7 @@ int IOBuf::append_user_data_with_meta(void* data,
         return 0;
     }
     char* mem = (char*)malloc(sizeof(IOBuf::Block) + sizeof(UserDataExtension));
-    if (mem == NULL) {
+    if (mem == nullptr) {
         return -1;
     }
     IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, std::move(deleter));
@@ -1278,7 +1278,7 @@ IOBuf::Area IOBuf::reserve(size_t count) {
 }
 
 int IOBuf::unsafe_assign(Area area, const void* data) {
-    if (area == INVALID_AREA || data == NULL) {
+    if (area == INVALID_AREA || data == nullptr) {
         LOG(ERROR) << "Invalid parameters";
         return -1;
     }
@@ -1416,7 +1416,7 @@ void const* IOBuf::fetch(void* d, size_t n) const {
             total_nc += r.length;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 const void* IOBuf::fetch1() const {
@@ -1424,7 +1424,7 @@ const void* IOBuf::fetch1() const {
         const IOBuf::BlockRef& r0 = _front_ref();
         return r0.block->data + r0.offset;
     }
-    return NULL;
+    return nullptr;
 }
 
 std::ostream& operator<<(std::ostream& os, const IOBuf& buf) {
@@ -1529,17 +1529,17 @@ ssize_t IOPortal::pappend_from_file_descriptor(
     iovec vec[MAX_APPEND_IOVEC];
     int nvec = 0;
     size_t space = 0;
-    Block* prev_p = NULL;
+    Block* prev_p = nullptr;
     Block* p = _block;
     // Prepare at most MAX_APPEND_IOVEC blocks or space of blocks >= max_count
     do {
-        if (p == NULL) {
+        if (p == nullptr) {
             p = iobuf::acquire_tls_block();
             if (BAIDU_UNLIKELY(!p)) {
                 errno = ENOMEM;
                 return -1;
             }
-            if (prev_p != NULL) {
+            if (prev_p != nullptr) {
                 prev_p->u.portal_next = p;
             } else {
                 _block = p;
@@ -1590,17 +1590,17 @@ ssize_t IOPortal::append_from_reader(IReader* reader, size_t max_count) {
     iovec vec[MAX_APPEND_IOVEC];
     int nvec = 0;
     size_t space = 0;
-    Block* prev_p = NULL;
+    Block* prev_p = nullptr;
     Block* p = _block;
     // Prepare at most MAX_APPEND_IOVEC blocks or space of blocks >= max_count
     do {
-        if (p == NULL) {
+        if (p == nullptr) {
             p = iobuf::acquire_tls_block();
             if (BAIDU_UNLIKELY(!p)) {
                 errno = ENOMEM;
                 return -1;
             }
-            if (prev_p != NULL) {
+            if (prev_p != nullptr) {
                 prev_p->u.portal_next = p;
             } else {
                 _block = p;
@@ -1736,9 +1736,9 @@ IOBuf::Area IOReserveAlignedBuf::reserve(size_t count) {
 //////////////// IOBufCutter ////////////////
 
 IOBufCutter::IOBufCutter(butil::IOBuf* buf)
-    : _data(NULL)
-    , _data_end(NULL)
-    , _block(NULL)
+    : _data(nullptr)
+    , _data_end(nullptr)
+    , _block(nullptr)
     , _buf(buf) {
 }
 
@@ -1759,9 +1759,9 @@ bool IOBufCutter::load_next_ref() {
         _buf->_pop_front_ref();
     }
     if (!_buf->_ref_num()) {
-        _data = NULL;
-        _data_end = NULL;
-        _block = NULL;
+        _data = nullptr;
+        _data_end = nullptr;
+        _block = nullptr;
         return false;
     } else {
         const IOBuf::BlockRef& r = _buf->_front_ref();
@@ -1820,15 +1820,15 @@ size_t IOBufCutter::cutn(butil::IOBuf* out, size_t n) {
                                     _block };
         out->_push_back_ref(r);
         _buf->_pop_front_ref();
-        _data = NULL;
-        _data_end = NULL;
-        _block = NULL;
+        _data = nullptr;
+        _data_end = nullptr;
+        _block = nullptr;
         return _buf->cutn(out, n - size) + size;
     } else {
         if (_block) {
-            _data = NULL;
-            _data_end = NULL;
-            _block = NULL;
+            _data = nullptr;
+            _data_end = nullptr;
+            _block = nullptr;
             _buf->_pop_front_ref();
         }
         return _buf->cutn(out, n);
@@ -1847,15 +1847,15 @@ size_t IOBufCutter::cutn(void* out, size_t n) {
     } else if (size != 0) {
         memcpy(out, _data, size);
         _buf->_pop_front_ref();
-        _data = NULL;
-        _data_end = NULL;
-        _block = NULL;
+        _data = nullptr;
+        _data_end = nullptr;
+        _block = nullptr;
         return _buf->cutn((char*)out + size, n - size) + size;
     } else {
         if (_block) {
-            _data = NULL;
-            _data_end = NULL;
-            _block = NULL;
+            _data = nullptr;
+            _data_end = nullptr;
+            _block = nullptr;
             _buf->_pop_front_ref();
         }
         return _buf->cutn(out, n);
@@ -1871,7 +1871,7 @@ IOBufAsZeroCopyInputStream::IOBufAsZeroCopyInputStream(const IOBuf& buf)
 
 bool IOBufAsZeroCopyInputStream::Next(const void** data, int* size) {
     const IOBuf::BlockRef* cur_ref = _buf->_pref_at(_ref_index);
-    if (cur_ref == NULL) {
+    if (cur_ref == nullptr) {
         return false;
     }
     *data = cur_ref->block->data + cur_ref->offset + _add_offset;
@@ -1925,14 +1925,14 @@ int64_t IOBufAsZeroCopyInputStream::ByteCount() const {
 }
 
 IOBufAsZeroCopyOutputStream::IOBufAsZeroCopyOutputStream(IOBuf* buf)
-    : _buf(buf), _block_size(0), _cur_block(NULL), _byte_count(0) {
+    : _buf(buf), _block_size(0), _cur_block(nullptr), _byte_count(0) {
 }
 
 IOBufAsZeroCopyOutputStream::IOBufAsZeroCopyOutputStream(
     IOBuf *buf, uint32_t block_size)
     : _buf(buf)
     , _block_size(block_size)
-    , _cur_block(NULL)
+    , _cur_block(nullptr)
     , _byte_count(0) {
     
     if (_block_size <= offsetof(IOBuf::Block, data)) {
@@ -1945,14 +1945,14 @@ IOBufAsZeroCopyOutputStream::~IOBufAsZeroCopyOutputStream() {
 }
 
 bool IOBufAsZeroCopyOutputStream::Next(void** data, int* size) {
-    if (_cur_block == NULL || _cur_block->full()) {
+    if (_cur_block == nullptr || _cur_block->full()) {
         _release_block();
         if (_block_size > 0) {
             _cur_block = iobuf::create_block(_block_size);
         } else {
             _cur_block = iobuf::acquire_tls_block();
         }
-        if (_cur_block == NULL) {
+        if (_cur_block == nullptr) {
             return false;
         }
     }
@@ -2025,7 +2025,7 @@ void IOBufAsZeroCopyOutputStream::BackUp(int count) {
             //    buf.append("foobar");  // can reuse the TLS block.
             if (_block_size == 0) {
                 iobuf::release_tls_block(_cur_block);
-                _cur_block = NULL;
+                _cur_block = nullptr;
             }
             return;
         }
@@ -2053,7 +2053,7 @@ void IOBufAsZeroCopyOutputStream::_release_block() {
     } else {
         iobuf::release_tls_block(_cur_block);
     }
-    _cur_block = NULL;
+    _cur_block = nullptr;
 }
 
 std::streambuf::int_type IOBufAsInputStreamBuf::underflow() {
@@ -2116,14 +2116,14 @@ std::streamsize IOBufAsInputStreamBuf::showmanyc() {
 IOBufAsOutputStreamBuf::~IOBufAsOutputStreamBuf() { shrink(); }
 
 void IOBufAsOutputStreamBuf::shrink() {
-    if (pbase() != NULL) {
+    if (pbase() != nullptr) {
         std::streamsize unused = epptr() - pptr();
         // _zc.BackUp takes int. A single put area never exceeds one block
         // (Next() returns int size), so this fits in int by construction;
         // the cap is purely defensive.
         int kIntMax = std::numeric_limits<int>::max();
         _zc.BackUp(unused > kIntMax ? kIntMax : static_cast<int>(unused));
-        setp(NULL, NULL);
+        setp(nullptr, nullptr);
     }
 }
 
@@ -2169,10 +2169,10 @@ int IOBufAsOutputStreamBuf::sync() {
 }
 
 bool IOBufAsOutputStreamBuf::refresh_put_area() {
-    void* block = NULL;
+    void* block = nullptr;
     int size = 0;
     if (!_zc.Next(&block, &size)) {
-        setp(NULL, NULL);
+        setp(nullptr, nullptr);
         return false;
     }
     char* p = static_cast<char*>(block);
@@ -2181,7 +2181,7 @@ bool IOBufAsOutputStreamBuf::refresh_put_area() {
 }
 
 IOBufAsSnappySink::IOBufAsSnappySink(butil::IOBuf& buf)
-    : _cur_buf(NULL), _cur_len(0), _buf(&buf), _buf_stream(&buf) {
+    : _cur_buf(nullptr), _cur_len(0), _buf(&buf), _buf_stream(&buf) {
 }
 
 void IOBufAsSnappySink::Append(const char* bytes, size_t n) {
@@ -2208,7 +2208,7 @@ char* IOBufAsSnappySink::GetAppendBuffer(size_t length, char* scratch) {
             LOG(FATAL) << "Fail to alloc buffer";
         }
     } // else no need to try.
-    _cur_buf = NULL;
+    _cur_buf = nullptr;
     _cur_len = 0;
     return scratch;
 }
@@ -2222,7 +2222,7 @@ void IOBufAsSnappySource::Skip(size_t n) {
 }
 
 const char* IOBufAsSnappySource::Peek(size_t* len) {
-    const char* buffer = NULL;
+    const char* buffer = nullptr;
     int res = 0;
     if (_stream.Next((const void**)&buffer, &res)) {
         *len = res;
@@ -2231,13 +2231,13 @@ const char* IOBufAsSnappySource::Peek(size_t* len) {
         return buffer;
     } else {
         *len = 0;
-        return NULL;
+        return nullptr;
     }
 }
 
 IOBufAppender::IOBufAppender()
-    : _data(NULL)
-    , _data_end(NULL)
+    : _data(nullptr)
+    , _data_end(nullptr)
     , _zc_stream(&_buf) {
 }
 

@@ -331,7 +331,7 @@ public:
     // Get `n' front-side bytes with minimum copying. Length of `aux_buffer'
     // must not be less than `n'.
     // Returns:
-    //   NULL            -  n is greater than length()
+    //   nullptr            -  n is greater than length()
     //   aux_buffer      -  n bytes are copied into aux_buffer
     //   internal buffer -  the bytes are stored continuously in the internal
     //                      buffer, no copying is needed. This function does not
@@ -341,7 +341,7 @@ public:
     // If n == 0 and buffer is empty, return value is undefined.
     const void* fetch(void* aux_buffer, size_t n) const;
     // Fetch one character from front side.
-    // Returns pointer to the character, NULL on empty.
+    // Returns pointer to the character, nullptr on empty.
     const void* fetch1() const;
 
     // Remove all data
@@ -425,7 +425,7 @@ protected:
     const BlockRef& _ref_at(size_t i) const;
 
     // Get pointer to n-th BlockRef(counting from front)
-    // If i is out-of-range, NULL is returned.
+    // If i is out-of-range, nullptr is returned.
     const BlockRef* _pref_at(size_t i) const;
 
 private:    
@@ -454,8 +454,8 @@ inline bool operator!=(const butil::IOBuf& b1, const butil::IOBuf& b2)
 // Typically used as the buffer to store bytes from sockets.
 class IOPortal : public IOBuf {
 public:
-    IOPortal() : _block(NULL) { }
-    IOPortal(const IOPortal& rhs) : IOBuf(rhs), _block(NULL) { } 
+    IOPortal() : _block(nullptr) { }
+    IOPortal(const IOPortal& rhs) : IOBuf(rhs), _block(nullptr) { }
     ~IOPortal();
     IOPortal& operator=(const IOPortal& rhs);
         
@@ -531,7 +531,7 @@ public:
     size_t copy_to(void* data, size_t n);
 
     // Fetch one character.
-    // Returns pointer to the character, NULL on empty
+    // Returns pointer to the character, nullptr on empty
     const void* fetch1();
 
     // Pop n bytes from front side
@@ -665,7 +665,7 @@ public:
     // `buf' must outlive this stream and must not be modified while the
     // stream is in use.
     explicit IOBufInputStream(const IOBuf& buf)
-        : std::istream(NULL), _sb(buf) {
+        : std::istream(nullptr), _sb(buf) {
         rdbuf(&_sb);
     }
 
@@ -758,11 +758,11 @@ class IOBufOutputStream : public std::ostream {
 public:
     // `buf' must outlive this stream.
     explicit IOBufOutputStream(IOBuf& buf)
-        : std::ostream(NULL), _sb(buf) {
+        : std::ostream(nullptr), _sb(buf) {
         rdbuf(&_sb);
     }
     IOBufOutputStream(IOBuf& buf, uint32_t block_size)
-        : std::ostream(NULL), _sb(buf, block_size) {
+        : std::ostream(nullptr), _sb(buf, block_size) {
         rdbuf(&_sb);
     }
 
