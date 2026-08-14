@@ -87,7 +87,7 @@ class SyncWaiter : public WaitableEvent::Waiter {
  public:
   SyncWaiter()
       : fired_(false),
-        signaling_event_(NULL),
+        signaling_event_(nullptr),
         lock_(),
         cv_(&lock_) {
   }
