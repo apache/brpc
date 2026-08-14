@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 // Weak pointers are pointers to an object that do not affect its lifetime,
-// and which may be invalidated (i.e. reset to NULL) by the object, or its
+// and which may be invalidated (i.e. reset to nullptr) by the object, or its
 // owner, at any time, most commonly when the object is about to be deleted.
 
 // Weak pointers are useful when an object needs to be accessed safely by one
@@ -189,7 +189,7 @@ template <typename T> class WeakPtrFactory;
 template <typename T>
 class WeakPtr : public internal::WeakPtrBase {
  public:
-  WeakPtr() : ptr_(NULL) {
+  WeakPtr() : ptr_(nullptr) {
   }
 
   // Allow conversion from U to T provided U "is a" T. Note that this
@@ -198,14 +198,14 @@ class WeakPtr : public internal::WeakPtrBase {
   WeakPtr(const WeakPtr<U>& other) : WeakPtrBase(other), ptr_(other.ptr_) {
   }
 
-  T* get() const { return ref_.is_valid() ? ptr_ : NULL; }
+  T* get() const { return ref_.is_valid() ? ptr_ : nullptr; }
 
   T& operator*() const {
-    DCHECK(get() != NULL);
+    DCHECK(get() != nullptr);
     return *get();
   }
   T* operator->() const {
-    DCHECK(get() != NULL);
+    DCHECK(get() != nullptr);
     return get();
   }
 
@@ -220,11 +220,11 @@ class WeakPtr : public internal::WeakPtrBase {
   typedef T* WeakPtr::*Testable;
 
  public:
-  operator Testable() const { return get() ? &WeakPtr::ptr_ : NULL; }
+  operator Testable() const { return get() ? &WeakPtr::ptr_ : nullptr; }
 
   void reset() {
     ref_ = internal::WeakReference();
-    ptr_ = NULL;
+    ptr_ = nullptr;
   }
 
  private:
@@ -244,7 +244,7 @@ class WeakPtr : public internal::WeakPtrBase {
   }
 
   // This pointer is only valid when ref_.is_valid() is true.  Otherwise, its
-  // value is undefined (as opposed to NULL).
+  // value is undefined (as opposed to nullptr).
   T* ptr_;
 };
 
@@ -260,7 +260,7 @@ class WeakPtrFactory {
   }
 
   ~WeakPtrFactory() {
-    ptr_ = NULL;
+    ptr_ = nullptr;
   }
 
   WeakPtr<T> GetWeakPtr() {
