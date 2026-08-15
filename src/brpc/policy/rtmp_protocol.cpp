@@ -1869,7 +1869,12 @@ bool RtmpChunkStream::OnAbortMessage(
         RTMP_ERROR(socket, mh) << "Invalid chunk_stream_id=" << cs_id;
         return false;
     }
-    connection_context()->ClearChunkStream(cs_id);
+    // Do not delete the chunk stream that is currently being parsed (i.e.
+    // the one running this Feed). Clearing it here would free `this' while
+    // Feed() still holds and later touches it, causing a use-after-free.
+    if (cs_id != _cs_id) {
+        connection_context()->ClearChunkStream(cs_id);
+    }
     return true;
 }
 
