@@ -26,6 +26,7 @@
 #include <sstream>
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
+#include "bthread/task_group.h"
 #include "bthread/task_meta.h"
 #include "bvar/bvar.h"
 
@@ -263,6 +264,75 @@ TEST_F(BthreadTest, bthread_join) {
     // Joining self
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, join_self, nullptr));
+}
+
+struct JoinVisibilityData {
+    int seed;
+    bool delay_write;
+    int values[64];
+};
+
+void* write_join_visibility_data(void* arg) {
+    auto data = static_cast<JoinVisibilityData*>(arg);
+    if (data->delay_write) {
+        // Give the caller a chance to enter the join wait path before writing.
+        bthread_usleep(1000);
+    }
+    for (size_t i = 0; i < ARRAY_SIZE(data->values); ++i) {
+        data->values[i] = data->seed + static_cast<int>(i);
+    }
+    return nullptr;
+}
+
+void check_join_visibility(bool join_after_exit) {
+    for (int round = 0; round < 1000; ++round) {
+        JoinVisibilityData data = {};
+        data.seed = round + 1;
+        data.delay_write = !join_after_exit;
+        bthread_t tid;
+        ASSERT_EQ(0, bthread_start_background(
+            &tid, nullptr, write_join_visibility_data, &data));
+        if (join_after_exit) {
+            // exists() uses a relaxed load, so observing completion here does
+            // not acquire the worker's writes. join() must still do so even
+            // when it returns without waiting on the butex.
+            while (bthread::TaskGroup::exists(tid)) {
+                bthread_usleep(10);
+            }
+        }
+        ASSERT_EQ(0, bthread_join(tid, nullptr));
+        // The payload is deliberately non-atomic and is read only after join.
+        // Do not add a lock or a release/acquire completion flag to this test:
+        // that would provide an alternative way to publish the worker's data.
+        for (size_t i = 0; i < ARRAY_SIZE(data.values); ++i) {
+            ASSERT_EQ(data.seed + static_cast<int>(i), data.values[i])
+                << "round=" << round << " index=" << i
+                << " join_after_exit=" << join_after_exit;
+        }
+    }
+}
+
+void* join_visibility_caller(void* arg) {
+    const bool is_bthread = *static_cast<const bool*>(arg);
+    EXPECT_EQ(is_bthread, bthread_self() != 0);
+    check_join_visibility(false);
+    check_join_visibility(true);
+    return nullptr;
+}
+
+TEST_F(BthreadTest, join_visibility_from_pthread) {
+    bool is_bthread = false;
+    pthread_t caller;
+    ASSERT_EQ(0, pthread_create(&caller, nullptr, join_visibility_caller, &is_bthread));
+    ASSERT_EQ(0, pthread_join(caller, nullptr));
+}
+
+TEST_F(BthreadTest, join_visibility_from_bthread) {
+    bool is_bthread = true;
+    bthread_t caller;
+    ASSERT_EQ(0, bthread_start_background(
+        &caller, nullptr, join_visibility_caller, &is_bthread));
+    ASSERT_EQ(0, bthread_join(caller, nullptr));
 }
 
 void* change_errno(void* arg) {
