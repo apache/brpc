@@ -164,6 +164,13 @@ inline void ArrayIterator::init(InputStream* stream, size_t size) {
         return set_bad();
     }
     _item_count = items_head.item_count;
+    // The item count is read from the request and may be much larger than
+    // the actual payload. The generated code uses it to Reserve() memory for
+    // repeated protobuf fields, so cap it by the remaining bytes (each item
+    // occupies at least one byte) to avoid a huge preallocation.
+    if (_item_count > left_size()) {
+        _item_count = static_cast<uint32_t>(left_size());
+    }
     operator++();
 }
 
