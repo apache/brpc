@@ -63,11 +63,13 @@ TEST(Mcpack2pbParserTest, StringFieldWithZeroValueSize) {
         if (it3->name == "service_name") {
             found_service_name = true;
             ASSERT_EQ(mcpack2pb::FIELD_STRING, it3->value.type());
-            std::string service_name;
+            std::string service_name = "stale";
             it3->value.as_string(&service_name, "service_name");
             // A zero-sized string field must be rejected gracefully instead of
             // throwing (resize(SIZE_MAX)) and crashing the process.
             EXPECT_FALSE(it3->value.stream()->good());
+            // The output string must be cleared so callers that reuse the
+            // string do not keep a stale value.
             EXPECT_TRUE(service_name.empty());
             break;
         }

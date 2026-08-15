@@ -580,7 +580,9 @@ void UnparsedValue::as_string(std::string* out, const char* var) {
     if (_size < 1) {
         // A string field must contain at least the trailing '\0'.
         // Reject _size == 0 here, otherwise `_size - 1' underflows and
-        // resize() throws an uncaught exception.
+        // resize() throws an uncaught exception. Clear `out' so callers
+        // that reuse the string do not keep a stale value.
+        out->clear();
         _stream->set_bad();
         return;
     }
