@@ -108,6 +108,19 @@ TEST(URITest, out_of_range_port) {
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu.com", uri.host());
 
+    // An out-of-range value padded with a long run of leading zeros must not
+    // wrap the accumulator into a valid-looking port either.
+    ASSERT_EQ(0, uri.SetHttpURL(
+            "foo://www.baidu.com:1000000000000000000000000000000000000"
+            "0000000000000000000000000000/s"));
+    ASSERT_EQ(-1, uri.port());
+    ASSERT_EQ("www.baidu.com", uri.host());
+
+    // Leading zeros on an in-range value still parse to that value.
+    ASSERT_EQ(0, uri.SetHttpURL("foo://www.baidu.com:00080/s"));
+    ASSERT_EQ(80, uri.port());
+    ASSERT_EQ("www.baidu.com", uri.host());
+
     // Boundaries of the valid range still parse.
     ASSERT_EQ(0, uri.SetHttpURL("foo://www.baidu.com:65535/s"));
     ASSERT_EQ(65535, uri.port());

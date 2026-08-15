@@ -82,20 +82,25 @@ static void ParseQueries(URI::QueryMap& query_map, const std::string &query) {
 inline const char* SplitHostAndPort(const char* host_begin,
                                     const char* host_end,
                                     int* port) {
-    uint64_t port_raw = 0;
-    uint64_t multiply = 1;
     for (const char* q = host_end - 1; q > host_begin; --q) {
         if (*q >= '0' && *q <= '9') {
-            // Stop accumulating once out of range. This avoids uint64 overflow
-            // of port_raw/multiply and the narrowing to int below, which would
-            // otherwise turn an out-of-range port into a valid-looking wrong
-            // one (e.g. ":4294967377" truncating to 81).
-            if (port_raw <= 65535) {
-                port_raw += (*q - '0') * multiply;
-                multiply *= 10;
-            }
+            continue;
         } else if (*q == ':') {
-            *port = (port_raw <= 65535) ? static_cast<int>(port_raw) : -1;
+            // [q + 1, host_end) is all digits. Accumulate it forward and clamp
+            // to -1 as soon as it leaves the valid range, so an out-of-range
+            // port never narrows/wraps into a valid-looking wrong one (e.g.
+            // ":4294967377" truncating to 81, or a long run of digits
+            // overflowing the accumulator). This matches the port<0||port>65535
+            // rejection in str2endpoint/hostname2endpoint.
+            int64_t port_raw = 0;
+            for (const char* p = q + 1; p < host_end; ++p) {
+                port_raw = port_raw * 10 + (*p - '0');
+                if (port_raw > 65535) {
+                    port_raw = -1;
+                    break;
+                }
+            }
+            *port = static_cast<int>(port_raw);
             return q;
         } else {
             break;
