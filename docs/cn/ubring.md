@@ -71,10 +71,13 @@ cmake --build build -j 8
 ```bash
 # 构建 brpc 并启用 UBRing 支持
 cd /path/to/brpc
-bazel build //... --define=with_ubring=true
+bazel build //:brpc --define=BRPC_WITH_UBRING=true
 
 # 构建 ubring_performance 示例
-bazel build //example/ubring_performance/...
+bazel build \
+  //example:ubring_performance_server \
+  //example:ubring_performance_client \
+  --define=BRPC_WITH_UBRING=true
 ```
 
 ### 选择共享内存后端
