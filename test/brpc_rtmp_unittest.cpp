@@ -814,12 +814,12 @@ TEST(RtmpTest, flv_reader_rejects_zero_datasize_audio_tag) {
 TEST(RtmpTest, abort_message_naming_own_chunk_stream) {
     int pipe_fds[2];
     ASSERT_EQ(0, pipe(pipe_fds));
-    butil::fd_guard guard0(pipe_fds[0]);
-    butil::fd_guard guard1(pipe_fds[1]);
+    butil::fd_guard guard0(pipe_fds[0]);   // read end, closed by this guard
+    butil::fd_guard guard1(pipe_fds[1]);   // write end, handed over to Socket
 
     brpc::SocketId id;
     brpc::SocketOptions options;
-    options.fd = pipe_fds[1];
+    options.fd = guard1.release();         // Socket takes ownership of the fd
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
     brpc::SocketUniquePtr sock;
     ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
@@ -845,12 +845,23 @@ TEST(RtmpTest, abort_message_naming_own_chunk_stream) {
 
     butil::IOBuf buf;
     buf.append(chunk);
-    const brpc::ParseResult pr = ctx.Feed(&buf, sock.get());
-    ASSERT_EQ(brpc::PARSE_OK, pr.error());
+    ASSERT_EQ(brpc::PARSE_OK, ctx.Feed(&buf, sock.get()).error());
 
-    // The chunk stream being parsed must survive the abort message: it must
-    // not be deleted by ClearChunkStream while Feed() is still running.
-    ASSERT_TRUE(ctx.GetChunkStream(2) != NULL);
+    // A following type-1 chunk inherits the message header from the previous
+    // message on the same stream. If the abort had wrongly deleted the chunk
+    // stream, the freshly recreated stream would have no last header and this
+    // chunk would be rejected; instead it must be parsed successfully.
+    std::string cont;
+    cont.push_back((char)0x42);   // basic header: fmt=1, cs_id=2
+    cont.append(3, '\0');         // timestamp delta = 0
+    cont.push_back('\0');         // message_length (3 bytes) = 4
+    cont.push_back('\0');
+    cont.push_back((char)0x04);
+    cont.push_back((char)0x03);   // message_type = Ack
+    cont.append(4, '\0');         // payload: bytes_received = 0
+    butil::IOBuf buf2;
+    buf2.append(cont);
+    ASSERT_EQ(brpc::PARSE_OK, ctx.Feed(&buf2, sock.get()).error());
 }
 
 TEST(RtmpTest, successfully_play_streams) {
