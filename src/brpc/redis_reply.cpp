@@ -138,9 +138,27 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth) {
                               " actually=" << len;
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
+            // Enforce the cap while still waiting for CRLF, otherwise a peer
+            // that never sends the terminator can grow buf without bound (like
+            // RedisCommandParser does for inline commands). buf holds the first
+            // char plus the payload so far; allow one extra byte for a boundary
+            // '\r' whose matching '\n' hasn't arrived yet.
+            if (FLAGS_redis_max_allocation_size < 0 ||
+                len > (size_t)FLAGS_redis_max_allocation_size + 2) {
+                LOG(ERROR) << "simple string exceeds max allocation size! max="
+                           << FLAGS_redis_max_allocation_size
+                           << ", actually=" << len - 1;
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
+            }
             return PARSE_ERROR_NOT_ENOUGH_DATA;
         }
         const size_t len = str.size() - 1;
+        if (FLAGS_redis_max_allocation_size < 0 ||
+            len > (size_t)FLAGS_redis_max_allocation_size) {
+            LOG(ERROR) << "simple string exceeds max allocation size! max="
+                       << FLAGS_redis_max_allocation_size << ", actually=" << len;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
         if (len < sizeof(_data.short_str)) {
             // SSO short strings, including empty string.
             _type = (fc == '-' ? REDIS_REPLY_ERROR : REDIS_REPLY_STATUS);
