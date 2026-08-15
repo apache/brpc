@@ -131,13 +131,11 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     uint64_t weight_sum = s->weight_sum;
     for (size_t i = 0; i < n; ++i) {
         uint64_t random_weight = butil::fast_rand_less_than(weight_sum);
-        // current_weight_sum is an inclusive prefix sum, so server i owns the
-        // half-open range [prefix(i-1), prefix(i)). random_weight belongs to the
-        // first server whose prefix sum is strictly greater than it, which is
-        // lower_bound() of random_weight + 1 rather than of random_weight itself.
-        const Server random_server(0, 0, random_weight + 1);
+        // current_weight_sum is an inclusive prefix sum, so random_weight belongs
+        // to the first server whose prefix sum is strictly greater than it.
+        const Server random_server(0, 0, random_weight);
         const auto& server =
-            std::lower_bound(s->server_list.begin(), s->server_list.end(),
+            std::upper_bound(s->server_list.begin(), s->server_list.end(),
                              random_server, server_compare);
         const SocketId id = server->id;
         if (ExcludedServers::IsExcluded(in.excluded, id)) {

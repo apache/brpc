@@ -1068,8 +1068,9 @@ TEST_F(LoadBalancerTest, weighted_randomized_equal_weight) {
         std::cout << result.first << " select_times=" << result.second
             << " actual_rate=" << actual_rate
             << " expect_rate=" << expect_rate << std::endl;
-        // 0.9x ~ 1.1x of the expected rate, which is more than 20 standard
-        // deviations away from the mean at this number of runs.
+        // 0.9x ~ 1.1x of the expected rate. With n=40000 and p=0.25 the count has
+        // sigma = sqrt(n*p*(1-p)) ~= 86.6, so the +-10% band is about 11 sigma
+        // wide and a passing run is not luck.
         ASSERT_GE(actual_rate, expect_rate * 0.9);
         ASSERT_LE(actual_rate, expect_rate * 1.1);
     }
