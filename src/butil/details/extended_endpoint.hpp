@@ -109,51 +109,51 @@ public:
     static ExtendedEndPoint* create(StringPiece sp, EndPoint* ep) {
         sp.trim_spaces();
         if (sp.empty()) {
-            return NULL;
+            return nullptr;
         }
         if (sp[0] == '[') {
             size_t colon_pos = sp.find(']');
             if (colon_pos == StringPiece::npos || colon_pos == 1 /* [] is invalid */ || ++colon_pos >= sp.size()) {
-                return NULL;
+                return nullptr;
             }
             StringPiece port_sp = sp.substr(colon_pos);
             if (port_sp.size() < 2 /* colon and at least one integer */ || port_sp[0] != ':') {
-                return NULL;
+                return nullptr;
             }
             port_sp.remove_prefix(1); // remove `:'
             if (port_sp.size() > 5) { // max 65535
-                return NULL;
+                return nullptr;
             }
             char buf[6];
             buf[port_sp.copy(buf, port_sp.size())] = '\0';
-            char* end = NULL;
+            char* end = nullptr;
             int port = ::strtol(buf, &end, 10 /* base */);
             if (end != buf + port_sp.size()) {
-                return NULL;
+                return nullptr;
             }
             return create(sp.substr(0, colon_pos), port, ep);
         } else if (sp.starts_with("unix:")) {
             return create(sp, EXTENDED_ENDPOINT_PORT, ep);
         }
-        return NULL;
+        return nullptr;
     }
 
     static ExtendedEndPoint* create(StringPiece sp, int port, EndPoint* ep) {
         sp.trim_spaces();
         if (sp.empty()) {
-            return NULL;
+            return nullptr;
         }
-        ExtendedEndPoint* eep = NULL;
+        ExtendedEndPoint* eep = nullptr;
         if (sp[0] == '[' && port >= 0 && port <= 65535) {
             if (sp.back() != ']' || sp.size() == 2 || sp.size() - 2 >= INET6_ADDRSTRLEN) {
-                return NULL;
+                return nullptr;
             }
             char buf[INET6_ADDRSTRLEN];
             buf[sp.copy(buf, sp.size() - 2 /* skip `[' and `]' */, 1 /* skip `[' */)] = '\0';
 
             in6_addr addr;
             if (inet_pton(AF_INET6, buf, &addr) != 1 /* succ */) {
-                return NULL;
+                return nullptr;
             }
 
             eep = new_extended_endpoint(AF_INET6);
@@ -170,7 +170,7 @@ public:
         } else if (sp.starts_with("unix:")) { // ignore port
             sp.remove_prefix(5); // remove `unix:'
             if (sp.empty() || sp.size() >= UDS_PATH_SIZE) {
-                return NULL;
+                return nullptr;
             }
             eep = new_extended_endpoint(AF_UNIX);
             if (eep) {
@@ -190,7 +190,7 @@ public:
     }
 
     static ExtendedEndPoint* create(sockaddr_storage* ss, socklen_t size, EndPoint* ep) {
-        ExtendedEndPoint* eep = NULL;
+        ExtendedEndPoint* eep = nullptr;
         if (ss->ss_family == AF_INET6 || ss->ss_family == AF_UNIX) {
             eep = new_extended_endpoint(ss->ss_family);
         }
@@ -211,7 +211,7 @@ public:
     // Get ExtendedEndPoint instance from EndPoint
     static ExtendedEndPoint* address(const EndPoint& ep) {
         if (!is_extended(ep)) {
-            return NULL;
+            return nullptr;
         }
         ::butil::ResourceId<ExtendedEndPoint> id;
         id.value = ep.ip.s_addr;
@@ -310,7 +310,7 @@ public:
             return 0;
         } else if (_u.sa.sa_family == AF_INET6) {
             sockaddr_in6 sa = _u.in6;
-            if (getnameinfo((const sockaddr*) &sa, sizeof(sa), host, host_len, NULL, 0, NI_NAMEREQD) != 0) {
+            if (getnameinfo((const sockaddr*) &sa, sizeof(sa), host, host_len, nullptr, 0, NI_NAMEREQD) != 0) {
                 return -1;
             }
             size_t len = ::strlen(host);
