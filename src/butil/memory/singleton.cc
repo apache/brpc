@@ -12,7 +12,7 @@ subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance) {
   // Handle the race. Another thread beat us and either:
   // - Has the object in BeingCreated state
   // - Already has the object created...
-  // We know value != NULL.  It could be kBeingCreatedMarker, or a valid ptr.
+  // We know value != nullptr.  It could be kBeingCreatedMarker, or a valid ptr.
   // Unless your constructor can be very time consuming, it is very unlikely
   // to hit this race.  When it does, we just spin and yield the thread until
   // the object has been created.

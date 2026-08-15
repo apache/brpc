@@ -21,7 +21,7 @@ class BUTIL_EXPORT RefCountedMemory
     : public butil::RefCountedThreadSafe<RefCountedMemory> {
  public:
   // Retrieves a pointer to the beginning of the data we point to. If the data
-  // is empty, this will return NULL.
+  // is empty, this will return nullptr.
   virtual const unsigned char* front() const = 0;
 
   // Size of the memory pointed to.
@@ -46,9 +46,9 @@ class BUTIL_EXPORT RefCountedMemory
 class BUTIL_EXPORT RefCountedStaticMemory : public RefCountedMemory {
  public:
   RefCountedStaticMemory()
-      : data_(NULL), length_(0) {}
+      : data_(nullptr), length_(0) {}
   RefCountedStaticMemory(const void* data, size_t length)
-      : data_(static_cast<const unsigned char*>(length ? data : NULL)),
+      : data_(static_cast<const unsigned char*>(length ? data : nullptr)),
         length_(length) {}
 
   // Overridden from RefCountedMemory:
