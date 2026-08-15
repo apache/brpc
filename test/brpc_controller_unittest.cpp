@@ -42,6 +42,14 @@ void MyCancelCallback(bool* cancel_flag) {
     *cancel_flag = true;
 }
 
+bool WaitForSpanToExpire(const std::weak_ptr<brpc::Span>& span) {
+    const int64_t deadline_us = butil::gettimeofday_us() + 5000000L;
+    while (!span.expired() && butil::gettimeofday_us() < deadline_us) {
+        usleep(1000);
+    }
+    return span.expired();
+}
+
 TEST_F(ControllerTest, notify_on_failed) {
     brpc::SocketId id = 0;
     ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &id));
@@ -94,6 +102,7 @@ TEST_F(ControllerTest, root_client_span_kept_alive_until_reset) {
 
     cntl.Reset();
     ASSERT_FALSE(cntl._span);
+    ASSERT_TRUE(WaitForSpanToExpire(weak_span));
 }
 
 TEST_F(ControllerTest, root_client_span_released_by_submit_span) {
@@ -115,6 +124,7 @@ TEST_F(ControllerTest, root_client_span_released_by_submit_span) {
 
     cntl.SubmitSpan();
     ASSERT_FALSE(cntl._span);
+    ASSERT_TRUE(WaitForSpanToExpire(weak_span));
 }
 
 #if ! BRPC_WITH_GLOG
