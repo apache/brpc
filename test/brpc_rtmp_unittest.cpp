@@ -28,6 +28,8 @@
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/fd_guard.h"
+#include "brpc/policy/rtmp_protocol.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -803,6 +805,52 @@ TEST(RtmpTest, flv_reader_rejects_zero_datasize_audio_tag) {
     brpc::RtmpAudioMessage amsg;
     ASSERT_FALSE(reader.Read(&amsg).ok());
     ASSERT_EQ(before, buf.size());
+}
+
+// A crafted Abort message that names the chunk stream currently being parsed
+// (itself) used to make ClearChunkStream delete the RtmpChunkStream while its
+// Feed() is still running, which caused a heap-use-after-free right after
+// OnMessage() returned.
+TEST(RtmpTest, abort_message_naming_own_chunk_stream) {
+    int pipe_fds[2];
+    ASSERT_EQ(0, pipe(pipe_fds));
+    butil::fd_guard guard0(pipe_fds[0]);
+    butil::fd_guard guard1(pipe_fds[1]);
+
+    brpc::SocketId id;
+    brpc::SocketOptions options;
+    options.fd = pipe_fds[1];
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr sock;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
+
+    brpc::policy::RtmpContext ctx(NULL, NULL);
+    ctx.SetState(sock->remote_side(),
+                 brpc::policy::RtmpContext::STATE_RECEIVED_C2);
+
+    // fmt0 chunk on chunk stream 2 carrying an Abort message (type 2) whose
+    // payload is the same chunk stream id (2).
+    std::string chunk;
+    chunk.push_back((char)0x02);   // basic header: fmt=0, cs_id=2
+    chunk.append(3, '\0');         // timestamp = 0
+    chunk.push_back('\0');         // message_length (3 bytes) = 4
+    chunk.push_back('\0');
+    chunk.push_back((char)0x04);
+    chunk.push_back((char)0x02);   // message_type = Abort
+    chunk.append(4, '\0');         // stream_id = 0 (little endian)
+    chunk.push_back('\0');         // payload: cs_id = 2 (big endian)
+    chunk.push_back('\0');
+    chunk.push_back('\0');
+    chunk.push_back((char)0x02);
+
+    butil::IOBuf buf;
+    buf.append(chunk);
+    const brpc::ParseResult pr = ctx.Feed(&buf, sock.get());
+    ASSERT_EQ(brpc::PARSE_OK, pr.error());
+
+    // The chunk stream being parsed must survive the abort message: it must
+    // not be deleted by ClearChunkStream while Feed() is still running.
+    ASSERT_TRUE(ctx.GetChunkStream(2) != NULL);
 }
 
 TEST(RtmpTest, successfully_play_streams) {
