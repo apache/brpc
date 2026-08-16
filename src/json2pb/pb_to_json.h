@@ -72,25 +72,25 @@ struct Pb2JsonOptions {
 };
 
 // Convert protobuf `messge' to `json' according to `options'.
-// Returns true on success. `error' (if not NULL) will be set with error
+// Returns true on success. `error' (if not nullptr) will be set with error
 // message on failure.
 bool ProtoMessageToJson(const google::protobuf::Message& message,
                         std::string* json,
                         const Pb2JsonOptions& options,
-                        std::string* error = NULL);
+                        std::string* error = nullptr);
 // send output to ZeroCopyOutputStream instead of std::string.
 bool ProtoMessageToJson(const google::protobuf::Message& message,
                         google::protobuf::io::ZeroCopyOutputStream* json,
                         const Pb2JsonOptions& options,
-                        std::string* error = NULL);
+                        std::string* error = nullptr);
 
 // Using default Pb2JsonOptions.
 bool ProtoMessageToJson(const google::protobuf::Message& message,
                         std::string* json,
-                        std::string* error = NULL);
+                        std::string* error = nullptr);
 bool ProtoMessageToJson(const google::protobuf::Message& message,
                         google::protobuf::io::ZeroCopyOutputStream* json,
-                        std::string* error = NULL);
+                        std::string* error = nullptr);
 
 // See <google/protobuf/util/json_util.h> for details.
 #if GOOGLE_PROTOBUF_VERSION >= 6030000
@@ -110,10 +110,10 @@ using Pb2ProtoJsonOptions = google::protobuf::util::JsonOptions;
 bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
                              google::protobuf::io::ZeroCopyOutputStream* json,
                              const Pb2ProtoJsonOptions& options = Pb2ProtoJsonOptions(),
-                             std::string* error = NULL);
+                             std::string* error = nullptr);
 bool ProtoMessageToProtoJson(const google::protobuf::Message& message, std::string* json,
                              const Pb2ProtoJsonOptions& options = Pb2ProtoJsonOptions(),
-                             std::string* error = NULL);
+                             std::string* error = nullptr);
 } // namespace json2pb
 
 #endif // BRPC_JSON2PB_PB_TO_JSON_H

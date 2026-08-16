@@ -45,7 +45,7 @@ struct Json2PbOptions {
 };
 
 // Convert `json' to protobuf `message' according to `options'.
-// Returns true on success. `error' (if not NULL) will be set with error
+// Returns true on success. `error' (if not nullptr) will be set with error
 // message on failure.
 //
 // [When options.allow_remaining_bytes_after_parsing is true]
@@ -93,10 +93,10 @@ using ProtoJson2PbOptions = google::protobuf::util::JsonParseOptions;
 bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
                              google::protobuf::Message* message,
                              const ProtoJson2PbOptions& options = ProtoJson2PbOptions(),
-                             std::string* error = NULL);
+                             std::string* error = nullptr);
 bool ProtoJsonToProtoMessage(const std::string& json, google::protobuf::Message* message,
                              const ProtoJson2PbOptions& options = ProtoJson2PbOptions(),
-                             std::string* error = NULL);
+                             std::string* error = nullptr);
 
 } // namespace json2pb
 

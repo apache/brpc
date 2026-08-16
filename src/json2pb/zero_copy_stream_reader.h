@@ -26,7 +26,7 @@ class ZeroCopyStreamReader {
 public:
     typedef char Ch;
     ZeroCopyStreamReader(google::protobuf::io::ZeroCopyInputStream *stream)
-            : _data(NULL), _data_size(0), _nread(0), _stream(stream) {
+            : _data(nullptr), _data_size(0), _nread(0), _stream(stream) {
     }
     //Take a charactor and return its address.
     const char* PeekAddr() { 
@@ -38,7 +38,7 @@ public:
                 return _data;
             }
         }
-        return NULL;
+        return nullptr;
     }
     const char* TakeWithAddr() {
         const char* c = PeekAddr();
@@ -47,7 +47,7 @@ public:
             --_data_size;
             return _data++;
         }
-        return NULL;
+        return nullptr;
     }
     char Take() {
         const char* c = PeekAddr();
@@ -71,7 +71,7 @@ public:
     size_t Tell() { return _nread; }
     void Put(char) {}
     void Flush() {}
-    char *PutBegin() { return NULL; }
+    char *PutBegin() { return nullptr; }
     size_t PutEnd(char *) { return 0; }
 private:
     const char *_data;
