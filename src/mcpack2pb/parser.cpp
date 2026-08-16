@@ -577,6 +577,15 @@ double UnparsedValue::as_double(const char* var) {
 }
 
 void UnparsedValue::as_string(std::string* out, const char* var) {
+    if (_size < 1) {
+        // A string field must contain at least the trailing '\0'.
+        // Reject _size == 0 here, otherwise `_size - 1' underflows and
+        // resize() throws an uncaught exception. Clear `out' so callers
+        // that reuse the string do not keep a stale value.
+        out->clear();
+        _stream->set_bad();
+        return;
+    }
     out->resize(_size - 1);
     if (_stream->cutn(&(*out)[0], _size - 1) != _size - 1) {
         CHECK(false) << "Not enough data for " << var;
