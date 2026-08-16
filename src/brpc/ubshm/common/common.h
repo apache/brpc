@@ -130,9 +130,9 @@ static inline uint64_t GetCurNanoSeconds(void) {
 
 #define FREE_PTR(ptr) \
     do {              \
-        if ((ptr) != NULL) { \
+        if ((ptr) != nullptr) { \
             free(ptr);    \
-            (ptr) = NULL; \
+            (ptr) = nullptr; \
         }             \
     } while (0)
 

@@ -68,8 +68,8 @@ public:
 
 private:
     void Run();
-    void (*_done)(int, void*){NULL};
-    void* _data{NULL};
+    void (*_done)(int, void*){nullptr};
+    void* _data{nullptr};
 };
 
 class BAIDU_CACHELINE_ALIGNMENT UBShmEndpoint : public SocketUser {
