@@ -199,6 +199,9 @@ public:
 
     // Set/get timeout in milliseconds for the RPC call. Use
     // ChannelOptions.timeout_ms on unset.
+    void set_progressive_read_timeout_ms(int32_t progressive_read_timeout_ms);
+    int32_t progressive_read_timeout_ms() const { return _progressive_read_timeout_ms; }
+
     void set_timeout_ms(int64_t timeout_ms);
     int64_t timeout_ms() const { return _timeout_ms; }
 
@@ -361,7 +364,9 @@ public:
 
     // Make the RPC end when the HTTP response has complete headers and let
     // user read the remaining body by using ReadProgressiveAttachmentBy().
-    void response_will_be_read_progressively() { add_flag(FLAGS_READ_PROGRESSIVELY); }
+    void response_will_be_read_progressively() {
+        add_flag(FLAGS_READ_PROGRESSIVELY);
+    }
     // Make the RPC end when the HTTP request has complete headers and let
     // user read the remaining body by using ReadProgressiveAttachmentBy().
     void request_will_be_read_progressively() { add_flag(FLAGS_READ_PROGRESSIVELY); }
@@ -911,6 +916,7 @@ private:
     int32_t _timeout_ms;
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
+    int32_t _progressive_read_timeout_ms;
     // Priority: `_backup_request_policy' > `_backup_request_ms'.
     BackupRequestPolicy* _backup_request_policy;
     // If this rpc call has retry/backup request,this var save the real timeout for current call
