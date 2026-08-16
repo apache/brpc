@@ -88,6 +88,17 @@ public:
     }
 };
 
+class WindowGrpcService : public ::test::GrpcService {
+public:
+    void Method(::google::protobuf::RpcController*,
+                const ::test::GrpcRequest* req,
+                ::test::GrpcResponse* res,
+                ::google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        res->set_message(req->message());
+    }
+};
+
 class GrpcTest : public ::testing::Test {
 protected:
     GrpcTest() {
@@ -270,6 +281,45 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         stub.Method(&cntl, &req, &res, NULL);
         EXPECT_FALSE(cntl.Failed());
     }
+}
+
+TEST(GrpcProtocol, client_sends_large_request_with_small_remote_window) {
+    WindowGrpcService service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions server_options;
+    server_options.h2_settings.stream_window_size = 32;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &server_options));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions channel_options;
+    channel_options.protocol = g_protocol;
+    channel_options.timeout_ms = 10000;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &channel_options));
+    test::GrpcService_Stub stub(&channel);
+
+    // Establish the H2 connection and receive the server SETTINGS first.
+    {
+        test::GrpcRequest request;
+        test::GrpcResponse response;
+        brpc::Controller cntl;
+        request.set_message("warmup");
+        request.set_gzip(false);
+        request.set_return_error(false);
+        stub.Method(&cntl, &request, &response, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(request.message(), response.message());
+    }
+
+    test::GrpcRequest request;
+    test::GrpcResponse response;
+    brpc::Controller cntl;
+    request.set_message(std::string(128 * 1024, 'x'));
+    request.set_gzip(false);
+    request.set_return_error(false);
+    stub.Method(&cntl, &request, &response, nullptr);
+    EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(request.message(), response.message());
 }
 
 } // namespace 

@@ -1643,12 +1643,12 @@ TEST_F(HttpTest, http2_sanity) {
     options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
-    // Check that the first request with size larger than the default window can
-    // be sent out, when remote settings are not received.
+    // Check that the first request larger than the default window completes
+    // after SETTINGS and WINDOW_UPDATE make more capacity available.
     brpc::Controller cntl;
     test::EchoRequest big_req;
     test::EchoResponse res;
-    std::string message(2 * 1024 * 1024 /* 2M */, 'x');
+    std::string message(128 * 1024, 'x');
     big_req.set_message(message);
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.http_request().uri() = "/EchoService/Echo";
@@ -1762,7 +1762,7 @@ TEST_F(HttpTest, http2_rst_after_header_and_data) {
     ASSERT_TRUE(cntl.http_response().status_code() == brpc::HTTP_STATUS_OK);
 }
 
-TEST_F(HttpTest, http2_window_used_up) {
+TEST_F(HttpTest, http2_window_used_up_buffers_request) {
     brpc::Controller cntl;
     butil::IOBuf request_buf;
     test::EchoRequest req;
@@ -1780,6 +1780,8 @@ TEST_F(HttpTest, http2_window_used_up) {
     buf.append(settingsbuf, brpc::policy::FRAME_HEAD_SIZE + nb);
     brpc::policy::ParseH2Message(&buf, _h2_client_sock.get(), false, NULL);
 
+    brpc::policy::H2Context* ctx = static_cast<brpc::policy::H2Context*>(
+        _h2_client_sock->parsing_context());
     int nsuc = brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE / cntl.request_attachment().size();
     for (int i = 0; i <= nsuc; i++) {
         brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(&cntl);
@@ -1789,15 +1791,15 @@ TEST_F(HttpTest, http2_window_used_up) {
                                     NULL, &cntl, request_buf, NULL);
         butil::IOBuf dummy;
         butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
+        ASSERT_TRUE(st.ok());
         if (i == nsuc) {
-            // the last message should fail according to flow control policy.
-            ASSERT_FALSE(st.ok());
-            ASSERT_TRUE(st.error_code() == brpc::ELIMIT);
-            ASSERT_TRUE(butil::StringPiece(st.error_str()).starts_with("remote_window_left is not enough"));
+            ASSERT_GT(ctx->_pending_data_size, 0u);
+            h2_req->DestroyStreamUserData(
+                _h2_client_sock, &cntl, ECANCELED, false);
+            ASSERT_EQ(0u, ctx->_pending_data_size);
         } else {
-            ASSERT_TRUE(st.ok());
+            h2_req->DestroyStreamUserData(_h2_client_sock, &cntl, 0, false);
         }
-        h2_req->DestroyStreamUserData(_h2_client_sock, &cntl, 0, false);
     }
 }
 

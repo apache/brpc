@@ -28,6 +28,7 @@ DECLARE_bool(http_verbose);
 DECLARE_int32(http_verbose_max_body_length);
 DECLARE_int32(health_check_interval);
 DECLARE_bool(usercode_in_pthread);
+DECLARE_int64(socket_max_unwritten_bytes);
 
 namespace policy {
 
@@ -145,6 +146,12 @@ static int WriteAck(Socket* s, const void* data, size_t n) {
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     return s->Write(&sendbuf, &wopt);
+}
+
+static int WriteAck(Socket* s, butil::IOBuf* data) {
+    Socket::WriteOptions wopt;
+    wopt.ignore_eovercrowded = true;
+    return s->Write(data, &wopt);
 }
 
 // [ https://tools.ietf.org/html/rfc7540#section-6.5.1 ]
@@ -269,18 +276,13 @@ inline bool AddWindowSize(butil::atomic<int64_t>* window_size, int64_t diff) {
     // If a sender receives a WINDOW_UPDATE that causes a flow-control window 
     // to exceed this maximum, it MUST terminate either the stream or the connection,
     // as appropriate.
-    int64_t before_add = window_size->fetch_add(diff, butil::memory_order_relaxed);
-    if ((((before_add | diff) >> 31) & 1) == 0) {
-        // two positive int64_t, check positive overflow
-        if ((before_add + diff) & (1 << 31)) {
-            return false;
-        }
-    }
-    if ((((before_add & diff) >> 31) & 1) == 1) {
-        // two negative int64_t, check negaitive overflow
-        if (((before_add + diff) & (1 << 31)) == 0) {
-            return false;
-        }
+    const int64_t before_add =
+        window_size->fetch_add(diff, butil::memory_order_relaxed);
+    const int64_t after_add = before_add + diff;
+    if (after_add > std::numeric_limits<int32_t>::max() ||
+        after_add < std::numeric_limits<int32_t>::min()) {
+        window_size->fetch_sub(diff, butil::memory_order_relaxed);
+        return false;
     }
     // window_size being negative is OK
     return true;
@@ -323,20 +325,19 @@ inline H2Context::FrameHandler FindFrameHandler(H2FrameType type) {
 
 H2Context::H2Context(Socket* socket, const Server* server)
     : _socket(socket)
-    // Maximize the window size to make sending big request possible before
-    // receving the remote settings.
-    , _remote_window_left(H2Settings::MAX_WINDOW_SIZE)
+    , _remote_window_left(H2Settings::DEFAULT_INITIAL_WINDOW_SIZE)
     , _conn_state(H2_CONNECTION_UNINITIALIZED)
     , _last_received_stream_id(-1)
     , _last_sent_stream_id(1)
     , _goaway_stream_id(-1)
     , _remote_settings_received(false)
+    , _pending_data_size(0)
     , _deferred_window_update(0) {
     // Stop printing the field which is useless for remote settings.
     _remote_settings.connection_window_size = 0;
-    // Maximize the window size to make sending big request possible before
-    // receving the remote settings.
-    _remote_settings.stream_window_size = H2Settings::MAX_WINDOW_SIZE;
+    // SETTINGS_INITIAL_WINDOW_SIZE defaults to 65535 until the peer sends a
+    // different value. Larger requests are resumed by WINDOW_UPDATE.
+    _remote_settings.stream_window_size = H2Settings::DEFAULT_INITIAL_WINDOW_SIZE;
     if (server) {
         _unack_local_settings = server->options().h2_settings;
     } else {
@@ -370,6 +371,16 @@ int H2Context::Init() {
     return 0;
 }
 
+H2Settings H2Context::remote_settings() const {
+    std::unique_lock<butil::Mutex> mu(_stream_mutex);
+    return _remote_settings;
+}
+
+size_t H2Context::VolatilePendingStreamSize() const {
+    std::unique_lock<butil::Mutex> mu(_stream_mutex);
+    return _pending_streams.size();
+}
+
 H2StreamContext* H2Context::RemoveStreamAndDeferWU(int stream_id) {
     H2StreamContext* sctx = NULL;
     {
@@ -377,6 +388,8 @@ H2StreamContext* H2Context::RemoveStreamAndDeferWU(int stream_id) {
         if (!_pending_streams.erase(stream_id, &sctx)) {
             return NULL;
         }
+        CHECK_GE(_pending_data_size, sctx->_pending_data.size());
+        _pending_data_size -= sctx->_pending_data.size();
     }
     // The remote stream will not send any more data, sending back the
     // stream-level WINDOW_UPDATE is pointless, just move the value into
@@ -394,6 +407,7 @@ void H2Context::RemoveGoAwayStreams(
             std::unique_lock<butil::Mutex> mu(_stream_mutex);
             _goaway_stream_id = goaway_stream_id;
             _pending_streams.swap(tmp);
+            _pending_data_size = 0;
         }
         for (StreamMap::const_iterator it = tmp.begin(); it != tmp.end(); ++it) {
             out_streams->push_back(it->second);
@@ -408,6 +422,9 @@ void H2Context::RemoveGoAwayStreams(
             }
         }
         for (size_t i = 0; i < out_streams->size(); ++i) {
+            CHECK_GE(_pending_data_size,
+                     (*out_streams)[i]->_pending_data.size());
+            _pending_data_size -= (*out_streams)[i]->_pending_data.size();
             _pending_streams.erase((*out_streams)[i]->stream_id());
         }
     }
@@ -429,6 +446,9 @@ int H2Context::TryToInsertStream(int stream_id, H2StreamContext* ctx) {
     }
     H2StreamContext*& sctx = _pending_streams[stream_id];
     if (sctx == NULL) {
+        // Synchronize creation with SETTINGS_INITIAL_WINDOW_SIZE updates.
+        ctx->_remote_window_left.store(_remote_settings.stream_window_size,
+                                       butil::memory_order_relaxed);
         sctx = ctx;
         return 0;
     }
@@ -872,43 +892,27 @@ H2ParseResult H2Context::OnSettings(
         _local_settings = _unack_local_settings;
         return MakeH2Message(NULL);
     }
-    const int64_t old_stream_window_size = _remote_settings.stream_window_size;
-    if (!_remote_settings_received) {
-        // To solve the problem that sender can't send large request before receving
-        // remote setting, the initial window size of stream/connection is set to
-        // MAX_WINDOW_SIZE(see constructor of H2Context).
-        // As a result, in the view of remote side, window size is 65535 by default so
-        // it may not send its stream size to sender, making stream size still be
-        // MAX_WINDOW_SIZE. In this case we need to revert this value to default.
-        H2Settings tmp_settings;
-        if (!ParseH2Settings(&tmp_settings, it, frame_head.payload_size)) {
-            LOG(ERROR) << "Fail to parse from SETTINGS";
-            return MakeH2Error(H2_PROTOCOL_ERROR);
-        }
-        _remote_settings = tmp_settings;
-        _remote_window_left.fetch_sub(
-                H2Settings::MAX_WINDOW_SIZE - H2Settings::DEFAULT_INITIAL_WINDOW_SIZE,
-                butil::memory_order_relaxed);
-        _remote_settings_received = true;
-    } else {
+    int64_t window_diff = 0;
+    {
+        std::unique_lock<butil::Mutex> mu(_stream_mutex);
+        const int64_t old_stream_window_size =
+            _remote_settings.stream_window_size;
         if (!ParseH2Settings(&_remote_settings, it, frame_head.payload_size)) {
             LOG(ERROR) << "Fail to parse from SETTINGS";
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
-    }
-    const int64_t window_diff =
-        static_cast<int64_t>(_remote_settings.stream_window_size)
-        - old_stream_window_size;
-    if (window_diff) {
-        // Do not update the connection flow-control window here, which can only
-        // be changed using WINDOW_UPDATE frames.
-        // https://tools.ietf.org/html/rfc7540#section-6.9.2
-        // TODO(gejun): Has race conditions with AppendAndDestroySelf
-        std::unique_lock<butil::Mutex> mu(_stream_mutex);
-        for (StreamMap::const_iterator it = _pending_streams.begin();
-             it != _pending_streams.end(); ++it) {
-            if (!AddWindowSize(&it->second->_remote_window_left, window_diff)) {
-                return MakeH2Error(H2_FLOW_CONTROL_ERROR);
+        _remote_settings_received = true;
+        window_diff = static_cast<int64_t>(_remote_settings.stream_window_size)
+            - old_stream_window_size;
+        if (window_diff) {
+            // SETTINGS_INITIAL_WINDOW_SIZE changes all existing stream windows,
+            // but never the connection-level flow-control window.
+            for (StreamMap::const_iterator it = _pending_streams.begin();
+                 it != _pending_streams.end(); ++it) {
+                if (!AddWindowSize(&it->second->_remote_window_left,
+                                   window_diff)) {
+                    return MakeH2Error(H2_FLOW_CONTROL_ERROR);
+                }
             }
         }
     }
@@ -917,6 +921,9 @@ H2ParseResult H2Context::OnSettings(
     SerializeFrameHead(headbuf, 0, H2_FRAME_SETTINGS, H2_FLAGS_ACK, 0);
     if (WriteAck(_socket, headbuf, sizeof(headbuf)) != 0) {
         LOG(WARNING) << "Fail to respond settings with ack to " << *_socket;
+        return MakeH2Error(H2_PROTOCOL_ERROR);
+    }
+    if (window_diff > 0 && !FlushPendingData(0)) {
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     return MakeH2Message(NULL);
@@ -1026,27 +1033,51 @@ H2ParseResult H2Context::OnWindowUpdate(
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     if (frame_head.stream_id == 0) {
-        if (!AddWindowSize(&_remote_window_left, inc)) {
-            LOG(ERROR) << "Invalid connection-level window_size_increment=" << inc;
-            return MakeH2Error(H2_FLOW_CONTROL_ERROR);
+        {
+            std::unique_lock<butil::Mutex> mu(_stream_mutex);
+            if (!AddWindowSize(&_remote_window_left, inc)) {
+                LOG(ERROR) << "Invalid connection-level window_size_increment=" << inc;
+                return MakeH2Error(H2_FLOW_CONTROL_ERROR);
+            }
+        }
+        if (!FlushPendingData(0)) {
+            return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         return MakeH2Message(NULL);
     } else {
-        H2StreamContext* sctx = FindStream(frame_head.stream_id);
-        if (sctx == NULL) {
-            RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
-            return MakeH2Message(NULL);
+        {
+            std::unique_lock<butil::Mutex> mu(_stream_mutex);
+            H2StreamContext** psctx = _pending_streams.seek(frame_head.stream_id);
+            if (psctx == nullptr) {
+                RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
+                return MakeH2Message(nullptr);
+            }
+            if (!AddWindowSize(&(*psctx)->_remote_window_left, inc)) {
+                LOG(ERROR) << "Invalid stream-level window_size_increment=" << inc
+                    << " to remote_window_left="
+                    << (*psctx)->_remote_window_left.load(butil::memory_order_relaxed);
+                return MakeH2Error(H2_FLOW_CONTROL_ERROR);
+            }
         }
-        if (!AddWindowSize(&sctx->_remote_window_left, inc)) {
-            LOG(ERROR) << "Invalid stream-level window_size_increment=" << inc
-                << " to remote_window_left=" << sctx->_remote_window_left.load(butil::memory_order_relaxed);
-            return MakeH2Error(H2_FLOW_CONTROL_ERROR);
+        if (!FlushPendingData(frame_head.stream_id)) {
+            return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         return MakeH2Message(NULL);
     }
 }
 
 void H2Context::Describe(std::ostream& os, const DescribeOptions& opt) const {
+    H2Settings remote_settings;
+    bool remote_settings_received = false;
+    size_t pending_stream_size = 0;
+    size_t pending_data_size = 0;
+    {
+        std::unique_lock<butil::Mutex> mu(_stream_mutex);
+        remote_settings = _remote_settings;
+        remote_settings_received = _remote_settings_received;
+        pending_stream_size = _pending_streams.size();
+        pending_data_size = _pending_data_size;
+    }
     if (opt.verbose) {
         os << '\n';
     }
@@ -1058,8 +1089,8 @@ void H2Context::Describe(std::ostream& os, const DescribeOptions& opt) const {
        << _deferred_window_update.load(butil::memory_order_relaxed)
        << sep << "remote_conn_window_left="
        << _remote_window_left.load(butil::memory_order_relaxed)
-       << sep << "remote_settings=" << _remote_settings
-       << sep << "remote_settings_received=" << _remote_settings_received
+       << sep << "remote_settings=" << remote_settings
+       << sep << "remote_settings_received=" << remote_settings_received
        << sep << "local_settings=" << _local_settings
        << sep << "hpacker={";
     IndentingOStream os2(os, 2);
@@ -1071,7 +1102,8 @@ void H2Context::Describe(std::ostream& os, const DescribeOptions& opt) const {
         abandoned_size = _abandoned_streams.size();
     }
     os << sep << "abandoned_streams=" << abandoned_size
-       << sep << "pending_streams=" << VolatilePendingStreamSize();
+       << sep << "pending_streams=" << pending_stream_size
+       << sep << "pending_data_size=" << pending_data_size;
     if (opt.verbose) {
         os << '\n';
     }
@@ -1205,28 +1237,6 @@ void H2StreamContext::SetState(H2StreamState state) {
 }
 #endif
 
-bool H2StreamContext::ConsumeWindowSize(int64_t size) {
-    // This method is guaranteed to be called in AppendAndDestroySelf() which
-    // is run sequentially. As a result, _remote_window_left of this stream
-    // context will not be decremented (may be incremented) because following
-    // AppendAndDestroySelf() are not run yet.
-    // This fact is important to make window_size changes to stream and
-    // connection contexts transactionally.
-    if (_remote_window_left.load(butil::memory_order_relaxed) < size) {
-        return false;
-    }
-    if (!MinusWindowSize(&_conn_ctx->_remote_window_left, size)) {
-        return false;
-    }
-    int64_t after_sub = _remote_window_left.fetch_sub(size, butil::memory_order_relaxed) - size;
-    if (after_sub < 0) {
-        LOG(FATAL) << "Impossible, the http2 impl is buggy";
-        _remote_window_left.fetch_add(size, butil::memory_order_relaxed);
-        return false;
-    }
-    return true;
-}
-
 int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
     HPacker& hpacker = _conn_ctx->hpacker();
     HttpHeader& h = header();
@@ -1316,6 +1326,43 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
 
 const CommonStrings* get_common_strings();
 
+static void PackH2Headers(butil::IOBuf* out,
+                          butil::IOBuf& headers,
+                          int stream_id,
+                          uint32_t max_frame_size,
+                          bool end_stream) {
+    char headbuf[FRAME_HEAD_SIZE];
+    H2FrameHead headers_head = {
+        (uint32_t)headers.size(), H2_FRAME_HEADERS, 0, stream_id};
+    if (end_stream) {
+        headers_head.flags |= H2_FLAGS_END_STREAM;
+    }
+    if (headers_head.payload_size <= max_frame_size) {
+        headers_head.flags |= H2_FLAGS_END_HEADERS;
+        SerializeFrameHead(headbuf, headers_head);
+        out->append(headbuf, sizeof(headbuf));
+        out->append(butil::IOBuf::Movable(headers));
+    } else {
+        headers_head.payload_size = max_frame_size;
+        SerializeFrameHead(headbuf, headers_head);
+        out->append(headbuf, sizeof(headbuf));
+        headers.cutn(out, headers_head.payload_size);
+
+        H2FrameHead cont_head = {0, H2_FRAME_CONTINUATION, 0, stream_id};
+        while (!headers.empty()) {
+            if (headers.size() <= max_frame_size) {
+                cont_head.flags |= H2_FLAGS_END_HEADERS;
+                cont_head.payload_size = headers.size();
+            } else {
+                cont_head.payload_size = max_frame_size;
+            }
+            SerializeFrameHead(headbuf, cont_head);
+            out->append(headbuf, FRAME_HEAD_SIZE);
+            headers.cutn(out, cont_head.payload_size);
+        }
+    }
+}
+
 static void PackH2Message(butil::IOBuf* out,
                           butil::IOBuf& headers,
                           butil::IOBuf& trailer_headers,
@@ -1324,35 +1371,8 @@ static void PackH2Message(butil::IOBuf* out,
                           H2Context* conn_ctx) {
     const H2Settings& remote_settings = conn_ctx->remote_settings();
     char headbuf[FRAME_HEAD_SIZE];
-    H2FrameHead headers_head = {
-        (uint32_t)headers.size(), H2_FRAME_HEADERS, 0, stream_id};
-    if (data.empty() && trailer_headers.empty()) {
-        headers_head.flags |= H2_FLAGS_END_STREAM;
-    }
-    if (headers_head.payload_size <= remote_settings.max_frame_size) {
-        headers_head.flags |= H2_FLAGS_END_HEADERS;
-        SerializeFrameHead(headbuf, headers_head);
-        out->append(headbuf, sizeof(headbuf));
-        out->append(butil::IOBuf::Movable(headers));
-    } else {
-        headers_head.payload_size = remote_settings.max_frame_size;
-        SerializeFrameHead(headbuf, headers_head);
-        out->append(headbuf, sizeof(headbuf));
-        headers.cutn(out, headers_head.payload_size);
-
-        H2FrameHead cont_head = {0, H2_FRAME_CONTINUATION, 0, stream_id};
-        while (!headers.empty()) {
-            if (headers.size() <= remote_settings.max_frame_size) {
-                cont_head.flags |= H2_FLAGS_END_HEADERS;
-                cont_head.payload_size = headers.size();
-            } else {
-                cont_head.payload_size = remote_settings.max_frame_size;
-            }
-            SerializeFrameHead(headbuf, cont_head);
-            out->append(headbuf, FRAME_HEAD_SIZE);
-            headers.cutn(out, cont_head.payload_size);
-        }
-    }
+    PackH2Headers(out, headers, stream_id, remote_settings.max_frame_size,
+                  data.empty() && trailer_headers.empty());
     if (!data.empty()) {
         H2FrameHead data_head = {0, H2_FRAME_DATA, 0, stream_id};
         butil::IOBufBytesIterator it(data);
@@ -1386,6 +1406,135 @@ static void PackH2Message(butil::IOBuf* out,
         SaveUint32(winbuf + FRAME_HEAD_SIZE, conn_wu);
         out->append(winbuf, sizeof(winbuf));
     }
+}
+
+void H2Context::AppendPendingDataLocked(H2StreamContext* sctx,
+                                        butil::IOBuf* out) {
+    CHECK(sctx != nullptr);
+    const uint32_t max_frame_size = _remote_settings.max_frame_size;
+    char headbuf[FRAME_HEAD_SIZE];
+    while (!sctx->_pending_data.empty()) {
+        const int64_t conn_window =
+            _remote_window_left.load(butil::memory_order_relaxed);
+        const int64_t stream_window =
+            sctx->_remote_window_left.load(butil::memory_order_relaxed);
+        if (conn_window <= 0 || stream_window <= 0) {
+            break;
+        }
+        const size_t payload_size = std::min(
+            sctx->_pending_data.size(),
+            std::min(static_cast<size_t>(max_frame_size),
+                     static_cast<size_t>(std::min(conn_window, stream_window))));
+        CHECK_GT(payload_size, 0u);
+        _remote_window_left.fetch_sub(payload_size, butil::memory_order_relaxed);
+        sctx->_remote_window_left.fetch_sub(payload_size,
+                                             butil::memory_order_relaxed);
+
+        H2FrameHead data_head = {
+            static_cast<uint32_t>(payload_size), H2_FRAME_DATA, 0,
+            sctx->stream_id()};
+        if (payload_size == sctx->_pending_data.size()) {
+            data_head.flags |= H2_FLAGS_END_STREAM;
+        }
+        SerializeFrameHead(headbuf, data_head);
+        out->append(headbuf, sizeof(headbuf));
+        sctx->_pending_data.cutn(out, payload_size);
+        CHECK_GE(_pending_data_size, payload_size);
+        _pending_data_size -= payload_size;
+    }
+}
+
+butil::Status H2Context::TryToInsertClientStream(
+    int stream_id, H2StreamContext* sctx, const butil::IOBuf& data,
+    butil::IOBuf* out) {
+    std::unique_lock<butil::Mutex> mu(_stream_mutex);
+    if (_goaway_stream_id >= 0 && stream_id > _goaway_stream_id) {
+        return butil::Status(ELOGOFF, "the connection just issued GOAWAY");
+    }
+    if (_pending_streams.seek(stream_id) != nullptr) {
+        return butil::Status(EINTERNAL,
+                             "Fail to insert existing stream_id");
+    }
+    if (_pending_streams.size() >= _remote_settings.max_concurrent_streams) {
+        return butil::Status(
+            ELIMIT, "Pending Stream count exceeds max concurrent stream");
+    }
+
+    sctx->_remote_window_left.store(_remote_settings.stream_window_size,
+                                    butil::memory_order_relaxed);
+    const int64_t conn_window =
+        _remote_window_left.load(butil::memory_order_relaxed);
+    const int64_t stream_window =
+        sctx->_remote_window_left.load(butil::memory_order_relaxed);
+    size_t sendable_size = 0;
+    if (conn_window > 0 && stream_window > 0) {
+        sendable_size = std::min(
+            data.size(),
+            static_cast<size_t>(std::min(conn_window, stream_window)));
+    }
+    const size_t pending_size = data.size() - sendable_size;
+    if (FLAGS_socket_max_unwritten_bytes > 0) {
+        const auto limit =
+            static_cast<size_t>(FLAGS_socket_max_unwritten_bytes);
+        // Check and reserve pending bytes under the same lock. Otherwise,
+        // concurrent requests may all observe available capacity before any
+        // of them adds its unsent DATA.
+        if (_pending_data_size > limit ||
+            pending_size > limit - _pending_data_size) {
+            return butil::Status(EOVERCROWDED,
+                                 "Too much pending HTTP/2 request data");
+        }
+    }
+
+    // Mutate stream and window state only after all failure checks above.
+    _pending_streams[stream_id] = sctx;
+    if (!data.empty()) {
+        CHECK(sctx->_pending_data.empty());
+        sctx->_pending_data = data;
+        _pending_data_size += data.size();
+        AppendPendingDataLocked(sctx, out);
+    }
+    return butil::Status::OK();
+}
+
+void H2Context::ClearPendingData(int stream_id) {
+    std::unique_lock<butil::Mutex> mu(_stream_mutex);
+    H2StreamContext** psctx = _pending_streams.seek(stream_id);
+    if (psctx == nullptr) {
+        return;
+    }
+    CHECK_GE(_pending_data_size, (*psctx)->_pending_data.size());
+    _pending_data_size -= (*psctx)->_pending_data.size();
+    (*psctx)->_pending_data.clear();
+}
+
+bool H2Context::PendingDataOvercrowded() const {
+    std::unique_lock<butil::Mutex> mu(_stream_mutex);
+    return FLAGS_socket_max_unwritten_bytes > 0 &&
+           _pending_data_size >=
+               static_cast<size_t>(FLAGS_socket_max_unwritten_bytes);
+}
+
+bool H2Context::FlushPendingData(int stream_id) {
+    butil::IOBuf out;
+    {
+        std::unique_lock<butil::Mutex> mu(_stream_mutex);
+        if (stream_id != 0) {
+            H2StreamContext** psctx = _pending_streams.seek(stream_id);
+            if (psctx != nullptr) {
+                AppendPendingDataLocked(*psctx, &out);
+            }
+        } else {
+            for (StreamMap::const_iterator it = _pending_streams.begin();
+                 it != _pending_streams.end(); ++it) {
+                if (_remote_window_left.load(butil::memory_order_relaxed) <= 0) {
+                    break;
+                }
+                AppendPendingDataLocked(it->second, &out);
+            }
+        }
+    }
+    return out.empty() || WriteAck(_socket, &out) == 0;
 }
 
 H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
@@ -1485,12 +1634,13 @@ void H2UnsentRequest::DestroyStreamUserData(SocketUniquePtr& sending_sock,
                                             int error_code,
                                             bool /*end_of_rpc*/) {
     RemoveRefOnQuit deref_self(this);
-    if (sending_sock != NULL && error_code != 0) {
+    if (sending_sock != nullptr && error_code != 0) {
         CHECK_EQ(cntl, _cntl);
         std::unique_lock<butil::Mutex> mu(_mutex);
         _cntl = NULL;
         if (_stream_id != 0) {
             H2Context* ctx = static_cast<H2Context*>(sending_sock->parsing_context());
+            ctx->ClearPendingData(_stream_id);
             ctx->AddAbandonedStream(_stream_id);
         }
     }
@@ -1534,11 +1684,6 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         out->append(settingsbuf, nb);
     }
 
-    // TODO(zhujiashun): also check this in server push
-    if (ctx->VolatilePendingStreamSize() > ctx->remote_settings().max_concurrent_streams) {
-        return butil::Status(ELIMIT, "Pending Stream count exceeds max concurrent stream");
-    }
-
     // Although the critical section looks huge, it should rarely be contended
     // since timeout of RPC is much larger than the delay of sending.
     std::unique_lock<butil::Mutex> mu(_mutex);
@@ -1557,30 +1702,15 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
 
     _sctx->Init(ctx, id);
-    // check flow control restriction
-    if (!_cntl->request_attachment().empty()) {
-        const int64_t data_size = _cntl->request_attachment().size();
-        if (!_sctx->ConsumeWindowSize(data_size)) {
-            return butil::Status(ELIMIT, "remote_window_left is not enough, data_size=%" PRId64, data_size);
-        }
-    }
-
-    const int rc = ctx->TryToInsertStream(id, _sctx.get());
-    if (rc < 0) {
-        return butil::Status(EINTERNAL, "Fail to insert existing stream_id");
-    } else if (rc > 0) {
-        return butil::Status(ELOGOFF, "the connection just issued GOAWAY");
-    }
-    _stream_id = _sctx->stream_id();
-    // After calling TryToInsertStream, the ownership of _sctx is transferred to ctx
-    _sctx.release();
+    H2StreamContext* const sctx = _sctx.get();
 
     HPacker& hpacker = ctx->hpacker();
     butil::IOBufAppender appender;
     HPackOptions options;
     options.encode_name = FLAGS_h2_hpack_encode_name;
     options.encode_value = FLAGS_h2_hpack_encode_value;
-    if (ctx->remote_settings().header_table_size == 0) {
+    const H2Settings remote_settings = ctx->remote_settings();
+    if (remote_settings.header_table_size == 0) {
         options.index_policy = HPACK_NEVER_INDEX_HEADER;
     }
     
@@ -1597,8 +1727,24 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
     butil::IOBuf frag;
     appender.move_to(frag);
-    butil::IOBuf dummy_buf;
-    PackH2Message(out, frag, dummy_buf, _cntl->request_attachment(), _stream_id, ctx);
+    const butil::IOBuf& request_data = _cntl->request_attachment();
+    PackH2Headers(out, frag, id, remote_settings.max_frame_size,
+                  request_data.empty());
+    const butil::Status insert_status =
+        ctx->TryToInsertClientStream(id, sctx, request_data, out);
+    if (!insert_status.ok()) {
+        return insert_status;
+    }
+    _stream_id = id;
+    // TryToInsertClientStream transfers ownership of _sctx to ctx on success.
+    _sctx.release();
+    const int64_t conn_wu = ctx->ReleaseDeferredWindowUpdate();
+    if (conn_wu > 0) {
+        char winbuf[FRAME_HEAD_SIZE + 4];
+        SerializeFrameHead(winbuf, 4, H2_FRAME_WINDOW_UPDATE, 0, 0);
+        SaveUint32(winbuf + FRAME_HEAD_SIZE, conn_wu);
+        out->append(winbuf, sizeof(winbuf));
+    }
     return butil::Status::OK();
 }
 
@@ -1821,7 +1967,8 @@ void PackH2Request(butil::IOBuf*,
 
 static bool IsH2SocketValid(Socket* s) {
     H2Context* c = static_cast<H2Context*>(s->parsing_context());
-    return (c == NULL || !c->RunOutStreams());
+    return c == nullptr ||
+           (!c->RunOutStreams() && !c->PendingDataOvercrowded());
 }
 
 StreamUserData* H2GlobalStreamCreator::OnCreatingStream(
