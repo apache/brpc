@@ -334,7 +334,7 @@ inline int64_t cpuwide_time_s() {
 // --------------------------------------------------------------------
 inline int64_t gettimeofday_us() {
     timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
     return now.tv_sec * 1000000L + now.tv_usec;
 }
 

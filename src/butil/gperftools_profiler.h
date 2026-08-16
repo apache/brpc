@@ -55,7 +55,7 @@ extern "C" {
 /* Start profiling and write profile info into fname, discarding any
  * existing profiling data in that file.
  *
- * This is equivalent to calling ProfilerStartWithOptions(fname, NULL).
+ * This is equivalent to calling ProfilerStartWithOptions(fname, nullptr).
  */
 BRPC_DLL_DECL int ProfilerStart(const char* fname);
 
