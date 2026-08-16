@@ -388,7 +388,7 @@ int RdmaHandshakeClientV3::SendLocalHello() {
     // Query local ECE capabilities so they can be advertised in the client
     // hello. v3-only. Best-effort: any failure or missing API just means we
     // won't advertise ECE (the peer then degrades to no-ECE establishment).
-    if (FLAGS_rdma_ece && IbvQueryEce != NULL &&
+    if (FLAGS_rdma_ece && IbvQueryEce != nullptr &&
         _ep->_resource && _ep->_resource->qp) {
         ibv_ece ece;
         if (IbvQueryEce(_ep->_resource->qp, &ece) == 0) {
@@ -505,7 +505,7 @@ std::unique_ptr<RdmaHandshake> CreateServerHandshakeByMagic(
         return std::unique_ptr<RdmaHandshake>(
                 new RdmaHandshakeServerV3(ep, source));
     }
-    return NULL;
+    return nullptr;
 }
 
 }  // namespace rdma
