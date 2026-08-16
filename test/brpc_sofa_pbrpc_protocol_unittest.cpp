@@ -214,6 +214,26 @@ protected:
     MyAuthenticator _auth;
 };
 
+// Build a SOFA header without a real SocketMessage. Fields are stored in host
+// byte order (see PackSofaHeader), each 64-bit field is stored as low 32-bit
+// word followed by high 32-bit word.
+static void AppendSofaTestHeader(butil::IOBuf* buf, uint32_t meta_size,
+                                 uint64_t body_size, uint64_t msg_size) {
+    char header[24];
+    memcpy(header, "SOFA", 4);
+    const uint32_t meta = meta_size;
+    const uint32_t body_words[2] = {
+        static_cast<uint32_t>(body_size & 0xFFFFFFFFULL),
+        static_cast<uint32_t>(body_size >> 32)};
+    const uint32_t msg_words[2] = {
+        static_cast<uint32_t>(msg_size & 0xFFFFFFFFULL),
+        static_cast<uint32_t>(msg_size >> 32)};
+    memcpy(header + 4, &meta, sizeof(meta));
+    memcpy(header + 8, body_words, sizeof(body_words));
+    memcpy(header + 16, msg_words, sizeof(msg_words));
+    buf->append(header, sizeof(header));
+}
+
 TEST_F(SofaTest, process_request_failed_socket) {
     brpc::policy::SofaRpcMeta meta;
     meta.set_type(brpc::policy::SofaRpcMeta::REQUEST);
@@ -343,5 +363,27 @@ TEST_F(SofaTest, sofa_compress) {
     TestSofaCompress(brpc::COMPRESS_TYPE_SNAPPY);
     TestSofaCompress(brpc::COMPRESS_TYPE_GZIP);
     TestSofaCompress(brpc::COMPRESS_TYPE_ZLIB);
+}
+
+TEST_F(SofaTest, reject_oversized_body) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 1024;
+    const uint64_t body_size = 8 * 1024 * 1024;
+    butil::IOBuf buf;
+    AppendSofaTestHeader(&buf, 0, body_size, body_size);
+    brpc::ParseResult pr =
+        brpc::policy::ParseSofaMessage(&buf, _socket.get(), false, NULL);
+    ASSERT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA, pr.error());
+}
+
+TEST_F(SofaTest, reject_oversized_meta) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 1024;
+    const uint32_t meta_size = 8 * 1024 * 1024;
+    butil::IOBuf buf;
+    AppendSofaTestHeader(&buf, meta_size, 0, meta_size);
+    brpc::ParseResult pr =
+        brpc::policy::ParseSofaMessage(&buf, _socket.get(), false, NULL);
+    ASSERT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA, pr.error());
 }
 } //namespace

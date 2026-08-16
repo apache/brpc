@@ -20,7 +20,7 @@ static std::string* g_default_name;
 }
 
 ThreadIdNameManager::ThreadIdNameManager()
-    : main_process_name_(NULL),
+    : main_process_name_(nullptr),
       main_process_id_(kInvalidThreadId) {
   g_default_name = new std::string(kDefaultName);
 
@@ -53,7 +53,7 @@ void ThreadIdNameManager::SetName(PlatformThreadId id, const char* name) {
 
   AutoLock locked(lock_);
   NameToInternedNameMap::iterator iter = name_to_interned_name_.find(str_name);
-  std::string* leaked_str = NULL;
+  std::string* leaked_str = nullptr;
   if (iter != name_to_interned_name_.end()) {
     leaked_str = iter->second;
   } else {

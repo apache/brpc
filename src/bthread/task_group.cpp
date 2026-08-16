@@ -1018,8 +1018,11 @@ void TaskGroup::priority_to_run(void* args_in) {
     if (args->meta->priority_index < 0) {
         return g->push_rq(args->meta->tid);
     }
-    return g->control()->push_ed_priority_queue(
+    g->control()->push_ed_priority_queue(
         args->tag, args->meta->priority_index, args->meta->tid);
+
+    ++g->_nsignaled;
+    g->control()->signal_task(1, args->tag);
 }
 
 struct SleepArgs {

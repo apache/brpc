@@ -88,7 +88,7 @@ public:
     typedef ptrdiff_t difference_type;
     typedef typename remove_const<Value>::type NonConstValue;
     
-    FlatMapIterator() : _node(NULL), _entry(NULL) {}    
+    FlatMapIterator() : _node(nullptr), _entry(nullptr) {}
     FlatMapIterator(const Map* map, size_t pos) {
         _entry = map->_buckets + pos;
         find_and_set_valid_node();
@@ -107,7 +107,7 @@ public:
         
     // ++ it
     FlatMapIterator& operator++() {
-        if (NULL == _node->next) {
+        if (nullptr == _node->next) {
             ++_entry;
             find_and_set_valid_node();
         } else {
@@ -156,7 +156,7 @@ public:
     typedef ptrdiff_t difference_type;
     typedef typename remove_const<Value>::type NonConstValue;
     
-    SparseFlatMapIterator() : _node(NULL), _pos(0), _map(NULL) {}
+    SparseFlatMapIterator() : _node(nullptr), _pos(0), _map(nullptr) {}
     SparseFlatMapIterator(const Map* map, size_t pos) {
         _map = map;
         _pos = pos;
@@ -177,7 +177,7 @@ public:
         
     // ++ it
     SparseFlatMapIterator& operator++() {
-        if (NULL == _node->next) {
+        if (nullptr == _node->next) {
             ++_pos;
             find_and_set_valid_node();
         } else {
@@ -221,7 +221,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::FlatMap(const hasher& hashfn,
     : _size(0)
     , _nbucket(DEFAULT_NBUCKET)
     , _buckets((Bucket*)(&_default_buckets))
-    , _thumbnail(_S ? _default_thumbnail : NULL)
+    , _thumbnail(_S ? _default_thumbnail : nullptr)
     , _load_factor(80)
     , _is_default_load_factor(true)
     , _hashfn(hashfn)
@@ -246,9 +246,9 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::~FlatMap() {
     clear();
     if (!is_default_buckets()) {
         get_allocator().Free(_buckets);
-        _buckets = NULL;
+        _buckets = nullptr;
         bit_array_free(_thumbnail);
-        _thumbnail = NULL;
+        _thumbnail = nullptr;
     }
     _nbucket = 0;
     _load_factor = 0;
@@ -304,7 +304,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator=(
                 }
             }
         }
-        _buckets[rhs._nbucket].next = NULL;
+        _buckets[rhs._nbucket].next = nullptr;
         _size = rhs._size;
     } else {
         for (const_iterator it = rhs.begin(); it != rhs.end(); ++it) {
@@ -396,7 +396,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(const K2& key, _T* old_value) {
         if (old_value) {
             *old_value = first_node.element().second_movable_ref();
         }
-        if (first_node.next == NULL) {
+        if (first_node.next == nullptr) {
             first_node.destroy_element();
             first_node.set_invalid();
             if (_S) {
@@ -459,13 +459,13 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(
         return 0;
     }
 
-    Bucket* new_head = NULL;
-    Bucket* new_tail = NULL;
+    Bucket* new_head = nullptr;
+    Bucket* new_tail = nullptr;
     Bucket* p = &first_node;
     size_t total = _size;
-    while (NULL != p) {
+    while (nullptr != p) {
         if (_eql(p->element().first_ref(), key)) {
-            if (NULL != old_values) {
+            if (nullptr != old_values) {
                 old_values->push_back(p->element().second_movable_ref());
             }
             Bucket* temp = p;
@@ -476,7 +476,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(
             }
             --_size;
         } else {
-            if (NULL == new_head) {
+            if (nullptr == new_head) {
                 new_head = p;
                 new_tail = p;
             } else {
@@ -486,10 +486,10 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(
             p = p->next;
         }
     }
-    if (NULL != new_tail) {
-        new_tail->next = NULL;
+    if (nullptr != new_tail) {
+        new_tail->next = nullptr;
     }
-    if (NULL == new_head) {
+    if (nullptr == new_head) {
         // Erase all element.
         first_node.set_invalid();
         if (_S) {
@@ -514,7 +514,7 @@ void FlatMap<_K, _T, _H, _E, _S, _A, _M>::clear() {
         return;
     }
     _size = 0;
-    if (NULL != _buckets) {
+    if (nullptr != _buckets) {
         for (size_t i = 0; i < _nbucket; ++i) {
             Bucket& first_node = _buckets[i];
             if (first_node.is_valid()) {
@@ -530,7 +530,7 @@ void FlatMap<_K, _T, _H, _E, _S, _A, _M>::clear() {
             }
         }
     }
-    if (NULL != _thumbnail) {
+    if (nullptr != _thumbnail) {
         bit_array_clear(_thumbnail, _nbucket);
     }
 }
@@ -548,7 +548,7 @@ template <typename K2>
 _T* FlatMap<_K, _T, _H, _E, _S, _A, _M>::seek(const K2& key) const {
     Bucket& first_node = _buckets[flatmap_mod(_hashfn(key), _nbucket)];
     if (!first_node.is_valid()) {
-        return NULL;
+        return nullptr;
     }
     if (_eql(first_node.element().first_ref(), key)) {
         return &first_node.element().second_ref();
@@ -560,7 +560,7 @@ _T* FlatMap<_K, _T, _H, _E, _S, _A, _M>::seek(const K2& key) const {
         }
         p = p->next;
     }
-    return NULL;
+    return nullptr;
 }
 
 template <typename _K, typename _T, typename _H, typename _E,
@@ -605,7 +605,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator[](const key_type& key) {
         if (_eql(p->element().first_ref(), key)) {
             return p->element().second_ref();
         }
-        if (NULL == p->next) {
+        if (nullptr == p->next) {
             if (is_too_crowded(_size) && resize(_nbucket + 1)) {
                 return operator[](key);
             }
@@ -637,7 +637,7 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::operator[](const key_type& key) {
     if (is_too_crowded(_size)) {
         Bucket *p = &first_node;
         bool need_scale = false;
-        while (NULL != p) {
+        while (nullptr != p) {
             // Increase the capacity of bucket when
             // hash collision occur and map is crowded.
             if (!_eql(p->element().first_ref(), key)) {
@@ -731,15 +731,15 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::new_buckets_and_thumbnail(size_t size,
     auto guard = MakeScopeGuard([buckets, this]() {
         get_allocator().Free(buckets);
     });
-    if (NULL == buckets) {
+    if (nullptr == buckets) {
         LOG(FATAL) << "Fail to new Buckets";
         return nullopt;
     }
 
-    uint64_t* thumbnail = NULL;
+    uint64_t* thumbnail = nullptr;
     if (_S) {
         thumbnail = bit_array_malloc(new_nbucket);
-        if (NULL == thumbnail) {
+        if (nullptr == thumbnail) {
             LOG(FATAL) << "Fail to new thumbnail";
             return nullopt;
         }

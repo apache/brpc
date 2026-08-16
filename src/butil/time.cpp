@@ -46,7 +46,7 @@ static void InitClock() {
         exit(1);
     }
     timeval now;
-    if (gettimeofday(&now, NULL) != 0) {
+    if (gettimeofday(&now, nullptr) != 0) {
         exit(1);
     }
     s_init_time.tv_sec = now.tv_sec;
@@ -103,7 +103,7 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
     if (n > 0) {
         char *mhz = static_cast<char*>(memmem(buf, n, "cpu MHz", 7));
 
-        if (mhz != NULL) {
+        if (mhz != nullptr) {
             char *endp = buf + n;
             int seen_decpoint = 0;
             int ndigits = 0;
@@ -143,16 +143,22 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
 }
 
 // Return value must be >= 0
-int64_t read_invariant_cpu_frequency() {
+static int64_t read_invariant_cpu_frequency() {
     bool invariant_tsc = false;
-    const int64_t freq = read_cpu_frequency(&invariant_tsc);
+    int64_t freq = -1;
+#if defined(__aarch64__) && BUTIL_USE_CPU_FREQUENCY
+    __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));
+#else
+    freq = read_cpu_frequency(&invariant_tsc);
     if (!invariant_tsc || freq < 0) {
         return 0;
     }
+#endif
+
     return freq;
 }
 
-int64_t invariant_cpu_freq = -1;
+int64_t invariant_cpu_freq = read_invariant_cpu_frequency();
 }  // namespace detail
 
 }  // namespace butil

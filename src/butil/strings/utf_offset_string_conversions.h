@@ -85,7 +85,7 @@ class BUTIL_EXPORT OffsetAdjuster {
 
 // Like the conversions in utf_string_conversions.h, but also fills in an
 // |adjustments| parameter that reflects the alterations done to the string.
-// It may be NULL.
+// It may be nullptr.
 BUTIL_EXPORT bool UTF8ToUTF16WithAdjustments(
     const char* src,
     size_t src_len,

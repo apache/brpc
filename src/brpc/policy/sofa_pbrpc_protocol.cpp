@@ -189,11 +189,12 @@ ParseResult ParseSofaMessage(butil::IOBuf* source, Socket* socket,
                    << " + body_size=" << body_size;
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
-    if (body_size > FLAGS_max_body_size) {
-        // We need this log to report the body_size to give users some clues
+    if (body_size > FLAGS_max_body_size ||
+        meta_size > FLAGS_max_body_size) {
+        // We need this log to report the size to give users some clues
         // which is not printed in InputMessenger.
-        LOG(ERROR) << "body_size=" << body_size << " from "
-                   << socket->remote_side() << " is too large";
+        LOG(ERROR) << "body_size=" << body_size << " meta_size=" << meta_size
+                   << " from " << socket->remote_side() << " is too large";
         return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
     } else if (source->length() < sizeof(header_buf) + msg_size) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);

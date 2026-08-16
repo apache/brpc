@@ -49,8 +49,8 @@ RefCountedBytes* RefCountedBytes::TakeVector(
 
 const unsigned char* RefCountedBytes::front() const {
   // STL will assert if we do front() on an empty vector, but calling code
-  // expects a NULL.
-  return size() ? &data_.front() : NULL;
+  // expects a nullptr.
+  return size() ? &data_.front() : nullptr;
 }
 
 size_t RefCountedBytes::size() const {
@@ -71,7 +71,7 @@ RefCountedString* RefCountedString::TakeString(std::string* to_destroy) {
 }
 
 const unsigned char* RefCountedString::front() const {
-  return data_.empty() ? NULL :
+  return data_.empty() ? nullptr :
          reinterpret_cast<const unsigned char*>(data_.data());
 }
 
@@ -86,7 +86,7 @@ RefCountedMallocedMemory::RefCountedMallocedMemory(
 }
 
 const unsigned char* RefCountedMallocedMemory::front() const {
-  return length_ ? data_ : NULL;
+  return length_ ? data_ : nullptr;
 }
 
 size_t RefCountedMallocedMemory::size() const {

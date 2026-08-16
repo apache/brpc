@@ -206,6 +206,7 @@ std::shared_ptr<Span> Span::CreateClientSpan(const std::string& full_method_name
         return nullptr;
     }
     std::shared_ptr<Span> span(span_raw, SpanDeleter());
+    span->_submitted.store(false, butil::memory_order_relaxed);
     span->_log_id = 0;
     span->_base_cid = INVALID_BTHREAD_ID;
     span->_ending_cid = INVALID_BTHREAD_ID;  // Client Span uses ending_cid
@@ -248,6 +249,7 @@ std::shared_ptr<Span> Span::CreateBthreadSpan(const std::string& full_method_nam
         return nullptr;
     }
     std::shared_ptr<Span> span(span_raw, SpanDeleter());
+    span->_submitted.store(false, butil::memory_order_relaxed);
     span->_log_id = 0;
     span->_base_cid = INVALID_BTHREAD_ID;
     span->_ending_tid = INVALID_BTHREAD;  // Bthread Span uses ending_tid
@@ -298,6 +300,7 @@ std::shared_ptr<Span> Span::CreateServerSpan(
         return nullptr;
     }
     std::shared_ptr<Span> span(span_raw, SpanDeleter());
+    span->_submitted.store(false, butil::memory_order_relaxed);
     span->_trace_id = (trace_id ? trace_id : GenerateTraceId());
     span->_span_id = (span_id ? span_id : GenerateSpanId());
     span->_parent_span_id = parent_span_id;
@@ -335,7 +338,9 @@ void Span::ResetServerSpanName(const std::string& full_method_name) {
 }
 
 void Span::submit(int64_t cpuwide_us) {
-    // Note: this method is not called for client-side spans.
+    // Called for server spans and root client spans (those without a local
+    // parent). Child client spans are serialized under their parent via
+    // _client_list instead.
     EndAsParent();
     // If memory allocation fails, the server span will not be submitted for persistence.
     // The server span will be destroyed later when its shared_ptr refcount drops to zero
@@ -581,12 +586,10 @@ inline int GetSpanDB(butil::intrusive_ptr<SpanDB>* db) {
 }
 
 void Span::Submit(std::shared_ptr<Span> span, int64_t cpuwide_time_us) {
-    // Only submit spans without a local parent (i.e., server spans).
-    // Server spans hold shared_ptr references to their child spans (via _client_list),
-    // ensuring child spans remain alive until the server span is submitted and dumped.
-    // Client spans are not submitted here because their lifetime is managed by their
-    // parent server span.
-    if (span->local_parent().expired()) {
+    // Submit root spans without a local parent. Server spans and root client
+    // spans are submitted independently; child client spans with a live local
+    // parent are serialized under the parent to avoid duplicate submissions.
+    if (span->local_parent().expired() && span->try_mark_submitted()) {
         span->submit(cpuwide_time_us);
     }
 }
@@ -787,7 +790,8 @@ leveldb::Status SpanDB::Index(std::shared_ptr<const Span> span, std::string* val
     // be modified by other threads, which could lead to inconsistent data when
     // serializing to database.
     for (auto it = all_child_spans.rbegin(); it != all_child_spans.rend(); ++it) {
-        if (*it && it->get() != span.get() && !(*it)->is_active()) {
+        if (*it && it->get() != span.get() && !(*it)->is_active() &&
+            (*it)->try_mark_submitted()) {
             RpczSpan* child_proto = value_proto.add_client_spans();
             Span2Proto((*it).get(), child_proto);
         }

@@ -124,7 +124,7 @@ function(brpc_example_configure_target target_name)
         target_include_directories(${target_name} PRIVATE ${_include_dirs})
     endif()
 
-    target_compile_features(${target_name} PRIVATE cxx_std_11)
+    target_compile_features(${target_name} PRIVATE cxx_std_14)
     target_compile_definitions(${target_name} PRIVATE
         NDEBUG
         __const__=__unused__

@@ -112,7 +112,7 @@ ASAN is used in CI: `ASAN_OPTIONS="detect_leaks=0:detect_stack_use_after_return=
 - General modifications should not be hidden inside protocol-specific files
 - All changes require unit tests
 - CI runs on GitHub Actions (Linux gcc/clang, macOS) — must pass before merge
-- Uses C++11 minimum; some C++17 features with compiler guards. Legacy patterns (`DISALLOW_COPY_AND_ASSIGN` macro) still prevalent.
+- Uses C++14 minimum; some C++17 features with compiler guards. Legacy patterns (`DISALLOW_COPY_AND_ASSIGN` macro) still prevalent.
 
 ## Dependencies
 

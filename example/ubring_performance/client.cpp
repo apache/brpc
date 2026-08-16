@@ -165,16 +165,19 @@ public:
         std::unique_ptr<brpc::Controller> cntl_guard(closure->cntl);
         std::unique_ptr<test::PerfTestResponse> response_guard(closure->resp);
         if (closure->cntl->Failed()) {
-            LOG(DEBUG) << "RPC call failed: " << closure->cntl->ErrorText();
-            // Don't stop the test immediately, just log the error and continue
-        } else {
-            g_latency_recorder << closure->cntl->latency_us();
-            if (closure->resp->cpu_usage().size() > 0) {
-                g_server_cpu_recorder << atof(closure->resp->cpu_usage().c_str()) * 100;
-            }
-            g_total_bytes.fetch_add(closure->cntl->request_attachment().size(), butil::memory_order_relaxed);
-            g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
+            LOG(ERROR) << "RPC call failed: " << closure->cntl->ErrorText();
+            // RPCs in this example are expected to succeed. Silently ignoring
+            // failures would hide problems and invalidate the performance result.
+            closure->test->_stop = true;
+            return;
         }
+
+        g_latency_recorder << closure->cntl->latency_us();
+        if (closure->resp->cpu_usage().size() > 0) {
+            g_server_cpu_recorder << atof(closure->resp->cpu_usage().c_str()) * 100;
+        }
+        g_total_bytes.fetch_add(closure->cntl->request_attachment().size(), butil::memory_order_relaxed);
+        g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
 
         cntl_guard.reset(NULL);
         response_guard.reset(NULL);

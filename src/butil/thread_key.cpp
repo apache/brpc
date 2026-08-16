@@ -36,9 +36,9 @@ namespace butil {
 static const uint32_t THREAD_KEY_RESERVE = 8096;
 pthread_mutex_t g_thread_key_mutex = PTHREAD_MUTEX_INITIALIZER;
 static size_t g_id = 0;
-static std::deque<size_t>* g_free_ids = NULL;
-static std::vector<ThreadKeyInfo>* g_thread_keys = NULL;
-static __thread std::vector<ThreadKeyTLS>* thread_key_tls_data = NULL;
+static std::deque<size_t>* g_free_ids = nullptr;
+static std::vector<ThreadKeyInfo>* g_thread_keys = nullptr;
+static __thread std::vector<ThreadKeyTLS>* thread_key_tls_data = nullptr;
 
 ThreadKey& ThreadKey::operator=(ThreadKey&& other) noexcept {
     if (this == &other) {
@@ -72,7 +72,7 @@ static void DestroyTlsData() {
         }
     }
     delete thread_key_tls_data;
-    thread_key_tls_data = NULL;
+    thread_key_tls_data = nullptr;
 }
 
 int thread_key_create(ThreadKey& thread_key, DtorFunction dtor) {
@@ -155,14 +155,14 @@ int thread_setspecific(ThreadKey& thread_key, void* data) {
 
 void* thread_getspecific(ThreadKey& thread_key) {
     if (BAIDU_UNLIKELY(!thread_key.Valid())) {
-        return NULL;
+        return nullptr;
     }
     size_t id = thread_key._id;
     size_t seq = thread_key._seq;
     if (BAIDU_UNLIKELY(!thread_key_tls_data ||
                        id >= thread_key_tls_data->size() ||
                        (*thread_key_tls_data)[id].seq != seq)){
-        return NULL;
+        return nullptr;
     }
 
     return (*thread_key_tls_data)[id].data;

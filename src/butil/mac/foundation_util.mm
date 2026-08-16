@@ -83,7 +83,7 @@ FilePath PathForFrameworkBundleResource(CFStringRef resourceName) {
 
 OSType CreatorCodeForCFBundleRef(CFBundleRef bundle) {
   OSType creator = kUnknownType;
-  CFBundleGetPackageInfo(bundle, NULL, &creator);
+  CFBundleGetPackageInfo(bundle, nullptr, &creator);
   return creator;
 }
 
@@ -215,7 +215,7 @@ void* CFTypeRefToNSObjectAutorelease(CFTypeRef cf_object) {
   // In the traditional GC-less environment, NSMakeCollectable is a no-op,
   // and cf_object is autoreleased, balancing out the caller's ownership claim.
   //
-  // NSMakeCollectable returns nil when used on a NULL object.
+  // NSMakeCollectable returns nil when used on a nullptr object.
   return [NSMakeCollectable(cf_object) autorelease];
 }
 
@@ -236,7 +236,7 @@ const char* BaseBundleID() {
 void SetBaseBundleID(const char* new_base_bundle_id) {
   if (new_base_bundle_id != base_bundle_id) {
     free((void*)base_bundle_id);
-    base_bundle_id = new_base_bundle_id ? strdup(new_base_bundle_id) : NULL;
+    base_bundle_id = new_base_bundle_id ? strdup(new_base_bundle_id) : nullptr;
   }
 }
 
@@ -322,19 +322,19 @@ CTFontRef NSToCFCast(NSFont* ns_val) {
 #define CF_CAST_DEFN(TypeCF) \
 template<> TypeCF##Ref \
 CFCast<TypeCF##Ref>(const CFTypeRef& cf_val) { \
-  if (cf_val == NULL) { \
-    return NULL; \
+  if (cf_val == nullptr) { \
+    return nullptr; \
   } \
   if (CFGetTypeID(cf_val) == TypeCF##GetTypeID()) { \
     return (TypeCF##Ref)(cf_val); \
   } \
-  return NULL; \
+  return nullptr; \
 } \
 \
 template<> TypeCF##Ref \
 CFCastStrict<TypeCF##Ref>(const CFTypeRef& cf_val) { \
   TypeCF##Ref rv = CFCast<TypeCF##Ref>(cf_val); \
-  DCHECK(cf_val == NULL || rv); \
+  DCHECK(cf_val == nullptr || rv); \
   return rv; \
 }
 
@@ -363,27 +363,27 @@ CF_CAST_DEFN(CTFont);
 // http://www.openradar.me/15341349 rdar://15341349
 template<> CTFontRef
 CFCast<CTFontRef>(const CFTypeRef& cf_val) {
-  if (cf_val == NULL) {
-    return NULL;
+  if (cf_val == nullptr) {
+    return nullptr;
   }
   if (CFGetTypeID(cf_val) == CTFontGetTypeID()) {
     return (CTFontRef)(cf_val);
   }
 
   if (!_CFIsObjC(CTFontGetTypeID(), cf_val))
-    return NULL;
+    return nullptr;
 
   id<NSObject> ns_val = reinterpret_cast<id>(const_cast<void*>(cf_val));
   if ([ns_val isKindOfClass:NSClassFromString(@"NSFont")]) {
     return (CTFontRef)(cf_val);
   }
-  return NULL;
+  return nullptr;
 }
 
 template<> CTFontRef
 CFCastStrict<CTFontRef>(const CFTypeRef& cf_val) {
   CTFontRef rv = CFCast<CTFontRef>(cf_val);
-  DCHECK(cf_val == NULL || rv);
+  DCHECK(cf_val == nullptr || rv);
   return rv;
 }
 #endif
@@ -430,7 +430,7 @@ std::ostream& operator<<(std::ostream& o, const CFStringRef string) {
 std::ostream& operator<<(std::ostream& o, const CFErrorRef err) {
   butil::ScopedCFTypeRef<CFStringRef> desc(CFErrorCopyDescription(err));
   butil::ScopedCFTypeRef<CFDictionaryRef> user_info(CFErrorCopyUserInfo(err));
-  CFStringRef errorDesc = NULL;
+  CFStringRef errorDesc = nullptr;
   if (user_info.get()) {
     errorDesc = reinterpret_cast<CFStringRef>(
         CFDictionaryGetValue(user_info.get(), kCFErrorDescriptionKey));

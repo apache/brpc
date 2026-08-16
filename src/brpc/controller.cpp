@@ -73,6 +73,7 @@ BAIDU_REGISTER_ERRNO(brpc::EEOF, "Got EOF");
 BAIDU_REGISTER_ERRNO(brpc::EUNUSED, "The socket was not needed");
 BAIDU_REGISTER_ERRNO(brpc::ESSL, "SSL related operation failed");
 BAIDU_REGISTER_ERRNO(brpc::EH2RUNOUTSTREAMS, "The H2 socket was run out of streams");
+BAIDU_REGISTER_ERRNO(brpc::EPROGREADTIMEOUT, "Progressive read timed out");
 
 BAIDU_REGISTER_ERRNO(brpc::EINTERNAL, "General internal error");
 BAIDU_REGISTER_ERRNO(brpc::ERESPONSE, "Bad response");
@@ -94,8 +95,9 @@ namespace brpc {
 DEFINE_bool(graceful_quit_on_sigterm, false,
             "Register SIGTERM handle func to quit graceful");
 DEFINE_bool(graceful_quit_on_sighup, false,
-            "Register SIGHUP handle func to quit graceful");            
-
+            "Register SIGHUP handle func to quit graceful");
+DEFINE_bool(log_idle_progressive_read_close, false,
+            "Print log when an idle progressive read is closed");
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
 const IdlNames idl_multi_req_single_res = { "", "res" };
@@ -174,6 +176,226 @@ public:
     void OnEndOfMessage(const butil::Status&) {}
 };
 
+struct ProgressiveReadTimeoutTask;
+
+struct ProgressiveReadTimeoutState {
+    ProgressiveReadTimeoutState(SocketId id, int32_t timeout_ms)
+        : socket_id(id)
+        , read_timeout_ms(timeout_ms)
+        , deadline_us(butil::cpuwide_time_us() + timeout_ms * 1000L)
+        , timer_id(0)
+        , timer_task(NULL)
+        , user_callback_running(false)
+        , reader_failed(false)
+        , timeout_triggered(false)
+        , end_delivered(false) {}
+
+    butil::Mutex mutex;
+    const SocketId socket_id;
+    const int32_t read_timeout_ms;
+    int64_t deadline_us;
+    bthread_timer_t timer_id;
+    ProgressiveReadTimeoutTask* timer_task;
+    bool user_callback_running;
+    bool reader_failed;
+    bool timeout_triggered;
+    bool end_delivered;
+    butil::Status timer_error;
+};
+
+struct ProgressiveReadTimeoutTask {
+    explicit ProgressiveReadTimeoutTask(
+        const std::shared_ptr<ProgressiveReadTimeoutState>& state_in)
+        : state(state_in) {}
+
+    std::shared_ptr<ProgressiveReadTimeoutState> state;
+};
+
+class ProgressiveTimeoutReader : public ProgressiveReader {
+public:
+    ProgressiveTimeoutReader(SocketId id, int32_t read_timeout_ms,
+                             ProgressiveReader* reader)
+        : _reader(reader)
+        , _state(new ProgressiveReadTimeoutState(id, read_timeout_ms)) {}
+
+    int Start() {
+        std::unique_lock<butil::Mutex> mu(_state->mutex);
+        return AddWatchdogLocked(_state, _state->read_timeout_ms * 1000L);
+    }
+
+    butil::Status OnReadOnePart(const void* data, size_t length) override {
+        {
+            std::unique_lock<butil::Mutex> mu(_state->mutex);
+            if (_state->timeout_triggered) {
+                return MakeTimeoutStatus(_state->read_timeout_ms);
+            }
+            if (!_state->timer_error.ok()) {
+                return _state->timer_error;
+            }
+            _state->user_callback_running = true;
+        }
+
+        butil::Status status = _reader->OnReadOnePart(data, length);
+        {
+            std::unique_lock<butil::Mutex> mu(_state->mutex);
+            _state->user_callback_running = false;
+            if (_state->timeout_triggered) {
+                status = MakeTimeoutStatus(_state->read_timeout_ms);
+            } else if (!_state->timer_error.ok()) {
+                status = _state->timer_error;
+            } else if (status.ok() && !_state->end_delivered) {
+                _state->deadline_us = butil::cpuwide_time_us() +
+                    _state->read_timeout_ms * 1000L;
+            } else if (!status.ok()) {
+                _state->reader_failed = true;
+            }
+        }
+        return status;
+    }
+
+    void OnEndOfMessage(const butil::Status& status) override {
+        bthread_timer_t timer_id = 0;
+        ProgressiveReadTimeoutTask* timer_task = NULL;
+        butil::Status final_status = status;
+        ProgressiveReader* reader = NULL;
+        {
+            std::unique_lock<butil::Mutex> mu(_state->mutex);
+            if (_state->end_delivered) {
+                LOG(ERROR) << "ProgressiveReader::OnEndOfMessage was called more than once";
+                return;
+            }
+            _state->end_delivered = true;
+            timer_id = _state->timer_id;
+            timer_task = _state->timer_task;
+            _state->timer_id = 0;
+            _state->timer_task = NULL;
+            if (_state->timeout_triggered) {
+                final_status = MakeTimeoutStatus(_state->read_timeout_ms);
+            } else if (!_state->timer_error.ok()) {
+                final_status = _state->timer_error;
+            }
+            reader = _reader;
+            _reader = NULL;
+        }
+
+        CancelWatchdog(timer_id, timer_task);
+        reader->OnEndOfMessage(final_status);
+        delete this;
+    }
+
+private:
+    ~ProgressiveTimeoutReader() override {}
+
+    static butil::Status MakeTimeoutStatus(int32_t timeout_ms) {
+        return butil::Status(
+            EPROGREADTIMEOUT,
+            "Progressive read timed out after %d ms", timeout_ms);
+    }
+
+    static butil::Status MakeTimerErrorStatus(int error_code) {
+        return butil::Status(
+            error_code, "Fail to add progressive read timeout timer: %s",
+            berror(error_code));
+    }
+
+    static void CancelWatchdog(
+        bthread_timer_t timer_id, ProgressiveReadTimeoutTask* timer_task) {
+        if (timer_id == 0) {
+            return;
+        }
+        const int rc = bthread_timer_del(timer_id);
+        if (rc == 0) {
+            delete timer_task;
+        } else if (rc == 1 || rc == EINVAL) {
+            // The callback owns timer_task once it starts running. EINVAL means
+            // that the callback has already finished and released the task.
+        } else {
+            LOG(ERROR) << "Unexpected bthread_timer_del error=" << rc;
+        }
+    }
+
+    static int AddWatchdogLocked(
+        const std::shared_ptr<ProgressiveReadTimeoutState>& state,
+        int64_t delay_us) {
+        if (state->end_delivered || state->reader_failed) {
+            return ECANCELED;
+        }
+        if (delay_us <= 0) {
+            delay_us = 1;
+        }
+        ProgressiveReadTimeoutTask* task =
+            new (std::nothrow) ProgressiveReadTimeoutTask(state);
+        if (task == NULL) {
+            return ENOMEM;
+        }
+        bthread_timer_t timer_id = 0;
+        const int rc = bthread_timer_add(
+            &timer_id, butil::microseconds_from_now(delay_us),
+            HandleIdleProgressiveReader, task);
+        if (rc != 0) {
+            delete task;
+            return rc;
+        }
+        state->timer_id = timer_id;
+        state->timer_task = task;
+        return 0;
+    }
+
+    static void HandleIdleProgressiveReader(void* arg) {
+        std::unique_ptr<ProgressiveReadTimeoutTask> task(
+            static_cast<ProgressiveReadTimeoutTask*>(arg));
+        const std::shared_ptr<ProgressiveReadTimeoutState> state = task->state;
+        bool fail_socket = false;
+        int error_code = 0;
+        std::string error_text;
+        {
+            std::unique_lock<butil::Mutex> mu(state->mutex);
+            if (state->timer_task == task.get()) {
+                state->timer_id = 0;
+                state->timer_task = NULL;
+            }
+            if (state->end_delivered || state->reader_failed) {
+                return;
+            }
+
+            const int64_t now_us = butil::cpuwide_time_us();
+            if (state->user_callback_running || now_us < state->deadline_us) {
+                const int64_t delay_us = state->user_callback_running
+                    ? state->read_timeout_ms * 1000L
+                    : state->deadline_us - now_us;
+                const int rc = AddWatchdogLocked(state, delay_us);
+                if (rc != 0) {
+                    state->timer_error = MakeTimerErrorStatus(rc);
+                    fail_socket = true;
+                    error_code = rc;
+                    error_text = state->timer_error.error_str();
+                }
+            } else {
+                state->timeout_triggered = true;
+                fail_socket = true;
+                error_code = EPROGREADTIMEOUT;
+                error_text = MakeTimeoutStatus(state->read_timeout_ms).error_str();
+            }
+        }
+
+        if (!fail_socket) {
+            return;
+        }
+        SocketUniquePtr socket;
+        if (Socket::Address(state->socket_id, &socket) != 0) {
+            LOG(ERROR) << "Fail to address socket_id=" << state->socket_id
+                       << " after progressive read timeout";
+        } else {
+            LOG_IF(INFO, FLAGS_log_idle_progressive_read_close)
+                << error_text << ", socket_id=" << state->socket_id;
+            socket->SetFailed(error_code, "%s", error_text.c_str());
+        }
+    }
+
+    ProgressiveReader* _reader;
+    const std::shared_ptr<ProgressiveReadTimeoutState> _state;
+};
+
 static IgnoreAllRead* s_ignore_all_read = NULL;
 static pthread_once_t s_ignore_all_read_once = PTHREAD_ONCE_INIT;
 static void CreateIgnoreAllRead() { s_ignore_all_read = new IgnoreAllRead; }
@@ -183,8 +405,8 @@ static void CreateIgnoreAllRead() { s_ignore_all_read = new IgnoreAllRead; }
 // you don't have to set the fields to initial state after deletion since
 // they'll be set uniformly after this method is called.
 void Controller::ResetNonPods() {
-    if (auto span = _span.lock()) {
-        Span::Submit(span, butil::cpuwide_time_us());
+    if (_span) {
+        Span::Submit(_span, butil::cpuwide_time_us());
     }
     _span.reset();
     _error_text.clear();
@@ -261,6 +483,7 @@ void Controller::ResetPods() {
     _backup_request_ms = UNSET_MAGIC_NUM;
     _backup_request_policy = NULL;
     _connect_timeout_ms = UNSET_MAGIC_NUM;
+    _progressive_read_timeout_ms = UNSET_MAGIC_NUM;
     _real_timeout_ms = UNSET_MAGIC_NUM;
     _deadline_us = -1;
     _timeout_id = 0;
@@ -334,6 +557,11 @@ void Controller::Call::Reset() {
     sending_sock.reset(NULL);
     bind_sock_action = BIND_SOCK_NONE;
     stream_user_data = NULL;
+}
+
+void Controller::set_progressive_read_timeout_ms(
+    int32_t progressive_read_timeout_ms) {
+    _progressive_read_timeout_ms = progressive_read_timeout_ms;
 }
 
 void Controller::set_timeout_ms(int64_t timeout_ms) {
@@ -463,9 +691,9 @@ void Controller::SetFailed(const std::string& reason) {
         AppendServerIdentiy();
     }
     _error_text.append(reason);
-    if (auto span = _span.lock()) {
-        span->set_error_code(_error_code);
-        span->Annotate(reason);
+    if (_span) {
+        _span->set_error_code(_error_code);
+        _span->Annotate(reason);
     }
     UpdateResponseHeader(this);
 }
@@ -492,9 +720,9 @@ void Controller::SetFailed(int error_code, const char* reason_fmt, ...) {
     va_start(ap, reason_fmt);
     butil::string_vappendf(&_error_text, reason_fmt, ap);
     va_end(ap);
-    if (auto span = _span.lock()) {
-        span->set_error_code(_error_code);
-        span->AnnotateCStr(_error_text.c_str() + old_size, 0);
+    if (_span) {
+        _span->set_error_code(_error_code);
+        _span->AnnotateCStr(_error_text.c_str() + old_size, 0);
     }
     UpdateResponseHeader(this);
 }
@@ -520,9 +748,9 @@ void Controller::CloseConnection(const char* reason_fmt, ...) {
     va_start(ap, reason_fmt);
     butil::string_vappendf(&_error_text, reason_fmt, ap);
     va_end(ap);
-    if (auto span = _span.lock()) {
-        span->set_error_code(_error_code);
-        span->AnnotateCStr(_error_text.c_str() + old_size, 0);
+    if (_span) {
+        _span->set_error_code(_error_code);
+        _span->AnnotateCStr(_error_text.c_str() + old_size, 0);
     }
     UpdateResponseHeader(this);
 }
@@ -982,9 +1210,9 @@ void Controller::EndRPC(const CompletionInfo& info) {
     }
     // RPC finished, now it's safe to release `LoadBalancerWithNaming'
     _lb.reset();
-    if (auto span = _span.lock()) {
-        span->set_ending_cid(info.id);
-        span->set_async(_done);
+    if (_span) {
+        _span->set_ending_cid(info.id);
+        _span->set_async(_done);
         // Submit the span if we're in async RPC. For sync RPC, the span
         // is submitted after Join() to get a more accurate resuming timestamp.
         if (_done) {
@@ -1058,14 +1286,14 @@ void Controller::DoneInBackupThread() {
 
 void Controller::SubmitSpan() {
     const int64_t now = butil::cpuwide_time_us();
-    if (auto span = _span.lock()) {
-        span->set_start_callback_us(now);
-        if (auto parent_span = span->local_parent().lock()) {
+    if (_span) {
+        _span->set_start_callback_us(now);
+        if (auto parent_span = _span->local_parent().lock()) {
             if (parent_span->is_active()) {
                 parent_span->AsParent();
             }
         }
-        Span::Submit(span, now);
+        Span::Submit(_span, now);
         _span.reset();
     }
 }
@@ -1176,12 +1404,12 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         CHECK_EQ(_remote_side, tmp_sock->remote_side());
     }
 
-    if (auto span = _span.lock()) {
+    if (_span) {
         if (_current_call.nretry == 0) {
-            span->set_remote_side(_remote_side);
+            _span->set_remote_side(_remote_side);
         } else {
-            span->Annotate("Retrying %s",
-                           endpoint2str(_remote_side).c_str());
+            _span->Annotate("Retrying %s",
+                            endpoint2str(_remote_side).c_str());
         }
     }
     // Handle connection type
@@ -1292,7 +1520,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     int rc;
     size_t packet_size = 0;
     if (user_packet_guard) {
-        if (auto span = _span.lock()) {
+        if (_span) {
             packet_size = user_packet_guard->EstimatedByteSize();
         }
         rc = _current_call.sending_sock->Write(user_packet_guard, &wopt);
@@ -1300,13 +1528,13 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         packet_size = packet.size();
         rc = _current_call.sending_sock->Write(&packet, &wopt);
     }
-    if (auto span = _span.lock()) {
+    if (_span) {
         if (_current_call.nretry == 0) {
-            span->set_sent_us(butil::cpuwide_time_us());
-            span->set_request_size(packet_size);
+            _span->set_sent_us(butil::cpuwide_time_us());
+            _span->set_request_size(packet_size);
         } else {
-            span->Annotate("Requested(%lld) [%d]",
-                           (long long)packet_size, _current_call.nretry + 1);
+            _span->Annotate("Requested(%lld) [%d]",
+                            (long long)packet_size, _current_call.nretry + 1);
         }
     }
     if (using_auth) {
@@ -1447,15 +1675,15 @@ const Controller* Controller::sub(int index) const {
 }
 
 uint64_t Controller::trace_id() const {
-    if (auto span = _span.lock()) {
-        return span->trace_id();
+    if (_span) {
+        return _span->trace_id();
     }
     return 0;
 }
 
 uint64_t Controller::span_id() const {
-    if (auto span = _span.lock()) {
-        return span->span_id();
+    if (_span) {
+        return _span->span_id();
     }
     return 0;
 }
@@ -1480,7 +1708,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
         return;
     }
     size_t stream_num = _request_streams.size();
-    std::vector<SocketUniquePtr> ptrs(stream_num);
+    std::vector<StreamUniquePtr> ptrs(stream_num);
     if (!FailedInline()) {
         if (_remote_stream_settings == NULL) {
             if (!FailedInline()) {
@@ -1488,7 +1716,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
             }
         } else {
             for (size_t i = 0; i < stream_num; ++i) {
-                if (Socket::Address(_request_streams[i], &ptrs[i]) != 0) {
+                if (Stream::Address(_request_streams[i], &ptrs[i]) != 0) {
                     if (!FailedInline()) {
                         SetFailed(EREQUEST, "Request stream=%" PRIu64 " was closed before responded",
                                   _request_streams[i]);
@@ -1511,14 +1739,14 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
         }
         return;
     }
-    Stream* s = (Stream*)ptrs[0]->conn();
+    Stream* s = ptrs[0].get();
     s->SetConnected(_remote_stream_settings);
     if (stream_num > 1) {
         auto extra_stream_ids = std::move(*_remote_stream_settings->mutable_extra_stream_ids());
         _remote_stream_settings->clear_extra_stream_ids();
         for (size_t i = 1; i < stream_num; ++i) {
             if(!ptrs[i]) continue;
-            Stream* extra_stream = (Stream *) ptrs[i]->conn();
+            Stream* extra_stream = ptrs[i].get();
             _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
             extra_stream->SetHostSocket(host_socket);
             extra_stream->SetConnected(_remote_stream_settings);
@@ -1613,6 +1841,33 @@ void Controller::ReadProgressiveAttachmentBy(ProgressiveReader* r) {
                          __FUNCTION__));
     }
     add_flag(FLAGS_PROGRESSIVE_READER);
+    if (progressive_read_timeout_ms() > 0) {
+        const SocketId socket_id = _rpa->GetSocketId();
+        if (socket_id == INVALID_SOCKET_ID) {
+            pthread_once(&s_ignore_all_read_once, CreateIgnoreAllRead);
+            _rpa->ReadProgressiveAttachmentBy(s_ignore_all_read);
+            return r->OnEndOfMessage(butil::Status(
+                ENOTSUP,
+                "Progressive read timeout is only supported for HTTP/1.x"));
+        }
+        ProgressiveTimeoutReader* reader = new (std::nothrow)
+            ProgressiveTimeoutReader(
+                socket_id, _progressive_read_timeout_ms, r);
+        if (reader == NULL) {
+            pthread_once(&s_ignore_all_read_once, CreateIgnoreAllRead);
+            _rpa->ReadProgressiveAttachmentBy(s_ignore_all_read);
+            return r->OnEndOfMessage(
+                butil::Status(ENOMEM, "Fail to create progressive timeout reader"));
+        }
+        const int rc = reader->Start();
+        if (rc != 0) {
+            pthread_once(&s_ignore_all_read_once, CreateIgnoreAllRead);
+            _rpa->ReadProgressiveAttachmentBy(s_ignore_all_read);
+            return reader->OnEndOfMessage(butil::Status(
+                rc, "Fail to add progressive read timeout timer: %s", berror(rc)));
+        }
+        return _rpa->ReadProgressiveAttachmentBy(reader);
+    }
     return _rpa->ReadProgressiveAttachmentBy(r);
 }
 
@@ -1802,7 +2057,7 @@ ControllerPrivateAccessor& ControllerPrivateAccessor::set_span(Span* span) {
 }
 
 std::shared_ptr<Span> ControllerPrivateAccessor::span() const {
-    return _cntl->_span.lock();
+    return _cntl->_span;
 }
 
 } // namespace brpc

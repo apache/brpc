@@ -73,7 +73,7 @@ struct BUTIL_EXPORT CrashKey {
 BUTIL_EXPORT size_t InitCrashKeys(const CrashKey* const keys, size_t count,
                                  size_t chunk_max_length);
 
-// Returns the correspnding crash key object or NULL for a given key.
+// Returns the correspnding crash key object or nullptr for a given key.
 BUTIL_EXPORT const CrashKey* LookupCrashKey(const butil::StringPiece& key);
 
 // In the platform crash reporting implementation, these functions set and

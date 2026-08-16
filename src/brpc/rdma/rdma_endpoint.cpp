@@ -54,6 +54,10 @@ extern int (*IbvQueryEce)(ibv_qp*, ibv_ece*);
 extern int (*IbvSetEce)(ibv_qp*, ibv_ece*);
 extern bool g_skip_rdma_init;
 
+// Only for UT: force AllocateResources() to fail, so that the "fallback to TCP" path
+// of the handshake can be tested without a real RDMA device.
+bool g_fail_resource_alloc_for_test = false;
+
 DEFINE_int32(rdma_sq_size, 128, "SQ size for RDMA");
 DEFINE_int32(rdma_rq_size, 128, "RQ size for RDMA");
 DEFINE_bool(rdma_recv_zerocopy, true, "Enable zerocopy for receive side");
@@ -431,7 +435,9 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     // First initialize CQ and QP resources.
     ep->_state.store(C_ALLOC_QPCQ, butil::memory_order_relaxed);
     if (ep->AllocateResources() < 0) {
-        LOG(WARNING) << "Fallback to tcp:" << s->description();
+        PLOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
+                      << s->description();
+        errno = 0;
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         ep->_state.store(FALLBACK_TCP, butil::memory_order_release);
         return NULL;
@@ -564,8 +570,8 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
             ep->ApplyRemoteHello(remote);
             ep->_state.store(S_ALLOC_QPCQ, butil::memory_order_relaxed);
             if (ep->AllocateResources() < 0) {
-                LOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
-                             << s->description();
+                PLOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
+                              << s->description();
                 negotiated = false;
             } else {
                 ep->_state.store(S_BRINGUP_QP, butil::memory_order_relaxed);
@@ -1073,8 +1079,26 @@ static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
 }
 
 int RdmaEndpoint::AllocateResources() {
+    if (DoAllocateResources() == 0) {
+        return 0;
+    }
+
+    const int saved_errno = errno;
+    DeallocateResources();
+    _sbuf.clear();
+    _rbuf.clear();
+    _rbuf_data.clear();
+    errno = saved_errno;
+    return -1;
+}
+
+int RdmaEndpoint::DoAllocateResources() {
     if (BAIDU_UNLIKELY(g_skip_rdma_init)) {
         // For UT
+        if (BAIDU_UNLIKELY(g_fail_resource_alloc_for_test)) {
+            errno = EINVAL;
+            return -1;
+        }
         return 0;
     }
 
@@ -1098,10 +1122,10 @@ int RdmaEndpoint::AllocateResources() {
     }
 
     if (!FLAGS_rdma_use_polling) {
-        if (0 != ReqNotifyCq(true)) {
+        if (0 != ReqNotifyCq(true, false)) {
             return -1;
         }
-        if (0 != ReqNotifyCq(false)) {
+        if (0 != ReqNotifyCq(false, false)) {
             return -1;
         }
 
@@ -1386,10 +1410,20 @@ _reclaim:
             goto _reclaim;
         }
 
-        BAIDU_SCOPED_LOCK(*g_rdma_resource_mutex);
-        _resource->next = g_rdma_resource_list;
-        g_rdma_resource_list = _resource;
+        {
+            BAIDU_SCOPED_LOCK(*g_rdma_resource_mutex);
+            _resource->next = g_rdma_resource_list;
+            g_rdma_resource_list = _resource;
+        }
+        _resource = NULL;
     }
+
+    // Detach everything from this endpoint so that the function is
+    // idempotent: it is called both when the endpoint is reset/destroyed
+    // and when AllocateResources() fails halfway.
+    _cq_sid = INVALID_SOCKET_ID;
+    _send_cq_events = 0;
+    _recv_cq_events = 0;
 }
 
 static const int MAX_CQ_EVENTS = 128;
@@ -1433,17 +1467,21 @@ int RdmaEndpoint::GetAndAckEvents(SocketUniquePtr& s) {
     return 0;
 }
 
-int RdmaEndpoint::ReqNotifyCq(bool send_cq) {
-    errno = ibv_req_notify_cq(
+int RdmaEndpoint::ReqNotifyCq(bool send_cq, bool fatal_on_error) {
+    const int err = ibv_req_notify_cq(
         send_cq ? _resource->send_cq : _resource->recv_cq,
         send_cq ? 0 : 1);
-    if (0 != errno) {
-        const int saved_errno = errno;
+    if (0 != err) {
+        errno = err;
         PLOG(WARNING) << "Fail to arm " << (send_cq ? "send" : "recv")
                       << " CQ comp channel from " << _socket->description();
-        _socket->SetFailed(saved_errno, "Fail to arm %s CQ channel from %s: %s",
-                           send_cq ? "send" : "recv", _socket->description().c_str(),
-                           berror(saved_errno));
+        if (fatal_on_error) {
+            _socket->SetFailed(err, "Fail to arm %s CQ channel from %s: %s",
+                               send_cq ? "send" : "recv", _socket->description().c_str(),
+                               berror(err));
+        }
+        // The logging and SetFailed() above may clobber errno.
+        errno = err;
         return -1;
     }
 
@@ -1507,13 +1545,27 @@ void RdmaEndpoint::PollCq(Socket* m) {
                 // that the event arrives after the poll but before the notify,
                 // we should re-poll the CQ once after the notify to check if
                 // there is an available CQE.
-                if (0 != ep->ReqNotifyCq(true)) {
+                // The connection is already working in RDMA mode here, a
+                // failed re-arm means no more CQ event will be reported,
+                // which is fatal for this connection.
+                if (0 != ep->ReqNotifyCq(true, true)) {
                     return;
                 }
-                if (0 != ep->ReqNotifyCq(false)) {
+                if (0 != ep->ReqNotifyCq(false, true)) {
                     return;
                 }
                 notified = true;
+                // Both CQs have just been re-armed, thus both of them must be
+                // re-polled. Note that `cq' is `send_cq' here, so we have to
+                // switch back to `recv_cq' explicitly. Otherwise only
+                // `send_cq' would be re-polled, and a recv CQE arriving in
+                // the window between the poll and the notify of `recv_cq'
+                // would be left in the CQ without any following event
+                // (one shot notification is not triggered by the CQE which
+                // is already in the CQ before the arming), which stalls the
+                // connection until the next CQE happens to come.
+                send = false;
+                cq = ep->_resource->recv_cq;
                 continue;
             }
             if (!m->MoreReadEvents(&progress)) {
