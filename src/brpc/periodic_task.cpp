@@ -30,10 +30,10 @@ static void* PeriodicTaskThread(void* arg) {
     timespec abstime;
     if (!task->OnTriggeringTask(&abstime)) { // end
         task->OnDestroyingTask();
-        return NULL;
+        return nullptr;
     }
     PeriodicTaskManager::StartTaskAt(task, abstime);
-    return NULL;
+    return nullptr;
 }
 
 static void RunPeriodicTaskThread(void* arg) {
@@ -50,7 +50,7 @@ static void RunPeriodicTaskThread(void* arg) {
 }
 
 void PeriodicTaskManager::StartTaskAt(PeriodicTask* task, const timespec& abstime) {
-    if (task == NULL) {
+    if (task == nullptr) {
         LOG(ERROR) << "Param[task] is NULL";
         return;
     }

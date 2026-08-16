@@ -295,7 +295,7 @@ private:
 void AnnotateSpan(const char* fmt, ...);
 
 // Add an annotation to the given span.
-// If the span is NULL, this function does nothing.
+// If the span is nullptr, this function does nothing.
 void AnnotateSpanEx(std::shared_ptr<Span> span, const char* fmt, ...);
 
 
@@ -314,7 +314,7 @@ int FindSpan(uint64_t trace_id, uint64_t span_id, RpczSpan* span);
 void FindSpans(uint64_t trace_id, std::deque<RpczSpan>* out);
 
 // Put at most `max_scan' spans before `before_this_time' into `out'.
-// If filter is not NULL, only push spans that make SpanFilter::Keep()
+// If filter is not nullptr, only push spans that make SpanFilter::Keep()
 // true.
 void ListSpans(int64_t before_this_time, size_t max_scan,
                std::deque<BriefSpan>* out, SpanFilter* filter);

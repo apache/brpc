@@ -39,7 +39,7 @@ namespace brpc {
 //   ...
 //   MemcacheResponse response;
 //   // 2 GET and 1 SET are sent to the server together.
-//   channel.CallMethod(&controller, &request, &response, NULL/*done*/);
+//   channel.CallMethod(&controller, &request, &response, nullptr/*done*/);
 class MemcacheRequest : public NonreflectableMessage<MemcacheRequest> {
 public:
     MemcacheRequest();
@@ -127,7 +127,7 @@ private:
 // of operations in corresponding MemcacheRequest.
 // Example:
 //   MemcacheResponse response;
-//   channel.CallMethod(&controller, &request, &response, NULL/*done*/);
+//   channel.CallMethod(&controller, &request, &response, nullptr/*done*/);
 //   ...
 //   if (!response.PopGet(&my_value1, &flags1, &cas1)) {
 //       LOG(FATAL) << "Fail to pop GET: " << response.LastError();

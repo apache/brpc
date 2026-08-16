@@ -101,13 +101,13 @@ const Protocol* FindProtocol(ProtocolType type) {
     const size_t index = type;
     if (index >= MAX_PROTOCOL_SIZE) {
         LOG(ERROR) << "ProtocolType=" << type << " is out of range";
-        return NULL;
+        return nullptr;
     }
     ProtocolEntry* const protocol_map = get_protocol_map();
     if (protocol_map[index].valid.load(butil::memory_order_acquire)) {
         return &protocol_map[index].protocol;
     }
-    return NULL;
+    return nullptr;
 }
 
 void ListProtocols(std::vector<Protocol>* vec) {
@@ -193,7 +193,7 @@ const char* ProtocolTypeToString(ProtocolType type) {
     GlobalInitializeOrDie();
     
     const Protocol* p = FindProtocol(type);
-    if (p != NULL) {
+    if (p != nullptr) {
         return p->name;
     }
     return "unknown";

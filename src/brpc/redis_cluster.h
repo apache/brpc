@@ -54,7 +54,7 @@ public:
     DISALLOW_COPY_AND_ASSIGN(RedisClusterChannel);
 
     int Init(const std::string& seed_nodes,
-             const RedisClusterChannelOptions* options = NULL);
+             const RedisClusterChannelOptions* options = nullptr);
 
     void CallMethod(const google::protobuf::MethodDescriptor* method,
                     google::protobuf::RpcController* controller,

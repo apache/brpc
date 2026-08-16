@@ -175,7 +175,7 @@ RedisClusterChannel::RedisClusterChannel()
 RedisClusterChannel::~RedisClusterChannel() {
     _stop_refresh.store(true);
     if (_refresh_started) {
-        bthread_join(_refresh_tid, NULL);
+        bthread_join(_refresh_tid, nullptr);
     }
 }
 
@@ -205,7 +205,7 @@ int RedisClusterChannel::Init(const std::string& seed_nodes,
     }
 
     for (size_t i = 0; i < seeds.size(); ++i) {
-        if (GetOrCreateChannel(seeds[i]) == NULL) {
+        if (GetOrCreateChannel(seeds[i]) == nullptr) {
             LOG(WARNING) << "Fail to init seed channel=" << seeds[i];
         }
     }
@@ -217,7 +217,7 @@ int RedisClusterChannel::Init(const std::string& seed_nodes,
 
     if (_options.enable_periodic_refresh && _options.refresh_interval_s > 0) {
         _stop_refresh.store(false);
-        if (bthread_start_background(&_refresh_tid, NULL,
+        if (bthread_start_background(&_refresh_tid, nullptr,
                                      RedisClusterChannel::RunPeriodicRefresh,
                                      this) == 0) {
             _refresh_started = true;
@@ -235,7 +235,7 @@ void RedisClusterChannel::CallMethod(
     google::protobuf::Message* response_base,
     google::protobuf::Closure* done) {
     Controller* cntl = static_cast<Controller*>(controller_base);
-    if (cntl == NULL) {
+    if (cntl == nullptr) {
         LOG(ERROR) << "controller is NULL";
         if (done) {
             done->Run();
@@ -243,7 +243,7 @@ void RedisClusterChannel::CallMethod(
         return;
     }
 
-    if (request_base == NULL ||
+    if (request_base == nullptr ||
         request_base->GetDescriptor() != RedisRequest::descriptor()) {
         cntl->SetFailed(EREQUEST, "request must be RedisRequest");
         if (done) {
@@ -251,7 +251,7 @@ void RedisClusterChannel::CallMethod(
         }
         return;
     }
-    if (response_base == NULL ||
+    if (response_base == nullptr ||
         response_base->GetDescriptor() != RedisResponse::descriptor()) {
         cntl->SetFailed(ERESPONSE, "response must be RedisResponse");
         if (done) {
@@ -263,17 +263,12 @@ void RedisClusterChannel::CallMethod(
     const RedisRequest* request = static_cast<const RedisRequest*>(request_base);
     RedisResponse* response = static_cast<RedisResponse*>(response_base);
 
-    if (done == NULL) {
+    if (done == nullptr) {
         CallMethodImpl(cntl, *request, response);
         return;
     }
 
-    AsyncCall* ac = new (std::nothrow) AsyncCall;
-    if (ac == NULL) {
-        cntl->SetFailed(ENOMEM, "Fail to allocate async context");
-        done->Run();
-        return;
-    }
+    AsyncCall* ac = new AsyncCall;
     ac->self = this;
     ac->cntl = cntl;
     ac->request = request;
@@ -281,7 +276,7 @@ void RedisClusterChannel::CallMethod(
     ac->done = done;
 
     bthread_t tid;
-    if (bthread_start_background(&tid, NULL, RedisClusterChannel::RunAsyncCall, ac) != 0) {
+    if (bthread_start_background(&tid, nullptr, RedisClusterChannel::RunAsyncCall, ac) != 0) {
         delete ac;
         CallMethodImpl(cntl, *request, response);
         done->Run();
@@ -380,7 +375,7 @@ bool RedisClusterChannel::ExecuteCommand(const ParsedCommand& cmd,
     }
 
     SingleCommandResult result;
-    if (!ExecuteSingleCommand(cmd.args, NULL, &result, cntl)) {
+    if (!ExecuteSingleCommand(cmd.args, nullptr, &result, cntl)) {
         return false;
     }
     encoded_reply->swap(result.encoded_reply);
@@ -398,7 +393,7 @@ bool RedisClusterChannel::ExecuteSingleCommand(const std::vector<std::string>& a
 
     std::string endpoint;
     int key_slot = -1;
-    if (forced_endpoint != NULL) {
+    if (forced_endpoint != nullptr) {
         endpoint = *forced_endpoint;
     } else if (!IsNoKeyCommand(args[0]) && args.size() >= 2) {
         if (!PickEndpointForKey(args[1], &endpoint, &key_slot)) {
@@ -478,7 +473,7 @@ bool RedisClusterChannel::ExecuteMGet(const ParsedCommand& cmd,
         sub_args.push_back("get");
         sub_args.push_back(cmd.args[i]);
         SingleCommandResult sub_result;
-        if (!ExecuteSingleCommand(sub_args, NULL, &sub_result, cntl)) {
+        if (!ExecuteSingleCommand(sub_args, nullptr, &sub_result, cntl)) {
             return false;
         }
         values.push_back(sub_result.encoded_reply);
@@ -507,7 +502,7 @@ bool RedisClusterChannel::ExecuteMSet(const ParsedCommand& cmd,
         sub_args.push_back(cmd.args[i + 1]);
 
         SingleCommandResult sub_result;
-        if (!ExecuteSingleCommand(sub_args, NULL, &sub_result, cntl)) {
+        if (!ExecuteSingleCommand(sub_args, nullptr, &sub_result, cntl)) {
             return false;
         }
         if (sub_result.is_error || !sub_result.is_status_ok) {
@@ -536,7 +531,7 @@ bool RedisClusterChannel::ExecuteIntegerAggregate(const ParsedCommand& cmd,
         sub_args.push_back(cmd.args[i]);
 
         SingleCommandResult sub_result;
-        if (!ExecuteSingleCommand(sub_args, NULL, &sub_result, cntl)) {
+        if (!ExecuteSingleCommand(sub_args, nullptr, &sub_result, cntl)) {
             return false;
         }
         if (sub_result.is_error) {
@@ -596,7 +591,7 @@ bool RedisClusterChannel::ExecuteEvalLike(const ParsedCommand& cmd,
 
     SingleCommandResult result;
     if (!ExecuteSingleCommand(cmd.args,
-                              numkeys > 0 ? &forced_endpoint : NULL,
+                              numkeys > 0 ? &forced_endpoint : nullptr,
                               &result,
                               cntl)) {
         return false;
@@ -622,7 +617,7 @@ bool RedisClusterChannel::PickEndpointForKey(const std::string& key,
         return false;
     }
     *endpoint = mapped;
-    if (slot != NULL) {
+    if (slot != nullptr) {
         *slot = key_slot;
     }
     return true;
@@ -655,7 +650,7 @@ bool RedisClusterChannel::SendToEndpoint(const std::string& endpoint,
     redirect->endpoint.clear();
 
     Channel* channel = GetOrCreateChannel(endpoint);
-    if (channel == NULL) {
+    if (channel == nullptr) {
         cntl->SetFailed(EHOSTDOWN, "Fail to get channel for %s", endpoint.c_str());
         return false;
     }
@@ -687,7 +682,7 @@ bool RedisClusterChannel::SendToEndpoint(const std::string& endpoint,
     if (cntl->timeout_ms() > 0) {
         sub_cntl.set_timeout_ms(cntl->timeout_ms());
     }
-    channel->CallMethod(NULL, &sub_cntl, &request, &response, NULL);
+    channel->CallMethod(nullptr, &sub_cntl, &request, &response, nullptr);
     if (sub_cntl.Failed()) {
         cntl->SetFailed(sub_cntl.ErrorCode(),
                         "Redis cluster sub-request to %s failed: %s",
@@ -750,7 +745,7 @@ bool RedisClusterChannel::RefreshTopology() {
 
 bool RedisClusterChannel::RefreshTopologyFromEndpoint(const std::string& endpoint) {
     Channel* channel = GetOrCreateChannel(endpoint);
-    if (channel == NULL) {
+    if (channel == nullptr) {
         return false;
     }
 
@@ -784,7 +779,7 @@ bool RedisClusterChannel::FetchAndParseClusterSlots(
     RedisResponse response;
     Controller cntl;
     cntl.set_timeout_ms(_options.topology_refresh_timeout_ms);
-    channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
     if (cntl.Failed()) {
         return false;
     }
@@ -854,7 +849,7 @@ bool RedisClusterChannel::FetchAndParseClusterNodes(
     RedisResponse response;
     Controller cntl;
     cntl.set_timeout_ms(_options.topology_refresh_timeout_ms);
-    channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
     if (cntl.Failed()) {
         return false;
     }
@@ -978,14 +973,11 @@ Channel* RedisClusterChannel::GetOrCreateChannel(const std::string& endpoint) {
         }
     }
 
-    std::unique_ptr<Channel> new_channel(new (std::nothrow) Channel);
-    if (!new_channel) {
-        return NULL;
-    }
+    std::unique_ptr<Channel> new_channel(new Channel);
     ChannelOptions options = _options.channel_options;
     options.protocol = brpc::PROTOCOL_REDIS;
     if (new_channel->Init(endpoint.c_str(), &options) != 0) {
-        return NULL;
+        return nullptr;
     }
 
     BAIDU_SCOPED_LOCK(_mutex);
@@ -1156,7 +1148,7 @@ bool RedisClusterChannel::ParseInt(const std::string& s, int64_t* out) {
     if (s.empty()) {
         return false;
     }
-    char* end = NULL;
+    char* end = nullptr;
     errno = 0;
     const long long value = strtoll(s.c_str(), &end, 10);
     if (errno != 0 || end != s.c_str() + s.size()) {
@@ -1187,14 +1179,14 @@ void* RedisClusterChannel::RunPeriodicRefresh(void* arg) {
         }
         self->RefreshTopology();
     }
-    return NULL;
+    return nullptr;
 }
 
 void* RedisClusterChannel::RunAsyncCall(void* arg) {
     std::unique_ptr<AsyncCall> ac(static_cast<AsyncCall*>(arg));
     ac->self->CallMethodImpl(ac->cntl, *ac->request, ac->response);
     ac->done->Run();
-    return NULL;
+    return nullptr;
 }
 
 int RedisClusterChannel::CheckHealth() {
