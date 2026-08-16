@@ -134,10 +134,10 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
 
 RoundRobinLoadBalancer* RoundRobinLoadBalancer::New(
     const butil::StringPiece& params) const {
-    RoundRobinLoadBalancer* lb = new (std::nothrow) RoundRobinLoadBalancer;
-    if (lb && !lb->SetParameters(params)) {
+    RoundRobinLoadBalancer* lb = new RoundRobinLoadBalancer;
+    if (!lb->SetParameters(params)) {
         delete lb;
-        lb = NULL;
+        lb = nullptr;
     }
     return lb;
 }

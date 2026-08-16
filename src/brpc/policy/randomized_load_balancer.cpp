@@ -134,10 +134,10 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
 
 RandomizedLoadBalancer* RandomizedLoadBalancer::New(
     const butil::StringPiece& params) const {
-    RandomizedLoadBalancer* lb = new (std::nothrow) RandomizedLoadBalancer;
-    if (lb && !lb->SetParameters(params)) {
+    RandomizedLoadBalancer* lb = new RandomizedLoadBalancer;
+    if (!lb->SetParameters(params)) {
         delete lb;
-        lb = NULL;
+        lb = nullptr;
     }
     return lb;
 }

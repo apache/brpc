@@ -36,14 +36,14 @@ SocketId MysqlTransaction::GetSocketId() const {
 bool MysqlTransaction::DoneTransaction(const char* command) {
     bool rc = false;
     MysqlRequest request(this);
-    if (_socket == NULL) {  // must already commit or rollback, return true.
+    if (_socket == nullptr) {  // must already commit or rollback, return true.
         return true;
     } else if (!request.Query(command)) {
         LOG(ERROR) << "Fail to query command" << command;
     } else {
         MysqlResponse response;
         Controller cntl;
-        _channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        _channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         if (!cntl.Failed()) {
             if (response.reply(0).is_ok()) {
                 rc = true;
@@ -67,7 +67,7 @@ MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
 
     if (channel.options().connection_type == CONNECTION_TYPE_SINGLE) {
         LOG(ERROR) << "mysql transaction can't use connection type 'single'";
-        return NULL;
+        return nullptr;
     }
     std::stringstream ss;
     // repeatable read is mysql default isolation level, so ignore it.
@@ -85,21 +85,21 @@ MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
     MysqlRequest request;
     if (!request.Query(ss.str())) {
         LOG(ERROR) << "Fail to query command" << ss.str();
-        return NULL;
+        return nullptr;
     }
 
     MysqlTransactionUniquePtr tx;
     MysqlResponse response;
     Controller cntl;
     ControllerPrivateAccessor(&cntl).set_bind_sock_action(BIND_SOCK_RESERVE);
-    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
     if (!cntl.Failed()) {
         // repeatable read isolation send one reply, other isolation has two reply
         if ((opts.isolation_level == MysqlIsoRepeatableRead && response.reply(0).is_ok()) ||
             (response.reply(0).is_ok() && response.reply(1).is_ok())) {
             SocketUniquePtr socket;
             ControllerPrivateAccessor(&cntl).get_bind_sock(&socket);
-            if (socket == NULL) {
+            if (socket == nullptr) {
                 LOG(ERROR) << "Fail create mysql transaction, get bind socket failed";
             } else {
                 tx.reset(new MysqlTransaction(channel, socket, cntl.connection_type()));
@@ -111,7 +111,7 @@ MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
             // ref (which would leak the pooled connection).
             SocketUniquePtr socket;
             ControllerPrivateAccessor(&cntl).get_bind_sock(&socket);
-            if (socket != NULL && cntl.connection_type() == CONNECTION_TYPE_POOLED) {
+            if (socket != nullptr && cntl.connection_type() == CONNECTION_TYPE_POOLED) {
                 socket->ReturnToPool();
             }
             LOG(ERROR) << "Fail create mysql transaction, " << response;

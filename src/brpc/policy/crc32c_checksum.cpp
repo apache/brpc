@@ -41,10 +41,10 @@ uint32_t ExtendCrc32c(uint32_t crc, const butil::IOBuf& buf) {
 }
 
 // Computes the crc32c over `in.buf', and over `in.attachment' as well when
-// the caller opted in (ChecksumIn::attachment != NULL).
+// the caller opted in (ChecksumIn::attachment != nullptr).
 uint32_t ComputeCrc32c(const ChecksumIn& in) {
     uint32_t crc = ExtendCrc32c(0, *in.buf);
-    if (in.attachment != NULL) {
+    if (in.attachment != nullptr) {
         crc = ExtendCrc32c(crc, *in.attachment);
     }
     return crc;

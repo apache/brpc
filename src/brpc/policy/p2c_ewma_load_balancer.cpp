@@ -72,12 +72,12 @@ bool P2CEwmaLoadBalancer::Add(Servers& bg, const Servers& fg,
     if (bg.server_list.capacity() < 128) {
         bg.server_list.reserve(128);
     }
-    if (bg.server_map.seek(id.id) != NULL) {
+    if (bg.server_map.seek(id.id) != nullptr) {
         return false;
     }
-    ServerInfo info = { id.id, WeightOfTag(id.tag), NULL };
+    ServerInfo info = { id.id, WeightOfTag(id.tag), nullptr };
     const size_t* pindex = fg.server_map.seek(id.id);
-    if (pindex == NULL) {
+    if (pindex == nullptr) {
         // Both buffers do not have the server. Create the stat structure
         // which will be shared by both buffers.
         info.stat = std::make_shared<NodeStat>();
@@ -92,7 +92,7 @@ bool P2CEwmaLoadBalancer::Add(Servers& bg, const Servers& fg,
 
 bool P2CEwmaLoadBalancer::Remove(Servers& bg, const ServerId& id) {
     size_t* pindex = bg.server_map.seek(id.id);
-    if (pindex == NULL) {
+    if (pindex == nullptr) {
         return false;
     }
     const size_t index = *pindex;
@@ -181,7 +181,7 @@ int P2CEwmaLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     const int64_t now_us = in.begin_time_us > 0
         ? in.begin_time_us : butil::gettimeofday_us();
 
-    const ServerInfo* best = NULL;
+    const ServerInfo* best = nullptr;
     double best_score = 0;
     SocketUniquePtr best_ptr;
     // Score the server at `index' and keep it if it beats the current best.
@@ -196,7 +196,7 @@ int P2CEwmaLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
             return;
         }
         const double score = Score(info, now_us);
-        if (best == NULL || score < best_score) {
+        if (best == nullptr || score < best_score) {
             best = &info;
             best_score = score;
             best_ptr.swap(ptr);
@@ -233,7 +233,7 @@ int P2CEwmaLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
             chosen[nchosen++] = index;
             consider(index);
         }
-        if (best == NULL) {
+        if (best == nullptr) {
             // All sampled servers were excluded or unavailable, fall back
             // to scoring the whole list before violating exclusion below.
             for (size_t i = 0; i < n; ++i) {
@@ -242,7 +242,7 @@ int P2CEwmaLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         }
     }
 
-    if (best == NULL) {
+    if (best == nullptr) {
         // Always take last chance: all servers are excluded, send to any
         // available one as rr/random do.
         for (size_t i = 0; i < n; ++i) {
@@ -251,7 +251,7 @@ int P2CEwmaLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
                 break;
             }
         }
-        if (best == NULL) {
+        if (best == nullptr) {
             return EHOSTDOWN;
         }
     }
@@ -269,7 +269,7 @@ void P2CEwmaLoadBalancer::Feedback(const CallInfo& info) {
         return;
     }
     const size_t* pindex = s->server_map.seek(info.server_id);
-    if (pindex == NULL) {
+    if (pindex == nullptr) {
         // The server was removed after selection, its stat is gone with it.
         return;
     }
@@ -317,10 +317,10 @@ void P2CEwmaLoadBalancer::Feedback(const CallInfo& info) {
 
 P2CEwmaLoadBalancer* P2CEwmaLoadBalancer::New(
     const butil::StringPiece& params) const {
-    P2CEwmaLoadBalancer* lb = new (std::nothrow) P2CEwmaLoadBalancer;
-    if (lb != NULL && !lb->SetParameters(params)) {
+    P2CEwmaLoadBalancer* lb = new P2CEwmaLoadBalancer;
+    if (!lb->SetParameters(params)) {
         delete lb;
-        lb = NULL;
+        lb = nullptr;
     }
     return lb;
 }

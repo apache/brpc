@@ -67,8 +67,8 @@ TimeoutConcurrencyLimiter::TimeoutConcurrencyLimiter(
 
 TimeoutConcurrencyLimiter *TimeoutConcurrencyLimiter::New(
     const AdaptiveMaxConcurrency &amc) const {
-    return new (std::nothrow)
-        TimeoutConcurrencyLimiter(static_cast<TimeoutConcurrencyConf>(amc));
+    return new TimeoutConcurrencyLimiter(
+        static_cast<TimeoutConcurrencyConf>(amc));
 }
 
 bool TimeoutConcurrencyLimiter::OnRequested(int current_concurrency,

@@ -193,7 +193,7 @@ size_t ConsistentHashingLoadBalancer::RemoveBatch(
     bool use_set = true;
     if (id_set.init(servers.size() * 2) == 0) {
         for (size_t i = 0; i < servers.size(); ++i) {
-            if (id_set.insert(servers[i]) == NULL) {
+            if (id_set.insert(servers[i]) == nullptr) {
                 use_set = false;
                 break;
             }
@@ -205,7 +205,7 @@ size_t ConsistentHashingLoadBalancer::RemoveBatch(
     bg.clear();
     for (size_t i = 0; i < fg.size(); ++i) {
         const bool removed = 
-            use_set ? (id_set.seek(fg[i].server_sock) != NULL)
+            use_set ? (id_set.seek(fg[i].server_sock) != nullptr)
                     : (std::find(servers.begin(), servers.end(), 
                                 fg[i].server_sock) != servers.end());
         if (!removed) {
@@ -285,9 +285,8 @@ size_t ConsistentHashingLoadBalancer::RemoveServersInBatch(
 }
 
 LoadBalancer *ConsistentHashingLoadBalancer::New(const butil::StringPiece& params) const {
-    ConsistentHashingLoadBalancer* lb = 
-        new (std::nothrow) ConsistentHashingLoadBalancer(_type);
-    if (lb && !lb->SetParameters(params)) {
+    ConsistentHashingLoadBalancer* lb = new ConsistentHashingLoadBalancer(_type);
+    if (!lb->SetParameters(params)) {
         delete lb;
         lb = nullptr;
     }
