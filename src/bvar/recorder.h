@@ -269,7 +269,6 @@ inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
     }
     agent_type* agent = _combiner->get_or_create_tls_agent();
     if (BAIDU_UNLIKELY(!agent)) {
-        LOG(FATAL) << "Fail to create agent";
         return *this;
     }
     uint64_t n;

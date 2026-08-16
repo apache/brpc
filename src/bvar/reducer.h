@@ -303,7 +303,6 @@ inline Reducer<T, Op, InvOp>& Reducer<T, Op, InvOp>::operator<<(
     // It's wait-free for most time
     agent_type* agent = _combiner->get_or_create_tls_agent();
     if (__builtin_expect(!agent, 0)) {
-        LOG(FATAL) << "Fail to create agent";
         return *this;
     }
     agent->element.modify(_combiner->op(), value);
