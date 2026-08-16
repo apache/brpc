@@ -40,7 +40,7 @@ void SocketsService::default_method(::google::protobuf::RpcController* cntl_base
         os << "# Use /sockets/<SocketId>\n"
            << butil::describe_resources<Socket>() << '\n';
     } else {
-        char* endptr = NULL;
+        char* endptr = nullptr;
         SocketId sid = strtoull(constraint.c_str(), &endptr, 10);
         if (*endptr == '\0' || *endptr == '/') {
             Socket::DebugSocket(os, sid);
