@@ -20,7 +20,6 @@
 #define BRPC_PROGRESSIVE_READER_H
 
 #include "brpc/shared_object.h"
-#include "brpc/socket_id.h"
 
 
 namespace brpc {
@@ -85,7 +84,6 @@ public:
     // Any error occurred should destroy the reader by calling r->Destroy().
     // r->Destroy() should be guaranteed to be called once and only once.
     virtual void ReadProgressiveAttachmentBy(ProgressiveReader* r) = 0;
-    virtual SocketId GetSocketId() = 0;
 };
 
 } // namespace brpc
