@@ -87,20 +87,11 @@ class HttpContext : public ReadableProgressiveAttachment
                   , public InputMessageBase
                   , public HttpMessage {
 public:
-    SocketId GetSocketId() override {
-        return _socket_id;
-    }
-
-    void SetSocketId(SocketId id) {
-        _socket_id = id;
-    }
-
     explicit HttpContext(bool read_body_progressively,
                          HttpMethod request_method = HTTP_METHOD_GET)
         : InputMessageBase()
         , HttpMessage(read_body_progressively, request_method)
-        , _is_stage2(false)
-        , _socket_id(INVALID_SOCKET_ID) {
+        , _is_stage2(false) {
         // add one ref for Destroy
         butil::intrusive_ptr<HttpContext>(this).detach();
     }
@@ -131,7 +122,6 @@ public:
 
 private:
     bool _is_stage2;
-    SocketId _socket_id;
 };
 
 // Implement functions required in protocol.h
