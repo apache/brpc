@@ -84,7 +84,7 @@ pthread_mutex_t g_task_control_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Referenced in rpc, needs to be extern.
 // Notice that we can't declare the variable as atomic<TaskControl*> which
 // are not constructed before main().
-TaskControl* g_task_control = NULL;
+TaskControl* g_task_control = nullptr;
 
 EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 extern void (*g_worker_startfn)();
@@ -97,40 +97,37 @@ inline TaskControl* get_task_control() {
 inline TaskControl* get_or_new_task_control() {
     butil::atomic<TaskControl*>* p = (butil::atomic<TaskControl*>*)&g_task_control;
     TaskControl* c = p->load(butil::memory_order_consume);
-    if (c != NULL) {
+    if (c != nullptr) {
         return c;
     }
     BAIDU_SCOPED_LOCK(g_task_control_mutex);
     c = p->load(butil::memory_order_consume);
-    if (c != NULL) {
+    if (c != nullptr) {
         return c;
     }
-    c = new (std::nothrow) TaskControl;
-    if (NULL == c) {
-        return NULL;
-    }
+    c = new TaskControl;
     int concurrency = FLAGS_bthread_min_concurrency > 0 ?
         FLAGS_bthread_min_concurrency :
         FLAGS_bthread_concurrency;
     if (c->init(concurrency) != 0) {
         LOG(ERROR) << "Fail to init g_task_control";
         delete c;
-        return NULL;
+        return nullptr;
     }
     p->store(c, butil::memory_order_release);
     return c;
 }
 
 #ifdef BRPC_BTHREAD_TRACER
-BAIDU_THREAD_LOCAL TaskMeta* pthread_fake_meta = NULL;
+BAIDU_THREAD_LOCAL TaskMeta* pthread_fake_meta = nullptr;
 
 bthread_t init_for_pthread_stack_trace() {
-    if (NULL != pthread_fake_meta) {
+    if (nullptr != pthread_fake_meta) {
         return pthread_fake_meta->tid;
     }
 
     TaskControl* c = get_task_control();
-    if (NULL == c) {
+    if (nullptr == c) {
         LOG(ERROR) << "TaskControl has not been created, "
                       "please use bthread_start_xxx before call this function";
         return INVALID_BTHREAD;
@@ -138,7 +135,7 @@ bthread_t init_for_pthread_stack_trace() {
 
     butil::ResourceId<TaskMeta> slot;
     pthread_fake_meta = butil::get_resource(&slot);
-    if (BAIDU_UNLIKELY(NULL == pthread_fake_meta)) {
+    if (BAIDU_UNLIKELY(nullptr == pthread_fake_meta)) {
         LOG(ERROR) << "Fail to get TaskMeta";
         return INVALID_BTHREAD;
     }
@@ -170,7 +167,7 @@ bthread_t init_for_pthread_stack_trace() {
             TASK_STATUS_UNKNOWN, pthread_fake_meta);
 
         butil::return_resource(get_slot(pthread_fake_meta->tid));
-        pthread_fake_meta = NULL;
+        pthread_fake_meta = nullptr;
     });
 
     return pthread_fake_meta->tid;
@@ -178,7 +175,7 @@ bthread_t init_for_pthread_stack_trace() {
 
 void stack_trace(std::ostream& os, bthread_t tid) {
     TaskControl* c = get_task_control();
-    if (NULL == c) {
+    if (nullptr == c) {
         os << "TaskControl has not been created";
         return;
     }
@@ -187,7 +184,7 @@ void stack_trace(std::ostream& os, bthread_t tid) {
 
 std::string stack_trace(bthread_t tid) {
     TaskControl* c = get_task_control();
-    if (NULL == c) {
+    if (nullptr == c) {
         return "TaskControl has not been created";
     }
     return c->stack_trace(tid);
@@ -198,7 +195,7 @@ std::string stack_trace(bthread_t tid) {
 // Print all living (started and not finished) bthreads
 void print_living_tasks(std::ostream& os, bool enable_trace) {
     TaskControl* c = get_task_control();
-    if (NULL == c) {
+    if (nullptr == c) {
         os << "TaskControl has not been created";
         return;
     }
@@ -250,7 +247,7 @@ static bool validate_bthread_current_tag(const char*, int32_t val) {
     }
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
     auto c = get_task_control();
-    if (c == NULL) {
+    if (c == nullptr) {
         FLAGS_bthread_concurrency_by_tag = 8 + BTHREAD_EPOLL_THREAD_NUM;
         return true;
     }
@@ -262,7 +259,7 @@ static bool validate_bthread_concurrency_by_tag(const char*, int32_t val) {
     return bthread_setconcurrency_by_tag(val, FLAGS_bthread_current_tag) == 0;
 }
 
-BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group_nosignal, NULL);
+BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group_nosignal, nullptr);
 
 BUTIL_FORCE_INLINE int
 start_from_non_worker(bthread_t* __restrict tid,
@@ -270,20 +267,20 @@ start_from_non_worker(bthread_t* __restrict tid,
                       void* (*fn)(void*),
                       void* __restrict arg) {
     TaskControl* c = get_or_new_task_control();
-    if (NULL == c) {
+    if (nullptr == c) {
         return ENOMEM;
     }
     bthread_tag_t tag = BTHREAD_TAG_DEFAULT;
-    if (attr != NULL && attr->tag != BTHREAD_TAG_INVALID) {
+    if (attr != nullptr && attr->tag != BTHREAD_TAG_INVALID) {
         tag = attr->tag;
     }
-    if (attr != NULL && (attr->flags & BTHREAD_NOSIGNAL)) {
+    if (attr != nullptr && (attr->flags & BTHREAD_NOSIGNAL)) {
         // Remember the TaskGroup to insert NOSIGNAL tasks for 2 reasons:
         // 1. NOSIGNAL is often for creating many bthreads in batch,
         //    inserting into the same TaskGroup maximizes the batch.
         // 2. bthread_flush() needs to know which TaskGroup to flush.
         auto g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal);
-        if (NULL == g) {
+        if (nullptr == g) {
             g = c->choose_one_group(tag);
             BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal, g);
         } else {
@@ -326,7 +323,7 @@ struct TidStopper {
 };
 struct TidJoiner {
     void operator()(bthread_t & id) const {
-        bthread_join(id, NULL);
+        bthread_join(id, nullptr);
         id = INVALID_BTHREAD;
     }
 };
@@ -371,7 +368,7 @@ void bthread_flush() {
     g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal);
     if (g) {
         // NOSIGNAL tasks were created in this non-worker.
-        bthread::BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal, NULL);
+        bthread::BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group_nosignal, nullptr);
         return g->flush_nosignal_tasks_remote();
     }
 }
@@ -394,7 +391,7 @@ bthread_t bthread_self(void) {
     // note: return 0 for main tasks now, which include main thread and
     // all work threads. So that we can identify main tasks from logs
     // more easily. This is probably questionable in the future.
-    if (g != NULL && !g->is_current_main_task()/*note*/) {
+    if (g != nullptr && !g->is_current_main_task()/*note*/) {
         return g->current_tid();
     }
     return INVALID_BTHREAD;
@@ -406,7 +403,7 @@ int bthread_equal(bthread_t t1, bthread_t t2) {
 
 void bthread_exit(void* retval) {
     bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
-    if (g != NULL && !g->is_current_main_task()) {
+    if (g != nullptr && !g->is_current_main_task()) {
         throw bthread::ExitException(retval);
     } else {
         pthread_exit(retval);
@@ -450,7 +447,7 @@ int bthread_setconcurrency(int num) {
         return 0;
     }
     bthread::TaskControl* c = bthread::get_task_control();
-    if (c != NULL) {
+    if (c != nullptr) {
         if (num < c->concurrency()) {
             return EPERM;
         } else if (num == c->concurrency()) {
@@ -459,7 +456,7 @@ int bthread_setconcurrency(int num) {
     }
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
     c = bthread::get_task_control();
-    if (c == NULL) {
+    if (c == nullptr) {
         if (bthread::never_set_bthread_concurrency) {
             bthread::never_set_bthread_concurrency = false;
             bthread::FLAGS_bthread_concurrency = num;
@@ -485,7 +482,7 @@ int bthread_setconcurrency(int num) {
 int bthread_getconcurrency_by_tag(bthread_tag_t tag) {
     BAIDU_SCOPED_LOCK(bthread::g_task_control_mutex);
     auto c = bthread::get_task_control();
-    if (c == NULL) {
+    if (c == nullptr) {
         return EPERM;
     }
     return c->concurrency(tag);
@@ -520,7 +517,7 @@ int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag) {
 
 int bthread_about_to_quit() {
     bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
-    if (g != NULL) {
+    if (g != nullptr) {
         bthread::TaskMeta* current_task = g->current_task();
         if(!(current_task->attr.flags & BTHREAD_NEVER_QUIT)) {
             current_task->about_to_quit = true;
@@ -533,11 +530,11 @@ int bthread_about_to_quit() {
 int bthread_timer_add(bthread_timer_t* id, timespec abstime,
                       void (*on_timer)(void*), void* arg) {
     bthread::TaskControl* c = bthread::get_or_new_task_control();
-    if (c == NULL) {
+    if (c == nullptr) {
         return ENOMEM;
     }
     bthread::TimerThread* tt = bthread::get_or_create_global_timer_thread();
-    if (tt == NULL) {
+    if (tt == nullptr) {
         return ENOMEM;
     }
     bthread_timer_t tmp = tt->schedule(on_timer, arg, abstime);
@@ -550,9 +547,9 @@ int bthread_timer_add(bthread_timer_t* id, timespec abstime,
 
 int bthread_timer_del(bthread_timer_t id) {
     bthread::TaskControl* c = bthread::get_task_control();
-    if (c != NULL) {
+    if (c != nullptr) {
         bthread::TimerThread* tt = bthread::get_global_timer_thread();
-        if (tt == NULL) {
+        if (tt == nullptr) {
             return EINVAL;
         }
         const int state = tt->unschedule(id);
@@ -565,7 +562,7 @@ int bthread_timer_del(bthread_timer_t id) {
 
 int bthread_usleep(uint64_t microseconds) {
     bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
-    if (NULL != g && !g->is_current_pthread_task()) {
+    if (nullptr != g && !g->is_current_pthread_task()) {
         return bthread::TaskGroup::usleep(&g, microseconds);
     }
     return ::usleep(microseconds);
@@ -573,7 +570,7 @@ int bthread_usleep(uint64_t microseconds) {
 
 int bthread_yield(void) {
     bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
-    if (NULL != g && !g->is_current_pthread_task()) {
+    if (nullptr != g && !g->is_current_pthread_task()) {
         bthread::TaskGroup::yield(&g);
         return 0;
     }
@@ -582,7 +579,7 @@ int bthread_yield(void) {
 }
 
 int bthread_set_worker_startfn(void (*start_fn)()) {
-    if (start_fn == NULL) {
+    if (start_fn == nullptr) {
         return EINVAL;
     }
     bthread::g_worker_startfn = start_fn;
@@ -590,7 +587,7 @@ int bthread_set_worker_startfn(void (*start_fn)()) {
 }
 
 int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t)) {
-    if (start_fn == NULL) {
+    if (start_fn == nullptr) {
         return EINVAL;
     }
     bthread::g_tagged_worker_startfn = start_fn;
@@ -599,7 +596,7 @@ int bthread_set_tagged_worker_startfn(void (*start_fn)(bthread_tag_t)) {
 
 void bthread_stop_world() {
     bthread::TaskControl* c = bthread::get_task_control();
-    if (c != NULL) {
+    if (c != nullptr) {
         c->stop_and_join();
     }
 }
@@ -607,10 +604,7 @@ void bthread_stop_world() {
 int bthread_list_init(bthread_list_t* list,
                       unsigned /*size*/,
                       unsigned /*conflict_size*/) {
-    list->impl = new (std::nothrow) bthread::TidList;
-    if (NULL == list->impl) {
-        return ENOMEM;
-    }
+    list->impl = new bthread::TidList;
     // Set unused fields to zero as well.
     list->head = 0;
     list->size = 0;
@@ -621,18 +615,18 @@ int bthread_list_init(bthread_list_t* list,
 
 void bthread_list_destroy(bthread_list_t* list) {
     delete static_cast<bthread::TidList*>(list->impl);
-    list->impl = NULL;
+    list->impl = nullptr;
 }
 
 int bthread_list_add(bthread_list_t* list, bthread_t id) {
-    if (list->impl == NULL) {
+    if (list->impl == nullptr) {
         return EINVAL;
     }
     return static_cast<bthread::TidList*>(list->impl)->add(id);
 }
 
 int bthread_list_stop(bthread_list_t* list) {
-    if (list->impl == NULL) {
+    if (list->impl == nullptr) {
         return EINVAL;
     }
     static_cast<bthread::TidList*>(list->impl)->apply(bthread::TidStopper());
@@ -640,7 +634,7 @@ int bthread_list_stop(bthread_list_t* list) {
 }
 
 int bthread_list_join(bthread_list_t* list) {
-    if (list->impl == NULL) {
+    if (list->impl == nullptr) {
         return EINVAL;
     }
     static_cast<bthread::TidList*>(list->impl)->apply(bthread::TidJoiner());
@@ -649,12 +643,12 @@ int bthread_list_join(bthread_list_t* list) {
 
 bthread_tag_t bthread_self_tag(void) {
     bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
-    return g != NULL ? g->tag() : BTHREAD_TAG_DEFAULT;
+    return g != nullptr ? g->tag() : BTHREAD_TAG_DEFAULT;
 }
 
 uint64_t bthread_cpu_clock_ns(void) {
      bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
-    if (g != NULL && !g->is_current_main_task()) {
+    if (g != nullptr && !g->is_current_main_task()) {
         return g->current_task_cpu_clock_ns();
     }
     return 0;

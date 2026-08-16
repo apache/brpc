@@ -33,7 +33,7 @@ public:
     typedef bthread_rwlock_t* native_handler_type;
 
     RWLock() {
-        int rc = bthread_rwlock_init(&_rwlock, NULL);
+        int rc = bthread_rwlock_init(&_rwlock, nullptr);
         if (rc) {
             throw std::system_error(std::error_code(rc, std::system_category()),
                                     "RWLock constructor failed");
@@ -95,7 +95,7 @@ public:
         const int rc = bthread_rwlock_rdlock(_rwlock);
         if (rc) {
             LOG(FATAL) << "Fail to rdlock bthread_rwlock_t=" << _rwlock << ", " << berror(rc);
-            _rwlock = NULL;
+            _rwlock = nullptr;
         }
 #else
         bthread_rwlock_rdlock(_rwlock);
@@ -107,7 +107,7 @@ public:
 
     ~RWLockRdGuard() {
 #ifndef NDEBUG
-        if (NULL != _rwlock) {
+        if (nullptr != _rwlock) {
             bthread_rwlock_unlock(_rwlock);
         }
 #else
@@ -130,7 +130,7 @@ public:
         const int rc = bthread_rwlock_wrlock(_rwlock);
         if (rc) {
             LOG(FATAL) << "Fail to wrlock bthread_rwlock_t=" << _rwlock << ", " << berror(rc);
-            _rwlock = NULL;
+            _rwlock = nullptr;
         }
 #else
         bthread_rwlock_wrlock(_rwlock);
@@ -142,7 +142,7 @@ public:
 
     ~RWLockWrGuard() {
 #ifndef NDEBUG
-        if (NULL != _rwlock) {
+        if (nullptr != _rwlock) {
             bthread_rwlock_unlock(_rwlock);
         }
 #else
@@ -174,7 +174,7 @@ public:
         }
         if (rc) {
             LOG(FATAL) << "Fail to lock bthread_rwlock_t=" << _rwlock << ", " << berror(rc);
-            _rwlock = NULL;
+            _rwlock = nullptr;
         }
 #else
         if (_read) {
@@ -187,7 +187,7 @@ public:
 
     ~lock_guard() {
 #ifndef NDEBUG
-        if (NULL != _rwlock) {
+        if (nullptr != _rwlock) {
             bthread_rwlock_unlock(_rwlock);
         }
 #else

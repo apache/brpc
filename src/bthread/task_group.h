@@ -128,7 +128,7 @@ public:
     
     // Suspend caller for at least |timeout_us| microseconds.
     // If |timeout_us| is 0, this function does nothing.
-    // If |group| is NULL or current thread is non-bthread, call usleep(3)
+    // If |group| is nullptr or current thread is non-bthread, call usleep(3)
     // instead. This function does not create thread-local TaskGroup.
     // Returns: 0 on success, -1 otherwise and errno is set.
     static int usleep(TaskGroup** pg, uint64_t timeout_us);
@@ -348,10 +348,10 @@ friend class TaskControl;
         return g->_main_tid == tid;
     }
 
-    TaskMeta* _cur_meta{NULL};
+    TaskMeta* _cur_meta{nullptr};
     
     // the control that this group belongs to
-    TaskControl* _control{NULL};
+    TaskControl* _control{nullptr};
     int _num_nosignal{0};
     int _nsignaled{0};
     AtomicCPUTimeStat _cpu_time_stat;
@@ -359,16 +359,16 @@ friend class TaskControl;
     int64_t _last_cpu_clock_ns{0};
 
     size_t _nswitch{0};
-    RemainedFn _last_context_remained{NULL};
-    void* _last_context_remained_arg{NULL};
+    RemainedFn _last_context_remained{nullptr};
+    void* _last_context_remained_arg{nullptr};
 
-    ParkingLot* _pl{NULL};
+    ParkingLot* _pl{nullptr};
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
     ParkingLot::State _last_pl_state;
 #endif
     size_t _steal_seed{butil::fast_rand()};
     size_t _steal_offset{prime_offset(_steal_seed)};
-    ContextualStack* _main_stack{NULL};
+    ContextualStack* _main_stack{nullptr};
     bthread_t _main_tid{INVALID_BTHREAD};
     WorkStealingQueue<bthread_t> _rq;
     RemoteTaskQueue _remote_rq;

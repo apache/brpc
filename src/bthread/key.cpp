@@ -104,9 +104,9 @@ public:
         for (uint32_t i = 0; i < KEY_2NDLEVEL_SIZE; ++i) {
             void* p = _data[i].ptr;
             if (p) {
-                // Set the position to NULL before calling dtor which may set
+                // Set the position to nullptr before calling dtor which may set
                 // the position again.
-                _data[i].ptr = NULL;
+                _data[i].ptr = nullptr;
 
                 KeyInfo info = bthread::s_key_info[offset + i];
                 if (info.dtor && _data[i].version == info.version) {
@@ -131,7 +131,7 @@ public:
         if (_data[index].version == version) {
             return _data[index].ptr;
         }
-        return NULL;
+        return nullptr;
     }
     inline void set_data(uint32_t index, uint32_t version, void* data) {
         _data[index].version = version;
@@ -150,7 +150,7 @@ private:
 // Align with cacheline to avoid false sharing.
 class BAIDU_CACHELINE_ALIGNMENT KeyTable {
 public:
-    KeyTable() : next(NULL) {
+    KeyTable() : next(nullptr) {
         memset(_subs, 0, sizeof(_subs));
         nkeytable.fetch_add(1, butil::memory_order_relaxed);
     }
@@ -165,7 +165,7 @@ public:
             }
             bool all_cleared = true;
             for (uint32_t i = 0; i < KEY_1STLEVEL_SIZE; ++i) {
-                if (_subs[i] != NULL && !_subs[i]->cleared()) {
+                if (_subs[i] != nullptr && !_subs[i]->cleared()) {
                     all_cleared = false;
                     break;
                 }
@@ -189,7 +189,7 @@ public:
                     key.index - subidx * KEY_2NDLEVEL_SIZE, key.version);
             }
         }
-        return NULL;
+        return nullptr;
     }
 
     inline int set_data(bthread_key_t key, void* data) {
@@ -197,11 +197,8 @@ public:
         if (subidx < KEY_1STLEVEL_SIZE &&
             key.version == s_key_info[key.index].version) {
             SubKeyTable* sub_kt = _subs[subidx];
-            if (sub_kt == NULL) {
-                sub_kt = new (std::nothrow) SubKeyTable;
-                if (NULL == sub_kt) {
-                    return ENOMEM;
-                }
+            if (sub_kt == nullptr) {
+                sub_kt = new SubKeyTable;
                 _subs[subidx] = sub_kt;
             }
             sub_kt->set_data(key.index - subidx * KEY_2NDLEVEL_SIZE,
@@ -221,7 +218,7 @@ private:
 class BAIDU_CACHELINE_ALIGNMENT KeyTableList {
 public:
     KeyTableList() :
-        _head(NULL), _tail(NULL), _length(0) {}
+        _head(nullptr), _tail(nullptr), _length(0) {}
 
     ~KeyTableList() {
         TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
@@ -236,7 +233,7 @@ public:
             }
             delete kt;
             if (old_kt == kt) {
-                old_kt = NULL;
+                old_kt = nullptr;
             }
             g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
         }
@@ -247,57 +244,57 @@ public:
     }
 
     void append(KeyTable* keytable) {
-        if (keytable == NULL) {
+        if (keytable == nullptr) {
             return;
         }
-        if (_head == NULL) {
+        if (_head == nullptr) {
             _head = _tail = keytable;
         } else {
             _tail->next = keytable;
             _tail = keytable;
         }
-        keytable->next = NULL;
+        keytable->next = nullptr;
         _length++;
     }
 
     KeyTable* remove_front() {
-        if (_head == NULL) {
-            return NULL;
+        if (_head == nullptr) {
+            return nullptr;
         }
         KeyTable* temp = _head;
         _head = _head->next;
         _length--;
-        if (_head == NULL) {
-            _tail = NULL;
+        if (_head == nullptr) {
+            _tail = nullptr;
         }
         return temp;
     }
 
     int move_first_n_to_target(KeyTable** target, uint32_t size) {
-        if (size > _length || _head == NULL) {
+        if (size > _length || _head == nullptr) {
             return 0;
         }
 
         KeyTable* current = _head;
-        KeyTable* prev = NULL;
+        KeyTable* prev = nullptr;
         uint32_t count = 0;
-        while (current != NULL && count < size) {
+        while (current != nullptr && count < size) {
             prev = current;
             current = current->next;
             count++;
         }
-        if (prev != NULL) {
-            if (*target == NULL) {
+        if (prev != nullptr) {
+            if (*target == nullptr) {
                 *target = _head;
-                prev->next = NULL;
+                prev->next = nullptr;
             } else {
                 prev->next = *target;
                 *target = _head;
             }
             _head = current;
             _length -= count;
-            if (_head == NULL) {
-                _tail = NULL;
+            if (_head == nullptr) {
+                _tail = nullptr;
             }
         }
         return count;
@@ -311,7 +308,7 @@ public:
     inline bool check_length() {
         KeyTable* current = _head;
         uint32_t count = 0;
-        while (current != NULL) {
+        while (current != nullptr) {
             current = current->next;
             count++;
         }
@@ -325,7 +322,7 @@ private:
 };
 
 KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
-    if (pool != NULL && (pool->list || pool->free_keytables)) {
+    if (pool != nullptr && (pool->list || pool->free_keytables)) {
         KeyTable* p;
         {
             pthread_rwlock_rdlock(&pool->rwlock);
@@ -343,7 +340,7 @@ KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
             pthread_rwlock_wrlock(&pool->rwlock);
             if (pool->destroyed) {
                 pthread_rwlock_unlock(&pool->rwlock);
-                return NULL;
+                return nullptr;
             }
             auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
             p = (KeyTable*)pool->free_keytables;
@@ -378,16 +375,16 @@ KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
             pthread_rwlock_unlock(&pool->rwlock);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 // Referenced in task_group.cpp, must be extern.
 // Caller of this function must hold the KeyTable
 void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
-    if (NULL == kt) {
+    if (nullptr == kt) {
         return;
     }
-    if (pool == NULL) {
+    if (pool == nullptr) {
         delete kt;
         return;
     }
@@ -407,7 +404,7 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
     if (need_move) {
         pthread_rwlock_wrlock(&pool->rwlock);
         auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
-        if (!pool->destroyed && list != NULL &&
+        if (!pool->destroyed && list != nullptr &&
                 list->get()->get_length() > FLAGS_key_table_list_size) {
             int out = list->get()->move_first_n_to_target(
                 (KeyTable**)(&pool->free_keytables),
@@ -423,7 +420,7 @@ static void cleanup_pthread(void* arg) {
     if (kt) {
         delete kt;
         // After deletion: tls may be set during deletion.
-        tls_bls_ptr()->keytable = NULL;
+        tls_bls_ptr()->keytable = nullptr;
     }
 }
 
@@ -446,42 +443,42 @@ static size_t get_keytable_memory(void*) {
 }
 
 static bvar::PassiveStatus<int> s_bthread_key_count(
-    "bthread_key_count", get_key_count, NULL);
+    "bthread_key_count", get_key_count, nullptr);
 static bvar::PassiveStatus<size_t> s_bthread_keytable_count(
-    "bthread_keytable_count", get_keytable_count, NULL);
+    "bthread_keytable_count", get_keytable_count, nullptr);
 static bvar::PassiveStatus<size_t> s_bthread_keytable_memory(
-    "bthread_keytable_memory", get_keytable_memory, NULL);
+    "bthread_keytable_memory", get_keytable_memory, nullptr);
 
 }  // namespace bthread
 
 extern "C" {
 
 int bthread_keytable_pool_init(bthread_keytable_pool_t* pool) {
-    if (pool == NULL) {
+    if (pool == nullptr) {
         LOG(ERROR) << "Param[pool] is NULL";
         return EINVAL;
     }
-    pthread_rwlock_init(&pool->rwlock, NULL);
+    pthread_rwlock_init(&pool->rwlock, nullptr);
     pool->list = new butil::ThreadLocal<bthread::KeyTableList>();
-    pool->free_keytables = NULL;
+    pool->free_keytables = nullptr;
     pool->size = 0;
     pool->destroyed = 0;
     return 0;
 }
 
 int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
-    if (pool == NULL) {
+    if (pool == nullptr) {
         LOG(ERROR) << "Param[pool] is NULL";
         return EINVAL;
     }
-    bthread::KeyTable* saved_free_keytables = NULL;
+    bthread::KeyTable* saved_free_keytables = nullptr;
     pthread_rwlock_wrlock(&pool->rwlock);
     pool->destroyed = 1;
     pool->size = 0;
     delete (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
     saved_free_keytables = (bthread::KeyTable*)pool->free_keytables;
-    pool->list = NULL;
-    pool->free_keytables = NULL;
+    pool->list = nullptr;
+    pool->free_keytables = nullptr;
     pthread_rwlock_unlock(&pool->rwlock);
 
     // Cheat get/setspecific and destroy the keytables.
@@ -510,7 +507,7 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
 
 int bthread_keytable_pool_getstat(bthread_keytable_pool_t* pool,
                                   bthread_keytable_pool_stat_t* stat) {
-    if (pool == NULL || stat == NULL) {
+    if (pool == nullptr || stat == nullptr) {
         LOG(ERROR) << "Param[pool] or Param[stat] is NULL";
         return EINVAL;
     }
@@ -521,7 +518,7 @@ int bthread_keytable_pool_getstat(bthread_keytable_pool_t* pool,
 }
 
 int get_thread_local_keytable_list_length(bthread_keytable_pool_t* pool) {
-    if (pool == NULL) {
+    if (pool == nullptr) {
         LOG(ERROR) << "Param[pool] is NULL";
         return EINVAL;
     }
@@ -550,7 +547,7 @@ void bthread_keytable_pool_reserve(bthread_keytable_pool_t* pool,
                                    bthread_key_t key,
                                    void* ctor(const void*),
                                    const void* ctor_args) {
-    if (pool == NULL) {
+    if (pool == nullptr) {
         LOG(ERROR) << "Param[pool] is NULL";
         return;
     }
@@ -560,10 +557,7 @@ void bthread_keytable_pool_reserve(bthread_keytable_pool_t* pool,
         return;
     }
     for (size_t i = stat.nfree; i < nfree; ++i) {
-        bthread::KeyTable* kt = new (std::nothrow) bthread::KeyTable;
-        if (kt == NULL) {
-            break;
-        }
+        bthread::KeyTable* kt = new bthread::KeyTable;
         void* data = ctor(ctor_args);
         if (data) {
             kt->set_data(key, data);
@@ -579,7 +573,7 @@ void bthread_keytable_pool_reserve(bthread_keytable_pool_t* pool,
         pool->free_keytables = kt;
         ++pool->size;
         pthread_rwlock_unlock(&pool->rwlock);
-        if (data == NULL) {
+        if (data == nullptr) {
             break;
         }
     }
@@ -611,8 +605,8 @@ int bthread_key_create2(bthread_key_t* key,
 }
 
 int bthread_key_create(bthread_key_t* key, void (*dtor)(void*)) {
-    if (dtor == NULL) {
-        return bthread_key_create2(key, NULL, NULL);
+    if (dtor == nullptr) {
+        return bthread_key_create2(key, nullptr, nullptr);
     } else {
         return bthread_key_create2(key, bthread::arg_as_dtor, (const void*)dtor);
     }
@@ -626,8 +620,8 @@ int bthread_key_delete(bthread_key_t key) {
             if (++bthread::s_key_info[key.index].version == 0) {
                 ++bthread::s_key_info[key.index].version;
             }
-            bthread::s_key_info[key.index].dtor = NULL;
-            bthread::s_key_info[key.index].dtor_args = NULL;
+            bthread::s_key_info[key.index].dtor = nullptr;
+            bthread::s_key_info[key.index].dtor_args = nullptr;
             bthread::s_free_keys[bthread::nfreekey++] = key.index;
             return 0;
         }
@@ -638,16 +632,13 @@ int bthread_key_delete(bthread_key_t key) {
 
 // NOTE: Can't borrow_keytable in bthread_setspecific, otherwise following
 // memory leak may occur:
-//  -> bthread_getspecific fails to borrow_keytable and returns NULL.
+//  -> bthread_getspecific fails to borrow_keytable and returns nullptr.
 //  -> bthread_setspecific succeeds to borrow_keytable and overwrites old data
 //     at the position with newly created data, the old data is leaked.
 int bthread_setspecific(bthread_key_t key, void* data) {
     bthread::KeyTable* kt = bthread::tls_bls_ptr()->keytable;
-    if (NULL == kt) {
-        kt = new (std::nothrow) bthread::KeyTable;
-        if (NULL == kt) {
-            return ENOMEM;
-        }
+    if (nullptr == kt) {
+        kt = new bthread::KeyTable;
         bthread::tls_bls_ptr()->keytable = kt;
         bthread::TaskGroup* const g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
         if (g) {
@@ -680,7 +671,7 @@ void* bthread_getspecific(bthread_key_t key) {
             return kt->get_data(key);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 void bthread_assign_data(void* data) {

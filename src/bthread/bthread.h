@@ -180,9 +180,9 @@ extern int bthread_usleep(uint64_t microseconds);
 // ---------------------------------------------
 
 // Initialize `mutex' using attributes in `mutex_attr', or use the
-// default values if later is NULL.
+// default values if later is nullptr.
 // NOTE: mutexattr is not used in current mutex implementation. User shall
-//       always pass a NULL attribute.
+//       always pass a nullptr attribute.
 extern int bthread_mutex_init(bthread_mutex_t* __restrict mutex,
                               const bthread_mutexattr_t* __restrict attr);
 
@@ -214,9 +214,9 @@ extern int bthread_mutexattr_destroy(bthread_mutexattr_t* attr);
 // -----------------------------------------------
 
 // Initialize condition variable `cond' using attributes `cond_attr', or use
-// the default values if later is NULL.
+// the default values if later is nullptr.
 // NOTE: cond_attr is not used in current condition implementation. User shall
-//       always pass a NULL attribute.
+//       always pass a nullptr attribute.
 extern int bthread_cond_init(bthread_cond_t* __restrict cond,
                              const bthread_condattr_t* __restrict cond_attr);
 
@@ -248,7 +248,7 @@ extern int bthread_cond_timedwait(
 // -------------------------------------------
 
 // Initialize read-write lock `rwlock' using attributes `attr', or use
-// the default values if later is NULL.
+// the default values if later is nullptr.
 extern int bthread_rwlock_init(bthread_rwlock_t* __restrict rwlock,
                                const bthread_rwlockattr_t* __restrict attr);
 
@@ -364,9 +364,9 @@ extern int bthread_barrier_wait(bthread_barrier_t* barrier);
 
 // Create a key value identifying a slot in a thread-specific data area.
 // Each thread maintains a distinct thread-specific data area.
-// `destructor', if non-NULL, is called with the value associated to that key
+// `destructor', if non-nullptr, is called with the value associated to that key
 // when the key is destroyed. `destructor' is not called if the value
-// associated is NULL when the key is destroyed.
+// associated is nullptr when the key is destroyed.
 // Returns 0 on success, error code otherwise.
 extern int bthread_key_create(bthread_key_t* key,
                               void (*destructor)(void* data));
@@ -395,8 +395,8 @@ extern int bthread_key_delete(bthread_key_t key);
 extern int bthread_setspecific(bthread_key_t key, void* data);
 
 // Return current value of the thread-specific slot identified by `key'.
-// If bthread_setspecific() had not been called in the thread, return NULL.
-// If the key is invalid or deleted, return NULL.
+// If bthread_setspecific() had not been called in the thread, return nullptr.
+// If the key is invalid or deleted, return nullptr.
 extern void* bthread_getspecific(bthread_key_t key);
 
 // Return current bthread tag
@@ -442,12 +442,12 @@ typedef void (*bthread_end_span_fn)(void);
 // Parameters:
 //   create_fn  - Called when creating a bthread with BTHREAD_INHERIT_SPAN flag.
 //                Should return a heap-allocated span context (e.g., weak_ptr<Span>*).
-//                Returns NULL if span creation is disabled or fails.
+//                Returns nullptr if span creation is disabled or fails.
 //   destroy_fn - Called to destroy the span context when bthread exits or cleans up.
 //                Receives the pointer returned by create_fn.
 //   end_fn     - Called when bthread ends to finalize the span (e.g., set end time).
 //
-// All three callbacks must be provided together, or all NULL to disable span tracking.
+// All three callbacks must be provided together, or all nullptr to disable span tracking.
 // This function should only be called once during initialization.
 //
 // Returns:

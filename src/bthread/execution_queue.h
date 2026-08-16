@@ -146,16 +146,16 @@ struct ExecutionQueueOptions {
     bool use_pthread;
 
     // Attribute of the bthread which execute runs on. default: BTHREAD_ATTR_NORMAL
-    // Bthread will be used when executor = NULL and use_pthread == false.
+    // Bthread will be used when executor = nullptr and use_pthread == false.
     bthread_attr_t bthread_attr;
 
-    // Executor that tasks run on. default: NULL
+    // Executor that tasks run on. default: nullptr
     // Note that TaskOptions.in_place_if_possible = false will not work, if implementation of
     // Executor is in-place(synchronous).
     Executor * executor;
 };
 
-// Start an ExecutionQueue. If |options| is NULL, the queue will be created with
+// Start an ExecutionQueue. If |options| is nullptr, the queue will be created with
 // the default options. 
 // Returns 0 on success, errno otherwise
 // NOTE: type |T| can be non-POD but must be copy-constructive
@@ -190,8 +190,8 @@ int execution_queue_execute(ExecutionQueueId<T> id,
 // Thread-safe and Wait-free.
 // Execute a task with options. e.g
 // bthread::execution_queue_execute(queue, task, &bthread::TASK_OPTIONS_URGENT)
-// If |options| is NULL, we will use default options (normal task)
-// If |handle| is not NULL, we will assign it with the handler of this task.
+// If |options| is nullptr, we will use default options (normal task)
+// If |handle| is not nullptr, we will assign it with the handler of this task.
 template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id, 
                             typename butil::add_const_reference<T>::type task,
