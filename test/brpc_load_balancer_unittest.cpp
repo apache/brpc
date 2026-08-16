@@ -1026,6 +1026,56 @@ TEST_F(LoadBalancerTest, weighted_randomized) {
     }
 }
 
+TEST_F(LoadBalancerTest, weighted_randomized_equal_weight) {
+    // With equal weights every server must get the same share of the traffic.
+    // The tolerance of `weighted_randomized` above is +/-2x, which is too loose
+    // to catch a single misplaced slot, so check the distribution tightly here.
+    const char* servers[] = {
+        "10.92.115.19:8831",
+        "10.42.108.25:8832",
+        "10.36.150.31:8833",
+        "10.36.150.32:8899"
+    };
+    brpc::policy::WeightedRandomizedLoadBalancer wrlb;
+    for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
+        butil::EndPoint dummy;
+        ASSERT_EQ(0, str2endpoint(servers[i], &dummy));
+        brpc::ServerId id(8888);
+        brpc::SocketOptions options;
+        options.remote_side = dummy;
+        options.user = new SaveRecycle;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
+        id.tag = "1";
+        ASSERT_TRUE(wrlb.AddServer(id));
+    }
+
+    std::map<butil::EndPoint, size_t> select_result;
+    brpc::SocketUniquePtr ptr;
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
+    brpc::LoadBalancer::SelectOut out(&ptr);
+    const int run_times = 40000;
+    for (int i = 0; i < run_times; ++i) {
+        ASSERT_EQ(0, wrlb.SelectServer(in, &out));
+        ++select_result[ptr->remote_side()];
+    }
+
+    // Every server must be selected at least once, in particular the one added
+    // last, which owns the largest prefix sum.
+    ASSERT_EQ(ARRAY_SIZE(servers), select_result.size());
+    const double expect_rate = 1.0 / ARRAY_SIZE(servers);
+    for (const auto& result : select_result) {
+        const double actual_rate = result.second * 1.0 / run_times;
+        std::cout << result.first << " select_times=" << result.second
+            << " actual_rate=" << actual_rate
+            << " expect_rate=" << expect_rate << std::endl;
+        // 0.9x ~ 1.1x of the expected rate. With n=40000 and p=0.25 the count has
+        // sigma = sqrt(n*p*(1-p)) ~= 86.6, so the +-10% band is about 11 sigma
+        // wide and a passing run is not luck.
+        ASSERT_GE(actual_rate, expect_rate * 0.9);
+        ASSERT_LE(actual_rate, expect_rate * 1.1);
+    }
+}
+
 TEST_F(LoadBalancerTest, health_check_no_valid_server) {
     const char* servers[] = { 
             "10.92.115.19:8832", 
