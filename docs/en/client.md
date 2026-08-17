@@ -7,6 +7,8 @@
 # Quick facts
 
 - Channel.Init() is not thread-safe.
+- A Channel can be initialized successfully only once. Failed Init() calls may
+  be retried.
 - Channel.CallMethod() is thread-safe and a Channel can be used by multiple threads simultaneously.
 - Channel can be put on stack.
 - Channel can be destructed just after sending asynchronous request.
@@ -31,6 +33,10 @@ options.xxx = yyy;
 channel.Init(..., &options);
 ```
 Note that Channel neither modifies `options` nor accesses `options` after completion of Init(), thus options can be put on stack safely as in above code. Channel.options() gets options being used by the Channel.
+
+Init() may be retried after a failure. Once it succeeds, the Channel's target
+and options are fixed and every later Init() call returns -1. Create a new
+Channel to use a different target or configuration.
 
 Init() can connect one server or a cluster(multiple servers).
 
