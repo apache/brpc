@@ -223,9 +223,13 @@ int IndexTable::Init(const IndexTableOptions& options) {
         num_headers = options.static_table_size;
         _max_size = UINT_MAX;
     } else {
-        num_headers = options.max_size / (32 + 2);
+        num_headers = options.max_size / (32 + 1);
         //                                     ^
-        // name and value both have at least one byte in.
+        // AddHeader() only requires a non-empty name; the value may be empty,
+        // so the smallest possible entry is name(1) + value(0) + 32 = 33 bytes
+        // (rfc7541 section 4.1). Sizing the queue for 34-byte entries under-
+        // provisions it and lets a peer sending many 33-byte entries fill the
+        // queue before eviction triggers, tripping CHECK(!full()) in AddHeader.
         _max_size = options.max_size;
     }
     void *header_queue_storage = malloc(num_headers * sizeof(Header));
