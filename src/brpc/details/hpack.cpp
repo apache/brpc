@@ -232,6 +232,14 @@ int IndexTable::Init(const IndexTableOptions& options) {
         // queue before eviction triggers, tripping CHECK(!full()) in AddHeader.
         _max_size = options.max_size;
     }
+    // A dynamic table smaller than the 33-byte minimum entry (including the
+    // valid max_size == 0 case that disables it) yields num_headers == 0.
+    // malloc(0) may return NULL and make Init fail on some platforms, so keep
+    // at least one slot. No entry can actually be stored since entry_size >
+    // _max_size still holds in AddHeader().
+    if (num_headers == 0) {
+        num_headers = 1;
+    }
     void *header_queue_storage = malloc(num_headers * sizeof(Header));
     if (!header_queue_storage) {
         LOG(ERROR) << "Fail to malloc space for " << num_headers << " headers";

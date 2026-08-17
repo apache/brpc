@@ -665,3 +665,11 @@ TEST_F(HPackTest, many_small_indexed_headers) {
     }
     ASSERT_TRUE(buf.empty());
 }
+
+TEST_F(HPackTest, zero_size_dynamic_table) {
+    // max_size == 0 disables the dynamic table. num_headers then rounds down to
+    // 0, and malloc(0) may return NULL, so Init must still keep one slot and
+    // succeed. No entry is ever stored because entry_size > max_size.
+    brpc::HPacker p;
+    ASSERT_EQ(0, p.Init(0));
+}
