@@ -216,7 +216,7 @@ TEST_F(VariableTest, dump) {
 
     // Nothing to dump yet.
     bvar::FLAGS_bvar_log_dumpped = true;
-    ASSERT_EQ(0, bvar::Variable::dump_exposed(&d, NULL));
+    ASSERT_EQ(0, bvar::Variable::dump_exposed(&d, nullptr));
     ASSERT_TRUE(d._list.empty());
 
     bvar::Adder<int> v2("var2");
@@ -227,9 +227,9 @@ TEST_F(VariableTest, dump) {
     bvar::Adder<int> v4("foo.bar.BaNaNa", "var4");
     v4 << 4;
     bvar::BasicPassiveStatus<int> v5(
-        "foo::bar::Car_Rot", "var5", print_int, NULL);
+        "foo::bar::Car_Rot", "var5", print_int, nullptr);
     
-    ASSERT_EQ(5, bvar::Variable::dump_exposed(&d, NULL));
+    ASSERT_EQ(5, bvar::Variable::dump_exposed(&d, nullptr));
     ASSERT_EQ(5UL, d._list.size());
     int i = 0;
     ASSERT_EQ("foo_bar_apple_var3", d._list[i++ / 2].first);

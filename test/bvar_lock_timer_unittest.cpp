@@ -111,7 +111,7 @@ TEST_F(LockTimerTest, pthread_mutex_and_cond) {
         ASSERT_EQ(1u, recorder.count());
         timespec due_time = butil::milliseconds_from_now(10);
         pthread_cond_t cond;
-        ASSERT_EQ(0, pthread_cond_init(&cond, NULL));
+        ASSERT_EQ(0, pthread_cond_init(&cond, nullptr));
         pthread_cond_timedwait(&cond, &(pthread_mutex_t&)mutex, &due_time);
         pthread_cond_timedwait(&cond, &mutex.mutex(), &due_time);
         ASSERT_EQ(0, pthread_cond_destroy(&cond));
@@ -130,7 +130,7 @@ void *signal_lock_thread(void *arg) {
             usleep(10);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(LockTimerTest, signal_lock_time) {
@@ -138,22 +138,22 @@ TEST_F(LockTimerTest, signal_lock_time) {
     MutexWithRecorder<pthread_mutex_t> m0(r0);
     pthread_t threads[4];
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, 
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, 
             signal_lock_thread<MutexWithRecorder<pthread_mutex_t> >, &m0));
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     LOG(INFO) << r0;
     ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads), (size_t)r0.get_value().num);
     LatencyRecorder r1;
     MutexWithLatencyRecorder<pthread_mutex_t> m1(r1);
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, 
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, 
             signal_lock_thread<MutexWithLatencyRecorder<pthread_mutex_t> >, &m1));
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     LOG(INFO) << r1._latency;
     ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads), (size_t)r1.count());
@@ -174,7 +174,7 @@ void *double_lock_thread(void *arg) {
         butil::double_lock(lck0, lck1);
         usleep(10);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(LockTimerTest, double_lock_time) {
@@ -187,11 +187,11 @@ TEST_F(LockTimerTest, double_lock_time) {
     arg.m1.set_recorder(r1);
     pthread_t threads[4];
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, 
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, 
             double_lock_thread<M0, M1>, &arg));
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads), (size_t)r0.get_value().num);
     ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads), (size_t)r1.count());
@@ -207,11 +207,11 @@ TEST_F(LockTimerTest, double_lock_time) {
     arg1.m0.set_recorder(r1);
     arg1.m1.set_recorder(r0);
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, 
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, 
             double_lock_thread<M1, M0>, &arg1));
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
 #if !WITH_BABYLON_COUNTER
     ASSERT_EQ(OPS_PER_THREAD * ARRAY_SIZE(threads), (size_t)r0.get_value().num);

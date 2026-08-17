@@ -44,19 +44,19 @@ void bthread_once_task() {
 void* first_bthread_once_task(void*) {
     g_bthread_once_started = true;
     bthread_once_task();
-    return NULL;
+    return nullptr;
 }
 
 
 void* other_bthread_once_task(void*) {
     bthread_once_task();
-    return NULL;
+    return nullptr;
 }
 
 TEST(BthreadOnceTest, once) {
     bthread_t bid;
     ASSERT_EQ(0, bthread_start_background(
-        &bid, NULL, first_bthread_once_task, NULL));
+        &bid, nullptr, first_bthread_once_task, nullptr));
     while (!g_bthread_once_started) {
         bthread_usleep(1000);
     }
@@ -67,14 +67,14 @@ TEST(BthreadOnceTest, once) {
     std::vector<bthread_t> bids(concurrency * 100);
     for (auto& id : bids) {
         ASSERT_EQ(0, bthread_start_background(
-            &id, NULL, other_bthread_once_task, NULL));
+            &id, nullptr, other_bthread_once_task, nullptr));
     }
     bthread_once_task();
 
     for (auto& id : bids) {
-        bthread_join(id, NULL);
+        bthread_join(id, nullptr);
     }
-    bthread_join(bid, NULL);
+    bthread_join(bid, nullptr);
 }
 
 bool g_bthread_started = false;
@@ -98,13 +98,13 @@ void get_bthread_singleton() {
 void* first_get_bthread_singleton(void*) {
     g_bthread_started = true;
     get_bthread_singleton();
-    return NULL;
+    return nullptr;
 }
 
 
 void* get_bthread_singleton(void*) {
     get_bthread_singleton();
-    return NULL;
+    return nullptr;
 }
 
 // Singleton will definitely not cause deadlock,
@@ -112,7 +112,7 @@ void* get_bthread_singleton(void*) {
 TEST(BthreadOnceTest, singleton) {
     bthread_t bid;
     ASSERT_EQ(0, bthread_start_background(
-        &bid, NULL, first_get_bthread_singleton, NULL));
+        &bid, nullptr, first_get_bthread_singleton, nullptr));
     while (!g_bthread_started) {
         bthread_usleep(1000);
     }
@@ -123,14 +123,14 @@ TEST(BthreadOnceTest, singleton) {
     std::vector<bthread_t> bids(concurrency * 100);
     for (auto& id : bids) {
         ASSERT_EQ(0, bthread_start_background(
-            &id, NULL, get_bthread_singleton, NULL));
+            &id, nullptr, get_bthread_singleton, nullptr));
     }
     get_bthread_singleton();
 
     for (auto& id : bids) {
-        bthread_join(id, NULL);
+        bthread_join(id, nullptr);
     }
-    bthread_join(bid, NULL);
+    bthread_join(bid, nullptr);
 }
 
 }

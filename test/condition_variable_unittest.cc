@@ -194,9 +194,9 @@ void ALLOW_UNUSED BackInTime(Lock* lock) {
   AutoLock auto_lock(*lock);
 
   timeval tv;
-  gettimeofday(&tv, NULL);
+  gettimeofday(&tv, nullptr);
   tv.tv_sec -= kDiscontinuitySeconds;
-  settimeofday(&tv, NULL);
+  settimeofday(&tv, nullptr);
 }
 #endif
 

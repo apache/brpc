@@ -49,7 +49,7 @@ void* worker(void*) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 class SocketMapTest : public ::testing::Test{
@@ -91,10 +91,10 @@ TEST_F(SocketMapTest, idle_timeout) {
     brpc::FLAGS_defer_close_second = TIMEOUT;
     pthread_t tids[NTHREAD];
     for (int i = 0; i < NTHREAD; ++i) {
-        ASSERT_EQ(0, pthread_create(&tids[i], NULL, worker, NULL));
+        ASSERT_EQ(0, pthread_create(&tids[i], nullptr, worker, nullptr));
     }
     for (int i = 0; i < NTHREAD; ++i) {
-        ASSERT_EQ(0, pthread_join(tids[i], NULL));
+        ASSERT_EQ(0, pthread_join(tids[i], nullptr));
     }
     brpc::SocketId id;
     // Socket still exists since it has not reached timeout yet
@@ -124,7 +124,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     main_ptr.reset();
     id = ptr->id();
     ptr->ReturnToPool();
-    ptr.reset(NULL);
+    ptr.reset(nullptr);
     usleep(TIMEOUT * 1000000L + 2000000L);
     // Pooled connection should be `ReleaseAdditionalReference',
     // which destroyed the Socket. As a result `GetSocketFromPool'

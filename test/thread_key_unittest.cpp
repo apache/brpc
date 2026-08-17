@@ -57,14 +57,14 @@ TEST(ThreadLocalTest, sanity) {
         for (int i = 0; i < 5; ++i) {
             std::unique_ptr<int> data(new int(1));
             int *raw_data = data.get();
-            ASSERT_EQ(0, butil::thread_key_create(key, NULL));
+            ASSERT_EQ(0, butil::thread_key_create(key, nullptr));
 
-            ASSERT_EQ(NULL, butil::thread_getspecific(key));
+            ASSERT_EQ(nullptr, butil::thread_getspecific(key));
             ASSERT_EQ(0, butil::thread_setspecific(key, (void *)raw_data));
             ASSERT_EQ(raw_data, butil::thread_getspecific(key));
 
             ASSERT_EQ(0, butil::thread_key_delete(key));
-            ASSERT_EQ(NULL, butil::thread_getspecific(key));
+            ASSERT_EQ(nullptr, butil::thread_getspecific(key));
             ASSERT_NE(0, butil::thread_setspecific(key, (void *)raw_data));
         }
     }
@@ -92,7 +92,7 @@ TEST(ThreadLocalTest, thread_key_seq) {
         if (keys.empty() || create) {
             for (uint64_t j = 0; j < num; ++j) {
                 keys.emplace_back();
-                ASSERT_EQ(0, butil::thread_key_create(keys.back(), NULL));
+                ASSERT_EQ(0, butil::thread_key_create(keys.back(), nullptr));
                 ASSERT_TRUE(!KEY_UNUSED(keys.back()._seq));
                 if (keys.back()._id >= seqs.size()) {
                     seqs.resize(keys.back()._id + 1);
@@ -115,11 +115,11 @@ TEST(ThreadLocalTest, thread_key_seq) {
 void* THreadKeyCreateAndDeleteFunc(void*) {
     while (!g_stopped) {
         ThreadKey key;
-        EXPECT_EQ(0, butil::thread_key_create(key, NULL));
+        EXPECT_EQ(0, butil::thread_key_create(key, nullptr));
         EXPECT_TRUE(!KEY_UNUSED(key._seq));
         EXPECT_EQ(0, butil::thread_key_delete(key));
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(ThreadLocalTest, thread_key_create_and_delete) {
@@ -128,12 +128,12 @@ TEST(ThreadLocalTest, thread_key_create_and_delete) {
     const int thread_num = 8;
     pthread_t threads[thread_num];
     for (int i = 0; i < thread_num; ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, THreadKeyCreateAndDeleteFunc, NULL));
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, THreadKeyCreateAndDeleteFunc, nullptr));
     }
     sleep(2);
     g_stopped = true;
     for (const auto& thread : threads) {
-        pthread_join(thread, NULL);
+        pthread_join(thread, nullptr);
     }
 }
 
@@ -141,39 +141,39 @@ void* ThreadLocalFunc(void* arg) {
     auto thread_locals = (std::vector<ThreadLocal<int>*>*)arg;
     std::vector<int> expects(thread_locals->size(), 0);
     for (auto tl : *thread_locals) {
-        EXPECT_TRUE(tl->get() != NULL);
+        EXPECT_TRUE(tl->get() != nullptr);
         *(tl->get()) = 0;
     }
     while (!g_stopped) {
         uint64_t index =
             fast_rand_less_than(thread_locals->size());
-        EXPECT_TRUE((*thread_locals)[index]->get() != NULL);
+        EXPECT_TRUE((*thread_locals)[index]->get() != nullptr);
         EXPECT_EQ(*((*thread_locals)[index]->get()), expects[index]);
         ++(*((*thread_locals)[index]->get()));
         ++expects[index];
         bthread_usleep(10);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(ThreadLocalTest, thread_local_multi_thread) {
     g_stopped = false;
     int thread_local_num = 20480;
-    std::vector<ThreadLocal<int>*> args(thread_local_num, NULL);
+    std::vector<ThreadLocal<int>*> args(thread_local_num, nullptr);
     for (int i = 0; i < thread_local_num; ++i) {
         args[i] = new ThreadLocal<int>();
-        ASSERT_TRUE(args[i]->get() != NULL);
+        ASSERT_TRUE(args[i]->get() != nullptr);
     }
     const int thread_num = 8;
     pthread_t threads[thread_num];
     for (int i = 0; i < thread_num; ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, ThreadLocalFunc, &args));
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, ThreadLocalFunc, &args));
     }
 
     sleep(2);
     g_stopped = true;
     for (const auto& thread : threads) {
-        pthread_join(thread, NULL);
+        pthread_join(thread, nullptr);
     }
     for (auto tl : args) {
         delete tl;
@@ -196,7 +196,7 @@ void* ThreadLocalForEachFunc(void* arg) {
             counter->reset(local_counter);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(ThreadLocalTest, thread_local_for_each) {
@@ -206,13 +206,13 @@ TEST(ThreadLocalTest, thread_local_for_each) {
     pthread_t threads[thread_num];
     for (int i = 0; i < thread_num; ++i) {
         ASSERT_EQ(0, pthread_create(
-            &threads[i], NULL, ThreadLocalForEachFunc, &counter));
+            &threads[i], nullptr, ThreadLocalForEachFunc, &counter));
     }
 
     sleep(2);
     g_stopped = true;
     for (const auto& thread : threads) {
-        pthread_join(thread, NULL);
+        pthread_join(thread, nullptr);
     }
     int count = 0;
     counter.for_each([&count](butil::atomic<int>* c) {
@@ -234,7 +234,7 @@ void* ThreadKeyFunc(void* arg) {
     std::vector<std::unique_ptr<int>> owned_data;
     owned_data.reserve(thread_keys.size());
     for (auto key : thread_keys) {
-        EXPECT_TRUE(butil::thread_getspecific(*key) == NULL);
+        EXPECT_TRUE(butil::thread_getspecific(*key) == nullptr);
         owned_data.emplace_back(new int(0));
         EXPECT_EQ(0, butil::thread_setspecific(*key, owned_data.back().get()));
         EXPECT_EQ(*(static_cast<int*>(butil::thread_getspecific(*key))), 0);
@@ -243,7 +243,7 @@ void* ThreadKeyFunc(void* arg) {
         uint64_t index =
             fast_rand_less_than(thread_keys.size());
         auto data = static_cast<int*>(butil::thread_getspecific(*thread_keys[index]));
-        EXPECT_TRUE(data != NULL);
+        EXPECT_TRUE(data != nullptr);
         EXPECT_EQ(*data, expects[index]);
         ++(*data);
         ++expects[index];
@@ -256,10 +256,10 @@ void* ThreadKeyFunc(void* arg) {
     }
 
     for (auto key : thread_keys) {
-        EXPECT_TRUE(butil::thread_getspecific(*key) == NULL)
+        EXPECT_TRUE(butil::thread_getspecific(*key) == nullptr)
         << butil::thread_getspecific(*key);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(ThreadLocalTest, thread_key_multi_thread) {
@@ -274,7 +274,7 @@ TEST(ThreadLocalTest, thread_key_multi_thread) {
         ASSERT_EQ(0, butil::thread_key_create(*thread_keys.back(), [](void* data) {
             delete static_cast<int*>(data);
         }));
-        ASSERT_TRUE(butil::thread_getspecific(*thread_keys.back()) == NULL);
+        ASSERT_TRUE(butil::thread_getspecific(*thread_keys.back()) == nullptr);
         owned_data.emplace_back(new int(0));
         ASSERT_EQ(0, butil::thread_setspecific(*thread_keys.back(), owned_data.back().get()));
         ASSERT_EQ(*(static_cast<int*>(butil::thread_getspecific(*thread_keys.back()))), 0);
@@ -284,7 +284,7 @@ TEST(ThreadLocalTest, thread_key_multi_thread) {
     pthread_t threads[thread_num];
     for (int i = 0; i < thread_num; ++i) {
         args[i].thread_keys = thread_keys;
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, ThreadKeyFunc, &args[i]));
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, ThreadKeyFunc, &args[i]));
     }
 
     sleep(5);
@@ -304,12 +304,12 @@ TEST(ThreadLocalTest, thread_key_multi_thread) {
     }
     for (auto key : thread_keys) {
         ASSERT_EQ(0, butil::thread_key_delete(*key));
-        ASSERT_TRUE(butil::thread_getspecific(*key) == NULL);
+        ASSERT_TRUE(butil::thread_getspecific(*key) == nullptr);
     }
     g_deleted = true;
 
     for (const auto& thread : threads) {
-        ASSERT_EQ(0, pthread_join(thread, NULL));
+        ASSERT_EQ(0, pthread_join(thread, nullptr));
     }
     for (auto key : thread_keys) {
         delete key;
@@ -325,7 +325,7 @@ struct BAIDU_CACHELINE_ALIGNMENT ThreadKeyPerfArgs {
     bool ready;
 
     ThreadKeyPerfArgs()
-        : thread_key(NULL)
+        : thread_key(nullptr)
         , is_pthread_key(true)
         , counter(0)
         , elapse_ns(0)
@@ -359,7 +359,7 @@ void* ThreadKeyPerfFunc(void* void_arg) {
     }
     t.stop();
     args->elapse_ns = t.n_elapsed();
-    return NULL;
+    return nullptr;
 }
 
 
@@ -369,9 +369,9 @@ void ThreadKeyPerfTest(int thread_num, bool test_pthread_key) {
     pthread_key_t pthread_key;
     butil::ThreadKey thread_key;
     if (test_pthread_key) {
-        ASSERT_EQ(0, pthread_key_create(&pthread_key, NULL));
+        ASSERT_EQ(0, pthread_key_create(&pthread_key, nullptr));
     } else {
-        ASSERT_EQ(0, butil::thread_key_create(thread_key, NULL));
+        ASSERT_EQ(0, butil::thread_key_create(thread_key, nullptr));
     }
     pthread_t threads[thread_num];
     std::vector<ThreadKeyPerfArgs> args(thread_num);
@@ -383,7 +383,7 @@ void ThreadKeyPerfTest(int thread_num, bool test_pthread_key) {
             args[i].thread_key = &thread_key;
             args[i].is_pthread_key = false;
         }
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, ThreadKeyPerfFunc, &args[i]));
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, ThreadKeyPerfFunc, &args[i]));
     }
     while (true) {
         bool all_ready = true;
@@ -405,7 +405,7 @@ void ThreadKeyPerfTest(int thread_num, bool test_pthread_key) {
     int64_t wait_time = 0;
     int64_t count = 0;
     for (int i = 0; i < thread_num; ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
         wait_time += args[i].elapse_ns;
         count += args[i].counter;
     }
@@ -427,14 +427,14 @@ struct BAIDU_CACHELINE_ALIGNMENT ThreadLocalPerfArgs {
     bool ready;
 
     ThreadLocalPerfArgs()
-        : tl(NULL) , counter(0)
+        : tl(nullptr) , counter(0)
         , elapse_ns(0) , ready(false) {}
 };
 
 void* ThreadLocalPerfFunc(void* void_arg) {
     auto args = (ThreadLocalPerfArgs*)void_arg;
     args->ready = true;
-    EXPECT_TRUE(args->tl->get() != NULL);
+    EXPECT_TRUE(args->tl->get() != nullptr);
     butil::Timer t;
     while (!g_stopped) {
         if (g_started) {
@@ -449,7 +449,7 @@ void* ThreadLocalPerfFunc(void* void_arg) {
     }
     t.stop();
     args->elapse_ns = t.n_elapsed();
-    return NULL;
+    return nullptr;
 }
 
 void ThreadLocalPerfTest(int thread_num) {
@@ -460,7 +460,7 @@ void ThreadLocalPerfTest(int thread_num) {
     std::vector<ThreadLocalPerfArgs> args(thread_num);
     for (int i = 0; i < thread_num; ++i) {
         args[i].tl = &tl;
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, ThreadLocalPerfFunc, &args[i]));
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, ThreadLocalPerfFunc, &args[i]));
     }
     while (true) {
         bool all_ready = true;
@@ -482,7 +482,7 @@ void ThreadLocalPerfTest(int thread_num) {
     int64_t wait_time = 0;
     int64_t count = 0;
     for (int i = 0; i < thread_num; ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
         wait_time += args[i].elapse_ns;
         count += args[i].counter;
     }

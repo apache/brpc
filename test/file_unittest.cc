@@ -453,10 +453,10 @@ TEST(FileTest, GetInfoForDirectory) {
       ::CreateFile(empty_dir.value().c_str(),
                    FILE_ALL_ACCESS,
                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                   NULL,
+                   nullptr,
                    OPEN_EXISTING,
                    FILE_FLAG_BACKUP_SEMANTICS,  // Needed to open a directory.
-                   NULL));
+                   nullptr));
   ASSERT_TRUE(dir.IsValid());
 
   butil::File::Info info;

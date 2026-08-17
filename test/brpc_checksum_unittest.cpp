@@ -43,10 +43,10 @@ TEST_F(ChecksumAttachmentTest, verify_succeeds_when_body_only) {
     butil::IOBuf body;
     body.append("request body");
 
-    brpc::ChecksumIn compute_in{&body, &cntl, NULL};
+    brpc::ChecksumIn compute_in{&body, &cntl, nullptr};
     brpc::policy::Crc32cCompute(compute_in);
 
-    brpc::ChecksumIn verify_in{&body, &cntl, NULL};
+    brpc::ChecksumIn verify_in{&body, &cntl, nullptr};
     EXPECT_TRUE(brpc::policy::Crc32cVerify(verify_in));
 }
 
@@ -94,7 +94,7 @@ TEST_F(ChecksumAttachmentTest, verify_fails_when_attachment_dropped) {
 
     // ...but receiver (e.g. due to a mismatched
     // request/response_checksum_attachment() setting) verifies body only.
-    brpc::ChecksumIn verify_in{&body, &cntl, NULL};
+    brpc::ChecksumIn verify_in{&body, &cntl, nullptr};
     EXPECT_FALSE(brpc::policy::Crc32cVerify(verify_in));
 }
 
@@ -152,7 +152,7 @@ class ChecksumAttachmentEndToEndTest : public ::testing::Test {
 protected:
     void SetUp() override {
         ASSERT_EQ(0, server_.AddService(&svc_, brpc::SERVER_DOESNT_OWN_SERVICE));
-        ASSERT_EQ(0, server_.Start(port_, NULL));
+        ASSERT_EQ(0, server_.Start(port_, nullptr));
         brpc::ChannelOptions options;
         ASSERT_EQ(0, channel_.Init(butil::EndPoint(butil::my_ip(), port_),
                                     &options));
@@ -180,7 +180,7 @@ TEST_F(ChecksumAttachmentEndToEndTest, request_checksum_with_attachment) {
     test::EchoRequest req;
     test::EchoResponse res;
     req.set_message(__FUNCTION__);
-    test::EchoService::Stub(&channel_).Echo(&cntl, &req, &res, NULL);
+    test::EchoService::Stub(&channel_).Echo(&cntl, &req, &res, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
@@ -196,7 +196,7 @@ TEST_F(ChecksumAttachmentEndToEndTest, response_checksum_with_attachment) {
     test::EchoRequest req;
     test::EchoResponse res;
     req.set_message(__FUNCTION__);
-    test::EchoService::Stub(&channel_).Echo(&cntl, &req, &res, NULL);
+    test::EchoService::Stub(&channel_).Echo(&cntl, &req, &res, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
@@ -214,7 +214,7 @@ TEST_F(ChecksumAttachmentEndToEndTest, both_directions_checksum_with_attachment)
     test::EchoRequest req;
     test::EchoResponse res;
     req.set_message(__FUNCTION__);
-    test::EchoService::Stub(&channel_).Echo(&cntl, &req, &res, NULL);
+    test::EchoService::Stub(&channel_).Echo(&cntl, &req, &res, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
@@ -234,7 +234,7 @@ TEST_F(ChecksumAttachmentEndToEndTest, checksum_without_attachment_still_works) 
     test::EchoRequest req;
     test::EchoResponse res;
     req.set_message(__FUNCTION__);
-    test::EchoService::Stub(&channel_).Echo(&cntl, &req, &res, NULL);
+    test::EchoService::Stub(&channel_).Echo(&cntl, &req, &res, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());

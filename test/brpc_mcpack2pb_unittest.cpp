@@ -47,7 +47,7 @@ TEST(Mcpack2pbParserTest, StringFieldWithZeroValueSize) {
 
     mcpack2pb::ObjectIterator it1(&stream, body.size() - stream.popped_bytes());
     bool found_content = false;
-    for (; it1 != NULL; ++it1) {
+    for (; it1 != nullptr; ++it1) {
         if (it1->name == "content") {
             found_content = true;
             break;
@@ -57,9 +57,9 @@ TEST(Mcpack2pbParserTest, StringFieldWithZeroValueSize) {
     ASSERT_EQ(mcpack2pb::FIELD_ARRAY, it1->value.type());
 
     mcpack2pb::ArrayIterator it2(it1->value);
-    ASSERT_TRUE(it2 != NULL);
+    ASSERT_TRUE(it2 != nullptr);
     bool found_service_name = false;
-    for (mcpack2pb::ObjectIterator it3(*it2); it3 != NULL; ++it3) {
+    for (mcpack2pb::ObjectIterator it3(*it2); it3 != nullptr; ++it3) {
         if (it3->name == "service_name") {
             found_service_name = true;
             ASSERT_EQ(mcpack2pb::FIELD_STRING, it3->value.type());
@@ -94,7 +94,7 @@ TEST(Mcpack2pbParserTest, ParseStringField) {
     ASSERT_NE(0u, mcpack2pb::unbox(&stream));
 
     mcpack2pb::ObjectIterator it(&stream, body.size() - stream.popped_bytes());
-    ASSERT_TRUE(it != NULL);
+    ASSERT_TRUE(it != nullptr);
     EXPECT_EQ("msg", it->name.as_string());
     ASSERT_EQ(mcpack2pb::FIELD_STRING, it->value.type());
     std::string value;

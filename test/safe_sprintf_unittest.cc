@@ -368,7 +368,7 @@ void PrintLongString(char* buf, size_t sz) {
   // - test zero-padding and truncating %x hexadecimal numbers.
   // - test outputting and truncating %d MININT.
   // - test outputting and truncating %p arbitrary pointer values.
-  // - test outputting, padding and truncating NULL-pointer %s strings.
+  // - test outputting, padding and truncating nullptr-pointer %s strings.
   char* out = tmp.get();
   size_t out_sz = sz;
   size_t len;
@@ -380,7 +380,7 @@ void PrintLongString(char* buf, size_t sz) {
                             "A%2cong %s: %%d %010X %d %p%7s", 'l', "string",
 #endif
                             0xDEADBEEF, std::numeric_limits<intptr_t>::min(),
-                            PrintLongString, static_cast<char*>(NULL)) + 1;
+                            PrintLongString, static_cast<char*>(nullptr)) + 1;
 
     // Various sanity checks:
     // The numbered of characters needed to print the full string should always

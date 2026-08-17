@@ -61,7 +61,7 @@ brpc::ServerId CreateServer(const char* addr, const char* tag = "") {
 // Report a call that took `latency_us' back to the load balancer.
 void FeedbackLatency(brpc::LoadBalancer* lb, brpc::SocketId server_id,
                      int64_t latency_us, int error_code = 0,
-                     const brpc::Controller* cntl = NULL) {
+                     const brpc::Controller* cntl = nullptr) {
     brpc::LoadBalancer::CallInfo info;
     info.begin_time_us = butil::gettimeofday_us() - latency_us;
     info.server_id = server_id;
@@ -79,13 +79,13 @@ protected:
         _lb->Destroy();
     }
 
-    int Select(brpc::SocketUniquePtr* ptr, bool* need_feedback = NULL,
-               const brpc::ExcludedServers* excluded = NULL) {
+    int Select(brpc::SocketUniquePtr* ptr, bool* need_feedback = nullptr,
+               const brpc::ExcludedServers* excluded = nullptr) {
         brpc::LoadBalancer::SelectIn in = {
             butil::gettimeofday_us(), true, false, 0u, excluded };
         brpc::LoadBalancer::SelectOut out(ptr);
         const int rc = _lb->SelectServer(in, &out);
-        if (need_feedback != NULL) {
+        if (need_feedback != nullptr) {
             *need_feedback = out.need_feedback;
         }
         return rc;
@@ -207,7 +207,7 @@ TEST_F(P2CEwmaLoadBalancerTest, weighted_split_by_inflight) {
     const brpc::ServerId w4 = CreateServer("127.0.0.1:7789", "4");
     brpc::policy::P2CEwmaLoadBalancer* lb =
         _lb->New(butil::StringPiece("choices=3"));
-    ASSERT_TRUE(lb != NULL);
+    ASSERT_TRUE(lb != nullptr);
     ASSERT_TRUE(lb->AddServer(w1));
     ASSERT_TRUE(lb->AddServer(w2));
     ASSERT_TRUE(lb->AddServer(w4));
@@ -217,7 +217,7 @@ TEST_F(P2CEwmaLoadBalancerTest, weighted_split_by_inflight) {
     for (int i = 0; i < kRounds; ++i) {
         brpc::SocketUniquePtr ptr;
         brpc::LoadBalancer::SelectIn in = {
-            butil::gettimeofday_us(), true, false, 0u, NULL };
+            butil::gettimeofday_us(), true, false, 0u, nullptr };
         brpc::LoadBalancer::SelectOut out(&ptr);
         ASSERT_EQ(0, lb->SelectServer(in, &out));
         ++counts[ptr->id()];
@@ -274,28 +274,28 @@ TEST_F(P2CEwmaLoadBalancerTest, excluded_servers) {
     excluded->Add(a.id);
     for (int i = 0; i < 20; ++i) {
         brpc::SocketUniquePtr ptr;
-        ASSERT_EQ(0, Select(&ptr, NULL, excluded));
+        ASSERT_EQ(0, Select(&ptr, nullptr, excluded));
         ASSERT_EQ(b.id, ptr->id());
         FeedbackLatency(_lb, b.id, 1000);
     }
     // All servers excluded: still take the last chance instead of failing.
     excluded->Add(b.id);
     brpc::SocketUniquePtr ptr;
-    ASSERT_EQ(0, Select(&ptr, NULL, excluded));
+    ASSERT_EQ(0, Select(&ptr, nullptr, excluded));
     brpc::ExcludedServers::Destroy(excluded);
 }
 
 TEST_F(P2CEwmaLoadBalancerTest, invalid_parameters) {
     brpc::LoadBalancer* lb = _lb->New(butil::StringPiece(""));
-    ASSERT_TRUE(lb != NULL);
+    ASSERT_TRUE(lb != nullptr);
     lb->Destroy();
     lb = _lb->New(butil::StringPiece("choices=4 tau_ms=5000"));
-    ASSERT_TRUE(lb != NULL);
+    ASSERT_TRUE(lb != nullptr);
     lb->Destroy();
-    ASSERT_TRUE(_lb->New(butil::StringPiece("choices=1")) == NULL);
-    ASSERT_TRUE(_lb->New(butil::StringPiece("choices=abc")) == NULL);
-    ASSERT_TRUE(_lb->New(butil::StringPiece("tau_ms=0")) == NULL);
-    ASSERT_TRUE(_lb->New(butil::StringPiece("unknown=1")) == NULL);
+    ASSERT_TRUE(_lb->New(butil::StringPiece("choices=1")) == nullptr);
+    ASSERT_TRUE(_lb->New(butil::StringPiece("choices=abc")) == nullptr);
+    ASSERT_TRUE(_lb->New(butil::StringPiece("tau_ms=0")) == nullptr);
+    ASSERT_TRUE(_lb->New(butil::StringPiece("unknown=1")) == nullptr);
 }
 
 struct ChurnArg {
@@ -309,7 +309,7 @@ void* SelectAndFeedback(void* void_arg) {
     while (!arg->stop.load(butil::memory_order_relaxed)) {
         brpc::SocketUniquePtr ptr;
         brpc::LoadBalancer::SelectIn in = {
-            butil::gettimeofday_us(), true, false, 0u, NULL };
+            butil::gettimeofday_us(), true, false, 0u, nullptr };
         brpc::LoadBalancer::SelectOut out(&ptr);
         if (arg->lb->SelectServer(in, &out) == 0) {
             arg->nselected.fetch_add(1, butil::memory_order_relaxed);
@@ -318,7 +318,7 @@ void* SelectAndFeedback(void* void_arg) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(P2CEwmaLoadBalancerTest, concurrent_select_with_churn) {
@@ -337,7 +337,7 @@ TEST_F(P2CEwmaLoadBalancerTest, concurrent_select_with_churn) {
     pthread_t threads[4];
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
         ASSERT_EQ(0, pthread_create(
-            &threads[i], NULL, SelectAndFeedback, &arg));
+            &threads[i], nullptr, SelectAndFeedback, &arg));
     }
     // Churn membership while selections are running.
     const int64_t stop_at_us = butil::gettimeofday_us() + 1000000L;
@@ -347,7 +347,7 @@ TEST_F(P2CEwmaLoadBalancerTest, concurrent_select_with_churn) {
     }
     arg.stop.store(true);
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        ASSERT_EQ(0, pthread_join(threads[i], NULL));
+        ASSERT_EQ(0, pthread_join(threads[i], nullptr));
     }
     LOG(INFO) << "selected " << arg.nselected.load() << " times";
     ASSERT_GT(arg.nselected.load(), 0u);
@@ -372,7 +372,7 @@ TEST_F(P2CEwmaLoadBalancerTest, error_punish_is_capped) {
     const std::string desc = os.str();
     const size_t pos = desc.find("ewma_us=");
     ASSERT_NE(std::string::npos, pos) << desc;
-    const int64_t ewma_us = strtoll(desc.c_str() + pos + 8, NULL, 10);
+    const int64_t ewma_us = strtoll(desc.c_str() + pos + 8, nullptr, 10);
     ASSERT_LE(ewma_us, brpc::policy::FLAGS_p2c_max_punish_ms * 1000L) << desc;
 }
 
@@ -391,7 +391,7 @@ void* FeedbackHammer(void* void_arg) {
         ++n;
     }
     arg->nfeedback.fetch_add(n, butil::memory_order_relaxed);
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(P2CEwmaLoadBalancerTest, feedback_lock_overhead) {
@@ -409,12 +409,12 @@ TEST_F(P2CEwmaLoadBalancerTest, feedback_lock_overhead) {
         const int64_t begin_us = butil::gettimeofday_us();
         for (size_t i = 0; i < nthread; ++i) {
             ASSERT_EQ(0, pthread_create(
-                &threads[i], NULL, FeedbackHammer, &arg));
+                &threads[i], nullptr, FeedbackHammer, &arg));
         }
         usleep(500 * 1000);
         arg.stop.store(true);
         for (size_t i = 0; i < nthread; ++i) {
-            ASSERT_EQ(0, pthread_join(threads[i], NULL));
+            ASSERT_EQ(0, pthread_join(threads[i], nullptr));
         }
         const int64_t elapsed_us = butil::gettimeofday_us() - begin_us;
         const size_t n = arg.nfeedback.load();

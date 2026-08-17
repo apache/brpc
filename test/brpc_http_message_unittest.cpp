@@ -151,7 +151,7 @@ TEST(HttpMessageTest, request_sanity) {
 
     ASSERT_TRUE(header.GetHeader("log-id"));
     ASSERT_EQ("456", *header.GetHeader("log-id"));
-    ASSERT_TRUE(NULL != header.GetHeader("Authorization"));
+    ASSERT_TRUE(nullptr != header.GetHeader("Authorization"));
     ASSERT_EQ("test", *header.GetHeader("Authorization"));
 }
 
@@ -429,19 +429,19 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(new test::EchoService(),
                                    brpc::SERVER_OWNS_SERVICE));
-    ASSERT_EQ(0, server.Start(9237, NULL));
+    ASSERT_EQ(0, server.Start(9237, nullptr));
     std::string unknown_method;
-    brpc::Server::MethodProperty* mp = NULL;
+    brpc::Server::MethodProperty* mp = nullptr;
               
-    mp = FindMethodPropertyByURI("", &server, NULL);
+    mp = FindMethodPropertyByURI("", &server, nullptr);
     ASSERT_TRUE(mp);
     ASSERT_EQ("index", mp->method->service()->name());
 
-    mp = FindMethodPropertyByURI("/", &server, NULL);
+    mp = FindMethodPropertyByURI("/", &server, nullptr);
     ASSERT_TRUE(mp);
     ASSERT_EQ("index", mp->method->service()->name());
 
-    mp = FindMethodPropertyByURI("//", &server, NULL);
+    mp = FindMethodPropertyByURI("//", &server, nullptr);
     ASSERT_TRUE(mp);
     ASSERT_EQ("index", mp->method->service()->name());
 
@@ -649,14 +649,14 @@ TEST(HttpMessageTest, serialize_http_response) {
     // Content is cleared.
     CHECK(content.empty());
 
-    // NULL content
+    // nullptr content
     header.SetHeader("Content-Length", "100");
-    MakeRawHttpResponse(&response, &header, NULL);
+    MakeRawHttpResponse(&response, &header, nullptr);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nContent-Length: 100\r\n\r\n", response)
         << butil::ToPrintable(response);
 
     header.SetHeader("Transfer-Encoding", "chunked");
-    MakeRawHttpResponse(&response, &header, NULL);
+    MakeRawHttpResponse(&response, &header, nullptr);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nTransfer-Encoding: chunked\r\n\r\n", response)
                     << butil::ToPrintable(response);
     header.RemoveHeader("Transfer-Encoding");
@@ -669,7 +669,7 @@ TEST(HttpMessageTest, serialize_http_response) {
 
     header.SetHeader("Content-Length", "100");
     header.SetHeader("Transfer-Encoding", "chunked");
-    MakeRawHttpResponse(&response, &header, NULL);
+    MakeRawHttpResponse(&response, &header, nullptr);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nTransfer-Encoding: chunked\r\n\r\n", response)
                     << butil::ToPrintable(response);
     header.RemoveHeader("Transfer-Encoding");
@@ -731,7 +731,7 @@ TEST(HttpMessageTest, http_1_1_request_without_host) {
 
         brpc::HttpMessage http_message;
         ASSERT_GE(http_message.ParseFromIOBuf(request), 0);
-        ASSERT_GE(http_message.ParseFromArray(NULL, 0), 0);
+        ASSERT_GE(http_message.ParseFromArray(nullptr, 0), 0);
         ASSERT_TRUE(http_message.Completed());
         ASSERT_EQ("text/plain", http_message.header().content_type());
     }

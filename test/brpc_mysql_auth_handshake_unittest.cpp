@@ -507,7 +507,7 @@ static const char* const kSpawnPwPassword = "brpc_test_password";
 static bool IsSpawnedServer() { return g_mysqld_pid > 0; }
 
 // Returns the first non-empty-password credential matching |use_ssl|, or
-// NULL when the active server exposes none (so the caller can skip).
+// nullptr when the active server exposes none (so the caller can skip).
 static const AuthCase* FindNonEmptyCase(bool use_ssl) {
     for (size_t i = 0; i < g_auth_cases.size(); ++i) {
         if (!g_auth_cases[i].password.empty() &&
@@ -515,7 +515,7 @@ static const AuthCase* FindNonEmptyCase(bool use_ssl) {
             return &g_auth_cases[i];
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 // Absolute path to the throwaway data directory.  mysqld resolves a
@@ -523,7 +523,7 @@ static const AuthCase* FindNonEmptyCase(bool use_ssl) {
 // directory), so the path handed to mysqld must be absolute.
 static std::string TestDataDir() {
     char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    if (getcwd(cwd, sizeof(cwd)) == nullptr) {
         return std::string("/tmp/mysql_data_for_test");
     }
     return std::string(cwd) + "/mysql_data_for_test";
@@ -642,7 +642,7 @@ static void RunMysqlServer() {
             (char*)logerr_arg.c_str(),
             (char*)"--mysqlx=OFF",
             (char*)"--bind-address=127.0.0.1",
-            NULL };
+            nullptr };
         if (execvp(MYSQLD_BIN, argv) < 0) {
             puts("Fail to run " MYSQLD_BIN);
             exit(1);
@@ -696,7 +696,7 @@ static void RunMysqlServer() {
 // Reads exactly |n| bytes into |buf|.  When |ssl| is non-null the bytes
 // come from the SSL session; otherwise from the raw fd.  Returns true on
 // success.
-static bool ReadFull(int fd, char* buf, size_t n, SSL* ssl = NULL) {
+static bool ReadFull(int fd, char* buf, size_t n, SSL* ssl = nullptr) {
     size_t off = 0;
     while (off < n) {
         ssize_t r = ssl ? SSL_read(ssl, buf + off, static_cast<int>(n - off))
@@ -714,7 +714,7 @@ static bool ReadFull(int fd, char* buf, size_t n, SSL* ssl = NULL) {
 
 // Writes all of |data| (over SSL when |ssl| is non-null).  Returns true
 // on success.
-static bool WriteFull(int fd, const std::string& data, SSL* ssl = NULL) {
+static bool WriteFull(int fd, const std::string& data, SSL* ssl = nullptr) {
     size_t off = 0;
     while (off < data.size()) {
         ssize_t w = ssl ? SSL_write(ssl, data.data() + off,
@@ -734,7 +734,7 @@ static bool WriteFull(int fd, const std::string& data, SSL* ssl = NULL) {
 // Reads one MySQL packet (4-byte header + payload).  On success stores
 // the payload in *payload, the sequence id in *seq, and returns true.
 static bool ReadPacket(int fd, std::string* payload, uint8_t* seq,
-                       SSL* ssl = NULL) {
+                       SSL* ssl = nullptr) {
     char hdr[kPacketHeaderLen];
     if (!ReadFull(fd, hdr, sizeof(hdr), ssl)) {
         return false;
@@ -754,7 +754,7 @@ static bool ReadPacket(int fd, std::string* payload, uint8_t* seq,
 
 // Frames |payload| with a packet header carrying |seq| and writes it.
 static bool WritePacket(int fd, const std::string& payload, uint8_t seq,
-                        SSL* ssl = NULL) {
+                        SSL* ssl = nullptr) {
     std::string out;
     PacketHeader header;
     header.payload_len = static_cast<uint32_t>(payload.size());
@@ -771,7 +771,7 @@ static const uint32_t kClientSSL = 0x00000800;
 // Sends the MySQL SSLRequest packet (the 32-byte HandshakeResponse41
 // fixed prefix with CLIENT_SSL set, no username) at sequence |seq|, then
 // performs a SSL client handshake on |fd|.  Returns the SSL* on success
-// (caller owns it) or NULL on failure.
+// (caller owns it) or nullptr on failure.
 static SSL* UpgradeToSSL(int fd, uint32_t capability_flags, uint8_t seq) {
     // SSLRequest payload: 4B caps + 4B max_packet_size + 1B charset + 23B
     // reserved = 32 bytes, with CLIENT_SSL set.
@@ -785,26 +785,26 @@ static SSL* UpgradeToSSL(int fd, uint32_t capability_flags, uint8_t seq) {
     payload.push_back(static_cast<char>(0x21));  // charset utf8_general_ci
     payload.append(23, '\0');
     if (!WritePacket(fd, payload, seq)) {
-        return NULL;
+        return nullptr;
     }
     // One client SSL_CTX for the whole process; certificate not verified
     // (mysqld's auto-generated cert is self-signed).
-    static SSL_CTX* ctx = NULL;
-    if (ctx == NULL) {
+    static SSL_CTX* ctx = nullptr;
+    if (ctx == nullptr) {
         ctx = SSL_CTX_new(TLS_client_method());
-        if (ctx == NULL) {
-            return NULL;
+        if (ctx == nullptr) {
+            return nullptr;
         }
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);
     }
     SSL* ssl = SSL_new(ctx);
-    if (ssl == NULL) {
-        return NULL;
+    if (ssl == nullptr) {
+        return nullptr;
     }
     SSL_set_fd(ssl, fd);
     if (SSL_connect(ssl) != 1) {
         SSL_free(ssl);
-        return NULL;
+        return nullptr;
     }
     return ssl;
 }
@@ -863,7 +863,7 @@ static LoginTrace PerformSha2Login(int fd, const std::string& user,
                                    const std::string& initial_plugin =
                                        std::string()) {
     LoginTrace t;
-    SSL* ssl = NULL;
+    SSL* ssl = nullptr;
     std::string payload;
     uint8_t seq = 0;
     if (!ReadPacket(fd, &payload, &seq)) {  // greeting is always plaintext
@@ -899,7 +899,7 @@ static LoginTrace PerformSha2Login(int fd, const std::string& user,
         uint8_t next_seq = static_cast<uint8_t>(seq + 1);
         if (use_ssl) {
             ssl = UpgradeToSSL(fd, resp.capability_flags, next_seq);
-            if (ssl == NULL) {
+            if (ssl == nullptr) {
                 t.err = "SSL upgrade (SSLRequest + SSL_connect) failed";
                 goto done;
             }
@@ -1038,7 +1038,7 @@ static LoginTrace PerformSha2Login(int fd, const std::string& user,
         goto done;
     }
 done:
-    if (ssl != NULL) {
+    if (ssl != nullptr) {
         SSL_shutdown(ssl);
         SSL_free(ssl);
     }
@@ -1129,14 +1129,14 @@ TEST_F(MysqlHandshakeServerTest, AuthenticatesEmptyPasswordFastPath) {
         puts("Skipped due to absence of mysqld");
         return;
     }
-    const AuthCase* empty = NULL;
+    const AuthCase* empty = nullptr;
     for (size_t i = 0; i < g_auth_cases.size(); ++i) {
         if (g_auth_cases[i].password.empty() && !g_auth_cases[i].use_ssl) {
             empty = &g_auth_cases[i];
             break;
         }
     }
-    if (empty == NULL) {
+    if (empty == nullptr) {
         puts("Skipped: no empty-password credential on this server");
         return;
     }
@@ -1159,7 +1159,7 @@ TEST_F(MysqlHandshakeServerTest, FullAuthenticationNotSSL) {
         return;
     }
     const AuthCase* c = FindNonEmptyCase(/*use_ssl=*/false);
-    if (c == NULL) {
+    if (c == nullptr) {
         puts("Skipped: no non-empty-password credential for plaintext "
              "full-auth (need a running server with -mysql_password, or the "
              "mysql client for the spawned account)");
@@ -1194,7 +1194,7 @@ TEST_F(MysqlHandshakeServerTest, FullAuthenticationSSL) {
         return;
     }
     const AuthCase* c = FindNonEmptyCase(/*use_ssl=*/true);
-    if (c == NULL) {
+    if (c == nullptr) {
         puts("Skipped: no non-empty-password credential for SSL full-auth");
         return;
     }

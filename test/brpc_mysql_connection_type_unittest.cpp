@@ -109,7 +109,7 @@ static std::string g_password;
 
 static std::string TestDataDir() {
     char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    if (getcwd(cwd, sizeof(cwd)) == nullptr) {
         return std::string("/tmp/mysql_conn_type_data_for_test");
     }
     return std::string(cwd) + "/mysql_conn_type_data_for_test";
@@ -213,7 +213,7 @@ static void StartServerOnce() {
             (char*)logerr_arg.c_str(),
             (char*)"--mysqlx=OFF",
             (char*)"--bind-address=127.0.0.1",
-            NULL};
+            nullptr};
         if (execvp(MYSQLD_BIN, argv) < 0) {
             puts("Fail to run " MYSQLD_BIN);
             exit(1);
@@ -262,7 +262,7 @@ protected:
                             "integration test (set -mysql_use_running_server "
                             "or install mysqld)";
         }
-        brpc::policy::MysqlAuthenticator* auth = NULL;
+        brpc::policy::MysqlAuthenticator* auth = nullptr;
         ASSERT_EQ(0, InitShortChannel(&_channel, &auth));
         _auth.reset(auth);
     }
@@ -288,7 +288,7 @@ TEST_F(MysqlConnectionTypeTest, PreparedStatementUnderShortRePreparesAndSucceeds
     for (int iter = 0; iter < 5; ++iter) {
         brpc::MysqlStatementUniquePtr stmt =
             brpc::NewMysqlStatement(_channel, "SELECT ? AS v");
-        ASSERT_TRUE(stmt != NULL) << "iter " << iter;
+        ASSERT_TRUE(stmt != nullptr) << "iter " << iter;
         ASSERT_EQ(1u, stmt->param_count()) << "iter " << iter;
 
         const int32_t bound = (int32_t)(40 + iter);
@@ -297,7 +297,7 @@ TEST_F(MysqlConnectionTypeTest, PreparedStatementUnderShortRePreparesAndSucceeds
 
         brpc::MysqlResponse resp;
         brpc::Controller cntl;
-        _channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        _channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
         ASSERT_FALSE(cntl.Failed()) << "iter " << iter << ": " << cntl.ErrorText();
         ASSERT_GE(resp.reply_size(), 1) << "iter " << iter;
@@ -330,7 +330,7 @@ TEST_F(MysqlConnectionTypeTest, PlainQueryUnderShortMustSucceed) {
 
     brpc::MysqlResponse resp;
     brpc::Controller cntl;
-    _channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    _channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_GE(resp.reply_size(), 1);

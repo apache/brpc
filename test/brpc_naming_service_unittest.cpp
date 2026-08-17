@@ -237,11 +237,11 @@ TEST(NamingServiceTest, remotefile) {
     brpc::Server server1;
     UserNamingServiceImpl svc1;
     ASSERT_EQ(0, server1.AddService(&svc1, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server1.Start("localhost:8635", NULL));
+    ASSERT_EQ(0, server1.Start("localhost:8635", nullptr));
     brpc::Server server2;
     UserNamingServiceImpl svc2;
     ASSERT_EQ(0, server2.AddService(&svc2, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server2.Start("localhost:8636", NULL));
+    ASSERT_EQ(0, server2.Start("localhost:8636", nullptr));
 
     butil::EndPoint n1;
     ASSERT_EQ(0, butil::str2endpoint("0.0.0.0:8635", &n1));
@@ -449,7 +449,7 @@ TEST(NamingServiceTest, consul_with_backup_file) {
     ASSERT_EQ(0, server.AddService(&svc,
                                    brpc::SERVER_DOESNT_OWN_SERVICE,
                                    restful_map.c_str()));
-    ASSERT_EQ(0, server.Start("localhost:8500", NULL));
+    ASSERT_EQ(0, server.Start("localhost:8500", nullptr));
 
     bthread_usleep(5000000);
 
@@ -664,7 +664,7 @@ TEST(NamingServiceTest, discovery_sanity) {
         "/discovery/cancel => Cancel";
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
                 rest_mapping.c_str()));
-    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
+    ASSERT_EQ(0, server.Start("localhost:8635", nullptr));
 
     brpc::policy::DiscoveryNamingService dcns;
     std::vector<brpc::ServerNode> servers;

@@ -89,7 +89,7 @@ TEST(BaiduTimeTest, cost_of_timer) {
 
     t1.start();
     for (size_t i = 0; i < N; ++i) {
-        time(NULL);
+        time(nullptr);
     }
     t1.stop();
     printf("time(NULL) takes %" PRId64 "ns\n", t1.n_elapsed() / N);

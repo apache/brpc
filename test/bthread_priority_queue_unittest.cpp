@@ -51,13 +51,13 @@ void* priority_task_fn(void* arg) {
         g_executed_ids.insert(ta->id);
     }
     delete ta;
-    return NULL;
+    return nullptr;
 }
 
 void* normal_task_fn(void* /*arg*/) {
     // Just a normal task that does nothing, used as a filler
     bthread_usleep(1000);
-    return NULL;
+    return nullptr;
 }
 
 class PriorityQueueTest : public ::testing::Test {
@@ -87,7 +87,7 @@ TEST_F(PriorityQueueTest, e2e_priority_tasks_all_executed) {
     }
 
     for (int i = 0; i < N; ++i) {
-        bthread_join(tids[i], NULL);
+        bthread_join(tids[i], nullptr);
     }
 
     ASSERT_EQ(N, g_priority_count.load());
@@ -116,14 +116,14 @@ TEST_F(PriorityQueueTest, mixed_priority_and_normal_tasks) {
             ASSERT_EQ(0, bthread_start_background(&tid, &priority_attr,
                                                    priority_task_fn, arg));
         } else {
-            ASSERT_EQ(0, bthread_start_background(&tid, NULL,
-                                                   normal_task_fn, NULL));
+            ASSERT_EQ(0, bthread_start_background(&tid, nullptr,
+                                                   normal_task_fn, nullptr));
         }
         tids.push_back(tid);
     }
 
     for (auto tid : tids) {
-        bthread_join(tid, NULL);
+        bthread_join(tid, nullptr);
     }
 
     ASSERT_EQ(N_PRIORITY, g_priority_count.load());
@@ -153,7 +153,7 @@ TEST_F(PriorityQueueTest, start_foreground_priority_to_run) {
         for (int i = 0; i < ea->n_tasks; ++i) {
             TaskArg* ta = new TaskArg{i};
             bthread_t child;
-            int rc = bthread_start_urgent(&child, NULL, priority_task_fn, ta);
+            int rc = bthread_start_urgent(&child, nullptr, priority_task_fn, ta);
             if (rc != 0) {
                 delete ta;
                 ea->error_code = rc;
@@ -162,9 +162,9 @@ TEST_F(PriorityQueueTest, start_foreground_priority_to_run) {
             children.push_back(child);
         }
         for (auto child : children) {
-            bthread_join(child, NULL);
+            bthread_join(child, nullptr);
         }
-        return NULL;
+        return nullptr;
     };
 
     bthread_attr_t priority_attr = BTHREAD_ATTR_NORMAL;
@@ -173,7 +173,7 @@ TEST_F(PriorityQueueTest, start_foreground_priority_to_run) {
     bthread_t ed_tid;
     ASSERT_EQ(0, bthread_start_background(&ed_tid, &priority_attr,
                                            ed_fn, &ed_arg));
-    ASSERT_EQ(0, bthread_join(ed_tid, NULL));
+    ASSERT_EQ(0, bthread_join(ed_tid, nullptr));
     ASSERT_EQ(0, ed_arg.error_code);
 
     ASSERT_EQ(N, g_priority_count.load());
@@ -209,7 +209,7 @@ TEST_F(PriorityQueueTest, multiple_eds_concurrent_preempt) {
             TaskArg* ta = new TaskArg{id};
             bthread_t child;
             const int rc = bthread_start_urgent(
-                &child, NULL, priority_task_fn, ta);
+                &child, nullptr, priority_task_fn, ta);
             if (rc != 0) {
                 delete ta;
                 ea->error_code = rc;
@@ -219,9 +219,9 @@ TEST_F(PriorityQueueTest, multiple_eds_concurrent_preempt) {
             ea->resume_count->fetch_add(1, std::memory_order_relaxed);
         }
         for (auto c : children) {
-            bthread_join(c, NULL);
+            bthread_join(c, nullptr);
         }
-        return NULL;
+        return nullptr;
     };
 
     bthread_attr_t priority_attr = BTHREAD_ATTR_NORMAL;
@@ -236,7 +236,7 @@ TEST_F(PriorityQueueTest, multiple_eds_concurrent_preempt) {
     }
 
     for (int i = 0; i < NUM_EDS; ++i) {
-        ASSERT_EQ(0, bthread_join(ed_tids[i], NULL));
+        ASSERT_EQ(0, bthread_join(ed_tids[i], nullptr));
         ASSERT_EQ(0, ed_args[i].error_code);
     }
 
