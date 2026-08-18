@@ -365,7 +365,13 @@ public:
     typedef detail::MinusFrom<value_type> InvOp;
     typedef typename Base::sampler_type sampler_type;
 
-    COMMON_VARIABLE_CONSTRUCTOR(Adder);
+    Adder() = default;
+    Adder(const butil::StringPiece& name) {
+        this->expose(name);
+    }
+    Adder(const butil::StringPiece& prefix, const butil::StringPiece& name) {
+        this->expose_as(prefix, name);
+    }
 };
 #endif // WITH_BABYLON_COUNTER
 
@@ -457,7 +463,13 @@ public:
     typedef detail::VoidOp InvOp;
     typedef typename Base::sampler_type sampler_type;
 
-    COMMON_VARIABLE_CONSTRUCTOR(Maxer);
+    Maxer() = default;
+    Maxer(const butil::StringPiece& name) {
+        this->expose(name);
+    }
+    Maxer(const butil::StringPiece& prefix, const butil::StringPiece& name) {
+        this->expose_as(prefix, name);
+    }
 
 private:
 friend class detail::LatencyRecorderBase;
@@ -524,7 +536,13 @@ public:
     typedef detail::VoidOp InvOp;
     typedef typename Base::sampler_type sampler_type;
 
-    COMMON_VARIABLE_CONSTRUCTOR(Miner);
+    Miner() = default;
+    Miner(const butil::StringPiece& name) {
+        this->expose(name);
+    }
+    Miner(const butil::StringPiece& prefix, const butil::StringPiece& name) {
+        this->expose_as(prefix, name);
+    }
 };
 #endif // WITH_BABYLON_COUNTER
 
