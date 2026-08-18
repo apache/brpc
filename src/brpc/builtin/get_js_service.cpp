@@ -63,7 +63,7 @@ void GetJsService::jquery_min(
 
     const std::string* ims =
         cntl->http_request().GetHeader("If-Modified-Since");
-    if (ims != NULL && *ims == g_last_modified) {
+    if (ims != nullptr && *ims == g_last_modified) {
         cntl->http_response().set_status_code(HTTP_STATUS_NOT_MODIFIED);
         return;
     }
@@ -89,7 +89,7 @@ void GetJsService::flot_min(
 
     const std::string* ims =
         cntl->http_request().GetHeader("If-Modified-Since");
-    if (ims != NULL && *ims == g_last_modified) {
+    if (ims != nullptr && *ims == g_last_modified) {
         cntl->http_response().set_status_code(HTTP_STATUS_NOT_MODIFIED);
         return;
     }
@@ -115,7 +115,7 @@ void GetJsService::viz_min(
 
     const std::string* ims =
         cntl->http_request().GetHeader("If-Modified-Since");
-    if (ims != NULL && *ims == g_last_modified) {
+    if (ims != nullptr && *ims == g_last_modified) {
         cntl->http_response().set_status_code(HTTP_STATUS_NOT_MODIFIED);
         return;
     }

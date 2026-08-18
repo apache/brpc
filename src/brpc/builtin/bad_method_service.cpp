@@ -47,7 +47,7 @@ void BadMethodService::no_method(::google::protobuf::RpcController* cntl_base,
     os << "Missing method name for service=" << request->service_name() << '.';
     const Server::ServiceProperty* sp = ServerPrivateAccessor(server)
         .FindServicePropertyAdaptively(request->service_name());
-    if (sp != NULL && sp->service != NULL) {
+    if (sp != nullptr && sp->service != nullptr) {
         const google::protobuf::ServiceDescriptor* sd =
             sp->service->GetDescriptor();
         os << " Available methods are: " << newline << newline;
@@ -58,7 +58,7 @@ void BadMethodService::no_method(::google::protobuf::RpcController* cntl_base,
                << ");" << newline;
         }
     }
-    if (sp != NULL && sp->restful_map != NULL) {
+    if (sp != nullptr && sp->restful_map != nullptr) {
         os << " This path is associated with a RestfulMap!";
     }
     cntl->SetFailed(ENOMETHOD, "%s", os.str().c_str());
