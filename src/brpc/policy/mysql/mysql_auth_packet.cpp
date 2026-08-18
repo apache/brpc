@@ -43,7 +43,7 @@ size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
         return 1;
     }
     if (first == 0xfb) {
-        // 0xFB is the lenenc nullptr marker, not a length prefix.  Report nullptr
+        // 0xFB is the lenenc NULL marker, not a length prefix.  Report NULL
         // (one byte consumed) instead of folding it into the failure path.
         if (is_null != nullptr) {
             *is_null = true;
@@ -126,7 +126,7 @@ size_t DecodeLengthEncodedString(const butil::StringPiece& buf,
         return 0;
     }
     if (len_is_null) {
-        // Leading 0xFB: the string itself is nullptr.  Only the marker byte is
+        // Leading 0xFB: the string itself is NULL.  Only the marker byte is
         // consumed; there is no payload to read.
         if (is_null != nullptr) {
             *is_null = true;

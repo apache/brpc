@@ -552,7 +552,7 @@ ParseError MysqlReply::ResultSetHeader::Parse(butil::IOBuf& buf) {
     old_size = buf.size();
     _column_count = parse_encode_length(buf);
     // Guard against an absurd/malicious column count driving unbounded
-    // allocations downstream (per-column arrays and the row nullptr-bitmap).
+    // allocations downstream (per-column arrays and the row NULL-bitmap).
     // MySQL's hard limit is 4096 columns per table; 65535 is a generous cap
     // that no legitimate result set exceeds.
     if (_column_count > 65535) {
@@ -793,7 +793,7 @@ ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
                        << unsigned(hdr) << ", expected 0x00";
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
-        // nullptr-bitmap, [(column-count + 7 + 2) / 8 bytes]. Allocate from the
+        // NULL-bitmap, [(column-count + 7 + 2) / 8 bytes]. Allocate from the
         // arena instead of a stack VLA: column_count is attacker-controlled
         // (length-encoded in the result-set header), so a large value would
         // otherwise be an unbounded stack allocation / stack overflow.
@@ -1053,8 +1053,8 @@ ParseError MysqlReply::Field::ParseBinaryTime(butil::IOBuf& buf,
     const uint64_t len = parse_encode_length(buf);
     // A length of 0, 8 or 12 are the only legal binary TIME encodings. Anything
     // else is a malformed packet -- reject it rather than reading past the value.
-    // NOTE: len == 0 is NOT a nullptr value (nullptr is signalled by the row
-    // nullptr-bitmap, handled by the caller before we are reached); it is the zero
+    // NOTE: len == 0 is NOT a NULL value (NULL is signalled by the row
+    // NULL-bitmap, handled by the caller before we are reached); it is the zero
     // TIME value "00:00:00" with no field bytes on the wire.
     if (len != 0 && len != 8 && len != 12) {
         LOG(ERROR) << "invalid TIME packet length " << len;
@@ -1178,8 +1178,8 @@ ParseError MysqlReply::Field::ParseBinaryDataTime(butil::IOBuf& buf,
     const uint64_t len = parse_encode_length(buf);
     // A length of 0, 4, 7 or 11 are the only legal binary DATE/DATETIME/
     // TIMESTAMP encodings. Reject anything else rather than over-reading.
-    // NOTE: len == 0 is NOT a nullptr value (nullptr is signalled by the row
-    // nullptr-bitmap, handled by the caller before we are reached); it is the zero
+    // NOTE: len == 0 is NOT a NULL value (NULL is signalled by the row
+    // NULL-bitmap, handled by the caller before we are reached); it is the zero
     // value "0000-00-00 00:00:00" (or "0000-00-00" for DATE) with no field
     // bytes on the wire.
     if (len != 0 && len != 4 && len != 7 && len != 11) {
