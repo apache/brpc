@@ -41,8 +41,7 @@ static unsigned int check_epollrdhup() {
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, (int*)fds) < 0) {
         return 0;
     }
-    epoll_event evt = { static_cast<uint32_t>(EPOLLIN | EPOLLRDHUP | EPOLLET),
-                        { NULL }};
+    epoll_event evt = { static_cast<uint32_t>(EPOLLIN | EPOLLRDHUP | EPOLLET), { nullptr }};
     if (epoll_ctl(epfd, EPOLL_CTL_ADD, fds[0], &evt) < 0) {
         return 0;
     }
