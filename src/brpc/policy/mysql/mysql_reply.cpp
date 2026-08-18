@@ -40,9 +40,9 @@ namespace brpc {
 
 template <class Type>
 inline bool my_alloc_check(butil::Arena* arena, const size_t n, Type*& pointer) {
-    if (pointer == NULL) {
+    if (pointer == nullptr) {
         pointer = (Type*)arena->allocate(sizeof(Type) * n);
-        if (pointer == NULL) {
+        if (pointer == nullptr) {
             LOG(ERROR) << "my_alloc_check: arena failed to allocate " << (sizeof(Type) * n)
                        << " bytes (n=" << n << ")";
             return false;
@@ -56,9 +56,9 @@ inline bool my_alloc_check(butil::Arena* arena, const size_t n, Type*& pointer) 
 
 template <>
 inline bool my_alloc_check(butil::Arena* arena, const size_t n, char*& pointer) {
-    if (pointer == NULL) {
+    if (pointer == nullptr) {
         pointer = (char*)arena->allocate(sizeof(char) * n);
-        if (pointer == NULL) {
+        if (pointer == nullptr) {
             LOG(ERROR) << "my_alloc_check: arena failed to allocate " << n << " char bytes";
             return false;
         }
@@ -120,7 +120,7 @@ const char* MysqlRspTypeToString(MysqlRspType type) {
 inline bool is_full_package(const butil::IOBuf& buf) {
     uint8_t header[4];
     const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
-    if (p == NULL) {
+    if (p == nullptr) {
         return false;
     }
     uint32_t payload_size = mysql_uint3korr(p);
@@ -133,7 +133,7 @@ inline bool is_full_package(const butil::IOBuf& buf) {
 inline bool is_an_eof(const butil::IOBuf& buf) {
     uint8_t tmp[5];
     const uint8_t* p = (const uint8_t*)buf.fetch(tmp, sizeof(tmp));
-    if (p == NULL) {
+    if (p == nullptr) {
         return false;
     }
     uint8_t type = p[4];
@@ -222,7 +222,7 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
         // never coalesced.
         uint8_t status[4 + 2];
         const uint8_t* sp = (const uint8_t*)buf.fetch(status, sizeof(status));
-        const bool fast_auth_success = (sp != NULL && sp[5] == 0x03);
+        const bool fast_auth_success = (sp != nullptr && sp[5] == 0x03);
         if (fast_auth_success) {
             // Determine, WITHOUT consuming anything, whether the OK packet
             // that follows the fast-auth marker is also fully buffered.
@@ -455,7 +455,7 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     {
         butil::IOBuf version;
         buf.cut_until(&version, delim);
-        char* d = NULL;
+        char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, version.size(), d));
         version.copy_to(d);
         _version.set(d, version.size());
@@ -468,7 +468,7 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     {
         butil::IOBuf salt;
         buf.cut_until(&salt, delim);
-        char* d = NULL;
+        char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, salt.size(), d));
         salt.copy_to(d);
         _salt.set(d, salt.size());
@@ -494,7 +494,7 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     {
         butil::IOBuf salt2;
         buf.cut_until(&salt2, delim);
-        char* d = NULL;
+        char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, salt2.size(), d));
         salt2.copy_to(d);
         _salt2.set(d, salt2.size());
@@ -505,7 +505,7 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
                        << " exceeds remaining buffer size " << buf.size();
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
-        char* d = NULL;
+        char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, _auth_plugin_length, d));
         buf.cutn(d, _auth_plugin_length);
         _auth_plugin.set(d, _auth_plugin_length);
@@ -529,12 +529,12 @@ ParseError MysqlReply::AuthMoreData::Parse(butil::IOBuf& buf, butil::Arena* aren
     buf.pop_front(1);
     const int64_t len = (int64_t)header.payload_size - 1;
     if (len > 0) {
-        char* d = NULL;
+        char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, len, d));
         buf.cutn(d, len);
         _data.set(d, len);
     } else {
-        _data.set(NULL, 0);
+        _data.set(nullptr, 0);
     }
     set_parsed();
     return PARSE_OK;
@@ -587,7 +587,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    char* catalog = NULL;
+    char* catalog = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, catalog));
     buf.cutn(catalog, len);
     _catalog.set(catalog, len);
@@ -598,7 +598,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    char* database = NULL;
+    char* database = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, database));
     buf.cutn(database, len);
     _database.set(database, len);
@@ -609,7 +609,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    char* table = NULL;
+    char* table = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, table));
     buf.cutn(table, len);
     _table.set(table, len);
@@ -620,7 +620,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    char* origin_table = NULL;
+    char* origin_table = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, origin_table));
     buf.cutn(origin_table, len);
     _origin_table.set(origin_table, len);
@@ -631,7 +631,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    char* name = NULL;
+    char* name = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, name));
     buf.cutn(name, len);
     _name.set(name, len);
@@ -642,7 +642,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    char* origin_name = NULL;
+    char* origin_name = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, origin_name));
     buf.cutn(origin_name, len);
     _origin_name.set(origin_name, len);
@@ -698,7 +698,7 @@ ParseError MysqlReply::Ok::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     new_size = buf.size();
     if (old_size - new_size < header.payload_size) {
         const int64_t len = header.payload_size - (old_size - new_size);
-        char* msg = NULL;
+        char* msg = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
         buf.cutn(msg, len);
         _msg.set(msg, len);
@@ -746,7 +746,7 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     }
     buf.pop_front(1);  // '#'
     // 5 byte server status
-    char* status = NULL;
+    char* status = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
     buf.cutn(status, 5);
     _status.set(status, 5);
@@ -760,7 +760,7 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     uint64_t len = header.payload_size - 9;
-    char* msg = NULL;
+    char* msg = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
     buf.cutn(msg, len);
     _msg.set(msg, len);
@@ -798,7 +798,7 @@ ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
         // (length-encoded in the result-set header), so a large value would
         // otherwise be an unbounded stack allocation / stack overflow.
         const uint64_t size = ((column_count + 7 + 2) >> 3);
-        uint8_t* null_mask = NULL;
+        uint8_t* null_mask = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, (size_t)size, null_mask));
         for (uint64_t i = 0; i < size; ++i) {
             null_mask[i] = 0;
@@ -849,39 +849,39 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
             break;
         case MYSQL_FIELD_TYPE_TINY:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
-                _data.tiny = strtoul(str.to_string().c_str(), NULL, 10);
+                _data.tiny = strtoul(str.to_string().c_str(), nullptr, 10);
             } else {
-                _data.stiny = strtol(str.to_string().c_str(), NULL, 10);
+                _data.stiny = strtol(str.to_string().c_str(), nullptr, 10);
             }
             break;
         case MYSQL_FIELD_TYPE_SHORT:
         case MYSQL_FIELD_TYPE_YEAR:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
-                _data.small = strtoul(str.to_string().c_str(), NULL, 10);
+                _data.small = strtoul(str.to_string().c_str(), nullptr, 10);
             } else {
-                _data.ssmall = strtol(str.to_string().c_str(), NULL, 10);
+                _data.ssmall = strtol(str.to_string().c_str(), nullptr, 10);
             }
             break;
         case MYSQL_FIELD_TYPE_INT24:
         case MYSQL_FIELD_TYPE_LONG:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
-                _data.integer = strtoul(str.to_string().c_str(), NULL, 10);
+                _data.integer = strtoul(str.to_string().c_str(), nullptr, 10);
             } else {
-                _data.sinteger = strtol(str.to_string().c_str(), NULL, 10);
+                _data.sinteger = strtol(str.to_string().c_str(), nullptr, 10);
             }
             break;
         case MYSQL_FIELD_TYPE_LONGLONG:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
-                _data.bigint = strtoul(str.to_string().c_str(), NULL, 10);
+                _data.bigint = strtoul(str.to_string().c_str(), nullptr, 10);
             } else {
-                _data.sbigint = strtol(str.to_string().c_str(), NULL, 10);
+                _data.sbigint = strtol(str.to_string().c_str(), nullptr, 10);
             }
             break;
         case MYSQL_FIELD_TYPE_FLOAT:
-            _data.float32 = strtof(str.to_string().c_str(), NULL);
+            _data.float32 = strtof(str.to_string().c_str(), nullptr);
             break;
         case MYSQL_FIELD_TYPE_DOUBLE:
-            _data.float64 = strtod(str.to_string().c_str(), NULL);
+            _data.float64 = strtod(str.to_string().c_str(), nullptr);
             break;
         case MYSQL_FIELD_TYPE_DECIMAL:
         case MYSQL_FIELD_TYPE_NEWDECIMAL:
@@ -902,7 +902,7 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
         case MYSQL_FIELD_TYPE_NEWDATE:
         case MYSQL_FIELD_TYPE_TIMESTAMP:
         case MYSQL_FIELD_TYPE_DATETIME: {
-            char* d = NULL;
+            char* d = nullptr;
             MY_ALLOC_CHECK(my_alloc_check(arena, len, d));
             str.copy_to(d);
             _data.str.set(d, len);
@@ -1017,7 +1017,7 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
                            << " exceeds remaining buffer size " << buf.size();
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
-            char* d = NULL;
+            char* d = nullptr;
             MY_ALLOC_CHECK(my_alloc_check(arena, len, d));
             buf.cutn(d, len);
             _data.str.set(d, len);
@@ -1089,7 +1089,7 @@ ParseError MysqlReply::Field::ParseBinaryTime(butil::IOBuf& buf,
     }
 
     size_t i = 0;
-    char* d = NULL;
+    char* d = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, dstlen + 2, d));
     d[dstlen] = '\0';
     d[dstlen + 1] = '\0';
@@ -1224,7 +1224,7 @@ ParseError MysqlReply::Field::ParseBinaryDataTime(butil::IOBuf& buf,
     }
 
     size_t i = 0;
-    char* d = NULL;
+    char* d = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, dstlen, d));
     // Read only the fields present for this `len`; absent fields are 0.
     // len == 0  -> no bytes (all-zero value).
@@ -1392,8 +1392,8 @@ ParseError MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena, 
             break;
         }
         // allocate memory for row and fields
-        Row* row = NULL;
-        Field* fields = NULL;
+        Row* row = nullptr;
+        Field* fields = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, row));
         MY_ALLOC_CHECK(my_alloc_check(arena, _header._column_count, fields));
         row->_fields = fields;

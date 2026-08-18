@@ -97,7 +97,7 @@ AutoConcurrencyLimiter::AutoConcurrencyLimiter()
 }
 
 AutoConcurrencyLimiter* AutoConcurrencyLimiter::New(const AdaptiveMaxConcurrency&) const {
-    return new (std::nothrow) AutoConcurrencyLimiter;
+    return new AutoConcurrencyLimiter;
 }
 
 bool AutoConcurrencyLimiter::OnRequested(int current_concurrency, Controller*) {

@@ -237,11 +237,11 @@ static void SendSofaResponse(int64_t correlation_id,
 
     bool append_body = false;
     butil::IOBuf res_body;
-    // `res' can be NULL here, in which case we don't serialize it
+    // `res' can be nullptr here, in which case we don't serialize it
     // If user calls `SetFailed' on Controller, we don't serialize
     // response either
     CompressType type = cntl->response_compress_type();
-    if (res != NULL && !cntl->Failed()) {
+    if (res != nullptr && !cntl->Failed()) {
         if (!res->IsInitialized()) {
             cntl->SetFailed(
                 ERESPONSE, "Missing required fields in response: %s", 
@@ -345,11 +345,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         sample->submit(start_parse_us);
     }
 
-    std::unique_ptr<Controller> cntl(new (std::nothrow) Controller);
-    if (NULL == cntl.get()) {
-        LOG(WARNING) << "Fail to new Controller";
-        return;
-    }
+    std::unique_ptr<Controller> cntl(new Controller);
     std::unique_ptr<google::protobuf::Message> req;
     std::unique_ptr<google::protobuf::Message> res;
 
@@ -388,7 +384,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         span->set_request_size(msg->meta.size() + msg->payload.size() + 24);
     }
 
-    MethodStatus* method_status = NULL;
+    MethodStatus* method_status = nullptr;
     do {
         if (!server->IsRunning()) {
             cntl->SetFailed(ELOGOFF, "Server is stopping");
@@ -409,7 +405,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         
         const Server::MethodProperty *sp =
             server_accessor.FindMethodPropertyByFullName(meta.method());
-        if (NULL == sp) {
+        if (nullptr == sp) {
             cntl->SetFailed(ENOMETHOD, "Fail to find method=%s", 
                             meta.method().c_str());
             break;
@@ -509,7 +505,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
     }
 
     const bthread_id_t cid = { static_cast<uint64_t>(meta.sequence_id()) };
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)

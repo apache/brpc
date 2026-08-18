@@ -42,7 +42,7 @@ namespace brpc {
 //   MysqlRequest request;
 //   request.Query("select * from table");
 //   MysqlResponse response;
-//   channel.CallMethod(NULL, &controller, &request, &response, NULL/*done*/);
+//   channel.CallMethod(nullptr, &controller, &request, &response, nullptr/*done*/);
 //   if (!cntl.Failed()) {
 //       LOG(INFO) << response.reply(0);
 //   }

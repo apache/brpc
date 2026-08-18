@@ -155,7 +155,7 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         for (size_t i = 0; i < n; ++i) {
             offset = (offset + stride) % n;
             SocketId id = s->server_list[offset].id;
-            if (NULL != random_traversed.seek(id)) {
+            if (nullptr != random_traversed.seek(id)) {
                 continue;
             }
             if (IsServerAvailable(id, out->ptr)) {
@@ -170,12 +170,12 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     // Returns EHOSTDOWN, if no available server is found
     // after traversing the whole server list.
     // Otherwise, returns 0 with a available excluded server.
-    return NULL == out->ptr ? EHOSTDOWN : 0;
+    return nullptr == out->ptr ? EHOSTDOWN : 0;
 }
 
 LoadBalancer* WeightedRandomizedLoadBalancer::New(
     const butil::StringPiece&) const {
-    return new (std::nothrow) WeightedRandomizedLoadBalancer;
+    return new WeightedRandomizedLoadBalancer;
 }
 
 void WeightedRandomizedLoadBalancer::Destroy() {

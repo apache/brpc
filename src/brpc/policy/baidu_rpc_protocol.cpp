@@ -157,7 +157,7 @@ bool SerializeRpcMessage(const google::protobuf::Message& message,
             ok = serializer.SerializeTo(&stream);
         } else {
             const CompressHandler* handler = FindCompressHandler(compress_type);
-            if (NULL == handler) {
+            if (nullptr == handler) {
                 return false;
             }
             ok = handler->Compress(serializer, buf);
@@ -232,7 +232,7 @@ static bool SerializeResponse(const google::protobuf::Message& res,
     ContentType content_type = cntl.response_content_type();
     CompressType compress_type = cntl.response_compress_type();
     ChecksumType checksum_type = cntl.response_checksum_type();
-    const butil::IOBuf* checksum_attachment = NULL;
+    const butil::IOBuf* checksum_attachment = nullptr;
     if (cntl.response_checksum_attachment()) {
         // See the same check in SerializeRpcRequest() for the rationale;
         // baidu_std never sets this flag itself but we defend anyway.
@@ -289,8 +289,8 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
     }
     Socket* sock = accessor.get_sending_socket();
 
-    const google::protobuf::Message* req = NULL == messages ? NULL : messages->Request();
-    const google::protobuf::Message* res = NULL == messages ? NULL : messages->Response();
+    const google::protobuf::Message* req = nullptr == messages ? nullptr : messages->Request();
+    const google::protobuf::Message* res = nullptr == messages ? nullptr : messages->Response();
 
     // Recycle resources at the end of this function.
     BRPC_SCOPE_EXIT {
@@ -301,12 +301,12 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 
         std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
 
-        if (NULL == messages) {
+        if (nullptr == messages) {
             return;
         }
 
         cntl->CallAfterRpcResp(req, res);
-        if (NULL == server->options().baidu_master_service) {
+        if (nullptr == server->options().baidu_master_service) {
             server->options().rpc_pb_message_factory->Return(messages);
         } else {
             BaiduProxyPBMessages::Return(static_cast<BaiduProxyPBMessages*>(messages));
@@ -324,10 +324,10 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
     }
     bool append_body = false;
     butil::IOBuf res_body;
-    // `res' can be NULL here, in which case we don't serialize it
+    // `res' can be nullptr here, in which case we don't serialize it
     // If user calls `SetFailed' on Controller, we don't serialize
     // response either
-    if (res != NULL && !cntl->Failed()) {
+    if (res != nullptr && !cntl->Failed()) {
         append_body = SerializeResponse(*res, *cntl, res_body);
     }
 
@@ -523,7 +523,7 @@ bool DeserializeRpcMessage(const butil::IOBuf& data, Controller& cntl,
             ok = deserializer.DeserializeFrom(&stream);
         } else {
             const CompressHandler* handler = FindCompressHandler(compress_type);
-            if (NULL == handler) {
+            if (nullptr == handler) {
                 return false;
             }
             ok = handler->Decompress(data, &deserializer);
@@ -607,13 +607,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         sample->submit(start_parse_us);
     }
 
-    std::unique_ptr<Controller> cntl(new (std::nothrow) Controller);
-    if (NULL == cntl.get()) {
-        LOG(WARNING) << "Fail to new Controller";
-        return;
-    }
+    std::unique_ptr<Controller> cntl(new Controller);
 
-    RpcPBMessages* messages = NULL;
+    RpcPBMessages* messages = nullptr;
 
     ServerPrivateAccessor server_accessor(server);
     ControllerPrivateAccessor accessor(cntl.get());
@@ -673,7 +669,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         span->set_request_size(msg->payload.size() + msg->meta.size() + 12);
     }
 
-    MethodStatus* method_status = NULL;
+    MethodStatus* method_status = nullptr;
     do {
         if (!server->IsRunning()) {
             cntl->SetFailed(ELOGOFF, "Server is stopping");
@@ -703,9 +699,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
         }
 
-        google::protobuf::Service* svc = NULL;
-        google::protobuf::MethodDescriptor* method = NULL;
-        if (NULL != server->options().baidu_master_service) {
+        google::protobuf::Service* svc = nullptr;
+        google::protobuf::MethodDescriptor* method = nullptr;
+        if (nullptr != server->options().baidu_master_service) {
           if (socket->is_overcrowded() &&
               !server->options().ignore_eovercrowded &&
               !server->options().baidu_master_service->ignore_eovercrowded()) {
@@ -714,11 +710,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             break;
           }
             svc = server->options().baidu_master_service;
-            auto sampled_request = new (std::nothrow) SampledRequest;
-            if (NULL == sampled_request) {
-                cntl->SetFailed(ENOMEM, "Fail to get sampled_request");
-                break;
-            }
+            auto sampled_request = new SampledRequest;
             sampled_request->meta.set_service_name(request_meta.service_name());
             sampled_request->meta.set_method_name(request_meta.method_name());
             cntl->reset_sampled_request(sampled_request);
@@ -753,7 +745,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             if (svc_name.find('.') == butil::StringPiece::npos) {
                 const Server::ServiceProperty* sp =
                     server_accessor.FindServicePropertyByName(svc_name);
-                if (NULL == sp) {
+                if (nullptr == sp) {
                     cntl->SetFailed(ENOSERVICE, "Fail to find service=%s",
                         request_meta.service_name().c_str());
                     break;
@@ -763,7 +755,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             const Server::MethodProperty* mp =
                 server_accessor.FindMethodPropertyByFullName(
                     svc_name, request_meta.method_name());
-            if (NULL == mp) {
+            if (nullptr == mp) {
                 cntl->SetFailed(ENOMETHOD, "Fail to find method=%s/%s",
                                 request_meta.service_name().c_str(),
                                 request_meta.method_name().c_str());
@@ -772,7 +764,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 BadMethodRequest breq;
                 BadMethodResponse bres;
                 breq.set_service_name(request_meta.service_name());
-                mp->service->CallMethod(mp->method, cntl.get(), &breq, &bres, NULL);
+                mp->service->CallMethod(mp->method, cntl.get(), &breq, &bres, nullptr);
                 break;
             }
             if (socket->is_overcrowded() &&
@@ -827,7 +819,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             // it into the checksum now when the client asked us to.
             const butil::IOBuf* checksum_attachment =
                 cntl->request_checksum_attachment() ?
-                &cntl->request_attachment() : NULL;
+                &cntl->request_attachment() : nullptr;
             if (!DeserializeRpcMessage(req_buf, *cntl, content_type,
                                        compress_type, checksum_type,
                                        messages->Request(),
@@ -898,7 +890,7 @@ bool VerifyRpcRequest(const InputMessageBase* msg_base) {
         return false;
     }
     const Authenticator* auth = server->options().auth;
-    if (NULL == auth) {
+    if (nullptr == auth) {
         // Fast pass (no authentication)
         return true;
     }
@@ -939,7 +931,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
     }
 
     const bthread_id_t cid = { static_cast<uint64_t>(meta.correlation_id()) };
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
 
     StreamId remote_stream_id = meta.has_stream_settings() ? meta.stream_settings().stream_id(): INVALID_STREAM_ID;
 
@@ -1016,7 +1008,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
             // it into the checksum now when the server told us to.
             const butil::IOBuf* checksum_attachment =
                 cntl->response_checksum_attachment() ?
-                &cntl->response_attachment() : NULL;
+                &cntl->response_attachment() : nullptr;
             if (cntl->response()->GetDescriptor() == SerializedResponse::descriptor()) {
                 ((SerializedResponse*)cntl->response())->
                     serialized_data().append(*res_buf_ptr);
@@ -1044,7 +1036,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
 void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
                          const google::protobuf::Message* request) {
     // Check sanity of request.
-    if (NULL == request) {
+    if (nullptr == request) {
         return cntl->SetFailed(EREQUEST, "`request' is NULL");
     }
     if (request->GetDescriptor() == SerializedRequest::descriptor()) {
@@ -1059,7 +1051,7 @@ void SerializeRpcRequest(butil::IOBuf* request_buf, Controller* cntl,
     ContentType content_type = cntl->request_content_type();
     CompressType compress_type = cntl->request_compress_type();
     ChecksumType checksum_type = cntl->request_checksum_type();
-    const butil::IOBuf* checksum_attachment = NULL;
+    const butil::IOBuf* checksum_attachment = nullptr;
     if (cntl->request_checksum_attachment()) {
         // Progressive reading (HTTP-only feature) hands the attachment to
         // the user piece by piece as it arrives, so there's no single,
@@ -1108,7 +1100,7 @@ void PackRpcRequest(butil::IOBuf* req_buf,
         if (cntl->request_checksum_attachment()) {
             meta.set_checksum_with_attachment(true);
         }
-    } else if (NULL != cntl->sampled_request()) {
+    } else if (nullptr != cntl->sampled_request()) {
         // Replaying. Keep service-name as the one seen by server.
         request_meta->set_service_name(cntl->sampled_request()->meta.service_name());
         request_meta->set_method_name(cntl->sampled_request()->meta.method_name());

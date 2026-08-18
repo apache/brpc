@@ -318,7 +318,7 @@ void InitFrameHandlers() {
 inline H2Context::FrameHandler FindFrameHandler(H2FrameType type) {
     pthread_once(&s_frame_handlers_init_once, InitFrameHandlers);
     if (type < 0 || type > H2_FRAME_TYPE_MAX) {
-        return NULL;
+        return nullptr;
     }
     return s_frame_handlers[type];
 }
@@ -382,11 +382,11 @@ size_t H2Context::VolatilePendingStreamSize() const {
 }
 
 H2StreamContext* H2Context::RemoveStreamAndDeferWU(int stream_id) {
-    H2StreamContext* sctx = NULL;
+    H2StreamContext* sctx = nullptr;
     {
         std::unique_lock<butil::Mutex> mu(_stream_mutex);
         if (!_pending_streams.erase(stream_id, &sctx)) {
-            return NULL;
+            return nullptr;
         }
         CHECK_GE(_pending_data_size, sctx->_pending_data.size());
         _pending_data_size -= sctx->_pending_data.size();
@@ -436,7 +436,7 @@ H2StreamContext* H2Context::FindStream(int stream_id) {
     if (psctx) {
         return *psctx;
     }
-    return NULL;
+    return nullptr;
 }
 
 int H2Context::TryToInsertStream(int stream_id, H2StreamContext* ctx) {
@@ -445,7 +445,7 @@ int H2Context::TryToInsertStream(int stream_id, H2StreamContext* ctx) {
         return 1;
     }
     H2StreamContext*& sctx = _pending_streams[stream_id];
-    if (sctx == NULL) {
+    if (sctx == nullptr) {
         // Synchronize creation with SETTINGS_INITIAL_WINDOW_SIZE updates.
         ctx->_remote_window_left.store(_remote_settings.stream_window_size,
                                        butil::memory_order_relaxed);
@@ -481,7 +481,7 @@ ParseResult H2Context::ConsumeFrameHead(
         return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
     frame_head->stream_id = static_cast<int>(stream_id);
-    return MakeMessage(NULL);
+    return MakeMessage(nullptr);
 }
 
 ParseResult H2Context::Consume(
@@ -509,7 +509,7 @@ ParseResult H2Context::Consume(
         } else {
             _conn_state = H2_CONNECTION_READY;
         }
-        return MakeMessage(NULL);
+        return MakeMessage(nullptr);
     } else if (_conn_state == H2_CONNECTION_READY) {
         H2FrameHead frame_head;
         ParseResult res = ConsumeFrameHead(it, &frame_head);
@@ -517,7 +517,7 @@ ParseResult H2Context::Consume(
             return res;
         }
         H2Context::FrameHandler handler = FindFrameHandler(frame_head.type);
-        if (handler == NULL) {
+        if (handler == nullptr) {
             LOG(ERROR) << "Invalid frame type=" << (int)frame_head.type;
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
@@ -538,14 +538,14 @@ ParseResult H2Context::Consume(
             if (sctx) {
                 if (is_server_side()) {
                     delete sctx;
-                    return MakeMessage(NULL);
+                    return MakeMessage(nullptr);
                 } else {
                     sctx->header().set_status_code(
                             H2ErrorToStatusCode(h2_res.error()));
                     return MakeMessage(sctx);
                 }
             }
-            return MakeMessage(NULL);
+            return MakeMessage(nullptr);
         } else { // send GOAWAY
             char goawaybuf[FRAME_HEAD_SIZE + 8];
             SerializeFrameHead(goawaybuf, 8, H2_FRAME_GOAWAY, 0, 0);
@@ -555,7 +555,7 @@ ParseResult H2Context::Consume(
                 LOG(WARNING) << "Fail to send GOAWAY to " << *_socket;
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
-            return MakeMessage(NULL);
+            return MakeMessage(nullptr);
         }
     } else {
         return MakeParseError(PARSE_ERROR_NO_RESOURCE);
@@ -594,7 +594,7 @@ H2ParseResult H2Context::OnHeaders(
         return MakeH2Error(H2_FRAME_SIZE_ERROR);
     }
     frag_size -= pad_length;
-    H2StreamContext* sctx = NULL;
+    H2StreamContext* sctx = nullptr;
     if (is_server_side() &&
         frame_head.stream_id > _last_received_stream_id) { // new stream
         if ((frame_head.stream_id & 1) == 0) {
@@ -616,14 +616,14 @@ H2ParseResult H2Context::OnHeaders(
         }
     } else {
         sctx = FindStream(frame_head.stream_id);
-        if (sctx == NULL) {
+        if (sctx == nullptr) {
             if (is_client_side()) {
                 RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
                 // Ignore the message without closing the socket.
                 H2StreamContext tmp_sctx(false);
                 tmp_sctx.Init(this, frame_head.stream_id);
                 tmp_sctx.OnHeaders(it, frame_head, frag_size, pad_length);
-                return MakeH2Message(NULL);
+                return MakeH2Message(nullptr);
             } else {
                 LOG(ERROR) << "Fail to find stream_id=" << frame_head.stream_id;
                 return MakeH2Error(H2_PROTOCOL_ERROR);
@@ -662,27 +662,27 @@ H2ParseResult H2StreamContext::OnHeaders(
         if (frame_head.flags & H2_FLAGS_END_STREAM) {
             return OnEndStream();
         }
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     } else {
         if (frame_head.flags & H2_FLAGS_END_STREAM) {
             // Delay calling OnEndStream() in OnContinuation()
             _stream_ended = true;
         }
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     }
 }
 
 H2ParseResult H2Context::OnContinuation(
     butil::IOBufBytesIterator& it, const H2FrameHead& frame_head) {
     H2StreamContext* sctx = FindStream(frame_head.stream_id);
-    if (sctx == NULL) {
+    if (sctx == nullptr) {
         if (is_client_side()) {
             RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
             // Ignore the message without closing the socket.
             H2StreamContext tmp_sctx(false);
             tmp_sctx.Init(this, frame_head.stream_id);
             tmp_sctx.OnContinuation(it, frame_head);
-            return MakeH2Message(NULL);
+            return MakeH2Message(nullptr);
         } else {
             LOG(ERROR) << "Fail to find stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
@@ -713,7 +713,7 @@ H2ParseResult H2StreamContext::OnContinuation(
             return OnEndStream();
         }
     }
-    return MakeH2Message(NULL);
+    return MakeH2Message(nullptr);
 }
 
 H2ParseResult H2Context::OnData(
@@ -734,7 +734,7 @@ H2ParseResult H2Context::OnData(
     }
     frag_size -= pad_length;
     H2StreamContext* sctx = FindStream(frame_head.stream_id);
-    if (sctx == NULL) {
+    if (sctx == nullptr) {
         // If a DATA frame is received whose stream is not in "open" or "half-closed (local)" state,
         // the recipient MUST respond with a stream error (Section 5.4.2) of type STREAM_CLOSED.
         // Ignore the message without closing the socket.
@@ -802,7 +802,7 @@ H2ParseResult H2StreamContext::OnData(
     if (frame_head.flags & H2_FLAGS_END_STREAM) {
         return OnEndStream();
     }
-    return MakeH2Message(NULL);
+    return MakeH2Message(nullptr);
 }
 
 H2ParseResult H2Context::OnResetStream(
@@ -813,9 +813,9 @@ H2ParseResult H2Context::OnResetStream(
     }
     const H2Error h2_error = static_cast<H2Error>(LoadUint32(it));
     H2StreamContext* sctx = FindStream(frame_head.stream_id);
-    if (sctx == NULL) {
+    if (sctx == nullptr) {
         RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     }
     return sctx->OnResetStream(h2_error, frame_head);
 }
@@ -835,7 +835,7 @@ H2ParseResult H2StreamContext::OnResetStream(
     }
 #endif
     H2StreamContext* sctx = _conn_ctx->RemoveStreamAndDeferWU(stream_id());
-    if (sctx == NULL) {
+    if (sctx == nullptr) {
         LOG(ERROR) << "Fail to find stream_id=" << stream_id();
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
@@ -845,7 +845,7 @@ H2ParseResult H2StreamContext::OnResetStream(
     } else {
         // No need to process the request.
         delete sctx;
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     }
 }
 
@@ -862,9 +862,9 @@ H2ParseResult H2StreamContext::OnEndStream() {
     }
 #endif
     H2StreamContext* sctx = _conn_ctx->RemoveStreamAndDeferWU(stream_id());
-    if (sctx == NULL) {
+    if (sctx == nullptr) {
         RPC_VLOG << "Fail to find stream_id=" << stream_id();
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     }
     CHECK_EQ(sctx, this);
 
@@ -890,7 +890,7 @@ H2ParseResult H2Context::OnSettings(
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         _local_settings = _unack_local_settings;
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     }
     int64_t window_diff = 0;
     {
@@ -926,7 +926,7 @@ H2ParseResult H2Context::OnSettings(
     if (window_diff > 0 && !FlushPendingData(0)) {
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
-    return MakeH2Message(NULL);
+    return MakeH2Message(nullptr);
 }
 
 H2ParseResult H2Context::OnPriority(
@@ -952,7 +952,7 @@ H2ParseResult H2Context::OnPing(
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     if (frame_head.flags & H2_FLAGS_ACK) {
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     }
     
     char pongbuf[FRAME_HEAD_SIZE + 8];
@@ -962,12 +962,12 @@ H2ParseResult H2Context::OnPing(
         LOG(WARNING) << "Fail to send ack of PING to " << *_socket;
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
-    return MakeH2Message(NULL);
+    return MakeH2Message(nullptr);
 }
 
 static void* ProcessHttpResponseWrapper(void* void_arg) {
     ProcessHttpResponse(static_cast<InputMessageBase*>(void_arg));
-    return NULL;
+    return nullptr;
 }
 
 H2ParseResult H2Context::OnGoAway(
@@ -999,7 +999,7 @@ H2ParseResult H2Context::OnGoAway(
         std::vector<H2StreamContext*> goaway_streams;
         RemoveGoAwayStreams(last_stream_id, &goaway_streams);
         if (goaway_streams.empty()) {
-            return MakeH2Message(NULL);
+            return MakeH2Message(nullptr);
         }
         for (size_t i = 0; i < goaway_streams.size(); ++i) {
             H2StreamContext* sctx = goaway_streams[i];
@@ -1017,7 +1017,7 @@ H2ParseResult H2Context::OnGoAway(
         return MakeH2Message(goaway_streams[0]);
     } else {
         // server serves requests on-demand, ignoring GOAWAY is OK.
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     }
 }
                           
@@ -1043,7 +1043,7 @@ H2ParseResult H2Context::OnWindowUpdate(
         if (!FlushPendingData(0)) {
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     } else {
         {
             std::unique_lock<butil::Mutex> mu(_stream_mutex);
@@ -1062,7 +1062,7 @@ H2ParseResult H2Context::OnWindowUpdate(
         if (!FlushPendingData(frame_head.stream_id)) {
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
-        return MakeH2Message(NULL);
+        return MakeH2Message(nullptr);
     }
 }
 
@@ -1147,7 +1147,7 @@ ParseResult ParseH2Message(butil::IOBuf *source, Socket *socket,
     bvar::ScopedTimer<bvar::Adder<int64_t> > tm(g_parse_time);
 #endif
     H2Context* ctx = static_cast<H2Context*>(socket->parsing_context());
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         if (read_eof || source->empty()) {
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
@@ -1167,7 +1167,7 @@ ParseResult ParseH2Message(butil::IOBuf *source, Socket *socket,
         ParseResult res = ctx->Consume(it, socket);
         if (res.is_ok()) {
             last_bytes_left = it.bytes_left();
-            if (res.message() == NULL) {
+            if (res.message() == nullptr) {
                 // no message to process, continue parsing.
                 continue;
             }
@@ -1190,7 +1190,7 @@ inline void H2Context::ClearAbandonedStreams() {
         _abandoned_streams.pop_back();
         mu.unlock();
         H2StreamContext* sctx = RemoveStreamAndDeferWU(stream_id);
-        if (sctx != NULL) {
+        if (sctx != nullptr) {
             delete sctx;
         }
         mu.lock();
@@ -1199,7 +1199,7 @@ inline void H2Context::ClearAbandonedStreams() {
 
 H2StreamContext::H2StreamContext(bool read_body_progressively)
     : HttpContext(read_body_progressively)
-    , _conn_ctx(NULL)
+    , _conn_ctx(nullptr)
 #if defined(BRPC_H2_STREAM_STATE)
     , _state(H2_STREAM_IDLE)
 #endif
@@ -1283,7 +1283,7 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                     h.uri().set_scheme(pair.value);
                 } else if (strcmp(name + 2, /*:s*/"tatus") == 0) {
                     matched = true;
-                    char* endptr = NULL;
+                    char* endptr = nullptr;
                     const int sc = strtol(pair.value.c_str(), &endptr, 10);
                     if (*endptr != '\0') {
                         LOG(ERROR) << "Invalid status=" << pair.value;
@@ -1308,7 +1308,7 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
 
         if (FLAGS_http_verbose) {
             butil::IOBufBuilder* vs = this->_vmsgbuilder.get();
-            if (vs == NULL) {
+            if (vs == nullptr) {
                 vs = new butil::IOBufBuilder;
                 this->_vmsgbuilder.reset(vs);
                 if (_conn_ctx->is_server_side()) {
@@ -1637,7 +1637,7 @@ void H2UnsentRequest::DestroyStreamUserData(SocketUniquePtr& sending_sock,
     if (sending_sock != nullptr && error_code != 0) {
         CHECK_EQ(cntl, _cntl);
         std::unique_lock<butil::Mutex> mu(_mutex);
-        _cntl = NULL;
+        _cntl = nullptr;
         if (_stream_id != 0) {
             H2Context* ctx = static_cast<H2Context*>(sending_sock->parsing_context());
             ctx->ClearPendingData(_stream_id);
@@ -1658,15 +1658,15 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     bvar::ScopedTimer<bvar::Adder<int64_t> > tm(g_append_request_time);
 #endif
     RemoveRefOnQuit deref_self(this);
-    if (socket == NULL) {
+    if (socket == nullptr) {
         return butil::Status::OK();
     }
     H2Context* ctx = static_cast<H2Context*>(socket->parsing_context());
 
     // Create a http2 stream and store correlation_id in.
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         CHECK(socket->CreatedByConnect());
-        ctx = new H2Context(socket, NULL);
+        ctx = new H2Context(socket, nullptr);
         if (ctx->Init() != 0) {
             delete ctx;
             return butil::Status(EINTERNAL, "Fail to init H2Context");
@@ -1687,7 +1687,7 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     // Although the critical section looks huge, it should rarely be contended
     // since timeout of RPC is much larger than the delay of sending.
     std::unique_lock<butil::Mutex> mu(_mutex);
-    if (_cntl == NULL) {
+    if (_cntl == nullptr) {
         return butil::Status(ECANCELED, "The RPC was already failed");
     }
 
@@ -1754,7 +1754,7 @@ size_t H2UnsentRequest::EstimatedByteSize() {
         sz += _list[i].name.size() + _list[i].value.size() + 1;
     }
     std::unique_lock<butil::Mutex> mu(_mutex);
-    if (_cntl == NULL) {
+    if (_cntl == nullptr) {
         return 0;
     }
     if (_cntl->has_http_request()) {
@@ -1774,7 +1774,7 @@ void H2UnsentRequest::Print(std::ostream& os) const {
         os << "> " << _list[i].name << " = " << _list[i].value << '\n';
     }
     std::unique_lock<butil::Mutex> mu(_mutex);
-    if (_cntl == NULL) {
+    if (_cntl == nullptr) {
         return;
     }
     if (_cntl->has_http_request()) {
@@ -1846,7 +1846,7 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     bvar::ScopedTimer<bvar::Adder<int64_t> > tm(g_append_response_time);
 #endif
     DestroyingPtr<H2UnsentResponse> destroy_self(this);
-    if (socket == NULL) {
+    if (socket == nullptr) {
         return butil::Status::OK();
     }
     H2Context* ctx = static_cast<H2Context*>(socket->parsing_context());
@@ -1946,7 +1946,7 @@ void PackH2Request(butil::IOBuf*,
     ControllerPrivateAccessor accessor(cntl);
     
     HttpHeader* header = &cntl->http_request();
-    if (auth != NULL && header->GetHeader("Authorization") == NULL) {
+    if (auth != nullptr && header->GetHeader("Authorization") == nullptr) {
         std::string auth_data;
         if (auth->GenerateCredential(&auth_data) != 0) {
             return cntl->SetFailed(EREQUEST, "Fail to GenerateCredential");
@@ -1975,13 +1975,13 @@ StreamUserData* H2GlobalStreamCreator::OnCreatingStream(
         SocketUniquePtr* inout, Controller* cntl) {
     if ((*inout)->GetAgentSocket(inout, IsH2SocketValid) != 0) {
         cntl->SetFailed(EINTERNAL, "Fail to create agent socket");
-        return NULL;
+        return nullptr;
     }
 
     H2UnsentRequest* h2_req = H2UnsentRequest::New(cntl);
     if (!h2_req) {
         cntl->SetFailed(ENOMEM, "Fail to create H2UnsentRequest");
-        return NULL;
+        return nullptr;
     }
     return h2_req;
 }

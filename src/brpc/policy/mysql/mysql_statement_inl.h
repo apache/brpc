@@ -45,7 +45,7 @@ inline size_t my_init_kv(MysqlStatementKVMap& m) {
 
 inline size_t my_update_kv(MysqlStatementKVMap& m, SocketId key, MysqlStatementId value) {
     MysqlStatementId* p = m.seek(key);
-    if (p == NULL) {
+    if (p == nullptr) {
         m.insert(key, value);
     } else {
         *p = value;
