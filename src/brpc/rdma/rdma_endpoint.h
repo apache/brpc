@@ -74,19 +74,19 @@ public:
 
 private:
     void Run();
-    void (*_done)(int, void*){NULL};
-    void* _data{NULL};
+    void (*_done)(int, void*){nullptr};
+    void* _data{nullptr};
 };
 
 struct RdmaResource {
-    RdmaResource* next{NULL};
-    ibv_qp* qp{NULL};
+    RdmaResource* next{nullptr};
+    ibv_qp* qp{nullptr};
     // For polling mode.
-    ibv_cq* polling_cq{NULL};
+    ibv_cq* polling_cq{nullptr};
     // For event mode.
-    ibv_cq* send_cq{NULL};
-    ibv_cq* recv_cq{NULL};
-    ibv_comp_channel* comp_channel{NULL};
+    ibv_cq* send_cq{nullptr};
+    ibv_cq* recv_cq{nullptr};
+    ibv_comp_channel* comp_channel{nullptr};
     RdmaResource() = default;
     ~RdmaResource();
     DISALLOW_COPY_AND_ASSIGN(RdmaResource);
