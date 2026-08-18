@@ -419,7 +419,7 @@ bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
 #if GOOGLE_PROTOBUF_VERSION >= 6031000
     auto st = google::protobuf::json::MessageToJsonStream(message, json, options);
     bool ok = st.ok();
-    if (!ok && NULL != error) {
+    if (!ok && nullptr != error) {
         *error = st.ToString();
     }
     return ok;
@@ -436,7 +436,7 @@ bool ProtoMessageToProtoJson(const google::protobuf::Message& message,
             type_resolver.get(), GetTypeUrl(message), &input_stream, json, options);
 
     bool ok = st.ok();
-    if (!ok && NULL != error) {
+    if (!ok && nullptr != error) {
         *error = st.ToString();
     }
     return ok;
