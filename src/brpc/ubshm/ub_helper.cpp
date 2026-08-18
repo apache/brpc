@@ -31,7 +31,7 @@
 namespace brpc {
 namespace ubring {
 
-void* g_handle_ub = NULL;
+void* g_handle_ub = nullptr;
 bool g_skip_ub_init = false;
 
 butil::atomic<bool> g_ub_available(false);

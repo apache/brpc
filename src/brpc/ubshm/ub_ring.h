@@ -96,11 +96,11 @@ public:
 
     static inline RETURN_CODE CheckTrxConnectParam(const char *listener_name, const char *local_name)
     {
-        if (UNLIKELY(listener_name == NULL)) {
+        if (UNLIKELY(listener_name == nullptr)) {
             LOG(ERROR) << "The request listener name is null.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(local_name == NULL)) {
+        if (UNLIKELY(local_name == nullptr)) {
             LOG(ERROR) << "The request trx shared memory name is null.";
             return UBRING_ERR;
         }
@@ -126,12 +126,12 @@ public:
     }
     static RETURN_CODE CheckTrxRecvParam(UbrTrx *trx, const void *buf, uint32_t buf_len)
     {
-        if (UNLIKELY(trx == NULL)) {
+        if (UNLIKELY(trx == nullptr)) {
             LOG(ERROR) << "Trx recv failed, trx is null.";
             return UBRING_ERR;
         }
 
-        if (UNLIKELY((UbrEventQMsg *)trx->ubr_rx.local_rx_event_q.addr == NULL)) {
+        if (UNLIKELY((UbrEventQMsg *)trx->ubr_rx.local_rx_event_q.addr == nullptr)) {
             LOG(ERROR) << "Trx send failed, local_tx_event_q addr is NULL.";
             return UBRING_ERR;
         }
@@ -140,7 +140,7 @@ public:
             LOG(ERROR) << "Trx recv failed, trx is not connected statep=" << trx->ubr_rx.trx_state;
             return UBR_NOT_CONNECTED;
         }
-        if (UNLIKELY(buf == NULL)) {
+        if (UNLIKELY(buf == nullptr)) {
             LOG(ERROR) << "Trx recv failed, buf is null.";
             return UBRING_ERR;
         }
@@ -167,19 +167,19 @@ public:
 
     static RETURN_CODE UbrTrxCallbackCheck(UbrTrx *trx)
     {
-        if (trx == NULL) {
+        if (trx == nullptr) {
             LOG(ERROR) << "Trx close callback failed, trx is null.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->local_shm.addr == NULL)) {
+        if (UNLIKELY(trx->local_shm.addr == nullptr)) {
             LOG(ERROR) << "Trx close failed, local_shm addr is NULL.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->ubr_rx.local_rx_event_q.addr == NULL)) {
+        if (UNLIKELY(trx->ubr_rx.local_rx_event_q.addr == nullptr)) {
             LOG(ERROR) << "Trx close failed, local_rx_event_q addr is NULL.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->ubr_tx.local_tx_event_q.addr == NULL)) {
+        if (UNLIKELY(trx->ubr_tx.local_tx_event_q.addr == nullptr)) {
             LOG(ERROR) << "Trx close failed, local_tx_event_q addr is NULL.";
             return UBRING_ERR;
         }

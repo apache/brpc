@@ -36,7 +36,7 @@ uint64_t g_ub_event_cnt = 0;
 uint64_t g_ubr_listener_num = 0;
 
 RETURN_CODE UBRingManager::GetUbrDealMsgMaxCnt(const uint32_t capacity, uint32_t *deal_msg_max_cnt) {
-    if (UNLIKELY(deal_msg_max_cnt == NULL)) {
+    if (UNLIKELY(deal_msg_max_cnt == nullptr)) {
         LOG(ERROR) << "Get update factor failed, deal_msg_max_cnt is null.";
         return UBRING_ERR;
     }
@@ -52,8 +52,8 @@ RETURN_CODE UBRingManager::UbrMgrDefault()
 {
     g_ubr_mgr.trx_num = 0;
     g_ubr_mgr.trx_cap = FLAGS_ubr_max_managed_num;
-    g_ubr_mgr.trx_mgr_unit_status = NULL;
-    g_ubr_mgr.trx_mgr = NULL;
+    g_ubr_mgr.trx_mgr_unit_status = nullptr;
+    g_ubr_mgr.trx_mgr = nullptr;
     return UBRING_OK;
 }
 
@@ -68,8 +68,8 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
     g_ubr_mgr.trx_mgr = (UbrTrx *)malloc(trx_mgr_size);
     size_t trx_mgr_status_size = g_ubr_mgr.trx_cap * sizeof(UbrMgrUnitStatus);
     g_ubr_mgr.trx_mgr_unit_status = (UbrMgrUnitStatus *)malloc(trx_mgr_status_size);
-    if (UNLIKELY(g_ubr_mgr.trx_mgr == NULL ||
-                 g_ubr_mgr.trx_mgr_unit_status == NULL)) {
+    if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_status == nullptr)) {
         LOG(ERROR) << "Ubr manager memory allocation failed.";
         UbrMgrFini();
         return UBRING_ERR;
@@ -96,12 +96,12 @@ void UBRingManager::UbrMgrFini() {
 }
 
 RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
-    if (UNLIKELY(trx == NULL)) {
+    if (UNLIKELY(trx == nullptr)) {
         LOG(ERROR) << "Acquire trx failed, trx is null.";
         return UBRING_ERR;
     }
 
-    if (UNLIKELY(g_ubr_mgr.trx_mgr == NULL)) {
+    if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Acquire trx failed, trx_mgr is null.";
         return UBRING_ERR;
     }
@@ -131,17 +131,17 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
 }
 
 RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx) {
-    if (UNLIKELY(trx == NULL)) {
+    if (UNLIKELY(trx == nullptr)) {
         LOG(ERROR) << "Release trx failed, trx is null.";
         return UBRING_ERR;
     }
 
-    trx->local_shm.addr = NULL;
-    trx->ubr_tx.local_tx_event_q.addr = NULL;
-    trx->ubr_tx.local_data_status_q.addr = NULL;
-    trx->ubr_rx.local_rx_event_q.addr = NULL;
-    trx->ubr_rx.remote_data_status_q.addr = NULL;
-    if (UNLIKELY(g_ubr_mgr.trx_mgr == NULL)) {
+    trx->local_shm.addr = nullptr;
+    trx->ubr_tx.local_tx_event_q.addr = nullptr;
+    trx->ubr_tx.local_data_status_q.addr = nullptr;
+    trx->ubr_rx.local_rx_event_q.addr = nullptr;
+    trx->ubr_rx.remote_data_status_q.addr = nullptr;
+    if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Release trx failed, trx_mgr is null.";
         return UBRING_ERR;
     }
@@ -167,14 +167,14 @@ void UBRingManager::LinkInfoInit(void) {
 
     size_t link_info_mgr_size = FLAGS_ubr_max_managed_num * sizeof(UbrLinkInfo);
     g_link_info_mgr.all_link_info = (UbrLinkInfo*) malloc(link_info_mgr_size);
-    if (g_link_info_mgr.all_link_info == NULL) {
+    if (g_link_info_mgr.all_link_info == nullptr) {
         LOG(ERROR) << "all_link_info is NULL";
         LinkInfoFini();
         return;
     }
 
     g_link_info_mgr.link_mgr_unit_status = (UbrMgrUnitStatus*) malloc(link_info_mgr_size);
-    if (g_link_info_mgr.link_mgr_unit_status == NULL) {
+    if (g_link_info_mgr.link_mgr_unit_status == nullptr) {
         LinkInfoFini();
         return;
     }
@@ -184,7 +184,7 @@ void UBRingManager::LinkInfoInit(void) {
 }
 
 void UBRingManager::LinkInfoFini(void) {
-    if (g_link_info_mgr.link_mgr_unit_status == NULL || g_link_info_mgr.all_link_info == NULL) {
+    if (g_link_info_mgr.link_mgr_unit_status == nullptr || g_link_info_mgr.all_link_info == nullptr) {
         LOG(ERROR) << "LinkInfo is NULL";
         return;
     }
@@ -198,12 +198,12 @@ void UBRingManager::LinkInfoFini(void) {
 }
 
 void UBRingManager::AcquireLinkInfoToMgr(const char *listener_name, UbrTrx *trx) {
-    if (listener_name == NULL || trx == NULL) {
+    if (listener_name == nullptr || trx == nullptr) {
         LOG(ERROR) << "LinkInfo acquire fail.";
         return;
     }
 
-    if (g_link_info_mgr.link_mgr_unit_status == NULL || g_link_info_mgr.all_link_info == NULL) {
+    if (g_link_info_mgr.link_mgr_unit_status == nullptr || g_link_info_mgr.all_link_info == nullptr) {
         LOG(ERROR) << "LinkInfo is NULL.";
         return;
     }
@@ -220,7 +220,7 @@ void UBRingManager::AcquireLinkInfoToMgr(const char *listener_name, UbrTrx *trx)
 }
 
 void UBRingManager::ReleaseLinkInfoFromMgr(UbrTrx *trx) {
-    if (trx == NULL || g_link_info_mgr.link_mgr_unit_status == NULL) {
+    if (trx == nullptr || g_link_info_mgr.link_mgr_unit_status == nullptr) {
         LOG(ERROR) << "LinkInfo release fail.";
         return;
     }
@@ -235,11 +235,11 @@ void UBRingManager::ReleaseLinkInfoFromMgr(UbrTrx *trx) {
 
 int32_t UBRingManager::UbEventCallback(const char *shm_name)
 {
-    if (UNLIKELY(shm_name == NULL)) {
+    if (UNLIKELY(shm_name == nullptr)) {
         LOG(ERROR) << "Ub event callback failed, shm name is null.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(g_ubr_mgr.trx_mgr == NULL)) {
+    if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Ub event callback failed, trx mgr is null.";
         return UBRING_ERR;
     }
