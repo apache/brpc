@@ -174,7 +174,7 @@ UT_DYNAMIC_LINKINGS = -lbrpc.dbg $(DYNAMIC_LINKINGS)
 TEST_BUTIL_OBJS = iobuf.pb.o $(addsuffix .o, $(basename $(TEST_BUTIL_SOURCES))) 
 
 TEST_BVAR_SOURCES = $(wildcard bvar_*_unittest.cpp)
-TEST_BVAR_OBJS = $(addsuffix .o, $(basename $(TEST_BVAR_SOURCES))) 
+TEST_BVAR_OBJS = $(addsuffix .o, $(basename $(TEST_BVAR_SOURCES))) bvar_bthread_stubs.o
 
 TEST_BTHREAD_SOURCES = $(wildcard bthread_*unittest.cpp)
 TEST_BTHREAD_OBJS = $(addsuffix .o, $(basename $(TEST_BTHREAD_SOURCES))) 
@@ -184,6 +184,9 @@ TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES)))
 
 TEST_PROTO_SOURCES = $(wildcard *.proto)
 TEST_PROTO_OBJS = $(TEST_PROTO_SOURCES:.proto=.pb.o)
+
+# brpc_bvar_mutex_unittest provides its own main() for fork/exec child modes.
+BRPC_BVAR_MUTEX_UT = brpc_bvar_mutex_unittest
 
 TEST_BINS = test_butil test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURCES:.cpp=)
 
@@ -232,6 +235,15 @@ ifeq ($(SYSTEM),Linux)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(GTEST_STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
+endif
+
+# Override the generic brpc_%_unittest rule: this binary ships its own main().
+$(BRPC_BVAR_MUTEX_UT):$(TEST_PROTO_OBJS) $(BRPC_BVAR_MUTEX_UT).o | libbrpc.dbg.$(SOEXT)
+	@echo "> Linking $@"
+ifeq ($(SYSTEM),Linux)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(filter-out %libgtest_main.a,$(STATIC_LINKINGS)) $(filter-out -lgtest_main,$(UT_DYNAMIC_LINKINGS))
+else ifeq ($(SYSTEM),Darwin)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(filter-out %libgtest_main.a,$(GTEST_STATIC_LINKINGS)) $(filter-out -lgtest_main,$(UT_DYNAMIC_LINKINGS))
 endif
 
 brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o | libbrpc.dbg.$(SOEXT)

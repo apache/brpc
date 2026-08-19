@@ -385,6 +385,23 @@ cc_library(
 )
 
 cc_library(
+    # Header-only interface so :bvar can use RecursiveMutex without depending on
+    # :bthread (which itself depends on :bvar). Implementation lives in :bthread.
+    name = "bthread_recursive_mutex",
+    hdrs = [
+        "src/bthread/recursive_mutex.h",
+        "src/bthread/types.h",
+    ],
+    includes = [
+        "src/",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":butil",
+    ],
+)
+
+cc_library(
     name = "bvar",
     srcs = glob(
         [
@@ -419,6 +436,7 @@ cc_library(
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
     deps = [
+        ":bthread_recursive_mutex",
         ":butil",
     ]  + select({
         "//bazel/config:with_babylon_counter": ["@babylon//:concurrent_counter"],
@@ -431,10 +449,16 @@ cc_library(
     srcs = glob([
         "src/bthread/*.cpp",
     ]),
-    hdrs = glob([
-        "src/bthread/*.h",
-        "src/bthread/*.list",
-    ]),
+    hdrs = glob(
+        [
+            "src/bthread/*.h",
+            "src/bthread/*.list",
+        ],
+        exclude = [
+            "src/bthread/recursive_mutex.h",
+            "src/bthread/types.h",
+        ],
+    ),
     defines = [] + select({
         "//bazel/config:brpc_with_bthread_tracer": [
             "BRPC_BTHREAD_TRACER",
@@ -448,6 +472,7 @@ cc_library(
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
     deps = [
+        ":bthread_recursive_mutex",
         ":butil",
         ":bvar",
     ] + select({

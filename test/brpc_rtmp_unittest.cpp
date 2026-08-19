@@ -269,9 +269,13 @@ public:
                       << " ms before responding play request";
             bthread_usleep(_sleep_ms * 1000L);
         }
+        // Keep the stream alive until RunSendData exits. On a write failure,
+        // OnStop may be called synchronously from the sending bthread.
+        AddRefManually();
         int rc = bthread_start_background(&_play_thread, NULL,
                                           RunSendData, this);
         if (rc) {
+            RemoveRefManually();
             status->set_error(rc, "Fail to create thread");
             return;
         }
@@ -290,7 +294,9 @@ public:
         LOG(INFO) << "OnStop of PlayingDummyStream=" << this;
         if (_state.exchange(STATE_STOPPED) == STATE_PLAYING) {
             bthread_stop(_play_thread);
-            bthread_join(_play_thread, NULL);
+            if (_play_thread != bthread_self()) {
+                bthread_join(_play_thread, NULL);
+            }
         }
     }
 
@@ -298,7 +304,9 @@ public:
     
 private:
     static void* RunSendData(void* arg) {
-        ((PlayingDummyStream*)arg)->SendData();
+        butil::intrusive_ptr<PlayingDummyStream> stream(
+            static_cast<PlayingDummyStream*>(arg), false);
+        stream->SendData();
         return NULL;
     }
 
@@ -324,8 +332,10 @@ void PlayingDummyStream::SendData() {
         vmsg.data.clear();
         vmsg.data.append(butil::string_printf("video_%d(ms_id=%u)",
                                              i, stream_id()));
-        //failing to send is possible
-        SendVideoMessage(vmsg);
+        // Failing to send is possible and may synchronously stop the stream.
+        if (SendVideoMessage(vmsg) != 0) {
+            break;
+        }
 
         amsg.codec = brpc::FLV_AUDIO_AAC;
         amsg.rate = brpc::FLV_SOUND_RATE_44100HZ;
@@ -334,7 +344,9 @@ void PlayingDummyStream::SendData() {
         amsg.data.clear();
         amsg.data.append(butil::string_printf("audio_%d(ms_id=%u)",
                                              i, stream_id()));
-        SendAudioMessage(amsg);
+        if (SendAudioMessage(amsg) != 0) {
+            break;
+        }
 
         bthread_usleep(1000000);
     }

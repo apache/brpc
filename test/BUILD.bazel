@@ -185,7 +185,9 @@ cc_test(
 
 cc_test(
     name = "bvar_unittests",
-    srcs = glob(["bvar_*_unittest.cpp"]),
+    srcs = glob(["bvar_*_unittest.cpp"]) + [
+        "bvar_bthread_stubs.cpp",
+    ],
     deps = [
         ":gperftools_helper",
         "//:bvar",
@@ -223,11 +225,29 @@ root_runfiles(
     ],
 )
 
+# brpc_bvar_mutex_unittest provides its own main() for fork/exec child modes.
+cc_test(
+    name = "brpc_bvar_mutex_unittest",
+    srcs = ["brpc_bvar_mutex_unittest.cpp"],
+    copts = COPTS,
+    deps = [
+        ":gperftools_helper",
+        "//:brpc",
+        ":cc_test_proto",
+        "@com_google_googletest//:gtest",
+    ] + TCMALLOC_DEP_UNLESS_ASAN,
+)
+
 generate_unittests(
     name = "brpc_unittests",
-    srcs = glob([
-        "brpc_*_unittest.cpp",
-    ]),
+    srcs = glob(
+        [
+            "brpc_*_unittest.cpp",
+        ],
+        exclude = [
+            "brpc_bvar_mutex_unittest.cpp",
+        ],
+    ),
     deps = [
         ":gperftools_helper",
         "//:brpc",

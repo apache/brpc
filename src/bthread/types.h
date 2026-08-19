@@ -197,6 +197,19 @@ typedef struct bthread_mutex_t {
     mutex_owner_t owner;
 } bthread_mutex_t;
 
+typedef struct bthread_recursive_mutex_t {
+#if defined(__cplusplus)
+    bthread_recursive_mutex_t()
+        : mutex(), owner(0), owner_kind(0), recursion(0) {}
+
+    DISALLOW_COPY_AND_ASSIGN(bthread_recursive_mutex_t);
+#endif
+    bthread_mutex_t mutex;
+    uint64_t owner;
+    uint32_t owner_kind;
+    uint32_t recursion;
+} bthread_recursive_mutex_t;
+
 typedef struct {
     bool enable_csite;
 } bthread_mutexattr_t;
