@@ -183,6 +183,34 @@ void RdmaTransport::QueueMessage(InputMessageClosure& input_msg,
     }
 }
 
+void RdmaTransport::QueueMessages(InputMessageBatch* input_msgs,
+                                  int* num_bthread_created, bool last_msg) {
+    CHECK(!last_msg || rdma::FLAGS_rdma_use_polling);
+    if (!input_msgs || input_msgs->empty()) {
+        delete input_msgs;
+        return;
+    }
+    if (rdma::FLAGS_rdma_disable_bthread) {
+        input_msgs->Run();
+        delete input_msgs;
+        return;
+    }
+
+    bthread_t th;
+    bthread_attr_t tmp =
+        (FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) |
+        BTHREAD_NOSIGNAL;
+    tmp.keytable_pool = _socket->keytable_pool();
+    tmp.tag = bthread_self_tag();
+    if (!FLAGS_usercode_in_coroutine && bthread_start_background(
+            &th, &tmp, ProcessInputMessageBatch, input_msgs) == 0) {
+        ++*num_bthread_created;
+    } else {
+        input_msgs->Run();
+        delete input_msgs;
+    }
+}
+
 void RdmaTransport::Debug(std::ostream &os) {
     if (_rdma_state == RDMA_ON && _rdma_ep) {
         _rdma_ep->DebugInfo(os);

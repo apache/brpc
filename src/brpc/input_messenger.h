@@ -19,6 +19,9 @@
 #ifndef BRPC_INPUT_MESSENGER_H
 #define BRPC_INPUT_MESSENGER_H
 
+#include <memory>
+#include <vector>
+
 #include "butil/iobuf.h"                    // butil::IOBuf
 #include "brpc/socket.h"              // SocketId, SocketUser
 #include "brpc/parse_result.h"        // ParseResult
@@ -91,6 +94,26 @@ private:
     InputMessageBase* _msg;
 };
 
+class InputMessageBatch {
+public:
+    InputMessageBatch() {}
+    explicit InputMessageBatch(size_t capacity) {
+        _msgs.reserve(capacity);
+    }
+    ~InputMessageBatch() noexcept(false);
+
+    void add(InputMessageBase* msg);
+    void Run();
+    bool empty() const { return _msgs.empty(); }
+    size_t size() const { return _msgs.size(); }
+
+private:
+    std::vector<InputMessageBase*> _msgs;
+};
+
+void* ProcessInputMessage(void* void_arg);
+void* ProcessInputMessageBatch(void* void_arg);
+
 // Process messages from connections.
 // `Message' corresponds to a client's request or a server's response.
 class InputMessenger : public SocketUser {
@@ -136,7 +159,6 @@ protected:
     static void OnNewMessages(Socket* m);
     
 private:
-
     // Find a valid scissor from `handlers' to cut off `header' and `payload'
     // from m->read_buf, save index of the scissor into `index'.
     ParseResult CutInputMessage(Socket* m, size_t* index, bool read_eof);
@@ -147,6 +169,20 @@ private:
             Socket* m, ssize_t bytes, bool read_eof,
             const uint64_t received_us, const uint64_t base_realtime,
             InputMessageClosure& last_msg);
+
+    static void QueueInputMessageBatch(
+            Socket* m, std::unique_ptr<InputMessageBatch>* batch,
+            int* num_bthread_created, bool last_msg);
+
+    static void QueueLastMessageOrBatch(
+            Socket* m, InputMessageClosure& last_msg,
+            std::unique_ptr<InputMessageBatch>* batch,
+            int* num_bthread_created, size_t batch_size);
+
+    static uint32_t UpdateAdaptiveBatchSize(
+            uint32_t* messages_per_read_ema_q8,
+            uint32_t current_batch_size,
+            size_t parsed_message_count);
 
     // User-supplied scissors and handlers.
     // the index of handler is exactly the same as the protocol

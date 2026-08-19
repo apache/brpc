@@ -898,6 +898,11 @@ private:
     uint32_t _last_msg_size;
     // Average message size of last #MSG_SIZE_WINDOW messages (roughly)
     uint32_t _avg_msg_size;
+    // Q8 EMA of processable messages parsed in one read. Accessed only from
+    // the serialized input callback.
+    uint32_t _input_messages_per_read_ema_q8;
+    // 0 when adaptive batching is inactive, otherwise one of 1/2/4/8/16.
+    uint32_t _adaptive_input_message_batch_size;
 
     // Storing data read from `_fd' but cut-off yet.
     butil::IOPortal _read_buf;
