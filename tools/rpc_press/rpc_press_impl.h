@@ -76,8 +76,8 @@ public:
     PressClient(const PressOptions* options,
                      google::protobuf::compiler::Importer* importer,
                      google::protobuf::DynamicMessageFactory* factory) { 
-        _method_descriptor = NULL;
-        _response_prototype = NULL;
+        _method_descriptor = nullptr;
+        _response_prototype = nullptr;
         _options = options;
         _importer = importer;
         _factory = factory;
