@@ -268,7 +268,7 @@ uint64_t cas;
 req.authenticateRequest("Administrator", "password");
 
 // Execute the request
-channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
 
 // Check controller status
 if (cntl.Failed()) {
@@ -297,7 +297,7 @@ res.Clear();
 req.selectBucketRequest("testing");
 
 // Execute the request
-channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
 
 if (cntl.Failed()) {
     LOG(ERROR) << "Unable to select bucket: " << cntl.ErrorText();
@@ -332,7 +332,7 @@ req.addRequest(
 );
 
 // Execute the request
-channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
 
 if (cntl.Failed()) {
     LOG(ERROR) << "Unable to add key-value: " << cntl.ErrorText();
@@ -361,7 +361,7 @@ res.Clear();
 req.getRequest("sample_key");
 
 // Execute the request
-channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
 
 if (cntl.Failed()) {
     LOG(ERROR) << "Unable to get value for key: " << cntl.ErrorText();
@@ -393,7 +393,7 @@ res.Clear();
 req.deleteRequest("sample_key");
 
 // Execute the request
-channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
 
 if (cntl.Failed()) {
     LOG(ERROR) << "Unable to delete key-value: " << cntl.ErrorText();
@@ -800,7 +800,7 @@ void* thread_worker(void* arg) {
     if (!auth_result.success) {
         std::cout << "Thread " << args->thread_id << ": Auth failed - " 
                   << auth_result.error_message << std::endl;
-        return NULL;
+        return nullptr;
     }
     
     // Perform CRUD operations on default collection
@@ -810,7 +810,7 @@ void* thread_worker(void* arg) {
     // Perform collection-scoped operations
     perform_crud_operations_collection(couchbase_ops, base_key, "my_collection", args->stats);
     
-    return NULL;
+    return nullptr;
 }
 ```
 
@@ -889,7 +889,7 @@ int main(int argc, char* argv[]) {
         thread_args[i].bucket_name = g_config.bucket_names[thread_args[i].bucket_id];
         thread_args[i].stats = &g_stats.per_thread_stats[i];
         
-        if (bthread_start_background(&threads[i], NULL, thread_worker, &thread_args[i]) != 0) {
+        if (bthread_start_background(&threads[i], nullptr, thread_worker, &thread_args[i]) != 0) {
             LOG(ERROR) << "Failed to create thread " << i;
             return -1;
         }
@@ -897,7 +897,7 @@ int main(int argc, char* argv[]) {
     
     // Wait for all threads to complete
     for (int i = 0; i < NUM_THREADS; ++i) {
-        bthread_join(threads[i], NULL);
+        bthread_join(threads[i], nullptr);
     }
     
     // Aggregate and display statistics
@@ -931,7 +931,7 @@ void* shared_object_thread_worker(void *arg) {
         // Small delay between operations
         bthread_usleep(10000);  // 10ms
     }
-    return NULL;
+    return nullptr;
 }
 
 // Main function demonstrates shared instance pattern
@@ -967,7 +967,7 @@ int main_shared_demo() {
     
     // Start all threads using shared instance
     for (int i = 0; i < NUM_THREADS; ++i) {
-        if (bthread_start_background(&threads[i], NULL, shared_object_thread_worker, &args[i]) != 0) {
+        if (bthread_start_background(&threads[i], nullptr, shared_object_thread_worker, &args[i]) != 0) {
             std::cout << RED << "Failed to create shared object thread " << i << RESET << std::endl;
             return -1;
         }
@@ -975,7 +975,7 @@ int main_shared_demo() {
     
     // Wait for all threads to complete
     for (int i = 0; i < NUM_THREADS; ++i) {
-        bthread_join(threads[i], NULL);
+        bthread_join(threads[i], nullptr);
     }
     
     std::cout << GREEN << "All shared object threads completed!" << RESET << std::endl;
