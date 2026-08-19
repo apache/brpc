@@ -48,7 +48,7 @@ static bool access_mysql(brpc::Channel& channel, const std::vector<std::string>&
     options.readonly = FLAGS_readonly;
     options.isolation_level = brpc::MysqlIsolationLevel(FLAGS_isolation_level);
     auto tx(brpc::NewMysqlTransaction(channel, options));
-    if (tx == NULL) {
+    if (tx == nullptr) {
         LOG(ERROR) << "Fail to create transaction";
         return false;
     }
@@ -62,7 +62,7 @@ static bool access_mysql(brpc::Channel& channel, const std::vector<std::string>&
         }
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to access mysql, " << cntl.ErrorText();
             tx->rollback();
@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
 
-    // Initialize the channel, NULL means using default options.
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MYSQL;
     options.connection_type = FLAGS_connection_type;

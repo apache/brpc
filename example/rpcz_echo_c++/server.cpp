@@ -43,7 +43,7 @@ DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 namespace example {
 
 static const bthread_attr_t BTHREAD_ATTR_NORMAL_WITH_SPAN = {
-    BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, NULL, BTHREAD_TAG_INVALID};
+    BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, nullptr, BTHREAD_TAG_INVALID};
 
 void* RunThreadFunc(void*) {
     TRACEPRINTF("RunThreadFunc %lu", bthread_self());
@@ -51,7 +51,7 @@ void* RunThreadFunc(void*) {
     // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    // Initialize the channel, NULL means using default options.
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
@@ -69,9 +69,9 @@ void* RunThreadFunc(void*) {
     brpc::Controller cntl;
     request.set_message("hello world");
 
-    // Because `done'(last parameter) is NULL, this function waits until
+    // Because `done'(last parameter) is nullptr, this function waits until
     // the response comes back or error occurs(including timedout).
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     if (!cntl.Failed()) {
         LOG(INFO) << "Received response from " << cntl.remote_side() << " to " << cntl.local_side()
                   << ": " << response.message() << " (attached=" << cntl.response_attachment()
