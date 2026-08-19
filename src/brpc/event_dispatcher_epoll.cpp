@@ -101,14 +101,14 @@ void EventDispatcher::Stop() {
     _stop = true;
 
     if (_event_dispatcher_fd >= 0) {
-        epoll_event evt = { EPOLLOUT,  { NULL } };
+        epoll_event evt = { EPOLLOUT,  { nullptr } };
         epoll_ctl(_event_dispatcher_fd, EPOLL_CTL_ADD, _wakeup_fds[1], &evt);
     }
 }
 
 void EventDispatcher::Join() {
     if (_tid) {
-        bthread_join(_tid, NULL);
+        bthread_join(_tid, nullptr);
         _tid = 0;
     }
 }
@@ -152,7 +152,7 @@ int EventDispatcher::UnregisterEvent(IOEventDataId event_data_id,
 #endif
         return epoll_ctl(_event_dispatcher_fd, EPOLL_CTL_MOD, fd, &evt);
     } else {
-        return epoll_ctl(_event_dispatcher_fd, EPOLL_CTL_DEL, fd, NULL);
+        return epoll_ctl(_event_dispatcher_fd, EPOLL_CTL_DEL, fd, nullptr);
     }
     return -1;
 }
@@ -182,7 +182,7 @@ int EventDispatcher::RemoveConsumer(int fd) {
     // from epoll again! If the fd was level-triggered and there's data left,
     // epoll_wait will keep returning events of the fd continuously, making
     // program abnormal.
-    if (epoll_ctl(_event_dispatcher_fd, EPOLL_CTL_DEL, fd, NULL) < 0) {
+    if (epoll_ctl(_event_dispatcher_fd, EPOLL_CTL_DEL, fd, nullptr) < 0) {
         PLOG(WARNING) << "Fail to remove fd=" << fd << " from epfd=" << _event_dispatcher_fd;
         return -1;
     }
@@ -197,7 +197,7 @@ void* EventDispatcher::RunThis(void* arg) {
         meta->priority_index = ed->_priority_index;
     }
     ed->Run();
-    return NULL;
+    return nullptr;
 }
 
 void EventDispatcher::Run() {

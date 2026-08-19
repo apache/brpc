@@ -56,7 +56,7 @@ size_t NsheadMessage::ByteSizeLong() const {
 void NsheadMessage::MergeFrom(const ::google::protobuf::Message& from) {
     CHECK_NE(&from, this);
     const NsheadMessage* source = dynamic_cast<const NsheadMessage*>(&from);
-    if (source == NULL) {
+    if (source == nullptr) {
         LOG(ERROR) << "Can only merge from NsheadMessage";
         return;
     } else {

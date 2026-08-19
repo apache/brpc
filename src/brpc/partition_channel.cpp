@@ -46,7 +46,7 @@ public:
     size_t RemoveServersInBatch(const std::vector<ServerId>& servers);
 
 private:
-    bool initialized() const { return _parser != NULL; }
+    bool initialized() const { return _parser != nullptr; }
     void PartitionServersIntoTemps(const std::vector<ServerId>& servers);
     void OnAddedServers(const std::vector<ServerId>& servers);
     void OnRemovedServers(const std::vector<ServerId>& servers);
@@ -61,13 +61,13 @@ private:
 };
 
 PartitionChannelBase::PartitionChannelBase()
-    : _subs(NULL)
-    , _parser(NULL) {
+    : _subs(nullptr)
+    , _parser(nullptr) {
 }
 
 PartitionChannelBase::~PartitionChannelBase() {
     delete [] _subs;
-    _subs = NULL;
+    _subs = nullptr;
 }
 
 int PartitionChannelBase::Init(int num_partition_kinds,
@@ -78,7 +78,7 @@ int PartitionChannelBase::Init(int num_partition_kinds,
         LOG(ERROR) << "Parameter[num_partition_kinds] must be positive";
         return -1;
     }
-    if (NULL == partition_parser) {
+    if (nullptr == partition_parser) {
         LOG(ERROR) << "Parameter[partition_parser] must be non-NULL";
         return -1;
     }
@@ -88,11 +88,7 @@ int PartitionChannelBase::Init(int num_partition_kinds,
     }
     options.succeed_without_server = true;
     options.log_succeed_without_server = false;
-    _subs = new (std::nothrow) SubChannel[num_partition_kinds];
-    if (NULL == _subs) {
-        LOG(ERROR) << "Fail to new Channels[" << num_partition_kinds << "]";
-        return -1;
-    }
+    _subs = new SubChannel[num_partition_kinds];
     for (int i = 0; i < num_partition_kinds; ++i) {
         if (_subs[i].Init("list://", load_balancer_name, &options) != 0) {
             LOG(ERROR) << "Fail to init sub channel[" << i << "]";
@@ -191,8 +187,8 @@ PartitionChannelOptions::PartitionChannelOptions()
 }
 
 PartitionChannel::PartitionChannel()
-    : _pchan(NULL)
-    , _parser(NULL) {
+    : _pchan(nullptr)
+    , _parser(nullptr) {
 }
 
 PartitionChannel::~PartitionChannel() {
@@ -203,9 +199,9 @@ PartitionChannel::~PartitionChannel() {
         _nsthread_ptr.reset();
     }
     delete _pchan;
-    _pchan = NULL;
+    _pchan = nullptr;
     delete _parser;
-    _parser = NULL;
+    _parser = nullptr;
 }
 
 int PartitionChannel::Init(int num_partition_kinds,
@@ -219,7 +215,7 @@ int PartitionChannel::Init(int num_partition_kinds,
         LOG(ERROR) << "Parameter[num_partition_kinds] must be positive";
         return -1;
     }
-    if (NULL == partition_parser) {
+    if (nullptr == partition_parser) {
         LOG(ERROR) << "Parameter[partition_parser] must be non-NULL";
         return -1;
     }
@@ -231,18 +227,14 @@ int PartitionChannel::Init(int num_partition_kinds,
         LOG(ERROR) << "Fail to get NamingServiceThread";
         return -1;
     }
-    _pchan = new (std::nothrow) PartitionChannelBase;
-    if (NULL == _pchan) {
-        LOG(ERROR) << "Fail to new PartitionChannelBase";
-        return -1;
-    }
+    _pchan = new PartitionChannelBase;
     if (_pchan->Init(num_partition_kinds, partition_parser,
                      load_balancer_name, options_in) != 0) {
         LOG(ERROR) << "Fail to init PartitionChannelBase";
         return -1;
     }
     if (_nsthread_ptr->AddWatcher(
-            _pchan, (options_in ?   options_in->ns_filter : NULL)) != 0) {
+            _pchan, (options_in ?   options_in->ns_filter : nullptr)) != 0) {
         LOG(ERROR) << "Fail to add PartitionChannelBase as watcher";
         return -1;
     }
@@ -257,7 +249,7 @@ void PartitionChannel::CallMethod(
     const google::protobuf::Message* request,
     google::protobuf::Message* response,
     google::protobuf::Closure* done) {
-    if (_pchan != NULL) {
+    if (_pchan != nullptr) {
         _pchan->CallMethod(method, controller, request, response, done);
     } else {
         Controller* cntl = static_cast<Controller*>(controller);
@@ -276,7 +268,7 @@ int PartitionChannel::partition_count() const {
 }
 
 int PartitionChannel::CheckHealth() {
-    if (_pchan == NULL) {
+    if (_pchan == nullptr) {
         return -1;
     }
     return static_cast<ChannelBase*>(_pchan)->CheckHealth();
@@ -308,13 +300,9 @@ public:
                 continue;
             }
             SubPartitionChannel** ppchan = _part_chan_map.seek(part.num_partition_kinds);
-            SubPartitionChannel* pchan = NULL;
-            if (ppchan == NULL) {
-                pchan = new (std::nothrow) SubPartitionChannel;
-                if (pchan == NULL) {
-                    LOG(ERROR) << "Fail to new SubPartitionChannel";
-                    continue;
-                }
+            SubPartitionChannel* pchan = nullptr;
+            if (ppchan == nullptr) {
+                pchan = new SubPartitionChannel;
                 if (pchan->Init(part.num_partition_kinds, _parser,
                                 _load_balancer_name.c_str(), &_options) != 0) {
                     LOG(ERROR) << "Fail to init SubPartitionChannel=#"
@@ -382,8 +370,8 @@ public:
     }
 
     Partitioner()
-        : _schan(NULL)
-        , _parser(NULL)
+        : _schan(nullptr)
+        , _parser(nullptr)
     {}
 
     ~Partitioner() {
@@ -420,8 +408,8 @@ private:
 };
 
 DynamicPartitionChannel::DynamicPartitionChannel()
-    : _partitioner(NULL)
-    , _parser(NULL) {
+    : _partitioner(nullptr)
+    , _parser(nullptr) {
 }
 
 DynamicPartitionChannel::~DynamicPartitionChannel() {
@@ -432,9 +420,9 @@ DynamicPartitionChannel::~DynamicPartitionChannel() {
         _nsthread_ptr.reset();
     }
     delete _partitioner;
-    _partitioner = NULL;
+    _partitioner = nullptr;
     delete _parser;
-    _parser = NULL;
+    _parser = nullptr;
 }
 
 int DynamicPartitionChannel::Init(
@@ -443,7 +431,7 @@ int DynamicPartitionChannel::Init(
     const char* load_balancer_name,
     const PartitionChannelOptions* options_in) {
     GlobalInitializeOrDie();
-    if (NULL == partition_parser) {
+    if (nullptr == partition_parser) {
         LOG(ERROR) << "Parameter[partition_parser] must be non-NULL";
         return -1;
     }
@@ -459,18 +447,14 @@ int DynamicPartitionChannel::Init(
         LOG(ERROR) << "Fail to init _schan";
         return -1;
     }
-    _partitioner = new (std::nothrow) Partitioner;
-    if (NULL == _partitioner) {
-        LOG(ERROR) << "Fail to new Partitioner";
-        return -1;
-    }
+    _partitioner = new Partitioner;
     if (_partitioner->Init(&_schan, partition_parser,
                            load_balancer_name, options_in) != 0) {
         LOG(ERROR) << "Fail to init Partitioner";
         return -1;
     }
     if (_nsthread_ptr->AddWatcher(
-            _partitioner, (options_in ? options_in->ns_filter : NULL)) != 0) {
+            _partitioner, (options_in ? options_in->ns_filter : nullptr)) != 0) {
         LOG(ERROR) << "Fail to add Partitioner as watcher";
         return -1;
     }

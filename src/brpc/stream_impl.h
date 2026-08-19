@@ -45,7 +45,7 @@ public:
     // Write `msg' into this stream. Returns 0 on success, 1 when the stream is
     // full, -1 on error.
     int AppendIfNotFull(const butil::IOBuf& msg,
-                        const StreamWriteOptions* options = NULL);
+                        const StreamWriteOptions* options = nullptr);
     static int Create(const StreamOptions& options,
                       const StreamSettings* remote_settings,
                       StreamId *id, bool parse_rpc_response = true);
@@ -128,7 +128,7 @@ friend class VersionedRefWithId<Stream>;
         PendingWrite() = default;
         explicit PendingWrite(const butil::IOBuf& d, const StreamWriteOptions* opts)
             : data(d) {
-            if (opts != NULL) {
+            if (opts != nullptr) {
                 options = *opts;
             }
         }

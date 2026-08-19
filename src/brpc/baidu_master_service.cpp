@@ -22,13 +22,12 @@
 namespace brpc {
 
 BaiduMasterService::BaiduMasterService()
-    : _status(new (std::nothrow) MethodStatus), _ignore_eovercrowded(false) {
-    LOG_IF(FATAL, NULL == _status) << "Fail to new MethodStatus";
-}
+    : _status(new MethodStatus)
+    , _ignore_eovercrowded(false) {}
 
 BaiduMasterService::~BaiduMasterService() {
     delete _status;
-    _status = NULL;
+    _status = nullptr;
 }
 
 void BaiduMasterService::Describe(std::ostream &os,
@@ -37,9 +36,6 @@ void BaiduMasterService::Describe(std::ostream &os,
 }
 
 void BaiduMasterService::Expose(const butil::StringPiece& prefix) {
-    if (NULL == _status) {
-        return;
-    }
     std::string s;
     const std::string& cached_name = butil::class_name_str(*this);
     s.reserve(prefix.size() + 1 + cached_name.size());

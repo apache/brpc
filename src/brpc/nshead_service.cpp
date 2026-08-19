@@ -30,7 +30,7 @@ NsheadService::NsheadService() : _additional_space(0) {
 }
 
 NsheadService::NsheadService(const NsheadServiceOptions& options)
-    : _status(NULL), _additional_space(options.additional_space) {
+    : _status(nullptr), _additional_space(options.additional_space) {
     if (options.generate_status) {
         _status = new MethodStatus;
     }
@@ -38,7 +38,7 @@ NsheadService::NsheadService(const NsheadServiceOptions& options)
 
 NsheadService::~NsheadService() {
     delete _status;
-    _status = NULL;
+    _status = nullptr;
 }
 
 void NsheadService::Describe(std::ostream &os, const DescribeOptions&) const {
@@ -47,7 +47,7 @@ void NsheadService::Describe(std::ostream &os, const DescribeOptions&) const {
 
 void NsheadService::Expose(const butil::StringPiece& prefix) {
     _cached_name = butil::class_name_str(*this);
-    if (_status == NULL) {
+    if (_status == nullptr) {
         return;
     }
     std::string s;

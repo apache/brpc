@@ -176,7 +176,7 @@ inline void RedisReply::Reset() {
     _type = REDIS_REPLY_NIL;
     _length = 0;
     _data.array.last_index = -1;
-    _data.array.replies = NULL;
+    _data.array.replies = nullptr;
     // _arena should not be reset because further memory allocation needs it.
 }
 
@@ -310,7 +310,7 @@ inline const RedisReply& RedisReply::operator[](size_t index) const {
     if (is_array() && index < (size_t)_length) {
         return _data.array.replies[index];
     }
-    static RedisReply redis_nil(NULL);
+    static RedisReply redis_nil(nullptr);
     return redis_nil;
 }
 

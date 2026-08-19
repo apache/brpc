@@ -31,13 +31,13 @@ public:
         SocketUniquePtr s(static_cast<Socket*>(arg));
         const OnEdgeTrigger on_edge_trigger = s->_transport->GetOnEdgeTrigger();
         on_edge_trigger(s.get());
-        return NULL;
+        return nullptr;
     }
 
     static void* ProcessInputMessage(void* void_arg) {
         InputMessageBase* msg = static_cast<InputMessageBase*>(void_arg);
         msg->_process(msg);
-        return NULL;
+        return nullptr;
     }
     virtual ~Transport() = default;
     virtual void Init(Socket* socket, const SocketOptions& options) = 0;
@@ -52,7 +52,7 @@ public:
     virtual void Debug(std::ostream &os) = 0;
 
     bool HasOnEdgeTrigger() {
-        return _on_edge_trigger != NULL;
+        return _on_edge_trigger != nullptr;
     }
     OnEdgeTrigger GetOnEdgeTrigger() {
         return _on_edge_trigger;

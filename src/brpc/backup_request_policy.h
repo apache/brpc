@@ -70,7 +70,7 @@ struct RateLimitedBackupPolicyOptions {
 // NOTE: Backup decisions are counted immediately at DoBackup() time for
 // fast feedback. Total RPCs are counted on completion (OnRPCEnd). During
 // latency spikes the ratio may temporarily lag until RPCs complete.
-// Returns NULL on invalid parameters.
+// Returns nullptr on invalid parameters.
 // The caller owns the returned pointer.
 BackupRequestPolicy* CreateRateLimitedBackupPolicy(
     const RateLimitedBackupPolicyOptions& options);

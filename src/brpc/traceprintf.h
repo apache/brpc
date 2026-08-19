@@ -52,7 +52,7 @@ void AnnotateSpanEx(std::shared_ptr<Span> span, const char* fmt, ...);
 
 
 // Use this macro to print log to a specific span.
-// If span_ptr is NULL, arguments to this macro is NOT evaluated.
+// If span_ptr is nullptr, arguments to this macro is NOT evaluated.
 #define TRACEPRINTF_SPAN(span_ptr, fmt, args...)                        \
     do {                                                                \
         if ((span_ptr)) {                                               \
