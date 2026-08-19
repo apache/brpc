@@ -40,7 +40,7 @@ extern void submit_contention(const bthread_contention_site_t& csite, int64_t no
 #define BTHREAD_RWLOCK_MAYBE_START_SAMPLING                                       \
     do {                                                                          \
         if (start_ns == 0) {                                                      \
-            if (BAIDU_UNLIKELY(g_cp != NULL)) {                                   \
+            if (BAIDU_UNLIKELY(g_cp != nullptr)) {                                \
                 sampling_range = bvar::is_collectable(&g_cp_sl);                  \
                 start_ns = bvar::is_sampling_range_valid(sampling_range) ?        \
                     butil::cpuwide_time_ns() : -1;                                \
@@ -419,7 +419,7 @@ static int rwlock_unlock(bthread_rwlock_t* rwlock) {
 // allocations; ownership is `release()'d only on the all-success path.
 struct ButexDeleter {
     void operator()(void* butex) const {
-        if (butex != NULL) {
+        if (butex != nullptr) {
             butex_destroy(butex);
         }
     }
@@ -428,12 +428,12 @@ struct ButexDeleter {
 static int rwlock_init(bthread_rwlock_t* rwlock) {
     std::unique_ptr<unsigned, ButexDeleter> writer_wait_count(
     butex_create_checked<unsigned>());
-    if (writer_wait_count == NULL) {
+    if (writer_wait_count == nullptr) {
         LOG(ERROR) << "Fail to create writer_wait_count butex: out of memory";
         return ENOMEM;
     }
     std::unique_ptr<unsigned, ButexDeleter> lock_word(butex_create_checked<unsigned>());
-    if (lock_word == NULL) {
+    if (lock_word == nullptr) {
         LOG(ERROR) << "Fail to create lock_word butex: out of memory";
         return ENOMEM;
     }
@@ -469,13 +469,13 @@ static int rwlock_destroy(bthread_rwlock_t* rwlock) {
     if (rc != 0) {
         LOG(ERROR) << "Fail to destroy writer_queue_mutex, rc=" << rc;
     }
-    if (rwlock->writer_wait_count != NULL) {
+    if (rwlock->writer_wait_count != nullptr) {
         butex_destroy(rwlock->writer_wait_count);
-        rwlock->writer_wait_count = NULL;
+        rwlock->writer_wait_count = nullptr;
     }
-    if (rwlock->lock_word != NULL) {
+    if (rwlock->lock_word != nullptr) {
         butex_destroy(rwlock->lock_word);
-        rwlock->lock_word = NULL;
+        rwlock->lock_word = nullptr;
     }
     return rc;
 }
@@ -494,11 +494,11 @@ int bthread_rwlock_destroy(bthread_rwlock_t* rwlock) {
 }
 
 int bthread_rwlock_rdlock(bthread_rwlock_t* rwlock) {
-    return bthread::rwlock_rdlock(rwlock, false, NULL);
+    return bthread::rwlock_rdlock(rwlock, false, nullptr);
 }
 
 int bthread_rwlock_tryrdlock(bthread_rwlock_t* rwlock) {
-    return bthread::rwlock_rdlock(rwlock, true, NULL);
+    return bthread::rwlock_rdlock(rwlock, true, nullptr);
 }
 
 int bthread_rwlock_timedrdlock(bthread_rwlock_t* __restrict rwlock,
@@ -507,11 +507,11 @@ int bthread_rwlock_timedrdlock(bthread_rwlock_t* __restrict rwlock,
 }
 
 int bthread_rwlock_wrlock(bthread_rwlock_t* rwlock) {
-    return bthread::rwlock_wrlock(rwlock, false, NULL);
+    return bthread::rwlock_wrlock(rwlock, false, nullptr);
 }
 
 int bthread_rwlock_trywrlock(bthread_rwlock_t* rwlock) {
-    return bthread::rwlock_wrlock(rwlock, true, NULL);
+    return bthread::rwlock_wrlock(rwlock, true, nullptr);
 }
 
 int bthread_rwlock_timedwrlock(bthread_rwlock_t* __restrict rwlock,
