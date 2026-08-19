@@ -17,6 +17,8 @@
 
 
 #include <gflags/gflags.h>
+#include <algorithm>
+#include <memory>
 #include "butil/fd_guard.h"                      // fd_guard
 #include "butil/logging.h"                       // CHECK
 #include "butil/time.h"                          // cpuwide_time_us
@@ -72,13 +74,49 @@ DEFINE_int32(socket_tcp_user_timeout_ms, -1,
              "connection and return ETIMEDOUT to the application. Only linux supports "
              "TCP_USER_TIMEOUT.");
 
+DEFINE_int32(input_message_batch_process_size, 0,
+             "Experimental. -1 adaptively processes up to 16 parsed input "
+             "messages in one bthread based on the recent per-socket burst. "
+             "Values greater than 1 use a fixed batch size. 0 or 1 preserves "
+             "the original one-message-per-bthread behavior.");
+static bool ValidateInputMessageBatchProcessSize(const char*, int32_t value) {
+    return value >= -1;
+}
+BRPC_VALIDATE_GFLAG(input_message_batch_process_size,
+                    ValidateInputMessageBatchProcessSize);
+
 DECLARE_bool(usercode_in_pthread);
 DECLARE_bool(usercode_in_coroutine);
+const uint32_t MAX_ADAPTIVE_INPUT_BATCH_SIZE = 16;
 
 void* ProcessInputMessage(void* void_arg) {
     InputMessageBase* msg = static_cast<InputMessageBase*>(void_arg);
     msg->_process(msg);
     return nullptr;
+}
+
+void* ProcessInputMessageBatch(void* void_arg) {
+    std::unique_ptr<InputMessageBatch> batch(
+        static_cast<InputMessageBatch*>(void_arg));
+    batch->Run();
+    return nullptr;
+}
+
+InputMessageBatch::~InputMessageBatch() noexcept(false) {
+    Run();
+}
+
+void InputMessageBatch::add(InputMessageBase* msg) {
+    if (msg) {
+        _msgs.push_back(msg);
+    }
+}
+
+void InputMessageBatch::Run() {
+    for (size_t i = 0; i < _msgs.size(); ++i) {
+        ProcessInputMessage(_msgs[i]);
+    }
+    _msgs.clear();
 }
 
 struct RunLastMessage {
@@ -107,8 +145,10 @@ void InputMessenger::OnNewMessages(Socket* m) {
     // - If the socket has several messages, all messages will be parsed (
     //   meaning cutting from butil::IOBuf. serializing from protobuf is part of
     //   "process") in this bthread. All messages except the last one will be
-    //   processed in separate bthreads. To minimize the overhead, scheduling
-    //   is batched(notice the BTHREAD_NOSIGNAL and bthread_flush).
+    //   processed in separate bthreads, or in batches when
+    //   -input_message_batch_process_size is -1 or greater than 1. To minimize
+    //   the overhead, scheduling is batched(notice the BTHREAD_NOSIGNAL and
+    //   bthread_flush).
     // - Verify will always be called in this bthread at most once and before
     //   any process.
     InputMessengerProcessor& processor = m->fd_input_processor();

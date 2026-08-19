@@ -19,6 +19,9 @@
 #ifndef BRPC_INPUT_MESSENGER_H
 #define BRPC_INPUT_MESSENGER_H
 
+#include <memory>
+#include <vector>
+
 #include "butil/iobuf.h"                    // butil::IOBuf
 #include "brpc/socket.h"              // SocketId, SocketUser
 #include "brpc/parse_result.h"        // ParseResult
@@ -92,6 +95,26 @@ private:
     InputMessageBase* _msg;
 };
 
+class InputMessageBatch {
+public:
+    InputMessageBatch() {}
+    explicit InputMessageBatch(size_t capacity) {
+        _msgs.reserve(capacity);
+    }
+    ~InputMessageBatch() noexcept(false);
+
+    void add(InputMessageBase* msg);
+    void Run();
+    bool empty() const { return _msgs.empty(); }
+    size_t size() const { return _msgs.size(); }
+
+private:
+    std::vector<InputMessageBase*> _msgs;
+};
+
+void* ProcessInputMessage(void* void_arg);
+void* ProcessInputMessageBatch(void* void_arg);
+
 // Process messages from connections.
 // `Message' corresponds to a client's request or a server's response.
 class InputMessenger : public SocketUser {
@@ -137,7 +160,6 @@ protected:
     static void OnNewMessages(Socket* m);
     
 private:
-
     // User-supplied scissors and handlers.
     // the index of handler is exactly the same as the protocol
     InputMessageHandler* _handlers;

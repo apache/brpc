@@ -19,6 +19,8 @@
 #ifndef BRPC_INPUT_MESSENGER_PROCESSOR_H_
 #define BRPC_INPUT_MESSENGER_PROCESSOR_H_
 
+#include <memory>
+
 #include "butil/iobuf.h"                    // butil::IOPortal
 #include "butil/logging.h"                   // DCHECK
 #include "butil/macros.h"                   // DISALLOW_COPY_AND_ASSIGN
@@ -29,6 +31,7 @@ namespace brpc {
 class Socket;
 class InputMessenger;
 class InputMessageClosure;
+class InputMessageBatch;
 
 // The state of one input stream: the data read but not cut off yet, and the
 // message-size statistics used to size the next read.
@@ -43,7 +46,9 @@ public:
 
     InputMessengerProcessor()
         : _socket(nullptr), _stream_type(STREAM_NONE)
-        , _last_msg_size(0), _avg_msg_size(0) {}
+        , _last_msg_size(0), _avg_msg_size(0)
+        , _input_messages_per_read_ema_q8(0)
+        , _adaptive_input_message_batch_size(0) {}
 
     DISALLOW_COPY_AND_ASSIGN(InputMessengerProcessor);
 
@@ -72,12 +77,23 @@ public:
     size_t OnceReadSize() const;
 
     uint32_t avg_msg_size() const { return _avg_msg_size; }
+    uint32_t input_messages_per_read_ema_q8() const {
+        return _input_messages_per_read_ema_q8;
+    }
+    uint32_t adaptive_input_message_batch_size() const {
+        return _adaptive_input_message_batch_size;
+    }
 
     // Drop buffered data and reset the statistics.
     void Reset();
 
     // Reset the message-size statistics only, keeping buffered data.
-    void ResetMsgSizeStats() { _last_msg_size = 0; _avg_msg_size = 0; }
+    void ResetMsgSizeStats() {
+        _last_msg_size = 0;
+        _avg_msg_size = 0;
+        _input_messages_per_read_ema_q8 = 0;
+        _adaptive_input_message_batch_size = 0;
+    }
 
 private:
 
@@ -104,6 +120,18 @@ private:
     // from `_read_buf`, save the index of the scissor into `index`.
     ParseResult CutInputMessage(InputMessenger* messenger, size_t* index, bool read_eof);
 
+    void QueueInputMessageBatch(std::unique_ptr<InputMessageBatch>* batch,
+                                int* num_bthread_created,
+                                bool last_msg);
+    void QueueLastMessageOrBatch(InputMessageClosure& last_msg,
+                                 std::unique_ptr<InputMessageBatch>* batch,
+                                 int* num_bthread_created,
+                                 size_t batch_size);
+    static uint32_t UpdateAdaptiveBatchSize(
+        uint32_t* messages_per_read_ema_q8,
+        uint32_t current_batch_size,
+        size_t parsed_message_count);
+
     // The Socket this stream belongs to. Not owned.
     Socket* _socket;
 
@@ -116,6 +144,10 @@ private:
     uint32_t _last_msg_size;
     // Average message size of last #MSG_SIZE_WINDOW messages (roughly)
     uint32_t _avg_msg_size;
+    // Q8 EMA of processable messages parsed in one read.
+    uint32_t _input_messages_per_read_ema_q8;
+    // 0 when adaptive batching is inactive, otherwise one of 1/2/4/8/16.
+    uint32_t _adaptive_input_message_batch_size;
 };
 
 } // namespace brpc

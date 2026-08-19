@@ -49,6 +49,9 @@ public:
     virtual int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, timespec duetime) = 0;
     virtual void ProcessEvent(bthread_attr_t attr) = 0;
     virtual void QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) = 0;
+    virtual void QueueMessages(InputMessageBatch* input_msgs,
+                               int* num_bthread_created,
+                               bool last_msg) = 0;
     virtual void Debug(std::ostream &os) = 0;
 
     bool HasOnEdgeTrigger() {
