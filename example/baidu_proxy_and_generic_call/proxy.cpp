@@ -55,7 +55,7 @@ public:
         // Channel is thread-safe and can be shared by all threads in your program.
         brpc::Channel channel;
 
-        // Initialize the channel, NULL means using default options.
+        // Initialize the channel, nullptr means using default options.
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_BAIDU_STD;
         options.connection_type = FLAGS_connection_type;
@@ -84,7 +84,7 @@ public:
         call_cntl.set_request_compress_type(cntl->request_compress_type());
         call_cntl.reset_sampled_request(cntl->release_sampled_request());
         // It is ok to use request and response for sync rpc.
-        channel.CallMethod(NULL, &call_cntl, request, response, NULL);
+        channel.CallMethod(nullptr, &call_cntl, request, response, nullptr);
         (*cntl->response_user_fields())["x-bd-proxy-error-code"] =
             butil::IntToString(call_cntl.ErrorCode());
         if (call_cntl.Failed()) {

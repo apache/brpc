@@ -42,7 +42,7 @@ int main() {
   brpc::CouchbaseOperations::CouchbaseResponse res;
   uint64_t cas;
   req.authenticateRequest("Administrator", "password");
-  channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+  channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
   if (cntl.Failed()) {
     LOG(ERROR) << "Unable to authenticate: Something went wrong"
                << cntl.ErrorText();
@@ -63,7 +63,7 @@ int main() {
   req.Clear();
   res.Clear();
   req.selectBucketRequest("testing");
-  channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+  channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
   if (cntl.Failed()) {
     LOG(ERROR) << "Unable to select bucket: Something went wrong"
                << cntl.ErrorText();
@@ -92,7 +92,7 @@ int main() {
       "sample_key",
       R"({"name": "John Doe", "age": 30, "email": "john@example.com"})",
       0 /*flags*/, 0 /*exptime*/, 0 /*cas*/);
-  channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+  channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
   if (cntl.Failed()) {
     LOG(ERROR) << "Unable to add key-value: Something went wrong"
                << cntl.ErrorText();
@@ -118,7 +118,7 @@ int main() {
   req.Clear();
   res.Clear();
   req.getRequest("sample_key");
-  channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+  channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
   if (cntl.Failed()) {
     LOG(ERROR) << "Unable to get value for key: Something went wrong"
                << cntl.ErrorText();
@@ -147,7 +147,7 @@ int main() {
   req.Clear();
   res.Clear();
   req.deleteRequest("sample_key");
-  channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+  channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
   if (cntl.Failed()) {
     LOG(ERROR) << "Unable to delete key-value: Something went wrong"
                << cntl.ErrorText();

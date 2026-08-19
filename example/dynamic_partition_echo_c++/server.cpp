@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
     butil::StringSplitter sp(FLAGS_sleep_us.c_str(), ',');
     std::vector<int64_t> sleep_list;
     for (; sp; ++sp) {
-        sleep_list.push_back(strtoll(sp.field(), NULL, 10));
+        sleep_list.push_back(strtoll(sp.field(), nullptr, 10));
     }
     if (sleep_list.empty()) {
         sleep_list.push_back(0);

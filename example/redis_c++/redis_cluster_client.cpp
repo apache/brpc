@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
     CHECK(request.AddCommand("set %s v1", key1.c_str()));
     CHECK(request.AddCommand("set %s v2", key2.c_str()));
     CHECK(request.AddCommand("mget %s %s", key1.c_str(), key2.c_str()));
-    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
     if (cntl.Failed()) {
         LOG(ERROR) << "Sync call failed: " << cntl.ErrorText();
         return -1;
@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
 
     bthread::CountdownEvent event(1);
     Done done(&event);
-    channel.CallMethod(NULL, &async_cntl, &async_request, &async_response, &done);
+    channel.CallMethod(nullptr, &async_cntl, &async_request, &async_response, &done);
     event.wait();
     if (async_cntl.Failed()) {
         LOG(ERROR) << "Async call failed: " << async_cntl.ErrorText();
