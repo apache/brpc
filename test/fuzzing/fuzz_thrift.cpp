@@ -31,6 +31,6 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     butil::IOBuf buf;
     buf.append(input);
 
-    brpc::policy::ParseThriftMessage(&buf, NULL, false, NULL);
+    brpc::policy::ParseThriftMessage(&buf, nullptr, false, nullptr);
     return 0;
 }

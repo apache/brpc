@@ -248,7 +248,7 @@ TEST(H2UnsentMessage, request_throughput) {
     brpc::Controller cntl;
     butil::IOBuf request_buf;
     cntl.http_request().uri() = "0.0.0.0:8010/HttpService/Echo";
-    brpc::policy::SerializeHttpRequest(&request_buf, &cntl, NULL);
+    brpc::policy::SerializeHttpRequest(&request_buf, &cntl, nullptr);
 
     brpc::SocketId id;
     brpc::SocketUniquePtr h2_client_sock;
@@ -258,7 +258,7 @@ TEST(H2UnsentMessage, request_throughput) {
     EXPECT_EQ(0, brpc::Socket::Address(id, &h2_client_sock));
 
     brpc::policy::H2Context* ctx =
-        new brpc::policy::H2Context(h2_client_sock.get(), NULL);
+        new brpc::policy::H2Context(h2_client_sock.get(), nullptr);
     CHECK_EQ(ctx->Init(), 0);
     h2_client_sock->initialize_parsing_context(&ctx);
     ctx->_last_sent_stream_id = 0;

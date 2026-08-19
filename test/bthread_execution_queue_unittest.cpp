@@ -37,12 +37,12 @@ struct LongIntTask {
     long value;
     bthread::CountdownEvent* event;
     LongIntTask(long v)
-        : value(v), event(NULL)
+        : value(v), event(nullptr)
     {}
     LongIntTask(long v, bthread::CountdownEvent* e)
         : value(v), event(e)
     {}
-    LongIntTask() : value(0), event(NULL) {}
+    LongIntTask() : value(0), event(nullptr) {}
 };
 
 int add(void* meta, bthread::TaskIterator<LongIntTask> &iter) {
@@ -166,7 +166,7 @@ void* push_thread(void *arg) {
     timer.start();
     int num = 0;
     bthread::CountdownEvent e;
-    LongIntTask t(num, pa->wait_task_completed ? &e : NULL);
+    LongIntTask t(num, pa->wait_task_completed ? &e : nullptr);
     if (pa->wait_task_completed) {
         e.reset(1);
     }
@@ -182,7 +182,7 @@ void* push_thread(void *arg) {
     pa->expected_value.fetch_add(sum, butil::memory_order_relaxed);
     pa->total_num.fetch_add(num);
     pa->total_time.fetch_add(timer.n_elapsed());
-    return NULL;
+    return nullptr;
 }
 
 void* push_thread_which_addresses_execq(void *arg) {
@@ -203,7 +203,7 @@ void* push_thread_which_addresses_execq(void *arg) {
     pa->expected_value.fetch_add(sum, butil::memory_order_relaxed);
     pa->total_num.fetch_add(num);
     pa->total_time.fetch_add(timer.n_elapsed());
-    return NULL;
+    return nullptr;
 }
 
 void test_performance(bool use_pthread) {
@@ -227,12 +227,12 @@ void test_performance(bool use_pthread) {
     pa.stopped = false;
     ProfilerStart("execq.prof");
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_create(&threads[i], NULL, &push_thread_which_addresses_execq, &pa);
+        pthread_create(&threads[i], nullptr, &push_thread_which_addresses_execq, &pa);
     }
     usleep(500 * 1000);
     ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     ProfilerStop();
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
@@ -253,12 +253,12 @@ void test_performance(bool use_pthread) {
     pa.stopped = false;
     ProfilerStart("execq_id.prof");
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_create(&threads[i], NULL, &push_thread, &pa);
+        pthread_create(&threads[i], nullptr, &push_thread, &pa);
     }
     usleep(500 * 1000);
     ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     ProfilerStop();
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
@@ -335,7 +335,7 @@ void test_execute_urgent(bool use_pthread) {
     pa.stopped = false;
     pa.wait_task_completed = true;
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_create(&threads[i], NULL, &push_thread, &pa);
+        pthread_create(&threads[i], nullptr, &push_thread, &pa);
     }
     g_suspending = false;
     usleep(1000);
@@ -354,7 +354,7 @@ void test_execute_urgent(bool use_pthread) {
     pa.stopped = true;
     ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     LOG(INFO) << "result=" << result;
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
@@ -419,7 +419,7 @@ void* push_thread_with_id(void* arg) {
     for (int i = 0; i < 100000; ++i) {
         bthread::execution_queue_execute(id, ((long)thread_id << 32) | i);
     }
-    return NULL;
+    return nullptr;
 }
 
 int check_order(void* meta, bthread::TaskIterator<LongIntTask>& iter) {
@@ -451,10 +451,10 @@ void test_multi_threaded_order(bool use_pthread) {
                                                 check_order, &disorder_times));
     pthread_t threads[12];
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_create(&threads[i], NULL, &push_thread_with_id, (void *)queue_id.value);
+        pthread_create(&threads[i], nullptr, &push_thread_with_id, (void *)queue_id.value);
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
@@ -513,7 +513,7 @@ void *run_first_tasks(void* arg) {
     task.thread_id = pthread_self();
     EXPECT_EQ(0, bthread::execution_queue_execute(
         queue_id, task, &bthread::TASK_OPTIONS_INPLACE));
-    return NULL;
+    return nullptr;
 }
 
 int stuck_and_check_running_thread(void* arg, bthread::TaskIterator<InPlaceTask>& iter) {
@@ -526,7 +526,7 @@ int stuck_and_check_running_thread(void* arg, bthread::TaskIterator<InPlaceTask>
         futex->store(1);
         bthread::futex_wake_private(futex, 1);
         while (futex->load() != 2) {
-            bthread::futex_wait_private(futex, 1, NULL);
+            bthread::futex_wait_private(futex, 1, nullptr);
         }
         ++iter;
         EXPECT_FALSE(iter);
@@ -553,9 +553,9 @@ void test_should_start_new_thread_on_more_tasks(bool use_pthread) {
                                                 stuck_and_check_running_thread,
                                                 (void*)&futex));
     pthread_t thread;
-    ASSERT_EQ(0, pthread_create(&thread, NULL, run_first_tasks, (void*)queue_id.value));
+    ASSERT_EQ(0, pthread_create(&thread, nullptr, run_first_tasks, (void*)queue_id.value));
     while (futex.load() != 1) {
-        bthread::futex_wait_private(&futex, 0, NULL);
+        bthread::futex_wait_private(&futex, 0, nullptr);
     }
     for (size_t i = 0; i < 100; ++i) {
         InPlaceTask task;
@@ -584,7 +584,7 @@ void* inplace_push_thread(void* arg) {
         bthread::execution_queue_execute(id, ((long)thread_id << 32) | i,
                                          &bthread::TASK_OPTIONS_INPLACE);
     }
-    return NULL;
+    return nullptr;
 }
 
 void test_inplace_and_order(bool use_pthread) {
@@ -602,10 +602,10 @@ void test_inplace_and_order(bool use_pthread) {
                                                 check_order, &disorder_times));
     pthread_t threads[12];
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_create(&threads[i], NULL, &inplace_push_thread, (void *)queue_id.value);
+        pthread_create(&threads[i], nullptr, &inplace_push_thread, (void *)queue_id.value);
     }
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
@@ -657,14 +657,14 @@ void test_cancel(bool use_pthread) {
                                                 add_with_suspend2, &result));
     g_suspending = false;
     bthread::TaskHandle handle0;
-    ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, -100, NULL, &handle0));
+    ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, -100, nullptr, &handle0));
     while (!g_suspending) {
         usleep(10);
     }
     ASSERT_EQ(1, bthread::execution_queue_cancel(handle0));
     ASSERT_EQ(1, bthread::execution_queue_cancel(handle0));
     bthread::TaskHandle handle1;
-    ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, 100, NULL, &handle1));
+    ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, 100, nullptr, &handle1));
     ASSERT_EQ(0, bthread::execution_queue_cancel(handle1));
     g_suspending = false;
     ASSERT_EQ(-1, bthread::execution_queue_cancel(handle1));
@@ -686,7 +686,7 @@ struct CancelSelf {
 int cancel_self(void* /*meta*/, bthread::TaskIterator<CancelSelf*>& iter) {
 
     for (; iter; ++iter) {
-        while ((*iter)->handle == NULL) {
+        while ((*iter)->handle == nullptr) {
             usleep(10);
         }
         EXPECT_EQ(1, bthread::execution_queue_cancel(*(*iter)->handle.load()));
@@ -706,11 +706,11 @@ void test_cancel_self(bool use_pthread) {
         LOG(INFO) << "================ bthread ================";
     }
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
-                                                cancel_self, NULL));
+                                                cancel_self, nullptr));
     CancelSelf task;
-    task.handle = NULL;
+    task.handle = nullptr;
     bthread::TaskHandle handle;
-    ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, &task, NULL, &handle));
+    ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, &task, nullptr, &handle));
     task.handle.store(&handle);
     ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
@@ -768,7 +768,7 @@ void test_random_cancel(bool use_pthread) {
     m.succ_times.store(0);
     m.fail_times.store(0);
     m.race_times.store(0);
-    ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, NULL,
+    ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, nullptr,
                                                 add_with_cancel, &m));
     int64_t expected = 0;
     for (int i = 0; i < 100000; ++i) {
@@ -776,7 +776,7 @@ void test_random_cancel(bool use_pthread) {
         AddTask t;
         t.value = i;
         t.cancel_task = false;
-        ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, t, NULL, &h));
+        ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, t, nullptr, &h));
         const int r = butil::fast_rand_less_than(4);
         expected += i;
         if (r == 0) {
@@ -787,7 +787,7 @@ void test_random_cancel(bool use_pthread) {
             t.cancel_task = true;
             t.cancel_value = i;
             t.handle = h;
-            ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, t, NULL));
+            ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, t, nullptr));
         } else if (r == 2) {
             t.cancel_task = true;
             t.cancel_value = i;

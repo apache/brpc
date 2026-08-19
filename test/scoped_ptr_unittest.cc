@@ -21,7 +21,7 @@ class ConDecLoggerParent {
 
 class ConDecLogger : public ConDecLoggerParent {
  public:
-  ConDecLogger() : ptr_(NULL) { }
+  ConDecLogger() : ptr_(nullptr) { }
   explicit ConDecLogger(int* ptr) { SetPtr(ptr); }
   virtual ~ConDecLogger() { --*ptr_; }
 
@@ -489,7 +489,7 @@ TEST(ScopedPtrTest, CustomDeleter) {
   // Test reset() and release().
   deletes = 0;
   {
-    scoped_ptr<double, CountingDeleter> scoper(NULL,
+    scoped_ptr<double, CountingDeleter> scoper(nullptr,
                                                CountingDeleter(&deletes));
     EXPECT_FALSE(scoper.get());
     EXPECT_FALSE(scoper.release());
@@ -563,9 +563,9 @@ TEST(ScopedPtrTest, CustomDeleter) {
 
   // Test swap(), ==, !=, and type-safe Boolean.
   {
-    scoped_ptr<double, CountingDeleter> scoper1(NULL,
+    scoped_ptr<double, CountingDeleter> scoper1(nullptr,
                                                 CountingDeleter(&deletes));
-    scoped_ptr<double, CountingDeleter> scoper2(NULL,
+    scoped_ptr<double, CountingDeleter> scoper2(nullptr,
                                                 CountingDeleter(&deletes));
     EXPECT_TRUE(scoper1 == scoper2.get());
     EXPECT_FALSE(scoper1 != scoper2.get());

@@ -276,9 +276,9 @@ static void TestAtomicOps() {
 static void TestCalloc(size_t n, size_t s, bool ok) {
   char* p = reinterpret_cast<char*>(calloc(n, s));
   if (!ok) {
-    EXPECT_EQ(NULL, p) << "calloc(n, s) should not succeed";
+    EXPECT_EQ(nullptr, p) << "calloc(n, s) should not succeed";
   } else {
-    EXPECT_NE(reinterpret_cast<void*>(NULL), p) <<
+    EXPECT_NE(static_cast<void*>(nullptr), p) <<
         "calloc(n, s) should succeed";
     for (size_t i = 0; i < n*s; i++) {
       EXPECT_EQ('\0', p[i]);
@@ -301,7 +301,7 @@ static void TestOneNewWithoutExceptions(void* (*func)(size_t),
   // success test
   try {
     void* ptr = (*func)(kNotTooBig);
-    EXPECT_NE(reinterpret_cast<void*>(NULL), ptr) <<
+    EXPECT_NE(static_cast<void*>(nullptr), ptr) <<
         "allocation should not have failed.";
   } catch(...) {
     EXPECT_EQ(0, 1) << "allocation threw unexpected exception.";
@@ -310,7 +310,7 @@ static void TestOneNewWithoutExceptions(void* (*func)(size_t),
   // failure test
   try {
     void* rv = (*func)(kTooBig);
-    EXPECT_EQ(NULL, rv);
+    EXPECT_EQ(nullptr, rv);
     EXPECT_FALSE(should_throw) << "allocation should have thrown.";
   } catch(...) {
     EXPECT_TRUE(should_throw) << "allocation threw unexpected exception.";
@@ -422,7 +422,7 @@ TEST(Allocators, Realloc2) {
       EXPECT_TRUE(Valid(dst, min(src_size, dst_size)));
       Fill(dst, dst_size);
       EXPECT_TRUE(Valid(dst, dst_size));
-      if (dst != NULL) free(dst);
+      if (dst != nullptr) free(dst);
     }
   }
 
@@ -449,12 +449,12 @@ TEST(Allocators, Realloc2) {
 }
 
 TEST(Allocators, ReallocZero) {
-  // Test that realloc to zero does not return NULL.
+  // Test that realloc to zero does not return nullptr.
   for (int size = 0; size >= 0; size = NextSize(size)) {
     char* ptr = reinterpret_cast<char*>(malloc(size));
-    EXPECT_NE(static_cast<char*>(NULL), ptr);
+    EXPECT_NE(static_cast<char*>(nullptr), ptr);
     ptr = reinterpret_cast<char*>(realloc(ptr, 0));
-    EXPECT_NE(static_cast<char*>(NULL), ptr);
+    EXPECT_NE(static_cast<char*>(nullptr), ptr);
     if (ptr)
       free(ptr);
   }
@@ -466,7 +466,7 @@ TEST(Allocators, Recalloc) {
   for (int src_size = 0; src_size >= 0; src_size = NextSize(src_size)) {
     for (int dst_size = 0; dst_size >= 0; dst_size = NextSize(dst_size)) {
       unsigned char* src =
-          reinterpret_cast<unsigned char*>(_recalloc(NULL, 1, src_size));
+          reinterpret_cast<unsigned char*>(_recalloc(nullptr, 1, src_size));
       EXPECT_TRUE(IsZeroed(src, src_size));
       Fill(src, src_size);
       unsigned char* dst =
@@ -474,7 +474,7 @@ TEST(Allocators, Recalloc) {
       EXPECT_TRUE(Valid(dst, min(src_size, dst_size)));
       Fill(dst, dst_size);
       EXPECT_TRUE(Valid(dst, dst_size));
-      if (dst != NULL)
+      if (dst != nullptr)
         free(dst);
     }
   }

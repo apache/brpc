@@ -105,7 +105,7 @@ bool SetReparsePoint(HANDLE source, const FilePath& target_path) {
   int data_size = data->ReparseDataLength + 8;
 
   if (!DeviceIoControl(source, FSCTL_SET_REPARSE_POINT, &buffer, data_size,
-                       NULL, 0, &returned, NULL)) {
+                       nullptr, 0, &returned, nullptr)) {
     return false;
   }
   return true;
@@ -117,8 +117,8 @@ bool DeleteReparsePoint(HANDLE source) {
   DWORD returned;
   REPARSE_DATA_BUFFER data = {0};
   data.ReparseTag = 0xa0000003;
-  if (!DeviceIoControl(source, FSCTL_DELETE_REPARSE_POINT, &data, 8, NULL, 0,
-                       &returned, NULL)) {
+  if (!DeviceIoControl(source, FSCTL_DELETE_REPARSE_POINT, &data, 8, nullptr, 0,
+                       &returned, nullptr)) {
     return false;
   }
   return true;
@@ -133,10 +133,10 @@ class ReparsePoint {
       ::CreateFile(source.value().c_str(),
                    FILE_ALL_ACCESS,
                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                   NULL,
+                   nullptr,
                    OPEN_EXISTING,
                    FILE_FLAG_BACKUP_SEMANTICS,  // Needed to open a directory.
-                   NULL));
+                   nullptr));
     created_ = dir_.IsValid() && SetReparsePoint(dir_, target);
   }
 
@@ -1654,7 +1654,7 @@ TEST_F(FileUtilTest, GetTempDirTest) {
   size_t original_tmp_size;
   TCHAR* original_tmp;
   ASSERT_EQ(0, ::_tdupenv_s(&original_tmp, &original_tmp_size, kTmpKey));
-  // original_tmp may be NULL.
+  // original_tmp may be nullptr.
 
   for (unsigned int i = 0; i < arraysize(kTmpValues); ++i) {
     FilePath path;
@@ -2094,9 +2094,9 @@ TEST_F(FileUtilTest, ReadFileToString) {
   EXPECT_TRUE(ReadFileToString(file_path, &data, 6));
   EXPECT_EQ("0123", data);
 
-  EXPECT_TRUE(ReadFileToString(file_path, NULL, 6));
+  EXPECT_TRUE(ReadFileToString(file_path, nullptr, 6));
 
-  EXPECT_TRUE(ReadFileToString(file_path, NULL));
+  EXPECT_TRUE(ReadFileToString(file_path, nullptr));
 
   data = "temp";
   EXPECT_FALSE(ReadFileToString(file_path_dangerous, &data));

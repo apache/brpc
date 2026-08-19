@@ -11,7 +11,7 @@
 
 namespace {
 
-std::map<std::string, std::string>* key_values_ = NULL;
+std::map<std::string, std::string>* key_values_ = nullptr;
 
 }  // namespace
 
@@ -28,7 +28,7 @@ class CrashLoggingTest : public testing::Test {
     butil::debug::ResetCrashLoggingForTesting();
 
     delete key_values_;
-    key_values_ = NULL;
+    key_values_ = nullptr;
   }
 
  private:

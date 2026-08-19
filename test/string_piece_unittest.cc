@@ -156,7 +156,7 @@ TYPED_TEST(CommonStringPieceTest, CheckSTL) {
 
   ASSERT_EQ(*d.data(), static_cast<typename TypeParam::value_type>('f'));
   ASSERT_EQ(d.data()[5], static_cast<typename TypeParam::value_type>('r'));
-  ASSERT_TRUE(e.data() == NULL);
+  ASSERT_TRUE(e.data() == nullptr);
 
   ASSERT_EQ(*a.begin(), static_cast<typename TypeParam::value_type>('a'));
   ASSERT_EQ(*(b.begin() + 2), static_cast<typename TypeParam::value_type>('c'));
@@ -185,7 +185,7 @@ TYPED_TEST(CommonStringPieceTest, CheckSTL) {
   d.clear();
   ASSERT_EQ(d.size(), 0U);
   ASSERT_TRUE(d.empty());
-  ASSERT_TRUE(d.data() == NULL);
+  ASSERT_TRUE(d.data() == nullptr);
   ASSERT_TRUE(d.begin() == d.end());
 
   ASSERT_GE(a.max_size(), a.capacity());
@@ -508,11 +508,11 @@ TYPED_TEST(CommonStringPieceTest, CheckCustom) {
   ASSERT_EQ(c, a);
   c.set(foobar.c_str(), 0);
   ASSERT_EQ(c, e);
-  c.set(foobar.c_str(), 7);  // Note, has an embedded NULL
+  c.set(foobar.c_str(), 7);  // Note, has an embedded nullptr
   ASSERT_NE(c, a);
 
   // as_string
-  TypeParam s3(a.as_string().c_str(), 7);  // Note, has an embedded NULL
+  TypeParam s3(a.as_string().c_str(), 7);  // Note, has an embedded nullptr
   ASSERT_TRUE(c == s3);
   TypeParam s4(e.as_string());
   ASSERT_TRUE(s4.empty());
@@ -581,12 +581,12 @@ TEST(StringPieceTest, CheckCustom) {
 
 TYPED_TEST(CommonStringPieceTest, CheckNULL) {
   // we used to crash here, but now we don't.
-  BasicStringPiece<TypeParam> s(NULL);
-  ASSERT_EQ(s.data(), (const typename TypeParam::value_type*)NULL);
+  BasicStringPiece<TypeParam> s(nullptr);
+  ASSERT_EQ(s.data(), (const typename TypeParam::value_type*)nullptr);
   ASSERT_EQ(s.size(), 0U);
 
-  s.set(NULL);
-  ASSERT_EQ(s.data(), (const typename TypeParam::value_type*)NULL);
+  s.set(nullptr);
+  ASSERT_EQ(s.data(), (const typename TypeParam::value_type*)nullptr);
   ASSERT_EQ(s.size(), 0U);
 
   TypeParam str = s.as_string();
@@ -676,8 +676,8 @@ TYPED_TEST(CommonStringPieceTest, CheckConstructors) {
               BasicStringPiece<TypeParam>(str.c_str(), 5));
   ASSERT_TRUE(empty == BasicStringPiece<TypeParam>(str.c_str(),
       static_cast<typename BasicStringPiece<TypeParam>::size_type>(0)));
-  ASSERT_TRUE(empty == BasicStringPiece<TypeParam>(NULL));
-  ASSERT_TRUE(empty == BasicStringPiece<TypeParam>(NULL,
+  ASSERT_TRUE(empty == BasicStringPiece<TypeParam>(nullptr));
+  ASSERT_TRUE(empty == BasicStringPiece<TypeParam>(nullptr,
       static_cast<typename BasicStringPiece<TypeParam>::size_type>(0)));
   ASSERT_TRUE(empty == BasicStringPiece<TypeParam>());
   ASSERT_TRUE(str == BasicStringPiece<TypeParam>(str.begin(), str.end()));

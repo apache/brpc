@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
                                brpc::SerializeRequestDefault, 
                                brpc::policy::PackHuluRequest,
                                EchoProcessHuluRequest, EchoProcessHuluRequest,
-                               NULL, NULL, NULL,
+                               nullptr, nullptr, nullptr,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
     EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
     return RUN_ALL_TESTS();
@@ -107,13 +107,13 @@ protected:
     };
 };
 
-brpc::Socket* global_sock = NULL;
+brpc::Socket* global_sock = nullptr;
 
 class CheckRecycle : public brpc::SocketUser {
     void BeforeRecycle(brpc::Socket* s) {
         ASSERT_TRUE(global_sock);
         ASSERT_EQ(global_sock, s);
-        global_sock = NULL;
+        global_sock = nullptr;
         delete this;
     }
 };
@@ -141,7 +141,7 @@ TEST_F(SocketTest, not_recycle_until_zero_nref) {
         ASSERT_EQ(0, s->SetFailed());
         ASSERT_EQ(s.get(), global_sock);
     }
-    ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+    ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
     close(fds[0]);
 
     brpc::SocketUniquePtr ptr;
@@ -161,7 +161,7 @@ void* auth_fighter(void* arg) {
     } else {
         EXPECT_EQ(AUTH_ERR, auth_error);        
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(SocketTest, authentication) {
@@ -173,10 +173,10 @@ TEST_F(SocketTest, authentication) {
     
     bthread_t th[64];
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&th[i], NULL, auth_fighter, s.get()));
+        ASSERT_EQ(0, bthread_start_urgent(&th[i], nullptr, auth_fighter, s.get()));
     }
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, bthread_join(th[i], NULL));
+        ASSERT_EQ(0, bthread_join(th[i], nullptr));
     }
     // Only one fighter wins
     ASSERT_EQ(1, winner_count.load());
@@ -186,13 +186,13 @@ TEST_F(SocketTest, authentication) {
     ASSERT_NE(0, s->FightAuthentication(&auth_error));
     ASSERT_EQ(AUTH_ERR, auth_error);
     // Socket has been `SetFailed' when authentication failed
-    ASSERT_TRUE(brpc::Socket::Address(s->id(), NULL));
+    ASSERT_TRUE(brpc::Socket::Address(s->id(), nullptr));
 }
 
 static butil::atomic<int> g_called_seq(1);
 class MyMessage : public brpc::SocketMessage {
 public:
-    MyMessage(const char* str, size_t len, int* called = NULL)
+    MyMessage(const char* str, size_t len, int* called = nullptr)
         : _str(str), _len(len), _called(called) {}
 private:
     butil::Status AppendAndDestroySelf(butil::IOBuf* out_buf, brpc::Socket*) {
@@ -295,7 +295,7 @@ TEST_F(SocketTest, single_threaded_write) {
         }
         ASSERT_EQ(0, s->SetFailed());
     }
-    ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+    ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
     close(fds[0]);
 }
 
@@ -310,7 +310,7 @@ void EchoProcessHuluRequest(brpc::InputMessageBase* msg_base) {
 
 class MyConnect : public brpc::AppConnect {
 public:
-    MyConnect() : _done(NULL), _data(NULL), _called_start_connect(false) {}
+    MyConnect() : _done(nullptr), _data(nullptr), _called_start_connect(false) {}
     void StartConnect(const brpc::Socket*,
                       void (*done)(int err, void* data),
                       void* data) {
@@ -339,7 +339,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     ANNOTATE_LEAKING_OBJECT_PTR(messenger);
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage, 
-          EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
+          EchoProcessHuluRequest, nullptr, nullptr, "dummy_hulu" }
     };
 
     int listening_fd = -1;
@@ -354,7 +354,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     ASSERT_GT(listening_fd, 0) << berror();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
-    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
 
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
@@ -422,7 +422,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
         }
         ASSERT_EQ(0, s->SetFailed());
     }
-    ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+    ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
     // The id is invalid.
     brpc::SocketUniquePtr ptr;
     ASSERT_EQ(-1, brpc::Socket::Address(id, &ptr));
@@ -457,12 +457,12 @@ void* FailedWriter(void* void_arg) {
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
         printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
-        return NULL;
+        return nullptr;
     }
     char buf[32];
     for (size_t i = 0; i < arg->times; ++i) {
         bthread_id_t id;
-        EXPECT_EQ(0, bthread_id_create(&id, NULL, NULL));
+        EXPECT_EQ(0, bthread_id_create(&id, nullptr, nullptr));
         snprintf(buf, sizeof(buf), "%0" BAIDU_SYMBOLSTR(NUMBER_WIDTH) "lu",
                  i + arg->offset);
         butil::IOBuf src;
@@ -475,7 +475,7 @@ void* FailedWriter(void* void_arg) {
         // calls `SetFailed' making others' error_code=EINVAL
         //EXPECT_EQ(ECONNREFUSED, error_code);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(SocketTest, fail_to_connect) {
@@ -500,17 +500,17 @@ TEST_F(SocketTest, fail_to_connect) {
             args[i].times = REP;
             args[i].offset = i * REP;
             args[i].socket_id = id;
-            ASSERT_EQ(0, pthread_create(&th[i], NULL, FailedWriter, &args[i]));
+            ASSERT_EQ(0, pthread_create(&th[i], nullptr, FailedWriter, &args[i]));
         }
         for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-            ASSERT_EQ(0, pthread_join(th[i], NULL));
+            ASSERT_EQ(0, pthread_join(th[i], nullptr));
         }
         ASSERT_EQ(-1, s->SetFailed());  // already SetFailed
         ASSERT_EQ(-1, s->fd());
     }
     // KeepWrite is possibly still running.
     int64_t start_time = butil::cpuwide_time_us();
-    while (global_sock != NULL) {
+    while (global_sock != nullptr) {
         bthread_usleep(1000);
         ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L) << "Too long!";
     }
@@ -571,11 +571,11 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         s->ReleaseHCRelatedReference();
     }
     // StartHealthCheck is possibly still running. Spin until global_sock
-    // is NULL(set in CheckRecycle::BeforeRecycle). Notice that you should
+    // is nullptr(set in CheckRecycle::BeforeRecycle). Notice that you should
     // not spin until Socket::Status(id) becomes -1 and assert global_sock
-    // to be NULL because invalidating id happens before calling BeforeRecycle.
+    // to be nullptr because invalidating id happens before calling BeforeRecycle.
     const int64_t start_time = butil::cpuwide_time_us();
-    while (global_sock != NULL) {
+    while (global_sock != nullptr) {
         bthread_usleep(1000);
         ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L);
     }
@@ -618,7 +618,7 @@ TEST_F(SocketTest, app_level_health_check) {
     {
         brpc::Controller cntl;
         cntl.http_request().uri() = "/";
-        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         EXPECT_TRUE(cntl.Failed());
         ASSERT_EQ(ECONNREFUSED, cntl.ErrorCode());
     }
@@ -637,14 +637,14 @@ TEST_F(SocketTest, app_level_health_check) {
     brpc::Server server;
     HealthCheckTestServiceImpl hc_service;
     ASSERT_EQ(0, server.AddService(&hc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(point, NULL));
+    ASSERT_EQ(0, server.Start(point, nullptr));
 
     for (int i = 0; i < 4; ++i) {
         // although ::connect would succeed, the stall in hc_service makes
         // the health check rpc fail.
         brpc::Controller cntl;
         cntl.http_request().uri() = "/";
-        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         ASSERT_EQ(EHOSTDOWN, cntl.ErrorCode());
         bthread_usleep(1000000 /*1s*/);
     }
@@ -654,7 +654,7 @@ TEST_F(SocketTest, app_level_health_check) {
     {
         brpc::Controller cntl;
         cntl.http_request().uri() = "/";
-        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         ASSERT_FALSE(cntl.Failed());
         ASSERT_GT(cntl.response_attachment().size(), (size_t)0);
     }
@@ -679,7 +679,7 @@ TEST_F(SocketTest, health_check) {
     options.user = new CheckRecycle;
     options.health_check_interval_s = kCheckInteval/*s*/;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
-    brpc::Socket* s = NULL;
+    brpc::Socket* s = nullptr;
     {
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
@@ -751,14 +751,14 @@ TEST_F(SocketTest, health_check) {
 
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage, 
-          EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
+          EchoProcessHuluRequest, nullptr, nullptr, "dummy_hulu" }
     };
 
     int listening_fd = tcp_listen(point);
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
-    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
 
     int64_t start_time = butil::cpuwide_time_us();
     nref = -1;
@@ -807,7 +807,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(0, brpc::Socket::SetFailed(id));
     // StartHealthCheck is possibly still addressing the Socket.
     start_time = butil::cpuwide_time_us();
-    while (global_sock != NULL) {
+    while (global_sock != nullptr) {
         bthread_usleep(1000);
         ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L);
     }
@@ -823,7 +823,7 @@ void* Writer(void* void_arg) {
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
         printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
-        return NULL;
+        return nullptr;
     }
     char buf[32];
     for (size_t i = 0; i < arg->times; ++i) {
@@ -843,7 +843,7 @@ void* Writer(void* void_arg) {
             break;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(SocketTest, multi_threaded_write) {
@@ -879,7 +879,7 @@ TEST_F(SocketTest, multi_threaded_write) {
             args[i].times = REP;
             args[i].offset = i * REP;
             args[i].socket_id = id;
-            ASSERT_EQ(0, pthread_create(&th[i], NULL, Writer, &args[i]));
+            ASSERT_EQ(0, pthread_create(&th[i], nullptr, Writer, &args[i]));
         }
 
         if (k == 1) {
@@ -909,7 +909,7 @@ TEST_F(SocketTest, multi_threaded_write) {
                 char buf[NUMBER_WIDTH + 1];
                 dest.copy_to(buf, NUMBER_WIDTH);
                 buf[sizeof(buf)-1] = 0;
-                result.push_back(strtol(buf, NULL, 10));
+                result.push_back(strtol(buf, nullptr, 10));
                 dest.pop_front(NUMBER_WIDTH);
             }
             if (result.size() >= REP * ARRAY_SIZE(th)) {
@@ -917,7 +917,7 @@ TEST_F(SocketTest, multi_threaded_write) {
             }
         }
         for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-            ASSERT_EQ(0, pthread_join(th[i], NULL));
+            ASSERT_EQ(0, pthread_join(th[i], nullptr));
         }
         ASSERT_TRUE(dest.empty());
         bthread::g_task_control->print_rq_sizes(std::cout);
@@ -934,7 +934,7 @@ TEST_F(SocketTest, multi_threaded_write) {
 
         ASSERT_EQ(0, s->SetFailed());
         s.release()->Dereference();
-        ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+        ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
         close(fds[0]);
     }
 }
@@ -944,7 +944,7 @@ void* FastWriter(void* void_arg) {
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
         printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
-        return NULL;
+        return nullptr;
     }
     char buf[] = "hello reader side!";
     int64_t begin_ts = butil::cpuwide_time_us();
@@ -970,7 +970,7 @@ void* FastWriter(void* void_arg) {
     int64_t total_time = end_ts - begin_ts;
     printf("total=%ld count=%ld nretry=%ld\n",
            (long)total_time * 1000/ c, (long)c, (long)nretry);
-    return NULL;
+    return nullptr;
 }
 
 struct ReaderArg {
@@ -994,7 +994,7 @@ void* reader(void* void_arg) {
         arg->nread += nr;
     }
     free(buf);
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(SocketTest, multi_threaded_write_perf) {
@@ -1026,12 +1026,12 @@ TEST_F(SocketTest, multi_threaded_write_perf) {
         args[i].times = REP;
         args[i].offset = i * REP;
         args[i].socket_id = id;
-        bthread_start_background(&th[i], NULL, FastWriter, &args[i]);
+        bthread_start_background(&th[i], nullptr, FastWriter, &args[i]);
     }
 
     pthread_t rth;
     ReaderArg reader_arg = { fds[0], 0 };
-    pthread_create(&rth, NULL, reader, &reader_arg);
+    pthread_create(&rth, nullptr, reader, &reader_arg);
 
     butil::Timer tm;
     ProfilerStart("write.prof");
@@ -1048,12 +1048,12 @@ TEST_F(SocketTest, multi_threaded_write_perf) {
         args[i].times = 0;
     }
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, bthread_join(th[i], NULL));
+        ASSERT_EQ(0, bthread_join(th[i], nullptr));
     }
     ASSERT_EQ(0, s->SetFailed());
     s.release()->Dereference();
-    pthread_join(rth, NULL);
-    ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+    pthread_join(rth, nullptr);
+    ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
     close(fds[0]);
 }
 
@@ -1297,7 +1297,7 @@ TEST_F(SocketTest, keepalive_input_message) {
     }
     ASSERT_GT(listening_fd, 0) << berror();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
-    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
 
     int default_keepalive = 0;
     int default_keepalive_idle = 0;
@@ -1491,7 +1491,7 @@ TEST_F(SocketTest, socket_buffer_options_before_connect) {
     ASSERT_EQ(0, brpc::Socket::Address(id, &ptr)) << "id=" << id;
 
     const timespec duetime = butil::milliseconds_from_now(1000);
-    butil::fd_guard connected_fd(ptr->Connect(&duetime, NULL, NULL));
+    butil::fd_guard connected_fd(ptr->Connect(&duetime, nullptr, nullptr));
     ASSERT_GT(connected_fd, 0);
     CheckSocketBufferValues(connected_fd, expected);
 
@@ -1510,12 +1510,12 @@ TEST_F(SocketTest, socket_buffer_options_before_accept) {
     butil::EndPoint point;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &point));
     brpc::Server server;
-    ASSERT_EQ(0, server.Start(point, NULL));
+    ASSERT_EQ(0, server.Start(point, nullptr));
     point = server.listen_address();
 
     brpc::Acceptor* messenger =
         brpc::ServerPrivateAccessor(&server).acceptor();
-    ASSERT_TRUE(messenger != NULL);
+    ASSERT_TRUE(messenger != nullptr);
     ASSERT_GT(messenger->listened_fd(), 0);
     CheckSocketBufferValues(messenger->listened_fd(), expected);
 
@@ -1581,7 +1581,7 @@ TEST_F(SocketTest, tcp_user_timeout) {
     }
     ASSERT_GT(listening_fd, 0) << berror();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
-    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL, false));
+    ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
 
     {
         brpc::SocketOptions options;
@@ -1678,7 +1678,7 @@ TEST_F(SocketTest, notify_on_success) {
 
     pthread_t rth;
     ReaderArg reader_arg = { fds[0], 0 };
-    pthread_create(&rth, NULL, reader, &reader_arg);
+    pthread_create(&rth, nullptr, reader, &reader_arg);
 
     size_t success_count = 0;
     char buf[] = "hello reader side!";
@@ -1706,9 +1706,9 @@ TEST_F(SocketTest, notify_on_success) {
 
     ASSERT_EQ(0, s->SetFailed());
     s.release()->Dereference();
-    pthread_join(rth, NULL);
+    pthread_join(rth, nullptr);
     ASSERT_EQ(REP, success_count);
-    ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+    ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
     close(fds[0]);
 }
 
@@ -1737,7 +1737,7 @@ void* ShutdownWriter(void* void_arg) {
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
         LOG(INFO) << "Fail to address SocketId=" << arg->socket_id;
-        return NULL;
+        return nullptr;
     }
     for (size_t c = 0; c < arg->times; ++c) {
         bthread_id_t write_id;
@@ -1758,7 +1758,7 @@ void* ShutdownWriter(void* void_arg) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 void TestShutdownWrite() {
@@ -1787,7 +1787,7 @@ void TestShutdownWrite() {
 
     pthread_t rth;
     ReaderArg reader_arg = { fds[0], 0 };
-    pthread_create(&rth, NULL, reader, &reader_arg);
+    pthread_create(&rth, nullptr, reader, &reader_arg);
 
     bthread_t th[3];
     ShutdownWriterArg args[ARRAY_SIZE(th)];
@@ -1796,11 +1796,11 @@ void TestShutdownWrite() {
         args[i].socket_id = id;
         args[i].total_count = 0;
         args[i].success_count = 0;
-        bthread_start_background(&th[i], NULL, ShutdownWriter, &args[i]);
+        bthread_start_background(&th[i], nullptr, ShutdownWriter, &args[i]);
     }
 
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, bthread_join(th[i], NULL));
+        ASSERT_EQ(0, bthread_join(th[i], nullptr));
     }
     bthread_usleep(50 * 1000);
 
@@ -1808,8 +1808,8 @@ void TestShutdownWrite() {
     ASSERT_FALSE(s->Failed());
     ASSERT_EQ(0, s->SetFailed());
     s.release()->Dereference();
-    pthread_join(rth, NULL);
-    ASSERT_EQ((brpc::Socket*)NULL, global_sock);
+    pthread_join(rth, nullptr);
+    ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
     close(fds[0]);
 
     size_t total_count = 0;

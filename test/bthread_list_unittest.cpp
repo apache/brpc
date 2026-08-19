@@ -25,7 +25,7 @@
 namespace {
 void* sleeper(void* arg) {
     bthread_usleep((long)arg);
-    return NULL;
+    return nullptr;
 }
 
 TEST(ListTest, join_thread_by_list) {
@@ -35,7 +35,7 @@ TEST(ListTest, join_thread_by_list) {
     for (size_t i = 0; i < 10; ++i) {
         bthread_t th;
         ASSERT_EQ(0, bthread_start_urgent(
-                      &th, NULL, sleeper, (void*)10000/*10ms*/));
+                      &th, nullptr, sleeper, (void*)10000/*10ms*/));
         ASSERT_EQ(0, bthread_list_add(&list, th));
         tids.push_back(th);
     }
@@ -51,7 +51,7 @@ TEST(ListTest, join_a_destroyed_list) {
     ASSERT_EQ(0, bthread_list_init(&list, 0, 0));
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(
-                  &th, NULL, sleeper, (void*)10000/*10ms*/));
+                  &th, nullptr, sleeper, (void*)10000/*10ms*/));
     ASSERT_EQ(0, bthread_list_add(&list, th));
     ASSERT_EQ(0, bthread_list_join(&list));
     bthread_list_destroy(&list);

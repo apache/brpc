@@ -29,7 +29,7 @@ void ExpectCounter1IsZero(void* unused) {
 }
 
 void ExpectParamIsNull(void* param) {
-  EXPECT_EQ(static_cast<void*>(NULL), param);
+  EXPECT_EQ(static_cast<void*>(nullptr), param);
 }
 
 void ExpectParamIsCounter(void* param) {
@@ -47,9 +47,9 @@ class AtExitTest : public testing::Test {
 
 TEST_F(AtExitTest, Basic) {
   ZeroTestCounters();
-  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
-  butil::AtExitManager::RegisterCallback(&IncrementTestCounter2, NULL);
-  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, nullptr);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter2, nullptr);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, nullptr);
 
   EXPECT_EQ(0, g_test_counter_1);
   EXPECT_EQ(0, g_test_counter_2);
@@ -60,9 +60,9 @@ TEST_F(AtExitTest, Basic) {
 
 TEST_F(AtExitTest, LIFOOrder) {
   ZeroTestCounters();
-  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
-  butil::AtExitManager::RegisterCallback(&ExpectCounter1IsZero, NULL);
-  butil::AtExitManager::RegisterCallback(&IncrementTestCounter2, NULL);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, nullptr);
+  butil::AtExitManager::RegisterCallback(&ExpectCounter1IsZero, nullptr);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter2, nullptr);
 
   EXPECT_EQ(0, g_test_counter_1);
   EXPECT_EQ(0, g_test_counter_2);
@@ -72,7 +72,7 @@ TEST_F(AtExitTest, LIFOOrder) {
 }
 
 TEST_F(AtExitTest, Param) {
-  butil::AtExitManager::RegisterCallback(&ExpectParamIsNull, NULL);
+  butil::AtExitManager::RegisterCallback(&ExpectParamIsNull, nullptr);
   butil::AtExitManager::RegisterCallback(&ExpectParamIsCounter,
                                         &g_test_counter_1);
   butil::AtExitManager::ProcessCallbacksNow();

@@ -31,7 +31,7 @@ void* spinner(void*) {
         cpu_relax();
     }
     printf("spinned %ld\n", counter);
-    return NULL;
+    return nullptr;
 }
 
 void* yielder(void*) {
@@ -40,7 +40,7 @@ void* yielder(void*) {
         sched_yield();
     }
     printf("sched_yield %d\n", counter);
-    return NULL;
+    return nullptr;
 }
 
 TEST(SchedYieldTest, sched_yield_when_all_core_busy) {
@@ -48,17 +48,17 @@ TEST(SchedYieldTest, sched_yield_when_all_core_busy) {
     const int kNumCores = sysconf(_SC_NPROCESSORS_ONLN);
     ASSERT_TRUE(kNumCores > 0);
     pthread_t th0;
-    pthread_create(&th0, NULL, yielder, NULL);
+    pthread_create(&th0, nullptr, yielder, nullptr);
     
     pthread_t th[kNumCores];
     for (int i = 0; i < kNumCores; ++i) {
-        pthread_create(&th[i], NULL, spinner, NULL);
+        pthread_create(&th[i], nullptr, spinner, nullptr);
     }
     sleep(1);
     stop = true;
     for (int i = 0; i < kNumCores; ++i) {
-        pthread_join(th[i], NULL);
+        pthread_join(th[i], nullptr);
     }
-    pthread_join(th0, NULL);
+    pthread_join(th0, nullptr);
 }
 } // namespace

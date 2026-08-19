@@ -104,7 +104,7 @@ protected:
     virtual void TearDown() {};
 
     void VerifyMessage(brpc::InputMessageBase* msg) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;
@@ -113,7 +113,7 @@ protected:
 
     void ProcessMessage(void (*process)(brpc::InputMessageBase*),
                         brpc::InputMessageBase* msg, bool set_eof) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;
@@ -222,13 +222,13 @@ TEST_F(NovaTest, complete_flow) {
     brpc::SerializeRequestDefault(&request_buf, &cntl, &req);
     ASSERT_FALSE(cntl.Failed());
     brpc::policy::PackNovaRequest(
-        &total_buf, NULL, cntl.call_id().value,
+        &total_buf, nullptr, cntl.call_id().value,
         test::EchoService::descriptor()->method(0), &cntl, request_buf, &_auth);
     ASSERT_FALSE(cntl.Failed());
 
     // Verify and handle request
     brpc::ParseResult req_pr =
-            brpc::policy::ParseNsheadMessage(&total_buf, NULL, false, NULL);
+            brpc::policy::ParseNsheadMessage(&total_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     brpc::InputMessageBase* req_msg = req_pr.message();
     VerifyMessage(req_msg);
@@ -238,7 +238,7 @@ TEST_F(NovaTest, complete_flow) {
     butil::IOPortal response_buf;
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
     brpc::ParseResult res_pr =
-            brpc::policy::ParseNsheadMessage(&response_buf, NULL, false, NULL);
+            brpc::policy::ParseNsheadMessage(&response_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, res_pr.error());
     brpc::InputMessageBase* res_msg = res_pr.message();
     ProcessMessage(brpc::policy::ProcessNovaResponse, res_msg, false);
@@ -261,13 +261,13 @@ TEST_F(NovaTest, close_in_callback) {
     brpc::SerializeRequestDefault(&request_buf, &cntl, &req);
     ASSERT_FALSE(cntl.Failed());
     brpc::policy::PackNovaRequest(
-        &total_buf, NULL, cntl.call_id().value,
+        &total_buf, nullptr, cntl.call_id().value,
         test::EchoService::descriptor()->method(0), &cntl, request_buf, &_auth);
     ASSERT_FALSE(cntl.Failed());
 
     // Handle request
     brpc::ParseResult req_pr =
-            brpc::policy::ParseNsheadMessage(&total_buf, NULL, false, NULL);
+            brpc::policy::ParseNsheadMessage(&total_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     brpc::InputMessageBase* req_msg = req_pr.message();
     ProcessMessage(brpc::policy::ProcessNsheadRequest, req_msg, false);

@@ -57,7 +57,7 @@ void* read_thread(void* arg) {
         }
 
         ++nthread;
-        bthread::futex_wait_private(m/*lock1*/, 0/*consumed_njob*/, NULL);
+        bthread::futex_wait_private(m/*lock1*/, 0/*consumed_njob*/, nullptr);
         --nthread;
     }
     return new int(njob);
@@ -68,7 +68,7 @@ TEST(FutexTest, rdlock_performance) {
     butil::atomic<int> lock1(0);
     pthread_t rth[8];
     for (size_t i = 0; i < ARRAY_SIZE(rth); ++i) {
-        ASSERT_EQ(0, pthread_create(&rth[i], NULL, read_thread, &lock1));
+        ASSERT_EQ(0, pthread_create(&rth[i], nullptr, read_thread, &lock1));
     }
 
     const int64_t t1 = butil::cpuwide_time_ns();
@@ -113,8 +113,8 @@ TEST(FutexTest, futex_wake_before_wait) {
 }
 
 void* dummy_waiter(void* lock) {
-    bthread::futex_wait_private(lock, 0, NULL);
-    return NULL;
+    bthread::futex_wait_private(lock, 0, nullptr);
+    return nullptr;
 }
 
 TEST(FutexTest, futex_wake_many_waiters_perf) {
@@ -122,7 +122,7 @@ TEST(FutexTest, futex_wake_many_waiters_perf) {
     int lock1 = 0;
     size_t N = 0;
     pthread_t th;
-    for (; N < 1000 && !pthread_create(&th, NULL, dummy_waiter, &lock1); ++N) {}
+    for (; N < 1000 && !pthread_create(&th, nullptr, dummy_waiter, &lock1); ++N) {}
     
     sleep(1);
     int nwakeup = 0;
@@ -161,7 +161,7 @@ void* waker(void* lock) {
     tm.stop();
     EXPECT_EQ(0, nwakeup);
     printf("futex_wake nop = %" PRId64 "ns\n", tm.n_elapsed() / REP);
-    return NULL;
+    return nullptr;
 } 
 
 void* batch_waker(void* lock) {
@@ -186,7 +186,7 @@ void* batch_waker(void* lock) {
     tm.stop();
     EXPECT_EQ(0, nwakeup);
     printf("futex_wake nop = %" PRId64 "ns\n", tm.n_elapsed() / REP);
-    return NULL;
+    return nullptr;
 } 
 
 TEST(FutexTest, many_futex_wake_nop_perf) {
@@ -194,17 +194,17 @@ TEST(FutexTest, many_futex_wake_nop_perf) {
     int lock1;
     std::cout << "[Direct wake]" << std::endl;
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, pthread_create(&th[i], NULL, waker, &lock1));
+        ASSERT_EQ(0, pthread_create(&th[i], nullptr, waker, &lock1));
     }
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, pthread_join(th[i], NULL));
+        ASSERT_EQ(0, pthread_join(th[i], nullptr));
     }
     std::cout << "[Batch wake]" << std::endl;
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, pthread_create(&th[i], NULL, batch_waker, &lock1));
+        ASSERT_EQ(0, pthread_create(&th[i], nullptr, batch_waker, &lock1));
     }
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, pthread_join(th[i], NULL));
+        ASSERT_EQ(0, pthread_join(th[i], nullptr));
     }
 }
 } // namespace

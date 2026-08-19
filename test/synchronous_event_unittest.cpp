@@ -40,7 +40,7 @@ std::vector<std::pair<int, int> > result;
 
 class FooObserver : public FooEvent::Observer {
 public:
-    FooObserver() : another_ob(NULL) {}
+    FooObserver() : another_ob(nullptr) {}
     
     void on_event(int x, int* p) {
         ++*p;

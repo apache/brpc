@@ -36,13 +36,13 @@ TEST_F(StringSplitterTest, sanity) {
     const char* str = "hello there!   man ";
     butil::StringSplitter ss(str, ' ');
     // "hello"
-    ASSERT_TRUE(ss != NULL);
+    ASSERT_TRUE(ss != nullptr);
     ASSERT_EQ(5ul, ss.length());
     ASSERT_EQ(ss.field(), str);
 
     // "there!"
     ++ss;
-    ASSERT_NE(ss, (void*)NULL);
+    ASSERT_NE(ss, (void*)nullptr);
     ASSERT_EQ(6ul, ss.length());
     ASSERT_EQ(ss.field(), str+6);
 
@@ -363,31 +363,31 @@ TEST_F(StringSplitterTest, non_null_terminated_string) {
     butil::StringSplitter ss(buf, buf + len, ' ');
 
     // "a"
-    ASSERT_TRUE(ss != NULL);
+    ASSERT_TRUE(ss != nullptr);
     ASSERT_EQ(1ul, ss.length());
     ASSERT_EQ(ss.field(), buf + 2);
 
     // "non"
     ++ss;
-    ASSERT_TRUE(ss != NULL);
+    ASSERT_TRUE(ss != nullptr);
     ASSERT_EQ(3ul, ss.length());
     ASSERT_EQ(ss.field(), buf + 4);
 
     // "null"
     ++ss;
-    ASSERT_TRUE(ss != NULL);
+    ASSERT_TRUE(ss != nullptr);
     ASSERT_EQ(4ul, ss.length());
     ASSERT_EQ(ss.field(), buf + 9);
 
     // "terminated"
     ++ss;
-    ASSERT_TRUE(ss != NULL);
+    ASSERT_TRUE(ss != nullptr);
     ASSERT_EQ(10ul, ss.length());
     ASSERT_EQ(ss.field(), buf + 16);
 
     // "string"
     ++ss;
-    ASSERT_TRUE(ss != NULL);
+    ASSERT_TRUE(ss != nullptr);
     ASSERT_EQ(6ul, ss.length());
     ASSERT_EQ(ss.field(), buf + 28);
 
@@ -403,7 +403,7 @@ TEST_F(StringSplitterTest, key_value_pairs_splitter_sanity) {
     std::string kvstr = "key1=value1&&&key2=value2&key3=value3&===&key4=&=&=value5";
     for (int i = 0 ; i < 3; ++i) {
         // Test three constructors
-        butil::KeyValuePairsSplitter* psplitter = NULL;
+        butil::KeyValuePairsSplitter* psplitter = nullptr;
         if (i == 0) {
             psplitter = new butil::KeyValuePairsSplitter(kvstr, '&', '=');
         } else if (i == 1) {

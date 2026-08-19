@@ -103,7 +103,7 @@ class GrpcTest : public ::testing::Test {
 protected:
     GrpcTest() {
         EXPECT_EQ(0, _server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, _server.Start(g_server_addr.c_str(), NULL));
+        EXPECT_EQ(0, _server.Start(g_server_addr.c_str(), nullptr));
         brpc::ChannelOptions options;
         options.protocol = g_protocol;
         options.timeout_ms = g_timeout_ms;
@@ -126,7 +126,7 @@ protected:
         req.set_return_error(false);
 
         test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
+        stub.Method(&cntl, &req, &res, nullptr);
         EXPECT_FALSE(cntl.Failed()) << cntl.ErrorCode() << ": " << cntl.ErrorText();
         EXPECT_EQ(res.message(), g_prefix + g_req);
     }
@@ -180,7 +180,7 @@ TEST_F(GrpcTest, return_error) {
     req.set_gzip(false);
     req.set_return_error(true);
     test::GrpcService_Stub stub(&_channel);
-    stub.Method(&cntl, &req, &res, NULL);
+    stub.Method(&cntl, &req, &res, nullptr);
     EXPECT_TRUE(cntl.Failed());
     EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
     EXPECT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with(butil::string_printf("%s", g_prefix.c_str())));
@@ -200,7 +200,7 @@ TEST_F(GrpcTest, RpcTimedOut) {
     req.set_gzip(false);
     req.set_return_error(false);
     test::GrpcService_Stub stub(&_channel);
-    stub.MethodTimeOut(&cntl, &req, &res, NULL);
+    stub.MethodTimeOut(&cntl, &req, &res, nullptr);
     EXPECT_TRUE(cntl.Failed());
     EXPECT_EQ(cntl.ErrorCode(), brpc::ERPCTIMEDOUT);
 }
@@ -213,7 +213,7 @@ TEST_F(GrpcTest, MethodNotExist) {
     req.set_gzip(false);
     req.set_return_error(false);
     test::GrpcService_Stub stub(&_channel);
-    stub.MethodNotExist(&cntl, &req, &res, NULL);
+    stub.MethodNotExist(&cntl, &req, &res, nullptr);
     EXPECT_TRUE(cntl.Failed());
     EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
     ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method MethodNotExist() not implemented."));
@@ -245,11 +245,11 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         req.set_message(g_req);
         req.set_gzip(false);
         req.set_return_error(false);
-        req.set_timeout_us((int64_t)(strtol(timeouts[i+1], NULL, 10)));
+        req.set_timeout_us((int64_t)(strtol(timeouts[i+1], nullptr, 10)));
         cntl.set_timeout_ms(-1);
         cntl.http_request().SetHeader("grpc-timeout", timeouts[i]);
         test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
+        stub.Method(&cntl, &req, &res, nullptr);
         EXPECT_FALSE(cntl.Failed());
     }
 
@@ -264,7 +264,7 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         req.set_timeout_us(9876000);
         cntl.set_timeout_ms(9876);
         test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
+        stub.Method(&cntl, &req, &res, nullptr);
         EXPECT_FALSE(cntl.Failed());
     }
 
@@ -278,7 +278,7 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         req.set_return_error(false);
         req.set_timeout_us(g_timeout_ms * 1000);
         test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
+        stub.Method(&cntl, &req, &res, nullptr);
         EXPECT_FALSE(cntl.Failed());
     }
 }

@@ -21,7 +21,7 @@
 #include "brpc/socket.h"
 #include "butil/endpoint.h"
 
-// Create a valid Socket for use in fuzz harnesses that need a non-NULL Socket*.
+// Create a valid Socket for use in fuzz harnesses that need a non-nullptr Socket*.
 // Returns a raw Socket* that remains valid for the lifetime of the process
 // (held by the static SocketUniquePtr).
 inline brpc::Socket* get_fuzz_socket() {
