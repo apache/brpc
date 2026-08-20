@@ -45,6 +45,7 @@ namespace brpc {
 void PutVarsHeading(std::ostream& os, bool expand_all) {
     os << "<script language=\"javascript\" type=\"text/javascript\" src=\"/js/jquery_min\"></script>\n"
         "<script language=\"javascript\" type=\"text/javascript\" src=\"/js/flot_min\"></script>\n"
+       << gridtable_style()
        << TabsHead()
        << "<style type=\"text/css\">\n"
         "#layer1 { margin:0; padding:0; width:1111px; }\n"
@@ -66,6 +67,9 @@ void PutVarsHeading(std::ostream& os, bool expand_all) {
         "}\n"
         // style of <p>
         "p {padding: 2px 0; margin: 0px; }\n"
+        ".detail-row td {\n"
+        "  padding:0px;\n"
+        "}\n"
         // style of container of flot graph.
         ".detail {\n"
         "  margin: 0px;\n"
@@ -93,13 +97,13 @@ void PutVarsHeading(std::ostream& os, bool expand_all) {
 
         "function prepareGraphs() {\n"
         // Hide all graphs at first.
-        "  $(\".detail\").hide();\n"
+        "  $(\".detail-row\").hide();\n"
 
         // Register clicking functions.
         "  $(\".variable\").click(function() {\n"
-        "    var mod = $(this).next(\".detail\");\n"
+        "    var mod = $(this).next(\".detail-row\");\n"
         "    mod.slideToggle(\"fast\");\n"
-        "    var var_name = mod.children(\":first-child\").attr(\"id\");\n"
+        "    var var_name = mod.find(\".detail\").children(\":first-child\").attr(\"id\");\n"
         "    if (!everEnabled[var_name]) {\n"
         "      everEnabled[var_name] = true;\n"
         // Create tooltip at first click.
@@ -272,21 +276,24 @@ public:
                 name, _os, series_options);
             plot = (rc == 0);
             if (plot) {
-                _os << "<p class=\"variable\">";
+                _os << "<tr class=\"variable\">";
             } else {
-                _os << "<p class=\"nonplot-variable\">";
+                _os << "<tr class=\"nonplot-variable\">";
             }
         }
-        _os << name << VAR_SEP;
         if (_use_html) {
-            _os << "<span id=\"value-" << name << "\">";
+            _os << "<td>" << name << "</td><td><span id=\"value-" << name << "\">";
+        } else {
+            _os << name << VAR_SEP;
         }
         _os << desc;
         if (_use_html) {
-            _os << "</span></p>\n";
+            _os << "</span></td></tr>\n";
             if (plot) {
-                _os << "<div class=\"detail\"><div id=\"" << name
-                     << "\" class=\"flot-placeholder\"></div></div>\n";
+                _os << "<tr class=\"detail-row\"><td colspan=\"2\">"
+                    "<div class=\"detail\"><div id=\"" << name
+                    << "\" class=\"flot-placeholder\"></div></div>"
+                    "</td></tr>\n";
             }
         } else {
             _os << "\r\n";
@@ -369,7 +376,7 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
             "    enabled = {};\n"
             "    everEnabled = {};\n"
             "  }\n"
-            "  $(\".detail\").hide();\n"
+            "  $(\".detail-row\").hide();\n"
             "  $('#layer1').html(data);\n"
             "  prepareGraphs();\n"
             "  window.history.pushState('', '', toURL(searchText));\n"
@@ -406,7 +413,10 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
         os << "<p>Search : <input id='searchbox' type='text'"
             " onkeyup='onQueryChanged()'></p>"
             "<div id=\"layer1\">\n";
-    }    
+    }
+    if (use_html) {
+        os << "<table class=\"gridtable\" border=\"1\"><tr><th>Name</th><th>Value</th></tr>\n";
+    }
     VarsDumper dumper(os, use_html);
     bvar::DumpOptions options;
     options.question_mark = '$';
@@ -421,6 +431,9 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
     if (!options.white_wildcards.empty() && ndump == 0) {
         cntl->SetFailed(ENOMETHOD, "Fail to find any bvar by `%s'",
                         options.white_wildcards.c_str());
+    }
+    if (use_html) {
+        os << "</table>";
     }
     if (with_tabs) {
         os << "</div></body></html>";
